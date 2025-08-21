@@ -2,7 +2,17 @@ import api from '@/utils/api';
 import registerServer from '@/utils/register-server';
 import request from '@/utils/request';
 
-const { createSearch, getSearchList, deleteSearch, getSearchDetail } = api;
+const {
+  createSearch,
+  getSearchList,
+  deleteSearch,
+  getSearchDetail,
+  updateSearchSetting,
+  askShare,
+  mindmapShare,
+  getRelatedQuestionsShare,
+  getSearchDetailShare,
+} = api;
 const methods = {
   createSearch: {
     url: createSearch,
@@ -15,6 +25,27 @@ const methods = {
   deleteSearch: { url: deleteSearch, method: 'post' },
   getSearchDetail: {
     url: getSearchDetail,
+    method: 'get',
+  },
+  updateSearchSetting: {
+    url: updateSearchSetting,
+    method: 'post',
+  },
+  askShare: {
+    url: askShare,
+    method: 'post',
+  },
+  mindmapShare: {
+    url: mindmapShare,
+    method: 'post',
+  },
+  getRelatedQuestionsShare: {
+    url: getRelatedQuestionsShare,
+    method: 'post',
+  },
+
+  getSearchDetailShare: {
+    url: getSearchDetailShare,
     method: 'get',
   },
 } as const;

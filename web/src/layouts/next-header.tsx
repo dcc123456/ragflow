@@ -1,6 +1,5 @@
 import { RAGFlowAvatar } from '@/components/ragflow-avatar';
 import { useTheme } from '@/components/theme-provider';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -41,7 +40,7 @@ export function Header() {
   const { t } = useTranslation();
   const { pathname } = useLocation();
   const navigate = useNavigateWithFromState();
-  const { navigateToProfile } = useNavigatePage();
+  const { navigateToOldProfile } = useNavigatePage();
 
   const changeLanguage = useChangeLanguage();
   const { setTheme, theme } = useTheme();
@@ -75,8 +74,8 @@ export function Header() {
 
   const tagsData = useMemo(
     () => [
-      { path: Routes.Home, name: t('header.home'), icon: House },
-      { path: Routes.Datasets, name: t('header.knowledgeBase'), icon: Library },
+      { path: Routes.Root, name: t('header.Root'), icon: House },
+      { path: Routes.Datasets, name: t('header.dataset'), icon: Library },
       { path: Routes.Chats, name: t('header.chat'), icon: MessageSquareText },
       { path: Routes.Searches, name: t('header.search'), icon: Search },
       { path: Routes.Agents, name: t('header.flow'), icon: Cpu },
@@ -91,7 +90,7 @@ export function Header() {
 
       return {
         label:
-          tag.path === Routes.Home ? (
+          tag.path === Routes.Root ? (
             <HeaderIcon className="size-6"></HeaderIcon>
           ) : (
             <span>{tag.name}</span>
@@ -101,18 +100,18 @@ export function Header() {
     });
   }, [tagsData]);
 
-  const currentPath = useMemo(() => {
-    return (
-      tagsData.find((x) => pathname.startsWith(x.path))?.path || Routes.Home
-    );
-  }, [pathname, tagsData]);
+  // const currentPath = useMemo(() => {
+  //   return (
+  //     tagsData.find((x) => pathname.startsWith(x.path))?.path || Routes.Root
+  //   );
+  // }, [pathname, tagsData]);
 
   const handleChange = (path: SegmentedValue) => {
     navigate(path as Routes);
   };
 
   const handleLogoClick = useCallback(() => {
-    navigate(Routes.Home);
+    navigate(Routes.Root);
   }, [navigate]);
 
   return (
@@ -124,14 +123,19 @@ export function Header() {
           className="size-10 mr-[12]"
           onClick={handleLogoClick}
         />
-        <div className="flex items-center gap-1.5 text-text-secondary">
-          <Github className="size-3.5" />
-          <span className=" text-base">21.5k stars</span>
-        </div>
+        <a
+          className="flex items-center gap-1.5 text-text-secondary"
+          target="_blank"
+          href="https://github.com/infiniflow/ragflow"
+          rel="noreferrer"
+        >
+          <Github className="size-4" />
+          {/* <span className=" text-base">21.5k stars</span> */}
+        </a>
       </div>
       <Segmented
         options={options}
-        value={currentPath}
+        value={pathname}
         onChange={handleChange}
       ></Segmented>
       <div className="flex items-center gap-5 text-text-badge">
@@ -161,11 +165,12 @@ export function Header() {
             name={nickname}
             avatar={avatar}
             className="size-8 cursor-pointer"
-            onClick={navigateToProfile}
+            onClick={navigateToOldProfile}
           ></RAGFlowAvatar>
-          <Badge className="h-5 w-8 absolute font-normal p-0 justify-center -right-8 -top-2 text-bg-base bg-gradient-to-l from-[#42D7E7] to-[#478AF5]">
+          {/* Temporarily hidden */}
+          {/* <Badge className="h-5 w-8 absolute font-normal p-0 justify-center -right-8 -top-2 text-bg-base bg-gradient-to-l from-[#42D7E7] to-[#478AF5]">
             Pro
-          </Badge>
+          </Badge> */}
         </div>
       </div>
     </section>

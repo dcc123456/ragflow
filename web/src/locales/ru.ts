@@ -246,8 +246,7 @@ export default {
       methodExamples: 'Примеры',
       methodExamplesDescription: 'Скриншоты для пояснения:',
       dialogueExamplesTitle: 'просмотр',
-      methodEmpty:
-        'Здесь будет визуальное объяснение категорий баз знаний',
+      methodEmpty: 'Здесь будет визуальное объяснение категорий баз знаний',
       book: `<p>Поддерживаемые форматы: <b>DOCX, PDF, TXT</b>.</p><p>
       Для PDF укажите <i>диапазон страниц</i>.</p>`,
       laws: `<p>Поддерживаемые форматы: <b>DOCX, PDF, TXT</b>.</p><p>
@@ -316,21 +315,19 @@ export default {
 <p>В столбце тегов используйте <b>запятую</b> для разделения тегов.</p>
 `,
       useRaptor: 'Использовать RAPTOR',
-      useRaptorTip:
-        'Включите RAPTOR для многошаговых вопросно-ответных задач.',
+      useRaptorTip: 'Включите RAPTOR для многошаговых вопросно-ответных задач.',
       prompt: 'Промпт',
-      promptTip:
-        'Опишите задачу для LLM, укажите формат ответа и требования.',
+      promptTip: 'Опишите задачу для LLM, укажите формат ответа и требования.',
       promptMessage: 'Требуется промпт',
       promptText: `Пожалуйста, обобщите следующие абзацы. Будьте внимательны с числами, не выдумывайте. Абзацы:
       {cluster_content}
 Выше представлен контент для обобщения.`,
       maxToken: 'Макс. токенов',
-      maxTokenTip: 'Максимальное количество токенов на суммаризирующий фрагмент.',
+      maxTokenTip:
+        'Максимальное количество токенов на суммаризирующий фрагмент.',
       maxTokenMessage: 'Требуется макс. токенов',
       threshold: 'Порог',
-      thresholdTip:
-        'Минимальное сходство для группировки фрагментов в RAPTOR.',
+      thresholdTip: 'Минимальное сходство для группировки фрагментов в RAPTOR.',
       thresholdMessage: 'Требуется порог',
       maxCluster: 'Макс. кластеров',
       maxClusterTip: 'Максимальное количество кластеров.',
@@ -463,8 +460,7 @@ export default {
         'Устанавливает порог для выбора наиболее вероятных слов (ядерная выборка).',
       presencePenalty: 'Штраф за присутствие',
       presencePenaltyMessage: 'Требуется штраф за присутствие',
-      presencePenaltyTip:
-        'Штрафует слова, уже появившиеся в диалоге.',
+      presencePenaltyTip: 'Штрафует слова, уже появившиеся в диалоге.',
       frequencyPenalty: 'Штраф за частоту',
       frequencyPenaltyMessage: 'Требуется штраф за частоту',
       frequencyPenaltyTip:
@@ -553,8 +549,7 @@ export default {
       maxTokensInvalidMessage: 'Введите корректное число для Макс. токенов.',
       maxTokensMinMessage: 'Макс. токенов не может быть меньше 0.',
       password: 'Пароль',
-      passwordDescription:
-        'Введите текущий пароль для изменения пароля.',
+      passwordDescription: 'Введите текущий пароль для изменения пароля.',
       model: 'Провайдеры моделей',
       modelDescription: 'Настройте параметры моделей и API KEY.',
       team: 'Команда',
@@ -584,17 +579,14 @@ export default {
         'Ваш новый пароль должен быть длиннее 8 символов.',
       confirmPassword: 'Подтвердите новый пароль',
       confirmPasswordMessage: 'Подтвердите пароль!',
-      confirmPasswordNonMatchMessage:
-        'Новые пароли не совпадают!',
+      confirmPasswordNonMatchMessage: 'Новые пароли не совпадают!',
       cancel: 'Отмена',
       addedModels: 'Добавленные модели',
       modelsToBeAdded: 'Модели для добавления',
       addTheModel: 'Добавить модель',
       apiKey: 'API-Ключ',
-      apiKeyMessage:
-        'Введите API ключ (для локальных моделей игнорируйте).',
-      apiKeyTip:
-        'API ключ можно получить у поставщика LLM.',
+      apiKeyMessage: 'Введите API ключ (для локальных моделей игнорируйте).',
+      apiKeyTip: 'API ключ можно получить у поставщика LLM.',
       showMoreModels: 'Показать модели',
       hideModels: 'Скрыть модели',
       baseUrl: 'Базовый URL',
@@ -603,22 +595,18 @@ export default {
       modify: 'Изменить',
       systemModelSettings: 'Установить модели по умолчанию',
       chatModel: 'Модель чата',
-      chatModelTip:
-        'Модель чата по умолчанию для новых баз знаний.',
+      chatModelTip: 'Модель чата по умолчанию для новых баз знаний.',
       embeddingModel: 'Модель эмбеддинга',
-      embeddingModelTip:
-        'Модель эмбеддинга по умолчанию для новых баз знаний.',
+      embeddingModelTip: 'Модель эмбеддинга по умолчанию для новых баз знаний.',
       img2txtModel: 'Модель Img2txt',
-      img2txtModelTip:
-        'Модель описания изображений/видео по умолчанию.',
+      img2txtModelTip: 'Модель описания изображений/видео по умолчанию.',
       sequence2txtModel: 'Модель Speech2txt',
       sequence2txtModelTip:
         'Модель ASR по умолчанию для преобразования речи в текст.',
       rerankModel: 'Модель реранкинга',
       rerankModelTip: `Модель реранкинга фрагментов по умолчанию.`,
       ttsModel: 'Модель TTS',
-      ttsModelTip:
-        'Модель преобразования текста в речь по умолчанию.',
+      ttsModelTip: 'Модель преобразования текста в речь по умолчанию.',
       workspace: 'Рабочее пространство',
       upgrade: 'Обновить',
       addLlmTitle: 'Добавить LLM',
@@ -648,13 +636,41 @@ export default {
       bedrockSKMessage: 'Введите ваш SECRET KEY',
       bedrockRegion: 'Регион AWS',
       bedrockRegionMessage: 'Выберите!',
-      'us-east-1': 'US East (Вирджиния)',
+      'us-east-2': 'US East (Огайо)',
+      'us-east-1': 'US East (Северная Вирджиния)',
+      'us-west-1': 'US West (Северная Калифорния)',
       'us-west-2': 'US West (Орегон)',
-      'ap-southeast-1': 'Азия (Сингапур)',
-      'ap-northeast-1': 'Азия (Токио)',
+      'af-south-1': 'Африка (Кейптаун)',
+      'ap-east-1': 'Азиатско-Тихоокеанский регион (Гонконг)',
+      'ap-south-2': 'Азиатско-Тихоокеанский регион (Хайдарабад)',
+      'ap-southeast-3': 'Азиатско-Тихоокеанский регион (Джакарта)',
+      'ap-southeast-5': 'Азиатско-Тихоокеанский регион (Малайзия)',
+      'ap-southeast-4': 'Азиатско-Тихоокеанский регион (Мельбурн)',
+      'ap-south-1': 'Азиатско-Тихоокеанский регион (Мумбаи)',
+      'ap-northeast-3': 'Азиатско-Тихоокеанский регион (Осака)',
+      'ap-northeast-2': 'Азиатско-Тихоокеанский регион (Сеул)',
+      'ap-southeast-1': 'Азиатско-Тихоокеанский регион (Сингапур)',
+      'ap-southeast-2': 'Азиатско-Тихоокеанский регион (Сидней)',
+      'ap-east-2': 'Азиатско-Тихоокеанский регион (Тайбэй)',
+      'ap-southeast-7': 'Азиатско-Тихоокеанский регион (Таиланд)',
+      'ap-northeast-1': 'Азиатско-Тихоокеанский регион (Токио)',
+      'ca-central-1': 'Канада (Центральный)',
+      'ca-west-1': 'Канада Запад (Калгари)',
       'eu-central-1': 'Европа (Франкфурт)',
+      'eu-west-1': 'Европа (Ирландия)',
+      'eu-west-2': 'Европа (Лондон)',
+      'eu-south-1': 'Европа (Милан)',
+      'eu-west-3': 'Европа (Париж)',
+      'eu-south-2': 'Европа (Испания)',
+      'eu-north-1': 'Европа (Стокгольм)',
+      'eu-central-2': 'Европа (Цюрих)',
+      'il-central-1': 'Израиль (Тель-Авив)',
+      'mx-central-1': 'Мексика (Центральный)',
+      'me-south-1': 'Ближний Восток (Бахрейн)',
+      'me-central-1': 'Ближний Восток (ОАЭ)',
+      'sa-east-1': 'Южная Америка (Сан-Паулу)',
+      'us-gov-east-1': 'AWS GovCloud (US-East)',
       'us-gov-west-1': 'AWS GovCloud (US-West)',
-      'ap-southeast-2': 'Азия (Сидней)',
       addHunyuanSID: 'Hunyuan Secret ID',
       HunyuanSIDMessage: 'Введите ваш Secret ID',
       addHunyuanSK: 'Hunyuan Secret Key',
@@ -677,8 +693,7 @@ export default {
       yiyanAKMessage: 'Введите ваш API KEY',
       addyiyanSK: 'yiyan Secret KEY',
       yiyanSKMessage: 'Введите ваш Secret KEY',
-      FishAudioModelNameMessage:
-        'Дайте имя вашей модели синтеза речи',
+      FishAudioModelNameMessage: 'Дайте имя вашей модели синтеза речи',
       addFishAudioAK: 'Fish Audio API KEY',
       addFishAudioAKMessage: 'Введите ваш API KEY',
       addFishAudioRefID: 'FishAudio Reference ID',
@@ -715,7 +730,7 @@ export default {
       configuration: 'Конфигурация',
       langfuseDescription:
         'Трассировка, оценка, управление промптами и метрики для отладки и улучшения вашего LLM-приложения.',
-      viewLangfuseSDocumentation: "Документация Langfuse",
+      viewLangfuseSDocumentation: 'Документация Langfuse',
       view: 'Просмотр',
       modelsToBeAddedTooltip:
         'Если ваш провайдер не указан, но заявляет о "совместимости с OpenAI API", выберите соответствующую карточку.',
@@ -776,8 +791,7 @@ export default {
       s3: 'S3 загрузки',
       preview: 'Просмотр',
       fileError: 'Ошибка файла',
-      uploadLimit:
-        'Каждый файл ≤10MB, всего файлов ≤128.',
+      uploadLimit: 'Каждый файл ≤10MB, всего файлов ≤128.',
       destinationFolder: 'Целевая папка',
     },
     flow: {
@@ -844,8 +858,7 @@ export default {
       baidu: 'Baidu',
       baiduDescription: `Ищет на baidu.com.`,
       duckDuckGo: 'DuckDuckGo',
-      duckDuckGoDescription:
-        'Ищет на duckduckgo.com.',
+      duckDuckGoDescription: 'Ищет на duckduckgo.com.',
       channel: 'Канал',
       channelTip: `Текстовый или новостной поиск`,
       text: 'Текст',
@@ -855,14 +868,11 @@ export default {
         'Количество сообщений истории, видимых LLM. Учитывайте ограничение токенов модели.',
       wikipedia: 'Wikipedia',
       pubMed: 'PubMed',
-      pubMedDescription:
-        'Ищет на https://pubmed.ncbi.nlm.nih.gov/.',
+      pubMedDescription: 'Ищет на https://pubmed.ncbi.nlm.nih.gov/.',
       email: 'Email',
-      emailTip:
-        'Email обязателен.',
+      emailTip: 'Email обязателен.',
       arXiv: 'ArXiv',
-      arXivDescription:
-        'Ищет на https://arxiv.org/.',
+      arXivDescription: 'Ищет на https://arxiv.org/.',
       sortBy: 'Сортировать по',
       submittedDate: 'Дата отправки',
       lastUpdatedDate: 'Дата обновления',
@@ -877,24 +887,20 @@ export default {
       country: 'Страна и регион',
       language: 'Язык',
       googleScholar: 'Google Scholar',
-      googleScholarDescription:
-        'Ищет на https://scholar.google.com/.',
+      googleScholarDescription: 'Ищет на https://scholar.google.com/.',
       yearLow: 'Год от',
       yearHigh: 'Год до',
       patents: 'Патенты',
       data: 'Данные',
       deepL: 'DeepL',
-      deepLDescription:
-        'Перевод с помощью https://www.deepl.com/.',
+      deepLDescription: 'Перевод с помощью https://www.deepl.com/.',
       authKey: 'Ключ авторизации',
       sourceLang: 'Исходный язык',
       targetLang: 'Целевой язык',
       gitHub: 'GitHub',
-      gitHubDescription:
-        'Ищет репозитории на https://github.com/.',
+      gitHubDescription: 'Ищет репозитории на https://github.com/.',
       baiduFanyi: 'BaiduFanyi',
-      baiduFanyiDescription:
-        'Перевод с помощью https://fanyi.baidu.com/.',
+      baiduFanyiDescription: 'Перевод с помощью https://fanyi.baidu.com/.',
       appid: 'App ID',
       secretKey: 'Секретный ключ',
       domain: 'Домен',
@@ -1062,8 +1068,7 @@ export default {
       yahooFinanceDescription:
         'Запрашивает информацию о публичной компании по тикеру.',
       crawler: 'Веб-краулер',
-      crawlerDescription:
-        'Скачивает HTML-код с указанного URL.',
+      crawlerDescription: 'Скачивает HTML-код с указанного URL.',
       proxy: 'Прокси',
       crawlerResultOptions: {
         html: 'Html',
@@ -1077,8 +1082,7 @@ export default {
       balanceSheet: 'Баланс',
       cashFlowStatement: 'Отчет о движении денежных средств',
       jin10: 'Jin10',
-      jin10Description:
-        'Получает финансовую информацию с Jin10 Open Platform.',
+      jin10Description: 'Получает финансовую информацию с Jin10 Open Platform.',
       flashType: 'Тип новости',
       filter: 'Фильтр',
       contain: 'Содержит',
@@ -1265,13 +1269,13 @@ export default {
         'Выберите базы знаний для ассистента или переменные с ID баз знаний.',
       knowledgeBaseVars: 'Переменные базы знаний',
       code: 'Код',
-      codeDescription: 'Позволяет разработчикам писать пользовательскую логику на Python.',
+      codeDescription:
+        'Позволяет разработчикам писать пользовательскую логику на Python.',
       inputVariables: 'Входные переменные',
       runningHintText: 'выполняется...🕞',
       openingSwitch: 'Приветствие',
       openingCopy: 'Приветственное сообщение',
-      openingSwitchTip:
-        'Пользователи увидят это приветствие в начале.',
+      openingSwitchTip: 'Пользователи увидят это приветствие в начале.',
       modeTip: 'Режим определяет, как запускается рабочий процесс.',
       beginInputTip:
         'Определите входные параметры для доступа в последующих процессах.',
