@@ -17,11 +17,8 @@ from .ocr import OCR
 from .recognizer import Recognizer
 from .layout_recognizer import AscendLayoutRecognizer 
 from .layout_recognizer import LayoutRecognizer4YOLOv10 as LayoutRecognizer
-import os
-if os.environ.get("TENSORRT_TSR_SVR"):
-    from .tsr import TableStructureRecognizer
-else:
-    from .table_structure_recognizer import TableStructureRecognizer
+from .tsr import TableStructureRecognizer
+
 
 LOCK_KEY_pdfplumber = "global_shared_lock_pdfplumber"
 if LOCK_KEY_pdfplumber not in sys.modules:
