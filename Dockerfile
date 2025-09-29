@@ -44,4 +44,3 @@ RUN chmod +x ./entrypoint.sh
 ADD docker/.env ./.env
 
 ENTRYPOINT ["./entrypoint.sh"]
-
