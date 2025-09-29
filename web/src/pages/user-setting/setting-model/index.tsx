@@ -1,19 +1,19 @@
 import { ReactComponent as MoreModelIcon } from '@/assets/svg/more-model.svg';
+import { IPrivilegeManagementInitialValues } from '@/components/privilege-management/interface';
+import { PrivilegeManagementDialog } from '@/components/privilege-management/privilege-management-dialog';
 import { LlmIcon } from '@/components/svg-icon';
 import { useTheme } from '@/components/theme-provider';
 import { LLMFactory } from '@/constants/llm';
+import { PermissionResourceType } from '@/constants/team';
 import { useSetModalState, useTranslate } from '@/hooks/common-hooks';
+import { LlmItem, useSelectLlmList } from '@/hooks/llm-hooks';
 import {
-  LlmItem,
-  useFetchMyLlmListDetailed,
-  useSelectLlmList,
-} from '@/hooks/llm-hooks';
+  useFetchEnableAdmin,
+  useFetchIsAdmin,
+} from '@/hooks/use-private-llm-request';
+import { useFetchTenantInfo } from '@/hooks/user-setting-hooks';
 import { getRealModelName } from '@/utils/llm-util';
-import {
-  CloseCircleOutlined,
-  EditOutlined,
-  SettingOutlined,
-} from '@ant-design/icons';
+import { CloseCircleOutlined, SettingOutlined } from '@ant-design/icons';
 import {
   Button,
   Card,
@@ -30,8 +30,8 @@ import {
   Tooltip,
   Typography,
 } from 'antd';
-import { CircleHelp } from 'lucide-react';
-import { useCallback, useMemo } from 'react';
+import { CircleHelp, CircleX, RotateCcw, Share2 } from 'lucide-react';
+import { useCallback, useMemo, useState } from 'react';
 import SettingTitle from '../components/setting-title';
 import { isLocalLlmFactory } from '../utils';
 import ApiKeyModal from './api-key-modal';
@@ -57,10 +57,12 @@ import {
 } from './hooks';
 import HunyuanModal from './hunyuan-modal';
 import styles from './index.less';
+import { LangfuseCard } from './langfuse';
 import TencentCloudModal from './next-tencent-modal';
 import OllamaModal from './ollama-modal';
 import SparkModal from './spark-modal';
 import SystemModelSettingModal from './system-model-setting-modal';
+import { useResetDefaultLLM } from './use-reset-default-llm';
 import VolcEngineModal from './volcengine-modal';
 import YiyanModal from './yiyan-modal';
 
@@ -68,44 +70,28 @@ const { Text } = Typography;
 interface IModelCardProps {
   item: LlmItem;
   clickApiKey: (llmFactory: string) => void;
-  handleEditModel: (model: any, factory: LlmItem) => void;
+  showPrivilegeModal(
+    record: Omit<IPrivilegeManagementInitialValues, 'tenant_id'>,
+  ): void;
 }
 
-type TagType =
-  | 'LLM'
-  | 'TEXT EMBEDDING'
-  | 'TEXT RE-RANK'
-  | 'TTS'
-  | 'SPEECH2TEXT'
-  | 'IMAGE2TEXT'
-  | 'MODERATION';
-
-const sortTags = (tags: string) => {
-  const orderMap: Record<TagType, number> = {
-    LLM: 1,
-    'TEXT EMBEDDING': 2,
-    'TEXT RE-RANK': 3,
-    TTS: 4,
-    SPEECH2TEXT: 5,
-    IMAGE2TEXT: 6,
-    MODERATION: 7,
-  };
-
-  return tags
-    .split(',')
-    .map((tag) => tag.trim())
-    .sort(
-      (a, b) =>
-        (orderMap[a as TagType] || 999) - (orderMap[b as TagType] || 999),
-    );
-};
-
-const ModelCard = ({ item, clickApiKey, handleEditModel }: IModelCardProps) => {
+const ModelCard = ({
+  item,
+  clickApiKey,
+  showPrivilegeModal,
+}: IModelCardProps) => {
   const { visible, switchVisible } = useSetModalState();
   const { t } = useTranslate('setting');
   const { theme } = useTheme();
   const { handleDeleteLlm } = useHandleDeleteLlm(item.name);
   const { handleDeleteFactory } = useHandleDeleteFactory(item.name);
+  const { handleSetDefaultLlm } = useResetDefaultLLM(item.name);
+  const { data: isAdmin } = useFetchIsAdmin();
+  const { data: enableAdmin } = useFetchEnableAdmin();
+
+  const showResetButton = useMemo(() => {
+    return enableAdmin && isAdmin;
+  }, [isAdmin, enableAdmin]);
 
   const handleApiKeyClick = () => {
     clickApiKey(item.name);
@@ -114,6 +100,14 @@ const ModelCard = ({ item, clickApiKey, handleEditModel }: IModelCardProps) => {
   const handleShowMoreClick = () => {
     switchVisible();
   };
+
+  const handleShowPrivilegeModal = useCallback(() => {
+    showPrivilegeModal({
+      id: item.name,
+      name: item.name,
+      avatar: item.logo,
+    });
+  }, [item.logo, item.name, showPrivilegeModal]);
 
   return (
     <List.Item>
@@ -126,25 +120,18 @@ const ModelCard = ({ item, clickApiKey, handleEditModel }: IModelCardProps) => {
               <LlmIcon name={item.name} />
               <Flex vertical gap={'small'}>
                 <b>{item.name}</b>
-                <Flex wrap="wrap">
-                  {sortTags(item.tags).map((tag, index) => (
-                    <Tag
-                      key={index}
-                      style={{
-                        fontSize: '12px',
-                        margin: '1px',
-                        paddingInline: '4px',
-                      }}
-                    >
-                      {tag}
-                    </Tag>
-                  ))}
-                </Flex>
+                <Text>{item.tags}</Text>
               </Flex>
             </Flex>
           </Col>
           <Col span={12} className={styles.factoryOperationWrapper}>
             <Space size={'middle'}>
+              <Button onClick={handleShowPrivilegeModal}>
+                <Flex align="center" gap={4}>
+                  Share
+                  <Share2 className="size-4" />
+                </Flex>
+              </Button>
               <Button onClick={handleApiKeyClick}>
                 <Flex align="center" gap={4}>
                   {isLocalLlmFactory(item.name) ||
@@ -163,7 +150,7 @@ const ModelCard = ({ item, clickApiKey, handleEditModel }: IModelCardProps) => {
               </Button>
               <Button onClick={handleShowMoreClick}>
                 <Flex align="center" gap={4}>
-                  {visible ? t('hideModels') : t('showMoreModels')}
+                  {t('showMoreModels')}
                   <MoreModelIcon />
                 </Flex>
               </Button>
@@ -180,27 +167,34 @@ const ModelCard = ({ item, clickApiKey, handleEditModel }: IModelCardProps) => {
             size="small"
             dataSource={item.llm}
             className={styles.llmList}
-            renderItem={(model) => (
+            renderItem={(item) => (
               <List.Item>
-                <Space>
-                  {getRealModelName(model.name)}
-                  <Tag color="#b8b8b8">{model.type}</Tag>
-                  {isLocalLlmFactory(item.name) && (
-                    <Tooltip title={t('edit', { keyPrefix: 'common' })}>
+                <div className="flex items-center">
+                  <div className="pr-2">{getRealModelName(item.name)}</div>
+                  <Tag color="#b8b8b8">{item.type}</Tag>
+                  <Tooltip title={t('delete', { keyPrefix: 'common' })}>
+                    <Button type={'text'} onClick={handleDeleteLlm(item.name)}>
+                      <CircleX
+                        style={{ color: '#D92D20' }}
+                        className="size-4"
+                      />
+                    </Button>
+                  </Tooltip>
+                  {showResetButton && (
+                    <Tooltip
+                      title={t('resetDefaultLLMTip', {
+                        keyPrefix: 'privateLLM',
+                      })}
+                    >
                       <Button
                         type={'text'}
-                        onClick={() => handleEditModel(model, item)}
+                        onClick={handleSetDefaultLlm(item.name)}
                       >
-                        <EditOutlined style={{ color: '#1890ff' }} />
+                        <RotateCcw className="size-4" />
                       </Button>
                     </Tooltip>
                   )}
-                  <Tooltip title={t('delete', { keyPrefix: 'common' })}>
-                    <Button type={'text'} onClick={handleDeleteLlm(model.name)}>
-                      <CloseCircleOutlined style={{ color: '#D92D20' }} />
-                    </Button>
-                  </Tooltip>
-                </Space>
+                </div>
               </List.Item>
             )}
           />
@@ -212,13 +206,34 @@ const ModelCard = ({ item, clickApiKey, handleEditModel }: IModelCardProps) => {
 
 const UserSettingModel = () => {
   const { factoryList, myLlmList: llmList, loading } = useSelectLlmList();
-  const { data: detailedLlmList } = useFetchMyLlmListDetailed();
   const { theme } = useTheme();
+  const { data: tenantInfo } = useFetchTenantInfo();
+
+  const {
+    visible: privilegeModal,
+    hideModal: hidePrivilegeModal,
+    showModal: showPrivilegeModal,
+  } = useSetModalState();
+
+  const [record, setRecord] = useState<IPrivilegeManagementInitialValues>(
+    {} as IPrivilegeManagementInitialValues,
+  );
+  const handShowPrivilegeModal = useCallback(
+    (item: Omit<IPrivilegeManagementInitialValues, 'tenant_id'>) => {
+      setRecord({
+        ...item,
+        tenant_id: tenantInfo.tenant_id,
+        resourceType: PermissionResourceType.LLM,
+      });
+      showPrivilegeModal();
+    },
+    [showPrivilegeModal, tenantInfo.tenant_id],
+  );
+
   const {
     saveApiKeyLoading,
     initialApiKey,
     llmFactory,
-    editMode,
     onApiKeySavingOk,
     apiKeyVisible,
     hideApiKeyModal,
@@ -238,8 +253,6 @@ const UserSettingModel = () => {
     showLlmAddingModal,
     onLlmAddingOk,
     llmAddingLoading,
-    editMode: llmEditMode,
-    initialValues: llmInitialValues,
     selectedLlmFactory,
   } = useSubmitOllama();
 
@@ -353,32 +366,6 @@ const UserSettingModel = () => {
     [showApiKeyModal, showLlmAddingModal, ModalMap],
   );
 
-  const handleEditModel = useCallback(
-    (model: any, factory: LlmItem) => {
-      if (factory) {
-        const detailedFactory = detailedLlmList[factory.name];
-        const detailedModel = detailedFactory?.llm?.find(
-          (m: any) => m.name === model.name,
-        );
-
-        const editData = {
-          llm_factory: factory.name,
-          llm_name: model.name,
-          model_type: model.type,
-        };
-
-        if (isLocalLlmFactory(factory.name)) {
-          showLlmAddingModal(factory.name, true, editData, detailedModel);
-        } else if (factory.name in ModalMap) {
-          ModalMap[factory.name as keyof typeof ModalMap]();
-        } else {
-          showApiKeyModal(editData, true);
-        }
-      }
-    },
-    [showApiKeyModal, showLlmAddingModal, ModalMap, detailedLlmList],
-  );
-
   const items: CollapseProps['items'] = [
     {
       key: '1',
@@ -391,7 +378,7 @@ const UserSettingModel = () => {
             <ModelCard
               item={item}
               clickApiKey={handleAddModel}
-              handleEditModel={handleEditModel}
+              showPrivilegeModal={handShowPrivilegeModal}
             ></ModelCard>
           )}
         />
@@ -441,21 +428,7 @@ const UserSettingModel = () => {
                     <b>
                       <Text ellipsis={{ tooltip: item.name }}>{item.name}</Text>
                     </b>
-                    <Flex wrap="wrap" style={{ minHeight: '50px' }}>
-                      {sortTags(item.tags).map((tag, index) => (
-                        <Tag
-                          key={index}
-                          style={{
-                            fontSize: '8px',
-                            margin: '1px',
-                            paddingInline: '4px',
-                            height: '22px',
-                          }}
-                        >
-                          {tag}
-                        </Tag>
-                      ))}
-                    </Flex>
+                    <Text className={styles.modelTags}>{item.tags}</Text>
                   </Flex>
                 </Flex>
                 <Divider className={styles.modelDivider}></Divider>
@@ -476,6 +449,7 @@ const UserSettingModel = () => {
 
   return (
     <section id="xx" className="w-full space-y-6">
+      <LangfuseCard></LangfuseCard>
       <Spin spinning={loading}>
         <section className={styles.modelContainer}>
           <SettingTitle
@@ -493,7 +467,6 @@ const UserSettingModel = () => {
         hideModal={hideApiKeyModal}
         loading={saveApiKeyLoading}
         initialValue={initialApiKey}
-        editMode={editMode}
         onOk={onApiKeySavingOk}
         llmFactory={llmFactory}
       ></ApiKeyModal>
@@ -510,8 +483,6 @@ const UserSettingModel = () => {
         hideModal={hideLlmAddingModal}
         onOk={onLlmAddingOk}
         loading={llmAddingLoading}
-        editMode={llmEditMode}
-        initialValues={llmInitialValues}
         llmFactory={selectedLlmFactory}
       ></OllamaModal>
       <VolcEngineModal
@@ -577,6 +548,12 @@ const UserSettingModel = () => {
         loading={AzureAddingLoading}
         llmFactory={LLMFactory.AzureOpenAI}
       ></AzureOpenAIModal>
+      {privilegeModal && (
+        <PrivilegeManagementDialog
+          hideModal={hidePrivilegeModal}
+          initialValues={record}
+        ></PrivilegeManagementDialog>
+      )}
     </section>
   );
 };

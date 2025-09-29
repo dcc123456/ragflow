@@ -1,0 +1,142 @@
+#
+#  Copyright 2024 The InfiniFlow Authors. All Rights Reserved.
+#
+#  Licensed under the Apache License, Version 2.0 (the "License");
+#  you may not use this file except in compliance with the License.
+#  You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS,
+#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#  See the License for the specific language governing permissions and
+#  limitations under the License.
+#
+import gevent.monkey
+gevent.monkey.patch_all()
+import sys
+import time
+from api.utils.log_utils import init_root_logger
+# Initialize logging first
+init_root_logger("ragflow_server")
+from plugin import GlobalPluginManager
+from rag.utils.mcp_tool_call_conn import shutdown_all_mcp_sessions
+from api.apps import smtp_mail_server
+import logging
+import os
+import signal
+import threading
+import uuid
+from api import settings
+from api.apps import app
+from api.db.runtime_config import RuntimeConfig
+from api.db.services.document_service import DocumentService
+from api import utils
+from api.db.db_models import init_database_tables as init_web_db
+from api.db.init_data import init_web_data
+from api.versions import get_ragflow_version
+from api.utils import show_configs
+from rag.settings import print_rag_settings
+from rag.utils.redis_conn import RedisDistributedLock
+
+# Global stop event and executor for background tasks
+stop_event = threading.Event()
+background_executor = None
+
+RAGFLOW_DEBUGPY_LISTEN = int(os.environ.get('RAGFLOW_DEBUGPY_LISTEN', "0"))
+
+
+def update_progress():
+    lock_value = str(uuid.uuid4())
+    redis_lock = RedisDistributedLock("update_progress", lock_value=lock_value, timeout=60)
+    logging.info(f"update_progress lock_value: {lock_value}")
+    while not stop_event.is_set():
+        try:
+            if redis_lock.acquire():
+                DocumentService.update_progress()
+                redis_lock.release()
+        except Exception:
+            logging.exception("update_progress exception")
+        finally:
+            try:
+                redis_lock.release()
+            except Exception:
+                logging.exception("update_progress exception")
+            stop_event.wait(6)
+
+
+def signal_handler(sig, frame):
+    logging.info("Received interrupt signal, shutting down...")
+    shutdown_all_mcp_sessions()
+    stop_event.set()
+    time.sleep(1)
+    sys.exit(0)
+
+
+def initialize_ragflow():
+    logging.info(r"""
+        ____   ___    ______ ______ __
+       / __ \ /   |  / ____// ____// /____  _      __
+      / /_/ // /| | / / __ / /_   / // __ \| | /| / /
+     / _, _// ___ |/ /_/ // __/  / // /_/ /| |/ |/ /
+    /_/ |_|/_/  |_|\____//_/    /_/ \____/ |__/|__/
+
+    """)
+    logging.info(
+        f'RAGFlow version: {get_ragflow_version()}'
+    )
+    logging.info(
+        f'project base: {utils.file_utils.get_project_base_directory()}'
+    )
+    show_configs()
+    settings.init_settings()
+    print_rag_settings()
+
+    if RAGFLOW_DEBUGPY_LISTEN > 0:
+        logging.info(f"debugpy listen on {RAGFLOW_DEBUGPY_LISTEN}")
+        import debugpy
+        debugpy.listen(("0.0.0.0", RAGFLOW_DEBUGPY_LISTEN))
+
+    # init db
+    init_web_db()
+    init_web_data()
+
+    RuntimeConfig.init_env()
+    RuntimeConfig.init_config(JOB_SERVER_HOST=settings.HOST_IP, HTTP_PORT=settings.HOST_PORT)
+
+    GlobalPluginManager.load_plugins()
+
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+
+    def delayed_start_update_progress():
+        logging.info("Starting update_progress thread (delayed)")
+        t = threading.Thread(target=update_progress, daemon=True)
+        t.start()
+
+    if RuntimeConfig.DEBUG:
+        if os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+            threading.Timer(1.0, delayed_start_update_progress).start()
+    else:
+        threading.Timer(1.0, delayed_start_update_progress).start()
+
+    # init smtp server
+    if settings.SMTP_CONF:
+        app.config["MAIL_SERVER"] = settings.MAIL_SERVER
+        app.config["MAIL_PORT"] = settings.MAIL_PORT
+        app.config["MAIL_USE_SSL"] = settings.MAIL_USE_SSL
+        app.config["MAIL_USE_TLS"] = settings.MAIL_USE_TLS
+        app.config["MAIL_USERNAME"] = settings.MAIL_USERNAME
+        app.config["MAIL_PASSWORD"] = settings.MAIL_PASSWORD
+        app.config["MAIL_DEFAULT_SENDER"] = settings.MAIL_DEFAULT_SENDER
+        smtp_mail_server.init_app(app)
+
+    logging.info("RAGFlow WSGI application initialized successfully in production mode")
+
+
+# Initialize the application when module is imported
+initialize_ragflow()
+
+# Export the Flask app for WSGI
+application = app

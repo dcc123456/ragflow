@@ -14,87 +14,45 @@
 #  limitations under the License.
 #
 import logging
+import base64
 import json
 import os
 import time
-import uuid
 from copy import deepcopy
-
-from api.db import LLMType, UserTenantRole
-from api.db.db_models import init_database_tables as init_web_db, LLMFactories, LLM, TenantLLM
+from urllib.parse import urlparse
+from api.db.db_models import init_database_tables as init_web_db, LLM
 from api.db.services import UserService
 from api.db.services.canvas_service import CanvasTemplateService
-from api.db.services.document_service import DocumentService
-from api.db.services.knowledgebase_service import KnowledgebaseService
-from api.db.services.tenant_llm_service import LLMFactoriesService, TenantLLMService
-from api.db.services.llm_service import LLMService, LLMBundle, get_init_tenant_llm
+from api.db.services.llm_service import LLMService, LLMBundle
+from api.db.services.tenant_llm_service import LLMFactoriesService
 from api.db.services.user_service import TenantService, UserTenantService
+from api.db.services.billing_service import BillingPlanService, TenantPlanService
 from api import settings
 from api.utils.file_utils import get_project_base_directory
+import stripe
+from api.db.services.llm_service import get_init_tenant_llm
 from api.common.base64 import encode_to_base64
 
 
 def init_superuser():
-    user_info = {
-        "id": uuid.uuid1().hex,
-        "password": encode_to_base64("admin"),
-        "nickname": "admin",
-        "is_superuser": True,
+    from api.utils import get_format_time
+    from api.utils import get_uuid
+    from api.utils.crypt import decrypt
+    from api.db.services.tenant_llm_service import user_register
+    user_dict = {
+        "access_token": get_uuid(),
         "email": "admin@ragflow.io",
-        "creator": "system",
-        "status": "1",
+        "nickname": "Admin",
+        "password": decrypt("q+vxHmvkOWdq/jgFjkWDR4xu0PB4IZ2zYLYi9CR9Qkz124D86X+WJ38CJ3bp1IEZTaLXuSZxZI6hB/833ok6tDWj9Isp4NJahPVq64ZANJergnmw+Q9sznGIRkP8nYBCoQgFr4rdHgm6Im7mAeLcsI+ltB0j4hzpUz2MSE+tBiXn1xmrzW1VdEB3iQ/xmXEFKNI5YhPDSHPH4lBHauW1MtJU5ZxOkxJ5i5Nd7UtglTlIEsSPR+ZC3JM91o3cis3KsdsEy7Y85ACiPicZA6DGdc9IAfmTxQ8x+4KlJTsAMQ9z0H0QeGEGtyVkN7Q869ElpppnjPdPU5aQygjaO6mdqQ=="),
+        "login_channel": "password",
+        "last_login_time": get_format_time(),
+        "is_superuser": 1,
     }
-    tenant = {
-        "id": user_info["id"],
-        "name": user_info["nickname"] + "‘s Kingdom",
-        "llm_id": settings.CHAT_MDL,
-        "embd_id": settings.EMBEDDING_MDL,
-        "asr_id": settings.ASR_MDL,
-        "parser_ids": settings.PARSERS,
-        "img2txt_id": settings.IMAGE2TEXT_MDL
-    }
-    usr_tenant = {
-        "tenant_id": user_info["id"],
-        "user_id": user_info["id"],
-        "invited_by": user_info["id"],
-        "role": UserTenantRole.OWNER
-    }
-
-    tenant_llm = get_init_tenant_llm(user_info["id"])
-
-    if not UserService.save(**user_info):
-        logging.error("can't init admin.")
-        return
-    TenantService.insert(**tenant)
-    UserTenantService.insert(**usr_tenant)
-    TenantLLMService.insert_many(tenant_llm)
-    logging.info(
-        "Super user initialized. email: admin@ragflow.io, password: admin. Changing the password after login is strongly recommended.")
-
-    chat_mdl = LLMBundle(tenant["id"], LLMType.CHAT, tenant["llm_id"])
-    msg = chat_mdl.chat(system="", history=[
-        {"role": "user", "content": "Hello!"}], gen_conf={})
-    if msg.find("ERROR: ") == 0:
-        logging.error(
-            "'{}' doesn't work. {}".format(
-                tenant["llm_id"],
-                msg))
-    embd_mdl = LLMBundle(tenant["id"], LLMType.EMBEDDING, tenant["embd_id"])
-    v, c = embd_mdl.encode(["Hello!"])
-    if c == 0:
-        logging.error(
-            "'{}' doesn't work!".format(
-                tenant["embd_id"]))
+    user_register("admin", user_dict)
+    logging.info("Super user initialized. email: admin@ragflow.io, password: ***. Changing the password after login is strongly recommended.")
 
 
 def init_llm_factory():
-    try:
-        LLMService.filter_delete([(LLM.fid == "MiniMax" or LLM.fid == "Minimax")])
-        LLMService.filter_delete([(LLM.fid == "cohere")])
-        LLMFactoriesService.filter_delete([LLMFactories.name == "cohere"])
-    except Exception:
-        pass
-
     factory_llm_infos = settings.FACTORY_LLM_INFOS
     for factory_llm_info in factory_llm_infos:
         info = deepcopy(factory_llm_info)
@@ -110,65 +68,97 @@ def init_llm_factory():
                 LLMService.save(**llm_info)
             except Exception:
                 pass
-
-    LLMFactoriesService.filter_delete([(LLMFactories.name == "Local") | (LLMFactories.name == "novita.ai")])
-    LLMService.filter_delete([LLM.fid == "Local"])
-    LLMService.filter_delete([LLM.llm_name == "qwen-vl-max"])
-    LLMService.filter_delete([LLM.fid == "Moonshot", LLM.llm_name == "flag-embedding"])
-    TenantLLMService.filter_delete([TenantLLM.llm_factory == "Moonshot", TenantLLM.llm_name == "flag-embedding"])
-    LLMFactoriesService.filter_delete([LLMFactoriesService.model.name == "QAnything"])
-    LLMService.filter_delete([LLMService.model.fid == "QAnything"])
-    TenantLLMService.filter_update([TenantLLMService.model.llm_factory == "QAnything"], {"llm_factory": "Youdao"})
-    TenantLLMService.filter_update([TenantLLMService.model.llm_factory == "cohere"], {"llm_factory": "Cohere"})
-    TenantService.filter_update([1 == 1], {
-        "parser_ids": "naive:General,qa:Q&A,resume:Resume,manual:Manual,table:Table,paper:Paper,book:Book,laws:Laws,presentation:Presentation,picture:Picture,one:One,audio:Audio,email:Email,tag:Tag"})
-    ## insert openai two embedding models to the current openai user.
-    # print("Start to insert 2 OpenAI embedding models...")
-    tenant_ids = set([row["tenant_id"] for row in TenantLLMService.get_openai_models()])
-    for tid in tenant_ids:
-        for row in TenantLLMService.query(llm_factory="OpenAI", tenant_id=tid):
-            row = row.to_dict()
-            row["model_type"] = LLMType.EMBEDDING.value
-            row["llm_name"] = "text-embedding-3-small"
-            row["used_tokens"] = 0
-            try:
-                TenantLLMService.save(**row)
-                row = deepcopy(row)
-                row["llm_name"] = "text-embedding-3-large"
-                TenantLLMService.save(**row)
-            except Exception:
-                pass
-            break
-    doc_count = DocumentService.get_all_kb_doc_count()
-    for kb_id in KnowledgebaseService.get_all_ids():
-        KnowledgebaseService.update_document_number_in_init(kb_id=kb_id, doc_num=doc_count.get(kb_id, 0))
-
+    #TenantService.filter_update([1 == 1], {
+    #    "parser_ids": "naive:General,qa:Q&A,resume:Resume,manual:Manual,table:Table,paper:Paper,book:Book,laws:Laws,presentation:Presentation,picture:Picture,one:One,audio:Audio,email:Email,tag:Tag"})
 
 
 def add_graph_templates():
     dir = os.path.join(get_project_base_directory(), "agent", "templates")
     CanvasTemplateService.filter_delete([1 == 1])
-    if not os.path.exists(dir):
-        logging.warning("Missing agent templates!")
-        return
-
     for fnm in os.listdir(dir):
         try:
-            cnvs = json.load(open(os.path.join(dir, fnm), "r",encoding="utf-8"))
+            cnvs = json.load(open(os.path.join(dir, fnm), "r", encoding="utf-8"))
             try:
                 CanvasTemplateService.save(**cnvs)
             except Exception:
                 CanvasTemplateService.update_by_id(cnvs["id"], cnvs)
         except Exception:
-            logging.exception("Add agent templates error: ")
+            logging.exception("Add graph templates error: ")
 
+
+def register_webhook():
+    """
+    https://docs.stripe.com/api/webhook_endpoints/object
+    https://dashboard.stripe.com/test/workbench/webhooks
+    """
+    SUBSCRIPTION_UPDATED = 'customer.subscription.updated'
+    SUBSCRIPTION_DELETED = 'customer.subscription.deleted'
+    stripe.api_key = settings.BILLING['stripe_api_key']
+    webhook_url = settings.BILLING['webhook_url']
+    if urlparse(webhook_url).hostname in ['localhost', '127.0.0.1']:
+        logging.warning(f'webhook_url {webhook_url} is invalid since it is unreachable')
+    else:
+        exists = False
+        webhook_endpoints = stripe.WebhookEndpoint.list()
+        for endpoint in webhook_endpoints.data:
+            if endpoint.url == webhook_url and SUBSCRIPTION_UPDATED in endpoint.enabled_events and SUBSCRIPTION_DELETED in endpoint.enabled_events:
+                logging.warning(f'webhook_url {webhook_url} already exists')
+                exists = True
+            else:
+                stripe.WebhookEndpoint.delete(endpoint.id)
+        if not exists:
+            stripe.WebhookEndpoint.create(
+                url=webhook_url,
+                enabled_events=[SUBSCRIPTION_UPDATED, SUBSCRIPTION_DELETED],
+            )
+        logging.warning(f'webhook_url {webhook_url} has just been registered')
+
+def handle_undelivered_events():
+    """
+    https://docs.stripe.com/webhooks/process-undelivered-events
+    """
+    SUBSCRIPTION_UPDATED = 'customer.subscription.updated'
+    SUBSCRIPTION_DELETED = 'customer.subscription.deleted'
+    stripe.api_key = settings.BILLING['stripe_api_key']
+    starting_after = None
+    while True:
+        events = stripe.Event.list(delivery_success=False, limit=100, starting_after=starting_after)
+        num_events = 0
+        for event in events.auto_paging_iter():
+            starting_after = event['id']
+            num_events += 1
+            event_type = event['type']
+            if event_type not in [SUBSCRIPTION_UPDATED, SUBSCRIPTION_DELETED]:
+                continue
+            subscription = event['data']['object']
+            # Refers to https://docs.stripe.com/api/subscriptions/object
+            subscription_id = subscription['id']
+            subscription_status = subscription['status']
+            customer_id = subscription['customer']
+            price_id = subscription['items']['data'][0]['price']['id']
+            plan_name = settings.BILLING['plans'].get(price_id)
+            if not plan_name:
+                logging.warning(f'handle_undelivered_events could not find plan for price {price_id}')
+                continue
+            updated_rows = TenantPlanService.update_subscription(customer_id, subscription_id, subscription_status, plan_name)
+            if not updated_rows:
+                logging.warning(f'handle_undelivered_events could not find tenant for customer {customer_id}')
+                continue
+            logging.info(f'handle_undelivered_events updated customer {customer_id} subscription {subscription_id} status {subscription_status} plan {plan_name}')
+        if num_events == 0:
+            break
 
 def init_web_data():
     start_time = time.time()
 
     init_llm_factory()
-    # if not UserService.get_all().count():
-    #    init_superuser()
+    if settings.ENABLE_ADMIN:
+        init_superuser()
+
+    if settings.BILLING_ENABLED:
+        BillingPlanService.init_data(settings.BILLING["billing_plans"])
+        register_webhook()
+        handle_undelivered_events()
 
     add_graph_templates()
     logging.info("init web data success:{}".format(time.time() - start_time))

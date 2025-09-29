@@ -22,6 +22,7 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
+import { useDatasetEditButtonDisabled } from '@/hooks/logic-hooks/use-permission';
 import { IDocumentInfo } from '@/interfaces/database/document';
 import Editor, { loader } from '@monaco-editor/react';
 import DOMPurify from 'dompurify';
@@ -35,6 +36,7 @@ export function SetMetaDialog({
   loading,
   initialMetaData,
 }: IModalProps<any> & { initialMetaData?: IDocumentInfo['meta_fields'] }) {
+  const datasetEditButtonDisabled = useDatasetEditButtonDisabled();
   const { t } = useTranslation();
 
   const FormSchema = z.object({
@@ -118,7 +120,12 @@ export function SetMetaDialog({
           </form>
         </Form>
         <DialogFooter>
-          <ButtonLoading type="submit" form={TagRenameId} loading={loading}>
+          <ButtonLoading
+            type="submit"
+            form={TagRenameId}
+            loading={loading}
+            disabled={datasetEditButtonDisabled}
+          >
             {t('common.save')}
           </ButtonLoading>
         </DialogFooter>

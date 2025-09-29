@@ -8,6 +8,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { useNavigatePage } from '@/hooks/logic-hooks/navigate-hooks';
+import { useDatasetEditButtonDisabled } from '@/hooks/logic-hooks/use-permission';
 import { useSetDocumentStatus } from '@/hooks/use-document-request';
 import { IDocumentInfo } from '@/interfaces/database/document';
 import { cn } from '@/lib/utils';
@@ -30,6 +31,7 @@ export function useDatasetTableColumns({
   showRenameModal,
   showSetMetaModal,
 }: UseDatasetTableColumnsType) {
+  const datasetEditButtonDisabled = useDatasetEditButtonDisabled();
   const { t } = useTranslation('translation', {
     keyPrefix: 'knowledgeDetails',
   });
@@ -42,6 +44,7 @@ export function useDatasetTableColumns({
       id: 'select',
       header: ({ table }) => (
         <Checkbox
+          disabled={datasetEditButtonDisabled}
           checked={
             table.getIsAllPageRowsSelected() ||
             (table.getIsSomePageRowsSelected() && 'indeterminate')
@@ -52,6 +55,7 @@ export function useDatasetTableColumns({
       ),
       cell: ({ row }) => (
         <Checkbox
+          disabled={datasetEditButtonDisabled}
           checked={row.getIsSelected()}
           onCheckedChange={(value) => row.toggleSelected(!!value)}
           aria-label="Select row"
@@ -126,6 +130,7 @@ export function useDatasetTableColumns({
         const id = row.original.id;
         return (
           <Switch
+            disabled={datasetEditButtonDisabled}
             checked={row.getValue('status') === '1'}
             onCheckedChange={(e) => {
               setDocumentStatus({ status: e, documentId: id });
@@ -151,6 +156,7 @@ export function useDatasetTableColumns({
             record={row.original}
             showChangeParserModal={showChangeParserModal}
             showSetMetaModal={showSetMetaModal}
+            datasetEditButtonDisabled={datasetEditButtonDisabled}
           ></ParsingStatusCell>
         );
       },
@@ -166,6 +172,7 @@ export function useDatasetTableColumns({
           <DatasetActionCell
             record={record}
             showRenameModal={showRenameModal}
+            datasetEditButtonDisabled={datasetEditButtonDisabled}
           ></DatasetActionCell>
         );
       },

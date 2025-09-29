@@ -1,5 +1,5 @@
-import message from '@/components/ui/message';
 import { LanguageTranslationMap } from '@/constants/common';
+import { TenantRole } from '@/constants/team';
 import { ResponseGetType } from '@/interfaces/database/base';
 import { IToken } from '@/interfaces/database/chat';
 import { ITenantInfo } from '@/interfaces/database/knowledge';
@@ -18,13 +18,22 @@ import userService, {
   listTenant,
   listTenantUser,
 } from '@/services/user-service';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Modal } from 'antd';
+import {
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
+import { Modal, message } from 'antd';
 import DOMPurify from 'dompurify';
 import { isEmpty } from 'lodash';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { history } from 'umi';
+import {
+  fetchEnableAdminQueryFn,
+  fetchIsAdminQueryFn,
+} from './use-private-llm-request';
 
 export const useFetchUserInfo = (): ResponseGetType<IUserInfo> => {
   const { i18n } = useTranslation();
@@ -53,45 +62,81 @@ export const useFetchTenantInfo = (
   showEmptyModelWarn = false,
 ): ResponseGetType<ITenantInfo> => {
   const { t } = useTranslation();
-  const { data, isFetching: loading } = useQuery({
-    queryKey: ['tenantInfo'],
-    initialData: {},
-    gcTime: 0,
-    queryFn: async () => {
-      const { data: res } = await userService.get_tenant_info();
-      if (res.code === 0) {
-        // llm_id is chat_id
-        // asr_id is speech2txt
-        const { data } = res;
-        if (
-          showEmptyModelWarn &&
-          (isEmpty(data.embd_id) || isEmpty(data.llm_id))
-        ) {
-          Modal.warning({
-            title: t('common.warn'),
-            content: (
-              <div
-                dangerouslySetInnerHTML={{
-                  __html: DOMPurify.sanitize(t('setting.modelProvidersWarn')),
-                }}
-              ></div>
-            ),
-            onOk() {
-              history.push('/user-setting/model');
-            },
-          });
-        }
-        data.chat_id = data.llm_id;
-        data.speech2text_id = data.asr_id;
+  const results = useQueries({
+    queries: [
+      {
+        queryKey: ['tenantInfo'],
+        placeholderData: {},
+        gcTime: 0,
+        queryFn: async () => {
+          const { data: res } = await userService.get_tenant_info();
+          if (res.code === 0) {
+            // llm_id is chat_id
+            // asr_id is speech2txt
+            const { data } = res;
 
-        return data;
-      }
+            data.chat_id = data.llm_id;
+            data.speech2text_id = data.asr_id;
 
-      return res;
-    },
+            return data;
+          }
+
+          return res;
+        },
+      },
+      {
+        queryKey: ['FetchEnableAdmin'],
+        queryFn: fetchEnableAdminQueryFn,
+      },
+      {
+        queryKey: ['FetchIsAdmin'],
+        queryFn: fetchIsAdminQueryFn,
+      },
+    ],
   });
 
-  return { data, loading };
+  const [data, enableAdmin, isAdmin] = results;
+
+  const tenantInfo = data.data;
+
+  const allCompleted = results.every((r) => !r.isPending);
+  const allSuccess = results.every((r) => r.isSuccess && !r.isPlaceholderData);
+
+  useEffect(() => {
+    if (allCompleted && allSuccess) {
+      const hideWarn = enableAdmin.data && !isAdmin.data;
+      if (
+        showEmptyModelWarn &&
+        (isEmpty(tenantInfo.embd_id) || isEmpty(tenantInfo.llm_id)) &&
+        !hideWarn
+      ) {
+        Modal.destroyAll(); // Not elegant
+        Modal.warning({
+          title: t('common.warn'),
+          content: (
+            <div
+              dangerouslySetInnerHTML={{
+                __html: DOMPurify.sanitize(t('setting.modelProvidersWarn')),
+              }}
+            ></div>
+          ),
+          onOk() {
+            history.push('/user-setting/model');
+          },
+        });
+      }
+    }
+  }, [
+    allCompleted,
+    allSuccess,
+    enableAdmin.data,
+    isAdmin.data,
+    showEmptyModelWarn,
+    t,
+    tenantInfo,
+  ]);
+
+  return { data: data.data, loading: data.isPending };
 };
 
 export const useSelectParserList = (): Array<{
@@ -257,9 +302,10 @@ export const useCreateSystemToken = () => {
   return { data, loading, createToken: mutateAsync };
 };
 
-export const useListTenantUser = () => {
-  const { data: tenantInfo } = useFetchTenantInfo();
-  const tenantId = tenantInfo.tenant_id;
+export const useListTenantUser = (
+  tenantId: string,
+  excludePendingInvitations = false,
+) => {
   const {
     data,
     isFetching: loading,
@@ -269,6 +315,10 @@ export const useListTenantUser = () => {
     initialData: [],
     gcTime: 0,
     enabled: !!tenantId,
+    select: (data) =>
+      excludePendingInvitations
+        ? data.filter((x) => x.role !== TenantRole.Invite)
+        : data,
     queryFn: async () => {
       const { data } = await listTenantUser(tenantId);
 
@@ -325,9 +375,9 @@ export const useDeleteTenantUser = () => {
       if (data.code === 0) {
         message.success(t('message.deleted'));
         queryClient.invalidateQueries({ queryKey: ['listTenantUser'] });
-        queryClient.invalidateQueries({ queryKey: ['listTenant'] });
+        // queryClient.invalidateQueries({ queryKey: ['listTenant'] });
       }
-      return data?.data ?? [];
+      return data.code;
     },
   });
 

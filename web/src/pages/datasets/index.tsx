@@ -1,4 +1,5 @@
 import ListFilterBar from '@/components/list-filter-bar';
+import { PrivilegeManagementDialog } from '@/components/privilege-management/privilege-management-dialog';
 import { RenameDialog } from '@/components/rename-dialog';
 import { Button } from '@/components/ui/button';
 import { RAGFlowPagination } from '@/components/ui/ragflow-pagination';
@@ -12,6 +13,7 @@ import { DatasetCreatingDialog } from './dataset-creating-dialog';
 import { useSaveKnowledge } from './hooks';
 import { useRenameDataset } from './use-rename-dataset';
 import { useSelectOwners } from './use-select-owners';
+import { useShowPrivilegeDialog } from './use-show-privilege-dialog';
 
 export default function Datasets() {
   const { t } = useTranslation();
@@ -52,10 +54,17 @@ export default function Datasets() {
     [setPagination],
   );
 
+  const {
+    privilegeModal,
+    hidePrivilegeModal,
+    handShowPrivilegeModal,
+    recordWithSourceType,
+  } = useShowPrivilegeDialog();
+
   return (
     <section className="py-4 flex-1 flex flex-col">
       <ListFilterBar
-        title={t('header.dataset')}
+        title={t('header.knowledgeBase')}
         searchString={searchString}
         onSearchChange={handleInputChange}
         value={filterValue}
@@ -70,13 +79,14 @@ export default function Datasets() {
         </Button>
       </ListFilterBar>
       <div className="flex-1">
-        <div className="grid gap-6 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 max-h-[calc(100dvh-280px)] overflow-auto px-8">
+        <div className="grid gap-6 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 max-h-[78vh] overflow-auto px-8">
           {kbs.map((dataset) => {
             return (
               <DatasetCard
                 dataset={dataset}
                 key={dataset.id}
                 showDatasetRenameModal={showDatasetRenameModal}
+                showPrivilegeModal={handShowPrivilegeModal(dataset)}
               ></DatasetCard>
             );
           })}
@@ -103,6 +113,12 @@ export default function Datasets() {
           initialName={initialDatasetName}
           loading={datasetRenameLoading}
         ></RenameDialog>
+      )}
+      {privilegeModal && (
+        <PrivilegeManagementDialog
+          hideModal={hidePrivilegeModal}
+          initialValues={recordWithSourceType}
+        ></PrivilegeManagementDialog>
       )}
     </section>
   );

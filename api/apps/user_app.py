@@ -13,39 +13,41 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 #
-import json
 import logging
+import json
 import re
 import secrets
+import time
 from datetime import datetime
 
-from flask import redirect, request, session
-from flask_login import current_user, login_required, login_user, logout_user
-from werkzeug.security import check_password_hash, generate_password_hash
+from flask import request, session, redirect
+from flask_login import login_required, current_user, login_user, logout_user
 
-from api import settings
-from api.apps.auth import get_auth_client
-from api.db import FileType, UserTenantRole
 from api.db.db_models import TenantLLM
-from api.db.services.file_service import FileService
-from api.db.services.llm_service import get_init_tenant_llm
-from api.db.services.tenant_llm_service import TenantLLMService
-from api.db.services.user_service import TenantService, UserService, UserTenantService
-from api.utils import (
-    current_timestamp,
-    datetime_format,
-    download_img,
-    get_format_time,
-    get_uuid,
-)
+from api.db.services.llm_service import get_init_tenant_llm, LLMService
+from api.db.services.tenant_llm_service import TenantLLMService, user_register
 from api.utils.api_utils import (
-    construct_response,
-    get_data_error_result,
-    get_json_result,
     server_error_response,
     validate_request,
+    get_data_error_result,
 )
-from api.utils.crypt import decrypt
+from api.utils import (
+    get_uuid,
+    get_format_time,
+    download_img,
+    current_timestamp,
+    datetime_format,
+)
+from api.utils.crypt import decrypt, decrypt2
+from api.db import UserTenantRole, FileType
+from api import settings
+from api.db.services.user_service import UserService, TenantService, UserTenantService
+from api.db.services.file_service import FileService
+from api.utils.api_utils import get_json_result, construct_response
+from rag.utils.redis_conn import REDIS_CONN
+
+from api.utils.file_utils import get_project_base_directory
+from api.utils.sync_icbccs_user import icbccs_user_register
 
 
 @manager.route("/login", methods=["POST", "GET"])  # noqa: F821
@@ -80,7 +82,9 @@ def login():
           type: object
     """
     if not request.json:
-        return get_json_result(data=False, code=settings.RetCode.AUTHENTICATION_ERROR, message="Unauthorized!")
+        return get_json_result(
+            data=False, code=settings.RetCode.AUTHENTICATION_ERROR, message="Unauthorized!"
+        )
 
     email = request.json.get("email", "")
     users = UserService.query(email=email)
@@ -95,17 +99,12 @@ def login():
     try:
         password = decrypt(password)
     except BaseException:
-        return get_json_result(data=False, code=settings.RetCode.SERVER_ERROR, message="Fail to crypt password")
+        return get_json_result(
+            data=False, code=settings.RetCode.SERVER_ERROR, message="Fail to crypt password"
+        )
 
     user = UserService.query_user(email, password)
-
-    if user and hasattr(user, 'is_active') and user.is_active == "0":
-        return get_json_result(
-            data=False,
-            code=settings.RetCode.FORBIDDEN,
-            message="This account has been disabled, please contact the administrator!",
-        )
-    elif user:
+    if user:
         response_data = user.to_json()
         user.access_token = get_uuid()
         login_user(user)
@@ -122,134 +121,9 @@ def login():
         )
 
 
-@manager.route("/login/channels", methods=["GET"])  # noqa: F821
-def get_login_channels():
-    """
-    Get all supported authentication channels.
-    """
-    try:
-        channels = []
-        for channel, config in settings.OAUTH_CONFIG.items():
-            channels.append(
-                {
-                    "channel": channel,
-                    "display_name": config.get("display_name", channel.title()),
-                    "icon": config.get("icon", "sso"),
-                }
-            )
-        return get_json_result(data=channels)
-    except Exception as e:
-        logging.exception(e)
-        return get_json_result(data=[], message=f"Load channels failure, error: {str(e)}", code=settings.RetCode.EXCEPTION_ERROR)
-
-
-@manager.route("/login/<channel>", methods=["GET"])  # noqa: F821
-def oauth_login(channel):
-    channel_config = settings.OAUTH_CONFIG.get(channel)
-    if not channel_config:
-        raise ValueError(f"Invalid channel name: {channel}")
-    auth_cli = get_auth_client(channel_config)
-
-    state = get_uuid()
-    session["oauth_state"] = state
-    auth_url = auth_cli.get_authorization_url(state)
-    return redirect(auth_url)
-
-
-@manager.route("/oauth/callback/<channel>", methods=["GET"])  # noqa: F821
-def oauth_callback(channel):
-    """
-    Handle the OAuth/OIDC callback for various channels dynamically.
-    """
-    try:
-        channel_config = settings.OAUTH_CONFIG.get(channel)
-        if not channel_config:
-            raise ValueError(f"Invalid channel name: {channel}")
-        auth_cli = get_auth_client(channel_config)
-
-        # Check the state
-        state = request.args.get("state")
-        if not state or state != session.get("oauth_state"):
-            return redirect("/?error=invalid_state")
-        session.pop("oauth_state", None)
-
-        # Obtain the authorization code
-        code = request.args.get("code")
-        if not code:
-            return redirect("/?error=missing_code")
-
-        # Exchange authorization code for access token
-        token_info = auth_cli.exchange_code_for_token(code)
-        access_token = token_info.get("access_token")
-        if not access_token:
-            return redirect("/?error=token_failed")
-
-        id_token = token_info.get("id_token")
-
-        # Fetch user info
-        user_info = auth_cli.fetch_user_info(access_token, id_token=id_token)
-        if not user_info.email:
-            return redirect("/?error=email_missing")
-
-        # Login or register
-        users = UserService.query(email=user_info.email)
-        user_id = get_uuid()
-
-        if not users:
-            try:
-                try:
-                    avatar = download_img(user_info.avatar_url)
-                except Exception as e:
-                    logging.exception(e)
-                    avatar = ""
-
-                users = user_register(
-                    user_id,
-                    {
-                        "access_token": get_uuid(),
-                        "email": user_info.email,
-                        "avatar": avatar,
-                        "nickname": user_info.nickname,
-                        "login_channel": channel,
-                        "last_login_time": get_format_time(),
-                        "is_superuser": False,
-                    },
-                )
-
-                if not users:
-                    raise Exception(f"Failed to register {user_info.email}")
-                if len(users) > 1:
-                    raise Exception(f"Same email: {user_info.email} exists!")
-
-                # Try to log in
-                user = users[0]
-                login_user(user)
-                return redirect(f"/?auth={user.get_id()}")
-
-            except Exception as e:
-                rollback_user_registration(user_id)
-                logging.exception(e)
-                return redirect(f"/?error={str(e)}")
-
-        # User exists, try to log in
-        user = users[0]
-        user.access_token = get_uuid()
-        if user and hasattr(user, 'is_active') and user.is_active == "0":
-            return redirect("/?error=user_inactive")
-
-        login_user(user)
-        user.save()
-        return redirect(f"/?auth={user.get_id()}")
-    except Exception as e:
-        logging.exception(e)
-        return redirect(f"/?error={str(e)}")
-
-
 @manager.route("/github_callback", methods=["GET"])  # noqa: F821
 def github_callback():
     """
-    **Deprecated**, Use `/oauth/callback/<channel>` instead.
-
     GitHub OAuth callback endpoint.
     ---
     tags:
@@ -327,8 +201,6 @@ def github_callback():
     # User has already registered, try to log in
     user = users[0]
     user.access_token = get_uuid()
-    if user and hasattr(user, 'is_active') and user.is_active == "0":
-        return redirect("/?error=user_inactive")
     login_user(user)
     user.save()
     return redirect("/?auth=%s" % user.get_id())
@@ -430,8 +302,6 @@ def feishu_callback():
 
     # User has already registered, try to log in
     user = users[0]
-    if user and hasattr(user, 'is_active') and user.is_active == "0":
-        return redirect("/?error=user_inactive")
     user.access_token = get_uuid()
     login_user(user)
     user.save()
@@ -445,7 +315,9 @@ def user_info_from_feishu(access_token):
         "Content-Type": "application/json; charset=utf-8",
         "Authorization": f"Bearer {access_token}",
     }
-    res = requests.get("https://open.feishu.cn/open-apis/authen/v1/user_info", headers=headers)
+    res = requests.get(
+        "https://open.feishu.cn/open-apis/authen/v1/user_info", headers=headers
+    )
     user_info = res.json()["data"]
     user_info["email"] = None if user_info.get("email") == "" else user_info["email"]
     return user_info
@@ -455,13 +327,17 @@ def user_info_from_github(access_token):
     import requests
 
     headers = {"Accept": "application/json", "Authorization": f"token {access_token}"}
-    res = requests.get(f"https://api.github.com/user?access_token={access_token}", headers=headers)
+    res = requests.get(
+        f"https://api.github.com/user?access_token={access_token}", headers=headers
+    )
     user_info = res.json()
     email_info = requests.get(
         f"https://api.github.com/user/emails?access_token={access_token}",
         headers=headers,
     ).json()
-    user_info["email"] = next((email for email in email_info if email["primary"]), None)["email"]
+    user_info["email"] = next(
+        (email for email in email_info if email["primary"]), None
+    )["email"]
     return user_info
 
 
@@ -521,15 +397,18 @@ def setting_user():
     request_data = request.json
     if request_data.get("password"):
         new_password = request_data.get("new_password")
-        if not check_password_hash(current_user.password, decrypt(request_data["password"])):
-            return get_json_result(
-                data=False,
-                code=settings.RetCode.AUTHENTICATION_ERROR,
-                message="Password error!",
-            )
+        #if not check_password_hash(
+        #        current_user.password, decrypt(request_data["password"])
+        #):
+        #    return get_json_result(
+        #        data=False,
+        #        code=settings.RetCode.AUTHENTICATION_ERROR,
+        #        message="Password error!",
+        #    )
 
         if new_password:
-            update_dict["password"] = generate_password_hash(decrypt(new_password))
+            update_dict["password"] = decrypt2(new_password)
+            #update_dict["password"] = generate_password_hash(decrypt(new_password))
 
     for k in request_data.keys():
         if k in [
@@ -552,7 +431,9 @@ def setting_user():
         return get_json_result(data=True)
     except Exception as e:
         logging.exception(e)
-        return get_json_result(data=False, message="Update failure!", code=settings.RetCode.EXCEPTION_ERROR)
+        return get_json_result(
+            data=False, message="Update failure!", code=settings.RetCode.EXCEPTION_ERROR
+        )
 
 
 @manager.route("/info", methods=["GET"])  # noqa: F821
@@ -605,47 +486,6 @@ def rollback_user_registration(user_id):
         pass
 
 
-def user_register(user_id, user):
-    user["id"] = user_id
-    tenant = {
-        "id": user_id,
-        "name": user["nickname"] + "‘s Kingdom",
-        "llm_id": settings.CHAT_MDL,
-        "embd_id": settings.EMBEDDING_MDL,
-        "asr_id": settings.ASR_MDL,
-        "parser_ids": settings.PARSERS,
-        "img2txt_id": settings.IMAGE2TEXT_MDL,
-        "rerank_id": settings.RERANK_MDL,
-    }
-    usr_tenant = {
-        "tenant_id": user_id,
-        "user_id": user_id,
-        "invited_by": user_id,
-        "role": UserTenantRole.OWNER,
-    }
-    file_id = get_uuid()
-    file = {
-        "id": file_id,
-        "parent_id": file_id,
-        "tenant_id": user_id,
-        "created_by": user_id,
-        "name": "/",
-        "type": FileType.FOLDER.value,
-        "size": 0,
-        "location": "",
-    }
-
-    tenant_llm = get_init_tenant_llm(user_id)
-
-    if not UserService.save(**user):
-        return
-    TenantService.insert(**tenant)
-    UserTenantService.insert(**usr_tenant)
-    TenantLLMService.insert_many(tenant_llm)
-    FileService.insert(file)
-    return UserService.query(email=user["email"])
-
-
 @manager.route("/register", methods=["POST"])  # noqa: F821
 @validate_request("nickname", "email", "password")
 def user_add():
@@ -677,19 +517,11 @@ def user_add():
         schema:
           type: object
     """
-
-    if not settings.REGISTER_ENABLED:
-        return get_json_result(
-            data=False,
-            message="User registration is disabled!",
-            code=settings.RetCode.OPERATING_ERROR,
-        )
-
     req = request.json
     email_address = req["email"]
 
     # Validate the email address
-    if not re.match(r"^[\w\._-]+@([\w_-]+\.)+[\w-]{2,}$", email_address):
+    if not re.match(r"^[\w\._-]+@([\w_-]+\.)+[\w-]{2,5}$", email_address):
         return get_json_result(
             data=False,
             message=f"Invalid email address: {email_address}!",
@@ -825,3 +657,273 @@ def set_tenant_info():
         return get_json_result(data=True)
     except Exception as e:
         return server_error_response(e)
+
+
+@manager.route("/is_admin", methods=["GET"])
+@login_required
+def is_admin():
+    return get_json_result(data={"admin": UserService.is_admin(current_user.id)})
+
+
+@manager.route("/enable_admin", methods=["GET"])
+@login_required
+def enable_admin():
+    return get_json_result(data={"enable": settings.ENABLE_ADMIN})
+
+
+@manager.route("/star", methods=["GET"])
+@login_required
+def has_starred_repo():
+    user = UserService.query(id=current_user.id)
+    if not user:
+        return get_json_result(
+            code=settings.RetCode.UNAUTHORIZED, message="<Unauthorized '401: Unauthorized'>"
+        )
+    user = user[0].to_dict()
+    if user["login_channel"] == "github":
+        if REDIS_CONN.get(user["nickname"]):
+            return get_json_result(data={"star": True})
+        else:
+            return get_json_result(data={"star": False})
+    #elif random.randint(0, 10) >= 6:
+    #    return get_json_result(data={"star": False})
+
+    return get_json_result(data={"star": True})
+
+
+@manager.route("/oauth_callback", methods=["GET"])  # noqa: F821
+def casdoor_callback():
+    import requests
+    base_url = "http://10.142.0.2:8181"
+    res = requests.post(
+        f"{base_url}/api/login/oauth/access_token",
+        data={
+            "grant_type": "authorization_code",
+            "client_id": "87fe30c13277b95d37b5",
+            "client_secret": "2171fdf1fa28f8f29f1eb9aff9af3e0a968ccee6",
+            "code": request.args.get("code")
+        },
+        headers={"Accept": "application/json"},
+    )
+    res = res.json()
+    if "error" in res:
+        return redirect("/?error=%s" % res["error_description"])
+
+    access_token = res['access_token']
+    res = requests.get(
+        f"{base_url}/api/userinfo?accessToken={access_token}",
+        headers={"Accept": "application/json"},
+    )
+    user_info = res.json()
+    res = requests.get(
+        f"{base_url}/api/get-user?userId={user_info['sub']}",
+        headers={"Accept": "application/json", "Authorization": f"Bear {access_token}"},
+    )
+    user_info = res.json()["data"]
+    email_address = user_info["email"]
+    users = UserService.query(email=email_address)
+    user_id = get_uuid()
+    def is_github():
+        nonlocal user_info
+        return (str(user_info["properties"]) + user_info["avatar"]).lower().find("GitHub") > 0
+
+    if not users:
+        # User isn't try to register
+        try:
+            try:
+                avatar = download_img(user_info["avatar"])
+            except Exception as e:
+                logging.exception(e)
+                avatar = user_info["avatar"]
+            users = user_register(
+                user_id,
+                {
+                    "access_token": access_token,
+                    "email": email_address,
+                    "avatar": avatar,
+                    "nickname": user_info["displayName"] if user_info.get("displayName") else user_info["name"],
+                    "login_channel": "github" if is_github() else "password",
+                    "last_login_time": get_format_time(),
+                    "update_time": current_timestamp(),
+                    "is_superuser": False,
+                },
+            )
+            if len(users) > 1:
+                raise Exception(f"Same email: {email_address} exists!")
+
+            # Try to log in
+            user = users[0]
+            login_user(user)
+            return redirect("/?auth=%s" % user.get_id())
+        except Exception as e:
+            rollback_user_registration(user_id)
+            logging.exception(e)
+            return redirect("/?error=%s" % str(e))
+
+    # User has already registered, try to log in
+    user = users[0]
+    user.update_time = current_timestamp()
+    user.access_token = get_uuid()
+    login_user(user)
+    user.save()
+    return redirect("/?auth=%s" % user.get_id())
+    return redirect("/?auth")
+
+
+@manager.route("/icbccs_callback", methods=["GET"])  # noqa: F821
+def icbccs_callback():
+    import requests
+    headers = {'Content-Type': 'application/x-www-form-urlencoded'}
+    res = requests.post(
+        settings.GITHUB_OAUTH.get("url"),
+        data={
+            "client_id": settings.GITHUB_OAUTH.get("client_id"),
+            "client_secret": settings.GITHUB_OAUTH.get("secret_key"),
+            "code": request.args.get("code"),
+            "grant_type": "authorization_code",
+            "redirect_uri": settings.GITHUB_OAUTH.get("my_callback_url")
+        },
+        headers=headers,
+    )
+    res = res.json()
+    if "error" in res:
+        return redirect("/?error=%s" % res["error"])
+
+    session["access_token"] = res["access_token"]
+    session["access_token_from"] = "icbccs"
+
+    user_info = requests.post(settings.GITHUB_OAUTH.get("usr_url"),
+                        headers=headers,
+                        data={"token": res["access_token"]}
+                        ).json()
+    email_address = user_info["email"]
+    users = UserService.query(email=email_address)
+    user_id = get_uuid()
+    if not users:
+        # User isn't try to register
+        try:
+            users = icbccs_user_register(user_info["userId"], {
+                    "access_token": get_uuid(),
+                    "email": user_info["email"],
+                    "nickname": user_info["realName"],
+                    "login_channel": "icbccs",
+                    "last_login_time": get_format_time(),
+                    "is_superuser": False,
+                    "language": "Chinese"
+                })
+            if not users:
+                raise Exception(f"Fail to register {email_address}.")
+            if len(users) > 1:
+                raise Exception(f"Same email: {email_address} exists!")
+
+            # Try to log in
+            user = users[0]
+            login_user(user)
+            return redirect("/?auth=%s" % user.get_id())
+        except Exception as e:
+            rollback_user_registration(user_id)
+            logging.exception(e)
+            return redirect("/?error=%s" % str(e))
+
+    # User has already registered, try to log in
+    user = users[0]
+    user.access_token = get_uuid()
+    login_user(user)
+    user.save()
+    return redirect("/?auth=%s" % user.get_id())
+
+
+def init_saml_auth(req):
+    from onelogin.saml2.auth import OneLogin_Saml2_Auth
+    import os
+    auth = OneLogin_Saml2_Auth(req, custom_base_path=os.path.join(get_project_base_directory(), 'saml'))
+    return auth
+
+
+def prepare_flask_request(request):
+    return {
+        'https': 'on' if request.scheme == 'https' else 'off',
+        #'http_host': request.host,
+        'http_host': "kb.innomotics.net",#request.url,
+        'server_port': 443,#request.environ.get('SERVER_PORT'),
+        'script_name': request.path,
+        'get_data': request.args.copy(),
+        'post_data': request.form.copy(),
+        'query_string': request.query_string.decode('utf-8')
+    }
+
+
+@manager.route('/azure_login') # noqa: F821
+def azure_login():
+    req = prepare_flask_request(request)
+    auth = init_saml_auth(req)
+    return redirect(auth.login())
+
+
+@manager.route('/metadata') # noqa: F821
+def metadata():
+    req = prepare_flask_request(request)
+    auth = init_saml_auth(req)
+    settings = auth.get_settings()
+    metadata = settings.get_sp_metadata()
+    errors = settings.validate_metadata(metadata)
+
+    if not errors:
+        return metadata, 200, {'Content-Type': 'text/xml'}
+    else:
+        return "Metadata error", 500
+
+
+@manager.route("/azure_callback", methods=["POST"])  # noqa: F821
+def azure_callback():
+    req = prepare_flask_request(request)
+    auth = init_saml_auth(req)
+    auth.process_response()
+    errors = auth.get_errors()
+    print(auth.get_last_error_reason(), auth.is_authenticated(), auth.get_attributes(),  auth.get_nameid(), auth.get_session_index(), "flushssssssssssssssssss", flush=True)
+
+    if errors:
+        return auth.get_last_error_reason()
+
+    attr = auth.get_attributes()
+    email_address = auth.get_nameid()
+    users = UserService.query(email=email_address, status='1')
+    user_id = get_uuid()
+
+    if not users:
+        return redirect("/?error=Unauthorized. Contact administrator please.")
+        # User isn't try to register
+        try:
+            users = user_register(
+                user_id,
+                {
+                    "access_token": get_uuid(),
+                    "email": email_address,
+                    "nickname": attr["http://schemas.microsoft.com/identity/claims/displayname"][0],
+                    "login_channel": "entraID",
+                    "last_login_time": get_format_time(),
+                    "update_time": current_timestamp(),
+                    "is_superuser": False,
+                },
+            )
+            if len(users) > 1:
+                raise Exception(f"Same email: {email_address} exists!")
+
+            # Try to log in
+            user = users[0]
+            login_user(user)
+            return redirect("/?auth=%s" % user.get_id())
+        except Exception as e:
+            rollback_user_registration(user_id)
+            logging.exception(e)
+            return redirect("/?error=%s" % str(e))
+
+    # User has already registered, try to log in
+    user = users[0]
+    user.update_time = current_timestamp()
+    user.access_token = get_uuid()
+    user.nickname = attr["http://schemas.microsoft.com/identity/claims/displayname"][0]
+    user.login_channel = "entraID"
+    login_user(user)
+    user.save()
+    return redirect("/?auth=%s" % user.get_id())

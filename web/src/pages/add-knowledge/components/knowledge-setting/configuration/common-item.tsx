@@ -24,6 +24,7 @@ export const EmbeddingModelItem = memo(function EmbeddingModelItem() {
         placeholder={t('embeddingModelPlaceholder')}
         options={embeddingModelOptions}
         disabled={disabled}
+        popupMatchSelectWidth={false}
       ></Select>
     </Form.Item>
   );

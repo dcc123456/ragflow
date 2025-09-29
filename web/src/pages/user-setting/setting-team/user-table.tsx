@@ -1,4 +1,7 @@
-import { useListTenantUser } from '@/hooks/user-setting-hooks';
+import {
+  useFetchTenantInfo,
+  useListTenantUser,
+} from '@/hooks/user-setting-hooks';
 import { ITenantUser } from '@/interfaces/database/user-setting';
 import { formatDate } from '@/utils/date';
 import { DeleteOutlined } from '@ant-design/icons';
@@ -16,7 +19,8 @@ const ColorMap = {
 };
 
 const UserTable = () => {
-  const { data, loading } = useListTenantUser();
+  const { data: tenantInfo } = useFetchTenantInfo();
+  const { data, loading } = useListTenantUser(tenantInfo.tenant_id);
   const { handleDeleteTenantUser } = useHandleDeleteUser();
   const { t } = useTranslation();
 

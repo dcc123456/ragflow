@@ -15,12 +15,13 @@ import PdfDrawer from '@/components/pdf-drawer';
 import { useClickDrawer } from '@/components/pdf-drawer/hooks';
 import {
   useFetchNextConversation,
-  useFetchNextDialog,
+  useFetchNextDialogList,
   useGetChatSearchParams,
 } from '@/hooks/chat-hooks';
 import { useFetchUserInfo } from '@/hooks/user-setting-hooks';
 import { buildMessageUuidWithRole } from '@/utils/chat';
-import { memo } from 'react';
+import { hasOwnerPermission } from '@/utils/permission-util';
+import { memo, useMemo } from 'react';
 import styles from './index.less';
 
 interface IProps {
@@ -28,14 +29,12 @@ interface IProps {
 }
 
 const ChatContainer = ({ controller }: IProps) => {
-  const { conversationId } = useGetChatSearchParams();
+  const { conversationId, dialogId } = useGetChatSearchParams();
   const { data: conversation } = useFetchNextConversation();
-  const { data: currentDialog } = useFetchNextDialog();
 
   const {
     value,
-    scrollRef,
-    messageContainerRef,
+    ref,
     loading,
     sendLoading,
     derivedMessages,
@@ -54,16 +53,24 @@ const ChatContainer = ({ controller }: IProps) => {
   const { data: userInfo } = useFetchUserInfo();
   const { createConversationBeforeUploadDocument } =
     useCreateConversationBeforeUploadDocument();
+  const { data: dialogList } = useFetchNextDialogList(true);
+
+  const ownerPermission = useMemo(() => {
+    const operatorPermission = dialogList.find(
+      (x) => x.id === dialogId,
+    )?.operator_permission;
+    const ownerPermission =
+      typeof operatorPermission === 'number'
+        ? hasOwnerPermission(operatorPermission)
+        : true;
+
+    return ownerPermission;
+  }, [dialogId, dialogList]);
 
   return (
     <>
       <Flex flex={1} className={styles.chatContainer} vertical>
-        <Flex
-          flex={1}
-          vertical
-          className={styles.messageContainer}
-          ref={messageContainerRef}
-        >
+        <Flex flex={1} vertical className={styles.messageContainer}>
           <div>
             <Spin spinning={loading}>
               {derivedMessages?.map((message, i) => {
@@ -78,7 +85,7 @@ const ChatContainer = ({ controller }: IProps) => {
                     item={message}
                     nickname={userInfo.nickname}
                     avatar={userInfo.avatar}
-                    avatarDialog={currentDialog.icon}
+                    avatarDialog={conversation.avatar}
                     reference={buildMessageItemReference(
                       {
                         message: derivedMessages,
@@ -96,7 +103,7 @@ const ChatContainer = ({ controller }: IProps) => {
               })}
             </Spin>
           </div>
-          <div ref={scrollRef} />
+          <div ref={ref} />
         </Flex>
         <MessageInput
           disabled={disabled}
@@ -110,6 +117,7 @@ const ChatContainer = ({ controller }: IProps) => {
             createConversationBeforeUploadDocument
           }
           stopOutputMessage={stopOutputMessage}
+          showUploadIcon={ownerPermission}
         ></MessageInput>
       </Flex>
       <PdfDrawer

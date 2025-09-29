@@ -35,12 +35,11 @@ from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.llm_service import LLMBundle
 from api.db.services.tenant_llm_service import TenantLLMService
 from api.db.services.task_service import TaskService, queue_tasks
-from api.db.services.dialog_service import meta_filter, convert_conditions
 from api.utils.api_utils import check_duplicate_ids, construct_json_result, get_error_data_result, get_parser_config, get_result, server_error_response, token_required
 from rag.app.qa import beAdoc, rmPrefix
 from rag.app.tag import label_question
 from rag.nlp import rag_tokenizer, search
-from rag.prompts.generator import cross_languages, keyword_extraction
+from rag.prompts.generator import keyword_extraction
 from rag.utils import rmSpace
 from rag.utils.storage_factory import STORAGE_IMPL
 
@@ -400,7 +399,7 @@ def download(tenant_id, dataset_id, document_id):
         return get_error_data_result(message=f"The dataset not own the document {document_id}.")
     # The process of downloading
     doc_id, doc_location = File2DocumentService.get_storage_address(doc_id=document_id)  # minio address
-    file_stream = STORAGE_IMPL.get(doc_id, doc_location)
+    file_stream = STORAGE_IMPL.get(doc_id, doc_location, tenant_id)
     if not file_stream:
         return construct_json_result(message="This file is empty.", code=settings.RetCode.DATA_ERROR)
     file = BytesIO(file_stream)
@@ -458,18 +457,6 @@ def list_docs(dataset_id, tenant_id):
         required: false
         default: true
         description: Order in descending.
-    - in: query
-        name: create_time_from
-        type: integer
-        required: false
-        default: 0
-        description: Unix timestamp for filtering documents created after this time. 0 means no filter.
-      - in: query
-        name: create_time_to
-        type: integer
-        required: false
-        default: 0
-        description: Unix timestamp for filtering documents created before this time. 0 means no filter.
       - in: header
         name: Authorization
         type: string
@@ -531,33 +518,22 @@ def list_docs(dataset_id, tenant_id):
         desc = True
     docs, tol = DocumentService.get_list(dataset_id, page, page_size, orderby, desc, keywords, id, name)
 
-    create_time_from = int(request.args.get("create_time_from", 0))
-    create_time_to = int(request.args.get("create_time_to", 0))
-
-    if create_time_from or create_time_to:
-        filtered_docs = []
-        for doc in docs:
-            doc_create_time = doc.get("create_time", 0)
-            if (create_time_from == 0 or doc_create_time >= create_time_from) and (create_time_to == 0 or doc_create_time <= create_time_to):
-                filtered_docs.append(doc)
-        docs = filtered_docs
-
     # rename key's name
     renamed_doc_list = []
-    key_mapping = {
-        "chunk_num": "chunk_count",
-        "kb_id": "dataset_id",
-        "token_num": "token_count",
-        "parser_id": "chunk_method",
-    }
-    run_mapping = {
-        "0": "UNSTART",
-        "1": "RUNNING",
-        "2": "CANCEL",
-        "3": "DONE",
-        "4": "FAIL",
-    }
     for doc in docs:
+        key_mapping = {
+            "chunk_num": "chunk_count",
+            "kb_id": "dataset_id",
+            "token_num": "token_count",
+            "parser_id": "chunk_method",
+        }
+        run_mapping = {
+            "0": "UNSTART",
+            "1": "RUNNING",
+            "2": "CANCEL",
+            "3": "DONE",
+            "4": "FAIL",
+        }
         renamed_doc = {}
         for key, value in doc.items():
             if key == "run":
@@ -656,8 +632,7 @@ def delete(tenant_id, dataset_id):
                 ]
             )
             File2DocumentService.delete_by_document_id(doc_id)
-
-            STORAGE_IMPL.rm(b, n)
+            STORAGE_IMPL.rm(b, n, tenant_id)
             success_count += 1
         except Exception as e:
             errors += str(e)
@@ -1072,6 +1047,15 @@ def add_chunk(tenant_id, dataset_id, document_id):
     """
     if not KnowledgebaseService.accessible(kb_id=dataset_id, user_id=tenant_id):
         return get_error_data_result(message=f"You don't own the dataset {dataset_id}.")
+
+    if settings.BILLING_ENABLED:
+        idxnm = search.index_name(tenant_id)
+        tenant_plan = TenantPlanService.get_by_tenant_id(tenant_id)
+        kb_ids = KnowledgebaseService.get_kb_ids(tenant_id)
+        num_chunks = settings.docStoreConn.count_chunks(idxnm, kb_ids)
+        if num_chunks + 1 > tenant_plan["quota_chunks"]:
+            raise Exception(f"Tenant {tenant_id} plan {tenant_plan['name']} quota exceeded. Max chunks: {tenant_plan['quota_chunks']}, current chunks: {num_chunks}, delta chunks: 1")
+
     doc = DocumentService.query(id=document_id, kb_id=dataset_id)
     if not doc:
         return get_error_data_result(message=f"You don't own the document {document_id}.")
@@ -1351,9 +1335,6 @@ def retrieval_test(tenant_id):
             highlight:
               type: boolean
               description: Whether to highlight matched content.
-            metadata_condition:
-              type: object
-              description: metadata filter condition.
       - in: header
         name: Authorization
         type: string
@@ -1410,17 +1391,12 @@ def retrieval_test(tenant_id):
     question = req["question"]
     doc_ids = req.get("document_ids", [])
     use_kg = req.get("use_kg", False)
-    langs = req.get("cross_languages", [])
     if not isinstance(doc_ids, list):
         return get_error_data_result("`documents` should be a list")
     doc_ids_list = KnowledgebaseService.list_documents_by_ids(kb_ids)
     for doc_id in doc_ids:
         if doc_id not in doc_ids_list:
             return get_error_data_result(f"The datasets don't own the document {doc_id}")
-    if not doc_ids:
-        metadata_condition = req.get("metadata_condition", {})
-        metas = DocumentService.get_meta_by_kbs(kb_ids)
-        doc_ids = meta_filter(metas, convert_conditions(metadata_condition))
     similarity_threshold = float(req.get("similarity_threshold", 0.2))
     vector_similarity_weight = float(req.get("vector_similarity_weight", 0.3))
     top = int(req.get("top_k", 1024))
@@ -1438,9 +1414,6 @@ def retrieval_test(tenant_id):
         rerank_mdl = None
         if req.get("rerank_id"):
             rerank_mdl = LLMBundle(kb.tenant_id, LLMType.RERANK, llm_name=req["rerank_id"])
-
-        if langs:
-            question = cross_languages(kb.tenant_id, None, question, langs)
 
         if req.get("keyword", False):
             chat_mdl = LLMBundle(kb.tenant_id, LLMType.CHAT)

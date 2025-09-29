@@ -2,8 +2,7 @@ import path from 'path';
 import TerserPlugin from 'terser-webpack-plugin';
 import { defineConfig } from 'umi';
 import { appName } from './src/conf.json';
-import routes from './src/routes';
-const ESLintPlugin = require('eslint-webpack-plugin');
+import { nextRoutes } from './src/merge-routes';
 
 export default defineConfig({
   title: appName,
@@ -11,7 +10,7 @@ export default defineConfig({
   alias: { '@parent': path.resolve(__dirname, '../') },
   npmClient: 'npm',
   base: '/',
-  routes,
+  routes: nextRoutes,
   publicPath: '/',
   esbuildMinifyIIFE: true,
   icons: {},
@@ -36,6 +35,8 @@ export default defineConfig({
   copy: [
     { from: 'src/conf.json', to: 'dist/conf.json' },
     { from: 'node_modules/monaco-editor/min/vs/', to: 'dist/vs/' },
+    { from: 'external-pages/', to: 'dist/' },
+    { from: 'billing/', to: 'dist/' },
   ],
   proxy: [
     {
@@ -52,15 +53,6 @@ export default defineConfig({
     memo.module.rule('markdown').test(/\.md$/).type('asset/source');
 
     memo.optimization.minimizer('terser').use(TerserPlugin); // Fixed the issue that the page displayed an error after packaging lexical with terser
-
-    // memo.plugin('eslint').use(ESLintPlugin, [
-    //   {
-    //     extensions: ['js', 'ts', 'tsx'],
-    //     failOnError: true,
-    //     exclude: ['**/node_modules/**', '**/mfsu**', '**/mfsu-virtual-entry**'],
-    //     files: ['src/**/*.{js,ts,tsx}'],
-    //   },
-    // ]);
 
     return memo;
   },

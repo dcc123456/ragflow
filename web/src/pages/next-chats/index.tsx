@@ -1,4 +1,5 @@
 import ListFilterBar from '@/components/list-filter-bar';
+import { PrivilegeManagementDialog } from '@/components/privilege-management/privilege-management-dialog';
 import { RenameDialog } from '@/components/rename-dialog';
 import { Button } from '@/components/ui/button';
 import { RAGFlowPagination } from '@/components/ui/ragflow-pagination';
@@ -9,6 +10,7 @@ import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChatCard } from './chat-card';
 import { useRenameChat } from './hooks/use-rename-chat';
+import { useShowPrivilegeDialog } from './use-show-privilege-dialog';
 
 export default function ChatList() {
   const { data, setPagination, pagination, handleInputChange, searchString } =
@@ -34,12 +36,18 @@ export default function ChatList() {
     showChatRenameModal();
   }, [showChatRenameModal]);
 
+  const {
+    handleShowPrivilegeModal,
+    privilegeRecord,
+    hidePrivilegeModal,
+    privilegeModalVisible,
+  } = useShowPrivilegeDialog();
+
   return (
     <section className="flex flex-col w-full flex-1">
       <div className="px-8 pt-8">
         <ListFilterBar
-          title={t('chat.chatApps')}
-          icon="chat"
+          title="Chat apps"
           onSearchChange={handleInputChange}
           searchString={searchString}
         >
@@ -50,13 +58,14 @@ export default function ChatList() {
         </ListFilterBar>
       </div>
       <div className="flex-1 overflow-auto">
-        <div className="grid gap-6 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 max-h-[calc(100dvh-280px)] overflow-auto px-8">
+        <div className="grid gap-6 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 max-h-[84vh] overflow-auto px-8">
           {data.dialogs.map((x) => {
             return (
               <ChatCard
                 key={x.id}
                 data={x}
                 showChatRenameModal={showChatRenameModal}
+                showPrivilegeModal={handleShowPrivilegeModal(x)}
               ></ChatCard>
             );
           })}
@@ -77,6 +86,12 @@ export default function ChatList() {
           loading={chatRenameLoading}
           title={initialChatName || t('chat.createChat')}
         ></RenameDialog>
+      )}
+      {privilegeModalVisible && (
+        <PrivilegeManagementDialog
+          hideModal={hidePrivilegeModal}
+          initialValues={privilegeRecord}
+        ></PrivilegeManagementDialog>
       )}
     </section>
   );

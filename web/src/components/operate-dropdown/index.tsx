@@ -3,7 +3,9 @@ import { DeleteOutlined, MoreOutlined } from '@ant-design/icons';
 import { Dropdown, MenuProps, Space } from 'antd';
 import { useTranslation } from 'react-i18next';
 
+import { IConfirmDeletePermission } from '@/interfaces/request/team';
 import React, { useMemo } from 'react';
+import { DeletePrivilegeConfirmContent } from '../privilege/delete-privilege-confirm-content';
 import styles from './index.less';
 
 interface IProps {
@@ -14,6 +16,8 @@ interface IProps {
   height?: number;
   needsDeletionValidation?: boolean;
   showDeleteItems?: boolean;
+  showDeleteContent?: boolean;
+  confirmDeletePermissionParams?: IConfirmDeletePermission;
 }
 
 const OperateDropdown = ({
@@ -25,13 +29,22 @@ const OperateDropdown = ({
   height = 24,
   needsDeletionValidation = true,
   showDeleteItems = true,
+  showDeleteContent,
+  confirmDeletePermissionParams,
 }: React.PropsWithChildren<IProps>) => {
   const { t } = useTranslation();
   const showDeleteConfirm = useShowDeleteConfirm();
 
   const handleDelete = () => {
     if (needsDeletionValidation) {
-      showDeleteConfirm({ onOk: deleteItem });
+      showDeleteConfirm({
+        onOk: deleteItem,
+        content: showDeleteContent ? (
+          <DeletePrivilegeConfirmContent
+            params={confirmDeletePermissionParams!}
+          ></DeletePrivilegeConfirmContent>
+        ) : null,
+      });
     } else {
       deleteItem();
     }
@@ -53,8 +66,8 @@ const OperateDropdown = ({
         key: '1',
         label: (
           <Space>
-            {t('common.delete')}
             <DeleteOutlined />
+            {t('common.delete')}
           </Space>
         ),
       });

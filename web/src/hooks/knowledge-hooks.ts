@@ -25,14 +25,13 @@ import {
 import { useDebounce } from 'ahooks';
 import { message } from 'antd';
 import { useState } from 'react';
-import { useParams, useSearchParams } from 'umi';
+import { useSearchParams } from 'umi';
 import { useHandleSearchChange } from './logic-hooks';
 import { useSetPaginationParams } from './route-hook';
 
 export const useKnowledgeBaseId = (): string => {
   const [searchParams] = useSearchParams();
-  const { id } = useParams();
-  const knowledgeBaseId = searchParams.get('id') || id;
+  const knowledgeBaseId = searchParams.get('id');
 
   return knowledgeBaseId || '';
 };
@@ -57,6 +56,7 @@ export const useFetchKnowledgeBaseConfiguration = () => {
 
 export const useFetchKnowledgeList = (
   shouldFilterListWithoutDocument: boolean = false,
+  enabled: boolean = true,
 ): {
   list: IKnowledge[];
   loading: boolean;
@@ -64,6 +64,7 @@ export const useFetchKnowledgeList = (
   const { data, isFetching: loading } = useQuery({
     queryKey: ['fetchKnowledgeList'],
     initialData: [],
+    enabled,
     gcTime: 0, // https://tanstack.com/query/latest/docs/framework/react/guides/caching?from=reactQueryV3
     queryFn: async () => {
       const { data } = await listDataset();
@@ -93,7 +94,6 @@ export const useInfiniteFetchKnowledgeList = () => {
   const debouncedSearchString = useDebounce(searchString, { wait: 500 });
 
   const PageSize = 30;
-
   const {
     data,
     error,
@@ -142,7 +142,7 @@ export const useCreateKnowledge = () => {
     isPending: loading,
     mutateAsync,
   } = useMutation({
-    mutationKey: ['infiniteFetchKnowledgeList'],
+    mutationKey: ['createKnowledge'],
     mutationFn: async (params: { id?: string; name: string }) => {
       const { data = {} } = await kbService.createKb(params);
       if (data.code === 0) {
@@ -183,7 +183,7 @@ export const useDeleteKnowledge = () => {
 
 //#region knowledge configuration
 
-export const useUpdateKnowledge = (shouldFetchList = false) => {
+export const useUpdateKnowledge = () => {
   const knowledgeBaseId = useKnowledgeBaseId();
   const queryClient = useQueryClient();
   const {
@@ -194,18 +194,12 @@ export const useUpdateKnowledge = (shouldFetchList = false) => {
     mutationKey: ['saveKnowledge'],
     mutationFn: async (params: Record<string, any>) => {
       const { data = {} } = await kbService.updateKb({
-        kb_id: params?.kb_id ? params?.kb_id : knowledgeBaseId,
+        kb_id: knowledgeBaseId,
         ...params,
       });
       if (data.code === 0) {
         message.success(i18n.t(`message.updated`));
-        if (shouldFetchList) {
-          queryClient.invalidateQueries({
-            queryKey: ['fetchKnowledgeListByPage'],
-          });
-        } else {
-          queryClient.invalidateQueries({ queryKey: ['fetchKnowledgeDetail'] });
-        }
+        queryClient.invalidateQueries({ queryKey: ['fetchKnowledgeDetail'] });
       }
       return data;
     },

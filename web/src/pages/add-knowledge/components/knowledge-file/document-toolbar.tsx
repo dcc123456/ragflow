@@ -9,6 +9,7 @@ import {
   useRunNextDocument,
   useSetNextDocumentStatus,
 } from '@/hooks/document-hooks';
+import { useDatasetEditButtonDisabled } from '@/hooks/logic-hooks/use-permission';
 import { IDocumentInfo } from '@/interfaces/database/document';
 import {
   DownOutlined,
@@ -47,6 +48,7 @@ const DocumentToolbar = ({
   const showDeleteConfirm = useShowDeleteConfirm();
   const { runDocumentByIds } = useRunNextDocument();
   const { setDocumentStatus } = useSetNextDocumentStatus();
+  const datasetEditButtonDisabled = useDatasetEditButtonDisabled();
 
   const actionItems: MenuProps['items'] = useMemo(() => {
     return [
@@ -103,7 +105,6 @@ const DocumentToolbar = ({
       runDocumentByIds({
         documentIds: selectedRowKeys,
         run,
-        shouldDelete: false,
       });
     },
     [runDocumentByIds, selectedRowKeys],
@@ -208,7 +209,7 @@ const DocumentToolbar = ({
         menu={{ items }}
         placement="bottom"
         arrow={false}
-        disabled={disabled}
+        disabled={disabled || datasetEditButtonDisabled}
       >
         <Button>
           <Space>
@@ -227,7 +228,11 @@ const DocumentToolbar = ({
           prefix={<SearchOutlined />}
         />
 
-        <Dropdown menu={{ items: actionItems }} trigger={['click']}>
+        <Dropdown
+          menu={{ items: actionItems }}
+          trigger={['click']}
+          disabled={datasetEditButtonDisabled}
+        >
           <Button type="primary" icon={<PlusOutlined />}>
             {t('addFile')}
           </Button>

@@ -6,7 +6,7 @@ import {
   IThirdOAIModelCollection as IThirdAiModelCollection,
   IThirdOAIModel,
 } from '@/interfaces/database/llm';
-import { buildLlmUuid } from '@/utils/llm-util';
+import { buildLlmId } from '@/utils/private-util';
 
 export const enum LLMApiAction {
   LlmList = 'llmList',
@@ -32,7 +32,7 @@ export function useSelectFlatLlmList(modelType?: LlmModelType) {
   const llmList = useFetchLlmList(modelType);
 
   return Object.values(llmList).reduce<IThirdOAIModelWithUuid[]>((pre, cur) => {
-    pre.push(...cur.map((x) => ({ ...x, uuid: buildLlmUuid(x) })));
+    pre.push(...cur.map((x) => ({ ...x, uuid: buildLlmId(x) }))); // uuid The ID of the closed-source model needs to be added with the tenant ID
 
     return pre;
   }, []);

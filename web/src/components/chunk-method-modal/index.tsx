@@ -22,6 +22,7 @@ import { useFetchParserListOnMount, useShowAutoKeywords } from './hooks';
 import { DocumentParserType } from '@/constants/knowledge';
 import { useTranslate } from '@/hooks/common-hooks';
 import { useFetchKnowledgeBaseConfiguration } from '@/hooks/knowledge-hooks';
+import { useDatasetEditButtonDisabled } from '@/hooks/logic-hooks/use-permission';
 import { IParserConfig } from '@/interfaces/database/document';
 import { IChangeParserConfigRequestBody } from '@/interfaces/request/document';
 import { get } from 'lodash';
@@ -38,6 +39,7 @@ import {
   UseGraphRagItem,
   showGraphRagItems,
 } from '../parse-configuration/graph-rag-items';
+
 import styles from './index.less';
 
 interface IProps extends Omit<IModalManagerChildrenProps, 'showModal'> {
@@ -72,6 +74,8 @@ const ChunkMethodModal: React.FC<IProps> = ({
   parserConfig,
   loading,
 }) => {
+  const datasetEditButtonDisabled = useDatasetEditButtonDisabled();
+
   const [form] = Form.useForm();
   const { parserList, handleChange, selectedTag } = useFetchParserListOnMount(
     documentId,
@@ -160,6 +164,7 @@ const ChunkMethodModal: React.FC<IProps> = ({
       afterClose={afterClose}
       confirmLoading={loading}
       width={700}
+      okButtonProps={{ disabled: datasetEditButtonDisabled }}
     >
       <Space size={[0, 8]} wrap>
         <Form.Item label={t('chunkMethod')} className={styles.chunkMethod}>

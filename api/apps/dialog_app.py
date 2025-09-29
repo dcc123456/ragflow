@@ -14,25 +14,33 @@
 #  limitations under the License.
 #
 
-from flask import request
-from flask_login import login_required, current_user
+from flask import g, request
+from api.db.db_models import DB
+from api.db.services.conversation_service import ConversationService
+from api.db.services.permission_service import PermissionChangeLogService, PermissionService
+from api.utils.permission_utils import has_permission_for_member
+from flask_login import current_user, login_required
 from api.db.services import duplicate_name
-from api.db.services.dialog_service import DialogService
-from api.db import StatusEnum
-from api.db.services.tenant_llm_service import TenantLLMService
-from api.db.services.knowledgebase_service import KnowledgebaseService
-from api.db.services.user_service import TenantService, UserTenantService
+
 from api import settings
-from api.utils.api_utils import server_error_response, get_data_error_result, validate_request
+from api.db import PermissionActionType, PermissionTargetType, PermissionValue, ResourceType, StatusEnum
+from api.db.services.dialog_service import DialogService
+from api.db.services.knowledgebase_service import KnowledgebaseService
+from api.db.services.tenant_llm_service import TenantLLMService
+from api.db.services.user_service import TenantService, UserTenantService
 from api.utils import get_uuid
-from api.utils.api_utils import get_json_result
+from api.utils.api_utils import get_data_error_result, get_json_result, server_error_response, validate_request
+from api.utils.permission_utils import check_dialog_permission
 
 
-@manager.route('/set', methods=['POST'])  # noqa: F821
-@validate_request("prompt_config")
+@manager.route("/set", methods=["POST"])  # noqa: F821
 @login_required
+@validate_request("prompt_config")
+@check_dialog_permission(PermissionValue.PERMISSION_MANAGE)
 def set_dialog():
-    req = request.json
+    req = g.req_data
+    tenant_id = getattr(g, "tenant_id", current_user.id)
+    operator_id = getattr(g, "member_id", current_user.id)
     dialog_id = req.get("dialog_id", "")
     is_create = not dialog_id
     name = req.get("name", "New Dialog")
@@ -66,7 +74,7 @@ def set_dialog():
 
     if not is_create:
         if not req.get("kb_ids", []) and not prompt_config.get("tavily_api_key") and "{knowledge}" in prompt_config['system']:
-            return get_data_error_result(message="Please remove `{knowledge}` in system prompt since no knowledge base / Tavily used here.")
+            return get_data_error_result(message="Please remove `{knowledge}` in system prompt since no knowledge base/Tavily used here.")
 
         for p in prompt_config["parameters"]:
             if p["optional"]:
@@ -75,6 +83,8 @@ def set_dialog():
                 return get_data_error_result(
                     message="Parameter '{}' is not used".format(p["key"]))
 
+    if "operator_permission" in req:
+        req.pop("operator_permission", None)
     try:
         e, tenant = TenantService.get_by_id(current_user.id)
         if not e:
@@ -104,13 +114,36 @@ def set_dialog():
                 "vector_similarity_weight": vector_similarity_weight,
                 "icon": icon
             }
-            if not DialogService.save(**dia):
-                return get_data_error_result(message="Fail to new a dialog!")
+            with DB.atomic():
+                if not DialogService.save(**dia):
+                    return get_data_error_result(message="Fail to new a dialog!")
+                if not PermissionService.save(
+                    id=get_uuid(), member_id=operator_id, tenant_id=tenant_id, resource_type=ResourceType.DIALOG, resource_id=dia["id"], permission=PermissionValue.PERMISSION_OWNER.value
+                ):
+                    raise ValueError("Permission creation failed")
+                if not PermissionChangeLogService.save(
+                    id=get_uuid(),
+                    tenant_id=tenant_id,
+                    operator_id=operator_id,
+                    target_type=PermissionTargetType.TARGET_MEMBER,
+                    target_id=operator_id,
+                    resource_type=ResourceType.DIALOG,
+                    resource_id=dia["id"],
+                    old_permission=PermissionValue.PERMISSION_NULL.value,
+                    new_permission=PermissionValue.PERMISSION_OWNER.value,
+                    action_type=PermissionActionType.ACTION_ADD,
+                ):
+                    raise ValueError("Permission change log creation failed")
+
             return get_json_result(data=dia)
+
         else:
             del req["dialog_id"]
             if "kb_names" in req:
                 del req["kb_names"]
+            # if tenant_id != current_user.id:
+            #     del req["llm_id"]
+            #     del req["kb_ids"]
             if not DialogService.update_by_id(dialog_id, req):
                 return get_data_error_result(message="Dialog not found!")
             e, dia = DialogService.get_by_id(dialog_id)
@@ -124,8 +157,9 @@ def set_dialog():
         return server_error_response(e)
 
 
-@manager.route('/get', methods=['GET'])  # noqa: F821
+@manager.route("/get", methods=["GET"])  # noqa: F821
 @login_required
+@check_dialog_permission(PermissionValue.PERMISSION_READ)
 def get():
     dialog_id = request.args["dialog_id"]
     try:
@@ -134,6 +168,8 @@ def get():
             return get_data_error_result(message="Dialog not found!")
         dia = dia.to_dict()
         dia["kb_ids"], dia["kb_names"] = get_kb_names(dia["kb_ids"])
+        dia["operator_permission"] = g.operator_permission
+
         return get_json_result(data=dia)
     except Exception as e:
         return server_error_response(e)
@@ -150,19 +186,36 @@ def get_kb_names(kb_ids):
     return ids, nms
 
 
-@manager.route('/list', methods=['GET'])  # noqa: F821
+@manager.route("/list", methods=["GET"])  # noqa: F821
 @login_required
 def list_dialogs():
     try:
-        diags = DialogService.query(
-            tenant_id=current_user.id,
-            status=StatusEnum.VALID.value,
-            reverse=True,
-            order_by=DialogService.model.create_time)
-        diags = [d.to_dict() for d in diags]
-        for d in diags:
-            d["kb_ids"], d["kb_names"] = get_kb_names(d["kb_ids"])
-        return get_json_result(data=diags)
+        dialogs = []
+        joined_tenants = TenantService.get_joined_tenants_by_user_id(current_user.id)
+        joined_tenant_ids = [tenant["tenant_id"] for tenant in joined_tenants]
+        joined_tenant_ids.append(current_user.id)
+        for tenant_id in joined_tenant_ids:
+            if tenant_id == current_user.id:
+                diags = DialogService.query(tenant_id=tenant_id, status=StatusEnum.VALID.value, reverse=True, order_by=DialogService.model.create_time)
+                diags = [d.to_dict() for d in diags]
+                for d in diags:
+                    d["kb_ids"], d["kb_names"] = get_kb_names(d["kb_ids"])
+                    d["operator_permission"] = PermissionValue.PERMISSION_OWNER.value
+                dialogs.extend(diags)
+            else:
+                member_id = UserTenantService.filter_by_tenant_and_user_id(tenant_id, current_user.id)
+
+                diags = DialogService.query(tenant_id=tenant_id, status=StatusEnum.VALID.value, reverse=True, order_by=DialogService.model.create_time)
+                for diag in diags:
+                    permission = has_permission_for_member(
+                        operator_id=member_id, tenant_id=tenant_id, resource_id=diag.id, resource_type=ResourceType.DIALOG, permission=PermissionValue.PERMISSION_READ
+                    )
+                    if permission[0]:
+                        diag = diag.to_dict()
+                        diag["kb_ids"], diag["kb_names"] = get_kb_names(diag["kb_ids"])
+                        diag["operator_permission"] = permission[2]
+                        dialogs.append(diag)
+        return get_json_result(data=dialogs)
     except Exception as e:
         return server_error_response(e)
 
@@ -180,16 +233,17 @@ def list_dialogs_next():
     else:
         desc = True
 
+    tenant_member_memo = {}
+
     req = request.get_json()
     owner_ids = req.get("owner_ids", [])
     try:
         if not owner_ids:
-            # tenants = TenantService.get_joined_tenants_by_user_id(current_user.id)
-            # tenants = [tenant["tenant_id"] for tenant in tenants]
-            tenants = [] # keep it here
+            tenants = TenantService.get_joined_tenants_by_user_id(current_user.id)
+            tenants = [tenant["tenant_id"] for tenant in tenants]
             dialogs, total = DialogService.get_by_tenant_ids(
-                tenants, current_user.id, page_number,
-                items_per_page, orderby, desc, keywords, parser_id)
+                tenants, current_user.id, 0,
+                0, orderby, desc, keywords, parser_id)
         else:
             tenants = owner_ids
             dialogs, total = DialogService.get_by_tenant_ids(
@@ -197,31 +251,81 @@ def list_dialogs_next():
                 0, orderby, desc, keywords, parser_id)
             dialogs = [dialog for dialog in dialogs if dialog["tenant_id"] in tenants]
             total = len(dialogs)
-            if page_number and items_per_page:
-                dialogs = dialogs[(page_number-1)*items_per_page:page_number*items_per_page]
-        return get_json_result(data={"dialogs": dialogs, "total": total})
+
+        dialog_list = []
+        for dialog in dialogs:
+            if dialog["tenant_id"] == current_user.id:
+                dialog["kb_ids"], dialog["kb_names"] = get_kb_names(dialog["kb_ids"])
+                dialog["operator_permission"] = PermissionValue.PERMISSION_OWNER.value
+                dialog_list.append(dialog)
+            else:
+                member_id = ""
+                if tenant_member_memo.get(dialog["tenant_id"]):
+                    member_id = tenant_member_memo[dialog["tenant_id"]]
+                else:
+                    member_id = UserTenantService.filter_by_tenant_and_user_id(dialog["tenant_id"], current_user.id)
+                    tenant_member_memo[dialog["tenant_id"]] = member_id
+
+                permission = has_permission_for_member(
+                    operator_id=member_id, tenant_id=dialog["tenant_id"], resource_id=dialog["id"], resource_type=ResourceType.DIALOG, permission=PermissionValue.PERMISSION_READ
+                )
+                if permission[0]:
+                    dialog["kb_ids"], dialog["kb_names"] = get_kb_names(dialog["kb_ids"])
+                    dialog["operator_permission"] = permission[2]
+                    dialog_list.append(dialog)
+
+        if page_number and items_per_page:
+            dialog_list = dialog_list[(page_number-1)*items_per_page:page_number*items_per_page]
+
+        return get_json_result(data={"dialogs": dialog_list, "total": total})
+
     except Exception as e:
         return server_error_response(e)
 
 
-@manager.route('/rm', methods=['POST'])  # noqa: F821
+@manager.route("/rm", methods=["POST"])  # noqa: F821
 @login_required
 @validate_request("dialog_ids")
+@check_dialog_permission(permission=PermissionValue.PERMISSION_OWNER)
 def rm():
-    req = request.json
-    dialog_list=[]
+    req = g.req_data
+    dialog_list = []
     tenants = UserTenantService.query(user_id=current_user.id)
     try:
         for id in req["dialog_ids"]:
+            tenant_id = ""
             for tenant in tenants:
                 if DialogService.query(tenant_id=tenant.tenant_id, id=id):
+                    tenant_id = tenant.tenant_id
                     break
             else:
-                return get_json_result(
-                    data=False, message='Only owner of dialog authorized for this operation.',
-                    code=settings.RetCode.OPERATING_ERROR)
-            dialog_list.append({"id": id,"status":StatusEnum.INVALID.value})
-        DialogService.update_many_by_id(dialog_list)
+                return get_json_result(data=False, message="Only owner of dialog authorized for this operation.", code=settings.RetCode.OPERATING_ERROR)
+            dialog_list.append({"id": id, "status": StatusEnum.INVALID.value, "tenant_id": tenant_id})
+            ConversationService.remove_by(id)
+
+        with DB.atomic():
+            DialogService.update_many_by_id(dialog_list)
+
+        for dialog in dialog_list:
+            operator = UserTenantService.filter_by_tenant_and_user_id(tenant_id=dialog["tenant_id"], user_id=current_user.id)
+            if not operator:
+                continue
+            with DB.atomic():
+                permission_model_list = PermissionService.get_permissions_by_tenant_and_resource_id(tenant_id=dialog["tenant_id"], resource_id=dialog["id"], resource_type=ResourceType.DIALOG)
+                PermissionService.delete(permission_model_list)
+                if not PermissionChangeLogService.save(
+                    id=get_uuid(),
+                    tenant_id=operator.tenant_id,
+                    operator_id=operator.id,
+                    target_type=PermissionTargetType.TARGET_MEMBER,
+                    target_id=operator.id,
+                    resource_type=ResourceType.DIALOG,
+                    resource_id=dialog["id"],
+                    old_permission=PermissionValue.PERMISSION_OWNER.value,
+                    new_permission=PermissionValue.PERMISSION_NULL.value,
+                    action_type=PermissionActionType.ACTION_DELETE,
+                ):
+                    raise ValueError("Permission change log creation failed")
         return get_json_result(data=True)
     except Exception as e:
         return server_error_response(e)

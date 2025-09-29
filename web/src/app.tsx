@@ -6,7 +6,6 @@ import { App, ConfigProvider, ConfigProviderProps, theme } from 'antd';
 import pt_BR from 'antd/lib/locale/pt_BR';
 import deDE from 'antd/locale/de_DE';
 import enUS from 'antd/locale/en_US';
-import ru_RU from 'antd/locale/ru_RU';
 import vi_VN from 'antd/locale/vi_VN';
 import zhCN from 'antd/locale/zh_CN';
 import zh_HK from 'antd/locale/zh_HK';
@@ -18,10 +17,12 @@ import weekOfYear from 'dayjs/plugin/weekOfYear';
 import weekYear from 'dayjs/plugin/weekYear';
 import weekday from 'dayjs/plugin/weekday';
 import React, { ReactNode, useEffect, useState } from 'react';
+import StarModal from './components/star-modal';
 import { ThemeProvider, useTheme } from './components/theme-provider';
 import { SidebarProvider } from './components/ui/sidebar';
 import { TooltipProvider } from './components/ui/tooltip';
-import { ThemeEnum } from './constants/common';
+import { showFreeUpgradeTipsModal } from './pages/price/price-modal/free-upgrade-modal';
+import storagePrivate from './utils/authorization-private-util';
 import storage from './utils/authorization-util';
 
 dayjs.extend(customParseFormat);
@@ -35,7 +36,6 @@ const AntLanguageMap = {
   en: enUS,
   zh: zhCN,
   'zh-TRADITIONAL': zh_HK,
-  ru: ru_RU,
   vi: vi_VN,
   'pt-BR': pt_BR,
   de: deDE,
@@ -53,6 +53,23 @@ if (process.env.NODE_ENV === 'development') {
 const queryClient = new QueryClient();
 
 type Locale = ConfigProviderProps['locale'];
+
+// Count the number of pages
+export function onRouteChange() {
+  const plan = storagePrivate.getPricePlan();
+  if (plan && plan.plan_name !== 'trial') {
+    return;
+  }
+  const countStr = localStorage.getItem('pageViewCount');
+  let count = countStr ? parseInt(countStr, 10) : 0;
+  count++;
+  localStorage.setItem('pageViewCount', count.toString());
+  if (count > 20) {
+    // Show upgrade tips
+    showFreeUpgradeTipsModal();
+    localStorage.setItem('pageViewCount', '0');
+  }
+}
 
 function Root({ children }: React.PropsWithChildren) {
   const { theme: themeragflow } = useTheme();
@@ -86,7 +103,8 @@ function Root({ children }: React.PropsWithChildren) {
         <Sonner position={'top-right'} expand richColors closeButton></Sonner>
         <Toaster />
       </ConfigProvider>
-      {/* <ReactQueryDevtools buttonPosition={'top-left'} initialIsOpen={false} /> */}
+      {/* <ReactQueryDevtools buttonPosition={"top-left"} /> */}
+      <StarModal></StarModal>
     </>
   );
 }
@@ -103,10 +121,7 @@ const RootProvider = ({ children }: React.PropsWithChildren) => {
   return (
     <TooltipProvider>
       <QueryClientProvider client={queryClient}>
-        <ThemeProvider
-          defaultTheme={ThemeEnum.Light}
-          storageKey="ragflow-ui-theme"
-        >
+        <ThemeProvider defaultTheme="light" storageKey="ragflow-ui-theme">
           <Root>{children}</Root>
         </ThemeProvider>
       </QueryClientProvider>

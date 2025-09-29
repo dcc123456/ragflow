@@ -16,9 +16,11 @@ const ModelSetting = ({
   form,
   initialLlmSetting,
   visible,
+  disabled,
 }: ISegmentedContentProps & {
   initialLlmSetting?: Variable;
   visible?: boolean;
+  disabled: boolean;
 }) => {
   useEffect(() => {
     if (visible) {
@@ -47,7 +49,12 @@ const ModelSetting = ({
         [styles.segmentedHidden]: !show,
       })}
     >
-      {visible && <LlmSettingItems prefix="llm_setting"></LlmSettingItems>}
+      {visible && (
+        <LlmSettingItems
+          prefix="llm_setting"
+          disabled={disabled}
+        ></LlmSettingItems>
+      )}
     </section>
   );
 };

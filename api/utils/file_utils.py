@@ -24,6 +24,7 @@ import tempfile
 import threading
 from io import BytesIO
 
+import fitz
 import pdfplumber
 from cachetools import LRUCache, cached
 from PIL import Image
@@ -155,7 +156,7 @@ def filename_type(filename):
     if re.match(r".*\.pdf$", filename):
         return FileType.PDF.value
 
-    if re.match(r".*\.(eml|doc|docx|ppt|pptx|yml|xml|htm|json|jsonl|ldjson|csv|txt|ini|xls|xlsx|wps|rtf|hlp|pages|numbers|key|md|py|js|java|c|cpp|h|php|go|ts|sh|cs|kt|html|sql)$", filename):
+    if re.match(r".*\.(msg|eml|doc|docx|ppt|pptx|yml|xml|htm|json|jsonl|ldjson|csv|txt|ini|xls|xlsx|wps|rtf|hlp|pages|numbers|key|md|py|js|java|c|cpp|h|php|go|ts|sh|cs|kt|html|sql)$", filename):
         return FileType.DOC.value
 
     if re.match(r".*\.(wav|flac|ape|alac|wavpack|wv|mp3|aac|ogg|vorbis|opus)$", filename):
@@ -174,21 +175,22 @@ def thumbnail_img(filename, blob):
     filename = filename.lower()
     if re.match(r".*\.pdf$", filename):
         with sys.modules[LOCK_KEY_pdfplumber]:
-            pdf = pdfplumber.open(BytesIO(blob))
+            pdf = fitz.open(stream=blob, filetype="pdf")
 
-            buffered = BytesIO()
-            resolution = 32
+            resolution = 0.03
             img = None
             for _ in range(10):
                 # https://github.com/jsvine/pdfplumber?tab=readme-ov-file#creating-a-pageimage-with-to_image
-                pdf.pages[0].to_image(resolution=resolution).annotated.save(buffered, format="png")
+                pix = pdf[0].get_pixmap(matrix=fitz.Matrix(resolution, resolution))
+                buffered = BytesIO()
+                Image.frombytes("RGB", [pix.width, pix.height],
+                                pix.samples).save(buffered, format="png")
                 img = buffered.getvalue()
-                if len(img) >= 64000 and resolution >= 2:
+                if len(img) >= 64000:
                     resolution = resolution / 2
-                    buffered = BytesIO()
                 else:
                     break
-        pdf.close()
+            pdf.close()
         return img
 
     elif re.match(r".*\.(jpg|jpeg|png|tif|gif|icon|ico|webp)$", filename):
@@ -267,20 +269,20 @@ def repair_pdf_with_ghostscript(input_bytes):
 
 
 def read_potential_broken_pdf(blob):
-    def try_open(blob):
-        try:
-            with pdfplumber.open(BytesIO(blob)) as pdf:
-                if pdf.pages:
-                    return True
-        except Exception:
-            return False
-        return False
-
-    if try_open(blob):
+    try:
+        pdf = pdfplumber.open(BytesIO(blob))
+        if not pdf.pages:
+            pdf.close()
+            blob = repair_pdf_with_ghostscript(blob)
         return blob
-
-    repaired = repair_pdf_with_ghostscript(blob)
-    if try_open(repaired):
-        return repaired
+    except Exception:
+        try:
+            pdf = fitz.open(
+                stream=blob, filetype="pdf")
+            if len(pdf) > 0:
+                return blob
+        except Exception:
+            pass
+        blob = repair_pdf_with_ghostscript(blob)
 
     return blob

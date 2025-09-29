@@ -15,32 +15,34 @@
 #
 
 from flask import request
-from flask_login import login_required, current_user
+from api.db.services.billing_service import TenantPlanService
+from api.db.services.knowledgebase_service import KnowledgebaseService
+from flask_login import current_user, login_required
 
 from api import settings
 from api.apps import smtp_mail_server
-from api.db import UserTenantRole, StatusEnum
+from api.db import StatusEnum, UserTenantRole
 from api.db.db_models import UserTenant
-from api.db.services.user_service import UserTenantService, UserService
-
-from api.utils import get_uuid, delta_seconds
-from api.utils.api_utils import get_json_result, validate_request, server_error_response, get_data_error_result
+from api.db.services.team_service import DepartmentMemberService
+from api.db.services.user_service import UserService, UserTenantService
+from api.utils import delta_seconds, get_uuid
+from api.utils.api_utils import get_data_error_result, get_json_result, server_error_response, validate_request
+from rag.nlp import search
 from api.utils.web_utils import send_invite_email
-
 
 @manager.route("/<tenant_id>/user/list", methods=["GET"])  # noqa: F821
 @login_required
 def user_list(tenant_id):
     if current_user.id != tenant_id:
-        return get_json_result(
-            data=False,
-            message='No authorization.',
-            code=settings.RetCode.AUTHENTICATION_ERROR)
+        if not UserTenantService.filter_by_tenant_and_user_id(tenant_id, current_user.id):
+            return get_json_result(data=False, message="No authorization.", code=settings.RetCode.AUTHENTICATION_ERROR)
 
     try:
         users = UserTenantService.get_by_tenant_id(tenant_id)
         for u in users:
             u["delta_seconds"] = delta_seconds(str(u["update_date"]))
+            departments = DepartmentMemberService.get_all_departments_by_member_id(member_id=u["id"])
+            u["departments"] = [{"department_id": d["department_id"], "department_name": d["name"]} for d in departments]
         return get_json_result(data=users)
     except Exception as e:
         return server_error_response(e)
@@ -55,6 +57,9 @@ def create(tenant_id):
             data=False,
             message='No authorization.',
             code=settings.RetCode.AUTHENTICATION_ERROR)
+
+    if settings.BILLING_ENABLED:
+        TenantPlanService.check_by_tenant_id(tenant_id, delta_members=1)
 
     req = request.json
     invite_user_email = req["email"]
@@ -134,5 +139,25 @@ def agree(tenant_id):
     try:
         UserTenantService.filter_update([UserTenant.tenant_id == tenant_id, UserTenant.user_id == current_user.id], {"role": UserTenantRole.NORMAL})
         return get_json_result(data=True)
+    except Exception as e:
+        return server_error_response(e)
+
+
+@manager.route("/<tenant_id>/billing_plan", methods=["GET"])  # noqa: F821
+@login_required
+def billing_plan(tenant_id):
+    if current_user.id != tenant_id:
+        return get_json_result(
+            data=False,
+            message='No authorization.',
+            code=settings.RetCode.AUTHENTICATION_ERROR)
+
+    try:
+        tenant_plan = TenantPlanService.get_by_tenant_id(tenant_id)
+        idxnm = search.index_name(tenant_id)
+        kb_ids = KnowledgebaseService.get_kb_ids(tenant_id)
+        num_chunks = settings.docStoreConn.count_chunks(idxnm, kb_ids)
+        tenant_plan["num_chunks"] = num_chunks
+        return get_json_result(data=tenant_plan)
     except Exception as e:
         return server_error_response(e)

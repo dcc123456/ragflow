@@ -3,6 +3,7 @@ import { KnowledgeRouteKey } from '@/constants/knowledge';
 import { IChunkListResult, useSelectChunkList } from '@/hooks/chunk-hooks';
 import { useTranslate } from '@/hooks/common-hooks';
 import { useKnowledgeBaseId } from '@/hooks/knowledge-hooks';
+import { useDatasetEditButtonDisabled } from '@/hooks/logic-hooks/use-permission';
 import {
   ArrowLeftOutlined,
   CheckCircleOutlined,
@@ -59,6 +60,7 @@ const ChunkToolBar = ({
   searchString,
   handleInputChange,
 }: IProps) => {
+  const datasetEditButtonDisabled = useDatasetEditButtonDisabled();
   const data = useSelectChunkList();
   const documentInfo = data?.documentInfo;
   const knowledgeBaseId = useKnowledgeBaseId();
@@ -94,23 +96,26 @@ const ChunkToolBar = ({
     switchChunk(0);
   }, [switchChunk]);
 
-  const items: MenuProps['items'] = useMemo(() => {
-    return [
+  const items = useMemo(() => {
+    const items: MenuProps['items'] = [
       {
         key: '1',
         label: (
-          <>
-            <Checkbox onChange={handleSelectAllCheck} checked={checked}>
-              <b>{t('selectAll')}</b>
-            </Checkbox>
-          </>
+          <Checkbox
+            onChange={handleSelectAllCheck}
+            checked={checked}
+            disabled={datasetEditButtonDisabled}
+          >
+            <b>{t('selectAll')}</b>
+          </Checkbox>
         ),
       },
       { type: 'divider' },
       {
         key: '2',
+        onClick: handleEnabledClick,
         label: (
-          <Space onClick={handleEnabledClick}>
+          <Space>
             <CheckCircleOutlined />
             <b>{t('enabledSelected')}</b>
           </Space>
@@ -118,8 +123,9 @@ const ChunkToolBar = ({
       },
       {
         key: '3',
+        onClick: handleDisabledClick,
         label: (
-          <Space onClick={handleDisabledClick}>
+          <Space>
             <CloseCircleOutlined />
             <b>{t('disabledSelected')}</b>
           </Space>
@@ -128,25 +134,34 @@ const ChunkToolBar = ({
       { type: 'divider' },
       {
         key: '4',
+        onClick: handleDelete,
         label: (
-          <Space onClick={handleDelete}>
+          <Space>
             <DeleteOutlined />
             <b>{t('deleteSelected')}</b>
           </Space>
         ),
       },
     ];
+
+    return items;
   }, [
-    checked,
     handleSelectAllCheck,
-    handleDelete,
+    checked,
+    datasetEditButtonDisabled,
+    t,
     handleEnabledClick,
     handleDisabledClick,
-    t,
+    handleDelete,
   ]);
 
   const content = (
-    <Menu style={{ width: 200 }} items={items} selectable={false} />
+    <Menu
+      style={{ width: 200 }}
+      items={items}
+      selectable={false}
+      disabled={datasetEditButtonDisabled}
+    />
   );
 
   const handleFilterChange = (e: RadioChangeEvent) => {
@@ -155,7 +170,11 @@ const ChunkToolBar = ({
   };
 
   const filterContent = (
-    <Radio.Group onChange={handleFilterChange} value={available}>
+    <Radio.Group
+      onChange={handleFilterChange}
+      value={available}
+      disabled={datasetEditButtonDisabled}
+    >
       <Space direction="vertical">
         <Radio value={undefined}>{t('all')}</Radio>
         <Radio value={1}>{t('enabled')}</Radio>
@@ -186,7 +205,7 @@ const ChunkToolBar = ({
           onChange={changeChunkTextMode as SegmentedProps['onChange']}
         />
         <Popover content={content} placement="bottom" arrow={false}>
-          <Button>
+          <Button disabled={datasetEditButtonDisabled}>
             {t('bulk')}
             <DownOutlined />
           </Button>
@@ -206,12 +225,13 @@ const ChunkToolBar = ({
         )}
 
         <Popover content={filterContent} placement="bottom" arrow={false}>
-          <Button icon={<FilterIcon />} />
+          <Button icon={<FilterIcon />} disabled={datasetEditButtonDisabled} />
         </Popover>
         <Button
           icon={<PlusOutlined />}
           type="primary"
           onClick={() => createChunk()}
+          disabled={datasetEditButtonDisabled}
         />
       </Space>
     </Flex>

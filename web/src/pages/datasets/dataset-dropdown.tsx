@@ -1,4 +1,5 @@
 import { ConfirmDeleteDialog } from '@/components/confirm-delete-dialog';
+import { PrivilegeDropdown } from '@/components/privilege/privilege-dropdown';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -8,6 +9,11 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useDeleteKnowledge } from '@/hooks/use-knowledge-request';
 import { IKnowledge } from '@/interfaces/database/knowledge';
+import {
+  hasManagePermissionPermission,
+  hasOwnerPermission,
+  showEditButton,
+} from '@/utils/permission-util';
 import { PenLine, Trash2 } from 'lucide-react';
 import { MouseEventHandler, PropsWithChildren, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -17,9 +23,11 @@ export function DatasetDropdown({
   children,
   showDatasetRenameModal,
   dataset,
+  showPrivilegeModal,
 }: PropsWithChildren &
   Pick<ReturnType<typeof useRenameDataset>, 'showDatasetRenameModal'> & {
     dataset: IKnowledge;
+    showPrivilegeModal(): void;
   }) {
   const { t } = useTranslation();
   const { deleteKnowledge } = useDeleteKnowledge();
@@ -37,6 +45,19 @@ export function DatasetDropdown({
     deleteKnowledge(dataset.id);
   }, [dataset.id, deleteKnowledge]);
 
+  const handlesShowPrivilegeModal: MouseEventHandler<HTMLDivElement> =
+    useCallback(
+      (e) => {
+        e.stopPropagation();
+        showPrivilegeModal();
+      },
+      [showPrivilegeModal],
+    );
+
+  if (!showEditButton(dataset.operator_permission)) {
+    return null;
+  }
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>{children}</DropdownMenuTrigger>
@@ -45,19 +66,29 @@ export function DatasetDropdown({
           {t('common.rename')} <PenLine />
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <ConfirmDeleteDialog onOk={handleDelete}>
-          <DropdownMenuItem
-            className="text-state-error"
-            onSelect={(e) => {
-              e.preventDefault();
-            }}
-            onClick={(e) => {
-              e.stopPropagation();
-            }}
-          >
-            {t('common.delete')} <Trash2 />
-          </DropdownMenuItem>
-        </ConfirmDeleteDialog>
+        {hasManagePermissionPermission(dataset.operator_permission) && (
+          <>
+            <DropdownMenuItem onClick={handlesShowPrivilegeModal}>
+              <PrivilegeDropdown></PrivilegeDropdown>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+          </>
+        )}
+        {hasOwnerPermission(dataset.operator_permission) && (
+          <ConfirmDeleteDialog onOk={handleDelete}>
+            <DropdownMenuItem
+              className="text-state-error"
+              onSelect={(e) => {
+                e.preventDefault();
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+              }}
+            >
+              {t('common.delete')} <Trash2 />
+            </DropdownMenuItem>
+          </ConfirmDeleteDialog>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );

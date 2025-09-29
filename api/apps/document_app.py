@@ -17,6 +17,7 @@ import json
 import os.path
 import pathlib
 import re
+import time
 from pathlib import Path
 
 import flask
@@ -28,6 +29,7 @@ from api.constants import FILE_NAME_LEN_LIMIT, IMG_BASE64_PREFIX
 from api.db import VALID_FILE_TYPES, VALID_TASK_STATUS, FileSource, FileType, ParserType, TaskStatus
 from api.db.db_models import File, Task
 from api.db.services import duplicate_name
+from api.db.services.billing_service import TenantPlanService
 from api.db.services.document_service import DocumentService, doc_upload_and_parse
 from api.db.services.file2document_service import File2DocumentService
 from api.db.services.file_service import FileService
@@ -41,10 +43,12 @@ from api.utils.api_utils import (
     server_error_response,
     validate_request,
 )
-from api.utils.file_utils import filename_type, get_project_base_directory, thumbnail
+from api.utils.file_utils import get_project_base_directory
 from api.utils.web_utils import CONTENT_TYPE_MAP, html2pdf, is_valid_url
 from deepdoc.parser.html_parser import RAGFlowHtmlParser
+
 from rag.nlp import search
+
 from rag.utils.storage_factory import STORAGE_IMPL
 
 
@@ -79,7 +83,7 @@ def upload():
 
     return get_json_result(data=files)
 
-
+"""
 @manager.route("/web_crawl", methods=["POST"])  # noqa: F821
 @login_required
 @validate_request("kb_id", "name", "url")
@@ -141,7 +145,7 @@ def web_crawl():
     except Exception as e:
         return server_error_response(e)
     return get_json_result(data=True)
-
+"""
 
 @manager.route("/create", methods=["POST"])  # noqa: F821
 @login_required
@@ -202,26 +206,23 @@ def create():
 @manager.route("/list", methods=["POST"])  # noqa: F821
 @login_required
 def list_docs():
+    from api.db.services import UserService
     kb_id = request.args.get("kb_id")
     if not kb_id:
         return get_json_result(data=False, message='Lack of "KB ID"', code=settings.RetCode.ARGUMENT_ERROR)
-    tenants = UserTenantService.query(user_id=current_user.id)
-    for tenant in tenants:
-        if KnowledgebaseService.query(tenant_id=tenant.tenant_id, id=kb_id):
-            break
-    else:
-        return get_json_result(data=False, message="Only owner of knowledgebase authorized for this operation.", code=settings.RetCode.OPERATING_ERROR)
+    if not settings.ENABLE_ADMIN or not UserService.is_admin(current_user.id):
+        tenants = UserTenantService.query(user_id=current_user.id)
+        for tenant in tenants:
+            if KnowledgebaseService.query(tenant_id=tenant.tenant_id, id=kb_id):
+                break
+        else:
+            return get_json_result(data=False, message="Only owner of knowledgebase authorized for this operation.", code=settings.RetCode.OPERATING_ERROR)
     keywords = request.args.get("keywords", "")
 
     page_number = int(request.args.get("page", 0))
     items_per_page = int(request.args.get("page_size", 0))
     orderby = request.args.get("orderby", "create_time")
-    if request.args.get("desc", "true").lower() == "false":
-        desc = False
-    else:
-        desc = True
-    create_time_from = int(request.args.get("create_time_from", 0))
-    create_time_to = int(request.args.get("create_time_to", 0))
+    desc = request.args.get("desc", True)
 
     req = request.get_json()
 
@@ -242,14 +243,6 @@ def list_docs():
     try:
         docs, tol = DocumentService.get_by_kb_id(kb_id, page_number, items_per_page, orderby, desc, keywords, run_status, types, suffix)
 
-        if create_time_from or create_time_to:
-            filtered_docs = []
-            for doc in docs:
-                doc_create_time = doc.get("create_time", 0)
-                if (create_time_from == 0 or doc_create_time >= create_time_from) and (create_time_to == 0 or doc_create_time <= create_time_to):
-                    filtered_docs.append(doc)
-            docs = filtered_docs
-
         for doc_item in docs:
             if doc_item["thumbnail"] and not doc_item["thumbnail"].startswith(IMG_BASE64_PREFIX):
                 doc_item["thumbnail"] = f"/v1/document/image/{kb_id}-{doc_item['thumbnail']}"
@@ -262,17 +255,19 @@ def list_docs():
 @manager.route("/filter", methods=["POST"])  # noqa: F821
 @login_required
 def get_filter():
+    from api.db.services import UserService
     req = request.get_json()
 
     kb_id = req.get("kb_id")
     if not kb_id:
         return get_json_result(data=False, message='Lack of "KB ID"', code=settings.RetCode.ARGUMENT_ERROR)
-    tenants = UserTenantService.query(user_id=current_user.id)
-    for tenant in tenants:
-        if KnowledgebaseService.query(tenant_id=tenant.tenant_id, id=kb_id):
-            break
-    else:
-        return get_json_result(data=False, message="Only owner of knowledgebase authorized for this operation.", code=settings.RetCode.OPERATING_ERROR)
+    if not settings.ENABLE_ADMIN or not UserService.is_admin(current_user.id):
+        tenants = UserTenantService.query(user_id=current_user.id)
+        for tenant in tenants:
+            if KnowledgebaseService.query(tenant_id=tenant.tenant_id, id=kb_id):
+                break
+        else:
+            return get_json_result(data=False, message="Only owner of knowledgebase authorized for this operation.", code=settings.RetCode.OPERATING_ERROR)
 
     keywords = req.get("keywords", "")
 
@@ -312,7 +307,7 @@ def docinfos():
 @manager.route("/thumbnails", methods=["GET"])  # noqa: F821
 # @login_required
 def thumbnails():
-    doc_ids = request.args.getlist("doc_ids")
+    doc_ids = request.args.get("doc_ids").split(",")
     if not doc_ids:
         return get_json_result(data=False, message='Lack of "Document ID"', code=settings.RetCode.ARGUMENT_ERROR)
 
@@ -407,7 +402,7 @@ def rm():
                 deleted_file_count = FileService.filter_delete([File.source_type == FileSource.KNOWLEDGEBASE, File.id == f2d[0].file_id])
             File2DocumentService.delete_by_document_id(doc_id)
             if deleted_file_count > 0:
-                STORAGE_IMPL.rm(b, n)
+                STORAGE_IMPL.rm(b, n, tenant_id)
 
             doc_parser = doc.parser_id
             if doc_parser == ParserType.TABLE:
@@ -456,6 +451,7 @@ def run():
                     cancel_all_task_of(id)
                 else:
                     return get_data_error_result(message="Cannot cancel a task that is not in RUNNING status")
+
             if all([("delete" not in req or req["delete"]), str(req["run"]) == TaskStatus.RUNNING.value, str(doc.run) == TaskStatus.DONE.value]):
                 DocumentService.clear_chunk_num_when_rerun(doc.id)
 
@@ -480,7 +476,13 @@ def run():
                         if kb_table_num_map[kb_id] <= 0:
                             KnowledgebaseService.delete_field_map(kb_id)
                 bucket, name = File2DocumentService.get_storage_address(doc_id=doc["id"])
-                queue_tasks(doc, bucket, name, 0)
+
+                task_priority = 0
+                if settings.BILLING_ENABLED:
+                    task_priority = TenantPlanService.get_priority(tenant_id)
+                queue_tasks(doc, bucket, name, task_priority)
+
+            time.sleep(5)
 
         return get_json_result(data=True)
     except Exception as e:
@@ -528,8 +530,9 @@ def get(doc_id):
         if not e:
             return get_data_error_result(message="Document not found!")
 
+        tenant_id = DocumentService.get_tenant_id(doc_id)
         b, n = File2DocumentService.get_storage_address(doc_id=doc_id)
-        response = flask.make_response(STORAGE_IMPL.get(b, n))
+        response = flask.make_response(STORAGE_IMPL.get(b, n, tenant_id))
 
         ext = re.search(r"\.([^.]+)$", doc.name.lower())
         ext = ext.group(1) if ext else None
@@ -589,16 +592,17 @@ def change_parser():
 @manager.route("/image/<image_id>", methods=["GET"])  # noqa: F821
 # @login_required
 def get_image(image_id):
-    try:
-        arr = image_id.split("-")
-        if len(arr) != 2:
-            return get_data_error_result(message="Image not found.")
-        bkt, nm = image_id.split("-")
-        response = flask.make_response(STORAGE_IMPL.get(bkt, nm))
-        response.headers.set("Content-Type", "image/JPEG")
-        return response
-    except Exception as e:
-        return server_error_response(e)
+    arr = image_id.split("-")
+    if len(arr) != 2:
+        return get_data_error_result(message="Image not found.")
+    bkt, nm = image_id.split("-")
+    for i in range(len(STORAGE_IMPL.conn)):
+        try:
+            response = flask.make_response(STORAGE_IMPL.conn[i].get_object(bkt, nm))
+            response.headers.set('Content-Type', 'image/JPEG')
+            return response
+        except Exception:
+            pass
 
 
 @manager.route("/upload_and_parse", methods=["POST"])  # noqa: F821

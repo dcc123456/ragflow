@@ -15,27 +15,28 @@
 #
 import datetime
 import json
-import re
-
-import xxhash
 from flask import request
-from flask_login import current_user, login_required
-
-from api import settings
-from api.db import LLMType, ParserType
-from api.db.services.dialog_service import meta_filter
-from api.db.services.document_service import DocumentService
-from api.db.services.knowledgebase_service import KnowledgebaseService
-from api.db.services.llm_service import LLMBundle
-from api.db.services.search_service import SearchService
-from api.db.services.user_service import UserTenantService
-from api.utils.api_utils import get_data_error_result, get_json_result, server_error_response, validate_request
-from rag.app.qa import beAdoc, rmPrefix
+from flask_login import login_required, current_user
 from rag.app.tag import label_question
-from rag.nlp import rag_tokenizer, search
-from rag.prompts.generator import gen_meta_filter, cross_languages, keyword_extraction
+from rag.prompts.generator import keyword_extraction, cross_languages
+from rag.app.qa import rmPrefix, beAdoc
+from api.db.services.search_service import SearchService
+from api.db.services.dialog_service import meta_filter
+from rag.prompts.generator import gen_meta_filter
+from rag.nlp import search, rag_tokenizer
 from rag.settings import PAGERANK_FLD
 from rag.utils import rmSpace
+from api.db import LLMType, ParserType
+from api.db.services.knowledgebase_service import KnowledgebaseService
+from api.db.services.llm_service import LLMBundle
+from api.db.services.user_service import UserTenantService
+from api.utils.api_utils import server_error_response, get_data_error_result, validate_request
+from api.db.services.document_service import DocumentService
+from api.db.services.billing_service import TenantPlanService
+from api import settings
+from api.utils.api_utils import get_json_result
+import xxhash
+import re
 
 
 @manager.route('/list', methods=['POST'])  # noqa: F821
@@ -214,8 +215,8 @@ def rm():
         chunk_number = len(deleted_chunk_ids)
         DocumentService.decrement_chunk_num(doc.id, doc.kb_id, 1, chunk_number, 0)
         for cid in deleted_chunk_ids:
-            if STORAGE_IMPL.obj_exist(doc.kb_id, cid):
-                STORAGE_IMPL.rm(doc.kb_id, cid)
+            if STORAGE_IMPL.obj_exist(doc.kb_id, cid, current_user.id):
+                STORAGE_IMPL.rm(doc.kb_id, cid, current_user.id)
         return get_json_result(data=True)
     except Exception as e:
         return server_error_response(e)
@@ -264,6 +265,14 @@ def create():
         if kb.pagerank:
             d[PAGERANK_FLD] = kb.pagerank
 
+        if settings.BILLING_ENABLED:
+            idxnm = search.index_name(tenant_id)
+            tenant_plan = TenantPlanService.get_by_tenant_id(kb.tenant_id)
+            kb_ids = KnowledgebaseService.get_kb_ids(kb.tenant_id)
+            num_chunks = settings.docStoreConn.count_chunks(idxnm, kb_ids)
+            if num_chunks + 1 > tenant_plan["quota_chunks"]:
+                raise Exception(f"Tenant {kb.tenant_id} plan {tenant_plan['name']} quota exceeded. Max chunks: {tenant_plan['quota_chunks']}, current chunks: {num_chunks}, delta chunks: 1")
+
         embd_id = DocumentService.get_embd_id(req["doc_id"])
         embd_mdl = LLMBundle(tenant_id, LLMType.EMBEDDING.value, embd_id)
 
@@ -293,7 +302,6 @@ def retrieval_test():
     if not kb_ids:
         return get_json_result(data=False, message='Please specify dataset firstly.',
                                code=settings.RetCode.DATA_ERROR)
-
     doc_ids = req.get("doc_ids", [])
     use_kg = req.get("use_kg", False)
     top = int(req.get("top_k", 1024))

@@ -1,0 +1,25 @@
+instances:
+   - name: es01
+     dns:
+       - es01
+       - localhost
+     ip:
+       - 10.142.0.2
+   - name: es02
+     dns:
+       - es02
+       - localhost
+     ip:
+       - 10.142.0.5
+   - name: es03
+     dns:
+       - es03
+       - localhost
+     ip:
+       - 10.142.0.4
+   - name: es04
+     dns:
+       - es04
+       - localhost
+     ip:
+       - 10.142.0.3

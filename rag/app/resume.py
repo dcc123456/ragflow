@@ -1,6 +1,3 @@
-#
-#  Copyright 2025 The InfiniFlow Authors. All Rights Reserved.
-#
 #  Licensed under the Apache License, Version 2.0 (the "License");
 #  you may not use this file except in compliance with the License.
 #  You may obtain a copy of the License at
@@ -13,7 +10,6 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 #
-
 import logging
 import base64
 import datetime
@@ -54,7 +50,7 @@ def remote_call(filename, binary):
     for _ in range(3):
         try:
             resume = requests.post(
-                "http://127.0.0.1:61670/tog",
+                "http://172.17.0.1:61670/tog",
                 data=json.dumps(q))
             resume = resume.json()["response"]["results"]
             resume = refactor(resume)

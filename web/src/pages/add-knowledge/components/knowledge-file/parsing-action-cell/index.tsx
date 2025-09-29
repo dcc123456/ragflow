@@ -11,6 +11,7 @@ import {
 import { Button, Dropdown, MenuProps, Space, Tooltip } from 'antd';
 import { isParserRunning } from '../utils';
 
+import { useDatasetEditButtonDisabled } from '@/hooks/logic-hooks/use-permission';
 import { useCallback } from 'react';
 import { DocumentType } from '../constant';
 import styles from './index.less';
@@ -36,6 +37,7 @@ const ParsingActionCell = ({
   const { removeDocument } = useRemoveNextDocument();
   const showDeleteConfirm = useShowDeleteConfirm();
   const isVirtualDocument = record.type === DocumentType.Virtual;
+  const datasetEditButtonDisabled = useDatasetEditButtonDisabled();
 
   const onRmDocument = () => {
     if (!isRunning) {
@@ -113,7 +115,7 @@ const ParsingActionCell = ({
       <Tooltip title={t('rename', { keyPrefix: 'common' })}>
         <Button
           type="text"
-          disabled={isRunning}
+          disabled={isRunning || datasetEditButtonDisabled}
           onClick={onShowRenameModal}
           className={styles.iconButton}
         >
@@ -123,7 +125,7 @@ const ParsingActionCell = ({
       <Tooltip title={t('delete', { keyPrefix: 'common' })}>
         <Button
           type="text"
-          disabled={isRunning}
+          disabled={isRunning || datasetEditButtonDisabled}
           onClick={onRmDocument}
           className={styles.iconButton}
         >
@@ -134,7 +136,7 @@ const ParsingActionCell = ({
         <Tooltip title={t('download', { keyPrefix: 'common' })}>
           <Button
             type="text"
-            disabled={isRunning}
+            disabled={isRunning || datasetEditButtonDisabled}
             onClick={onDownloadDocument}
             className={styles.iconButton}
           >

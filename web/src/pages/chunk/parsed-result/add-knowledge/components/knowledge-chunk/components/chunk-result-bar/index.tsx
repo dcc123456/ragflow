@@ -7,6 +7,7 @@ import {
 } from '@/components/ui/popover';
 import { Radio } from '@/components/ui/radio';
 import { useTranslate } from '@/hooks/common-hooks';
+import { useDatasetEditButtonDisabled } from '@/hooks/logic-hooks/use-permission';
 import { cn } from '@/lib/utils';
 import { SearchOutlined } from '@ant-design/icons';
 import { ListFilter, Plus } from 'lucide-react';
@@ -30,6 +31,8 @@ export default ({
   handleInputChange,
   searchString,
 }: ChunkResultBarProps) => {
+  const datasetEditButtonDisabled = useDatasetEditButtonDisabled();
+
   const { t } = useTranslate('chunk');
   const [textSelectValue, setTextSelectValue] = useState<string | number>(
     ChunkTextMode.Full,
@@ -86,7 +89,10 @@ export default ({
       <div className="w-[20px]"></div>
       <Popover>
         <PopoverTrigger asChild>
-          <Button className="bg-bg-card text-muted-foreground hover:bg-card">
+          <Button
+            className="bg-bg-card text-muted-foreground hover:bg-card"
+            disabled={datasetEditButtonDisabled}
+          >
             <ListFilter />
           </Button>
         </PopoverTrigger>
@@ -97,7 +103,8 @@ export default ({
       <div className="w-[20px]"></div>
       <Button
         onClick={() => createChunk()}
-        className="bg-bg-card text-primary hover:bg-card"
+        className="bg-bg-card text-primary"
+        disabled={datasetEditButtonDisabled}
       >
         <Plus size={44} />
       </Button>

@@ -27,6 +27,10 @@ import { IConversation, IDialog, Message } from '@/interfaces/database/chat';
 import { getFileExtension } from '@/utils';
 import api from '@/utils/api';
 import { getConversationId } from '@/utils/chat';
+import {
+  hasManagementPermission,
+  hasOwnerPermission,
+} from '@/utils/permission-util';
 import { useMutationState } from '@tanstack/react-query';
 import { get } from 'lodash';
 import trim from 'lodash/trim';
@@ -150,6 +154,7 @@ export const useEditDialog = () => {
   const [dialog, setDialog] = useState<IDialog>({} as IDialog);
   const { fetchDialog } = useFetchManualDialog();
   const { setDialog: submitDialog, loading } = useSetNextDialog();
+  const { refetch } = useFetchNextDialogList();
 
   const {
     visible: dialogEditVisible,
@@ -179,11 +184,15 @@ export const useEditDialog = () => {
         const ret = await fetchDialog(dialogId);
         if (ret.code === 0) {
           setDialog(ret.data);
+          showDialogEditModal();
+        } else {
+          refetch();
         }
+      } else {
+        showDialogEditModal();
       }
-      showDialogEditModal();
     },
-    [showDialogEditModal, fetchDialog],
+    [fetchDialog, showDialogEditModal, refetch],
   );
 
   const clearDialog = useCallback(() => {
@@ -291,8 +300,7 @@ export const useSetConversation = () => {
 
 export const useSelectNextMessages = () => {
   const {
-    scrollRef,
-    messageContainerRef,
+    ref,
     setDerivedMessages,
     derivedMessages,
     addNewestAnswer,
@@ -336,8 +344,7 @@ export const useSelectNextMessages = () => {
   }, [conversation.message, conversationId, setDerivedMessages, isNew]);
 
   return {
-    scrollRef,
-    messageContainerRef,
+    ref,
     derivedMessages,
     loading,
     addNewestAnswer,
@@ -373,8 +380,7 @@ export const useSendNextMessage = (controller: AbortController) => {
     api.completeConversation,
   );
   const {
-    scrollRef,
-    messageContainerRef,
+    ref,
     derivedMessages,
     loading,
     addNewestAnswer,
@@ -502,8 +508,7 @@ export const useSendNextMessage = (controller: AbortController) => {
     regenerateMessage,
     sendLoading: !done,
     loading,
-    scrollRef,
-    messageContainerRef,
+    ref,
     derivedMessages,
     removeMessageById,
     stopOutputMessage,
@@ -548,6 +553,7 @@ export const useRenameConversation = () => {
     showModal: showConversationRenameModal,
   } = useSetModalState();
   const { updateConversation, loading } = useUpdateNextConversation();
+  const { refetch } = useFetchNextDialogList();
 
   const onConversationRenameOk = useCallback(
     async (name: string) => {
@@ -569,10 +575,12 @@ export const useRenameConversation = () => {
       const ret = await fetchConversation(conversationId);
       if (ret.code === 0) {
         setConversation(ret.data);
+        showConversationRenameModal();
+      } else {
+        refetch();
       }
-      showConversationRenameModal();
     },
-    [showConversationRenameModal, fetchConversation],
+    [fetchConversation, showConversationRenameModal, refetch],
   );
 
   return {
@@ -617,4 +625,24 @@ export const useCreateConversationBeforeUploadDocument = () => {
     dialogId,
   };
 };
+
+export function useHasCurrentDialogEditPermission() {
+  const { data: dialogList } = useFetchNextDialogList(true);
+  const { dialogId } = useGetChatSearchParams();
+
+  const dialog = useMemo(() => {
+    return dialogList.find((x) => x.id === dialogId);
+  }, [dialogId, dialogList]);
+
+  const operatorPermission = dialog?.operator_permission;
+
+  if (typeof operatorPermission === 'number') {
+    return (
+      hasOwnerPermission(operatorPermission) ||
+      hasManagementPermission(operatorPermission)
+    );
+  }
+
+  return true;
+}
 //#endregion

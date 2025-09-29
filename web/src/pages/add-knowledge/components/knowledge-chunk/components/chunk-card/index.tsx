@@ -6,6 +6,7 @@ import DOMPurify from 'dompurify';
 import { useEffect, useState } from 'react';
 
 import { useTheme } from '@/components/theme-provider';
+import { useDatasetEditButtonDisabled } from '@/hooks/logic-hooks/use-permission';
 import { ChunkTextMode } from '../../constant';
 import styles from './index.less';
 
@@ -30,6 +31,8 @@ const ChunkCard = ({
   clickChunkCard,
   textMode,
 }: IProps) => {
+  const datasetEditButtonDisabled = useDatasetEditButtonDisabled();
+
   const available = Number(item.available_int);
   const [enabled, setEnabled] = useState(false);
   const { theme } = useTheme();
@@ -63,7 +66,11 @@ const ChunkCard = ({
       })}
     >
       <Flex gap={'middle'} justify={'space-between'}>
-        <Checkbox onChange={handleCheck} checked={checked}></Checkbox>
+        <Checkbox
+          onChange={handleCheck}
+          checked={checked}
+          disabled={datasetEditButtonDisabled}
+        ></Checkbox>
         {item.image_id && (
           <Popover
             placement="right"
@@ -74,7 +81,6 @@ const ChunkCard = ({
             <Image id={item.image_id} className={styles.image}></Image>
           </Popover>
         )}
-
         <section
           onDoubleClick={handleContentDoubleClick}
           onClick={handleContentClick}
@@ -89,9 +95,12 @@ const ChunkCard = ({
             })}
           ></div>
         </section>
-
         <div>
-          <Switch checked={enabled} onChange={onChange} />
+          <Switch
+            checked={enabled}
+            onChange={onChange}
+            disabled={datasetEditButtonDisabled}
+          />
         </div>
       </Flex>
     </Card>

@@ -1,4 +1,5 @@
 import { ButtonLoading } from '@/components/ui/button';
+import { useDatasetEditButtonDisabled } from '@/hooks/logic-hooks/use-permission';
 import { useUpdateKnowledge } from '@/hooks/use-knowledge-request';
 import { useMemo } from 'react';
 import { useFormContext } from 'react-hook-form';
@@ -6,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { useParams } from 'umi';
 
 export function GeneralSavingButton() {
+  const datasetEditButtonDisabled = useDatasetEditButtonDisabled();
   const form = useFormContext();
   const { saveKnowledgeConfiguration, loading: submitLoading } =
     useUpdateKnowledge();
@@ -22,6 +24,7 @@ export function GeneralSavingButton() {
     <ButtonLoading
       type="button"
       loading={submitLoading}
+      disabled={datasetEditButtonDisabled}
       onClick={() => {
         (async () => {
           let isValidate = await form.trigger('name');
@@ -46,6 +49,7 @@ export function GeneralSavingButton() {
 }
 
 export function SavingButton() {
+  const datasetEditButtonDisabled = useDatasetEditButtonDisabled();
   const { saveKnowledgeConfiguration, loading: submitLoading } =
     useUpdateKnowledge();
   const form = useFormContext();
@@ -55,6 +59,7 @@ export function SavingButton() {
   return (
     <ButtonLoading
       loading={submitLoading}
+      disabled={datasetEditButtonDisabled}
       onClick={() => {
         (async () => {
           try {

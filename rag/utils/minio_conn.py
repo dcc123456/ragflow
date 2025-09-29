@@ -17,16 +17,16 @@
 import logging
 import time
 from minio import Minio
-from minio.error import S3Error
 from io import BytesIO
+from api.db.services.user_service import TenantService
 from rag import settings
 from rag.utils import singleton
 
 
 @singleton
-class RAGFlowMinio:
+class RAGFlowMinio(object):
     def __init__(self):
-        self.conn = None
+        self.conn = []
         self.__open__()
 
     def __open__(self):
@@ -36,19 +36,22 @@ class RAGFlowMinio:
         except Exception:
             pass
 
-        try:
-            self.conn = Minio(settings.MINIO["host"],
-                              access_key=settings.MINIO["user"],
-                              secret_key=settings.MINIO["password"],
-                              secure=False
-                              )
-        except Exception:
-            logging.exception(
-                "Fail to connect %s " % settings.MINIO["host"])
+        for m in settings.MINIO:
+            try:
+                self.conn.append(Minio(m["host"],
+                                  access_key=m["user"],
+                                  secret_key=m["password"],
+                                  secure=False
+                                  ))
+            except Exception as e:
+                logging.error(
+                    "Fail to connect %s " % m["host"] + str(e))
 
     def __close__(self):
-        del self.conn
-        self.conn = None
+        if self.conn:
+            for c in self.conn:
+                del c
+        self.conn = []
 
     def health(self):
         bucket, fnm, binary = "txtxtxtxt1", "txtxtxtxt1", b"_t@@@1"
@@ -60,84 +63,87 @@ class RAGFlowMinio:
                                  )
         return r
 
-    def put(self, bucket, fnm, binary):
+    def put(self, bucket, fnm, binary, tenant_id):
         for _ in range(3):
+            i = TenantService.user_gateway(tenant_id)
             try:
-                if not self.conn.bucket_exists(bucket):
-                    self.conn.make_bucket(bucket)
+                if not self.conn[i].bucket_exists(bucket):
+                    self.conn[i].make_bucket(bucket)
 
-                r = self.conn.put_object(bucket, fnm,
+                r = self.conn[i].put_object(bucket, fnm,
                                          BytesIO(binary),
                                          len(binary)
                                          )
                 return r
-            except Exception:
-                logging.exception(f"Fail to put {bucket}/{fnm}:")
+            except Exception as e:
+                logging.error(f"Fail put {bucket}/{fnm}: " + str(e))
                 self.__open__()
                 time.sleep(1)
 
-    def rm(self, bucket, fnm):
+    def rm(self, bucket, fnm, tenant_id):
         try:
-            self.conn.remove_object(bucket, fnm)
-        except Exception:
-            logging.exception(f"Fail to remove {bucket}/{fnm}:")
+            i = TenantService.user_gateway(tenant_id)
+            self.conn[i].remove_object(bucket, fnm)
+        except Exception as e:
+            logging.error(f"Fail rm {bucket}/{fnm}: " + str(e))
 
-    def get(self, bucket, filename):
+    def rm_bucket(self, bucket):
+        for conn in self.conn:
+            try:
+                if not conn.bucket_exists(bucket):
+                    continue
+                for o in conn.list_objects(bucket, recursive=True):
+                    conn.remove_object(bucket, o.object_name)
+                conn.remove_bucket(bucket)
+                return
+            except Exception as e:
+                logging.error(f"Fail rm {bucket}: " + str(e))
+
+    def get(self, bucket, fnm, tenant_id):
         for _ in range(1):
+            i = TenantService.user_gateway(tenant_id)
             try:
-                r = self.conn.get_object(bucket, filename)
+                r = self.conn[i].get_object(bucket, fnm)
+                logging.info(f"Successfully get {bucket}/{fnm}({i})")
                 return r.read()
-            except Exception:
-                logging.exception(f"Fail to get {bucket}/{filename}")
+            except Exception as e:
+                logging.error(f"fail get {bucket}/{fnm}({i}): " + str(e))
                 self.__open__()
                 time.sleep(1)
+            if i == 0:
+                raise Exception("""File not found.""")
         return
 
-    def obj_exist(self, bucket, filename):
+    def obj_exist(self, bucket, fnm, tenant_id):
         try:
-            if not self.conn.bucket_exists(bucket):
-                return False
-            if self.conn.stat_object(bucket, filename):
-                return True
-            else:
-                return False
-        except S3Error as e:
-            if e.code in ["NoSuchKey", "NoSuchBucket", "ResourceNotFound"]:
-                return False
-        except Exception:
-            logging.exception(f"obj_exist {bucket}/{filename} got exception")
+            i = TenantService.user_gateway(tenant_id)
+            if self.conn[i].stat_object(bucket, fnm):return True
             return False
+        except Exception as e:
+            logging.error(f"Fail exist {bucket}/{fnm}: " + str(e))
+        return False
 
-    def bucket_exists(self, bucket):
-        try:
-            if not self.conn.bucket_exists(bucket):
-                return False
-            else:
-                return True
-        except S3Error as e:
-            if e.code in ["NoSuchKey", "NoSuchBucket", "ResourceNotFound"]:
-                return False
-        except Exception:
-            logging.exception(f"bucket_exist {bucket} got exception")
-            return False
-
-    def get_presigned_url(self, bucket, fnm, expires):
-        for _ in range(10):
+    def get_presigned_url(self, bucket, fnm, expires, tenant_id):
+        for _ in range(3):
             try:
-                return self.conn.get_presigned_url("GET", bucket, fnm, expires)
-            except Exception:
-                logging.exception(f"Fail to get_presigned {bucket}/{fnm}:")
+                i = TenantService.user_gateway(tenant_id)
+                return self.conn[i].get_presigned_url("GET", bucket, fnm, expires)
+            except Exception as e:
+                logging.error(f"fail get {bucket}/{fnm}: " + str(e))
                 self.__open__()
                 time.sleep(1)
         return
 
-    def remove_bucket(self, bucket):
-        try:
-            if self.conn.bucket_exists(bucket):
-                objects_to_delete = self.conn.list_objects(bucket, recursive=True)
-                for obj in objects_to_delete:
-                    self.conn.remove_object(bucket, obj.object_name)
-                self.conn.remove_bucket(bucket)
-        except Exception:
-            logging.exception(f"Fail to remove bucket {bucket}")
 
+if __name__ == "__main__":
+    conn = RAGFlowMinio()
+    fnm = "/opt/home/kevinhu/docgpt/upload/13/11-408.jpg"
+    from PIL import Image
+
+    img = Image.open(fnm)
+    buff = BytesIO()
+    img.save(buff, format='JPEG')
+    print(conn.put("test", "11-408.jpg", buff.getvalue()))
+    bts = conn.get("test", "11-408.jpg")
+    img = Image.open(BytesIO(bts))
+    img.save("test.jpg")

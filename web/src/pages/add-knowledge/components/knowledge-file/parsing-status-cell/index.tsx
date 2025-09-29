@@ -2,6 +2,7 @@ import { ReactComponent as CancelIcon } from '@/assets/svg/cancel.svg';
 import { ReactComponent as RefreshIcon } from '@/assets/svg/refresh.svg';
 import { ReactComponent as RunIcon } from '@/assets/svg/run.svg';
 import { useTranslate } from '@/hooks/common-hooks';
+import { useDatasetEditButtonDisabled } from '@/hooks/logic-hooks/use-permission';
 import { IDocumentInfo } from '@/interfaces/database/document';
 import {
   Badge,
@@ -13,6 +14,7 @@ import {
   Tag,
 } from 'antd';
 import classNames from 'classnames';
+import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import reactStringReplace from 'react-string-replace';
 import { DocumentType, RunningStatus, RunningStatusMap } from '../constant';
@@ -98,11 +100,21 @@ export const ParsingStatusCell = ({ record }: IProps) => {
 
   const label = t(`knowledgeDetails.runningStatus${text}`);
 
-  const handleOperationIconClick =
+  const datasetEditButtonDisabled = useDatasetEditButtonDisabled();
+
+  const handleOperationIconClick = useCallback(
     (shouldDelete: boolean = false) =>
-    () => {
-      handleRunDocumentByIds(record.id, isRunning, shouldDelete);
-    };
+      () => {
+        handleRunDocumentByIds(record.id, isRunning, shouldDelete);
+      },
+    [handleRunDocumentByIds, isRunning, record.id],
+  );
+
+  const handleClick = useCallback(() => {
+    if (record.chunk_num === 0 && !datasetEditButtonDisabled) {
+      handleOperationIconClick(false)();
+    }
+  }, [datasetEditButtonDisabled, handleOperationIconClick, record.chunk_num]);
 
   return record.type === DocumentType.Virtual ? null : (
     <Flex justify={'space-between'} align="center">
@@ -123,15 +135,15 @@ export const ParsingStatusCell = ({ record }: IProps) => {
         title={t(`knowledgeDetails.redo`, { chunkNum: record.chunk_num })}
         onConfirm={handleOperationIconClick(true)}
         onCancel={handleOperationIconClick(false)}
-        disabled={record.chunk_num === 0}
+        disabled={record.chunk_num === 0 || datasetEditButtonDisabled}
         okText={t('common.ok')}
         cancelText={t('common.cancel')}
       >
         <div
-          className={classNames(styles.operationIcon)}
-          onClick={
-            record.chunk_num === 0 ? handleOperationIconClick(false) : () => {}
-          }
+          className={classNames(styles.operationIcon, {
+            'cursor-not-allowed': datasetEditButtonDisabled,
+          })}
+          onClick={handleClick}
         >
           <OperationIcon />
         </div>

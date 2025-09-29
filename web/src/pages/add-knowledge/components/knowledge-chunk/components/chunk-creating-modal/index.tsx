@@ -1,9 +1,10 @@
 import EditTag from '@/components/edit-tag';
 import { useFetchChunk } from '@/hooks/chunk-hooks';
+import { useDatasetEditButtonDisabled } from '@/hooks/logic-hooks/use-permission';
 import { IModalProps } from '@/interfaces/common';
 import { IChunk } from '@/interfaces/database/knowledge';
 import { DeleteOutlined } from '@ant-design/icons';
-import { Divider, Form, Input, Modal, Space, Switch } from 'antd';
+import { Button, Divider, Form, Input, Modal, Space, Switch } from 'antd';
 import React, { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useDeleteChunkByIds } from '../../hooks';
@@ -32,6 +33,8 @@ const ChunkCreatingModal: React.FC<IModalProps<any> & kFProps> = ({
   loading,
   parserId,
 }) => {
+  const datasetEditButtonDisabled = useDatasetEditButtonDisabled();
+
   const [form] = Form.useForm();
   const [checked, setChecked] = useState(false);
   const { removeChunk } = useDeleteChunkByIds();
@@ -83,7 +86,7 @@ const ChunkCreatingModal: React.FC<IModalProps<any> & kFProps> = ({
       open={true}
       onOk={handleOk}
       onCancel={hideModal}
-      okButtonProps={{ loading }}
+      okButtonProps={{ loading, disabled: datasetEditButtonDisabled }}
       destroyOnClose
     >
       <Form form={form} autoComplete="off" layout={'vertical'}>
@@ -128,9 +131,11 @@ const ChunkCreatingModal: React.FC<IModalProps<any> & kFProps> = ({
               checked={checked}
             />
 
-            <span onClick={handleRemove}>
-              <DeleteOutlined /> {t('common.delete')}
-            </span>
+            <Button disabled={datasetEditButtonDisabled}>
+              <span onClick={handleRemove}>
+                <DeleteOutlined /> {t('common.delete')}
+              </span>
+            </Button>
           </Space>
         </section>
       )}

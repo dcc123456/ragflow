@@ -1,3 +1,4 @@
+import { useDatasetEditButtonDisabled } from '@/hooks/logic-hooks/use-permission';
 import { IModalProps } from '@/interfaces/common';
 import { IDocumentInfo } from '@/interfaces/database/document';
 import Editor, { loader } from '@monaco-editor/react';
@@ -19,6 +20,8 @@ export function SetMetaModal({
   onOk,
   initialMetaData,
 }: IModalProps<any> & { initialMetaData?: IDocumentInfo['meta_fields'] }) {
+  const datasetEditButtonDisabled = useDatasetEditButtonDisabled();
+
   const { t } = useTranslation();
   const [form] = Form.useForm();
 
@@ -37,6 +40,7 @@ export function SetMetaModal({
       open={visible}
       onOk={handleOk}
       onCancel={hideModal}
+      okButtonProps={{ disabled: datasetEditButtonDisabled }}
     >
       <Form
         name="basic"

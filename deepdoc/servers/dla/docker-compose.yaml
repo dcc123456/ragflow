@@ -1,0 +1,21 @@
+services:
+  dla_svr:
+    build: .
+    image: infiniflow-ai/dla-server:latest
+    container_name: infiniflow-ragflow-dla
+    ports:
+      - 3344:11234
+    networks:
+      - ragflow
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["0"]
+              capabilities: [ gpu ]
+    restart: always
+
+networks:
+  ragflow:
+    driver: bridge

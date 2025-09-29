@@ -1,0 +1,31 @@
+# The type of doc engine to use.
+# Available options:
+# - `elasticsearch` (default) 
+# - `infinity` (https://github.com/infiniflow/infinity)
+DOC_ENGINE=${DOC_ENGINE:-elasticsearch}
+
+# ------------------------------
+# docker env var for specifying vector db type at startup
+# (based on the vector db type, the corresponding docker
+# compose profile will be used)
+# ------------------------------
+COMPOSE_PROFILES=${DOC_ENGINE}
+
+# The local time zone.
+TIMEZONE='Asia/Shanghai'
+
+HTTP_PROXY=http://192.168.200.166:7890
+HTTPS_PROXY=http://192.168.200.166:7890
+NO_PROXY=localhost,127.0.0.1
+
+# Uncomment the following line if you have limited access to huggingface.co:
+# HF_ENDPOINT=https://hf-mirror.com
+
+# The log level for the RAGFlow's owned packages and imported packages.
+# Available level:
+# - `DEBUG`
+# - `INFO` (default)
+# - `WARNING`
+# - `ERROR`
+# For example, following line changes the log level of `ragflow.es_conn` to `DEBUG`:
+# LOG_LEVELS=ragflow.es_conn=DEBUG

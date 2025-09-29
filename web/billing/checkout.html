@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Buy cool new product</title>
+    <link rel="stylesheet" href="style.css" />
+    <style>
+      /* #billing_form {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      } */
+
+      /* #billing_form input {
+        height: 20px;
+        width: 100%;
+      } */
+    </style>
+  </head>
+  <body>
+    <section>
+      <div class="product">
+        <img src="/logo.svg" alt="The cover of Stubborn Attachments" />
+        <div class="description">
+          <h3>Subscribe RAGFlow Professional Plan</h3>
+          <h5>$59.00</h5>
+        </div>
+      </div>
+      <form id="billing_form">
+        <input name="tenant_id" value="tid_111111" />
+        <input
+          type="hidden"
+          name="price_id"
+          value="price_1QsKhBHJ6pV3qJnLw5fapUQR"
+        />
+        <button type="submit" id="checkout-button">Checkout</button>
+      </form>
+    </section>
+    <script>
+      function postData(data) {
+        fetch(location.origin + "/v1/billing/checkout", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": localStorage.getItem("Authorization"),
+          },
+          body: JSON.stringify(data),
+        })
+          .then((res) => {
+            const ret=res.json() ;
+
+            return ret
+          }).then((res) => {
+            console.log("🚀 ~.then ~ res:", res);
+            if (res?.data?.redirect_to) {
+              window.location.href = res.data.redirect_to;
+            }else{ 
+              alert(res?.message)
+             }
+          })
+          .catch((e) => {
+          });
+      }
+
+      document
+        .querySelector("#billing_form")
+        .addEventListener("submit", function () {
+          event.preventDefault(); // 阻止表单的默认提交行为
+
+          const formData = new FormData(this); // 获取表单数据
+          const data = {};
+          for (let [key, value] of formData.entries()) {
+            data[key] = value;
+          }
+
+          console.log("Form Data:", data);
+
+          postData(data);
+        });
+    </script>
+  </body>
+</html>

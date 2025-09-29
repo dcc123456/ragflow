@@ -3,15 +3,16 @@ import { ResponseType } from '@/interfaces/database/base';
 import i18n from '@/locales/config';
 import authorizationUtil, {
   getAuthorization,
-  redirectToLogin,
 } from '@/utils/authorization-util';
+import { redirectToLogin } from '@/utils/private-util';
 import { message, notification } from 'antd';
 import { RequestMethod, extend } from 'umi-request';
 import { convertTheKeysOfTheObjectToSnake } from './common-util';
+import { showStarModal } from './star-util';
 
 const FAILED_TO_FETCH = 'Failed to fetch';
 
-export const RetcodeMessage = {
+const RetcodeMessage = {
   200: i18n.t('message.200'),
   201: i18n.t('message.201'),
   202: i18n.t('message.202'),
@@ -29,7 +30,7 @@ export const RetcodeMessage = {
   503: i18n.t('message.503'),
   504: i18n.t('message.504'),
 };
-export type ResultCode =
+type ResultCode =
   | 200
   | 201
   | 202
@@ -68,7 +69,7 @@ const errorHandler = (error: {
       });
     }
   }
-  return response ?? { data: { code: 1999 } };
+  return response;
 };
 
 const request: RequestMethod = extend({
@@ -80,6 +81,8 @@ const request: RequestMethod = extend({
 request.interceptors.request.use((url: string, options: any) => {
   const data = convertTheKeysOfTheObjectToSnake(options.data);
   const params = convertTheKeysOfTheObjectToSnake(options.params);
+
+  showStarModal(url, request);
 
   return {
     url,
@@ -98,7 +101,7 @@ request.interceptors.request.use((url: string, options: any) => {
   };
 });
 
-request.interceptors.response.use(async (response: Response, options) => {
+request.interceptors.response.use(async (response: any, options) => {
   if (response?.status === 413 || response?.status === 504) {
     message.error(RetcodeMessage[response?.status as ResultCode]);
   }
@@ -130,14 +133,12 @@ request.interceptors.response.use(async (response: Response, options) => {
 
 export default request;
 
-export const get = (url: string) => {
-  return request.get(url);
-};
-
-export const post = (url: string, body: any) => {
+export const post = (url: string, body?: any) => {
   return request.post(url, { data: body });
 };
 
-export const drop = () => {};
+export const drop = (url: string, body?: any) => {
+  return request.delete(url, { data: body });
+};
 
 export const put = () => {};

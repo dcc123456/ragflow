@@ -1,11 +1,14 @@
-import { Domain } from '@/constants/common';
 import { useTranslate } from '@/hooks/common-hooks';
 import { useLogout } from '@/hooks/login-hooks';
 import { useSecondPathName } from '@/hooks/route-hook';
+import {
+  useFetchEnableAdmin,
+  useFetchIsAdmin,
+} from '@/hooks/use-private-llm-request';
 import { useFetchSystemVersion } from '@/hooks/user-setting-hooks';
 import type { MenuProps } from 'antd';
 import { Flex, Menu } from 'antd';
-import React, { useEffect, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { useNavigate } from 'umi';
 import {
   UserSettingBaseKey,
@@ -21,13 +24,9 @@ const SideBar = () => {
   const pathName = useSecondPathName();
   const { logout } = useLogout();
   const { t } = useTranslate('setting');
-  const { version, fetchSystemVersion } = useFetchSystemVersion();
-
-  useEffect(() => {
-    if (location.host !== Domain) {
-      fetchSystemVersion();
-    }
-  }, [fetchSystemVersion]);
+  const { version } = useFetchSystemVersion();
+  const { data: isAdmin } = useFetchIsAdmin();
+  const { data: enableAdmin } = useFetchEnableAdmin();
 
   function getItem(
     label: string,
@@ -52,9 +51,11 @@ const SideBar = () => {
     } as MenuItem;
   }
 
-  const items: MenuItem[] = Object.values(UserSettingRouteKey).map((value) =>
-    getItem(value, value, UserSettingIconMap[value]),
-  );
+  const items: MenuItem[] = Object.values(UserSettingRouteKey)
+    .filter((x) =>
+      enableAdmin && !isAdmin ? x !== UserSettingRouteKey.Model : true,
+    )
+    .map((value) => getItem(value, value, UserSettingIconMap[value]));
 
   const handleMenuClick: MenuProps['onClick'] = ({ key }) => {
     if (key === UserSettingRouteKey.Logout) {

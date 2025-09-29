@@ -17,7 +17,11 @@ import { useSaveKnowledge } from './hooks';
 import KnowledgeCard from './knowledge-card';
 import KnowledgeCreatingModal from './knowledge-creating-modal';
 
-import { useMemo } from 'react';
+import { PrivilegeManagementDialog } from '@/components/privilege-management/privilege-management-dialog';
+import { useSetModalState } from '@/hooks/common-hooks';
+import { useKnowledgeWithSourceType } from '@/hooks/logic-hooks/use-knowledge';
+import { IKnowledge } from '@/interfaces/database/knowledge';
+import { useCallback, useMemo, useState } from 'react';
 import styles from './index.less';
 
 const KnowledgeList = () => {
@@ -38,6 +42,22 @@ const KnowledgeList = () => {
     handleInputChange,
     loading,
   } = useInfiniteFetchKnowledgeList();
+  const {
+    visible: privilegeModal,
+    hideModal: hidePrivilegeModal,
+    showModal: showPrivilegeModal,
+  } = useSetModalState();
+
+  const [record, setRecord] = useState<IKnowledge>({} as IKnowledge);
+  const handShowPrivilegeModal = useCallback(
+    (item: IKnowledge) => () => {
+      setRecord(item);
+      showPrivilegeModal();
+    },
+    [showPrivilegeModal],
+  );
+
+  const recordWithSourceType = useKnowledgeWithSourceType(record);
 
   const nextList = useMemo(() => {
     const list =
@@ -50,7 +70,7 @@ const KnowledgeList = () => {
   }, [data?.pages]);
 
   return (
-    <Flex className={styles.knowledge} vertical flex={1}>
+    <Flex className={styles.knowledge} vertical flex={1} id="scrollableDiv">
       <div className={styles.topWrapper}>
         <div>
           <span className={styles.title}>
@@ -79,45 +99,34 @@ const KnowledgeList = () => {
         </Space>
       </div>
       <Spin spinning={loading}>
-        <div
-          id="scrollableDiv"
-          style={{
-            height: 'calc(100vh - 250px)',
-            overflow: 'auto',
-            padding: '0 16px',
-          }}
+        <InfiniteScroll
+          dataLength={nextList?.length ?? 0}
+          next={fetchNextPage}
+          hasMore={hasNextPage}
+          loader={<Skeleton avatar paragraph={{ rows: 1 }} active />}
+          endMessage={!!total && <Divider plain>{t('noMoreData')} 🤐</Divider>}
+          scrollableTarget="scrollableDiv"
         >
-          <InfiniteScroll
-            dataLength={nextList?.length ?? 0}
-            next={fetchNextPage}
-            hasMore={hasNextPage}
-            loader={<Skeleton avatar paragraph={{ rows: 1 }} active />}
-            endMessage={
-              !!total && <Divider plain>{t('noMoreData')} 🤐</Divider>
-            }
-            scrollableTarget="scrollableDiv"
-            scrollThreshold="200px"
+          <Flex
+            gap={'large'}
+            wrap="wrap"
+            className={styles.knowledgeCardContainer}
           >
-            <Flex
-              gap={'large'}
-              wrap="wrap"
-              className={styles.knowledgeCardContainer}
-            >
-              {nextList?.length > 0 ? (
-                nextList.map((item: any, index: number) => {
-                  return (
-                    <KnowledgeCard
-                      item={item}
-                      key={`${item?.name}-${index}`}
-                    ></KnowledgeCard>
-                  );
-                })
-              ) : (
-                <Empty className={styles.knowledgeEmpty}></Empty>
-              )}
-            </Flex>
-          </InfiniteScroll>
-        </div>
+            {nextList?.length > 0 ? (
+              nextList.map((item: any, index: number) => {
+                return (
+                  <KnowledgeCard
+                    item={item}
+                    key={`${item?.name}-${index}`}
+                    showPrivilegeModal={handShowPrivilegeModal(item)}
+                  ></KnowledgeCard>
+                );
+              })
+            ) : (
+              <Empty className={styles.knowledgeEmpty}></Empty>
+            )}
+          </Flex>
+        </InfiniteScroll>
       </Spin>
       <KnowledgeCreatingModal
         loading={creatingLoading}
@@ -125,6 +134,12 @@ const KnowledgeList = () => {
         hideModal={hideModal}
         onOk={onCreateOk}
       ></KnowledgeCreatingModal>
+      {privilegeModal && (
+        <PrivilegeManagementDialog
+          hideModal={hidePrivilegeModal}
+          initialValues={recordWithSourceType}
+        ></PrivilegeManagementDialog>
+      )}
     </Flex>
   );
 };

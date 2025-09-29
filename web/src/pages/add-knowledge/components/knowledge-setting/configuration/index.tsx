@@ -1,8 +1,8 @@
 import { DocumentParserType } from '@/constants/knowledge';
-import { useTranslate } from '@/hooks/common-hooks';
+import { useSetModalState, useTranslate } from '@/hooks/common-hooks';
 import { normFile } from '@/utils/file-util';
 import { PlusOutlined } from '@ant-design/icons';
-import { Button, Form, Input, Radio, Space, Upload } from 'antd';
+import { Button, Form, Input, Space, Upload } from 'antd';
 import { FormInstance } from 'antd/lib';
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -25,6 +25,11 @@ import { ResumeConfiguration } from './resume';
 import { TableConfiguration } from './table';
 import { TagConfiguration } from './tag';
 
+import { PrivilegeManagementDialog } from '@/components/privilege-management/privilege-management-dialog';
+import { useKnowledgeWithSourceType } from '@/hooks/logic-hooks/use-knowledge';
+import { useDatasetManageButtonDisabled } from '@/hooks/logic-hooks/use-permission';
+import { hasManagePermissionPermission } from '@/utils/permission-util';
+import { UserPlus } from 'lucide-react';
 import styles from '../index.less';
 
 const ConfigurationComponentMap = {
@@ -50,18 +55,27 @@ function EmptyComponent() {
 }
 
 export const ConfigurationForm = ({ form }: { form: FormInstance }) => {
+  const datasetManageButtonDisabled = useDatasetManageButtonDisabled();
   const { submitKnowledgeConfiguration, submitLoading, navigateToDataset } =
     useSubmitKnowledgeConfiguration(form);
   const { t } = useTranslate('knowledgeConfiguration');
 
   const [finalParserId, setFinalParserId] = useState<DocumentParserType>();
   const knowledgeDetails = useFetchKnowledgeConfigurationOnMount(form);
+  const recordWithSourceType = useKnowledgeWithSourceType(knowledgeDetails);
+
   const parserId: DocumentParserType = Form.useWatch('parser_id', form);
   const ConfigurationComponent = useMemo(() => {
     return finalParserId
       ? ConfigurationComponentMap[finalParserId]
       : EmptyComponent;
   }, [finalParserId]);
+
+  const {
+    visible: privilegeModal,
+    hideModal: hidePrivilegeModal,
+    showModal: showPrivilegeModal,
+  } = useSetModalState();
 
   useEffect(() => {
     setFinalParserId(parserId);
@@ -97,18 +111,13 @@ export const ConfigurationForm = ({ form }: { form: FormInstance }) => {
       <Form.Item name="description" label={t('description')}>
         <Input />
       </Form.Item>
-      <Form.Item
-        name="permission"
-        label={t('permissions')}
-        tooltip={t('permissionsTip')}
-        rules={[{ required: true }]}
-      >
-        <Radio.Group>
-          <Radio value="me">{t('me')}</Radio>
-          <Radio value="team">{t('team')}</Radio>
-        </Radio.Group>
-      </Form.Item>
-
+      {hasManagePermissionPermission(knowledgeDetails.operator_permission) && (
+        <Button onClick={showPrivilegeModal} className="mb-6">
+          <div className="flex gap-2">
+            <UserPlus className="size-5" /> {t('permissions')}
+          </div>
+        </Button>
+      )}
       <ConfigurationComponent></ConfigurationComponent>
 
       <Form.Item>
@@ -122,12 +131,19 @@ export const ConfigurationForm = ({ form }: { form: FormInstance }) => {
               size={'middle'}
               loading={submitLoading}
               onClick={submitKnowledgeConfiguration}
+              disabled={datasetManageButtonDisabled}
             >
               {t('save')}
             </Button>
           </Space>
         </div>
       </Form.Item>
+      {privilegeModal && (
+        <PrivilegeManagementDialog
+          hideModal={hidePrivilegeModal}
+          initialValues={recordWithSourceType}
+        ></PrivilegeManagementDialog>
+      )}
     </Form>
   );
 };

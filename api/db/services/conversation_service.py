@@ -23,7 +23,7 @@ from api.db.services.dialog_service import DialogService, chat
 from api.utils import get_uuid
 import json
 
-from rag.prompts.generator import chunks_format
+from rag.prompts import chunks_format
 
 
 class ConversationService(CommonService):
@@ -50,19 +50,10 @@ class ConversationService(CommonService):
 
     @classmethod
     @DB.connection_context()
-    def get_all_conversation_by_dialog_ids(cls, dialog_ids):
-        sessions = cls.model.select().where(cls.model.dialog_id.in_(dialog_ids))
-        sessions.order_by(cls.model.create_time.asc())
-        offset, limit = 0, 100
-        res = []
-        while True:
-            s_batch = sessions.offset(offset).limit(limit)
-            _temp = list(s_batch.dicts())
-            if not _temp:
-                break
-            res.extend(_temp)
-            offset += limit
-        return res
+    def remove_by(cls, dialog_id):
+        for id in [m.id for m in cls.model.query(dialog_id=dialog_id)]:
+            cls.model.delete_by_id(id)
+
 
 def structure_answer(conv, ans, message_id, session_id):
     reference = ans["reference"]
@@ -105,18 +96,17 @@ def completion(tenant_id, chat_id, question, name="New session", session_id=None
             "user_id": kwargs.get("user_id", "")
         }
         ConversationService.save(**conv)
-        if stream:
-            yield "data:" + json.dumps({"code": 0, "message": "",
-                                        "data": {
-                                            "answer": conv["message"][0]["content"],
-                                            "reference": {},
-                                            "audio_binary": None,
-                                            "id": None,
-                                            "session_id": session_id
-                                        }},
-                                    ensure_ascii=False) + "\n\n"
-            yield "data:" + json.dumps({"code": 0, "message": "", "data": True}, ensure_ascii=False) + "\n\n"
-            return
+        yield "data:" + json.dumps({"code": 0, "message": "",
+                                    "data": {
+                                        "answer": conv["message"][0]["content"],
+                                        "reference": {},
+                                        "audio_binary": None,
+                                        "id": None,
+                                        "session_id": session_id
+                                    }},
+                                   ensure_ascii=False) + "\n\n"
+        yield "data:" + json.dumps({"code": 0, "message": "", "data": True}, ensure_ascii=False) + "\n\n"
+        return
 
     conv = ConversationService.query(id=session_id, dialog_id=chat_id)
     if not conv:

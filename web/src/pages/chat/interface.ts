@@ -5,6 +5,7 @@ export interface ISegmentedContentProps {
   show: boolean;
   form: FormInstance;
   setHasError: (hasError: boolean) => void;
+  disabled: boolean;
 }
 
 export interface IVariable {

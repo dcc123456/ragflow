@@ -9,6 +9,7 @@ import {
   useGetChatSearchParams,
 } from '@/hooks/use-chat-request';
 import { cn } from '@/lib/utils';
+import { hasPreviewPermission } from '@/utils/permission-util';
 import { PanelLeftClose, PanelRightClose, Plus } from 'lucide-react';
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -70,13 +71,12 @@ export function Sessions({
         />
       </section>
       <div className="flex justify-between items-center mb-4 pt-10">
-        <div className="flex items-center gap-3">
-          <span className="text-base font-bold">{t('chat.conversations')}</span>
-          <span className="text-text-secondary text-xs">
-            {conversationList.length}
-          </span>
-        </div>
-        <Button variant={'ghost'} onClick={addTemporaryConversation}>
+        <span className="text-base font-bold">Conversations</span>
+        <Button
+          variant={'ghost'}
+          onClick={addTemporaryConversation}
+          disabled={hasPreviewPermission(data.operator_permission)}
+        >
           <Plus></Plus>
         </Button>
       </div>

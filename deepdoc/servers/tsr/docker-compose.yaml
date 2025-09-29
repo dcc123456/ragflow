@@ -1,0 +1,21 @@
+services:
+  tsr_svr:
+    build: .
+    image: infiniflow-ai/tsr-server:latest
+    container_name: infiniflow-ragflow-tsr
+    ports:
+      - 11234:11234
+    networks:
+      - ragflow
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["0"]
+              capabilities: [ gpu ]
+    restart: always
+
+networks:
+  ragflow:
+    driver: bridge

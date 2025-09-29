@@ -61,7 +61,7 @@ const FileUpload = ({
           <InboxOutlined />
         </p>
         <p className="ant-upload-text">{t('uploadTitle')}</p>
-        <p className="ant-upload-hint">{t('uploadDescription')}</p>
+        {/* <p className="ant-upload-hint">{t('uploadDescription')}</p> */}
         {false && <p className={styles.uploadLimit}>{t('uploadLimit')}</p>}
       </Dragger>
     </>

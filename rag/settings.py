@@ -46,15 +46,30 @@ if STORAGE_IMPL_TYPE in ['AZURE_SPN', 'AZURE_SAS']:
 elif STORAGE_IMPL_TYPE == 'AWS_S3':
     S3 = get_base_config("s3", {})
 elif STORAGE_IMPL_TYPE == 'MINIO':
-    MINIO = decrypt_database_config(name="minio")
+    MINIO = []
+    for i in range(12):
+        try:
+            MINIO.append(decrypt_database_config(name=f"minio_{i}"))
+        except Exception:
+            print(f"{i} MINIO node, isn't it?")
+            break
 elif STORAGE_IMPL_TYPE == 'OSS':
     OSS = get_base_config("oss", {})
+
+LOCAL_EMBD = get_base_config("local_embd", {})
 
 try:
     REDIS = decrypt_database_config(name="redis")
 except Exception:
     REDIS = {}
     pass
+
+try:
+    RABBIT_CONF = decrypt_database_config(name="rabbitmq")
+except Exception:
+    RABBIT_CONF = {}
+    pass
+
 DOC_MAXIMUM_SIZE = int(os.environ.get("MAX_CONTENT_LENGTH", 128 * 1024 * 1024))
 DOC_BULK_SIZE = int(os.environ.get("DOC_BULK_SIZE", 4))
 EMBEDDING_BATCH_SIZE = int(os.environ.get("EMBEDDING_BATCH_SIZE", 16))
@@ -81,5 +96,10 @@ def get_svr_queue_name(priority: int) -> str:
         return SVR_QUEUE_NAME
     return f"{SVR_QUEUE_NAME}_{priority}"
 
+
 def get_svr_queue_names():
     return [get_svr_queue_name(priority) for priority in [1, 0]]
+
+
+def rout_key(priority: int, suffix="common") -> str:
+    return "te.{}.{}".format(priority, suffix)

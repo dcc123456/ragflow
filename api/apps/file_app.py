@@ -93,14 +93,13 @@ def upload():
             # file type
             filetype = filename_type(file_obj_names[file_len - 1])
             location = file_obj_names[file_len - 1]
-            while STORAGE_IMPL.obj_exist(last_folder.id, location):
+            while STORAGE_IMPL.obj_exist(last_folder.id, location, current_user.id):
                 location += "_"
             blob = file_obj.read()
             filename = duplicate_name(
                 FileService.query,
                 name=file_obj_names[file_len - 1],
                 parent_id=last_folder.id)
-            STORAGE_IMPL.put(last_folder.id, location, blob)
             file = {
                 "id": get_uuid(),
                 "parent_id": last_folder.id,
@@ -112,6 +111,7 @@ def upload():
                 "size": len(blob),
             }
             file = FileService.insert(file)
+            STORAGE_IMPL.put(last_folder.id, location, blob, current_user.id)
             file_res.append(file.to_json())
         return get_json_result(data=file_res)
     except Exception as e:
@@ -257,10 +257,9 @@ def rm():
                     e, file = FileService.get_by_id(inner_file_id)
                     if not e:
                         return get_data_error_result(message="File not found!")
-                    STORAGE_IMPL.rm(file.parent_id, file.location)
+                    STORAGE_IMPL.rm(file.parent_id, file.location, current_user.id)
                 FileService.delete_folder_by_pf_id(current_user.id, file_id)
             else:
-                STORAGE_IMPL.rm(file.parent_id, file.location)
                 if not FileService.delete(file):
                     return get_data_error_result(
                         message="Database error (File removal)!")
@@ -328,30 +327,33 @@ def rename():
 @manager.route('/get/<file_id>', methods=['GET'])  # noqa: F821
 @login_required
 def get(file_id):
-    try:
-        e, file = FileService.get_by_id(file_id)
-        if not e:
-            return get_data_error_result(message="Document not found!")
-        if file.tenant_id != current_user.id:
-            return get_json_result(data=False, message='No authorization.', code=settings.RetCode.AUTHENTICATION_ERROR)
+    e, file = FileService.get_by_id(file_id)
+    if not e:
+        return get_data_error_result(message="Document not found!")
+    if file.tenant_id != current_user.id:
+        return get_json_result(data=False, message='No authorization.', code=settings.RetCode.AUTHENTICATION_ERROR)
 
-        blob = STORAGE_IMPL.get(file.parent_id, file.location)
-        if not blob:
-            b, n = File2DocumentService.get_storage_address(file_id=file_id)
-            blob = STORAGE_IMPL.get(b, n)
+    b, n = File2DocumentService.get_storage_address(file_id=file_id)
 
-        response = flask.make_response(blob)
-        ext = re.search(r"\.([^.]+)$", file.name.lower())
-        ext = ext.group(1) if ext else None
-        if ext:
-            if file.type == FileType.VISUAL.value:
-                content_type = CONTENT_TYPE_MAP.get(ext, f"image/{ext}")
-            else:
-                content_type = CONTENT_TYPE_MAP.get(ext, f"application/{ext}")
-            response.headers.set("Content-Type", content_type)
-        return response
-    except Exception as e:
-        return server_error_response(e)
+    for i in range(len(STORAGE_IMPL.conn)):
+        try:
+            blob = STORAGE_IMPL.conn[i].get_object(file.parent_id, file.location)
+            if not blob:
+                blob = STORAGE_IMPL.conn[i].get_object(b, n)
+            if not blob: continue
+            response = flask.make_response(blob)
+            ext = re.search(r"\.([^.]+)$", file.name.lower())
+            ext = ext.group(1) if ext else None
+            if ext:
+                if file.type == FileType.VISUAL.value:
+                    content_type = CONTENT_TYPE_MAP.get(ext, f"image/{ext}")
+                else:
+                    content_type = CONTENT_TYPE_MAP.get(ext, f"application/{ext}")
+                response.headers.set("Content-Type", content_type)
+            return response
+        except Exception as e:
+            pass
+    return get_data_error_result(message="""File not found.""")
 
 
 @manager.route('/mv', methods=['POST'])  # noqa: F821

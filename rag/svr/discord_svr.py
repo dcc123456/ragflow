@@ -32,13 +32,17 @@ DISCORD_BOT_KEY = "xxxxxxxxxxxxxxxxxxxxxxxxxx" #Get DISCORD_BOT_KEY from Discord
 
 intents = discord.Intents.default()
 intents.message_content = True
+
 client = discord.Client(intents=intents)
-
-
+url = 'http://demo.ragflow.io/v1/api/completion_aibotk'
+json_data = {
+    "conversation_id": "5678f7583e6111efae800242ac18000a",
+    "Authorization":"ragflow-A2ZTRjN2M2M2U2MTExZWY4YzRjMDI0Mm",
+    "word": ""
+}
 @client.event
 async def on_ready():
-    logging.info(f'We have logged in as {client.user}')
-
+    print(f'We have logged in as {client.user}')
 
 @client.event
 async def on_message(message):
@@ -46,15 +50,14 @@ async def on_message(message):
         return
 
     if client.user.mentioned_in(message):
-
+        print(message.content)
         if len(message.content.split('> ')) == 1:
-            await message.channel.send("Hi~ How can I help you? ")
+            await message.channel.send("Hi! How can I help you?")
         else:
-            JSON_DATA['word']=message.content.split('> ')[1]
-            response = requests.post(URL, json=JSON_DATA)
+            json_data['word']=message.content.split('> ')[1]
+            response = requests.post(url, json=json_data)
             response_data = response.json().get('data', [])
             image_bool = False
-
             for i in response_data:
                 if i['type'] == 1:
                     res = i['content']
@@ -64,17 +67,13 @@ async def on_message(message):
                     with open('tmp_image.png','wb') as file:
                         file.write(image_data)
                     image= discord.File('tmp_image.png')
-
             await message.channel.send(f"{message.author.mention}{res}")
-
             if image_bool:
                 await message.channel.send(file=image)
 
-
 loop = asyncio.get_event_loop()
-
 try:
-    loop.run_until_complete(client.start(DISCORD_BOT_KEY))
+    loop.run_until_complete(client.start('MTI0NTY4NTMwMjk2Njc1MTM2Mg.G6zz0q.AtVS1QoZ91Fz2UtP6cemyd_rH2Sq-GIzs91k2Q'))
 except KeyboardInterrupt:
     loop.run_until_complete(client.close())
 finally:

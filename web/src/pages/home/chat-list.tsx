@@ -1,10 +1,12 @@
 import { MoreButton } from '@/components/more-button';
+import { PrivilegeManagementDialog } from '@/components/privilege-management/privilege-management-dialog';
 import { RenameDialog } from '@/components/rename-dialog';
 import { useNavigatePage } from '@/hooks/logic-hooks/navigate-hooks';
 import { useFetchDialogList } from '@/hooks/use-chat-request';
 import { useTranslation } from 'react-i18next';
 import { ChatDropdown } from '../next-chats/chat-dropdown';
 import { useRenameChat } from '../next-chats/hooks/use-rename-chat';
+import { useShowPrivilegeDialog } from '../next-chats/use-show-privilege-dialog';
 import { ApplicationCard } from './application-card';
 
 export function ChatList() {
@@ -21,6 +23,13 @@ export function ChatList() {
     chatRenameLoading,
   } = useRenameChat();
 
+  const {
+    handleShowPrivilegeModal,
+    privilegeRecord,
+    hidePrivilegeModal,
+    privilegeModalVisible,
+  } = useShowPrivilegeDialog();
+
   return (
     <>
       {data.dialogs.slice(0, 10).map((x) => (
@@ -33,7 +42,11 @@ export function ChatList() {
           }}
           onClick={navigateToChat(x.id)}
           moreDropdown={
-            <ChatDropdown chat={x} showChatRenameModal={showChatRenameModal}>
+            <ChatDropdown
+              chat={x}
+              showChatRenameModal={showChatRenameModal}
+              showPrivilegeModal={handleShowPrivilegeModal(x)}
+            >
               <MoreButton></MoreButton>
             </ChatDropdown>
           }
@@ -47,6 +60,12 @@ export function ChatList() {
           loading={chatRenameLoading}
           title={initialChatName || t('chat.createChat')}
         ></RenameDialog>
+      )}
+      {privilegeModalVisible && (
+        <PrivilegeManagementDialog
+          hideModal={hidePrivilegeModal}
+          initialValues={privilegeRecord}
+        ></PrivilegeManagementDialog>
       )}
     </>
   );

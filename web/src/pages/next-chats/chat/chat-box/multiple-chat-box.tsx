@@ -22,8 +22,8 @@ import {
 } from '@/hooks/use-chat-request';
 import { useFetchUserInfo } from '@/hooks/user-setting-hooks';
 import { buildMessageUuidWithRole } from '@/utils/chat';
+import { hasPreviewPermission } from '@/utils/permission-util';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { t } from 'i18next';
 import { isEmpty, omit } from 'lodash';
 import { ListCheck, Plus, Trash2 } from 'lucide-react';
 import { forwardRef, useCallback, useImperativeHandle, useRef } from 'react';
@@ -130,17 +130,20 @@ const ChatCard = forwardRef(function ChatCard(
           </div>
           <div className="space-x-2">
             <Tooltip>
-              <TooltipTrigger>
+              <TooltipTrigger asChild>
                 <Button
                   variant={'ghost'}
-                  disabled={isEmpty(llmId)}
+                  disabled={
+                    isEmpty(llmId) ||
+                    hasPreviewPermission(currentDialog.operator_permission)
+                  }
                   onClick={handleApplyConfig}
                 >
                   <ListCheck />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
-                <p>{t('chat.applyModelConfigs')}</p>
+                <p>Apply model configs</p>
               </TooltipContent>
             </Tooltip>
             {!isLatestChat || chatBoxIds.length === 3 ? (

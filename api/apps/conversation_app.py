@@ -15,22 +15,27 @@
 #
 import json
 import re
-import logging
+import traceback
 from copy import deepcopy
-from flask import Response, request
+
+from api.db.services.tenant_llm_service import TenantLLMService
+from flask import Response, g, request
 from flask_login import current_user, login_required
 from api import settings
-from api.db import LLMType
+from api.db import LLMType, PermissionValue
 from api.db.db_models import APIToken
 from api.db.services.conversation_service import ConversationService, structure_answer
 from api.db.services.dialog_service import DialogService, ask, chat, gen_mindmap
 from api.db.services.llm_service import LLMBundle
 from api.db.services.search_service import SearchService
-from api.db.services.tenant_llm_service import TenantLLMService
-from api.db.services.user_service import TenantService, UserTenantService
+from api.db.services.user_service import UserTenantService
 from api.utils.api_utils import get_data_error_result, get_json_result, server_error_response, validate_request
+from api.utils.permission_utils import check_dialog_permission
+from graphrag.general.mind_map_extractor import MindMapExtractor
+from rag.app.tag import label_question
 from rag.prompts.template import load_prompt
 from rag.prompts.generator import chunks_format
+from api.db.services.user_service import TenantService
 
 
 @manager.route("/set", methods=["POST"])  # noqa: F821
@@ -151,14 +156,18 @@ def rm():
 
 @manager.route("/list", methods=["GET"])  # noqa: F821
 @login_required
+@check_dialog_permission(PermissionValue.PERMISSION_READ)
 def list_conversation():
+    tenant_id = g.tenant_id
     dialog_id = request.args["dialog_id"]
     try:
-        if not DialogService.query(tenant_id=current_user.id, id=dialog_id):
-            return get_json_result(data=False, message="Only owner of dialog authorized for this operation.", code=settings.RetCode.OPERATING_ERROR)
-        convs = ConversationService.query(dialog_id=dialog_id, order_by=ConversationService.model.create_time, reverse=True)
+        if not UserTenantService.filter_by_tenant_and_user_id(tenant_id, current_user.id):
+            return get_data_error_result(message="No authorized.", code=settings.RetCode.OPERATING_ERROR)
+        if not DialogService.query(tenant_id=tenant_id, id=dialog_id):
+            return get_json_result(data=False, message="No authorized.", code=settings.RetCode.OPERATING_ERROR)
 
-        convs = [d.to_dict() for d in convs]
+        convs = ConversationService.query(dialog_id=dialog_id, order_by=ConversationService.model.create_time, reverse=True)
+        convs = [d.to_dict() for d in convs if d.user_id == current_user.id]
         return get_json_result(data=convs)
     except Exception as e:
         return server_error_response(e)
@@ -226,7 +235,7 @@ def completion():
                 if not is_embedded:
                     ConversationService.update_by_id(conv.id, conv.to_dict())
             except Exception as e:
-                logging.exception(e)
+                traceback.print_exc()
                 yield "data:" + json.dumps({"code": 500, "message": str(e), "data": {"answer": "**ERROR**: " + str(e), "reference": []}}, ensure_ascii=False) + "\n\n"
             yield "data:" + json.dumps({"code": 0, "message": "", "data": True}, ensure_ascii=False) + "\n\n"
 

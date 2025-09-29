@@ -31,10 +31,9 @@ from playhouse.migrate import MySQLMigrator, PostgresqlMigrator, migrate
 from playhouse.pool import PooledMySQLDatabase, PooledPostgresqlDatabase
 
 from api import settings, utils
-from api.db import ParserType, SerializedType
+from api.db import VALID_PERMISSION_ACTION_TYPES, VALID_PERMISSION_TARGET_TYPES, VALID_RESOURCE_TYPES, ParserType, PermissionValue, ResourceType, SerializedType, TeamRole
 from api.utils.json import json_dumps, json_loads
 from api.utils.configs import deserialize_b64, serialize_b64
-
 
 def singleton(cls, *args, **kw):
     instances = {}
@@ -259,9 +258,9 @@ class RetryingPooledMySQLDatabase(PooledMySQLDatabase):
                 error_codes = [2013, 2006]
                 error_messages = ['', 'Lost connection']
                 should_retry = (
-                    (hasattr(e, 'args') and e.args and e.args[0] in error_codes) or
-                    (str(e) in error_messages) or
-                    (hasattr(e, '__class__') and e.__class__.__name__ == 'InterfaceError')
+                        (hasattr(e, 'args') and e.args and e.args[0] in error_codes) or
+                        (str(e) in error_messages) or
+                        (hasattr(e, '__class__') and e.__class__.__name__ == 'InterfaceError')
                 )
 
                 if should_retry and attempt < self.max_retries:
@@ -276,8 +275,6 @@ class RetryingPooledMySQLDatabase(PooledMySQLDatabase):
         return None
 
     def _handle_connection_loss(self):
-        # self.close_all()
-        # self.connect()
         try:
             self.close()
         except Exception:
@@ -298,9 +295,9 @@ class RetryingPooledMySQLDatabase(PooledMySQLDatabase):
                 error_messages = ['', 'Lost connection']
 
                 should_retry = (
-                    (hasattr(e, 'args') and e.args and e.args[0] in error_codes) or
-                    (str(e) in error_messages) or
-                    (hasattr(e, '__class__') and e.__class__.__name__ == 'InterfaceError')
+                        (hasattr(e, 'args') and e.args and e.args[0] in error_codes) or
+                        (str(e) in error_messages) or
+                        (hasattr(e, '__class__') and e.__class__.__name__ == 'InterfaceError')
                 )
 
                 if should_retry and attempt < self.max_retries:
@@ -328,7 +325,7 @@ class BaseDataBase:
     def __init__(self):
         database_config = settings.DATABASE.copy()
         db_name = database_config.pop("name")
-        
+
         pool_config = {
             'max_retries': 5,
             'retry_delay': 1,
@@ -592,6 +589,103 @@ class UserTenant(DataBaseModel):
         db_table = "user_tenant"
 
 
+class Group(DataBaseModel):
+    id = CharField(max_length=32, primary_key=True)
+    name = CharField(max_length=100, null=True, help_text="Group name", index=True)
+    avatar = TextField(null=True, default="default.avatar", help_text="avatar base64 string")
+
+    owner_id = CharField(max_length=32, null=False, index=True)  # UserTenant ID
+    tenant_id = CharField(max_length=32, null=False, index=True)  # Tenant ID
+    status = CharField(max_length=1, null=True, help_text="is it validate(0: wasted, 1: validate)", default="1", index=True)
+
+    class Meta:
+        db_table = "group_info"
+
+
+class GroupMember(DataBaseModel):
+    id = CharField(max_length=32, primary_key=True)
+
+    member_id = CharField(max_length=32, null=False, index=True)  # UserTenant ID
+    group_id = CharField(max_length=32, null=False, index=True)  # Group ID
+    role = CharField(max_length=32, choices=[(r.value, r.name) for r in TeamRole.__members__.values()], null=False, help_text="GroupRole", index=True)
+    status = CharField(max_length=1, null=True, help_text="is it validate(0: wasted, 1: validate)", default="1", index=True)
+
+    class Meta:
+        db_table = "group_member"
+
+
+class Department(DataBaseModel):
+    id = CharField(max_length=32, primary_key=True)
+    name = CharField(max_length=100, null=False, help_text="Department name", index=True)
+    description = TextField(null=True, help_text="Department description")
+    avatar = TextField(null=True, help_text="avatar base64 string")
+    path = CharField(max_length=255, unique=True, help_text="Department hierarchy path")
+    formatted_path = CharField(max_length=255, help_text="Department hierarchy string path")
+    parent_id = CharField(max_length=32, null=False, index=True)  # Department ID
+    owner_id = CharField(max_length=32, null=False, index=True)  # UserTenant ID
+    tenant_id = CharField(max_length=32, null=False, index=True)  # Tenant ID
+    status = CharField(max_length=1, null=True, help_text="is it validate(0: wasted, 1: validate)", default="1", index=True)
+
+    class Meta:
+        db_table = "department"
+
+    def update_department_path(self):
+        if self.parent:
+            parent = self.parent
+            self.path = f"{parent.path}/{self.id}"
+        else:
+            self.path = self.id  # Root department path = its own ID
+        super().save()
+
+
+class DepartmentMember(DataBaseModel):
+    id = CharField(max_length=32, primary_key=True)
+    role = CharField(max_length=32, choices=[(r.value, r.name) for r in TeamRole.__members__.values()], null=False, help_text="DepartmentRole", index=True)
+    status = CharField(max_length=1, null=True, help_text="is it validate(0: wasted, 1: validate)", default="1", index=True)
+    member_id = CharField(max_length=32, null=False, index=True)  # UserTenant ID
+    department_id = CharField(max_length=32, null=False, index=True)  # Department ID
+
+    class Meta:
+        db_table = "department_member"
+
+
+class Permission(DataBaseModel):
+    id = CharField(max_length=32, primary_key=True)
+    member_id = CharField(max_length=32, null=True, index=True)  # UserTenant ID
+    group_id = CharField(max_length=32, null=True, index=True)  # Group ID
+    department_id = CharField(max_length=32, null=True, index=True)  # Department ID
+    tenant_id = CharField(max_length=32, null=False, index=True)  # Tenant ID
+    resource_type = CharField(max_length=32, choices=[(t.value, t.name) for t in ResourceType.__members__.values()], null=False, index=True)
+    resource_id = CharField(max_length=32, null=True, index=True)
+    permission = IntegerField(null=False, default=PermissionValue.PERMISSION_NULL, help_text="Permission", index=True)
+    status = CharField(
+        max_length=1,
+        null=True,
+        help_text="is it validate(0: wasted, 1: validate)",
+        default="1",
+        index=True)
+
+    class Meta:
+        db_table = "permission"
+
+
+class PermissionChangeLog(DataBaseModel):
+    id = CharField(max_length=32, primary_key=True)
+    tenant_id = CharField(max_length=32, null=False, index=True, help_text="Tenant ID")
+    operator_id = CharField(max_length=32, null=False, index=True, help_text="UserTenant ID")
+    target_type = CharField(max_length=20, null=False, choices=VALID_PERMISSION_TARGET_TYPES)
+    target_id = CharField(max_length=32, null=False)
+    resource_type = CharField(max_length=32, null=False, choices=VALID_RESOURCE_TYPES)
+    resource_id = CharField(max_length=32, null=False)
+    old_permission = IntegerField(null=False)
+    new_permission = IntegerField(null=False)
+    action_type = CharField(max_length=20, null=False, choices=VALID_PERMISSION_ACTION_TYPES)
+    reason = TextField(null=True)
+
+    class Meta:
+        table_name = "permission_change_log"
+
+
 class InvitationCode(DataBaseModel):
     id = CharField(max_length=32, primary_key=True)
     code = CharField(max_length=32, null=False, index=True)
@@ -632,7 +726,6 @@ class LLM(DataBaseModel):
         return self.llm_name
 
     class Meta:
-        primary_key = CompositeKey("fid", "llm_name")
         db_table = "llm"
 
 
@@ -684,8 +777,15 @@ class Knowledgebase(DataBaseModel):
     vector_similarity_weight = FloatField(default=0.3, index=True)
 
     parser_id = CharField(max_length=32, null=False, help_text="default parser ID", default=ParserType.NAIVE.value, index=True)
+    pipeline_id = CharField(max_length=32, null=True, help_text="Pipeline ID", index=True)
     parser_config = JSONField(null=False, default={"pages": [[1, 1000000]]})
     pagerank = IntegerField(default=0, index=False)
+    graphrag_task_id = CharField(max_length=32, null=True, help_text="Graph RAG task ID", index=True)
+    graphrag_task_finish_at = DateTimeField(null=True)
+    raptor_task_id = CharField(max_length=32, null=True, help_text="RAPTOR task ID", index=True)
+    raptor_task_finish_at = DateTimeField(null=True)
+    mindmap_task_id = CharField(max_length=32, null=True, help_text="Mindmap task ID", index=True)
+    mindmap_task_finish_at = DateTimeField(null=True)
     status = CharField(max_length=1, null=True, help_text="is it validate(0: wasted, 1: validate)", default="1", index=True)
 
     def __str__(self):
@@ -700,6 +800,7 @@ class Document(DataBaseModel):
     thumbnail = TextField(null=True, help_text="thumbnail base64 string")
     kb_id = CharField(max_length=256, null=False, index=True)
     parser_id = CharField(max_length=32, null=False, help_text="default parser ID", index=True)
+    pipeline_id = CharField(max_length=32, null=True, help_text="Pipeline ID", index=True)
     parser_config = JSONField(null=False, default={"pages": [[1, 1000000]]})
     source_type = CharField(max_length=128, null=False, default="local", help_text="where dose this document come from", index=True)
     type = CharField(max_length=32, null=False, help_text="file extension", index=True)
@@ -871,6 +972,29 @@ class CanvasTemplate(DataBaseModel):
         db_table = "canvas_template"
 
 
+class BillingPlan(DataBaseModel):
+    id = CharField(max_length=32, primary_key=True)
+    name = CharField(max_length=32, default="trial", help_text="Plan name", index=True, unique=True)
+    quota_members = IntegerField(null=False, help_text="Limit number of members of the tenant")
+    quota_docs = IntegerField(null=False, help_text="Limit number of documents of the tenant")
+    quota_chunks = IntegerField(null=False, help_text="Limit number of chunks of the tenant")
+    task_priority = CharField(null=False, help_text="Task priority of the tenant")
+    price_ids = TextField(null=False, default="", help_text="price ids on stripe.com")
+    class Meta:
+        db_table = "billing_plan"
+
+
+class TenantPlan(DataBaseModel):
+    id = CharField(max_length=32, primary_key=True)
+    tenant_id = CharField(max_length=32, null=False, index=True, unique=True)
+    plan_name = CharField(max_length=255, null=False, default="trial", help_text="billing plan", index=True)
+    customer_id = CharField(max_length=255, null=False, default="", help_text="customer id on stripe.com", index=True, unique=True)
+    subscription_id = CharField(max_length=255, null=False, default="", help_text="subscription id on stripe.com", index=True)
+    subscription_status = CharField(max_length=255, null=False, default="", help_text="subscription status on stripe.com", index=True)
+    class Meta:
+        db_table = "tenant_plan"
+
+
 class UserCanvasVersion(DataBaseModel):
     id = CharField(max_length=32, primary_key=True)
     user_canvas_id = CharField(max_length=255, null=False, help_text="user_canvas_id", index=True)
@@ -943,136 +1067,73 @@ class Search(DataBaseModel):
 
 
 def migrate_db():
-    logging.disable(logging.ERROR)
-    migrator = DatabaseMigrator[settings.DATABASE_TYPE.upper()].value(DB)
-    try:
-        migrate(migrator.add_column("file", "source_type", CharField(max_length=128, null=False, default="", help_text="where dose this document come from", index=True)))
-    except Exception:
-        pass
-    try:
-        migrate(migrator.add_column("tenant", "rerank_id", CharField(max_length=128, null=False, default="BAAI/bge-reranker-v2-m3", help_text="default rerank model ID")))
-    except Exception:
-        pass
-    try:
-        migrate(migrator.add_column("dialog", "rerank_id", CharField(max_length=128, null=False, default="", help_text="default rerank model ID")))
-    except Exception:
-        pass
-    try:
-        migrate(migrator.add_column("dialog", "top_k", IntegerField(default=1024)))
-    except Exception:
-        pass
-    try:
-        migrate(migrator.alter_column_type("tenant_llm", "api_key", CharField(max_length=2048, null=True, help_text="API KEY", index=True)))
-    except Exception:
-        pass
-    try:
-        migrate(migrator.add_column("api_token", "source", CharField(max_length=16, null=True, help_text="none|agent|dialog", index=True)))
-    except Exception:
-        pass
-    try:
-        migrate(migrator.add_column("tenant", "tts_id", CharField(max_length=256, null=True, help_text="default tts model ID", index=True)))
-    except Exception:
-        pass
-    try:
-        migrate(migrator.add_column("api_4_conversation", "source", CharField(max_length=16, null=True, help_text="none|agent|dialog", index=True)))
-    except Exception:
-        pass
-    try:
-        migrate(migrator.add_column("task", "retry_count", IntegerField(default=0)))
-    except Exception:
-        pass
-    try:
-        migrate(migrator.alter_column_type("api_token", "dialog_id", CharField(max_length=32, null=True, index=True)))
-    except Exception:
-        pass
-    try:
-        migrate(migrator.add_column("tenant_llm", "max_tokens", IntegerField(default=8192, index=True)))
-    except Exception:
-        pass
-    try:
-        migrate(migrator.add_column("api_4_conversation", "dsl", JSONField(null=True, default={})))
-    except Exception:
-        pass
-    try:
-        migrate(migrator.add_column("knowledgebase", "pagerank", IntegerField(default=0, index=False)))
-    except Exception:
-        pass
-    try:
-        migrate(migrator.add_column("api_token", "beta", CharField(max_length=255, null=True, index=True)))
-    except Exception:
-        pass
-    try:
-        migrate(migrator.add_column("task", "digest", TextField(null=True, help_text="task digest", default="")))
-    except Exception:
-        pass
-
-    try:
-        migrate(migrator.add_column("task", "chunk_ids", LongTextField(null=True, help_text="chunk ids", default="")))
-    except Exception:
-        pass
-    try:
-        migrate(migrator.add_column("conversation", "user_id", CharField(max_length=255, null=True, help_text="user_id", index=True)))
-    except Exception:
-        pass
-    try:
-        migrate(migrator.add_column("document", "meta_fields", JSONField(null=True, default={})))
-    except Exception:
-        pass
-    try:
-        migrate(migrator.add_column("task", "task_type", CharField(max_length=32, null=False, default="")))
-    except Exception:
-        pass
-    try:
-        migrate(migrator.add_column("task", "priority", IntegerField(default=0)))
-    except Exception:
-        pass
-    try:
-        migrate(migrator.add_column("user_canvas", "permission", CharField(max_length=16, null=False, help_text="me|team", default="me", index=True)))
-    except Exception:
-        pass
-    try:
-        migrate(migrator.add_column("llm", "is_tools", BooleanField(null=False, help_text="support tools", default=False)))
-    except Exception:
-        pass
-    try:
-        migrate(migrator.add_column("mcp_server", "variables", JSONField(null=True, help_text="MCP Server variables", default=dict)))
-    except Exception:
-        pass
-    try:
-        migrate(migrator.rename_column("task", "process_duation", "process_duration"))
-    except Exception:
-        pass
-    try:
-        migrate(migrator.rename_column("document", "process_duation", "process_duration"))
-    except Exception:
-        pass
-    try:
-        migrate(migrator.add_column("document", "suffix", CharField(max_length=32, null=False, default="", help_text="The real file extension suffix", index=True)))
-    except Exception:
-        pass
-    try:
-        migrate(migrator.add_column("api_4_conversation", "errors", TextField(null=True, help_text="errors")))
-    except Exception:
-        pass
-    try:
-        migrate(migrator.add_column("dialog", "meta_data_filter", JSONField(null=True, default={})))
-    except Exception:
-        pass
-
-    try:
-        migrate(migrator.alter_column_type("canvas_template", "title", JSONField(null=True, default=dict, help_text="Canvas title")))
-    except Exception:
-        pass
-    try:
-        migrate(migrator.alter_column_type("canvas_template", "description", JSONField(null=True, default=dict, help_text="Canvas description")))
-    except Exception:
-        pass
-    try:
-        migrate(migrator.add_column("user_canvas", "canvas_category", CharField(max_length=32, null=False, default="agent_canvas", help_text="agent_canvas|dataflow_canvas", index=True)))
-    except Exception:
-        pass
-    try:
-        migrate(migrator.add_column("canvas_template", "canvas_category", CharField(max_length=32, null=False, default="agent_canvas", help_text="agent_canvas|dataflow_canvas", index=True)))
-    except Exception:
-        pass
-    logging.disable(logging.NOTSET)
+    with DB.transaction():
+        migrator = DatabaseMigrator[settings.DATABASE_TYPE.upper()].value(DB)
+        try:
+            migrate(migrator.add_column("llm", "is_tools", BooleanField(null=False, help_text="support tools", default=False)))
+        except Exception:
+            pass
+        try:
+            migrate(migrator.rename_column("task", "process_duation", "process_duration"))
+        except Exception:
+            pass
+        try:
+            migrate( migrator.rename_column("document", "process_duation", "process_duration"))
+        except Exception:
+            pass
+        try:
+            migrate(migrator.add_column("document", "suffix", CharField(max_length=32, null=False, default="", help_text="The real file extension suffix", index=True)))
+        except Exception:
+            pass
+        try:
+            migrate(migrator.add_column("dialog", "meta_data_filter", JSONField(null=True, default={})))
+        except Exception:
+            pass
+        try:
+            migrate(migrator.alter_column_type("canvas_template", "title", JSONField(null=True, default=dict, help_text="Canvas title")))
+        except Exception:
+            pass
+        try:
+            migrate(migrator.alter_column_type("canvas_template", "description", JSONField(null=True, default=dict, help_text="Canvas description")))
+        except Exception:
+            pass
+        try:
+            migrate(migrator.add_column("user_canvas", "canvas_category", CharField(max_length=32, null=False, default="agent_canvas", help_text="agent_canvas|dataflow_canvas", index=True)))
+        except Exception:
+            pass
+        try:
+            migrate(migrator.add_column("canvas_template", "canvas_category", CharField(max_length=32, null=False, default="agent_canvas", help_text="agent_canvas|dataflow_canvas", index=True)))
+        except Exception:
+            pass
+        try:
+            migrate(migrator.add_column("knowledgebase", "pipeline_id", CharField(max_length=32, null=True, help_text="Pipeline ID", index=True)))
+        except Exception:
+            pass
+        try:
+            migrate(migrator.add_column("document", "pipeline_id", CharField(max_length=32, null=True, help_text="Pipeline ID", index=True)))
+        except Exception:
+            pass
+        try:
+            migrate(migrator.add_column("knowledgebase", "graphrag_task_id", CharField(max_length=32, null=True, help_text="Gragh RAG task ID", index=True)))
+        except Exception:
+            pass
+        try:
+            migrate(migrator.add_column("knowledgebase", "raptor_task_id", CharField(max_length=32, null=True, help_text="RAPTOR task ID", index=True)))
+        except Exception:
+            pass
+        try:
+            migrate(migrator.add_column("knowledgebase", "graphrag_task_finish_at", DateTimeField(null=True)))
+        except Exception:
+            pass
+        try:
+            migrate(migrator.add_column("knowledgebase", "raptor_task_finish_at", CharField(null=True)))
+        except Exception:
+            pass
+        try:
+            migrate(migrator.add_column("knowledgebase", "mindmap_task_id", CharField(max_length=32, null=True, help_text="Mindmap task ID", index=True)))
+        except Exception:
+            pass
+        try:
+            migrate(migrator.add_column("knowledgebase", "mindmap_task_finish_at", CharField(null=True)))
+        except Exception:
+            pass

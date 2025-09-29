@@ -1,53 +1,24 @@
-import SvgIcon from '@/components/svg-icon';
-import { useAuth } from '@/hooks/auth-hooks';
-import {
-  useLogin,
-  useLoginChannels,
-  useLoginWithChannel,
-  useRegister,
-} from '@/hooks/login-hooks';
-import { useSystemConfig } from '@/hooks/system-hooks';
+import { useLogin, useRegister } from '@/hooks/login-hooks';
 import { rsaPsw } from '@/utils';
 import { Button, Checkbox, Form, Input } from 'antd';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'umi';
+import { Icon, useNavigate } from 'umi';
 import RightPanel from './right-panel';
 
+import { Domain } from '@/constants/common';
 import styles from './index.less';
+import { TopMessage } from './top-message';
 
 const Login = () => {
   const [title, setTitle] = useState('login');
   const navigate = useNavigate();
   const { login, loading: signLoading } = useLogin();
   const { register, loading: registerLoading } = useRegister();
-  const { channels, loading: channelsLoading } = useLoginChannels();
-  const { login: loginWithChannel, loading: loginWithChannelLoading } =
-    useLoginWithChannel();
   const { t } = useTranslation('translation', { keyPrefix: 'login' });
-  const loading =
-    signLoading ||
-    registerLoading ||
-    channelsLoading ||
-    loginWithChannelLoading;
-  const { config } = useSystemConfig();
-  const registerEnabled = config?.registerEnabled !== 0;
-
-  const { isLogin } = useAuth();
-  useEffect(() => {
-    if (isLogin) {
-      navigate('/');
-    }
-  }, [isLogin, navigate]);
-
-  const handleLoginWithChannel = async (channel: string) => {
-    await loginWithChannel(channel);
-  };
+  const loading = signLoading || registerLoading;
 
   const changeTitle = () => {
-    if (title === 'login' && !registerEnabled) {
-      return;
-    }
     setTitle((title) => (title === 'login' ? 'register' : 'login'));
   };
   const [form] = Form.useForm();
@@ -88,6 +59,13 @@ const Login = () => {
     labelCol: { span: 6 },
     // wrapperCol: { span: 8 },
   };
+
+  const toGoogle = () => {
+    window.location.href =
+      'https://github.com/login/oauth/authorize?scope=user:email&client_id=302129228f0d96055bee';
+  };
+
+  // return <div>login</div>;
 
   return (
     <div className={styles.loginPage}>
@@ -144,7 +122,7 @@ const Login = () => {
               </Form.Item>
             )}
             <div>
-              {title === 'login' && registerEnabled && (
+              {title === 'login' && (
                 <div>
                   {t('signInTip')}
                   <Button type="link" onClick={changeTitle}>
@@ -170,28 +148,39 @@ const Login = () => {
             >
               {title === 'login' ? t('login') : t('continue')}
             </Button>
-            {title === 'login' && channels && channels.length > 0 && (
-              <div className={styles.thirdPartyLoginButton}>
-                {channels.map((item) => (
+            {title === 'login' && (
+              <>
+                {/* <Button
+                  block
+                  size="large"
+                  onClick={toGoogle}
+                  style={{ marginTop: 15 }}
+                >
+                  <div>
+                    <Icon
+                      icon="local:google"
+                      style={{ verticalAlign: 'middle', marginRight: 5 }}
+                    />
+                    Sign in with Google
+                  </div>
+                </Button> */}
+                {location.host === Domain && (
                   <Button
-                    key={item.channel}
                     block
                     size="large"
-                    onClick={() => handleLoginWithChannel(item.channel)}
-                    style={{ marginTop: 10 }}
+                    onClick={toGoogle}
+                    style={{ marginTop: 15 }}
                   >
                     <div className="flex items-center">
-                      <SvgIcon
-                        name={item.icon || 'sso'}
-                        width={20}
-                        height={20}
-                        style={{ marginRight: 5 }}
+                      <Icon
+                        icon="local:github"
+                        style={{ verticalAlign: 'middle', marginRight: 5 }}
                       />
-                      Sign in with {item.display_name}
+                      Sign in with Github
                     </div>
                   </Button>
-                ))}
-              </div>
+                )}
+              </>
             )}
           </Form>
         </div>
@@ -199,6 +188,7 @@ const Login = () => {
       <div className={styles.loginRight}>
         <RightPanel></RightPanel>
       </div>
+      <TopMessage></TopMessage>
     </div>
   );
 };

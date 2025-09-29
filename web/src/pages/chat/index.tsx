@@ -17,7 +17,7 @@ import {
 } from 'antd';
 import { MenuItemProps } from 'antd/lib/menu/MenuItem';
 import classNames from 'classnames';
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import ChatConfigurationModal from './chat-configuration-modal';
 import ChatContainer from './chat-container';
 import {
@@ -25,25 +25,31 @@ import {
   useDeleteDialog,
   useEditDialog,
   useHandleItemHover,
+  useHasCurrentDialogEditPermission,
   useRenameConversation,
   useSelectDerivedConversationList,
 } from './hooks';
 
 import EmbedModal from '@/components/api-service/embed-modal';
 import { useShowEmbedModal } from '@/components/api-service/hooks';
+import { PrivilegeManagementDialog } from '@/components/privilege-management/privilege-management-dialog';
+import { PrivilegeDropdown } from '@/components/privilege/privilege-dropdown';
+import { PermissionRibbon } from '@/components/ribbon/permisson-ribbon';
 import SvgIcon from '@/components/svg-icon';
 import { useTheme } from '@/components/theme-provider';
 import { SharedFrom } from '@/constants/chat';
+import { PermissionResourceType } from '@/constants/team';
 import {
   useClickConversationCard,
   useClickDialogCard,
   useFetchNextDialogList,
   useGetChatSearchParams,
 } from '@/hooks/chat-hooks';
-import { useTranslate } from '@/hooks/common-hooks';
+import { useSetModalState, useTranslate } from '@/hooks/common-hooks';
 import { useSetSelectedRecord } from '@/hooks/logic-hooks';
 import { IDialog } from '@/interfaces/database/chat';
-import { PictureInPicture2 } from 'lucide-react';
+import { hasOwnerPermission, showEditButton } from '@/utils/permission-util';
+import { pick } from 'lodash';
 import styles from './index.less';
 
 const { Text } = Typography;
@@ -89,6 +95,7 @@ const Chat = () => {
   const [controller, setController] = useState(new AbortController());
   const { showEmbedModal, hideEmbedModal, embedVisible, beta } =
     useShowEmbedModal();
+  const hasCurrentDialogEditPermission = useHasCurrentDialogEditPermission();
 
   const handleAppCardEnter = (id: string) => () => {
     handleItemEnter(id);
@@ -161,6 +168,31 @@ const Chat = () => {
     addTemporaryConversation();
   }, [addTemporaryConversation]);
 
+  const privilegeRecord = useMemo(() => {
+    return {
+      ...pick(currentRecord, ['id', 'tenant_id', 'name']),
+      resourceType: PermissionResourceType.Dialog,
+      icon: currentRecord.icon,
+      kbs: currentRecord.kb_ids,
+      llm_id: currentRecord.llm_id,
+    };
+  }, [currentRecord]);
+
+  const {
+    visible: privilegeModal,
+    hideModal: hidePrivilegeModal,
+    showModal: showPrivilegeModal,
+  } = useSetModalState();
+
+  const handleShowPrivilegeModal =
+    (dialog: IDialog): any =>
+    (info: any) => {
+      info?.domEvent?.preventDefault();
+      info?.domEvent?.stopPropagation();
+      setRecord(dialog);
+      showPrivilegeModal();
+    };
+
   const buildAppItems = (dialog: IDialog) => {
     const dialogId = dialog.id;
 
@@ -175,7 +207,9 @@ const Chat = () => {
           </Space>
         ),
       },
-      { type: 'divider' },
+    ];
+
+    const otherItems: MenuProps['items'] = [
       {
         key: '2',
         onClick: handleRemoveDialog(dialogId),
@@ -188,17 +222,15 @@ const Chat = () => {
       },
       { type: 'divider' },
       {
-        key: '3',
-        onClick: handleShowOverviewModal(dialog),
-        label: (
-          <Space>
-            {/* <KeyOutlined /> */}
-            <PictureInPicture2 className="size-4" />
-            {t('embedIntoSite', { keyPrefix: 'common' })}
-          </Space>
-        ),
+        key: '4',
+        onClick: handleShowPrivilegeModal(dialog),
+        label: <PrivilegeDropdown></PrivilegeDropdown>,
       },
     ];
+
+    if (hasOwnerPermission(dialog.operator_permission)) {
+      appItems.push({ type: 'divider' }, ...otherItems);
+    }
 
     return appItems;
   };
@@ -242,44 +274,50 @@ const Chat = () => {
           <Flex className={styles.chatAppContent} vertical gap={10}>
             <Spin spinning={dialogLoading} wrapperClassName={styles.chatSpin}>
               {dialogList.map((x) => (
-                <Card
+                <PermissionRibbon
+                  tenantId={x.tenant_id}
                   key={x.id}
-                  hoverable
-                  className={classNames(styles.chatAppCard, {
-                    [theme === 'dark'
-                      ? styles.chatAppCardSelectedDark
-                      : styles.chatAppCardSelected]: dialogId === x.id,
-                  })}
-                  onMouseEnter={handleAppCardEnter(x.id)}
-                  onMouseLeave={handleItemLeave}
-                  onClick={handleDialogCardClick(x.id)}
+                  permission={x.operator_permission}
                 >
-                  <Flex justify="space-between" align="center">
-                    <Space size={15}>
-                      <Avatar src={x.icon} shape={'square'} />
-                      <section>
-                        <b>
-                          <Text
-                            ellipsis={{ tooltip: x.name }}
-                            style={{ width: 130 }}
-                          >
-                            {x.name}
-                          </Text>
-                        </b>
-                        <div>{x.description}</div>
-                      </section>
-                    </Space>
-                    {activated === x.id && (
-                      <section>
-                        <Dropdown menu={{ items: buildAppItems(x) }}>
-                          <ChatAppCube
-                            className={styles.cubeIcon}
-                          ></ChatAppCube>
-                        </Dropdown>
-                      </section>
-                    )}
-                  </Flex>
-                </Card>
+                  <Card
+                    hoverable
+                    className={classNames(styles.chatAppCard, {
+                      [theme === 'dark'
+                        ? styles.chatAppCardSelectedDark
+                        : styles.chatAppCardSelected]: dialogId === x.id,
+                    })}
+                    onMouseEnter={handleAppCardEnter(x.id)}
+                    onMouseLeave={handleItemLeave}
+                    onClick={handleDialogCardClick(x.id)}
+                  >
+                    <Flex justify="space-between" align="center">
+                      <Space size={15}>
+                        <Avatar src={x.icon} shape={'square'} />
+                        <section>
+                          <b>
+                            <Text
+                              ellipsis={{ tooltip: x.name }}
+                              style={{ width: 130 }}
+                            >
+                              {x.name}
+                            </Text>
+                          </b>
+                          <div>{x.description}</div>
+                        </section>
+                      </Space>
+                      {showEditButton(x.operator_permission) &&
+                        activated === x.id && (
+                          <section>
+                            <Dropdown menu={{ items: buildAppItems(x) }}>
+                              <ChatAppCube
+                                className={styles.cubeIcon}
+                              ></ChatAppCube>
+                            </Dropdown>
+                          </section>
+                        )}
+                    </Flex>
+                  </Card>
+                </PermissionRibbon>
               ))}
             </Spin>
           </Flex>
@@ -335,7 +373,8 @@ const Chat = () => {
                         {x.name}
                       </Text>
                     </div>
-                    {conversationActivated === x.id &&
+                    {hasCurrentDialogEditPermission &&
+                      conversationActivated === x.id &&
                       x.id !== '' &&
                       !x.is_new && (
                         <section>
@@ -385,6 +424,12 @@ const Chat = () => {
           beta={beta}
           isAgent={false}
         ></EmbedModal>
+      )}
+      {privilegeModal && (
+        <PrivilegeManagementDialog
+          hideModal={hidePrivilegeModal}
+          initialValues={privilegeRecord}
+        ></PrivilegeManagementDialog>
       )}
     </Flex>
   );

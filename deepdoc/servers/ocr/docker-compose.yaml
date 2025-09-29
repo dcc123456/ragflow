@@ -1,0 +1,21 @@
+services:
+  ocr_svr:
+    build: .
+    image: infiniflow-ai/ocr-server:latest
+    container_name: infiniflow-ragflow-ocr
+    ports:
+      - 12344:8000
+    networks:
+      - ragflow
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["0"]
+              capabilities: [ gpu ]
+    restart: always
+
+networks:
+  ragflow:
+    driver: bridge

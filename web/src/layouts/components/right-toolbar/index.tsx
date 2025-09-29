@@ -2,16 +2,16 @@ import { useTranslate } from '@/hooks/common-hooks';
 import { DownOutlined, GithubOutlined } from '@ant-design/icons';
 import { Dropdown, MenuProps, Space } from 'antd';
 import camelCase from 'lodash/camelCase';
-import React, { useCallback, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import User from '../user';
 
 import { useTheme } from '@/components/theme-provider';
-import { LanguageList, LanguageMap, ThemeEnum } from '@/constants/common';
+import { LanguageList, LanguageMap } from '@/constants/common';
 import { useChangeLanguage } from '@/hooks/logic-hooks';
 import { useFetchUserInfo, useListTenant } from '@/hooks/user-setting-hooks';
 import { TenantRole } from '@/pages/user-setting/constants';
 import { BellRing, CircleHelp, MoonIcon, SunIcon } from 'lucide-react';
-import { useNavigate } from 'umi';
+import { TeamInvitationReminderDialog } from '../team-invitation-reminder-dialog';
 import styled from './index.less';
 
 const Circle = ({ children, ...restProps }: React.PropsWithChildren) => {
@@ -34,7 +34,6 @@ const RightToolBar = () => {
   const { t } = useTranslate('common');
   const changeLanguage = useChangeLanguage();
   const { setTheme, theme } = useTheme();
-  const navigate = useNavigate();
 
   const {
     data: { language = 'English' },
@@ -58,15 +57,11 @@ const RightToolBar = () => {
   }, []);
 
   const onMoonClick = React.useCallback(() => {
-    setTheme(ThemeEnum.Light);
+    setTheme('light');
   }, [setTheme]);
   const onSunClick = React.useCallback(() => {
-    setTheme(ThemeEnum.Dark);
+    setTheme('dark');
   }, [setTheme]);
-
-  const handleBellClick = useCallback(() => {
-    navigate('/user-setting/team');
-  }, [navigate]);
 
   return (
     <div className={styled.toolbarWrapper}>
@@ -91,12 +86,14 @@ const RightToolBar = () => {
           )}
         </Circle>
         {showBell && (
-          <Circle>
-            <div className="relative" onClick={handleBellClick}>
-              <BellRing className="size-4 " />
-              <span className="absolute size-1 rounded -right-1 -top-1 bg-red-600"></span>
-            </div>
-          </Circle>
+          <TeamInvitationReminderDialog>
+            <Circle>
+              <div className="relative">
+                <BellRing className="size-4 " />
+                <span className="absolute size-1 rounded -right-1 -top-1 bg-red-600"></span>
+              </div>
+            </Circle>
+          </TeamInvitationReminderDialog>
         )}
         <User></User>
       </Space>

@@ -1,9 +1,9 @@
-import message from '@/components/ui/message';
 import authorizationUtil from '@/utils/authorization-util';
+import { message } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'umi';
 
-export const useOAuthCallback = () => {
+export const useLoginWithGithub = () => {
   const [currentQueryParameters, setSearchParams] = useSearchParams();
   const error = currentQueryParameters.get('error');
   const newQueryParameters: URLSearchParams = useMemo(
@@ -12,43 +12,41 @@ export const useOAuthCallback = () => {
   );
   const navigate = useNavigate();
 
-  useEffect(() => {
-    if (error) {
-      message.error(error);
-      setTimeout(() => {
-        navigate('/login');
-        newQueryParameters.delete('error');
-        setSearchParams(newQueryParameters);
-      }, 1000);
-      return;
-    }
+  if (error) {
+    message.error(error);
+    navigate('/login');
+    newQueryParameters.delete('error');
+    setSearchParams(newQueryParameters);
+    return;
+  }
 
-    const auth = currentQueryParameters.get('auth');
-    if (auth) {
-      authorizationUtil.setAuthorization(auth);
-      newQueryParameters.delete('auth');
-      setSearchParams(newQueryParameters);
-      navigate('/');
-    }
-  }, [
-    error,
-    currentQueryParameters,
-    newQueryParameters,
-    navigate,
-    setSearchParams,
-  ]);
+  const auth = currentQueryParameters.get('auth');
 
-  console.debug(currentQueryParameters.get('auth'));
-  return currentQueryParameters.get('auth');
+  const redirectUrl = currentQueryParameters.get('redirect_url');
+
+  if (auth) {
+    authorizationUtil.setAuthorization(auth);
+    newQueryParameters.delete('auth');
+    if (redirectUrl) {
+      newQueryParameters.delete('redirect_url');
+    }
+    setSearchParams(newQueryParameters);
+  }
+
+  return { auth, redirectUrl };
 };
 
 export const useAuth = () => {
-  const auth = useOAuthCallback();
+  const value = useLoginWithGithub();
+
+  const auth = value?.auth;
+  const redirectUrl = value?.redirectUrl;
+
   const [isLogin, setIsLogin] = useState<Nullable<boolean>>(null);
 
   useEffect(() => {
     setIsLogin(!!authorizationUtil.getAuthorization() || !!auth);
   }, [auth]);
 
-  return { isLogin };
+  return { isLogin, redirectUrl };
 };

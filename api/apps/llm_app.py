@@ -17,15 +17,23 @@ import logging
 import json
 from flask import request
 from flask_login import login_required, current_user
-from api.db.services.tenant_llm_service import LLMFactoriesService, TenantLLMService
-from api.db.services.llm_service import LLMService
 from api import settings
 from api.utils.api_utils import server_error_response, get_data_error_result, validate_request
-from api.db import StatusEnum, LLMType
-from api.db.db_models import TenantLLM
 from api.utils.api_utils import get_json_result
-from api.utils.base64_image import test_image
+from api.utils.base64_image import test_image_base64
+
 from rag.llm import EmbeddingModel, ChatModel, RerankModel, CvModel, TTSModel
+from api.utils.base64_image import test_image
+from api.db import LLMType, PermissionActionType, PermissionTargetType, PermissionValue, ResourceType, StatusEnum
+from api.db.db_models import DB, TenantLLM
+from api.db.services.dialog_service import DialogService
+from api.db.services.llm_service import LLMService
+from api.db.services.tenant_llm_service import LLMFactoriesService, TenantLLMService
+from api.db.services.permission_service import PermissionChangeLogService, PermissionService
+from api.db.services.user_service import UserTenantService
+from api.utils import get_uuid
+from api.utils.api_utils import get_data_error_result, get_json_result, server_error_response, validate_request
+from api.utils.permission_utils import has_permission_for_member
 
 
 @manager.route('/factories', methods=['GET'])  # noqa: F821
@@ -243,7 +251,7 @@ def add_llm():
                 model_name=mdl_nm,
                 base_url=llm["api_base"]
             )
-            arr, tc = mdl.similarity("Hello~ RAGFlower!", ["Hi, there!", "Ohh, my friend!"])
+            arr, tc = mdl.similarity("Hello~ Ragflower!", ["Hi, there!", "Ohh, my friend!"])
             if len(arr) == 0:
                 raise Exception("Not known.")
         except KeyError:
@@ -259,8 +267,7 @@ def add_llm():
             base_url=llm["api_base"]
         )
         try:
-            image_data = test_image
-            m, tc = mdl.describe(image_data)
+            m, tc = mdl.describe(test_image)
             if not m and not tc:
                 raise Exception(m)
         except Exception as e:
@@ -271,7 +278,7 @@ def add_llm():
             key=llm["api_key"], model_name=mdl_nm, base_url=llm["api_base"]
         )
         try:
-            for resp in mdl.tts("Hello~ RAGFlower!"):
+            for resp in mdl.tts("Hello~ Ragflower!"):
                 pass
         except RuntimeError as e:
             msg += f"\nFail to access model({factory}/{mdl_nm})." + str(e)
@@ -282,10 +289,36 @@ def add_llm():
     if msg:
         return get_data_error_result(message=msg)
 
-    if not TenantLLMService.filter_update(
-            [TenantLLM.tenant_id == current_user.id, TenantLLM.llm_factory == factory,
-             TenantLLM.llm_name == llm["llm_name"]], llm):
+    operator = UserTenantService.filter_by_tenant_and_user_id(tenant_id=current_user.id, user_id=current_user.id)
+    if not operator:
+        return get_data_error_result(message="Unrecognized identification.")
+
+    if not TenantLLMService.filter_update([TenantLLM.tenant_id == current_user.id, TenantLLM.llm_factory == factory, TenantLLM.llm_name == llm["llm_name"]], llm):
         TenantLLMService.save(**llm)
+
+        if not PermissionService.save(
+            id=get_uuid(),
+            member_id=operator.id,
+            tenant_id=current_user.id,
+            resource_type=ResourceType.LLM,
+            resource_id=mdl_nm,
+            permission=PermissionValue.PERMISSION_OWNER.value,
+        ):
+            raise ValueError("Permission creation failed")
+
+        if not PermissionChangeLogService.save(
+            id=get_uuid(),
+            tenant_id=operator.tenant_id,
+            operator_id=operator.id,
+            target_type=PermissionTargetType.TARGET_MEMBER,
+            target_id=operator.id,
+            resource_type=ResourceType.LLM,
+            resource_id=mdl_nm,
+            old_permission=PermissionValue.PERMISSION_NULL.value,
+            new_permission=PermissionValue.PERMISSION_OWNER.value,
+            action_type=PermissionActionType.ACTION_ADD,
+        ):
+            raise ValueError("Permission change log creation failed")
 
     return get_json_result(data=True)
 
@@ -294,21 +327,94 @@ def add_llm():
 @login_required
 @validate_request("llm_factory", "llm_name")
 def delete_llm():
-    req = request.json
-    TenantLLMService.filter_delete(
-        [TenantLLM.tenant_id == current_user.id, TenantLLM.llm_factory == req["llm_factory"],
-         TenantLLM.llm_name == req["llm_name"]])
-    return get_json_result(data=True)
+    req = request.get_json()
+
+    try:
+        operator = UserTenantService.filter_by_tenant_and_user_id(tenant_id=current_user.id, user_id=current_user.id)
+        if not operator:
+            return get_data_error_result(message="Unrecognized identification.")
+        TenantLLMService.filter_delete([TenantLLM.tenant_id == current_user.id, TenantLLM.llm_factory == req["llm_factory"], TenantLLM.llm_name == req["llm_name"]])
+        with DB.atomic():
+            permission_model_list = PermissionService.get_permissions_by_tenant_and_resource_id(tenant_id=current_user.id, resource_id=req["llm_name"], resource_type=ResourceType.LLM)
+            PermissionService.delete(permission_model_list)
+
+            if not PermissionChangeLogService.save(
+                id=get_uuid(),
+                tenant_id=operator.tenant_id,
+                operator_id=operator.id,
+                target_type=PermissionTargetType.TARGET_MEMBER,
+                target_id=operator.id,
+                resource_type=ResourceType.LLM,
+                resource_id=req["llm_name"],
+                old_permission=PermissionValue.PERMISSION_OWNER.value,
+                new_permission=PermissionValue.PERMISSION_NULL.value,
+                action_type=PermissionActionType.ACTION_DELETE,
+            ):
+                raise ValueError("Permission change log creation failed")
+
+        dialogs = DialogService.query(
+            status=StatusEnum.VALID.value,
+            tenant_id=current_user.id,
+        )
+        filtered_dialog_ids = []
+        for dialog in dialogs:
+            if req["llm_name"] == dialog.llm_id:
+                filtered_dialog_ids.append(dialog.id)
+
+        with DB.atomic():
+            for dialog_id in filtered_dialog_ids:
+                dialog_permission_model_list = PermissionService.get_permissions_by_tenant_and_resource_id(tenant_id=current_user.id, resource_id=dialog_id, resource_type=ResourceType.DIALOG)
+                PermissionService.delete(dialog_permission_model_list)
+
+        return get_json_result(data=True)
+
+    except Exception as e:
+        return server_error_response(e)
 
 
-@manager.route('/delete_factory', methods=['POST'])  # noqa: F821
+@manager.route("/delete_factory", methods=["POST"])  # noqa: F821
 @login_required
 @validate_request("llm_factory")
 def delete_factory():
-    req = request.json
-    TenantLLMService.filter_delete(
-        [TenantLLM.tenant_id == current_user.id, TenantLLM.llm_factory == req["llm_factory"]])
-    return get_json_result(data=True)
+    req = request.get_json()
+    try:
+        TenantLLMService.filter_delete([TenantLLM.tenant_id == current_user.id, TenantLLM.llm_factory == req["llm_factory"]])
+        with DB.atomic():
+            permission_model_list = PermissionService.get_permissions_by_tenant_and_resource_id(tenant_id=current_user.id, resource_id=req["llm_factory"], resource_type=ResourceType.LLM)
+            PermissionService.delete(permission_model_list)
+
+            if not PermissionChangeLogService.save(
+                id=get_uuid(),
+                tenant_id=current_user.id,
+                operator_id=current_user.id,
+                target_type=PermissionTargetType.TARGET_MEMBER,
+                target_id=current_user.id,
+                resource_type=ResourceType.LLM,
+                resource_id=req["llm_factory"],
+                old_permission=PermissionValue.PERMISSION_OWNER.value,
+                new_permission=PermissionValue.PERMISSION_NULL.value,
+                action_type=PermissionActionType.ACTION_DELETE,
+            ):
+                raise ValueError("Permission change log creation failed")
+
+        dialogs = DialogService.query(
+            status=StatusEnum.VALID.value,
+            tenant_id=current_user.id,
+        )
+        filtered_dialog_ids = []
+        for dialog in dialogs:
+            if req["llm_factory"] in dialog.llm_id:
+                filtered_dialog_ids.append(dialog.id)
+
+        with DB.atomic():
+            for dialog_id in filtered_dialog_ids:
+                dialog_permission_model_list = PermissionService.get_permissions_by_tenant_and_resource_id(tenant_id=current_user.id, resource_id=dialog_id, resource_type=ResourceType.DIALOG)
+                PermissionService.delete(dialog_permission_model_list)
+
+        return get_json_result(data=True)
+
+    except Exception as e:
+        return server_error_response(e)
 
 
 @manager.route('/my_llms', methods=['GET'])  # noqa: F821
@@ -365,32 +471,85 @@ def my_llms():
 @manager.route('/list', methods=['GET'])  # noqa: F821
 @login_required
 def list_app():
+    """
+    list all available apps for a user, including joined team (tenant)
+    """
+    res = {}
+    tenants = UserTenantService.get_tenants_by_user_id(user_id=current_user.id)
+
     self_deployed = ["Youdao", "FastEmbed", "BAAI", "Ollama", "Xinference", "LocalAI", "LM-Studio", "GPUStack"]
     weighted = ["Youdao", "FastEmbed", "BAAI"] if settings.LIGHTEN != 0 else []
     model_type = request.args.get("model_type")
-    try:
-        objs = TenantLLMService.query(tenant_id=current_user.id)
-        facts = set([o.to_dict()["llm_factory"] for o in objs if o.api_key])
-        llms = LLMService.get_all()
-        llms = [m.to_dict()
-                for m in llms if m.status == StatusEnum.VALID.value and m.fid not in weighted]
-        for m in llms:
-            m["available"] = m["fid"] in facts or m["llm_name"].lower() == "flag-embedding" or m["fid"] in self_deployed
 
-        llm_set = set([m["llm_name"] + "@" + m["fid"] for m in llms])
-        for o in objs:
-            if o.llm_name + "@" + o.llm_factory in llm_set:
-                continue
-            llms.append({"llm_name": o.llm_name, "model_type": o.model_type, "fid": o.llm_factory, "available": True})
+    for tenant in tenants:
+        tenant_id = tenant["tenant_id"]
+        from_other = tenant_id != current_user.id
+        tenant_name = tenant["nickname"]
+        member_id = UserTenantService.filter_by_tenant_and_user_id(tenant_id=tenant_id, user_id=current_user.id)
+        try:
+            objs = TenantLLMService.query(tenant_id=tenant_id)
+            facts = set([o.to_dict()["llm_factory"] for o in objs if o.api_key])
+            available_fact = []
+            llms = []
+            if from_other:
+                for factory in facts:
+                    p = has_permission_for_member(operator_id=member_id, tenant_id=tenant_id, resource_id=factory, resource_type=ResourceType.LLM, permission=PermissionValue.PERMISSION_READ)
+                    if p and p[0]:
+                        available_fact.append(factory)
+                llms = LLMService.get_all()
+                llms = [m.to_dict() for m in llms if m.status == StatusEnum.VALID.value and m.fid not in weighted]
+                for m in llms:
+                    m["available"] = m["fid"] in available_fact
+                    if not m["available"]:
+                        if m["llm_name"].lower() == "flag-embedding":
+                            if has_permission_for_member(
+                                operator_id=member_id, tenant_id=tenant_id, resource_id="flag-embedding", resource_type=ResourceType.LLM, permission=PermissionValue.PERMISSION_READ
+                            )[0]:
+                                m["available"] = True
+                        elif m["fid"] in self_deployed:
+                            if has_permission_for_member(operator_id=member_id, tenant_id=tenant_id, resource_id=m["fid"], resource_type=ResourceType.LLM, permission=PermissionValue.PERMISSION_READ)[
+                                0
+                            ]:
+                                m["available"] = True
 
-        res = {}
-        for m in llms:
-            if model_type and m["model_type"].find(model_type) < 0:
-                continue
-            if m["fid"] not in res:
-                res[m["fid"]] = []
-            res[m["fid"]].append(m)
+            llm_set = set([m["llm_name"] + "@" + m["fid"] for m in llms])
+            for o in objs:
+                if not o.api_key:
+                    continue
+                if o.llm_name + "@" + o.llm_factory in llm_set:
+                    continue
+                llms.append({"llm_name": o.llm_name, "model_type": o.model_type, "fid": o.llm_factory, "available": True})
 
-        return get_json_result(data=res)
-    except Exception as e:
-        return server_error_response(e)
+            for m in llms:
+                m["tenant_id"] = tenant_id
+                m["tenant_name"] = tenant_name
+
+                if model_type and m["model_type"].find(model_type) < 0:
+                    continue
+                if m["fid"] not in res:
+                    res[m["fid"]] = []
+                res[m["fid"]].append(m)
+
+        except Exception as e:
+            return server_error_response(e)
+    return get_json_result(data=res)
+
+
+@manager.route('/set_default_llm', methods=['POST'])  # noqa: F821
+@login_required
+@validate_request("llm_factory", "llm_name")
+def set_default_llm():
+    from api import settings
+    from api.db.services import UserService
+    if not settings.ENABLE_ADMIN or not UserService.is_admin(current_user.id):
+        return get_data_error_result(message="Not authorized.")
+
+    req = request.get_json()
+    llm_factory = req["llm_factory"]
+    llm_name = req["llm_name"]
+    llms = TenantLLMService.query(tenant_id=current_user.id, llm_factory=llm_factory, llm_name=llm_name)
+    if not llms:
+        return get_data_error_result(message="Can't load this LLM configuration: {}/{}")
+
+    TenantLLMService.reset_all_default_model(llms[0])
+    return get_json_result(data=True)

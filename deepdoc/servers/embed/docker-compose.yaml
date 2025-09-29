@@ -1,0 +1,78 @@
+services:
+  bge-eng:
+    build: .
+    image: infiniflow-ai/lit-embed:latest
+    container_name: infiniflow-bge-eng
+    ports:
+      - 4566:8000
+    command: ["bge-large-en-v1.5"]
+    networks:
+      - ragflow
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [ gpu ]
+    restart: always
+
+  bge-zh:
+    build: .
+    image: infiniflow-ai/lit-embed:latest
+    container_name: infiniflow-bge-zh
+    ports:
+      - 4567:8000
+    command: ["bge-large-zh-v1.5"]
+    networks:
+      - ragflow
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [ gpu ]
+    restart: always
+
+  bce:
+    build: .
+    image: infiniflow-ai/lit-embed:latest
+    container_name: infiniflow-bce
+    ports:
+      - 4568:8000
+    command: ["bce-embedding-base_v1"]
+    networks:
+      - ragflow
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [ gpu ]
+    restart: always
+
+  bge-m3:
+    build: .
+    image: infiniflow-ai/lit-embed:latest
+    container_name: infiniflow-bge-m3
+    ports:
+      - 4569:8000
+    command: ["bge-m3"]
+    networks:
+      - ragflow
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [ gpu ]
+    restart: always
+
+
+
+networks:
+  ragflow:
+    driver: bridge

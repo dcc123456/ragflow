@@ -14,13 +14,12 @@
 #  limitations under the License.
 #
 import logging
+import os
 import re
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-
 from flask_login import current_user
 from peewee import fn
-
 from api.db import KNOWLEDGEBASE_FOLDER_NAME, FileSource, FileType, ParserType
 from api.db.db_models import DB, Document, File, File2Document, Knowledgebase
 from api.db.services import duplicate_name
@@ -31,6 +30,7 @@ from api.utils import get_uuid
 from api.utils.file_utils import filename_type, read_potential_broken_pdf, thumbnail_img
 from rag.llm.cv_model import GptV4
 from rag.utils.storage_factory import STORAGE_IMPL
+from api.constants import FILE_NAME_LEN_LIMIT
 
 
 class FileService(CommonService):
@@ -160,23 +160,6 @@ class FileService(CommonService):
         else:
             result_ids.append(folder_id)
         return result_ids
-
-    @classmethod
-    @DB.connection_context()
-    def get_all_file_ids_by_tenant_id(cls, tenant_id):
-        fields = [cls.model.id]
-        files = cls.model.select(*fields).where(cls.model.tenant_id == tenant_id)
-        files.order_by(cls.model.create_time.asc())
-        offset, limit = 0, 100
-        res = []
-        while True:
-            file_batch = files.offset(offset).limit(limit)
-            _temp = list(file_batch.dicts())
-            if not _temp:
-                break
-            res.extend(_temp)
-            offset += limit
-        return res
 
     @classmethod
     @DB.connection_context()
@@ -420,7 +403,7 @@ class FileService(CommonService):
 
     @classmethod
     @DB.connection_context()
-    def upload_document(self, kb, file_objs, user_id):
+    def upload_document(self, kb, file_objs, user_id, restrict=True):
         root_folder = self.get_root_folder(user_id)
         pf_id = root_folder["id"]
         self.init_knowledgebase_docs(pf_id, user_id)
@@ -430,28 +413,36 @@ class FileService(CommonService):
         err, files = [], []
         for file in file_objs:
             try:
-                DocumentService.check_doc_health(kb.tenant_id, file.filename)
-                filename = duplicate_name(DocumentService.query, name=file.filename, kb_id=kb.id)
+                MAX_FILE_NUM_PER_USER = int(os.environ.get('MAX_FILE_NUM_PER_USER', 0))
+                if restrict and MAX_FILE_NUM_PER_USER > 0 and DocumentService.get_doc_count(kb.tenant_id) >= MAX_FILE_NUM_PER_USER:
+                    raise RuntimeError("Exceed the maximum file number of a free user!")
+                if len(file.filename.encode("utf-8")) >= FILE_NAME_LEN_LIMIT:
+                    raise RuntimeError("Exceed the maximum length of file name!")
+
+                filename = duplicate_name(
+                    DocumentService.query,
+                    name=file.filename,
+                    kb_id=kb.id)
                 filetype = filename_type(filename)
                 if filetype == FileType.OTHER.value:
                     raise RuntimeError("This type of file has not been supported yet!")
 
                 location = filename
-                while STORAGE_IMPL.obj_exist(kb.id, location):
+                while STORAGE_IMPL.obj_exist(kb.id, location, kb.tenant_id):
                     location += "_"
 
                 blob = file.read()
                 if filetype == FileType.PDF.value:
                     blob = read_potential_broken_pdf(blob)
-                STORAGE_IMPL.put(kb.id, location, blob)
+                STORAGE_IMPL.put(kb.id, location, blob, kb.tenant_id)
 
                 doc_id = get_uuid()
 
                 img = thumbnail_img(filename, blob)
-                thumbnail_location = ""
+                thumbnail_location = ''
                 if img is not None:
-                    thumbnail_location = f"thumbnail_{doc_id}.png"
-                    STORAGE_IMPL.put(kb.id, thumbnail_location, img)
+                    thumbnail_location = f'thumbnail_{doc_id}.png'
+                    STORAGE_IMPL.put(kb.id, thumbnail_location, img, kb.tenant_id)
 
                 doc = {
                     "id": doc_id,
@@ -512,16 +503,16 @@ class FileService(CommonService):
             return ParserType.AUDIO.value
         if re.search(r"\.(ppt|pptx|pages)$", filename):
             return ParserType.PRESENTATION.value
-        if re.search(r"\.(eml)$", filename):
+        if re.search(r"\.(msg|eml)$", filename):
             return ParserType.EMAIL.value
         return default
 
     @staticmethod
     def get_blob(user_id, location):
         bname = f"{user_id}-downloads"
-        return STORAGE_IMPL.get(bname, location)
+        return STORAGE_IMPL.get(bname, location, user_id)
 
     @staticmethod
     def put_blob(user_id, location, blob):
         bname = f"{user_id}-downloads"
-        return STORAGE_IMPL.put(bname, location, blob)
+        return STORAGE_IMPL.put(bname, location, blob, user_id)

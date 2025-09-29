@@ -8,6 +8,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { Switch } from '@/components/ui/switch';
+import { useDatasetEditButtonDisabled } from '@/hooks/logic-hooks/use-permission';
 import { IChunk } from '@/interfaces/database/knowledge';
 import { CheckedState } from '@radix-ui/react-checkbox';
 import classNames from 'classnames';
@@ -37,6 +38,8 @@ const ChunkCard = ({
   clickChunkCard,
   textMode,
 }: IProps) => {
+  const datasetEditButtonDisabled = useDatasetEditButtonDisabled();
+
   const available = Number(item.available_int);
   const [enabled, setEnabled] = useState(false);
   const { theme } = useTheme();
@@ -117,6 +120,7 @@ const ChunkCard = ({
             onCheckedChange={onChange}
             aria-readonly
             className="!m-0"
+            disabled={datasetEditButtonDisabled}
           />
         </div>
       </div>

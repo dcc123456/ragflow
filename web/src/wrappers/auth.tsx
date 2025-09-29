@@ -1,10 +1,15 @@
 import { useAuth } from '@/hooks/auth-hooks';
-import { redirectToLogin } from '@/utils/authorization-util';
+import { redirectToLogin, redirectToSpecifiedPage } from '@/utils/private-util';
 import { Outlet } from 'umi';
 
 export default () => {
-  const { isLogin } = useAuth();
+  const { isLogin, redirectUrl } = useAuth();
+
   if (isLogin === true) {
+    if (redirectUrl) {
+      redirectToSpecifiedPage(redirectUrl);
+    }
+
     return <Outlet />;
   } else if (isLogin === false) {
     redirectToLogin();

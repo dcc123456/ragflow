@@ -8,6 +8,7 @@ import authorizationUtil, {
 import { notification } from 'antd';
 import axios from 'axios';
 import { convertTheKeysOfTheObjectToSnake } from './common-util';
+import { showStarDialog } from './star-util';
 
 const FAILED_TO_FETCH = 'Failed to fetch';
 
@@ -81,7 +82,7 @@ request.interceptors.request.use(
   (config) => {
     const data = convertTheKeysOfTheObjectToSnake(config.data);
     const params = convertTheKeysOfTheObjectToSnake(config.params);
-
+    showStarDialog(request, config.url);
     const newConfig = { ...config, data, params };
 
     if (!newConfig.skipToken) {

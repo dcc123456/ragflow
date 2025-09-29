@@ -216,6 +216,13 @@ class DocStoreConnection(ABC):
         raise NotImplementedError("Not implemented")
 
     @abstractmethod
+    def count_chunks(self, indexName: str, knowledgebaseIds: list[str]) -> int:
+        """
+        Count chunks of given index and kb ids
+        """
+        raise NotImplementedError("Not implemented")
+
+    @abstractmethod
     def insert(self, rows: list[dict], indexName: str, knowledgebaseId: str = None) -> list[str]:
         """
         Update or insert a bulk of rows

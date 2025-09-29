@@ -1,4 +1,5 @@
 import { ConfirmDeleteDialog } from '@/components/confirm-delete-dialog';
+import { PrivilegeDropdown } from '@/components/privilege/privilege-dropdown';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -8,18 +9,25 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useRemoveDialog } from '@/hooks/use-chat-request';
 import { IDialog } from '@/interfaces/database/chat';
+import {
+  hasManagePermissionPermission,
+  hasOwnerPermission,
+  showEditButton,
+} from '@/utils/permission-util';
 import { PenLine, Trash2 } from 'lucide-react';
 import { MouseEventHandler, PropsWithChildren, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useRenameChat } from './hooks/use-rename-chat';
 
 export function ChatDropdown({
+  chat,
   children,
   showChatRenameModal,
-  chat,
+  showPrivilegeModal,
 }: PropsWithChildren &
   Pick<ReturnType<typeof useRenameChat>, 'showChatRenameModal'> & {
     chat: IDialog;
+    showPrivilegeModal(): void;
   }) {
   const { t } = useTranslation();
   const { removeDialog } = useRemoveDialog();
@@ -37,6 +45,19 @@ export function ChatDropdown({
     removeDialog([chat.id]);
   }, [chat.id, removeDialog]);
 
+  const handlesShowPrivilegeModal: MouseEventHandler<HTMLDivElement> =
+    useCallback(
+      (e) => {
+        e.stopPropagation();
+        showPrivilegeModal();
+      },
+      [showPrivilegeModal],
+    );
+
+  if (!showEditButton(chat.operator_permission)) {
+    return null;
+  }
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>{children}</DropdownMenuTrigger>
@@ -45,19 +66,29 @@ export function ChatDropdown({
           {t('common.rename')} <PenLine />
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <ConfirmDeleteDialog onOk={handleDelete}>
-          <DropdownMenuItem
-            className="text-state-error"
-            onSelect={(e) => {
-              e.preventDefault();
-            }}
-            onClick={(e) => {
-              e.stopPropagation();
-            }}
-          >
-            {t('common.delete')} <Trash2 />
-          </DropdownMenuItem>
-        </ConfirmDeleteDialog>
+        {hasManagePermissionPermission(chat.operator_permission) && (
+          <>
+            <DropdownMenuItem onClick={handlesShowPrivilegeModal}>
+              <PrivilegeDropdown></PrivilegeDropdown>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+          </>
+        )}
+        {hasOwnerPermission(chat.operator_permission) && (
+          <ConfirmDeleteDialog onOk={handleDelete}>
+            <DropdownMenuItem
+              className="text-state-error"
+              onSelect={(e) => {
+                e.preventDefault();
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+              }}
+            >
+              {t('common.delete')} <Trash2 />
+            </DropdownMenuItem>
+          </ConfirmDeleteDialog>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );

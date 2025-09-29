@@ -2,10 +2,10 @@ import { useIsDarkTheme, useTheme } from '@/components/theme-provider';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { ThemeEnum } from '@/constants/common';
 import { useLogout } from '@/hooks/login-hooks';
 import { useSecondPathName } from '@/hooks/route-hook';
 import { cn } from '@/lib/utils';
+import { PrivateRoutes } from '@/private-routes';
 import { Routes } from '@/routes';
 import {
   AlignEndVertical,
@@ -14,6 +14,7 @@ import {
   FileCog,
   LayoutGrid,
   LogOut,
+  ScrollText,
   User,
 } from 'lucide-react';
 import { useCallback } from 'react';
@@ -23,6 +24,7 @@ const menuItems = [
   {
     section: 'Account & collaboration',
     items: [
+      { icon: ScrollText, label: 'Billing', key: PrivateRoutes.Billing },
       { icon: User, label: 'Profile', key: Routes.Profile },
       { icon: LayoutGrid, label: 'Team', key: Routes.Team },
       { icon: Banknote, label: 'Plan', key: Routes.Plan },
@@ -61,7 +63,7 @@ export function SideBar() {
 
   const handleThemeChange = useCallback(
     (checked: boolean) => {
-      setTheme(checked ? ThemeEnum.Dark : ThemeEnum.Light);
+      setTheme(checked ? 'dark' : 'light');
     },
     [setTheme],
   );

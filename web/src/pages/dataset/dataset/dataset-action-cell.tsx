@@ -27,7 +27,11 @@ const FunctionMap = {
 export function DatasetActionCell({
   record,
   showRenameModal,
-}: { record: IDocumentInfo } & UseRenameDocumentShowType) {
+  datasetEditButtonDisabled,
+}: {
+  record: IDocumentInfo;
+  datasetEditButtonDisabled: boolean;
+} & UseRenameDocumentShowType) {
   const { id, run, type } = record;
   const isRunning = isParserRunning(run);
   const isVirtualDocument = type === DocumentType.Virtual;
@@ -50,24 +54,18 @@ export function DatasetActionCell({
   }, [record, showRenameModal]);
 
   return (
-    <section className="flex gap-4 items-center text-text-sub-title-invert opacity-0 group-hover:opacity-100 transition-opacity">
+    <section className="flex gap-4 items-center text-text-sub-title-invert">
       <Button
-        variant="transparent"
-        className="border-none hover:bg-bg-card text-text-primary"
+        variant={'ghost'}
         size={'sm'}
-        disabled={isRunning}
+        disabled={isRunning || datasetEditButtonDisabled}
         onClick={handleRename}
       >
         <PenLine />
       </Button>
       <HoverCard>
         <HoverCardTrigger>
-          <Button
-            variant="transparent"
-            className="border-none hover:bg-bg-card text-text-primary"
-            disabled={isRunning}
-            size={'sm'}
-          >
+          <Button variant="ghost" disabled={isRunning} size={'sm'}>
             <Eye />
           </Button>
         </HoverCardTrigger>
@@ -94,8 +92,7 @@ export function DatasetActionCell({
 
       {isVirtualDocument || (
         <Button
-          variant="transparent"
-          className="border-none hover:bg-bg-card text-text-primary"
+          variant={'ghost'}
           onClick={onDownloadDocument}
           disabled={isRunning}
           size={'sm'}
@@ -105,10 +102,9 @@ export function DatasetActionCell({
       )}
       <ConfirmDeleteDialog onOk={handleRemove}>
         <Button
-          variant="transparent"
-          className="border-none hover:bg-bg-card text-text-primary"
+          variant={'ghost'}
           size={'sm'}
-          disabled={isRunning}
+          disabled={isRunning || datasetEditButtonDisabled}
         >
           <Trash2 />
         </Button>

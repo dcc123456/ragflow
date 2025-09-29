@@ -1,0 +1,108 @@
+services:
+  parser:
+    image: infiniflow-ai/ragflow:latest-slim
+    container_name: ragflow-parser
+    volumes:
+      - ./service_conf.yaml:/ragflow/conf/service_conf.yaml.template
+      - ./ragflow-logs:/ragflow/logs
+      - ./nginx/ragflow.conf:/etc/nginx/conf.d/ragflow.conf
+    env_file: .env
+    environment:
+      - TZ=${TIMEZONE}
+      - HF_ENDPOINT=${HF_ENDPOINT}
+      - MACOS=${MACOS}
+    command: ["--disable-webserver", "--host-id=inf181", "--consumer-no-beg=0", "--consumer-no-end=1"]
+    restart: on-failure
+    # https://docs.docker.com/engine/daemon/prometheus/#create-a-prometheus-configuration
+    # If you're using Docker Desktop, the --add-host flag is optional. This flag makes sure that the host's internal IP gets exposed to the Prometheus container.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+  paddleocr:
+    container_name: paddleocr
+    image: infiniflow-ai/paddleocr
+    ports:
+      - 4570:8000
+    restart: on-failure
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+  bgem3:
+    container_name: bgem3
+    image: infiniflow-ai/embed
+    command: ["bge-m3"]
+    ports:
+      - 4571:8000
+    restart: on-failure
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+  bgeen:
+    container_name: bgeen
+    image: infiniflow-ai/embed
+    command: ["bge-large-en-v1.5"]
+    ports:
+      - 4572:8000
+    restart: on-failure
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+  bgezh:
+    container_name: bgezh
+    image: infiniflow-ai/embed
+    command: ["bge-large-zh-v1.5"]
+    ports:
+      - 4573:8000
+    restart: on-failure
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+  bce:
+    container_name: bce
+    image: infiniflow-ai/embed
+    command: ["bce-embedding-base_v1"]
+    ports:
+      - 4574:8000
+    restart: on-failure
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+  tsr:
+    container_name: tsr
+    image: infiniflow-ai/tsr
+    ports:
+      - 1234:1234
+    restart: on-failure
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

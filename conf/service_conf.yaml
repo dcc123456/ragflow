@@ -1,37 +1,75 @@
 ragflow:
   host: 0.0.0.0
   http_port: 9380
-admin:
-  host: 0.0.0.0
-  http_port: 9381
 mysql:
   name: 'rag_flow'
   user: 'root'
   password: 'infini_rag_flow'
-  host: 'localhost'
+  host: 'mysql'
   port: 5455
-  max_connections: 900
-  stale_timeout: 300
-  max_allowed_packet: 1073741824
-minio:
+  max_connections: 100
+  stale_timeout: 30
+minio_0:
   user: 'rag_flow'
   password: 'infini_rag_flow'
-  host: 'localhost:9000'
+  host: 'minio:9000'
 es:
-  hosts: 'http://localhost:1200'
+  hosts: 'http://es01:1200'
   username: 'elastic'
   password: 'infini_rag_flow'
-os:
-  hosts: 'http://localhost:1201'
-  username: 'admin'
-  password: 'infini_rag_flow_OS_01'
 infinity:
-  uri: 'localhost:23817'
+  uri: 'infinity:23817'
   db_name: 'default_db'
 redis:
   db: 1
   password: 'infini_rag_flow'
-  host: 'localhost:6379'
+  host: 'redis:6379'
+local_embd:
+  bge-large-en-v1.5: http://10.142.0.6:4566/predict
+  bge-large-zh-v1.5: http://10.142.0.6:4567/predict
+  bce-embedding-base_v1: http://10.142.0.6:4568/predict
+  bge-m3: http://10.142.0.6:4569/predict
+billing:
+  stripe_api_key: 'sk_test_51QsGuSHJ6pV3qJnLysNJv0ohOJQCPKO1fhI6hOsR0KLG46SJBK1U8Zjt8nv5LcTwgnNvLmYkbPiYXNMARAsyfWuc00SAik19sc'
+  stripe_endpoint_secret: 'whsec_0fb176adde6131822d01f1c35e1c0179a10cb54f4862734fdeea6186da0a79e4'
+  session_success_url: 'http://127.0.0.1:9222/success.html'
+  session_cancel_url: 'http://127.0.0.1:9222/cancel.html'
+  webhook_url: 'https://demo.ragflow.io/v1/billing/webhook'
+  billing_plans:
+    - name: "trial"
+      quota_members: 1
+      quota_docs: 50
+      quota_chunks: 1000
+      task_priority: "low"
+      price_ids: ""
+    - name: "pro"
+      quota_members: 3
+      quota_docs: 500
+      quota_chunks: 50000
+      task_priority: "high"
+      price_ids: "price_1QsKhBHJ6pV3qJnLw5fapUQR price_1QtKbsHJ6pV3qJnLo76qCsAZ"
+    - name: "team"
+      quota_members: 1000
+      quota_docs: 1000
+      quota_chunks: 100000
+      task_priority: "high"
+      price_ids: "price_1QtKdzHJ6pV3qJnL75cSD7XH price_1QtKeqHJ6pV3qJnLIu0qKIAv"
+
+rabbitmq:
+  user: "kevin"
+  password: 'kevin'
+  host: '192.168.200.143'
+  port: 1672
+  api_port: 1673
+  exchange: "test1"
+
+user_default_llm:
+  factory: 'BAAI'
+  api_key: ''
+  base_url: ''
+  default_models:
+    embedding_model: 'bge-m3'
+
 # postgres:
 #   name: 'rag_flow'
 #   user: 'rag_flow'
@@ -44,12 +82,6 @@ redis:
 #   access_key: 'access_key'
 #   secret_key: 'secret_key'
 #   region: 'region'
-# oss:
-#   access_key: 'access_key'
-#   secret_key: 'secret_key'
-#   endpoint_url: 'http://oss-cn-hangzhou.aliyuncs.com'
-#   region: 'cn-hangzhou'
-#   bucket: 'bucket_name'
 # azure:
 #   auth_type: 'sas'
 #   container_url: 'container_url'
@@ -61,12 +93,6 @@ redis:
 #   secret: 'secret'
 #   tenant_id: 'tenant_id'
 #   container_name: 'container_name'
-# The OSS object storage uses the MySQL configuration above by default. If you need to switch to another object storage service, please uncomment and configure the following parameters.
-# opendal:
-#   scheme: 'mysql'  # Storage type, such as s3, oss, azure, etc.
-#   config:
-#     oss_table: 'opendal_storage'
-# user_default_llm:
 #   factory: 'BAAI'
 #   api_key: 'backup'
 #   base_url: 'backup_base_url'
@@ -83,28 +109,16 @@ redis:
 #       model: 'whisper-large-v3' # alias of name
 #     image2text_model: ''
 # oauth:
-#   oauth2:
-#     display_name: "OAuth2"
-#     client_id: "your_client_id"
-#     client_secret: "your_client_secret"
-#     authorization_url: "https://your-oauth-provider.com/oauth/authorize"
-#     token_url: "https://your-oauth-provider.com/oauth/token"
-#     userinfo_url: "https://your-oauth-provider.com/oauth/userinfo"
-#     redirect_uri: "https://your-app.com/v1/user/oauth/callback/oauth2"
-#   oidc:
-#     display_name: "OIDC"
-#     client_id: "your_client_id"
-#     client_secret: "your_client_secret"
-#     issuer: "https://your-oauth-provider.com/oidc"
-#     scope: "openid email profile"
-#     redirect_uri: "https://your-app.com/v1/user/oauth/callback/oidc"
 #   github:
-#     type: "github"
-#     icon: "github"
-#     display_name: "Github"
-#     client_id: "your_client_id"
-#     client_secret: "your_client_secret"
-#     redirect_uri: "https://your-app.com/v1/user/oauth/callback/github"
+#     client_id: xxxxxxxxxxxxxxxxxxxxxxxxx
+#     secret_key: xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+#     url: https://github.com/login/oauth/access_token
+#   feishu:
+#     app_id: cli_xxxxxxxxxxxxxxxxxxx
+#     app_secret: xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+#     app_access_token_url: https://open.feishu.cn/open-apis/auth/v3/app_access_token/internal
+#     user_access_token_url: https://open.feishu.cn/open-apis/authen/v1/oidc/access_token
+#     grant_type: 'authorization_code'
 # authentication:
 #   client:
 #     switch: false

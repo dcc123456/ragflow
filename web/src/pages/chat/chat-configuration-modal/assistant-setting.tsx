@@ -7,10 +7,10 @@ import { Form, Input, message, Select, Switch, Upload } from 'antd';
 import classNames from 'classnames';
 import { useCallback } from 'react';
 import { ISegmentedContentProps } from '../interface';
+import { MetadataFilterConditions } from './metadata-filter-conditions';
 
 import { DatasetMetadata } from '@/constants/chat';
 import styles from './index.less';
-import { MetadataFilterConditions } from './metadata-filter-conditions';
 
 const emptyResponseField = ['prompt_config', 'empty_response'];
 
@@ -18,6 +18,7 @@ const AssistantSetting = ({
   show,
   form,
   setHasError,
+  disabled,
 }: ISegmentedContentProps) => {
   const { t } = useTranslate('chat');
   const { data } = useFetchTenantInfo(true);
@@ -166,6 +167,7 @@ const AssistantSetting = ({
       <KnowledgeBaseItem
         required={false}
         onChange={handleChange}
+        disabled={disabled}
       ></KnowledgeBaseItem>
       {hasKnowledge && (
         <Form.Item

@@ -18,7 +18,7 @@ import os
 import secrets
 from datetime import date
 from enum import Enum, IntEnum
-
+from flask import jsonify, request
 import rag.utils
 import rag.utils.es_conn
 import rag.utils.infinity_conn
@@ -27,8 +27,14 @@ from api.constants import RAG_FLOW_SERVICE_NAME
 from api.utils.configs import decrypt_database_config, get_base_config
 from api.utils.file_utils import get_project_base_directory
 from rag.nlp import search
+from flask_login import current_user
 
-LIGHTEN = int(os.environ.get("LIGHTEN", "0"))
+
+ENABLE_ADMIN=int(os.environ.get("ENABLE_ADMIN", "0"))
+LIGHTEN = int(os.environ.get("LIGHTEN", "1"))
+BILLING_ENABLED = int(os.environ.get('BILLING_ENABLED', "0"))
+BILLING = {}
+PRICE_PLAN = {}
 
 LLM = None
 LLM_FACTORY = None
@@ -75,9 +81,9 @@ REGISTER_ENABLED = 1
 # sandbox-executor-manager
 SANDBOX_ENABLED = 0
 SANDBOX_HOST = None
-STRONG_TEST_COUNT = int(os.environ.get("STRONG_TEST_COUNT", "8"))
+STRONG_TEST_COUNT = int(os.environ.get("STRONG_TEST_COUNT", "1"))
 
-BUILTIN_EMBEDDING_MODELS = ["BAAI/bge-large-zh-v1.5@BAAI", "maidalun1020/bce-embedding-base_v1@Youdao"]
+BUILTIN_EMBEDDING_MODELS = ["BAAI/bge-large-zh-v1.5@BAAI", "maidalun1020/bce-embedding-base_v1@Youdao", "BAAI/bge-m3@BAAI"]
 
 SMTP_CONF = None
 MAIL_SERVER = ""
@@ -102,25 +108,21 @@ def get_or_create_secret_key():
 
     # Generate a new secure key and warn about it
     import logging
-
     new_key = secrets.token_hex(32)
     logging.warning(f"SECURITY WARNING: Using auto-generated SECRET_KEY. Generated key: {new_key}")
     return new_key
 
 
 def init_settings():
-    global LLM, LLM_FACTORY, LLM_BASE_URL, LIGHTEN, DATABASE_TYPE, DATABASE, FACTORY_LLM_INFOS, REGISTER_ENABLED
-    LIGHTEN = int(os.environ.get("LIGHTEN", "0"))
+    global LLM, LLM_FACTORY, LLM_BASE_URL, LIGHTEN, DATABASE_TYPE, DATABASE, FACTORY_LLM_INFOS, EMBD_BASE_URL
+    LIGHTEN = int(os.environ.get("LIGHTEN", "1"))
     DATABASE_TYPE = os.getenv("DB_TYPE", "mysql")
     DATABASE = decrypt_database_config(name=DATABASE_TYPE)
     LLM = get_base_config("user_default_llm", {}) or {}
-    LLM_DEFAULT_MODELS = LLM.get("default_models", {}) or {}
-    LLM_FACTORY = LLM.get("factory", "") or ""
-    LLM_BASE_URL = LLM.get("base_url", "") or ""
-    try:
-        REGISTER_ENABLED = int(os.environ.get("REGISTER_ENABLED", "1"))
-    except Exception:
-        pass
+    LLM_FACTORY = LLM.get("factory") or {}
+    LLM_BASE_URL = LLM.get("llm_base_url", "") or ""
+    EMBD_BASE_URL = LLM.get("embed_base_url", "") or ""
+    LLM_DEFAULT_MODELS = LLM.get("default_models", {})
 
     try:
         with open(os.path.join(get_project_base_directory(), "conf", "llm_factories.json"), "r") as f:
@@ -176,21 +178,27 @@ def init_settings():
 
     global DOC_ENGINE, docStoreConn, retrievaler, kg_retrievaler
     DOC_ENGINE = os.environ.get("DOC_ENGINE", "elasticsearch")
-    # DOC_ENGINE = os.environ.get('DOC_ENGINE', "opensearch")
     lower_case_doc_engine = DOC_ENGINE.lower()
     if lower_case_doc_engine == "elasticsearch":
         docStoreConn = rag.utils.es_conn.ESConnection()
     elif lower_case_doc_engine == "infinity":
         docStoreConn = rag.utils.infinity_conn.InfinityConnection()
     elif lower_case_doc_engine == "opensearch":
-        docStoreConn = rag.utils.opensearch_conn.OSConnection()
+        docStoreConn = rag.utils.opensearch_coon.OSConnection()
     else:
         raise Exception(f"Not supported doc engine: {DOC_ENGINE}")
 
     retrievaler = search.Dealer(docStoreConn)
     from graphrag import search as kg_search
-
     kg_retrievaler = kg_search.KGSearch(docStoreConn)
+
+    global BILLING
+    BILLING = get_base_config("billing", {})
+    for plan in BILLING.get("billing_plans", []):
+        plan_name = plan.get("name")
+        price_ids = plan.get("price_ids", "").split()
+        for price_id in price_ids:
+            PRICE_PLAN[price_id] = plan_name
 
     if int(os.environ.get("SANDBOX_ENABLED", "0")):
         global SANDBOX_HOST
@@ -210,6 +218,135 @@ def init_settings():
     if mail_default_sender and len(mail_default_sender) >= 2:
         MAIL_DEFAULT_SENDER = (mail_default_sender[0], mail_default_sender[1])
     MAIL_FRONTEND_URL = SMTP_CONF.get("mail_frontend_url", "")
+
+    try:
+        REDIS = decrypt_database_config(name="redis")
+    except Exception:
+        REDIS = {}
+        pass
+
+    redis_password = REDIS.get("password")
+    redis_host = REDIS.get("host")
+    redis_db = REDIS.get("db")
+
+    from api.apps import app
+    from flask_limiter import Limiter
+    from flask_limiter.util import get_remote_address
+
+    app.config.update(
+        RATELIMIT_STORAGE_URI=f"redis://:{redis_password}@{redis_host}/{redis_db}",
+        RATELIMIT_HEADERS_ENABLED=True
+    )
+
+    def extract_tenant_id():
+        # query
+        tid = request.args.get("tenant_id")
+        if tid:
+            return str(tid)
+
+        # json
+        if request.is_json:
+            tid = (request.get_json(silent=True) or {}).get("tenant_id")
+            if tid:
+                return str(tid)
+
+        # form
+        tid = request.form.get("tenant_id")
+        if tid:
+            return str(tid)
+
+        return None
+
+    def extract_identity():
+        tenant = extract_tenant_id()
+
+        user = None
+        if hasattr(current_user, "is_authenticated") and current_user.is_authenticated:
+            uid = getattr(current_user, "id", None)
+            if uid is not None:
+                user = str(uid)
+
+        raw_auth = request.headers.get("Authorization")
+        token = None
+        if raw_auth:
+            token = raw_auth.split()[-1]
+
+        ip = get_remote_address()
+
+        return {
+            "tenant": tenant,
+            "user": user,
+            "token": token,
+            "ip": ip
+        }
+
+    def key_func_global():
+        ident = extract_identity()
+        endpoint = request.endpoint or "unknown"
+        if ident["tenant"]:
+            return f"tenant:{ident['tenant']}|ep:{endpoint}"
+        if ident["user"]:
+            return f"user:{ident['user']}|ep:{endpoint}"
+        if ident["token"]:
+            return f"tok:{ident['token']}|ep:{endpoint}"
+        return f"ip:{ident['ip']}|ep:{endpoint}"
+
+    limiter = Limiter(
+        app=app,
+        key_func=key_func_global,
+        default_limits=[
+            "100 per second",
+            "200 per minute",
+            "8000 per hour"
+        ],
+    )
+
+    TENANT_QUOTAS = {
+        "vip_tenant_limit": "200 per minute",
+        "default_tenant_limit": "100 per minute",
+    }
+
+    def tenant_limit_value():
+        tid = extract_tenant_id() or "no-tenant"
+        if tid in []:
+            return TENANT_QUOTAS.get("vip_tenant_limit", "100 per minute")
+        else:
+            return TENANT_QUOTAS.get("default_tenant_limit", "100 per minute")
+
+    @limiter.shared_limit(tenant_limit_value, scope=lambda *args, **kwargs: f"tenant:{extract_identity().get('tenant') or 'no-tenant'}")
+    def tenant_bucket():
+        pass
+
+    @limiter.shared_limit("200 per minute", scope=lambda *args, **kwargs: f"user:{extract_identity().get('user') or 'anon'}")
+    def user_bucket():
+        pass
+
+    @limiter.shared_limit("200 per minute", scope=lambda *args, **kwargs: f"token:{extract_identity().get('token') or 'no-token'}")
+    def token_bucket():
+        pass
+
+    # @limiter.shared_limit("120 per minute", scope=lambda: f"ip:{get_remote_address() or 'unknown'}")
+    # def ip_bucket():
+    #     print("ip_limit", flush=True)
+    #     pass
+
+    @app.before_request
+    def apply_shared_buckets():
+        # white lis
+        # if request.endpoint in {"healthcheck", "static"} or request.method == "OPTIONS":
+        #     return
+        tenant_bucket()
+        user_bucket()
+        token_bucket()
+        # ip_bucket()
+
+    @app.errorhandler(429)
+    def ratelimit_handler(e):
+        return jsonify({
+            "error": "rate_limited",
+            "message": "Too many requests, please slow down.",
+            "detail": str(e.description)
+        }), 429
 
 
 class CustomEnum(Enum):

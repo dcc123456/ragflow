@@ -14,10 +14,11 @@ import {
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
 import { IDocumentInfo } from '@/interfaces/database/document';
+import { cn } from '@/lib/utils';
 import { CircleX, RefreshCw } from 'lucide-react';
-import { useCallback, useMemo } from 'react';
+import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { DocumentType, RunningStatus } from './constant';
+import { RunningStatus } from './constant';
 import { ParsingCard, PopoverContent } from './parsing-card';
 import { UseChangeDocumentParserShowType } from './use-change-document-parser';
 import { useHandleRunDocumentByIds } from './use-run-document';
@@ -37,7 +38,11 @@ export function ParsingStatusCell({
   record,
   showChangeParserModal,
   showSetMetaModal,
-}: { record: IDocumentInfo } & UseChangeDocumentParserShowType &
+  datasetEditButtonDisabled,
+}: {
+  record: IDocumentInfo;
+  datasetEditButtonDisabled: boolean;
+} & UseChangeDocumentParserShowType &
   UseSaveMetaShowType) {
   const { t } = useTranslation();
   const { run, parser_id, progress, chunk_num, id } = record;
@@ -50,6 +55,9 @@ export function ParsingStatusCell({
   const handleOperationIconClick =
     (shouldDelete: boolean = false) =>
     () => {
+      if (datasetEditButtonDisabled) {
+        return;
+      }
       handleRunDocumentByIds(record.id, isRunning, shouldDelete);
     };
 
@@ -61,13 +69,9 @@ export function ParsingStatusCell({
     showSetMetaModal(record);
   }, [record, showSetMetaModal]);
 
-  const showParse = useMemo(() => {
-    return record.type !== DocumentType.Virtual;
-  }, [record]);
-
   return (
     <section className="flex gap-8 items-center">
-      <div className="w-[100px] text-ellipsis overflow-hidden flex items-center justify-between">
+      <div className="w-fit flex items-center justify-between">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant={'transparent'} className="border-none" size={'sm'}>
@@ -84,42 +88,44 @@ export function ParsingStatusCell({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-      {showParse && (
-        <>
-          <ConfirmDeleteDialog
-            title={t(`knowledgeDetails.redo`, { chunkNum: chunk_num })}
-            hidden={isZeroChunk || isRunning}
-            onOk={handleOperationIconClick(true)}
-            onCancel={handleOperationIconClick(false)}
+      <ConfirmDeleteDialog
+        title={t(`knowledgeDetails.redo`, { chunkNum: chunk_num })}
+        hidden={isZeroChunk || isRunning}
+        onOk={handleOperationIconClick(true)}
+        onCancel={handleOperationIconClick(false)}
+      >
+        <div
+          className="flex items-center gap-3"
+          onClick={
+            isZeroChunk || isRunning
+              ? handleOperationIconClick(false)
+              : () => {}
+          }
+        >
+          <Separator orientation="vertical" className="h-2.5" />
+          <div
+            className={cn('cursor-pointer', {
+              'cursor-not-allowed': datasetEditButtonDisabled,
+            })}
           >
-            <div
-              className="cursor-pointer flex items-center gap-3"
-              onClick={
-                isZeroChunk || isRunning
-                  ? handleOperationIconClick(false)
-                  : () => {}
-              }
-            >
-              <Separator orientation="vertical" className="h-2.5" />
-              {operationIcon}
+            {operationIcon}
+          </div>
+        </div>
+      </ConfirmDeleteDialog>
+      {isParserRunning(run) ? (
+        <HoverCard>
+          <HoverCardTrigger asChild>
+            <div className="flex items-center gap-1">
+              <Progress value={p} className="h-1 flex-1 min-w-10" />
+              {p}%
             </div>
-          </ConfirmDeleteDialog>
-          {isParserRunning(run) ? (
-            <HoverCard>
-              <HoverCardTrigger asChild>
-                <div className="flex items-center gap-1">
-                  <Progress value={p} className="h-1 flex-1 min-w-10" />
-                  {p}%
-                </div>
-              </HoverCardTrigger>
-              <HoverCardContent className="w-[40vw]">
-                <PopoverContent record={record}></PopoverContent>
-              </HoverCardContent>
-            </HoverCard>
-          ) : (
-            <ParsingCard record={record}></ParsingCard>
-          )}
-        </>
+          </HoverCardTrigger>
+          <HoverCardContent className="w-[40vw]">
+            <PopoverContent record={record}></PopoverContent>
+          </HoverCardContent>
+        </HoverCard>
+      ) : (
+        <ParsingCard record={record}></ParsingCard>
       )}
     </section>
   );

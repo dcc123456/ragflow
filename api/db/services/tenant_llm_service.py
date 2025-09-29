@@ -14,18 +14,37 @@
 #  limitations under the License.
 #
 import logging
+import time
+
+import peewee
 from langfuse import Langfuse
+from peewee import JOIN
+
 from api import settings
-from api.db import LLMType
-from api.db.db_models import DB, LLMFactories, TenantLLM
+from api.db import LLMType, PermissionValue, StatusEnum, ResourceType, UserTenantRole
+from api.db.db_models import DB, LLMFactories, TenantLLM, Permission
 from api.db.services.common_service import CommonService
 from api.db.services.langfuse_service import TenantLangfuseService
-from api.db.services.user_service import TenantService
+from api.db.services.user_service import TenantService, UserTenantService
 from rag.llm import ChatModel, CvModel, EmbeddingModel, RerankModel, Seq2txtModel, TTSModel
 
 
 class LLMFactoriesService(CommonService):
     model = LLMFactories
+
+    @classmethod
+    @DB.connection_context()
+    def factory_with_permission(cls, user_id):
+        permission_conditions = (Permission.permission >= PermissionValue.PERMISSION_READ.value) & (Permission.status == StatusEnum.VALID.value) & (Permission.resource_type == ResourceType.LLM)
+        query = (
+            cls.model.select(cls.model.name, Permission.tenant_id)
+            .join(Permission, JOIN.LEFT_OUTER, on=((Permission.resource_id == cls.model.name) & (Permission.member_id.endswith(peewee.fn.CONCAT("\_", user_id))) & (permission_conditions)))
+            .where(
+                (cls.model.status == 1)
+                & (Permission.id.is_null(False))
+            )
+        )
+        return list(query.dicts())
 
 
 class TenantLLMService(CommonService):
@@ -34,7 +53,7 @@ class TenantLLMService(CommonService):
     @classmethod
     @DB.connection_context()
     def get_api_key(cls, tenant_id, model_name):
-        mdlnm, fid = TenantLLMService.split_model_name_and_factory(model_name)
+        mdlnm, fid, _ = TenantLLMService.split_model_name_and_factory(model_name)
         if not fid:
             objs = cls.query(tenant_id=tenant_id, llm_name=mdlnm)
         else:
@@ -62,24 +81,48 @@ class TenantLLMService(CommonService):
 
         return list(objs)
 
+    @classmethod
+    @DB.connection_context()
+    def get_my_llms_group_by_factory(cls, tenant_id):
+        fields = [cls.model.llm_factory, LLMFactories.logo, LLMFactories.tags, cls.model.model_type, cls.model.llm_name, cls.model.used_tokens]
+        objs = (
+            cls.model.select(*fields)
+            .join(LLMFactories, on=(cls.model.llm_factory == LLMFactories.name))
+            .where(cls.model.tenant_id == tenant_id, ~cls.model.api_key.is_null())
+            .group_by(cls.model.llm_factory)
+            .dicts()
+        )
+
+        return list(objs)
+
     @staticmethod
     def split_model_name_and_factory(model_name):
         arr = model_name.split("@")
         if len(arr) < 2:
-            return model_name, None
-        if len(arr) > 2:
-            return "@".join(arr[0:-1]), arr[-1]
+            return model_name, None, None
 
-        # model name must be xxx@yyy
+        model, factory_part = arr[0], arr[1]
+
+        if "#" in factory_part:
+            factory_and_tenant = factory_part.split("#")
+            if len(factory_and_tenant) == 2:
+                factory, tenant_id = factory_and_tenant
+            elif len(factory_and_tenant) == 1:
+                factory, tenant_id = factory_and_tenant[0], None
+            else:
+                return model_name, None, None
+        else:
+            factory, tenant_id = factory_part, None
+
         try:
             model_factories = settings.FACTORY_LLM_INFOS
             model_providers = set([f["name"] for f in model_factories])
-            if arr[-1] not in model_providers:
-                return model_name, None
-            return arr[0], arr[-1]
+            if factory not in model_providers:
+                return model_name, None, None
+            return model, factory, tenant_id
         except Exception as e:
-            logging.exception(f"TenantLLMService.split_model_name_and_factory got exception: {e}")
-        return model_name, None
+            logging.exception(f"TenantLLMService.split_model_name_and_factory got unexpected exception: {e}")
+        return model_name, None, None
 
     @classmethod
     @DB.connection_context()
@@ -104,10 +147,12 @@ class TenantLLMService(CommonService):
         else:
             assert False, "LLM type error"
 
-        model_config = cls.get_api_key(tenant_id, mdlnm)
-        mdlnm, fid = TenantLLMService.split_model_name_and_factory(mdlnm)
-        if not model_config:  # for some cases seems fid mismatch
+        mdlnm, fid, other_tenant_id = TenantLLMService.split_model_name_and_factory(mdlnm)
+        if other_tenant_id:
+            model_config = cls.get_api_key(other_tenant_id, mdlnm)
+        else:
             model_config = cls.get_api_key(tenant_id, mdlnm)
+
         if model_config:
             model_config = model_config.to_dict()
             llm = LLMService.query(llm_name=mdlnm) if not fid else LLMService.query(llm_name=mdlnm, fid=fid)
@@ -121,12 +166,12 @@ class TenantLLMService(CommonService):
                 if llm and llm[0].fid in ["Youdao", "FastEmbed", "BAAI"]:
                     model_config = {"llm_factory": llm[0].fid, "api_key": "", "llm_name": mdlnm, "api_base": ""}
             if not model_config:
-                if mdlnm == "flag-embedding":
-                    model_config = {"llm_factory": "Tongyi-Qianwen", "api_key": "", "llm_name": llm_name, "api_base": ""}
+                if mdlnm in ["bge-large-zh-v1.5", "bge-large-en-v1.5", "bge-m3"]:
+                    model_config = {"llm_factory": "BAAI", "api_key": "", "llm_name": mdlnm, "api_base": ""}
                 else:
                     if not mdlnm:
                         raise LookupError(f"Type of {llm_type} model is not set.")
-                    raise LookupError("Model({}) not authorized".format(mdlnm))
+                    raise LookupError("Model({}/{}) not authorized".format(fid, mdlnm))
         return model_config
 
     @classmethod
@@ -147,11 +192,18 @@ class TenantLLMService(CommonService):
         if llm_type == LLMType.IMAGE2TEXT.value:
             if model_config["llm_factory"] not in CvModel:
                 return
+            if model_config["api_key"] == "1STPWDKRNYXXKR7HGBUT23VVCOS76HRWQZCNHSUQ":
+                raise Exception("API key out of quota. Please set API key of LLM at 'Settings >> Model Providers >> System Model Settings'.")
             return CvModel[model_config["llm_factory"]](model_config["api_key"], model_config["llm_name"], lang, base_url=model_config["api_base"], **kwargs)
 
         if llm_type == LLMType.CHAT.value:
             if model_config["llm_factory"] not in ChatModel:
                 return
+            if model_config["api_key"] == "1STPWDKRNYXXKR7HGBUT23VVCOS76HRWQZCNHSUQ":
+                raise Exception("API key out of quota. Please set API key of LLM at 'Settings >> Model Providers >> System Model Settings'.")
+            if kwargs.get("graphrag") and tenant_id not in ["a6529844d6e511ee87c20242ac180006"] and model_config["api_key"] == "sk-1a10983de4824cf6a140ef5e9d177803":
+                raise Exception("API key out of quota. Please set API key of LLM at 'Settings >> Model Providers >> System Model Settings'.")
+
             return ChatModel[model_config["llm_factory"]](model_config["api_key"], model_config["llm_name"], base_url=model_config["api_base"], **kwargs)
 
         if llm_type == LLMType.SPEECH2TEXT:
@@ -189,7 +241,7 @@ class TenantLLMService(CommonService):
             logging.error(f"LLM type error: {llm_type}")
             return 0
 
-        llm_name, llm_factory = TenantLLMService.split_model_name_and_factory(mdlnm)
+        llm_name, llm_factory, _ = TenantLLMService.split_model_name_and_factory(mdlnm)
 
         try:
             num = (
@@ -209,11 +261,6 @@ class TenantLLMService(CommonService):
         objs = cls.model.select().where((cls.model.llm_factory == "OpenAI"), ~(cls.model.llm_name == "text-embedding-3-small"), ~(cls.model.llm_name == "text-embedding-3-large")).dicts()
         return list(objs)
 
-    @classmethod
-    @DB.connection_context()
-    def delete_by_tenant_id(cls, tenant_id):
-        return cls.model.delete().where(cls.model.tenant_id == tenant_id).execute()
-
     @staticmethod
     def llm_id2llm_type(llm_id: str) -> str | None:
         from api.db.services.llm_service import LLMService
@@ -224,18 +271,72 @@ class TenantLLMService(CommonService):
                 if llm_id == llm["llm_name"]:
                     return llm["model_type"].split(",")[-1]
 
+        for llm in TenantLLMService.query(llm_name=llm_id):
+            return llm.model_type
+
         for llm in LLMService.query(llm_name=llm_id):
             return llm.model_type
 
-        llm = TenantLLMService.get_or_none(llm_name=llm_id)
-        if llm:
-            return llm.model_type
-        for llm in TenantLLMService.query(llm_name=llm_id):
-            return llm.model_type
+    @classmethod
+    @DB.connection_context()
+    def all_llm(cls):
+        fields = [
+            cls.model.llm_name,
+            cls.model.model_type,
+            cls.model.llm_factory.alias("fid")
+        ]
+        objs = cls.model.select(*fields).distinct().dicts()
+        return list(objs)
+
+    @classmethod
+    @DB.connection_context()
+    def reset_all_default_model(cls, llm):
+        cls.model.update(
+            llm_factory=llm.llm_factory,
+            llm_name=llm.llm_name,
+            model_type=llm.model_type,
+            api_key=llm.api_key,
+            api_base=llm.api_base,
+            max_tokens=llm.max_tokens
+        ).where(
+            cls.model.llm_factory == llm.llm_factory,
+            cls.model.llm_name == llm.llm_name
+        ).execute()
+        _llm = llm.to_dict()
+        llm_type = llm.model_type
+        llm_name = llm.llm_name + "@" + llm.llm_factory
+        info = {}
+        if llm_type == LLMType.EMBEDDING.value:
+            info["embd_id"] = llm_name
+        elif llm_type == LLMType.SPEECH2TEXT.value:
+            info["asr_id"] = llm_name
+        elif llm_type == LLMType.IMAGE2TEXT.value:
+            info["img2txt_id"] = llm_name
+        elif llm_type == LLMType.CHAT.value:
+            info["llm_id"] = llm_name
+        elif llm_type == LLMType.RERANK.value:
+            info["rerank_id"] = llm_name
+        elif llm_type == LLMType.TTS.value:
+            info["tts_id"] = llm_name
+        else:
+            assert False, "LLM type error"
+        for t in TenantService.get_all():
+            if t.id == llm.tenant_id:
+                continue
+            if cls.model.select().where(
+                cls.model.tenant_id == t.id,
+                cls.model.llm_factory == llm.llm_factory,
+                cls.model.llm_name == llm.llm_name
+            ).count() > 0:
+                continue
+            _llm["tenant_id"] = t.id
+            cls.save(**_llm)
+            TenantService.update_by_id(t.id, info)
 
 
 class LLM4Tenant:
     def __init__(self, tenant_id, llm_type, llm_name=None, lang="Chinese", **kwargs):
+        from api.db.services.tenant_llm_service import TenantLLMService
         self.tenant_id = tenant_id
         self.llm_type = llm_type
         self.llm_name = llm_name
@@ -247,11 +348,86 @@ class LLM4Tenant:
         self.is_tools = model_config.get("is_tools", False)
         self.verbose_tool_use = kwargs.get("verbose_tool_use")
 
+        e, tenant = TenantService.get_by_id(tenant_id)
+        if not e or not tenant:
+            raise ValueError("Internal error")
+        llm_id = llm_name or tenant.llm_id
+        self.llm_name, factory, other_tenant_id = TenantLLMService.split_model_name_and_factory(llm_id)
+
         langfuse_keys = TenantLangfuseService.filter_by_tenant(tenant_id=tenant_id)
         self.langfuse = None
         if langfuse_keys:
             langfuse = Langfuse(public_key=langfuse_keys.public_key, secret_key=langfuse_keys.secret_key, host=langfuse_keys.host)
             if langfuse.auth_check():
                 self.langfuse = langfuse
-                trace_id = self.langfuse.create_trace_id()
-                self.trace_context = {"trace_id": trace_id}
+                self.trace = self.langfuse.trace(name=f"{self.llm_type}-{self.llm_name}")
+        else:
+            self.langfuse = None
+
+        if not other_tenant_id or other_tenant_id == tenant_id:
+            self.tenant_id = tenant_id
+            self.mdl = TenantLLMService.model_instance(tenant_id=self.tenant_id, llm_type=self.llm_type, llm_name=self.llm_name, lang=lang)
+            assert self.mdl, "Can't find model for {}/{}/{}".format(self.tenant_id, self.llm_type, self.llm_name)
+            model_config = TenantLLMService.get_model_config(self.tenant_id, self.llm_type, self.llm_name)
+            self.max_length = model_config.get("max_tokens", 8192)
+        else:
+            member = UserTenantService.filter_by_tenant_and_user_id(tenant_id=other_tenant_id, user_id=tenant_id)
+            if not member:
+                raise ValueError("Unrecognized identification.")
+
+            self.tenant_id = other_tenant_id
+            self.mdl = TenantLLMService.model_instance(tenant_id=other_tenant_id, llm_type=self.llm_type, llm_name=self.llm_name, lang=lang)
+            assert self.mdl, "Can't find model for {}/{}/{}".format(other_tenant_id, self.llm_type, self.llm_name)
+            model_config = TenantLLMService.get_model_config(other_tenant_id, self.llm_type, self.llm_name)
+            self.max_length = model_config.get("max_tokens", 8192)
+
+
+
+def user_register(user_id, user):
+    from api.db.services.file_service import FileService
+    from api.db import FileType
+    from api.db.services import UserService
+    from api.db.services.llm_service import get_init_tenant_llm
+    from api.utils import get_uuid
+
+    user["id"] = user_id
+    try:
+        if not UserService.save(**user):
+            return
+    except Exception:
+        return
+
+    tenant = {
+        "id": user_id,
+        "name": user["nickname"] + "‘s Kingdom",
+        "llm_id": settings.CHAT_MDL,
+        "embd_id": settings.EMBEDDING_MDL,
+        "asr_id": settings.ASR_MDL,
+        "parser_ids": settings.PARSERS,
+        "img2txt_id": settings.IMAGE2TEXT_MDL,
+        "rerank_id": settings.RERANK_MDL,
+    }
+    usr_tenant = {
+        "tenant_id": user_id,
+        "user_id": user_id,
+        "invited_by": user_id,
+        "role": UserTenantRole.OWNER,
+    }
+    file_id = get_uuid()
+    file = {
+        "id": file_id,
+        "parent_id": file_id,
+        "tenant_id": user_id,
+        "created_by": user_id,
+        "name": "/",
+        "type": FileType.FOLDER.value,
+        "size": 0,
+        "location": "",
+    }
+    tenant_llm = get_init_tenant_llm(user_id)
+    TenantService.insert(**tenant)
+    UserTenantService.insert(**usr_tenant)
+    TenantLLMService.insert_many(tenant_llm)
+    FileService.insert(file)
+    time.sleep(3)
+    return UserService.query(email=user["email"])

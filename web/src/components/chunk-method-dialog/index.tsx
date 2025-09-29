@@ -14,6 +14,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { DocumentParserType } from '@/constants/knowledge';
+import { useDatasetEditButtonDisabled } from '@/hooks/logic-hooks/use-permission';
 import { useFetchKnowledgeBaseConfiguration } from '@/hooks/use-knowledge-request';
 import { IModalProps } from '@/interfaces/common';
 import { IParserConfig } from '@/interfaces/database/document';
@@ -85,6 +86,8 @@ export function ChunkMethodDialog({
   parserConfig,
   loading,
 }: IProps) {
+  const datasetEditButtonDisabled = useDatasetEditButtonDisabled();
+
   const { t } = useTranslation();
 
   const { parserList } = useFetchParserListOnMount(documentExtension);
@@ -326,7 +329,12 @@ export function ChunkMethodDialog({
           </form>
         </Form>
         <DialogFooter>
-          <ButtonLoading type="submit" form={FormId} loading={loading}>
+          <ButtonLoading
+            type="submit"
+            form={FormId}
+            loading={loading}
+            disabled={datasetEditButtonDisabled}
+          >
             {t('common.save')}
           </ButtonLoading>
         </DialogFooter>
