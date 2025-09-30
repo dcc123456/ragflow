@@ -173,7 +173,7 @@ def init_settings():
     CLIENT_AUTHENTICATION = AUTHENTICATION_CONF.get("client", {}).get("switch", False)
     HTTP_APP_KEY = AUTHENTICATION_CONF.get("client", {}).get("http_app_key")
     GITHUB_OAUTH = get_base_config("oauth", {}).get("github")
-    LDAP_OAUTH = get_base_config("oauth", {}).get("ldap")
+    LDAP_OAUTH = get_base_config("oauth", {}).get("ldap", {})
     FEISHU_OAUTH = get_base_config("oauth", {}).get("feishu")
 
     OAUTH_CONFIG = get_base_config("oauth", {})
