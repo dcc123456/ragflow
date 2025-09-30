@@ -119,6 +119,11 @@ user_default_llm:
 #     app_access_token_url: https://open.feishu.cn/open-apis/auth/v3/app_access_token/internal
 #     user_access_token_url: https://open.feishu.cn/open-apis/authen/v1/oidc/access_token
 #     grant_type: 'authorization_code'
+#   ldap:
+#     url: ldaps://ad01.mycompany.com:636
+#     dn: CN=svc_ldap_app, OU=Service Accounts, DC=mycompany, DC=com
+#     password: xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+#
 # authentication:
 #   client:
 #     switch: false

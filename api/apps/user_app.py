@@ -15,17 +15,15 @@
 #
 import logging
 import json
+import os
 import re
+import base64
 import secrets
-import time
 from datetime import datetime
-
 from flask import request, session, redirect
 from flask_login import login_required, current_user, login_user, logout_user
-
 from api.db.db_models import TenantLLM
-from api.db.services.llm_service import get_init_tenant_llm, LLMService
-from api.db.services.tenant_llm_service import TenantLLMService, user_register
+from api.db.services.tenant_llm_service import user_register
 from api.utils.api_utils import (
     server_error_response,
     validate_request,
@@ -36,18 +34,71 @@ from api.utils import (
     get_format_time,
     download_img,
     current_timestamp,
-    datetime_format,
+    datetime_format
 )
 from api.utils.crypt import decrypt, decrypt2
-from api.db import UserTenantRole, FileType
 from api import settings
 from api.db.services.user_service import UserService, TenantService, UserTenantService
-from api.db.services.file_service import FileService
 from api.utils.api_utils import get_json_result, construct_response
 from rag.utils.redis_conn import REDIS_CONN
-
 from api.utils.file_utils import get_project_base_directory
 from api.utils.sync_icbccs_user import icbccs_user_register
+
+
+def ldap_login():
+    import ldap
+    email= request.json.get("email", "")
+    conn = ldap.initialize(settings.LDAP_OAUTH.get("url"))
+    conn.set_option(ldap.OPT_REFERRALS, 0)
+    dn = settings.LDAP_OAUTH.get("dn")
+    conn.simple_bind_s(dn, settings.LDAP_OAUTH.get("password"))
+    search_filter = f"(mail={email})"
+    attribute_list = ['cn', 'mail', 'uid', 'givenName', 'sn', 'thumbnailPhoto']
+    result = conn.search_s(",".join(dn.split(",")[2:]), ldap.SCOPE_SUBTREE, search_filter, attribute_list)
+    if not result:
+        return get_json_result(
+            data=False,
+            code=settings.RetCode.AUTHENTICATION_ERROR,
+            message=f"Email: {email} is not registered!",
+        )
+    login_password = base64.b64decode(decrypt(request.json.get("password")))
+    print(conn.simple_bind_s(result[0][0], login_password), "@@@@@@@@@@@@@@@@@@@@@@@@", flush=True)
+    usr = result[1]
+    name = usr["cn"]
+    avatar = usr["thumbnailPhoto"]
+
+    users = UserService.query(email=email)
+    if users:
+        user = users[0]
+        response_data = user.to_json()
+        user.access_token = get_uuid()
+        login_user(user)
+        user.update_time = (current_timestamp(),)
+        user.update_date = (datetime_format(datetime.now()),)
+        user.save()
+        msg = "Welcome back!"
+        return construct_response(data=response_data, auth=user.get_id(), message=msg)
+
+    users = user_register(
+        get_uuid(),
+        {
+            "access_token": session["access_token"],
+            "email": email,
+            "avatar": avatar,
+            "nickname": name,
+            "login_channel": "AD",
+            "last_login_time": get_format_time(),
+            "is_superuser": False,
+        },
+    )
+    if not users:
+        raise Exception(f"Fail to register {email}.")
+    if len(users) > 1:
+        raise Exception(f"Same email: {email} exists!")
+
+    user = users[0]
+    login_user(user)
+    return redirect("/?auth=%s" % user.get_id())
 
 
 @manager.route("/login", methods=["POST", "GET"])  # noqa: F821
@@ -85,6 +136,9 @@ def login():
         return get_json_result(
             data=False, code=settings.RetCode.AUTHENTICATION_ERROR, message="Unauthorized!"
         )
+
+    if settings.LDAP_OAUTH.get("url"):
+        return ldap_login()
 
     email = request.json.get("email", "")
     users = UserService.query(email=email)
