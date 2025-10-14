@@ -256,6 +256,49 @@ class Docx(DocxParser):
             tbls.append(((None, html), ""))
         return new_line, tbls
 
+    def to_markdown(self, filename=None, binary=None, inline_images: bool = True):
+        """
+        This function uses mammoth, licensed under the BSD 2-Clause License.
+        """
+
+        import base64
+        import uuid
+
+        import mammoth
+        from markdownify import markdownify
+
+        docx_file = BytesIO(binary) if binary else open(filename, "rb")
+
+        def _convert_image_to_base64(image):
+            try:
+                with image.open() as image_file:
+                    image_bytes = image_file.read()
+                encoded = base64.b64encode(image_bytes).decode("utf-8")
+                base64_url = f"data:{image.content_type};base64,{encoded}"
+
+                alt_name = "image"
+                alt_name = f"img_{uuid.uuid4().hex[:8]}"
+
+                return {"src": base64_url, "alt": alt_name}
+            except Exception as e:
+                logging.warning(f"Failed to convert image to base64: {e}")
+                return {"src": "", "alt": "image"}
+
+        try:
+            if inline_images:
+                result = mammoth.convert_to_html(docx_file, convert_image=mammoth.images.img_element(_convert_image_to_base64))
+            else:
+                result = mammoth.convert_to_html(docx_file)
+
+            html = result.value
+
+            markdown_text = markdownify(html)
+            return markdown_text
+
+        finally:
+            if not binary:
+                docx_file.close()
+
 
 class Pdf(PdfParser):
     def __init__(self):
@@ -285,7 +328,7 @@ class Pdf(PdfParser):
         callback(0.65, "Table analysis ({:.2f}s)".format(timer() - start))
 
         start = timer()
-        self._text_merge()
+        self._text_merge(zoomin=zoomin)
         callback(0.67, "Text merged ({:.2f}s)".format(timer() - start))
 
         if separate_tables_figures:
@@ -297,6 +340,7 @@ class Pdf(PdfParser):
             tbls = self._extract_table_figure(True, zoomin, True, True)
             self._naive_vertical_merge()
             self._concat_downward()
+            self._final_reading_order_merge()
             # self._filter_forpages()
             logging.info("layouts cost: {}s".format(timer() - first_start))
             return [(b["text"], self._line_tag(b, zoomin)) for b in self.boxes], tbls
@@ -512,7 +556,7 @@ def chunk(filename, binary=None, from_page=0, to_page=100000,
             callback(0.2, "Visual model detected. Attempting to enhance figure extraction...")
         except Exception:
             vision_model = None
-        
+
         if vision_model:
             # Process images for each section
             section_images = []

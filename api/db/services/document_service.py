@@ -24,18 +24,19 @@ from io import BytesIO
 
 import trio
 import xxhash
-from peewee import fn
+from peewee import fn, Case, JOIN
 
 from api import settings
 from api.constants import IMG_BASE64_PREFIX, FILE_NAME_LEN_LIMIT
-from api.db import FileType, LLMType, ParserType, StatusEnum, TaskStatus, UserTenantRole
-from api.db.db_models import DB, Document, Knowledgebase, Task, Tenant, UserTenant, File2Document, File
+from api.db import FileType, LLMType, ParserType, StatusEnum, TaskStatus, UserTenantRole, CanvasCategory
+from api.db.db_models import DB, Document, Knowledgebase, Task, Tenant, UserTenant, File2Document, File, UserCanvas, \
+    User
 from api.db.db_utils import bulk_insert_into_db
 from api.db.services.common_service import CommonService
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.utils import current_timestamp, get_format_time, get_uuid
 from rag.nlp import rag_tokenizer, search
-from rag.settings import rout_key
+from rag.settings import get_svr_queue_name, SVR_CONSUMER_GROUP_NAME, rout_key
 from rag.utils.redis_conn import REDIS_CONN
 
 from rag.utils.doc_store_conn import OrderByExpr
@@ -53,6 +54,7 @@ class DocumentService(CommonService):
             cls.model.thumbnail,
             cls.model.kb_id,
             cls.model.parser_id,
+            cls.model.pipeline_id,
             cls.model.parser_config,
             cls.model.source_type,
             cls.model.type,
@@ -81,7 +83,10 @@ class DocumentService(CommonService):
     def get_list(cls, kb_id, page_number, items_per_page,
                  orderby, desc, keywords, id, name):
         fields = cls.get_cls_model_fields()
-        docs = cls.model.select(*fields).join(File2Document, on = (File2Document.document_id == cls.model.id)).join(File, on = (File.id == File2Document.file_id)).where(cls.model.kb_id == kb_id)
+        docs = cls.model.select(*[*fields, UserCanvas.title]).join(File2Document, on = (File2Document.document_id == cls.model.id))\
+            .join(File, on = (File.id == File2Document.file_id))\
+            .join(UserCanvas, on = ((cls.model.pipeline_id == UserCanvas.id) & (UserCanvas.canvas_category == CanvasCategory.DataFlow.value)), join_type=JOIN.LEFT_OUTER)\
+            .where(cls.model.kb_id == kb_id)
         if id:
             docs = docs.where(
                 cls.model.id == id)
@@ -119,12 +124,22 @@ class DocumentService(CommonService):
                      orderby, desc, keywords, run_status, types, suffix):
         fields = cls.get_cls_model_fields()
         if keywords:
-            docs = cls.model.select(*fields).join(File2Document, on=(File2Document.document_id == cls.model.id)).join(File, on=(File.id == File2Document.file_id)).where(
-                (cls.model.kb_id == kb_id),
-                (fn.LOWER(cls.model.name).contains(keywords.lower()))
-            )
+            docs = cls.model.select(*[*fields, UserCanvas.title.alias("pipeline_name"), User.nickname])\
+                .join(File2Document, on=(File2Document.document_id == cls.model.id))\
+                .join(File, on=(File.id == File2Document.file_id))\
+                .join(UserCanvas, on=(cls.model.pipeline_id == UserCanvas.id), join_type=JOIN.LEFT_OUTER)\
+                .join(User, on=(cls.model.created_by == User.id), join_type=JOIN.LEFT_OUTER)\
+                .where(
+                    (cls.model.kb_id == kb_id),
+                    (fn.LOWER(cls.model.name).contains(keywords.lower()))
+                )
         else:
-            docs = cls.model.select(*fields).join(File2Document, on=(File2Document.document_id == cls.model.id)).join(File, on=(File.id == File2Document.file_id)).where(cls.model.kb_id == kb_id)
+            docs = cls.model.select(*[*fields, UserCanvas.title.alias("pipeline_name"), User.nickname])\
+                .join(File2Document, on=(File2Document.document_id == cls.model.id))\
+                .join(UserCanvas, on=(cls.model.pipeline_id == UserCanvas.id), join_type=JOIN.LEFT_OUTER)\
+                .join(File, on=(File.id == File2Document.file_id))\
+                .join(User, on=(cls.model.created_by == User.id), join_type=JOIN.LEFT_OUTER)\
+                .where(cls.model.kb_id == kb_id)
 
         if run_status:
             docs = docs.where(cls.model.run.in_(run_status))
@@ -232,6 +247,46 @@ class DocumentService(CommonService):
 
     @classmethod
     @DB.connection_context()
+    def get_all_doc_ids_by_kb_ids(cls, kb_ids):
+        fields = [cls.model.id]
+        docs = cls.model.select(*fields).where(cls.model.kb_id.in_(kb_ids))
+        docs.order_by(cls.model.create_time.asc())
+        # maybe cause slow query by deep paginate, optimize later
+        offset, limit = 0, 100
+        res = []
+        while True:
+            doc_batch = docs.offset(offset).limit(limit)
+            _temp = list(doc_batch.dicts())
+            if not _temp:
+                break
+            res.extend(_temp)
+            offset += limit
+        return res
+
+    @classmethod
+    @DB.connection_context()
+    def get_all_docs_by_creator_id(cls, creator_id):
+        fields = [
+            cls.model.id, cls.model.kb_id, cls.model.token_num, cls.model.chunk_num, Knowledgebase.tenant_id
+        ]
+        docs = cls.model.select(*fields).join(Knowledgebase, on=(Knowledgebase.id == cls.model.kb_id)).where(
+            cls.model.created_by == creator_id
+        )
+        docs.order_by(cls.model.create_time.asc())
+        # maybe cause slow query by deep paginate, optimize later
+        offset, limit = 0, 100
+        res = []
+        while True:
+            doc_batch = docs.offset(offset).limit(limit)
+            _temp = list(doc_batch.dicts())
+            if not _temp:
+                break
+            res.extend(_temp)
+            offset += limit
+        return res
+
+    @classmethod
+    @DB.connection_context()
     def insert(cls, doc):
         if not cls.save(**doc):
             raise RuntimeError("Database error (Document)!")
@@ -335,8 +390,7 @@ class DocumentService(CommonService):
                                process_duration=cls.model.process_duration + duration).where(
             cls.model.id == doc_id).execute()
         if num == 0:
-            raise LookupError(
-                "Document not found which is supposed to be there")
+            logging.warning("Document not found which is supposed to be there")
         num = Knowledgebase.update(
             token_num=Knowledgebase.token_num +
                       token_num,
@@ -607,6 +661,22 @@ class DocumentService(CommonService):
     @DB.connection_context()
     def update_progress(cls):
         docs = cls.get_unfinished_docs()
+
+        cls._sync_progress(docs)
+
+
+    @classmethod
+    @DB.connection_context()
+    def update_progress_immediately(cls, docs:list[dict]):
+        if not docs:
+            return
+
+        cls._sync_progress(docs)
+
+
+    @classmethod
+    @DB.connection_context()
+    def _sync_progress(cls, docs:list[dict]):
         for d in docs:
             try:
                 tsks = Task.query(doc_id=d["id"], order_by=Task.create_time)
@@ -616,8 +686,6 @@ class DocumentService(CommonService):
                 prg = 0
                 finished = True
                 bad = 0
-                has_raptor = False
-                has_graphrag = False
                 e, doc = DocumentService.get_by_id(d["id"])
                 status = doc.run  # TaskStatus.RUNNING.value
                 priority = 0
@@ -630,40 +698,26 @@ class DocumentService(CommonService):
                     prg += t.progress if t.progress >= 0 else 0
                     if t.progress_msg.strip():
                         msg.append(t.progress_msg)
-                    if t.task_type == "raptor":
-                        has_raptor = True
-                    elif t.task_type == "graphrag":
-                        has_graphrag = True
                     priority = max(priority, t.priority)
                 prg /= len(tsks)
                 if finished and bad:
                     prg = -1
                     status = TaskStatus.FAIL.value
                 elif finished:
-                    if (d["parser_config"].get("raptor") or {}).get("use_raptor") and not has_raptor:
-                        queue_raptor_o_graphrag_tasks(d, "raptor", priority)
-                        prg = 0.98 * len(tsks) / (len(tsks) + 1)
-                        task_type = "raptor"
-                    elif (d["parser_config"].get("graphrag") or {}).get("use_graphrag") and not has_graphrag:
-                        queue_raptor_o_graphrag_tasks(d, "graphrag", priority)
-                        prg = 0.98 * len(tsks) / (len(tsks) + 1)
-                        task_type = "graphrag"
-                    else:
-                        status = TaskStatus.DONE.value
+                    prg = 1
+                    status = TaskStatus.DONE.value
 
                 msg = "\n".join(sorted(msg))
                 info = {
                     "process_duration": datetime.timestamp(
-                        datetime.now()) - d["process_begin_at"].timestamp(),
+                        datetime.now()) -
+                                       d["process_begin_at"].timestamp(),
                     "run": status}
                 if prg != 0:
                     info["progress"] = prg
                 if msg:
                     info["progress_msg"] = msg
-                    if msg.endswith("created task graphrag"):
-                        info["progress_msg"] += "\n%d tasks are ahead in the queue..."%get_queue_length(priority, "graphrag")
-                    if msg.endswith("created task raptor"):
-                        info["progress_msg"] += "\n%d tasks are ahead in the queue..."%get_queue_length(priority, "raptor")
+                    info["progress_msg"] += "\n%d tasks are ahead in the queue..."%get_queue_length(priority, task_type)
                 else:
                     info["progress_msg"] = "%d tasks are ahead in the queue..."%get_queue_length(priority, task_type)
                 cls.update_by_id(d["id"], info)
@@ -674,8 +728,16 @@ class DocumentService(CommonService):
     @classmethod
     @DB.connection_context()
     def get_kb_doc_count(cls, kb_id):
-        return len(cls.model.select(cls.model.id).where(
-            cls.model.kb_id == kb_id).dicts())
+        return cls.model.select().where(cls.model.kb_id == kb_id).count()
+
+    @classmethod
+    @DB.connection_context()
+    def get_all_kb_doc_count(cls):
+        result = {}
+        rows = cls.model.select(cls.model.kb_id, fn.COUNT(cls.model.id).alias('count')).group_by(cls.model.kb_id)
+        for row in rows:
+            result[row.kb_id] = row.count
+        return result
 
     @classmethod
     @DB.connection_context()
@@ -688,7 +750,55 @@ class DocumentService(CommonService):
         return False
 
 
-def queue_raptor_o_graphrag_tasks(doc, ty, priority):
+    @classmethod
+    @DB.connection_context()
+    def knowledgebase_basic_info(cls, kb_id: str) -> dict[str, int]:
+        # cancelled: run == "2" but progress can vary
+        cancelled = (
+            cls.model.select(fn.COUNT(1))
+            .where((cls.model.kb_id == kb_id) & (cls.model.run == TaskStatus.CANCEL))
+            .scalar()
+        )
+
+        row = (
+            cls.model.select(
+                # finished: progress == 1
+                fn.COALESCE(fn.SUM(Case(None, [(cls.model.progress == 1, 1)], 0)), 0).alias("finished"),
+
+                # failed: progress == -1
+                fn.COALESCE(fn.SUM(Case(None, [(cls.model.progress == -1, 1)], 0)), 0).alias("failed"),
+
+                # processing: 0 <= progress < 1
+                fn.COALESCE(
+                    fn.SUM(
+                        Case(
+                            None,
+                            [
+                                (((cls.model.progress == 0) | ((cls.model.progress > 0) & (cls.model.progress < 1))), 1),
+                            ],
+                            0,
+                        )
+                    ),
+                    0,
+                ).alias("processing"),
+            )
+            .where(
+                (cls.model.kb_id == kb_id)
+                & ((cls.model.run.is_null(True)) | (cls.model.run != TaskStatus.CANCEL))
+            )
+            .dicts()
+            .get()
+        )
+
+        return {
+            "processing": int(row["processing"]),
+            "finished": int(row["finished"]),
+            "failed": int(row["failed"]),
+            "cancelled": int(cancelled),
+        }
+
+
+def queue_raptor_o_graphrag_tasks(doc, ty, priority, fake_doc_id="", doc_ids=[]):
     chunking_config = DocumentService.get_chunking_config(doc["id"])
     hasher = xxhash.xxh64()
     for field in sorted(chunking_config.keys()):
@@ -698,11 +808,12 @@ def queue_raptor_o_graphrag_tasks(doc, ty, priority):
         nonlocal doc
         return {
             "id": get_uuid(),
-            "doc_id": doc["id"],
+            "doc_id": fake_doc_id if fake_doc_id else doc["id"],
             "from_page": 100000000,
             "to_page": 100000000,
             "task_type": ty,
-            "progress_msg":  datetime.now().strftime("%H:%M:%S") + " created task " + ty
+            "progress_msg":  datetime.now().strftime("%H:%M:%S") + " created task " + ty,
+            "begin_at": datetime.now(),
         }
 
     task = new_task()
@@ -711,7 +822,12 @@ def queue_raptor_o_graphrag_tasks(doc, ty, priority):
     hasher.update(ty.encode("utf-8"))
     task["digest"] = hasher.hexdigest()
     bulk_insert_into_db(Task, [task], True)
+
+    if ty in ["graphrag", "raptor", "mindmap"]:
+        task["doc_ids"] = doc_ids
+        DocumentService.begin2parse(doc["id"])
     assert RABBITMQ_CONN.queue_product(rout_key(priority, ty), message=task), "Can't access task queue, please retry it later"
+    return task["id"]
 
 
 def get_queue_length(priority, suffix):
@@ -860,3 +976,4 @@ def doc_upload_and_parse(conversation_id, file_objs, user_id):
             doc_id, kb.id, token_counts[doc_id], chunk_counts[doc_id], 0)
 
     return [d["id"] for d, _ in files]
+

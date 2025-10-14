@@ -34,7 +34,7 @@ from api.db.services.document_service import DocumentService, doc_upload_and_par
 from api.db.services.file2document_service import File2DocumentService
 from api.db.services.file_service import FileService
 from api.db.services.knowledgebase_service import KnowledgebaseService
-from api.db.services.task_service import TaskService, cancel_all_task_of, queue_tasks
+from api.db.services.task_service import TaskService, cancel_all_task_of, queue_tasks, queue_dataflow
 from api.db.services.user_service import UserTenantService
 from api.utils import get_uuid
 from api.utils.api_utils import (
@@ -43,12 +43,10 @@ from api.utils.api_utils import (
     server_error_response,
     validate_request,
 )
-from api.utils.file_utils import get_project_base_directory
+from api.utils.file_utils import filename_type, get_project_base_directory, thumbnail
 from api.utils.web_utils import CONTENT_TYPE_MAP, html2pdf, is_valid_url
 from deepdoc.parser.html_parser import RAGFlowHtmlParser
-
 from rag.nlp import search
-
 from rag.utils.storage_factory import STORAGE_IMPL
 
 
@@ -186,6 +184,7 @@ def create():
                 "id": get_uuid(),
                 "kb_id": kb.id,
                 "parser_id": kb.parser_id,
+                "pipeline_id": kb.pipeline_id,
                 "parser_config": kb.parser_config,
                 "created_by": current_user.id,
                 "type": FileType.VIRTUAL,
@@ -222,7 +221,12 @@ def list_docs():
     page_number = int(request.args.get("page", 0))
     items_per_page = int(request.args.get("page_size", 0))
     orderby = request.args.get("orderby", "create_time")
-    desc = request.args.get("desc", True)
+    if request.args.get("desc", "true").lower() == "false":
+        desc = False
+    else:
+        desc = True
+    create_time_from = int(request.args.get("create_time_from", 0))
+    create_time_to = int(request.args.get("create_time_to", 0))
 
     req = request.get_json()
 
@@ -242,6 +246,14 @@ def list_docs():
 
     try:
         docs, tol = DocumentService.get_by_kb_id(kb_id, page_number, items_per_page, orderby, desc, keywords, run_status, types, suffix)
+
+        if create_time_from or create_time_to:
+            filtered_docs = []
+            for doc in docs:
+                doc_create_time = doc.get("create_time", 0)
+                if (create_time_from == 0 or doc_create_time >= create_time_from) and (create_time_to == 0 or doc_create_time <= create_time_to):
+                    filtered_docs.append(doc)
+            docs = filtered_docs
 
         for doc_item in docs:
             if doc_item["thumbnail"] and not doc_item["thumbnail"].startswith(IMG_BASE64_PREFIX):
@@ -307,7 +319,7 @@ def docinfos():
 @manager.route("/thumbnails", methods=["GET"])  # noqa: F821
 # @login_required
 def thumbnails():
-    doc_ids = request.args.get("doc_ids").split(",")
+    doc_ids = request.args.getlist("doc_ids")
     if not doc_ids:
         return get_json_result(data=False, message='Lack of "Document ID"', code=settings.RetCode.ARGUMENT_ERROR)
 
@@ -451,7 +463,6 @@ def run():
                     cancel_all_task_of(id)
                 else:
                     return get_data_error_result(message="Cannot cancel a task that is not in RUNNING status")
-
             if all([("delete" not in req or req["delete"]), str(req["run"]) == TaskStatus.RUNNING.value, str(doc.run) == TaskStatus.DONE.value]):
                 DocumentService.clear_chunk_num_when_rerun(doc.id)
 
@@ -475,14 +486,14 @@ def run():
                         kb_table_num_map[kb_id] = count
                         if kb_table_num_map[kb_id] <= 0:
                             KnowledgebaseService.delete_field_map(kb_id)
-                bucket, name = File2DocumentService.get_storage_address(doc_id=doc["id"])
-
                 task_priority = 0
                 if settings.BILLING_ENABLED:
                     task_priority = TenantPlanService.get_priority(tenant_id)
-                queue_tasks(doc, bucket, name, task_priority)
-
-            time.sleep(5)
+                if doc.get("pipeline_id", ""):
+                    queue_dataflow(tenant_id, flow_id=doc["pipeline_id"], task_id=get_uuid(), doc_id=id)
+                else:
+                    bucket, name = File2DocumentService.get_storage_address(doc_id=doc["id"])
+                    queue_tasks(doc, bucket, name, task_priority)
 
         return get_json_result(data=True)
     except Exception as e:
@@ -549,31 +560,22 @@ def get(doc_id):
 
 @manager.route("/change_parser", methods=["POST"])  # noqa: F821
 @login_required
-@validate_request("doc_id", "parser_id")
+@validate_request("doc_id")
 def change_parser():
-    req = request.json
 
+    req = request.json
     if not DocumentService.accessible(req["doc_id"], current_user.id):
         return get_json_result(data=False, message="No authorization.", code=settings.RetCode.AUTHENTICATION_ERROR)
-    try:
-        e, doc = DocumentService.get_by_id(req["doc_id"])
-        if not e:
-            return get_data_error_result(message="Document not found!")
-        if doc.parser_id.lower() == req["parser_id"].lower():
-            if "parser_config" in req:
-                if req["parser_config"] == doc.parser_config:
-                    return get_json_result(data=True)
-            else:
-                return get_json_result(data=True)
 
-        if (doc.type == FileType.VISUAL and req["parser_id"] != "picture") or (re.search(r"\.(ppt|pptx|pages)$", doc.name) and req["parser_id"] != "presentation"):
-            return get_data_error_result(message="Not supported yet!")
+    e, doc = DocumentService.get_by_id(req["doc_id"])
+    if not e:
+        return get_data_error_result(message="Document not found!")
 
+    def reset_doc():
+        nonlocal doc
         e = DocumentService.update_by_id(doc.id, {"parser_id": req["parser_id"], "progress": 0, "progress_msg": "", "run": TaskStatus.UNSTART.value})
         if not e:
             return get_data_error_result(message="Document not found!")
-        if "parser_config" in req:
-            DocumentService.update_parser_config(doc.id, req["parser_config"])
         if doc.token_num > 0:
             e = DocumentService.increment_chunk_num(doc.id, doc.kb_id, doc.token_num * -1, doc.chunk_num * -1, doc.process_duration * -1)
             if not e:
@@ -584,6 +586,26 @@ def change_parser():
             if settings.docStoreConn.indexExist(search.index_name(tenant_id), doc.kb_id):
                 settings.docStoreConn.delete({"doc_id": doc.id}, search.index_name(tenant_id), doc.kb_id)
 
+    try:
+        if "pipeline_id" in req and req["pipeline_id"] != "":
+            if doc.pipeline_id == req["pipeline_id"]:
+                return get_json_result(data=True)
+            DocumentService.update_by_id(doc.id, {"pipeline_id": req["pipeline_id"]})
+            reset_doc()
+            return get_json_result(data=True)
+
+        if doc.parser_id.lower() == req["parser_id"].lower():
+            if "parser_config" in req:
+                if req["parser_config"] == doc.parser_config:
+                    return get_json_result(data=True)
+            else:
+                return get_json_result(data=True)
+
+        if (doc.type == FileType.VISUAL and req["parser_id"] != "picture") or (re.search(r"\.(ppt|pptx|pages)$", doc.name) and req["parser_id"] != "presentation"):
+            return get_data_error_result(message="Not supported yet!")
+        if "parser_config" in req:
+            DocumentService.update_parser_config(doc.id, req["parser_config"])
+        reset_doc()
         return get_json_result(data=True)
     except Exception as e:
         return server_error_response(e)

@@ -1,10 +1,4 @@
 import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from '@/components/ui/accordion';
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -18,6 +12,7 @@ import {
 } from '@/components/ui/tooltip';
 import { IModalProps } from '@/interfaces/common';
 import { useGetNodeDescription, useGetNodeName } from '@/pages/data-flow/hooks';
+import useGraphStore from '@/pages/data-flow/store';
 import { Position } from '@xyflow/react';
 import { t } from 'i18next';
 import {
@@ -26,9 +21,10 @@ import {
   memo,
   useContext,
   useEffect,
+  useMemo,
   useRef,
 } from 'react';
-import { Operator } from '../../../constant';
+import { Operator, SingleOperators } from '../../../constant';
 import { AgentInstanceContext, HandleContext } from '../../../context';
 import OperatorIcon from '../../../operator-icon';
 
@@ -56,30 +52,32 @@ function OperatorItemList({
   const getNodeName = useGetNodeName();
   const getNodeDescription = useGetNodeDescription();
 
-  const handleClick = (operator: Operator) => {
-    const contextData = handleContext || {
-      nodeId: '',
-      id: '',
-      type: 'source' as const,
-      position: Position.Right,
-      isFromConnectionDrag: true,
+  const handleClick =
+    (operator: Operator): React.MouseEventHandler<HTMLElement> =>
+    (e) => {
+      const contextData = handleContext || {
+        nodeId: '',
+        id: '',
+        type: 'source' as const,
+        position: Position.Right,
+        isFromConnectionDrag: true,
+      };
+
+      const mockEvent = mousePosition
+        ? {
+            clientX: mousePosition.x,
+            clientY: mousePosition.y,
+          }
+        : e;
+
+      const newNodeId = addCanvasNode(operator, contextData)(mockEvent);
+
+      if (onNodeCreated && newNodeId) {
+        onNodeCreated(newNodeId);
+      }
+
+      hideModal?.();
     };
-
-    const mockEvent = mousePosition
-      ? {
-          clientX: mousePosition.x,
-          clientY: mousePosition.y,
-        }
-      : undefined;
-
-    const newNodeId = addCanvasNode(operator, contextData)(mockEvent);
-
-    if (onNodeCreated && newNodeId) {
-      onNodeCreated(newNodeId);
-    }
-
-    hideModal?.();
-  };
 
   const renderOperatorItem = (operator: Operator) => {
     const commonContent = (
@@ -93,12 +91,12 @@ function OperatorItemList({
       <Tooltip key={operator}>
         <TooltipTrigger asChild>
           {isCustomDropdown ? (
-            <li onClick={() => handleClick(operator)}>{commonContent}</li>
+            <li onClick={handleClick(operator)}>{commonContent}</li>
           ) : (
             <DropdownMenuItem
               key={operator}
               className="hover:bg-background-card py-1 px-3 cursor-pointer rounded-sm flex gap-2 items-center justify-start"
-              onClick={() => handleClick(operator)}
+              onClick={handleClick(operator)}
               onSelect={() => hideModal?.()}
             >
               <OperatorIcon name={operator} />
@@ -116,103 +114,64 @@ function OperatorItemList({
   return <ul className="space-y-2">{operators.map(renderOperatorItem)}</ul>;
 }
 
+// Limit the number of operators of a certain type on the canvas to only one
+function useRestrictSingleOperatorOnCanvas() {
+  const list: Operator[] = [];
+  const { findNodeByName } = useGraphStore((state) => state);
+
+  SingleOperators.forEach((operator) => {
+    if (!findNodeByName(operator)) {
+      list.push(operator);
+    }
+  });
+
+  return list;
+}
+
 function AccordionOperators({
   isCustomDropdown = false,
   mousePosition,
+  nodeId,
 }: {
   isCustomDropdown?: boolean;
   mousePosition?: { x: number; y: number };
+  nodeId?: string;
 }) {
+  const singleOperators = useRestrictSingleOperatorOnCanvas();
+  const { getOperatorTypeFromId } = useGraphStore((state) => state);
+
+  const operators = useMemo(() => {
+    let list = [...singleOperators];
+    if (getOperatorTypeFromId(nodeId) === Operator.Extractor) {
+      const Splitters = [Operator.HierarchicalMerger, Operator.Splitter];
+      list = list.filter((x) => !Splitters.includes(x)); // The Context Generator node can only be followed by a Tokenizer and a Context Generator.
+    }
+    list.push(Operator.Extractor);
+    return list;
+  }, [getOperatorTypeFromId, nodeId, singleOperators]);
+
   return (
-    <Accordion
-      type="multiple"
-      className="px-2 text-text-title max-h-[45vh] overflow-auto"
-      defaultValue={['item-1', 'item-2', 'item-3', 'item-4', 'item-5']}
-    >
-      <AccordionItem value="item-1">
-        <AccordionTrigger className="text-xl">
-          {t('flow.foundation')}
-        </AccordionTrigger>
-        <AccordionContent className="flex flex-col gap-4 text-balance">
-          <OperatorItemList
-            operators={[
-              Operator.Agent,
-              Operator.Retrieval,
-              Operator.Parser,
-              Operator.Chunker,
-              Operator.Tokenizer,
-            ]}
-            isCustomDropdown={isCustomDropdown}
-            mousePosition={mousePosition}
-          ></OperatorItemList>
-        </AccordionContent>
-      </AccordionItem>
-      <AccordionItem value="item-2">
-        <AccordionTrigger className="text-xl">
-          {t('flow.dialog')}
-        </AccordionTrigger>
-        <AccordionContent className="flex flex-col gap-4 text-balance">
-          <OperatorItemList
-            operators={[Operator.Message, Operator.UserFillUp]}
-            isCustomDropdown={isCustomDropdown}
-            mousePosition={mousePosition}
-          ></OperatorItemList>
-        </AccordionContent>
-      </AccordionItem>
-      <AccordionItem value="item-3">
-        <AccordionTrigger className="text-xl">
-          {t('flow.flow')}
-        </AccordionTrigger>
-        <AccordionContent className="flex flex-col gap-4 text-balance">
-          <OperatorItemList
-            operators={[
-              Operator.Switch,
-              Operator.Iteration,
-              Operator.Categorize,
-            ]}
-            isCustomDropdown={isCustomDropdown}
-            mousePosition={mousePosition}
-          ></OperatorItemList>
-        </AccordionContent>
-      </AccordionItem>
-      <AccordionItem value="item-4">
-        <AccordionTrigger className="text-xl">
-          {t('flow.dataManipulation')}
-        </AccordionTrigger>
-        <AccordionContent className="flex flex-col gap-4 text-balance">
-          <OperatorItemList
-            operators={[Operator.Code, Operator.StringTransform]}
-            isCustomDropdown={isCustomDropdown}
-            mousePosition={mousePosition}
-          ></OperatorItemList>
-        </AccordionContent>
-      </AccordionItem>
-      <AccordionItem value="item-5">
-        <AccordionTrigger className="text-xl">
-          {t('flow.tools')}
-        </AccordionTrigger>
-        <AccordionContent className="flex flex-col gap-4 text-balance">
-          <OperatorItemList
-            operators={[Operator.ExeSQL, Operator.Email, Operator.Invoke]}
-            isCustomDropdown={isCustomDropdown}
-            mousePosition={mousePosition}
-          ></OperatorItemList>
-        </AccordionContent>
-      </AccordionItem>
-    </Accordion>
+    <OperatorItemList
+      operators={operators}
+      isCustomDropdown={isCustomDropdown}
+      mousePosition={mousePosition}
+    ></OperatorItemList>
   );
 }
 
+type NextStepDropdownProps = PropsWithChildren &
+  IModalProps<any> & {
+    position?: { x: number; y: number };
+    onNodeCreated?: (newNodeId: string) => void;
+    nodeId?: string;
+  };
 export function InnerNextStepDropdown({
   children,
   hideModal,
   position,
   onNodeCreated,
-}: PropsWithChildren &
-  IModalProps<any> & {
-    position?: { x: number; y: number };
-    onNodeCreated?: (newNodeId: string) => void;
-  }) {
+  nodeId,
+}: NextStepDropdownProps) {
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -252,6 +211,7 @@ export function InnerNextStepDropdown({
               <AccordionOperators
                 isCustomDropdown={true}
                 mousePosition={position}
+                nodeId={nodeId}
               ></AccordionOperators>
             </OnNodeCreatedContext.Provider>
           </HideModalContext.Provider>
@@ -276,7 +236,7 @@ export function InnerNextStepDropdown({
       >
         <DropdownMenuLabel>{t('flow.nextStep')}</DropdownMenuLabel>
         <HideModalContext.Provider value={hideModal}>
-          <AccordionOperators></AccordionOperators>
+          <AccordionOperators nodeId={nodeId}></AccordionOperators>
         </HideModalContext.Provider>
       </DropdownMenuContent>
     </DropdownMenu>

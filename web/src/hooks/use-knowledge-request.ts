@@ -31,6 +31,7 @@ export const enum KnowledgeApiAction {
   FetchKnowledgeDetail = 'fetchKnowledgeDetail',
   FetchKnowledgeGraph = 'fetchKnowledgeGraph',
   FetchMetadata = 'fetchMetadata',
+  FetchKnowledgeList = 'fetchKnowledgeList',
   RemoveKnowledgeGraph = 'removeKnowledgeGraph',
 }
 
@@ -143,7 +144,7 @@ export const useFetchNextKnowledgeListByPage = () => {
 
   const onInputChange: React.ChangeEventHandler<HTMLInputElement> = useCallback(
     (e) => {
-      // setPagination({ page: 1 }); // TODO: 这里导致重复请求
+      // setPagination({ page: 1 }); // TODO: This results in repeated requests
       handleInputChange(e);
     },
     [handleInputChange],
@@ -238,7 +239,11 @@ export const useUpdateKnowledge = (shouldFetchList = false) => {
   return { data, loading, saveKnowledgeConfiguration: mutateAsync };
 };
 
-export const useFetchKnowledgeBaseConfiguration = (refreshCount?: number) => {
+export const useFetchKnowledgeBaseConfiguration = (props?: {
+  isEdit?: boolean;
+  refreshCount?: number;
+}) => {
+  const { isEdit = true, refreshCount } = props || { isEdit: true };
   const { id } = useParams();
   const [searchParams] = useSearchParams();
   const knowledgeBaseId = searchParams.get('id') || id;
@@ -255,10 +260,14 @@ export const useFetchKnowledgeBaseConfiguration = (refreshCount?: number) => {
     initialData: {} as IKnowledge,
     gcTime: 0,
     queryFn: async () => {
-      const { data } = await kbService.get_kb_detail({
-        kb_id: knowledgeBaseId,
-      });
-      return data?.data ?? {};
+      if (isEdit) {
+        const { data } = await kbService.get_kb_detail({
+          kb_id: knowledgeBaseId,
+        });
+        return data?.data ?? {};
+      } else {
+        return {};
+      }
     },
   });
 
@@ -314,7 +323,7 @@ export const useRemoveKnowledgeGraph = () => {
       if (data.code === 0) {
         message.success(i18n.t(`message.deleted`));
         queryClient.invalidateQueries({
-          queryKey: ['fetchKnowledgeGraph'],
+          queryKey: [KnowledgeApiAction.FetchKnowledgeGraph],
         });
       }
       return data?.code;
@@ -322,4 +331,26 @@ export const useRemoveKnowledgeGraph = () => {
   });
 
   return { data, loading, removeKnowledgeGraph: mutateAsync };
+};
+
+export const useFetchKnowledgeList = (
+  shouldFilterListWithoutDocument: boolean = false,
+): {
+  list: IKnowledge[];
+  loading: boolean;
+} => {
+  const { data, isFetching: loading } = useQuery({
+    queryKey: [KnowledgeApiAction.FetchKnowledgeList],
+    initialData: [],
+    gcTime: 0, // https://tanstack.com/query/latest/docs/framework/react/guides/caching?from=reactQueryV3
+    queryFn: async () => {
+      const { data } = await listDataset();
+      const list = data?.data?.kbs ?? [];
+      return shouldFilterListWithoutDocument
+        ? list.filter((x: IKnowledge) => x.chunk_num > 0)
+        : list;
+    },
+  });
+
+  return { list: data, loading };
 };

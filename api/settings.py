@@ -72,8 +72,8 @@ OAUTH_CONFIG = None
 DOC_ENGINE = None
 docStoreConn = None
 
-retrievaler = None
-kg_retrievaler = None
+retriever = None
+kg_retriever = None
 
 # user registration switch
 REGISTER_ENABLED = 1
@@ -109,6 +109,7 @@ def get_or_create_secret_key():
 
     # Generate a new secure key and warn about it
     import logging
+
     new_key = secrets.token_hex(32)
     logging.warning(f"SECURITY WARNING: Using auto-generated SECRET_KEY. Generated key: {new_key}")
     return new_key
@@ -120,10 +121,13 @@ def init_settings():
     DATABASE_TYPE = os.getenv("DB_TYPE", "mysql")
     DATABASE = decrypt_database_config(name=DATABASE_TYPE)
     LLM = get_base_config("user_default_llm", {}) or {}
-    LLM_FACTORY = LLM.get("factory") or {}
-    LLM_BASE_URL = LLM.get("llm_base_url", "") or ""
-    EMBD_BASE_URL = LLM.get("embed_base_url", "") or ""
-    LLM_DEFAULT_MODELS = LLM.get("default_models", {})
+    LLM_DEFAULT_MODELS = LLM.get("default_models", {}) or {}
+    LLM_FACTORY = LLM.get("factory", "") or ""
+    LLM_BASE_URL = LLM.get("base_url", "") or ""
+    try:
+        REGISTER_ENABLED = int(os.environ.get("REGISTER_ENABLED", "1"))
+    except Exception:
+        pass
 
     try:
         with open(os.path.join(get_project_base_directory(), "conf", "llm_factories.json"), "r") as f:
@@ -178,7 +182,7 @@ def init_settings():
 
     OAUTH_CONFIG = get_base_config("oauth", {})
 
-    global DOC_ENGINE, docStoreConn, retrievaler, kg_retrievaler
+    global DOC_ENGINE, docStoreConn, retriever, kg_retriever
     DOC_ENGINE = os.environ.get("DOC_ENGINE", "elasticsearch")
     lower_case_doc_engine = DOC_ENGINE.lower()
     if lower_case_doc_engine == "elasticsearch":
@@ -186,13 +190,14 @@ def init_settings():
     elif lower_case_doc_engine == "infinity":
         docStoreConn = rag.utils.infinity_conn.InfinityConnection()
     elif lower_case_doc_engine == "opensearch":
-        docStoreConn = rag.utils.opensearch_coon.OSConnection()
+        docStoreConn = rag.utils.opensearch_conn.OSConnection()
     else:
         raise Exception(f"Not supported doc engine: {DOC_ENGINE}")
 
-    retrievaler = search.Dealer(docStoreConn)
+    retriever = search.Dealer(docStoreConn)
     from graphrag import search as kg_search
-    kg_retrievaler = kg_search.KGSearch(docStoreConn)
+
+    kg_retriever = kg_search.KGSearch(docStoreConn)
 
     global BILLING
     BILLING = get_base_config("billing", {})

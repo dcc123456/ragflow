@@ -24,12 +24,13 @@ import { UseSaveMetaShowType } from './use-save-meta';
 
 type UseDatasetTableColumnsType = UseChangeDocumentParserShowType &
   UseRenameDocumentShowType &
-  UseSaveMetaShowType;
+  UseSaveMetaShowType & { showLog: (record: IDocumentInfo) => void };
 
 export function useDatasetTableColumns({
   showChangeParserModal,
   showRenameModal,
   showSetMetaModal,
+  showLog,
 }: UseDatasetTableColumnsType) {
   const datasetEditButtonDisabled = useDatasetEditButtonDisabled();
   const { t } = useTranslation('translation', {
@@ -156,6 +157,7 @@ export function useDatasetTableColumns({
             record={row.original}
             showChangeParserModal={showChangeParserModal}
             showSetMetaModal={showSetMetaModal}
+            showLog={showLog}
             datasetEditButtonDisabled={datasetEditButtonDisabled}
           ></ParsingStatusCell>
         );

@@ -13,8 +13,8 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 #
-from enum import Enum, IntEnum
-
+from enum import Enum
+from enum import IntEnum
 from strenum import StrEnum
 
 
@@ -29,10 +29,10 @@ class ActiveEnum(Enum):
 
 
 class UserTenantRole(StrEnum):
-    OWNER = "owner"
-    ADMIN = "admin"
-    NORMAL = "normal"
-    INVITE = "invite"
+    OWNER = 'owner'
+    ADMIN = 'admin'
+    NORMAL = 'normal'
+    INVITE = 'invite'
 
 
 class TenantPermission(StrEnum):
@@ -93,30 +93,30 @@ class SerializedType(IntEnum):
 
 
 class FileType(StrEnum):
-    PDF = "pdf"
-    DOC = "doc"
-    VISUAL = "visual"
-    AURAL = "aural"
-    VIRTUAL = "virtual"
-    FOLDER = "folder"
+    PDF = 'pdf'
+    DOC = 'doc'
+    VISUAL = 'visual'
+    AURAL = 'aural'
+    VIRTUAL = 'virtual'
+    FOLDER = 'folder'
     OTHER = "other"
 
 VALID_FILE_TYPES = {FileType.PDF, FileType.DOC, FileType.VISUAL, FileType.AURAL, FileType.VIRTUAL, FileType.FOLDER, FileType.OTHER}
 
 class LLMType(StrEnum):
-    CHAT = "chat"
-    EMBEDDING = "embedding"
-    SPEECH2TEXT = "speech2text"
-    IMAGE2TEXT = "image2text"
-    RERANK = "rerank"
-    TTS = "tts"
+    CHAT = 'chat'
+    EMBEDDING = 'embedding'
+    SPEECH2TEXT = 'speech2text'
+    IMAGE2TEXT = 'image2text'
+    RERANK = 'rerank'
+    TTS    = 'tts'
 
 
 class ChatStyle(StrEnum):
-    CREATIVE = "Creative"
-    PRECISE = "Precise"
-    EVENLY = "Evenly"
-    CUSTOM = "Custom"
+    CREATIVE = 'Creative'
+    PRECISE = 'Precise'
+    EVENLY = 'Evenly'
+    CUSTOM = 'Custom'
 
 
 class TaskStatus(StrEnum):
@@ -126,7 +126,9 @@ class TaskStatus(StrEnum):
     DONE = "3"
     FAIL = "4"
 
-VALID_TASK_STATUS = {TaskStatus.UNSTART, TaskStatus.RUNNING, TaskStatus.CANCEL, TaskStatus.DONE, TaskStatus.FAIL}
+
+VALID_TASK_STATUS     = {TaskStatus.UNSTART, TaskStatus.RUNNING, TaskStatus.CANCEL, TaskStatus.DONE, TaskStatus.FAIL}
+
 
 class ParserType(StrEnum):
     PRESENTATION = "presentation"
@@ -172,4 +174,15 @@ class MCPServerType(StrEnum):
 VALID_MCP_SERVER_TYPES = {MCPServerType.SSE, MCPServerType.STREAMABLE_HTTP}
 
 
-KNOWLEDGEBASE_FOLDER_NAME = ".knowledgebase"
+class PipelineTaskType(StrEnum):
+    PARSE = "Parse"
+    DOWNLOAD = "Download"
+    RAPTOR = "RAPTOR"
+    GRAPH_RAG = "GraphRAG"
+    MINDMAP = "Mindmap"
+
+
+VALID_PIPELINE_TASK_TYPES = {PipelineTaskType.PARSE, PipelineTaskType.DOWNLOAD, PipelineTaskType.RAPTOR, PipelineTaskType.GRAPH_RAG, PipelineTaskType.MINDMAP}
+
+
+KNOWLEDGEBASE_FOLDER_NAME=".knowledgebase"

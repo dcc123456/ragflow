@@ -1,3 +1,20 @@
+#
+#  Copyright 2025 The InfiniFlow Authors. All Rights Reserved.
+#
+#  Licensed under the Apache License, Version 2.0 (the "License");
+#  you may not use this file except in compliance with the License.
+#  You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS,
+#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#  See the License for the specific language governing permissions and
+#  limitations under the License.
+#
+
+
 import re
 from werkzeug.security import check_password_hash
 from api.db import ActiveEnum
@@ -7,8 +24,11 @@ from api.db.services.canvas_service import UserCanvasService
 from api.db.services.user_service import TenantService
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.utils.crypt import decrypt
-from exceptions import AdminException, UserAlreadyExistsError, UserNotFoundError
+from api.utils import health_utils
+
+from api.common.exceptions import AdminException, UserAlreadyExistsError, UserNotFoundError
 from config import SERVICE_CONFIGS
+
 
 class UserMgr:
     @staticmethod
@@ -16,7 +36,8 @@ class UserMgr:
         users = UserService.get_all_users()
         result = []
         for user in users:
-            result.append({'email': user.email, 'nickname': user.nickname, 'create_date': user.create_date, 'is_active': user.is_active})
+            result.append({'email': user.email, 'nickname': user.nickname, 'create_date': user.create_date,
+                           'is_active': user.is_active})
         return result
 
     @staticmethod
@@ -110,6 +131,7 @@ class UserMgr:
         UserService.update_user(usr.id, {"is_active": target_status})
         return f"Turn {_activate_status} user activate status successfully!"
 
+
 class UserServiceMgr:
 
     @staticmethod
@@ -148,6 +170,7 @@ class UserServiceMgr:
             'canvas_category': r['canvas_category']
         } for r in res]
 
+
 class ServiceMgr:
 
     @staticmethod
@@ -164,7 +187,22 @@ class ServiceMgr:
 
     @staticmethod
     def get_service_details(service_id: int):
-        raise AdminException("get_service_details: not implemented")
+        service_id = int(service_id)
+        configs = SERVICE_CONFIGS.configs
+        service_config_mapping = {
+            c.id: {
+                'name': c.name,
+                'detail_func_name': c.detail_func_name
+            } for c in configs
+        }
+        service_info = service_config_mapping.get(service_id, {})
+        if not service_info:
+            raise AdminException(f"Invalid service_id: {service_id}")
+
+        detail_func = getattr(health_utils, service_info.get('detail_func_name'))
+        res = detail_func()
+        res.update({'service_name': service_info.get('name')})
+        return res
 
     @staticmethod
     def shutdown_service(service_id: int):

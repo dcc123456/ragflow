@@ -292,6 +292,7 @@ def tokenize_chunks(chunks, doc, eng, pdf_parser=None):
         res.append(d)
     return res
 
+
 def tokenize_chunks_with_images(chunks, doc, eng, images):
     res = []
     # wrap up as es documents
@@ -305,6 +306,7 @@ def tokenize_chunks_with_images(chunks, doc, eng, images):
         tokenize(d, ck, eng)
         res.append(d)
     return res
+
 
 def tokenize_table(tbls, doc, eng, batch_size=10):
     res = []
@@ -579,7 +581,9 @@ def naive_merge(sections: str | list, chunk_token_num=128, delimiter="\n。；�
     from deepdoc.parser.pdf_parser import RAGFlowPdfParser
     if not sections:
         return []
-    if isinstance(sections[0], type("")):
+    if isinstance(sections, str):
+        sections = [sections]
+    if isinstance(sections[0], str):
         sections = [(s, "") for s in sections]
     cks = [""]
     tk_nums = [0]
@@ -609,13 +613,13 @@ def naive_merge(sections: str | list, chunk_token_num=128, delimiter="\n。；�
     dels = get_delimiters(delimiter)
     for sec, pos in sections:
         if num_tokens_from_string(sec) < chunk_token_num:
-            add_chunk(sec, pos)
+            add_chunk("\n"+sec, pos)
             continue
         split_sec = re.split(r"(%s)" % dels, sec, flags=re.DOTALL)
         for sub_sec in split_sec:
             if re.match(f"^{dels}$", sub_sec):
                 continue
-            add_chunk(sub_sec, pos)
+            add_chunk("\n"+sub_sec, pos)
 
     return cks
 
@@ -665,13 +669,13 @@ def naive_merge_with_images(texts, images, chunk_token_num=128, delimiter="\n。
             for sub_sec in split_sec:
                 if re.match(f"^{dels}$", sub_sec):
                     continue
-                add_chunk(sub_sec, image, text_pos)
+                add_chunk("\n"+sub_sec, image, text_pos)
         else:
             split_sec = re.split(r"(%s)" % dels, text)
             for sub_sec in split_sec:
                 if re.match(f"^{dels}$", sub_sec):
                     continue
-                add_chunk(sub_sec, image)
+                add_chunk("\n"+sub_sec, image)
 
     return cks, result_images
 
@@ -753,7 +757,7 @@ def naive_merge_docx(sections, chunk_token_num=128, delimiter="\n。；！？"):
         for sub_sec in split_sec:
             if re.match(f"^{dels}$", sub_sec):
                 continue
-            add_chunk(sub_sec, image,"")
+            add_chunk("\n"+sub_sec, image,"")
         line = ""
 
     if line:
@@ -761,7 +765,7 @@ def naive_merge_docx(sections, chunk_token_num=128, delimiter="\n。；！？"):
         for sub_sec in split_sec:
             if re.match(f"^{dels}$", sub_sec):
                 continue
-            add_chunk(sub_sec, image,"")
+            add_chunk("\n"+sub_sec, image,"")
 
     return cks, images
 

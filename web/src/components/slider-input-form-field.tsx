@@ -36,11 +36,11 @@ export function SliderInputFormField({
   tooltip,
   defaultValue,
   className,
-  layout = FormLayout.Vertical,
+  layout = FormLayout.Horizontal,
 }: SliderInputFormFieldProps) {
   const form = useFormContext();
 
-  const isHorizontal = useMemo(() => layout === FormLayout.Vertical, [layout]);
+  const isHorizontal = useMemo(() => layout !== FormLayout.Vertical, [layout]);
 
   return (
     <FormField
@@ -54,8 +54,7 @@ export function SliderInputFormField({
           <FormLabel
             tooltip={tooltip}
             className={cn({
-              'text-sm text-muted-foreground whitespace-break-spaces w-1/4':
-                isHorizontal,
+              'text-sm whitespace-break-spaces w-1/4': isHorizontal,
             })}
           >
             {label}
