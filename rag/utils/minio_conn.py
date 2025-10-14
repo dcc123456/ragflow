@@ -24,7 +24,7 @@ from rag.utils import singleton
 
 
 @singleton
-class RAGFlowMinio(object):
+class RAGFlowMinio:
     def __init__(self):
         self.conn = []
         self.__open__()
@@ -63,7 +63,7 @@ class RAGFlowMinio(object):
                                  )
         return r
 
-    def put(self, bucket, fnm, binary, tenant_id):
+    def put(self, bucket, fnm, binary, tenant_id=None):
         for _ in range(3):
             i = TenantService.user_gateway(tenant_id)
             try:
@@ -80,7 +80,7 @@ class RAGFlowMinio(object):
                 self.__open__()
                 time.sleep(1)
 
-    def rm(self, bucket, fnm, tenant_id):
+    def rm(self, bucket, fnm, tenant_id=None):
         try:
             i = TenantService.user_gateway(tenant_id)
             self.conn[i].remove_object(bucket, fnm)
@@ -99,31 +99,31 @@ class RAGFlowMinio(object):
             except Exception as e:
                 logging.error(f"Fail rm {bucket}: " + str(e))
 
-    def get(self, bucket, fnm, tenant_id):
+    def get(self, bucket, filename, tenant_id=None):
         for _ in range(1):
             i = TenantService.user_gateway(tenant_id)
             try:
-                r = self.conn[i].get_object(bucket, fnm)
-                logging.info(f"Successfully get {bucket}/{fnm}({i})")
+                r = self.conn[i].get_object(bucket, filename)
+                logging.info(f"Successfully get {bucket}/{filename}({i})")
                 return r.read()
             except Exception as e:
-                logging.error(f"fail get {bucket}/{fnm}({i}): " + str(e))
+                logging.error(f"fail get {bucket}/{filename}({i}): " + str(e))
                 self.__open__()
                 time.sleep(1)
             if i == 0:
                 raise Exception("""File not found.""")
         return
 
-    def obj_exist(self, bucket, fnm, tenant_id):
+    def obj_exist(self, bucket, filename, tenant_id):
         try:
             i = TenantService.user_gateway(tenant_id)
-            if self.conn[i].stat_object(bucket, fnm):return True
+            if self.conn[i].stat_object(bucket, filename):return True
             return False
         except Exception as e:
-            logging.error(f"Fail exist {bucket}/{fnm}: " + str(e))
+            logging.error(f"Fail exist {bucket}/{filename}: " + str(e))
         return False
 
-    def get_presigned_url(self, bucket, fnm, expires, tenant_id):
+    def get_presigned_url(self, bucket, fnm, expires, tenant_id=None):
         for _ in range(3):
             try:
                 i = TenantService.user_gateway(tenant_id)
@@ -134,16 +134,13 @@ class RAGFlowMinio(object):
                 time.sleep(1)
         return
 
+    def remove_bucket(self, bucket):
+        try:
+            if self.conn.bucket_exists(bucket):
+                objects_to_delete = self.conn.list_objects(bucket, recursive=True)
+                for obj in objects_to_delete:
+                    self.conn.remove_object(bucket, obj.object_name)
+                self.conn.remove_bucket(bucket)
+        except Exception:
+            logging.exception(f"Fail to remove bucket {bucket}")
 
-if __name__ == "__main__":
-    conn = RAGFlowMinio()
-    fnm = "/opt/home/kevinhu/docgpt/upload/13/11-408.jpg"
-    from PIL import Image
-
-    img = Image.open(fnm)
-    buff = BytesIO()
-    img.save(buff, format='JPEG')
-    print(conn.put("test", "11-408.jpg", buff.getvalue()))
-    bts = conn.get("test", "11-408.jpg")
-    img = Image.open(BytesIO(bts))
-    img.save("test.jpg")

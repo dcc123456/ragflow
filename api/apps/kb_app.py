@@ -210,6 +210,9 @@ def detail():
             kb["operator_permission"] = permission[2]
 
         kb["size"] = DocumentService.get_total_size_by_kb_id(kb_id=kb["id"], keywords="", run_status=[], types=[])
+        for key in ["graphrag_task_finish_at", "raptor_task_finish_at", "mindmap_task_finish_at"]:
+            if finish_at := kb.get(key):
+                kb[key] = finish_at.strftime("%Y-%m-%d %H:%M:%S")
         return get_json_result(data=kb)
     except Exception as e:
         return server_error_response(e)
