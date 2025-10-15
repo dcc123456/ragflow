@@ -22,6 +22,7 @@ import StarModal from './components/star-modal';
 import { ThemeProvider, useTheme } from './components/theme-provider';
 import { SidebarProvider } from './components/ui/sidebar';
 import { TooltipProvider } from './components/ui/tooltip';
+import { ThemeEnum } from './constants/common';
 import { showFreeUpgradeTipsModal } from './pages/price/price-modal/free-upgrade-modal';
 import storagePrivate from './utils/authorization-private-util';
 import storage from './utils/authorization-util';
