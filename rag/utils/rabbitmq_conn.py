@@ -25,8 +25,9 @@ class RabbitQueue:
                 host=self.config["host"],
                 port=int(self.config["port"]), # Default AMQP port
                 credentials=credentials,
-                heartbeat=10,
-                blocked_connection_timeout=32
+                socket_timeout=10,
+                heartbeat=30,
+                blocked_connection_timeout=60
             )
             # Establish the connection
             self._channel = pika.BlockingConnection(parameters).channel()
