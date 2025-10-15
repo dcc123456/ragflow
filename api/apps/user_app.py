@@ -139,7 +139,7 @@ def login():
             data=False, code=settings.RetCode.AUTHENTICATION_ERROR, message="Unauthorized!"
         )
 
-    if settings.LDAP_OAUTH.get("url"):
+    if settings.LDAP_OAUTH and settings.LDAP_OAUTH.get("url"):
         return ldap_login()
 
     email = request.json.get("email", "")
