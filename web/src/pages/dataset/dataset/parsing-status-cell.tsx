@@ -15,11 +15,11 @@ import {
 } from '@/components/ui/tooltip';
 import { IDocumentInfo } from '@/interfaces/database/document';
 import { cn } from '@/lib/utils';
-import { CircleX, RefreshCw  } from 'lucide-react';
+import { CircleX } from 'lucide-react';
 import { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { DocumentType, RunningStatus } from './constant';
-import { ParsingCard, PopoverContent } from './parsing-card';
+import { ParsingCard } from './parsing-card';
 import { UseChangeDocumentParserShowType } from './use-change-document-parser';
 import { useHandleRunDocumentByIds } from './use-run-document';
 import { UseSaveMetaShowType } from './use-save-meta';
@@ -142,7 +142,9 @@ export function ParsingStatusCell({
               onCancel={handleOperationIconClick(false)}
             >
               <div
-                className="cursor-pointer flex items-center gap-3"
+                className={cn('cursor-pointer flex items-center gap-3', {
+                  'pointer-events-none ': datasetEditButtonDisabled,
+                })}
                 onClick={
                   isZeroChunk || isRunning
                     ? handleOperationIconClick(false)

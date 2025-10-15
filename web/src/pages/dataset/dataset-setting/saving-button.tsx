@@ -1,4 +1,5 @@
 import { ButtonLoading } from '@/components/ui/button';
+import { useDatasetEditButtonDisabled } from '@/hooks/logic-hooks/use-permission';
 import { useUpdateKnowledge } from '@/hooks/use-knowledge-request';
 import { useMemo } from 'react';
 import { useFormContext } from 'react-hook-form';
@@ -51,10 +52,12 @@ export function SavingButton() {
   const form = useFormContext();
   const { id: kb_id } = useParams();
   const { t } = useTranslation();
+  const datasetEditButtonDisabled = useDatasetEditButtonDisabled();
 
   return (
     <ButtonLoading
       loading={submitLoading}
+      disabled={datasetEditButtonDisabled}
       onClick={() => {
         (async () => {
           try {
