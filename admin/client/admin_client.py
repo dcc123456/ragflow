@@ -16,14 +16,14 @@
 
 import argparse
 import base64
+from cmd import Cmd
 
 from Cryptodome.PublicKey import RSA
 from Cryptodome.Cipher import PKCS1_v1_5 as Cipher_pkcs1_v1_5
 from typing import Dict, List, Any
-from lark import Lark, Transformer, Tree
+from lark import Lark, Transformer, Tree, Token
 import requests
 from requests.auth import HTTPBasicAuth
-from api.common.base64 import encode_to_base64
 
 GRAMMAR = r"""
 start: command
@@ -192,12 +192,59 @@ def encrypt(input_string):
     return base64.b64encode(cipher_text).decode("utf-8")
 
 
-class AdminCommandParser:
+def encode_to_base64(input_string):
+    base64_encoded = base64.b64encode(input_string.encode('utf-8'))
+    return base64_encoded.decode('utf-8')
+
+
+class AdminCLI(Cmd):
     def __init__(self):
+        super().__init__()
         self.parser = Lark(GRAMMAR, start='start', parser='lalr', transformer=AdminTransformer())
         self.command_history = []
+        self.is_interactive = False
+        self.admin_account = "admin@ragflow.io"
+        self.admin_password: str = "admin"
+        self.host: str = ""
+        self.port: int = 0
 
-    def parse_command(self, command_str: str) -> Dict[str, Any]:
+    intro = r"""Type "\h" for help."""
+    prompt = "admin> "
+
+    def onecmd(self, command: str) -> bool:
+        try:
+            # print(f"command: {command}")
+            result = self.parse_command(command)
+
+            # if 'type' in result and result.get('type') == 'empty':
+            #     return False
+
+            if isinstance(result, dict):
+                if 'type' in result and result.get('type') == 'empty':
+                    return False
+
+            self.execute_command(result)
+
+            if isinstance(result, Tree):
+                return False
+
+            if result.get('type') == 'meta' and result.get('command') in ['q', 'quit', 'exit']:
+                return True
+
+        except KeyboardInterrupt:
+            print("\nUse '\\q' to quit")
+        except EOFError:
+            print("\nGoodbye!")
+            return True
+        return False
+
+    def emptyline(self) -> bool:
+        return False
+
+    def default(self, line: str) -> bool:
+        return self.onecmd(line)
+
+    def parse_command(self, command_str: str) -> dict[str, str] | Tree[Token]:
         if not command_str.strip():
             return {'type': 'empty'}
 
@@ -208,16 +255,6 @@ class AdminCommandParser:
             return result
         except Exception as e:
             return {'type': 'error', 'message': f'Parse error: {str(e)}'}
-
-
-class AdminCLI:
-    def __init__(self):
-        self.parser = AdminCommandParser()
-        self.is_interactive = False
-        self.admin_account = "admin@ragflow.io"
-        self.admin_password: str = "admin"
-        self.host: str = ""
-        self.port: int = 0
 
     def verify_admin(self, args):
 
@@ -323,7 +360,7 @@ class AdminCLI:
                     continue
 
                 print(f"command: {command}")
-                result = self.parser.parse_command(command)
+                result = self.parse_command(command)
                 self.execute_command(result)
 
                 if isinstance(result, Tree):
@@ -610,10 +647,17 @@ def main():
         /_/ |_/_/  |_\____/_/   /_/\____/|__/|__/  /_/  |_\__,_/_/ /_/ /_/_/_/ /_/ 
         """)
         if cli.verify_admin(sys.argv):
-            cli.run_interactive()
+            cli.cmdloop()
     else:
+        print(r"""
+            ____  ___   ______________                 ___       __          _     
+           / __ \/   | / ____/ ____/ /___ _      __   /   | ____/ /___ ___  (_)___ 
+          / /_/ / /| |/ / __/ /_  / / __ \ | /| / /  / /| |/ __  / __ `__ \/ / __ \
+         / _, _/ ___ / /_/ / __/ / / /_/ / |/ |/ /  / ___ / /_/ / / / / / / / / / /
+        /_/ |_/_/  |_\____/_/   /_/\____/|__/|__/  /_/  |_\__,_/_/ /_/ /_/_/_/ /_/ 
+        """)
         if cli.verify_admin(sys.argv):
-            cli.run_interactive()
+            cli.cmdloop()
             # cli.run_single_command(sys.argv[1:])
 
 

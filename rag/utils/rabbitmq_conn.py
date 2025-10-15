@@ -25,8 +25,8 @@ class RabbitQueue:
                 host=self.config["host"],
                 port=int(self.config["port"]), # Default AMQP port
                 credentials=credentials,
-                heartbeat=0,
-                blocked_connection_timeout=1200
+                heartbeat=10,
+                blocked_connection_timeout=32
             )
             # Establish the connection
             self._channel = pika.BlockingConnection(parameters).channel()
@@ -53,16 +53,9 @@ class RabbitQueue:
         return False
 
     def queue_consumer(self, queue_name, callback):
-        for _ in range(3):
-            try:
-                self._channel.queue_declare(queue_name, durable=True)
-                self._channel.basic_consume(queue=queue_name, on_message_callback=callback, auto_ack=False)
-                self._channel.start_consuming()
-            except Exception as e:
-                logging.exception(
-                    "RedisDB.queue_product " + str(queue_name) + " got exception: " + str(e)
-                )
-                self.__open__()
+        self._channel.queue_declare(queue_name, durable=True)
+        self._channel.basic_consume(queue=queue_name, on_message_callback=callback, auto_ack=False)
+        self._channel.start_consuming()
 
     def get_queue_length(self, queue_name, vhost: str = "/") -> int:
         for _ in range(3):

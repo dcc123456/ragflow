@@ -27,7 +27,7 @@ from api.utils.crypt import decrypt
 from api.utils import health_utils
 
 from api.common.exceptions import AdminException, UserAlreadyExistsError, UserNotFoundError
-from config import SERVICE_CONFIGS
+from admin.server.config import SERVICE_CONFIGS
 
 
 class UserMgr:
@@ -179,7 +179,6 @@ class ServiceMgr:
         configs = SERVICE_CONFIGS.configs
         for service_id, config in enumerate(configs):
             config_dict = config.to_dict()
-            service_detail = None
             try:
                 service_detail = ServiceMgr.get_service_details(service_id)
                 if service_detail['alive']:
