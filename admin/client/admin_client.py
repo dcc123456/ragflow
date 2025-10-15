@@ -100,6 +100,7 @@ NUMBER: /[0-9]+/
 %ignore WS
 """
 
+
 class AdminTransformer(Transformer):
 
     def start(self, items):
@@ -182,6 +183,7 @@ class AdminTransformer(Transformer):
     def meta_args(self, items):
         return items
 
+
 def encrypt(input_string):
     pub = '-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArq9XTUSeYr2+N1h3Afl/z8Dse/2yD0ZGrKwx+EEEcdsBLca9Ynmx3nIB5obmLlSfmskLpBo0UACBmB5rEjBp2Q2f3AG3Hjd4B+gNCG6BDaawuDlgANIhGnaTLrIqWrrcm4EMzJOnAOI1fgzJRsOOUEfaS318Eq9OVO3apEyCCt0lOQK6PuksduOjVxtltDav+guVAA068NrPYmRNabVKRNLJpL8w4D44sfth5RvZ3q9t+6RTArpEtc5sh5ChzvqPOzKGMXW83C95TxmXqpbK6olN4RevSfVjEAgCydH6HN6OhtOQEcnrU97r9H0iZOWwbw3pVrZiUkuRD1R56Wzs2wIDAQAB\n-----END PUBLIC KEY-----'
     pub_key = RSA.importKey(pub)
@@ -189,9 +191,11 @@ def encrypt(input_string):
     cipher_text = cipher.encrypt(base64.b64encode(input_string.encode('utf-8')))
     return base64.b64encode(cipher_text).decode("utf-8")
 
+
 def encode_to_base64(input_string):
     base64_encoded = base64.b64encode(input_string.encode('utf-8'))
     return base64_encoded.decode('utf-8')
+
 
 class AdminCLI(Cmd):
     def __init__(self):
@@ -209,8 +213,16 @@ class AdminCLI(Cmd):
 
     def onecmd(self, command: str) -> bool:
         try:
-            print(f"command: {command}")
+            # print(f"command: {command}")
             result = self.parse_command(command)
+
+            # if 'type' in result and result.get('type') == 'empty':
+            #     return False
+
+            if isinstance(result, dict):
+                if 'type' in result and result.get('type') == 'empty':
+                    return False
+
             self.execute_command(result)
 
             if isinstance(result, Tree):
@@ -329,9 +341,9 @@ class AdminCLI(Cmd):
             row = "|"
             for col in columns:
                 value = str(item.get(col, ''))
-                if len(value) > col_widths[col]:
+                if get_string_width(value) > col_widths[col]:
                     value = value[:col_widths[col] - 3] + "..."
-                row += f" {value:<{col_widths[col]}} |"
+                row += f" {value:<{col_widths[col] - (get_string_width(value) - len(value))}} |"
             print(row)
 
         print(separator)
@@ -440,7 +452,7 @@ class AdminCLI(Cmd):
         if response.status_code == 200:
             self._print_table_simple(res_json['data'])
         else:
-            print(f"Fail to get all users, code: {res_json['code']}, message: {res_json['message']}")
+            print(f"Fail to get all services, code: {res_json['code']}, message: {res_json['message']}")
 
     def _handle_show_service(self, command):
         service_id: int = command['number']
