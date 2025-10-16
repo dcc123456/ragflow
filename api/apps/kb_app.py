@@ -142,7 +142,7 @@ def create():
 @login_required
 @validate_request("kb_id", "name", "description", "parser_id")
 @not_allowed_parameters("id", "created_by", "create_time", "update_time", "create_date", "update_date", "created_by")
-@check_kb_permission(permission=PermissionValue.PERMISSION_MANAGE)
+@check_kb_permission(permission=PermissionValue.PERMISSION_WRITE)
 def update():
     req = g.req_data
     req["name"] = req["name"].strip()
