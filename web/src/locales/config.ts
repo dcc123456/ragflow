@@ -73,7 +73,7 @@ i18n
     },
     supportedLngs: Object.values(LanguageAbbreviation),
     resources,
-    fallbackLng: 'zh',
+    fallbackLng: 'en', // When the translation field is not found, the default language is used.
     interpolation: {
       escapeValue: false,
     },
