@@ -949,11 +949,18 @@ def rabbitmq_callback(ch, method, properties, body):
     canceled = False
     task = None
     for _ in range(3):
-        task = TaskService.get_task(msg["id"])
+        if msg.get("doc_id", "") in [GRAPH_RAPTOR_FAKE_DOC_ID, CANVAS_DEBUG_DOC_ID]:
+            task = msg
+            if task["task_type"] in ["graphrag", "raptor", "mindmap"] and msg.get("doc_ids", []):
+                task = TaskService.get_task(msg["id"], msg["doc_ids"])
+                task["doc_ids"] = msg["doc_ids"]
+        else:
+            task = TaskService.get_task(msg["id"])
         if task:
             task.update(msg)
             break
         time.sleep(3)
+
     if task:
         canceled = has_canceled(task["id"])
     if not task or canceled:
@@ -961,7 +968,13 @@ def rabbitmq_callback(ch, method, properties, body):
         logging.warning(f"collect task {msg['id']} {state}")
         ch.basic_ack(method.delivery_tag)
         return
+
     task_type = task["task_type"] = msg.get("task_type", "")
+    if task_type[:8] == "dataflow":
+        task["tenant_id"] = msg["tenant_id"]
+        task["dataflow_id"] = msg["dataflow_id"]
+        task["kb_id"] = msg.get("kb_id", "")
+
     pipeline_task_type = TASK_TYPE_TO_PIPELINE_TASK_TYPE.get(task_type, PipelineTaskType.PARSE) or PipelineTaskType.PARSE
 
     try:
