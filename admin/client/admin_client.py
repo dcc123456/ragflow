@@ -213,11 +213,7 @@ class AdminCLI(Cmd):
 
     def onecmd(self, command: str) -> bool:
         try:
-            # print(f"command: {command}")
             result = self.parse_command(command)
-
-            # if 'type' in result and result.get('type') == 'empty':
-            #     return False
 
             if isinstance(result, dict):
                 if 'type' in result and result.get('type') == 'empty':
@@ -341,9 +337,9 @@ class AdminCLI(Cmd):
             row = "|"
             for col in columns:
                 value = str(item.get(col, ''))
-                if len(value) > col_widths[col]:
+                if get_string_width(value) > col_widths[col]:
                     value = value[:col_widths[col] - 3] + "..."
-                row += f" {value:<{col_widths[col]}} |"
+                row += f" {value:<{col_widths[col] - (get_string_width(value) - len(value))}} |"
             print(row)
 
         print(separator)
@@ -452,7 +448,7 @@ class AdminCLI(Cmd):
         if response.status_code == 200:
             self._print_table_simple(res_json['data'])
         else:
-            print(f"Fail to get all users, code: {res_json['code']}, message: {res_json['message']}")
+            print(f"Fail to get all services, code: {res_json['code']}, message: {res_json['message']}")
 
     def _handle_show_service(self, command):
         service_id: int = command['number']
@@ -463,14 +459,14 @@ class AdminCLI(Cmd):
         res_json = response.json()
         if response.status_code == 200:
             res_data = res_json['data']
-            if res_data['alive']:
-                print(f"Service {res_data['service_name']} is alive. Detail:")
+            if 'status' in res_data and res_data['status'] == 'alive':
+                print(f"Service {res_data['service_name']} is alive, ")
                 if isinstance(res_data['message'], str):
                     print(res_data['message'])
                 else:
                     self._print_table_simple(res_data['message'])
             else:
-                print(f"Service {res_data['service_name']} is down. Detail: {res_data['message']}")
+                print(f"Service {res_data['service_name']} is down, {res_data['message']}")
         else:
             print(f"Fail to show service, code: {res_json['code']}, message: {res_json['message']}")
 

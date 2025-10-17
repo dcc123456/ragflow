@@ -17,6 +17,8 @@
 import logging
 import time
 from minio import Minio
+from minio.commonconfig import CopySource
+from minio.error import S3Error
 from io import BytesIO
 from api.db.services.user_service import TenantService
 from rag import settings
@@ -134,13 +136,48 @@ class RAGFlowMinio:
                 time.sleep(1)
         return
 
-    def remove_bucket(self, bucket):
+    def remove_bucket(self, bucket, tenant_id=None):
         try:
-            if self.conn.bucket_exists(bucket):
-                objects_to_delete = self.conn.list_objects(bucket, recursive=True)
+            i = TenantService.user_gateway(tenant_id)
+            if self.conn[i].bucket_exists(bucket):
+                objects_to_delete = self.conn[i].list_objects(bucket, recursive=True)
                 for obj in objects_to_delete:
-                    self.conn.remove_object(bucket, obj.object_name)
-                self.conn.remove_bucket(bucket)
+                    self.conn[i].remove_object(bucket, obj.object_name)
+                self.conn[i].remove_bucket(bucket)
         except Exception:
             logging.exception(f"Fail to remove bucket {bucket}")
 
+    def copy(self, src_bucket, src_path, dest_bucket, dest_path, tenant_id=None):
+        try:
+            i = TenantService.user_gateway(tenant_id)
+            if not self.conn[i].bucket_exists(dest_bucket):
+                self.conn[i].make_bucket(dest_bucket)
+
+            try:
+                self.conn[i].stat_object(src_bucket, src_path)
+            except Exception as e:
+                logging.exception(f"Source object not found: {src_bucket}/{src_path}, {e}")
+                return False
+
+            self.conn[i].copy_object(
+                dest_bucket,
+                dest_path,
+                CopySource(src_bucket, src_path),
+            )
+            return True
+
+        except Exception:
+            logging.exception(f"Fail to copy {src_bucket}/{src_path} -> {dest_bucket}/{dest_path}")
+            return False
+
+    def move(self, src_bucket, src_path, dest_bucket, dest_path, tenant_id=None):
+        try:
+            if self.copy(src_bucket, src_path, dest_bucket, dest_path, tenant_id):
+                self.rm(src_bucket, src_path, tenant_id)
+                return True
+            else:
+                logging.error(f"Copy failed, move aborted: {src_bucket}/{src_path}")
+                return False
+        except Exception:
+            logging.exception(f"Fail to move {src_bucket}/{src_path} -> {dest_bucket}/{dest_path}")
+            return False

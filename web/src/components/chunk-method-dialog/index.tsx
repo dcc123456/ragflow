@@ -343,7 +343,9 @@ export function ChunkMethodDialog({
                   show={showAutoKeywords(selectedTag) || showExcelToHtml}
                   className="space-y-3"
                 >
-                  <EnableTocToggle />
+                  {selectedTag === DocumentParserType.Naive && (
+                    <EnableTocToggle />
+                  )}
                   {showAutoKeywords(selectedTag) && (
                     <>
                       <AutoKeywordsFormField></AutoKeywordsFormField>
