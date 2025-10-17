@@ -431,11 +431,11 @@ def move():
             filename = source_file_entry.name
 
             new_location = filename
-            while STORAGE_IMPL.obj_exist(dest_folder.id, new_location):
+            while STORAGE_IMPL.obj_exist(dest_folder.id, new_location, current_user.id):
                 new_location += "_"
 
             try:
-                STORAGE_IMPL.move(old_parent_id, old_location, dest_folder.id, new_location)
+                STORAGE_IMPL.move(old_parent_id, old_location, dest_folder.id, new_location, current_user.id)
             except Exception as storage_err:
                 raise RuntimeError(f"Move file failed at storage layer: {str(storage_err)}")
 
