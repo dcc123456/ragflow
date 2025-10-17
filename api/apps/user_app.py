@@ -68,7 +68,7 @@ from api.utils.sync_icbccs_user import icbccs_user_register
 
 def ldap_login():
     import ldap
-    email= request.json.get("email", "")
+    email= request.json.get("email", "").lower()
     conn = ldap.initialize(settings.LDAP_OAUTH.get("url"))
     conn.set_option(ldap.OPT_REFERRALS, 0)
     dn = settings.LDAP_OAUTH.get("dn")
@@ -83,12 +83,6 @@ def ldap_login():
             data=False,
             code=settings.RetCode.AUTHENTICATION_ERROR,
             message=f"Email: {email} is not registered!",
-        )
-    if email not in [result[0][1].get("userPrincipalName", [b""])[0].decode("utf-8"), result[0][1].get("mail", [b""])[0].decode("utf-8")]:
-        return get_json_result(
-            data=False,
-            code=settings.RetCode.AUTHENTICATION_ERROR,
-            message=f"E-mail error. Please mind the case of letters."
         )
     login_password = base64.b64decode(decrypt(request.json.get("password")))
     try:
@@ -170,7 +164,7 @@ def login():
     if not request.json:
         return get_json_result(data=False, code=settings.RetCode.AUTHENTICATION_ERROR, message="Unauthorized!")
 
-    email = request.json.get("email", "")
+    email = request.json.get("email", "").lower()
     if email != "admin@ragflow.io" and settings.LDAP_OAUTH and settings.LDAP_OAUTH.get("url"):
         return ldap_login()
 
