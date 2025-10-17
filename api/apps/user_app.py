@@ -15,7 +15,6 @@
 #
 import logging
 import json
-import os
 import re
 import base64
 import secrets
@@ -54,20 +53,31 @@ def ldap_login():
     conn.set_option(ldap.OPT_REFERRALS, 0)
     dn = settings.LDAP_OAUTH.get("dn")
     conn.simple_bind_s(dn, settings.LDAP_OAUTH.get("password"))
-    search_filter = f"(mail={email})"
-    attribute_list = ['cn', 'mail', 'uid', 'givenName', 'sn', 'thumbnailPhoto']
+    search_filter = f"(|(userPrincipalName={email})(mail={email}))"
+    attribute_list = ['cn', 'mail', 'uid', 'givenName', 'sn', 'jpegPhoto', 'sAMAccountName', 'userPrincipalName']
+
     result = conn.search_s(",".join(dn.split(",")[2:]), ldap.SCOPE_SUBTREE, search_filter, attribute_list)
+    print(",".join(dn.split(",")[2:]), result, "XXXXXXXXXXXXXXXXXXX", flush=True)
     if not result:
         return get_json_result(
             data=False,
             code=settings.RetCode.AUTHENTICATION_ERROR,
             message=f"Email: {email} is not registered!",
         )
+    if email not in [result[0][1].get("userPrincipalName", [b""])[0].decode("utf-8"), result[0][1].get("mail", [b""])[0].decode("utf-8")]:
+        return get_json_result(
+            data=False,
+            code=settings.RetCode.AUTHENTICATION_ERROR,
+            message=f"E-mail error. Please mind the case of letters."
+        )
     login_password = base64.b64decode(decrypt(request.json.get("password")))
-    print(conn.simple_bind_s(result[0][0], login_password), "@@@@@@@@@@@@@@@@@@@@@@@@", flush=True)
-    usr = result[1]
-    name = usr["cn"]
-    avatar = usr["thumbnailPhoto"]
+    try:
+        conn.simple_bind_s(result[0][0], login_password)
+    except:
+        return get_json_result(
+            data=False,
+            code=settings.RetCode.AUTHENTICATION_ERROR,message=f"Password error!"
+        )
 
     users = UserService.query(email=email)
     if users:
@@ -81,13 +91,16 @@ def ldap_login():
         msg = "Welcome back!"
         return construct_response(data=response_data, auth=user.get_id(), message=msg)
 
+    nickname = result[0][1].get("givenName", [b"Anonymous"])[0].decode("utf-8")
+    avatar = result[0][1].get("jpegPhoto", [b""])[0].decode("utf-8")
+
     users = user_register(
         get_uuid(),
         {
-            "access_token": session["access_token"],
+            "access_token": get_uuid(),
             "email": email,
             "avatar": avatar,
-            "nickname": name,
+            "nickname": nickname,
             "login_channel": "AD",
             "last_login_time": get_format_time(),
             "is_superuser": False,
@@ -139,10 +152,10 @@ def login():
             data=False, code=settings.RetCode.AUTHENTICATION_ERROR, message="Unauthorized!"
         )
 
-    if settings.LDAP_OAUTH and settings.LDAP_OAUTH.get("url"):
+    email = request.json.get("email", "")
+    if email != "admin@ragflow.io" and settings.LDAP_OAUTH and settings.LDAP_OAUTH.get("url"):
         return ldap_login()
 
-    email = request.json.get("email", "")
     users = UserService.query(email=email)
     if not users:
         return get_json_result(
