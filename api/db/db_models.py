@@ -565,7 +565,7 @@ class DataBaseModel(BaseModel):
 
 
 @DB.connection_context()
-@DB.lock("init_database_tables", 60)
+#@DB.lock("init_database_tables", 60)
 def init_database_tables(alter_fields=[]):
     members = inspect.getmembers(sys.modules[__name__], inspect.isclass)
     table_objs = []
