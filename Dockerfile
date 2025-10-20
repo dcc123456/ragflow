@@ -9,32 +9,22 @@ RUN /root/miniconda3/envs/py11/bin/pip install python3-saml pypdf==6.0.0
 RUN /root/miniconda3/envs/py11/bin/pip uninstall -y lxml xmlsec
 RUN /root/miniconda3/envs/py11/bin/pip install --no-cache-dir --force-reinstall lxml xmlsec
 RUN /root/miniconda3/envs/py11/bin/pip install flask-mail>=0.10.0 flask_limiter
-RUN /root/miniconda3/envs/py11/bin/pip install langfuse>=2.60.0
+RUN /root/miniconda3/envs/py11/bin/pip install langfuse>=2.60.0 ultralytics
 
-ADD ./ragflow/oss/conf ./conf
-COPY ./ragflow/conf ./conf
-
-
-ADD ./ragflow/oss/web ./web
-COPY ./ragflow/web ./web
-ADD ./ragflow/oss/docs ./docs
+COPY web web
 RUN cd ./web && npm i && npm run build
 
-ADD ./ragflow/oss/graphrag ./graphrag
-ADD ./ragflow/oss/agentic_reasoning ./agentic_reasoning
-
-ADD ./ragflow/oss/deepdoc ./deepdoc
-COPY ./ragflow/deepdoc ./deepdoc/
-
-ADD ./ragflow/oss/agent ./agent
-
-ADD ./ragflow/oss/rag ./rag
-COPY ./ragflow/rag ./rag/
-
-ADD ./ragflow/oss/api ./api
-COPY ./ragflow/api ./api/
-
-ADD ./ragflow/oss/plugin ./plugin
+COPY conf conf
+COPY docs docs
+COPY plugin plugin
+COPY graphrag graphrag
+COPY deepdoc deepdoc
+COPY agent agent
+COPY rag rag
+COPY api api
+COPY agentic_reasoning agentic_reasoning
+COPY mcp mcp
+COPY admin admin
 
 ENV PYTHONPATH=/ragflow/
 ENV HF_ENDPOINT=https://hf-mirror.com
