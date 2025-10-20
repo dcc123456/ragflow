@@ -952,6 +952,7 @@ def rabbitmq_callback(ch, method, properties, body):
         if msg.get("doc_id", "") in [GRAPH_RAPTOR_FAKE_DOC_ID, CANVAS_DEBUG_DOC_ID]:
             task = msg
             if task["task_type"] in ["graphrag", "raptor", "mindmap"] and msg.get("doc_ids", []):
+                time.sleep(5)
                 task = TaskService.get_task(msg["id"], msg["doc_ids"])
                 task["doc_ids"] = msg["doc_ids"]
         else:
