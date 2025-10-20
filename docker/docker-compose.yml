@@ -1,5 +1,3 @@
-version: '2.2'
-
 services:
   ragflow:
     image: infiniflow-ai/ragflow:latest
@@ -15,21 +13,22 @@ services:
     environment:
       - MAX_FILE_NUM_PER_USER=${MAX_FILE_NUM_PER_USER}
       - TZ=${TIMEZONE}
-      - OCR_SVR=http://10.142.0.6:12344
-      - TENSORRT_DLA_SVR=http://10.142.0.6:3344
-      - TENSORRT_TSR_SVR=http://10.142.0.6:11234
+      - ENABLE_ADMIN=${ENABLE_ADMIN}
+      # - OCR_SVR=http://10.142.0.6:12344
+      # - TENSORRT_DLA_SVR=http://10.142.0.6:3344
+      # - TENSORRT_TSR_SVR=http://10.142.0.6:11234
     restart: always
-
-  ragflow-parser:
-    image: infiniflow-ai/ragflow:latest
-    container_name: infiniflow-ragflow-parser
-    network_mode: "host"
-    volumes:
-      - ./service_conf.yaml:/ragflow/conf/service_conf.yaml
-      - ./ragflow-logs:/ragflow/logs
-      - ./res/:/ragflow/rag/res
-      - ./entrypoint-parser.sh:/ragflow/entrypoint.sh
-    environment:
-      - MAX_FILE_NUM_PER_USER=${MAX_FILE_NUM_PER_USER}
-      - TZ=${TIMEZONE}
-    restart: always
+    env_file: .env
+  # ragflow-parser:
+  #   image: infiniflow-ai/ragflow:latest
+  #   container_name: infiniflow-ragflow-parser
+  #   network_mode: "host"
+  #   volumes:
+  #     - ./service_conf.yaml:/ragflow/conf/service_conf.yaml
+  #     - ./ragflow-logs:/ragflow/logs
+  #     - ./res/:/ragflow/rag/res
+  #     - ./entrypoint-parser.sh:/ragflow/entrypoint.sh
+  #   environment:
+  #     - MAX_FILE_NUM_PER_USER=${MAX_FILE_NUM_PER_USER}
+  #     - TZ=${TIMEZONE}
+  #   restart: always

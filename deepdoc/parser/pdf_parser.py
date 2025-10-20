@@ -256,7 +256,7 @@ class RAGFlowPdfParser:
             self.tb_cpns.extend(pg)
 
         def gather(kwd, fzy=10, ption=0.6):
-            eles = Recognizer.sort_Y_firstly([r for r in self.tb_cpns if re.match(kwd, r["label"])], fzy)
+            eles = Recognizer.sort_Y_firstly([r for r in self.tb_cpns if re.match(kwd, r.get("label", ""))], fzy)
             eles = Recognizer.layouts_cleanup(self.boxes, eles, 5, ption)
             return Recognizer.sort_Y_firstly(eles, 0)
 
@@ -264,7 +264,7 @@ class RAGFlowPdfParser:
         headers = gather(r".*header$")
         rows = gather(r".* (row|header)")
         spans = gather(r".*spanning")
-        clmns = sorted([r for r in self.tb_cpns if re.match(r"table column$", r["label"])], key=lambda x: (x["pn"], x["layoutno"], x["x0"]))
+        clmns = sorted([r for r in self.tb_cpns if re.match(r"table column$", r.get("label", ""))], key=lambda x: (x["pn"], x["layoutno"], x["x0"]))
         clmns = Recognizer.layouts_cleanup(self.boxes, clmns, 5, 0.5)
         for b in self.boxes:
             if b.get("layout_type", "") != "table":
@@ -299,7 +299,7 @@ class RAGFlowPdfParser:
 
     def __ocr(self, pagenum, img, chars, ZM=3, device_id: int | None = None):
         start = timer()
-        bxs = self.ocr.detect(np.array(img), device_id)
+        bxs = self.ocr.detect(np.array(img), device_id=device_id)
         logging.info(f"__ocr detecting boxes of a image cost ({timer() - start}s)")
 
         start = timer()
@@ -352,7 +352,7 @@ class RAGFlowPdfParser:
                 b["box_image"] = self.ocr.get_rotate_crop_image(img_np, np.array([[left, top], [right, top], [right, bott], [left, bott]], dtype=np.float32))
                 boxes_to_reg.append(b)
             del b["txt"]
-        texts = self.ocr.recognize_batch([b["box_image"] for b in boxes_to_reg], device_id)
+        texts = self.ocr.recognize_batch([b["box_image"] for b in boxes_to_reg], device_id=device_id)
         for i in range(len(boxes_to_reg)):
             boxes_to_reg[i]["text"] = texts[i]
             del boxes_to_reg[i]["box_image"]

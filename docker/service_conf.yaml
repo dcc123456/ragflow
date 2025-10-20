@@ -1,0 +1,132 @@
+ragflow:
+  host: 0.0.0.0
+  http_port: 9380
+mysql:
+  name: 'rag_flow'
+  user: 'root'
+  password: 'infini_rag_flow'
+  host: 127.0.0.1
+  port: 5455
+  max_connections: 100
+  stale_timeout: 30
+minio_0:
+  user: 'rag_flow'
+  password: 'infini_rag_flow'
+  host: '127.0.0.1:9000'
+es:
+  hosts: 'http://127.0.0.1:9200'
+  username: 'elastic'
+  password: 'infini_rag_flow'
+infinity:
+  uri: '127.0.0.1:23817'
+  db_name: 'default_db'
+redis:
+  db: 1
+  password: 'infini_rag_flow'
+  host: '127.0.0.1:6379'
+# local_embd:
+#   bge-large-en-v1.5: http://10.142.0.6:4566/predict
+#   bge-large-zh-v1.5: http://10.142.0.6:4567/predict
+#   bce-embedding-base_v1: http://10.142.0.6:4568/predict
+#   bge-m3: http://10.142.0.6:4569/predict
+# billing:
+#   stripe_api_key: 'sk_test_51QsGuSHJ6pV3qJnLysNJv0ohOJQCPKO1fhI6hOsR0KLG46SJBK1U8Zjt8nv5LcTwgnNvLmYkbPiYXNMARAsyfWuc00SAik19sc'
+#   stripe_endpoint_secret: 'whsec_0fb176adde6131822d01f1c35e1c0179a10cb54f4862734fdeea6186da0a79e4'
+#   session_success_url: 'http://127.0.0.1:9222/success.html'
+#   session_cancel_url: 'http://127.0.0.1:9222/cancel.html'
+#   webhook_url: 'https://demo.ragflow.io/v1/billing/webhook'
+#   billing_plans:
+#     - name: "trial"
+#       quota_members: 1
+#       quota_docs: 50
+#       quota_chunks: 1000
+#       task_priority: "low"
+#       price_ids: ""
+#     - name: "pro"
+#       quota_members: 3
+#       quota_docs: 500
+#       quota_chunks: 50000
+#       task_priority: "high"
+#       price_ids: "price_1QsKhBHJ6pV3qJnLw5fapUQR price_1QtKbsHJ6pV3qJnLo76qCsAZ"
+#     - name: "team"
+#       quota_members: 1000
+#       quota_docs: 1000
+#       quota_chunks: 100000
+#       task_priority: "high"
+#       price_ids: "price_1QtKdzHJ6pV3qJnL75cSD7XH price_1QtKeqHJ6pV3qJnLIu0qKIAv"
+
+rabbitmq:
+  user: "kevin"
+  password: 'kevin'
+  host: '192.168.1.62'
+  port: 1672
+  api_port: 1673
+  exchange: "test1"
+
+# user_default_llm:
+#   factory: 'BAAI'
+#   api_key: ''
+#   base_url: ''
+#   default_models:
+#     embedding_model: 'bge-m3'
+
+# postgres:
+#   name: 'rag_flow'
+#   user: 'rag_flow'
+#   password: 'infini_rag_flow'
+#   host: 'postgres'
+#   port: 5432
+#   max_connections: 100
+#   stale_timeout: 30
+# s3:
+#   access_key: 'access_key'
+#   secret_key: 'secret_key'
+#   region: 'region'
+# azure:
+#   auth_type: 'sas'
+#   container_url: 'container_url'
+#   sas_token: 'sas_token'
+# azure:
+#   auth_type: 'spn'
+#   account_url: 'account_url'
+#   client_id: 'client_id'
+#   secret: 'secret'
+#   tenant_id: 'tenant_id'
+#   container_name: 'container_name'
+#   factory: 'BAAI'
+#   api_key: 'backup'
+#   base_url: 'backup_base_url'
+#   default_models:
+#     chat_model:
+#       name: 'qwen2.5-7b-instruct'
+#       factory: 'xxxx'
+#       api_key: 'xxxx'
+#       base_url: 'https://api.xx.com'
+#     embedding_model:
+#       name: 'bge-m3'
+#     rerank_model: 'bge-reranker-v2'
+#     asr_model:
+#       model: 'whisper-large-v3' # alias of name
+#     image2text_model: ''
+# oauth:
+#   github:
+#     client_id: xxxxxxxxxxxxxxxxxxxxxxxxx
+#     secret_key: xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+#     url: https://github.com/login/oauth/access_token
+#   feishu:
+#     app_id: cli_xxxxxxxxxxxxxxxxxxx
+#     app_secret: xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+#     app_access_token_url: https://open.feishu.cn/open-apis/auth/v3/app_access_token/internal
+#     user_access_token_url: https://open.feishu.cn/open-apis/authen/v1/oidc/access_token
+#     grant_type: 'authorization_code'
+# authentication:
+#   client:
+#     switch: false
+#     http_app_key:
+#     http_secret_key:
+#   site:
+#     switch: false
+# permission:
+#   switch: false
+#   component: false
+#   dataset: false
