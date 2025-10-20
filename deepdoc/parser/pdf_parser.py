@@ -256,7 +256,7 @@ class RAGFlowPdfParser:
             self.tb_cpns.extend(pg)
 
         def gather(kwd, fzy=10, ption=0.6):
-            eles = Recognizer.sort_Y_firstly([r for r in self.tb_cpns if re.match(kwd, r["label"])], fzy)
+            eles = Recognizer.sort_Y_firstly([r for r in self.tb_cpns if re.match(kwd, r.get("label", ""))], fzy)
             eles = Recognizer.layouts_cleanup(self.boxes, eles, 5, ption)
             return Recognizer.sort_Y_firstly(eles, 0)
 
@@ -264,7 +264,7 @@ class RAGFlowPdfParser:
         headers = gather(r".*header$")
         rows = gather(r".* (row|header)")
         spans = gather(r".*spanning")
-        clmns = sorted([r for r in self.tb_cpns if re.match(r"table column$", r["label"])], key=lambda x: (x["pn"], x["layoutno"], x["x0"]))
+        clmns = sorted([r for r in self.tb_cpns if re.match(r"table column$", r.get("label", ""))], key=lambda x: (x["pn"], x["layoutno"], x["x0"]))
         clmns = Recognizer.layouts_cleanup(self.boxes, clmns, 5, 0.5)
         for b in self.boxes:
             if b.get("layout_type", "") != "table":
