@@ -1019,13 +1019,14 @@ def main():
         TSRClient(os.environ["TENSORRT_SVR"])
 
     logging.info(r"""
-  ______           __      ______                     __
- /_  __/___ ______/ /__   / ____/  _____  _______  __/ /_____  _____
-  / / / __ `/ ___/ //_/  / __/ | |/_/ _ \/ ___/ / / / __/ __ \/ ___/
- / / / /_/ (__  ) ,<    / /____>  </  __/ /__/ /_/ / /_/ /_/ / /
-/_/  \__,_/____/_/|_|  /_____/_/|_|\___/\___/\__,_/\__/\____/_/
+    ____                      __  _                                              
+   /  _/___  ____ ____  _____/ /_(_)___  ____     ________  ______   _____  _____
+   / // __ \/ __ `/ _ \/ ___/ __/ / __ \/ __ \   / ___/ _ \/ ___/ | / / _ \/ ___/
+ _/ // / / / /_/ /  __(__  ) /_/ / /_/ / / / /  (__  )  __/ /   | |/ /  __/ /    
+/___/_/ /_/\__, /\___/____/\__/_/\____/_/ /_/  /____/\___/_/    |___/\___/_/     
+          /____/        
     """)
-    logging.info(f'TaskExecutor: RAGFlow version: {get_ragflow_version()}')
+    logging.info(f'RAGFlow version: {get_ragflow_version()}')
     settings.init_settings()
     print_rag_settings()
     signal.signal(signal.SIGUSR1, start_tracemalloc_and_snapshot)

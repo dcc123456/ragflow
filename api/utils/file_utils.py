@@ -41,6 +41,7 @@ from cachetools import LRUCache, cached
 from PIL import Image
 from ruamel.yaml import YAML
 
+# Local imports
 from api.constants import IMG_BASE64_PREFIX
 from api.db import FileType
 
@@ -340,7 +341,8 @@ def _extract_ole10native_payload(data: bytes) -> bytes:
             return data
         _ = int.from_bytes(data[pos:pos+4], "little")
         pos += 4
-        for _ in range(3):  # filename/src/tmp (NUL-terminated ANSI)
+        # filename/src/tmp (NUL-terminated ANSI)
+        for _ in range(3):
             z = data.index(b"\x00", pos)
             pos = z + 1
         pos += 4
@@ -356,11 +358,9 @@ def _extract_ole10native_payload(data: bytes) -> bytes:
 
 def extract_embed_file(target: Union[bytes, bytearray]) -> List[Tuple[str, bytes]]:
     """
-    Only extract the "first layer" of embedding, returning raw (filename, bytes).
-    These bytes can be directly used for io.BytesIO and then passed to zipfile/fitz/olefile and other libraries for further parsing.
+    Only extract the 'first layer' of embedding, returning raw (filename, bytes).
     """
     top = bytes(target)
-
     head = top[:8]
     out: List[Tuple[str, bytes]] = []
     seen = set()
@@ -371,7 +371,7 @@ def extract_embed_file(target: Union[bytes, bytearray]) -> List[Tuple[str, bytes
             return
         seen.add(h10)
         ext = _guess_ext(b)
-        # If name_hint does not have a clear extension, use the extension guessed from the content
+        # If name_hint has an extension use its basename; else fallback to guessed ext
         if "." in name_hint:
             fname = name_hint.split("/")[-1]
         else:
@@ -382,8 +382,10 @@ def extract_embed_file(target: Union[bytes, bytearray]) -> List[Tuple[str, bytes
     if _is_zip(head):
         try:
             with zipfile.ZipFile(io.BytesIO(top), "r") as z:
-                embed_dirs = ("word/embeddings/", "word/objects/", "word/activex/",
-                              "xl/embeddings/", "ppt/embeddings/")
+                embed_dirs = (
+                    "word/embeddings/", "word/objects/", "word/activex/",
+                    "xl/embeddings/", "ppt/embeddings/"
+                )
                 for name in z.namelist():
                     low = name.lower()
                     if any(low.startswith(d) for d in embed_dirs):
@@ -396,24 +398,7 @@ def extract_embed_file(target: Union[bytes, bytearray]) -> List[Tuple[str, bytes
             pass
         return out
 
-    # PDF attachments
-    if _is_pdf(head):
-        try:
-            doc = fitz.open(stream=top, filetype="pdf")
-            count = getattr(doc, "embfile_count", 0)
-            for i in range(count):
-                try:
-                    data = doc.embfile_get(i)
-                    if data:
-                        push(bytes(data), f"EmbeddedFiles[{i}]")
-                except Exception:
-                    pass
-            doc.close()
-        except Exception:
-            pass
-        return out
-
-    # Legacy OLE (.doc/.xls/.ppt)
+    # OLE container (doc/ppt/xls)
     if _is_ole(head):
         try:
             with olefile.OleFileIO(io.BytesIO(top)) as ole:
