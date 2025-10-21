@@ -52,9 +52,18 @@ const SideBar = () => {
   }
 
   const items: MenuItem[] = Object.values(UserSettingRouteKey)
-    .filter((x) =>
-      enableAdmin && !isAdmin ? x !== UserSettingRouteKey.Model : true,
-    )
+    .filter((x) => {
+      if (enableAdmin) {
+        if (!isAdmin) {
+          return (
+            x !== UserSettingRouteKey.Model &&
+            x !== UserSettingRouteKey.Password
+          );
+        }
+      }
+
+      return x !== UserSettingRouteKey.Password;
+    })
     .map((value) => getItem(value, value, UserSettingIconMap[value]));
 
   const handleMenuClick: MenuProps['onClick'] = ({ key }) => {
