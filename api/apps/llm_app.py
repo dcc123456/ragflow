@@ -517,7 +517,7 @@ def list_app():
 
             llm_set = set([m["llm_name"] + "@" + m["fid"] for m in llms])
             for o in objs:
-                if not o.api_key:
+                if not o.api_key and o.llm_factory not in weighted:
                     continue
                 if o.llm_name + "@" + o.llm_factory in llm_set:
                     continue
