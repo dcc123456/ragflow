@@ -61,7 +61,7 @@ def get_init_tenant_llm(user_id):
 
     if settings.LIGHTEN != 1:
         for buildin_embedding_model in settings.BUILTIN_EMBEDDING_MODELS:
-            mdlnm, fid = TenantLLMService.split_model_name_and_factory(buildin_embedding_model)
+            mdlnm, fid, _ = TenantLLMService.split_model_name_and_factory(buildin_embedding_model)
             tenant_llm.append(
                 {
                     "tenant_id": user_id,
