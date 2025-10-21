@@ -468,7 +468,7 @@ def share_dialog():
     if member_list:
         all_member_ids.update(member_list)
 
-    need_to_share = list(member_list)
+    need_to_share = list(all_member_ids)
     print(f"{need_to_share=}", flush=True)
 
     permission_to_create = []
