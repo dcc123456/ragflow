@@ -13,6 +13,7 @@ tokens = [
     "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",#liuan
     "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", #baoxiaoyang
     "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",#jinxiaoling
+    "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",#Naomi
 ]
 
 
