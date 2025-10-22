@@ -5,14 +5,14 @@ import requests
 from rag.utils.redis_conn import REDIS_CONN
 
 tokens = [
-    "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",#kevinhu
-    "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",#naomi
-    "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",#zhicang
-    "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",#yongteng
-    "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",#shengle
-    "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",#zhenghang
-    "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",#dcc
-    "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",#liuan
+    "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",#kevinhu
+    "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",#yongteng
+    "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",#shengle
+    "g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",#zhenghang
+    "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",#dcc
+    "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",#liuan
+    "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", #baoxiaoyang
+    "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",#jinxiaoling
 ]
 
 
