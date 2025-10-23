@@ -611,6 +611,7 @@ class User(DataBaseModel, UserMixin):
     login_channel = CharField(null=True, help_text="from which user login", index=True)
     status = CharField(max_length=1, null=True, help_text="is it validate(0: wasted, 1: validate)", default="1", index=True)
     is_superuser = BooleanField(null=True, help_text="is root", default=False, index=True)
+    role_id = IntegerField(null=False, help_text="id in rag_flow.role", index=True)
 
     def __str__(self):
         return self.email
@@ -621,6 +622,24 @@ class User(DataBaseModel, UserMixin):
 
     class Meta:
         db_table = "user"
+
+
+class Role(DataBaseModel):
+    id = PrimaryKeyField()
+    role_name = CharField(max_length=64, null=False, help_text="owner|public", index=True)
+    description = TextField(null=True, help_text="role description", index=False)
+
+    class Meta:
+        db_table = "role"
+
+
+class RoleResource(DataBaseModel):
+    role_id = IntegerField(null=False, index=True)
+    resource_type = BigIntegerField(null=False, help_text="resource type", index=False)
+    action = IntegerField(null=False, help_text="action", index=False)
+
+    class Meta:
+        db_table = "role_resource"
 
 
 class Tenant(DataBaseModel):
@@ -1280,6 +1299,10 @@ def migrate_db():
         pass
     try:
         migrate(migrator.add_column("knowledgebase", "mindmap_task_finish_at", CharField(null=True)))
+    except Exception:
+        pass
+    try:
+        migrate(migrator.add_column("user", "role_name", CharField(max_length=32, null=True, default="owner", help_text="owner|public", index=True)))
     except Exception:
         pass
     #try:

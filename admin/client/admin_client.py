@@ -800,7 +800,7 @@ class AdminCLI(Cmd):
         if response.status_code == 200:
             self._print_table_simple(res_json['data'])
         else:
-            print(f"Fail to list roles, code: {res_json['code']}, message: {res_json['message']}")
+            print(f"Fail to show roles, code: {res_json['code']}, message: {res_json['message']}")
 
     def _grant_permission(self, command):
         role_name_tree: Tree = command['role_name']

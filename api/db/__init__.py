@@ -18,6 +18,29 @@ from enum import IntEnum, Enum
 from strenum import StrEnum
 
 
+class PermissionOperationEnum(StrEnum):
+    GRANT = 'grant'
+    REVOKE = 'revoke'
+
+
+class ResourceTypeEnum(Enum):
+    # 0 is reserved
+    DATASET = 1
+    CHAT = 2
+    AGENT = 3
+    SEARCH = 4
+    FILE = 5
+    TEAM = 6
+    MEMORY = 7
+
+
+class ActionEnum(Enum):
+    ENABLE = 0b0001  # 1 << 0 = 1 (0b00000001)
+    READ = 0b0010    # 1 << 1 = 2 (0b00000010)
+    WRITE = 0b0100   # 1 << 2 = 4 (0b00000100)
+    SHARE = 0b1000   # 1 << 3 = 8 (0b00001000)
+
+
 class UserTenantRole(StrEnum):
     OWNER = 'owner'
     ADMIN = 'admin'

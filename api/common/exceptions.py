@@ -33,6 +33,16 @@ class UserAlreadyExistsError(AdminException):
         super().__init__(f"User '{username}' already exists", 409)
 
 
+class RoleNotFoundError(AdminException):
+    def __init__(self, role_name):
+        super().__init__(f"Role '{role_name}' not found", 404)
+
+
+class RoleAlreadyExistsError(AdminException):
+    def __init__(self, role_name):
+        super().__init__(f"Role '{role_name}' already exists", 409)
+
+
 class CannotDeleteAdminError(AdminException):
     def __init__(self):
         super().__init__("Cannot delete admin account", 403)
