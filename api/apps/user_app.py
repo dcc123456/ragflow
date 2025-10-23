@@ -25,12 +25,11 @@ from datetime import datetime
 from flask import request, session, redirect
 from flask_login import login_required, current_user, login_user, logout_user
 
-from flask import redirect, request, session
+from flask import redirect, request, session, make_response
 from flask_login import current_user, login_required, login_user, logout_user
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from api.apps.auth import get_auth_client
-from api.db import FileType, UserTenantRole
 from api.db.db_models import TenantLLM
 from api.db.services.tenant_llm_service import user_register
 from api.utils.api_utils import (
@@ -864,7 +863,7 @@ def set_tenant_info():
         return get_json_result(data=True)
     except Exception as e:
         return server_error_response(e)
-
+        
 
 @manager.route("/forget/captcha", methods=["GET"])  # noqa: F821
 def forget_get_captcha():
@@ -889,7 +888,9 @@ def forget_get_captcha():
     from captcha.image import ImageCaptcha
     image = ImageCaptcha(width=300, height=120, font_sizes=[50, 60, 70])
     img_bytes = image.generate(captcha_text).read()
-    return Response(img_bytes, mimetype="image/png")
+    response = make_response(img_bytes)
+    response.headers.set("Content-Type", "image/JPEG")
+    return response
 
 
 @manager.route("/forget/otp", methods=["POST"])  # noqa: F821
@@ -955,7 +956,7 @@ def forget_send_otp():
             )
         except Exception:
             return get_json_result(data=False, code=settings.RetCode.SERVER_ERROR, message="failed to send email")
-
+        
     return get_json_result(data=True, code=settings.RetCode.SUCCESS, message="verification passed, email sent")
 
 
@@ -1033,19 +1034,19 @@ def forget():
     return construct_response(data=user.to_json(), auth=user.get_id(), message=msg)
 
 
-@manager.route("/is_admin", methods=["GET"])
+@manager.route("/is_admin", methods=["GET"])  # noqa: F821
 @login_required
 def is_admin():
     return get_json_result(data={"admin": UserService.is_admin(current_user.id)})
 
 
-@manager.route("/enable_admin", methods=["GET"])
+@manager.route("/enable_admin", methods=["GET"])  # noqa: F821
 @login_required
 def enable_admin():
     return get_json_result(data={"enable": settings.ENABLE_ADMIN})
 
 
-@manager.route("/star", methods=["GET"])
+@manager.route("/star", methods=["GET"])  # noqa: F821
 @login_required
 def has_starred_repo():
     user = UserService.query(id=current_user.id)
