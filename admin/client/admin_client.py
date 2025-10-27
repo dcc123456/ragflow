@@ -745,7 +745,10 @@ class AdminCLI(Cmd):
         )
         res_json = response.json()
         if response.status_code == 200:
-            self._print_table_simple(res_json['data'])
+            if res_json['data']['success']:
+                self._print_table_simple(res_json['data']['role_info'])
+            else:
+                print(res_json['message'])
         else:
             print(f"Fail to create role {role_name}, code: {res_json['code']}, message: {res_json['message']}")
 
@@ -757,7 +760,7 @@ class AdminCLI(Cmd):
         response = self.session.delete(url)
         res_json = response.json()
         if response.status_code == 200:
-            self._print_table_simple(res_json['data'])
+            self._print_table_simple(res_json['data']['message'])
         else:
             print(f"Fail to drop role {role_name}, code: {res_json['code']}, message: {res_json['message']}")
 
@@ -775,7 +778,7 @@ class AdminCLI(Cmd):
         )
         res_json = response.json()
         if response.status_code == 200:
-            self._print_table_simple(res_json['data'])
+            self._print_table_simple(res_json['data']['message'])
         else:
             print(
                 f"Fail to update role {role_name} with description: {desc_str}, code: {res_json['code']}, message: {res_json['message']}")
@@ -786,7 +789,10 @@ class AdminCLI(Cmd):
         response = self.session.get(url)
         res_json = response.json()
         if response.status_code == 200:
-            self._print_table_simple(res_json['data'])
+            total = res_json['data']['total']
+            role_noun = 'role' if total == 1 else 'roles'
+            print(f"Found {total} {role_noun}.")
+            self._print_table_simple(res_json['data']['roles'])
         else:
             print(f"Fail to list roles, code: {res_json['code']}, message: {res_json['message']}")
 
@@ -798,7 +804,14 @@ class AdminCLI(Cmd):
         response = self.session.get(url)
         res_json = response.json()
         if response.status_code == 200:
-            self._print_table_simple(res_json['data'])
+            data = res_json['data']
+            role_info = {
+                'role_name': data['role']['role_name'],
+                'description': data['role']['description']
+            }
+            for resource, permissions in data['permissions'].items():
+                role_info.update({resource: ','.join([permission_name.UPPER() for permission_name, enable in permissions.items() if enable])})
+            self._print_table_simple(role_info)
         else:
             print(f"Fail to show roles, code: {res_json['code']}, message: {res_json['message']}")
 
@@ -813,14 +826,15 @@ class AdminCLI(Cmd):
             action_str: str = action_tree.children[0].strip("'\"")
             actions.append(action_str)
         print(f"grant role_name: {role_name_str}, resource: {resource_str}, actions: {actions}")
+        new_permissions = {resource_str: {action.lower(): True for action in actions}}
         url = f'http://{self.host}:{self.port}/api/v1/admin/roles/{role_name_str}/permission'
         response = self.session.post(
             url,
-            json={'actions': actions, 'resource': resource_str}
+            json={'new_permissions': new_permissions}
         )
         res_json = response.json()
         if response.status_code == 200:
-            self._print_table_simple(res_json['data'])
+            print(res_json['data']['message'])
         else:
             print(
                 f"Fail to grant role {role_name_str} with {actions} on {resource_str}, code: {res_json['code']}, message: {res_json['message']}")
@@ -836,14 +850,15 @@ class AdminCLI(Cmd):
             action_str: str = action_tree.children[0].strip("'\"")
             actions.append(action_str)
         print(f"revoke role_name: {role_name_str}, resource: {resource_str}, actions: {actions}")
+        revoke_permissions = {resource_str: {action.lower(): False for action in actions}}
         url = f'http://{self.host}:{self.port}/api/v1/admin/roles/{role_name_str}/permission'
         response = self.session.delete(
             url,
-            json={'actions': actions, 'resource': resource_str}
+            json={'revoke_permissions': revoke_permissions}
         )
         res_json = response.json()
         if response.status_code == 200:
-            self._print_table_simple(res_json['data'])
+            print(res_json['data']['message'])
         else:
             print(
                 f"Fail to revoke role {role_name_str} with {actions} on {resource_str}, code: {res_json['code']}, message: {res_json['message']}")
@@ -861,7 +876,7 @@ class AdminCLI(Cmd):
         )
         res_json = response.json()
         if response.status_code == 200:
-            self._print_table_simple(res_json['data'])
+            print(res_json['data']['message'])
         else:
             print(
                 f"Fail to alter user: {user_name_str} to role {role_name_str}, code: {res_json['code']}, message: {res_json['message']}")
@@ -874,7 +889,16 @@ class AdminCLI(Cmd):
         response = self.session.get(url)
         res_json = response.json()
         if response.status_code == 200:
-            self._print_table_simple(res_json['data'])
+            data = res_json['data']
+            user_permission_info = {
+                'username': data['user']['username'],
+                'role': data['user']['role'],
+                'description': data['user']['description'],
+            }
+            for resource, permissions in data['role_permissions'].items():
+                user_permission_info.update({resource: ','.join(
+                    [permission_name.UPPER() for permission_name, enable in permissions.items() if enable])})
+            self._print_table_simple(user_permission_info)
         else:
             print(
                 f"Fail to show user: {user_name_str} permission, code: {res_json['code']}, message: {res_json['message']}")

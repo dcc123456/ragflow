@@ -21,7 +21,7 @@ from api.common.exceptions import AdminException, RoleAlreadyExistsError, RoleNo
 from api.db import PermissionOperationEnum
 from api.db.services.user_service import UserService
 from api.db.services.role_service import RoleService
-from api.db.joint_services.user_role_service import get_role_permissions_by_role_id, upsert_role_actions
+from api.db.joint_services.user_role_service import get_role_permissions_by_role_id, upsert_role_actions, delete_role_by_id
 
 
 class RoleMgr:
@@ -84,9 +84,17 @@ class RoleMgr:
 
     @staticmethod
     def delete_role(role_name: str) -> Dict[str, Any]:
-        error_msg = f"not implement: drop role: {role_name}"
-        logging.error(error_msg)
-        raise AdminException(error_msg)
+        roles = RoleService.get_by_role_name(role_name)
+        if not roles:
+            raise RoleNotFoundError(role_name)
+        if len(roles) >= 1:
+            raise AdminException(f"More than one role {role_name} found!")
+        role = roles[0]
+        user_in_use = UserService.query(role_id=role["id"])
+        user_emails = [u.email for u in user_in_use]
+        if user_in_use:
+            raise AdminException(f"User {user_emails} are {role_name}, cannot delete it!")
+        return delete_role_by_id(role["id"])
 
     @staticmethod
     def list_roles() -> Dict[str, Any]:
@@ -194,6 +202,12 @@ class RoleMgr:
         if len(roles) >= 1:
             raise AdminException(f"More than one role {role_name} found!")
         role = roles[0]
+        if user["role_id"] == role["id"]:
+            return {
+                "success": True,
+                "message": f"User {user_name} has already updated to role {role_name}."
+            }
+
         try:
             UserService.update_user(user.id, {"role_id": role["id"]})
             return {

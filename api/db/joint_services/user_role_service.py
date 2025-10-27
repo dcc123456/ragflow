@@ -118,7 +118,28 @@ def upsert_role_actions(role_name: str, new_permissions: dict, operation_type: s
         upsert_cnt = RoleResourceService.upsert_role_action_by_id(role["id"], upsert_dict)
         return {
             "success": True,
-            "message": f"Role successfully updated. {upsert_cnt} rows affected."
+            "message": f"Role {role_name} updated successfully. {upsert_cnt} rows affected."
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "message": str(e)
+        }
+
+
+def delete_role_by_id(role_id):
+    role = RoleService.get_by_id(role_id)
+    if not role:
+        return {
+            "success": True,
+            "message": f"Role {role_id} is already deleted."
+        }
+    try:
+        permission_deleted_cnt = RoleResourceService.delete_by_role_id(role["id"])
+        role_deleted_cnt = RoleService.delete_by_id(role["id"])
+        return {
+            "success": True,
+            "message": f"Role deleted successfully. {permission_deleted_cnt} role permissions and {role_deleted_cnt} role record deleted."
         }
     except Exception as e:
         return {
