@@ -39,7 +39,7 @@ export default function Chat() {
   const { t } = useTranslation();
   const { data: conversation } = useFetchConversation();
 
-  const { handleConversationCardClick, controller } =
+  const { handleConversationCardClick, controller, stopOutputMessage } =
     useHandleClickConversationCard();
   const { visible: settingVisible, switchVisible: switchSettingVisible } =
     useSetModalState(true);
@@ -63,10 +63,10 @@ export default function Chat() {
       <section className="pt-14 h-[100vh] pb-24">
         <div className="flex items-center justify-between px-10 pb-5">
           <span className="text-2xl">
-            Multiple Models ({chatBoxIds.length}/3)
+            {t('chat.multipleModels')} ({chatBoxIds.length}/3)
           </span>
           <Button variant={'ghost'} onClick={switchDebugMode}>
-            Exit <LogOut />
+            {t('chat.exit')} <LogOut />
           </Button>
         </div>
         <MultipleChatBox
@@ -74,6 +74,7 @@ export default function Chat() {
           controller={controller}
           removeChatBox={removeChatBox}
           addChatBox={addChatBox}
+          stopOutputMessage={stopOutputMessage}
         ></MultipleChatBox>
       </section>
     );
@@ -109,13 +110,12 @@ export default function Chat() {
 
         <Card className="flex-1 min-w-0 bg-transparent border h-full">
           <CardContent className="flex p-0 h-full">
-            <Card className="flex flex-col flex-1 bg-transparent">
+            <Card className="flex flex-col flex-1 bg-transparent min-w-0">
               <CardHeader
                 className={cn('p-5', { 'border-b': hasSingleChatBox })}
               >
                 <CardTitle className="flex justify-between items-center text-base">
-                  <div>{conversation.name}</div>
-
+                  <div className="truncate">{conversation.name}</div>
                   <Button
                     variant={'ghost'}
                     onClick={switchDebugMode}
@@ -125,12 +125,15 @@ export default function Chat() {
                       isNew === 'true'
                     }
                   >
-                    <ArrowUpRight /> Multiple Models
+                    <ArrowUpRight /> {t('chat.multipleModels')}
                   </Button>
                 </CardTitle>
               </CardHeader>
               <CardContent className="flex-1 p-0 min-h-0">
-                <SingleChatBox controller={controller}></SingleChatBox>
+                <SingleChatBox
+                  controller={controller}
+                  stopOutputMessage={stopOutputMessage}
+                ></SingleChatBox>
               </CardContent>
             </Card>
             {settingVisible && (

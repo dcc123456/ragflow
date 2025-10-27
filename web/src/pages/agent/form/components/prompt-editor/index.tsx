@@ -10,7 +10,6 @@ import { HeadingNode, QuoteNode } from '@lexical/rich-text';
 import {
   $getRoot,
   $getSelection,
-  $nodesOfType,
   EditorState,
   Klass,
   LexicalNode,
@@ -30,7 +29,9 @@ import { PasteHandlerPlugin } from './paste-handler-plugin';
 import theme from './theme';
 import { VariableNode } from './variable-node';
 import { VariableOnChangePlugin } from './variable-on-change-plugin';
-import VariablePickerMenuPlugin from './variable-picker-plugin';
+import VariablePickerMenuPlugin, {
+  VariablePickerMenuPluginProps,
+} from './variable-picker-plugin';
 
 // Catch any errors that occur during Lexical updates and log them
 // or throw them as needed. If you don't throw them, Lexical will
@@ -53,7 +54,8 @@ type IProps = {
   value?: string;
   onChange?: (value?: string) => void;
   placeholder?: ReactNode;
-} & PromptContentProps;
+} & PromptContentProps &
+  Pick<VariablePickerMenuPluginProps, 'extraOptions' | 'baseOptions'>;
 
 function PromptContent({
   showToolbar = true,
@@ -123,6 +125,8 @@ export function PromptEditor({
   placeholder,
   showToolbar,
   multiLine = true,
+  extraOptions,
+  baseOptions,
 }: IProps) {
   const { t } = useTranslation();
   const initialConfig: InitialConfigType = {
@@ -135,9 +139,8 @@ export function PromptEditor({
   const onValueChange = useCallback(
     (editorState: EditorState) => {
       editorState?.read(() => {
-        const listNodes = $nodesOfType(VariableNode); // to be removed
+        // const listNodes = $nodesOfType(VariableNode); // to be removed
         // const allNodes = $dfs();
-        console.log('🚀 ~ onChange ~ allNodes:', listNodes);
 
         const text = $getRoot().getTextContent();
 
@@ -172,7 +175,11 @@ export function PromptEditor({
           }
           ErrorBoundary={LexicalErrorBoundary}
         />
-        <VariablePickerMenuPlugin value={value}></VariablePickerMenuPlugin>
+        <VariablePickerMenuPlugin
+          value={value}
+          extraOptions={extraOptions}
+          baseOptions={baseOptions}
+        ></VariablePickerMenuPlugin>
         <PasteHandlerPlugin />
         <VariableOnChangePlugin
           onChange={onValueChange}

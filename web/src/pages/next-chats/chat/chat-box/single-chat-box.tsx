@@ -1,5 +1,7 @@
 import { NextMessageInput } from '@/components/message-input/next';
 import MessageItem from '@/components/message-item';
+import PdfDrawer from '@/components/pdf-drawer';
+import { useClickDrawer } from '@/components/pdf-drawer/hooks';
 import { MessageType } from '@/constants/chat';
 import {
   useFetchConversation,
@@ -18,9 +20,10 @@ import { buildMessageItemReference } from '../../utils';
 
 interface IProps {
   controller: AbortController;
+  stopOutputMessage(): void;
 }
 
-export function SingleChatBox({ controller }: IProps) {
+export function SingleChatBox({ controller, stopOutputMessage }: IProps) {
   const {
     value,
     scrollRef,
@@ -32,8 +35,8 @@ export function SingleChatBox({ controller }: IProps) {
     handlePressEnter,
     regenerateMessage,
     removeMessageById,
-    stopOutputMessage,
     handleUploadFile,
+    removeFile,
   } = useSendMessage(controller);
   const { data: userInfo } = useFetchUserInfo();
   const { data: currentDialog } = useFetchDialog();
@@ -43,6 +46,8 @@ export function SingleChatBox({ controller }: IProps) {
   const { data: conversation } = useFetchConversation();
   const disabled = useGetSendButtonDisabled();
   const sendDisabled = useSendButtonDisabled(value);
+  const { visible, hideModal, documentId, selectedChunk, clickDocumentButton } =
+    useClickDrawer();
 
   return (
     <section className="flex flex-col p-5 h-full">
@@ -68,7 +73,7 @@ export function SingleChatBox({ controller }: IProps) {
                   },
                   message,
                 )}
-                // clickDocumentButton={clickDocumentButton}
+                clickDocumentButton={clickDocumentButton}
                 index={i}
                 removeMessageById={removeMessageById}
                 regenerateMessage={regenerateMessage}
@@ -93,7 +98,16 @@ export function SingleChatBox({ controller }: IProps) {
         stopOutputMessage={stopOutputMessage}
         onUpload={handleUploadFile}
         isUploading={isUploading}
+        removeFile={removeFile}
       />
+      {visible && (
+        <PdfDrawer
+          visible={visible}
+          hideModal={hideModal}
+          documentId={documentId}
+          chunk={selectedChunk}
+        ></PdfDrawer>
+      )}
     </section>
   );
 }

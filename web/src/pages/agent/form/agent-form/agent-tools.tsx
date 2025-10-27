@@ -6,6 +6,7 @@ import {
 } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { Position } from '@xyflow/react';
+import { t } from 'i18next';
 import { PencilLine, X } from 'lucide-react';
 import {
   MouseEventHandler,
@@ -14,6 +15,7 @@ import {
   useContext,
   useMemo,
 } from 'react';
+import { LabelCard } from '../../canvas/node/card';
 import { Operator } from '../../constant';
 import { AgentInstanceContext } from '../../context';
 import { useFindMcpById } from '../../hooks/use-find-mcp-by-id';
@@ -33,15 +35,9 @@ export function ToolCard({
 }: PropsWithChildren & React.HTMLAttributes<HTMLLIElement>) {
   const element = useMemo(() => {
     return (
-      <li
-        {...props}
-        className={cn(
-          'flex bg-bg-card p-1 rounded-sm justify-between',
-          className,
-        )}
-      >
+      <LabelCard {...props} className={cn('flex justify-between', className)}>
         {children}
-      </li>
+      </LabelCard>
     );
   }, [children, className, props]);
 
@@ -106,7 +102,7 @@ export function AgentTools() {
 
   return (
     <section className="space-y-2.5">
-      <span className="text-text-secondary">Tools</span>
+      <span className="text-text-secondary">{t('flow.tools')}</span>
       <ul className="space-y-2">
         {toolNames.map((x) => (
           <ToolCard key={x}>
@@ -133,7 +129,7 @@ export function AgentTools() {
         ))}
       </ul>
       <ToolPopover>
-        <BlockButton>Add Tool</BlockButton>
+        <BlockButton>{t('flow.addTools')}</BlockButton>
       </ToolPopover>
     </section>
   );
@@ -160,7 +156,7 @@ export function Agents({ node }: INextOperatorForm) {
 
   return (
     <section className="space-y-2.5">
-      <span className="text-text-secondary">Agents</span>
+      <span className="text-text-secondary">{t('flow.agent')}</span>
       <ul className="space-y-2">
         {subBottomAgentNodeIds.map((id) => {
           const currentNode = getNode(id);
@@ -183,7 +179,7 @@ export function Agents({ node }: INextOperatorForm) {
           position: Position.Bottom,
         })}
       >
-        Add Agent
+        {t('flow.addAgent')}
       </BlockButton>
     </section>
   );

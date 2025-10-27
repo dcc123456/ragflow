@@ -16,8 +16,10 @@
 import json
 import re
 import time
+
 import tiktoken
 from flask import Response, jsonify, request
+
 from agent.canvas import Canvas
 from api import settings
 from api.db import LLMType, StatusEnum
@@ -27,17 +29,18 @@ from api.db.services.canvas_service import UserCanvasService, completionOpenAI
 from api.db.services.canvas_service import completion as agent_completion
 from api.db.services.conversation_service import ConversationService, iframe_completion
 from api.db.services.conversation_service import completion as rag_completion
-from api.db.services.dialog_service import DialogService, ask, chat, gen_mindmap
+from api.db.services.dialog_service import DialogService, ask, chat, gen_mindmap, meta_filter
+from api.db.services.document_service import DocumentService
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.llm_service import LLMBundle
 from api.db.services.search_service import SearchService
 from api.db.services.user_service import UserTenantService
 from api.utils import get_uuid
-from api.utils.api_utils import check_duplicate_ids, get_data_openai, get_error_data_result, get_json_result, get_result, server_error_response, token_required, validate_request
+from api.utils.api_utils import check_duplicate_ids, get_data_openai, get_error_data_result, get_json_result, \
+    get_result, server_error_response, token_required, validate_request
 from rag.app.tag import label_question
-from rag.prompts import chunks_format
-from rag.prompts.prompt_template import load_prompt
-from rag.prompts.prompts import cross_languages, keyword_extraction
+from rag.prompts.template import load_prompt
+from rag.prompts.generator import cross_languages, gen_meta_filter, keyword_extraction, chunks_format
 
 
 @manager.route("/chats/<chat_id>/sessions", methods=["POST"])  # noqa: F821
@@ -81,21 +84,14 @@ def create_agent_session(tenant_id, agent_id):
     if not isinstance(cvs.dsl, str):
         cvs.dsl = json.dumps(cvs.dsl, ensure_ascii=False)
 
-    session_id=get_uuid()
+    session_id = get_uuid()
     canvas = Canvas(cvs.dsl, tenant_id, agent_id)
     canvas.reset()
-    conv = {
-        "id": session_id,
-        "dialog_id": cvs.id,
-        "user_id": user_id,
-        "message": [],
-        "source": "agent",
-        "dsl": cvs.dsl
-    }
-    API4ConversationService.save(**conv)
 
     cvs.dsl = json.loads(str(canvas))
-    conv = {"id": session_id, "dialog_id": cvs.id, "user_id": user_id, "message": [{"role": "assistant", "content": canvas.get_prologue()}], "source": "agent", "dsl": cvs.dsl}
+    conv = {"id": session_id, "dialog_id": cvs.id, "user_id": user_id,
+            "message": [{"role": "assistant", "content": canvas.get_prologue()}], "source": "agent", "dsl": cvs.dsl}
+    API4ConversationService.save(**conv)
     conv["agent_id"] = conv.pop("dialog_id")
     return get_result(data=conv)
 
@@ -285,7 +281,7 @@ def chat_completion_openai_like(tenant_id, chat_id):
                     reasoning_match = re.search(r"<think>(.*?)</think>", answer, flags=re.DOTALL)
                     if reasoning_match:
                         reasoning_part = reasoning_match.group(1)
-                        content_part = answer[reasoning_match.end() :]
+                        content_part = answer[reasoning_match.end():]
                     else:
                         reasoning_part = ""
                         content_part = answer
@@ -330,7 +326,8 @@ def chat_completion_openai_like(tenant_id, chat_id):
             response["choices"][0]["delta"]["content"] = None
             response["choices"][0]["delta"]["reasoning_content"] = None
             response["choices"][0]["finish_reason"] = "stop"
-            response["usage"] = {"prompt_tokens": len(prompt), "completion_tokens": token_used, "total_tokens": len(prompt) + token_used}
+            response["usage"] = {"prompt_tokens": len(prompt), "completion_tokens": token_used,
+                                 "total_tokens": len(prompt) + token_used}
             if need_reference:
                 response["choices"][0]["delta"]["reference"] = chunks_format(last_ans.get("reference", []))
                 response["choices"][0]["delta"]["final_content"] = last_ans.get("answer", "")
@@ -419,7 +416,7 @@ def agents_completion_openai_compatibility(tenant_id, agent_id):
                 tenant_id,
                 agent_id,
                 question,
-                session_id=req.get("id", req.get("metadata", {}).get("id", "")),
+                session_id=req.pop("session_id", req.get("id", "")) or req.get("metadata", {}).get("id", ""),
                 stream=True,
                 **req,
             ),
@@ -437,7 +434,7 @@ def agents_completion_openai_compatibility(tenant_id, agent_id):
                 tenant_id,
                 agent_id,
                 question,
-                session_id=req.get("id", req.get("metadata", {}).get("id", "")),
+                session_id=req.pop("session_id", req.get("id", "")) or req.get("metadata", {}).get("id", ""),
                 stream=False,
                 **req,
             )
@@ -450,7 +447,6 @@ def agents_completion_openai_compatibility(tenant_id, agent_id):
 def agent_completions(tenant_id, agent_id):
     req = request.json
 
-    ans = {}
     if req.get("stream", True):
 
         def generate():
@@ -461,7 +457,7 @@ def agent_completions(tenant_id, agent_id):
                     except Exception:
                         continue
 
-                if ans.get("event") != "message":
+                if ans.get("event") not in ["message", "message_end"]:
                     continue
 
                 yield answer
@@ -475,12 +471,25 @@ def agent_completions(tenant_id, agent_id):
         resp.headers.add_header("Content-Type", "text/event-stream; charset=utf-8")
         return resp
 
+    full_content = ""
+    reference = {}
+    final_ans = ""
     for answer in agent_completion(tenant_id=tenant_id, agent_id=agent_id, **req):
         try:
-            ans = json.loads(answer[5:])  # remove "data:"
+            ans = json.loads(answer[5:])
+
+            if ans["event"] == "message":
+                full_content += ans["data"]["content"]
+
+            if ans.get("data", {}).get("reference", None):
+                reference.update(ans["data"]["reference"])
+
+            final_ans = ans
         except Exception as e:
             return get_result(data=f"**ERROR**: {str(e)}")
-    return get_result(data=ans)
+    final_ans["data"]["content"] = full_content
+    final_ans["data"]["reference"] = reference
+    return get_result(data=final_ans)
 
 
 @manager.route("/chats/<chat_id>/sessions", methods=["GET"])  # noqa: F821
@@ -553,7 +562,8 @@ def list_agent_session(tenant_id, agent_id):
         desc = True
     # dsl defaults to True in all cases except for False and false
     include_dsl = request.args.get("dsl") != "False" and request.args.get("dsl") != "false"
-    total, convs = API4ConversationService.get_list(agent_id, tenant_id, page_number, items_per_page, orderby, desc, id, user_id, include_dsl)
+    total, convs = API4ConversationService.get_list(agent_id, tenant_id, page_number, items_per_page, orderby, desc, id,
+                                                    user_id, include_dsl)
     if not convs:
         return get_result(data=[])
     for conv in convs:
@@ -575,12 +585,13 @@ def list_agent_session(tenant_id, agent_id):
                 if message_num != 0 and messages[message_num]["role"] != "user":
                     chunk_list = []
                     # Add boundary and type checks to prevent KeyError
-                    if (chunk_num < len(conv["reference"]) and
-                            conv["reference"][chunk_num] is not None and
-                            isinstance(conv["reference"][chunk_num], dict) and
-                            "chunks" in conv["reference"][chunk_num]):
+                    if chunk_num < len(conv["reference"]) and conv["reference"][chunk_num] is not None and isinstance(
+                            conv["reference"][chunk_num], dict) and "chunks" in conv["reference"][chunk_num]:
                         chunks = conv["reference"][chunk_num]["chunks"]
                         for chunk in chunks:
+                            # Ensure chunk is a dictionary before calling get method
+                            if not isinstance(chunk, dict):
+                                continue
                             new_chunk = {
                                 "id": chunk.get("chunk_id", chunk.get("id")),
                                 "content": chunk.get("content_with_weight", chunk.get("content")),
@@ -633,13 +644,16 @@ def delete(tenant_id, chat_id):
 
     if errors:
         if success_count > 0:
-            return get_result(data={"success_count": success_count, "errors": errors}, message=f"Partially deleted {success_count} sessions with {len(errors)} errors")
+            return get_result(data={"success_count": success_count, "errors": errors},
+                              message=f"Partially deleted {success_count} sessions with {len(errors)} errors")
         else:
             return get_error_data_result(message="; ".join(errors))
 
     if duplicate_messages:
         if success_count > 0:
-            return get_result(message=f"Partially deleted {success_count} sessions with {len(duplicate_messages)} errors", data={"success_count": success_count, "errors": duplicate_messages})
+            return get_result(
+                message=f"Partially deleted {success_count} sessions with {len(duplicate_messages)} errors",
+                data={"success_count": success_count, "errors": duplicate_messages})
         else:
             return get_error_data_result(message=";".join(duplicate_messages))
 
@@ -685,13 +699,16 @@ def delete_agent_session(tenant_id, agent_id):
 
     if errors:
         if success_count > 0:
-            return get_result(data={"success_count": success_count, "errors": errors}, message=f"Partially deleted {success_count} sessions with {len(errors)} errors")
+            return get_result(data={"success_count": success_count, "errors": errors},
+                              message=f"Partially deleted {success_count} sessions with {len(errors)} errors")
         else:
             return get_error_data_result(message="; ".join(errors))
 
     if duplicate_messages:
         if success_count > 0:
-            return get_result(message=f"Partially deleted {success_count} sessions with {len(duplicate_messages)} errors", data={"success_count": success_count, "errors": duplicate_messages})
+            return get_result(
+                message=f"Partially deleted {success_count} sessions with {len(duplicate_messages)} errors",
+                data={"success_count": success_count, "errors": duplicate_messages})
         else:
             return get_error_data_result(message=";".join(duplicate_messages))
 
@@ -724,7 +741,9 @@ def ask_about(tenant_id):
             for ans in ask(req["question"], req["kb_ids"], uid):
                 yield "data:" + json.dumps({"code": 0, "message": "", "data": ans}, ensure_ascii=False) + "\n\n"
         except Exception as e:
-            yield "data:" + json.dumps({"code": 500, "message": str(e), "data": {"answer": "**ERROR**: " + str(e), "reference": []}}, ensure_ascii=False) + "\n\n"
+            yield "data:" + json.dumps(
+                {"code": 500, "message": str(e), "data": {"answer": "**ERROR**: " + str(e), "reference": []}},
+                ensure_ascii=False) + "\n\n"
         yield "data:" + json.dumps({"code": 0, "message": "", "data": True}, ensure_ascii=False) + "\n\n"
 
     resp = Response(stream(), mimetype="text/event-stream")
@@ -877,13 +896,8 @@ def begin_inputs(agent_id):
 
     canvas = Canvas(json.dumps(cvs.dsl), objs[0].tenant_id)
     return get_result(
-        data={
-            "title": cvs.title,
-            "avatar": cvs.avatar,
-            "inputs": canvas.get_component_input_form("begin"),
-            "prologue": canvas.get_prologue()
-        }
-    )
+        data={"title": cvs.title, "avatar": cvs.avatar, "inputs": canvas.get_component_input_form("begin"),
+              "prologue": canvas.get_prologue(), "mode": canvas.get_mode()})
 
 
 @manager.route("/searchbots/ask", methods=["POST"])  # noqa: F821
@@ -909,10 +923,12 @@ def ask_about_embedded():
     def stream():
         nonlocal req, uid
         try:
-            for ans in ask(req["question"], req["kb_ids"], uid, search_config):
+            for ans in ask(req["question"], req["kb_ids"], uid, search_config=search_config):
                 yield "data:" + json.dumps({"code": 0, "message": "", "data": ans}, ensure_ascii=False) + "\n\n"
         except Exception as e:
-            yield "data:" + json.dumps({"code": 500, "message": str(e), "data": {"answer": "**ERROR**: " + str(e), "reference": []}}, ensure_ascii=False) + "\n\n"
+            yield "data:" + json.dumps(
+                {"code": 500, "message": str(e), "data": {"answer": "**ERROR**: " + str(e), "reference": []}},
+                ensure_ascii=False) + "\n\n"
         yield "data:" + json.dumps({"code": 0, "message": "", "data": True}, ensure_ascii=False) + "\n\n"
 
     resp = Response(stream(), mimetype="text/event-stream")
@@ -923,7 +939,7 @@ def ask_about_embedded():
     return resp
 
 
-@manager.route("/searchbots/retrieval_test", methods=['POST'])  # noqa: F821
+@manager.route("/searchbots/retrieval_test", methods=["POST"])  # noqa: F821
 @validate_request("kb_id", "question")
 def retrieval_test_embedded():
     token = request.headers.get("Authorization").split()
@@ -941,6 +957,9 @@ def retrieval_test_embedded():
     kb_ids = req["kb_id"]
     if isinstance(kb_ids, str):
         kb_ids = [kb_ids]
+    if not kb_ids:
+        return get_json_result(data=False, message='Please specify dataset firstly.',
+                               code=settings.RetCode.DATA_ERROR)
     doc_ids = req.get("doc_ids", [])
     similarity_threshold = float(req.get("similarity_threshold", 0.0))
     vector_similarity_weight = float(req.get("vector_similarity_weight", 0.3))
@@ -953,18 +972,31 @@ def retrieval_test_embedded():
     if not tenant_id:
         return get_error_data_result(message="permission denined.")
 
+    if req.get("search_id", ""):
+        search_config = SearchService.get_detail(req.get("search_id", "")).get("search_config", {})
+        meta_data_filter = search_config.get("meta_data_filter", {})
+        metas = DocumentService.get_meta_by_kbs(kb_ids)
+        if meta_data_filter.get("method") == "auto":
+            chat_mdl = LLMBundle(tenant_id, LLMType.CHAT, llm_name=search_config.get("chat_id", ""))
+            filters = gen_meta_filter(chat_mdl, metas, question)
+            doc_ids.extend(meta_filter(metas, filters))
+            if not doc_ids:
+                doc_ids = None
+        elif meta_data_filter.get("method") == "manual":
+            doc_ids.extend(meta_filter(metas, meta_data_filter["manual"]))
+            if not doc_ids:
+                doc_ids = None
+
     try:
         tenants = UserTenantService.query(user_id=tenant_id)
         for kb_id in kb_ids:
             for tenant in tenants:
-                if KnowledgebaseService.query(
-                        tenant_id=tenant.tenant_id, id=kb_id):
+                if KnowledgebaseService.query(tenant_id=tenant.tenant_id, id=kb_id):
                     tenant_ids.append(tenant.tenant_id)
                     break
             else:
-                return get_json_result(
-                    data=False, message='Only owner of knowledgebase authorized for this operation.',
-                    code=settings.RetCode.OPERATING_ERROR)
+                return get_json_result(data=False, message="Only owner of knowledgebase authorized for this operation.",
+                                       code=settings.RetCode.OPERATING_ERROR)
 
         e, kb = KnowledgebaseService.get_by_id(kb_ids[0])
         if not e:
@@ -984,17 +1016,13 @@ def retrieval_test_embedded():
             question += keyword_extraction(chat_mdl, question)
 
         labels = label_question(question, [kb])
-        ranks = settings.retrievaler.retrieval(question, embd_mdl, tenant_ids, kb_ids, page, size,
-                               similarity_threshold, vector_similarity_weight, top,
-                               doc_ids, rerank_mdl=rerank_mdl, highlight=req.get("highlight"),
-                               rank_feature=labels
-                               )
+        ranks = settings.retriever.retrieval(
+            question, embd_mdl, tenant_ids, kb_ids, page, size, similarity_threshold, vector_similarity_weight, top,
+            doc_ids, rerank_mdl=rerank_mdl, highlight=req.get("highlight"), rank_feature=labels
+        )
         if use_kg:
-            ck = settings.kg_retrievaler.retrieval(question,
-                                                   tenant_ids,
-                                                   kb_ids,
-                                                   embd_mdl,
-                                                   LLMBundle(kb.tenant_id, LLMType.CHAT))
+            ck = settings.kg_retriever.retrieval(question, tenant_ids, kb_ids, embd_mdl,
+                                                 LLMBundle(kb.tenant_id, LLMType.CHAT))
             if ck["content_with_weight"]:
                 ranks["chunks"].insert(0, ck)
 
@@ -1005,7 +1033,7 @@ def retrieval_test_embedded():
         return get_json_result(data=ranks)
     except Exception as e:
         if str(e).find("not_found") > 0:
-            return get_json_result(data=False, message='No chunk found! Check the chunk status please!',
+            return get_json_result(data=False, message="No chunk found! Check the chunk status please!",
                                    code=settings.RetCode.DATA_ERROR)
         return server_error_response(e)
 
@@ -1075,7 +1103,8 @@ def detail_share_embedded():
             if SearchService.query(tenant_id=tenant.tenant_id, id=search_id):
                 break
         else:
-            return get_json_result(data=False, message="Has no permission for this operation.", code=settings.RetCode.OPERATING_ERROR)
+            return get_json_result(data=False, message="Has no permission for this operation.",
+                                   code=settings.RetCode.OPERATING_ERROR)
 
         search = SearchService.get_detail(search_id)
         if not search:

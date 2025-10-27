@@ -70,7 +70,12 @@ export function Sessions({
         />
       </section>
       <div className="flex justify-between items-center mb-4 pt-10">
-        <span className="text-base font-bold">Conversations</span>
+        <div className="flex items-center gap-3">
+          <span className="text-base font-bold">{t('chat.conversations')}</span>
+          <span className="text-text-secondary text-xs">
+            {conversationList.length}
+          </span>
+        </div>
         <Button variant={'ghost'} onClick={addTemporaryConversation}>
           <Plus></Plus>
         </Button>
@@ -90,8 +95,8 @@ export function Sessions({
               'bg-bg-card': conversationId === x.id,
             })}
           >
-            <CardContent className="px-3 py-2 flex justify-between items-center group">
-              {x.name}
+            <CardContent className="px-3 py-2 flex justify-between items-center group gap-1">
+              <div className="truncate">{x.name}</div>
               <ConversationDropdown conversation={x}>
                 <MoreButton></MoreButton>
               </ConversationDropdown>

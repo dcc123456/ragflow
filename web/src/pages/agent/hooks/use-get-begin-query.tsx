@@ -1,15 +1,22 @@
 import { AgentGlobals } from '@/constants/agent';
 import { useFetchAgent } from '@/hooks/use-agent-request';
 import { RAGFlowNodeType } from '@/interfaces/database/flow';
-import { Edge } from '@xyflow/react';
+import { buildNodeOutputOptions } from '@/utils/canvas-util';
 import { DefaultOptionType } from 'antd/es/select';
-import { isEmpty } from 'lodash';
+import { t } from 'i18next';
 import get from 'lodash/get';
 import { useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { BeginId, BeginQueryType, Operator, VariableType } from '../constant';
+import {
+  AgentDialogueMode,
+  BeginId,
+  BeginQueryType,
+  Operator,
+  VariableType,
+} from '../constant';
 import { AgentFormContext } from '../context';
 import { buildBeginInputListFromObject } from '../form/begin-form/utils';
 import { BeginQuery } from '../interface';
+import OperatorIcon from '../operator-icon';
 import useGraphStore from '../store';
 
 export function useSelectBeginNodeDataInputs() {
@@ -18,6 +25,18 @@ export function useSelectBeginNodeDataInputs() {
   return buildBeginInputListFromObject(
     getNode(BeginId)?.data?.form?.inputs ?? {},
   );
+}
+
+export function useIsTaskMode(isTask?: boolean) {
+  const getNode = useGraphStore((state) => state.getNode);
+
+  return useMemo(() => {
+    if (typeof isTask === 'boolean') {
+      return isTask;
+    }
+    const node = getNode(BeginId);
+    return node?.data?.form?.mode === AgentDialogueMode.Task;
+  }, [getNode, isTask]);
 }
 
 export const useGetBeginNodeDataQuery = () => {
@@ -59,63 +78,18 @@ export const useGetBeginNodeDataQueryIsSafe = () => {
   return isBeginNodeDataQuerySafe;
 };
 
-function filterAllUpstreamNodeIds(edges: Edge[], nodeIds: string[]) {
-  return nodeIds.reduce<string[]>((pre, nodeId) => {
-    const currentEdges = edges.filter((x) => x.target === nodeId);
-
-    const upstreamNodeIds: string[] = currentEdges.map((x) => x.source);
-
-    const ids = upstreamNodeIds.concat(
-      filterAllUpstreamNodeIds(edges, upstreamNodeIds),
-    );
-
-    ids.forEach((x) => {
-      if (pre.every((y) => y !== x)) {
-        pre.push(x);
-      }
-    });
-
-    return pre;
-  }, []);
-}
-
-export function buildOutputOptions(
-  outputs: Record<string, any> = {},
-  nodeId?: string,
-) {
-  return Object.keys(outputs).map((x) => ({
-    label: x,
-    value: `${nodeId}@${x}`,
-    type: outputs[x]?.type,
-  }));
-}
-
 export function useBuildNodeOutputOptions(nodeId?: string) {
   const nodes = useGraphStore((state) => state.nodes);
   const edges = useGraphStore((state) => state.edges);
 
-  const nodeOutputOptions = useMemo(() => {
-    if (!nodeId) {
-      return [];
-    }
-    const upstreamIds = filterAllUpstreamNodeIds(edges, [nodeId]);
-
-    const nodeWithOutputList = nodes.filter(
-      (x) =>
-        upstreamIds.some((y) => y === x.id) && !isEmpty(x.data?.form?.outputs),
-    );
-
-    return nodeWithOutputList
-      .filter((x) => x.id !== nodeId)
-      .map((x) => ({
-        label: x.data.name,
-        value: x.id,
-        title: x.data.name,
-        options: buildOutputOptions(x.data.form.outputs, x.id),
-      }));
+  return useMemo(() => {
+    return buildNodeOutputOptions({
+      nodes,
+      edges,
+      nodeId,
+      Icon: ({ name }) => <OperatorIcon name={name as Operator}></OperatorIcon>,
+    });
   }, [edges, nodeId, nodes]);
-
-  return nodeOutputOptions;
 }
 
 // exclude nodes with branches
@@ -145,10 +119,12 @@ export function useBuildBeginVariableOptions() {
   const options = useMemo(() => {
     return [
       {
-        label: <span>Begin Input</span>,
-        title: 'Begin Input',
+        label: <span>{t('flow.beginInput')}</span>,
+        title: t('flow.beginInput'),
         options: inputs.map((x) => ({
           label: x.name,
+          parentLabel: <span>{t('flow.beginInput')}</span>,
+          icon: <OperatorIcon name={Operator.Begin} className="block" />,
           value: `begin@${x.key}`,
           type: transferToVariableType(x.type),
         })),
@@ -175,12 +151,13 @@ export function useBuildQueryVariableOptions(n?: RAGFlowNodeType) {
   const { data } = useFetchAgent();
   const node = useContext(AgentFormContext) || n;
   const options = useBuildVariableOptions(node?.id, node?.parentId);
-
   const nextOptions = useMemo(() => {
     const globals = data?.dsl?.globals ?? {};
     const globalOptions = Object.entries(globals).map(([key, value]) => ({
       label: key,
       value: key,
+      icon: <OperatorIcon name={Operator.Begin} className="block" />,
+      parentLabel: <span>{t('flow.beginInput')}</span>,
       type: Array.isArray(value)
         ? `${VariableType.Array}${key === AgentGlobals.SysFiles ? '<file>' : ''}`
         : typeof value,

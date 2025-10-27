@@ -23,12 +23,13 @@ import { UseSaveMetaShowType } from './use-save-meta';
 
 type UseDatasetTableColumnsType = UseChangeDocumentParserShowType &
   UseRenameDocumentShowType &
-  UseSaveMetaShowType;
+  UseSaveMetaShowType & { showLog: (record: IDocumentInfo) => void };
 
 export function useDatasetTableColumns({
   showChangeParserModal,
   showRenameModal,
   showSetMetaModal,
+  showLog,
 }: UseDatasetTableColumnsType) {
   const { t } = useTranslation('translation', {
     keyPrefix: 'knowledgeDetails',
@@ -65,7 +66,8 @@ export function useDatasetTableColumns({
       header: ({ column }) => {
         return (
           <Button
-            variant="ghost"
+            variant="transparent"
+            className="border-none"
             onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
           >
             {t('name')}
@@ -103,7 +105,8 @@ export function useDatasetTableColumns({
       header: ({ column }) => {
         return (
           <Button
-            variant="ghost"
+            variant="transparent"
+            className="border-none"
             onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
           >
             {t('uploadDate')}
@@ -149,6 +152,7 @@ export function useDatasetTableColumns({
             record={row.original}
             showChangeParserModal={showChangeParserModal}
             showSetMetaModal={showSetMetaModal}
+            showLog={showLog}
           ></ParsingStatusCell>
         );
       },

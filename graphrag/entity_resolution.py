@@ -15,6 +15,7 @@
 #
 import logging
 import itertools
+import os
 import re
 from dataclasses import dataclass
 from typing import Any, Callable
@@ -59,7 +60,7 @@ class EntityResolution(Extractor):
         self._llm = llm_invoker
         self._resolution_prompt = ENTITY_RESOLUTION_PROMPT
         self._record_delimiter_key = "record_delimiter"
-        self._entity_index_dilimiter_key = "entity_index_delimiter"
+        self._entity_index_delimiter_key = "entity_index_delimiter"
         self._resolution_result_delimiter_key = "resolution_result_delimiter"
         self._input_text_key = "input_text"
 
@@ -76,7 +77,7 @@ class EntityResolution(Extractor):
             **prompt_variables,
             self._record_delimiter_key: prompt_variables.get(self._record_delimiter_key)
                                         or DEFAULT_RECORD_DELIMITER,
-            self._entity_index_dilimiter_key: prompt_variables.get(self._entity_index_dilimiter_key)
+            self._entity_index_delimiter_key: prompt_variables.get(self._entity_index_delimiter_key)
                                               or DEFAULT_ENTITY_INDEX_DELIMITER,
             self._resolution_result_delimiter_key: prompt_variables.get(self._resolution_result_delimiter_key)
                                                    or DEFAULT_RESOLUTION_RESULT_DELIMITER,
@@ -106,7 +107,8 @@ class EntityResolution(Extractor):
             nonlocal remain_candidates_to_resolve, callback
             async with semaphore:
                 try:
-                    with trio.move_on_after(280) as cancel_scope:
+                    enable_timeout_assertion = os.environ.get("ENABLE_TIMEOUT_ASSERTION")
+                    with trio.move_on_after(280 if enable_timeout_assertion else 1000000000) as cancel_scope:
                         await self._resolve_candidate(candidate_batch, result_set, result_lock)
                         remain_candidates_to_resolve = remain_candidates_to_resolve - len(candidate_batch[1])
                         callback(msg=f"Resolved {len(candidate_batch[1])} pairs, {remain_candidates_to_resolve} are remained to resolve. ")
@@ -169,7 +171,8 @@ class EntityResolution(Extractor):
         logging.info(f"Created resolution prompt {len(text)} bytes for {len(candidate_resolution_i[1])} entity pairs of type {candidate_resolution_i[0]}")
         async with chat_limiter:
             try:
-                with trio.move_on_after(280) as cancel_scope:
+                enable_timeout_assertion = os.environ.get("ENABLE_TIMEOUT_ASSERTION")
+                with trio.move_on_after(280 if enable_timeout_assertion else 1000000000) as cancel_scope:
                     response = await trio.to_thread.run_sync(self._chat, text, [{"role": "user", "content": "Output:"}], {})
                 if cancel_scope.cancelled_caught:
                     logging.warning("_resolve_candidate._chat timeout, skipping...")
@@ -182,7 +185,7 @@ class EntityResolution(Extractor):
         result = self._process_results(len(candidate_resolution_i[1]), response,
                                        self.prompt_variables.get(self._record_delimiter_key,
                                                             DEFAULT_RECORD_DELIMITER),
-                                       self.prompt_variables.get(self._entity_index_dilimiter_key,
+                                       self.prompt_variables.get(self._entity_index_delimiter_key,
                                                             DEFAULT_ENTITY_INDEX_DELIMITER),
                                        self.prompt_variables.get(self._resolution_result_delimiter_key,
                                                             DEFAULT_RESOLUTION_RESULT_DELIMITER))

@@ -1,3 +1,4 @@
+import LLMLabel from '@/components/llm-select/llm-label';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -16,6 +17,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { cn } from '@/lib/utils';
+import { PropsWithChildren } from 'react';
 
 export function CardWithForm() {
   return (
@@ -53,5 +56,30 @@ export function CardWithForm() {
         <Button>Deploy</Button>
       </CardFooter>
     </Card>
+  );
+}
+
+type LabelCardProps = {
+  className?: string;
+} & PropsWithChildren;
+
+export function LabelCard({ children, className }: LabelCardProps) {
+  return (
+    <div
+      className={cn(
+        'bg-bg-card rounded-sm p-1 text-text-secondary text-xs',
+        className,
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
+export function LLMLabelCard({ llmId }: { llmId?: string }) {
+  return (
+    <LabelCard>
+      <LLMLabel value={llmId}></LLMLabel>
+    </LabelCard>
   );
 }

@@ -17,13 +17,14 @@ const buttonVariants = cva(
         outline:
           'border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50',
         secondary:
-          'bg-secondary text-secondary-foreground shadow-xs hover:bg-secondary/80',
+          'bg-bg-input text-text-primary shadow-xs hover:bg-bg-input/80 border border-border-button',
         ghost:
           'hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50',
         link: 'text-primary underline-offset-4 hover:underline',
         icon: 'bg-colors-background-inverse-standard text-foreground hover:bg-colors-background-inverse-standard/80',
         dashed: 'border border-dashed border-input hover:bg-accent',
         transparent: 'bg-transparent hover:bg-accent border',
+        danger: 'bg-transparent border border-state-error text-state-error',
       },
       size: {
         default: 'h-8 px-2.5 py-1.5 ',
@@ -65,24 +66,14 @@ Button.displayName = 'Button';
 
 export const ButtonLoading = React.forwardRef<
   HTMLButtonElement,
-  ButtonProps & { loading?: boolean }
+  Omit<ButtonProps, 'asChild'> & { loading?: boolean }
 >(
   (
-    {
-      className,
-      variant,
-      size,
-      asChild = false,
-      children,
-      loading = false,
-      disabled,
-      ...props
-    },
+    { className, variant, size, children, loading = false, disabled, ...props },
     ref,
   ) => {
-    const Comp = asChild ? Slot : 'button';
     return (
-      <Comp
+      <Button
         className={cn(buttonVariants({ variant, size, className }))}
         ref={ref}
         {...props}
@@ -90,7 +81,7 @@ export const ButtonLoading = React.forwardRef<
       >
         {loading && <Loader2 className="animate-spin" />}
         {children}
-      </Comp>
+      </Button>
     );
   },
 );

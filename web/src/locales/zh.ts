@@ -1,10 +1,15 @@
 export default {
   translation: {
     common: {
+      noResults: '无结果。',
+      selectPlaceholder: '请选择',
+      selectAll: '全选',
       delete: '删除',
       deleteModalTitle: '确定删除吗?',
-      ok: '是',
-      cancel: '否',
+      ok: '确认',
+      cancel: '取消',
+      yes: '是',
+      no: '否',
       total: '总共',
       rename: '重命名',
       name: '名称',
@@ -34,13 +39,20 @@ export default {
       pleaseSelect: '请选择',
       pleaseInput: '请输入',
       submit: '提交',
+      clear: '清空',
       embedIntoSite: '嵌入网站',
       previousPage: '上一页',
       nextPage: '下一页',
       add: '添加',
+      remove: '移除',
+      search: '搜索',
+      noDataFound: '没有找到数据。',
+      noData: '暂无数据',
       promptPlaceholder: '请输入或使用 / 快速插入变量。',
     },
     login: {
+      loginTitle: '登录账户',
+      signUpTitle: '创建账户',
       login: '登录',
       signUp: '注册',
       loginDescription: '很高兴再次见到您！',
@@ -56,7 +68,8 @@ export default {
       nicknamePlaceholder: '请输入名称',
       register: '创建账户',
       continue: '继续',
-      title: '开始构建您的智能助手',
+      title: 'A leading RAG engine for LLM context',
+      start: '立即开始',
       description:
         '免费注册以探索顶级 RAG 技术。 创建知识库和人工智能来增强您的业务',
       review: '来自 500 多条评论',
@@ -70,10 +83,10 @@ export default {
       setting: '用户设置',
       logout: '登出',
       fileManager: '文件管理',
-      flow: 'Agent',
+      flow: '智能体',
       search: '搜索',
       welcome: '欢迎来到',
-      dataset: '数据集',
+      dataset: '知识库',
     },
     knowledgeList: {
       welcome: '欢迎回来',
@@ -86,15 +99,52 @@ export default {
       noMoreData: '没有更多数据了',
     },
     knowledgeDetails: {
-      dataset: '数据集',
+      localUpload: '本地上传',
+      fileSize: '文件大小',
+      fileType: '文件类型',
+      uploadedBy: '创建者',
+      notGenerated: '未生成',
+      generatedOn: '生成于',
+      subbarFiles: '文件列表',
+      generate: '生成',
+      raptor: 'RAPTOR',
+      processingType: '处理类型',
+      dataPipeline: '数据管道',
+      operations: '操作',
+      taskId: '任务ID',
+      duration: '耗时',
+      details: '详情',
+      status: '状态',
+      task: '任务',
+      startDate: '开始时间',
+      source: '来源',
+      fileName: '文件名',
+      datasetLogs: '数据集',
+      fileLogs: '文件',
+      overview: '日志',
+      success: '成功',
+      failed: '失败',
+      completed: '已完成',
+      datasetLog: '知识库日志',
+      created: '创建于',
+      learnMore: '内置pipeline简介',
+      general: '通用',
+      chunkMethodTab: '切片方法',
+      testResults: '测试结果',
+      testSetting: '测试设置',
+      retrievalTesting: '知识检索测试',
+      retrievalTestingDescription:
+        '进行检索测试，检查 RAGFlow 是否能够为大语言模型（LLM）恢复预期的内容。',
+      Parse: '解析',
+      dataset: '知识库',
       testing: '检索测试',
       configuration: '配置',
       knowledgeGraph: '知识图谱',
-      files: '文件',
+      files: '个文件',
       name: '名称',
       namePlaceholder: '请输入名称',
       doc: '文档',
-      datasetDescription: '😉 解析成功后才能问答哦。',
+      datasetDescription: '解析成功后才能问答哦。',
       addFile: '新增文件',
       searchFiles: '搜索文件',
       localFiles: '本地文件',
@@ -112,13 +162,18 @@ export default {
       processBeginAt: '开始于',
       processDuration: '持续时间',
       progressMsg: '进度',
+      noTestResultsForRuned: '未找到相关结果，请尝试调整查询语句或参数',
+      noTestResultsForNotRuned: '尚未运行测试，结果会显示在这里',
       testingDescription:
         '请完成召回测试：确保你的配置可以从数据库召回正确的文本块。如果你调整了这里的默认设置，比如关键词相似度权重，请注意这里的改动不会被自动保存。请务必在聊天助手设置或者召回算子设置处同步更新相关设置。',
       similarityThreshold: '相似度阈值',
       similarityThresholdTip:
         '我们使用混合相似度得分来评估两行文本之间的距离。 它是加权关键词相似度和向量余弦相似度。 如果查询和块之间的相似度小于此阈值，则该块将被过滤掉。默认设置为 0.2，也就是说文本块的混合相似度得分至少 20 才会被召回。',
-      vectorSimilarityWeight: '相似度相似度权重',
+      vectorSimilarityWeight: '向量相似度权重',
       vectorSimilarityWeightTip:
+        '我们使用混合相似性评分来评估两行文本之间的距离。它是加权关键字相似性和矢量余弦相似性或rerank得分（0〜1）。两个权重的总和为1.0。',
+      keywordSimilarityWeight: '关键词相似度权重',
+      keywordSimilarityWeightTip:
         '我们使用混合相似性评分来评估两行文本之间的距离。它是加权关键字相似性和矢量余弦相似性或rerank得分（0〜1）。两个权重的总和为1.0。',
       testText: '测试文本',
       testTextPlaceholder: '请输入您的问题！',
@@ -160,6 +215,7 @@ export default {
       chunk: '解析块',
       bulk: '批量',
       cancel: '取消',
+      close: '关闭',
       rerankModel: 'Rerank模型',
       rerankPlaceholder: '请选择',
       rerankTip: `非必选项：若不选择 rerank 模型，系统将默认采用关键词相似度与向量余弦相似度相结合的混合查询方式；如果设置了 rerank 模型，则混合查询中的向量相似度部分将被 rerank 打分替代。请注意：采用 rerank 模型会非常耗时。如需选用 rerank 模型，建议使用 SaaS 的 rerank 模型服务；如果你倾向使用本地部署的 rerank 模型，请务必确保你使用 docker-compose-gpu.yml 启动 RAGFlow。`,
@@ -204,6 +260,35 @@ export default {
       theDocumentBeingParsedCannotBeDeleted: '正在解析的文档不能被删除',
     },
     knowledgeConfiguration: {
+      tocExtractionTip:
+        '对于已有的chunk生成层级结构的目录信息（每个文件一个目录）。在查询时，激活`目录增强`后，系统会用大模型去判断用户问题和哪些目录项相关，从而找到相关的chunk。',
+      deleteGenerateModalContent: `
+        <p>删除生成的 <strong class='text-text-primary'>{{type}}</strong> 结果
+          将从此数据集中移除所有派生实体和关系。
+          您的原始文件将保持不变。<p>
+          <br/>
+          是否要继续？
+      `,
+      extractRaptor: '从文档中提取RAPTOR',
+      extractKnowledgeGraph: '从文档中提取知识图谱',
+      filterPlaceholder: '请输入',
+      fileFilterTip: '',
+      fileFilter: '正则匹配表达式',
+      setDefaultTip: '',
+      setDefault: '设置默认',
+      eidtLinkDataPipeline: '编辑pipeline',
+      linkPipelineSetTip: '管理与此数据集的数据管道链接',
+      default: '默认',
+      dataPipeline: 'pipeline',
+      linkDataPipeline: '关联pipeline',
+      enableAutoGenerate: '是否启用自动生成',
+      teamPlaceholder: '请选择团队',
+      dataFlowPlaceholder: '请选择pipeline',
+      buildItFromScratch: '去Scratch构建',
+      dataFlow: 'pipeline',
+      parseType: 'Ingestion pipeline',
+      manualSetup: '选择pipeline',
+      builtIn: '内置',
       titleDescription: '在这里更新您的知识库详细信息，尤其是切片方法。',
       name: '知识库名称',
       photo: '知识库图片',
@@ -251,7 +336,7 @@ export default {
       我们假设手册具有分层部分结构。 我们使用最低的部分标题作为对文档进行切片的枢轴。
       因此，同一部分中的图和表不会被分割，并且块大小可能会很大。
       </p>`,
-      naive: `<p>支持的文件格式为<b>MD、MDX、DOCX、XLSX、XLS (Excel 97-2003)、PPT、PDF、TXT、JPEG、JPG、PNG、TIF、GIF、CSV、JSON、EML、HTML</b>。</p>
+      naive: `<p>支持的文件格式为<b>MD、MDX、DOCX、XLSX、XLS (Excel 97-2003)、PPTX、PDF、TXT、JPEG、JPG、PNG、TIF、GIF、CSV、JSON、EML、HTML</b>。</p>
       <p>此方法将简单的方法应用于块文件：</p>
       <p>
       <li>系统将使用视觉检测模型将连续文本分割成多个片段。</li>
@@ -340,7 +425,7 @@ export default {
 `,
       useRaptor: '使用召回增强 RAPTOR 策略',
       useRaptorTip:
-        '为多跳问答任务启用 RAPTOR，详情请见 : https://ragflow.io/docs/dev/enable_raptor。',
+        'RAPTOR 常应用于复杂的多跳问答任务。如需打开，请跳转至知识库的文件页面，点击生成 > RAPTOR 开启。详见: https://ragflow.io/docs/dev/enable_raptor。',
       prompt: '提示词',
       promptMessage: '提示词是必填项',
       promptText: `请总结以下段落。 小心数字，不要编造。 段落如下：
@@ -423,6 +508,13 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
       delete: '删除',
     },
     chat: {
+      messagePlaceholder: '请输入消息...',
+      exit: '退出',
+      multipleModels: '多模型',
+      applyModelConfigs: '应用模型配置',
+      conversations: '会话',
+      chatApps: '聊天',
+      createChat: '创建聊天',
       newConversation: '新会话',
       createAssistant: '新建助理',
       assistantSetting: '助理设置',
@@ -477,6 +569,7 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
       improvise: '即兴创作',
       precise: '精确',
       balance: '平衡',
+      custom: '自定义',
       freedomTip: `“精确”意味着大语言模型会保守并谨慎地回答你的问题。 “即兴发挥”意味着你希望大语言模型能够自由地畅所欲言。 “平衡”是谨慎与自由之间的平衡。`,
       temperature: '温度',
       temperatureMessage: '温度是必填项',
@@ -541,7 +634,7 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
       answerTitle: '智能回答',
       multiTurn: '多轮对话优化',
       multiTurnTip:
-        '在多轮对话的中，对去知识库查询的问题进行优化。会调用大模型额外消耗token。',
+        '在多轮对话时，对查询问题根据上下文进行优化。会调用大模型额外消耗 token。',
       howUseId: '如何使用聊天ID？',
       description: '助理描述',
       descriptionPlaceholder:
@@ -572,6 +665,10 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
       },
       cancel: '取消',
       chatSetting: '聊天设置',
+      avatarHidden: '隐藏头像',
+      locale: '地区',
+      tocEnhance: '目录增强',
+      tocEnhanceTip: `解析文档时生成了目录信息（见General方法的‘启用目录抽取’），让大模型返回和用户问题相关的目录项，从而利用目录项拿到相关chunk，对这些chunk在排序中进行加权。这种方法来源于模仿人类查询书本中知识的行为逻辑`,
     },
     setting: {
       profile: '概要',
@@ -604,7 +701,7 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
       timezone: '时区',
       timezoneMessage: '请选择时区',
       timezonePlaceholder: '请选择时区',
-      email: '邮箱地址',
+      email: '邮箱',
       emailDescription: '一旦注册，电子邮件将无法更改。',
       currentPassword: '当前密码',
       currentPasswordMessage: '请输入当前密码',
@@ -627,6 +724,9 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
       baseUrl: 'Base-Url',
       baseUrlTip:
         '如果您的 API 密钥来自 OpenAI，请忽略它。 任何其他中间提供商都会提供带有 API 密钥的基本 URL。',
+      tongyiBaseUrlTip:
+        '对于中国用户，不需要填写或使用 https://dashscope.aliyuncs.com/compatible-mode/v1。对于国际用户，使用 https://dashscope-intl.aliyuncs.com/compatible-mode/v1。',
+      tongyiBaseUrlPlaceholder: '(仅国际用户需要)',
       modify: '修改',
       systemModelSettings: '设置默认模型',
       chatModel: '聊天模型',
@@ -721,9 +821,9 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
       apiVersion: 'API版本',
       apiVersionMessage: '请输入API版本!',
       add: '添加',
-      updateDate: '更新日期',
-      role: '角色',
-      invite: '邀请',
+      updateDate: '日期',
+      role: '状态',
+      invite: '邀请成员',
       agree: '同意',
       refuse: '拒绝',
       teamMembers: '团队成员',
@@ -743,6 +843,7 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
       view: '查看',
       modelsToBeAddedTooltip:
         '如果你的模型供应商在这里没有列出，但是宣称 OpenAI-compatible，可以通过选择卡片 OpenAI-API-compatible 设置相关模型。',
+      mcp: 'MCP',
     },
     message: {
       registered: '注册成功',
@@ -778,6 +879,7 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
       hint: '提示',
     },
     fileManager: {
+      files: '文件',
       name: '名称',
       uploadDate: '上传日期',
       knowledgeBase: '知识库',
@@ -799,8 +901,100 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
       fileError: '文件错误',
       uploadLimit: '文件大小不能超过10M，文件总数不超过128个',
       destinationFolder: '目标文件夹',
+      pleaseUploadAtLeastOneFile: '请上传至少一个文件',
     },
     flow: {
+      recommended: '推荐',
+      customerSupport: '客户支持',
+      marketing: '营销',
+      consumerApp: '消费者应用',
+      other: '其他',
+      agents: '智能体',
+      beginInput: '开始输入',
+      seconds: '秒',
+      ref: '引用变量',
+      stockCode: '股票代码',
+      apiKeyPlaceholder: '您的API密钥(从https://serpapi.com获取)',
+      flowStart: '开始',
+      flowNum: '编号',
+      test: '测试',
+      extractDepth: '深度提取',
+      format: '格式',
+      basic: '基本',
+      advanced: '高级',
+      general: '通用',
+      searchDepth: '深度搜索',
+      tavilyTopic: 'Tavily话题',
+      maxResults: '最大结果数',
+      includeAnswer: '包含答案',
+      includeRawContent: '包含原始内容',
+      includeImages: '包含图片',
+      includeImageDescriptions: '包含图片描述',
+      includeDomains: '包含域名',
+      ExcludeDomains: '排除域名',
+      days: '天数',
+      comma: '逗号',
+      semicolon: '分号',
+      period: '句点',
+      linebreak: '换行符',
+      tab: '制表符',
+      space: '空格',
+      delimiters: '分隔符',
+      merge: '合并',
+      split: '拆分',
+      script: '脚本',
+      iterationItemDescription:
+        '它是迭代过程中的当前元素，可以被后续流程引用和操作。',
+      guidingQuestion: '引导问题',
+      onFailure: '异常时',
+      userPromptDefaultValue:
+        'This is the order you need to send to the agent.',
+      descriptionMessage: '这是一个用于特定任务的代理。',
+      search: '搜索',
+      communication: '通信',
+      developer: '开发者',
+      typeCommandOrsearch: '输入命令或或搜索...',
+      builtIn: '内置',
+      goto: '异常分支',
+      comment: '默认值',
+      ExceptionDefaultValue: '异常处理默认值',
+      exceptionMethod: '异常处理方法',
+      maxRounds: '最大反思轮数',
+      delayEfterError: '错误后延迟',
+      maxRetries: '最大反思轮数',
+      advancedSettings: '高级设置',
+      addTools: '添加工具',
+      sysPromptDefultValue: `
+<role>
+  你是一名乐于助人的助手，一名专注于为用户解决问题的 AI 助手。
+  如果用户指定了特定领域，你需要在该领域展现专业性；如果没有，则以通用助手的方式工作。
+</role>
+<instructions>
+        1. 理解用户请求。
+        2. 将其分解为逻辑子任务。
+        3. 逐步执行每个子任务，并清晰地进行推理。
+        4. 验证准确性和一致性。
+        5. 清晰地总结最终结果。
+</instructions>`,
+      line: '单行文本',
+      paragraph: '段落文字',
+      options: '选项',
+      file: '文件',
+      integer: '数字',
+      boolean: '布尔值',
+      name: '名称',
+      singleLineText: '单行文本',
+      variableSettings: '变量设置',
+      multimodalModels: '多模态模型',
+      textOnlyModels: '仅文本模型',
+      allModels: '所有模型',
+      codeExecDescription: '用 Python 或者 Javascript 编写自定义逻辑',
+      stringTransformDescription:
+        '修改文本内容，目前支持文本分割、文本拼接操作',
+      foundation: '基础',
+      tools: '工具',
+      dataManipulation: '数据操控',
+      dialog: '对话',
       flow: '工作流',
       noMoreData: '没有更多数据了',
       historyversion: '历史版本',
@@ -810,7 +1004,6 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
       },
       cite: '引用',
       citeTip: '引用',
-      name: '名称',
       nameMessage: '请输入名称',
       description: '描述',
       examples: '示例',
@@ -826,7 +1019,7 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
         'loop为当前组件循环次数上限，当循环次数超过loop的值时，说明组件不能完成当前任务，请重新优化agent',
       yes: '是',
       no: '否',
-      key: 'key',
+      key: '键',
       componentId: '组件ID',
       add: '新增',
       operation: '操作',
@@ -848,7 +1041,7 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
       promptText: `请总结以下段落。注意数字，不要胡编乱造。段落如下：
 {input}
 以上就是你需要总结的内容。`,
-      createGraph: '创建 Agent',
+      createGraph: '创建智能体',
       createFromTemplates: '从模板创建',
       retrieval: '知识检索',
       generate: '生成回答',
@@ -871,6 +1064,9 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
       duckDuckGo: 'DuckDuckGo',
       duckDuckGoDescription:
         '此元件用於從 www.duckduckgo.com 取得搜尋結果。通常，它作為知識庫的補充。 Top N 指定您需要調整的搜尋結果數。',
+      searXNG: 'SearXNG',
+      searXNGDescription:
+        '该组件通过您提供的 SearXNG 实例地址进行搜索。请设置 Top N 和实例 URL。',
       channel: '频道',
       channelTip: '针对该组件的输入进行文本搜索或新闻搜索',
       text: '文本',
@@ -898,7 +1094,7 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
       bing: 'Bing',
       bingDescription:
         '此组件用于从 https://www.bing.com/ 获取搜索结果。通常，它作为知识库的补充。Top N 和 Bing Subscription-Key 指定您需要调整的搜索结果数量。',
-      apiKey: 'API KEY',
+      apiKey: 'API密钥',
       country: '国家和地区',
       language: '语言',
       googleScholar: '谷歌学术',
@@ -1030,7 +1226,7 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
         '30d': '30天',
       },
       publish: 'API',
-      exeSQL: 'ExeSQL',
+      exeSQL: '执行 SQL',
       exeSQLDescription:
         '该组件通过SQL语句从相应的关系数据库中查询结果。支持MySQL，PostgreSQL，MariaDB。',
       dbType: '数据库类型',
@@ -1173,6 +1369,8 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
       headers: '请求头',
       cleanHtml: '清除 HTML',
       cleanHtmlTip: '如果响应是 HTML 格式且只需要主要内容，请将其打开。',
+      invalidUrl:
+        '必须是有效的 URL 或包含变量占位符的 URL，格式为 {variable_name} 或 {component@variable}',
       reference: '引用',
       input: '输入',
       output: '输出',
@@ -1242,6 +1440,7 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
         team: '团队',
       },
       systemPrompt: '系统提示词',
+      userPrompt: '用户提示词',
       prompt: '提示词',
       promptMessage: '提示词是必填项',
       promptTip:
@@ -1257,21 +1456,26 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
       openingCopy: '开场白文案',
       openingSwitchTip: '您的用户将在开始时看到此欢迎消息。',
       modeTip: '模式定义了工作流的启动方式。',
+      mode: '模式',
+      conversational: '对话式',
+      task: '任务',
       beginInputTip: '通过定义输入参数，此内容可以被后续流程中的其他组件访问。',
       query: '查询变量',
+      queryTip: '选择您想要使用的变量',
       agent: '智能体',
+      addAgent: '添加智能体',
       agentDescription: '构建具备推理、工具调用和多智能体协同的智能体组件。',
       maxRecords: '最大记录数',
-      createAgent: 'Create Agent',
+      createAgent: '智能体流程',
       stringTransform: '文本处理',
       userFillUp: '等待输入',
       userFillUpDescription: `此组件会暂停当前的流程并等待用户发送消息，接收到消息之后再进行之后的流程。`,
 
       codeExec: '代码',
-      tavilySearch: 'Tavily Search',
+      tavilySearch: 'Tavily 搜索',
       tavilySearchDescription: '通过 Tavily 服务搜索结果',
-      tavilyExtract: 'Tavily Extract',
-      tavilyExtractDescription: 'Tavily Extract',
+      tavilyExtract: 'Tavily 提取',
+      tavilyExtractDescription: 'Tavily 提取',
       log: '日志',
       management: '管理',
       import: '导入',
@@ -1300,6 +1504,102 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
         httpRequest: '请求接口',
         wenCai: '查询财务数据',
       },
+      sqlStatement: 'SQL 语句',
+      sqlStatementTip:
+        '在此处编写您的 SQL 查询。您可以使用变量、原始 SQL，或使用变量语法混合使用两者。',
+      frameworkPrompts: '框架',
+      release: '发布',
+      createFromBlank: '从空白创建',
+      createFromTemplate: '从模板创建',
+      importJsonFile: '导入 JSON 文件',
+      chooseAgentType: '选择智能体类型',
+      parser: '解析器',
+      parserDescription: '从文件中提取原始文本和结构以供下游处理。',
+      tokenizer: '分词器',
+      tokenizerRequired: '请先添加Tokenizer节点',
+      tokenizerDescription:
+        '根据所选的搜索方法，将文本转换为所需的数据结构（例如，用于嵌入搜索的向量嵌入）。',
+      splitter: '按字符分割',
+      splitterDescription:
+        '根据分词器长度将文本拆分成块，并带有可选的分隔符和重叠。',
+      hierarchicalMergerDescription:
+        '使用正则表达式规则按标题层次结构将文档拆分成多个部分，以实现更精细的控制。',
+      hierarchicalMerger: '按标题分割',
+      extractor: '提取器',
+      extractorDescription:
+        '使用 LLM 从文档块（例如摘要、分类等）中提取结构化见解。',
+      outputFormat: '输出格式',
+      fileFormats: '文件格式',
+      fields: '字段',
+      addParser: '增加解析器',
+      hierarchy: '层次结构',
+      regularExpressions: '正则表达式',
+      overlappedPercent: '重叠百分比（%）',
+      searchMethod: '搜索方法',
+      searchMethodTip: `决定该数据集启用的搜索方式，可选择全文、向量，或两者兼有。
+Tokenizer 会根据所选方式将内容存储为对应的数据结构。`,
+      filenameEmbdWeight: '文件名嵌入权重',
+      parserMethod: '解析方法',
+      systemPromptPlaceholder:
+        '请输入用于图像分析的系统提示词，若为空则使用系统缺省值',
+      exportJson: '导出 JSON',
+      viewResult: '查看结果',
+      running: '运行中',
+      summary: '增强上下文',
+      keywords: '关键词',
+      questions: '问题',
+      metadata: '元数据',
+      fieldName: '结果目的地',
+      prompts: {
+        system: {
+          keywords: `角色
+你是一名文本分析员。
+
+任务
+从给定的文本内容中提取最重要的关键词/短语。
+
+要求
+- 总结文本内容，并给出最重要的5个关键词/短语。
+- 关键词必须与给定的文本内容使用相同的语言。
+- 关键词之间用英文逗号分隔。
+- 仅输出关键词。`,
+          questions: `角色
+你是一名文本分析员。
+
+任务
+针对给定的文本内容提出3个问题。
+
+要求
+- 理解并总结文本内容，并提出最重要的3个问题。
+- 问题的含义不应重叠。
+- 问题应尽可能涵盖文本的主要内容。
+- 问题必须与给定的文本内容使用相同的语言。
+- 每行一个问题。
+- 仅输出问题。`,
+          summary: `扮演一个精准的摘要者。你的任务是为提供的内容创建一个简洁且忠实于原文的摘要。
+
+关键说明：
+1. 准确性：摘要必须严格基于所提供的信息。请勿引入任何未明确说明的新事实、结论或解释。
+2. 语言：摘要必须使用与原文相同的语言。
+3. 客观性：不带偏见地呈现要点，保留内容的原始意图和语气。请勿进行编辑。
+4. 简洁性：专注于最重要的思想，省略细节和多余的内容。`,
+          metadata: `从给定内容中提取重要的结构化信息。仅输出有效的 JSON 字符串，不包含任何附加文本。如果未找到重要的结构化信息，则输出一个空的 JSON 对象：{}。
+
+重要的结构化信息可能包括：姓名、日期、地点、事件、关键事实、数字数据或其他可提取实体。`,
+        },
+        user: {
+          keywords: `文本内容
+[在此处插入文本]`,
+          questions: `文本内容
+[在此处插入文本]`,
+          summary: `要总结的文本：
+[在此处插入文本]`,
+          metadata: `内容：[在此处插入内容]`,
+        },
+      },
+      cancel: '取消',
+      filenameEmbeddingWeight: '文件名嵌入权重',
+      switchPromptMessage: '提示词将发生变化，请确认是否放弃已有提示词？',
     },
     footer: {
       profile: 'All rights reserved @ React',
@@ -1323,8 +1623,24 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
       okText: '确认',
       cancelText: '取消',
     },
+    mcp: {
+      export: '导出',
+      import: '导入',
+      url: 'URL',
+      serverType: '服务器类型',
+      addMCP: '添加 MCP',
+      editMCP: '编辑 MCP',
+      toolsAvailable: '可用的工具',
+      mcpServers: 'MCP 服务器',
+      customizeTheListOfMcpServers: '自定义 MCP 服务器列表',
+      cachedTools: '缓存工具',
+      selected: '已选择',
+      bulkManage: '批量管理',
+      exitBulkManage: '退出批量管理',
+    },
     search: {
-      createSearch: '新建查询',
+      searchApps: '搜索',
+      createSearch: '创建查询',
       searchGreeting: '今天我能为你做些什么？',
       profile: '隐藏个人资料',
       locale: '语言',
@@ -1336,7 +1652,7 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
       name: '姓名',
       avatar: '头像',
       description: '描述',
-      datasets: '数据集',
+      datasets: '知识库',
       rerankModel: 'rerank 模型',
       AISummary: 'AI 总结',
       enableWebSearch: '启用网页搜索',
@@ -1344,8 +1660,69 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
       showQueryMindmap: '显示查询思维导图',
       embedApp: '嵌入网站',
       relatedSearch: '相关搜索',
+      descriptionValue: '你是一位智能助手。',
       okText: '保存',
       cancelText: '返回',
+      chooseDataset: '请先选择知识库',
+    },
+    language: {
+      english: '英语',
+      chinese: '中文',
+      spanish: '西班牙语',
+      french: '法语',
+      german: '德语',
+      japanese: '日语',
+      korean: '韩语',
+      vietnamese: '越南语',
+    },
+    pagination: {
+      total: '总共 {{total}} 条',
+      page: '{{page}}条/页',
+    },
+    dataflowParser: {
+      result: '结果',
+      parseSummary: '解析摘要',
+      parseSummaryTip: '解析器: deepdoc',
+      parserMethod: '解析方法',
+      outputFormat: '输出格式',
+      rerunFromCurrentStep: '从当前步骤重新运行',
+      rerunFromCurrentStepTip: '已修改，点击重新运行。',
+      confirmRerun: '确认重新运行流程',
+      confirmRerunModalContent: `
+      <p class="text-sm text-text-disabled font-medium mb-2">
+        您即将从 <span class="text-text-secondary">{{step}}</span> 步骤开始重新运行该过程
+      </p>
+      <p class="text-sm mb-3 text-text-disabled">这将:</p>
+      <ul class="list-disc list-inside space-y-1 text-sm text-text-secondary">
+        <li>• 从当前步骤开始覆盖现有结果</li>
+        <li>• 创建新的日志条目进行跟踪</li>
+        <li>• 之前的步骤将保持不变</li>
+      </ul>`,
+      changeStepModalTitle: '切换步骤警告',
+      changeStepModalContent: `
+      <p>您目前正在编辑此阶段的结果。</p>
+      <p>如果您切换到后续阶段，您的更改将会丢失。</p>
+      <p>要保留这些更改，请点击“重新运行”以重新运行当前阶段。</p> `,
+      changeStepModalConfirmText: '继续切换',
+      changeStepModalCancelText: '取消',
+      unlinkPipelineModalTitle: '解绑pipeline',
+      unlinkPipelineModalContent: `
+      <p>一旦取消链接，该数据集将不再连接到当前数据管道。</p> 
+      <p>正在解析的文件将继续解析，直到完成。</p> 
+      <p>尚未解析的文件将不再被处理。</p> <br/>
+      <p>你确定要继续吗?</p> `,
+      unlinkPipelineModalConfirmText: '解绑',
+    },
+    datasetOverview: {
+      downloadTip: '正在从数据源下载文件。',
+      processingTip: '正在由pipeline处理文件。',
+      totalFiles: '文件总数',
+      downloading: '正在下载',
+      processing: '正在处理',
+      downloadSuccessTip: '下载成功总数',
+      downloadFailedTip: '下载失败总数',
+      processingSuccessTip: '处理成功的文件总数',
+      processingFailedTip: '处理失败的文件总数',
     },
   },
 };

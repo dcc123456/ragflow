@@ -1,6 +1,6 @@
 <div align="center">
 <a href="https://demo.ragflow.io/">
-<img src="web/src/assets/logo-with-text.png" width="520" alt="ragflow logo">
+<img src="web/src/assets/logo-with-text.svg" width="520" alt="ragflow logo">
 </a>
 </div>
 
@@ -22,7 +22,7 @@
         <img alt="Badge Estático" src="https://img.shields.io/badge/Online-Demo-4e6b99">
     </a>
     <a href="https://hub.docker.com/r/infiniflow/ragflow" target="_blank">
-        <img src="https://img.shields.io/docker/pulls/infiniflow/ragflow?label=Docker%20Pulls&color=0db7ed&logo=docker&logoColor=white&style=flat-square" alt="docker pull infiniflow/ragflow:v0.20.3">
+        <img src="https://img.shields.io/docker/pulls/infiniflow/ragflow?label=Docker%20Pulls&color=0db7ed&logo=docker&logoColor=white&style=flat-square" alt="docker pull infiniflow/ragflow:v0.21.1">
     </a>
     <a href="https://github.com/infiniflow/ragflow/releases/latest">
         <img src="https://img.shields.io/github/v/release/infiniflow/ragflow?color=blue&label=Última%20Relese" alt="Última Versão">
@@ -67,7 +67,7 @@
 
 ## 💡 O que é o RAGFlow?
 
-[RAGFlow](https://ragflow.io/) é um mecanismo RAG (Geração Aumentada por Recuperação) de código aberto baseado em entendimento profundo de documentos. Ele oferece um fluxo de trabalho RAG simplificado para empresas de qualquer porte, combinando LLMs (Modelos de Linguagem de Grande Escala) para fornecer capacidades de perguntas e respostas verídicas, respaldadas por citações bem fundamentadas de diversos dados complexos formatados.
+[RAGFlow](https://ragflow.io/) é um mecanismo de RAG (Retrieval-Augmented Generation) open-source líder que fusiona tecnologias RAG de ponta com funcionalidades Agent para criar uma camada contextual superior para LLMs. Oferece um fluxo de trabalho RAG otimizado adaptável a empresas de qualquer escala. Alimentado por um motor de contexto convergente e modelos Agent pré-construídos, o RAGFlow permite que desenvolvedores transformem dados complexos em sistemas de IA de alta fidelidade e pronto para produção com excepcional eficiência e precisão.
 
 ## 🎮 Demo
 
@@ -80,8 +80,9 @@ Experimente nossa demo em [https://demo.ragflow.io](https://demo.ragflow.io).
 
 ## 🔥 Últimas Atualizações
 
+- 23-10-2025 Suporta MinerU e Docling como métodos de análise de documentos.
+- 15-10-2025 Suporte para pipelines de dados orquestrados.
 - 08-08-2025 Suporta a mais recente série GPT-5 da OpenAI.
-- 04-08-2025 Suporta novos modelos, incluindo Kimi K2 e Grok 4.
 - 01-08-2025 Suporta fluxo de trabalho agente e MCP.
 - 23-05-2025 Adicione o componente executor de código Python/JS ao Agente.
 - 05-05-2025 Suporte a consultas entre idiomas.
@@ -129,7 +130,7 @@ Experimente nossa demo em [https://demo.ragflow.io](https://demo.ragflow.io).
 ## 🔎 Arquitetura do Sistema
 
 <div align="center" style="margin-top:20px;margin-bottom:20px;">
-<img src="https://github.com/infiniflow/ragflow/assets/12318111/d6ac5664-c237-4200-a7c2-a4a00691b485" width="1000"/>
+<img src="https://github.com/user-attachments/assets/31b0dd6f-ca4f-445a-9457-70cb44a381b2" width="1000"/>
 </div>
 
 ## 🎬 Primeiros Passos
@@ -180,28 +181,30 @@ Experimente nossa demo em [https://demo.ragflow.io](https://demo.ragflow.io).
 > Todas as imagens Docker são construídas para plataformas x86. Atualmente, não oferecemos imagens Docker para ARM64.
 > Se você estiver usando uma plataforma ARM64, por favor, utilize [este guia](https://ragflow.io/docs/dev/build_docker_image) para construir uma imagem Docker compatível com o seu sistema.
 
-    > O comando abaixo baixa a edição `v0.20.3-slim` da imagem Docker do RAGFlow. Consulte a tabela a seguir para descrições de diferentes edições do RAGFlow. Para baixar uma edição do RAGFlow diferente da `v0.20.3-slim`, atualize a variável `RAGFLOW_IMAGE` conforme necessário no **docker/.env** antes de usar `docker compose` para iniciar o servidor. Por exemplo: defina `RAGFLOW_IMAGE=infiniflow/ragflow:v0.20.3` para a edição completa `v0.20.3`.
+    > O comando abaixo baixa a edição `v0.21.1` da imagem Docker do RAGFlow. Consulte a tabela a seguir para descrições de diferentes edições do RAGFlow. Para baixar uma edição do RAGFlow diferente da `v0.21.1`, atualize a variável `RAGFLOW_IMAGE` conforme necessário no **docker/.env** antes de usar `docker compose` para iniciar o servidor.
 
-    ```bash
-    $ cd ragflow/docker
-    # Use CPU for embedding and DeepDoc tasks:
-    $ docker compose -f docker-compose.yml up -d
+   ```bash
+   $ cd ragflow/docker
+   # Use CPU for embedding and DeepDoc tasks:
+   $ docker compose -f docker-compose.yml up -d
 
-    # To use GPU to accelerate embedding and DeepDoc tasks:
-    # docker compose -f docker-compose-gpu.yml up -d
-    ```
+   # To use GPU to accelerate embedding and DeepDoc tasks:
+   # sed -i '1i DEVICE=gpu' .env
+   # docker compose -f docker-compose.yml up -d
+   ```
 
-    | Tag da imagem RAGFlow | Tamanho da imagem (GB) | Possui modelos de incorporação? | Estável?                 |
-    | --------------------- | ---------------------- | ------------------------------- | ------------------------ |
-    | v0.20.3               | ~9                     | :heavy_check_mark:              | Lançamento estável       |
-    | v0.20.3-slim          | ~2                     | ❌                              | Lançamento estável       |
-    | nightly               | ~9                     | :heavy_check_mark:              | _Instável_ build noturno |
-    | nightly-slim          | ~2                     | ❌                               | _Instável_ build noturno |
+    | Tag da imagem RAGFlow | Tamanho da imagem (GB) | Possui modelos de incorporação? | Estável?                    |
+    | --------------------- | ---------------------- | ------------------------------- | --------------------------- |
+    | v0.21.1               | &approx;9              | ✔️                              | Lançamento estável          |
+    | v0.21.1-slim          | &approx;2              | ❌                              | Lançamento estável          |
+    | nightly               | &approx;2              | ❌                              | Construção noturna instável |
+
+    > Observação: A partir da `v0.22.0`, distribuímos apenas a edição slim e não adicionamos mais o sufixo **-slim** às tags das imagens.
 
 4.  Verifique o status do servidor após tê-lo iniciado:
 
     ```bash
-    $ docker logs -f ragflow-server
+    $ docker logs -f docker-ragflow-cpu-1
     ```
 
     _O seguinte resultado confirma o lançamento bem-sucedido do sistema:_
@@ -274,22 +277,12 @@ Esta imagem tem cerca de 2 GB de tamanho e depende de serviços externos de LLM 
 ```bash
 git clone https://github.com/infiniflow/ragflow.git
 cd ragflow/
-docker build --platform linux/amd64 --build-arg LIGHTEN=1 -f Dockerfile -t infiniflow/ragflow:nightly-slim .
-```
-
-## 🔧 Criar uma imagem Docker incluindo modelos de incorporação
-
-Esta imagem tem cerca de 9 GB de tamanho. Como inclui modelos de incorporação, depende apenas de serviços externos de LLM.
-
-```bash
-git clone https://github.com/infiniflow/ragflow.git
-cd ragflow/
 docker build --platform linux/amd64 -f Dockerfile -t infiniflow/ragflow:nightly .
 ```
 
 ## 🔨 Lançar o serviço a partir do código-fonte para desenvolvimento
 
-1. Instale o `uv`, ou pule esta etapa se ele já estiver instalado:
+1. Instale o `uv` e o `pre-commit`, ou pule esta etapa se eles já estiverem instalados:
 
    ```bash
    pipx install uv pre-commit
@@ -300,7 +293,7 @@ docker build --platform linux/amd64 -f Dockerfile -t infiniflow/ragflow:nightly 
    ```bash
    git clone https://github.com/infiniflow/ragflow.git
    cd ragflow/
-   uv sync --python 3.10 --all-extras # instala os módulos Python dependentes do RAGFlow
+   uv sync --python 3.10 # instala os módulos Python dependentes do RAGFlow
    uv run download_deps.py
    pre-commit install
    ```
@@ -330,6 +323,8 @@ docker build --platform linux/amd64 -f Dockerfile -t infiniflow/ragflow:nightly 
     sudo apt-get install libjemalloc-dev
     # centos
     sudo yum instalar jemalloc
+    # mac
+    sudo brew install jemalloc
     ```
 
 6. Lance o serviço de back-end:

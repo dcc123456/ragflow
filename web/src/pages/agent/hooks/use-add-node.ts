@@ -1,6 +1,7 @@
 import { useFetchModelId } from '@/hooks/logic-hooks';
 import { Connection, Node, Position, ReactFlowInstance } from '@xyflow/react';
 import humanId from 'human-id';
+import { t } from 'i18next';
 import { lowerFirst } from 'lodash';
 import { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -17,15 +18,16 @@ import {
   initialBingValues,
   initialCategorizeValues,
   initialCodeValues,
-  initialConcentratorValues,
   initialCrawlerValues,
   initialDeepLValues,
   initialDuckValues,
   initialEmailValues,
   initialExeSqlValues,
+  initialExtractorValues,
   initialGithubValues,
   initialGoogleScholarValues,
   initialGoogleValues,
+  initialHierarchicalMergerValues,
   initialInvokeValues,
   initialIterationStartValues,
   initialIterationValues,
@@ -33,15 +35,19 @@ import {
   initialKeywordExtractValues,
   initialMessageValues,
   initialNoteValues,
+  initialParserValues,
   initialPubMedValues,
   initialQWeatherValues,
   initialRelevantValues,
   initialRetrievalValues,
   initialRewriteQuestionValues,
+  initialSearXNGValues,
+  initialSplitterValues,
   initialStringTransformValues,
   initialSwitchValues,
   initialTavilyExtractValues,
   initialTavilyValues,
+  initialTokenizerValues,
   initialTuShareValues,
   initialUserFillUpValues,
   initialWaitingDialogueValues,
@@ -88,6 +94,7 @@ export const useInitializeOperatorParams = () => {
       [Operator.Bing]: initialBingValues,
       [Operator.GoogleScholar]: initialGoogleScholarValues,
       [Operator.DeepL]: initialDeepLValues,
+      [Operator.SearXNG]: initialSearXNGValues,
       [Operator.GitHub]: initialGithubValues,
       [Operator.BaiduFanyi]: initialBaiduFanyiValues,
       [Operator.QWeather]: initialQWeatherValues,
@@ -97,7 +104,6 @@ export const useInitializeOperatorParams = () => {
       [Operator.AkShare]: initialAkShareValues,
       [Operator.YahooFinance]: initialYahooFinanceValues,
       [Operator.Jin10]: initialJin10Values,
-      [Operator.Concentrator]: initialConcentratorValues,
       [Operator.TuShare]: initialTuShareValues,
       [Operator.Note]: initialNoteValues,
       [Operator.Crawler]: initialCrawlerValues,
@@ -113,6 +119,18 @@ export const useInitializeOperatorParams = () => {
       [Operator.UserFillUp]: initialUserFillUpValues,
       [Operator.StringTransform]: initialStringTransformValues,
       [Operator.TavilyExtract]: initialTavilyExtractValues,
+      [Operator.Placeholder]: {},
+      [Operator.File]: {},
+      [Operator.Parser]: initialParserValues,
+      [Operator.Tokenizer]: initialTokenizerValues,
+      [Operator.Splitter]: initialSplitterValues,
+      [Operator.HierarchicalMerger]: initialHierarchicalMergerValues,
+      [Operator.Extractor]: {
+        ...initialExtractorValues,
+        llm_id: llmId,
+        sys_prompt: t('flow.prompts.system.summary'),
+        prompts: t('flow.prompts.user.summary'),
+      },
     };
   }, [llmId]);
 
@@ -122,8 +140,8 @@ export const useInitializeOperatorParams = () => {
       if (isBottomSubAgent(operatorName, position)) {
         return {
           ...initialValues,
-          description: 'This is an agent for a specific task.',
-          user_prompt: 'This is the order you need to send to the agent.',
+          description: t('flow.descriptionMessage'),
+          user_prompt: t('flow.userPromptDefaultValue'),
         };
       }
 
@@ -333,6 +351,7 @@ export function useAddNode(reactFlowInstance?: ReactFlowInstance<any, any>) {
             x: 0,
             y: 0,
           },
+          draggable: type === Operator.Placeholder ? false : undefined,
           data: {
             label: `${type}`,
             name: generateNodeNamesWithIncreasingIndex(

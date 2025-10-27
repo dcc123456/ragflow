@@ -1,3 +1,4 @@
+import showMessage from '@/components/ui/message';
 import { MessageType } from '@/constants/chat';
 import {
   useHandleMessageInputChange,
@@ -33,10 +34,6 @@ export function useSendMultipleChatMessage(
 
   const { setFormRef, getLLMConfigById, isLLMConfigEmpty } =
     useBuildFormRefs(chatBoxIds);
-
-  const stopOutputMessage = useCallback(() => {
-    controller.abort();
-  }, [controller]);
 
   const addNewestQuestion = useCallback(
     (message: Message, answer: string = '') => {
@@ -159,7 +156,7 @@ export function useSendMultipleChatMessage(
       if (res && (res?.response.status !== 200 || res?.data?.code !== 0)) {
         // cancel loading
         setValue(message.content);
-        console.info('removeLatestMessage111');
+        showMessage.error(res.data.message);
         removeLatestMessage(chatBoxId);
       }
     },
@@ -235,7 +232,6 @@ export function useSendMultipleChatMessage(
     sendMessage,
     handleInputChange,
     handlePressEnter,
-    stopOutputMessage,
     sendLoading: !allDone,
     setFormRef,
     handleUploadFile,
