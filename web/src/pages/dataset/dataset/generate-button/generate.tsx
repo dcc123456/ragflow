@@ -7,6 +7,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Modal } from '@/components/ui/modal/modal';
+import { useDatasetEditButtonDisabled } from '@/hooks/logic-hooks/use-permission';
 import { cn } from '@/lib/utils';
 import { toFixed } from '@/utils/common-util';
 import { formatDate } from '@/utils/date';
@@ -176,8 +177,11 @@ const MenuItem: React.FC<{
     </DropdownMenuItem>
   );
 };
-
-const Generate: React.FC = () => {
+type GenerateProps = {
+  disabled?: boolean;
+};
+const Generate: React.FC<GenerateProps> = (props) => {
+  const { disabled = false } = props;
   const [open, setOpen] = useState(false);
   const { graphRunData, raptorRunData } = useTraceGenerate({ open });
   const { runGenerate, pauseGenerate } = useDatasetGenerate();
