@@ -44,6 +44,12 @@ const storage = {
   getLanguage: (): string => {
     return localStorage.getItem('lng') as string;
   },
+  setPricePlan: (lng: string) => {
+    localStorage.setItem('price-plan', lng);
+  },
+  getPricePlan: (): string => {
+    return localStorage.getItem('price-plan') as string;
+  },
 };
 
 export const getAuthorization = () => {
