@@ -25,10 +25,6 @@ class RoleService(CommonService):
     model = Role
 
     @classmethod
-    def get_by_role_id(cls, role_id):
-        return cls.model.select().where(cls.model.id == role_id)
-
-    @classmethod
     @DB.connection_context()
     def create_role(cls, role_info: dict):
         role_dict = {
@@ -39,7 +35,7 @@ class RoleService(CommonService):
             "update_date": datetime_format(datetime.now())
         }
         obj = cls.model(**role_dict).save(force_insert=True)
-        return obj
+        return obj, role_dict
 
     @classmethod
     @DB.connection_context()
@@ -48,13 +44,13 @@ class RoleService(CommonService):
 
     @classmethod
     @DB.connection_context()
-    def update_role_description(cls, role_id: str, description: str):
+    def update_role_description(cls, role_id: int, description: str):
         update_dict = {
             "description": description,
             "update_time": current_timestamp(),
             "update_date": datetime_format(datetime.now())
         }
-        return cls.model.update(update_dict).where(cls.model.role_id == role_id).execute()
+        return cls.model.update(update_dict).where(cls.model.id == role_id).execute()
 
     @classmethod
     @DB.connection_context()
@@ -77,12 +73,12 @@ class RoleResourceService(CommonService):
 
     @classmethod
     @DB.connection_context()
-    def get_by_role_id(cls, role_id: str):
+    def get_by_role_id(cls, role_id: int):
         return list(cls.model.select().where(cls.model.role_id == role_id).dicts())
 
     @classmethod
     @DB.connection_context()
-    def upsert_role_action_by_id(cls, role_id: str, new_resource_action_map: dict):
+    def upsert_role_action_by_id(cls, role_id: int, new_resource_action_map: dict):
         """
         param: role_id: role.id
         param: new_resource_action_map: {resource_type: action}
@@ -120,6 +116,6 @@ class RoleResourceService(CommonService):
 
     @classmethod
     @DB.connection_context()
-    def delete_by_role_id(cls, role_id: str):
+    def delete_by_role_id(cls, role_id: int):
         with DB.atomic():
             return cls.model.delete().where(cls.model.role_id == role_id).execute()

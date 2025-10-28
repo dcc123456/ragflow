@@ -86,9 +86,10 @@ def create_user():
 
         username = data['username']
         password = data['password']
-        role = data.get('role', 'user')
+        resource_role = data.get('resource_role', 'owner')
+        system_role = data.get('system_role', 'user')
 
-        res = UserMgr.create_user(username, password, role)
+        res = UserMgr.create_user(username, password, resource_role, system_role)
         if res["success"]:
             user_info = res["user_info"]
             user_info.pop("password")  # do not return password
@@ -342,6 +343,14 @@ def revoke_role_permission(role_name: str):
         return success_response(res)
     except Exception as e:
         return error_response(str(e), 500)
+
+
+@admin_bp.route('/api/v1/roles/resource', methods=['GET'])
+@login_required
+@check_admin_auth
+def list_roles_resource():
+    data = RoleMgr.list_resources()
+    return success_response({"resource_types": data})
 
 
 @admin_bp.route('/users/<user_name>/role', methods=['PUT'])

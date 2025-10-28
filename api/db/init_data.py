@@ -18,6 +18,7 @@ import json
 import os
 import time
 from copy import deepcopy
+from errno import EOWNERDEAD
 from urllib.parse import urlparse
 
 from api.db.db_models import init_database_tables as init_web_db, LLM
@@ -46,6 +47,30 @@ def init_superuser():
     }
     user_register("admin", user_dict)
     logging.info("Super user initialized. email: admin@ragflow.io, password: ***. Changing the password after login is strongly recommended.")
+
+
+def init_default_roles():
+    from api.db import ResourceTypeEnum, ActionEnum
+    from api.db.services.role_service import RoleService, RoleResourceService
+
+    # create 'owner'
+    owner_roles = RoleService.get_by_role_name("owner")
+    if not owner_roles:
+        # ask admin to update description manually
+        if RoleService.create_role({"role_name": "owner", "description": ""}):
+            owner_rows = RoleService.get_by_role_name("owner")
+            role_id = owner_rows[0]["id"]
+            action = ActionEnum.ENABLE.value | ActionEnum.READ.value | ActionEnum.WRITE.value | ActionEnum.SHARE.value
+            RoleResourceService.upsert_role_action_by_id(role_id, {resource_type.value: action for resource_type in ResourceTypeEnum})
+    # create 'public'
+    public_roles = RoleService.get_by_role_name("public")
+    if not public_roles:
+        # ask admin to update description manually
+        if RoleService.create_role({"role_name": "public", "description": ""}):
+            public_rows = RoleService.get_by_role_name("public")
+            role_id = public_rows[0]["id"]
+            action = ActionEnum.ENABLE.value | ActionEnum.READ.value
+            RoleResourceService.upsert_role_action_by_id(role_id, {resource_type.value: action for resource_type in ResourceTypeEnum})
 
 
 def init_llm_factory():
@@ -150,6 +175,8 @@ def init_web_data():
     init_llm_factory()
     if settings.ENABLE_ADMIN:
         init_superuser()
+
+    init_default_roles()
 
     if settings.BILLING_ENABLED:
         BillingPlanService.init_data(settings.BILLING["billing_plans"])

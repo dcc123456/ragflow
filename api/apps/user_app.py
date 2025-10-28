@@ -57,6 +57,10 @@ from api.utils.web_utils import (
     captcha_key,
 )
 from common import settings
+from common.file_utils import get_project_base_directory
+from api.db.services.user_service import UserService, TenantService, UserTenantService
+from api.db.services.role_service import RoleService
+from rag.utils.redis_conn import REDIS_CONN
 
 
 def ldap_login():
@@ -737,6 +741,14 @@ def user_add():
 
     # Construct user info data
     nickname = req["nickname"]
+    role_name = settings.DEFAULT_ROLE
+    roles = RoleService.get_by_role_name(role_name)
+    if not roles:
+        get_json_result(
+            data=False,
+            message=f"Role: {role_name} not exist!",
+            code=settings.RetCode.OPERATING_ERROR,
+        )
     user_dict = {
         "access_token": get_uuid(),
         "email": email_address,
@@ -745,6 +757,7 @@ def user_add():
         "login_channel": "password",
         "last_login_time": get_format_time(),
         "is_superuser": False,
+        "role_id": roles[0]["id"]
     }
 
     user_id = get_uuid()

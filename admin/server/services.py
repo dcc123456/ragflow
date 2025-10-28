@@ -21,13 +21,14 @@ from common.constants import ActiveEnum
 from api.db.services import UserService
 from api.db.joint_services.user_account_service import create_new_user, delete_user_data
 from api.db.services.canvas_service import UserCanvasService
+from api.db.services.role_service import RoleService
 from api.db.services.user_service import TenantService
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.white_list_service import WhiteListService
 from api.utils.crypt import decrypt
 from api.utils import health_utils
 
-from api.common.exceptions import AdminException, UserAlreadyExistsError, UserNotFoundError
+from api.common.exceptions import AdminException, UserAlreadyExistsError, UserNotFoundError, RoleNotFoundError
 from config import SERVICE_CONFIGS
 from common.settings import ENABLE_WHITELIST
 
@@ -69,7 +70,7 @@ class UserMgr:
         return result
 
     @staticmethod
-    def create_user(username, password, role="user") -> dict:
+    def create_user(username, password, resource_role="owner", system_role="user") -> dict:
         # Validate the email address
         if not re.match(r"^[\w\._-]+@([\w_-]+\.)+[\w-]{2,}$", username):
             raise AdminException(f"Invalid email address: {username}!")
@@ -81,13 +82,18 @@ class UserMgr:
         # Check if the email address is already used
         if UserService.query(email=username):
             raise UserAlreadyExistsError(username)
+        roles = RoleService.get_by_role_name(resource_role)
+        if not roles:
+            raise RoleNotFoundError(resource_role)
+        role = roles[0]
         # Construct user info data
         user_info_dict = {
             "email": username,
             "nickname": "",  # ask user to edit it manually in settings.
             "password": decrypt(password),
             "login_channel": "password",
-            "is_superuser": role == "admin",
+            "is_superuser": system_role == "admin",
+            "role_id": role["id"]
         }
         return create_new_user(user_info_dict)
 

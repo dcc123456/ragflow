@@ -20,7 +20,7 @@ from api.db import ActionEnum, ResourceTypeEnum, PermissionOperationEnum
 from api.db.services.role_service import RoleService, RoleResourceService
 
 
-def get_role_permissions_by_role_id(role_id: str):
+def get_role_permissions_by_role_id(role_id: int):
     role_actions = RoleResourceService.get_by_role_id(role_id)
     if not role_actions:
         return {}
@@ -77,7 +77,7 @@ def upsert_role_actions(role_name: str, new_permissions: dict, operation_type: s
     roles = RoleService.get_by_role_name(role_name)
     if not roles:
         raise RoleNotFoundError(role_name)
-    if len(roles) >= 1:
+    if len(roles) > 1:
         raise AdminException(f"More than one role {role_name} found!")
     # compare & upsert
     role = roles[0]
@@ -101,7 +101,7 @@ def upsert_role_actions(role_name: str, new_permissions: dict, operation_type: s
             else:
                 if not enable_status:
                     # will revoke permissions that are set to 'false'
-                    new_action & ~action_value_map[action_name]
+                    new_action &= ~action_value_map[action_name]
         if new_action == base_action:
             continue
         upsert_dict.update({resource_type: new_action})
@@ -128,15 +128,15 @@ def upsert_role_actions(role_name: str, new_permissions: dict, operation_type: s
 
 
 def delete_role_by_id(role_id):
-    role = RoleService.get_by_id(role_id)
+    _, role = RoleService.get_by_id(role_id)
     if not role:
         return {
             "success": True,
             "message": f"Role {role_id} is already deleted."
         }
     try:
-        permission_deleted_cnt = RoleResourceService.delete_by_role_id(role["id"])
-        role_deleted_cnt = RoleService.delete_by_id(role["id"])
+        permission_deleted_cnt = RoleResourceService.delete_by_role_id(role.id)
+        role_deleted_cnt = RoleService.delete_by_id(role.id)
         return {
             "success": True,
             "message": f"Role deleted successfully. {permission_deleted_cnt} role permissions and {role_deleted_cnt} role record deleted."

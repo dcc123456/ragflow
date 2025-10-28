@@ -40,6 +40,9 @@ sql_command: list_services
            | drop_user
            | alter_user
            | create_user
+           | create_user_with_resource_role
+           | create_user_with_system_role
+           | create_user_with_both_role
            | activate_user
            | list_datasets
            | list_agents
@@ -94,6 +97,7 @@ FOR: "FOR"i
 RESOURCES: "RESOURCES"i
 ON: "ON"i
 SET: "SET"i
+AS: "AS"i
 VERSION: "VERSION"i
 
 list_services: LIST SERVICES ";"
@@ -107,6 +111,9 @@ drop_user: DROP USER quoted_string ";"
 alter_user: ALTER USER PASSWORD quoted_string quoted_string ";"
 show_user: SHOW USER quoted_string ";"
 create_user: CREATE USER quoted_string quoted_string ";"
+create_user_with_resource_role: CREATE USER quoted_string quoted_string ROLE quoted_string ";"
+create_user_with_system_role: CREATE USER quoted_string quoted_string AS quoted_string ";"
+create_user_with_both_role: CREATE USER quoted_string quoted_string ROLE quoted_string AS quoted_string ";"
 activate_user: ALTER USER ACTIVE quoted_string status ";"
 
 list_datasets: LIST DATASETS OF quoted_string ";"
@@ -187,7 +194,26 @@ class AdminTransformer(Transformer):
     def create_user(self, items):
         user_name = items[2]
         password = items[3]
-        return {"type": "create_user", "user_name": user_name, "password": password, "role": "user"}
+        return {"type": "create_user", "user_name": user_name, "password": password, "resource_role": "owner", "system_role": "user"}
+
+    def create_user_with_resource_role(self, items):
+        user_name = items[2]
+        password = items[3]
+        resource_role = items[5]
+        return {"type": "create_user", "user_name": user_name, "password": password, "resource_role": resource_role, "system_role": "user"}
+
+    def create_user_with_system_role(self, items):
+        user_name = items[2]
+        password = items[3]
+        system_role = items[5]
+        return {"type": "create_user", "user_name": user_name, "password": password, "resource_role": "owner", "system_role": system_role}
+
+    def create_user_with_both_role(self, items):
+        user_name = items[2]
+        password = items[3]
+        resource_role = items[5]
+        system_role = items[7]
+        return {"type": "create_user", "user_name": user_name, "password": password, "resource_role": resource_role, "system_role": system_role}
 
     def activate_user(self, items):
         user_name = items[3]
@@ -669,12 +695,21 @@ class AdminCLI(Cmd):
         user_name: str = user_name_tree.children[0].strip("'\"")
         password_tree: Tree = command['password']
         password: str = password_tree.children[0].strip("'\"")
-        role: str = command['role']
-        print(f"Create user: {user_name}, password: {password}, role: {role}")
+        if isinstance(command['resource_role'], str):
+            resource_role: str = command['resource_role']
+        else:
+            resource_role_tree: Tree = command['resource_role']
+            resource_role: str = resource_role_tree.children[0].strip("'\"")
+        if isinstance(command['system_role'], str):
+            system_role: str = command['system_role']
+        else:
+            system_role_tree: Tree = command['system_role']
+            system_role: str = system_role_tree.children[0].strip("'\"")
+        print(f"Create user: {user_name}, password: {password}, resource_role: {resource_role}, system_role: {system_role}")
         url = f'http://{self.host}:{self.port}/api/v1/admin/users'
         response = self.session.post(
             url,
-            json={'user_name': user_name, 'password': encrypt(password), 'role': role}
+            json={'username': user_name, 'password': encrypt(password), 'resource_role': resource_role, 'system_role': system_role}
         )
         res_json = response.json()
         if response.status_code == 200:
@@ -760,7 +795,7 @@ class AdminCLI(Cmd):
         response = self.session.delete(url)
         res_json = response.json()
         if response.status_code == 200:
-            self._print_table_simple(res_json['data']['message'])
+            print(res_json['data']['message'])
         else:
             print(f"Fail to drop role {role_name}, code: {res_json['code']}, message: {res_json['message']}")
 
@@ -778,7 +813,7 @@ class AdminCLI(Cmd):
         )
         res_json = response.json()
         if response.status_code == 200:
-            self._print_table_simple(res_json['data']['message'])
+            print(res_json['data']['message'])
         else:
             print(
                 f"Fail to update role {role_name} with description: {desc_str}, code: {res_json['code']}, message: {res_json['message']}")
@@ -810,7 +845,7 @@ class AdminCLI(Cmd):
                 'description': data['role']['description']
             }
             for resource, permissions in data['permissions'].items():
-                role_info.update({resource: ','.join([permission_name.UPPER() for permission_name, enable in permissions.items() if enable])})
+                role_info.update({resource: ', '.join([permission_name.upper() for permission_name, enable in permissions.items() if enable])})
             self._print_table_simple(role_info)
         else:
             print(f"Fail to show roles, code: {res_json['code']}, message: {res_json['message']}")
@@ -896,8 +931,8 @@ class AdminCLI(Cmd):
                 'description': data['user']['description'],
             }
             for resource, permissions in data['role_permissions'].items():
-                user_permission_info.update({resource: ','.join(
-                    [permission_name.UPPER() for permission_name, enable in permissions.items() if enable])})
+                user_permission_info.update({resource: ', '.join(
+                    [permission_name.upper() for permission_name, enable in permissions.items() if enable])})
             self._print_table_simple(user_permission_info)
         else:
             print(
@@ -935,12 +970,21 @@ Commands:
   RESTART SERVICE <service>
   LIST USERS
   SHOW USER <user>
+  SHOW USER PERMISSION <user>
   DROP USER <user>
   CREATE USER <user> <password>
   ALTER USER PASSWORD <user> <new_password>
   ALTER USER ACTIVE <user> <on/off>
+  ALTER USER <user> SET ROLE <role>
   LIST DATASETS OF <user>
   LIST AGENTS OF <user>
+  LIST ROLES
+  SHOW ROLE <role>
+  CREATE ROLE <role> DESCRIPTION <description>
+  ALTER ROLE <role> DESCRIPTION <description>
+  DROP ROLE <role>
+  GRANT <action_list> ON <resource> TO ROLE <role>
+  REVOKE <action_list> ON <resource> FROM ROLE <role>
 
 Meta Commands:
   \\?, \\h, \\help     Show this help

@@ -18,13 +18,17 @@ import logging
 from typing import Dict, Any
 
 from api.common.exceptions import AdminException, RoleAlreadyExistsError, RoleNotFoundError, UserNotFoundError
-from api.db import PermissionOperationEnum
+from api.db import PermissionOperationEnum, ResourceTypeEnum
 from api.db.services.user_service import UserService
 from api.db.services.role_service import RoleService
 from api.db.joint_services.user_role_service import get_role_permissions_by_role_id, upsert_role_actions, delete_role_by_id
 
 
 class RoleMgr:
+    @staticmethod
+    def list_resources():
+        return [resource_type.name for resource_type in ResourceTypeEnum]
+
     @staticmethod
     def create_role(role_name: str, description: str):
         if not role_name:
@@ -68,7 +72,7 @@ class RoleMgr:
         roles = RoleService.get_by_role_name(role_name)
         if not roles:
             raise RoleNotFoundError(role_name)
-        if len(roles) >= 1:
+        if len(roles) > 1:
             raise AdminException(f"More than one role {role_name} found!")
         role = roles[0]
         if description == role["description"]:
@@ -87,7 +91,7 @@ class RoleMgr:
         roles = RoleService.get_by_role_name(role_name)
         if not roles:
             raise RoleNotFoundError(role_name)
-        if len(roles) >= 1:
+        if len(roles) > 1:
             raise AdminException(f"More than one role {role_name} found!")
         role = roles[0]
         user_in_use = UserService.query(role_id=role["id"])
@@ -115,7 +119,7 @@ class RoleMgr:
         roles = RoleService.get_by_role_name(role_name)
         if not roles:
             raise RoleNotFoundError(role_name)
-        if len(roles) >= 1:
+        if len(roles) > 1:
             raise AdminException(f"More than one role {role_name} found!")
         role = roles[0]
         permissions = get_role_permissions_by_role_id(role["id"])
@@ -192,17 +196,17 @@ class RoleMgr:
         users = UserService.query_user_by_email(user_name)
         if not users:
             raise UserNotFoundError(user_name)
-        if len(users) >= 1:
+        if len(users) > 1:
             raise AdminException(f"More than one user {user_name} found!")
         user = users[0]
 
         roles = RoleService.get_by_role_name(role_name)
         if not roles:
             raise RoleNotFoundError(role_name)
-        if len(roles) >= 1:
+        if len(roles) > 1:
             raise AdminException(f"More than one role {role_name} found!")
         role = roles[0]
-        if user["role_id"] == role["id"]:
+        if user.role_id == role["id"]:
             return {
                 "success": True,
                 "message": f"User {user_name} has already updated to role {role_name}."
@@ -226,10 +230,10 @@ class RoleMgr:
         users = UserService.query_user_by_email(user_name)
         if not users:
             raise UserNotFoundError(user_name)
-        if len(users) >= 1:
+        if len(users) > 1:
             raise AdminException(f"More than one user {user_name} found!")
         user = users[0]
-        role = RoleService.get_by_role_id(user.role_id)
+        _, role = RoleService.get_by_id(user.role_id)
         if not role:
             raise RoleNotFoundError(user.role_id)
         permissions = get_role_permissions_by_role_id(user.role_id)
