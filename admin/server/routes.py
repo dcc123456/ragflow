@@ -345,7 +345,7 @@ def revoke_role_permission(role_name: str):
         return error_response(str(e), 500)
 
 
-@admin_bp.route('/api/v1/roles/resource', methods=['GET'])
+@admin_bp.route('/roles/resource', methods=['GET'])
 @login_required
 @check_admin_auth
 def list_roles_resource():

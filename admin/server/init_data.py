@@ -13,9 +13,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 #
-import uuid
-
-from api.settings import DEFAULT_ROLE
+from common.settings import DEFAULT_ROLE
 from api.common.exceptions import AdminException
 from api.db.db_models import User
 from api.db.services.user_service import UserService

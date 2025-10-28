@@ -51,6 +51,7 @@ sql_command: list_services
            | alter_role
            | list_roles
            | show_role
+           | list_resources
            | grant_permission
            | revoke_permission
            | alter_user_role
@@ -251,6 +252,9 @@ class AdminTransformer(Transformer):
     def show_role(self, items):
         role_name = items[2]
         return {"type": "show_role", "role_name": role_name}
+
+    def list_resources(self, items):
+        return {"type": "list_resources"}
 
     def grant_permission(self, items):
         action_list = items[1]
@@ -581,6 +585,8 @@ class AdminCLI(Cmd):
                 self._list_roles(command_dict)
             case 'show_role':
                 self._show_role(command_dict)
+            case 'list_resources':
+                self._list_resources(command_dict)
             case 'grant_permission':
                 self._grant_permission(command_dict)
             case 'revoke_permission':
@@ -850,6 +856,16 @@ class AdminCLI(Cmd):
         else:
             print(f"Fail to show roles, code: {res_json['code']}, message: {res_json['message']}")
 
+    def _list_resources(self, command):
+        url = f'http://{self.host}:{self.port}/api/v1/admin/roles/resource'
+        response = self.session.get(url)
+        res_json = response.json()
+        if response.status_code == 200:
+            resource_types = res_json['data']['resource_types']
+            self._print_table_simple({'resource_types': ', '.join(resource_types)})
+        else:
+            print(f"Fail to list resources, code: {res_json['code']}, message: {res_json['message']}")
+
     def _grant_permission(self, command):
         role_name_tree: Tree = command['role_name']
         role_name_str: str = role_name_tree.children[0].strip("'\"")
@@ -983,6 +999,7 @@ Commands:
   CREATE ROLE <role> DESCRIPTION <description>
   ALTER ROLE <role> DESCRIPTION <description>
   DROP ROLE <role>
+  LIST RESOURCES
   GRANT <action_list> ON <resource> TO ROLE <role>
   REVOKE <action_list> ON <resource> FROM ROLE <role>
 

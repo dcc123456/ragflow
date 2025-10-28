@@ -95,9 +95,9 @@ class RoleMgr:
             raise AdminException(f"More than one role {role_name} found!")
         role = roles[0]
         user_in_use = UserService.query(role_id=role["id"])
-        user_emails = [u.email for u in user_in_use]
         if user_in_use:
-            raise AdminException(f"User {user_emails} are {role_name}, cannot delete it!")
+            user_noun = 'user' if len(user_in_use) == 1 else 'users'
+            raise AdminException(f"Role {role_name} is in use, {len(user_in_use)} {user_noun} are {role_name}, cannot delete it!")
         return delete_role_by_id(role["id"])
 
     @staticmethod
