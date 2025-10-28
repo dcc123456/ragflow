@@ -18,7 +18,6 @@ import json
 import os
 import time
 from copy import deepcopy
-from errno import EOWNERDEAD
 from urllib.parse import urlparse
 
 from api.db.db_models import init_database_tables as init_web_db, LLM
