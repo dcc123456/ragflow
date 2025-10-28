@@ -1,5 +1,6 @@
 import { CardContainer } from '@/components/card-container';
 import ListFilterBar from '@/components/list-filter-bar';
+import { PrivilegeManagementDialog } from '@/components/privilege-management/privilege-management-dialog';
 import { RenameDialog } from '@/components/rename-dialog';
 import { Button } from '@/components/ui/button';
 import { RAGFlowPagination } from '@/components/ui/ragflow-pagination';
@@ -10,6 +11,7 @@ import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChatCard } from './chat-card';
 import { useRenameChat } from './hooks/use-rename-chat';
+import { useShowPrivilegeDialog } from './use-show-privilege-dialog';
 
 export default function ChatList() {
   const { data, setPagination, pagination, handleInputChange, searchString } =
