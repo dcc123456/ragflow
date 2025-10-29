@@ -10,6 +10,7 @@ RUN /root/miniconda3/envs/py11/bin/pip uninstall -y lxml xmlsec
 RUN /root/miniconda3/envs/py11/bin/pip install --no-cache-dir --force-reinstall lxml xmlsec
 RUN /root/miniconda3/envs/py11/bin/pip install flask-mail>=0.10.0 flask_limiter
 RUN /root/miniconda3/envs/py11/bin/pip install langfuse>=2.60.0 ultralytics
+RUN /root/miniconda3/envs/py11/bin/pip install olefile
 
 COPY web web
 RUN cd ./web && npm i && npm run build
