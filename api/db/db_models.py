@@ -26,7 +26,7 @@ from functools import wraps
 
 from flask_login import UserMixin
 from itsdangerous.url_safe import URLSafeTimedSerializer as Serializer
-from peewee import InterfaceError, OperationalError, BigIntegerField, BooleanField, CharField, CompositeKey, DateTimeField, Field, FloatField, IntegerField, Metadata, Model, TextField
+from peewee import InterfaceError, OperationalError, BigIntegerField, BooleanField, CharField, CompositeKey, DateTimeField, Field, FloatField, IntegerField, Metadata, Model, TextField, PrimaryKeyField
 from playhouse.migrate import MySQLMigrator, PostgresqlMigrator, migrate
 from playhouse.pool import PooledMySQLDatabase, PooledPostgresqlDatabase
 
@@ -1162,6 +1162,14 @@ class PipelineOperationLog(DataBaseModel):
 
     class Meta:
         db_table = "pipeline_operation_log"
+
+
+class WhiteList(DataBaseModel):
+    id = PrimaryKeyField()
+    email = CharField(max_length=255, null=False, index=True)
+
+    class Meta:
+        db_table = "white_list"
 
 
 def migrate_db():
