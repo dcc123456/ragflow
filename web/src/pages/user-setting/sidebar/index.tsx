@@ -6,6 +6,10 @@ import { Domain } from '@/constants/common';
 import { useLogout } from '@/hooks/login-hooks';
 import { useSecondPathName } from '@/hooks/route-hook';
 import {
+  useFetchEnableAdmin,
+  useFetchIsAdmin,
+} from '@/hooks/use-private-llm-request';
+import {
   useFetchSystemVersion,
   useFetchUserInfo,
 } from '@/hooks/use-user-setting-request';
@@ -38,24 +42,24 @@ export function SideBar() {
   const { version, fetchSystemVersion } = useFetchSystemVersion();
   const { data: isAdmin } = useFetchIsAdmin();
   const { data: enableAdmin } = useFetchEnableAdmin();
+
   useEffect(() => {
     if (location.host !== Domain) {
       fetchSystemVersion();
     }
   }, [fetchSystemVersion]);
   const { logout } = useLogout();
-const items: MenuItem[] = menuItems
-    .filter((x) => {
-      if (enableAdmin) {
-        if (!isAdmin) {
-          return (
-            x.key !== Routes.Model
-          );
-        }
-      }
 
-      return x;
-    })
+  const items = menuItems.filter((x) => {
+    if (enableAdmin) {
+      if (!isAdmin) {
+        return x.key !== Routes.Model;
+      }
+    }
+
+    return x;
+  });
+
   return (
     <aside className="w-[303px] bg-bg-base flex flex-col">
       <div className="px-6 flex gap-2 items-center">
@@ -67,7 +71,7 @@ const items: MenuItem[] = menuItems
         <p className="text-sm text-text-primary">{userInfo?.email}</p>
       </div>
       <div className="flex-1 overflow-auto">
-        {menuItems.map((item, idx) => {
+        {items.map((item, idx) => {
           const hoverKey = pathName === item.key;
           return (
             <div key={idx}>

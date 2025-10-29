@@ -210,18 +210,30 @@ const PricingPage: React.FC = () => {
   );
   useEffect(() => {
     if (!currentPlan) return;
-    const plans = pricingPlans.map((plan) => {
+    let inUseIndex = 4;
+    const plans = pricingPlans.map((plan, index) => {
       if (
         plan.title ===
         planKeyMap[currentPlan.plan_name as keyof typeof planKeyMap]
       ) {
+        inUseIndex = index;
         return {
           ...plan,
           isUse: true,
           buttonLabel: 'In Use',
         } as unknown as IPricePlanWithButton;
       } else {
-        return { ...plan, isUse: false } as unknown as IPricePlanWithButton;
+        const buttonLabel =
+          index < inUseIndex
+            ? 'Reduce Now'
+            : index < pricingPlans.length - 1
+              ? 'Upgrade Now'
+              : 'Contact Us';
+        return {
+          ...plan,
+          isUse: false,
+          buttonLabel,
+        } as unknown as IPricePlanWithButton;
       }
     });
     setPricePlanList(plans);
