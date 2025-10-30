@@ -1,3 +1,4 @@
+import { PriceGobal } from '@/pages/price/gobal';
 import { Outlet } from 'umi';
 import { Header } from './next-header';
 
@@ -6,6 +7,7 @@ export default function NextLayout() {
     <section className="h-full flex flex-col">
       <Header></Header>
       <Outlet />
+      <PriceGobal />
     </section>
   );
 }

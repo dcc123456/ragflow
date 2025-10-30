@@ -1,4 +1,4 @@
-import { cn, convertKbToGb } from '@/lib/utils';
+import { cn, convertBytesToGb } from '@/lib/utils';
 import { Check, GitPullRequestArrow } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import ResourceUsage from '../component/resource-usage';
@@ -48,16 +48,16 @@ export const BaseInfo = () => {
       name: pricingPlans[planData?.plan_name as keyof typeof pricingPlans],
       storage: {
         ...planTemplate.storage,
-        used: convertKbToGb(
+        used: convertBytesToGb(
           (planData?.resources.plan_storage?.used || 0) +
             (planData?.resources.add_on_storage?.used || 0),
         ),
-        total: convertKbToGb(
+        total: convertBytesToGb(
           (planData?.resources.plan_storage?.limit || 0) +
             (planData?.resources.add_on_storage?.limit || 0),
         ),
-        base: convertKbToGb(planData?.resources.plan_storage?.limit || 0),
-        addOn: convertKbToGb(planData?.resources.add_on_storage?.limit || 0),
+        base: convertBytesToGb(planData?.resources.plan_storage?.limit || 0),
+        addOn: convertBytesToGb(planData?.resources.add_on_storage?.limit || 0),
       },
       apps: {
         ...planTemplate.apps,

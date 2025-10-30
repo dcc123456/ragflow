@@ -6,10 +6,11 @@ import {
   LayoutGrid,
   Users,
 } from 'lucide-react';
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useCharge } from '../hook/use-price-hooks';
 import '../index.less';
 import { IFeatureProps, IPricePlanWithButton } from '../interface';
+import { showPriceComfirmModal } from '../price-modal';
 
 interface ISuffixProps {
   id: number;
@@ -17,9 +18,7 @@ interface ISuffixProps {
   text: 'apps' | 'team members' | 'GB dataset storage' | 'min API requests';
   key: keyof IFeatureProps;
 }
-const PricingCard: React.FC<IPricePlanWithButton> = (
-  props: IPricePlanWithButton,
-) => {
+const PricingCard = (props: IPricePlanWithButton & { isUpgrade?: boolean }) => {
   const {
     title,
     isPopular,
@@ -28,6 +27,7 @@ const PricingCard: React.FC<IPricePlanWithButton> = (
     feature,
     buttonLabel,
     isUse = false,
+    isUpgrade = false,
     icon,
   } = props;
   const suffix = [
@@ -101,6 +101,14 @@ const PricingCard: React.FC<IPricePlanWithButton> = (
       setSelectPlanId(data.id);
     }
   };
+
+  const handleBuy = (props: IPricePlanWithButton) => {
+    if (isUpgrade) {
+      showPriceComfirmModal(props);
+    } else {
+      charge(props);
+    }
+  };
   return (
     <div
       className={`group rounded-lg shadow-lg p-6 text-center border border-border-button transition-transform hover:scale-105 bg-bg-base text-text-primary hover:bg-text-primary hover:text-bg-base`}
@@ -145,7 +153,7 @@ const PricingCard: React.FC<IPricePlanWithButton> = (
             'border border-border-button': isUse,
           },
         )}
-        onClick={() => charge(props)}
+        onClick={() => handleBuy(props)}
         disabled={loading}
       >
         {/* {loading && <Spin></Spin>} */}
