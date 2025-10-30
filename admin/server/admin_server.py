@@ -65,7 +65,7 @@ if __name__ == '__main__':
             port=9381,
             application=app,
             threaded=True,
-            use_reloader=True,
+            use_reloader=False,
             use_debugger=True,
         )
     except Exception:

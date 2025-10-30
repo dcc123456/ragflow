@@ -63,7 +63,8 @@ class WhiteListService(CommonService):
     @classmethod
     @DB.connection_context()
     def batch_create_white_list_row(cls, email_list: List[str]):
-        exist_email_rows = cls.model.select().where(cls.model.email in email_list).execute()
+        emails = list(set(email_list))
+        exist_email_rows = cls.model.select().where(cls.model.email in emails).execute()
         exist_emails = [row.email for row in exist_email_rows]
         row_list = [{
             "email": email,
@@ -71,7 +72,7 @@ class WhiteListService(CommonService):
             "create_date": datetime_format(datetime.now()),
             "update_time": current_timestamp(),
             "update_date": datetime_format(datetime.now()),
-        } for email in email_list if email not in exist_emails]
+        } for email in emails if email not in exist_emails]
         insert_cnt = 0
         for row in row_list:
             insert_cnt += cls.model(**row).save()

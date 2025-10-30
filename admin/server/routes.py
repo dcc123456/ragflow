@@ -18,6 +18,7 @@ import secrets
 
 from flask import Blueprint, request
 from flask_login import current_user, logout_user, login_required
+import pandas as pd
 
 from auth import login_verify, login_admin, check_admin_auth
 from responses import success_response, error_response
@@ -419,6 +420,26 @@ def update_whitelist_row(id: int):
 def delete_whitelist_row(email: str):
     try:
         res = WhiteListMgr.delete_email_from_white_list(email)
+        return success_response(res)
+    except Exception as e:
+        return error_response(str(e), 500)
+
+
+@admin_bp.route('/whitelist/batch', methods=['POST'])
+@login_required
+@check_admin_auth
+def batch_create_whitelist_rows():
+    if 'file' not in request.files:
+        return error_response("No file provided", 400)
+    file_obj = request.files.get('file')
+
+    blob = file_obj.read()
+    df = pd.read_excel(blob)
+
+    data_list = df.to_dict('records')
+    emails = [data['email'] for data in data_list]
+    try:
+        res = WhiteListMgr.batch_create_white_list_rows(emails)
         return success_response(res)
     except Exception as e:
         return error_response(str(e), 500)

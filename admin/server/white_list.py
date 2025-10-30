@@ -95,3 +95,28 @@ class WhiteListMgr:
                 "success": False,
                 "message": str(e),
             }
+
+    @staticmethod
+    def batch_create_white_list_rows(emails):
+        if not emails:
+            raise AdminException(f"Email list is empty.")
+        error_addr = []
+        for email in emails:
+            if not re.match(r"^[\w\._-]+@([\w_-]+\.)+[\w-]{2,}$", email):
+                error_addr.append(email)
+        if error_addr:
+            raise AdminException(f"Invalid email address: {', '.join(error_addr)}")
+        try:
+            insert_cnt = WhiteListService.batch_create_white_list_row(emails)
+            email_noun = 'email' if insert_cnt == 1 else 'emails'
+            already_exist_email_cnt = len(emails) - insert_cnt
+            already_exist_email_noun = 'email' if already_exist_email_cnt == 1 else 'emails'
+            return {
+                "success": True,
+                "message": f"Upload Successfully! Batch added {insert_cnt} {email_noun}, {already_exist_email_cnt} {already_exist_email_noun} already in whitelist. " ,
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "message": str(e),
+            }
