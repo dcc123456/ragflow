@@ -1,5 +1,7 @@
 // pages/PricingPage.tsx
-import { Modal } from '@/components/ui/modal';
+import Spotlight from '@/components/spotlight';
+import { Modal } from '@/components/ui/modal/modal';
+import { t } from 'i18next';
 import { Building2, Check, Gem, LucideProps, Rocket, X } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -8,16 +10,15 @@ import { useSearchParams } from 'umi';
 import AddOnCalculator from './components/add-on-calculator';
 import FAQs from './components/faq-s';
 import PricingCard from './components/pricing-card';
-import { useFetchCurrentPlan } from './hook/use-price-hooks';
+import { useFetchCurrentPlan, useFetchPlanList } from './hook/use-price-hooks';
 import { IPricePlanWithButton } from './interface';
 import { showModal } from './price-modal/show-modal';
 
-const pricingPlans = [
-  {
+const pricingPlans = {
+  Trial: {
     id: 'price_1RWUhlPtsKvwvC5fJHfaYeRs',
-    title: 'Free',
-    description:
-      'Start for free and explore essential features to get your project off the ground.',
+    title: t('price.free'),
+    description: t('price.freeDesc'),
     price: '0',
     feature: {
       apps: '20',
@@ -25,15 +26,14 @@ const pricingPlans = [
       datasetStorage: '5',
       apiRequests: '6000',
     },
-    buttonLabel: 'Reduce Now',
+    buttonLabel: t('price.reduce'),
     isUse: true,
     icon: () => <></>,
   },
-  {
+  Starter: {
     id: 'price_1RSr42PtsKvwvC5fuZP0AH7B',
-    title: 'Starter',
-    description:
-      'Ideal for individuals and small teams starting their journey with essential features.',
+    title: t('price.starter'),
+    description: t('price.starterDesc'),
     price: '9.9',
     feature: {
       apps: '40',
@@ -41,7 +41,7 @@ const pricingPlans = [
       datasetStorage: '10',
       apiRequests: '12000',
     },
-    buttonLabel: 'Upgrade Now',
+    buttonLabel: t('price.upgrade'),
     isUse: false,
     icon: (
       props?: JSX.IntrinsicAttributes &
@@ -51,11 +51,10 @@ const pricingPlans = [
       return <Rocket {...props} />;
     },
   },
-  {
+  Pro: {
     id: 'price_1RSr42PtsKvwvC5fuZP0AH7B',
-    title: 'Pro',
-    description:
-      'Perfect for growing businesses requiring more advanced tools and higher limits.',
+    title: t('price.pro'),
+    description: t('price.proDesc'),
     price: '99',
     feature: {
       apps: '80',
@@ -63,8 +62,9 @@ const pricingPlans = [
       datasetStorage: '20',
       apiRequests: '24000',
     },
-    buttonLabel: 'Upgrade Now',
+    buttonLabel: t('price.upgrade'),
     isUse: false,
+    isPopular: true,
     icon: (
       props?: JSX.IntrinsicAttributes &
         Omit<LucideProps, 'ref'> &
@@ -73,11 +73,10 @@ const pricingPlans = [
       return <Gem {...props} />;
     },
   },
-  {
+  Enterprise: {
     id: 'Enterprise',
-    title: 'Enterprise',
-    description:
-      'Tailored for large organizations needing custom solutions, priority support, and full scalability',
+    title: t('price.enterprise'),
+    description: t('price.enterpriseDesc'),
     price: '?',
     feature: {
       apps: '?',
@@ -85,7 +84,7 @@ const pricingPlans = [
       datasetStorage: '?',
       apiRequests: '?',
     },
-    buttonLabel: 'Contact Us',
+    buttonLabel: t('price.contactUs'),
     isUse: false,
     icon: (
       props?: JSX.IntrinsicAttributes &
@@ -95,13 +94,8 @@ const pricingPlans = [
       return <Building2 {...props} />;
     },
   },
-];
-const planKeyMap = {
-  tral: 'Free',
-  level1: 'Starter',
-  level2: 'Pro',
-  level3: 'Enterprise',
 };
+
 const PricingPage: React.FC = () => {
   const faqs = [
     {
@@ -126,9 +120,8 @@ const PricingPage: React.FC = () => {
     },
   ];
   const { data: currentPlan } = useFetchCurrentPlan();
-  const [pricePlanList, setPricePlanList] = useState<IPricePlanWithButton[]>(
-    pricingPlans as IPricePlanWithButton[],
-  );
+  const { data: planList } = useFetchPlanList();
+  const [pricePlanList, setPricePlanList] = useState<IPricePlanWithButton[]>();
   const [searchParams, setSearchParams] = useSearchParams();
   const status = searchParams.get('price-pay-status');
   const { t } = useTranslation();
@@ -186,13 +179,25 @@ const PricingPage: React.FC = () => {
             <Modal
               open={true}
               title={title()}
-              onOpenChange={(open) => !open && successModal.destroy()}
+              onOpenChange={(open) => {
+                if (!open) {
+                  const newSearchParams = new URLSearchParams(searchParams);
+                  newSearchParams.delete('price-pay-status');
+                  setSearchParams(newSearchParams);
+                  successModal.destroy();
+                }
+              }}
               className="!w-[400px]"
               footer={
                 <div className="flex justify-end gap-2 ">
                   <button
                     type="button"
-                    onClick={() => successModal.destroy()}
+                    onClick={() => {
+                      const newSearchParams = new URLSearchParams(searchParams);
+                      newSearchParams.delete('price-pay-status');
+                      setSearchParams(newSearchParams);
+                      successModal.destroy();
+                    }}
                     className="px-2 py-1 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
                   >
                     {t('modal.okText')}
@@ -208,36 +213,47 @@ const PricingPage: React.FC = () => {
     },
     [searchParams, setSearchParams, t],
   );
+
   useEffect(() => {
-    if (!currentPlan) return;
+    if (!currentPlan || !planList || planList.length <= 0) return;
     let inUseIndex = 4;
-    const plans = pricingPlans.map((plan, index) => {
-      if (
-        plan.title ===
-        planKeyMap[currentPlan.plan_name as keyof typeof planKeyMap]
-      ) {
+    const plans = planList?.map((plan, index) => {
+      let tempPlan = {
+        ...pricingPlans[plan.name as keyof typeof pricingPlans],
+        name: plan.name,
+        feature: {
+          apps: plan.feature.quota_apps,
+          teamMembers: plan.feature.quota_members,
+          datasetStorage: plan.feature.quota_kb_storage,
+          apiRequests: plan.feature.quota_api_limits,
+        },
+        id: plan.price_ids,
+        price: plan.price,
+        isUse: false,
+      };
+
+      if (plan.name && currentPlan.plan_name === plan.name) {
         inUseIndex = index;
         return {
-          ...plan,
+          ...tempPlan,
           isUse: true,
-          buttonLabel: 'In Use',
+          buttonLabel: t('price.inUse'),
         } as unknown as IPricePlanWithButton;
       } else {
         const buttonLabel =
           index < inUseIndex
-            ? 'Reduce Now'
-            : index < pricingPlans.length - 1
-              ? 'Upgrade Now'
-              : 'Contact Us';
+            ? t('price.reduce')
+            : index < planList.length - 1
+              ? t('price.upgrade')
+              : t('price.contactUs');
         return {
-          ...plan,
-          isUse: false,
+          ...tempPlan,
           buttonLabel,
         } as unknown as IPricePlanWithButton;
       }
     });
     setPricePlanList(plans);
-  }, [currentPlan]);
+  }, [currentPlan, planList, t]);
   useEffect(() => {
     if (status) {
       openSuccessModal(status);
@@ -245,18 +261,20 @@ const PricingPage: React.FC = () => {
   }, [status, openSuccessModal]);
 
   return (
-    <div className="min-h-screen bg-[#101015] text-white p-10 flex justify-center items-start overflow-auto h-full">
+    <div className="min-h-screen text-text-primary p-10 flex justify-center items-start overflow-auto h-full">
       <div className="w-[1500px]">
-        <h1 className="text-[68px] leading-[80px] font-bold mb-10 text-center bg-gradient-to-r from-indigo-500 from-30% via-sky-500 via-60% to-emerald-500 bg-clip-text text-transparent">
+        {/* <h1 className="text-[68px] leading-[80px] font-bold mb-10 text-center bg-gradient-to-r from-indigo-500 from-30% via-sky-500 via-60% to-emerald-500 bg-clip-text text-transparent"> */}
+        <div className="text-[64px] leading-[80px] font-medium mb-10 text-center text-text-primary">
           Scale Your Business with RAG engine
-        </h1>
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-10">
-          {pricePlanList.map((plan, index) => (
+          {pricePlanList?.map((plan, index) => (
             <PricingCard key={index} {...plan} />
           ))}
         </div>
         <AddOnCalculator />
         <FAQs faqs={faqs} />
+        <Spotlight />
       </div>
     </div>
   );
