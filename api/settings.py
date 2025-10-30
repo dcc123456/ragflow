@@ -29,7 +29,7 @@ from api.utils.file_utils import get_project_base_directory
 from rag.nlp import search
 from flask_login import current_user
 
-
+ENABLE_WHITELIST = int(os.environ.get('ENABLE_WHITELIST', 0))
 ENABLE_ADMIN=int(os.environ.get("ENABLE_ADMIN", "0"))
 LIGHTEN = int(os.environ.get("LIGHTEN", "1"))
 BILLING_ENABLED = int(os.environ.get('BILLING_ENABLED', "0"))

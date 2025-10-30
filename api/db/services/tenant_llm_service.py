@@ -397,8 +397,16 @@ def user_register(user_id, user):
     from api.db.services.file_service import FileService
     from api.db import FileType
     from api.db.services import UserService
+    from api.db.services.white_list_service import WhiteListService
     from api.db.services.llm_service import get_init_tenant_llm
     from api.utils import get_uuid
+    from api.settings import ENABLE_WHITELIST
+
+    if ENABLE_WHITELIST:
+        user_email = user["email"]
+        whitelist_row = WhiteListService.get_white_list_by_email(user_email)
+        if not whitelist_row:
+            raise ValueError(f"Email {user_email} isn't in whitelist.")
 
     user["id"] = user_id
     try:
