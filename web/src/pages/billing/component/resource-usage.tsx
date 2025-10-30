@@ -1,4 +1,4 @@
-import { ArrowUpRight, Layers, LayoutGrid, Users } from 'lucide-react';
+import { ArrowUpRight, DatabaseZap, LayoutGrid, Users } from 'lucide-react';
 import React from 'react';
 import { showAddOnManageModal } from './add-on-manage-modal';
 import Process from './process';
@@ -27,8 +27,7 @@ const ResourceUsage: React.FC<CustomProgressProps> = ({
   children,
 }) => {
   let addOnManageModal: { destroy: () => void };
-  const addOnManageOk = (e) => {
-    console.log(e);
+  const addOnManageOk = () => {
     if (addOnManageModal) {
       addOnManageModal.destroy();
     }
@@ -43,7 +42,7 @@ const ResourceUsage: React.FC<CustomProgressProps> = ({
   const storageFooter = () => {
     if (title !== 'Storage') return null;
     return (
-      <div className="flex justify-between items-end text-muted-foreground">
+      <div className="flex justify-between items-end text-text-primary">
         <div>
           {planName} Plan used {value > planValue ? planValue : value}GB/
           {planValue}GB
@@ -54,43 +53,45 @@ const ResourceUsage: React.FC<CustomProgressProps> = ({
             {limit - planValue}GB
           </span>
           <div
-            className="flex items-center text-foreground text-xl hover:outline outline-1 rounded-sm p-1 "
+            className="flex items-center text-text-primary text-xs hover:outline outline-1 px-1 py-1 rounded-sm border border-border-button bg-bg-input "
             onClick={() => {
               openAddOnManage();
             }}
           >
             Manage
-            <ArrowUpRight />
+            <ArrowUpRight size={12} />
           </div>
         </div>
       </div>
     );
   };
   return (
-    <div className="bg-background-card p-4 rounded mb-4">
+    <div className="bg-bg-input border border-border-default p-4 rounded mb-4">
       <div className="flex justify-between items-center mb-2">
         <div className="flex items-center">
           <span className="mr-2">
             {/* icon */}
             {title === 'Apps' && (
-              <div className="border rounded-sm p-1">
-                <LayoutGrid />
+              <div className=" rounded-sm p-1">
+                <LayoutGrid size={16} />
               </div>
             )}
             {title === 'Team Member' && (
-              <div className="border rounded-sm p-1">
-                <Users />
+              <div className=" rounded-sm p-1">
+                <Users size={16} />
               </div>
             )}
             {title === 'Storage' && (
-              <div className="border rounded-sm p-1">
-                <Layers />
+              <div className=" rounded-sm p-1">
+                <DatabaseZap size={16} />
               </div>
             )}
           </span>
-          <span className="text-white text-lg font-semibold">{title}</span>
+          <span className="text-text-primary text-base font-normal">
+            {title}
+          </span>
         </div>
-        <span className="text-white">{`${value}${unit}/${limit}${unit}`}</span>
+        <span className="text-text-primary">{`${value}${unit}/${limit}${unit}`}</span>
       </div>
       <Process
         value={value}

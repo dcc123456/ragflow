@@ -2,6 +2,7 @@ import { useFetchTenantInfo } from '@/hooks/user-setting-hooks';
 import billingService, { billinCheckout } from '@/services/price';
 import storage from '@/utils/authorization-util';
 import { useQuery } from '@tanstack/react-query';
+import { IPlan } from '../interface';
 export type IChargePlan = {
   subscription_price_id: string;
   quantity: string;
@@ -10,7 +11,6 @@ export type IChargePlan = {
 const useCharge = (chargePlan: IChargePlan) => {
   const { data: tenantInfo } = useFetchTenantInfo();
   const tenantId = tenantInfo?.tenant_id;
-  // 获取当前url
   const url = window.location.href;
   const successUrl = `${url.split('?')[0]}?price-pay-status=success${url.split('?')[1] || ''}`;
   const errorUrl = `${url.split('?')[0]}?price-pay-status=cancel${url.split('?')[1] || ''}`;
@@ -64,4 +64,22 @@ const useFetchCurrentPlan = (force = false) => {
 
   return { data, loading };
 };
-export { useCharge, useFetchCurrentPlan };
+
+const useFetchPlanList = (force = false) => {
+  const { data, isFetching: loading } = useQuery<IPlan[]>({
+    queryKey: ['getPlanList'],
+    // initialData: {},
+    gcTime: force ? 0 : 50000,
+    queryFn: async () => {
+      const { data: res } = await billingService.getPlanList();
+      if (res.code === 0) {
+        const { data } = res;
+        // storage.setPricePlan(JSON.stringify(data));
+        return data;
+      }
+    },
+  });
+
+  return { data, loading };
+};
+export { useCharge, useFetchCurrentPlan, useFetchPlanList };

@@ -66,7 +66,7 @@ const EmbeddingTokenBarChart = (props: IEmbeddingTokenBarChartProps) => {
         />
         <Bar
           dataKey="tokens"
-          fill="#4CA4E7"
+          fill="#00BEB4"
           background={false}
           radius={[4, 4, 4, 4]}
         />

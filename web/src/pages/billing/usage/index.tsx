@@ -1,9 +1,9 @@
 import { DateRange } from '@/components/originui/calendar';
 import { useState } from 'react';
-import DeepDocBarChart from './component/deep-doc-bar-chart';
-import EmbeddingTokenBarChart from './component/embedding-token-bar-chart';
-import TimeRangePicker from './component/time-range-picker';
-import TotalSpendLineChart from './component/total-spend-line-chart';
+import DeepDocBarChart from '../component/deep-doc-bar-chart';
+import EmbeddingTokenBarChart from '../component/embedding-token-bar-chart';
+import TimeRangePicker from '../component/time-range-picker';
+import TotalSpendLineChart from '../component/total-spend-line-chart';
 
 const UsagePage = () => {
   const [currentDate, setCurrentDate] = useState<DateRange>({
@@ -59,7 +59,7 @@ const UsagePage = () => {
     tokens: 1999,
   };
   return (
-    <div className="bg-black text-white p-4">
+    <div className=" text-text-primary p-4">
       <h1 className="text-2xl font-bold mb-4">Usage</h1>
       <div className="w-full flex justify-between items-end">
         <p className="mb-4">Showing total visitors for the last 7 days</p>

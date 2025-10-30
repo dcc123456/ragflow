@@ -22,3 +22,13 @@ export function formatBytes(
     sizeType === 'accurate' ? accurateSizes[i] ?? 'Bytes' : sizes[i] ?? 'Bytes'
   }`;
 }
+
+export const convertKbToGb = (
+  kb: number,
+  decimalPlaces: number = 2,
+): number => {
+  const gb = kb / (1024 * 1024);
+  return (
+    Math.round(gb * Math.pow(10, decimalPlaces)) / Math.pow(10, decimalPlaces)
+  );
+};

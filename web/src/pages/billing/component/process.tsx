@@ -38,11 +38,11 @@ const CustomProgress: React.FC<CustomProgressProps> = ({
     return 100;
   }, [allPercentage]);
   const colorObj = {
-    0: 'linear-gradient(90deg, #1890FF33  0%, #1890FF33  100%)',
-    30: 'linear-gradient(90deg, #1890FF 0%, #1890FF 100%)',
-    50: 'linear-gradient(90deg, #1890FF 0%, #e67070 100%)',
-    70: 'linear-gradient(90deg, #1890FF 0%, #ffc107 100%)',
-    90: 'linear-gradient(90deg, #1890FF 0%, #FF4D4F 100%)',
+    0: 'linear-gradient(90deg, #00BEB433  0%, #00BEB433  100%)',
+    30: 'linear-gradient(90deg, #00BEB4 0%, #00BEB4 100%)',
+    50: 'linear-gradient(90deg, #00BEB4 0%, #e67070 100%)',
+    70: 'linear-gradient(90deg, #00BEB4 0%, #ffc107 100%)',
+    90: 'linear-gradient(90deg, #00BEB4 0%, #FF4D4F 100%)',
     100: 'linear-gradient(90deg, #FF4D4F 0%, #FF4D4F 100%)',
   };
 
@@ -58,11 +58,11 @@ const CustomProgress: React.FC<CustomProgressProps> = ({
 
   return (
     <div
-      className="flex bg-gray-700 rounded-full relative my-6"
+      className="flex  bg-accent-primary-5 rounded-full relative my-6 border-[0.5px] border-border-button"
       style={{ height: height + 'px', overflow: 'hidden' }}
     >
       <div
-        className="flex bg-[#1890FF33] rounded-full relative"
+        className="flex bg-accent-primary-5 rounded-full relative"
         style={{
           height: height + 'px',
           width: `${basicCapacityAllPercentage}%`,

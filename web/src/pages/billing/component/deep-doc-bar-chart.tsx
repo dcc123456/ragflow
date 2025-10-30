@@ -66,7 +66,7 @@ const DeepDocBarChart = (porps: IDeepDocBarChartProps) => {
         />
         <Bar
           dataKey="pages"
-          fill="#4CA4E7"
+          fill="#00BEB4"
           background={false}
           radius={[4, 4, 4, 4]}
         />

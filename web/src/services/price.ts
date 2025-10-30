@@ -3,7 +3,7 @@ import api from '@/utils/private-api';
 import registerServer from '@/utils/register-server';
 import request from '@/utils/request';
 
-const { billin_checkout, current_plan } = api;
+const { billin_checkout, current_plan, plan_list } = api;
 const methods = {
   // 支付
   billinCheckout: {
@@ -12,6 +12,10 @@ const methods = {
   },
   getCurrentPlan: {
     url: current_plan,
+    method: 'get',
+  },
+  getPlanList: {
+    url: plan_list,
     method: 'get',
   },
 };
@@ -29,6 +33,17 @@ export const billinCheckout = (
 };
 export const getCurrentPlan = () => {
   return request.get(api.current_plan);
+};
+
+export const getBllingBaseOverview = ({ tenantId }: { tenantId: string }) => {
+  return request.get(api.blling_base_overview, {
+    params: { tenant_id: tenantId },
+  });
+};
+export const getBllingPlanPverview = ({ tenantId }: { tenantId: string }) => {
+  return request.get(api.plan_overview, {
+    params: { tenant_id: tenantId },
+  });
 };
 
 export default billingService;
