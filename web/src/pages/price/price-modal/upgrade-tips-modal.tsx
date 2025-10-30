@@ -1,6 +1,6 @@
 // src/components/CustomModal.tsx
-import { Modal } from '@/components/ui/modal';
-import { Layers, Users } from 'lucide-react';
+import { Modal } from '@/components/ui/modal/modal';
+import { DatabaseZap, Users } from 'lucide-react';
 import React, { useMemo } from 'react';
 import { createRoot } from 'react-dom/client';
 import UpgradeButton from './to-upgrade-button';
@@ -12,7 +12,7 @@ interface CustomModalProps {
   message: string;
 }
 
-const CustomModal: React.FC<CustomModalProps> = ({
+export const UpgradeTipsModal: React.FC<CustomModalProps> = ({
   isOpen,
   onClose,
   type,
@@ -23,11 +23,13 @@ const CustomModal: React.FC<CustomModalProps> = ({
       <div className="mr-4">
         {/* Icon based on title */}
         {type === 'dataset' && (
-          <Layers
-            className="w-6 h-6 text-amber-600" /* ...svg attributes... */
+          <DatabaseZap
+            className="w-6 h-6 text-text-primary" /* ...svg attributes... */
           />
         )}
-        {type === 'team-member' && <Users className="w-6 h-6 text-blue-500" />}
+        {type === 'team-member' && (
+          <Users className="w-6 h-6 text-text-primary" />
+        )}
       </div>
     );
   }, [type]);
@@ -50,7 +52,7 @@ const CustomModal: React.FC<CustomModalProps> = ({
     >
       <div className="flex items-start mb-4 flex-col gap-4 justify-start">
         <div className="text-start">{message}</div>
-        <div className="w-full h-2 rounded-md bg-gradient-to-r from-red-600 to-red-600"></div>
+        <div className="w-full h-2 rounded-md bg-state-error"></div>
       </div>
     </Modal>
   );
@@ -76,7 +78,7 @@ const showUpgradeTipsModal = ({
   };
 
   reactRoot.render(
-    <CustomModal
+    <UpgradeTipsModal
       isOpen={true}
       type={type}
       message={message}

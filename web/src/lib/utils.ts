@@ -23,11 +23,11 @@ export function formatBytes(
   }`;
 }
 
-export const convertKbToGb = (
-  kb: number,
+export const convertBytesToGb = (
+  bytes: number,
   decimalPlaces: number = 2,
 ): number => {
-  const gb = kb / (1024 * 1024);
+  const gb = bytes / (1024 * 1024 * 1024);
   return (
     Math.round(gb * Math.pow(10, decimalPlaces)) / Math.pow(10, decimalPlaces)
   );

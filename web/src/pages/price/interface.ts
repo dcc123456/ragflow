@@ -1,3 +1,5 @@
+import { PriceName } from './contant';
+
 export interface IFeatureProps {
   apps: string;
   teamMembers: string;
@@ -30,7 +32,7 @@ export interface IPlan {
   description: null | string;
   feature: IPlanFeature;
   id: string;
-  name: string;
+  name: PriceName;
   price: number;
   price_ids: string;
 }
