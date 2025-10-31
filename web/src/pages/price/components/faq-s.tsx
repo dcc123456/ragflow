@@ -11,15 +11,17 @@ const FAQ: React.FC<FAQProps> = ({ question, answer }) => {
 
   return (
     <div
-      className="bg-black p-6 rounded-lg mb-4"
+      className="bg-bg-input p-6 border border-border-button rounded-lg mb-4"
       onClick={() => setIsOpen(!isOpen)}
     >
       <div className="flex justify-between items-center">
-        <div className="text-xl font-bold mb-2">{question}</div>
+        <div className="text-xl font-bold mb-2 text-text-primary">
+          {question}
+        </div>
         {!isOpen && <ChevronUp />}
         {isOpen && <ChevronDown />}
       </div>
-      {isOpen && <div className="text-gray-300">{answer}</div>}
+      {isOpen && <div className="text-text-primary">{answer}</div>}
     </div>
   );
 };

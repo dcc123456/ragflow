@@ -60,7 +60,7 @@ type Locale = ConfigProviderProps['locale'];
 // Count the number of pages
 export function onRouteChange() {
   const plan = storagePrivate.getPricePlan();
-  if (plan && plan.plan_name !== 'trial') {
+  if (plan && plan.plan_name !== 'Trial') {
     return;
   }
   const countStr = localStorage.getItem('pageViewCount');

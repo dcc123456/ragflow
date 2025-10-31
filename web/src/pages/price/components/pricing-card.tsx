@@ -1,9 +1,16 @@
+import Divider from '@/components/ui/divider';
 import classNames from 'classnames';
-import { GitPullRequestArrow, Layers, LayoutGrid, Users } from 'lucide-react';
-import React, { useEffect, useState } from 'react';
+import {
+  DatabaseZap,
+  GitPullRequestArrow,
+  LayoutGrid,
+  Users,
+} from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { useCharge } from '../hook/use-price-hooks';
 import '../index.less';
 import { IFeatureProps, IPricePlanWithButton } from '../interface';
+import { showPriceComfirmModal } from '../price-modal';
 
 interface ISuffixProps {
   id: number;
@@ -11,34 +18,49 @@ interface ISuffixProps {
   text: 'apps' | 'team members' | 'GB dataset storage' | 'min API requests';
   key: keyof IFeatureProps;
 }
-const PricingCard: React.FC<IPricePlanWithButton> = (
-  props: IPricePlanWithButton,
-) => {
+const PricingCard = (props: IPricePlanWithButton & { isUpgrade?: boolean }) => {
   const {
     title,
+    isPopular,
     description,
     price,
     feature,
     buttonLabel,
     isUse = false,
+    isUpgrade = false,
     icon,
   } = props;
   const suffix = [
     {
       id: 1,
-      icon: <LayoutGrid size={12} className="text-gray-500 font-normal mr-2" />,
+      icon: (
+        <LayoutGrid
+          size={12}
+          className="text-text-primary group-hover:text-bg-base font-normal mr-2"
+        />
+      ),
       text: 'Apps',
       key: 'apps',
     },
     {
       id: 2,
-      icon: <Users size={12} className="text-gray-500 font-normal mr-2" />,
+      icon: (
+        <Users
+          size={12}
+          className="text-text-primary group-hover:text-bg-base font-normal mr-2"
+        />
+      ),
       text: 'team members',
       key: 'teamMembers',
     },
     {
       id: 3,
-      icon: <Layers size={12} className="text-gray-500 font-normal mr-2" />,
+      icon: (
+        <DatabaseZap
+          size={12}
+          className="text-text-primary group-hover:text-bg-base font-normal mr-2"
+        />
+      ),
       text: 'GB dataset storage',
       key: 'datasetStorage',
     },
@@ -47,7 +69,7 @@ const PricingCard: React.FC<IPricePlanWithButton> = (
       icon: (
         <GitPullRequestArrow
           size={12}
-          className="text-gray-500 font-normal mr-2"
+          className="text-text-primary group-hover:text-bg-base font-normal mr-2"
         />
       ),
       text: 'min API requests',
@@ -79,26 +101,38 @@ const PricingCard: React.FC<IPricePlanWithButton> = (
       setSelectPlanId(data.id);
     }
   };
+
+  const handleBuy = (props: IPricePlanWithButton) => {
+    if (isUpgrade) {
+      showPriceComfirmModal(props);
+    } else {
+      charge(props);
+    }
+  };
   return (
     <div
-      className={`price-card rounded-lg shadow-lg p-6 text-center transition-transform hover:scale-105 bg-black`}
+      className={`group rounded-lg shadow-lg p-6 text-center border border-border-button transition-transform hover:scale-105 bg-bg-base text-text-primary hover:bg-text-primary hover:text-bg-base`}
     >
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold mb-4 text-left">{title}</h2>
-        <div className="icon">{icon()}</div>
+        <div className="text-2xl font-bold mb-4 text-left flex gap-1">
+          {title}
+          {isPopular && (
+            <div className="bg-accent-primary rounded-sm px-1 py-0.5 text-sm h-6 font-normal text-white">
+              Most Popular
+            </div>
+          )}
+        </div>
+        <div className="icon">{icon?.()}</div>
       </div>
-      <p className="mb-6 text-left h-16">{description}</p>
+      <p className=" text-left h-16">{description}</p>
+      <Divider className="!border-border-button" />
       <ul className="mb-6">
         {suffix.map((item) => (
           <li key={item.id} className="mb-2 text-left">
             <div className="flex items-center">
               {item.icon}
-              <span className="italic text-base font-semibold">
-                {feature[item.key]}
-              </span>
-              <span className="ml-2 text-xm text-gray-500 font-normal">
-                {item.text}
-              </span>
+              <span className="italic font-semibold">{feature[item.key]}</span>
+              <span className="ml-2 text-xm font-normal">{item.text}</span>
             </div>
           </li>
         ))}
@@ -106,16 +140,20 @@ const PricingCard: React.FC<IPricePlanWithButton> = (
       <h3 className="text-3xl font-bold mb-6 text-left">
         <span className="text-sm mr-1">$</span>
         {price}
-        <span className="text-sm text-gray-500 font-normal ml-1">/month</span>
+        <span className="text-sm text-text-secondary font-normal ml-1">
+          /month
+        </span>
       </h3>
       {/* bg-gradient-to-r from-gray-900 to-gray-950 */}
       <button
         type="button"
         className={classNames(
-          'w-full py-2 rounded-full font-bold  text-black  hover:bg-sky-500',
-          { 'bg-gray-900': isUse, 'text-white': isUse, 'bg-white': !isUse },
+          'w-full py-2 rounded-lg font-bold bg-bg-card text-text-primary border border-border-default  group-hover:bg-bg-base group-hover:text-text-primary group-hover:border-b-2 group-hover:border-b-[#00BEB4]',
+          {
+            'border border-border-button': isUse,
+          },
         )}
-        onClick={() => charge(props)}
+        onClick={() => handleBuy(props)}
         disabled={loading}
       >
         {/* {loading && <Spin></Spin>} */}

@@ -1,43 +1,46 @@
-import { cn } from '@/lib/utils';
+import {
+  Segmented,
+  SegmentedLabeledOption,
+  SegmentedValue,
+} from '@/components/ui/segmented';
 import { useState } from 'react';
+import UpgradeButton from '../price/price-modal/to-upgrade-button';
 import BillingHistory from './billing-history';
 import { Overview } from './overview';
 import UsagePage from './usage';
 
 const Billing = () => {
-  const [activeKey, setActiveKey] = useState('overview');
-  const navList: Record<string, string>[] = [
+  const [activeKey, setActiveKey] = useState<SegmentedValue>('overview');
+  const navList: SegmentedLabeledOption[] = [
     {
-      key: 'overview',
-      values: 'Overview',
+      value: 'overview',
+      label: 'Overview',
     },
     {
-      key: 'usage',
-      values: 'Usage',
+      value: 'usage',
+      label: 'Usage',
     },
     {
-      key: 'billing-history',
-      values: 'Billing History',
+      value: 'billing-history',
+      label: 'Billing History',
     },
   ];
-  const navClickFunc = (e: Record<string, string>) => {
+  const navClickFunc = (e: SegmentedValue) => {
     console.log(e);
-    setActiveKey(e.key);
+    setActiveKey(e);
   };
   return (
-    <div className="bg-black text-white p-4 h-full">
-      <nav className="flex space-x-4 text-white mb-6">
-        {navList.map((item) => (
-          <span
-            key={item.key}
-            className={cn('cursor-pointer', {
-              'border-b-2 border-white': item.key === activeKey,
-            })}
-            onClick={() => navClickFunc(item)}
-          >
-            {item.values}
-          </span>
-        ))}
+    <div className="bg-bg-base text-text-primary p-4 h-[calc(100vh-80px)] overflow-auto">
+      <nav className="flex justify-between items-center mb-6">
+        <Segmented
+          options={navList}
+          value={activeKey}
+          onChange={navClickFunc}
+        ></Segmented>
+        <div>
+          <span className="text-text-secondary mr-4">Need more?</span>
+          <UpgradeButton />
+        </div>
       </nav>
       {activeKey === 'overview' && <Overview />}
       {activeKey === 'usage' && <UsagePage />}

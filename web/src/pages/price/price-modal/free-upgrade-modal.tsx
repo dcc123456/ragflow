@@ -1,5 +1,5 @@
 // src/components/CustomModal.tsx
-import { Modal } from '@/components/ui/modal';
+import { Modal } from '@/components/ui/modal/modal';
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import UpgradeButton from './to-upgrade-button';
@@ -15,6 +15,8 @@ const CustomModal: React.FC<CustomModalProps> = ({ isOpen, onClose }) => {
       open={isOpen}
       onCancel={onClose}
       showfooter={false}
+      closable={false}
+      maskClosable={false}
       className="!w-[500px]"
     >
       <div>
@@ -22,13 +24,15 @@ const CustomModal: React.FC<CustomModalProps> = ({ isOpen, onClose }) => {
           <div className="text-center text-3xl mb-8 mt-6 bg-gradient-to-r from-indigo-500 from-30% via-sky-500 via-60% to-cyan-400 bg-clip-text text-transparent">
             Love RAGFlow?
           </div>
-          <div className="text-center text-xl">Join 50,000+ developers</div>
-          <div className="text-center text-xl mb-10">
+          <div className="text-center text-xl text-text-primary">
+            Join 50,000+ developers
+          </div>
+          <div className="text-center text-xl mb-10 text-text-primary">
             who’ve starred RAGFlow on GitHub!
           </div>
           <div className="flex items-center gap-6 mb-8">
             <a
-              className="border border-cyan-400/50 cursor-pointer py-1 px-2 rounded-sm whitespace-nowrap text-cyan-500"
+              className="border border-border-default cursor-pointer py-1 px-2 rounded-sm whitespace-nowrap text-text-primary"
               href="https://github.com/infiniflow/ragflow"
               target="_blank"
               rel="noreferrer"
@@ -38,7 +42,8 @@ const CustomModal: React.FC<CustomModalProps> = ({ isOpen, onClose }) => {
             <UpgradeButton text="Upgrade Plan" />
           </div>
         </div>
-        <div className="text-xs text-gray-500 w-full text-start">
+        {/* width: calc(100% + 48px); transform: translateX(-24px) translateY(8px); */}
+        <div className="flex items-center px-4 text-xs text-text-secondary w-[calc(100%+48px)] -translate-x-6 translate-y-2 text-start bg-accent-primary-5 h-9">
           With 🩵 from the RAGFlow team
         </div>
       </div>

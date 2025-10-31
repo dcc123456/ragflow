@@ -1,9 +1,9 @@
-import { Modal } from '@/components/ui/modal';
+import { Modal } from '@/components/ui/modal/modal';
 import Space from '@/components/ui/space';
 import { createRoot } from 'react-dom/client';
-import { IPricingCardProps } from './pricing-card';
+import { IPricePlanWithButton } from '../interface';
 const ConfirmModal: React.FC<{
-  plan: IPricingCardProps;
+  plan: IPricePlanWithButton;
   isOpen: boolean;
   onClose: () => void;
 }> = ({ plan, isOpen = true, onClose = () => {} }) => {
@@ -19,20 +19,20 @@ const ConfirmModal: React.FC<{
       className="!bg-[#0B0B0C] !w-[600px]"
     >
       <Space direction="vertical">
-        <div className="text-[16px]">
+        <div className="text-sm text-text-primary">
           You are changing to the&nbsp;&nbsp;
-          <span className="font-bold text-xl">{plan.title} Plan. </span>
+          <span className="text-base">{plan.title} Plan. </span>
           Based on your current plan, you need to pay the following prorated
           charge.
         </div>
         <Space align="center">
-          <div className="text-card-foreground">Prorated Charge:</div>
-          <div className="text-foreground font-bold text-2xl">
+          <div className="text-text-primary text-sm">Prorated Charge:</div>
+          <div className="text-text-primary font-bold text-base">
             ${priceDifference}
           </div>
         </Space>
-        <div className="bg-[#4CA4E7]/5 rounded-md p-2 flex flex-col gap-2 mb-6 text-muted-foreground">
-          <div>Next Billing</div>
+        <div className="bg-accent-primary-5 rounded-md p-2 flex flex-col gap-2 mb-6 text-text-secondary text-sm">
+          <div className="text-xs">Next Billing</div>
           <Space align="center">
             <Space>
               <span>Date:</span>
@@ -50,7 +50,7 @@ const ConfirmModal: React.FC<{
 };
 let currentPriceConfirmModal: { destroy: () => void } | null = null;
 
-const showPriceComfirmModal = (plan: IPricingCardProps) => {
+const showPriceComfirmModal = (plan: IPricePlanWithButton) => {
   const rootElement = document.createElement('div');
   document.body.appendChild(rootElement);
 

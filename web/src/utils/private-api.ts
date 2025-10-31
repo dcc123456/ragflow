@@ -43,6 +43,9 @@ export default {
   // billing
   billin_checkout: `${api_host}/billing/checkout`,
   current_plan: `${api_host}/billing/current_plan`,
+  plan_list: `${api_host}/billing/plans`,
+  blling_base_overview: `${api_host}/billing/usage_based_overview`,
+  plan_overview: `${api_host}/billing/plan_overview`,
 
   // premise
   enableAdmin: `${api_host}/user/enable_admin`, // enable 为true且 is_admin 为false 隐藏model provide

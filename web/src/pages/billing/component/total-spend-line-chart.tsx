@@ -39,8 +39,8 @@ const TotalSpendLineChart = (props: ITotalSpendLineChartProps) => {
       <AreaChart width={width || 600} height={300} data={data}>
         <defs>
           <linearGradient id="colorUv" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor="#4CA4E7" stopOpacity={0.8} />
-            <stop offset="95%" stopColor="#4CA4E7" stopOpacity={0} />
+            <stop offset="5%" stopColor="#00BEB4" stopOpacity={0.8} />
+            <stop offset="95%" stopColor="#00BEB4" stopOpacity={0} />
           </linearGradient>
         </defs>
         <CartesianGrid
@@ -54,7 +54,7 @@ const TotalSpendLineChart = (props: ITotalSpendLineChartProps) => {
         <Area
           type="monotone"
           dataKey="spend"
-          stroke="#4CA4E7"
+          stroke="#00BEB4"
           fill="url(#colorUv)"
           fillOpacity="1"
         />
