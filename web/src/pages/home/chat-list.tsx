@@ -1,3 +1,4 @@
+import { HomeCard } from '@/components/home-card';
 import { MoreButton } from '@/components/more-button';
 import { PrivilegeManagementDialog } from '@/components/privilege-management/privilege-management-dialog';
 import { RenameDialog } from '@/components/rename-dialog';
@@ -33,12 +34,11 @@ export function ChatList() {
   return (
     <>
       {data.dialogs.slice(0, 10).map((x) => (
-        <ApplicationCard
+        <HomeCard
           key={x.id}
-          app={{
+          data={{
             avatar: x.icon,
-            title: x.name,
-            update_time: x.update_time,
+            ...x,
           }}
           onClick={navigateToChat(x.id)}
           moreDropdown={
@@ -50,7 +50,7 @@ export function ChatList() {
               <MoreButton></MoreButton>
             </ChatDropdown>
           }
-        ></ApplicationCard>
+        ></HomeCard>
       ))}
       {chatRenameVisible && (
         <RenameDialog

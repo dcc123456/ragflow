@@ -154,7 +154,6 @@ class TenantLLMService(CommonService):
             model_config = cls.get_api_key(other_tenant_id, mdlnm)
         else:
             model_config = cls.get_api_key(tenant_id, mdlnm)
-
         if model_config:
             model_config = model_config.to_dict()
             llm = LLMService.query(llm_name=mdlnm) if not fid else LLMService.query(llm_name=mdlnm, fid=fid)

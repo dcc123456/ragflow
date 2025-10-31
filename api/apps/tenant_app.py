@@ -15,20 +15,21 @@
 #
 
 from flask import request
-from api.db.services.billing_service import TenantPlanService
-from api.db.services.knowledgebase_service import KnowledgebaseService
 from flask_login import current_user, login_required
 
 from api import settings
 from api.apps import smtp_mail_server
 from api.db import StatusEnum, UserTenantRole
 from api.db.db_models import UserTenant
+from api.db.services.billing_service import TenantPlanService
+from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.team_service import DepartmentMemberService
 from api.db.services.user_service import UserService, UserTenantService
 from api.utils import delta_seconds, get_uuid
 from api.utils.api_utils import get_data_error_result, get_json_result, server_error_response, validate_request
-from rag.nlp import search
 from api.utils.web_utils import send_invite_email
+from rag.nlp import search
+
 
 @manager.route("/<tenant_id>/user/list", methods=["GET"])  # noqa: F821
 @login_required

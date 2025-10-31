@@ -16,10 +16,10 @@
 from datetime import datetime
 from flask_login import login_required, current_user
 
-from api import settings
 from api.db.db_models import APIToken
 from api.db.services.api_service import APITokenService
 from api.db.services.user_service import UserTenantService
+from api import settings
 from api.utils import current_timestamp, datetime_format
 from api.utils.api_utils import (
     get_json_result,
@@ -63,8 +63,8 @@ def new_token():
         tenant_id = [tenant for tenant in tenants if tenant.role == 'owner'][0].tenant_id
         obj = {
             "tenant_id": tenant_id,
-            "token": generate_confirmation_token(tenant_id),
-            "beta": generate_confirmation_token(generate_confirmation_token(tenant_id)).replace("ragflow-", "")[:32],
+            "token": generate_confirmation_token(),
+            "beta": generate_confirmation_token().replace("ragflow-", "")[:32],
             "create_time": current_timestamp(),
             "create_date": datetime_format(datetime.now()),
             "update_time": None,
@@ -120,7 +120,7 @@ def token_list():
         objs = [o.to_dict() for o in objs]
         for o in objs:
             if not o["beta"]:
-                o["beta"] = generate_confirmation_token(generate_confirmation_token(tenants[0].tenant_id)).replace(
+                o["beta"] = generate_confirmation_token().replace(
                     "ragflow-", "")[:32]
                 APITokenService.filter_update([APIToken.tenant_id == tenant_id, APIToken.token == o["token"]], o)
         return get_json_result(data=objs)

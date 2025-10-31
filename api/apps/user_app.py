@@ -22,27 +22,32 @@ import base64
 import secrets
 import time
 from datetime import datetime
-from flask import request, session, redirect
-from flask_login import login_required, current_user, login_user, logout_user
 
 from flask import redirect, request, session, make_response
 from flask_login import current_user, login_required, login_user, logout_user
 from werkzeug.security import check_password_hash, generate_password_hash
-
-from api.apps.auth import get_auth_client
-from api.db.db_models import TenantLLM
 from api.db.services.tenant_llm_service import user_register
+from api import settings
+from api.apps.auth import get_auth_client
+from api.db import FileType, UserTenantRole
+from api.db.db_models import TenantLLM
+from api.db.services.file_service import FileService
+from api.db.services.llm_service import get_init_tenant_llm
+from api.db.services.tenant_llm_service import TenantLLMService
+from api.db.services.user_service import TenantService, UserService, UserTenantService
+from api.utils import (
+    current_timestamp,
+    datetime_format,
+    download_img,
+    get_format_time,
+    get_uuid,
+)
 from api.utils.api_utils import (
+    construct_response,
+    get_data_error_result,
+    get_json_result,
     server_error_response,
     validate_request,
-    get_data_error_result,
-)
-from api.utils import (
-    get_uuid,
-    get_format_time,
-    download_img,
-    current_timestamp,
-    datetime_format
 )
 from api.apps import smtp_mail_server
 from api.utils.web_utils import (

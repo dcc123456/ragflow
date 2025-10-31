@@ -15,28 +15,28 @@
 #
 import datetime
 import json
+import re
+
+import xxhash
 from flask import request
-from flask_login import login_required, current_user
-from rag.app.tag import label_question
-from rag.prompts.generator import keyword_extraction, cross_languages
-from rag.app.qa import rmPrefix, beAdoc
-from api.db.services.search_service import SearchService
-from api.db.services.dialog_service import meta_filter
-from rag.prompts.generator import gen_meta_filter
-from rag.nlp import search, rag_tokenizer
-from rag.settings import PAGERANK_FLD
-from rag.utils import rmSpace
+from flask_login import current_user, login_required
+
+from api import settings
 from api.db import LLMType, ParserType
+from api.db.services.billing_service import TenantPlanService
+from api.db.services.dialog_service import meta_filter
+from api.db.services.document_service import DocumentService
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.llm_service import LLMBundle
+from api.db.services.search_service import SearchService
 from api.db.services.user_service import UserTenantService
-from api.utils.api_utils import server_error_response, get_data_error_result, validate_request
-from api.db.services.document_service import DocumentService
-from api.db.services.billing_service import TenantPlanService
-from api import settings
-from api.utils.api_utils import get_json_result
-import xxhash
-import re
+from api.utils.api_utils import get_data_error_result, get_json_result, server_error_response, validate_request
+from rag.app.qa import beAdoc, rmPrefix
+from rag.app.tag import label_question
+from rag.nlp import rag_tokenizer, search
+from rag.prompts.generator import gen_meta_filter, cross_languages, keyword_extraction
+from rag.settings import PAGERANK_FLD
+from common.string_utils import remove_redundant_spaces
 
 
 @manager.route('/list', methods=['POST'])  # noqa: F821
@@ -66,7 +66,7 @@ def list_chunk():
         for id in sres.ids:
             d = {
                 "chunk_id": id,
-                "content_with_weight": rmSpace(sres.highlight[id]) if question and id in sres.highlight else sres.field[
+                "content_with_weight": remove_redundant_spaces(sres.highlight[id]) if question and id in sres.highlight else sres.field[
                     id].get(
                     "content_with_weight", ""),
                 "doc_id": sres.field[id]["doc_id"],
@@ -302,6 +302,7 @@ def retrieval_test():
     if not kb_ids:
         return get_json_result(data=False, message='Please specify dataset firstly.',
                                code=settings.RetCode.DATA_ERROR)
+
     doc_ids = req.get("doc_ids", [])
     use_kg = req.get("use_kg", False)
     top = int(req.get("top_k", 1024))

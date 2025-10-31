@@ -18,7 +18,7 @@ import os
 import re
 from datetime import datetime, timedelta
 from flask import request, Response
-from api.db.services.tenant_llm_service import TenantLLMService
+from api.db.services.llm_service import LLMBundle
 from flask_login import login_required, current_user
 
 from api.db import VALID_FILE_TYPES, VALID_TASK_STATUS, FileType, LLMType, ParserType, FileSource
@@ -34,17 +34,19 @@ from api.db.services.task_service import queue_tasks, TaskService
 from api.db.services.user_service import UserTenantService
 from api.db.services.billing_service import TenantPlanService
 from api import settings
-from api.utils import get_uuid, current_timestamp, datetime_format
+from api.utils import get_uuid
 from api.utils.api_utils import server_error_response, get_data_error_result, get_json_result, validate_request, \
     generate_confirmation_token
-from rag.utils.storage_factory import STORAGE_IMPL
+
 from api.utils.file_utils import filename_type, thumbnail
+from rag.app.tag import label_question
+from rag.prompts.generator import keyword_extraction
+from rag.utils.storage_factory import STORAGE_IMPL
+from common.time_utils import current_timestamp, datetime_format
 
 from api.db.services.canvas_service import UserCanvasService
 from agent.canvas import Canvas
 from functools import partial
-from rag.app.tag import label_question
-from rag.prompts.generator import keyword_extraction
 from pathlib import Path
 
 
@@ -58,7 +60,7 @@ def new_token():
             return get_data_error_result(message="Tenant not found!")
 
         tenant_id = tenants[0].tenant_id
-        obj = {"tenant_id": tenant_id, "token": generate_confirmation_token(tenant_id),
+        obj = {"tenant_id": tenant_id, "token": generate_confirmation_token(),
                "create_time": current_timestamp(),
                "create_date": datetime_format(datetime.now()),
                "update_time": None,
@@ -346,7 +348,7 @@ def completion():
 
 @manager.route('/conversation/<conversation_id>', methods=['GET'])  # noqa: F821
 # @login_required
-def get(conversation_id):
+def get_conversation(conversation_id):
     token = request.headers.get('Authorization').split()[1]
     objs = APIToken.query(token=token)
     if not objs:
@@ -554,6 +556,31 @@ def list_chunks():
 
     return get_json_result(data=res)
 
+@manager.route('/get_chunk/<chunk_id>', methods=['GET'])  # noqa: F821
+# @login_required
+def get_chunk(chunk_id):
+    from rag.nlp import search
+    token = request.headers.get('Authorization').split()[1]
+    objs = APIToken.query(token=token)
+    if not objs:
+        return get_json_result(
+            data=False, message='Authentication error: API key is invalid!"', code=settings.RetCode.AUTHENTICATION_ERROR)
+    try:
+        tenant_id = objs[0].tenant_id
+        kb_ids = KnowledgebaseService.get_kb_ids(tenant_id)
+        chunk = settings.docStoreConn.get(chunk_id, search.index_name(tenant_id), kb_ids)
+        if chunk is None:
+            return server_error_response(Exception("Chunk not found"))
+        k = []
+        for n in chunk.keys():
+            if re.search(r"(_vec$|_sm_|_tks|_ltks)", n):
+                k.append(n)
+        for n in k:
+            del chunk[n]
+
+        return get_json_result(data=chunk)
+    except Exception as e:
+        return server_error_response(e)
 
 @manager.route('/list_kb_docs', methods=['POST'])  # noqa: F821
 # @login_required
@@ -583,7 +610,6 @@ def list_kb_docs():
     orderby = req.get("orderby", "create_time")
     desc = req.get("desc", True)
     keywords = req.get("keywords", "")
-
     status = req.get("status", [])
     if status:
         invalid_status = {s for s in status if s not in VALID_TASK_STATUS}
@@ -598,7 +624,6 @@ def list_kb_docs():
             return get_data_error_result(
                 message=f"Invalid filter conditions: {', '.join(invalid_types)} type{'s' if len(invalid_types) > 1 else ''}"
             )
-
     try:
         docs, tol = DocumentService.get_by_kb_id(
             kb_id, page_number, items_per_page, orderby, desc, keywords, status, types)
@@ -636,7 +661,7 @@ def document_rm():
     tenant_id = objs[0].tenant_id
     req = request.json
     try:
-        doc_ids = [DocumentService.get_doc_id_by_doc_name(doc_name) for doc_name in req.get("doc_names", [])]
+        doc_ids = DocumentService.get_doc_ids_by_doc_names(req.get("doc_names", []))
         for doc_id in req.get("doc_ids", []):
             if doc_id not in doc_ids:
                 doc_ids.append(doc_id)
@@ -654,11 +679,16 @@ def document_rm():
     FileService.init_knowledgebase_docs(pf_id, tenant_id)
 
     errors = ""
+    docs = DocumentService.get_by_ids(doc_ids)
+    doc_dic = {}
+    for doc in docs:
+        doc_dic[doc.id] = doc
+
     for doc_id in doc_ids:
         try:
-            e, doc = DocumentService.get_by_id(doc_id)
-            if not e:
+            if doc_id not in doc_dic:
                 return get_data_error_result(message="Document not found!")
+            doc = doc_dic[doc_id]
             tenant_id = DocumentService.get_tenant_id(doc_id)
             if not tenant_id:
                 return get_data_error_result(message="Tenant not found!")
@@ -702,8 +732,9 @@ def completion_faq():
         req["quote"] = True
 
     msg = []
-    msg.append({"role": "user", "content": re.sub(r"(^|\n)[^:：]+[:：]", "\n", req["word"], flags=re.MULTILINE)})
-    if not msg[-1].get("id"): msg[-1]["id"] = get_uuid()
+    msg.append({"role": "user", "content": req["word"]})
+    if not msg[-1].get("id"):
+        msg[-1]["id"] = get_uuid()
     message_id = msg[-1]["id"]
 
     def fillin_conv(ans):
@@ -735,9 +766,9 @@ def completion_faq():
 
             canvas.messages.append(msg[-1])
             canvas.add_user_input(msg[-1]["content"])
-            for answer in canvas.run(stream=False):
-                if answer.get("running_status"): continue
-                final_ans["content"] = "\n".join(answer["content"]) if "content" in answer else ""
+            answer = canvas.run(stream=False)
+
+            assert answer is not None, "Nothing. Is it over?"
 
             data_type_picture = {
                 "type": 3,
@@ -749,7 +780,7 @@ def completion_faq():
                     "content": ""
                 }
             ]
-
+            final_ans["content"] = "\n".join(answer["content"]) if "content" in answer else ""
             canvas.messages.append({"role": "assistant", "content": final_ans["content"], "id": message_id})
             if final_ans.get("reference"):
                 canvas.reference.append(final_ans["reference"])
@@ -780,7 +811,7 @@ def completion_faq():
             return response
 
         # ******************For dialog******************
-        conv.message.append({"role": "user", "content": req["word"]})
+        conv.message.append(msg[-1])
         e, dia = DialogService.get_by_id(conv.dialog_id)
         if not e:
             return get_data_error_result(message="Dialog not found!")
@@ -805,7 +836,7 @@ def completion_faq():
         for a in chat(dia, msg, stream=False, **req):
             ans = a
             break
-        data[0]["content"] += re.sub(r'##\d\$\$', '', re.sub("<think>.*</think>", "", ans["answer"], flags=re.DOTALL))
+        data[0]["content"] += re.sub(r'##\d\$\$', '', ans["answer"])
         fillin_conv(ans)
         API4ConversationService.append_message(conv.id, conv.to_dict())
 
@@ -846,10 +877,11 @@ def retrieval():
     doc_ids = req.get("doc_ids", [])
     question = req.get("question")
     page = int(req.get("page", 1))
-    size = int(req.get("size", 30))
+    size = int(req.get("page_size", 30))
     similarity_threshold = float(req.get("similarity_threshold", 0.2))
     vector_similarity_weight = float(req.get("vector_similarity_weight", 0.3))
     top = int(req.get("top_k", 1024))
+    highlight = bool(req.get("highlight", False))
 
     try:
         kbs = KnowledgebaseService.get_by_ids(kb_ids)
@@ -859,18 +891,16 @@ def retrieval():
                 data=False, message='Knowledge bases use different embedding models or does not exist."',
                 code=settings.RetCode.AUTHENTICATION_ERROR)
 
-        embd_mdl = TenantLLMService.model_instance(
-            kbs[0].tenant_id, LLMType.EMBEDDING.value, llm_name=kbs[0].embd_id)
+        embd_mdl = LLMBundle(kbs[0].tenant_id, LLMType.EMBEDDING, llm_name=kbs[0].embd_id)
         rerank_mdl = None
         if req.get("rerank_id"):
-            rerank_mdl = TenantLLMService.model_instance(
-                kbs[0].tenant_id, LLMType.RERANK.value, llm_name=req["rerank_id"])
+            rerank_mdl = LLMBundle(kbs[0].tenant_id, LLMType.RERANK, llm_name=req["rerank_id"])
         if req.get("keyword", False):
-            chat_mdl = TenantLLMService.model_instance(kbs[0].tenant_id, LLMType.CHAT)
+            chat_mdl = LLMBundle(kbs[0].tenant_id, LLMType.CHAT)
             question += keyword_extraction(chat_mdl, question)
         ranks = settings.retriever.retrieval(question, embd_mdl, kbs[0].tenant_id, kb_ids, page, size,
                                                similarity_threshold, vector_similarity_weight, top,
-                                               doc_ids, rerank_mdl=rerank_mdl,
+                                               doc_ids, rerank_mdl=rerank_mdl, highlight= highlight,
                                                rank_feature=label_question(question, kbs))
         for c in ranks["chunks"]:
             c.pop("vector", None)
