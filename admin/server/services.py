@@ -23,11 +23,13 @@ from api.db.joint_services.user_account_service import create_new_user, delete_u
 from api.db.services.canvas_service import UserCanvasService
 from api.db.services.user_service import TenantService
 from api.db.services.knowledgebase_service import KnowledgebaseService
+from api.db.services.white_list_service import WhiteListService
 from api.utils.crypt import decrypt
 from api.utils import health_utils
 
 from api.common.exceptions import AdminException, UserAlreadyExistsError, UserNotFoundError
 from config import SERVICE_CONFIGS
+from api.settings import ENABLE_WHITELIST
 
 
 class UserMgr:
@@ -70,6 +72,11 @@ class UserMgr:
         # Validate the email address
         if not re.match(r"^[\w\._-]+@([\w_-]+\.)+[\w-]{2,}$", username):
             raise AdminException(f"Invalid email address: {username}!")
+        # Check whitelist
+        if ENABLE_WHITELIST:
+            whitelist_row = WhiteListService.get_white_list_by_email(username)
+            if not whitelist_row:
+                raise AdminException(f"Email {username} isn't in whitelist.")
         # Check if the email address is already used
         if UserService.query(email=username):
             raise UserAlreadyExistsError(username)
