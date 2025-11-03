@@ -1,11 +1,24 @@
 import NumberInput from '@/components/originui/number-input';
 import React, { useState } from 'react';
+import { pricePer100Pages, pricePerGB } from '../config';
 
 const AddOnCalculator: React.FC = () => {
   const [quantities, setQuantities] = useState<{ [key: string]: number }>({});
   const products = [
-    { name: 'Storage', unit: 'GB', pricePerUnit: 1.8, per: '/month' },
-    { name: 'Document Parsing', unit: 'page', pricePerUnit: 0.01, per: '' },
+    {
+      name: 'Storage',
+      unit: 'GB',
+      pricePerUnit: pricePerGB,
+      per: '/month',
+      step: 1,
+    },
+    {
+      name: 'Document Parsing',
+      unit: 'page',
+      pricePerUnit: pricePer100Pages,
+      per: '',
+      step: 100,
+    },
   ];
 
   const handleQuantityChange = (productName: string, value: number) => {
@@ -45,6 +58,7 @@ const AddOnCalculator: React.FC = () => {
                   <div className="flex items-center gap-2">
                     <NumberInput
                       className="w-1/3"
+                      step={product.step}
                       value={quantities[product.name] || 0}
                       onChange={(e) => handleQuantityChange(product.name, e)}
                       height={40}

@@ -28,3 +28,19 @@ export interface ISubscriptionData {
   resources: IResources;
   subscription_status: SubscriptionStatus;
 }
+
+export interface ITotalSpendLineChart {
+  data: Array<{ name: string; spend: number }>;
+  title: string;
+  value: number;
+}
+
+export interface Invoice {
+  amount: number;
+  created_at: number;
+  currency: string;
+  hosted_invoice_url: string;
+  invoice_id: string;
+  invoice_pdf_url: string;
+  status: 'paid' | 'unpaid' | 'pending';
+}

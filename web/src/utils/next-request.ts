@@ -1,6 +1,7 @@
 import message from '@/components/ui/message';
 import { Authorization } from '@/constants/authorization';
 import i18n from '@/locales/config';
+import { PriceCode, showPriceModal } from '@/pages/price/gobal/hook';
 import authorizationUtil, {
   getAuthorization,
   redirectToLogin,
@@ -117,11 +118,15 @@ request.interceptors.response.use(
       authorizationUtil.removeAll();
       redirectToLogin();
     } else if (data?.code !== 0) {
-      notification.error({
-        message: `${i18n.t('message.hint')} : ${data?.code}`,
-        description: data?.message,
-        duration: 3,
-      });
+      if (PriceCode[data?.code]) {
+        showPriceModal(data);
+      } else {
+        notification.error({
+          message: `${i18n.t('message.hint')} : ${data?.code}`,
+          description: data?.message,
+          duration: 3,
+        });
+      }
     }
     return response;
   },
