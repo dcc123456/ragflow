@@ -130,8 +130,10 @@ services:
       - RABBITMQ_DEFAULT_USER=${RABBITMQ_DEFAULT_USER}
       - RABBITMQ_DEFAULT_PASS=${RABBITMQ_DEFAULT_PASS}
     volumes:
-      - ${PWD}/rabbitmq.erlang.cookie:/var/lib/rabbitmq/.erlang.cookie
-      - ${PWD}/rabbitmq-entrypoint.sh:/usr/local/bin/cluster-entrypoint.sh
+      - ${PWD}/rabbitmq-conf/rabbitmq.erlang.cookie:/var/lib/rabbitmq/.erlang.cookie
+      - ${PWD}/rabbitmq-conf/rabbitmq-entrypoint.sh:/usr/local/bin/cluster-entrypoint.sh
+      - ${PWD}/rabbitmq-conf/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      - ${PWD}/rabbitmq-conf/definitions.json:/etc/rabbitmq/definitions.json:ro
       - rabbitmq_data:/var/lib/rabbitmq/
     entrypoint: /usr/local/bin/cluster-entrypoint.sh
     networks:
