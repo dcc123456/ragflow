@@ -1,5 +1,7 @@
+import { ICurrentPlan } from '@/pages/price/interface';
+
 const storagePrivate = {
-  setPricePlan: (pricePlan: string | object) => {
+  setPricePlan: (pricePlan: string | ICurrentPlan) => {
     if (typeof pricePlan === 'object') {
       const plan = JSON.stringify(pricePlan);
       localStorage.setItem('price-plan', plan);
@@ -7,12 +9,12 @@ const storagePrivate = {
       localStorage.setItem('price-plan', pricePlan);
     }
   },
-  getPricePlan: (): object => {
+  getPricePlan: (): ICurrentPlan => {
     const plan = localStorage.getItem('price-plan');
     if (plan) {
       return JSON.parse(plan);
     } else {
-      return {};
+      return {} as ICurrentPlan;
     }
   },
 };

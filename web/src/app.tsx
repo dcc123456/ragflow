@@ -23,8 +23,6 @@ import { ThemeProvider, useTheme } from './components/theme-provider';
 import { SidebarProvider } from './components/ui/sidebar';
 import { TooltipProvider } from './components/ui/tooltip';
 import { ThemeEnum } from './constants/common';
-import { showFreeUpgradeTipsModal } from './pages/price/price-modal/free-upgrade-modal';
-import storagePrivate from './utils/authorization-private-util';
 import storage from './utils/authorization-util';
 
 dayjs.extend(customParseFormat);
@@ -56,23 +54,6 @@ if (process.env.NODE_ENV === 'development') {
 const queryClient = new QueryClient();
 
 type Locale = ConfigProviderProps['locale'];
-
-// Count the number of pages
-export function onRouteChange() {
-  const plan = storagePrivate.getPricePlan();
-  if (plan && plan.plan_name !== 'Trial') {
-    return;
-  }
-  const countStr = localStorage.getItem('pageViewCount');
-  let count = countStr ? parseInt(countStr, 10) : 0;
-  count++;
-  localStorage.setItem('pageViewCount', count.toString());
-  if (count > 20) {
-    // Show upgrade tips
-    showFreeUpgradeTipsModal();
-    localStorage.setItem('pageViewCount', '0');
-  }
-}
 
 function Root({ children }: React.PropsWithChildren) {
   const { theme: themeragflow } = useTheme();

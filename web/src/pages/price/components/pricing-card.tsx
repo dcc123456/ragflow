@@ -1,4 +1,6 @@
 import Divider from '@/components/ui/divider';
+import { nextLayoutRef } from '@/layouts/next';
+import storagePrivate from '@/utils/authorization-private-util';
 import classNames from 'classnames';
 import {
   DatabaseZap,
@@ -7,10 +9,16 @@ import {
   Users,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { PriceNameMapValue } from '../contant';
+import { showPriceComfirmModal } from '../gobal';
+import { ConfirmPriceEventDetail } from '../gobal/hook';
 import { useCharge } from '../hook/use-price-hooks';
 import '../index.less';
-import { IFeatureProps, IPricePlanWithButton } from '../interface';
-import { showPriceComfirmModal } from '../price-modal';
+import {
+  ICurrentPlan,
+  IFeatureProps,
+  IPricePlanWithButton,
+} from '../interface';
 
 interface ISuffixProps {
   id: number;
@@ -18,7 +26,7 @@ interface ISuffixProps {
   text: 'apps' | 'team members' | 'GB dataset storage' | 'min API requests';
   key: keyof IFeatureProps;
 }
-const PricingCard = (props: IPricePlanWithButton & { isUpgrade?: boolean }) => {
+const PricingCard = (props: IPricePlanWithButton & { name?: string }) => {
   const {
     title,
     isPopular,
@@ -27,7 +35,7 @@ const PricingCard = (props: IPricePlanWithButton & { isUpgrade?: boolean }) => {
     feature,
     buttonLabel,
     isUse = false,
-    isUpgrade = false,
+    name: currentPlanName = '',
     icon,
   } = props;
   const suffix = [
@@ -80,7 +88,6 @@ const PricingCard = (props: IPricePlanWithButton & { isUpgrade?: boolean }) => {
   const { data, loading } = useCharge({
     subscription_price_id: selectPlanId || '',
     quantity: '1',
-    usage_based_price_id: 'price_1RRTpfPtsKvwvC5fVsZly0mE',
   });
 
   useEffect(() => {
@@ -103,8 +110,21 @@ const PricingCard = (props: IPricePlanWithButton & { isUpgrade?: boolean }) => {
   };
 
   const handleBuy = (props: IPricePlanWithButton) => {
+    let isUpgrade = false;
+    const currentPlan: ICurrentPlan = storagePrivate.getPricePlan();
+    if (
+      currentPlan &&
+      PriceNameMapValue[
+        currentPlan.plan_name as keyof typeof PriceNameMapValue
+      ] < PriceNameMapValue[currentPlanName as keyof typeof PriceNameMapValue]
+    ) {
+      isUpgrade = true;
+    }
     if (isUpgrade) {
-      showPriceComfirmModal(props);
+      showPriceComfirmModal({
+        plan: props,
+        container: nextLayoutRef.current || undefined,
+      } as ConfirmPriceEventDetail);
     } else {
       charge(props);
     }

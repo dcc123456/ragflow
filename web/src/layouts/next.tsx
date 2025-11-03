@@ -1,13 +1,28 @@
-import { PriceGobal } from '@/pages/price/gobal';
+import { UpgradeModalProvider } from '@/pages/price/gobal';
+import React, { useEffect, useRef } from 'react';
 import { Outlet } from 'umi';
 import { Header } from './next-header';
 
+export let nextLayoutRef = React.createRef<HTMLDivElement>();
+
 export default function NextLayout() {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    nextLayoutRef = containerRef;
+
+    return () => {
+      nextLayoutRef = null as any;
+    };
+  }, []);
+
   return (
-    <section className="h-full flex flex-col">
+    <section ref={containerRef} className="h-full flex flex-col">
       <Header></Header>
-      <Outlet />
-      <PriceGobal />
+
+      <UpgradeModalProvider>
+        <Outlet />
+      </UpgradeModalProvider>
     </section>
   );
 }

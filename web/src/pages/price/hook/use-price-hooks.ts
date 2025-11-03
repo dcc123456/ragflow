@@ -1,12 +1,12 @@
 import { useFetchTenantInfo } from '@/hooks/user-setting-hooks';
 import billingService, { billinCheckout } from '@/services/price';
-import storage from '@/utils/authorization-util';
+import storagePrivate from '@/utils/authorization-private-util';
 import { useQuery } from '@tanstack/react-query';
-import { IPlan } from '../interface';
+import { ICurrentPlan, IPlan } from '../interface';
 export type IChargePlan = {
   subscription_price_id: string;
   quantity: string;
-  usage_based_price_id: string;
+  usage_based_price_id?: string;
 };
 const useCharge = (chargePlan: IChargePlan) => {
   const { data: tenantInfo } = useFetchTenantInfo();
@@ -17,23 +17,17 @@ const useCharge = (chargePlan: IChargePlan) => {
   const { data, isFetching: loading } = useQuery<{
     redirect_to: string;
   }>({
-    queryKey: [
-      tenantId,
-      chargePlan.subscription_price_id,
-      chargePlan.usage_based_price_id,
-    ],
+    queryKey: [tenantId, chargePlan.subscription_price_id],
     // initialData: { docs: [], total: 0 },
-    enabled:
-      !!tenantId &&
-      !!chargePlan.subscription_price_id &&
-      !!chargePlan.usage_based_price_id,
+    enabled: !!tenantId && !!chargePlan.subscription_price_id,
     queryFn: async () => {
       const ret = await billinCheckout({
         tenantId: tenantId,
         subscription_price_id: chargePlan.subscription_price_id,
         payment_type: 'subscription',
         quantity: chargePlan.quantity,
-        usage_based_price_id: chargePlan.usage_based_price_id,
+        // usage_based_price_id: chargePlan.usage_based_price_id,
+        usage_based_price_id: 'price_1RRTpfPtsKvwvC5fVsZly0mE',
         session_cancel_url: errorUrl,
         session_success_url: successUrl,
       });
@@ -48,7 +42,7 @@ const useCharge = (chargePlan: IChargePlan) => {
 };
 
 const useFetchCurrentPlan = (force = false) => {
-  const { data, isFetching: loading } = useQuery({
+  const { data, isFetching: loading } = useQuery<ICurrentPlan>({
     queryKey: ['currentPlan'],
     // initialData: {},
     gcTime: force ? 0 : 50000,
@@ -56,7 +50,7 @@ const useFetchCurrentPlan = (force = false) => {
       const { data: res } = await billingService.getCurrentPlan();
       if (res.code === 0) {
         const { data } = res;
-        storage.setPricePlan(JSON.stringify(data));
+        storagePrivate.setPricePlan(JSON.stringify(data));
         return data;
       }
     },

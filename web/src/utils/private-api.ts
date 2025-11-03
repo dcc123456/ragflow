@@ -44,6 +44,7 @@ export default {
   billin_checkout: `${api_host}/billing/checkout`,
   current_plan: `${api_host}/billing/current_plan`,
   plan_list: `${api_host}/billing/plans`,
+  plan_spend_overview: `${api_host}/billing/spend_overview`,
   blling_base_overview: `${api_host}/billing/usage_based_overview`,
   plan_overview: `${api_host}/billing/plan_overview`,
 
