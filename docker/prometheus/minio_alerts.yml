@@ -1,0 +1,96 @@
+groups:
+- name: minio_critical_alerts
+  rules:
+  - alert: MinIOClusterDown
+    expr: minio_cluster_nodes_offline_total > 0
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: "MinIO Cluster Node Down"
+      description: "{{ $value }} node(s) offline"
+
+  - alert: MinIODiskSpaceCritical
+    expr: (minio_cluster_capacity_usable_total_bytes - minio_cluster_usage_total_bytes) / minio_cluster_capacity_usable_total_bytes < 0.1
+    for: 2m
+    labels:
+      severity: critical
+    annotations:
+      summary: "MinIO Disk Space Critical"
+      description: "Only {{ printf \"%.1f\" $value }}% space remaining"
+
+- name: minio_performance_alerts
+  rules:
+  - alert: MinIOHighErrorRate
+    expr: rate(minio_s3_requests_errors_total[5m]) / rate(minio_s3_requests_total[5m]) > 0.05
+    for: 3m
+    labels:
+      severity: warning
+    annotations:
+      summary: "MinIO High Error Rate"
+      description: "Error rate is {{ printf \"%.1f\" $value }}%"
+
+  - alert: MinIOHighWriteLatency
+    expr: minio_node_drive_latency_us{api="storage.RenameData"}/1000 > 1000  # 1s
+    for: 2m
+    labels:
+      severity: critical
+      category: performance
+      operation: write
+    annotations:
+      summary: "MinIO High Write Latency (instance {{ $labels.instance }})"
+      description: |
+        Write operation {{ $labels.api }} latency is too high
+        Drive: {{ $labels.drive }}
+        Current latency: {{ printf "%.2f" ($value) }} ms
+        Threshold: 1000 ms
+
+  - alert: MinIOHighReadLatency
+    expr: minio_node_drive_latency_us{api="storage.ReadXL"}/1000 > 500  # 500ms
+    for: 3m
+    labels:
+      severity: warning
+      category: performance
+      operation: read
+    annotations:
+      summary: "MinIO High Read Latency (instance {{ $labels.instance }})"
+      description: |
+        Read operation {{ $labels.api }} latency is high
+        Drive: {{ $labels.drive }}
+        Current latency: {{ printf "%.2f" ($value) }} ms
+        Threshold: 500 ms
+
+  - alert: MinIOHighDeleteLatency
+    expr: minio_node_drive_latency_us{api="storage.Delete"}/1000 > 2000  # 2s
+    for: 1m
+    labels:
+      severity: critical
+      category: performance
+      operation: metadata
+    annotations:
+      summary: "MinIO High Delete Latency (instance {{ $labels.instance }})"
+      description: |
+        Delete operation latency is critical
+        Drive: {{ $labels.drive }}
+        Current latency: {{ printf "%.2f" ($value) }} ms
+        Action: Check disk I/O and filesystem performance
+
+- name: minio_capacity_alerts
+  rules:
+  - alert: MinIODiskSpaceWarning
+    expr: (minio_cluster_capacity_usable_total_bytes - minio_cluster_usage_total_bytes) / minio_cluster_capacity_usable_total_bytes < 0.2
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "MinIO Disk Space Low"
+      description: "Only {{ printf \"%.1f\" $value }}% space remaining"
+
+  - alert: MinIORapidDataGrowth
+    expr: predict_linear(minio_cluster_usage_total_bytes[24h], 24 * 3600) > minio_cluster_capacity_usable_total_bytes
+    for: 1h
+    labels:
+      severity: warning
+    annotations:
+      summary: "MinIO Rapid Data Growth"
+      description: "Data growth will exceed capacity in 24h"

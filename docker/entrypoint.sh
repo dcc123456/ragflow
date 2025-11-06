@@ -36,7 +36,11 @@ done
 while  [ 1 -eq 1 ];do
      $PY api/ragflow_server.py
      #$PY -m gunicorn --workers 1 --worker-class gevent --bind 0.0.0.0:9380 api.wsgi:application --reload
-done
+done &
+
+while [ 1 -eq 1 ];do
+     $PY admin/server/admin_server.py
+done &
 
 wait;
 

@@ -1,0 +1,60 @@
+groups:
+- name: minio_disk_throughput_alerts
+  rules:
+  # Disk write throughput alerts
+  - alert: MinIODiskWriteThroughputCritical
+    expr: minio:disk:write_throughput_mb_sec > 400
+    for: 2m
+    labels:
+      severity: critical
+      category: disk
+      metric_type: throughput
+    annotations:
+      summary: "MinIO Critical Disk Write Throughput ({{ $labels.instance }})"
+      description: "Disk write throughput critically high: {{ printf \"%.0f\" $value }} MB/s"
+
+  - alert: MinIODiskWriteThroughputWarning
+    expr: minio:disk:write_throughput_mb_sec > 200
+    for: 5m
+    labels:
+      severity: warning
+      category: disk
+      metric_type: throughput
+    annotations:
+      summary: "MinIO High Disk Write Throughput ({{ $labels.instance }})"
+      description: "Disk write throughput high: {{ printf \"%.0f\" $value }} MB/s"
+
+  # Disk read throughput alerts
+  - alert: MinIODiskReadThroughputCritical
+    expr: minio:disk:read_throughput_mb_sec > 600
+    for: 2m
+    labels:
+      severity: critical
+      category: disk
+      metric_type: throughput
+    annotations:
+      summary: "MinIO Critical Disk Read Throughput ({{ $labels.instance }})"
+      description: "Disk read throughput critically high: {{ printf \"%.0f\" $value }} MB/s"
+
+  - alert: MinIODiskReadThroughputWarning
+    expr: minio:disk:read_throughput_mb_sec > 300
+    for: 5m
+    labels:
+      severity: warning
+      category: disk
+      metric_type: throughput
+    annotations:
+      summary: "MinIO High Disk Read Throughput ({{ $labels.instance }})"
+      description: "Disk read throughput high: {{ printf \"%.0f\" $value }} MB/s"
+
+  # Total disk I/O throughput alerts - FIXED
+  - alert: MinIODiskTotalThroughputHigh
+    expr: minio:disk:total_throughput_mb_sec > 800
+    for: 3m
+    labels:
+      severity: warning
+      category: disk
+      metric_type: throughput
+    annotations:
+      summary: "MinIO High Total Disk Throughput ({{ $labels.instance }})"
+      description: "Total disk throughput high: {{ printf \"%.0f\" $value }} MB/s"

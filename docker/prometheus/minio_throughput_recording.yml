@@ -1,0 +1,44 @@
+# minio-throughput-recording.yml
+groups:
+- name: minio_throughput_recording
+  interval: 30s
+  rules:
+  # Network throughput precomputation
+  - record: minio:network:write_throughput_mb_sec
+    expr: rate(minio_s3_traffic_received_bytes_total[5m]) / 1048576
+
+  - record: minio:network:read_throughput_mb_sec
+    expr: rate(minio_s3_traffic_sent_bytes_total[5m]) / 1048576
+
+  - record: minio:network:total_throughput_mb_sec
+    expr: minio:network:write_throughput_mb_sec + minio:network:read_throughput_mb_sec
+
+  # Disk I/O throughput precomputation
+  - record: minio:disk:write_throughput_mb_sec
+    expr: rate(minio_node_io_write_bytes_total[5m]) / 1048576
+
+  - record: minio:disk:read_throughput_mb_sec
+    expr: rate(minio_node_io_read_bytes_total[5m]) / 1048576
+
+  - record: minio:disk:total_throughput_mb_sec
+    expr: minio:disk:write_throughput_mb_sec + minio:disk:read_throughput_mb_sec
+
+  # Efficiency metrics precomputation
+  - record: minio:efficiency:write_amplification
+    expr: minio:disk:write_throughput_mb_sec / minio:network:write_throughput_mb_sec
+
+  - record: minio:efficiency:read_efficiency
+    expr: minio:network:read_throughput_mb_sec / minio:disk:read_throughput_mb_sec
+
+  # Cumulative traffic for capacity planning
+  - record: minio:network:daily_write_gb
+    expr: increase(minio_s3_traffic_received_bytes_total[24h]) / 1073741824
+
+  - record: minio:network:daily_read_gb
+    expr: increase(minio_s3_traffic_sent_bytes_total[24h]) / 1073741824
+
+  - record: minio:disk:daily_write_gb
+    expr: increase(minio_node_io_write_bytes_total[24h]) / 1073741824
+
+  - record: minio:disk:daily_read_gb
+    expr: increase(minio_node_io_read_bytes_total[24h]) / 1073741824

@@ -1,0 +1,130 @@
+groups:
+  - name: elasticsearch_alerts
+    rules:
+      # Cluster Health Status Alerts
+      - alert: ElasticsearchClusterRed
+        expr: elasticsearch_cluster_health_status{color="red"} == 1
+        for: 2m
+        labels:
+          severity: critical
+          service: elasticsearch
+        annotations:
+          summary: "Elasticsearch cluster status is RED"
+          description: "Elasticsearch cluster '{{ $labels.cluster }}' has been in RED status for over 2 minutes. Primary shards are missing, data is unavailable."
+          impact: "Cluster is partially or completely unavailable. Search and indexing operations will fail."
+          action: "Check cluster health API, review node status, investigate unassigned shards immediately."
+
+      - alert: ElasticsearchClusterYellow
+        expr: elasticsearch_cluster_health_status{color="yellow"} == 1
+        for: 10m
+        labels:
+          severity: warning
+          service: elasticsearch
+        annotations:
+          summary: "Elasticsearch cluster status is YELLOW"
+          description: "Elasticsearch cluster '{{ $labels.cluster }}' has been in YELLOW status for over 10 minutes. All primary shards are available but replica shards are missing."
+          impact: "Cluster is operational but in degraded state. Reduced fault tolerance for node failures."
+          action: "Investigate unassigned replica shards, check node connectivity and disk space."
+
+      # JVM Memory Alerts
+      - alert: ElasticsearchJVMHighMemoryUsage
+        expr: elasticsearch_jvm_memory_used_bytes / elasticsearch_jvm_memory_max_bytes > 0.85
+        for: 5m
+        labels:
+          severity: warning
+          service: elasticsearch
+        annotations:
+          summary: "Elasticsearch JVM memory usage is high"
+          description: "JVM memory usage on node '{{ $labels.node }}' is at {{ $value | humanizePercentage }} for more than 5 minutes."
+          impact: "Risk of long garbage collection pauses and potential OutOfMemory errors."
+          action: "Investigate memory usage patterns, check for memory leaks, consider increasing heap size."
+
+      - alert: ElasticsearchJVMCriticalMemoryUsage
+        expr: elasticsearch_jvm_memory_used_bytes / elasticsearch_jvm_memory_max_bytes > 0.95
+        for: 2m
+        labels:
+          severity: critical
+          service: elasticsearch
+        annotations:
+          summary: "Elasticsearch JVM memory usage is critical"
+          description: "JVM memory usage on node '{{ $labels.node }}' is at {{ $value | humanizePercentage }}. Node may become unresponsive."
+          impact: "Imminent risk of OutOfMemory errors, node instability, and potential cluster issues."
+          action: "Immediate action required: Restart node with increased heap size or investigate memory leaks."
+
+      # Disk Space Alerts
+      - alert: ElasticsearchLowDiskSpace
+        expr: elasticsearch_filesystem_data_available_bytes / elasticsearch_filesystem_data_size_bytes < 0.20
+        for: 5m
+        labels:
+          severity: warning
+          service: elasticsearch
+        annotations:
+          summary: "Elasticsearch disk space is low"
+          description: "Disk space on node '{{ $labels.node }}' is only {{ $value | humanizePercentage }} available."
+          impact: "Risk of shard relocation failures and index read-only mode activation."
+          action: "Clean up old indices, increase disk capacity, or adjust index retention policies."
+
+      - alert: ElasticsearchCriticalDiskSpace
+        expr: elasticsearch_filesystem_data_available_bytes / elasticsearch_filesystem_data_size_bytes < 0.10
+        for: 2m
+        labels:
+          severity: critical
+          service: elasticsearch
+        annotations:
+          summary: "Elasticsearch disk space is critical"
+          description: "Disk space on node '{{ $labels.node }}' is only {{ $value | humanizePercentage }} available."
+          impact: "Immediate risk of cluster instability, shard corruption, and data loss."
+          action: "Emergency action required: Free up disk space immediately or add additional storage."
+
+      # Cluster Performance Alerts
+      - alert: ElasticsearchPendingTasksHigh
+        expr: elasticsearch_cluster_health_number_of_pending_tasks > 5
+        for: 3m
+        labels:
+          severity: warning
+          service: elasticsearch
+        annotations:
+          summary: "Elasticsearch has high pending tasks"
+          description: "Cluster '{{ $labels.cluster }}' has {{ $value }} pending tasks for more than 3 minutes."
+          impact: "Cluster state updates and configuration changes may be delayed."
+          action: "Check master node performance, investigate cluster state update bottlenecks."
+
+      # Indexing Performance Alerts
+      - alert: ElasticsearchIndexingLatencyHigh
+        expr: rate(elasticsearch_indices_indexing_index_time_seconds_total[5m]) / rate(elasticsearch_indices_indexing_index_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          service: elasticsearch
+        annotations:
+          summary: "Elasticsearch indexing latency is high"
+          description: "Average indexing latency is {{ $value }} seconds per document across the cluster."
+          impact: "Slow document ingestion affecting data freshness and write performance."
+          action: "Check index configuration, review hardware resources, optimize document size and mapping."
+
+      # Search Performance Alerts
+      - alert: ElasticsearchSearchLatencyHigh
+        expr: rate(elasticsearch_indices_search_query_time_seconds_total[5m]) / rate(elasticsearch_indices_search_query_total[5m]) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          service: elasticsearch
+        annotations:
+          summary: "Elasticsearch search latency is high"
+          description: "Average search query latency is {{ $value }} seconds per query across the cluster."
+          impact: "Poor search performance affecting user experience and application responsiveness."
+          action: "Optimize query patterns, check resource utilization, review index design and shard allocation."
+
+      # Document Count Alerts
+      - alert: ElasticsearchHighDocumentCount
+        expr: elasticsearch_indices_docs_count > 100000000
+        for: 0m
+        labels:
+          severity: info
+          service: elasticsearch
+        annotations:
+          summary: "Elasticsearch document count is very high"
+          description: "Cluster '{{ $labels.cluster }}' has over 100 million documents. Consider archiving or optimizing indices."
+          impact: "Potential performance degradation during searches and aggregations."
+          action: "Review index lifecycle management, implement archiving strategy, or optimize mappings."
+

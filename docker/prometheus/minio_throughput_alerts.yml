@@ -1,0 +1,67 @@
+# minio-throughput-alerts.yml
+groups:
+- name: minio_network_throughput_alerts
+  rules:
+  # Network write throughput alerts
+  - alert: MinIONetworkWriteThroughputCritical
+    expr: minio:network:write_throughput_mb_sec > 500
+    for: 2m
+    labels:
+      severity: critical
+      category: network
+      metric_type: throughput
+    annotations:
+      summary: "MinIO Critical Network Write Throughput ({{ $labels.instance }})"
+      description: |
+        Network write throughput critically high
+        Current: {{ printf "%.0f" $value }} MB/s
+        Action: Check network bandwidth and application load
+
+  - alert: MinIONetworkWriteThroughputWarning
+    expr: minio:network:write_throughput_mb_sec > 200
+    for: 5m
+    labels:
+      severity: warning
+      category: network
+      metric_type: throughput
+    annotations:
+      summary: "MinIO High Network Write Throughput ({{ $labels.instance }})"
+      description: "Network write throughput high: {{ printf \"%.0f\" $value }} MB/s"
+
+  # Network read throughput alerts
+  - alert: MinIONetworkReadThroughputCritical
+    expr: minio:network:read_throughput_mb_sec > 800
+    for: 2m
+    labels:
+      severity: critical
+      category: network
+      metric_type: throughput
+    annotations:
+      summary: "MinIO Critical Network Read Throughput ({{ $labels.instance }})"
+      description: |
+        Network read throughput critically high
+        Current: {{ printf "%.0f" $value }} MB/s
+        Action: Check network bandwidth and client demand
+
+  - alert: MinIONetworkReadThroughputWarning
+    expr: minio:network:read_throughput_mb_sec > 400
+    for: 5m
+    labels:
+      severity: warning
+      category: network
+      metric_type: throughput
+    annotations:
+      summary: "MinIO High Network Read Throughput ({{ $labels.instance }})"
+      description: "Network read throughput high: {{ printf \"%.0f\" $value }} MB/s"
+
+  # Total network throughput alerts - FIXED
+  - alert: MinIONetworkTotalThroughputHigh
+    expr: minio:network:total_throughput_mb_sec > 1000
+    for: 3m
+    labels:
+      severity: warning
+      category: network
+      metric_type: throughput
+    annotations:
+      summary: "MinIO High Total Network Throughput ({{ $labels.instance }})"
+      description: "Total network throughput high: {{ printf \"%.0f\" $value }} MB/s"
