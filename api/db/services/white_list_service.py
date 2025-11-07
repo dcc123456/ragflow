@@ -17,9 +17,9 @@ from datetime import datetime
 
 from typing import List
 
+from common.time_utils import current_timestamp, datetime_format
 from api.db.db_models import DB, WhiteList
 from api.db.services.common_service import CommonService
-from api.utils import current_timestamp, datetime_format
 
 
 class WhiteListService(CommonService):

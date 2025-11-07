@@ -26,7 +26,6 @@ from api.utils.api_utils import (
     generate_confirmation_token,
 )
 from common.time_utils import current_timestamp, datetime_format
-from flask import jsonify
 from common import settings
 
 

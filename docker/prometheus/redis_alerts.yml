@@ -40,19 +40,6 @@ groups:
           impact: "Redis may start evicting keys, leading to data loss and application errors."
           action: "Immediate action required: Increase memory, optimize data, or scale horizontally."
 
-      # High Latency Detected
-      - alert: RedisHighLatency
-        expr: redis_commands_duration_seconds_total > 0.1
-        for: 2m
-        labels:
-          severity: warning
-          service: redis
-        annotations:
-          summary: "Redis command latency is high"
-          description: "Redis instance {{ $labels.instance }} is experiencing high command latency ({{ $value }} seconds)."
-          impact: "Application response times may be affected."
-          action: "Investigate server load, network issues, or slow commands."
-
       # High CPU Usage
       - alert: RedisHighCPU
         expr: rate(redis_cpu_sys_seconds_total[5m]) + rate(redis_cpu_user_seconds_total[5m]) > 0.8

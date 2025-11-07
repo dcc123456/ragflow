@@ -1,22 +1,22 @@
 FROM alpine:3.18 AS builder
 
-RUN apk add --no-cache wget tar
+RUN apk add wget tar
 
-RUN wget -O /tmp/redis_exporter.tar.gz https://github.com/oliver006/redis_exporter/releases/download/v1.57.0/redis_exporter-v1.57.0.linux-amd64.tar.gz && \
+RUN wget -O /tmp/redis_exporter.tar.gz https://github.com/oliver006/redis_exporter/releases/download/v1.80.0/redis_exporter-v1.80.0.linux-amd64.tar.gz && \
     tar xzf /tmp/redis_exporter.tar.gz -C /tmp/ && \
-    mv /tmp/redis_exporter-v1.57.0.linux-amd64/redis_exporter /usr/local/bin/redis_exporter
+    mv /tmp/redis_exporter-v1.80.0.linux-amd64/redis_exporter /usr/local/bin/redis_exporter
 
-RUN wget -O /tmp/mysqld_exporter.tar.gz https://github.com/prometheus/mysqld_exporter/releases/download/v0.15.0/mysqld_exporter-0.15.0.linux-amd64.tar.gz && \
+RUN wget -O /tmp/mysqld_exporter.tar.gz https://github.com/prometheus/mysqld_exporter/releases/download/v0.18.0/mysqld_exporter-0.18.0.linux-amd64.tar.gz && \
     tar xzf /tmp/mysqld_exporter.tar.gz -C /tmp/ && \
-    mv /tmp/mysqld_exporter-0.15.0.linux-amd64/mysqld_exporter /usr/local/bin/mysqld_exporter
+    mv /tmp/mysqld_exporter-0.18.0.linux-amd64/mysqld_exporter /usr/local/bin/mysqld_exporter
 
-RUN wget -O /tmp/elasticsearch_exporter.tar.gz https://github.com/prometheus-community/elasticsearch_exporter/releases/download/v1.6.0/elasticsearch_exporter-1.6.0.linux-amd64.tar.gz && \
+RUN wget -O /tmp/elasticsearch_exporter.tar.gz https://github.com/prometheus-community/elasticsearch_exporter/releases/download/v1.9.0/elasticsearch_exporter-1.9.0.linux-amd64.tar.gz && \
     tar xzf /tmp/elasticsearch_exporter.tar.gz -C /tmp/ && \
-    mv /tmp/elasticsearch_exporter-1.6.0.linux-amd64/elasticsearch_exporter /usr/local/bin/elasticsearch_exporter
+    mv /tmp/elasticsearch_exporter-1.9.0.linux-amd64/elasticsearch_exporter /usr/local/bin/elasticsearch_exporter
 
 FROM alpine:3.18
 
-RUN apk add --no-cache supervisor
+RUN apk add supervisor
 
 RUN addgroup -g 1000 exporters && \
     adduser -D -u 1000 -G exporters exporter

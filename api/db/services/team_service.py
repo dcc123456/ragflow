@@ -20,7 +20,8 @@ import peewee
 from api.db import StatusEnum
 from api.db.db_models import DB, Department, DepartmentMember, Group, GroupMember, User, UserTenant
 from api.db.services.common_service import CommonService
-from api.utils import current_timestamp, datetime_format, get_uuid
+from api.utils import get_uuid
+from common.time_utils import current_timestamp, datetime_format
 
 
 class GroupService(CommonService):

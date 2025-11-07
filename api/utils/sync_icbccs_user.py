@@ -9,7 +9,7 @@ from api.db.services.file_service import FileService
 from api.db.services.llm_service import TenantLLMService
 from api.db.services.team_service import DepartmentMemberService, DepartmentService
 from api.db.services.user_service import UserService, TenantService, UserTenantService
-from api.utils import get_format_time
+from common.time_utils import get_format_time
 from api.utils import get_uuid
 
 
