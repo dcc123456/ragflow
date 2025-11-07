@@ -99,7 +99,7 @@ services:
     restart: always
 
   components-exporter:
-    image: infiniflow-ai/ragflow-components-exporter:latest
+    image: infiniflow/ragflow-components-exporter:latest
     hostname: ragflow-components-exporter
     container_name: ragflow-components-exporter
     volumes:
