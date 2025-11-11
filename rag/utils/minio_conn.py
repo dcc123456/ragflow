@@ -21,8 +21,8 @@ from minio.commonconfig import CopySource
 from minio.error import S3Error
 from io import BytesIO
 from api.db.services.user_service import TenantService
-from rag import settings
-from rag.utils import singleton
+from common.decorator import singleton
+from common import settings
 
 
 @singleton

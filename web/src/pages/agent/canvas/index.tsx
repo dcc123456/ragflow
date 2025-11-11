@@ -13,6 +13,7 @@ import {
   NodeTypes,
   Position,
   ReactFlow,
+  ReactFlowInstance,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { NotebookPen } from 'lucide-react';
@@ -27,11 +28,7 @@ import {
 } from '../context';
 
 import FormSheet from '../form-sheet/next';
-import {
-  useHandleDrop,
-  useSelectCanvasData,
-  useValidateConnection,
-} from '../hooks';
+import { useSelectCanvasData, useValidateConnection } from '../hooks';
 import { useAddNode } from '../hooks/use-add-node';
 import { useBeforeDelete } from '../hooks/use-before-delete';
 import { useCacheChatLog } from '../hooks/use-cache-chat-log';
@@ -56,6 +53,7 @@ import { RagNode } from './node';
 import { AgentNode } from './node/agent-node';
 import { BeginNode } from './node/begin-node';
 import { CategorizeNode } from './node/categorize-node';
+import { DataOperationsNode } from './node/data-operations-node';
 import { NextStepDropdown } from './node/dropdown/next-step-dropdown';
 import { ExtractorNode } from './node/extractor-node';
 import { FileNode } from './node/file-node';
@@ -74,6 +72,8 @@ import { SwitchNode } from './node/switch-node';
 import { TemplateNode } from './node/template-node';
 import TokenizerNode from './node/tokenizer-node';
 import { ToolNode } from './node/tool-node';
+import { VariableAggregatorNode } from './node/variable-aggregator-node';
+import { VariableAssignerNode } from './node/variable-assigner-node';
 
 export const nodeTypes: NodeTypes = {
   ragNode: RagNode,
@@ -99,6 +99,9 @@ export const nodeTypes: NodeTypes = {
   tokenizerNode: TokenizerNode,
   splitterNode: SplitterNode,
   contextNode: ExtractorNode,
+  dataOperationsNode: DataOperationsNode,
+  variableAssignerNode: VariableAssignerNode,
+  variableAggregatorNode: VariableAggregatorNode,
 };
 
 const edgeTypes = {
@@ -124,8 +127,8 @@ function AgentCanvas({ drawerVisible, hideDrawer }: IProps) {
   } = useSelectCanvasData();
   const isValidConnection = useValidateConnection();
 
-  const { onDrop, onDragOver, setReactFlowInstance, reactFlowInstance } =
-    useHandleDrop();
+  const [reactFlowInstance, setReactFlowInstance] =
+    useState<ReactFlowInstance<any, any>>();
 
   const {
     onNodeClick,
@@ -204,7 +207,6 @@ function AgentCanvas({ drawerVisible, hideDrawer }: IProps) {
     onMove,
     nodeId,
   } = useConnectionDrag(
-    reactFlowInstance,
     originalOnConnect,
     showModal,
     hideModal,
@@ -214,6 +216,7 @@ function AgentCanvas({ drawerVisible, hideDrawer }: IProps) {
     removePlaceholderNode,
     clearActiveDropdown,
     checkAndRemoveExistingPlaceholder,
+    reactFlowInstance,
   );
 
   const onPaneClick = useCallback(() => {
@@ -286,11 +289,9 @@ function AgentCanvas({ drawerVisible, hideDrawer }: IProps) {
           onConnect={handleConnect}
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
-          onDrop={onDrop}
           onConnectStart={onConnectStart}
           onConnectEnd={onConnectEnd}
           onMove={onMove}
-          onDragOver={onDragOver}
           onNodeClick={onNodeClick}
           onPaneClick={onPaneClick}
           onInit={setReactFlowInstance}

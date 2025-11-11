@@ -1,3 +1,6 @@
+#
+#  Copyright 2025 The InfiniFlow Authors. All Rights Reserved.
+#
 #  Licensed under the Apache License, Version 2.0 (the "License");
 #  you may not use this file except in compliance with the License.
 #  You may obtain a copy of the License at
@@ -10,12 +13,12 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 #
-
+import io
 import sys
 import threading
 from .ocr import OCR
 from .recognizer import Recognizer
-from .layout_recognizer import AscendLayoutRecognizer 
+from .layout_recognizer import AscendLayoutRecognizer
 from .layout_recognizer import LayoutRecognizer4YOLOv10 as LayoutRecognizer
 from .tsr import TableStructureRecognizer
 
@@ -24,12 +27,16 @@ LOCK_KEY_pdfplumber = "global_shared_lock_pdfplumber"
 if LOCK_KEY_pdfplumber not in sys.modules:
     sys.modules[LOCK_KEY_pdfplumber] = threading.Lock()
 
+
 def init_in_out(args):
-    from PIL import Image
     import fitz
     import os
     import traceback
-    from api.utils.file_utils import traversal_files
+
+    from PIL import Image
+
+    from common.file_utils import traversal_files
+
     images = []
     outputs = []
 
@@ -55,7 +62,10 @@ def init_in_out(args):
             pdf_pages(fnm)
             return
         try:
-            images.append(Image.open(fnm))
+            fp = open(fnm, "rb")
+            binary = fp.read()
+            fp.close()
+            images.append(Image.open(io.BytesIO(binary)).convert("RGB"))
             outputs.append(os.path.split(fnm)[-1])
         except Exception:
             traceback.print_exc()

@@ -14,29 +14,25 @@
 #  limitations under the License.
 #
 import logging
-import base64
 import json
 import os
 import time
 from copy import deepcopy
 from urllib.parse import urlparse
+
 from api.db.db_models import init_database_tables as init_web_db, LLM
-from api.db.services import UserService
-from api.db.services.canvas_service import CanvasTemplateService
-from api.db.services.llm_service import LLMService, LLMBundle
-from api.db.services.tenant_llm_service import LLMFactoriesService
-from api.db.services.user_service import TenantService, UserTenantService
 from api.db.services.billing_service import BillingPlanService, TenantPlanService
-from api import settings
-from api.utils.file_utils import get_project_base_directory
+from api.db.services.canvas_service import CanvasTemplateService
+from api.db.services.llm_service import LLMService
+from api.db.services.tenant_llm_service import LLMFactoriesService
+from common.file_utils import get_project_base_directory
+from common import settings
 import stripe
-from api.db.services.llm_service import get_init_tenant_llm
-from api.common.base64 import encode_to_base64
+from common.misc_utils import get_uuid
+from common.time_utils import get_format_time
 
 
 def init_superuser():
-    from api.utils import get_format_time
-    from api.utils import get_uuid
     from api.utils.crypt import decrypt
     from api.db.services.tenant_llm_service import user_register
     user_dict = {
@@ -77,7 +73,7 @@ def add_graph_templates():
     CanvasTemplateService.filter_delete([1 == 1])
     for fnm in os.listdir(dir):
         try:
-            cnvs = json.load(open(os.path.join(dir, fnm), "r", encoding="utf-8"))
+            cnvs = json.load(open(os.path.join(dir, fnm), "r",encoding="utf-8"))
             try:
                 CanvasTemplateService.save(**cnvs)
             except Exception:

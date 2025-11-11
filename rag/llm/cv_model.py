@@ -30,7 +30,7 @@ from openai.lib.azure import AzureOpenAI
 from zhipuai import ZhipuAI
 from rag.nlp import is_english
 from rag.prompts.generator import vision_llm_describe_prompt
-from rag.utils import num_tokens_from_string, total_token_count_from_response
+from common.token_utils import num_tokens_from_string, total_token_count_from_response
 
 
 class Base(ABC):
@@ -113,6 +113,28 @@ class Base(ABC):
             yield ans + "\n**ERROR**: " + str(e)
 
         yield tk_count
+
+    @staticmethod
+    def image2base64_rawvalue(self, image):
+        # Return a base64 string without data URL header
+        if isinstance(image, bytes):
+            b64 = base64.b64encode(image).decode("utf-8")
+            return b64
+        if isinstance(image, BytesIO):
+            data = image.getvalue()
+            b64 = base64.b64encode(data).decode("utf-8")
+            return b64
+        with BytesIO() as buffered:
+            try:
+                image.save(buffered, format="JPEG")
+            except Exception:
+                 # reset buffer before saving PNG
+                buffered.seek(0)
+                buffered.truncate()
+                image.save(buffered, format="PNG")
+            data = buffered.getvalue()
+            b64 = base64.b64encode(data).decode("utf-8")
+        return b64
 
     @staticmethod
     def image2base64(image):
@@ -281,7 +303,9 @@ class QWenCV(GptV4):
                 return call_api()
             except Exception as e2:
                 raise RuntimeError(f"Both default and intl endpoint failed.\nFirst error: {e1}\nSecond error: {e2}")
-
+        finally:
+            if tmp_path and tmp_path.exists():
+                tmp_path.unlink()
 
 
 class HunyuanCV(GptV4):
@@ -464,7 +488,7 @@ class GPUStackCV(GptV4):
 
 
 class LocalCV(Base):
-    _FACTORY_NAME = "Moonshot"
+    _FACTORY_NAME = "Local"
 
     def __init__(self, key, model_name="glm-4v", lang="Chinese", **kwargs):
         pass
@@ -539,7 +563,7 @@ class OllamaCV(Base):
         try:
             response = self.client.generate(
                 model=self.model_name,
-                prompt=vision_prompt[0]["content"][0]["text"],
+                prompt=vision_prompt[0]["content"],
                 images=[image],
             )
             ans = response["response"].strip()
@@ -614,23 +638,38 @@ class GeminiCV(Base):
             if self.lang.lower() == "chinese"
             else "Please describe the content of this picture, like where, when, who, what happen. If it has number data, please extract them out."
         )
-        b64 = self.image2base64(image)
-        with BytesIO(base64.b64decode(b64)) as bio:
-            with open(bio) as img:
-                input = [prompt, img]
-                res = self.model.generate_content(input)
-                return res.text, total_token_count_from_response(res)
+
+        if image is bytes:
+            with BytesIO(image) as bio:
+                with open(bio) as img:
+                    input = [prompt, img]
+                    res = self.model.generate_content(input)
+                    return res.text, total_token_count_from_response(res)
+        else:
+            b64 = self.image2base64_rawvalue(image)
+            with BytesIO(base64.b64decode(b64)) as bio:
+                with open(bio) as img:
+                    input = [prompt, img]
+                    res = self.model.generate_content(input)
+                    return res.text, total_token_count_from_response(res)
 
     def describe_with_prompt(self, image, prompt=None):
         from PIL.Image import open
-
-        b64 = self.image2base64(image)
         vision_prompt = prompt if prompt else vision_llm_describe_prompt()
-        with BytesIO(base64.b64decode(b64)) as bio:
-            with open(bio) as img:
-                input = [vision_prompt, img]
-                res = self.model.generate_content(input)
-                return res.text, total_token_count_from_response(res)
+
+        if image is bytes:
+            with BytesIO(image) as bio:
+                with open(bio) as img:
+                    input = [vision_prompt, img]
+                    res = self.model.generate_content(input)
+                    return res.text, total_token_count_from_response(res)
+        else:
+            b64 = self.image2base64_rawvalue(image)
+            with BytesIO(base64.b64decode(b64)) as bio:
+                with open(bio) as img:
+                    input = [vision_prompt, img]
+                    res = self.model.generate_content(input)
+                    return res.text, total_token_count_from_response(res)
 
 
     def chat(self, system, history, gen_conf, images=None, video_bytes=None, filename="", **kwargs):
@@ -975,3 +1014,12 @@ class GoogleCV(AnthropicCV, GeminiCV):
         else:
             for ans in GeminiCV.chat_streamly(self, system, history, gen_conf, images):
                 yield ans
+
+
+class MoonshotCV(GptV4):
+    _FACTORY_NAME = "Moonshot"
+
+    def __init__(self, key, model_name="moonshot-v1-8k-vision-preview", lang="Chinese", base_url="https://api.moonshot.cn/v1", **kwargs):
+        if not base_url:
+            base_url = "https://api.moonshot.cn/v1"
+        super().__init__(key, model_name, lang=lang, base_url=base_url, **kwargs)

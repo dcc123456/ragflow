@@ -16,7 +16,6 @@
 import logging
 import os
 import random
-
 import xxhash
 from datetime import datetime
 
@@ -24,17 +23,17 @@ from api.db.db_utils import bulk_insert_into_db
 from deepdoc.parser import PdfParser
 from peewee import JOIN
 from api.db.db_models import DB, File2Document, File
-from api.db import StatusEnum, FileType, TaskStatus
+from api.db import FileType
 from api.db.db_models import Task, Document, Knowledgebase, Tenant
 from api.db.services.common_service import CommonService
 from api.db.services.document_service import DocumentService
-from api.utils import get_uuid
+from common.misc_utils import get_uuid
 from common.time_utils import current_timestamp
+from common.constants import StatusEnum, TaskStatus
 from deepdoc.parser.excel_parser import RAGFlowExcelParser
-from rag.settings import rout_key
-from rag.utils.storage_factory import STORAGE_IMPL
+from common.settings import rout_key
 from rag.utils.redis_conn import REDIS_CONN
-from api import settings
+from common import settings
 from rag.nlp import search
 from rag.utils.rabbitmq_conn import RABBITMQ_CONN
 
@@ -366,7 +365,7 @@ def queue_tasks(doc: dict, bucket: str, name: str, priority: int):
     parse_task_array = []
 
     if doc["type"] == FileType.PDF.value:
-        file_bin = STORAGE_IMPL.get(bucket, name, doc["tenant_id"])
+        file_bin = settings.STORAGE_IMPL.get(bucket, name, doc["tenant_id"])
         do_layout = doc["parser_config"].get("layout_recognize", "DeepDOC")
         pages = PdfParser.total_page_number(doc["name"], file_bin)
         if pages is None:
@@ -374,7 +373,7 @@ def queue_tasks(doc: dict, bucket: str, name: str, priority: int):
         page_size = doc["parser_config"].get("task_page_size") or 12
         if doc["parser_id"] == "paper":
             page_size = doc["parser_config"].get("task_page_size") or 22
-        if doc["parser_id"] in ["one", "knowledge_graph"] or do_layout != "DeepDOC" or doc["parser_config"].get("toc", True):
+        if doc["parser_id"] in ["one", "knowledge_graph"] or do_layout != "DeepDOC" or doc["parser_config"].get("toc_extraction", False):
             page_size = 10 ** 9
         page_ranges = doc["parser_config"].get("pages") or [(1, 10 ** 5)]
         for s, e in page_ranges:
@@ -388,7 +387,7 @@ def queue_tasks(doc: dict, bucket: str, name: str, priority: int):
                 parse_task_array.append(task)
 
     elif doc["parser_id"] == "table":
-        file_bin = STORAGE_IMPL.get(bucket, name, doc["tenant_id"])
+        file_bin = settings.STORAGE_IMPL.get(bucket, name, doc["tenant_id"])
         rn = RAGFlowExcelParser.row_number(doc["name"], file_bin)
         for i in range(0, rn, 3000):
             task = new_task()

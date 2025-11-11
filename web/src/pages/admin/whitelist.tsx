@@ -1,3 +1,28 @@
+import { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import * as XLSX from 'xlsx';
+
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  createColumnHelper,
+  flexRender,
+  getCoreRowModel,
+  getFilteredRowModel,
+  getPaginationRowModel,
+  getSortedRowModel,
+  useReactTable,
+} from '@tanstack/react-table';
+
+import {
+  LucideDownload,
+  LucidePlus,
+  LucideSearch,
+  LucideTrash2,
+  LucideUpload,
+  LucideUserPen,
+} from 'lucide-react';
+
+import Spotlight from '@/components/spotlight';
 import { TableEmpty } from '@/components/table-skeleton';
 import { Button } from '@/components/ui/button';
 import {
@@ -15,8 +40,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { LoadingButton } from '@/components/ui/loading-button';
+import { SearchInput } from '@/components/ui/input';
 import { RAGFlowPagination } from '@/components/ui/ragflow-pagination';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
@@ -27,45 +51,25 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+
 import {
-  createColumnHelper,
-  flexRender,
-  getCoreRowModel,
-  getFilteredRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
-  useReactTable,
-} from '@tanstack/react-table';
-import {
-  LucideDownload,
-  LucidePlus,
-  LucideSearch,
-  LucideTrash2,
-  LucideUpload,
-  LucideUserPen,
-} from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
-import { useTranslation } from 'react-i18next';
+  createWhitelistEntry,
+  deleteWhitelistEntry,
+  importWhitelistFromExcel,
+  listWhitelist,
+  updateWhitelistEntry,
+} from '@/services/admin-service';
+
+import { EMPTY_DATA, createFuzzySearchFn, getSortIcon } from './utils';
+
+import dayjs from 'dayjs';
 import useCreateEmailForm from './forms/email-form';
-import useImportExcelForm from './forms/import-excel-form';
-import { EMPTY_DATA, createFuzzySearchFn } from './utils';
+import useImportExcelForm, {
+  ImportExcelFormData,
+} from './forms/import-excel-form';
 
-// #region FAKE DATA
-function _pickRandom<T extends unknown>(arr: T[]): T | void {
-  return arr[Math.floor(Math.random() * arr.length)];
-}
-
-const PSEUDO_TABLE_ITEMS = Array.from({ length: 20 }, () => ({
-  id: Math.random().toString(36).slice(2, 8),
-  email: `${Math.random().toString(36).slice(2, 6)}@example.com`,
-  created_by: _pickRandom(['Alice', 'Bob', 'Carol', 'Dave']) || 'System',
-  created_at: Date.now() - Math.floor(Math.random() * 1000 * 60 * 60 * 24 * 30),
-}));
-// #endregion
-
-const columnHelper = createColumnHelper<(typeof PSEUDO_TABLE_ITEMS)[0]>();
-const globalFilterFn = createFuzzySearchFn<(typeof PSEUDO_TABLE_ITEMS)[0]>([
+const columnHelper = createColumnHelper<AdminService.ListWhitelistItem>();
+const globalFilterFn = createFuzzySearchFn<AdminService.ListWhitelistItem>([
   'email',
 ]);
 
@@ -74,123 +78,129 @@ function AdminWhitelist() {
   const queryClient = useQueryClient();
 
   const createEmailForm = useCreateEmailForm();
+  const editEmailForm = useCreateEmailForm();
   const importExcelForm = useImportExcelForm();
 
-  const [emailToMakeAction, setEmailToMakeAction] = useState<string | null>(
-    null,
-  );
+  const [itemToMakeAction, setItemToMakeAction] =
+    useState<AdminService.ListWhitelistItem | null>(null);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
 
   const [importModalOpen, setImportModalOpen] = useState(false);
 
+  const { data: whitelist } = useQuery({
+    queryKey: ['admin/listWhitelist'],
+    queryFn: async () => (await listWhitelist())?.data?.data?.white_list,
+    retry: false,
+  });
+
   // Reset form when editing a different email
   useEffect(() => {
-    if (emailToMakeAction && editModalOpen) {
-      createEmailForm.form.setValue('email', emailToMakeAction);
+    if (itemToMakeAction && editModalOpen) {
+      editEmailForm.form.setValue('email', itemToMakeAction.email);
     }
-  }, [emailToMakeAction, editModalOpen, createEmailForm.form]);
+  }, [itemToMakeAction, editModalOpen, editEmailForm.form]);
 
-  const { isPending: isCreating, mutateAsync: createEmail } = useMutation({
-    mutationFn: async (data: { email: string }) => {
-      /* create email API call */
-    },
+  const createWhitelistEntryMutation = useMutation({
+    mutationFn: (data: { email: string }) => createWhitelistEntry(data.email),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin/whitelist'] });
+      queryClient.invalidateQueries({ queryKey: ['admin/listWhitelist'] });
       setCreateModalOpen(false);
-      setEmailToMakeAction(null);
       createEmailForm.form.reset();
     },
     onError: (error) => {
       console.error('Error creating email:', error);
     },
+    retry: false,
   });
 
-  const { isPending: isEditing, mutateAsync: updateEmail } = useMutation({
-    mutationFn: async (data: { email: string }) => {
-      /* update email API call */
-    },
+  const updateWhitelistEntryMutation = useMutation({
+    mutationFn: (data: { id: number; email: string }) =>
+      updateWhitelistEntry(data.id, data.email),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin/whitelist'] });
+      queryClient.invalidateQueries({ queryKey: ['admin/listWhitelist'] });
       setEditModalOpen(false);
-      setEmailToMakeAction(null);
-      createEmailForm.form.reset();
+      setItemToMakeAction(null);
+      editEmailForm.form.reset();
     },
   });
 
-  const { isPending: isDeleting, mutateAsync: deleteEmail } = useMutation({
-    mutationFn: async (data: { email: string }) => {
-      /* delete email API call */
-    },
+  const deleteWhitelistEntryMutation = useMutation({
+    mutationFn: (data: { email: string }) => deleteWhitelistEntry(data.email),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin/whitelist'] });
+      queryClient.invalidateQueries({ queryKey: ['admin/listWhitelist'] });
       setDeleteModalOpen(false);
-      setEmailToMakeAction(null);
+      setItemToMakeAction(null);
     },
     onError: (error) => {
       console.error('Error deleting email:', error);
     },
   });
 
-  const { isPending: isImporting, mutateAsync: importExcel } = useMutation({
-    mutationFn: async (data: {
-      file: FileList;
-      overwriteExisting: boolean;
-    }) => {
-      /* import Excel API call */
-      console.log(
-        'Importing Excel file:',
-        data.file[0]?.name,
-        'Overwrite:',
-        data.overwriteExisting,
-      );
-    },
+  const importExcelMutation = useMutation({
+    mutationFn: (data: ImportExcelFormData) =>
+      importWhitelistFromExcel(data.file),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin/whitelist'] });
+      queryClient.invalidateQueries({ queryKey: ['admin/listWhitelist'] });
       setImportModalOpen(false);
       importExcelForm.form.reset();
     },
     onError: (error) => {
       console.error('Error importing Excel:', error);
     },
+    retry: false,
   });
+
+  const handleExportExcel = () => {
+    const columnData = (whitelist ?? EMPTY_DATA).map((item) => ({
+      email: item.email,
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(columnData);
+    const workbook = XLSX.utils.book_new();
+
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Sheet1');
+    XLSX.writeFile(
+      workbook,
+      `whitelist_${dayjs(new Date()).format('YYYYMMDDHHmmss')}.xlsx`,
+    );
+  };
 
   const columnDefs = useMemo(
     () => [
       columnHelper.accessor('email', {
-        header: 'Email',
+        header: t('admin.email'),
+        enableSorting: false,
       }),
-      columnHelper.accessor('created_by', {
-        header: 'Created by',
+      columnHelper.accessor('create_date', {
+        header: t('admin.createDate'),
       }),
-      columnHelper.accessor('created_at', {
-        header: 'Created date',
-        cell: ({ row }) =>
-          new Date(row.getValue('created_at') as number).toLocaleString(),
+      columnHelper.accessor('update_date', {
+        header: t('admin.updateDate'),
       }),
       columnHelper.display({
         id: 'actions',
-        header: 'Actions',
+        header: t('admin.actions'),
         cell: ({ row }) => (
-          <div className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-100">
+          <div className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
             <Button
               variant="transparent"
               size="icon"
-              className="border-0 text-text-secondary"
+              className="border-0"
               onClick={() => {
-                setEmailToMakeAction(row.original.email);
+                setItemToMakeAction(row.original);
                 setEditModalOpen(true);
               }}
             >
               <LucideUserPen />
             </Button>
             <Button
-              variant="transparent"
+              variant="danger"
               size="icon"
-              className="border-0 text-text-secondary"
+              className="border-0"
               onClick={() => {
-                setEmailToMakeAction(row.original.email);
+                setItemToMakeAction(row.original);
                 setDeleteModalOpen(true);
               }}
             >
@@ -200,11 +210,11 @@ function AdminWhitelist() {
         ),
       }),
     ],
-    [],
+    [t],
   );
 
   const table = useReactTable({
-    data: PSEUDO_TABLE_ITEMS ?? EMPTY_DATA,
+    data: whitelist ?? EMPTY_DATA,
     columns: columnDefs,
 
     globalFilterFn,
@@ -213,29 +223,32 @@ function AdminWhitelist() {
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
+
+    enableSorting: false,
   });
 
   return (
     <>
-      <Card className="h-full border border-border-button bg-transparent rounded-xl overflow-x-hidden overflow-y-auto">
+      <Card className="!shadow-none relative h-full border-0.5 border-border-button bg-transparent rounded-xl overflow-x-hidden overflow-y-auto">
+        <Spotlight />
+
         <ScrollArea className="size-full">
           <CardHeader className="space-y-0 flex flex-row justify-between items-center">
             <CardTitle>{t('admin.whitelistManagement')}</CardTitle>
 
             <div className="flex items-center gap-4">
-              <div className="relative w-56">
-                <LucideSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                <Input
-                  className="pl-10 h-10 bg-bg-input border-border-button"
-                  placeholder={t('header.search')}
-                  value={table.getState().globalFilter}
-                  onChange={(e) => table.setGlobalFilter(e.target.value)}
-                />
-              </div>
+              <SearchInput
+                className="w-56 h-10 bg-bg-input border-border-button"
+                placeholder={t('header.search')}
+                value={table.getState().globalFilter}
+                onChange={(e) => table.setGlobalFilter(e.target.value)}
+                prefix={<LucideSearch className="size-3.5" />}
+              />
 
               <Button
                 variant="outline"
                 className="h-10 px-4 dark:bg-bg-input dark:border-border-button text-text-secondary"
+                onClick={handleExportExcel}
               >
                 <LucideUpload />
                 {t('admin.exportAsExcel')}
@@ -255,7 +268,7 @@ function AdminWhitelist() {
                 onClick={() => setCreateModalOpen(true)}
               >
                 <LucidePlus />
-                {t('admin.createEmail')}
+                {t('admin.newUser')}
               </Button>
             </div>
           </CardHeader>
@@ -264,8 +277,8 @@ function AdminWhitelist() {
             <Table>
               <colgroup>
                 <col />
-                <col className="w-[20%]" />
-                <col className="w-[30%]" />
+                <col className="w-[25%]" />
+                <col className="w-[25%]" />
                 <col className="w-[12rem]" />
               </colgroup>
 
@@ -274,12 +287,23 @@ function AdminWhitelist() {
                   <TableRow key={headerGroup.id}>
                     {headerGroup.headers.map((header) => (
                       <TableHead key={header.id}>
-                        {header.isPlaceholder
-                          ? null
-                          : flexRender(
+                        {header.isPlaceholder ? null : header.column.getCanSort() ? (
+                          <Button
+                            variant="ghost"
+                            onClick={header.column.getToggleSortingHandler()}
+                          >
+                            {flexRender(
                               header.column.columnDef.header,
                               header.getContext(),
                             )}
+                            {getSortIcon(header.column.getIsSorted())}
+                          </Button>
+                        ) : (
+                          flexRender(
+                            header.column.columnDef.header,
+                            header.getContext(),
+                          )
+                        )}
                       </TableHead>
                     ))}
                   </TableRow>
@@ -328,22 +352,22 @@ function AdminWhitelist() {
           className="p-0 border-border-button"
           onAnimationEnd={() => {
             if (!deleteModalOpen) {
-              setEmailToMakeAction(null);
+              setItemToMakeAction(null);
             }
           }}
         >
-          <DialogHeader className="p-6 border-b border-border-button">
+          <DialogHeader className="p-6 border-b-0.5 border-border-button">
             <DialogTitle>{t('admin.deleteEmail')}</DialogTitle>
           </DialogHeader>
 
           <section className="px-12 py-4">
             <DialogDescription className="text-text-primary">
               {t('admin.deleteWhitelistEmailConfirmation')}
-
-              <div className="rounded-lg mt-6 p-4 border border-border-button">
-                {emailToMakeAction}
-              </div>
             </DialogDescription>
+
+            <div className="rounded-lg mt-6 p-4 border-0.5 border-border-button">
+              {itemToMakeAction?.email}
+            </div>
           </section>
 
           <DialogFooter className="flex justify-end gap-4 px-12 pt-4 pb-8">
@@ -351,43 +375,48 @@ function AdminWhitelist() {
               className="px-4 h-10 dark:border-border-button"
               variant="outline"
               onClick={() => setDeleteModalOpen(false)}
-              disabled={isDeleting}
+              disabled={deleteWhitelistEntryMutation.isPending}
             >
               {t('admin.cancel')}
             </Button>
 
-            <LoadingButton
+            <Button
               className="px-4 h-10"
               variant="destructive"
               onClick={() => {
-                deleteEmail({ email: emailToMakeAction! });
+                if (itemToMakeAction) {
+                  deleteWhitelistEntryMutation.mutate({
+                    email: itemToMakeAction?.email,
+                  });
+                }
               }}
-              disabled={isDeleting}
-              loading={isDeleting}
+              disabled={deleteWhitelistEntryMutation.isPending}
+              loading={deleteWhitelistEntryMutation.isPending}
             >
               {t('admin.delete')}
-            </LoadingButton>
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Create Email Modal */}
-      <Dialog
-        open={createModalOpen}
-        onOpenChange={() => {
-          setCreateModalOpen(false);
-          createEmailForm.form.reset();
-        }}
-      >
-        <DialogContent className="p-0 border-border-button">
-          <DialogHeader className="p-6 border-b border-border-button">
+      <Dialog open={createModalOpen} onOpenChange={setCreateModalOpen}>
+        <DialogContent
+          className="p-0 border-border-button"
+          onAnimationEnd={() => {
+            if (!createModalOpen) {
+              createEmailForm.form.reset();
+            }
+          }}
+        >
+          <DialogHeader className="p-6 border-b-0.5 border-border-button">
             <DialogTitle>{t('admin.createEmail')}</DialogTitle>
           </DialogHeader>
 
           <section className="px-12 py-4 text-text-secondary">
             <createEmailForm.FormComponent
               id={createEmailForm.id}
-              onSubmit={createEmail}
+              onSubmit={createWhitelistEntryMutation.mutate}
             />
           </section>
 
@@ -395,55 +424,52 @@ function AdminWhitelist() {
             <Button
               className="px-4 h-10 dark:border-border-button"
               variant="outline"
-              onClick={() => {
-                setCreateModalOpen(false);
-                createEmailForm.form.reset();
-              }}
-              disabled={isCreating}
+              onClick={() => setCreateModalOpen(false)}
+              disabled={createWhitelistEntryMutation.isPending}
             >
               {t('admin.cancel')}
             </Button>
 
-            <LoadingButton
+            <Button
               form={createEmailForm.id}
               type="submit"
               className="px-4 h-10"
               variant="default"
-              disabled={isCreating}
-              loading={isCreating}
+              disabled={createWhitelistEntryMutation.isPending}
+              loading={createWhitelistEntryMutation.isPending}
             >
               {t('admin.confirm')}
-            </LoadingButton>
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Edit Email Modal */}
-      <Dialog
-        open={editModalOpen}
-        onOpenChange={() => {
-          setEditModalOpen(false);
-          setEmailToMakeAction(null);
-          createEmailForm.form.reset();
-        }}
-      >
+      <Dialog open={editModalOpen} onOpenChange={setEditModalOpen}>
         <DialogContent
           className="p-0 border-border-button"
           onAnimationEnd={() => {
             if (!editModalOpen) {
-              setEmailToMakeAction(null);
-              createEmailForm.form.reset();
+              setItemToMakeAction(null);
+              editEmailForm.form.reset();
             }
           }}
         >
-          <DialogHeader className="p-6 border-b border-border-button">
+          <DialogHeader className="p-6 border-b-0.5 border-border-button">
             <DialogTitle>{t('admin.editEmail')}</DialogTitle>
           </DialogHeader>
 
           <section className="px-12 py-4 text-text-secondary">
-            <createEmailForm.FormComponent
-              id={createEmailForm.id}
-              onSubmit={updateEmail}
+            <editEmailForm.FormComponent
+              id={editEmailForm.id}
+              onSubmit={(value) => {
+                if (itemToMakeAction) {
+                  updateWhitelistEntryMutation.mutate({
+                    id: itemToMakeAction.id,
+                    email: value.email,
+                  });
+                }
+              }}
             />
           </section>
 
@@ -451,41 +477,44 @@ function AdminWhitelist() {
             <Button
               className="px-4 h-10 dark:border-border-button"
               variant="outline"
-              onClick={() => {
-                setEditModalOpen(false);
-                setEmailToMakeAction(null);
-                createEmailForm.form.reset();
-              }}
-              disabled={isEditing}
+              onClick={() => setEditModalOpen(false)}
+              disabled={updateWhitelistEntryMutation.isPending}
             >
               {t('admin.cancel')}
             </Button>
 
-            <LoadingButton
-              form={createEmailForm.id}
+            <Button
+              form={editEmailForm.id}
               type="submit"
               className="px-4 h-10"
               variant="default"
-              disabled={isEditing}
-              loading={isEditing}
+              disabled={updateWhitelistEntryMutation.isPending}
+              loading={updateWhitelistEntryMutation.isPending}
             >
               {t('admin.confirm')}
-            </LoadingButton>
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Import Excel Modal */}
       <Dialog open={importModalOpen} onOpenChange={setImportModalOpen}>
-        <DialogContent className="p-0 border-border-button">
-          <DialogHeader className="p-6 border-b border-border-button">
+        <DialogContent
+          className="p-0 border-border-button"
+          onAnimationEnd={() => {
+            if (!importModalOpen) {
+              importExcelForm.form.reset();
+            }
+          }}
+        >
+          <DialogHeader className="p-6 border-b-0.5 border-border-button">
             <DialogTitle>{t('admin.importWhitelist')}</DialogTitle>
           </DialogHeader>
 
           <section className="px-12 py-4 text-text-secondary">
             <importExcelForm.FormComponent
               id={importExcelForm.id}
-              onSubmit={importExcel}
+              onSubmit={importExcelMutation.mutate}
             />
           </section>
 
@@ -493,25 +522,22 @@ function AdminWhitelist() {
             <Button
               className="px-4 h-10 dark:border-border-button"
               variant="outline"
-              onClick={() => {
-                setImportModalOpen(false);
-                importExcelForm.form.reset();
-              }}
-              disabled={isImporting}
+              onClick={() => setImportModalOpen(false)}
+              disabled={importExcelMutation.isPending}
             >
               {t('admin.cancel')}
             </Button>
 
-            <LoadingButton
+            <Button
               form={importExcelForm.id}
               type="submit"
               className="px-4 h-10"
               variant="default"
-              disabled={isImporting}
-              loading={isImporting}
+              disabled={importExcelMutation.isPending}
+              loading={importExcelMutation.isPending}
             >
               {t('admin.import')}
-            </LoadingButton>
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -22,20 +22,21 @@ from api.utils.permission_utils import has_permission_for_member
 from flask_login import current_user, login_required
 from api.db.services import duplicate_name
 
-from api import settings
+from common.constants import StatusEnum
 from api.db import PermissionActionType, PermissionTargetType, PermissionValue, ResourceType, StatusEnum
 from api.db.services.dialog_service import DialogService
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.tenant_llm_service import TenantLLMService
 from api.db.services.user_service import TenantService, UserTenantService
-from api.utils import get_uuid
+from common.misc_utils import get_uuid
+from common.constants import RetCode
 from api.utils.api_utils import get_data_error_result, get_json_result, server_error_response, validate_request
 from api.utils.permission_utils import check_dialog_permission
 
 
-@manager.route("/set", methods=["POST"])  # noqa: F821
-@login_required
+@manager.route('/set', methods=['POST'])  # noqa: F821
 @validate_request("prompt_config")
+@login_required
 @check_dialog_permission(PermissionValue.PERMISSION_MANAGE)
 def set_dialog():
     req = g.req_data
@@ -74,7 +75,7 @@ def set_dialog():
 
     if not is_create:
         if not req.get("kb_ids", []) and not prompt_config.get("tavily_api_key") and "{knowledge}" in prompt_config['system']:
-            return get_data_error_result(message="Please remove `{knowledge}` in system prompt since no knowledge base/Tavily used here.")
+            return get_data_error_result(message="Please remove `{knowledge}` in system prompt since no knowledge base / Tavily used here.")
 
         for p in prompt_config["parameters"]:
             if p["optional"]:
@@ -157,7 +158,7 @@ def set_dialog():
         return server_error_response(e)
 
 
-@manager.route("/get", methods=["GET"])  # noqa: F821
+@manager.route('/get', methods=['GET'])  # noqa: F821
 @login_required
 @check_dialog_permission(PermissionValue.PERMISSION_READ)
 def get():
@@ -186,7 +187,7 @@ def get_kb_names(kb_ids):
     return ids, nms
 
 
-@manager.route("/list", methods=["GET"])  # noqa: F821
+@manager.route('/list', methods=['GET'])  # noqa: F821
 @login_required
 def list_dialogs():
     try:
@@ -283,7 +284,7 @@ def list_dialogs_next():
         return server_error_response(e)
 
 
-@manager.route("/rm", methods=["POST"])  # noqa: F821
+@manager.route('/rm', methods=['POST'])  # noqa: F821
 @login_required
 @validate_request("dialog_ids")
 @check_dialog_permission(permission=PermissionValue.PERMISSION_OWNER)
@@ -299,7 +300,7 @@ def rm():
                     tenant_id = tenant.tenant_id
                     break
             else:
-                return get_json_result(data=False, message="Only owner of dialog authorized for this operation.", code=settings.RetCode.OPERATING_ERROR)
+                return get_json_result(data=False, message="Only owner of dialog authorized for this operation.", code=RetCode.OPERATING_ERROR)
             dialog_list.append({"id": id, "status": StatusEnum.INVALID.value, "tenant_id": tenant_id})
             ConversationService.remove_by(id)
 

@@ -24,7 +24,9 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { listRoles } from '@/services/admin-service';
+
 import EnterpriseFeature from '../components/enterprise-feature';
+import { IS_ENTERPRISE } from '../utils';
 
 interface CreateUserFormData {
   email: string;
@@ -49,6 +51,8 @@ export const CreateUserForm = ({
   const { data: roleList } = useQuery({
     queryKey: ['admin/listRoles'],
     queryFn: async () => (await listRoles()).data.data.roles,
+    enabled: IS_ENTERPRISE,
+    retry: false,
   });
 
   return (
@@ -149,7 +153,11 @@ export const CreateUserForm = ({
                             <SelectItem key={role.id} value={role.role_name}>
                               {role.role_name}
                             </SelectItem>
-                          ))}
+                          )) ?? (
+                            <div className="text-text-secondary px-2 py-6 text-sm text-center">
+                              {t('common.noData')}
+                            </div>
+                          )}
                         </SelectGroup>
                       </SelectContent>
                     </Select>

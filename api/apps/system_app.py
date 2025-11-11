@@ -19,14 +19,15 @@ from flask_login import login_required, current_user
 from api.db.db_models import APIToken
 from api.db.services.api_service import APITokenService
 from api.db.services.user_service import UserTenantService
-from api import settings
-from api.utils import current_timestamp, datetime_format
 from api.utils.api_utils import (
     get_json_result,
     get_data_error_result,
     server_error_response,
     generate_confirmation_token,
 )
+from common.time_utils import current_timestamp, datetime_format
+from flask import jsonify
+from common import settings
 
 
 @manager.route('/new_token', methods=['POST'])

@@ -28,12 +28,11 @@ from ollama import Client
 from openai import OpenAI
 from zhipuai import ZhipuAI
 
-from rag import settings
-from api.utils.balancer import LoadBalancer
-from api.utils.log_utils import log_exception
-from rag.utils import num_tokens_from_string, truncate
-from api import settings
+from common.log_utils import log_exception
+from common.token_utils import num_tokens_from_string, truncate
+from common import settings
 import logging
+from api.utils.balancer import LoadBalancer
 
 
 class Base(ABC):
@@ -85,7 +84,7 @@ class BuiltinEmbed(Base):
 
     def encode(self, texts: list):
         batch_size = 16
-        texts = [truncate(t, self._max_tokens) for t in texts]
+        # TEI is able to auto truncate inputs according to https://github.com/huggingface/text-embeddings-inference.
         token_count = 0
         ress = None
         for i in range(0, len(texts), batch_size):
@@ -794,35 +793,30 @@ class VoyageEmbed(Base):
 
 
 class HuggingFaceEmbed(Base):
-    @staticmethod
-    def post(texts: list, url="127.0.0.1"):
-        bs = 8
-        arr = []
-        for b in range(0, len(texts), bs):
-            res = requests.post(f"http://{url}/embed",
-                                headers={"Content-Type": "application/json"},
-                                json={"inputs": texts[b:b+bs], "normalize": True, "truncate": True})
-            arr.append(np.array(res.json()))
-        return np.concatenate(arr, axis=0)
+    _FACTORY_NAME = "HuggingFace"
 
-    def __init__(self, key, model_name="BAAI/bge-large-zh-v1.5", base_url="http://127.0.0.1"):
-        m = {
-            "BAAI/bge-large-zh-v1.5": settings.LOCAL_EMBD.get("bge", "BAAI01"),
-            "maidalun1020/bce-embedding-base_v1": settings.LOCAL_EMBD.get("bce", "youdao01")
-        }
+    def __init__(self, key, model_name, base_url=None, **kwargs):
+        if not model_name:
+            raise ValueError("Model name cannot be None")
+        self.key = key
         self.model_name = model_name.split("___")[0]
-        self.base_url = m[model_name]
+        self.base_url = base_url or "http://127.0.0.1:8080"
 
-    def encode(self, texts: list[str], batch_size=16) -> tuple[np.ndarray, int]:
-        texts = [truncate(t, 512) for t in texts]
-        token_count = 0
-        for t in texts:
-            token_count += num_tokens_from_string(t)
-        return HuggingFaceEmbed.post(texts, self.base_url), token_count
+    def encode(self, texts: list):
+        response = requests.post(f"{self.base_url}/embed", json={"inputs": texts}, headers={"Content-Type": "application/json"})
+        if response.status_code == 200:
+            embeddings = response.json()
+        else:
+            raise Exception(f"Error: {response.status_code} - {response.text}")
+        return np.array(embeddings), sum([num_tokens_from_string(text) for text in texts])
 
-    def encode_queries(self, text: str) -> tuple[np.ndarray, int]:
-        token_count = num_tokens_from_string(text)
-        return HuggingFaceEmbed.post([text], self.base_url)[0], token_count
+    def encode_queries(self, text: str):
+        response = requests.post(f"{self.base_url}/embed", json={"inputs": text}, headers={"Content-Type": "application/json"})
+        if response.status_code == 200:
+            embedding = response.json()[0]
+            return np.array(embedding), num_tokens_from_string(text)
+        else:
+            raise Exception(f"Error: {response.status_code} - {response.text}")
 
 
 class VolcEngineEmbed(OpenAIEmbed):

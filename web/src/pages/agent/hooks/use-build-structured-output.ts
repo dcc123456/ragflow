@@ -1,8 +1,11 @@
-import { get } from 'lodash';
+import { get, isPlainObject } from 'lodash';
 import { ReactNode, useCallback } from 'react';
-import { AgentStructuredOutputField, Operator } from '../constant';
+import {
+  AgentStructuredOutputField,
+  JsonSchemaDataType,
+  Operator,
+} from '../constant';
 import useGraphStore from '../store';
-import { filterAgentStructuredOutput } from '../utils/filter-agent-structured-output';
 
 function getNodeId(value: string) {
   return value.split('@').at(0);
@@ -25,12 +28,10 @@ export function useShowSecondaryMenu() {
   return showSecondaryMenu;
 }
 
-export function useFilterStructuredOutputByValue() {
-  const { getOperatorTypeFromId, getNode, clickedNodeId } = useGraphStore(
-    (state) => state,
-  );
+export function useGetStructuredOutputByValue() {
+  const { getNode } = useGraphStore((state) => state);
 
-  const filterStructuredOutput = useCallback(
+  const getStructuredOutput = useCallback(
     (value: string) => {
       const node = getNode(getNodeId(value));
       const structuredOutput = get(
@@ -38,17 +39,12 @@ export function useFilterStructuredOutputByValue() {
         `data.form.outputs.${AgentStructuredOutputField}`,
       );
 
-      const filteredStructuredOutput = filterAgentStructuredOutput(
-        structuredOutput,
-        getOperatorTypeFromId(clickedNodeId),
-      );
-
-      return filteredStructuredOutput;
+      return structuredOutput;
     },
-    [clickedNodeId, getNode, getOperatorTypeFromId],
+    [getNode],
   );
 
-  return filterStructuredOutput;
+  return getStructuredOutput;
 }
 
 export function useFindAgentStructuredOutputLabel() {
@@ -86,6 +82,94 @@ export function useFindAgentStructuredOutputLabel() {
       }
     },
     [getOperatorTypeFromId],
+  );
+
+  return findAgentStructuredOutputLabel;
+}
+
+export function useFindAgentStructuredOutputTypeByValue() {
+  const { getOperatorTypeFromId } = useGraphStore((state) => state);
+  const filterStructuredOutput = useGetStructuredOutputByValue();
+
+  const findTypeByValue = useCallback(
+    (
+      values: unknown,
+      target: string,
+      path: string = '',
+    ): string | undefined => {
+      const properties =
+        get(values, 'properties') || get(values, 'items.properties');
+
+      if (isPlainObject(values) && properties) {
+        for (const [key, value] of Object.entries(properties)) {
+          const nextPath = path ? `${path}.${key}` : key;
+          const dataType = get(value, 'type');
+
+          if (nextPath === target) {
+            return dataType;
+          }
+
+          if (
+            [JsonSchemaDataType.Object, JsonSchemaDataType.Array].some(
+              (x) => x === dataType,
+            )
+          ) {
+            const type = findTypeByValue(value, target, nextPath);
+            if (type) {
+              return type;
+            }
+          }
+        }
+      }
+    },
+    [],
+  );
+
+  const findAgentStructuredOutputTypeByValue = useCallback(
+    (value?: string) => {
+      if (!value) {
+        return;
+      }
+      const fields = value.split('@');
+      const nodeId = fields.at(0);
+      const jsonSchema = filterStructuredOutput(value);
+
+      if (
+        getOperatorTypeFromId(nodeId) === Operator.Agent &&
+        fields.at(1)?.startsWith(AgentStructuredOutputField)
+      ) {
+        const jsonSchemaFields = fields
+          .at(1)
+          ?.slice(AgentStructuredOutputField.length + 1);
+
+        if (jsonSchemaFields) {
+          const type = findTypeByValue(jsonSchema, jsonSchemaFields);
+          return type;
+        }
+      }
+    },
+    [filterStructuredOutput, findTypeByValue, getOperatorTypeFromId],
+  );
+
+  return findAgentStructuredOutputTypeByValue;
+}
+
+export function useFindAgentStructuredOutputLabelByValue() {
+  const { getNode } = useGraphStore((state) => state);
+
+  const findAgentStructuredOutputLabel = useCallback(
+    (value?: string) => {
+      if (value) {
+        const operatorName = getNode(getNodeId(value ?? ''))?.data.name;
+
+        if (operatorName) {
+          return operatorName + ' / ' + value?.split('@').at(1);
+        }
+      }
+
+      return '';
+    },
+    [getNode],
   );
 
   return findAgentStructuredOutputLabel;

@@ -17,11 +17,16 @@ from datetime import datetime
 import peewee
 from peewee import fn, JOIN
 
-from api.db import PermissionValue, ResourceType, StatusEnum, TenantPermission
+from api.db import PermissionValue, ResourceType, TenantPermission
 from api.db.db_models import DB, Document, Knowledgebase, Permission, User, UserTenant, UserCanvas
 from api.db.services.common_service import CommonService
 from common.time_utils import current_timestamp, datetime_format
-
+from api.db.services import duplicate_name
+from api.db.services.user_service import TenantService
+from common.misc_utils import get_uuid
+from common.constants import StatusEnum
+from api.constants import DATASET_NAME_LIMIT
+from api.utils.api_utils import get_parser_config, get_data_error_result
 
 class KnowledgebaseService(CommonService):
     """Service class for managing knowledge base operations.
@@ -115,7 +120,7 @@ class KnowledgebaseService(CommonService):
         # Returns:
         #     If all documents are parsed successfully, returns (True, None)
         #     If any document is not fully parsed, returns (False, error_message)
-        from api.db import TaskStatus
+        from common.constants import TaskStatus
         from api.db.services.document_service import DocumentService
 
         # Get knowledge base information
@@ -229,6 +234,7 @@ class KnowledgebaseService(CommonService):
             cls.model.tenant_id,
             cls.model.avatar,
             cls.model.name,
+            cls.model.avatar,
             cls.model.language,
             cls.model.description,
             cls.model.doc_num,
@@ -391,7 +397,7 @@ class KnowledgebaseService(CommonService):
             (cls.model.status == StatusEnum.VALID.value)
         ).dicts()
         if not kbs:
-            return
+            return None
         return kbs[0]
 
     @classmethod
@@ -473,6 +479,64 @@ class KnowledgebaseService(CommonService):
         #     List of all knowledge base IDs
         return [m["id"] for m in cls.model.select(cls.model.id).dicts()]
 
+
+    @classmethod
+    @DB.connection_context()
+    def create_with_name(
+        cls,
+        *,
+        name: str,
+        tenant_id: str,
+        parser_id: str | None = None,
+        **kwargs
+    ):
+        """Create a dataset (knowledgebase) by name with kb_app defaults.
+
+        This encapsulates the creation logic used in kb_app.create so other callers
+        (including RESTFul endpoints) can reuse the same behavior.
+
+        Returns:
+            (ok: bool, model_or_msg): On success, returns (True, Knowledgebase model instance);
+                                      on failure, returns (False, error_message).
+        """
+        # Validate name
+        if not isinstance(name, str):
+            return get_data_error_result(message="Dataset name must be string.")
+        dataset_name = name.strip()
+        if dataset_name == "":
+            return get_data_error_result(message="Dataset name can't be empty.")
+        if len(dataset_name.encode("utf-8")) > DATASET_NAME_LIMIT:
+            return get_data_error_result(message=f"Dataset name length is {len(dataset_name)} which is larger than {DATASET_NAME_LIMIT}")
+
+        # Deduplicate name within tenant
+        dataset_name = duplicate_name(
+            cls.query,
+            name=dataset_name,
+            tenant_id=tenant_id,
+            status=StatusEnum.VALID.value,
+        )
+
+        # Verify tenant exists
+        ok, _t = TenantService.get_by_id(tenant_id)
+        if not ok:
+            return False, "Tenant not found."
+
+        # Build payload
+        kb_id = get_uuid()
+        payload = {
+            "id": kb_id,
+            "name": dataset_name,
+            "tenant_id": tenant_id,
+            "created_by": tenant_id,
+            "parser_id": (parser_id or "naive"),
+            **kwargs
+        }
+
+        # Default parser_config (align with kb_app.create) — do not accept external overrides
+        payload["parser_config"] = get_parser_config(parser_id, kwargs.get("parser_config"))
+        return payload
+
+
     @classmethod
     @DB.connection_context()
     def get_list(cls, joined_tenant_ids, user_id,
@@ -505,6 +569,7 @@ class KnowledgebaseService(CommonService):
             .join(Permission, JOIN.LEFT_OUTER, on=((Permission.resource_id == cls.model.id) & (Permission.member_id == UserTenant.id) & permission_conditions))
             .where(((cls.model.tenant_id.in_(joined_tenant_ids) & (Permission.id.is_null(False))) | (cls.model.tenant_id == user_id)) & (cls.model.status == StatusEnum.VALID.value))
         )
+
         if desc:
             kbs = kbs.order_by(cls.model.getter_by(orderby).desc())
         else:
