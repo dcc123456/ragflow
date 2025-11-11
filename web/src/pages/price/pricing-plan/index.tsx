@@ -1,6 +1,6 @@
 // pages/PricingPage.tsx
 import { Modal } from '@/components/ui/modal/modal';
-import { formatBytes } from '@/utils/file-util';
+import { convertBytesToGb } from '@/lib/utils';
 import { t } from 'i18next';
 import { Building2, Check, Gem, LucideProps, Rocket, X } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
@@ -18,12 +18,12 @@ const pricingPlans = {
     id: 'price_1RWUhlPtsKvwvC5fJHfaYeRs',
     title: t('price.free'),
     description: t('price.freeDesc'),
-    price: '0',
+    price: '',
     feature: {
-      apps: '20',
-      teamMembers: '50',
-      datasetStorage: '5',
-      apiRequests: '6000',
+      apps: '',
+      teamMembers: '',
+      datasetStorage: '',
+      apiRequests: '',
     },
     buttonLabel: t('price.reduce'),
     isUse: true,
@@ -33,12 +33,12 @@ const pricingPlans = {
     id: 'price_1RSr42PtsKvwvC5fuZP0AH7B',
     title: t('price.starter'),
     description: t('price.starterDesc'),
-    price: '9.9',
+    price: '',
     feature: {
-      apps: '40',
-      teamMembers: '100',
-      datasetStorage: '10',
-      apiRequests: '12000',
+      apps: '',
+      teamMembers: '',
+      datasetStorage: '',
+      apiRequests: '',
     },
     buttonLabel: t('price.upgrade'),
     isUse: false,
@@ -54,12 +54,12 @@ const pricingPlans = {
     id: 'price_1RSr42PtsKvwvC5fuZP0AH7B',
     title: t('price.pro'),
     description: t('price.proDesc'),
-    price: '99',
+    price: '',
     feature: {
-      apps: '80',
-      teamMembers: '200',
-      datasetStorage: '20',
-      apiRequests: '24000',
+      apps: '',
+      teamMembers: '',
+      datasetStorage: '',
+      apiRequests: '',
     },
     buttonLabel: t('price.upgrade'),
     isUse: false,
@@ -202,7 +202,7 @@ const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
         feature: {
           apps: plan.feature.quota_apps,
           teamMembers: plan.feature.quota_members,
-          datasetStorage: formatBytes(plan.feature.quota_kb_storage),
+          datasetStorage: convertBytesToGb(plan.feature.quota_kb_storage),
           apiRequests: plan.feature.quota_api_limits,
         },
         id: plan.price_ids,
@@ -246,7 +246,7 @@ const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
   return (
     <>
       {pricePlanList?.map((plan, index) => (
-        <PricingCard key={index} isUpgrade={isUpgrade} {...plan} />
+        <PricingCard key={index} {...plan} />
       ))}
       {/* <PriceModalComponent isOpen={true} onClose={closeModal} /> */}
     </>

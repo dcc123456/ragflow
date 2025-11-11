@@ -1,7 +1,6 @@
 // src/components/CustomModal.tsx
 import { Modal } from '@/components/ui/modal/modal';
 import React from 'react';
-import { createRoot } from 'react-dom/client';
 import UpgradeButton from './to-upgrade-button';
 
 interface CustomModalProps {
@@ -9,7 +8,10 @@ interface CustomModalProps {
   onClose: () => void;
 }
 
-const CustomModal: React.FC<CustomModalProps> = ({ isOpen, onClose }) => {
+export const FreeUpgradeModal: React.FC<CustomModalProps> = ({
+  isOpen,
+  onClose,
+}) => {
   return (
     <Modal
       open={isOpen}
@@ -39,7 +41,7 @@ const CustomModal: React.FC<CustomModalProps> = ({ isOpen, onClose }) => {
             >
               Star RAGFlow
             </a>
-            <UpgradeButton text="Upgrade Plan" />
+            <UpgradeButton text="Upgrade Plan" onCallBack={() => onClose()} />
           </div>
         </div>
         {/* width: calc(100% + 48px); transform: translateX(-24px) translateY(8px); */}
@@ -51,26 +53,26 @@ const CustomModal: React.FC<CustomModalProps> = ({ isOpen, onClose }) => {
   );
 };
 
-let currentModal: { destroy: () => void } | null = null;
-const showFreeUpgradeTipsModal = () => {
-  const rootElement = document.createElement('div');
-  document.body.appendChild(rootElement);
+// let currentModal: { destroy: () => void } | null = null;
+// const showFreeUpgradeTipsModal = () => {
+//   const rootElement = document.createElement('div');
+//   document.body.appendChild(rootElement);
 
-  const reactRoot = createRoot(rootElement);
-  const closeModal = () => {
-    reactRoot.unmount();
-    document.body.removeChild(rootElement);
-    currentModal = null;
-  };
+//   const reactRoot = createRoot(rootElement);
+//   const closeModal = () => {
+//     reactRoot.unmount();
+//     document.body.removeChild(rootElement);
+//     currentModal = null;
+//   };
 
-  reactRoot.render(<CustomModal isOpen={true} onClose={closeModal} />);
+//   reactRoot.render(<CustomModal isOpen={true} onClose={closeModal} />);
 
-  currentModal = { destroy: closeModal };
+//   currentModal = { destroy: closeModal };
 
-  return currentModal;
-};
+//   return currentModal;
+// };
 
-export { showFreeUpgradeTipsModal };
+// export { showFreeUpgradeTipsModal };
 
 // use example
 /**

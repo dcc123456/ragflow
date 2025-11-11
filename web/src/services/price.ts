@@ -3,7 +3,7 @@ import api from '@/utils/private-api';
 import registerServer from '@/utils/register-server';
 import request from '@/utils/request';
 
-const { billin_checkout, current_plan, plan_list } = api;
+const { billin_checkout, current_plan, plan_list, plan_spend_overview } = api;
 const methods = {
   // 支付
   billinCheckout: {
@@ -16,6 +16,10 @@ const methods = {
   },
   getPlanList: {
     url: plan_list,
+    method: 'get',
+  },
+  planSpendOverview: {
+    url: plan_spend_overview,
     method: 'get',
   },
 };

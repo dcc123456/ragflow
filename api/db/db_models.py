@@ -27,7 +27,7 @@ from functools import wraps
 
 from flask_login import UserMixin
 from itsdangerous.url_safe import URLSafeTimedSerializer as Serializer
-from peewee import InterfaceError, OperationalError, BigIntegerField, BooleanField, CharField, CompositeKey, DateTimeField, Field, FloatField, IntegerField, Metadata, Model, TextField
+from peewee import InterfaceError, OperationalError, BigIntegerField, BooleanField, CharField, CompositeKey, DateTimeField, Field, FloatField, IntegerField, Metadata, Model, TextField, PrimaryKeyField
 from playhouse.migrate import MySQLMigrator, PostgresqlMigrator, migrate
 from playhouse.pool import PooledMySQLDatabase, PooledPostgresqlDatabase
 
@@ -1160,6 +1160,14 @@ class PipelineOperationLog(DataBaseModel):
         db_table = "pipeline_operation_log"
 
 
+class WhiteList(DataBaseModel):
+    id = PrimaryKeyField()
+    email = CharField(max_length=255, null=False, index=True)
+
+    class Meta:
+        db_table = "white_list"
+
+
 class Connector(DataBaseModel):
     id = CharField(max_length=32, primary_key=True)
     tenant_id = CharField(max_length=32, null=False, index=True)
@@ -1274,8 +1282,8 @@ def migrate_db():
         migrate(migrator.add_column("knowledgebase", "mindmap_task_finish_at", CharField(null=True)))
     except Exception:
         pass
-    try:
-        migrate(migrator.add_column("tenant_llm", "status", CharField(max_length=1, null=False, help_text="is it validate(0: wasted, 1: validate)", default="1", index=True)))
-    except Exception:
-        pass
+    #try:
+    #    migrate(migrator.alter_column_type("tenant_llm", "api_key", TextField(null=True, help_text="API KEY")))
+    #except Exception:
+    #    pass
     logging.disable(logging.NOTSET)

@@ -38,6 +38,8 @@ from rag.utils.oss_conn import RAGFlowOSS
 
 from rag.nlp import search
 
+
+ENABLE_WHITELIST = int(os.environ.get('ENABLE_WHITELIST', "0"))
 ENABLE_ADMIN=int(os.environ.get("ENABLE_ADMIN", "0"))
 BILLING_ENABLED = int(os.environ.get('BILLING_ENABLED', "0"))
 BILLING = {}

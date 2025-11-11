@@ -36,3 +36,24 @@ export interface IPlan {
   price: number;
   price_ids: string;
 }
+
+export interface ICurrentPlan {
+  customer_id: string;
+  end_time: Date | string;
+  id: string;
+  invoice_pdf_url: string | null;
+  invoice_url: string | null;
+  original_subscription_id: string;
+  plan_name: string;
+  price_id: string;
+  product_id: string;
+  quota_apps: number;
+  quota_kb_storage: number;
+  quota_members: number;
+  start_time: Date | string;
+  subscription_id: string;
+  subscription_status: string;
+  task_priority: string;
+  tenant_id: string;
+  version: number;
+}

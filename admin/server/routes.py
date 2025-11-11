@@ -18,10 +18,12 @@ import secrets
 
 from flask import Blueprint, request
 from flask_login import current_user, logout_user, login_required
+import pandas as pd
 
 from auth import login_verify, login_admin, check_admin_auth
 from responses import success_response, error_response
 from services import UserMgr, ServiceMgr, UserServiceMgr
+from white_list import WhiteListMgr
 from roles import RoleMgr
 from api.common.exceptions import AdminException
 from common.versions import get_ragflow_version
@@ -377,6 +379,78 @@ def get_user_permission(user_name: str):
 def show_version():
     try:
         res = {"version": get_ragflow_version()}
+        return success_response(res)
+    except Exception as e:
+        return error_response(str(e), 500)
+
+
+@admin_bp.route('/whitelist', methods=['GET'])
+@login_required
+@check_admin_auth
+def list_whitelist():
+    try:
+        res = WhiteListMgr.get_all_white_list()
+        return success_response(res)
+    except Exception as e:
+        return error_response(str(e), 500)
+
+
+@admin_bp.route('/whitelist/add', methods=['POST'])
+@login_required
+@check_admin_auth
+def create_white_list_row():
+    try:
+        data = request.get_json()
+        if not data or 'email' not in data:
+            return error_response("Email is required", 400)
+        email: str = data['email']
+        res = WhiteListMgr.create_white_list_row(email)
+        return success_response(res)
+    except Exception as e:
+        return error_response(str(e), 500)
+
+
+@admin_bp.route('/whitelist/<id>', methods=['PUT'])
+@login_required
+@check_admin_auth
+def update_whitelist_row(id: int):
+    try:
+        data = request.get_json()
+        if not data or 'email' not in data:
+            return error_response("New email is required", 400)
+        email: str = data['email']
+        res = WhiteListMgr.update_white_list_row(id, email)
+        return success_response(res)
+    except Exception as e:
+        return error_response(str(e), 500)
+
+
+@admin_bp.route('/whitelist/<email>', methods=['DELETE'])
+@login_required
+@check_admin_auth
+def delete_whitelist_row(email: str):
+    try:
+        res = WhiteListMgr.delete_email_from_white_list(email)
+        return success_response(res)
+    except Exception as e:
+        return error_response(str(e), 500)
+
+
+@admin_bp.route('/whitelist/batch', methods=['POST'])
+@login_required
+@check_admin_auth
+def batch_create_whitelist_rows():
+    if 'file' not in request.files:
+        return error_response("No file provided", 400)
+    file_obj = request.files.get('file')
+
+    blob = file_obj.read()
+    df = pd.read_excel(blob)
+
+    data_list = df.to_dict('records')
+    emails = [data['email'] for data in data_list]
+    try:
+        res = WhiteListMgr.batch_create_white_list_rows(emails)
         return success_response(res)
     except Exception as e:
         return error_response(str(e), 500)

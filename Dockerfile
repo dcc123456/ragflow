@@ -10,7 +10,7 @@ RUN /root/miniconda3/envs/py11/bin/pip uninstall -y lxml xmlsec
 RUN /root/miniconda3/envs/py11/bin/pip install --no-cache-dir --force-reinstall lxml xmlsec
 RUN /root/miniconda3/envs/py11/bin/pip install flask-mail>=0.10.0 flask_limiter
 RUN /root/miniconda3/envs/py11/bin/pip install langfuse>=2.60.0 ultralytics
-RUN /root/miniconda3/envs/py11/bin/pip install olefile
+RUN /root/miniconda3/envs/py11/bin/pip install olefile tencentcloud-sdk-python==3.0.1478
 
 COPY web web
 RUN cd ./web && npm i && npm run build
@@ -26,6 +26,7 @@ COPY api api
 COPY agentic_reasoning agentic_reasoning
 COPY mcp mcp
 COPY admin admin
+COPY common common
 
 ENV PYTHONPATH=/ragflow/
 ENV HF_ENDPOINT=https://hf-mirror.com
