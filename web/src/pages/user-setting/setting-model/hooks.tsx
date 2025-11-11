@@ -7,6 +7,7 @@ import {
   useAddLlm,
   useDeleteFactory,
   useDeleteLlm,
+  useEnableLlm,
   useSaveApiKey,
   useSaveTenantInfo,
   useSelectLlmOptionsByModelType,
@@ -437,4 +438,14 @@ export const useHandleDeleteFactory = (llmFactory: string) => {
   };
 
   return { handleDeleteFactory };
+};
+
+export const useHandleEnableLlm = (llmFactory: string) => {
+  const { enableLlm } = useEnableLlm();
+
+  const handleEnableLlm = (name: string, enable: boolean) => {
+    enableLlm({ llm_factory: llmFactory, llm_name: name, enable });
+  };
+
+  return { handleEnableLlm };
 };

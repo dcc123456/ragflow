@@ -20,9 +20,9 @@ import { buildLlmId } from '@/utils/private-util';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { DefaultOptionType } from 'antd/es/select';
 import { orderBy } from 'lodash';
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useFetchTenantInfo } from './user-setting-hooks';
+import { useFetchTenantInfo } from './use-user-setting-request';
 
 export const useFetchLlmList = (
   modelType?: LlmModelType,
@@ -94,39 +94,28 @@ export const useSelectLlmOptionsByModelType = () => {
   const { data: tenantInfo } = useFetchTenantInfo();
   const tenantId = tenantInfo.tenant_id;
 
-  const groupImage2TextOptions = () => {
+  const groupImage2TextOptions = useCallback(() => {
     const modelType = LlmModelType.Image2text;
     const modelTag = modelType.toUpperCase();
-
     return Object.entries(llmInfo)
       .map(([key, value]) => {
         const list = value.filter(
           (x) =>
             (x.model_type.includes(modelType) ||
               (x.tags && x.tags.includes(modelTag))) &&
-            x.available,
+            x.available &&
+            x.status === '1',
         );
+
         return {
           label: key,
           options: orderLlmListByName(list).map((x) =>
             buildLlmOptionsWithIcon(tenantId, x),
           ),
-
-//         return {
-//           label: key,
-//           options: value
-//             .filter(
-//               (x) =>
-//                 (x.model_type.includes(modelType) ||
-//                   (x.tags && x.tags.includes(modelTag))) &&
-//                 x.available &&
-//                 x.status === '1',
-//             )
-//             .map(buildLlmOptionsWithIcon),
-//         };
+        };
       })
       .filter((x) => x.options.length > 0);
-  }, [llmInfo]);
+  }, [llmInfo, tenantId]);
 
   const groupOptionsByModelType = useCallback(
     (modelType: LlmModelType) => {
@@ -137,25 +126,22 @@ export const useSelectLlmOptionsByModelType = () => {
             : true,
         )
         .map(([key, value]) => {
-            const list = value.filter(
-          (x) =>
-            (modelType ? x.model_type.includes(modelType) : true) &&
-            x.available,
-        );
+          const list = value.filter(
+            (x) =>
+              (modelType ? x.model_type.includes(modelType) : true) &&
+              x.available,
+          );
+
           return {
             label: key,
             options: orderLlmListByName(list).map((x) =>
-            buildLlmOptionsWithIcon(tenantId, x)?.filter(
-                (x) =>
-                  (modelType ? x.model_type.includes(modelType) : true) &&
-                  x.available,
-              )
-              .map(buildLlmOptionsWithIcon),
+              buildLlmOptionsWithIcon(tenantId, x),
+            ),
           };
         })
         .filter((x) => x.options.length > 0);
     },
-    [llmInfo],
+    [llmInfo, tenantId],
   );
 
   return {
