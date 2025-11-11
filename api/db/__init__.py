@@ -14,7 +14,7 @@
 #  limitations under the License.
 #
 
-from enum import IntEnum
+from enum import IntEnum, Enum
 from strenum import StrEnum
 
 

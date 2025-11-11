@@ -17,11 +17,11 @@ from datetime import datetime
 
 import peewee
 
-from api.db import StatusEnum
 from api.db.db_models import DB, Department, DepartmentMember, Group, GroupMember, User, UserTenant
 from api.db.services.common_service import CommonService
-from api.utils import get_uuid
+from common.misc_utils import get_uuid
 from common.time_utils import current_timestamp, datetime_format
+from common.constants import StatusEnum
 
 
 class GroupService(CommonService):

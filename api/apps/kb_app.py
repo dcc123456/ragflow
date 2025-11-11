@@ -29,7 +29,7 @@ from api.db.services import duplicate_name
 from api.db.services.connector_service import Connector2KbService
 from api.db.services.llm_service import LLMBundle
 from api import settings
-from api.db import PermissionActionType, PermissionTargetType, PermissionValue, ResourceType, StatusEnum, LLMType
+from api.db import PermissionActionType, PermissionTargetType, PermissionValue, ResourceType
 from api.db.db_models import DB
 from api.db.services import duplicate_name
 from api.db.services.dialog_service import DialogService
@@ -51,7 +51,6 @@ from common.misc_utils import get_uuid
 
 from rag.nlp import search
 from api.constants import DATASET_NAME_LIMIT
-from rag.settings import PAGERANK_FLD
 from rag.utils.redis_conn import REDIS_CONN
 from rag.utils.doc_store_conn import OrderByExpr
 from common.constants import RetCode, PipelineTaskType, StatusEnum, VALID_TASK_STATUS, FileSource, LLMType, PAGERANK_FLD

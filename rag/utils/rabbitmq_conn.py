@@ -5,9 +5,9 @@ import pika
 import requests
 from requests.auth import HTTPBasicAuth
 
-from rag import settings
-from rag.utils import singleton
-from valkey.lock import Lock
+from common import settings
+from common.decorator import singleton
+from common.config_utils import get_base_config
 
 
 @singleton
@@ -15,11 +15,12 @@ class RabbitQueue:
 
     def __init__(self):
         self._channel = None
-        self.config = settings.RABBIT_CONF
+        self.config = settings.RABBIT_CONF if settings.RABBIT_CONF else get_base_config("rabbitmq")
         self.__open__()
 
     def __open__(self):
         try:
+            print(self.config, flush=True)
             credentials = pika.PlainCredentials(self.config["user"], self.config["password"])
             parameters = pika.ConnectionParameters(
                 host=self.config["host"],

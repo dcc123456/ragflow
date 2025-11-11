@@ -278,7 +278,8 @@ def init_settings():
 
     global RABBIT_CONF
     try:
-        RABBIT_CONF = decrypt_database_config(name="rabbitmq")
+        RABBIT_CONF = get_base_config("rabbitmq", {})
+
     except Exception:
         RABBIT_CONF = {}
         pass

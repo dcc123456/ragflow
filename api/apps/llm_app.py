@@ -23,7 +23,7 @@ from api.utils.api_utils import get_allowed_llm_factories
 from common.misc_utils import get_uuid
 from rag.utils.base64_image import test_image
 from rag.llm import EmbeddingModel, ChatModel, RerankModel, CvModel, TTSModel
-from api.db import PermissionActionType, PermissionTargetType, PermissionValue, ResourceType, StatusEnum
+from api.db import PermissionActionType, PermissionTargetType, PermissionValue, ResourceType
 from api.db.db_models import DB, TenantLLM
 from api.db.services.dialog_service import DialogService
 from api.db.services.llm_service import LLMService
