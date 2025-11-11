@@ -21,6 +21,9 @@ import random
 import sys
 import threading
 import time
+import socket
+import multiprocessing
+import asyncio
 
 import json_repair
 
@@ -71,7 +74,8 @@ from common.signal_utils import start_tracemalloc_and_snapshot, stop_tracemalloc
 from common.exceptions import TaskCanceledException
 from common import settings
 from common.constants import PAGERANK_FLD, TAG_FLD
-from rag.utils.rabbitmq_conn import RABBITMQ_CONN
+from rag.utils.redis_conn import REDIS_CONN
+from rag.utils.rabbitmq_conn import RABBITMQ_CONN, async_get_queue_status
 
 BATCH_SIZE = 64
 
@@ -106,6 +110,13 @@ TASK_TYPE_TO_PIPELINE_TASK_TYPE = {
 }
 
 CONSUMER_NAME = "te.{}.{}.{}".format(PRIORITY, TASK_TYPE, TE_IDX)
+BOOT_AT = datetime.now().astimezone().isoformat(timespec="milliseconds")
+PENDING_TASKS = 0
+LAG_TASKS = 0
+DONE_TASKS = 0
+FAILED_TASKS = 0
+
+CURRENT_TASKS = {}
 
 MAX_CONCURRENT_TASKS = int(os.environ.get('MAX_CONCURRENT_TASKS', "5"))
 MAX_CONCURRENT_CHUNK_BUILDERS = int(os.environ.get('MAX_CONCURRENT_CHUNK_BUILDERS', "1"))
@@ -905,13 +916,80 @@ async def do_handle_task(task):
                                                                                    token_count, task_time_cost))
 
 async def do_handle_task_with_timeout(task, callback):
+    global DONE_TASKS, FAILED_TASKS
     try:
         with trio.move_on_after(60*40) as scope:
+            CURRENT_TASKS[task["id"]] = copy.deepcopy(task)
             await do_handle_task(task)
         if scope.cancelled_caught:
+            FAILED_TASKS += 1
             callback(prog=-1, msg=f"[Error]: Task failed due to timeout.(40 min)")
+        else:
+            DONE_TASKS += 1
+        CURRENT_TASKS.pop(task["id"], None)
     except trio.Cancelled:
+        FAILED_TASKS += 1
+        CURRENT_TASKS.pop(task["id"], None)
         callback(prog=-1, msg=f"[Error]: Task failed due to timeout.(40 min)")
+
+
+async def get_server_ip() -> str:
+    # get ip by udp
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("8.8.8.8", 80))
+            return s.getsockname()[0]
+    except Exception as e:
+        logging.error(str(e))
+        return 'Unknown'
+
+
+def report_status():
+    async def heartbeat_main():
+        global PRIORITY, TASK_TYPE, CONSUMER_NAME, BOOT_AT, PENDING_TASKS, LAG_TASKS, DONE_TASKS, FAILED_TASKS
+
+        REDIS_CONN.sadd("RABBITMQ_WORKERS", CONSUMER_NAME)
+
+        while True:
+            try:
+                now = datetime.now()
+
+                pid = os.getpid()
+                ip_address = await get_server_ip()
+                current = copy.deepcopy(CURRENT_TASKS)
+
+                queue_status = await async_get_queue_status(rout_key(PRIORITY, TASK_TYPE))
+                if queue_status:
+                    LAG_TASKS = queue_status['messages_ready']
+                    PENDING_TASKS = queue_status['messages_unacknowledged']
+
+                heartbeat = json.dumps({
+                    "ip_address": ip_address,
+                    "pid": pid,
+                    "name": CONSUMER_NAME,
+                    "now": now.astimezone().isoformat(timespec="milliseconds"),
+                    "boot_at": BOOT_AT,
+                    "pending": PENDING_TASKS,
+                    "lag": LAG_TASKS,
+                    "done": DONE_TASKS,
+                    "failed": FAILED_TASKS,
+                    "current": current,
+                })
+
+                REDIS_CONN.zadd(CONSUMER_NAME, heartbeat, now.timestamp())
+                logging.info(f"{CONSUMER_NAME} reported heartbeat: {heartbeat}")
+
+                expired_count = REDIS_CONN.zcount(CONSUMER_NAME, 0, now.timestamp() - 60 * 30)
+                if expired_count > 0:
+                    REDIS_CONN.zpopmin(CONSUMER_NAME, expired_count)
+                    logging.debug(f"Cleaned {expired_count} expired heartbeats from {CONSUMER_NAME}")
+
+            except Exception as e:
+                logging.exception(f"report_status got exception: {e}")
+
+            await asyncio.sleep(30)
+
+    asyncio.run(heartbeat_main())
 
 
 def rabbitmq_callback(ch, method, properties, body):
@@ -1015,6 +1093,14 @@ def main():
 
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
+
+    heartbeat_process = multiprocessing.Process(
+        target=report_status,
+        daemon=True
+    )
+    heartbeat_process.start()
+    logging.info("Heartbeat monitoring started")
+
     logging.info("This is for Q: te.{}.{}".format(PRIORITY, TASK_TYPE))
     RABBITMQ_CONN.queue_consumer(rout_key(PRIORITY, TASK_TYPE), rabbitmq_callback)
 

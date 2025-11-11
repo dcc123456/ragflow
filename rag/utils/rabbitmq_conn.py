@@ -83,3 +83,48 @@ class RabbitQueue:
 
     
 RABBITMQ_CONN = RabbitQueue()
+
+
+async def async_get_queue_status(queue_name):
+    import httpx
+
+    try:
+        username = settings.RABBIT_CONF["user"]
+        password = settings.RABBIT_CONF["password"]
+        host = settings.RABBIT_CONF["host"]
+        port = settings.RABBIT_CONF["api_port"]
+
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            # 使用 Basic Auth
+            auth = (username, password)
+            queue_name_encoded = httpx.URL(queue_name).path
+            url = f'http://{host}:{port}/api/queues/%2F/{queue_name_encoded}'
+
+            response = await client.get(url, auth=auth)
+
+            if response.status_code == 200:
+                data = response.json()
+                return {
+                    "messages_ready": data.get('messages_ready', 0),
+                    "messages_unacknowledged": data.get('messages_unacknowledged', 0),
+                    "messages_total": data.get('messages', 0),
+                    "consumer_count": data.get('consumers', 0),
+                    "state": data.get('state', 'unknown'),
+                    "memory": data.get('memory', 0)
+                }
+            elif response.status_code == 404:
+                logging.warning(f"Queue {queue_name} not found")
+                return None
+            else:
+                logging.error(f"HTTP {response.status_code}: {response.text}")
+                return None
+
+    except httpx.TimeoutException:
+        logging.error("HTTP request timeout when getting queue stats")
+        return None
+    except httpx.RequestError as e:
+        logging.error(f"HTTP request failed: {e}")
+        return None
+    except Exception as e:
+        logging.error(f"Unexpected error in get_queue_stats_via_httpx: {e}")
+        return None
