@@ -1305,6 +1305,22 @@ def migrate_db():
         migrate(migrator.add_column("user", "role_name", CharField(max_length=32, null=True, default="owner", help_text="owner|public", index=True)))
     except Exception:
         pass
+    try:
+        migrate(migrator.alter_column_type("tenant_llm", "api_key", TextField(null=True, help_text="API KEY")))
+    except Exception:
+        pass
+    try:
+        migrate(migrator.add_column("tenant_llm", "status", CharField(max_length=1, null=False, help_text="is it validate(0: wasted, 1: validate)", default="1", index=True)))
+    except Exception:
+        pass
+    try:
+        migrate(migrator.add_column("connector2kb", "auto_parse", CharField(max_length=1, null=False, default="1", index=False)))
+    except Exception:
+        pass
+    try:
+        migrate(migrator.add_column("llm_factories", "rank", IntegerField(default=0, index=False)))
+    except Exception:
+        pass
     #try:
     #    migrate(migrator.alter_column_type("tenant_llm", "api_key", TextField(null=True, help_text="API KEY")))
     #except Exception:
