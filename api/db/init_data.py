@@ -73,6 +73,7 @@ def init_default_roles():
 
 
 def init_llm_factory():
+    LLMFactoriesService.filter_delete([1 == 1])
     factory_llm_infos = settings.FACTORY_LLM_INFOS
     for factory_llm_info in factory_llm_infos:
         info = deepcopy(factory_llm_info)
@@ -103,8 +104,7 @@ def add_graph_templates():
             except Exception:
                 CanvasTemplateService.update_by_id(cnvs["id"], cnvs)
         except Exception:
-            logging.exception("Add graph templates error: ")
-
+            logging.exception("Add agent templates error: ")
 
 def register_webhook():
     """
