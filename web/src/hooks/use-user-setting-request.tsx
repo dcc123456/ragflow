@@ -76,7 +76,7 @@ export const useFetchTenantInfo = (
     initialData: {},
     gcTime: 0,
     queryFn: async () => {
-      const { data: res } = await userService.get_tenant_info();
+      const { data: res = {} } = await userService.get_tenant_info();
       if (res.code === 0) {
         // llm_id is chat_id
         // asr_id is speech2txt
@@ -102,10 +102,10 @@ export const useFetchTenantInfo = (
         data.chat_id = data.llm_id;
         data.speech2text_id = data.asr_id;
 
-        return data;
+        return data ?? {};
       }
 
-      return res;
+      return res ?? {};
     },
   });
 

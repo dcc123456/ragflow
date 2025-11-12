@@ -1,7 +1,9 @@
 import { IChargePlan } from '@/pages/price/hook/use-price-hooks';
 import api from '@/utils/private-api';
-import registerServer from '@/utils/register-server';
+// import registerServer from '@/utils/register-server';
 import request from '@/utils/request';
+
+function registerServer() {}
 
 const { billin_checkout, current_plan, plan_list, plan_spend_overview } = api;
 const methods = {

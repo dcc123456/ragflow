@@ -15,8 +15,8 @@ import {
 import { useFetchTenantInfo } from '@/hooks/user-setting-hooks';
 import { IAddLlmRequestBody } from '@/interfaces/request/llm';
 import { getRealModelName } from '@/utils/llm-util';
-import { useQueryClient } from '@tanstack/react-query';
 import { buildLlmId } from '@/utils/private-util';
+import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useState } from 'react';
 import { ApiKeyPostBody } from '../interface';
 
@@ -487,14 +487,4 @@ export const useHandleDeleteFactory = (llmFactory: string) => {
   };
 
   return { handleDeleteFactory };
-};
-
-export const useHandleEnableLlm = (llmFactory: string) => {
-  const { enableLlm } = useEnableLlm();
-
-  const handleEnableLlm = (name: string, enable: boolean) => {
-    enableLlm({ llm_factory: llmFactory, llm_name: name, enable });
-  };
-
-  return { handleEnableLlm };
 };

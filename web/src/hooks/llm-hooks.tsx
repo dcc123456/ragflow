@@ -90,7 +90,7 @@ function orderLlmListByName(list: IThirdOAIModel[]) {
 
 export const useSelectLlmOptionsByModelType = () => {
   const llmInfo: IThirdOAIModelCollection = useFetchLlmList();
-  const { data: tenantInfo } = useFetchTenantInfo();
+  const { data: tenantInfo = {} } = useFetchTenantInfo();
   const tenantId = tenantInfo.tenant_id;
 
   const groupImage2TextOptions = useCallback(() => {

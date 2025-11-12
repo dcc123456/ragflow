@@ -1,4 +1,5 @@
 // src/components/ModelProviderCard.tsx
+import { IPrivilegeManagementInitialValues } from '@/components/privilege-management/interface';
 import { LlmIcon } from '@/components/svg-icon';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -6,8 +7,13 @@ import { useSetModalState, useTranslate } from '@/hooks/common-hooks';
 import { LlmItem } from '@/hooks/llm-hooks';
 import { getRealModelName } from '@/utils/llm-util';
 import { EditOutlined, SettingOutlined } from '@ant-design/icons';
-import { ChevronsDown, ChevronsUp, Trash2 } from 'lucide-react';
-import { FC } from 'react';
+import {
+  ChevronsDown,
+  ChevronsUp,
+  SquareArrowUpRight,
+  Trash2,
+} from 'lucide-react';
+import { FC, useCallback } from 'react';
 import { isLocalLlmFactory } from '../../utils';
 import { useHandleDeleteFactory, useHandleEnableLlm } from '../hooks';
 
@@ -15,6 +21,9 @@ interface IModelCardProps {
   item: LlmItem;
   clickApiKey: (llmFactory: string) => void;
   handleEditModel: (model: any, factory: LlmItem) => void;
+  showPrivilegeModal(
+    record: Omit<IPrivilegeManagementInitialValues, 'tenant_id'>,
+  ): void;
 }
 
 type TagType =
@@ -50,6 +59,7 @@ export const ModelProviderCard: FC<IModelCardProps> = ({
   item,
   clickApiKey,
   handleEditModel,
+  showPrivilegeModal,
 }) => {
   const { visible, switchVisible } = useSetModalState();
   const { t } = useTranslate('setting');
@@ -64,6 +74,14 @@ export const ModelProviderCard: FC<IModelCardProps> = ({
     switchVisible();
   };
 
+  const handleShowPrivilegeModal = useCallback(() => {
+    showPrivilegeModal({
+      id: item.name,
+      name: item.name,
+      avatar: item.logo,
+    });
+  }, [item.logo, item.name, showPrivilegeModal]);
+
   return (
     <div className={`w-full rounded-lg border border-border-button`}>
       {/* Header */}
@@ -76,6 +94,16 @@ export const ModelProviderCard: FC<IModelCardProps> = ({
         </div>
 
         <div className="flex items-center space-x-2">
+          <Button
+            onClick={(e) => {
+              e.stopPropagation();
+              handleShowPrivilegeModal();
+            }}
+            className="px-3 py-1 text-sm bg-bg-input hover:bg-bg-input text-text-primary  rounded-md transition-colors flex items-center space-x-1"
+          >
+            <SquareArrowUpRight />
+            <span>Share</span>
+          </Button>
           <Button
             onClick={(e) => {
               e.stopPropagation();
