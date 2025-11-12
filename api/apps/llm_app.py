@@ -15,12 +15,16 @@
 #
 import logging
 import json
+import os
 from flask import request
 from flask_login import login_required, current_user
-from api import settings
+from api.db.services.tenant_llm_service import LLMFactoriesService, TenantLLMService
+from api.db.services.llm_service import LLMService
+from api.utils.api_utils import server_error_response, get_data_error_result, validate_request
 from common.constants import StatusEnum, LLMType
-from api.utils.api_utils import get_allowed_llm_factories
+from api.db.db_models import TenantLLM
 from common.misc_utils import get_uuid
+from api.utils.api_utils import get_json_result, get_allowed_llm_factories
 from rag.utils.base64_image import test_image
 from rag.llm import EmbeddingModel, ChatModel, RerankModel, CvModel, TTSModel
 from api.db import PermissionActionType, PermissionTargetType, PermissionValue, ResourceType
@@ -39,7 +43,7 @@ from api.utils.permission_utils import has_permission_for_member
 def factories():
     try:
         fac = get_allowed_llm_factories()
-        fac = [f.to_dict() for f in fac if f.name not in ["Youdao", "FastEmbed", "BAAI"]]
+        fac = [f.to_dict() for f in fac if f.name not in ["Youdao", "FastEmbed", "BAAI", "Builtin"]]
         llms = LLMService.get_all()
         mdl_types = {}
         for m in llms:

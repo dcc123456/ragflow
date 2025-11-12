@@ -14,6 +14,8 @@ import {
 } from '@/hooks/llm-hooks';
 import { useFetchTenantInfo } from '@/hooks/user-setting-hooks';
 import { IAddLlmRequestBody } from '@/interfaces/request/llm';
+import { getRealModelName } from '@/utils/llm-util';
+import { useQueryClient } from '@tanstack/react-query';
 import { buildLlmId } from '@/utils/private-util';
 import { useCallback, useState } from 'react';
 import { ApiKeyPostBody } from '../interface';
@@ -24,13 +26,14 @@ export const useSubmitApiKey = () => {
   const [savingParams, setSavingParams] = useState<SavingParamsState>(
     {} as SavingParamsState,
   );
+  const [editMode, setEditMode] = useState(false);
   const { saveApiKey, loading } = useSaveApiKey();
   const {
     visible: apiKeyVisible,
     hideModal: hideApiKeyModal,
     showModal: showApiKeyModal,
   } = useSetModalState();
-
+  const queryClient = useQueryClient();
   const onApiKeySavingOk = useCallback(
     async (postBody: ApiKeyPostBody) => {
       const ret = await saveApiKey({
@@ -39,15 +42,18 @@ export const useSubmitApiKey = () => {
       });
 
       if (ret === 0) {
+        queryClient.invalidateQueries({ queryKey: ['llmList'] });
         hideApiKeyModal();
+        setEditMode(false);
       }
     },
-    [hideApiKeyModal, saveApiKey, savingParams],
+    [hideApiKeyModal, saveApiKey, savingParams, queryClient],
   );
 
   const onShowApiKeyModal = useCallback(
-    (savingParams: SavingParamsState) => {
+    (savingParams: SavingParamsState, isEdit = false) => {
       setSavingParams(savingParams);
+      setEditMode(isEdit);
       showApiKeyModal();
     },
     [showApiKeyModal, setSavingParams],
@@ -57,6 +63,7 @@ export const useSubmitApiKey = () => {
     saveApiKeyLoading: loading,
     initialApiKey: '',
     llmFactory: savingParams.llm_factory,
+    editMode,
     onApiKeySavingOk,
     apiKeyVisible,
     hideApiKeyModal,
@@ -109,6 +116,10 @@ export const useFetchSystemModelSettingOnMount = () => {
 
 export const useSubmitOllama = () => {
   const [selectedLlmFactory, setSelectedLlmFactory] = useState<string>('');
+  const [editMode, setEditMode] = useState(false);
+  const [initialValues, setInitialValues] = useState<
+    Partial<IAddLlmRequestBody> | undefined
+  >();
   const { addLlm, loading } = useAddLlm();
   const {
     visible: llmAddingVisible,
@@ -118,21 +129,49 @@ export const useSubmitOllama = () => {
 
   const onLlmAddingOk = useCallback(
     async (payload: IAddLlmRequestBody) => {
-      const ret = await addLlm(payload);
+      const cleanedPayload = { ...payload };
+      if (!cleanedPayload.api_key || cleanedPayload.api_key.trim() === '') {
+        delete cleanedPayload.api_key;
+      }
+
+      const ret = await addLlm(cleanedPayload);
       if (ret === 0) {
         hideLlmAddingModal();
+        setEditMode(false);
+        setInitialValues(undefined);
       }
     },
     [hideLlmAddingModal, addLlm],
   );
 
-  const handleShowLlmAddingModal = (llmFactory: string) => {
+  const handleShowLlmAddingModal = (
+    llmFactory: string,
+    isEdit = false,
+    modelData?: any,
+    detailedData?: any,
+  ) => {
     setSelectedLlmFactory(llmFactory);
+    setEditMode(isEdit);
+
+    if (isEdit && detailedData) {
+      const initialVals = {
+        llm_name: getRealModelName(detailedData.name),
+        model_type: detailedData.type,
+        api_base: detailedData.api_base || '',
+        max_tokens: detailedData.max_tokens || 8192,
+        api_key: '',
+      };
+      setInitialValues(initialVals);
+    } else {
+      setInitialValues(undefined);
+    }
     showLlmAddingModal();
   };
 
   return {
     llmAddingLoading: loading,
+    editMode,
+    initialValues,
     onLlmAddingOk,
     llmAddingVisible,
     hideLlmAddingModal,
@@ -413,6 +452,16 @@ export const useHandleDeleteLlm = (llmFactory: string) => {
   };
 
   return { handleDeleteLlm };
+};
+
+export const useHandleEnableLlm = (llmFactory: string) => {
+  const { enableLlm } = useEnableLlm();
+
+  const handleEnableLlm = (name: string, enable: boolean) => {
+    enableLlm({ llm_factory: llmFactory, llm_name: name, enable });
+  };
+
+  return { handleEnableLlm };
 };
 
 export const useHandleDeleteFactory = (llmFactory: string) => {

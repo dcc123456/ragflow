@@ -3,8 +3,9 @@ import {
   DynamicForm,
   DynamicFormRef,
   FormFieldConfig,
+  FormFieldType,
 } from '@/components/dynamic-form';
-import { Button } from '@/components/ui/button';
+import { BlockButton, Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal/modal';
 import {
   Sheet,
@@ -14,7 +15,7 @@ import {
 } from '@/components/ui/sheet';
 import { useSetModalState } from '@/hooks/common-hooks';
 import { useFetchAgent } from '@/hooks/use-agent-request';
-import { GobalVariableType } from '@/interfaces/database/agent';
+import { GlobalVariableType } from '@/interfaces/database/agent';
 import { cn } from '@/lib/utils';
 import { t } from 'i18next';
 import { Trash2 } from 'lucide-react';
@@ -81,34 +82,54 @@ export const GobalParamSheet = (props: IGobalParamModalProps) => {
 
   const { saveGraph, loading } = useSaveGraph();
 
-  const handleSubmit = (value: FieldValues) => {
+  const handleSubmit = async (value: FieldValues) => {
     const param = {
       ...(data.dsl?.variables || {}),
       [value.name]: value,
-    } as Record<string, GobalVariableType>;
-    saveGraph(undefined, {
+    } as Record<string, GlobalVariableType>;
+
+    const res = await saveGraph(undefined, {
       gobalVariables: param,
     });
-    if (!loading) {
-      setTimeout(() => {
-        refetch();
-      }, 500);
+
+    if (res.code === 0) {
+      refetch();
     }
     hideAddModal();
   };
 
-  const handleDeleteGobalVariable = (key: string) => {
+  const handleDeleteGobalVariable = async (key: string) => {
     const param = {
       ...(data.dsl?.variables || {}),
-    } as Record<string, GobalVariableType>;
+    } as Record<string, GlobalVariableType>;
     delete param[key];
-    saveGraph(undefined, {
+    const res = await saveGraph(undefined, {
       gobalVariables: param,
     });
-    refetch();
+    console.log('delete gobal variable-->', res);
+    if (res.code === 0) {
+      refetch();
+    }
   };
 
   const handleEditGobalVariable = (item: FieldValues) => {
+    fields.forEach((field) => {
+      if (field.name === 'value') {
+        switch (item.type) {
+          // [TypesWithArray.String]: FormFieldType.Textarea,
+          // [TypesWithArray.Number]: FormFieldType.Number,
+          // [TypesWithArray.Boolean]: FormFieldType.Checkbox,
+          case TypesWithArray.Boolean:
+            field.type = FormFieldType.Checkbox;
+            break;
+          case TypesWithArray.Number:
+            field.type = FormFieldType.Number;
+            break;
+          default:
+            field.type = FormFieldType.Textarea;
+        }
+      }
+    });
     setDefaultValues(item);
     showModal();
   };
@@ -121,13 +142,12 @@ export const GobalParamSheet = (props: IGobalParamModalProps) => {
         >
           <SheetHeader className="p-5">
             <SheetTitle className="flex items-center gap-2.5">
-              {t('flow.gobalVariable')}
+              {t('flow.conversationVariable')}
             </SheetTitle>
           </SheetHeader>
 
           <div className="px-5 pb-5">
-            <Button
-              variant={'secondary'}
+            <BlockButton
               onClick={() => {
                 setFields(GobalFormFields);
                 setDefaultValues(GobalVariableFormDefaultValues);
@@ -135,7 +155,7 @@ export const GobalParamSheet = (props: IGobalParamModalProps) => {
               }}
             >
               {t('flow.add')}
-            </Button>
+            </BlockButton>
           </div>
 
           <div className="flex flex-col gap-2 px-5 ">
@@ -182,7 +202,7 @@ export const GobalParamSheet = (props: IGobalParamModalProps) => {
           </div>
         </SheetContent>
         <Modal
-          title={t('flow.add') + t('flow.gobalVariable')}
+          title={t('flow.add') + t('flow.conversationVariable')}
           open={visible}
           onCancel={hideAddModal}
           showfooter={false}
