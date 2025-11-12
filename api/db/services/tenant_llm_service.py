@@ -21,13 +21,13 @@ from common import settings
 from common.constants import LLMType
 from peewee import JOIN
 
-from api import settings
 from api.db import PermissionValue, ResourceType, UserTenantRole
 from api.db.db_models import DB, LLMFactories, TenantLLM, Permission
 from api.db.services.common_service import CommonService
 from api.db.services.langfuse_service import TenantLangfuseService
 from api.db.services.user_service import TenantService, UserTenantService
 from common.misc_utils import get_uuid
+from common.constants import StatusEnum
 from rag.llm import ChatModel, CvModel, EmbeddingModel, RerankModel, Seq2txtModel, TTSModel
 
 

@@ -460,7 +460,7 @@ def list_app():
     tenants = UserTenantService.get_tenants_by_user_id(user_id=current_user.id)
 
     self_deployed = ["Youdao", "FastEmbed", "BAAI", "Ollama", "Xinference", "LocalAI", "LM-Studio", "GPUStack"]
-    weighted = ["Youdao", "FastEmbed", "BAAI"] if settings.LIGHTEN != 0 else []
+    weighted = ["Youdao", "FastEmbed", "BAAI"]
     model_type = request.args.get("model_type")
 
     for tenant in tenants:

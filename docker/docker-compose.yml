@@ -1,3 +1,6 @@
+include:
+  - ./docker-compose-base.yml
+
 services:
   ragflow:
     image: infiniflow-ai/ragflow:latest
