@@ -63,6 +63,9 @@ rabbitmq:
   api_port: 1673
   exchange: "test1"
 
+task_executor:
+  message_queue_type: 'rabbitmq'
+
 user_default_llm:
   factory: 'BAAI'
   api_key: ''

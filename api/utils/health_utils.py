@@ -166,7 +166,7 @@ def check_ragflow_server_alive():
 def check_task_executor_alive():
     task_executor_heartbeats = {}
     try:
-        task_executors = REDIS_CONN.smembers("TASKEXE")
+        task_executors = REDIS_CONN.smembers("RABBITMQ_WORKERS")
         now = datetime.now().timestamp()
         for task_executor_id in task_executors:
             heartbeats = REDIS_CONN.zrangebyscore(task_executor_id, now - 60 * 30, now)

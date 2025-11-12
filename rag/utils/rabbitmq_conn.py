@@ -20,7 +20,6 @@ class RabbitQueue:
 
     def __open__(self):
         try:
-            print(self.config, flush=True)
             credentials = pika.PlainCredentials(self.config["user"], self.config["password"])
             parameters = pika.ConnectionParameters(
                 host=self.config["host"],
