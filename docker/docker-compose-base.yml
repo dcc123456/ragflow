@@ -88,6 +88,25 @@ services:
     network_mode: "host"
     restart: always
 
+  prometheus:
+    image: prom/prometheus
+    hostname: ragflow-prometheus
+    container_name: ragflow-prometheus
+    volumes:
+      - ./prometheus:/etc/prometheus
+      - prometheus_data:/data
+    network_mode: "host"
+    restart: always
+
+  components-exporter:
+    image: infiniflow/ragflow-components-exporter:latest
+    hostname: ragflow-components-exporter
+    container_name: ragflow-components-exporter
+    volumes:
+      - components_exporter_data:/data
+    network_mode: "host"
+    restart: always
+
   # kibana:
   #   depends_on:
   #     es:
@@ -126,6 +145,7 @@ services:
     ports:
       - 1672:5672
       - 1673:15672
+      - 1674:15692
     environment:
       - RABBITMQ_DEFAULT_USER=${RABBITMQ_DEFAULT_USER}
       - RABBITMQ_DEFAULT_PASS=${RABBITMQ_DEFAULT_PASS}
@@ -152,6 +172,10 @@ volumes:
   esdata01:
     driver: local
   kibana_vol:
+    driver: local
+  components_exporter_data:
+    driver: local
+  prometheus_data:
     driver: local
 
 networks:

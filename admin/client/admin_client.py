@@ -40,6 +40,9 @@ sql_command: list_services
            | drop_user
            | alter_user
            | create_user
+           | create_user_with_resource_role
+           | create_user_with_system_role
+           | create_user_with_both_role
            | activate_user
            | list_datasets
            | list_agents
@@ -48,6 +51,7 @@ sql_command: list_services
            | alter_role
            | list_roles
            | show_role
+           | list_resources
            | grant_permission
            | revoke_permission
            | alter_user_role
@@ -94,6 +98,7 @@ FOR: "FOR"i
 RESOURCES: "RESOURCES"i
 ON: "ON"i
 SET: "SET"i
+AS: "AS"i
 VERSION: "VERSION"i
 
 list_services: LIST SERVICES ";"
@@ -107,6 +112,9 @@ drop_user: DROP USER quoted_string ";"
 alter_user: ALTER USER PASSWORD quoted_string quoted_string ";"
 show_user: SHOW USER quoted_string ";"
 create_user: CREATE USER quoted_string quoted_string ";"
+create_user_with_resource_role: CREATE USER quoted_string quoted_string ROLE quoted_string ";"
+create_user_with_system_role: CREATE USER quoted_string quoted_string AS quoted_string ";"
+create_user_with_both_role: CREATE USER quoted_string quoted_string ROLE quoted_string AS quoted_string ";"
 activate_user: ALTER USER ACTIVE quoted_string status ";"
 
 list_datasets: LIST DATASETS OF quoted_string ";"
@@ -187,7 +195,26 @@ class AdminTransformer(Transformer):
     def create_user(self, items):
         user_name = items[2]
         password = items[3]
-        return {"type": "create_user", "user_name": user_name, "password": password, "role": "user"}
+        return {"type": "create_user", "user_name": user_name, "password": password, "resource_role": "owner", "system_role": "user"}
+
+    def create_user_with_resource_role(self, items):
+        user_name = items[2]
+        password = items[3]
+        resource_role = items[5]
+        return {"type": "create_user", "user_name": user_name, "password": password, "resource_role": resource_role, "system_role": "user"}
+
+    def create_user_with_system_role(self, items):
+        user_name = items[2]
+        password = items[3]
+        system_role = items[5]
+        return {"type": "create_user", "user_name": user_name, "password": password, "resource_role": "owner", "system_role": system_role}
+
+    def create_user_with_both_role(self, items):
+        user_name = items[2]
+        password = items[3]
+        resource_role = items[5]
+        system_role = items[7]
+        return {"type": "create_user", "user_name": user_name, "password": password, "resource_role": resource_role, "system_role": system_role}
 
     def activate_user(self, items):
         user_name = items[3]
@@ -225,6 +252,9 @@ class AdminTransformer(Transformer):
     def show_role(self, items):
         role_name = items[2]
         return {"type": "show_role", "role_name": role_name}
+
+    def list_resources(self, items):
+        return {"type": "list_resources"}
 
     def grant_permission(self, items):
         action_list = items[1]
@@ -555,6 +585,8 @@ class AdminCLI(Cmd):
                 self._list_roles(command_dict)
             case 'show_role':
                 self._show_role(command_dict)
+            case 'list_resources':
+                self._list_resources(command_dict)
             case 'grant_permission':
                 self._grant_permission(command_dict)
             case 'revoke_permission':
@@ -669,12 +701,21 @@ class AdminCLI(Cmd):
         user_name: str = user_name_tree.children[0].strip("'\"")
         password_tree: Tree = command['password']
         password: str = password_tree.children[0].strip("'\"")
-        role: str = command['role']
-        print(f"Create user: {user_name}, password: {password}, role: {role}")
+        if isinstance(command['resource_role'], str):
+            resource_role: str = command['resource_role']
+        else:
+            resource_role_tree: Tree = command['resource_role']
+            resource_role: str = resource_role_tree.children[0].strip("'\"")
+        if isinstance(command['system_role'], str):
+            system_role: str = command['system_role']
+        else:
+            system_role_tree: Tree = command['system_role']
+            system_role: str = system_role_tree.children[0].strip("'\"")
+        print(f"Create user: {user_name}, password: {password}, resource_role: {resource_role}, system_role: {system_role}")
         url = f'http://{self.host}:{self.port}/api/v1/admin/users'
         response = self.session.post(
             url,
-            json={'user_name': user_name, 'password': encrypt(password), 'role': role}
+            json={'username': user_name, 'password': encrypt(password), 'resource_role': resource_role, 'system_role': system_role}
         )
         res_json = response.json()
         if response.status_code == 200:
@@ -745,7 +786,10 @@ class AdminCLI(Cmd):
         )
         res_json = response.json()
         if response.status_code == 200:
-            self._print_table_simple(res_json['data'])
+            if res_json['data']['success']:
+                self._print_table_simple(res_json['data']['role_info'])
+            else:
+                print(res_json['message'])
         else:
             print(f"Fail to create role {role_name}, code: {res_json['code']}, message: {res_json['message']}")
 
@@ -757,7 +801,7 @@ class AdminCLI(Cmd):
         response = self.session.delete(url)
         res_json = response.json()
         if response.status_code == 200:
-            self._print_table_simple(res_json['data'])
+            print(res_json['data']['message'])
         else:
             print(f"Fail to drop role {role_name}, code: {res_json['code']}, message: {res_json['message']}")
 
@@ -775,7 +819,7 @@ class AdminCLI(Cmd):
         )
         res_json = response.json()
         if response.status_code == 200:
-            self._print_table_simple(res_json['data'])
+            print(res_json['data']['message'])
         else:
             print(
                 f"Fail to update role {role_name} with description: {desc_str}, code: {res_json['code']}, message: {res_json['message']}")
@@ -786,7 +830,10 @@ class AdminCLI(Cmd):
         response = self.session.get(url)
         res_json = response.json()
         if response.status_code == 200:
-            self._print_table_simple(res_json['data'])
+            total = res_json['data']['total']
+            role_noun = 'role' if total == 1 else 'roles'
+            print(f"Found {total} {role_noun}.")
+            self._print_table_simple(res_json['data']['roles'])
         else:
             print(f"Fail to list roles, code: {res_json['code']}, message: {res_json['message']}")
 
@@ -798,9 +845,26 @@ class AdminCLI(Cmd):
         response = self.session.get(url)
         res_json = response.json()
         if response.status_code == 200:
-            self._print_table_simple(res_json['data'])
+            data = res_json['data']
+            role_info = {
+                'role_name': data['role']['role_name'],
+                'description': data['role']['description']
+            }
+            for resource, permissions in data['permissions'].items():
+                role_info.update({resource: ', '.join([permission_name.upper() for permission_name, enable in permissions.items() if enable])})
+            self._print_table_simple(role_info)
         else:
-            print(f"Fail to list roles, code: {res_json['code']}, message: {res_json['message']}")
+            print(f"Fail to show roles, code: {res_json['code']}, message: {res_json['message']}")
+
+    def _list_resources(self, command):
+        url = f'http://{self.host}:{self.port}/api/v1/admin/roles/resource'
+        response = self.session.get(url)
+        res_json = response.json()
+        if response.status_code == 200:
+            resource_types = res_json['data']['resource_types']
+            self._print_table_simple({'resource_types': ', '.join(resource_types)})
+        else:
+            print(f"Fail to list resources, code: {res_json['code']}, message: {res_json['message']}")
 
     def _grant_permission(self, command):
         role_name_tree: Tree = command['role_name']
@@ -813,14 +877,15 @@ class AdminCLI(Cmd):
             action_str: str = action_tree.children[0].strip("'\"")
             actions.append(action_str)
         print(f"grant role_name: {role_name_str}, resource: {resource_str}, actions: {actions}")
+        new_permissions = {resource_str: {action.lower(): True for action in actions}}
         url = f'http://{self.host}:{self.port}/api/v1/admin/roles/{role_name_str}/permission'
         response = self.session.post(
             url,
-            json={'actions': actions, 'resource': resource_str}
+            json={'new_permissions': new_permissions}
         )
         res_json = response.json()
         if response.status_code == 200:
-            self._print_table_simple(res_json['data'])
+            print(res_json['data']['message'])
         else:
             print(
                 f"Fail to grant role {role_name_str} with {actions} on {resource_str}, code: {res_json['code']}, message: {res_json['message']}")
@@ -836,14 +901,15 @@ class AdminCLI(Cmd):
             action_str: str = action_tree.children[0].strip("'\"")
             actions.append(action_str)
         print(f"revoke role_name: {role_name_str}, resource: {resource_str}, actions: {actions}")
+        revoke_permissions = {resource_str: {action.lower(): False for action in actions}}
         url = f'http://{self.host}:{self.port}/api/v1/admin/roles/{role_name_str}/permission'
         response = self.session.delete(
             url,
-            json={'actions': actions, 'resource': resource_str}
+            json={'revoke_permissions': revoke_permissions}
         )
         res_json = response.json()
         if response.status_code == 200:
-            self._print_table_simple(res_json['data'])
+            print(res_json['data']['message'])
         else:
             print(
                 f"Fail to revoke role {role_name_str} with {actions} on {resource_str}, code: {res_json['code']}, message: {res_json['message']}")
@@ -861,7 +927,7 @@ class AdminCLI(Cmd):
         )
         res_json = response.json()
         if response.status_code == 200:
-            self._print_table_simple(res_json['data'])
+            print(res_json['data']['message'])
         else:
             print(
                 f"Fail to alter user: {user_name_str} to role {role_name_str}, code: {res_json['code']}, message: {res_json['message']}")
@@ -874,7 +940,16 @@ class AdminCLI(Cmd):
         response = self.session.get(url)
         res_json = response.json()
         if response.status_code == 200:
-            self._print_table_simple(res_json['data'])
+            data = res_json['data']
+            user_permission_info = {
+                'username': data['user']['username'],
+                'role': data['user']['role'],
+                'description': data['user']['description'],
+            }
+            for resource, permissions in data['role_permissions'].items():
+                user_permission_info.update({resource: ', '.join(
+                    [permission_name.upper() for permission_name, enable in permissions.items() if enable])})
+            self._print_table_simple(user_permission_info)
         else:
             print(
                 f"Fail to show user: {user_name_str} permission, code: {res_json['code']}, message: {res_json['message']}")
@@ -911,12 +986,22 @@ Commands:
   RESTART SERVICE <service>
   LIST USERS
   SHOW USER <user>
+  SHOW USER PERMISSION <user>
   DROP USER <user>
   CREATE USER <user> <password>
   ALTER USER PASSWORD <user> <new_password>
   ALTER USER ACTIVE <user> <on/off>
+  ALTER USER <user> SET ROLE <role>
   LIST DATASETS OF <user>
   LIST AGENTS OF <user>
+  LIST ROLES
+  SHOW ROLE <role>
+  CREATE ROLE <role> DESCRIPTION <description>
+  ALTER ROLE <role> DESCRIPTION <description>
+  DROP ROLE <role>
+  LIST RESOURCES
+  GRANT <action_list> ON <resource> TO ROLE <role>
+  REVOKE <action_list> ON <resource> FROM ROLE <role>
 
 Meta Commands:
   \\?, \\h, \\help     Show this help

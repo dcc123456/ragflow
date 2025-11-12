@@ -17,10 +17,12 @@ from datetime import datetime
 
 import peewee
 
-from api.db import VALID_RESOURCE_TYPES, PermissionValue, ResourceType, StatusEnum
+from api.db import VALID_RESOURCE_TYPES, PermissionValue, ResourceType
 from api.db.db_models import DB, Permission, PermissionChangeLog
 from api.db.services.common_service import CommonService
-from api.utils import current_timestamp, datetime_format, get_uuid
+from common.misc_utils import get_uuid
+from common.time_utils import current_timestamp, datetime_format
+from common.constants import StatusEnum
 
 
 class PermissionService(CommonService):

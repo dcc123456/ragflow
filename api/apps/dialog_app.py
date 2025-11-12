@@ -23,7 +23,7 @@ from flask_login import current_user, login_required
 from api.db.services import duplicate_name
 
 from common.constants import StatusEnum
-from api.db import PermissionActionType, PermissionTargetType, PermissionValue, ResourceType, StatusEnum
+from api.db import PermissionActionType, PermissionTargetType, PermissionValue, ResourceType
 from api.db.services.dialog_service import DialogService
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.tenant_llm_service import TenantLLMService

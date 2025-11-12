@@ -1,0 +1,21 @@
+# rabbitmq-basic-queue-alerts.yml
+groups:
+- name: rabbitmq_queue_alerts
+  rules:
+  # Alert 1: Queue message backlog alert
+  # Triggered when ready messages exceed threshold
+  - alert: RabbitMQQueueBacklogHigh
+    expr: |
+      rabbitmq_queue_messages_ready > 512
+    for: 5m
+    labels:
+      severity: warning
+      component: rabbitmq
+      service: message-queue
+    annotations:
+      summary: "RabbitMQ Queue Backlog High (instance {{ $labels.instance }})"
+      description: |
+        Queue {{ $labels.queue }} has high message backlog
+        Current backlog: {{ $value }} messages
+        Virtual Host: {{ $labels.vhost }}
+        Action: Check consumer status and processing rate

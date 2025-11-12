@@ -3,16 +3,17 @@ from flask import request
 from api.db.services.dialog_service import DialogService
 from flask_login import current_user, login_required
 
-from api.db import VALID_RESOURCE_TYPES, PermissionActionType, PermissionTargetType, PermissionValue, ResourceType, StatusEnum
+from api.db import VALID_RESOURCE_TYPES, PermissionActionType, PermissionTargetType, PermissionValue, ResourceType
 from api.db.db_models import DB
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.tenant_llm_service import TenantLLMService
 from api.db.services.permission_service import PermissionChangeLogService, PermissionService
 from api.db.services.team_service import DepartmentMemberService, DepartmentService, GroupMemberService, GroupService
 from api.db.services.user_service import UserService, UserTenantService
-from api.utils import get_uuid
 from api.utils.api_utils import get_data_error_result, get_json_result, server_error_response, validate_request
 from api.utils.permission_utils import has_permission_for_member, is_valid_permission, wrap_permission_info
+from common.misc_utils import get_uuid
+from common.constants import StatusEnum
 
 
 @manager.route("/update", methods=["PUT"])  # noqa: F821

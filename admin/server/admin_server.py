@@ -29,6 +29,7 @@ from common.config_utils import show_configs
 from common import settings
 from config import load_configurations, SERVICE_CONFIGS
 from auth import init_default_admin, setup_auth
+from init_data import init_user_role
 from flask_session import Session
 from flask_login import LoginManager
 from common.versions import get_ragflow_version
@@ -60,6 +61,7 @@ if __name__ == '__main__':
     settings.init_settings()
     setup_auth(login_manager)
     init_default_admin()
+    init_user_role()
     SERVICE_CONFIGS.configs = load_configurations(SERVICE_CONF)
 
     try:

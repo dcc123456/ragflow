@@ -86,9 +86,10 @@ def create_user():
 
         username = data['username']
         password = data['password']
-        role = data.get('role', 'user')
+        resource_role = data.get('resource_role', 'owner')
+        system_role = data.get('system_role', 'user')
 
-        res = UserMgr.create_user(username, password, role)
+        res = UserMgr.create_user(username, password, resource_role, system_role)
         if res["success"]:
             user_info = res["user_info"]
             user_info.pop("password")  # do not return password
@@ -322,11 +323,9 @@ def get_role_permission(role_name: str):
 def grant_role_permission(role_name: str):
     try:
         data = request.get_json()
-        if not data or 'actions' not in data or 'resource' not in data:
+        if not data or 'new_permissions' not in data:
             return error_response("Permission is required", 400)
-        actions: list = data['actions']
-        resource: str = data['resource']
-        res = RoleMgr.grant_role_permission(role_name, actions, resource)
+        res = RoleMgr.grant_role_permission(role_name, data['new_permissions'])
         return success_response(res)
     except Exception as e:
         return error_response(str(e), 500)
@@ -338,14 +337,20 @@ def grant_role_permission(role_name: str):
 def revoke_role_permission(role_name: str):
     try:
         data = request.get_json()
-        if not data or 'actions' not in data or 'resource' not in data:
+        if not data or 'revoke_permissions' not in data:
             return error_response("Permission is required", 400)
-        actions: list = data['actions']
-        resource: str = data['resource']
-        res = RoleMgr.revoke_role_permission(role_name, actions, resource)
+        res = RoleMgr.revoke_role_permission(role_name, data['revoke_permissions'])
         return success_response(res)
     except Exception as e:
         return error_response(str(e), 500)
+
+
+@admin_bp.route('/roles/resource', methods=['GET'])
+@login_required
+@check_admin_auth
+def list_roles_resource():
+    data = RoleMgr.list_resources()
+    return success_response({"resource_types": data})
 
 
 @admin_bp.route('/users/<user_name>/role', methods=['PUT'])

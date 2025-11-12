@@ -22,7 +22,6 @@ from flask import request
 from flask_login import current_user, login_required
 
 from api import settings
-from api.db import LLMType, ParserType
 from api.db.services.billing_service import TenantPlanService
 from api.db.services.dialog_service import meta_filter
 from api.db.services.document_service import DocumentService

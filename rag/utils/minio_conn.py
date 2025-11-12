@@ -13,14 +13,13 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 #
-
+import hashlib
 import logging
 import time
 from minio import Minio
 from minio.commonconfig import CopySource
 from minio.error import S3Error
 from io import BytesIO
-from api.db.services.user_service import TenantService
 from common.decorator import singleton
 from common import settings
 
@@ -65,9 +64,14 @@ class RAGFlowMinio:
                                  )
         return r
 
+    @staticmethod
+    def user_gateway(tenant_id):
+        hash_obj = hashlib.sha256(tenant_id.encode("utf-8"))
+        return int(hash_obj.hexdigest(), 16)%len(settings.MINIO)
+
     def put(self, bucket, fnm, binary, tenant_id=None):
         for _ in range(3):
-            i = TenantService.user_gateway(tenant_id)
+            i = self.user_gateway(tenant_id)
             try:
                 if not self.conn[i].bucket_exists(bucket):
                     self.conn[i].make_bucket(bucket)
@@ -84,7 +88,7 @@ class RAGFlowMinio:
 
     def rm(self, bucket, fnm, tenant_id=None):
         try:
-            i = TenantService.user_gateway(tenant_id)
+            i = self.user_gateway(tenant_id)
             self.conn[i].remove_object(bucket, fnm)
         except Exception as e:
             logging.error(f"Fail rm {bucket}/{fnm}: " + str(e))
@@ -103,7 +107,7 @@ class RAGFlowMinio:
 
     def get(self, bucket, filename, tenant_id=None):
         for _ in range(1):
-            i = TenantService.user_gateway(tenant_id)
+            i = self.user_gateway(tenant_id)
             try:
                 r = self.conn[i].get_object(bucket, filename)
                 logging.info(f"Successfully get {bucket}/{filename}({i})")
@@ -118,7 +122,7 @@ class RAGFlowMinio:
 
     def obj_exist(self, bucket, filename, tenant_id):
         try:
-            i = TenantService.user_gateway(tenant_id)
+            i = self.user_gateway(tenant_id)
             if self.conn[i].stat_object(bucket, filename):return True
             return False
         except Exception as e:
@@ -128,7 +132,7 @@ class RAGFlowMinio:
     def get_presigned_url(self, bucket, fnm, expires, tenant_id=None):
         for _ in range(3):
             try:
-                i = TenantService.user_gateway(tenant_id)
+                i = self.user_gateway(tenant_id)
                 return self.conn[i].get_presigned_url("GET", bucket, fnm, expires)
             except Exception as e:
                 logging.error(f"fail get {bucket}/{fnm}: " + str(e))
@@ -138,7 +142,7 @@ class RAGFlowMinio:
 
     def remove_bucket(self, bucket, tenant_id=None):
         try:
-            i = TenantService.user_gateway(tenant_id)
+            i = self.user_gateway(tenant_id)
             if self.conn[i].bucket_exists(bucket):
                 objects_to_delete = self.conn[i].list_objects(bucket, recursive=True)
                 for obj in objects_to_delete:
@@ -149,7 +153,7 @@ class RAGFlowMinio:
 
     def copy(self, src_bucket, src_path, dest_bucket, dest_path, tenant_id=None):
         try:
-            i = TenantService.user_gateway(tenant_id)
+            i = self.user_gateway(tenant_id)
             if not self.conn[i].bucket_exists(dest_bucket):
                 self.conn[i].make_bucket(dest_bucket)
 

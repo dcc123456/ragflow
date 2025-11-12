@@ -17,60 +17,232 @@ import logging
 
 from typing import Dict, Any
 
-from api.common.exceptions import AdminException
+from api.common.exceptions import AdminException, RoleAlreadyExistsError, RoleNotFoundError, UserNotFoundError
+from api.db import PermissionOperationEnum, ResourceTypeEnum
+from api.db.services.user_service import UserService
+from api.db.services.role_service import RoleService
+from api.db.joint_services.user_role_service import get_role_permissions_by_role_id, upsert_role_actions, delete_role_by_id
 
 
 class RoleMgr:
     @staticmethod
+    def list_resources():
+        return [resource_type.name for resource_type in ResourceTypeEnum]
+
+    @staticmethod
     def create_role(role_name: str, description: str):
-        error_msg = f"not implement: create role: {role_name}, description: {description}"
-        logging.error(error_msg)
-        raise AdminException(error_msg)
+        if not role_name:
+            raise AdminException("Role name cannot be empty!")
+        # Check if the role name is already exist
+        if RoleService.get_by_role_name(role_name):
+            raise RoleAlreadyExistsError(role_name)
+        role_info = {
+            "role_name": role_name,
+            "description": description
+        }
+        try:
+            if RoleService.create_role(role_info):
+                inserted_roles = RoleService.get_by_role_name(role_name)
+                inserted_role = inserted_roles[0]
+                return {
+                    "success": True,
+                    "role_info": {
+                        "id": inserted_role["id"],
+                        "role_name": inserted_role["role_name"],
+                        "description": inserted_role["description"]
+                    }
+                }
+            else:
+                return {
+                    "success": False,
+                    "message": "Create role failed."
+                }
+        except Exception as e:
+            logging.error(e)
+            return {
+                "success": False,
+                "message": str(e)
+            }
 
     @staticmethod
     def update_role_description(role_name: str, description: str) -> Dict[str, Any]:
-        error_msg = f"not implement: update role: {role_name} with description: {description}"
-        logging.error(error_msg)
-        raise AdminException(error_msg)
+        if not role_name:
+            raise AdminException("Role name cannot be empty!")
+        # Check if the role exist
+        roles = RoleService.get_by_role_name(role_name)
+        if not roles:
+            raise RoleNotFoundError(role_name)
+        if len(roles) > 1:
+            raise AdminException(f"More than one role {role_name} found!")
+        role = roles[0]
+        if description == role["description"]:
+            return {
+                "success": True,
+                "message": "Same description, no need to update!"
+            }
+        RoleService.update_role_description(role["id"], description)
+        return {
+            "success": True,
+            "message": "Description updated successfully!"
+        }
 
     @staticmethod
     def delete_role(role_name: str) -> Dict[str, Any]:
-        error_msg = f"not implement: drop role: {role_name}"
-        logging.error(error_msg)
-        raise AdminException(error_msg)
+        roles = RoleService.get_by_role_name(role_name)
+        if not roles:
+            raise RoleNotFoundError(role_name)
+        if len(roles) > 1:
+            raise AdminException(f"More than one role {role_name} found!")
+        role = roles[0]
+        user_in_use = UserService.query(role_id=role["id"])
+        if user_in_use:
+            user_noun = 'user' if len(user_in_use) == 1 else 'users'
+            raise AdminException(f"Role {role_name} is in use, {len(user_in_use)} {user_noun} are {role_name}, cannot delete it!")
+        return delete_role_by_id(role["id"])
 
     @staticmethod
     def list_roles() -> Dict[str, Any]:
-        error_msg = "not implement: list roles"
-        logging.error(error_msg)
-        raise AdminException(error_msg)
+        roles = RoleService.get_all_roles()
+        return {
+            "roles": [{
+                "id": role["id"],
+                "role_name": role["role_name"],
+                "description": role["description"],
+                "create_date": role["create_date"],
+                "update_date": role["update_date"]
+            } for role in roles],
+            "total": len(roles)
+        }
 
     @staticmethod
     def get_role_permission(role_name: str) -> Dict[str, Any]:
-        error_msg = f"not implement: show role {role_name}"
-        logging.error(error_msg)
-        raise AdminException(error_msg)
+        roles = RoleService.get_by_role_name(role_name)
+        if not roles:
+            raise RoleNotFoundError(role_name)
+        if len(roles) > 1:
+            raise AdminException(f"More than one role {role_name} found!")
+        role = roles[0]
+        permissions = get_role_permissions_by_role_id(role["id"])
+        return {
+            "role": {
+                "id": role["id"],
+                "role_name": role["role_name"],
+                "description": role["description"],
+            },
+            "permissions": permissions
+        }
 
     @staticmethod
-    def grant_role_permission(role_name: str, actions: list, resource: str) -> Dict[str, Any]:
-        error_msg = f"not implement: grant role {role_name} actions: {actions} on {resource}"
-        logging.error(error_msg)
-        raise AdminException(error_msg)
+    def grant_role_permission(role_name: str, new_permissions: dict) -> Dict[str, Any]:
+        """
+
+        Args:
+            role_name: name of the role
+            new_permissions: {
+                "dataset": {
+                    "enable": true,
+                    "read": true,
+                    "write": true,
+                    "share": false
+                },
+                "file": {
+                    "enable": true,
+                    "read": true,
+                    "write": true
+                },
+                "agent": {
+                    "enable": true,
+                    "read": true,
+                }
+            } will grant permissions that are set to 'true'
+
+        Returns:
+
+        """
+        return upsert_role_actions(role_name, new_permissions, PermissionOperationEnum.GRANT.value)
 
     @staticmethod
-    def revoke_role_permission(role_name: str, actions: list, resource: str) -> Dict[str, Any]:
-        error_msg = f"not implement: revoke role {role_name} actions: {actions} on {resource}"
-        logging.error(error_msg)
-        raise AdminException(error_msg)
+    def revoke_role_permission(role_name: str, revoke_permissions: dict) -> Dict[str, Any]:
+        """
+
+        Args:
+            role_name: name of the role
+            revoke_permissions: {
+                "dataset": {
+                    "enable": true,
+                    "read": true,
+                    "write": false,
+                    "share": false
+                },
+                "file": {
+                    "enable": true,
+                    "read": true,
+                    "write": false
+                },
+                "agent": {
+                    "enable": true,
+                    "read": true,
+                }
+            } will revoke permissions that are set to 'false'
+
+        Returns:
+
+        """
+        return upsert_role_actions(role_name, revoke_permissions, PermissionOperationEnum.REVOKE.value)
 
     @staticmethod
     def update_user_role(user_name: str, role_name: str) -> Dict[str, Any]:
-        error_msg = f"not implement: update user role: {user_name} to role {role_name}"
-        logging.error(error_msg)
-        raise AdminException(error_msg)
+        # check user
+        users = UserService.query_user_by_email(user_name)
+        if not users:
+            raise UserNotFoundError(user_name)
+        if len(users) > 1:
+            raise AdminException(f"More than one user {user_name} found!")
+        user = users[0]
+
+        roles = RoleService.get_by_role_name(role_name)
+        if not roles:
+            raise RoleNotFoundError(role_name)
+        if len(roles) > 1:
+            raise AdminException(f"More than one role {role_name} found!")
+        role = roles[0]
+        if user.role_id == role["id"]:
+            return {
+                "success": True,
+                "message": f"User {user_name} has already updated to role {role_name}."
+            }
+
+        try:
+            UserService.update_user(user.id, {"role_id": role["id"]})
+            return {
+                "success": True,
+                "message": "User updated successfully!"
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "message": str(e)
+            }
 
     @staticmethod
     def get_user_permission(user_name: str) -> Dict[str, Any]:
-        error_msg = f"not implement: get user permission: {user_name}"
-        logging.error(error_msg)
-        raise AdminException(error_msg)
+        # check user
+        users = UserService.query_user_by_email(user_name)
+        if not users:
+            raise UserNotFoundError(user_name)
+        if len(users) > 1:
+            raise AdminException(f"More than one user {user_name} found!")
+        user = users[0]
+        _, role = RoleService.get_by_id(user.role_id)
+        if not role:
+            raise RoleNotFoundError(user.role_id)
+        permissions = get_role_permissions_by_role_id(user.role_id)
+        return {
+            "user": {
+                "id": user.id,
+                "username": user.email,
+                "role": role.role_name,
+                "description": role.description,
+            },
+            "role_permissions": permissions
+        }

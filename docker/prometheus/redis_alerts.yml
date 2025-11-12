@@ -1,0 +1,54 @@
+groups:
+  - name: redis_alerts
+    rules:
+      # Redis Instance Down
+      - alert: RedisDown
+        expr: redis_up == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: redis
+        annotations:
+          summary: "Redis instance is down"
+          description: "Redis instance at {{ $labels.instance }} has been down for more than 1 minute. Immediate investigation is required."
+          impact: "Application may experience errors or degraded performance due to Redis unavailability."
+          action: "Check Redis service status, network connectivity, and server resources."
+
+      # High Memory Usage
+      - alert: RedisMemoryUsageHigh
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.85
+        for: 5m
+        labels:
+          severity: warning
+          service: redis
+        annotations:
+          summary: "Redis memory usage is high"
+          description: "Redis instance {{ $labels.instance }} memory usage is at {{ $value | humanizePercentage }} for more than 5 minutes."
+          impact: "Redis may become unresponsive or start evicting keys if memory limit is reached."
+          action: "Investigate memory usage patterns, consider increasing maxmemory or optimizing data structures."
+
+      # Critical Memory Usage
+      - alert: RedisMemoryUsageCritical
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.95
+        for: 2m
+        labels:
+          severity: critical
+          service: redis
+        annotations:
+          summary: "Redis memory usage is critical"
+          description: "Redis instance {{ $labels.instance }} memory usage is at {{ $value | humanizePercentage }}. Eviction may occur soon."
+          impact: "Redis may start evicting keys, leading to data loss and application errors."
+          action: "Immediate action required: Increase memory, optimize data, or scale horizontally."
+
+      # High CPU Usage
+      - alert: RedisHighCPU
+        expr: rate(redis_cpu_sys_seconds_total[5m]) + rate(redis_cpu_user_seconds_total[5m]) > 0.8
+        for: 3m
+        labels:
+          severity: warning
+          service: redis
+        annotations:
+          summary: "Redis CPU usage is high"
+          description: "Redis instance {{ $labels.instance }} CPU usage is at {{ $value | humanizePercentage }}."
+          impact: "Redis performance may degrade, affecting application response times."
+          action: "Investigate expensive commands and consider scaling resources."

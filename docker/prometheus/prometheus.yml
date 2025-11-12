@@ -1,0 +1,80 @@
+# my global config
+global:
+  scrape_interval: 60s # Set the scrape interval to every 15 seconds. Default is every 1 minute.
+  evaluation_interval: 60s # Evaluate rules every 15 seconds. The default is every 1 minute.
+  # scrape_timeout is set to the global default (10s).
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          # - alertmanager:9093
+
+# Load rules once and periodically evaluate them according to the global 'evaluation_interval'.
+rule_files:
+#  - "alerts.yml"
+  - "rabbitmq_alerts.yml"
+  - "minio_alerts.yml"
+  - "minio_throughput_recording.yml"
+  - "minio_throughput_alerts.yml"
+  - "minio_disk_throughput_alerts.yml"
+  - "mysql_alerts.yml"
+  - "redis_alerts.yml"
+  - "es_alerts.yml"
+
+# A scrape configuration containing exactly one endpoint to scrape:
+# Here it's Prometheus itself.
+scrape_configs:
+  # The job name is added as a label `job=<job_name>` to any timeseries scraped from this config.
+  - job_name: "prometheus"
+
+    # metrics_path defaults to '/metrics'
+    # scheme defaults to 'http'.
+
+    static_configs:
+      - targets: ["localhost:9090"]
+       # The label name is added as a label `label_name=<label_value>` to any timeseries scraped from this config.
+        labels:
+          app: "prometheus"
+
+
+  - job_name: minio-job
+    bearer_token: eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJwcm9tZXRoZXVzIiwic3ViIjoicmFnX2Zsb3ciLCJleHAiOjQ5MTU0ODExMjl9.J5ohqqeYTc7hnYPVBr7nsalEBmifVjnTD3LdalNxTeaaOYunEGVwUSDlHyVPcdziBbwHIJw3Yc3p4cTQN8-vuw
+    metrics_path: /minio/v2/metrics/cluster
+    scheme: http
+    static_configs:
+      - targets: ['localhost:9000']
+
+  - job_name: 'rabbitmq'
+    static_configs:
+     - targets: ['localhost:1674']
+       labels:
+         app: "rabbitmq"
+    metrics_path: "/metrics"
+    scrape_interval: 30s
+
+  - job_name: 'mysqld'
+    static_configs:
+      - targets: ['localhost:9104']
+        labels:
+          instance: 'localhost:5455'
+          mysql_host: 'localhost'
+          mysql_port: '5455'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['localhost:9121']
+        labels:
+          instance: 'localhost:6379'
+    metrics_path: /metrics
+
+  - job_name: 'elasticsearch'
+    static_configs:
+      - targets: ['localhost:9114']
+        labels: 
+          instance: 'localhost:9200'
+    scrape_interval: 30s
+    metrics_path: '/metrics'

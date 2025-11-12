@@ -18,7 +18,7 @@ from api.db.db_models import BillingPlan, TenantPlan
 from api.db.services.common_service import CommonService
 from api.db.services.user_service import UserTenantService
 from api.db.services.knowledgebase_service import KnowledgebaseService
-from api.utils import get_uuid
+from common.misc_utils import get_uuid
 import logging
 import copy
 

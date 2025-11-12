@@ -18,7 +18,7 @@ import numpy as np
 from PIL import ImageDraw
 from PIL import Image
 import torch
-from api.utils.file_utils import traversal_files, get_project_base_directory
+from common.file_utils import traversal_files, get_project_base_directory
 from deepdoc.vision import Recognizer
 
 

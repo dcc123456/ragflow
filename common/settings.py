@@ -38,7 +38,7 @@ from rag.utils.oss_conn import RAGFlowOSS
 
 from rag.nlp import search
 
-
+DEFAULT_ROLE = os.environ.get("DEFAULT_ROLE", "owner")
 ENABLE_WHITELIST = int(os.environ.get('ENABLE_WHITELIST', "0"))
 ENABLE_ADMIN=int(os.environ.get("ENABLE_ADMIN", "0"))
 BILLING_ENABLED = int(os.environ.get('BILLING_ENABLED', "0"))
@@ -278,7 +278,8 @@ def init_settings():
 
     global RABBIT_CONF
     try:
-        RABBIT_CONF = decrypt_database_config(name="rabbitmq")
+        RABBIT_CONF = get_base_config("rabbitmq", {})
+
     except Exception:
         RABBIT_CONF = {}
         pass
