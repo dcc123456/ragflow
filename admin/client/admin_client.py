@@ -120,6 +120,7 @@ activate_user: ALTER USER ACTIVE quoted_string status ";"
 list_datasets: LIST DATASETS OF quoted_string ";"
 list_agents: LIST AGENTS OF quoted_string ";"
 
+list_resources: LIST RESOURCES ";"
 create_role: CREATE ROLE identifier [DESCRIPTION quoted_string] ";"
 drop_role: DROP ROLE identifier ";"
 alter_role: ALTER ROLE identifier SET DESCRIPTION quoted_string ";"

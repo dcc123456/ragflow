@@ -17,7 +17,8 @@ from datetime import datetime
 
 from api.db.db_models import DB, Role, RoleResource
 from api.db.services.common_service import CommonService
-from api.utils import get_uuid, current_timestamp, datetime_format
+from common.misc_utils import get_uuid
+from common.time_utils import current_timestamp, datetime_format
 
 
 class RoleService(CommonService):
