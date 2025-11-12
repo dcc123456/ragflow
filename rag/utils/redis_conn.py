@@ -69,7 +69,6 @@ class RedisDB:
     """
 
     def __init__(self):
-        print(f"redis config: {REDIS}", flush=True)
         self.REDIS = None
         self.config = REDIS
         self.__open__()
