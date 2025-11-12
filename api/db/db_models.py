@@ -1314,10 +1314,6 @@ def migrate_db():
     except Exception:
         pass
     try:
-        migrate(migrator.add_column("connector2kb", "auto_parse", CharField(max_length=1, null=False, default="1", index=False)))
-    except Exception:
-        pass
-    try:
         migrate(migrator.add_column("llm_factories", "rank", IntegerField(default=0, index=False)))
     except Exception:
         pass
