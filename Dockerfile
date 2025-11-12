@@ -11,6 +11,7 @@ RUN /root/miniconda3/envs/py11/bin/pip install --no-cache-dir --force-reinstall 
 RUN /root/miniconda3/envs/py11/bin/pip install flask-mail>=0.10.0 flask_limiter
 RUN /root/miniconda3/envs/py11/bin/pip install langfuse>=2.60.0 ultralytics
 RUN /root/miniconda3/envs/py11/bin/pip install olefile tencentcloud-sdk-python==3.0.1478
+RUN /root/miniconda3/envs/py11/bin/pip install google_auth_oauthlib mypy_boto3_s3 slack_sdk atlassian-python-api dropbox jira Office365-REST-Python-Client
 
 COPY web web
 RUN cd ./web && npm i && npm run build
