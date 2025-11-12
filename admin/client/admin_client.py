@@ -429,6 +429,7 @@ class AdminCLI(Cmd):
             return data
         # handle task_executor heartbeats map, for example {'name': [{'done': 2, 'now': timestamp1}, {'done': 3, 'now': timestamp2}]
         task_executor_list = []
+        print(data, flush=True)
         for k, v in data.items():
             # display latest status
             heartbeats = sorted(v, key=lambda x: x["now"], reverse=True)
