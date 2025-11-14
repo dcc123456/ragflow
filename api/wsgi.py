@@ -28,7 +28,7 @@ import os
 import signal
 import threading
 import uuid
-from api import settings
+from common import settings
 from api.apps import app
 from api.db.runtime_config import RuntimeConfig
 from api.db.services.document_service import DocumentService

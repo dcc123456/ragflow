@@ -26,6 +26,7 @@ import multiprocessing
 import asyncio
 
 import json_repair
+from exceptiongroup import BaseExceptionGroup
 
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.pipeline_operation_log_service import PipelineOperationLogService

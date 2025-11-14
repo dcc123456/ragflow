@@ -1,7 +1,8 @@
 from functools import wraps
 from flask import g
 from flask_login import current_user
-from api import settings
+from common import settings
+from common.constants import RetCode
 from api.db import PermissionTargetType, PermissionValue, ResourceType
 from api.db.services.permission_service import PermissionService
 from api.db.services.team_service import DepartmentMemberService, DepartmentService, GroupMemberService, GroupService
@@ -169,7 +170,7 @@ def check_kb_permission(permission):
             if flask_request.method in ["POST", "PUT", "PATCH"]:
                 if "application/json" in content_type:
                     if not flask_request.is_json:
-                        return get_json_result(data=False, message="Content-Type must be application/json", code=settings.RetCode.ARGUMENT_ERROR)
+                        return get_json_result(data=False, message="Content-Type must be application/json", code=RetCode.ARGUMENT_ERROR)
                     req_data = flask_request.get_json(silent=True) or {}
 
                 # Form
@@ -184,7 +185,7 @@ def check_kb_permission(permission):
 
             kb_id = req_data.get("kb_id") or kwargs.get("kb_id")
             if not kb_id:
-                return get_json_result(data=False, message="Missing required parameter `kb_id`.", code=settings.RetCode.ARGUMENT_ERROR)
+                return get_json_result(data=False, message="Missing required parameter `kb_id`.", code=RetCode.ARGUMENT_ERROR)
 
             g.req_data = req_data
             g.kb_id = kb_id

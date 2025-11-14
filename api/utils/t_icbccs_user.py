@@ -5,8 +5,9 @@ from api import settings
 from api.db import TeamRole
 from api.db.services.team_service import DepartmentMemberService, DepartmentService
 from api.db.services.user_service import UserService
-from api.utils import get_format_time
-from api.utils import get_uuid
+from common import settings
+from common.misc_utils import get_uuid
+from common.time_utils import get_format_time
 from api.utils.permission_utils import get_owner_id
 from api.utils.sync_icbccs_user import icbccs_user_register
 

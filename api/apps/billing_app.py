@@ -16,7 +16,8 @@
 
 from flask import request, jsonify
 from flask_login import login_required, current_user
-from api import settings
+from common import settings
+from common.constants import RetCode
 from api.utils.api_utils import get_json_result, server_error_response
 from api.db.services.billing_service import TenantPlanService
 from api.db.services.user_service import UserService
@@ -38,13 +39,13 @@ def billing_checkout():
         return get_json_result(
             data=False,
             message="Missing required parameters tenant_id and price_id.",
-            code=settings.RetCode.PARAMETER_ERROR,
+            code=RetCode.PARAMETER_ERROR,
         )
     if current_user.id != tenant_id:
         return get_json_result(
             data=False,
             message="No authorization.",
-            code=settings.RetCode.AUTHENTICATION_ERROR,
+            code=RetCode.AUTHENTICATION_ERROR,
         )
     try:
         tenant_plan = TenantPlanService.get_by_tenant_id(tenant_id)
@@ -73,7 +74,7 @@ def billing_checkout():
                 })
             elif 1==len(subscription_items):
                 msg = f"Tenant {tenant_id} already has an active subscription {subscription_id} on price {price_id}"
-                return get_json_result(data=False, message=msg, code=settings.RetCode.SUCCESS)
+                return get_json_result(data=False, message=msg, code=RetCode.SUCCESS)
             stripe.Subscription.modify(
                 subscription_id,
                 items=items,
@@ -81,7 +82,7 @@ def billing_checkout():
             )
             msg = f"Tenant {tenant_id} subscription {subscription_id} has been updated to price {price_id}. Stripe.com will immediately generate an invoice, calculate the price difference, and adjust the customer's bill according to the price difference."
             logging.info(msg)
-            return get_json_result(data=False, message=msg, code=settings.RetCode.SUCCESS)
+            return get_json_result(data=False, message=msg, code=RetCode.SUCCESS)
         if subscription_id:
             stripe.Subscription.delete(subscription_id, cancellation_details={"comment": "checkout", "feedback": "other"}, prorate=True)
             msg = f"Tenant {tenant_id} subscription {subscription_id} has been cancelled to ensure one customer has no more than one subscription."
@@ -131,13 +132,13 @@ def billing_unsubscribe():
         return get_json_result(
             data=False,
             message="Missing required parameters tenant_id and price_id.",
-            code=settings.RetCode.PARAMETER_ERROR,
+            code=RetCode.PARAMETER_ERROR,
         )
     if current_user.id != tenant_id:
         return get_json_result(
             data=False,
             message="No authorization.",
-            code=settings.RetCode.AUTHENTICATION_ERROR,
+            code=RetCode.AUTHENTICATION_ERROR,
         )
     try:
         tenant_plan = TenantPlanService.get_by_tenant_id(tenant_id)
@@ -145,14 +146,14 @@ def billing_unsubscribe():
         if not subscription_id:
             msg = f"Tenant {tenant_id} has no subscription."
             logging.info(msg)
-            return get_json_result(data=False, message=msg, code=settings.RetCode.SUCCESS)
+            return get_json_result(data=False, message=msg, code=RetCode.SUCCESS)
         if cancel_at_period_end == 'yes':
             _ = stripe.Subscription.modify(subscription_id, cancel_at_period_end=True)
             msg = f"Tenant {tenant_id} subscription {subscription_id} will be cancelled at the end of the current period."
         else:
             _ = stripe.Subscription.delete(subscription_id, cancellation_details={"comment": comment, "feedback": feedback}, prorate=True)
             msg = f"Tenant {tenant_id} subscription {subscription_id} has been cancelled."
-        return get_json_result(data=False, message=msg, code=settings.RetCode.SUCCESS)
+        return get_json_result(data=False, message=msg, code=RetCode.SUCCESS)
     except Exception as e:
         return server_error_response(e)
 

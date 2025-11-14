@@ -21,7 +21,6 @@ from copy import deepcopy
 from api.db.services.tenant_llm_service import TenantLLMService
 from flask import Response, g, request
 from flask_login import current_user, login_required
-from api import settings
 from api.db import PermissionValue
 from api.db.db_models import APIToken
 from api.db.services.conversation_service import ConversationService, structure_answer
@@ -160,9 +159,9 @@ def list_conversation():
     dialog_id = request.args["dialog_id"]
     try:
         if not UserTenantService.filter_by_tenant_and_user_id(tenant_id, current_user.id):
-            return get_data_error_result(message="No authorized.", code=settings.RetCode.OPERATING_ERROR)
+            return get_data_error_result(message="No authorized.", code=RetCode.OPERATING_ERROR)
         if not DialogService.query(tenant_id=tenant_id, id=dialog_id):
-            return get_json_result(data=False, message="No authorized.", code=settings.RetCode.OPERATING_ERROR)
+            return get_json_result(data=False, message="No authorized.", code=RetCode.OPERATING_ERROR)
 
         convs = ConversationService.query(dialog_id=dialog_id, order_by=ConversationService.model.create_time, reverse=True)
         convs = [d.to_dict() for d in convs if d.user_id == current_user.id]
