@@ -2,12 +2,12 @@ import os
 import sys
 import trio
 from tqdm import tqdm
-from api import settings
 from api.db.services.document_service import DocumentService
 from api.db.db_models import Document
 from api.db.services.canvas_service import UserCanvasService
 from api.db.services.dialog_service import DialogService
-from rag.utils.storage_factory import STORAGE_IMPL
+from common import settings
+from common.settings import STORAGE_IMPL
 from rag.app.naive import Pdf
 from rag.nlp import search
 

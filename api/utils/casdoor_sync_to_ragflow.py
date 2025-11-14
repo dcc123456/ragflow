@@ -1,6 +1,5 @@
 from tqdm import tqdm
 
-from api import settings
 import time
 from peewee import CharField, TextField, BooleanField, Model, IntegerField, FloatField
 from playhouse.pool import PooledMySQLDatabase
@@ -8,9 +7,11 @@ from playhouse.pool import PooledMySQLDatabase
 from api.db import FileType, UserTenantRole
 from api.db.services.file_service import FileService
 from api.db.services.llm_service import TenantLLMService, LLMService
-from api.utils import get_format_time, current_timestamp, get_uuid
 from api.db.services import UserService
 from api.db.services.user_service import UserTenantService, TenantService
+from common.time_utils import get_format_time, current_timestamp
+from common.misc_utils import get_uuid
+from common import settings
 
 casdoor = PooledMySQLDatabase(
     'casdoor',

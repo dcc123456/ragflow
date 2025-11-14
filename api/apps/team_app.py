@@ -1,7 +1,6 @@
 from flask import request
 from flask_login import current_user, login_required
 
-from api import settings
 from api.db import MANAGEMENT_TEAM_ROLES, VALID_TEAM_ROLES, TeamRole
 from api.db.db_models import DB
 from api.db.services.permission_service import PermissionService
@@ -10,7 +9,7 @@ from api.db.services.user_service import UserTenantService
 from api.utils.api_utils import get_data_error_result, get_error_data_result, get_json_result, server_error_response, validate_request
 from common.time_utils import delta_seconds
 from common.misc_utils import get_uuid
-from common.constants import StatusEnum
+from common.constants import StatusEnum, RetCode
 
 # =========================================== GROUP ============================
 
@@ -129,7 +128,7 @@ def delete_group(tenant_id, group_id):
         return get_data_error_result(message="Unrecognized identification.")
 
     if not (is_team_owner or group_owner_id != operator.id):
-        return get_json_result(data=False, message="Permission denied", code=settings.RetCode.PERMISSION_ERROR)
+        return get_json_result(data=False, message="Permission denied", code=RetCode.PERMISSION_ERROR)
 
     member_model_list = GroupMemberService.get_by_group_id(group_id)
     try:
@@ -250,7 +249,7 @@ def update_group(tenant_id):
             return get_data_error_result(message="Unrecognized group identification.")
 
         if group_operator.role not in MANAGEMENT_TEAM_ROLES:
-            return get_json_result(data=False, message="Permission denied", code=settings.RetCode.PERMISSION_ERROR)
+            return get_json_result(data=False, message="Permission denied", code=RetCode.PERMISSION_ERROR)
 
     allow_to_update = ["name", "avatar", "status"]
     group_dict = {r: req[r] for r in req if r in allow_to_update}
@@ -389,7 +388,7 @@ def add_group_member(tenant_id):
             return get_data_error_result(message="Unrecognized group identification.")
 
         if group_operator.role not in MANAGEMENT_TEAM_ROLES:
-            return get_json_result(data=False, message="Permission denied", code=settings.RetCode.PERMISSION_ERROR)
+            return get_json_result(data=False, message="Permission denied", code=RetCode.PERMISSION_ERROR)
 
     not_added = []
     members = []
@@ -471,7 +470,7 @@ def remove_group_member(tenant_id):
             return get_data_error_result(message="Unrecognized group identification.")
 
         if group_operator.role not in MANAGEMENT_TEAM_ROLES:
-            return get_json_result(data=False, message="Permission denied", code=settings.RetCode.PERMISSION_ERROR)
+            return get_json_result(data=False, message="Permission denied", code=RetCode.PERMISSION_ERROR)
 
     not_deleted = []
     member_ids = []
@@ -601,7 +600,7 @@ def create_department():
         if not parent:
             return get_data_error_result(message=f"Parent department `{parent_id}` does not exist.")
         if parent.tenant_id != current_user.id:
-            return get_json_result(data=False, message="No permission to access the parent department.", code=settings.RetCode.PERMISSION_ERROR)
+            return get_json_result(data=False, message="No permission to access the parent department.", code=RetCode.PERMISSION_ERROR)
         parent_path = parent.path
         parent_formatted_path = parent.formatted_path
 
@@ -654,7 +653,7 @@ def delete_department(department_id):
     owner_id = owner.id
 
     if department.owner_id != owner_id:
-        return get_json_result(data=False, message="Permission denied", code=settings.RetCode.PERMISSION_ERROR)
+        return get_json_result(data=False, message="Permission denied", code=RetCode.PERMISSION_ERROR)
 
     def get_all_subdepartment_ids(department_id, tenant_id):
         sub_departments = DepartmentService.get_subdepartments_by_tenant_id(tenant_id=tenant_id, parent_id=department_id)
@@ -668,7 +667,7 @@ def delete_department(department_id):
         return all_subdepartment_ids
 
     member_model_list = DepartmentMemberService.get_by_department_id(department_id)
-    department_ids = set([department_id])
+    department_ids = {department_id}
     department_ids.update(get_all_subdepartment_ids(department_id, current_user.id))
     department_ids = list(department_ids)
 

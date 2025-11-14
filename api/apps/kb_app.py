@@ -19,19 +19,14 @@ import time
 import logging
 import random
 
-from flask import g, request
-from flask_login import current_user, login_required
+from flask import g
 from flask import request
 from flask_login import login_required, current_user
 import numpy as np
 
-from api.db.services import duplicate_name
 from api.db.services.connector_service import Connector2KbService
-from api.db.services.llm_service import LLMBundle
-from api import settings
 from api.db import PermissionActionType, PermissionTargetType, PermissionValue, ResourceType
 from api.db.db_models import DB
-from api.db.services import duplicate_name
 from api.db.services.dialog_service import DialogService
 from api.db.services.document_service import DocumentService, queue_raptor_o_graphrag_tasks
 from api.db.services.file2document_service import File2DocumentService
@@ -50,9 +45,7 @@ from api.utils.permission_utils import check_kb_permission, has_permission_for_m
 from common.misc_utils import get_uuid
 
 from rag.nlp import search
-from api.constants import DATASET_NAME_LIMIT
 from rag.utils.redis_conn import REDIS_CONN
-from rag.utils.doc_store_conn import OrderByExpr
 from common.constants import RetCode, PipelineTaskType, StatusEnum, VALID_TASK_STATUS, FileSource, LLMType, PAGERANK_FLD
 from common import settings
 from rag.utils.doc_store_conn import OrderByExpr
@@ -160,7 +153,7 @@ def update():
             return get_data_error_result(message="Can't find this knowledgebase!")
 
         if req.get("parser_id", "") == "tag" and os.environ.get("DOC_ENGINE", "elasticsearch") == "infinity":
-            return get_json_result(data=False, message="The chunk method Tag has not been supported by Infinity yet.", code=settings.RetCode.OPERATING_ERROR)
+            return get_json_result(data=False, message="The chunk method Tag has not been supported by Infinity yet.", code=RetCode.OPERATING_ERROR)
 
         if req["name"].lower() != kb.name.lower() and len(KnowledgebaseService.query(name=req["name"], tenant_id=tenant_id, status=StatusEnum.VALID.value)) > 1:
             return get_data_error_result(message="Duplicated knowledgebase name.")
