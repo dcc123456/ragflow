@@ -1,27 +1,30 @@
 import { Modal } from '@/components/ui/modal/modal';
 import Space from '@/components/ui/space';
-import { useState } from 'react';
-import { useCharge } from '../hook/use-price-hooks';
-import { IPricePlan } from '../interface';
+import { memo } from 'react';
+import { getNextMonth, useCharge } from '../hook/use-price-hooks';
+import { IConfirmPlan, IPricePlanWithButton } from '../interface';
 export const ConfirmModal: React.FC<{
-  plan: IPricePlan;
+  plan: IConfirmPlan;
   isOpen: boolean;
   onClose: () => void;
-}> = ({ plan, isOpen = true, onClose = () => {} }) => {
-  const [planId, setPlanId] = useState('');
-  const priceDifference = '56.8';
-  const date = '2023-09-05';
-  const price = '9.99';
-  const { data, loading } = useCharge({
-    subscription_price_id: planId || '',
+}> = memo(({ plan, isOpen = true, onClose = () => {} }) => {
+  // const [planId, setPlanId] = useState('');
+  const priceDifference = plan.priceDifference;
+  const date = getNextMonth.getNextMonthFirstDayFormatted();
+  const price = plan.price;
+  const { charge, loading } = useCharge({
     quantity: '1',
   });
   const onOk = () => {
+    console.log('plan', plan);
     if (plan?.id) {
-      setPlanId(plan.id);
+      // setPlanId(plan.id);
+      charge(plan as unknown as IPricePlanWithButton);
+      // refetch();
     }
     onClose();
   };
+
   return (
     <Modal
       open={isOpen}
@@ -61,37 +64,4 @@ export const ConfirmModal: React.FC<{
       </Space>
     </Modal>
   );
-};
-// let currentPriceConfirmModal: { destroy: () => void } | null = null;
-
-// const showPriceComfirmModal = ({
-//   container,
-//   ...plan
-// }: IPricePlanWithButton & { container?: HTMLElement }) => {
-//   const rootElement = document.createElement('div');
-//   if (container) {
-//     container.appendChild(rootElement);
-//   } else {
-//     document.body.appendChild(rootElement);
-//   }
-
-//   const reactRoot = createRoot(rootElement);
-//   const closeModal = () => {
-//     reactRoot.unmount();
-//     if (container) {
-//       container.removeChild(rootElement);
-//     } else {
-//       document.body.removeChild(rootElement);
-//     }
-//     currentPriceConfirmModal = null;
-//   };
-
-//   reactRoot.render(
-//     <ConfirmModal plan={plan} isOpen={true} onClose={closeModal} />,
-//   );
-
-//   currentPriceConfirmModal = { destroy: closeModal };
-
-//   return currentPriceConfirmModal;
-// };
-// export { showPriceComfirmModal };
+});

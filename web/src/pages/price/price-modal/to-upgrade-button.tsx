@@ -7,7 +7,7 @@ const UpgradeButton = ({
 }: {
   text?: string;
   isModal?: boolean;
-  onCallBack: () => void;
+  onCallBack?: () => void;
 }) => {
   const { openModal } = useUpgradeModal();
 
