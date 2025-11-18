@@ -31,7 +31,7 @@ const methods = {
   },
   getUpComming: {
     url: getUpComming,
-    method: 'get',
+    method: 'post',
   },
 };
 const billingService = registerServer<keyof typeof methods>?.(methods, request);

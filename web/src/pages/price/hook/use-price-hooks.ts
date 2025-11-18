@@ -1,6 +1,7 @@
 import { useFetchTenantInfo } from '@/hooks/user-setting-hooks';
 import billingService, { billinCheckout } from '@/services/price';
 import storagePrivate from '@/utils/authorization-private-util';
+import storage from '@/utils/authorization-util';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { ICurrentPlan, IPlan, IPricePlanWithButton } from '../interface';
 export type IChargePlan = {
@@ -9,7 +10,7 @@ export type IChargePlan = {
   usage_based_price_id?: string;
 };
 export const PriceChargeKey = 'price-charge';
-const useCharge = (chargePlan: IChargePlan) => {
+const useCharge = () => {
   const { data: tenantInfo } = useFetchTenantInfo();
   const tenantId = tenantInfo?.tenant_id;
   const url = window.location.href;
@@ -27,7 +28,8 @@ const useCharge = (chargePlan: IChargePlan) => {
         tenantId: tenantId,
         subscription_price_id: planId,
         payment_type: 'subscription',
-        quantity: chargePlan.quantity,
+        // quantity: chargePlan.quantity,
+        quantity: '1',
         // usage_based_price_id: chargePlan.usage_based_price_id,
         usage_based_price_id: 'price_1RRTpfPtsKvwvC5fVsZly0mE',
         session_cancel_url: errorUrl,
@@ -57,9 +59,11 @@ const useCharge = (chargePlan: IChargePlan) => {
 };
 
 const useFetchCurrentPlan = (force = false) => {
+  const user = storage.getUserInfo();
   const { data, isFetching: loading } = useQuery<ICurrentPlan>({
     queryKey: ['currentPlan'],
     // initialData: {},
+    enabled: !!user,
     gcTime: force ? 0 : 50000,
     queryFn: async () => {
       const { data: res } = await billingService.getCurrentPlan();

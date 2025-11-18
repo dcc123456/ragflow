@@ -1,11 +1,4 @@
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from '@/components/ui/pagination';
+import { RAGFlowPagination } from '@/components/ui/ragflow-pagination';
 import {
   Table,
   TableBody,
@@ -14,54 +7,13 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { pick } from 'lodash';
 import { SquareChartGantt } from 'lucide-react';
 import React, { useState } from 'react';
-
-interface Invoice {
-  id: string;
-  createDate: string;
-  product: string;
-  status: string;
-  amount: string;
-  invoiceLink?: string;
-}
-
-const invoicesData: Invoice[] = [
-  {
-    id: 'INV-001',
-    createDate: '2023-07-01',
-    product: 'Product A',
-    status: 'Success',
-    amount: '$50.00',
-    invoiceLink: 'https://example.com/invoice-001',
-  },
-  {
-    id: 'INV-002',
-    createDate: '2023-07-05',
-    product: 'Product B',
-    status: 'Pending',
-    amount: '$75.00',
-    invoiceLink: 'https://example.com/invoice-002',
-  },
-  {
-    id: 'INV-003',
-    createDate: '2023-07-10',
-    product: 'Product C',
-    status: 'Success',
-    amount: '00.00',
-    invoiceLink: 'https://example.com/invoice-003',
-  },
-  {
-    id: 'INV-003',
-    createDate: '2023-07-10',
-    product: 'Product C',
-    status: 'Failed',
-    amount: '00.00',
-    invoiceLink: 'https://example.com/invoice-003',
-  },
-];
+import { useFetchHistoryList } from './hook/billing-history';
 
 const BillingHistory: React.FC = () => {
+  const { invoicesData, pagination, setPagination } = useFetchHistoryList();
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
   const totalPages = Math.ceil(invoicesData.length / itemsPerPage);
@@ -130,7 +82,14 @@ const BillingHistory: React.FC = () => {
         </TableBody>
       </Table>
       <div className="flex justify-end items-center mt-4 w-full">
-        <Pagination className="justify-end mx-0">
+        <RAGFlowPagination
+          {...pick(pagination, 'current', 'pageSize')}
+          total={pagination.total}
+          onChange={(page, pageSize) => {
+            setPagination({ page, pageSize });
+          }}
+        ></RAGFlowPagination>
+        {/* <Pagination className="justify-end mx-0">
           <PaginationContent>
             <PaginationPrevious
               onClick={() => handlePageChange(currentPage - 1)}
@@ -151,7 +110,7 @@ const BillingHistory: React.FC = () => {
               disabled={currentPage === totalPages}
             />
           </PaginationContent>
-        </Pagination>
+        </Pagination> */}
       </div>
     </div>
   );
