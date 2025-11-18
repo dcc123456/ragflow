@@ -1,6 +1,6 @@
 import { Modal } from '@/components/ui/modal/modal';
 import Space from '@/components/ui/space';
-import { memo } from 'react';
+import { memo, useState } from 'react';
 import { getNextMonth, useCharge } from '../hook/use-price-hooks';
 import { IConfirmPlan, IPricePlanWithButton } from '../interface';
 export const ConfirmModal: React.FC<{
@@ -12,14 +12,15 @@ export const ConfirmModal: React.FC<{
   const priceDifference = plan.priceDifference;
   const date = getNextMonth.getNextMonthFirstDayFormatted();
   const price = plan.price;
-  const { charge, loading } = useCharge({
-    quantity: '1',
-  });
-  const onOk = () => {
+  const { charge } = useCharge();
+  const [loading, setLoading] = useState(false);
+  const onOk = async () => {
     console.log('plan', plan);
     if (plan?.id) {
       // setPlanId(plan.id);
-      charge(plan as unknown as IPricePlanWithButton);
+      setLoading(true);
+      await charge(plan as unknown as IPricePlanWithButton);
+      setLoading(false);
       // refetch();
     }
     onClose();
