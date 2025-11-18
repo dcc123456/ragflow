@@ -1,14 +1,14 @@
 import { nextLayoutRef } from '@/layouts/next';
 import { useCallback, useEffect, useState } from 'react';
 import { showUpgradeTipsModal } from '.';
-import { IPricePlan } from '../interface';
+import { IConfirmPlan, IPricePlan } from '../interface';
 
 export const UPGRADE_TIPS_EVENT = 'SHOW_UPGRADE_TIPS';
 export const CONFIRM_PRICE_EVENT = 'SHOW_CONFIRM_PRICE_TIPS';
 export const FREE_UPGRADE_TIPS_EVENT = 'SHOW_FREE_UPGRADE_TIPS';
 
 export interface ConfirmPriceEventDetail {
-  plan: IPricePlan;
+  plan: IConfirmPlan;
   container?: HTMLElement;
 }
 

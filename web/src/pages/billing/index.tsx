@@ -30,7 +30,7 @@ const Billing = () => {
     setActiveKey(e);
   };
   return (
-    <div className="bg-bg-base text-text-primary p-4 h-[calc(100vh-80px)] overflow-auto">
+    <div className="bg-bg-base text-text-primary p-4 h-[calc(100vh-120px)] overflow-auto w-full">
       <nav className="flex justify-between items-center mb-6">
         <Segmented
           options={navList}

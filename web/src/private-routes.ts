@@ -1,5 +1,3 @@
-import { Routes } from './routes';
-
 export enum PrivateRoutes {
   Price = '/price',
   Billing = '/billing',
@@ -7,17 +5,13 @@ export enum PrivateRoutes {
 
 export const privateRoutes = [
   {
-    path: Routes.ProfileSetting,
+    path: '/user-setting',
     layout: false,
-    component: `@/pages${Routes.ProfileSetting}`,
+    component: '@/pages/user-setting',
     routes: [
       {
-        path: `${Routes.ProfileSetting}${PrivateRoutes.Billing}`,
+        path: `/user-setting${PrivateRoutes.Billing}`,
         component: `@/pages${PrivateRoutes.Billing}`,
-      },
-      {
-        path: `${Routes.ProfileSetting}/profile`,
-        component: `@/pages${Routes.ProfileSetting}/profile`,
       },
     ],
   },

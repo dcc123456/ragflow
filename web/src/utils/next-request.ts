@@ -118,7 +118,7 @@ request.interceptors.response.use(
       authorizationUtil.removeAll();
       redirectToLogin();
     } else if (data?.code !== 0) {
-      if (PriceCode[data?.code]) {
+      if (PriceCode[data?.code as any]) {
         showPriceModal(data);
       } else {
         notification.error({

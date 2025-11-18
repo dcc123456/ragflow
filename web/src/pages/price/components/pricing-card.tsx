@@ -1,5 +1,6 @@
 import Divider from '@/components/ui/divider';
 import { nextLayoutRef } from '@/layouts/next';
+import billingService from '@/services/price';
 import storagePrivate from '@/utils/authorization-private-util';
 import classNames from 'classnames';
 import {
@@ -8,7 +9,6 @@ import {
   LayoutGrid,
   Users,
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
 import { PriceNameMapValue } from '../contant';
 import { showPriceComfirmModal } from '../gobal';
 import { ConfirmPriceEventDetail } from '../gobal/hook';
@@ -84,34 +84,19 @@ const PricingCard = (props: IPricePlanWithButton & { name?: string }) => {
       key: 'apiRequests',
     },
   ] as ISuffixProps[];
-  const [selectPlanId, setSelectPlanId] = useState('');
-  const { data, loading } = useCharge({
-    subscription_price_id: selectPlanId || '',
+  // const [selectPlanId, setSelectPlanId] = useState('');
+  const { loading, charge } = useCharge({
+    // subscription_price_id: selectPlanId || '',
     quantity: '1',
   });
 
-  useEffect(() => {
-    if (data && data.redirect_to) {
-      window.open(data.redirect_to);
-    }
-    if (!loading) {
-      setSelectPlanId('');
-    }
-  }, [data, loading]);
-  const charge = (data: IPricePlanWithButton) => {
-    if (data.isUse) {
-      return;
-    }
-    if (data.id === 'Enterprise') {
-      window.open('http://www.baidu.com');
-    } else {
-      setSelectPlanId(data.id);
-    }
-  };
-
-  const handleBuy = (props: IPricePlanWithButton) => {
+  const handleBuy = async (props: IPricePlanWithButton) => {
     let isUpgrade = false;
     const currentPlan: ICurrentPlan = storagePrivate.getPricePlan();
+    const { data: upComming } = await billingService.getUpComming({
+      old_price_id: currentPlan.price_id,
+      new_price_id: props.id,
+    });
     if (
       currentPlan &&
       PriceNameMapValue[
@@ -122,7 +107,10 @@ const PricingCard = (props: IPricePlanWithButton & { name?: string }) => {
     }
     if (isUpgrade) {
       showPriceComfirmModal({
-        plan: props,
+        plan: {
+          ...props,
+          priceDifference: upComming?.data?.amount_due_today,
+        },
         container: nextLayoutRef.current || undefined,
       } as ConfirmPriceEventDetail);
     } else {

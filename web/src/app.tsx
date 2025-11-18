@@ -23,6 +23,7 @@ import { ThemeProvider, useTheme } from './components/theme-provider';
 import { SidebarProvider } from './components/ui/sidebar';
 import { TooltipProvider } from './components/ui/tooltip';
 import { ThemeEnum } from './constants/common';
+import { UpgradeModalProvider } from './pages/price/gobal';
 import storage from './utils/authorization-util';
 
 dayjs.extend(customParseFormat);
@@ -109,7 +110,9 @@ const RootProvider = ({ children }: React.PropsWithChildren) => {
           defaultTheme={ThemeEnum.Dark}
           storageKey="ragflow-ui-theme"
         >
-          <Root>{children}</Root>
+          <UpgradeModalProvider>
+            <Root>{children}</Root>
+          </UpgradeModalProvider>
         </ThemeProvider>
       </QueryClientProvider>
     </TooltipProvider>
