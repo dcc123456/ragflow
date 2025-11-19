@@ -1,5 +1,7 @@
 import Divider from '@/components/ui/divider';
+import { LoadingButton } from '@/components/ui/loading-button';
 import { nextLayoutRef } from '@/layouts/next';
+import billingService from '@/services/price';
 import storagePrivate from '@/utils/authorization-private-util';
 import classNames from 'classnames';
 import {
@@ -8,7 +10,7 @@ import {
   LayoutGrid,
   Users,
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { PriceNameMapValue } from '../contant';
 import { showPriceComfirmModal } from '../gobal';
 import { ConfirmPriceEventDetail } from '../gobal/hook';
@@ -84,34 +86,13 @@ const PricingCard = (props: IPricePlanWithButton & { name?: string }) => {
       key: 'apiRequests',
     },
   ] as ISuffixProps[];
-  const [selectPlanId, setSelectPlanId] = useState('');
-  const { data, loading } = useCharge({
-    subscription_price_id: selectPlanId || '',
-    quantity: '1',
-  });
+  const { loading, charge } = useCharge();
+  const [upCommingLoading, setUpCommingLoading] = useState(false);
 
-  useEffect(() => {
-    if (data && data.redirect_to) {
-      window.open(data.redirect_to);
-    }
-    if (!loading) {
-      setSelectPlanId('');
-    }
-  }, [data, loading]);
-  const charge = (data: IPricePlanWithButton) => {
-    if (data.isUse) {
-      return;
-    }
-    if (data.id === 'Enterprise') {
-      window.open('http://www.baidu.com');
-    } else {
-      setSelectPlanId(data.id);
-    }
-  };
-
-  const handleBuy = (props: IPricePlanWithButton) => {
+  const handleBuy = async (props: IPricePlanWithButton) => {
     let isUpgrade = false;
     const currentPlan: ICurrentPlan = storagePrivate.getPricePlan();
+
     if (
       currentPlan &&
       PriceNameMapValue[
@@ -120,9 +101,18 @@ const PricingCard = (props: IPricePlanWithButton & { name?: string }) => {
     ) {
       isUpgrade = true;
     }
-    if (isUpgrade) {
+    if (isUpgrade && currentPlan.price_id) {
+      setUpCommingLoading(true);
+      const { data: upComming } = await billingService.getUpComming({
+        old_price_id: currentPlan.price_id,
+        new_price_id: props.id,
+      });
+      setUpCommingLoading(false);
       showPriceComfirmModal({
-        plan: props,
+        plan: {
+          ...props,
+          priceDifference: upComming?.data?.amount_due_today,
+        },
         container: nextLayoutRef.current || undefined,
       } as ConfirmPriceEventDetail);
     } else {
@@ -165,7 +155,7 @@ const PricingCard = (props: IPricePlanWithButton & { name?: string }) => {
         </span>
       </h3>
       {/* bg-gradient-to-r from-gray-900 to-gray-950 */}
-      <button
+      <LoadingButton
         type="button"
         className={classNames(
           'w-full py-2 rounded-lg font-bold bg-bg-card text-text-primary border border-border-default  group-hover:bg-bg-base group-hover:text-text-primary group-hover:border-b-2 group-hover:border-b-[#00BEB4]',
@@ -174,11 +164,12 @@ const PricingCard = (props: IPricePlanWithButton & { name?: string }) => {
           },
         )}
         onClick={() => handleBuy(props)}
-        disabled={loading}
+        disabled={loading || upCommingLoading}
+        loading={loading || upCommingLoading}
       >
-        {/* {loading && <Spin></Spin>} */}
+        {/* {(loading || upCommingLoading) && <Spin></Spin>} */}
         {buttonLabel}
-      </button>
+      </LoadingButton>
     </div>
   );
 };

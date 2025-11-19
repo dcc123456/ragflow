@@ -1922,6 +1922,26 @@ Important structured information may include: names, dates, locations, events, k
       processingFailedTip: 'Total failed processes',
       processing: 'Processing',
     },
+
+    price: {
+      free: 'Free',
+      freeDesc:
+        'Start for free and explore essential features to get your project off the ground.',
+      starter: 'Starter',
+      starterDesc:
+        'Ideal for individuals and small teams starting their journey with essential features.',
+      pro: 'Pro',
+      proDesc:
+        'Perfect for growing businesses requiring more advanced tools and higher limits.',
+      enterprise: 'Enterprise',
+      enterpriseDesc:
+        'Tailored for large organizations needing custom solutions, priority support, and full scalability.',
+      reduce: 'Reduce Now',
+      upgrade: 'Upgrade',
+      contactUs: 'Contact Us',
+      contactUsTip: 'Contact us for more information.',
+      inUse: 'In Use',
+    },
     admin: {
       loginTitle: 'Admin Console',
       title: 'RAGFlow',
@@ -2054,126 +2074,6 @@ Important structured information may include: names, dates, locations, events, k
       alive: 'Alive',
       timeout: 'Timeout',
       fail: 'Fail',
-    },
-    admin: {
-      loginTitle: 'RAGFlow ADMIN',
-      title: 'RAGFlow admin',
-      confirm: 'Confirm',
-      close: 'Close',
-      yes: 'Yes',
-      no: 'No',
-      delete: 'Delete',
-      cancel: 'Cancel',
-      reset: 'Reset',
-      import: 'Import',
-      description: 'Description',
-      noDescription: 'No description',
-
-      resourceType: {
-        dataset: 'Dataset',
-        chat: 'Chat',
-        agent: 'Agent',
-        search: 'Search',
-        file: 'File',
-        team: 'Team',
-        memory: 'Memory',
-      },
-
-      permissionType: {
-        enable: 'Enable',
-        read: 'Read',
-        write: 'Write',
-        share: 'Share',
-      },
-
-      serviceStatus: 'Service status',
-      userManagement: 'User management',
-      registrationWhitelist: 'Registration whitelist',
-      roles: 'Roles',
-      monitoring: 'Monitoring',
-
-      active: 'Active',
-      inactive: 'Inactive',
-      enable: 'Enable',
-      disable: 'Disable',
-      all: 'All',
-      actions: 'Actions',
-      newUser: 'New User',
-      email: 'Email',
-      name: 'Name',
-      nickname: 'Nickname',
-      status: 'Status',
-      id: 'ID',
-      serviceType: 'Service type',
-      host: 'Host',
-      port: 'Port',
-
-      role: 'Role',
-      user: 'User',
-      superuser: 'Superuser',
-
-      createTime: 'Create time',
-      lastLoginTime: 'Last login time',
-      lastUpdateTime: 'Last update time',
-
-      isAnonymous: 'Is Anonymous',
-
-      deleteUser: 'Delete user',
-      deleteUserConfirmation: 'Are you sure you want to delete this user?',
-
-      createNewUser: 'Create new user',
-      changePassword: 'Change password',
-      newPassword: 'New password',
-      confirmNewPassword: 'Confirm new password',
-      password: 'Password',
-      confirmPassword: 'Confirm password',
-
-      invalidEmail: 'Please input a valid email address!',
-      passwordRequired: 'Please input your password!',
-      passwordMinLength: 'Password must be more than 8 characters.',
-      confirmPasswordRequired: 'Please confirm your password!',
-      confirmPasswordDoNotMatch: 'The password that you entered do not match!',
-
-      read: 'Read',
-      write: 'Write',
-      share: 'Share',
-      create: 'Create',
-
-      extraInfo: 'Extra information',
-      serviceDetail: `Service {{name}} detail`,
-
-      whitelistManagement: 'Whitelist management',
-      exportAsExcel: 'Export Excel',
-      importFromExcel: 'Import Excel',
-      createEmail: 'Create email',
-      deleteEmail: 'Delete email',
-      editEmail: 'Edit email',
-      deleteWhitelistEmailConfirmation:
-        'Are you sure you want to delete this email from whitelist? This action cannot be undone.',
-
-      importWhitelist: 'Import whitelist (excel)',
-      importSelectExcelFile: 'Excel file (.xlsx)',
-      importOverwriteExistingEmails: 'Overwrite existing emails',
-      importInvalidExcelFile: 'Please select a valid Excel file',
-      importFileRequired: 'Please select a file to import',
-      importFileTips:
-        'File must contain a single header column named <code>email</code>.',
-
-      chunkNum: 'Chunks',
-      docNum: 'Documents',
-      tokenNum: 'Tokens used',
-      language: 'Language',
-      createDate: 'Create date',
-      updateDate: 'Update date',
-      permission: 'Permission',
-
-      agentTitle: 'Agent title',
-      canvasCategory: 'Canvas category',
-
-      newRole: 'New Role',
-      addNewRole: 'Add new role',
-      roleName: 'Role name',
-      resources: 'Resources',
     },
   },
 };

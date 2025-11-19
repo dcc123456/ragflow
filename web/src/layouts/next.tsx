@@ -1,4 +1,3 @@
-import { UpgradeModalProvider } from '@/pages/price/gobal';
 import React, { useEffect, useRef } from 'react';
 import { Outlet } from 'umi';
 import { Header } from './next-header';
@@ -19,10 +18,7 @@ export default function NextLayout() {
   return (
     <main ref={containerRef} className="h-full flex flex-col">
       <Header></Header>
-
-      <UpgradeModalProvider>
-        <Outlet />
-      </UpgradeModalProvider>
+      <Outlet />
     </main>
   );
 }

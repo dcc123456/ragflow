@@ -1,6 +1,5 @@
 from datetime import datetime
 from tqdm import tqdm
-from api import settings
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.document_service import DocumentService
 from api.db.services.file_service import FileService
@@ -10,7 +9,8 @@ from api.db.services.conversation_service import ConversationService
 from api.db.services.dialog_service import DialogService
 from rag.nlp import search
 from api.db.services.user_service import UserService
-from rag.utils.storage_factory import STORAGE_IMPL
+from common import settings
+from common.settings import STORAGE_IMPL
 
 settings.init_settings()
 

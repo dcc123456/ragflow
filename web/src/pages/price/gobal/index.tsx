@@ -7,7 +7,6 @@ import {
   useEffect,
   useState,
 } from 'react';
-import { useLocation } from 'umi';
 import { freePageNumber } from '../config';
 import { PriceName } from '../contant';
 import { useFetchCurrentPlan } from '../hook/use-price-hooks';
@@ -61,7 +60,7 @@ export const showFreeUpgradeTipsModal = (
 export const UpgradeModalProvider: React.FC<UpgradeModalProviderProps> = ({
   children,
 }) => {
-  const location = useLocation();
+  const location = window.location.pathname.toLowerCase();
   useFetchCurrentPlan();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -98,8 +97,7 @@ export const UpgradeModalProvider: React.FC<UpgradeModalProviderProps> = ({
       });
       localStorage.setItem('pageViewCount', '0');
     }
-  }, [location.pathname]);
-
+  }, [location]);
   return (
     <UpgradeModalContext.Provider
       value={{

@@ -521,7 +521,7 @@ def list_app():
 @login_required
 @validate_request("llm_factory", "llm_name")
 def set_default_llm():
-    from api import settings
+    from common import settings
     from api.db.services import UserService
     if not settings.ENABLE_ADMIN or not UserService.is_admin(current_user.id):
         return get_data_error_result(message="Not authorized.")

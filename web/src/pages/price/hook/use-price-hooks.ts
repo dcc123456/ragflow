@@ -1,50 +1,69 @@
 import { useFetchTenantInfo } from '@/hooks/user-setting-hooks';
 import billingService, { billinCheckout } from '@/services/price';
 import storagePrivate from '@/utils/authorization-private-util';
-import { useQuery } from '@tanstack/react-query';
-import { ICurrentPlan, IPlan } from '../interface';
+import storage from '@/utils/authorization-util';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { ICurrentPlan, IPlan, IPricePlanWithButton } from '../interface';
 export type IChargePlan = {
-  subscription_price_id: string;
+  subscription_price_id?: string;
   quantity: string;
   usage_based_price_id?: string;
 };
-const useCharge = (chargePlan: IChargePlan) => {
+export const PriceChargeKey = 'price-charge';
+const useCharge = () => {
   const { data: tenantInfo } = useFetchTenantInfo();
   const tenantId = tenantInfo?.tenant_id;
   const url = window.location.href;
   const successUrl = `${url.split('?')[0]}?price-pay-status=success${url.split('?')[1] || ''}`;
   const errorUrl = `${url.split('?')[0]}?price-pay-status=cancel${url.split('?')[1] || ''}`;
-  const { data, isFetching: loading } = useQuery<{
-    redirect_to: string;
-  }>({
-    queryKey: [tenantId, chargePlan.subscription_price_id],
-    // initialData: { docs: [], total: 0 },
-    enabled: !!tenantId && !!chargePlan.subscription_price_id,
-    queryFn: async () => {
-      const ret = await billinCheckout({
+
+  const {
+    data,
+    isPending: loading,
+    mutateAsync,
+  } = useMutation({
+    mutationKey: ['setDialog'],
+    mutationFn: async (planId: string) => {
+      const { data } = await billinCheckout({
         tenantId: tenantId,
-        subscription_price_id: chargePlan.subscription_price_id,
+        subscription_price_id: planId,
         payment_type: 'subscription',
-        quantity: chargePlan.quantity,
+        // quantity: chargePlan.quantity,
+        quantity: '1',
         // usage_based_price_id: chargePlan.usage_based_price_id,
         usage_based_price_id: 'price_1RRTpfPtsKvwvC5fVsZly0mE',
         session_cancel_url: errorUrl,
         session_success_url: successUrl,
       });
-      if (ret.data.code === 0) {
-        return ret.data.data;
+      if (data.code === 0) {
+        return data.data;
       }
-
-      return {};
+      return data?.code;
     },
   });
-  return { data, loading };
+
+  const charge = async (data: IPricePlanWithButton) => {
+    if (data.isUse) {
+      return;
+    }
+    if (data.id === 'Enterprise') {
+      window.open('http://www.baidu.com');
+    } else {
+      const chargeResult = await mutateAsync(data.id);
+      if (chargeResult && chargeResult.redirect_to) {
+        window.open(chargeResult.redirect_to);
+      }
+    }
+  };
+  return { data, loading, charge };
 };
 
 const useFetchCurrentPlan = (force = false) => {
+  const user = storage.getUserInfo();
   const { data, isFetching: loading } = useQuery<ICurrentPlan>({
     queryKey: ['currentPlan'],
     // initialData: {},
+    enabled: !!user,
     gcTime: force ? 0 : 50000,
     queryFn: async () => {
       const { data: res } = await billingService.getCurrentPlan();
@@ -76,4 +95,20 @@ const useFetchPlanList = (force = false) => {
 
   return { data, loading };
 };
-export { useCharge, useFetchCurrentPlan, useFetchPlanList };
+
+const getNextMonth = {
+  getNextMonthFirstDay: () => {
+    const today = new Date();
+    const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+    return nextMonth;
+  },
+
+  getNextMonthFirstDayFormatted: () => {
+    const nextMonth = getNextMonth.getNextMonthFirstDay();
+    const year = nextMonth.getFullYear();
+    const month = String(nextMonth.getMonth() + 1).padStart(2, '0');
+    const day = String(nextMonth.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  },
+};
+export { getNextMonth, useCharge, useFetchCurrentPlan, useFetchPlanList };

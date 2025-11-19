@@ -25,12 +25,9 @@ from datetime import datetime
 
 from flask import redirect, request, session, make_response
 from flask_login import current_user, login_required, login_user, logout_user
-from werkzeug.security import check_password_hash, generate_password_hash
 from api.db.services.tenant_llm_service import user_register
-from api import settings
 from api.apps.auth import get_auth_client
 from api.db.db_models import TenantLLM
-from api.db.services.user_service import TenantService, UserService, UserTenantService
 from api.utils.sync_icbccs_user import icbccs_user_register
 from common.time_utils import current_timestamp, datetime_format, get_format_time
 from common.misc_utils import download_img, get_uuid
@@ -43,7 +40,6 @@ from api.utils.api_utils import (
     validate_request,
 )
 from api.utils.crypt import decrypt, decrypt2
-from rag.utils.redis_conn import REDIS_CONN
 from api.apps import smtp_mail_server
 from api.utils.web_utils import (
     send_email_html,
@@ -747,7 +743,7 @@ def user_add():
         get_json_result(
             data=False,
             message=f"Role: {role_name} not exist!",
-            code=settings.RetCode.OPERATING_ERROR,
+            code=RetCode.OPERATING_ERROR,
         )
     user_dict = {
         "access_token": get_uuid(),
@@ -1058,7 +1054,7 @@ def has_starred_repo():
     user = UserService.query(id=current_user.id)
     if not user:
         return get_json_result(
-            code=settings.RetCode.UNAUTHORIZED, message="<Unauthorized '401: Unauthorized'>"
+            code=RetCode.UNAUTHORIZED, message="<Unauthorized '401: Unauthorized'>"
         )
     user = user[0].to_dict()
     if user["login_channel"] == "github":

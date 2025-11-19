@@ -618,7 +618,7 @@ class KnowledgebaseService(CommonService):
     @classmethod
     @DB.connection_context()
     def accessible(cls, kb_id, user_id):
-        from api import settings
+        from common import settings
         from api.db.services import UserService
         if settings.ENABLE_ADMIN and UserService.is_admin(user_id):
             return True

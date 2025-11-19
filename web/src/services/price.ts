@@ -1,13 +1,18 @@
 import { IChargePlan } from '@/pages/price/hook/use-price-hooks';
 import api from '@/utils/private-api';
-// import registerServer from '@/utils/register-server';
+import registerServer from '@/utils/register-server';
 import request from '@/utils/request';
 
-function registerServer() {}
+// function registerServer() {}
 
-const { billin_checkout, current_plan, plan_list, plan_spend_overview } = api;
+const {
+  billin_checkout,
+  current_plan,
+  plan_list,
+  plan_spend_overview,
+  getUpComming,
+} = api;
 const methods = {
-  // 支付
   billinCheckout: {
     url: billin_checkout,
     method: 'post',
@@ -24,8 +29,12 @@ const methods = {
     url: plan_spend_overview,
     method: 'get',
   },
+  getUpComming: {
+    url: getUpComming,
+    method: 'post',
+  },
 };
-const billingService = registerServer<keyof typeof methods>(methods, request);
+const billingService = registerServer<keyof typeof methods>?.(methods, request);
 
 export const billinCheckout = (
   data: IChargePlan & {

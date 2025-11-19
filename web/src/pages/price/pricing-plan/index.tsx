@@ -2,11 +2,10 @@
 import { Modal } from '@/components/ui/modal/modal';
 import { convertBytesToGb } from '@/lib/utils';
 import { t } from 'i18next';
-import { Building2, Check, Gem, LucideProps, Rocket, X } from 'lucide-react';
-import React, { useCallback, useEffect, useState } from 'react';
+import { Building2, Gem, LucideProps, Rocket, X } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { JSX } from 'react/jsx-runtime';
-import { useSearchParams } from 'umi';
 import PricingCard from '../components/pricing-card';
 import { PriceName } from '../contant';
 import { useFetchCurrentPlan, useFetchPlanList } from '../hook/use-price-hooks';
@@ -99,8 +98,12 @@ const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
   const { data: currentPlan } = useFetchCurrentPlan();
   const { data: planList } = useFetchPlanList();
   const [pricePlanList, setPricePlanList] = useState<IPricePlanWithButton[]>();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const status = searchParams.get('price-pay-status');
+  const urlParams = useMemo(
+    () => new URLSearchParams(window.location.search),
+    [],
+  );
+  // const [searchParams, setSearchParams] = useSearchParams();
+  const status = urlParams.get('price-pay-status');
   const { t } = useTranslation();
   const openSuccessModal = useCallback(
     (status: string) => {
@@ -109,10 +112,10 @@ const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
           case 'success':
             return (
               <div className="flex gap-2 items-center">
-                <div className="p-1 w-5 h-5 flex items-center justify-center rounded-full bg-green-500">
+                {/* <div className="p-1 w-5 h-5 flex items-center justify-center rounded-full bg-green-500">
                   <Check size={14} fontWeight={'bold'} />
-                </div>
-                Success
+                </div> */}
+                Payment successful
               </div>
             );
           case 'cancel':
@@ -121,7 +124,7 @@ const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
                 <div className="p-1 w-5 h-5 flex items-center justify-center rounded-full bg-red-500">
                   <X size={14} fontWeight={'bold'} />
                 </div>
-                Error
+                Payment failed
               </div>
             );
           default:
@@ -134,14 +137,19 @@ const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
             return (
               <div>
                 <div className="flex items-center gap-2">
-                  payment successful
+                  Thank you! Your payment has been successfully processed.
                 </div>
               </div>
             );
           case 'error':
             return (
               <div>
-                <div className="flex items-center gap-2">payment Error</div>
+                <div className="flex items-center gap-2">
+                  The transaction was not successful. Please verify your payment
+                  information or check your billing account. If this issue
+                  persists, contact us at support@ragflow.io with your order id
+                  for further assistance.
+                </div>
               </div>
             );
           default:
@@ -150,7 +158,7 @@ const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
       };
       if (status) {
         // searchParams.delete('status');
-        setSearchParams(searchParams);
+        // setSearchParams(searchParams);
         const successModal = showModal({
           children: (
             <Modal
@@ -158,9 +166,9 @@ const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
               title={title()}
               onOpenChange={(open) => {
                 if (!open) {
-                  const newSearchParams = new URLSearchParams(searchParams);
-                  newSearchParams.delete('price-pay-status');
-                  setSearchParams(newSearchParams);
+                  const urlObj = new URL(window.location.href);
+                  urlObj.searchParams.delete('price-pay-status');
+                  window.history.replaceState({}, '', urlObj.toString());
                   successModal.destroy();
                 }
               }}
@@ -170,9 +178,9 @@ const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
                   <button
                     type="button"
                     onClick={() => {
-                      const newSearchParams = new URLSearchParams(searchParams);
-                      newSearchParams.delete('price-pay-status');
-                      setSearchParams(newSearchParams);
+                      const urlObj = new URL(window.location.href);
+                      urlObj.searchParams.delete('price-pay-status');
+                      window.history.replaceState({}, '', urlObj.toString());
                       successModal.destroy();
                     }}
                     className="px-2 py-1 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
@@ -188,7 +196,7 @@ const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
         });
       }
     },
-    [searchParams, setSearchParams, t],
+    [urlParams, t],
   );
 
   useEffect(() => {
@@ -236,6 +244,7 @@ const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
     }
     setPricePlanList(plans as unknown as IPricePlanWithButton[]);
   }, [currentPlan, planList, t, isUpgrade]);
+
   useEffect(() => {
     if (status) {
       openSuccessModal(status);

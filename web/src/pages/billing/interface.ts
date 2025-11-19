@@ -35,12 +35,32 @@ export interface ITotalSpendLineChart {
   value: number;
 }
 
+export interface IDeepDocSpendLineChart {
+  data: Array<{ name: string; spend: number; pages: number }>;
+  pages: number;
+  value: number;
+}
+export interface IEmbeddingSpendLineChart {
+  data: Array<{ name: string; spend: number; tokens: number }>;
+  tokens: number;
+  value: number;
+}
+
 export interface Invoice {
   amount: number;
   created_at: number;
-  currency: string;
-  hosted_invoice_url: string;
+  currency?: string;
+  hosted_invoice_url?: string;
   invoice_id: string;
   invoice_pdf_url: string;
   status: 'paid' | 'unpaid' | 'pending';
+}
+
+export interface ITableInvoice {
+  id: string;
+  createDate: string;
+  product: string;
+  status: string;
+  amount: string;
+  invoiceLink?: string;
 }

@@ -21,6 +21,10 @@ export type IPricePlanWithButton = IPricePlan & {
   icon: () => JSX.Element;
 };
 
+export type IConfirmPlan = IPricePlan & {
+  priceDifference: string;
+};
+
 export interface IPlanFeature {
   quota_api_limits: number;
   quota_apps: number;
