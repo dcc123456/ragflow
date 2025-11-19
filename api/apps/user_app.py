@@ -23,8 +23,8 @@ import secrets
 import time
 from datetime import datetime
 
-from flask import redirect, request, session, make_response
-from flask_login import current_user, login_required, login_user, logout_user
+from quart import redirect, request, session, make_response
+from werkzeug.security import check_password_hash, generate_password_hash
 from api.db.services.tenant_llm_service import user_register
 from api.apps.auth import get_auth_client
 from api.db.db_models import TenantLLM
@@ -39,8 +39,9 @@ from api.utils.api_utils import (
     server_error_response,
     validate_request,
 )
-from api.utils.crypt import decrypt, decrypt2
-from api.apps import smtp_mail_server
+from api.utils.crypt import decrypt2
+from api.utils.crypt import decrypt
+from api.apps import smtp_mail_server, login_required, current_user, login_user, logout_user
 from api.utils.web_utils import (
     send_email_html,
     OTP_LENGTH,
@@ -123,7 +124,7 @@ def ldap_login():
     return redirect("/?auth=%s" % user.get_id())
 
 @manager.route("/login", methods=["POST", "GET"])  # noqa: F821
-def login():
+async def login():
     """
     User login endpoint.
     ---
@@ -153,10 +154,11 @@ def login():
         schema:
           type: object
     """
-    if not request.json:
+    json_body = await request.json
+    if not json_body:
         return get_json_result(data=False, code=RetCode.AUTHENTICATION_ERROR, message="Unauthorized!")
 
-    email = request.json.get("email", "").lower()
+    email = json_body.get("email", "").lower()
     if email != "admin@ragflow.io" and settings.LDAP_OAUTH and settings.LDAP_OAUTH.get("url"):
         return ldap_login()
 
@@ -168,7 +170,7 @@ def login():
             message=f"Email: {email} is not registered!",
         )
 
-    password = request.json.get("password")
+    password = json_body.get("password")
     try:
         password = decrypt(password)
     except BaseException:
@@ -190,7 +192,8 @@ def login():
         user.update_date = (datetime_format(datetime.now()),)
         user.save()
         msg = "Welcome back!"
-        return construct_response(data=response_data, auth=user.get_id(), message=msg)
+
+        return await construct_response(data=response_data, auth=user.get_id(), message=msg)
     else:
         return get_json_result(
             data=False,
@@ -566,7 +569,7 @@ def log_out():
 
 @manager.route("/setting", methods=["POST"])  # noqa: F821
 @login_required
-def setting_user():
+async def setting_user():
     """
     Update user settings.
     ---
@@ -595,7 +598,7 @@ def setting_user():
           type: object
     """
     update_dict = {}
-    request_data = request.json
+    request_data = await request.json
     if request_data.get("password"):
         new_password = request_data.get("new_password")
         #if not check_password_hash(
@@ -687,7 +690,7 @@ def rollback_user_registration(user_id):
 
 @manager.route("/register", methods=["POST"])  # noqa: F821
 @validate_request("nickname", "email", "password")
-def user_add():
+async def user_add():
     """
     Register a new user.
     ---
@@ -716,7 +719,7 @@ def user_add():
         schema:
           type: object
     """
-    req = request.json
+    req = await request.json
     email_address = req["email"]
 
     # Validate the email address
@@ -765,7 +768,7 @@ def user_add():
             raise Exception(f"Same email: {email_address} exists!")
         user = users[0]
         login_user(user)
-        return construct_response(
+        return await construct_response(
             data=user.to_json(),
             auth=user.get_id(),
             message=f"{nickname}, welcome aboard!",
@@ -821,7 +824,7 @@ def tenant_info():
 @manager.route("/set_tenant_info", methods=["POST"])  # noqa: F821
 @login_required
 @validate_request("tenant_id", "asr_id", "embd_id", "img2txt_id", "llm_id")
-def set_tenant_info():
+async def set_tenant_info():
     """
     Update tenant information.
     ---
@@ -858,7 +861,7 @@ def set_tenant_info():
         schema:
           type: object
     """
-    req = request.json
+    req = await request.json
     try:
         tid = req.pop("tenant_id")
         TenantService.update_by_id(tid, req)
@@ -868,7 +871,7 @@ def set_tenant_info():
         
 
 @manager.route("/forget/captcha", methods=["GET"])  # noqa: F821
-def forget_get_captcha():
+async def forget_get_captcha():
     """
     GET /forget/captcha?email=<email>
     - Generate an image captcha and cache it in Redis under key captcha:{email} with TTL = OTP_TTL_SECONDS.
@@ -890,19 +893,19 @@ def forget_get_captcha():
     from captcha.image import ImageCaptcha
     image = ImageCaptcha(width=300, height=120, font_sizes=[50, 60, 70])
     img_bytes = image.generate(captcha_text).read()
-    response = make_response(img_bytes)
+    response = await make_response(img_bytes)
     response.headers.set("Content-Type", "image/JPEG")
     return response
 
 
 @manager.route("/forget/otp", methods=["POST"])  # noqa: F821
-def forget_send_otp():
+async def forget_send_otp():
     """
     POST /forget/otp
     - Verify the image captcha stored at captcha:{email} (case-insensitive).
     - On success, generate an email OTP (A–Z with length = OTP_LENGTH), store hash + salt (and timestamp) in Redis with TTL, reset attempts and cooldown, and send the OTP via email.
     """
-    req = request.get_json()
+    req = await request.get_json()
     email = req.get("email") or ""
     captcha = (req.get("captcha") or "").strip()
 
@@ -963,12 +966,12 @@ def forget_send_otp():
 
 
 @manager.route("/forget", methods=["POST"])  # noqa: F821
-def forget():
+async def forget():
     """
     POST: Verify email + OTP and reset password, then log the user in.
     Request JSON: { email, otp, new_password, confirm_new_password }
     """
-    req = request.get_json()
+    req = await request.get_json()
     email = req.get("email") or ""
     otp = (req.get("otp") or "").strip()
     new_pwd = req.get("new_password")

@@ -13,9 +13,8 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 #
-
-from flask import request, jsonify
-from flask_login import login_required, current_user
+from quart import request, jsonify
+from api.apps import login_required, current_user
 from common import settings
 from common.constants import RetCode
 from api.utils.api_utils import get_json_result, server_error_response
@@ -29,12 +28,13 @@ import logging
 
 @manager.route("/checkout", methods=["POST"])  # noqa: F821
 @login_required
-def billing_checkout():
+async def billing_checkout():
     """
     https://docs.stripe.com/payments/accept-a-payment
     """
-    tenant_id = request.json.get("tenant_id")
-    price_id = request.json.get("price_id")
+    req = await request.json
+    tenant_id = req.get("tenant_id")
+    price_id = req.get("price_id")
     if not tenant_id or not price_id:
         return get_json_result(
             data=False,
@@ -121,13 +121,14 @@ def billing_checkout():
 
 @manager.route("/unsubscribe", methods=["POST"])  # noqa: F821
 @login_required
-def billing_unsubscribe():
-    tenant_id = request.json.get("tenant_id")
+async def billing_unsubscribe():
+    req = await request.json
+    tenant_id = req.get("tenant_id")
     # https://docs.stripe.com/api/subscriptions/cancel
     # Possible enum values of feedback: customer_service, low_quality, missing_features, other, switched_service, too_complex, too_expensive, unused
-    feedback = request.json.get("feedback")
-    comment = request.json.get("comment")
-    cancel_at_period_end = request.json.get("cancel_at_period_end")
+    feedback = req.get("feedback")
+    comment = req.get("comment")
+    cancel_at_period_end = req.get("cancel_at_period_end")
     if not tenant_id:
         return get_json_result(
             data=False,
@@ -159,12 +160,12 @@ def billing_unsubscribe():
 
 
 @manager.route("/webhook", methods=["POST"])
-def billing_webhook():
+async def billing_webhook():
     """
     https://docs.stripe.com/webhooks/quickstart
     """
     event = None
-    payload = request.data
+    payload = await request.data
 
     try:
         event = json.loads(payload)

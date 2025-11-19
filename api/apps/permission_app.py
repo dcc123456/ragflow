@@ -1,8 +1,7 @@
 import logging
-from flask import request
 from api.db.services.dialog_service import DialogService
-from flask_login import current_user, login_required
-
+from quart import request, jsonify
+from api.apps import login_required, current_user
 from api.db import VALID_RESOURCE_TYPES, PermissionActionType, PermissionTargetType, PermissionValue, ResourceType
 from api.db.db_models import DB
 from api.db.services.knowledgebase_service import KnowledgebaseService
@@ -19,7 +18,7 @@ from common.constants import StatusEnum
 @manager.route("/update", methods=["PUT"])  # noqa: F821
 @login_required
 @validate_request("tenant_id", "permission", "resource_type")  # noqa: F821
-def update_permission():
+async def update_permission():
     """
     Update permission entries
 
@@ -47,7 +46,7 @@ def update_permission():
     Returns:
         JSON: Success message confirming update
     """
-    req = request.get_json()
+    req = await request.get_json()
     tenant_id = req.get("tenant_id")
     if not tenant_id:
         return get_data_error_result(message="Missing required field `tenant_id`.")
@@ -366,7 +365,7 @@ def list_permissions(tenant_id, resource_id, resource_type):
 @manager.route("/share_dialog", methods=["PUT"])  # noqa: F821
 @login_required
 @validate_request("tenant_id", "permission", "resource_type", "kbs")  # noqa: F821
-def share_dialog():
+async def share_dialog():
     """
     Sharing dialog with permission
 
@@ -396,7 +395,7 @@ def share_dialog():
     Returns:
         JSON: Success message confirming update
     """
-    req = request.get_json()
+    req = await request.get_json()
     tenant_id = req.get("tenant_id")
     if not tenant_id:
         return get_data_error_result(message="Missing required field `tenant_id`.")
@@ -543,7 +542,7 @@ def share_dialog():
 @manager.route("/safe_delete", methods=["POST"])  # noqa: F821
 @login_required
 @validate_request("tenant_id", "resource_ids", "resource_type")  # noqa: F821
-def safe_delete():
+async def safe_delete():
     """
     Is safe to delete permission entries?
 
@@ -557,7 +556,7 @@ def safe_delete():
     Returns:
         JSON: Safe deletion messages
     """
-    req = request.get_json()
+    req = await request.get_json()
     tenant_id = req.get("tenant_id")
     if not tenant_id:
         return get_data_error_result(message="Missing required field `tenant_id`.")

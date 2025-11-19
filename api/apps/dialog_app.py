@@ -14,12 +14,11 @@
 #  limitations under the License.
 #
 
-from flask import g, request
+from quart import request, g
 from api.db.db_models import DB
 from api.db.services.conversation_service import ConversationService
 from api.db.services.permission_service import PermissionChangeLogService, PermissionService
 from api.utils.permission_utils import has_permission_for_member
-from flask_login import current_user, login_required
 from api.db.services import duplicate_name
 
 from common.constants import StatusEnum
@@ -30,6 +29,7 @@ from api.db.services.tenant_llm_service import TenantLLMService
 from api.db.services.user_service import TenantService, UserTenantService
 from common.misc_utils import get_uuid
 from common.constants import RetCode
+from api.apps import login_required, current_user
 from api.utils.api_utils import get_data_error_result, get_json_result, server_error_response, validate_request
 from api.utils.permission_utils import check_dialog_permission
 
@@ -38,8 +38,8 @@ from api.utils.permission_utils import check_dialog_permission
 @validate_request("prompt_config")
 @login_required
 @check_dialog_permission(PermissionValue.PERMISSION_MANAGE)
-def set_dialog():
-    req = g.req_data
+async def set_dialog():
+    req = await request.json
     tenant_id = getattr(g, "tenant_id", current_user.id)
     operator_id = getattr(g, "member_id", current_user.id)
     dialog_id = req.get("dialog_id", "")
@@ -137,7 +137,6 @@ def set_dialog():
                     raise ValueError("Permission change log creation failed")
 
             return get_json_result(data=dia)
-
         else:
             del req["dialog_id"]
             if "kb_names" in req:
@@ -223,20 +222,20 @@ def list_dialogs():
 
 @manager.route('/next', methods=['POST'])  # noqa: F821
 @login_required
-def list_dialogs_next():
-    keywords = request.args.get("keywords", "")
-    page_number = int(request.args.get("page", 0))
-    items_per_page = int(request.args.get("page_size", 0))
-    parser_id = request.args.get("parser_id")
-    orderby = request.args.get("orderby", "create_time")
-    if request.args.get("desc", "true").lower() == "false":
+async def list_dialogs_next():
+    args = request.args
+    keywords = args.get("keywords", "")
+    page_number = int(args.get("page", 0))
+    items_per_page = int(args.get("page_size", 0))
+    parser_id = args.get("parser_id")
+    orderby = args.get("orderby", "create_time")
+    if args.get("desc", "true").lower() == "false":
         desc = False
     else:
         desc = True
 
     tenant_member_memo = {}
-
-    req = request.get_json()
+    req = await request.get_json()
     owner_ids = req.get("owner_ids", [])
     try:
         if not owner_ids:
@@ -288,9 +287,9 @@ def list_dialogs_next():
 @login_required
 @validate_request("dialog_ids")
 @check_dialog_permission(permission=PermissionValue.PERMISSION_OWNER)
-def rm():
-    req = g.req_data
-    dialog_list = []
+async def rm():
+    req = await request.json
+    dialog_list=[]
     tenants = UserTenantService.query(user_id=current_user.id)
     try:
         for id in req["dialog_ids"]:

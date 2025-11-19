@@ -1,5 +1,3 @@
-from flask import request
-from flask_login import current_user, login_required
 
 from api.db import MANAGEMENT_TEAM_ROLES, VALID_TEAM_ROLES, TeamRole
 from api.db.db_models import DB
@@ -10,6 +8,8 @@ from api.utils.api_utils import get_data_error_result, get_error_data_result, ge
 from common.time_utils import delta_seconds
 from common.misc_utils import get_uuid
 from common.constants import StatusEnum, RetCode
+from quart import request, jsonify
+from api.apps import login_required, current_user
 
 # =========================================== GROUP ============================
 
@@ -54,7 +54,7 @@ def group_list(tenant_id):
 @manager.route("/group/create", methods=["POST"])  # noqa: F821
 @login_required
 @validate_request("name")  # noqa: F821
-def create_group():
+async def create_group():
     """
     Create a new team group.
 
@@ -67,7 +67,7 @@ def create_group():
     Returns:
         JSON: Success message with group details
     """
-    req = request.get_json()
+    req = await request.get_json()
     name = req.get("name")
     if not name:
         return get_data_error_result(message="Missing required field `name`.")
@@ -147,8 +147,8 @@ def delete_group(tenant_id, group_id):
 @manager.route("<tenant_id>/group/owner", methods=["PUT"])  # noqa: F821
 @login_required
 @validate_request("group_id", "new_owner_id", "remain_admin")  # noqa: F821
-def group_change_owner(tenant_id):
-    req = request.get_json()
+async def group_change_owner(tenant_id):
+    req = await request.get_json()
     group_id = req.get("group_id")
     if not group_id:
         return get_data_error_result(message="Missing required field `group_id`.")
@@ -201,7 +201,7 @@ def group_change_owner(tenant_id):
 @manager.route("/<tenant_id>/group/update", methods=["PUT"])  # noqa: F821
 @login_required
 @validate_request("group_id")  # noqa: F821
-def update_group(tenant_id):
+async def update_group(tenant_id):
     """
     Update team group information, including the member list and roles.
     Allowed to update group fields:  ["name", "avatar", "status"]
@@ -226,7 +226,7 @@ def update_group(tenant_id):
     Returns:
         JSON: Success message confirming update
     """
-    req = request.get_json()
+    req = await request.get_json()
     group_id = req.get("group_id")
     if not group_id:
         return get_data_error_result(message="Missing required field `group_id`.")
@@ -341,7 +341,7 @@ def list_group_member(tenant_id, group_id):
 @manager.route("<tenant_id>/group/member/create", methods=["POST"])  # noqa: F821
 @login_required
 @validate_request("group_id", "member_list")  # noqa: F821
-def add_group_member(tenant_id):
+async def add_group_member(tenant_id):
     """
     Add multiple members to a group.
 
@@ -363,7 +363,7 @@ def add_group_member(tenant_id):
     Returns:
         JSON: Success message confirming addition
     """
-    req = request.get_json()
+    req = await request.get_json()
     group_id = req.get("group_id")
     member_list = req.get("member_list", [])
 
@@ -423,7 +423,7 @@ def add_group_member(tenant_id):
 @manager.route("/<tenant_id>/group/member/delete", methods=["DELETE"])  # noqa: F821
 @login_required
 @validate_request("group_id", "member_list")  # noqa: F821
-def remove_group_member(tenant_id):
+async def remove_group_member(tenant_id):
     """
     Delete multiple members to a group.
 
@@ -445,7 +445,7 @@ def remove_group_member(tenant_id):
     Returns:
         JSON: Success message confirming addition
     """
-    req = request.get_json()
+    req = await request.get_json()
     group_id = req.get("group_id")
     member_list = req.get("member_list", [])
 
@@ -564,7 +564,7 @@ def department_list(tenant_id):
 @manager.route("/department/create", methods=["POST"])  # noqa: F821
 @login_required
 @validate_request("name")  # noqa: F821
-def create_department():
+async def create_department():
     """
     Create a new team department.
 
@@ -579,7 +579,7 @@ def create_department():
     Returns:
         JSON: Success message with department details
     """
-    req = request.get_json()
+    req = await request.get_json()
     name = req.get("name")
     avatar = req.get("avatar", "")
     parent_id = req.get("parent_id")
@@ -689,8 +689,8 @@ def delete_department(department_id):
 @manager.route("/department/move", methods=["PUT"])  # noqa: F821
 @login_required
 @validate_request("department_id", "parent_id")  # noqa: F821
-def move_department():
-    req = request.get_json()
+async def move_department():
+    req = await request.get_json()
     department_id = req.get("department_id")
     if not department_id:
         return get_data_error_result(message="Missing required field `department_id`.")
@@ -730,7 +730,7 @@ def move_department():
 @manager.route("<tenant_id>/department/update", methods=["PUT"])  # noqa: F821
 @login_required
 @validate_request("department_id")  # noqa: F821
-def update_department(tenant_id):
+async def update_department(tenant_id):
     """
     Update department information, including the member list and roles.
     Allowed to update fields: ["name", "avatar", "status", "description"]
@@ -758,7 +758,7 @@ def update_department(tenant_id):
     Returns:
         JSON: Success message confirming update
     """
-    req = request.get_json()
+    req = await request.get_json()
     department_id = req.get("department_id")
     if not department_id:
         return get_data_error_result(message="Missing required field `department_id`.")
@@ -871,7 +871,7 @@ def list_department_member(tenant_id, department_id):
 @manager.route("<tenant_id>/department/member/create", methods=["POST"])  # noqa: F821
 @login_required
 @validate_request("department_id", "member_list")  # noqa: F821
-def add_department_member(tenant_id):
+async def add_department_member(tenant_id):
     """
     Add multiple members to a department.
 
@@ -893,7 +893,7 @@ def add_department_member(tenant_id):
     Returns:
         JSON: Success message confirming addition
     """
-    req = request.get_json()
+    req = await request.get_json()
     department_id = req.get("department_id")
     member_list = req.get("member_list", [])
 
@@ -954,7 +954,7 @@ def add_department_member(tenant_id):
 @manager.route("<tenant_id>/department/member/delete", methods=["DELETE"])  # noqa: F821
 @login_required
 @validate_request("department_id", "member_list")  # noqa: F821
-def remove_department_member(tenant_id):
+async def remove_department_member(tenant_id):
     """
     Delete multiple members to a department.
 
@@ -976,7 +976,7 @@ def remove_department_member(tenant_id):
     Returns:
         JSON: Success message confirming addition
     """
-    req = request.get_json()
+    req = await request.get_json()
     department_id = req.get("department_id")
     member_list = req.get("member_list", [])
 

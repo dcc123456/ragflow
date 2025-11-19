@@ -325,7 +325,6 @@ def init_settings():
     DOC_BULK_SIZE = int(os.environ.get("DOC_BULK_SIZE", 4))
     EMBEDDING_BATCH_SIZE = int(os.environ.get("EMBEDDING_BATCH_SIZE", 16))
 
-
     try:
         REDIS = decrypt_database_config(name="redis")
     except Exception:
