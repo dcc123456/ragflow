@@ -1303,7 +1303,7 @@ def migrate_db():
     except Exception:
         pass
     try:
-        migrate(migrator.add_column("user", "role_name", CharField(max_length=32, null=True, default="owner", help_text="owner|public", index=True)))
+        migrate(migrator.add_column("user", "role_id", IntegerField(null=False, help_text="id in rag_flow.role", index=True)))
     except Exception:
         pass
     try:

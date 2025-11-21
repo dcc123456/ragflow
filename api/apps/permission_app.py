@@ -316,7 +316,7 @@ async def update_permission():
 
             with DB.atomic():
                 for dialog_id in filtered_dialog_ids:
-                    dialog_permission_model_list = PermissionService.get_permissions_by_tenant_and_resource_id(tenant_id=current_user.id, resource_id=dialog_id, resource_type=ResourceType.DIALOG)
+                    dialog_permission_model_list = PermissionService.get_permissions_by_tenant_and_resource_id(tenant_id=tenant_id, resource_id=dialog_id, resource_type=ResourceType.DIALOG)
                     PermissionService.delete(dialog_permission_model_list)
 
         return get_json_result(data=True)

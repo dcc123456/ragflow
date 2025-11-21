@@ -17,12 +17,10 @@ import json
 import re
 import logging
 from copy import deepcopy
-from quart import Response, request
+from quart import Response, request, g
 from api.apps import current_user, login_required
 
 from api.db.services.tenant_llm_service import TenantLLMService
-from flask import Response, g, request
-from flask_login import current_user, login_required
 from api.db import PermissionValue
 from api.db.db_models import APIToken
 from api.db.services.conversation_service import ConversationService, structure_answer
@@ -156,7 +154,7 @@ async def rm():
 @manager.route("/list", methods=["GET"])  # noqa: F821
 @login_required
 @check_dialog_permission(PermissionValue.PERMISSION_READ)
-def list_conversation():
+async def list_conversation():
     tenant_id = g.tenant_id
     dialog_id = request.args["dialog_id"]
     try:

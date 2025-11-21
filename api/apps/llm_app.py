@@ -308,6 +308,7 @@ async def add_llm():
 @validate_request("llm_factory", "llm_name")
 async def delete_llm():
     req = await request.json
+    tenant_id = current_user.id
 
     try:
         operator = UserTenantService.filter_by_tenant_and_user_id(tenant_id=current_user.id, user_id=current_user.id)
@@ -315,7 +316,7 @@ async def delete_llm():
             return get_data_error_result(message="Unrecognized identification.")
         TenantLLMService.filter_delete([TenantLLM.tenant_id == current_user.id, TenantLLM.llm_factory == req["llm_factory"], TenantLLM.llm_name == req["llm_name"]])
         with DB.atomic():
-            permission_model_list = PermissionService.get_permissions_by_tenant_and_resource_id(tenant_id=current_user.id, resource_id=req["llm_name"], resource_type=ResourceType.LLM)
+            permission_model_list = PermissionService.get_permissions_by_tenant_and_resource_id(tenant_id=tenant_id, resource_id=req["llm_name"], resource_type=ResourceType.LLM)
             PermissionService.delete(permission_model_list)
 
             if not PermissionChangeLogService.save(
@@ -343,7 +344,7 @@ async def delete_llm():
 
         with DB.atomic():
             for dialog_id in filtered_dialog_ids:
-                dialog_permission_model_list = PermissionService.get_permissions_by_tenant_and_resource_id(tenant_id=current_user.id, resource_id=dialog_id, resource_type=ResourceType.DIALOG)
+                dialog_permission_model_list = PermissionService.get_permissions_by_tenant_and_resource_id(tenant_id=tenant_id, resource_id=dialog_id, resource_type=ResourceType.DIALOG)
                 PermissionService.delete(dialog_permission_model_list)
 
         return get_json_result(data=True)
@@ -367,10 +368,11 @@ async def enable_llm():
 @validate_request("llm_factory")
 async def delete_factory():
     req = await request.json
+    tenant_id = current_user.id
     try:
         TenantLLMService.filter_delete([TenantLLM.tenant_id == current_user.id, TenantLLM.llm_factory == req["llm_factory"]])
         with DB.atomic():
-            permission_model_list = PermissionService.get_permissions_by_tenant_and_resource_id(tenant_id=current_user.id, resource_id=req["llm_factory"], resource_type=ResourceType.LLM)
+            permission_model_list = PermissionService.get_permissions_by_tenant_and_resource_id(tenant_id=tenant_id, resource_id=req["llm_factory"], resource_type=ResourceType.LLM)
             PermissionService.delete(permission_model_list)
 
             if not PermissionChangeLogService.save(
@@ -398,7 +400,7 @@ async def delete_factory():
 
         with DB.atomic():
             for dialog_id in filtered_dialog_ids:
-                dialog_permission_model_list = PermissionService.get_permissions_by_tenant_and_resource_id(tenant_id=current_user.id, resource_id=dialog_id, resource_type=ResourceType.DIALOG)
+                dialog_permission_model_list = PermissionService.get_permissions_by_tenant_and_resource_id(tenant_id=tenant_id, resource_id=dialog_id, resource_type=ResourceType.DIALOG)
                 PermissionService.delete(dialog_permission_model_list)
 
         return get_json_result(data=True)

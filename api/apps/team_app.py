@@ -68,14 +68,15 @@ async def create_group():
         JSON: Success message with group details
     """
     req = await request.get_json()
+    tenant_id = current_user.id
     name = req.get("name")
     if not name:
         return get_data_error_result(message="Missing required field `name`.")
 
-    if GroupService.query_group(tenant_id=current_user.id, group_name=name):
+    if GroupService.query_group(tenant_id=tenant_id, group_name=name):
         return get_data_error_result(message=f"Group `{name}` is already in the team.")
 
-    owner = UserTenantService.filter_by_tenant_and_user_id(current_user.id, current_user.id)
+    owner = UserTenantService.filter_by_tenant_and_user_id(tenant_id, tenant_id)
     if not owner:
         return get_data_error_result(message="Unrecognized identification.")
     owner_id = owner.id
@@ -87,7 +88,7 @@ async def create_group():
                 name=name,
                 avatar=req.get("avatar"),
                 owner_id=owner_id,
-                tenant_id=current_user.id,
+                tenant_id=tenant_id,
             )
             GroupService.save(**group)
 
@@ -643,6 +644,7 @@ def delete_department(department_id):
     Returns:
         JSON: Success message confirming deletion
     """
+    tenant_id = current_user.id
     department = DepartmentService.filter_by_id(department_id)
     if not department:
         return get_data_error_result(message=f"Department `{department_id}` does not exist.")
@@ -677,7 +679,7 @@ def delete_department(department_id):
             DepartmentService.delete_departments(department_ids)
 
             for department_id in department_ids:
-                permissions = PermissionService.get_permissions_by_tenant_and_department_id_with_types(tenant_id=current_user.id, department_id=department_id)
+                permissions = PermissionService.get_permissions_by_tenant_and_department_id_with_types(tenant_id=tenant_id, department_id=department_id)
                 PermissionService.delete(permissions)
 
         return get_json_result(data=True)

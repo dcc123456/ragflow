@@ -69,17 +69,18 @@ async def create():
     if not e:
         return req
 
+    tenant_id = current_user.id
     try:
         req["id"] = get_uuid()
         req["name"] = req["name"]
-        req["tenant_id"] = current_user.id
-        req["created_by"] = current_user.id
+        req["tenant_id"] = tenant_id
+        req["created_by"] = tenant_id
         if not req.get("parser_id"):
             req["parser_id"] = "naive"
-        e, t = TenantService.get_by_id(current_user.id)
+        e, t = TenantService.get_by_id(tenant_id)
         if not e:
             return get_data_error_result(message="Tenant not found.")
-        operator = UserTenantService.filter_by_tenant_and_user_id(current_user.id, current_user.id)
+        operator = UserTenantService.filter_by_tenant_and_user_id(tenant_id, tenant_id)
         if not operator:
             return get_data_error_result(message="UserTenant not found.")
 
@@ -116,7 +117,7 @@ async def create():
             if not KnowledgebaseService.save(**req):
                 raise ValueError("KB creation failed")
             if not PermissionService.save(
-                id=get_uuid(), member_id=operator.id, tenant_id=current_user.id, resource_type=ResourceType.KB, resource_id=req["id"], permission=PermissionValue.PERMISSION_OWNER.value
+                id=get_uuid(), member_id=operator.id, tenant_id=tenant_id, resource_type=ResourceType.KB, resource_id=req["id"], permission=PermissionValue.PERMISSION_OWNER.value
             ):
                 raise ValueError("Permission creation failed")
             if not PermissionChangeLogService.save(
@@ -341,8 +342,9 @@ async def rm():
             settings.docStoreConn.deleteIdx(search.index_name(kb.tenant_id), kb.id)
             settings.STORAGE_IMPL.rm_bucket(kb.id)
 
+        tenant_id = current_user.id
         with DB.atomic():
-            permission_model_list = PermissionService.get_permissions_by_tenant_and_resource_id(tenant_id=current_user.id, resource_id=req["kb_id"], resource_type=ResourceType.KB)
+            permission_model_list = PermissionService.get_permissions_by_tenant_and_resource_id(tenant_id=tenant_id, resource_id=req["kb_id"], resource_type=ResourceType.KB)
             PermissionService.delete(permission_model_list)
 
             PermissionChangeLogService.save(
@@ -369,7 +371,7 @@ async def rm():
 
         with DB.atomic():
             for dialog_id in filtered_dialog_ids:
-                dialog_permission_model_list = PermissionService.get_permissions_by_tenant_and_resource_id(tenant_id=current_user.id, resource_id=dialog_id, resource_type=ResourceType.DIALOG)
+                dialog_permission_model_list = PermissionService.get_permissions_by_tenant_and_resource_id(tenant_id=tenant_id, resource_id=dialog_id, resource_type=ResourceType.DIALOG)
                 PermissionService.delete(dialog_permission_model_list)
 
         return get_json_result(data=True)

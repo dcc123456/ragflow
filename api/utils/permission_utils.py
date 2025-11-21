@@ -1,7 +1,7 @@
 import inspect
 from functools import wraps
-from flask import g
-from flask_login import current_user
+
+from api.apps import current_user
 from common import settings
 from common.constants import RetCode
 from api.db import PermissionTargetType, PermissionValue, ResourceType
@@ -162,7 +162,7 @@ def check_kb_permission(permission):
     """
 
     def decorator(foo):
-        from quart import request
+        from quart import request, g
 
         @wraps(foo)
         async def wrapper(*args, **kwargs):
@@ -233,28 +233,28 @@ def check_dialog_permission(permission):
     - URL path parameters (kwargs)
     """
 
-    def decorator(f):
-        from flask import request as flask_request
+    def decorator(foo):
+        from quart import request, g
 
-        @wraps(f)
-        def wrapper(*args, **kwargs):
-            content_type = flask_request.content_type or ""
+        @wraps(foo)
+        async def wrapper(*args, **kwargs):
+            content_type = request.headers.get("Content-Type") or ""
 
-            if flask_request.method in ["POST", "PUT", "PATCH"]:
+            if request.method in ["POST", "PUT", "PATCH"]:
                 if "application/json" in content_type:
-                    if not flask_request.is_json:
-                        return get_json_result(data=False, message="Content-Type must be application/json", code=settings.RetCode.ARGUMENT_ERROR)
-                    req_data = flask_request.get_json(silent=True) or {}
+                    if not request.is_json:
+                        return get_json_result(data=False, message="Content-Type must be application/json", code=RetCode.ARGUMENT_ERROR)
+                    req_data = (await request.get_json(silent=True)) or {}
 
                 # Form
                 elif "multipart/form-data" in content_type or "application/x-www-form-urlencoded" in content_type:
-                    req_data = flask_request.form or {}
+                    req_data = (await request.form) or {}
 
                 else:
-                    req_data = flask_request.args or {}
+                    req_data = request.args or {}
 
             else:  # GET、DELETE
-                req_data = flask_request.args or {}
+                req_data = request.args or {}
 
             dialog_id = req_data.get("dialog_id") or kwargs.get("dialog_id")
 
@@ -262,7 +262,9 @@ def check_dialog_permission(permission):
             g.dialog_id = dialog_id
 
             if not dialog_id:
-                return f(*args, **kwargs)
+                if inspect.iscoroutinefunction(foo):
+                    return await foo(*args, **kwargs)
+                return foo(*args, **kwargs)
 
             user_tenants = UserTenantService.query(user_id=current_user.id) or []
 
@@ -277,7 +279,9 @@ def check_dialog_permission(permission):
                         g.tenant_id = user_tenant.tenant_id
                         g.operator_permission = PermissionValue.PERMISSION_OWNER.value if is_team_owner else permission_info[2]
                         g.member_id = user_tenant.id
-                        return f(*args, **kwargs)
+                        if inspect.iscoroutinefunction(foo):
+                            return await foo(*args, **kwargs)
+                        return foo(*args, **kwargs)
 
             return get_json_result(data=[], message="Only Chat/Dialog owners or members with management or write permissions can perform this action", code=settings.RetCode.OPERATING_ERROR)
 
