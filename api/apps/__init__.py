@@ -18,13 +18,14 @@ import sys
 import logging
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
-from quart import Blueprint, Quart, request, g, current_app, session
+from quart import Blueprint, Quart, request, g, current_app, session, jsonify
 from werkzeug.wrappers.request import Request
 from flasgger import Swagger
 from itsdangerous.url_safe import URLSafeTimedSerializer as Serializer
 from quart_cors import cors
+
 from common.constants import StatusEnum
-from api.db.db_models import close_connection
+from api.db.db_models import close_connection, APIToken
 from api.db.services import UserService
 from api.utils.json_encode import CustomJSONEncoder
 from api.utils import commands
@@ -124,6 +125,10 @@ def _load_user():
         user = UserService.query(
             access_token=access_token, status=StatusEnum.VALID.value
         )
+        if not user and len(authorization.split()) == 2:
+            objs = APIToken.query(token=authorization.split()[1])
+            if objs:
+                user = UserService.query(id=objs[0].tenant_id, status=StatusEnum.VALID.value)
         if user:
             if not user[0].access_token or not user[0].access_token.strip():
                 logging.warning(f"User {user[0].email} has empty access_token in database")
@@ -234,6 +239,44 @@ def search_pages_path(page_path):
     return app_path_list
 
 
+def set_api_limiter():
+    from common.config_utils import decrypt_database_config
+    from quart_rate_limiter import RateLimiter, remote_addr_key, RateLimit, timedelta
+    from quart_rate_limiter.redis_store import RedisStore
+
+    async def key_func_global():
+        ident = {
+            "tenant": current_user.id if current_user else "",
+            "ip": await remote_addr_key
+        }
+        endpoint = request.endpoint or "unknown"
+        if ident["tenant"]:
+            return f"tenant:{ident['tenant']}|ep:{endpoint}"
+        return f"ip:{ident['ip']}|ep:{endpoint}"
+
+    async def _skip_static() -> bool:
+        return request.endpoint.endswith("static")
+
+    try:
+        REDIS = decrypt_database_config(name="redis")
+    except Exception:
+        REDIS = {}
+        pass
+
+    redis_password = REDIS.get("password")
+    redis_host = REDIS.get("host")
+    redis_db = REDIS.get("db")
+    global app
+    return RateLimiter(
+        app,
+        key_function=key_func_global,
+        default_limits=[
+            RateLimit(50, timedelta(seconds=1), skip_function=_skip_static),
+            RateLimit(200, timedelta(minutes=1), skip_function=_skip_static),
+        ],
+        store=RedisStore(f"redis://:{redis_password}@{redis_host}/{redis_db}")
+    )
+
 def register_page(page_path):
     path = f"{page_path}"
 
@@ -268,9 +311,11 @@ client_urls_prefix = [
     register_page(path) for directory in pages_dir for path in search_pages_path(directory)
 ]
 
+set_api_limiter()
 
 @app.teardown_request
 def _db_close(exception):
     if exception:
         logging.exception(f"Request failed: {exception}")
     close_connection()
+

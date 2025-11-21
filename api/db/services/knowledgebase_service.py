@@ -591,7 +591,7 @@ class KnowledgebaseService(CommonService):
         # Returns:
         #     List of knowledge bases
 
-        permission_conditions = (Permission.permission >= PermissionValue.PERMISSION_READ) & (Permission.status == StatusEnum.VALID.value) & (Permission.resource_type == ResourceType.KB)
+        permission_conditions = (Permission.permission >= PermissionValue.PERMISSION_READ.value) & (Permission.status == StatusEnum.VALID.value) & (Permission.resource_type == ResourceType.KB)
 
         kbs = cls.model.select()
         if id:

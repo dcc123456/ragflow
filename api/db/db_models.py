@@ -741,7 +741,7 @@ class Permission(DataBaseModel):
     tenant_id = CharField(max_length=32, null=False, index=True)  # Tenant ID
     resource_type = CharField(max_length=32, choices=[(t.value, t.name) for t in ResourceType.__members__.values()], null=False, index=True)
     resource_id = CharField(max_length=32, null=True, index=True)
-    permission = IntegerField(null=False, default=PermissionValue.PERMISSION_NULL, help_text="Permission", index=True)
+    permission = IntegerField(null=False, default=PermissionValue.PERMISSION_NULL.value, help_text="Permission", index=True)
     status = CharField(
         max_length=1,
         null=True,
