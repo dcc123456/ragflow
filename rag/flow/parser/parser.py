@@ -16,18 +16,19 @@ import io
 import json
 import os
 import random
+import re
 from functools import partial
 
 import trio
 import numpy as np
 from PIL import Image
 
-from api.db import LLMType
+from common.constants import LLMType
 from api.db.services.file2document_service import File2DocumentService
 from api.db.services.file_service import FileService
 from api.db.services.llm_service import LLMBundle
-from api.utils import get_uuid
-from api.utils.base64_image import image2id
+from common.misc_utils import get_uuid
+from rag.utils.base64_image import image2id
 from deepdoc.parser import ExcelParser
 from deepdoc.parser.mineru_parser import MinerUParser
 from deepdoc.parser.pdf_parser import PlainParser, RAGFlowPdfParser, VisionParser
@@ -36,7 +37,7 @@ from rag.app.naive import Docx
 from rag.flow.base import ProcessBase, ProcessParamBase
 from rag.flow.parser.schema import ParserFromUpstream
 from rag.llm.cv_model import Base as VLM
-from rag.utils.storage_factory import STORAGE_IMPL
+from common import settings
 
 
 class ParserParam(ProcessParamBase):
@@ -83,6 +84,7 @@ class ParserParam(ProcessParamBase):
                 "output_format": "json",
             },
             "spreadsheet": {
+                "parse_method": "deepdoc",  # deepdoc/tcadp_parser
                 "output_format": "html",
                 "suffix": [
                     "xls",
@@ -102,8 +104,10 @@ class ParserParam(ProcessParamBase):
                 "output_format": "json",
             },
             "slides": {
+                "parse_method": "deepdoc",  # deepdoc/tcadp_parser
                 "suffix": [
                     "pptx",
+                    "ppt"
                 ],
                 "output_format": "json",
             },
@@ -222,9 +226,11 @@ class Parser(ProcessBase):
             bboxes = [{"text": t} for t, _ in lines]
         elif conf.get("parse_method").lower() == "mineru":
             mineru_executable = os.environ.get("MINERU_EXECUTABLE", "mineru")
-            pdf_parser = MinerUParser(mineru_path=mineru_executable)
-            if not pdf_parser.check_installation():
-                raise RuntimeError("MinerU not found. Please install it via: pip install -U 'mineru[core]'.")
+            mineru_api = os.environ.get("MINERU_APISERVER", "http://host.docker.internal:9987")
+            pdf_parser = MinerUParser(mineru_path=mineru_executable, mineru_api=mineru_api)
+            ok, reason = pdf_parser.check_installation()
+            if not ok:
+                raise RuntimeError(f"MinerU not found or server not accessible: {reason}. Please install it via: pip install -U 'mineru[core]'.")
 
             lines, _ = pdf_parser.parse_pdf(
                 filepath=name,
@@ -243,7 +249,12 @@ class Parser(ProcessBase):
                 bboxes.append(box)
         elif conf.get("parse_method").lower() == "tcadp parser":
             # ADP is a document parsing tool using Tencent Cloud API
-            tcadp_parser = TCADPParser()
+            table_result_type = conf.get("table_result_type", "1")
+            markdown_image_response_type = conf.get("markdown_image_response_type", "1")
+            tcadp_parser = TCADPParser(
+                table_result_type=table_result_type,
+                markdown_image_response_type=markdown_image_response_type
+            )
             sections, _ = tcadp_parser.parse_pdf(
                 filepath=name,
                 binary=blob,
@@ -299,14 +310,86 @@ class Parser(ProcessBase):
         self.callback(random.randint(1, 5) / 100.0, "Start to work on a Spreadsheet.")
         conf = self._param.setups["spreadsheet"]
         self.set_output("output_format", conf["output_format"])
-        spreadsheet_parser = ExcelParser()
-        if conf.get("output_format") == "html":
-            htmls = spreadsheet_parser.html(blob, 1000000000)
-            self.set_output("html", htmls[0])
-        elif conf.get("output_format") == "json":
-            self.set_output("json", [{"text": txt} for txt in spreadsheet_parser(blob) if txt])
-        elif conf.get("output_format") == "markdown":
-            self.set_output("markdown", spreadsheet_parser.markdown(blob))
+
+        parse_method = conf.get("parse_method", "deepdoc")
+
+        # Handle TCADP parser
+        if parse_method.lower() == "tcadp parser":
+            table_result_type = conf.get("table_result_type", "1")
+            markdown_image_response_type = conf.get("markdown_image_response_type", "1")
+            tcadp_parser = TCADPParser(
+                table_result_type=table_result_type,
+                markdown_image_response_type=markdown_image_response_type
+            )
+            if not tcadp_parser.check_installation():
+                raise RuntimeError("TCADP parser not available. Please check Tencent Cloud API configuration.")
+
+            # Determine file type based on extension
+            if re.search(r"\.xlsx?$", name, re.IGNORECASE):
+                file_type = "XLSX"
+            else:
+                file_type = "CSV"
+
+            self.callback(0.2, f"Using TCADP parser for {file_type} file.")
+            sections, tables = tcadp_parser.parse_pdf(
+                filepath=name,
+                binary=blob,
+                callback=self.callback,
+                file_type=file_type,
+                file_start_page=1,
+                file_end_page=1000
+            )
+
+            # Process TCADP parser output based on configured output_format
+            output_format = conf.get("output_format", "html")
+
+            if output_format == "html":
+                # For HTML output, combine sections and tables into HTML
+                html_content = ""
+                for section, position_tag in sections:
+                    if section:
+                        html_content += section + "\n"
+                for table in tables:
+                    if table:
+                        html_content += table + "\n"
+
+                self.set_output("html", html_content)
+
+            elif output_format == "json":
+                # For JSON output, create a list of text items
+                result = []
+                # Add sections as text
+                for section, position_tag in sections:
+                    if section:
+                        result.append({"text": section})
+                # Add tables as text
+                for table in tables:
+                    if table:
+                        result.append({"text": table})
+
+                self.set_output("json", result)
+
+            elif output_format == "markdown":
+                # For markdown output, combine into markdown
+                md_content = ""
+                for section, position_tag in sections:
+                    if section:
+                        md_content += section + "\n\n"
+                for table in tables:
+                    if table:
+                        md_content += table + "\n\n"
+
+                self.set_output("markdown", md_content)
+        else:
+            # Default DeepDOC parser
+            spreadsheet_parser = ExcelParser()
+            if conf.get("output_format") == "html":
+                htmls = spreadsheet_parser.html(blob, 1000000000)
+                self.set_output("html", htmls[0])
+            elif conf.get("output_format") == "json":
+                self.set_output("json", [{"text": txt} for txt in spreadsheet_parser(blob) if txt])
+            elif conf.get("output_format") == "markdown":
+                self.set_output("markdown", spreadsheet_parser.markdown(blob))
 
     def _word(self, name, blob):
         self.callback(random.randint(1, 5) / 100.0, "Start to work on a Word Processor Document")
@@ -324,22 +407,69 @@ class Parser(ProcessBase):
             self.set_output("markdown", markdown_text)
 
     def _slides(self, name, blob):
-        from deepdoc.parser.ppt_parser import RAGFlowPptParser as ppt_parser
-
         self.callback(random.randint(1, 5) / 100.0, "Start to work on a PowerPoint Document")
 
         conf = self._param.setups["slides"]
         self.set_output("output_format", conf["output_format"])
 
-        ppt_parser = ppt_parser()
-        txts = ppt_parser(blob, 0, 100000, None)
+        parse_method = conf.get("parse_method", "deepdoc")
 
-        sections = [{"text": section} for section in txts if section.strip()]
+        # Handle TCADP parser
+        if parse_method.lower() == "tcadp parser":
+            table_result_type = conf.get("table_result_type", "1")
+            markdown_image_response_type = conf.get("markdown_image_response_type", "1")
+            tcadp_parser = TCADPParser(
+                table_result_type=table_result_type,
+                markdown_image_response_type=markdown_image_response_type
+            )
+            if not tcadp_parser.check_installation():
+                raise RuntimeError("TCADP parser not available. Please check Tencent Cloud API configuration.")
 
-        # json
-        assert conf.get("output_format") == "json", "have to be json for ppt"
-        if conf.get("output_format") == "json":
-            self.set_output("json", sections)
+            # Determine file type based on extension
+            if re.search(r"\.pptx?$", name, re.IGNORECASE):
+                file_type = "PPTX"
+            else:
+                file_type = "PPT"
+
+            self.callback(0.2, f"Using TCADP parser for {file_type} file.")
+
+            sections, tables = tcadp_parser.parse_pdf(
+                filepath=name,
+                binary=blob,
+                callback=self.callback,
+                file_type=file_type,
+                file_start_page=1,
+                file_end_page=1000
+            )
+
+            # Process TCADP parser output - PPT only supports json format
+            output_format = conf.get("output_format", "json")
+            if output_format == "json":
+                # For JSON output, create a list of text items
+                result = []
+                # Add sections as text
+                for section, position_tag in sections:
+                    if section:
+                        result.append({"text": section})
+                # Add tables as text
+                for table in tables:
+                    if table:
+                        result.append({"text": table})
+
+                self.set_output("json", result)
+        else:
+            # Default DeepDOC parser (supports .pptx format)
+            from deepdoc.parser.ppt_parser import RAGFlowPptParser as ppt_parser
+
+            ppt_parser = ppt_parser()
+            txts = ppt_parser(blob, 0, 100000, None)
+
+            sections = [{"text": section} for section in txts if section.strip()]
+
+            # json
+            assert conf.get("output_format") == "json", "have to be json for ppt"
+            if conf.get("output_format") == "json":
+                self.set_output("json", sections)
 
     def _markdown(self, name, blob):
         from functools import reduce
@@ -430,7 +560,7 @@ class Parser(ProcessBase):
         conf = self._param.setups["video"]
         self.set_output("output_format", conf["output_format"])
 
-        cv_mdl = LLMBundle(self._canvas.get_tenant_id(), LLMType.IMAGE2TEXT)
+        cv_mdl = LLMBundle(self._canvas.get_tenant_id(), LLMType.IMAGE2TEXT, llm_name=conf["llm_id"])
         txt = cv_mdl.chat(system="", history=[], gen_conf={}, video_bytes=blob, filename=name)
 
         self.set_output("text", txt)
@@ -463,14 +593,27 @@ class Parser(ProcessBase):
             if "body" in target_fields:
                 body_text, body_html = [], []
                 def _add_content(m, content_type):
+                    def _decode_payload(payload, charset, target_list):
+                        try:
+                            target_list.append(payload.decode(charset))
+                        except (UnicodeDecodeError, LookupError):
+                            for enc in ["utf-8", "gb2312", "gbk", "gb18030", "latin1"]:
+                                try:
+                                    target_list.append(payload.decode(enc))
+                                    break
+                                except UnicodeDecodeError:
+                                    continue
+                            else:
+                                target_list.append(payload.decode("utf-8", errors="ignore"))
+
                     if content_type == "text/plain":
-                        body_text.append(
-                            m.get_payload(decode=True).decode(m.get_content_charset())
-                        )
+                        payload = msg.get_payload(decode=True)
+                        charset = msg.get_content_charset() or "utf-8"
+                        _decode_payload(payload, charset, body_text)
                     elif content_type == "text/html":
-                        body_html.append(
-                            m.get_payload(decode=True).decode(m.get_content_charset())
-                        )
+                        payload = msg.get_payload(decode=True)
+                        charset = msg.get_content_charset() or "utf-8"
+                        _decode_payload(payload, charset, body_html)
                     elif "multipart" in content_type:
                         if m.is_multipart():
                             for part in m.iter_parts():
@@ -564,6 +707,7 @@ class Parser(ProcessBase):
             "video": self._video,
             "email": self._email,
         }
+
         try:
             from_upstream = ParserFromUpstream.model_validate(kwargs)
         except Exception as e:
@@ -573,7 +717,7 @@ class Parser(ProcessBase):
         name = from_upstream.name
         if self._canvas._doc_id:
             b, n = File2DocumentService.get_storage_address(doc_id=self._canvas._doc_id)
-            blob = STORAGE_IMPL.get(b, n)
+            blob = settings.STORAGE_IMPL.get(b, n)
         else:
             blob = FileService.get_blob(from_upstream.file["created_by"], from_upstream.file["id"])
 
@@ -591,4 +735,4 @@ class Parser(ProcessBase):
         outs = self.output()
         async with trio.open_nursery() as nursery:
             for d in outs.get("json", []):
-                nursery.start_soon(image2id, d, partial(STORAGE_IMPL.put, tenant_id=self._canvas._tenant_id), get_uuid())
+                nursery.start_soon(image2id, d, partial(settings.STORAGE_IMPL.put, tenant_id=self._canvas._tenant_id), get_uuid())

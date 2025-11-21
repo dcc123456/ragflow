@@ -25,6 +25,7 @@ type SliderInputFormFieldProps = {
   tooltip?: ReactNode;
   defaultValue?: number;
   className?: string;
+  numberInputClassName?: string;
 } & FormLayoutType;
 
 export function SliderInputFormField({
@@ -36,6 +37,7 @@ export function SliderInputFormField({
   tooltip,
   defaultValue,
   className,
+  numberInputClassName,
   layout = FormLayout.Horizontal,
 }: SliderInputFormFieldProps) {
   const form = useFormContext();
@@ -61,7 +63,7 @@ export function SliderInputFormField({
           </FormLabel>
           <div
             className={cn(
-              'flex items-center gap-14 justify-between',
+              'flex items-center gap-4 justify-between',
               { 'w-3/4': isHorizontal },
               className,
             )}
@@ -79,7 +81,11 @@ export function SliderInputFormField({
             </FormControl>
             <FormControl>
               <NumberInput
-                className="h-7 w-20"
+                className={cn(
+                  'h-6 w-10 p-0 text-center bg-bg-input border border-border-default text-text-secondary',
+                  '[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none',
+                  numberInputClassName,
+                )}
                 max={max}
                 min={min}
                 step={step}

@@ -22,8 +22,8 @@ import numpy as np
 import requests
 from yarl import URL
 
-from api.utils.log_utils import log_exception
-from rag.utils import num_tokens_from_string, truncate, total_token_count_from_response
+from common.log_utils import log_exception
+from common.token_utils import num_tokens_from_string, truncate, total_token_count_from_response
 
 class Base(ABC):
     def __init__(self, key, model_name, **kwargs):
@@ -35,9 +35,6 @@ class Base(ABC):
 
     def similarity(self, query: str, texts: list):
         raise NotImplementedError("Please implement encode method!")
-
-    def total_token_count(self, resp):
-        return total_token_count_from_response(resp)
 
 
 class JinaRerank(Base):
@@ -58,7 +55,7 @@ class JinaRerank(Base):
                 rank[d["index"]] = d["relevance_score"]
         except Exception as _e:
             log_exception(_e, res)
-        return rank, self.total_token_count(res)
+        return rank, total_token_count_from_response(res)
 
 
 class XInferenceRerank(Base):
@@ -237,7 +234,11 @@ class CoHereRerank(Base):
     def __init__(self, key, model_name, base_url=None):
         from cohere import Client
 
-        self.client = Client(api_key=key, base_url=base_url)
+        # Only pass base_url if it's a non-empty string, otherwise use default Cohere API endpoint
+        client_kwargs = {"api_key": key}
+        if base_url and base_url.strip():
+            client_kwargs["base_url"] = base_url
+        self.client = Client(**client_kwargs)
         self.model_name = model_name.split("___")[0]
 
     def similarity(self, query: str, texts: list):
@@ -301,7 +302,7 @@ class SILICONFLOWRerank(Base):
             log_exception(_e, response)
         return (
             rank,
-            response["meta"]["tokens"]["input_tokens"] + response["meta"]["tokens"]["output_tokens"],
+            total_token_count_from_response(response),
         )
 
 
@@ -330,7 +331,7 @@ class BaiduYiyanRerank(Base):
                 rank[d["index"]] = d["relevance_score"]
         except Exception as _e:
             log_exception(_e, res)
-        return rank, self.total_token_count(res)
+        return rank, total_token_count_from_response(res)
 
 
 class VoyageRerank(Base):
@@ -378,7 +379,7 @@ class QWenRerank(Base):
                     rank[r.index] = r.relevance_score
             except Exception as _e:
                 log_exception(_e, resp)
-            return rank, resp.usage.total_tokens
+            return rank, total_token_count_from_response(resp)
         else:
             raise ValueError(f"Error calling QWenRerank model {self.model_name}: {resp.status_code} - {resp.text}")
 
@@ -491,4 +492,13 @@ class Ai302Rerank(Base):
     def __init__(self, key, model_name, base_url="https://api.302.ai/v1/rerank"):
         if not base_url:
             base_url = "https://api.302.ai/v1/rerank"
+        super().__init__(key, model_name, base_url)
+
+
+class JiekouAIRerank(JinaRerank):
+    _FACTORY_NAME = "Jiekou.AI"
+
+    def __init__(self, key, model_name, base_url="https://api.jiekou.ai/openai/v1/rerank"):
+        if not base_url:
+            base_url = "https://api.jiekou.ai/openai/v1/rerank"
         super().__init__(key, model_name, base_url)

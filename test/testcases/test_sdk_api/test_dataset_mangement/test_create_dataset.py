@@ -17,7 +17,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from operator import attrgetter
 
 import pytest
-from configs import DATASET_NAME_LIMIT, HOST_ADDRESS, INVALID_API_TOKEN
+from configs import DATASET_NAME_LIMIT, DEFAULT_PARSER_CONFIG, HOST_ADDRESS, INVALID_API_TOKEN
 from hypothesis import example, given, settings
 from ragflow_sdk import DataSet, RAGFlow
 from utils import encode_avatar
@@ -95,9 +95,8 @@ class TestDatasetCreate:
         payload = {"name": name}
         client.create_dataset(**payload)
 
-        with pytest.raises(Exception) as excinfo:
-            client.create_dataset(**payload)
-        assert str(excinfo.value) == f"Dataset name '{name}' already exists", str(excinfo.value)
+        dataset = client.create_dataset(**payload)
+        assert dataset.name == name + "(1)", str(dataset)
 
     @pytest.mark.p3
     def test_name_case_insensitive(self, client):
@@ -106,9 +105,8 @@ class TestDatasetCreate:
         client.create_dataset(**payload)
 
         payload = {"name": name.lower()}
-        with pytest.raises(Exception) as excinfo:
-            client.create_dataset(**payload)
-        assert str(excinfo.value) == f"Dataset name '{name.lower()}' already exists", str(excinfo.value)
+        dataset = client.create_dataset(**payload)
+        assert dataset.name == name.lower() + "(1)", str(dataset)
 
     @pytest.mark.p2
     def test_avatar(self, client, tmp_path):
@@ -586,14 +584,7 @@ class TestDatasetCreate:
     def test_parser_config_empty(self, client):
         excepted_value = DataSet.ParserConfig(
             client,
-            {
-                "chunk_token_num": 512,
-                "delimiter": r"\n",
-                "html4excel": False,
-                "layout_recognize": "DeepDOC",
-                "raptor": {"use_raptor": False},
-                "graphrag": {"use_graphrag": False},
-            },
+            DEFAULT_PARSER_CONFIG,
         )
         parser_config_o = DataSet.ParserConfig(client, {})
         payload = {"name": "parser_config_empty", "parser_config": parser_config_o}
@@ -604,14 +595,7 @@ class TestDatasetCreate:
     def test_parser_config_unset(self, client):
         excepted_value = DataSet.ParserConfig(
             client,
-            {
-                "chunk_token_num": 512,
-                "delimiter": r"\n",
-                "html4excel": False,
-                "layout_recognize": "DeepDOC",
-                "raptor": {"use_raptor": False},
-                "graphrag": {"use_graphrag": False},
-            },
+            DEFAULT_PARSER_CONFIG,
         )
         payload = {"name": "parser_config_unset"}
         dataset = client.create_dataset(**payload)
@@ -621,14 +605,7 @@ class TestDatasetCreate:
     def test_parser_config_none(self, client):
         excepted_value = DataSet.ParserConfig(
             client,
-            {
-                "chunk_token_num": 512,
-                "delimiter": r"\n",
-                "html4excel": False,
-                "layout_recognize": "DeepDOC",
-                "raptor": {"use_raptor": False},
-                "graphrag": {"use_graphrag": False},
-            },
+            DEFAULT_PARSER_CONFIG,
         )
         payload = {"name": "parser_config_empty", "parser_config": None}
         dataset = client.create_dataset(**payload)

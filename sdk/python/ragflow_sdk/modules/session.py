@@ -15,7 +15,6 @@
 #
 
 import json
-
 from .base import Base
 
 
@@ -51,7 +50,6 @@ class Session(Base):
                 if not line:
                     continue  # Skip empty lines
                 line = line.strip()
-
                 if line.startswith("data:"):
                     content = line[len("data:"):].strip()
                     if content == "[DONE]":
@@ -64,11 +62,15 @@ class Session(Base):
                 except json.JSONDecodeError:
                     continue  # Skip lines that are not valid JSON
 
-                event = json_data.get("event")
-                if event == "message":
+                if (
+                    (self.__session_type == "agent" and json_data.get("event") == "message_end")
+                    or (self.__session_type == "chat" and json_data.get("data") is True)
+                ):
+                    return
+                if self.__session_type == "agent":
                     yield self._structure_answer(json_data)
-                elif event == "message_end":
-                    return  # End of message stream
+                else:
+                    yield self._structure_answer(json_data["data"])
         else:
             try:
                 json_data = res.json()
@@ -78,8 +80,12 @@ class Session(Base):
         
 
     def _structure_answer(self, json_data):
-        answer = json_data["data"]["content"]
-        reference = json_data["data"].get("reference", {})
+        answer = ""
+        if self.__session_type == "agent":
+           answer = json_data["data"]["content"]
+        elif self.__session_type == "chat":
+            answer = json_data["answer"]
+        reference = json_data.get("reference", {})
         temp_dict = {
             "content": answer,
             "role": "assistant"

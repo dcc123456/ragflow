@@ -22,11 +22,11 @@ from typing import Tuple
 import jinja2
 import json_repair
 import trio
-from api.utils import hash_str2int
+from common.misc_utils import hash_str2int
 from rag.nlp import rag_tokenizer
 from rag.prompts.template import load_prompt
-from rag.settings import TAG_FLD
-from rag.utils import encoder, num_tokens_from_string
+from common.constants import TAG_FLD
+from common.token_utils import encoder, num_tokens_from_string
 
 
 STOP_TOKEN="<|STOP|>"
@@ -52,7 +52,7 @@ def chunks_format(reference):
             "similarity": chunk.get("similarity"),
             "vector_similarity": chunk.get("vector_similarity"),
             "term_similarity": chunk.get("term_similarity"),
-            "doc_type": chunk.get("doc_type_kwd"),
+            "doc_type": get_value(chunk, "doc_type_kwd", "doc_type"),
         }
         for chunk in reference.get("chunks", [])
     ]
@@ -146,6 +146,7 @@ KEYWORD_PROMPT_TEMPLATE = load_prompt("keyword_prompt")
 QUESTION_PROMPT_TEMPLATE = load_prompt("question_prompt")
 VISION_LLM_DESCRIBE_PROMPT = load_prompt("vision_llm_describe_prompt")
 VISION_LLM_FIGURE_DESCRIBE_PROMPT = load_prompt("vision_llm_figure_describe_prompt")
+STRUCTURED_OUTPUT_PROMPT = load_prompt("structured_output_prompt")
 
 ANALYZE_TASK_SYSTEM = load_prompt("analyze_task_system")
 ANALYZE_TASK_USER = load_prompt("analyze_task_user")
@@ -200,7 +201,7 @@ def question_proposal(chat_mdl, content, topn=3):
 
 
 def full_question(tenant_id=None, llm_id=None, messages=[], language=None, chat_mdl=None):
-    from api.db import LLMType
+    from common.constants import LLMType
     from api.db.services.llm_service import LLMBundle
     from api.db.services.tenant_llm_service import TenantLLMService
 
@@ -234,7 +235,7 @@ def full_question(tenant_id=None, llm_id=None, messages=[], language=None, chat_
 
 
 def cross_languages(tenant_id, llm_id, query, languages=[]):
-    from api.db import LLMType
+    from common.constants import LLMType
     from api.db.services.llm_service import LLMBundle
     from api.db.services.tenant_llm_service import TenantLLMService
 
@@ -403,6 +404,11 @@ def form_message(system_prompt, user_prompt):
     return [{"role": "system", "content": system_prompt},{"role": "user", "content": user_prompt}]
 
 
+def structured_output_prompt(schema=None) -> str:
+    template = PROMPT_JINJA_ENV.from_string(STRUCTURED_OUTPUT_PROMPT)
+    return template.render(schema=schema)
+
+
 def tool_call_summary(chat_mdl, name: str, params: dict, result: str, user_defined_prompts: dict={}) -> str:
     template = PROMPT_JINJA_ENV.from_string(SUMMARY4MEMORY)
     system_prompt = template.render(name=name,
@@ -423,7 +429,7 @@ def rank_memories(chat_mdl, goal:str, sub_goal:str, tool_call_summaries: list[st
     return re.sub(r"^.*</think>", "", ans, flags=re.DOTALL)
 
 
-def gen_meta_filter(chat_mdl, meta_data:dict, query: str) -> list:
+def gen_meta_filter(chat_mdl, meta_data:dict, query: str) -> dict:
     sys_prompt = PROMPT_JINJA_ENV.from_string(META_FILTER).render(
         current_date=datetime.datetime.today().strftime('%Y-%m-%d'),
         metadata_keys=json.dumps(meta_data),
@@ -434,11 +440,13 @@ def gen_meta_filter(chat_mdl, meta_data:dict, query: str) -> list:
     ans = re.sub(r"(^.*</think>|```json\n|```\n*$)", "", ans, flags=re.DOTALL)
     try:
         ans = json_repair.loads(ans)
-        assert isinstance(ans, list), ans
+        assert isinstance(ans, dict), ans
+        assert "conditions" in ans and isinstance(ans["conditions"], list), ans
         return ans
     except Exception:
         logging.exception(f"Loading json failure: {ans}")
-    return []
+
+    return {"conditions": []}
 
 
 def gen_json(system_prompt:str, user_prompt:str, chat_mdl, gen_conf = None):
