@@ -13,7 +13,6 @@ import {
   useFetchTenantInfo,
   useListTenantUser,
 } from '@/hooks/user-setting-hooks';
-import { ITenantUser } from '@/interfaces/database/user-setting';
 import { formatDate } from '@/utils/date';
 import { upperFirst } from 'lodash';
 import { ArrowDown, ArrowUp, ArrowUpDown, Trash2 } from 'lucide-react';

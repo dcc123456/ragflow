@@ -53,6 +53,13 @@ export function SideBar() {
   const { logout } = useLogout();
 
   const items = menuItems.filter((x) => {
+    if (x.key === Routes.Api) {
+      if (enableAdmin && isAdmin) {
+        return true;
+      }
+      return false;
+    }
+
     if (enableAdmin) {
       if (!isAdmin) {
         return x.key !== Routes.Model;
