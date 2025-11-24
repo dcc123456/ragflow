@@ -4,12 +4,12 @@
     "product_name": "RabbitMQ",
     "product_version": "4.1.3",
     "rabbitmq_definition_format": "cluster",
-    "original_cluster_name": "rabbit@ragflow-rabbitmq-01",
-    "explanation": "Definitions of cluster 'rabbit@ragflow-rabbitmq-01'",
+    "original_cluster_name": "rabbit@docker-rabbitmq-1",
+    "explanation": "Definitions of cluster 'rabbit@docker-rabbitmq-1'",
     "users": [
         {
-            "name": "kevin",
-            "password_hash": "OBuB5hPBSd3/LrWfz1zONBdfzRwG2Oixi7MRiF7tAu10flpO",
+            "name": "rag_flow",
+            "password_hash": "90uF/nr7KZ2nqEx0SxymlVf6yVrjojFI5Ra0ljfT5ggfhnJf",
             "hashing_algorithm": "rabbit_password_hashing_sha256",
             "tags": [
                 "administrator"
@@ -31,7 +31,7 @@
     ],
     "permissions": [
         {
-            "user": "kevin",
+            "user": "rag_flow",
             "vhost": "/",
             "configure": ".*",
             "write": ".*",
@@ -47,7 +47,7 @@
         },
         {
             "name": "internal_cluster_id",
-            "value": "rabbitmq-cluster-id-pqIXrBU22R_GnBZ5Oq4Tmg"
+            "value": "rabbitmq-cluster-id-g7XG9JyjHJxxXRQsslwX5A"
         }
     ],
     "policies": [],

@@ -1,18 +1,51 @@
 include:
   - ./docker-compose-base.yml
-
+# To ensure that the container processes the locally modified `service_conf.yaml.template` instead of the one included in its image, you need to mount the local `service_conf.yaml.template` to the container.
 services:
-  ragflow:
-    image: infiniflow-ai/ragflow:latest
-    container_name: infiniflow-ragflow-server
-    network_mode: "host"
+  ragflow-cpu:
+    depends_on:
+      mysql:
+        condition: service_healthy
+    profiles:
+      - cpu
+    image: ${RAGFLOW_IMAGE}
+    # Example configuration to set up an MCP server:
+    # command:
+    #   - --enable-mcpserver
+    #   - --mcp-host=0.0.0.0
+    #   - --mcp-port=9382
+    #   - --mcp-base-url=http://127.0.0.1:9380
+    #   - --mcp-script-path=/ragflow/mcp/server/server.py
+    #   - --mcp-mode=self-host
+    #   - --mcp-host-api-key=ragflow-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+    # Optional transport flags for MCP (customize if needed).
+    # Host mode need to combined with --no-transport-streamable-http-enabled flag, namely, host+streamable-http is not supported yet.
+    # The following are enabled by default unless explicitly disabled with --no-<flag>.
+    #   - --no-transport-sse-enabled # Disable legacy SSE endpoints (/sse and /messages/)
+    #   - --no-transport-streamable-http-enabled #  Disable Streamable HTTP transport (/mcp endpoint)
+    #   - --no-json-response # Disable JSON response mode in Streamable HTTP transport (instead of SSE over HTTP)
+
+    # Example configration to start Admin server:
+    # command:
+    #   - --enable-adminserver
+    ports:
+      - ${SVR_WEB_HTTP_PORT}:80
+      - ${SVR_WEB_HTTPS_PORT}:443
+      - ${SVR_HTTP_PORT}:9380
+      - ${ADMIN_SVR_HTTP_PORT}:9381
+      - ${SVR_MCP_PORT}:9382 # entry for MCP (host_port:docker_port). The docker_port must match the value you set for `mcp-port` above.
     volumes:
-      - ./service_conf.yaml:/ragflow/conf/service_conf.yaml
       - ./ragflow-logs:/ragflow/logs
       - ./nginx/ragflow.conf:/etc/nginx/conf.d/ragflow.conf
       - ./nginx/proxy.conf:/etc/nginx/proxy.conf
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ../history_data_agent:/ragflow/history_data_agent
       - ./res/:/ragflow/rag/res
+      - ./service_conf.yaml.template:/ragflow/conf/service_conf.yaml.template
+    env_file: .env
+    networks:
+      - ragflow
+    restart: on-failure
     environment:
       - MAX_FILE_NUM_PER_USER=${MAX_FILE_NUM_PER_USER}
       - TZ=${TIMEZONE}
@@ -20,8 +53,9 @@ services:
       # - OCR_SVR=http://10.142.0.6:12344
       # - TENSORRT_DLA_SVR=http://10.142.0.6:3344
       # - TENSORRT_TSR_SVR=http://10.142.0.6:11234
-    restart: always
-    env_file: .env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
   # ragflow-parser:
   #   image: infiniflow-ai/ragflow:latest
   #   container_name: infiniflow-ragflow-parser
