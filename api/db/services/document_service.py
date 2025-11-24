@@ -706,7 +706,7 @@ class DocumentService(CommonService):
                 priority = 0
                 task_type= "common"
                 for t in tsks:
-                    task_type = (t.task_type or "common").lower()
+                    task_type = (t.task_type or task_type).lower()
                     if task_type in PIPELINE_SPECIAL_PROGRESS_FREEZE_TASK_TYPES:
                         special_task_running = True
                     if 0 <= t.progress < 1:
