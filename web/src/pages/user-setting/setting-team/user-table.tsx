@@ -13,7 +13,6 @@ import {
   useFetchTenantInfo,
   useListTenantUser,
 } from '@/hooks/user-setting-hooks';
-import { ITenantUser } from '@/interfaces/database/user-setting';
 import { formatDate } from '@/utils/date';
 import { upperFirst } from 'lodash';
 import { ArrowDown, ArrowUp, ArrowUpDown, Trash2 } from 'lucide-react';
@@ -83,7 +82,7 @@ const UserTable = ({ searchUser }: { searchUser: string }) => {
     <div className="rounded-lg bg-bg-input scrollbar-auto overflow-hidden border border-border-default">
       <Table rootClassName="rounded-lg">
         <TableHeader className="bg-bg-title">
-          <TableRow>
+          <TableRow className="hover:bg-bg-title">
             <TableHead className="h-12 px-4">{t('common.name')}</TableHead>
             <TableHead
               className="h-12 px-4 cursor-pointer"

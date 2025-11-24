@@ -17,6 +17,8 @@ import json
 import re
 import logging
 from copy import deepcopy
+from quart import Response, request
+from api.apps import current_user, login_required
 
 from api.db.services.tenant_llm_service import TenantLLMService
 from flask import Response, g, request
@@ -37,8 +39,8 @@ from common.constants import RetCode, LLMType
 
 @manager.route("/set", methods=["POST"])  # noqa: F821
 @login_required
-def set_conversation():
-    req = request.json
+async def set_conversation():
+    req = await request.json
     conv_id = req.get("conversation_id")
     is_new = req.get("is_new")
     name = req.get("name", "New conversation")
@@ -88,7 +90,6 @@ def get():
         if not e:
             return get_data_error_result(message="Conversation not found!")
         tenants = UserTenantService.query(user_id=current_user.id)
-        avatar = None
         for tenant in tenants:
             dialog = DialogService.query(tenant_id=tenant.tenant_id, id=conv.dialog_id)
             if dialog and len(dialog) > 0:
@@ -132,8 +133,9 @@ def getsse(dialog_id):
 
 @manager.route("/rm", methods=["POST"])  # noqa: F821
 @login_required
-def rm():
-    conv_ids = request.json["conversation_ids"]
+async def rm():
+    req = await request.json
+    conv_ids = req["conversation_ids"]
     try:
         for cid in conv_ids:
             exist, conv = ConversationService.get_by_id(cid)
@@ -173,8 +175,8 @@ def list_conversation():
 @manager.route("/completion", methods=["POST"])  # noqa: F821
 @login_required
 @validate_request("conversation_id", "messages")
-def completion():
-    req = request.json
+async def completion():
+    req = await request.json
     msg = []
     for m in req["messages"]:
         if m["role"] == "system":
@@ -258,8 +260,8 @@ def completion():
 
 @manager.route("/tts", methods=["POST"])  # noqa: F821
 @login_required
-def tts():
-    req = request.json
+async def tts():
+    req = await request.json
     text = req["text"]
 
     tenants = TenantService.get_info_by(current_user.id)
@@ -291,8 +293,8 @@ def tts():
 @manager.route("/delete_msg", methods=["POST"])  # noqa: F821
 @login_required
 @validate_request("conversation_id", "message_id")
-def delete_msg():
-    req = request.json
+async def delete_msg():
+    req = await request.json
     e, conv = ConversationService.get_by_id(req["conversation_id"])
     if not e:
         return get_data_error_result(message="Conversation not found!")
@@ -314,8 +316,8 @@ def delete_msg():
 @manager.route("/thumbup", methods=["POST"])  # noqa: F821
 @login_required
 @validate_request("conversation_id", "message_id")
-def thumbup():
-    req = request.json
+async def thumbup():
+    req = await request.json
     e, conv = ConversationService.get_by_id(req["conversation_id"])
     if not e:
         return get_data_error_result(message="Conversation not found!")
@@ -341,8 +343,8 @@ def thumbup():
 @manager.route("/ask", methods=["POST"])  # noqa: F821
 @login_required
 @validate_request("question", "kb_ids")
-def ask_about():
-    req = request.json
+async def ask_about():
+    req = await request.json
     uid = current_user.id
 
     search_id = req.get("search_id", "")
@@ -373,8 +375,8 @@ def ask_about():
 @manager.route("/mindmap", methods=["POST"])  # noqa: F821
 @login_required
 @validate_request("question", "kb_ids")
-def mindmap():
-    req = request.json
+async def mindmap():
+    req = await request.json
     search_id = req.get("search_id", "")
     search_app = SearchService.get_detail(search_id) if search_id else {}
     search_config = search_app.get("search_config", {}) if search_app else {}
@@ -391,8 +393,8 @@ def mindmap():
 @manager.route("/related_questions", methods=["POST"])  # noqa: F821
 @login_required
 @validate_request("question")
-def related_questions():
-    req = request.json
+async def related_questions():
+    req = await request.json
 
     search_id = req.get("search_id", "")
     search_config = {}

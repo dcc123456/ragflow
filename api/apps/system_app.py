@@ -14,7 +14,7 @@
 #  limitations under the License
 #
 from datetime import datetime
-from flask_login import login_required, current_user
+from api.apps import login_required, current_user
 
 from api.db.db_models import APIToken
 from api.db.services.api_service import APITokenService
@@ -26,6 +26,7 @@ from api.utils.api_utils import (
     generate_confirmation_token,
 )
 from common.time_utils import current_timestamp, datetime_format
+from quart import jsonify
 from common import settings
 
 

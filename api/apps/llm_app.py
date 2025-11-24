@@ -16,8 +16,9 @@
 import logging
 import json
 import os
-from flask import request
-from flask_login import login_required, current_user
+from quart import request
+
+from api.apps import login_required, current_user
 from api.db.services.tenant_llm_service import LLMFactoriesService, TenantLLMService
 from api.db.services.llm_service import LLMService
 from api.utils.api_utils import server_error_response, get_data_error_result, validate_request
@@ -62,8 +63,8 @@ def factories():
 @manager.route("/set_api_key", methods=["POST"])  # noqa: F821
 @login_required
 @validate_request("llm_factory", "api_key")
-def set_api_key():
-    req = request.json
+async def set_api_key():
+    req = await request.json
     # test if api key works
     chat_passed, embd_passed, rerank_passed = False, False, False
     factory = req["llm_factory"]
@@ -132,8 +133,8 @@ def set_api_key():
 @manager.route("/add_llm", methods=["POST"])  # noqa: F821
 @login_required
 @validate_request("llm_factory")
-def add_llm():
-    req = request.json
+async def add_llm():
+    req = await request.json
     factory = req["llm_factory"]
     api_key = req.get("api_key", "x")
     llm_name = req.get("llm_name")
@@ -152,11 +153,11 @@ def add_llm():
 
     elif factory == "Tencent Hunyuan":
         req["api_key"] = apikey_json(["hunyuan_sid", "hunyuan_sk"])
-        return set_api_key()
+        return await set_api_key()
 
     elif factory == "Tencent Cloud":
         req["api_key"] = apikey_json(["tencent_cloud_sid", "tencent_cloud_sk"])
-        return set_api_key()
+        return await set_api_key()
 
     elif factory == "Bedrock":
         # For Bedrock, due to its special authentication method
@@ -305,8 +306,8 @@ def add_llm():
 @manager.route("/delete_llm", methods=["POST"])  # noqa: F821
 @login_required
 @validate_request("llm_factory", "llm_name")
-def delete_llm():
-    req = request.get_json()
+async def delete_llm():
+    req = await request.json
 
     try:
         operator = UserTenantService.filter_by_tenant_and_user_id(tenant_id=current_user.id, user_id=current_user.id)
@@ -353,8 +354,8 @@ def delete_llm():
 @manager.route("/enable_llm", methods=["POST"])  # noqa: F821
 @login_required
 @validate_request("llm_factory", "llm_name")
-def enable_llm():
-    req = request.json
+async def enable_llm():
+    req = await request.json
     TenantLLMService.filter_update(
         [TenantLLM.tenant_id == current_user.id, TenantLLM.llm_factory == req["llm_factory"], TenantLLM.llm_name == req["llm_name"]], {"status": str(req.get("status", "1"))}
     )
@@ -364,8 +365,8 @@ def enable_llm():
 @manager.route("/delete_factory", methods=["POST"])  # noqa: F821
 @login_required
 @validate_request("llm_factory")
-def delete_factory():
-    req = request.get_json()
+async def delete_factory():
+    req = await request.json
     try:
         TenantLLMService.filter_delete([TenantLLM.tenant_id == current_user.id, TenantLLM.llm_factory == req["llm_factory"]])
         with DB.atomic():
@@ -520,13 +521,13 @@ def list_app():
 @manager.route('/set_default_llm', methods=['POST'])  # noqa: F821
 @login_required
 @validate_request("llm_factory", "llm_name")
-def set_default_llm():
+async def set_default_llm():
     from common import settings
     from api.db.services import UserService
     if not settings.ENABLE_ADMIN or not UserService.is_admin(current_user.id):
         return get_data_error_result(message="Not authorized.")
 
-    req = request.get_json()
+    req = await request.get_json()
     llm_factory = req["llm_factory"]
     llm_name = req["llm_name"]
     llms = TenantLLMService.query(tenant_id=current_user.id, llm_factory=llm_factory, llm_name=llm_name)

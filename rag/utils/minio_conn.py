@@ -118,7 +118,7 @@ class RAGFlowMinio:
                 time.sleep(1)
             if i == 0:
                 raise Exception("""File not found.""")
-        return
+        return None
 
     def obj_exist(self, bucket, filename, tenant_id):
         try:

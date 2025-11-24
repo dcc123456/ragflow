@@ -1,3 +1,4 @@
+import inspect
 from functools import wraps
 from flask import g
 from flask_login import current_user
@@ -160,28 +161,28 @@ def check_kb_permission(permission):
     - URL path parameters (kwargs)
     """
 
-    def decorator(f):
-        from flask import request as flask_request
+    def decorator(foo):
+        from quart import request
 
-        @wraps(f)
-        def wrapper(*args, **kwargs):
-            content_type = flask_request.content_type or ""
+        @wraps(foo)
+        async def wrapper(*args, **kwargs):
+            content_type = request.headers.get("Content-Type") or ""
 
-            if flask_request.method in ["POST", "PUT", "PATCH"]:
+            if request.method in ["POST", "PUT", "PATCH"]:
                 if "application/json" in content_type:
-                    if not flask_request.is_json:
+                    if not request.is_json:
                         return get_json_result(data=False, message="Content-Type must be application/json", code=RetCode.ARGUMENT_ERROR)
-                    req_data = flask_request.get_json(silent=True) or {}
+                    req_data = await request.get_json(silent=True) or {}
 
                 # Form
                 elif "multipart/form-data" in content_type or "application/x-www-form-urlencoded" in content_type:
-                    req_data = flask_request.form or {}
+                    req_data = await request.form or {}
 
                 else:
-                    req_data = flask_request.args or {}
+                    req_data = request.args or {}
 
             else:  # GET、DELETE
-                req_data = flask_request.args or {}
+                req_data = request.args or {}
 
             kb_id = req_data.get("kb_id") or kwargs.get("kb_id")
             if not kb_id:
@@ -192,7 +193,9 @@ def check_kb_permission(permission):
 
             if settings.ENABLE_ADMIN and UserService.is_admin(current_user.id) and permission == PermissionValue.PERMISSION_READ:
                 g.tenant_id = current_user.id
-                return f(*args, **kwargs)
+                if inspect.iscoroutinefunction(foo):
+                    return await foo(*args, **kwargs)
+                return foo(*args, **kwargs)
 
             user_tenants = UserTenantService.query(user_id=current_user.id) or []
 
@@ -203,7 +206,9 @@ def check_kb_permission(permission):
                         operator_id=user_tenant.id, tenant_id=user_tenant.tenant_id, resource_id=kb_id, resource_type=ResourceType.KB, permission=permission
                     )[0]:
                         g.tenant_id = user_tenant.tenant_id
-                        return f(*args, **kwargs)
+                        if inspect.iscoroutinefunction(foo):
+                            return await foo(*args, **kwargs)
+                        return foo(*args, **kwargs)
 
             return get_json_result(data=False, message="Only knowledgebase owners or members with management or write permissions can perform this action.", code=settings.RetCode.OPERATING_ERROR)
 

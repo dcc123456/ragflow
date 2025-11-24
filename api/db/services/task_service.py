@@ -439,6 +439,7 @@ def queue_tasks(doc: dict, bucket: str, name: str, priority: int):
             rout_key(priority, suffix), message=unfinished_task
         ), "Can't access task queue, please retry it later"
 
+
 def reuse_prev_task_chunks(task: dict, prev_tasks: list[dict], chunking_config: dict):
     """Attempt to reuse chunks from previous tasks for optimization.
 
