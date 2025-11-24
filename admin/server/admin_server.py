@@ -62,7 +62,7 @@ if __name__ == '__main__':
     settings.init_settings()
     setup_auth(login_manager)
     init_default_admin()
-    init_user_role()
+    #init_user_role()
     SERVICE_CONFIGS.configs = load_configurations(SERVICE_CONF)
 
     try:
