@@ -343,7 +343,7 @@ async def get(file_id):
     if not e:
         return get_data_error_result(message="Document not found!")
     if not check_file_team_permission(file, current_user.id):
-        return get_json_result(data=False, message='No authorization.', code=settings.RetCode.AUTHENTICATION_ERROR)
+        return get_json_result(data=False, message='No authorization.', code=RetCode.AUTHENTICATION_ERROR)
 
     b, n = File2DocumentService.get_storage_address(file_id=file_id)
 

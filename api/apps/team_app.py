@@ -782,7 +782,7 @@ async def update_department(tenant_id):
     #     return get_json_result(
     #         data=False,
     #         message="Permission denied",
-    #         code=settings.RetCode.PERMISSION_ERROR)
+    #         code=RetCode.PERMISSION_ERROR)
 
     allow_to_update = ["name", "avatar", "description", "status"]
     department_dict = {key: req[key] for key in req if key in allow_to_update}
@@ -919,7 +919,7 @@ async def add_department_member(tenant_id):
     #     return get_json_result(
     #         data=False,
     #         message="Permission denied",
-    #         code=settings.RetCode.PERMISSION_ERROR)
+    #         code=RetCode.PERMISSION_ERROR)
 
     not_added = []
     members = []
@@ -1002,7 +1002,7 @@ async def remove_department_member(tenant_id):
     #     return get_json_result(
     #         data=False,
     #         message="Permission denied",
-    #         code=settings.RetCode.PERMISSION_ERROR)
+    #         code=RetCode.PERMISSION_ERROR)
 
     not_deleted = []
     member_ids = []

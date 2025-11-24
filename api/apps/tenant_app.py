@@ -37,7 +37,7 @@ from rag.nlp import search
 def user_list(tenant_id):
     if current_user.id != tenant_id:
         if not UserTenantService.filter_by_tenant_and_user_id(tenant_id, current_user.id):
-            return get_json_result(data=False, message="No authorization.", code=settings.RetCode.AUTHENTICATION_ERROR)
+            return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
 
     try:
         users = UserTenantService.get_by_tenant_id(tenant_id)
@@ -155,7 +155,7 @@ def billing_plan(tenant_id):
         return get_json_result(
             data=False,
             message='No authorization.',
-            code=settings.RetCode.AUTHENTICATION_ERROR)
+            code=RetCode.AUTHENTICATION_ERROR)
 
     try:
         tenant_plan = TenantPlanService.get_by_tenant_id(tenant_id)

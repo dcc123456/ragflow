@@ -75,7 +75,7 @@ def ldap_login():
     if not result:
         return get_json_result(
             data=False,
-            code=settings.RetCode.AUTHENTICATION_ERROR,
+            code=RetCode.AUTHENTICATION_ERROR,
             message=f"Email: {email} is not registered!",
         )
     login_password = base64.b64decode(decrypt(request.json.get("password")))
@@ -84,7 +84,7 @@ def ldap_login():
     except:
         return get_json_result(
             data=False,
-            code=settings.RetCode.AUTHENTICATION_ERROR,message=f"Password error!"
+            code=RetCode.AUTHENTICATION_ERROR,message=f"Password error!"
         )
 
     users = UserService.query(email=email)
@@ -606,7 +606,7 @@ async def setting_user():
         #):
         #    return get_json_result(
         #        data=False,
-        #        code=settings.RetCode.AUTHENTICATION_ERROR,
+        #        code=RetCode.AUTHENTICATION_ERROR,
         #        message="Password error!",
         #    )
 

@@ -210,7 +210,7 @@ def check_kb_permission(permission):
                             return await foo(*args, **kwargs)
                         return foo(*args, **kwargs)
 
-            return get_json_result(data=False, message="Only knowledgebase owners or members with management or write permissions can perform this action.", code=settings.RetCode.OPERATING_ERROR)
+            return get_json_result(data=False, message="Only knowledgebase owners or members with management or write permissions can perform this action.", code=RetCode.OPERATING_ERROR)
 
         return wrapper
 
@@ -283,7 +283,7 @@ def check_dialog_permission(permission):
                             return await foo(*args, **kwargs)
                         return foo(*args, **kwargs)
 
-            return get_json_result(data=[], message="Only Chat/Dialog owners or members with management or write permissions can perform this action", code=settings.RetCode.OPERATING_ERROR)
+            return get_json_result(data=[], message="Only Chat/Dialog owners or members with management or write permissions can perform this action", code=RetCode.OPERATING_ERROR)
 
         return wrapper
 
