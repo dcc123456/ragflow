@@ -14,14 +14,19 @@
 #  limitations under the License.
 #
 import gevent.monkey
+
+from common.config_utils import show_configs
+from common.file_utils import get_project_base_directory
+from common.log_utils import init_root_logger
+from common.mcp_tool_call_conn import shutdown_all_mcp_sessions
+from common.settings import print_rag_settings
+
 gevent.monkey.patch_all()
 import sys
 import time
-from api.utils.log_utils import init_root_logger
 # Initialize logging first
 init_root_logger("ragflow_server")
 from plugin import GlobalPluginManager
-from rag.utils.mcp_tool_call_conn import shutdown_all_mcp_sessions
 from api.apps import smtp_mail_server
 import logging
 import os
@@ -35,9 +40,6 @@ from api.db.services.document_service import DocumentService
 from api import utils
 from api.db.db_models import init_database_tables as init_web_db
 from api.db.init_data import init_web_data
-from api.versions import get_ragflow_version
-from api.utils.configs import show_configs
-from rag.settings import print_rag_settings
 from rag.utils.redis_conn import RedisDistributedLock
 
 # Global stop event and executor for background tasks
@@ -84,10 +86,7 @@ def initialize_ragflow():
 
     """)
     logging.info(
-        f'RAGFlow version: {get_ragflow_version()}'
-    )
-    logging.info(
-        f'project base: {utils.file_utils.get_project_base_directory()}'
+        f'project base: {get_project_base_directory()}'
     )
     show_configs()
     settings.init_settings()

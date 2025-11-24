@@ -247,7 +247,7 @@ def set_api_limiter():
     async def key_func_global():
         ident = {
             "tenant": current_user.id if current_user else "",
-            "ip": await remote_addr_key
+            "ip": await remote_addr_key()
         }
         endpoint = request.endpoint or "unknown"
         if ident["tenant"]:
