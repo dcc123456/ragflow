@@ -1036,6 +1036,10 @@ def rabbitmq_callback(ch, method, properties, body):
             if task["task_type"] in ["graphrag", "raptor", "mindmap"] and msg.get("doc_ids", []):
                 time.sleep(5)
                 task = TaskService.get_task(msg["id"], msg["doc_ids"])
+                if not task:
+                    logging.warning("Miss task info in DB({}): {}".format(method.routing_key, body))
+                    ch.basic_ack(method.delivery_tag)
+                    return
                 task["doc_ids"] = msg["doc_ids"]
         else:
             task = TaskService.get_task(msg["id"])
