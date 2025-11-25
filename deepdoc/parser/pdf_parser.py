@@ -199,7 +199,6 @@ class RAGFlowPdfParser:
         logging.debug("Table processing...")
         imgs, pos = [], []
         tbcnt = [0]
-        MARGIN = 15
         self.tb_cpns = []
         self.tabls_cells = []
         assert len(self.page_layout) == len(self.page_images)

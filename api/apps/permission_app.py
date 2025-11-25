@@ -1,6 +1,6 @@
 import logging
 from api.db.services.dialog_service import DialogService
-from quart import request, jsonify
+from quart import request
 from api.apps import login_required, current_user
 from api.db import VALID_RESOURCE_TYPES, PermissionActionType, PermissionTargetType, PermissionValue, ResourceType
 from api.db.db_models import DB
@@ -8,7 +8,7 @@ from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.tenant_llm_service import TenantLLMService
 from api.db.services.permission_service import PermissionChangeLogService, PermissionService
 from api.db.services.team_service import DepartmentMemberService, DepartmentService, GroupMemberService, GroupService
-from api.db.services.user_service import UserService, UserTenantService
+from api.db.services.user_service import UserTenantService
 from api.utils.api_utils import get_data_error_result, get_json_result, server_error_response, validate_request
 from api.utils.permission_utils import has_permission_for_member, is_valid_permission, wrap_permission_info
 from common.misc_utils import get_uuid
@@ -17,7 +17,7 @@ from common.constants import StatusEnum
 
 @manager.route("/update", methods=["PUT"])  # noqa: F821
 @login_required
-@validate_request("tenant_id", "permission", "resource_type")  # noqa: F821
+@validate_request("tenant_id", "permission", "resource_type")
 async def update_permission():
     """
     Update permission entries

@@ -1,4 +1,5 @@
-import time, random
+import time
+import random
 from concurrent.futures import ThreadPoolExecutor
 
 import requests
@@ -20,10 +21,10 @@ tokens = [
 def get_repo_stars():
     global tokens
     # GitHub API URL
-    url = f"https://api.github.com/repos/infiniflow/ragflow"
+    url = "https://api.github.com/repos/infiniflow/ragflow"
     while True:
         headers = {
-            "Authorization": f"Bearer %s"%random.choice(tokens),
+            "Authorization": "Bearer %s"%random.choice(tokens),
             "Accept": "application/vnd.github.v3+json"
         }
         try:
@@ -39,35 +40,36 @@ def get_repo_stars():
 
 def update_stars(from_page, to_page, desc=True, page_size=300):
     global tokens
-    base_url = f"https://api.github.com/repos/infiniflow/ragflow/stargazers"
+    base_url = "https://api.github.com/repos/infiniflow/ragflow/stargazers"
 
     page_num = 0
     page = to_page
     while True:
         headers = {
-            "Authorization": f"Bearer %s"%random.choice(tokens),
+            "Authorization": "Bearer %s"%random.choice(tokens),
             "Accept": "application/vnd.github.v3+json"
         }
         try:
             url = f"{base_url}?page={page}&per_page={page_size}"
-            print(url)
             response = requests.get(url,headers=headers)
             response.raise_for_status()
             stargazers = response.json()
-            if not stargazers and not desc:break
+            if not stargazers and not desc:
+                break
             for item in stargazers:
                 REDIS_CONN.set(item["login"], 1, exp=36000)
-                #print(item["login"], flush=True)
         except Exception as e:
             print(f"Update stars fail. Failed to retrieve star user information: {e}")
             time.sleep(30)
         page_num += 1
         if desc:
             page -= 1
-            if page < from_page: break
+            if page < from_page:
+                break
         else:
             page += 1
-            if page > from_page: break
+            if page > from_page:
+                break
     return page_num
 
 

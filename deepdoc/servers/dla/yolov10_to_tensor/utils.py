@@ -25,14 +25,14 @@ def cuda_call(call):
 
 # Wrapper for cudaMemcpy which infers copy size and does error checking
 def memcpy_host_to_device(device_ptr: int, host_arr: np.ndarray):
-    from cuda import cuda, cudart
+    from cuda import cudart
     nbytes = host_arr.size * host_arr.itemsize
     cuda_call(cudart.cudaMemcpy(device_ptr, host_arr, nbytes, cudart.cudaMemcpyKind.cudaMemcpyHostToDevice))
 
 
 # Wrapper for cudaMemcpy which infers copy size and does error checking
 def memcpy_device_to_host(host_arr: np.ndarray, device_ptr: int):
-    from cuda import cuda, cudart
+    from cuda import cudart
     nbytes = host_arr.size * host_arr.itemsize
     cuda_call(cudart.cudaMemcpy(host_arr, device_ptr, nbytes, cudart.cudaMemcpyKind.cudaMemcpyDeviceToHost))
 

@@ -352,7 +352,8 @@ async def get(file_id):
             blob = settings.STORAGE_IMPL.conn[i].get_object(file.parent_id, file.location)
             if not blob:
                 blob = settings.STORAGE_IMPL.conn[i].get_object(b, n)
-            if not blob: continue
+            if not blob:
+                continue
             response = await make_response(blob)
             ext = re.search(r"\.([^.]+)$", file.name.lower())
             ext = ext.group(1) if ext else None

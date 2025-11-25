@@ -18,7 +18,6 @@ import logging
 import time
 from minio import Minio
 from minio.commonconfig import CopySource
-from minio.error import S3Error
 from io import BytesIO
 from common.decorator import singleton
 from common import settings
@@ -123,7 +122,8 @@ class RAGFlowMinio:
     def obj_exist(self, bucket, filename, tenant_id):
         try:
             i = self.user_gateway(tenant_id)
-            if self.conn[i].stat_object(bucket, filename):return True
+            if self.conn[i].stat_object(bucket, filename):
+                return True
             return False
         except Exception as e:
             logging.error(f"Fail exist {bucket}/{filename}: " + str(e))

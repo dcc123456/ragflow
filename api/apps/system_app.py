@@ -26,11 +26,10 @@ from api.utils.api_utils import (
     generate_confirmation_token,
 )
 from common.time_utils import current_timestamp, datetime_format
-from quart import jsonify
 from common import settings
 
 
-@manager.route('/new_token', methods=['POST'])
+@manager.route('/new_token', methods=['POST'])# noqa: F821
 @login_required
 def new_token():
     """

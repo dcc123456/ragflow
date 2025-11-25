@@ -56,7 +56,7 @@ class EmbedAPI(ls.LitAPI):
             print(f"GPU {gpu_id}: {gpu_name} ({gpu_uuid})")
             pynvml.nvmlShutdown()
             import torch
-            assert torch.cuda.is_available()==True
+            assert torch.cuda.is_available()
             assert torch.cuda.device_count()==1
             assert torch.cuda.get_device_name(0)==gpu_name
         import vllm

@@ -24,7 +24,6 @@ import time
 from datetime import datetime
 
 from quart import redirect, request, session, make_response
-from werkzeug.security import check_password_hash, generate_password_hash
 from api.db.services.tenant_llm_service import user_register
 from api.apps.auth import get_auth_client
 from api.db.db_models import TenantLLM
@@ -81,10 +80,10 @@ def ldap_login():
     login_password = base64.b64decode(decrypt(request.json.get("password")))
     try:
         conn.simple_bind_s(result[0][0], login_password)
-    except:
+    except Exception:
         return get_json_result(
             data=False,
-            code=RetCode.AUTHENTICATION_ERROR,message=f"Password error!"
+            code=RetCode.AUTHENTICATION_ERROR,message="Password error!"
         )
 
     users = UserService.query(email=email)

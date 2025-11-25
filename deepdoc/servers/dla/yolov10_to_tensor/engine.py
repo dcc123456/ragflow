@@ -3,7 +3,7 @@ from cuda import cudart
 import numpy as np
 import cv2
 
-from .utils import cuda_call, memcpy_host_to_device, memcpy_device_to_host, preproc, vis, letterbox, multiclass_nms
+from .utils import cuda_call, memcpy_host_to_device, memcpy_device_to_host, vis, letterbox, multiclass_nms
 
 
 class BaseEngine(object):

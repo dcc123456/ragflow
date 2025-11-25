@@ -7,7 +7,6 @@ import cv2
 import numpy as np
 import torch
 import litserve as ls
-from PIL import Image
 from fastapi import UploadFile
 from yolov10_to_tensor.utils import letterbox
 from yolov10_to_tensor.engine import BaseEngine

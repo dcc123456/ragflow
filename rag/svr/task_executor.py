@@ -951,14 +951,14 @@ async def do_handle_task_with_timeout(task, callback):
             await do_handle_task(task)
         if scope.cancelled_caught:
             FAILED_TASKS += 1
-            callback(prog=-1, msg=f"[Error]: Task failed due to timeout.(40 min)")
+            callback(prog=-1, msg="[Error]: Task failed due to timeout.(40 min)")
         else:
             DONE_TASKS += 1
         CURRENT_TASKS.pop(task["id"], None)
     except trio.Cancelled:
         FAILED_TASKS += 1
         CURRENT_TASKS.pop(task["id"], None)
-        callback(prog=-1, msg=f"[Error]: Task failed due to timeout.(40 min)")
+        callback(prog=-1, msg="[Error]: Task failed due to timeout.(40 min)")
 
 
 async def get_server_ip() -> str:
@@ -1023,7 +1023,7 @@ def report_status():
 def rabbitmq_callback(ch, method, properties, body):
     try:
         msg = json.loads(body.decode("utf-8"))
-    except:
+    except Exception:
         ch.basic_ack(method.delivery_tag)
         logging.warning("An abnormal message in queue({}): {}".format(method.routing_key, body))
         return

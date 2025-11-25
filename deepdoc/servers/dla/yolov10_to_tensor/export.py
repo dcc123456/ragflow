@@ -150,7 +150,7 @@ class EngineBuilder:
             try:
                 for previous_output in outputs:
                     self.network.unmark_output(previous_output)
-            except:
+            except Exception:
                 previous_output = self.network.get_output(0)
                 self.network.unmark_output(previous_output)
             # output [1, 300, 6]
@@ -198,7 +198,7 @@ class EngineBuilder:
             try:
                 for previous_output in outputs:
                     self.network.unmark_output(previous_output)
-            except:
+            except Exception:
                 previous_output = self.network.get_output(0)
                 self.network.unmark_output(previous_output)
             if  v8:

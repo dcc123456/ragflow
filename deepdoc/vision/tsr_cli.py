@@ -54,7 +54,8 @@ def parse_args() -> argparse.Namespace:
 
 
 if __name__ == "__main__":
-    import random, cv2
+    import random
+    import cv2
     args = parse_args()
     cli = TSRClient(f"http://{args.ip}:{args.port}")
     img = Image.open(args.image, mode='r')

@@ -8,6 +8,7 @@ import io
 from PIL import Image
 import pynvml
 
+
 class EmbedAPI(ls.LitAPI):
     """
     Handler for jinaai/jina-embeddings-v4.
@@ -19,7 +20,7 @@ class EmbedAPI(ls.LitAPI):
         super().__init__()
         script_dir = os.path.dirname(os.path.abspath(__file__))
         self.model_dir = os.path.join(script_dir, "huggingface", "jina-embeddings-v4")
-        assert os.path.exists(self.model_dir), f"Model {model_name} not found in {self.model_dir}"
+        assert os.path.exists(self.model_dir), f"Model jina-embeddings-v4 not found in {self.model_dir}"
 
     def setup(self, device):
         print(f"setup device {device}")
@@ -35,7 +36,7 @@ class EmbedAPI(ls.LitAPI):
             print(f"GPU {gpu_id}: {gpu_name} ({gpu_uuid})")
             pynvml.nvmlShutdown()
             import torch
-            assert torch.cuda.is_available()==True
+            assert torch.cuda.is_available()
             assert torch.cuda.device_count()==1
             assert torch.cuda.get_device_name(0)==gpu_name
         from transformers import AutoModel
@@ -86,7 +87,7 @@ class EmbedAPI(ls.LitAPI):
 if __name__ == "__main__":
     args = sys.argv
     if len(args) != 1:
-        print(f"Usage: python3 embed_server.py")
+        print("Usage: python3 embed_server.py")
         sys.exit(-1)
     server = ls.LitServer(EmbedAPI(), accelerator="gpu")
     server.run(port=8000)

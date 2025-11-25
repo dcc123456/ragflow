@@ -13,6 +13,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 #
+import asyncio
 import json
 import os
 import time
@@ -133,7 +134,8 @@ async def create():
                 action_type=PermissionActionType.ACTION_ADD,
             ):
                 raise ValueError("Permission change log creation failed")
-            time.sleep(2)
+
+            await asyncio.sleep(2)
 
         return get_json_result(data={"kb_id": req["id"]})
     except Exception as e:

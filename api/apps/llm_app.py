@@ -15,17 +15,11 @@
 #
 import logging
 import json
-import os
 from quart import request
-
 from api.apps import login_required, current_user
-from api.db.services.tenant_llm_service import LLMFactoriesService, TenantLLMService
-from api.db.services.llm_service import LLMService
-from api.utils.api_utils import server_error_response, get_data_error_result, validate_request
 from common.constants import StatusEnum, LLMType
-from api.db.db_models import TenantLLM
 from common.misc_utils import get_uuid
-from api.utils.api_utils import get_json_result, get_allowed_llm_factories
+from api.utils.api_utils import get_allowed_llm_factories
 from rag.utils.base64_image import test_image
 from rag.llm import EmbeddingModel, ChatModel, RerankModel, CvModel, TTSModel
 from api.db import PermissionActionType, PermissionTargetType, PermissionValue, ResourceType

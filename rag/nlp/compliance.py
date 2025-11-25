@@ -14,11 +14,12 @@ class Dealer:
         try:
             with open(path, "r") as f:
                 while True:
-                    l = f.readline()
-                    if not l:break
-                    l = l.strip("\n")
-                    self.dictionary.add(l.lower())
-        except Exception as e:
+                    line = f.readline()
+                    if not line:
+                        break
+                    line = line.strip("\n")
+                    self.dictionary.add(line.lower())
+        except Exception:
             logging.warn("Missing compliance.txt")
 
     def lookup(self, txt: Union[str, List]) -> List:
@@ -33,7 +34,8 @@ class Dealer:
             if comm:
                 return list(comm)
 
-            if len(tks) < j+1: return []
+            if len(tks) < j+1:
+                return []
         return []
 
 

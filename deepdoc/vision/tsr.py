@@ -14,6 +14,8 @@ import argparse
 import os
 import random
 import re
+import math
+import cv2
 import numpy as np
 from PIL import ImageDraw
 from PIL import Image
@@ -43,10 +45,6 @@ class TableStructureRecognizer(Recognizer):
         cell_bbx_list = []
 
         if os.environ.get("TABLE_STRUCTURE_RECOGNIZER_TYPE", "") == "ascend":
-            import math
-
-            from ais_bench.infer.interface import InferSession
-
             thr = 0.4
             tbls = self._run_ascend_tsr(images, thr)
             for tbl in tbls:
@@ -69,11 +67,13 @@ class TableStructureRecognizer(Recognizer):
         for n, cells in enumerate(cell_bbx_list):
             cells = [{"x0": x0, "top": y0, "x1": x1, "bottom": y1, "width": x1 - x0, "height": y1 - y0, "score": sc} for
                      x0, y0, x1, y1, sc in cells if x1 > x0 and y1 > y0]
-            if not cells: continue
+            if not cells:
+                continue
             min_height = max(3, np.min([c["height"] for c in cells]))
             min_width = max(5, np.min([c["width"] for c in cells]))
             cells = Recognizer.sort_Y_firstly(cells, min_height / 1.1)
-            if DEBUG: print(cells, "||", len(cells))
+            if DEBUG:
+                print(cells, "||", len(cells))
 
             # split overlapped horizantally
 
@@ -143,7 +143,8 @@ class TableStructureRecognizer(Recognizer):
                     else:
                         avg.append(rows_y[i])
                     i += 1
-                if avg: row_lines[np.median(avg)] = len(avg)
+                if avg:
+                    row_lines[np.median(avg)] = len(avg)
                 return sorted(row_lines.items(), key=lambda x: x[0])
 
             col_lines = borders("x0", "x1", mean_width / 3)
@@ -177,20 +178,26 @@ class TableStructureRecognizer(Recognizer):
             def cross_boders(left, right, borders, thr):
                 c = 0
                 for b, _ in borders:
-                    if b <= left: continue
-                    if b >= right: continue
-                    if min(abs(b - left), abs(b - right)) < thr: continue
+                    if b <= left:
+                        continue
+                    if b >= right:
+                        continue
+                    if min(abs(b - left), abs(b - right)) < thr:
+                        continue
                     c += 1
                 return c
 
             cells = Recognizer.sort_Y_firstly(cells, min_height * 0.75)
             for c in cells:
                 span = cross_boders(c["x0"], c["x1"], col_lines, min_width*.8)
-                if span > 0: c["colspan"] = span + 1
+                if span > 0:
+                    c["colspan"] = span + 1
                 span = cross_boders(c["top"], c["bottom"], row_lines, min_height*.8)
-                if span > 0: c["rowspan"] = span + 1
+                if span > 0:
+                    c["rowspan"] = span + 1
 
-            if DEBUG: print(cells, "<||>", len(cells))
+            if DEBUG:
+                print(cells, "<||>", len(cells))
             res.append(cells)
         return res
 
@@ -213,17 +220,19 @@ class TableStructureRecognizer(Recognizer):
             nonlocal ocr_model
             if not ocr_model:
                 return ""
-            l, t, r, b = cell["_x0"], cell["_top"], cell["_x1"], cell["_bottom"]
-            img = img.crop((l, t, r, b))
+            left, t, r, b = cell["_x0"], cell["_top"], cell["_x1"], cell["_bottom"]
+            img = img.crop((left, t, r, b))
             bxs = ocr_model.detect(np.array(img))
             txt = ""
             for b, _ in bxs:
-                if not (b[0][0] <= b[1][0] and b[0][1] <= b[-1][1]): continue
-                l, r, t, bo = b[0][0], b[1][0], b[0][1], b[-1][1]
-                if l>= r  or t>=bo: continue
+                if not (b[0][0] <= b[1][0] and b[0][1] <= b[-1][1]):
+                    continue
+                lft, r, t, bo = b[0][0], b[1][0], b[0][1], b[-1][1]
+                if lft >= r  or t >= bo:
+                    continue
                 if re.search(r"[a-zA-Z,:;'!.]{2,}$", txt):
                     txt += " "
-                txt += ocr_model.recognize_batch([np.array(img.crop((l,t,r,bo)))])[0]
+                txt += ocr_model.recognize_batch([np.array(img.crop((lft, t, r, bo)))])[0]
             return txt
 
         while i < len(boxes):
@@ -267,8 +276,10 @@ class TableStructureRecognizer(Recognizer):
                 if j > 0 and (cells[j]["top"] >= cells[j - 1]["bottom"]-2 or cells[j]["x1"] - 2 <= cells[j - 1]["x0"]):
                     html += "</tr><tr>"
                 html += "<td "
-                if "colspan" in c: html += f" colspan={c['colspan']}"
-                if "rowspan" in c: html += f" rowspan={c['rowspan']}"
+                if "colspan" in c:
+                    html += f" colspan={c['colspan']}"
+                if "rowspan" in c:
+                    html += f" rowspan={c['rowspan']}"
                 txt = c.get("text", "")
                 if not txt:
                     txt = ocr(img, c)
@@ -284,9 +295,6 @@ class TableStructureRecognizer(Recognizer):
 
 
     def _run_ascend_tsr(self, image_list, thr=0.2, batch_size=16):
-        import math
-        import cv2
-
         from ais_bench.infer.interface import InferSession
 
         model_dir = os.path.join(get_project_base_directory(), "rag/res/deepdoc")

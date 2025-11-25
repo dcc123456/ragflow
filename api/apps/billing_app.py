@@ -159,7 +159,7 @@ async def billing_unsubscribe():
         return server_error_response(e)
 
 
-@manager.route("/webhook", methods=["POST"])
+@manager.route("/webhook", methods=["POST"]) # noqa: F821
 async def billing_webhook():
     """
     https://docs.stripe.com/webhooks/quickstart

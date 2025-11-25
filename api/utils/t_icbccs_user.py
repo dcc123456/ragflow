@@ -1,7 +1,6 @@
 import logging
 import sys
 from tqdm import tqdm
-from api import settings
 from api.db import TeamRole
 from api.db.services.team_service import DepartmentMemberService, DepartmentService
 from api.db.services.user_service import UserService

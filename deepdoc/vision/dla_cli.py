@@ -20,6 +20,7 @@ DLA_CLASSES = [
     "Figure caption",
 ]
 
+
 class DLAClient:
     def __init__(self, http_ip_port):
         self.url = http_ip_port + "/predict"
@@ -40,9 +41,9 @@ class DLAClient:
                     res.append([{
                         "type": DLA_CLASSES[int(ty)].lower(),
                         "type_idx": ty,
-                        "bbox": [l, t, r, b,],
+                        "bbox": [left, t, r, b,],
                         "score": s
-                    } for l, t, r, b, s, ty in response["bboxes"]])
+                    } for left, t, r, b, s, ty in response["bboxes"]])
                     break
                 except Exception as e:
                     logging.exception(e)

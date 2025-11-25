@@ -1,7 +1,6 @@
 import argparse
 from common import settings
-from api.db.services.llm_service import TenantLLMService
-from api.db.services.user_service import UserService, TenantService, UserTenantService
+from api.db.services.user_service import UserService
 
 from api.db.services.tenant_llm_service import user_register
 from common.time_utils import get_format_time, current_timestamp

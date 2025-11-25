@@ -7,10 +7,7 @@ import cv2
 import numpy as np
 import torch
 import litserve as ls
-from PIL import Image
 from fastapi import UploadFile
-from ultralytics import YOLO
-
 from yolov8_to_tensorrt.utils import letterbox, blob, det_postprocess
 from yolov8_to_tensorrt.engine import TRTModule
 
@@ -57,7 +54,7 @@ class ImageClassifierAPI(ls.LitAPI):
             for bx, s, l in arr:
                 bx.append(s)
                 bx.append(l)
-            res.append([bx for bx, s, l in arr])
+            res.append([bx for bx, _, _ in arr])
         return res
 
     def encode_response(self, output):

@@ -8,6 +8,7 @@ from peewee import CharField, TextField, BooleanField, Model, IntegerField, Floa
 from playhouse.pool import PooledMySQLDatabase
 from datetime import datetime
 
+
 casdoor = PooledMySQLDatabase(
     'casdoor',
     max_connections=8,
@@ -184,11 +185,11 @@ def get_tm(fnm):
     try:
         with open(fnm, "r") as f:
             while True:
-                l = f.readline()
-                if not l:
+                ln = f.readline()
+                if not ln:
                     break
                 try:
-                    i = int(l.strip("\n"))
+                    i = int(ln.strip("\n"))
                 except Exception as ee:
                     print(ee)
                     continue

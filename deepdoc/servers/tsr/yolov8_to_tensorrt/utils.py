@@ -131,21 +131,6 @@ def NMSBoxes(boxes: ndarray,
     return order[indices]
 
 
-def det_postprocess(data: Tuple[ndarray, ndarray, ndarray, ndarray]):
-    assert len(data) == 4
-    num_dets, bboxes, scores, labels = (i[0] for i in data)
-    nums = num_dets.item()
-    if nums == 0:
-        return np.empty((0, 4), dtype=np.float32), np.empty(
-            (0, ), dtype=np.float32), np.empty((0, ), dtype=np.int32)
-    # check score negative
-    scores[scores < 0] = 1 + scores[scores < 0]
-    bboxes = bboxes[:nums]
-    scores = scores[:nums]
-    labels = labels[:nums]
-    return bboxes, scores, labels
-
-
 def seg_postprocess(
         data: Tuple[ndarray],
         shape: Union[Tuple, List],

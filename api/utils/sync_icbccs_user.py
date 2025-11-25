@@ -83,7 +83,6 @@ def get_all_user(IP_PORT):
 
 def init_departments(users, tenant_id):
     depts = {}
-    members = []
     for u in users:
         user_tenant = {
             "tenant_id": tenant_id,

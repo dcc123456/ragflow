@@ -8,7 +8,7 @@ from api.utils.api_utils import get_data_error_result, get_error_data_result, ge
 from common.time_utils import delta_seconds
 from common.misc_utils import get_uuid
 from common.constants import StatusEnum, RetCode
-from quart import request, jsonify
+from quart import request
 from api.apps import login_required, current_user
 
 # =========================================== GROUP ============================

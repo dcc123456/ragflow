@@ -18,7 +18,7 @@ import sys
 import logging
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
-from quart import Blueprint, Quart, request, g, current_app, session, jsonify
+from quart import Blueprint, Quart, request, g, current_app, session
 from werkzeug.wrappers.request import Request
 from flasgger import Swagger
 from itsdangerous.url_safe import URLSafeTimedSerializer as Serializer

@@ -4,12 +4,9 @@ import trio
 from tqdm import tqdm
 from api.db.services.document_service import DocumentService
 from api.db.db_models import Document
-from api.db.services.canvas_service import UserCanvasService
-from api.db.services.dialog_service import DialogService
 from common import settings
 from common.settings import STORAGE_IMPL
 from rag.app.naive import Pdf
-from rag.nlp import search
 
 settings.init_settings()
 
@@ -33,9 +30,10 @@ PAGE_SIZE=10
 st_page = 0
 with open("logs/pages.txt", "r") as f:
     while True:
-        l = f.readline()
-        if not l:break
-        st_page = int(l.strip()) + PAGE_SIZE+10
+        line = f.readline()
+        if not line:
+            break
+        st_page = int(line.strip()) + PAGE_SIZE+10
 
 for page in tqdm(range(st_page, DOCS.count(), PAGE_SIZE)):
     p = page
