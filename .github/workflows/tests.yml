@@ -137,6 +137,7 @@ jobs:
           echo "RAGFLOW_CONTAINER=${GITHUB_RUN_ID}-ragflow-cpu-1" >> ${GITHUB_ENV}
 
       - name: Start ragflow:nightly
+        working-directory: docker
         run: |
           # Determine runner number (default to 1 if not found)
           RUNNER_NUM=$(sudo docker inspect $(hostname) --format '{{index .Config.Labels "com.docker.compose.container-number"}}' 2>/dev/null || true)
@@ -164,32 +165,32 @@ jobs:
           RABBITMQ_MANAGEMENT_PORT=$((1673 + RUNNER_NUM * 10))
           RABBITMQ_PROMETHEUS_PORT=$((1674 + RUNNER_NUM * 10))
 
-          # Persist computed ports into docker/.env so docker-compose uses the correct host bindings
-          echo "" >> docker/.env
-          echo -e "ES_PORT=${ES_PORT}" >> docker/.env
-          echo -e "OS_PORT=${OS_PORT}" >> docker/.env
-          echo -e "INFINITY_THRIFT_PORT=${INFINITY_THRIFT_PORT}" >> docker/.env
-          echo -e "INFINITY_HTTP_PORT=${INFINITY_HTTP_PORT}" >> docker/.env
-          echo -e "INFINITY_PSQL_PORT=${INFINITY_PSQL_PORT}" >> docker/.env
-          echo -e "MYSQL_PORT=${MYSQL_PORT}" >> docker/.env
-          echo -e "MINIO_PORT=${MINIO_PORT}" >> docker/.env
-          echo -e "MINIO_CONSOLE_PORT=${MINIO_CONSOLE_PORT}" >> docker/.env
-          echo -e "REDIS_PORT=${REDIS_PORT}" >> docker/.env
-          echo -e "TEI_PORT=${TEI_PORT}" >> docker/.env
-          echo -e "KIBANA_PORT=${KIBANA_PORT}" >> docker/.env
-          echo -e "SVR_HTTP_PORT=${SVR_HTTP_PORT}" >> docker/.env
-          echo -e "ADMIN_SVR_HTTP_PORT=${ADMIN_SVR_HTTP_PORT}" >> docker/.env
-          echo -e "SVR_MCP_PORT=${SVR_MCP_PORT}" >> docker/.env
-          echo -e "SANDBOX_EXECUTOR_MANAGER_PORT=${SANDBOX_EXECUTOR_MANAGER_PORT}" >> docker/.env
-          echo -e "SVR_WEB_HTTP_PORT=${SVR_WEB_HTTP_PORT}" >> docker/.env
-          echo -e "SVR_WEB_HTTPS_PORT=${SVR_WEB_HTTPS_PORT}" >> docker/.env
-          echo -e "RABBITMQ_AMQP_PORT=${SVR_WEB_HTTPS_PORT}" >> docker/.env
-          echo -e "RABBITMQ_MANAGEMENT_PORT=${SVR_WEB_HTTPS_PORT}" >> docker/.env
-          echo -e "RABBITMQ_PROMETHEUS_PORT=${SVR_WEB_HTTPS_PORT}" >> docker/.env
-          echo -e "RAGFLOW_IMAGE=${RAGFLOW_IMAGE}" >> docker/.env
+          # Persist computed ports into .env so docker-compose uses the correct host bindings
+          echo "" >> .env
+          echo -e "ES_PORT=${ES_PORT}" >> .env
+          echo -e "OS_PORT=${OS_PORT}" >> .env
+          echo -e "INFINITY_THRIFT_PORT=${INFINITY_THRIFT_PORT}" >> .env
+          echo -e "INFINITY_HTTP_PORT=${INFINITY_HTTP_PORT}" >> .env
+          echo -e "INFINITY_PSQL_PORT=${INFINITY_PSQL_PORT}" >> .env
+          echo -e "MYSQL_PORT=${MYSQL_PORT}" >> .env
+          echo -e "MINIO_PORT=${MINIO_PORT}" >> .env
+          echo -e "MINIO_CONSOLE_PORT=${MINIO_CONSOLE_PORT}" >> .env
+          echo -e "REDIS_PORT=${REDIS_PORT}" >> .env
+          echo -e "TEI_PORT=${TEI_PORT}" >> .env
+          echo -e "KIBANA_PORT=${KIBANA_PORT}" >> .env
+          echo -e "SVR_HTTP_PORT=${SVR_HTTP_PORT}" >> .env
+          echo -e "ADMIN_SVR_HTTP_PORT=${ADMIN_SVR_HTTP_PORT}" >> .env
+          echo -e "SVR_MCP_PORT=${SVR_MCP_PORT}" >> .env
+          echo -e "SANDBOX_EXECUTOR_MANAGER_PORT=${SANDBOX_EXECUTOR_MANAGER_PORT}" >> .env
+          echo -e "SVR_WEB_HTTP_PORT=${SVR_WEB_HTTP_PORT}" >> .env
+          echo -e "SVR_WEB_HTTPS_PORT=${SVR_WEB_HTTPS_PORT}" >> .env
+          echo -e "RABBITMQ_AMQP_PORT=${SVR_WEB_HTTPS_PORT}" >> .env
+          echo -e "RABBITMQ_MANAGEMENT_PORT=${SVR_WEB_HTTPS_PORT}" >> .env
+          echo -e "RABBITMQ_PROMETHEUS_PORT=${SVR_WEB_HTTPS_PORT}" >> .env
+          echo -e "RAGFLOW_IMAGE=${RAGFLOW_IMAGE}" >> .env
           echo "HOST_ADDRESS=http://host.docker.internal:${SVR_HTTP_PORT}" >> ${GITHUB_ENV}
 
-          sudo docker compose -f docker/docker-compose.yml -p ${GITHUB_RUN_ID} up -d
+          sudo docker compose -f docker-compose.yml -p ${GITHUB_RUN_ID} up -d
 
       - name: Check service availability
         timeout-minutes: 3
@@ -202,9 +203,10 @@ jobs:
 
       - name: Stop ragflow:nightly
         if: always()  # always run this step even if previous steps failed
+        working-directory: docker
         run: |
           # Sometimes `docker compose down` fail due to hang container, heavy load etc. Need to remove such containers to release resources(for example, listen ports).
-          sudo docker compose -f docker/docker-compose.yml -p ${GITHUB_RUN_ID} down -v || true
+          sudo docker compose -f docker-compose.yml -p ${GITHUB_RUN_ID} down -v || true
           sudo docker ps -a --filter "label=com.docker.compose.project=${GITHUB_RUN_ID}" -q | xargs -r sudo docker rm -f
           if [[ -n ${RAGFLOW_IMAGE} ]]; then
             sudo docker rmi -f ${RAGFLOW_IMAGE}
