@@ -48,7 +48,7 @@ services:
     restart: on-failure
     environment:
       - MAX_FILE_NUM_PER_USER=${MAX_FILE_NUM_PER_USER}
-      - TZ=${TIMEZONE}
+      - TZ=${TZ}
       - ENABLE_ADMIN=${ENABLE_ADMIN}
       # - OCR_SVR=http://10.142.0.6:12344
       # - TENSORRT_DLA_SVR=http://10.142.0.6:3344
@@ -67,5 +67,5 @@ services:
   #     - ./entrypoint-parser.sh:/ragflow/entrypoint.sh
   #   environment:
   #     - MAX_FILE_NUM_PER_USER=${MAX_FILE_NUM_PER_USER}
-  #     - TZ=${TIMEZONE}
+  #     - TZ=${TZ}
   #   restart: always
