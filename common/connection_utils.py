@@ -122,7 +122,7 @@ async def construct_response(code=RetCode.SUCCESS, message="success", data=None,
     return response
 
 
-async def sync_construct_response(code=RetCode.SUCCESS, message="success", data=None, auth=None):
+def sync_construct_response(code=RetCode.SUCCESS, message="success", data=None, auth=None):
     result_dict = {"code": code, "message": message, "data": data}
     response_dict = {}
     for key, value in result_dict.items():
@@ -130,8 +130,8 @@ async def sync_construct_response(code=RetCode.SUCCESS, message="success", data=
             continue
         else:
             response_dict[key] = value
-    from flask import make_response, jsonify
-    response = make_response(jsonify(response_dict))
+    import flask
+    response = flask.make_response(flask.jsonify(response_dict))
     if auth:
         response.headers["Authorization"] = auth
     response.headers["Access-Control-Allow-Origin"] = "*"
