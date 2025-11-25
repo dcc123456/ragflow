@@ -306,6 +306,17 @@ def list_roles():
         return error_response(str(e), 500)
 
 
+@admin_bp.route('/roles_with_permission', methods=['GET'])
+@login_required
+@check_admin_auth
+def list_roles_with_permission():
+    try:
+        res = RoleMgr.list_roles_with_permission()
+        return success_response(res)
+    except Exception as e:
+        return error_response(str(e), 500)
+
+
 @admin_bp.route('/roles/<role_name>/permission', methods=['GET'])
 @login_required
 @check_admin_auth
