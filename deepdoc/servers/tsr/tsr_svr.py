@@ -51,9 +51,9 @@ class ImageClassifierAPI(ls.LitAPI):
             bboxes /= ratio
             bboxes = [bbox.round().int().tolist() for bbox in bboxes]
             arr = list(zip(bboxes, scores.float().tolist(), labels.int().tolist()))
-            for bx, s, l in arr:
+            for bx, s, lbl in arr:
                 bx.append(s)
-                bx.append(l)
+                bx.append(lbl)
             res.append([bx for bx, _, _ in arr])
         return res
 

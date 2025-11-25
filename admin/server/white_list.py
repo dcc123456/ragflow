@@ -19,6 +19,7 @@ from typing import Dict, Any
 from api.common.exceptions import AdminException
 from api.db.services.white_list_service import WhiteListService
 
+
 class WhiteListMgr:
     @staticmethod
     def get_all_white_list() -> Dict[str, Any]:
@@ -99,7 +100,7 @@ class WhiteListMgr:
     @staticmethod
     def batch_create_white_list_rows(emails):
         if not emails:
-            raise AdminException(f"Email list is empty.")
+            raise AdminException("Email list is empty.")
         error_addr = []
         for email in emails:
             if not re.match(r"^[\w\._-]+@([\w_-]+\.)+[\w-]{2,}$", email):

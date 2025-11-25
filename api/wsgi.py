@@ -37,7 +37,6 @@ from common import settings
 from api.apps import app
 from api.db.runtime_config import RuntimeConfig
 from api.db.services.document_service import DocumentService
-from api import utils
 from api.db.db_models import init_database_tables as init_web_db
 from api.db.init_data import init_web_data
 from rag.utils.redis_conn import RedisDistributedLock

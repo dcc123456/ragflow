@@ -31,7 +31,6 @@ from common.config_utils import show_configs
 from common import settings
 from config import load_configurations, SERVICE_CONFIGS
 from auth import init_default_admin, setup_auth
-from init_data import init_user_role
 from flask_session import Session
 from common.versions import get_ragflow_version
 

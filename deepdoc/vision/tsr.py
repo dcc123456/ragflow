@@ -269,7 +269,8 @@ class TableStructureRecognizer(Recognizer):
             return None, None
 
         html = "<table>"
-        if cap: html += f"<caption>{cap}</caption>"
+        if cap:
+            html += f"<caption>{cap}</caption>"
         for i, (img, cells) in enumerate(img_cells_pairs[st: max(ed, st+1)]):
             html += "<tr>"
             for j, c in enumerate(cells):
