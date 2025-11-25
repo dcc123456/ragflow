@@ -130,7 +130,7 @@ async def sync_construct_response(code=RetCode.SUCCESS, message="success", data=
             continue
         else:
             response_dict[key] = value
-    from flask import make_response
+    from flask import make_response, jsonify
     response = make_response(jsonify(response_dict))
     if auth:
         response.headers["Authorization"] = auth
