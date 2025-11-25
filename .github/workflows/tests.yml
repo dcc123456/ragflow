@@ -196,7 +196,7 @@ jobs:
         timeout-minutes: 3
         run: |
           export http_proxy=""; export https_proxy=""; export no_proxy=""; export HTTP_PROXY=""; export HTTPS_PROXY=""; export NO_PROXY=""
-          until sudo docker exec ${RAGFLOW_CONTAINER} curl -s --connect-timeout 5 ${HOST_ADDRESS} > /dev/null; do
+          until curl -s --connect-timeout 5 ${HOST_ADDRESS} > /dev/null; do
             echo "Waiting for service to be available..."
             sleep 5
           done

@@ -19,7 +19,7 @@ services:
       - cluster.routing.allocation.disk.watermark.low=5gb
       - cluster.routing.allocation.disk.watermark.high=3gb
       - cluster.routing.allocation.disk.watermark.flood_stage=2gb
-      - TZ=${TIMEZONE}
+      - TZ=${TZ}
     mem_limit: ${MEM_LIMIT}
     ulimits:
       memlock:
@@ -104,7 +104,7 @@ services:
     environment:
       - MINIO_ROOT_USER=${MINIO_USER}
       - MINIO_ROOT_PASSWORD=${MINIO_PASSWORD}
-      - TZ=${TIMEZONE}
+      - TZ=${TZ}
     volumes:
       - minio_data:/data
     networks:
