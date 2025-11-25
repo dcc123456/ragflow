@@ -25,13 +25,15 @@ import {
 import { useDebounce } from 'ahooks';
 import { message } from 'antd';
 import { useState } from 'react';
-import { useSearchParams } from 'umi';
+import { useParams, useSearchParams } from 'umi';
 import { useHandleSearchChange } from './logic-hooks';
 import { useSetPaginationParams } from './route-hook';
 
 export const useKnowledgeBaseId = (): string => {
   const [searchParams] = useSearchParams();
-  const knowledgeBaseId = searchParams.get('id');
+  const { id } = useParams();
+
+  const knowledgeBaseId = searchParams.get('id') || id;
 
   return knowledgeBaseId || '';
 };

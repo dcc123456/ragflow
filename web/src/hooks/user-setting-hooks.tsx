@@ -107,6 +107,7 @@ export const useFetchTenantInfo = (
       const hideWarn = enableAdmin.data && !isAdmin.data;
       if (
         showEmptyModelWarn &&
+        !isEmpty(tenantInfo) &&
         (isEmpty(tenantInfo.embd_id) || isEmpty(tenantInfo.llm_id)) &&
         !hideWarn
       ) {
