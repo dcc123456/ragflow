@@ -67,7 +67,7 @@ services:
     env_file: .env
     environment:
       - MYSQL_ROOT_PASSWORD=${MYSQL_PASSWORD}
-      - TZ=${TIMEZONE}
+      - TZ=${TZ}
     command: 
       --max_connections=1000
       --character-set-server=utf8mb4

@@ -67,5 +67,5 @@ services:
   #     - ./entrypoint-parser.sh:/ragflow/entrypoint.sh
   #   environment:
   #     - MAX_FILE_NUM_PER_USER=${MAX_FILE_NUM_PER_USER}
-  #     - TZ=${TIMEZONE}
+  #     - TZ=${TZ}
   #   restart: always

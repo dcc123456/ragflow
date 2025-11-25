@@ -8,7 +8,7 @@ services:
       - ./nginx/ragflow.conf:/etc/nginx/conf.d/ragflow.conf
     env_file: .env
     environment:
-      - TZ=${TIMEZONE}
+      - TZ=${TZ}
       - HF_ENDPOINT=${HF_ENDPOINT}
       - MACOS=${MACOS}
     command: ["--disable-webserver", "--host-id=inf181", "--consumer-no-beg=0", "--consumer-no-end=1"]
