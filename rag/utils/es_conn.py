@@ -610,7 +610,7 @@ class ESConnection(DocStoreConnection):
             indices_status = raw_stats['indices']
             res.update({
                 'indices': indices_status['count'],
-                'indices_shards': indices_status['shards']['total']
+                'indices_shards': indices_status['shards']['total'] if indices_status['shards'] else 0,
             })
             doc_info = indices_status['docs']
             res.update({
