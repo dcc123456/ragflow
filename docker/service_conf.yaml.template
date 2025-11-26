@@ -69,6 +69,10 @@ rabbitmq:
   port: 5672
   api_port: 15672
   exchange: "test1"
+
+task_executor:
+  message_queue_type: 'rabbitmq'
+
 user_default_llm:
   default_models:
     embedding_model:

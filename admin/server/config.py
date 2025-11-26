@@ -264,8 +264,8 @@ def load_configurations(config_path: str) -> list[BaseConfig]:
                                         db_name=database, detail_func_name="get_infinity_status")
                 configurations.append(config)
                 id_count += 1
-            case "minio":
-                name: str = 'minio'
+            case "minio_0":
+                name: str = 'minio_0'
                 url = v['host']
                 parts = url.split(':', 1)
                 host = parts[0]
@@ -308,6 +308,14 @@ def load_configurations(config_path: str) -> list[BaseConfig]:
                 message_queue_type: str = v.get('message_queue_type')
                 config = TaskExecutorConfig(id=id_count, name=name, host=host, port=port, message_queue_type=message_queue_type,
                                             service_type="task_executor", detail_func_name="check_task_executor_alive")
+                configurations.append(config)
+                id_count += 1
+            case "rabbitmq":
+                name: str = 'rabbitmq'
+                host: str = v.get('host')
+                port: int = v.get('port')
+                config = RabbitMQConfig(id=id_count, name=name, host=host, port=port,
+                                        service_type="message_queue", mq_type="rabbitmq", detail_func_name="check_rabbitmq_alive")
                 configurations.append(config)
                 id_count += 1
             case _:
