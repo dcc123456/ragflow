@@ -43,7 +43,7 @@ class RabbitQueue:
         password = settings.RABBIT_CONF["password"]
         host = settings.RABBIT_CONF["host"]
         port = settings.RABBIT_CONF["api_port"]
-        url = f'http://{host}:{port}/aliveness-test/%2F'
+        url = f'http://{host}:{port}/api/aliveness-test/%2F'
         try:
             response = requests.get(url, auth=(username, password))
             if response.status_code == 200:
