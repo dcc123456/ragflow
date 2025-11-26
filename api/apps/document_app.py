@@ -599,7 +599,7 @@ async def get_image(image_id):
             byts = settings.STORAGE_IMPL.conn[i].get_object(bkt, nm)
             if not bytes:
                 continue
-            response = await make_response(byts)
+            response = await make_response(byts.read())
             response.headers.set('Content-Type', 'image/JPEG')
             return response
         except Exception:
