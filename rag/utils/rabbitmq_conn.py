@@ -39,7 +39,24 @@ class RabbitQueue:
         return True
 
     def is_alive(self):
-        return self._channel
+        username = settings.RABBIT_CONF["user"]
+        password = settings.RABBIT_CONF["password"]
+        host = settings.RABBIT_CONF["host"]
+        port = settings.RABBIT_CONF["api_port"]
+        url = f'http://{host}:{port}/aliveness-test/%2F'
+        try:
+            response = requests.get(url, auth=HTTPBasicAuth(username, password))
+            if response.status_code == 200:
+                result = response.json()
+                if result.get("status") == "ok":
+                    return True
+                else:
+                    return False
+            else:
+                return False
+        except Exception as e:
+            logging.error(e)
+            return False
 
     def queue_product(self, routing_key:str, message:dict) -> bool:
         for _ in range(3):

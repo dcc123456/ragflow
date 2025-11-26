@@ -23,6 +23,7 @@ from api.db.db_models import DB
 from rag.utils.redis_conn import REDIS_CONN
 from rag.utils.es_conn import ESConnection
 from rag.utils.infinity_conn import InfinityConnection
+from rag.utils.rabbitmq_conn import RABBITMQ_CONN
 from common import settings
 
 
@@ -120,7 +121,7 @@ def get_mysql_status():
 def check_minio_alive():
     start_time = timer()
     try:
-        response = requests.get(f'http://{settings.MINIO["host"]}/minio/health/live')
+        response = requests.get(f'http://{settings.MINIO[0]["host"]}/minio/health/live')
         if response.status_code == 200:
             return {"status": "alive", "message": f"Confirm elapsed: {(timer() - start_time) * 1000.0:.1f} ms."}
         else:
@@ -177,6 +178,21 @@ def check_task_executor_alive():
             return {"status": status, "message": task_executor_heartbeats}
         else:
             return {"status": "timeout", "message": "Not found any task executor."}
+    except Exception as e:
+        return {
+            "status": "timeout",
+            "message": f"error: {str(e)}"
+        }
+
+
+def check_rabbitmq_alive():
+    start_time = timer()
+    try:
+        alive_status = RABBITMQ_CONN.is_alive()
+        if alive_status:
+            return {"status": "alive", "message": f"Confirm elapsed: {(timer() - start_time) * 1000:.1f} ms."}
+        else:
+            return {"status": "timeout", "message": f"Confirm elapsed: {(timer() - start_time) * 1000:.1f} ms."}
     except Exception as e:
         return {
             "status": "timeout",
