@@ -315,7 +315,7 @@ def load_configurations(config_path: str) -> list[BaseConfig]:
                 host: str = v.get('host')
                 port: int = v.get('port')
                 config = RabbitMQConfig(id=id_count, name=name, host=host, port=port,
-                                        service_type="message_queue", mq_type="rabbitmq", detail_func_name="check_task_executor_alive")
+                                        service_type="message_queue", mq_type="rabbitmq", detail_func_name="check_rabbitmq_alive")
                 configurations.append(config)
                 id_count += 1
             case _:

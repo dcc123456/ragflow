@@ -36,6 +36,8 @@ class UserMgr:
     @staticmethod
     def get_all_users():
         users = UserService.get_all_users()
+        roles = RoleService.get_all_roles()
+        role_map = {role['id']: role['role_name'] for role in roles}
         result = []
         for user in users:
             result.append({
@@ -44,6 +46,7 @@ class UserMgr:
                 'create_date': user.create_date,
                 'is_active': user.is_active,
                 'is_superuser': user.is_superuser,
+                'role': role_map.get(user.role_id, '')
             })
         return result
 
@@ -51,6 +54,7 @@ class UserMgr:
     def get_user_details(username):
         # use email to query
         users = UserService.query_user_by_email(username)
+        _, role = RoleService.get_by_id(users[0].role_id)
         result = []
         for user in users:
             result.append({
@@ -64,7 +68,8 @@ class UserMgr:
                 'status': user.status,
                 'is_superuser': user.is_superuser,
                 'create_date': user.create_date,
-                'update_date': user.update_date
+                'update_date': user.update_date,
+                'role': role.role_name
             })
         return result
 

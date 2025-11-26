@@ -45,7 +45,7 @@ class RabbitQueue:
         port = settings.RABBIT_CONF["api_port"]
         url = f'http://{host}:{port}/aliveness-test/%2F'
         try:
-            response = requests.get(url, auth=HTTPBasicAuth(username, password))
+            response = requests.get(url, auth=(username, password))
             if response.status_code == 200:
                 result = response.json()
                 if result.get("status") == "ok":
