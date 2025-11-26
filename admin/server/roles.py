@@ -115,6 +115,21 @@ class RoleMgr:
         }
 
     @staticmethod
+    def list_roles_with_permission() -> Dict[str, Any]:
+        roles = RoleService.get_all_roles()
+        return {
+            "roles": [{
+                "id": role["id"],
+                "role_name": role["role_name"],
+                "description": role["description"],
+                "create_date": role["create_date"],
+                "update_date": role["update_date"],
+                "permissions": get_role_permissions_by_role_id(role["id"])
+            } for role in roles],
+            "total": len(roles)
+        }
+
+    @staticmethod
     def get_role_permission(role_name: str) -> Dict[str, Any]:
         roles = RoleService.get_by_role_name(role_name)
         if not roles:
