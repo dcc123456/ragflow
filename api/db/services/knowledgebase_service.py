@@ -373,9 +373,9 @@ class KnowledgebaseService(CommonService):
 
         count = kbs_query.count()
         if page_number and items_per_page:
-            kbs_paginated = kbs_query.paginate(page_number, items_per_page)
+            kbs_query = kbs_query.paginate(page_number, items_per_page)
 
-        return list(kbs_paginated.dicts()), count
+        return list(kbs_query.dicts()), count
 
     @classmethod
     @DB.connection_context()
