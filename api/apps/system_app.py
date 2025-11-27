@@ -180,3 +180,7 @@ def get_config():
     return get_json_result(data={
         "registerEnabled": settings.REGISTER_ENABLED
     })
+
+@manager.route('/version', methods=['GET'])  # noqa: F821
+def get_version():
+    return get_json_result(data=True)

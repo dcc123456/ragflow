@@ -40,8 +40,8 @@ services:
       - ./nginx/proxy.conf:/etc/nginx/proxy.conf
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf
       - ../history_data_agent:/ragflow/history_data_agent
-      - ./res/:/ragflow/rag/res
       - ./service_conf.yaml.template:/ragflow/conf/service_conf.yaml.template
+      # - ./res/deepdoc:/ragflow/rag/res/deepdoc
     env_file: .env
     networks:
       - ragflow
