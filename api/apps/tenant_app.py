@@ -64,7 +64,6 @@ async def create(tenant_id):
     if settings.BILLING_ENABLED:
         TenantPlanService.check_by_tenant_id(tenant_id, delta_members=1)
 
-    req = request.json
     invite_user_email = req["email"]
     invite_users = UserService.query(email=invite_user_email)
     if not invite_users:
