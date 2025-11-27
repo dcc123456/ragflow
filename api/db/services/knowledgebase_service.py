@@ -372,7 +372,8 @@ class KnowledgebaseService(CommonService):
             kbs_query = kbs_query.order_by(order_by_field.asc())
 
         count = kbs_query.count()
-        kbs_paginated = kbs_query.paginate(page_number, items_per_page)
+        if page_number and items_per_page:
+            kbs_paginated = kbs_query.paginate(page_number, items_per_page)
 
         return list(kbs_paginated.dicts()), count
 
