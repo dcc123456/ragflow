@@ -1201,6 +1201,38 @@
             ]
         },
         {
+            "name": "BAAI",
+            "logo": "",
+            "tags": "TEXT EMBEDDING",
+            "status": "1",
+            "llm": [
+                {
+                    "llm_name": "BAAI/bge-large-zh-v1.5",
+                    "tags": "TEXT EMBEDDING,",
+                    "max_tokens": 512,
+                    "model_type": "embedding"
+                },
+                {
+                    "llm_name": "BAAI/bge-large-eng-v1.5",
+                    "tags": "TEXT EMBEDDING,",
+                    "max_tokens": 512,
+                    "model_type": "embedding"
+                },
+                {
+                    "llm_name": "bge-m3",
+                    "tags": "TEXT EMBEDDING,",
+                    "max_tokens": 1024,
+                    "model_type": "embedding"
+                },
+                {
+                    "llm_name": "bce-embedding-base_v1",
+                    "tags": "TEXT EMBEDDING,",
+                    "max_tokens": 1024,
+                    "model_type": "embedding"
+                }
+            ]
+        },
+        {
             "name": "MiniMax",
             "logo": "",
             "tags": "LLM,TEXT EMBEDDING",
