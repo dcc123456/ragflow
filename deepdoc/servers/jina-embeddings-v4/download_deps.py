@@ -2,27 +2,16 @@
 
 # PEP 723 metadata
 # /// script
-# requires-python = ">=3.10,<3.11"
+# requires-python = ">=3.10,<3.15"
 # dependencies = [
-#   "huggingface-hub",
+#   "huggingface-hub>=1.0.0,<2.0.0",
 # ]
 # ///
 
 import os
 import pathlib
 import shutil
-import urllib.request
 from huggingface_hub import snapshot_download
-
-urls = [
-    "https://github.com/astral-sh/uv/releases/download/0.6.12/uv-x86_64-unknown-linux-gnu.tar.gz",
-]
-
-for url in urls:
-    filename = url.split("/")[-1]
-    print(f"Downloading {url}...")
-    if not os.path.exists(filename):
-        urllib.request.urlretrieve(url, filename)
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 hugging_dir = os.path.join(script_dir, "huggingface")

@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.6.3-cudnn-runtime-ubuntu22.04
+FROM nvidia/cuda:12.9.1-cudnn-runtime-ubuntu24.04
 ARG NEED_MIRROR=1
 
 SHELL ["/bin/bash", "-c"]
@@ -14,7 +14,7 @@ RUN --mount=type=cache,id=ragflow_apt,target=/var/cache/apt,sharing=locked \
     apt update && \
     apt --no-install-recommends install -y ca-certificates && \
     apt update && \
-    apt install -y python3.10 python3-pip curl vim libgl1 libglib2.0-0
+    apt install -y python3-pip curl vim libgl1 libglib2.0-0
 
 RUN if [ "$NEED_MIRROR" == "1" ]; then \
         pip3 config set global.index-url https://mirrors.aliyun.com/pypi/simple && \
@@ -25,11 +25,7 @@ RUN if [ "$NEED_MIRROR" == "1" ]; then \
         echo "default = true" >> /etc/uv/uv.toml; \
     fi
 
-# wget https://github.com/astral-sh/uv/releases/download/0.8.15/uv-x86_64-unknown-linux-gnu.tar.gz
-RUN --mount=type=bind,source=/uv-x86_64-unknown-linux-gnu.tar.gz,target=/uv-x86_64-unknown-linux-gnu.tar.gz \
-    tar xzvf uv-x86_64-unknown-linux-gnu.tar.gz && \
-    mv uv-x86_64-unknown-linux-gnu/* /usr/local/bin/ && \
-    rm -rf uv-x86_64-unknown-linux-gnu
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 
 WORKDIR /app
 
