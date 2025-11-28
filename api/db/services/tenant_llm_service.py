@@ -113,8 +113,7 @@ class TenantLLMService(CommonService):
                 factory, tenant_id = factory_and_tenant
             elif len(factory_and_tenant) == 1:
                 factory, tenant_id = factory_and_tenant[0], None
-            else:
-                return model, None, None
+            return model, factory, tenant_id
         else:
             factory, tenant_id = factory_part, None
 
