@@ -210,6 +210,39 @@ services:
     networks:
       - ragflow
 
+  tei-cpu:
+    profiles:
+      - tei-cpu
+    image: ${TEI_IMAGE_CPU}
+    hostname: tei
+    ports:
+      - ${TEI_PORT-6380}:80
+    env_file: .env
+    networks:
+      - ragflow
+    command: ["--model-id", "/data/${TEI_MODEL}", "--auto-truncate"]
+    restart: on-failure
+
+  tei-gpu:
+    profiles:
+      - tei-gpu
+    image: ${TEI_IMAGE_GPU}
+    hostname: tei
+    ports:
+      - ${TEI_PORT-6380}:80
+    env_file: .env
+    networks:
+      - ragflow
+    command: ["--model-id", "/data/${TEI_MODEL}", "--auto-truncate"]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: on-failure
+
 volumes:
   esdata01:
     driver: local
