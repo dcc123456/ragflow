@@ -126,7 +126,7 @@ const methods = {
   },
 } as const;
 
-const userService = registerServer<keyof typeof methods>(methods, request);
+const userService = registerServer<keyof typeof methods>?.(methods, request);
 
 export const getLoginChannels = () => request.get(api.login_channels);
 export const loginWithChannel = (channel: string) =>

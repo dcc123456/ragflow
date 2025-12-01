@@ -61,7 +61,7 @@ export const useSelectLlmOptions = () => {
 const buildLlmOptionsWithIcon = (tenantId: string, x: IThirdOAIModel) => {
   return {
     label: (
-      <section className="flex justify-between">
+      <section className="flex justify-between gap-2 items-center">
         <div className="flex items-center gap-2">
           <LlmIcon
             name={getLLMIconName(x.fid, x.llm_name)}
@@ -72,7 +72,7 @@ const buildLlmOptionsWithIcon = (tenantId: string, x: IThirdOAIModel) => {
           <span>{getRealModelName(x.llm_name)}</span>
         </div>
         {x.tenant_id !== tenantId && (
-          <span className="bg-gray-100 px-2 rounded-xl text-blue-700 ">
+          <span className="bg-bg-card px-2 rounded-xl text-accent-primary py-1">
             {x.tenant_name}
           </span>
         )}

@@ -3,19 +3,30 @@ import { IPrivilegeManagementInitialValues } from '@/components/privilege-manage
 import { LlmIcon } from '@/components/svg-icon';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { useSetModalState, useTranslate } from '@/hooks/common-hooks';
 import { LlmItem } from '@/hooks/llm-hooks';
+import {
+  useFetchEnableAdmin,
+  useFetchIsAdmin,
+} from '@/hooks/use-private-llm-request';
 import { getRealModelName } from '@/utils/llm-util';
 import { EditOutlined, SettingOutlined } from '@ant-design/icons';
 import {
   ChevronsDown,
   ChevronsUp,
-  SquareArrowUpRight,
+  KeyRound,
+  RotateCcw,
   Trash2,
 } from 'lucide-react';
-import { FC, useCallback } from 'react';
+import { FC, useCallback, useMemo } from 'react';
 import { isLocalLlmFactory } from '../../utils';
 import { useHandleDeleteFactory, useHandleEnableLlm } from '../hooks';
+import { useResetDefaultLLM } from '../use-reset-default-llm';
 
 interface IModelCardProps {
   item: LlmItem;
@@ -66,6 +77,13 @@ export const ModelProviderCard: FC<IModelCardProps> = ({
   const { handleEnableLlm } = useHandleEnableLlm(item.name);
   const { handleDeleteFactory } = useHandleDeleteFactory(item.name);
 
+  const { data: isAdmin } = useFetchIsAdmin();
+  const { data: enableAdmin } = useFetchEnableAdmin();
+
+  const showResetButton = useMemo(() => {
+    return enableAdmin && isAdmin;
+  }, [isAdmin, enableAdmin]);
+
   const handleApiKeyClick = () => {
     clickApiKey(item.name);
   };
@@ -82,6 +100,8 @@ export const ModelProviderCard: FC<IModelCardProps> = ({
     });
   }, [item.logo, item.name, showPrivilegeModal]);
 
+  const { handleSetDefaultLlm } = useResetDefaultLLM(item.name);
+
   return (
     <div className={`w-full rounded-lg border border-border-button`}>
       {/* Header */}
@@ -93,18 +113,18 @@ export const ModelProviderCard: FC<IModelCardProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center space-x-2 overflow-auto">
           <Button
-            variant={'ghost'}
+            variant={'secondary'}
             onClick={(e) => {
               e.stopPropagation();
               handleShowPrivilegeModal();
             }}
             className="px-3 py-1 text-sm bg-bg-input hover:bg-bg-input text-text-primary  rounded-md transition-colors flex items-center space-x-1"
           >
-            <SquareArrowUpRight />
-            <span>Share</span>
+            <KeyRound />
           </Button>
+
           <Button
             onClick={(e) => {
               e.stopPropagation();
@@ -113,9 +133,6 @@ export const ModelProviderCard: FC<IModelCardProps> = ({
             className="px-3 py-1 text-sm    rounded-md transition-colors flex items-center space-x-1 border border-border-default"
           >
             <SettingOutlined />
-            <span>
-              {isLocalLlmFactory(item.name) ? t('addTheModel') : 'API-Key'}
-            </span>
           </Button>
 
           <Button
@@ -173,6 +190,25 @@ export const ModelProviderCard: FC<IModelCardProps> = ({
                   </div>
 
                   <div className="flex items-center space-x-2">
+                    {showResetButton && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant={'secondary'}
+                            onClick={handleSetDefaultLlm(model.name)}
+                          >
+                            <RotateCcw className="size-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>
+                            {t('resetDefaultLLMTip', {
+                              keyPrefix: 'privateLLM',
+                            })}
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
                     {isLocalLlmFactory(item.name) && (
                       <Button
                         variant={'secondary'}
