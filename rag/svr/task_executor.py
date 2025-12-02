@@ -19,7 +19,6 @@ import concurrent
 # beartype_all(conf=BeartypeConf(violation_type=UserWarning))    # <-- emit warnings from all code
 import random
 import sys
-import threading
 import time
 import socket
 import multiprocessing
@@ -127,17 +126,6 @@ embed_limiter = trio.CapacityLimiter(MAX_CONCURRENT_CHUNK_BUILDERS)
 minio_limiter = trio.CapacityLimiter(MAX_CONCURRENT_MINIO)
 kg_limiter = trio.CapacityLimiter(2)
 WORKER_HEARTBEAT_TIMEOUT = int(os.environ.get('WORKER_HEARTBEAT_TIMEOUT', '120'))
-stop_event = threading.Event()
-
-
-def signal_handler(sig, frame):
-    logging.info("Received interrupt signal, shutting down...")
-    stop_event.set()
-    time.sleep(1)
-    sys.exit(0)
-
-
-
 
 
 def set_progress(task_id, from_page=0, to_page=-1, prog=None, msg="Processing..."):
@@ -1030,44 +1018,48 @@ def rabbitmq_callback(ch, method, properties, body):
 
     canceled = False
     task = None
-    for _ in range(3):
-        if msg.get("doc_id", "") in [GRAPH_RAPTOR_FAKE_DOC_ID, CANVAS_DEBUG_DOC_ID]:
-            task = msg
-            if task["task_type"] in PIPELINE_SPECIAL_PROGRESS_FREEZE_TASK_TYPES and msg.get("doc_ids", []):
-                time.sleep(5)
-                task = TaskService.get_task(msg["id"], msg["doc_ids"])
-                if not task:
-                    logging.warning("Miss task info in DB({}): {}".format(method.routing_key, body))
-                    ch.basic_ack(method.delivery_tag)
-                    return
-                task["doc_ids"] = msg["doc_ids"]
-        else:
-            task = TaskService.get_task(msg["id"])
-        if task:
-            task.update(msg)
-            break
-        time.sleep(3)
-
-    if task:
-        canceled = has_canceled(task["id"])
-    if not task or canceled:
-        state = "is unknown" if not task else "has been cancelled"
-        logging.warning(f"collect task {msg['id']} {state}")
-        ch.basic_ack(method.delivery_tag)
-        return
-
-    task_type = task["task_type"] = msg.get("task_type", "")
-    if task_type[:8] == "dataflow":
-        task["tenant_id"] = msg["tenant_id"]
-        task["dataflow_id"] = msg["dataflow_id"]
-        task["kb_id"] = msg.get("kb_id", "")
-
-    pipeline_task_type = TASK_TYPE_TO_PIPELINE_TASK_TYPE.get(task_type, PipelineTaskType.PARSE) or PipelineTaskType.PARSE
-
+    pipeline_task_type = ""
+    task_type = ""
     try:
+        for _ in range(3):
+            if msg.get("doc_id", "") in [GRAPH_RAPTOR_FAKE_DOC_ID, CANVAS_DEBUG_DOC_ID]:
+                task = msg
+                if task["task_type"] in PIPELINE_SPECIAL_PROGRESS_FREEZE_TASK_TYPES and msg.get("doc_ids", []):
+                    time.sleep(5)
+                    task = TaskService.get_task(msg["id"], msg["doc_ids"])
+                    if not task:
+                        logging.warning("Miss task info in DB({}): {}".format(method.routing_key, body))
+                        return
+                    task["doc_ids"] = msg["doc_ids"]
+            else:
+                task = TaskService.get_task(msg["id"])
+            if task:
+                task.update(msg)
+                break
+            time.sleep(3)
+
+        if task:
+            canceled = has_canceled(task["id"])
+        if not task or canceled:
+            ch.basic_ack(method.delivery_tag)
+            state = "is unknown" if not task else "has been cancelled"
+            logging.warning(f"collect task {msg['id']} {state}")
+            return
+
+        task_type = task["task_type"] = msg.get("task_type", "")
+        if task_type[:8] == "dataflow":
+            task["tenant_id"] = msg["tenant_id"]
+            task["dataflow_id"] = msg["dataflow_id"]
+            task["kb_id"] = msg.get("kb_id", "")
+
+        pipeline_task_type = TASK_TYPE_TO_PIPELINE_TASK_TYPE.get(task_type, PipelineTaskType.PARSE) or PipelineTaskType.PARSE
+
         logging.info(f"handle_task begin for task {json.dumps(task)}")
         trio.run(do_handle_task_with_timeout, task, partial(set_progress, task["id"]))
         logging.info(f"handle_task done for task {json.dumps(task)}")
+    except KeyboardInterrupt:
+        ch.basic_nack(method.delivery_tag)
+        sys.exit()
     except Exception as e:
         try:
             err_msg = str(e)
@@ -1122,9 +1114,6 @@ def main():
     TRACE_MALLOC_ENABLED = int(os.environ.get('TRACE_MALLOC_ENABLED', "0"))
     if TRACE_MALLOC_ENABLED:
         start_tracemalloc_and_snapshot(None, None)
-
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
 
     heartbeat_process = multiprocessing.Process(
         target=report_status,

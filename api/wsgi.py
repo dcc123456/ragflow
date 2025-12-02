@@ -13,7 +13,6 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 #
-import gevent.monkey
 
 from common.config_utils import show_configs
 from common.file_utils import get_project_base_directory
@@ -21,7 +20,6 @@ from common.log_utils import init_root_logger
 from common.mcp_tool_call_conn import shutdown_all_mcp_sessions
 from common.settings import print_rag_settings
 
-gevent.monkey.patch_all()
 import sys
 import time
 # Initialize logging first

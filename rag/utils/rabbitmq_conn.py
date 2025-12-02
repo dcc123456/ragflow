@@ -1,6 +1,9 @@
 
 import logging
 import json
+import signal
+import sys
+
 import pika
 import requests
 from requests.auth import HTTPBasicAuth
@@ -14,7 +17,9 @@ from common.config_utils import get_base_config
 class RabbitQueue:
 
     def __init__(self):
+        self._setup_signal_handlers()
         self._channel = None
+        self._conn = None
         self.config = settings.RABBIT_CONF if settings.RABBIT_CONF else get_base_config("rabbitmq")
         self.__open__()
 
@@ -27,13 +32,23 @@ class RabbitQueue:
                 credentials=credentials,
                 socket_timeout=10,
                 heartbeat=30,
-                blocked_connection_timeout=60
+                blocked_connection_timeout=60*60*2
             )
             # Establish the connection
-            self._channel = pika.BlockingConnection(parameters).channel()
+            self._conn = pika.BlockingConnection(parameters)
+            self._channel = self._conn.channel()
             logging.info("Connect to RabbitMQ: {}".format(self.config["host"]))
         except Exception:
             logging.warning("RabbitMQ can't be connected.")
+
+    def _setup_signal_handlers(self):
+        def signal_handler(signum, frame):
+            print(f"Received {signum}，closing...")
+            self._conn.close()
+            sys.exit(0)
+
+        signal.signal(signal.SIGTERM, signal_handler)  # kill
+        signal.signal(signal.SIGINT, signal_handler)
 
     def health(self):
         return True
@@ -72,6 +87,7 @@ class RabbitQueue:
 
     def queue_consumer(self, queue_name, callback):
         self._channel.queue_declare(queue_name, durable=True)
+        self._channel.basic_qos(prefetch_count=1)
         self._channel.basic_consume(queue=queue_name, on_message_callback=callback, auto_ack=False)
         self._channel.start_consuming()
 
