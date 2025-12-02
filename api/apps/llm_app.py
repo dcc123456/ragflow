@@ -497,7 +497,7 @@ def list_app():
                     continue
                 if o.llm_name + "@" + o.llm_factory in llm_set:
                     continue
-                llms.append({"llm_name": o.llm_name, "model_type": o.model_type, "fid": o.llm_factory, "available": True})
+                llms.append({"llm_name": o.llm_name, "model_type": o.model_type, "fid": o.llm_factory, "available": True, "status": StatusEnum.VALID.value})
 
             for m in llms:
                 m["tenant_id"] = tenant_id
