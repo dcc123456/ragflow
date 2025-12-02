@@ -585,6 +585,7 @@ async def create_department():
     avatar = req.get("avatar", "")
     parent_id = req.get("parent_id")
     description = req.get("description", "")
+    tenant_id = current_user.id
 
     if not name:
         return get_data_error_result(message="Missing required fields: `name`.")
@@ -600,7 +601,7 @@ async def create_department():
         parent = DepartmentService.filter_by_id(parent_id)
         if not parent:
             return get_data_error_result(message=f"Parent department `{parent_id}` does not exist.")
-        if parent.tenant_id != current_user.id:
+        if parent.tenant_id != tenant_id:
             return get_json_result(data=False, message="No permission to access the parent department.", code=RetCode.PERMISSION_ERROR)
         parent_path = parent.path
         parent_formatted_path = parent.formatted_path
@@ -621,7 +622,7 @@ async def create_department():
                 "formatted_path": parent_formatted_path + name + "/",
                 "parent_id": parent_id,
                 "owner_id": owner_id,
-                "tenant_id": current_user.id,
+                "tenant_id": tenant_id,
             }
             DepartmentService.save(**department)
 
