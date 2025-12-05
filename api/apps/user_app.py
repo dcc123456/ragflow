@@ -15,7 +15,6 @@
 #
 import json
 import logging
-import random
 import string
 import os
 import re
@@ -28,7 +27,6 @@ from quart import redirect, request, session, make_response
 from api.db.services.tenant_llm_service import user_register
 from api.apps.auth import get_auth_client
 from api.db.db_models import TenantLLM
-from api.sync_github_star import get_user_stared
 from api.utils.sync_icbccs_user import icbccs_user_register
 from common.time_utils import current_timestamp, datetime_format, get_format_time
 from common.misc_utils import download_img, get_uuid
@@ -1060,6 +1058,8 @@ def enable_admin():
 @manager.route("/star", methods=["GET"])  # noqa: F821
 @login_required
 def has_starred_repo():
+    from api.sync_github_star import get_user_stared
+    import random
     user = UserService.query(id=current_user.id)
     if not user:
         return get_json_result(

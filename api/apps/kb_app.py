@@ -58,6 +58,8 @@ from api.apps import login_required, current_user
 @validate_request("name")
 async def create():
     req = await get_request_json()
+    name = req["name"]
+    parser_id = req.get("parser_id")
     e, res = KnowledgebaseService.create_with_name(
         name = req.pop("name", None),
         tenant_id = current_user.id,
@@ -71,10 +73,11 @@ async def create():
     tenant_id = current_user.id
     try:
         req["id"] = get_uuid()
-        req["name"] = req["name"]
+        req["name"] = name
         req["tenant_id"] = tenant_id
         req["created_by"] = tenant_id
-        if not req.get("parser_id"):
+        req["parser_id"] = parser_id
+        if not req["parser_id"]:
             req["parser_id"] = "naive"
         e, t = TenantService.get_by_id(tenant_id)
         if not e:
