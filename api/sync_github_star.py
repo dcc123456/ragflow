@@ -18,6 +18,22 @@ tokens = [
 ]
 
 
+def get_user_stared(uname):
+    global tokens
+    url = f"https://api.github.com/users/{uname}/starred?per_page=100"
+    headers = {
+        "Authorization": "Bearer %s"%random.choice(tokens),
+        "Accept": "application/vnd.github.v3+json"
+    }
+    try:
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        return "infiniflow/ragflow" in set([s["full_name"] for s in response.json()])
+    except Exception as e:
+        print(f"Get stared project fail: {e}")
+    return False
+
+
 def get_repo_stars():
     global tokens
     # GitHub API URL

@@ -3,7 +3,7 @@ import {
   useAgreeTenant,
   useDeleteTenantUser,
   useFetchUserInfo,
-} from '@/hooks/user-setting-hooks';
+} from '@/hooks/use-user-setting-request';
 import { useTranslation } from 'react-i18next';
 
 export const useHandleAgreeTenant = () => {

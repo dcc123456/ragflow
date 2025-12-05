@@ -93,7 +93,7 @@ export const useFetchNextDialogList = (pureFetch = false) => {
     isFetching: loading,
     refetch,
   } = useQuery<IDialog[]>({
-    queryKey: ['fetchDialogList', pureFetch],
+    queryKey: ['fetchDialogList'],
     initialData: [],
     gcTime: 0,
     refetchOnWindowFocus: false,
@@ -243,9 +243,6 @@ export const useRemoveNextDialog = () => {
 export const useFetchNextConversationList = () => {
   const { dialogId } = useGetChatSearchParams();
   const { handleClickConversation } = useClickConversationCard();
-  const { data: dialogList } = useFetchNextDialogList(true);
-  const enabled = dialogList.some((x) => x.id === dialogId);
-
   const {
     data,
     isFetching: loading,
@@ -255,7 +252,7 @@ export const useFetchNextConversationList = () => {
     initialData: [],
     gcTime: 0,
     refetchOnWindowFocus: false,
-    enabled: enabled,
+    enabled: !!dialogId,
     queryFn: async () => {
       const { data } = await chatService.listConversation({ dialogId });
       if (data.code === 0) {

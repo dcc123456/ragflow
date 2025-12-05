@@ -67,7 +67,8 @@
 
 ## 🔥 업데이트
 
-- 2025-11-12 Confluence, AWS S3, Discord, Google Drive에서 데이터 동기화를 지원합니다.
+- 2025-11-19 Gemini 3 Pro를 지원합니다.
+- 2025-11-12 Confluence, S3, Notion, Discord, Google Drive에서 데이터 동기화를 지원합니다.
 - 2025-10-23 문서 파싱 방법으로 MinerU 및 Docling을 지원합니다.
 - 2025-10-15 조정된 데이터 파이프라인 지원.
 - 2025-08-08 OpenAI의 최신 GPT-5 시리즈 모델을 지원합니다.
@@ -173,7 +174,8 @@
    ```bash
    $ cd ragflow/docker
    
-   # Optional: use a stable tag (see releases: https://github.com/infiniflow/ragflow/releases), e.g.: git checkout v0.22.1
+   # git checkout v0.22.1
+   # Optional: use a stable tag (see releases: https://github.com/infiniflow/ragflow/releases)
    # 이 단계는 코드의 entrypoint.sh 파일이 Docker 이미지 버전과 일치하도록 보장합니다.
 
    # Use CPU for DeepDoc tasks:

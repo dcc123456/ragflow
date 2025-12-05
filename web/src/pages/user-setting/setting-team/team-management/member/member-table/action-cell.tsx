@@ -1,6 +1,6 @@
 import { ConfirmDeleteDialog } from '@/components/confirm-delete-dialog';
 import { Button } from '@/components/ui/button';
-import { useDeleteTenantUser } from '@/hooks/user-setting-hooks';
+import { useDeleteTenantUser } from '@/hooks/use-user-setting-request';
 import { ITenantUser } from '@/interfaces/database/user-setting';
 import { CellContext } from '@tanstack/react-table';
 import { Trash2 } from 'lucide-react';

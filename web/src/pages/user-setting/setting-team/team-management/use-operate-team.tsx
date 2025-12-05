@@ -1,5 +1,5 @@
 import { TenantIdContext } from '@/contexts/teant-context';
-import { useFetchTenantInfo } from '@/hooks/user-setting-hooks';
+import { useFetchTenantInfo } from '@/hooks/use-user-setting-request';
 import { useContext, useMemo } from 'react';
 
 export function useIsMyCreatedTeam() {

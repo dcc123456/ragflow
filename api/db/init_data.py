@@ -31,6 +31,9 @@ import stripe
 from common.misc_utils import get_uuid
 from common.time_utils import get_format_time
 
+DEFAULT_SUPERUSER_NICKNAME = os.getenv("DEFAULT_SUPERUSER_NICKNAME", "admin")
+DEFAULT_SUPERUSER_EMAIL = os.getenv("DEFAULT_SUPERUSER_EMAIL", "admin@ragflow.io")
+DEFAULT_SUPERUSER_PASSWORD = os.getenv("DEFAULT_SUPERUSER_PASSWORD", "admin")
 
 def init_superuser():
     from api.utils.crypt import decrypt
@@ -96,6 +99,10 @@ def init_llm_factory():
 def add_graph_templates():
     dir = os.path.join(get_project_base_directory(), "agent", "templates")
     CanvasTemplateService.filter_delete([1 == 1])
+    if not os.path.exists(dir):
+        logging.warning("Missing agent templates!")
+        return
+
     for fnm in os.listdir(dir):
         try:
             cnvs = json.load(open(os.path.join(dir, fnm), "r",encoding="utf-8"))

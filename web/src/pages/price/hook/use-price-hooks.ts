@@ -1,4 +1,4 @@
-import { useFetchTenantInfo } from '@/hooks/user-setting-hooks';
+import { useFetchTenantInfo } from '@/hooks/use-user-setting-request';
 import billingService, { billinCheckout } from '@/services/price';
 import storagePrivate from '@/utils/authorization-private-util';
 import storage from '@/utils/authorization-util';

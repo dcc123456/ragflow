@@ -3,7 +3,7 @@ import {
   TransferListProps,
 } from '@/components/ui/transfer-list';
 import { TenantIdContext } from '@/contexts/teant-context';
-import { useListTenantUser } from '@/hooks/user-setting-hooks';
+import { useListTenantUser } from '@/hooks/use-user-setting-request';
 import { IModalProps } from '@/interfaces/common';
 import { IMember } from '@/interfaces/database/team';
 import {

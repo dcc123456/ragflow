@@ -1,4 +1,7 @@
-import { ConfirmDeleteDialog } from '@/components/confirm-delete-dialog';
+import {
+  ConfirmDeleteDialog,
+  ConfirmDeleteDialogNode,
+} from '@/components/confirm-delete-dialog';
 import { PrivilegeDropdown } from '@/components/privilege/privilege-dropdown';
 import {
   DropdownMenu,
@@ -75,7 +78,18 @@ export function ChatDropdown({
           </>
         )}
         {hasOwnerPermission(chat.operator_permission) && (
-          <ConfirmDeleteDialog onOk={handleDelete}>
+          <ConfirmDeleteDialog
+            onOk={handleDelete}
+            title={t('deleteModal.delChat')}
+            content={{
+              node: (
+                <ConfirmDeleteDialogNode
+                  avatar={{ avatar: chat.icon, name: chat.name }}
+                  name={chat.name}
+                />
+              ),
+            }}
+          >
             <DropdownMenuItem
               className="text-state-error"
               onSelect={(e) => {

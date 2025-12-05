@@ -1,6 +1,7 @@
 import { FormFieldType } from '@/components/dynamic-form';
 import SvgIcon from '@/components/svg-icon';
 import { t } from 'i18next';
+import GmailTokenField from './component/gmail-token-field';
 import GoogleDriveTokenField from './component/google-drive-token-field';
 
 export enum DataSourceKey {
@@ -9,8 +10,11 @@ export enum DataSourceKey {
   NOTION = 'notion',
   DISCORD = 'discord',
   GOOGLE_DRIVE = 'google_drive',
-  // GMAIL = 'gmail',
+  MOODLE = 'moodle',
+  GMAIL = 'gmail',
   JIRA = 'jira',
+  WEBDAV = 'webdav',
+  DROPBOX = 'dropbox',
   //   SHAREPOINT = 'sharepoint',
   //   SLACK = 'slack',
   //   TEAMS = 'teams',
@@ -42,10 +46,30 @@ export const DataSourceInfo = {
     description: t(`setting.${DataSourceKey.GOOGLE_DRIVE}Description`),
     icon: <SvgIcon name={'data-source/google-drive'} width={38} />,
   },
+  [DataSourceKey.GMAIL]: {
+    name: 'Gmail',
+    description: t(`setting.${DataSourceKey.GMAIL}Description`),
+    icon: <SvgIcon name={'data-source/gmail'} width={38} />,
+  },
+  [DataSourceKey.MOODLE]: {
+    name: 'Moodle',
+    description: t(`setting.${DataSourceKey.MOODLE}Description`),
+    icon: <SvgIcon name={'data-source/moodle'} width={38} />,
+  },
   [DataSourceKey.JIRA]: {
     name: 'Jira',
     description: t(`setting.${DataSourceKey.JIRA}Description`),
     icon: <SvgIcon name={'data-source/jira'} width={38} />,
+  },
+  [DataSourceKey.WEBDAV]: {
+    name: 'WebDAV',
+    description: t(`setting.${DataSourceKey.WEBDAV}Description`),
+    icon: <SvgIcon name={'data-source/webdav'} width={38} />,
+  },
+  [DataSourceKey.DROPBOX]: {
+    name: 'Dropbox',
+    description: t(`setting.${DataSourceKey.DROPBOX}Description`),
+    icon: <SvgIcon name={'data-source/dropbox'} width={38} />,
   },
 };
 
@@ -110,13 +134,28 @@ export const DataSourceFormFields = {
       required: true,
     },
     {
+      label: 'Addressing Style',
+      name: 'config.credentials.addressing_style',
+      type: FormFieldType.Select,
+      options: [
+        { label: 'Virtual Hosted Style', value: 'virtual' },
+        { label: 'Path Style', value: 'path' },
+      ],
+      required: false,
+      placeholder: 'Virtual Hosted Style',
+      tooltip: t('setting.S3CompatibleAddressingStyleTip'),
+      shouldRender: (formValues: any) => {
+        return formValues?.config?.bucket_type === 's3_compatible';
+      },
+    },
+    {
       label: 'Endpoint URL',
       name: 'config.credentials.endpoint_url',
       type: FormFieldType.Text,
       required: false,
       placeholder: 'https://fsn1.your-objectstorage.com',
       tooltip: t('setting.S3CompatibleEndpointUrlTip'),
-      shouldRender: (formValues) => {
+      shouldRender: (formValues: any) => {
         return formValues?.config?.bucket_type === 's3_compatible';
       },
     },
@@ -190,6 +229,13 @@ export const DataSourceFormFields = {
       type: FormFieldType.Checkbox,
       required: false,
       tooltip: t('setting.confluenceIsCloudTip'),
+    },
+    {
+      label: 'Space Key',
+      name: 'config.space',
+      type: FormFieldType.Text,
+      required: false,
+      tooltip: t('setting.confluenceSpaceKeyTip'),
     },
   ],
   [DataSourceKey.GOOGLE_DRIVE]: [
@@ -285,6 +331,53 @@ export const DataSourceFormFields = {
       required: false,
       hidden: true,
       defaultValue: 'uploaded',
+    },
+  ],
+  [DataSourceKey.GMAIL]: [
+    {
+      label: 'Primary Admin Email',
+      name: 'config.credentials.google_primary_admin',
+      type: FormFieldType.Text,
+      required: true,
+      placeholder: 'admin@example.com',
+      tooltip: t('setting.gmailPrimaryAdminTip'),
+    },
+    {
+      label: 'OAuth Token JSON',
+      name: 'config.credentials.google_tokens',
+      type: FormFieldType.Textarea,
+      required: true,
+      render: (fieldProps: any) => (
+        <GmailTokenField
+          value={fieldProps.value}
+          onChange={fieldProps.onChange}
+          placeholder='{ "token": "...", "refresh_token": "...", ... }'
+        />
+      ),
+      tooltip: t('setting.gmailTokenTip'),
+    },
+    {
+      label: '',
+      name: 'config.credentials.authentication_method',
+      type: FormFieldType.Text,
+      required: false,
+      hidden: true,
+      defaultValue: 'uploaded',
+    },
+  ],
+  [DataSourceKey.MOODLE]: [
+    {
+      label: 'Moodle URL',
+      name: 'config.moodle_url',
+      type: FormFieldType.Text,
+      required: true,
+      placeholder: 'https://moodle.example.com',
+    },
+    {
+      label: 'API Token',
+      name: 'config.credentials.moodle_token',
+      type: FormFieldType.Password,
+      required: true,
     },
   ],
   [DataSourceKey.JIRA]: [
@@ -387,101 +480,51 @@ export const DataSourceFormFields = {
       tooltip: t('setting.jiraPasswordTip'),
     },
   ],
-  // [DataSourceKey.GOOGLE_DRIVE]: [
-  //   {
-  //     label: 'Primary Admin Email',
-  //     name: 'config.credentials.google_primary_admin',
-  //     type: FormFieldType.Text,
-  //     required: true,
-  //     placeholder: 'admin@example.com',
-  //     tooltip: t('setting.google_drivePrimaryAdminTip'),
-  //   },
-  //   {
-  //     label: 'OAuth Token JSON',
-  //     name: 'config.credentials.google_tokens',
-  //     type: FormFieldType.Textarea,
-  //     required: true,
-  //     render: (fieldProps) => (
-  //       <GoogleDriveTokenField
-  //         value={fieldProps.value}
-  //         onChange={fieldProps.onChange}
-  //         placeholder='{ "token": "...", "refresh_token": "...", ... }'
-  //       />
-  //     ),
-  //     tooltip: t('setting.google_driveTokenTip'),
-  //   },
-  //   {
-  //     label: 'My Drive Emails',
-  //     name: 'config.my_drive_emails',
-  //     type: FormFieldType.Text,
-  //     required: true,
-  //     placeholder: 'user1@example.com,user2@example.com',
-  //     tooltip: t('setting.google_driveMyDriveEmailsTip'),
-  //   },
-  //   {
-  //     label: 'Shared Folder URLs',
-  //     name: 'config.shared_folder_urls',
-  //     type: FormFieldType.Textarea,
-  //     required: true,
-  //     placeholder:
-  //       'https://drive.google.com/drive/folders/XXXXX,https://drive.google.com/drive/folders/YYYYY',
-  //     tooltip: t('setting.google_driveSharedFoldersTip'),
-  //   },
-  //   // The fields below are intentionally disabled for now. Uncomment them when we
-  //   // reintroduce shared drive controls or advanced impersonation options.
-  //   // {
-  //   //   label: 'Shared Drive URLs',
-  //   //   name: 'config.shared_drive_urls',
-  //   //   type: FormFieldType.Text,
-  //   //   required: false,
-  //   //   placeholder:
-  //   //     'Optional: comma-separated shared drive links if you want to include them.',
-  //   // },
-  //   // {
-  //   //   label: 'Specific User Emails',
-  //   //   name: 'config.specific_user_emails',
-  //   //   type: FormFieldType.Text,
-  //   //   required: false,
-  //   //   placeholder:
-  //   //     'Optional: comma-separated list of users to impersonate (overrides defaults).',
-  //   // },
-  //   // {
-  //   //      label: 'Include My Drive',
-  //   //      name: 'config.include_my_drives',
-  //   //      type: FormFieldType.Checkbox,
-  //   //      required: false,
-  //   //      defaultValue: true,
-  //   // },
-  //   // {
-  //   //   label: 'Include Shared Drives',
-  //   //   name: 'config.include_shared_drives',
-  //   //   type: FormFieldType.Checkbox,
-  //   //   required: false,
-  //   //   defaultValue: false,
-  //   // },
-  //   // {
-  //   //   label: 'Include “Shared with me”',
-  //   //   name: 'config.include_files_shared_with_me',
-  //   //   type: FormFieldType.Checkbox,
-  //   //   required: false,
-  //   //   defaultValue: false,
-  //   // },
-  //   // {
-  //   //   label: 'Allow Images',
-  //   //   name: 'config.allow_images',
-  //   //   type: FormFieldType.Checkbox,
-  //   //   required: false,
-  //   //   defaultValue: false,
-  //   // },
-  //   {
-  //     label: '',
-  //     name: 'config.credentials.authentication_method',
-  //     type: FormFieldType.Text,
-  //     required: false,
-  //     hidden: true,
-  //     defaultValue: 'uploaded',
-  //   },
-  // ],
+  [DataSourceKey.WEBDAV]: [
+    {
+      label: 'WebDAV Server URL',
+      name: 'config.base_url',
+      type: FormFieldType.Text,
+      required: true,
+      placeholder: 'https://webdav.example.com',
+    },
+    {
+      label: 'Username',
+      name: 'config.credentials.username',
+      type: FormFieldType.Text,
+      required: true,
+    },
+    {
+      label: 'Password',
+      name: 'config.credentials.password',
+      type: FormFieldType.Password,
+      required: true,
+    },
+    {
+      label: 'Remote Path',
+      name: 'config.remote_path',
+      type: FormFieldType.Text,
+      required: false,
+      placeholder: '/',
+      tooltip: t('setting.webdavRemotePathTip'),
+    },
+  ],
+  [DataSourceKey.DROPBOX]: [
+    {
+      label: 'Access Token',
+      name: 'config.credentials.dropbox_access_token',
+      type: FormFieldType.Password,
+      required: true,
+      tooltip: t('setting.dropboxAccessTokenTip'),
+    },
+    {
+      label: 'Batch Size',
+      name: 'config.batch_size',
+      type: FormFieldType.Number,
+      required: false,
+      placeholder: 'Defaults to 2',
+    },
+  ],
 };
 
 export const DataSourceFormDefaultValues = {
@@ -496,6 +539,7 @@ export const DataSourceFormDefaultValues = {
         aws_access_key_id: '',
         aws_secret_access_key: '',
         endpoint_url: '',
+        addressing_style: 'virtual',
       },
     },
   },
@@ -526,6 +570,7 @@ export const DataSourceFormDefaultValues = {
     config: {
       wiki_base: '',
       is_cloud: true,
+      space: '',
       credentials: {
         confluence_username: '',
         confluence_access_token: '',
@@ -551,6 +596,27 @@ export const DataSourceFormDefaultValues = {
       },
     },
   },
+  [DataSourceKey.GMAIL]: {
+    name: '',
+    source: DataSourceKey.GMAIL,
+    config: {
+      credentials: {
+        google_primary_admin: '',
+        google_tokens: '',
+        authentication_method: 'uploaded',
+      },
+    },
+  },
+  [DataSourceKey.MOODLE]: {
+    name: '',
+    source: DataSourceKey.MOODLE,
+    config: {
+      moodle_url: '',
+      credentials: {
+        moodle_token: '',
+      },
+    },
+  },
   [DataSourceKey.JIRA]: {
     name: '',
     source: DataSourceKey.JIRA,
@@ -569,6 +635,28 @@ export const DataSourceFormDefaultValues = {
         jira_user_email: '',
         jira_api_token: '',
         jira_password: '',
+      },
+    },
+  },
+  [DataSourceKey.WEBDAV]: {
+    name: '',
+    source: DataSourceKey.WEBDAV,
+    config: {
+      base_url: '',
+      remote_path: '/',
+      credentials: {
+        username: '',
+        password: '',
+      },
+    },
+  },
+  [DataSourceKey.DROPBOX]: {
+    name: '',
+    source: DataSourceKey.DROPBOX,
+    config: {
+      batch_size: 2,
+      credentials: {
+        dropbox_access_token: '',
       },
     },
   },

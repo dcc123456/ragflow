@@ -3,7 +3,7 @@ import {
   useFetchTenantInfo,
   useFetchUserInfo,
   useListTenantUser,
-} from '@/hooks/user-setting-hooks';
+} from '@/hooks/use-user-setting-request';
 import { cn } from '@/lib/utils';
 import { Badge } from 'antd';
 import { PropsWithChildren, useMemo } from 'react';

@@ -1,6 +1,8 @@
 import { IconFont } from '@/components/icon-font';
 import { PrivilegeManagementDialog } from '@/components/privilege-management/privilege-management-dialog';
 import { CardSineLineContainer } from '@/components/card-singleline-container';
+import { EmptyCardType } from '@/components/empty/constant';
+import { EmptyAppCard } from '@/components/empty/empty';
 import { RenameDialog } from '@/components/rename-dialog';
 import { HomeIcon } from '@/components/svg-icon';
 import { CardSkeleton } from '@/components/ui/skeleton';
@@ -45,19 +47,33 @@ export function Datasets() {
             <CardSkeleton />
           </div>
         ) : (
-          <CardSineLineContainer>
-            {kbs
-              ?.slice(0, 6)
-              .map((dataset) => (
-                <DatasetCard
-                  key={dataset.id}
-                  dataset={dataset}
-                  showDatasetRenameModal={showDatasetRenameModal}
-                  showPrivilegeModal={handShowPrivilegeModal(dataset)}
-                ></DatasetCard>
-              ))}
-            {<SeeAllAppCard click={navigateToDatasetList}></SeeAllAppCard>}
-          </CardSineLineContainer>
+          <>
+            {kbs?.length > 0 && (
+              <CardSineLineContainer>
+                {kbs
+                  ?.slice(0, 6)
+                  .map((dataset) => (
+                    <DatasetCard
+                      key={dataset.id}
+                      dataset={dataset}
+                      showDatasetRenameModal={showDatasetRenameModal}
+                      showPrivilegeModal={handShowPrivilegeModal(dataset)}
+                    ></DatasetCard>
+                  ))}
+                {
+                  <SeeAllAppCard
+                    click={() => navigateToDatasetList({ isCreate: false })}
+                  ></SeeAllAppCard>
+                }
+              </CardSineLineContainer>
+            )}
+            {kbs?.length <= 0 && (
+              <EmptyAppCard
+                type={EmptyCardType.Dataset}
+                onClick={() => navigateToDatasetList({ isCreate: true })}
+              />
+            )}
+          </>
           // </div>
         )}
       </div>

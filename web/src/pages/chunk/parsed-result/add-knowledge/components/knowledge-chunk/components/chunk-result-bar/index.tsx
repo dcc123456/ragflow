@@ -1,11 +1,12 @@
-import { Input } from '@/components/originui/input';
 import { Button } from '@/components/ui/button';
+import { SearchInput } from '@/components/ui/input';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { Radio } from '@/components/ui/radio';
+import { Segmented } from '@/components/ui/segmented';
 import { useTranslate } from '@/hooks/common-hooks';
 import { useDatasetEditButtonDisabled } from '@/hooks/logic-hooks/use-permission';
 import { cn } from '@/lib/utils';
@@ -64,50 +65,45 @@ export default ({
   };
   return (
     <div className="flex pr-[25px]">
-      <div className="flex items-center gap-4 bg-bg-card text-muted-foreground w-fit h-[35px] rounded-md px-4 py-2">
-        {textSelectOptions.map((option) => (
-          <div
-            key={option.value}
-            className={cn('flex items-center cursor-pointer', {
-              'text-primary': option.value === textSelectValue,
-            })}
-            onClick={() => changeTextSelectValue(option.value)}
-          >
-            {option.label}
-          </div>
-        ))}
-      </div>
-      <div className="ml-auto"></div>
-      <Input
-        className="bg-bg-card text-muted-foreground"
-        style={{ width: 200 }}
-        placeholder={t('search')}
-        icon={<SearchOutlined />}
-        onChange={handleInputChange}
-        value={searchString}
+      <Segmented
+        options={textSelectOptions}
+        value={textSelectValue}
+        onChange={changeTextSelectValue}
       />
-      <div className="w-[20px]"></div>
-      <Popover>
-        <PopoverTrigger asChild>
-          <Button
-            className="bg-bg-card text-muted-foreground hover:bg-card"
-            disabled={datasetEditButtonDisabled}
-          >
-            <ListFilter />
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent className="p-0 w-[200px]">
-          {filterContent}
-        </PopoverContent>
-      </Popover>
-      <div className="w-[20px]"></div>
-      <Button
-        onClick={() => createChunk()}
-        className="bg-bg-card text-primary"
-        disabled={datasetEditButtonDisabled}
-      >
-        <Plus size={44} />
-      </Button>
+      <div className="ml-auto"></div>
+      <div className="h-8 flex items-center gap-5">
+        <SearchInput
+          // style={{ width: 200 }}
+          placeholder={t('search')}
+          // icon={<SearchOutlined />}
+          onChange={handleInputChange}
+          value={searchString}
+        />
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              variant={'ghost'}
+                    disabled={datasetEditButtonDisabled}
+              // className="bg-bg-card text-text-secondary hover:bg-card"
+            >
+              <ListFilter />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="p-0 w-[200px]">
+            {filterContent}
+          </PopoverContent>
+        </Popover>
+        <Button
+          variant={'ghost'}
+          onClick={() => createChunk()}
+                disabled={datasetEditButtonDisabled}
+          // className="bg-bg-card text-primary hover:bg-card"
+        >
+          <Plus size={44} />
+        </Button>
+      </div>
+      {/* <div className="w-[20px]"></div>
+      <div className="w-[20px]"></div> */}
     </div>
   );
 };

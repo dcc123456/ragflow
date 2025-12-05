@@ -23,9 +23,11 @@ from common.file_utils import get_project_base_directory
 from common.config_utils import get_base_config, decrypt_database_config
 from common.misc_utils import pip_install_torch
 from common.constants import SVR_QUEUE_NAME, Storage
+
 import rag.utils
 import rag.utils.es_conn
 import rag.utils.infinity_conn
+import rag.utils.ob_conn
 import rag.utils.opensearch_conn
 from rag.utils.azure_sas_conn import RAGFlowAzureSasBlob
 from rag.utils.azure_spn_conn import RAGFlowAzureSpnBlob
@@ -80,6 +82,8 @@ GITHUB_OAUTH = None
 FEISHU_OAUTH = None
 OAUTH_CONFIG = None
 DOC_ENGINE = os.getenv('DOC_ENGINE', 'elasticsearch')
+DOC_ENGINE_INFINITY = (DOC_ENGINE.lower() == "infinity")
+
 
 docStoreConn = None
 
@@ -111,6 +115,7 @@ INFINITY = {}
 AZURE = {}
 S3 = {}
 MINIO = {}
+OB = {}
 OSS = {}
 OS = {}
 
@@ -123,16 +128,13 @@ PARALLEL_DEVICES: int = 0
 STORAGE_IMPL_TYPE = os.getenv('STORAGE_IMPL', 'MINIO')
 STORAGE_IMPL = None
 
-
 def get_svr_queue_name(priority: int) -> str:
     if priority == 0:
         return SVR_QUEUE_NAME
     return f"{SVR_QUEUE_NAME}_{priority}"
 
-
 def get_svr_queue_names():
     return [get_svr_queue_name(priority) for priority in [1, 0]]
-
 
 def _get_or_create_secret_key():
     secret_key = os.environ.get("RAGFLOW_SECRET_KEY")
@@ -148,7 +150,7 @@ def _get_or_create_secret_key():
     import logging
 
     new_key = secrets.token_hex(32)
-    logging.warning(f"SECURITY WARNING: Using auto-generated SECRET_KEY. Generated key: {new_key}")
+    logging.warning("SECURITY WARNING: Using auto-generated SECRET_KEY.")
     return new_key
 
 
@@ -240,8 +242,9 @@ def init_settings():
     FEISHU_OAUTH = get_base_config("oauth", {}).get("feishu")
     OAUTH_CONFIG = get_base_config("oauth", {})
 
-    global DOC_ENGINE, docStoreConn, ES, OS, INFINITY
+    global DOC_ENGINE, DOC_ENGINE_INFINITY, docStoreConn, ES, OB, OS, INFINITY
     DOC_ENGINE = os.environ.get("DOC_ENGINE", "elasticsearch")
+    DOC_ENGINE_INFINITY = (DOC_ENGINE.lower() == "infinity")
     lower_case_doc_engine = DOC_ENGINE.lower()
     if lower_case_doc_engine == "elasticsearch":
         ES = get_base_config("es", {})

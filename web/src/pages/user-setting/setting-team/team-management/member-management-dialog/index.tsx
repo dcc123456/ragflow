@@ -7,12 +7,12 @@ import {
 } from '@/components/ui/dialog';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { TransferList } from '@/components/ui/transfer-list';
+import { TagRenameId } from '@/constants/knowledge';
 import {
   useFetchDepartmentMemberList,
   useFetchGroupMemberList,
 } from '@/hooks/use-team';
 import { IModalProps } from '@/interfaces/common';
-import { TagRenameId } from '@/pages/add-knowledge/constant';
 import { X } from 'lucide-react';
 import { useCallback, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';

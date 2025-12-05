@@ -3,8 +3,8 @@ import { RAGFlowAvatar } from '@/components/ragflow-avatar';
 import ThemeToggle from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
 import { Domain } from '@/constants/common';
-import { useLogout } from '@/hooks/login-hooks';
 import { useSecondPathName } from '@/hooks/route-hook';
+import { useLogout } from '@/hooks/use-login-request';
 import {
   useFetchEnableAdmin,
   useFetchIsAdmin,
@@ -124,8 +124,8 @@ export function SideBar() {
           <ThemeToggle />
         </div>
         <Button
-          variant="outline"
-          className="w-full gap-3 !bg-bg-base border !border-border-button !text-text-secondary"
+          variant="ghost"
+          className="w-full gap-3 bg-bg-base border border-border-button"
           onClick={() => {
             logout();
           }}

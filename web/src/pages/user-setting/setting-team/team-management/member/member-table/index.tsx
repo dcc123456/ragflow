@@ -25,7 +25,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { TenantIdContext } from '@/contexts/teant-context';
-import { useListTenantUser } from '@/hooks/user-setting-hooks';
+import { useListTenantUser } from '@/hooks/use-user-setting-request';
 import { ITenantUser } from '@/interfaces/database/user-setting';
 import { formatDate } from '@/utils/date';
 import { useContext, useMemo } from 'react';

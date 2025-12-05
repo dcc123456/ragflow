@@ -13,9 +13,9 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { TagRenameId } from '@/constants/knowledge';
 import { IModalProps } from '@/interfaces/common';
 import { IDepartment } from '@/interfaces/database/team';
-import { TagRenameId } from '@/pages/add-knowledge/constant';
 import {
   getBase64FromFileList,
   transformBase64ToFileWithPreview,

@@ -1,4 +1,7 @@
-import { ConfirmDeleteDialog } from '@/components/confirm-delete-dialog';
+import {
+  ConfirmDeleteDialog,
+  ConfirmDeleteDialogNode,
+} from '@/components/confirm-delete-dialog';
 import { PrivilegeDropdown } from '@/components/privilege/privilege-dropdown';
 import {
   DropdownMenu,
@@ -75,7 +78,18 @@ export function DatasetDropdown({
           </>
         )}
         {hasOwnerPermission(dataset.operator_permission) && (
-          <ConfirmDeleteDialog onOk={handleDelete}>
+          <ConfirmDeleteDialog
+            onOk={handleDelete}
+            content={{
+              node: (
+                <ConfirmDeleteDialogNode
+                  avatar={{ avatar: dataset.avatar, name: dataset.name }}
+                  name={dataset.name}
+                />
+              ),
+            }}
+            title={t('deleteModal.delDataset')}
+          >
             <DropdownMenuItem
               className="text-state-error"
               onSelect={(e) => {

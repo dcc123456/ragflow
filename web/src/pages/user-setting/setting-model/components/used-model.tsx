@@ -1,8 +1,8 @@
+import { LlmItem, useSelectLlmList } from '@/hooks/use-llm-request';
 import { IPrivilegeManagementInitialValues } from '@/components/privilege-management/interface';
 import { PrivilegeManagementDialog } from '@/components/privilege-management/privilege-management-dialog';
 import { PermissionResourceType } from '@/constants/team';
 import { useSetModalState } from '@/hooks/common-hooks';
-import { LlmItem, useSelectLlmList } from '@/hooks/llm-hooks';
 import { useFetchTenantInfo } from '@/hooks/use-user-setting-request';
 import { t } from 'i18next';
 import { useCallback, useState } from 'react';

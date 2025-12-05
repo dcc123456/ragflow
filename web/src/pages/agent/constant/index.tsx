@@ -5,12 +5,12 @@ import {
 import {
   AgentGlobals,
   AgentGlobalsSysQueryWithBrace,
-  AgentStructuredOutputField,
   CodeTemplateStrMap,
   ComparisonOperator,
   JsonSchemaDataType,
   Operator,
   ProgrammingLanguage,
+  SwitchLogicOperator,
   SwitchOperatorOptions,
   initialLlmBaseValues,
 } from '@/constants/agent';
@@ -52,8 +52,6 @@ import {
 
 export const BeginId = 'begin';
 
-export const SwitchLogicOperatorOptions = ['and', 'or'];
-
 export const CommonOperatorList = Object.values(Operator).filter(
   (x) => x !== Operator.Note,
 );
@@ -63,7 +61,6 @@ export const AgentOperatorList = [
   Operator.Categorize,
   Operator.Message,
   Operator.RewriteQuestion,
-  Operator.KeywordExtract,
   Operator.Switch,
   Operator.Iteration,
   Operator.WaitingDialogue,
@@ -80,10 +77,6 @@ export const DataOperationsOperatorOptions = [
 ];
 
 export const SwitchElseTo = 'end_cpn_ids';
-
-const initialQueryBaseValues = {
-  query: [],
-};
 
 export const initialRetrievalValues = {
   query: AgentGlobalsSysQueryWithBrace,
@@ -141,11 +134,6 @@ export const initialMessageValues = {
   content: [''],
 };
 
-export const initialKeywordExtractValues = {
-  ...initialLlmBaseValues,
-  top_n: 3,
-  ...initialQueryBaseValues,
-};
 export const initialDuckValues = {
   top_n: 10,
   channel: Channel.Text,
@@ -277,14 +265,6 @@ export const initialGithubValues = {
   },
 };
 
-export const initialQWeatherValues = {
-  web_apikey: 'xxx',
-  type: 'weather',
-  user_type: 'free',
-  time_period: 'now',
-  ...initialQueryBaseValues,
-};
-
 export const initialExeSqlValues = {
   sql: '',
   db_type: 'mysql',
@@ -309,7 +289,7 @@ export const initialExeSqlValues = {
 export const initialSwitchValues = {
   conditions: [
     {
-      logical_operator: SwitchLogicOperatorOptions[0],
+      logical_operator: SwitchLogicOperator.And,
       items: [
         {
           operator: SwitchOperatorOptions[0].value,
@@ -333,8 +313,6 @@ export const initialWenCaiValues = {
   },
 };
 
-export const initialAkShareValues = { top_n: 10, ...initialQueryBaseValues };
-
 export const initialYahooFinanceValues = {
   stock_code: '',
   info: true,
@@ -349,22 +327,6 @@ export const initialYahooFinanceValues = {
       type: 'string',
     },
   },
-};
-
-export const initialJin10Values = {
-  type: 'flash',
-  secret_key: 'xxx',
-  flash_type: '1',
-  contain: '',
-  filter: '',
-  ...initialQueryBaseValues,
-};
-
-export const initialTuShareValues = {
-  token: 'xxx',
-  src: 'eastmoney',
-  start_date: '2024-01-01 09:00:00',
-  ...initialQueryBaseValues,
 };
 
 export const initialNoteValues = {
@@ -465,7 +427,6 @@ export const initialAgentValues = {
   mcp: [],
   cite: true,
   showStructuredOutput: false,
-  [AgentStructuredOutputField]: {},
   outputs: {
     content: {
       type: 'string',
@@ -611,21 +572,28 @@ export const initialListOperationsValues = {
   query: '',
   operations: ListOperations.TopN,
   outputs: {
-    result: {
-      type: 'Array<?>',
-    },
-    first: {
-      type: '?',
-    },
-    last: {
-      type: '?',
-    },
+    // result: {
+    //   type: 'Array<?>',
+    // },
+    // first: {
+    //   type: '?',
+    // },
+    // last: {
+    //   type: '?',
+    // },
   },
 };
 
 export const initialVariableAssignerValues = {};
 
 export const initialVariableAggregatorValues = { outputs: {}, groups: [] };
+
+export const initialLoopValues = {
+  loop_variables: [],
+  loop_termination_condition: [],
+  maximum_loop_count: 10,
+  outputs: {},
+};
 
 export const CategorizeAnchorPointPositions = [
   { top: 1, right: 34 },
@@ -645,7 +613,7 @@ export const CategorizeAnchorPointPositions = [
 // key is the source of the edge, value is the target of the edge
 // no connection lines are allowed between key and value
 export const RestrictedUpstreamMap = {
-  [Operator.Begin]: [Operator.Relevant],
+  [Operator.Begin]: [Operator.Begin],
   [Operator.Categorize]: [Operator.Begin, Operator.Categorize],
   [Operator.Retrieval]: [Operator.Begin, Operator.Retrieval],
   [Operator.Message]: [
@@ -655,17 +623,10 @@ export const RestrictedUpstreamMap = {
     Operator.RewriteQuestion,
     Operator.Categorize,
   ],
-  [Operator.Relevant]: [Operator.Begin],
   [Operator.RewriteQuestion]: [
     Operator.Begin,
     Operator.Message,
     Operator.RewriteQuestion,
-    Operator.Relevant,
-  ],
-  [Operator.KeywordExtract]: [
-    Operator.Begin,
-    Operator.Message,
-    Operator.Relevant,
   ],
   [Operator.DuckDuckGo]: [Operator.Begin, Operator.Retrieval],
   [Operator.Wikipedia]: [Operator.Begin, Operator.Retrieval],
@@ -675,15 +636,11 @@ export const RestrictedUpstreamMap = {
   [Operator.Bing]: [Operator.Begin, Operator.Retrieval],
   [Operator.GoogleScholar]: [Operator.Begin, Operator.Retrieval],
   [Operator.GitHub]: [Operator.Begin, Operator.Retrieval],
-  [Operator.QWeather]: [Operator.Begin, Operator.Retrieval],
   [Operator.SearXNG]: [Operator.Begin, Operator.Retrieval],
   [Operator.ExeSQL]: [Operator.Begin],
   [Operator.Switch]: [Operator.Begin],
   [Operator.WenCai]: [Operator.Begin],
-  [Operator.AkShare]: [Operator.Begin],
   [Operator.YahooFinance]: [Operator.Begin],
-  [Operator.Jin10]: [Operator.Begin],
-  [Operator.TuShare]: [Operator.Begin],
   [Operator.Crawler]: [Operator.Begin],
   [Operator.Note]: [],
   [Operator.Invoke]: [Operator.Begin],
@@ -709,6 +666,9 @@ export const RestrictedUpstreamMap = {
   [Operator.Tokenizer]: [Operator.Begin],
   [Operator.Extractor]: [Operator.Begin],
   [Operator.File]: [Operator.Begin],
+  [Operator.Loop]: [Operator.Begin],
+  [Operator.LoopStart]: [Operator.Begin],
+  [Operator.ExitLoop]: [Operator.Begin],
 };
 
 export const NodeMap = {
@@ -716,9 +676,7 @@ export const NodeMap = {
   [Operator.Categorize]: 'categorizeNode',
   [Operator.Retrieval]: 'retrievalNode',
   [Operator.Message]: 'messageNode',
-  [Operator.Relevant]: 'relevantNode',
   [Operator.RewriteQuestion]: 'rewriteNode',
-  [Operator.KeywordExtract]: 'keywordNode',
   [Operator.DuckDuckGo]: 'ragNode',
   [Operator.Wikipedia]: 'ragNode',
   [Operator.PubMed]: 'ragNode',
@@ -727,15 +685,11 @@ export const NodeMap = {
   [Operator.Bing]: 'ragNode',
   [Operator.GoogleScholar]: 'ragNode',
   [Operator.GitHub]: 'ragNode',
-  [Operator.QWeather]: 'ragNode',
   [Operator.SearXNG]: 'ragNode',
   [Operator.ExeSQL]: 'ragNode',
   [Operator.Switch]: 'switchNode',
   [Operator.WenCai]: 'ragNode',
-  [Operator.AkShare]: 'ragNode',
   [Operator.YahooFinance]: 'ragNode',
-  [Operator.Jin10]: 'ragNode',
-  [Operator.TuShare]: 'ragNode',
   [Operator.Note]: 'noteNode',
   [Operator.Crawler]: 'ragNode',
   [Operator.Invoke]: 'ragNode',
@@ -761,6 +715,9 @@ export const NodeMap = {
   [Operator.ListOperations]: 'listOperationsNode',
   [Operator.VariableAssigner]: 'variableAssignerNode',
   [Operator.VariableAggregator]: 'variableAggregatorNode',
+  [Operator.Loop]: 'loopNode',
+  [Operator.LoopStart]: 'loopStartNode',
+  [Operator.ExitLoop]: 'exitLoopNode',
 };
 
 export enum BeginQueryType {
@@ -870,7 +827,7 @@ export enum VariableAssignerLogicalArrayOperator {
 }
 
 export enum ExportFileType {
-  PDF = 'pdf',
+  // PDF = 'pdf',
   HTML = 'html',
   Markdown = 'md',
   DOCX = 'docx',
@@ -894,3 +851,82 @@ export const ArrayFields = [
   TypesWithArray.ArrayString,
   TypesWithArray.ArrayObject,
 ];
+
+export enum InputMode {
+  Constant = 'constant',
+  Variable = 'variable',
+}
+
+export enum LoopTerminationComparisonOperator {
+  Contains = ComparisonOperator.Contains,
+  NotContains = ComparisonOperator.NotContains,
+  StartWith = ComparisonOperator.StartWith,
+  EndWith = ComparisonOperator.EndWith,
+  Is = 'is',
+  IsNot = 'is not',
+}
+
+export const LoopTerminationStringComparisonOperator = [
+  LoopTerminationComparisonOperator.Contains,
+  LoopTerminationComparisonOperator.NotContains,
+  LoopTerminationComparisonOperator.StartWith,
+  LoopTerminationComparisonOperator.EndWith,
+  LoopTerminationComparisonOperator.Is,
+  LoopTerminationComparisonOperator.IsNot,
+  ComparisonOperator.Empty,
+  ComparisonOperator.NotEmpty,
+];
+
+export const LoopTerminationBooleanComparisonOperator = [
+  LoopTerminationComparisonOperator.Is,
+  LoopTerminationComparisonOperator.IsNot,
+  ComparisonOperator.Empty,
+  ComparisonOperator.NotEmpty,
+];
+// object or object array
+export const LoopTerminationObjectComparisonOperator = [
+  ComparisonOperator.Empty,
+  ComparisonOperator.NotEmpty,
+];
+
+// string array or number array
+export const LoopTerminationStringArrayComparisonOperator = [
+  LoopTerminationComparisonOperator.Contains,
+  LoopTerminationComparisonOperator.NotContains,
+  ComparisonOperator.Empty,
+  ComparisonOperator.NotEmpty,
+];
+
+export const LoopTerminationBooleanArrayComparisonOperator = [
+  LoopTerminationComparisonOperator.Is,
+  LoopTerminationComparisonOperator.IsNot,
+  ComparisonOperator.Empty,
+  ComparisonOperator.NotEmpty,
+];
+
+export const LoopTerminationNumberComparisonOperator = [
+  ComparisonOperator.Equal,
+  ComparisonOperator.NotEqual,
+  ComparisonOperator.GreatThan,
+  ComparisonOperator.LessThan,
+  ComparisonOperator.GreatEqual,
+  ComparisonOperator.LessEqual,
+  ComparisonOperator.Empty,
+  ComparisonOperator.NotEmpty,
+];
+
+export const LoopTerminationStringComparisonOperatorMap = {
+  [TypesWithArray.String]: LoopTerminationStringComparisonOperator,
+  [TypesWithArray.Number]: LoopTerminationNumberComparisonOperator,
+  [TypesWithArray.Boolean]: LoopTerminationBooleanComparisonOperator,
+  [TypesWithArray.Object]: LoopTerminationObjectComparisonOperator,
+  [TypesWithArray.ArrayString]: LoopTerminationStringArrayComparisonOperator,
+  [TypesWithArray.ArrayNumber]: LoopTerminationStringArrayComparisonOperator,
+  [TypesWithArray.ArrayBoolean]: LoopTerminationBooleanArrayComparisonOperator,
+  [TypesWithArray.ArrayObject]: LoopTerminationObjectComparisonOperator,
+};
+
+export enum AgentVariableType {
+  Begin = 'begin',
+  Conversation = 'conversation',
+}

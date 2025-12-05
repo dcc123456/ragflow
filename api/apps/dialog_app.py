@@ -30,7 +30,8 @@ from api.db.services.user_service import TenantService, UserTenantService
 from common.misc_utils import get_uuid
 from common.constants import RetCode
 from api.apps import login_required, current_user
-from api.utils.api_utils import get_data_error_result, get_json_result, server_error_response, validate_request
+from api.utils.api_utils import get_data_error_result, get_json_result, server_error_response, validate_request, \
+    get_request_json
 from api.utils.permission_utils import check_dialog_permission
 
 
@@ -39,7 +40,7 @@ from api.utils.permission_utils import check_dialog_permission
 @login_required
 @check_dialog_permission(PermissionValue.PERMISSION_MANAGE)
 async def set_dialog():
-    req = await request.json
+    req = await get_request_json()
     tenant_id = getattr(g, "tenant_id", current_user.id)
     operator_id = getattr(g, "member_id", current_user.id)
     dialog_id = req.get("dialog_id", "")
@@ -235,7 +236,7 @@ async def list_dialogs_next():
         desc = True
 
     tenant_member_memo = {}
-    req = await request.get_json()
+    req = await get_request_json()
     owner_ids = req.get("owner_ids", [])
     try:
         if not owner_ids:
@@ -288,7 +289,7 @@ async def list_dialogs_next():
 @validate_request("dialog_ids")
 @check_dialog_permission(permission=PermissionValue.PERMISSION_OWNER)
 async def rm():
-    req = await request.json
+    req = await get_request_json()
     dialog_list=[]
     tenants = UserTenantService.query(user_id=current_user.id)
     try:

@@ -1,4 +1,4 @@
-import { useListTenantUser } from '@/hooks/user-setting-hooks';
+import { useListTenantUser } from '@/hooks/use-user-setting-request';
 import { useMemo } from 'react';
 import { RAGFlowSelectOptionType } from '../ui/select';
 import { PrivilegeAvatar } from './privilege-avatar';

@@ -14,7 +14,6 @@
 #  limitations under the License.
 #
 
-from quart import request
 from api.db import UserTenantRole
 from api.db.db_models import UserTenant
 from api.db.services.billing_service import TenantPlanService
@@ -25,7 +24,7 @@ from api.db.services.user_service import UserTenantService, UserService
 from common.constants import RetCode, StatusEnum
 from common.misc_utils import get_uuid
 from common.time_utils import delta_seconds
-from api.utils.api_utils import get_json_result, validate_request, server_error_response, get_data_error_result
+from api.utils.api_utils import get_data_error_result, get_json_result, get_request_json, server_error_response, validate_request
 from api.utils.web_utils import send_invite_email
 from common import settings
 from api.apps import smtp_mail_server, login_required, current_user
@@ -60,7 +59,7 @@ async def create(tenant_id):
             message='No authorization.',
             code=RetCode.AUTHENTICATION_ERROR)
 
-    req = await request.json
+    req = await get_request_json()
     if settings.BILLING_ENABLED:
         TenantPlanService.check_by_tenant_id(tenant_id, delta_members=1)
 

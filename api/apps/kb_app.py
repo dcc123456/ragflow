@@ -13,16 +13,15 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 #
-import asyncio
 import json
 import os
 import logging
 import random
 import re
+import asyncio
 
 from quart import request, g
 import numpy as np
-
 
 from api.db.services.connector_service import Connector2KbService
 from api.db import PermissionActionType, PermissionTargetType, PermissionValue, ResourceType
@@ -37,7 +36,7 @@ from api.db.services.pipeline_operation_log_service import PipelineOperationLogS
 from api.db.services.task_service import TaskService, GRAPH_RAPTOR_FAKE_DOC_ID
 from api.db.services.user_service import TenantService, UserTenantService
 from api.utils.api_utils import get_error_data_result, server_error_response, get_data_error_result, validate_request, not_allowed_parameters, \
-    request_json
+    get_request_json
 from api.db import VALID_FILE_TYPES
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.db_models import File
@@ -58,8 +57,8 @@ from api.apps import login_required, current_user
 @login_required
 @validate_request("name")
 async def create():
-    req = await request_json()
-    e, req = KnowledgebaseService.create_with_name(
+    req = await get_request_json()
+    e, res = KnowledgebaseService.create_with_name(
         name = req.pop("name", None),
         tenant_id = current_user.id,
         parser_id = req.pop("parser_id", None),
@@ -67,7 +66,7 @@ async def create():
     )
 
     if not e:
-        return req
+        return res
 
     tenant_id = current_user.id
     try:
@@ -147,7 +146,7 @@ async def create():
 @not_allowed_parameters("id", "created_by", "create_time", "update_time", "create_date", "update_date", "created_by")
 @check_kb_permission(permission=PermissionValue.PERMISSION_WRITE)
 async def update():
-    req = await request.json
+    req = await get_request_json()
     if not isinstance(req["name"], str):
         return get_data_error_result(message="Dataset name must be string.")
     if req["name"].strip() == "":
@@ -183,12 +182,22 @@ async def update():
 
         if kb.pagerank != req.get("pagerank", 0):
             if req.get("pagerank", 0) > 0:
-                settings.docStoreConn.update({"kb_id": kb.id}, {PAGERANK_FLD: req["pagerank"]},
-                                         search.index_name(kb.tenant_id), kb.id)
+                await asyncio.to_thread(
+                    settings.docStoreConn.update,
+                    {"kb_id": kb.id},
+                    {PAGERANK_FLD: req["pagerank"]},
+                    search.index_name(kb.tenant_id),
+                    kb.id,
+                )
             else:
                 # Elasticsearch requires PAGERANK_FLD be non-zero!
-                settings.docStoreConn.update({"exists": PAGERANK_FLD}, {"remove": PAGERANK_FLD},
-                                         search.index_name(kb.tenant_id), kb.id)
+                await asyncio.to_thread(
+                    settings.docStoreConn.update,
+                    {"exists": PAGERANK_FLD},
+                    {"remove": PAGERANK_FLD},
+                    search.index_name(kb.tenant_id),
+                    kb.id,
+                )
 
         e, kb = KnowledgebaseService.get_by_id(kb.id)
         if not (e and kb):
@@ -313,7 +322,7 @@ async def list_kbs():
 @login_required
 @validate_request("kb_id")
 async def rm():
-    req = await request_json()
+    req = await get_request_json()
     if not KnowledgebaseService.accessible4deletion(req["kb_id"], current_user.id):
         return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
     operator = UserTenantService.filter_by_tenant_and_user_id(current_user.id, current_user.id)
@@ -321,64 +330,68 @@ async def rm():
         return get_json_result(data=False, message="Unrecognized identification.", code=RetCode.AUTHENTICATION_ERROR)
 
     try:
-        kbs = KnowledgebaseService.query(created_by=current_user.id, id=req["kb_id"])
+        kbs = KnowledgebaseService.query(
+            created_by=current_user.id, id=req["kb_id"])
         if not kbs:
-            return get_json_result(data=False, message="Only owner of knowledgebase authorized for this operation.", code=RetCode.OPERATING_ERROR)
+            return get_json_result(
+                data=False, message='Only owner of knowledgebase authorized for this operation.',
+                code=RetCode.OPERATING_ERROR)
 
-        for doc in DocumentService.query(kb_id=req["kb_id"]):
-            if not DocumentService.remove_document(doc, kbs[0].tenant_id):
+        def _rm_sync():
+            for doc in DocumentService.query(kb_id=req["kb_id"]):
+                if not DocumentService.remove_document(doc, kbs[0].tenant_id):
+                    return get_data_error_result(
+                        message="Database error (Document removal)!")
+                f2d = File2DocumentService.get_by_document_id(doc.id)
+                if f2d:
+                    FileService.filter_delete([File.source_type == FileSource.KNOWLEDGEBASE, File.id == f2d[0].file_id])
+                File2DocumentService.delete_by_document_id(doc.id)
+
+            FileService.filter_delete(
+                [File.source_type == FileSource.KNOWLEDGEBASE, File.type == "folder", File.name == kbs[0].name])
+            if not KnowledgebaseService.delete_by_id(req["kb_id"]):
                 return get_data_error_result(
-                    message="Database error (Document removal)!")
-            f2d = File2DocumentService.get_by_document_id(doc.id)
-            if f2d:
-                FileService.filter_delete([File.source_type == FileSource.KNOWLEDGEBASE, File.id == f2d[0].file_id])
-            File2DocumentService.delete_by_document_id(doc.id)
-        FileService.filter_delete(
-            [File.source_type == FileSource.KNOWLEDGEBASE, File.type == "folder", File.name == kbs[0].name])
-        if not KnowledgebaseService.delete_by_id(req["kb_id"]):
-            return get_data_error_result(
-                message="Database error (Knowledgebase removal)!")
-        for kb in kbs:
-            settings.docStoreConn.delete({"kb_id": kb.id}, search.index_name(kb.tenant_id), kb.id)
-            settings.docStoreConn.deleteIdx(search.index_name(kb.tenant_id), kb.id)
-            settings.STORAGE_IMPL.rm_bucket(kb.id)
+                    message="Database error (Knowledgebase removal)!")
+            for kb in kbs:
+                settings.docStoreConn.delete({"kb_id": kb.id}, search.index_name(kb.tenant_id), kb.id)
+                settings.docStoreConn.deleteIdx(search.index_name(kb.tenant_id), kb.id)
+                settings.STORAGE_IMPL.rm_bucket(kb.id)
 
-        tenant_id = current_user.id
-        with DB.atomic():
-            permission_model_list = PermissionService.get_permissions_by_tenant_and_resource_id(tenant_id=tenant_id, resource_id=req["kb_id"], resource_type=ResourceType.KB)
-            PermissionService.delete(permission_model_list)
+            tenant_id = current_user.id
+            with DB.atomic():
+                permission_model_list = PermissionService.get_permissions_by_tenant_and_resource_id(tenant_id=tenant_id, resource_id=req["kb_id"], resource_type=ResourceType.KB)
+                PermissionService.delete(permission_model_list)
 
-            PermissionChangeLogService.save(
-                id=get_uuid(),
-                tenant_id=operator.tenant_id,
-                operator_id=operator.id,
-                target_type=PermissionTargetType.TARGET_MEMBER,
-                target_id=operator.id,
-                resource_type=ResourceType.KB,
-                resource_id=req["kb_id"],
-                old_permission=PermissionValue.PERMISSION_OWNER.value,
-                new_permission=PermissionValue.PERMISSION_NULL.value,
-                action_type=PermissionActionType.ACTION_DELETE,
+                PermissionChangeLogService.save(
+                    id=get_uuid(),
+                    tenant_id=operator.tenant_id,
+                    operator_id=operator.id,
+                    target_type=PermissionTargetType.TARGET_MEMBER,
+                    target_id=operator.id,
+                    resource_type=ResourceType.KB,
+                    resource_id=req["kb_id"],
+                    old_permission=PermissionValue.PERMISSION_OWNER.value,
+                    new_permission=PermissionValue.PERMISSION_NULL.value,
+                    action_type=PermissionActionType.ACTION_DELETE,
+                )
+
+            dialogs = DialogService.query(
+                status=StatusEnum.VALID.value,
+                tenant_id=current_user.id,
             )
+            filtered_dialog_ids = []
+            for dialog in dialogs:
+                if req["kb_id"] in dialog.kb_ids:
+                    filtered_dialog_ids.append(dialog.id)
 
-        dialogs = DialogService.query(
-            status=StatusEnum.VALID.value,
-            tenant_id=current_user.id,
-        )
-        filtered_dialog_ids = []
-        for dialog in dialogs:
-            if req["kb_id"] in dialog.kb_ids:
-                filtered_dialog_ids.append(dialog.id)
+            with DB.atomic():
+                for dialog_id in filtered_dialog_ids:
+                    dialog_permission_model_list = PermissionService.get_permissions_by_tenant_and_resource_id(tenant_id=tenant_id, resource_id=dialog_id, resource_type=ResourceType.DIALOG)
+                    PermissionService.delete(dialog_permission_model_list)
 
-        with DB.atomic():
-            for dialog_id in filtered_dialog_ids:
-                dialog_permission_model_list = PermissionService.get_permissions_by_tenant_and_resource_id(tenant_id=tenant_id, resource_id=dialog_id, resource_type=ResourceType.DIALOG)
-                PermissionService.delete(dialog_permission_model_list)
+            return get_json_result(data=True)
 
-        return get_json_result(data=True)
-
-    except ValueError as e:
-        return get_data_error_result(message=str(e))
+        return await asyncio.to_thread(_rm_sync)
     except Exception as e:
         return server_error_response(e)
 
@@ -427,11 +440,14 @@ def list_tags_from_kbs():
 @login_required
 @check_kb_permission(permission=PermissionValue.PERMISSION_MANAGE)
 async def rm_tags(kb_id):
-    req = await request.json
-
+    req = await get_request_json()
+    if not KnowledgebaseService.accessible(kb_id, current_user.id):
+        return get_json_result(
+            data=False,
+            message='No authorization.',
+            code=RetCode.AUTHENTICATION_ERROR
+        )
     e, kb = KnowledgebaseService.get_by_id(kb_id)
-    if not (e and kb):
-        return get_json_result(data=False, message="Knowledgebase cannot found.")
 
     for t in req["tags"]:
         settings.docStoreConn.update({"tag_kwd": t, "kb_id": [kb_id]},
@@ -445,7 +461,7 @@ async def rm_tags(kb_id):
 @login_required
 @check_kb_permission(permission=PermissionValue.PERMISSION_MANAGE)
 async def rename_tags(kb_id):
-    req = await request.json
+    req = await get_request_json()
 
     e, kb = KnowledgebaseService.get_by_id(kb_id)
 
@@ -554,7 +570,7 @@ async def list_pipeline_logs():
     if create_date_to > create_date_from:
         return get_data_error_result(message="Create data filter is abnormal.")
 
-    req = await request_json()
+    req = await get_request_json()
 
     operation_status = req.get("operation_status", [])
     if operation_status:
@@ -596,7 +612,7 @@ async def list_pipeline_dataset_logs():
     if create_date_to > create_date_from:
         return get_data_error_result(message="Create data filter is abnormal.")
 
-    req = await request_json()
+    req = await get_request_json()
 
     operation_status = req.get("operation_status", [])
     if operation_status:
@@ -618,7 +634,7 @@ async def delete_pipeline_logs():
     if not kb_id:
         return get_json_result(data=False, message='Lack of "KB ID"', code=RetCode.ARGUMENT_ERROR)
 
-    req = await request_json()
+    req = await get_request_json()
     log_ids = req.get("log_ids", [])
 
     PipelineOperationLogService.delete_by_ids(log_ids)
@@ -643,7 +659,7 @@ def pipeline_log_detail():
 @manager.route("/run_graphrag", methods=["POST"])  # noqa: F821
 @login_required
 async def run_graphrag():
-    req = await request_json()
+    req = await get_request_json()
 
     kb_id = req.get("kb_id", "")
     if not kb_id:
@@ -712,7 +728,7 @@ def trace_graphrag():
 @manager.route("/run_raptor", methods=["POST"])  # noqa: F821
 @login_required
 async def run_raptor():
-    req = await request_json()
+    req = await get_request_json()
 
     kb_id = req.get("kb_id", "")
     if not kb_id:
@@ -781,7 +797,7 @@ def trace_raptor():
 @manager.route("/run_mindmap", methods=["POST"])  # noqa: F821
 @login_required
 async def run_mindmap():
-    req = await request_json()
+    req = await get_request_json()
 
     kb_id = req.get("kb_id", "")
     if not kb_id:
@@ -987,7 +1003,7 @@ async def check_embedding():
     def _clean(s: str) -> str:
         s = re.sub(r"</?(table|td|caption|tr|th)( [^<>]{0,12})?>", " ", s or "")
         return s if s else "None"
-    req = await request_json()
+    req = await get_request_json()
     kb_id = req.get("kb_id", "")
     embd_id = req.get("embd_id", "")
     n = int(req.get("check_num", 5))
@@ -1012,6 +1028,7 @@ async def check_embedding():
 
         try:
             v, _ = emb_mdl.encode([title, txt_in])
+            assert len(v[1]) == len(ck["vector"]), f"The dimension ({len(v[1])}) of given embedding model is different from the original ({len(ck['vector'])})"
             sim_content = _cos_sim(v[1], ck["vector"])
             title_w = 0.1
             qv_mix = title_w * v[0] + (1 - title_w) * v[1]
@@ -1021,8 +1038,8 @@ async def check_embedding():
             if sim_mix > sim:
                 sim = sim_mix
                 mode = "title+content"
-        except Exception:
-            return get_error_data_result(message="embedding failure")
+        except Exception as e:
+            return get_error_data_result(message=f"Embedding failure. {e}")
 
         eff_sims.append(sim)
         results.append({

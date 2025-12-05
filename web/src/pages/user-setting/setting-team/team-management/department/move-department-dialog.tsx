@@ -8,10 +8,10 @@ import {
 } from '@/components/ui/dialog';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { TreeDataItem, TreeView } from '@/components/ui/tree-view';
+import { TagRenameId } from '@/constants/knowledge';
 import { useFetchDepartmentList } from '@/hooks/use-team';
 import { IModalProps } from '@/interfaces/common';
 import { IDepartment } from '@/interfaces/database/team';
-import { TagRenameId } from '@/pages/add-knowledge/constant';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { RootNodeId } from '../constant';

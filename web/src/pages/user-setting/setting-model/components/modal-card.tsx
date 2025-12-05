@@ -1,4 +1,8 @@
 // src/components/ModelProviderCard.tsx
+import {
+  ConfirmDeleteDialog,
+  ConfirmDeleteDialogNode,
+} from '@/components/confirm-delete-dialog';
 import { IPrivilegeManagementInitialValues } from '@/components/privilege-management/interface';
 import { LlmIcon } from '@/components/svg-icon';
 import { Button } from '@/components/ui/button';
@@ -9,7 +13,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { useSetModalState, useTranslate } from '@/hooks/common-hooks';
-import { LlmItem } from '@/hooks/llm-hooks';
+import { LlmItem } from '@/hooks/use-llm-request';
 import {
   useFetchEnableAdmin,
   useFetchIsAdmin,
@@ -75,7 +79,7 @@ export const ModelProviderCard: FC<IModelCardProps> = ({
   const { visible, switchVisible } = useSetModalState();
   const { t } = useTranslate('setting');
   const { handleEnableLlm } = useHandleEnableLlm(item.name);
-  const { handleDeleteFactory } = useHandleDeleteFactory(item.name);
+  const { deleteFactory } = useHandleDeleteFactory(item.name);
 
   const { data: isAdmin } = useFetchIsAdmin();
   const { data: enableAdmin } = useFetchEnableAdmin();
@@ -109,7 +113,9 @@ export const ModelProviderCard: FC<IModelCardProps> = ({
         <div className="flex items-center space-x-3">
           <LlmIcon name={item.name} />
           <div>
-            <div className="font-medium text-xl">{item.name}</div>
+            <div className="font-medium text-xl text-text-primary">
+              {item.name}
+            </div>
           </div>
         </div>
 
@@ -126,6 +132,7 @@ export const ModelProviderCard: FC<IModelCardProps> = ({
           </Button>
 
           <Button
+            variant={'ghost'}
             onClick={(e) => {
               e.stopPropagation();
               handleApiKeyClick();
@@ -147,16 +154,31 @@ export const ModelProviderCard: FC<IModelCardProps> = ({
             {!visible ? <ChevronsDown /> : <ChevronsUp />}
           </Button>
 
-          <Button
-            variant={'ghost'}
-            onClick={(e) => {
-              e.stopPropagation();
-              handleDeleteFactory();
+          <ConfirmDeleteDialog
+            onOk={() => deleteFactory({ llm_factory: item.name })}
+            title={t('deleteModel')}
+            content={{
+              node: (
+                <ConfirmDeleteDialogNode>
+                  <div className="flex items-center gap-2">
+                    <LlmIcon name={item.name} />
+                    {item.name}
+                  </div>
+                </ConfirmDeleteDialogNode>
+              ),
             }}
-            className="  hover:text-state-error hover:bg-state-error-5 transition-colors border border-border-default"
           >
-            <Trash2 />
-          </Button>
+            <Button
+              variant={'ghost'}
+              // onClick={(e) => {
+              //   e.stopPropagation();
+              //   handleDeleteFactory(item);
+              // }}
+              className="  hover:text-state-error hover:bg-state-error-5 transition-colors border border-border-default"
+            >
+              <Trash2 />
+            </Button>
+          </ConfirmDeleteDialog>
         </div>
       </div>
 

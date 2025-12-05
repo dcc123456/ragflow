@@ -17,6 +17,7 @@ import logging
 import json
 from quart import request
 from api.apps import login_required, current_user
+from api.utils.api_utils import get_request_json
 from common.constants import StatusEnum, LLMType
 from common.misc_utils import get_uuid
 from api.utils.api_utils import get_allowed_llm_factories
@@ -58,7 +59,7 @@ def factories():
 @login_required
 @validate_request("llm_factory", "api_key")
 async def set_api_key():
-    req = await request.json
+    req = await get_request_json()
     # test if api key works
     chat_passed, embd_passed, rerank_passed = False, False, False
     factory = req["llm_factory"]
@@ -128,7 +129,7 @@ async def set_api_key():
 @login_required
 @validate_request("llm_factory")
 async def add_llm():
-    req = await request.json
+    req = await get_request_json()
     factory = req["llm_factory"]
     api_key = req.get("api_key", "x")
     llm_name = req.get("llm_name")
@@ -301,7 +302,7 @@ async def add_llm():
 @login_required
 @validate_request("llm_factory", "llm_name")
 async def delete_llm():
-    req = await request.json
+    req = await get_request_json()
     tenant_id = current_user.id
 
     try:
@@ -350,7 +351,7 @@ async def delete_llm():
 @login_required
 @validate_request("llm_factory", "llm_name")
 async def enable_llm():
-    req = await request.json
+    req = await get_request_json()
     TenantLLMService.filter_update(
         [TenantLLM.tenant_id == current_user.id, TenantLLM.llm_factory == req["llm_factory"], TenantLLM.llm_name == req["llm_name"]], {"status": str(req.get("status", "1"))}
     )
@@ -361,7 +362,7 @@ async def enable_llm():
 @login_required
 @validate_request("llm_factory")
 async def delete_factory():
-    req = await request.json
+    req = await get_request_json()
     tenant_id = current_user.id
     try:
         TenantLLMService.filter_delete([TenantLLM.tenant_id == current_user.id, TenantLLM.llm_factory == req["llm_factory"]])

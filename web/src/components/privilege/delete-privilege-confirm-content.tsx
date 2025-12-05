@@ -1,5 +1,5 @@
 import { PermissionResourceType } from '@/constants/team';
-import { useFetchKnowledgeList } from '@/hooks/knowledge-hooks';
+import { useFetchKnowledgeList } from '@/hooks/use-knowledge-request';
 import { useFetchConfirmDeletePermission } from '@/hooks/use-team';
 import { IConfirmDeletePermission } from '@/interfaces/request/team';
 import { isEmpty } from 'lodash';

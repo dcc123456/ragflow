@@ -14,10 +14,10 @@ import {
 } from '@/components/ui/form';
 import { RAGFlowSelect, RAGFlowSelectOptionType } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { TagRenameId } from '@/constants/knowledge';
 import { TenantIdContext } from '@/contexts/teant-context';
 import { IModalProps } from '@/interfaces/common';
 import { IGroup } from '@/interfaces/database/team';
-import { TagRenameId } from '@/pages/add-knowledge/constant';
 import { useContext } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelectTenantUserOptions } from '../use-select-tenant-user-options';

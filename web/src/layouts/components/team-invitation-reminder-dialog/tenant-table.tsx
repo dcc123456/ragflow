@@ -1,5 +1,8 @@
 import { TenantRole } from '@/constants/team';
-import { useFetchUserInfo, useListTenant } from '@/hooks/user-setting-hooks';
+import {
+  useFetchUserInfo,
+  useListTenant,
+} from '@/hooks/use-user-setting-request';
 import { ITenant } from '@/interfaces/database/user-setting';
 import type { TableProps } from 'antd';
 import { Button, Space, Table } from 'antd';

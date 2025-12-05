@@ -11,7 +11,7 @@ import {
   useFetchUserInfo,
   useListTenant,
   useListTenantUser,
-} from '@/hooks/user-setting-hooks';
+} from '@/hooks/use-user-setting-request';
 import { LogOut, UserPlus, Users } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';

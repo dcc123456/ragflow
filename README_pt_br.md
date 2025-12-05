@@ -86,7 +86,8 @@ Experimente nossa demo em [https://demo.ragflow.io](https://demo.ragflow.io).
 
 ## 🔥 Últimas Atualizações
 
-- 12-11-2025 Suporta a sincronização de dados do Confluence, AWS S3, Discord e Google Drive.
+- 19-11-2025 Suporta Gemini 3 Pro.
+- 12-11-2025 Suporta a sincronização de dados do Confluence, S3, Notion, Discord e Google Drive.
 - 23-10-2025 Suporta MinerU e Docling como métodos de análise de documentos.
 - 15-10-2025 Suporte para pipelines de dados orquestrados.
 - 08-08-2025 Suporta a mais recente série GPT-5 da OpenAI.
@@ -191,7 +192,8 @@ Experimente nossa demo em [https://demo.ragflow.io](https://demo.ragflow.io).
 ```bash
    $ cd ragflow/docker
    
-   # Opcional: use uma tag estável (veja releases: https://github.com/infiniflow/ragflow/releases), ex.: git checkout v0.22.1
+   # git checkout v0.22.1
+   # Opcional: use uma tag estável (veja releases: https://github.com/infiniflow/ragflow/releases)
    # Esta etapa garante que o arquivo entrypoint.sh no código corresponda à versão da imagem do Docker.
 
    # Use CPU for DeepDoc tasks:

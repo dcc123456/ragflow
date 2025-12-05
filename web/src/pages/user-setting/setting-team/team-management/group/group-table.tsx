@@ -32,7 +32,7 @@ import {
 } from '@/components/ui/table';
 import { TenantIdContext } from '@/contexts/teant-context';
 import { useFetchGroupList } from '@/hooks/use-team';
-import { useFetchUserInfo } from '@/hooks/user-setting-hooks';
+import { useFetchUserInfo } from '@/hooks/use-user-setting-request';
 import { IGroup, IMember } from '@/interfaces/database/team';
 import { useContext, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';

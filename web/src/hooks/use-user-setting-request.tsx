@@ -1,5 +1,6 @@
 import message from '@/components/ui/message';
 import { LanguageTranslationMap } from '@/constants/common';
+import { TenantRole } from '@/constants/team';
 import { ResponseGetType } from '@/interfaces/database/base';
 import { IToken } from '@/interfaces/database/chat';
 import { ITenantInfo } from '@/interfaces/database/knowledge';
@@ -72,7 +73,7 @@ export const useFetchTenantInfo = (
 ): ResponseGetType<ITenantInfo> => {
   const { t } = useTranslation();
   const { data, isFetching: loading } = useQuery({
-    queryKey: [UserSettingApiAction.TenantInfo],
+    queryKey: [UserSettingApiAction.TenantInfo, showEmptyModelWarn],
     initialData: {},
     gcTime: 0,
     queryFn: async () => {
@@ -279,9 +280,10 @@ export const useCreateSystemToken = () => {
   return { data, loading, createToken: mutateAsync };
 };
 
-export const useListTenantUser = () => {
-  const { data: tenantInfo } = useFetchTenantInfo();
-  const tenantId = tenantInfo.tenant_id;
+export const useListTenantUser = (
+  tenantId: string,
+  excludePendingInvitations = false,
+) => {
   const {
     data,
     isFetching: loading,
@@ -291,6 +293,10 @@ export const useListTenantUser = () => {
     initialData: [],
     gcTime: 0,
     enabled: !!tenantId,
+    select: (data) =>
+      excludePendingInvitations
+        ? data.filter((x) => x.role !== TenantRole.Invite)
+        : data,
     queryFn: async () => {
       const { data } = await listTenantUser(tenantId);
 

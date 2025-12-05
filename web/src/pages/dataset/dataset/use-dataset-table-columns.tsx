@@ -140,7 +140,7 @@ export function useDatasetTableColumns({
               {
                 DataSourceInfo[
                   row.original.source_type as keyof typeof DataSourceInfo
-                ].icon
+                ]?.icon
               }
             </div>
           )}
