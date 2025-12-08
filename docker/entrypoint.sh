@@ -15,6 +15,8 @@ while IFS= read -r line || [[ -n "$line" ]]; do
 done < "${TEMPLATE_FILE}"
 
 export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu/
+export TIKA_SERVER_JAR="file:///ragflow/tika-server-standard-3.0.0.jar"
+#export TENSORRT_TSR_SVR=http://localhost:11234
 
 PY=/root/miniconda3/envs/py11/bin/python
 
@@ -24,7 +26,7 @@ function p_0(){
     done
 }
 
-WS=1
+WS=12
 
 for ((i=0;i<WS;i++))
 do
@@ -44,10 +46,30 @@ do
   p_0 graphrag $i &
 done
 
+$PY admin/server/admin_server.py &
+
+RAGFLOW_HOST=${RAGFLOW_HOST_IP:-0.0.0.0}
+RAGFLOW_PORT=${RAGFLOW_HOST_PORT:-9380}
+GUNICORN_WORKERS=${GUNICORN_WORKERS:-10}
+GUNICORN_TIMEOUT=${GUNICORN_TIMEOUT:-120}
+GUNICORN_MODE=${GUNICORN_MODE:-uvicorn.workers.UvicornWorker}
 
 while  [ 1 -eq 1 ];do
-     $PY api/ragflow_server.py
-     #$PY -m gunicorn --workers 1 --worker-class gevent --bind 0.0.0.0:9380 api.wsgi:application --reload
+      exec /root/miniconda3/envs/py11/bin/gunicorn \
+         --workers ${GUNICORN_WORKERS} \
+         --worker-class ${GUNICORN_MODE} \
+         --worker-connections 1000 \
+         --max-requests 1000 \
+         --max-requests-jitter 100 \
+         --timeout ${GUNICORN_TIMEOUT} \
+         --keep-alive 2 \
+         --preload \
+         --bind ${RAGFLOW_HOST}:${RAGFLOW_PORT} \
+         --access-logfile - \
+         --error-logfile - \
+         --log-level info \
+         'api.wsgi:application';
+
 done
 
 wait;
