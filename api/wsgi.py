@@ -63,6 +63,7 @@ def update_progress():
             except Exception:
                 logging.exception("update_progress exception")
             stop_event.wait(6)
+            time.sleep(3)
 
 
 def signal_handler(sig, frame):
