@@ -25,11 +25,32 @@ const {
   createSystemToken,
   getSystemConfig,
   setLangfuseConfig,
+  loginGetCaptcha,
+  loginSendVerifyCode,
+  loginVerifyEmail,
+  submitResetPassword,
 } = api;
 
 const methods = {
   login: {
     url: login,
+    method: 'post',
+  },
+  loginGetCaptcha: {
+    url: loginGetCaptcha,
+    method: 'get',
+    responseType: 'blob',
+  },
+  loginSendVerifyCode: {
+    url: loginSendVerifyCode,
+    method: 'post',
+  },
+  loginVerifyEmail: {
+    url: loginVerifyEmail,
+    method: 'post',
+  },
+  submitResetPassword: {
+    url: submitResetPassword,
     method: 'post',
   },
   logout: {

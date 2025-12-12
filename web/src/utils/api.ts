@@ -14,6 +14,10 @@ export default {
   set_tenant_info: `${api_host}/user/set_tenant_info`,
   login_channels: `${api_host}/user/login/channels`,
   login_channel: (channel: string) => `${api_host}/user/login/${channel}`,
+  loginGetCaptcha: `${api_host}/user/forget/captcha`,
+  loginSendVerifyCode: `${api_host}/user/forget/otp`,
+  loginVerifyEmail: `${api_host}/user/forget/verify-otp`,
+  submitResetPassword: `${api_host}/user/forget/reset-password`,
 
   // team
   addTenantUser: (tenantId: string) => `${api_host}/tenant/${tenantId}/user`,

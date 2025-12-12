@@ -30,6 +30,7 @@ import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { BgSvg } from './bg';
 import FlipCard3D from './card';
+import { ForgetPassword } from './forget-password';
 import './index.less';
 
 const Login = () => {
@@ -52,7 +53,7 @@ const Login = () => {
     loginWithChannelLoading;
   const { config } = useSystemConfig();
   const registerEnabled = config?.registerEnabled !== 0;
-
+  const [isForgetPassword, setIsForgetPassword] = useState(false);
   const { isLogin } = useAuth();
   useEffect(() => {
     if (isLogin) {
@@ -179,47 +180,30 @@ const Login = () => {
           {/* Logo and Header */}
 
           {/* Login Form */}
-          <FlipCard3D isLoginPage={isLoginPage}>
-            <div className="flex flex-col items-center justify-center w-full">
-              <div className="text-center mb-8">
-                <h2 className="text-xl font-semibold text-text-primary">
-                  {title === 'login' ? t('loginTitle') : t('signUpTitle')}
-                </h2>
-              </div>
-              <div className=" w-full max-w-[540px] bg-bg-component backdrop-blur-sm rounded-2xl shadow-xl pt-14 pl-10 pr-10 pb-2 border border-border-button ">
-                <Form {...form}>
-                  <form
-                    className="flex flex-col gap-8 text-text-primary "
-                    onSubmit={form.handleSubmit((data) => onCheck(data))}
-                  >
-                    <FormField
-                      control={form.control}
-                      name="email"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel required>{t('emailLabel')}</FormLabel>
-                          <FormControl>
-                            <Input
-                              placeholder={t('emailPlaceholder')}
-                              autoComplete="email"
-                              {...field}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    {title === 'register' && (
+          {!isForgetPassword && (
+            <FlipCard3D isLoginPage={isLoginPage}>
+              <div className="flex flex-col items-center justify-center w-full">
+                <div className="text-center mb-8">
+                  <h2 className="text-xl font-semibold text-text-primary">
+                    {title === 'login' ? t('loginTitle') : t('signUpTitle')}
+                  </h2>
+                </div>
+                <div className=" w-full max-w-[540px] bg-bg-component backdrop-blur-sm rounded-2xl shadow-xl pt-14 pl-10 pr-10 pb-2 border border-border-button ">
+                  <Form {...form}>
+                    <form
+                      className="flex flex-col gap-8 text-text-primary "
+                      onSubmit={form.handleSubmit((data) => onCheck(data))}
+                    >
                       <FormField
                         control={form.control}
-                        name="nickname"
+                        name="email"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel required>{t('nicknameLabel')}</FormLabel>
+                            <FormLabel required>{t('emailLabel')}</FormLabel>
                             <FormControl>
                               <Input
-                                placeholder={t('nicknamePlaceholder')}
-                                autoComplete="username"
+                                placeholder={t('emailPlaceholder')}
+                                autoComplete="email"
                                 {...field}
                               />
                             </FormControl>
@@ -227,136 +211,178 @@ const Login = () => {
                           </FormItem>
                         )}
                       />
-                    )}
-
-                    <FormField
-                      control={form.control}
-                      name="password"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel required>{t('passwordLabel')}</FormLabel>
-                          <FormControl>
-                            <div className="relative">
-                              <Input
-                                type={'password'}
-                                placeholder={t('passwordPlaceholder')}
-                                autoComplete={
-                                  title === 'login'
-                                    ? 'current-password'
-                                    : 'new-password'
-                                }
-                                {...field}
-                              />
-                              {/* <button
-                                type="button"
-                                className="absolute inset-y-0 right-0 pr-3 flex items-center"
-                                onClick={() => setShowPassword(!showPassword)}
-                              >
-                                {showPassword ? (
-                                  <EyeOff className="h-4 w-4 text-gray-500" />
-                                ) : (
-                                  <Eye className="h-4 w-4 text-gray-500" />
-                                )}
-                              </button> */}
-                            </div>
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
+                      {title === 'register' && (
+                        <FormField
+                          control={form.control}
+                          name="nickname"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel required>
+                                {t('nicknameLabel')}
+                              </FormLabel>
+                              <FormControl>
+                                <Input
+                                  placeholder={t('nicknamePlaceholder')}
+                                  autoComplete="username"
+                                  {...field}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
                       )}
-                    />
 
-                    {title === 'login' && (
                       <FormField
                         control={form.control}
-                        name="remember"
+                        name="password"
                         render={({ field }) => (
                           <FormItem>
+                            <FormLabel required>{t('passwordLabel')}</FormLabel>
                             <FormControl>
-                              <div className="flex gap-2">
-                                <Checkbox
-                                  checked={field.value}
-                                  onCheckedChange={(checked) => {
-                                    field.onChange(checked);
-                                  }}
+                              <div className="relative">
+                                <Input
+                                  type={'password'}
+                                  placeholder={t('passwordPlaceholder')}
+                                  autoComplete={
+                                    title === 'login'
+                                      ? 'current-password'
+                                      : 'new-password'
+                                  }
+                                  {...field}
                                 />
-                                <FormLabel
-                                  className={cn(' hover:text-text-primary', {
-                                    'text-text-disabled': !field.value,
-                                    'text-text-primary': field.value,
-                                  })}
-                                >
-                                  {t('rememberMe')}
-                                </FormLabel>
                               </div>
                             </FormControl>
                             <FormMessage />
                           </FormItem>
                         )}
                       />
-                    )}
-                    <ButtonLoading
-                      type="submit"
-                      loading={loading}
-                      className="bg-metallic-gradient border-b-[#00BEB4] border-b-2 hover:bg-metallic-gradient hover:border-b-[#02bcdd] w-full my-8"
-                    >
-                      {title === 'login' ? t('login') : t('continue')}
-                    </ButtonLoading>
-                    {title === 'login' && channels && channels.length > 0 && (
-                      <div className="mt-3 border">
-                        {channels.map((item) => (
-                          <Button
-                            variant={'transparent'}
-                            key={item.channel}
-                            onClick={() => handleLoginWithChannel(item.channel)}
-                            style={{ marginTop: 10 }}
-                          >
-                            <div className="flex items-center">
-                              <SvgIcon
-                                name={item.icon || 'sso'}
-                                width={20}
-                                height={20}
-                                style={{ marginRight: 5 }}
-                              />
-                              Sign in with {item.display_name}
-                            </div>
-                          </Button>
-                        ))}
-                      </div>
-                    )}
-                  </form>
-                </Form>
 
-                {title === 'login' && registerEnabled && (
-                  <div className="mt-10 text-right">
-                    <p className="text-text-disabled text-sm">
-                      {t('signInTip')}
-                      <Button
-                        variant={'transparent'}
-                        onClick={changeTitle}
-                        className="text-accent-primary/90 hover:text-accent-primary hover:bg-transparent font-medium border-none transition-colors duration-200"
+                      {title === 'login' && (
+                        <FormField
+                          control={form.control}
+                          name="remember"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormControl>
+                                <div className="flex gap-2">
+                                  <Checkbox
+                                    checked={field.value}
+                                    onCheckedChange={(checked) => {
+                                      field.onChange(checked);
+                                    }}
+                                  />
+                                  <FormLabel
+                                    className={cn(' hover:text-text-primary', {
+                                      'text-text-disabled': !field.value,
+                                      'text-text-primary': field.value,
+                                    })}
+                                  >
+                                    {t('rememberMe')}
+                                  </FormLabel>
+                                </div>
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      )}
+                      <ButtonLoading
+                        type="submit"
+                        loading={loading}
+                        className="bg-metallic-gradient border-b-[#00BEB4] border-b-2 hover:bg-metallic-gradient hover:border-b-[#02bcdd] w-full mt-8"
                       >
-                        {t('signUp')}
-                      </Button>
-                    </p>
+                        {title === 'login' ? t('login') : t('continue')}
+                      </ButtonLoading>
+                      {title === 'login' && channels && channels.length > 0 && (
+                        <div className="mt-3 border">
+                          {channels.map((item) => (
+                            <Button
+                              variant={'transparent'}
+                              key={item.channel}
+                              onClick={() =>
+                                handleLoginWithChannel(item.channel)
+                              }
+                              style={{ marginTop: 10 }}
+                            >
+                              <div className="flex items-center">
+                                <SvgIcon
+                                  name={item.icon || 'sso'}
+                                  width={20}
+                                  height={20}
+                                  style={{ marginRight: 5 }}
+                                />
+                                Sign in with {item.display_name}
+                              </div>
+                            </Button>
+                          ))}
+                        </div>
+                      )}
+                    </form>
+                  </Form>
+                  <div className="mb-5 mt-2 flex justify-end">
+                    <div
+                      className=" cursor-pointer text-xs text-text-secondary"
+                      onClick={() => {
+                        setIsForgetPassword(true);
+                      }}
+                    >
+                      {t('forgetPassword')}
+                    </div>
                   </div>
-                )}
-                {title === 'register' && (
-                  <div className="mt-10 text-right">
-                    <p className="text-text-disabled text-sm">
-                      {t('signUpTip')}
-                      <Button
-                        variant={'transparent'}
-                        onClick={changeTitle}
-                        className="text-accent-primary/90 hover:text-accent-primary hover:bg-transparent font-medium border-none transition-colors duration-200"
-                      >
-                        {t('login')}
-                      </Button>
-                    </p>
-                  </div>
-                )}
+
+                  {title === 'login' && registerEnabled && (
+                    <div className="mt-10 text-right">
+                      <p className="text-text-disabled text-sm">
+                        {t('signInTip')}
+                        <Button
+                          variant={'transparent'}
+                          onClick={changeTitle}
+                          className="text-accent-primary/90 hover:text-accent-primary hover:bg-transparent font-medium border-none transition-colors duration-200"
+                        >
+                          {t('signUp')}
+                        </Button>
+                      </p>
+                    </div>
+                  )}
+                  {title === 'register' && (
+                    <div className="mt-10 text-right">
+                      <p className="text-text-disabled text-sm">
+                        {t('signUpTip')}
+                        <Button
+                          variant={'transparent'}
+                          onClick={changeTitle}
+                          className="text-accent-primary/90 hover:text-accent-primary hover:bg-transparent font-medium border-none transition-colors duration-200"
+                        >
+                          {t('login')}
+                        </Button>
+                      </p>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          </FlipCard3D>
+            </FlipCard3D>
+          )}
+          {isForgetPassword && (
+            <ForgetPassword
+              email={form.getValues('email')}
+              backLogin={({
+                email,
+                password,
+              }: {
+                email?: string;
+                password?: string;
+              }) => {
+                setIsForgetPassword(false);
+                if (email && password) {
+                  form.reset({
+                    email,
+                    password,
+                  });
+                }
+              }}
+            />
+          )}
         </div>
       </div>
     </>

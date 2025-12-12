@@ -4,6 +4,7 @@ import {
   DefaultValues,
   FieldValues,
   SubmitHandler,
+  UseFormTrigger,
   useForm,
   useFormContext,
 } from 'react-hook-form';
@@ -88,8 +89,9 @@ interface DynamicFormProps<T extends FieldValues> {
 // Form ref interface
 export interface DynamicFormRef {
   submit: () => void;
-  getValues: () => any;
+  getValues: (name?: string) => any;
   reset: (values?: any) => void;
+  trigger: UseFormTrigger<any>;
   watch: (field: string, callback: (value: any) => void) => () => void;
   updateFieldType: (fieldName: string, newType: FormFieldType) => void;
 }
@@ -407,8 +409,8 @@ const DynamicForm = {
 
       // Expose form methods via ref
       useImperativeHandle(ref, () => ({
-        submit: () => form.handleSubmit(onSubmit)(),
-        getValues: () => form.getValues(),
+        submit: form.handleSubmit,
+        getValues: form.getValues,
         reset: (values?: T) => {
           if (values) {
             form.reset(values);
