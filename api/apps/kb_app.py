@@ -63,6 +63,7 @@ kb_role_guard = check_role_access(KB_API_ACTION_MAP, KB_ROLE_RESOURCE_TYPE)
 @validate_request("name")
 async def create():
     req = await get_request_json()
+    req = await get_request_json()
     name = req["name"]
     parser_id = req.get("parser_id")
     e, res = KnowledgebaseService.create_with_name(

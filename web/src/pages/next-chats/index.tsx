@@ -65,6 +65,7 @@ export default function ChatList() {
             showIcon
             size="large"
             className="w-[480px] p-14"
+            isSearch={!!searchString}
             type={EmptyCardType.Chat}
             onClick={() => handleShowCreateModal()}
           />

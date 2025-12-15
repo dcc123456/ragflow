@@ -19,11 +19,11 @@ from common.constants import StatusEnum
 from api.db.db_models import Conversation, DB
 from api.db.services.api_service import API4ConversationService
 from api.db.services.common_service import CommonService
-from api.db.services.dialog_service import DialogService, chat
+from api.db.services.dialog_service import DialogService, async_chat
 from common.misc_utils import get_uuid
 import json
 
-from rag.prompts import chunks_format
+from rag.prompts.generator import chunks_format
 
 
 class ConversationService(CommonService):
@@ -54,6 +54,21 @@ class ConversationService(CommonService):
         for id in [m.id for m in cls.model.query(dialog_id=dialog_id)]:
             cls.model.delete_by_id(id)
 
+    @classmethod
+    @DB.connection_context()
+    def get_all_conversation_by_dialog_ids(cls, dialog_ids):
+        sessions = cls.model.select().where(cls.model.dialog_id.in_(dialog_ids))
+        sessions.order_by(cls.model.create_time.asc())
+        offset, limit = 0, 100
+        res = []
+        while True:
+            s_batch = sessions.offset(offset).limit(limit)
+            _temp = list(s_batch.dicts())
+            if not _temp:
+                break
+            res.extend(_temp)
+            offset += limit
+        return res
 
 def structure_answer(conv, ans, message_id, session_id):
     reference = ans["reference"]
@@ -80,8 +95,7 @@ def structure_answer(conv, ans, message_id, session_id):
         conv.reference[-1] = reference
     return ans
 
-
-def completion(tenant_id, chat_id, question, name="New session", session_id=None, stream=True, **kwargs):
+async def async_completion(tenant_id, chat_id, question, name="New session", session_id=None, stream=True, **kwargs):
     assert name, "`name` can not be empty."
     dia = DialogService.query(id=chat_id, tenant_id=tenant_id, status=StatusEnum.VALID.value)
     assert dia, "You do not own the chat."
@@ -96,17 +110,18 @@ def completion(tenant_id, chat_id, question, name="New session", session_id=None
             "user_id": kwargs.get("user_id", "")
         }
         ConversationService.save(**conv)
-        yield "data:" + json.dumps({"code": 0, "message": "",
-                                    "data": {
-                                        "answer": conv["message"][0]["content"],
-                                        "reference": {},
-                                        "audio_binary": None,
-                                        "id": None,
+        if stream:
+            yield "data:" + json.dumps({"code": 0, "message": "",
+                                        "data": {
+                                            "answer": conv["message"][0]["content"],
+                                            "reference": {},
+                                            "audio_binary": None,
+                                            "id": None,
                                         "session_id": session_id
-                                    }},
-                                   ensure_ascii=False) + "\n\n"
-        yield "data:" + json.dumps({"code": 0, "message": "", "data": True}, ensure_ascii=False) + "\n\n"
-        return
+                                        }},
+                                    ensure_ascii=False) + "\n\n"
+            yield "data:" + json.dumps({"code": 0, "message": "", "data": True}, ensure_ascii=False) + "\n\n"
+            return
 
     conv = ConversationService.query(id=session_id, dialog_id=chat_id)
     if not conv:
@@ -138,7 +153,7 @@ def completion(tenant_id, chat_id, question, name="New session", session_id=None
 
     if stream:
         try:
-            for ans in chat(dia, msg, True, **kwargs):
+            async for ans in async_chat(dia, msg, True, **kwargs):
                 ans = structure_answer(conv, ans, message_id, session_id)
                 yield "data:" + json.dumps({"code": 0, "data": ans}, ensure_ascii=False) + "\n\n"
             ConversationService.update_by_id(conv.id, conv.to_dict())
@@ -150,14 +165,13 @@ def completion(tenant_id, chat_id, question, name="New session", session_id=None
 
     else:
         answer = None
-        for ans in chat(dia, msg, False, **kwargs):
+        async for ans in async_chat(dia, msg, False, **kwargs):
             answer = structure_answer(conv, ans, message_id, session_id)
             ConversationService.update_by_id(conv.id, conv.to_dict())
             break
         yield answer
 
-
-def iframe_completion(dialog_id, question, session_id=None, stream=True, **kwargs):
+async def async_iframe_completion(dialog_id, question, session_id=None, stream=True, **kwargs):
     e, dia = DialogService.get_by_id(dialog_id)
     assert e, "Dialog not found"
     if not session_id:
@@ -212,7 +226,7 @@ def iframe_completion(dialog_id, question, session_id=None, stream=True, **kwarg
 
     if stream:
         try:
-            for ans in chat(dia, msg, True, **kwargs):
+            async for ans in async_chat(dia, msg, True, **kwargs):
                 ans = structure_answer(conv, ans, message_id, session_id)
                 yield "data:" + json.dumps({"code": 0, "message": "", "data": ans},
                                            ensure_ascii=False) + "\n\n"
@@ -225,7 +239,7 @@ def iframe_completion(dialog_id, question, session_id=None, stream=True, **kwarg
 
     else:
         answer = None
-        for ans in chat(dia, msg, False, **kwargs):
+        async for ans in async_chat(dia, msg, False, **kwargs):
             answer = structure_answer(conv, ans, message_id, session_id)
             API4ConversationService.append_message(conv.id, conv.to_dict())
             break

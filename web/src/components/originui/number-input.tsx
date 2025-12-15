@@ -7,7 +7,6 @@ interface NumberInputProps {
   onChange?: (value: number) => void;
   height?: number | string;
   min?: number;
-  step?: number;
 }
 
 const NumberInput: React.FC<NumberInputProps> = ({
@@ -16,7 +15,6 @@ const NumberInput: React.FC<NumberInputProps> = ({
   onChange,
   height,
   min = 0,
-  step = 1,
 }) => {
   const [value, setValue] = useState<number>(() => {
     return initialValue ?? 0;
@@ -30,14 +28,14 @@ const NumberInput: React.FC<NumberInputProps> = ({
 
   const handleDecrement = () => {
     if (value > 0) {
-      setValue(value - step);
-      onChange?.(value - step);
+      setValue(value - 1);
+      onChange?.(value - 1);
     }
   };
 
   const handleIncrement = () => {
-    setValue(value + step);
-    onChange?.(value + step);
+    setValue(value + 1);
+    onChange?.(value + 1);
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {

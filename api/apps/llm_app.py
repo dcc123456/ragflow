@@ -17,12 +17,10 @@ import logging
 import json
 from quart import request
 from api.apps import login_required, current_user
-from api.utils.api_utils import get_request_json
 from common.constants import StatusEnum, LLMType
 from common.misc_utils import get_uuid
-from api.utils.api_utils import get_allowed_llm_factories
+from api.utils.api_utils import get_allowed_llm_factories, get_request_json
 from rag.utils.base64_image import test_image
-from rag.llm import EmbeddingModel, ChatModel, RerankModel, CvModel, TTSModel
 from api.db import PermissionActionType, PermissionTargetType, PermissionValue, ResourceType
 from api.db.db_models import DB, TenantLLM
 from api.db.services.dialog_service import DialogService
@@ -32,6 +30,7 @@ from api.db.services.permission_service import PermissionChangeLogService, Permi
 from api.db.services.user_service import UserTenantService
 from api.utils.api_utils import get_data_error_result, get_json_result, server_error_response, validate_request
 from api.utils.permission_utils import has_permission_for_member
+from rag.llm import EmbeddingModel, ChatModel, RerankModel, CvModel, TTSModel, OcrModel
 
 
 @manager.route("/factories", methods=["GET"])  # noqa: F821
@@ -49,7 +48,13 @@ def factories():
                 mdl_types[m.fid] = set([])
             mdl_types[m.fid].add(m.model_type)
         for f in fac:
-            f["model_types"] = list(mdl_types.get(f["name"], [LLMType.CHAT, LLMType.EMBEDDING, LLMType.RERANK, LLMType.IMAGE2TEXT, LLMType.SPEECH2TEXT, LLMType.TTS]))
+            f["model_types"] = list(
+                mdl_types.get(
+                    f["name"],
+                    [LLMType.CHAT, LLMType.EMBEDDING, LLMType.RERANK, LLMType.IMAGE2TEXT, LLMType.SPEECH2TEXT, LLMType.TTS, LLMType.OCR],
+                )
+            )
+
         return get_json_result(data=fac)
     except Exception as e:
         return server_error_response(e)
@@ -80,7 +85,7 @@ async def set_api_key():
             assert factory in ChatModel, f"Chat model from {factory} is not supported yet."
             mdl = ChatModel[factory](req["api_key"], llm.llm_name, base_url=req.get("base_url"), **extra)
             try:
-                m, tc = mdl.chat(None, [{"role": "user", "content": "Hello! How are you doing!"}], {"temperature": 0.9, "max_tokens": 50})
+                m, tc = await mdl.async_chat(None, [{"role": "user", "content": "Hello! How are you doing!"}], {"temperature": 0.9, "max_tokens": 50})
                 if m.find("**ERROR**") >= 0:
                     raise Exception(m)
                 chat_passed = True
@@ -192,6 +197,9 @@ async def add_llm():
     elif factory == "OpenRouter":
         api_key = apikey_json(["api_key", "provider_order"])
 
+    elif factory == "MinerU":
+        api_key = apikey_json(["api_key", "provider_order"])
+
     llm = {
         "tenant_id": current_user.id,
         "llm_factory": factory,
@@ -223,7 +231,7 @@ async def add_llm():
             **extra,
         )
         try:
-            m, tc = mdl.chat(None, [{"role": "user", "content": "Hello! How are you doing!"}], {"temperature": 0.9})
+            m, tc = await mdl.async_chat(None, [{"role": "user", "content": "Hello! How are you doing!"}], {"temperature": 0.9})
             if not tc and m.find("**ERROR**:") >= 0:
                 raise Exception(m)
         except Exception as e:
@@ -256,6 +264,15 @@ async def add_llm():
             for resp in mdl.tts("Hello~ RAGFlower!"):
                 pass
         except RuntimeError as e:
+            msg += f"\nFail to access model({factory}/{mdl_nm})." + str(e)
+    elif llm["model_type"] == LLMType.OCR.value:
+        assert factory in OcrModel, f"OCR model from {factory} is not supported yet."
+        try:
+            mdl = OcrModel[factory](key=llm["api_key"], model_name=mdl_nm, base_url=llm.get("api_base", ""))
+            ok, reason = mdl.check_available()
+            if not ok:
+                raise RuntimeError(reason or "Model not available")
+        except Exception as e:
             msg += f"\nFail to access model({factory}/{mdl_nm})." + str(e)
     else:
         # TODO: check other type of models
@@ -408,6 +425,7 @@ async def delete_factory():
 @login_required
 def my_llms():
     try:
+        TenantLLMService.ensure_mineru_from_env(current_user.id)
         include_details = request.args.get("include_details", "false").lower() == "true"
 
         if include_details:

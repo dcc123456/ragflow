@@ -1,5 +1,6 @@
 import { DeletePrivilegeConfirmContent } from '@/components/privilege/delete-privilege-confirm-content';
 import { PermissionResourceType } from '@/constants/team';
+import { LLMFactory } from '@/constants/llm';
 import { useSetModalState, useShowDeleteConfirm } from '@/hooks/common-hooks';
 import {
   IApiKeySavingParams,
@@ -19,6 +20,7 @@ import { buildLlmId } from '@/utils/private-util';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useState } from 'react';
 import { ApiKeyPostBody } from '../interface';
+import { MinerUFormValues } from './modal/mineru-modal';
 
 type SavingParamsState = Omit<IApiKeySavingParams, 'api_key'>;
 
@@ -487,4 +489,43 @@ export const useHandleDeleteFactory = (llmFactory: string) => {
   };
 
   return { handleDeleteFactory, deleteFactory };
+};
+
+export const useSubmitMinerU = () => {
+  const { addLlm, loading } = useAddLlm();
+  const {
+    visible: mineruVisible,
+    hideModal: hideMineruModal,
+    showModal: showMineruModal,
+  } = useSetModalState();
+
+  const onMineruOk = useCallback(
+    async (payload: MinerUFormValues) => {
+      const cfg = {
+        ...payload,
+        mineru_delete_output: payload.mineru_delete_output ?? true ? '1' : '0',
+      };
+      const req: IAddLlmRequestBody = {
+        llm_factory: LLMFactory.MinerU,
+        llm_name: payload.llm_name,
+        model_type: 'ocr',
+        api_key: cfg,
+        api_base: '',
+        max_tokens: 0,
+      };
+      const ret = await addLlm(req);
+      if (ret === 0) {
+        hideMineruModal();
+      }
+    },
+    [addLlm, hideMineruModal],
+  );
+
+  return {
+    mineruVisible,
+    hideMineruModal,
+    showMineruModal,
+    onMineruOk,
+    mineruLoading: loading,
+  };
 };
