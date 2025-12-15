@@ -33,11 +33,16 @@ from api.apps import login_required, current_user
 from api.utils.api_utils import get_data_error_result, get_json_result, server_error_response, validate_request, \
     get_request_json
 from api.utils.permission_utils import check_dialog_permission
+from common.role_util import check_role_access, DIALOG_API_ACTION_MAP, DIALOG_ROLE_RESOURCE_TYPE
+
+
+dialog_role_guard = check_role_access(DIALOG_API_ACTION_MAP, DIALOG_ROLE_RESOURCE_TYPE)
 
 
 @manager.route('/set', methods=['POST'])  # noqa: F821
 @validate_request("prompt_config")
 @login_required
+@dialog_role_guard
 @check_dialog_permission(PermissionValue.PERMISSION_MANAGE)
 async def set_dialog():
     req = await get_request_json()
@@ -160,6 +165,7 @@ async def set_dialog():
 
 @manager.route('/get', methods=['GET'])  # noqa: F821
 @login_required
+@dialog_role_guard
 @check_dialog_permission(PermissionValue.PERMISSION_READ)
 def get():
     dialog_id = request.args["dialog_id"]
@@ -189,6 +195,7 @@ def get_kb_names(kb_ids):
 
 @manager.route('/list', methods=['GET'])  # noqa: F821
 @login_required
+@dialog_role_guard
 def list_dialogs():
     try:
         dialogs = []
@@ -223,6 +230,7 @@ def list_dialogs():
 
 @manager.route('/next', methods=['POST'])  # noqa: F821
 @login_required
+@dialog_role_guard
 async def list_dialogs_next():
     args = request.args
     keywords = args.get("keywords", "")
@@ -286,6 +294,7 @@ async def list_dialogs_next():
 
 @manager.route('/rm', methods=['POST'])  # noqa: F821
 @login_required
+@dialog_role_guard
 @validate_request("dialog_ids")
 @check_dialog_permission(permission=PermissionValue.PERMISSION_OWNER)
 async def rm():

@@ -42,6 +42,7 @@ from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.db_models import File
 from api.utils.api_utils import get_json_result
 from api.utils.permission_utils import check_kb_permission, has_permission_for_member
+from common.role_util import check_role_access, KB_API_ACTION_MAP, KB_ROLE_RESOURCE_TYPE
 from common.misc_utils import get_uuid
 
 from rag.nlp import search
@@ -53,8 +54,12 @@ from common import settings
 from api.apps import login_required, current_user
 
 
+kb_role_guard = check_role_access(KB_API_ACTION_MAP, KB_ROLE_RESOURCE_TYPE)
+
+
 @manager.route('/create', methods=['post'])  # noqa: F821
 @login_required
+@kb_role_guard
 @validate_request("name")
 async def create():
     req = await get_request_json()
@@ -145,6 +150,7 @@ async def create():
 
 @manager.route('/update', methods=['post'])  # noqa: F821
 @login_required
+@kb_role_guard
 @validate_request("kb_id", "name", "description", "parser_id")
 @not_allowed_parameters("id", "created_by", "create_time", "update_time", "create_date", "update_date", "created_by")
 @check_kb_permission(permission=PermissionValue.PERMISSION_WRITE)
@@ -219,6 +225,7 @@ async def update():
 
 @manager.route('/detail', methods=['GET'])  # noqa: F821
 @login_required
+@kb_role_guard
 @check_kb_permission(permission=PermissionValue.PERMISSION_READ)
 def detail():
     kb_id = request.args["kb_id"]
@@ -251,6 +258,7 @@ def detail():
 
 @manager.route('/list', methods=['POST'])  # noqa: F821
 @login_required
+@kb_role_guard
 async def list_kbs():
     from api.db.services import UserService
     args = request.args
@@ -323,6 +331,7 @@ async def list_kbs():
 
 @manager.route('/rm', methods=['post'])  # noqa: F821
 @login_required
+@kb_role_guard
 @validate_request("kb_id")
 async def rm():
     req = await get_request_json()
@@ -401,6 +410,7 @@ async def rm():
 
 @manager.route('/<kb_id>/tags', methods=['GET'])  # noqa: F821
 @login_required
+@kb_role_guard
 @check_kb_permission(permission=PermissionValue.PERMISSION_READ)
 def list_tags(kb_id):
     if not KnowledgebaseService.accessible(kb_id, current_user.id):
@@ -419,6 +429,7 @@ def list_tags(kb_id):
 
 @manager.route('/tags', methods=['GET'])  # noqa: F821
 @login_required
+@kb_role_guard
 def list_tags_from_kbs():
     kb_ids = request.args.get("kb_ids", "").split(",")
     for kb_id in kb_ids:
@@ -441,6 +452,7 @@ def list_tags_from_kbs():
 
 @manager.route('/<kb_id>/rm_tags', methods=['POST'])  # noqa: F821
 @login_required
+@kb_role_guard
 @check_kb_permission(permission=PermissionValue.PERMISSION_MANAGE)
 async def rm_tags(kb_id):
     req = await get_request_json()
@@ -462,6 +474,7 @@ async def rm_tags(kb_id):
 
 @manager.route('/<kb_id>/rename_tag', methods=['POST'])  # noqa: F821
 @login_required
+@kb_role_guard
 @check_kb_permission(permission=PermissionValue.PERMISSION_MANAGE)
 async def rename_tags(kb_id):
     req = await get_request_json()
@@ -477,6 +490,7 @@ async def rename_tags(kb_id):
 
 @manager.route('/<kb_id>/knowledge_graph', methods=['GET'])  # noqa: F821
 @login_required
+@kb_role_guard
 @check_kb_permission(permission=PermissionValue.PERMISSION_READ)
 def knowledge_graph(kb_id):
     _, kb = KnowledgebaseService.get_by_id(kb_id)
@@ -509,6 +523,7 @@ def knowledge_graph(kb_id):
 
 @manager.route('/<kb_id>/knowledge_graph', methods=['DELETE'])  # noqa: F821
 @login_required
+@kb_role_guard
 def delete_knowledge_graph(kb_id):
     if not KnowledgebaseService.accessible(kb_id, current_user.id):
         return get_json_result(
@@ -524,6 +539,7 @@ def delete_knowledge_graph(kb_id):
 
 @manager.route("/get_meta", methods=["GET"])  # noqa: F821
 @login_required
+@kb_role_guard
 def get_meta():
     kb_ids = request.args.get("kb_ids", "").split(",")
     for kb_id in kb_ids:
@@ -538,6 +554,7 @@ def get_meta():
 
 @manager.route("/basic_info", methods=["GET"])  # noqa: F821
 @login_required
+@kb_role_guard
 def get_basic_info():
     kb_id = request.args.get("kb_id", "")
     if not KnowledgebaseService.accessible(kb_id, current_user.id):
@@ -554,6 +571,7 @@ def get_basic_info():
 
 @manager.route("/list_pipeline_logs", methods=["POST"])  # noqa: F821
 @login_required
+@kb_role_guard
 async def list_pipeline_logs():
     kb_id = request.args.get("kb_id")
     if not kb_id:
@@ -598,6 +616,7 @@ async def list_pipeline_logs():
 
 @manager.route("/list_pipeline_dataset_logs", methods=["POST"])  # noqa: F821
 @login_required
+@kb_role_guard
 async def list_pipeline_dataset_logs():
     kb_id = request.args.get("kb_id")
     if not kb_id:
@@ -632,6 +651,7 @@ async def list_pipeline_dataset_logs():
 
 @manager.route("/delete_pipeline_logs", methods=["POST"])  # noqa: F821
 @login_required
+@kb_role_guard
 async def delete_pipeline_logs():
     kb_id = request.args.get("kb_id")
     if not kb_id:
@@ -647,6 +667,7 @@ async def delete_pipeline_logs():
 
 @manager.route("/pipeline_log_detail", methods=["GET"])  # noqa: F821
 @login_required
+@kb_role_guard
 def pipeline_log_detail():
     log_id = request.args.get("log_id")
     if not log_id:
@@ -661,6 +682,7 @@ def pipeline_log_detail():
 
 @manager.route("/run_graphrag", methods=["POST"])  # noqa: F821
 @login_required
+@kb_role_guard
 async def run_graphrag():
     req = await get_request_json()
 
@@ -708,6 +730,7 @@ async def run_graphrag():
 
 @manager.route("/trace_graphrag", methods=["GET"])  # noqa: F821
 @login_required
+@kb_role_guard
 def trace_graphrag():
     kb_id = request.args.get("kb_id", "")
     if not kb_id:
@@ -730,6 +753,7 @@ def trace_graphrag():
 
 @manager.route("/run_raptor", methods=["POST"])  # noqa: F821
 @login_required
+@kb_role_guard
 async def run_raptor():
     req = await get_request_json()
 
@@ -777,6 +801,7 @@ async def run_raptor():
 
 @manager.route("/trace_raptor", methods=["GET"])  # noqa: F821
 @login_required
+@kb_role_guard
 def trace_raptor():
     kb_id = request.args.get("kb_id", "")
     if not kb_id:
@@ -799,6 +824,7 @@ def trace_raptor():
 
 @manager.route("/run_mindmap", methods=["POST"])  # noqa: F821
 @login_required
+@kb_role_guard
 async def run_mindmap():
     req = await get_request_json()
 
@@ -846,6 +872,7 @@ async def run_mindmap():
 
 @manager.route("/trace_mindmap", methods=["GET"])  # noqa: F821
 @login_required
+@kb_role_guard
 def trace_mindmap():
     kb_id = request.args.get("kb_id", "")
     if not kb_id:
@@ -868,6 +895,7 @@ def trace_mindmap():
 
 @manager.route("/unbind_task", methods=["DELETE"])  # noqa: F821
 @login_required
+@kb_role_guard
 def delete_kb_task():
     kb_id = request.args.get("kb_id", "")
     if not kb_id:
@@ -915,6 +943,7 @@ def delete_kb_task():
 
 @manager.route("/check_embedding", methods=["post"])  # noqa: F821
 @login_required
+@kb_role_guard
 async def check_embedding():
 
     def _guess_vec_field(src: dict) -> str | None:
@@ -1067,5 +1096,3 @@ async def check_embedding():
     if summary["avg_cos_sim"] > 0.9:
         return get_json_result(data={"summary": summary, "results": results})
     return get_json_result(code=RetCode.NOT_EFFECTIVE, message="Embedding model switch failed: the average similarity between old and new vectors is below 0.9, indicating incompatible vector spaces.", data={"summary": summary, "results": results})
-
-

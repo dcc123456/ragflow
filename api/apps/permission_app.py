@@ -2,11 +2,12 @@ import logging
 from api.db.services.dialog_service import DialogService
 from quart import request
 from api.apps import login_required, current_user
-from api.db import VALID_RESOURCE_TYPES, PermissionActionType, PermissionTargetType, PermissionValue, ResourceType
+from api.db import VALID_RESOURCE_TYPES, ActionEnum, PermissionActionType, PermissionTargetType, PermissionValue, ResourceType, ResourceTypeEnum
 from api.db.db_models import DB
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.tenant_llm_service import TenantLLMService
 from api.db.services.permission_service import PermissionChangeLogService, PermissionService
+from api.db.services.role_service import RoleResourceService
 from api.db.services.team_service import DepartmentMemberService, DepartmentService, GroupMemberService, GroupService
 from api.db.services.user_service import UserTenantService
 from api.utils.api_utils import get_data_error_result, get_json_result, server_error_response, validate_request
@@ -99,6 +100,22 @@ async def update_permission():
 
     if not (operator.tenant_id == current_user.id or has_permission_for_member(operator.id, tenant_id, resource_id, resource_type=resource_type, permission=PermissionValue.PERMISSION_MANAGE)[0]):
         return get_data_error_result(message="Permission denied.")
+
+    role_resource_map = {
+        ResourceType.KB: ResourceTypeEnum.DATASET.value,
+        ResourceType.DIALOG: ResourceTypeEnum.CHAT.value,
+    }
+    role_id = getattr(current_user, "role_id", None)
+    target_resource_value = role_resource_map.get(resource_type)
+    if role_id and target_resource_value:
+        role_permissions = RoleResourceService.get_by_role_id(role_id) or []
+        action_value = 0
+        for role_permission in role_permissions:
+            if role_permission.get("resource_type") == target_resource_value:
+                action_value = role_permission.get("action", 0)
+                break
+        if not (action_value & ActionEnum.SHARE.value):
+            return get_data_error_result(message="Role has no share permission for this resource.")
 
     # handle
     permission_to_create = []
@@ -437,6 +454,17 @@ async def share_dialog():
 
     if not (operator.tenant_id == current_user.id or has_permission_for_member(operator.id, tenant_id, resource_id, resource_type=resource_type, permission=PermissionValue.PERMISSION_MANAGE)[0]):
         return get_data_error_result(message="Permission denied.")
+
+    role_id = getattr(current_user, "role_id", None)
+    if role_id:
+        role_permissions = RoleResourceService.get_by_role_id(role_id) or []
+        action_value = 0
+        for role_permission in role_permissions:
+            if role_permission.get("resource_type") == ResourceTypeEnum.CHAT.value:
+                action_value = role_permission.get("action", 0)
+                break
+        if not (action_value & ActionEnum.SHARE.value):
+            return get_data_error_result(message="Role has no share permission for dialog resource.")
 
     available_groups = []
     available_departments = []

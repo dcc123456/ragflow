@@ -25,11 +25,15 @@ from api.db.services.user_service import TenantService, UserTenantService
 from common.misc_utils import get_uuid
 from common.constants import RetCode, StatusEnum
 from api.utils.api_utils import get_data_error_result, get_json_result, not_allowed_parameters, get_request_json, server_error_response, validate_request
+from common.role_util import check_role_access, SEARCH_API_ACTION_MAP, SEARCH_ROLE_RESOURCE_TYPE
+
+search_role_guard = check_role_access(SEARCH_API_ACTION_MAP, SEARCH_ROLE_RESOURCE_TYPE)
 
 
 @manager.route("/create", methods=["post"])  # noqa: F821
 @login_required
 @validate_request("name")
+@search_role_guard
 async def create():
     req = await get_request_json()
     search_name = req["name"]
@@ -65,6 +69,7 @@ async def create():
 @login_required
 @validate_request("search_id", "name", "search_config", "tenant_id")
 @not_allowed_parameters("id", "created_by", "create_time", "update_time", "create_date", "update_date", "created_by")
+@search_role_guard
 async def update():
     req = await get_request_json()
     if not isinstance(req["name"], str):
@@ -120,6 +125,7 @@ async def update():
 
 @manager.route("/detail", methods=["GET"])  # noqa: F821
 @login_required
+@search_role_guard
 def detail():
     search_id = request.args["search_id"]
     try:
@@ -140,6 +146,7 @@ def detail():
 
 @manager.route("/list", methods=["POST"])  # noqa: F821
 @login_required
+@search_role_guard
 async def list_search_app():
     keywords = request.args.get("keywords", "")
     page_number = int(request.args.get("page", 0))
@@ -173,6 +180,7 @@ async def list_search_app():
 @manager.route("/rm", methods=["post"])  # noqa: F821
 @login_required
 @validate_request("search_id")
+@search_role_guard
 async def rm():
     req = await get_request_json()
     search_id = req["search_id"]

@@ -41,6 +41,7 @@ class CustomEnum(Enum):
 class RetCode(IntEnum, CustomEnum):
     SUCCESS = 0
     NOT_EFFECTIVE = 10
+    FEATURE_NOT_ENABLED = 11
     EXCEPTION_ERROR = 100
     ARGUMENT_ERROR = 101
     DATA_ERROR = 102

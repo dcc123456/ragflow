@@ -34,10 +34,14 @@ from api.utils.api_utils import get_json_result, get_request_json
 from api.utils.file_utils import filename_type
 from api.utils.web_utils import CONTENT_TYPE_MAP
 from common import settings
+from common.role_util import check_role_access, FILE_API_ACTION_MAP, FILE_ROLE_RESOURCE_TYPE
+
+file_role_guard = check_role_access(FILE_API_ACTION_MAP, FILE_ROLE_RESOURCE_TYPE)
 
 
 @manager.route('/upload', methods=['POST'])  # noqa: F821
 @login_required
+@file_role_guard
 # @validate_request("parent_id")
 async def upload():
     form = await request.form
@@ -131,6 +135,7 @@ async def upload():
 @manager.route('/create', methods=['POST'])  # noqa: F821
 @login_required
 @validate_request("name")
+@file_role_guard
 async def create():
     req = await get_request_json()
     pf_id = req.get("parent_id")
@@ -170,6 +175,7 @@ async def create():
 
 @manager.route('/list', methods=['GET'])  # noqa: F821
 @login_required
+@file_role_guard
 def list_files():
     pf_id = request.args.get("parent_id")
 
@@ -202,6 +208,7 @@ def list_files():
 
 @manager.route('/root_folder', methods=['GET'])  # noqa: F821
 @login_required
+@file_role_guard
 def get_root_folder():
     try:
         root_folder = FileService.get_root_folder(current_user.id)
@@ -212,6 +219,7 @@ def get_root_folder():
 
 @manager.route('/parent_folder', methods=['GET'])  # noqa: F821
 @login_required
+@file_role_guard
 def get_parent_folder():
     file_id = request.args.get("file_id")
     try:
@@ -227,6 +235,7 @@ def get_parent_folder():
 
 @manager.route('/all_parent_folder', methods=['GET'])  # noqa: F821
 @login_required
+@file_role_guard
 def get_all_parent_folders():
     file_id = request.args.get("file_id")
     try:
@@ -246,6 +255,7 @@ def get_all_parent_folders():
 @manager.route("/rm", methods=["POST"])  # noqa: F821
 @login_required
 @validate_request("file_ids")
+@file_role_guard
 async def rm():
     req = await get_request_json()
     file_ids = req["file_ids"]
@@ -310,6 +320,7 @@ async def rm():
 @manager.route('/rename', methods=['POST'])  # noqa: F821
 @login_required
 @validate_request("file_id", "name")
+@file_role_guard
 async def rename():
     req = await get_request_json()
     try:
@@ -349,6 +360,7 @@ async def rename():
 
 @manager.route('/get/<file_id>', methods=['GET'])  # noqa: F821
 @login_required
+@file_role_guard
 async def get(file_id):
     e, file = FileService.get_by_id(file_id)
     if not e:
@@ -383,6 +395,7 @@ async def get(file_id):
 @manager.route("/mv", methods=["POST"])  # noqa: F821
 @login_required
 @validate_request("src_file_ids", "dest_file_id")
+@file_role_guard
 async def move():
     req = await get_request_json()
     try:
