@@ -49,7 +49,7 @@ class TableStructureRecognizer(Recognizer):
             tbls = self._run_ascend_tsr(images, thr)
             for tbl in tbls:
                 cell_bbx = []
-                for table in tbl: 
+                for table in tbl:
                     bbox = table["bbox"]
                     left, top, right, bottom, sc = bbox[0], bbox[1], bbox[2], bbox[3], table["score"]
                     cell_bbx.append((left, top, right, bottom, sc))
@@ -454,7 +454,7 @@ def draw_box(im, bboxes):
 def main(args):
     if not os.path.exists(args.output_dir):
         os.mkdir(args.output_dir)
-    
+
     tsr = TableStructureRecognizer()
     fnms = []
     if os.path.isdir(args.inputs):
@@ -488,4 +488,3 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     main(args)
-

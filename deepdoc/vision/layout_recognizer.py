@@ -55,6 +55,7 @@ class LayoutRecognizer(Recognizer):
 
         self.garbage_layouts = ["footer", "header", "reference"]
         self.client = None
+
         if os.environ.get("TENSORRT_DLA_SVR"):
             from deepdoc.vision.dla_cli import DLAClient
 
