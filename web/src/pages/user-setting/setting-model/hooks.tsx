@@ -1,6 +1,6 @@
 import { DeletePrivilegeConfirmContent } from '@/components/privilege/delete-privilege-confirm-content';
-import { PermissionResourceType } from '@/constants/team';
 import { LLMFactory } from '@/constants/llm';
+import { PermissionResourceType } from '@/constants/team';
 import { useSetModalState, useShowDeleteConfirm } from '@/hooks/common-hooks';
 import {
   IApiKeySavingParams,

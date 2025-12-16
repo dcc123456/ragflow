@@ -25,7 +25,6 @@ import { useFetchTenantInfo } from './use-user-setting-request';
 
 import { buildLlmUuid } from '@/utils/llm-util';
 
-
 export const enum LLMApiAction {
   LlmList = 'llmList',
   MyLlmList = 'myLlmList',
@@ -53,8 +52,8 @@ export const useFetchLlmList = (modelType?: LlmModelType) => {
   return data;
 };
 
-type IThirdOAIModelWithUuid = IThirdOAIModel & { uuid: string };
-
+export const useSelectLlmOptions = () => {
+  const llmInfo: IThirdOAIModelCollection = useFetchLlmList();
   const embeddingModelOptions = useMemo(() => {
     return Object.entries(llmInfo).map(([key, value]) => {
       return {

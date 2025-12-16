@@ -1,6 +1,5 @@
-import { IconFont } from '@/components/icon-font';
-import { PrivilegeManagementDialog } from '@/components/privilege-management/privilege-management-dialog';
 import { CardSineLineContainer } from '@/components/card-singleline-container';
+import { PrivilegeManagementDialog } from '@/components/privilege-management/privilege-management-dialog';
 import { RenameDialog } from '@/components/rename-dialog';
 import { HomeIcon } from '@/components/svg-icon';
 import { CardSkeleton } from '@/components/ui/skeleton';
@@ -9,8 +8,8 @@ import { useFetchNextKnowledgeListByPage } from '@/hooks/use-knowledge-request';
 import { useTranslation } from 'react-i18next';
 import { DatasetCard } from '../datasets/dataset-card';
 import { useRenameDataset } from '../datasets/use-rename-dataset';
-import { SeeAllAppCard } from './application-card';
 import { useShowPrivilegeDialog } from '../datasets/use-show-privilege-dialog';
+import { SeeAllAppCard } from './application-card';
 
 export function Datasets() {
   const { t } = useTranslation();

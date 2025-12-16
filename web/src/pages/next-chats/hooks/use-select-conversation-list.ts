@@ -71,14 +71,6 @@ export const useSelectDerivedConversationList = () => {
     });
   }, []);
 
-  const removeTemporaryConversation = useCallback((conversationId: string) => {
-    setList((prevList) => {
-      return prevList.filter(
-        (conversation) => conversation.id !== conversationId,
-      );
-    });
-  }, []);
-
   // When you first enter the page, select the top conversation card
 
   useEffect(() => {

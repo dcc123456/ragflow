@@ -63,6 +63,26 @@ export default {
       selected: 'Selected',
     },
     login: {
+      confirmPasswordError: 'Password and confirm password must be the same.',
+      captchaPlaceholder: 'Please input captcha',
+      back: 'Back',
+      confirmPasswordPlaceholder: 'Please input confirm password',
+      confirmPassword: 'Confirm password',
+      resetPassword: 'Reset password',
+      sendTip: 'We will email you a verification code to reset your password.',
+      verifyCodeTip: `We sent a reset link to <span style='color: rgb(var(--accent-primary));font-style: italic;'>{{email}}</span>
+                      enter 4 digit code that mentioned in the email`,
+      send: 'Send',
+      resendEmail: 'Resend email',
+      notGotEmail: `Haven't got the email yet?`,
+      forgetPassword: 'Forget password?',
+      forgetPasswordDescription:
+        'Please input your email to reset your password.',
+      verifyCode: 'Verification code',
+      verificationCode: 'Verification code',
+      verifyCodePlaceholder: 'Verification code',
+      checkEmail: 'Check email',
+
       loginTitle: 'Sign in to your account',
       signUpTitle: 'Create an account',
       login: 'Sign in',
@@ -1084,6 +1104,7 @@ Example: Virtual Hosted Style`,
       registered: 'Registered!',
       logout: 'logout',
       logged: 'logged!',
+      success: 'Success!',
       pleaseSelectChunk: 'Please select chunk!',
       registerDisabled: 'User registration is disabled',
       modified: 'Modified',
@@ -2184,6 +2205,25 @@ Important structured information may include: names, dates, locations, events, k
       addNow: 'Add Now',
     },
 
+    price: {
+      free: 'Free',
+      freeDesc:
+        'Start for free and explore essential features to get your project off the ground.',
+      starter: 'Starter',
+      starterDesc:
+        'Ideal for individuals and small teams starting their journey with essential features.',
+      pro: 'Pro',
+      proDesc:
+        'Perfect for growing businesses requiring more advanced tools and higher limits.',
+      enterprise: 'Enterprise',
+      enterpriseDesc:
+        'Tailored for large organizations needing custom solutions, priority support, and full scalability.',
+      reduce: 'Reduce Now',
+      upgrade: 'Upgrade',
+      contactUs: 'Contact Us',
+      contactUsTip: 'Contact us for more information.',
+      inUse: 'In Use',
+    },
     admin: {
       loginTitle: 'Admin console',
       title: 'RAGFlow',
