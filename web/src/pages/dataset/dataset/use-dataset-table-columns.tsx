@@ -12,7 +12,7 @@ import { useDatasetEditButtonDisabled } from '@/hooks/logic-hooks/use-permission
 import { useSetDocumentStatus } from '@/hooks/use-document-request';
 import { IDocumentInfo } from '@/interfaces/database/document';
 import { cn } from '@/lib/utils';
-import { DataSourceInfo } from '@/pages/user-setting/data-source/contant';
+import { useDataSourceInfo } from '@/pages/user-setting/data-source/contant';
 import { formatDate } from '@/utils/date';
 import { ColumnDef } from '@tanstack/table-core';
 import { ArrowUpDown, MonitorUp } from 'lucide-react';
@@ -37,7 +37,7 @@ export function useDatasetTableColumns({
   const { t } = useTranslation('translation', {
     keyPrefix: 'knowledgeDetails',
   });
-
+  const { dataSourceInfo } = useDataSourceInfo();
   const { navigateToChunkParsedResult } = useNavigatePage();
   const { setDocumentStatus } = useSetDocumentStatus();
 
@@ -138,8 +138,8 @@ export function useDatasetTableColumns({
           ) : (
             <div className="w-6 h-6 flex items-center justify-center">
               {
-                DataSourceInfo[
-                  row.original.source_type as keyof typeof DataSourceInfo
+                dataSourceInfo[
+                  row.original.source_type as keyof typeof dataSourceInfo
                 ]?.icon
               }
             </div>

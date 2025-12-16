@@ -63,7 +63,6 @@ kb_role_guard = check_role_access(KB_API_ACTION_MAP, KB_ROLE_RESOURCE_TYPE)
 @validate_request("name")
 async def create():
     req = await get_request_json()
-    req = await get_request_json()
     name = req["name"]
     parser_id = req.get("parser_id")
     e, res = KnowledgebaseService.create_with_name(
@@ -249,6 +248,7 @@ def detail():
 
         kb["size"] = DocumentService.get_total_size_by_kb_id(kb_id=kb["id"], keywords="", run_status=[], types=[])
         kb["connectors"] = Connector2KbService.list_connectors(kb_id)
+
         for key in ["graphrag_task_finish_at", "raptor_task_finish_at", "mindmap_task_finish_at"]:
             if finish_at := kb.get(key):
                 kb[key] = finish_at.strftime("%Y-%m-%d %H:%M:%S")

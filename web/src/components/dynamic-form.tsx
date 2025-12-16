@@ -738,6 +738,15 @@ const DynamicForm = {
                   : field,
               ),
             );
+            // setTimeout(() => {
+            //   if (onFieldUpdate) {
+            //     onFieldUpdate(fieldName, updatedField);
+            //   } else {
+            //     console.warn(
+            //       'onFieldUpdate prop is not provided. Cannot update field type.',
+            //     );
+            //   }
+            // }, 0);
           },
         }),
         [form],
@@ -810,7 +819,6 @@ const DynamicForm = {
         disabled={submitLoading}
         onClick={() => {
           (async () => {
-            console.log('form submit2');
             try {
               let beValid = await form.formControl.trigger();
               console.log('form valid', beValid, form, form.formControl);

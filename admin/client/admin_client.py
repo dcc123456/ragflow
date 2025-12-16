@@ -731,7 +731,7 @@ class AdminCLI(Cmd):
         else:
             system_role_tree: Tree = command['system_role']
             system_role: str = system_role_tree.children[0].strip("'\"")
-        print(f"Create user: {user_name}, password: {password}, resource_role: {resource_role}, system_role: {system_role}")
+        print(f"Create user: {user_name}, password: ******, resource_role: {resource_role}, system_role: {system_role}")
         url = f'http://{self.host}:{self.port}/api/v1/admin/users'
         response = self.session.post(
             url,

@@ -51,7 +51,6 @@ export const useFetchLlmList = (modelType?: LlmModelType) => {
 
   return data;
 };
-
 export const useSelectLlmOptions = () => {
   const llmInfo: IThirdOAIModelCollection = useFetchLlmList();
   const embeddingModelOptions = useMemo(() => {
@@ -69,7 +68,6 @@ export const useSelectLlmOptions = () => {
 
   return embeddingModelOptions;
 };
-
 type IThirdOAIModelWithUuid = IThirdOAIModel & { uuid: string };
 
 export function useSelectFlatLlmList(modelType?: LlmModelType) {
@@ -80,7 +78,8 @@ export function useSelectFlatLlmList(modelType?: LlmModelType) {
 
     return pre;
   }, []);
-}
+
+};
 
 export function useFindLlmByUuid(modelType?: LlmModelType) {
   const flatList = useSelectFlatLlmList(modelType);
@@ -90,7 +89,9 @@ export function useFindLlmByUuid(modelType?: LlmModelType) {
   };
 }
 
-const buildLlmOptionsWithIcon = (tenantId: string, x: IThirdOAIModel) => {
+
+
+function buildLlmOptionsWithIcon(x: IThirdOAIModel) {
   return {
     label: (
       <section className="flex justify-between gap-2 items-center">

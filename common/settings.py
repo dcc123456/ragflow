@@ -298,20 +298,20 @@ def init_settings():
 
     global STORAGE_IMPL
     storage_impl = StorageFactory.create(Storage[STORAGE_IMPL_TYPE])
-    
+
     # Define crypto settings
     crypto_enabled = os.environ.get("RAGFLOW_CRYPTO_ENABLED", "false").lower() == "true"
-    
+
     # Check if encryption is enabled
     if crypto_enabled:
         try:
             from rag.utils.encrypted_storage import create_encrypted_storage
             algorithm = os.environ.get("RAGFLOW_CRYPTO_ALGORITHM", "aes-256-cbc")
             crypto_key = os.environ.get("RAGFLOW_CRYPTO_KEY")
-            
-            STORAGE_IMPL = create_encrypted_storage(storage_impl, 
-                algorithm=algorithm, 
-                key=crypto_key, 
+
+            STORAGE_IMPL = create_encrypted_storage(storage_impl,
+                algorithm=algorithm,
+                key=crypto_key,
                 encryption_enabled=crypto_enabled)
         except Exception as e:
             logging.error(f"Failed to initialize encrypted storage: {e}")
@@ -356,7 +356,6 @@ def init_settings():
     DOC_MAXIMUM_SIZE = int(os.environ.get("MAX_CONTENT_LENGTH", 128 * 1024 * 1024))
     DOC_BULK_SIZE = int(os.environ.get("DOC_BULK_SIZE", 4))
     EMBEDDING_BATCH_SIZE = int(os.environ.get("EMBEDDING_BATCH_SIZE", 16))
-
 
 
 def check_and_install_torch():

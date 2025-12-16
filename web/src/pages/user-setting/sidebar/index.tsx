@@ -15,9 +15,10 @@ import {
 } from '@/hooks/use-user-setting-request';
 import { cn } from '@/lib/utils';
 import { Routes } from '@/routes';
-import { t } from 'i18next';
+import { TFunction } from 'i18next';
 import { Banknote, Box, Server, Unplug, User, Users } from 'lucide-react';
 import { useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useHandleMenuClick } from './hooks';
 
 const menuItems = [
@@ -44,6 +45,7 @@ export function SideBar() {
   const { version, fetchSystemVersion } = useFetchSystemVersion();
   const { data: isAdmin } = useFetchIsAdmin();
   const { data: enableAdmin } = useFetchEnableAdmin();
+  const { t } = useTranslation();
 
   useEffect(() => {
     if (location.host !== Domain) {
@@ -52,7 +54,7 @@ export function SideBar() {
   }, [fetchSystemVersion]);
   const { logout } = useLogout();
 
-  const items = menuItems.filter((x) => {
+  const items = menuItems(t).filter((x) => {
     if (x.key === Routes.Api) {
       if (enableAdmin && isAdmin) {
         return true;

@@ -23,8 +23,8 @@ import time
 from datetime import datetime
 import base64
 
-from quart import redirect, request, session, make_response
 from api.db.services.tenant_llm_service import user_register
+from quart import make_response, redirect, request, session
 
 from api.apps.auth import get_auth_client
 from api.db.db_models import TenantLLM

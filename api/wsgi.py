@@ -25,7 +25,6 @@ import time
 # Initialize logging first
 init_root_logger("ragflow_server")
 from plugin import GlobalPluginManager
-from api.apps import smtp_mail_server
 import logging
 import os
 import signal
@@ -117,17 +116,6 @@ def initialize_ragflow():
             threading.Timer(1.0, delayed_start_update_progress).start()
     else:
         threading.Timer(1.0, delayed_start_update_progress).start()
-
-    # init smtp server
-    if settings.SMTP_CONF:
-        app.config["MAIL_SERVER"] = settings.MAIL_SERVER
-        app.config["MAIL_PORT"] = settings.MAIL_PORT
-        app.config["MAIL_USE_SSL"] = settings.MAIL_USE_SSL
-        app.config["MAIL_USE_TLS"] = settings.MAIL_USE_TLS
-        app.config["MAIL_USERNAME"] = settings.MAIL_USERNAME
-        app.config["MAIL_PASSWORD"] = settings.MAIL_PASSWORD
-        app.config["MAIL_DEFAULT_SENDER"] = settings.MAIL_DEFAULT_SENDER
-        smtp_mail_server.init_app(app)
 
     logging.info("RAGFlow WSGI application initialized successfully in production mode")
 

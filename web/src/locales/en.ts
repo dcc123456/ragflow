@@ -179,6 +179,7 @@ export default {
       doc: 'Docs',
       searchKnowledgePlaceholder: 'Search',
       noMoreData: `That's all. Nothing more.`,
+      parserRequired: 'Chunk method is required',
     },
     knowledgeDetails: {
       localUpload: 'Local upload',
@@ -349,7 +350,7 @@ export default {
       reRankModelWaring: 'Re-rank model is very time consuming.',
     },
     knowledgeConfiguration: {
-      overlappedPercent: 'Overlapped percent',
+      overlappedPercent: 'Overlapped percent(%)',
       generationScopeTip:
         'Determines whether RAPTOR is generated for the entire dataset or for a single file.',
       scopeDataset: 'Dataset',
@@ -358,7 +359,7 @@ export default {
       autoParse: 'Auto parse',
       rebuildTip:
         'Re-downloads files from the linked data source and parses them again.',
-      baseInfo: 'Basic info',
+      baseInfo: 'Basic',
       globalIndex: 'Global index',
       dataSource: 'Data source',
       linkSourceSetTip: 'Manage data source linkage with this dataset',
@@ -789,7 +790,7 @@ This auto-tagging feature enhances retrieval by adding another layer of domain-s
         'The base URL of your Confluence instance (e.g., https://your-domain.atlassian.net/wiki)',
       confluenceSpaceKeyTip:
         'Optional: Specify a space key to limit syncing to a specific space. Leave empty to sync all accessible spaces. For multiple spaces, separate with commas (e.g., DEV,DOCS,HR)',
-      s3PrefixTip: `Specify the folder path within your S3 bucket to fetch files from. 
+      s3PrefixTip: `Specify the folder path within your S3 bucket to fetch files from.
 Example: general/v2/`,
       S3CompatibleEndpointUrlTip: `Required for S3 compatible Storage Box. Specify the S3-compatible endpoint URL.
 Example: https://fsn1.your-objectstorage.com`,
@@ -2224,6 +2225,7 @@ Important structured information may include: names, dates, locations, events, k
       contactUsTip: 'Contact us for more information.',
       inUse: 'In Use',
     },
+
     admin: {
       loginTitle: 'Admin console',
       title: 'RAGFlow',

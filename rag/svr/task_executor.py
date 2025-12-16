@@ -891,6 +891,17 @@ async def do_handle_task(task):
             progress_callback(prog=1.0, msg=f"Raptor skipped: {skip_reason}")
             return
 
+        # Check if Raptor should be skipped for structured data
+        file_type = task.get("type", "")
+        parser_id = task.get("parser_id", "")
+        raptor_config = kb_parser_config.get("raptor", {})
+
+        if should_skip_raptor(file_type, parser_id, task_parser_config, raptor_config):
+            skip_reason = get_skip_reason(file_type, parser_id, task_parser_config)
+            logging.info(f"Skipping Raptor for document {task_document_name}: {skip_reason}")
+            progress_callback(prog=1.0, msg=f"Raptor skipped: {skip_reason}")
+            return
+
         # bind LLM for raptor
         chat_model = LLMBundle(task_tenant_id, LLMType.CHAT, llm_name=task_llm_id, lang=task_language)
         await is_strong_enough(chat_model, None)

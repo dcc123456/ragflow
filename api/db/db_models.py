@@ -1400,4 +1400,43 @@ def migrate_db():
         migrate(migrator.add_column("llm_factories", "rank", IntegerField(default=0, index=False)))
     except Exception:
         pass
+
+    # RAG Evaluation tables
+    try:
+        migrate(migrator.add_column("evaluation_datasets", "id", CharField(max_length=32, primary_key=True)))
+    except Exception:
+        pass
+    try:
+        migrate(migrator.add_column("evaluation_datasets", "tenant_id", CharField(max_length=32, null=False, index=True)))
+    except Exception:
+        pass
+    try:
+        migrate(migrator.add_column("evaluation_datasets", "name", CharField(max_length=255, null=False, index=True)))
+    except Exception:
+        pass
+    try:
+        migrate(migrator.add_column("evaluation_datasets", "description", TextField(null=True)))
+    except Exception:
+        pass
+    try:
+        migrate(migrator.add_column("evaluation_datasets", "kb_ids", JSONField(null=False)))
+    except Exception:
+        pass
+    try:
+        migrate(migrator.add_column("evaluation_datasets", "created_by", CharField(max_length=32, null=False, index=True)))
+    except Exception:
+        pass
+    try:
+        migrate(migrator.add_column("evaluation_datasets", "create_time", BigIntegerField(null=False, index=True)))
+    except Exception:
+        pass
+    try:
+        migrate(migrator.add_column("evaluation_datasets", "update_time", BigIntegerField(null=False)))
+    except Exception:
+        pass
+    try:
+        migrate(migrator.add_column("evaluation_datasets", "status", IntegerField(null=False, default=1)))
+    except Exception:
+        pass
+
     logging.disable(logging.NOTSET)

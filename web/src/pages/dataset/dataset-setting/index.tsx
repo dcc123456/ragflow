@@ -8,7 +8,7 @@ import { FormLayout } from '@/constants/form';
 import { DocumentParserType } from '@/constants/knowledge';
 import { PermissionRole } from '@/constants/permission';
 import { IConnector } from '@/interfaces/database/knowledge';
-import { DataSourceInfo } from '@/pages/user-setting/data-source/contant';
+import { useDataSourceInfo } from '@/pages/user-setting/data-source/contant';
 import { IDataSourceBase } from '@/pages/user-setting/data-source/interface';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useEffect, useState } from 'react';
@@ -89,6 +89,7 @@ export default function DatasetSettings() {
       connectors: [],
     },
   });
+  const { dataSourceInfo } = useDataSourceInfo();
   const knowledgeDetails = useFetchKnowledgeConfigurationOnMount(form);
   // const [pipelineData, setPipelineData] = useState<IDataPipelineNodeProps>();
   const [sourceData, setSourceData] = useState<IDataSourceNodeProps[]>();
@@ -113,7 +114,7 @@ export default function DatasetSettings() {
           return {
             ...connector,
             icon:
-              DataSourceInfo[connector.source as keyof typeof DataSourceInfo]
+              dataSourceInfo[connector.source as keyof typeof dataSourceInfo]
                 ?.icon || '',
           };
         });
@@ -159,7 +160,7 @@ export default function DatasetSettings() {
           ...connector,
           auto_parse: connector.auto_parse === '0' ? '0' : '1',
           icon:
-            DataSourceInfo[connector.source as keyof typeof DataSourceInfo]
+            dataSourceInfo[connector.source as keyof typeof dataSourceInfo]
               ?.icon || '',
         };
       });
@@ -252,22 +253,7 @@ export default function DatasetSettings() {
                   {t('knowledgeConfiguration.baseInfo')}
                 </div>
                 <GeneralForm></GeneralForm>
-                <Divider />
-                <div className="text-base font-medium text-text-primary">
-                  {t('knowledgeConfiguration.globalIndex')}
-                </div>
-                <GraphRagItems
-                  className="border-none p-0"
-                  data={graphRagGenerateData as IGenerateLogButtonProps}
-                  onDelete={() =>
-                    handleDeletePipelineTask(GenerateType.KnowledgeGraph)
-                  }
-                ></GraphRagItems>
-                <Divider />
-                <RaptorFormFields
-                  data={raptorGenerateData as IGenerateLogButtonProps}
-                  onDelete={() => handleDeletePipelineTask(GenerateType.Raptor)}
-                ></RaptorFormFields>
+
                 <Divider />
                 <div className="text-base font-medium text-text-primary">
                   {t('knowledgeConfiguration.dataPipeline')}
@@ -292,7 +278,6 @@ export default function DatasetSettings() {
                   data={pipelineData}
                   handleLinkOrEditSubmit={handleLinkOrEditSubmit}
                 /> */}
-
                 <Divider />
                 <LinkDataSource
                   data={sourceData}
@@ -300,6 +285,22 @@ export default function DatasetSettings() {
                   unbindFunc={unbindFunc}
                   handleAutoParse={handleAutoParse}
                 />
+                <Divider />
+                <div className="text-base font-medium text-text-primary">
+                  {t('knowledgeConfiguration.globalIndex')}
+                </div>
+                <GraphRagItems
+                  className="border-none p-0"
+                  data={graphRagGenerateData as IGenerateLogButtonProps}
+                  onDelete={() =>
+                    handleDeletePipelineTask(GenerateType.KnowledgeGraph)
+                  }
+                ></GraphRagItems>
+                <Divider />
+                <RaptorFormFields
+                  data={raptorGenerateData as IGenerateLogButtonProps}
+                  onDelete={() => handleDeletePipelineTask(GenerateType.Raptor)}
+                ></RaptorFormFields>
               </MainContainer>
             </div>
             <div className="text-right items-center flex justify-end gap-3 w-[768px]">

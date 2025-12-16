@@ -20,10 +20,10 @@ from flask import Blueprint, request
 from flask_login import current_user, logout_user, login_required
 import pandas as pd
 
+from admin.server.white_list import WhiteListMgr
 from auth import login_verify, login_admin, check_admin_auth
 from responses import success_response, error_response
 from services import UserMgr, ServiceMgr, UserServiceMgr
-from white_list import WhiteListMgr
 from roles import RoleMgr
 from api.common.exceptions import AdminException
 from common.versions import get_ragflow_version

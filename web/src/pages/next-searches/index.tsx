@@ -26,6 +26,7 @@ export default function SearchList() {
     setPagination,
     refetch: refetchList,
   } = useFetchSearchList();
+
   const {
     openCreateModal,
     showSearchRenameModal,
@@ -142,14 +143,13 @@ export default function SearchList() {
           )}
         </>
       )}
-
       {openCreateModal && (
         <RenameDialog
           hideModal={hideSearchRenameModal}
           onOk={onSearchRenameConfirm}
           initialName={initialSearchName}
           loading={searchRenameLoading}
-          title={<IconFont name="search" className="size-6"></IconFont>}
+          title={initialSearchName || t('createSearch')}
         ></RenameDialog>
       )}
     </section>
