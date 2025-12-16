@@ -13,7 +13,7 @@ RUN /root/miniconda3/envs/py11/bin/pip install langfuse>=2.60.0 ultralytics
 RUN /root/miniconda3/envs/py11/bin/pip install olefile tencentcloud-sdk-python==3.0.1478
 RUN /root/miniconda3/envs/py11/bin/pip install 'google-auth-oauthlib>=1.2.0,<2.0.0' mypy-boto3-s3==1.40.26 slack-sdk==3.37.0 atlassian-python-api==4.0.7 dropbox==12.0.2 jira==3.10.5 Office365-REST-Python-Client==2.6.2
 RUN /root/miniconda3/envs/py11/bin/pip install "webdav4>=0.10.0,<0.11.0" "markdownify>=1.2.0" "moodlepy>=0.23.0" quart-rate-limiter  -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com
-RUN /root/miniconda3/envs/py11/bin/pip install "infinity-sdk==0.6.10"
+RUN /root/miniconda3/envs/py11/bin/pip install "infinity-sdk==0.6.11" "boxsdk>=10.1.0" "aiosmtplib>=5.0.0"
 
 COPY web web
 RUN cd ./web && npm i && npm run build
