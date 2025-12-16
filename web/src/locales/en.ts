@@ -2225,7 +2225,6 @@ Important structured information may include: names, dates, locations, events, k
       contactUsTip: 'Contact us for more information.',
       inUse: 'In Use',
     },
-
     admin: {
       loginTitle: 'Admin console',
       title: 'RAGFlow',

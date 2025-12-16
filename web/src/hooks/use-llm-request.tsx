@@ -78,8 +78,7 @@ export function useSelectFlatLlmList(modelType?: LlmModelType) {
 
     return pre;
   }, []);
-
-};
+}
 
 export function useFindLlmByUuid(modelType?: LlmModelType) {
   const flatList = useSelectFlatLlmList(modelType);
@@ -88,8 +87,6 @@ export function useFindLlmByUuid(modelType?: LlmModelType) {
     return flatList.find((x) => x.uuid === uuid);
   };
 }
-
-
 
 function buildLlmOptionsWithIcon(x: IThirdOAIModel) {
   return {
@@ -115,7 +112,7 @@ function buildLlmOptionsWithIcon(x: IThirdOAIModel) {
     disabled: !x.available,
     is_tools: x.is_tools,
   };
-};
+}
 
 function orderLlmListByName(list: IThirdOAIModel[]) {
   return orderBy(list, ['llm_name', 'tenant_name'], ['asc', 'desc']);

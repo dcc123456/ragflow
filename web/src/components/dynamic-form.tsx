@@ -738,15 +738,6 @@ const DynamicForm = {
                   : field,
               ),
             );
-            // setTimeout(() => {
-            //   if (onFieldUpdate) {
-            //     onFieldUpdate(fieldName, updatedField);
-            //   } else {
-            //     console.warn(
-            //       'onFieldUpdate prop is not provided. Cannot update field type.',
-            //     );
-            //   }
-            // }, 0);
           },
         }),
         [form],

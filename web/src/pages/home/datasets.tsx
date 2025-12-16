@@ -1,7 +1,7 @@
 import { CardSineLineContainer } from '@/components/card-singleline-container';
-import { PrivilegeManagementDialog } from '@/components/privilege-management/privilege-management-dialog';
 import { EmptyCardType } from '@/components/empty/constant';
 import { EmptyAppCard } from '@/components/empty/empty';
+import { PrivilegeManagementDialog } from '@/components/privilege-management/privilege-management-dialog';
 import { RenameDialog } from '@/components/rename-dialog';
 import { HomeIcon } from '@/components/svg-icon';
 import { CardSkeleton } from '@/components/ui/skeleton';
