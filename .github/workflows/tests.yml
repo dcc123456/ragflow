@@ -51,11 +51,13 @@ jobs:
 
       - name: Check workflow duplication
         if: ${{ !cancelled() && !failure() }}
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
         run: |
           if [[ ${GITHUB_EVENT_NAME} != "pull_request" && ${GITHUB_EVENT_NAME} != "schedule" ]]; then
             HEAD=$(git rev-parse HEAD)
             # Find a PR that introduced a given commit
-            gh auth login --with-token <<< "${{ secrets.GITHUB_TOKEN }}"
+            echo "${GH_PAT}" | gh auth login --with-token
             PR_NUMBER=$(gh pr list --search ${HEAD} --state merged --json number --jq .[0].number)
             echo "HEAD=${HEAD}"
             echo "PR_NUMBER=${PR_NUMBER}"
