@@ -88,7 +88,7 @@ export function useFindLlmByUuid(modelType?: LlmModelType) {
   };
 }
 
-function buildLlmOptionsWithIcon(x: IThirdOAIModel) {
+function buildLlmOptionsWithIcon(tenantId: string, x: IThirdOAIModel) {
   return {
     label: (
       <section className="flex justify-between gap-2 items-center">
