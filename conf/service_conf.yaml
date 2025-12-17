@@ -126,6 +126,13 @@ user_default_llm:
 #     url: ldaps://ad01.mycompany.com:636
 #     dn: CN=svc_ldap_app, OU=Service Accounts, DC=mycompany, DC=com
 #     password: xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+#   google:
+#     type: google
+#     client_id: 936108576595-fie6xxxxxxxxxxxxxxxxxxxxxxx.apps.googleusercontent.com
+#     client_secret: GOCSPX-H6pNxxxxxxxxxxxxxxxxxHL6ZpW8PSL5FU3aL7s
+#     redirect_uri: http://<domain>/v1/user/oauth/callback/google
+#     display_name: Google
+#     icon: google
 #
 # authentication:
 #   client:

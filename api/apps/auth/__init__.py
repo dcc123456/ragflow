@@ -17,12 +17,14 @@
 from .oauth import OAuthClient
 from .oidc import OIDCClient
 from .github import GithubOAuthClient
+from .google import GoogleOAuthClient
 
 
 CLIENT_TYPES = {
     "oauth2": OAuthClient,
     "oidc": OIDCClient,
-    "github": GithubOAuthClient
+    "github": GithubOAuthClient,
+    "google": GoogleOAuthClient,
 }
 
 

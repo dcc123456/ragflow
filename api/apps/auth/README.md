@@ -40,6 +40,14 @@ github_config = {
     "redirect_uri": "https://your-app.com/v1/user/oauth/callback/<channel>"
 }
 
+# Google OAuth configuration
+google_config = {
+    "type": "google",
+    "client_id": "your_client_id",
+    "client_secret": "your_client_secret",
+    "redirect_uri": "https://your-app.com/v1/user/oauth/callback/<channel>"
+}
+
 # Get client instance
 client = get_auth_client(oauth_config)
 ```
