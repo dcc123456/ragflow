@@ -485,7 +485,7 @@ def user_register(user_id, user):
     from api.db.services.llm_service import get_init_tenant_llm
     from common.settings import ENABLE_WHITELIST
 
-    if ENABLE_WHITELIST:
+    if ENABLE_WHITELIST and user["email"] != "admin@ragflow.io":
         user_email = user["email"]
         whitelist_row = WhiteListService.get_white_list_by_email(user_email)
         if not whitelist_row:
