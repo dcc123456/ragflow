@@ -1100,6 +1100,8 @@ Example: Virtual Hosted Style`,
           vlmHttpClient: 'Vision Language Model via HTTP Client',
         },
       },
+      requestAdminAddModel:
+        'Please contact the administrator to add the model.',
     },
     message: {
       registered: 'Registered!',

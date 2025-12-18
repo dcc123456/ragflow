@@ -146,12 +146,12 @@ export default function Datasets() {
             loading={datasetRenameLoading}
           ></RenameDialog>
         )}
-       {privilegeModal && (
-        <PrivilegeManagementDialog
-          hideModal={hidePrivilegeModal}
-          initialValues={recordWithSourceType}
-        ></PrivilegeManagementDialog>
-      )}
+        {privilegeModal && (
+          <PrivilegeManagementDialog
+            hideModal={hidePrivilegeModal}
+            initialValues={recordWithSourceType}
+          ></PrivilegeManagementDialog>
+        )}
       </section>
     </>
   );

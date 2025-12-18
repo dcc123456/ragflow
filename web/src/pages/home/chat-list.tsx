@@ -9,7 +9,6 @@ import { useTranslation } from 'react-i18next';
 import { ChatDropdown } from '../next-chats/chat-dropdown';
 import { useRenameChat } from '../next-chats/hooks/use-rename-chat';
 import { useShowPrivilegeDialog } from '../next-chats/use-show-privilege-dialog';
-import { ApplicationCard } from './application-card';
 
 export function ChatList({
   setListLength,

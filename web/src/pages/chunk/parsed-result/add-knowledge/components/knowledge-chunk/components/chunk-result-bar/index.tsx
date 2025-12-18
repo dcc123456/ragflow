@@ -9,8 +9,6 @@ import { Radio } from '@/components/ui/radio';
 import { Segmented } from '@/components/ui/segmented';
 import { useTranslate } from '@/hooks/common-hooks';
 import { useDatasetEditButtonDisabled } from '@/hooks/logic-hooks/use-permission';
-import { cn } from '@/lib/utils';
-import { SearchOutlined } from '@ant-design/icons';
 import { ListFilter, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { ChunkTextMode } from '../../constant';
@@ -83,7 +81,7 @@ export default ({
           <PopoverTrigger asChild>
             <Button
               variant={'ghost'}
-                    disabled={datasetEditButtonDisabled}
+              disabled={datasetEditButtonDisabled}
               // className="bg-bg-card text-text-secondary hover:bg-card"
             >
               <ListFilter />
@@ -96,7 +94,7 @@ export default ({
         <Button
           variant={'ghost'}
           onClick={() => createChunk()}
-                disabled={datasetEditButtonDisabled}
+          disabled={datasetEditButtonDisabled}
           // className="bg-bg-card text-primary hover:bg-card"
         >
           <Plus size={44} />

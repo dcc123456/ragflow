@@ -971,6 +971,7 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
           vlmHttpClient: '通过HTTP客户端连接的视觉语言模型',
         },
       },
+      requestAdminAddModel: '请联系管理员添加模型。',
     },
     message: {
       registered: '注册成功',

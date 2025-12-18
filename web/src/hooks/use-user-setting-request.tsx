@@ -20,12 +20,16 @@ import userService, {
   listTenantUser,
 } from '@/services/user-service';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Modal } from 'antd';
 import DOMPurify from 'dompurify';
 import { isEmpty } from 'lodash';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
 import { history } from 'umi';
+import {
+  useFetchEnableAdmin,
+  useFetchIsAdmin,
+} from './use-private-llm-request';
 
 export const enum UserSettingApiAction {
   UserInfo = 'userInfo',
@@ -72,6 +76,10 @@ export const useFetchTenantInfo = (
   showEmptyModelWarn = false,
 ): ResponseGetType<ITenantInfo> => {
   const { t } = useTranslation();
+  const { data: isAdmin, loading: isAdminLoading } = useFetchIsAdmin();
+  const { data: enableAdmin, loading: enableAdminLoading } =
+    useFetchEnableAdmin();
+
   const { data, isFetching: loading } = useQuery({
     queryKey: [UserSettingApiAction.TenantInfo, showEmptyModelWarn],
     initialData: {},
@@ -82,24 +90,6 @@ export const useFetchTenantInfo = (
         // llm_id is chat_id
         // asr_id is speech2txt
         const { data } = res;
-        if (
-          showEmptyModelWarn &&
-          (isEmpty(data.embd_id) || isEmpty(data.llm_id))
-        ) {
-          Modal.warning({
-            title: t('common.warn'),
-            content: (
-              <div
-                dangerouslySetInnerHTML={{
-                  __html: DOMPurify.sanitize(t('setting.modelProvidersWarn')),
-                }}
-              ></div>
-            ),
-            onOk() {
-              history.push('/user-setting/model');
-            },
-          });
-        }
         data.chat_id = data.llm_id;
         data.speech2text_id = data.asr_id;
 
@@ -109,6 +99,57 @@ export const useFetchTenantInfo = (
       return res ?? {};
     },
   });
+
+  const run = useCallback(() => {
+    if (
+      !isAdminLoading &&
+      !enableAdminLoading &&
+      !loading &&
+      data &&
+      (isEmpty(data.embd_id) || isEmpty(data.llm_id)) &&
+      showEmptyModelWarn
+    ) {
+      if (enableAdmin && !isAdmin) {
+        toast.warning(t('setting.requestAdminAddModel'), {
+          position: 'top-center',
+          closeButton: false,
+          duration: 5000,
+          id: 'model-providers-warn', // Add a unique ID to prevent duplicate toasts
+        });
+      } else {
+        toast.warning(t('common.warn'), {
+          position: 'top-center',
+          closeButton: false,
+          description: (
+            <div
+              dangerouslySetInnerHTML={{
+                __html: DOMPurify.sanitize(t('setting.modelProvidersWarn')),
+              }}
+            ></div>
+          ),
+          action: {
+            label: t('common.confirm'),
+            onClick: () => history.push('/user-setting/model'),
+          },
+          duration: Infinity,
+          id: 'model-providers-warn-admin', // Add a unique ID to prevent duplicate toasts
+        });
+      }
+    }
+  }, [
+    data,
+    enableAdmin,
+    enableAdminLoading,
+    isAdmin,
+    isAdminLoading,
+    loading,
+    showEmptyModelWarn,
+    t,
+  ]);
+
+  useEffect(() => {
+    run();
+  }, [run]);
 
   return { data, loading };
 };
