@@ -104,7 +104,7 @@ def get():
             if chunk:
                 break
         if chunk is None:
-            return server_error_response(Exception("Chunk not found"))
+            return server_error_response(Exception("The chunk is not available with your authorization."))
 
         k = []
         for n in chunk.keys():

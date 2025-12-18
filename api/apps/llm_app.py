@@ -473,10 +473,8 @@ def list_app():
     list all available apps for a user, including joined team (tenant)
     """
     res = {}
+    self_deployed = ["Youdao", "FastEmbed", "BAAI", "Ollama", "Xinference", "LocalAI", "LM-Studio", "GPUStack", "OpenAI-API-Compatible"]
     tenants = UserTenantService.get_tenants_by_user_id(user_id=current_user.id)
-
-    self_deployed = ["Youdao", "FastEmbed", "BAAI", "Ollama", "Xinference", "LocalAI", "LM-Studio", "GPUStack"]
-    weighted = ["Youdao", "FastEmbed", "BAAI"]
     model_type = request.args.get("model_type")
 
     for tenant in tenants:
@@ -495,28 +493,17 @@ def list_app():
                     if p and p[0]:
                         available_fact.append(factory)
                 llms = LLMService.get_all()
-                llms = [m.to_dict() for m in llms if m.status == StatusEnum.VALID.value and m.fid not in weighted]
+                llms = [m.to_dict() for m in llms if m.status == StatusEnum.VALID.value]
                 for m in llms:
                     m["available"] = m["fid"] in available_fact
-                    if not m["available"]:
-                        if m["llm_name"].lower() == "flag-embedding":
-                            if has_permission_for_member(
-                                operator_id=member_id, tenant_id=tenant_id, resource_id="flag-embedding", resource_type=ResourceType.LLM, permission=PermissionValue.PERMISSION_READ
-                            )[0]:
-                                m["available"] = True
-                        elif m["fid"] in self_deployed:
-                            if has_permission_for_member(operator_id=member_id, tenant_id=tenant_id, resource_id=m["fid"], resource_type=ResourceType.LLM, permission=PermissionValue.PERMISSION_READ)[
-                                0
-                            ]:
-                                m["available"] = True
-
-            llm_set = set([m["llm_name"] + "@" + m["fid"] for m in llms])
-            for o in objs:
-                if not o.api_key and o.llm_factory not in weighted:
-                    continue
-                if o.llm_name + "@" + o.llm_factory in llm_set:
-                    continue
-                llms.append({"llm_name": o.llm_name, "model_type": o.model_type, "fid": o.llm_factory, "available": True, "status": StatusEnum.VALID.value})
+            else:
+                llm_set = set([m["llm_name"] + "@" + m["fid"] for m in llms])
+                for o in objs:
+                    if not o.api_key and o.llm_factory not in self_deployed:
+                        continue
+                    if o.llm_name + "@" + o.llm_factory in llm_set:
+                        continue
+                    llms.append({"llm_name": o.llm_name, "model_type": o.model_type, "fid": o.llm_factory, "available": True, "status": StatusEnum.VALID.value})
 
             for m in llms:
                 m["tenant_id"] = tenant_id
