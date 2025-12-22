@@ -33,7 +33,7 @@ export const useCreateSearch = () => {
     mutationFn: async (props) => {
       const { data: response } = await searchService.createSearch(props);
       if (response.code !== 0) {
-        throw new Error(response.message || 'Failed to create search');
+        message.error(t('message.error', { error: response.message }));
       }
       return response.data;
     },

@@ -31,7 +31,7 @@ export function useSelectedIds<T extends Array<{ id: string }>>(
   const selectedIds = useMemo(() => {
     const indexes = Object.keys(rowSelection);
     return list
-      .filter((x, idx) => indexes.some((y) => Number(y) === idx))
+      ?.filter((x, idx) => indexes.some((y) => Number(y) === idx))
       .map((x) => x.id);
   }, [list, rowSelection]);
 

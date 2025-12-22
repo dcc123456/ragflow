@@ -43,7 +43,7 @@ export function ChatList({
 
   return (
     <>
-      {data.dialogs.slice(0, 10).map((x) => (
+      {data.dialogs?.slice(0, 10).map((x) => (
         <HomeCard
           key={x.id}
           data={{
