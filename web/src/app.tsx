@@ -1,7 +1,8 @@
 import { Toaster as Sonner } from '@/components/ui/sonner';
 import { Toaster } from '@/components/ui/toaster';
 import i18n from '@/locales/config';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import QueryClientSingleton from '@/utils/query-client-singleton';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { App, ConfigProvider, ConfigProviderProps, theme } from 'antd';
 import pt_BR from 'antd/lib/locale/pt_BR';
 import deDE from 'antd/locale/de_DE';
@@ -51,7 +52,7 @@ if (process.env.NODE_ENV === 'development') {
   });
 }
 
-const queryClient = new QueryClient();
+const queryClient = QueryClientSingleton.getInstance();
 
 type Locale = ConfigProviderProps['locale'];
 
