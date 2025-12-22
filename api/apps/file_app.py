@@ -388,7 +388,8 @@ async def get(file_id):
                 response.headers.set("Content-Type", content_type)
             return response
         except Exception as e:
-            pass
+            logging.exception(e)
+
     return get_data_error_result(message="""File not found.""")
 
 
