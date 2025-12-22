@@ -368,13 +368,14 @@ async def get(file_id):
     if not check_file_team_permission(file, current_user.id):
         return get_json_result(data=False, message='No authorization.', code=RetCode.AUTHENTICATION_ERROR)
 
-    b, n = File2DocumentService.get_storage_address(file_id=file_id)
-
     for i in range(len(settings.STORAGE_IMPL.conn)):
         try:
             blob = await asyncio.to_thread(settings.STORAGE_IMPL.conn[i].get_object, file.parent_id, file.location)
+            blob = blob.read()
             if not blob:
+                b, n = File2DocumentService.get_storage_address(file_id=file_id)
                 blob = await asyncio.to_thread(settings.STORAGE_IMPL.conn[i].get_object, b, n)
+                blob = blob.read()
             if not blob:
                 continue
             response = await make_response(blob)
