@@ -284,14 +284,14 @@ class TestDatasetCreate:
         payload = {"name": "embedding_model_unset"}
         res = create_dataset(HttpApiAuth, payload)
         assert res["code"] == 0, res
-        assert res["data"]["embedding_model"] == "BAAI/bge-small-en-v1.5@Builtin", res
+        assert res["data"]["embedding_model"] == "BAAI/bge-small-en-v1.5___OpenAI-API@OpenAI-API-Compatible", res
 
     @pytest.mark.p2
     def test_embedding_model_none(self, HttpApiAuth):
         payload = {"name": "embedding_model_none", "embedding_model": None}
         res = create_dataset(HttpApiAuth, payload)
         assert res["code"] == 0, res
-        assert res["data"]["embedding_model"] == "BAAI/bge-small-en-v1.5@Builtin", res
+        assert res["data"]["embedding_model"] == "BAAI/bge-small-en-v1.5___OpenAI-API@OpenAI-API-Compatible", res
 
     @pytest.mark.p1
     @pytest.mark.parametrize(

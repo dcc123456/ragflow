@@ -328,7 +328,7 @@ class TestDatasetUpdate:
 
         res = list_datasets(HttpApiAuth)
         assert res["code"] == 0, res
-        assert res["data"][0]["embedding_model"] == "BAAI/bge-small-en-v1.5@Builtin", res
+        assert res["data"][0]["embedding_model"] == "BAAI/bge-small-en-v1.5___OpenAI-API@OpenAI-API-Compatible", res
 
     @pytest.mark.p1
     @pytest.mark.parametrize(

@@ -105,15 +105,32 @@ def get_my_llms(auth, name):
 
 
 def add_models(auth):
-    url = HOST_ADDRESS + f"/{VERSION}/llm/set_api_key"
+    set_api_key_url = HOST_ADDRESS + f"/{VERSION}/llm/set_api_key"
+    add_llm_url = HOST_ADDRESS + f"/{VERSION}/llm/add_llm"
     authorization = {"Authorization": auth}
-    models_info = {
-        "ZHIPU-AI": {"llm_factory": "ZHIPU-AI", "api_key": ZHIPU_AI_API_KEY},
+    set_api_key_models_info = {
+        "ZHIPU-AI": {"llm_factory": "ZHIPU-AI", "api_key": ZHIPU_AI_API_KEY}
+    }
+    add_llm_models_info = {
+        "OpenAI-API-Compatible":{
+            "llm_factory":"OpenAI-API-Compatible",
+            "api_base":"http://tei:80",
+            "llm_name":"BAAI/bge-small-en-v1.5",
+            "max_tokens":8192,
+            "model_type":"embedding"
+        }
     }
 
-    for name, model_info in models_info.items():
+    for name, model_info in set_api_key_models_info.items():
         if not get_my_llms(auth, name):
-            response = requests.post(url=url, headers=authorization, json=model_info)
+            response = requests.post(url=set_api_key_url, headers=authorization, json=model_info)
+            res = response.json()
+            if res.get("code") != 0:
+                pytest.exit(f"Critical error in add_models: {res.get('message')}")
+
+    for name, model_info in add_llm_models_info.items():
+        if not get_my_llms(auth, name):
+            response = requests.post(url=add_llm_url, headers=authorization, json=model_info)
             res = response.json()
             if res.get("code") != 0:
                 pytest.exit(f"Critical error in add_models: {res.get('message')}")
@@ -141,7 +158,7 @@ def set_tenant_info(auth):
     tenant_info = {
         "tenant_id": tenant_id,
         "llm_id": "glm-4-flash@ZHIPU-AI",
-        "embd_id": "BAAI/bge-small-en-v1.5@Builtin",
+        "embd_id": "BAAI/bge-small-en-v1.5___OpenAI-API@OpenAI-API-Compatible",
         "img2txt_id": "",
         "asr_id": "",
         "tts_id": None,

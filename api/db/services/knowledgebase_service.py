@@ -159,12 +159,6 @@ class KnowledgebaseService(CommonService):
         doc_ids = [doc["document_id"] for doc in doc_ids]
         return doc_ids
 
-    @classmethod
-    @DB.connection_context()
-    def delete_by_id(cls, kb_id):
-        fields = {"update_time": current_timestamp(), "update_date": datetime_format(datetime.now()), "status": StatusEnum.INVALID.value}
-
-        return cls.model.update(**fields).where((cls.model.id == kb_id) & (cls.model.status == StatusEnum.VALID.value)).execute()
 
     @classmethod
     @DB.connection_context()

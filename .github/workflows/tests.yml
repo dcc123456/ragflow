@@ -135,6 +135,8 @@ jobs:
           echo "RAGFLOW_IMAGE=${RAGFLOW_IMAGE}" >> ${GITHUB_ENV}
           sudo docker pull ubuntu:22.04
           sudo DOCKER_BUILDKIT=1 docker build -f Dockerfile -t ${RAGFLOW_IMAGE} .
+          export HTTP_API_TEST_LEVEL=p2
+          echo "HTTP_API_TEST_LEVEL=${HTTP_API_TEST_LEVEL}" >> ${GITHUB_ENV}
           echo "RAGFLOW_CONTAINER=${GITHUB_RUN_ID}-ragflow-cpu-1" >> ${GITHUB_ENV}
 
       - name: Start ragflow:nightly
@@ -188,19 +190,42 @@ jobs:
           echo -e "RABBITMQ_AMQP_PORT=${RABBITMQ_AMQP_PORT}" >> .env
           echo -e "RABBITMQ_MANAGEMENT_PORT=${RABBITMQ_MANAGEMENT_PORT}" >> .env
           echo -e "RABBITMQ_PROMETHEUS_PORT=${RABBITMQ_PROMETHEUS_PORT}" >> .env
+
+          echo -e "COMPOSE_PROFILES=\${COMPOSE_PROFILES},tei-cpu" >> .env
+          echo -e "TEI_MODEL=BAAI/bge-small-en-v1.5" >> .env
           echo -e "RAGFLOW_IMAGE=${RAGFLOW_IMAGE}" >> .env
           echo "HOST_ADDRESS=http://host.docker.internal:${SVR_HTTP_PORT}" >> ${GITHUB_ENV}
 
           sudo docker compose -f docker-compose.yml -p ${GITHUB_RUN_ID} up -d
+          cd ..
+          uv sync --python 3.12 --only-group test --no-default-groups --frozen && uv pip install sdk/python --group test
 
-      - name: Check service availability
-        timeout-minutes: 3
+      # - name: Run sdk tests against Elasticsearch
+      #   run: |
+      #     export http_proxy=""; export https_proxy=""; export no_proxy=""; export HTTP_PROXY=""; export HTTPS_PROXY=""; export NO_PROXY=""
+      #     until curl -s --connect-timeout 5 ${HOST_ADDRESS} > /dev/null; do
+      #       echo "Waiting for service to be available..."
+      #       sleep 5
+      #     done
+      #     source .venv/bin/activate && pytest -s --tb=short --level=${HTTP_API_TEST_LEVEL} test/testcases/test_sdk_api
+
+      # - name: Run frontend api tests against Elasticsearch
+      #   run: |
+      #     export http_proxy=""; export https_proxy=""; export no_proxy=""; export HTTP_PROXY=""; export HTTPS_PROXY=""; export NO_PROXY=""
+      #     until curl -s --connect-timeout 5 ${HOST_ADDRESS} > /dev/null; do
+      #       echo "Waiting for service to be available..."
+      #       sleep 5
+      #     done
+      #     source .venv/bin/activate && pytest -s --tb=short sdk/python/test/test_frontend_api/get_email.py sdk/python/test/test_frontend_api/test_dataset.py
+
+      - name: Run http api tests against Elasticsearch
         run: |
           export http_proxy=""; export https_proxy=""; export no_proxy=""; export HTTP_PROXY=""; export HTTPS_PROXY=""; export NO_PROXY=""
           until curl -s --connect-timeout 5 ${HOST_ADDRESS} > /dev/null; do
             echo "Waiting for service to be available..."
             sleep 5
           done
+          source .venv/bin/activate && pytest -s --tb=short --level=${HTTP_API_TEST_LEVEL} test/testcases/test_http_api
 
       - name: Stop ragflow:nightly
         if: always()  # always run this step even if previous steps failed

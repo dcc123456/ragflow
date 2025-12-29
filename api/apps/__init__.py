@@ -272,8 +272,8 @@ def set_api_limiter():
         app,
         key_function=key_func_global,
         default_limits=[
-            RateLimit(50, timedelta(seconds=1), skip_function=_skip_static),
-            RateLimit(200, timedelta(minutes=1), skip_function=_skip_static),
+            RateLimit(500, timedelta(seconds=1), skip_function=_skip_static),
+            RateLimit(2000, timedelta(minutes=1), skip_function=_skip_static),
         ],
         store=RedisStore(f"redis://:{redis_password}@{redis_host}/{redis_db}")
     )
