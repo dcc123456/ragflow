@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>简单HTML模板</title>
+  </head>
+  <body>
+    <iframe
+      src="http://localhost:9222/next-chats/widget?shared_id=9f929385e24711f08b3a1269ce135b8f&from=chat&auth=0E7O0KP655dgrz4IXop6ui6M9V_rqTQw&mode=master&streaming=false"
+      style="
+        position: fixed;
+        bottom: 0;
+        right: 0;
+        width: 100px;
+        height: 100px;
+        border: none;
+        background: transparent;
+        z-index: 9999;
+      "
+      frameborder="0"
+      allow="microphone;camera"
+    ></iframe>
+    <script>
+      window.addEventListener('message', (e) => {
+        if (e.origin !== 'http://localhost:9222') return;
+        if (e.data.type === 'CREATE_CHAT_WINDOW') {
+          if (document.getElementById('chat-win')) return;
+          const i = document.createElement('iframe');
+          i.id = 'chat-win';
+          i.src = e.data.src;
+          i.style.cssText =
+            'position:fixed;bottom:104px;right:24px;width:380px;height:500px;border:none;background:transparent;z-index:9998;display:none';
+          i.frameBorder = '0';
+          i.allow = 'microphone;camera';
+          document.body.appendChild(i);
+        } else if (e.data.type === 'TOGGLE_CHAT') {
+          const w = document.getElementById('chat-win');
+          if (w) w.style.display = e.data.isOpen ? 'block' : 'none';
+        } else if (e.data.type === 'SCROLL_PASSTHROUGH')
+          window.scrollBy(0, e.data.deltaY);
+      });
+    </script>
+    <h1>欢迎使用HTML模板</h1>
+    <p>这是一个最简单的HTML页面模板</p>
+  </body>
+</html>
