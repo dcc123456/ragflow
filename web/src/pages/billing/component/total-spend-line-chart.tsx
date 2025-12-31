@@ -24,15 +24,17 @@ const TotalSpendLineChart = (props: ITotalSpendLineChartProps) => {
   return (
     <div
       ref={totalSpendRef}
-      className="total-spend bg-white/10 pt-4 pr-4 pb-4 pl-1 rounded mb-4 w-full"
+      className="total-spend bg-bg-card pt-4 pr-4 pb-4 pl-1 rounded mb-4 w-full"
     >
       <div className="flex justify-start items-start pl-3">
         <div className="p-1 border rounded">
           <ChartSpline size={16} />
         </div>
         <div className="ml-2">
-          <h2 className="text-white text-lg font-semibold mb-1">{title}</h2>
-          <p className="text-muted-foreground">{desc}</p>
+          <h2 className="text-text-primary text-lg font-semibold mb-1">
+            {title}
+          </h2>
+          <p className="text-text-secondary">{desc}</p>
         </div>
       </div>
 

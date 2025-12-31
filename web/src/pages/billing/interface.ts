@@ -35,10 +35,12 @@ export interface ITotalSpendLineChart {
   value: number;
 }
 
-export interface IDeepDocSpendLineChart {
-  data: Array<{ name: string; spend: number; pages: number }>;
-  pages: number;
-  value: number;
+export interface ICategoriesChart {
+  title: string;
+  desc: string;
+  series: Array<{ name: string; spend: number; quantity: number }>;
+  // pages: number;
+  // value: number;
 }
 export interface IEmbeddingSpendLineChart {
   data: Array<{ name: string; spend: number; tokens: number }>;
@@ -63,4 +65,31 @@ export interface ITableInvoice {
   status: string;
   amount: string;
   invoiceLink?: string;
+}
+
+export interface SpendSeries {
+  date: string;
+  spend: number;
+}
+
+export interface QuantitySeries {
+  date: string;
+  quantity: number;
+}
+
+export interface Category {
+  product_name: string;
+  unit: string;
+  total_spend: number;
+  total_quantity: number;
+  series: SpendSeries[];
+  quantity_series: QuantitySeries[];
+}
+
+export interface UsageData {
+  tenant_id: string;
+  currency: string;
+  total_spend: number;
+  series: SpendSeries[];
+  categories: Category[];
 }

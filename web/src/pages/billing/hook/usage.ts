@@ -1,13 +1,11 @@
 import { DateRange } from '@/components/originui/calendar';
 import billingService from '@/services/price';
-import { formatPureDate } from '@/utils/date';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import {
-  IDeepDocSpendLineChart,
-  IEmbeddingSpendLineChart,
+  ICategoriesChart,
   ITotalSpendLineChart,
-  Invoice,
+  UsageData,
 } from '../interface';
 const totalSpendLineChart1 = {
   data: [],
@@ -31,7 +29,15 @@ export const useAllSpends = (currentDate: DateRange, force?: boolean) => {
   const { start, end } = getDate(currentDate);
   const [totalSpendLineChart, setTotalSpendLineChart] =
     useState<ITotalSpendLineChart>(totalSpendLineChart1);
-  const { data, isFetching: loading } = useQuery<Invoice[]>({
+
+  const [categoriesChart, setCategoriesChart] = useState<ICategoriesChart[]>([
+    {
+      title: '',
+      desc: '',
+      series: [],
+    },
+  ]);
+  const { data, isFetching: loading } = useQuery<UsageData>({
     queryKey: ['getAllSpends', currentDate],
     // initialData: {},
     gcTime: force ? 0 : 50000,
@@ -55,130 +61,40 @@ export const useAllSpends = (currentDate: DateRange, force?: boolean) => {
       value: 0,
     };
     if (data) {
-      data.forEach((item) => {
+      data.series.forEach((item) => {
         totalSpendLineChartData.data.push({
-          name: formatPureDate(item.created_at * 1000),
-          spend: item.amount,
+          name: item.date,
+          spend: item.spend,
         });
-        totalSpendLineChartData.value += item.amount;
       });
+      totalSpendLineChartData.value = data.total_spend;
     }
     setTotalSpendLineChart(totalSpendLineChartData);
-  }, [data]);
 
-  return { totalSpendLineChart, loading };
-};
-
-export const useDeepDocSpends = (currentDate: DateRange, force?: boolean) => {
-  const deepDocBarChart1 = {
-    data: [
-      { name: 'Apr 5', pages: 10, spend: 12.85 },
-      { name: 'Apr 10', pages: 15, spend: 12.85 },
-      { name: 'Apr 15', pages: 8, spend: 12.85 },
-      { name: 'Apr 20', pages: 12, spend: 12.85 },
-      { name: 'Apr 25', pages: 14, spend: 12.85 },
-      { name: 'Apr 26', pages: 14, spend: 12.85 },
-      { name: 'Apr 27', pages: 14, spend: 12.85 },
-    ],
-    value: 12.85,
-    pages: 999,
-  } as IDeepDocSpendLineChart;
-  const [deepDocBarChart, setDeepDocBarChart] =
-    useState<IDeepDocSpendLineChart>(deepDocBarChart1);
-  const { start, end } = getDate(currentDate);
-  const { data, isFetching: loading } = useQuery<Invoice[]>({
-    queryKey: ['getDeepDocSpends', currentDate],
-    // initialData: {},
-    gcTime: force ? 0 : 50000,
-    queryFn: async () => {
-      const { data: res } = await billingService.planSpendOverview({
-        start,
-        end,
-      });
-      console.log('spendData', data, res);
-      if (res.code === 0) {
-        const { data } = res;
-        // storage.setPricePlan(JSON.stringify(data));
-        return data;
-      }
-    },
-  });
-
-  useEffect(() => {
-    let deepDocBarChart: IDeepDocSpendLineChart = {
-      data: [],
-      pages: 0,
-      value: 0,
-    };
+    const categoriesChartTemp: ICategoriesChart[] = [];
     if (data) {
-      data.forEach((item) => {
-        deepDocBarChart.data.push({
-          name: formatPureDate(item.created_at * 1000),
-          pages: item.pages || 0,
-          spend: item.amount,
+      data.categories.forEach((item) => {
+        let barChart: ICategoriesChart = {
+          title: '',
+          desc: '',
+          series: [],
+        };
+        barChart.title = item.product_name;
+        barChart.desc = `$${item.total_spend?.toFixed(2)} Total ${item.total_quantity} ${item.unit}`;
+        item?.series.forEach((series) => {
+          const date = series.date;
+          const quantity = item.quantity_series.find((x) => x.date === date);
+          barChart.series.push({
+            name: date,
+            quantity: quantity?.quantity || 0,
+            spend: series.spend || 0,
+          });
         });
-        deepDocBarChart.value += item.amount;
+        categoriesChartTemp.push(barChart);
       });
     }
-    setDeepDocBarChart(deepDocBarChart);
+    setCategoriesChart(categoriesChartTemp);
   }, [data]);
 
-  return { deepDocBarChart, loading };
-};
-
-export const useEmbeddingSpends = (currentDate: DateRange, force?: boolean) => {
-  const embeddingBarChart1 = {
-    data: [
-      { name: 'Apr 5', tokens: 10, spend: 12.85 },
-      { name: 'Apr 10', tokens: 15, spend: 12.85 },
-      { name: 'Apr 15', tokens: 8, spend: 12.85 },
-      { name: 'Apr 20', tokens: 12, spend: 12.85 },
-      { name: 'Apr 25', tokens: 14, spend: 12.85 },
-      { name: 'Apr 26', tokens: 14, spend: 12.85 },
-      { name: 'Apr 27', tokens: 14, spend: 12.85 },
-    ],
-    value: 12.85,
-    tokens: 999,
-  } as IEmbeddingSpendLineChart;
-  const [embeddingBarChart, setEmbeddingBarChart] =
-    useState<IEmbeddingSpendLineChart>(embeddingBarChart1);
-  const { start, end } = getDate(currentDate);
-  const { data, isFetching: loading } = useQuery<Invoice[]>({
-    queryKey: ['getEmbeddingSpends', currentDate],
-    // initialData: {},
-    gcTime: force ? 0 : 50000,
-    queryFn: async () => {
-      const { data: res } = await billingService.planSpendOverview({
-        start,
-        end,
-      });
-      console.log('spendData', data, res);
-      if (res.code === 0) {
-        const { data } = res;
-        // storage.setPricePlan(JSON.stringify(data));
-        return data;
-      }
-    },
-  });
-
-  useEffect(() => {
-    let embeddingBarChart: IEmbeddingSpendLineChart = {
-      data: [],
-      tokens: 0,
-      value: 0,
-    };
-    if (data) {
-      data.forEach((item) => {
-        embeddingBarChart.data.push({
-          name: formatPureDate(item.created_at * 1000),
-          tokens: item.tokens || 0,
-          spend: item.amount,
-        });
-        embeddingBarChart.value += item.amount;
-      });
-    }
-    setEmbeddingBarChart(embeddingBarChart);
-  }, [data]);
-
-  return { embeddingBarChart, loading };
+  return { totalSpendLineChart, categoriesChart, loading };
 };

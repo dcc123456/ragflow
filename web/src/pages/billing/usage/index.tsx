@@ -1,15 +1,10 @@
 import { DateRange } from '@/components/originui/calendar';
 import { subDays } from 'date-fns';
 import { useState } from 'react';
-import DeepDocBarChart from '../component/deep-doc-bar-chart';
-import EmbeddingTokenBarChart from '../component/embedding-token-bar-chart';
+import CustomBarChart from '../component/bar-chart';
 import TimeRangePicker from '../component/time-range-picker';
 import TotalSpendLineChart from '../component/total-spend-line-chart';
-import {
-  useAllSpends,
-  useDeepDocSpends,
-  useEmbeddingSpends,
-} from '../hook/usage';
+import { useAllSpends } from '../hook/usage';
 
 const today = new Date();
 // const yesterday = {
@@ -43,9 +38,9 @@ const last7Days = {
 const UsagePage = () => {
   const [currentDate, setCurrentDate] = useState<DateRange>(last7Days);
 
-  const { totalSpendLineChart } = useAllSpends(currentDate);
-  const { deepDocBarChart } = useDeepDocSpends(currentDate);
-  const { embeddingBarChart } = useEmbeddingSpends(currentDate);
+  const { totalSpendLineChart, categoriesChart } = useAllSpends(currentDate);
+  // const { deepDocBarChart } = useDeepDocSpends(currentDate);
+  // const { embeddingBarChart } = useEmbeddingSpends(currentDate);
 
   const handleDateRangeChange = ({
     from: startDate,
@@ -74,7 +69,17 @@ const UsagePage = () => {
       />
       <h1 className="text-2xl font-bold mb-4 mt-9">Spend Categories</h1>
       <div className="grid grid-cols-2 gap-4">
-        <DeepDocBarChart
+        {categoriesChart &&
+          categoriesChart?.length &&
+          categoriesChart.map((item, index) => (
+            <CustomBarChart
+              key={index}
+              data={item.series}
+              title={item.title}
+              desc={item.desc}
+            />
+          ))}
+        {/* <DeepDocBarChart
           data={deepDocBarChart.data}
           title={'DeepDoc'}
           desc={`$${deepDocBarChart.value?.toFixed(2)} Total ${deepDocBarChart.pages} Pages`}
@@ -83,7 +88,7 @@ const UsagePage = () => {
           data={embeddingBarChart.data}
           title={'Embedding'}
           desc={`$${embeddingBarChart.value?.toFixed(2)} Total ${embeddingBarChart.tokens} Tokens`}
-        />
+        /> */}
       </div>
     </div>
   );

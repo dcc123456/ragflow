@@ -11,6 +11,7 @@ const {
   plan_list,
   plan_spend_overview,
   getUpComming,
+  spendHistory,
 } = api;
 const methods = {
   billinCheckout: {
@@ -27,11 +28,16 @@ const methods = {
   },
   planSpendOverview: {
     url: plan_spend_overview,
+    headers: { 'Content-Type': 'application/json' },
     method: 'get',
   },
   getUpComming: {
     url: getUpComming,
     method: 'post',
+  },
+  spendHistory: {
+    url: spendHistory,
+    method: 'get',
   },
 };
 const billingService = registerServer<keyof typeof methods>?.(methods, request);
