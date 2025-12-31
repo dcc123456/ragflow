@@ -445,7 +445,24 @@ class LLM4Tenant:
         e, tenant = TenantService.get_by_id(tenant_id)
         if not e or not tenant:
             raise ValueError("Internal error")
-        llm_id = llm_name or tenant.llm_id
+        if llm_name:
+            llm_id = llm_name
+        elif llm_type == LLMType.EMBEDDING:
+            llm_id = tenant.embd_id
+        elif llm_type == LLMType.SPEECH2TEXT:
+            llm_id = tenant.asr_id
+        elif llm_type == LLMType.IMAGE2TEXT:
+            llm_id = tenant.img2txt_id
+        elif llm_type == LLMType.CHAT:
+            llm_id = tenant.llm_id
+        elif llm_type == LLMType.RERANK:
+            llm_id = tenant.rerank_id
+        elif llm_type == LLMType.TTS:
+            llm_id = tenant.tts_id
+        elif llm_type == LLMType.OCR:
+            llm_id = llm_name
+        else:
+            assert False, "LLM type error"
         self.llm_name, factory, other_tenant_id = TenantLLMService.split_model_name_and_factory(llm_id)
 
         langfuse_keys = TenantLangfuseService.filter_by_tenant(tenant_id=tenant_id)
