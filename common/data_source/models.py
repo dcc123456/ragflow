@@ -94,7 +94,10 @@ class Document(BaseModel):
     blob: bytes
     doc_updated_at: datetime
     size_bytes: int
+    externale_access: Optional[ExternalAccess] = None
+    primary_owners: Optional[list] = None
     metadata: Optional[dict[str, Any]] = None
+    doc_metadata: Optional[dict[str, Any]] = None
 
 
 class BasicExpertInfo(BaseModel):
@@ -180,6 +183,7 @@ class NotionPage(BaseModel):
     archived: bool
     properties: dict[str, Any]
     url: str
+    parent: Optional[dict[str, Any]] = None  # Parent reference for path reconstruction
     database_name: Optional[str] = None  # Only applicable to database type pages
 
 

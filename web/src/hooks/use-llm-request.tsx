@@ -51,23 +51,7 @@ export const useFetchLlmList = (modelType?: LlmModelType) => {
 
   return data;
 };
-export const useSelectLlmOptions = () => {
-  const llmInfo: IThirdOAIModelCollection = useFetchLlmList();
-  const embeddingModelOptions = useMemo(() => {
-    return Object.entries(llmInfo).map(([key, value]) => {
-      return {
-        label: key,
-        options: value.map((x) => ({
-          label: getRealModelName(x.llm_name),
-          value: buildLlmId(x),
-          disabled: !x.available,
-        })),
-      };
-    });
-  }, [llmInfo]);
 
-  return embeddingModelOptions;
-};
 type IThirdOAIModelWithUuid = IThirdOAIModel & { uuid: string };
 
 export function useSelectFlatLlmList(modelType?: LlmModelType) {

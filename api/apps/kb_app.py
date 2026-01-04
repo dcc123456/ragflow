@@ -14,7 +14,6 @@
 #  limitations under the License.
 #
 import json
-import os
 import logging
 import random
 import re
@@ -48,9 +47,9 @@ from common.misc_utils import get_uuid
 from rag.nlp import search
 from api.constants import DATASET_NAME_LIMIT
 from rag.utils.redis_conn import REDIS_CONN
-from rag.utils.doc_store_conn import OrderByExpr
 from common.constants import RetCode, PipelineTaskType, StatusEnum, VALID_TASK_STATUS, FileSource, LLMType, PAGERANK_FLD
 from common import settings
+from common.doc_store.doc_store_base import OrderByExpr
 from api.apps import login_required, current_user
 
 
@@ -164,22 +163,39 @@ async def update():
         return get_data_error_result(
             message=f"Dataset name length is {len(req['name'])} which is large than {DATASET_NAME_LIMIT}")
     req["name"] = req["name"].strip()
-    kb_id = req.get("kb_id")
-    tenant_id = g.tenant_id
-
     if "operator_permission" in req:
         req.pop("operator_permission", None)
 
     try:
-        e, kb = KnowledgebaseService.get_by_id(kb_id)
-        if not (e and kb):
-            return get_data_error_result(message="Can't find this knowledgebase!")
+        if not KnowledgebaseService.query(
+                created_by=current_user.id, id=req["kb_id"]):
+            return get_json_result(
+                data=False, message='Only owner of dataset authorized for this operation.',
+                code=RetCode.OPERATING_ERROR)
 
-        if req.get("parser_id", "") == "tag" and os.environ.get("DOC_ENGINE", "elasticsearch") == "infinity":
-            return get_json_result(data=False, message="The chunk method Tag has not been supported by Infinity yet.", code=RetCode.OPERATING_ERROR)
+        e, kb = KnowledgebaseService.get_by_id(req["kb_id"])
 
-        if req["name"].lower() != kb.name.lower() and len(KnowledgebaseService.query(name=req["name"], tenant_id=tenant_id, status=StatusEnum.VALID.value)) > 1:
-            return get_data_error_result(message="Duplicated knowledgebase name.")
+        # Rename folder in FileService
+        if e and req["name"].lower() != kb.name.lower():
+            FileService.filter_update(
+                [
+                    File.tenant_id == kb.tenant_id,
+                    File.source_type == FileSource.KNOWLEDGEBASE,
+                    File.type == "folder",
+                    File.name == kb.name,
+                ],
+                {"name": req["name"]},
+            )
+
+        if not e:
+            return get_data_error_result(
+                message="Can't find this dataset!")
+
+        if req["name"].lower() != kb.name.lower() \
+                and len(
+            KnowledgebaseService.query(name=req["name"], tenant_id=current_user.id, status=StatusEnum.VALID.value)) >= 1:
+            return get_data_error_result(
+                message="Duplicated dataset name.")
 
         del req["kb_id"]
         connectors = []
@@ -223,6 +239,21 @@ async def update():
         return server_error_response(e)
 
 
+@manager.route('/update_metadata_setting', methods=['post'])  # noqa: F821
+@login_required
+@validate_request("kb_id", "metadata")
+async def update_metadata_setting():
+    req = await get_request_json()
+    e, kb = KnowledgebaseService.get_by_id(req["kb_id"])
+    if not e:
+        return get_data_error_result(
+            message="Database error (Knowledgebase rename)!")
+    kb = kb.to_dict()
+    kb["parser_config"]["metadata"] = req["metadata"]
+    KnowledgebaseService.update_by_id(kb["id"], kb)
+    return get_json_result(data=kb)
+
+
 @manager.route('/detail', methods=['GET'])  # noqa: F821
 @login_required
 @kb_role_guard
@@ -236,6 +267,15 @@ def detail():
         return get_data_error_result(message="Unrecognized identification.")
 
     try:
+        tenants = UserTenantService.query(user_id=current_user.id)
+        for tenant in tenants:
+            if KnowledgebaseService.query(
+                    tenant_id=tenant.tenant_id, id=kb_id):
+                break
+        else:
+            return get_json_result(
+                data=False, message='Only owner of dataset authorized for this operation.',
+                code=RetCode.OPERATING_ERROR)
         kb = KnowledgebaseService.get_detail(kb_id)
         if not kb:
             return get_data_error_result(message="Can't find this knowledgebase!")
@@ -347,7 +387,7 @@ async def rm():
             created_by=current_user.id, id=req["kb_id"])
         if not kbs:
             return get_json_result(
-                data=False, message='Only owner of knowledgebase authorized for this operation.',
+                data=False, message='Only owner of dataset authorized for this operation.',
                 code=RetCode.OPERATING_ERROR)
 
         def _rm_sync():
@@ -479,7 +519,6 @@ async def rm_tags(kb_id):
 @check_kb_permission(permission=PermissionValue.PERMISSION_MANAGE)
 async def rename_tags(kb_id):
     req = await get_request_json()
-
     e, kb = KnowledgebaseService.get_by_id(kb_id)
 
     settings.docStoreConn.update({"tag_kwd": req["from_tag"], "kb_id": [kb_id]},
@@ -498,7 +537,7 @@ def knowledge_graph(kb_id):
     req = {"kb_id": [kb_id], "knowledge_graph_kwd": ["graph"]}
 
     obj = {"graph": {}, "mind_map": {}}
-    if not settings.docStoreConn.indexExist(search.index_name(kb.tenant_id), kb_id):
+    if not settings.docStoreConn.index_exist(search.index_name(kb.tenant_id), kb_id):
         return get_json_result(data=obj)
     sres = settings.retriever.search(req, search.index_name(kb.tenant_id), [kb_id])
     if not len(sres.ids):
@@ -985,11 +1024,11 @@ async def check_embedding():
         index_nm = search.index_name(tenant_id)
 
         res0 = docStoreConn.search(
-            selectFields=[], highlightFields=[],
+            select_fields=[], highlight_fields=[],
             condition={"kb_id": kb_id, "available_int": 1},
-            matchExprs=[], orderBy=OrderByExpr(),
+            match_expressions=[], order_by=OrderByExpr(),
             offset=0, limit=1,
-            indexNames=index_nm, knowledgebaseIds=[kb_id]
+            index_names=index_nm, knowledgebase_ids=[kb_id]
         )
         total = docStoreConn.get_total(res0)
         if total <= 0:
@@ -1001,14 +1040,14 @@ async def check_embedding():
 
         for off in offsets:
             res1 = docStoreConn.search(
-                selectFields=list(base_fields),
-                highlightFields=[],
+                select_fields=list(base_fields),
+                highlight_fields=[],
                 condition={"kb_id": kb_id, "available_int": 1},
-                matchExprs=[], orderBy=OrderByExpr(),
+                match_expressions=[], order_by=OrderByExpr(),
                 offset=off, limit=1,
-                indexNames=index_nm, knowledgebaseIds=[kb_id]
+                index_names=index_nm, knowledgebase_ids=[kb_id]
             )
-            ids = docStoreConn.get_chunk_ids(res1)
+            ids = docStoreConn.get_doc_ids(res1)
             if not ids:
                 continue
 

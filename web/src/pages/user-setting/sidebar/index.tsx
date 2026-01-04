@@ -37,15 +37,14 @@ const menuItems = (t: TFunction) => [
   // { icon: Cog, label: t('setting.system'), key: Routes.System },
   // { icon: Banknote, label: 'Plan', key: Routes.Plan },
 ];
-
 export function SideBar() {
   const pathName = useSecondPathName();
   const { data: userInfo } = useFetchUserInfo();
   const { handleMenuClick, active } = useHandleMenuClick();
   const { version, fetchSystemVersion } = useFetchSystemVersion();
+  const { t } = useTranslation();
   const { data: isAdmin } = useFetchIsAdmin();
   const { data: enableAdmin } = useFetchEnableAdmin();
-  const { t } = useTranslation();
 
   useEffect(() => {
     if (location.host !== Domain) {

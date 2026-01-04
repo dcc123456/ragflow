@@ -20,6 +20,7 @@ import time
 import peewee
 from peewee import IntegrityError
 from langfuse import Langfuse
+
 from common import settings
 from peewee import JOIN
 
@@ -30,9 +31,9 @@ from api.db.db_models import DB, LLMFactories, TenantLLM
 from api.db.services.common_service import CommonService
 from api.db.services.langfuse_service import TenantLangfuseService
 from api.db.services.user_service import UserTenantService
-from common.misc_utils import get_uuid
 from common.constants import StatusEnum
 from api.db.services.user_service import TenantService
+from common.misc_utils import get_uuid
 from rag.llm import ChatModel, CvModel, EmbeddingModel, OcrModel, RerankModel, Seq2txtModel, TTSModel
 
 
@@ -358,12 +359,16 @@ class TenantLLMService(CommonService):
 
     @staticmethod
     def llm_id2llm_type(llm_id: str) -> str | None:
+        from api.db.services.llm_service import LLMService
         llm_id, *_ = TenantLLMService.split_model_name_and_factory(llm_id)
         llm_factories = settings.FACTORY_LLM_INFOS
         for llm_factory in llm_factories:
             for llm in llm_factory["llm"]:
                 if llm_id == llm["llm_name"]:
                     return llm["model_type"].split(",")[-1]
+
+        for llm in LLMService.query(llm_name=llm_id):
+            return llm.model_type
 
         llm = TenantLLMService.get_or_none(llm_name=llm_id)
         if llm:

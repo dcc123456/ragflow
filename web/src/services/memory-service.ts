@@ -1,6 +1,6 @@
 import api from '@/utils/api';
+import request from '@/utils/next-request';
 import { registerNextServer } from '@/utils/register-server';
-import request from '@/utils/request';
 
 const {
   createMemory,
@@ -11,6 +11,7 @@ const {
   getMemoryConfig,
   deleteMemoryMessage,
   getMessageContent,
+  updateMessageState,
   // getMemoryDetailShare,
 } = api;
 const methods = {
@@ -29,10 +30,11 @@ const methods = {
   },
   deleteMemoryMessage: { url: deleteMemoryMessage, method: 'delete' },
   getMessageContent: { url: getMessageContent, method: 'get' },
+  updateMessageState: { url: updateMessageState, method: 'put' },
 } as const;
 const memoryService = registerNextServer<keyof typeof methods>(methods);
 export const updateMemoryById = (id: string, data: any) => {
-  return request.put(updateMemorySetting(id), { data });
+  return request.put(updateMemorySetting(id), { ...data });
 };
 export const getMemoryDetailById = (id: string, data: any) => {
   return request.get(getMemoryDetail(id), { params: data });

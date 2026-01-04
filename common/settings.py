@@ -38,6 +38,8 @@ from rag.utils.s3_conn import RAGFlowS3
 from rag.utils.oss_conn import RAGFlowOSS
 
 from rag.nlp import search
+import memory.utils.es_conn as memory_es_conn
+import memory.utils.infinity_conn as memory_infinity_conn
 
 DEFAULT_ROLE = os.environ.get("DEFAULT_ROLE", "owner")
 ENABLE_WHITELIST = int(os.environ.get('ENABLE_WHITELIST', "0"))
@@ -87,6 +89,7 @@ DOC_ENGINE_INFINITY = (DOC_ENGINE.lower() == "infinity")
 
 
 docStoreConn = None
+msgStoreConn = None
 
 retriever = None
 kg_retriever = None
@@ -154,7 +157,6 @@ def _get_or_create_secret_key():
     new_key = secrets.token_hex(32)
     logging.warning("SECURITY WARNING: Using auto-generated SECRET_KEY.")
     return new_key
-
 
 class StorageFactory:
     storage_mapping = {
@@ -267,6 +269,15 @@ def init_settings():
     else:
         raise Exception(f"Not supported doc engine: {DOC_ENGINE}")
 
+    global msgStoreConn
+    # use the same engine for message store
+    if DOC_ENGINE == "elasticsearch":
+        ES = get_base_config("es", {})
+        msgStoreConn = memory_es_conn.ESConnection()
+    elif DOC_ENGINE == "infinity":
+        INFINITY = get_base_config("infinity", {"uri": "infinity:23817"})
+        msgStoreConn = memory_infinity_conn.InfinityConnection()
+
     global AZURE, S3, MINIO, OSS, GCS
     if STORAGE_IMPL_TYPE in ['AZURE_SPN', 'AZURE_SAS']:
         AZURE = get_base_config("azure", {})
@@ -357,6 +368,8 @@ def init_settings():
     DOC_BULK_SIZE = int(os.environ.get("DOC_BULK_SIZE", 4))
     EMBEDDING_BATCH_SIZE = int(os.environ.get("EMBEDDING_BATCH_SIZE", 16))
 
+    os.environ["DOTNET_SYSTEM_GLOBALIZATION_INVARIANT"] = "1"
+
 
 def check_and_install_torch():
     global PARALLEL_DEVICES
@@ -397,7 +410,6 @@ def _resolve_per_model_config(entry_dict, backup_factory, backup_api_key, backup
         "api_key": m_api_key,
         "base_url": m_base_url,
     }
-
 
 def print_rag_settings():
     logging.info(f"MAX_CONTENT_LENGTH: {DOC_MAXIMUM_SIZE}")

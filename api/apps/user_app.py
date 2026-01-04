@@ -1086,6 +1086,8 @@ async def forget_reset_password():
     return await construct_response(data=user.to_json(), auth=user.get_id(), message=msg)
 
 
+
+
 @manager.route("/is_admin", methods=["GET"])  # noqa: F821
 @login_required
 def is_admin():

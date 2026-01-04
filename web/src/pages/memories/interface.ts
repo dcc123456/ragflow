@@ -16,7 +16,7 @@ export interface MemoryListParams {
 export type MemoryType = 'raw' | 'semantic' | 'episodic' | 'procedural';
 export type StorageType = 'table' | 'graph';
 export type Permissions = 'me' | 'team';
-export type ForgettingPolicy = 'fifo' | 'lru';
+export type ForgettingPolicy = 'FIFO' | 'LRU';
 export interface ICreateMemoryProps {
   name: string;
   memory_type: MemoryType[];
@@ -36,12 +36,14 @@ export interface IMemory extends ICreateMemoryProps {
   temperature: string;
   system_prompt: string;
   user_prompt: string;
+  create_date: string;
+  create_time: number;
 }
 export interface MemoryListResponse {
   code: number;
   data: {
     memory_list: Array<IMemory>;
-    total: number;
+    total_count: number;
   };
   message: string;
 }

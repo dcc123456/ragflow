@@ -1,9 +1,8 @@
-import { DynamicForm, DynamicFormRef } from '@/components/dynamic-form';
-import { useModelOptions } from '@/components/llm-setting-items/llm-form-field';
+import { DynamicForm } from '@/components/dynamic-form';
 import { HomeIcon } from '@/components/svg-icon';
 import { Modal } from '@/components/ui/modal/modal';
-import { t } from 'i18next';
-import { memo, useCallback, useMemo, useState } from 'react';
+import { memo, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { createMemoryFields } from './constants';
 import { IMemory } from './interface';
 
@@ -17,35 +16,31 @@ type IProps = {
 };
 export const AddOrEditModal = memo((props: IProps) => {
   const { open, onClose, onSubmit, initialMemory, isCreate } = props;
-  const [formInstance, setFormInstance] = useState<DynamicFormRef | null>(null);
-
-  const formCallbackRef = useCallback((node: DynamicFormRef | null) => {
-    if (node) {
-      // formRef.current = node;
-      setFormInstance(node);
-    }
-  }, []);
-  const { modelOptions } = useModelOptions();
+  const { t } = useTranslation();
+  // const { modelOptions } = useModelOptions();
 
   const fields = useMemo(() => {
     if (!isCreate) {
-      return createMemoryFields.filter((field: any) => field.name === 'name');
+      return createMemoryFields(t).filter(
+        (field: any) => field.name === 'name',
+      );
     } else {
-      const tempFields = createMemoryFields.map((field: any) => {
-        if (field.name === 'llm_id') {
-          return {
-            ...field,
-            options: modelOptions,
-          };
-        } else {
-          return {
-            ...field,
-          };
-        }
-      });
-      return tempFields;
+      // const tempFields = createMemoryFields(t).map((field: any) => {
+      //   if (field.name === 'llm_id') {
+      //     return {
+      //       ...field,
+      //       options: modelOptions,
+      //     };
+      //   } else {
+      //     return {
+      //       ...field,
+      //     };
+      //   }
+      // });
+      // return tempFields;
+      return createMemoryFields(t);
     }
-  }, [modelOptions, isCreate]);
+  }, [isCreate, t]);
 
   return (
     <Modal
@@ -57,14 +52,13 @@ export const AddOrEditModal = memo((props: IProps) => {
           <div>
             <HomeIcon name="memory" width={'24'} />
           </div>
-          {t('memories.createMemory')}
+          {isCreate ? t('memories.createMemory') : t('memories.editName')}
         </div>
       }
       showfooter={false}
       confirmLoading={props.loading}
     >
       <DynamicForm.Root
-        ref={formCallbackRef}
         fields={fields}
         onSubmit={() => {}}
         defaultValues={initialMemory}

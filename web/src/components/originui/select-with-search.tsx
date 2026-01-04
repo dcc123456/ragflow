@@ -109,6 +109,19 @@ export const SelectWithSearch = forwardRef<
       }
     }, [options, value]);
 
+    const showSearch = useMemo(() => {
+      if (Array.isArray(options) && options.length > 5) {
+        return true;
+      }
+      if (Array.isArray(options)) {
+        const optionsNum = options.reduce((acc, option) => {
+          return acc + (option?.options?.length || 0);
+        }, 0);
+        return optionsNum > 5;
+      }
+      return false;
+    }, [options]);
+
     const handleSelect = useCallback(
       (val: string) => {
         setValue(val);
@@ -179,7 +192,7 @@ export const SelectWithSearch = forwardRef<
           align="start"
         >
           <Command className="p-5">
-            {options && options.length > 0 && (
+            {showSearch && (
               <CommandInput
                 placeholder={t('common.search') + '...'}
                 className=" placeholder:text-text-disabled"
@@ -193,7 +206,7 @@ export const SelectWithSearch = forwardRef<
                 if (group.options) {
                   return (
                     <Fragment key={idx}>
-                      <CommandGroup heading={group.label}>
+                      <CommandGroup heading={group.label} className="mb-1">
                         {group.options.map((option) => (
                           <CommandItem
                             key={option.value}
@@ -221,11 +234,9 @@ export const SelectWithSearch = forwardRef<
                       value={group.value}
                       disabled={group.disabled}
                       onSelect={handleSelect}
-                      className={
-                        value === group.value
-                          ? 'bg-bg-card min-h-10'
-                          : 'min-h-10'
-                      }
+                      className={cn('mb-1 min-h-10 ', {
+                        'bg-bg-card ': value === group.value,
+                      })}
                     >
                       <span className="leading-none">{group.label}</span>
 

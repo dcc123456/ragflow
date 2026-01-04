@@ -1,8 +1,13 @@
+import { useIsDarkTheme } from '@/components/theme-provider';
 import { useSetModalState, useTranslate } from '@/hooks/common-hooks';
+import { LangfuseCard } from '@/pages/user-setting/setting-model/langfuse';
+import apiDoc from '@parent/docs/references/http_api_reference.md';
+import MarkdownPreview from '@uiw/react-markdown-preview';
 import { Button, Card, Flex, Space } from 'antd';
 import ChatApiKeyModal from '../chat-api-key-modal';
 import { usePreviewChat } from '../hooks';
 import BackendServiceApi from './backend-service-api';
+import MarkdownToc from './markdown-toc';
 
 const ApiContent = ({
   id,
@@ -24,8 +29,10 @@ const ApiContent = ({
 
   const { handlePreview } = usePreviewChat(idKey);
 
+  const isDarkTheme = useIsDarkTheme();
+
   return (
-    <div>
+    <div className="pb-2">
       <Flex vertical gap={'middle'}>
         <BackendServiceApi show={showApiKeyModal}></BackendServiceApi>
         {!hideChatPreviewCard && (
@@ -40,10 +47,13 @@ const ApiContent = ({
             </Flex>
           </Card>
         )}
-        {/* <div style={{ position: 'relative' }}>
+        <div style={{ position: 'relative' }}>
           <MarkdownToc content={apiDoc} />
-        </div> */}
-        {/* <MarkdownPreview source={apiDoc}></MarkdownPreview> */}
+        </div>
+        <MarkdownPreview
+          source={apiDoc}
+          wrapperElement={{ 'data-color-mode': isDarkTheme ? 'dark' : 'light' }}
+        ></MarkdownPreview>
       </Flex>
       {apiKeyVisible && (
         <ChatApiKeyModal
@@ -59,6 +69,7 @@ const ApiContent = ({
           hideModal={hideEmbedModal}
         ></EmbedModal>
       )} */}
+      <LangfuseCard></LangfuseCard>
     </div>
   );
 };

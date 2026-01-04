@@ -21,6 +21,7 @@ from copy import deepcopy
 from urllib.parse import urlparse
 
 from api.db.db_models import init_database_tables as init_web_db, LLM
+from api.db.joint_services.memory_message_service import init_message_id_sequence, init_memory_size_cache
 from api.db.services.billing_service import BillingPlanService, TenantPlanService
 from api.db.services.canvas_service import CanvasTemplateService
 from api.db.services.llm_service import LLMService
@@ -190,6 +191,8 @@ def init_web_data():
         handle_undelivered_events()
 
     add_graph_templates()
+    init_message_id_sequence()
+    init_memory_size_cache()
     logging.info("init web data success:{}".format(time.time() - start_time))
 
 

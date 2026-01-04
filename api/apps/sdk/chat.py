@@ -50,8 +50,8 @@ async def create(tenant_id):
         if "model_name" in llm:
             req["llm_id"] = llm.pop("model_name")
             if req.get("llm_id") is not None:
-                llm_name, llm_factory, llm_tenant_id = TenantLLMService.split_model_name_and_factory(req["llm_id"])
-                if not TenantLLMService.query(tenant_id=llm_tenant_id, llm_name=llm_name, llm_factory=llm_factory, model_type="chat"):
+                llm_name, llm_factory = TenantLLMService.split_model_name_and_factory(req["llm_id"])
+                if not TenantLLMService.query(tenant_id=tenant_id, llm_name=llm_name, llm_factory=llm_factory, model_type="chat"):
                     return get_error_data_result(f"`model_name` {req.get('llm_id')} doesn't exist")
         req["llm_setting"] = req.pop("llm")
     e, tenant = TenantService.get_by_id(tenant_id)
@@ -92,7 +92,7 @@ async def create(tenant_id):
     req["tenant_id"] = tenant_id
     # prompt more parameter
     default_prompt = {
-        "system": """You are an intelligent assistant. Please summarize the content of the knowledge base to answer the question. Please list the data in the knowledge base and answer in detail. When all knowledge base content is irrelevant to the question, your answer must include the sentence "The answer you are looking for is not found in the knowledge base!" Answers need to consider chat history.
+        "system": """You are an intelligent assistant. Please summarize the content of the dataset to answer the question. Please list the data in the dataset and answer in detail. When all dataset content is irrelevant to the question, your answer must include the sentence "The answer you are looking for is not found in the dataset!" Answers need to consider chat history.
       Here is the knowledge base:
       {knowledge}
       The above is the knowledge base.""",
@@ -250,7 +250,6 @@ async def delete_chats(tenant_id):
             continue
         temp_dict = {"status": StatusEnum.INVALID.value}
         success_count += DialogService.update_by_id(id, temp_dict)
-        print(success_count, "$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$", flush=True)
 
     if errors:
         if success_count > 0:
@@ -286,7 +285,7 @@ def list_chat(tenant_id):
     chats = DialogService.get_list(tenant_id, page_number, items_per_page, orderby, desc, id, name)
     if not chats:
         return get_result(data=[])
-    list_assts = []
+    list_assistants = []
     key_mapping = {
         "parameters": "variables",
         "prologue": "opener",
@@ -320,5 +319,5 @@ def list_chat(tenant_id):
         del res["kb_ids"]
         res["datasets"] = kb_list
         res["avatar"] = res.pop("icon")
-        list_assts.append(res)
-    return get_result(data=list_assts)
+        list_assistants.append(res)
+    return get_result(data=list_assistants)

@@ -41,7 +41,6 @@ class CustomEnum(Enum):
 class RetCode(IntEnum, CustomEnum):
     SUCCESS = 0
     NOT_EFFECTIVE = 10
-    FEATURE_NOT_ENABLED = 11
     EXCEPTION_ERROR = 100
     ARGUMENT_ERROR = 101
     DATA_ERROR = 102
@@ -55,6 +54,7 @@ class RetCode(IntEnum, CustomEnum):
     SERVER_ERROR = 500
     FORBIDDEN = 403
     NOT_FOUND = 404
+    CONFLICT = 409
 
 
 class StatusEnum(Enum):
@@ -125,6 +125,15 @@ class FileSource(StrEnum):
     MOODLE = "moodle"
     DROPBOX = "dropbox"
     BOX = "box"
+    R2 = "r2"
+    OCI_STORAGE = "oci_storage"
+    GOOGLE_CLOUD_STORAGE = "google_cloud_storage"
+    AIRTABLE = "airtable"
+    ASANA = "asana"
+    GITHUB = "github"
+    GITLAB = "gitlab"
+    IMAP = "imap"
+    ZENDESK = "zendesk"
 
 class PipelineTaskType(StrEnum):
     PARSE = "Parse"
@@ -132,6 +141,7 @@ class PipelineTaskType(StrEnum):
     RAPTOR = "RAPTOR"
     GRAPH_RAG = "GraphRAG"
     MINDMAP = "Mindmap"
+    MEMORY = "Memory"
 
 
 VALID_PIPELINE_TASK_TYPES = {PipelineTaskType.PARSE, PipelineTaskType.DOWNLOAD, PipelineTaskType.RAPTOR,
@@ -166,7 +176,7 @@ class MemoryStorageType(StrEnum):
 
 
 class ForgettingPolicy(StrEnum):
-    FIFO = "fifo"
+    FIFO = "FIFO"
 
 
 # environment

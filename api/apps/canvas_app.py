@@ -14,6 +14,7 @@
 #  limitations under the License.
 #
 import asyncio
+import inspect
 import json
 import logging
 from functools import partial
@@ -156,13 +157,13 @@ async def run():
     if cvs.canvas_category == CanvasCategory.DataFlow:
         task_id = get_uuid()
         Pipeline(cvs.dsl, tenant_id=current_user.id, doc_id=CANVAS_DEBUG_DOC_ID, task_id=task_id, flow_id=req["id"])
-        ok, error_message = await asyncio.to_thread(queue_dataflow, user_id, req["id"], task_id, file=files[0], priority=0)
+        ok, error_message = await asyncio.to_thread(queue_dataflow, user_id, req["id"], task_id, CANVAS_DEBUG_DOC_ID, files[0], 0)
         if not ok:
             return get_data_error_result(message=error_message)
         return get_json_result(data={"message_id": task_id})
 
     try:
-        canvas = Canvas(cvs.dsl, current_user.id)
+        canvas = Canvas(cvs.dsl, current_user.id, canvas_id=cvs.id)
     except Exception as e:
         return server_error_response(e)
 
@@ -202,7 +203,7 @@ async def rerun():
     if 0 < doc["progress"] < 1:
         return get_data_error_result(message=f"`{doc['name']}` is processing...")
 
-    if settings.docStoreConn.indexExist(search.index_name(current_user.id), doc["kb_id"]):
+    if settings.docStoreConn.index_exist(search.index_name(current_user.id), doc["kb_id"]):
         settings.docStoreConn.delete({"doc_id": doc["id"]}, search.index_name(current_user.id), doc["kb_id"])
     doc["progress_msg"] = ""
     doc["chunk_num"] = 0
@@ -244,7 +245,7 @@ async def reset():
         if not e:
             return get_data_error_result(message="canvas not found.")
 
-        canvas = Canvas(json.dumps(user_canvas.dsl), current_user.id)
+        canvas = Canvas(json.dumps(user_canvas.dsl), current_user.id, canvas_id=user_canvas.id)
         canvas.reset()
         req["dsl"] = json.loads(str(canvas))
         UserCanvasService.update_by_id(req["id"], {"dsl": req["dsl"]})
@@ -283,7 +284,7 @@ def input_form():
                 data=False, message='Only owner of canvas authorized for this operation.',
                 code=RetCode.OPERATING_ERROR)
 
-        canvas = Canvas(json.dumps(user_canvas.dsl), current_user.id)
+        canvas = Canvas(json.dumps(user_canvas.dsl), current_user.id, canvas_id=user_canvas.id)
         return get_json_result(data=canvas.get_component_input_form(cpn_id))
     except Exception as e:
         return server_error_response(e)
@@ -301,7 +302,7 @@ async def debug():
             code=RetCode.OPERATING_ERROR)
     try:
         e, user_canvas = UserCanvasService.get_by_id(req["id"])
-        canvas = Canvas(json.dumps(user_canvas.dsl), current_user.id)
+        canvas = Canvas(json.dumps(user_canvas.dsl), current_user.id, canvas_id=user_canvas.id)
         canvas.reset()
         canvas.message_id = get_uuid()
         component = canvas.get_component(req["component_id"])["obj"]
@@ -314,8 +315,13 @@ async def debug():
         for k in outputs.keys():
             if isinstance(outputs[k], partial):
                 txt = ""
-                for c in outputs[k]():
-                    txt += c
+                iter_obj = outputs[k]()
+                if inspect.isasyncgen(iter_obj):
+                    async for c in iter_obj:
+                        txt += c
+                else:
+                    for c in iter_obj:
+                        txt += c
                 outputs[k] = txt
         return get_json_result(data=outputs)
     except Exception as e:

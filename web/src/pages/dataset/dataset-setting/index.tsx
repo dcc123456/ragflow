@@ -8,7 +8,7 @@ import { FormLayout } from '@/constants/form';
 import { DocumentParserType } from '@/constants/knowledge';
 import { PermissionRole } from '@/constants/permission';
 import { IConnector } from '@/interfaces/database/knowledge';
-import { useDataSourceInfo } from '@/pages/user-setting/data-source/contant';
+import { useDataSourceInfo } from '@/pages/user-setting/data-source/constant';
 import { IDataSourceBase } from '@/pages/user-setting/data-source/interface';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useEffect, useState } from 'react';
@@ -58,16 +58,25 @@ export default function DatasetSettings() {
       name: '',
       parser_id: DocumentParserType.Naive,
       permission: PermissionRole.Me,
+      language: 'English',
       parser_config: {
         layout_recognize: DocumentType.DeepDOC,
         chunk_token_num: 512,
         delimiter: `\n`,
+        enable_children: false,
+        children_delimiter: `\n`,
         auto_keywords: 0,
         auto_questions: 0,
         html4excel: false,
         topn_tags: 3,
         toc_extraction: false,
+        image_table_context_window: 0,
         overlapped_percent: 0,
+        // MinerU-specific defaults
+        mineru_parse_method: 'auto',
+        mineru_formula_enable: true,
+        mineru_table_enable: true,
+        mineru_lang: 'English',
         raptor: {
           use_raptor: true,
           max_token: 256,
@@ -82,6 +91,9 @@ export default function DatasetSettings() {
           entity_types: initialEntityTypes,
           method: MethodValue.Light,
         },
+        metadata: [],
+        enable_metadata: false,
+        llm_id: '',
       },
       pipeline_id: '',
       parseType: 1,
@@ -230,11 +242,8 @@ export default function DatasetSettings() {
         }
         return connector;
       });
-      console.log('🚀 ~ DatasetSettings ~ connectors:', connectors);
       setSourceData(connectors as IDataSourceNodeProps[]);
       form.setValue('connectors', connectors || []);
-      // form.setValue('pipeline_name', data.name || '');
-      // form.setValue('pipeline_avatar', data.avatar || '');
     }
   };
 

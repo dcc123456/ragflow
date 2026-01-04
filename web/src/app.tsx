@@ -3,6 +3,7 @@ import { Toaster } from '@/components/ui/toaster';
 import i18n from '@/locales/config';
 import QueryClientSingleton from '@/utils/query-client-singleton';
 import { QueryClientProvider } from '@tanstack/react-query';
+import { configResponsive } from 'ahooks';
 import { App, ConfigProvider, ConfigProviderProps, theme } from 'antd';
 import pt_BR from 'antd/lib/locale/pt_BR';
 import deDE from 'antd/locale/de_DE';
@@ -26,6 +27,18 @@ import { TooltipProvider } from './components/ui/tooltip';
 import { ThemeEnum } from './constants/common';
 import { UpgradeModalProvider } from './pages/price/gobal';
 import storage from './utils/authorization-util';
+
+import 'react-photo-view/dist/react-photo-view.css';
+
+configResponsive({
+  sm: 640,
+  md: 768,
+  lg: 1024,
+  xl: 1280,
+  '2xl': 1536,
+  '3xl': 1780,
+  '4xl': 1980,
+});
 
 dayjs.extend(customParseFormat);
 dayjs.extend(advancedFormat);

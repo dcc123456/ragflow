@@ -58,14 +58,6 @@ export default function Datasets() {
     },
     [setPagination],
   );
-
-  const {
-    privilegeModal,
-    hidePrivilegeModal,
-    handShowPrivilegeModal,
-    recordWithSourceType,
-  } = useShowPrivilegeDialog();
-
   const [searchUrl, setSearchUrl] = useSearchParams();
   const isCreate = searchUrl.get('isCreate') === 'true';
   const queryClient = useQueryClient();
@@ -77,21 +69,30 @@ export default function Datasets() {
       setSearchUrl(searchUrl);
     }
   }, [isCreate, showModal, searchUrl, setSearchUrl]);
+
+  const {
+    privilegeModal,
+    hidePrivilegeModal,
+    handShowPrivilegeModal,
+    recordWithSourceType,
+  } = useShowPrivilegeDialog();
+
   return (
     <>
       <section className="py-4 flex-1 flex flex-col">
-        {(!kbs?.length || kbs?.length <= 0) && (
+        {(!kbs?.length || kbs?.length <= 0) && !searchString && (
           <div className="flex w-full items-center justify-center h-[calc(100vh-164px)]">
             <EmptyAppCard
               showIcon
               size="large"
               className="w-[480px] p-14"
+              isSearch={!!searchString}
               type={EmptyCardType.Dataset}
               onClick={() => showModal()}
             />
           </div>
         )}
-        {!!kbs?.length && (
+        {(!!kbs?.length || searchString) && (
           <>
             <ListFilterBar
               title={t('header.dataset')}
@@ -108,6 +109,18 @@ export default function Datasets() {
                 {t('knowledgeList.createKnowledgeBase')}
               </Button>
             </ListFilterBar>
+            {(!kbs?.length || kbs?.length <= 0) && searchString && (
+              <div className="flex w-full items-center justify-center h-[calc(100vh-164px)]">
+                <EmptyAppCard
+                  showIcon
+                  size="large"
+                  className="w-[480px] p-14"
+                  isSearch={!!searchString}
+                  type={EmptyCardType.Dataset}
+                  onClick={() => showModal()}
+                />
+              </div>
+            )}
             <div className="flex-1">
               <CardContainer className="max-h-[calc(100dvh-280px)] overflow-auto px-8">
                 {kbs.map((dataset) => {

@@ -116,6 +116,7 @@ export enum Operator {
   Loop = 'Loop',
   LoopStart = 'LoopItem',
   ExitLoop = 'ExitLoop',
+  ExcelProcessor = 'ExcelProcessor',
 }
 
 export enum ComparisonOperator {
@@ -195,7 +196,7 @@ export enum SwitchLogicOperator {
   Or = 'or',
 }
 
-export const WebhookAlgorithmList = [
+export const WebhookJWTAlgorithmList = [
   'hs256',
   'hs384',
   'hs512',
@@ -210,3 +211,14 @@ export const WebhookAlgorithmList = [
   'ps512',
   'none',
 ] as const;
+
+export enum AgentDialogueMode {
+  Conversational = 'conversational',
+  Task = 'task',
+  Webhook = 'Webhook',
+}
+
+export const initialBeginValues = {
+  mode: AgentDialogueMode.Conversational,
+  prologue: `Hi! I'm your assistant. What can I do for you?`,
+};

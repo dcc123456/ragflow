@@ -17,7 +17,7 @@ import asyncio
 import datetime
 import json
 import re
-
+import base64
 import xxhash
 from quart import request
 
@@ -77,6 +77,7 @@ async def list_chunk():
                 "image_id": sres.field[id].get("img_id", ""),
                 "available_int": int(sres.field[id].get("available_int", 1)),
                 "positions": sres.field[id].get("position_int", []),
+                "doc_type_kwd": sres.field[id].get("doc_type_kwd")
             }
             assert isinstance(d["positions"], list)
             assert len(d["positions"]) == 0 or (isinstance(d["positions"][0], list) and len(d["positions"][0]) == 5)
@@ -104,7 +105,7 @@ def get():
             if chunk:
                 break
         if chunk is None:
-            return server_error_response(Exception("The chunk is not available with your authorization."))
+            return server_error_response(Exception("Chunk not found"))
 
         k = []
         for n in chunk.keys():
@@ -175,6 +176,13 @@ async def set():
             v = 0.1 * v[0] + 0.9 * v[1] if doc.parser_id != ParserType.QA else v[1]
             _d["q_%d_vec" % len(v)] = v.tolist()
             settings.docStoreConn.update({"id": req["chunk_id"]}, _d, search.index_name(tenant_id), doc.kb_id)
+
+            # update image
+            image_base64 = req.get("image_base64", None)
+            if image_base64:
+                bkt, name = req.get("img_id", "-").split("-")
+                image_binary = base64.b64decode(image_base64)
+                settings.STORAGE_IMPL.put(bkt, name, image_binary)
             return get_json_result(data=True)
 
         return await asyncio.to_thread(_set_sync)
@@ -351,7 +359,7 @@ async def retrieval_test():
                     break
             else:
                 return get_json_result(
-                    data=False, message='Only owner of knowledgebase authorized for this operation.',
+                    data=False, message='Only owner of dataset authorized for this operation.',
                     code=RetCode.OPERATING_ERROR)
 
         e, kb = KnowledgebaseService.get_by_id(kb_ids[0])
@@ -382,13 +390,14 @@ async def retrieval_test():
                                rank_feature=labels
                                )
         if use_kg:
-            ck = settings.kg_retriever.retrieval(_question,
+            ck = await settings.kg_retriever.retrieval(_question,
                                                    tenant_ids,
                                                    kb_ids,
                                                    embd_mdl,
                                                    LLMBundle(kb.tenant_id, LLMType.CHAT))
             if ck["content_with_weight"]:
                 ranks["chunks"].insert(0, ck)
+        ranks["chunks"] = settings.retriever.retrieval_by_children(ranks["chunks"], tenant_ids)
 
         for c in ranks["chunks"]:
             c.pop("vector", None)

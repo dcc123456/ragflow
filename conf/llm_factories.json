@@ -763,6 +763,13 @@
             "rank": "940",
             "llm": [
                 {
+                    "llm_name": "glm-4.7",
+                    "tags": "LLM,CHAT,128K",
+                    "max_tokens": 128000,
+                    "model_type": "chat",
+                    "is_tools": true
+                },
+                {
                     "llm_name": "glm-4.5",
                     "tags": "LLM,CHAT,128K",
                     "max_tokens": 128000,
@@ -1234,18 +1241,6 @@
                     "tags": "TEXT EMBEDDING,32k",
                     "max_tokens": 32768,
                     "model_type": "embedding"
-                },
-                {
-                    "llm_name": "BAAI/bge-large-en-v1.5",
-                    "tags": "TEXT EMBEDDING,",
-                    "max_tokens": 1024,
-                    "model_type": "embedding"
-                },
-                {
-                    "llm_name": "BAAI/bge-m3",
-                    "tags": "TEXT EMBEDDING,",
-                    "max_tokens": 8192,
-                    "model_type": "embedding"
                 }
             ]
         },
@@ -1288,6 +1283,12 @@
             "status": "1",
             "rank": "810",
             "llm": [
+                {
+                    "llm_name": "MiniMax-M2.1",
+                    "tags": "LLM,CHAT,200k",
+                    "max_tokens": 200000,
+                    "model_type": "chat"
+                },
                 {
                     "llm_name": "MiniMax-M2",
                     "tags": "LLM,CHAT,200k",
