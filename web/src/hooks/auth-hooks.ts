@@ -1,7 +1,7 @@
 import authorizationUtil from '@/utils/authorization-util';
 import { message } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useSearchParams } from 'umi';
+import { useNavigate, useSearchParams } from 'react-router';
 
 export const useLoginWithGithub = () => {
   const [currentQueryParameters, setSearchParams] = useSearchParams();

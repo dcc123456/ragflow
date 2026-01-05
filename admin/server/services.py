@@ -26,6 +26,7 @@ from api.db.services.role_service import RoleService
 from api.db.services.user_service import TenantService
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.white_list_service import WhiteListService
+from api.db.services.system_settings_service import SystemSettingsService
 from api.utils.crypt import decrypt
 from api.utils import health_utils
 
@@ -155,6 +156,38 @@ class UserMgr:
         UserService.update_user(usr.id, {"is_active": target_status})
         return f"Turn {_activate_status} user activate status successfully!"
 
+    @staticmethod
+    def grant_admin(username: str):
+        # use email to find user. check exist and unique.
+        user_list = UserService.query_user_by_email(username)
+        if not user_list:
+            raise UserNotFoundError(username)
+        elif len(user_list) > 1:
+            raise AdminException(f"Exist more than 1 user: {username}!")
+        # check activate status different from new
+        usr = user_list[0]
+        if usr.is_superuser:
+            return f"{usr} is already superuser!"
+        # update is_active
+        UserService.update_user(usr.id, {"is_superuser": True})
+        return "Grant successfully!"
+
+    @staticmethod
+    def revoke_admin(username: str):
+        # use email to find user. check exist and unique.
+        user_list = UserService.query_user_by_email(username)
+        if not user_list:
+            raise UserNotFoundError(username)
+        elif len(user_list) > 1:
+            raise AdminException(f"Exist more than 1 user: {username}!")
+        # check activate status different from new
+        usr = user_list[0]
+        if not usr.is_superuser:
+            return f"{usr} isn't superuser, yet!"
+        # update is_active
+        UserService.update_user(usr.id, {"is_superuser": False})
+        return "Revoke successfully!"
+
 
 class UserServiceMgr:
 
@@ -249,3 +282,48 @@ class ServiceMgr:
     @staticmethod
     def restart_service(service_id: int):
         raise AdminException("restart_service: not implemented")
+
+
+class SettingsMgr:
+    @staticmethod
+    def get_all():
+
+        settings = SystemSettingsService.get_all()
+        result = []
+        for setting in settings:
+            result.append({
+                'name': setting.name,
+                'source': setting.source,
+                'data_type': setting.data_type,
+                'value': setting.value,
+            })
+        return result
+
+    @staticmethod
+    def get_by_name(name: str):
+        settings = SystemSettingsService.get_by_name(name)
+        if len(settings) == 0:
+            raise AdminException(f"Can't get setting: {name}")
+        result = []
+        for setting in settings:
+            result.append({
+                'name': setting.name,
+                'source': setting.source,
+                'data_type': setting.data_type,
+                'value': setting.value,
+            })
+        return result
+
+    @staticmethod
+    def update_by_name(name: str, value: str):
+        settings = SystemSettingsService.get_by_name(name)
+        if len(settings) == 1:
+            setting = settings[0]
+            setting.value = value
+            setting_dict = setting.to_dict()
+            SystemSettingsService.update_by_name(name, setting_dict)
+        elif len(settings) > 1:
+            raise AdminException(f"Can't update more than 1 setting: {name}")
+        else:
+            raise AdminException(f"No sett"
+                                 f"ing: {name}")

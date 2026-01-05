@@ -21,11 +21,15 @@ import weekYear from 'dayjs/plugin/weekYear';
 import weekday from 'dayjs/plugin/weekday';
 import React, { ReactNode, useEffect, useState } from 'react';
 import StarModal from './components/star-modal';
+import React, { useEffect, useState } from 'react';
+import { RouterProvider } from 'react-router';
 import { ThemeProvider, useTheme } from './components/theme-provider';
 import { SidebarProvider } from './components/ui/sidebar';
 import { TooltipProvider } from './components/ui/tooltip';
 import { ThemeEnum } from './constants/common';
 import { UpgradeModalProvider } from './pages/price/gobal';
+// import { getRouter } from './routes';
+import { routers } from './routes';
 import storage from './utils/authorization-util';
 
 import 'react-photo-view/dist/react-photo-view.css';
@@ -57,13 +61,25 @@ const AntLanguageMap = {
   de: deDE,
 };
 
+// if (process.env.NODE_ENV === 'development') {
+//   const whyDidYouRender = require('@welldone-software/why-did-you-render');
+//   whyDidYouRender(React, {
+//     trackAllPureComponents: true,
+//     trackExtraHooks: [],
+//     logOnDifferentValues: true,
+//   });
+// }
 if (process.env.NODE_ENV === 'development') {
-  const whyDidYouRender = require('@welldone-software/why-did-you-render');
-  whyDidYouRender(React, {
-    trackAllPureComponents: true,
-    trackExtraHooks: [],
-    logOnDifferentValues: true,
-  });
+  import('@welldone-software/why-did-you-render').then(
+    (whyDidYouRenderModule) => {
+      const whyDidYouRender = whyDidYouRenderModule.default;
+      whyDidYouRender(React, {
+        trackAllPureComponents: true,
+        trackExtraHooks: [],
+        logOnDifferentValues: true,
+      });
+    },
+  );
 }
 
 const queryClient = QueryClientSingleton.getInstance();
@@ -97,7 +113,7 @@ function Root({ children }: React.PropsWithChildren) {
         locale={locale}
       >
         <SidebarProvider className="h-full">
-          <App>{children}</App>
+          <App className="w-full h-dvh relative">{children}</App>
         </SidebarProvider>
         <Sonner position={'top-right'} expand richColors closeButton></Sonner>
         <Toaster />
@@ -132,6 +148,22 @@ const RootProvider = ({ children }: React.PropsWithChildren) => {
     </TooltipProvider>
   );
 };
-export function rootContainer(container: ReactNode) {
-  return <RootProvider>{container}</RootProvider>;
+
+export default function AppContainer() {
+  // const [router, setRouter] = useState<any>(null);
+
+  // useEffect(() => {
+  //   getRouter().then(setRouter);
+  // }, []);
+
+  // if (!router) {
+  //   return <div>Loading...</div>;
+  // }
+
+  return (
+    <RootProvider>
+      <RouterProvider router={routers}></RouterProvider>
+      {/* <RouterProvider router={router}></RouterProvider> */}
+    </RootProvider>
+  );
 }

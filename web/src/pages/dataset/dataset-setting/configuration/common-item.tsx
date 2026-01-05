@@ -23,15 +23,17 @@ import { LlmModelType } from '@/constants/knowledge';
 import { useTranslate } from '@/hooks/common-hooks';
 import { useComposeLlmOptionsByModelTypes } from '@/hooks/use-llm-request';
 import { cn } from '@/lib/utils';
+import { history } from '@/utils/simple-history-util';
 import { t } from 'i18next';
 import { Settings } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import {
   ControllerRenderProps,
   FieldValues,
   useFormContext,
 } from 'react-hook-form';
-import { useLocation } from 'umi';
+import { useLocation } from 'react-router';
+import { DataSetContext } from '..';
 import {
   MetadataType,
   useManageMetadata,
@@ -371,6 +373,7 @@ export function AutoMetadata({
   // get metadata field
   const location = useLocation();
   const form = useFormContext();
+  const datasetContext = useContext(DataSetContext);
   const {
     manageMetadataVisible,
     showManageMetadataModal,
@@ -394,13 +397,14 @@ export function AutoMetadata({
     const locationState = location.state as
       | { openMetadata?: boolean }
       | undefined;
-    if (locationState?.openMetadata) {
+    if (locationState?.openMetadata && !datasetContext?.loading) {
       setTimeout(() => {
         handleClickOpenMetadata();
-      }, 100);
+      }, 0);
       locationState.openMetadata = false;
+      history.replace({ ...location }, locationState);
     }
-  }, [location, handleClickOpenMetadata]);
+  }, [location, handleClickOpenMetadata, datasetContext]);
 
   const autoMetadataField: FormFieldConfig = {
     name: 'parser_config.enable_metadata',

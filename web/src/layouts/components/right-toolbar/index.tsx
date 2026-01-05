@@ -14,6 +14,7 @@ import {
 } from '@/hooks/use-user-setting-request';
 import { TenantRole } from '@/pages/user-setting/constants';
 import { BellRing, CircleHelp, MoonIcon, SunIcon } from 'lucide-react';
+import { useNavigate } from 'react-router';
 import { TeamInvitationReminderDialog } from '../team-invitation-reminder-dialog';
 import styled from './index.less';
 
@@ -60,10 +61,10 @@ const RightToolBar = () => {
   }, []);
 
   const onMoonClick = React.useCallback(() => {
-    setTheme('light');
+    setTheme(ThemeEnum.Light);
   }, [setTheme]);
   const onSunClick = React.useCallback(() => {
-    setTheme('dark');
+    setTheme(ThemeEnum.Dark);
   }, [setTheme]);
 
   return (

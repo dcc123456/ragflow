@@ -19,6 +19,7 @@ import userService, {
   listTenant,
   listTenantUser,
 } from '@/services/user-service';
+import { history } from '@/utils/simple-history-util';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import DOMPurify from 'dompurify';
 import { isEmpty } from 'lodash';

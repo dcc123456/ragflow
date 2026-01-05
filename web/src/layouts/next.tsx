@@ -1,3 +1,4 @@
+import { Outlet } from 'react-router';
 import React, { useEffect, useRef } from 'react';
 import { Outlet } from 'umi';
 import { Header } from './next-header';
