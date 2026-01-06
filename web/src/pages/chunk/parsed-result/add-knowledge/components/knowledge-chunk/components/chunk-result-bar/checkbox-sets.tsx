@@ -2,7 +2,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { useDatasetEditButtonDisabled } from '@/hooks/logic-hooks/use-permission';
 import { Ban, CircleCheck, Trash2 } from 'lucide-react';
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
 type ICheckboxSetProps = {
@@ -13,7 +13,7 @@ type ICheckboxSetProps = {
   selectedChunkIds: string[];
 };
 export default (props: ICheckboxSetProps) => {
-    const datasetEditButtonDisabled = useDatasetEditButtonDisabled();
+  const datasetEditButtonDisabled = useDatasetEditButtonDisabled();
   const {
     selectAllChunk,
     removeChunk,
@@ -45,7 +45,7 @@ export default (props: ICheckboxSetProps) => {
   const isSelected = useMemo(() => {
     return selectedChunkIds?.length > 0;
   }, [selectedChunkIds]);
- if (datasetEditButtonDisabled) {
+  if (datasetEditButtonDisabled) {
     return null;
   }
   return (

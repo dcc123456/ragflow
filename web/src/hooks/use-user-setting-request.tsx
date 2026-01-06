@@ -26,7 +26,6 @@ import { isEmpty } from 'lodash';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { history } from 'umi';
 import {
   useFetchEnableAdmin,
   useFetchIsAdmin,

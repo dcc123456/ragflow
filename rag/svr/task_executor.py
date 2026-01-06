@@ -1130,7 +1130,7 @@ def rabbitmq_callback(ch, method, properties, body):
     task = None
     pipeline_task_type = ""
     task_type = ""
-    task_id = task["id"]
+    task_id = msg["id"]
     try:
         for _ in range(3):
             if msg.get("doc_id", "") in [GRAPH_RAPTOR_FAKE_DOC_ID, CANVAS_DEBUG_DOC_ID]:

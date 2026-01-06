@@ -22,6 +22,7 @@ RUN /root/miniconda3/envs/py11/bin/pip install "webdav4>=0.10.0,<0.11.0" "markdo
 RUN /root/miniconda3/envs/py11/bin/pip install "infinity-sdk==0.6.11" "boxsdk>=10.1.0" "aiosmtplib>=5.0.0" "reportlab>=4.4.1" "pyairtable>=3.3.0" "asana>=5.2.2" "python-gitlab>=7.0.0"
 RUN /root/miniconda3/envs/py11/bin/pip uninstall -y nest_asyncio
 
+RUN npm install -g n && n stable
 COPY web web
 RUN cd ./web && npm i && npm run build
 

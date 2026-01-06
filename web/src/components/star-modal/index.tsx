@@ -1,9 +1,11 @@
 import { Modal } from 'antd';
 import { useEffect, useState } from 'react';
 
+import pleaseGif from '@/assets/please.gif';
+import starImage from '@/assets/star.jpg';
 import { Channel } from '@/utils/star-util';
 import { CloseOutlined } from '@ant-design/icons';
-import styles from './index.less';
+import styles from './index.module.less';
 
 const StarModal = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -35,16 +37,8 @@ const StarModal = () => {
     >
       <section className={styles.wrapper}>
         <a href="https://github.com/infiniflow/ragflow" target="blank">
-          <img
-            src={require('@/assets/star.jpg')}
-            alt=""
-            className={styles.star}
-          />
-          <img
-            src={require('@/assets/please.gif')}
-            alt=""
-            className={styles.please}
-          />
+          <img src={starImage} alt="" className={styles.star} />
+          <img src={pleaseGif} alt="" className={styles.please} />
         </a>
       </section>
     </Modal>
