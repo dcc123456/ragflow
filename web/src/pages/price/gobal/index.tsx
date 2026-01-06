@@ -9,7 +9,7 @@ import {
 } from 'react';
 import { freePageNumber } from '../config';
 import { PriceName } from '../contant';
-import { useFetchCurrentPlan } from '../hook/use-price-hooks';
+// import { useFetchCurrentPlan } from '../hook/use-price-hooks';
 import { ICurrentPlan } from '../interface';
 import { FreeUpgradeModal } from '../price-modal/free-upgrade-modal';
 import { ConfirmModal } from '../price-modal/price-confirm-modal';
@@ -61,7 +61,7 @@ export const UpgradeModalProvider: React.FC<UpgradeModalProviderProps> = ({
   children,
 }) => {
   const location = window.location.pathname.toLowerCase();
-  useFetchCurrentPlan();
+  // useFetchCurrentPlan();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
 

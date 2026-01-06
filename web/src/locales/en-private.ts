@@ -39,5 +39,26 @@ export default {
       resetDefaultLLMTip: 'reset as default all users',
       resetDefaultLLMConfirm: 'Are you sure to reset default LLM?',
     },
+    login: {
+      confirmPasswordError: 'Password and confirm password must be the same.',
+      captchaPlaceholder: 'Please input captcha',
+      back: 'Back',
+      confirmPasswordPlaceholder: 'Please input confirm password',
+      confirmPassword: 'Confirm password',
+      resetPassword: 'Reset password',
+      sendTip: 'We will email you a verification code to reset your password.',
+      verifyCodeTip: `We sent a reset link to <span style='color: rgb(var(--accent-primary));font-style: italic;'>{{email}}</span>
+                      enter 4 digit code that mentioned in the email`,
+      send: 'Send',
+      resendEmail: 'Resend email',
+      notGotEmail: `Haven't got the email yet?`,
+      forgetPassword: 'Forget password?',
+      forgetPasswordDescription:
+        'Please input your email to reset your password.',
+      verifyCode: 'Verification code',
+      verificationCode: 'Verification code',
+      verifyCodePlaceholder: 'Verification code',
+      checkEmail: 'Check email',
+    },
   },
 };
