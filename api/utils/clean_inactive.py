@@ -28,7 +28,7 @@ def delete_chunk(date_str, n, m):
     print("Users: ", len(user_ids))
     for uid in tqdm(user_ids):
         try:
-            settings.docStoreConn.deleteIdx(search.index_name(uid), "")
+            settings.docStoreConn.delete_idx(search.index_name(uid), "")
         except Exception as e:
             print("ES: ", e)
         kb_ids = KnowledgebaseService.get_kb_ids(uid)

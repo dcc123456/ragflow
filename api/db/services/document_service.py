@@ -379,8 +379,8 @@ class DocumentService(CommonService):
             if not chunk_ids:
                 break
             for cid in chunk_ids:
-                if settings.STORAGE_IMPL.obj_exist(doc.kb_id, cid):
-                    settings.STORAGE_IMPL.rm(doc.kb_id, cid)
+                if settings.STORAGE_IMPL.obj_exist(doc.kb_id, cid, tenant_id):
+                    settings.STORAGE_IMPL.rm(doc.kb_id, cid, tenant_id)
             page += 1
 
     @classmethod
@@ -1072,6 +1072,34 @@ class DocumentService(CommonService):
             bucket, name = File2DocumentService.get_storage_address(doc_id=doc["id"])
             queue_tasks(doc, bucket, name, 0)
 
+    @classmethod
+    @DB.connection_context()
+    def clone_kb(cls, kb_id, target_kb_id, tenant_id, target_kb_name=None):
+        from api.db.services.file_service import FileService
+        ps = 128
+        p = 1
+        done = False
+        kb_root_folder = FileService.get_kb_folder(tenant_id)
+        if not target_kb_name:
+            e, kb = KnowledgebaseService.get_by_id(target_kb_id)
+            target_kb_name = kb.name
+        kb_folder = FileService.new_a_file_from_kb(tenant_id, target_kb_name, kb_root_folder["id"])
+        docid_map = {}
+        while not done:
+            done = True
+            for d in cls.model.select().where(cls.model.kb_id==kb_id).paginate(p, ps):
+                done = False
+                d = d.to_dict()
+                oid = d["id"]
+                d["id"] = get_uuid()
+                d["kb_id"] = target_kb_id
+                d["from_kb_id"] = d["from_kb_id"] or kb_id
+                cls.save(**d)
+                FileService.add_file_from_kb(d, kb_folder["id"], tenant_id)
+                p += 1
+                docid_map[oid] = d["id"]
+        return docid_map
+
 
 def queue_raptor_o_graphrag_tasks(sample_doc_id, ty, priority, fake_doc_id="", doc_ids=[]):
     """
@@ -1260,3 +1288,37 @@ def doc_upload_and_parse(conversation_id, file_objs, user_id):
             doc_id, kb.id, token_counts[doc_id], chunk_counts[doc_id], 0)
 
     return [d["id"] for d, _ in files]
+
+
+def queue_reembedding_dup_tasks(sample_doc_id, ty:str, priority:int, embed_id=None, target_kb_id=None):
+    """
+    You can provide a fake_doc_id to bypass the restriction of tasks at the knowledgebase level.
+    Optionally, specify a list of doc_ids to determine which documents participate in the task.
+    """
+    assert ty in ["reembedding", "clone"], "type should be reembedding or clone."
+    hasher = xxhash.xxh64()
+    def new_task():
+        return {
+            "id": get_uuid(),
+            "doc_id": sample_doc_id,
+            "from_page": 100000000,
+            "to_page": 100000000,
+            "task_type": ty,
+            "progress_msg":  datetime.now().strftime("%H:%M:%S") + " created task re-embedding",
+            "begin_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+
+    task = new_task()
+    hasher.update(str(sample_doc_id).encode("utf-8"))
+    hasher.update(ty.encode("utf-8"))
+    task["digest"] = hasher.hexdigest()
+    bulk_insert_into_db(Task, [task], True)
+    if embed_id:
+        task["target_embed_id"] = embed_id
+    if target_kb_id:
+        task["target_kb_id"] = target_kb_id
+
+    assert RABBITMQ_CONN.queue_product(
+        rout_key(priority, "common"), message=task
+    ), "Can't access Redis. Please check the Redis' status."
+    return task["id"]

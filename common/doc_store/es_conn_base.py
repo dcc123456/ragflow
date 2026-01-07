@@ -143,7 +143,7 @@ class ESConnectionBase(DocStoreConnection):
         except NotFoundError:
             pass
         except Exception:
-            self.logger.exception("ESConnection.deleteIdx error %s" % index_name)
+            self.logger.exception("ESConnection.delete_idx error %s" % index_name)
 
     def index_exist(self, index_name: str, dataset_id: str = None) -> bool:
         s = Index(index_name, self.es)
@@ -194,7 +194,8 @@ class ESConnectionBase(DocStoreConnection):
             index_names: str | list[str],
             dataset_ids: list[str],
             agg_fields: list[str] | None = None,
-            rank_feature: dict | None = None
+            rank_feature: dict | None = None,
+            scroll: str | None = None
     ):
         raise NotImplementedError("Not implemented")
 
@@ -305,3 +306,17 @@ class ESConnectionBase(DocStoreConnection):
                 raise Exception(f"SQL error: {e}\n\nSQL: {sql}")
         self.logger.error(f"ESConnection.sql timeout for {ATTEMPT_TIME} times!")
         return None
+
+    def scroll(
+            self, select_fields: list[str],
+            condition: dict,
+            match_expressions: list[MatchExpr],
+            offset: int,
+            limit: int,
+            index_names: str | list[str],
+            knowledgebase_ids: list[str]
+    ):
+        raise NotImplementedError("Not implemented")
+
+    def clone_doc(self, id:str, indice:str):
+        raise NotImplementedError()

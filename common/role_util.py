@@ -108,6 +108,8 @@ KB_API_ACTION_MAP = {
     "trace_mindmap": ActionEnum.READ,
     "delete_kb_task": ActionEnum.WRITE,
     "check_embedding": ActionEnum.WRITE,
+    "switch_embedding": ActionEnum.WRITE,
+    "clone": ActionEnum.WRITE,
 }
 
 DIALOG_ROLE_RESOURCE_TYPE = ResourceTypeEnum.CHAT.value

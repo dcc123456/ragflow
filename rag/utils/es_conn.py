@@ -47,7 +47,8 @@ class ESConnection(ESConnectionBase):
             index_names: str | list[str],
             knowledgebase_ids: list[str],
             agg_fields: list[str] | None = None,
-            rank_feature: dict | None = None
+            rank_feature: dict | None = None,
+            scroll: str | None = None
     ):
         """
         Refers to https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl.html
@@ -152,6 +153,8 @@ class ESConnection(ESConnectionBase):
                                      timeout="600s",
                                      # search_type="dfs_query_then_fetch",
                                      track_total_hits=True,
+                                     scroll=scroll,
+                                     source_includes=",".join(select_fields) if select_fields else None,
                                      _source=True)
                 if str(res.get("timed_out", "")).lower() == "true":
                     raise Exception("Es Timeout.")
@@ -374,4 +377,40 @@ class ESConnection(ESConnectionBase):
                 res_fields[d["id"]] = m
         return res_fields
 
+    def scroll(
+            self, select_fields: list[str],
+            condition: dict,
+            match_expressions: list[MatchExpr],
+            offset: int,
+            limit: int,
+            index_names: str | list[str],
+            knowledgebase_ids: list[str]
+    ):
+        es_res = self.search(select_fields=select_fields,
+                             highlight_fields=[],
+                             condition=condition,
+                             match_expressions=match_expressions,
+                             offset=offset,
+                             limit=limit,
+                             order_by=OrderByExpr(),
+                             index_names=index_names,
+                             knowledgebase_ids=knowledgebase_ids,
+                             scroll="15m"
+                             )
+        yield es_res
+        sid = es_res["_scroll_id"]
+        while True:
+            es_res = self.es.scroll(scroll_id=sid)
+            if not es_res["hits"]["hits"]:
+                break
+            yield  es_res
 
+    def clone_doc(self, id:str, indice:str, target_kb_id=None, docid_map=None):
+        source_doc = self.es.get(index=indice, id=id)
+        new_document_body = source_doc['_source']
+        if target_kb_id:
+            new_document_body["kb_id"] = target_kb_id
+        if docid_map:
+            new_document_body["doc_id"] = docid_map.get(new_document_body["doc_id"], "")
+        res = self.es.index(index=indice, document=new_document_body)
+        return res['_id']

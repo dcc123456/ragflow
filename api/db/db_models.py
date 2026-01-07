@@ -874,6 +874,10 @@ class Knowledgebase(DataBaseModel):
     raptor_task_finish_at = DateTimeField(null=True)
     mindmap_task_id = CharField(max_length=32, null=True, help_text="Mindmap task ID", index=True)
     mindmap_task_finish_at = DateTimeField(null=True)
+    embed_task_id = CharField(max_length=32, null=True, help_text="Switch embedding task ID", index=True)
+    embed_task_finish_at = DateTimeField(null=True)
+    clone_task_id = CharField(max_length=32, null=True, help_text="Duplicate dataset task ID", index=True)
+    clone_task_finish_at = DateTimeField(null=True)
 
     status = CharField(max_length=1, null=True, help_text="is it validate(0: wasted, 1: validate)", default="1", index=True)
 
@@ -905,6 +909,7 @@ class Document(DataBaseModel):
     process_duration = FloatField(default=0)
     meta_fields = JSONField(null=True, default={})
     suffix = CharField(max_length=32, null=False, help_text="The real file extension suffix", index=True)
+    from_kb_id = CharField(max_length=256, null=True, index=True)
 
     run = CharField(max_length=1, null=True, help_text="start to run processing or cancel.(1: run it; 2: cancel)", default="0", index=True)
     status = CharField(max_length=1, null=True, help_text="is it validate(0: wasted, 1: validate)", default="1", index=True)
@@ -1443,6 +1448,26 @@ def migrate_db():
         pass
     try:
         migrate(migrator.add_column("evaluation_datasets", "status", IntegerField(null=False, default=1)))
+    except Exception:
+        pass
+    try:
+        migrate(migrator.add_column("knowledgebase", "embed_task_id", CharField(max_length=32, null=True, help_text="Switch embedding task ID", index=True)))
+    except Exception:
+        pass
+    try:
+        migrate(migrator.add_column("knowledgebase", "embed_task_finish_at", DateTimeField(null=True)))
+    except Exception:
+        pass
+    try:
+        migrate(migrator.add_column("knowledgebase", "clone_task_id", CharField(max_length=32, null=True, help_text="Switch embedding task ID", index=True)))
+    except Exception:
+        pass
+    try:
+        migrate(migrator.add_column("knowledgebase", "clone_task_finish_at", DateTimeField(null=True)))
+    except Exception:
+        pass
+    try:
+        migrate(migrator.add_column("document", "from_kb_id", CharField(max_length=256, null=True, index=True)))
     except Exception:
         pass
 

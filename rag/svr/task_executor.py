@@ -1005,6 +1005,95 @@ async def do_handle_task(task):
         progress_callback(1, "place holder")
         pass
         return
+    elif task_type == "reembedding":
+        start_ts = timer()
+        target_embedding_id = task["target_embed_id"]
+        target_embedding_model = LLMBundle(task_tenant_id, LLMType.EMBEDDING, llm_name=target_embedding_id, lang=task_language)
+        await is_strong_enough(None, target_embedding_model)
+        index_name = search.index_name(task_tenant_id)
+        flds = ["question_kwd", "content_with_weight", "docnm_kwd"]
+        es_res = settings.docStoreConn.search([], [], {"kb_id": task_dataset_id}, [], None, 0, 1, index_name, [task_dataset_id])
+        total = settings.docStoreConn.get_total(es_res)
+        B = 16
+        i = 1
+        for cks in settings.docStoreConn.scroll(flds, {"kb_id": task_dataset_id}, [], 0, B, index_name, [task_dataset_id]):
+            task_canceled = has_canceled(task_id)
+            if task_canceled:
+                progress_callback(-1, msg="Task has been canceled.")
+                return
+            docs = []
+            for id, d in settings.docStoreConn.get_fields(cks, flds).items():
+                d["id"] = id
+                docs.append(d)
+            retry = 3
+            target_vector_size = -1
+            for t in range(retry):
+                try:
+                    token_count, target_vector_size = await asyncio.wait_for(embedding(docs, target_embedding_model, task_parser_config, progress_callback), timeout=len(docs)*3)
+                except Exception as e:
+                    error_message = "Generate embedding error:{}".format(str(e))
+                    if t + 1 < retry:
+                        await asyncio.sleep(10)
+                        continue
+                    progress_callback(-1, error_message)
+                    logging.exception(error_message)
+                    raise
+
+            async def update_es(d):
+                keys = list([k for k in d.keys() if k!="id" and not re.match("q_[0-9]+_vec", k)])
+                for k in keys:
+                    d.pop(k)
+                if vector_size != target_vector_size:
+                    d["remove"] = "q_%d_vec"%vector_size
+                return settings.docStoreConn.update({"id": d["id"]}, d, index_name, task_dataset_id)
+            tool_tasks = []
+            for d in docs:
+                tool_tasks.append(asyncio.create_task(update_es(d)))
+            if tool_tasks:
+                await asyncio.gather(*tool_tasks)
+
+            progress_message = "Embedding chunks ({:.2f}s)".format(timer() - start_ts)
+            logging.info(progress_message)
+            progress_callback(B*i/total, msg=progress_message)
+            i += 1
+        progress_callback(prog=1.0, msg="Embedding switching done ({:.2f}s)".format(timer() - start_ts))
+        return
+    elif task_type == "clone":
+        start_ts = timer()
+        index_name = search.index_name(task_tenant_id)
+        target_kb_id = task["target_kb_id"]
+        flds = ["docnm_kwd"]
+        docid_map = DocumentService.clone_kb(task_dataset_id, target_kb_id, task_tenant_id)
+        es_res = settings.docStoreConn.search([], [], {"kb_id": task_dataset_id}, [], None, 0, 1, index_name, [task_dataset_id])
+        total = settings.docStoreConn.get_total(es_res)
+        B = 16
+        i = 1
+        for cks in settings.docStoreConn.scroll(flds, {"kb_id": task_dataset_id}, [], 0, B, index_name, [task_dataset_id]):
+            task_canceled = has_canceled(task_id)
+            if task_canceled:
+                progress_callback(-1, msg="Task has been canceled.")
+                return
+            for id, d in settings.docStoreConn.get_fields(cks, flds).items():
+                retry = 3
+                for t in range(retry):
+                    try:
+                        if settings.docStoreConn.clone_doc(id, index_name, target_kb_id=target_kb_id, docid_map=docid_map):
+                            break
+                    except Exception as e:
+                        error_message = "Clone chunk error:{}".format(str(e))
+                        if t + 1 < retry:
+                            await asyncio.sleep(10)
+                            continue
+                        progress_callback(-1, error_message)
+                        logging.exception(error_message)
+                        raise
+
+            progress_message = "Cloning chunks ({:.2f}s)".format(timer() - start_ts)
+            logging.info(progress_message)
+            progress_callback(B*i/total, msg=progress_message)
+            i += 1
+        progress_callback(prog=1.0, msg="Chunks cloning done ({:.2f}s)".format(timer() - start_ts))
+        return
     else:
         # Standard chunking methods
         start_ts = timer()

@@ -23,6 +23,7 @@ RUN /root/miniconda3/envs/py11/bin/pip install "infinity-sdk==0.6.11" "boxsdk>=1
 RUN /root/miniconda3/envs/py11/bin/pip uninstall -y nest_asyncio
 
 RUN npm install -g n && n stable
+
 COPY web web
 RUN cd ./web && npm i && npm run build
 

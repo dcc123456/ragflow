@@ -110,7 +110,7 @@ class OSConnection(DocStoreConnection):
         except NotFoundError:
             pass
         except Exception:
-            logger.exception("OSConnection.deleteIdx error %s" % (indexName))
+            logger.exception("OSConnection.delete_idx error %s" % (indexName))
 
     def index_exist(self, indexName: str, knowledgebaseId: str = None) -> bool:
         s = Index(indexName, self.os)

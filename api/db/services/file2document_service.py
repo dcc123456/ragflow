@@ -93,4 +93,4 @@ class File2DocumentService(CommonService):
 
         assert doc_id, "please specify doc_id"
         e, doc = DocumentService.get_by_id(doc_id)
-        return doc.kb_id, doc.location
+        return (doc.from_kb_id or doc.kb_id), doc.location
