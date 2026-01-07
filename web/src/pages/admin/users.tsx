@@ -94,6 +94,7 @@ import {
   EMPTY_DATA,
   IS_ENTERPRISE,
   parseBooleanish,
+  USE_LDAP,
 } from './utils';
 
 import { DialogDescription } from '@radix-ui/react-dialog';
@@ -227,6 +228,14 @@ function AdminUserManagement() {
           </div>
         ),
       }),
+
+      ...(USE_LDAP
+        ? [
+            columnHelper.accessor('ldap_server', {
+              header: t('admin.ldapServer'),
+            }),
+          ]
+        : []),
 
       ...(IS_ENTERPRISE
         ? [

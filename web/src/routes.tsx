@@ -1,7 +1,7 @@
 import { lazy } from 'react';
 import { createBrowserRouter, Navigate } from 'react-router';
 import FallbackComponent from './components/fallback-component';
-import { IS_ENTERPRISE } from './pages/admin/utils';
+import { IS_ENTERPRISE, USE_LDAP } from './pages/admin/utils';
 
 export enum Routes {
   Root = '/',
@@ -68,13 +68,17 @@ export enum Routes {
 const routeConfig = [
   {
     path: '/login',
-    Component: lazy(() => import('@/pages/login-next')),
+    Component: USE_LDAP
+      ? lazy(() => import('@/pages/login-next/ldap'))
+      : lazy(() => import('@/pages/login-next')),
     layout: false,
     errorElement: <FallbackComponent />,
   },
   {
     path: '/login-next',
-    Component: lazy(() => import('@/pages/login-next')),
+    Component: USE_LDAP
+      ? lazy(() => import('@/pages/login-next/ldap'))
+      : lazy(() => import('@/pages/login-next')),
     layout: false,
     errorElement: <FallbackComponent />,
   },
@@ -394,7 +398,9 @@ const routeConfig = [
     children: [
       {
         path: '',
-        Component: lazy(() => import('@/pages/admin/login')),
+        Component: USE_LDAP
+          ? lazy(() => import('@/pages/admin/login-ldap'))
+          : lazy(() => import('@/pages/admin/login')),
       },
       {
         path: Routes.Admin,

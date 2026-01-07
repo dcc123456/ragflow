@@ -47,6 +47,17 @@ export const useLoginWithChannel = () => {
   return { loading, login: mutateAsync };
 };
 
+export type EmailLoginParams = {
+  email: string;
+  password: string;
+};
+
+export type LDAPLoginParams = {
+  username: string;
+  password: string;
+  ldap_server: string;
+};
+
 export const useLogin = () => {
   const {
     data,
@@ -54,7 +65,7 @@ export const useLogin = () => {
     mutateAsync,
   } = useMutation({
     mutationKey: ['login'],
-    mutationFn: async (params: { email: string; password: string }) => {
+    mutationFn: async (params: EmailLoginParams | LDAPLoginParams) => {
       const { data: res = {}, response } = await userService.login(params);
       if (res.code === 0) {
         const { data } = res;

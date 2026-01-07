@@ -76,5 +76,19 @@ export function getSortIcon(sorting: false | SortDirection) {
 
 export const PERMISSION_TYPES = ['enable', 'read', 'write', 'share'] as const;
 export const EMPTY_DATA = Object.freeze<any[]>([]) as any[];
+
+/**
+ * Get environment variable from bundler.
+ */
+function getEnv(key: string): string | undefined {
+  return (
+    import.meta.env[`VITE_${key}`] ||
+    import.meta.env[`UMI_APP_${key}`] || // `UMI_APP_*` is for backward compatibility
+    process?.env?.[`VITE_${key}`] ||
+    process?.env?.[`UMI_APP_${key}`]
+  );
+}
+
 export const IS_ENTERPRISE =
-  import.meta.env.VITE_RAGFLOW_ENTERPRISE === 'RAGFLOW_ENTERPRISE';
+  getEnv('RAGFLOW_ENTERPRISE') === 'RAGFLOW_ENTERPRISE';
+export const USE_LDAP = getEnv('RAGFLOW_USE_LDAP') === 'RAGFLOW_USE_LDAP';

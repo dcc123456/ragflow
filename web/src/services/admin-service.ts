@@ -12,6 +12,11 @@ import authorizationUtil, {
 import { convertTheKeysOfTheObjectToSnake } from '@/utils/common-util';
 import { ResultCode, RetcodeMessage } from '@/utils/request';
 
+import type {
+  EmailLoginParams,
+  LDAPLoginParams,
+} from '@/hooks/use-login-request';
+
 const request = axios.create({
   timeout: 300000,
 });
@@ -144,7 +149,7 @@ type ResponseData<D = NonNullable<unknown>> = {
   data: D;
 };
 
-export const login = (params: { email: string; password: string }) =>
+export const login = (params: EmailLoginParams | LDAPLoginParams) =>
   request.post<ResponseData<AdminService.LoginData>>(adminLogin, params);
 export const logout = () => request.get<ResponseData<boolean>>(adminLogout);
 export const listUsers = () =>

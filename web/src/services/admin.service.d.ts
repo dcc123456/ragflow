@@ -29,6 +29,7 @@ declare module AdminService {
     is_superuser: boolean;
     role: string;
     nickname: string;
+    ldap_server?: string;
   };
 
   export type UserDetail = {
