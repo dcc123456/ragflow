@@ -107,7 +107,7 @@ const ChunkCard = ({
             <TooltipContent
               className="p-0"
               align={'start'}
-              side={'right'}
+              side={'left'}
               sideOffset={-20}
               tabIndex={-1}
             >
