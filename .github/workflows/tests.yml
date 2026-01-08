@@ -1,4 +1,6 @@
 name: tests
+permissions:
+  contents: read
 
 on:
   push:
@@ -43,7 +45,7 @@ jobs:
 
       # https://github.com/actions/checkout/issues/1781
       - name: Check out code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && format('refs/pull/{0}/merge', github.event.pull_request.number) || github.sha }}
           fetch-depth: 0
@@ -128,14 +130,26 @@ jobs:
             fi
           fi
 
+#      - name: Run unit test
+#        run: |
+#          uv sync --python 3.12 --group test --frozen
+#          source .venv/bin/activate
+#          which pytest || echo "pytest not in PATH"
+#          echo "Start to run unit test"
+#          python3 run_tests.py
+
       - name: Build ragflow:nightly
         run: |
           RUNNER_WORKSPACE_PREFIX=${RUNNER_WORKSPACE_PREFIX:-${HOME}}
           RAGFLOW_IMAGE=infiniflow-ai/ragflow:${GITHUB_RUN_ID}
           echo "RAGFLOW_IMAGE=${RAGFLOW_IMAGE}" >> ${GITHUB_ENV}
           sudo docker pull ubuntu:22.04
-          sudo DOCKER_BUILDKIT=1 docker build -f Dockerfile -t ${RAGFLOW_IMAGE} .
-          export HTTP_API_TEST_LEVEL=p2
+          sudo DOCKER_BUILDKIT=1 docker build --build-arg NEED_MIRROR=1 --build-arg HTTPS_PROXY=${HTTPS_PROXY} --build-arg HTTP_PROXY=${HTTP_PROXY} -f Dockerfile -t ${RAGFLOW_IMAGE} .
+          if [[ ${GITHUB_EVENT_NAME} == "schedule" ]]; then
+            export HTTP_API_TEST_LEVEL=p3
+          else
+            export HTTP_API_TEST_LEVEL=p2
+          fi
           echo "HTTP_API_TEST_LEVEL=${HTTP_API_TEST_LEVEL}" >> ${GITHUB_ENV}
           echo "RAGFLOW_CONTAINER=${GITHUB_RUN_ID}-ragflow-cpu-1" >> ${GITHUB_ENV}
 
