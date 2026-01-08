@@ -17,6 +17,8 @@ import os
 import json
 import logging
 import time
+from copy import deepcopy
+
 import peewee
 from peewee import IntegrityError
 from langfuse import Langfuse
@@ -423,6 +425,12 @@ class TenantLLMService(CommonService):
         for t in TenantService.get_all():
             if t.id == llm.tenant_id:
                 continue
+
+            _info = deepcopy(info)
+            for k in _info.keys():
+                _info[k] += "#" + t.id
+            TenantService.update_by_id(t.id, _info)
+            
             if cls.model.select().where(
                 cls.model.tenant_id == t.id,
                 cls.model.llm_factory == llm.llm_factory,
@@ -431,7 +439,6 @@ class TenantLLMService(CommonService):
                 continue
             _llm["tenant_id"] = t.id
             cls.save(**_llm)
-            TenantService.update_by_id(t.id, info)
 
 
 class LLM4Tenant:
