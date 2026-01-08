@@ -1357,80 +1357,98 @@ class SystemSettings(DataBaseModel):
     class Meta:
         db_table = "system_settings"
 
+def alter_db_add_column(migrator, table_name, column_name, column_type):
+    try:
+        migrate(migrator.add_column(table_name, column_name, column_type))
+    except OperationalError as ex:
+        error_codes = [1060]
+        error_messages = ['Duplicate column name']
+
+        should_skip_error = (
+                (hasattr(ex, 'args') and ex.args and ex.args[0] in error_codes) or
+                (str(ex) in error_messages)
+        )
+
+        if not should_skip_error:
+            logging.critical(f"Failed to add {settings.DATABASE_TYPE.upper()}.{table_name} column {column_name}, operation error: {ex}")
+
+    except Exception as ex:
+        logging.critical(f"Failed to add {settings.DATABASE_TYPE.upper()}.{table_name} column {column_name}, error: {ex}")
+        pass
+
+def alter_db_column_type(migrator, table_name, column_name, new_column_type):
+    try:
+        migrate(migrator.alter_column_type(table_name, column_name, new_column_type))
+    except Exception as ex:
+        logging.critical(f"Failed to alter {settings.DATABASE_TYPE.upper()}.{table_name} column {column_name} type, error: {ex}")
+        pass
+
+def alter_db_rename_column(migrator, table_name, old_column_name, new_column_name):
+    try:
+        migrate(migrator.rename_column(table_name, old_column_name, new_column_name))
+    except Exception:
+        # rename fail will lead to a weired error.
+        # logging.critical(f"Failed to rename {settings.DATABASE_TYPE.upper()}.{table_name} column {old_column_name} to {new_column_name}, error: {ex}")
+        pass
+
 def migrate_db():
     logging.disable(logging.ERROR)
+
     migrator = DatabaseMigrator[settings.DATABASE_TYPE.upper()].value(DB)
-    try:
-        migrate(migrator.add_column("user_canvas", "canvas_category", CharField(max_length=32, null=False, default="agent_canvas", help_text="agent_canvas|dataflow_canvas", index=True)))
-    except Exception:
-        pass
-    try:
-        migrate(migrator.add_column("canvas_template", "canvas_category", CharField(max_length=32, null=False, default="agent_canvas", help_text="agent_canvas|dataflow_canvas", index=True)))
-    except Exception:
-        pass
-    try:
-        migrate(migrator.add_column("knowledgebase", "pipeline_id", CharField(max_length=32, null=True, help_text="Pipeline ID", index=True)))
-    except Exception:
-        pass
-    try:
-        migrate(migrator.add_column("document", "pipeline_id", CharField(max_length=32, null=True, help_text="Pipeline ID", index=True)))
-    except Exception:
-        pass
-    try:
-        migrate(migrator.add_column("knowledgebase", "graphrag_task_id", CharField(max_length=32, null=True, help_text="Gragh RAG task ID", index=True)))
-    except Exception:
-        pass
-    try:
-        migrate(migrator.add_column("knowledgebase", "raptor_task_id", CharField(max_length=32, null=True, help_text="RAPTOR task ID", index=True)))
-    except Exception:
-        pass
-    try:
-        migrate(migrator.add_column("knowledgebase", "graphrag_task_finish_at", DateTimeField(null=True)))
-    except Exception:
-        pass
-    try:
-        migrate(migrator.add_column("knowledgebase", "raptor_task_finish_at", CharField(null=True)))
-    except Exception:
-        pass
-    try:
-        migrate(migrator.add_column("knowledgebase", "mindmap_task_id", CharField(max_length=32, null=True, help_text="Mindmap task ID", index=True)))
-    except Exception:
-        pass
-    try:
-        migrate(migrator.add_column("knowledgebase", "mindmap_task_finish_at", CharField(null=True)))
-    except Exception:
-        pass
-    try:
-        migrate(migrator.add_column("user", "role_id", IntegerField(null=False, help_text="id in rag_flow.role", index=True, default=1)))
-    except Exception:
-        pass
-    try:
-        migrate(migrator.add_column("tenant_llm", "status", CharField(max_length=1, null=False, help_text="is it validate(0: wasted, 1: validate)", default="1", index=True)))
-    except Exception:
-        pass
-    try:
-        migrate(migrator.add_column("llm_factories", "rank", IntegerField(default=0, index=False)))
-    except Exception:
-        pass
-    try:
-        migrate(migrator.add_column("knowledgebase", "embed_task_id", CharField(max_length=32, null=True, help_text="Switch embedding task ID", index=True)))
-    except Exception:
-        pass
-    try:
-        migrate(migrator.add_column("knowledgebase", "embed_task_finish_at", DateTimeField(null=True)))
-    except Exception:
-        pass
-    try:
-        migrate(migrator.add_column("knowledgebase", "clone_task_id", CharField(max_length=32, null=True, help_text="Switch embedding task ID", index=True)))
-    except Exception:
-        pass
-    try:
-        migrate(migrator.add_column("knowledgebase", "clone_task_finish_at", DateTimeField(null=True)))
-    except Exception:
-        pass
-    try:
-        migrate(migrator.add_column("document", "from_kb_id", CharField(max_length=256, null=True, index=True)))
-    except Exception:
-        pass
+
+    # from open source
+    migrator = DatabaseMigrator[settings.DATABASE_TYPE.upper()].value(DB)
+    alter_db_add_column(migrator, "file", "source_type", CharField(max_length=128, null=False, default="", help_text="where dose this document come from", index=True))
+    alter_db_add_column(migrator, "tenant", "rerank_id", CharField(max_length=128, null=False, default="BAAI/bge-reranker-v2-m3", help_text="default rerank model ID"))
+    alter_db_add_column(migrator, "dialog", "rerank_id", CharField(max_length=128, null=False, default="", help_text="default rerank model ID"))
+    alter_db_column_type(migrator, "dialog", "top_k", IntegerField(default=1024))
+    alter_db_add_column(migrator, "tenant_llm", "api_key", CharField(max_length=2048, null=True, help_text="API KEY", index=True))
+    alter_db_add_column(migrator, "api_token", "source", CharField(max_length=16, null=True, help_text="none|agent|dialog", index=True))
+    alter_db_add_column(migrator, "tenant", "tts_id", CharField(max_length=256, null=True, help_text="default tts model ID", index=True))
+    alter_db_add_column(migrator, "api_4_conversation", "source", CharField(max_length=16, null=True, help_text="none|agent|dialog", index=True))
+    alter_db_add_column(migrator, "task", "retry_count", IntegerField(default=0))
+    alter_db_column_type(migrator, "api_token", "dialog_id", CharField(max_length=32, null=True, index=True))
+    alter_db_add_column(migrator, "tenant_llm", "max_tokens", IntegerField(default=8192, index=True))
+    alter_db_add_column(migrator, "api_4_conversation", "dsl", JSONField(null=True, default={}))
+    alter_db_add_column(migrator, "knowledgebase", "pagerank", IntegerField(default=0, index=False))
+    alter_db_add_column(migrator, "api_token", "beta", CharField(max_length=255, null=True, index=True))
+    alter_db_add_column(migrator, "task", "digest", TextField(null=True, help_text="task digest", default=""))
+    alter_db_add_column(migrator, "task", "chunk_ids", LongTextField(null=True, help_text="chunk ids", default=""))
+    alter_db_add_column(migrator, "conversation", "user_id", CharField(max_length=255, null=True, help_text="user_id", index=True))
+    alter_db_add_column(migrator, "document", "meta_fields", JSONField(null=True, default={}))
+    alter_db_add_column(migrator, "task", "task_type", CharField(max_length=32, null=False, default=""))
+    alter_db_add_column(migrator, "task", "priority", IntegerField(default=0))
+    alter_db_add_column(migrator, "user_canvas", "permission", CharField(max_length=16, null=False, help_text="me|team", default="me", index=True))
+    alter_db_add_column(migrator, "llm", "is_tools", BooleanField(null=False, help_text="support tools", default=False))
+    alter_db_add_column(migrator, "mcp_server", "variables", JSONField(null=True, help_text="MCP Server variables", default=dict))
+    alter_db_rename_column(migrator, "task", "process_duation", "process_duration")
+    alter_db_rename_column(migrator, "document", "process_duation", "process_duration")
+    alter_db_add_column(migrator, "document", "suffix", CharField(max_length=32, null=False, default="", help_text="The real file extension suffix", index=True))
+    alter_db_add_column(migrator, "api_4_conversation", "errors", TextField(null=True, help_text="errors"))
+    alter_db_add_column(migrator, "dialog", "meta_data_filter", JSONField(null=True, default={}))
+    alter_db_column_type(migrator, "canvas_template", "title", JSONField(null=True, default=dict, help_text="Canvas title"))
+    alter_db_column_type(migrator, "canvas_template", "description", JSONField(null=True, default=dict, help_text="Canvas description"))
+    alter_db_add_column(migrator, "user_canvas", "canvas_category", CharField(max_length=32, null=False, default="agent_canvas", help_text="agent_canvas|dataflow_canvas", index=True))
+    alter_db_add_column(migrator, "canvas_template", "canvas_category", CharField(max_length=32, null=False, default="agent_canvas", help_text="agent_canvas|dataflow_canvas", index=True))
+    alter_db_add_column(migrator, "knowledgebase", "pipeline_id", CharField(max_length=32, null=True, help_text="Pipeline ID", index=True))
+    alter_db_add_column(migrator, "document", "pipeline_id", CharField(max_length=32, null=True, help_text="Pipeline ID", index=True))
+    alter_db_add_column(migrator, "knowledgebase", "graphrag_task_id", CharField(max_length=32, null=True, help_text="Gragh RAG task ID", index=True))
+    alter_db_add_column(migrator, "knowledgebase", "raptor_task_id", CharField(max_length=32, null=True, help_text="RAPTOR task ID", index=True))
+    alter_db_add_column(migrator, "knowledgebase", "graphrag_task_finish_at", DateTimeField(null=True))
+    alter_db_add_column(migrator, "knowledgebase", "raptor_task_finish_at", CharField(null=True))
+    alter_db_add_column(migrator, "knowledgebase", "mindmap_task_id", CharField(max_length=32, null=True, help_text="Mindmap task ID", index=True))
+    alter_db_add_column(migrator, "knowledgebase", "mindmap_task_finish_at", CharField(null=True))
+    alter_db_column_type(migrator, "tenant_llm", "api_key", TextField(null=True, help_text="API KEY"))
+    alter_db_add_column(migrator, "tenant_llm", "status", CharField(max_length=1, null=False, help_text="is it validate(0: wasted, 1: validate)", default="1", index=True))
+    alter_db_add_column(migrator, "connector2kb", "auto_parse", CharField(max_length=1, null=False, default="1", index=False))
+    alter_db_add_column(migrator, "llm_factories", "rank", IntegerField(default=0, index=False))
+
+    # for EE
+    alter_db_add_column(migrator, "user", "role_id", IntegerField(null=False, help_text="id in rag_flow.role", index=True, default=1))
+    alter_db_add_column(migrator, "knowledgebase", "embed_task_id", CharField(max_length=32, null=True, help_text="Switch embedding task ID", index=True))
+    alter_db_add_column(migrator, "knowledgebase", "embed_task_finish_at", DateTimeField(null=True))
+    alter_db_add_column(migrator, "knowledgebase", "clone_task_id", CharField(clone_task_id = CharField(max_length=32, null=True, help_text="Duplicate dataset task ID", index=True)))
+    alter_db_add_column(migrator, "knowledgebase", "clone_task_finish_at", DateTimeField(null=True))
+    alter_db_add_column(migrator, "document", "from_kb_id", CharField(max_length=256, null=True, index=True))
 
     logging.disable(logging.NOTSET)
