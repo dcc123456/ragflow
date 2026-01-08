@@ -197,13 +197,14 @@ export default function SearchingView({
               {chunks?.length > 0 && (
                 <>
                   {chunks.map((chunk, index) => {
+                    const imageId = chunk.image_id || chunk.img_id;
                     return (
                       <div key={index}>
                         <div className="w-full flex flex-col">
                           <div className="w-full highlightContent">
-                            <ImageWithPopover
-                              id={chunk.image_id || chunk.img_id}
-                            ></ImageWithPopover>
+                            {imageId && (
+                              <ImageWithPopover id={imageId}></ImageWithPopover>
+                            )}
                             <Popover>
                               <PopoverTrigger asChild>
                                 <div
