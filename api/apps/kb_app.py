@@ -91,7 +91,7 @@ async def create():
             ):
                 raise ValueError("Permission change log creation failed")
 
-            await asyncio.sleep(3)
+        await asyncio.sleep(3)
 
         return get_json_result(data={"kb_id": req["id"]})
     except Exception as e:
