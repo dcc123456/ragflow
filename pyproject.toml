@@ -152,6 +152,7 @@ dependencies = [
     "pygithub>=2.8.1",
     "asana>=5.2.2",
     "python-gitlab>=7.0.0",
+    "ldap3>=2.9.1",
 ]
 
 [dependency-groups]
@@ -169,6 +170,9 @@ test = [
     "requests>=2.32.2",
     "requests-toolbelt>=1.0.0",
 ]
+
+[[tool.uv.index]]
+url = "https://mirrors.aliyun.com/pypi/simple"
 
 [[tool.uv.index]]
 url = "https://pypi.tuna.tsinghua.edu.cn/simple"

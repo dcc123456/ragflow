@@ -126,6 +126,14 @@ user_default_llm:
 #     url: ldaps://ad01.mycompany.com:636
 #     dn: CN=svc_ldap_app, OU=Service Accounts, DC=mycompany, DC=com
 #     password: xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+#     search_filter: (|(userPrincipalName={username})(mail={username}))
+#     attribute_list: cn,mail,uid,givenName,sn,jpegPhoto,sAMAccountName,userPrincipalName
+#     login_channel: AD # LDAP
+#    ##################
+#    # example
+#    ##################
+#    search_filter: (|(cn={username})(mail={username}))
+#    attribute_list: cn,mail # comma seperated
 #   google:
 #     type: google
 #     client_id: 936108576595-fie6xxxxxxxxxxxxxxxxxxxxxxx.apps.googleusercontent.com

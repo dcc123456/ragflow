@@ -20,11 +20,14 @@ import os
 import re
 import secrets
 import time
+import asyncio
+from urllib.parse import urlparse
 from datetime import datetime
 import base64
 
 from api.db.services.tenant_llm_service import user_register
 from quart import make_response, redirect, request, session
+from ldap3 import Server, Connection, ALL, SUBTREE
 
 from api.apps.auth import get_auth_client
 from api.db.db_models import TenantLLM
@@ -62,32 +65,119 @@ from rag.utils.redis_conn import REDIS_CONN
 from common.http_client import async_request
 
 
-def ldap_login():
-    import ldap
-    email= request.json.get("email", "").lower()
-    conn = ldap.initialize(settings.LDAP_OAUTH.get("url"))
-    conn.set_option(ldap.OPT_REFERRALS, 0)
-    dn = settings.LDAP_OAUTH.get("dn")
-    conn.simple_bind_s(dn, settings.LDAP_OAUTH.get("password"))
-    search_filter = f"(|(userPrincipalName={email})(mail={email}))"
-    attribute_list = ['cn', 'mail', 'uid', 'givenName', 'sn', 'jpegPhoto', 'sAMAccountName', 'userPrincipalName']
+async def ldap_login():
+    req = await request.get_json()
+    username = req.get("username", "")
+    login_password = base64.b64decode(decrypt(req.get("password")))
+    if isinstance(login_password, (bytes, bytearray)):
+        login_password = login_password.decode("utf-8")
+    login_ldap_server = req.get("ldap_server", None)
 
-    result = conn.search_s(",".join(dn.split(",")[2:]), ldap.SCOPE_SUBTREE, search_filter, attribute_list)
-    print(",".join(dn.split(",")[2:]), result, "XXXXXXXXXXXXXXXXXXX", flush=True)
+    ldap_conf = settings.LDAP_OAUTH or {}
+    url = login_ldap_server or ldap_conf.get("url")
+    dn =  ldap_conf.get("dn")
+    password = ldap_conf.get("password")
+    timeout = int(ldap_conf.get("timeout", 10))
+    search_base = ldap_conf.get("search_base")
+    login_channel = ldap_conf.get("login_channel", "LDAP")
+    if not url or not dn:
+        return get_json_result(
+            data=False,
+            code=RetCode.SERVER_ERROR,
+            message="LDAP configuration is incomplete.",
+        )
+
+    search_filter = ldap_conf.get("search_filter")
+    if not search_filter:
+        return get_json_result(
+            data=False,
+            code=RetCode.SERVER_ERROR,
+            message="LDAP search_filter is not configured.",
+        )
+    variables = {"username": username, "login_password": login_password}
+
+    try:
+        search_filter = search_filter.format_map(variables)
+    except Exception as e:
+        return get_json_result(
+            data=False,
+            code=RetCode.SERVER_ERROR,
+            message=f"LDAP search_filter missing variable: {e}",
+        )
+
+    attribute_list = ldap_conf.get("attribute_list")
+    if isinstance(attribute_list, str):
+        attribute_list = [item.strip() for item in attribute_list.split(",") if item.strip()]
+    if not attribute_list:
+        return get_json_result(
+            data=False,
+            code=RetCode.SERVER_ERROR,
+            message="LDAP attribute_list is not configured.",
+        )
+
+    if not search_base:
+        dn_parts = dn.split(",", 1)
+        search_base = dn_parts[1] if len(dn_parts) > 1 else dn
+
+    logging.info(f"LDAP login attempt: url={url}, dn={dn}, search_base={search_base}, search_filter={search_filter}, attributes={attribute_list}, username={username}")
+
+    parsed = urlparse(url)
+    host = parsed.hostname
+    port = parsed.port
+    use_ssl = False
+
+    def _ldap_search():
+        server = Server(host, port=port, get_info=ALL, use_ssl=use_ssl, connect_timeout=timeout)
+        admin_conn = Connection(server, user=dn, password=password, auto_bind=True, receive_timeout=timeout)
+        admin_conn.search(search_base, search_filter, search_scope=SUBTREE, attributes=attribute_list)
+        entries = list(admin_conn.entries)
+        admin_conn.unbind()
+        return entries
+
+    try:
+        result = await asyncio.to_thread(_ldap_search)
+    except Exception as e:
+        logging.exception("LDAP search failed: ", e)
+        return get_json_result(
+            data=False,
+            code=RetCode.SERVER_ERROR,
+            message="LDAP connection failed.",
+        )
     if not result:
         return get_json_result(
             data=False,
             code=RetCode.AUTHENTICATION_ERROR,
-            message=f"Email: {email} is not registered!",
+            message=f"Email: {username} is not registered!",
         )
-    login_password = base64.b64decode(decrypt(request.json.get("password")))
+
     try:
-        conn.simple_bind_s(result[0][0], login_password)
+        def _ldap_bind_user():
+            server = Server(host, port=port, get_info=ALL, use_ssl=use_ssl, connect_timeout=timeout)
+            user_conn = Connection(server, user=result[0].entry_dn, password=login_password, auto_bind=False, receive_timeout=timeout)
+            ok = user_conn.bind()
+            user_conn.unbind()
+            return ok
+
+        ok = await asyncio.to_thread(_ldap_bind_user)
+        if not ok:
+            raise RuntimeError("LDAP user bind failed.")
     except Exception:
-        return get_json_result(
-            data=False,
-            code=RetCode.AUTHENTICATION_ERROR,message="Password error!"
-        )
+        return get_json_result(data=False, code=RetCode.AUTHENTICATION_ERROR, message="Password error!")
+
+    entry = result[0]
+    attrs = entry.entry_attributes_as_dict
+
+    def _decode(value, default=""):
+        if value is None:
+            return default
+        if isinstance(value, (bytes, bytearray)):
+            return value.decode("utf-8", "ignore")
+        return str(value)
+
+    nickname = _decode((attrs.get("givenName") or attrs.get("cn") or [b"Anonymous"])[0], "Anonymous")
+    email = _decode((attrs.get("mail") or [username])[0], username)
+
+    avatar = _decode((attrs.get("jpegPhoto") or [b""])[0], "")
 
     users = UserService.query(email=email)
     if users:
@@ -99,10 +189,7 @@ def ldap_login():
         user.update_date = (datetime_format(datetime.now()),)
         user.save()
         msg = "Welcome back!"
-        return construct_response(data=response_data, auth=user.get_id(), message=msg)
-
-    nickname = result[0][1].get("givenName", [b"Anonymous"])[0].decode("utf-8")
-    avatar = result[0][1].get("jpegPhoto", [b""])[0].decode("utf-8")
+        return await construct_response(data=response_data, auth=user.get_id(), message=msg)
 
     users = user_register(
         get_uuid(),
@@ -111,7 +198,7 @@ def ldap_login():
             "email": email,
             "avatar": avatar,
             "nickname": nickname,
-            "login_channel": "AD",
+            "login_channel": login_channel,
             "last_login_time": get_format_time(),
             "is_superuser": False,
         },
@@ -162,7 +249,7 @@ async def login():
 
     email = json_body.get("email", "").lower()
     if email != "admin@ragflow.io" and settings.LDAP_OAUTH and settings.LDAP_OAUTH.get("url"):
-        return ldap_login()
+        return await ldap_login()
 
     users = UserService.query(email=email)
     if not users:
