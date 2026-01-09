@@ -6,6 +6,7 @@ on:
   push:
     branches:
       - 'saas'
+      - 'jiukun'
     paths-ignore:
       - 'docs/**'
       - '*.md'
