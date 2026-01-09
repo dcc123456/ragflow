@@ -25,6 +25,7 @@ from urllib.parse import urlparse
 from datetime import datetime
 import base64
 
+from api.apps import current_user, login_required, login_user, logout_user
 from api.db.services.tenant_llm_service import user_register
 from quart import make_response, redirect, request, session
 from ldap3 import Server, Connection, ALL, SUBTREE
@@ -45,7 +46,6 @@ from api.utils.api_utils import (
 )
 from api.utils.crypt import decrypt2
 from api.utils.crypt import decrypt
-from api.apps import login_required, current_user, login_user, logout_user
 from api.utils.web_utils import (
     send_email_html,
     OTP_LENGTH,

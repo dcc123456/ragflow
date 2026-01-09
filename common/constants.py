@@ -143,6 +143,7 @@ class PipelineTaskType(StrEnum):
     GRAPH_RAG = "GraphRAG"
     MINDMAP = "Mindmap"
     MEMORY = "Memory"
+    CLONE = "Clone"
 
 
 VALID_PIPELINE_TASK_TYPES = {PipelineTaskType.PARSE, PipelineTaskType.DOWNLOAD, PipelineTaskType.RAPTOR,

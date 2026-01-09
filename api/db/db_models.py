@@ -1219,6 +1219,7 @@ class Connector2Kb(DataBaseModel):
     connector_id = CharField(max_length=32, null=False, index=True)
     kb_id = CharField(max_length=32, null=False, index=True)
     auto_parse = CharField(max_length=1, null=False, default="1", index=False)
+    is_kb = CharField(max_length=1, null=True, help_text="is it to kb(0: no, 1: yes)", default="1", index=True)
 
     class Meta:
         db_table = "connector2kb"

@@ -899,7 +899,7 @@ def delete_kb_task():
         return get_json_result(data=True)
 
     pipeline_task_type = request.args.get("pipeline_task_type", "")
-    if not pipeline_task_type or pipeline_task_type not in [PipelineTaskType.GRAPH_RAG, PipelineTaskType.RAPTOR, PipelineTaskType.MINDMAP]:
+    if not pipeline_task_type or pipeline_task_type not in [PipelineTaskType.GRAPH_RAG, PipelineTaskType.RAPTOR, PipelineTaskType.MINDMAP, PipelineTaskType.CLONE]:
         return get_error_data_result(message="Invalid task type")
 
     def cancel_task(task_id):
@@ -924,6 +924,11 @@ def delete_kb_task():
             kb_task_id_field = "mindmap_task_id"
             task_id = kb.mindmap_task_id
             kb_task_finish_at = "mindmap_task_finish_at"
+            cancel_task(task_id)
+        case PipelineTaskType.CLONE:
+            kb_task_id_field = "clone_task_id"
+            task_id = kb.clone_task_id
+            kb_task_finish_at = "clone_task_finish_at"
             cancel_task(task_id)
         case _:
             return get_error_data_result(message="Internal Error: Invalid task type")
@@ -961,7 +966,7 @@ async def switch_embedding():
     req = await get_request_json()
 
     kb_id = req.get("kb_id", "")
-    embd_id = req["embed_id"]
+    embd_id = req["embd_id"]
     if not kb_id:
         return get_error_data_result(message='Lack of "KB ID"')
 
@@ -1008,7 +1013,6 @@ async def switch_embedding():
 @manager.route("/trace_embedding", methods=["GET"])  # noqa: F821
 @login_required
 @validate_request("kb_id")
-@kb_role_guard
 def trace_embedding():
     kb_id = request.args.get("kb_id", "")
     if not kb_id:
@@ -1031,7 +1035,6 @@ def trace_embedding():
 
 @manager.route("/clone", methods=["POST"])  # noqa: F821
 @login_required
-@validate_request("kb_id")
 @kb_role_guard
 async def clone():
     req = await get_request_json()
@@ -1065,7 +1068,7 @@ async def clone():
     if not e:
         return kb
 
-    if not KnowledgebaseService.save(**req):
+    if not KnowledgebaseService.save(**kb):
         raise ValueError("KB creation failed")
 
     documents, _ = DocumentService.get_by_kb_id(
@@ -1092,8 +1095,6 @@ async def clone():
 
 @manager.route("/trace_clone", methods=["GET"])  # noqa: F821
 @login_required
-@validate_request("kb_id")
-@kb_role_guard
 def trace_clone():
     kb_id = request.args.get("kb_id", "")
     if not kb_id:

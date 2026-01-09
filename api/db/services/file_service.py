@@ -21,7 +21,7 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Union
+from typing import Union, Tuple
 
 from peewee import fn
 
@@ -29,6 +29,7 @@ from api.db import KNOWLEDGEBASE_FOLDER_NAME, FileType
 from api.db.db_models import DB, Document, File, File2Document, Knowledgebase, Task
 from api.db.services import duplicate_name
 from api.db.services.common_service import CommonService
+from api.db.services.connector_service import Connector2KbService
 from api.db.services.document_service import DocumentService
 from api.db.services.file2document_service import File2DocumentService
 from common.misc_utils import get_uuid
@@ -85,9 +86,11 @@ class FileService(CommonService):
                     .dicts()
                 )
                 file["has_child_folder"] = any(value["type"] == FileType.FOLDER.value for value in children)
+                file["connectors"] = Connector2KbService.list_connectors(folder_id=file["id"])
                 continue
             kbs_info = cls.get_kb_id_by_file_id(file["id"])
             file["kbs_info"] = kbs_info
+            file["connectors"] = []
 
         return res_files, count
 
@@ -439,6 +442,15 @@ class FileService(CommonService):
 
         err, files = [], []
         for file in file_objs:
+            doc_id = file.id if hasattr(file, "id") else get_uuid()
+            e, doc = DocumentService.get_by_id(doc_id)
+            if e:
+                blob = file.read()
+                settings.STORAGE_IMPL.put(kb.id, doc.location, blob, kb.tenant_id)
+                doc.size = len(blob)
+                doc = doc.to_dict()
+                DocumentService.update_by_id(doc["id"], doc)
+                continue
             try:
                 DocumentService.check_doc_health(kb.tenant_id, file.filename)
                 filename = duplicate_name(DocumentService.query, name=file.filename, kb_id=kb.id)
@@ -454,8 +466,6 @@ class FileService(CommonService):
                 if filetype == FileType.PDF.value:
                     blob = read_potential_broken_pdf(blob)
                 settings.STORAGE_IMPL.put(kb.id, location, blob, kb.tenant_id)
-
-                doc_id = get_uuid()
 
                 img = thumbnail_img(filename, blob)
                 thumbnail_location = ""
@@ -669,4 +679,85 @@ class FileService(CommonService):
                 continue
             threads.append(exe.submit(FileService.parse, file["name"], FileService.get_blob(file["created_by"], file["id"]), True, file["created_by"]))
         return [th.result() for th in threads]
+
+    @classmethod
+    @DB.connection_context()
+    async def upload_files(cls, pf_id:str, file_objs: Union[None, list[dict]], tenant_id:str) -> Tuple[list[str], list[str]]:
+        import os
+        e, pf_folder = cls.get_by_id(pf_id)
+        if not e:
+            raise LookupError("Can't find this folder!")
+
+        async def _handle_single_file(file_obj):
+            MAX_FILE_NUM_PER_USER: int = int(os.environ.get('MAX_FILE_NUM_PER_USER', 0))
+            if 0 < MAX_FILE_NUM_PER_USER <= await asyncio.to_thread(DocumentService.get_doc_count, tenant_id):
+                raise PermissionError("Exceed the maximum file number of a free user!")
+
+            # split file name path
+            if not file_obj.filename:
+                file_obj_names = [pf_folder.name, file_obj.filename]
+            else:
+                full_path = '/' + file_obj.filename
+                file_obj_names = full_path.split('/')
+            file_len = len(file_obj_names)
+
+            # get folder
+            file_id_list = await asyncio.to_thread(cls.get_id_list_by_id, pf_id, file_obj_names, 1, [pf_id])
+            len_id_list = len(file_id_list)
+
+            # create folder
+            if file_len != len_id_list:
+                e, file = await asyncio.to_thread(cls.get_by_id, file_id_list[len_id_list - 1])
+                if not e:
+                    raise LookupError("Folder not found!")
+                last_folder = await asyncio.to_thread(cls.create_folder, file, file_id_list[len_id_list - 1], file_obj_names,
+                                                      len_id_list)
+            else:
+                e, file = await asyncio.to_thread(cls.get_by_id, file_id_list[len_id_list - 2])
+                if not e:
+                    raise LookupError("Folder not found!")
+                last_folder = await asyncio.to_thread(cls.create_folder, file, file_id_list[len_id_list - 2], file_obj_names,
+                                                      len_id_list)
+
+            # file type
+            filetype = filename_type(file_obj_names[file_len - 1])
+            location = file_obj_names[file_len - 1]
+            while await asyncio.to_thread(settings.STORAGE_IMPL.obj_exist, last_folder.id, location, tenant_id):
+                location += "_"
+            blob = await asyncio.to_thread(file_obj.read)
+            filename = await asyncio.to_thread(
+                duplicate_name,
+                cls.query,
+                name=file_obj_names[file_len - 1],
+                parent_id=last_folder.id)
+            await asyncio.to_thread(settings.STORAGE_IMPL.put, last_folder.id, location, blob, tenant_id)
+            file_data = {
+                "id": file_obj.id,
+                "parent_id": last_folder.id,
+                "tenant_id": tenant_id,
+                "created_by": tenant_id,
+                "type": filetype,
+                "name": filename,
+                "location": location,
+                "size": len(blob),
+            }
+            inserted = await asyncio.to_thread(cls.insert, file_data)
+            return inserted.to_json()
+
+        file_res = []
+        errs = []
+        for file_obj in file_objs:
+            e, file = FileService.get_by_id(file_obj.id)
+            if e:
+                blob = await asyncio.to_thread(file_obj.read)
+                await asyncio.to_thread(settings.STORAGE_IMPL.put, file.parent_id, file.location, blob, tenant_id)
+                file_res.append(file.to_dict())
+                continue
+            try:
+                res = await _handle_single_file(file_obj)
+                file_res.append(res)
+            except Exception as e:
+                errs.append(str(e))
+
+        return errs, file_res
 

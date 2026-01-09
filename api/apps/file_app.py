@@ -15,23 +15,21 @@
 #
 import logging
 import asyncio
-import os
 import pathlib
 import re
 from quart import request, make_response
 from api.apps import login_required, current_user
 
 from api.common.check_team_permission import check_file_team_permission
+from api.db.services.connector_service import Connector2KbService
 from api.db.services.document_service import DocumentService
 from api.db.services.file2document_service import File2DocumentService
 from api.utils.api_utils import server_error_response, get_data_error_result, validate_request
 from common.misc_utils import get_uuid
 from common.constants import RetCode, FileSource
 from api.db import FileType
-from api.db.services import duplicate_name
 from api.db.services.file_service import FileService
 from api.utils.api_utils import get_json_result, get_request_json
-from api.utils.file_utils import filename_type
 from api.utils.web_utils import CONTENT_TYPE_MAP
 from common import settings
 from common.role_util import check_role_access, FILE_API_ACTION_MAP, FILE_ROLE_RESOURCE_TYPE
@@ -61,71 +59,8 @@ async def upload():
         if file_obj.filename == '':
             return get_json_result(
                 data=False, message='No file selected!', code=RetCode.ARGUMENT_ERROR)
-    file_res = []
     try:
-        e, pf_folder = FileService.get_by_id(pf_id)
-        if not e:
-            return get_data_error_result( message="Can't find this folder!")
-
-        async def _handle_single_file(file_obj):
-            MAX_FILE_NUM_PER_USER: int = int(os.environ.get('MAX_FILE_NUM_PER_USER', 0))
-            if 0 < MAX_FILE_NUM_PER_USER <= await asyncio.to_thread(DocumentService.get_doc_count, current_user.id):
-                return get_data_error_result( message="Exceed the maximum file number of a free user!")
-
-            # split file name path
-            if not file_obj.filename:
-                file_obj_names = [pf_folder.name, file_obj.filename]
-            else:
-                full_path = '/' + file_obj.filename
-                file_obj_names = full_path.split('/')
-            file_len = len(file_obj_names)
-
-            # get folder
-            file_id_list = await asyncio.to_thread(FileService.get_id_list_by_id, pf_id, file_obj_names, 1, [pf_id])
-            len_id_list = len(file_id_list)
-
-            # create folder
-            if file_len != len_id_list:
-                e, file = await asyncio.to_thread(FileService.get_by_id, file_id_list[len_id_list - 1])
-                if not e:
-                    return get_data_error_result(message="Folder not found!")
-                last_folder = await asyncio.to_thread(FileService.create_folder, file, file_id_list[len_id_list - 1], file_obj_names,
-                                                        len_id_list)
-            else:
-                e, file = await asyncio.to_thread(FileService.get_by_id, file_id_list[len_id_list - 2])
-                if not e:
-                    return get_data_error_result(message="Folder not found!")
-                last_folder = await asyncio.to_thread(FileService.create_folder, file, file_id_list[len_id_list - 2], file_obj_names,
-                                                        len_id_list)
-
-            # file type
-            filetype = filename_type(file_obj_names[file_len - 1])
-            location = file_obj_names[file_len - 1]
-            while await asyncio.to_thread(settings.STORAGE_IMPL.obj_exist, last_folder.id, location, current_user.id):
-                location += "_"
-            blob = await asyncio.to_thread(file_obj.read)
-            filename = await asyncio.to_thread(
-                duplicate_name,
-                FileService.query,
-                name=file_obj_names[file_len - 1],
-                parent_id=last_folder.id)
-            await asyncio.to_thread(settings.STORAGE_IMPL.put, last_folder.id, location, blob, current_user.id)
-            file_data = {
-                "id": get_uuid(),
-                "parent_id": last_folder.id,
-                "tenant_id": current_user.id,
-                "created_by": current_user.id,
-                "type": filetype,
-                "name": filename,
-                "location": location,
-                "size": len(blob),
-            }
-            inserted = await asyncio.to_thread(FileService.insert, file_data)
-            return inserted.to_json()
-
-        for file_obj in file_objs:
-            res = await _handle_single_file(file_obj)
-            file_res.append(res)
+        file_res = FileService.upload_files(pf_id, file_objs, current_user.id)
 
         return get_json_result(data=file_res)
     except Exception as e:
@@ -481,5 +416,24 @@ async def move():
 
         return await asyncio.to_thread(_move_sync)
 
+    except Exception as e:
+        return server_error_response(e)
+
+
+@manager.route('/link', methods=['post'])  # noqa: F821
+@login_required
+@validate_request("folder_id", "connectors")
+@file_role_guard
+async def link():
+    req = await get_request_json()
+    folder_id = req["folder_id"]
+    connectors = req["connectors"]
+
+    try:
+        errors = Connector2KbService.link_connectors(connectors=connectors, folder_id=folder_id, tenant_id=current_user.id)
+        if errors:
+            logging.error("Link folder errors: ", errors)
+
+        return get_json_result(data=connectors)
     except Exception as e:
         return server_error_response(e)

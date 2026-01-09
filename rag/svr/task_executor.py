@@ -1024,8 +1024,11 @@ async def do_handle_task(task):
         flds = ["question_kwd", "content_with_weight", "docnm_kwd"]
         es_res = settings.docStoreConn.search([], [], {"kb_id": task_dataset_id}, [], None, 0, 1, index_name, [task_dataset_id])
         total = settings.docStoreConn.get_total(es_res)
+        if total == 0:
+            progress_callback(prog=1.0, msg="Embedding switching done ({:.2f}s)".format(timer() - start_ts))
+            return
         B = 16
-        i = 1
+        i = 0
         for cks in settings.docStoreConn.scroll(flds, {"kb_id": task_dataset_id}, [], 0, B, index_name, [task_dataset_id]):
             task_canceled = has_canceled(task_id)
             if task_canceled:
@@ -1064,8 +1067,9 @@ async def do_handle_task(task):
 
             progress_message = "Embedding chunks ({:.2f}s)".format(timer() - start_ts)
             logging.info(progress_message)
-            progress_callback(B*i/total, msg=progress_message)
-            i += 1
+            i += len(docs)
+            progress_callback(i/total, msg=progress_message)
+
         progress_callback(prog=1.0, msg="Embedding switching done ({:.2f}s)".format(timer() - start_ts))
         return
     elif task_type == "clone":
@@ -1076,14 +1080,18 @@ async def do_handle_task(task):
         docid_map = DocumentService.clone_kb(task_dataset_id, target_kb_id, task_tenant_id)
         es_res = settings.docStoreConn.search([], [], {"kb_id": task_dataset_id}, [], None, 0, 1, index_name, [task_dataset_id])
         total = settings.docStoreConn.get_total(es_res)
+        if total == 0:
+            progress_callback(prog=1.0, msg="Chunks cloning done ({:.2f}s)".format(timer() - start_ts))
+            return
         B = 16
-        i = 1
+        i = 0
         for cks in settings.docStoreConn.scroll(flds, {"kb_id": task_dataset_id}, [], 0, B, index_name, [task_dataset_id]):
             task_canceled = has_canceled(task_id)
             if task_canceled:
                 progress_callback(-1, msg="Task has been canceled.")
                 return
             for id, d in settings.docStoreConn.get_fields(cks, flds).items():
+                i += 1
                 retry = 3
                 for t in range(retry):
                     try:
@@ -1100,8 +1108,7 @@ async def do_handle_task(task):
 
             progress_message = "Cloning chunks ({:.2f}s)".format(timer() - start_ts)
             logging.info(progress_message)
-            progress_callback(B*i/total, msg=progress_message)
-            i += 1
+            progress_callback(i/total, msg=progress_message)
         progress_callback(prog=1.0, msg="Chunks cloning done ({:.2f}s)".format(timer() - start_ts))
         return
     else:

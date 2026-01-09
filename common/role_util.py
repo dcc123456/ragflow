@@ -17,7 +17,6 @@ import inspect
 import logging
 from functools import wraps
 
-from api.apps import current_user
 from api.db import ActionEnum, ResourceTypeEnum
 from api.db.services.role_service import RoleResourceService
 from api.utils.api_utils import get_json_result
@@ -38,6 +37,7 @@ def check_role_access(action_map, resource_type):
 
     def decorator(func):
         original_name = getattr(inspect.unwrap(func), "__name__", func.__name__)
+        from api.apps import current_user
 
         @wraps(func)
         async def wrapper(*args, **kwargs):
@@ -167,4 +167,5 @@ FILE_API_ACTION_MAP = {
     "rename": ActionEnum.WRITE,
     "get": ActionEnum.READ,
     "move": ActionEnum.WRITE,
+    "link": ActionEnum.WRITE,
 }

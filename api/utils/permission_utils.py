@@ -1,7 +1,6 @@
 import inspect
 from functools import wraps
 
-from api.apps import current_user
 from common import settings
 from common.constants import RetCode
 from api.db import PermissionTargetType, PermissionValue, ResourceType
@@ -166,6 +165,7 @@ def check_kb_permission(permission):
 
         @wraps(foo)
         async def wrapper(*args, **kwargs):
+            from api.apps import current_user
             content_type = request.headers.get("Content-Type") or ""
 
             if request.method in ["POST", "PUT", "PATCH"]:
@@ -238,6 +238,7 @@ def check_dialog_permission(permission):
 
         @wraps(foo)
         async def wrapper(*args, **kwargs):
+            from api.apps import current_user
             content_type = request.headers.get("Content-Type") or ""
 
             if request.method in ["POST", "PUT", "PATCH"]:

@@ -19,10 +19,10 @@ import os
 from typing import Tuple, List
 
 from anthropic import BaseModel
-from peewee import SQL, fn
+from peewee import SQL, fn, JOIN
 
 from api.db import InputType
-from api.db.db_models import Connector, SyncLogs, Connector2Kb, Knowledgebase
+from api.db.db_models import Connector, SyncLogs, Connector2Kb, Knowledgebase, File
 from api.db.services.common_service import CommonService
 from api.db.services.document_service import DocumentService
 from common.misc_utils import get_uuid
@@ -102,6 +102,8 @@ class SyncLogsService(CommonService):
             Connector.timeout_secs,
             Knowledgebase.name.alias("kb_name"),
             Knowledgebase.avatar.alias("kb_avatar"),
+            cls.model.kb_id.alias("folder_id"),
+            File.name.alias("folder_name"),
             Connector2Kb.auto_parse,
             cls.model.from_beginning.alias("reindex"),
             cls.model.status,
@@ -113,7 +115,8 @@ class SyncLogsService(CommonService):
         query = cls.model.select(*fields)\
             .join(Connector, on=(cls.model.connector_id==Connector.id))\
             .join(Connector2Kb, on=(cls.model.kb_id==Connector2Kb.kb_id))\
-            .join(Knowledgebase, on=(cls.model.kb_id==Knowledgebase.id))
+            .join(Knowledgebase, on=(cls.model.kb_id==Knowledgebase.id), join_type=JOIN.LEFT_OUTER)\
+            .join(File, on=(cls.model.kb_id==File.id), join_type=JOIN.LEFT_OUTER)
 
         if connector_id:
             query = query.where(cls.model.connector_id == connector_id)
@@ -196,12 +199,13 @@ class SyncLogsService(CommonService):
             .where(cls.model.id == id).execute()
 
     @classmethod
-    def duplicate_and_parse(cls, kb, docs, tenant_id, src, auto_parse=True):
+    def duplicate_and_parse(cls, kb, docs, tenant_id, src, auto_parse=True, folder_id=None):
         from api.db.services.file_service import FileService
         if not docs:
             return None
 
         class FileObj(BaseModel):
+            id: str
             filename: str
             blob: bytes
 
@@ -209,7 +213,11 @@ class SyncLogsService(CommonService):
                 return self.blob
 
         errs = []
-        files = [FileObj(filename=d["semantic_identifier"]+(f"{d['extension']}" if d["semantic_identifier"][::-1].find(d['extension'][::-1])<0 else ""), blob=d["blob"]) for d in docs]
+        files = [FileObj(id=d["id"], filename=d["semantic_identifier"]+(f"{d['extension']}" if d["semantic_identifier"][::-1].find(d['extension'][::-1])<0 else ""), blob=d["blob"]) for d in docs]
+        if folder_id:
+            FileService.upload_files(folder_id, files, tenant_id)
+            return
+
         doc_ids = []
         err, doc_blob_pairs = FileService.upload_document(kb, files, tenant_id, src)
         errs.extend(err)
@@ -247,7 +255,8 @@ class Connector2KbService(CommonService):
     model = Connector2Kb
 
     @classmethod
-    def link_connectors(cls, kb_id:str, connectors: list[dict], tenant_id:str):
+    def link_connectors(cls, kb_id:str|None=None, connectors: list[dict]=[], folder_id:str|None=None, tenant_id:str=""):
+        kb_id = kb_id or folder_id
         arr = cls.query(kb_id=kb_id)
         old_conn_ids = [a.connector_id for a in arr]
         connector_ids = []
@@ -257,13 +266,15 @@ class Connector2KbService(CommonService):
             if conn_id in old_conn_ids:
                 cls.filter_update([cls.model.connector_id==conn_id, cls.model.kb_id==kb_id], {"auto_parse": conn.get("auto_parse", "1")})
                 continue
-            cls.save(**{
+            info = {
                 "id": get_uuid(),
                 "connector_id": conn_id,
                 "kb_id": kb_id,
-                "auto_parse": conn.get("auto_parse", "1")
-            })
+                "auto_parse": conn.get("auto_parse", "1"),
+                "is_kb": "0" if folder_id else "1"
+            }
             SyncLogsService.schedule(conn_id, kb_id, reindex=True)
+            cls.save(**info)
 
         errs = []
         for conn_id in old_conn_ids:
@@ -273,17 +284,13 @@ class Connector2KbService(CommonService):
             e, conn = ConnectorService.get_by_id(conn_id)
             if not e:
                 continue
-            #SyncLogsService.filter_delete([SyncLogs.connector_id==conn_id, SyncLogs.kb_id==kb_id])
-            # Do not delete docs while unlinking.
             SyncLogsService.filter_update([SyncLogs.connector_id==conn_id, SyncLogs.kb_id==kb_id, SyncLogs.status.in_([TaskStatus.SCHEDULE, TaskStatus.RUNNING])], {"status": TaskStatus.CANCEL})
-            #docs = DocumentService.query(source_type=f"{conn.source}/{conn.id}")
-            #err = FileService.delete_docs([d.id for d in docs], tenant_id)
-            #if err:
-            #    errs.append(err)
+
         return "\n".join(errs)
 
     @classmethod
-    def list_connectors(cls, kb_id):
+    def list_connectors(cls, kb_id=None, folder_id=None):
+        kb_id = kb_id or folder_id
         fields = [
             Connector.id,
             Connector.source,
@@ -294,9 +301,10 @@ class Connector2KbService(CommonService):
         return list(cls.model.select(*fields)\
                     .join(Connector, on=(cls.model.connector_id==Connector.id))\
                     .where(
-                        cls.model.kb_id==kb_id
+                      cls.model.kb_id==kb_id
                     ).dicts()
         )
+
 
 
 

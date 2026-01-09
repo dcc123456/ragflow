@@ -917,6 +917,7 @@ class KnowledgebaseService(CommonService):
         emb_mdl = LLMBundle(tenant_id, LLMType.EMBEDDING, embd_id)
         samples = sample_random_chunks_with_vectors(settings.docStoreConn, tenant_id=tenant_id, kb_id=kb_id, n=n)
 
+        mode = "content_only"
         results, eff_sims = [], []
         for ck in samples:
             title = ck.get("doc_name") or "Title"
@@ -932,13 +933,23 @@ class KnowledgebaseService(CommonService):
 
 
             v, _ = emb_mdl.encode([title, txt_in])
-            assert len(v[1]) == len(ck["vector"]), f"The dimension ({len(v[1])}) of given embedding model is different from the original ({len(ck['vector'])})"
+            if len(v[1]) != len(ck["vector"]):
+                return {
+                    "kb_id": kb_id,
+                    "model": embd_id,
+                    "sampled": len(samples),
+                    "valid": len(eff_sims),
+                    "avg_cos_sim": 0,
+                    "min_cos_sim": 0,
+                    "max_cos_sim": 0,
+                    "match_mode": "content_only",
+                }
+            #assert len(v[1]) == len(ck["vector"]), f"The dimension ({len(v[1])}) of given embedding model is different from the original ({len(ck['vector'])})"
             sim_content = _cos_sim(v[1], ck["vector"])
             title_w = 0.1
             qv_mix = title_w * v[0] + (1 - title_w) * v[1]
             sim_mix = _cos_sim(qv_mix, ck["vector"])
             sim = sim_content
-            mode = "content_only"
             if sim_mix > sim:
                 sim = sim_mix
                 mode = "title+content"
