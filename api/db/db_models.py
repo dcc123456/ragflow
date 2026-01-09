@@ -1447,7 +1447,7 @@ def migrate_db():
     alter_db_add_column(migrator, "user", "role_id", IntegerField(null=False, help_text="id in rag_flow.role", index=True, default=1))
     alter_db_add_column(migrator, "knowledgebase", "embed_task_id", CharField(max_length=32, null=True, help_text="Switch embedding task ID", index=True))
     alter_db_add_column(migrator, "knowledgebase", "embed_task_finish_at", DateTimeField(null=True))
-    alter_db_add_column(migrator, "knowledgebase", "clone_task_id", CharField(clone_task_id = CharField(max_length=32, null=True, help_text="Duplicate dataset task ID", index=True)))
+    alter_db_add_column(migrator, "knowledgebase", "clone_task_id", CharField(max_length=32, null=True, help_text="Duplicate dataset task ID", index=True))
     alter_db_add_column(migrator, "knowledgebase", "clone_task_finish_at", DateTimeField(null=True))
     alter_db_add_column(migrator, "document", "from_kb_id", CharField(max_length=256, null=True, index=True))
 
