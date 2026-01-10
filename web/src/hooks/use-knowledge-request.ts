@@ -18,6 +18,7 @@ import kbService, {
   listTag,
   removeTag,
   renameTag,
+  traceDuplicate,
 } from '@/services/knowledge-service';
 import {
   useIsMutating,
@@ -40,12 +41,14 @@ export const enum KnowledgeApiAction {
   FetchKnowledgeListByPage = 'fetchKnowledgeListByPage',
   CreateKnowledge = 'createKnowledge',
   DeleteKnowledge = 'deleteKnowledge',
+  DuplicateKnowledge = 'duplicateKnowledge',
   SaveKnowledge = 'saveKnowledge',
   FetchKnowledgeDetail = 'fetchKnowledgeDetail',
   FetchKnowledgeGraph = 'fetchKnowledgeGraph',
   FetchMetadata = 'fetchMetadata',
   FetchKnowledgeList = 'fetchKnowledgeList',
   RemoveKnowledgeGraph = 'removeKnowledgeGraph',
+  TraceDuplicate = 'traceDuplicate',
 }
 
 export const useKnowledgeBaseId = (): string => {
@@ -251,6 +254,81 @@ export const useUpdateKnowledge = (shouldFetchList = false) => {
   });
 
   return { data, loading, saveKnowledgeConfiguration: mutateAsync };
+};
+
+export const useDuplicateKnowledge = (shouldFetchList = false) => {
+  const knowledgeBaseId = useKnowledgeBaseId();
+  const queryClient = useQueryClient();
+  const {
+    data,
+    isPending: loading,
+    mutateAsync,
+  } = useMutation({
+    mutationKey: [KnowledgeApiAction.DuplicateKnowledge],
+    mutationFn: async (params: { kb_id?: string; name: string }) => {
+      const { data = {} } = await kbService.duplicateKb({
+        name: params.name,
+        kb_id: params.kb_id ?? knowledgeBaseId,
+      });
+
+      if (data.code === 0) {
+        message.success(i18n.t(`message.duplicated`));
+
+        if (shouldFetchList) {
+          queryClient.invalidateQueries({
+            queryKey: [KnowledgeApiAction.FetchKnowledgeListByPage],
+          });
+        } else {
+          queryClient.invalidateQueries({ queryKey: ['fetchKnowledgeDetail'] });
+        }
+      }
+      return data;
+    },
+  });
+
+  return {
+    data,
+    loading,
+    duplicateKnowledge: mutateAsync,
+  };
+};
+
+export const useTraceDuplicate = (id: string) => {
+  const { data, refetch } = useQuery({
+    queryKey: [KnowledgeApiAction.TraceDuplicate, id],
+    queryFn: async () => {
+      const { data } = await traceDuplicate(id);
+
+      console.log(data);
+      return data?.data ?? {};
+    },
+    initialData: {} as Awaited<
+      ReturnType<typeof traceDuplicate>
+    >['data']['data'],
+  });
+
+  // Mark as "Duplicating in progress" only if progress is [0, 1)
+  const hasDuplicateTrace =
+    data?.progress != null && data.progress >= 0 && data.progress < 1;
+
+  useEffect(() => {
+    // Refetch every 2 seconds if is in progress
+    if (hasDuplicateTrace) {
+      const interval = window.setInterval(() => {
+        refetch();
+      }, 2000);
+
+      return () => window.clearInterval(interval);
+    }
+  }, [hasDuplicateTrace, refetch]);
+
+  return {
+    progress: data.progress,
+    hasProgress: hasDuplicateTrace,
+    finished: data?.progress >= 1,
+    errored: data?.progress === -1,
+    data,
+  };
 };
 
 export const useFetchKnowledgeBaseConfiguration = (props?: {

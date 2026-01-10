@@ -64,6 +64,7 @@ export default {
   kb_list: `${api_host}/kb/list`,
   create_kb: `${api_host}/kb/create`,
   update_kb: `${api_host}/kb/update`,
+  duplicate_kb: `${api_host}/kb/clone`,
   rm_kb: `${api_host}/kb/rm`,
   get_kb_detail: `${api_host}/kb/detail`,
   getKnowledgeGraph: (knowledgeId: string) =>
@@ -85,6 +86,7 @@ export default {
   updateMetaData: `${api_host}/document/metadata/update`,
   kbUpdateMetaData: `${api_host}/kb/update_metadata_setting`,
   documentUpdateMetaData: `${api_host}/document/update_metadata_setting`,
+  traceDuplicate: (id: string) => `${api_host}/kb/trace_clone?kb_id=${id}`,
 
   // tags
   listTag: (knowledgeId: string) => `${api_host}/kb/${knowledgeId}/tags`,

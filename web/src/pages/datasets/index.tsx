@@ -1,4 +1,5 @@
 import { CardContainer } from '@/components/card-container';
+import DuplicateDialog from '@/components/duplicate-dialog';
 import { EmptyCardType } from '@/components/empty/constant';
 import { EmptyAppCard } from '@/components/empty/empty';
 import ListFilterBar from '@/components/list-filter-bar';
@@ -16,6 +17,7 @@ import { useSearchParams } from 'react-router';
 import { DatasetCard } from './dataset-card';
 import { DatasetCreatingDialog } from './dataset-creating-dialog';
 import { useSaveKnowledge } from './hooks';
+import useDuplicateDataset from './use-duplicate-dataset';
 import { useRenameDataset } from './use-rename-dataset';
 import { useSelectOwners } from './use-select-owners';
 import { useShowPrivilegeDialog } from './use-show-privilege-dialog';
@@ -51,6 +53,15 @@ export default function Datasets() {
     hideDatasetRenameModal,
     showDatasetRenameModal,
   } = useRenameDataset();
+
+  const {
+    isModalVisible: datasetDuplicateModalVisible,
+    showModal: showDatasetDuplicateModal,
+    hideModal: hideDatasetDuplicateModal,
+    initialName: initialDatasetDuplicateName,
+    onOk: onDatasetDuplicateOk,
+    loading: datasetDuplicateLoading,
+  } = useDuplicateDataset();
 
   const handlePageChange = useCallback(
     (page: number, pageSize?: number) => {
@@ -129,6 +140,7 @@ export default function Datasets() {
                       dataset={dataset}
                       key={dataset.id}
                       showDatasetRenameModal={showDatasetRenameModal}
+                      showDatasetDuplicateModal={showDatasetDuplicateModal}
                       showPrivilegeModal={handShowPrivilegeModal(dataset)}
                     ></DatasetCard>
                   );
@@ -150,6 +162,14 @@ export default function Datasets() {
             onOk={onCreateOk}
             loading={creatingLoading}
           ></DatasetCreatingDialog>
+        )}
+        {datasetDuplicateModalVisible && (
+          <DuplicateDialog
+            hideModal={hideDatasetDuplicateModal}
+            onOk={onDatasetDuplicateOk}
+            initialName={initialDatasetDuplicateName}
+            loading={datasetDuplicateLoading}
+          />
         )}
         {datasetRenameVisible && (
           <RenameDialog

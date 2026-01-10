@@ -1,4 +1,5 @@
 import { CardSineLineContainer } from '@/components/card-singleline-container';
+import DuplicateDialog from '@/components/duplicate-dialog';
 import { EmptyCardType } from '@/components/empty/constant';
 import { EmptyAppCard } from '@/components/empty/empty';
 import { PrivilegeManagementDialog } from '@/components/privilege-management/privilege-management-dialog';
@@ -9,6 +10,7 @@ import { useNavigatePage } from '@/hooks/logic-hooks/navigate-hooks';
 import { useFetchNextKnowledgeListByPage } from '@/hooks/use-knowledge-request';
 import { useTranslation } from 'react-i18next';
 import { DatasetCard } from '../datasets/dataset-card';
+import useDuplicateDataset from '../datasets/use-duplicate-dataset';
 import { useRenameDataset } from '../datasets/use-rename-dataset';
 import { useShowPrivilegeDialog } from '../datasets/use-show-privilege-dialog';
 import { SeeAllAppCard } from './application-card';
@@ -24,6 +26,16 @@ export function Datasets() {
     hideDatasetRenameModal,
     showDatasetRenameModal,
   } = useRenameDataset();
+
+  const {
+    isModalVisible: datasetDuplicateModalVisible,
+    showModal: showDatasetDuplicateModal,
+    hideModal: hideDatasetDuplicateModal,
+    initialName: initialDatasetDuplicateName,
+    onOk: onDatasetDuplicateOk,
+    loading: datasetDuplicateLoading,
+  } = useDuplicateDataset();
+
   const { navigateToDatasetList } = useNavigatePage();
 
   const {
@@ -49,16 +61,15 @@ export function Datasets() {
           <>
             {kbs?.length > 0 && (
               <CardSineLineContainer>
-                {kbs
-                  ?.slice(0, 6)
-                  .map((dataset) => (
-                    <DatasetCard
-                      key={dataset.id}
-                      dataset={dataset}
-                      showDatasetRenameModal={showDatasetRenameModal}
-                      showPrivilegeModal={handShowPrivilegeModal(dataset)}
-                    ></DatasetCard>
-                  ))}
+                {kbs?.slice(0, 6).map((dataset) => (
+                  <DatasetCard
+                    key={dataset.id}
+                    dataset={dataset}
+                    showDatasetRenameModal={showDatasetRenameModal}
+                    showDatasetDuplicateModal={showDatasetDuplicateModal}
+                    showPrivilegeModal={handShowPrivilegeModal(dataset)}
+                  ></DatasetCard>
+                ))}
                 {
                   <SeeAllAppCard
                     click={() => navigateToDatasetList({ isCreate: false })}
@@ -83,6 +94,14 @@ export function Datasets() {
           initialName={initialDatasetName}
           loading={datasetRenameLoading}
         ></RenameDialog>
+      )}
+      {datasetDuplicateModalVisible && (
+        <DuplicateDialog
+          hideModal={hideDatasetDuplicateModal}
+          onOk={onDatasetDuplicateOk}
+          initialName={initialDatasetDuplicateName}
+          loading={datasetDuplicateLoading}
+        />
       )}
       {privilegeModal && (
         <PrivilegeManagementDialog

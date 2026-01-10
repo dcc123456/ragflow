@@ -4,6 +4,7 @@ import { formatDate } from '@/utils/date';
 import { ReactNode } from 'react';
 
 interface IProps {
+  className?: string;
   data: {
     name: string;
     description?: string;
@@ -16,14 +17,17 @@ interface IProps {
   icon?: React.ReactNode;
 }
 export function HomeCard({
+  children,
+  className,
   data,
   onClick,
   moreDropdown,
   sharedBadge,
   icon,
-}: IProps) {
+}: React.PropsWithChildren<IProps>) {
   return (
     <Card
+      className={className}
       onClick={() => {
         // navigateToSearch(data?.id);
         onClick?.();
@@ -49,15 +53,19 @@ export function HomeCard({
           </section>
 
           <section className="flex flex-col gap-1 mt-1">
-            <div className="whitespace-nowrap overflow-hidden text-ellipsis">
-              {data.description}
-            </div>
-            <div className="flex justify-between items-center">
-              <p className="text-sm opacity-80 whitespace-nowrap">
-                {formatDate(data.update_time)}
-              </p>
-              {sharedBadge}
-            </div>
+            {children || (
+              <>
+                <div className="whitespace-nowrap overflow-hidden text-ellipsis">
+                  {data.description}
+                </div>
+                <div className="flex justify-between items-center">
+                  <p className="text-sm opacity-80 whitespace-nowrap">
+                    {formatDate(data.update_time)}
+                  </p>
+                  {sharedBadge}
+                </div>
+              </>
+            )}
           </section>
         </div>
       </CardContent>

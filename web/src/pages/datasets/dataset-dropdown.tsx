@@ -17,21 +17,28 @@ import {
   hasOwnerPermission,
   showEditButton,
 } from '@/utils/permission-util';
-import { PenLine, Trash2 } from 'lucide-react';
+import { LucideCopy, PenLine, Trash2 } from 'lucide-react';
 import { MouseEventHandler, PropsWithChildren, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import useDuplicateDataset from './use-duplicate-dataset';
 import { useRenameDataset } from './use-rename-dataset';
+
+type IDatasetDropdownProps = {
+  dataset: IKnowledge;
+  showPrivilegeModal(): void;
+} & Pick<ReturnType<typeof useRenameDataset>, 'showDatasetRenameModal'> & {
+    showDatasetDuplicateModal: ReturnType<
+      typeof useDuplicateDataset
+    >['showModal'];
+  };
 
 export function DatasetDropdown({
   children,
   showDatasetRenameModal,
+  showDatasetDuplicateModal,
   dataset,
   showPrivilegeModal,
-}: PropsWithChildren &
-  Pick<ReturnType<typeof useRenameDataset>, 'showDatasetRenameModal'> & {
-    dataset: IKnowledge;
-    showPrivilegeModal(): void;
-  }) {
+}: PropsWithChildren<IDatasetDropdownProps>) {
   const { t } = useTranslation();
   const { deleteKnowledge } = useDeleteKnowledge();
 
@@ -68,7 +75,20 @@ export function DatasetDropdown({
         <DropdownMenuItem onClick={handleShowDatasetRenameModal}>
           {t('common.rename')} <PenLine />
         </DropdownMenuItem>
+
+        {hasManagePermissionPermission(dataset.operator_permission) && (
+          <DropdownMenuItem
+            onClick={(e) => {
+              e.stopPropagation();
+              showDatasetDuplicateModal(dataset);
+            }}
+          >
+            {t('common.duplicate')} <LucideCopy />
+          </DropdownMenuItem>
+        )}
+
         <DropdownMenuSeparator />
+
         {hasManagePermissionPermission(dataset.operator_permission) && (
           <>
             <DropdownMenuItem onClick={handlesShowPrivilegeModal}>
@@ -77,31 +97,34 @@ export function DatasetDropdown({
             <DropdownMenuSeparator />
           </>
         )}
+
         {hasOwnerPermission(dataset.operator_permission) && (
-          <ConfirmDeleteDialog
-            onOk={handleDelete}
-            content={{
-              node: (
-                <ConfirmDeleteDialogNode
-                  avatar={{ avatar: dataset.avatar, name: dataset.name }}
-                  name={dataset.name}
-                />
-              ),
-            }}
-            title={t('deleteModal.delDataset')}
-          >
-            <DropdownMenuItem
-              className="text-state-error"
-              onSelect={(e) => {
-                e.preventDefault();
+          <>
+            <ConfirmDeleteDialog
+              onOk={handleDelete}
+              content={{
+                node: (
+                  <ConfirmDeleteDialogNode
+                    avatar={{ avatar: dataset.avatar, name: dataset.name }}
+                    name={dataset.name}
+                  />
+                ),
               }}
-              onClick={(e) => {
-                e.stopPropagation();
-              }}
+              title={t('deleteModal.delDataset')}
             >
-              {t('common.delete')} <Trash2 />
-            </DropdownMenuItem>
-          </ConfirmDeleteDialog>
+              <DropdownMenuItem
+                className="text-state-error"
+                onSelect={(e) => {
+                  e.preventDefault();
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                }}
+              >
+                {t('common.delete')} <Trash2 />
+              </DropdownMenuItem>
+            </ConfirmDeleteDialog>
+          </>
         )}
       </DropdownMenuContent>
     </DropdownMenu>

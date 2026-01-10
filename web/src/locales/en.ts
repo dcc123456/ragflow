@@ -50,6 +50,8 @@ export default {
       add: 'Add',
       remove: 'Remove',
       search: 'Search',
+      duplicate: 'Duplicate',
+      duplicateSuffix: '(copy)',
       noDataFound: 'No data found.',
       noData: 'No data available',
       promptPlaceholder: `Please input or use / to quickly insert variables.`,
@@ -185,6 +187,12 @@ Example: A 1 KB message with 1024-dim embedding uses ~9 KB. The 5 MB default lim
       searchKnowledgePlaceholder: 'Search',
       noMoreData: `That's all. Nothing more.`,
       parserRequired: 'Chunk method is required',
+
+      duplicatingTip: 'Duplicating...',
+      duplicateModal: {
+        title: 'Duplicate dataset',
+        description: 'Create a copy with a new name',
+      },
     },
     knowledgeDetails: {
       metadata: {

@@ -8,6 +8,7 @@ import { ProcessingType } from '@/pages/dataset/dataset-overview/dataset-common'
 import api from '@/utils/api';
 import registerServer from '@/utils/register-server';
 import request, { post } from '@/utils/request';
+import type { AxiosResponse } from 'axios';
 
 const {
   create_kb,
@@ -49,6 +50,7 @@ const {
   check_embedding,
   kbUpdateMetaData,
   documentUpdateMetaData,
+  duplicate_kb,
 } = api;
 
 const methods = {
@@ -228,6 +230,11 @@ const methods = {
   //   url: getMetaData,
   //   method: 'get',
   // },
+
+  duplicateKb: {
+    url: duplicate_kb,
+    method: 'post',
+  },
 };
 
 const kbService = registerServer<keyof typeof methods>(methods, request);
@@ -287,5 +294,32 @@ export function deletePipelineTask({
 }) {
   return request.delete(api.unbindPipelineTask({ kb_id, type }));
 }
+
+export const traceDuplicate = (id: string) =>
+  request.get<
+    AxiosResponse<{
+      code: number;
+      message: string;
+      data: {
+        begin_at: string;
+        chunk_ids: string;
+        create_date: string;
+        create_time: number;
+        digest: string;
+        doc_id: string;
+        from_page: number;
+        id: string;
+        priority: number;
+        process_duration: number;
+        progress: number;
+        progress_msg: string;
+        retry_count: number;
+        task_type: string;
+        to_page: number;
+        update_date: string;
+        update_time: number;
+      };
+    }>
+  >(api.traceDuplicate(id));
 
 export default kbService;
