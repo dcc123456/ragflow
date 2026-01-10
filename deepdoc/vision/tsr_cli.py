@@ -19,7 +19,8 @@ class Prediction:
 
 class TSRClient:
     def __init__(self, http_ip_port):
-        self.url = http_ip_port + "/predict"
+        # Use new unified endpoint: /predict/tsr
+        self.url = http_ip_port + "/predict/tsr"
         self.session = requests.Session()
 
     @timeout(18)

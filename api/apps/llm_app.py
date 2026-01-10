@@ -32,21 +32,35 @@ from api.utils.api_utils import get_data_error_result, get_json_result, server_e
 from api.utils.permission_utils import has_permission_for_member
 from rag.llm import EmbeddingModel, ChatModel, RerankModel, CvModel, TTSModel, OcrModel, Seq2txtModel
 
+logger = logging.getLogger("ragflow.llm_app")
+
 
 @manager.route("/factories", methods=["GET"])  # noqa: F821
 @login_required
 def factories():
     try:
         fac = get_allowed_llm_factories()
-        fac = [f.to_dict() for f in fac if f.name not in ["Youdao", "FastEmbed", "BAAI", "Builtin"]]
+        # Debug logging
+        import logging
+        logger = logging.getLogger()
+        logger.info(f"Total factories before filter: {len(fac)}")
+        logger.info(f"Factory names: {[f.name for f in fac]}")
+        # Note: Builtin is now supported for TEI models, so it's not filtered out
+        fac = [f.to_dict() for f in fac if f.name not in ["Youdao", "FastEmbed", "BAAI"]]
+        logger.info(f"Total factories after filter: {len(fac)}")
+        logger.info(f"Filtered factory names: {[f['name'] for f in fac]}")
         llms = LLMService.get_all()
         mdl_types = {}
+        builtin_models = []
         for m in llms:
             if m.status != StatusEnum.VALID.value:
                 continue
+            if m.fid == 'Builtin':
+                builtin_models.append(m.llm_name)
             if m.fid not in mdl_types:
                 mdl_types[m.fid] = set([])
             mdl_types[m.fid].add(m.model_type)
+        logger.info(f"Builtin models with VALID status: {builtin_models}")
         for f in fac:
             f["model_types"] = list(
                 mdl_types.get(
@@ -437,6 +451,8 @@ async def delete_factory():
 @manager.route("/my_llms", methods=["GET"])  # noqa: F821
 @login_required
 def my_llms():
+    import logging
+    logger = logging.getLogger()
     try:
         TenantLLMService.ensure_mineru_from_env(current_user.id)
         include_details = request.args.get("include_details", "false").lower() == "true"
@@ -446,36 +462,59 @@ def my_llms():
             objs = TenantLLMService.query(tenant_id=current_user.id)
             factories = LLMFactoriesService.query(status=StatusEnum.VALID.value)
 
+            # For Builtin factory, only show the model specified in TEI_MODEL
+            import os
+            tei_model = os.getenv("TEI_MODEL", "")
+            if tei_model:
+                logger.info(f"[my_llms] TEI_MODEL={tei_model}, filtering Builtin models")
+                objs = [o for o in objs if not (o.llm_factory == "Builtin" and o.llm_name != tei_model)]
+
+            logger.info(f"[my_llms] tenant_id: {current_user.id}, total tenant_llms: {len(objs)}")
+            logger.info(f"[my_llms] tenant_llm factories: {[o.llm_factory for o in objs]}")
+
             for o in objs:
-                o_dict = o.to_dict()
-                factory_tags = None
-                for f in factories:
-                    if f.name == o_dict["llm_factory"]:
-                        factory_tags = f.tags
-                        break
+                try:
+                    o_dict = o.to_dict()
+                    logger.info(f"[my_llms] Processing tenant_llm: {o_dict}")
 
-                if o_dict["llm_factory"] not in res:
-                    res[o_dict["llm_factory"]] = {"tags": factory_tags, "llm": []}
+                    factory_tags = None
+                    for f in factories:
+                        if f.name == o_dict["llm_factory"]:
+                            factory_tags = f.tags
+                            logger.info(f"[my_llms] Found factory {f.name} with tags: {factory_tags}")
+                            break
 
-                res[o_dict["llm_factory"]]["llm"].append(
-                    {
-                        "type": o_dict["model_type"],
-                        "name": o_dict["llm_name"],
-                        "used_token": o_dict["used_tokens"],
-                        "api_base": o_dict["api_base"] or "",
-                        "max_tokens": o_dict["max_tokens"] or 8192,
-                        "status": o_dict["status"] or "1",
-                    }
-                )
+                    if o_dict["llm_factory"] not in res:
+                        res[o_dict["llm_factory"]] = {"tags": factory_tags, "llm": []}
+
+                    res[o_dict["llm_factory"]]["llm"].append(
+                        {
+                            "type": o_dict["model_type"],
+                            "name": o_dict["llm_name"],
+                            "used_token": o_dict["used_tokens"],
+                            "api_base": o_dict["api_base"] or "",
+                            "max_tokens": o_dict["max_tokens"] or 8192,
+                            "status": o_dict["status"] or "1",
+                        }
+                    )
+                except Exception as e:
+                    logger.error(f"[my_llms] Error processing tenant_llm object: {e}", exc_info=True)
+                    raise
         else:
             res = {}
-            for o in TenantLLMService.get_my_llms(current_user.id):
+            logger.info(f"[my_llms] Calling get_my_llms for tenant_id: {current_user.id}")
+            my_llms_list = TenantLLMService.get_my_llms(current_user.id)
+            logger.info(f"[my_llms] get_my_llms returned {len(my_llms_list)} items")
+            for o in my_llms_list:
+                logger.info(f"[my_llms] get_my_llms item: {o}")
                 if o["llm_factory"] not in res:
                     res[o["llm_factory"]] = {"tags": o["tags"], "llm": []}
                 res[o["llm_factory"]]["llm"].append({"type": o["model_type"], "name": o["llm_name"], "used_token": o["used_tokens"], "status": o["status"]})
 
+        logger.info(f"[my_llms] Final result: {res}")
         return get_json_result(data=res)
     except Exception as e:
+        logger.error(f"[my_llms] Exception: {e}", exc_info=True)
         return server_error_response(e)
 
 
@@ -509,6 +548,13 @@ def list_app():
                 llms = [m.to_dict() for m in llms if m.status == StatusEnum.VALID.value]
                 for m in llms:
                     m["available"] = m["fid"] in available_fact
+
+                # For Builtin factory, filter models by TEI_MODEL environment variable
+                import os
+                tei_model = os.getenv("TEI_MODEL", "")
+                if tei_model:
+                    logger.info(f"[list] TEI_MODEL={tei_model}, filtering Builtin models (from_other)")
+                    llms = [m for m in llms if not (m["fid"] == "Builtin" and m["llm_name"] != tei_model)]
             else:
                 llm_set = set([m["llm_name"] + "@" + m["fid"] for m in llms])
                 for o in objs:
@@ -517,6 +563,13 @@ def list_app():
                     if o.llm_name + "@" + o.llm_factory in llm_set:
                         continue
                     llms.append({"llm_name": o.llm_name, "model_type": o.model_type, "fid": o.llm_factory, "available": True, "status": StatusEnum.VALID.value})
+
+            # For Builtin factory, filter models by TEI_MODEL environment variable
+            import os
+            tei_model = os.getenv("TEI_MODEL", "")
+            if tei_model:
+                logger.info(f"[list] TEI_MODEL={tei_model}, filtering Builtin models")
+                llms = [m for m in llms if not (m.get("fid") == "Builtin" and m.get("llm_name") != tei_model)]
 
             for m in llms:
                 m["tenant_id"] = tenant_id

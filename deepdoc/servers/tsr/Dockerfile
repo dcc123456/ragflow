@@ -44,10 +44,10 @@ RUN --mount=type=cache,id=ragflow_uv,target=/root/.cache/uv,sharing=locked \
     uv pip install litserve==0.2.7 tensorrt onnx torch ultralytics opencv-python-headless numpy pillow setuptools python-multipart
 
 COPY yolov8_to_tensorrt /app/yolov8_to_tensorrt
-COPY tsr_svr.py tsr.engine /app
+COPY tsr_svr.py tsr.trt /app
 #COPY tsr_svr.py keepit.sh /app
 
 ENV PYTHONPATH=/app
 EXPOSE 1234
-ENTRYPOINT ["/app/.venv/bin/python3", "/app/tsr_svr.py", "--engine=/app/tsr.engine"]
+ENTRYPOINT ["/app/.venv/bin/python3", "/app/tsr_svr.py", "--engine=/app/tsr.trt"]
 #ENTRYPOINT ["sh", "/app/keepit.sh"]

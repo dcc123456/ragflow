@@ -86,11 +86,21 @@ class TenantLLMService(CommonService):
     @classmethod
     @DB.connection_context()
     def get_my_llms(cls, tenant_id):
+        import os
         fields = [cls.model.llm_factory, LLMFactories.logo, LLMFactories.tags, cls.model.model_type, cls.model.llm_name,
                   cls.model.used_tokens, cls.model.status]
-        objs = cls.model.select(*fields).join(LLMFactories, on=(cls.model.llm_factory == LLMFactories.name)).where(
-            cls.model.tenant_id == tenant_id, ~cls.model.api_key.is_null()).dicts()
+        query = cls.model.select(*fields).join(LLMFactories, on=(cls.model.llm_factory == LLMFactories.name)).where(
+            cls.model.tenant_id == tenant_id, ~cls.model.api_key.is_null())
 
+        # For Builtin factory, only return the model specified in TEI_MODEL environment variable
+        tei_model = os.getenv("TEI_MODEL", "")
+        if tei_model:
+            # Filter out other Builtin models that don't match TEI_MODEL
+            query = query.where(
+                ~((cls.model.llm_factory == "Builtin") & (cls.model.llm_name != tei_model))
+            )
+
+        objs = query.dicts()
         return list(objs)
 
     @classmethod

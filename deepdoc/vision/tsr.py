@@ -19,7 +19,7 @@ import cv2
 import numpy as np
 from PIL import ImageDraw
 from PIL import Image
-import torch
+# torch is imported lazily to support client-only mode (without GPU dependencies)
 from common.file_utils import traversal_files, get_project_base_directory
 from deepdoc.vision import Recognizer
 
@@ -30,13 +30,15 @@ DEBUG=True
 class TableStructureRecognizer(Recognizer):
 
     def __init__(self):
-        if os.environ.get("TENSORRT_TSR_SVR"):
+        if os.environ.get("DEEPDOC_URL"):
             from deepdoc.vision.tsr_cli import TSRClient
-            self.model = TSRClient(os.environ["TENSORRT_TSR_SVR"])
+            self.model = TSRClient(os.environ["DEEPDOC_URL"])
         else:
             if os.environ.get("TABLE_STRUCTURE_RECOGNIZER_TYPE", "") == "ascend":
                 pass
             else:
+                # Lazy import torch for local inference mode only
+                import torch
                 with torch.amp.autocast(device_type="cuda"):
                     from ultralytics import YOLO
                     self.model = YOLO(os.path.join(get_project_base_directory(), "rag/res/deepdoc/tsr.pt"))

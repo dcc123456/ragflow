@@ -201,14 +201,16 @@ services:
       - RABBITMQ_DEFAULT_USER=${RABBITMQ_DEFAULT_USER}
       - RABBITMQ_DEFAULT_PASS=${RABBITMQ_DEFAULT_PASS}
     volumes:
-      - ${PWD}/rabbitmq-conf/rabbitmq.erlang.cookie:/var/lib/rabbitmq/.erlang.cookie
-      - ${PWD}/rabbitmq-conf/rabbitmq-entrypoint.sh:/usr/local/bin/cluster-entrypoint.sh
-      - ${PWD}/rabbitmq-conf/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
-      - ${PWD}/rabbitmq-conf/definitions.json:/etc/rabbitmq/definitions.json:ro
+      - ./rabbitmq-conf/definitions.json:/etc/rabbitmq/definitions.json:ro
+      - ./rabbitmq-conf/definitions.conf:/etc/rabbitmq/conf.d/10-definitions.conf:ro
       - rabbitmq_data:/var/lib/rabbitmq/
-    entrypoint: /usr/local/bin/cluster-entrypoint.sh
     networks:
       - ragflow
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 120
 
   tei-cpu:
     profiles:

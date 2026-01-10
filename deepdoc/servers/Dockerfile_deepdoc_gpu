@@ -1,0 +1,78 @@
+FROM nvidia/cuda:12.8.0-cudnn-runtime-ubuntu24.04
+ARG NEED_MIRROR=1
+
+SHELL ["/bin/bash", "-c"]
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN --mount=type=cache,id=ragflow_apt,target=/var/cache/apt,sharing=locked \
+    if [ "$NEED_MIRROR" == "1" ]; then \
+        sed -i 's|http://archive.ubuntu.com|https://mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list; \
+        mkdir -p /etc/uv && \
+        echo 'python-install-mirror = "https://registry.npmmirror.com/-/binary/python-build-standalone/"' > /etc/uv/uv.toml && \
+        echo '[[index]]' >> /etc/uv/uv.toml && \
+        echo 'url = "https://pypi.tuna.tsinghua.edu.cn/simple"' >> /etc/uv/uv.toml && \
+        echo 'default = true' >> /etc/uv/uv.toml; \
+    fi; \
+    rm -f /etc/apt/apt.conf.d/docker-clean && \
+    echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache && \
+    chmod 1777 /tmp && \
+    apt update && \
+    apt --no-install-recommends install -y ca-certificates && \
+    apt update && \
+    apt install -y curl vim libgl1 libglib2.0-0 wget unzip libgomp1
+
+# Install uv package manager
+RUN --mount=type=bind,source=uv-x86_64-unknown-linux-gnu.tar.gz,target=/uv-x86_64-unknown-linux-gnu.tar.gz \
+    tar xzvf /uv-x86_64-unknown-linux-gnu.tar.gz && \
+    mv /uv-x86_64-unknown-linux-gnu/* /usr/local/bin/ && \
+    rm -rf /uv-x86_64-unknown-linux-gnu
+
+WORKDIR /app
+
+# Install TensorRT 10.8 for x86_64 Architecture (required by DLA and TSR)
+# CUDA 12.8 to match inf24 cluster (nvidia-smi shows CUDA 12.8)
+# Ubuntu 24.04 to match base image
+# NOTE: Using TensorRT 10.8.0 as 10.12.0 doesn't have CUDA 12.8 build
+RUN --mount=type=bind,source=nv-tensorrt-local-repo-ubuntu2404-10.8.0-cuda-12.8_1.0-1_amd64.deb,target=/nv-tensorrt-local-repo-ubuntu2404-10.8.0-cuda-12.8_1.0-1_amd64.deb \
+    dpkg -i /nv-tensorrt-local-repo-ubuntu2404-10.8.0-cuda-12.8_1.0-1_amd64.deb && \
+    cp /var/nv-tensorrt-local-repo-ubuntu2404-10.8.0-cuda-12.8/*-keyring.gpg /usr/share/keyrings/
+
+# Create unified Python environment with all dependencies
+# Using pyproject.toml and uv.lock for dependency management
+# Install GPU-specific dependencies (TensorRT, CUDA Python)
+COPY deepdoc/servers/pyproject.toml deepdoc/servers/uv.lock /app/
+RUN --mount=type=cache,id=ragflow_uv,target=/root/.cache/uv,sharing=locked \
+    uv venv --python 3.11 && \
+    uv sync --group gpu --frozen
+
+# GPU version: CUDA 12.8 to match inf24 cluster (nvidia-smi shows CUDA 12.8)
+# Install PaddlePaddle GPU from Baidu's wheel repository
+RUN uv pip install paddlepaddle==3.0.0 --extra-index-url https://paddle-whl.bj.bcebos.com/stable/cu128/
+
+# Install YOLOv10 dependencies for DLA
+# Use pre-downloaded yolov10.zip from download_deps.py
+# Note: YOLOv10 requires Python 3.11 due to torch==2.0.1 compatibility
+RUN --mount=type=bind,source=yolov10.zip,target=/yolov10.zip \
+    unzip /yolov10.zip && \
+    uv pip install -r yolov10-main/requirements.txt && \
+    rm -rf yolov10-main
+
+# Copy unified server modules (dla, ocr, tsr)
+COPY deepdoc/servers/dla /app/dla
+COPY deepdoc/servers/ocr /app/ocr
+COPY deepdoc/servers/tsr /app/tsr
+
+# Copy unified server entry point
+COPY deepdoc/servers/deepdoc_svr.py /app/
+
+# Copy dla and tsr files (generated on GPU host)
+COPY dla.trt /app/dla/
+COPY tsr.trt /app/tsr/
+
+# Copy OCR files (downloaded via download_deps.py)
+COPY .paddleocr /root/.paddleocr
+
+ENV PYTHONPATH=/app
+EXPOSE 8000
+
+ENTRYPOINT ["/app/.venv/bin/python3", "/app/deepdoc_svr.py", "--gpu"]

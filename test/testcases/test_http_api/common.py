@@ -138,6 +138,11 @@ def bulk_upload_documents(auth, dataset_id, num, tmp_path):
         fp = create_txt_file(tmp_path / f"ragflow_test_upload_{i}.txt")
         fps.append(fp)
     res = upload_documents(auth, dataset_id, fps)
+    # Check for error response
+    if res.get("code") != 0:
+        raise RuntimeError(f"Document upload failed: {res.get('message', 'Unknown error')}")
+    if "data" not in res:
+        raise ValueError(f"API response missing 'data' key. Response: {res}")
     document_ids = []
     for document in res["data"]:
         document_ids.append(document["id"])

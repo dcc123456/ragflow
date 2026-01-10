@@ -2,12 +2,10 @@ include:
   - ./docker-compose-base.yml
 # To ensure that the container processes the locally modified `service_conf.yaml.template` instead of the one included in its image, you need to mount the local `service_conf.yaml.template` to the container.
 services:
-  ragflow-cpu:
+  ragflow:
     depends_on:
       mysql:
         condition: service_healthy
-    profiles:
-      - cpu
     image: ${RAGFLOW_IMAGE}
     # Example configuration to set up an MCP server:
     # command:
@@ -40,32 +38,28 @@ services:
       - ./nginx/proxy.conf:/etc/nginx/proxy.conf
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf
       - ../history_data_agent:/ragflow/history_data_agent
-      - ./service_conf.yaml.template:/ragflow/conf/service_conf.yaml.template
-      # - ./res/deepdoc:/ragflow/rag/res/deepdoc
     env_file: .env
     networks:
       - ragflow
     restart: on-failure
-    environment:
-      - MAX_FILE_NUM_PER_USER=${MAX_FILE_NUM_PER_USER}
-      - TZ=${TZ}
-      - ENABLE_ADMIN=${ENABLE_ADMIN}
-      # - OCR_SVR=http://10.142.0.6:12344
-      # - TENSORRT_DLA_SVR=http://10.142.0.6:3344
-      # - TENSORRT_TSR_SVR=http://10.142.0.6:11234
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
-  # ragflow-parser:
-  #   image: infiniflow-ai/ragflow:latest
-  #   container_name: infiniflow-ragflow-parser
-  #   network_mode: "host"
-  #   volumes:
-  #     - ./service_conf.yaml:/ragflow/conf/service_conf.yaml
-  #     - ./ragflow-logs:/ragflow/logs
-  #     - ./res/:/ragflow/rag/res
-  #     - ./entrypoint-parser.sh:/ragflow/entrypoint.sh
-  #   environment:
-  #     - MAX_FILE_NUM_PER_USER=${MAX_FILE_NUM_PER_USER}
-  #     - TZ=${TZ}
-  #   restart: always
+  parser:
+    depends_on:
+      mysql:
+        condition: service_healthy
+    image: ${RAGFLOW_IMAGE}
+    entrypoint: /ragflow/entrypoint-parser.sh
+    volumes:
+      - ./ragflow-logs:/ragflow/logs
+      - ./nginx/ragflow.conf:/etc/nginx/conf.d/ragflow.conf
+      - ./nginx/proxy.conf:/etc/nginx/proxy.conf
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ../history_data_agent:/ragflow/history_data_agent
+    env_file: .env
+    networks:
+      - ragflow
+    restart: on-failure
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

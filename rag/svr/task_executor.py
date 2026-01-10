@@ -1298,7 +1298,6 @@ def rabbitmq_callback(ch, method, properties, body):
                                                                   fake_document_ids=task_document_ids)
 
     ch.basic_ack(method.delivery_tag)
-    sys.exit()
 
 
 async def task_manager():
@@ -1312,9 +1311,9 @@ async def task_manager():
 
 def main():
     global PRIORITY, TASK_TYPE, task_limiter
-    if os.environ.get("TENSORRT_SVR"):
+    if os.environ.get("DEEPDOC_URL"):
         from deepdoc.vision.tsr_cli import TSRClient
-        TSRClient(os.environ["TENSORRT_SVR"])
+        TSRClient(os.environ["DEEPDOC_URL"])
 
     logging.info(r"""
     ____                      __  _

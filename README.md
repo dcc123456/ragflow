@@ -144,7 +144,7 @@ cd /app/infiniflow-ai/
 - 进入容器分别启动三个模型服务：
 ```shell
 cd ~/deepdoc/ocr; CUDA_VISIBLE_DEVICES=0 python paddleocr_server.py > ~/logs/ocr.log 2>&1 &
-cd ~/deepdoc/tsr; CUDA_VISIBLE_DEVICES=0 python tsr_svr.py  --engine tsr.engine  > ~/logs/tsr.log 2>&1 &
+cd ~/deepdoc/tsr; CUDA_VISIBLE_DEVICES=0 python tsr_svr.py  --engine tsr.trt  > ~/logs/tsr.log 2>&1 &
 cd ~/deepdoc/dla; CUDA_VISIBLE_DEVICES=1 python dla_svr.py --engine dla.trt --port 3344  > ~/logs/dla.log 2>&1  &
 ```
 

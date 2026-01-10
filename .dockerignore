@@ -1,0 +1,96 @@
+# Git files (keep .git for version detection in Dockerfile)
+**/.gitignore
+**/.gitattributes
+
+# Python
+**/__pycache__
+**/*.py[cod]
+**/*$py.class
+**/*.so
+**/.Python
+**/*.egg-info/
+**/dist/
+**/build/
+**/*.egg
+**/.pytest_cache/
+**/.coverage
+**/htmlcov/
+**/.tox/
+**/.venv/
+**/venv/
+**/ENV/
+**/env/
+
+# IDE
+**/.vscode/
+**/.idea/
+**/*.swp
+**/*.swo
+**/*~
+**/.DS_Store
+**/.marscode/
+
+# Logs and temp
+**/*.log
+**/logs/
+**/tmp/
+**/temp/
+**/*.tmp
+
+# Test files
+**/test/
+**/tests/
+**/*.test.py
+**/sdk/python/test/
+**/test/testcases/
+
+# CI/CD
+**/.github/
+**/.gitlab-ci.yml
+**/.jenkins/
+
+# Backup files
+**/*.backup
+**/*.bak
+**/*~
+
+# Local configuration
+**/.env.local
+**/.env.*.local
+**/*.local.json
+
+# Node modules (will be installed in container)
+**/node_modules/
+**/web/node_modules/
+
+# Build artifacts (will be created in container)
+**/web/dist/
+**/web/.next/
+**/web/out/
+
+# Dependencies cache
+**/.cache/
+**/.npm/
+**/.yarn/
+**/.pnpm-store/
+
+# Pulumi deployment (not needed in container)
+**/pulumi_ragflow/
+**/Pulumi.yaml
+
+# Kubernetes configs (not needed in container)
+**/k8s/
+
+# But keep docker/*.yaml files needed for container
+!**/docker/service_conf.yaml.template
+!**/docker/nginx/*.conf
+
+# Development scripts
+**/build_*.sh
+**/test_*.py
+**/*.patch
+
+# Misc
+**/*.pid
+**/*.seed
+**/*.pid.lock

@@ -91,6 +91,9 @@ jobs:
             mkdir -p ${RUNNER_WORKSPACE_PREFIX}/artifacts/${GITHUB_REPOSITORY}
             echo "${PR_SHA} ${GITHUB_RUN_ID}" > ${PR_SHA_FP}
           fi
+          ARTIFACTS_DIR=${RUNNER_WORKSPACE_PREFIX}/artifacts/${GITHUB_REPOSITORY}/${GITHUB_RUN_ID}
+          echo "ARTIFACTS_DIR=${ARTIFACTS_DIR}" >> ${GITHUB_ENV}
+          rm -rf ${ARTIFACTS_DIR} && mkdir -p ${ARTIFACTS_DIR}
 
       # https://github.com/astral-sh/ruff-action
       - name: Static check with Ruff
@@ -234,7 +237,7 @@ jobs:
       #     source .venv/bin/activate && pytest -s --tb=short sdk/python/test/test_frontend_api/get_email.py sdk/python/test/test_frontend_api/test_dataset.py
 
       - name: Run http api tests against Elasticsearch
-        timeout-minutes: 15
+        timeout-minutes: 30
         run: |
           export http_proxy=""; export https_proxy=""; export no_proxy=""; export HTTP_PROXY=""; export HTTPS_PROXY=""; export NO_PROXY=""
           MAX_RETRIES=180
@@ -255,7 +258,15 @@ jobs:
             COUNT=$((COUNT + 1))
             sleep 5
           done
-          source .venv/bin/activate && pytest -s --tb=short --level=${HTTP_API_TEST_LEVEL} test/testcases/test_http_api
+          source .venv/bin/activate && set -o pipefail; pytest -s --tb=short --level=${HTTP_API_TEST_LEVEL} test/testcases/test_http_api 2>&1 | tee infinity_api_test.log
+
+      - name: Collect ragflow log
+        if: ${{ !cancelled() }}
+        run: |
+          cp -r docker/ragflow-logs ${ARTIFACTS_DIR}/
+          echo "ragflow log" && tail -n 200 docker/ragflow-logs/ragflow_server.log
+          echo "parser log" && tail -n 200 docker/ragflow-logs/te.0.common.0.log
+          sudo rm -rf docker/ragflow-logs
 
       - name: Stop ragflow:nightly
         if: always()  # always run this step even if previous steps failed

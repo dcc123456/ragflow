@@ -1,10 +1,26 @@
 #!/bin/bash
 
+# Increase file descriptor limit to prevent "too many open files" error
+# The parser runs multiple worker processes that use fsnotify for file watching
+ulimit -n 65536
+
 /usr/sbin/nginx
+
+# -----------------------------------------------------------------------------
+# Replace env variables in the service_conf.yaml file
+# -----------------------------------------------------------------------------
+CONF_DIR="/ragflow/conf"
+TEMPLATE_FILE="${CONF_DIR}/service_conf.yaml.template"
+CONF_FILE="${CONF_DIR}/service_conf.yaml"
+
+rm -f "${CONF_FILE}"
+while IFS= read -r line || [[ -n "$line" ]]; do
+    eval "echo \"$line\"" >> "${CONF_FILE}"
+done < "${TEMPLATE_FILE}"
 
 export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu/
 
-PY=/root/miniconda3/envs/py11/bin/python
+PY=/ragflow/.venv/bin/python
 
 function p_0(){
     while [ 1 -eq 1 ];do
@@ -12,28 +28,32 @@ function p_0(){
     done
 }
 
-WS=46
+# Allow worker counts to be configured via environment variables
+# This helps reduce fsnotify usage to avoid "too many open files" error
+# Default: WS=3, RAPTOR=3, GRAPHRAG=3, RESUME=1 (total 10 workers)
+# Recommended for limited fs.inotify: WS=1, RAPTOR=1, GRAPHRAG=1, RESUME=0 (total 3 workers)
+WS=${WS_WORKERS:-1}
 
 for ((i=0;i<WS;i++))
 do
   p_0 common &
 done
 
-RAPTOR=3
+RAPTOR=${RAPTOR_WORKERS:-1}
 for ((i=0;i<RAPTOR;i++))
 do
   p_0 raptor  &
 done
 
 
-GRAPHRAG=3
+GRAPHRAG=${GRAPHRAG_WORKERS:-1}
 for ((i=0;i<GRAPHRAG;i++))
 do
   p_0 graphrag  &
 done
 
 
-RESUME=1
+RESUME=${RESUME_WORKERS:-1}
 for ((i=0;i<RESUME;i++))
 do
   p_0 resume  &

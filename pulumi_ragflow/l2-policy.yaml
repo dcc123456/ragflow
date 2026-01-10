@@ -1,0 +1,45 @@
+apiVersion: "cilium.io/v2alpha1"
+kind: CiliumL2AnnouncementPolicy
+metadata:
+  name: announce-all-loadbalancers
+spec:
+  # -------------------------------------------------------------------------
+  # Node Selector
+  # -------------------------------------------------------------------------
+  # Using an empty matchLabels map selects ALL nodes in the cluster.
+  # This ensures that your control-plane nodes (which also act as workers)
+  # are eligible to answer ARP requests for LoadBalancer IPs.
+  nodeSelector:
+    matchLabels: {}
+
+  # -------------------------------------------------------------------------
+  # Service Selector
+  # -------------------------------------------------------------------------
+  # Using an empty matchLabels map selects ALL Services in the cluster.
+  # While this technically matches ClusterIP/NodePort services too, 
+  # L2 Announcement only activates for services that actually possess
+  # an External IP or LoadBalancer IP. Therefore, this effectively 
+  # acts as "Select all Services of type LoadBalancer".
+  serviceSelector:
+    matchLabels: {}
+
+  # -------------------------------------------------------------------------
+  # Network Interfaces
+  # -------------------------------------------------------------------------
+  # A list of regular expressions to match the network interfaces 
+  # that should handle the L2 announcement (ARP replies).
+  #
+  # IMPORTANT: You MUST change "^enp2s0" to match your actual physical 
+  # interface name (check via 'ip link' on your nodes).
+  # Common examples: "^eth0", "^ens.*", "^bond0"
+  # Use a permissive default to match common interface names in test environments.
+  # In production, restrict to the correct physical interface (e.g., '^enp2s0' or '^eth0').
+  interfaces:
+    - ".*"
+
+  # -------------------------------------------------------------------------
+  # IP Types
+  # -------------------------------------------------------------------------
+  # Enable announcement for ExternalIPs and LoadBalancerIPs.
+  externalIPs: true
+  loadBalancerIPs: true

@@ -1,4 +1,31 @@
+"""
+⚠️  DEPRECATION WARNING ⚠️
+
+This script has known compatibility issues and produces incomplete ONNX exports.
+
+SYMPTOMS:
+- The exported ONNX file will be unusually small (~30-50 KB instead of 200-300 MB)
+- The exported model may not include all weights and parameters
+- TensorRT engine built from this ONNX may have inference accuracy issues
+
+RECOMMENDED ALTERNATIVE:
+Use the standard Ultralytics export method instead:
+
+    from ultralytics import YOLO
+    model = YOLO("yolov8x.pt")
+    model.export(format="onnx", opset=11, simplify=True, imgsz=640)
+
+This produces a complete ONNX file (~261 MB) with full model weights.
+
+For complete build instructions, see:
+  deepdoc/servers/README_UNIFIED.md
+
+If you still choose to use this script, proceed with caution and verify your ONNX file size.
+"""
+
 import argparse
+import os
+import sys
 from io import BytesIO
 
 import onnx
@@ -11,6 +38,16 @@ try:
     import onnxsim
 except ImportError:
     onnxsim = None
+
+# Print deprecation warning on script execution
+print("\n" + "="*70, file=sys.stderr)
+print("⚠️  DEPRECATION WARNING: export-det.py has known issues", file=sys.stderr)
+print("="*70, file=sys.stderr)
+print("This script may produce incomplete ONNX exports.", file=sys.stderr)
+print("\nRecommended alternative:", file=sys.stderr)
+print("  python -c 'from ultralytics import YOLO; YOLO(\"yolov8x.pt\").export(format=\"onnx\", opset=11, simplify=True, imgsz=640)'", file=sys.stderr)
+print("\nSee: deepdoc/servers/README_UNIFIED.md for complete instructions.", file=sys.stderr)
+print("="*70 + "\n", file=sys.stderr)
 
 
 def parse_args():
@@ -91,6 +128,23 @@ def main(args):
             print(f'Simplifier failure: {e}')
     onnx.save(onnx_model, save_path)
     print(f'ONNX export success, saved as {save_path}')
+
+    # Verify file size and warn if too small
+    file_size_mb = os.path.getsize(save_path) / (1024 * 1024)
+    print(f'ONNX file size: {file_size_mb:.2f} MB')
+
+    if file_size_mb < 50:
+        print("\n" + "!"*70, file=sys.stderr)
+        print("⚠️  WARNING: ONNX file size is unusually small!", file=sys.stderr)
+        print(f"Expected: 200-300 MB, Got: {file_size_mb:.2f} MB", file=sys.stderr)
+        print("This indicates the export did NOT include all model weights.", file=sys.stderr)
+        print("\nRECOMMENDED ACTION:", file=sys.stderr)
+        print("Use Ultralytics standard export method instead:", file=sys.stderr)
+        print('  python -c \'from ultralytics import YOLO; YOLO("yolov8x.pt").export(format="onnx", opset=11, simplify=True, imgsz=640)\'', file=sys.stderr)
+        print("\nSee: deepdoc/servers/README_UNIFIED.md for complete instructions.", file=sys.stderr)
+        print("!"*70 + "\n", file=sys.stderr)
+    else:
+        print(f'✓ ONNX file size looks good ({file_size_mb:.2f} MB)')
 
 
 if __name__ == '__main__':

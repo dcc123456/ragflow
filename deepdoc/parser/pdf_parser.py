@@ -61,9 +61,9 @@ class RAGFlowPdfParser:
 
         """
 
-        if os.environ.get("OCR_SVR"):
+        if os.environ.get("DEEPDOC_URL"):
             from deepdoc.vision.ocr_cli import OCRClient
-            self.ocr = OCRClient(os.environ["OCR_SVR"])
+            self.ocr = OCRClient(os.environ["DEEPDOC_URL"])
         else:
             self.ocr = OCR()
 

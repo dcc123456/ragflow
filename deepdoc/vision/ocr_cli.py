@@ -10,7 +10,8 @@ from PIL import Image
 
 class OCRClient:
     def __init__(self, http_ip_port):
-        self.url = http_ip_port + "/predict"
+        # Use new unified endpoint: /predict/ocr
+        self.url = http_ip_port + "/predict/ocr"
         self.session = requests.Session()
 
     @timeout(2)
@@ -24,10 +25,15 @@ class OCRClient:
                 response = response.json()
                 if "output" not in response:
                     raise Exception(str(response))
+                # PaddleOCR with LitServe returns:
+                # response["output"] = [ocr_result] where ocr_result is PaddleOCR output
+                # PaddleOCR ocr(img, rec=False) returns: [[[[x0,y0], [x1,y1], [x2,y2], [x3,y3]], ...]]
+                # So response["output"][0] = [[[x0,y0], [x1,y1], [x2,y2], [x3,y3]], ...] (list of boxes)
                 if not response["output"] or not response["output"][0]:
                     return []
                 else:
-                    return  zip(response["output"][0], [("",0) for _ in range(len(response["output"][0]))])
+                    boxes = response["output"][0]
+                    return zip(boxes, [("", 0) for _ in range(len(boxes))])
             except Exception as e:
                 logging.exception(e)
                 self.session = requests.Session()

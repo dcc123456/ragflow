@@ -83,6 +83,12 @@ const routeConfig = [
     errorElement: <FallbackComponent />,
   },
   {
+    path: Routes.Logout,
+    Component: lazy(() => import('@/pages/logout')),
+    layout: false,
+    errorElement: <FallbackComponent />,
+  },
+  {
     path: Routes.ChatShare,
     Component: lazy(() => import('@/pages/next-chats/share')),
     layout: false,

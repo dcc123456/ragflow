@@ -5,7 +5,8 @@ from api.utils.api_utils import timeout
 import requests
 from PIL import Image
 
-from deepdoc.servers.dla.yolov10_to_tensor.utils import vis
+# Import vis module only when needed (lazy import to avoid torch dependency in client-only mode)
+# vis = None  # Will be imported if needed
 
 DLA_CLASSES = [
     "title",
@@ -23,7 +24,8 @@ DLA_CLASSES = [
 
 class DLAClient:
     def __init__(self, http_ip_port):
-        self.url = http_ip_port + "/predict"
+        # Use new unified endpoint: /predict/dla
+        self.url = http_ip_port + "/predict/dla"
         self.session = requests.Session()
 
     @timeout(18)
@@ -64,6 +66,7 @@ def parse_args() -> argparse.Namespace:
 
 if __name__ == "__main__":
     import cv2
+    from deepdoc.servers.dla.yolov10_to_tensor.utils import vis
     args = parse_args()
     cli = DLAClient(f"http://{args.ip}:{args.port}")
     img = Image.open(args.image, mode='r')

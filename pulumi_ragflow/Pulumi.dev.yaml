@@ -1,0 +1,25 @@
+encryptionsalt: v1:myAJp/oJXzI=:v1:xy+0QsfgBsPr17kl:Tz7Z3QpKyLMp83KHtKXu5YWudx7T8g==
+config:
+  pulumi_ragflow:namespace: ragflow
+  pulumi_ragflow:enterprise_registry: 192.168.1.51
+  pulumi_ragflow:ragflow_gateway: ragflow.local
+  pulumi_ragflow:ragflow_replicas: "1"
+  pulumi_ragflow:ragflow_image_tag: latest
+  pulumi_ragflow:parser_replicas: "1"
+  # Unified DeepDoc service (DLA + OCR + TSR)
+  pulumi_ragflow:deepdoc_replicas: "1"
+  pulumi_ragflow:deepdoc_image_tag: latest
+  pulumi_ragflow:deepdoc_hardware: cpu
+  pulumi_ragflow:deepdoc_vram_mb: "10240"
+  pulumi_ragflow:deepdoc_vcore: "100"
+  pulumi_ragflow:es_replicas: "1"
+  pulumi_ragflow:es_storage: 2Gi
+  pulumi_ragflow:es_memory_request: 10Gi
+  pulumi_ragflow:s3_bucket: ragflow
+  pulumi_ragflow:s3_region: us-east-1
+  pulumi_ragflow:s3_endpoint: http://rook-ceph-rgw-my-store.rook-ceph.svc:80
+  pulumi_ragflow:storage_impl_type: AWS_S3
+  pulumi_ragflow:s3_access_key:
+    secure: v1:M5N4+NgTxUkjAg53:jRHLu8H8XPNEEawn6G5ZY432tLbkLEH7yCLlP3nw7Acx++Fn
+  pulumi_ragflow:s3_secret_key:
+    secure: v1:QDi7HDeBesYTHR+S:kJzDL69NX8Sk1EWFm25Hk7W1SyKs0vQHYtNSWeKGwLLqlG3zbfqT/+22kz52El9znA4ZMgP2wKA=

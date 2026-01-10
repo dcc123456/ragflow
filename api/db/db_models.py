@@ -250,8 +250,8 @@ class RetryingPooledMySQLDatabase(PooledMySQLDatabase):
             try:
                 return super().execute_sql(sql, params, commit)
             except (OperationalError, InterfaceError) as e:
-                error_codes = [2013, 2006]
-                error_messages = ['', 'Lost connection']
+                error_codes = [2013, 2006, 1213]  # Added 1213 for deadlock
+                error_messages = ['', 'Lost connection', 'Deadlock found']
                 should_retry = (
                     (hasattr(e, 'args') and e.args and e.args[0] in error_codes) or
                     (str(e) in error_messages) or
@@ -260,9 +260,11 @@ class RetryingPooledMySQLDatabase(PooledMySQLDatabase):
 
                 if should_retry and attempt < self.max_retries:
                     logging.warning(
-                        f"Database connection issue (attempt {attempt+1}/{self.max_retries}): {e}"
+                        f"Database connection/deadlock issue (attempt {attempt+1}/{self.max_retries}): {e}"
                     )
-                    self._handle_connection_loss()
+                    # Only reconnect for connection issues, not deadlocks
+                    if e.args[0] in [2013, 2006]:
+                        self._handle_connection_loss()
                     time.sleep(self.retry_delay * (2 ** attempt))
                 else:
                     logging.error(f"DB execution failure: {e}")
@@ -288,8 +290,8 @@ class RetryingPooledMySQLDatabase(PooledMySQLDatabase):
             try:
                 return super().begin()
             except (OperationalError, InterfaceError) as e:
-                error_codes = [2013, 2006]
-                error_messages = ['', 'Lost connection']
+                error_codes = [2013, 2006, 1213]  # Added 1213 for deadlock
+                error_messages = ['', 'Lost connection', 'Deadlock found']
 
                 should_retry = (
                     (hasattr(e, 'args') and e.args and e.args[0] in error_codes) or
@@ -299,9 +301,11 @@ class RetryingPooledMySQLDatabase(PooledMySQLDatabase):
 
                 if should_retry and attempt < self.max_retries:
                     logging.warning(
-                        f"Lost connection during transaction (attempt {attempt+1}/{self.max_retries})"
+                        f"Lost connection/deadlock during transaction (attempt {attempt+1}/{self.max_retries}): {e}"
                     )
-                    self._handle_connection_loss()
+                    # Only reconnect for connection issues, not deadlocks
+                    if e.args and e.args[0] in [2013, 2006]:
+                        self._handle_connection_loss()
                     time.sleep(self.retry_delay * (2 ** attempt))
                 else:
                     raise
@@ -326,16 +330,19 @@ class RetryingPooledPostgresqlDatabase(PooledPostgresqlDatabase):
                 # 08006: connection_failure
                 # 08003: connection_does_not_exist
                 # 08000: connection_exception
+                # 40P01: deadlock_detected
                 error_messages = ['connection', 'server closed', 'connection refused',
-                                'no connection to the server', 'terminating connection']
+                                'no connection to the server', 'terminating connection', 'deadlock']
 
                 should_retry = any(msg in str(e).lower() for msg in error_messages)
 
                 if should_retry and attempt < self.max_retries:
                     logging.warning(
-                        f"PostgreSQL connection issue (attempt {attempt+1}/{self.max_retries}): {e}"
+                        f"PostgreSQL connection/deadlock issue (attempt {attempt+1}/{self.max_retries}): {e}"
                     )
-                    self._handle_connection_loss()
+                    # Only reconnect for connection issues, not deadlocks
+                    if 'deadlock' not in str(e).lower():
+                        self._handle_connection_loss()
                     time.sleep(self.retry_delay * (2 ** attempt))
                 else:
                     logging.error(f"PostgreSQL execution failure: {e}")
@@ -360,15 +367,17 @@ class RetryingPooledPostgresqlDatabase(PooledPostgresqlDatabase):
                 return super().begin()
             except (OperationalError, InterfaceError) as e:
                 error_messages = ['connection', 'server closed', 'connection refused',
-                                'no connection to the server', 'terminating connection']
+                                'no connection to the server', 'terminating connection', 'deadlock']
 
                 should_retry = any(msg in str(e).lower() for msg in error_messages)
 
                 if should_retry and attempt < self.max_retries:
                     logging.warning(
-                        f"PostgreSQL connection lost during transaction (attempt {attempt+1}/{self.max_retries})"
+                        f"PostgreSQL connection/deadlock lost during transaction (attempt {attempt+1}/{self.max_retries}): {e}"
                     )
-                    self._handle_connection_loss()
+                    # Only reconnect for connection issues, not deadlocks
+                    if 'deadlock' not in str(e).lower():
+                        self._handle_connection_loss()
                     time.sleep(self.retry_delay * (2 ** attempt))
                 else:
                     raise
@@ -561,7 +570,7 @@ class DataBaseModel(BaseModel):
 
 
 @DB.connection_context()
-#@DB.lock("init_database_tables", 60)
+@DB.lock("init_database_tables", 60)
 def init_database_tables(alter_fields=[]):
     members = inspect.getmembers(sys.modules[__name__], inspect.isclass)
     table_objs = []

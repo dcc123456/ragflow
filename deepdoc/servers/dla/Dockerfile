@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.9.0-cudnn-runtime-ubuntu22.04
+FROM nvidia/cuda:12.8.0-cudnn-runtime-ubuntu22.04
 ARG NEED_MIRROR=1
 
 SHELL ["/bin/bash", "-c"]
@@ -14,7 +14,7 @@ RUN --mount=type=cache,id=ragflow_apt,target=/var/cache/apt,sharing=locked \
     apt update && \
     apt --no-install-recommends install -y ca-certificates && \
     apt update && \
-    apt install -y python3.10 python3-pip curl vim libgl1 libglib2.0-0 wget unzip
+    apt install -y python3.12 python3-pip curl vim libgl1 libglib2.0-0 wget unzip
 
 #RUN if [ "$NEED_MIRROR" == "1" ]; then \
 #        mkdir -p /etc/uv && \
@@ -23,7 +23,7 @@ RUN --mount=type=cache,id=ragflow_apt,target=/var/cache/apt,sharing=locked \
 #        echo "default = true" >> /etc/uv/uv.toml; \
 #    fi
 
-# wget https://github.com/astral-sh/uv/releases/download/0.6.12/uv-x86_64-unknown-linux-gnu.tar.gz
+# wget https://github.com/astral-sh/uv/releases/download/0.9.18/uv-x86_64-unknown-linux-gnu.tar.gz
 RUN --mount=type=bind,source=/uv-x86_64-unknown-linux-gnu.tar.gz,target=/uv-x86_64-unknown-linux-gnu.tar.gz \
     tar xzvf uv-x86_64-unknown-linux-gnu.tar.gz && \
     mv uv-x86_64-unknown-linux-gnu/* /usr/local/bin/ && \
@@ -31,10 +31,12 @@ RUN --mount=type=bind,source=/uv-x86_64-unknown-linux-gnu.tar.gz,target=/uv-x86_
 
 WORKDIR /app
 
-# Install TensorRT 10.9 GA for x86_64 Architecture
-RUN --mount=type=bind,source=/nv-tensorrt-local-repo-ubuntu2204-10.12.0-cuda-12.9_1.0-1_amd64.deb,target=/nv-tensorrt-local-repo-ubuntu2204-10.12.0-cuda-12.9_1.0-1_amd64.deb \
-    dpkg -i /nv-tensorrt-local-repo-ubuntu2204-10.12.0-cuda-12.9_1.0-1_amd64.deb && \
-    cp /var/nv-tensorrt-local-repo-ubuntu2204-10.12.0-cuda-12.9/*-keyring.gpg /usr/share/keyrings/
+# Install TensorRT 10.8 for x86_64 Architecture
+# CUDA 12.8 to match inf24 cluster (nvidia-smi shows CUDA 12.8)
+# NOTE: Using TensorRT 10.8.0 as 10.12.0 doesn't have CUDA 12.8 build
+RUN --mount=type=bind,source=/nv-tensorrt-local-repo-ubuntu2404-10.8.0-cuda-12.8_1.0-1_amd64.deb,target=/nv-tensorrt-local-repo-ubuntu2404-10.8.0-cuda-12.8_1.0-1_amd64.deb \
+    dpkg -i /nv-tensorrt-local-repo-ubuntu2404-10.8.0-cuda-12.8_1.0-1_amd64.deb && \
+    cp /var/nv-tensorrt-local-repo-ubuntu2404-10.8.0-cuda-12.8/*-keyring.gpg /usr/share/keyrings/
 
 RUN  --mount=type=cache,id=ragflow_uv,target=/root/.cache/uv,sharing=locked \
     wget https://github.com/THU-MIG/yolov10/archive/refs/heads/main.zip && \

@@ -1,0 +1,68 @@
+FROM ubuntu:24.04
+ARG NEED_MIRROR=1
+
+SHELL ["/bin/bash", "-c"]
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN --mount=type=cache,id=ragflow_apt,target=/var/cache/apt,sharing=locked \
+    if [ "$NEED_MIRROR" == "1" ]; then \
+        sed -i 's|http://archive.ubuntu.com|https://mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list; \
+        mkdir -p /etc/uv && \
+        echo 'python-install-mirror = "https://registry.npmmirror.com/-/binary/python-build-standalone/"' > /etc/uv/uv.toml && \
+        echo '[[index]]' >> /etc/uv/uv.toml && \
+        echo 'url = "https://pypi.tuna.tsinghua.edu.cn/simple"' >> /etc/uv/uv.toml && \
+        echo 'default = true' >> /etc/uv/uv.toml; \
+    fi; \
+    rm -f /etc/apt/apt.conf.d/docker-clean && \
+    echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache && \
+    chmod 1777 /tmp && \
+    apt update && \
+    apt --no-install-recommends install -y ca-certificates && \
+    apt update && \
+    apt install -y curl vim libgl1 libglib2.0-0 wget unzip libgomp1
+
+# Install uv package manager
+RUN --mount=type=bind,source=uv-x86_64-unknown-linux-gnu.tar.gz,target=/uv-x86_64-unknown-linux-gnu.tar.gz \
+    tar xzvf /uv-x86_64-unknown-linux-gnu.tar.gz && \
+    mv /uv-x86_64-unknown-linux-gnu/* /usr/local/bin/ && \
+    rm -rf /uv-x86_64-unknown-linux-gnu
+
+WORKDIR /app
+
+# Create unified Python environment with all dependencies
+# Using pyproject.toml and uv.lock for dependency management
+# CPU version: no --extra gpu flag, so TensorRT and CUDA Python are not installed
+COPY deepdoc/servers/pyproject.toml deepdoc/servers/uv.lock /app/
+RUN --mount=type=cache,id=ragflow_uv,target=/root/.cache/uv,sharing=locked \
+    uv venv --python 3.11 && \
+    uv sync --frozen
+
+# Install cpu-only pytorch from torch repository
+RUN uv pip install torch==2.9.1 --extra-index-url https://download.pytorch.org/whl/cpu/
+
+# CPU version: Install PaddlePaddle CPU from pypi repository
+RUN uv pip install paddlepaddle==3.0.0
+
+# Copy OCR files if available (downloaded via download_deps.py)
+# Pre-install models for offline environments (PaddleOCR 2.10.0 uses ~/.paddleocr/)
+COPY .paddleocr /root/.paddleocr
+
+# Copy DLA files (downloaded via download_deps.py)
+COPY layout.onnx /app/dla/
+
+# Copy TSR PyTorch model (downloaded via download_deps.py)
+COPY best.20250908.pt /app/tsr/tsr.pt
+
+# Copy unified server modules (dla, ocr, tsr)
+COPY deepdoc/servers/dla /app/dla
+COPY deepdoc/servers/ocr /app/ocr
+COPY deepdoc/servers/tsr /app/tsr
+
+# Copy unified server entry point
+COPY deepdoc/servers/deepdoc_svr.py /app/
+
+ENV PYTHONPATH=/app
+EXPOSE 8000
+
+# Use unified server with lazy PaddleOCR import
+ENTRYPOINT ["/app/.venv/bin/python3", "/app/deepdoc_svr.py"]

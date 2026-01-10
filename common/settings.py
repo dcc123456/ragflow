@@ -42,9 +42,9 @@ import memory.utils.es_conn as memory_es_conn
 import memory.utils.infinity_conn as memory_infinity_conn
 
 DEFAULT_ROLE = os.environ.get("DEFAULT_ROLE", "owner")
-ENABLE_WHITELIST = int(os.environ.get('ENABLE_WHITELIST', "0"))
-ENABLE_ADMIN=int(os.environ.get("ENABLE_ADMIN", "0"))
-BILLING_ENABLED = int(os.environ.get('BILLING_ENABLED', "0"))
+ENABLE_WHITELIST = int(os.environ.get("ENABLE_WHITELIST", "0"))
+ENABLE_ADMIN = int(os.environ.get("ENABLE_ADMIN", "0"))
+BILLING_ENABLED = int(os.environ.get("BILLING_ENABLED", "0"))
 BILLING = {}
 PRICE_PLAN = {}
 LDAP_OAUTH = None
@@ -84,8 +84,8 @@ HTTP_APP_KEY = None
 GITHUB_OAUTH = None
 FEISHU_OAUTH = None
 OAUTH_CONFIG = None
-DOC_ENGINE = os.getenv('DOC_ENGINE', 'elasticsearch')
-DOC_ENGINE_INFINITY = (DOC_ENGINE.lower() == "infinity")
+DOC_ENGINE = os.getenv("DOC_ENGINE", "elasticsearch")
+DOC_ENGINE_INFINITY = DOC_ENGINE.lower() == "infinity"
 
 
 docStoreConn = None
@@ -130,16 +130,19 @@ EMBEDDING_BATCH_SIZE: int = 16
 
 PARALLEL_DEVICES: int = 0
 
-STORAGE_IMPL_TYPE = os.getenv('STORAGE_IMPL', 'MINIO')
+STORAGE_IMPL_TYPE = os.getenv("STORAGE_IMPL", "MINIO")
 STORAGE_IMPL = None
+
 
 def get_svr_queue_name(priority: int) -> str:
     if priority == 0:
         return SVR_QUEUE_NAME
     return f"{SVR_QUEUE_NAME}_{priority}"
 
+
 def get_svr_queue_names():
     return [get_svr_queue_name(priority) for priority in [1, 0]]
+
 
 def _get_or_create_secret_key():
     secret_key = os.environ.get("RAGFLOW_SECRET_KEY")
@@ -237,7 +240,6 @@ def init_settings():
     global SECRET_KEY
     SECRET_KEY = _get_or_create_secret_key()
 
-
     # authentication
     authentication_conf = get_base_config("authentication", {})
 
@@ -252,10 +254,17 @@ def init_settings():
 
     global DOC_ENGINE, DOC_ENGINE_INFINITY, docStoreConn, ES, OB, OS, INFINITY
     DOC_ENGINE = os.environ.get("DOC_ENGINE", "elasticsearch")
-    DOC_ENGINE_INFINITY = (DOC_ENGINE.lower() == "infinity")
+    DOC_ENGINE_INFINITY = DOC_ENGINE.lower() == "infinity"
     lower_case_doc_engine = DOC_ENGINE.lower()
     if lower_case_doc_engine == "elasticsearch":
         ES = get_base_config("es", {})
+        # If ES is a string (e.g., from environment variable), try to parse it as JSON
+        if isinstance(ES, str):
+            try:
+                ES = json.loads(ES)
+            except json.JSONDecodeError:
+                # If not valid JSON, treat it as hosts string
+                ES = {"hosts": ES}
         docStoreConn = rag.utils.es_conn.ESConnection()
     elif lower_case_doc_engine == "infinity":
         INFINITY = get_base_config("infinity", {"uri": "infinity:23817"})
@@ -279,11 +288,11 @@ def init_settings():
         msgStoreConn = memory_infinity_conn.InfinityConnection()
 
     global AZURE, S3, MINIO, OSS, GCS
-    if STORAGE_IMPL_TYPE in ['AZURE_SPN', 'AZURE_SAS']:
+    if STORAGE_IMPL_TYPE in ["AZURE_SPN", "AZURE_SAS"]:
         AZURE = get_base_config("azure", {})
-    elif STORAGE_IMPL_TYPE == 'AWS_S3':
+    elif STORAGE_IMPL_TYPE == "AWS_S3":
         S3 = get_base_config("s3", {})
-    elif STORAGE_IMPL_TYPE == 'MINIO':
+    elif STORAGE_IMPL_TYPE == "MINIO":
         MINIO = []
         for i in range(12):
             try:
@@ -291,9 +300,9 @@ def init_settings():
             except Exception:
                 print(f"{i} MINIO node, isn't it?")
                 break
-    elif STORAGE_IMPL_TYPE == 'OSS':
+    elif STORAGE_IMPL_TYPE == "OSS":
         OSS = get_base_config("oss", {})
-    elif STORAGE_IMPL_TYPE == 'GCS':
+    elif STORAGE_IMPL_TYPE == "GCS":
         GCS = get_base_config("gcs", {})
 
     global LOCAL_EMBD
@@ -317,13 +326,11 @@ def init_settings():
     if crypto_enabled:
         try:
             from rag.utils.encrypted_storage import create_encrypted_storage
+
             algorithm = os.environ.get("RAGFLOW_CRYPTO_ALGORITHM", "aes-256-cbc")
             crypto_key = os.environ.get("RAGFLOW_CRYPTO_KEY")
 
-            STORAGE_IMPL = create_encrypted_storage(storage_impl,
-                algorithm=algorithm,
-                key=crypto_key,
-                encryption_enabled=crypto_enabled)
+            STORAGE_IMPL = create_encrypted_storage(storage_impl, algorithm=algorithm, key=crypto_key, encryption_enabled=crypto_enabled)
         except Exception as e:
             logging.error(f"Failed to initialize encrypted storage: {e}")
             STORAGE_IMPL = storage_impl
@@ -376,10 +383,12 @@ def check_and_install_torch():
     try:
         pip_install_torch()
         import torch.cuda
+
         PARALLEL_DEVICES = torch.cuda.device_count()
         logging.info(f"found {PARALLEL_DEVICES} gpus")
     except Exception:
         logging.info("can't import package 'torch'")
+
 
 def _parse_model_entry(entry):
     if isinstance(entry, str):
