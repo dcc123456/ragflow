@@ -5,7 +5,7 @@ import axios from 'axios';
 import { Authorization } from '@/constants/authorization';
 import i18n from '@/locales/config';
 import { Routes } from '@/routes';
-import api from '@/utils/api';
+import API from '@/utils/api';
 import authorizationUtil, {
   getAuthorization,
 } from '@/utils/authorization-util';
@@ -105,44 +105,6 @@ request.interceptors.response.use(
   },
 );
 
-const {
-  adminLogin,
-  adminLogout,
-  adminListUsers,
-  adminCreateUser,
-  adminGetUserDetails,
-  adminUpdateUserStatus,
-  adminUpdateUserPassword,
-  adminDeleteUser,
-  adminListUserDatasets,
-  adminListUserAgents,
-
-  adminListServices,
-  adminShowServiceDetails,
-
-  adminListRoles,
-  adminListRolesWithPermission,
-  adminCreateRole,
-  adminDeleteRole,
-  adminUpdateRoleDescription,
-  adminGetRolePermissions,
-  adminAssignRolePermissions,
-  adminRevokeRolePermissions,
-
-  adminGetUserPermissions,
-  adminUpdateUserRole,
-
-  adminListResources,
-
-  adminListWhitelist,
-  adminCreateWhitelistEntry,
-  adminUpdateWhitelistEntry,
-  adminDeleteWhitelistEntry,
-  adminImportWhitelist,
-
-  adminGetSystemVersion,
-} = api;
-
 type ResponseData<D = NonNullable<unknown>> = {
   code: number;
   message: string;
@@ -150,94 +112,120 @@ type ResponseData<D = NonNullable<unknown>> = {
 };
 
 export const login = (params: EmailLoginParams | LDAPLoginParams) =>
-  request.post<ResponseData<AdminService.LoginData>>(adminLogin, params);
-export const logout = () => request.get<ResponseData<boolean>>(adminLogout);
+  request.post<ResponseData<AdminService.LoginData>>(API.adminLogin, params);
+
+export const logout = () => request.get<ResponseData<boolean>>(API.adminLogout);
+
 export const listUsers = () =>
-  request.get<ResponseData<AdminService.ListUsersItem[]>>(adminListUsers, {});
+  request.get<ResponseData<AdminService.ListUsersItem[]>>(
+    API.adminListUsers,
+    {},
+  );
 
 export const createUser = (email: string, password: string) =>
-  request.post<ResponseData<boolean>>(adminCreateUser, {
+  request.post<ResponseData<boolean>>(API.adminCreateUser, {
     username: email,
     password,
   });
+
 export const getUserDetails = (email: string) =>
   request.get<ResponseData<[AdminService.UserDetail]>>(
-    adminGetUserDetails(email),
+    API.adminGetUserDetails(email),
   );
+
 export const listUserDatasets = (email: string) =>
   request.get<ResponseData<AdminService.ListUserDatasetItem[]>>(
-    adminListUserDatasets(email),
+    API.adminListUserDatasets(email),
   );
+
 export const listUserAgents = (email: string) =>
   request.get<ResponseData<AdminService.ListUserAgentItem[]>>(
-    adminListUserAgents(email),
+    API.adminListUserAgents(email),
   );
+
 export const updateUserStatus = (email: string, status: 'on' | 'off') =>
-  request.put(adminUpdateUserStatus(email), { activate_status: status });
+  request.put(API.adminUpdateUserStatus(email), { activate_status: status });
+
 export const updateUserPassword = (email: string, password: string) =>
-  request.put(adminUpdateUserPassword(email), { new_password: password });
+  request.put(API.adminUpdateUserPassword(email), { new_password: password });
+
 export const deleteUser = (email: string) =>
-  request.delete(adminDeleteUser(email));
+  request.delete(API.adminDeleteUser(email));
 
 export const listServices = () =>
-  request.get<ResponseData<AdminService.ListServicesItem[]>>(adminListServices);
+  request.get<ResponseData<AdminService.ListServicesItem[]>>(
+    API.adminListServices,
+  );
+
 export const showServiceDetails = (serviceId: number) =>
   request.get<ResponseData<AdminService.ServiceDetail>>(
-    adminShowServiceDetails(String(serviceId)),
+    API.adminShowServiceDetails(String(serviceId)),
   );
 
 export const createRole = (params: {
   roleName: string;
   description?: string;
 }) =>
-  request.post<ResponseData<AdminService.RoleDetail>>(adminCreateRole, params);
+  request.post<ResponseData<AdminService.RoleDetail>>(
+    API.adminCreateRole,
+    params,
+  );
+
 export const updateRoleDescription = (role: string, description: string) =>
   request.put<ResponseData<AdminService.RoleDetail>>(
-    adminUpdateRoleDescription(role),
+    API.adminUpdateRoleDescription(role),
     { description },
   );
+
 export const deleteRole = (role: string) =>
-  request.delete<ResponseData<ResponseData<never>>>(adminDeleteRole(role));
+  request.delete<ResponseData<ResponseData<never>>>(API.adminDeleteRole(role));
+
 export const listRoles = () =>
   request.get<
     ResponseData<{ roles: AdminService.ListRoleItem[]; total: number }>
-  >(adminListRoles);
+  >(API.adminListRoles);
+
 export const listRolesWithPermission = () =>
   request.get<
     ResponseData<{
       roles: AdminService.ListRoleItemWithPermission[];
       total: number;
     }>
-  >(adminListRolesWithPermission);
+  >(API.adminListRolesWithPermission);
+
 export const getRolePermissions = (role: string) =>
   request.get<ResponseData<AdminService.RoleDetailWithPermission>>(
-    adminGetRolePermissions(role),
+    API.adminGetRolePermissions(role),
   );
+
 export const assignRolePermissions = (
   role: string,
   permissions: Partial<AdminService.AssignRolePermissionsInput>,
 ) =>
-  request.post<ResponseData<never>>(adminAssignRolePermissions(role), {
+  request.post<ResponseData<never>>(API.adminAssignRolePermissions(role), {
     new_permissions: permissions,
   });
+
 export const revokeRolePermissions = (
   role: string,
   permissions: Partial<AdminService.RevokeRolePermissionInput>,
 ) =>
-  request.delete<ResponseData<never>>(adminRevokeRolePermissions(role), {
+  request.delete<ResponseData<never>>(API.adminRevokeRolePermissions(role), {
     data: { revoke_permissions: permissions },
   });
 
 export const updateUserRole = (username: string, role: string) =>
-  request.put<ResponseData<never>>(adminUpdateUserRole(username), {
+  request.put<ResponseData<never>>(API.adminUpdateUserRole(username), {
     role_name: role,
   });
+
 export const getUserPermissions = (username: string) =>
   request.get<ResponseData<AdminService.UserDetailWithPermission>>(
-    adminGetUserPermissions(username),
+    API.adminGetUserPermissions(username),
   );
+
 export const listResources = () =>
-  request.get<ResponseData<AdminService.ResourceType>>(adminListResources);
+  request.get<ResponseData<AdminService.ResourceType>>(API.adminListResources);
 
 export const listWhitelist = () =>
   request.get<
@@ -245,24 +233,42 @@ export const listWhitelist = () =>
       total: number;
       white_list: AdminService.ListWhitelistItem[];
     }>
-  >(adminListWhitelist);
+  >(API.adminListWhitelist);
 
 export const createWhitelistEntry = (email: string) =>
-  request.post<ResponseData<never>>(adminCreateWhitelistEntry, { email });
+  request.post<ResponseData<never>>(API.adminCreateWhitelistEntry, { email });
 
 export const updateWhitelistEntry = (id: number, email: string) =>
-  request.put<ResponseData<never>>(adminUpdateWhitelistEntry(id), { email });
+  request.put<ResponseData<never>>(API.adminUpdateWhitelistEntry(id), {
+    email,
+  });
 
 export const deleteWhitelistEntry = (email: string) =>
-  request.delete<ResponseData<never>>(adminDeleteWhitelistEntry(email));
+  request.delete<ResponseData<never>>(API.adminDeleteWhitelistEntry(email));
 
 export const importWhitelistFromExcel = (file: File) => {
   const fd = new FormData();
 
   fd.append('file', file);
 
-  return request.post<ResponseData<never>>(adminImportWhitelist, fd);
+  return request.post<ResponseData<never>>(API.adminImportWhitelist, fd);
 };
 
 export const getSystemVersion = () =>
-  request.get<ResponseData<{ version: string }>>(adminGetSystemVersion);
+  request.get<ResponseData<{ version: string }>>(API.adminGetSystemVersion);
+
+export const listVariables = () =>
+  request.get<ResponseData<AdminService.VariableRaw[]>>(API.adminVariables);
+
+export const getVariable = (name: string) =>
+  request.get<ResponseData<AdminService.VariableRaw>>(API.adminVariables, {
+    params: {
+      var_name: name,
+    },
+  });
+
+export const setVariable = (name: string, value: any) =>
+  request.put<ResponseData<never>>(API.adminVariables, {
+    var_name: name,
+    var_value: value,
+  });

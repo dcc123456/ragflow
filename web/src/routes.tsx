@@ -63,6 +63,7 @@ export enum Routes {
   AdminWhitelist = `${Admin}/whitelist`,
   AdminRoles = `${Admin}/roles`,
   AdminMonitoring = `${Admin}/monitoring`,
+  AdminSettings = `${Admin}/settings`,
 }
 
 const routeConfig = [
@@ -436,6 +437,10 @@ const routeConfig = [
                 {
                   path: Routes.AdminMonitoring,
                   Component: lazy(() => import('@/pages/admin/monitoring')),
+                },
+                {
+                  path: Routes.AdminSettings,
+                  Component: lazy(() => import('@/pages/admin/settings')),
                 },
               ]
             : []),

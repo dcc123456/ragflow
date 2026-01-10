@@ -1,4 +1,4 @@
-declare module AdminService {
+declare namespace AdminService {
   export type LoginData = {
     access_token: string;
     avatar: unknown;
@@ -167,4 +167,52 @@ declare module AdminService {
     update_date: string;
     update_time: number;
   };
+
+  type VariableTypecastMap = {
+    string: string;
+    bool: boolean;
+    integer: number;
+  };
+
+  type VariableNameValueTypeMap = {
+    enable_whitelist: 'bool';
+    default_role: 'string';
+    'mail.server': 'string';
+    'mail.port': 'integer';
+    'mail.timeout': 'integer';
+    'mail.username': 'string';
+    'mail.password': 'string';
+    'mail.default_sender': 'string';
+    'mail.use_ssl': 'bool';
+    'mail.use_tls': 'bool';
+  };
+
+  export type VariableDataType = keyof VariableTypecastMap;
+  export type VariableName = keyof VariableNameValueTypeMap;
+
+  export type VariableDictionaryRaw = {
+    [N in VariableName]: {
+      source: 'variable';
+      data_type: VariableNameValueTypeMap[N];
+      name: N;
+      value: string;
+    };
+  };
+
+  export type VariableDictionary = {
+    [N in VariableName]: {
+      source: 'variable';
+      data_type: VariableNameValueTypeMap[N];
+      name: N;
+      value: VariableTypecastMap[VariableNameValueTypeMap[N]] extends number
+        ? number | null
+        : VariableTypecastMap[VariableNameValueTypeMap[N]];
+    };
+  };
+
+  export type VariableRaw = VariableDictionaryRaw[VariableName];
+  export type Variable = VariableDictionary[VariableName];
+  export type SetVariablesInput = Partial<{
+    [N in VariableName]: NonNullable<VariableDictionary[N]['value']>;
+  }>;
 }

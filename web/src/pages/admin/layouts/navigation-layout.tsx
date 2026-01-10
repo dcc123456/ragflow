@@ -7,6 +7,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import {
   LucideMonitor,
   LucideServerCrash,
+  LucideSettings,
   LucideSquareUserRound,
   LucideUserCog,
   LucideUserStar,
@@ -20,6 +21,7 @@ import { getSystemVersion, logout } from '@/services/admin-service';
 import authorizationUtil from '@/utils/authorization-util';
 
 import ThemeSwitch from '../components/theme-switch';
+import useAdminVariables from '../hooks/useAdminVariables';
 import { IS_ENTERPRISE } from '../utils';
 
 const AdminNavigationLayout = () => {
@@ -30,6 +32,10 @@ const AdminNavigationLayout = () => {
     queryKey: ['admin/version'],
     queryFn: async () => (await getSystemVersion())?.data?.data?.version,
   });
+
+  const { variables } = useAdminVariables();
+
+  const isWhitelistEnabled = !!variables.enable_whitelist?.value;
 
   const navItems = useMemo(
     () => [
@@ -43,13 +49,17 @@ const AdminNavigationLayout = () => {
         name: t('admin.userManagement'),
         icon: <LucideUserCog className="size-[1em]" />,
       },
-      ...(IS_ENTERPRISE
+      ...(IS_ENTERPRISE && isWhitelistEnabled
         ? [
             {
               path: Routes.AdminWhitelist,
               name: t('admin.registrationWhitelist'),
               icon: <LucideUserStar className="size-[1em]" />,
             },
+          ]
+        : []),
+      ...(IS_ENTERPRISE
+        ? [
             {
               path: Routes.AdminRoles,
               name: t('admin.roles'),
@@ -60,10 +70,15 @@ const AdminNavigationLayout = () => {
               name: t('admin.monitoring'),
               icon: <LucideMonitor className="size-[1em]" />,
             },
+            {
+              path: Routes.AdminSettings,
+              name: t('admin.settings'),
+              icon: <LucideSettings className="size-[1em]" />,
+            },
           ]
         : []),
     ],
-    [t],
+    [t, isWhitelistEnabled],
   );
 
   const logoutMutation = useMutation({

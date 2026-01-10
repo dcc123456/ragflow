@@ -312,4 +312,6 @@ export default {
   adminImportWhitelist: `${ExternalApi}${api_host}/admin/whitelist/batch`,
 
   adminGetSystemVersion: `${ExternalApi}${api_host}/admin/version`,
+
+  adminVariables: `${ExternalApi}${api_host}/admin/variables`,
 };

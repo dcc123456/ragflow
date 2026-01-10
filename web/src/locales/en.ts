@@ -2396,6 +2396,52 @@ Important structured information may include: names, dates, locations, events, k
       registrationWhitelist: 'Registration whitelist',
       roles: 'Roles',
       monitoring: 'Monitoring',
+      settings: 'Settings',
+
+      settingsSubtitle: 'Manage system-wide configurations.',
+      settingsForm: {
+        smtp: {
+          title: 'SMTP',
+          description:
+            'Configure the system email sender and connection details.',
+
+          testConnection: 'Test connection',
+
+          fields: {
+            server: 'Server',
+            port: 'Port',
+            timeout: 'Timeout (seconds)',
+            username: 'Username',
+            password: 'Password',
+            defaultSender: 'Default sender',
+            ssl: 'SSL',
+            tls: 'TLS',
+          },
+
+          placeholder: {
+            server: 'smtp.example.com',
+            username: 'your-email@example.com',
+            defaultSender: 'noreply@example.com',
+          },
+
+          messages: {
+            server: 'Please enter the server address',
+            port: 'Port number must be an integer and must be between 1 and 65535',
+            timeout: 'Please enter the timeout between 0 and 300',
+            username: 'Please enter the username',
+            password: 'Please enter the password',
+            defaultSender: 'Please enter the default sender',
+          },
+        },
+        whitelist: {
+          title: 'Registration whitelist',
+          description: 'Configure system whitelist who can register RAGFlow.',
+
+          fields: {
+            enableModule: 'Enable module',
+          },
+        },
+      },
 
       back: 'Back',
       active: 'Active',

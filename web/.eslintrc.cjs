@@ -61,8 +61,8 @@ module.exports = {
     'check-file/filename-naming-convention': [
       'error',
       {
-        '**/*.{jsx,tsx}': '[a-z0-9.-]*',
-        '**/*.{js,ts}': '[a-z0-9.-]*',
+        '**/*.{jsx,tsx}': '[a-zA-Z0-9.-]*',
+        '**/*.{js,ts}': '[a-zA-Z0-9.-]*',
       },
     ],
     'check-file/folder-naming-convention': [
