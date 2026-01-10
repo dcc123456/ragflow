@@ -1,14 +1,22 @@
+import {
+  ForwardRefExoticComponent,
+  LazyExoticComponent,
+  RefAttributes,
+} from 'react';
+import { createBrowserRouter } from 'react-router';
 import { privateRoutes } from './private-routes';
-import { default as routes } from './routes';
+import { routeConfig } from './routes';
 
 type RouteType =
   | {
-      component?: string | undefined;
-      layout?: false | undefined;
-      path?: string | undefined;
-      redirect?: string | undefined;
-      routes?: Array<RouteType>;
-      wrappers?: Array<string> | undefined;
+      path: string;
+      Component: LazyExoticComponent<
+        ForwardRefExoticComponent<RefAttributes<unknown>>
+      >;
+      layout: boolean;
+      errorElement: JSX.Element;
+      wrappers?: undefined;
+      children?: undefined;
     }
   | { [x: string]: any };
 
@@ -27,12 +35,17 @@ export function mergeRoutes(
 
       nextRoutes[currentRouteIdx] = {
         ...currentRoute,
-        routes: mergeRoutes(route.routes, currentRoute.routes),
+        children: mergeRoutes(route.children, currentRoute.children),
       };
     }
   }
 
   return nextRoutes;
 }
+export const nextRoutes = mergeRoutes(privateRoutes, routeConfig);
 
-export const nextRoutes = mergeRoutes(privateRoutes, routes);
+const routers = createBrowserRouter(nextRoutes, {
+  basename: import.meta.env.VITE_BASE_URL || '/',
+});
+
+export { routers };

@@ -66,7 +66,7 @@ export enum Routes {
   AdminSettings = `${Admin}/settings`,
 }
 
-const routeConfig = [
+export const routeConfig = [
   {
     path: '/login',
     Component: USE_LDAP

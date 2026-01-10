@@ -28,10 +28,10 @@ import { TooltipProvider } from './components/ui/tooltip';
 import { ThemeEnum } from './constants/common';
 import { UpgradeModalProvider } from './pages/price/gobal';
 // import { getRouter } from './routes';
-import { routers } from './routes';
 import storage from './utils/authorization-util';
 
 import 'react-photo-view/dist/react-photo-view.css';
+import { routers } from './merge-routes';
 
 configResponsive({
   sm: 640,

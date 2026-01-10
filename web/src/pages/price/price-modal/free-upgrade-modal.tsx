@@ -18,7 +18,7 @@ export const FreeUpgradeModal: React.FC<CustomModalProps> = ({
       onCancel={onClose}
       showfooter={false}
       closable={false}
-      maskClosable={false}
+      maskClosable={true}
       className="!w-[500px]"
     >
       <div>
