@@ -170,6 +170,31 @@ s3:
 #     client_id: "your_client_id"
 #     client_secret: "your_client_secret"
 #     redirect_uri: "https://your-app.com/v1/user/oauth/callback/github"
+#   feishu:
+#     app_id: cli_xxxxxxxxxxxxxxxxxxx
+#     app_secret: xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+#     app_access_token_url: https://open.feishu.cn/open-apis/auth/v3/app_access_token/internal
+#     user_access_token_url: https://open.feishu.cn/open-apis/authen/v1/oidc/access_token
+#     grant_type: 'authorization_code'
+#   ldap:
+#     url: ldaps://ad01.mycompany.com:636
+#     dn: CN=svc_ldap_app, OU=Service Accounts, DC=mycompany, DC=com
+#     password: xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+#     search_filter: (|(userPrincipalName={username})(mail={username}))
+#     attribute_list: cn,mail,uid,givenName,sn,jpegPhoto,sAMAccountName,userPrincipalName
+#     login_channel: AD # LDAP
+#     ##################
+#     # example
+#     ##################
+#     search_filter: (|(cn={username})(mail={username}))
+#     attribute_list: cn,mail # comma seperated
+#   google:
+#     type: google
+#     client_id: 936108576595-fie6xxxxxxxxxxxxxxxxxxxxxxx.apps.googleusercontent.com
+#     client_secret: GOCSPX-H6pNxxxxxxxxxxxxxxxxxHL6ZpW8PSL5FU3aL7s
+#     redirect_uri: http://<domain>/v1/user/oauth/callback/google
+#     display_name: Google
+#     icon: google
 # authentication:
 #   client:
 #     switch: false

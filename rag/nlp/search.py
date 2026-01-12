@@ -17,6 +17,7 @@ import json
 import logging
 import re
 import math
+import time
 from collections import OrderedDict, defaultdict
 from dataclasses import dataclass
 
@@ -376,6 +377,7 @@ class Dealer:
             highlight=False,
             rank_feature: dict | None = {PAGERANK_FLD: 10},
     ):
+        start_time = time.time()
         ranks = {"total": 0, "chunks": [], "doc_aggs": {}}
         if not question:
             return ranks
@@ -505,6 +507,9 @@ class Dealer:
             ]
         else:
             ranks["doc_aggs"] = []
+
+        elapsed_time = time.time() - start_time
+        logging.info(f"Dealer retrieval took {elapsed_time:.2f} seconds")
 
         return ranks
 

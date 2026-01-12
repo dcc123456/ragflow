@@ -16,6 +16,7 @@
 import asyncio
 import json
 import logging
+import time
 from collections import defaultdict
 from copy import deepcopy
 import json_repair
@@ -139,19 +140,22 @@ class KGSearch(Dealer):
                                        idxnms, kb_ids)
         return self._ent_info_from_(es_res, 0)
 
-    async def retrieval(self, question: str,
-               tenant_ids: str | list[str],
-               kb_ids: list[str],
-               emb_mdl,
-               llm,
-               max_token: int = 8196,
-               ent_topn: int = 6,
-               rel_topn: int = 6,
-               comm_topn: int = 1,
-               ent_sim_threshold: float = 0.3,
-               rel_sim_threshold: float = 0.3,
-                  **kwargs
-               ):
+    async def retrieval(
+        self,
+        question: str,
+        tenant_ids: str | list[str],
+        kb_ids: list[str],
+        emb_mdl,
+        llm,
+        max_token: int = 8196,
+        ent_topn: int = 6,
+        rel_topn: int = 6,
+        comm_topn: int = 1,
+        ent_sim_threshold: float = 0.3,
+        rel_sim_threshold: float = 0.3,
+        **kwargs,
+    ):
+        start_time = time.time()
         qst = question
         filters = self.get_filters({"kb_ids": kb_ids})
         if isinstance(tenant_ids, str):
@@ -272,6 +276,9 @@ class KGSearch(Dealer):
             relas = "\n---- Relations ----\n{}".format(pd.DataFrame(relas).to_csv())
         else:
             relas = ""
+
+        elapsed_time = time.time() - start_time
+        logging.info(f"Knowledge graph retrieval took {elapsed_time:.2f} seconds")
 
         return {
                 "chunk_id": get_uuid(),
