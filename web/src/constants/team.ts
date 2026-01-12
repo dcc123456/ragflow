@@ -36,6 +36,7 @@ export enum PermissionResourceType {
   KnowledgeBase = 'kb',
   LLM = 'llm',
   Dialog = 'dialog',
+  Document = 'document',
 }
 
 export enum TenantRole {

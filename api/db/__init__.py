@@ -68,9 +68,10 @@ class ResourceType(StrEnum):
     LLM = "llm"
     TEAM = "team"
     DIALOG = "dialog"
+    DOCUMENT = "document"
 
 
-VALID_RESOURCE_TYPES = ["kb", "llm", "team", "dialog"]
+VALID_RESOURCE_TYPES = ["kb", "llm", "team", "dialog", "document"]
 
 
 class PermissionActionType(StrEnum):

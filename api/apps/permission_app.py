@@ -5,6 +5,7 @@ from api.apps import login_required, current_user
 from api.db import VALID_RESOURCE_TYPES, ActionEnum, PermissionActionType, PermissionTargetType, PermissionValue, ResourceType, ResourceTypeEnum
 from api.db.db_models import DB
 from api.db.services.knowledgebase_service import KnowledgebaseService
+from api.db.services.document_service import DocumentService
 from api.db.services.tenant_llm_service import TenantLLMService
 from api.db.services.permission_service import PermissionChangeLogService, PermissionService
 from api.db.services.role_service import RoleResourceService
@@ -26,7 +27,7 @@ async def update_permission():
     Request Body:
         {
             "permission": 4,
-            "resource_type": "team", "kb" or "llm", "dialog"
+            "resource_type": "team", "kb", "llm", "dialog" or "document"
             "resource_id": "67c47bd8f2e078c384fe4a72",
             "tenant_id": "c4049de0f27a11efa69751e139332ced",
 
@@ -63,7 +64,8 @@ async def update_permission():
         return get_data_error_result(message="Invalid resource type.")
 
     resource_id = req.get("resource_id")
-    if resource_type == ResourceType.TEAM and not resource_id:
+    document_kb_id = None
+    if resource_type in (ResourceType.TEAM, ResourceType.DOCUMENT) and not resource_id:
         return get_data_error_result(message="Missing required valid field `resource_id`.")
 
     member_list = req.get("member_list", [])
@@ -95,15 +97,32 @@ async def update_permission():
             dialog = DialogService.query(id=resource_id, status=StatusEnum.VALID.value)
             if not dialog:
                 return get_data_error_result(message=f"Resource Dialog {resource_id} is not available.")
+        elif resource_type == ResourceType.DOCUMENT:
+            document_tenant_id = DocumentService.get_tenant_id(resource_id)
+            if not document_tenant_id or document_tenant_id != tenant_id:
+                return get_data_error_result(message=f"Resource Document {resource_id} is not available.")
+            document_kb_id = DocumentService.get_knowledgebase_id(resource_id)
+            if not document_kb_id:
+                return get_data_error_result(message=f"Resource Document {resource_id} is not available.")
         else:
             return get_data_error_result(message="Un-supported resource type.")
 
-    if not (operator.tenant_id == current_user.id or has_permission_for_member(operator.id, tenant_id, resource_id, resource_type=resource_type, permission=PermissionValue.PERMISSION_MANAGE)[0]):
+    has_manage_permission = has_permission_for_member(operator.id, tenant_id, resource_id, resource_type=resource_type, permission=PermissionValue.PERMISSION_MANAGE)[0]
+    if not has_manage_permission and resource_type == ResourceType.DOCUMENT and document_kb_id:
+        has_manage_permission = has_permission_for_member(
+            operator.id,
+            tenant_id,
+            document_kb_id,
+            resource_type=ResourceType.KB,
+            permission=PermissionValue.PERMISSION_MANAGE,
+        )[0]
+    if not (operator.tenant_id == current_user.id or has_manage_permission):
         return get_data_error_result(message="Permission denied.")
 
     role_resource_map = {
         ResourceType.KB: ResourceTypeEnum.DATASET.value,
         ResourceType.DIALOG: ResourceTypeEnum.CHAT.value,
+        ResourceType.DOCUMENT: ResourceTypeEnum.DATASET.value,
     }
     role_id = getattr(current_user, "role_id", None)
     target_resource_value = role_resource_map.get(resource_type)
@@ -372,6 +391,28 @@ def list_permissions(tenant_id, resource_id, resource_type):
 
         if not (operator.tenant_id == current_user.id or has_permission_for_member(operator.id, tenant_id, resource_id, resource_type=resource_type, permission=PermissionValue.PERMISSION_MANAGE)[0]):
             return get_data_error_result(message="Permission denied.")
+    elif resource_type == ResourceType.DOCUMENT:
+        document_tenant_id = DocumentService.get_tenant_id(resource_id)
+        if not document_tenant_id or document_tenant_id != tenant_id:
+            return get_data_error_result(message="Resource is not available.")
+        document_kb_id = DocumentService.get_knowledgebase_id(resource_id)
+        has_manage_permission = has_permission_for_member(
+            operator.id,
+            tenant_id,
+            resource_id,
+            resource_type=resource_type,
+            permission=PermissionValue.PERMISSION_MANAGE,
+        )[0]
+        if not has_manage_permission and document_kb_id:
+            has_manage_permission = has_permission_for_member(
+                operator.id,
+                tenant_id,
+                document_kb_id,
+                resource_type=ResourceType.KB,
+                permission=PermissionValue.PERMISSION_MANAGE,
+            )[0]
+        if not (operator.tenant_id == current_user.id or has_manage_permission):
+            return get_data_error_result(message="Permission denied.")
 
     permissions = PermissionService.get_permissions_by_tenant_and_resource_id_with_info(tenant_id=tenant_id, resource_id=resource_id, resource_type=resource_type)
     permissions = wrap_permission_info(permissions)
@@ -565,139 +606,3 @@ async def share_dialog():
         )
     except Exception as e:
         return server_error_response(e)
-
-
-@manager.route("/safe_delete", methods=["POST"])  # noqa: F821
-@login_required
-@validate_request("tenant_id", "resource_ids", "resource_type")  # noqa: F821
-async def safe_delete():
-    """
-    Is safe to delete permission entries?
-
-    Request Body:
-        {
-            "resource_type": "kb" or "llm", "dialog"
-            "resource_ids": ["67c47bd8f2e078c384fe4a72"],
-            "tenant_id": "c4049de0f27a11efa69751e139332ced",
-        }
-
-    Returns:
-        JSON: Safe deletion messages
-    """
-    req = await request.get_json()
-    tenant_id = req.get("tenant_id")
-    if not tenant_id:
-        return get_data_error_result(message="Missing required field `tenant_id`.")
-    resource_type = req.get("resource_type")
-    if resource_type not in VALID_RESOURCE_TYPES:
-        return get_data_error_result(message="Invalid resource type.")
-    resource_ids = req.get("resource_ids")
-    if not resource_ids:
-        return get_data_error_result(message="Missing required valid field `resource_id`.")
-    resource_ids = list(set(resource_ids))
-
-    operator = UserTenantService.filter_by_tenant_and_user_id(tenant_id, current_user.id)
-    if not operator:
-        return get_data_error_result(message="Unrecognized identification.")
-
-    data = {}
-
-    if resource_ids:
-        if resource_type == ResourceType.KB:
-            for kb_id in resource_ids:
-                kb = KnowledgebaseService.filter_by_id_and_tenant_id(tenant_id=tenant_id, kb_id=kb_id)
-                if not kb:
-                    return get_data_error_result(message=f"Resource KB {kb_id} is not available.")
-                if not (
-                    tenant_id == current_user.id
-                    or has_permission_for_member(operator_id=operator.id, tenant_id=tenant_id, resource_id=kb_id, resource_type=resource_type, permission=PermissionValue.PERMISSION_OWNER)[0]
-                ):
-                    return get_data_error_result(message=f"Permission denied to delete KB {kb_id}.")
-
-                dialogs = DialogService.query(
-                    status=StatusEnum.VALID.value,
-                    tenant_id=tenant_id,
-                )
-
-                filtered_dialogs = []
-                for dialog in dialogs:
-                    if kb_id in dialog.kb_ids:
-                        filtered_dialogs.append(
-                            {
-                                "id": dialog.id,
-                                "name": dialog.name,
-                            }
-                        )
-
-                if filtered_dialogs:
-                    data[kb_id] = {
-                        "dialogs": filtered_dialogs,
-                    }
-        elif resource_type == ResourceType.LLM:
-            for llm_id in resource_ids:
-                model, factory = "", ""
-                factory_only = False
-                split_llm_id = llm_id.split("@")
-                if len(split_llm_id) < 2:
-                    factory = llm_id
-                    factory_only = True
-                else:
-                    model, factory, _ = TenantLLMService.split_model_name_and_factory(llm_id)
-
-                factory_found = False
-                llms = TenantLLMService.get_my_llms_group_by_factory(tenant_id=tenant_id)
-                for llm in llms:
-                    if llm.get("llm_factory") == factory:
-                        factory_found = True
-                        break
-                if not factory_found:
-                    return get_data_error_result(message=f"Resource LLM factory {factory} is not available, when try to delete {llm_id}.")
-                if not (
-                    tenant_id == current_user.id
-                    or has_permission_for_member(operator_id=operator.id, tenant_id=tenant_id, resource_id=llm_id, resource_type=resource_type, permission=PermissionValue.PERMISSION_OWNER)[0]
-                ):
-                    return get_data_error_result(message=f"Permission denied to delete LLM factory {llm_id}.")
-
-                dialogs = DialogService.query(
-                    status=StatusEnum.VALID.value,
-                    tenant_id=tenant_id,
-                )
-                filtered_dialogs = []
-                if factory_only:
-                    for dialog in dialogs:
-                        if factory in dialog.llm_id:
-                            filtered_dialogs.append(
-                                {
-                                    "id": dialog.id,
-                                    "name": dialog.name,
-                                }
-                            )
-                else:
-                    for dialog in dialogs:
-                        # if model == dialog.llm_id:
-                        if factory in dialog.llm_id:
-                            filtered_dialogs.append(
-                                {
-                                    "id": dialog.id,
-                                    "name": dialog.name,
-                                }
-                            )
-                if filtered_dialogs:
-                    data[llm_id] = {
-                        "dialogs": filtered_dialogs,
-                    }
-        elif resource_type == ResourceType.DIALOG:
-            for dialog_id in resource_ids:
-                dialog = DialogService.query(id=dialog_id, status=StatusEnum.VALID.value)
-                if not dialog:
-                    return get_data_error_result(message=f"Resource dialog {dialog_id} is not available.")
-                if not (
-                    tenant_id == current_user.id
-                    or has_permission_for_member(operator_id=operator.id, tenant_id=tenant_id, resource_id=dialog_id, resource_type=resource_type, permission=PermissionValue.PERMISSION_OWNER)[0]
-                ):
-                    return get_data_error_result(message=f"Permission denied to delete Dialog {dialog_id}.")
-
-        else:
-            return get_data_error_result(message="Un-supported resource type.")
-
-    return get_json_result(data=data)

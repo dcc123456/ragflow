@@ -38,7 +38,6 @@ export default {
     resourceId: string,
   ) => `${api_host}/permission/${tenantId}/list/${resourceType}/${resourceId}`,
   updateDialogPermission: `${api_host}/permission/share_dialog`,
-  safeDeletePermission: `${api_host}/permission/safe_delete`,
 
   // billing
   billin_checkout: `${api_host}/billing/checkout`,
