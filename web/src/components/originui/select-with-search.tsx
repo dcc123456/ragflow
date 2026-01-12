@@ -72,7 +72,7 @@ export const SelectWithSearch = forwardRef<
 >(
   (
     {
-      value: val = '',
+      value: val,
       onChange,
       options = [],
       triggerClassName,
@@ -85,7 +85,11 @@ export const SelectWithSearch = forwardRef<
   ) => {
     const id = useId();
     const [open, setOpen] = useState<boolean>(false);
-    const [value, setValue] = useState<string>('');
+    const [stateValue, setValue] = useState<string>('');
+
+    // If string `props.value` is provided, turn into controlled mode
+    const isValueControlled = val != null;
+    const value = isValueControlled ? val : stateValue;
 
     const selectLabel = useMemo(() => {
       if (options.every((x) => x.options === undefined)) {
@@ -141,7 +145,7 @@ export const SelectWithSearch = forwardRef<
     );
 
     useEffect(() => {
-      setValue(val);
+      setValue(val ?? '');
     }, [val]);
 
     return (

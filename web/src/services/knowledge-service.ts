@@ -51,6 +51,7 @@ const {
   kbUpdateMetaData,
   documentUpdateMetaData,
   duplicate_kb,
+  switchEmbeddingModel,
 } = api;
 
 const methods = {
@@ -235,6 +236,10 @@ const methods = {
     url: duplicate_kb,
     method: 'post',
   },
+  switchEmbeddingModel: {
+    url: switchEmbeddingModel,
+    method: 'post',
+  },
 };
 
 const kbService = registerServer<keyof typeof methods>(methods, request);
@@ -321,5 +326,8 @@ export const traceDuplicate = (id: string) =>
       };
     }>
   >(api.traceDuplicate(id));
+export function traceEmbedding(id: string) {
+  return request.get(api.traceEmbedding(id));
+}
 
 export default kbService;

@@ -495,6 +495,15 @@ Example: A 1 KB message with 1024-dim embedding uses ~9 KB. The 5 MB default lim
       chunkTokenNumberMessage: 'Chunk token number for text is required',
       embeddingModelTip:
         'The default embedding model for the knowledge base. It cannot be changed once the knowledge base has chunks. To switch to a different default embedding model, you must delete all existing chunks in the knowledge base.',
+
+      switchEmbeddingModel: {
+        title: 'Switch embedding model',
+        description: `<p>Different embedding models use different vector spaces.</p>
+<p>Switching the model will:</p>
+<ol><li>trigger a full re-processing</li><li>re-embedding of all existing files.</li></ol>
+<p>This may take some time depending on the size of your dataset.</p>`,
+      },
+
       permissionsTip:
         "If it is set to 'Team', all your team members will be able to manage the knowledge base.",
       chunkTokenNumberTip:

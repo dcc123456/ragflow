@@ -87,6 +87,8 @@ export default {
   kbUpdateMetaData: `${api_host}/kb/update_metadata_setting`,
   documentUpdateMetaData: `${api_host}/document/update_metadata_setting`,
   traceDuplicate: (id: string) => `${api_host}/kb/trace_clone?kb_id=${id}`,
+  switchEmbeddingModel: `${api_host}/kb/switch_embedding`,
+  traceEmbedding: (id: string) => `${api_host}/kb/trace_embedding?kb_id=${id}`,
 
   // tags
   listTag: (knowledgeId: string) => `${api_host}/kb/${knowledgeId}/tags`,

@@ -1,3 +1,5 @@
+import { Trans, useTranslation } from 'react-i18next';
+
 import {
   FormFieldConfig,
   FormFieldType,
@@ -10,26 +12,33 @@ import {
 import { SliderInputFormField } from '@/components/slider-input-form-field';
 import { Button } from '@/components/ui/button';
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
   FormControl,
   FormField,
   FormItem,
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
+import { Progress } from '@/components/ui/progress';
 import { Radio } from '@/components/ui/radio';
-import { Spin } from '@/components/ui/spin';
 import { Switch } from '@/components/ui/switch';
 import { LlmModelType } from '@/constants/knowledge';
-import { useTranslate } from '@/hooks/common-hooks';
+import { useSetModalState, useTranslate } from '@/hooks/common-hooks';
 import { useComposeLlmOptionsByModelTypes } from '@/hooks/use-llm-request';
 import { cn } from '@/lib/utils';
 import { history } from '@/utils/simple-history-util';
-import { t } from 'i18next';
 import { Settings } from 'lucide-react';
-import { useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { useCallback, useContext, useEffect, useRef } from 'react';
 import {
-  ControllerRenderProps,
-  FieldValues,
+  type ControllerRenderProps,
+  type FieldValues,
   useFormContext,
 } from 'react-hook-form';
 import { useLocation } from 'react-router';
@@ -42,11 +51,14 @@ import {
 import { IMetaDataReturnJSONSettings } from '../../components/metedata/interface';
 import { ManageMetadataModal } from '../../components/metedata/manage-modal';
 import {
-  useHandleKbEmbedding,
+  // useHandleKbEmbedding,
   useHasParsedDocument,
+  useKbSwitchEmbeddingModel,
   useSelectChunkMethodList,
   useSelectEmbeddingModelOptions,
+  useTraceEmbedding,
 } from '../hooks';
+
 interface IProps {
   line?: 1 | 2;
   isEdit?: boolean;
@@ -100,58 +112,126 @@ export const EmbeddingSelect = ({
   isEdit,
   field,
   name,
-  disabled = false,
+  disabled: propDisabled = false,
 }: {
   isEdit: boolean;
-  field: FieldValues;
+  field: ControllerRenderProps<FieldValues, 'embd_id'>;
   name?: string;
   disabled?: boolean;
 }) => {
   const { t } = useTranslate('knowledgeConfiguration');
+  const { t: tCommon } = useTranslate('common');
+
   const form = useFormContext();
   const embeddingModelOptions = useSelectEmbeddingModelOptions();
-  const { handleChange } = useHandleKbEmbedding();
+  // const { handleChange } = useHandleKbEmbedding();
+  const { switchEmbeddingModel, isLoading: isSwitchingModel } =
+    useKbSwitchEmbeddingModel();
 
-  const oldValue = useMemo(() => {
-    const embdStr = form.getValues(name || 'embd_id');
-    return embdStr || '';
-  }, [form]);
-  const [loading, setLoading] = useState(false);
+  const { visible, showModal, hideModal } = useSetModalState(false);
+
+  const { hasProgress: isReEmbedding, progress } = useTraceEmbedding();
+
+  const oldValue: string = form.getValues(name || 'embd_id');
+  const nextValueRef = useRef<string>('');
+
+  const disabled = (!isEdit && propDisabled) || field.disabled || isReEmbedding;
+
   return (
-    <Spin
-      spinning={loading}
-      className={cn(' rounded-lg after:bg-bg-base', {
-        'opacity-20': loading,
-      })}
-    >
-      <SelectWithSearch
-        onChange={async (value) => {
-          field.onChange(value);
-          if (isEdit && disabled) {
-            setLoading(true);
-            const res = await handleChange({
-              embed_id: value,
-              // callback: field.onChange,
-            });
-            if (res.code !== 0) {
-              field.onChange(oldValue);
+    <>
+      <div className="relative">
+        <SelectWithSearch
+          onChange={(value) => {
+            // Only pops modal when in dataset configuration page
+            if (isEdit) {
+              if (value !== oldValue && !disabled) {
+                nextValueRef.current = value;
+                showModal();
+              }
+            } else {
+              field.onChange(value);
             }
-            setLoading(false);
-          }
-        }}
-        disabled={disabled && !isEdit}
-        value={field.value}
-        options={embeddingModelOptions}
-        placeholder={t('embeddingModelPlaceholder')}
-      />
-    </Spin>
+          }}
+          disabled={disabled}
+          value={field.value}
+          triggerClassName="flex"
+          options={embeddingModelOptions}
+          placeholder={t('embeddingModelPlaceholder')}
+        />
+
+        {isReEmbedding && (
+          <Progress
+            value={progress * 100}
+            className="absolute bottom-0 left-0 w-full h-1 bg-bg-component rounded-t-none rounded-b-lg"
+          />
+        )}
+      </div>
+
+      <Dialog
+        open={!disabled && visible}
+        onOpenChange={() => !isSwitchingModel && hideModal()}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('switchEmbeddingModel.title')}</DialogTitle>
+          </DialogHeader>
+
+          <DialogDescription asChild>
+            <div className="text-sm text-text-primary">
+              <Trans
+                t={t}
+                i18nKey="switchEmbeddingModel.description"
+                components={{
+                  p: <p className="mb-4" />,
+                  ol: (
+                    <ol className="mb-4 list-decimal list-inside text-state-error" />
+                  ),
+                  li: <li />,
+                }}
+              />
+            </div>
+          </DialogDescription>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isSwitchingModel}
+              onClick={() => !isSwitchingModel && hideModal()}
+            >
+              {tCommon('cancel')}
+            </Button>
+
+            <Button
+              type="button"
+              variant="destructive"
+              loading={isSwitchingModel || disabled}
+              onClick={async () => {
+                if (isSwitchingModel || disabled) {
+                  return;
+                }
+
+                await switchEmbeddingModel(nextValueRef.current);
+                field.onChange(nextValueRef.current);
+                hideModal();
+              }}
+            >
+              {tCommon('confirm')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 };
 
 export function EmbeddingModelItem({ line = 1, isEdit }: IProps) {
+  const { hasProgress: isReEmbedding } = useTraceEmbedding();
+
   const { t } = useTranslate('knowledgeConfiguration');
   const form = useFormContext();
-  const disabled = useHasParsedDocument(isEdit);
+  const disabled = useHasParsedDocument(isEdit) || isReEmbedding;
+
   return (
     <>
       <FormField
@@ -161,7 +241,7 @@ export function EmbeddingModelItem({ line = 1, isEdit }: IProps) {
           <FormItem className={cn(' items-center space-y-0 ')}>
             <div
               className={cn('flex', {
-                ' items-center': line === 1,
+                'items-center': line === 1,
                 'flex-col gap-1': line === 2,
               })}
             >
@@ -352,6 +432,8 @@ export function ImageContextWindow() {
 }
 
 export function OverlappedPercent() {
+  const { t } = useTranslation();
+
   return (
     <SliderInputFormField
       percentage={true}
@@ -370,6 +452,8 @@ export function AutoMetadata({
   type?: MetadataType;
   otherData?: Record<string, any>;
 }) {
+  const { t } = useTranslation();
+
   // get metadata field
   const location = useLocation();
   const form = useFormContext();

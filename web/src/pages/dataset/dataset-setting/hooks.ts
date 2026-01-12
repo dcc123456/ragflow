@@ -4,8 +4,13 @@ import { useSetModalState } from '@/hooks/common-hooks';
 import { useFetchKnowledgeBaseConfiguration } from '@/hooks/use-knowledge-request';
 import { useSelectLlmOptionsByModelType } from '@/hooks/use-llm-request';
 import { useSelectParserList } from '@/hooks/use-user-setting-request';
-import kbService from '@/services/knowledge-service';
-import { useIsFetching } from '@tanstack/react-query';
+import kbService, { traceEmbedding } from '@/services/knowledge-service';
+import {
+  useIsFetching,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import { pick } from 'lodash';
 import { useCallback, useEffect, useState } from 'react';
 import { UseFormReturn } from 'react-hook-form';
@@ -106,6 +111,7 @@ export const useHandleKbEmbedding = () => {
   const { id } = useParams();
   const [searchParams] = useSearchParams();
   const knowledgeBaseId = searchParams.get('id') || id;
+
   const handleChange = useCallback(
     async ({ embed_id }: { embed_id: string }) => {
       const res = await kbService.checkEmbedding({
@@ -118,5 +124,75 @@ export const useHandleKbEmbedding = () => {
   );
   return {
     handleChange,
+  };
+};
+
+export const useKbSwitchEmbeddingModel = () => {
+  const { id } = useParams();
+  const [searchParams] = useSearchParams();
+  const queryClient = useQueryClient();
+  const knowledgeBaseId = searchParams.get('id') || id;
+
+  const { mutateAsync, isPending } = useMutation({
+    mutationKey: ['kbSwitchEmbeddingModel'],
+    mutationFn: async (embd_id: string) => {
+      const { data = {} } = await kbService.switchEmbeddingModel({
+        kb_id: knowledgeBaseId,
+        embd_id,
+      });
+
+      if (data.code !== 0) {
+        throw new Error(data.message);
+      }
+
+      queryClient.invalidateQueries({
+        queryKey: ['traceEmbedding', knowledgeBaseId],
+      });
+
+      return data;
+    },
+  });
+
+  return {
+    switchEmbeddingModel: mutateAsync,
+    isLoading: isPending,
+  };
+};
+
+export const useTraceEmbedding = () => {
+  const { id } = useParams();
+  const [searchParams] = useSearchParams();
+  const knowledgeBaseId = searchParams.get('id') || id;
+
+  const { data, refetch } = useQuery({
+    queryKey: ['traceEmbedding', knowledgeBaseId],
+    queryFn: async () => {
+      const { data } = await traceEmbedding(knowledgeBaseId!);
+      return data?.data || {};
+    },
+    enabled: !!id,
+  });
+
+  const hasProgress =
+    data?.progress != null && data.progress >= 0 && data?.progress < 1;
+
+  useEffect(() => {
+    if (hasProgress) {
+      const interval = window.setInterval(() => {
+        refetch();
+      }, 2000);
+
+      return () => {
+        window.clearInterval(interval);
+      };
+    }
+  }, [hasProgress, refetch]);
+
+  return {
+    data,
+    hasProgress,
+    progress: data?.progress,
+    finished: data?.progress >= 1,
+    errored: data?.progress === -1,
   };
 };
