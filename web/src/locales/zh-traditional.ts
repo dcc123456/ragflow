@@ -727,6 +727,9 @@ export default {
       modelsToBeAddedTooltip:
         '若您的模型供應商未列於此處，但宣稱與 OpenAI 相容，可透過選擇「OpenAI-API-compatible」卡片來設定相關模型。',
       dropboxDescription: '連接 Dropbox，同步指定帳號下的文件與文件夾。',
+      larkDescription: '連接飛書同步指定文件夾中的文件。',
+      larkFolderTip: '留空則不執行。',
+      larkWikiTip: '留空則不執行。',
       bitbucketDescription: '連接 Bitbucket，同步 PR 內容。',
       zendeskDescription: '連接 Zendesk，同步工單、文章及其他內容。',
       bitbucketTopWorkspaceTip:

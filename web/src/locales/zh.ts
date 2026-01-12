@@ -902,6 +902,9 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
       jiraTokenTip:
         '在 https://id.atlassian.com/manage-profile/security/api-tokens 生成的 API Token。 (Clould only)',
       jiraPasswordTip: '可选：仅 Jira Server/Data Center 环境需要的密码字段。',
+      larkDescription: '连接飞书同步指定文件夹中的文件。',
+      larkFolderTip: '不填写则不执行。',
+      larkWikiTip: '不填写则不执行。',
       availableSourcesDescription: '选择要添加的数据源',
       availableSources: '可用数据源',
       datasourceDescription: '管理您的数据源和连接',

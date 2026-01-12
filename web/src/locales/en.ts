@@ -981,6 +981,9 @@ Example: Virtual Hosted Style`,
         'Connect to your IMAP mailbox to sync emails for knowledge retrieval.',
       dropboxAccessTokenTip:
         'Generate a long-lived access token in the Dropbox App Console with files.metadata.read, files.content.read, and sharing.read scopes.',
+      larkDescription: 'Sync files from a specified Lark folder.',
+      larkFolderTip: 'Leave blank to skip.',
+      larkWikiTip: 'Leave blank to skip.',
       moodleDescription:
         'Connect to your Moodle LMS to sync course content, forums, and resources.',
       moodleUrlTip:

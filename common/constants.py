@@ -135,6 +135,7 @@ class FileSource(StrEnum):
     IMAP = "imap"
     BITBUCKET = "bitbucket"
     ZENDESK = "zendesk"
+    LARK = "lark"
 
 class PipelineTaskType(StrEnum):
     PARSE = "Parse"

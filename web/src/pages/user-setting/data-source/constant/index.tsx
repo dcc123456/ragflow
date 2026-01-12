@@ -35,6 +35,7 @@ export enum DataSourceKey {
   GITHUB = 'github',
   BITBUCKET = 'bitbucket',
   ZENDESK = 'zendesk',
+  LARK = 'lark',
   //   SHAREPOINT = 'sharepoint',
   //   SLACK = 'slack',
   //   TEAMS = 'teams',
@@ -154,6 +155,11 @@ export const generateDataSourceInfo = (t: TFunction) => {
       name: 'Zendesk',
       description: t(`setting.${DataSourceKey.ZENDESK}Description`),
       icon: <SvgIcon name={'data-source/zendesk'} width={38} />,
+    },
+    [DataSourceKey.LARK]: {
+      name: 'Lark',
+      description: t(`setting.${DataSourceKey.LARK}Description`),
+      icon: <SvgIcon name={'data-source/lark'} width={38} />,
     },
   };
 };
@@ -815,6 +821,36 @@ export const DataSourceFormFields = {
       ],
     },
   ],
+  [DataSourceKey.LARK]: [
+    {
+      label: 'App id',
+      name: 'config.credentials.app_id',
+      type: FormFieldType.Text,
+      required: true,
+    },
+    {
+      label: 'App secret',
+      name: 'config.credentials.app_secret',
+      type: FormFieldType.Password,
+      required: true,
+    },
+    {
+      label: 'Token Type',
+      name: 'config.token_type',
+      type: FormFieldType.Segmented,
+      required: false,
+      options: [
+        { label: 'Folder', value: 'folder' },
+        { label: 'Wiki', value: 'wiki' },
+      ],
+    },
+    {
+      label: 'Token',
+      name: 'config.token',
+      type: FormFieldType.Text,
+      required: false,
+    },
+  ],
 };
 
 export const DataSourceFormDefaultValues = {
@@ -1078,9 +1114,9 @@ export const DataSourceFormDefaultValues = {
       index_mode: 'workspace',
       repository_slugs: '',
       projects: '',
-    },
-    credentials: {
-      bitbucket_api_token: '',
+      credentials: {
+        bitbucket_api_token: '',
+      },
     },
   },
   [DataSourceKey.ZENDESK]: {
@@ -1094,6 +1130,18 @@ export const DataSourceFormDefaultValues = {
         zendesk_email: '',
         zendesk_token: '',
       },
+    },
+  },
+  [DataSourceKey.LARK]: {
+    name: '',
+    source: DataSourceKey.LARK,
+    config: {
+      credentials: {
+        app_id: '',
+        app_secret: '',
+      },
+      token_type: 'folder',
+      token: '',
     },
   },
 };

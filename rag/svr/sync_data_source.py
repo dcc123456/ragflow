@@ -61,6 +61,7 @@ from common.data_source.box_connector import BoxConnector
 from common.data_source.github.connector import GithubConnector
 from common.data_source.gitlab_connector import GitlabConnector
 from common.data_source.bitbucket.connector import BitbucketConnector
+from common.data_source.lark.connector import LarkConnector
 from common.data_source.interfaces import CheckpointOutputWrapper
 from common.log_utils import init_root_logger
 from common.signal_utils import start_tracemalloc_and_snapshot, stop_tracemalloc
@@ -469,6 +470,43 @@ class Dropbox(SyncBase):
             begin_info = f"from {poll_start}"
 
         logging.info(f"[Dropbox] Connect to Dropbox {begin_info}")
+        return document_generator
+
+
+class Lark(SyncBase):
+    SOURCE_NAME: str = FileSource.LARK
+
+    async def _generate(self, task: dict):
+        
+        token_type = self.conf.get("token_type")
+        self.connector = LarkConnector(token_type)
+
+        credentials = self.conf.get("credentials")
+        if not credentials:
+            raise ValueError("Lark connector is missing credentials.")
+        self.connector.load_credentials(credentials)
+        self.connector.validate_connector_settings()
+
+        poll_start = task["poll_range_start"]
+        token = self.conf.get("token")
+
+        if task.get("reindex") == "1" or poll_start is None:
+            document_generator = self.connector.load_from_state(token)
+            begin_info = "totally"
+        else:
+            document_generator = self.connector.poll_source(
+                token,
+                token_type,
+                poll_start.timestamp(),
+                datetime.now(timezone.utc).timestamp(),
+            )
+            begin_info = f"from {poll_start}"
+
+        logging.info(
+            "Connect to lark: %s",
+            begin_info,
+        )
+
         return document_generator
 
 
@@ -1200,6 +1238,7 @@ func_factory = {
     FileSource.TEAMS: Teams,
     FileSource.MOODLE: Moodle,
     FileSource.DROPBOX: Dropbox,
+    FileSource.LARK: Lark,
     FileSource.WEBDAV: WebDAV,
     FileSource.BOX: BOX,
     FileSource.AIRTABLE: Airtable,

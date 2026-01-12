@@ -9,6 +9,7 @@ import os
 import re
 import threading
 import time
+import unicodedata
 from collections.abc import Callable, Generator, Iterator, Mapping, Sequence
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, as_completed, wait
 from datetime import datetime, timedelta, timezone
@@ -1153,39 +1154,49 @@ def parallel_yield(gens: list[Iterator[R]], max_workers: int = 10) -> Iterator[R
 
 def sanitize_filename(name: str, extension: str = "txt") -> str:
     """
-    Soft sanitize for MinIO/S3:
-    - Replace only prohibited characters with a space.
-    - Preserve readability (no ugly underscores).
-    - Collapse multiple spaces.
+    Sanitize filename for cross-platform + S3/MinIO safety.
+    - Drop emoji / symbol characters unconditionally.
+    - Remove control / invisible characters.
+    - Replace path-reserved characters with space.
+    - Preserve readability (spaces, CJK, Latin).
     """
-    if name is None:
+    if not name:
         return f"file.{extension}"
 
-    name = str(name).strip()
+    # Normalize to avoid weird composed forms
+    name = unicodedata.normalize("NFKC", str(name)).strip()
 
-    # Characters that MUST NOT appear in S3/MinIO object keys
-    # Replace them with a space (not underscore)
-    forbidden = r'[\\\?\#\%\*\:\|\<\>"]'
-    name = re.sub(forbidden, " ", name)
+    # 1) Remove NUL + ASCII control chars + DEL
+    name = re.sub(r"[\x00-\x1f\x7f]", " ", name)
 
-    # Replace slashes "/" (S3 interprets as folder) with space
-    name = name.replace("/", " ")
+    # 2) Remove common invisible format chars (emoji glue, selectors)
+    #    ZWJ / ZWNJ / VS16 / VS15
+    name = re.sub(r"[\u200c\u200d\uFE0E\uFE0F]", "", name)
 
-    # Collapse multiple spaces into one
-    name = re.sub(r"\s+", " ", name)
+    # 3) Drop emoji & symbol characters (So / Sk)
+    name = "".join(
+        ch for ch in name
+        if unicodedata.category(ch) not in ("So", "Sk")
+    )
 
-    # Trim both ends
-    name = name.strip()
+    # 4) Replace path / URL / Windows reserved characters
+    name = re.sub(r'[\\/?#%*:|<>"\n\r\t]', " ", name)
 
-    # Enforce reasonable max length
+    # 5) Collapse whitespace
+    name = re.sub(r"\s+", " ", name).strip()
+
+    # 6) Length guard
     if len(name) > 200:
         base, ext = os.path.splitext(name)
         name = base[:180].rstrip() + ext
 
+    # 7) Ensure extension
     if not os.path.splitext(name)[1]:
         name += f".{extension}"
 
     return name
+
+
 F = TypeVar("F", bound=Callable[..., Any])
 
 class _RateLimitDecorator:
