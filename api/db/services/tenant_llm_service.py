@@ -498,24 +498,6 @@ class LLM4Tenant:
                 trace_id = self.langfuse.create_trace_id()
                 self.trace_context = {"trace_id": trace_id}
 
-        if not other_tenant_id or other_tenant_id == tenant_id:
-            self.tenant_id = tenant_id
-            self.mdl = TenantLLMService.model_instance(tenant_id=self.tenant_id, llm_type=self.llm_type, llm_name=self.llm_name, lang=lang)
-            assert self.mdl, "Can't find model for {}/{}/{}".format(self.tenant_id, self.llm_type, self.llm_name)
-            model_config = TenantLLMService.get_model_config(self.tenant_id, self.llm_type, self.llm_name)
-            self.max_length = model_config.get("max_tokens", 8192)
-        else:
-            member = UserTenantService.filter_by_tenant_and_user_id(tenant_id=other_tenant_id, user_id=tenant_id)
-            if not member:
-                raise ValueError("Unrecognized identification.")
-
-            self.tenant_id = other_tenant_id
-            self.mdl = TenantLLMService.model_instance(tenant_id=other_tenant_id, llm_type=self.llm_type, llm_name=self.llm_name, lang=lang)
-            assert self.mdl, "Can't find model for {}/{}/{}".format(other_tenant_id, self.llm_type, self.llm_name)
-            model_config = TenantLLMService.get_model_config(other_tenant_id, self.llm_type, self.llm_name)
-            self.max_length = model_config.get("max_tokens", 8192)
-
-
 
 def user_register(user_id, user):
     from api.db.services.file_service import FileService

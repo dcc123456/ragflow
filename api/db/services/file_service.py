@@ -732,7 +732,7 @@ class FileService(CommonService):
                 parent_id=last_folder.id)
             await asyncio.to_thread(settings.STORAGE_IMPL.put, last_folder.id, location, blob, tenant_id)
             file_data = {
-                "id": file_obj.id,
+                "id": file_obj.id if hasattr(file_obj, "id") else get_uuid(),
                 "parent_id": last_folder.id,
                 "tenant_id": tenant_id,
                 "created_by": tenant_id,
@@ -747,7 +747,7 @@ class FileService(CommonService):
         file_res = []
         errs = []
         for file_obj in file_objs:
-            e, file = FileService.get_by_id(file_obj.id)
+            e, file = FileService.get_by_id(file_obj.id if hasattr(file_obj, "id") else "_")
             if e:
                 blob = await asyncio.to_thread(file_obj.read)
                 await asyncio.to_thread(settings.STORAGE_IMPL.put, file.parent_id, file.location, blob, tenant_id)

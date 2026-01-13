@@ -976,8 +976,8 @@ class KnowledgebaseService(CommonService):
             "model": embd_id,
             "sampled": len(samples),
             "valid": len(eff_sims),
-            "avg_cos_sim": round(float(np.mean(eff_sims)) if eff_sims else 0.0, 6),
-            "min_cos_sim": round(float(np.min(eff_sims)) if eff_sims else 0.0, 6),
-            "max_cos_sim": round(float(np.max(eff_sims)) if eff_sims else 0.0, 6),
+            "avg_cos_sim": round(float(np.mean(eff_sims)) if eff_sims else 1, 6),
+            "min_cos_sim": round(float(np.min(eff_sims)) if eff_sims else 1, 6),
+            "max_cos_sim": round(float(np.max(eff_sims)) if eff_sims else 1, 6),
             "match_mode": mode,
         }

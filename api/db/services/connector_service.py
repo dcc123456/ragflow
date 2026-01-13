@@ -13,6 +13,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 #
+import hashlib
 import logging
 from datetime import datetime
 import os
@@ -215,6 +216,8 @@ class SyncLogsService(CommonService):
         errs = []
         files = [FileObj(id=d["id"], filename=d["semantic_identifier"]+(f"{d['extension']}" if d["semantic_identifier"][::-1].find(d['extension'][::-1])<0 else ""), blob=d["blob"]) for d in docs]
         if folder_id:
+            for f in files:
+                f.id = hashlib.md5(f"{folder_id}_{f.id}".encode('utf-8')).hexdigest()
             FileService.upload_files(folder_id, files, tenant_id)
             return
 

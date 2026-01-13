@@ -6,15 +6,7 @@ import requests
 from rag.utils.redis_conn import REDIS_CONN
 
 tokens = [
-    "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",#kevinhu
-    "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",#yongteng
-    "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",#shengle
-    "g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",#zhenghang
-    "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",#dcc
-    "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",#liuan
-    "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", #baoxiaoyang
-    "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",#jinxiaoling
-    "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",#Naomi
+    "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",#kevinhu
 ]
 
 
