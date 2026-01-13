@@ -15,7 +15,6 @@ while IFS= read -r line || [[ -n "$line" ]]; do
 done < "${TEMPLATE_FILE}"
 
 export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu/
-export TIKA_SERVER_JAR="file:///ragflow/tika-server-standard-3.0.0.jar"
 #export DEEPDOC_URL=http://deepdoc:8000
 
 PY=/ragflow/.venv/bin/python
