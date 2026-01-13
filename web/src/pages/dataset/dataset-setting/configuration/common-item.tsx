@@ -31,6 +31,7 @@ import { Radio } from '@/components/ui/radio';
 import { Switch } from '@/components/ui/switch';
 import { LlmModelType } from '@/constants/knowledge';
 import { useSetModalState, useTranslate } from '@/hooks/common-hooks';
+import { useFetchKnowledgeBaseConfiguration } from '@/hooks/use-knowledge-request';
 import { useComposeLlmOptionsByModelTypes } from '@/hooks/use-llm-request';
 import { cn } from '@/lib/utils';
 import { history } from '@/utils/simple-history-util';
@@ -123,6 +124,8 @@ export const EmbeddingSelect = ({
   const { t: tCommon } = useTranslate('common');
 
   const form = useFormContext();
+  const { data: knowledgeDetails, loading: isLoadingKnowledgeDetails } =
+    useFetchKnowledgeBaseConfiguration();
   const embeddingModelOptions = useSelectEmbeddingModelOptions();
   // const { handleChange } = useHandleKbEmbedding();
   const { switchEmbeddingModel, isLoading: isSwitchingModel } =
@@ -135,7 +138,14 @@ export const EmbeddingSelect = ({
   const oldValue: string = form.getValues(name || 'embd_id');
   const nextValueRef = useRef<string>('');
 
-  const disabled = (!isEdit && propDisabled) || field.disabled || isReEmbedding;
+  const disabled =
+    (!isEdit && propDisabled) ||
+    field.disabled ||
+    isReEmbedding ||
+    isSwitchingModel ||
+    isLoadingKnowledgeDetails;
+
+  const hasChunk = knowledgeDetails.chunk_num > 0;
 
   return (
     <>
@@ -143,7 +153,7 @@ export const EmbeddingSelect = ({
         <SelectWithSearch
           onChange={(value) => {
             // Only pops modal when in dataset configuration page
-            if (isEdit) {
+            if (isEdit && hasChunk) {
               if (value !== oldValue && !disabled) {
                 nextValueRef.current = value;
                 showModal();
