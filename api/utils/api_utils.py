@@ -118,6 +118,18 @@ def get_data_error_result(code=RetCode.DATA_ERROR, message="Sorry! Data missing!
     return jsonify(response)
 
 
+def get_resource_insufficient_result(code=RetCode.BILLING_RESOURCE_INSUFFICIENT, message="Insufficient resources available. Contact the owner for further assistance.", detail:dict={}):
+    logging.exception(Exception(message))
+    result_dict = {"code": code, "message": message, "detail": detail}
+    response = {}
+    for key, value in result_dict.items():
+        if value is None and key != "code":
+            continue
+        else:
+            response[key] = value
+    return jsonify(response)
+
+
 def server_error_response(e):
     # Quart invokes this handler outside the original except block, so we must pass exc_info manually.
     logging.error("Unhandled exception during request", exc_info=(type(e), e, e.__traceback__))

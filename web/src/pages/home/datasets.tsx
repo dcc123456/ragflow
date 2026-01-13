@@ -61,15 +61,17 @@ export function Datasets() {
           <>
             {kbs?.length > 0 && (
               <CardSineLineContainer>
-                {kbs?.slice(0, 6).map((dataset) => (
-                  <DatasetCard
-                    key={dataset.id}
-                    dataset={dataset}
-                    showDatasetRenameModal={showDatasetRenameModal}
-                    showDatasetDuplicateModal={showDatasetDuplicateModal}
-                    showPrivilegeModal={handShowPrivilegeModal(dataset)}
-                  ></DatasetCard>
-                ))}
+                {kbs
+                  ?.slice(0, 6)
+                  .map((dataset) => (
+                    <DatasetCard
+                      key={dataset.id}
+                      dataset={dataset}
+                      showDatasetRenameModal={showDatasetRenameModal}
+                      showDatasetDuplicateModal={showDatasetDuplicateModal}
+                      showPrivilegeModal={handShowPrivilegeModal(dataset)}
+                    ></DatasetCard>
+                  ))}
                 {
                   <SeeAllAppCard
                     click={() => navigateToDatasetList({ isCreate: false })}

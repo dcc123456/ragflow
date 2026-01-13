@@ -11,5 +11,43 @@
       <a href="mailto:orders@example.com">orders@example.com</a>.
     </p>
   </section>
+
+  <section>
+    <button id="manageBilling">Manage Billing</button>
+  </section>
+
+  <script>
+    document.getElementById('manageBilling').addEventListener('click', async () => {
+      try {
+        const response = await fetch('http://127.0.0.1:9380/v1/billing/create-portal-session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tenant_id: 'c3fb861af27a11efa69751e139332ced',
+            // tenant_id: '6fc66a5a415411f0b073c5725c73b90e',
+            current_plan: 'your_plan_name'
+          }),
+          redirect: 'manual'
+        });
+
+        console.log('Status:', response.status);
+        console.log('Headers:', [...response.headers.entries()]);
+
+        if (response.status === 303) {
+          const redirectUrl = response.headers.get('Location');
+          if (redirectUrl) {
+            window.location.replace(redirectUrl);
+          } else {
+            console.error('Error: Location header missing');
+          }
+        } else {
+          const errorData = await response.text();
+          console.error('Unexpected response:', errorData);
+        }
+      } catch (error) {
+        console.error('Request failed:', error);
+      }
+    });
+  </script>
 </body>
 </html>

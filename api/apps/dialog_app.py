@@ -29,6 +29,7 @@ from api.db.services.tenant_llm_service import TenantLLMService
 from api.db.services.user_service import TenantService, UserTenantService
 from common.misc_utils import get_uuid
 from common.constants import RetCode
+from api.utils.billing import check_resources
 from api.apps import login_required, current_user
 from api.utils.api_utils import get_data_error_result, get_json_result, server_error_response, validate_request, \
     get_request_json
@@ -44,6 +45,7 @@ dialog_role_guard = check_role_access(DIALOG_API_ACTION_MAP, DIALOG_ROLE_RESOURC
 @login_required
 @dialog_role_guard
 @check_dialog_permission(PermissionValue.PERMISSION_MANAGE)
+@check_resources(apps=1)
 async def set_dialog():
     req = await get_request_json()
     tenant_id = getattr(g, "tenant_id", current_user.id)

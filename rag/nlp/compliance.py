@@ -20,7 +20,7 @@ class Dealer:
                     line = line.strip("\n")
                     self.dictionary.add(line.lower())
         except Exception:
-            logging.warn("Missing compliance.txt")
+            logging.warning("Missing compliance.txt")
 
     def lookup(self, txt: Union[str, List]) -> List:
         return []

@@ -3,7 +3,6 @@ import {
   ConfirmDeleteDialogNode,
 } from '@/components/confirm-delete-dialog';
 
-
 import { PrivilegeDropdown } from '@/components/privilege/privilege-dropdown';
 import {
   DropdownMenu,

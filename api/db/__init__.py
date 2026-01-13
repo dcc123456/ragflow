@@ -1,5 +1,5 @@
 #
-#  Copyright 2024 The InfiniFlow Authors. All Rights Reserved.
+#  Copyright 2025 The InfiniFlow Authors. All Rights Reserved.
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
 #  you may not use this file except in compliance with the License.
@@ -42,10 +42,10 @@ class ActionEnum(Enum):
 
 
 class UserTenantRole(StrEnum):
-    OWNER = 'owner'
-    ADMIN = 'admin'
-    NORMAL = 'normal'
-    INVITE = 'invite'
+    OWNER = "owner"
+    ADMIN = "admin"
+    NORMAL = "normal"
+    INVITE = "invite"
 
 
 class TenantPermission(StrEnum):
@@ -107,13 +107,14 @@ class SerializedType(IntEnum):
 
 
 class FileType(StrEnum):
-    PDF = 'pdf'
-    DOC = 'doc'
-    VISUAL = 'visual'
-    AURAL = 'aural'
-    VIRTUAL = 'virtual'
-    FOLDER = 'folder'
+    PDF = "pdf"
+    DOC = "doc"
+    VISUAL = "visual"
+    AURAL = "aural"
+    VIRTUAL = "virtual"
+    FOLDER = "folder"
     OTHER = "other"
+
 
 VALID_FILE_TYPES = {FileType.PDF, FileType.DOC, FileType.VISUAL, FileType.AURAL, FileType.VIRTUAL, FileType.FOLDER, FileType.OTHER}
 
@@ -140,6 +141,112 @@ class PipelineTaskType(StrEnum):
 
 VALID_PIPELINE_TASK_TYPES = {PipelineTaskType.PARSE, PipelineTaskType.DOWNLOAD, PipelineTaskType.RAPTOR, PipelineTaskType.GRAPH_RAG, PipelineTaskType.MINDMAP}
 
+
+################# billing
+class ProductType(StrEnum):
+    """Types of products"""
+
+    SUBSCRIPTION = "subscription"
+    USAGE_BASED = "usage_based"
+
+
+class UsageStat(StrEnum):
+    """Usage statistic timing"""
+
+    BEFORE_TASK = "before"
+    AFTER_TASK = "after"
+
+
+class QuotaType(StrEnum):
+    """Quota definition types"""
+
+    APP_TOTAL = "app_total"
+    TEAM_SEAT = "team_seat"
+    API_QPS = "api_qps"
+    KB_STORAGE = "kb_storage"
+
+
+class QuotaUnit(StrEnum):
+    """Units for quota items"""
+
+    APPS = "apps"
+    SEATS = "seats"
+    CALLS = "calls"
+    GB = "gb"
+
+
+class PriceType(StrEnum):
+    """Types of pricing methods"""
+
+    SUBSCRIPTION = "subscription"
+    USAGE_BASED = "usage_based"
+
+
+class BillingFrequency(StrEnum):
+    """Billing intervals"""
+
+    MONTHLY = "monthly"
+    YEARLY = "yearly"
+    ONE_TIME = "one_time"
+
+
+class PriceUnit(StrEnum):
+    """Units for usage-based pricing"""
+
+    TOKEN = "token"
+    PAGE = "page"
+
+
+class PaymentCurrency(StrEnum):
+    USD = "usd"
+    CNY = "cny"
+
+
+class ProductTaskStatus(StrEnum):
+    """Product task status"""
+
+    WAITING = "waiting"
+    SUCCESS = "success"
+    FAILED = "failed"
+
+
+class PaymentMethod(StrEnum):
+    CARD = "card"
+
+
+class PaymentChannel(StrEnum):
+    STRIPE = "stripe"
+
+
+class PaymentStatus(StrEnum):
+    PENDING = "pending"
+    SUCCESS = "success"
+    FAILED = "failed"
+
+
+class UsageBasedStatus(StrEnum):
+    PENDING = "pending"
+    ACTIVE = "active"
+    CANCELED = "canceled"
+    EXPIRED = "expired"
+
+
+class UsageTraceStatus(StrEnum):
+    WAITING = "waiting"
+    SUCCESS = "success"
+    FAILED = "failed"
+
+
+class SubscriptionStatus(StrEnum):
+    INACTIVE = "inactive"
+    ACTIVE = "active"
+    CANCELED = "canceled"
+    EXPIRED = "expired"
+    PENDING = "pending"
+    UNKNOWN = "unknown"
+
+
+####################
 
 PIPELINE_SPECIAL_PROGRESS_FREEZE_TASK_TYPES = {PipelineTaskType.RAPTOR.lower(), PipelineTaskType.GRAPH_RAG.lower(), PipelineTaskType.MINDMAP.lower()}
 

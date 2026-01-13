@@ -32,6 +32,7 @@ from common.constants import MINERU_DEFAULT_CONFIG, MINERU_ENV_KEYS, LLMType
 from api.db.db_models import DB, LLMFactories, TenantLLM
 from api.db.services.common_service import CommonService
 from api.db.services.langfuse_service import TenantLangfuseService
+from api.utils.billing import billing_set_customer_id
 from api.db.services.user_service import UserTenantService
 from common.constants import StatusEnum
 from api.db.services.user_service import TenantService
@@ -569,5 +570,6 @@ def user_register(user_id, user):
     UserTenantService.insert(**usr_tenant)
     TenantLLMService.insert_many(tenant_llm)
     FileService.insert(file)
+    billing_set_customer_id(user_id)
     time.sleep(3)
     return UserService.query(email=user["email"])

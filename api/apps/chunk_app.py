@@ -21,7 +21,6 @@ import base64
 import xxhash
 from quart import request
 
-from api.db.services.billing_service import TenantPlanService
 from api.db.services.document_service import DocumentService
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.llm_service import LLMBundle
@@ -282,14 +281,6 @@ async def create():
                 return get_data_error_result(message="Knowledgebase not found!")
             if kb.pagerank:
                 d[PAGERANK_FLD] = kb.pagerank
-
-            if settings.BILLING_ENABLED:
-                idxnm = search.index_name(tenant_id)
-                tenant_plan = TenantPlanService.get_by_tenant_id(kb.tenant_id)
-                kb_ids = KnowledgebaseService.get_kb_ids(kb.tenant_id)
-                num_chunks = settings.docStoreConn.count_chunks(idxnm, kb_ids)
-                if num_chunks + 1 > tenant_plan["quota_chunks"]:
-                    raise Exception(f"Tenant {kb.tenant_id} plan {tenant_plan['name']} quota exceeded. Max chunks: {tenant_plan['quota_chunks']}, current chunks: {num_chunks}, delta chunks: 1")
 
             embd_id = DocumentService.get_embd_id(req["doc_id"])
             embd_mdl = LLMBundle(tenant_id, LLMType.EMBEDDING.value, embd_id)

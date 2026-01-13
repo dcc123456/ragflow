@@ -389,6 +389,13 @@ class KnowledgebaseService(CommonService):
 
     @classmethod
     @DB.connection_context()
+    def count_by_tenant_id(cls, tenant_id) -> int:
+        return cls.model.select().where(
+            (cls.model.tenant_id == tenant_id) & (cls.model.status == StatusEnum.VALID.value)
+        ).count()
+
+    @classmethod
+    @DB.connection_context()
     def get_detail(cls, kb_id):
         # Get detailed information about a dataset
         # Args:

@@ -40,19 +40,16 @@ redis:
 #     - name: "trial"
 #       quota_members: 1
 #       quota_docs: 50
-#       quota_chunks: 1000
 #       task_priority: "low"
 #       price_ids: ""
 #     - name: "pro"
 #       quota_members: 3
 #       quota_docs: 500
-#       quota_chunks: 50000
 #       task_priority: "high"
 #       price_ids: "price_1QsKhBHJ6pV3qJnLw5fapUQR price_1QtKbsHJ6pV3qJnLo76qCsAZ"
 #     - name: "team"
 #       quota_members: 1000
 #       quota_docs: 1000
-#       quota_chunks: 100000
 #       task_priority: "high"
 #       price_ids: "price_1QtKdzHJ6pV3qJnL75cSD7XH price_1QtKeqHJ6pV3qJnLIu0qKIAv"
 

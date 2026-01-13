@@ -40,7 +40,9 @@ import { ReferenceImageList } from './reference-image-list';
 import { UploadedMessageFiles } from './uploaded-message-files';
 
 interface IProps
-  extends Partial<IRemoveMessageById>, IRegenerateMessage, PropsWithChildren {
+  extends Partial<IRemoveMessageById>,
+    IRegenerateMessage,
+    PropsWithChildren {
   item: IMessage;
   conversationId?: string;
   currentEventListWithoutMessageById?: (messageId: string) => INodeEvent[];

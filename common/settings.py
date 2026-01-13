@@ -13,6 +13,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 #
+from collections import defaultdict
 import os
 import json
 import secrets
@@ -46,7 +47,11 @@ ENABLE_WHITELIST = int(os.environ.get("ENABLE_WHITELIST", "0"))
 ENABLE_ADMIN = int(os.environ.get("ENABLE_ADMIN", "0"))
 BILLING_ENABLED = int(os.environ.get("BILLING_ENABLED", "0"))
 BILLING = {}
-PRICE_PLAN = {}
+BILLING_PRICEID_TO_PRODUCT = {}
+BILLING_PRIORITY_TO_PLANS = defaultdict(list)
+BILLING_PLAN_TO_INFO = {}
+BILLING_PRICE_POINT = {}
+BILLING_LOCAL_PRICE = {}
 LDAP_OAUTH = None
 
 LLM = None
@@ -350,13 +355,24 @@ def init_settings():
     global SMTP_CONF
     SMTP_CONF = get_base_config("smtp", {})
 
-    global BILLING
+    global BILLING, BILLING_PRICEID_TO_PRODUCT, BILLING_PRIORITY_TO_PLANS, BILLING_PLAN_TO_INFO, BILLING_PRICE_POINT, BILLING_LOCAL_PRICE
     BILLING = get_base_config("billing", {})
+    BILLING_PRICE_POINT = BILLING.get("price_point", [])
+    BILLING_LOCAL_PRICE = BILLING.get("local_price", [])
     for plan in BILLING.get("billing_plans", []):
         plan_name = plan.get("name")
         price_ids = plan.get("price_ids", "").split()
+        price_lookup_key = plan.get("price_lookup_key", "")
         for price_id in price_ids:
-            PRICE_PLAN[price_id] = plan_name
+           BILLING_PRICEID_TO_PRODUCT[price_id] = plan_name
+
+        plan_priority = plan.get("plan_priority")
+        BILLING_PRIORITY_TO_PLANS[plan_priority].append(plan_name)
+        BILLING_PLAN_TO_INFO[plan_name] = {
+            "priority": plan_priority,
+            "price_ids": price_ids,
+            "price_lookup_key": price_lookup_key,
+        }
 
     global MAIL_SERVER, MAIL_PORT, MAIL_USE_SSL, MAIL_USE_TLS, MAIL_USERNAME, MAIL_PASSWORD, MAIL_DEFAULT_SENDER, MAIL_FRONTEND_URL
     MAIL_SERVER = SMTP_CONF.get("mail_server", "")

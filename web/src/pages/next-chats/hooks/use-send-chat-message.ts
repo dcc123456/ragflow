@@ -100,7 +100,7 @@ export const useSendMessage = (controller: AbortController) => {
           messages: [
             ...(Array.isArray(messages) && messages?.length > 0
               ? messages
-              : (derivedMessages ?? [])),
+              : derivedMessages ?? []),
             message,
           ],
         },

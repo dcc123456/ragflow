@@ -63,6 +63,11 @@ class UserCanvasService(CommonService):
 
     @classmethod
     @DB.connection_context()
+    def count_by_tenant_id(cls, tenant_id) -> int:
+        return cls.model.select().where(cls.model.user_id == tenant_id).count()
+
+    @classmethod
+    @DB.connection_context()
     def get_all_agents_by_tenant_ids(cls, tenant_ids, user_id):
         # will get all permitted agents, be cautious
         fields = [

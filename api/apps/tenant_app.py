@@ -18,9 +18,8 @@ import logging
 import asyncio
 from api.db import UserTenantRole
 from api.db.db_models import UserTenant
-from api.db.services.billing_service import TenantPlanService
-from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.team_service import DepartmentMemberService
+from api.utils.billing import check_resources
 from api.db.services.user_service import UserTenantService, UserService
 
 from common.constants import RetCode, StatusEnum
@@ -29,7 +28,6 @@ from common.time_utils import delta_seconds
 from api.utils.api_utils import get_data_error_result, get_json_result, get_request_json, server_error_response, validate_request
 from api.utils.web_utils import send_invite_email
 from common import settings
-from rag.nlp import search
 from api.apps import login_required, current_user
 
 
@@ -54,6 +52,7 @@ def user_list(tenant_id):
 @manager.route('/<tenant_id>/user', methods=['POST'])  # noqa: F821
 @login_required
 @validate_request("email")
+@check_resources(seats=1)
 async def create(tenant_id):
     if current_user.id != tenant_id:
         return get_json_result(
@@ -62,9 +61,6 @@ async def create(tenant_id):
             code=RetCode.AUTHENTICATION_ERROR)
 
     req = await get_request_json()
-    if settings.BILLING_ENABLED:
-        TenantPlanService.check_by_tenant_id(tenant_id, delta_members=1)
-
     invite_user_email = req["email"]
     invite_users = UserService.query(email=invite_user_email)
     if not invite_users:
@@ -143,30 +139,11 @@ def tenant_list():
 
 @manager.route("/agree/<tenant_id>", methods=["PUT"])  # noqa: F821
 @login_required
+@check_resources(seats=1)
 def agree(tenant_id):
     try:
         UserTenantService.filter_update([UserTenant.tenant_id == tenant_id, UserTenant.user_id == current_user.id],
                                         {"role": UserTenantRole.NORMAL})
         return get_json_result(data=True)
-    except Exception as e:
-        return server_error_response(e)
-
-
-@manager.route("/<tenant_id>/billing_plan", methods=["GET"])  # noqa: F821
-@login_required
-def billing_plan(tenant_id):
-    if current_user.id != tenant_id:
-        return get_json_result(
-            data=False,
-            message='No authorization.',
-            code=RetCode.AUTHENTICATION_ERROR)
-
-    try:
-        tenant_plan = TenantPlanService.get_by_tenant_id(tenant_id)
-        idxnm = search.index_name(tenant_id)
-        kb_ids = KnowledgebaseService.get_kb_ids(tenant_id)
-        num_chunks = settings.docStoreConn.count_chunks(idxnm, kb_ids)
-        tenant_plan["num_chunks"] = num_chunks
-        return get_json_result(data=tenant_plan)
     except Exception as e:
         return server_error_response(e)

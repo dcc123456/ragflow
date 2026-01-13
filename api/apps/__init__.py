@@ -31,11 +31,13 @@ from api.utils import commands
 
 from quart_auth import Unauthorized
 from common import settings
+from common.billing_utils import init_stripe_api_key
 from api.utils.api_utils import server_error_response
 from api.constants import API_VERSION
 from common.misc_utils import get_uuid
 
 settings.init_settings()
+init_stripe_api_key()
 
 __all__ = ["app"]
 

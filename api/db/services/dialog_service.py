@@ -103,6 +103,13 @@ class DialogService(CommonService):
 
     @classmethod
     @DB.connection_context()
+    def count_by_tenant_id(cls, tenant_id) -> int:
+        return cls.model.select().where(
+            (cls.model.tenant_id == tenant_id) & (cls.model.status == StatusEnum.VALID.value)
+        ).count()
+
+    @classmethod
+    @DB.connection_context()
     def get_by_tenant_ids(cls, joined_tenant_ids, user_id, page_number, items_per_page, orderby, desc, keywords, parser_id=None):
         from api.db.db_models import User
 

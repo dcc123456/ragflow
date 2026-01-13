@@ -36,6 +36,7 @@ from api.db import VALID_FILE_TYPES
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.db_models import File
 from api.utils.api_utils import get_json_result
+from api.utils.billing import check_resources
 from api.utils.permission_utils import check_kb_permission, has_permission_for_member
 from common.role_util import check_role_access, KB_API_ACTION_MAP, KB_ROLE_RESOURCE_TYPE
 from common.misc_utils import get_uuid
@@ -55,6 +56,7 @@ kb_role_guard = check_role_access(KB_API_ACTION_MAP, KB_ROLE_RESOURCE_TYPE)
 @login_required
 @kb_role_guard
 @validate_request("name")
+@check_resources(apps=1)
 async def create():
     req = await get_request_json()
     e, req = KnowledgebaseService.create_with_name(

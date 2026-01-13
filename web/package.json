@@ -19,9 +19,6 @@
       "prettier --write --ignore-unknown"
     ]
   },
-  "overrides": {
-    "@radix-ui/react-dismissable-layer": "1.1.4"
-  },
   "dependencies": {
     "@ant-design/icons": "^5.2.6",
     "@ant-design/pro-components": "^2.6.46",
@@ -190,5 +187,8 @@
   },
   "engines": {
     "node": ">=18.20.4"
+  },
+  "overrides": {
+    "@radix-ui/react-dismissable-layer": "1.1.4"
   }
 }

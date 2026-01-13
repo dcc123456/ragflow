@@ -18,14 +18,15 @@ import json
 import os
 import time
 from copy import deepcopy
+from decimal import getcontext, ROUND_HALF_UP
 from urllib.parse import urlparse
 from api.db.services.system_settings_service import SystemSettingsService
 from api.db.db_models import init_database_tables as init_web_db, LLM
 from api.db.joint_services.memory_message_service import init_message_id_sequence, init_memory_size_cache
-from api.db.services.billing_service import BillingPlanService, TenantPlanService
 from api.db.services.canvas_service import CanvasTemplateService
 from api.db.services.llm_service import LLMService
 from api.db.services.tenant_llm_service import LLMFactoriesService
+from api.db.services.billing_service import ProductService, SubscriptionService
 from common.file_utils import get_project_base_directory
 from common import settings
 import stripe
@@ -168,13 +169,19 @@ def handle_undelivered_events():
             if not plan_name:
                 logging.warning(f'handle_undelivered_events could not find plan for price {price_id}')
                 continue
-            updated_rows = TenantPlanService.update_subscription(customer_id, subscription_id, subscription_status, plan_name)
+            updated_rows = SubscriptionService.update_subscription(customer_id, subscription_id, subscription_status, plan_name)
             if not updated_rows:
                 logging.warning(f'handle_undelivered_events could not find tenant for customer {customer_id}')
                 continue
             logging.info(f'handle_undelivered_events updated customer {customer_id} subscription {subscription_id} status {subscription_status} plan {plan_name}')
         if num_events == 0:
             break
+
+
+def configure_decimal():
+    ctx = getcontext()
+    ctx.prec = 28
+    ctx.rounding = ROUND_HALF_UP
 
 def init_web_data():
     start_time = time.time()
@@ -188,9 +195,12 @@ def init_web_data():
     init_default_roles()
 
     if settings.BILLING_ENABLED:
-        BillingPlanService.init_data(settings.BILLING["billing_plans"])
+        ProductService.init_data(settings.BILLING["billing_plans"])
+        # PricePointService.init_data(settings.BILLING_PRICE_POINT)
+        # LocalPriceService.init_data(settings.BILLING_LOCAL_PRICE)
         register_webhook()
         handle_undelivered_events()
+        configure_decimal()
 
     add_graph_templates()
     init_message_id_sequence()

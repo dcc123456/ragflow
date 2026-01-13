@@ -14,7 +14,6 @@ import {
 } from '@/hooks/use-user-setting-request';
 import { TenantRole } from '@/pages/user-setting/constants';
 import { BellRing, CircleHelp, MoonIcon, SunIcon } from 'lucide-react';
-import { useNavigate } from 'react-router';
 import { TeamInvitationReminderDialog } from '../team-invitation-reminder-dialog';
 import styled from './index.less';
 

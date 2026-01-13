@@ -27,12 +27,23 @@ from functools import wraps
 
 from quart_auth import AuthUser
 from itsdangerous.url_safe import URLSafeTimedSerializer as Serializer
-from peewee import InterfaceError, OperationalError, BigIntegerField, BooleanField, CharField, CompositeKey, DateTimeField, Field, FloatField, IntegerField, Metadata, Model, TextField, PrimaryKeyField
+from peewee import InterfaceError, OperationalError, BigIntegerField, BooleanField, CharField, Check, CompositeKey, DateTimeField, DecimalField, Field, FloatField, IntegerField, Metadata, Model, PrimaryKeyField, TextField
 from playhouse.migrate import MySQLMigrator, PostgresqlMigrator, migrate
 from playhouse.pool import PooledMySQLDatabase, PooledPostgresqlDatabase
 
 from api import utils
-from api.db import SerializedType, TeamRole, PermissionValue, VALID_PERMISSION_TARGET_TYPES, VALID_RESOURCE_TYPES, VALID_PERMISSION_ACTION_TYPES, ResourceType
+from api.db import (
+    PaymentStatus,
+    ResourceType,
+    SerializedType,
+    TeamRole,
+    UsageBasedStatus,
+    UsageTraceStatus,
+    PermissionValue,
+    VALID_PERMISSION_ACTION_TYPES,
+    VALID_PERMISSION_TARGET_TYPES,
+    VALID_RESOURCE_TYPES,
+)
 from api.utils.json_encode import json_dumps, json_loads
 from api.utils.configs import deserialize_b64, serialize_b64
 
@@ -1075,27 +1086,209 @@ class CanvasTemplate(DataBaseModel):
         db_table = "canvas_template"
 
 
-class BillingPlan(DataBaseModel):
+class Product(DataBaseModel):
     id = CharField(max_length=32, primary_key=True)
-    name = CharField(max_length=32, default="trial", help_text="Plan name", index=True, unique=True)
+    name = CharField(null=False, max_length=255, index=True)
+    quota_apps = IntegerField(null=False, help_text="Limit number of APP of the tenant, Chat, Search, Agent")
     quota_members = IntegerField(null=False, help_text="Limit number of members of the tenant")
-    quota_docs = IntegerField(null=False, help_text="Limit number of documents of the tenant")
-    quota_chunks = IntegerField(null=False, help_text="Limit number of chunks of the tenant")
+    quota_kb_storage = BigIntegerField(null=False, help_text="Limit number of kbs of the tenant")
     task_priority = CharField(null=False, help_text="Task priority of the tenant")
     price_ids = TextField(null=False, default="", help_text="price ids on stripe.com")
+    description = TextField(null=True)
+    product_type = CharField(null=False, choices=["subscription", "usage_based"])
+    usage_stat_type = CharField(null=True, choices=["before", "after"])  # only for usage_based
+    version = IntegerField(null=False, help_text="Product version")
+
     class Meta:
-        db_table = "billing_plan"
+        db_table = "billing_product"
 
 
-class TenantPlan(DataBaseModel):
+class QuotaItem(DataBaseModel):
+    """Product associated many QuotaItem"""
+
     id = CharField(max_length=32, primary_key=True)
-    tenant_id = CharField(max_length=32, null=False, index=True, unique=True)
+    product_id = CharField(max_length=32, index=True)
+    quota_type = CharField(null=False, choices=["app_total", "team_seat", "api_qps", "kb_storage"])
+    quantity = IntegerField(null=False)
+    unit = CharField(null=False, choices=["apps", "seats", "calls", "gb"])
+    description = TextField(null=True)
+
+    class Meta:
+        db_table = "billing_quota_item"
+
+
+class PricePoint(DataBaseModel):
+    """product -> price point"""
+
+    id = CharField(max_length=32, primary_key=True)
+    product_id = CharField(max_length=32, index=True)
+    product_name = CharField(null=False, max_length=255)
+    price_type = CharField(null=False, choices=["subscription", "usage_based"], index=True)
+    billing_frequency = CharField(null=False, choices=["monthly", "yearly", "one_time"])
+    included_free_amount = IntegerField(null=True)  # ???
+    unit = CharField(choices=["token", "page"], null=True)
+    unit_quantity = IntegerField(null=True)
+    consuming_point_amount = FloatField(null=False)  # ???
+    effective_time = DateTimeField(null=False)
+    expiry_time = DateTimeField(null=True)
+
+    class Meta:
+        db_table = "billing_pricepoint"
+
+
+class LocalPrice(DataBaseModel):
+    """price point -> local price"""
+
+    id = CharField(max_length=32, primary_key=True)
+    price_point_id = CharField(max_length=32, index=True)
+    product_id = CharField(max_length=32, index=True)
+    product_name = CharField(null=False, max_length=255)
+    amount = DecimalField(max_digits=19, decimal_places=4)
+    currency = CharField(max_length=3)  # usd, cny
+    point_value = DecimalField(max_digits=19, decimal_places=4)  # ???
+    effective_time = DateTimeField(null=False)
+    expiry_time = DateTimeField(null=True)
+
+    class Meta:
+        db_table = "billing_localprice"
+
+
+class ProductUsageTracing(DataBaseModel):
+    id = CharField(max_length=32, primary_key=True)
+    tenant_id = CharField(max_length=32, null=False, index=True)
+    product_id = CharField(max_length=32, null=False, index=True)
+    price_point_id = CharField(max_length=32, null=False, index=True)  # price point table
+    local_price_id = CharField(max_length=32, null=False, index=True)  # local price table
+    task_quantity = IntegerField()
+    total_cost = DecimalField(max_digits=19, decimal_places=4)
+    currency = CharField(max_length=3)  # usd, cny
+    status = CharField(null=False, choices=[item.value for item in UsageTraceStatus])  # Our usage trace status
+    description = TextField(null=True)
+
+    class Meta:
+        db_table = "billing_product_usage_tracing"
+
+
+class PurchasedProductOverview(DataBaseModel):
+    "User can purchase many products"
+
+    id = CharField(max_length=32, primary_key=True)
+    tenant_id = CharField(max_length=32, null=False, index=True)
+    product_id = CharField(max_length=32, null=False, index=True)  # QUESTION: should be delete?
+    product_name = CharField(null=False, max_length=255)
+    quantity = IntegerField(null=False, constraints=[Check("quantity >= 0")])
+    effective_time = DateTimeField(null=False)
+    expiry_time = DateTimeField(null=True)
+
+    # QUESTION: union primary key? (tenant_id, product_name)
+
+    class Meta:
+        db_table = "billing_purchased_product_overview"
+
+
+class PaymentOrder(DataBaseModel):
+    "Stripe checkout recording"
+
+    id = CharField(max_length=32, primary_key=True)
+    tenant_id = CharField(max_length=32, null=False, index=True)
+    customer_id = CharField(max_length=255, null=False, default="", help_text="customer id on stripe.com", index=True)
+    payment_type = CharField(choices=["subscription", "usage_based"])
+    product_id = CharField(max_length=32, null=True, index=True)  # Optional for recharge
+    product_name = CharField(null=False, max_length=255)
+    is_prorated = BooleanField(default=False)
+
+    # stripe
+    amount = DecimalField(max_digits=19, decimal_places=4)
+    currency = CharField(max_length=3, null=False, choices=["usd", "cny"])
+    payment_method = CharField(null=False, choices=["card"])
+
+    order_id = CharField(max_length=128, null=False, help_text="Stripe checkout order id")
+    price_id = CharField(max_length=128, null=False, help_text="stripe subscription price_id")
+    payment_intent_id = CharField(max_length=128, null=True, help_text="Stripe payment intent id, for one-off")
+    payment_subscription_id = CharField(max_length=128, null=True, help_text="Stripe payment subscription id, for subscription")
+    receipt_url = CharField(max_length=512, null=True, help_text="invoice")
+    receipt_pdf_url = CharField(max_length=512, null=True)
+    payment_channel = CharField(null=False, choices=["stripe"])
+    payment_status = CharField(null=False, choices=[item.value for item in PaymentStatus], help_text="Our payment status")
+    stripe_status = CharField(max_length=255, null=False, default="", help_text="raw status from stripe")
+    paid = BooleanField()
+    captured = BooleanField()
+
+    description = TextField(null=True)
+
+    order_created_at = DateTimeField(help_text="stripe checkout create at")
+    payment_detail = JSONField(null=True, default={})
+
+    class Meta:
+        db_table = "billing_payment_order"
+
+
+class BillingWebhookEvent(DataBaseModel):
+    "Stripe webhook audit log"
+
+    id = CharField(max_length=32, primary_key=True)
+    event_id = CharField(max_length=255, null=False, unique=True, index=True)
+    event_type = CharField(max_length=255, null=False, index=True)
+    object_id = CharField(max_length=255, null=True, index=True)
+    payload = JSONField(null=False)
+    created_at = DateTimeField(null=True)
+    received_at = DateTimeField(null=False)
+
+    class Meta:
+        db_table = "billing_webhook_event"
+
+
+class Subscription(DataBaseModel):
+    """
+    A tenant can have only one subscription
+    """
+
+    id = CharField(max_length=32, primary_key=True)
+    tenant_id = CharField(max_length=32, null=False, index=True)
+    product_id = CharField(max_length=32, null=False)
     plan_name = CharField(max_length=255, null=False, default="trial", help_text="billing plan", index=True)
-    customer_id = CharField(max_length=255, null=False, default="", help_text="customer id on stripe.com", index=True, unique=True)
+    order_id = CharField(max_length=128, null=False, help_text="from RAGFlow Order")
+    status = CharField(choices=["active", "canceled", "expired", "pending"])
+
+    customer_id = CharField(max_length=255, null=False, default="", help_text="customer id on stripe.com", index=True)
+    price_id = CharField(max_length=128, null=False, help_text="stripe subscription price_id")
     subscription_id = CharField(max_length=255, null=False, default="", help_text="subscription id on stripe.com", index=True)
     subscription_status = CharField(max_length=255, null=False, default="", help_text="subscription status on stripe.com", index=True)
+    invoice_id = CharField(max_length=255, null=True, default="", help_text="invoice id on stripe.com", index=True)
+    invoice_url = CharField(max_length=512, null=True, help_text="invoice")
+    invoice_pdf_url = CharField(max_length=512, null=True)
+
+    start_time = DateTimeField(null=False)
+    end_time = DateTimeField(null=True)
+    renew_time = DateTimeField(null=True)
+    original_subscription_id = CharField(max_length=32)
+
     class Meta:
-        db_table = "tenant_plan"
+        db_table = "billing_subscription"
+
+
+class UsageBased(DataBaseModel):
+    """
+    A tenant can purchase many usage-based product
+    """
+
+    id = CharField(max_length=32, primary_key=True)
+    tenant_id = CharField(max_length=32, null=False, index=True, unique=True)
+    product_id = CharField(max_length=32, null=False)
+    product_name = CharField(max_length=255, null=False, help_text="usage-based product name", index=True)
+    quantity = IntegerField(null=False)
+    order_id = CharField(max_length=128, null=False, help_text="from RAGFlow Order")
+    status = CharField(choices=[item.value for item in UsageBasedStatus])
+
+    # stripe
+    customer_id = CharField(max_length=255, null=False, default="", help_text="customer id on stripe.com", index=True, unique=True)
+    price_id = CharField(max_length=128, null=False, help_text="stripe subscription price_id")
+    payment_id = CharField(max_length=255, null=False, default="", help_text="checkout id on stripe.com", index=True)
+    payment_status = CharField(null=False, choices=[item.value for item in PaymentStatus], help_text="Our payment status", default=PaymentStatus.PENDING.value, index=True)
+    stripe_status = CharField(max_length=255, null=False, default="", help_text="raw status from stripe", index=True)
+
+    class Meta:
+        db_table = "billing_usage_based"
 
 
 class UserCanvasVersion(DataBaseModel):

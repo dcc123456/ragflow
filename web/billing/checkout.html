@@ -16,66 +16,95 @@
       } */
     </style>
   </head>
-  <body>
-    <section>
-      <div class="product">
-        <img src="/logo.svg" alt="The cover of Stubborn Attachments" />
-        <div class="description">
-          <h3>Subscribe RAGFlow Professional Plan</h3>
-          <h5>$59.00</h5>
-        </div>
-      </div>
-      <form id="billing_form">
-        <input name="tenant_id" value="tid_111111" />
-        <input
-          type="hidden"
-          name="price_id"
-          value="price_1QsKhBHJ6pV3qJnLw5fapUQR"
-        />
-        <button type="submit" id="checkout-button">Checkout</button>
-      </form>
-    </section>
-    <script>
-      function postData(data) {
-        fetch(location.origin + "/v1/billing/checkout", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": localStorage.getItem("Authorization"),
-          },
-          body: JSON.stringify(data),
-        })
-          .then((res) => {
-            const ret=res.json() ;
 
-            return ret
-          }).then((res) => {
-            console.log("🚀 ~.then ~ res:", res);
-            if (res?.data?.redirect_to) {
-              window.location.href = res.data.redirect_to;
-            }else{ 
-              alert(res?.message)
-             }
-          })
-          .catch((e) => {
-          });
+<body>
+  <section>
+    <div class="product">
+      <img src="/logo.svg" alt="The cover of Stubborn Attachments" />
+      <div class="description">
+        <h3>Subscribe RAGFlow Professional Plan</h3>
+        <h5>$59.00</h5>
+      </div>
+    </div>
+    <form id="billing_form">
+      <input name="tenant_id" value="c3fb861af27a11efa69751e139332ced" />
+      <!-- <input name="tenant_id" value="6fc66a5a415411f0b073c5725c73b90e" /> -->
+
+      <label>
+        <input type="radio" name="payment_type" value="usage_based" checked />
+        Usage Based
+      </label>
+      <label>
+        <input type="radio" name="payment_type" value="subscription" />
+        Subscription
+      </label>
+
+
+      <label>
+        <input type="radio" name="subscription_price_id" value="price_1RWUhlPtsKvwvC5fJHfaYeRs" checked/>
+        Trial - Free
+      </label><br />
+      <div id="subscription_options" style="display: none; margin-top: 10px;">
+        <label>
+          <input type="radio" name="subscription_price_id" value="price_1RSr42PtsKvwvC5fuZP0AH7B" />
+          Standard Subscription - $20
+        </label>
+      </div>
+
+      <input
+        type="hidden"
+        name="usage_based_price_id"
+        value="price_1RRTpfPtsKvwvC5fVsZly0mE"
+      />
+      <input name="quantity" value="1" />
+      <button type="submit" id="checkout-button">Checkout</button>
+    </form>
+  </section>
+
+  <script>
+    function postData(data) {
+      fetch(location.origin + "/v1/billing/checkout", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": localStorage.getItem("Authorization"),
+        },
+        body: JSON.stringify(data),
+      })
+        .then((res) => res.json())
+        .then((res) => {
+          console.log("🚀 ~.then ~ res:", res);
+          if (res?.data?.redirect_to) {
+            window.location.href = res.data.redirect_to;
+          } else {
+            alert(res?.message);
+          }
+        })
+        .catch((e) => {
+          console.error("Error:", e);
+        });
+    }
+
+    document.querySelector("#billing_form").addEventListener("submit", function (event) {
+      event.preventDefault();
+
+      const formData = new FormData(this);
+      const data = {};
+
+      for (let [key, value] of formData.entries()) {
+        data[key] = value;
       }
 
-      document
-        .querySelector("#billing_form")
-        .addEventListener("submit", function () {
-          event.preventDefault(); // 阻止表单的默认提交行为
+      console.log("Form Data:", data);
+      postData(data);
+    });
 
-          const formData = new FormData(this); // 获取表单数据
-          const data = {};
-          for (let [key, value] of formData.entries()) {
-            data[key] = value;
-          }
-
-          console.log("Form Data:", data);
-
-          postData(data);
-        });
-    </script>
-  </body>
+    document.querySelectorAll('input[name="payment_type"]').forEach((input) => {
+      input.addEventListener("change", function () {
+        const showSubscription = this.value === "subscription";
+        document.getElementById("subscription_options").style.display = showSubscription ? "block" : "none";
+      });
+    });
+  </script>
+</body>
 </html>

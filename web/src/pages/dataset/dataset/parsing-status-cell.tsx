@@ -1,4 +1,3 @@
-import { ConfirmDeleteDialog } from '@/components/confirm-delete-dialog';
 import { IconFontFill } from '@/components/icon-font';
 import {
   DropdownMenu,
@@ -14,7 +13,6 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { IDocumentInfo } from '@/interfaces/database/document';
-import { cn } from '@/lib/utils';
 import { CircleX } from 'lucide-react';
 import { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -80,9 +78,9 @@ export function ParsingStatusCell({
     delete: boolean;
     apply_kb: boolean;
   }) => {
-      if (datasetEditButtonDisabled) {
-        return;
-     }
+    if (datasetEditButtonDisabled) {
+      return;
+    }
     handleRunDocumentByIds(record.id, isRunning, option);
   };
 

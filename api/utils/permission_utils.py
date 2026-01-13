@@ -19,27 +19,6 @@ def has_permission(user_permission: int, required_permission: PermissionValue) -
     return user_permission >= required_permission.value
 
 
-def grant_permission(user_permission: int, new_permission: PermissionValue) -> int:
-    """
-    Grant a new permission to the user.
-    """
-    return new_permission.value
-
-
-def revoke_permission(user_permission: int, revoke_permission: PermissionValue) -> int:
-    """
-    Revoke a specific permission from the user.
-    """
-    return revoke_permission.value
-
-
-def set_permission(user_permission: int, new_permission: PermissionValue) -> int:
-    """
-    Set the user's permission directly to a new permission.
-    """
-    return new_permission.value
-
-
 def has_permission_for_member(operator_id, tenant_id, resource_id, resource_type, permission=PermissionValue.PERMISSION_MANAGE):
     from api.db.services.user_service import UserTenantService
     highest_permission = PermissionValue.PERMISSION_NULL.value

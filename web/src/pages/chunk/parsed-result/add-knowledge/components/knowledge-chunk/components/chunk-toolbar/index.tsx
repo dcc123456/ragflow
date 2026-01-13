@@ -37,10 +37,11 @@ import { ChunkTextMode } from '../../constant';
 
 const { Text } = Typography;
 
-interface IProps extends Pick<
-  IChunkListResult,
-  'searchString' | 'handleInputChange' | 'available' | 'handleSetAvailable'
-> {
+interface IProps
+  extends Pick<
+    IChunkListResult,
+    'searchString' | 'handleInputChange' | 'available' | 'handleSetAvailable'
+  > {
   checked: boolean;
   selectAllChunk: (checked: boolean) => void;
   createChunk: () => void;

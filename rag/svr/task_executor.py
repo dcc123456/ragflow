@@ -60,16 +60,17 @@ from api.db.services.task_service import TaskService, has_canceled, CANVAS_DEBUG
 from api.db.services.file2document_service import File2DocumentService
 from common.versions import get_ragflow_version
 from api.db.db_models import close_connection
-from api.db.services.billing_service import TenantPlanService
 from rag.app import laws, paper, presentation, manual, qa, table, book, resume, picture, naive, one, audio, \
     email, tag
 from rag.nlp import search, rag_tokenizer, add_positions
 from rag.raptor import RecursiveAbstractiveProcessing4TreeOrganizedRetrieval as Raptor
 from common.token_utils import num_tokens_from_string, truncate
+from common.billing_utils import record_deepdoc_usage
 from graphrag.utils import chat_limiter
 from common.signal_utils import start_tracemalloc_and_snapshot, stop_tracemalloc
 from common.exceptions import TaskCanceledException
 from common import settings
+from common.billing_utils import init_stripe_api_key
 from rag.utils.rabbitmq_conn import RABBITMQ_CONN
 from common.constants import PAGERANK_FLD, TAG_FLD
 
@@ -897,14 +898,6 @@ async def do_handle_task(task):
 
     init_kb(task, vector_size)
 
-    if settings.BILLING_ENABLED:
-        idxnm = search.index_name(task_tenant_id)
-        tenant_plan = TenantPlanService.get_by_tenant_id(task_tenant_id)
-        kb_ids = KnowledgebaseService.get_kb_ids(task_tenant_id)
-        num_chunks = await asyncio.to_thread(settings.docStoreConn.count_chunks, idxnm, kb_ids)
-        if num_chunks > tenant_plan["quota_chunks"]:
-            raise Exception(f"Tenant {task_tenant_id} plan {tenant_plan['name']} quota exceeded. Max chunks: {tenant_plan['quota_chunks']}, current chunks: {num_chunks}")
-
     if task_type[:len("dataflow")] == "dataflow":
         await run_dataflow(task)
         return
@@ -1136,13 +1129,6 @@ async def do_handle_task(task):
             toc_thread = executor.submit(build_TOC, task, chunks, progress_callback)
 
     chunk_count = len(set([chunk["id"] for chunk in chunks]))
-    if settings.BILLING_ENABLED:
-        idxnm = search.index_name(task_tenant_id)
-        tenant_plan = TenantPlanService.get_by_tenant_id(task_tenant_id)
-        kb_ids = KnowledgebaseService.get_kb_ids(task_tenant_id)
-        num_chunks = await asyncio.to_thread(settings.docStoreConn.count_chunks, idxnm, kb_ids)
-        if num_chunks + chunk_count > tenant_plan["quota_chunks"]:
-            raise Exception(f"Tenant {task_tenant_id} plan {tenant_plan['name']} quota exceeded. Max chunks: {tenant_plan['quota_chunks']}, current chunks: {num_chunks}, delta chunks: {chunk_count}")
 
     start_ts = timer()
 
@@ -1163,6 +1149,8 @@ async def do_handle_task(task):
         )
 
         DocumentService.increment_chunk_num(task_doc_id, task_dataset_id, token_count, chunk_count, 0)
+        if settings.BILLING_ENABLED:
+            record_deepdoc_usage(task, max(0, task_to_page - task_from_page))
 
         progress_callback(msg="Indexing done ({:.2f}s).".format(timer() - start_ts))
 
@@ -1326,6 +1314,7 @@ def main():
     logging.info(f'RAGFlow version: {get_ragflow_version()}')
     show_configs()
     settings.init_settings()
+    init_stripe_api_key()
     logging.info(f'settings.EMBEDDING_CFG: {settings.EMBEDDING_CFG}')
     settings.print_rag_settings()
     signal.signal(signal.SIGUSR1, start_tracemalloc_and_snapshot)

@@ -106,7 +106,6 @@ dependencies = [
     "selenium-wire==5.1.0",
     "slack-sdk==3.37.0",
     "socksio==1.0.0",
-    "stripe>=11.0.0",
     "sqlglotrs==0.9.0",
     "strenum==0.4.15",
     "tavily-python==0.5.1",
@@ -124,6 +123,7 @@ dependencies = [
     "xpinyin==0.7.6",
     "yfinance==0.2.65",
     "zhipuai==2.0.1",
+    "stripe==13.1.0",
     #    following modules aren't necessary
     #    "nltk==3.9.1",
     #    "numpy>=1.26.0,<2.0.0",
