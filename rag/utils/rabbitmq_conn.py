@@ -80,7 +80,7 @@ class RabbitQueue:
                 return True
             except Exception as e:
                 logging.exception(
-                    "RedisDB.queue_product " + str(routing_key) + " got exception: " + str(e)
+                    "RabbitMQ.queue_product " + str(routing_key) + " got exception: " + str(e)
                 )
                 self.__open__()
         return False

@@ -1236,6 +1236,9 @@ def rabbitmq_callback(ch, method, properties, body):
                         logging.warning("Miss task info in DB({}): {}".format(method.routing_key, body))
                         return
                     task["doc_ids"] = msg["doc_ids"]
+            elif msg.get("task_type") == PipelineTaskType.MEMORY.lower():
+                _, task_obj = TaskService.get_by_id(msg["id"])
+                task = task_obj.to_dict()
             else:
                 task = TaskService.get_task(msg["id"])
             if task:
@@ -1280,7 +1283,7 @@ def rabbitmq_callback(ch, method, properties, body):
         task_document_ids = []
         if task_type in ["graphrag", "raptor", "mindmap"]:
             task_document_ids = task["doc_ids"]
-        if not task.get("dataflow_id", ""):
+        if not task.get("dataflow_id", "") or task_type != "memory":
             PipelineOperationLogService.record_pipeline_operation(document_id=task["doc_id"], pipeline_id="",
                                                                   task_type=pipeline_task_type,
                                                                   fake_document_ids=task_document_ids)

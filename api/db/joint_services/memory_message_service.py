@@ -33,6 +33,7 @@ from memory.services.query import MsgTextQuery, get_vector
 from memory.utils.prompt_util import PromptAssembler
 from memory.utils.msg_util import get_json_result_from_llm_response
 from rag.utils.redis_conn import REDIS_CONN
+from rag.utils.rabbitmq_conn import RABBITMQ_CONN
 
 
 async def save_to_memory(memory_id: str, message_dict: dict):
@@ -369,8 +370,8 @@ async def queue_save_to_memory_task(memory_ids: list[str], message_dict: dict):
             "source_id": raw_message_id,
             "message_dict": message_dict
         }
-        if not REDIS_CONN.queue_product(settings.get_svr_queue_name(priority=0), message=task_message):
-            failed_memory.append({"memory_id": memory_id, "fail_msg": "Can't access Redis."})
+        if not RABBITMQ_CONN.queue_product(settings.rout_key(priority=0), message=task_message):
+            failed_memory.append({"memory_id": memory_id, "fail_msg": "Can't access Rabbitmq."})
 
     error_msg = ""
     if not_found_memory:
