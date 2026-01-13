@@ -1177,19 +1177,19 @@ async def forget_reset_password():
 
 @manager.route("/is_admin", methods=["GET"])  # noqa: F821
 @login_required
-def is_admin():
+async def is_admin():
     return get_json_result(data={"admin": UserService.is_admin(current_user.id)})
 
 
 @manager.route("/enable_admin", methods=["GET"])  # noqa: F821
 @login_required
-def enable_admin():
+async def enable_admin():
     return get_json_result(data={"enable": settings.ENABLE_ADMIN})
 
 
 @manager.route("/star", methods=["GET"])  # noqa: F821
 @login_required
-def has_starred_repo():
+async def has_starred_repo():
     from api.sync_github_star import get_user_stared
     import random
     user = UserService.query(id=current_user.id)

@@ -173,11 +173,12 @@ class TenantLLMService(CommonService):
         else:
             assert False, "LLM type error"
 
+        _mdlnm = mdlnm
         mdlnm, fid, other_tenant_id = TenantLLMService.split_model_name_and_factory(mdlnm)
         if other_tenant_id:
-            model_config = cls.get_api_key(other_tenant_id, mdlnm)
+            model_config = cls.get_api_key(other_tenant_id, _mdlnm)
         else:
-            model_config = cls.get_api_key(tenant_id, mdlnm)
+            model_config = cls.get_api_key(tenant_id, _mdlnm)
         if model_config:
             model_config = model_config.to_dict()
             llm = LLMService.query(llm_name=mdlnm) if not fid else LLMService.query(llm_name=mdlnm, fid=fid)

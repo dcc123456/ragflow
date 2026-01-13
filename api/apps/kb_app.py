@@ -1014,7 +1014,6 @@ async def switch_embedding():
 
 @manager.route("/trace_embedding", methods=["GET"])  # noqa: F821
 @login_required
-@validate_request("kb_id")
 def trace_embedding():
     kb_id = request.args.get("kb_id", "")
     if not kb_id:
