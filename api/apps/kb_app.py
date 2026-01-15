@@ -488,14 +488,14 @@ async def rename_tags(kb_id):
 @login_required
 @kb_role_guard
 @check_kb_permission(permission=PermissionValue.PERMISSION_READ)
-def knowledge_graph(kb_id):
+async def knowledge_graph(kb_id):
     _, kb = KnowledgebaseService.get_by_id(kb_id)
     req = {"kb_id": [kb_id], "knowledge_graph_kwd": ["graph"]}
 
     obj = {"graph": {}, "mind_map": {}}
     if not settings.docStoreConn.index_exist(search.index_name(kb.tenant_id), kb_id):
         return get_json_result(data=obj)
-    sres = settings.retriever.search(req, search.index_name(kb.tenant_id), [kb_id])
+    sres = await settings.retriever.search(req, search.index_name(kb.tenant_id), [kb_id])
     if not len(sres.ids):
         return get_json_result(data=obj)
 

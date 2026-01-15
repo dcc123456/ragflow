@@ -106,12 +106,15 @@ class DeepResearcher:
 
         return truncated_prev_reasoning.strip('\n')
 
-    def _retrieve_information(self, search_query):
+    async def _retrieve_information(self, search_query):
         """Retrieve information from different sources"""
         # 1. Knowledge base retrieval
         kbinfos = []
         try:
-            kbinfos = self._kb_retrieve(question=search_query) if self._kb_retrieve else {"chunks": [], "doc_aggs": []}
+            if self._kb_retrieve:
+                kbinfos = await self._kb_retrieve(question=search_query)
+            else:
+                kbinfos = {"chunks": [], "doc_aggs": []}
         except Exception as e:
             logging.error(f"Knowledge base retrieval error: {e}")
 
@@ -128,7 +131,7 @@ class DeepResearcher:
         # 3. Knowledge graph retrieval (if configured)
         try:
             if self.prompt_config.get("use_kg") and self._kg_retrieve:
-                ck = self._kg_retrieve(question=search_query)
+                ck = await self._kg_retrieve(question=search_query)
                 if ck["content_with_weight"]:
                     kbinfos["chunks"].insert(0, ck)
         except Exception as e:
@@ -284,7 +287,7 @@ class DeepResearcher:
                 truncated_prev_reasoning = self._truncate_previous_reasoning(all_reasoning_steps)
 
                 # Step 4: Retrieve information
-                kbinfos = self._retrieve_information(search_query)
+                kbinfos = await self._retrieve_information(search_query)
 
                 # Step 5: Update chunk information
                 self._update_chunk_info(chunk_info, kbinfos)

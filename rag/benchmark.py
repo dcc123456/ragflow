@@ -13,11 +13,11 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 #
+import argparse
+import asyncio
 import json
 import os
 import sys
-import time
-import argparse
 from collections import defaultdict
 
 from common import settings
@@ -46,14 +46,14 @@ class Benchmark:
         self.index_name = ''
         self.initialized_index = False
 
-    def _get_retrieval(self, qrels):
+    async def _get_retrieval(self, qrels):
         # Need to wait for the ES and Infinity index to be ready
-        time.sleep(20)
+        await asyncio.sleep(20)
         run = defaultdict(dict)
         query_list = list(qrels.keys())
         for query in query_list:
-            ranks = settings.retriever.retrieval(query, self.embd_mdl, self.tenant_id, [self.kb.id], 1, 30,
-                                            0.0, self.vector_similarity_weight)
+            ranks = await settings.retriever.retrieval(query, self.embd_mdl, self.tenant_id, [self.kb.id], 1, 30,
+                                                       0.0, self.vector_similarity_weight)
             if len(ranks["chunks"]) == 0:
                 print(f"deleted query: {query}")
                 del qrels[query]
@@ -243,14 +243,14 @@ class Benchmark:
             self.tenant_id = "benchmark_ms_marco_v11"
             self.index_name = search.index_name(self.tenant_id)
             qrels, texts = self.ms_marco_index(file_path, "benchmark_ms_marco_v1.1")
-            run = self._get_retrieval(qrels)
+            run = asyncio.run(self._get_retrieval(qrels))
             print(dataset, evaluate(Qrels(qrels), Run(run), ["ndcg@10", "map@5", "mrr@10"]))
             self.save_results(qrels, run, texts, dataset, file_path)
         if dataset == "trivia_qa":
             self.tenant_id = "benchmark_trivia_qa"
             self.index_name = search.index_name(self.tenant_id)
             qrels, texts = self.trivia_qa_index(file_path, "benchmark_trivia_qa")
-            run = self._get_retrieval(qrels)
+            run = asyncio.run(self._get_retrieval(qrels))
             print(dataset, evaluate(Qrels(qrels), Run(run), ["ndcg@10", "map@5", "mrr@10"]))
             self.save_results(qrels, run, texts, dataset, file_path)
         if dataset == "miracl":
@@ -274,7 +274,7 @@ class Benchmark:
                 qrels, texts = self.miracl_index(os.path.join(file_path, 'miracl-v1.0-' + lang),
                                                  os.path.join(miracl_corpus, 'miracl-corpus-v1.0-' + lang),
                                                  "benchmark_miracl_" + lang)
-                run = self._get_retrieval(qrels)
+                run = asyncio.run(self._get_retrieval(qrels))
                 print(dataset, evaluate(Qrels(qrels), Run(run), ["ndcg@10", "map@5", "mrr@10"]))
                 self.save_results(qrels, run, texts, dataset, file_path)
 
