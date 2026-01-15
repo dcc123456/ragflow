@@ -1,5 +1,6 @@
 import { IconMap, LLMFactory } from '@/constants/llm';
 import { cn } from '@/lib/utils';
+import { getLlmFactoryName } from '@/utils/llm-util';
 import Icon, { UserOutlined } from '@ant-design/icons';
 import { IconComponentProps } from '@ant-design/icons/lib/components/Icon';
 import { Avatar } from 'antd';
@@ -66,7 +67,7 @@ const SvgIcon = memo(
 );
 
 export const LlmIcon = ({
-  name,
+  name: originalName,
   height = 48,
   width = 48,
   size = 'large',
@@ -78,6 +79,7 @@ export const LlmIcon = ({
   size?: AvatarSize;
   imgClass?: string;
 }) => {
+  const name = getLlmFactoryName(originalName);
   const isDark = useIsDarkTheme();
   const themeIcons = [
     LLMFactory.FishAudio,

@@ -22,3 +22,7 @@ export function getRealModelName(llmName: string) {
 export function buildLlmUuid(llm: IThirdOAIModel) {
   return `${llm.llm_name}@${llm.fid}`;
 }
+
+export function getLlmFactoryName(name: string) {
+  return name.split('#').at(0) ?? '';
+}
