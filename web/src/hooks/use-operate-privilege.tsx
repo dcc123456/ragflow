@@ -1,26 +1,10 @@
 import { IPrivilegeManagementInitialValues } from '@/components/privilege-management/interface';
-import { PermissionResourceType, TeamRole } from '@/constants/team';
-import { IShareDialog } from '@/interfaces/database/team';
+import { PermissionResourceType } from '@/constants/team';
 import { IUpdatePermission } from '@/interfaces/request/team';
 import { getLlmFactoryFromLlmId } from '@/utils/private-util';
-import { isEmpty } from 'lodash';
 import { useCallback } from 'react';
 import { useSetModalState } from './common-hooks';
 import { useUpdateDialogPermission, useUpdatePermission } from './use-team';
-
-function flatShareErrorMessages(data: IShareDialog) {
-  if (isEmpty(data)) {
-    return [];
-  }
-  return [
-    ...data.failed.map((x) => ({ ...x, type: TeamRole.Member })),
-    ...data.failed_groups.map((x) => ({ ...x, type: TeamRole.Group })),
-    ...data.failed_departments.map((x) => ({
-      ...x,
-      type: TeamRole.Department,
-    })),
-  ];
-}
 
 export function useAddCollaboratorDialog(
   initialValues: IPrivilegeManagementInitialValues,
@@ -37,13 +21,15 @@ export function useAddCollaboratorDialog(
   const isDialogResourceType =
     initialValues.resourceType === PermissionResourceType.Dialog;
 
+  const isDocumentResourceType =
+    initialValues.resourceType === PermissionResourceType.Document;
+
   const handleOk = useCallback(
     async (params: IUpdatePermission) => {
       const commonParams = {
         ...params,
         resource_type:
           initialValues.resourceType || PermissionResourceType.KnowledgeBase,
-        resource_id: initialValues.id,
         tenant_id: initialValues.tenant_id,
       };
 
@@ -52,6 +38,7 @@ export function useAddCollaboratorDialog(
           ...commonParams,
           kbs: initialValues.kbs!,
           llm_factory: getLlmFactoryFromLlmId(initialValues.llm_id!)!,
+          resource_id: initialValues.id,
         });
 
         // const errorMessages = flatShareErrorMessages(data.data);
@@ -69,7 +56,12 @@ export function useAddCollaboratorDialog(
           hideAddCollaboratorDialog();
         }
       } else {
-        const ret = await updatePermission(commonParams);
+        const ret = await updatePermission({
+          ...commonParams,
+          resource_ids: isDocumentResourceType
+            ? initialValues.documents || []
+            : [initialValues.id],
+        });
 
         if (ret === 0) {
           hideAddCollaboratorDialog();
@@ -78,12 +70,14 @@ export function useAddCollaboratorDialog(
     },
     [
       hideAddCollaboratorDialog,
+      initialValues.documents,
       initialValues.id,
       initialValues.kbs,
       initialValues.llm_id,
       initialValues.resourceType,
       initialValues.tenant_id,
       isDialogResourceType,
+      isDocumentResourceType,
       updateDialogPermission,
       updatePermission,
     ],

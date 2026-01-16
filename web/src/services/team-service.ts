@@ -18,7 +18,7 @@ const {
   moveDepartment,
   updatePermission,
   updateDialogPermission,
-  safeDeletePermission,
+  listPermission,
 } = api;
 
 const methods = {
@@ -54,8 +54,8 @@ const methods = {
     url: updateDialogPermission,
     method: 'put',
   },
-  safeDeletePermission: {
-    url: safeDeletePermission,
+  listPermission: {
+    url: listPermission,
     method: 'post',
   },
 } as const;
@@ -103,9 +103,3 @@ export const transferGroupOwner = (
   tenantId: string,
   params: ITransferGroupOwnerRequestBody,
 ) => request.put(api.transferGroupOwner(tenantId), { data: params });
-
-export const listPermission = (
-  tenantId: string,
-  resourceType: string,
-  resourceId: string,
-) => request.get(api.listPermission(tenantId, resourceType, resourceId));

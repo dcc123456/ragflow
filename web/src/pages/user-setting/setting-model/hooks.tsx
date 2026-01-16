@@ -1,13 +1,9 @@
-import { DeletePrivilegeConfirmContent } from '@/components/privilege/delete-privilege-confirm-content';
 import { LLMFactory } from '@/constants/llm';
-import { PermissionResourceType } from '@/constants/team';
-import { useSetModalState, useShowDeleteConfirm } from '@/hooks/common-hooks';
+import { useSetModalState } from '@/hooks/common-hooks';
 import {
   IApiKeySavingParams,
   ISystemModelSettingSavingParams,
   useAddLlm,
-  useDeleteFactory,
-  useDeleteLlm,
   useEnableLlm,
   useSaveApiKey,
   useSaveTenantInfo,
@@ -16,7 +12,6 @@ import {
 import { useFetchTenantInfo } from '@/hooks/use-user-setting-request';
 import { IAddLlmRequestBody } from '@/interfaces/request/llm';
 import { getRealModelName } from '@/utils/llm-util';
-import { buildLlmId } from '@/utils/private-util';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useState } from 'react';
 import { ApiKeyPostBody } from '../interface';
@@ -425,37 +420,6 @@ export const useSubmitAzure = () => {
   };
 };
 
-export const useHandleDeleteLlm = (llmFactory: string) => {
-  const { deleteLlm } = useDeleteLlm();
-  const showDeleteConfirm = useShowDeleteConfirm();
-  const { data: tenantInfo } = useFetchTenantInfo();
-
-  const handleDeleteLlm = (name: string) => () => {
-    showDeleteConfirm({
-      content: (
-        <DeletePrivilegeConfirmContent
-          params={{
-            tenant_id: tenantInfo.tenant_id,
-            resource_type: PermissionResourceType.LLM,
-            resource_ids: [
-              buildLlmId({
-                llm_name: name,
-                tenant_id: tenantInfo.tenant_id,
-                fid: llmFactory,
-              }),
-            ],
-          }}
-        ></DeletePrivilegeConfirmContent>
-      ),
-      onOk: async () => {
-        deleteLlm({ llm_factory: llmFactory, llm_name: name });
-      },
-    });
-  };
-
-  return { handleDeleteLlm };
-};
-
 export const useHandleEnableLlm = (llmFactory: string) => {
   const { enableLlm } = useEnableLlm();
 
@@ -464,31 +428,6 @@ export const useHandleEnableLlm = (llmFactory: string) => {
   };
 
   return { handleEnableLlm };
-};
-
-export const useHandleDeleteFactory = (llmFactory: string) => {
-  const { deleteFactory } = useDeleteFactory();
-  const showDeleteConfirm = useShowDeleteConfirm();
-  const { data: tenantInfo } = useFetchTenantInfo();
-
-  const handleDeleteFactory = () => {
-    showDeleteConfirm({
-      content: (
-        <DeletePrivilegeConfirmContent
-          params={{
-            tenant_id: tenantInfo.tenant_id,
-            resource_type: PermissionResourceType.LLM,
-            resource_ids: [llmFactory],
-          }}
-        ></DeletePrivilegeConfirmContent>
-      ),
-      onOk: async () => {
-        deleteFactory({ llm_factory: llmFactory });
-      },
-    });
-  };
-
-  return { handleDeleteFactory, deleteFactory };
 };
 
 export const useSubmitMinerU = () => {

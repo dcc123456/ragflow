@@ -9,19 +9,21 @@ import {
   useSetDocumentStatus,
 } from '@/hooks/use-document-request';
 import { IDocumentInfo } from '@/interfaces/database/document';
-import { Ban, CircleCheck, CircleX, Play, Trash2 } from 'lucide-react';
+import { Ban, CircleCheck, CircleX, Key, Play, Trash2 } from 'lucide-react';
 import { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { DocumentType, RunningStatus } from './constant';
+import { ShowPrivilegeModalReturnType } from './use-show-privilege-dialog';
 
 export function useBulkOperateDataset({
   rowSelection,
   setRowSelection,
   documents,
+  handShowPrivilegeModal,
 }: Pick<UseRowSelectionType, 'rowSelection' | 'setRowSelection'> & {
   documents: IDocumentInfo[];
-}) {
+} & Pick<ShowPrivilegeModalReturnType, 'handShowPrivilegeModal'>) {
   const { t } = useTranslation();
   const { selectedIds: selectedRowKeys } = useSelectedIds(
     rowSelection,
@@ -129,6 +131,13 @@ export function useBulkOperateDataset({
       icon: <CircleX />,
       onClick: handleCancelClick,
     },
+    {
+      id: 'permission',
+      label: t('permission.permission'),
+      icon: <Key />,
+      onClick: handShowPrivilegeModal(selectedRowKeys),
+    },
+
     {
       id: 'delete',
       label: t('common.delete'),

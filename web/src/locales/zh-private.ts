@@ -33,6 +33,7 @@ export default {
       avatar: '头像',
       deleteConfirmMessage: '{{id}} 正被 {{type}} 使用，如下所示',
       pleaseShareTheModelFirst: '请先分享以下知识库或模型',
+      type: '类型',
     },
     privateLLM: {
       resetDefaultLLMTip: '重置所有用户为默认设置',

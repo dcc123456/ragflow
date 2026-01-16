@@ -13,7 +13,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { useSetModalState, useTranslate } from '@/hooks/common-hooks';
-import { LlmItem } from '@/hooks/use-llm-request';
+import { LlmItem, useDeleteFactory } from '@/hooks/use-llm-request';
 import {
   useFetchEnableAdmin,
   useFetchIsAdmin,
@@ -29,7 +29,7 @@ import {
 } from 'lucide-react';
 import { FC, useCallback, useMemo } from 'react';
 import { isLocalLlmFactory } from '../../utils';
-import { useHandleDeleteFactory, useHandleEnableLlm } from '../hooks';
+import { useHandleEnableLlm } from '../hooks';
 import { useResetDefaultLLM } from '../use-reset-default-llm';
 import { mapModelKey } from './un-add-model';
 
@@ -80,7 +80,7 @@ export const ModelProviderCard: FC<IModelCardProps> = ({
   const { visible, switchVisible } = useSetModalState();
   const { t } = useTranslate('setting');
   const { handleEnableLlm } = useHandleEnableLlm(item.name);
-  const { deleteFactory } = useHandleDeleteFactory(item.name);
+  const { deleteFactory } = useDeleteFactory();
 
   const { data: isAdmin } = useFetchIsAdmin();
   const { data: enableAdmin } = useFetchEnableAdmin();

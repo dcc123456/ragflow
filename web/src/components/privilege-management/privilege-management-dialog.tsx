@@ -7,27 +7,20 @@ import {
 } from '@/components/ui/dialog';
 import { PermissionResourceType } from '@/constants/team';
 import { useSetModalState } from '@/hooks/common-hooks';
+import { useRowSelection } from '@/hooks/logic-hooks/use-row-selection';
 import { useAddCollaboratorDialog } from '@/hooks/use-operate-privilege';
 import { useFetchPermissionList } from '@/hooks/use-team';
 import { IModalProps } from '@/interfaces/common';
-import { IPermission } from '@/interfaces/database/team';
-import { KeyRound, Settings, UserPlus } from 'lucide-react';
+import { KeyRound, UserPlus } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { BulkOperateBar } from '../bulk-operate-bar';
 import { LlmIcon } from '../svg-icon';
 import { AddCollaboratorDialog } from './add-collaborator-dialog';
 import { IPrivilegeManagementInitialValues } from './interface';
-import { ManagePrivilegeDialog } from './manage-privilege-dialog';
+import { ManagePrivilegeTable } from './manage-privilege-dialog/manage-privilege-table';
+import { useBulkOperatePrivilege } from './manage-privilege-dialog/use-bulk-operate-priviledge';
 import { PrivilegeAvatar } from './privilege-avatar';
 import { TransferOwnerDialog } from './transfer-owner-dialog';
-
-function Item({ item }: { item: IPermission }) {
-  return (
-    <div className="flex items-center gap-2 rounded-md bg-colors-background-neutral-standard px-2 py-1">
-      <PrivilegeAvatar avatar={item.avatar}></PrivilegeAvatar>
-      <span>{item.name}</span>
-    </div>
-  );
-}
 
 export function PrivilegeManagementDialog({
   hideModal,
@@ -47,65 +40,85 @@ export function PrivilegeManagementDialog({
     loading,
   } = useAddCollaboratorDialog(initialValues);
 
-  const {
-    visible: managePrivilegeModalVisible,
-    hideModal: hideManagePrivilegeModal,
-    showModal: showManagePrivilegeModal,
-  } = useSetModalState();
+  const resourceType =
+    initialValues.resourceType || PermissionResourceType.KnowledgeBase;
+
+  const isDocumentResourceType =
+    resourceType === PermissionResourceType.Document;
+
+  const resourceIds =
+    resourceType === PermissionResourceType.Document
+      ? initialValues.documents || []
+      : [initialValues.id];
 
   const { data } = useFetchPermissionList(
     initialValues.tenant_id,
-    initialValues.id,
-    initialValues.resourceType,
+    resourceIds,
+    resourceType,
   );
+
+  const { rowSelection, rowSelectionIsEmpty, setRowSelection, selectedCount } =
+    useRowSelection();
+
+  const { list } = useBulkOperatePrivilege({
+    rowSelection,
+    setRowSelection,
+    initialValues,
+    permissions: data,
+  });
 
   return (
     <Dialog open onOpenChange={hideModal}>
-      <DialogContent>
+      <DialogContent className="max-w-5xl">
         <DialogHeader>
           <DialogTitle className="flex gap-4 items-center">
             <KeyRound className="size-5" />
             {t('permission.permissionManagement')}
           </DialogTitle>
         </DialogHeader>
-        <div className="flex items-center gap-4">
-          {initialValues.resourceType === PermissionResourceType.LLM ? (
-            <LlmIcon name={initialValues.name} />
-          ) : (
-            <PrivilegeAvatar
-              avatar={initialValues.avatar || initialValues.icon}
-              className="size-10"
-            ></PrivilegeAvatar>
-          )}
 
-          <span className="font-semibold text-lg">{initialValues.name}</span>
-        </div>
         <section className="flex justify-between items-center">
-          <span>{t('permission.collaborator')}</span>
+          <div className="flex gap-2 items-center">
+            {isDocumentResourceType ? (
+              <span>{initialValues.documents.length} files</span>
+            ) : (
+              <div className="flex items-center gap-4">
+                {initialValues.resourceType === PermissionResourceType.LLM ? (
+                  <LlmIcon name={initialValues.name} />
+                ) : (
+                  <PrivilegeAvatar
+                    avatar={initialValues.avatar || initialValues.icon}
+                    className="size-6"
+                  ></PrivilegeAvatar>
+                )}
+
+                <span className="font-semibold text-base max-w-60 truncate">
+                  {initialValues.name}
+                </span>
+              </div>
+            )}
+            <span className="text-xs text-text-secondary">
+              {t('permission.collaborator')}: {data.length}
+            </span>
+          </div>
+
           <div className="space-x-4">
-            <Button variant={'outline'} onClick={showManagePrivilegeModal}>
-              <Settings /> {t('permission.manage')}
-            </Button>
             <Button variant={'outline'} onClick={showAddCollaboratorDialog}>
               <UserPlus /> {t('common.add')}
             </Button>
           </div>
         </section>
-        <div className="bg-colors-background-neutral-strong p-2 flex gap-4 flex-wrap rounded-md max-h-[70vh] overflow-auto">
-          {data.map((x) => (
-            <Item key={x.id} item={x}></Item>
-          ))}
-        </div>
-        {/* <div>
-          <Button
-            variant={'outline'}
-            className="w-full"
-            onClick={showTransferOwnerModal}
-          >
-            <ArrowLeftRight />
-            Transferring Ownership
-          </Button>
-        </div> */}
+
+        {rowSelectionIsEmpty || (
+          <BulkOperateBar list={list} count={selectedCount}></BulkOperateBar>
+        )}
+        <ManagePrivilegeTable
+          initialValues={initialValues}
+          rowSelection={rowSelection}
+          setRowSelection={setRowSelection}
+          data={data}
+          resourceType={resourceType}
+        ></ManagePrivilegeTable>
       </DialogContent>
       {transferOwnerModalVisible && (
         <TransferOwnerDialog
@@ -120,12 +133,6 @@ export function PrivilegeManagementDialog({
           resourceType={initialValues.resourceType}
           tenantId={initialValues.tenant_id}
         ></AddCollaboratorDialog>
-      )}
-      {managePrivilegeModalVisible && (
-        <ManagePrivilegeDialog
-          hideModal={hideManagePrivilegeModal}
-          initialValues={initialValues}
-        ></ManagePrivilegeDialog>
       )}
     </Dialog>
   );

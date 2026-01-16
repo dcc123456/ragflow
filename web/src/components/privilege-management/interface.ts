@@ -24,4 +24,5 @@ export interface IPrivilegeManagementInitialValues {
   kbs?: string[];
   llm_id?: string;
   embd_id?: string; // knowledge base
+  documents?: string[]; // dataset documents
 }

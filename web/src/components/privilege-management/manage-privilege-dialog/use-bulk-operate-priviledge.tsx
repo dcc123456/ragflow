@@ -70,7 +70,7 @@ export function useBulkOperatePrivilege({
       label: t('common.delete'),
       icon: <Trash2 />,
       onClick: async () => {
-        await Promise.all(selectedRows.map((x) => setPermission(0, x)));
+        await setPermission(0, selectedRows);
         setRowSelection({});
       },
     },

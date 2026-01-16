@@ -11,9 +11,10 @@ import { IDocumentInfo } from '@/interfaces/database/document';
 import { formatFileSize } from '@/utils/common-util';
 import { formatDate } from '@/utils/date';
 import { downloadDocument } from '@/utils/file-util';
-import { Download, Eye, PenLine, Trash2 } from 'lucide-react';
-import { useCallback } from 'react';
+import { Download, Eye, Key, PenLine, Trash2 } from 'lucide-react';
+import { useCallback, useContext } from 'react';
 import { UseRenameDocumentShowType } from './use-rename-document';
+import { ShowPrivilegeModalContext } from './use-show-privilege-dialog';
 import { isParserRunning } from './utils';
 
 const Fields = ['name', 'size', 'type', 'create_time', 'update_time'];
@@ -53,8 +54,18 @@ export function DatasetActionCell({
     showRenameModal(record);
   }, [record, showRenameModal]);
 
+  const { handShowPrivilegeModal } = useContext(ShowPrivilegeModalContext);
+
   return (
     <section className="flex gap-4 items-center text-text-sub-title-invert">
+      <Button
+        variant={'ghost'}
+        size={'sm'}
+        disabled={isRunning || datasetEditButtonDisabled}
+        onClick={handShowPrivilegeModal?.(record)}
+      >
+        <Key />
+      </Button>
       <Button
         variant={'ghost'}
         size={'sm'}

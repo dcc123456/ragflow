@@ -58,16 +58,20 @@ export interface IDeleteDepartmentMemberRequestBody {
 export interface IUpdatePermission {
   permission: number;
   resource_type: string;
-  resource_id: string;
+  resource_ids: string[];
   tenant_id: string;
   member_list?: string[];
   group_list?: string[];
   department_list?: string[];
 }
 
-export interface IUpdateDialogPermission extends IUpdatePermission {
+export interface IUpdateDialogPermission extends Omit<
+  IUpdatePermission,
+  'resource_ids'
+> {
   kbs: string[];
   llm_factory: string;
+  resource_id: string;
 }
 
 export interface IConfirmDeletePermission {

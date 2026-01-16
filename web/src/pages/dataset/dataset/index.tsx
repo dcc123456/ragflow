@@ -1,6 +1,7 @@
 import { BulkOperateBar } from '@/components/bulk-operate-bar';
 import { FileUploadDialog } from '@/components/file-upload-dialog';
 import ListFilterBar from '@/components/list-filter-bar';
+import { PrivilegeManagementDialog } from '@/components/privilege-management/privilege-management-dialog';
 import { RenameDialog } from '@/components/rename-dialog';
 import { Button } from '@/components/ui/button';
 import {
@@ -28,6 +29,10 @@ import { ReparseDialog } from './reparse-dialog';
 import { useBulkOperateDataset } from './use-bulk-operate-dataset';
 import { useCreateEmptyDocument } from './use-create-empty-document';
 import { useSelectDatasetFilters } from './use-select-filters';
+import {
+  ShowPrivilegeModalContext,
+  useShowPrivilegeDialog,
+} from './use-show-privilege-dialog';
 import { useHandleUploadDocument } from './use-upload-document';
 
 export default function Dataset() {
@@ -82,6 +87,13 @@ export default function Dataset() {
     useRowSelection();
 
   const {
+    handShowPrivilegeModal,
+    hidePrivilegeModal,
+    privilegeModal,
+    recordWithSourceType,
+  } = useShowPrivilegeDialog();
+
+  const {
     chunkNum,
     list,
     visible: reparseDialogVisible,
@@ -91,7 +103,9 @@ export default function Dataset() {
     documents,
     rowSelection,
     setRowSelection,
+    handShowPrivilegeModal,
   });
+
   return (
     <>
       <div className="absolute top-4 right-5">
@@ -167,15 +181,17 @@ export default function Dataset() {
         {rowSelectionIsEmpty || (
           <BulkOperateBar list={list} count={selectedCount}></BulkOperateBar>
         )}
-        <DatasetTable
-          documents={documents}
-          pagination={pagination}
-          setPagination={setPagination}
-          rowSelection={rowSelection}
-          setRowSelection={setRowSelection}
-          showManageMetadataModal={showManageMetadataModal}
-          loading={loading}
-        ></DatasetTable>
+        <ShowPrivilegeModalContext.Provider value={{ handShowPrivilegeModal }}>
+          <DatasetTable
+            documents={documents}
+            pagination={pagination}
+            setPagination={setPagination}
+            rowSelection={rowSelection}
+            setRowSelection={setRowSelection}
+            showManageMetadataModal={showManageMetadataModal}
+            loading={loading}
+          ></DatasetTable>
+        </ShowPrivilegeModalContext.Provider>
         {documentUploadVisible && (
           <FileUploadDialog
             hideModal={hideDocumentUploadModal}
@@ -228,6 +244,12 @@ export default function Dataset() {
           ></ReparseDialog>
         )}
       </section>
+      {privilegeModal && (
+        <PrivilegeManagementDialog
+          hideModal={hidePrivilegeModal}
+          initialValues={recordWithSourceType}
+        ></PrivilegeManagementDialog>
+      )}
     </>
   );
 }

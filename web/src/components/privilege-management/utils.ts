@@ -1,4 +1,6 @@
 import { PermissionResourceType, TeamRole } from '@/constants/team';
+import { IPermission } from '@/interfaces/database/team';
+import { values } from 'lodash';
 import { CollaboratorItem } from './interface';
 
 export function filterCollaboratorByTeamRole(
@@ -25,4 +27,11 @@ export function hideEditPermissionDropdownItem(
 
 export function mapCollaboratorId(list: CollaboratorItem[]) {
   return list.map((x) => x.id);
+}
+
+export function getPermission(permissions?: IPermission['permissions']) {
+  const permissionValues = values(permissions);
+  if (permissionValues.length) {
+    return permissionValues[0];
+  }
 }

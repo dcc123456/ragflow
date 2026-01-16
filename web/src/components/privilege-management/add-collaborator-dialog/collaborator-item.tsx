@@ -48,7 +48,7 @@ function LeftPrivilegeLabel({ item }: { item: ICollaboratorItem }) {
   if (permissionItem) {
     return (
       <PrivilegeLabel
-        permission={(permissionItem as IPermission)?.permission}
+        permissions={(permissionItem as IPermission)?.permissions}
       ></PrivilegeLabel>
     );
   }

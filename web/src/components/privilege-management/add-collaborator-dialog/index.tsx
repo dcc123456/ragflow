@@ -1,3 +1,4 @@
+import { ButtonLoading } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -5,7 +6,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { LoadingButton } from '@/components/ui/loading-button';
 import { RAGFlowSelect } from '@/components/ui/select';
 import {
   DialogPermissionList,
@@ -221,14 +221,14 @@ export function AddCollaboratorDialog({
               value={value}
             ></RAGFlowSelect>
           )}
-          <LoadingButton
+          <ButtonLoading
             type="submit"
             onClick={handleOk}
             loading={loading}
             disabled={flatCheckedList.length === 0}
           >
             {t('common.save')}
-          </LoadingButton>
+          </ButtonLoading>
         </DialogFooter>
       </DialogContent>
     </Dialog>

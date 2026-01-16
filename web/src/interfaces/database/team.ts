@@ -40,7 +40,7 @@ export interface IMember {
 
 export interface IPermission {
   id: string;
-  permission: number;
+  permissions: Record<string, number>;
   resource_id: string;
   resource_type: string;
   role: string;

@@ -32,11 +32,7 @@ export default {
 
   // permission
   updatePermission: `${api_host}/permission/update`,
-  listPermission: (
-    tenantId: string,
-    resourceType: string,
-    resourceId: string,
-  ) => `${api_host}/permission/${tenantId}/list/${resourceType}/${resourceId}`,
+  listPermission: `${api_host}/permission/list`,
   updateDialogPermission: `${api_host}/permission/share_dialog`,
 
   // billing

@@ -34,6 +34,7 @@ export default {
       deleteConfirmMessage: '{{id}} is being used by {{type}} as follows',
       pleaseShareTheModelFirst:
         'Please share the following knowledge base or model first',
+      type: 'Type',
     },
     privateLLM: {
       resetDefaultLLMTip: 'reset as default all users',

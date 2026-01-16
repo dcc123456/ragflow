@@ -33,17 +33,19 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Permission } from '@/constants/team';
+import { Permission, PermissionResourceType } from '@/constants/team';
 import { UseRowSelectionType } from '@/hooks/logic-hooks/use-row-selection';
 import { IPermission } from '@/interfaces/database/team';
 import { useTranslation } from 'react-i18next';
 import { IPrivilegeManagementInitialValues } from '../interface';
 import { PrivilegeAvatar } from '../privilege-avatar';
-import { PrivilegeLabel } from '../privilege-label';
+import { UserTypeLabel } from '../privilege-label';
 import {
+  getPermission,
   hideEditPermissionDropdownItem,
   hidePermissionDropdownButton,
 } from '../utils';
+import { PermissionCell } from './permission-cell';
 import { useOperatePermission } from './use-operate-permission';
 
 type ManagePrivilegeTableProps = Pick<
@@ -52,13 +54,19 @@ type ManagePrivilegeTableProps = Pick<
 > & {
   initialValues: IPrivilegeManagementInitialValues;
   data: IPermission[];
+  resourceType: PermissionResourceType;
 };
+
+function checkOwner(permissions: IPermission['permissions']) {
+  return getPermission(permissions) === Permission.Owner;
+}
 
 export function ManagePrivilegeTable({
   initialValues,
   rowSelection,
   setRowSelection,
   data,
+  resourceType,
 }: ManagePrivilegeTableProps) {
   const { t } = useTranslation();
   const [sorting, setSorting] = React.useState<SortingState>([]);
@@ -88,13 +96,14 @@ export function ManagePrivilegeTable({
             aria-label="Select all"
           />
         ),
-        cell: ({ row }) => (
-          <Checkbox
-            checked={row.getIsSelected()}
-            onCheckedChange={(value) => row.toggleSelected(!!value)}
-            aria-label="Select row"
-          />
-        ),
+        cell: ({ row }) =>
+          checkOwner(row.original.permissions) ? null : (
+            <Checkbox
+              checked={row.getIsSelected()}
+              onCheckedChange={(value) => row.toggleSelected(!!value)}
+              aria-label="Select row"
+            />
+          ),
         enableSorting: false,
         enableHiding: false,
       },
@@ -108,14 +117,24 @@ export function ManagePrivilegeTable({
         ),
       },
       {
-        accessorKey: 'permission',
+        accessorKey: 'permissions',
         header: t('permission.permission'),
+        cell: ({ row }) => {
+          const permissions: Record<string, number> =
+            row.getValue('permissions');
+          return (
+            <PermissionCell
+              permissions={permissions}
+              resourceType={resourceType}
+            ></PermissionCell>
+          );
+        },
+      },
+      {
+        accessorKey: 'role',
+        header: t('permission.type'),
         cell: ({ row }) => (
-          <div className="lowercase">
-            <PrivilegeLabel
-              permission={row.getValue('permission')}
-            ></PrivilegeLabel>
-          </div>
+          <UserTypeLabel role={row.getValue('role')}></UserTypeLabel>
         ),
       },
       {
@@ -123,7 +142,7 @@ export function ManagePrivilegeTable({
         enableHiding: false,
         header: () => <div>{t('common.action')}</div>,
         cell: ({ row }) => {
-          if (row.original.permission === Permission.Owner) {
+          if (checkOwner(row.original.permissions)) {
             return;
           }
           const onUpdatePermission = (value: string) => {
@@ -139,10 +158,10 @@ export function ManagePrivilegeTable({
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <RadioGroup
-                  value={row.original.permission?.toString()}
+                  value={row.original.permissions?.toString()}
                   onValueChange={onUpdatePermission}
                 >
-                  {hidePermissionDropdownButton(initialValues.resourceType) || (
+                  {hidePermissionDropdownButton(resourceType) || (
                     <>
                       <DropdownMenuItem>
                         <div className="flex items-center space-x-2">
@@ -152,9 +171,7 @@ export function ManagePrivilegeTable({
                           </Label>
                         </div>
                       </DropdownMenuItem>
-                      {hideEditPermissionDropdownItem(
-                        initialValues.resourceType,
-                      ) || (
+                      {hideEditPermissionDropdownItem(resourceType) || (
                         <DropdownMenuItem>
                           <div className="flex items-center space-x-2">
                             <RadioGroupItem value="2" id="2" />
@@ -187,7 +204,7 @@ export function ManagePrivilegeTable({
     ];
 
     return columns;
-  }, [handleDelete, handleSwitchPermission, initialValues.resourceType, t]);
+  }, [handleDelete, handleSwitchPermission, resourceType, t]);
 
   const table = useReactTable({
     data,
@@ -205,6 +222,9 @@ export function ManagePrivilegeTable({
       columnFilters,
       columnVisibility,
       rowSelection,
+    },
+    enableRowSelection(row) {
+      return !checkOwner(row.original.permissions);
     },
   });
 

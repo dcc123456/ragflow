@@ -3,10 +3,8 @@ import {
   IGroup,
   IMember,
   IPermission,
-  ISafeDelete,
 } from '@/interfaces/database/team';
 import {
-  IConfirmDeletePermission,
   ICreateDepartmentRequestBody,
   ICreateGroupRequestBody,
   IDeleteDepartmentMemberRequestBody,
@@ -26,7 +24,6 @@ import teamService, {
   listDepartmentMember,
   listGroup,
   listGroupMember,
-  listPermission,
   transferGroupOwner,
   updateDepartment,
   updateGroup,
@@ -414,7 +411,7 @@ export const useUpdatePermission = () => {
 
 export const useFetchPermissionList = (
   tenantId: string,
-  resourceId: string,
+  resourceIds: string[],
   resourceType: string = 'kb',
 ) => {
   const {
@@ -422,12 +419,16 @@ export const useFetchPermissionList = (
     isFetching: loading,
     refetch,
   } = useQuery<IPermission[]>({
-    queryKey: [TeamApiAction.ListPermission, resourceId, tenantId],
+    queryKey: [TeamApiAction.ListPermission, resourceIds, tenantId],
     initialData: [],
     gcTime: 0,
-    enabled: !!resourceId && !!tenantId,
+    enabled: !isEmpty(resourceIds) && !!tenantId,
     queryFn: async () => {
-      const { data } = await listPermission(tenantId, resourceType, resourceId);
+      const { data } = await teamService.listPermission({
+        resource_ids: resourceIds,
+        resource_type: resourceType,
+        tenant_id: tenantId,
+      });
 
       return data?.data ?? [];
     },
@@ -463,37 +464,3 @@ export const useUpdateDialogPermission = () => {
 
   return { data, loading, updateDialogPermission: mutateAsync };
 };
-
-export const useConfirmDeletePermission = () => {
-  const {
-    data,
-    isPending: loading,
-    mutateAsync,
-  } = useMutation({
-    mutationKey: [TeamApiAction.ConfirmDeletePermission],
-    mutationFn: async (params: IConfirmDeletePermission) => {
-      const { data } = await teamService.safeDeletePermission(params);
-
-      return data;
-    },
-  });
-
-  return { data, loading, updateDialogPermission: mutateAsync };
-};
-
-export function useFetchConfirmDeletePermission(
-  params: IConfirmDeletePermission,
-) {
-  const { data, isFetching: loading } = useQuery<ISafeDelete>({
-    queryKey: [TeamApiAction.ConfirmDeletePermission, params],
-    gcTime: 0,
-    enabled: !!params,
-    queryFn: async () => {
-      const { data } = await teamService.safeDeletePermission(params);
-
-      return data?.data;
-    },
-  });
-
-  return { data, loading };
-}
