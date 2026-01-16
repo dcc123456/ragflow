@@ -108,7 +108,7 @@ class OAuthClient:
             response.raise_for_status()
             return response.json()
         except Exception as e:
-            raise ValueError(f"Failed to exchange authorization code for token: {e}")
+            raise ValueError(f"Failed to async exchange authorization code for token: {e}")
 
 
     def fetch_user_info(self, access_token, **kwargs):

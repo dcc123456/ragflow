@@ -13,9 +13,9 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 #
-
+import asyncio
 import secrets
-
+import re
 from flask import Blueprint, request
 from flask_login import current_user, logout_user, login_required
 import pandas as pd
@@ -25,6 +25,7 @@ from auth import login_verify, login_admin, check_admin_auth
 from responses import success_response, error_response
 from services import UserMgr, ServiceMgr, UserServiceMgr, SettingsMgr, ConfigMgr, EnvironmentsMgr
 from roles import RoleMgr
+from mail_validator import AsyncSMTPValidator
 from api.common.exceptions import AdminException
 from common.versions import get_ragflow_version
 
@@ -437,8 +438,11 @@ def set_variable():
             return error_response("Var value is required", 400)
         var_name: str = data['var_name']
         var_value: str = data['var_value']
-
-        SettingsMgr.update_by_name(var_name, var_value)
+        if re.match(r'^ldap\|(.+?)\.(enabled|name|url|dn|password|search_field|attribute_list)$', var_name):
+            # allow adding new ldap
+            SettingsMgr.update_by_name(var_name, var_value, allow_upsert=True)
+        else:
+            SettingsMgr.update_by_name(var_name, var_value)
         return success_response(None, "Set variable successfully")
     except AdminException as e:
         return error_response(str(e), 400)
@@ -466,6 +470,17 @@ def get_variable():
         return error_response(str(e), 400)
     except Exception as e:
         return error_response(str(e), 500)
+
+@admin_bp.route('/validate_mail', methods=['POST'])
+@login_required
+@check_admin_auth
+def validate_mail():
+    data = request.get_json()
+    res = asyncio.run(AsyncSMTPValidator.validate_async(data["host"], data["port"], data["username"], data["password"], data.get("use_tls", False), data.get("use_ssl", False), data.get("timeout", 30)))
+    if res["success"]:
+        return success_response(data=True)
+    else:
+        return error_response(data=res["message"])
 
 @admin_bp.route('/configs', methods=['GET'])
 @login_required

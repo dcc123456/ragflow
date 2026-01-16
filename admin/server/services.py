@@ -315,7 +315,22 @@ class SettingsMgr:
         return result
 
     @staticmethod
-    def update_by_name(name: str, value: str):
+    def get_by_source(source: str):
+        settings = SystemSettingsService.get_by_source(source)
+        if len(settings) == 0:
+            raise AdminException(f"Can't get setting: {source}")
+        result = []
+        for setting in settings:
+            result.append({
+                'name': setting.name,
+                'source': setting.source,
+                'data_type': setting.data_type,
+                'value': setting.value,
+            })
+        return result
+
+    @staticmethod
+    def update_by_name(name: str, value: str, allow_upsert:bool=False):
         settings = SystemSettingsService.get_by_name(name)
         if len(settings) == 1:
             setting = settings[0]
@@ -324,6 +339,15 @@ class SettingsMgr:
             SystemSettingsService.update_by_name(name, setting_dict)
         elif len(settings) > 1:
             raise AdminException(f"Can't update more than 1 setting: {name}")
+        elif allow_upsert:
+            # insert new setting
+            setting_dict = {
+                "name": name,
+                "source": name.split(".")[0],
+                "data_type": type(value).__name__,
+                "value": value
+            }
+            SystemSettingsService.insert(**setting_dict)
         else:
             raise AdminException(f"No setting: {name}")
 

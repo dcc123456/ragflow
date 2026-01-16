@@ -27,6 +27,7 @@ from api.db.services.canvas_service import CanvasTemplateService
 from api.db.services.llm_service import LLMService
 from api.db.services.tenant_llm_service import LLMFactoriesService
 from api.db.services.billing_service import ProductService, SubscriptionService
+from api.utils.system_settings_utils import load_value_from_string
 from common.file_utils import get_project_base_directory
 from common import settings
 import stripe
@@ -75,6 +76,48 @@ def init_default_roles():
             role_id = public_rows[0]["id"]
             action = ActionEnum.ENABLE.value | ActionEnum.READ.value
             RoleResourceService.upsert_role_action_by_id(role_id, {resource_type.value: action for resource_type in ResourceTypeEnum})
+
+
+def init_oauth_config():
+    if settings.OAUTH_CONFIG:
+        # has been set
+        return
+    github_sso_config = SystemSettingsService.get_by_source("github|sso")
+    if github_sso_config:
+        setting_dict = {var.name.split(".")[-1]: load_value_from_string(var.value, var.data_type) for var in github_sso_config}
+        setting_dict.update({"type": "github"})
+        if setting_dict.get("enabled"):
+            settings.OAUTH_CONFIG.update({"github": setting_dict})
+            settings.GITHUB_OAUTH = setting_dict
+    feishu_sso_config = SystemSettingsService.get_by_source("feishu|sso")
+    if feishu_sso_config:
+        setting_dict = {var.name.split(".")[-1]: load_value_from_string(var.value, var.data_type) for var in feishu_sso_config}
+        setting_dict.update({"type": "feishu"})
+        if setting_dict.get("enabled"):
+            settings.OAUTH_CONFIG.update({"feishu": setting_dict})
+            settings.FEISHU_OAUTH = setting_dict
+    google_sso_config = SystemSettingsService.get_by_source("google|sso")
+    if google_sso_config:
+        setting_dict = {var.name.split(".")[-1]: load_value_from_string(var.value, var.data_type) for var in google_sso_config}
+        setting_dict.update({"type": "google"})
+        if setting_dict.get("enabled"):
+            settings.OAUTH_CONFIG.update({"google": setting_dict})
+            settings.GOOGLE_OAUTH = setting_dict
+    ldap_configs = SystemSettingsService.get_by_name("ldap")
+    if ldap_configs:
+        ldap_config_mapping = {}
+        for config in ldap_configs:
+            channel_name = "ldap" if config.source == "ldap|default" else config.source
+            if ldap_config_mapping.get(channel_name):
+                ldap_config_mapping[channel_name].update({config.name.split(".")[-1]: load_value_from_string(config.value, config.data_type)})
+            else:
+                ldap_config_mapping[channel_name] = {config.name.split(".")[-1]: load_value_from_string(config.value, config.data_type)}
+        enabled_ldap_config = {k: v for k, v in ldap_config_mapping.items() if v.get("enabled")}
+        for v in enabled_ldap_config.values():
+            v.update({"type": "ldap"})
+        settings.OAUTH_CONFIG.update(enabled_ldap_config)
+        if enabled_ldap_config.get("ldap"):
+            settings.LDAP_OAUTH = ldap_config_mapping["ldap"]
 
 
 def init_llm_factory():
@@ -205,6 +248,7 @@ def init_web_data():
     add_graph_templates()
     init_message_id_sequence()
     init_memory_size_cache()
+    init_oauth_config()
     logging.info("init web data success:{}".format(time.time() - start_time))
 
 def init_table():

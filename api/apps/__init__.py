@@ -136,7 +136,7 @@ def _load_user():
             g.user = user[0]
             return user[0]
     except Exception as e_auth:
-        logging.warning(f"load_user got exception {e_auth}")
+        logging.warning(f"load_user from jwt got exception {e_auth}")
         try:
             authorization = request.headers.get("Authorization")
             if len(authorization.split()) == 2:
@@ -150,7 +150,7 @@ def _load_user():
                         g.user = user[0]
                         return user[0]
         except Exception as e_api_token:
-            logging.warning(f"load_user got exception {e_api_token}")
+            logging.warning(f"load_user from api_token got exception {e_api_token}")
 
 
 current_user = LocalProxy(_load_user)

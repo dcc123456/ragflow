@@ -59,6 +59,120 @@
       "source": "variable",
       "data_type": "string",
       "value": ""
+    },
+    {
+      "name": "google|sso.enabled",
+      "source": "google|sso",
+      "data_type": "bool",
+      "value": "false"
+    },
+    {
+      "name": "google|sso.client_id",
+      "source": "google|sso",
+      "data_type": "string",
+      "value": ""
+    },
+    {
+      "name": "google|sso.client_secret",
+      "source": "google|sso",
+      "data_type": "string",
+      "value": ""
+    },
+    {
+      "name": "google|sso.redirect_uri",
+      "source": "google|sso",
+      "data_type": "string",
+      "value": ""
+    },
+    {
+      "name": "github|sso.enabled",
+      "source": "github|sso",
+      "data_type": "bool",
+      "value": "false"
+    },
+    {
+      "name": "github|sso.client_id",
+      "source": "github|sso",
+      "data_type": "string",
+      "value": ""
+    },
+    {
+      "name": "github|sso.secret_key",
+      "source": "github|sso",
+      "data_type": "string",
+      "value": ""
+    },
+    {
+      "name": "ldap|default.enabled",
+      "source": "ldap|default",
+      "data_type": "bool",
+      "value": "false"
+    },
+    {
+      "name": "ldap|default.name",
+      "source": "ldap|default",
+      "data_type": "string",
+      "value": ""
+    },
+    {
+      "name": "ldap|default.url",
+      "source": "ldap|default",
+      "data_type": "string",
+      "value": ""
+    },
+    {
+      "name": "ldap|default.dn",
+      "source": "ldap|default",
+      "data_type": "string",
+      "value": ""
+    },
+    {
+      "name": "ldap|default.password",
+      "source": "ldap|default",
+      "data_type": "string",
+      "value": ""
+    },
+    {
+      "name": "ldap|default.search_filter",
+      "source": "ldap|default",
+      "data_type": "string",
+      "value":  "(|(userPrincipalName={username})(mail={username}))"
+    },
+    {
+      "name": "ldap|default.attribute_list",
+      "source": "ldap|default",
+      "data_type": "string",
+      "value": "cn,mail,uid,givenName,sn,jpegPhoto,sAMAccountName,userPrincipalName"
+    },
+    {
+      "name": "feishu|sso.enabled",
+      "source": "feishu|sso",
+      "data_type": "bool",
+      "value": "false"
+    },
+    {
+      "name": "feishu|sso.app_id",
+      "source": "feishu|sso",
+      "data_type": "string",
+      "value": ""
+    },
+    {
+      "name": "feishu|sso.app_secret",
+      "source": "feishu|sso",
+      "data_type": "string",
+      "value": ""
+    },
+    {
+      "name": "feishu|sso.app_access_token_url",
+      "source": "feishu|sso",
+      "data_type": "string",
+      "value": "https://open.feishu.cn/open-apis/auth/v3/app_access_token/internal"
+    },
+    {
+      "name": "feishu|sso.user_access_token_url",
+      "source": "feishu|sso",
+      "data_type": "string",
+      "value": "https://open.feishu.cn/open-apis/authen/v1/oidc/access_token"
     }
   ]
 }

@@ -31,6 +31,12 @@ class SystemSettingsService(CommonService):
 
     @classmethod
     @DB.connection_context()
+    def get_by_source(cls, source: str):
+        objs = cls.model.select().where(cls.model.source == source)
+        return objs
+
+    @classmethod
+    @DB.connection_context()
     def update_by_name(cls, name, obj):
         obj["update_time"] = current_timestamp()
         obj["update_date"] = datetime_format(datetime.now())

@@ -88,6 +88,7 @@ CLIENT_AUTHENTICATION = None
 HTTP_APP_KEY = None
 GITHUB_OAUTH = None
 FEISHU_OAUTH = None
+GOOGLE_OAUTH = None
 OAUTH_CONFIG = None
 DOC_ENGINE = os.getenv("DOC_ENGINE", "elasticsearch")
 DOC_ENGINE_INFINITY = DOC_ENGINE.lower() == "infinity"

@@ -23,13 +23,16 @@ class GithubOAuthClient(OAuthClient):
         """
         Initialize the GithubOAuthClient with the provider's configuration.
         """
-        config.update({
+        conf = {
             "authorization_url": "https://github.com/login/oauth/authorize",
             "token_url": "https://github.com/login/oauth/access_token",
             "userinfo_url": "https://api.github.com/user",
+            "client_id": config["client_id"],
+            "client_secret": config["secret_key"],
+            "redirect_uri": "",
             "scope": "user:email"
-        })
-        super().__init__(config)
+        }
+        super().__init__(conf)
 
 
     def fetch_user_info(self, access_token, **kwargs):

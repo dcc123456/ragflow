@@ -212,7 +212,7 @@ async def ldap_login():
     login_user(user)
     return redirect("/?auth=%s" % user.get_id())
 
-@manager.route("/login", methods=["POST", "GET"])  # noqa: F821
+@manager.route("/login", methods=["POST"])  # noqa: F821
 async def login():
     """
     User login endpoint.
