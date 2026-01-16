@@ -265,6 +265,19 @@ class FileService(CommonService):
 
     @classmethod
     @DB.connection_context()
+    def get_total_size_by_tenant_id(cls, tenant_id):
+        """
+        Get total size of all uploaded files for a tenant (excluding folders).
+        This is used for billing storage quota calculation.
+        """
+        from peewee import fn
+        total_size = cls.model.select(fn.COALESCE(fn.SUM(cls.model.size), 0)).where(
+            (cls.model.tenant_id == tenant_id) & (cls.model.type != FileType.FOLDER.value)
+        ).scalar()
+        return int(total_size) or 0
+
+    @classmethod
+    @DB.connection_context()
     def new_a_file_from_kb(cls, tenant_id, name, parent_id, ty=FileType.FOLDER.value, size=0, location=""):
         # Create a new file from dataset
         # Args:
@@ -465,6 +478,23 @@ class FileService(CommonService):
                 blob = file.read()
                 if filetype == FileType.PDF.value:
                     blob = read_potential_broken_pdf(blob)
+
+                from api.utils.billing import check_dynamic_resources
+                file_size_kb = len(blob) // 1024
+                check_ok, check_info = check_dynamic_resources(tenant_id=kb.tenant_id, storage=file_size_kb)
+                if not check_ok:
+                    error_details = check_info.get("details", {})
+                    if "quota_kb_storage" in error_details:
+                        current_gb = error_details['quota_kb_storage']['current'] / 1024 / 1024
+                        limit_gb = error_details['quota_kb_storage']['limit'] / 1024 / 1024
+                        file_size_gb = file_size_kb / 1024 / 1024
+                        raise RuntimeError(
+                            f"Insufficient storage quota. Current: {current_gb:.2f} GB, "
+                            f"Limit: {limit_gb:.2f} GB. "
+                            f"File size: {file_size_gb:.2f} GB"
+                        )
+                    raise RuntimeError(check_info.get("error", "Insufficient storage quota"))
+
                 settings.STORAGE_IMPL.put(kb.id, location, blob, kb.tenant_id)
 
                 img = thumbnail_img(filename, blob)
@@ -725,6 +755,25 @@ class FileService(CommonService):
             while await asyncio.to_thread(settings.STORAGE_IMPL.obj_exist, last_folder.id, location, tenant_id):
                 location += "_"
             blob = await asyncio.to_thread(file_obj.read)
+
+            from api.utils.billing import check_dynamic_resources
+            file_size_kb = len(blob) // 1024
+            check_ok, check_info = await asyncio.to_thread(
+                check_dynamic_resources, tenant_id=tenant_id, storage=file_size_kb
+            )
+            if not check_ok:
+                error_details = check_info.get("details", {})
+                if "quota_kb_storage" in error_details:
+                    current_gb = error_details['quota_kb_storage']['current'] / 1024 / 1024
+                    limit_gb = error_details['quota_kb_storage']['limit'] / 1024 / 1024
+                    file_size_gb = file_size_kb / 1024 / 1024
+                    raise RuntimeError(
+                        f"Insufficient storage quota. Current: {current_gb:.2f} GB, "
+                        f"Limit: {limit_gb:.2f} GB. "
+                        f"File size: {file_size_gb:.2f} GB"
+                    )
+                raise RuntimeError(check_info.get("error", "Insufficient storage quota"))
+
             filename = await asyncio.to_thread(
                 duplicate_name,
                 cls.query,

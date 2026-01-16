@@ -32,6 +32,7 @@ from common.constants import RetCode
 from common.misc_utils import get_uuid
 from api.utils.api_utils import get_json_result, server_error_response, validate_request, get_data_error_result, \
     get_request_json
+from api.utils.billing import check_dynamic_resources
 from agent.canvas import Canvas
 from peewee import MySQLDatabase, PostgresqlDatabase
 from api.db.db_models import APIToken, Task
@@ -84,6 +85,14 @@ async def save():
         req["user_id"] = current_user.id
         if UserCanvasService.query(user_id=current_user.id, title=req["title"].strip(), canvas_category=cate):
             return get_data_error_result(message=f"{req['title'].strip()} already exists.")
+        check_ok, check_info = check_dynamic_resources(tenant_id=current_user.id, apps=1)
+        if not check_ok:
+            error_details = check_info.get("details", {})
+            if "quota_apps" in error_details:
+                return get_data_error_result(
+                    message=f"Insufficient app quota. Current: {error_details['quota_apps']['current']}, Limit: {error_details['quota_apps']['limit']}"
+                )
+            return get_data_error_result(message=check_info.get("error", "Insufficient app quota"))
         req["id"] = get_uuid()
         if not UserCanvasService.save(**req):
             return get_data_error_result(message="Fail to save canvas.")

@@ -22,6 +22,7 @@ from api.db.services.user_service import TenantService
 from common.misc_utils import get_uuid
 from common.constants import RetCode, StatusEnum
 from api.utils.api_utils import check_duplicate_ids, get_error_data_result, get_result, token_required, get_request_json
+from api.utils.billing import check_dynamic_resources
 
 
 @manager.route("/chats", methods=["POST"])  # noqa: F821
@@ -44,6 +45,15 @@ async def create(tenant_id):
     if len(embd_count) > 1:
         return get_result(message='Datasets use different embedding models."', code=RetCode.AUTHENTICATION_ERROR)
     req["kb_ids"] = ids
+
+    check_ok, check_info = check_dynamic_resources(tenant_id=tenant_id, apps=1)
+    if not check_ok:
+        error_details = check_info.get("details", {})
+        if "quota_apps" in error_details:
+            return get_error_data_result(
+                message=f"Insufficient app quota. Current: {error_details['quota_apps']['current']}, Limit: {error_details['quota_apps']['limit']}"
+            )
+        return get_error_data_result(message=check_info.get("error", "Insufficient app quota"))
     # llm
     llm = req.get("llm")
     if llm:

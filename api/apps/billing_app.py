@@ -37,8 +37,6 @@ from api.db.services.billing_service import (
     SubscriptionService,
     UsageBasedService,
 )
-from api.db.services.document_service import DocumentService
-from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.utils.api_utils import get_data_error_result, get_json_result, get_request_json, server_error_response
 from api.utils.billing import (
     billing_set_customer_id_async,
@@ -251,11 +249,7 @@ async def billing_usage_based_overview():
                 usage_overview["tokens"]["purchased"] += quantity
                 usage_overview["tokens"]["remaining"] += quantity
 
-        num_kb_storage = 0
-        kb_ids = KnowledgebaseService.get_kb_ids(tenant_id)
-        if kb_ids:
-            for kb_id in kb_ids:
-                num_kb_storage += DocumentService.get_total_size_by_kb_id(kb_id=kb_id, keywords="", run_status=[], types=[])
+        num_kb_storage = stripe.FileService.get_total_size_by_tenant_id(tenant_id)
         usage_overview["storage"]["remaining"] -= num_kb_storage
 
         subscription = SubscriptionService.get_by_tenant_id(tenant_id)

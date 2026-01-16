@@ -1037,6 +1037,7 @@ def trace_embedding():
 @manager.route("/clone", methods=["POST"])  # noqa: F821
 @login_required
 @kb_role_guard
+@check_resources(apps=1)
 async def clone():
     req = await get_request_json()
 

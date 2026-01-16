@@ -28,12 +28,14 @@ from common.role_util import check_role_access, SEARCH_API_ACTION_MAP, SEARCH_RO
 
 search_role_guard = check_role_access(SEARCH_API_ACTION_MAP, SEARCH_ROLE_RESOURCE_TYPE)
 from api.utils.api_utils import get_data_error_result, get_json_result, not_allowed_parameters, get_request_json, server_error_response, validate_request
+from api.utils.billing import check_resources
 
 
 @manager.route("/create", methods=["post"])  # noqa: F821
 @login_required
 @validate_request("name")
 @search_role_guard
+@check_resources(apps=1)
 async def create():
     req = await get_request_json()
     search_name = req["name"]

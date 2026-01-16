@@ -34,7 +34,7 @@ from api.db.db_models import (
     UsageBased,
 )
 from api.db.services.dialog_service import DialogService
-from api.db.services.document_service import DocumentService
+from api.db.services.file_service import FileService
 from api.utils.billing import create_stripe_customer_id, get_trial_price_id, parse_storage_size
 from common.billing_utils import to_utc_datetime
 from common.time_utils import current_timestamp
@@ -74,7 +74,7 @@ class ProductService(CommonService):
         try:
             for plan in billing_plans:
                 if "quota_kb_storage" in plan and isinstance(plan["quota_kb_storage"], str):
-                    plan["quota_kb_storage"] = parse_storage_size(plan["quota_kb_storage"])
+                    plan["quota_kb_storage"] = parse_storage_size(plan["quota_kb_storage"]) // 1024
 
                 ori_product = cls.get_by_name(plan["name"])
 
@@ -165,7 +165,6 @@ class SubscriptionService(CommonService):
             from api.db.services.canvas_service import UserCanvasService
             from api.db.services.knowledgebase_service import KnowledgebaseService
             from api.db.services.search_service import SearchService
-
             num_apps = (
                 DialogService.count_by_tenant_id(tenant_id)
                 + KnowledgebaseService.count_by_tenant_id(tenant_id)
@@ -174,11 +173,7 @@ class SubscriptionService(CommonService):
             )
 
             num_members = UserTenantService.get_num_members(tenant_id)
-            num_kb_storage = 0
-            kb_ids = KnowledgebaseService.get_kb_ids(tenant_id)
-            if kb_ids:
-                for kb_id in kb_ids:
-                    num_kb_storage += DocumentService.get_total_size_by_kb_id(kb_id=kb_id, keywords="", run_status=[], types=[])
+            num_kb_storage = FileService.get_total_size_by_tenant_id(tenant_id) // 1024
             tenant_plan["num_apps"] = num_apps
             tenant_plan["num_members"] = num_members
             tenant_plan["num_kb_storage"] = num_kb_storage

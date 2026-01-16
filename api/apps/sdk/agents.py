@@ -35,6 +35,7 @@ from common.constants import RetCode
 from common.misc_utils import get_uuid
 from api.utils.api_utils import get_data_error_result, get_error_data_result, get_json_result, get_request_json, token_required
 from api.utils.api_utils import get_result
+from api.utils.billing import check_dynamic_resources
 from quart import request, Response
 from rag.utils.redis_conn import REDIS_CONN
 
@@ -80,6 +81,15 @@ async def create_agent(tenant_id: str):
 
     if UserCanvasService.query(user_id=tenant_id, title=req["title"]):
         return get_data_error_result(message=f"Agent with title {req['title']} already exists.")
+
+    check_ok, check_info = check_dynamic_resources(tenant_id=tenant_id, apps=1)
+    if not check_ok:
+        error_details = check_info.get("details", {})
+        if "quota_apps" in error_details:
+            return get_error_data_result(
+                message=f"Insufficient app quota. Current: {error_details['quota_apps']['current']}, Limit: {error_details['quota_apps']['limit']}"
+            )
+        return get_error_data_result(message=check_info.get("error", "Insufficient app quota"))
 
     agent_id = get_uuid()
     req["id"] = agent_id
