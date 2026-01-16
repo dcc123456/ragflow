@@ -37,7 +37,7 @@ logger = logging.getLogger("ragflow.llm_app")
 
 @manager.route("/factories", methods=["GET"])  # noqa: F821
 @login_required
-def factories():
+async def factories():
     try:
         fac = get_allowed_llm_factories()
         # Debug logging
@@ -409,17 +409,17 @@ async def delete_factory():
     req = await get_request_json()
     tenant_id = current_user.id
     try:
-        TenantLLMService.filter_delete([TenantLLM.tenant_id == current_user.id, TenantLLM.llm_factory == req["llm_factory"]])
+        TenantLLMService.filter_delete([TenantLLM.tenant_id == tenant_id, TenantLLM.llm_factory == req["llm_factory"]])
         with DB.atomic():
             permission_model_list = PermissionService.get_permissions_by_tenant_and_resource_id(tenant_id=tenant_id, resource_id=req["llm_factory"], resource_type=ResourceType.LLM)
             PermissionService.delete(permission_model_list)
 
             if not PermissionChangeLogService.save(
                 id=get_uuid(),
-                tenant_id=current_user.id,
-                operator_id=current_user.id,
+                tenant_id=tenant_id,
+                operator_id=tenant_id,
                 target_type=PermissionTargetType.TARGET_MEMBER,
-                target_id=current_user.id,
+                target_id=tenant_id,
                 resource_type=ResourceType.LLM,
                 resource_id=req["llm_factory"],
                 old_permission=PermissionValue.PERMISSION_OWNER.value,
@@ -430,7 +430,7 @@ async def delete_factory():
 
         dialogs = DialogService.query(
             status=StatusEnum.VALID.value,
-            tenant_id=current_user.id,
+            tenant_id=tenant_id,
         )
         filtered_dialog_ids = []
         for dialog in dialogs:

@@ -213,12 +213,16 @@ def list_dialogs():
                     d["operator_permission"] = PermissionValue.PERMISSION_OWNER.value
                 dialogs.extend(diags)
             else:
-                member_id = UserTenantService.filter_by_tenant_and_user_id(tenant_id, current_user.id)
+                member = UserTenantService.filter_by_tenant_and_user_id(tenant_id, current_user.id)
 
                 diags = DialogService.query(tenant_id=tenant_id, status=StatusEnum.VALID.value, reverse=True, order_by=DialogService.model.create_time)
                 for diag in diags:
                     permission = has_permission_for_member(
-                        operator_id=member_id, tenant_id=tenant_id, resource_id=diag.id, resource_type=ResourceType.DIALOG, permission=PermissionValue.PERMISSION_READ
+                        operator_id=getattr(member, "id", None),
+                        tenant_id=tenant_id,
+                        resource_id=diag.id,
+                        resource_type=ResourceType.DIALOG,
+                        permission=PermissionValue.PERMISSION_READ,
                     )
                     if permission[0]:
                         diag = diag.to_dict()
@@ -250,9 +254,8 @@ async def list_dialogs_next():
     owner_ids = req.get("owner_ids", [])
     try:
         if not owner_ids:
-            # tenants = TenantService.get_joined_tenants_by_user_id(current_user.id)
-            # tenants = [tenant["tenant_id"] for tenant in tenants]
-            tenants = [] # keep it here
+            tenants = TenantService.get_joined_tenants_by_user_id(current_user.id)
+            tenants = [tenant["tenant_id"] for tenant in tenants]
             dialogs, total = DialogService.get_by_tenant_ids(
                 tenants, current_user.id, page_number,
                 items_per_page, orderby, desc, keywords, parser_id)
@@ -271,15 +274,18 @@ async def list_dialogs_next():
                 dialog["operator_permission"] = PermissionValue.PERMISSION_OWNER.value
                 dialog_list.append(dialog)
             else:
-                member_id = ""
-                if tenant_member_memo.get(dialog["tenant_id"]):
-                    member_id = tenant_member_memo[dialog["tenant_id"]]
-                else:
-                    member_id = UserTenantService.filter_by_tenant_and_user_id(dialog["tenant_id"], current_user.id)
+                member_id = tenant_member_memo.get(dialog["tenant_id"])
+                if not member_id:
+                    member = UserTenantService.filter_by_tenant_and_user_id(dialog["tenant_id"], current_user.id)
+                    member_id = getattr(member, "id", None)
                     tenant_member_memo[dialog["tenant_id"]] = member_id
 
                 permission = has_permission_for_member(
-                    operator_id=member_id, tenant_id=dialog["tenant_id"], resource_id=dialog["id"], resource_type=ResourceType.DIALOG, permission=PermissionValue.PERMISSION_READ
+                    operator_id=member_id,
+                    tenant_id=dialog["tenant_id"],
+                    resource_id=dialog["id"],
+                    resource_type=ResourceType.DIALOG,
+                    permission=PermissionValue.PERMISSION_READ,
                 )
                 if permission[0]:
                     dialog["kb_ids"], dialog["kb_names"] = get_kb_names(dialog["kb_ids"])

@@ -68,6 +68,11 @@ def has_permission_for_member(operator_id, tenant_id, resource_id, resource_type
 
 
 def wrap_permission_info(permission_info):
+    """
+    Return format:
+    - list of person/group/department entries
+      {id, role, name, avatar, tenant_id, resource_type, permissions:{resource_id: permission}}
+    """
     from api.db.services.user_service import UserService, UserTenantService
     permissions = []
 
@@ -120,7 +125,24 @@ def wrap_permission_info(permission_info):
         if wrapped_info:
             permissions.append(wrapped_info)
 
-    return permissions
+    grouped = {}
+    for info in permissions:
+        key = f"{info.get('role')}:{info.get('id')}"
+        entry = grouped.get(key)
+        if not entry:
+            entry = {
+                "id": info.get("id"),
+                "role": info.get("role"),
+                "name": info.get("name"),
+                "avatar": info.get("avatar", ""),
+                "tenant_id": info.get("tenant_id"),
+                "resource_type": info.get("resource_type"),
+                "permissions": {},
+            }
+            grouped[key] = entry
+        entry["permissions"][info.get("resource_id")] = info.get("permission")
+
+    return list(grouped.values())
 
 
 def check_kb_permission(permission):

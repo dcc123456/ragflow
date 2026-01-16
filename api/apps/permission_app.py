@@ -11,7 +11,7 @@ from api.db.services.permission_service import PermissionChangeLogService, Permi
 from api.db.services.role_service import RoleResourceService
 from api.db.services.team_service import DepartmentMemberService, DepartmentService, GroupMemberService, GroupService
 from api.db.services.user_service import UserTenantService
-from api.utils.api_utils import get_data_error_result, get_json_result, server_error_response, validate_request
+from api.utils.api_utils import get_data_error_result, get_json_result, get_request_json, server_error_response, validate_request
 from api.utils.permission_utils import has_permission_for_member, is_valid_permission, wrap_permission_info
 from common.misc_utils import get_uuid
 from common.constants import StatusEnum
@@ -48,7 +48,7 @@ async def update_permission():
     Returns:
         JSON: Success message confirming update
     """
-    req = await request.get_json()
+    req = await get_request_json()
     tenant_id = req.get("tenant_id")
     if not tenant_id:
         return get_data_error_result(message="Missing required field `tenant_id`.")
@@ -63,10 +63,12 @@ async def update_permission():
     if resource_type not in VALID_RESOURCE_TYPES:
         return get_data_error_result(message="Invalid resource type.")
 
-    resource_id = req.get("resource_id")
-    document_kb_id = None
-    if resource_type in (ResourceType.TEAM, ResourceType.DOCUMENT) and not resource_id:
-        return get_data_error_result(message="Missing required valid field `resource_id`.")
+    resource_ids = req.get("resource_ids", [])
+    if isinstance(resource_ids, str):
+        resource_ids = [rid.strip() for rid in resource_ids.split(",") if rid.strip()]
+
+    if resource_type in (ResourceType.TEAM, ResourceType.DOCUMENT) and not resource_ids:
+        return get_data_error_result(message="Missing required valid field `resource_ids`.")
 
     member_list = req.get("member_list", [])
     group_list = req.get("group_list", [])
@@ -78,46 +80,10 @@ async def update_permission():
     if not operator:
         return get_data_error_result(message="Unrecognized identification.")
 
-    # kb
-    if resource_id:
-        if resource_type == ResourceType.KB:
-            kb = KnowledgebaseService.filter_by_id_and_tenant_id(tenant_id=tenant_id, kb_id=resource_id)
-            if not kb:
-                return get_data_error_result(message=f"Resource KB {resource_id} is not available.")
-        elif resource_type == ResourceType.LLM:
-            llms = TenantLLMService.get_my_llms_group_by_factory(tenant_id=tenant_id)
-            factory_found = False
-            for llm in llms:
-                if llm.get("llm_factory") == resource_id:
-                    factory_found = True
-                    break
-            if not factory_found:
-                return get_data_error_result(message=f"Resource LLM {resource_id} is not available.")
-        elif resource_type == ResourceType.DIALOG:
-            dialog = DialogService.query(id=resource_id, status=StatusEnum.VALID.value)
-            if not dialog:
-                return get_data_error_result(message=f"Resource Dialog {resource_id} is not available.")
-        elif resource_type == ResourceType.DOCUMENT:
-            document_tenant_id = DocumentService.get_tenant_id(resource_id)
-            if not document_tenant_id or document_tenant_id != tenant_id:
-                return get_data_error_result(message=f"Resource Document {resource_id} is not available.")
-            document_kb_id = DocumentService.get_knowledgebase_id(resource_id)
-            if not document_kb_id:
-                return get_data_error_result(message=f"Resource Document {resource_id} is not available.")
-        else:
-            return get_data_error_result(message="Un-supported resource type.")
-
-    has_manage_permission = has_permission_for_member(operator.id, tenant_id, resource_id, resource_type=resource_type, permission=PermissionValue.PERMISSION_MANAGE)[0]
-    if not has_manage_permission and resource_type == ResourceType.DOCUMENT and document_kb_id:
-        has_manage_permission = has_permission_for_member(
-            operator.id,
-            tenant_id,
-            document_kb_id,
-            resource_type=ResourceType.KB,
-            permission=PermissionValue.PERMISSION_MANAGE,
-        )[0]
-    if not (operator.tenant_id == current_user.id or has_manage_permission):
-        return get_data_error_result(message="Permission denied.")
+    llm_factories = set()
+    if resource_type == ResourceType.LLM:
+        llms = TenantLLMService.get_my_llms_group_by_factory(tenant_id=tenant_id)
+        llm_factories = {llm.get("llm_factory") for llm in llms}
 
     role_resource_map = {
         ResourceType.KB: ResourceTypeEnum.DATASET.value,
@@ -143,19 +109,89 @@ async def update_permission():
     permission_not_updated = []
     permission_changelog_to_create = []
     entity_info_list = {key: value for key, value in {"members": member_list, "groups": group_list, "departments": department_list}.items() if value}
-    for entity_key, entity_list in entity_info_list.items():
-        for entity in entity_list:
-            if entity_key == "members":
-                member = UserTenantService.filter_by_id(entity)
-                if not member:
-                    permission_not_updated.append(entity)
-                    continue
+    for resource_id in resource_ids:
+        if resource_id:
+            if resource_type == ResourceType.KB:
+                kb = KnowledgebaseService.filter_by_id_and_tenant_id(tenant_id=tenant_id, kb_id=resource_id)
+                if not kb:
+                    return get_data_error_result(message=f"Resource KB {resource_id} is not available.")
+            elif resource_type == ResourceType.LLM:
+                if resource_id not in llm_factories:
+                    return get_data_error_result(message=f"Resource LLM {resource_id} is not available.")
+            elif resource_type == ResourceType.DIALOG:
+                dialog = DialogService.query(id=resource_id, status=StatusEnum.VALID.value)
+                if not dialog:
+                    return get_data_error_result(message=f"Resource Dialog {resource_id} is not available.")
+            elif resource_type == ResourceType.DOCUMENT:
+                document_tenant_id = DocumentService.get_tenant_id(resource_id)
+                if not document_tenant_id or document_tenant_id != tenant_id:
+                    return get_data_error_result(message=f"Resource Document {resource_id} is not available.")
+                document_kb_id = DocumentService.get_knowledgebase_id(resource_id)
+                if not document_kb_id:
+                    return get_data_error_result(message=f"Resource Document {resource_id} is not available.")
+            else:
+                return get_data_error_result(message="Un-supported resource type.")
 
-                if resource_id:
-                    p = PermissionService.filter_by_member_and_tenant_id_with_resource_id(member.id, tenant_id, resource_id=resource_id, resource_type=resource_type)
-                else:
-                    p = PermissionService.filter_by_member_and_tenant_id(member.id, tenant_id)
-                if p:
+        has_manage_permission = has_permission_for_member(operator.id, tenant_id, resource_id, resource_type=resource_type, permission=PermissionValue.PERMISSION_MANAGE)[0]
+        if not has_manage_permission and resource_type == ResourceType.DOCUMENT and resource_id:
+            document_kb_id = DocumentService.get_knowledgebase_id(resource_id)
+            if document_kb_id:
+                has_manage_permission = has_permission_for_member(
+                    operator.id,
+                    tenant_id,
+                    document_kb_id,
+                    resource_type=ResourceType.KB,
+                    permission=PermissionValue.PERMISSION_MANAGE,
+                )[0]
+        if not (operator.tenant_id == current_user.id or has_manage_permission):
+            return get_data_error_result(message="Permission denied.")
+
+        for entity_key, entity_list in entity_info_list.items():
+            for entity in entity_list:
+                if entity_key == "members":
+                    member = UserTenantService.filter_by_id(entity)
+                    if not member:
+                        permission_not_updated.append(entity)
+                        continue
+
+                    if resource_id:
+                        p = PermissionService.filter_by_member_and_tenant_id_with_resource_id(member.id, tenant_id, resource_id=resource_id, resource_type=resource_type)
+                    else:
+                        p = PermissionService.filter_by_member_and_tenant_id(member.id, tenant_id)
+                    if p:
+                        member_permission_changelog = dict(
+                            id=get_uuid(),
+                            tenant_id=operator.tenant_id,
+                            operator_id=operator.id,
+                            target_type=PermissionTargetType.TARGET_MEMBER,
+                            target_id=member.id,
+                            resource_type=resource_type,
+                            resource_id=resource_id,
+                            old_permission=p.permission,
+                            new_permission=permission,
+                            action_type=PermissionActionType.ACTION_UPDATE,
+                        )
+                        setattr(p, "permission", permission)
+
+                        if p.permission == PermissionValue.PERMISSION_NULL.value:
+                            p.status = StatusEnum.INVALID.value
+                            member_permission_changelog["action_type"] = PermissionActionType.ACTION_DELETE
+                            permission_to_delete.append(p)
+                        else:
+                            permission_to_update.append(p)
+                        permission_changelog_to_create.append(member_permission_changelog)
+                        continue
+
+                    member_permission = {
+                        "id": get_uuid(),
+                        "resource_type": resource_type,
+                        "resource_id": resource_id if resource_id else None,
+                        "tenant_id": tenant_id,
+                        "permission": permission,
+                        "member_id": member.id,
+                    }
+                    permission_to_create.append(member_permission)
+
                     member_permission_changelog = dict(
                         id=get_uuid(),
                         tenant_id=operator.tenant_id,
@@ -164,56 +200,56 @@ async def update_permission():
                         target_id=member.id,
                         resource_type=resource_type,
                         resource_id=resource_id,
-                        old_permission=p.permission,
+                        old_permission=PermissionValue.PERMISSION_NULL.value,
                         new_permission=permission,
-                        action_type=PermissionActionType.ACTION_UPDATE,
+                        action_type=PermissionActionType.ACTION_ADD,
                     )
-                    setattr(p, "permission", permission)
-
-                    if p.permission == PermissionValue.PERMISSION_NULL.value:
-                        p.status = StatusEnum.INVALID.value
-                        member_permission_changelog["action_type"] = PermissionActionType.ACTION_DELETE
-                        permission_to_delete.append(p)
-                    else:
-                        permission_to_update.append(p)
                     permission_changelog_to_create.append(member_permission_changelog)
-                    continue
 
-                member_permission = {
-                    "id": get_uuid(),
-                    "resource_type": resource_type,
-                    "resource_id": resource_id if resource_id else None,
-                    "tenant_id": tenant_id,
-                    "permission": permission,
-                    "member_id": member.id,
-                }
-                permission_to_create.append(member_permission)
+                elif entity_key == "groups":
+                    group = GroupService.filter_by_id(entity)
+                    if not group:
+                        permission_not_updated.append(entity)
+                        continue
 
-                member_permission_changelog = dict(
-                    id=get_uuid(),
-                    tenant_id=operator.tenant_id,
-                    operator_id=operator.id,
-                    target_type=PermissionTargetType.TARGET_MEMBER,
-                    target_id=member.id,
-                    resource_type=resource_type,
-                    resource_id=resource_id,
-                    old_permission=PermissionValue.PERMISSION_NULL.value,
-                    new_permission=permission,
-                    action_type=PermissionActionType.ACTION_ADD,
-                )
-                permission_changelog_to_create.append(member_permission_changelog)
+                    if resource_id:
+                        p = PermissionService.filter_by_group_and_tenant_id_with_resource_id(group.id, tenant_id, resource_id=resource_id, resource_type=resource_type)
+                    else:
+                        p = PermissionService.filter_by_group_and_tenant_id(group.id, tenant_id)
+                    if p:
+                        group_permission_changelog = dict(
+                            id=get_uuid(),
+                            tenant_id=operator.tenant_id,
+                            operator_id=operator.id,
+                            target_type=PermissionTargetType.TARGET_GROUP,
+                            target_id=group.id,
+                            resource_type=resource_type,
+                            resource_id=resource_id,
+                            old_permission=p.permission,
+                            new_permission=permission,
+                            action_type=PermissionActionType.ACTION_UPDATE,
+                        )
+                        setattr(p, "permission", permission)
 
-            elif entity_key == "groups":
-                group = GroupService.filter_by_id(entity)
-                if not group:
-                    permission_not_updated.append(entity)
-                    continue
+                        if p.permission == PermissionValue.PERMISSION_NULL.value:
+                            p.status = StatusEnum.INVALID.value
+                            group_permission_changelog["action_type"] = PermissionActionType.ACTION_DELETE
+                            permission_to_delete.append(p)
+                        else:
+                            permission_to_update.append(p)
+                        permission_changelog_to_create.append(group_permission_changelog)
+                        continue
 
-                if resource_id:
-                    p = PermissionService.filter_by_group_and_tenant_id_with_resource_id(group.id, tenant_id, resource_id=resource_id, resource_type=resource_type)
-                else:
-                    p = PermissionService.filter_by_group_and_tenant_id(group.id, tenant_id)
-                if p:
+                    group_permission = {
+                        "id": get_uuid(),
+                        "resource_type": resource_type,
+                        "resource_id": resource_id if resource_id else None,
+                        "tenant_id": tenant_id,
+                        "permission": permission,
+                        "group_id": group.id,
+                    }
+                    permission_to_create.append(group_permission)
+
                     group_permission_changelog = dict(
                         id=get_uuid(),
                         tenant_id=operator.tenant_id,
@@ -222,56 +258,56 @@ async def update_permission():
                         target_id=group.id,
                         resource_type=resource_type,
                         resource_id=resource_id,
-                        old_permission=p.permission,
+                        old_permission=PermissionValue.PERMISSION_NULL.value,
                         new_permission=permission,
-                        action_type=PermissionActionType.ACTION_UPDATE,
+                        action_type=PermissionActionType.ACTION_ADD,
                     )
-                    setattr(p, "permission", permission)
-
-                    if p.permission == PermissionValue.PERMISSION_NULL.value:
-                        p.status = StatusEnum.INVALID.value
-                        group_permission_changelog["action_type"] = PermissionActionType.ACTION_DELETE
-                        permission_to_delete.append(p)
-                    else:
-                        permission_to_update.append(p)
                     permission_changelog_to_create.append(group_permission_changelog)
-                    continue
 
-                group_permission = {
-                    "id": get_uuid(),
-                    "resource_type": resource_type,
-                    "resource_id": resource_id if resource_id else None,
-                    "tenant_id": tenant_id,
-                    "permission": permission,
-                    "group_id": group.id,
-                }
-                permission_to_create.append(group_permission)
+                elif entity_key == "departments":
+                    department = DepartmentService.filter_by_id(entity)
+                    if not department:
+                        permission_not_updated.append(entity)
+                        continue
 
-                group_permission_changelog = dict(
-                    id=get_uuid(),
-                    tenant_id=operator.tenant_id,
-                    operator_id=operator.id,
-                    target_type=PermissionTargetType.TARGET_GROUP,
-                    target_id=group.id,
-                    resource_type=resource_type,
-                    resource_id=resource_id,
-                    old_permission=PermissionValue.PERMISSION_NULL.value,
-                    new_permission=permission,
-                    action_type=PermissionActionType.ACTION_ADD,
-                )
-                permission_changelog_to_create.append(group_permission_changelog)
+                    if resource_id:
+                        p = PermissionService.filter_by_department_and_tenant_id_with_resource_id(department.id, tenant_id, resource_id=resource_id, resource_type=resource_type)
+                    else:
+                        p = PermissionService.filter_by_department_and_tenant_id(department.id, tenant_id)
+                    if p:
+                        department_permission_changelog = dict(
+                            id=get_uuid(),
+                            tenant_id=operator.tenant_id,
+                            operator_id=operator.id,
+                            target_type=PermissionTargetType.TARGET_DEPARTMENT,
+                            target_id=department.id,
+                            resource_type=resource_type,
+                            resource_id=resource_id,
+                            old_permission=p.permission,
+                            new_permission=permission,
+                            action_type=PermissionActionType.ACTION_UPDATE,
+                        )
+                        setattr(p, "permission", permission)
 
-            elif entity_key == "departments":
-                department = DepartmentService.filter_by_id(entity)
-                if not department:
-                    permission_not_updated.append(entity)
-                    continue
+                        if p.permission == PermissionValue.PERMISSION_NULL.value:
+                            p.status = StatusEnum.INVALID.value
+                            department_permission_changelog["action_type"] = PermissionActionType.ACTION_DELETE
+                            permission_to_delete.append(p)
+                        else:
+                            permission_to_update.append(p)
+                        permission_changelog_to_create.append(department_permission_changelog)
+                        continue
 
-                if resource_id:
-                    p = PermissionService.filter_by_department_and_tenant_id_with_resource_id(department.id, tenant_id, resource_id=resource_id, resource_type=resource_type)
-                else:
-                    p = PermissionService.filter_by_department_and_tenant_id(department.id, tenant_id)
-                if p:
+                    department_permission = {
+                        "id": get_uuid(),
+                        "resource_type": resource_type,
+                        "resource_id": resource_id if resource_id else None,
+                        "tenant_id": tenant_id,
+                        "permission": permission,
+                        "department_id": department.id,
+                    }
+                    permission_to_create.append(department_permission)
+
                     department_permission_changelog = dict(
                         id=get_uuid(),
                         tenant_id=operator.tenant_id,
@@ -280,45 +316,34 @@ async def update_permission():
                         target_id=department.id,
                         resource_type=resource_type,
                         resource_id=resource_id,
-                        old_permission=p.permission,
+                        old_permission=PermissionValue.PERMISSION_NULL.value,
                         new_permission=permission,
-                        action_type=PermissionActionType.ACTION_UPDATE,
+                        action_type=PermissionActionType.ACTION_ADD,
                     )
-                    setattr(p, "permission", permission)
-
-                    if p.permission == PermissionValue.PERMISSION_NULL.value:
-                        p.status = StatusEnum.INVALID.value
-                        department_permission_changelog["action_type"] = PermissionActionType.ACTION_DELETE
-                        permission_to_delete.append(p)
-                    else:
-                        permission_to_update.append(p)
                     permission_changelog_to_create.append(department_permission_changelog)
-                    continue
-
-                department_permission = {
-                    "id": get_uuid(),
-                    "resource_type": resource_type,
-                    "resource_id": resource_id if resource_id else None,
-                    "tenant_id": tenant_id,
-                    "permission": permission,
-                    "department_id": department.id,
-                }
-                permission_to_create.append(department_permission)
-
-                department_permission_changelog = dict(
-                    id=get_uuid(),
-                    tenant_id=operator.tenant_id,
-                    operator_id=operator.id,
-                    target_type=PermissionTargetType.TARGET_DEPARTMENT,
-                    target_id=department.id,
-                    resource_type=resource_type,
-                    resource_id=resource_id,
-                    old_permission=PermissionValue.PERMISSION_NULL.value,
-                    new_permission=permission,
-                    action_type=PermissionActionType.ACTION_ADD,
-                )
-                permission_changelog_to_create.append(department_permission_changelog)
     try:
+        filtered_dialog_ids = []
+        if permission_to_delete:
+            dialogs = DialogService.query(
+                status=StatusEnum.VALID.value,
+                tenant_id=tenant_id,
+            )
+            deleted_resource_ids = {item.resource_id for item in permission_to_delete if item.resource_id}
+
+            if resource_type == ResourceType.KB:
+                for dialog in dialogs:
+                    if any(resource_id in (dialog.kb_ids or []) for resource_id in deleted_resource_ids):
+                        filtered_dialog_ids.append(dialog.id)
+
+            elif resource_type == ResourceType.LLM:
+                for dialog in dialogs:
+                    if any(resource_id in (dialog.llm_id or []) for resource_id in deleted_resource_ids):
+                        filtered_dialog_ids.append(dialog.id)
+
+            elif resource_type == ResourceType.DIALOG:
+                # need to do nothing
+                pass
+
         with DB.atomic():
             if permission_to_create:
                 PermissionService.insert_many(permission_to_create)
@@ -329,94 +354,77 @@ async def update_permission():
             if permission_to_delete:
                 PermissionService.update_many(permission_to_delete)
 
-        if permission_to_delete:
-            dialogs = DialogService.query(
-                status=StatusEnum.VALID.value,
-                tenant_id=tenant_id,
-            )
-            filtered_dialog_ids = []
-
-            if resource_type == ResourceType.KB:
-                for dialog in dialogs:
-                    if resource_id in dialog.kb_ids:
-                        filtered_dialog_ids.append(dialog.id)
-
-            elif resource_type == ResourceType.LLM:
-                for dialog in dialogs:
-                    if resource_id in dialog.llm_id:
-                        filtered_dialog_ids.append(dialog.id)
-
-            elif resource_type == ResourceType.DIALOG:
-                # need to do nothing
-                pass
-
-            with DB.atomic():
-                for dialog_id in filtered_dialog_ids:
-                    dialog_permission_model_list = PermissionService.get_permissions_by_tenant_and_resource_id(tenant_id=tenant_id, resource_id=dialog_id, resource_type=ResourceType.DIALOG)
-                    PermissionService.delete(dialog_permission_model_list)
+            for dialog_id in filtered_dialog_ids:
+                dialog_permission_model_list = PermissionService.get_permissions_by_tenant_and_resource_id(tenant_id=tenant_id, resource_id=dialog_id, resource_type=ResourceType.DIALOG)
+                PermissionService.delete(dialog_permission_model_list)
 
         return get_json_result(data=True)
     except Exception as e:
         return server_error_response(e)
 
 
-@manager.route("/<tenant_id>/list/<resource_type>/<resource_id>", methods=["GET"])  # noqa: F821
+@manager.route("/list", methods=["POST"])  # noqa: F821
 @login_required
-def list_permissions(tenant_id, resource_id, resource_type):
-    if not all([tenant_id, resource_id, resource_type]):
-        return get_data_error_result(message="Missing required field `tenant_id`, `resource_id`, `resource_type`.")
+async def list_permissions():
+    req = await get_request_json()
+    tenant_id = req.get("tenant_id")
+    resource_type = req.get("resource_type")
+    resource_ids = req.get("resource_ids") or []
+
+    if not all([tenant_id, resource_type]):
+        return get_data_error_result(message="Missing required field `tenant_id`, `resource_type`.")
     if resource_type not in VALID_RESOURCE_TYPES:
         return get_data_error_result(message="Invalid resource type.")
+    if not resource_ids:
+        return get_data_error_result(message="Missing required field `resource_ids`.")
+
+    resource_ids = list(dict.fromkeys(resource_ids))
 
     operator = UserTenantService.filter_by_tenant_and_user_id(tenant_id, current_user.id)
     if not operator:
         return get_data_error_result(message="Unrecognized identification.")
 
     if resource_type == ResourceType.KB:
-        kb = KnowledgebaseService.filter_by_id_and_tenant_id(tenant_id=tenant_id, kb_id=resource_id)
-        if not kb:
-            return get_data_error_result(message="Resource is not available.")
-
-        if not (operator.tenant_id == current_user.id or has_permission_for_member(operator.id, tenant_id, resource_id, resource_type=resource_type, permission=PermissionValue.PERMISSION_MANAGE)[0]):
-            return get_data_error_result(message="Permission denied.")
+        for kb_id in resource_ids:
+            kb = KnowledgebaseService.filter_by_id_and_tenant_id(tenant_id=tenant_id, kb_id=kb_id)
+            if not kb:
+                return get_data_error_result(message="Resource is not available.")
+            if not (operator.tenant_id == current_user.id or has_permission_for_member(operator.id, tenant_id, kb_id, resource_type=resource_type, permission=PermissionValue.PERMISSION_MANAGE)[0]):
+                return get_data_error_result(message="Permission denied.")
     elif resource_type == ResourceType.LLM:
         llms = TenantLLMService.get_my_llms_group_by_factory(tenant_id=tenant_id)
-        factory_found = False
-        for llm in llms:
-            if llm.get("llm_factory") == resource_id:
-                factory_found = True
-                break
-        if not factory_found:
-            return get_data_error_result(message="Resource is not available.")
-
-        if not (operator.tenant_id == current_user.id or has_permission_for_member(operator.id, tenant_id, resource_id, resource_type=resource_type, permission=PermissionValue.PERMISSION_MANAGE)[0]):
-            return get_data_error_result(message="Permission denied.")
+        llm_factories = {llm.get("llm_factory") for llm in llms}
+        for llm_factory in resource_ids:
+            if llm_factory not in llm_factories:
+                return get_data_error_result(message="Resource is not available.")
+            if not (operator.tenant_id == current_user.id or has_permission_for_member(operator.id, tenant_id, llm_factory, resource_type=resource_type, permission=PermissionValue.PERMISSION_MANAGE)[0]):
+                return get_data_error_result(message="Permission denied.")
     elif resource_type == ResourceType.DOCUMENT:
-        document_tenant_id = DocumentService.get_tenant_id(resource_id)
-        if not document_tenant_id or document_tenant_id != tenant_id:
-            return get_data_error_result(message="Resource is not available.")
-        document_kb_id = DocumentService.get_knowledgebase_id(resource_id)
-        has_manage_permission = has_permission_for_member(
-            operator.id,
-            tenant_id,
-            resource_id,
-            resource_type=resource_type,
-            permission=PermissionValue.PERMISSION_MANAGE,
-        )[0]
-        if not has_manage_permission and document_kb_id:
+        for document_id in resource_ids:
+            document_tenant_id = DocumentService.get_tenant_id(document_id)
+            if not document_tenant_id or document_tenant_id != tenant_id:
+                return get_data_error_result(message="Resource is not available.")
+            document_kb_id = DocumentService.get_knowledgebase_id(document_id)
             has_manage_permission = has_permission_for_member(
                 operator.id,
                 tenant_id,
-                document_kb_id,
-                resource_type=ResourceType.KB,
+                document_id,
+                resource_type=resource_type,
                 permission=PermissionValue.PERMISSION_MANAGE,
             )[0]
-        if not (operator.tenant_id == current_user.id or has_manage_permission):
-            return get_data_error_result(message="Permission denied.")
+            if not has_manage_permission and document_kb_id:
+                has_manage_permission = has_permission_for_member(
+                    operator.id,
+                    tenant_id,
+                    document_kb_id,
+                    resource_type=ResourceType.KB,
+                    permission=PermissionValue.PERMISSION_MANAGE,
+                )[0]
+            if not (operator.tenant_id == current_user.id or has_manage_permission):
+                return get_data_error_result(message="Permission denied.")
 
-    permissions = PermissionService.get_permissions_by_tenant_and_resource_id_with_info(tenant_id=tenant_id, resource_id=resource_id, resource_type=resource_type)
+    permissions = PermissionService.get_permissions_by_tenant_and_resource_ids_with_info(tenant_id=tenant_id, resource_ids=resource_ids, resource_type=resource_type)
     permissions = wrap_permission_info(permissions)
-
     return get_json_result(data=permissions)
 
 

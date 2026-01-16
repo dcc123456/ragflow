@@ -124,6 +124,29 @@ class PermissionService(CommonService):
             return []
 
     @classmethod
+    @DB.connection_context()
+    def get_permissions_by_tenant_and_resource_ids_with_info(cls, tenant_id, resource_ids, resource_type=ResourceType.KB):
+        if not resource_ids:
+            return []
+
+        fields = [cls.model.id, cls.model.member_id, cls.model.group_id, cls.model.department_id, cls.model.tenant_id, cls.model.resource_type, cls.model.resource_id, cls.model.permission]
+        try:
+            permissions = list(
+                cls.model.select(*fields)
+                .where(
+                    (cls.model.tenant_id == tenant_id)
+                    & (cls.model.resource_id.in_(resource_ids))
+                    & (cls.model.resource_type == resource_type)
+                    & (cls.model.status == StatusEnum.VALID.value)
+                    & (cls.model.permission != PermissionValue.PERMISSION_NULL.value)
+                )
+                .dicts()
+            )
+            return permissions
+        except peewee.DoesNotExist:
+            return []
+
+    @classmethod
     def save(cls, **kwargs):
         """
         ! Use this method under DB.atomic() context
