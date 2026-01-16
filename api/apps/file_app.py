@@ -60,7 +60,7 @@ async def upload():
             return get_json_result(
                 data=False, message='No file selected!', code=RetCode.ARGUMENT_ERROR)
     try:
-        file_res = FileService.upload_files(pf_id, file_objs, current_user.id)
+        file_res = await FileService.upload_files(pf_id, file_objs, current_user.id)
 
         return get_json_result(data=file_res)
     except Exception as e:

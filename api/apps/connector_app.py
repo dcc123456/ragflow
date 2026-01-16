@@ -14,23 +14,28 @@
 #  limitations under the License.
 #
 import asyncio
+import hashlib
 import json
 import logging
 import time
 import uuid
 from html import escape
 from typing import Any
-
+from anthropic import BaseModel
 from quart import request, make_response
 from google_auth_oauthlib.flow import Flow
 
 from api.db import InputType
+from api.db.services.file_service import FileService
 from api.db.services.connector_service import ConnectorService, SyncLogsService
-from api.utils.api_utils import get_data_error_result, get_json_result, get_request_json, validate_request
+from api.utils.api_utils import get_data_error_result, get_json_result, get_request_json, validate_request, server_error_response
 from common.constants import RetCode, TaskStatus
+from api.utils.common import hash128
 from common.data_source.config import GOOGLE_DRIVE_WEB_OAUTH_REDIRECT_URI, GMAIL_WEB_OAUTH_REDIRECT_URI, BOX_WEB_OAUTH_REDIRECT_URI, DocumentSource
 from common.data_source.google_util.constant import WEB_OAUTH_POPUP_TEMPLATE, GOOGLE_SCOPES
 from common.misc_utils import get_uuid
+from common.data_source.interfaces import LoadConnector, PollConnector
+from common.data_source.cross_connector_utils.web_register import CONNECTOR_REGISTRY
 from rag.utils.redis_conn import REDIS_CONN
 from api.apps import login_required, current_user
 from box_sdk_gen import BoxOAuth, OAuthConfig, GetAuthorizeUrlOptions
@@ -78,6 +83,106 @@ def get_connector(connector_id):
     if not e:
         return get_data_error_result(message="Can't find this Connector!")
     return get_json_result(data=conn.to_dict())
+
+
+def _get_connector_or_error(connector_id: str) -> tuple[LoadConnector | PollConnector | None, dict | Any]:
+    e, conn = ConnectorService.get_by_id(connector_id)
+    if not e:
+        return None, get_data_error_result(message="Cant find this Connector!")
+
+    conf = conn.config or {}
+    
+    source = conn.source
+    connector_cls = CONNECTOR_REGISTRY.get(source)
+    if not connector_cls:
+        return None, get_data_error_result(message=f"Downloading specific files is not supported by {source} connector.")
+    
+    connector = connector_cls(conf)
+
+    return connector, conn
+
+
+@manager.route("/<connector_id>/list_files", methods=["POST"])  # noqa: F821
+@login_required
+async def list_files(connector_id):
+    connector, payload = _get_connector_or_error(connector_id)
+    if connector is None:
+        return payload
+    
+    conn = payload   
+    token = conn.config["token"]
+    result = connector.build_tree(token, "")
+    if asyncio.iscoroutine(result):
+        result = await result
+    return result
+
+
+@manager.route("/<connector_id>/downloads", methods=["POST"])  # noqa: F821
+@login_required
+async def download_files(connector_id: Any):
+    req = await get_request_json()
+
+    connector, payload = _get_connector_or_error(connector_id)
+    if connector is None:
+        return payload
+
+    conn = payload
+    token_lst = req["token_lst"]
+    docs = connector.load_from_list(token_lst)
+    if asyncio.iscoroutine(docs):
+        docs = await docs
+    
+    doc_lst = []
+    for doc in docs:
+        d = {
+            "id": hash128(doc.id),
+            "connector_id": connector_id,
+            "source": conn.source,
+            "semantic_identifier": doc.semantic_identifier,
+            "extension": doc.extension,
+            "size_bytes": doc.size_bytes,
+            "doc_updated_at": doc.doc_updated_at,
+            "blob": doc.blob,
+        }
+        if doc.metadata:
+            d["metadata"] = doc.metadata
+        doc_lst.append(d)
+
+    folder_id = req["folder_id"]
+
+    class FileObj(BaseModel):
+        id: str
+        filename: str
+        blob: bytes
+
+        def read(self) -> bytes:
+            return self.blob
+
+    files = [
+        FileObj(
+            id=d["id"],
+            filename=(
+                d["semantic_identifier"]
+                + (
+                    f"{d['extension']}"
+                    if d["semantic_identifier"][::-1].find(d["extension"][::-1]) < 0
+                    else ""
+                )
+            ),
+            blob=d["blob"],
+        )
+        for d in doc_lst
+    ]
+
+    for f in files:
+        f.id = hashlib.md5(f"{folder_id}_{f.id}".encode("utf-8")).hexdigest()
+
+    try:
+        file_res = await FileService.upload_files(folder_id, files, current_user.id)
+
+        return get_json_result(data=file_res)
+    except Exception as e:
+        return server_error_response(e)
 
 
 @manager.route("/<connector_id>/logs", methods=["GET"])  # noqa: F821

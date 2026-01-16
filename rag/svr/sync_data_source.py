@@ -33,7 +33,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from flask import json
-
+from api.utils.common import hash128
 from api.db.services.connector_service import ConnectorService, SyncLogsService
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from common import settings
@@ -110,13 +110,16 @@ class SyncBase:
         doc_num = 0
         failed_docs = 0
         next_update = datetime(1970, 1, 1, tzinfo=timezone.utc)
+        fetch_start = time.perf_counter()
 
         if task["poll_range_start"]:
             next_update = task["poll_range_start"]
 
-        for document_batch in document_batch_generator:
+        def handle_batch(document_batch):
+            nonlocal doc_num, failed_docs, next_update
+
             if not document_batch:
-                continue
+                return
 
             min_update = min(doc.doc_updated_at for doc in document_batch)
             max_update = max(doc.doc_updated_at for doc in document_batch)
@@ -125,7 +128,7 @@ class SyncBase:
             docs = []
             for doc in document_batch:
                 d = {
-                    "id": doc.id,
+                    "id": hash128(doc.id),
                     "connector_id": task["connector_id"],
                     "source": self.SOURCE_NAME,
                     "semantic_identifier": doc.semantic_identifier,
@@ -171,7 +174,16 @@ class SyncBase:
                     logging.error(f"Error processing batch: {msg}")
 
                 failed_docs += len(docs)
-                continue
+
+        if hasattr(document_batch_generator, "__aiter__"):
+            async for document_batch in document_batch_generator:
+                handle_batch(document_batch)
+        else:
+            for document_batch in document_batch_generator:
+                handle_batch(document_batch)
+
+        elapsed = time.perf_counter() - fetch_start
+        logging.info("Connector fetch completed in %.3f seconds", elapsed)
 
         prefix = self._get_source_prefix()
         if failed_docs > 0:
@@ -477,9 +489,9 @@ class Lark(SyncBase):
     SOURCE_NAME: str = FileSource.LARK
 
     async def _generate(self, task: dict):
-        
+        token = self.conf.get("token")
         token_type = self.conf.get("token_type")
-        self.connector = LarkConnector(token_type)
+        self.connector = LarkConnector(token_type, token)
 
         credentials = self.conf.get("credentials")
         if not credentials:
@@ -487,16 +499,12 @@ class Lark(SyncBase):
         self.connector.load_credentials(credentials)
         self.connector.validate_connector_settings()
 
-        poll_start = task["poll_range_start"]
-        token = self.conf.get("token")
-
-        if task.get("reindex") == "1" or poll_start is None:
-            document_generator = self.connector.load_from_state(token)
+        if task["reindex"] == "1" or not task["poll_range_start"]:
+            document_generator = self.connector.load_from_state()
             begin_info = "totally"
         else:
+            poll_start = task["poll_range_start"]
             document_generator = self.connector.poll_source(
-                token,
-                token_type,
                 poll_start.timestamp(),
                 datetime.now(timezone.utc).timestamp(),
             )
@@ -507,8 +515,10 @@ class Lark(SyncBase):
             begin_info,
         )
 
-        return document_generator
-
+        async def async_wrapper():
+            async for batch in document_generator:
+                yield batch
+        return async_wrapper()
 
 class GoogleDrive(SyncBase):
     SOURCE_NAME: str = FileSource.GOOGLE_DRIVE

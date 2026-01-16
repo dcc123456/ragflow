@@ -5,7 +5,6 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import cast
 
-
 def get_current_tz_offset() -> int:
     # datetime now() gets local time, datetime.now(timezone.utc) gets UTC time.
     # remove tzinfo to compare non-timezone-aware objects.

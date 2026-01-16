@@ -1152,7 +1152,7 @@ def parallel_yield(gens: list[Iterator[R]], max_workers: int = 10) -> Iterator[R
                 del future_to_index[future]
 
 
-def sanitize_filename(name: str, extension: str = "txt") -> str:
+def sanitize_filename(name: str, extension: str = "txt", skip_extension: bool = False) -> str:
     """
     Sanitize filename for cross-platform + S3/MinIO safety.
     - Drop emoji / symbol characters unconditionally.
@@ -1161,7 +1161,7 @@ def sanitize_filename(name: str, extension: str = "txt") -> str:
     - Preserve readability (spaces, CJK, Latin).
     """
     if not name:
-        return f"file.{extension}"
+        return f"file.{extension}" if not skip_extension else "file"
 
     # Normalize to avoid weird composed forms
     name = unicodedata.normalize("NFKC", str(name)).strip()
@@ -1191,7 +1191,7 @@ def sanitize_filename(name: str, extension: str = "txt") -> str:
         name = base[:180].rstrip() + ext
 
     # 7) Ensure extension
-    if not os.path.splitext(name)[1]:
+    if not os.path.splitext(name)[1] and not skip_extension:
         name += f".{extension}"
 
     return name
