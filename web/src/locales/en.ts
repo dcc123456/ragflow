@@ -2426,6 +2426,8 @@ Important structured information may include: names, dates, locations, events, k
             'Configure the system email sender and connection details.',
 
           testConnection: 'Test connection',
+          testConnectionMessageSuccess: 'Test connection successful',
+          testConnectionMessageError: 'Test connection failed',
 
           fields: {
             server: 'Server',

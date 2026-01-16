@@ -168,6 +168,16 @@ declare namespace AdminService {
     update_time: number;
   };
 
+  export type TestSMTPConnectionInput = {
+    host: string;
+    port: number;
+    username: string;
+    password: string;
+    use_ssl?: boolean;
+    use_tls?: boolean;
+    timeout?: number;
+  };
+
   type VariableTypecastMap = {
     string: string;
     bool: boolean;

@@ -44,13 +44,15 @@ function AdminSettings() {
   });
 
   useEffect(() => {
+    if (isFetching) return;
+
     const formData = {
       smtp: SMTPSettingsFormGroup.mapValuesFromData(variables),
       whitelist: WhitelistSettingsFormGroup.mapValuesFromData(variables),
     };
 
     form.reset(formData);
-  }, [variables, form]);
+  }, [variables, form, isFetching]);
 
   return (
     <>

@@ -1,6 +1,11 @@
 import { useTranslate } from '@/hooks/common-hooks';
+import { useMutation } from '@tanstack/react-query';
 import { useFormContext } from 'react-hook-form';
 import z from 'zod';
+
+import { t } from 'i18next';
+
+import { LucideUnplug } from 'lucide-react';
 
 import {
   FormControl,
@@ -11,30 +16,55 @@ import {
 } from '@/components/ui/form';
 
 import PasswordInput from '@/components/originui/password-input';
-// import { Button } from '@/components/ui/button';
+import { Button } from '@/components/ui/button';
 import { Input, NumberInput } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
-import { t } from 'i18next';
-// import { LucideUnplug } from 'lucide-react';
 
+import { testSMTPConnection } from '@/services/admin-service';
+import { AxiosError } from 'axios';
+import { toast } from 'sonner';
 import FormGroup from './FormGroup';
 
-/*
-function useSMTPTestConnection() {
+function useTestConnection() {
+  const { t } = useTranslate('admin.settingsForm.smtp');
   const form = useFormContext<{ smtp: SMTPSettingsFormGroup.SchemaType }>();
-  const {
 
-  } = useQuery({
-    queryKey: ['admin/config/smtpTestConnection'],
-    queryFn: () => {
+  const { mutateAsync, isPending } = useMutation({
+    mutationFn: async () => {
+      const values = form.getValues('smtp');
+
+      return await testSMTPConnection({
+        host: values.server,
+        port: values.port,
+        username: values.username,
+        password: values.password,
+        use_ssl: values.ssl,
+        use_tls: values.tls,
+        timeout: values.timeout,
+      });
+    },
+    onSuccess: () => {
+      toast.success(t('testConnectionMessageSuccess'));
+    },
+    onError: (e: AxiosError) => {
+      toast.error(
+        (e.response?.data as any)?.data || t('testConnectionMessageError'),
+      );
     },
   });
+
+  return {
+    testConnection: mutateAsync,
+    isTesting: isPending,
+  };
 }
-*/
 
 function SMTPSettingsFormGroup() {
   const { t: tf } = useTranslate('admin.settingsForm.smtp');
+  const { testConnection, isTesting } = useTestConnection();
+
   const form = useFormContext<{ smtp: SMTPSettingsFormGroup.SchemaType }>();
+  const isValid = form.formState.isValid;
 
   return (
     <FormGroup title={tf('title')} description={tf('description')}>
@@ -53,6 +83,7 @@ function SMTPSettingsFormGroup() {
                   {...field}
                   className="m-0 h-10"
                   placeholder={tf('placeholder.server')}
+                  disabled={isTesting || field.disabled}
                 />
               </FormControl>
 
@@ -73,7 +104,11 @@ function SMTPSettingsFormGroup() {
 
             <div className="relative">
               <FormControl>
-                <NumberInput {...field} className="m-0 h-10" />
+                <NumberInput
+                  {...field}
+                  className="m-0 h-10"
+                  disabled={isTesting || field.disabled}
+                />
               </FormControl>
 
               <FormMessage className="absolute top-full" />
@@ -93,7 +128,11 @@ function SMTPSettingsFormGroup() {
 
             <div className="relative">
               <FormControl>
-                <NumberInput {...field} className="m-0 h-10" />
+                <NumberInput
+                  {...field}
+                  className="m-0 h-10"
+                  disabled={isTesting || field.disabled}
+                />
               </FormControl>
 
               <FormMessage className="absolute top-full" />
@@ -115,10 +154,9 @@ function SMTPSettingsFormGroup() {
               <FormControl>
                 <Input
                   {...field}
-                  type="email"
                   className="m-0 h-10"
                   placeholder={tf('placeholder.username')}
-                  autoComplete="email"
+                  disabled={isTesting || field.disabled}
                 />
               </FormControl>
 
@@ -144,6 +182,7 @@ function SMTPSettingsFormGroup() {
                   className="m-0 h-10"
                   placeholder=""
                   autoComplete="new-password"
+                  disabled={isTesting || field.disabled}
                 />
               </FormControl>
 
@@ -170,6 +209,7 @@ function SMTPSettingsFormGroup() {
                   className="m-0 h-10"
                   placeholder={tf('placeholder.defaultSender')}
                   autoComplete="email"
+                  disabled={isTesting || field.disabled}
                 />
               </FormControl>
 
@@ -195,8 +235,8 @@ function SMTPSettingsFormGroup() {
                   name={field.name}
                   checked={!!field.value}
                   onCheckedChange={field.onChange}
-                  disabled={field.disabled}
                   onBlur={field.onBlur}
+                  disabled={isTesting || field.disabled}
                 />
               </FormControl>
             </div>
@@ -220,7 +260,7 @@ function SMTPSettingsFormGroup() {
                   name={field.name}
                   checked={!!field.value}
                   onCheckedChange={field.onChange}
-                  disabled={field.disabled}
+                  disabled={isTesting || field.disabled}
                   onBlur={field.onBlur}
                 />
               </FormControl>
@@ -229,13 +269,19 @@ function SMTPSettingsFormGroup() {
         )}
       />
 
-      {/* Feature not supported yet */}
-      {/* <div className="col-span-2 text-right">
-        <Button type="button" variant="outline" className="h-10 px-4">
+      <div className="col-span-2 text-right">
+        <Button
+          type="button"
+          variant="outline"
+          className="h-10 px-4"
+          disabled={!isValid || isTesting}
+          loading={isTesting}
+          onClick={() => !isTesting && isValid && testConnection()}
+        >
           <LucideUnplug />
           {tf('testConnection')}
         </Button>
-      </div> */}
+      </div>
     </FormGroup>
   );
 }

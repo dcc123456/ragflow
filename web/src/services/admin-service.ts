@@ -1,6 +1,6 @@
 import { history } from '@/utils/simple-history-util';
 import { message, notification } from 'antd';
-import axios from 'axios';
+import axios, { InternalAxiosRequestConfig } from 'axios';
 
 import { Authorization } from '@/constants/authorization';
 import i18n from '@/locales/config';
@@ -17,11 +17,13 @@ import type {
   LDAPLoginParams,
 } from '@/hooks/use-login-request';
 
-const request = axios.create({
-  timeout: 300000,
-});
+function redirectToLogin() {
+  authorizationUtil.removeAll();
+  history.push(Routes.Admin);
+  window.location.reload();
+}
 
-request.interceptors.request.use((config) => {
+function injectAuthorizationToRequest(config: InternalAxiosRequestConfig) {
   const data = convertTheKeysOfTheObjectToSnake(config.data);
   const params = convertTheKeysOfTheObjectToSnake(config.params) as any;
 
@@ -33,8 +35,13 @@ request.interceptors.request.use((config) => {
   }
 
   return newConfig;
+}
+
+const request = axios.create({
+  timeout: 300000,
 });
 
+request.interceptors.request.use(injectAuthorizationToRequest);
 request.interceptors.response.use(
   (response) => {
     if (response.config.responseType === 'blob') {
@@ -52,8 +59,7 @@ request.interceptors.response.use(
         duration: 3,
       });
 
-      authorizationUtil.removeAll();
-      history.push(Routes.Admin);
+      redirectToLogin();
     } else if (data?.code && data.code !== 0) {
       notification.error({
         message: `${i18n.t('message.hint')}: ${data?.code}`,
@@ -83,8 +89,7 @@ request.interceptors.response.use(
         duration: 3,
       });
 
-      authorizationUtil.removeAll();
-      history.push(Routes.Admin);
+      redirectToLogin();
     } else if (data?.code && data.code !== 0) {
       notification.error({
         message: `${i18n.t('message.hint')}: ${data?.code}`,
@@ -104,6 +109,25 @@ request.interceptors.response.use(
     throw error;
   },
 );
+
+const requestSilent = axios.create({
+  timeout: 300000,
+});
+
+requestSilent.interceptors.request.use(injectAuthorizationToRequest);
+requestSilent.interceptors.response.use((response) => {
+  if (response.config.responseType === 'blob') {
+    return response;
+  }
+
+  const { data } = response ?? {};
+
+  if (data?.code === 401) {
+    redirectToLogin();
+  }
+
+  return response;
+});
 
 type ResponseData<D = NonNullable<unknown>> = {
   code: number;
@@ -272,3 +296,11 @@ export const setVariable = (name: string, value: any) =>
     var_name: name,
     var_value: value,
   });
+
+export const testSMTPConnection = (
+  params: AdminService.TestSMTPConnectionInput,
+) =>
+  requestSilent.post<ResponseData<boolean>>(
+    API.adminTestSMTPConnection,
+    params,
+  );

@@ -36,6 +36,7 @@ export default function useAdminVariables() {
 
       return keyBy(data, 'name') as AdminService.VariableDictionary;
     },
+    retry: false,
     initialData: {} as AdminService.VariableDictionary,
   });
 
