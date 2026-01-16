@@ -46,6 +46,9 @@ export default {
   dataSourceRebuild: (id: string) => `${api_host}/connector/${id}/rebuild`,
   dataSourceLogs: (id: string) => `${api_host}/connector/${id}/logs`,
   dataSourceDetail: (id: string) => `${api_host}/connector/${id}`,
+  dataSourceListFiles: (id: string) => `${api_host}/connector/${id}/list_files`,
+  dataSourceSyncFiles: (id: string) => `${api_host}/connector/${id}/downloads`,
+
   googleWebAuthStart: (type: 'google-drive' | 'gmail') =>
     `${api_host}/connector/google/oauth/web/start?type=${type}`,
   googleWebAuthResult: (type: 'google-drive' | 'gmail') =>

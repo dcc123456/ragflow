@@ -56,4 +56,28 @@ export const startBoxWebAuth = (payload: {
 export const pollBoxWebAuthResult = (payload: { flow_id: string }) =>
   request.post(api.boxWebAuthResult(), { data: payload });
 
+export type DataSourceFileItem = {
+  edit_time: string;
+  created_time: string;
+  type: string;
+  token: string;
+  name: string;
+  children?: DataSourceFileItem[];
+};
+
+export const listDataSourceFiles = (id: string) =>
+  request.post<{ data: DataSourceFileItem[] }>(api.dataSourceListFiles(id));
+
+export const syncDataSourceFiles = (
+  id: string,
+  targetFolderId: string,
+  fileTokens: DataSourceFileItem[],
+) =>
+  request.post(api.dataSourceSyncFiles(id), {
+    data: {
+      folder_id: targetFolderId,
+      token_lst: fileTokens,
+    },
+  });
+
 export default dataSourceService;

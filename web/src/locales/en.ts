@@ -63,6 +63,7 @@ export default {
         tokenPlaceholder: 'e.g. eyJhbGciOiJIUzI1Ni...',
       },
       selected: 'Selected',
+      sync: 'Sync',
     },
     login: {
       loginTitle: 'Sign in to your account',
@@ -1305,6 +1306,14 @@ Example: Virtual Hosted Style`,
       newFolder: 'New folder',
       file: 'File',
       uploadFile: 'Upload file',
+
+      syncFile: 'Sync file',
+      syncFiles: 'Sync files',
+      importData: 'Import data',
+      dataSource: 'Data source',
+      targetFolder: 'Target folder',
+      syncFileSuccess: 'Sync file successfully',
+
       parseOnCreation: 'Parse on creation',
       directory: 'Directory',
       uploadTitle: 'Drag and drop your file here to upload',

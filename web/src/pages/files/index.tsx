@@ -13,14 +13,17 @@ import { useRowSelection } from '@/hooks/logic-hooks/use-row-selection';
 import { useFetchFileList } from '@/hooks/use-file-request';
 import { Upload } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import EnterpriseFeature from '../admin/components/enterprise-feature';
 import { CreateFolderDialog } from './create-folder-dialog';
 import { FileBreadcrumb } from './file-breadcrumb';
 import { FilesTable } from './files-table';
 import { MoveDialog } from './move-dialog';
+import { SyncFileDialog } from './sync-file-dialog';
 import { useBulkOperateFile } from './use-bulk-operate-file';
 import { useHandleCreateFolder } from './use-create-folder';
 import { useHandleMoveFile } from './use-move-file';
 import { useSelectBreadcrumbItems } from './use-navigate-to-folder';
+import { useHandleSyncFile } from './use-sync-file';
 import { useHandleUploadFile } from './use-upload-file';
 
 export default function Files() {
@@ -40,6 +43,14 @@ export default function Files() {
     folderCreateLoading,
     onFolderCreateOk,
   } = useHandleCreateFolder();
+
+  const {
+    syncFileVisible,
+    hideSyncFileModal,
+    showSyncFileModal,
+    syncFileLoading,
+    syncFile,
+  } = useHandleSyncFile();
 
   const {
     pagination,
@@ -106,6 +117,13 @@ export default function Files() {
             <DropdownMenuItem onClick={showFileUploadModal}>
               {t('fileManager.uploadFile')}
             </DropdownMenuItem>
+            <EnterpriseFeature>
+              {() => (
+                <DropdownMenuItem onClick={showSyncFileModal}>
+                  {t('fileManager.syncFile')}
+                </DropdownMenuItem>
+              )}
+            </EnterpriseFeature>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={showFolderCreateModal}>
               {t('fileManager.newFolder')}
@@ -126,6 +144,18 @@ export default function Files() {
         setRowSelection={setRowSelection}
         showMoveFileModal={showMoveFileModal}
       ></FilesTable>
+
+      <EnterpriseFeature>
+        {() => (
+          <SyncFileDialog
+            visible={syncFileVisible}
+            hideModal={hideSyncFileModal}
+            onOk={syncFile}
+            loading={syncFileLoading}
+          />
+        )}
+      </EnterpriseFeature>
+
       {fileUploadVisible && (
         <FileUploadDialog
           hideModal={hideFileUploadModal}
