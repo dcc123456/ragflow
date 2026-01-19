@@ -1,17 +1,27 @@
 import dayjs from 'dayjs';
 
+const hasTimezoneSuffix = (value: string) =>
+  /(?:GMT|Z|[+-]\d{2}:?\d{2})$/.test(value.trim());
+
+const parseDate = (date: any) => {
+  if (typeof date === 'string' && hasTimezoneSuffix(date)) {
+    return dayjs(date).utc();
+  }
+  return dayjs(date);
+};
+
 export function formatDate(date: any) {
   if (!date) {
     return '';
   }
-  return dayjs(date).format('DD/MM/YYYY HH:mm:ss');
+  return parseDate(date).format('DD/MM/YYYY HH:mm:ss');
 }
 
 export function formatTime(date: any) {
   if (!date) {
     return '';
   }
-  return dayjs(date).format('HH:mm:ss');
+  return parseDate(date).format('HH:mm:ss');
 }
 
 export function today() {
@@ -30,14 +40,14 @@ export function formatPureDate(date: any) {
   if (!date) {
     return '';
   }
-  return dayjs(date).format('DD/MM/YYYY');
+  return parseDate(date).format('DD/MM/YYYY');
 }
 
 export function formatStandardDate(date: any) {
   if (!date) {
     return '';
   }
-  const parsedDate = dayjs(date);
+  const parsedDate = parseDate(date);
   if (!parsedDate.isValid()) {
     return '';
   }
