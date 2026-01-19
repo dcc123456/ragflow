@@ -21,7 +21,7 @@ import re
 import secrets
 import time
 import asyncio
-from urllib.parse import urlparse
+from urllib.parse import urlparse, quote
 from datetime import datetime
 import base64
 
@@ -317,6 +317,9 @@ async def oauth_login(channel):
     channel_config = settings.OAUTH_CONFIG.get(channel)
     if not channel_config:
         raise ValueError(f"Invalid channel name: {channel}")
+    if channel_config.get("type") == "ldap":
+        return await ldap_login()
+
     auth_cli = get_auth_client(channel_config)
 
     state = get_uuid()
@@ -404,7 +407,8 @@ async def oauth_callback(channel):
             except Exception as e:
                 rollback_user_registration(user_id)
                 logging.exception(e)
-                return redirect(f"/?error={str(e)}")
+                encoded_error = quote(str(e))
+                return redirect(f"/?error={encoded_error}")
 
         # User exists, try to log in
         user = users[0]
@@ -417,7 +421,8 @@ async def oauth_callback(channel):
         return redirect(f"/?auth={user.get_id()}")
     except Exception as e:
         logging.exception(e)
-        return redirect(f"/?error={str(e)}")
+        encoded_error = quote(str(e))
+        return redirect(f"/?error={encoded_error}")
 
 
 @manager.route("/github_callback", methods=["GET"])  # noqa: F821
