@@ -160,6 +160,18 @@ jobs:
       - name: Start ragflow:nightly
         working-directory: docker
         run: |
+          # Copy res directory to docker directory
+          RUNNER_WORKSPACE_PREFIX=${RUNNER_WORKSPACE_PREFIX:-${HOME}}
+          if [ -d "${RUNNER_WORKSPACE_PREFIX}/res" ]; then
+            echo "Copying ${RUNNER_WORKSPACE_PREFIX}/res to docker directory..."
+            cp -r ${RUNNER_WORKSPACE_PREFIX}/res .
+          else
+            echo "Warning: ${RUNNER_WORKSPACE_PREFIX}/res directory not found"
+          fi
+
+          # Uncomment the res/deepdoc volume mount in docker-compose.yml
+          sed -i 's|# - \./res/deepdoc:/ragflow/rag/res/deepdoc|- ./res/deepdoc:/ragflow/rag/res/deepdoc|g' docker-compose.yml
+
           # Determine runner number (default to 1 if not found)
           RUNNER_NUM=$(sudo docker inspect $(hostname) --format '{{index .Config.Labels "com.docker.compose.container-number"}}' 2>/dev/null || true)
           RUNNER_NUM=${RUNNER_NUM:-1}
