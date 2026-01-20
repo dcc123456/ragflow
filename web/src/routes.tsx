@@ -319,9 +319,7 @@ export const routeConfig = [
     layout: false,
     Component: lazy(
       () =>
-        import(
-          '@/pages/chunk/parsed-result/add-knowledge/components/knowledge-chunk'
-        ),
+        import('@/pages/chunk/parsed-result/add-knowledge/components/knowledge-chunk'),
     ),
     errorElement: <FallbackComponent />,
   },
@@ -410,6 +408,10 @@ export const routeConfig = [
         Component: USE_LDAP
           ? lazy(() => import('@/pages/admin/login-ldap'))
           : lazy(() => import('@/pages/admin/login')),
+      },
+      {
+        path: `${Routes.AdminUserManagement}/:id`,
+        Component: lazy(() => import('@/pages/admin/user-detail')),
       },
       {
         path: Routes.Admin,
