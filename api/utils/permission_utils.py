@@ -292,6 +292,140 @@ def check_dialog_permission(permission):
     return decorator
 
 
+def _filter_accessible_document_ids(tenant_id, operator_id, kb_ids, doc_ids=None):
+    """
+    Strict document access filter.
+    Returns doc_ids the operator can access. Empty list means no access.
+    """
+    from api.db.db_models import Document, Permission, UserTenant
+    from api.db.services.team_service import DepartmentMemberService, DepartmentService, GroupMemberService
+    from common.constants import StatusEnum
+    from api.db import PermissionValue, ResourceType
+
+    if not kb_ids:
+        return []
+    if doc_ids == ["-999"]:
+        return doc_ids
+    if doc_ids:
+        doc_ids = list(dict.fromkeys(doc_ids))
+
+    operator = UserTenant.get_or_none(
+        (UserTenant.id == operator_id) & (UserTenant.status == StatusEnum.VALID.value)
+    )
+    # Tenant owner can access all documents under the KBs.
+    if operator and operator.user_id == tenant_id:
+        if doc_ids:
+            return doc_ids
+        return [
+            d["id"]
+            for d in Document.select(Document.id)
+            .where((Document.kb_id.in_(kb_ids)) & (Document.status == StatusEnum.VALID.value))
+            .dicts()
+        ]
+
+    permission_conditions = (
+        (Permission.tenant_id == tenant_id)
+        & (Permission.resource_type == ResourceType.DOCUMENT)
+        & (Permission.permission >= PermissionValue.PERMISSION_READ.value)
+        & (Permission.status == StatusEnum.VALID.value)
+    )
+    if doc_ids:
+        permission_conditions &= Permission.resource_id.in_(doc_ids)
+
+    allowed_doc_ids = set()
+
+    member_docs = Permission.select(Permission.resource_id).where(
+        permission_conditions & (Permission.member_id == operator_id)
+    )
+    allowed_doc_ids.update([r["resource_id"] for r in member_docs.dicts()])
+
+    groups = GroupMemberService.get_groups_by_member_id(operator_id)
+    group_ids = list({g["group_id"] for g in groups})
+    if group_ids:
+        group_docs = Permission.select(Permission.resource_id).where(
+            permission_conditions & (Permission.group_id.in_(group_ids))
+        )
+        allowed_doc_ids.update([r["resource_id"] for r in group_docs.dicts()])
+
+    departments = DepartmentMemberService.get_all_departments_by_member_id(operator_id)
+    department_id_set = set()
+    for department in departments:
+        department_id_set.update(DepartmentService.get_department_hierarchy(department))
+    if department_id_set:
+        dept_docs = Permission.select(Permission.resource_id).where(
+            permission_conditions & (Permission.department_id.in_(list(department_id_set)))
+        )
+        allowed_doc_ids.update([r["resource_id"] for r in dept_docs.dicts()])
+
+    if not allowed_doc_ids:
+        return []
+
+    allowed_doc_ids = set(
+        [
+            d["id"]
+            for d in Document.select(Document.id)
+            .where(
+                (Document.id.in_(list(allowed_doc_ids)))
+                & (Document.kb_id.in_(kb_ids))
+                & (Document.status == StatusEnum.VALID.value)
+            )
+            .dicts()
+        ]
+    )
+
+    if doc_ids:
+        return list(allowed_doc_ids.intersection(set(doc_ids)))
+    return list(allowed_doc_ids)
+
+
+def filter_accessible_doc_ids_for_user(user_id, kb_ids, doc_ids=None):
+    """
+    Filter document IDs for a user across KBs.
+    Returns (filtered_doc_ids, tenant_ids, error_message).
+    """
+    from api.db.services.user_service import UserTenantService
+    from api.db.services.knowledgebase_service import KnowledgebaseService
+
+    if not kb_ids:
+        return [], [], ""
+
+    tenants = UserTenantService.query(user_id=user_id)
+    if not tenants:
+        return [], [], ""
+
+    tenant_member_id_map = {tenant.tenant_id: tenant.id for tenant in tenants}
+    kb_tenant_map = {}
+    tenant_ids = []
+
+    for kb_id in kb_ids:
+        for tenant in tenants:
+            if KnowledgebaseService.query(tenant_id=tenant.tenant_id, id=kb_id):
+                tenant_ids.append(tenant.tenant_id)
+                kb_tenant_map[kb_id] = tenant.tenant_id
+                break
+        else:
+            return [], [], ""
+
+    filtered_doc_ids = set()
+    for kb_tenant_id in set(kb_tenant_map.values()):
+        member_id = tenant_member_id_map.get(kb_tenant_id)
+        if not member_id:
+            return [], [], ""
+        tenant_kb_ids = [kid for kid, tid in kb_tenant_map.items() if tid == kb_tenant_id]
+        allowed_doc_ids = _filter_accessible_document_ids(
+            kb_tenant_id,
+            member_id,
+            tenant_kb_ids,
+            doc_ids if doc_ids else None,
+        )
+        filtered_doc_ids.update(allowed_doc_ids)
+
+    if not filtered_doc_ids:
+        return [], list(set(tenant_ids)), ""
+
+    return list(filtered_doc_ids), list(set(tenant_ids)), ""
+
+
 def get_owner_id(tid, uid):
     return str(tid).rjust(32, "x") + str(uid).rjust(32, "_")
 

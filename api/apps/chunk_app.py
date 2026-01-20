@@ -29,6 +29,7 @@ from api.db.services.search_service import SearchService
 from api.db.services.user_service import UserTenantService
 from api.utils.api_utils import get_data_error_result, get_json_result, server_error_response, validate_request, \
     get_request_json
+from api.utils.permission_utils import filter_accessible_doc_ids_for_user
 from rag.app.qa import beAdoc, rmPrefix
 from rag.app.tag import label_question
 from rag.nlp import rag_tokenizer, search
@@ -340,17 +341,18 @@ async def retrieval_test():
             metas = DocumentService.get_meta_by_kbs(kb_ids)
             local_doc_ids = await apply_meta_data_filter(meta_data_filter, metas, question, chat_mdl, local_doc_ids)
 
-        tenants = UserTenantService.query(user_id=user_id)
-        for kb_id in kb_ids:
-            for tenant in tenants:
-                if KnowledgebaseService.query(
-                        tenant_id=tenant.tenant_id, id=kb_id):
-                    tenant_ids.append(tenant.tenant_id)
-                    break
-            else:
-                return get_json_result(
-                    data=False, message='Only owner of dataset authorized for this operation.',
-                    code=RetCode.OPERATING_ERROR)
+        local_doc_ids, tenant_ids, err_msg = filter_accessible_doc_ids_for_user(
+            user_id,
+            kb_ids,
+            local_doc_ids if local_doc_ids else None,
+        )
+        if err_msg:
+            return get_json_result(
+                data=False, message=err_msg,
+                code=RetCode.OPERATING_ERROR
+            )
+        if not local_doc_ids:
+            return get_json_result(data={"total": 0, "chunks": [], "labels": {}, "doc_aggs": []})
 
         e, kb = KnowledgebaseService.get_by_id(kb_ids[0])
         if not e:

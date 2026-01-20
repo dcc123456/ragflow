@@ -38,6 +38,7 @@ from api.utils.api_utils import (
     server_error_response,
     validate_request, get_request_json,
 )
+from api.utils.permission_utils import filter_accessible_doc_ids_for_user
 from common.file_utils import get_project_base_directory
 from common.constants import RetCode, VALID_TASK_STATUS, TaskStatus
 from api.utils.web_utils import CONTENT_TYPE_MAP, is_valid_url
@@ -300,6 +301,17 @@ async def list_docs():
 
     if doc_ids_filter is not None:
         doc_ids_filter = list(doc_ids_filter)
+
+    is_admin = settings.ENABLE_ADMIN and UserService.is_admin(current_user.id)
+    if not is_admin:
+        allowed_doc_ids, _, _ = filter_accessible_doc_ids_for_user(
+            current_user.id,
+            [kb_id],
+            doc_ids_filter if doc_ids_filter else None,
+        )
+        if not allowed_doc_ids:
+            return get_json_result(data={"total": 0, "docs": []})
+        doc_ids_filter = allowed_doc_ids
 
     try:
         docs, tol = DocumentService.get_by_kb_id(

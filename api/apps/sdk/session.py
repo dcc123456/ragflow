@@ -39,6 +39,7 @@ from api.db.services.user_service import UserTenantService
 from common.misc_utils import get_uuid
 from api.utils.api_utils import check_duplicate_ids, get_data_openai, get_error_data_result, get_json_result, \
     get_result, get_request_json, server_error_response, token_required, validate_request
+from api.utils.permission_utils import filter_accessible_doc_ids_for_user
 from rag.app.tag import label_question
 from rag.prompts.template import load_prompt
 from rag.prompts.generator import cross_languages, keyword_extraction, chunks_format
@@ -1070,15 +1071,18 @@ async def retrieval_test_embedded():
             metas = DocumentService.get_meta_by_kbs(kb_ids)
             local_doc_ids = await apply_meta_data_filter(meta_data_filter, metas, _question, chat_mdl, local_doc_ids)
 
-        tenants = UserTenantService.query(user_id=tenant_id)
-        for kb_id in kb_ids:
-            for tenant in tenants:
-                if KnowledgebaseService.query(tenant_id=tenant.tenant_id, id=kb_id):
-                    tenant_ids.append(tenant.tenant_id)
-                    break
-            else:
-                return get_json_result(data=False, message="Only owner of dataset authorized for this operation.",
-                                       code=RetCode.OPERATING_ERROR)
+        local_doc_ids, tenant_ids, err_msg = filter_accessible_doc_ids_for_user(
+            tenant_id,
+            kb_ids,
+            local_doc_ids if local_doc_ids else None,
+        )
+        if err_msg:
+            return get_json_result(
+                data=False, message=err_msg,
+                code=RetCode.OPERATING_ERROR
+            )
+        if not local_doc_ids:
+            return get_json_result(data={"total": 0, "chunks": [], "labels": {}, "doc_aggs": []})
 
         e, kb = KnowledgebaseService.get_by_id(kb_ids[0])
         if not e:

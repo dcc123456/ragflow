@@ -38,6 +38,7 @@ from api.db.services.task_service import TaskService, queue_tasks, cancel_all_ta
 from common.metadata_utils import meta_filter, convert_conditions
 from api.utils.api_utils import check_duplicate_ids, construct_json_result, get_error_data_result, get_parser_config, get_result, server_error_response, token_required, \
     get_request_json
+from api.utils.permission_utils import filter_accessible_doc_ids_for_user
 from rag.app.qa import beAdoc, rmPrefix
 from rag.app.tag import label_question
 from rag.nlp import rag_tokenizer, search
@@ -572,6 +573,18 @@ def list_docs(dataset_id, tenant_id):
         doc_ids_filter = meta_filter(metas, convert_conditions(metadata_condition), metadata_condition.get("logic", "and"))
         if metadata_condition.get("conditions") and not doc_ids_filter:
             return get_result(data={"total": 0, "docs": []})
+
+    if document_id:
+        doc_ids_filter = [document_id]
+
+    allowed_doc_ids, _, _ = filter_accessible_doc_ids_for_user(
+        tenant_id,
+        [dataset_id],
+        doc_ids_filter if doc_ids_filter else None,
+    )
+    if not allowed_doc_ids:
+        return get_result(data={"total": 0, "docs": []})
+    doc_ids_filter = allowed_doc_ids
 
     docs, total = DocumentService.get_list(
         dataset_id, page, page_size, orderby, desc, keywords, document_id, name, suffix, run_status_converted, doc_ids_filter
@@ -1531,9 +1544,22 @@ async def retrieval_test(tenant_id):
         doc_ids = meta_filter(metas, convert_conditions(metadata_condition), metadata_condition.get("logic", "and"))
         # If metadata_condition has conditions but no docs match, return empty result
         if not doc_ids and metadata_condition.get("conditions"):
-            return get_result(data={"total": 0, "chunks": [], "doc_aggs": {}})
+            return get_result(data={"total": 0, "chunks": [], "doc_aggs": []})
         if metadata_condition and not doc_ids:
             doc_ids = ["-999"]
+
+    if doc_ids == ["-999"]:
+        return get_result(data={"total": 0, "chunks": [], "doc_aggs": []})
+
+    doc_ids, _, err_msg = filter_accessible_doc_ids_for_user(
+        tenant_id,
+        kb_ids,
+        doc_ids if doc_ids else None,
+    )
+    if err_msg:
+        return get_error_data_result(message=err_msg, code=RetCode.OPERATING_ERROR)
+    if not doc_ids:
+        return get_result(data={"total": 0, "chunks": [], "doc_aggs": []})
     similarity_threshold = float(req.get("similarity_threshold", 0.2))
     vector_similarity_weight = float(req.get("vector_similarity_weight", 0.3))
     top = int(req.get("top_k", 1024))

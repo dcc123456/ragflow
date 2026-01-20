@@ -22,6 +22,7 @@ from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.llm_service import LLMBundle
 from common.metadata_utils import meta_filter, convert_conditions
 from api.utils.api_utils import apikey_required, build_error_result, get_request_json, validate_request
+from api.utils.permission_utils import filter_accessible_doc_ids_for_user
 from rag.app.tag import label_question
 from common.constants import RetCode, LLMType
 from common import settings
@@ -135,6 +136,15 @@ async def retrieval(tenant_id):
             doc_ids.extend(meta_filter(metas, convert_conditions(metadata_condition), metadata_condition.get("logic", "and")))
         if not doc_ids and metadata_condition:
             doc_ids = ["-999"]
+        if doc_ids == ["-999"]:
+            return jsonify({"records": []})
+        doc_ids, _, _ = filter_accessible_doc_ids_for_user(
+            tenant_id,
+            [kb_id],
+            doc_ids if doc_ids else None,
+        )
+        if not doc_ids:
+            return jsonify({"records": []})
         ranks = await settings.retriever.retrieval(
             question,
             embd_mdl,

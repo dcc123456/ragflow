@@ -34,6 +34,7 @@ from api.db.services.langfuse_service import TenantLangfuseService
 from api.db.services.llm_service import LLMBundle
 from common.metadata_utils import apply_meta_data_filter
 from api.db.services.tenant_llm_service import TenantLLMService
+from api.utils.permission_utils import filter_accessible_doc_ids_for_user
 from common.time_utils import current_timestamp, datetime_format
 from graphrag.general.mind_map_extractor import MindMapExtractor
 from rag.app.resume import forbidden_select_fields4resume
@@ -837,6 +838,17 @@ async def async_ask(question, kb_ids, tenant_id, chat_llm_name=None, search_conf
         metas = DocumentService.get_meta_by_kbs(kb_ids)
         doc_ids = await apply_meta_data_filter(meta_data_filter, metas, question, chat_mdl, doc_ids)
 
+    doc_ids, _, err_msg = filter_accessible_doc_ids_for_user(
+        tenant_id,
+        kb_ids,
+        doc_ids if doc_ids else None,
+    )
+    if err_msg:
+        raise Exception(err_msg)
+    if not doc_ids:
+        yield {"answer": "", "reference": {"total": 0, "chunks": [], "doc_aggs": []}}
+        return
+
     kbinfos = await retriever.retrieval(
         question=question,
         embd_mdl=embd_mdl,
@@ -912,6 +924,16 @@ async def gen_mindmap(question, kb_ids, tenant_id, search_config={}):
     if meta_data_filter:
         metas = DocumentService.get_meta_by_kbs(kb_ids)
         doc_ids = await apply_meta_data_filter(meta_data_filter, metas, question, chat_mdl, doc_ids)
+
+    doc_ids, _, err_msg = filter_accessible_doc_ids_for_user(
+        tenant_id,
+        kb_ids,
+        doc_ids if doc_ids else None,
+    )
+    if err_msg:
+        return {"error": err_msg}
+    if not doc_ids:
+        return {"id": "root", "children": []}
 
     ranks = await settings.retriever.retrieval(
         question=question,
