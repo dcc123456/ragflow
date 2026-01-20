@@ -27,6 +27,10 @@ export interface ISubscriptionData {
   plan_name: string;
   resources: IResources;
   subscription_status: SubscriptionStatus;
+  billing_cycle: {
+    start: string;
+    end: string;
+  };
 }
 
 export interface ITotalSpendLineChart {

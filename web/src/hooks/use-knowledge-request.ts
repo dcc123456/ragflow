@@ -351,6 +351,7 @@ export const useFetchKnowledgeBaseConfiguration = (props?: {
     queryKey,
     initialData: {} as IKnowledge,
     gcTime: 0,
+    enabled: !!knowledgeBaseId,
     queryFn: async () => {
       if (isEdit) {
         const { data } = await kbService.get_kb_detail({

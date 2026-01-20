@@ -1,8 +1,8 @@
-import { cn, convertBytesToGb } from '@/lib/utils';
+import { cn, convertKbToGb } from '@/lib/utils';
 import { Check, GitPullRequestArrow } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import ResourceUsage from '../component/resource-usage';
-import { useFetchBaseOverview, useFetchPlanOverview } from '../hook/overview';
+import { useFetchPlanOverview } from '../hook/overview';
 
 const pricingPlans = {
   Trial: 'Free Plan',
@@ -39,39 +39,43 @@ const planTemplate = {
 };
 export const BaseInfo = () => {
   const [currentPlan, setCurrentPlan] = useState(planTemplate);
-  const { data: baseData } = useFetchBaseOverview();
+  // const { data: baseData } = useFetchBaseOverview();
   const { data: planData } = useFetchPlanOverview();
   useEffect(() => {
-    console.log(planData);
     const plan = {
       ...planTemplate,
       name: pricingPlans[planData?.plan_name as keyof typeof pricingPlans],
       storage: {
         ...planTemplate.storage,
-        used: convertBytesToGb(
+        used: convertKbToGb(
           (planData?.resources.plan_storage?.used || 0) +
             (planData?.resources.add_on_storage?.used || 0),
         ),
-        total: convertBytesToGb(
+        total: convertKbToGb(
           (planData?.resources.plan_storage?.limit || 0) +
             (planData?.resources.add_on_storage?.limit || 0),
         ),
-        base: convertBytesToGb(planData?.resources.plan_storage?.limit || 0),
-        addOn: convertBytesToGb(planData?.resources.add_on_storage?.limit || 0),
+        base: convertKbToGb(planData?.resources.plan_storage?.limit || 0),
+        addOn: convertKbToGb(planData?.resources.add_on_storage?.limit || 0),
       },
       apps: {
         ...planTemplate.apps,
-        used: planData?.resources.apps?.used,
-        total: planData?.resources.apps?.limit,
+        used: planData?.resources.apps?.used || 0,
+        total: planData?.resources.apps?.limit || 0,
       },
       teamMember: {
         ...planTemplate.teamMember,
-        used: planData?.resources.members?.used,
-        total: planData?.resources.members?.limit,
+        used: planData?.resources.members?.used || 0,
+        total: planData?.resources.members?.limit || 0,
       },
       apiRequests: {
         ...planTemplate.apiRequests,
-        used: planData?.api_request_limits?.requests_per_minute,
+        used: planData?.api_request_limits?.requests_per_minute || 0,
+      },
+      BillingCycle: {
+        ...planTemplate.BillingCycle,
+        start: planData?.billing_cycle?.start || '',
+        end: planData?.billing_cycle?.end || '',
       },
     };
     setCurrentPlan(plan);
