@@ -185,14 +185,12 @@ async def ldap_login(channel_name: str, username: str, user_password: str):
     users = UserService.query(email=email)
     if users:
         user = users[0]
-        response_data = user.to_json()
         user.access_token = get_uuid()
         login_user(user)
         user.update_time = (current_timestamp(),)
         user.update_date = (datetime_format(datetime.now()),)
         user.save()
-        msg = "Welcome back!"
-        return await construct_response(data=response_data, auth=user.get_id(), message=msg)
+        return redirect("/?auth=%s" % user.get_id())
 
     users = user_register(
         get_uuid(),
