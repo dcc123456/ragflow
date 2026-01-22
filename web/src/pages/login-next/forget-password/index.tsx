@@ -1,3 +1,5 @@
+import { useLocation, useNavigate, useSearchParams } from 'react-router';
+
 import {
   DynamicForm,
   DynamicFormRef,
@@ -11,6 +13,7 @@ import { t } from 'i18next';
 import { debounce } from 'lodash';
 import { ArrowLeft } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import AuthCard from '../components/AuthCard';
 import { formFields } from './constant';
 import {
   useCaptcha,
@@ -32,10 +35,8 @@ const stepMap = {
 };
 
 export const ForgetPassword = ({
-  email: formEmail,
   backLogin,
 }: {
-  email: string;
   backLogin: ({
     email,
     password,
@@ -44,6 +45,9 @@ export const ForgetPassword = ({
     password?: string;
   }) => void;
 }) => {
+  const [sp] = useSearchParams();
+  const formEmail = sp.get('u') || '';
+
   const [fields, setFields] = useState<FormFieldConfig[]>(formFields);
   const formRef = useRef<DynamicFormRef>(null);
   const [step, setStep] = useState(1);
@@ -161,8 +165,9 @@ export const ForgetPassword = ({
         }
         if (step === 1) {
           backLogin?.({});
+        } else {
+          setStep(step + num);
         }
-        setStep(step + num);
       }
       console.log(pass, step);
       if (!pass) {
@@ -184,89 +189,82 @@ export const ForgetPassword = ({
   );
 
   return (
-    <>
-      <div className="flex flex-col items-center justify-center w-full ">
-        <div className="text-center mb-8">
-          <h2 className="text-xl font-semibold text-text-primary">
-            {step === 3 ? t('login.resetPassword') : t('login.checkEmail')}
-          </h2>
-        </div>
-        <div className=" flex flex-col space-y-2 w-full max-w-[540px] min-h-[520px] bg-bg-component backdrop-blur-sm rounded-2xl shadow-xl pt-14 pl-10 pr-10 pb-5 border border-border-button ">
-          <div className="flex flex-col space-y-10">
-            {(step === 1 || step === 2) && (
-              <div
-                className="text-xl"
-                dangerouslySetInnerHTML={{
-                  __html:
-                    step === 1
-                      ? t('login.sendTip')
-                      : step === 2
-                        ? t('login.verifyCodeTip', { email: email })
-                        : '',
-                }}
-              ></div>
-            )}
+    <AuthCard
+      className="mt-24"
+      title={step === 3 ? t('login.resetPassword') : t('login.checkEmail')}
+    >
+      <div className="flex flex-col space-y-10">
+        {(step === 1 || step === 2) && (
+          <div
+            className="text-xl"
+            dangerouslySetInnerHTML={{
+              __html:
+                step === 1
+                  ? t('login.sendTip')
+                  : step === 2
+                    ? t('login.verifyCodeTip', { email: email })
+                    : '',
+            }}
+          ></div>
+        )}
 
-            <DynamicForm.Root
-              ref={formRef}
-              fields={fields}
-              defaultValues={defaultFormValues}
-              onSubmit={() => {}}
-              labelClassName="text-base"
-            ></DynamicForm.Root>
-            <div className="w-full">
-              <Button
-                className="w-full p-5 text-base"
-                variant={'default'}
-                onClick={() => {
-                  handleSubmit(1);
-                }}
-                loading={step === 1 && sendLoading}
-              >
-                {stepMap[step as keyof typeof stepMap].btnName}
-              </Button>
-            </div>
-          </div>
-          <div className="flex w-full justify-between items-center">
-            {step > 0 && (
-              <Button
-                className="text-sm text-text-secondary bg-transparent px-0 hover:bg-transparent"
-                variant={'ghost'}
-                onClick={() => {
-                  handleSubmit(-1);
-                }}
-              >
-                <div className="flex items-center gap-2">
-                  <ArrowLeft />
-                  {t('login.back')}
-                </div>
-              </Button>
-            )}
-            {step === 2 && (
-              <div className="text-sm text-text-secondary flex items-center gap-2">
-                {t('login.notGotEmail')}
-                {isActive && (
-                  <span className="text-sm text-accent-primary">
-                    {seconds}s
-                  </span>
-                )}
-                {!isActive && (
-                  <span
-                    className="text-sm text-accent-primary cursor-pointer"
-                    onClick={() => {
-                      getCaptcha().then((invalid: boolean) => {
-                        if (invalid) showEmbedModal();
-                      });
-                    }}
-                  >
-                    {t('login.resendEmail')}
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
+        <DynamicForm.Root
+          ref={formRef}
+          fields={fields}
+          defaultValues={defaultFormValues}
+          onSubmit={() => {}}
+          labelClassName="text-base"
+        ></DynamicForm.Root>
+        <div className="w-full">
+          <Button
+            className="w-full p-5 text-base"
+            variant={'default'}
+            onClick={() => {
+              handleSubmit(1);
+            }}
+            loading={step === 1 && sendLoading}
+          >
+            {stepMap[step as keyof typeof stepMap]?.btnName}
+          </Button>
         </div>
       </div>
+      <div className="flex w-full justify-between items-center">
+        {step > 0 && (
+          <Button
+            className="text-sm text-text-secondary bg-transparent px-0 hover:bg-transparent"
+            variant={'ghost'}
+            onClick={() => {
+              handleSubmit(-1);
+            }}
+          >
+            <div className="flex items-center gap-2">
+              <ArrowLeft />
+              {t('login.back')}
+            </div>
+          </Button>
+        )}
+        {step === 2 && (
+          <div className="text-sm text-text-secondary flex items-center gap-2">
+            {t('login.notGotEmail')}
+            {isActive && (
+              <span className="text-sm text-accent-primary">{seconds}s</span>
+            )}
+            {!isActive && (
+              <span
+                className="text-sm text-accent-primary cursor-pointer"
+                onClick={() => {
+                  getCaptcha().then((invalid: boolean) => {
+                    if (invalid) showEmbedModal();
+                  });
+                }}
+              >
+                {t('login.resendEmail')}
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+
       {embedVisible && (
         <Modal
           open={embedVisible}
@@ -305,6 +303,22 @@ export const ForgetPassword = ({
           </div>
         </Modal>
       )}
-    </>
+    </AuthCard>
   );
 };
+
+export default function ForgetPasswordContainer() {
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  return (
+    <ForgetPassword
+      backLogin={(state) => {
+        const returnData =
+          state?.email && state?.password ? state : location.state;
+
+        navigate('/login', { state: returnData });
+      }}
+    />
+  );
+}

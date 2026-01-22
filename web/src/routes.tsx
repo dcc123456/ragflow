@@ -68,20 +68,42 @@ export enum Routes {
 
 export const routeConfig = [
   {
-    path: '/login',
-    Component: USE_LDAP
-      ? lazy(() => import('@/pages/login-next/ldap'))
-      : lazy(() => import('@/pages/login-next')),
-    layout: false,
+    Component: lazy(() => import('@/layouts/auth-layout')),
     errorElement: <FallbackComponent />,
-  },
-  {
-    path: '/login-next',
-    Component: USE_LDAP
-      ? lazy(() => import('@/pages/login-next/ldap'))
-      : lazy(() => import('@/pages/login-next')),
-    layout: false,
-    errorElement: <FallbackComponent />,
+    children: [
+      {
+        Component: lazy(
+          () => import('@/pages/login-next/flip-effect-container'),
+        ),
+        errorElement: <FallbackComponent />,
+        children: [
+          {
+            path: '/login',
+            Component: USE_LDAP
+              ? lazy(() => import('@/pages/login-next/ldap'))
+              : lazy(() => import('@/pages/login-next/login')),
+            errorElement: <FallbackComponent />,
+          },
+          {
+            path: '/login-next',
+            Component: USE_LDAP
+              ? lazy(() => import('@/pages/login-next/ldap'))
+              : lazy(() => import('@/pages/login-next/login')),
+            errorElement: <FallbackComponent />,
+          },
+          {
+            path: '/register',
+            Component: lazy(() => import('@/pages/login-next/register')),
+            errorElement: <FallbackComponent />,
+          },
+        ],
+      },
+      {
+        path: '/forget-password',
+        Component: lazy(() => import('@/pages/login-next/forget-password')),
+        errorElement: <FallbackComponent />,
+      },
+    ],
   },
   {
     path: Routes.Logout,

@@ -58,6 +58,14 @@ const buttonVariants = cva(
           hover:bg-state-error-5 hover:text-state-error
           focus-visible:text-state-error focus-visible:bg-state-error-5
         `,
+
+        metallic: `
+          text-bg-base shadow-xs transition-colors
+          border-b-2 border-b-[#00beb4]
+          bg-text-primary
+          hover:bg-text-primary/90 hover:border-b-[#02bcdd]
+          focus-visible:bg-text-primary/90 focus-visible:border-b-[#02bcdd]
+        `,
       },
       size: {
         default: 'h-8 px-2.5 py-1.5 ',
@@ -75,7 +83,8 @@ const buttonVariants = cva(
 );
 
 export interface ButtonProps
-  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
+  extends
+    React.ButtonHTMLAttributes<HTMLButtonElement>,
     VariantProps<typeof buttonVariants> {
   asChild?: boolean;
   loading?: boolean;
