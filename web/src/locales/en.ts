@@ -67,6 +67,7 @@ export default {
     },
     login: {
       loginTitle: 'Sign in to your account',
+      signInWith: 'Sign in with {{name}}',
       signUpTitle: 'Create an account',
       login: 'Sign in',
       signUp: 'Sign up',
@@ -2426,6 +2427,77 @@ Important structured information may include: names, dates, locations, events, k
       roles: 'Roles',
       monitoring: 'Monitoring',
       settings: 'Settings',
+      ssoProvider: 'SSO provider',
+
+      ssoProviderSubtitle:
+        'Choose one identity source for your organization: Cloud IDP or Enterprise directory (LDAP).',
+      ssoProviderRadioGroup: {
+        label: 'Provider',
+        values: {
+          none: 'None',
+          cloud_idp: 'Cloud IDP',
+          ldap: 'LDAP',
+        },
+      },
+      ssoProviderTabs: {
+        cloud_idp: {
+          title: 'Cloud identity providers',
+          github: {
+            title: 'GitHub',
+            dialogTitle: 'Configure GitHub SSO',
+            loginTip: 'Login with GitHub',
+            fields: {
+              clientId: 'Client ID',
+              secretKey: 'Secret key',
+              url: 'URL',
+            },
+          },
+          google: {
+            title: 'Google',
+            dialogTitle: 'Configure Google SSO',
+            loginTip: 'Login with Google',
+            fields: {
+              clientId: 'Client ID',
+              clientSecret: 'Client secret',
+              redirectUri: 'Redirect URI',
+            },
+            placeholder: {
+              redirectUri: 'http://<domain>/v1/user/oauth/callback/google',
+            },
+          },
+          feishu: {
+            title: 'Feishu',
+            dialogTitle: 'Configure Feishu',
+            loginTip: 'Login with Feishu',
+            fields: {
+              appId: 'App ID',
+              appSecret: 'App secret',
+              appAccessTokenUrl: 'App access token URL',
+              userAccessTokenUrl: 'User access token URL',
+            },
+          },
+        },
+        ldap: {
+          title: 'Enterprise directory (LDAP)',
+          addDialogTitle: 'Add LDAP',
+          editDialogTitle: 'Configure LDAP',
+
+          fields: {
+            name: 'Name',
+            url: 'URL',
+            dn: 'DN (Distinguished name)',
+            password: 'Password',
+            searchFilter: 'Search filter',
+            attributeList: 'Attribute list',
+          },
+
+          placeholder: {
+            name: 'Server name',
+            url: 'ldaps://ad01.mycompany.com:636',
+            dn: 'CN=svc_ldap_app, OU=Service...',
+          },
+        },
+      },
 
       settingsSubtitle: 'Manage system-wide configurations.',
       settingsForm: {
@@ -2494,7 +2566,9 @@ Important structured information may include: names, dates, locations, events, k
       role: 'Role',
       user: 'User',
       superuser: 'Superuser',
+      ldapServer: 'LDAP server',
 
+      signInWith: 'Sign in with {{name}}',
       createTime: 'Create time',
       lastLoginTime: 'Last login time',
       lastUpdateTime: 'Last update time',

@@ -1,8 +1,10 @@
 import { zodResolver } from '@hookform/resolvers/zod';
+import { t } from 'i18next';
+import { useCallback, useId } from 'react';
 import { useForm } from 'react-hook-form';
 import z from 'zod';
 
-import { Checkbox } from '@/components/ui/checkbox';
+import { Button } from '@/components/ui/button';
 import {
   Form,
   FormControl,
@@ -14,7 +16,20 @@ import {
 import { Input } from '@/components/ui/input';
 
 import { useTranslate } from '@/hooks/common-hooks';
-import { cn } from '@/lib/utils';
+import {
+  useLoginChannels,
+  useLoginWithChannel,
+} from '@/hooks/use-login-request';
+import { rsaPsw } from '@/utils';
+
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import RememberMeCheckbox from '../components/RememberMeCheckbox';
 
 export interface LDAPLoginFormState {
   username: string;
@@ -23,30 +38,51 @@ export interface LDAPLoginFormState {
   remember: boolean;
 }
 
-interface IProps {
-  id?: string;
-  onSubmit: (data: LDAPLoginFormState) => void;
-}
+const schema = z.object({
+  username: z.string().min(1, { message: t('login.usernamePlaceholder') }),
+  password: z.string().min(1, { message: t('login.passwordPlaceholder') }),
+  ldap_server: z.string().min(1, { message: t('login.ldapServerPlaceholder') }),
+  remember: z.boolean().optional(),
+});
 
-function LoginWithLDAPForm({ id, onSubmit }: IProps) {
+type SchemaType = z.infer<typeof schema>;
+
+function LdapLogin() {
+  const id = useId();
   const { t } = useTranslate('login');
+  const { typeGroupedChannels } = useLoginChannels();
 
-  const schema = z.object({
-    username: z.string().min(1, { message: t('usernamePlaceholder') }),
-    password: z.string().min(1, { message: t('passwordPlaceholder') }),
-    ldap_server: z.string().min(1, { message: t('ldapServerPlaceholder') }),
-    remember: z.boolean().optional(),
-  });
+  const { loginLdap: loginWithChannel, loading: loginLoading } =
+    useLoginWithChannel();
 
-  const form = useForm({
+  const form = useForm<SchemaType>({
+    resolver: zodResolver(schema),
     defaultValues: {
       username: '',
       password: '',
-      ldap_server: '',
+      ldap_server: typeGroupedChannels.ldap?.[0]?.channel || '',
       remember: false,
     },
-    resolver: zodResolver(schema),
   });
+
+  const onSubmit = useCallback(async (data: SchemaType) => {
+    try {
+      const rsaPassword = rsaPsw(data.password) as string;
+
+      await loginWithChannel({
+        serverName: data.ldap_server,
+        username: data.username,
+        password: rsaPassword,
+      });
+
+      // const code = await loginWithChannel({
+      //   username: data.username,
+      //   password: rsaPassword,
+      // });
+    } catch (error) {
+      console.error('Login failed:', error);
+    }
+  }, []);
 
   return (
     <Form {...form}>
@@ -103,8 +139,7 @@ function LoginWithLDAPForm({ id, onSubmit }: IProps) {
             <FormItem>
               <FormLabel required>{t('ldapServerLabel')}</FormLabel>
               <FormControl>
-                {/* TODO: subject to change */}
-                {/* <Select
+                <Select
                   name={field.name}
                   value={field.value}
                   onValueChange={field.onChange}
@@ -116,22 +151,16 @@ function LoginWithLDAPForm({ id, onSubmit }: IProps) {
                     disabled={field.disabled}
                     onBlur={field.onBlur}
                   >
-                    <SelectValue
-                      placeholder={t('ldapServerPlaceholder')}
-                    />
+                    <SelectValue placeholder={t('ldapServerPlaceholder')} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="unknown">
-                      Default
-                    </SelectItem>
+                    {typeGroupedChannels.ldap?.map((ch) => (
+                      <SelectItem value={ch.channel} key={ch.channel}>
+                        {ch.display_name}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
-                </Select> */}
-
-                <Input
-                  {...field}
-                  className="h-10"
-                  placeholder={t('ldapServerPlaceholder')}
-                />
+                </Select>
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -143,30 +172,32 @@ function LoginWithLDAPForm({ id, onSubmit }: IProps) {
           name="remember"
           render={({ field }) => (
             <FormItem>
-              <FormControl>
-                <div className="flex gap-2">
-                  <Checkbox
-                    checked={field.value}
+              <FormLabel>
+                <FormControl>
+                  <RememberMeCheckbox
+                    {...field}
+                    checked={!!field.value}
                     onCheckedChange={field.onChange}
                   />
-
-                  <FormLabel
-                    className={cn('hover:text-text-primary', {
-                      'text-text-disabled': !field.value,
-                      'text-text-primary': field.value,
-                    })}
-                  >
-                    {t('rememberMe')}
-                  </FormLabel>
-                </div>
-              </FormControl>
+                </FormControl>
+              </FormLabel>
               <FormMessage />
             </FormItem>
           )}
         />
+
+        <Button
+          type="submit"
+          variant="metallic"
+          loading={loginLoading}
+          block
+          className="!mt-12 h-10"
+        >
+          {t('login')}
+        </Button>
       </form>
     </Form>
   );
 }
 
-export default LoginWithLDAPForm;
+export default LdapLogin;

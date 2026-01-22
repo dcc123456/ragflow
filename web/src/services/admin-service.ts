@@ -1,6 +1,9 @@
 import { history } from '@/utils/simple-history-util';
 import { message, notification } from 'antd';
-import axios, { InternalAxiosRequestConfig } from 'axios';
+import axios, {
+  type AxiosResponse,
+  type InternalAxiosRequestConfig,
+} from 'axios';
 
 import { Authorization } from '@/constants/authorization';
 import i18n from '@/locales/config';
@@ -16,6 +19,7 @@ import type {
   EmailLoginParams,
   LDAPLoginParams,
 } from '@/hooks/use-login-request';
+import { keyBy } from 'lodash';
 
 function redirectToLogin() {
   authorizationUtil.removeAll();
@@ -281,21 +285,69 @@ export const importWhitelistFromExcel = (file: File) => {
 export const getSystemVersion = () =>
   request.get<ResponseData<{ version: string }>>(API.adminGetSystemVersion);
 
-export const listVariables = () =>
-  request.get<ResponseData<AdminService.VariableRaw[]>>(API.adminVariables);
+function castFromInt(value: string): number | null {
+  const parsed = parseInt(value);
+  return isNaN(parsed) ? null : parsed;
+}
+
+export const listVariables = async () => {
+  const resp = await request.get<
+    ResponseData<ValueOf<AdminService.SystemVariables.All>[]>
+  >(API.adminVariables);
+
+  if (resp.data?.data) {
+    const mappedData = resp.data.data.map((variable) => {
+      switch (variable.data_type) {
+        case 'bool':
+          return {
+            ...variable,
+            value: variable.value === 'true' || variable.value === 'True',
+          };
+        case 'integer':
+          return {
+            ...variable,
+            value: castFromInt(variable.value),
+          };
+        default:
+          return variable;
+      }
+    });
+
+    // In-place modification
+    // @ts-ignore
+    resp.data.data = keyBy(mappedData, 'name');
+  }
+
+  return resp as unknown as AxiosResponse<
+    ResponseData<
+      AdminService.SystemVariables.RetypeByTypeAnnotation<AdminService.SystemVariables.All>
+    >
+  >;
+};
 
 export const getVariable = (name: string) =>
-  request.get<ResponseData<AdminService.VariableRaw>>(API.adminVariables, {
-    params: {
-      var_name: name,
+  request.get<ResponseData<AdminService.SystemVariables.VariableRaw>>(
+    API.adminVariables,
+    {
+      params: {
+        var_name: name,
+      },
     },
-  });
+  );
 
 export const setVariable = (name: string, value: any) =>
   request.put<ResponseData<never>>(API.adminVariables, {
     var_name: name,
     var_value: value,
   });
+
+export const deleteLdapServer = (serverId: string) => {
+  return request.delete<ResponseData<never>>(API.adminVariables, {
+    data: {
+      source: `ldap|${serverId}`,
+    },
+  });
+};
 
 export const testSMTPConnection = (
   params: AdminService.TestSMTPConnectionInput,

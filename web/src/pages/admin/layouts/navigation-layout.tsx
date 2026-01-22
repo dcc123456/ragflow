@@ -20,6 +20,7 @@ import { getSystemVersion, logout } from '@/services/admin-service';
 
 import authorizationUtil from '@/utils/authorization-util';
 
+import { LucideCloudKey } from '../components/icons/LucideCloudKey';
 import ThemeSwitch from '../components/theme-switch';
 import useAdminVariables from '../hooks/useAdminVariables';
 import { IS_ENTERPRISE } from '../utils';
@@ -75,6 +76,11 @@ const AdminNavigationLayout = () => {
               name: t('admin.settings'),
               icon: <LucideSettings className="size-[1em]" />,
             },
+            {
+              path: Routes.AdminSSOProviders,
+              name: t('admin.ssoProvider'),
+              icon: <LucideCloudKey className="size-[1em]" />,
+            },
           ]
         : []),
     ],
@@ -93,7 +99,7 @@ const AdminNavigationLayout = () => {
 
   return (
     <main className="w-screen h-screen flex flex-row px-6 pt-12 pb-6 dark:*:focus-visible:ring-white">
-      <aside className="w-72 mr-6 flex flex-col gap-6">
+      <aside className="w-72 mr-6 flex-none flex flex-col gap-6">
         <div className="flex items-center mb-6">
           <img className="size-8 mr-5" src="/logo.svg" alt="logo" />
           <span className="text-xl font-bold">{t('admin.title')}</span>

@@ -131,18 +131,17 @@ export default function BasicRegister() {
             </FormItem>
           )}
         />
-      </form>
 
-      <Button
-        type="submit"
-        variant="metallic"
-        form={id}
-        loading={registerLoading}
-        block
-        className="mt-16 h-10"
-      >
-        {t('continue')}
-      </Button>
+        <Button
+          type="submit"
+          variant="metallic"
+          loading={registerLoading}
+          block
+          className="!mt-12 h-10"
+        >
+          {t('continue')}
+        </Button>
+      </form>
 
       <div className="mt-10 text-right">
         <p className="text-sm text-text-disabled">

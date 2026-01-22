@@ -59,7 +59,7 @@ function AdminSettings() {
       <Card className="!shadow-none relative h-full bg-transparent rounded-xl overflow-hidden flex flex-col">
         <Spotlight />
 
-        <CardHeader className="border-b border-border-button">
+        <CardHeader className="border-b-0.5 border-border-button">
           <CardTitle className="h-10 flex items-center">
             {t('admin.settings')}
           </CardTitle>

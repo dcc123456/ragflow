@@ -1,7 +1,7 @@
 import { lazy } from 'react';
 import { createBrowserRouter, Navigate } from 'react-router';
 import FallbackComponent from './components/fallback-component';
-import { IS_ENTERPRISE, USE_LDAP } from './pages/admin/utils';
+import { IS_ENTERPRISE } from './pages/admin/utils';
 
 export enum Routes {
   Root = '/',
@@ -64,6 +64,7 @@ export enum Routes {
   AdminRoles = `${Admin}/roles`,
   AdminMonitoring = `${Admin}/monitoring`,
   AdminSettings = `${Admin}/settings`,
+  AdminSSOProviders = `${Admin}/sso`,
 }
 
 export const routeConfig = [
@@ -79,16 +80,12 @@ export const routeConfig = [
         children: [
           {
             path: '/login',
-            Component: USE_LDAP
-              ? lazy(() => import('@/pages/login-next/ldap'))
-              : lazy(() => import('@/pages/login-next/login')),
+            Component: lazy(() => import('@/pages/login-next/login')),
             errorElement: <FallbackComponent />,
           },
           {
             path: '/login-next',
-            Component: USE_LDAP
-              ? lazy(() => import('@/pages/login-next/ldap'))
-              : lazy(() => import('@/pages/login-next/login')),
+            Component: lazy(() => import('@/pages/login-next/login')),
             errorElement: <FallbackComponent />,
           },
           {
@@ -427,9 +424,7 @@ export const routeConfig = [
     children: [
       {
         path: '',
-        Component: USE_LDAP
-          ? lazy(() => import('@/pages/admin/login-ldap'))
-          : lazy(() => import('@/pages/admin/login')),
+        Component: lazy(() => import('@/pages/admin/login')),
       },
       {
         path: `${Routes.AdminUserManagement}/:id`,
@@ -467,6 +462,10 @@ export const routeConfig = [
                 {
                   path: Routes.AdminSettings,
                   Component: lazy(() => import('@/pages/admin/settings')),
+                },
+                {
+                  path: Routes.AdminSSOProviders,
+                  Component: lazy(() => import('@/pages/admin/sso-providers')),
                 },
               ]
             : []),

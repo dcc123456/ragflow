@@ -513,12 +513,14 @@ function AdminUserManagement() {
                 <col width="*" />
                 <col className="w-[22%]" />
 
+                {USE_LDAP && <col width="*" />}
+
                 <EnterpriseFeature>
                   {() => <col className="w-[12%]" />}
                 </EnterpriseFeature>
 
                 <col className="w-[8%]" />
-                <col className="w-[15%]" />
+                <col className="w-[8%]" />
                 <col className="w-52" />
               </colgroup>
 

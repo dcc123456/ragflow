@@ -223,7 +223,7 @@ function AdminLogin() {
                 </Form>
               </CardContent>
 
-              <CardFooter className="px-10 pt-8 pb-14">
+              <CardFooter className="block px-10 pt-8 pb-14">
                 <Button
                   form={formId}
                   variant="highlighted"

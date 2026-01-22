@@ -1,9 +1,10 @@
-import { useCallback, useId } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router';
+import { keyBy } from 'lodash';
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { t } from 'i18next';
+import { useCallback, useId } from 'react';
 import { useForm } from 'react-hook-form';
+import { Link, useLocation, useNavigate } from 'react-router';
 import z from 'zod';
 
 import {
@@ -17,11 +18,20 @@ import {
 import { Input } from '@/components/ui/input';
 import { useTranslate } from '@/hooks/common-hooks';
 
+import SvgIcon from '@/components/svg-icon';
 import { Button } from '@/components/ui/button';
-import { useLogin } from '@/hooks/use-login-request';
+import {
+  useLogin,
+  useLoginChannels,
+  useLoginWithChannel,
+} from '@/hooks/use-login-request';
 import { useSystemConfig } from '@/hooks/use-system-request';
 import { rsaPsw } from '@/utils';
 import RememberMeCheckbox from '../components/RememberMeCheckbox';
+
+import { SSO_CLOUD_IDP_PROVIDERS } from '@/pages/admin/sso-providers/cloud-idp';
+
+const SSO_PROVIDER_ICON_MAP = keyBy(SSO_CLOUD_IDP_PROVIDERS, 'key');
 
 const schema = z.object({
   email: z
@@ -42,6 +52,9 @@ export default function BasicLogin() {
   const { t } = useTranslate('login');
   const { login, loading: loginLoading } = useLogin();
   const { config } = useSystemConfig();
+  const { currentChannelType, typeGroupedChannels } = useLoginChannels();
+
+  const { login: loginWithChannel } = useLoginWithChannel();
 
   const form = useForm<SchemaType>({
     resolver: zodResolver(schema),
@@ -140,18 +153,17 @@ export default function BasicLogin() {
             </FormItem>
           )}
         />
-      </form>
 
-      <Button
-        type="submit"
-        variant="metallic"
-        form={id}
-        loading={loginLoading}
-        block
-        className="mt-16 h-10"
-      >
-        {t('login')}
-      </Button>
+        <Button
+          type="submit"
+          variant="metallic"
+          loading={loginLoading}
+          block
+          className="!mt-12 h-10"
+        >
+          {t('login')}
+        </Button>
+      </form>
 
       <div className="mt-2 text-right">
         <Link
@@ -165,6 +177,31 @@ export default function BasicLogin() {
           {t('forgetPassword')}
         </Link>
       </div>
+
+      {currentChannelType === 'sso' && typeGroupedChannels.sso?.length ? (
+        <div className="mt-8 flex justify-center items-center gap-2">
+          {typeGroupedChannels.sso.map((ch) => {
+            const IconComponent =
+              SSO_PROVIDER_ICON_MAP[ch.channel as any]?.Icon;
+
+            return (
+              <Button
+                key={ch.channel}
+                className=""
+                onClick={() => loginWithChannel(ch.channel)}
+              >
+                {IconComponent ? (
+                  <IconComponent />
+                ) : (
+                  <SvgIcon name="sso" width={20} height={20} />
+                )}
+
+                {t('signInWith', { name: ch.display_name })}
+              </Button>
+            );
+          })}
+        </div>
+      ) : null}
 
       {allowRegister && (
         <div className="mt-10 text-right">

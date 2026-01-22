@@ -6,7 +6,9 @@ import { CheckboxProps } from '@radix-ui/react-checkbox';
 import { useTranslate } from '@/hooks/common-hooks';
 import { cn } from '@/lib/utils';
 
-type Props = React.PropsWithChildren<CheckboxProps>;
+type Props = Omit<React.PropsWithChildren<CheckboxProps>, 'value'> & {
+  value?: any;
+};
 
 const RememberMeCheckbox = forwardRef<React.ElementRef<typeof Checkbox>, Props>(
   function RememberMeCheckbox(props, ref) {

@@ -3,9 +3,13 @@ import { Authorization } from '@/constants/authorization';
 import userService, {
   getLoginChannels,
   loginWithChannel,
+  loginWithLdap,
+  type LoginWithLdapInput,
 } from '@/services/user-service';
 import authorizationUtil, { redirectToLogin } from '@/utils/authorization-util';
 import { useMutation, useQuery } from '@tanstack/react-query';
+import { groupBy } from 'lodash';
+import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
 export interface ILoginRequestBody {
@@ -26,13 +30,39 @@ export interface ILoginChannel {
 export const useLoginChannels = () => {
   const { data, isLoading } = useQuery({
     queryKey: ['loginChannels'],
-    queryFn: async () => {
+    queryFn: async (): Promise<ILoginChannel[]> => {
       const { data: res = {} } = await getLoginChannels();
       return res.data || [];
     },
+    initialData: [],
   });
 
-  return { channels: data as ILoginChannel[], loading: isLoading };
+  const typeGroupedChannels = useMemo(
+    () =>
+      groupBy(data, (item) =>
+        item.channel.startsWith('ldap') ? 'ldap' : 'sso',
+      ),
+    [data],
+  );
+
+  const currentChannelType = useMemo((): 'sso' | 'ldap' | undefined => {
+    if (typeGroupedChannels.sso?.length) {
+      return 'sso';
+    }
+
+    if (typeGroupedChannels.ldap?.length) {
+      return 'ldap';
+    }
+
+    return undefined;
+  }, [typeGroupedChannels]);
+
+  return {
+    channels: data,
+    currentChannelType,
+    typeGroupedChannels,
+    loading: isLoading,
+  };
 };
 
 export const useLoginWithChannel = () => {
@@ -44,7 +74,18 @@ export const useLoginWithChannel = () => {
     },
   });
 
-  return { loading, login: mutateAsync };
+  const { mutateAsync: loginLdap } = useMutation({
+    mutationFn: async (inputs: LoginWithLdapInput) => {
+      const { data = {} } = await loginWithLdap(inputs);
+      return data;
+    },
+  });
+
+  return {
+    loading,
+    login: mutateAsync,
+    loginLdap,
+  };
 };
 
 export type EmailLoginParams = {

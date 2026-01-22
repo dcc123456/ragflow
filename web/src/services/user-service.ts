@@ -153,6 +153,25 @@ export const getLoginChannels = () => request.get(api.login_channels);
 export const loginWithChannel = (channel: string) =>
   (window.location.href = api.login_channel(channel));
 
+export type LoginWithLdapInput = {
+  serverName: string;
+  username: string;
+  password: string;
+};
+
+export const loginWithLdap = ({
+  serverName,
+  username,
+  password,
+}: LoginWithLdapInput) => {
+  return request.get(api.login_channel(serverName), {
+    params: {
+      username,
+      password,
+    },
+  });
+};
+
 export const listTenantUser = (tenantId: string) =>
   request.get(api.listTenantUser(tenantId));
 
