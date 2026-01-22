@@ -24,6 +24,7 @@ from api.db.services.api_service import APITokenService
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.user_service import UserTenantService
 from api.utils.api_utils import (
+    get_request_json,
     get_json_result,
     get_data_error_result,
     server_error_response,
@@ -340,3 +341,17 @@ def get_config():
 @manager.route('/version', methods=['GET'])  # noqa: F821
 def get_version():
     return get_json_result(data=True)
+
+
+@manager.route('/refresh_settings', methods=['POST'])  # noqa: F821
+async def refresh_settings():
+    from api.db.services.system_settings_service import SystemSettingsService
+    try:
+        data = await get_request_json()
+        if data.get("oauth"):
+            SystemSettingsService.refresh_oauth_config()
+        if data.get("smtp"):
+            SystemSettingsService.refresh_smtp_config()
+        return get_json_result(data=True)
+    except Exception as e:
+        return server_error_response(e)

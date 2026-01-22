@@ -17,6 +17,7 @@
 import os
 import logging
 import re
+import requests
 from werkzeug.security import check_password_hash
 from common.constants import ActiveEnum
 from api.db.services import UserService
@@ -29,10 +30,12 @@ from api.db.services.white_list_service import WhiteListService
 from api.db.services.system_settings_service import SystemSettingsService
 from api.utils.crypt import decrypt
 from api.utils import health_utils
+from common.time_utils import current_timestamp, timestamp_to_date
 
 from api.common.exceptions import AdminException, UserAlreadyExistsError, UserNotFoundError, RoleNotFoundError
 from config import SERVICE_CONFIGS
 from common.settings import ENABLE_WHITELIST
+from common import settings
 
 
 class UserMgr:
@@ -341,15 +344,60 @@ class SettingsMgr:
             raise AdminException(f"Can't update more than 1 setting: {name}")
         elif allow_upsert:
             # insert new setting
+            timestamp = current_timestamp()
+            cur_datetime = timestamp_to_date(timestamp)
             setting_dict = {
                 "name": name,
                 "source": name.split(".")[0],
-                "data_type": type(value).__name__,
-                "value": value
+                "data_type": {"int": "integer", "str": "string"}.get(type(value).__name__, type(value).__name__),
+                "value": value,
+                "create_time": timestamp,
+                "create_date": cur_datetime,
+                "update_time": timestamp,
+                "update_date": cur_datetime,
             }
-            SystemSettingsService.insert(**setting_dict)
+            SystemSettingsService.save(**setting_dict)
         else:
             raise AdminException(f"No setting: {name}")
+
+    @staticmethod
+    def delete_settings_by_source(source: str):
+        if source == "ldap|default" or not source.startswith("ldap|"):
+            raise AdminException(f"Can't delete setting: {source}")
+        return SystemSettingsService.delete_by_source(source)
+
+    @staticmethod
+    def delete_setting_by_name(name: str):
+        if name.startswith("ldap|default") or not name.startswith("ldap|"):
+            raise AdminException(f"Can't delete setting: {name}")
+        return SystemSettingsService.delete_by_name(name)
+
+    @staticmethod
+    def delete_setting_by_source_and_name(source: str, name: str):
+        if source == "ldap|default" or not source.startswith("ldap|"):
+            raise AdminException(f"Can't delete setting: {source}")
+        return SystemSettingsService.delete_by_source_and_name(source, name)
+
+    @staticmethod
+    def refresh_oauth_config():
+        SystemSettingsService.refresh_oauth_config()
+
+    @staticmethod
+    def refresh_smtp_config():
+        SystemSettingsService.refresh_smtp_config()
+
+    @staticmethod
+    def refresh_ragflow_settings(refresh_oauth: bool, refresh_smtp: bool):
+        url = f"http://{settings.HOST_IP}:{settings.HOST_PORT}/v1/system/refresh_settings"
+        if '0.0.0.0' in url:
+            url = url.replace('0.0.0.0', '127.0.0.1')
+        response = requests.post(url, json={
+            "oauth": refresh_oauth,
+            "smtp": refresh_smtp
+        })
+        if response.status_code != 200:
+            raise AdminException(f"Failed to refresh ragflow settings: {response.text}")
+
 
 class ConfigMgr:
 

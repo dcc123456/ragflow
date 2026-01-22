@@ -438,7 +438,7 @@ def set_variable():
             return error_response("Var value is required", 400)
         var_name: str = data['var_name']
         var_value: str = data['var_value']
-        if re.match(r'^ldap\|(.+?)\.(enabled|name|url|dn|password|search_field|attribute_list)$', var_name):
+        if re.match(r'^ldap\|(.+?)\.(enabled|name|url|dn|password|search_filter|attribute_list)$', var_name):
             # allow adding new ldap
             SettingsMgr.update_by_name(var_name, var_value, allow_upsert=True)
         else:
@@ -466,6 +466,48 @@ def get_variable():
         var_name: str = data['var_name']
         res = SettingsMgr.get_by_name(var_name)
         return success_response(res)
+    except AdminException as e:
+        return error_response(str(e), 400)
+    except Exception as e:
+        return error_response(str(e), 500)
+
+@admin_bp.route('/variables', methods=['DELETE'])
+@login_required
+@check_admin_auth
+def delete_variable():
+    try:
+        data = request.get_json()
+        if not data or ('var_name' not in data and 'source' not in data):
+            return error_response("Var name or source is required", 400)
+        var_name: str = data.get('var_name')
+        source: str = data.get('source')
+        if var_name and source:
+            res = SettingsMgr.delete_setting_by_source_and_name(source, var_name)
+            return success_response(res)
+        elif source:
+            res = SettingsMgr.delete_settings_by_source(source)
+            return success_response(res)
+        else:
+            res = SettingsMgr.delete_setting_by_name(var_name)
+            return success_response(res)
+
+    except AdminException as e:
+        return error_response(str(e), 400)
+    except Exception as e:
+        return error_response(str(e), 500)
+
+@admin_bp.route('/variables/refresh', methods=['POST'])
+@login_required
+@check_admin_auth
+def refresh_variables():
+    try:
+        data = request.get_json()
+        if data.get("oauth"):
+            SettingsMgr.refresh_oauth_config()
+        if data.get("smtp"):
+            SettingsMgr.refresh_smtp_config()
+        SettingsMgr.refresh_ragflow_settings(data.get("oauth", False), data.get("smtp", False))
+        return success_response(None, "Refresh variables successfully")
     except AdminException as e:
         return error_response(str(e), 400)
     except Exception as e:

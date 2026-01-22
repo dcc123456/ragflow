@@ -65,21 +65,24 @@ from rag.utils.redis_conn import REDIS_CONN
 from common.http_client import async_request
 
 
-async def ldap_login():
-    req = await request.get_json()
-    username = req.get("username", "")
-    login_password = base64.b64decode(decrypt(req.get("password")))
+async def ldap_login(channel_name: str, username: str, user_password: str):
+    login_password = base64.b64decode(decrypt(user_password))
     if isinstance(login_password, (bytes, bytearray)):
         login_password = login_password.decode("utf-8")
-    login_ldap_server = req.get("ldap_server", None)
 
-    ldap_conf = settings.LDAP_OAUTH or {}
-    url = login_ldap_server or ldap_conf.get("url")
+    ldap_conf = settings.OAUTH_CONFIG.get(channel_name, None)
+    if not ldap_conf:
+        return get_json_result(
+            data=False,
+            code=RetCode.NOT_FOUND,
+            message="LDAP configuration not found.",
+        )
+
+    url = ldap_conf.get("url")
     dn =  ldap_conf.get("dn")
     password = ldap_conf.get("password")
     timeout = int(ldap_conf.get("timeout", 10))
     search_base = ldap_conf.get("search_base")
-    login_channel = ldap_conf.get("login_channel", "LDAP")
     if not url or not dn:
         return get_json_result(
             data=False,
@@ -198,7 +201,7 @@ async def ldap_login():
             "email": email,
             "avatar": avatar,
             "nickname": nickname,
-            "login_channel": login_channel,
+            "login_channel": channel_name,
             "last_login_time": get_format_time(),
             "is_superuser": False,
         },
@@ -248,9 +251,6 @@ async def login():
         return get_json_result(data=False, code=RetCode.AUTHENTICATION_ERROR, message="Unauthorized!")
 
     email = json_body.get("email", "").lower()
-    if email != "admin@ragflow.io" and settings.LDAP_OAUTH and settings.LDAP_OAUTH.get("url"):
-        return await ldap_login()
-
     users = UserService.query(email=email)
     if not users:
         return get_json_result(
@@ -302,7 +302,7 @@ async def get_login_channels():
             channels.append(
                 {
                     "channel": channel,
-                    "display_name": config.get("display_name", channel.title()),
+                    "display_name": config.get("display_name", config.get("name", channel.title())),
                     "icon": config.get("icon", "sso"),
                 }
             )
@@ -318,7 +318,9 @@ async def oauth_login(channel):
     if not channel_config:
         raise ValueError(f"Invalid channel name: {channel}")
     if channel_config.get("type") == "ldap":
-        return await ldap_login()
+        user_name = request.args.get("username")
+        password = request.args.get("password")
+        return await ldap_login(channel, user_name, password)
 
     auth_cli = get_auth_client(channel_config)
 
