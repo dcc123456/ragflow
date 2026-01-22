@@ -179,144 +179,95 @@ declare namespace AdminService {
   };
 
   export namespace SystemVariables {
-    type TypecastMap = {
-      string: string;
-      bool: boolean;
-      integer: number;
-    };
-
-    type VariableDataRaw<
-      N extends string = string,
-      DT extends keyof TypecastMap = keyof TypecastMap,
-      S extends string = 'variable',
-    > = {
-      source: S;
-      data_type: DT;
-      name: N;
-      value: string;
-    };
-
-    type GetDataRaw<T extends object, S extends string = 'variable'> = {
-      [K in keyof T]: VariableDataRaw<K, T[K], S>;
-    };
-
-    type RetypeByTypeAnnotation<
-      D extends Record<
-        string,
-        VariableDataRaw<string, keyof TypecastMap, unknown>
-      >,
-      M extends TypecastMap = TypecastMap,
-    > = {
-      [K in keyof D]: Omit<D[K], 'value'> & {
-        value: M[D[K]['data_type']] extends number
-          ? number | null
-          : M[D[K]['data_type']];
+    namespace Utilities {
+      type DefineVariables<
+        Defs extends Record<string, Types.DataType>,
+        NamePrefix extends string = '',
+        Source extends Types.SourceName = 'variable',
+      > = {
+        [N in keyof Defs]: {
+          source: Source;
+          data_type: Defs[N];
+          name: '' extends NamePrefix
+            ? N
+            : `${NamePrefix}${Types.NameSeparator}${N}`;
+          value: Types.ValueDataTypeMap[Defs[N]];
+        };
       };
-    };
 
-    type NameSeparator = '.';
-
-    export namespace Common {
-      type MailFieldNamePrefix = 'mail';
-
-      type BasicFieldNames = 'enable_whitelist' | 'default_role';
-      type MailFieldNames =
-        | 'server'
-        | 'port'
-        | 'timeout'
-        | 'username'
-        | 'password'
-        | 'default_sender'
-        | 'use_ssl'
-        | 'use_tls';
-
-      type Basic = GetDataRaw<{
-        enable_whitelist: 'bool';
-        default_role: 'string';
-      }>;
-
-      type Mail = GetDataRaw<
-        PrefixKeys<
-          {
-            server: 'string';
-            port: 'integer';
-            timeout: 'integer';
-            username: 'string';
-            password: 'string';
-            default_sender: 'string';
-            use_ssl: 'bool';
-            use_tls: 'bool';
-          },
-          MailFieldNamePrefix
-        >
-      >;
-
-      type All = Basic & Mail;
+      type ExtractValue<T extends Record<string, { value: DataType }>> = {
+        [K in keyof T]: T[K]['value'];
+      };
     }
+
+    namespace Types {
+      type NameSeparator = '.';
+      type ValueDataTypeMap = {
+        bool: boolean;
+        integer: number | null; // null if the value is not a number
+        string: string;
+      };
+
+      type SourceName =
+        | 'variable'
+        | 'google|sso'
+        | 'github|sso'
+        | 'feishu|sso'
+        | `ldap|${string}`;
+      type DataType = keyof ValueDataTypeMap;
+
+      type BoolType<O = object> = O & { data_type: 'bool'; value: boolean };
+      type IntegerType<O = object> = O & {
+        data_type: 'integer';
+        value?: number;
+      };
+      type StringType<O = object> = O & { data_type: 'string'; value: string };
+    }
+
+    type Basic = Utilities.DefineVariables<{
+      enable_whitelist: 'bool';
+      default_role: 'string';
+    }>;
+
+    type Mail = Utilities.DefineVariables<
+      {
+        server: 'string';
+        port: 'integer';
+        timeout: 'integer';
+        username: 'string';
+        password: 'string';
+        default_sender: 'string';
+        use_ssl: 'bool';
+        use_tls: 'bool';
+      },
+      'mail'
+    >;
 
     export namespace SSO {
       export namespace IDP {
-        type ProviderId = 'google' | 'github' | 'feishu';
-      }
-
-      export namespace LDAP {
-        type ServerId = string;
-      }
-
-      type GoogleFieldNamePrefix = 'google|sso';
-      type GitHubFieldNamePrefix = 'github|sso';
-      type FeishuFieldNamePrefix = 'feishu|sso';
-      type LDAPFieldNamePrefix = `ldap|${string}`;
-
-      type GoogleFieldNames =
-        | 'enabled'
-        | 'client_id'
-        | 'client_secret'
-        | 'redirect_uri';
-      type GitHubFieldNames = 'enabled' | 'client_id' | 'secret_key' | 'url';
-      type FeishuFieldNames =
-        | 'enabled'
-        | 'app_id'
-        | 'app_secret'
-        | 'app_access_token_url'
-        | 'user_access_token_url';
-      type LDAPFieldNames =
-        | 'enabled'
-        | 'name'
-        | 'url'
-        | 'dn'
-        | 'password'
-        | 'search_filter'
-        | 'attribute_list';
-
-      type Google = GetDataRaw<
-        PrefixKeys<
+        export type ProviderId = 'google' | 'github' | 'feishu';
+        export type Google = Utilities.DefineVariables<
           {
             enabled: 'bool';
             client_id: 'string';
             client_secret: 'string';
             redirect_uri: 'string';
           },
-          GoogleFieldNamePrefix
-        >,
-        GoogleFieldNamePrefix
-      >;
+          'google|sso',
+          'google|sso'
+        >;
 
-      type GitHub = GetDataRaw<
-        PrefixKeys<
+        export type GitHub = Utilities.DefineVariables<
           {
             enabled: 'bool';
             client_id: 'string';
             secret_key: 'string';
-            url: 'string';
           },
-          GitHubFieldNamePrefix
-        >,
-        GitHubFieldNamePrefix
-      >;
+          'github|sso',
+          'github|sso'
+        >;
 
-      type Feishu = GetDataRaw<
-        PrefixKeys<
+        export type Feishu = Utilities.DefineVariables<
           {
             enabled: 'bool';
             app_id: 'string';
@@ -324,71 +275,47 @@ declare namespace AdminService {
             app_access_token_url: 'string';
             user_access_token_url: 'string';
           },
-          FeishuFieldNamePrefix
-        >,
-        FeishuFieldNamePrefix
-      >;
+          'feishu|sso',
+          'feishu|sso'
+        >;
+      }
 
-      type LDAP = GetDataRaw<
-        PrefixKeys<
-          {
-            enabled: 'bool';
-            name: 'string';
-            url: 'string';
-            dn: 'string';
-            password: 'string';
-            search_filter: 'string';
-            attribute_list: 'string';
-          },
-          LDAPFieldNamePrefix
-        >,
-        LDAPFieldNamePrefix
+      export type LDAP = Utilities.DefineVariables<
+        {
+          enabled: 'bool';
+          name: 'string';
+          url: 'string';
+          dn: 'string';
+          password: 'string';
+          search_filter: 'string';
+          attribute_list: 'string';
+        },
+        `ldap|${string}`,
+        `ldap|${string}`
       >;
-
-      type AllFieldNamePrefix =
-        | GoogleFieldNamePrefix
-        | GitHubFieldNamePrefix
-        | FeishuFieldNamePrefix
-        | LDAPFieldNamePrefix;
-      type All = Google & GitHub & Feishu & LDAP;
-      type AllGrouped = {
-        google: Google;
-        github: GitHub;
-        feishu: Feishu;
-        ldap: LDAP;
-      };
     }
 
-    type All = Common.All & SSO.All;
-
-    type VariableName = keyof All;
-
-    type VariableDictionaryRaw = GetDataRaw<SSO.All, unknown>;
-    type VariableDictionary = RetypeByTypeAnnotation<SSO.All>;
-    type VariableRaw = ValueOf<VariableDictionaryRaw>;
-    type Variable = ValueOf<VariableDictionary>;
+    type Name = keyof SystemVariables;
   }
 
-  export type SetVariablesInput = {
-    [N in keyof SystemVariables.VariableDictionary]?: NonNullable<
-      SystemVariables.VariableDictionary[N]['value']
-    >;
-  } & { [x: string]: any };
+  type SystemVariables = SystemVariables.Basic &
+    PrefixKeys<SystemVariables.Mail, 'mail'> &
+    PrefixKeys<SystemVariables.SSO.IDP.Google, 'google|sso'> &
+    PrefixKeys<SystemVariables.SSO.IDP.GitHub, 'github|sso'> &
+    PrefixKeys<SystemVariables.SSO.IDP.Feishu, 'feishu|sso'> &
+    PrefixKeys<SystemVariables.SSO.LDAP, `ldap|${string}`>;
+
+  export type SetVariablesInput = Partial<
+    SystemVariables.Utilities.ExtractValue<SystemVariables>
+  >;
 
   export type DeleteVariablesInput = {
-    source?: string;
-    names?: keyof SystemVariables.VariableDictionary[];
+    source?: SystemVariables.Types.SourceName;
+    names?: SystemVariables.Name[];
   };
 
-  export type SSOIDPSettings = {
-    google: SystemVariables.RetypeByTypeAnnotation<SystemVariables.GoogleSSOVariablesValueTypeMap>;
-    github: SystemVariables.RetypeByTypeAnnotation<SystemVariables.GitHubSSOVariablesValueTypeMap>;
-    feishu: SystemVariables.RetypeByTypeAnnotation<SystemVariables.FeishuSSOVariablesValueTypeMap>;
-  };
-
-  export type LDAPSettings = {
-    [
-      x: string
-    ]: SystemVariables.RetypeByTypeAnnotation<SystemVariables.LDAPVariablesValueTypeMap>;
+  export type RefreshVariablesInput = {
+    oauth?: boolean;
+    smtp?: boolean;
   };
 }

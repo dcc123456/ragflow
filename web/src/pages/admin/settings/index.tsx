@@ -77,8 +77,8 @@ function AdminSettings() {
                     <form
                       id={formId}
                       className="space-y-8"
-                      onSubmit={form.handleSubmit((data) => {
-                        setVariables({
+                      onSubmit={form.handleSubmit(async (data) => {
+                        await setVariables({
                           ...WhitelistSettingsFormGroup.mapValuesToData(
                             data.whitelist,
                           ),

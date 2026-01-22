@@ -1,5 +1,5 @@
 import { useMutation } from '@tanstack/react-query';
-import { chain, difference, mapKeys } from 'lodash';
+import { chain, difference, keyBy, mapKeys, mapValues } from 'lodash';
 import { useCallback, useMemo } from 'react';
 
 import { deleteLdapServer } from '@/services/admin-service';
@@ -11,40 +11,29 @@ import useAdminVariables from './useAdminVariables';
 const SSO_IDP_PREFIX = ['google', 'github', 'feishu'] as const;
 const SSO_LDAP_PREFIX = ['ldap'] as const;
 const SSO_PREFIX = [...SSO_IDP_PREFIX, ...SSO_LDAP_PREFIX] as const;
-const SSO_NAME_SEPARATOR = '|';
-const VARIABLE_FIELD_NAME_SEPARATOR =
-  '.' as AdminService.SystemVariables.NameSeparator;
+const SSO_ID_SEPARATOR = '|';
+const SSO_VARNAME_SEPARATOR = '.';
+const SSO_LDAP_EXTRACTOR_REGEX = new RegExp(
+  `^(?:${SSO_LDAP_PREFIX.join('|')})\\${SSO_ID_SEPARATOR}(.+)\\${SSO_VARNAME_SEPARATOR}(?:.+)$`,
+);
 
-type SSOIDPGoogleData = UnprefixKeys<
-  AdminService.SystemVariables.RetypeByTypeAnnotation<AdminService.SystemVariables.SSO.Google>,
-  `${AdminService.SystemVariables.SSO.GoogleFieldNamePrefix}${AdminService.SystemVariables.NameSeparator}`
->;
-
-type SSOIDPGitHubData = UnprefixKeys<
-  AdminService.SystemVariables.RetypeByTypeAnnotation<AdminService.SystemVariables.SSO.GitHub>,
-  `${AdminService.SystemVariables.SSO.GitHubFieldNamePrefix}${AdminService.SystemVariables.NameSeparator}`
->;
-
-type SSOIDPFeishuData = UnprefixKeys<
-  AdminService.SystemVariables.RetypeByTypeAnnotation<AdminService.SystemVariables.SSO.Feishu>,
-  `${AdminService.SystemVariables.SSO.FeishuFieldNamePrefix}${AdminService.SystemVariables.NameSeparator}`
->;
-export type IdpData = SSOIDPGoogleData | SSOIDPGitHubData | SSOIDPFeishuData;
+export type IdpData =
+  | AdminService.SystemVariables.SSO.IDP.Google
+  | AdminService.SystemVariables.SSO.IDP.GitHub
+  | AdminService.SystemVariables.SSO.IDP.Feishu;
 
 export type GroupedIDPVariables = {
-  google: SSOIDPGoogleData;
-  github: SSOIDPGitHubData;
-  feishu: SSOIDPFeishuData;
+  google: AdminService.SystemVariables.SSO.IDP.Google;
+  github: AdminService.SystemVariables.SSO.IDP.GitHub;
+  feishu: AdminService.SystemVariables.SSO.IDP.Feishu;
 };
 
-export type SSOLDAPData = UnprefixKeys<
-  AdminService.SystemVariables.RetypeByTypeAnnotation<AdminService.SystemVariables.SSO.LDAP>,
-  `${AdminService.SystemVariables.SSO.LDAPFieldNamePrefix}${AdminService.SystemVariables.NameSeparator}`
->;
-
 export type GroupedLDAPVariables = {
-  default: SSOLDAPData;
-  [x: string]: SSOLDAPData;
+  [x: string]: AdminService.SystemVariables.SSO.LDAP;
+};
+
+export type GroupedSSOVariables = GroupedIDPVariables & {
+  ldap: GroupedLDAPVariables;
 };
 
 export type ProviderType = 'none' | 'idp' | 'ldap';
@@ -82,7 +71,7 @@ export function useMutateLdapServer(id: string) {
     mutationFn: async () => {
       return setVariables({
         [`ldap|${id}.enabled`]: true,
-      } as AdminService.SetVariablesInput);
+      } as unknown as AdminService.SetVariablesInput);
     },
   });
 
@@ -91,7 +80,7 @@ export function useMutateLdapServer(id: string) {
     mutationFn: async () => {
       return setVariables({
         [`ldap|${id}.enabled`]: false,
-      } as AdminService.SetVariablesInput);
+      } as unknown as AdminService.SetVariablesInput);
     },
     onSuccess: () => {
       refetch();
@@ -149,7 +138,7 @@ export function useMutateIdpProvider(
     mutationFn: async () => {
       return setVariables({
         [`${id}|sso.enabled`]: true,
-      } as AdminService.SetVariablesInput);
+      } as unknown as AdminService.SetVariablesInput);
     },
   });
 
@@ -158,7 +147,7 @@ export function useMutateIdpProvider(
     mutationFn: async () => {
       return setVariables({
         [`${id}|sso.enabled`]: false,
-      } as AdminService.SetVariablesInput);
+      } as unknown as AdminService.SetVariablesInput);
     },
     onSuccess: () => {
       refetch();
@@ -167,14 +156,12 @@ export function useMutateIdpProvider(
 
   const { mutateAsync: update, isPending: isUpdating } = useMutation({
     mutationKey: ['admin/updateIdpProvider', id],
-    mutationFn: async (
-      data: AdminService.SSOIDPSettings[keyof AdminService.SSOIDPSettings],
-    ) => {
+    mutationFn: async (data: GroupedIDPVariables) => {
       return setVariables(
         mapKeys(
           data,
           (_, key) => `${id}|sso.${key}`,
-        ) as AdminService.SetVariablesInput,
+        ) as unknown as AdminService.SetVariablesInput,
       );
     },
     onSuccess: () => {
@@ -204,61 +191,26 @@ export function useSSOVariables() {
     const { ldap: _ssoLdapVars, ..._ssoIdpVars } = chain(allVariables ?? {})
       .pickBy((_, key) =>
         SSO_PREFIX.some((prefix) =>
-          key.startsWith(`${prefix}${SSO_NAME_SEPARATOR}`),
+          key.startsWith(`${prefix}${SSO_ID_SEPARATOR}`),
         ),
       )
-      .groupBy((value) => value.name.split(SSO_NAME_SEPARATOR)[0])
-      .value();
+      .groupBy((value) => value.name.split(SSO_ID_SEPARATOR)[0])
+      .value() as unknown as {
+      ldap: ValueOf<AdminService.SystemVariables.SSO.LDAP>[];
+      google: ValueOf<AdminService.SystemVariables.SSO.IDP.Google>[];
+      github: ValueOf<AdminService.SystemVariables.SSO.IDP.GitHub>[];
+      feishu: ValueOf<AdminService.SystemVariables.SSO.IDP.Feishu>[];
+    };
 
     const ssoLdapVars = chain(_ssoLdapVars ?? [])
-      .filter((value) => {
-        // Filter out invalid entries
-        const parts = value.name.split(SSO_NAME_SEPARATOR);
-        return (
-          parts.length >= 2 && parts[1].includes(VARIABLE_FIELD_NAME_SEPARATOR)
-        );
-      })
-      .groupBy((value) => {
-        // Parse 'ldap|<name>.<attrName>' to extract <name>
-        const parts = value.name.split(SSO_NAME_SEPARATOR);
-        const nameAndAttr = parts[1]!.split(VARIABLE_FIELD_NAME_SEPARATOR);
-        return nameAndAttr[0]!;
-      })
-      .mapValues((group) => {
-        // Transform each group into a dictionary keyed by <attrName>
-        return chain(group)
-          .keyBy((value) => {
-            // Parse 'ldap|<name>.<attrName>' to extract <attrName>
-            const parts = value.name.split(SSO_NAME_SEPARATOR);
-            const nameAndAttr = parts[1]!.split(VARIABLE_FIELD_NAME_SEPARATOR);
-            return nameAndAttr[1]!;
-          })
-          .value();
-      })
+      .groupBy((value) => value.name.match(SSO_LDAP_EXTRACTOR_REGEX)![1])
+      .mapValues((group) => keyBy(group, (value) => value.name.split('.')[1]!))
       .value() as GroupedLDAPVariables;
 
-    const ssoIdpVars = chain(_ssoIdpVars ?? {})
-      .mapValues((array) => {
-        // Transform each array into a dictionary keyed by <attrName>
-        // Format: '<name>|sso.<attrName>' -> extract <attrName>
-        return chain(array)
-          .filter((value) => {
-            // Filter out invalid entries
-            const parts = value.name.split(SSO_NAME_SEPARATOR);
-            return (
-              parts.length >= 2 &&
-              parts[1]!.startsWith('sso' + VARIABLE_FIELD_NAME_SEPARATOR)
-            );
-          })
-          .keyBy((value) => {
-            // Parse '<name>|sso.<attrName>' to extract <attrName>
-            const parts = value.name.split(SSO_NAME_SEPARATOR);
-            const ssoAndAttr = parts[1]!.split(VARIABLE_FIELD_NAME_SEPARATOR);
-            return ssoAndAttr[1]!;
-          })
-          .value();
-      })
-      .value() as GroupedIDPVariables;
+    const ssoIdpVars = mapValues(_ssoIdpVars ?? {}, (array) =>
+      // @ts-ignore
+      keyBy(array, (value) => value.name.split(SSO_VARNAME_SEPARATOR)[1]!),
+    ) as GroupedIDPVariables;
 
     return {
       ldap: ssoLdapVars,

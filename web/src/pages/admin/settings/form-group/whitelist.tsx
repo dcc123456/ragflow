@@ -49,14 +49,14 @@ function WhitelistSettingsFormGroup() {
 
 WhitelistSettingsFormGroup.mapValuesToData = (
   formValues: WhitelistSettingsFormGroup.SchemaType,
-): AdminService.SetVariablesInput => {
+) => {
   return {
     enable_whitelist: formValues.enabled,
-  };
+  } satisfies AdminService.SetVariablesInput;
 };
 
 WhitelistSettingsFormGroup.mapValuesFromData = (
-  data: AdminService.VariableDictionary,
+  data: AdminService.SystemVariables,
 ): WhitelistSettingsFormGroup.SchemaType => {
   return {
     enabled: !!data.enable_whitelist?.value,

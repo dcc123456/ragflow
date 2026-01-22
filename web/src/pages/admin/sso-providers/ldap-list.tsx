@@ -32,7 +32,6 @@ import { Input } from '@/components/ui/input';
 import { useSetModalState, useTranslate } from '@/hooks/common-hooks';
 import { cn } from '@/lib/utils';
 import {
-  type SSOLDAPData,
   useAddLdapServer,
   useMutateLdapServer,
   useSSOVariables,
@@ -255,7 +254,7 @@ function SSOProviderLDAPAddButton() {
 
 type ListItemProps = {
   id: string;
-  data: SSOLDAPData;
+  data: AdminService.SystemVariables.SSO.LDAP;
 };
 
 function SSOProviderLDAPListItem(props: ListItemProps) {

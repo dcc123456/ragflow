@@ -1,13 +1,45 @@
-import { pickBy } from 'lodash';
+import { debounce, DebounceSettings, pickBy } from 'lodash';
+import { useMemo } from 'react';
 import { toast } from 'sonner';
 
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 
-import { listVariables, setVariable } from '@/services/admin-service';
+import {
+  listVariables,
+  refreshVariables,
+  setVariable,
+} from '@/services/admin-service';
+
+function useRefreshVariables() {
+  const { mutateAsync, isPending } = useMutation({
+    mutationKey: ['admin/refreshVariables'],
+    mutationFn: (input: AdminService.RefreshVariablesInput) =>
+      refreshVariables(input),
+  });
+
+  return {
+    refreshVariables: mutateAsync,
+    isPending,
+  };
+}
+
+function useDebouncedRefreshVariables(wait = 5000, options?: DebounceSettings) {
+  const { refreshVariables: mutateAsync, isPending } = useRefreshVariables();
+  const debouncedFn = useMemo(
+    () => debounce(mutateAsync, wait, options),
+    [mutateAsync, wait, options],
+  );
+
+  return {
+    refreshVariables: debouncedFn,
+    isPending,
+  };
+}
 
 export default function useAdminVariables() {
   const { t } = useTranslation();
+  const { refreshVariables } = useDebouncedRefreshVariables();
   const { data, isFetching, refetch } = useQuery({
     queryKey: ['admin/listVariables'],
     queryFn: async () => {
@@ -15,8 +47,7 @@ export default function useAdminVariables() {
       return rawData?.data;
     },
     retry: false,
-    initialData:
-      {} as AdminService.SystemVariables.RetypeByTypeAnnotation<AdminService.SystemVariables.All>,
+    initialData: {} as AdminService.SystemVariables,
   });
 
   const { mutateAsync: setVariables, isPending: isUpdating } = useMutation({
@@ -24,8 +55,7 @@ export default function useAdminVariables() {
       const diff = Object.entries(
         pickBy(
           variables,
-          (v, k) =>
-            v != data[k as keyof AdminService.SystemVariables.All]?.value,
+          (v, k) => v != data[k as AdminService.SystemVariables.Name]?.value,
         ),
       );
 
@@ -36,6 +66,10 @@ export default function useAdminVariables() {
         position: 'top-center',
       });
       refetch();
+      refreshVariables({
+        oauth: true,
+        smtp: true,
+      });
     },
   });
 

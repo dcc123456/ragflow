@@ -287,7 +287,7 @@ function SMTPSettingsFormGroup() {
 }
 
 SMTPSettingsFormGroup.mapValuesFromData = (
-  data: AdminService.VariableDictionary,
+  data: AdminService.SystemVariables,
 ): SMTPSettingsFormGroup.SchemaType => {
   return {
     server: data['mail.server']?.value,
@@ -303,7 +303,7 @@ SMTPSettingsFormGroup.mapValuesFromData = (
 
 SMTPSettingsFormGroup.mapValuesToData = (
   formValues: SMTPSettingsFormGroup.SchemaType,
-): AdminService.SetVariablesInput => {
+) => {
   return {
     'mail.server': formValues.server,
     'mail.port': formValues.port,
@@ -313,7 +313,7 @@ SMTPSettingsFormGroup.mapValuesToData = (
     'mail.default_sender': formValues.defaultSender,
     'mail.use_ssl': formValues.ssl,
     'mail.use_tls': formValues.tls,
-  };
+  } satisfies AdminService.SetVariablesInput;
 };
 
 SMTPSettingsFormGroup.defaultValues = Object.freeze({

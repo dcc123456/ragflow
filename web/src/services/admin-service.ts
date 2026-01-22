@@ -292,7 +292,14 @@ function castFromInt(value: string): number | null {
 
 export const listVariables = async () => {
   const resp = await request.get<
-    ResponseData<ValueOf<AdminService.SystemVariables.All>[]>
+    ResponseData<
+      {
+        name: string;
+        value: string;
+        data_type: AdminService.SystemVariables.Types.DataType;
+        source: string;
+      }[]
+    >
   >(API.adminVariables);
 
   if (resp.data?.data) {
@@ -319,14 +326,12 @@ export const listVariables = async () => {
   }
 
   return resp as unknown as AxiosResponse<
-    ResponseData<
-      AdminService.SystemVariables.RetypeByTypeAnnotation<AdminService.SystemVariables.All>
-    >
+    ResponseData<AdminService.SystemVariables>
   >;
 };
 
 export const getVariable = (name: string) =>
-  request.get<ResponseData<AdminService.SystemVariables.VariableRaw>>(
+  request.get<ValueOf<ResponseData<AdminService.SystemVariables>>>(
     API.adminVariables,
     {
       params: {
@@ -348,6 +353,8 @@ export const deleteLdapServer = (serverId: string) => {
     },
   });
 };
+export const refreshVariables = (input: AdminService.RefreshVariablesInput) =>
+  request.post<ResponseData<never>>(API.adminRefreshVariables, input);
 
 export const testSMTPConnection = (
   params: AdminService.TestSMTPConnectionInput,

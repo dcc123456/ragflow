@@ -321,5 +321,6 @@ export default {
   adminGetSystemVersion: `${ExternalApi}${api_host}/admin/version`,
 
   adminVariables: `${ExternalApi}${api_host}/admin/variables`,
+  adminRefreshVariables: `${ExternalApi}${api_host}/admin/variables/refresh`,
   adminTestSMTPConnection: `${ExternalApi}${api_host}/admin/validate_mail`,
 };
