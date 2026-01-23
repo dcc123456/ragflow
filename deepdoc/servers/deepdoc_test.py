@@ -281,19 +281,28 @@ class DeepDocClient:
                 if 'output' in result:
                     output = result['output']
                     # Parse nested structure from PaddleOCR
-                    # Format: [[[['text', confidence]]]]
-                    if isinstance(output, list):
-                        for item in output:
-                            if isinstance(item, list):
-                                for subitem in item:
-                                    if isinstance(subitem, list):
-                                        for text_item in subitem:
-                                            # Handle both [text, conf] and (text, conf) formats
-                                            if isinstance(text_item, (list, tuple)) and len(text_item) >= 2:
-                                                text = text_item[0]
-                                                confidence = text_item[1]
-                                                if text:
-                                                    extracted_texts.append((text, confidence))
+                    # Format can be: [[[['text', confidence]]]] or [[['text', confidence]]]
+                    def extract_from_nested(obj, depth=0, max_depth=5):
+                        """Recursively extract text/confidence from nested lists"""
+                        if depth > max_depth:
+                            return []
+
+                        if isinstance(obj, list):
+                            # Check if this is a [text, conf] pair
+                            if len(obj) == 2 and isinstance(obj[0], str) and isinstance(obj[1], (int, float)):
+                                text = obj[0].strip()
+                                if text:
+                                    return [(text, obj[1])]
+                                return []
+
+                            # Otherwise, recursively process nested items
+                            results = []
+                            for item in obj:
+                                results.extend(extract_from_nested(item, depth + 1, max_depth))
+                            return results
+                        return []
+
+                    extracted_texts = extract_from_nested(output)
 
                 elif 'boxes' in result:
                     boxes = result['boxes']

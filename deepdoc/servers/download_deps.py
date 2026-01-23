@@ -87,7 +87,7 @@ UV_URL = "https://github.com/astral-sh/uv/releases/download/0.9.18/uv-x86_64-unk
 # TensorRT for DLA and TSR
 # Ubuntu 24.04 to match base image
 # CUDA 12.8 to match inf24 cluster
-TENSORRT_URL = "https://developer.nvidia.com/downloads/compute/machine-learning/tensorrt/10.8.0/local_repo/nv-tensorrt-local-repo-ubuntu2404-10.8.0-cuda-12.8_1.0-1_amd64.deb"
+TENSORRT_URL = "https://developer.download.nvidia.com/compute/machine-learning/tensorrt/secure/8.6.1/tars/TensorRT-8.6.1.6.Linux.x86_64-gnu.cuda-12.0.tar.gz"
 
 # YOLOv10 for DLA (Document Layout Analysis)
 YOLOV10_URL = "https://github.com/THU-MIG/yolov10/archive/refs/heads/main.zip"

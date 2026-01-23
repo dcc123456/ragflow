@@ -34,10 +34,12 @@ dependencies = [
 ]
 
 [dependency-groups]
+# Note: TensorRT C++ libraries (8.6.1) are installed via tar.gz in Dockerfile
+# Python bindings will use the pre-installed libraries
+# We only need CUDA Python bindings here
 gpu = [
-    # GPU-specific dependencies for TensorRT and CUDA
-    "tensorrt>=10.8.0,<11.0.0",
-    "cuda-python>=11.8.0,<12.0.0",
+    # CUDA Python 12.1 bindings
+    "cuda-python>=12.0,<12.2",
 ]
 
 [build-system]
@@ -53,5 +55,5 @@ include = [
 
 [[tool.uv.index]]
 name = "paddlepaddle"
-url = "https://paddle-whl.bj.bcebos.com/stable/cu128/"
+url = "https://paddle-whl.bj.bcebos.com/stable/cu121/"
 explicit = true

@@ -1,0 +1,62 @@
+encryptionsalt: v1:myAJp/oJXzI=:v1:xy+0QsfgBsPr17kl:Tz7Z3QpKyLMp83KHtKXu5YWudx7T8g==
+config:
+  pulumi_ragflow:namespace: ragflow
+  pulumi_ragflow:use_public_registry: "false"
+  pulumi_ragflow:enterprise_registry: infiniflow-registry.cn-shanghai.cr.aliyuncs.com
+  pulumi_ragflow:enterprise_registry_username: infiniflow
+  pulumi_ragflow:enterprise_registry_password:
+    secure: v1:/KzZhHPazzH2PnND:kXOTD6T91ebuSdZVIXZ9Kno1piTb8sXIqfpycU0=
+  pulumi_ragflow:ragflow_replicas: "1"
+  pulumi_ragflow:ragflow_image_tag: latest
+  pulumi_ragflow:parser_replicas: "1"
+  # Unified DeepDoc service (DLA + OCR + TSR)
+  pulumi_ragflow:deepdoc_replicas: "1"
+  pulumi_ragflow:deepdoc_image_tag: latest
+  pulumi_ragflow:deepdoc_hardware: cpu
+  pulumi_ragflow:deepdoc_gpu_model_series: T4
+  pulumi_ragflow:es_replicas: "1"
+  # aliyun pvc shall be no less than 20Gi
+  pulumi_ragflow:es_storage: 20Gi
+  pulumi_ragflow:es_memory_request: 10Gi
+  # Elasticsearch configuration
+  # If es_host is empty, Pulumi will create ES deployment in the cluster
+  # If es_host is set, Pulumi will use the external ES server
+  pulumi_ragflow:es_host: ""
+  pulumi_ragflow:es_port: "9200"
+  pulumi_ragflow:es_protocol: "http"
+  pulumi_ragflow:es_password:
+    secure: v1:kjReyVmrZJY9phAw:LZNmwy7DnJGXn7AN+9XyQQrk2z3UlMPyaNhvKcP3cw==
+  pulumi_ragflow:mysql_host: rm-uf6955n7zw26o99v4.mysql.rds.aliyuncs.com
+  pulumi_ragflow:mysql_password:
+    secure: v1:yEmYRN0xvZwzBMwr:BCyoWevcqd+r1dU0HqS+hCZHmOvcJUEN9vGcuNMPUQ==
+  # aliyun pvc shall be no less than 20Gi
+  pulumi_ragflow:mysql_storage: 20Gi
+  # aliyun pvc shall be no less than 20Gi
+  pulumi_ragflow:rabbitmq_storage: 20Gi
+  pulumi_ragflow:s3_bucket: ragflow-yuzhichang-prod
+  pulumi_ragflow:s3_region: cn-shanghai
+  pulumi_ragflow:s3_endpoint: http://oss-cn-shanghai-internal.aliyuncs.com
+  pulumi_ragflow:s3_access_key:
+    secure: v1:n3A/lz1UsY1ti5dW:zKR4L9s7/VlJIwIe+uWLOt8xV2GTLniCDo19ZpRFLiNWzaERH/ARCA==
+  pulumi_ragflow:s3_secret_key:
+    secure: v1:f/astTP+1krYBHiw:6emu8wnKgI4zJznVoh8kf2TGeBtQ3TxHkslMCUbq93jwUrJXVK/SUXylFssFQA==
+  # ElasticSearch, MySQL, RabbitMQ PVC storage class
+  # Options: alicloud-disk-topology-alltype, alicloud-disk-essd, alicloud-disk-ssd, alicloud-disk-efficiency
+  pulumi_ragflow:storage_class: alicloud-disk-topology-alltype
+  # Gateway HTTPS/TLS configuration
+  # Enable HTTPS listener (default: false)
+  # When enabled, both gateway_tls_cert and gateway_tls_key must be provided
+  pulumi_ragflow:gateway_enable_https: "false"
+  # TLS certificate and private key (PEM format) - REQUIRED when gateway_enable_https is true
+  # pulumi_ragflow:gateway_tls_cert: |
+  #   -----BEGIN CERTIFICATE-----
+  #   MIIC9jCCAd4CCQD2rKXxBHxTzDANBgkqhkiG9w0BAQsFADA9MQswCQYDVQQGEwJV
+  #   ...
+  #   -----END CERTIFICATE-----
+  # pulumi_ragflow:gateway_tls_key: |
+  #   -----BEGIN RSA PRIVATE KEY-----
+  #   MIIEpAIBAAKCAQEA2Z3q3X2X8X9X0X0X0X0X0X0X0X0X0X0X0X0X0X0X0X0X0X0X
+  #   ...
+  #   -----END RSA PRIVATE KEY-----
+
+  pulumi_ragflow:use_knative_gpu: "true"

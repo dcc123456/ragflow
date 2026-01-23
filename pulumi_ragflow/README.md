@@ -148,6 +148,87 @@ Gateway API enables **external cluster access** to internal services with:
 ./setup-nginx-gateway.sh
 ```
 
+### Gateway HTTPS/TLS Configuration
+
+The Gateway supports HTTPS with TLS termination. By default, only HTTP is enabled.
+
+#### Default Configuration (HTTP Only)
+
+By default, the Gateway only listens on port 80 (HTTP). This is suitable for internal deployments or when TLS is handled by an external load balancer.
+
+```bash
+# Default: HTTPS disabled
+pulumi config set gateway_enable_https false
+```
+
+#### Enable HTTPS with User-Provided Certificate
+
+To enable HTTPS, you must provide your own TLS certificate signed by a trusted Certificate Authority (CA). **Self-signed certificates are not supported**.
+
+**Configuration**:
+```bash
+# Enable HTTPS
+pulumi config set gateway_enable_https true
+
+# Set your TLS certificate (PEM format)
+pulumi config set gateway_tls_cert "$(cat /path/to/tls.crt)"
+
+# Set your TLS private key (PEM format)
+pulumi config set --secret gateway_tls_key "$(cat /path/to/tls.key)"
+```
+
+**Example with Let's Encrypt Certificate**:
+```bash
+# Enable HTTPS
+pulumi config set gateway_enable_https true
+
+# Assuming you have certbot certificates
+pulumi config set gateway_tls_cert "$(cat /etc/letsencrypt/live/ragflow.example.com/fullchain.pem)"
+pulumi config set --secret gateway_tls_key "$(cat /etc/letsencrypt/live/ragflow.example.com/privkey.pem)"
+```
+
+**Important**: When `gateway_enable_https` is `true`, both `gateway_tls_cert` and `gateway_tls_key` **must** be provided. The deployment will fail if either is missing.
+
+#### Certificate Format
+
+Both the certificate and private key must be in PEM format:
+
+**Certificate (tls.crt)**:
+```
+-----BEGIN CERTIFICATE-----
+MIIC9jCCAd4CCQD2rKXxBHxTzDANBgkqhkiG9w0BAQsFADA9MQswCQYDVQQGEwJV
+...
+-----END CERTIFICATE-----
+```
+
+**Private Key (tls.key)**:
+```
+-----BEGIN RSA PRIVATE KEY-----
+MIIEpAIBAAKCAQEA2Z3q3X2X8X9X0X0X0X0X0X0X0X0X0X0X0X0X0X0X0X0X0X0X
+...
+-----END RSA PRIVATE KEY-----
+```
+
+#### Configuration Reference
+
+| Configuration | Type | Default | Description |
+|---------------|------|---------|-------------|
+| `gateway_enable_https` | boolean | `false` | Enable HTTPS listener on port 443 |
+| `gateway_tls_cert` | string | `""` | TLS certificate in PEM format (required when HTTPS enabled) |
+| `gateway_tls_key` | string | `""` | TLS private key in PEM format (required when HTTPS enabled, secret) |
+
+**Behavior**:
+- If `gateway_enable_https` is `false` (default): Only HTTP listener (port 80) is created
+- If `gateway_enable_https` is `true`: Both HTTP (port 80) and HTTPS (port 443) listeners are created, **requires** `gateway_tls_cert` and `gateway_tls_key`
+
+#### Security Considerations
+
+1. **Certificate Source**: Always use certificates signed by a trusted CA (e.g., Let's Encrypt, DigiCert, etc.)
+2. **Secret Management**: Always use `pulumi config set --secret` for the private key to keep it encrypted
+3. **Certificate Rotation**: Periodically rotate your TLS certificates before they expire
+4. **Certificate Expiry**: Monitor certificate expiration and renew before expiry
+5. **No Self-Signed Certs**: Self-signed certificates are not supported; use proper CA-signed certificates for production
+
 ### Responsibility Separation
 
 | Layer | Provider Responsibility (Cilium/Nginx) | RAGFlow Responsibility |

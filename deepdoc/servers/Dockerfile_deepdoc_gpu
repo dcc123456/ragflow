@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.8.0-cudnn-runtime-ubuntu24.04
+FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04
 ARG NEED_MIRROR=1
 
 SHELL ["/bin/bash", "-c"]
@@ -29,25 +29,40 @@ RUN --mount=type=bind,source=uv-x86_64-unknown-linux-gnu.tar.gz,target=/uv-x86_6
 
 WORKDIR /app
 
-# Install TensorRT 10.8 for x86_64 Architecture (required by DLA and TSR)
-# CUDA 12.8 to match inf24 cluster (nvidia-smi shows CUDA 12.8)
-# Ubuntu 24.04 to match base image
-# NOTE: Using TensorRT 10.8.0 as 10.12.0 doesn't have CUDA 12.8 build
-RUN --mount=type=bind,source=nv-tensorrt-local-repo-ubuntu2404-10.8.0-cuda-12.8_1.0-1_amd64.deb,target=/nv-tensorrt-local-repo-ubuntu2404-10.8.0-cuda-12.8_1.0-1_amd64.deb \
-    dpkg -i /nv-tensorrt-local-repo-ubuntu2404-10.8.0-cuda-12.8_1.0-1_amd64.deb && \
-    cp /var/nv-tensorrt-local-repo-ubuntu2404-10.8.0-cuda-12.8/*-keyring.gpg /usr/share/keyrings/
+# Install TensorRT 8.6.1 for CUDA 12.0 (compatible with Driver 535.x)
+# Ubuntu 22.04 to match base image
+# NOTE: Using TensorRT 8.6.1 as it's compatible with CUDA 12.0-12.1 / Driver 535
+# TensorRT 8.6 GA supports CUDA 11.0-11.8 and 12.0-12.1 (NOT 12.2)
+# TensorRT 10.x requires CUDA 12.6+ / Driver 550+
+RUN --mount=type=bind,source=TensorRT-8.6.1.6.Linux.x86_64-gnu.cuda-12.0.tar.gz,target=/TensorRT-8.6.1.6.Linux.x86_64-gnu.cuda-12.0.tar.gz \
+    tar -xzvf /TensorRT-8.6.1.6.Linux.x86_64-gnu.cuda-12.0.tar.gz -C /tmp/ && \
+    cp -rf /tmp/TensorRT-8.6.1.6/include/* /usr/local/cuda/include && \
+    cp -rf /tmp/TensorRT-8.6.1.6/lib/* /usr/local/cuda/lib64/ && \
+    echo '/usr/local/cuda/lib64' >> /etc/ld.so.conf.d/cuda.conf && \
+    ldconfig && \
+    rm -rf /tmp/TensorRT*
 
 # Create unified Python environment with all dependencies
 # Using pyproject.toml and uv.lock for dependency management
-# Install GPU-specific dependencies (TensorRT, CUDA Python)
+# Note: TensorRT C++ libraries (8.6.1) are pre-installed via tar.gz
+# Python bindings will be installed from the wheel files included in the tar.gz
 COPY deepdoc/servers/pyproject.toml deepdoc/servers/uv.lock /app/
 RUN --mount=type=cache,id=ragflow_uv,target=/root/.cache/uv,sharing=locked \
+    --mount=type=bind,source=TensorRT-8.6.1.6.Linux.x86_64-gnu.cuda-12.0.tar.gz,target=/TensorRT-8.6.1.6.Linux.x86_64-gnu.cuda-12.0.tar.gz \
+    tar -xzvf /TensorRT-8.6.1.6.Linux.x86_64-gnu.cuda-12.0.tar.gz -C /tmp/ && \
     uv venv --python 3.11 && \
-    uv sync --group gpu --frozen
-
-# GPU version: CUDA 12.8 to match inf24 cluster (nvidia-smi shows CUDA 12.8)
-# Install PaddlePaddle GPU from Baidu's wheel repository
-RUN uv pip install paddlepaddle==3.0.0 --extra-index-url https://paddle-whl.bj.bcebos.com/stable/cu128/
+    # Install base dependencies from pyproject.toml (including gpu group with cuda-python)
+    uv sync --group gpu --frozen && \
+    # Install TensorRT Python bindings from wheel files (no network needed)
+    # Use only Python 3.11 wheel to avoid conflicts
+    uv pip install --no-index /tmp/TensorRT-8.6.1.6/python/tensorrt-8.6.1-cp311-none-linux_x86_64.whl && \
+    # Verify TensorRT C++ libraries are accessible
+    ldconfig -p | grep -E 'libnvinfer|libcudart' | head -5 && \
+    # Verify TensorRT Python package is installed correctly
+    uv run python3 -c "import tensorrt as trt; print(f'TensorRT version: {trt.__version__}')" && \
+    # Install PaddlePaddle GPU from Baidu's wheel repository (CUDA 12.1)
+    uv pip install paddlepaddle==3.0.0 --extra-index-url https://paddle-whl.bj.bcebos.com/stable/cu121/ && \
+    rm -rf /tmp/TensorRT*
 
 # Install YOLOv10 dependencies for DLA
 # Use pre-downloaded yolov10.zip from download_deps.py

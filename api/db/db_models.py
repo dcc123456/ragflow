@@ -261,10 +261,15 @@ class RetryingPooledMySQLDatabase(PooledMySQLDatabase):
             try:
                 return super().execute_sql(sql, params, commit)
             except (OperationalError, InterfaceError) as e:
-                error_codes = [2013, 2006, 1213]  # Added 1213 for deadlock
+                # https://dev.mysql.com/doc/refman/8.0/en/server-error-reference.html#error_er_lock_deadlock
+                # 2013: Lost connection to MySQL server during query
+                # 2006: MySQL server has gone away
+                # 1213: Deadlock found when trying to get lock; try restarting transaction
+                # The issue you are seeing, pymysql.err.InterfaceError: (0, ''), is a known behavior in PyMySQL when the underlying network connection is closed unexpectedly or is in an invalid state, but the error code returned is generic (0).
+                error_codes = [2013, 2006, 1213, 0]  # Added 1213 for deadlock, 0 for InterfaceError (0, '')
                 error_messages = ['', 'Lost connection', 'Deadlock found']
                 should_retry = (
-                    (hasattr(e, 'args') and e.args and e.args[0] in error_codes) or
+                    (isinstance(e.args, tuple) and len(e.args) > 0 and e.args[0] in error_codes) or
                     (str(e) in error_messages) or
                     (hasattr(e, '__class__') and e.__class__.__name__ == 'InterfaceError')
                 )

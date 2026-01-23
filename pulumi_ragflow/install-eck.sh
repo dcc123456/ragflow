@@ -2,8 +2,8 @@
 set -e
 
 # Install Elastic Cloud on Kubernetes (ECK) Operator
-# Latest stable version: 2.14.0 (as of Dec 2025)
-ECK_VERSION="2.14.0"
+# Latest stable version: 3.2.0 (as of Dec 2025)
+ECK_VERSION="3.2.0"
 
 # Colors for output
 RED='\033[0;31m'

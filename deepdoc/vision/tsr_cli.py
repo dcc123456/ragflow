@@ -4,7 +4,8 @@ import logging
 from api.utils.api_utils import timeout
 import numpy as np
 import requests
-from PIL import Image
+from PIL import Image as PILImage
+from PIL.Image import Image
 
 
 class Dummy:
@@ -24,7 +25,7 @@ class TSRClient:
         self.session = requests.Session()
 
     @timeout(18)
-    def predict(self, images: list[Image], **kwargs):
+    def predict(self, images: list[Image], **kwargs) -> list:
         res = []
         for i, img in enumerate(images):
             img_byte_arr = io.BytesIO()
@@ -59,7 +60,7 @@ if __name__ == "__main__":
     import cv2
     args = parse_args()
     cli = TSRClient(f"http://{args.ip}:{args.port}")
-    img = Image.open(args.image, mode='r')
+    img = PILImage.open(args.image, mode='r')
     draw = cv2.imread(args.image)
     preds = cli.predict([img.convert("RGB")])
     bboxs = [(left, top, right, bottom) for left, top, right, bottom, sc, _ in preds[0].boxes.data.tolist()]
