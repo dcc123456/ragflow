@@ -261,7 +261,7 @@ class LarkConnector(LoadConnector, PollConnector):
             response,
         )
 
-    async def _create_export_task_async(
+    def _create_export_task(
         self,
         file_token: str,
         file_type: str,
@@ -283,9 +283,8 @@ class LarkConnector(LoadConnector, PollConnector):
             .build()
         )
 
-        response: CreateExportTaskResponse = await asyncio.to_thread(
-            self.client.drive.v1.export_task.create,
-            request,
+        response: CreateExportTaskResponse = self.client.drive.v1.export_task.create(
+            request
         )
 
         if not response.success():
@@ -334,42 +333,60 @@ class LarkConnector(LoadConnector, PollConnector):
         return response
 
 
-    async def _get_export_task_ticket_async(
+    def _get_export_task_ticket(
         self,
         ticket: str,
         file_token: str,
         poll_interval_seconds: float = 1.0,
+        timeout_seconds: float = 60.0,
     ):
-        request: GetExportTaskRequest = (
-            GetExportTaskRequest.builder()
-            .ticket(ticket)
-            .token(file_token)
-            .build()
-        )
-        response: GetExportTaskResponse = await asyncio.to_thread(
-            self.client.drive.v1.export_task.get,
-            request,
-        )
+        start_time = time.monotonic()
+        while True:
+            request: GetExportTaskRequest = (
+                GetExportTaskRequest.builder()
+                .ticket(ticket)
+                .token(file_token)
+                .build()
+            )
+            response: GetExportTaskResponse = self.client.drive.v1.export_task.get(
+                request
+            )
 
-        if not response.success():
+            if not response.success():
+                lark.logger.error(
+                    f"client.drive.v1.export_task.get failed, "
+                    f"code: {response.code}, "
+                    f"msg: {response.msg}, "
+                    f"log_id: {response.get_log_id()}, "
+                )
+                return None
+
+            data = response.data
+            result = getattr(data, "result", None)
+            job_status = getattr(result, "job_status", None) if result else None
+
+            if job_status == 0:
+                lark.logger.info(lark.JSON.marshal(data, indent=4))
+                return data
+            if job_status == 2:
+                if time.monotonic() - start_time >= timeout_seconds:
+                    lark.logger.error(
+                        "export_task.get timeout for ticket=%s after %.2fs",
+                        ticket,
+                        time.monotonic() - start_time,
+                    )
+                    return None
+                time.sleep(poll_interval_seconds)
+                continue
+
             lark.logger.error(
-                f"client.drive.v1.export_task.get failed, "
-                f"code: {response.code}, "
-                f"msg: {response.msg}, "
-                f"log_id: {response.get_log_id()}, "
+                "export_task.get failed for ticket=%s job_status=%s",
+                ticket,
+                job_status,
             )
             return None
 
-        data = response.data
-        result = getattr(data, "result", None)
-        file_token_result = getattr(result, "file_token", None) if result else None
-        if file_token_result:
-            lark.logger.info(lark.JSON.marshal(data, indent=4))
-            return data
-
-        return None
-
-
+    
     async def _get_sheet_sub_id_async(self, spreadsheet_token: str) -> str | None:
         request: QuerySpreadsheetSheetRequest = (
             QuerySpreadsheetSheetRequest.builder()
@@ -502,7 +519,7 @@ class LarkConnector(LoadConnector, PollConnector):
         file_extension: str,
         sub_id: str | None = None
     ) -> tuple[DownloadExportTaskResponse | None, Any | None]:
-        ticket = await self._create_export_task_async(
+        ticket = self._create_export_task(
             token,
             src_type,
             sub_id=sub_id,
@@ -512,13 +529,13 @@ class LarkConnector(LoadConnector, PollConnector):
         if not ticket:
             return None, None
 
-        new_file = await self._get_export_task_ticket_async(
+        new_file = self._get_export_task_ticket(
             ticket,
             token,
         )
+
         if not new_file:
             return None, None
-
         response = await self._download_ticket_async(new_file)
         return response, new_file
 
@@ -778,13 +795,13 @@ class LarkConnector(LoadConnector, PollConnector):
                 "name_with_path": parent_path,
                 "edit_time": node.edit_time,
                 "created_time": node.created_time,
-                "children": [],
+                "children": [], 
             }
 
             if node.ftype == "folder":
                 item["children"] = await self._build_tree_async(
                     node.ftoken,
-                    parent_path=parent_path + " / " + name,
+                    parent_path=parent_path + " / " + name if parent_path else name,
                 )
 
             batch.append(item)
