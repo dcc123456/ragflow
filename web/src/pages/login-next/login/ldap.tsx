@@ -65,24 +65,22 @@ function LdapLogin() {
     },
   });
 
-  const onSubmit = useCallback(async (data: SchemaType) => {
-    try {
-      const rsaPassword = rsaPsw(data.password) as string;
+  const onSubmit = useCallback(
+    async (data: SchemaType) => {
+      try {
+        const rsaPassword = rsaPsw(data.password) as string;
 
-      await loginWithChannel({
-        serverName: data.ldap_server,
-        username: data.username,
-        password: rsaPassword,
-      });
-
-      // const code = await loginWithChannel({
-      //   username: data.username,
-      //   password: rsaPassword,
-      // });
-    } catch (error) {
-      console.error('Login failed:', error);
-    }
-  }, []);
+        return await loginWithChannel({
+          serverName: data.ldap_server,
+          username: data.username,
+          password: rsaPassword,
+        });
+      } catch (error) {
+        console.error('Login failed:', error);
+      }
+    },
+    [loginWithChannel],
+  );
 
   return (
     <Form {...form}>

@@ -1,5 +1,12 @@
 import { useMutation } from '@tanstack/react-query';
-import { chain, difference, keyBy, mapKeys, mapValues } from 'lodash';
+import {
+  chain,
+  difference,
+  identity,
+  isEmpty,
+  mapKeys,
+  mapValues,
+} from 'lodash';
 import { useCallback, useMemo } from 'react';
 
 import { deleteLdapServer } from '@/services/admin-service';
@@ -8,13 +15,23 @@ import { type SchemaType as SSOLDAPSchemaType } from '../sso-providers/ldap-list
 import { uuidParts } from '../utils';
 import useAdminVariables from './useAdminVariables';
 
-const SSO_IDP_PREFIX = ['google', 'github', 'feishu'] as const;
-const SSO_LDAP_PREFIX = ['ldap'] as const;
-const SSO_PREFIX = [...SSO_IDP_PREFIX, ...SSO_LDAP_PREFIX] as const;
 const SSO_ID_SEPARATOR = '|';
 const SSO_VARNAME_SEPARATOR = '.';
+
+type SSORegExpExecGroups = {
+  groups: {
+    id: string;
+    type: 'sso' | 'ldap';
+    varName: string;
+  };
+};
+
+const SSO_IDP_EXTRACTOR_REGEX = new RegExp(
+  `^(?<id>.+?)\\${SSO_ID_SEPARATOR}(?<type>sso)\\${SSO_VARNAME_SEPARATOR}(?<varName>.+)$`,
+);
+
 const SSO_LDAP_EXTRACTOR_REGEX = new RegExp(
-  `^(?:${SSO_LDAP_PREFIX.join('|')})\\${SSO_ID_SEPARATOR}(.+)\\${SSO_VARNAME_SEPARATOR}(?:.+)$`,
+  `^(?<type>ldap)\\${SSO_ID_SEPARATOR}(?<id>.+?)\\${SSO_VARNAME_SEPARATOR}(?<varName>.+)$`,
 );
 
 export type IdpData =
@@ -32,7 +49,8 @@ export type GroupedLDAPVariables = {
   [x: string]: AdminService.SystemVariables.SSO.LDAP;
 };
 
-export type GroupedSSOVariables = GroupedIDPVariables & {
+export type GroupedSSOVariables = {
+  sso: GroupedIDPVariables;
   ldap: GroupedLDAPVariables;
 };
 
@@ -188,53 +206,53 @@ export function useSSOVariables() {
   } = useAdminVariables();
 
   const ssoVariables = useMemo(() => {
-    const { ldap: _ssoLdapVars, ..._ssoIdpVars } = chain(allVariables ?? {})
-      .pickBy((_, key) =>
-        SSO_PREFIX.some((prefix) =>
-          key.startsWith(`${prefix}${SSO_ID_SEPARATOR}`),
-        ),
-      )
-      .groupBy((value) => value.name.split(SSO_ID_SEPARATOR)[0])
-      .value() as unknown as {
-      ldap: ValueOf<AdminService.SystemVariables.SSO.LDAP>[];
-      google: ValueOf<AdminService.SystemVariables.SSO.IDP.Google>[];
-      github: ValueOf<AdminService.SystemVariables.SSO.IDP.GitHub>[];
-      feishu: ValueOf<AdminService.SystemVariables.SSO.IDP.Feishu>[];
-    };
+    if (isEmpty(allVariables)) {
+      return {
+        sso: {},
+        ldap: {},
+      } as GroupedSSOVariables;
+    }
 
-    const ssoLdapVars = chain(_ssoLdapVars ?? [])
-      .groupBy((value) => value.name.match(SSO_LDAP_EXTRACTOR_REGEX)![1])
-      .mapValues((group) => keyBy(group, (value) => value.name.split('.')[1]!))
-      .value() as GroupedLDAPVariables;
+    return (
+      chain(allVariables)
+        .mapValues((variable) => {
+          const matchResult = (SSO_IDP_EXTRACTOR_REGEX.exec(variable.name) ??
+            SSO_LDAP_EXTRACTOR_REGEX.exec(variable.name)) as
+            | (Omit<RegExpExecArray, 'groups'> & SSORegExpExecGroups)
+            | null;
 
-    const ssoIdpVars = mapValues(_ssoIdpVars ?? {}, (array) =>
-      // @ts-ignore
-      keyBy(array, (value) => value.name.split(SSO_VARNAME_SEPARATOR)[1]!),
-    ) as GroupedIDPVariables;
-
-    return {
-      ldap: ssoLdapVars,
-      ...ssoIdpVars,
-    };
+          return matchResult
+            ? {
+                ...matchResult.groups,
+                data: variable,
+              }
+            : null;
+        })
+        // Pick non-null values (matched variables)
+        .pickBy(identity)
+        .groupBy('type')
+        .mapValues((tg) =>
+          chain(tg)
+            .groupBy('id')
+            .mapValues((group) =>
+              chain(group).keyBy('varName').mapValues('data').value(),
+            )
+            .value(),
+        )
+        .value() as GroupedSSOVariables
+    );
   }, [allVariables]);
 
   const providerType: ProviderType = useMemo(() => {
-    const idpEnabled =
-      ssoVariables.google?.enabled.value ||
-      ssoVariables.github?.enabled.value ||
-      ssoVariables.feishu?.enabled.value;
-
-    const ldapEnabled = Object.values(ssoVariables.ldap).some(
-      (value) => value.enabled.value,
+    const reducedEnabled = mapValues(ssoVariables, (t) =>
+      chain(t)
+        .mapValues((g) => !!g.enabled?.value)
+        .some(identity)
+        .value(),
     );
 
-    return idpEnabled ? 'idp' : ldapEnabled ? 'ldap' : 'none';
-  }, [
-    ssoVariables.google?.enabled.value,
-    ssoVariables.github?.enabled.value,
-    ssoVariables.feishu?.enabled.value,
-    ssoVariables.ldap,
-  ]);
+    return reducedEnabled.sso ? 'idp' : reducedEnabled.ldap ? 'ldap' : 'none';
+  }, [ssoVariables]);
 
   const switchProviderType = useCallback(
     (type?: ProviderType) => {

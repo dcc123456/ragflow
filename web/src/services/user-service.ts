@@ -1,6 +1,9 @@
 import api from '@/utils/api';
+import authorizationUtil from '@/utils/authorization-util';
 import registerServer from '@/utils/register-server';
 import request, { post } from '@/utils/request';
+import { notification } from 'antd';
+import { t } from 'i18next';
 
 const {
   login,
@@ -159,17 +162,40 @@ export type LoginWithLdapInput = {
   password: string;
 };
 
-export const loginWithLdap = ({
+export const loginWithLdap = async ({
   serverName,
   username,
   password,
 }: LoginWithLdapInput) => {
-  return request.get(api.login_channel(serverName), {
-    params: {
-      username,
-      password,
+  const sp = new URLSearchParams({ username, password });
+
+  const resp = await fetch(
+    `${api.login_channel(serverName)}?${sp.toString()}`,
+    {
+      method: 'GET',
     },
-  });
+  );
+
+  if (resp.redirected) {
+    const url = new URL(resp.url);
+    const auth = url.searchParams.get('auth');
+
+    if (auth) {
+      authorizationUtil.setAuthorization(auth);
+      url.searchParams.delete('auth');
+      window.location.href = url.toString();
+    }
+  } else {
+    const data = await resp.json();
+
+    notification.error({
+      message: `${t('message.hint')}: ${data.code}`,
+      description: data.message,
+      duration: 3,
+    });
+
+    throw new Error(data.message);
+  }
 };
 
 export const listTenantUser = (tenantId: string) =>

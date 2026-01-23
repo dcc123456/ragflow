@@ -74,15 +74,12 @@ export const useLoginWithChannel = () => {
     },
   });
 
-  const { mutateAsync: loginLdap } = useMutation({
-    mutationFn: async (inputs: LoginWithLdapInput) => {
-      const { data = {} } = await loginWithLdap(inputs);
-      return data;
-    },
+  const { mutateAsync: loginLdap, isPending: loginLdapLoading } = useMutation({
+    mutationFn: (inputs: LoginWithLdapInput) => loginWithLdap(inputs),
   });
 
   return {
-    loading,
+    loading: loading || loginLdapLoading,
     login: mutateAsync,
     loginLdap,
   };
