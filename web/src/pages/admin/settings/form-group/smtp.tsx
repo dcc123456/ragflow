@@ -205,7 +205,6 @@ function SMTPSettingsFormGroup() {
               <FormControl>
                 <Input
                   {...field}
-                  type="email"
                   className="m-0 h-10"
                   placeholder={tf('placeholder.defaultSender')}
                   autoComplete="email"

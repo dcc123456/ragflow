@@ -1,8 +1,9 @@
 import { zodResolver } from '@hookform/resolvers/zod';
+import { isEmpty, pick } from 'lodash';
 import z from 'zod';
 
-import { useEffect, useId } from 'react';
-import { useForm } from 'react-hook-form';
+import { useId, useMemo } from 'react';
+import { ResolverResult, useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 
 import { Button } from '@/components/ui/button';
@@ -18,14 +19,13 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 
 import Spotlight from '@/components/spotlight';
 
-import SMTPSettingsFormGroup from './form-group/smtp';
+import SMTPSettingsForm from './form-group/smtp';
 import WhitelistSettingsFormGroup from './form-group/whitelist';
 
-import { Spin } from '@/components/ui/spin';
 import useAdminVariables from '../hooks/useAdminVariables';
 
 const schema = z.object({
-  smtp: SMTPSettingsFormGroup.schema,
+  smtp: SMTPSettingsForm.schema,
   whitelist: WhitelistSettingsFormGroup.schema,
 });
 
@@ -34,25 +34,32 @@ export type AdminSettingsFormValues = z.infer<typeof schema>;
 function AdminSettings() {
   const { t } = useTranslation();
 
-  const { variables, setVariables, isFetching, isUpdating } =
+  const { variables, setVariables, isUpdating, isFetching } =
     useAdminVariables();
+
+  const values = useMemo(() => {
+    return {
+      smtp: SMTPSettingsForm.mapValuesFromData(variables),
+      whitelist: WhitelistSettingsFormGroup.mapValuesFromData(variables),
+    };
+  }, [variables]);
 
   const formId = useId();
   const form = useForm<z.infer<typeof schema>>({
-    resolver: zodResolver(schema),
-    disabled: isFetching || isUpdating,
+    resolver: async (values, context, options) => {
+      const dirtyGroupNames = Object.keys(form.formState.dirtyFields);
+      const { errors } = await zodResolver(schema)(values, context, options);
+      const filteredErrors = pick(errors, dirtyGroupNames);
+
+      const result = {
+        errors: filteredErrors,
+        values: isEmpty(filteredErrors) ? values : {},
+      } as ResolverResult<AdminSettingsFormValues>;
+
+      return result;
+    },
+    values,
   });
-
-  useEffect(() => {
-    if (isFetching) return;
-
-    const formData = {
-      smtp: SMTPSettingsFormGroup.mapValuesFromData(variables),
-      whitelist: WhitelistSettingsFormGroup.mapValuesFromData(variables),
-    };
-
-    form.reset(formData);
-  }, [variables, form, isFetching]);
 
   return (
     <>
@@ -68,50 +75,48 @@ function AdminSettings() {
           </CardDescription>
         </CardHeader>
 
-        <Spin spinning={isFetching} className="flex-1 h-0">
-          <CardContent className="p-0 flex flex-row h-full">
-            <div className="w-1/2 min-w-[30rem] max-w-[50rem] h-full flex flex-col">
-              <ScrollArea className="flex-1 h-full">
-                <div className="p-6">
-                  <Form {...form}>
-                    <form
-                      id={formId}
-                      className="space-y-8"
-                      onSubmit={form.handleSubmit(async (data) => {
-                        await setVariables({
-                          ...WhitelistSettingsFormGroup.mapValuesToData(
-                            data.whitelist,
-                          ),
-                          ...SMTPSettingsFormGroup.mapValuesToData(data.smtp),
-                        });
-                      })}
-                    >
-                      <SMTPSettingsFormGroup />
-                      <hr className="border-border-button" />
-                      <WhitelistSettingsFormGroup />
-                    </form>
-                  </Form>
-                </div>
-              </ScrollArea>
-
-              <div className="p-6 text-right">
-                <Button
-                  type="submit"
-                  form={formId}
-                  className="h-10 px-4"
-                  loading={isUpdating}
-                  disabled={isFetching || isUpdating || !form.formState.isDirty}
-                >
-                  {t('common.save')}
-                </Button>
+        <CardContent className="h-0 flex-1 p-0 flex flex-row">
+          <div className="w-1/2 min-w-[40rem] max-w-[56rem] h-full flex flex-col">
+            <ScrollArea className="flex-1 h-full">
+              <div className="p-6">
+                <Form {...form}>
+                  <form
+                    id={formId}
+                    className="space-y-8"
+                    onSubmit={form.handleSubmit(async (data) => {
+                      await setVariables({
+                        ...WhitelistSettingsFormGroup.mapValuesToData(
+                          data.whitelist,
+                        ),
+                        ...SMTPSettingsForm.mapValuesToData(data.smtp),
+                      });
+                    })}
+                  >
+                    <SMTPSettingsForm />
+                    <hr className="border-border-button" />
+                    <WhitelistSettingsFormGroup />
+                  </form>
+                </Form>
               </div>
+            </ScrollArea>
+
+            <div className="p-6 text-right">
+              <Button
+                type="submit"
+                form={formId}
+                className="h-10 px-4"
+                loading={isUpdating}
+                disabled={isFetching || isUpdating || !form.formState.isDirty}
+              >
+                {t('common.save')}
+              </Button>
             </div>
+          </div>
 
-            <hr className="mx-0 my-6 h-auto border-l border-border-button" />
+          <hr className="mx-0 my-6 h-auto border-l border-border-button" />
 
-            <div className="flex-auto p-6"></div>
-          </CardContent>
-        </Spin>
+          <div className="flex-auto p-6"></div>
+        </CardContent>
       </Card>
     </>
   );

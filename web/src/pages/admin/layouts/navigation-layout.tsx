@@ -36,7 +36,7 @@ const AdminNavigationLayout = () => {
 
   const { variables } = useAdminVariables();
 
-  const isWhitelistEnabled = !!variables.enable_whitelist?.value;
+  const isWhitelistEnabled = !!variables?.enable_whitelist?.value;
 
   const navItems = useMemo(
     () => [
