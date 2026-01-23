@@ -22,7 +22,7 @@ from decimal import getcontext, ROUND_HALF_UP
 from urllib.parse import urlparse
 from api.db.services.system_settings_service import SystemSettingsService
 from api.db.db_models import init_database_tables as init_web_db, LLM
-from api.db.joint_services.memory_message_service import init_message_id_sequence, init_memory_size_cache
+from api.db.joint_services.memory_message_service import init_message_id_sequence, init_memory_size_cache, fix_missing_tokenized_memory
 from api.db.services.canvas_service import CanvasTemplateService
 from api.db.services.llm_service import LLMService
 from api.db.services.tenant_llm_service import LLMFactoriesService
@@ -221,6 +221,7 @@ def init_web_data():
     init_memory_size_cache()
     init_oauth_config()
     init_smtp_conf()
+    fix_missing_tokenized_memory()
     logging.info("init web data success:{}".format(time.time() - start_time))
 
 def init_table():
