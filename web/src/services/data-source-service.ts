@@ -66,7 +66,9 @@ export type DataSourceFileItem = {
 };
 
 export const listDataSourceFiles = (id: string) =>
-  request.post<{ data: DataSourceFileItem[] }>(api.dataSourceListFiles(id));
+  request.post<{ data: DataSourceFileItem[] }>(api.dataSourceListFiles(id), {
+    noToast: true,
+  });
 
 export const syncDataSourceFiles = (
   id: string,

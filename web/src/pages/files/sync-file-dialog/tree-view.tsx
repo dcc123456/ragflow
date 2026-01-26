@@ -26,7 +26,7 @@ import {
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
-function _isLeaf(item: TreeDataItem) {
+function _defaultIsLeafFn(item: TreeDataItem) {
   return !item.children;
 }
 
@@ -92,7 +92,7 @@ type TreeUtilityContextValue = {
 
 const TreeUtilityContext = createContext<TreeUtilityContextValue>({
   getItemId: stubString,
-  isLeafNode: _isLeaf,
+  isLeafNode: _defaultIsLeafFn,
 });
 
 const TreeSelectionContext = createContext<{
@@ -128,8 +128,9 @@ const TreeIcon = ({
   isSelected?: CheckedState;
   default?: any;
 }) => {
+  const { isLeafNode } = useContext(TreeUtilityContext);
   const ctxIcons = useContext(TreeDefaultIconContext);
-  const isNode = !!item.children;
+  const isNode = !isLeafNode(item);
 
   let Icon = defaultIcon;
 
@@ -471,7 +472,7 @@ export const TreeView = forwardRef(function TreeView<
     multiple: multipleSelect = false,
     onSelectChange,
 
-    isLeafNode = _isLeaf,
+    isLeafNode = _defaultIsLeafFn,
 
     ...restProps
   } = props;

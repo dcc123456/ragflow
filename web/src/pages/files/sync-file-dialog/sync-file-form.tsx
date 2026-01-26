@@ -12,6 +12,7 @@ import {
   FormField,
   FormItem,
   FormLabel,
+  FormMessage,
 } from '@/components/ui/form';
 
 import {
@@ -39,6 +40,8 @@ import {
   type DataSourceFileItem,
 } from '@/services/data-source-service';
 import { useQuery } from '@tanstack/react-query';
+import { notification } from 'antd';
+import { t } from 'i18next';
 import { LucideFolder } from 'lucide-react';
 import { useGetFolderId } from '../hooks';
 import { TreeView } from './tree-view';
@@ -46,6 +49,7 @@ import { TreeView } from './tree-view';
 type DataSourceFileItemWithPath = DataSourceFileItem & {
   idPath: string[];
   namePath: string[];
+  __original: DataSourceFileItem;
 };
 
 function flattenTreeData(
@@ -63,6 +67,7 @@ function flattenTreeData(
         ...item,
         idPath: thisItemIdPath,
         namePath: thisItemNamePath,
+        __original: item,
       },
       ...(Array.isArray(item.children) && item.children.length
         ? flattenTreeData(item.children, thisItemIdPath, thisItemNamePath)
@@ -128,6 +133,23 @@ export function SyncFileForm({
     queryKey: ['fileManager/sync/listDataSourceFiles', selectedDataSourceId],
     queryFn: async () => {
       const { data } = await listDataSourceFiles(selectedDataSourceId);
+
+      // @ts-ignore
+      if (data.code) {
+        const { code, message } = data as any;
+
+        notification.error({
+          message: `${t('message.hint')}: ${code}`,
+          description: message,
+          duration: 3,
+        });
+
+        return {
+          data: [],
+          flatData: [],
+        };
+      }
+
       return {
         data,
         flatData: flattenTreeData(data),
@@ -143,9 +165,9 @@ export function SyncFileForm({
 
   const handleSubmit = useCallback(
     (data: z.infer<typeof SyncFileForm.schema>) => {
-      const filteredData = flatData.filter((item) =>
-        data.syncFiles.includes(item.token),
-      );
+      const filteredData = flatData
+        .filter((item) => data.syncFiles.includes(item.token))
+        .map((item) => item.__original);
 
       return onOk?.({
         dataSource: data.dataSource,
@@ -161,7 +183,7 @@ export function SyncFileForm({
       <Form {...form}>
         <form
           id={formId}
-          className="space-y-6"
+          className="space-y-8"
           onSubmit={form.handleSubmit(handleSubmit)}
         >
           <FormField
@@ -211,6 +233,7 @@ export function SyncFileForm({
                     </SelectContent>
                   </Select>
                 </FormControl>
+                <FormMessage className="absolute" />
               </FormItem>
             )}
           />
@@ -239,6 +262,7 @@ export function SyncFileForm({
                       />
                     </FormControl>
                   </div>
+                  <FormMessage className="absolute" />
                 </Spin>
               </FormItem>
             )}
@@ -274,6 +298,7 @@ export function SyncFileForm({
                     </SelectContent>
                   </Select>
                 </FormControl>
+                <FormMessage className="absolute" />
               </FormItem>
             )}
           />
@@ -284,7 +309,9 @@ export function SyncFileForm({
 }
 
 SyncFileForm.schema = z.object({
-  dataSource: z.string().min(1, { message: '' }),
-  targetFolder: z.string().min(1, { message: '' }),
-  syncFiles: z.array(z.string()).min(1, { message: '' }),
+  dataSource: z.string().min(1, { message: t('fileManager.pleaseSelect') }),
+  targetFolder: z.string().min(1, { message: t('fileManager.pleaseSelect') }),
+  syncFiles: z
+    .array(z.string())
+    .min(1, { message: t('fileManager.pleaseSelect') }),
 });

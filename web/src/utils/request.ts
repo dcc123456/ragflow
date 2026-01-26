@@ -102,9 +102,11 @@ request.interceptors.request.use((url: string, options: any) => {
   };
 });
 
-request.interceptors.response.use(async (response: any, options) => {
+request.interceptors.response.use(async (response: any, options: any) => {
   if (response?.status === 413 || response?.status === 504) {
-    message.error(RetcodeMessage[response?.status as ResultCode]);
+    if (!options.noToast) {
+      message.error(RetcodeMessage[response?.status as ResultCode]);
+    }
   }
 
   if (options.responseType === 'blob') {
@@ -113,24 +115,30 @@ request.interceptors.response.use(async (response: any, options) => {
 
   const data: ResponseType = await response?.clone()?.json();
   if (data?.code === 100) {
-    message.error(data?.message);
+    if (!options.noToast) {
+      message.error(data?.message);
+    }
   } else if (data?.code === 401) {
-    notification.error({
-      message: data?.message,
-      description: data?.message,
-      duration: 3,
-    });
+    if (!options.noToast) {
+      notification.error({
+        message: data?.message,
+        description: data?.message,
+        duration: 3,
+      });
+    }
     authorizationUtil.removeAll();
     redirectToLogin();
   } else if (data?.code !== 0) {
     if (PriceCode[data?.code as any]) {
       showPriceModal(data as any);
     } else {
-      notification.error({
-        message: `${i18n.t('message.hint')} : ${data?.code}`,
-        description: data?.message,
-        duration: 3,
-      });
+      if (!options.noToast) {
+        notification.error({
+          message: `${i18n.t('message.hint')} : ${data?.code}`,
+          description: data?.message,
+          duration: 3,
+        });
+      }
     }
   }
   return response;
