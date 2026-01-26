@@ -24,6 +24,7 @@ from api.db.services.canvas_service import UserCanvasService
 from api.db.services.task_service import TaskService
 from api.db.joint_services.memory_message_service import get_memory_size_cache, judge_system_prompt_is_default
 from api.utils.api_utils import validate_request, get_request_json, get_error_argument_result, get_json_result
+from api.utils.billing import check_resources
 from api.utils.memory_utils import format_ret_data_from_memory, get_memory_type_human
 from api.constants import MEMORY_NAME_LIMIT, MEMORY_SIZE_LIMIT
 from memory.services.messages import MessageService
@@ -33,6 +34,7 @@ from common.constants import MemoryType, RetCode, ForgettingPolicy
 
 @manager.route("", methods=["POST"])  # noqa: F821
 @login_required
+@check_resources(apps=1)
 @validate_request("name", "memory_type", "embd_id", "llm_id")
 async def create_memory():
     req = await get_request_json()

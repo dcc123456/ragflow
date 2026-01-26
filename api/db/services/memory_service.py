@@ -41,6 +41,11 @@ class MemoryService(CommonService):
 
     @classmethod
     @DB.connection_context()
+    def count_by_tenant_id(cls, tenant_id: str) -> int:
+        return cls.model.select().where(cls.model.tenant_id == tenant_id).count()
+
+    @classmethod
+    @DB.connection_context()
     def get_all_memory(cls):
         memory_list = cls.model.select()
         return list(memory_list)

@@ -35,6 +35,7 @@ from api.db.db_models import (
 )
 from api.db.services.dialog_service import DialogService
 from api.db.services.file_service import FileService
+from api.db.services.memory_service import MemoryService
 from api.utils.billing import create_stripe_customer_id, get_trial_price_id, parse_storage_size
 from common.billing_utils import to_utc_datetime
 from common.time_utils import current_timestamp
@@ -170,6 +171,7 @@ class SubscriptionService(CommonService):
                 + KnowledgebaseService.count_by_tenant_id(tenant_id)
                 + UserCanvasService.count_by_tenant_id(tenant_id)
                 + SearchService.count_by_tenant_id(tenant_id)
+                + MemoryService.count_by_tenant_id(tenant_id)
             )
 
             num_members = UserTenantService.get_num_members(tenant_id)
