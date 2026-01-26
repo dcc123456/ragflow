@@ -323,4 +323,68 @@ export default {
   adminVariables: `${ExternalApi}${api_host}/admin/variables`,
   adminRefreshVariables: `${ExternalApi}${api_host}/admin/variables/refresh`,
   adminTestSMTPConnection: `${ExternalApi}${api_host}/admin/validate_mail`,
+
+  // evaluation
+  // dataset
+  evaluationCreateDataset: `${api_host}/evaluation/dataset/create`,
+  evaluationListDataset: `${api_host}/evaluation/dataset/list`,
+  evaluationGetDataset: (datasetId: string) =>
+    `${api_host}/evaluation/dataset/${datasetId}`,
+  evaluationUpdateDataset: (datasetId: string) =>
+    `${api_host}/evaluation/dataset/${datasetId}`,
+  evaluationDeleteDataset: (datasetId: string) =>
+    `${api_host}/evaluation/dataset/${datasetId}`,
+
+  // case
+  evaluationAddCase: (datasetId: string) =>
+    `${api_host}/evaluation/dataset/${datasetId}/case/add`,
+  evaluationImportCase: (datasetId: string) =>
+    `${api_host}/evaluation/dataset/${datasetId}/case/import`,
+  evaluationListCase: (datasetId: string) =>
+    `${api_host}/evaluation/dataset/${datasetId}/cases`,
+  evaluationDeleteCase: (caseId: string) =>
+    `${api_host}/evaluation/case/${caseId}`,
+  evaluationUpdateCase: (caseId: string) =>
+    `${api_host}/evaluation/case/${caseId}`,
+
+  // run
+  evaluationStartRun: `${api_host}/evaluation/run/start`,
+  evaluationGetRun: (runId: string) => `${api_host}/evaluation/run/${runId}`,
+  evaluationGetRunResults: (runId: string) =>
+    `${api_host}/evaluation/run/${runId}/results`,
+  evaluationListRun: `${api_host}/evaluation/run/list`,
+  evaluationDeleteRun: (runId: string) => `${api_host}/evaluation/run/${runId}`,
+  evaluationUpdateRun: (runId: string) => `${api_host}/evaluation/run/${runId}`,
+  evaluationDuplicateRun: (runId: string) =>
+    `${api_host}/evaluation/run/${runId}/duplicate`,
+
+  // execute
+  evaluationExecuteAll: (runId: string) =>
+    `${api_host}/evaluation/run/${runId}/execute_all`,
+  evaluationExecuteCase: (runId: string, caseId: string) =>
+    `${api_host}/evaluation/run/${runId}/case/${caseId}/execute`,
+
+  // metrics
+  evaluationCalculateCaseMetric: (runId: string, caseId: string) =>
+    `${api_host}/evaluation/run/${runId}/case/${caseId}/metric`,
+  evaluationCalculateRunsMetrics: (runId: string) =>
+    `${api_host}/evaluation/run/${runId}/metrics`,
+  evaluationCalculateRunsMetric: (runId: string) =>
+    `${api_host}/evaluation/run/${runId}/metric`,
+  evaluationCalculateCaseMetrics: (runId: string, caseId: string) =>
+    `${api_host}/evaluation/run/${runId}/case/${caseId}/metrics`,
+
+  // clear results
+  evaluationClearCaseResult: (runId: string, caseId: string) =>
+    `${api_host}/evaluation/run/${runId}/case/${caseId}/result`,
+  evaluationClearCaseMetricResult: (runId: string, caseId: string) =>
+    `${api_host}/evaluation/run/${runId}/case/${caseId}/result/metric`,
+  evaluationClearCaseAnswer: (runId: string, caseId: string) =>
+    `${api_host}/evaluation/run/${runId}/case/${caseId}/result/answer`,
+
+  // other
+  evaluationGetRecommendations: (runId: string) =>
+    `${api_host}/evaluation/run/${runId}/recommendations`,
+  evaluationExportRun: (runId: string) =>
+    `${api_host}/evaluation/run/${runId}/export`,
 };
