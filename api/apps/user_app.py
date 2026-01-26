@@ -1418,7 +1418,7 @@ def azure_callback():
     user_id = get_uuid()
 
     if not users:
-        return redirect("/?error=Unauthorized. Contact administrator please.")
+        #return redirect("/?error=Unauthorized. Contact administrator please.")
         # User isn't try to register
         try:
             users = user_register(
