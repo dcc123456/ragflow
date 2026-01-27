@@ -1,45 +1,13 @@
-import { debounce, DebounceSettings, pickBy } from 'lodash';
-import { useMemo } from 'react';
+import { pickBy } from 'lodash';
 import { toast } from 'sonner';
 
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 
-import {
-  listVariables,
-  refreshVariables,
-  setVariable,
-} from '@/services/admin-service';
-
-function useRefreshVariables() {
-  const { mutateAsync, isPending } = useMutation({
-    mutationKey: ['admin/refreshVariables'],
-    mutationFn: (input: AdminService.RefreshVariablesInput) =>
-      refreshVariables(input),
-  });
-
-  return {
-    refreshVariables: mutateAsync,
-    isPending,
-  };
-}
-
-function useDebouncedRefreshVariables(wait = 5000, options?: DebounceSettings) {
-  const { refreshVariables: mutateAsync, isPending } = useRefreshVariables();
-  const debouncedFn = useMemo(
-    () => debounce(mutateAsync, wait, options),
-    [mutateAsync, wait, options],
-  );
-
-  return {
-    refreshVariables: debouncedFn,
-    isPending,
-  };
-}
+import { listVariables, setVariable } from '@/services/admin-service';
 
 export default function useAdminVariables() {
   const { t } = useTranslation();
-  const { refreshVariables } = useDebouncedRefreshVariables();
   const { data, isFetching, refetch } = useQuery({
     queryKey: ['admin/listVariables'],
     queryFn: async () => {
@@ -66,10 +34,6 @@ export default function useAdminVariables() {
         position: 'top-center',
       });
       refetch();
-      refreshVariables({
-        oauth: true,
-        smtp: true,
-      });
     },
   });
 

@@ -353,8 +353,6 @@ export const deleteLdapServer = (serverId: string) => {
     },
   });
 };
-export const refreshVariables = (input: AdminService.RefreshVariablesInput) =>
-  request.post<ResponseData<never>>(API.adminRefreshVariables, input);
 
 export const testSMTPConnection = (
   params: AdminService.TestSMTPConnectionInput,
