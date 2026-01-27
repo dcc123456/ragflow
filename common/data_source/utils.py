@@ -18,9 +18,8 @@ from io import BytesIO
 from itertools import islice
 from numbers import Integral
 from pathlib import Path
-from typing import IO, Any, Generic, Iterable, Optional, Protocol, TypeVar, cast
+from typing import IO, Any, Generic, Iterable, Optional, Protocol, TypeVar, cast, Literal
 from urllib.parse import parse_qs, quote, urljoin, urlparse
-
 import boto3
 import chardet
 import requests
@@ -1152,16 +1151,46 @@ def parallel_yield(gens: list[Iterator[R]], max_workers: int = 10) -> Iterator[R
                 del future_to_index[future]
 
 
-def sanitize_filename(name: str, extension: str = "txt", skip_extension: bool = False) -> str:
+def sanitize_filename(
+    name: str,
+    *,
+    extension: Optional[str] = "txt",
+    mode: Literal["preserve", "force", "strip"] = "preserve",
+    max_len: int = 200,
+) -> str:
     """
     Sanitize filename for cross-platform + S3/MinIO safety.
-    - Drop emoji / symbol characters unconditionally.
+    - Drop emoji / symbol characters (So / Sk) unconditionally.
     - Remove control / invisible characters.
     - Replace path-reserved characters with space.
     - Preserve readability (spaces, CJK, Latin).
+
+    Args:
+        name: Raw filename (may include extension).
+        extension:
+            - preserve mode: used only when input has no extension
+            - force mode: required, always enforced
+            - strip mode: ignored
+            Use None to mean "do not add extension" in preserve mode.
+        mode:
+            - "preserve": keep existing extension; if missing, append `extension` (unless extension is None)
+            - "force": replace/ensure extension == `extension`
+            - "strip": remove extension entirely
+        max_len: Maximum length guard (soft). Default 200.
+
+    Returns:
+        Sanitized filename string.
     """
     if not name:
-        return f"file.{extension}" if not skip_extension else "file"
+        # handle empty name
+        if mode == "strip":
+            return "file"
+        if mode == "force":
+            if not extension:
+                raise ValueError("extension must be provided when mode='force'")
+            return f"file.{extension.lstrip('.')}"
+        # preserve
+        return f"file.{extension.lstrip('.')}" if extension else "file"
 
     # Normalize to avoid weird composed forms
     name = unicodedata.normalize("NFKC", str(name)).strip()
@@ -1174,10 +1203,7 @@ def sanitize_filename(name: str, extension: str = "txt", skip_extension: bool = 
     name = re.sub(r"[\u200c\u200d\uFE0E\uFE0F]", "", name)
 
     # 3) Drop emoji & symbol characters (So / Sk)
-    name = "".join(
-        ch for ch in name
-        if unicodedata.category(ch) not in ("So", "Sk")
-    )
+    name = "".join(ch for ch in name if unicodedata.category(ch) not in ("So", "Sk"))
 
     # 4) Replace path / URL / Windows reserved characters
     name = re.sub(r'[\\/?#%*:|<>"\n\r\t]', " ", name)
@@ -1185,16 +1211,43 @@ def sanitize_filename(name: str, extension: str = "txt", skip_extension: bool = 
     # 5) Collapse whitespace
     name = re.sub(r"\s+", " ", name).strip()
 
-    # 6) Length guard
-    if len(name) > 200:
-        base, ext = os.path.splitext(name)
-        name = base[:180].rstrip() + ext
+    # 6) Length guard (apply to base; preserve ext if present)
+    if max_len and len(name) > max_len:
+        base, ext0 = os.path.splitext(name)
+        # keep a little room for ext
+        keep_base = max(1, max_len - len(ext0))
+        name = base[:keep_base].rstrip() + ext0
 
-    # 7) Ensure extension
-    if not os.path.splitext(name)[1] and not skip_extension:
-        name += f".{extension}"
+    # 7) Extension policy
+    base, ext0 = os.path.splitext(name)
+
+    if mode == "strip":
+        name = base
+
+    elif mode == "force":
+        if not extension:
+            raise ValueError("extension must be provided when mode='force'")
+        name = f"{base}.{extension.lstrip('.')}"
+
+    elif mode == "preserve":
+        # keep ext0 if present; otherwise append extension (unless extension is None/empty)
+        if not ext0 and extension:
+            name = f"{base}.{extension.lstrip('.')}"
+
+    else:
+        raise ValueError(f"Unknown mode: {mode!r}")
+
+    # 8) Final fallback
+    if not name:
+        # can happen if input is only symbols/invisibles
+        if mode == "strip":
+            return "file"
+        if mode == "force":
+            return f"file.{extension.lstrip('.')}"  # extension validated above
+        return f"file.{extension.lstrip('.')}" if extension else "file"
 
     return name
+
 
 
 F = TypeVar("F", bound=Callable[..., Any])
@@ -1294,3 +1347,19 @@ def retry_builder(
         return cast(F, wrapped_func)
 
     return retry_with_default
+
+
+#TREE UTILS
+def walk_tree(nodes, fn, depth=0):
+    for node in nodes:
+        fn(node, depth)
+        if node.get("children"):
+            walk_tree(node["children"], fn, depth+1)
+
+    
+def pprint_tree(nodes):
+    def printer(node, depth):
+        indent = "  " * depth
+        print(f"{indent}- [{node['type']}] {node['name']}")
+
+    walk_tree(nodes, printer)

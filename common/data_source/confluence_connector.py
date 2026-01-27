@@ -1,6 +1,7 @@
 
 
 """Confluence connector"""
+import asyncio
 import copy
 import json
 import logging
@@ -12,6 +13,7 @@ from typing import Any, cast, Iterator, Callable, Generator
 import requests
 from typing_extensions import override
 from urllib.parse import quote
+from urllib.parse import urlparse, parse_qs
 
 import bs4
 from atlassian.errors import ApiError
@@ -23,8 +25,8 @@ from common.data_source.config import INDEX_BATCH_SIZE, DocumentSource, CONTINUE
     CONFLUENCE_SYNC_TIME_BUFFER_SECONDS, \
     OAUTH_CONFLUENCE_CLOUD_CLIENT_ID, OAUTH_CONFLUENCE_CLOUD_CLIENT_SECRET, _DEFAULT_PAGINATION_LIMIT, \
     _PROBLEMATIC_EXPANSIONS, _REPLACEMENT_EXPANSIONS, _USER_NOT_FOUND, _COMMENT_EXPANSION_FIELDS, \
-    _ATTACHMENT_EXPANSION_FIELDS, _PAGE_EXPANSION_FIELDS, ONE_DAY, ONE_HOUR, _RESTRICTIONS_EXPANSION_FIELDS, \
-    _SLIM_DOC_BATCH_SIZE, CONFLUENCE_CONNECTOR_ATTACHMENT_SIZE_THRESHOLD
+    _ATTACHMENT_EXPANSION_FIELDS, _PAGE_EXPANSION_FIELDS, ONE_DAY, ONE_HOUR, \
+    CONFLUENCE_CONNECTOR_ATTACHMENT_SIZE_THRESHOLD
 from common.data_source.exceptions import (
     ConnectorMissingCredentialError,
     ConnectorValidationError,
@@ -36,16 +38,16 @@ from common.data_source.interfaces import (
     ConnectorCheckpoint,
     CredentialsConnector,
     SecondsSinceUnixEpoch,
-    SlimConnectorWithPermSync, StaticCredentialsProvider, CheckpointedConnector, SlimConnector,
-    CredentialsProviderInterface, ConfluenceUser, IndexingHeartbeatInterface, AttachmentProcessingResult,
+    StaticCredentialsProvider, CheckpointedConnector,
+    CredentialsProviderInterface, ConfluenceUser, AttachmentProcessingResult,
     CheckpointOutput
 )
 from common.data_source.models import ConnectorFailure, Document, TextSection, ImageSection, BasicExpertInfo, \
-    DocumentFailure, GenerateSlimDocumentOutput, SlimDocument, ExternalAccess
-from common.data_source.utils import load_all_docs_from_checkpoint_connector, scoped_url, \
+    DocumentFailure
+from common.data_source.utils import scoped_url, \
     process_confluence_user_profiles_override, confluence_refresh_tokens, run_with_timeout, _handle_http_error, \
     update_param_in_path, get_start_param_from_url, build_confluence_document_id, datetime_from_string, \
-    is_atlassian_date_error, validate_attachment_filetype
+    is_atlassian_date_error, validate_attachment_filetype, sanitize_filename
 from rag.utils.redis_conn import RedisDB, REDIS_CONN
 
 _USER_ID_TO_DISPLAY_NAME_CACHE: dict[str, str | None] = {}
@@ -929,7 +931,7 @@ def extract_text_from_confluence_html(
 
     _remove_macro_stylings(soup=soup)
 
-    for user in soup.findAll("ri:user"):
+    for user in soup.find_all("ri:user"):
         user_id = (
             user.attrs["ri:account-id"]
             if "ri:account-id" in user.attrs
@@ -943,7 +945,7 @@ def extract_text_from_confluence_html(
         # Include @ sign for tagging, more clear for LLM
         user.replaceWith("@" + _get_user(confluence_client, user_id))
 
-    for html_page_reference in soup.findAll("ac:structured-macro"):
+    for html_page_reference in soup.find_all("ac:structured-macro"):
         # Here, we only want to process page within page macros
         if html_page_reference.attrs.get("ac:name") != "include":
             continue
@@ -1000,7 +1002,7 @@ def extract_text_from_confluence_html(
 
         html_page_reference.replaceWith(text_from_page)
 
-    for html_link_body in soup.findAll("ac:link-body"):
+    for html_link_body in soup.find_all("ac:link-body"):
         # This extracts the text from inline links in the page so they can be
         # represented in the document text as plain text
         try:
@@ -1009,7 +1011,7 @@ def extract_text_from_confluence_html(
         except Exception as e:
             logging.warning(f"Error processing ac:link-body: {e}")
 
-    for html_attachment in soup.findAll("ri:attachment"):
+    for html_attachment in soup.find_all("ri:attachment"):
         # This extracts the text from inline attachments in the page so they can be
         # represented in the document text as plain text
         try:
@@ -1023,7 +1025,7 @@ def extract_text_from_confluence_html(
 
 
 def _remove_macro_stylings(soup: bs4.BeautifulSoup) -> None:
-    for macro_root in soup.findAll("ac:structured-macro"):
+    for macro_root in soup.find_all("ac:structured-macro"):
         if not isinstance(macro_root, bs4.Tag):
             continue
 
@@ -1032,75 +1034,6 @@ def _remove_macro_stylings(soup: bs4.BeautifulSoup) -> None:
             continue
 
         macro_styling.extract()
-
-
-def get_page_restrictions(
-    confluence_client: OnyxConfluence,
-    page_id: str,
-    page_restrictions: dict[str, Any],
-    ancestors: list[dict[str, Any]],
-) -> ExternalAccess | None:
-    """
-    Get page access restrictions for a Confluence page.
-    This functionality requires Enterprise Edition.
-
-    Args:
-        confluence_client: OnyxConfluence client instance
-        page_id: The ID of the page
-        page_restrictions: Dictionary containing page restriction data
-        ancestors: List of ancestor pages with their restriction data
-
-    Returns:
-        ExternalAccess object for the page. None if EE is not enabled or no restrictions found.
-    """
-    # Fetch the EE implementation
-    """
-    ee_get_all_page_restrictions = cast(
-        Callable[
-            [OnyxConfluence, str, dict[str, Any], list[dict[str, Any]]],
-            ExternalAccess | None,
-        ],
-        fetch_versioned_implementation(
-            "onyx.external_permissions.confluence.page_access", "get_page_restrictions"
-        ),
-    )
-
-    return ee_get_all_page_restrictions(
-        confluence_client, page_id, page_restrictions, ancestors
-    )"""
-    return {}
-
-
-def get_all_space_permissions(
-    confluence_client: OnyxConfluence,
-    is_cloud: bool,
-) -> dict[str, ExternalAccess]:
-    """
-    Get access permissions for all spaces in Confluence.
-    This functionality requires Enterprise Edition.
-
-    Args:
-        confluence_client: OnyxConfluence client instance
-        is_cloud: Whether this is a Confluence Cloud instance
-
-    Returns:
-        Dictionary mapping space keys to ExternalAccess objects. Empty dict if EE is not enabled.
-    """
-    """
-    # Fetch the EE implementation
-    ee_get_all_space_permissions = cast(
-        Callable[
-            [OnyxConfluence, bool],
-            dict[str, ExternalAccess],
-        ],
-        fetch_versioned_implementation(
-            "onyx.external_permissions.confluence.space_access",
-            "get_all_space_permissions",
-        ),
-    )
-
-    return ee_get_all_space_permissions(confluence_client, is_cloud)"""
-    return {}
 
 
 def _make_attachment_link(
@@ -1274,10 +1207,10 @@ def convert_attachment_to_content(
 
 class ConfluenceConnector(
     CheckpointedConnector[ConfluenceCheckpoint],
-    SlimConnector,
-    SlimConnectorWithPermSync,
     CredentialsConnector,
 ):
+    _ASYNC_NODE_CONCURRENCY = 5
+
     def __init__(
         self,
         wiki_base: str,
@@ -1860,6 +1793,466 @@ class ConfluenceConnector(
         logging.info(f"[Confluence Connector] Building CQL URL {cql_url}")
         return update_param_in_path(cql_url, "limit", str(limit))
 
+
+    async def get_all_spaces(self) -> list[dict[str, str]]:
+        """
+        List all visible spaces.
+
+        Returns:
+            [
+            {"key": "<space key>", "name": "<space name>", "homepage_id": "<content id>" | None}
+            ]
+        """
+        spaces = []
+        result = self.confluence_client.get_all_spaces()
+
+        for s in result.get("results", []):
+            key = s.get("key")
+            name = s.get("name")
+            homepage = s.get("_expandable", {}).get("homepage")
+
+            if not key or not name:
+                continue
+
+            spaces.append({
+                "key": key,
+                "name": name,
+                "homepage_id": homepage.split("/")[-1] if homepage else None
+            })
+
+        return spaces
+
+
+    async def get_space(self, space_key: str) -> list[dict[str, str]]:
+        """
+        Get a single space by key.
+
+        Returns:
+            [
+            {"key": "<space key>", "name": "<space name>", "homepage_id": "<content id>" | None}
+            ]
+        """
+        s = self.confluence_client.get_space(space_key)
+        if not isinstance(s, dict):
+            return []
+
+        key = s.get("key")
+        name = s.get("name")
+        homepage_obj = s.get("homepage")
+
+        if not key or not name:
+            return []
+
+        homepage_id = homepage_obj.get("id") if isinstance(homepage_obj, dict) else None
+
+        return [{
+            "key": key,
+            "name": name,
+            "homepage_id": homepage_id
+        }]
+
+    
+    async def list_spaces(self):
+        if self.space:
+            return await self.get_space(self.space)
+        else:
+            return await self.get_all_spaces()
+
+
+    async def walk_page_tree(self, page_id: str, space_key: str):
+        """
+        Build a hierarchical tree by walking Confluence REST API v2 direct-children recursively.
+
+        Behavior:
+        - Uses v2 direct-children endpoints to build a true hierarchy (no descendants flattening).
+        - For any non-folder node that has children, wraps it with a "folder container" node:
+            * container node has type="folder" and title="FOLDER: <display_title>"
+            * container node's children = [file_node(original node without children), ...original children...]
+        - Root node title is prefixed with "SPACE: ".
+        - Native Confluence folder nodes are kept as-is, but their title is prefixed with "FOLDER: ".
+
+        Returns:
+            dict: root node (tree with `children`)
+        """
+        supported_type = {"page", "folder"}
+
+
+        def _get_cursor(next_link: str | None) -> str | None:
+            if not next_link:
+                return None
+            qs = parse_qs(urlparse(next_link).query)
+            return (qs.get("cursor") or [None])[0]
+
+        def _direct_children_endpoint(node_type: str, node_id: str) -> str | None:
+            if node_type == "page":
+                return f"/api/v2/pages/{node_id}/direct-children"
+            if node_type == "folder":
+                return f"/api/v2/folders/{node_id}/direct-children"
+            return None
+
+        root = self.confluence_client.get(f"/rest/api/content/{page_id}") or {}
+        if not root.get("id"):
+            return None
+
+        root_node = {
+            "name": root.get("title"),
+            "token": str(root["id"]),
+            "type": "page",
+            "is_root": True,
+            "space": space_key,
+            "name_with_path": root.get("title"),
+            "children": [],
+        }
+
+        async def _build_children(node: dict) -> None:
+            endpoint = _direct_children_endpoint(node.get("type"), node.get("token"))
+            if not endpoint:
+                return
+
+            cursor = None
+            children_nodes: list[dict] = []
+
+            while True:
+                params = {"limit": 250}
+                if cursor:
+                    params["cursor"] = cursor
+
+                res = self.confluence_client.get(endpoint, params=params) or {}
+                results = res.get("results") or []
+
+                for item in results:
+                    cid = item.get("id")
+                    ctype = item.get("type")
+                    if not cid or not ctype or ctype not in supported_type:
+                        continue
+
+                    child_node = {
+                        "name": item.get("title"),
+                        "token": str(cid),
+                        "type": ctype,
+                        "space": node.get("space"),
+                        "children": [],
+                    }
+
+                    if ctype in supported_type:
+                        await _build_children(child_node)
+
+                    children_nodes.append(child_node)
+
+                cursor = _get_cursor((res.get("_links") or {}).get("next"))
+                if not cursor:
+                    break
+
+            node["children"] = children_nodes
+
+        await _build_children(root_node)
+
+        def _wrap_tree(node: dict, parent_path: str | None) -> dict:
+            path = parent_path + " / " + node["name"] if parent_path else node["name"]
+            if node.get("type") == "folder":
+                node["children"] = [_wrap_tree(c, path) for c in (node.get("children") or [])]
+                node["name"] = "FODLER: " + node["name"]
+                return node
+
+            children = node.get("children") or []
+            wrapped_children = [_wrap_tree(c,  path) for c in children]
+            node["children"] = wrapped_children
+
+            if not wrapped_children:
+                node["path"] = parent_path
+                return node
+            
+            title_prefix = "FOLDER: "
+            if node.get("is_root"):
+                title_prefix = "SPACE: "
+
+            container_node = {
+                "name": title_prefix + node["name"],
+                "token": title_prefix + str(node["token"]),
+                "type": "folder",
+                "children": [],
+            }
+
+            file_node = dict(node)
+            file_node["children"] = []
+            file_node["path"] = parent_path 
+
+            container_node["children"].append(file_node)
+            container_node["children"].extend(wrapped_children)
+            return container_node
+
+        wrapped_root = _wrap_tree(root_node, "")
+        return wrapped_root
+
+
+    async def build_tree(self) -> list[dict[str, Any]]:
+        return await self._build_tree_async()
+
+
+    async def _build_tree_async(self) -> list[dict[str, Any]]:
+
+        space_list = await self.list_spaces()
+        for s in space_list:
+            name = s.get("name")
+            homepage_id = s.get("homepage_id")
+
+            if not name or not homepage_id:
+                continue
+
+            files = await self.walk_page_tree(
+                homepage_id,
+                name,
+            )
+
+            return [files]        
+
+
+    def fetch_from_page_id(self, node: dict[str, Any]) -> Document:
+        """
+        Fetch a Confluence page by page_id and convert it to a Document.
+        Raises exception on failure.
+        """
+        page_id = node.get("token")
+        if not page_id:
+            raise ValueError(f"[Confluence] node missing page token: {node}")
+
+
+        # 1) Fetch raw page data
+        try:
+            res = self.confluence_client.get(
+                f"/rest/api/content/{page_id}",
+                params={
+                    "expand": "body.storage,history.lastUpdated,metadata.labels,version"
+                },
+            )
+        except Exception as e:
+            logging.warning(f"[Confluence] Failed to fetch page {page_id}: {e}")
+            return []
+        
+        # 2) Extract page content (HTML -> text)
+        page_content = extract_text_from_confluence_html(
+            self.confluence_client, res, self._fetched_titles
+        )
+
+        # 3) Build metadata
+        metadata: dict[str, Any] = {}
+
+        # space
+        if node.get("space"):
+            metadata["space"] = node.get("space")
+
+        # labels
+        labels = [
+            label.get("name", "")
+            for label in res.get("metadata", {})
+                            .get("labels", {})
+                            .get("results", [])
+            if label.get("name")
+        ]
+        if labels:
+            metadata["labels"] = labels
+
+        # 4) Extract primary owners (from version.by)
+        primary_owners = []
+        author = res.get("version", {}).get("by")
+        if author:
+            primary_owners.append(
+                BasicExpertInfo(
+                    display_name=author.get("displayName", "Unknown"),
+                    email=author.get("email", "unknown@domain.invalid"),
+                )
+            )
+
+        page_name = sanitize_filename(node.get('name'), mode="strip")
+        semantic_identifier = f"{node.get('path')} / {page_name}" if node.get('path') else page_name  
+
+        # 5) Create Document
+        page_doc = Document(
+            id=res["ari"],
+            source=DocumentSource.CONFLUENCE,
+            semantic_identifier=semantic_identifier,
+            extension=".html",
+            blob=page_content.encode("utf-8"),
+            doc_updated_at=datetime_from_string(
+                res["history"]["lastUpdated"]["when"]
+            ),
+            size_bytes=len(page_content.encode("utf-8")),
+            primary_owners=primary_owners if primary_owners else None,
+            metadata=metadata if metadata else None,
+        )
+
+        return page_doc
+
+
+    def fetch_attachments_from_page_id(self, node: dict[str, Any]) -> list[Document]:
+        """
+        Fetch attachments of a Confluence page (by node.token) and convert to Documents.
+
+        Equivalent to:
+        GET /rest/api/content/{id}/child/attachment?expand=version,space,metadata.labels
+        """
+        attachment_docs: list[Document] = []
+
+        page_id = node.get("token")
+        if not page_id:
+            raise ValueError(f"[Confluence] node missing page token: {node}")
+        page_id = str(page_id)
+
+        # 1) Fetch raw attachment list
+        try:
+            res = self.confluence_client.get(
+                f"/rest/api/content/{page_id}/child/attachment",
+                params={"expand": ",".join(_ATTACHMENT_EXPANSION_FIELDS)},
+            )
+        except Exception as e:
+            logging.warning(f"[Confluence] Failed to fetch attachments for page {page_id}: {e}")
+            return []
+
+        attachments = res.get("results", []) or []
+
+        if not isinstance(attachments, list):
+            logging.warning(f"[Confluence] Unexpected attachments payload for page {page_id}: {type(attachments)}")
+            return []
+
+        page_name = node.get("name", "") or ""
+        page_path = node.get("path", "") or ""
+        space = node.get("space")
+
+        # 2) Convert each attachment
+        for attachment in attachments:
+            try:
+                title = attachment.get("title", "")
+                media_type: str = attachment.get("metadata", {}).get("mediaType", "") or ""
+
+                # Skip images if allow_images is False
+                if not self.allow_images and media_type.startswith("image/"):
+                    logging.info(f"Skipping attachment because allow images is False: {title}")
+                    continue
+
+                if not validate_attachment_filetype(attachment):
+                    logging.info(f"Skipping attachment because it is not an accepted file type: {title}")
+                    continue
+
+                logging.info(f"Processing attachment: {title} attached to page {page_name}")
+
+                # Build stable object url (download URL) - used for identity/fallback
+                try:
+                    download_link = attachment.get("_links", {}).get("download", "")
+                    object_url = build_confluence_document_id(
+                        self.wiki_base, download_link, self.is_cloud
+                    )
+                except Exception:
+                    logging.warning(f"Invalid attachment url for id {attachment.get('id')}, skipping")
+                    continue
+
+                # Download/convert attachment content
+                response = convert_attachment_to_content(
+                    confluence_client=self.confluence_client,
+                    attachment=attachment,
+                    page_id=page_id,
+                    allow_images=self.allow_images,
+                )
+                if response is None:
+                    continue
+
+                file_storage_name, file_blob = response
+                if not file_blob:
+                    logging.info("Skipping attachment because no blob fetched")
+                    continue
+
+                # Metadata
+                attachment_metadata: dict[str, Any] = {
+                    "space": space,
+                    "parent_page_id": page_id,
+                }
+
+                labels: list[str] = []
+                label_results = attachment.get("metadata", {}).get("labels", {}).get("results", []) or []
+                for label in label_results:
+                    labels.append(label.get("name", ""))
+                if labels:
+                    attachment_metadata["labels"] = labels
+
+                # Document id: webui is stable enough; download is also stable
+                try:
+                    webui_link = attachment.get("_links", {}).get("webui", "")
+                    attachment_id = build_confluence_document_id(
+                        self.wiki_base, webui_link, self.is_cloud
+                    )
+                except Exception:
+                    # Fallback to download-derived identity if webui is missing
+                    attachment_id = object_url
+
+                attachment_title = title or object_url
+                extension = Path(attachment_title).suffix or ".unknown"
+
+                # Owners
+                primary_owners: list[BasicExpertInfo] | None = None
+                author = attachment.get("version", {}).get("by")
+                if isinstance(author, dict):
+                    primary_owners = [
+                        BasicExpertInfo(
+                            display_name=author.get("displayName", "Unknown"),
+                            email=author.get("email", "unknown@domain.invalid"),
+                        )
+                    ]
+
+                # Updated time
+                when = attachment.get("version", {}).get("when")
+                updated_at = datetime_from_string(when) if when else None
+
+                doc_name = sanitize_filename(f"{page_name} - {attachment_title}", mode="strip")
+                semantic_identifier = f"{page_path} / {doc_name}" if page_path else doc_name
+
+                doc = Document(
+                    id=attachment_id,
+                    source=DocumentSource.CONFLUENCE,
+                    semantic_identifier=semantic_identifier,
+                    extension=extension,
+                    blob=file_blob,
+                    size_bytes=len(file_blob),
+                    metadata=attachment_metadata,
+                    doc_updated_at=updated_at,
+                    primary_owners=primary_owners,
+                )
+                attachment_docs.append(doc)
+
+            except Exception as e:
+                logging.exception(
+                    f"Failed to extract/summarize attachment {attachment.get('title', '<unknown>')}"
+                )
+                raise e
+        return attachment_docs
+
+                
+    async def load_from_list(self, token_lst: list[dict[str, Any]]) -> list[Document]:
+        sem = asyncio.Semaphore(self._ASYNC_NODE_CONCURRENCY)
+
+        async def handle_node(node: dict[str, Any]) -> list[Document]:
+            if node.get("type") != "page":
+                return []
+
+            page_id = node.get("token")
+
+            async with sem:
+                try:
+                    page_doc = await asyncio.to_thread(self.fetch_from_page_id, node)
+                    attachment_docs = await asyncio.to_thread(
+                        self.fetch_attachments_from_page_id, node
+                    )
+                    batch_docs = [page_doc] + attachment_docs
+                    return [doc for doc in batch_docs if doc]
+                except Exception:
+                    logging.exception(f"[Confluence] Failed to convert page {page_id}")
+                    return []
+
+        tasks = [handle_node(node) for node in token_lst if node.get("type") == "page"]
+        if not tasks:
+            return []
+
+        results = await asyncio.gather(*tasks)
+        return [doc for docs in results for doc in docs]
+            
     @override
     def load_from_checkpoint(
         self,
@@ -1880,146 +2273,16 @@ class ConfluenceConnector(
                 return self._fetch_document_batches(checkpoint, start - ONE_HOUR, end)
             raise
 
+
     @override
     def build_dummy_checkpoint(self) -> ConfluenceCheckpoint:
         return ConfluenceCheckpoint(has_more=True, next_page_url=None)
+
 
     @override
     def validate_checkpoint_json(self, checkpoint_json: str) -> ConfluenceCheckpoint:
         return ConfluenceCheckpoint.model_validate_json(checkpoint_json)
 
-    @override
-    def retrieve_all_slim_docs(
-        self,
-        start: SecondsSinceUnixEpoch | None = None,
-        end: SecondsSinceUnixEpoch | None = None,
-        callback: IndexingHeartbeatInterface | None = None,
-    ) -> GenerateSlimDocumentOutput:
-        return self._retrieve_all_slim_docs(
-            start=start,
-            end=end,
-            callback=callback,
-            include_permissions=False,
-        )
-
-    def retrieve_all_slim_docs_perm_sync(
-        self,
-        start: SecondsSinceUnixEpoch | None = None,
-        end: SecondsSinceUnixEpoch | None = None,
-        callback: IndexingHeartbeatInterface | None = None,
-    ) -> GenerateSlimDocumentOutput:
-        """
-        Return 'slim' docs (IDs + minimal permission data).
-        Does not fetch actual text. Used primarily for incremental permission sync.
-        """
-        return self._retrieve_all_slim_docs(
-            start=start,
-            end=end,
-            callback=callback,
-            include_permissions=True,
-        )
-
-    def _retrieve_all_slim_docs(
-        self,
-        start: SecondsSinceUnixEpoch | None = None,
-        end: SecondsSinceUnixEpoch | None = None,
-        callback: IndexingHeartbeatInterface | None = None,
-        include_permissions: bool = True,
-    ) -> GenerateSlimDocumentOutput:
-        doc_metadata_list: list[SlimDocument] = []
-        restrictions_expand = ",".join(_RESTRICTIONS_EXPANSION_FIELDS)
-
-        space_level_access_info: dict[str, ExternalAccess] = {}
-        if include_permissions:
-            space_level_access_info = get_all_space_permissions(
-                self.confluence_client, self.is_cloud
-            )
-
-        def get_external_access(
-            doc_id: str, restrictions: dict[str, Any], ancestors: list[dict[str, Any]]
-        ) -> ExternalAccess | None:
-            return get_page_restrictions(
-                self.confluence_client, doc_id, restrictions, ancestors
-            ) or space_level_access_info.get(page_space_key)
-
-        # Query pages
-        page_query = self.base_cql_page_query + self.cql_label_filter
-        for page in self.confluence_client.cql_paginate_all_expansions(
-            cql=page_query,
-            expand=restrictions_expand,
-            limit=_SLIM_DOC_BATCH_SIZE,
-        ):
-            page_id = page["id"]
-            page_restrictions = page.get("restrictions") or {}
-            page_space_key = page.get("space", {}).get("key")
-            page_ancestors = page.get("ancestors", [])
-
-            page_id = build_confluence_document_id(
-                self.wiki_base, page["_links"]["webui"], self.is_cloud
-            )
-            doc_metadata_list.append(
-                SlimDocument(
-                    id=page_id,
-                    external_access=(
-                        get_external_access(page_id, page_restrictions, page_ancestors)
-                        if include_permissions
-                        else None
-                    ),
-                )
-            )
-
-            # Query attachments for each page
-            attachment_query = self._construct_attachment_query(page["id"])
-            for attachment in self.confluence_client.cql_paginate_all_expansions(
-                cql=attachment_query,
-                expand=restrictions_expand,
-                limit=_SLIM_DOC_BATCH_SIZE,
-            ):
-                # If you skip images, you'll skip them in the permission sync
-                attachment["metadata"].get("mediaType", "")
-                if not validate_attachment_filetype(
-                    attachment,
-                ):
-                    continue
-
-                attachment_restrictions = attachment.get("restrictions", {})
-                if not attachment_restrictions:
-                    attachment_restrictions = page_restrictions or {}
-
-                attachment_space_key = attachment.get("space", {}).get("key")
-                if not attachment_space_key:
-                    attachment_space_key = page_space_key
-
-                attachment_id = build_confluence_document_id(
-                    self.wiki_base,
-                    attachment["_links"]["webui"],
-                    self.is_cloud,
-                )
-                doc_metadata_list.append(
-                    SlimDocument(
-                        id=attachment_id,
-                        external_access=(
-                            get_external_access(
-                                attachment_id, attachment_restrictions, []
-                            )
-                            if include_permissions
-                            else None
-                        ),
-                    )
-                )
-
-            if len(doc_metadata_list) > _SLIM_DOC_BATCH_SIZE:
-                yield doc_metadata_list[:_SLIM_DOC_BATCH_SIZE]
-                doc_metadata_list = doc_metadata_list[_SLIM_DOC_BATCH_SIZE:]
-
-                if callback and callback.should_stop():
-                    raise RuntimeError(
-                        "retrieve_all_slim_docs_perm_sync: Stop signal detected"
-                    )
-                if callback:
-                    callback.progress("retrieve_all_slim_docs_perm_sync", 1)
-
-        yield doc_metadata_list
 
     def validate_connector_settings(self) -> None:
         try:
@@ -2059,18 +2322,16 @@ class ConfluenceConnector(
 
 
 if __name__ == "__main__":
-    import os
-
     # base url
-    wiki_base = os.environ["CONFLUENCE_URL"]
+    wiki_base = "https://newyorkupperbay.atlassian.net/wiki"
 
     # auth stuff
-    username = os.environ["CONFLUENCE_USERNAME"]
-    access_token = os.environ["CONFLUENCE_ACCESS_TOKEN"]
-    is_cloud = os.environ["CONFLUENCE_IS_CLOUD"].lower() == "true"
+    username = "newyorkupperbay@gmail.com"
+    access_token = "ATATT3xFfGF0fH0P-Ba6G3Mv_LeQGwMpOXQBX6Kp8zanslIvR6ZR7e9nImnCOPRbq0yME9_yBMFM2Dxdep-SWJ6VYq683Kn_IivMMiDEZEd8ee3oO1pJwnYQqxcHdEPxECWRUvNSnJs5rKZ4JDqCA-YphXv-oSdMB43C62XcYDCjyUpzT6pU4xo=75EDD89F"
+    is_cloud = True
 
     # space + page
-    space = os.environ["CONFLUENCE_SPACE_KEY"]
+    space = "MFS"
     # page_id = os.environ["CONFLUENCE_PAGE_ID"]
 
     confluence_connector = ConfluenceConnector(
@@ -2093,14 +2354,13 @@ if __name__ == "__main__":
     start = 0.0
     end = datetime.now().timestamp()
 
-    # Fetch all `SlimDocuments`.
-    for slim_doc in confluence_connector.retrieve_all_slim_docs_perm_sync():
-        print(slim_doc)
+    # Build tree example.
+    tree = asyncio.run(confluence_connector.build_tree())
+    print(tree)
 
-    # Fetch all `Documents`.
-    for doc in load_all_docs_from_checkpoint_connector(
-        connector=confluence_connector,
-        start=start,
-        end=end,
-    ):
-        print(doc)
+    # token_lst = [{'name': 'My first space', 'token': '65822', 'type': 'page', 'is_root': True, 'space': 'My first space', 'name_with_path': 'My first space', 'children': [], 'path': ''}]
+    # result = asyncio.run(confluence_connector.load_from_list(token_lst))
+    # print("\n", "-"*100,"\n")
+    # for t in tree:
+    #     print(t)
+

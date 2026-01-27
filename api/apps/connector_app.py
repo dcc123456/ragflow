@@ -35,7 +35,10 @@ from common.data_source.config import GOOGLE_DRIVE_WEB_OAUTH_REDIRECT_URI, GMAIL
 from common.data_source.google_util.constant import WEB_OAUTH_POPUP_TEMPLATE, GOOGLE_SCOPES
 from common.misc_utils import get_uuid
 from common.data_source.interfaces import LoadConnector, PollConnector
-from common.data_source.cross_connector_utils.web_register import CONNECTOR_REGISTRY
+from common.data_source.cross_connector_utils.web_register import (
+    CONNECTOR_REGISTRY,
+    CONNECTOR_BUILD_TREE,
+)
 from rag.utils.redis_conn import REDIS_CONN
 from api.apps import login_required, current_user
 from box_sdk_gen import BoxOAuth, OAuthConfig, GetAuthorizeUrlOptions
@@ -90,14 +93,12 @@ def _get_connector_or_error(connector_id: str) -> tuple[LoadConnector | PollConn
     if not e:
         return None, get_data_error_result(message="Cant find this Connector!")
 
-    conf = conn.config or {}
-    
     source = conn.source
     connector_cls = CONNECTOR_REGISTRY.get(source)
     if not connector_cls:
         return None, get_data_error_result(message=f"Downloading specific files is not supported by {source} connector.")
     
-    connector = connector_cls(conf)
+    connector = connector_cls(conn)
 
     return connector, conn
 
@@ -109,9 +110,13 @@ async def list_files(connector_id):
     if connector is None:
         return payload
     
-    conn = payload   
-    token = conn.config["token"]
-    result = connector.build_tree(token, "")
+    conn = payload
+    build_tree = CONNECTOR_BUILD_TREE.get(conn.source)
+    if not build_tree:
+        return get_data_error_result(
+            message=f"Downloading specific files is not supported by {conn.source} connector."
+        )
+    result = build_tree(connector, conn=conn)
     if asyncio.iscoroutine(result):
         result = await result
     return result

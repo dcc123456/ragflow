@@ -787,7 +787,11 @@ class LarkConnector(LoadConnector, PollConnector):
             if node.ftype not in EXPORT_EXTENSIONS:
                 continue
 
-            name = sanitize_filename(node.fname, skip_extension=True)
+            name = sanitize_filename(
+                node.fname,
+                mode="strip",
+            )
+
             item = {
                 "name": name,
                 "token": node.ftoken,
@@ -807,21 +811,6 @@ class LarkConnector(LoadConnector, PollConnector):
             batch.append(item)
 
         return batch
-
-
-    def walk_tree(self, nodes, fn, depth=0):
-        for node in nodes:
-            fn(node, depth)
-            if node.get("children"):
-                self.walk_tree(node["children"], fn, depth+1)
-
-        
-    def pprint_tree(self, nodes):
-        def printer(node, depth):
-            indent = "  " * depth
-            print(f"{indent}- [{node['type']}] {node['name_with_path']}")
-
-        self.walk_tree(nodes, printer)
 
 
     async def load_from_state(self) -> AsyncGenerator[list[Document], None]:
@@ -986,106 +975,23 @@ if __name__ == "__main__":
     # wiki token: FWDnwnwqxiRFPLkLPXqcwOkVnUA
     start = time.perf_counter()
     connector = LarkConnector(
-        token_type="folder",
-        folder_token="RBGPfNX9Ol7qyIdQFIjco9f8neh",
-        log_level=lark.LogLevel.WARNING,
+        token_type="wiki",
+        folder_token="VBoQwK2aLik9mlkNCbVcSpoxnxc",
+        log_level=lark.LogLevel.DEBUG,
     )
 
     connector.load_credentials(
         {
-            "app_id": "cli_a9d757d6fd385cd0",
-            "app_secret": "OXGUIrIWZLHLaLHamiyricrnjJJZQGn3",
+            "app_id": "cli_a9f8bd9f42f99bd1",
+            "app_secret": "kV2Jp7lalPAY0y8J0bmd3egWqiar5m0z",
         }
     )
 
     async def run_demo():
         tree = await connector.build_tree(connector.folder_token, "")
-
-        print("\n")
-        print(tree)
-        print("\n")
-
         connector.pprint_tree(tree)
 
-        token_lst = [
-            {
-                "name": "(四)就业状况;",
-                "token": "GIbod4fESo2C0FxwOsscBSe8nne",
-                "type": "docx",
-                "name_with_path": "child / grandchild",
-                "edit_time": "1768295368",
-                "created_time": "1767871915",
-                "children": [],
-            },
-            {
-                "name": "员工满意度调研问卷",
-                "token": "U0yrbcqsEaawLTsBDKNcXfrvnOf",
-                "type": "bitable",
-                "name_with_path": "child / grandchild",
-                "edit_time": "1767872740",
-                "created_time": "1767872737",
-                "children": [],
-            },
-            {
-                "name": "quickstart.docx",
-                "token": "Exmeb8KIXolcE8x5v3IcYVWYnLh",
-                "type": "file",
-                "name_with_path": "child / grandchild",
-                "edit_time": "1767864856",
-                "created_time": "1767864852",
-                "children": [],
-            },
-            {
-                "name": "file-sample_100kB.docx",
-                "token": "T0bRbqSrFomSqVxz8xncUpsSnPe",
-                "type": "file",
-                "name_with_path": "child",
-                "edit_time": "1767771233",
-                "created_time": "1767771230",
-                "children": [],
-            },
-            {
-                "name": "我不知道",
-                "token": "HiK7bQuTGaQSQHscrPFcW6yHnWC",
-                "type": "bitable",
-                "name_with_path": "",
-                "edit_time": "1768296902",
-                "created_time": "1767930222",
-                "children": [],
-            },
-            {
-                "name": "项目甘特图 Pro",
-                "token": "Mr55sRv9ohm7xLtwSnTcjIG3nVg",
-                "type": "sheet",
-                "name_with_path": "",
-                "edit_time": "1767855515",
-                "created_time": "1767855515",
-                "children": [],
-            },
-            {
-                "name": "磋商文件.pdf",
-                "token": "IH3nbhwNsocHQ4xzHLUcyVDCnZd",
-                "type": "file",
-                "name_with_path": "",
-                "edit_time": "1767771235",
-                "created_time": "1767771234",
-                "children": [],
-            },
-            {
-                "name": "理想标准-QLiA5500001—2021(V3)汽车禁用_限用物质要求.md",
-                "token": "IRl1bHk0CowRJ1xVhshceh4Lnpe",
-                "type": "file",
-                "name_with_path": "",
-                "edit_time": "1767771234",
-                "created_time": "1767771234",
-                "children": [],
-            },
-        ]
-
-        docs = await connector.load_from_list(token_lst)
-        for doc in docs:
-            print(doc.semantic_identifier)
-
+        
     asyncio.run(run_demo())
 
     elapsed = time.perf_counter() - start

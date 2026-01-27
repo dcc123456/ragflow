@@ -268,7 +268,11 @@ def map_pr_to_document(pr: dict[str, Any], workspace: str, repo_slug: str) -> Do
         "close_source_branch": str(bool(pr.get("close_source_branch", False))),
     }
 
-    name = sanitize_filename(title, "md")
+    name = sanitize_filename(
+        title,
+        extension="md",
+    )
+
 
     return Document(
         id=f"{DocumentSource.BITBUCKET.value}:{workspace}:{repo_slug}:pr:{pr_id}",
