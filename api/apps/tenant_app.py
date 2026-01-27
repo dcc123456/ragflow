@@ -21,13 +21,13 @@ from api.db.db_models import UserTenant
 from api.db.services.team_service import DepartmentMemberService
 from api.utils.billing import check_resources
 from api.db.services.user_service import UserTenantService, UserService
+from api.db.services.system_settings_service import SystemSettingsService
+from api.db.joint_services.mail_service import send_invite_email
 
 from common.constants import RetCode, StatusEnum
 from common.misc_utils import get_uuid
 from common.time_utils import delta_seconds
 from api.utils.api_utils import get_data_error_result, get_json_result, get_request_json, server_error_response, validate_request
-from api.utils.web_utils import send_invite_email
-from common import settings
 from api.apps import login_required, current_user
 
 
@@ -91,11 +91,11 @@ async def create(tenant_id):
         _, user = UserService.get_by_id(current_user.id)
         if user:
             user_name = user.nickname
-
+        mail_config = SystemSettingsService.get_smtp_config()
         asyncio.create_task(
             send_invite_email(
                 to_email=invite_user_email,
-                invite_url=settings.MAIL_FRONTEND_URL,
+                invite_url=mail_config["mail_frontend_url"],
                 tenant_id=tenant_id,
                 inviter=user_name or current_user.email
             )

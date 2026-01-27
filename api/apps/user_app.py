@@ -47,7 +47,6 @@ from api.utils.api_utils import (
 from api.utils.crypt import decrypt2
 from api.utils.crypt import decrypt
 from api.utils.web_utils import (
-    send_email_html,
     OTP_LENGTH,
     OTP_TTL_SECONDS,
     ATTEMPT_LIMIT,
@@ -60,7 +59,9 @@ from api.utils.web_utils import (
 from common import settings
 from common.file_utils import get_project_base_directory
 from api.db.services.user_service import UserService, TenantService, UserTenantService
+from api.db.services.system_settings_service import SystemSettingsService
 from api.db.services.role_service import RoleService
+from api.db.joint_services.mail_service import send_email_html
 from rag.utils.redis_conn import REDIS_CONN
 from common.http_client import async_request
 
@@ -70,7 +71,7 @@ async def ldap_login(channel_name: str, username: str, user_password: str):
     if isinstance(login_password, (bytes, bytearray)):
         login_password = login_password.decode("utf-8")
 
-    ldap_conf = settings.OAUTH_CONFIG.get(channel_name, None)
+    ldap_conf = SystemSettingsService.get_channel_oauth_config(channel_name)
     if not ldap_conf:
         return get_json_result(
             data=False,
@@ -296,7 +297,8 @@ async def get_login_channels():
     """
     try:
         channels = []
-        for channel, config in settings.OAUTH_CONFIG.items():
+        oauth_config = SystemSettingsService.get_oauth_config()
+        for channel, config in oauth_config.items():
             channels.append(
                 {
                     "channel": channel,
@@ -312,7 +314,7 @@ async def get_login_channels():
 
 @manager.route("/login/<channel>", methods=["GET"])  # noqa: F821
 async def oauth_login(channel):
-    channel_config = settings.OAUTH_CONFIG.get(channel)
+    channel_config = SystemSettingsService.get_channel_oauth_config(channel)
     if not channel_config:
         raise ValueError(f"Invalid channel name: {channel}")
     if channel_config.get("type") == "ldap":
@@ -334,7 +336,7 @@ async def oauth_callback(channel):
     Handle the OAuth/OIDC callback for various channels dynamically.
     """
     try:
-        channel_config = settings.OAUTH_CONFIG.get(channel)
+        channel_config = SystemSettingsService.get_channel_oauth_config(channel)
         if not channel_config:
             raise ValueError(f"Invalid channel name: {channel}")
         auth_cli = get_auth_client(channel_config)
@@ -425,94 +427,6 @@ async def oauth_callback(channel):
         return redirect(f"/?error={encoded_error}")
 
 
-@manager.route("/github_callback", methods=["GET"])  # noqa: F821
-async def github_callback():
-    """
-    **Deprecated**, Use `/oauth/callback/<channel>` instead.
-
-    GitHub OAuth callback endpoint.
-    ---
-    tags:
-      - OAuth
-    parameters:
-      - in: query
-        name: code
-        type: string
-        required: true
-        description: Authorization code from GitHub.
-    responses:
-      200:
-        description: Authentication successful.
-        schema:
-          type: object
-    """
-    res = await async_request(
-        "POST",
-        settings.GITHUB_OAUTH.get("url"),
-        data={
-            "client_id": settings.GITHUB_OAUTH.get("client_id"),
-            "client_secret": settings.GITHUB_OAUTH.get("secret_key"),
-            "code": request.args.get("code"),
-        },
-        headers={"Accept": "application/json"},
-    )
-    res = res.json()
-    if "error" in res:
-        return redirect("/?error=%s" % res["error_description"])
-
-    if "user:email" not in res["scope"].split(","):
-        return redirect("/?error=user:email not in scope")
-
-    session["access_token"] = res["access_token"]
-    session["access_token_from"] = "github"
-    user_info = await user_info_from_github(session["access_token"])
-    email_address = user_info["email"]
-    users = UserService.query(email=email_address)
-    user_id = get_uuid()
-    if not users:
-        # User isn't try to register
-        try:
-            try:
-                avatar = download_img(user_info["avatar_url"])
-            except Exception as e:
-                logging.exception(e)
-                avatar = ""
-            users = user_register(
-                user_id,
-                {
-                    "access_token": session["access_token"],
-                    "email": email_address,
-                    "avatar": avatar,
-                    "nickname": user_info["login"],
-                    "login_channel": "github",
-                    "last_login_time": get_format_time(),
-                    "is_superuser": False,
-                },
-            )
-            if not users:
-                raise Exception(f"Fail to register {email_address}.")
-            if len(users) > 1:
-                raise Exception(f"Same email: {email_address} exists!")
-
-            # Try to log in
-            user = users[0]
-            login_user(user)
-            return redirect("/?auth=%s" % user.get_id())
-        except Exception as e:
-            rollback_user_registration(user_id)
-            logging.exception(e)
-            return redirect("/?error=%s" % str(e))
-
-    # User has already registered, try to log in
-    user = users[0]
-    user.access_token = get_uuid()
-    if user and hasattr(user, 'is_active') and user.is_active == "0":
-        return redirect("/?error=user_inactive")
-    login_user(user)
-    user.save()
-    return redirect("/?auth=%s" % user.get_id())
-
-
 @manager.route("/feishu_callback", methods=["GET"])  # noqa: F821
 async def feishu_callback():
     """
@@ -532,13 +446,14 @@ async def feishu_callback():
         schema:
           type: object
     """
+    feishu_oauth = SystemSettingsService.get_channel_oauth_config("feishu")
     app_access_token_res = await async_request(
         "POST",
-        settings.FEISHU_OAUTH.get("app_access_token_url"),
+        feishu_oauth.get("app_access_token_url"),
         data=json.dumps(
             {
-                "app_id": settings.FEISHU_OAUTH.get("app_id"),
-                "app_secret": settings.FEISHU_OAUTH.get("app_secret"),
+                "app_id": feishu_oauth.get("app_id"),
+                "app_secret": feishu_oauth.get("app_secret"),
             }
         ),
         headers={"Content-Type": "application/json; charset=utf-8"},
@@ -549,10 +464,10 @@ async def feishu_callback():
 
     res = await async_request(
         "POST",
-        settings.FEISHU_OAUTH.get("user_access_token_url"),
+        feishu_oauth.get("user_access_token_url"),
         data=json.dumps(
             {
-                "grant_type": settings.FEISHU_OAUTH.get("grant_type"),
+                "grant_type": "authorization_code",
                 "code": request.args.get("code"),
             }
         ),
@@ -1301,14 +1216,15 @@ def casdoor_callback():
 def icbccs_callback():
     import requests
     headers = {'Content-Type': 'application/x-www-form-urlencoded'}
+    github_oauth = SystemSettingsService.get_channel_oauth_config("github")
     res = requests.post(
-        settings.GITHUB_OAUTH.get("url"),
+        github_oauth.get("url", "https://github.com/login/oauth/access_token"),
         data={
-            "client_id": settings.GITHUB_OAUTH.get("client_id"),
-            "client_secret": settings.GITHUB_OAUTH.get("secret_key"),
+            "client_id": github_oauth.get("client_id"),
+            "client_secret": github_oauth.get("secret_key"),
             "code": request.args.get("code"),
             "grant_type": "authorization_code",
-            "redirect_uri": settings.GITHUB_OAUTH.get("my_callback_url")
+            "redirect_uri": github_oauth.get("my_callback_url")
         },
         headers=headers,
     )
@@ -1319,7 +1235,7 @@ def icbccs_callback():
     session["access_token"] = res["access_token"]
     session["access_token_from"] = "icbccs"
 
-    user_info = requests.post(settings.GITHUB_OAUTH.get("usr_url"),
+    user_info = requests.post(github_oauth.get("usr_url", "https://api.github.com/user"),
                         headers=headers,
                         data={"token": res["access_token"]}
                         ).json()

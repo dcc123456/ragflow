@@ -17,7 +17,6 @@
 import os
 import logging
 import re
-import requests
 from werkzeug.security import check_password_hash
 from common.constants import ActiveEnum
 from api.db.services import UserService
@@ -35,7 +34,6 @@ from common.time_utils import current_timestamp, timestamp_to_date
 from api.common.exceptions import AdminException, UserAlreadyExistsError, UserNotFoundError, RoleNotFoundError
 from config import SERVICE_CONFIGS
 from common.settings import ENABLE_WHITELIST
-from common import settings
 
 
 class UserMgr:
@@ -377,26 +375,6 @@ class SettingsMgr:
         if source == "ldap|default" or not source.startswith("ldap|"):
             raise AdminException(f"Can't delete setting: {source}")
         return SystemSettingsService.delete_by_source_and_name(source, name)
-
-    @staticmethod
-    def refresh_oauth_config():
-        SystemSettingsService.refresh_oauth_config()
-
-    @staticmethod
-    def refresh_smtp_config():
-        SystemSettingsService.refresh_smtp_config()
-
-    @staticmethod
-    def refresh_ragflow_settings(refresh_oauth: bool, refresh_smtp: bool):
-        url = f"http://{settings.HOST_IP}:{settings.HOST_PORT}/v1/system/refresh_settings"
-        if '0.0.0.0' in url:
-            url = url.replace('0.0.0.0', '127.0.0.1')
-        response = requests.post(url, json={
-            "oauth": refresh_oauth,
-            "smtp": refresh_smtp
-        })
-        if response.status_code != 200:
-            raise AdminException(f"Failed to refresh ragflow settings: {response.text}")
 
 
 class ConfigMgr:

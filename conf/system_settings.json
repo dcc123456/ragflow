@@ -61,6 +61,12 @@
       "value": ""
     },
     {
+      "name": "mail.frontend_url",
+      "source": "variable",
+      "data_type": "string",
+      "value": ""
+    },
+    {
       "name": "google|sso.enabled",
       "source": "google|sso",
       "data_type": "bool",

@@ -77,20 +77,6 @@ def init_default_roles():
             RoleResourceService.upsert_role_action_by_id(role_id, {resource_type.value: action for resource_type in ResourceTypeEnum})
 
 
-def init_oauth_config():
-    if settings.OAUTH_CONFIG:
-        # has been set
-        return
-    SystemSettingsService.refresh_oauth_config()
-
-
-def init_smtp_conf():
-    if settings.SMTP_CONF:
-        # has been set
-        return
-    SystemSettingsService.refresh_smtp_config()
-
-
 def init_llm_factory():
     LLMFactoriesService.filter_delete([1 == 1])
     factory_llm_infos = settings.FACTORY_LLM_INFOS
@@ -219,8 +205,6 @@ def init_web_data():
     add_graph_templates()
     init_message_id_sequence()
     init_memory_size_cache()
-    init_oauth_config()
-    init_smtp_conf()
     fix_missing_tokenized_memory()
     logging.info("init web data success:{}".format(time.time() - start_time))
 

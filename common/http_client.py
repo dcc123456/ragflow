@@ -18,7 +18,6 @@ import time
 from typing import Any, Dict, Optional
 from urllib.parse import urlparse, urlunparse
 
-from common import settings
 import httpx
 
 logger = logging.getLogger(__name__)
@@ -89,25 +88,12 @@ def _redact_sensitive_url_params(url: str) -> str:
 
 def _is_sensitive_url(url: str) -> bool:
     """Return True if URL is one of the configured OAuth endpoints."""
-    # Collect known sensitive endpoint URLs from settings
-    oauth_urls = set()
-    # GitHub OAuth endpoints
-    try:
-        if settings.GITHUB_OAUTH is not None:
-            url_val = settings.GITHUB_OAUTH.get("url")
-            if url_val:
-                oauth_urls.add(url_val)
-    except Exception:
-        pass
-    # Feishu OAuth endpoints
-    try:
-        if settings.FEISHU_OAUTH is not None:
-            for k in ("app_access_token_url", "user_access_token_url"):
-                url_val = settings.FEISHU_OAUTH.get(k)
-                if url_val:
-                    oauth_urls.add(url_val)
-    except Exception:
-        pass
+    # Known sensitive endpoint URLs from oauth
+    oauth_urls: set = {
+        "https://github.com/login/oauth/access_token",
+        "https://open.feishu.cn/open-apis/auth/v3/app_access_token/internal",
+        "https://open.feishu.cn/open-apis/authen/v1/oidc/access_token"
+    }
     # Defensive normalization: compare only scheme+netloc+path
     url_obj = urlparse(url)
     for sensitive_url in oauth_urls:

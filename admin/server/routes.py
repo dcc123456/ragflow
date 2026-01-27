@@ -496,22 +496,6 @@ def delete_variable():
     except Exception as e:
         return error_response(str(e), 500)
 
-@admin_bp.route('/variables/refresh', methods=['POST'])
-@login_required
-@check_admin_auth
-def refresh_variables():
-    try:
-        data = request.get_json()
-        if data.get("oauth"):
-            SettingsMgr.refresh_oauth_config()
-        if data.get("smtp"):
-            SettingsMgr.refresh_smtp_config()
-        SettingsMgr.refresh_ragflow_settings(data.get("oauth", False), data.get("smtp", False))
-        return success_response(None, "Refresh variables successfully")
-    except AdminException as e:
-        return error_response(str(e), 400)
-    except Exception as e:
-        return error_response(str(e), 500)
 
 @admin_bp.route('/validate_mail', methods=['POST'])
 @login_required
