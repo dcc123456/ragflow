@@ -53,7 +53,6 @@ from common.billing_utils import (
     amount_to_float,
     billing_enabled_guard,
     build_date_keys,
-    bytes_to_kb,
     decimal_amount,
     normalize_stripe_invoice_status,
     normalize_stripe_payment_intent_status,
@@ -119,8 +118,8 @@ async def billing_plan_overview():
         tenant_id = request.args.get("tenant_id", current_user.id)
 
         tenant_plan = SubscriptionService.get_by_tenant_id(tenant_id, require_quota_info=True)
-        storage_used_kb = bytes_to_kb(tenant_plan.get("num_kb_storage", 0))
-        storage_limit_kb = bytes_to_kb(tenant_plan.get("quota_kb_storage", 0))
+        storage_used_kb = tenant_plan.get("num_kb_storage", 0) or 0
+        storage_limit_kb = tenant_plan.get("quota_kb_storage", 0) or 0
 
         # Extract the relevant information for the overview
         plan_overview = {
@@ -157,9 +156,6 @@ async def billing_plan_overview():
             },
         }
 
-        used_storage = plan_overview["resources"]["plan_storage"]["used"]
-        limit_storage = plan_overview["resources"]["plan_storage"]["limit"]
-
         purchased_products = PurchasedProductOverviewService.query(tenant_id=tenant_id)
         now_utc = datetime.now(timezone.utc)
         storage_related_add_on = []
@@ -174,10 +170,12 @@ async def billing_plan_overview():
                 storage_related_add_on.append(product)
                 add_on_storage_quantity += quantity
 
-        if storage_related_add_on and add_on_storage_quantity and used_storage > limit_storage:
-            plan_overview["resources"]["plan_storage"]["used"] = limit_storage
-            plan_overview["resources"]["add_on_storage"]["used"] = used_storage - limit_storage
+        if add_on_storage_quantity:
             plan_overview["resources"]["add_on_storage"]["limit"] = add_on_storage_quantity
+
+        if storage_related_add_on and add_on_storage_quantity and storage_used_kb > storage_limit_kb:
+            plan_overview["resources"]["plan_storage"]["used"] = storage_limit_kb
+            plan_overview["resources"]["add_on_storage"]["used"] = storage_used_kb - storage_limit_kb
 
         return get_json_result(data=plan_overview)
     except Exception as e:

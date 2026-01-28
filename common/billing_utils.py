@@ -71,15 +71,6 @@ def amount_to_float(value: Any, places: int = 2) -> float:
     return float(decimal_amount(value).quantize(quantize_format))
 
 
-def bytes_to_kb(value: Any) -> int:
-    if not value:
-        return 0
-    try:
-        return int(value) // 1024
-    except (TypeError, ValueError):
-        return 0
-
-
 def normalize_stripe_payment_intent_status(status: str) -> str:
     if status == "succeeded":
         return "success"
