@@ -1530,7 +1530,7 @@ class ConfluenceConnector(
                 id=page_url,
                 source=DocumentSource.CONFLUENCE,
                 semantic_identifier=semantic_identifier,
-                extension=".html",  # Confluence pages are HTML
+                extension=".txt",  
                 blob=page_content.encode("utf-8"),  # Encode page content as bytes
                 doc_updated_at=datetime_from_string(page["version"]["when"]),
                 size_bytes=len(page_content.encode("utf-8")),  # Calculate size in bytes
@@ -2071,7 +2071,7 @@ class ConfluenceConnector(
             id=res["ari"],
             source=DocumentSource.CONFLUENCE,
             semantic_identifier=semantic_identifier,
-            extension=".html",
+            extension=".txt",
             blob=page_content.encode("utf-8"),
             doc_updated_at=datetime_from_string(
                 res["history"]["lastUpdated"]["when"]

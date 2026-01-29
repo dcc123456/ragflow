@@ -36,26 +36,26 @@ export const confluenceConstant = (t: TFunction) => [
     options: [
       { label: 'Everything', value: 'everything' },
       { label: 'Space', value: 'space' },
-      { label: 'Page', value: 'page' },
+      // { label: 'Page', value: 'page' },
     ],
   },
-  {
-    name: 'config.page_id',
-    label: 'Page ID',
-    type: FormFieldType.Text,
-    customValidate: (val: string, formValues: any) => {
-      const index_mode = formValues?.config?.index_mode;
-      console.log('index_mode', index_mode, val);
-      if (!val && index_mode === 'page') {
-        return 'Page ID is required';
-      }
-      return true;
-    },
-    shouldRender: (formValues: any) => {
-      const index_mode = formValues?.config?.index_mode;
-      return index_mode === 'page';
-    },
-  },
+  // {
+  //   name: 'config.page_id',
+  //   label: 'Page ID',
+  //   type: FormFieldType.Text,
+  //   customValidate: (val: string, formValues: any) => {
+  //     const index_mode = formValues?.config?.index_mode;
+  //     console.log('index_mode', index_mode, val);
+  //     if (!val && index_mode === 'page') {
+  //       return 'Page ID is required';
+  //     }
+  //     return true;
+  //   },
+  //   shouldRender: (formValues: any) => {
+  //     const index_mode = formValues?.config?.index_mode;
+  //     return index_mode === 'page';
+  //   },
+  // },
   {
     name: 'config.space',
     label: 'Space Key',
@@ -72,15 +72,15 @@ export const confluenceConstant = (t: TFunction) => [
       return index_mode === 'space';
     },
   },
-  {
-    name: 'config.index_recursively',
-    label: 'Index Recursively',
-    type: FormFieldType.Checkbox,
-    shouldRender: (formValues: any) => {
-      const index_mode = formValues?.config?.index_mode;
-      return index_mode === 'page';
-    },
-  },
+  // {
+  //   name: 'config.index_recursively',
+  //   label: 'Index Recursively',
+  //   type: FormFieldType.Checkbox,
+  //   shouldRender: (formValues: any) => {
+  //     const index_mode = formValues?.config?.index_mode;
+  //     return index_mode === 'page';
+  //   },
+  // },
   {
     name: FilterFormField + '.tip',
     label: ' ',
