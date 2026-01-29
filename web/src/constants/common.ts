@@ -190,3 +190,8 @@ export enum ThemeEnum {
   Light = 'light',
   System = 'system',
 }
+
+export enum EvaluationType {
+  Agent = 'agent',
+  Chat = 'chat',
+}

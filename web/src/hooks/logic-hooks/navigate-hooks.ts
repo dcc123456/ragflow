@@ -1,4 +1,5 @@
 import { AgentCategory, AgentQuery } from '@/constants/agent';
+import { EvaluationType } from '@/constants/evaluation';
 import { NavigateToDataflowResultProps } from '@/pages/dataflow-result/interface';
 import { Routes } from '@/routes';
 import { useCallback } from 'react';
@@ -123,6 +124,13 @@ export const useNavigatePage = () => {
     [navigate],
   );
 
+  const navigateToEvaluation = useCallback(
+    (type: EvaluationType, id: string) => () => {
+      navigate(`${Routes.Evaluation}/${id}?type=${type}`);
+    },
+    [navigate],
+  );
+
   const navigateToChunkParsedResult = useCallback(
     (id: string, knowledgeId?: string) => () => {
       navigate(
@@ -176,7 +184,7 @@ export const useNavigatePage = () => {
 
   const navigateToDataflowResult = useCallback(
     (props: NavigateToDataflowResultProps) => () => {
-      let params: string[] = [];
+      const params: string[] = [];
       Object.keys(props).forEach((key) => {
         if (props[key as keyof typeof props]) {
           params.push(`${key}=${props[key as keyof typeof props]}`);
@@ -215,5 +223,6 @@ export const useNavigatePage = () => {
     navigateToDataSourceDetail,
     navigateToMemory,
     navigateToMemoryList,
+    navigateToEvaluation,
   };
 };

@@ -116,8 +116,7 @@ export const useSelectLlmOptionsByModelType = () => {
           (x) =>
             (x.model_type.includes(modelType) ||
               (x.tags && x.tags.includes(modelTag))) &&
-            x.available &&
-            x.status === '1',
+            x.available,
         );
 
         return {

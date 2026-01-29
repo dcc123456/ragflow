@@ -1,10 +1,12 @@
-// Dataset
-export interface IEvaluationCreateDatasetRequestBody {
+import { EvaluationType } from '@/constants/evaluation';
+
+// Collection
+export interface IEvaluationCreateCollectionRequestBody {
   name: string;
   description?: string;
 }
 
-export interface IEvaluationUpdateDatasetRequestBody {
+export interface IEvaluationUpdateCollectionRequestBody {
   name?: string;
   description?: string;
 }
@@ -38,8 +40,8 @@ export interface IEvaluationImportCaseRequestBody {
 
 // Run
 export interface IEvaluationStartRunRequestBody {
-  dataset_id: string;
-  target_type: 'agent' | 'chat';
+  collection_id: string;
+  target_type: EvaluationType;
   target_id: string;
   name?: string;
 }

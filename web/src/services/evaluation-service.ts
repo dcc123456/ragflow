@@ -2,11 +2,11 @@ import api from '@/utils/api';
 import { registerNextServer } from '@/utils/register-server';
 
 const {
-  evaluationCreateDataset,
-  evaluationListDataset,
-  evaluationGetDataset,
-  evaluationUpdateDataset,
-  evaluationDeleteDataset,
+  evaluationCreateCollection,
+  evaluationListCollection,
+  evaluationGetCollection,
+  evaluationUpdateCollection,
+  evaluationDeleteCollection,
   evaluationAddCase,
   evaluationImportCase,
   evaluationListCase,
@@ -33,25 +33,25 @@ const {
 } = api;
 
 const methods = {
-  // Dataset
-  createDataset: {
-    url: evaluationCreateDataset,
+  // Collection
+  createCollection: {
+    url: evaluationCreateCollection,
     method: 'post',
   },
-  listDataset: {
-    url: evaluationListDataset,
+  listCollection: {
+    url: evaluationListCollection,
     method: 'get',
   },
-  getDataset: {
-    url: evaluationGetDataset,
+  getCollection: {
+    url: evaluationGetCollection,
     method: 'get',
   },
-  updateDataset: {
-    url: evaluationUpdateDataset,
+  updateCollection: {
+    url: evaluationUpdateCollection,
     method: 'post',
   },
-  deleteDataset: {
-    url: evaluationDeleteDataset,
+  deleteCollection: {
+    url: evaluationDeleteCollection,
     method: 'post',
   },
 

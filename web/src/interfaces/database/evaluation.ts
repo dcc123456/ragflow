@@ -1,5 +1,5 @@
-// Dataset
-export interface IEvaluationDataset {
+// Collection
+export interface IEvaluationCollection {
   id?: string;
   name: string;
   description?: string;
@@ -15,7 +15,7 @@ export interface IEvaluationDataset {
 // Case
 export interface IEvaluationCase {
   id?: string;
-  dataset_id: string;
+  collection_id: string;
   variable: {
     question: string;
     reference_answer?: string;
@@ -30,22 +30,6 @@ export interface IEvaluationCase {
 }
 
 // Run
-export interface IEvaluationRun {
-  id?: string;
-  dataset_id: string;
-  name: string;
-  target_type: 'agent' | 'chat';
-  target_id: string;
-  status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED';
-  created_by?: string;
-  complete_time?: string;
-  config_snapshot?: Record<string, any>;
-  metrics_summary?: Record<string, any>;
-  create_date?: string;
-  update_date?: string;
-  create_time?: number;
-  update_time?: number;
-}
 
 // Run Result
 export interface IEvaluationRunResult {
@@ -69,3 +53,71 @@ export interface IEvaluationMetric {
   value: number;
   description?: string;
 }
+
+export interface IEvaluationRun {
+  collection_id: string;
+  complete_time: null;
+  config_snapshot: Configsnapshot;
+  create_date: string;
+  create_time: number;
+  created_by: string;
+  id: string;
+  metrics_summary: LlmSetting;
+  name: string;
+  status: string;
+  target_id: string;
+  target_type: string;
+  update_date: string;
+  update_time: number;
+}
+
+interface Configsnapshot {
+  create_date: string;
+  create_time: number;
+  description: string;
+  do_refer: string;
+  icon: string;
+  id: string;
+  kb_ids: string[];
+  language: string;
+  llm_id: string;
+  llm_setting: LlmSetting;
+  meta_data_filter: Metadatafilter;
+  name: string;
+  prompt_config: Promptconfig;
+  prompt_type: string;
+  rerank_id: string;
+  similarity_threshold: number;
+  status: string;
+  tenant_id: string;
+  top_k: number;
+  top_n: number;
+  update_date: string;
+  update_time: number;
+  vector_similarity_weight: number;
+}
+
+interface Promptconfig {
+  empty_response: string;
+  keyword: boolean;
+  parameters: Parameter[];
+  prologue: string;
+  quote: boolean;
+  reasoning: boolean;
+  refine_multiturn: boolean;
+  system: string;
+  toc_enhance: boolean;
+  tts: boolean;
+  use_kg: boolean;
+}
+
+interface Parameter {
+  key: string;
+  optional: boolean;
+}
+
+interface Metadatafilter {
+  method: string;
+}
+
+type LlmSetting = Record<string, any>;

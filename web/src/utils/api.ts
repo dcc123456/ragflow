@@ -324,23 +324,23 @@ export default {
   adminTestSMTPConnection: `${ExternalApi}${api_host}/admin/validate_mail`,
 
   // evaluation
-  // dataset
-  evaluationCreateDataset: `${api_host}/evaluation/dataset/create`,
-  evaluationListDataset: `${api_host}/evaluation/dataset/list`,
-  evaluationGetDataset: (datasetId: string) =>
-    `${api_host}/evaluation/dataset/${datasetId}`,
-  evaluationUpdateDataset: (datasetId: string) =>
-    `${api_host}/evaluation/dataset/${datasetId}`,
-  evaluationDeleteDataset: (datasetId: string) =>
-    `${api_host}/evaluation/dataset/${datasetId}`,
+  // collection
+  evaluationCreateCollection: `${api_host}/evaluation/collection/create`,
+  evaluationListCollection: `${api_host}/evaluation/collection/list`,
+  evaluationGetCollection: (collectionId: string) =>
+    `${api_host}/evaluation/collection/${collectionId}`,
+  evaluationUpdateCollection: (collectionId: string) =>
+    `${api_host}/evaluation/collection/${collectionId}`,
+  evaluationDeleteCollection: (collectionId: string) =>
+    `${api_host}/evaluation/collection/${collectionId}`,
 
   // case
-  evaluationAddCase: (datasetId: string) =>
-    `${api_host}/evaluation/dataset/${datasetId}/case/add`,
-  evaluationImportCase: (datasetId: string) =>
-    `${api_host}/evaluation/dataset/${datasetId}/case/import`,
-  evaluationListCase: (datasetId: string) =>
-    `${api_host}/evaluation/dataset/${datasetId}/cases`,
+  evaluationAddCase: (collectionId: string) =>
+    `${api_host}/evaluation/collection/${collectionId}/case/add`,
+  evaluationImportCase: (collectionId: string) =>
+    `${api_host}/evaluation/collection/${collectionId}/case/import`,
+  evaluationListCase: (collectionId: string) =>
+    `${api_host}/evaluation/collection/${collectionId}/cases`,
   evaluationDeleteCase: (caseId: string) =>
     `${api_host}/evaluation/case/${caseId}`,
   evaluationUpdateCase: (caseId: string) =>

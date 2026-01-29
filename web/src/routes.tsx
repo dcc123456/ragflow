@@ -65,6 +65,7 @@ export enum Routes {
   AdminMonitoring = `${Admin}/monitoring`,
   AdminSettings = `${Admin}/settings`,
   AdminSSOProviders = `${Admin}/sso`,
+  Evaluation = '/evaluation',
 }
 
 export const routeConfig = [
@@ -184,6 +185,13 @@ export const routeConfig = [
     path: Routes.Chat + '/:id',
     layout: false,
     Component: lazy(() => import('@/pages/next-chats/chat')),
+    errorElement: <FallbackComponent />,
+  },
+  {
+    path: Routes.Evaluation + '/:id',
+    layout: false,
+    Component: lazy(() => import('@/pages/evaluation')),
+    children: [{}],
     errorElement: <FallbackComponent />,
   },
   {

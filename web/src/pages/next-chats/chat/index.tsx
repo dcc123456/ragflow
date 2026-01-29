@@ -12,6 +12,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { SharedFrom } from '@/constants/chat';
+import { EvaluationType } from '@/constants/evaluation';
 import { useSetModalState } from '@/hooks/common-hooks';
 import { useNavigatePage } from '@/hooks/logic-hooks/navigate-hooks';
 import {
@@ -24,7 +25,7 @@ import { IClientConversation } from '@/interfaces/database/chat';
 import { cn } from '@/lib/utils';
 import { useMount } from 'ahooks';
 import { isEmpty } from 'lodash';
-import { ArrowUpRight, LogOut, Send } from 'lucide-react';
+import { ArrowUpRight, ChartColumn, LogOut, Send } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router';
@@ -38,7 +39,7 @@ import { useSwitchDebugMode } from './use-switch-debug-mode';
 
 export default function Chat() {
   const { id } = useParams();
-  const { navigateToChatList } = useNavigatePage();
+  const { navigateToChatList, navigateToEvaluation } = useNavigatePage();
   const { data } = useFetchDialog();
   const { t } = useTranslation();
   const [currentConversation, setCurrentConversation] =
@@ -149,9 +150,17 @@ export default function Chat() {
               >
                 <CardTitle className="flex justify-between items-center text-base">
                   <div className="truncate">{currentConversationName}</div>
-                  <Button variant={'ghost'} onClick={switchDebugMode}>
-                    <ArrowUpRight /> {t('chat.multipleModels')}
-                  </Button>
+                  <div className="flex gap-4 items-center">
+                    <Button
+                      variant={'ghost'}
+                      onClick={navigateToEvaluation(EvaluationType.Chat, id!)}
+                    >
+                      <ChartColumn /> {t('evaluation.title')}
+                    </Button>
+                    <Button variant={'ghost'} onClick={switchDebugMode}>
+                      <ArrowUpRight /> {t('chat.multipleModels')}
+                    </Button>
+                  </div>
                 </CardTitle>
               </CardHeader>
               <CardContent className="flex-1 p-0 min-h-0">

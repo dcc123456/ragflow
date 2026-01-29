@@ -1,17 +1,17 @@
 import message from '@/components/ui/message';
 import {
   IEvaluationCase,
-  IEvaluationDataset,
+  IEvaluationCollection,
   IEvaluationRecommendation,
   IEvaluationRun,
   IEvaluationRunResult,
 } from '@/interfaces/database/evaluation';
 import {
   IEvaluationAddCaseQueryParams,
-  IEvaluationCreateDatasetRequestBody,
+  IEvaluationCreateCollectionRequestBody,
   IEvaluationStartRunRequestBody,
   IEvaluationUpdateCaseRequestBody,
-  IEvaluationUpdateDatasetRequestBody,
+  IEvaluationUpdateCollectionRequestBody,
   IEvaluationUpdateRunRequestBody,
 } from '@/interfaces/request/evaluation';
 import evaluationService from '@/services/evaluation-service';
@@ -20,18 +20,21 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useDebounce } from 'ahooks';
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useParams } from 'react-router';
 import {
   useGetPaginationWithRouter,
   useHandleSearchChange,
 } from './logic-hooks';
+import { useEvaluationUrl } from './use-evaluation-url';
 
 export const enum EvaluationApiAction {
-  // Dataset
-  CreateDataset = 'createDataset',
-  ListDataset = 'listDataset',
-  GetDataset = 'getDataset',
-  UpdateDataset = 'updateDataset',
-  DeleteDataset = 'deleteDataset',
+  // Collection
+  CreateCollection = 'createCollection',
+  ListCollection = 'listCollection',
+  ListAllCollection = 'listAllCollection',
+  GetCollection = 'getCollection',
+  UpdateCollection = 'updateCollection',
+  DeleteCollection = 'deleteCollection',
 
   // Case
   AddCase = 'addCase',
@@ -69,9 +72,9 @@ export const enum EvaluationApiAction {
   ExportRun = 'exportRun',
 }
 
-//#region Dataset Hooks
+//#region Collection Hooks
 
-export const useFetchEvaluationDatasetList = () => {
+export const useFetchEvaluationCollectionList = () => {
   const { searchString, handleInputChange } = useHandleSearchChange();
   const { pagination, setPagination } = useGetPaginationWithRouter();
   const debouncedSearchString = useDebounce(searchString, { wait: 500 });
@@ -80,19 +83,19 @@ export const useFetchEvaluationDatasetList = () => {
     data,
     isFetching: loading,
     refetch,
-  } = useQuery<{ datasets: IEvaluationDataset[]; total: number }>({
+  } = useQuery<{ collections: IEvaluationCollection[]; total: number }>({
     queryKey: [
-      EvaluationApiAction.ListDataset,
+      EvaluationApiAction.ListCollection,
       {
         debouncedSearchString,
         ...pagination,
       },
     ],
-    initialData: { datasets: [], total: 0 },
+    initialData: { collections: [], total: 0 },
     gcTime: 0,
     refetchOnWindowFocus: false,
     queryFn: async () => {
-      const { data } = await evaluationService.listDataset(
+      const { data } = await evaluationService.listCollection(
         {
           params: {
             keywords: debouncedSearchString,
@@ -103,7 +106,7 @@ export const useFetchEvaluationDatasetList = () => {
         true,
       );
 
-      return data?.data ?? { datasets: [], total: 0 };
+      return data?.data ?? { collections: [], total: 0 };
     },
   });
 
@@ -125,34 +128,62 @@ export const useFetchEvaluationDatasetList = () => {
   };
 };
 
-export const useFetchEvaluationDataset = (datasetId: string) => {
+export function useFetchAllEvaluationCollection() {
   const {
     data,
     isFetching: loading,
     refetch,
-  } = useQuery<IEvaluationDataset>({
-    queryKey: [EvaluationApiAction.GetDataset, datasetId],
+  } = useQuery<{ collections: IEvaluationCollection[]; total: number }>({
+    queryKey: [EvaluationApiAction.ListAllCollection],
+    initialData: { collections: [], total: 0 },
     gcTime: 0,
-    initialData: {} as IEvaluationDataset,
-    enabled: !!datasetId,
     refetchOnWindowFocus: false,
     queryFn: async () => {
-      const { data } = await evaluationService.getDataset(
+      const { data } = await evaluationService.listCollection(
         {
-          url: api.evaluationGetDataset(datasetId),
+          params: {
+            page_size: 100000000,
+            page: 1,
+          },
+        },
+        true,
+      );
+
+      return data?.data ?? { collections: [], total: 0 };
+    },
+  });
+
+  return { data, loading, refetch };
+}
+
+export const useFetchEvaluationCollection = (collectionId: string) => {
+  const {
+    data,
+    isFetching: loading,
+    refetch,
+  } = useQuery<IEvaluationCollection>({
+    queryKey: [EvaluationApiAction.GetCollection, collectionId],
+    gcTime: 0,
+    initialData: {} as IEvaluationCollection,
+    enabled: !!collectionId,
+    refetchOnWindowFocus: false,
+    queryFn: async () => {
+      const { data } = await evaluationService.getCollection(
+        {
+          url: api.evaluationGetCollection(collectionId),
           method: 'get',
         },
         true,
       );
 
-      return data?.data ?? ({} as IEvaluationDataset);
+      return data?.data ?? ({} as IEvaluationCollection);
     },
   });
 
   return { data, loading, refetch };
 };
 
-export const useCreateEvaluationDataset = () => {
+export const useCreateEvaluationCollection = () => {
   const queryClient = useQueryClient();
   const { t } = useTranslation();
 
@@ -161,12 +192,12 @@ export const useCreateEvaluationDataset = () => {
     isPending: loading,
     mutateAsync,
   } = useMutation({
-    mutationKey: [EvaluationApiAction.CreateDataset],
-    mutationFn: async (params: IEvaluationCreateDatasetRequestBody) => {
-      const { data } = await evaluationService.createDataset(params);
+    mutationKey: [EvaluationApiAction.CreateCollection],
+    mutationFn: async (params: IEvaluationCreateCollectionRequestBody) => {
+      const { data } = await evaluationService.createCollection(params);
       if (data.code === 0) {
         queryClient.invalidateQueries({
-          queryKey: [EvaluationApiAction.ListDataset],
+          queryKey: [EvaluationApiAction.ListCollection],
         });
         message.success(t('message.created'));
       }
@@ -174,10 +205,10 @@ export const useCreateEvaluationDataset = () => {
     },
   });
 
-  return { data, loading, createEvaluationDataset: mutateAsync };
+  return { data, loading, createEvaluationCollection: mutateAsync };
 };
 
-export const useUpdateEvaluationDataset = () => {
+export const useUpdateEvaluationCollection = () => {
   const queryClient = useQueryClient();
   const { t } = useTranslation();
 
@@ -186,24 +217,24 @@ export const useUpdateEvaluationDataset = () => {
     isPending: loading,
     mutateAsync,
   } = useMutation({
-    mutationKey: [EvaluationApiAction.UpdateDataset],
+    mutationKey: [EvaluationApiAction.UpdateCollection],
     mutationFn: async ({
-      datasetId,
+      collectionId,
       ...params
-    }: { datasetId: string } & IEvaluationUpdateDatasetRequestBody) => {
-      const { data } = await evaluationService.updateDataset(
+    }: { collectionId: string } & IEvaluationUpdateCollectionRequestBody) => {
+      const { data } = await evaluationService.updateCollection(
         {
-          url: api.evaluationUpdateDataset(datasetId),
+          url: api.evaluationUpdateCollection(collectionId),
           data: params,
         },
         true,
       );
       if (data.code === 0) {
         queryClient.invalidateQueries({
-          queryKey: [EvaluationApiAction.ListDataset],
+          queryKey: [EvaluationApiAction.ListCollection],
         });
         queryClient.invalidateQueries({
-          queryKey: [EvaluationApiAction.GetDataset, datasetId],
+          queryKey: [EvaluationApiAction.GetCollection, collectionId],
         });
         message.success(t('message.modified'));
       }
@@ -211,10 +242,10 @@ export const useUpdateEvaluationDataset = () => {
     },
   });
 
-  return { data, loading, updateEvaluationDataset: mutateAsync };
+  return { data, loading, updateEvaluationCollection: mutateAsync };
 };
 
-export const useDeleteEvaluationDataset = () => {
+export const useDeleteEvaluationCollection = () => {
   const queryClient = useQueryClient();
   const { t } = useTranslation();
 
@@ -223,18 +254,18 @@ export const useDeleteEvaluationDataset = () => {
     isPending: loading,
     mutateAsync,
   } = useMutation({
-    mutationKey: [EvaluationApiAction.DeleteDataset],
-    mutationFn: async (datasetId: string) => {
-      const { data } = await evaluationService.deleteDataset(
+    mutationKey: [EvaluationApiAction.DeleteCollection],
+    mutationFn: async (collectionId: string) => {
+      const { data } = await evaluationService.deleteCollection(
         {
-          url: api.evaluationDeleteDataset(datasetId),
+          url: api.evaluationDeleteCollection(collectionId),
           data: {},
         },
         true,
       );
       if (data.code === 0) {
         queryClient.invalidateQueries({
-          queryKey: [EvaluationApiAction.ListDataset],
+          queryKey: [EvaluationApiAction.ListCollection],
         });
         message.success(t('message.deleted'));
       }
@@ -242,14 +273,14 @@ export const useDeleteEvaluationDataset = () => {
     },
   });
 
-  return { data, loading, deleteEvaluationDataset: mutateAsync };
+  return { data, loading, deleteEvaluationCollection: mutateAsync };
 };
 
 //#endregion
 
 //#region Case Hooks
 
-export const useFetchEvaluationCaseList = (datasetId: string) => {
+export const useFetchEvaluationCaseList = (collectionId: string) => {
   const { searchString, handleInputChange } = useHandleSearchChange();
   const { pagination, setPagination } = useGetPaginationWithRouter();
   const debouncedSearchString = useDebounce(searchString, { wait: 500 });
@@ -261,7 +292,7 @@ export const useFetchEvaluationCaseList = (datasetId: string) => {
   } = useQuery<{ cases: IEvaluationCase[]; total: number }>({
     queryKey: [
       EvaluationApiAction.ListCase,
-      datasetId,
+      collectionId,
       {
         debouncedSearchString,
         ...pagination,
@@ -270,11 +301,11 @@ export const useFetchEvaluationCaseList = (datasetId: string) => {
     initialData: { cases: [], total: 0 },
     gcTime: 0,
     refetchOnWindowFocus: false,
-    enabled: !!datasetId,
+    enabled: !!collectionId,
     queryFn: async () => {
       const { data } = await evaluationService.listCase(
         {
-          url: api.evaluationListCase(datasetId),
+          url: api.evaluationListCase(collectionId),
           method: 'get',
           params: {
             keywords: debouncedSearchString,
@@ -318,19 +349,19 @@ export const useAddEvaluationCase = () => {
   } = useMutation({
     mutationKey: [EvaluationApiAction.AddCase],
     mutationFn: async ({
-      datasetId,
+      collectionId,
       ...params
-    }: { datasetId: string } & IEvaluationAddCaseQueryParams) => {
+    }: { collectionId: string } & IEvaluationAddCaseQueryParams) => {
       const { data } = await evaluationService.addCase(
         {
-          url: api.evaluationAddCase(datasetId),
+          url: api.evaluationAddCase(collectionId),
           params: params,
         },
         true,
       );
       if (data.code === 0) {
         queryClient.invalidateQueries({
-          queryKey: [EvaluationApiAction.ListCase, datasetId],
+          queryKey: [EvaluationApiAction.ListCase, collectionId],
         });
         message.success(t('message.created'));
       }
@@ -352,10 +383,10 @@ export const useImportEvaluationCase = () => {
   } = useMutation({
     mutationKey: [EvaluationApiAction.ImportCase],
     mutationFn: async ({
-      datasetId,
+      collectionId,
       file,
     }: {
-      datasetId: string;
+      collectionId: string;
       file?: File;
     }) => {
       const formData = new FormData();
@@ -365,7 +396,7 @@ export const useImportEvaluationCase = () => {
 
       const { data } = await evaluationService.importCase(
         {
-          url: api.evaluationImportCase(datasetId),
+          url: api.evaluationImportCase(collectionId),
           data: formData,
           headers: {
             'Content-Type': 'multipart/form-data',
@@ -375,7 +406,7 @@ export const useImportEvaluationCase = () => {
       );
       if (data.code === 0) {
         queryClient.invalidateQueries({
-          queryKey: [EvaluationApiAction.ListCase, datasetId],
+          queryKey: [EvaluationApiAction.ListCase, collectionId],
         });
         message.success(t('message.uploaded'));
       }
@@ -511,7 +542,8 @@ export const useFetchEvaluationRunList = () => {
   };
 };
 
-export const useFetchEvaluationRun = (runId: string) => {
+export const useFetchEvaluationRun = () => {
+  const { runId } = useEvaluationUrl();
   const {
     data,
     isFetching: loading,
@@ -523,13 +555,7 @@ export const useFetchEvaluationRun = (runId: string) => {
     enabled: !!runId,
     refetchOnWindowFocus: false,
     queryFn: async () => {
-      const { data } = await evaluationService.getRun(
-        {
-          url: api.evaluationGetRun(runId),
-          method: 'get',
-        },
-        true,
-      );
+      const { data } = await evaluationService.getRun(runId);
 
       return data?.data ?? ({} as IEvaluationRun);
     },
@@ -568,6 +594,8 @@ export const useFetchEvaluationRunResults = (runId: string) => {
 export const useStartEvaluationRun = () => {
   const queryClient = useQueryClient();
   const { t } = useTranslation();
+  const { id } = useParams();
+  const { type } = useEvaluationUrl();
 
   const {
     data,
@@ -575,8 +603,12 @@ export const useStartEvaluationRun = () => {
     mutateAsync,
   } = useMutation({
     mutationKey: [EvaluationApiAction.StartRun],
-    mutationFn: async (params: IEvaluationStartRunRequestBody) => {
-      const { data } = await evaluationService.startRun(params);
+    mutationFn: async (params: Partial<IEvaluationStartRunRequestBody>) => {
+      const { data } = await evaluationService.startRun({
+        target_id: id!,
+        target_type: type,
+        ...params,
+      });
       if (data.code === 0) {
         queryClient.invalidateQueries({
           queryKey: [EvaluationApiAction.ListRun],
@@ -808,6 +840,7 @@ export const useCalculateEvaluationCaseMetric = () => {
 export const useCalculateEvaluationRunsMetrics = () => {
   const queryClient = useQueryClient();
   const { t } = useTranslation();
+  const { runId } = useEvaluationUrl();
 
   const {
     data,
@@ -815,7 +848,7 @@ export const useCalculateEvaluationRunsMetrics = () => {
     mutateAsync,
   } = useMutation({
     mutationKey: [EvaluationApiAction.CalculateRunsMetrics],
-    mutationFn: async (runId: string) => {
+    mutationFn: async () => {
       const { data } = await evaluationService.calculateRunsMetrics(
         {
           url: api.evaluationCalculateRunsMetrics(runId),

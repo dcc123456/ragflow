@@ -19,10 +19,12 @@ import {
 } from '@/components/ui/dropdown-menu';
 import message from '@/components/ui/message';
 import { SharedFrom } from '@/constants/chat';
+import { EvaluationType } from '@/constants/evaluation';
 import { useSetModalState } from '@/hooks/common-hooks';
 import { useNavigatePage } from '@/hooks/logic-hooks/navigate-hooks';
 import { ReactFlowProvider } from '@xyflow/react';
 import {
+  ChartColumn,
   ChevronDown,
   CirclePlay,
   History,
@@ -110,7 +112,7 @@ export default function Agent() {
 
   const { showEmbedModal, hideEmbedModal, embedVisible, beta } =
     useShowEmbedModal();
-  const { navigateToAgentLogs } = useNavigatePage();
+  const { navigateToAgentLogs, navigateToEvaluation } = useNavigatePage();
   const time = useWatchAgentChange(chatDrawerVisible);
   const isWebhookMode = useIsWebhookMode();
 
@@ -233,28 +235,17 @@ export default function Agent() {
           >
             <LaptopMinimalCheck /> {t('flow.save')}
           </ButtonLoading>
-          <ButtonLoading
-            variant={'secondary'}
-            onClick={() => showGlobalParamSheet()}
-            loading={loading}
-          >
-            <MessageSquareCode /> {t('flow.conversationVariable')}
-          </ButtonLoading>
           <Button variant={'secondary'} onClick={handleButtonRunClick}>
             <CirclePlay />
             {t('flow.run')}
           </Button>
-          <Button variant={'secondary'} onClick={showVersionDialog}>
-            <History />
-            {t('flow.historyVersion')}
-          </Button>
           {isPipeline || (
             <Button
               variant={'secondary'}
-              onClick={navigateToAgentLogs(id as string)}
+              onClick={navigateToEvaluation(EvaluationType.Agent, id as string)}
             >
-              <Logs />
-              {t('flow.log')}
+              <ChartColumn />
+              {t('evaluation.title')}
             </Button>
           )}
           <DropdownMenu>
@@ -264,6 +255,27 @@ export default function Agent() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent>
+              <AgentDropdownMenuItem onClick={() => showGlobalParamSheet()}>
+                <MessageSquareCode />
+                {t('flow.conversationVariable')}
+              </AgentDropdownMenuItem>
+              <DropdownMenuSeparator />
+              <AgentDropdownMenuItem onClick={showVersionDialog}>
+                <History />
+                {t('flow.historyVersion')}
+              </AgentDropdownMenuItem>
+              {isPipeline || (
+                <>
+                  <DropdownMenuSeparator />
+                  <AgentDropdownMenuItem
+                    onClick={navigateToAgentLogs(id as string)}
+                  >
+                    <Logs />
+                    {t('flow.log')}
+                  </AgentDropdownMenuItem>
+                </>
+              )}
+              <DropdownMenuSeparator />
               <AgentDropdownMenuItem onClick={handleExportJson}>
                 <Upload />
                 {t('flow.export')}
