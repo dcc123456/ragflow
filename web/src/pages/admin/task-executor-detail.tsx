@@ -81,8 +81,6 @@ function TaskExecutorDetail({ content }: TaskExecutorDetailProps) {
       {Object.entries(content ?? {}).map(([name, data]) => {
         const items = data.map((x) => ({
           ...x,
-          done: Math.floor(Math.random() * 100),
-          failed: Math.floor(Math.random() * 100),
           now: dayjs(x.now).valueOf(),
         }));
 
@@ -124,7 +122,10 @@ function TaskExecutorDetail({ content }: TaskExecutorDetailProps) {
                       tick={{ fill: 'rgb(var(--text-secondary))' }}
                     /> */}
 
-                  <CartesianGrid strokeDasharray="3 3" />
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    className="stroke-border-default"
+                  />
 
                   <Tooltip
                     trigger="click"
