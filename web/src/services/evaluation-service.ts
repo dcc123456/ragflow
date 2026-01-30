@@ -1,5 +1,6 @@
 import api from '@/utils/api';
 import { registerNextServer } from '@/utils/register-server';
+import request from '@/utils/request';
 
 const {
   evaluationCreateCollection,
@@ -30,9 +31,16 @@ const {
   evaluationClearCaseAnswer,
   evaluationGetRecommendations,
   evaluationExportRun,
+  downloadEvaluationFile,
+  listEvaluationDetailFile,
 } = api;
 
 const methods = {
+  downloadEvaluationFile: {
+    url: downloadEvaluationFile,
+    method: 'get',
+    responseType: 'blob',
+  },
   // Collection
   createCollection: {
     url: evaluationCreateCollection,
@@ -48,7 +56,7 @@ const methods = {
   },
   updateCollection: {
     url: evaluationUpdateCollection,
-    method: 'post',
+    method: 'put',
   },
   deleteCollection: {
     url: evaluationDeleteCollection,
@@ -161,5 +169,12 @@ const methods = {
 } as const;
 
 const evaluationService = registerNextServer<keyof typeof methods>(methods);
-
+export const getListEvaluationDetailFile = (
+  id: string,
+  data: { page: number; page_size: number },
+) => {
+  return request.get(listEvaluationDetailFile(id), {
+    params: data,
+  });
+};
 export default evaluationService;

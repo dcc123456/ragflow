@@ -37,8 +37,9 @@ const UploadFormId = 'UploadFormId';
 type UploadFormProps = {
   submit: (values?: UploadFormSchemaType) => void;
   showParseOnCreation?: boolean;
+  accept?: Record<string, string[]>;
 };
-function UploadForm({ submit, showParseOnCreation }: UploadFormProps) {
+function UploadForm({ submit, showParseOnCreation, accept }: UploadFormProps) {
   const { t } = useTranslation();
   const FormSchema = buildUploadFormSchema(t);
 
@@ -76,7 +77,7 @@ function UploadForm({ submit, showParseOnCreation }: UploadFormProps) {
             <FileUploader
               value={field.value}
               onValueChange={field.onChange}
-              accept={{ '*': [] }}
+              accept={accept || { '*': [] }}
             />
           )}
         </RAGFlowFormItem>
@@ -86,12 +87,15 @@ function UploadForm({ submit, showParseOnCreation }: UploadFormProps) {
 }
 
 type FileUploadDialogProps = IModalProps<UploadFormSchemaType> &
-  Pick<UploadFormProps, 'showParseOnCreation'>;
+  Pick<UploadFormProps, 'showParseOnCreation'> & {
+    accept?: Record<string, string[]>;
+  };
 export function FileUploadDialog({
   hideModal,
   onOk,
   loading,
   showParseOnCreation = false,
+  accept,
 }: FileUploadDialogProps) {
   const { t } = useTranslation();
 
@@ -117,6 +121,7 @@ export function FileUploadDialog({
         <UploadForm
           submit={onOk!}
           showParseOnCreation={showParseOnCreation}
+          accept={accept}
         ></UploadForm>
         <DialogFooter>
           <ButtonLoading type="submit" loading={loading} form={UploadFormId}>

@@ -1,90 +1,48 @@
-import { BulkOperateBar } from '@/components/bulk-operate-bar';
-import { FileUploadDialog } from '@/components/file-upload-dialog';
 import ListFilterBar from '@/components/list-filter-bar';
-import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { useRowSelection } from '@/hooks/logic-hooks/use-row-selection';
-import { useFetchFileList } from '@/hooks/use-file-request';
-import { Upload } from 'lucide-react';
+import { Segmented } from '@/components/ui/segmented';
+import { ChangeEventHandler, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import EnterpriseFeature from '../admin/components/enterprise-feature';
-import { CreateFolderDialog } from './create-folder-dialog';
+import { useSearchParams } from 'react-router';
+import { EvaluationPage } from './evaluation';
 import { FileBreadcrumb } from './file-breadcrumb';
-import { FilesTable } from './files-table';
-import { MoveDialog } from './move-dialog';
-import { SyncFileDialog } from './sync-file-dialog';
-import { useBulkOperateFile } from './use-bulk-operate-file';
-import { useHandleCreateFolder } from './use-create-folder';
-import { useHandleMoveFile } from './use-move-file';
+import { FilesManager } from './file-manager';
 import { useSelectBreadcrumbItems } from './use-navigate-to-folder';
-import { useHandleSyncFile } from './use-sync-file';
-import { useHandleUploadFile } from './use-upload-file';
+export enum FileTabs {
+  FILE = 'file',
+  EVALUATION = 'evaluation',
+}
 
+export type FilesInstanceType = {
+  searchString?: string;
+  onSearchChange?: ChangeEventHandler<HTMLInputElement>;
+  showFileUploadModal?: () => void;
+  showSyncFileModal?: () => void;
+  showFolderCreateModal?: () => void;
+};
 export default function Files() {
   const { t } = useTranslation();
-  const {
-    fileUploadVisible,
-    hideFileUploadModal,
-    showFileUploadModal,
-    fileUploadLoading,
-    onFileUploadOk,
-  } = useHandleUploadFile();
+  const [activeTab, setActiveTab] = useState<FileTabs>(FileTabs.FILE);
 
-  const {
-    folderCreateModalVisible,
-    showFolderCreateModal,
-    hideFolderCreateModal,
-    folderCreateLoading,
-    onFolderCreateOk,
-  } = useHandleCreateFolder();
+  const [searchUrl, setSearchUrl] = useSearchParams();
+  const isEvaluation = searchUrl.get('type') === FileTabs.EVALUATION;
+  useEffect(() => {
+    if (isEvaluation) {
+      searchUrl.delete('type');
+      setSearchUrl(searchUrl);
+      setActiveTab(FileTabs.EVALUATION);
+    }
+  }, [isEvaluation, searchUrl, setSearchUrl]);
 
-  const {
-    syncFileVisible,
-    hideSyncFileModal,
-    showSyncFileModal,
-    syncFileLoading,
-    syncFile,
-  } = useHandleSyncFile();
-
-  const {
-    pagination,
-    files,
-    total,
-    loading,
-    setPagination,
-    searchString,
-    handleInputChange,
-  } = useFetchFileList();
-
-  const {
-    rowSelection,
-    setRowSelection,
-    rowSelectionIsEmpty,
-    clearRowSelection,
-    selectedCount,
-  } = useRowSelection();
-
-  const {
-    showMoveFileModal,
-    moveFileVisible,
-    onMoveFileOk,
-    hideMoveFileModal,
-    moveFileLoading,
-  } = useHandleMoveFile({ clearRowSelection });
-
-  const { list } = useBulkOperateFile({
-    files,
-    rowSelection,
-    showMoveFileModal,
-    setRowSelection,
-  });
-
+  const options = [
+    {
+      value: FileTabs.FILE,
+      label: t('fileManager.files'),
+    },
+    {
+      value: FileTabs.EVALUATION,
+      label: t('fileManager.evaluation.evaluation'),
+    },
+  ];
   const breadcrumbItems = useSelectBreadcrumbItems();
 
   const leftPanel = (
@@ -92,91 +50,54 @@ export default function Files() {
       {breadcrumbItems.length > 0 ? (
         <FileBreadcrumb></FileBreadcrumb>
       ) : (
-        t('fileManager.files')
+        // t('fileManager.files')
+        <>
+          <Segmented
+            options={options}
+            value={activeTab}
+            onChange={(value) => setActiveTab(value as FileTabs)}
+          ></Segmented>
+        </>
       )}
     </div>
   );
+
+  const [fileInstance, setFileInstance] = useState<FilesInstanceType>({
+    searchString: '',
+    onSearchChange: undefined,
+    showFileUploadModal: undefined,
+    showSyncFileModal: undefined,
+    showFolderCreateModal: undefined,
+  });
 
   return (
     <section className="p-8">
       <ListFilterBar
         leftPanel={leftPanel}
-        searchString={searchString}
-        onSearchChange={handleInputChange}
+        searchString={fileInstance.searchString}
+        onSearchChange={fileInstance.onSearchChange}
         showFilter={false}
-        icon={'file'}
       >
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button>
-              <Upload />
-              {t('knowledgeDetails.addFile')}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent className="w-56">
-            <DropdownMenuItem onClick={showFileUploadModal}>
-              {t('fileManager.uploadFile')}
-            </DropdownMenuItem>
-            <EnterpriseFeature>
-              {() => (
-                <DropdownMenuItem onClick={showSyncFileModal}>
-                  {t('fileManager.syncFile')}
-                </DropdownMenuItem>
-              )}
-            </EnterpriseFeature>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={showFolderCreateModal}>
-              {t('fileManager.newFolder')}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </ListFilterBar>
-      {!rowSelectionIsEmpty && (
-        <BulkOperateBar list={list} count={selectedCount}></BulkOperateBar>
-      )}
-      <FilesTable
-        files={files}
-        total={total}
-        pagination={pagination}
-        setPagination={setPagination}
-        loading={loading}
-        rowSelection={rowSelection}
-        setRowSelection={setRowSelection}
-        showMoveFileModal={showMoveFileModal}
-      ></FilesTable>
-
-      <EnterpriseFeature>
-        {() => (
-          <SyncFileDialog
-            visible={syncFileVisible}
-            hideModal={hideSyncFileModal}
-            onOk={syncFile}
-            loading={syncFileLoading}
+        {activeTab === FileTabs.FILE ? (
+          <FilesManager.fileUpload
+            showFileUploadModal={fileInstance.showFileUploadModal || (() => {})}
+            showSyncFileModal={fileInstance.showSyncFileModal || (() => {})}
+            showFolderCreateModal={
+              fileInstance.showFolderCreateModal || (() => {})
+            }
+          />
+        ) : (
+          <EvaluationPage.fileUpload
+            showFileUploadModal={fileInstance.showFileUploadModal || (() => {})}
           />
         )}
-      </EnterpriseFeature>
+      </ListFilterBar>
 
-      {fileUploadVisible && (
-        <FileUploadDialog
-          hideModal={hideFileUploadModal}
-          onOk={onFileUploadOk}
-          loading={fileUploadLoading}
-        ></FileUploadDialog>
-      )}
-      {folderCreateModalVisible && (
-        <CreateFolderDialog
-          loading={folderCreateLoading}
-          visible={folderCreateModalVisible}
-          hideModal={hideFolderCreateModal}
-          onOk={onFolderCreateOk}
-        ></CreateFolderDialog>
-      )}
-      {moveFileVisible && (
-        <MoveDialog
-          hideModal={hideMoveFileModal}
-          onOk={onMoveFileOk}
-          loading={moveFileLoading}
-        ></MoveDialog>
+      {/* Content */}
+      {activeTab === FileTabs.FILE ? (
+        <FilesManager.root setFileInstance={setFileInstance} />
+      ) : (
+        <EvaluationPage.root setFileInstance={setFileInstance} />
       )}
     </section>
   );

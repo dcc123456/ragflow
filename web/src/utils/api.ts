@@ -324,6 +324,10 @@ export default {
   adminTestSMTPConnection: `${ExternalApi}${api_host}/admin/validate_mail`,
 
   // evaluation
+  listEvaluationDetailFile: (id: string) =>
+    `${api_host}/evaluation/collection/${id}/cases`,
+  downloadEvaluationFile: (id: string) =>
+    `${api_host}/evaluation/collection/${id}/case/export`,
   // collection
   evaluationCreateCollection: `${api_host}/evaluation/collection/create`,
   evaluationListCollection: `${api_host}/evaluation/collection/list`,
@@ -331,8 +335,7 @@ export default {
     `${api_host}/evaluation/collection/${collectionId}`,
   evaluationUpdateCollection: (collectionId: string) =>
     `${api_host}/evaluation/collection/${collectionId}`,
-  evaluationDeleteCollection: (collectionId: string) =>
-    `${api_host}/evaluation/collection/${collectionId}`,
+  evaluationDeleteCollection: `${api_host}/evaluation/collection/remove`,
 
   // case
   evaluationAddCase: (collectionId: string) =>

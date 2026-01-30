@@ -1,9 +1,11 @@
 import { lazy } from 'react';
 import FallbackComponent from './components/fallback-component';
+import { Routes } from './routes';
 
 export enum PrivateRoutes {
   Price = '/price',
   Billing = '/billing',
+  EvaluationDetail = '/evaluation-detail',
 }
 
 export const privateRoutes = [
@@ -23,6 +25,12 @@ export const privateRoutes = [
     path: PrivateRoutes.Price,
     layout: false,
     Component: lazy(() => import(`@/pages/price`)),
+    errorElement: <FallbackComponent />,
+  },
+  {
+    path: `${Routes.Files}${PrivateRoutes.EvaluationDetail}/:id`,
+    layout: false,
+    Component: lazy(() => import('@/pages/files/evaluation/detail-page')),
     errorElement: <FallbackComponent />,
   },
 ];

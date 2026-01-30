@@ -59,5 +59,21 @@ export default {
       verifyCodePlaceholder: '验证码',
       checkEmail: '检查邮箱',
     },
+    fileManager: {
+      evaluation: {
+        export: '导出',
+        query: '查询',
+        answer: '回答',
+        evaluation: '评估',
+        dataId: '数据ID',
+        createdAt: '创建时间',
+        editName: '编辑名称',
+        view: '查看',
+        delete: '删除',
+        deleteSelected: '删除选中项',
+        noEvaluationData: '暂无评估数据',
+        loading: '加载中...',
+      },
+    },
   },
 };

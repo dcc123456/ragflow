@@ -80,7 +80,7 @@ export const useGetPaginationWithRouter = () => {
   );
 
   const setCurrentPagination = useCallback(
-    (pagination: { page: number; pageSize?: number }) => {
+    (pagination: { page: number; pageSize?: number; total?: number }) => {
       if (pagination.pageSize !== pageSize) {
         pagination.page = 1; // Reset to first page if pageSize changes
       }
@@ -124,20 +124,38 @@ export const useHandleSearchChange = () => {
 };
 
 export const useGetPagination = () => {
-  const [pagination, setPagination] = useState({ page: 1, pageSize: 10 });
+  const [pagination, setPagination] = useState({
+    page: 1,
+    pageSize: 10,
+    total: 0,
+  });
   const { t } = useTranslate('common');
 
   const onPageChange: Pagination['onChange'] = useCallback(
     (pageNumber: number, pageSize: number) => {
-      setPagination({ page: pageNumber, pageSize });
+      setPagination((prev) => ({
+        page: pageNumber,
+        pageSize,
+        total: prev.total,
+      }));
     },
     [],
+  );
+
+  const changePagination = useCallback(
+    (pagination: { page: number; pageSize?: number; total?: number }) => {
+      if (pagination.pageSize !== pagination.pageSize) {
+        pagination.page = 1; // Reset to first page if pageSize changes
+      }
+      setPagination((prev) => ({ ...prev, ...pagination }));
+    },
+    [setPagination],
   );
 
   const currentPagination: Pagination = useMemo(() => {
     return {
       showQuickJumper: true,
-      total: 0,
+      total: pagination.total ?? 0,
       showSizeChanger: true,
       current: pagination.page,
       pageSize: pagination.pageSize,
@@ -149,6 +167,7 @@ export const useGetPagination = () => {
 
   return {
     pagination: currentPagination,
+    changePagination,
   };
 };
 

@@ -1,6 +1,6 @@
 // Collection
 export interface IEvaluationCollection {
-  id?: string;
+  id: string;
   name: string;
   description?: string;
   status?: number;
@@ -10,6 +10,28 @@ export interface IEvaluationCollection {
   update_date?: string;
   create_time?: number;
   update_time?: number;
+}
+
+export interface Variable {
+  question: string;
+  reference_answer: string;
+}
+export interface CaseItem {
+  collection_id: string;
+  create_date: string;
+  create_time: number;
+  id: string;
+  metadata: Record<string, any>;
+  relevant_doc_ids: Record<string, any>;
+  relevant_kb_ids: Record<string, any>;
+  update_date: string;
+  update_time: number;
+  variable: Variable;
+}
+
+export interface EvaluationDetailList {
+  cases: CaseItem[];
+  total: number;
 }
 
 // Case

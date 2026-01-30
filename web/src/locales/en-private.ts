@@ -61,5 +61,21 @@ export default {
       verifyCodePlaceholder: 'Verification code',
       checkEmail: 'Check email',
     },
+    fileManager: {
+      evaluation: {
+        export: 'Export',
+        query: 'Query',
+        answer: 'Answer',
+        evaluation: 'Evaluation',
+        dataId: 'Data ID',
+        createdAt: 'Created time',
+        editName: 'Edit name',
+        view: 'View',
+        delete: 'Delete',
+        deleteSelected: 'Delete selected',
+        noEvaluationData: 'No evaluation data',
+        loading: 'Loading...',
+      },
+    },
   },
 };

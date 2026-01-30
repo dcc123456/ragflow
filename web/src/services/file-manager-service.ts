@@ -4,8 +4,10 @@ import request from '@/utils/request';
 
 const {
   listFile,
+  listEvaluationFile,
   removeFile,
   uploadFile,
+  uploadEvaluationFile,
   renameFile,
   getAllParentFolder,
   createFolder,
@@ -21,12 +23,21 @@ const methods = {
     url: listFile,
     method: 'get',
   },
+  listEvaluationFile: {
+    url: listEvaluationFile,
+    method: 'get',
+  },
+
   removeFile: {
     url: removeFile,
     method: 'post',
   },
   uploadFile: {
     url: uploadFile,
+    method: 'post',
+  },
+  uploadEvaluationFile: {
+    url: uploadEvaluationFile,
     method: 'post',
   },
   renameFile: {
@@ -72,4 +83,5 @@ export const downloadFile = (data: { docId: string; ext: string }) => {
     responseType: 'blob',
   });
 };
+
 export default fileManagerService;

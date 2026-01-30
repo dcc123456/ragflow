@@ -1,5 +1,7 @@
+import { UploadFormSchemaType } from '@/components/file-upload-dialog';
 import message from '@/components/ui/message';
 import {
+  EvaluationDetailList,
   IEvaluationCase,
   IEvaluationCollection,
   IEvaluationRecommendation,
@@ -8,25 +10,28 @@ import {
 } from '@/interfaces/database/evaluation';
 import {
   IEvaluationAddCaseQueryParams,
-  IEvaluationCreateCollectionRequestBody,
   IEvaluationStartRunRequestBody,
   IEvaluationUpdateCaseRequestBody,
   IEvaluationUpdateCollectionRequestBody,
   IEvaluationUpdateRunRequestBody,
 } from '@/interfaces/request/evaluation';
-import evaluationService from '@/services/evaluation-service';
+import evaluationService, {
+  getListEvaluationDetailFile,
+} from '@/services/evaluation-service';
 import api from '@/utils/api';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useDebounce } from 'ahooks';
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router';
+import { useSetModalState } from './common-hooks';
 import {
+  useGetPagination,
   useGetPaginationWithRouter,
   useHandleSearchChange,
 } from './logic-hooks';
 import { useEvaluationUrl } from './use-evaluation-url';
-
+type Pagination = { page?: number; pageSize?: number; total?: number };
 export const enum EvaluationApiAction {
   // Collection
   CreateCollection = 'createCollection',
@@ -35,6 +40,8 @@ export const enum EvaluationApiAction {
   GetCollection = 'getCollection',
   UpdateCollection = 'updateCollection',
   DeleteCollection = 'deleteCollection',
+  // Detail
+  FetchEvaluationDetailList = 'fetchEvaluationDetailList',
 
   // Case
   AddCase = 'addCase',
@@ -76,7 +83,7 @@ export const enum EvaluationApiAction {
 
 export const useFetchEvaluationCollectionList = () => {
   const { searchString, handleInputChange } = useHandleSearchChange();
-  const { pagination, setPagination } = useGetPaginationWithRouter();
+  const { pagination, changePagination } = useGetPagination();
   const debouncedSearchString = useDebounce(searchString, { wait: 500 });
 
   const {
@@ -106,6 +113,11 @@ export const useFetchEvaluationCollectionList = () => {
         true,
       );
 
+      changePagination({
+        page: pagination.current,
+        pageSize: pagination.pageSize,
+        total: data?.data.total ?? 0,
+      });
       return data?.data ?? { collections: [], total: 0 };
     },
   });
@@ -123,8 +135,8 @@ export const useFetchEvaluationCollectionList = () => {
     refetch,
     searchString,
     handleInputChange: onInputChange,
-    pagination: { ...pagination, total: data?.total },
-    setPagination,
+    pagination,
+    setPagination: changePagination,
   };
 };
 
@@ -183,29 +195,65 @@ export const useFetchEvaluationCollection = (collectionId: string) => {
   return { data, loading, refetch };
 };
 
-export const useCreateEvaluationCollection = () => {
-  const queryClient = useQueryClient();
+export const useUploadEvaluationFile = () => {
   const { t } = useTranslation();
-
+  const queryClient = useQueryClient();
   const {
     data,
     isPending: loading,
     mutateAsync,
   } = useMutation({
     mutationKey: [EvaluationApiAction.CreateCollection],
-    mutationFn: async (params: IEvaluationCreateCollectionRequestBody) => {
-      const { data } = await evaluationService.createCollection(params);
-      if (data.code === 0) {
-        queryClient.invalidateQueries({
-          queryKey: [EvaluationApiAction.ListCollection],
-        });
-        message.success(t('message.created'));
-      }
-      return data;
+    mutationFn: async (params: { fileList: File[] }) => {
+      const fileList = params.fileList;
+      const formData = new FormData();
+      fileList.forEach((file: any) => {
+        formData.append('file', file);
+      });
+      try {
+        const ret = await evaluationService.createCollection(formData);
+        if (ret?.data.code === 0) {
+          message.success(t('message.uploaded'));
+          queryClient.invalidateQueries({
+            queryKey: [EvaluationApiAction.ListCollection],
+          });
+        }
+        return ret?.data?.code;
+      } catch (error) {}
     },
   });
 
-  return { data, loading, createEvaluationCollection: mutateAsync };
+  return { data, loading, uploadFile: mutateAsync };
+};
+
+export const useCreateEvaluationCollection = () => {
+  const {
+    visible: fileUploadVisible,
+    hideModal: hideFileUploadModal,
+    showModal: showFileUploadModal,
+  } = useSetModalState();
+  const { uploadFile, loading } = useUploadEvaluationFile();
+
+  const onFileUploadOk = useCallback(
+    async ({ fileList }: UploadFormSchemaType): Promise<number | undefined> => {
+      if (fileList.length > 0) {
+        const ret: number = await uploadFile({ fileList });
+        if (ret === 0) {
+          hideFileUploadModal();
+        }
+        return ret;
+      }
+    },
+    [uploadFile, hideFileUploadModal],
+  );
+
+  return {
+    fileUploadLoading: loading,
+    onFileUploadOk,
+    fileUploadVisible,
+    hideFileUploadModal,
+    showFileUploadModal,
+  };
 };
 
 export const useUpdateEvaluationCollection = () => {
@@ -255,11 +303,14 @@ export const useDeleteEvaluationCollection = () => {
     mutateAsync,
   } = useMutation({
     mutationKey: [EvaluationApiAction.DeleteCollection],
-    mutationFn: async (collectionId: string) => {
+    mutationFn: async (collectionId: string | string[]) => {
+      if (typeof collectionId === 'string') {
+        collectionId = [collectionId];
+      }
       const { data } = await evaluationService.deleteCollection(
         {
-          url: api.evaluationDeleteCollection(collectionId),
-          data: {},
+          url: api.evaluationDeleteCollection,
+          data: { collection_ids: collectionId },
         },
         true,
       );
@@ -274,6 +325,52 @@ export const useDeleteEvaluationCollection = () => {
   });
 
   return { data, loading, deleteEvaluationCollection: mutateAsync };
+};
+
+export const useFetchEvaluationFileContent = (id: string) => {
+  const { pagination, changePagination } = useGetPagination();
+  const { data, isFetching: loading } = useQuery<EvaluationDetailList>({
+    queryKey: [
+      EvaluationApiAction.FetchEvaluationDetailList,
+      id,
+      {
+        ...pagination,
+      },
+    ],
+    initialData: { cases: [], total: 0 },
+    enabled: !!id,
+    gcTime: 0,
+    queryFn: async () => {
+      const { data } = await getListEvaluationDetailFile(id as string, {
+        page: pagination.current,
+        page_size: pagination.pageSize,
+      });
+      changePagination({
+        page: pagination.current,
+        pageSize: pagination.pageSize,
+        total: data?.data.total ?? 0,
+      });
+
+      return data?.data;
+    },
+  });
+
+  const onPageChange = ({ page, pageSize, total }: Pagination) => {
+    changePagination({
+      ...pagination,
+      page: page || pagination.current,
+      pageSize,
+      total,
+    });
+  };
+
+  return {
+    data,
+    pagination,
+    setPagination: changePagination,
+    onPageChange,
+    loading,
+  };
 };
 
 //#endregion
