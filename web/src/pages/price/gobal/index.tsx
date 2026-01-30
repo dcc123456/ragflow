@@ -8,8 +8,9 @@ import {
   useState,
 } from 'react';
 import { freePageNumber } from '../config';
-import { PriceName } from '../contant';
+import { PriceName } from '../constant';
 // import { useFetchCurrentPlan } from '../hook/use-price-hooks';
+import { useFetchCurrentPlan } from '../hook/use-price-hooks';
 import { ICurrentPlan } from '../interface';
 import { FreeUpgradeModal } from '../price-modal/free-upgrade-modal';
 import { ConfirmModal } from '../price-modal/price-confirm-modal';
@@ -60,8 +61,11 @@ export const showFreeUpgradeTipsModal = (
 export const UpgradeModalProvider: React.FC<UpgradeModalProviderProps> = ({
   children,
 }) => {
+  if (import.meta.env.VITE_BILLING_ENABLED !== '1') {
+    return <>{children}</>;
+  }
   const location = window.location.pathname.toLowerCase();
-  // useFetchCurrentPlan();
+  useFetchCurrentPlan();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -98,6 +102,7 @@ export const UpgradeModalProvider: React.FC<UpgradeModalProviderProps> = ({
       localStorage.setItem('pageViewCount', '0');
     }
   }, [location]);
+
   return (
     <UpgradeModalContext.Provider
       value={{

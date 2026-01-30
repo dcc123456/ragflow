@@ -1,5 +1,7 @@
+import { useCharge } from '@/pages/price/hook/use-price-hooks';
 import { ArrowUpRight, DatabaseZap, LayoutGrid, Users } from 'lucide-react';
 import React from 'react';
+import { UsageBasedDeepDocPriceId } from '../contant';
 import { showAddOnManageModal } from './add-on-manage-modal';
 import Process from './process';
 
@@ -27,8 +29,19 @@ const ResourceUsage: React.FC<CustomProgressProps> = ({
   children,
 }) => {
   let addOnManageModal: { destroy: () => void };
-  const addOnManageOk = () => {
+  const { checkout } = useCharge();
+
+  const addOnManageOk = async ({ value }: { value: number }) => {
     if (addOnManageModal) {
+      const res = await checkout({
+        price_id: UsageBasedDeepDocPriceId,
+        quantity: value.toString(),
+        payment_type: 'usage_based',
+      });
+      console.log('checkout', res);
+      if (res && res.redirect_to) {
+        window.open(res.redirect_to);
+      }
       addOnManageModal.destroy();
     }
   };

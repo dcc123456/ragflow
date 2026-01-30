@@ -12,6 +12,7 @@ const {
   plan_spend_overview,
   getUpComming,
   spendHistory,
+  usageBasedPlans,
 } = api;
 const methods = {
   billinCheckout: {
@@ -39,8 +40,18 @@ const methods = {
     url: spendHistory,
     method: 'get',
   },
+  usageBasedPlans: {
+    url: usageBasedPlans,
+    method: 'get',
+  },
 };
-const billingService = registerServer<keyof typeof methods>?.(methods, request);
+
+const billingService = (() => {
+  if (import.meta.env.VITE_BILLING_ENABLED === '1') {
+    return registerServer<keyof typeof methods>?.(methods, request);
+  }
+  return null;
+})();
 
 export const billinCheckout = (
   data: IChargePlan & {

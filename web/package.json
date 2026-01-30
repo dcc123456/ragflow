@@ -7,7 +7,7 @@
   "scripts": {
     "build": "vite build --mode production",
     "build-storybook": "storybook build",
-    "dev": "vite --host",
+    "dev": "vite --host --mode development",
     "lint": "eslint src --ext .ts,.tsx --report-unused-disable-directives --max-warnings 0",
     "prepare": "cd .. && husky web/.husky",
     "preview": "vite preview",
@@ -18,6 +18,9 @@
     "*.{js,jsx,ts,tsx,css,less,json}": [
       "prettier --write --ignore-unknown"
     ]
+  },
+  "overrides": {
+    "@radix-ui/react-dismissable-layer": "1.1.4"
   },
   "dependencies": {
     "@ant-design/icons": "^5.2.6",
@@ -187,8 +190,5 @@
   },
   "engines": {
     "node": ">=18.20.4"
-  },
-  "overrides": {
-    "@radix-ui/react-dismissable-layer": "1.1.4"
   }
 }

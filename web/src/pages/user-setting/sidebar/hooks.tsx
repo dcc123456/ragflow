@@ -1,11 +1,12 @@
 import { useLogout } from '@/hooks/use-login-request';
+import { PrivateRoutes } from '@/private-routes';
 import { Routes } from '@/routes';
 import { useCallback, useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 
 export const useHandleMenuClick = () => {
   const navigate = useNavigate();
-  const [active, setActive] = useState<Routes>();
+  const [active, setActive] = useState<Routes | PrivateRoutes>();
   const { logout } = useLogout();
   const location = useLocation();
   useEffect(() => {
@@ -16,7 +17,7 @@ export const useHandleMenuClick = () => {
   }, [location]);
 
   const handleMenuClick = useCallback(
-    (key: Routes) => () => {
+    (key: Routes | PrivateRoutes) => () => {
       if (key === Routes.Logout) {
         logout();
       } else {

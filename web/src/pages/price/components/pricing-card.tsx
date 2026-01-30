@@ -11,7 +11,7 @@ import {
   Users,
 } from 'lucide-react';
 import { useState } from 'react';
-import { PriceNameMapValue } from '../contant';
+import { PriceNameMapValue } from '../constant';
 import { showPriceComfirmModal } from '../gobal';
 import { ConfirmPriceEventDetail } from '../gobal/hook';
 import { useCharge } from '../hook/use-price-hooks';

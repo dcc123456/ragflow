@@ -7,7 +7,8 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { JSX } from 'react/jsx-runtime';
 import PricingCard from '../components/pricing-card';
-import { PriceName } from '../contant';
+import { priceIdConfig } from '../config';
+import { PriceName } from '../constant';
 import { useFetchCurrentPlan, useFetchPlanList } from '../hook/use-price-hooks';
 import { IPricePlanWithButton } from '../interface';
 import { showModal } from '../price-modal/show-modal';
@@ -19,7 +20,7 @@ const formatApiRequests = (limit: number) =>
 
 const pricingPlans = {
   [PriceName.Trial]: {
-    id: 'price_1RWUhlPtsKvwvC5fJHfaYeRs',
+    id: priceIdConfig[PriceName.Trial],
     title: t('price.free'),
     description: t('price.freeDesc'),
     price: '',
@@ -34,7 +35,7 @@ const pricingPlans = {
     icon: () => <></>,
   },
   [PriceName.Starter]: {
-    id: 'price_1RSr42PtsKvwvC5fuZP0AH7B',
+    id: priceIdConfig[PriceName.Starter],
     title: t('price.starter'),
     description: t('price.starterDesc'),
     price: '',
@@ -55,7 +56,7 @@ const pricingPlans = {
     },
   },
   [PriceName.Pro]: {
-    id: 'price_1RSr42PtsKvwvC5fuZP0AH7B',
+    id: priceIdConfig[PriceName.Pro],
     title: t('price.pro'),
     description: t('price.proDesc'),
     price: '',
@@ -77,7 +78,7 @@ const pricingPlans = {
     },
   },
   [PriceName.Enterprise]: {
-    id: 'Enterprise',
+    id: priceIdConfig[PriceName.Enterprise],
     title: t('price.enterprise'),
     description: t('price.enterpriseDesc'),
     price: '?',
@@ -117,10 +118,7 @@ const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
           case 'success':
             return (
               <div className="flex gap-2 items-center">
-                {/* <div className="p-1 w-5 h-5 flex items-center justify-center rounded-full bg-green-500">
-                  <Check size={14} fontWeight={'bold'} />
-                </div> */}
-                Payment successful
+                {t('price.paymentSuccessful')}
               </div>
             );
           case 'cancel':
@@ -129,7 +127,7 @@ const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
                 <div className="p-1 w-5 h-5 flex items-center justify-center rounded-full bg-red-500">
                   <X size={14} fontWeight={'bold'} />
                 </div>
-                Payment failed
+                {t('price.paymentFailed')}
               </div>
             );
           default:
@@ -142,7 +140,7 @@ const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
             return (
               <div>
                 <div className="flex items-center gap-2">
-                  Thank you! Your payment has been successfully processed.
+                  {t('price.paymentSuccessfulTip')}
                 </div>
               </div>
             );
@@ -150,10 +148,7 @@ const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
             return (
               <div>
                 <div className="flex items-center gap-2">
-                  The transaction was not successful. Please verify your payment
-                  information or check your billing account. If this issue
-                  persists, contact us at support@ragflow.io with your order id
-                  for further assistance.
+                  {t('price.paymentFailedTip')}
                 </div>
               </div>
             );
@@ -243,7 +238,7 @@ const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
         };
       }
     });
-    // let planArr = planList;
+
     if (isUpgrade) {
       plans = plans.filter((plan) => plan.name !== PriceName.Trial);
     }
@@ -262,7 +257,6 @@ const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
       {pricePlanList?.map((plan, index) => (
         <PricingCard key={index} {...plan} />
       ))}
-      {/* <PriceModalComponent isOpen={true} onClose={closeModal} /> */}
     </>
   );
 };

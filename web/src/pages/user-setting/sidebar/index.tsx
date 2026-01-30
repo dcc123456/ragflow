@@ -14,14 +14,19 @@ import {
   useFetchUserInfo,
 } from '@/hooks/use-user-setting-request';
 import { cn } from '@/lib/utils';
+import { PrivateRoutes } from '@/private-routes';
 import { Routes } from '@/routes';
 import { TFunction } from 'i18next';
 import { Banknote, Box, Server, Unplug, User, Users } from 'lucide-react';
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useHandleMenuClick } from './hooks';
-
-const menuItems = (t: TFunction) => [
+type MenuItem = {
+  icon: any;
+  label: string;
+  key: Routes | PrivateRoutes;
+};
+const menuItems = (t: TFunction): MenuItem[] => [
   { icon: Server, label: t('setting.dataSources'), key: Routes.DataSource },
   { icon: Box, label: t('setting.model'), key: Routes.Model },
   { icon: Banknote, label: 'MCP', key: Routes.Mcp },
@@ -53,22 +58,35 @@ export function SideBar() {
   }, [fetchSystemVersion]);
   const { logout } = useLogout();
 
-  const items = menuItems(t).filter((x) => {
-    if (x.key === Routes.Api) {
-      if (enableAdmin && isAdmin) {
-        return true;
-      }
-      return false;
-    }
+  const items = useMemo(() => {
+    if (import.meta.env.VITE_BILLING_ENABLED === '1') {
+      const billingMenuItem: MenuItem[] = [
+        {
+          icon: Banknote,
+          label: t('setting.billing'),
+          key: PrivateRoutes.Billing,
+        },
+      ];
 
-    if (enableAdmin) {
-      if (!isAdmin) {
-        return x.key !== Routes.Model;
-      }
+      return billingMenuItem.concat(menuItems(t));
     }
+    return menuItems(t).filter((x) => {
+      if (x.key === Routes.Api) {
+        if (enableAdmin && isAdmin) {
+          return true;
+        }
+        return false;
+      }
 
-    return x;
-  });
+      if (enableAdmin) {
+        if (!isAdmin) {
+          return x.key !== Routes.Model;
+        }
+      }
+
+      return x;
+    });
+  }, [enableAdmin, isAdmin, t]);
 
   return (
     <aside className="w-[303px] bg-bg-base flex flex-col">

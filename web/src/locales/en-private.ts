@@ -61,6 +61,37 @@ export default {
       verifyCodePlaceholder: 'Verification code',
       checkEmail: 'Check email',
     },
+    price: {
+      free: 'Free',
+      freeDesc:
+        'Start for free and explore essential features to get your project off the ground.',
+      starter: 'Starter',
+      starterDesc:
+        'Ideal for individuals and small teams starting their journey with essential features.',
+      pro: 'Pro',
+      proDesc:
+        'Perfect for growing businesses requiring more advanced tools and higher limits.',
+      enterprise: 'Enterprise',
+      enterpriseDesc:
+        'Tailored for large organizations needing custom solutions, priority support, and full scalability.',
+      reduce: 'Reduce Now',
+      upgrade: 'Upgrade',
+      contactUs: 'Contact Us',
+      contactUsTip: 'Contact us for more information.',
+      inUse: 'In Use',
+      paymentSuccessful: 'Payment successful',
+      paymentSuccessfulTip:
+        'Thank you! Your payment has been successfully processed.',
+      paymentFailed: 'Payment failed',
+      paymentFailedTip:
+        'The transaction was not successful. Please verify your payment information or check your billing account. If this issue persists, contact us at support@ragflow.io with your order id for further assistance.',
+    },
+    billing: {
+      overview: 'Overview',
+      usage: 'Usage',
+      billingHistory: 'Billing History',
+      needMore: 'Need more?',
+    },
     fileManager: {
       evaluation: {
         export: 'Export',

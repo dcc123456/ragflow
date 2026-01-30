@@ -1,4 +1,4 @@
-import { PriceName } from './contant';
+import { PriceName } from './constant';
 
 export interface IFeatureProps {
   apps: string;

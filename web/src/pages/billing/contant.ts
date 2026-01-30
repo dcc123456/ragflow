@@ -6,3 +6,5 @@ export enum SubscriptionStatus {
   PENDING = 'pending',
   UNKNOW = 'unknow',
 }
+
+export const UsageBasedDeepDocPriceId = 'price_1RRTpfPtsKvwvC5fVsZly0mE';

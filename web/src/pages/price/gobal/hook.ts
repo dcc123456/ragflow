@@ -151,7 +151,6 @@ export const useShowFreeUpgradeTipsModal = () => {
         isOpen: true,
         container: options?.container,
       });
-      console.log('showFreeUpgradeTips', options);
     },
     [setFreeUpgradeTips],
   );

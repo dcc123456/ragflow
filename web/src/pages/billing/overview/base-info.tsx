@@ -32,21 +32,21 @@ const planTemplate = {
   BillingCycle: { start: '2023-04-28', end: '2023-05-28' },
   price: 0,
   storage: {
-    used: 5,
-    total: 50,
-    base: 10,
-    addOn: 40,
+    used: 0,
+    total: 0,
+    base: 0,
+    addOn: 0,
   },
   apps: {
-    used: 5,
-    total: 10,
+    used: 0,
+    total: 0,
   },
   teamMember: {
-    used: 5,
-    total: 50,
+    used: 0,
+    total: 0,
   },
   apiRequests: {
-    used: 100,
+    used: 0,
   },
 };
 export const BaseInfo = () => {
@@ -110,7 +110,7 @@ export const BaseInfo = () => {
         <ResourceUsage
           title="Storage"
           value={currentPlan.storage?.used || 0}
-          planName="starter"
+          planName={currentPlan.name}
           planValue={currentPlan.storage?.base}
           limit={currentPlan.storage?.total}
           unit="GB"

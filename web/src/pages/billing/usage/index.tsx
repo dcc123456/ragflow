@@ -70,7 +70,7 @@ const UsagePage = () => {
       <h1 className="text-2xl font-bold mb-4 mt-9">Spend Categories</h1>
       <div className="grid grid-cols-2 gap-4">
         {categoriesChart &&
-          categoriesChart?.length &&
+          categoriesChart?.length > 0 &&
           categoriesChart.map((item, index) => (
             <CustomBarChart
               key={index}

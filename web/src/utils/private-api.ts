@@ -44,6 +44,7 @@ export default {
   plan_overview: `${api_host}/billing/plan_overview`,
   getUpComming: `${api_host}/billing/upcoming`,
   spendHistory: `${api_host}/billing/spend_overview`,
+  usageBasedPlans: `${api_host}/billing/usage_based_plans`,
 
   // premise
   enableAdmin: `${api_host}/user/enable_admin`, // enable 为true且 is_admin 为false 隐藏model provide

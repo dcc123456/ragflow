@@ -3,28 +3,39 @@ import {
   SegmentedLabeledOption,
   SegmentedValue,
 } from '@/components/ui/segmented';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import UpgradeButton from '../price/price-modal/to-upgrade-button';
 import BillingHistory from './billing-history';
+import { useFetchUsageBasedPlans } from './hook/use-usage-base-plans';
 import { Overview } from './overview';
 import UsagePage from './usage';
 
 const Billing = () => {
   const [activeKey, setActiveKey] = useState<SegmentedValue>('overview');
+  const { t } = useTranslation();
   const navList: SegmentedLabeledOption[] = [
     {
       value: 'overview',
-      label: 'Overview',
+      label: t('billing.overview'),
     },
     {
       value: 'usage',
-      label: 'Usage',
+      label: t('billing.usage'),
     },
     {
       value: 'billing-history',
-      label: 'Billing History',
+      label: t('billing.billingHistory'),
     },
   ];
+
+  const { data: usageBasedPlans } = useFetchUsageBasedPlans();
+  useEffect(() => {
+    if (usageBasedPlans) {
+      console.log('usageBasedPlans', usageBasedPlans);
+    }
+  }, [usageBasedPlans]);
+
   const navClickFunc = (e: SegmentedValue) => {
     console.log(e);
     setActiveKey(e);
@@ -38,7 +49,9 @@ const Billing = () => {
           onChange={navClickFunc}
         ></Segmented>
         <div>
-          <span className="text-text-secondary mr-4">Need more?</span>
+          <span className="text-text-secondary mr-4">
+            {t('billing.needMore')}
+          </span>
           <UpgradeButton />
         </div>
       </nav>

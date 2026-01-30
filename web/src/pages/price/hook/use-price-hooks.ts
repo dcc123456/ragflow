@@ -23,15 +23,26 @@ const useCharge = () => {
     mutateAsync,
   } = useMutation({
     mutationKey: ['setDialog'],
-    mutationFn: async (planId: string) => {
+    mutationFn: async ({
+      price_id,
+      quantity,
+      payment_type,
+    }: {
+      price_id: string;
+      quantity: string;
+      payment_type: 'subscription' | 'usage_based';
+    }) => {
       const { data } = await billinCheckout({
         tenantId: tenantId,
-        subscription_price_id: planId,
-        payment_type: 'subscription',
+        subscription_price_id:
+          payment_type === 'subscription' ? price_id : undefined,
+        payment_type: payment_type,
         // quantity: chargePlan.quantity,
-        quantity: '1',
+        quantity: quantity,
         // usage_based_price_id: chargePlan.usage_based_price_id,
-        usage_based_price_id: 'price_1RRTpfPtsKvwvC5fVsZly0mE',
+        usage_based_price_id:
+          payment_type === 'usage_based' ? price_id : undefined,
+        // 'price_1RRTpfPtsKvwvC5fVsZly0mE',
         session_cancel_url: errorUrl,
         session_success_url: successUrl,
       });
@@ -47,15 +58,19 @@ const useCharge = () => {
       return;
     }
     if (data.id === 'Enterprise') {
-      window.open('http://www.baidu.com');
+      // window.open('http://www.baidu.com');
     } else {
-      const chargeResult = await mutateAsync(data.id);
+      const chargeResult = await mutateAsync({
+        price_id: data.id,
+        quantity: '1',
+        payment_type: 'subscription',
+      });
       if (chargeResult && chargeResult.redirect_to) {
         window.open(chargeResult.redirect_to);
       }
     }
   };
-  return { data, loading, charge };
+  return { data, loading, charge, checkout: mutateAsync };
 };
 
 const useFetchCurrentPlan = (force = false) => {
@@ -66,7 +81,7 @@ const useFetchCurrentPlan = (force = false) => {
     enabled: !!user,
     gcTime: force ? 0 : 50000,
     queryFn: async () => {
-      const { data: res } = await billingService.getCurrentPlan();
+      const { data: res } = await billingService?.getCurrentPlan();
       if (res.code === 0) {
         const { data } = res;
         storagePrivate.setPricePlan(JSON.stringify(data));
@@ -84,7 +99,7 @@ const useFetchPlanList = (force = false) => {
     // initialData: {},
     gcTime: force ? 0 : 50000,
     queryFn: async () => {
-      const { data: res } = await billingService.getPlanList();
+      const { data: res } = await billingService?.getPlanList();
       if (res.code === 0) {
         const { data } = res;
         // storage.setPricePlan(JSON.stringify(data));

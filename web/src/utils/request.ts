@@ -129,7 +129,10 @@ request.interceptors.response.use(async (response: any, options: any) => {
     authorizationUtil.removeAll();
     redirectToLogin();
   } else if (data?.code !== 0) {
-    if (PriceCode[data?.code as any]) {
+    if (
+      import.meta.env.VITE_BILLING_ENABLED === '1' &&
+      PriceCode[data?.code as any]
+    ) {
       showPriceModal(data as any);
     } else {
       if (!options.noToast) {
