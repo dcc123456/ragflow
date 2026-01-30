@@ -82,7 +82,7 @@ const PricingCard = (props: IPricePlanWithButton & { name?: string }) => {
           className="text-text-primary group-hover:text-bg-base font-normal mr-2"
         />
       ),
-      text: 'min API requests',
+      text: 'API requests/month',
       key: 'apiRequests',
     },
   ] as ISuffixProps[];

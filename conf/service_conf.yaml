@@ -66,7 +66,8 @@ billing:
       quota_apps: 5
       quota_members: 1
       quota_kb_storage: 100MB
-      # quota_docs: 50
+      api_request_limit_per_minute: 500
+      api_request_limit_per_month: 5000
       task_priority: "low"
       price_ids: ""
       product_type: "subscription"
@@ -76,6 +77,8 @@ billing:
       quota_apps: 100
       quota_members: 10
       quota_kb_storage: 10G
+      api_request_limit_per_minute: 2147483647
+      api_request_limit_per_month: 2147483647
       task_priority: "high"
       price_ids: "price_1Si7S7PtsKvwvC5f3IjPpPcN"
       price_lookup_key: "lk_ragflow_plan_level_1_20251225"
@@ -86,6 +89,8 @@ billing:
       quota_apps: 999999999
       quota_members: 50
       quota_kb_storage: 100G
+      api_request_limit_per_minute: 2147483647
+      api_request_limit_per_month: 2147483647
       task_priority: "high"
       price_ids: "price_1Si7SyPtsKvwvC5fxloqaKPP"
       price_lookup_key: "lk_ragflow_level2_monthly_20251225"
@@ -96,6 +101,8 @@ billing:
       quota_apps: 999999999
       quota_members: 50
       quota_kb_storage: 100G
+      api_request_limit_per_minute: 2147483647
+      api_request_limit_per_month: 2147483647
       task_priority: "high"
       price_ids: "price_1SNQPMPtsKvwvC5fJtR16E6w"
       price_lookup_key: "lk_ragflow_enterprise_monthly"

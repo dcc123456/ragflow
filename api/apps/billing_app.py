@@ -35,8 +35,8 @@ from api.db.services.billing_service import (
     ProductService,
     PurchasedProductOverviewService,
     SubscriptionService,
-    UsageBasedService,
 )
+from api.db.services.file_service import FileService
 from api.utils.api_utils import get_data_error_result, get_json_result, get_request_json, server_error_response
 from api.utils.billing import (
     billing_set_customer_id_async,
@@ -59,11 +59,13 @@ from common.billing_utils import (
     parse_datetime_arg,
     to_utc_date_str,
     to_utc_datetime,
-    usage_based_status_from_payment_status,
 )
 from common.constants import RetCode
 from common.misc_utils import get_uuid
 from rag.utils.redis_conn import REDIS_CONN
+
+UNLIMITED_API_REQUESTS = 2_147_483_647
+LIMITED_API_REQUESTS = 5000
 
 # subscription
 INVOICE_PAID = "invoice.paid"  # store 'subscription.id' and 'customer.id'verification.
@@ -152,7 +154,8 @@ async def billing_plan_overview():
                 },
             },
             "api_request_limits": {
-                "requests_per_minute": _get_api_request_limit_by_plan(tenant_plan.get("plan_name", "trial")),
+                "requests_per_minute": _get_api_request_limit_by_plan(tenant_plan.get("plan_name", "Trial"), limit_type="minute"),
+                "requests_per_month": _get_api_request_limit_by_plan(tenant_plan.get("plan_name", "Trial"), limit_type="month"),
             },
         }
 
@@ -182,27 +185,35 @@ async def billing_plan_overview():
         return server_error_response(e)
 
 
-def _get_api_request_limit_by_plan(plan_name: str, limit_type: str = "minute") -> int:
+def _get_api_request_limit_by_plan(plan_name: str, limit_type: str = "month") -> int:
     """
     Get API request limits based on plan type.
-    This is a placeholder implementation that should be replaced with actual business logic.
 
     Args:
-        plan_name: Name of the plan (e.g., "trial", "level1", "level2", "enterprise")
-        limit_type: Type of limit ("minute" or "daily")
+        plan_name: Name of the plan (e.g., "Trial", "Starter", "Pro", "Enterprise")
+        limit_type: Type of limit ("minute" or "month")
 
     Returns:
         Request limit as integer
     """
-    limits = {
-        "trial": {"minute": 10},
-        "level1": {"minute": 100},
-        "level2": {"minute": 500},
-        "enterprise": {"minute": 1000},
-    }
+    key = (plan_name or "").strip()
+    if not key:
+        return LIMITED_API_REQUESTS
 
-    plan_limits = limits.get(plan_name, limits["trial"])
-    return plan_limits.get(limit_type, 100 if limit_type == "minute" else 10000)
+    info = settings.BILLING_PLAN_TO_INFO.get(key) or settings.BILLING_PLAN_TO_INFO.get(key.title()) or {}
+    if not info:
+        info = settings.BILLING_PLAN_TO_INFO.get("Trial") or {}
+    if limit_type == "minute":
+        value = info.get("api_request_limit_per_minute")
+    else:  # "month"
+        value = info.get("api_request_limit_per_month")
+
+    if not value:
+        return LIMITED_API_REQUESTS
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return LIMITED_API_REQUESTS
 
 
 @manager.route("/usage_based_overview", methods=["GET"])  # noqa: F821
@@ -247,8 +258,8 @@ async def billing_usage_based_overview():
                 usage_overview["tokens"]["purchased"] += quantity
                 usage_overview["tokens"]["remaining"] += quantity
 
-        num_kb_storage = stripe.FileService.get_total_size_by_tenant_id(tenant_id)
-        usage_overview["storage"]["remaining"] -= num_kb_storage
+        num_storage_in_kb = FileService.get_total_size_by_tenant_id(tenant_id) // 1024
+        usage_overview["storage"]["remaining"] -= num_storage_in_kb
 
         subscription = SubscriptionService.get_by_tenant_id(tenant_id)
         cycle_start = subscription.get("start_time")
@@ -574,7 +585,7 @@ async def billing_all_plans():
                 "quota_apps": plan.quota_apps,
                 "quota_members": plan.quota_members,
                 "quota_kb_storage": plan.quota_kb_storage,
-                "quota_api_limits": 100000,
+                "quota_api_limits": _get_api_request_limit_by_plan(plan.name, limit_type="month"),
             },
         }
         plans.append(p)
@@ -1200,35 +1211,20 @@ def _handle_payment_intent_succeeded(event: dict):
         "payment_detail": {"quantity": quantity},
     }
     print(f"\nintend.succeed parsed payment order {payment_order=}")
-    usage_based = {
-        "id": get_uuid(),
-        "tenant_id": tenant_id,
-        "product_id": product_id,
-        "product_name": product_name,
-        "quantity": quantity,
-        "order_id": order_id,
-        "status": usage_based_status_from_payment_status(payment_status),
-        "customer_id": customer_id,
-        "price_id": price_id,
-        "payment_id": payment_intent_id,
-        "payment_status": payment_status,
-        "stripe_status": stripe_status,
-    }
-    print(f"\nintend.succeed parsed usage_based  {usage_based=}")
+    # NOTE: We intentionally do NOT persist to the legacy `billing_usage_based` table.
+    # The current system uses:
+    # - `billing_payment_order` as the per-purchase ledger/history (needed for spend analytics), and
+    # - `billing_purchased_product_overview` as the current remaining quota snapshot.
 
     purchased_overview = PurchasedProductOverviewService.get_by_product_name_and_tenant_id(product_name, tenant_id)
     if PaymentOrderService.get_by_payment_intent_id(payment_intent_id):
         logging.info(f"Skip duplicated payment_intent for tenant {tenant_id}: {payment_intent_id}")
-        return
-    if UsageBasedService.get_by_payment_id(payment_intent_id) or UsageBasedService.get_by_order_id(order_id):
-        logging.info(f"Skip duplicated usage_based for tenant {tenant_id}: {payment_intent_id}")
         return
 
     try:
         expiry_dt = to_utc_datetime(expiry_time) if expiry_time else None
         with DB.atomic():
             PaymentOrderService.save(**payment_order)
-            UsageBasedService.save(**usage_based)
             if not purchased_overview:
                 purchased_overview_dict = {
                     "id": get_uuid(),

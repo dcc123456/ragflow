@@ -342,8 +342,21 @@ def init_settings():
     for plan in BILLING.get("billing_plans", []):
         plan_name = plan.get("name")
         price_ids = plan.get("price_ids", "").split()
+        price_lookup_key = plan.get("price_lookup_key", "")
+        api_request_limit_per_minute = plan.get("api_request_limit_per_minute")
+        api_request_limit_per_month = plan.get("api_request_limit_per_month")
         for price_id in price_ids:
-            PRICE_PLAN[price_id] = plan_name # revert part of #156
+           BILLING_PRICEID_TO_PRODUCT[price_id] = plan_name
+
+        plan_priority = plan.get("plan_priority")
+        BILLING_PRIORITY_TO_PLANS[plan_priority].append(plan_name)
+        BILLING_PLAN_TO_INFO[plan_name] = {
+            "priority": plan_priority,
+            "price_ids": price_ids,
+            "price_lookup_key": price_lookup_key,
+            "api_request_limit_per_minute": api_request_limit_per_minute,
+            "api_request_limit_per_month": api_request_limit_per_month,
+        }
 
     global DOC_MAXIMUM_SIZE, DOC_BULK_SIZE, EMBEDDING_BATCH_SIZE
     DOC_MAXIMUM_SIZE = int(os.environ.get("MAX_CONTENT_LENGTH", 128 * 1024 * 1024))

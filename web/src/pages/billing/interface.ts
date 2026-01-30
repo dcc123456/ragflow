@@ -3,8 +3,9 @@
 import { SubscriptionStatus } from './contant';
 
 export interface IApiRequestLimits {
-  requests_per_day: number;
-  requests_per_minute: number;
+  requests_per_day?: number;
+  requests_per_minute?: number;
+  requests_per_month?: number;
 }
 
 export interface IResourceDetail {

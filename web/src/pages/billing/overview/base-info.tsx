@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import ResourceUsage from '../component/resource-usage';
 import { useFetchPlanOverview } from '../hook/overview';
 
+const UNLIMITED_API_REQUESTS = 2147483647;
+
 const pricingPlans = {
   Trial: 'Free Plan',
   Starter: 'Starter Plan',
@@ -11,10 +13,20 @@ const pricingPlans = {
   Enterprise: 'Enterprise Plan',
 };
 const apiPlanList = [
-  { key: 10, value: 10, unit: 'min', name: 'Free Plan' },
-  { key: 100, value: 100, unit: 'min', name: 'Starter Plan' },
-  { key: 1000, value: 1000, unit: 'min', name: 'Pro Plan' },
-];
+  { planKey: 'Trial', value: 5000, unit: 'month', name: 'Free Plan' },
+  {
+    planKey: 'Starter',
+    value: UNLIMITED_API_REQUESTS,
+    unit: 'month',
+    name: 'Starter Plan',
+  },
+  {
+    planKey: 'Pro',
+    value: UNLIMITED_API_REQUESTS,
+    unit: 'month',
+    name: 'Pro Plan',
+  },
+] as const;
 const planTemplate = {
   name: 'Starter Plan',
   BillingCycle: { start: '2023-04-28', end: '2023-05-28' },
@@ -70,7 +82,7 @@ export const BaseInfo = () => {
       },
       apiRequests: {
         ...planTemplate.apiRequests,
-        used: planData?.api_request_limits?.requests_per_minute || 0,
+        used: planData?.api_request_limits?.requests_per_month || 0,
       },
       BillingCycle: {
         ...planTemplate.BillingCycle,
@@ -127,44 +139,48 @@ export const BaseInfo = () => {
               </span>
             </div>
             <span className="text-text-primary">
-              {currentPlan.apiRequests?.used}/min
+              {currentPlan.apiRequests?.used >= UNLIMITED_API_REQUESTS
+                ? 'Unlimited'
+                : `${currentPlan.apiRequests?.used}/month`}
             </span>
           </div>
           <div className="grid grid-cols-3 gap-1 border border-border-button rounded-full h-8">
             {apiPlanList.map((item) => {
+              const isActive = planData?.plan_name === item.planKey;
+              const label =
+                item.value >= UNLIMITED_API_REQUESTS
+                  ? 'Unlimited'
+                  : `${item.value}/${item.unit}`;
               return (
                 <div
                   className={cn(
                     'bg-accent-primary-5 text-center rounded-full flex items-center justify-center',
                     {
-                      'text-accent-primary':
-                        currentPlan.apiRequests?.used === item.key,
-                      'text-text-primary':
-                        currentPlan.apiRequests?.used !== item.key,
+                      'text-accent-primary': isActive,
+                      'text-text-primary': !isActive,
                     },
                   )}
-                  key={item.key}
+                  key={item.planKey}
                 >
-                  {item.value}/{item.unit}
-                  {currentPlan.apiRequests?.used === item.key && <Check />}
+                  {label}
+                  {isActive && <Check />}
                 </div>
               );
             })}
           </div>
           <div className="grid grid-cols-3 gap-1 h-8">
             {apiPlanList.map((item) => {
+              const isActive = planData?.plan_name === item.planKey;
               return (
                 <div
                   className={cn(
                     ' text-center rounded-full flex items-center justify-center',
                     {
-                      'text-text-primary':
-                        currentPlan.apiRequests?.used === item.key,
-                      'text-text-secondary':
-                        currentPlan.apiRequests?.used !== item.key,
+                      'text-text-primary': isActive,
+                      'text-text-secondary': !isActive,
                     },
                   )}
-                  key={item.key}
+                  key={item.planKey}
                 >
                   {item.name}
                 </div>

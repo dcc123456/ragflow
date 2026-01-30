@@ -37,7 +37,6 @@ from api.db import (
     ResourceType,
     SerializedType,
     TeamRole,
-    UsageBasedStatus,
     UsageTraceStatus,
     PermissionValue,
     VALID_PERMISSION_ACTION_TYPES,
@@ -1272,28 +1271,40 @@ class Subscription(DataBaseModel):
         db_table = "billing_subscription"
 
 
-class UsageBased(DataBaseModel):
-    """
-    A tenant can purchase many usage-based product
-    """
-
-    id = CharField(max_length=32, primary_key=True)
-    tenant_id = CharField(max_length=32, null=False, index=True, unique=True)
-    product_id = CharField(max_length=32, null=False)
-    product_name = CharField(max_length=255, null=False, help_text="usage-based product name", index=True)
-    quantity = IntegerField(null=False)
-    order_id = CharField(max_length=128, null=False, help_text="from RAGFlow Order")
-    status = CharField(choices=[item.value for item in UsageBasedStatus])
-
-    # stripe
-    customer_id = CharField(max_length=255, null=False, default="", help_text="customer id on stripe.com", index=True, unique=True)
-    price_id = CharField(max_length=128, null=False, help_text="stripe subscription price_id")
-    payment_id = CharField(max_length=255, null=False, default="", help_text="checkout id on stripe.com", index=True)
-    payment_status = CharField(null=False, choices=[item.value for item in PaymentStatus], help_text="Our payment status", default=PaymentStatus.PENDING.value, index=True)
-    stripe_status = CharField(max_length=255, null=False, default="", help_text="raw status from stripe", index=True)
-
-    class Meta:
-        db_table = "billing_usage_based"
+# -----------------------------------------------------------------------------
+# Deprecated: UsageBased model (legacy table)
+# -----------------------------------------------------------------------------
+# The app currently uses:
+# - `billing_payment_order` as the per-purchase ledger/history, and
+# - `billing_purchased_product_overview` as the remaining quota snapshot.
+#
+# We keep the legacy schema commented out for potential future extension (e.g.,
+# a dedicated usage-based purchase history table). If re-enabled, revisit the
+# unique constraints (tenant_id/customer_id were unique) and make webhook
+# handling idempotent.
+#
+# class UsageBased(DataBaseModel):
+#     """
+#     A tenant can purchase many usage-based product
+#     """
+#
+#     id = CharField(max_length=32, primary_key=True)
+#     tenant_id = CharField(max_length=32, null=False, index=True, unique=True)
+#     product_id = CharField(max_length=32, null=False)
+#     product_name = CharField(max_length=255, null=False, help_text="usage-based product name", index=True)
+#     quantity = IntegerField(null=False)
+#     order_id = CharField(max_length=128, null=False, help_text="from RAGFlow Order")
+#     status = CharField(choices=[item.value for item in UsageBasedStatus])
+#
+#     # stripe
+#     customer_id = CharField(max_length=255, null=False, default="", help_text="customer id on stripe.com", index=True, unique=True)
+#     price_id = CharField(max_length=128, null=False, help_text="stripe subscription price_id")
+#     payment_id = CharField(max_length=255, null=False, default="", help_text="checkout id on stripe.com", index=True)
+#     payment_status = CharField(null=False, choices=[item.value for item in PaymentStatus], help_text="Our payment status", default=PaymentStatus.PENDING.value, index=True)
+#     stripe_status = CharField(max_length=255, null=False, default="", help_text="raw status from stripe", index=True)
+#
+#     class Meta:
+#         db_table = "billing_usage_based"
 
 
 class UserCanvasVersion(DataBaseModel):

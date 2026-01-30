@@ -56,21 +56,50 @@ redis:
 #   session_cancel_url: 'http://127.0.0.1:9222/cancel.html'
 #   webhook_url: 'https://demo.ragflow.io/v1/billing/webhook'
 #   billing_plans:
-#     - name: "trial"
+#     - name: "Trial"
+#       quota_apps: 5
 #       quota_members: 1
-#       quota_docs: 50
+#       quota_kb_storage: 100MB
 #       task_priority: "low"
 #       price_ids: ""
-#     - name: "pro"
-#       quota_members: 3
-#       quota_docs: 500
+#       product_type: "subscription"
+#       usage_stat_type: ""
+#       plan_priority: 0
+#       api_request_limit_per_minute: 500
+#       api_request_limit_per_month: 5000
+#     - name: "Starter"
+#       quota_apps: 100
+#       quota_members: 10
+#       quota_kb_storage: 10G
 #       task_priority: "high"
-#       price_ids: "price_1QsKhBHJ6pV3qJnLw5fapUQR price_1QtKbsHJ6pV3qJnLo76qCsAZ"
-#     - name: "team"
-#       quota_members: 1000
-#       quota_docs: 1000
+#       price_ids: ""
+#       product_type: "subscription"
+#       usage_stat_type: ""
+#       plan_priority: 1
+#       api_request_limit_per_minute: 2147483647
+#       api_request_limit_per_month: 2147483647
+#     - name: "Pro"
+#       quota_apps: 999999999
+#       quota_members: 50
+#       quota_kb_storage: 100G
 #       task_priority: "high"
-#       price_ids: "price_1QtKdzHJ6pV3qJnL75cSD7XH price_1QtKeqHJ6pV3qJnLIu0qKIAv"
+#       price_ids: ""
+#       product_type: "subscription"
+#       usage_stat_type: ""
+#       plan_priority: 2
+#       api_request_limit_per_minute: 2147483647
+#       api_request_limit_per_month: 2147483647
+#     - name: "Enterprise"
+#       quota_apps: 999999999
+#       quota_members: 50
+#       quota_kb_storage: 100G
+#       task_priority: "high"
+#       price_ids: ""
+#       product_type: "subscription"
+#       usage_stat_type: ""
+#       plan_priority: 3
+#       api_request_limit_per_minute: 2147483647
+#       api_request_limit_per_month: 2147483647
 rabbitmq:
   user: "${RABBITMQ_DEFAULT_USER:-rag_flow}"
   password: '${RABBITMQ_DEFAULT_PASS:-infini_rag_flow}'

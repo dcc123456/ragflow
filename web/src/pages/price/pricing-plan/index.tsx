@@ -12,6 +12,11 @@ import { useFetchCurrentPlan, useFetchPlanList } from '../hook/use-price-hooks';
 import { IPricePlanWithButton } from '../interface';
 import { showModal } from '../price-modal/show-modal';
 
+const UNLIMITED_API_REQUESTS = 2147483647;
+
+const formatApiRequests = (limit: number) =>
+  limit >= UNLIMITED_API_REQUESTS ? 'Unlimited' : `${limit}/month`;
+
 const pricingPlans = {
   [PriceName.Trial]: {
     id: 'price_1RWUhlPtsKvwvC5fJHfaYeRs',
@@ -211,7 +216,7 @@ const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
           apps: plan.feature.quota_apps,
           teamMembers: plan.feature.quota_members,
           datasetStorage: convertBytesToGb(plan.feature.quota_kb_storage),
-          apiRequests: plan.feature.quota_api_limits,
+          apiRequests: formatApiRequests(plan.feature.quota_api_limits),
         },
         id: plan.price_ids,
         price: plan.price,
