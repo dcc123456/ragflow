@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { CalendarIcon } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 const CalendarComp = ({
   selected,
@@ -27,6 +28,7 @@ const CalendarComp = ({
   selected: DateRange | undefined;
   onSelect: (date: DateRange | undefined) => void;
 }) => {
+  const { t } = useTranslation();
   const today = new Date();
   const yesterday = {
     from: subDays(today, 1),
@@ -57,13 +59,13 @@ const CalendarComp = ({
     to: endOfYear(subYears(today, 1)),
   };
   const dateRangeList = [
-    { key: 'yestday', value: yesterday },
-    { key: 'last7Days', value: last7Days },
-    { key: 'last30Days', value: last30Days },
-    { key: 'monthToDate', value: monthToDate },
-    { key: 'lastMonth', value: lastMonth },
-    { key: 'yearToDate', value: yearToDate },
-    { key: 'lastYear', value: lastYear },
+    { key: 'yesterday', value: yesterday, label: t('billing.yesterday') },
+    { key: 'last7Days', value: last7Days, label: t('billing.last7Days') },
+    { key: 'last30Days', value: last30Days, label: t('billing.last30Days') },
+    { key: 'monthToDate', value: monthToDate, label: t('billing.monthToDate') },
+    { key: 'lastMonth', value: lastMonth, label: t('billing.lastMonth') },
+    { key: 'yearToDate', value: yearToDate, label: t('billing.yearToDate') },
+    { key: 'lastYear', value: lastYear, label: t('billing.lastYear') },
   ];
   const [month, setMonth] = useState(today);
   const [date, setDate] = useState<DateRange>(selected || last7Days);
@@ -90,7 +92,7 @@ const CalendarComp = ({
                     setMonth(today);
                   }}
                 >
-                  Today
+                  {t('billing.today')}
                 </Button>
                 {dateRangeList.map((dateRange) => (
                   <Button
@@ -103,7 +105,7 @@ const CalendarComp = ({
                       setMonth(dateRange.value.to);
                     }}
                   >
-                    {dateRange.key}
+                    {dateRange.label}
                   </Button>
                 ))}
               </div>
@@ -137,6 +139,7 @@ const TimeRangePicker = ({
   onSelect: (e: DateRange) => void;
   selectDateRange: DateRange;
 }) => {
+  const { t } = useTranslation();
   const id = useId();
   const today = new Date();
   const [date, setDate] = useState<DateRange | undefined>(
@@ -166,7 +169,7 @@ const TimeRangePicker = ({
                 format(date.from, 'LLL dd, y')
               )
             ) : (
-              'Pick a date range'
+              t('billing.pickDateRange')
             )}
           </span>
           <CalendarIcon

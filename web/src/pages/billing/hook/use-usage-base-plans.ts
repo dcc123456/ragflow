@@ -1,8 +1,9 @@
 import billingService from '@/services/price';
 import { useQuery } from '@tanstack/react-query';
+import { BillingContextType } from '../interface';
 
 export const useFetchUsageBasedPlans = (force = false) => {
-  const { data, isFetching: loading } = useQuery({
+  const { data, isFetching: loading } = useQuery<BillingContextType[]>({
     queryKey: ['getUsageBasedPlans'],
     gcTime: force ? 0 : 50000,
     queryFn: async () => {

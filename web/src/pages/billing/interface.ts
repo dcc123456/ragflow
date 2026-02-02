@@ -2,6 +2,14 @@
 
 import { SubscriptionStatus } from './contant';
 
+export interface BillingContextType {
+  id: string;
+  name: string;
+  price: number;
+  description: string;
+  price_ids: string;
+  usage_stat_type: string;
+}
 export interface IApiRequestLimits {
   requests_per_day?: number;
   requests_per_minute?: number;

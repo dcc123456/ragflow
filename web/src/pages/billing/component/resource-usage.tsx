@@ -1,7 +1,8 @@
 import { useCharge } from '@/pages/price/hook/use-price-hooks';
 import { ArrowUpRight, DatabaseZap, LayoutGrid, Users } from 'lucide-react';
 import React from 'react';
-import { UsageBasedDeepDocPriceId } from '../contant';
+import { useTranslation } from 'react-i18next';
+import { useBillingContext } from '..';
 import { showAddOnManageModal } from './add-on-manage-modal';
 import Process from './process';
 
@@ -30,15 +31,19 @@ const ResourceUsage: React.FC<CustomProgressProps> = ({
 }) => {
   let addOnManageModal: { destroy: () => void };
   const { checkout } = useCharge();
+  const { usageBasedPlans } = useBillingContext();
+  const storageUsage = usageBasedPlans.find(
+    (item) => item.name === title.toLowerCase(),
+  );
+  const { t } = useTranslation();
 
   const addOnManageOk = async ({ value }: { value: number }) => {
     if (addOnManageModal) {
       const res = await checkout({
-        price_id: UsageBasedDeepDocPriceId,
+        price_id: storageUsage?.price_ids || '',
         quantity: value.toString(),
         payment_type: 'usage_based',
       });
-      console.log('checkout', res);
       if (res && res.redirect_to) {
         window.open(res.redirect_to);
       }
@@ -49,6 +54,7 @@ const ResourceUsage: React.FC<CustomProgressProps> = ({
     addOnManageModal = showAddOnManageModal({
       defaultValue: 40,
       onOk: addOnManageOk,
+      price: storageUsage?.price,
     });
   };
 
@@ -57,13 +63,16 @@ const ResourceUsage: React.FC<CustomProgressProps> = ({
     return (
       <div className="flex justify-between items-end text-text-primary">
         <div>
-          {planName} Plan used {value > planValue ? planValue : value}GB/
-          {planValue}GB
+          {planName} {t('billing.planUsed')}{' '}
+          {value > planValue ? planValue : value}
+          {unit}/{planValue}
+          {unit}
         </div>
         <div className="flex items-end gap-3 cursor-pointer ">
           <span>
-            Add-on used {value > planValue ? value - planValue : 0}GB/
-            {limit - planValue}GB
+            {t('billing.addonUsed')} {value > planValue ? value - planValue : 0}
+            {unit}/{limit - planValue}
+            {unit}
           </span>
           <div
             className="flex items-center text-text-primary text-xs hover:outline outline-1 px-1 py-1 rounded-sm border border-border-button bg-bg-input "
@@ -71,7 +80,7 @@ const ResourceUsage: React.FC<CustomProgressProps> = ({
               openAddOnManage();
             }}
           >
-            Manage
+            {t('billing.manage')}
             <ArrowUpRight size={12} />
           </div>
         </div>
@@ -101,7 +110,7 @@ const ResourceUsage: React.FC<CustomProgressProps> = ({
             )}
           </span>
           <span className="text-text-primary text-base font-normal">
-            {title}
+            {t(`billing.${title.toLowerCase().replace(' ', '')}`)}
           </span>
         </div>
         <span className="text-text-primary">{`${value}${unit}/${limit}${unit}`}</span>
