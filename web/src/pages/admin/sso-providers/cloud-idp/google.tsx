@@ -111,15 +111,18 @@ SSOProviderGoogleForm.schema = z.object({
 
 type SchemaType = z.infer<typeof SSOProviderGoogleForm.schema>;
 
-function SSOProviderGoogleCard() {
+function SSOProviderGoogleCard({ disabled = false }: { disabled?: boolean }) {
   const { t } = useTranslate('admin.ssoProviderTabs.cloud_idp.google');
   const {
-    variables: { google },
+    variables: {
+      sso: { google },
+    },
   } = useSSOVariables();
 
   return (
     <SSOProviderCloudIdpCard
       id="google"
+      disabled={disabled}
       title={t('title')}
       dialogTitle={t('dialogTitle')}
       iconComponent={SSOProviderGoogle.Icon}

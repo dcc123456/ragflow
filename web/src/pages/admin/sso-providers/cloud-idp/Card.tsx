@@ -26,10 +26,18 @@ type CardProps = {
   dialogTitle: string;
   iconComponent?: (props?: any) => React.ReactNode;
   form: React.ReactElement;
+  disabled?: boolean;
 };
 
 export default function SSOProviderCloudIdpCard(props: CardProps) {
-  const { id, title, dialogTitle, iconComponent: Icon, form } = props;
+  const {
+    id,
+    title,
+    dialogTitle,
+    iconComponent: Icon,
+    form,
+    disabled = false,
+  } = props;
 
   const { t: tCommon } = useTranslate('common');
 
@@ -49,7 +57,8 @@ export default function SSOProviderCloudIdpCard(props: CardProps) {
 
           <div className="ml-auto flex items-center gap-6">
             <Switch
-              checked={!!variables[id]?.enabled.value}
+              checked={!!variables.sso[id]?.enabled.value}
+              disabled={disabled}
               onCheckedChange={(checked) => {
                 mutation[checked ? 'enable' : 'disable']();
               }}
@@ -60,6 +69,7 @@ export default function SSOProviderCloudIdpCard(props: CardProps) {
               size="icon"
               className="border-none size-8"
               onClick={() => showModal()}
+              disabled={disabled}
             >
               <LucideSettings />
             </Button>

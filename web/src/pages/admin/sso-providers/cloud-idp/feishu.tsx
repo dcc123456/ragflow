@@ -140,16 +140,19 @@ SSOProviderFeishuForm.schema = z.object({
 
 type SchemaType = z.infer<typeof SSOProviderFeishuForm.schema>;
 
-function SSOProviderFeishuCard() {
+function SSOProviderFeishuCard({ disabled = false }: { disabled?: boolean }) {
   const { t } = useTranslate('admin.ssoProviderTabs.cloud_idp.feishu');
 
   const {
-    variables: { feishu },
+    variables: {
+      sso: { feishu },
+    },
   } = useSSOVariables();
 
   return (
     <SSOProviderCloudIdpCard
       id="feishu"
+      disabled={disabled}
       title={t('title')}
       dialogTitle={t('dialogTitle')}
       iconComponent={SSOProviderFeishu.Icon}

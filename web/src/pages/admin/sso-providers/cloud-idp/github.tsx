@@ -93,16 +93,19 @@ SSOProviderGithubForm.schema = z.object({
 
 type SchemaType = z.infer<typeof SSOProviderGithubForm.schema>;
 
-function SSOProviderGithubCard() {
+function SSOProviderGithubCard({ disabled = false }: { disabled?: boolean }) {
   const { t } = useTranslate('admin.ssoProviderTabs.cloud_idp.github');
 
   const {
-    variables: { github },
+    variables: {
+      sso: { github },
+    },
   } = useSSOVariables();
 
   return (
     <SSOProviderCloudIdpCard
       id="github"
+      disabled={disabled}
       title={t('title')}
       dialogTitle={t('dialogTitle')}
       iconComponent={SSOProviderGithub.Icon}

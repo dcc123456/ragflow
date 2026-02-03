@@ -185,7 +185,11 @@ SSOProviderLDAPForm.defaultValues = {
 
 export type SchemaType = z.infer<typeof SSOProviderLDAPForm.schema>;
 
-function SSOProviderLDAPAddButton() {
+function SSOProviderLDAPAddButton({
+  disabled = false,
+}: {
+  disabled?: boolean;
+}) {
   const { t } = useTranslate('admin.ssoProviderTabs.ldap');
   const { t: tCommon } = useTranslate('common');
   const { visible, showModal, hideModal } = useSetModalState();
@@ -201,6 +205,7 @@ function SSOProviderLDAPAddButton() {
         size="icon"
         className="w-full h-10 border-dashed"
         onClick={showModal}
+        disabled={disabled}
       >
         <LucidePlus />
         <span>{tCommon('add')}</span>
@@ -255,10 +260,11 @@ function SSOProviderLDAPAddButton() {
 type ListItemProps = {
   id: string;
   data: AdminService.SystemVariables.SSO.LDAP;
+  disabled?: boolean;
 };
 
 function SSOProviderLDAPListItem(props: ListItemProps) {
-  const { id, data } = props;
+  const { id, data, disabled = false } = props;
 
   // Default LDAP server cannot be deleted
   const noDelete = id === 'default';
@@ -284,7 +290,7 @@ function SSOProviderLDAPListItem(props: ListItemProps) {
             <Switch
               className="mr-4"
               checked={!!data.enabled.value}
-              disabled={mutation.isSwitchingState}
+              disabled={mutation.isSwitchingState || disabled}
               onCheckedChange={async (checked) => {
                 mutation[checked ? 'enable' : 'disable']();
               }}
@@ -295,7 +301,7 @@ function SSOProviderLDAPListItem(props: ListItemProps) {
               variant="transparent"
               size="icon"
               onClick={showModal}
-              disabled={mutation.isUpdating || mutation.isDeleting}
+              disabled={mutation.isUpdating || mutation.isDeleting || disabled}
             >
               <LucideSettings />
             </Button>
@@ -307,6 +313,7 @@ function SSOProviderLDAPListItem(props: ListItemProps) {
                 size="icon"
                 onClick={() => mutation.delete()}
                 loading={mutation.isDeleting}
+                disabled={disabled}
               >
                 <LucideTrash2 />
               </Button>
@@ -361,7 +368,11 @@ function SSOProviderLDAPListItem(props: ListItemProps) {
   );
 }
 
-export default function SSOProviderLDAPList() {
+export default function SSOProviderLDAPList({
+  disabled = false,
+}: {
+  disabled?: boolean;
+}) {
   const {
     variables: { ldap },
   } = useSSOVariables();
@@ -375,15 +386,21 @@ export default function SSOProviderLDAPList() {
           key="default"
           id="default"
           data={defaultLdap}
+          disabled={disabled}
         />
       )}
 
       {Object.entries(restLdap).map(([id, data]) => (
-        <SSOProviderLDAPListItem key={id} id={id} data={data} />
+        <SSOProviderLDAPListItem
+          key={id}
+          id={id}
+          data={data}
+          disabled={disabled}
+        />
       ))}
 
       <li>
-        <SSOProviderLDAPAddButton />
+        <SSOProviderLDAPAddButton disabled={disabled} />
       </li>
     </ul>
   );

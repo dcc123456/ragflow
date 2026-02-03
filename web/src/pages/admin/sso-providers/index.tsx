@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 
-import { LucideCircle, LucideCircleCheck } from 'lucide-react';
+import { LucideCircle, LucideCircleDot } from 'lucide-react';
 
 import {
   Card,
@@ -40,7 +40,7 @@ function AdminSSOProviders() {
         <CardContent className="p-0 flex-1 h-0">
           <ScrollArea className="h-full">
             <div
-              className="p-6 w-2/3 max-w-6xl min-w-[50rem] space-y-10"
+              className="p-6 w-1/2 max-w-6xl min-w-[50rem] space-y-10"
               role="radiogroup"
             >
               <button
@@ -57,17 +57,18 @@ function AdminSSOProviders() {
                 }}
                 disabled={providerType === 'none'}
               >
-                <Card className="bg-transparent group-aria-checked:ring-1 group-aria-checked:ring-text-secondary">
+                <Card className="bg-transparent">
                   <CardHeader className="p-4">
-                    <CardTitle className="text-lg space-y-0 flex items-center gap-3 text-text-disabled group-aria-checked:text-text-primary">
-                      {providerType === 'none' ? (
-                        <LucideCircleCheck className="size-[1em] text-accent-primary" />
-                      ) : (
-                        <LucideCircle className="size-[1em] text-border-button" />
-                      )}
+                    <CardTitle className="text-lg space-y-0 flex justify-between items-center gap-3 text-text-disabled group-aria-checked:text-text-primary transition-colors">
                       <span>
                         {t('admin.ssoProviderRadioGroup.values.none')}
                       </span>
+
+                      {providerType === 'none' ? (
+                        <LucideCircleDot className="size-[1em] text-accent-primary" />
+                      ) : (
+                        <LucideCircle className="size-[1em] text-border-button" />
+                      )}
                     </CardTitle>
                   </CardHeader>
                 </Card>
@@ -80,11 +81,12 @@ function AdminSSOProviders() {
                 aria-disabled={providerType === 'idp'}
                 data-state={providerType === 'idp' ? 'on' : 'off'}
               >
-                <Card className="bg-transparent group-aria-checked:ring-1 group-aria-checked:ring-text-secondary">
+                <Card className="bg-transparent">
                   <CardHeader className="p-4">
-                    <CardTitle className="text-lg space-y-0 flex items-center gap-3 text-text-disabled group-aria-checked:text-text-primary">
+                    <CardTitle>
                       <button
                         type="button"
+                        className="w-full text-lg space-y-0 flex justify-between items-center gap-3 text-text-disabled group-aria-checked:text-text-primary transition-colors"
                         disabled={providerType === 'idp'}
                         onClick={() => {
                           if (providerType !== 'idp') {
@@ -92,23 +94,26 @@ function AdminSSOProviders() {
                           }
                         }}
                       >
+                        <span>
+                          {t('admin.ssoProviderRadioGroup.values.cloud_idp')}
+                        </span>
+
                         {providerType === 'idp' ? (
-                          <LucideCircleCheck className="size-[1em] text-accent-primary" />
+                          <LucideCircleDot className="size-[1em] text-accent-primary" />
                         ) : (
                           <LucideCircle className="size-[1em] text-border-button" />
                         )}
                       </button>
-
-                      <span>
-                        {t('admin.ssoProviderRadioGroup.values.cloud_idp')}
-                      </span>
                     </CardTitle>
                   </CardHeader>
 
-                  <CardContent className="px-4 pb-4 space-y-2">
+                  <CardContent className="px-4 pb-4 space-y-2 opacity-50 group-aria-checked:opacity-100 transition-opacity">
                     {SSO_CLOUD_IDP_PROVIDERS.map(
                       ({ key, Card: ProviderCard }) => (
-                        <ProviderCard key={key} />
+                        <ProviderCard
+                          key={key}
+                          disabled={providerType !== 'idp'}
+                        />
                       ),
                     )}
                   </CardContent>
@@ -122,10 +127,11 @@ function AdminSSOProviders() {
                 aria-disabled={providerType === 'ldap'}
                 data-state={providerType === 'ldap' ? 'on' : 'off'}
               >
-                <Card className="bg-transparent group-aria-checked:ring-1 group-aria-checked:ring-text-secondary">
+                <Card className="bg-transparent">
                   <CardHeader className="p-4">
-                    <CardTitle className="text-lg space-y-0 flex items-center gap-3 text-text-disabled group-aria-checked:text-text-primary">
+                    <CardTitle>
                       <button
+                        className="w-full text-lg space-y-0 flex justify-between items-center gap-3 text-text-disabled group-aria-checked:text-text-primary transition-colors"
                         type="button"
                         disabled={providerType === 'ldap'}
                         onClick={() => {
@@ -134,19 +140,21 @@ function AdminSSOProviders() {
                           }
                         }}
                       >
+                        <span>
+                          {t('admin.ssoProviderRadioGroup.values.ldap')}
+                        </span>
+
                         {providerType === 'ldap' ? (
-                          <LucideCircleCheck className="size-[1em] text-accent-primary" />
+                          <LucideCircleDot className="size-[1em] text-accent-primary" />
                         ) : (
                           <LucideCircle className="size-[1em] text-border-button" />
                         )}
                       </button>
-
-                      {t('admin.ssoProviderRadioGroup.values.ldap')}
                     </CardTitle>
                   </CardHeader>
 
-                  <CardContent className="px-4 pb-4">
-                    <SSOProviderLDAPList />
+                  <CardContent className="px-4 pb-4 opacity-50 group-aria-checked:opacity-100 transition-opacity">
+                    <SSOProviderLDAPList disabled={providerType !== 'ldap'} />
                   </CardContent>
                 </Card>
               </div>

@@ -112,10 +112,6 @@ function AdminSettings() {
               </Button>
             </div>
           </div>
-
-          <hr className="mx-0 my-6 h-auto border-l border-border-button" />
-
-          <div className="flex-auto p-6"></div>
         </CardContent>
       </Card>
     </>
