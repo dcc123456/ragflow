@@ -15,7 +15,10 @@ export function useWatchFormChange(form?: UseFormReturn<any>) {
     const mcpTools = data.variables?.tools || [];
     values = form?.getValues();
 
-    return pick(mcpTools, values.items);
+    return {
+      tools: pick(mcpTools, values.items),
+      headers: values.headers || {},
+    };
   }, [values, data?.variables]);
 
   useEffect(() => {
@@ -29,7 +32,8 @@ export function useWatchFormChange(form?: UseFormReturn<any>) {
         if (x.mcp_id === clickedToolId) {
           return {
             ...x,
-            tools: nextMCPTools,
+            tools: nextMCPTools.tools,
+            headers: nextMCPTools.headers,
           };
         }
         return x;

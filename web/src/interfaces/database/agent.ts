@@ -176,6 +176,7 @@ export interface IAgentForm {
   mcp: Array<{
     mcp_id: string;
     tools: Record<string, Record<string, any>>;
+    headers: Record<string, string>;
   }>;
   outputs: {
     structured_output: Record<string, Record<string, any>>;

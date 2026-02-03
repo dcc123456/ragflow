@@ -1,6 +1,5 @@
 import useGraphStore from '@/pages/agent/store';
 import { getAgentNodeMCP } from '@/pages/agent/utils';
-import { isEmpty } from 'lodash';
 import { useMemo } from 'react';
 
 export function useValues() {
@@ -12,14 +11,13 @@ export function useValues() {
     const agentNode = findUpstreamNodeById(clickedNodeId);
     const mcpList = getAgentNodeMCP(agentNode);
 
-    const formData =
-      mcpList.find((x) => x.mcp_id === clickedToolId)?.tools || {};
+    const formData = mcpList.find((x) => x.mcp_id === clickedToolId);
 
-    if (isEmpty(formData)) {
-      return { items: [] };
-    }
+    const tools = formData?.tools || {};
+    const headers = formData?.headers || {};
 
-    return { items: Object.keys(formData) };
+    const res = { items: Object.keys(tools) || [], headers: headers };
+    return res;
   }, [clickedNodeId, clickedToolId, findUpstreamNodeById]);
 
   return values;
