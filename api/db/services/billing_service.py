@@ -38,6 +38,7 @@ from api.db.services.memory_service import MemoryService
 from api.utils.billing import create_stripe_customer_id, get_trial_price_id, parse_storage_size
 from common.billing_utils import to_utc_datetime
 from common.time_utils import current_timestamp
+import stripe
 
 BILLING_PLAN_TRIAL_NAME = "Trial"
 
@@ -154,6 +155,8 @@ class SubscriptionService(CommonService):
                 SubscriptionService.save(**tenant_plan)
             else:
                 return tenant_plan
+
+        tenant_plan = cls._ensure_trial_stripe_subscription(tenant_plan)
         print(f"{tenant_plan=}")
         billing_plan = ProductService.get_by_name(tenant_plan["plan_name"])
         assert billing_plan is not None
@@ -178,6 +181,74 @@ class SubscriptionService(CommonService):
             tenant_plan["num_apps"] = num_apps
             tenant_plan["num_members"] = num_members
             tenant_plan["num_kb_storage"] = num_kb_storage
+        return tenant_plan
+
+    @classmethod
+    def _ensure_trial_stripe_subscription(cls, tenant_plan: dict) -> dict:
+        """
+        Ensure Trial/Free tenants have a Stripe subscription so we can schedule
+        plan changes at period end consistently.
+        """
+        if not settings.BILLING_ENABLED:
+            return tenant_plan
+        if tenant_plan.get("plan_name") != BILLING_PLAN_TRIAL_NAME:
+            return tenant_plan
+        if tenant_plan.get("subscription_id"):
+            return tenant_plan
+
+        trial_price_id = get_trial_price_id(settings.BILLING.get("billing_plans", []))
+        if not trial_price_id:
+            return tenant_plan
+
+        customer_id = (tenant_plan.get("customer_id") or "").strip()
+        if not customer_id:
+            customer_id = create_stripe_customer_id(tenant_plan.get("tenant_id", ""))
+            if not customer_id:
+                return tenant_plan
+
+        try:
+            stripe_subscription = stripe.Subscription.create(
+                customer=customer_id,
+                items=[{"price": trial_price_id, "quantity": 1}],
+                metadata={
+                    "price_type": "subscription",
+                    "tenant_id": tenant_plan.get("tenant_id", ""),
+                    "price_id": trial_price_id,
+                    "product_name": BILLING_PLAN_TRIAL_NAME,
+                },
+            )
+        except Exception as e:
+            logging.warning(f"Failed to create Trial Stripe subscription for tenant {tenant_plan.get('tenant_id')}: {e}")
+            return tenant_plan
+
+        subscription_id = getattr(stripe_subscription, "id", "") if not isinstance(stripe_subscription, dict) else stripe_subscription.get("id", "")
+        subscription_status = getattr(stripe_subscription, "status", "") if not isinstance(stripe_subscription, dict) else stripe_subscription.get("status", "")
+        current_period_start = (
+            getattr(stripe_subscription, "current_period_start", None) if not isinstance(stripe_subscription, dict) else stripe_subscription.get("current_period_start")
+        )
+        current_period_end = (
+            getattr(stripe_subscription, "current_period_end", None) if not isinstance(stripe_subscription, dict) else stripe_subscription.get("current_period_end")
+        )
+
+        update_dict = {
+            "customer_id": customer_id,
+            "price_id": trial_price_id,
+            "subscription_id": subscription_id,
+            "subscription_status": subscription_status or SubscriptionStatus.ACTIVE,
+            "start_time": to_utc_datetime(current_period_start) or tenant_plan.get("start_time"),
+            "end_time": to_utc_datetime(current_period_end) or tenant_plan.get("end_time"),
+        }
+        if not tenant_plan.get("original_subscription_id"):
+            update_dict["original_subscription_id"] = subscription_id
+
+        try:
+            with DB.atomic():
+                cls.model.update(update_dict).where(cls.model.tenant_id == tenant_plan.get("tenant_id")).execute()
+        except Exception as e:
+            logging.warning(f"Failed to persist Trial Stripe subscription for tenant {tenant_plan.get('tenant_id')}: {e}")
+            return tenant_plan
+
+        tenant_plan.update(update_dict)
         return tenant_plan
 
     @classmethod
@@ -306,11 +377,33 @@ class SubscriptionService(CommonService):
                 check_pass = False
 
         if delta_kb_storage > 0:
+            # Storage quota is tracked in KB. Add-on storage purchases are stored in KB too.
+            add_on_storage_kb = 0
+            now = datetime.now(timezone.utc)
+            for row in (
+                PurchasedProductOverview.select(
+                    PurchasedProductOverview.quantity,
+                    PurchasedProductOverview.expiry_time,
+                    PurchasedProductOverview.product_name,
+                )
+                .where(
+                    (PurchasedProductOverview.tenant_id == tenant_id)
+                    & (PurchasedProductOverview.quantity > 0)
+                    & (PurchasedProductOverview.product_name.contains("storage"))
+                )
+                .iterator()
+            ):
+                expiry_time = to_utc_datetime(getattr(row, "expiry_time", None))
+                if expiry_time and expiry_time < now:
+                    continue
+                add_on_storage_kb += int(getattr(row, "quantity", 0) or 0)
+
+            storage_limit_kb = int(tenant_plan_info["quota_kb_storage"] or 0) + add_on_storage_kb
             details["quota_kb_storage"] = {
                 "current": num_kb_storage,
-                "limit": tenant_plan_info["quota_kb_storage"],
+                "limit": storage_limit_kb,
             }
-            if num_kb_storage + delta_kb_storage > tenant_plan_info["quota_kb_storage"]:
+            if num_kb_storage + delta_kb_storage > storage_limit_kb:
                 error_message += "KB storage quota exceeded\n"
                 check_pass = False
 

@@ -222,12 +222,12 @@ class SubscriptionUpdatedSubscriptionItem(BaseModel):
     price: SubscriptionUpdatedPrice
     quantity: Optional[int] = 1
     subscription_id: str = Field(alias="subscription")
-    current_period_start: datetime
-    current_period_end: datetime
+    current_period_start: Optional[datetime] = None
+    current_period_end: Optional[datetime] = None
 
     @field_validator("current_period_start", "current_period_end", mode="before")
     @classmethod
-    def parse_timestamps(cls, v):
+    def parse_optional_timestamps(cls, v):
         return to_utc_datetime(v)
 
 
@@ -243,13 +243,15 @@ class SubscriptionUpdatedSubscriptionObject(BaseModel):
     customer_id: str = Field(alias="customer")
     plan: Optional[SubscriptionUpdatedPlan] = None
     items: SubscriptionUpdatedSubscriptionItems
+    current_period_start: Optional[datetime] = None
+    current_period_end: Optional[datetime] = None
     metadata: dict[str, str] = Field(default_factory=dict)
     latest_invoice_id: Optional[str] = Field(alias="latest_invoice")
     billing_cycle_anchor: datetime
     trial_start: Optional[datetime] = None
     trial_end: Optional[datetime] = None
 
-    @field_validator("billing_cycle_anchor", "trial_start", "trial_end", mode="before")
+    @field_validator("current_period_start", "current_period_end", "billing_cycle_anchor", "trial_start", "trial_end", mode="before")
     @classmethod
     def parse_timestamps(cls, v):
         return to_utc_datetime(v)

@@ -16,6 +16,7 @@
 import hashlib
 import json
 import logging
+import os
 import re
 from decimal import ROUND_HALF_UP, Decimal
 from functools import wraps
@@ -23,7 +24,7 @@ from functools import wraps
 import stripe
 
 from common import settings
-from common.billing_utils import billing_enabled_guard
+from common.billing_utils import billing_enabled_guard, to_utc_datetime
 from common.constants import RetCode
 from api.db.services.user_service import TenantService
 from rag.utils.redis_conn import REDIS_CONN
@@ -132,6 +133,144 @@ def get_trial_price_id(plans: list[dict]) -> str:
 
     trial_plan = next((plan for plan in plans if plan.get("name") == BILLING_PLAN_TRIAL_NAME and plan.get("price_ids")), None)
     return trial_plan["price_ids"].split()[0] if trial_plan else ""
+
+
+def get_plan_priority_by_price_id(price_id: str) -> int | None:
+    plan_name = settings.BILLING_PRICEID_TO_PRODUCT.get(price_id, "")
+    if not plan_name:
+        return None
+    plan_info = settings.BILLING_PLAN_TO_INFO.get(plan_name) or {}
+    priority = plan_info.get("priority")
+    return priority if isinstance(priority, int) else None
+
+
+def is_downgrade_by_price_id(current_price_id: str, target_price_id: str) -> bool:
+    current_priority = get_plan_priority_by_price_id(current_price_id)
+    target_priority = get_plan_priority_by_price_id(target_price_id)
+    return current_priority is not None and target_priority is not None and target_priority < current_priority
+
+
+@billing_enabled_guard({})
+async def get_pending_subscription_change_async(subscription_id: str) -> dict:
+    if not subscription_id:
+        return {}
+
+    subscription = await stripe.Subscription.retrieve_async(subscription_id)
+    schedule_id = (subscription.get("schedule") or "").strip()
+    if not schedule_id:
+        return {}
+
+    schedule = await stripe.SubscriptionSchedule.retrieve_async(schedule_id)
+    schedule_status = (schedule.get("status") or "").strip()
+    if schedule_status in {"released", "canceled", "completed"}:
+        return {}
+
+    phases = schedule.get("phases", []) or []
+    if len(phases) < 2:
+        return {}
+
+    pending_phase = phases[1]
+    pending_items = pending_phase.get("items", []) or []
+    if not pending_items:
+        return {}
+
+    pending_price_id = pending_items[0].get("price", "") if isinstance(pending_items[0], dict) else ""
+    pending_price_id = pending_price_id.get("id", "") if isinstance(pending_price_id, dict) else pending_price_id
+    pending_price_id = (pending_price_id or "").strip()
+    if not pending_price_id:
+        return {}
+
+    effective_at = pending_phase.get("start_date")
+    return {
+        "schedule_id": schedule_id,
+        "pending_price_id": pending_price_id,
+        "pending_plan_name": settings.BILLING_PRICEID_TO_PRODUCT.get(pending_price_id, ""),
+        "effective_at": to_utc_datetime(effective_at),
+    }
+
+
+@billing_enabled_guard({})
+async def schedule_subscription_price_change_at_period_end_async(subscription_id: str, target_price_id: str) -> dict:
+    if not subscription_id or not target_price_id:
+        return {}
+
+    subscription = await stripe.Subscription.retrieve_async(subscription_id)
+    period_start = subscription.get("current_period_start")
+    period_end = subscription.get("current_period_end")
+
+    subscription_items = (subscription.get("items") or {}).get("data", []) if isinstance(subscription, dict) else subscription["items"]["data"]
+    if not subscription_items:
+        return {}
+
+    current_item = subscription_items[0]
+    current_price = current_item.get("price", {}) if isinstance(current_item, dict) else current_item["price"]
+    current_price_id = current_price.get("id", "") if isinstance(current_price, dict) else (getattr(current_price, "id", "") or "")
+    current_quantity = current_item.get("quantity", 1) if isinstance(current_item, dict) else (getattr(current_item, "quantity", 1) or 1)
+
+    schedule_id = (subscription.get("schedule") or "").strip()
+    schedule = None
+    if schedule_id:
+        schedule = await stripe.SubscriptionSchedule.retrieve_async(schedule_id)
+        schedule_status = (schedule.get("status") or "").strip()
+        if schedule_status in {"released", "canceled", "completed"}:
+            schedule_id = ""
+            schedule = None
+
+    if not schedule:
+        schedule = await stripe.SubscriptionSchedule.create_async(from_subscription=subscription_id)
+
+    phases = schedule.get("phases", []) or []
+    current_phase = schedule.get("current_phase") or {}
+    phase_start_date = (
+        current_phase.get("start_date")
+        or (phases[0].get("start_date") if phases else None)
+        or schedule.get("start_date")
+        or period_start
+    )
+    phase_end_date = current_phase.get("end_date") or (phases[0].get("end_date") if phases else None) or period_end
+    if not phase_start_date or not phase_end_date:
+        logging.warning(
+            "Cannot schedule subscription change due to missing schedule/period boundaries: "
+            f"{subscription_id=}, {period_start=}, {period_end=}, {phase_start_date=}, {phase_end_date=}"
+        )
+        return {}
+
+    updated_schedule = await stripe.SubscriptionSchedule.modify_async(
+        schedule.id,
+        end_behavior="release",
+        phases=[
+            {
+                "start_date": phase_start_date,
+                "end_date": phase_end_date,
+                "items": [{"price": current_price_id, "quantity": current_quantity}],
+            },
+            {
+                "start_date": phase_end_date,
+                "items": [{"price": target_price_id, "quantity": current_quantity}],
+            },
+        ],
+    )
+
+    return {
+        "schedule_id": updated_schedule.id,
+        "current_price_id": current_price_id,
+        "target_price_id": target_price_id,
+        "effective_at": to_utc_datetime(phase_end_date),
+    }
+
+
+@billing_enabled_guard(False)
+async def cancel_scheduled_subscription_change_async(subscription_id: str) -> bool:
+    if not subscription_id:
+        return False
+
+    subscription = await stripe.Subscription.retrieve_async(subscription_id)
+    schedule_id = (subscription.get("schedule") or "").strip()
+    if not schedule_id:
+        return False
+
+    await stripe.SubscriptionSchedule.release_async(schedule_id)
+    return True
 
 
 def get_plans_equal_or_higher(plan_name: str) -> list[tuple[str, list[str]]]:
@@ -282,7 +421,16 @@ def create_stripe_customer_id(tenant_id: str) -> str:
     if not user:
         logging.warning(f"create_stripe_customer_id: tenant {tenant_id} not found")
         return ""
-    customer = stripe.Customer.create(name=user.nickname, email=user.email, metadata={"tenant_id": tenant_id})
+    test_clock_id = (os.getenv("STRIPE_TEST_CLOCK_ID") or "").strip()
+    params = {"name": user.nickname, "email": user.email, "metadata": {"tenant_id": tenant_id}}
+    if test_clock_id:
+        api_key = (getattr(stripe, "api_key", None) or "").strip()
+        if api_key.startswith("sk_test_"):
+            params["test_clock"] = test_clock_id
+        else:
+            logging.warning("STRIPE_TEST_CLOCK_ID is set but Stripe API key is not a test key; creating customer without test_clock.")
+
+    customer = stripe.Customer.create(**params)
     logging.info(f"created customer {customer.id} for tenant {tenant_id},name {user.nickname} email {user.email}.")
     return customer.id
 

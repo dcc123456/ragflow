@@ -8,6 +8,7 @@ import request from '@/utils/request';
 const {
   billin_checkout,
   current_plan,
+  cancel_scheduled_subscription_change,
   plan_list,
   plan_spend_overview,
   getUpComming,
@@ -22,6 +23,10 @@ const methods = {
   getCurrentPlan: {
     url: current_plan,
     method: 'get',
+  },
+  cancelScheduledSubscriptionChange: {
+    url: cancel_scheduled_subscription_change,
+    method: 'post',
   },
   getPlanList: {
     url: plan_list,
@@ -65,6 +70,12 @@ export const billinCheckout = (
 };
 export const getCurrentPlan = () => {
   return request.get(api.current_plan);
+};
+
+export const cancelScheduledSubscriptionChange = (tenantId: string) => {
+  return request.post(api.cancel_scheduled_subscription_change, {
+    data: { tenant_id: tenantId },
+  });
 };
 
 export const getBllingBaseOverview = ({ tenantId }: { tenantId: string }) => {

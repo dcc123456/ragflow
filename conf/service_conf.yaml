@@ -52,6 +52,16 @@ billing:
       unit: "token"
       unit_quantity: 1
   billing_plans:
+    - name: "storage"
+      quota_apps: 0
+      quota_members: 0
+      quota_kb_storage: 0
+      task_priority: "low"
+      price_ids: "price_1SwG7GPtsKvwvC5fzSaVOT33"
+      price_lookup_key: "ragflow_usage_based_storage"
+      product_type: "usage_based"
+      usage_stat_type: "before"
+      plan_priority: -1
     - name: "deepdoc"
       quota_apps: 0
       quota_members: 0
@@ -69,7 +79,7 @@ billing:
       api_request_limit_per_minute: 500
       api_request_limit_per_month: 5000
       task_priority: "low"
-      price_ids: ""
+      price_ids: "price_1RWUhlPtsKvwvC5fJHfaYeRs"
       product_type: "subscription"
       usage_stat_type: ""
       plan_priority: 0

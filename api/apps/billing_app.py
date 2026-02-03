@@ -15,6 +15,7 @@
 #
 import json
 import logging
+import time
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -41,11 +42,15 @@ from api.utils.api_utils import get_data_error_result, get_json_result, get_requ
 from api.utils.billing import (
     billing_set_customer_id_async,
     cents_to_decimal,
+    cancel_scheduled_subscription_change_async,
     create_or_get_portal_configuration,
     get_plans_equal_or_higher,
+    get_pending_subscription_change_async,
     get_product_ids_for_prices,
     get_receipt_url_from_intent_latest_charge,
     get_trial_price_id,
+    is_downgrade_by_price_id,
+    schedule_subscription_price_change_at_period_end_async,
 )
 from api.utils.billing_schema import CheckoutSessionCompleted, IntentSucceed, InvoicePaid, SubscriptionUpdated
 from common import settings
@@ -102,6 +107,13 @@ async def billing_current_plan():
         logging.warning("No customer_id found while checkout, it was expected create when user registion, try to create a stripe accout to proceed...")
         customer_id = await billing_set_customer_id_async(current_user.id)
         tenant_plan["customer_id"] = customer_id
+
+    subscription_id = (tenant_plan.get("subscription_id") or "").strip()
+    if subscription_id:
+        try:
+            tenant_plan["pending_subscription_change"] = await get_pending_subscription_change_async(subscription_id)
+        except Exception as e:
+            logging.warning(f"Failed to fetch pending subscription change for tenant {current_user.id}: {e}")
     return get_json_result(data=tenant_plan)
 
 
@@ -331,43 +343,85 @@ async def billing_spend_overview():
     try:
         tenant_id = request.args.get("tenant_id", current_user.id)
 
-        tenant_plan = SubscriptionService.get_by_tenant_id(tenant_id, require_quota_info=True)
-
-        customer_id = tenant_plan["customer_id"]
-        if not customer_id:
-            return get_data_error_result(message="Internal error, cannot determine customer id")
+        # Legacy implementation (Stripe invoices only).
+        # This only reflects subscription invoices and will NOT include one-off
+        # payments like storage add-ons (mode=payment -> PaymentIntent/Charge, no Invoice).
+        #
+        # tenant_plan = SubscriptionService.get_by_tenant_id(tenant_id, require_quota_info=True)
+        # customer_id = tenant_plan["customer_id"]
+        # if not customer_id:
+        #     return get_data_error_result(message="Internal error, cannot determine customer id")
+        #
+        # start_dt = parse_datetime_arg(request.args.get("start"))
+        # end_dt = parse_datetime_arg(request.args.get("end"))
+        # start_ts = int(start_dt.timestamp()) if start_dt else None
+        # end_ts = int(end_dt.timestamp()) if end_dt else None
+        #
+        # query_filter = {"customer": customer_id}
+        # if start_ts or end_ts:
+        #     query_filter["created"] = {}
+        #     if start_ts:
+        #         query_filter["created"]["gte"] = start_ts
+        #     if end_ts:
+        #         query_filter["created"]["lte"] = end_ts
+        #
+        # invoices = await stripe.Invoice.list_async(limit=50, **query_filter)
+        #
+        # spend_overview = []
+        # for inv in invoices:
+        #     spend_overview.append(
+        #         {
+        #             "invoice_id": inv.id,
+        #             "amount": inv.amount_paid / 100,
+        #             "currency": inv.currency.upper() if inv.currency else None,
+        #             "status": inv.status,
+        #             "created_at": inv.created,
+        #             "hosted_invoice_url": inv.hosted_invoice_url,
+        #             "invoice_pdf_url": inv.invoice_pdf,
+        #         }
+        #     )
+        # return get_json_result(data=spend_overview)
 
         start_dt = parse_datetime_arg(request.args.get("start"))
         end_dt = parse_datetime_arg(request.args.get("end"))
-        start_ts = int(start_dt.timestamp()) if start_dt else None
-        end_ts = int(end_dt.timestamp()) if end_dt else None
+        status_map = {
+            PaymentStatus.SUCCESS.value: "paid",
+            PaymentStatus.FAILED.value: "unpaid",
+            PaymentStatus.PENDING.value: "pending",
+        }
 
-        query_filter = {"customer": customer_id}
-        if start_ts or end_ts:
-            query_filter["created"] = {}
-            if start_ts:
-                query_filter["created"]["gte"] = start_ts
-            if end_ts:
-                query_filter["created"]["lte"] = end_ts
+        spend_overview: list[dict] = []
+        with DB.connection_context():
+            query = PaymentOrder.select(
+                PaymentOrder.order_id,
+                PaymentOrder.amount,
+                PaymentOrder.currency,
+                PaymentOrder.payment_status,
+                PaymentOrder.order_created_at,
+                PaymentOrder.receipt_url,
+                PaymentOrder.receipt_pdf_url,
+            ).where(PaymentOrder.tenant_id == tenant_id)
 
-        invoices = await stripe.Invoice.list_async(limit=50, **query_filter)
+            if start_dt:
+                query = query.where(PaymentOrder.order_created_at >= start_dt)
+            if end_dt:
+                query = query.where(PaymentOrder.order_created_at <= end_dt)
 
-        spend_overview = []
-        for inv in invoices:
-            # if inv.status != "paid":
-            # continue
+            query = query.order_by(PaymentOrder.order_created_at.desc())
 
-            spend_overview.append(
-                {
-                    "invoice_id": inv.id,
-                    "amount": inv.amount_paid / 100,
-                    "currency": inv.currency.upper() if inv.currency else None,
-                    "status": inv.status,
-                    "created_at": inv.created,
-                    "hosted_invoice_url": inv.hosted_invoice_url,
-                    "invoice_pdf_url": inv.invoice_pdf,
-                }
-            )
+            for order in query:
+                created_at = to_utc_datetime(order.order_created_at)
+                spend_overview.append(
+                    {
+                        "invoice_id": order.order_id,
+                        "amount": float(order.amount or 0),
+                        "currency": (order.currency or "").upper() if order.currency else None,
+                        "status": status_map.get(order.payment_status, "pending"),
+                        "created_at": int(created_at.timestamp()) if created_at else None,
+                        "hosted_invoice_url": order.receipt_url,
+                        "invoice_pdf_url": order.receipt_pdf_url or order.receipt_url,
+                    }
+                )
 
         return get_json_result(data=spend_overview)
 
@@ -745,7 +799,7 @@ async def billing_checkout():
         return get_json_result(
             data=False,
             message="Missing required parameters tenant_id and payment_type.",
-            code=RetCode.PARAMETER_ERROR,
+            code=RetCode.BAD_REQUEST,
         )
     try:
         quantity = int(quantity)
@@ -753,13 +807,13 @@ async def billing_checkout():
         return get_json_result(
             data=False,
             message="Invalid quantity.",
-            code=RetCode.PARAMETER_ERROR,
+            code=RetCode.BAD_REQUEST,
         )
     if quantity <= 0:
         return get_json_result(
             data=False,
             message="Quantity must be a positive integer.",
-            code=RetCode.PARAMETER_ERROR,
+            code=RetCode.BAD_REQUEST,
         )
     if current_user.id != tenant_id:
         return get_json_result(
@@ -775,13 +829,13 @@ async def billing_checkout():
         return get_json_result(
             data=False,
             message="Missing required parameters subscription_price_id.",
-            code=RetCode.PARAMETER_ERROR,
+            code=RetCode.BAD_REQUEST,
         )
     if payment_type == PriceType.USAGE_BASED and not usage_based_price_id:
         return get_json_result(
             data=False,
             message="Missing required parameters usage_based_price_id.",
-            code=RetCode.PARAMETER_ERROR,
+            code=RetCode.BAD_REQUEST,
         )
 
     tenant_plan = SubscriptionService.get_by_tenant_id(tenant_id)
@@ -800,28 +854,69 @@ async def billing_checkout():
                     # https://docs.stripe.com/api/subscriptions/update
                     subscription = await stripe.Subscription.retrieve_async(subscription_id)
                     subscription_items = subscription["items"]["data"]
-                    # items = []
-                    exists = False
-                    print("entering SUBSCRIPTION SECTION")
-                    print(f"{subscription_items=}")
-                    for item in subscription_items:
-                        if item["price"]["id"] == subscription_price_id:
-                            exists = True
-                            break
+                    current_price_id = subscription_items[0]["price"]["id"] if subscription_items else ""
 
-                    if exists:
+                    if any(item["price"]["id"] == subscription_price_id for item in subscription_items):
                         msg = f"Tenant {tenant_id} already has an active subscription {subscription_id} on price {subscription_price_id}"
                         return get_json_result(data=False, message=msg, code=RetCode.SUCCESS)
 
-                    if tenant_plan["invoice_url"]:  # valid plan exists
-                        current_plan_name = tenant_plan.get("plan_name", "")
-                        customer_portal_url = _create_customer_portal(tenant_id, current_plan_name, return_url=session_cancel_url)
-                        msg = f"Tenant {tenant_id} already has an active subscription {subscription_id} on price {subscription_price_id}, change plan on customer portal {customer_portal_url}."
-                        return get_json_result(
-                            data={"redirect_to": f"{customer_portal_url}/subscriptions/{subscription_id}/update"},
-                            message=msg,
-                            code=RetCode.SUCCESS,
+                    if current_price_id and is_downgrade_by_price_id(current_price_id, subscription_price_id):
+                        scheduled = await schedule_subscription_price_change_at_period_end_async(subscription_id, subscription_price_id)
+                        if not scheduled:
+                            return get_data_error_result(message="Failed to schedule plan downgrade.")
+                        msg = f"Tenant {tenant_id} scheduled a plan downgrade at period end."
+                        return get_json_result(data={"scheduled_change": scheduled}, message=msg, code=RetCode.SUCCESS)
+
+                    trial_price_id = get_trial_price_id(settings.BILLING.get("billing_plans", []))
+                    trial_plan_name = settings.BILLING_PRICEID_TO_PRODUCT.get(trial_price_id, "") or "Trial"
+                    current_plan_name = settings.BILLING_PRICEID_TO_PRODUCT.get(current_price_id, "") or tenant_plan.get("plan_name", "")
+                    target_plan_name = settings.BILLING_PRICEID_TO_PRODUCT.get(subscription_price_id, "")
+                    if current_plan_name == trial_plan_name and target_plan_name and target_plan_name != trial_plan_name:
+                        try:
+                            await cancel_scheduled_subscription_change_async(subscription_id)
+                        except Exception as e:
+                            logging.info(f"Skip cancelling scheduled subscription change for {subscription_id}: {e}")
+
+                        session = await stripe.checkout.Session.create_async(
+                            customer=customer_id,
+                            client_reference_id=f"order_{uuid.uuid4()}",
+                            line_items=[{"price": subscription_price_id, "quantity": quantity}],
+                            mode=PriceType.SUBSCRIPTION,
+                            success_url=session_success_url,
+                            cancel_url=session_cancel_url,
+                            metadata={
+                                "price_type": PriceType.SUBSCRIPTION,
+                                "tenant_id": tenant_id,
+                                "price_id": subscription_price_id,
+                                "product_name": target_plan_name,
+                                "previous_subscription_id": subscription_id,
+                            },
+                            subscription_data={
+                                "metadata": {
+                                    "price_type": PriceType.SUBSCRIPTION,
+                                    "tenant_id": tenant_id,
+                                    "price_id": subscription_price_id,
+                                    "product_name": target_plan_name,
+                                    "previous_subscription_id": subscription_id,
+                                },
+                            },
                         )
+                        logging.info(f"created stripe session id {session.id}, url: {session.url}")
+                        return get_json_result(data={"redirect_to": session.url})
+
+                    try:
+                        await cancel_scheduled_subscription_change_async(subscription_id)
+                    except Exception as e:
+                        logging.info(f"Skip cancelling scheduled subscription change for {subscription_id}: {e}")
+
+                    current_plan_name = tenant_plan.get("plan_name", "")
+                    customer_portal_url = _create_customer_portal(tenant_id, current_plan_name, return_url=session_cancel_url)
+                    msg = f"Tenant {tenant_id} already has an active subscription {subscription_id}, change plan on customer portal {customer_portal_url}."
+                    return get_json_result(
+                        data={"redirect_to": f"{customer_portal_url}/subscriptions/{subscription_id}/update"},
+                        message=msg,
+                        code=RetCode.SUCCESS,
+                    )
             else:
                 # NO subscription yet
                 logging.info(f"found customer {customer_id} for tenant {tenant_id}")
@@ -890,6 +985,10 @@ async def billing_checkout():
                 "product_name": settings.BILLING_PRICEID_TO_PRODUCT.get(usage_based_price_id, ""),
                 "quantity": quantity,
             }
+            # Storage add-on is sold in GB (Stripe quantity), but our internal quota unit is KB.
+            # Keep the codebase/storage accounting consistent in KB by converting at the webhook ingestion layer.
+            if "storage" in (usage_metadata["product_name"] or "").lower():
+                usage_metadata["quantity_unit"] = "GB"
             if expiry_time:
                 usage_metadata["expiry_time"] = expiry_time
 
@@ -917,6 +1016,45 @@ async def billing_checkout():
         return server_error_response(e)
 
 
+@manager.route("/cancel-scheduled-subscription-change", methods=["POST"])  # noqa: F821
+@login_required
+@billing_enabled_guard(_billing_disabled_response)
+async def billing_cancel_scheduled_subscription_change():
+    req = await get_request_json()
+    tenant_id = req.get("tenant_id")
+    if not tenant_id:
+        return get_json_result(
+            data=False,
+            message="Missing required parameters tenant_id.",
+            code=RetCode.BAD_REQUEST,
+        )
+    if current_user.id != tenant_id:
+        return get_json_result(
+            data=False,
+            message="No authorization.",
+            code=RetCode.AUTHENTICATION_ERROR,
+        )
+
+    tenant_plan = SubscriptionService.get_by_tenant_id(tenant_id)
+    subscription_id = (tenant_plan.get("subscription_id") or "").strip()
+    if not subscription_id:
+        return get_json_result(
+            data=False,
+            message="Subscription not found.",
+            code=RetCode.BAD_REQUEST,
+        )
+
+    try:
+        canceled = await cancel_scheduled_subscription_change_async(subscription_id)
+        return get_json_result(
+            data={"canceled": bool(canceled)},
+            message="Scheduled subscription change canceled." if canceled else "No scheduled subscription change found.",
+            code=RetCode.SUCCESS,
+        )
+    except Exception as e:
+        return server_error_response(e)
+
+
 @manager.route("/unsubscribe", methods=["POST"])  # noqa: F821
 @login_required
 @billing_enabled_guard(_billing_disabled_response)
@@ -932,7 +1070,7 @@ async def billing_unsubscribe():
         return get_json_result(
             data=False,
             message="Missing required parameters tenant_id and price_id.",
-            code=RetCode.PARAMETER_ERROR,
+            code=RetCode.BAD_REQUEST,
         )
     if current_user.id != tenant_id:
         return get_json_result(
@@ -998,25 +1136,26 @@ def _create_customer_portal(tenant_id: str, current_plan_name: str, return_url: 
 
 
 @manager.route("/create-portal-session", methods=["POST"])  # noqa: F821
-# @login_required // TODO: for testing only
+@login_required
 @billing_enabled_guard(_billing_disabled_response)
 async def customer_portal():
     req = await get_request_json()
-    tenant_id = req.get("tenant_id", "")
-    current_plan_name = req.get("current_plan", "")
+    tenant_id = req.get("tenant_id") or current_user.id
     return_url = req.get("return_url", settings.BILLING["customer_portal_return_url"])
 
-    # tenant_id = "c3fb861af27a11efa69751e139332ced"  # NOTE: for testing
-    # tenant_id = "6fc66a5a415411f0b073c5725c73b90e"  # NOTE: for testing
-    current_plan_name = SubscriptionService.get_by_tenant_id(tenant_id).get("plan_name", "")  # NOTE: for testing
-    print(f"webhook {tenant_id=}, {current_plan_name=}")
-    if not tenant_id or not current_plan_name:
-        return get_data_error_result("tenant_id and current plan name need to be provided.")
+    if current_user.id != tenant_id:
+        return get_json_result(
+            data=False,
+            message="No authorization.",
+            code=RetCode.AUTHENTICATION_ERROR,
+        )
 
     subscription = SubscriptionService.get_by_tenant_id(tenant_id)
-    print(f"webhook {subscription=}")
+    current_plan_name = subscription.get("plan_name", "")
     if not subscription:
         return get_data_error_result("Subscription not found.")
+    if not current_plan_name:
+        return get_data_error_result("Current plan not found.")
 
     customer_id = subscription.get("customer_id", "").strip()
     subscription_id = subscription.get("subscription_id", "").strip()
@@ -1160,6 +1299,7 @@ def _handle_payment_intent_succeeded(event: dict):
 
         price_type = intent_metadata.get("price_type", "")
         quantity = int(intent_metadata.get("quantity", "0"))
+        quantity_unit = (intent_metadata.get("quantity_unit") or "").strip().upper()
         expiry_time = intent_metadata.get("expiry_time")
     else:
         logging.warning("Expected metadata in _handle_payment_intent_succeeded, but get empty.")
@@ -1186,6 +1326,21 @@ def _handle_payment_intent_succeeded(event: dict):
     customer_id = intent.customer_id or ""
     product_id = ProductService.get_by_name(product_name).get("id", "")
 
+    quota_quantity = quantity
+    quota_unit = ""
+    if "storage" in (product_name or "").lower():
+        # For storage add-on, Stripe quantity is in GB (see /billing/checkout). Persist internal quota in KB.
+        if not quantity_unit:
+            quantity_unit = "GB"
+        quota_unit = "KB"
+        if quantity_unit == "GB":
+            quota_quantity = quantity * 1024 * 1024
+        elif quantity_unit == "KB":
+            quota_quantity = quantity
+        else:
+            logging.warning(f"Unknown quantity_unit for storage add-on: {quantity_unit!r}, persisting raw quantity as KB.")
+            quota_quantity = quantity
+
     payment_order = {
         "id": get_uuid(),
         "tenant_id": tenant_id,
@@ -1208,7 +1363,7 @@ def _handle_payment_intent_succeeded(event: dict):
         "captured": captured,
         "description": "",
         "order_created_at": order_created_at,
-        "payment_detail": {"quantity": quantity},
+        "payment_detail": {"quantity": quantity, "quantity_unit": quantity_unit, "quota_quantity": quota_quantity, "quota_unit": quota_unit},
     }
     print(f"\nintend.succeed parsed payment order {payment_order=}")
     # NOTE: We intentionally do NOT persist to the legacy `billing_usage_based` table.
@@ -1231,13 +1386,13 @@ def _handle_payment_intent_succeeded(event: dict):
                     "tenant_id": tenant_id,
                     "product_id": product_id,
                     "product_name": product_name,
-                    "quantity": quantity,
+                    "quantity": quota_quantity,
                     "effective_time": to_utc_datetime(datetime.now(timezone.utc)),
                     "expiry_time": expiry_dt,
                 }
                 PurchasedProductOverviewService.save(**purchased_overview_dict)
             else:
-                ok = PurchasedProductOverviewService.update_quantity(product_name, tenant_id, quantity)
+                ok = PurchasedProductOverviewService.update_quantity(product_name, tenant_id, quota_quantity)
                 if not ok:
                     logging.warning(f"Customer {customer_id} with tenant_id {tenant_id}, purchased {quantity} {product_name}, but update to purchase overview failed.")
                 if expiry_dt:
@@ -1331,26 +1486,19 @@ def _handle_checkout_session_completed(event: dict):
         if not start_time or not end_time:
             if subscription_id:
                 referred_subscription = stripe.Subscription.retrieve(subscription_id)
-                items = None
                 if isinstance(referred_subscription, dict):
-                    items = referred_subscription.get("items", {}).get("data", [])
+                    if not start_time:
+                        start_time = to_utc_datetime(referred_subscription.get("current_period_start"))
+                    if not end_time:
+                        end_time = to_utc_datetime(referred_subscription.get("current_period_end"))
                 else:
-                    items = getattr(getattr(referred_subscription, "items", None), "data", []) or []
+                    if not start_time:
+                        start_time = to_utc_datetime(getattr(referred_subscription, "current_period_start", None))
+                    if not end_time:
+                        end_time = to_utc_datetime(getattr(referred_subscription, "current_period_end", None))
 
-                if items:
-                    item = items[0]
-                    if isinstance(item, dict):
-                        if not start_time:
-                            start_time = to_utc_datetime(item.get("current_period_start"))
-                        if not end_time:
-                            end_time = to_utc_datetime(item.get("current_period_end"))
-                    else:
-                        if not start_time:
-                            start_time = to_utc_datetime(getattr(item, "current_period_start", None))
-                        if not end_time:
-                            end_time = to_utc_datetime(getattr(item, "current_period_end", None))
-                else:
-                    logging.warning("checkout.session.completed missing subscription items for period fallback.")
+                if not start_time or not end_time:
+                    logging.warning("checkout.session.completed missing subscription period for fallback.")
             else:
                 logging.warning("checkout.session.completed missing subscription_id for period fallback.")
         print(f"{referred_subscription=}")
@@ -1380,6 +1528,13 @@ def _handle_checkout_session_completed(event: dict):
 
         with DB.atomic():
             SubscriptionService.update_subscription(tenant_id, subscription_dict)
+
+        previous_subscription_id = (metadata.get("previous_subscription_id") or "").strip()
+        if previous_subscription_id and previous_subscription_id != subscription_id:
+            try:
+                stripe.Subscription.delete(previous_subscription_id, prorate=False)
+            except Exception as e:
+                logging.info(f"Skip canceling previous subscription {previous_subscription_id}: {e}")
 
     elif checkout_session_completed.mode == "setup":
         # Handle setup for future payments
@@ -1574,6 +1729,10 @@ def _handle_customer_subscription_updated(event: dict):
             old_price = previous.plan
         else:
             old_price = None
+        old_price_id = getattr(old_price, "id", "") if old_price else ""
+
+        def _plan_label(price_id: str, nickname: str | None) -> str:
+            return settings.BILLING_PRICEID_TO_PRODUCT.get(price_id, "") or (nickname or "") or "unknown"
 
         latest_invoice_id = subscription.latest_invoice_id or ""
         stripe_invoice_status = ""
@@ -1581,22 +1740,30 @@ def _handle_customer_subscription_updated(event: dict):
         invoice_pdf_url = ""
         invoice_created = subscription_updated.created
         if latest_invoice_id:
-            payment_order = PaymentOrderService.get_by_order_id(latest_invoice_id)
-            if payment_order:
-                invoice_url = payment_order.get("receipt_url", "") or ""
-                invoice_pdf_url = payment_order.get("receipt_pdf_url", "") or ""
-                invoice_created = payment_order.get("order_created_at") or invoice_created
+            existing_payment_order = PaymentOrderService.get_by_order_id(latest_invoice_id)
+            if existing_payment_order:
+                invoice_url = existing_payment_order.get("receipt_url", "") or ""
+                invoice_pdf_url = existing_payment_order.get("receipt_pdf_url", "") or ""
+                invoice_created = existing_payment_order.get("order_created_at") or invoice_created
         print(f"update subscription {latest_invoice_id=}, {invoice_url=}, {invoice_pdf_url=}, {invoice_created=}")
 
-        current_period_start = to_utc_datetime(subscription.items.data[0].current_period_start)
-        current_period_end = to_utc_datetime(subscription.items.data[0].current_period_end)
+        period_start_value = subscription.current_period_start or subscription.items.data[0].current_period_start
+        period_end_value = subscription.current_period_end or subscription.items.data[0].current_period_end
+        current_period_start = to_utc_datetime(period_start_value)
+        current_period_end = to_utc_datetime(period_end_value)
+        if not current_period_start or not current_period_end:
+            logging.warning(
+                "subscription.updated missing current period boundaries: "
+                f"{subscription_id=}, {period_start_value=}, {period_end_value=}"
+            )
+            return
 
         if old_price:
-            if latest_invoice_id and PaymentOrderService.get_by_order_id(latest_invoice_id):
-                logging.info(f"Skip duplicated subscription update invoice for tenant {tenant_id}: {latest_invoice_id}")
-                return
+            existing_payment_order_id = existing_payment_order.get("id") if latest_invoice_id and existing_payment_order else ""
+            payment_order_id = existing_payment_order_id or get_uuid()
+            should_save_payment_order = bool(latest_invoice_id) and not existing_payment_order_id
             payment_order = {
-                "id": get_uuid(),
+                "id": payment_order_id,
                 "tenant_id": tenant_id,
                 "customer_id": customer_id,
                 "payment_type": PriceType.SUBSCRIPTION,
@@ -1654,20 +1821,35 @@ def _handle_customer_subscription_updated(event: dict):
                 if old_amount is None:
                     old_amount = getattr(old_price, "amount", None)
             if new_price.unit_amount > (old_amount or 0):
-                print(f"UPGRADE from {old_price.nickname} to {new_price.nickname}")
-                payment_order["description"] = f"Upgrade from {old_price.nickname} to {new_price.nickname}"
+                old_label = _plan_label(old_price_id, getattr(old_price, "nickname", None) if old_price else None)
+                new_label = _plan_label(new_price_id, new_price.nickname)
+                print(f"UPGRADE from {old_label} to {new_label}")
+                payment_order["description"] = f"Upgrade from {old_label} to {new_label}"
                 # Additional upgrade-specific logic if needed
             else:
-                print(f"DOWNGRADE from {old_price.nickname} to {new_price.nickname}")
-                payment_order["description"] = f"Downgrade from {old_price.nickname} to {new_price.nickname}"
+                old_label = _plan_label(old_price_id, getattr(old_price, "nickname", None) if old_price else None)
+                new_label = _plan_label(new_price_id, new_price.nickname)
+                print(f"DOWNGRADE from {old_label} to {new_label}")
+                payment_order["description"] = f"Downgrade from {old_label} to {new_label}"
                 # Additional downgrade-specific logic if needed
 
             try:
                 with DB.atomic():
-                    PaymentOrderService.save(**payment_order)
+                    if should_save_payment_order:
+                        PaymentOrderService.save(**payment_order)
                     SubscriptionService.update_subscription(tenant_id, subscription_dict)
             except Exception as e:
                 print(f"Failed to save upgrade/downgrade record: {e}")
+
+            schedule_id = (event.get("data", {}).get("object", {}) or {}).get("schedule") if isinstance(event, dict) else ""
+            if schedule_id:
+                try:
+                    test_clock_id = (event.get("data", {}).get("object", {}) or {}).get("test_clock") if isinstance(event, dict) else ""
+                    if test_clock_id:
+                        time.sleep(30)
+                    stripe.SubscriptionSchedule.release(schedule_id)
+                except Exception as e:
+                    logging.info(f"Skip releasing subscription schedule {schedule_id}: {e}")
 
     elif previous and previous.status:
         print(f"Status changed: {previous.status} → {subscription.status}")

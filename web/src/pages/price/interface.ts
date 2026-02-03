@@ -48,6 +48,12 @@ export interface ICurrentPlan {
   invoice_pdf_url: string | null;
   invoice_url: string | null;
   original_subscription_id: string;
+  pending_subscription_change?: {
+    schedule_id: string;
+    pending_price_id: string;
+    pending_plan_name: string;
+    effective_at: string | null;
+  };
   plan_name: string;
   price_id: string;
   product_id: string;

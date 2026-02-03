@@ -1,9 +1,12 @@
+import { Modal } from '@/components/ui/modal/modal';
 import { useFetchTenantInfo } from '@/hooks/use-user-setting-request';
 import billingService, { billinCheckout } from '@/services/price';
 import storagePrivate from '@/utils/authorization-private-util';
 import storage from '@/utils/authorization-util';
 import { useMutation, useQuery } from '@tanstack/react-query';
+import React from 'react';
 import { ICurrentPlan, IPlan, IPricePlanWithButton } from '../interface';
+import { showModal } from '../price-modal/show-modal';
 export type IChargePlan = {
   subscription_price_id?: string;
   quantity: string;
@@ -67,6 +70,42 @@ const useCharge = () => {
       });
       if (chargeResult && chargeResult.redirect_to) {
         window.open(chargeResult.redirect_to);
+      } else if (chargeResult && chargeResult.scheduled_change) {
+        const effectiveAt = chargeResult?.scheduled_change?.effective_at;
+        const modal = showModal({
+          children: React.createElement(
+            Modal,
+            {
+              open: true,
+              title: 'Downgrade scheduled',
+              onOpenChange: (open: boolean) => {
+                if (!open) {
+                  modal.destroy();
+                }
+              },
+              className: '!w-[400px]',
+              footer: React.createElement(
+                'div',
+                { className: 'flex justify-end gap-2' },
+                React.createElement(
+                  'button',
+                  {
+                    type: 'button',
+                    onClick: () => modal.destroy(),
+                    className:
+                      'px-2 py-1 bg-primary text-primary-foreground rounded-md hover:bg-primary/90',
+                  },
+                  'OK',
+                ),
+              ),
+            },
+            React.createElement(
+              'div',
+              { className: 'h-32' },
+              `Your plan will downgrade at the end of the current billing period${effectiveAt ? ` (${effectiveAt})` : ''}.`,
+            ),
+          ),
+        });
       }
     }
   };

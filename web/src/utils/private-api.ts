@@ -38,6 +38,7 @@ export default {
   // billing
   billin_checkout: `${api_host}/billing/checkout`,
   current_plan: `${api_host}/billing/current_plan`,
+  cancel_scheduled_subscription_change: `${api_host}/billing/cancel-scheduled-subscription-change`,
   plan_list: `${api_host}/billing/plans`,
   plan_spend_overview: `${api_host}/billing/spend_metrics`,
   blling_base_overview: `${api_host}/billing/usage_based_overview`,

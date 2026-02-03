@@ -51,8 +51,9 @@ const ResourceUsage: React.FC<CustomProgressProps> = ({
     }
   };
   const openAddOnManage = () => {
+    const addOnCapacity = Math.max(0, limit - planValue);
     addOnManageModal = showAddOnManageModal({
-      defaultValue: 40,
+      defaultValue: addOnCapacity,
       onOk: addOnManageOk,
       price: storageUsage?.price,
     });
