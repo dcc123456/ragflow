@@ -6,18 +6,17 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { useCalculateEvaluationRunsMetrics } from '@/hooks/use-evaluation-request';
+import {
+  useCancelEvaluationRun,
+  useFetchEvaluationRunResults,
+  useStartEvaluationRun,
+} from '@/hooks/use-evaluation-request';
 import { useEvaluationUrl } from '@/hooks/use-evaluation-url';
 import { buildOptions } from '@/utils/form';
-import { Play } from 'lucide-react';
+import { CirclePause, Play } from 'lucide-react';
+import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-
-enum RunType {
-  All = 'all',
-  Relevancy = 'relevancy',
-  Factuality = 'factuality',
-  Consistency = 'consistency',
-}
+import { RunningStatus, RunType } from './constants';
 
 const RunList = [
   RunType.All,
@@ -26,24 +25,50 @@ const RunList = [
   RunType.Consistency,
 ];
 
-export function RunDropdownButton() {
+type RunDropdownButtonProps = {
+  rowSelection: Record<string, boolean>;
+};
+export function RunDropdownButton({ rowSelection }: RunDropdownButtonProps) {
   const { t } = useTranslation();
-  const options = buildOptions(RunList, t, 'evaluation');
+  const options = buildOptions(RunList, t, 'evaluation', true);
   const { runId } = useEvaluationUrl();
 
-  const { calculateEvaluationRunsMetrics } =
-    useCalculateEvaluationRunsMetrics();
+  const { startEvaluationRun } = useStartEvaluationRun();
+
+  const { cancelEvaluationRun } = useCancelEvaluationRun();
+  const { data: result } = useFetchEvaluationRunResults();
+  // const { data } = useFetchEvaluationRun();
+
+  const isRunning = result.run?.status === RunningStatus.RUNNING;
 
   const run = (type: RunType) => () => {
+    const caseIds = Object.keys(rowSelection).filter((id) => rowSelection[id]);
+
     if (type === RunType.All) {
-      calculateEvaluationRunsMetrics();
+      startEvaluationRun({ case_ids: caseIds });
+    } else {
+      startEvaluationRun({ metrics_name: [type], case_ids: caseIds });
     }
   };
+
+  const cancel = useCallback(() => {
+    cancelEvaluationRun();
+  }, [cancelEvaluationRun]);
+
+  const disabled = !runId;
+
+  if (isRunning) {
+    return (
+      <Button disabled={disabled} onClick={cancel}>
+        <CirclePause /> Cancel
+      </Button>
+    );
+  }
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button disabled={!runId}>
+        <Button disabled={disabled}>
           <Play />
           Run
         </Button>

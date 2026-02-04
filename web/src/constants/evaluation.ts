@@ -6,4 +6,5 @@ export enum EvaluationType {
 export enum EvaluationSearchParams {
   Type = 'type',
   RunId = 'runId',
+  Page = 'page',
 }

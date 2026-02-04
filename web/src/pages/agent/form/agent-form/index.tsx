@@ -151,6 +151,9 @@ function AgentForm({ node }: INextOperatorForm) {
     }
   }, [deleteEdgesBySourceAndSourceHandle, exceptionMethod, node?.id]);
 
+  const x = findLlmByUuid(llmId)?.model_type;
+  console.log('🚀 ~ AgentForm ~ x:', x);
+
   useWatchFormChange(node?.id, form);
 
   return (
@@ -163,7 +166,7 @@ function AgentForm({ node }: INextOperatorForm) {
             <QueryVariable
               name="visual_files_var"
               label="Visual Input File"
-              type={VariableType.File}
+              types={[VariableType.File]}
             ></QueryVariable>
           )}
           <FormField

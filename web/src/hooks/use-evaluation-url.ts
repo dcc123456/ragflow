@@ -23,5 +23,10 @@ export const useEvaluationUrl = () => {
     setSearchParams(searchParams);
   };
 
-  return { type, runId, setType, setRunId };
+  const setPage = (page: string) => {
+    searchParams.set(EvaluationSearchParams.Page, page);
+    setSearchParams(searchParams);
+  };
+
+  return { type, runId, setType, setRunId, setPage };
 };

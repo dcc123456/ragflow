@@ -1,11 +1,12 @@
 import {
   ColumnFiltersState,
+  OnChangeFn,
+  RowSelectionState,
   SortingState,
   VisibilityState,
   flexRender,
   getCoreRowModel,
   getFilteredRowModel,
-  getPaginationRowModel,
   getSortedRowModel,
   useReactTable,
 } from '@tanstack/react-table';
@@ -22,22 +23,24 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { IEvaluationRunResult } from '@/interfaces/database/evaluation';
 import { useMemo } from 'react';
 
-import { EvaluationType } from './constants';
-import { useEvaluationTableColumns } from './use-evaluation-table-columns';
+import { useFetchEvaluationRunResults } from '@/hooks/use-evaluation-request';
+import { useMetricsDetailDialog } from '@/hooks/use-metrics-detail-dialog';
+import { pick } from 'lodash';
+import { MetricsDetailDialog } from './metrics-detail-dialog';
+import {
+  EvaluationResultRow,
+  useEvaluationTableColumns,
+} from './use-evaluation-table-columns';
 
-export type EvaluationTableProps = {
-  runId: string;
-  type: EvaluationType;
-  results?: IEvaluationRunResult;
+type EvaluationTableProps = {
+  rowSelection: Record<string, boolean>;
+  setRowSelection: OnChangeFn<RowSelectionState>;
 };
-
 export function EvaluationTable({
-  runId,
-  type,
-  results,
+  rowSelection,
+  setRowSelection,
 }: EvaluationTableProps) {
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(
@@ -45,49 +48,58 @@ export function EvaluationTable({
   );
   const [columnVisibility, setColumnVisibility] =
     React.useState<VisibilityState>({});
-  const [rowSelection, setRowSelection] = React.useState({});
 
-  const columns = useEvaluationTableColumns();
+  const {
+    data: results,
+    setPagination,
+    pagination,
+  } = useFetchEvaluationRunResults();
+
+  const { detailVisible, hideDetailModal, handleShowDetail, selectedResult } =
+    useMetricsDetailDialog(results);
+
+  const columns = useEvaluationTableColumns({
+    onShowDetail: handleShowDetail,
+  });
 
   // Transform data into table rows
   const tableRows = useMemo(() => {
-    if (!results?.cases || !results?.results) return [];
+    if (!results?.results) return [];
 
-    return results.cases.map((caseItem, index) => {
-      const resultItem = results.results[index];
+    return results.results.map((item) => {
       return {
-        caseId: caseItem.id || '',
-        question: caseItem.variable.question,
-        referenceAnswer: caseItem.variable.reference_answer,
-        modelAnswer: resultItem?.answer,
-        score: resultItem?.metrics?.score,
-        status: resultItem?.status,
+        id: item.case_id,
+        question: item.variable.question,
+        referenceAnswer: item.variable.reference_answer,
+        modelAnswer: item.generated_answer,
+        ...pick(item.metrics, [
+          'context_relevance',
+          'faithfulness',
+          'semantic_similarity',
+          'faithfulness_reason',
+          'semantic_similarity_reason',
+          'context_relevance_reason',
+        ]),
       };
     });
   }, [results]);
 
-  const [pagination, setPagination] = React.useState({
-    pageIndex: 0,
-    pageSize: 10,
-  });
-
-  const table = useReactTable({
+  const table = useReactTable<EvaluationResultRow>({
     data: tableRows,
     columns,
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     onColumnVisibilityChange: setColumnVisibility,
     onRowSelectionChange: setRowSelection,
+    getRowId: (row) => row.id,
     state: {
       sorting,
       columnFilters,
       columnVisibility,
-      rowSelection,
-      pagination,
+      rowSelection: rowSelection,
     },
   });
 
@@ -147,15 +159,22 @@ export function EvaluationTable({
       <div className="flex items-center justify-end py-4">
         <div className="space-x-2">
           <RAGFlowPagination
-            current={pagination.pageIndex + 1}
-            pageSize={pagination.pageSize}
-            total={tableRows.length}
+            {...pick(pagination, 'current', 'pageSize')}
+            total={results.total}
             onChange={(page, pageSize) => {
-              setPagination({ pageIndex: page - 1, pageSize });
+              setPagination({ page, pageSize });
             }}
           ></RAGFlowPagination>
         </div>
       </div>
+
+      {detailVisible && (
+        <MetricsDetailDialog
+          visible={detailVisible}
+          hideModal={hideDetailModal}
+          resultData={selectedResult}
+        />
+      )}
     </div>
   );
 }

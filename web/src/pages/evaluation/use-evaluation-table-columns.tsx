@@ -1,37 +1,87 @@
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import { useFetchEvaluationRunResults } from '@/hooks/use-evaluation-request';
+import { IMetrics, IMetricsSummary } from '@/interfaces/database/evaluation';
 import { ColumnDef } from '@tanstack/react-table';
-import { ArrowUpDown } from 'lucide-react';
+import { get, round } from 'lodash';
+import { ArrowUpDown, Eye } from 'lucide-react';
+import { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
-export interface EvaluationResultRow {
-  caseId: string;
+const CellWithTooltip = ({ content }: { content: ReactNode }) => {
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div className="max-w-[300px] truncate">{content}</div>
+        </TooltipTrigger>
+        <TooltipContent>
+          <p className="max-w-md">{content}</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+};
+
+export interface EvaluationResultRow extends Pick<
+  IMetrics,
+  | 'faithfulness'
+  | 'faithfulness_reason'
+  | 'semantic_similarity'
+  | 'semantic_similarity_reason'
+  | 'context_relevance'
+  | 'context_relevance_reason'
+> {
+  id: string;
   question: string;
   referenceAnswer?: string;
   modelAnswer?: string;
-  relevancy?: number;
-  factuality?: number;
-  consistency?: number;
-  status?: string;
 }
 
-export const useEvaluationTableColumns = () => {
+export interface EvaluationTableColumnsProps {
+  onShowDetail?: (caseId: string) => void;
+}
+
+function MetricHeader({
+  column,
+  name,
+  metricsSummary,
+}: {
+  column: any;
+  metricsSummary?: IMetricsSummary;
+  name: string;
+}) {
   const { t } = useTranslation();
+  return (
+    <Button
+      variant="ghost"
+      onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
+    >
+      <div className="flex items-center gap-2">
+        {t('evaluation.relevancy')}
+        <span className="text-accent-primary text-xs">
+          {round(get(metricsSummary, `${name}.summary`, 0), 2)}
+        </span>
+        <ArrowUpDown className="h-4 w-4" />
+      </div>
+    </Button>
+  );
+}
 
-  const calculateAverage = (
-    data: EvaluationResultRow[],
-    key: keyof EvaluationResultRow,
-  ): string => {
-    const values = data
-      .map((row) => row[key])
-      .filter(
-        (val): val is number => val !== undefined && typeof val === 'number',
-      );
+export const useEvaluationTableColumns = (
+  props?: EvaluationTableColumnsProps,
+) => {
+  const { t } = useTranslation();
+  const { data: results } = useFetchEvaluationRunResults();
+  const { onShowDetail } = props || {};
 
-    if (values.length === 0) return '-';
-    const avg = values.reduce((sum, val) => sum + val, 0) / values.length;
-    return `Avg: ${avg.toFixed(2)}`;
-  };
+  const metricsSummary = results.run?.metrics_summary;
 
   const columns: ColumnDef<EvaluationResultRow>[] = [
     {
@@ -59,124 +109,91 @@ export const useEvaluationTableColumns = () => {
     {
       accessorKey: 'question',
       header: t('evaluation.question'),
-      cell: ({ row }) => {
-        return (
-          <div className="max-w-[300px] truncate" title={row.original.question}>
-            {row.original.question}
-          </div>
-        );
-      },
+      cell: ({ row }) => (
+        <div className="flex items-center gap-2">
+          <CellWithTooltip content={row.original.question} />
+          <Eye
+            className="size-4 cursor-pointer hover:text-accent-primary"
+            onClick={() => onShowDetail?.(row.original.id)}
+          />
+        </div>
+      ),
     },
     {
       accessorKey: 'referenceAnswer',
       header: t('evaluation.referenceAnswer'),
-      cell: ({ row }) => {
-        return (
-          <div
-            className="max-w-[300px] truncate"
-            title={row.original.referenceAnswer}
-          >
-            {row.original.referenceAnswer || '-'}
-          </div>
-        );
-      },
+      cell: ({ row }) => (
+        <CellWithTooltip content={row.original.referenceAnswer || '-'} />
+      ),
     },
     {
       accessorKey: 'modelAnswer',
       header: t('evaluation.modelAnswer'),
-      cell: ({ row }) => {
-        return (
-          <div
-            className="max-w-[300px] truncate"
-            title={row.original.modelAnswer}
-          >
-            {row.original.modelAnswer || '-'}
-          </div>
-        );
-      },
+      cell: ({ row }) => (
+        <CellWithTooltip content={row.original.modelAnswer || '-'} />
+      ),
     },
     {
-      accessorKey: 'relevancy',
+      accessorKey: 'context_relevance',
       header: ({ column }) => {
         return (
-          <Button
-            variant="ghost"
-            onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-          >
-            {t('evaluation.relevancy')}
-            <ArrowUpDown className="ml-2 h-4 w-4" />
-          </Button>
+          <MetricHeader
+            column={column}
+            name="context_relevance"
+            metricsSummary={metricsSummary}
+          />
         );
       },
-      cell: ({ row, table }) => {
-        const relevancy = row.original.relevancy;
-        const avgScore = calculateAverage(
-          table.getRowModel().rows.map((r) => r.original),
-          'relevancy',
-        );
+      cell: ({ row }) => {
+        const relevancy = row.original.context_relevance;
 
         return (
           <div className="text-center">
             <div>{relevancy !== undefined ? relevancy.toFixed(2) : '-'}</div>
-            <div className="text-xs text-text-secondary">{avgScore}</div>
           </div>
         );
       },
     },
     {
-      accessorKey: 'factuality',
+      accessorKey: 'faithfulness',
       header: ({ column }) => {
         return (
-          <Button
-            variant="ghost"
-            onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-          >
-            {t('evaluation.factuality')}
-            <ArrowUpDown className="ml-2 h-4 w-4" />
-          </Button>
+          <MetricHeader
+            column={column}
+            name="faithfulness"
+            metricsSummary={metricsSummary}
+          />
         );
       },
-      cell: ({ row, table }) => {
-        const factuality = row.original.factuality;
-        const avgScore = calculateAverage(
-          table.getRowModel().rows.map((r) => r.original),
-          'factuality',
-        );
+      cell: ({ row }) => {
+        const factuality = row.original.faithfulness;
 
         return (
           <div className="text-center">
             <div>{factuality !== undefined ? factuality.toFixed(2) : '-'}</div>
-            <div className="text-xs text-text-secondary">{avgScore}</div>
           </div>
         );
       },
     },
     {
-      accessorKey: 'consistency',
+      accessorKey: 'semantic_similarity',
       header: ({ column }) => {
         return (
-          <Button
-            variant="ghost"
-            onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-          >
-            {t('evaluation.consistency')}
-            <ArrowUpDown className="ml-2 h-4 w-4" />
-          </Button>
+          <MetricHeader
+            column={column}
+            name="semantic_similarity"
+            metricsSummary={metricsSummary}
+          />
         );
       },
-      cell: ({ row, table }) => {
-        const consistency = row.original.consistency;
-        const avgScore = calculateAverage(
-          table.getRowModel().rows.map((r) => r.original),
-          'consistency',
-        );
+      cell: ({ row }) => {
+        const consistency = row.original.semantic_similarity;
 
         return (
           <div className="text-center">
             <div>
-              {consistency !== undefined ? consistency.toFixed(2) : '-'}
+              {typeof consistency === 'number' ? consistency.toFixed(2) : '-'}
             </div>
-            <div className="text-xs text-text-secondary">{avgScore}</div>
           </div>
         );
       },

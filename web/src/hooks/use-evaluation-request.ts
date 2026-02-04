@@ -6,10 +6,11 @@ import {
   IEvaluationCollection,
   IEvaluationRecommendation,
   IEvaluationRun,
-  IEvaluationRunResult,
+  IEvaluationRunResultData,
 } from '@/interfaces/database/evaluation';
 import {
   IEvaluationAddCaseQueryParams,
+  IEvaluationCreateRunRequestBody,
   IEvaluationStartRunRequestBody,
   IEvaluationUpdateCaseRequestBody,
   IEvaluationUpdateCollectionRequestBody,
@@ -19,8 +20,10 @@ import evaluationService, {
   getListEvaluationDetailFile,
 } from '@/services/evaluation-service';
 import api from '@/utils/api';
+import { downloadFileFromBlob } from '@/utils/file-util';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useDebounce } from 'ahooks';
+import { get } from 'lodash';
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router';
@@ -31,6 +34,7 @@ import {
   useHandleSearchChange,
 } from './logic-hooks';
 import { useEvaluationUrl } from './use-evaluation-url';
+
 type Pagination = { page?: number; pageSize?: number; total?: number };
 export const enum EvaluationApiAction {
   // Collection
@@ -51,6 +55,7 @@ export const enum EvaluationApiAction {
   DeleteCase = 'deleteCase',
 
   // Run
+  Run = 'run',
   StartRun = 'startRun',
   GetRun = 'getRun',
   GetRunResults = 'getRunResults',
@@ -58,6 +63,7 @@ export const enum EvaluationApiAction {
   UpdateRun = 'updateRun',
   DeleteRun = 'deleteRun',
   DuplicateRun = 'duplicateRun',
+  CancelRun = 'cancelRun',
 
   // Execute
   ExecuteAll = 'executeAll',
@@ -219,7 +225,9 @@ export const useUploadEvaluationFile = () => {
           });
         }
         return ret?.data?.code;
-      } catch (error) {}
+      } catch (error) {
+        console.log('🚀 ~ useUploadEvaluationFile ~ error:', error);
+      }
     },
   });
 
@@ -587,8 +595,8 @@ export const useDeleteEvaluationCase = () => {
 
 export const useFetchEvaluationRunList = () => {
   const { searchString, handleInputChange } = useHandleSearchChange();
-  const { pagination, setPagination } = useGetPaginationWithRouter();
   const debouncedSearchString = useDebounce(searchString, { wait: 500 });
+  const { id } = useParams();
 
   const {
     data,
@@ -599,7 +607,8 @@ export const useFetchEvaluationRunList = () => {
       EvaluationApiAction.ListRun,
       {
         debouncedSearchString,
-        ...pagination,
+        // ...pagination,
+        id,
       },
     ],
     initialData: { runs: [], total: 0 },
@@ -610,8 +619,9 @@ export const useFetchEvaluationRunList = () => {
         {
           params: {
             keywords: debouncedSearchString,
-            page_size: pagination.pageSize,
-            page: pagination.current,
+            page_size: 100000,
+            page: 1,
+            target_id: id,
           },
         },
         true,
@@ -634,8 +644,7 @@ export const useFetchEvaluationRunList = () => {
     refetch,
     searchString,
     handleInputChange: onInputChange,
-    pagination: { ...pagination, total: data?.total },
-    setPagination,
+    pagination: { total: data?.total },
   };
 };
 
@@ -661,54 +670,65 @@ export const useFetchEvaluationRun = () => {
   return { data, loading, refetch };
 };
 
-export const useFetchEvaluationRunResults = (runId: string) => {
+export const useFetchEvaluationRunResults = () => {
+  const { runId } = useEvaluationUrl();
+  const { pagination, setPagination } = useGetPaginationWithRouter();
+
   const {
     data,
     isFetching: loading,
     refetch,
-  } = useQuery<IEvaluationRunResult>({
-    queryKey: [EvaluationApiAction.GetRunResults, runId],
+  } = useQuery<IEvaluationRunResultData>({
+    queryKey: [EvaluationApiAction.GetRunResults, runId, pagination],
     gcTime: 0,
-    initialData: {} as IEvaluationRunResult,
+    initialData: {} as IEvaluationRunResultData,
     enabled: !!runId,
     refetchOnWindowFocus: false,
+    refetchInterval: 5000,
     queryFn: async () => {
       const { data } = await evaluationService.getRunResults(
         {
           url: api.evaluationGetRunResults(runId),
-          method: 'get',
+          params: {
+            page_size: pagination.pageSize,
+            page: pagination.current,
+          },
         },
         true,
       );
 
-      return data?.data ?? ({} as IEvaluationRunResult);
+      return data?.data ?? ({} as IEvaluationRunResultData);
     },
   });
 
-  return { data, loading, refetch };
+  return { data, loading, refetch, setPagination, pagination };
 };
 
 export const useStartEvaluationRun = () => {
   const queryClient = useQueryClient();
   const { t } = useTranslation();
-  const { id } = useParams();
-  const { type } = useEvaluationUrl();
+  const { runId } = useEvaluationUrl();
 
   const {
     data,
     isPending: loading,
     mutateAsync,
-  } = useMutation({
+  } = useMutation<unknown, unknown, IEvaluationStartRunRequestBody>({
     mutationKey: [EvaluationApiAction.StartRun],
-    mutationFn: async (params: Partial<IEvaluationStartRunRequestBody>) => {
-      const { data } = await evaluationService.startRun({
-        target_id: id!,
-        target_type: type,
-        ...params,
-      });
+    mutationFn: async (params) => {
+      const { data } = await evaluationService.startRun(
+        {
+          url: api.evaluationStartRun(runId!),
+          data: params,
+        },
+        true,
+      );
       if (data.code === 0) {
         queryClient.invalidateQueries({
-          queryKey: [EvaluationApiAction.ListRun],
+          queryKey: [EvaluationApiAction.GetRunResults],
+        });
+        queryClient.invalidateQueries({
+          queryKey: [EvaluationApiAction.GetRun],
         });
         message.success(t('message.created'));
       }
@@ -719,9 +739,44 @@ export const useStartEvaluationRun = () => {
   return { data, loading, startEvaluationRun: mutateAsync };
 };
 
+// create run
+export const useCreateRunEvaluation = () => {
+  const queryClient = useQueryClient();
+  const { t } = useTranslation();
+  const { id } = useParams();
+  const { type, setRunId } = useEvaluationUrl();
+
+  const {
+    data,
+    isPending: loading,
+    mutateAsync,
+  } = useMutation({
+    mutationKey: [EvaluationApiAction.Run],
+    mutationFn: async (params: Partial<IEvaluationCreateRunRequestBody>) => {
+      const { data } = await evaluationService.run({
+        target_id: id!,
+        target_type: type,
+        name: get(params, 'config_snapshot.target.name', ''),
+        ...params,
+      });
+      if (data.code === 0) {
+        setRunId(data.data?.run_id || '');
+        queryClient.invalidateQueries({
+          queryKey: [EvaluationApiAction.ListRun],
+        });
+        message.success(t('message.created'));
+      }
+      return data;
+    },
+  });
+
+  return { data, loading, createRunEvaluation: mutateAsync };
+};
+
 export const useUpdateEvaluationRun = () => {
   const queryClient = useQueryClient();
   const { t } = useTranslation();
+  const { type } = useEvaluationUrl();
 
   const {
     data,
@@ -736,7 +791,11 @@ export const useUpdateEvaluationRun = () => {
       const { data } = await evaluationService.updateRun(
         {
           url: api.evaluationUpdateRun(runId),
-          data: params,
+          data: {
+            name: get(params, 'config_snapshot.target.name', ''),
+            target_type: type,
+            ...params,
+          },
         },
         true,
       );
@@ -759,6 +818,7 @@ export const useUpdateEvaluationRun = () => {
 export const useDeleteEvaluationRun = () => {
   const queryClient = useQueryClient();
   const { t } = useTranslation();
+  const { runId: selectedRunId, setRunId } = useEvaluationUrl();
 
   const {
     data,
@@ -767,14 +827,11 @@ export const useDeleteEvaluationRun = () => {
   } = useMutation({
     mutationKey: [EvaluationApiAction.DeleteRun],
     mutationFn: async (runId: string) => {
-      const { data } = await evaluationService.deleteRun(
-        {
-          url: api.evaluationDeleteRun(runId),
-          data: {},
-        },
-        true,
-      );
+      const { data } = await evaluationService.deleteRun(runId);
       if (data.code === 0) {
+        if (selectedRunId === runId) {
+          setRunId('');
+        }
         queryClient.invalidateQueries({
           queryKey: [EvaluationApiAction.ListRun],
         });
@@ -818,6 +875,31 @@ export const useDuplicateEvaluationRun = () => {
   return { data, loading, duplicateEvaluationRun: mutateAsync };
 };
 
+export const useCancelEvaluationRun = () => {
+  const queryClient = useQueryClient();
+  const { t } = useTranslation();
+  const { runId } = useEvaluationUrl();
+
+  const {
+    data,
+    isPending: loading,
+    mutateAsync,
+  } = useMutation({
+    mutationKey: [EvaluationApiAction.CancelRun],
+    mutationFn: async () => {
+      const { data } = await evaluationService.evaluationCancelRun(runId);
+      if (data.code === 0) {
+        queryClient.invalidateQueries({
+          queryKey: [EvaluationApiAction.GetRun],
+        });
+        message.success(t('message.operated'));
+      }
+      return data;
+    },
+  });
+
+  return { data, loading, cancelEvaluationRun: mutateAsync };
+};
 //#endregion
 
 //#region Execute Hooks
@@ -1151,6 +1233,7 @@ export const useFetchEvaluationRecommendations = (runId: string) => {
 
 export const useExportEvaluationRun = () => {
   const { t } = useTranslation();
+  const { runId } = useEvaluationUrl();
 
   const {
     data,
@@ -1158,7 +1241,7 @@ export const useExportEvaluationRun = () => {
     mutateAsync,
   } = useMutation({
     mutationKey: [EvaluationApiAction.ExportRun],
-    mutationFn: async (runId: string) => {
+    mutationFn: async () => {
       const { data } = await evaluationService.exportRun(
         {
           url: api.evaluationExportRun(runId),
@@ -1168,14 +1251,12 @@ export const useExportEvaluationRun = () => {
         true,
       );
       if (data) {
-        // Create download link
-        const url = window.URL.createObjectURL(new Blob([data]));
-        const link = document.createElement('a');
-        link.href = url;
-        link.setAttribute('download', `evaluation-run-${runId}.xlsx`);
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
+        const blob = new Blob([data], {
+          type: data.type,
+        });
+
+        downloadFileFromBlob(blob);
+
         message.success(t('message.operated'));
       }
       return data;

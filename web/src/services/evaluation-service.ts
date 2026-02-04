@@ -14,6 +14,7 @@ const {
   evaluationDeleteCase,
   evaluationUpdateCase,
   evaluationStartRun,
+  evaluationRun,
   evaluationGetRun,
   evaluationGetRunResults,
   evaluationListRun,
@@ -33,6 +34,7 @@ const {
   evaluationExportRun,
   downloadEvaluationFile,
   listEvaluationDetailFile,
+  evaluationCancelRun,
 } = api;
 
 const methods = {
@@ -90,6 +92,11 @@ const methods = {
     url: evaluationStartRun,
     method: 'post',
   },
+  run: {
+    url: evaluationRun,
+    method: 'put',
+  },
+
   getRun: {
     url: evaluationGetRun,
     method: 'get',
@@ -104,14 +111,18 @@ const methods = {
   },
   updateRun: {
     url: evaluationUpdateRun,
-    method: 'post',
+    method: 'put',
   },
   deleteRun: {
     url: evaluationDeleteRun,
-    method: 'post',
+    method: 'delete',
   },
   duplicateRun: {
     url: evaluationDuplicateRun,
+    method: 'post',
+  },
+  evaluationCancelRun: {
+    url: evaluationCancelRun,
     method: 'post',
   },
 

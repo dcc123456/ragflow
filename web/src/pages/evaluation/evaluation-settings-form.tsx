@@ -4,10 +4,10 @@ import { Collapse } from '@/components/collapse';
 import { SelectWithSearch } from '@/components/originui/select-with-search';
 import { RAGFlowFormItem } from '@/components/ragflow-form';
 import { SwitchFormField } from '@/components/switch-fom-field';
-import { Textarea } from '@/components/ui/textarea';
 import { LlmModelType } from '@/constants/knowledge';
 import { useFetchAllEvaluationCollection } from '@/hooks/use-evaluation-request';
 import { useSelectLlmOptionsByModelType } from '@/hooks/use-llm-request';
+import { prefixName } from '@/utils/form';
 import { useTranslation } from 'react-i18next';
 
 type LLmSelectFormItemProps = {
@@ -27,6 +27,8 @@ function LLmSelectFormItem({ name }: LLmSelectFormItemProps) {
     </RAGFlowFormItem>
   );
 }
+
+const Prefix = 'config_snapshot.metrics.';
 
 export function EvaluationSettingsForm() {
   const { t } = useTranslation();
@@ -55,30 +57,51 @@ export function EvaluationSettingsForm() {
 
       <Collapse
         title={t('evaluation.relevancy')}
-        rightContent={<SwitchFormField name="relevancy.enabled" label="" />}
+        rightContent={
+          <SwitchFormField
+            name={prefixName(Prefix, 'context_relevance.enable')}
+            label=""
+          />
+        }
       >
-        <LLmSelectFormItem name="relevancy.model"></LLmSelectFormItem>
+        <LLmSelectFormItem
+          name={prefixName(Prefix, 'context_relevance.llm_id')}
+        ></LLmSelectFormItem>
       </Collapse>
 
       <Collapse
         title={t('evaluation.factuality')}
-        rightContent={<SwitchFormField name="factuality.enabled" label="" />}
+        rightContent={
+          <SwitchFormField
+            name={prefixName(Prefix, 'faithfulness.enable')}
+            label=""
+          />
+        }
       >
-        <LLmSelectFormItem name="factuality.model"></LLmSelectFormItem>
+        <LLmSelectFormItem
+          name={prefixName(Prefix, 'faithfulness.llm_id')}
+        ></LLmSelectFormItem>
       </Collapse>
 
       <Collapse
         title={t('evaluation.consistency')}
-        rightContent={<SwitchFormField name="consistency.enabled" label="" />}
+        rightContent={
+          <SwitchFormField
+            name={prefixName(Prefix, 'semantic_similarity.enable')}
+            label=""
+          />
+        }
       >
         <div className="space-y-4">
-          <LLmSelectFormItem name="consistency.model"></LLmSelectFormItem>
-          <RAGFlowFormItem name="prompt" label={t('evaluation.prompt')}>
+          <LLmSelectFormItem
+            name={prefixName(Prefix, 'semantic_similarity.llm_id')}
+          ></LLmSelectFormItem>
+          {/* <RAGFlowFormItem name="prompt" label={t('evaluation.prompt')}>
             <Textarea
               placeholder={t('evaluation.promptPlaceholder')}
               rows={4}
             />
-          </RAGFlowFormItem>
+          </RAGFlowFormItem> */}
         </div>
       </Collapse>
     </>

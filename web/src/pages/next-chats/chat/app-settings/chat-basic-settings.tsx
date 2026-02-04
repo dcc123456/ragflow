@@ -16,9 +16,16 @@ import {
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useTranslate } from '@/hooks/common-hooks';
+import { prefixName } from '@/utils/form';
 import { useFormContext } from 'react-hook-form';
 
-export default function ChatBasicSetting() {
+interface ChatBasicSettingProps {
+  prefix?: string;
+}
+
+export default function ChatBasicSetting({
+  prefix = '',
+}: ChatBasicSettingProps) {
   const { t } = useTranslate('chat');
   const form = useFormContext();
 
@@ -26,7 +33,7 @@ export default function ChatBasicSetting() {
     <div className="space-y-8">
       <FormField
         control={form.control}
-        name={'icon'}
+        name={prefixName(prefix, 'icon')}
         render={({ field }) => (
           <div className="space-y-6">
             <FormItem className="w-full">
@@ -41,7 +48,7 @@ export default function ChatBasicSetting() {
       />
       <FormField
         control={form.control}
-        name="name"
+        name={prefixName(prefix, 'name')}
         render={({ field }) => (
           <FormItem>
             <FormLabel required>{t('assistantName')}</FormLabel>
@@ -54,7 +61,7 @@ export default function ChatBasicSetting() {
       />
       <FormField
         control={form.control}
-        name="description"
+        name={prefixName(prefix, 'description')}
         render={({ field }) => (
           <FormItem>
             <FormLabel>{t('description')}</FormLabel>
@@ -67,7 +74,7 @@ export default function ChatBasicSetting() {
       />
       <FormField
         control={form.control}
-        name={'prompt_config.empty_response'}
+        name={prefixName(prefix, 'prompt_config.empty_response')}
         render={({ field }) => (
           <FormItem>
             <FormLabel tooltip={t('emptyResponseTip')}>
@@ -82,7 +89,7 @@ export default function ChatBasicSetting() {
       />
       <FormField
         control={form.control}
-        name={'prompt_config.prologue'}
+        name={prefixName(prefix, 'prompt_config.prologue')}
         render={({ field }) => (
           <FormItem>
             <FormLabel tooltip={t('setAnOpenerTip')}>
@@ -96,24 +103,30 @@ export default function ChatBasicSetting() {
         )}
       />
       <SwitchFormField
-        name={'prompt_config.quote'}
+        name={prefixName(prefix, 'prompt_config.quote')}
         label={t('quote')}
         tooltip={t('quoteTip')}
       ></SwitchFormField>
       <SwitchFormField
-        name={'prompt_config.keyword'}
+        name={prefixName(prefix, 'prompt_config.keyword')}
         label={t('keyword')}
         tooltip={t('keywordTip')}
       ></SwitchFormField>
       <SwitchFormField
-        name={'prompt_config.tts'}
+        name={prefixName(prefix, 'prompt_config.tts')}
         label={t('tts')}
         tooltip={t('ttsTip')}
       ></SwitchFormField>
-      <TOCEnhanceFormField name="prompt_config.toc_enhance"></TOCEnhanceFormField>
-      <TavilyFormField></TavilyFormField>
-      <KnowledgeBaseFormField></KnowledgeBaseFormField>
-      <MetadataFilter></MetadataFilter>
+      <TOCEnhanceFormField
+        name={prefixName(prefix, 'prompt_config.toc_enhance')}
+      ></TOCEnhanceFormField>
+      <TavilyFormField
+        name={prefixName(prefix, 'prompt_config.tavily_api_key')}
+      ></TavilyFormField>
+      <KnowledgeBaseFormField
+        name={prefixName(prefix, 'kb_ids')}
+      ></KnowledgeBaseFormField>
+      <MetadataFilter prefix={prefix}></MetadataFilter>
     </div>
   );
 }

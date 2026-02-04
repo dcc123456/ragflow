@@ -5,32 +5,26 @@ import { Form } from '@/components/ui/form';
 import { Separator } from '@/components/ui/separator';
 import { useSetModalState } from '@/hooks/common-hooks';
 import { useFetchVersionList } from '@/hooks/use-agent-request';
-import {
-  useFetchAllEvaluationCollection,
-  useFetchEvaluationRun,
-  useStartEvaluationRun,
-} from '@/hooks/use-evaluation-request';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { isEmpty } from 'lodash';
+import { useFetchAllEvaluationCollection } from '@/hooks/use-evaluation-request';
 import { PanelRightClose, Settings } from 'lucide-react';
-import { useCallback, useEffect, useMemo } from 'react';
-import { useForm, useFormContext, useWatch } from 'react-hook-form';
+import { useMemo } from 'react';
+import { UseFormReturn, useWatch } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import ChatBasicSetting from '../next-chats/chat/app-settings/chat-basic-settings';
 import { ChatModelSettings } from '../next-chats/chat/app-settings/chat-model-settings';
 import { ChatPromptEngine } from '../next-chats/chat/app-settings/chat-prompt-engine';
 import { EvaluationType } from './constants';
-import {
-  EvaluationSettingsFormSchema,
-  EvaluationSettingsFormType,
-} from './evaluation-schemas';
+import { EvaluationSettingsFormType } from './evaluation-schemas';
 import { EvaluationSettingsDialog } from './evaluation-settings-dialog';
 import { EvaluationSettingsForm } from './evaluation-settings-form';
+import { useInitializeSettingsOnMount } from './use-initialize-settings';
+import { useSubmitSettings } from './use-submit-settings';
 
 type EvaluationConfigPanelProps = {
   type: EvaluationType;
   visible: boolean;
   onClose: () => void;
+  form: UseFormReturn<EvaluationSettingsFormType>;
 };
 
 function AgentEvaluationConfig() {
@@ -51,15 +45,20 @@ function AgentEvaluationConfig() {
   );
 }
 
-function ChatEvaluationConfig({ collectionName }: { collectionName?: string }) {
+const ChatPrefix = 'config_snapshot.target.';
+
+function ChatEvaluationConfig({
+  collectionName,
+  form,
+}: {
+  collectionName?: string;
+  form: UseFormReturn<EvaluationSettingsFormType>;
+}) {
   const { t } = useTranslation();
+
   const collectionId = useWatch({ name: 'collection_id' });
-
-  const form = useFormContext();
-
-  const {
-    data: { config_snapshot },
-  } = useFetchEvaluationRun();
+  const formState = form.formState;
+  const collectionIdError = formState.errors.collection_id;
 
   const {
     visible: showDialog,
@@ -67,34 +66,35 @@ function ChatEvaluationConfig({ collectionName }: { collectionName?: string }) {
     hideModal: hideSettingsDialog,
   } = useSetModalState();
 
-  useEffect(() => {
-    if (!isEmpty(config_snapshot)) {
-      form.reset(config_snapshot);
-    }
-  }, [config_snapshot, form]);
-
   return (
     <>
-      <section className="bg-bg-input border-border-default border-0.5 flex items-center justify-between rounded-md p-2">
-        <div className="space-x-2">
-          <span>{t('evaluation.title')}</span>
-          <span className="text-text-secondary">
-            {collectionName || collectionId || t('evaluation.notConfigured')}
-          </span>
+      <section>
+        <div className="bg-bg-input border-border-default border-0.5 flex items-center justify-between rounded-md p-1">
+          <div className="space-x-2">
+            <span>{t('evaluation.title')}</span>
+            <span className="text-text-secondary">
+              {collectionName || collectionId || t('evaluation.notConfigured')}
+            </span>
+          </div>
+          <Settings
+            className="size-4 text-xs cursor-pointer"
+            onClick={showSettingsDialog}
+          />
         </div>
-        <Settings
-          className="size-4 text-xs cursor-pointer"
-          onClick={showSettingsDialog}
-        />
+        {formState.isSubmitted && collectionIdError && (
+          <div className="text-sm font-medium text-state-error">
+            {t('evaluation.selectCollection')}
+          </div>
+        )}
       </section>
       {showDialog && (
         <EvaluationSettingsDialog hideModal={hideSettingsDialog} />
       )}
-      <ChatBasicSetting></ChatBasicSetting>
+      <ChatBasicSetting prefix={ChatPrefix}></ChatBasicSetting>
       <Separator />
-      <ChatPromptEngine></ChatPromptEngine>
+      <ChatPromptEngine prefix={ChatPrefix}></ChatPromptEngine>
       <Separator />
-      <ChatModelSettings></ChatModelSettings>
+      <ChatModelSettings prefix={ChatPrefix}></ChatModelSettings>
     </>
   );
 }
@@ -103,38 +103,23 @@ export function EvaluationConfigPanel({
   type,
   visible,
   onClose,
+  form,
 }: EvaluationConfigPanelProps) {
   const { t } = useTranslation();
-
-  const { startEvaluationRun } = useStartEvaluationRun();
 
   const {
     data: { collections },
   } = useFetchAllEvaluationCollection();
 
-  const form = useForm<EvaluationSettingsFormType>({
-    resolver: zodResolver(EvaluationSettingsFormSchema),
-    defaultValues: {
-      collection_id: '',
-      relevancy: { enabled: true, model: undefined },
-      factuality: { enabled: true, model: undefined },
-      consistency: { enabled: true, model: undefined },
-      prompt: '',
-    },
-  });
+  const { handleSubmit } = useSubmitSettings();
+
+  useInitializeSettingsOnMount(form);
 
   const currentCollectionId = form.watch('collection_id');
   const currentCollectionName = useMemo(() => {
     if (!currentCollectionId) return undefined;
     return collections.find((c) => c.id === currentCollectionId)?.name;
   }, [currentCollectionId, collections]);
-
-  const handleSubmit = useCallback(
-    async (data: EvaluationSettingsFormType) => {
-      startEvaluationRun({ collection_id: data.collection_id });
-    },
-    [startEvaluationRun],
-  );
 
   if (!visible) return null;
 
@@ -148,14 +133,19 @@ export function EvaluationConfigPanel({
       </div>
       <Form {...form}>
         <form
-          onSubmit={form.handleSubmit(handleSubmit)}
+          onSubmit={form.handleSubmit(handleSubmit, (errors) => {
+            console.log('🚀 ~ EvaluationConfigPanel ~ errors:', errors);
+          })}
           className="space-y-6 flex-1 min-h-0 flex flex-col"
         >
           <div className="space-y-6 overflow-auto flex-1 pr-5">
             {type === EvaluationType.Agent ? (
               <AgentEvaluationConfig />
             ) : (
-              <ChatEvaluationConfig collectionName={currentCollectionName} />
+              <ChatEvaluationConfig
+                collectionName={currentCollectionName}
+                form={form}
+              />
             )}
           </div>
 

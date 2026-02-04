@@ -15,10 +15,15 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { UseKnowledgeGraphFormField } from '@/components/use-knowledge-graph-item';
 import { useTranslate } from '@/hooks/common-hooks';
+import { prefixName } from '@/utils/form';
 import { useFormContext } from 'react-hook-form';
 import { DynamicVariableForm } from './dynamic-variable';
 
-export function ChatPromptEngine() {
+interface ChatPromptEngineProps {
+  prefix?: string;
+}
+
+export function ChatPromptEngine({ prefix = '' }: ChatPromptEngineProps) {
   const { t } = useTranslate('chat');
   const form = useFormContext();
 
@@ -26,7 +31,7 @@ export function ChatPromptEngine() {
     <div className="space-y-8">
       <FormField
         control={form.control}
-        name="prompt_config.system"
+        name={prefixName(prefix, 'prompt_config.system')}
         render={({ field }) => (
           <FormItem>
             <FormLabel>{t('system')}</FormLabel>
@@ -42,22 +47,35 @@ export function ChatPromptEngine() {
           </FormItem>
         )}
       />
-      <SimilaritySliderFormField isTooltipShown></SimilaritySliderFormField>
-      <TopNFormField></TopNFormField>
+      <SimilaritySliderFormField
+        isTooltipShown
+        similarityName={prefixName(prefix, 'similarity_threshold')}
+        vectorSimilarityWeightName={prefixName(
+          prefix,
+          'vector_similarity_weight',
+        )}
+      ></SimilaritySliderFormField>
+      <TopNFormField name={prefixName(prefix, 'top_n')}></TopNFormField>
       <SwitchFormField
-        name={'prompt_config.refine_multiturn'}
+        name={prefixName(prefix, 'prompt_config.refine_multiturn')}
         label={t('multiTurn')}
         tooltip={t('multiTurnTip')}
       ></SwitchFormField>
-      <UseKnowledgeGraphFormField name="prompt_config.use_kg"></UseKnowledgeGraphFormField>
+      <UseKnowledgeGraphFormField
+        name={prefixName(prefix, 'prompt_config.use_kg')}
+      ></UseKnowledgeGraphFormField>
       <SwitchFormField
-        name={'prompt_config.reasoning'}
+        name={prefixName(prefix, 'prompt_config.reasoning')}
         label={t('reasoning')}
         tooltip={t('reasoningTip')}
       ></SwitchFormField>
-      <RerankFormFields></RerankFormFields>
-      <CrossLanguageFormField></CrossLanguageFormField>
-      <DynamicVariableForm></DynamicVariableForm>
+      <RerankFormFields prefix={prefix}></RerankFormFields>
+      <CrossLanguageFormField
+        name={prefixName(prefix, 'prompt_config.cross_languages')}
+      ></CrossLanguageFormField>
+      <DynamicVariableForm
+        name={prefixName(prefix, 'prompt_config.parameters')}
+      ></DynamicVariableForm>
     </div>
   );
 }

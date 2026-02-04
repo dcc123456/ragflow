@@ -350,7 +350,10 @@ export default {
     `${api_host}/evaluation/case/${caseId}`,
 
   // run
-  evaluationStartRun: `${api_host}/evaluation/run/start`,
+
+  evaluationStartRun: (runId: string) =>
+    `${api_host}/evaluation/run/${runId}/start`,
+  evaluationRun: `${api_host}/evaluation/run`,
   evaluationGetRun: (runId: string) => `${api_host}/evaluation/run/${runId}`,
   evaluationGetRunResults: (runId: string) =>
     `${api_host}/evaluation/run/${runId}/results`,
@@ -359,6 +362,9 @@ export default {
   evaluationUpdateRun: (runId: string) => `${api_host}/evaluation/run/${runId}`,
   evaluationDuplicateRun: (runId: string) =>
     `${api_host}/evaluation/run/${runId}/duplicate`,
+
+  evaluationCancelRun: (runId: string) =>
+    `${api_host}/evaluation/run/${runId}/cancel`,
 
   // execute
   evaluationExecuteAll: (runId: string) =>

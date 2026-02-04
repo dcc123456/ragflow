@@ -69,8 +69,10 @@ export function useDisableDifferenceEmbeddingDataset() {
 
 export function KnowledgeBaseFormField({
   showVariable = false,
+  name = 'kb_ids',
 }: {
   showVariable?: boolean;
+  name?: string;
 }) {
   const form = useFormContext();
   const { t } = useTranslation();
@@ -114,7 +116,7 @@ export function KnowledgeBaseFormField({
   return (
     <FormField
       control={form.control}
-      name="kb_ids"
+      name={name}
       render={({ field }) => (
         <FormItem>
           <FormLabel tooltip={t('chat.knowledgeBasesTip')}>

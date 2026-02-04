@@ -60,12 +60,12 @@ export interface IDialog {
   similarity_threshold: number;
   top_k: number;
   top_n: number;
-  meta_data_filter: MetaDataFilter;
+  meta_data_filter?: MetaDataFilter;
   operator_permission: number;
   nickname: string;
 }
 
-interface MetaDataFilter {
+export interface MetaDataFilter {
   manual: Manual[];
   method: string;
 }

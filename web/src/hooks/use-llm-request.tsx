@@ -23,8 +23,6 @@ import { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useFetchTenantInfo } from './use-user-setting-request';
 
-import { buildLlmUuid } from '@/utils/llm-util';
-
 export const enum LLMApiAction {
   LlmList = 'llmList',
   MyLlmList = 'myLlmList',
@@ -58,7 +56,7 @@ export function useSelectFlatLlmList(modelType?: LlmModelType) {
   const llmList = useFetchLlmList(modelType);
 
   return Object.values(llmList).reduce<IThirdOAIModelWithUuid[]>((pre, cur) => {
-    pre.push(...cur.map((x) => ({ ...x, uuid: buildLlmUuid(x) })));
+    pre.push(...cur.map((x) => ({ ...x, uuid: buildLlmId(x) })));
 
     return pre;
   }, []);

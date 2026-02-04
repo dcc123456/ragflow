@@ -39,14 +39,21 @@ export interface IEvaluationImportCaseRequestBody {
 }
 
 // Run
-export interface IEvaluationStartRunRequestBody {
+export interface IEvaluationCreateRunRequestBody {
   collection_id: string;
   target_type: EvaluationType;
   target_id: string;
   name?: string;
+  config_snapshot?: Record<string, any>;
 }
 
 export interface IEvaluationUpdateRunRequestBody {
+  collection_id?: string;
   name?: string;
   config_snapshot?: Record<string, any>;
+}
+
+export interface IEvaluationStartRunRequestBody {
+  case_ids?: string[];
+  metrics_name?: string[];
 }
