@@ -1,7 +1,7 @@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Trash2 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PromptEditor } from '../../components/prompt-editor';
 
@@ -36,18 +36,17 @@ const HeaderItem = ({
     setEditingValue(newValue || '');
   };
 
-  const handleBlur = () => {
-    if (editingKey !== keyName || editingValue !== keyValue) {
+  useEffect(() => {
+    if (keyName !== editingKey || keyValue !== editingValue) {
       onUpdate(index, editingKey, editingValue);
     }
-  };
+  }, [editingKey, editingValue, index, onUpdate, keyName, keyValue]);
 
   return (
     <div className="flex flex-row items-center space-x-2">
       <Input
         value={editingKey}
         onChange={handleKeyChange}
-        onBlur={handleBlur}
         placeholder={placeholderKey || t('flow.header_key')}
         className="w-40"
       />
@@ -55,8 +54,9 @@ const HeaderItem = ({
         <PromptEditor
           placeholder={placeholderValue || t('flow.header_value')}
           value={editingValue}
-          onChange={handleValueChange}
-          onBlur={handleBlur}
+          onChange={(value) => {
+            handleValueChange(value);
+          }}
           multiLine={false}
           showToolbar={false}
         ></PromptEditor>
@@ -88,7 +88,6 @@ export const HeaderList = ({ headers, onChange }: HeaderListProps) => {
         updatedHeaders[key] = value;
       }
     });
-
     onChange(updatedHeaders);
   };
 
