@@ -77,6 +77,16 @@ class DocumentService(CommonService):
             cls.model.update_time,
             cls.model.update_date,
         ]
+    
+    
+    @classmethod
+    @DB.connection_context()
+    def one(cls):
+        fields = cls.get_cls_model_fields()
+        docs = cls.model.select(*fields).paginate(1, 1).dicts()
+        if not docs:
+            return
+        return docs[0]
 
     @classmethod
     @DB.connection_context()
@@ -1290,12 +1300,21 @@ def doc_upload_and_parse(conversation_id, file_objs, user_id):
     return [d["id"] for d, _ in files]
 
 
-def queue_reembedding_dup_tasks(sample_doc_id, ty:str, priority:int, embed_id=None, target_kb_id=None):
+def queue_reembedding_dup_tasks(
+    sample_doc_id,
+    ty: str,
+    priority: int,
+    embed_id=None,
+    target_kb_id=None,
+    eva_run_id=None,
+    case_ids=None,
+    metrics_name=None,
+):
     """
     You can provide a fake_doc_id to bypass the restriction of tasks at the knowledgebase level.
     Optionally, specify a list of doc_ids to determine which documents participate in the task.
     """
-    assert ty in ["reembedding", "clone"], "type should be reembedding or clone."
+    assert ty in ["reembedding", "clone", "evaluation"], "type should be reembedding / clone / evaluation."
     hasher = xxhash.xxh64()
     def new_task():
         return {
@@ -1317,6 +1336,12 @@ def queue_reembedding_dup_tasks(sample_doc_id, ty:str, priority:int, embed_id=No
         task["target_embed_id"] = embed_id
     if target_kb_id:
         task["target_kb_id"] = target_kb_id
+    if eva_run_id:
+        task["eva_run_id"] = eva_run_id
+    if case_ids:
+        task["case_ids"] = case_ids
+    if metrics_name:
+        task["metrics_name"] = metrics_name
 
     assert RABBITMQ_CONN.queue_product(
         rout_key(priority, "common"), message=task

@@ -457,7 +457,7 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
     def decorate_answer(answer):
         nonlocal embd_mdl, prompt_config, knowledges, kwargs, kbinfos, prompt, retrieval_ts, questions, langfuse_tracer
 
-        refs = []
+        refs = {}
         ans = answer.split("</think>")
         think = ""
         if len(ans) == 2:

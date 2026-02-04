@@ -19,10 +19,12 @@ import json
 import logging
 import re
 from copy import deepcopy
-from typing import Tuple
+from typing import Tuple, Optional, Sequence
+
 import jinja2
 import json_repair
 from common.misc_utils import hash_str2int
+from common.evaluation_metrics import DEFAULT_EVALUATION_METRICS, EvaluationMetric
 from rag.nlp import rag_tokenizer
 from rag.prompts.template import load_prompt
 from common.constants import TAG_FLD
@@ -169,7 +171,6 @@ SUMMARY4MEMORY = load_prompt("summary4memory")
 RANK_MEMORY = load_prompt("rank_memory")
 META_FILTER = load_prompt("meta_filter")
 ASK_SUMMARY = load_prompt("ask_summary")
-
 PROMPT_JINJA_ENV = jinja2.Environment(autoescape=False, trim_blocks=True, lstrip_blocks=True)
 
 
@@ -497,6 +498,97 @@ async def gen_json(system_prompt: str, user_prompt: str, chat_mdl, gen_conf=None
         return res
     except Exception:
         logging.exception(f"Loading json failure: {ans}")
+
+
+RAG_JUDGE_FAITHFULNESS_SYSTEM = load_prompt("rag_judge_faithfulness_system")
+RAG_JUDGE_FAITHFULNESS_USER = load_prompt("rag_judge_faithfulness_user")
+RAG_JUDGE_CONTEXT_RELEVANCE_SYSTEM = load_prompt("rag_judge_context_relevance_system")
+RAG_JUDGE_CONTEXT_RELEVANCE_USER = load_prompt("rag_judge_context_relevance_user")
+RAG_JUDGE_SEMANTIC_SIMILARITY_SYSTEM = load_prompt("rag_judge_semantic_similarity_system")
+RAG_JUDGE_SEMANTIC_SIMILARITY_USER = load_prompt("rag_judge_semantic_similarity_user")
+
+
+def _clamp01(v: float) -> float:
+    if v < 0.0:
+        return 0.0
+    if v > 1.0:
+        return 1.0
+    return v
+
+
+def _normalize_metric_result(result: object) -> dict:
+    if isinstance(result, (int, float)):
+        return {"score": _clamp01(float(result)), "reason": ""}
+
+    if not isinstance(result, dict):
+        return {}
+
+    score = result.get("score")
+    if score is None:
+        return {}
+    try:
+        score_f = _clamp01(float(score))
+    except (TypeError, ValueError):
+        return {}
+    reason = result.get("reason", "")
+    if reason is None:
+        reason = ""
+    return {"score": score_f, "reason": str(reason)}
+
+
+async def rag_judge_metrics(
+    chat_mdl,
+    question: str,
+    answer: str,
+    context: str = "",
+    reference_answer: str = "",
+    gen_conf: Optional[dict] = None,
+    metric_names: Optional[Sequence[str]] = None,
+) -> dict:
+    question = question or ""
+    answer = answer or ""
+    context = context or "None"
+    reference_answer = reference_answer or "None"
+
+    allowed = DEFAULT_EVALUATION_METRICS
+    if metric_names is None:
+        metric_names = allowed
+    else:
+        metric_names = [m for m in metric_names if m in allowed]
+    if not metric_names:
+        return {}
+    metric_names = set(metric_names)
+
+    results = {}
+
+    if EvaluationMetric.FAITHFULNESS in metric_names:
+        system_prompt = PROMPT_JINJA_ENV.from_string(RAG_JUDGE_FAITHFULNESS_SYSTEM).render()
+        user_prompt = PROMPT_JINJA_ENV.from_string(RAG_JUDGE_FAITHFULNESS_USER).render(
+            question=question, answer=answer, context=context
+        )
+        results[EvaluationMetric.FAITHFULNESS] = _normalize_metric_result(
+            await gen_json(system_prompt, user_prompt, chat_mdl, gen_conf=gen_conf)
+        )
+
+    if EvaluationMetric.CONTEXT_RELEVANCE in metric_names:
+        system_prompt = PROMPT_JINJA_ENV.from_string(RAG_JUDGE_CONTEXT_RELEVANCE_SYSTEM).render()
+        user_prompt = PROMPT_JINJA_ENV.from_string(RAG_JUDGE_CONTEXT_RELEVANCE_USER).render(
+            question=question, context=context
+        )
+        results[EvaluationMetric.CONTEXT_RELEVANCE] = _normalize_metric_result(
+            await gen_json(system_prompt, user_prompt, chat_mdl, gen_conf=gen_conf)
+        )
+
+    if EvaluationMetric.SEMANTIC_SIMILARITY in metric_names:
+        system_prompt = PROMPT_JINJA_ENV.from_string(RAG_JUDGE_SEMANTIC_SIMILARITY_SYSTEM).render()
+        user_prompt = PROMPT_JINJA_ENV.from_string(RAG_JUDGE_SEMANTIC_SIMILARITY_USER).render(
+            answer=answer, reference_answer=reference_answer
+        )
+        results[EvaluationMetric.SEMANTIC_SIMILARITY] = _normalize_metric_result(
+            await gen_json(system_prompt, user_prompt, chat_mdl, gen_conf=gen_conf)
+        )
+
+    return results
 
 
 TOC_DETECTION = load_prompt("toc_detection")

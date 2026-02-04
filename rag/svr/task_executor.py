@@ -31,6 +31,7 @@ from api.utils.api_utils import is_strong_enough
 from common.connection_utils import timeout
 from common.settings import rout_key
 from common.metadata_utils import update_metadata_to, metadata_schema
+from common.time_utils import current_timestamp
 from rag.utils.base64_image import image2id
 from rag.utils.raptor_utils import should_skip_raptor, get_skip_reason
 from common.log_utils import init_root_logger
@@ -46,6 +47,7 @@ import json
 import xxhash
 import copy
 import re
+import weakref
 from functools import partial
 from multiprocessing.context import TimeoutError
 from timeit import default_timer as timer
@@ -57,10 +59,12 @@ from peewee import DoesNotExist
 from common.constants import LLMType, ParserType, PipelineTaskType
 from api.db.services.document_service import DocumentService
 from api.db.services.llm_service import LLMBundle
+from api.db.services.evaluation_service import EvaluationService
 from api.db.services.task_service import TaskService, has_canceled, CANVAS_DEBUG_DOC_ID, GRAPH_RAPTOR_FAKE_DOC_ID
 from api.db.services.file2document_service import File2DocumentService
 from common.versions import get_ragflow_version
-from api.db.db_models import close_connection
+from api.db.db_models import EvaluationRun, close_connection
+from common.evaluation_metrics import EvaluationRunStatus
 from rag.app import laws, paper, presentation, manual, qa, table, book, resume, picture, naive, one, audio, \
     email, tag
 from rag.nlp import search, rag_tokenizer, add_positions
@@ -121,11 +125,51 @@ CURRENT_TASKS = {}
 MAX_CONCURRENT_TASKS = int(os.environ.get('MAX_CONCURRENT_TASKS', "5"))
 MAX_CONCURRENT_CHUNK_BUILDERS = int(os.environ.get('MAX_CONCURRENT_CHUNK_BUILDERS', "1"))
 MAX_CONCURRENT_MINIO = int(os.environ.get('MAX_CONCURRENT_MINIO', '10'))
-task_limiter = asyncio.Semaphore(MAX_CONCURRENT_TASKS)
-chunk_limiter = asyncio.Semaphore(MAX_CONCURRENT_CHUNK_BUILDERS)
-embed_limiter = asyncio.Semaphore(MAX_CONCURRENT_CHUNK_BUILDERS)
-minio_limiter = asyncio.Semaphore(MAX_CONCURRENT_MINIO)
-kg_limiter = asyncio.Semaphore(2)
+
+
+class _LoopLocalSemaphore:
+    """
+    asyncio.Semaphore becomes bound to the first event loop that awaits it.
+    This module runs tasks via asyncio.run() (new loop per task), so we must
+    not reuse the same asyncio.Semaphore instance across loops.
+
+    This wrapper creates one Semaphore per running loop.
+    """
+
+    def __init__(self, value: int):
+        self._value = int(value)
+        self._semaphores: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore]" = (
+            weakref.WeakKeyDictionary()
+        )
+
+    def _get(self) -> asyncio.Semaphore:
+        loop = asyncio.get_running_loop()
+        sem = self._semaphores.get(loop)
+        if sem is None:
+            sem = asyncio.Semaphore(self._value)
+            self._semaphores[loop] = sem
+        return sem
+
+    async def acquire(self) -> bool:
+        return await self._get().acquire()
+
+    def release(self) -> None:
+        self._get().release()
+
+    async def __aenter__(self):
+        await self.acquire()
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        self.release()
+        return False
+
+
+task_limiter = _LoopLocalSemaphore(MAX_CONCURRENT_TASKS)
+chunk_limiter = _LoopLocalSemaphore(MAX_CONCURRENT_CHUNK_BUILDERS)
+embed_limiter = _LoopLocalSemaphore(MAX_CONCURRENT_CHUNK_BUILDERS)
+minio_limiter = _LoopLocalSemaphore(MAX_CONCURRENT_MINIO)
+kg_limiter = _LoopLocalSemaphore(2)
 WORKER_HEARTBEAT_TIMEOUT = int(os.environ.get('WORKER_HEARTBEAT_TIMEOUT', '120'))
 
 
@@ -858,6 +902,29 @@ async def do_handle_task(task):
         await run_dataflow(task)
         return
 
+    if task_type == "evaluation":
+        task_id = task["id"]
+        run_id = task.get("eva_run_id")
+        progress_callback = partial(set_progress, task_id, task["from_page"], task["to_page"])
+        case_ids = task.get("case_ids", [])
+        metrics_name = task.get("metrics_name")
+        cases_total = EvaluationService.get_test_cases_count(run_id)
+        try:
+            await asyncio.wait_for(EvaluationService.execute_run_all_cases(
+                    run_id,
+                    progress_callback,
+                    case_ids=case_ids,
+                    metrics_name=metrics_name,
+                ), 
+                timeout=((len(case_ids) if case_ids else cases_total)+1)*(len(metrics_name) if metrics_name else 3)*60)
+        except Exception:
+            EvaluationRun.update(
+                    status=EvaluationRunStatus.FAILED,
+                    complete_time=current_timestamp()
+                ).where(EvaluationRun.id == run_id).execute()
+            raise
+        return
+    
     task_id = task["id"]
     task_from_page = task["from_page"]
     task_to_page = task["to_page"]
@@ -1297,6 +1364,9 @@ def rabbitmq_callback(ch, method, properties, body):
             elif msg.get("task_type") == PipelineTaskType.MEMORY.lower():
                 _, task_obj = TaskService.get_by_id(msg["id"])
                 task = task_obj.to_dict()
+            elif msg.get("task_type") == "evaluation":
+                _, task_obj = TaskService.get_by_id(msg["id"])
+                task = task_obj.to_dict() if task_obj else None
             else:
                 task = TaskService.get_task(msg["id"])
             if task:
@@ -1338,13 +1408,14 @@ def rabbitmq_callback(ch, method, properties, body):
             pass
         logging.exception(f"handle_task got exception for task {json.dumps(task)}")
     finally:
-        task_document_ids = []
-        if task_type in ["graphrag", "raptor", "mindmap"]:
-            task_document_ids = task["doc_ids"]
-        if not task.get("dataflow_id", "") or task_type != "memory":
-            PipelineOperationLogService.record_pipeline_operation(document_id=task["doc_id"], pipeline_id="",
-                                                                  task_type=pipeline_task_type,
-                                                                  fake_document_ids=task_document_ids)
+        if task and task_type != "evaluation":
+            task_document_ids = []
+            if task_type in ["graphrag", "raptor", "mindmap"]:
+                task_document_ids = task["doc_ids"]
+            if not task.get("dataflow_id", "") or task_type != "memory":
+                PipelineOperationLogService.record_pipeline_operation(document_id=task["doc_id"], pipeline_id="",
+                                                                      task_type=pipeline_task_type,
+                                                                      fake_document_ids=task_document_ids)
 
     ch.basic_ack(method.delivery_tag)
 

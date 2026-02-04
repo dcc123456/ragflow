@@ -33,16 +33,15 @@ class TestEvaluationFrameworkDemo:
     def test_mock_evaluation_service(self):
         """Test mocking evaluation service"""
         mock_service = Mock()
-        mock_service.create_dataset.return_value = (True, "dataset_123")
+        mock_service.create_collection.return_value = (True, "collection_123")
         
-        success, dataset_id = mock_service.create_dataset(
-            name="Test Dataset",
-            kb_ids=["kb_1"]
+        success, collection_id = mock_service.create_collection(
+            name="Test collection"
         )
         
         assert success is True
-        assert dataset_id == "dataset_123"
-        mock_service.create_dataset.assert_called_once()
+        assert collection_id == "collection_123"
+        mock_service.create_collection.assert_called_once()
 
     def test_mock_test_case_addition(self):
         """Test mocking test case addition"""
@@ -50,7 +49,7 @@ class TestEvaluationFrameworkDemo:
         mock_service.add_test_case.return_value = (True, "case_123")
         
         success, case_id = mock_service.add_test_case(
-            dataset_id="dataset_123",
+            collection_id="collection_123",
             question="Test question?",
             reference_answer="Test answer"
         )
@@ -61,11 +60,12 @@ class TestEvaluationFrameworkDemo:
     def test_mock_evaluation_run(self):
         """Test mocking evaluation run"""
         mock_service = Mock()
-        mock_service.start_evaluation.return_value = (True, "run_123")
+        mock_service.create_run_config.return_value = (True, "run_123")
         
-        success, run_id = mock_service.start_evaluation(
-            dataset_id="dataset_123",
-            dialog_id="dialog_456",
+        success, run_id = mock_service.create_run_config(
+            collection_id="collection_123",
+            target_type="dialog",
+            target_id="dialog_456",
             user_id="user_1"
         )
         
@@ -132,21 +132,21 @@ class TestEvaluationFrameworkDemo:
         
         assert abs(f1 - expected_f1) < 0.01
 
-    def test_dataset_list_structure(self):
-        """Test dataset list structure"""
+    def test_collection_list_structure(self):
+        """Test collection list structure"""
         mock_service = Mock()
         
         expected_result = {
             "total": 3,
-            "datasets": [
-                {"id": "dataset_1", "name": "Dataset 1"},
-                {"id": "dataset_2", "name": "Dataset 2"},
-                {"id": "dataset_3", "name": "Dataset 3"}
+            "collections": [
+                {"id": "collection_1", "name": "collection 1"},
+                {"id": "collection_2", "name": "collection 2"},
+                {"id": "collection_3", "name": "collection 3"}
             ]
         }
-        mock_service.list_datasets.return_value = expected_result
+        mock_service.list_collections.return_value = expected_result
         
-        result = mock_service.list_datasets(
+        result = mock_service.list_collections(
             tenant_id="tenant_1",
             user_id="user_1",
             page=1,
@@ -154,8 +154,8 @@ class TestEvaluationFrameworkDemo:
         )
         
         assert result["total"] == 3
-        assert len(result["datasets"]) == 3
-        assert result["datasets"][0]["id"] == "dataset_1"
+        assert len(result["collections"]) == 3
+        assert result["collections"][0]["id"] == "collection_1"
 
     def test_evaluation_run_status_flow(self):
         """Test evaluation run status transitions"""
@@ -179,7 +179,7 @@ class TestEvaluationFrameworkDemo:
         mock_service.import_test_cases.return_value = (8, 2)
         
         success_count, failure_count = mock_service.import_test_cases(
-            dataset_id="dataset_123",
+            collection_id="collection_123",
             cases=[{"question": f"Q{i}"} for i in range(10)]
         )
         
@@ -216,12 +216,12 @@ class TestEvaluationFrameworkDemo:
             }
             assert rec["severity"] in severities
 
-    def test_empty_dataset_handling(self):
-        """Test handling of empty datasets"""
+    def test_empty_collection_handling(self):
+        """Test handling of empty collections"""
         mock_service = Mock()
         mock_service.get_test_cases.return_value = []
         
-        cases = mock_service.get_test_cases("empty_dataset")
+        cases = mock_service.get_test_cases("empty_collection")
         
         assert len(cases) == 0
         assert isinstance(cases, list)
@@ -229,9 +229,9 @@ class TestEvaluationFrameworkDemo:
     def test_error_handling(self):
         """Test error handling in service"""
         mock_service = Mock()
-        mock_service.create_dataset.return_value = (False, "Dataset name cannot be empty")
+        mock_service.create_collection.return_value = (False, "Collection name cannot be empty")
         
-        success, error = mock_service.create_dataset(name="", kb_ids=[])
+        success, error = mock_service.create_collection(name="")
         
         assert success is False
         assert "empty" in error.lower()

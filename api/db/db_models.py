@@ -1484,32 +1484,28 @@ class SyncLogs(DataBaseModel):
         db_table = "sync_logs"
 
 
-class EvaluationDataset(DataBaseModel):
-    """Ground truth dataset for RAG evaluation"""
+class EvaluationCollection(DataBaseModel):
+    """Ground truth collection for RAG evaluation"""
     id = CharField(max_length=32, primary_key=True)
     tenant_id = CharField(max_length=32, null=False, index=True, help_text="tenant ID")
-    name = CharField(max_length=255, null=False, index=True, help_text="dataset name")
-    description = TextField(null=True, help_text="dataset description")
-    kb_ids = JSONField(null=False, help_text="knowledge base IDs to evaluate against")
+    target_type = CharField(max_length=16, null=False, default="chat", index=True, help_text="chat|agent")
+    name = CharField(max_length=255, null=False, index=True, help_text="collection name")
+    description = TextField(null=True, help_text="collection description")
     created_by = CharField(max_length=32, null=False, index=True, help_text="creator user ID")
-    create_time = BigIntegerField(null=False, index=True, help_text="creation timestamp")
-    update_time = BigIntegerField(null=False, help_text="last update timestamp")
     status = IntegerField(null=False, default=1, help_text="1=valid, 0=invalid")
 
     class Meta:
-        db_table = "evaluation_datasets"
+        db_table = "evaluation_collections"
 
 
 class EvaluationCase(DataBaseModel):
-    """Individual test case in an evaluation dataset"""
+    """Individual test case in an evaluation collection"""
     id = CharField(max_length=32, primary_key=True)
-    dataset_id = CharField(max_length=32, null=False, index=True, help_text="FK to evaluation_datasets")
-    question = TextField(null=False, help_text="test question")
-    reference_answer = TextField(null=True, help_text="optional ground truth answer")
-    relevant_doc_ids = JSONField(null=True, help_text="expected relevant document IDs")
-    relevant_chunk_ids = JSONField(null=True, help_text="expected relevant chunk IDs")
-    metadata = JSONField(null=True, help_text="additional context/tags")
-    create_time = BigIntegerField(null=False, help_text="creation timestamp")
+    collection_id = CharField(max_length=32, null=False, index=True, help_text="FK to evaluation_collections")
+    variable = JSONField(null=False, help_text="test question and answer", default={})
+    relevant_doc_ids = JSONField(null=True, help_text="expected relevant document IDs", default=[])
+    relevant_kb_ids = JSONField(null=True, help_text="expected relevant knowledge base IDs", default=[])
+    metadata = JSONField(null=True, help_text="additional context/tags", default={})
 
     class Meta:
         db_table = "evaluation_cases"
@@ -1518,15 +1514,16 @@ class EvaluationCase(DataBaseModel):
 class EvaluationRun(DataBaseModel):
     """A single evaluation run"""
     id = CharField(max_length=32, primary_key=True)
-    dataset_id = CharField(max_length=32, null=False, index=True, help_text="FK to evaluation_datasets")
-    dialog_id = CharField(max_length=32, null=False, index=True, help_text="dialog configuration being evaluated")
+    collection_id = CharField(max_length=32, null=False, index=True, help_text="FK to evaluation_collections")
+    target_type = CharField(max_length=32, null=False, index=True, help_text="chat|agent", default="chat")
+    target_id = CharField(max_length=32, null=False, index=True, help_text="target object id")
     name = CharField(max_length=255, null=False, help_text="run name")
     config_snapshot = JSONField(null=False, help_text="dialog config at time of evaluation")
     metrics_summary = JSONField(null=True, help_text="aggregated metrics")
     status = CharField(max_length=32, null=False, default="PENDING", help_text="PENDING/RUNNING/COMPLETED/FAILED")
     created_by = CharField(max_length=32, null=False, index=True, help_text="user who started the run")
-    create_time = BigIntegerField(null=False, index=True, help_text="creation timestamp")
     complete_time = BigIntegerField(null=True, help_text="completion timestamp")
+    task_id = CharField(max_length=32, null=True, help_text="FK to evaluation_collections")
 
     class Meta:
         db_table = "evaluation_runs"
@@ -1542,7 +1539,6 @@ class EvaluationResult(DataBaseModel):
     metrics = JSONField(null=False, help_text="all computed metrics")
     execution_time = FloatField(null=False, help_text="response time in seconds")
     token_usage = JSONField(null=True, help_text="prompt/completion tokens")
-    create_time = BigIntegerField(null=False, help_text="creation timestamp")
 
     class Meta:
         db_table = "evaluation_results"
@@ -1610,6 +1606,32 @@ def alter_db_rename_column(migrator, table_name, old_column_name, new_column_nam
         # logging.critical(f"Failed to rename {settings.DATABASE_TYPE.upper()}.{table_name} column {old_column_name} to {new_column_name}, error: {ex}")
         pass
 
+def alter_db_rename_table(migrator, old_table_name, new_table_name):
+    try:
+        migrate(migrator.rename_table(old_table_name, new_table_name))
+    except Exception:
+        # rename fail will lead to a weired error.
+        # logging.critical(f"Failed to rename {settings.DATABASE_TYPE.upper()}.{old_table_name} table to {new_table_name}, error: {ex}")
+        pass
+
+def alter_db_remove_column(migrator, table_name, column_name):
+    try:
+        migrate(migrator.drop_column(table_name, column_name))
+    except OperationalError as ex:
+        error_codes = [1091]
+        error_messages = ["Check that column/key exists", "doesn't exist", "does not exist"]
+
+        should_skip_error = (
+                (hasattr(ex, 'args') and ex.args and ex.args[0] in error_codes) or
+                any(message in str(ex) for message in error_messages)
+        )
+
+        if not should_skip_error:
+            logging.critical(f"Failed to drop {settings.DATABASE_TYPE.upper()}.{table_name} column {column_name}, operation error: {ex}")
+    except Exception as ex:
+        logging.critical(f"Failed to drop {settings.DATABASE_TYPE.upper()}.{table_name} column {column_name}, error: {ex}")
+        pass
+
 def migrate_db():
     logging.disable(logging.ERROR)
 
@@ -1669,5 +1691,24 @@ def migrate_db():
     alter_db_add_column(migrator, "knowledgebase", "clone_task_id", CharField(max_length=32, null=True, help_text="Duplicate dataset task ID", index=True))
     alter_db_add_column(migrator, "knowledgebase", "clone_task_finish_at", DateTimeField(null=True))
     alter_db_add_column(migrator, "document", "from_kb_id", CharField(max_length=256, null=True, index=True))
+
+    alter_db_rename_table(migrator, "evaluation_datasets", "evaluation_collections")
+    alter_db_rename_column(migrator, "evaluation_cases", "dataset_id", "collection_id")
+    alter_db_rename_column(migrator, "evaluation_runs", "dataset_id", "collection_id")
+    alter_db_remove_column(migrator, "evaluation_collections", "kb_ids")
+    alter_db_remove_column(migrator, "evaluation_cases", "question")
+    alter_db_remove_column(migrator, "evaluation_cases", "reference_answer")
+    alter_db_remove_column(migrator, "evaluation_cases", "relevant_doc_ids")
+    alter_db_remove_column(migrator, "evaluation_cases", "relevant_chunk_ids")
+    alter_db_remove_column(migrator, "evaluation_cases", "metadata")
+    alter_db_remove_column(migrator, "evaluation_runs", "dialog_id")
+    alter_db_add_column(migrator, "evaluation_cases", "variable", JSONField(null=False, help_text="test question and answer", default={}))
+    alter_db_add_column(migrator, "evaluation_cases", "relevant_doc_ids", JSONField(null=True, help_text="expected relevant document IDs", default=[]))
+    alter_db_add_column(migrator, "evaluation_cases", "relevant_kb_ids", JSONField(null=True, help_text="expected relevant knowledge base IDs", default=[]))
+    alter_db_add_column(migrator, "evaluation_cases", "metadata", JSONField(null=True, help_text="additional context/tags", default={}))
+    alter_db_add_column(migrator, "evaluation_runs", "target_type", CharField(max_length=32, null=False, index=True, help_text="chat|agent|...", default="chat"))
+    alter_db_add_column(migrator, "evaluation_runs", "target_id", CharField(max_length=32, null=False, index=True, help_text="target object id", default=None))
+    alter_db_add_column(migrator, "evaluation_collections", "target_type", CharField(max_length=16, null=False, default="chat", help_text="chat|agent", index=True))
+    alter_db_add_column(migrator, "evaluation_runs", "task_id", CharField(max_length=32, null=True, help_text="task id"))
 
     logging.disable(logging.NOTSET)

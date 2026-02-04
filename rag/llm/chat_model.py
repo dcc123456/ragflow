@@ -1249,11 +1249,14 @@ class LiteLLMBase(ABC):
         return LLMErrorCode.ERROR_GENERIC
 
     def _clean_conf(self, gen_conf):
+        if not gen_conf:
+            return {}
         if "max_tokens" in gen_conf:
             del gen_conf["max_tokens"]
         return gen_conf
 
     async def async_chat(self, system, history, gen_conf, **kwargs):
+        gen_conf = gen_conf or {}
         hist = list(history) if history else []
         if system:
             if not hist or hist[0].get("role") != "system":
@@ -1288,6 +1291,7 @@ class LiteLLMBase(ABC):
         assert False, "Shouldn't be here."
 
     async def async_chat_streamly(self, system, history, gen_conf, **kwargs):
+        gen_conf = gen_conf or {}
         if system and history and history[0].get("role") != "system":
             history.insert(0, {"role": "system", "content": system})
         logging.info("[HISTORY STREAMLY]" + json.dumps(history, ensure_ascii=False, indent=4))
