@@ -104,15 +104,18 @@ export function EvaluationTable({
   });
 
   return (
-    <div className="w-full h-full flex flex-col">
-      <div className="flex-1 overflow-auto">
-        <Table>
+    <div className="w-full flex flex-col flex-1 min-h-0">
+      <div className="flex-1 min-h-0">
+        <Table rootClassName="h-full" className="table-fixed">
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id}>
                 {headerGroup.headers.map((header) => {
                   return (
-                    <TableHead key={header.id}>
+                    <TableHead
+                      key={header.id}
+                      style={{ width: header.getSize() }}
+                    >
                       {header.isPlaceholder
                         ? null
                         : flexRender(
@@ -134,7 +137,12 @@ export function EvaluationTable({
                   className="group"
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
+                    <TableCell
+                      key={cell.id}
+                      style={{
+                        width: cell.column.getSize(),
+                      }}
+                    >
                       {flexRender(
                         cell.column.columnDef.cell,
                         cell.getContext(),
@@ -156,16 +164,14 @@ export function EvaluationTable({
           </TableBody>
         </Table>
       </div>
-      <div className="flex items-center justify-end py-4">
-        <div className="space-x-2">
-          <RAGFlowPagination
-            {...pick(pagination, 'current', 'pageSize')}
-            total={results.total}
-            onChange={(page, pageSize) => {
-              setPagination({ page, pageSize });
-            }}
-          ></RAGFlowPagination>
-        </div>
+      <div className="pt-4">
+        <RAGFlowPagination
+          {...pick(pagination, 'current', 'pageSize')}
+          total={results.total}
+          onChange={(page, pageSize) => {
+            setPagination({ page, pageSize });
+          }}
+        ></RAGFlowPagination>
       </div>
 
       {detailVisible && (

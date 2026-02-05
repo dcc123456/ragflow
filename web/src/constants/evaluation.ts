@@ -8,3 +8,10 @@ export enum EvaluationSearchParams {
   RunId = 'runId',
   Page = 'page',
 }
+
+export enum RunningStatus {
+  RUNNING = 'RUNNING',
+  COMPLETED = 'COMPLETED',
+  FAILED = 'FAILED',
+  CANCEL = 'CANCEL',
+}

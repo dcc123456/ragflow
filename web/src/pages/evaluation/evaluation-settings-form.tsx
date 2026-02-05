@@ -61,6 +61,7 @@ export function EvaluationSettingsForm() {
           <SwitchFormField
             name={prefixName(Prefix, 'context_relevance.enable')}
             label=""
+            shouldStopPropagation
           />
         }
       >
@@ -75,6 +76,7 @@ export function EvaluationSettingsForm() {
           <SwitchFormField
             name={prefixName(Prefix, 'faithfulness.enable')}
             label=""
+            shouldStopPropagation
           />
         }
       >
@@ -89,6 +91,7 @@ export function EvaluationSettingsForm() {
           <SwitchFormField
             name={prefixName(Prefix, 'semantic_similarity.enable')}
             label=""
+            shouldStopPropagation
           />
         }
       >
@@ -96,12 +99,6 @@ export function EvaluationSettingsForm() {
           <LLmSelectFormItem
             name={prefixName(Prefix, 'semantic_similarity.llm_id')}
           ></LLmSelectFormItem>
-          {/* <RAGFlowFormItem name="prompt" label={t('evaluation.prompt')}>
-            <Textarea
-              placeholder={t('evaluation.promptPlaceholder')}
-              rows={4}
-            />
-          </RAGFlowFormItem> */}
         </div>
       </Collapse>
     </>

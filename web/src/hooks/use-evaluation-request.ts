@@ -1,5 +1,6 @@
 import { UploadFormSchemaType } from '@/components/file-upload-dialog';
 import message from '@/components/ui/message';
+import { RunningStatus } from '@/constants/evaluation';
 import {
   EvaluationDetailList,
   IEvaluationCase,
@@ -673,6 +674,7 @@ export const useFetchEvaluationRun = () => {
 export const useFetchEvaluationRunResults = () => {
   const { runId } = useEvaluationUrl();
   const { pagination, setPagination } = useGetPaginationWithRouter();
+  const { t } = useTranslation();
 
   const {
     data,
@@ -684,7 +686,11 @@ export const useFetchEvaluationRunResults = () => {
     initialData: {} as IEvaluationRunResultData,
     enabled: !!runId,
     refetchOnWindowFocus: false,
-    refetchInterval: 5000,
+    refetchInterval: (query) => {
+      // Continue polling when status is RUNNING, otherwise stop polling
+      const data = query.state.data;
+      return data?.run?.status === RunningStatus.RUNNING ? 5000 : false;
+    },
     queryFn: async () => {
       const { data } = await evaluationService.getRunResults(
         {
@@ -697,7 +703,16 @@ export const useFetchEvaluationRunResults = () => {
         true,
       );
 
-      return data?.data ?? ({} as IEvaluationRunResultData);
+      const resultData = data?.data ?? {};
+      const status = resultData.run?.status;
+
+      if (status === RunningStatus.FAILED) {
+        message.error(t('evaluation.failed'));
+      } else if (status === RunningStatus.COMPLETED) {
+        message.success(t('evaluation.completed'));
+      }
+
+      return resultData ?? ({} as IEvaluationRunResultData);
     },
   });
 

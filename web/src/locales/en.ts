@@ -2415,6 +2415,8 @@ Important structured information may include: names, dates, locations, events, k
         collectionRequired: 'Please select a collection',
       },
       notConfigured: 'Not configured',
+      failed: 'Run failed',
+      completed: 'Run finished',
     },
 
     empty: {

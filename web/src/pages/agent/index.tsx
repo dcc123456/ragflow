@@ -19,12 +19,10 @@ import {
 } from '@/components/ui/dropdown-menu';
 import message from '@/components/ui/message';
 import { SharedFrom } from '@/constants/chat';
-import { EvaluationType } from '@/constants/evaluation';
 import { useSetModalState } from '@/hooks/common-hooks';
 import { useNavigatePage } from '@/hooks/logic-hooks/navigate-hooks';
 import { ReactFlowProvider } from '@xyflow/react';
 import {
-  ChartColumn,
   ChevronDown,
   CirclePlay,
   History,
@@ -112,7 +110,7 @@ export default function Agent() {
 
   const { showEmbedModal, hideEmbedModal, embedVisible, beta } =
     useShowEmbedModal();
-  const { navigateToAgentLogs, navigateToEvaluation } = useNavigatePage();
+  const { navigateToAgentLogs } = useNavigatePage();
   const time = useWatchAgentChange(chatDrawerVisible);
   const isWebhookMode = useIsWebhookMode();
 
@@ -239,7 +237,7 @@ export default function Agent() {
             <CirclePlay />
             {t('flow.run')}
           </Button>
-          {isPipeline || (
+          {/* {isPipeline || (
             <Button
               variant={'secondary'}
               onClick={navigateToEvaluation(EvaluationType.Agent, id as string)}
@@ -247,7 +245,7 @@ export default function Agent() {
               <ChartColumn />
               {t('evaluation.title')}
             </Button>
-          )}
+          )} */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant={'secondary'}>

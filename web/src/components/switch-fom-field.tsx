@@ -6,7 +6,7 @@ import {
 } from '@/components/ui/form';
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
-import { ReactNode } from 'react';
+import { MouseEventHandler, ReactNode, useCallback } from 'react';
 import { useFormContext } from 'react-hook-form';
 
 interface SwitchFormItemProps {
@@ -14,6 +14,7 @@ interface SwitchFormItemProps {
   label: ReactNode;
   vertical?: boolean;
   tooltip?: ReactNode;
+  shouldStopPropagation?: boolean;
 }
 
 export function SwitchFormField({
@@ -21,8 +22,18 @@ export function SwitchFormField({
   name,
   vertical = true,
   tooltip,
+  shouldStopPropagation = false,
 }: SwitchFormItemProps) {
   const form = useFormContext();
+
+  const handleClick: MouseEventHandler = useCallback(
+    (e) => {
+      if (shouldStopPropagation) {
+        e.stopPropagation();
+      }
+    },
+    [shouldStopPropagation],
+  );
 
   return (
     <FormField
@@ -35,6 +46,7 @@ export function SwitchFormField({
             'flex-col': vertical,
             'justify-between': !vertical,
           })}
+          onClick={handleClick}
         >
           <FormLabel tooltip={tooltip}>{label}</FormLabel>
           <FormControl>

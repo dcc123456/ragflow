@@ -1,4 +1,3 @@
-import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   Tooltip,
@@ -59,18 +58,16 @@ function MetricHeader({
 }) {
   const { t } = useTranslation();
   return (
-    <Button
-      variant="ghost"
+    <div
+      className="flex items-center gap-2 cursor-pointer"
       onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
     >
-      <div className="flex items-center gap-2">
-        {t('evaluation.relevancy')}
-        <span className="text-accent-primary text-xs">
-          {round(get(metricsSummary, `${name}.summary`, 0), 2)}
-        </span>
-        <ArrowUpDown className="h-4 w-4" />
-      </div>
-    </Button>
+      {t('evaluation.relevancy')}
+      <span className="text-accent-primary text-xs">
+        {round(get(metricsSummary, `${name}.summary`, 0), 2)}
+      </span>
+      <ArrowUpDown className="h-4 w-4" />
+    </div>
   );
 }
 
@@ -105,6 +102,7 @@ export const useEvaluationTableColumns = (
       ),
       enableSorting: false,
       enableHiding: false,
+      size: 50,
     },
     {
       accessorKey: 'question',
@@ -113,7 +111,7 @@ export const useEvaluationTableColumns = (
         <div className="flex items-center gap-2">
           <CellWithTooltip content={row.original.question} />
           <Eye
-            className="size-4 cursor-pointer hover:text-accent-primary"
+            className="size-4 cursor-pointer hover:text-accent-primary opacity-0 group-hover:opacity-100 transition-opacity"
             onClick={() => onShowDetail?.(row.original.id)}
           />
         </div>
@@ -129,12 +127,14 @@ export const useEvaluationTableColumns = (
     {
       accessorKey: 'modelAnswer',
       header: t('evaluation.modelAnswer'),
+      minSize: 200,
       cell: ({ row }) => (
         <CellWithTooltip content={row.original.modelAnswer || '-'} />
       ),
     },
     {
       accessorKey: 'context_relevance',
+      size: 150,
       header: ({ column }) => {
         return (
           <MetricHeader
@@ -148,7 +148,7 @@ export const useEvaluationTableColumns = (
         const relevancy = row.original.context_relevance;
 
         return (
-          <div className="text-center">
+          <div className="text-left">
             <div>{relevancy !== undefined ? relevancy.toFixed(2) : '-'}</div>
           </div>
         );
@@ -156,6 +156,7 @@ export const useEvaluationTableColumns = (
     },
     {
       accessorKey: 'faithfulness',
+      size: 150,
       header: ({ column }) => {
         return (
           <MetricHeader
@@ -169,7 +170,7 @@ export const useEvaluationTableColumns = (
         const factuality = row.original.faithfulness;
 
         return (
-          <div className="text-center">
+          <div className="text-left">
             <div>{factuality !== undefined ? factuality.toFixed(2) : '-'}</div>
           </div>
         );
@@ -177,6 +178,7 @@ export const useEvaluationTableColumns = (
     },
     {
       accessorKey: 'semantic_similarity',
+      size: 150,
       header: ({ column }) => {
         return (
           <MetricHeader
@@ -190,7 +192,7 @@ export const useEvaluationTableColumns = (
         const consistency = row.original.semantic_similarity;
 
         return (
-          <div className="text-center">
+          <div className="text-left">
             <div>
               {typeof consistency === 'number' ? consistency.toFixed(2) : '-'}
             </div>

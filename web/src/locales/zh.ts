@@ -2184,6 +2184,8 @@ Tokenizer 会根据所选方式将内容存储为对应的数据结构。`,
         collectionRequired: '请选择数据集',
       },
       notConfigured: '未配置',
+      failed: '运行失败',
+      completed: '运行完成',
     },
 
     empty: {

@@ -30,7 +30,7 @@ import * as ReactDOM from 'react-dom';
 
 import { $createVariableNode } from './variable-node';
 
-import { JsonSchemaDataType } from '@/pages/agent/constant';
+import { JsonSchemaDataType, VariableRegex } from '@/pages/agent/constant';
 import {
   useFindAgentStructuredOutputLabel,
   useShowSecondaryMenu,
@@ -299,7 +299,7 @@ export default function VariablePickerMenuPlugin({
       const paragraph = $createParagraphNode();
 
       // Regular expression to match content within {}
-      const regex = /{([^}]*)}/g;
+      const regex = VariableRegex;
       let match;
       let lastIndex = 0;
       while ((match = regex.exec(text)) !== null) {

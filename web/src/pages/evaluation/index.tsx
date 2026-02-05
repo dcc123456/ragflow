@@ -83,10 +83,10 @@ export default function Evaluation() {
       <div className="flex flex-1 min-h-0 pb-9 gap-4">
         <EvaluationList selectedRunId={runId} type={type} />
 
-        <section className="flex-1 min-w-0">
+        <section className="flex-1 min-w-0 flex flex-col">
           <section className="flex justify-between pb-4">
             <div className="flex items-center gap-2">
-              <span> {data?.name || t('evaluation.selectRun')}</span>
+              <span> {data?.name}</span>
               <Tooltip>
                 <TooltipTrigger>
                   <Button
