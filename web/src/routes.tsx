@@ -62,6 +62,7 @@ export enum Routes {
   AdminUserManagement = `${Admin}/users`,
   AdminWhitelist = `${Admin}/whitelist`,
   AdminRoles = `${Admin}/roles`,
+  AdminRoleConfigModelProviders = `${AdminRoles}/:roleName/model-providers`,
   AdminMonitoring = `${Admin}/monitoring`,
   AdminSettings = `${Admin}/settings`,
   AdminSSOProviders = `${Admin}/sso`,
@@ -437,6 +438,10 @@ export const routeConfig = [
       {
         path: `${Routes.AdminUserManagement}/:id`,
         Component: lazy(() => import('@/pages/admin/user-detail')),
+      },
+      {
+        path: Routes.AdminRoleConfigModelProviders,
+        Component: lazy(() => import('@/pages/admin/roles/model-providers')),
       },
       {
         path: Routes.Admin,

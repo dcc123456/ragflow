@@ -33,12 +33,14 @@ const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
     closeDisabled?: boolean;
+    closable?: boolean;
   }
->(({ className, children, closeDisabled, ...props }, ref) => (
+>(({ className, children, closeDisabled, closable, ...props }, ref) => (
   <DialogPortal>
     <DialogOverlay />
     <DialogPrimitive.Content
       ref={ref}
+      aria-describedby={undefined}
       className={cn(
         'outline-0 fixed left-[50%] top-[50%] rounded-lg z-50 grid w-full max-w-xl translate-x-[-50%] translate-y-[-50%] gap-4',
         'border-0.5 border-border-button bg-bg-base p-6 shadow-lg duration-200 sm:rounded-lg',
@@ -52,18 +54,21 @@ const DialogContent = React.forwardRef<
       {...props}
     >
       {children}
-      <DialogPrimitive.Close
-        disabled={closeDisabled}
-        className="
-        absolute right-4 top-4 p-2 rounded-sm opacity-70 outline-none text-text-secondary transition-colors
-        hover:bg-border-button hover:text-text-primary
-        focus-visible:bg-border-button focus-visible:text-text-primary
-        disabled:pointer-events-none data-[state=open]:bg-bg-accent data-[state=open]:text-muted-foreground
-      "
-      >
-        <X className="h-4 w-4" />
-        <span className="sr-only">Close</span>
-      </DialogPrimitive.Close>
+
+      {closable && (
+        <DialogPrimitive.Close
+          disabled={closeDisabled}
+          className="
+          absolute right-4 top-4 p-2 rounded-sm opacity-70 outline-none text-text-secondary transition-colors
+          hover:bg-border-button hover:text-text-primary
+          focus-visible:bg-border-button focus-visible:text-text-primary
+          disabled:pointer-events-none data-[state=open]:bg-bg-accent data-[state=open]:text-muted-foreground
+        "
+        >
+          <X className="h-4 w-4" />
+          <span className="sr-only">Close</span>
+        </DialogPrimitive.Close>
+      )}
     </DialogPrimitive.Content>
   </DialogPortal>
 ));

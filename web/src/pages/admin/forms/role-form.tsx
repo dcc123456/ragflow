@@ -3,7 +3,6 @@ import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useQuery } from '@tanstack/react-query';
 import { z } from 'zod';
 
 import { Card, CardContent } from '@/components/ui/card';
@@ -20,13 +19,16 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
-import { listResources } from '@/services/admin-service';
-import { PERMISSION_TYPES, formMergeDefaultValues } from '../utils';
+import { useRoleResourceTypes } from '../hooks/useRole';
+import { RESOURCE_PERMISSIONS, formMergeDefaultValues } from '../utils';
 
 export interface CreateRoleFormData {
   name: string;
   description: string;
-  permissions: Record<string, AdminService.PermissionData>;
+  permissions: Record<
+    AdminService.RoleResourceName,
+    AdminService.PermissionData
+  >;
 }
 
 interface CreateRoleFormProps {
@@ -42,11 +44,7 @@ export const CreateRoleForm = ({
 }: CreateRoleFormProps) => {
   const { t } = useTranslation();
 
-  const { data: resourceTypes } = useQuery({
-    queryKey: ['admin/resourceTypes'],
-    queryFn: async () => (await listResources()).data.data.resource_types,
-    retry: false,
-  });
+  const { resourceTypes } = useRoleResourceTypes();
 
   return (
     <Form {...form}>
@@ -113,40 +111,74 @@ export const CreateRoleForm = ({
               ))}
             </TabsList>
 
-            {resourceTypes?.map((resourceType) => (
-              <TabsContent
-                key={resourceType}
-                value={resourceType}
-                className="space-y-4"
-              >
-                <Card className="border-0 bg-bg-card !shadow-none">
-                  <CardContent className="p-6">
-                    <div className="grid grid-cols-4 gap-4">
-                      {PERMISSION_TYPES.map((permissionType) => (
-                        <FormField
-                          key={permissionType}
-                          name={`permissions.${resourceType}.${permissionType}`}
-                          render={({ field }) => (
-                            <FormItem className="space-y-0 inline-flex items-center gap-2">
-                              <FormLabel>
-                                {t(`admin.permissionType.${permissionType}`)}
-                              </FormLabel>
-                              <FormControl>
-                                <Switch
-                                  {...field}
-                                  checked={field.value}
-                                  onCheckedChange={field.onChange}
-                                />
-                              </FormControl>
-                            </FormItem>
-                          )}
-                        />
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-            ))}
+            {resourceTypes?.map((resourceType) => {
+              if (resourceType === 'model_provider') {
+                return null;
+              }
+
+              return (
+                <TabsContent
+                  key={resourceType}
+                  value={resourceType}
+                  className="space-y-4"
+                >
+                  <Card className="border-0 bg-bg-card !shadow-none">
+                    <CardContent className="p-6">
+                      <div className="grid grid-cols-4 gap-4">
+                        {RESOURCE_PERMISSIONS[resourceType]?.map(
+                          (permissionType) => (
+                            <FormField
+                              key={permissionType}
+                              name={`permissions.${resourceType}.${permissionType}`}
+                              render={({ field }) => (
+                                <FormItem className="space-y-0 inline-flex items-center gap-2">
+                                  <FormLabel>
+                                    {t(
+                                      `admin.permissionType.${permissionType}`,
+                                    )}
+                                  </FormLabel>
+                                  <FormControl>
+                                    <Switch
+                                      {...field}
+                                      checked={!!field.value}
+                                      onCheckedChange={field.onChange}
+                                    />
+                                  </FormControl>
+                                </FormItem>
+                              )}
+                            />
+                          ),
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+              );
+            })}
+
+            <TabsContent value="model_provider">
+              <Card className="border-0 bg-bg-card !shadow-none">
+                <CardContent className="py-0 h-16 flex items-center gap-8">
+                  <FormField
+                    name="permissions.model_provider.enable"
+                    render={({ field }) => (
+                      <FormItem className="space-y-0 inline-flex items-center gap-2">
+                        <FormLabel className="flex items-center gap-2">
+                          {t('admin.permissionType.accessControl')}
+                        </FormLabel>
+                        <div className="ml-auto flex items-center gap-4">
+                          <Switch
+                            {...field}
+                            checked={!!field.value}
+                            onCheckedChange={field.onChange}
+                          />
+                        </div>
+                      </FormItem>
+                    )}
+                  />
+                </CardContent>
+              </Card>
+            </TabsContent>
           </Tabs>
         </div>
       </form>

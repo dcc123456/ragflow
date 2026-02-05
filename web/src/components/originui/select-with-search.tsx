@@ -48,13 +48,14 @@ export type SelectWithSearchFlagProps = {
   disabled?: boolean;
   placeholder?: string;
   emptyData?: string;
+  renderOption?: (option: SelectWithSearchFlagOptionType) => ReactNode;
 };
 
 function findLabelWithoutOptions(
   options: SelectWithSearchFlagOptionType[],
   value: string,
 ) {
-  return options.find((opt) => opt.value === value)?.label || '';
+  return options.find((opt) => opt.value === value);
 }
 
 function findLabelWithOptions(
@@ -63,7 +64,7 @@ function findLabelWithOptions(
 ) {
   return options
     .map((group) => group?.options?.find((item) => item.value === value))
-    .filter(Boolean)[0]?.label;
+    .filter(Boolean)[0];
 }
 
 export const SelectWithSearch = forwardRef<
@@ -80,6 +81,7 @@ export const SelectWithSearch = forwardRef<
       disabled = false,
       placeholder = t('common.selectPlaceholder'),
       emptyData = t('common.noDataFound'),
+      renderOption,
     },
     ref,
   ) => {
@@ -91,7 +93,7 @@ export const SelectWithSearch = forwardRef<
     const isValueControlled = val != null;
     const value = isValueControlled ? val : stateValue;
 
-    const selectLabel = useMemo(() => {
+    const selectedOption = useMemo(() => {
       if (options.every((x) => x.options === undefined)) {
         return findLabelWithoutOptions(options, value);
       } else if (options.every((x) => Array.isArray(x.options))) {
@@ -105,11 +107,10 @@ export const SelectWithSearch = forwardRef<
           (x) => x.options === undefined,
         );
 
-        const label = findLabelWithOptions(optionsWithOptions, value);
-        if (label) {
-          return label;
-        }
-        return findLabelWithoutOptions(optionsWithoutOptions, value);
+        return (
+          findLabelWithOptions(optionsWithOptions, value) ||
+          findLabelWithoutOptions(optionsWithoutOptions, value)
+        );
       }
     }, [options, value]);
 
@@ -165,7 +166,13 @@ export const SelectWithSearch = forwardRef<
           >
             {value ? (
               <span className="flex min-w-0 options-center gap-2">
-                <span className="leading-none truncate">{selectLabel}</span>
+                <span className="leading-none truncate">
+                  {selectedOption && typeof renderOption === 'function'
+                    ? renderOption(
+                        selectedOption as SelectWithSearchFlagOptionType,
+                      )
+                    : (selectedOption?.label ?? '')}
+                </span>
               </span>
             ) : (
               <span className="text-text-disabled">{placeholder}</span>
@@ -221,7 +228,11 @@ export const SelectWithSearch = forwardRef<
                               value === option.value ? 'bg-bg-card' : ''
                             }
                           >
-                            <span className="leading-none">{option.label}</span>
+                            <span className="leading-none">
+                              {typeof renderOption === 'function'
+                                ? renderOption(option)
+                                : option.label}
+                            </span>
 
                             {value === option.value && (
                               <CheckIcon size={16} className="ml-auto" />

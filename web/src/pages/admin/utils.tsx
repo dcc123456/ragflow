@@ -149,6 +149,20 @@ export function getSortIcon(sorting: false | SortDirection) {
 }
 
 export const PERMISSION_TYPES = ['enable', 'read', 'write', 'share'] as const;
+export const RESOURCE_PERMISSIONS = {
+  dataset: ['enable', 'read', 'write', 'share'],
+  chat: ['enable', 'read', 'write', 'share'],
+  agent: ['enable', 'read', 'write', 'share'],
+  search: ['enable', 'read', 'write', 'share'],
+  file: ['enable', 'read', 'write', 'share'],
+  team: ['enable', 'read', 'write', 'share'],
+  memory: ['enable', 'read', 'write', 'share'],
+  model_provider: ['enable'],
+} satisfies Record<
+  AdminService.RoleResourceName,
+  AdminService.PermissionType[]
+>;
+
 export const EMPTY_DATA = Object.freeze<any[]>([]) as any[];
 
 /**

@@ -14,10 +14,10 @@ export const useSetModalState = (initialVisible = false) => {
   }, []);
 
   const switchVisible = useCallback(() => {
-    setVisible(!visible);
-  }, [visible]);
+    setVisible((x) => !x);
+  }, []);
 
-  return { visible, showModal, hideModal, switchVisible };
+  return { visible, showModal, hideModal, switchVisible, setVisible };
 };
 
 export const useDeepCompareEffect = (

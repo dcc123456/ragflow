@@ -302,6 +302,15 @@ export default {
     `${ExternalApi}${api_host}/admin/roles/${roleName}`,
   adminUpdateRoleDescription: (roleName: string) =>
     `${ExternalApi}${api_host}/admin/roles/${roleName}`,
+  adminRoleDefaultModels: (roleName: string) =>
+    `${ExternalApi}${api_host}/admin/roles/${roleName}/default_models`,
+
+  adminListMyLlm: `${ExternalApi}${api_host}/admin/llm/my_llms`,
+  adminListLlmFactories: `${ExternalApi}${api_host}/admin/llm/factories`,
+  adminListAllFactoryLlms: `${ExternalApi}${api_host}/admin/llm/list`,
+  adminSetLlmApiKey: `${ExternalApi}${api_host}/admin/llm/set_api_key`,
+  adminAddLlmFactory: `${ExternalApi}${api_host}/admin/llm/add_llm`,
+  adminDeleteLlmFactory: `${ExternalApi}${api_host}/admin/llm/delete_factory`,
 
   adminUpdateUserRole: (username: string) =>
     `${ExternalApi}${api_host}/admin/users/${username}/role`,

@@ -104,6 +104,18 @@ declare namespace AdminService {
         message: AdminService.TaskExecutorInfo;
       };
 
+  export type PermissionType = 'enable' | 'read' | 'write' | 'share';
+
+  export type RoleResourceName =
+    | 'dataset'
+    | 'chat'
+    | 'agent'
+    | 'search'
+    | 'file'
+    | 'team'
+    | 'memory'
+    | 'model_provider';
+
   export type PermissionData = {
     enable: boolean;
     read: boolean;
@@ -120,7 +132,7 @@ declare namespace AdminService {
   };
 
   export type ListRoleItemWithPermission = ListRoleItem & {
-    permissions: Record<string, PermissionData>;
+    permissions: Record<RoleResourceName, PermissionData>;
   };
 
   export type RoleDetailWithPermission = {
@@ -129,7 +141,7 @@ declare namespace AdminService {
       name: string;
       description: string;
     };
-    permissions: Record<string, PermissionData>;
+    permissions: Record<RoleResourceName, PermissionData>;
   };
 
   export type RoleDetail = {
@@ -141,7 +153,7 @@ declare namespace AdminService {
   };
 
   export type AssignRolePermissionsInput = Record<
-    string,
+    RoleResourceName,
     Partial<PermissionData>
   >;
   export type RevokeRolePermissionInput = AssignRolePermissionsInput;
@@ -156,7 +168,7 @@ declare namespace AdminService {
   };
 
   export type ResourceType = {
-    resource_types: string[];
+    resource_types: RoleResourceName[];
   };
 
   export type ListWhitelistItem = {
@@ -317,5 +329,36 @@ declare namespace AdminService {
   export type RefreshVariablesInput = {
     oauth?: boolean;
     smtp?: boolean;
+  };
+
+  export type RoleDefaultModelType =
+    | 'llm'
+    | 'embedding'
+    | 'vlm'
+    | 'asr'
+    | 'rerank'
+    | 'tts';
+  export type RoleDefaultModelSetupStatus = 'complete' | 'partial' | 'not_set';
+
+  export type RoleDefaultModelItem = {
+    role_id: number;
+    model_type: RoleDefaultModelType;
+    model_id: string;
+    tenant_id: string;
+  };
+
+  export type RoleDefaultModelList = {
+    model_list: RoleDefaultModelItem[];
+    setup_status: RoleDefaultModelSetupStatus;
+  };
+
+  export type SetRoleDefaultModelInput = {
+    model_type: RoleDefaultModelType;
+    model_id: string;
+  };
+
+  export type AddLlmFactoryInput = {
+    llm_factory: string;
+    [x: string]: any;
   };
 }

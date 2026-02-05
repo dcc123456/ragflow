@@ -64,6 +64,7 @@ export default {
       },
       selected: 'Selected',
       sync: 'Sync',
+      all: 'All',
     },
     login: {
       loginTitle: 'Sign in to your account',
@@ -1079,9 +1080,11 @@ Example: Virtual Hosted Style`,
         'The API key can be obtained by registering the corresponding LLM supplier.',
       showMoreModels: 'View models',
       hideModels: 'Hide models',
-      baseUrl: 'Base-Url',
+      baseUrl: 'Base-URL',
       baseUrlTip:
         'If your API key is from OpenAI, just ignore it. Any other intermediate providers will give this base url with the API key.',
+      openRouterProviderOrderTip:
+        'Comma-separated provider list, e.g. Groq,Fireworks',
       tongyiBaseUrlTip:
         'For Chinese users, no need to fill in or use https://dashscope.aliyuncs.com/compatible-mode/v1. For international users, use https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
       tongyiBaseUrlPlaceholder: '(International users only, please see tip)',
@@ -1089,6 +1092,7 @@ Example: Virtual Hosted Style`,
         'International users only: use https://api.minimax.io/v1',
       minimaxBaseUrlPlaceholder:
         '(International users only, fill in https://api.minimax.io/v1)',
+      groupId: 'Group ID',
       modify: 'Modify',
       systemModelSettings: 'Set default models',
       chatModel: 'LLM',
@@ -1118,8 +1122,8 @@ Example: Virtual Hosted Style`,
       modelNameMessage: 'Please input your model name!',
       modelType: 'Model type',
       modelTypeMessage: 'Please input your model type!',
-      addLlmBaseUrl: 'Base url',
-      baseUrlNameMessage: 'Please input your base url!',
+      addLlmBaseUrl: 'Base URL',
+      baseUrlNameMessage: 'Please input your base URL!',
       vision: 'Does it support Vision?',
       ollamaLink: 'How to integrate {{name}}',
       FishAudioLink: 'How to use FishAudio',
@@ -2456,6 +2460,7 @@ Important structured information may include: names, dates, locations, events, k
         file: 'File',
         team: 'Team',
         memory: 'Memory',
+        model_provider: 'Model provider',
       },
 
       permissionType: {
@@ -2463,6 +2468,7 @@ Important structured information may include: names, dates, locations, events, k
         read: 'Read',
         write: 'Write',
         share: 'Share',
+        accessControl: 'Access control',
       },
 
       serviceStatus: 'Service status',
@@ -2540,6 +2546,18 @@ Important structured information may include: names, dates, locations, events, k
             url: 'ldaps://ad01.mycompany.com:636',
             dn: 'CN=svc_ldap_app, OU=Service...',
           },
+        },
+      },
+
+      roleModelProviders: {
+        setDefaultModels: 'Set default models for role "{{role}}"',
+        addedModels: 'Added models',
+        noModelsAdded: 'No models added yet',
+
+        setupStatus: {
+          not_set: 'No models are configured.',
+          partial: 'Some models are not configured.',
+          complete: 'All models are configured.',
         },
       },
 

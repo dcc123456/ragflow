@@ -15,10 +15,17 @@ import authorizationUtil, {
 import { convertTheKeysOfTheObjectToSnake } from '@/utils/common-util';
 import { ResultCode, RetcodeMessage } from '@/utils/request';
 
+import { LLMFactory } from '@/constants/llm';
 import type {
   EmailLoginParams,
   LDAPLoginParams,
 } from '@/hooks/use-login-request';
+import {
+  IFactory,
+  IMyLlmValue,
+  IThirdOAIModelCollection,
+} from '@/interfaces/database/llm';
+import { isLocalLlmFactory } from '@/pages/user-setting/utils';
 import { keyBy } from 'lodash';
 
 function redirectToLogin() {
@@ -360,4 +367,46 @@ export const testSMTPConnection = (
   requestSilent.post<ResponseData<boolean>>(
     API.adminTestSMTPConnection,
     params,
+  );
+
+export const getRoleDefaultModels = (role: string) =>
+  request.get<ResponseData<AdminService.RoleDefaultModelList>>(
+    API.adminRoleDefaultModels(role),
+  );
+
+export const setRoleDefaultModel = (
+  role: string,
+  input: AdminService.SetRoleDefaultModelInput,
+) =>
+  request.put<ResponseData<boolean>>(API.adminRoleDefaultModels(role), input);
+
+export const listMyLlm = () =>
+  request.get<ResponseData<Record<LLMFactory, IMyLlmValue>>>(
+    API.adminListMyLlm,
+    {
+      params: {
+        include_details: true,
+      },
+    },
+  );
+
+export const listLlmFactories = () =>
+  request.get<ResponseData<IFactory[]>>(API.adminListLlmFactories);
+
+export const listAllFactoryLlms = () =>
+  request.get<ResponseData<IThirdOAIModelCollection>>(
+    API.adminListAllFactoryLlms,
+  );
+
+export const deleteFactory = (factoryName: string) =>
+  request.post<ResponseData<never>>(API.adminDeleteLlmFactory, {
+    llm_factory: factoryName,
+  });
+
+export const addFactory = (inputs: AdminService.AddLlmFactoryInput) =>
+  request.post<ResponseData<never>>(
+    isLocalLlmFactory(inputs.llm_factory)
+      ? API.adminAddLlmFactory
+      : API.adminSetLlmApiKey,
+    inputs,
   );
