@@ -82,6 +82,15 @@ class LLMType(StrEnum):
     OCR = 'ocr'
 
 
+class ModelType(StrEnum):
+    LLM = 'llm'
+    EMBEDDING = 'embedding'
+    VLM = 'vlm'
+    ASR = 'asr'
+    RERANK = 'rerank'
+    TTS = 'tts'
+
+
 class TaskStatus(StrEnum):
     UNSTART = "0"
     RUNNING = "1"

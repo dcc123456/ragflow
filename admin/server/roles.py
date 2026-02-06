@@ -17,10 +17,12 @@ import logging
 
 from typing import Dict, Any
 
+from common.constants import ModelType
 from api.common.exceptions import AdminException, RoleAlreadyExistsError, RoleNotFoundError, UserNotFoundError
-from api.db import PermissionOperationEnum, ResourceTypeEnum
+from api.db import PermissionOperationEnum, ResourceTypeEnum, RoleDefaultModelSetUpStatusEnum
 from api.db.services.user_service import UserService
 from api.db.services.role_service import RoleService
+from api.db.services.role_model_service import RoleDefaultModelService
 from api.db.joint_services.user_role_service import get_role_permissions_by_role_id, upsert_role_actions, delete_role_by_id
 
 
@@ -261,3 +263,58 @@ class RoleMgr:
             },
             "role_permissions": permissions
         }
+
+
+class RoleModelMgr:
+
+    @staticmethod
+    def get_role_default_models(role_name: str) -> dict:
+        roles = RoleService.get_by_role_name(role_name)
+        if not roles:
+            raise RoleNotFoundError(role_name)
+        if len(roles) > 1:
+            raise AdminException(f"More than one role {role_name} found!")
+        role = roles[0]
+        role_default_models = RoleDefaultModelService.get_by_role_id(role["id"])
+        if not role_default_models:
+            return {
+                "model_list": [],
+                "setup_status": RoleDefaultModelSetUpStatusEnum.NOT_SET
+            }
+
+        setup_model_types = {m.model_type for m in role_default_models if m.model_id}
+        not_setup_types = {mt.value for mt in ModelType} - setup_model_types
+        setup_status = RoleDefaultModelSetUpStatusEnum.COMPLETE if not not_setup_types else RoleDefaultModelSetUpStatusEnum.PARTIAL
+        return {
+            "model_list": [{
+                "role_id": m.role_id,
+                "model_type": m.model_type,
+                "model_id": m.model_id,
+                "tenant_id": m.tenant_id
+            } for m in role_default_models],
+            "setup_status": setup_status
+        }
+
+    @staticmethod
+    def set_role_default_model(role_name: str, model_type: str, model_id: str, tenant_id: str):
+        roles = RoleService.get_by_role_name(role_name)
+        if not roles:
+            raise RoleNotFoundError(role_name)
+        if len(roles) > 1:
+            raise AdminException(f"More than one role {role_name} found!")
+        role = roles[0]
+        role_default_model_config = RoleDefaultModelService.get_by_role_id_and_model_type(role["id"], model_type)
+        if role_default_model_config:
+            RoleDefaultModelService.update_role_default_model_by_type(role["id"], model_type, model_id, tenant_id)
+        else:
+            RoleDefaultModelService.add_role_default_model(role["id"], model_type, model_id, tenant_id)
+
+    @staticmethod
+    def delete_role_default_model(role_name: str):
+        roles = RoleService.get_by_role_name(role_name)
+        if not roles:
+            raise RoleNotFoundError(role_name)
+        if len(roles) > 1:
+            raise AdminException(f"More than one role {role_name} found!")
+        role = roles[0]
+        return RoleDefaultModelService.delete_by_role_id(role["id"])

@@ -104,6 +104,11 @@ def upsert_role_actions(role_name: str, new_permissions: dict, operation_type: s
                     new_action &= ~action_value_map[action_name]
         if new_action == base_action:
             continue
+        if resource_type == ResourceTypeEnum.MODEL_PROVIDER.value and new_action > ActionEnum.ENABLE.value | ActionEnum.READ.value:
+            return {
+                "success":  False,
+                "message": "Model Provider resource only support 'enable' and 'read' permissions."
+            }
         upsert_dict.update({resource_type: new_action})
     if not upsert_dict:
         vt = {

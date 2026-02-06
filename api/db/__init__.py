@@ -32,6 +32,7 @@ class ResourceTypeEnum(Enum):
     FILE = 5
     TEAM = 6
     MEMORY = 7
+    MODEL_PROVIDER = 8
 
 
 class ActionEnum(Enum):
@@ -39,6 +40,12 @@ class ActionEnum(Enum):
     READ = 0b0010    # 1 << 1 = 2 (0b00000010)
     WRITE = 0b0100   # 1 << 2 = 4 (0b00000100)
     SHARE = 0b1000   # 1 << 3 = 8 (0b00001000)
+
+
+class RoleDefaultModelSetUpStatusEnum(StrEnum):
+    NOT_SET = "not_set"
+    PARTIAL = "partial"
+    COMPLETE = "complete"
 
 
 class UserTenantRole(StrEnum):

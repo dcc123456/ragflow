@@ -13,6 +13,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 #
+import json
 import asyncio
 import secrets
 import re
@@ -24,9 +25,11 @@ from admin.server.white_list import WhiteListMgr
 from auth import login_verify, login_admin, check_admin_auth
 from responses import success_response, error_response
 from services import UserMgr, ServiceMgr, UserServiceMgr, SettingsMgr, ConfigMgr, EnvironmentsMgr
-from roles import RoleMgr
+from roles import RoleMgr, RoleModelMgr
 from mail_validator import AsyncSMTPValidator
+from admin.server.model_service import ModelMgr
 from api.common.exceptions import AdminException
+from api.utils.api_utils import get_allowed_llm_factories
 from common.versions import get_ragflow_version
 
 admin_bp = Blueprint('admin', __name__, url_prefix='/api/v1/admin')
@@ -151,6 +154,8 @@ def change_password(username):
 def alter_user_activate_status(username):
     try:
         data = request.get_json()
+        if current_user.email == username:
+            return error_response(f"can't alter current user status: {username}", 409)
         if not data or 'activate_status' not in data:
             return error_response("Activation status is required", 400)
         activate_status = data['activate_status']
@@ -325,6 +330,7 @@ def update_role(role_name: str):
 @check_admin_auth
 def delete_role(role_name: str):
     try:
+        RoleModelMgr.delete_role_default_model(role_name)
         res = RoleMgr.delete_role(role_name)
         return success_response(res)
     except Exception as e:
@@ -398,6 +404,33 @@ def revoke_role_permission(role_name: str):
 def list_roles_resource():
     data = RoleMgr.list_resources()
     return success_response({"resource_types": data})
+
+
+@admin_bp.route('/roles/<role_name>/default_models', methods=['GET'])
+@login_required
+@check_admin_auth
+def get_role_default_models(role_name: str):
+    try:
+        data = RoleModelMgr.get_role_default_models(role_name)
+        return success_response(data)
+    except Exception as e:
+        return error_response(str(e), 500)
+
+
+@admin_bp.route('/roles/<role_name>/default_models', methods=['PUT'])
+@login_required
+@check_admin_auth
+def set_role_default_models(role_name: str):
+    try:
+        data = request.get_json()
+        if not data or "model_type" not in data or "model_id" not in data:
+            return error_response("Model type and id are required", 400)
+        model_type: str = data['model_type']
+        model_id: str = data['model_id']
+        res = RoleModelMgr.set_role_default_model(role_name, model_type, model_id, current_user.id)
+        return success_response(res)
+    except Exception as e:
+        return error_response(str(e), 500)
 
 
 @admin_bp.route('/users/<user_name>/role', methods=['PUT'])
@@ -611,5 +644,162 @@ def batch_create_whitelist_rows():
     try:
         res = WhiteListMgr.batch_create_white_list_rows(emails)
         return success_response(res)
+    except Exception as e:
+        return error_response(str(e), 500)
+
+
+@admin_bp.route('/llm/factories', methods=['GET'])
+@login_required
+@check_admin_auth
+def get_factories():
+    try:
+        factory_list = ModelMgr.get_factories()
+        return success_response(factory_list)
+    except Exception as e:
+        return error_response(str(e), 500)
+
+
+@admin_bp.route('/llm/set_api_key', methods=['POST'])
+@login_required
+@check_admin_auth
+def set_api_key():
+    data = request.get_json()
+    try:
+        llm_factory = data['llm_factory']
+        api_key = data['api_key']
+        base_url = data.get('base_url')
+        model_type = data.get('model_type')
+        llm_name = data.get('llm_name')
+        res, msg = asyncio.run(ModelMgr.set_api_key(current_user.id, llm_factory, api_key, base_url, model_type, llm_name))
+        if res:
+            return success_response(msg)
+        return error_response(msg, 500)
+    except Exception as e:
+        return error_response(str(e), 500)
+
+
+@admin_bp.route('/llm/add_llm', methods=['POST'])
+@login_required
+@check_admin_auth
+def add_llm():
+    data = request.get_json()
+    def apikey_json(keys):
+        nonlocal data
+        return json.dumps({k: data.get(k, "") for k in keys})
+
+    try:
+        factory = data["llm_factory"]
+        api_key = data.get("api_key", "x")
+        llm_name = data.get("llm_name")
+        api_base = data.get("api_base")
+        model_type = data.get("model_type")
+        max_tokens = data.get("max_tokens")
+
+        if factory not in [f.name for f in get_allowed_llm_factories()]:
+            return error_response(f"LLM factory {factory} is not allowed", 500)
+
+        if factory == "VolcEngine":
+            # For VolcEngine, due to its special authentication method
+            # Assemble ark_api_key endpoint_id into api_key
+            api_key = apikey_json(["ark_api_key", "endpoint_id"])
+
+        elif factory == "Tencent Hunyuan":
+            api_key = apikey_json(["hunyuan_sid", "hunyuan_sk"])
+            res, msg = asyncio.run(ModelMgr.set_api_key(current_user.id, factory, api_key, data["base_url"], data["model_type"], llm_name))
+            if res:
+                return success_response(msg)
+            return error_response(msg, 500)
+
+        elif factory == "Tencent Cloud":
+            api_key = apikey_json(["tencent_cloud_sid", "tencent_cloud_sk"])
+            res, msg = asyncio.run(ModelMgr.set_api_key(current_user.id, factory, api_key, data["base_url"], data["model_type"], llm_name))
+            if res:
+                return success_response(msg)
+            return error_response(msg, 500)
+
+        elif factory == "Bedrock":
+            # For Bedrock, due to its special authentication method
+            # Assemble bedrock_ak, bedrock_sk, bedrock_region
+            api_key = apikey_json(["auth_mode", "bedrock_ak", "bedrock_sk", "bedrock_region", "aws_role_arn"])
+
+        elif factory == "LocalAI":
+            llm_name += "___LocalAI"
+
+        elif factory == "HuggingFace":
+            llm_name += "___HuggingFace"
+
+        elif factory == "OpenAI-API-Compatible":
+            llm_name += "___OpenAI-API"
+
+        elif factory == "VLLM":
+            llm_name += "___VLLM"
+
+        elif factory == "XunFei Spark":
+            if data["model_type"] == "chat":
+                api_key = data.get("spark_api_password", "")
+            elif data["model_type"] == "tts":
+                api_key = apikey_json(["spark_app_id", "spark_api_secret", "spark_api_key"])
+
+        elif factory == "BaiduYiyan":
+            api_key = apikey_json(["yiyan_ak", "yiyan_sk"])
+
+        elif factory == "Fish Audio":
+            api_key = apikey_json(["fish_audio_ak", "fish_audio_refid"])
+
+        elif factory == "Google Cloud":
+            api_key = apikey_json(["google_project_id", "google_region", "google_service_account_key"])
+
+        elif factory == "Azure-OpenAI":
+            api_key = apikey_json(["api_key", "api_version"])
+
+        elif factory == "OpenRouter":
+            api_key = apikey_json(["api_key", "provider_order"])
+
+        elif factory == "MinerU":
+            api_key = apikey_json(["api_key", "provider_order"])
+
+        res, msg = ModelMgr.add_llm(current_user.id, factory, api_key, llm_name, model_type, api_base, max_tokens)
+        if res:
+            return success_response(msg)
+        return error_response(msg, 500)
+
+    except Exception as e:
+        return error_response(str(e), 500)
+
+
+@admin_bp.route('/llm/delete_factory', methods=['POST'])
+@login_required
+@check_admin_auth
+def delete_factory():
+    data = request.get_json()
+    try:
+        ModelMgr.delete_factory(current_user.id, data["llm_factory"])
+        return success_response(data=True)
+    except Exception as e:
+        return error_response(str(e), 500)
+
+
+@admin_bp.route('/llm/my_llms', methods=['GET'])
+@login_required
+@check_admin_auth
+def get_my_llms():
+    include_details = request.args.get("include_details", "false").lower() == "true"
+    try:
+        res = ModelMgr.get_my_llms(current_user.id, include_details)
+        return success_response(res)
+    except Exception as e:
+        return error_response(str(e), 500)
+
+
+@admin_bp.route('/llm/list', methods=['GET'])
+@login_required
+@check_admin_auth
+def list_app():
+    model_type = request.args.get("model_type")
+    try:
+        success, res = ModelMgr.list_app(current_user.id, model_type)
+        if success:
+            return success_response(res)
+        return error_response(res, 500)
     except Exception as e:
         return error_response(str(e), 500)

@@ -858,6 +858,16 @@ class TenantLLM(DataBaseModel):
         primary_key = CompositeKey("tenant_id", "llm_factory", "llm_name")
 
 
+class RoleDefaultModel(DataBaseModel):
+    role_id = IntegerField(null=False, default=0, help_text="id in rag_flow.role", index=True)
+    model_type = CharField(max_length=128, null=False, default="", help_text="LLM, Embedding, Image2Text, ASR, RERANK, TTS", index=True)
+    model_id = CharField(max_length=128, null=False, default="", help_text="in format 'model_name@factory'", index=True)
+    tenant_id = CharField(max_length=32, null=False, help_text="tenant_id of the model's tenant", index=True)
+
+    class Meta:
+        db_table = "role_default_model"
+
+
 class TenantLangfuse(DataBaseModel):
     tenant_id = CharField(max_length=32, null=False, primary_key=True)
     secret_key = CharField(max_length=2048, null=False, help_text="SECRET KEY", index=True)
