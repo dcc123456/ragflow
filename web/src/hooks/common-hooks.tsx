@@ -83,12 +83,20 @@ interface IProps {
   content?: ReactNode;
   onOk?: (...args: any[]) => any;
   onCancel?: (...args: any[]) => any;
+  okText?: string;
 }
 
 export const useShowDeleteConfirm = () => {
   const { t } = useTranslation();
   const showDeleteConfirm = useCallback(
-    ({ title, content, onOk, onCancel, header }: IProps): Promise<number> => {
+    ({
+      title,
+      content,
+      onOk,
+      onCancel,
+      header,
+      okText,
+    }: IProps): Promise<number> => {
       return new Promise((resolve, reject) => {
         Modal.show({
           title: header,
@@ -99,7 +107,7 @@ export const useShowDeleteConfirm = () => {
           },
           footer: null,
           maskClosable: false,
-          okText: t('common.delete'),
+          okText: okText ?? t('common.delete'),
           cancelText: t('common.cancel'),
           style: {
             width: '450px',

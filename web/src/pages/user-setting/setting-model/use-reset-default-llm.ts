@@ -10,6 +10,7 @@ export const useResetDefaultLLM = (llmFactory: string) => {
   const handleSetDefaultLlm = (name: string) => () => {
     showDeleteConfirm({
       title: t('privateLLM.resetDefaultLLMConfirm'),
+      okText: t('common.confirm'),
       onOk: async () => {
         setDefaultLlm({ llm_factory: llmFactory, llm_name: name });
       },
