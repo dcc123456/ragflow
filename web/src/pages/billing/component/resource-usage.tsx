@@ -1,4 +1,5 @@
 import { useCharge } from '@/pages/price/hook/use-price-hooks';
+import { camelCase } from 'lodash';
 import { ArrowUpRight, DatabaseZap, LayoutGrid, Users } from 'lucide-react';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
@@ -25,7 +26,7 @@ const ResourceUsage: React.FC<CustomProgressProps> = ({
   height = 8,
   basicCapacity,
   planName = 'Free',
-  planValue = 10,
+  planValue = 0,
   unit = '',
   children,
 }) => {
@@ -72,7 +73,7 @@ const ResourceUsage: React.FC<CustomProgressProps> = ({
         <div className="flex items-end gap-3 cursor-pointer ">
           <span>
             {t('billing.addonUsed')} {value > planValue ? value - planValue : 0}
-            {unit}/{limit - planValue}
+            {unit}/{parseFloat((limit - planValue).toFixed(2))}
             {unit}
           </span>
           <div
@@ -111,7 +112,7 @@ const ResourceUsage: React.FC<CustomProgressProps> = ({
             )}
           </span>
           <span className="text-text-primary text-base font-normal">
-            {t(`billing.${title.toLowerCase().replace(' ', '')}`)}
+            {t(`billing.${camelCase(title).replace(' ', '')}`)}
           </span>
         </div>
         <span className="text-text-primary">{`${value}${unit}/${limit}${unit}`}</span>

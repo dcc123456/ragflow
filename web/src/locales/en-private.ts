@@ -86,6 +86,9 @@ export default {
       paymentFailedTip:
         'The transaction was not successful. Please verify your payment information or check your billing account. If this issue persists, contact us at support@ragflow.io with your order id for further assistance.',
     },
+    setting: {
+      billing: 'Billing',
+    },
     billing: {
       overview: 'Overview',
       usage: 'Usage',
@@ -111,7 +114,7 @@ export default {
       underTenCharged:
         'Any remaining amount under $10 will still be charged at the end of your billing cycle',
       manage: 'Manage',
-      planUsed: 'Plan used',
+      planUsed: 'used',
       addonUsed: 'Add-on used',
       currentMonthlyCost: 'Current monthly cost',
       newMonthlyCost: 'New monthly cost',

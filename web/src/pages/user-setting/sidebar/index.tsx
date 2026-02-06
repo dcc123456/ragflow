@@ -17,7 +17,15 @@ import { cn } from '@/lib/utils';
 import { PrivateRoutes } from '@/private-routes';
 import { Routes } from '@/routes';
 import { TFunction } from 'i18next';
-import { Banknote, Box, Server, Unplug, User, Users } from 'lucide-react';
+import {
+  Banknote,
+  Box,
+  ReceiptText,
+  Server,
+  Unplug,
+  User,
+  Users,
+} from 'lucide-react';
 import { useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useHandleMenuClick } from './hooks';
@@ -59,18 +67,16 @@ export function SideBar() {
   const { logout } = useLogout();
 
   const items = useMemo(() => {
+    let menus = [...menuItems(t)];
     if (import.meta.env.VITE_BILLING_ENABLED === '1') {
-      const billingMenuItem: MenuItem[] = [
-        {
-          icon: Banknote,
-          label: t('setting.billing'),
-          key: PrivateRoutes.Billing,
-        },
-      ];
-
-      return billingMenuItem.concat(menuItems(t));
+      const billingMenuItem: MenuItem = {
+        icon: ReceiptText,
+        label: t('setting.billing'),
+        key: PrivateRoutes.Billing,
+      };
+      menus.splice(3, 0, billingMenuItem);
     }
-    return menuItems(t).filter((x) => {
+    return menus.filter((x) => {
       if (x.key === Routes.Api) {
         if (enableAdmin && isAdmin) {
           return true;

@@ -154,7 +154,7 @@ export const BaseInfo = () => {
               return (
                 <div
                   className={cn(
-                    'bg-accent-primary-5 text-center rounded-full flex items-center justify-center',
+                    'bg-accent-primary-5 text-center rounded-full flex items-center justify-center gap-1',
                     {
                       'text-accent-primary': isActive,
                       'text-text-primary': !isActive,
@@ -163,7 +163,7 @@ export const BaseInfo = () => {
                   key={item.planKey}
                 >
                   {label}
-                  {isActive && <Check />}
+                  {isActive && <Check size={14} />}
                 </div>
               );
             })}
