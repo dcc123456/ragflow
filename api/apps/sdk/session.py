@@ -60,7 +60,7 @@ async def create(tenant_id, chat_id):
         "dialog_id": req["dialog_id"],
         "name": req.get("name", "New session"),
         "message": [{"role": "assistant", "content": dia[0].prompt_config.get("prologue")}],
-        "user_id": req.get("user_id", ""),
+        "user_id": req.get("user_id", tenant_id) or tenant_id,
         "reference": [],
     }
     if not conv.get("name"):
@@ -128,6 +128,7 @@ async def chat_completion(tenant_id, chat_id):
     req = await get_request_json()
     if not req:
         req = {"question": ""}
+    operator_user_id = req.pop("user_id", None) or tenant_id
     if not req.get("session_id"):
         req["question"] = ""
     dia = DialogService.query(tenant_id=tenant_id, id=chat_id, status=StatusEnum.VALID.value)
@@ -135,8 +136,16 @@ async def chat_completion(tenant_id, chat_id):
         return get_error_data_result(f"You don't own the chat {chat_id}")
     dia = dia[0]
     if req.get("session_id"):
-        if not ConversationService.query(id=req["session_id"], dialog_id=chat_id):
+        conv = ConversationService.query(id=req["session_id"], dialog_id=chat_id)
+        if not conv:
             return get_error_data_result(f"You don't own the session {req['session_id']}")
+        conv = conv[0]
+        if conv.user_id and conv.user_id != operator_user_id:
+            return get_error_data_result(message="Session user_id mismatch.", code=RetCode.OPERATING_ERROR)
+        # Backfill legacy sessions with empty user_id to lock identity.
+        if not conv.user_id:
+            conv.user_id = operator_user_id
+            ConversationService.update_by_id(conv.id, conv.to_dict())
 
     metadata_condition = req.get("metadata_condition") or {}
     if metadata_condition and not isinstance(metadata_condition, dict):
@@ -158,7 +167,7 @@ async def chat_completion(tenant_id, chat_id):
             req.pop("doc_ids", None)
 
     if req.get("stream", True):
-        resp = Response(rag_completion(tenant_id, chat_id, **req), mimetype="text/event-stream")
+        resp = Response(rag_completion(tenant_id, chat_id, user_id=operator_user_id, **req), mimetype="text/event-stream")
         resp.headers.add_header("Cache-control", "no-cache")
         resp.headers.add_header("Connection", "keep-alive")
         resp.headers.add_header("X-Accel-Buffering", "no")
@@ -167,7 +176,7 @@ async def chat_completion(tenant_id, chat_id):
         return resp
     else:
         answer = None
-        async for ans in rag_completion(tenant_id, chat_id, **req):
+        async for ans in rag_completion(tenant_id, chat_id, user_id=operator_user_id, **req):
             answer = ans
             break
         return get_result(data=answer)
@@ -246,6 +255,7 @@ async def chat_completion_openai_like(tenant_id, chat_id):
             print(completion.choices[0].message.reference)
     """
     req = await get_request_json()
+    operator_user_id = req.pop("user_id", None) or tenant_id
 
     extra_body = req.get("extra_body") or {}
     if extra_body and not isinstance(extra_body, dict):
@@ -338,7 +348,7 @@ async def chat_completion_openai_like(tenant_id, chat_id):
                 chat_kwargs = {"toolcall_session": toolcall_session, "tools": tools, "quote": need_reference}
                 if doc_ids_str:
                     chat_kwargs["doc_ids"] = doc_ids_str
-                async for ans in async_chat(dia, msg, True, **chat_kwargs):
+                async for ans in async_chat(dia, msg, True, user_id=operator_user_id, **chat_kwargs):
                     last_ans = ans
                     if ans.get("final"):
                         if ans.get("answer"):
@@ -392,7 +402,7 @@ async def chat_completion_openai_like(tenant_id, chat_id):
         chat_kwargs = {"toolcall_session": toolcall_session, "tools": tools, "quote": need_reference}
         if doc_ids_str:
             chat_kwargs["doc_ids"] = doc_ids_str
-        async for ans in async_chat(dia, msg, False, **chat_kwargs):
+        async for ans in async_chat(dia, msg, False, user_id=operator_user_id, **chat_kwargs):
             # focus answer content only
             answer = ans
             break
@@ -803,6 +813,7 @@ async def ask_about(tenant_id):
         return get_error_data_result("`dataset_ids` is required.")
     if not isinstance(req.get("dataset_ids"), list):
         return get_error_data_result("`dataset_ids` should be a list.")
+    operator_user_id = req.pop("user_id", None) or tenant_id
     req["kb_ids"] = req.pop("dataset_ids")
     for kb_id in req["kb_ids"]:
         if not KnowledgebaseService.accessible(kb_id, tenant_id):
@@ -816,7 +827,7 @@ async def ask_about(tenant_id):
     async def stream():
         nonlocal req, uid
         try:
-            async for ans in async_ask(req["question"], req["kb_ids"], uid):
+            async for ans in async_ask(req["question"], req["kb_ids"], uid, user_id=operator_user_id):
                 yield "data:" + json.dumps({"code": 0, "message": "", "data": ans}, ensure_ascii=False) + "\n\n"
         except Exception as e:
             yield "data:" + json.dumps(
@@ -895,19 +906,29 @@ async def chatbot_completions(dialog_id):
     objs = APIToken.query(beta=token)
     if not objs:
         return get_error_data_result(message='Authentication error: API key is invalid!"')
+    operator_user_id = req.pop("user_id", None) or objs[0].tenant_id
 
     if "quote" not in req:
         req["quote"] = False
+    if req.get("session_id"):
+        e, conv = API4ConversationService.get_by_id(req["session_id"])
+        if not e or conv.dialog_id != dialog_id:
+            return get_error_data_result(message=f"Session does not exist: {req['session_id']}")
+        if conv.user_id and conv.user_id != operator_user_id:
+            return get_error_data_result(message="Session user_id mismatch.", code=RetCode.OPERATING_ERROR)
+        if not conv.user_id:
+            conv.user_id = operator_user_id
+            API4ConversationService.update_by_id(conv.id, conv.to_dict())
 
     if req.get("stream", True):
-        resp = Response(iframe_completion(dialog_id, **req), mimetype="text/event-stream")
+        resp = Response(iframe_completion(dialog_id, user_id=operator_user_id, **req), mimetype="text/event-stream")
         resp.headers.add_header("Cache-control", "no-cache")
         resp.headers.add_header("Connection", "keep-alive")
         resp.headers.add_header("X-Accel-Buffering", "no")
         resp.headers.add_header("Content-Type", "text/event-stream; charset=utf-8")
         return resp
 
-    async for answer in iframe_completion(dialog_id, **req):
+    async for answer in iframe_completion(dialog_id, user_id=operator_user_id, **req):
         return get_result(data=answer)
 
     return None
@@ -993,6 +1014,7 @@ async def ask_about_embedded():
 
     req = await get_request_json()
     uid = objs[0].tenant_id
+    operator_user_id = req.pop("user_id", None) or uid
 
     search_id = req.get("search_id", "")
     search_config = {}
@@ -1003,7 +1025,9 @@ async def ask_about_embedded():
     async def stream():
         nonlocal req, uid
         try:
-            async for ans in async_ask(req["question"], req["kb_ids"], uid, search_config=search_config):
+            async for ans in async_ask(
+                req["question"], req["kb_ids"], uid, search_config=search_config, user_id=operator_user_id
+            ):
                 yield "data:" + json.dumps({"code": 0, "message": "", "data": ans}, ensure_ascii=False) + "\n\n"
         except Exception as e:
             yield "data:" + json.dumps(
@@ -1047,6 +1071,7 @@ async def retrieval_test_embedded():
     top = int(req.get("top_k", 1024))
     langs = req.get("cross_languages", [])
     tenant_id = objs[0].tenant_id
+    operator_user_id = req.pop("user_id", None) or tenant_id
     if not tenant_id:
         return get_error_data_result(message="permission denined.")
 
@@ -1072,7 +1097,7 @@ async def retrieval_test_embedded():
             local_doc_ids = await apply_meta_data_filter(meta_data_filter, metas, _question, chat_mdl, local_doc_ids)
 
         local_doc_ids, tenant_ids, err_msg = filter_accessible_doc_ids_for_user(
-            tenant_id,
+            operator_user_id,
             kb_ids,
             local_doc_ids if local_doc_ids else None,
         )
@@ -1216,11 +1241,18 @@ async def mindmap():
 
     tenant_id = objs[0].tenant_id
     req = await get_request_json()
+    operator_user_id = req.pop("user_id", None) or tenant_id
 
     search_id = req.get("search_id", "")
     search_app = SearchService.get_detail(search_id) if search_id else {}
 
-    mind_map =await gen_mindmap(req["question"], req["kb_ids"], tenant_id, search_app.get("search_config", {}))
+    mind_map = await gen_mindmap(
+        req["question"],
+        req["kb_ids"],
+        tenant_id,
+        search_app.get("search_config", {}),
+        user_id=operator_user_id,
+    )
     if "error" in mind_map:
         return server_error_response(Exception(mind_map["error"]))
     return get_json_result(data=mind_map)

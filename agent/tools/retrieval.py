@@ -27,6 +27,7 @@ from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.llm_service import LLMBundle
 from api.db.services.memory_service import MemoryService
 from api.db.joint_services import memory_message_service
+from api.utils.permission_utils import filter_accessible_doc_ids_for_user
 from common import settings
 from common.connection_utils import timeout
 from rag.app.tag import label_question
@@ -125,7 +126,7 @@ class Retrieval(ToolBase, ABC):
 
         doc_ids = []
         if self._param.meta_data_filter != {}:
-            metas = DocumentService.get_meta_by_kbs(kb_ids)
+            metas = DocumentService.get_meta_by_kbs(filtered_kb_ids)
 
             def _resolve_manual_filter(flt: dict) -> dict:
                 pat = re.compile(self.variable_ref_patt)
@@ -168,6 +169,17 @@ class Retrieval(ToolBase, ABC):
                 doc_ids,
                 _resolve_manual_filter if self._param.meta_data_filter.get("method") == "manual" else None,
             )
+
+        doc_ids, _, err_msg = filter_accessible_doc_ids_for_user(
+            self._canvas.get_tenant_id(),
+            filtered_kb_ids,
+            doc_ids if doc_ids else None,
+        )
+        if err_msg:
+            raise Exception(err_msg)
+        if not doc_ids:
+            self.set_output("formalized_content", self._param.empty_response)
+            return self._param.empty_response
 
         if self._param.cross_languages:
             query = await cross_languages(kbs[0].tenant_id, None, query, self._param.cross_languages)

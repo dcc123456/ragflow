@@ -280,8 +280,10 @@ def repair_bad_citation_formats(answer: str, kbinfos: dict, idx: set):
     return answer, idx
 
 
-async def async_chat(dialog, messages, stream=True, **kwargs):
+async def async_chat(dialog, messages, stream=True, *, user_id: str, **kwargs):
     assert messages[-1]["role"] == "user", "The last content of this conversation is not from user."
+    if not user_id:
+        raise ValueError("`user_id` is required in async_chat.")
     if not dialog.kb_ids and not dialog.prompt_config.get("tavily_api_key"):
         async for ans in async_chat_solo(dialog, messages, stream):
             yield ans
@@ -360,6 +362,18 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
             attachments,
         )
 
+    if attachments is None:
+        attachments = []
+    elif isinstance(attachments, str):
+        attachments = [d for d in attachments.split(",") if d]
+    attachments, _, err_msg = filter_accessible_doc_ids_for_user(
+        user_id,
+        dialog.kb_ids,
+        attachments if attachments else None,
+    )
+    if err_msg:
+        raise Exception(err_msg)
+
     if prompt_config.get("keyword", False):
         questions[-1] += await keyword_extraction(chat_mdl, questions[-1])
 
@@ -385,7 +399,7 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
                     page_size=dialog.top_n,
                     similarity_threshold=0.2,
                     vector_similarity_weight=0.3,
-                    doc_ids=attachments,
+                    doc_ids=attachments if attachments else ["-999"],
                 ),
             )
 
@@ -396,7 +410,7 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
                 elif stream:
                     yield think
         else:
-            if embd_mdl:
+            if embd_mdl and attachments:
                 kbinfos = await retriever.retrieval(
                     " ".join(questions),
                     embd_mdl,
@@ -813,6 +827,7 @@ async def _stream_with_think_delta(stream_iter, min_tokens: int = 16):
     if state.endswith_think:
         yield ("marker", "</think>", state)
 
+
 async def async_ask(question, kb_ids, tenant_id, chat_llm_name=None, search_config={}):
     doc_ids = search_config.get("doc_ids", [])
     rerank_mdl = None
@@ -839,7 +854,7 @@ async def async_ask(question, kb_ids, tenant_id, chat_llm_name=None, search_conf
         doc_ids = await apply_meta_data_filter(meta_data_filter, metas, question, chat_mdl, doc_ids)
 
     doc_ids, _, err_msg = filter_accessible_doc_ids_for_user(
-        tenant_id,
+        user_id,
         kb_ids,
         doc_ids if doc_ids else None,
     )
@@ -905,7 +920,7 @@ async def async_ask(question, kb_ids, tenant_id, chat_llm_name=None, search_conf
     yield final
 
 
-async def gen_mindmap(question, kb_ids, tenant_id, search_config={}):
+async def gen_mindmap(question, kb_ids, tenant_id, search_config={}, *, user_id):
     meta_data_filter = search_config.get("meta_data_filter", {})
     doc_ids = search_config.get("doc_ids", [])
     rerank_id = search_config.get("rerank_id", "")
@@ -926,7 +941,7 @@ async def gen_mindmap(question, kb_ids, tenant_id, search_config={}):
         doc_ids = await apply_meta_data_filter(meta_data_filter, metas, question, chat_mdl, doc_ids)
 
     doc_ids, _, err_msg = filter_accessible_doc_ids_for_user(
-        tenant_id,
+        user_id,
         kb_ids,
         doc_ids if doc_ids else None,
     )

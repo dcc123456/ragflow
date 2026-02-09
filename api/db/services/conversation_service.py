@@ -113,7 +113,7 @@ def structure_answer(conv, ans, message_id, session_id):
             conv.reference[-1] = reference
     return ans
 
-async def async_completion(tenant_id, chat_id, question, name="New session", session_id=None, stream=True, **kwargs):
+async def async_completion(tenant_id, chat_id, question, name="New session", session_id=None, stream=True, *, user_id, **kwargs):
     assert name, "`name` can not be empty."
     dia = DialogService.query(id=chat_id, tenant_id=tenant_id, status=StatusEnum.VALID.value)
     assert dia, "You do not own the chat."
@@ -125,7 +125,7 @@ async def async_completion(tenant_id, chat_id, question, name="New session", ses
             "dialog_id": chat_id,
             "name": name,
             "message": [{"role": "assistant", "content": dia[0].prompt_config.get("prologue"), "created_at": time.time()}],
-            "user_id": kwargs.get("user_id", "")
+            "user_id": user_id,
         }
         ConversationService.save(**conv)
         if stream:
@@ -156,6 +156,12 @@ async def async_completion(tenant_id, chat_id, question, name="New session", ses
         raise LookupError("Session does not exist")
 
     conv = conv[0]
+    if conv.user_id and conv.user_id != user_id:
+        raise PermissionError("Session user_id mismatch.")
+    if not conv.user_id:
+        conv.user_id = user_id
+        ConversationService.update_by_id(conv.id, conv.to_dict())
+
     msg = []
     question = {
         "content": question,
@@ -181,7 +187,7 @@ async def async_completion(tenant_id, chat_id, question, name="New session", ses
 
     if stream:
         try:
-            async for ans in async_chat(dia, msg, True, **kwargs):
+            async for ans in async_chat(dia, msg, True, user_id=user_id, **kwargs):
                 ans = structure_answer(conv, ans, message_id, session_id)
                 yield "data:" + json.dumps({"code": 0, "data": ans}, ensure_ascii=False) + "\n\n"
             ConversationService.update_by_id(conv.id, conv.to_dict())
@@ -193,13 +199,13 @@ async def async_completion(tenant_id, chat_id, question, name="New session", ses
 
     else:
         answer = None
-        async for ans in async_chat(dia, msg, False, **kwargs):
+        async for ans in async_chat(dia, msg, False, user_id=user_id, **kwargs):
             answer = structure_answer(conv, ans, message_id, session_id)
             ConversationService.update_by_id(conv.id, conv.to_dict())
             break
         yield answer
 
-async def async_iframe_completion(dialog_id, question, session_id=None, stream=True, **kwargs):
+async def async_iframe_completion(dialog_id, question, session_id=None, stream=True, *, user_id, **kwargs):
     e, dia = DialogService.get_by_id(dialog_id)
     assert e, "Dialog not found"
     if not session_id:
@@ -207,7 +213,7 @@ async def async_iframe_completion(dialog_id, question, session_id=None, stream=T
         conv = {
             "id": session_id,
             "dialog_id": dialog_id,
-            "user_id": kwargs.get("user_id", ""),
+            "user_id": user_id,
             "message": [{"role": "assistant", "content": dia.prompt_config["prologue"], "created_at": time.time()}]
         }
         API4ConversationService.save(**conv)
@@ -226,6 +232,11 @@ async def async_iframe_completion(dialog_id, question, session_id=None, stream=T
         session_id = session_id
         e, conv = API4ConversationService.get_by_id(session_id)
         assert e, "Session not found!"
+        if conv.user_id and conv.user_id != user_id:
+            raise PermissionError("Session user_id mismatch.")
+        if not conv.user_id:
+            conv.user_id = user_id
+            API4ConversationService.update_by_id(conv.id, conv.to_dict())
 
     if not conv.message:
         conv.message = []
@@ -254,7 +265,7 @@ async def async_iframe_completion(dialog_id, question, session_id=None, stream=T
 
     if stream:
         try:
-            async for ans in async_chat(dia, msg, True, **kwargs):
+            async for ans in async_chat(dia, msg, True, user_id=user_id, **kwargs):
                 ans = structure_answer(conv, ans, message_id, session_id)
                 yield "data:" + json.dumps({"code": 0, "message": "", "data": ans},
                                            ensure_ascii=False) + "\n\n"
@@ -267,7 +278,7 @@ async def async_iframe_completion(dialog_id, question, session_id=None, stream=T
 
     else:
         answer = None
-        async for ans in async_chat(dia, msg, False, **kwargs):
+        async for ans in async_chat(dia, msg, False, user_id=user_id, **kwargs):
             answer = structure_answer(conv, ans, message_id, session_id)
             API4ConversationService.append_message(conv.id, conv.to_dict())
             break

@@ -176,6 +176,8 @@ async def list_conversation():
 @validate_request("conversation_id", "messages")
 async def completion():
     req = await get_request_json()
+    operator_user_id = current_user.id
+    req.pop("user_id", None)
     msg = []
     for m in req["messages"]:
         if m["role"] == "system":
@@ -227,7 +229,7 @@ async def completion():
         async def stream():
             nonlocal dia, msg, req, conv
             try:
-                async for ans in async_chat(dia, msg, True, **req):
+                async for ans in async_chat(dia, msg, True, user_id=operator_user_id, **req):
                     ans = structure_answer(conv, ans, message_id, conv.id)
                     yield "data:" + json.dumps({"code": 0, "message": "", "data": ans}, ensure_ascii=False) + "\n\n"
                 if not is_embedded:
@@ -247,7 +249,7 @@ async def completion():
 
         else:
             answer = None
-            async for ans in async_chat(dia, msg, **req):
+            async for ans in async_chat(dia, msg, user_id=operator_user_id, **req):
                 answer = structure_answer(conv, ans, message_id, conv.id)
                 if not is_embedded:
                     ConversationService.update_by_id(conv.id, conv.to_dict())
@@ -415,7 +417,9 @@ async def ask_about():
     async def stream():
         nonlocal req, uid
         try:
-            async for ans in async_ask(req["question"], req["kb_ids"], uid, search_config=search_config):
+            async for ans in async_ask(
+                req["question"], req["kb_ids"], uid, search_config=search_config, user_id=uid
+            ):
                 yield "data:" + json.dumps({"code": 0, "message": "", "data": ans}, ensure_ascii=False) + "\n\n"
         except Exception as e:
             yield "data:" + json.dumps({"code": 500, "message": str(e), "data": {"answer": "**ERROR**: " + str(e), "reference": []}}, ensure_ascii=False) + "\n\n"
@@ -441,7 +445,13 @@ async def mindmap():
     kb_ids.extend(req["kb_ids"])
     kb_ids = list(set(kb_ids))
 
-    mind_map = await gen_mindmap(req["question"], kb_ids, search_app.get("tenant_id", current_user.id), search_config)
+    mind_map = await gen_mindmap(
+        req["question"],
+        kb_ids,
+        search_app.get("tenant_id", current_user.id),
+        search_config,
+        user_id=current_user.id,
+    )
     if "error" in mind_map:
         return server_error_response(Exception(mind_map["error"]))
     return get_json_result(data=mind_map)
