@@ -13,6 +13,7 @@ interface CustomModalProps {
   onOk: (T: IOkFuncProps) => void;
   defaultValue?: number;
   price?: number;
+  decreaseEffectiveAt?: string | null;
 }
 
 const CustomModal: React.FC<CustomModalProps> = ({
@@ -21,6 +22,7 @@ const CustomModal: React.FC<CustomModalProps> = ({
   onOk,
   defaultValue = 0,
   price = 0.9,
+  decreaseEffectiveAt = null,
 }) => {
   const [value, setValue] = React.useState(defaultValue);
   const { t } = useTranslation();
@@ -29,17 +31,17 @@ const CustomModal: React.FC<CustomModalProps> = ({
   };
   const newCost = useMemo(() => {
     return (value * price).toFixed(2);
-  }, [value]);
+  }, [value, price]);
   const handleOk = () => {
     onOk?.({ value });
   };
 
-  const nextMonthDay = useMemo(() => {
-    const today = new Date();
-    today.setMonth(today.getMonth() + 1);
-    today.setDate(1);
-    return formatPureDate(today);
-  }, []);
+  const decreaseEffectiveDay = useMemo(() => {
+    if (decreaseEffectiveAt) {
+      return formatPureDate(decreaseEffectiveAt);
+    }
+    return '';
+  }, [decreaseEffectiveAt]);
   return (
     <Modal
       open={isOpen}
@@ -77,7 +79,9 @@ const CustomModal: React.FC<CustomModalProps> = ({
           {value < defaultValue && (
             <div>
               <div className="text-sm">
-                {t('billing.reducedQuotaEffective')} <b>{nextMonthDay}</b>.
+                {t('billing.reducedQuotaEffective')}{' '}
+                {decreaseEffectiveDay ? <b>{decreaseEffectiveDay}</b> : null}
+                {decreaseEffectiveDay ? '.' : null}
               </div>
               <div className="text-sm">
                 {t('billing.ensureBelow')}{' '}
@@ -107,11 +111,13 @@ interface IShowUpgradeTipsModalOptions {
   defaultValue: number;
   onOk: (T: IOkFuncProps) => void;
   price?: number;
+  decreaseEffectiveAt?: string | null;
 }
 const showAddOnManageModal = ({
   defaultValue = 0,
   onOk,
   price = 0.9,
+  decreaseEffectiveAt = null,
 }: IShowUpgradeTipsModalOptions) => {
   const rootElement = document.createElement('div');
   document.body.appendChild(rootElement);
@@ -130,6 +136,7 @@ const showAddOnManageModal = ({
       defaultValue={defaultValue}
       onClose={closeModal}
       price={price}
+      decreaseEffectiveAt={decreaseEffectiveAt}
     />,
   );
 

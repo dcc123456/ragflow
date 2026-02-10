@@ -57,8 +57,8 @@ billing:
       quota_members: 0
       quota_kb_storage: 0
       task_priority: "low"
-      price_ids: "price_1SwG7GPtsKvwvC5fzSaVOT33"
-      price_lookup_key: "ragflow_usage_based_storage"
+      price_ids: "price_1Syn0kPtsKvwvC5fd6HYXvCt"
+      price_lookup_key: "ragflow_subscription_storage"
       product_type: "usage_based"
       usage_stat_type: "before"
       plan_priority: -1

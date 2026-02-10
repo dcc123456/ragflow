@@ -84,6 +84,124 @@ CURRENCY_DIVISORS = {
     "usd": 100,
 }
 
+BILLING_PLAN_TRIAL_NAME = "Trial"
+STORAGE_PRODUCT_NAME = "storage"
+
+
+def is_trial_plan_name(plan_name: str) -> bool:
+    return (plan_name or "").strip().lower() == BILLING_PLAN_TRIAL_NAME.lower()
+
+
+def is_storage_plan_name(plan_name: str) -> bool:
+    return (plan_name or "").strip().lower() == STORAGE_PRODUCT_NAME
+
+
+def split_price_ids(price_ids) -> list[str]:
+    if not price_ids:
+        return []
+    if isinstance(price_ids, str):
+        return [price_id.strip() for price_id in price_ids.split() if price_id.strip()]
+    if isinstance(price_ids, list):
+        return [str(price_id).strip() for price_id in price_ids if str(price_id).strip()]
+    return []
+
+
+def is_storage_price_id(price_id: str) -> bool:
+    if not price_id:
+        return False
+    plan_name = settings.BILLING_PRICEID_TO_PRODUCT.get(price_id, "")
+    return is_storage_plan_name(plan_name)
+
+
+def get_storage_price_id_from_config() -> str:
+    # local import to avoid circular dependency in module import phase
+    from api.db.services.billing_service import ProductService
+
+    storage_product = ProductService.get_by_name(STORAGE_PRODUCT_NAME) or {}
+    storage_price_ids = split_price_ids(storage_product.get("price_ids", ""))
+    if storage_price_ids:
+        return storage_price_ids[0]
+
+    storage_plan_info = settings.BILLING_PLAN_TO_INFO.get(STORAGE_PRODUCT_NAME, {}) or {}
+    fallback_price_ids = split_price_ids(storage_plan_info.get("price_ids", []))
+    return fallback_price_ids[0] if fallback_price_ids else ""
+
+
+def safe_int(value, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def safe_float(value, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def get_product_id_by_name(product_name: str) -> str:
+    # local import to avoid circular dependency in module import phase
+    from api.db.services.billing_service import ProductService
+
+    product = ProductService.get_by_name(product_name) or {}
+    return (product.get("id") or "").strip()
+
+
+def extract_subscription_item(subscription_obj) -> tuple[str, str, int]:
+    if isinstance(subscription_obj, dict):
+        data = (subscription_obj.get("items") or {}).get("data", []) or []
+        if not data:
+            return "", "", 0
+        item = data[0]
+        price_obj = item.get("price", {}) if isinstance(item, dict) else {}
+        return (
+            item.get("id", "") if isinstance(item, dict) else "",
+            price_obj.get("id", "") if isinstance(price_obj, dict) else "",
+            safe_int(item.get("quantity", 0) if isinstance(item, dict) else 0, 0),
+        )
+
+    data = getattr(getattr(subscription_obj, "items", None), "data", []) or []
+    if not data:
+        return "", "", 0
+    item = data[0]
+    price_obj = getattr(item, "price", None)
+    return (
+        getattr(item, "id", "") or "",
+        getattr(price_obj, "id", "") if price_obj else "",
+        safe_int(getattr(item, "quantity", 0), 0),
+    )
+
+
+def extract_subscription_period(subscription_obj):
+    """
+    Stripe may omit subscription-level current_period_* in some responses.
+    Fallback to the first subscription item's period boundaries.
+    """
+    if isinstance(subscription_obj, dict):
+        start = to_utc_datetime(subscription_obj.get("current_period_start"))
+        end = to_utc_datetime(subscription_obj.get("current_period_end"))
+        if start and end:
+            return start, end
+        item_data = ((subscription_obj.get("items") or {}).get("data") or [])
+        first_item = item_data[0] if item_data else {}
+        if isinstance(first_item, dict):
+            item_start = to_utc_datetime(first_item.get("current_period_start"))
+            item_end = to_utc_datetime(first_item.get("current_period_end"))
+            return item_start, item_end
+        return None, None
+
+    start = to_utc_datetime(getattr(subscription_obj, "current_period_start", None))
+    end = to_utc_datetime(getattr(subscription_obj, "current_period_end", None))
+    if start and end:
+        return start, end
+    item_data = getattr(getattr(subscription_obj, "items", None), "data", []) or []
+    first_item = item_data[0] if item_data else None
+    item_start = to_utc_datetime(getattr(first_item, "current_period_start", None)) if first_item else None
+    item_end = to_utc_datetime(getattr(first_item, "current_period_end", None)) if first_item else None
+    return item_start, item_end
+
 
 def cents_to_decimal(amount_in_cents: int, currency: str = "usd", decimal_places: int = 4) -> Decimal:
     divisor = CURRENCY_DIVISORS.get(currency.lower(), 100)
@@ -129,8 +247,6 @@ def parse_storage_size(size_str: str) -> int:
 
 
 def get_trial_price_id(plans: list[dict]) -> str:
-    from api.db.services.billing_service import BILLING_PLAN_TRIAL_NAME
-
     trial_plan = next((plan for plan in plans if plan.get("name") == BILLING_PLAN_TRIAL_NAME and plan.get("price_ids")), None)
     return trial_plan["price_ids"].split()[0] if trial_plan else ""
 
@@ -255,6 +371,79 @@ async def schedule_subscription_price_change_at_period_end_async(subscription_id
         "schedule_id": updated_schedule.id,
         "current_price_id": current_price_id,
         "target_price_id": target_price_id,
+        "effective_at": to_utc_datetime(phase_end_date),
+    }
+
+
+@billing_enabled_guard({})
+async def schedule_subscription_quantity_change_at_period_end_async(subscription_id: str, target_quantity: int) -> dict:
+    if not subscription_id or target_quantity < 0:
+        return {}
+
+    subscription = await stripe.Subscription.retrieve_async(subscription_id)
+    period_start = subscription.get("current_period_start")
+    period_end = subscription.get("current_period_end")
+
+    subscription_items = (subscription.get("items") or {}).get("data", []) if isinstance(subscription, dict) else subscription["items"]["data"]
+    if not subscription_items:
+        return {}
+
+    current_item = subscription_items[0]
+    current_item_id = current_item.get("id", "") if isinstance(current_item, dict) else (getattr(current_item, "id", "") or "")
+    current_price = current_item.get("price", {}) if isinstance(current_item, dict) else current_item["price"]
+    current_price_id = current_price.get("id", "") if isinstance(current_price, dict) else (getattr(current_price, "id", "") or "")
+    current_quantity = current_item.get("quantity", 1) if isinstance(current_item, dict) else (getattr(current_item, "quantity", 1) or 1)
+
+    schedule_id = (subscription.get("schedule") or "").strip()
+    schedule = None
+    if schedule_id:
+        schedule = await stripe.SubscriptionSchedule.retrieve_async(schedule_id)
+        schedule_status = (schedule.get("status") or "").strip()
+        if schedule_status in {"released", "canceled", "completed"}:
+            schedule_id = ""
+            schedule = None
+
+    if not schedule:
+        schedule = await stripe.SubscriptionSchedule.create_async(from_subscription=subscription_id)
+
+    phases = schedule.get("phases", []) or []
+    current_phase = schedule.get("current_phase") or {}
+    phase_start_date = (
+        current_phase.get("start_date")
+        or (phases[0].get("start_date") if phases else None)
+        or schedule.get("start_date")
+        or period_start
+    )
+    phase_end_date = current_phase.get("end_date") or (phases[0].get("end_date") if phases else None) or period_end
+    if not phase_start_date or not phase_end_date:
+        logging.warning(
+            "Cannot schedule quantity change due to missing schedule/period boundaries: "
+            f"{subscription_id=}, {period_start=}, {period_end=}, {phase_start_date=}, {phase_end_date=}"
+        )
+        return {}
+
+    updated_schedule = await stripe.SubscriptionSchedule.modify_async(
+        schedule.id,
+        end_behavior="release",
+        phases=[
+            {
+                "start_date": phase_start_date,
+                "end_date": phase_end_date,
+                "items": [{"price": current_price_id, "quantity": current_quantity}],
+            },
+            {
+                "start_date": phase_end_date,
+                "items": [{"price": current_price_id, "quantity": target_quantity}],
+            },
+        ],
+    )
+
+    return {
+        "schedule_id": updated_schedule.id,
+        "subscription_item_id": current_item_id,
+        "price_id": current_price_id,
+        "current_quantity": current_quantity,
+        "target_quantity": target_quantity,
         "effective_at": to_utc_datetime(phase_end_date),
     }
 

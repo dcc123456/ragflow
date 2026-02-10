@@ -30,22 +30,20 @@ from api.db.db_models import (
     PricePoint,
     Product,
     PurchasedProductOverview,
+    StorageSubscription,
     Subscription,
 )
 from api.db.services.dialog_service import DialogService
 from api.db.services.file_service import FileService
 from api.db.services.memory_service import MemoryService
-from api.utils.billing import create_stripe_customer_id, get_trial_price_id, parse_storage_size
+from api.utils.billing import BILLING_PLAN_TRIAL_NAME, create_stripe_customer_id, get_trial_price_id, parse_storage_size
 from common.billing_utils import to_utc_datetime
 from common.time_utils import current_timestamp
 import stripe
 
-BILLING_PLAN_TRIAL_NAME = "Trial"
-
-
 class ProductService(CommonService):
     model = Product
-    VERSION_CHECK_FIELDS = ["quota_apps", "quota_members", "quota_kb_storage"]
+    VERSION_CHECK_FIELDS = ["quota_apps", "quota_members", "quota_kb_storage", "task_priority", "price_ids", "product_type", "usage_stat_type"]
 
     @classmethod
     @DB.connection_context()
@@ -65,6 +63,9 @@ class ProductService(CommonService):
             cls.model.quota_members,
             cls.model.quota_kb_storage,
             cls.model.task_priority,
+            cls.model.price_ids,
+            cls.model.product_type,
+            cls.model.usage_stat_type,
             cls.model.version,
         ]
         plan = cls.model.select(*fields).where(cls.model.name == product_name).order_by(cls.model.version.desc()).dicts().first()
@@ -84,7 +85,7 @@ class ProductService(CommonService):
                     logging.info(f"Create billing product {plan}.")
                     continue
 
-                is_outdated = any(plan.get(field, "") != ori_product.get(field, "") for field in cls.VERSION_CHECK_FIELDS if plan.get(field, ""))
+                is_outdated = any(plan.get(field) != ori_product.get(field) for field in cls.VERSION_CHECK_FIELDS if field in plan)
 
                 if is_outdated:
                     # may have race condition, if launch multiple product-changed config instance concurrently.
@@ -377,26 +378,8 @@ class SubscriptionService(CommonService):
                 check_pass = False
 
         if delta_kb_storage > 0:
-            # Storage quota is tracked in KB. Add-on storage purchases are stored in KB too.
-            add_on_storage_kb = 0
-            now = datetime.now(timezone.utc)
-            for row in (
-                PurchasedProductOverview.select(
-                    PurchasedProductOverview.quantity,
-                    PurchasedProductOverview.expiry_time,
-                    PurchasedProductOverview.product_name,
-                )
-                .where(
-                    (PurchasedProductOverview.tenant_id == tenant_id)
-                    & (PurchasedProductOverview.quantity > 0)
-                    & (PurchasedProductOverview.product_name.contains("storage"))
-                )
-                .iterator()
-            ):
-                expiry_time = to_utc_datetime(getattr(row, "expiry_time", None))
-                if expiry_time and expiry_time < now:
-                    continue
-                add_on_storage_kb += int(getattr(row, "quantity", 0) or 0)
+            # Storage add-on quota now comes from recurring storage subscription.
+            add_on_storage_kb = StorageSubscriptionService.effective_storage_kb(tenant_id)
 
             storage_limit_kb = int(tenant_plan_info["quota_kb_storage"] or 0) + add_on_storage_kb
             details["quota_kb_storage"] = {
@@ -454,6 +437,94 @@ class SubscriptionService(CommonService):
             subscription_dict["update_time"] = current_timestamp()
             subscription_dict["update_date"] = to_utc_datetime(datetime.now(timezone.utc))
             cls.model.update(subscription_dict).where(cls.model.tenant_id == tenant_id).execute()
+
+
+class StorageSubscriptionService(CommonService):
+    model = StorageSubscription
+    BLOCKING_PENDING_ACTIONS = {"create", "increase", "align"}
+
+    @classmethod
+    def save(cls, **kwargs):
+        if "id" not in kwargs:
+            kwargs["id"] = get_uuid()
+        obj = cls.model(**kwargs).save(force_insert=True)
+        return obj
+
+    @classmethod
+    @DB.connection_context()
+    def get_by_tenant_id(cls, tenant_id: str) -> dict | None:
+        if not tenant_id:
+            return None
+        return cls.model.select().where(cls.model.tenant_id == tenant_id).dicts().first()
+
+    @classmethod
+    @DB.connection_context()
+    def get_by_subscription_id(cls, subscription_id: str) -> dict | None:
+        if not subscription_id:
+            return None
+        return cls.model.select().where(cls.model.subscription_id == subscription_id).dicts().first()
+
+    @classmethod
+    @DB.connection_context()
+    def upsert_by_tenant_id(cls, tenant_id: str, **kwargs) -> bool:
+        if not tenant_id:
+            return False
+
+        update_dict = kwargs.copy()
+        update_dict["update_time"] = current_timestamp()
+        update_dict["update_date"] = to_utc_datetime(datetime.now(timezone.utc))
+
+        exists = cls.model.select(cls.model.id).where(cls.model.tenant_id == tenant_id).first()
+        if exists:
+            cls.model.update(update_dict).where(cls.model.tenant_id == tenant_id).execute()
+            return True
+
+        insert_dict = {
+            "id": get_uuid(),
+            "tenant_id": tenant_id,
+            "customer_id": kwargs.get("customer_id", ""),
+            "subscription_id": kwargs.get("subscription_id", ""),
+            "subscription_item_id": kwargs.get("subscription_item_id", ""),
+            "price_id": kwargs.get("price_id", ""),
+            "schedule_id": kwargs.get("schedule_id", ""),
+            "effective_quantity_gb": kwargs.get("effective_quantity_gb", 0),
+            "target_quantity_gb": kwargs.get("target_quantity_gb", 0),
+            "pending_quantity_gb": kwargs.get("pending_quantity_gb"),
+            "pending_effective_at": kwargs.get("pending_effective_at"),
+            "pending_action": kwargs.get("pending_action", ""),
+            "current_period_start": kwargs.get("current_period_start"),
+            "current_period_end": kwargs.get("current_period_end"),
+            "cancel_at_period_end": kwargs.get("cancel_at_period_end", False),
+            "status": kwargs.get("status", ""),
+        }
+        cls.model.insert(**insert_dict).execute()
+        return True
+
+    @classmethod
+    @DB.connection_context()
+    def has_blocking_pending_by_tenant_id(cls, tenant_id: str) -> bool:
+        row = cls.get_by_tenant_id(tenant_id)
+        if not row:
+            return False
+        pending_quantity = row.get("pending_quantity_gb")
+        pending_action = (row.get("pending_action") or "").strip().lower()
+        if pending_quantity is None or pending_action not in cls.BLOCKING_PENDING_ACTIONS:
+            return False
+        status = (row.get("status") or "").strip().lower()
+        if status in {"canceled", "incomplete_expired"}:
+            return False
+        return True
+
+    @classmethod
+    def effective_storage_kb(cls, tenant_id: str) -> int:
+        row = cls.get_by_tenant_id(tenant_id)
+        if not row:
+            return 0
+        status = (row.get("status") or "").strip().lower()
+        if status in {"canceled", "incomplete_expired"}:
+            return 0
+        quantity_gb = int(row.get("effective_quantity_gb") or 0)
+        return max(quantity_gb, 0) * 1024 * 1024
 
 
 ####################################################################################

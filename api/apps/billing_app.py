@@ -35,11 +35,23 @@ from api.db.services.billing_service import (
     PricePointService,
     ProductService,
     PurchasedProductOverviewService,
+    StorageSubscriptionService,
     SubscriptionService,
 )
 from api.db.services.file_service import FileService
 from api.utils.api_utils import get_data_error_result, get_json_result, get_request_json, server_error_response
 from api.utils.billing import (
+    BILLING_PLAN_TRIAL_NAME,
+    STORAGE_PRODUCT_NAME,
+    extract_subscription_item,
+    extract_subscription_period,
+    get_product_id_by_name,
+    get_storage_price_id_from_config,
+    is_storage_plan_name,
+    is_storage_price_id,
+    is_trial_plan_name,
+    safe_float,
+    safe_int,
     billing_set_customer_id_async,
     cents_to_decimal,
     cancel_scheduled_subscription_change_async,
@@ -50,6 +62,7 @@ from api.utils.billing import (
     get_receipt_url_from_intent_latest_charge,
     get_trial_price_id,
     is_downgrade_by_price_id,
+    schedule_subscription_quantity_change_at_period_end_async,
     schedule_subscription_price_change_at_period_end_async,
 )
 from api.utils.billing_schema import CheckoutSessionCompleted, IntentSucceed, InvoicePaid, SubscriptionUpdated
@@ -78,11 +91,11 @@ INVOICE_FAILED = "invoice.payment_failed"  #  notify customers and send them to 
 CHECKOUT_SESSION_COMPLETED = "checkout.session.completed"
 # SUBSCRIPTION_CREATED = "customer.subscription.created"
 SUBSCRIPTION_UPDATED = "customer.subscription.updated"
-# SUBSCRIPTION_DELETED = "customer.subscription.deleted"
+SUBSCRIPTION_DELETED = "customer.subscription.deleted"
 # one-off
 PAYMENT_INTENT_SUCCEEDED = "payment_intent.succeeded"
 
-FOCUSED_STRIPE_WEBHOOK = [INVOICE_PAID, INVOICE_FAILED, SUBSCRIPTION_UPDATED, CHECKOUT_SESSION_COMPLETED, PAYMENT_INTENT_SUCCEEDED]
+FOCUSED_STRIPE_WEBHOOK = [INVOICE_PAID, INVOICE_FAILED, SUBSCRIPTION_UPDATED, SUBSCRIPTION_DELETED, CHECKOUT_SESSION_COMPLETED, PAYMENT_INTENT_SUCCEEDED]
 PLANS_CACHE_KEY = settings.BILLING.get("plans_cache_key", "saas:billing:plans:latest")
 PLANS_CACHE_TTL_SECONDS = settings.BILLING.get("plans_cache_ttl_seconds", 60 * 60 * 24)
 USAGE_BASED_PLANS_CACHE_KEY = settings.BILLING.get("usage_based_plans_cache_key", "saas:billing:usage_based:latest")
@@ -95,6 +108,357 @@ def _billing_disabled_response():
 def _billing_disabled_webhook_response():
     logging.info("Billing disabled; ignoring Stripe webhook.")
     return jsonify(success=True)
+
+
+def _storage_effective_kb(tenant_id: str) -> int:
+    return StorageSubscriptionService.effective_storage_kb(tenant_id)
+
+
+async def _get_storage_unit_price_async(price_id: str = "") -> float:
+    target_price_id = (price_id or "").strip() or get_storage_price_id_from_config()
+    if not target_price_id:
+        return 0.0
+    try:
+        stripe_price = await stripe.Price.retrieve_async(target_price_id)
+        if isinstance(stripe_price, dict):
+            unit_amount = stripe_price.get("unit_amount")
+        else:
+            unit_amount = getattr(stripe_price, "unit_amount", None)
+        if unit_amount is None:
+            return 0.0
+        return safe_float(unit_amount, 0.0) / 100.0
+    except Exception as e:
+        logging.warning(f"Failed to retrieve storage unit price from Stripe for {target_price_id}: {e}")
+        return 0.0
+
+
+async def _hydrate_storage_period_fields_if_missing(tenant_id: str, storage_row: dict) -> dict:
+    """
+    Self-heal legacy/incomplete rows: if storage subscription exists but period
+    fields are empty, refresh from Stripe and persist once.
+    """
+    if not storage_row:
+        return {}
+    subscription_id = (storage_row.get("subscription_id") or "").strip()
+    if not subscription_id:
+        return storage_row
+
+    has_period = bool(storage_row.get("current_period_start") and storage_row.get("current_period_end"))
+    if has_period:
+        return storage_row
+
+    try:
+        stripe_subscription = await stripe.Subscription.retrieve_async(subscription_id)
+        _sync_storage_subscription_record(
+            tenant_id,
+            stripe_subscription,
+            customer_id=storage_row.get("customer_id", ""),
+            clear_pending=False,
+            pending_quantity_gb=storage_row.get("pending_quantity_gb"),
+            pending_action=storage_row.get("pending_action", ""),
+            pending_effective_at=storage_row.get("pending_effective_at"),
+            schedule_id=storage_row.get("schedule_id", ""),
+            target_quantity_gb=storage_row.get("target_quantity_gb"),
+        )
+        return StorageSubscriptionService.get_by_tenant_id(tenant_id) or storage_row
+    except Exception as e:
+        logging.warning(f"Failed to hydrate storage period fields for tenant {tenant_id}: {e}")
+        return storage_row
+
+
+def _sync_storage_subscription_record(
+    tenant_id: str,
+    subscription_obj,
+    customer_id: str = "",
+    *,
+    target_quantity_gb: int | None = None,
+    clear_pending: bool = False,
+    pending_quantity_gb: int | None = None,
+    pending_action: str = "",
+    pending_effective_at=None,
+    schedule_id: str | None = None,
+) -> bool:
+    if not tenant_id:
+        return False
+
+    item_id, price_id, quantity = extract_subscription_item(subscription_obj)
+    if isinstance(subscription_obj, dict):
+        subscription_id = (subscription_obj.get("id") or "").strip()
+        status = (subscription_obj.get("status") or "").strip()
+        period_start, period_end = extract_subscription_period(subscription_obj)
+        cancel_at_period_end = bool(subscription_obj.get("cancel_at_period_end", False))
+        schedule = (subscription_obj.get("schedule") or "").strip()
+        customer = customer_id or (subscription_obj.get("customer") or "")
+    else:
+        subscription_id = (getattr(subscription_obj, "id", "") or "").strip()
+        status = (getattr(subscription_obj, "status", "") or "").strip()
+        period_start, period_end = extract_subscription_period(subscription_obj)
+        cancel_at_period_end = bool(getattr(subscription_obj, "cancel_at_period_end", False))
+        schedule = (getattr(subscription_obj, "schedule", "") or "").strip()
+        customer = customer_id or (getattr(subscription_obj, "customer", "") or "")
+
+    update_dict = {
+        "customer_id": customer,
+        "subscription_id": subscription_id,
+        "subscription_item_id": item_id,
+        "price_id": price_id,
+        "schedule_id": schedule_id if schedule_id is not None else schedule,
+        "current_period_start": period_start,
+        "current_period_end": period_end,
+        "cancel_at_period_end": cancel_at_period_end,
+        "status": status,
+    }
+
+    if target_quantity_gb is not None:
+        update_dict["target_quantity_gb"] = max(safe_int(target_quantity_gb, 0), 0)
+
+    if clear_pending:
+        update_dict["pending_quantity_gb"] = None
+        update_dict["pending_action"] = ""
+        update_dict["pending_effective_at"] = None
+        update_dict["effective_quantity_gb"] = max(quantity, 0)
+        update_dict["target_quantity_gb"] = max(quantity, 0)
+    else:
+        if pending_quantity_gb is not None:
+            update_dict["pending_quantity_gb"] = max(safe_int(pending_quantity_gb, 0), 0)
+        if pending_action:
+            update_dict["pending_action"] = pending_action
+        if pending_effective_at is not None:
+            update_dict["pending_effective_at"] = to_utc_datetime(pending_effective_at)
+        if "effective_quantity_gb" not in update_dict:
+            existed = StorageSubscriptionService.get_by_tenant_id(tenant_id)
+            if existed:
+                update_dict["effective_quantity_gb"] = max(safe_int(existed.get("effective_quantity_gb"), 0), 0)
+            else:
+                update_dict["effective_quantity_gb"] = 0
+            if "target_quantity_gb" not in update_dict:
+                update_dict["target_quantity_gb"] = update_dict["effective_quantity_gb"]
+
+    return StorageSubscriptionService.upsert_by_tenant_id(tenant_id, **update_dict)
+
+
+def _has_storage_blocking_pending(tenant_id: str) -> bool:
+    return StorageSubscriptionService.has_blocking_pending_by_tenant_id(tenant_id)
+
+
+async def _create_storage_checkout_session_async(
+    tenant_id: str,
+    customer_id: str,
+    storage_price_id: str,
+    target_quantity_gb: int,
+    session_success_url: str,
+    session_cancel_url: str,
+    main_period_end=None,
+):
+    metadata = {
+        "price_type": PriceType.SUBSCRIPTION,
+        "tenant_id": tenant_id,
+        "price_id": storage_price_id,
+        "product_name": STORAGE_PRODUCT_NAME,
+        "target_quantity_gb": str(target_quantity_gb),
+    }
+    subscription_data = {
+        "metadata": metadata.copy(),
+        "proration_behavior": "create_prorations",
+    }
+    if main_period_end:
+        subscription_data["billing_cycle_anchor"] = int(to_utc_datetime(main_period_end).timestamp())
+
+    session = await stripe.checkout.Session.create_async(
+        customer=customer_id,
+        client_reference_id=f"storage_order_{uuid.uuid4()}",
+        line_items=[{"price": storage_price_id, "quantity": target_quantity_gb}],
+        mode=PriceType.SUBSCRIPTION,
+        success_url=session_success_url,
+        cancel_url=session_cancel_url,
+        metadata=metadata,
+        subscription_data=subscription_data,
+    )
+    return session
+
+
+async def _set_storage_cancel_at_period_end_async(tenant_id: str, value: bool = True) -> tuple[bool, dict]:
+    storage = StorageSubscriptionService.get_by_tenant_id(tenant_id)
+    if not storage or not storage.get("subscription_id"):
+        return True, {}
+
+    subscription_id = storage.get("subscription_id")
+    updated = await stripe.Subscription.modify_async(subscription_id, cancel_at_period_end=value)
+    _, updated_period_end = extract_subscription_period(updated)
+    if value:
+        _sync_storage_subscription_record(
+            tenant_id,
+            updated,
+            target_quantity_gb=0,
+            clear_pending=False,
+            pending_quantity_gb=0,
+            pending_action="cancel",
+            pending_effective_at=updated_period_end,
+        )
+    else:
+        _sync_storage_subscription_record(
+            tenant_id,
+            updated,
+            clear_pending=True,
+        )
+    return True, {
+        "cancel_at_period_end": value,
+        "effective_at": updated_period_end,
+    }
+
+
+def _current_storage_effective_gb(storage_row: dict, stripe_quantity: int = 0) -> int:
+    local_effective = safe_int(storage_row.get("effective_quantity_gb"), 0) if storage_row else 0
+    if local_effective > 0:
+        return local_effective
+    return max(safe_int(stripe_quantity, 0), 0)
+
+
+async def _set_storage_target_quantity_async(
+    tenant_id: str,
+    target_quantity_gb: int,
+    *,
+    session_success_url: str = "",
+    session_cancel_url: str = "",
+) -> tuple[bool, dict]:
+    if target_quantity_gb < 0:
+        return False, {"error": "Quantity must be a non-negative integer."}
+
+    tenant_plan = SubscriptionService.get_by_tenant_id(tenant_id)
+    is_trial = is_trial_plan_name(tenant_plan.get("plan_name", ""))
+
+    if _has_storage_blocking_pending(tenant_id):
+        return False, {"error": "Storage has a pending payment. Please finish current payment first."}
+
+    storage = StorageSubscriptionService.get_by_tenant_id(tenant_id)
+    main_period_end = to_utc_datetime(tenant_plan.get("end_time"))
+    has_storage_subscription = bool((storage or {}).get("subscription_id", "").strip())
+
+    # Trial tenants are allowed to keep/cancel existing storage, but cannot add or resume positive quantity.
+    if is_trial and target_quantity_gb > 0:
+        return False, {"error": "Trial plan does not support storage add-on."}
+
+    # First purchase path: create a dedicated storage subscription via Checkout.
+    if not has_storage_subscription:
+        if target_quantity_gb == 0:
+            return True, {
+                "effective_quantity_gb": 0,
+                "target_quantity_gb": 0,
+                "pending": False,
+                "message": "No active storage subscription.",
+            }
+
+        customer_id = (tenant_plan.get("customer_id") or "").strip()
+        if not customer_id:
+            customer_id = await billing_set_customer_id_async(tenant_id)
+        if not customer_id:
+            return False, {"error": "Customer not found."}
+
+        storage_price_id = get_storage_price_id_from_config()
+        if not storage_price_id:
+            return False, {"error": "Storage price is not configured."}
+
+        session = await _create_storage_checkout_session_async(
+            tenant_id=tenant_id,
+            customer_id=customer_id,
+            storage_price_id=storage_price_id,
+            target_quantity_gb=target_quantity_gb,
+            session_success_url=session_success_url or settings.BILLING["session_success_url"],
+            session_cancel_url=session_cancel_url or settings.BILLING["session_cancel_url"],
+            main_period_end=main_period_end,
+        )
+        return True, {"redirect_to": session.url, "pending": True, "target_quantity_gb": target_quantity_gb}
+
+    storage_subscription_id = (storage.get("subscription_id") or "").strip()
+    stripe_storage_subscription = await stripe.Subscription.retrieve_async(storage_subscription_id)
+    item_id, _price_id, stripe_quantity = extract_subscription_item(stripe_storage_subscription)
+    if not item_id:
+        return False, {"error": "Storage subscription item not found."}
+
+    effective_quantity_gb = _current_storage_effective_gb(storage, stripe_quantity)
+    cancel_at_period_end = bool(storage.get("cancel_at_period_end", False))
+    _, storage_current_period_end = extract_subscription_period(stripe_storage_subscription)
+
+    # If user sets a positive target while cancellation is pending, treat it as resume.
+    if target_quantity_gb > 0 and cancel_at_period_end:
+        try:
+            await _set_storage_cancel_at_period_end_async(tenant_id, value=False)
+            storage = StorageSubscriptionService.get_by_tenant_id(tenant_id) or storage
+        except Exception as e:
+            logging.warning(f"Failed to resume storage subscription for tenant {tenant_id}: {e}")
+
+    if target_quantity_gb == effective_quantity_gb and not cancel_at_period_end:
+        return True, {
+            "effective_quantity_gb": effective_quantity_gb,
+            "target_quantity_gb": effective_quantity_gb,
+            "pending": False,
+            "message": "Storage target is unchanged.",
+        }
+
+    if target_quantity_gb == 0:
+        ok, data = await _set_storage_cancel_at_period_end_async(tenant_id, value=True)
+        if not ok:
+            return False, {"error": "Failed to schedule storage cancellation."}
+        return True, {
+            "scheduled_cancel": True,
+            "effective_quantity_gb": effective_quantity_gb,
+            "target_quantity_gb": 0,
+            "pending": True,
+            **data,
+        }
+
+    if target_quantity_gb > effective_quantity_gb:
+        # Clear any schedule first; increasing should take effect immediately after successful payment.
+        try:
+            await cancel_scheduled_subscription_change_async(storage_subscription_id)
+        except Exception:
+            pass
+        updated = await stripe.Subscription.modify_async(
+            storage_subscription_id,
+            cancel_at_period_end=False,
+            items=[{"id": item_id, "quantity": target_quantity_gb}],
+            proration_behavior="always_invoice",
+            payment_behavior="pending_if_incomplete",
+            billing_cycle_anchor="unchanged",
+        )
+        pending_update = updated.get("pending_update") if isinstance(updated, dict) else getattr(updated, "pending_update", None)
+        _sync_storage_subscription_record(
+            tenant_id,
+            updated,
+            target_quantity_gb=target_quantity_gb,
+            clear_pending=not bool(pending_update),
+            pending_quantity_gb=target_quantity_gb if pending_update else None,
+            pending_action="increase" if pending_update else "",
+            pending_effective_at=storage_current_period_end if pending_update else None,
+        )
+        return True, {
+            "pending_payment": bool(pending_update),
+            "effective_quantity_gb": effective_quantity_gb if pending_update else target_quantity_gb,
+            "target_quantity_gb": target_quantity_gb,
+            "pending": bool(pending_update),
+        }
+
+    # Decrease path: schedule at period end.
+    scheduled = await schedule_subscription_quantity_change_at_period_end_async(storage_subscription_id, target_quantity_gb)
+    if not scheduled:
+        return False, {"error": "Failed to schedule storage quantity decrease."}
+    latest_storage_sub = await stripe.Subscription.retrieve_async(storage_subscription_id)
+    _sync_storage_subscription_record(
+        tenant_id,
+        latest_storage_sub,
+        target_quantity_gb=target_quantity_gb,
+        clear_pending=False,
+        pending_quantity_gb=target_quantity_gb,
+        pending_action="decrease",
+        pending_effective_at=scheduled.get("effective_at"),
+        schedule_id=scheduled.get("schedule_id", ""),
+    )
+    return True, {
+        "scheduled_change": scheduled,
+        "effective_quantity_gb": effective_quantity_gb,
+        "target_quantity_gb": target_quantity_gb,
+        "pending": True,
+    }
 
 
 @manager.route("/current_plan", methods=["GET"])  # noqa: F821
@@ -115,6 +479,79 @@ async def billing_current_plan():
         except Exception as e:
             logging.warning(f"Failed to fetch pending subscription change for tenant {current_user.id}: {e}")
     return get_json_result(data=tenant_plan)
+
+
+@manager.route("/storage/current", methods=["GET"])  # noqa: F821
+@login_required
+@billing_enabled_guard(_billing_disabled_response)
+async def billing_storage_current():
+    tenant_id = request.args.get("tenant_id", current_user.id)
+    if current_user.id != tenant_id:
+        return get_json_result(
+            data=False,
+            message="No authorization.",
+            code=RetCode.AUTHENTICATION_ERROR,
+        )
+
+    tenant_plan = SubscriptionService.get_by_tenant_id(tenant_id)
+    storage = StorageSubscriptionService.get_by_tenant_id(tenant_id) or {}
+    storage = await _hydrate_storage_period_fields_if_missing(tenant_id, storage)
+    storage_current_period_start = to_utc_datetime(storage.get("current_period_start")) or to_utc_datetime(tenant_plan.get("start_time"))
+    storage_current_period_end = to_utc_datetime(storage.get("current_period_end")) or to_utc_datetime(tenant_plan.get("end_time"))
+    decrease_effective_at = to_utc_datetime(storage.get("pending_effective_at")) or storage_current_period_end
+    unit_price = await _get_storage_unit_price_async(storage.get("price_id", ""))
+    data = {
+        "tenant_id": tenant_id,
+        "plan_name": tenant_plan.get("plan_name", ""),
+        "trial_forbidden": is_trial_plan_name(tenant_plan.get("plan_name", "")),
+        "unit_price": unit_price,
+        "effective_quantity_gb": safe_int(storage.get("effective_quantity_gb"), 0),
+        "target_quantity_gb": safe_int(storage.get("target_quantity_gb"), 0),
+        "pending_quantity_gb": storage.get("pending_quantity_gb"),
+        "pending_action": storage.get("pending_action", ""),
+        "pending_effective_at": to_utc_datetime(storage.get("pending_effective_at")),
+        "decrease_effective_at": decrease_effective_at,
+        "subscription_id": storage.get("subscription_id", ""),
+        "price_id": storage.get("price_id", ""),
+        "schedule_id": storage.get("schedule_id", ""),
+        "status": storage.get("status", ""),
+        "cancel_at_period_end": bool(storage.get("cancel_at_period_end", False)),
+        "current_period_start": storage_current_period_start,
+        "current_period_end": storage_current_period_end,
+    }
+    return get_json_result(data=data)
+
+
+@manager.route("/storage/set-target", methods=["POST"])  # noqa: F821
+@login_required
+@billing_enabled_guard(_billing_disabled_response)
+async def billing_storage_set_target():
+    req = await get_request_json()
+    tenant_id = req.get("tenant_id", current_user.id)
+    if current_user.id != tenant_id:
+        return get_json_result(
+            data=False,
+            message="No authorization.",
+            code=RetCode.AUTHENTICATION_ERROR,
+        )
+
+    target_quantity = req.get("target_quantity_gb")
+    try:
+        target_quantity_gb = int(target_quantity)
+    except (TypeError, ValueError):
+        return get_json_result(data=False, message="target_quantity_gb must be an integer.", code=RetCode.BAD_REQUEST)
+    if target_quantity_gb < 0:
+        return get_json_result(data=False, message="target_quantity_gb must be >= 0.", code=RetCode.BAD_REQUEST)
+
+    ok, data = await _set_storage_target_quantity_async(
+        tenant_id,
+        target_quantity_gb,
+        session_success_url=req.get("session_success_url", settings.BILLING["session_success_url"]),
+        session_cancel_url=req.get("session_cancel_url", settings.BILLING["session_cancel_url"]),
+    )
+    if not ok:
+        return get_data_error_result(message=data.get("error", "Failed to set storage target."))
+    return get_json_result(data=data)
 
 
 @manager.route("/plan_overview", methods=["GET"])  # noqa: F821
@@ -166,31 +603,21 @@ async def billing_plan_overview():
                 },
             },
             "api_request_limits": {
-                "requests_per_minute": _get_api_request_limit_by_plan(tenant_plan.get("plan_name", "Trial"), limit_type="minute"),
-                "requests_per_month": _get_api_request_limit_by_plan(tenant_plan.get("plan_name", "Trial"), limit_type="month"),
+                "requests_per_minute": _get_api_request_limit_by_plan(tenant_plan.get("plan_name", BILLING_PLAN_TRIAL_NAME), limit_type="minute"),
+                "requests_per_month": _get_api_request_limit_by_plan(tenant_plan.get("plan_name", BILLING_PLAN_TRIAL_NAME), limit_type="month"),
             },
         }
 
-        purchased_products = PurchasedProductOverviewService.query(tenant_id=tenant_id)
-        now_utc = datetime.now(timezone.utc)
-        storage_related_add_on = []
-        add_on_storage_quantity = 0
-        for product in purchased_products:
-            expiry_time = to_utc_datetime(getattr(product, "expiry_time", None))
-            if expiry_time and expiry_time < now_utc:
-                continue
-            product_name = product.product_name.lower() if product.product_name else ""
-            quantity = product.quantity if product.quantity else 0
-            if "storage" in product_name:
-                storage_related_add_on.append(product)
-                add_on_storage_quantity += quantity
+        add_on_storage_kb = _storage_effective_kb(tenant_id)
+        if add_on_storage_kb > 0:
+            plan_overview["resources"]["add_on_storage"]["limit"] = add_on_storage_kb
 
-        if add_on_storage_quantity:
-            plan_overview["resources"]["add_on_storage"]["limit"] = add_on_storage_quantity
-
-        if storage_related_add_on and add_on_storage_quantity and storage_used_kb > storage_limit_kb:
+        total_storage_limit_kb = storage_limit_kb + add_on_storage_kb
+        if storage_used_kb > storage_limit_kb:
             plan_overview["resources"]["plan_storage"]["used"] = storage_limit_kb
-            plan_overview["resources"]["add_on_storage"]["used"] = storage_used_kb - storage_limit_kb
+            plan_overview["resources"]["add_on_storage"]["used"] = min(storage_used_kb - storage_limit_kb, max(add_on_storage_kb, 0))
+        elif total_storage_limit_kb <= 0:
+            plan_overview["resources"]["add_on_storage"]["used"] = 0
 
         return get_json_result(data=plan_overview)
     except Exception as e:
@@ -214,7 +641,7 @@ def _get_api_request_limit_by_plan(plan_name: str, limit_type: str = "month") ->
 
     info = settings.BILLING_PLAN_TO_INFO.get(key) or settings.BILLING_PLAN_TO_INFO.get(key.title()) or {}
     if not info:
-        info = settings.BILLING_PLAN_TO_INFO.get("Trial") or {}
+        info = settings.BILLING_PLAN_TO_INFO.get(BILLING_PLAN_TRIAL_NAME) or {}
     if limit_type == "minute":
         value = info.get("api_request_limit_per_minute")
     else:  # "month"
@@ -262,13 +689,13 @@ async def billing_usage_based_overview():
                 usage_overview["deepdoc_pages"]["purchased"] += quantity
                 usage_overview["deepdoc_pages"]["remaining"] += quantity
 
-            elif "storage" in product_name:
-                usage_overview["storage"]["purchased"] += quantity
-                usage_overview["storage"]["remaining"] += quantity
-
             elif "token" in product_name:
                 usage_overview["tokens"]["purchased"] += quantity
                 usage_overview["tokens"]["remaining"] += quantity
+
+        storage_quota_kb = _storage_effective_kb(tenant_id)
+        usage_overview["storage"]["purchased"] = storage_quota_kb
+        usage_overview["storage"]["remaining"] = storage_quota_kb
 
         num_storage_in_kb = FileService.get_total_size_by_tenant_id(tenant_id) // 1024
         usage_overview["storage"]["remaining"] -= num_storage_in_kb
@@ -615,8 +1042,8 @@ async def billing_all_plans():
                 price_dict[plan_name] = unit_amount / 100 if unit_amount else -1
         except Exception as e:
             logging.warning(f"Failed to fetch Stripe prices by lookup_key: {e}")
-    if "Trial" not in price_dict:
-        price_dict["Trial"] = 0
+    if BILLING_PLAN_TRIAL_NAME not in price_dict:
+        price_dict[BILLING_PLAN_TRIAL_NAME] = 0
 
     latest_plans = ProductService.get_latest_by_type(ProductType.SUBSCRIPTION)
 
@@ -809,10 +1236,10 @@ async def billing_checkout():
             message="Invalid quantity.",
             code=RetCode.BAD_REQUEST,
         )
-    if quantity <= 0:
+    if quantity < 0:
         return get_json_result(
             data=False,
-            message="Quantity must be a positive integer.",
+            message="Quantity must be a non-negative integer.",
             code=RetCode.BAD_REQUEST,
         )
     if current_user.id != tenant_id:
@@ -835,6 +1262,13 @@ async def billing_checkout():
         return get_json_result(
             data=False,
             message="Missing required parameters usage_based_price_id.",
+            code=RetCode.BAD_REQUEST,
+        )
+
+    if payment_type == PriceType.SUBSCRIPTION and quantity <= 0:
+        return get_json_result(
+            data=False,
+            message="Quantity must be a positive integer.",
             code=RetCode.BAD_REQUEST,
         )
 
@@ -861,6 +1295,11 @@ async def billing_checkout():
                         return get_json_result(data=False, message=msg, code=RetCode.SUCCESS)
 
                     if current_price_id and is_downgrade_by_price_id(current_price_id, subscription_price_id):
+                        target_plan_name_for_downgrade = settings.BILLING_PRICEID_TO_PRODUCT.get(subscription_price_id, "")
+                        if is_trial_plan_name(target_plan_name_for_downgrade):
+                            ok, _ = await _set_storage_cancel_at_period_end_async(tenant_id, value=True)
+                            if not ok:
+                                return get_data_error_result(message="Failed to auto-cancel storage for Trial downgrade.")
                         scheduled = await schedule_subscription_price_change_at_period_end_async(subscription_id, subscription_price_id)
                         if not scheduled:
                             return get_data_error_result(message="Failed to schedule plan downgrade.")
@@ -868,7 +1307,7 @@ async def billing_checkout():
                         return get_json_result(data={"scheduled_change": scheduled}, message=msg, code=RetCode.SUCCESS)
 
                     trial_price_id = get_trial_price_id(settings.BILLING.get("billing_plans", []))
-                    trial_plan_name = settings.BILLING_PRICEID_TO_PRODUCT.get(trial_price_id, "") or "Trial"
+                    trial_plan_name = settings.BILLING_PRICEID_TO_PRODUCT.get(trial_price_id, "") or BILLING_PLAN_TRIAL_NAME
                     current_plan_name = settings.BILLING_PRICEID_TO_PRODUCT.get(current_price_id, "") or tenant_plan.get("plan_name", "")
                     target_plan_name = settings.BILLING_PRICEID_TO_PRODUCT.get(subscription_price_id, "")
                     if current_plan_name == trial_plan_name and target_plan_name and target_plan_name != trial_plan_name:
@@ -977,12 +1416,23 @@ async def billing_checkout():
 
         elif payment_type == PriceType.USAGE_BASED:
             logging.info("ENTERING PAYMENT SECTION")
+            usage_product_name = settings.BILLING_PRICEID_TO_PRODUCT.get(usage_based_price_id, "")
+
+            if is_storage_price_id(usage_based_price_id):
+                return get_data_error_result(message="Storage add-on checkout moved to /billing/storage/set-target.")
+
+            if quantity <= 0:
+                return get_json_result(
+                    data=False,
+                    message="Quantity must be a positive integer.",
+                    code=RetCode.BAD_REQUEST,
+                )
 
             usage_metadata = {
                 "price_type": PriceType.USAGE_BASED,
                 "tenant_id": tenant_id,
                 "price_id": usage_based_price_id,
-                "product_name": settings.BILLING_PRICEID_TO_PRODUCT.get(usage_based_price_id, ""),
+                "product_name": usage_product_name,
                 "quantity": quantity,
             }
             # Storage add-on is sold in GB (Stripe quantity), but our internal quota unit is KB.
@@ -1232,7 +1682,7 @@ def _handle_event(event):
         "invoice.paid": _handle_invoice_paid,  # subscription succeeded
         # "customer.subscription.created": _handle_customer_subscription_created,
         "customer.subscription.updated": _handle_customer_subscription_updated,
-        # "customer.subscription.deleted": _handle_customer_subscription_deleted,
+        "customer.subscription.deleted": _handle_customer_subscription_deleted,
     }
 
     event_type = event["type"]
@@ -1324,7 +1774,7 @@ def _handle_payment_intent_succeeded(event: dict):
     receipt_url = get_receipt_url_from_intent_latest_charge(latest_charge_id) if latest_charge_id else ""
 
     customer_id = intent.customer_id or ""
-    product_id = ProductService.get_by_name(product_name).get("id", "")
+    product_id = get_product_id_by_name(product_name)
 
     quota_quantity = quantity
     quota_unit = ""
@@ -1412,6 +1862,23 @@ def _handle_invoice_payment_failed(event: dict):
     # The subscription becomes past_due. Notify your customer and send them to the
     # customer portal to update their payment information.
     event_data = event["data"]["object"]
+    subscription_id = (event_data.get("subscription") or "").strip() if isinstance(event_data, dict) else ""
+    if subscription_id:
+        storage = StorageSubscriptionService.get_by_subscription_id(subscription_id)
+        if storage:
+            tenant_id = storage.get("tenant_id")
+            try:
+                stripe_subscription = stripe.Subscription.retrieve(subscription_id)
+                _sync_storage_subscription_record(
+                    tenant_id,
+                    stripe_subscription,
+                    clear_pending=False,
+                    pending_quantity_gb=storage.get("pending_quantity_gb"),
+                    pending_action=storage.get("pending_action", ""),
+                    pending_effective_at=storage.get("pending_effective_at"),
+                )
+            except Exception as e:
+                logging.warning(f"Failed to sync storage subscription on invoice.payment_failed: {e}")
     print(event_data)
     print("\n above is invoice_payment.failed")
 
@@ -1441,7 +1908,11 @@ def _handle_checkout_session_completed(event: dict):
         if not price_id or not tenant_id:
             logging.warning("checkout.session.completed missing required metadata.")
             return
-        product_id = ProductService.get_by_name(plan_name).get("id", "")
+        if is_storage_plan_name(plan_name) or is_storage_price_id(price_id):
+            _handle_storage_checkout_session_completed(checkout_session_completed, metadata)
+            return
+
+        product_id = get_product_id_by_name(plan_name)
         _amount_cents = checkout_session_completed.amount_total
         _currency = checkout_session_completed.currency
         order_id = checkout_session_completed.id
@@ -1543,6 +2014,39 @@ def _handle_checkout_session_completed(event: dict):
     print("\n above is checkout.session.completed")
 
 
+def _handle_storage_checkout_session_completed(checkout_session_completed: CheckoutSessionCompleted, metadata: dict):
+    tenant_id = (metadata.get("tenant_id") or "").strip()
+    customer_id = (checkout_session_completed.customer_id or "").strip()
+    subscription_id = (checkout_session_completed.subscription_id or "").strip()
+    if not tenant_id or not subscription_id:
+        logging.warning("Storage checkout.session.completed missing tenant_id/subscription_id.")
+        return
+
+    try:
+        stripe_subscription = stripe.Subscription.retrieve(subscription_id)
+    except Exception as e:
+        logging.warning(f"Failed to retrieve storage subscription {subscription_id}: {e}")
+        return
+
+    _, price_id, stripe_quantity = extract_subscription_item(stripe_subscription)
+    target_quantity = safe_int(metadata.get("target_quantity_gb", stripe_quantity), stripe_quantity)
+    target_quantity = max(target_quantity, 0)
+
+    _, period_end = extract_subscription_period(stripe_subscription)
+    _sync_storage_subscription_record(
+        tenant_id,
+        stripe_subscription,
+        customer_id=customer_id,
+        target_quantity_gb=target_quantity if target_quantity > 0 else max(stripe_quantity, 0),
+        clear_pending=False,
+        pending_quantity_gb=target_quantity if target_quantity > 0 else max(stripe_quantity, 0),
+        pending_action="create",
+        pending_effective_at=period_end,
+    )
+    if not price_id:
+        StorageSubscriptionService.upsert_by_tenant_id(tenant_id, price_id=(metadata.get("price_id") or "").strip())
+
+
 def _handle_invoice_paid(event: dict):
     # Continue to provision the subscription as payments continue to be made.
     # Store the status in your database and check when a user accesses your service.
@@ -1614,7 +2118,11 @@ def _handle_invoice_paid(event: dict):
             price_id = subscription.get("price_id", "")
 
     plan_name = settings.BILLING_PRICEID_TO_PRODUCT.get(price_id, "")
-    product_id = ProductService.get_by_name(plan_name).get("id", "")
+    if is_storage_price_id(price_id) or is_storage_plan_name(plan_name):
+        _handle_storage_invoice_paid(invoice_paid, item, tenant_id=tenant_id, customer_id=customer_id, price_id=price_id, subscription_id=subscription_id)
+        return
+
+    product_id = get_product_id_by_name(plan_name)
 
     print("=======================")
     print(f"{tenant_id=}, {plan_name=}, {product_id=}, {price_id=}")
@@ -1684,6 +2192,228 @@ def _handle_invoice_paid(event: dict):
     print("\nabove is invoice.paid")
 
 
+def _handle_storage_invoice_paid(
+    invoice_paid: InvoicePaid,
+    item,
+    *,
+    tenant_id: str,
+    customer_id: str,
+    price_id: str,
+    subscription_id: str,
+):
+    invoice_id = invoice_paid.id
+    existing_order = PaymentOrderService.get_by_order_id(invoice_id)
+
+    if not subscription_id:
+        try:
+            subscription_id = item.parent.subscription_item_details.subscription
+        except Exception:
+            subscription_id = ""
+    if not price_id:
+        try:
+            price_id = item.pricing.price_details.price
+        except Exception:
+            price_id = ""
+
+    if not tenant_id and subscription_id:
+        storage_row = StorageSubscriptionService.get_by_subscription_id(subscription_id) or {}
+        tenant_id = storage_row.get("tenant_id", "")
+        customer_id = customer_id or storage_row.get("customer_id", "")
+
+    product_name = settings.BILLING_PRICEID_TO_PRODUCT.get(price_id, "") or STORAGE_PRODUCT_NAME
+    product_id = get_product_id_by_name(product_name)
+    status = normalize_stripe_invoice_status(invoice_paid.status or "")
+    payment_order = {
+        "id": get_uuid(),
+        "tenant_id": tenant_id,
+        "customer_id": customer_id,
+        "payment_type": PriceType.SUBSCRIPTION,
+        "product_id": product_id,
+        "product_name": product_name,
+        "is_prorated": True,
+        "amount": cents_to_decimal(invoice_paid.amount_paid, invoice_paid.currency),
+        "currency": invoice_paid.currency,
+        "payment_method": PaymentMethod.CARD,
+        "order_id": invoice_id,
+        "price_id": price_id,
+        "payment_intent_id": "",
+        "payment_subscription_id": subscription_id,
+        "receipt_url": invoice_paid.hosted_invoice_url or "",
+        "receipt_pdf_url": invoice_paid.invoice_pdf or "",
+        "payment_channel": PaymentChannel.STRIPE,
+        "payment_status": status,
+        "stripe_status": invoice_paid.status or "",
+        "paid": status == PaymentStatus.SUCCESS.value,
+        "captured": status == PaymentStatus.SUCCESS.value,
+        "description": f"{invoice_paid.billing_reason or ''} {item.description or ''}".strip(),
+        "order_created_at": invoice_paid.created,
+        "payment_detail": {"quantity": safe_int(getattr(item, "quantity", 0), 0), "quantity_unit": "GB"},
+    }
+
+    stripe_subscription = None
+    if subscription_id:
+        try:
+            stripe_subscription = stripe.Subscription.retrieve(subscription_id)
+        except Exception as e:
+            logging.warning(f"Failed to retrieve storage subscription {subscription_id} on invoice.paid: {e}")
+
+    try:
+        sync_ok = False
+        if stripe_subscription:
+            sync_ok = _sync_storage_subscription_record(tenant_id, stripe_subscription, customer_id=customer_id, clear_pending=True)
+        else:
+            storage = StorageSubscriptionService.get_by_tenant_id(tenant_id) or {}
+            sync_ok = StorageSubscriptionService.upsert_by_tenant_id(
+                tenant_id,
+                customer_id=customer_id,
+                price_id=price_id,
+                status=storage.get("status", "active"),
+                pending_quantity_gb=None,
+                pending_action="",
+                pending_effective_at=None,
+            )
+
+        if not sync_ok:
+            raise RuntimeError(f"Failed to sync storage subscription state for tenant {tenant_id} on invoice {invoice_id}")
+
+        if existing_order:
+            logging.info(f"Skip duplicated storage invoice.paid payment_order for tenant {tenant_id}: {invoice_id}")
+            return
+
+        PaymentOrderService.save(**payment_order)
+    except IntegrityError:
+        logging.info(f"Skip duplicated storage invoice.paid write for tenant {tenant_id}: {invoice_id}")
+    except Exception as e:
+        logging.warning(f"Handle storage invoice paid error: {e}")
+
+
+def _set_storage_cancel_at_period_end_sync(tenant_id: str, value: bool = True) -> tuple[bool, dict]:
+    storage = StorageSubscriptionService.get_by_tenant_id(tenant_id)
+    if not storage or not storage.get("subscription_id"):
+        return True, {}
+
+    subscription_id = storage.get("subscription_id")
+    updated = stripe.Subscription.modify(subscription_id, cancel_at_period_end=value)
+    _, updated_period_end = extract_subscription_period(updated)
+    if value:
+        _sync_storage_subscription_record(
+            tenant_id,
+            updated,
+            target_quantity_gb=0,
+            clear_pending=False,
+            pending_quantity_gb=0,
+            pending_action="cancel",
+            pending_effective_at=updated_period_end,
+        )
+    else:
+        _sync_storage_subscription_record(
+            tenant_id,
+            updated,
+            clear_pending=True,
+        )
+    return True, {
+        "cancel_at_period_end": value,
+        "effective_at": updated_period_end,
+    }
+
+
+def _align_storage_cycle_to_main_sync(tenant_id: str, main_period_end) -> tuple[bool, dict]:
+    storage = StorageSubscriptionService.get_by_tenant_id(tenant_id)
+    if not storage or not storage.get("subscription_id") or not main_period_end:
+        return True, {}
+    if _has_storage_blocking_pending(tenant_id):
+        return False, {"error": "Storage has a pending payment. Please finish current payment first."}
+
+    subscription_id = storage["subscription_id"]
+    aligned = stripe.Subscription.modify(
+        subscription_id,
+        billing_cycle_anchor=int(to_utc_datetime(main_period_end).timestamp()),
+        proration_behavior="create_prorations",
+        payment_behavior="pending_if_incomplete",
+    )
+    pending_update = aligned.get("pending_update") if isinstance(aligned, dict) else getattr(aligned, "pending_update", None)
+    _sync_storage_subscription_record(
+        tenant_id,
+        aligned,
+        clear_pending=False,
+        pending_quantity_gb=storage.get("effective_quantity_gb"),
+        pending_action="align" if pending_update else "",
+        pending_effective_at=to_utc_datetime(main_period_end) if pending_update else None,
+    )
+    return True, {"pending_update": bool(pending_update)}
+
+
+def _period_changed(previous_start, previous_end, current_start, current_end) -> bool:
+    if not previous_start or not previous_end or not current_start or not current_end:
+        return False
+    return int(previous_start.timestamp()) != int(current_start.timestamp()) or int(previous_end.timestamp()) != int(current_end.timestamp())
+
+
+def _handle_main_subscription_side_effects(
+    *,
+    tenant_id: str,
+    current_plan_name: str,
+    previous_main_start,
+    previous_main_end,
+    current_main_start,
+    current_main_end,
+):
+    if not tenant_id:
+        return
+
+    if is_trial_plan_name(current_plan_name):
+        try:
+            _set_storage_cancel_at_period_end_sync(tenant_id, value=True)
+        except Exception as e:
+            logging.warning(f"Failed to auto-cancel storage after Trial downgrade for tenant {tenant_id}: {e}")
+        return
+
+    if _period_changed(previous_main_start, previous_main_end, current_main_start, current_main_end):
+        try:
+            _align_storage_cycle_to_main_sync(tenant_id, current_main_end)
+        except Exception as e:
+            logging.warning(f"Failed to align storage cycle for tenant {tenant_id}: {e}")
+
+
+def _handle_storage_subscription_updated(subscription_updated: SubscriptionUpdated):
+    subscription = subscription_updated.data.object
+    subscription_id = subscription.id
+    customer_id = subscription.customer_id
+    tenant_id = subscription.metadata.get("tenant_id", "")
+    if not tenant_id:
+        storage_row = StorageSubscriptionService.get_by_subscription_id(subscription_id) or {}
+        tenant_id = storage_row.get("tenant_id", "")
+    if not tenant_id:
+        tenant_id = SubscriptionService.get_tenant_id_by_customer_id(customer_id)
+    if not tenant_id:
+        logging.warning(f"Skip storage subscription.updated without tenant context: {subscription_id}")
+        return
+
+    row = StorageSubscriptionService.get_by_tenant_id(tenant_id) or {}
+    _, _, quantity = extract_subscription_item(subscription)
+    pending_qty = row.get("pending_quantity_gb")
+    pending_action = (row.get("pending_action") or "").strip().lower()
+    pending_update = getattr(subscription, "pending_update", None)
+    status = (subscription.status or "").strip().lower()
+
+    should_clear_pending = bool(
+        (not pending_update)
+        and (
+            (pending_qty is not None and quantity == safe_int(pending_qty, -1))
+            or status in {"canceled", "incomplete_expired"}
+        )
+    )
+    _sync_storage_subscription_record(
+        tenant_id,
+        subscription,
+        customer_id=customer_id,
+        clear_pending=should_clear_pending,
+        pending_quantity_gb=None if should_clear_pending else pending_qty,
+        pending_action="" if should_clear_pending else pending_action,
+        pending_effective_at=None if should_clear_pending else row.get("pending_effective_at"),
+    )
+
+
 def _handle_customer_subscription_created(event: dict):
     event_data = event["data"]["object"]
     print(event_data)
@@ -1709,10 +2439,24 @@ def _handle_customer_subscription_updated(event: dict):
     tenant_id = subscription.metadata.get("tenant_id", "")
     if not tenant_id:
         tenant_id = SubscriptionService.get_tenant_id_by_customer_id(customer_id)
+    if not tenant_id:
+        logging.warning(f"Skip subscription.updated without tenant context: {subscription_id}")
+        return
+
+    storage_row_by_subscription = StorageSubscriptionService.get_by_subscription_id(subscription_id)
+    existing_main_subscription = SubscriptionService.get_by_tenant_id(tenant_id) if tenant_id else {}
+    previous_main_start = to_utc_datetime(existing_main_subscription.get("start_time")) if existing_main_subscription else None
+    previous_main_end = to_utc_datetime(existing_main_subscription.get("end_time")) if existing_main_subscription else None
     print(f"Handling update for subscription: {subscription_id} ({tenant_id=})")
 
-    if not subscription.items or not subscription.items.data:
+    if (not subscription.items or not subscription.items.data) and not storage_row_by_subscription:
         logging.warning("subscription.updated missing subscription items.")
+        return
+
+    first_price_id = subscription.items.data[0].price.id if subscription.items and subscription.items.data else ""
+    if storage_row_by_subscription or is_storage_price_id(first_price_id) or is_storage_plan_name(subscription.metadata.get("product_name", "")):
+        _handle_storage_subscription_updated(subscription_updated)
+        print("\nabove is customer.subscription.updated(storage)")
         return
 
     if previous and (previous.plan or previous.items):
@@ -1720,7 +2464,7 @@ def _handle_customer_subscription_updated(event: dict):
         new_price = subscription.items.data[0].price
         new_price_id = new_price.id
         product_name = settings.BILLING_PRICEID_TO_PRODUCT.get(new_price_id, "")
-        product_id = ProductService.get_by_name(product_name).get("id", "")
+        product_id = get_product_id_by_name(product_name)
         print(f"update subscription {new_price=}, {product_id=}, {product_name=}")
 
         if previous.items and previous.items.data:
@@ -1841,6 +2585,18 @@ def _handle_customer_subscription_updated(event: dict):
             except Exception as e:
                 print(f"Failed to save upgrade/downgrade record: {e}")
 
+            try:
+                _handle_main_subscription_side_effects(
+                    tenant_id=tenant_id,
+                    current_plan_name=product_name,
+                    previous_main_start=previous_main_start,
+                    previous_main_end=previous_main_end,
+                    current_main_start=current_period_start,
+                    current_main_end=current_period_end,
+                )
+            except Exception as e:
+                logging.warning(f"Failed handling main subscription side-effects for tenant {tenant_id}: {e}")
+
             schedule_id = (event.get("data", {}).get("object", {}) or {}).get("schedule") if isinstance(event, dict) else ""
             if schedule_id:
                 try:
@@ -1866,5 +2622,27 @@ def _handle_customer_subscription_updated(event: dict):
 
 def _handle_customer_subscription_deleted(event: dict):
     event_data = event["data"]["object"]
+    subscription_id = (event_data.get("id") or "").strip() if isinstance(event_data, dict) else ""
+    customer_id = (event_data.get("customer") or "").strip() if isinstance(event_data, dict) else ""
+    if subscription_id:
+        storage = StorageSubscriptionService.get_by_subscription_id(subscription_id)
+        if storage:
+            tenant_id = storage.get("tenant_id")
+            if tenant_id:
+                StorageSubscriptionService.upsert_by_tenant_id(
+                    tenant_id,
+                    customer_id=customer_id or storage.get("customer_id", ""),
+                    subscription_id=subscription_id,
+                    status="canceled",
+                    cancel_at_period_end=False,
+                    effective_quantity_gb=0,
+                    target_quantity_gb=0,
+                    pending_quantity_gb=None,
+                    pending_action="",
+                    pending_effective_at=None,
+                )
+                print(event_data)
+                print("\n above is customer.subscription.delete(storage)")
+                return
     print(event_data)
     print("\n above is customer.subscription.delete")

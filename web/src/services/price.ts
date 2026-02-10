@@ -14,6 +14,8 @@ const {
   getUpComming,
   spendHistory,
   usageBasedPlans,
+  storageCurrent,
+  storageSetTarget,
 } = api;
 const methods = {
   billinCheckout: {
@@ -48,6 +50,14 @@ const methods = {
   usageBasedPlans: {
     url: usageBasedPlans,
     method: 'get',
+  },
+  storageCurrent: {
+    url: storageCurrent,
+    method: 'get',
+  },
+  storageSetTarget: {
+    url: storageSetTarget,
+    method: 'post',
   },
 };
 
@@ -87,6 +97,41 @@ export const getBllingPlanPverview = ({ tenantId }: { tenantId: string }) => {
   return request.get(api.plan_overview, {
     params: { tenant_id: tenantId },
   });
+};
+
+export interface IStorageSubscriptionCurrent {
+  tenant_id: string;
+  plan_name: string;
+  trial_forbidden: boolean;
+  unit_price: number;
+  effective_quantity_gb: number;
+  target_quantity_gb: number;
+  pending_quantity_gb: number | null;
+  pending_action: string;
+  pending_effective_at: string | null;
+  decrease_effective_at: string | null;
+  subscription_id: string;
+  price_id: string;
+  schedule_id: string;
+  status: string;
+  cancel_at_period_end: boolean;
+  current_period_start: string | null;
+  current_period_end: string | null;
+}
+
+export const getBillingStorageCurrent = (tenantId?: string) => {
+  return request.get(api.storageCurrent, {
+    params: tenantId ? { tenant_id: tenantId } : undefined,
+  });
+};
+
+export const postBillingStorageSetTarget = (data: {
+  tenant_id?: string;
+  target_quantity_gb: number;
+  session_cancel_url?: string;
+  session_success_url?: string;
+}) => {
+  return request.post(api.storageSetTarget, { data });
 };
 
 export default billingService;

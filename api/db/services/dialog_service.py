@@ -828,7 +828,7 @@ async def _stream_with_think_delta(stream_iter, min_tokens: int = 16):
         yield ("marker", "</think>", state)
 
 
-async def async_ask(question, kb_ids, tenant_id, chat_llm_name=None, search_config={}):
+async def async_ask(question, kb_ids, tenant_id, chat_llm_name=None, search_config={}, *, user_id):
     doc_ids = search_config.get("doc_ids", [])
     rerank_mdl = None
     kb_ids = search_config.get("kb_ids", kb_ids)

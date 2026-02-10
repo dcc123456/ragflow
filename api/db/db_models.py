@@ -1281,6 +1281,37 @@ class Subscription(DataBaseModel):
         db_table = "billing_subscription"
 
 
+class StorageSubscription(DataBaseModel):
+    """
+    One storage add-on subscription per tenant.
+    `effective_quantity_gb` is the currently usable quota.
+    `target_quantity_gb` is the desired quota after pending changes settle.
+    """
+
+    id = CharField(max_length=32, primary_key=True)
+    tenant_id = CharField(max_length=32, null=False, index=True, unique=True)
+    customer_id = CharField(max_length=255, null=False, default="", index=True)
+
+    subscription_id = CharField(max_length=255, null=False, default="", index=True)
+    subscription_item_id = CharField(max_length=255, null=False, default="")
+    price_id = CharField(max_length=128, null=False, default="")
+    schedule_id = CharField(max_length=255, null=False, default="")
+
+    effective_quantity_gb = IntegerField(null=False, default=0, constraints=[Check("effective_quantity_gb >= 0")])
+    target_quantity_gb = IntegerField(null=False, default=0, constraints=[Check("target_quantity_gb >= 0")])
+    pending_quantity_gb = IntegerField(null=True, constraints=[Check("pending_quantity_gb >= 0")])
+    pending_effective_at = DateTimeField(null=True)
+    pending_action = CharField(max_length=32, null=True, default="")
+
+    current_period_start = DateTimeField(null=True)
+    current_period_end = DateTimeField(null=True)
+    cancel_at_period_end = BooleanField(default=False)
+    status = CharField(max_length=64, null=False, default="", index=True)
+
+    class Meta:
+        db_table = "billing_storage_subscription"
+
+
 # -----------------------------------------------------------------------------
 # Deprecated: UsageBased model (legacy table)
 # -----------------------------------------------------------------------------

@@ -1,9 +1,13 @@
-import { useCharge } from '@/pages/price/hook/use-price-hooks';
+import { useFetchTenantInfo } from '@/hooks/use-user-setting-request';
+import {
+  getBillingStorageCurrent,
+  postBillingStorageSetTarget,
+} from '@/services/price';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { camelCase } from 'lodash';
 import { ArrowUpRight, DatabaseZap, LayoutGrid, Users } from 'lucide-react';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { useBillingContext } from '..';
 import { showAddOnManageModal } from './add-on-manage-modal';
 import Process from './process';
 
@@ -31,32 +35,54 @@ const ResourceUsage: React.FC<CustomProgressProps> = ({
   children,
 }) => {
   let addOnManageModal: { destroy: () => void };
-  const { checkout } = useCharge();
-  const { usageBasedPlans } = useBillingContext();
-  const storageUsage = usageBasedPlans.find(
-    (item) => item.name === title.toLowerCase(),
-  );
+  const { data: tenantInfo } = useFetchTenantInfo();
+  const tenantId = tenantInfo?.tenant_id;
+  const queryClient = useQueryClient();
   const { t } = useTranslation();
+  const { data: storageCurrent } = useQuery({
+    queryKey: ['billingStorageCurrent', tenantId],
+    enabled: title === 'Storage' && !!tenantId,
+    queryFn: async () => {
+      const { data: res } = await getBillingStorageCurrent(tenantId);
+      if (res.code === 0) {
+        return res.data;
+      }
+    },
+  });
 
   const addOnManageOk = async ({ value }: { value: number }) => {
     if (addOnManageModal) {
-      const res = await checkout({
-        price_id: storageUsage?.price_ids || '',
-        quantity: value.toString(),
-        payment_type: 'usage_based',
+      const url = window.location.href;
+      const successUrl = `${url.split('?')[0]}?price-pay-status=success${url.split('?')[1] || ''}`;
+      const errorUrl = `${url.split('?')[0]}?price-pay-status=cancel${url.split('?')[1] || ''}`;
+      const { data } = await postBillingStorageSetTarget({
+        tenant_id: tenantId,
+        target_quantity_gb: value,
+        session_cancel_url: errorUrl,
+        session_success_url: successUrl,
       });
+      const res = data?.data;
       if (res && res.redirect_to) {
         window.open(res.redirect_to);
       }
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['getPlanOverview'] }),
+        queryClient.invalidateQueries({ queryKey: ['getBaseOverview'] }),
+        queryClient.invalidateQueries({ queryKey: ['billingStorageCurrent'] }),
+      ]);
       addOnManageModal.destroy();
     }
   };
   const openAddOnManage = () => {
     const addOnCapacity = Math.max(0, limit - planValue);
+    const currentStorage =
+      storageCurrent?.effective_quantity_gb ?? addOnCapacity;
+    const decreaseEffectiveAt = storageCurrent?.decrease_effective_at;
     addOnManageModal = showAddOnManageModal({
-      defaultValue: addOnCapacity,
+      defaultValue: currentStorage,
       onOk: addOnManageOk,
-      price: storageUsage?.price,
+      price: storageCurrent?.unit_price || 0,
+      decreaseEffectiveAt,
     });
   };
 

@@ -246,6 +246,9 @@ class SubscriptionUpdatedSubscriptionObject(BaseModel):
     current_period_start: Optional[datetime] = None
     current_period_end: Optional[datetime] = None
     metadata: dict[str, str] = Field(default_factory=dict)
+    cancel_at_period_end: Optional[bool] = False
+    schedule: Optional[str] = None
+    pending_update: Optional[dict] = None
     latest_invoice_id: Optional[str] = Field(alias="latest_invoice")
     billing_cycle_anchor: datetime
     trial_start: Optional[datetime] = None
