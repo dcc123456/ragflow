@@ -21,10 +21,12 @@ import { useFormContext } from 'react-hook-form';
 
 interface ChatBasicSettingProps {
   prefix?: string;
+  option?: Record<string, any>;
 }
 
 export default function ChatBasicSetting({
   prefix = '',
+  option,
 }: ChatBasicSettingProps) {
   const { t } = useTranslate('chat');
   const form = useFormContext();
@@ -106,6 +108,7 @@ export default function ChatBasicSetting({
         name={prefixName(prefix, 'prompt_config.quote')}
         label={t('quote')}
         tooltip={t('quoteTip')}
+        disabled={option?.['prompt_config.quote'].disabled || false}
       ></SwitchFormField>
       <SwitchFormField
         name={prefixName(prefix, 'prompt_config.keyword')}

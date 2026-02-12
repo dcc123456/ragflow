@@ -90,7 +90,10 @@ function ChatEvaluationConfig({
       {showDialog && (
         <EvaluationSettingsDialog hideModal={hideSettingsDialog} />
       )}
-      <ChatBasicSetting prefix={ChatPrefix}></ChatBasicSetting>
+      <ChatBasicSetting
+        prefix={ChatPrefix}
+        option={{ 'prompt_config.quote': { disabled: true } }}
+      ></ChatBasicSetting>
       <Separator />
       <ChatPromptEngine prefix={ChatPrefix}></ChatPromptEngine>
       <Separator />

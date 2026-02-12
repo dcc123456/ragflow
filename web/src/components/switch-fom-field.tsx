@@ -15,6 +15,7 @@ interface SwitchFormItemProps {
   vertical?: boolean;
   tooltip?: ReactNode;
   shouldStopPropagation?: boolean;
+  disabled?: boolean;
 }
 
 export function SwitchFormField({
@@ -23,6 +24,7 @@ export function SwitchFormField({
   vertical = true,
   tooltip,
   shouldStopPropagation = false,
+  disabled = false,
 }: SwitchFormItemProps) {
   const form = useFormContext();
 
@@ -52,6 +54,7 @@ export function SwitchFormField({
           <FormControl>
             <Switch
               checked={field.value}
+              disabled={disabled}
               onCheckedChange={field.onChange}
               aria-readonly
               className="!m-0"
