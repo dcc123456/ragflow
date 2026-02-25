@@ -50,11 +50,7 @@ export default function Evaluation() {
     defaultValues: {
       config_snapshot: {
         target: {},
-        metrics: {
-          context_relevance: { enable: true, llm_id: '' },
-          faithfulness: { enable: true, llm_id: '' },
-          semantic_similarity: { enable: true, llm_id: '' },
-        },
+        metrics: {},
       },
     },
   });

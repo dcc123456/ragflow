@@ -1,13 +1,13 @@
 import { SelectWithSearch } from '@/components/originui/select-with-search';
 import { RAGFlowFormItem } from '@/components/ragflow-form';
-import { Button } from '@/components/ui/button';
+import { ButtonLoading } from '@/components/ui/button';
 import { Form } from '@/components/ui/form';
 import { Separator } from '@/components/ui/separator';
 import { useSetModalState } from '@/hooks/common-hooks';
 import { useFetchVersionList } from '@/hooks/use-agent-request';
 import { useFetchAllEvaluationCollection } from '@/hooks/use-evaluation-request';
 import { PanelRightClose, Settings } from 'lucide-react';
-import { useMemo } from 'react';
+import { useCallback } from 'react';
 import { UseFormReturn, useWatch } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import ChatBasicSetting from '../next-chats/chat/app-settings/chat-basic-settings';
@@ -47,11 +47,25 @@ function AgentEvaluationConfig() {
 
 const ChatPrefix = 'config_snapshot.target.';
 
+function useFindCollectionName() {
+  const {
+    data: { collections },
+  } = useFetchAllEvaluationCollection();
+
+  const findCollectionName = useCallback(
+    (collectionId: string) => {
+      return collections.find((collection) => collection.id === collectionId)
+        ?.name;
+    },
+    [collections],
+  );
+
+  return findCollectionName;
+}
+
 function ChatEvaluationConfig({
-  collectionName,
   form,
 }: {
-  collectionName?: string;
   form: UseFormReturn<EvaluationSettingsFormType>;
 }) {
   const { t } = useTranslation();
@@ -66,6 +80,8 @@ function ChatEvaluationConfig({
     hideModal: hideSettingsDialog,
   } = useSetModalState();
 
+  const findCollectionName = useFindCollectionName();
+
   return (
     <>
       <section>
@@ -73,7 +89,8 @@ function ChatEvaluationConfig({
           <div className="space-x-2">
             <span>{t('evaluation.title')}</span>
             <span className="text-text-secondary">
-              {collectionName || collectionId || t('evaluation.notConfigured')}
+              {findCollectionName(collectionId) ||
+                t('evaluation.notConfigured')}
             </span>
           </div>
           <Settings
@@ -97,7 +114,10 @@ function ChatEvaluationConfig({
       <Separator />
       <ChatPromptEngine prefix={ChatPrefix}></ChatPromptEngine>
       <Separator />
-      <ChatModelSettings prefix={ChatPrefix}></ChatModelSettings>
+      <ChatModelSettings
+        prefix={ChatPrefix + 'llm_setting'}
+        llmId={ChatPrefix + 'llm_id'}
+      ></ChatModelSettings>
     </>
   );
 }
@@ -110,19 +130,9 @@ export function EvaluationConfigPanel({
 }: EvaluationConfigPanelProps) {
   const { t } = useTranslation();
 
-  const {
-    data: { collections },
-  } = useFetchAllEvaluationCollection();
-
-  const { handleSubmit } = useSubmitSettings();
+  const { handleSubmit, loading } = useSubmitSettings();
 
   useInitializeSettingsOnMount(form);
-
-  const currentCollectionId = form.watch('collection_id');
-  const currentCollectionName = useMemo(() => {
-    if (!currentCollectionId) return undefined;
-    return collections.find((c) => c.id === currentCollectionId)?.name;
-  }, [currentCollectionId, collections]);
 
   if (!visible) return null;
 
@@ -145,15 +155,14 @@ export function EvaluationConfigPanel({
             {type === EvaluationType.Agent ? (
               <AgentEvaluationConfig />
             ) : (
-              <ChatEvaluationConfig
-                collectionName={currentCollectionName}
-                form={form}
-              />
+              <ChatEvaluationConfig form={form} />
             )}
           </div>
 
           <div className="text-right pr-5">
-            <Button type="submit">{t('common.save')}</Button>
+            <ButtonLoading type="submit" loading={loading}>
+              {t('common.save')}
+            </ButtonLoading>
           </div>
         </form>
       </Form>

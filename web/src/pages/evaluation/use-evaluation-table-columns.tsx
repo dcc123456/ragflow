@@ -8,7 +8,7 @@ import {
 import { useFetchEvaluationRunResults } from '@/hooks/use-evaluation-request';
 import { IMetrics, IMetricsSummary } from '@/interfaces/database/evaluation';
 import { ColumnDef } from '@tanstack/react-table';
-import { get, round } from 'lodash';
+import { camelCase, get, round } from 'lodash';
 import { ArrowUpDown, Eye } from 'lucide-react';
 import { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -62,7 +62,7 @@ function MetricHeader({
       className="flex items-center gap-2 cursor-pointer"
       onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
     >
-      {t('evaluation.relevancy')}
+      {t(`evaluation.${camelCase(name)}`)}
       <span className="text-accent-primary text-xs">
         {round(get(metricsSummary, `${name}.summary`, 0), 2)}
       </span>

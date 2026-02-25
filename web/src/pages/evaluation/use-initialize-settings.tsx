@@ -1,3 +1,4 @@
+import { useFetchModelId } from '@/hooks/logic-hooks';
 import { useFetchDialog } from '@/hooks/use-chat-request';
 import { useFetchEvaluationRun } from '@/hooks/use-evaluation-request';
 import { useEvaluationUrl } from '@/hooks/use-evaluation-url';
@@ -5,28 +6,54 @@ import { isEmpty } from 'lodash';
 import { useEffect, useMemo } from 'react';
 import { UseFormReturn } from 'react-hook-form';
 
+export function useInitializeMetrics() {
+  const llmId = useFetchModelId();
+
+  const defaultValues = {
+    enable: true,
+    llm_id: llmId,
+  };
+
+  return {
+    metrics: {
+      context_relevance: defaultValues,
+      faithfulness: defaultValues,
+      semantic_similarity: defaultValues,
+    },
+    llmId,
+  };
+}
+
 export function useInitializeSettingsOnMount(form: UseFormReturn<any>) {
   const { data } = useFetchEvaluationRun();
   const { runId } = useEvaluationUrl();
 
   const { data: dialog } = useFetchDialog();
 
+  const { metrics, llmId } = useInitializeMetrics();
+
   const nextData = useMemo(() => {
-    if (isEmpty(runId)) {
+    if (!isEmpty(runId)) {
+      return data;
+    }
+
+    const values = form.getValues();
+    if (isEmpty(values.config_snapshot.metrics) && llmId) {
       return {
         config_snapshot: {
-          metircs: {},
+          metrics: metrics,
           target: dialog,
         },
+        collection_id: '',
       };
     }
 
-    return data;
-  }, [data, dialog, runId]);
+    return {};
+  }, [data, dialog, form, llmId, metrics, runId]);
 
   useEffect(() => {
     if (!isEmpty(nextData)) {
       form.reset(nextData);
     }
-  }, [nextData, form]);
+  }, [form, nextData]);
 }

@@ -7,8 +7,9 @@ import { useCallback } from 'react';
 import { EvaluationSettingsFormType } from './evaluation-schemas';
 
 export function useSubmitSettings() {
-  const { createRunEvaluation } = useCreateRunEvaluation();
-  const { updateEvaluationRun } = useUpdateEvaluationRun();
+  const { createRunEvaluation, loading } = useCreateRunEvaluation();
+  const { updateEvaluationRun, loading: updateLoading } =
+    useUpdateEvaluationRun();
   const { runId } = useEvaluationUrl();
 
   const handleSubmit = useCallback(
@@ -29,5 +30,5 @@ export function useSubmitSettings() {
     [createRunEvaluation, runId, updateEvaluationRun],
   );
 
-  return { handleSubmit };
+  return { handleSubmit, loading: loading || updateLoading };
 }
