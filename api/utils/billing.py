@@ -24,7 +24,7 @@ from functools import wraps
 import stripe
 
 from common import settings
-from common.billing_utils import billing_enabled_guard, to_utc_datetime
+from common.billing_utils import billing_enabled_guard, normalize_stripe_invoice_status, to_utc_datetime
 from common.constants import RetCode
 from api.db.services.user_service import TenantService
 from rag.utils.redis_conn import REDIS_CONN
@@ -201,6 +201,92 @@ def extract_subscription_period(subscription_obj):
     item_start = to_utc_datetime(getattr(first_item, "current_period_start", None)) if first_item else None
     item_end = to_utc_datetime(getattr(first_item, "current_period_end", None)) if first_item else None
     return item_start, item_end
+
+
+def extract_invoice_id_and_status(invoice_obj) -> tuple[str, str]:
+    return _extract_invoice_id(invoice_obj), _extract_invoice_status_and_url(invoice_obj)[0]
+
+
+def extract_invoice_hosted_url(invoice_obj) -> str:
+    return _extract_invoice_status_and_url(invoice_obj)[1]
+
+
+def extract_latest_invoice_obj(subscription_obj):
+    if isinstance(subscription_obj, dict):
+        return subscription_obj.get("latest_invoice")
+    latest_invoice = getattr(subscription_obj, "latest_invoice", None)
+    # Some typed webhook models expose Stripe's latest invoice as `latest_invoice_id`.
+    # Fallback to that field so payment-state checks don't treat "missing invoice" as paid.
+    if latest_invoice:
+        return latest_invoice
+    return getattr(subscription_obj, "latest_invoice_id", None)
+
+
+def _extract_invoice_id(invoice_obj) -> str:
+    if not invoice_obj:
+        return ""
+    if isinstance(invoice_obj, str):
+        return invoice_obj.strip()
+    if isinstance(invoice_obj, dict):
+        return (invoice_obj.get("id") or "").strip()
+    return (getattr(invoice_obj, "id", "") or "").strip()
+
+
+def _extract_invoice_status_and_url(invoice_obj) -> tuple[str, str]:
+    if not invoice_obj or isinstance(invoice_obj, str):
+        return "", ""
+    if isinstance(invoice_obj, dict):
+        return (
+            (invoice_obj.get("status") or "").strip().lower(),
+            (invoice_obj.get("hosted_invoice_url") or "").strip(),
+        )
+    return (
+        (getattr(invoice_obj, "status", "") or "").strip().lower(),
+        (getattr(invoice_obj, "hosted_invoice_url", "") or "").strip(),
+    )
+
+
+def _is_paid_invoice_status(invoice_status: str) -> bool:
+    return normalize_stripe_invoice_status(invoice_status) == "success"
+
+
+async def is_subscription_latest_invoice_paid_async(subscription_obj) -> tuple[bool, str, str, str]:
+    latest_invoice = extract_latest_invoice_obj(subscription_obj)
+    invoice_id, invoice_status = extract_invoice_id_and_status(latest_invoice)
+    invoice_url = extract_invoice_hosted_url(latest_invoice)
+    if not invoice_id:
+        # No invoice means there's nothing to collect for this update.
+        return True, "", "", ""
+
+    if invoice_status and invoice_url:
+        return _is_paid_invoice_status(invoice_status), invoice_id, invoice_status, invoice_url
+
+    try:
+        invoice = await stripe.Invoice.retrieve_async(invoice_id)
+        invoice_status, invoice_url = _extract_invoice_status_and_url(invoice)
+        return _is_paid_invoice_status(invoice_status), invoice_id, invoice_status, invoice_url
+    except Exception as e:
+        logging.warning(f"Failed to retrieve storage latest invoice {invoice_id}: {e}")
+        # Fail closed: keep upgrade pending until webhook confirms payment.
+        return False, invoice_id, "", ""
+
+
+def is_subscription_latest_invoice_paid_sync(subscription_obj) -> bool:
+    latest_invoice = extract_latest_invoice_obj(subscription_obj)
+    invoice_id, invoice_status = extract_invoice_id_and_status(latest_invoice)
+    if not invoice_id:
+        return True
+
+    if invoice_status:
+        return _is_paid_invoice_status(invoice_status)
+
+    try:
+        invoice = stripe.Invoice.retrieve(invoice_id)
+        invoice_status, _ = _extract_invoice_status_and_url(invoice)
+        return _is_paid_invoice_status(invoice_status)
+    except Exception as e:
+        logging.warning(f"Failed to retrieve storage latest invoice {invoice_id}: {e}")
+        return False
 
 
 def cents_to_decimal(amount_in_cents: int, currency: str = "usd", decimal_places: int = 4) -> Decimal:

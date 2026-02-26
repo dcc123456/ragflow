@@ -60,6 +60,8 @@ from api.utils.billing import (
     get_pending_subscription_change_async,
     get_product_ids_for_prices,
     get_receipt_url_from_intent_latest_charge,
+    is_subscription_latest_invoice_paid_async,
+    is_subscription_latest_invoice_paid_sync,
     get_trial_price_id,
     is_downgrade_by_price_id,
     schedule_subscription_quantity_change_at_period_end_async,
@@ -371,6 +373,42 @@ async def _set_storage_target_quantity_async(
 
     storage_subscription_id = (storage.get("subscription_id") or "").strip()
     stripe_storage_subscription = await stripe.Subscription.retrieve_async(storage_subscription_id)
+    storage_subscription_status = (
+        (stripe_storage_subscription.get("status") or "").strip().lower()
+        if isinstance(stripe_storage_subscription, dict)
+        else (getattr(stripe_storage_subscription, "status", "") or "").strip().lower()
+    )
+    # A canceled/expired subscription cannot be modified; create a new one via Checkout.
+    if storage_subscription_status in {"canceled", "incomplete_expired"}:
+        if target_quantity_gb == 0:
+            return True, {
+                "effective_quantity_gb": 0,
+                "target_quantity_gb": 0,
+                "pending": False,
+                "message": "No active storage subscription.",
+            }
+
+        customer_id = (tenant_plan.get("customer_id") or "").strip()
+        if not customer_id:
+            customer_id = await billing_set_customer_id_async(tenant_id)
+        if not customer_id:
+            return False, {"error": "Customer not found."}
+
+        storage_price_id = get_storage_price_id_from_config()
+        if not storage_price_id:
+            return False, {"error": "Storage price is not configured."}
+
+        session = await _create_storage_checkout_session_async(
+            tenant_id=tenant_id,
+            customer_id=customer_id,
+            storage_price_id=storage_price_id,
+            target_quantity_gb=target_quantity_gb,
+            session_success_url=session_success_url or settings.BILLING["session_success_url"],
+            session_cancel_url=session_cancel_url or settings.BILLING["session_cancel_url"],
+            main_period_end=main_period_end,
+        )
+        return True, {"redirect_to": session.url, "pending": True, "target_quantity_gb": target_quantity_gb}
+
     item_id, _price_id, stripe_quantity = extract_subscription_item(stripe_storage_subscription)
     if not item_id:
         return False, {"error": "Storage subscription item not found."}
@@ -415,27 +453,32 @@ async def _set_storage_target_quantity_async(
             pass
         updated = await stripe.Subscription.modify_async(
             storage_subscription_id,
-            cancel_at_period_end=False,
             items=[{"id": item_id, "quantity": target_quantity_gb}],
             proration_behavior="always_invoice",
-            payment_behavior="pending_if_incomplete",
+            payment_behavior="default_incomplete",
             billing_cycle_anchor="unchanged",
+            expand=["latest_invoice"],
         )
         pending_update = updated.get("pending_update") if isinstance(updated, dict) else getattr(updated, "pending_update", None)
+        invoice_paid, invoice_id, invoice_status, invoice_url = await is_subscription_latest_invoice_paid_async(updated)
+        payment_pending = bool(pending_update) or not invoice_paid
         _sync_storage_subscription_record(
             tenant_id,
             updated,
             target_quantity_gb=target_quantity_gb,
-            clear_pending=not bool(pending_update),
-            pending_quantity_gb=target_quantity_gb if pending_update else None,
-            pending_action="increase" if pending_update else "",
-            pending_effective_at=storage_current_period_end if pending_update else None,
+            clear_pending=not payment_pending,
+            pending_quantity_gb=target_quantity_gb if payment_pending else None,
+            pending_action="increase" if payment_pending else "",
+            pending_effective_at=storage_current_period_end if payment_pending else None,
         )
         return True, {
-            "pending_payment": bool(pending_update),
-            "effective_quantity_gb": effective_quantity_gb if pending_update else target_quantity_gb,
+            "pending_payment": payment_pending,
+            "effective_quantity_gb": effective_quantity_gb if payment_pending else target_quantity_gb,
             "target_quantity_gb": target_quantity_gb,
-            "pending": bool(pending_update),
+            "pending": payment_pending,
+            "invoice_id": invoice_id,
+            "invoice_status": invoice_status,
+            "redirect_to": invoice_url if payment_pending and invoice_url else "",
         }
 
     # Decrease path: schedule at period end.
@@ -2395,11 +2438,12 @@ def _handle_storage_subscription_updated(subscription_updated: SubscriptionUpdat
     pending_action = (row.get("pending_action") or "").strip().lower()
     pending_update = getattr(subscription, "pending_update", None)
     status = (subscription.status or "").strip().lower()
+    latest_invoice_paid = is_subscription_latest_invoice_paid_sync(subscription)
 
     should_clear_pending = bool(
         (not pending_update)
         and (
-            (pending_qty is not None and quantity == safe_int(pending_qty, -1))
+            (pending_qty is not None and quantity == safe_int(pending_qty, -1) and latest_invoice_paid)
             or status in {"canceled", "incomplete_expired"}
         )
     )
