@@ -51,6 +51,7 @@ redis:
 #   bge-m3: http://10.142.0.6:4569/predict
 # billing:
 #   stripe_api_key: 'sk_test_51QsGuSHJ6pV3qJnLysNJv0ohOJQCPKO1fhI6hOsR0KLG46SJBK1U8Zjt8nv5LcTwgnNvLmYkbPiYXNMARAsyfWuc00SAik19sc'
+#   stripe_api_version: '2025-10-29.clover'
 #   stripe_endpoint_secret: 'whsec_0fb176adde6131822d01f1c35e1c0179a10cb54f4862734fdeea6186da0a79e4'
 #   session_success_url: 'http://127.0.0.1:9222/success.html'
 #   session_cancel_url: 'http://127.0.0.1:9222/cancel.html'

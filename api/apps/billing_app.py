@@ -30,6 +30,7 @@ from api.db import PaymentChannel, PaymentMethod, PaymentStatus, PriceType, Prod
 from api.db.db_models import DB, PaymentOrder, ProductUsageTracing
 from api.db.services.billing_service import (
     BillingWebhookEventService,
+    DeepDocPaygSubscriptionService,
     LocalPriceService,
     PaymentOrderService,
     PricePointService,
@@ -43,6 +44,7 @@ from api.utils.api_utils import get_data_error_result, get_json_result, get_requ
 from api.utils.billing import (
     BILLING_PLAN_TRIAL_NAME,
     STORAGE_PRODUCT_NAME,
+    create_stripe_customer_id,
     extract_subscription_item,
     extract_subscription_period,
     get_product_id_by_name,
@@ -804,6 +806,409 @@ async def billing_usage_based_overview():
         return get_json_result(data=usage_overview)
     except Exception as e:
         return server_error_response(e)
+
+
+def _compute_deepdoc_unpaid_amount(tenant_id: str) -> Decimal:
+    deepdoc_product = ProductService.get_by_name("deepdoc") or {}
+    deepdoc_product_id = deepdoc_product.get("id")
+    if not deepdoc_product_id:
+        return Decimal("0")
+    total = Decimal("0")
+    query = ProductUsageTracing.select(
+        ProductUsageTracing.total_cost,
+    ).where(
+        ProductUsageTracing.tenant_id == tenant_id,
+        ProductUsageTracing.product_id == deepdoc_product_id,
+        ProductUsageTracing.status == "waiting",
+    )
+    for record in query:
+        total += decimal_amount(record.total_cost)
+    return total
+
+
+def _is_deepdoc_payg_subscription(subscription_id: str) -> bool:
+    if not subscription_id:
+        return False
+    return DeepDocPaygSubscriptionService.get_by_subscription_id(subscription_id) is not None
+
+
+def _is_deepdoc_payg_price_id(price_id: str) -> bool:
+    if not price_id:
+        return False
+    payg_config = settings.DEEPDOC_PAYG_CONFIG
+    return price_id == payg_config.get("price_id", "")
+
+
+@manager.route("/payg/status", methods=["GET"])  # noqa: F821
+@login_required
+@billing_enabled_guard(_billing_disabled_response)
+async def billing_payg_status():
+    try:
+        tenant_id = request.args.get("tenant_id", current_user.id)
+        row = DeepDocPaygSubscriptionService.get_by_tenant_id(tenant_id) or {}
+        status = row.get("status", "disabled")
+
+        deepdoc_product = ProductService.get_by_name("deepdoc") or {}
+        deepdoc_product_id = deepdoc_product.get("id")
+        deepdoc_currency = None
+
+        paid_pages = Decimal("0")
+        unpaid_pages = Decimal("0")
+        paid_amount = Decimal("0")
+        unpaid_amount = Decimal("0")
+
+        if deepdoc_product_id:
+            query = ProductUsageTracing.select(
+                ProductUsageTracing.task_quantity,
+                ProductUsageTracing.total_cost,
+                ProductUsageTracing.currency,
+                ProductUsageTracing.status,
+            ).where(
+                ProductUsageTracing.tenant_id == tenant_id,
+                ProductUsageTracing.product_id == deepdoc_product_id,
+            )
+
+            period_start = row.get("current_period_start")
+            period_end = row.get("current_period_end")
+            if period_start and period_end:
+                start_ms = int(to_utc_datetime(period_start).timestamp() * 1000)
+                end_ms = int(to_utc_datetime(period_end).timestamp() * 1000)
+                query = query.where(ProductUsageTracing.create_time.between(start_ms, end_ms))
+
+            for record in query:
+                qty = decimal_amount(record.task_quantity)
+                amount = decimal_amount(record.total_cost)
+                if deepdoc_currency is None and record.currency:
+                    deepdoc_currency = record.currency
+                if record.status == "success":
+                    paid_pages += qty
+                    paid_amount += amount
+                elif record.status == "waiting":
+                    unpaid_pages += qty
+                    unpaid_amount += amount
+
+        payg_config = settings.DEEPDOC_PAYG_CONFIG
+        threshold_cents = payg_config.get("billing_threshold_amount", 1000)
+        threshold_amount = Decimal(threshold_cents) / Decimal("100")
+
+        result = {
+            "status": status,
+            "subscription_id": row.get("subscription_id", ""),
+            "current_period_start": to_utc_date_str(row.get("current_period_start")),
+            "current_period_end": to_utc_date_str(row.get("current_period_end")),
+            "deepdoc": {
+                "pages_paid": int(paid_pages),
+                "pages_unpaid": int(unpaid_pages),
+                "amount_paid": amount_to_float(paid_amount),
+                "amount_unpaid": amount_to_float(unpaid_amount),
+                "threshold": amount_to_float(threshold_amount),
+                "currency": (deepdoc_currency or "usd").upper(),
+            },
+        }
+        return get_json_result(data=result)
+    except Exception as e:
+        return server_error_response(e)
+
+
+@manager.route("/payg/enable", methods=["POST"])  # noqa: F821
+@login_required
+@billing_enabled_guard(_billing_disabled_response)
+async def billing_payg_enable():
+    try:
+        req = await get_request_json()
+        tenant_id = req.get("tenant_id") or current_user.id
+
+        existing = DeepDocPaygSubscriptionService.get_by_tenant_id(tenant_id)
+        if existing and existing.get("status") in ("active", "grace", "pending"):
+            return get_data_error_result(message="PAYG is already enabled.")
+
+        subscription = SubscriptionService.get_by_tenant_id(tenant_id)
+        customer_id = (subscription.get("customer_id") or "").strip()
+        if not customer_id:
+            customer_id = create_stripe_customer_id(tenant_id)
+            if not customer_id:
+                return get_data_error_result(message="Failed to create Stripe customer.")
+
+        payg_config = settings.DEEPDOC_PAYG_CONFIG
+        price_id = payg_config.get("price_id", "")
+        meter_event_name = payg_config.get("meter_event_name", "deepdoc_page_usage")
+        threshold_cents = payg_config.get("billing_threshold_amount", 1000)
+
+        if not price_id:
+            return get_data_error_result(message="PAYG price not configured.")
+
+        stripe_subscription = await stripe.Subscription.create_async(
+            customer=customer_id,
+            items=[{"price": price_id}],
+            billing_thresholds={"amount_gte": threshold_cents},
+            metadata={
+                "tenant_id": tenant_id,
+                "product_type": "deepdoc_payg",
+            },
+        )
+
+        sub_id = stripe_subscription.id if not isinstance(stripe_subscription, dict) else stripe_subscription.get("id", "")
+        sub_item_id, sub_price_id, _ = extract_subscription_item(stripe_subscription)
+        period_start, period_end = extract_subscription_period(stripe_subscription)
+
+        DeepDocPaygSubscriptionService.upsert_by_tenant_id(
+            tenant_id,
+            customer_id=customer_id,
+            subscription_id=sub_id,
+            subscription_item_id=sub_item_id,
+            price_id=sub_price_id or price_id,
+            meter_event_name=meter_event_name,
+            current_period_start=period_start,
+            current_period_end=period_end,
+            status="active",
+        )
+
+        return get_json_result(data={"status": "active", "subscription_id": sub_id})
+    except Exception as e:
+        return server_error_response(e)
+
+
+@manager.route("/payg/disable", methods=["POST"])  # noqa: F821
+@login_required
+@billing_enabled_guard(_billing_disabled_response)
+async def billing_payg_disable():
+    try:
+        req = await get_request_json()
+        tenant_id = req.get("tenant_id") or current_user.id
+
+        existing = DeepDocPaygSubscriptionService.get_by_tenant_id(tenant_id)
+        if not existing or existing.get("status") == "disabled":
+            return get_data_error_result(message="PAYG is already disabled.")
+
+        customer_id = existing.get("customer_id", "")
+        current_status = existing.get("status", "disabled")
+
+        # --- "canceling" state: subscription already canceled, find existing unpaid invoice ---
+        if current_status == "canceling":
+            subscription_id = existing.get("subscription_id", "")
+            invoice_data = await _find_outstanding_payg_invoice(customer_id, subscription_id=subscription_id)
+            if invoice_data:
+                return get_json_result(
+                    data={
+                        "status": "canceling",
+                        "has_invoice": True,
+                        "outstanding_amount": invoice_data["amount"] / 100.0,
+                        "hosted_invoice_url": invoice_data["hosted_invoice_url"],
+                        "message": "Please pay the final invoice for your remaining usage.",
+                    }
+                )
+            # No outstanding invoice → finalize to disabled
+            DeepDocPaygSubscriptionService.upsert_by_tenant_id(
+                tenant_id,
+                status="disabled",
+                subscription_id="",
+                subscription_item_id="",
+            )
+            return get_json_result(data={"status": "disabled", "has_invoice": False})
+
+        # --- "active" / "grace" state: cancel subscription ---
+        subscription_id = existing.get("subscription_id", "")
+
+        if not subscription_id:
+            DeepDocPaygSubscriptionService.upsert_by_tenant_id(tenant_id, status="disabled")
+            return get_json_result(data={"status": "disabled"})
+
+        # Always switch to send_invoice BEFORE cancel to prevent Stripe from
+        # auto-charging the default payment method on the final invoice.
+        await stripe.Subscription.modify_async(
+            subscription_id,
+            collection_method="send_invoice",
+            days_until_due=7,
+        )
+
+        canceled_sub = await stripe.Subscription.cancel_async(subscription_id, invoice_now=True)
+
+        # Always check the actual final invoice generated by cancel,
+        # regardless of what preview predicted (meter events may lag).
+        latest_invoice_id = ""
+        if isinstance(canceled_sub, dict):
+            latest_invoice_id = canceled_sub.get("latest_invoice", "") or ""
+        else:
+            li = getattr(canceled_sub, "latest_invoice", None)
+            latest_invoice_id = li if isinstance(li, str) else (getattr(li, "id", "") if li else "")
+
+        hosted_url = ""
+        amount_due = 0
+        if latest_invoice_id:
+            invoice = await stripe.Invoice.retrieve_async(latest_invoice_id)
+            inv_status = getattr(invoice, "status", "") or ""
+            amount_due = getattr(invoice, "amount_due", 0) or 0
+
+            if inv_status == "draft" and amount_due > 0:
+                # Draft invoice with real amount: finalize it for manual payment
+                await stripe.Invoice.modify_async(latest_invoice_id, collection_method="send_invoice", days_until_due=7)
+                invoice = await stripe.Invoice.finalize_invoice_async(latest_invoice_id)
+                amount_due = getattr(invoice, "amount_due", 0) or 0
+                hosted_url = getattr(invoice, "hosted_invoice_url", "") or ""
+            elif inv_status == "draft" and amount_due <= 0:
+                # Draft invoice with $0 (meter events lagged). Delete it so it
+                # won't steal pending InvoiceItems from our manual invoice.
+                try:
+                    await stripe.Invoice.delete_async(latest_invoice_id)
+                except Exception:
+                    # If delete fails (e.g. already finalized), void it instead
+                    try:
+                        await stripe.Invoice.void_invoice_async(latest_invoice_id)
+                    except Exception:
+                        pass
+            else:
+                hosted_url = getattr(invoice, "hosted_invoice_url", "") or ""
+
+        if amount_due > 0 and hosted_url:
+            DeepDocPaygSubscriptionService.upsert_by_tenant_id(tenant_id, status="canceling")
+            return get_json_result(
+                data={
+                    "status": "canceling",
+                    "has_invoice": True,
+                    "outstanding_amount": amount_due / 100.0,
+                    "hosted_invoice_url": hosted_url,
+                    "message": "Your subscription has been canceled. Please pay the final invoice for your remaining usage.",
+                }
+            )
+
+        # Stripe invoice is $0 (meter events may lag). Check local usage records
+        # for outstanding amount and create a manual invoice if needed.
+        local_outstanding_cents = await _get_local_outstanding_amount_cents(tenant_id)
+        if local_outstanding_cents > 0:
+            invoice_data = await _create_manual_payg_invoice(
+                customer_id, local_outstanding_cents, tenant_id=tenant_id,
+            )
+            if invoice_data:
+                DeepDocPaygSubscriptionService.upsert_by_tenant_id(tenant_id, status="canceling")
+                return get_json_result(
+                    data={
+                        "status": "canceling",
+                        "has_invoice": True,
+                        "outstanding_amount": invoice_data["amount"] / 100.0,
+                        "hosted_invoice_url": invoice_data["hosted_invoice_url"],
+                        "message": "Your subscription has been canceled. Please pay the final invoice for your remaining usage.",
+                    }
+                )
+
+        # No outstanding amount → go directly to disabled
+        DeepDocPaygSubscriptionService.upsert_by_tenant_id(
+            tenant_id,
+            status="disabled",
+            subscription_id="",
+            subscription_item_id="",
+        )
+        return get_json_result(data={"status": "disabled", "has_invoice": False})
+    except Exception as e:
+        return server_error_response(e)
+
+
+async def _find_outstanding_payg_invoice(customer_id: str, *, subscription_id: str = "") -> dict | None:
+    """Find an unpaid invoice (open or draft with amount > 0) for a PAYG customer.
+
+    For draft invoices, converts to send_invoice mode and finalizes them
+    so they have a hosted_invoice_url for the user to pay.
+    """
+    if not customer_id:
+        return None
+    try:
+        # Search both open and draft invoices
+        for search_status in ("open", "draft"):
+            list_params: dict = {
+                "customer": customer_id,
+                "status": search_status,
+                "limit": 10,
+            }
+            if subscription_id:
+                list_params["subscription"] = subscription_id
+            invoices = await stripe.Invoice.list_async(**list_params)
+            inv_list = invoices.data if hasattr(invoices, "data") else invoices.get("data", [])
+            for inv in inv_list:
+                inv_id = inv.id if hasattr(inv, "id") else inv.get("id", "")
+                amount = inv.amount_due if hasattr(inv, "amount_due") else inv.get("amount_due", 0)
+                if amount <= 0:
+                    continue
+
+                inv_status = inv.status if hasattr(inv, "status") else inv.get("status", "")
+                hosted_url = ""
+
+                if inv_status == "draft":
+                    # Convert to send_invoice so user pays manually, then finalize
+                    await stripe.Invoice.modify_async(inv_id, collection_method="send_invoice", days_until_due=7)
+                    finalized = await stripe.Invoice.finalize_invoice_async(inv_id)
+                    hosted_url = getattr(finalized, "hosted_invoice_url", "") or ""
+                    amount = getattr(finalized, "amount_due", amount) or amount
+                else:
+                    # Already open
+                    hosted_url = (inv.hosted_invoice_url if hasattr(inv, "hosted_invoice_url") else inv.get("hosted_invoice_url", "")) or ""
+
+                if hosted_url:
+                    return {"invoice_id": inv_id, "amount": amount, "hosted_invoice_url": hosted_url}
+
+        return None
+    except Exception as e:
+        logging.warning(f"Failed to find outstanding PAYG invoice: {e}")
+        return None
+
+
+async def _get_local_outstanding_amount_cents(tenant_id: str) -> int:
+    """Sum up unpaid (waiting) usage from local ProductUsageTracing and return amount in cents."""
+    deepdoc_product = ProductService.get_by_name("deepdoc") or {}
+    deepdoc_product_id = deepdoc_product.get("id")
+    if not deepdoc_product_id:
+        return 0
+
+    total = Decimal("0")
+    query = ProductUsageTracing.select(
+        ProductUsageTracing.total_cost,
+    ).where(
+        ProductUsageTracing.tenant_id == tenant_id,
+        ProductUsageTracing.product_id == deepdoc_product_id,
+        ProductUsageTracing.status == "waiting",
+    )
+    for record in query:
+        total += Decimal(str(record.total_cost or 0))
+
+    # total_cost is stored in dollars, convert to cents for Stripe
+    return int(total * 100)
+
+
+async def _create_manual_payg_invoice(
+    customer_id: str, amount_cents: int, *, tenant_id: str = "",
+) -> dict | None:
+    """Create a one-off invoice for outstanding PAYG usage when meter events lag."""
+    if not customer_id or amount_cents <= 0:
+        return None
+    try:
+        # Create invoice first (as draft), then attach line item explicitly
+        # to prevent Stripe from pulling the item onto another draft invoice.
+        invoice = await stripe.Invoice.create_async(
+            customer=customer_id,
+            collection_method="send_invoice",
+            days_until_due=7,
+            metadata={"tenant_id": tenant_id, "product_type": "deepdoc_payg"},
+        )
+        inv_id = getattr(invoice, "id", "") or ""
+        if not inv_id:
+            return None
+
+        await stripe.InvoiceItem.create_async(
+            customer=customer_id,
+            invoice=inv_id,
+            amount=amount_cents,
+            currency="usd",
+            description="DeepDoc Pay-As-You-Go: final usage charge",
+        )
+
+        invoice = await stripe.Invoice.finalize_invoice_async(inv_id)
+        hosted_url = getattr(invoice, "hosted_invoice_url", "") or ""
+        amount_due = getattr(invoice, "amount_due", amount_cents) or amount_cents
+        if not hosted_url:
+            return None
+
+        return {"invoice_id": inv_id, "amount": amount_due, "hosted_invoice_url": hosted_url}
+    except Exception as e:
+        logging.warning(f"Failed to create manual PAYG invoice: {e}")
+        return None
 
 
 @manager.route("/spend_overview", methods=["GET"])  # noqa: F821
@@ -1620,7 +2025,7 @@ def _create_customer_portal(tenant_id: str, current_plan_name: str, return_url: 
         )
         return portal_session.url
 
-    except stripe.error.StripeError as e:
+    except stripe.StripeError as e:
         logging.error(f"Stripe API error: {e}")
         return return_url
     except Exception as e:
@@ -1675,7 +2080,7 @@ async def customer_portal():
         )
         return redirect(portal_session.url, code=303)
 
-    except stripe.error.StripeError as e:
+    except stripe.StripeError as e:
         logging.error(f"Stripe API error: {e}")
         return get_data_error_result("Failed to create billing portal session.")
     except Exception as e:
@@ -1703,7 +2108,7 @@ async def billing_webhook():
         sig_header = request.headers.get("stripe-signature")
         try:
             event = stripe.Webhook.construct_event(payload, sig_header, settings.BILLING["stripe_endpoint_secret"])
-        except stripe.error.SignatureVerificationError:
+        except stripe.SignatureVerificationError:
             logging.exception("billing_webhook signature verification failed.")
             return jsonify(success=False)
 
@@ -1907,6 +2312,16 @@ def _handle_invoice_payment_failed(event: dict):
     event_data = event["data"]["object"]
     subscription_id = (event_data.get("subscription") or "").strip() if isinstance(event_data, dict) else ""
     if subscription_id:
+        payg_row = DeepDocPaygSubscriptionService.get_by_subscription_id(subscription_id)
+        if payg_row:
+            tenant_id = payg_row.get("tenant_id")
+            if tenant_id:
+                DeepDocPaygSubscriptionService.upsert_by_tenant_id(tenant_id, status="grace")
+                logging.info(f"PAYG subscription {subscription_id} set to grace for tenant {tenant_id}")
+            print(event_data)
+            print("\n above is invoice_payment.failed(payg)")
+            return
+
         storage = StorageSubscriptionService.get_by_subscription_id(subscription_id)
         if storage:
             tenant_id = storage.get("tenant_id")
@@ -2165,6 +2580,10 @@ def _handle_invoice_paid(event: dict):
         _handle_storage_invoice_paid(invoice_paid, item, tenant_id=tenant_id, customer_id=customer_id, price_id=price_id, subscription_id=subscription_id)
         return
 
+    if _is_deepdoc_payg_subscription(subscription_id) or _is_deepdoc_payg_price_id(price_id) or metadata.get("product_type") == "deepdoc_payg":
+        _handle_payg_invoice_paid(invoice_paid, item, tenant_id=tenant_id, customer_id=customer_id, price_id=price_id, subscription_id=subscription_id)
+        return
+
     product_id = get_product_id_by_name(plan_name)
 
     print("=======================")
@@ -2330,6 +2749,98 @@ def _handle_storage_invoice_paid(
         logging.warning(f"Handle storage invoice paid error: {e}")
 
 
+def _handle_payg_invoice_paid(
+    invoice_paid: InvoicePaid,
+    item,
+    *,
+    tenant_id: str,
+    customer_id: str,
+    price_id: str,
+    subscription_id: str,
+):
+    invoice_id = invoice_paid.id
+
+    if not subscription_id:
+        try:
+            subscription_id = item.parent.subscription_item_details.subscription
+        except Exception:
+            subscription_id = ""
+
+    if not tenant_id and subscription_id:
+        payg_row = DeepDocPaygSubscriptionService.get_by_subscription_id(subscription_id) or {}
+        tenant_id = payg_row.get("tenant_id", "")
+        customer_id = customer_id or payg_row.get("customer_id", "")
+
+    if not tenant_id:
+        logging.warning(f"Skip PAYG invoice.paid without tenant context: {invoice_id}")
+        return
+
+    product_name = "deepdoc"
+    product_id = get_product_id_by_name(product_name)
+    status = normalize_stripe_invoice_status(invoice_paid.status or "")
+
+    payment_order = {
+        "id": get_uuid(),
+        "tenant_id": tenant_id,
+        "customer_id": customer_id,
+        "payment_type": PriceType.USAGE_BASED,
+        "product_id": product_id,
+        "product_name": product_name,
+        "is_prorated": False,
+        "amount": cents_to_decimal(invoice_paid.amount_paid, invoice_paid.currency),
+        "currency": invoice_paid.currency,
+        "payment_method": PaymentMethod.CARD,
+        "order_id": invoice_id,
+        "price_id": price_id,
+        "payment_intent_id": "",
+        "payment_subscription_id": subscription_id,
+        "receipt_url": invoice_paid.hosted_invoice_url or "",
+        "receipt_pdf_url": invoice_paid.invoice_pdf or "",
+        "payment_channel": PaymentChannel.STRIPE,
+        "payment_status": status,
+        "stripe_status": invoice_paid.status or "",
+        "paid": status == PaymentStatus.SUCCESS.value,
+        "captured": status == PaymentStatus.SUCCESS.value,
+        "description": f"{invoice_paid.billing_reason or ''} {item.description or ''}".strip(),
+        "order_created_at": invoice_paid.created,
+        "payment_detail": {},
+    }
+
+    existing_order = PaymentOrderService.get_by_order_id(invoice_id)
+
+    try:
+        with DB.atomic():
+            if not existing_order:
+                PaymentOrderService.save(**payment_order)
+
+            if status == PaymentStatus.SUCCESS.value:
+                deepdoc_product = ProductService.get_by_name("deepdoc") or {}
+                deepdoc_product_id = deepdoc_product.get("id")
+                if deepdoc_product_id:
+                    ProductUsageTracing.update(status="success").where(
+                        ProductUsageTracing.tenant_id == tenant_id,
+                        ProductUsageTracing.product_id == deepdoc_product_id,
+                        ProductUsageTracing.status == "waiting",
+                    ).execute()
+
+                payg_row = DeepDocPaygSubscriptionService.get_by_tenant_id(tenant_id)
+                if payg_row and payg_row.get("status") == "grace":
+                    DeepDocPaygSubscriptionService.upsert_by_tenant_id(tenant_id, status="active")
+                elif payg_row and payg_row.get("status") == "canceling":
+                    DeepDocPaygSubscriptionService.upsert_by_tenant_id(
+                        tenant_id,
+                        status="disabled",
+                        subscription_id="",
+                        subscription_item_id="",
+                    )
+    except IntegrityError:
+        logging.info(f"Skip duplicated PAYG invoice.paid for tenant {tenant_id}: {invoice_id}")
+    except Exception as e:
+        logging.warning(f"Handle PAYG invoice paid error: {e}")
+
+    print(f"\nabove is invoice.paid(payg) for tenant {tenant_id}")
+
+
 def _set_storage_cancel_at_period_end_sync(tenant_id: str, value: bool = True) -> tuple[bool, dict]:
     storage = StorageSubscriptionService.get_by_tenant_id(tenant_id)
     if not storage or not storage.get("subscription_id"):
@@ -2440,13 +2951,7 @@ def _handle_storage_subscription_updated(subscription_updated: SubscriptionUpdat
     status = (subscription.status or "").strip().lower()
     latest_invoice_paid = is_subscription_latest_invoice_paid_sync(subscription)
 
-    should_clear_pending = bool(
-        (not pending_update)
-        and (
-            (pending_qty is not None and quantity == safe_int(pending_qty, -1) and latest_invoice_paid)
-            or status in {"canceled", "incomplete_expired"}
-        )
-    )
+    should_clear_pending = bool((not pending_update) and ((pending_qty is not None and quantity == safe_int(pending_qty, -1) and latest_invoice_paid) or status in {"canceled", "incomplete_expired"}))
     _sync_storage_subscription_record(
         tenant_id,
         subscription,
@@ -2503,6 +3008,26 @@ def _handle_customer_subscription_updated(event: dict):
         print("\nabove is customer.subscription.updated(storage)")
         return
 
+    payg_row = DeepDocPaygSubscriptionService.get_by_subscription_id(subscription_id)
+    if payg_row or _is_deepdoc_payg_price_id(first_price_id) or subscription.metadata.get("product_type") == "deepdoc_payg":
+        period_start, period_end = extract_subscription_period(subscription)
+        stripe_status = subscription.status or ""
+        update_fields = {}
+        if period_start:
+            update_fields["current_period_start"] = period_start
+        if period_end:
+            update_fields["current_period_end"] = period_end
+        if stripe_status == "active":
+            current_status = (payg_row or {}).get("status", "")
+            if current_status in ("pending", "grace"):
+                update_fields["status"] = "active"
+        elif stripe_status == "past_due":
+            update_fields["status"] = "grace"
+        if update_fields:
+            DeepDocPaygSubscriptionService.upsert_by_tenant_id(tenant_id, **update_fields)
+        print(f"\nabove is customer.subscription.updated(payg) for tenant {tenant_id}")
+        return
+
     if previous and (previous.plan or previous.items):
         old_price = None
         new_price = subscription.items.data[0].price
@@ -2540,10 +3065,7 @@ def _handle_customer_subscription_updated(event: dict):
         current_period_start = to_utc_datetime(period_start_value)
         current_period_end = to_utc_datetime(period_end_value)
         if not current_period_start or not current_period_end:
-            logging.warning(
-                "subscription.updated missing current period boundaries: "
-                f"{subscription_id=}, {period_start_value=}, {period_end_value=}"
-            )
+            logging.warning(f"subscription.updated missing current period boundaries: {subscription_id=}, {period_start_value=}, {period_end_value=}")
             return
 
         if old_price:
@@ -2669,6 +3191,25 @@ def _handle_customer_subscription_deleted(event: dict):
     subscription_id = (event_data.get("id") or "").strip() if isinstance(event_data, dict) else ""
     customer_id = (event_data.get("customer") or "").strip() if isinstance(event_data, dict) else ""
     if subscription_id:
+        payg_row = DeepDocPaygSubscriptionService.get_by_subscription_id(subscription_id)
+        if payg_row:
+            tenant_id = payg_row.get("tenant_id")
+            if tenant_id:
+                with DB.connection_context():
+                    unpaid = _compute_deepdoc_unpaid_amount(tenant_id)
+                if unpaid > Decimal("0"):
+                    logging.info(f"PAYG subscription {subscription_id} deleted but has unpaid amount {unpaid}, keeping canceling.")
+                else:
+                    DeepDocPaygSubscriptionService.upsert_by_tenant_id(
+                        tenant_id,
+                        status="disabled",
+                        subscription_id="",
+                        subscription_item_id="",
+                    )
+                print(event_data)
+                print("\n above is customer.subscription.delete(payg)")
+                return
+
         storage = StorageSubscriptionService.get_by_subscription_id(subscription_id)
         if storage:
             tenant_id = storage.get("tenant_id")

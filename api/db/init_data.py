@@ -26,7 +26,7 @@ from api.db.joint_services.memory_message_service import init_message_id_sequenc
 from api.db.services.canvas_service import CanvasTemplateService
 from api.db.services.llm_service import LLMService
 from api.db.services.tenant_llm_service import LLMFactoriesService
-from api.db.services.billing_service import ProductService, SubscriptionService
+from api.db.services.billing_service import LocalPriceService, PricePointService, ProductService, SubscriptionService
 from common.file_utils import get_project_base_directory
 from common import settings
 import stripe
@@ -197,8 +197,8 @@ def init_web_data():
 
     if settings.BILLING_ENABLED:
         ProductService.init_data(settings.BILLING["billing_plans"])
-        # PricePointService.init_data(settings.BILLING_PRICE_POINT)
-        # LocalPriceService.init_data(settings.BILLING_LOCAL_PRICE)
+        PricePointService.init_data(settings.BILLING_PRICE_POINT)
+        LocalPriceService.init_data(settings.BILLING_LOCAL_PRICE)
         register_webhook()
         handle_undelivered_events()
         configure_decimal()

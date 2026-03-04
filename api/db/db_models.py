@@ -1312,6 +1312,27 @@ class StorageSubscription(DataBaseModel):
         db_table = "billing_storage_subscription"
 
 
+class DeepDocPaygSubscription(DataBaseModel):
+    """
+    One DeepDoc PAYG metered subscription per tenant.
+    Tracks the Stripe metered subscription for pay-as-you-go DeepDoc usage.
+    """
+
+    id = CharField(max_length=32, primary_key=True)
+    tenant_id = CharField(max_length=32, null=False, index=True, unique=True)
+    customer_id = CharField(max_length=255, null=False, default="")
+    subscription_id = CharField(max_length=255, null=False, default="", index=True)
+    subscription_item_id = CharField(max_length=255, null=False, default="")
+    price_id = CharField(max_length=128, null=False, default="")
+    meter_event_name = CharField(max_length=128, null=False, default="")
+    current_period_start = DateTimeField(null=True)
+    current_period_end = DateTimeField(null=True)
+    status = CharField(max_length=64, null=False, default="disabled", index=True)
+
+    class Meta:
+        db_table = "billing_deepdoc_payg_subscription"
+
+
 # -----------------------------------------------------------------------------
 # Deprecated: UsageBased model (legacy table)
 # -----------------------------------------------------------------------------

@@ -48,6 +48,9 @@ export default {
   usageBasedPlans: `${api_host}/billing/usage_based_plans`,
   storageCurrent: `${api_host}/billing/storage/current`,
   storageSetTarget: `${api_host}/billing/storage/set-target`,
+  paygStatus: `${api_host}/billing/payg/status`,
+  paygEnable: `${api_host}/billing/payg/enable`,
+  paygDisable: `${api_host}/billing/payg/disable`,
 
   // premise
   enableAdmin: `${api_host}/user/enable_admin`, // enable 为true且 is_admin 为false 隐藏model provide

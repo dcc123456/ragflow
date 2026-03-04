@@ -32,6 +32,7 @@ local_embd:
 
 billing:
   stripe_api_key: 'sk_test_51RLgXMPtsKvwvC5fPPYV143r560uZJMUGcgj58nY6tkrisR6h6QN1EUabEeDTHrs4lQofg87KqF90APIs0PpzIN0002ydK7iJI'
+  stripe_api_version: '2026-02-25.clover'
   stripe_endpoint_secret: 'whsec_10c6b02840850557fda082a0b74293685b26498bf03eb5cdffd1e6db0d077ad8'
   session_success_url: 'http://127.0.0.1:9222/success.html'
   session_cancel_url: 'http://127.0.0.1:9222/cancel.html'
@@ -51,6 +52,11 @@ billing:
       billing_frequency: "one_time"
       unit: "token"
       unit_quantity: 1
+  deepdoc_payg:
+    meter_event_name: "deepdoc_page_usage"
+    price_id: "price_1T5k7HPtsKvwvC5fd9N0r9b5"
+    lookup_key: "ragflow_payg_deepdoc"
+    billing_threshold_amount: 1000
   billing_plans:
     - name: "storage"
       quota_apps: 0

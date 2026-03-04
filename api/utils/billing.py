@@ -647,7 +647,7 @@ def get_metadata_from_intent(payment_intent_id: str) -> dict:
                 return {}
             intent_metadata = payment_intent.get("metadata", {})
             return intent_metadata
-    except stripe.error.StripeError as e:
+    except stripe.StripeError as e:
         print(f"An error occurred: {str(e)}")
 
     return {}
@@ -663,7 +663,7 @@ def get_receipt_url_from_intent_latest_charge(latest_charge_id: str) -> str:
                 return ""
             receipt_url = charge.get("receipt_url", "")
             return receipt_url
-    except stripe.error.StripeError as e:
+    except stripe.StripeError as e:
         print(f"An error occurred: {str(e)}")
 
     return ""
@@ -682,7 +682,7 @@ def get_metadata_from_subscription(payment_subscription_id: str) -> dict:
                 return {}
             subscription_metadata = subscription.get("metadata", {})
             return subscription_metadata
-    except stripe.error.StripeError as e:
+    except stripe.StripeError as e:
         print(f"An error occurred: {str(e)}")
 
     return {}

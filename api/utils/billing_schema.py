@@ -114,10 +114,10 @@ class InvoiceProrationDetails(BaseModel):
 
 
 class InvoiceSubscriptionItemDetails(BaseModel):
-    subscription: str
+    subscription: Optional[str] = None
     subscription_item: str
     proration: bool
-    proration_details: InvoiceProrationDetails
+    proration_details: Optional[InvoiceProrationDetails] = None
 
 
 class InvoiceParentDetails(BaseModel):

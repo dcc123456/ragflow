@@ -25,6 +25,7 @@ from datetime import datetime, timedelta, timezone
 from api.db import SubscriptionStatus
 from api.db.db_models import (
     BillingWebhookEvent,
+    DeepDocPaygSubscription,
     LocalPrice,
     PaymentOrder,
     PricePoint,
@@ -525,6 +526,71 @@ class StorageSubscriptionService(CommonService):
             return 0
         quantity_gb = int(row.get("effective_quantity_gb") or 0)
         return max(quantity_gb, 0) * 1024 * 1024
+
+
+class DeepDocPaygSubscriptionService(CommonService):
+    model = DeepDocPaygSubscription
+
+    @classmethod
+    def save(cls, **kwargs):
+        if "id" not in kwargs:
+            kwargs["id"] = get_uuid()
+        obj = cls.model(**kwargs).save(force_insert=True)
+        return obj
+
+    @classmethod
+    @DB.connection_context()
+    def get_by_tenant_id(cls, tenant_id: str) -> dict | None:
+        if not tenant_id:
+            return None
+        return cls.model.select().where(cls.model.tenant_id == tenant_id).dicts().first()
+
+    @classmethod
+    @DB.connection_context()
+    def get_by_subscription_id(cls, subscription_id: str) -> dict | None:
+        if not subscription_id:
+            return None
+        return cls.model.select().where(cls.model.subscription_id == subscription_id).dicts().first()
+
+    @classmethod
+    @DB.connection_context()
+    def upsert_by_tenant_id(cls, tenant_id: str, **kwargs) -> bool:
+        if not tenant_id:
+            return False
+
+        update_dict = kwargs.copy()
+        update_dict["update_time"] = current_timestamp()
+        update_dict["update_date"] = to_utc_datetime(datetime.now(timezone.utc))
+
+        exists = cls.model.select(cls.model.id).where(cls.model.tenant_id == tenant_id).first()
+        if exists:
+            cls.model.update(update_dict).where(cls.model.tenant_id == tenant_id).execute()
+            return True
+
+        insert_dict = {
+            "id": get_uuid(),
+            "tenant_id": tenant_id,
+            "customer_id": kwargs.get("customer_id", ""),
+            "subscription_id": kwargs.get("subscription_id", ""),
+            "subscription_item_id": kwargs.get("subscription_item_id", ""),
+            "price_id": kwargs.get("price_id", ""),
+            "meter_event_name": kwargs.get("meter_event_name", ""),
+            "current_period_start": kwargs.get("current_period_start"),
+            "current_period_end": kwargs.get("current_period_end"),
+            "status": kwargs.get("status", "disabled"),
+        }
+        cls.model.insert(**insert_dict).execute()
+        return True
+
+    @classmethod
+    @DB.connection_context()
+    def is_active(cls, tenant_id: str) -> bool:
+        if not tenant_id:
+            return False
+        row = cls.model.select(cls.model.status).where(cls.model.tenant_id == tenant_id).dicts().first()
+        if not row:
+            return False
+        return row.get("status") in ("active", "grace")
 
 
 ####################################################################################

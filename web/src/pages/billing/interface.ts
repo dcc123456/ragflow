@@ -1,6 +1,6 @@
 // src/interfaces/subscription.ts
 
-import { SubscriptionStatus } from './contant';
+import { PaygStatusEnum, SubscriptionStatus } from './contant';
 export interface IApiRequestLimits {
   requests_per_day?: number;
   requests_per_minute?: number;
@@ -96,4 +96,28 @@ export interface UsageData {
   total_spend: number;
   series: SpendSeries[];
   categories: Category[];
+}
+
+export interface IPaygDeepDocUsage {
+  pages_paid: number;
+  pages_unpaid: number;
+  amount_paid: number;
+  amount_unpaid: number;
+  threshold: number;
+  currency: string;
+}
+
+export interface IPaygStatusData {
+  status: PaygStatusEnum;
+  subscription_id: string;
+  current_period_start: string;
+  current_period_end: string;
+  deepdoc: IPaygDeepDocUsage;
+}
+
+export interface IPaygDisableResponse {
+  blocked: boolean;
+  outstanding_amount: number;
+  currency: string;
+  message: string;
 }

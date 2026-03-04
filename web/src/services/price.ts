@@ -134,4 +134,21 @@ export const postBillingStorageSetTarget = (data: {
   return request.post(api.storageSetTarget, { data });
 };
 
+export const getBillingPaygStatus = (tenantId?: string) => {
+  return request.get(api.paygStatus, {
+    params: tenantId ? { tenant_id: tenantId } : undefined,
+  });
+};
+
+export const postBillingPaygEnable = (data: { tenant_id?: string }) => {
+  return request.post(api.paygEnable, { data });
+};
+
+export const postBillingPaygDisable = (data: {
+  tenant_id?: string;
+  confirmed?: boolean;
+}) => {
+  return request.post(api.paygDisable, { data });
+};
+
 export default billingService;

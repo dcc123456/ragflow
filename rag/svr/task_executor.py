@@ -23,7 +23,7 @@ import multiprocessing
 import random
 import sys
 import time
-from api.db import PIPELINE_SPECIAL_PROGRESS_FREEZE_TASK_TYPES
+from api.db import FileType, PIPELINE_SPECIAL_PROGRESS_FREEZE_TASK_TYPES
 from api.db.joint_services.memory_message_service import handle_save_to_memory_task
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.pipeline_operation_log_service import PipelineOperationLogService
@@ -956,6 +956,14 @@ async def do_handle_task(task):
         progress_callback(-1, msg="Task has been canceled.")
         return
 
+    if settings.BILLING_ENABLED:
+        if task.get("type") == FileType.PDF.value and \
+           task.get("parser_config", {}).get("layout_recognize", "DeepDOC") == "DeepDOC":
+            from api.db.services.billing_service import DeepDocPaygSubscriptionService
+            if not DeepDocPaygSubscriptionService.is_active(task.get("tenant_id", "")):
+                progress_callback(-1, msg="DeepDoc requires PAYG to be enabled.")
+                return
+
     try:
         # bind embedding model
         embedding_model = LLMBundle(task_tenant_id, LLMType.EMBEDDING, llm_name=task_embedding_id, lang=task_language)
@@ -1222,7 +1230,10 @@ async def do_handle_task(task):
 
         DocumentService.increment_chunk_num(task_doc_id, task_dataset_id, token_count, chunk_count, 0)
         if settings.BILLING_ENABLED:
-            record_deepdoc_usage(task, max(0, task_to_page - task_from_page))
+            pages = max(0, task_to_page - task_from_page)
+            record_deepdoc_usage(task, pages)
+            from common.billing_utils import report_deepdoc_meter_event
+            report_deepdoc_meter_event(task.get("tenant_id", ""), pages)
 
         progress_callback(msg="Indexing done ({:.2f}s).".format(timer() - start_ts))
 

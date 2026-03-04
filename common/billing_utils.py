@@ -144,6 +144,37 @@ def record_deepdoc_usage(task: dict, pages: int) -> None:
     except Exception as e:
         logging.warning(f"Failed to record deepdoc usage: {e}")
 
+def report_deepdoc_meter_event(tenant_id: str, pages: int) -> None:
+    if pages <= 0:
+        return
+
+    from api.db.services.billing_service import DeepDocPaygSubscriptionService
+
+    row = DeepDocPaygSubscriptionService.get_by_tenant_id(tenant_id)
+    if not row:
+        logging.warning(f"No PAYG subscription for tenant {tenant_id}, skip meter event.")
+        return
+    if row.get("status") not in ("active", "grace"):
+        return
+
+    customer_id = row.get("customer_id", "")
+    meter_event_name = row.get("meter_event_name") or settings.DEEPDOC_PAYG_CONFIG.get("meter_event_name", "deepdoc_page_usage")
+    if not customer_id:
+        logging.warning(f"No customer_id for tenant {tenant_id}, skip meter event.")
+        return
+
+    try:
+        stripe.billing.MeterEvent.create(
+            event_name=meter_event_name,
+            payload={
+                "stripe_customer_id": customer_id,
+                "value": str(pages),
+            },
+        )
+    except Exception as e:
+        logging.warning(f"Failed to report deepdoc meter event for tenant {tenant_id}: {e}")
+
+
 def billing_enabled_guard(default):
     def decorator(func):
         if inspect.iscoroutinefunction(func):
@@ -167,7 +198,9 @@ def billing_enabled_guard(default):
 @billing_enabled_guard(None)
 def init_stripe_api_key() -> None:
     api_key = settings.BILLING.get("stripe_api_key")
+    api_version = settings.BILLING.get("stripe_api_version", "2026-02-25.clover")
     if api_key:
         stripe.api_key = api_key
+        stripe.api_version = api_version
     else:
         logging.error("Stripe api_key is missing in billing settings.")

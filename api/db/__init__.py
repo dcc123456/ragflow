@@ -253,6 +253,14 @@ class SubscriptionStatus(StrEnum):
     UNKNOWN = "unknown"
 
 
+class PaygStatus(StrEnum):
+    DISABLED = "disabled"
+    PENDING = "pending"
+    ACTIVE = "active"
+    GRACE = "grace"
+    CANCELING = "canceling"
+
+
 ####################
 
 PIPELINE_SPECIAL_PROGRESS_FREEZE_TASK_TYPES = {PipelineTaskType.RAPTOR.lower(), PipelineTaskType.GRAPH_RAG.lower(), PipelineTaskType.MINDMAP.lower()}
