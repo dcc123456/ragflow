@@ -110,6 +110,7 @@ function ChatEvaluationConfig({
       <ChatBasicSetting
         prefix={ChatPrefix}
         option={{ 'prompt_config.quote': { disabled: true } }}
+        hideName
       ></ChatBasicSetting>
       <Separator />
       <ChatPromptEngine prefix={ChatPrefix}></ChatPromptEngine>
@@ -139,9 +140,7 @@ export function EvaluationConfigPanel({
   return (
     <section className="w-80 flex flex-col">
       <div className="flex justify-between items-center pb-5 font-semibold pr-5">
-        <span>
-          {type === 'agent' ? 'Agent Configuration' : 'Chat Configuration'}
-        </span>
+        <span>{t('evaluation.configuration')}</span>
         <PanelRightClose className="size-4 cursor-pointer" onClick={onClose} />
       </div>
       <Form {...form}>

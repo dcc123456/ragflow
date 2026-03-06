@@ -69,7 +69,9 @@ export function RunDropdownButton({ rowSelection }: RunDropdownButtonProps) {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button disabled={disabled}>
-          <Play />
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <polygon points="20,12 2,3 2,21" />
+          </svg>
           Run
         </Button>
       </DropdownMenuTrigger>

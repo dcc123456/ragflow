@@ -22,58 +22,64 @@ import { useFormContext } from 'react-hook-form';
 interface ChatBasicSettingProps {
   prefix?: string;
   option?: Record<string, any>;
+  hideName?: boolean;
 }
 
 export default function ChatBasicSetting({
   prefix = '',
   option,
+  hideName = false,
 }: ChatBasicSettingProps) {
   const { t } = useTranslate('chat');
   const form = useFormContext();
 
   return (
     <div className="space-y-8">
-      <FormField
-        control={form.control}
-        name={prefixName(prefix, 'icon')}
-        render={({ field }) => (
-          <div className="space-y-6">
-            <FormItem className="w-full">
-              <FormLabel>{t('assistantAvatar')}</FormLabel>
-              <FormControl>
-                <AvatarUpload {...field}></AvatarUpload>
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          </div>
-        )}
-      />
-      <FormField
-        control={form.control}
-        name={prefixName(prefix, 'name')}
-        render={({ field }) => (
-          <FormItem>
-            <FormLabel required>{t('assistantName')}</FormLabel>
-            <FormControl>
-              <Input {...field}></Input>
-            </FormControl>
-            <FormMessage />
-          </FormItem>
-        )}
-      />
-      <FormField
-        control={form.control}
-        name={prefixName(prefix, 'description')}
-        render={({ field }) => (
-          <FormItem>
-            <FormLabel>{t('description')}</FormLabel>
-            <FormControl>
-              <Textarea {...field}></Textarea>
-            </FormControl>
-            <FormMessage />
-          </FormItem>
-        )}
-      />
+      {hideName || (
+        <>
+          <FormField
+            control={form.control}
+            name={prefixName(prefix, 'icon')}
+            render={({ field }) => (
+              <div className="space-y-6">
+                <FormItem className="w-full">
+                  <FormLabel>{t('assistantAvatar')}</FormLabel>
+                  <FormControl>
+                    <AvatarUpload {...field}></AvatarUpload>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              </div>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name={prefixName(prefix, 'name')}
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel required>{t('assistantName')}</FormLabel>
+                <FormControl>
+                  <Input {...field}></Input>
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name={prefixName(prefix, 'description')}
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t('description')}</FormLabel>
+                <FormControl>
+                  <Textarea {...field}></Textarea>
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </>
+      )}
       <FormField
         control={form.control}
         name={prefixName(prefix, 'prompt_config.empty_response')}

@@ -91,6 +91,7 @@ export const useEvaluationTableColumns = (
           }
           onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
           aria-label="Select all"
+          className="size-3.5"
         />
       ),
       cell: ({ row }) => (
@@ -98,6 +99,7 @@ export const useEvaluationTableColumns = (
           checked={row.getIsSelected()}
           onCheckedChange={(value) => row.toggleSelected(!!value)}
           aria-label="Select row"
+          className="size-3.5"
         />
       ),
       enableSorting: false,
@@ -111,7 +113,7 @@ export const useEvaluationTableColumns = (
         <div className="flex items-center gap-2">
           <CellWithTooltip content={row.original.question} />
           <Eye
-            className="size-4 cursor-pointer hover:text-accent-primary opacity-0 group-hover:opacity-100 transition-opacity"
+            className="size-4 min-w-4 cursor-pointer hover:text-accent-primary opacity-0 group-hover:opacity-100 transition-opacity"
             onClick={() => onShowDetail?.(row.original.id)}
           />
         </div>

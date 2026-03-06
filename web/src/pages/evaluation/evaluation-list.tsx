@@ -1,5 +1,6 @@
 import { MoreButton } from '@/components/more-button';
 import { RAGFlowAvatar } from '@/components/ragflow-avatar';
+import { RenameDialog } from '@/components/rename-dialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { SearchInput } from '@/components/ui/input';
@@ -16,6 +17,7 @@ import React, { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { EvaluationType } from './constants';
 import { EvaluationRunDropdown } from './evaluation-run-dropdown';
+import { useRenameEvaluationRun } from './hooks/use-rename-evaluation-run';
 
 type EvaluationListProps = {
   selectedRunId: string;
@@ -26,7 +28,16 @@ export function EvaluationList({ selectedRunId, type }: EvaluationListProps) {
   const { t } = useTranslation();
   const { visible, switchVisible } = useSetModalState(true);
   const [searchString, setSearchString] = React.useState('');
+  const [isCreating, setIsCreating] = React.useState(false);
   const { setRunId, setPage } = useEvaluationUrl();
+  const {
+    renameLoading,
+    initialRunName,
+    onRenameOk,
+    renameVisible,
+    hideRenameModal,
+    showRenameModal,
+  } = useRenameEvaluationRun();
 
   const { data: runList } = useFetchEvaluationRunList();
   const useFetchData =
@@ -40,13 +51,27 @@ export function EvaluationList({ selectedRunId, type }: EvaluationListProps) {
   const debouncedSearchString = useDebounce(searchString, { wait: 500 });
 
   const filteredRuns = useMemo(() => {
-    return runList?.runs.filter((run) => {
-      const matchesSearch = run.name
-        .toLowerCase()
-        .includes(debouncedSearchString.toLowerCase());
-      return matchesSearch;
-    });
-  }, [runList?.runs, debouncedSearchString]);
+    const runs =
+      runList?.runs.filter((run) => {
+        const matchesSearch = run.name
+          .toLowerCase()
+          .includes(debouncedSearchString.toLowerCase());
+        return matchesSearch;
+      }) ?? [];
+
+    // Add a placeholder item at the top when creating new evaluation
+    if (isCreating) {
+      return [
+        {
+          id: 'new',
+          name: t('evaluation.newEvaluation'),
+        } as (typeof runs)[0],
+        ...runs,
+      ];
+    }
+
+    return runs;
+  }, [runList?.runs, debouncedSearchString, isCreating, t]);
 
   const handleCardClick = useCallback(
     (runId: string) => () => {
@@ -57,7 +82,8 @@ export function EvaluationList({ selectedRunId, type }: EvaluationListProps) {
   );
 
   const handleAddClick = useCallback(() => {
-    setRunId('');
+    setIsCreating(true);
+    setRunId('new');
   }, [setRunId]);
 
   if (!visible) {
@@ -102,19 +128,33 @@ export function EvaluationList({ selectedRunId, type }: EvaluationListProps) {
           <Card
             key={x.id}
             onClick={handleCardClick(x.id!)}
-            className={cn('cursor-pointer bg-transparent', {
-              'bg-bg-card': selectedRunId === x.id,
-            })}
+            className={cn(
+              'cursor-pointer bg-transparent border-none shadow-none',
+              {
+                'bg-bg-card': selectedRunId === x.id,
+              },
+            )}
           >
             <CardContent className="px-3 py-2 flex justify-between items-center group gap-1">
               <div className="truncate flex-1">{x.name}</div>
-              <EvaluationRunDropdown runId={x.id!}>
-                <MoreButton />
-              </EvaluationRunDropdown>
+              {x.id !== 'new' && (
+                <EvaluationRunDropdown run={x} onRename={showRenameModal}>
+                  <MoreButton />
+                </EvaluationRunDropdown>
+              )}
             </CardContent>
           </Card>
         ))}
       </div>
+      {renameVisible && (
+        <RenameDialog
+          hideModal={hideRenameModal}
+          onOk={onRenameOk}
+          initialName={initialRunName}
+          loading={renameLoading}
+          title={initialRunName || t('common.rename')}
+        />
+      )}
     </section>
   );
 }

@@ -2392,10 +2392,11 @@ Important structured information may include: names, dates, locations, events, k
 
     evaluation: {
       title: 'Evaluation',
+      newEvaluation: 'New evaluation',
       caseId: 'Case ID',
       question: 'Question',
-      referenceAnswer: 'Reference Answer',
-      modelAnswer: 'Model Answer',
+      referenceAnswer: 'Reference answer',
+      modelAnswer: 'Model answer',
       score: 'Score',
       status: 'Status',
       actions: 'Actions',
@@ -2409,6 +2410,12 @@ Important structured information may include: names, dates, locations, events, k
       relevancy: 'Relevancy',
       factuality: 'Factuality',
       consistency: 'Consistency',
+      contextRelevanceTip:
+        'Measures the degree of correlation between the generated answer and the original query, without assessing its factual accuracy.',
+      faithfulnessTip:
+        'Evaluates the factual consistency between the answer and the reference answer, including factual completeness.',
+      semanticSimilarityTip:
+        "Uses prompt-based LLM evaluation to measure whether the overall meaning and logic of the output align with the user's answer. Since it relies entirely on LLM scoring, the prompt is editable for customization.",
       contextRelevance: 'Relevancy',
       faithfulness: 'Factuality',
       semanticSimilarity: 'Consistency',
@@ -2432,6 +2439,7 @@ Important structured information may include: names, dates, locations, events, k
       notConfigured: 'Not configured',
       failed: 'Run failed',
       completed: 'Run finished',
+      configuration: 'Configuration',
     },
 
     empty: {

@@ -10,6 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { FormTooltip } from '@/components/ui/tooltip';
 import { MessageType } from '@/constants/chat';
 import { IModalProps } from '@/interfaces/common';
 import { IEvaluationRunResult } from '@/interfaces/database/evaluation';
@@ -40,9 +41,14 @@ function CollapsibleMetric({
       <section>
         <CollapsibleTrigger asChild>
           <div className="flex justify-between items-center">
-            <span className="text-text-secondary">
-              {t(`evaluation.${camelCase(field)}`)}
-            </span>
+            <div>
+              <span className="text-text-secondary">
+                {t(`evaluation.${camelCase(field)}`)}
+              </span>
+              <FormTooltip
+                tooltip={t(`evaluation.${camelCase(field)}Tip`)}
+              ></FormTooltip>
+            </div>
             <div className="flex items-end gap-2">
               <span className="text-accent-primary text-xs">
                 {get(resultData, ['metrics', field])}

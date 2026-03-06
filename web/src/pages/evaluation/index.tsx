@@ -72,7 +72,7 @@ export default function Evaluation() {
   return (
     <section className="h-full flex flex-col">
       <PageHeader>
-        <Button onClick={handleBack} variant={'ghost'}>
+        <Button onClick={handleBack} variant={'outline'}>
           <ArrowBigLeft /> Back
         </Button>
       </PageHeader>
@@ -86,7 +86,7 @@ export default function Evaluation() {
               <Tooltip>
                 <TooltipTrigger>
                   <Button
-                    variant={'ghost'}
+                    variant={'outline'}
                     disabled={!runId}
                     onClick={handleApplyConfig}
                   >

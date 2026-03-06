@@ -2146,6 +2146,7 @@ Tokenizer 会根据所选方式将内容存储为对应的数据结构。`,
     },
     evaluation: {
       title: '评估',
+      newEvaluation: '新建评估',
       caseId: '用例ID',
       question: '问题',
       referenceAnswer: '参考答案',
@@ -2163,6 +2164,11 @@ Tokenizer 会根据所选方式将内容存储为对应的数据结构。`,
       relevancy: '相关性',
       factuality: '事实性',
       consistency: '一致性',
+      contextRelevanceTip:
+        '衡量生成的回答与原始查询之间的相关程度，而不评估其事实准确性。',
+      faithfulnessTip: '评估回答在事实层面与参考答案的一致性。事实完整性。',
+      semanticSimilarityTip:
+        '通过提示词，让LLM衡量output的整体意思和逻辑是否与用户的answer保持对齐。且因为完全是LLM评分，因此开放提示词让用户可以自行编辑。',
       contextRelevance: '相关性',
       faithfulness: '事实性',
       semanticSimilarity: '一致性',
@@ -2186,6 +2192,7 @@ Tokenizer 会根据所选方式将内容存储为对应的数据结构。`,
       notConfigured: '未配置',
       failed: '运行失败',
       completed: '运行完成',
+      configuration: '配置',
     },
 
     empty: {
