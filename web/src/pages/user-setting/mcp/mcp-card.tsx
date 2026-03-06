@@ -13,13 +13,16 @@ export type DatasetCardProps = {
   data: IMcpServer;
   isSelectionMode: boolean;
 } & Pick<UseBulkOperateMCPReturnType, 'handleSelectChange' | 'selectedList'> &
-  Pick<UseEditMcpReturnType, 'showEditModal'>;
+  Pick<UseEditMcpReturnType, 'showEditModal'> & {
+    showPrivilegeModal(): void;
+  };
 
 export function McpCard({
   data,
   selectedList,
   handleSelectChange,
   showEditModal,
+  showPrivilegeModal,
   isSelectionMode,
 }: DatasetCardProps) {
   const { t } = useTranslation();
@@ -56,7 +59,8 @@ export function McpCard({
               <McpOperation
                 mcp={data}
                 showEditModal={showEditModal}
-              ></McpOperation>
+                showPrivilegeModal={showPrivilegeModal}
+              />
             )}
           </div>
         </section>

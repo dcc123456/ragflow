@@ -3,6 +3,7 @@ import {
   ConfirmDeleteDialog,
   ConfirmDeleteDialogNode,
 } from '@/components/confirm-delete-dialog';
+import { PrivilegeManagementDialog } from '@/components/privilege-management/privilege-management-dialog';
 import Spotlight from '@/components/spotlight';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -28,6 +29,7 @@ import { McpCard } from './mcp-card';
 import { useBulkOperateMCP } from './use-bulk-operate-mcp';
 import { useEditMcp } from './use-edit-mcp';
 import { useImportMcp } from './use-import-mcp';
+import { useShowPrivilegeDialog } from './use-show-privilege-dialog';
 
 export default function McpServer() {
   const { data, setPagination, searchString, handleInputChange, pagination } =
@@ -44,6 +46,12 @@ export default function McpServer() {
   const { t } = useTranslation();
   const { importVisible, showImportModal, hideImportModal, onImportOk } =
     useImportMcp();
+  const {
+    privilegeModal,
+    hidePrivilegeModal,
+    handShowPrivilegeModal,
+    recordWithSourceType,
+  } = useShowPrivilegeDialog();
 
   const [isSelectionMode, setSelectionMode] = useState(false);
 
@@ -154,8 +162,9 @@ export default function McpServer() {
                 selectedList={selectedList}
                 handleSelectChange={handleSelectChange}
                 showEditModal={showEditModal}
+                showPrivilegeModal={handShowPrivilegeModal(item)}
                 isSelectionMode={isSelectionMode}
-              ></McpCard>
+              />
             ))}
           </CardContainer>
           <div className="mt-8">
@@ -180,6 +189,12 @@ export default function McpServer() {
           hideModal={hideImportModal}
           onOk={onImportOk}
         ></ImportMcpDialog>
+      )}
+      {privilegeModal && (
+        <PrivilegeManagementDialog
+          hideModal={hidePrivilegeModal}
+          initialValues={recordWithSourceType}
+        />
       )}
       <Spotlight />
     </ProfileSettingWrapperCard>

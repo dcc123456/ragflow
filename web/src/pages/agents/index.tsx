@@ -2,6 +2,7 @@ import { CardContainer } from '@/components/card-container';
 import { EmptyCardType } from '@/components/empty/constant';
 import { EmptyAppCard } from '@/components/empty/empty';
 import ListFilterBar from '@/components/list-filter-bar';
+import { PrivilegeManagementDialog } from '@/components/privilege-management/privilege-management-dialog';
 import { RenameDialog } from '@/components/rename-dialog';
 import { Button } from '@/components/ui/button';
 import {
@@ -25,6 +26,7 @@ import { useSelectFilters } from './hooks/use-selelct-filters';
 import { UploadAgentDialog } from './upload-agent-dialog';
 import { useHandleImportJsonFile } from './use-import-json';
 import { useRenameAgent } from './use-rename-agent';
+import { useShowPrivilegeDialog } from './use-show-privilege-dialog';
 
 export default function Agents() {
   const {
@@ -61,6 +63,13 @@ export default function Agents() {
     onFileUploadOk,
     hideFileUploadModal,
   } = useHandleImportJsonFile();
+
+  const {
+    privilegeModal,
+    hidePrivilegeModal,
+    handShowPrivilegeModal,
+    recordWithSourceType,
+  } = useShowPrivilegeDialog();
 
   const filters = useSelectFilters();
 
@@ -159,7 +168,8 @@ export default function Agents() {
                       key={x.id}
                       data={x}
                       showAgentRenameModal={showAgentRenameModal}
-                    ></AgentCard>
+                      showPrivilegeModal={handShowPrivilegeModal(x)}
+                    />
                   );
                 })}
               </CardContainer>
@@ -195,6 +205,12 @@ export default function Agents() {
             hideModal={hideFileUploadModal}
             onOk={onFileUploadOk}
           ></UploadAgentDialog>
+        )}
+        {privilegeModal && (
+          <PrivilegeManagementDialog
+            hideModal={hidePrivilegeModal}
+            initialValues={recordWithSourceType}
+          />
         )}
       </section>
     </>

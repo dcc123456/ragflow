@@ -25,6 +25,8 @@ export const PermissionList = [
 
 export const DialogPermissionList = [Permission.Read, Permission.Manage];
 
+export const McpPermissionList = [Permission.Read, Permission.Manage];
+
 export const LabelMap = {
   [Permission.Read]: 'read',
   [Permission.Write]: 'write',
@@ -37,6 +39,8 @@ export enum PermissionResourceType {
   LLM = 'llm',
   Dialog = 'dialog',
   Document = 'document',
+  Canvas = 'canvas',
+  MCP = 'mcp',
 }
 
 export enum TenantRole {

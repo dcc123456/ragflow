@@ -11,26 +11,31 @@ import { useRenameAgent } from './use-rename-agent';
 
 export type DatasetCardProps = {
   data: IFlow;
-} & Pick<ReturnType<typeof useRenameAgent>, 'showAgentRenameModal'>;
+} & Pick<ReturnType<typeof useRenameAgent>, 'showAgentRenameModal'> & {
+    showPrivilegeModal(): void;
+  };
 
-export function AgentCard({ data, showAgentRenameModal }: DatasetCardProps) {
+export function AgentCard({
+  data,
+  showAgentRenameModal,
+  showPrivilegeModal,
+}: DatasetCardProps) {
   const { navigateToAgent } = useNavigatePage();
 
   return (
     <HomeCard
       data={{ ...data, name: data.title, description: data.description || '' }}
       moreDropdown={
-        <AgentDropdown showAgentRenameModal={showAgentRenameModal} agent={data}>
-          <MoreButton></MoreButton>
+        <AgentDropdown
+          showAgentRenameModal={showAgentRenameModal}
+          agent={data}
+          showPrivilegeModal={showPrivilegeModal}
+        >
+          <MoreButton />
         </AgentDropdown>
       }
       sharedBadge={<SharedBadge>{data.nickname}</SharedBadge>}
-      onClick={
-        // data.canvas_category === AgentCategory.DataflowCanvas
-        //   ? navigateToDataflow(data.id)
-        //   :
-        navigateToAgent(data?.id, data.canvas_category as AgentCategory)
-      }
+      onClick={navigateToAgent(data?.id, data.canvas_category as AgentCategory)}
       icon={
         data.canvas_category === AgentCategory.DataflowCanvas && (
           <Button variant={'ghost'} size={'sm'}>

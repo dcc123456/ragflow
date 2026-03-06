@@ -67,19 +67,19 @@ const UsagePage = () => {
         title="Total Spend"
         desc={`$${totalSpendLineChart.value?.toFixed(2)}`}
       />
-      <h1 className="text-2xl font-bold mb-4 mt-9">Spend Categories</h1>
-      <div className="grid grid-cols-2 gap-4">
-        {categoriesChart &&
-          categoriesChart?.length > 0 &&
-          categoriesChart.map((item, index) => (
-            <CustomBarChart
-              key={index}
-              data={item.series}
-              title={item.title}
-              desc={item.desc}
-            />
-          ))}
-        {/* <DeepDocBarChart
+      {categoriesChart && categoriesChart?.length > 0 && (
+        <>
+          <h1 className="text-2xl font-bold mb-4 mt-9">Spend Categories</h1>
+          <div className="grid grid-cols-2 gap-4">
+            {categoriesChart.map((item, index) => (
+              <CustomBarChart
+                key={index}
+                data={item.series}
+                title={item.title}
+                desc={item.desc}
+              />
+            ))}
+            {/* <DeepDocBarChart
           data={deepDocBarChart.data}
           title={'DeepDoc'}
           desc={`$${deepDocBarChart.value?.toFixed(2)} Total ${deepDocBarChart.pages} Pages`}
@@ -89,7 +89,9 @@ const UsagePage = () => {
           title={'Embedding'}
           desc={`$${embeddingBarChart.value?.toFixed(2)} Total ${embeddingBarChart.tokens} Tokens`}
         /> */}
-      </div>
+          </div>
+        </>
+      )}
     </div>
   );
 };

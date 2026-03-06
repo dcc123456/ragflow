@@ -2,18 +2,38 @@ import {
   ConfirmDeleteDialog,
   ConfirmDeleteDialogNode,
 } from '@/components/confirm-delete-dialog';
+import { PrivilegeDropdown } from '@/components/privilege/privilege-dropdown';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { useDeleteMcpServer } from '@/hooks/use-mcp-request';
 import { IMcpServer } from '@/interfaces/database/mcp';
-import { PenLine, Trash2, Upload } from 'lucide-react';
-import { MouseEventHandler, useCallback } from 'react';
+import {
+  hasManagePermissionPermission,
+  hasOwnerPermission,
+  showEditButton,
+} from '@/utils/permission-util';
+import { Ellipsis, PenLine, Trash2, Upload } from 'lucide-react';
+import { MouseEventHandler, PropsWithChildren, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { UseEditMcpReturnType } from './use-edit-mcp';
+import { useEditMcp } from './use-edit-mcp';
 import { useExportMcp } from './use-export-mcp';
+
+type McpOperationProps = {
+  mcp: IMcpServer;
+  showEditModal: ReturnType<typeof useEditMcp>['showEditModal'];
+  showPrivilegeModal(): void;
+};
 
 export function McpOperation({
   mcp,
   showEditModal,
-}: { mcp: IMcpServer } & Pick<UseEditMcpReturnType, 'showEditModal'>) {
+  showPrivilegeModal,
+}: PropsWithChildren<McpOperationProps>) {
   const { t } = useTranslation();
   const { deleteMcpServer } = useDeleteMcpServer();
   const { handleExportMcpJson } = useExportMcp();
@@ -22,33 +42,62 @@ export function McpOperation({
     deleteMcpServer([mcp.id]);
   }, [deleteMcpServer, mcp.id]);
 
+  const handlesShowPrivilegeModal: MouseEventHandler<HTMLDivElement> =
+    useCallback(
+      (e) => {
+        e.stopPropagation();
+        showPrivilegeModal();
+      },
+      [showPrivilegeModal],
+    );
+
+  if (!showEditButton(mcp.operator_permission)) {
+    return null;
+  }
+
   return (
-    <div className="hidden gap-1  group-hover:flex text-text-secondary">
-      {/* <RAGFlowTooltip tooltip={t('mcp.export')}> */}
-      <Upload
-        className="size-5 cursor-pointer p-1 rounded-sm hover:text-text-primary hover:bg-bg-card"
-        onClick={handleExportMcpJson([mcp.id])}
-      />
-      {/* </RAGFlowTooltip>
-      <RAGFlowTooltip tooltip={t('common.edit')}> */}
-      <PenLine
-        className="size-5 cursor-pointer p-1 rounded-sm hover:text-text-primary hover:bg-bg-card"
-        onClick={showEditModal(mcp.id)}
-      />
-      {/* </RAGFlowTooltip>
-      <RAGFlowTooltip tooltip={t('common.delete')}> */}
-      <ConfirmDeleteDialog
-        onOk={handleDelete}
-        title={t('common.delete') + ' ' + t('mcp.mcpServer')}
-        content={{
-          node: (
-            <ConfirmDeleteDialogNode name={mcp.name}></ConfirmDeleteDialogNode>
-          ),
-        }}
-      >
-        <Trash2 className="size-5 cursor-pointer p-1 rounded-sm hover:text-state-error hover:bg-state-error-5" />
-      </ConfirmDeleteDialog>
-      {/* </RAGFlowTooltip> */}
-    </div>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Ellipsis className="size-5 cursor-pointer p-1 rounded-sm hover:text-text-primary hover:bg-bg-card" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent>
+        <DropdownMenuItem onClick={handleExportMcpJson([mcp.id])}>
+          {t('mcp.export')} <Upload className="size-4" />
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={showEditModal(mcp.id)}>
+          {t('common.edit')} <PenLine className="size-4" />
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        {hasManagePermissionPermission(mcp.operator_permission) && (
+          <>
+            <DropdownMenuItem onClick={handlesShowPrivilegeModal}>
+              <PrivilegeDropdown />
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+          </>
+        )}
+        {hasOwnerPermission(mcp.operator_permission) && (
+          <ConfirmDeleteDialog
+            onOk={handleDelete}
+            title={t('common.delete') + ' ' + t('mcp.mcpServer')}
+            content={{
+              node: <ConfirmDeleteDialogNode name={mcp.name} />,
+            }}
+          >
+            <DropdownMenuItem
+              className="text-state-error"
+              onSelect={(e) => {
+                e.preventDefault();
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+              }}
+            >
+              {t('common.delete')} <Trash2 className="size-4" />
+            </DropdownMenuItem>
+          </ConfirmDeleteDialog>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

@@ -105,7 +105,8 @@ export function AddCollaboratorDialog({
   );
 
   const options = (
-    resourceType === PermissionResourceType.Dialog
+    resourceType === PermissionResourceType.Dialog ||
+    resourceType === PermissionResourceType.MCP
       ? DialogPermissionList
       : PermissionList
   ).map((x) => ({

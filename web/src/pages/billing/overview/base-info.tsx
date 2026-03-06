@@ -6,7 +6,7 @@ import { useFetchPlanOverview } from '../hook/overview';
 
 const UNLIMITED_API_REQUESTS = 2147483647;
 
-const pricingPlans = {
+export const pricingPlans = {
   Trial: 'Free Plan',
   Starter: 'Starter Plan',
   Pro: 'Pro Plan',
