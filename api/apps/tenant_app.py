@@ -128,8 +128,9 @@ def rm(tenant_id, user_id):
 @manager.route("/list", methods=["GET"])  # noqa: F821
 @login_required
 def tenant_list():
+    current_user_id = current_user.id
     try:
-        users = UserTenantService.get_tenants_by_user_id(current_user.id)
+        users = UserTenantService.get_tenants_by_user_id(current_user_id)
         for u in users:
             u["delta_seconds"] = delta_seconds(str(u["update_date"]))
         return get_json_result(data=users)

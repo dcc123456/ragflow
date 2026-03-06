@@ -23,11 +23,14 @@ import logging
 from datetime import datetime, timedelta, timezone
 
 from api.db import SubscriptionStatus
+from peewee import IntegrityError
 from api.db.db_models import (
     BillingWebhookEvent,
-    DeepDocPaygSubscription,
     LocalPrice,
     PaymentOrder,
+    PointAccount,
+    PointHold,
+    PointLedger,
     PricePoint,
     Product,
     PurchasedProductOverview,
@@ -528,71 +531,6 @@ class StorageSubscriptionService(CommonService):
         return max(quantity_gb, 0) * 1024 * 1024
 
 
-class DeepDocPaygSubscriptionService(CommonService):
-    model = DeepDocPaygSubscription
-
-    @classmethod
-    def save(cls, **kwargs):
-        if "id" not in kwargs:
-            kwargs["id"] = get_uuid()
-        obj = cls.model(**kwargs).save(force_insert=True)
-        return obj
-
-    @classmethod
-    @DB.connection_context()
-    def get_by_tenant_id(cls, tenant_id: str) -> dict | None:
-        if not tenant_id:
-            return None
-        return cls.model.select().where(cls.model.tenant_id == tenant_id).dicts().first()
-
-    @classmethod
-    @DB.connection_context()
-    def get_by_subscription_id(cls, subscription_id: str) -> dict | None:
-        if not subscription_id:
-            return None
-        return cls.model.select().where(cls.model.subscription_id == subscription_id).dicts().first()
-
-    @classmethod
-    @DB.connection_context()
-    def upsert_by_tenant_id(cls, tenant_id: str, **kwargs) -> bool:
-        if not tenant_id:
-            return False
-
-        update_dict = kwargs.copy()
-        update_dict["update_time"] = current_timestamp()
-        update_dict["update_date"] = to_utc_datetime(datetime.now(timezone.utc))
-
-        exists = cls.model.select(cls.model.id).where(cls.model.tenant_id == tenant_id).first()
-        if exists:
-            cls.model.update(update_dict).where(cls.model.tenant_id == tenant_id).execute()
-            return True
-
-        insert_dict = {
-            "id": get_uuid(),
-            "tenant_id": tenant_id,
-            "customer_id": kwargs.get("customer_id", ""),
-            "subscription_id": kwargs.get("subscription_id", ""),
-            "subscription_item_id": kwargs.get("subscription_item_id", ""),
-            "price_id": kwargs.get("price_id", ""),
-            "meter_event_name": kwargs.get("meter_event_name", ""),
-            "current_period_start": kwargs.get("current_period_start"),
-            "current_period_end": kwargs.get("current_period_end"),
-            "status": kwargs.get("status", "disabled"),
-        }
-        cls.model.insert(**insert_dict).execute()
-        return True
-
-    @classmethod
-    @DB.connection_context()
-    def is_active(cls, tenant_id: str) -> bool:
-        if not tenant_id:
-            return False
-        row = cls.model.select(cls.model.status).where(cls.model.tenant_id == tenant_id).dicts().first()
-        if not row:
-            return False
-        return row.get("status") in ("active", "grace")
-
-
 ####################################################################################
 
 
@@ -772,7 +710,7 @@ class PricePointService(CommonService):
 
 class LocalPriceService(CommonService):
     model = LocalPrice
-    VERSION_CHECK_FIELDS = ["amount"]
+    VERSION_CHECK_FIELDS = ["amount_cents"]
 
     @classmethod
     def save(cls, **kwargs):
@@ -788,9 +726,9 @@ class LocalPriceService(CommonService):
             cls.model.id,
             cls.model.price_point_id,
             cls.model.product_name,
-            cls.model.amount,
+            cls.model.amount_cents,
             cls.model.currency,
-            cls.model.point_value,
+            cls.model.point_value_int,
             cls.model.effective_time,
             cls.model.expiry_time,
         ]
@@ -811,6 +749,16 @@ class LocalPriceService(CommonService):
     def init_data(cls, local_price_list: list[dict]) -> None:
         try:
             for local_price in local_price_list:
+                # Convert amount (USD float) to cents and point_value to int
+                raw_amount = local_price.pop("amount", None)
+                raw_point_value = local_price.pop("point_value", None)
+                if raw_amount is not None and "amount_cents" not in local_price:
+                    local_price["amount_cents"] = int(float(raw_amount) * 100)
+                if raw_point_value is not None and "point_value_int" not in local_price:
+                    local_price["point_value_int"] = int(float(raw_point_value) * 100)
+                if "point_value_int" not in local_price:
+                    local_price["point_value_int"] = local_price.get("amount_cents", 0)
+
                 ori_local_price = cls.get_by_name(local_price["product_name"])
 
                 price_point_id = PricePointService.get_by_name(local_price["product_name"]).get("id", "")
@@ -991,3 +939,206 @@ class PurchasedProductOverviewService(CommonService):
         alias of Subscription.check_by_tenant_id
         """
         return SubscriptionService.check_by_tenant_id(tenant_id, delta_app, delta_members, delta_kb_storage)
+
+
+# ---------------------------------------------------------------------------
+# Point system
+# ---------------------------------------------------------------------------
+
+
+class InsufficientPointsError(Exception):
+    """Raised when a tenant does not have enough available points."""
+
+
+class PointAccountService:
+    """Manages per-tenant point balances with atomic transactions."""
+
+    @classmethod
+    def get_or_create(cls, tenant_id: str) -> dict:
+        """Must be called within an existing DB connection context or atomic block."""
+        account = PointAccount.get_or_none(PointAccount.tenant_id == tenant_id)
+        if account:
+            return {
+                "id": account.id,
+                "tenant_id": account.tenant_id,
+                "available_points": account.available_points,
+                "held_points": account.held_points,
+            }
+        account_id = get_uuid()
+        try:
+            PointAccount.insert(
+                id=account_id,
+                tenant_id=tenant_id,
+                available_points=0,
+                held_points=0,
+                create_time=current_timestamp(),
+                update_time=current_timestamp(),
+            ).execute()
+        except IntegrityError:
+            pass
+        account = PointAccount.get(PointAccount.tenant_id == tenant_id)
+        return {
+            "id": account.id,
+            "tenant_id": account.tenant_id,
+            "available_points": account.available_points,
+            "held_points": account.held_points,
+        }
+
+    @classmethod
+    def recharge(cls, tenant_id: str, points: int, idempotency_key: str, description: str = "", metadata: dict | None = None) -> dict:
+        with DB.atomic():
+            cls.get_or_create(tenant_id)
+            account = PointAccount.select().where(PointAccount.tenant_id == tenant_id).for_update().get()
+            try:
+                ledger = PointLedger.create(
+                    id=get_uuid(),
+                    tenant_id=tenant_id,
+                    event_type="recharge",
+                    points=points,
+                    idempotency_key=idempotency_key,
+                    description=description,
+                    metadata=metadata or {},
+                    create_time=current_timestamp(),
+                    update_time=current_timestamp(),
+                )
+            except IntegrityError:
+                # Idempotent: already recharged
+                return PointLedger.get(PointLedger.idempotency_key == idempotency_key).__data__
+            account.available_points += points
+            account.update_time = current_timestamp()
+            account.save()
+            return ledger.__data__
+
+    @classmethod
+    def hold(cls, tenant_id: str, doc_id: str, points: int, idempotency_key: str) -> dict:
+        with DB.atomic():
+            cls.get_or_create(tenant_id)
+            account = PointAccount.select().where(PointAccount.tenant_id == tenant_id).for_update().get()
+
+            # Idempotency check
+            existing_hold = PointHold.get_or_none(PointHold.idempotency_key == idempotency_key)
+            if existing_hold:
+                return existing_hold.__data__
+
+            if account.available_points < points:
+                raise InsufficientPointsError(
+                    f"Tenant {tenant_id} has {account.available_points} points, need {points}"
+                )
+
+            hold = PointHold.create(
+                id=get_uuid(),
+                tenant_id=tenant_id,
+                doc_id=doc_id,
+                points=points,
+                status="held",
+                idempotency_key=idempotency_key,
+                create_time=current_timestamp(),
+                update_time=current_timestamp(),
+            )
+            PointLedger.create(
+                id=get_uuid(),
+                tenant_id=tenant_id,
+                event_type="hold_created",
+                points=-points,
+                idempotency_key=f"hold:{hold.id}",
+                related_hold_id=hold.id,
+                create_time=current_timestamp(),
+                update_time=current_timestamp(),
+            )
+            account.available_points -= points
+            account.held_points += points
+            account.update_time = current_timestamp()
+            account.save()
+            return hold.__data__
+
+    @classmethod
+    def commit_hold(cls, hold_id: str) -> bool:
+        with DB.atomic():
+            hold = PointHold.get_or_none(PointHold.id == hold_id)
+            if not hold:
+                return False
+            if hold.status in ("committed", "released"):
+                return True
+            if hold.status != "held":
+                return False
+            account = PointAccount.select().where(PointAccount.tenant_id == hold.tenant_id).for_update().get()
+            account.held_points -= hold.points
+            account.update_time = current_timestamp()
+            account.save()
+            PointLedger.create(
+                id=get_uuid(),
+                tenant_id=hold.tenant_id,
+                event_type="consume",
+                points=-hold.points,
+                idempotency_key=f"commit:{hold_id}",
+                related_hold_id=hold_id,
+                create_time=current_timestamp(),
+                update_time=current_timestamp(),
+            )
+            hold.status = "committed"
+            hold.update_time = current_timestamp()
+            hold.save()
+            return True
+
+    @classmethod
+    def release_hold(cls, hold_id: str) -> bool:
+        with DB.atomic():
+            hold = PointHold.get_or_none(PointHold.id == hold_id)
+            if not hold:
+                return False
+            if hold.status == "released":
+                return True
+            if hold.status != "held":
+                return False
+            account = PointAccount.select().where(PointAccount.tenant_id == hold.tenant_id).for_update().get()
+            account.available_points += hold.points
+            account.held_points -= hold.points
+            account.update_time = current_timestamp()
+            account.save()
+            PointLedger.create(
+                id=get_uuid(),
+                tenant_id=hold.tenant_id,
+                event_type="release",
+                points=hold.points,
+                idempotency_key=f"release:{hold_id}",
+                related_hold_id=hold_id,
+                create_time=current_timestamp(),
+                update_time=current_timestamp(),
+            )
+            hold.status = "released"
+            hold.update_time = current_timestamp()
+            hold.save()
+            return True
+
+    @classmethod
+    @DB.connection_context()
+    def get_balance(cls, tenant_id: str) -> dict:
+        account = PointAccount.get_or_none(PointAccount.tenant_id == tenant_id)
+        if not account:
+            return {"available_points": 0, "held_points": 0, "total_points": 0}
+        return {
+            "available_points": account.available_points,
+            "held_points": account.held_points,
+            "total_points": account.available_points + account.held_points,
+        }
+
+
+class PointHoldService:
+    """Queries for PointHold records."""
+
+    @classmethod
+    @DB.connection_context()
+    def get_by_doc_id(cls, doc_id: str) -> dict | None:
+        hold = (
+            PointHold.select()
+            .where(PointHold.doc_id == doc_id, PointHold.status == "held")
+            .order_by(PointHold.create_time.desc())
+            .first()
+        )
+        return hold.__data__ if hold else None
+
+    @classmethod
+    @DB.connection_context()
+    def get_by_id(cls, hold_id: str) -> dict | None:
+        hold = PointHold.get_or_none(PointHold.id == hold_id)
+        return hold.__data__ if hold else None

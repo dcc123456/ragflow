@@ -47,7 +47,6 @@ ENABLE_WHITELIST = int(os.environ.get("ENABLE_WHITELIST", "0"))
 ENABLE_ADMIN = int(os.environ.get("ENABLE_ADMIN", "0"))
 BILLING_ENABLED = int(os.environ.get("BILLING_ENABLED", "0"))
 BILLING = {}
-DEEPDOC_PAYG_CONFIG = {}
 BILLING_PRICEID_TO_PRODUCT = {}
 BILLING_PRIORITY_TO_PLANS = defaultdict(list)
 BILLING_PLAN_TO_INFO = {}
@@ -336,9 +335,8 @@ def init_settings():
     if int(os.environ.get("SANDBOX_ENABLED", "0")):
         SANDBOX_HOST = os.environ.get("SANDBOX_HOST", "sandbox-executor-manager")
 
-    global BILLING, DEEPDOC_PAYG_CONFIG, BILLING_PRICEID_TO_PRODUCT, BILLING_PRIORITY_TO_PLANS, BILLING_PLAN_TO_INFO, BILLING_PRICE_POINT, BILLING_LOCAL_PRICE
+    global BILLING, BILLING_PRICEID_TO_PRODUCT, BILLING_PRIORITY_TO_PLANS, BILLING_PLAN_TO_INFO, BILLING_PRICE_POINT, BILLING_LOCAL_PRICE
     BILLING = get_base_config("billing", {})
-    DEEPDOC_PAYG_CONFIG = BILLING.get("deepdoc_payg", {})
     BILLING_PRICE_POINT = BILLING.get("price_point", [])
     BILLING_LOCAL_PRICE = BILLING.get("local_price", [])
     for plan in BILLING.get("billing_plans", []):

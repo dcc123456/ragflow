@@ -411,6 +411,26 @@ def queue_tasks(doc: dict, bucket: str, name: str, priority: int):
         pages = PdfParser.total_page_number(doc["name"], file_bin)
         if pages is None:
             pages = 0
+
+        if settings.BILLING_ENABLED and do_layout == "DeepDOC":
+            from api.db.services.billing_service import (
+                InsufficientPointsError,
+                PointAccountService,
+                PricePointService,
+            )
+            price_point = PricePointService.get_by_name("deepdoc")
+            consuming_point_amount = (price_point or {}).get("consuming_point_amount", 1)
+            required_points = pages * consuming_point_amount
+            try:
+                PointAccountService.hold(
+                    tenant_id=doc["tenant_id"],
+                    doc_id=doc["id"],
+                    points=required_points,
+                    idempotency_key=f"parse:{doc['id']}",
+                )
+            except InsufficientPointsError:
+                raise ValueError("Insufficient points to parse document")
+
         page_size = doc["parser_config"].get("task_page_size") or 12
         if doc["parser_id"] == "paper":
             page_size = doc["parser_config"].get("task_page_size") or 22

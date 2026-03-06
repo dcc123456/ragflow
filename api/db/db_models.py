@@ -27,7 +27,7 @@ from functools import wraps
 
 from quart_auth import AuthUser
 from itsdangerous.url_safe import URLSafeTimedSerializer as Serializer
-from peewee import InterfaceError, OperationalError, BigIntegerField, BooleanField, CharField, Check, CompositeKey, DateTimeField, DecimalField, Field, FloatField, IntegerField, Metadata, Model, PrimaryKeyField, TextField
+from peewee import InterfaceError, OperationalError, BigIntegerField, BooleanField, CharField, Check, CompositeKey, DateTimeField, Field, FloatField, IntegerField, Metadata, Model, PrimaryKeyField, TextField
 from playhouse.migrate import MySQLMigrator, PostgresqlMigrator, migrate
 from playhouse.pool import PooledMySQLDatabase, PooledPostgresqlDatabase
 
@@ -1142,7 +1142,7 @@ class PricePoint(DataBaseModel):
     included_free_amount = IntegerField(null=True)  # ???
     unit = CharField(choices=["token", "page"], null=True)
     unit_quantity = IntegerField(null=True)
-    consuming_point_amount = FloatField(null=False)  # ???
+    consuming_point_amount = IntegerField(null=False, default=0)
     effective_time = DateTimeField(null=False)
     expiry_time = DateTimeField(null=True)
 
@@ -1157,9 +1157,9 @@ class LocalPrice(DataBaseModel):
     price_point_id = CharField(max_length=32, index=True)
     product_id = CharField(max_length=32, index=True)
     product_name = CharField(null=False, max_length=255)
-    amount = DecimalField(max_digits=19, decimal_places=4)
+    amount_cents = BigIntegerField(null=False, default=0)
     currency = CharField(max_length=3)  # usd, cny
-    point_value = DecimalField(max_digits=19, decimal_places=4)  # ???
+    point_value_int = BigIntegerField(null=False, default=0)
     effective_time = DateTimeField(null=False)
     expiry_time = DateTimeField(null=True)
 
@@ -1174,7 +1174,7 @@ class ProductUsageTracing(DataBaseModel):
     price_point_id = CharField(max_length=32, null=False, index=True)  # price point table
     local_price_id = CharField(max_length=32, null=False, index=True)  # local price table
     task_quantity = IntegerField()
-    total_cost = DecimalField(max_digits=19, decimal_places=4)
+    total_cost_cents = BigIntegerField(null=False, default=0)
     currency = CharField(max_length=3)  # usd, cny
     status = CharField(null=False, choices=[item.value for item in UsageTraceStatus])  # Our usage trace status
     description = TextField(null=True)
@@ -1212,7 +1212,7 @@ class PaymentOrder(DataBaseModel):
     is_prorated = BooleanField(default=False)
 
     # stripe
-    amount = DecimalField(max_digits=19, decimal_places=4)
+    amount_cents = BigIntegerField(null=False, default=0)
     currency = CharField(max_length=3, null=False, choices=["usd", "cny"])
     payment_method = CharField(null=False, choices=["card"])
 
@@ -1312,26 +1312,6 @@ class StorageSubscription(DataBaseModel):
         db_table = "billing_storage_subscription"
 
 
-class DeepDocPaygSubscription(DataBaseModel):
-    """
-    One DeepDoc PAYG metered subscription per tenant.
-    Tracks the Stripe metered subscription for pay-as-you-go DeepDoc usage.
-    """
-
-    id = CharField(max_length=32, primary_key=True)
-    tenant_id = CharField(max_length=32, null=False, index=True, unique=True)
-    customer_id = CharField(max_length=255, null=False, default="")
-    subscription_id = CharField(max_length=255, null=False, default="", index=True)
-    subscription_item_id = CharField(max_length=255, null=False, default="")
-    price_id = CharField(max_length=128, null=False, default="")
-    meter_event_name = CharField(max_length=128, null=False, default="")
-    current_period_start = DateTimeField(null=True)
-    current_period_end = DateTimeField(null=True)
-    status = CharField(max_length=64, null=False, default="disabled", index=True)
-
-    class Meta:
-        db_table = "billing_deepdoc_payg_subscription"
-
 
 # -----------------------------------------------------------------------------
 # Deprecated: UsageBased model (legacy table)
@@ -1367,6 +1347,51 @@ class DeepDocPaygSubscription(DataBaseModel):
 #
 #     class Meta:
 #         db_table = "billing_usage_based"
+
+
+class PointAccount(DataBaseModel):
+    """Per-tenant point balance account."""
+
+    id = CharField(max_length=32, primary_key=True)
+    tenant_id = CharField(max_length=32, null=False, index=True, unique=True)
+    available_points = BigIntegerField(null=False, default=0)
+    held_points = BigIntegerField(null=False, default=0)
+
+    class Meta:
+        db_table = "billing_point_account"
+
+
+class PointLedger(DataBaseModel):
+    """Immutable event stream for all point movements."""
+
+    id = CharField(max_length=32, primary_key=True)
+    tenant_id = CharField(max_length=32, null=False, index=True)
+    event_type = CharField(max_length=32, null=False)
+    # event_type choices: recharge / hold_created / consume / release
+    points = BigIntegerField(null=False)  # positive=credit, negative=debit
+    idempotency_key = CharField(max_length=128, null=False, unique=True, index=True)
+    related_hold_id = CharField(max_length=32, null=True, index=True)
+    description = TextField(null=True)
+    metadata = JSONField(null=True, default={})
+
+    class Meta:
+        db_table = "billing_point_ledger"
+
+
+class PointHold(DataBaseModel):
+    """Represents a point reservation for an in-progress document parse."""
+
+    id = CharField(max_length=32, primary_key=True)
+    tenant_id = CharField(max_length=32, null=False, index=True)
+    doc_id = CharField(max_length=32, null=False, index=True)
+    points = BigIntegerField(null=False)
+    status = CharField(max_length=32, null=False, default="held", index=True)
+    # status choices: held / committed / released / expired
+    idempotency_key = CharField(max_length=128, null=False, unique=True, index=True)
+    expired_at = DateTimeField(null=True)
+
+    class Meta:
+        db_table = "billing_point_hold"
 
 
 class UserCanvasVersion(DataBaseModel):

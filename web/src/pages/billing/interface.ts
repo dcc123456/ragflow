@@ -121,3 +121,31 @@ export interface IPaygDisableResponse {
   currency: string;
   message: string;
 }
+
+export interface IPointBalance {
+  available_points: number;
+  held_points: number;
+  total_points: number;
+}
+
+export interface IPointLedgerItem {
+  id: string;
+  tenant_id: string;
+  event_type: string;
+  points: number;
+  idempotency_key: string;
+  related_hold_id: string | null;
+  description: string | null;
+  create_time: number;
+}
+
+export interface IPointHoldItem {
+  id: string;
+  tenant_id: string;
+  doc_id: string;
+  points: number;
+  status: string;
+  idempotency_key: string;
+  create_time: number;
+  expired_at: string | null;
+}

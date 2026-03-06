@@ -289,7 +289,7 @@ def is_subscription_latest_invoice_paid_sync(subscription_obj) -> bool:
         return False
 
 
-def cents_to_decimal(amount_in_cents: int, currency: str = "usd", decimal_places: int = 4) -> Decimal:
+def cents_to_decimal(amount_in_cents: int, currency: str = "usd", decimal_places: int = 2) -> Decimal:
     divisor = CURRENCY_DIVISORS.get(currency.lower(), 100)
     amount = Decimal(amount_in_cents) / Decimal(divisor)
     return amount.quantize(Decimal(f"1.{'0' * decimal_places}"), rounding=ROUND_HALF_UP)

@@ -1,14 +1,19 @@
 import { useFetchTenantInfo } from '@/hooks/use-user-setting-request';
 import {
   getBillingStorageCurrent,
+  postBillingStorageAbandonPending,
   postBillingStorageSetTarget,
 } from '@/services/price';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { message } from 'antd';
 import { camelCase } from 'lodash';
 import { ArrowUpRight, DatabaseZap, LayoutGrid, Users } from 'lucide-react';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { showAddOnManageModal } from './add-on-manage-modal';
+import {
+  showAbandonPendingModal,
+  showAddOnManageModal,
+} from './add-on-manage-modal';
 import Process from './process';
 
 interface CustomProgressProps {
@@ -50,28 +55,66 @@ const ResourceUsage: React.FC<CustomProgressProps> = ({
     },
   });
 
+  const invalidateStorageQueries = () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['getPlanOverview'] }),
+      queryClient.invalidateQueries({ queryKey: ['getBaseOverview'] }),
+      queryClient.invalidateQueries({ queryKey: ['billingStorageCurrent'] }),
+    ]);
+
+  const submitSetTarget = async (targetGb: number) => {
+    const url = window.location.href;
+    const successUrl = `${url.split('?')[0]}?price-pay-status=success${url.split('?')[1] || ''}`;
+    const errorUrl = `${url.split('?')[0]}?price-pay-status=cancel${url.split('?')[1] || ''}`;
+    const { data } = await postBillingStorageSetTarget({
+      tenant_id: tenantId,
+      target_quantity_gb: targetGb,
+      session_cancel_url: errorUrl,
+      session_success_url: successUrl,
+    });
+    return data;
+  };
+
   const addOnManageOk = async ({ value }: { value: number }) => {
-    if (addOnManageModal) {
-      const url = window.location.href;
-      const successUrl = `${url.split('?')[0]}?price-pay-status=success${url.split('?')[1] || ''}`;
-      const errorUrl = `${url.split('?')[0]}?price-pay-status=cancel${url.split('?')[1] || ''}`;
-      const { data } = await postBillingStorageSetTarget({
-        tenant_id: tenantId,
-        target_quantity_gb: value,
-        session_cancel_url: errorUrl,
-        session_success_url: successUrl,
-      });
-      const res = data?.data;
-      if (res && res.redirect_to) {
-        window.open(res.redirect_to);
-      }
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['getPlanOverview'] }),
-        queryClient.invalidateQueries({ queryKey: ['getBaseOverview'] }),
-        queryClient.invalidateQueries({ queryKey: ['billingStorageCurrent'] }),
-      ]);
+    if (!addOnManageModal) return;
+
+    const data = await submitSetTarget(value);
+    const res = data?.data;
+
+    // Pending increase blocks the request — offer "Pay Now" or "Abandon & Apply".
+    if (data?.code !== 0 && res?.can_abandon) {
       addOnManageModal.destroy();
+      showAbandonPendingModal({
+        pendingQuantityGb: res.pending_quantity_gb ?? 0,
+        targetQuantityGb: value,
+        invoiceUrl: res.invoice_url ?? '',
+        onAbandon: async () => {
+          await postBillingStorageAbandonPending({ tenant_id: tenantId });
+          // Re-submit the original target now that the pending increase is gone.
+          const retryData = await submitSetTarget(value);
+          await invalidateStorageQueries();
+          if (retryData?.code !== 0) {
+            message.error(t('billing.storageUpgradeFailed'));
+            return;
+          }
+          const retryRes = retryData?.data;
+          if (retryRes?.redirect_to) {
+            // Payment required — open Stripe payment page.
+            window.open(retryRes.redirect_to);
+          } else {
+            // Auto-charged via default payment method — confirm to the user.
+            message.success(t('billing.storageUpgradeSuccess', { value }));
+          }
+        },
+      });
+      return;
     }
+
+    if (res?.redirect_to) {
+      window.open(res.redirect_to);
+    }
+    await invalidateStorageQueries();
+    addOnManageModal.destroy();
   };
   const openAddOnManage = () => {
     const addOnCapacity = Math.max(0, limit - planValue);

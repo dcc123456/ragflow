@@ -126,6 +126,17 @@ export default {
       manageAddonStorage: 'Manage Add-on storage',
       storageTitle: 'Storage',
       gb: 'GB',
+      pendingIncreaseTitle: 'Unpaid storage upgrade',
+      pendingIncreaseDescription:
+        'You have an unpaid upgrade to {{pending_quantity_gb}} GB. Complete the payment to activate it, or abandon it and apply {{target_quantity_gb}} GB instead.',
+      payNow: 'Pay Now',
+      abandonAndApply: 'Abandon & Apply',
+      abandonPendingFailed:
+        'Failed to cancel the pending upgrade. Please try again.',
+      storageUpgradeSuccess:
+        'Storage upgraded to {{value}}GB. Your payment has been processed.',
+      storageUpgradeFailed:
+        'Failed to apply the new storage target. Please try again.',
       today: 'Today',
       yesterday: 'Yesterday',
       last7Days: 'Last 7 Days',

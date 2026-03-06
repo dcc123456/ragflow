@@ -70,7 +70,6 @@ from rag.app import laws, paper, presentation, manual, qa, table, book, resume, 
 from rag.nlp import search, rag_tokenizer, add_positions
 from rag.raptor import RecursiveAbstractiveProcessing4TreeOrganizedRetrieval as Raptor
 from common.token_utils import num_tokens_from_string, truncate
-from common.billing_utils import record_deepdoc_usage
 from graphrag.utils import chat_limiter
 from common.signal_utils import start_tracemalloc_and_snapshot, stop_tracemalloc
 from common.exceptions import TaskCanceledException
@@ -1229,11 +1228,6 @@ async def do_handle_task(task):
         )
 
         DocumentService.increment_chunk_num(task_doc_id, task_dataset_id, token_count, chunk_count, 0)
-        if settings.BILLING_ENABLED:
-            pages = max(0, task_to_page - task_from_page)
-            record_deepdoc_usage(task, pages)
-            from common.billing_utils import report_deepdoc_meter_event
-            report_deepdoc_meter_event(task.get("tenant_id", ""), pages)
 
         progress_callback(msg="Indexing done ({:.2f}s).".format(timer() - start_ts))
 

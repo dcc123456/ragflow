@@ -134,21 +134,39 @@ export const postBillingStorageSetTarget = (data: {
   return request.post(api.storageSetTarget, { data });
 };
 
-export const getBillingPaygStatus = (tenantId?: string) => {
-  return request.get(api.paygStatus, {
+export const postBillingStorageAbandonPending = (data: {
+  tenant_id?: string;
+}) => {
+  return request.post(api.storageAbandonPending, { data });
+};
+
+export const getBillingDeepDocUsage = (tenantId?: string) =>
+  request.get(api.deepdocUsage, {
     params: tenantId ? { tenant_id: tenantId } : undefined,
   });
-};
 
-export const postBillingPaygEnable = (data: { tenant_id?: string }) => {
-  return request.post(api.paygEnable, { data });
-};
-
-export const postBillingPaygDisable = (data: {
+export const postBillingPointsCheckout = (data: {
   tenant_id?: string;
-  confirmed?: boolean;
-}) => {
-  return request.post(api.paygDisable, { data });
-};
+  points: number;
+}) => request.post(api.pointsCheckout, { data });
+
+export const getBillingPointsBalance = (tenantId?: string) =>
+  request.get(api.pointsBalance, {
+    params: tenantId ? { tenant_id: tenantId } : undefined,
+  });
+
+export const getBillingPointsLedger = (params: {
+  tenant_id?: string;
+  page?: number;
+  page_size?: number;
+  event_type?: string;
+}) => request.get(api.pointsLedger, { params });
+
+export const getBillingPointsHolds = (params: {
+  tenant_id?: string;
+  page?: number;
+  page_size?: number;
+  status?: string;
+}) => request.get(api.pointsHolds, { params });
 
 export default billingService;

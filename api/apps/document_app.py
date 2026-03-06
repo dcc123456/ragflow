@@ -631,7 +631,12 @@ async def run():
                         doc.parser_config["metadata"] = kb.parser_config.get("metadata", {})
                         DocumentService.update_parser_config(doc.id, doc.parser_config)
                     doc_dict = doc.to_dict()
-                    DocumentService.run(tenant_id, doc_dict, kb_table_num_map)
+                    try:
+                        DocumentService.run(tenant_id, doc_dict, kb_table_num_map)
+                    except ValueError as ve:
+                        if "Insufficient points" in str(ve):
+                            return get_json_result(data=False, message=str(ve), code=RetCode.BILLING_POINTS_INSUFFICIENT)
+                        raise
 
             return get_json_result(data=True)
 

@@ -954,6 +954,18 @@ class DocumentService(CommonService):
                     prg = 1
                     status = TaskStatus.DONE.value
 
+                if settings.BILLING_ENABLED and status in (TaskStatus.DONE.value, TaskStatus.FAIL.value, TaskStatus.CANCEL.value):
+                    try:
+                        from api.db.services.billing_service import PointAccountService, PointHoldService
+                        hold = PointHoldService.get_by_doc_id(d["id"])
+                        if hold:
+                            if status == TaskStatus.DONE.value:
+                                PointAccountService.commit_hold(hold["id"])
+                            else:
+                                PointAccountService.release_hold(hold["id"])
+                    except Exception as _billing_err:
+                        logging.warning(f"Billing hold finalize error for doc {d['id']}: {_billing_err}")
+
                 # only for special task and parsed docs and unfinished
                 freeze_progress = special_task_running and doc_progress >= 1 and not finished
                 msg = "\n".join(sorted(msg))

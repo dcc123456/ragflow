@@ -1,12 +1,10 @@
 import { useFetchTenantInfo } from '@/hooks/use-user-setting-request';
 import {
-  getBillingPaygStatus,
+  getBillingDeepDocUsage,
   getBllingBaseOverview,
   getBllingPlanPverview,
-  postBillingPaygDisable,
-  postBillingPaygEnable,
 } from '@/services/price';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { IPaygStatusData, ISubscriptionData } from '../interface';
 
 export const useFetchBaseOverview = (force = false) => {
@@ -48,7 +46,7 @@ export const useFetchPlanOverview = (force = false) => {
   return { data, loading };
 };
 
-export const useFetchPaygStatus = () => {
+export const useFetchDeepDocUsage = () => {
   const { data: tenantInfo } = useFetchTenantInfo();
   const tenantId = tenantInfo?.tenant_id;
   const {
@@ -56,50 +54,13 @@ export const useFetchPaygStatus = () => {
     isFetching: loading,
     refetch,
   } = useQuery<IPaygStatusData>({
-    queryKey: ['getPaygStatus', tenantId],
+    queryKey: ['getDeepDocUsage', tenantId],
     gcTime: 30000,
     enabled: !!tenantId,
     queryFn: async () => {
-      const { data: res } = await getBillingPaygStatus(tenantId);
-      if (res.code === 0) {
-        return res.data;
-      }
+      const { data: res } = await getBillingDeepDocUsage(tenantId);
+      if (res.code === 0) return res.data;
     },
   });
   return { data, loading, refetch };
-};
-
-export const usePaygEnable = () => {
-  const queryClient = useQueryClient();
-  const { data: tenantInfo } = useFetchTenantInfo();
-  const tenantId = tenantInfo?.tenant_id;
-  return useMutation({
-    mutationFn: async () => {
-      const { data: res } = await postBillingPaygEnable({
-        tenant_id: tenantId,
-      });
-      return res;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['getPaygStatus'] });
-    },
-  });
-};
-
-export const usePaygDisable = () => {
-  const queryClient = useQueryClient();
-  const { data: tenantInfo } = useFetchTenantInfo();
-  const tenantId = tenantInfo?.tenant_id;
-  return useMutation({
-    mutationFn: async (params?: { confirmed?: boolean }) => {
-      const { data: res } = await postBillingPaygDisable({
-        tenant_id: tenantId,
-        ...params,
-      });
-      return res;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['getPaygStatus'] });
-    },
-  });
 };

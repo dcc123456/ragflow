@@ -8,10 +8,6 @@ import logging
 import stripe
 
 from common import settings
-from common.misc_utils import get_uuid
-from common.time_utils import current_timestamp, datetime_format
-from api.db import FileType
-from api.db.db_models import DB, ProductUsageTracing
 
 
 def to_utc_datetime(value: Any) -> Optional[datetime]:
@@ -93,86 +89,6 @@ def usage_based_status_from_payment_status(status: str) -> str:
     if status == "failed":
         return "canceled"
     return "pending"
-
-
-def record_deepdoc_usage(task: dict, pages: int) -> None:
-    if pages <= 0:
-        return
-    if task.get("type") != FileType.PDF.value:
-        return
-    if task.get("parser_config", {}).get("layout_recognize", "DeepDOC") != "DeepDOC":
-        return
-
-    from api.db.services.billing_service import LocalPriceService, PricePointService, ProductService
-
-    product_name = "deepdoc"
-    product = ProductService.get_by_name(product_name) or {}
-    price_point = PricePointService.get_by_name(product_name) or {}
-    local_price = LocalPriceService.get_by_name(product_name) or {}
-
-    product_id = product.get("id")
-    price_point_id = price_point.get("id")
-    local_price_id = local_price.get("id")
-    if not product_id or not price_point_id or not local_price_id:
-        logging.warning("Skip usage tracing: missing billing config for deepdoc.")
-        return
-
-    unit_quantity = price_point.get("unit_quantity") or 0
-    price_amount = local_price.get("amount")
-    currency = local_price.get("currency") or "usd"
-    total_cost = decimal_amount(price_amount) * decimal_amount(pages) / decimal_amount(unit_quantity) if price_amount and unit_quantity else decimal_amount(0)
-
-    usage_record = {
-        "id": get_uuid(),
-        "tenant_id": task.get("tenant_id", ""),
-        "product_id": product_id,
-        "price_point_id": price_point_id,
-        "local_price_id": local_price_id,
-        "task_quantity": pages,
-        "total_cost": total_cost,
-        "currency": currency,
-        "status": "waiting",
-        "description": "",
-        "create_time": current_timestamp(),
-        "create_date": datetime_format(datetime.now(timezone.utc)),
-        "update_time": current_timestamp(),
-        "update_date": datetime_format(datetime.now(timezone.utc)),
-    }
-    try:
-        with DB.connection_context():
-            ProductUsageTracing.insert(**usage_record).execute()
-    except Exception as e:
-        logging.warning(f"Failed to record deepdoc usage: {e}")
-
-def report_deepdoc_meter_event(tenant_id: str, pages: int) -> None:
-    if pages <= 0:
-        return
-
-    from api.db.services.billing_service import DeepDocPaygSubscriptionService
-
-    row = DeepDocPaygSubscriptionService.get_by_tenant_id(tenant_id)
-    if not row:
-        logging.warning(f"No PAYG subscription for tenant {tenant_id}, skip meter event.")
-        return
-    if row.get("status") not in ("active", "grace"):
-        return
-
-    customer_id = row.get("customer_id", "")
-    meter_event_name = row.get("meter_event_name") or settings.DEEPDOC_PAYG_CONFIG.get("meter_event_name", "deepdoc_page_usage")
-    if not customer_id:
-        logging.warning(f"No customer_id for tenant {tenant_id}, skip meter event.")
-        return
-
-    try:
-        stripe.billing.MeterEvent.create(
-            event_name=meter_event_name,
-            payload={
-                "stripe_customer_id": customer_id,
-                "value": str(pages),
-            },
-        )
-    except Exception as e:
-        logging.warning(f"Failed to report deepdoc meter event for tenant {tenant_id}: {e}")
 
 
 def billing_enabled_guard(default):
