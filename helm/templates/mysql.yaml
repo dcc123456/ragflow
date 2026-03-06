@@ -10,14 +10,14 @@ metadata:
     {{- include "ragflow.labels" . | nindent 4 }}
     app.kubernetes.io/component: mysql
 spec:
-  {{- with .Values.mysql.storage.className }}
+  {{- with .Values.mysql.disk_size.className }}
   storageClassName: {{ . }}
   {{- end }}
   accessModes:
     - ReadWriteOnce
   resources:
     requests:
-      storage: {{ .Values.mysql.storage.capacity }}
+      storage: {{ .Values.mysql.disk_size.capacity }}
 ---
 apiVersion: apps/v1
 kind: StatefulSet

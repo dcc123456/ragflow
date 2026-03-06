@@ -1,5 +1,13 @@
 package main
 
+// main.go implements RAGFlow deployment supporting two phases:
+// Phase 1 (default): Creates infrastructure (VPC, VSwitches, ACK cluster)
+// Phase 2 (phase: k8s): Creates Kubernetes resources only
+//
+// Usage:
+//   pulumi up -s ali              # Phase 1: Infrastructure only
+//   pulumi up -s ali_k8s          # Phase 2: K8s resources (set phase: k8s in config)
+
 // https://www.pulumi.com/docs/iac/guides/building-extending/components/build-a-component/
 
 import (
@@ -14,7 +22,6 @@ import (
 	k8smetav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
-	k8sclientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 
 	"github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes"
@@ -22,10 +29,9 @@ import (
 	v1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/apps/v1"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
+	networkingv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/networking/v1"
+	"github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/yaml"
 
-	"github.com/pulumi/pulumi-alicloud/sdk/v3/go/alicloud"
-	"github.com/pulumi/pulumi-alicloud/sdk/v3/go/alicloud/alb"
-	"github.com/pulumi/pulumi-alicloud/sdk/v3/go/alicloud/vpc"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	pulumiconfig "github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 )
@@ -46,7 +52,7 @@ type ImageConfig struct {
 	RabbitMQ      string
 	Curl          string
 	AWSCLI        string
-	Elasticsearch string // Optional: only used when use_public_registry is false
+	Elasticsearch string // Optional: only used when kubernetes.use_public_registry is false
 }
 
 // ServiceConfig holds service configuration
@@ -67,9 +73,6 @@ type GatewayConfig struct {
 	Annotations map[string]string
 	Hosts       []GatewayHost
 	TLS         []GatewayTLS
-	EnableHTTPS bool   // Enable HTTPS listener (default: false)
-	TLSCertPEM  string // TLS certificate in PEM format
-	TLSKeyPEM   string // TLS private key in PEM format
 }
 
 // GatewayHost holds Gateway host configuration
@@ -103,17 +106,26 @@ type GPUConfig struct {
 
 // Simple typed config for Pulumi stack values used in the PoC.
 type StackConfig struct {
-	Name         string
-	Namespace    string
-	StorageClass string // Storage class for PVCs
-	Env          map[string]string
-	RAGFlow      RAGFlowConfig
-	Gateway      GatewayConfig
-	Deepdoc      GPUConfig      // Unified DLA+OCR+TSR service
-	Images       ImageConfig    // Container image URLs
-	Registry     RegistryConfig // Docker registry configuration
-	MySQL        MySQLConfig    // MySQL configuration
-	ES           ESConfig       // Elasticsearch configuration
+	Name                string
+	Namespace           string
+	StorageClass        string // REQUIRED: Kubernetes StorageClass for PVCs (MySQL, Elasticsearch, RabbitMQ)
+	Env                 map[string]string
+	RAGFlow             RAGFlowConfig
+	Gateway             GatewayConfig
+	Deepdoc             GPUConfig                // Unified DLA+OCR+TSR service
+	Images              ImageConfig              // Container image URLs
+	Registry            RegistryConfig           // Docker registry configuration
+	MySQL               MySQLConfig              // MySQL configuration
+	ES                  ESConfig                 // Elasticsearch configuration
+	VSwitchIDs          pulumi.StringArrayOutput // vSwitch IDs for ALB configuration
+	ESEndpointOutput    pulumi.StringOutput      // ES endpoint from StackReference (for external ES)
+	ESPortOutput        pulumi.StringOutput      // ES port from StackReference (for external ES)
+	ESProtocolOutput    pulumi.StringOutput      // ES protocol from StackReference (for external ES)
+	ESUsernameOutput    pulumi.StringOutput      // ES username from StackReference (for external ES)
+	ESPasswordOutput    pulumi.StringOutput      // ES password from StackReference (for external ES)
+	MySQLEndpointOutput pulumi.StringOutput      // MySQL endpoint from StackReference (for external MySQL)
+	MySQLPortOutput     pulumi.StringOutput      // MySQL port from StackReference (for external MySQL)
+	MySQLPasswordOutput pulumi.StringOutput      // MySQL password from StackReference (for external MySQL)
 }
 
 // RegistryConfig holds Docker registry credentials
@@ -125,6 +137,7 @@ type RegistryConfig struct {
 
 // MySQLConfig holds MySQL configuration
 type MySQLConfig struct {
+	External bool   // true means use external MySQL, false means create MySQL deployment in phase 1
 	Host     string // Empty string means create MySQL deployment, non-empty means use external MySQL
 	Port     string // Default: "3306"
 	Password string // Default: "infiniflow@2023"
@@ -133,22 +146,94 @@ type MySQLConfig struct {
 
 // ESConfig holds Elasticsearch configuration
 type ESConfig struct {
+	External bool   // true means use external ES, false means create ES deployment in phase 1
 	Host     string // Empty string means create ES deployment, non-empty means use external ES
 	Port     string // Default: "9200"
 	Protocol string // Default: "http"
+	Username string // Default: "elastic"
 	Password string // Default: "" (only used when ES is created by Pulumi)
+}
+
+// StackRefServices holds service connection details from StackReference
+type StackRefServices struct {
+	Endpoint pulumi.StringOutput
+	Port     pulumi.StringOutput
+	Username pulumi.StringOutput
+	Password pulumi.StringOutput
+	Database pulumi.StringOutput // Only for MySQL
+}
+
+// DESIGN CONSIDERATION: StorageClass Configuration
+// ===============================================
+// Problem: Different Kubernetes clusters have different StorageClass names
+// - ACK/ASK clusters (Aliyun): alicloud-disk-alltype
+// - ACS clusters (Aliyun): alicloud-disk-topology-alltype
+// - Rook clusters: rook-ceph-block
+// - Local path clusters: local-path
+//
+// Solution: Required configuration via kubernetes.storage_class
+// - User MUST explicitly configure the StorageClass for their cluster
+// - No default value - forces user to verify their cluster's StorageClass
+// - Fail-fast validation during config loading prevents deployment failures
+//
+// Rationale for Required Configuration:
+// - RabbitMQ PVC requires a valid StorageClass to provision storage
+// - Auto-detection is unreliable (different clusters, different labels)
+// - Shell calls to kubectl violate pure Go code requirement
+// - Explicit configuration is clear and deterministic
+//
+// Benefits:
+// - No guesswork - user knows exactly which StorageClass will be used
+// - Fail-fast - errors caught during config loading, not at deployment time
+// - Works across all cluster types (ACK, ASK, ACS, existing, on-prem)
+// - Pure Go implementation with no external dependencies
+//
+// How to configure:
+//   pulumi config set kubernetes.storage_class alicloud-disk-alltype
+//
+// How to find your cluster's StorageClass:
+//   kubectl get storageclass
+
+// getStorageClassPtr returns the configured StorageClass as a pulumi.StringPtrInput
+//
+// This is used in PVCs (MySQL, RabbitMQ) that expect a pulumi.StringPtrInput type
+// Panics if config.StorageClass is empty (should never happen due to validation in LoadConfig)
+func getStorageClassPtr(config *StackConfig) pulumi.StringPtrInput {
+	if config.StorageClass == "" {
+		panic("StorageClass is empty but this should have been validated in LoadConfig")
+	}
+	return pulumi.String(config.StorageClass)
+}
+
+// getStorageClassMapValue returns the configured StorageClass as a map value
+//
+// This is used in Elasticsearch volumeClaimTemplates where StorageClass is a map value
+// Panics if config.StorageClass is empty (should never happen due to validation in LoadConfig)
+func getStorageClassMapValue(config *StackConfig) interface{} {
+	if config.StorageClass == "" {
+		panic("StorageClass is empty but this should have been validated in LoadConfig")
+	}
+	return config.StorageClass
 }
 
 // LoadConfig reads config values from Pulumi configuration
 func LoadConfig(ctx *pulumi.Context) (StackConfig, error) {
 	// Read basic configuration
-	namespace := getConfig(ctx, "namespace", "ragflow")
-	// Storage class configuration
-	storageClass := getConfig(ctx, "storage_class", "rook-ceph-block")
+	namespace := getConfig(ctx, "kubernetes.namespace", "ragflow")
+
+	// Read StorageClass configuration (REQUIRED for PVCs)
+	// This must be explicitly set - no default value
+	// All PVCs (MySQL, Elasticsearch, RabbitMQ) depend on this
+	storageClass := getConfig(ctx, "kubernetes.storage_class", "")
+	if storageClass == "" {
+		return StackConfig{}, fmt.Errorf("kubernetes.storage_class is required but not set. Please configure it with: pulumi config set kubernetes.storage_class <your-storage-class-name>")
+	}
+	ctx.Log.Info(fmt.Sprintf("Using StorageClass: %s", storageClass), &pulumi.LogArgs{})
+
 	// Enterprise registry configuration
-	enterpriseRegistry := getConfig(ctx, "enterprise_registry", "192.168.1.51")
+	enterpriseRegistry := getConfig(ctx, "kubernetes.enterprise_registry", "192.168.1.51")
 	// Use public registry or enterprise registry
-	usePublicRegistryStr := getConfig(ctx, "use_public_registry", "true")
+	usePublicRegistryStr := getConfig(ctx, "kubernetes.use_public_registry", "true")
 	usePublicRegistry, err := strconv.ParseBool(usePublicRegistryStr)
 	if err != nil {
 		usePublicRegistry = true // Default to true if parsing fails
@@ -167,15 +252,15 @@ func LoadConfig(ctx *pulumi.Context) (StackConfig, error) {
 	}
 
 	// RAGFlow image configuration
-	ragflowImageTag := getConfig(ctx, "ragflow_image_tag", "latest")
+	ragflowImageTag := getConfig(ctx, "ragflow.image_tag", "latest")
 	ragflowImage := fmt.Sprintf("%s/infiniflow-ai/ragflow:%s", enterpriseRegistry, ragflowImageTag)
-	ragflowReplicasStr := getConfig(ctx, "ragflow_replicas", "1")
+	ragflowReplicasStr := getConfig(ctx, "ragflow.replicas", "1")
 	ragflowReplicas, _ := strconv.Atoi(ragflowReplicasStr)
 
 	// Read S3 configuration
-	s3Endpoint := getConfig(ctx, "s3_endpoint", "http://rook-ceph-rgw-my-store.rook-ceph.svc:80")
-	s3Bucket := getConfig(ctx, "s3_bucket", "ragflow")
-	s3Region := getConfig(ctx, "s3_region", "us-east-1")
+	s3Endpoint := getConfig(ctx, "s3.endpoint", "http://rook-ceph-rgw-my-store.rook-ceph.svc:80")
+	s3Bucket := getConfig(ctx, "s3.bucket", "ragflow")
+	s3Region := getConfig(ctx, "s3.region", "us-east-1")
 
 	// Auto-detect storage type based on endpoint
 	storageImplType := ""
@@ -186,67 +271,48 @@ func LoadConfig(ctx *pulumi.Context) (StackConfig, error) {
 	}
 
 	// Read S3 access credentials (sensitive information)
-	s3AccessKey := getConfig(ctx, "s3_access_key", "")
-	s3SecretKey := getConfig(ctx, "s3_secret_key", "")
-
-	// Debug: Print the secret values to verify they are being read
-	ctx.Log.Info(fmt.Sprintf("S3 Credentials: s3AccessKey='%s', s3SecretKey='%s'", s3AccessKey, s3SecretKey), &pulumi.LogArgs{})
+	s3AccessKey := getConfig(ctx, "s3.access_key", "")
+	s3SecretKey := getConfig(ctx, "s3.secret_key", "")
 
 	// Read RAGFlow secret key for session signing
-	ragflowSecretKey := getConfig(ctx, "ragflow_secret_key", "DOnghtfiCeriTENdywhERlEtivOLicuL")
+	ragflowSecretKey := getConfig(ctx, "ragflow.secret_key", "DOnghtfiCeriTENdywhERlEtivOLicuL")
+	if ragflowSecretKey == "DOnghtfiCeriTENdywhERlEtivOLicuL" {
+		ctx.Log.Warn("Using default ragflow.secret_key — set a unique secret in production with: pulumi config set --secret ragflow.secret_key <your-key>", &pulumi.LogArgs{})
+	}
 
 	// Read Docker registry credentials (sensitive information)
-	registryUsername := getConfig(ctx, "enterprise_registry_username", "")
-	registryPassword := getConfig(ctx, "enterprise_registry_password", "")
+	registryUsername := getConfig(ctx, "kubernetes.enterprise_registry_username", "")
+	registryPassword := getConfig(ctx, "kubernetes.enterprise_registry_password", "")
 
 	// Read MySQL configuration
 	// If mysql_host is empty, we will create a MySQL deployment in the cluster
 	// If mysql_host is set, we will use the external MySQL server
-	mysqlHost := getConfig(ctx, "mysql_host", "")
-	mysqlPort := getConfig(ctx, "mysql_port", "3306")
-	mysqlPassword := getConfig(ctx, "mysql_password", "infiniflow@2023")
-	mysqlDBName := getConfig(ctx, "mysql_dbname", "rag_flow")
-
-	// Determine MySQL host for RAGFlow environment variables
-	// If using external MySQL, use the configured host; otherwise use the K8s service name
-	mysqlHostForEnv := mysqlHost
-	if mysqlHostForEnv == "" {
-		mysqlHostForEnv = "mysql" // Default K8s service name
-	}
+	externalMySQL := getConfig(ctx, "mysql.external", "false")
+	mysqlHost := getConfig(ctx, "mysql.host", "mysql")
+	mysqlPort := getConfig(ctx, "mysql.port", "3306")
+	// MySQL always uses root user - no need for username configuration
+	// Generate MySQL password using same method as aliyun.go createMySQL
+	// Use fixed seed for consistency across deployments
+	mysqlPassword := getConfig(ctx, "mysql.password", "infiniflow@2023")
+	mysqlDBName := getConfig(ctx, "mysql.dbname", "ragflow")
 
 	// Read Elasticsearch configuration
 	// If es_host is empty, we will create an Elasticsearch deployment in the cluster
 	// If es_host is set, we will use the external Elasticsearch server
-	esHost := getConfig(ctx, "es_host", "")
-	esPort := getConfig(ctx, "es_port", "9200")
-	esProtocol := getConfig(ctx, "es_protocol", "")
-	esPassword := getConfig(ctx, "es_password", "infiniflow@2023")
-
-	// Determine Elasticsearch host, port, and protocol for RAGFlow environment variables
-	// For internal ES (ECK): Force HTTPS and use default ECK service name
-	// For external ES: Use configured values (default to HTTP if not specified)
-	var esHostForEnv, esProtocolForEnv string
-	if esHost == "" {
-		// Internal ES (ECK managed)
-		esHostForEnv = "elasticsearch-es-http"
-		esProtocolForEnv = "https" // ECK always uses HTTPS
-	} else {
-		// External ES
-		esHostForEnv = esHost
-		if esProtocol == "" {
-			esProtocolForEnv = "http" // Default to HTTP for external ES
-		} else {
-			esProtocolForEnv = esProtocol
-		}
-	}
+	externalES := getConfig(ctx, "elasticsearch.external", "false")
+	esHost := getConfig(ctx, "elasticsearch.host", "elasticsearch")
+	esPort := getConfig(ctx, "elasticsearch.port", "9200")
+	esProtocol := getConfig(ctx, "elasticsearch.protocol", "http")
+	esUsername := getConfig(ctx, "elasticsearch.username", "elastic")
+	esPassword := getConfig(ctx, "elasticsearch.password", "infiniflow@2023")
 
 	// Read Unified DeepDoc service configuration
 	// Note: DeepDoc is always enabled (replaces TSR/DLA/OCR services)
-	deepdocReplicasStr := getConfig(ctx, "deepdoc_replicas", "1")
+	deepdocReplicasStr := getConfig(ctx, "deepdoc.replicas", "1")
 	deepdocReplicas, _ := strconv.Atoi(deepdocReplicasStr)
 	// DeepDoc hardware type: "cpu" or "gpu" (default: "cpu")
-	deepdocHardware := getConfig(ctx, "deepdoc_hardware", "cpu")
-	deepdocImageTag := getConfig(ctx, "deepdoc_image_tag", "latest")
+	deepdocHardware := getConfig(ctx, "deepdoc.hardware", "cpu")
+	deepdocImageTag := getConfig(ctx, "ragflow.image_tag", "latest")
 	// Build image name based on hardware type and tag
 	// CPU: <registry>/infiniflow-ai/deepdoc_cpu:<tag>
 	// GPU: <registry>/infiniflow-ai/deepdoc_gpu:<tag>
@@ -259,7 +325,7 @@ func LoadConfig(ctx *pulumi.Context) (StackConfig, error) {
 	deepdocImage = fmt.Sprintf("%s/infiniflow-ai/%s:%s", enterpriseRegistry, deepdocImage, deepdocImageTag)
 	// DeepDoc GPU version uses HAMi vGPU for GPU sharing
 	// CPU version does not need GPU resources
-	deepdocVramStr := getConfig(ctx, "deepdoc_vram_mb", "2048") // Combined memory for all three models
+	deepdocVramStr := getConfig(ctx, "deepdoc.vram_mb", "2048") // Combined memory for all three models
 	deepdocVram, _ := strconv.Atoi(deepdocVramStr)
 	// Enable GPU for GPU version
 	deepdocUseGPU := deepdocHardware == "gpu"
@@ -271,7 +337,7 @@ func LoadConfig(ctx *pulumi.Context) (StackConfig, error) {
 	deepdocMemoryRequest := "4Gi" // Fixed: 4GiB memory
 
 	// Read Elasticsearch version for image configuration
-	stackVersion := getConfig(ctx, "stack_version", "8.11.3")
+	stackVersion := getConfig(ctx, "elasticsearch.version", "8.11.3")
 
 	// Build all container image URLs
 	images := ImageConfig{
@@ -281,22 +347,22 @@ func LoadConfig(ctx *pulumi.Context) (StackConfig, error) {
 		RabbitMQ:      getImageURL("rabbitmq:4-management"),
 		Curl:          getImageURL("curlimages/curl:latest"),
 		AWSCLI:        getImageURL("amazon/aws-cli:latest"),
-		Elasticsearch: getImageURL("docker.elastic.co/elasticsearch/elasticsearch:" + stackVersion),
+		Elasticsearch: getImageURL("elasticsearch:" + stackVersion),
 	}
 
 	env := map[string]string{
 		"DOC_ENGINE":            "elasticsearch",
 		"RAGFLOW_IMAGE":         ragflowImage,
 		"STACK_VERSION":         "8.11.3",
-		"MYSQL_HOST":            mysqlHostForEnv,
+		"MYSQL_HOST":            mysqlHost,
 		"MYSQL_PORT":            mysqlPort,
 		"MYSQL_DBNAME":          mysqlDBName,
-		"MYSQL_USER":            "root",
+		"MYSQL_USER":            "root", // Always use root user for MySQL
 		"MYSQL_PASSWORD":        mysqlPassword,
 		"REDIS_HOST":            "redis",
 		"REDIS_PASSWORD":        "infini_rag_flow",
-		"ES_HOST":               esHostForEnv,
-		"ES_PROTOCOL":           esProtocolForEnv,
+		"ES_HOST":               esHost,
+		"ES_PROTOCOL":           esProtocol,
 		"S3_ENDPOINT":           s3Endpoint,
 		"S3_ACCESS_KEY":         s3AccessKey,
 		"S3_SECRET_KEY":         s3SecretKey,
@@ -340,28 +406,13 @@ func LoadConfig(ctx *pulumi.Context) (StackConfig, error) {
 		},
 	}
 
-	// Gateway HTTPS/TLS configuration
-	// EnableHTTPS controls whether to create HTTPS listener (default: false)
-	// When EnableHTTPS is true, both TLSCertPEM and TLSKeyPEM must be provided
-	gatewayEnableHTTPSStr := getConfig(ctx, "gateway_enable_https", "false")
-	gatewayEnableHTTPS, _ := strconv.ParseBool(gatewayEnableHTTPSStr)
-	gatewayTLSCert := getConfig(ctx, "gateway_tls_cert", "")
-	gatewayTLSKey := getConfig(ctx, "gateway_tls_key", "")
-
-	// Validate: if HTTPS is enabled, certificate and key must be provided
-	if gatewayEnableHTTPS && (gatewayTLSCert == "" || gatewayTLSKey == "") {
-		return StackConfig{}, fmt.Errorf("gateway_enable_https is true, but gateway_tls_cert and/or gateway_tls_key are not provided. Both must be set when HTTPS is enabled")
-	}
-
+	// Gateway configuration
 	gateway := GatewayConfig{
 		ClassName:   "",
 		Namespace:   namespace,           // Use the same namespace as other resources
 		Annotations: map[string]string{}, // Can be extended later
 		Hosts:       []GatewayHost{},     // Can be extended later
 		TLS:         []GatewayTLS{},      // Can be extended later
-		EnableHTTPS: gatewayEnableHTTPS,
-		TLSCertPEM:  gatewayTLSCert,
-		TLSKeyPEM:   gatewayTLSKey,
 	}
 
 	return StackConfig{
@@ -388,36 +439,60 @@ func LoadConfig(ctx *pulumi.Context) (StackConfig, error) {
 			Password: registryPassword,
 		},
 		MySQL: MySQLConfig{
+			External: externalMySQL == "true",
 			Host:     mysqlHost,
 			Port:     mysqlPort,
 			Password: mysqlPassword,
 			DBName:   mysqlDBName,
 		},
 		ES: ESConfig{
+			External: externalES == "true",
 			Host:     esHost,
 			Port:     esPort,
 			Protocol: esProtocol,
+			Username: esUsername,
 			Password: esPassword,
 		},
 	}, nil
 }
 
 // Helper function to get configuration value with default
+// If the key is missing or its value is empty (e.g. after sed strips "secure:" lines),
+// returns defaultValue instead. This ensures secrets like mysql.password and
+// elasticsearch.password fall back to their defaults when the encrypted value is removed.
 func getConfig(ctx *pulumi.Context, key string, defaultValue string) string {
-	if val, err := pulumiconfig.Try(ctx, key); err == nil {
+	if val, err := pulumiconfig.Try(ctx, key); err == nil && val != "" {
 		return val
 	}
 	return defaultValue
 }
 
-// Helper function to convert string port to int
-func parsePort(portStr string) int {
+// Helper function to get storage/disk size and auto-append "Gi" suffix
+// Accepts both numeric values (e.g., "20") and values with suffix (e.g., "20Gi")
+// Always returns value with "Gi" suffix for Kubernetes PVC compatibility
+func getStorageSize(ctx *pulumi.Context, key string, defaultValue string) string {
+	val := getConfig(ctx, key, defaultValue)
+	// If value doesn't already have a suffix, append "Gi"
+	if val != "" && !strings.HasSuffix(val, "Gi") && !strings.HasSuffix(val, "G") &&
+		!strings.HasSuffix(val, "Mi") && !strings.HasSuffix(val, "M") &&
+		!strings.HasSuffix(val, "Ki") && !strings.HasSuffix(val, "K") {
+		return val + "Gi"
+	}
+	return val
+}
+
+// Helper function to convert string port to int with default value
+func parsePortWithDefault(portStr string, defaultPort int) int {
 	port, err := strconv.Atoi(portStr)
 	if err != nil {
-		// Default to 80 if parsing fails
-		return 80
+		return defaultPort
 	}
 	return port
+}
+
+// Helper function to convert string port to int
+func parsePort(portStr string) int {
+	return parsePortWithDefault(portStr, 80)
 }
 
 // Helper function to read file content
@@ -429,6 +504,235 @@ func readFileContent(filePath string) (string, error) {
 	return string(content), nil
 }
 
+// deployK8sResources handles phase 2 deployment: Kubernetes resources only
+// This function uses StackReference to read outputs from phase 1 infrastructure stack
+func deployK8sResources(ctx *pulumi.Context, config StackConfig) error {
+	ctx.Log.Info("=== Phase 2: Kubernetes Resources Deployment ===", &pulumi.LogArgs{})
+
+	// Use the passed k8sProvider if provided (for onpremise/existing cluster case)
+	// Otherwise create one from kubeconfig (for k8s phase from StackReference)
+	var provider *kubernetes.Provider
+	var err error
+
+	cloud := getConfig(ctx, "cloud", "onpremise")
+	// Create provider from kubeconfig (k8s phase mode)
+	// Get infra stack name from config (e.g., "ali" or full "org/project/ali")
+	infraStackName := getConfig(ctx, "depends_on_stack", "")
+	// If not a full path (no "/"), prepend current org/project
+	if infraStackName != "" && !strings.Contains(infraStackName, "/") {
+		infraStackName = fmt.Sprintf("%s/%s/%s", ctx.Organization(), ctx.Project(), infraStackName)
+	}
+	useStackRef := infraStackName != ""
+
+	var providerArgs kubernetes.ProviderArgs
+	if useStackRef {
+		// Use StackReference to read outputs from phase 1 infrastructure stack
+		ctx.Log.Info(fmt.Sprintf("Using StackReference to read outputs from infra stack: %s", infraStackName), &pulumi.LogArgs{})
+
+		infraStack, err := pulumi.NewStackReference(ctx, infraStackName, nil)
+		if err != nil {
+			return fmt.Errorf("failed to create stack reference for %s: %w", infraStackName, err)
+		}
+
+		load_resource := make([]string, 0)
+		if cloud == "aliyun" {
+			// Read vSwitch IDs from infra stack (for ALB configuration)
+			// NOTE: ali stack now creates 2 vSwitches in different zones for ALB
+			config.VSwitchIDs = infraStack.GetOutput(pulumi.String("vSwitchIds")).AsStringArrayOutput()
+			load_resource = append(load_resource, "vSwitch IDs")
+		}
+
+		// Read kubeconfig from infra stack
+		kubeconfig := infraStack.GetOutput(pulumi.String("kubeconfig")).AsStringOutput()
+		providerArgs = kubernetes.ProviderArgs{
+			Kubeconfig: kubeconfig,
+		}
+		load_resource = append(load_resource, "kubeconfig")
+
+		// Read MySQL outputs from infra stack if using external MySQL
+		if config.MySQL.External {
+			config.MySQLEndpointOutput = infraStack.GetOutput(pulumi.String("mysql_endpoint")).AsStringOutput()
+			config.MySQLPortOutput = infraStack.GetOutput(pulumi.String("mysql_port")).AsStringOutput()
+			config.MySQLPasswordOutput = infraStack.GetOutput(pulumi.String("mysql_password")).AsStringOutput()
+			load_resource = append(load_resource, "MySQL endpoint")
+		}
+
+		// Read ES outputs from infra stack if using external ES
+		if config.ES.External {
+			config.ESEndpointOutput = infraStack.GetOutput(pulumi.String("es_endpoint")).AsStringOutput()
+			config.ESPortOutput = infraStack.GetOutput(pulumi.String("es_port")).AsStringOutput()
+			config.ESProtocolOutput = infraStack.GetOutput(pulumi.String("es_protocol")).AsStringOutput()
+			config.ESUsernameOutput = infraStack.GetOutput(pulumi.String("es_username")).AsStringOutput()
+			config.ESPasswordOutput = infraStack.GetOutput(pulumi.String("es_password")).AsStringOutput()
+			load_resource = append(load_resource, "ES endpoint")
+		}
+
+		ctx.Log.Info(fmt.Sprintf("Successfully loaded %s from Phase 1 (StackReference of %s)", strings.Join(load_resource, ", "), infraStackName), &pulumi.LogArgs{})
+	} else {
+		// in-cluster and onpremise mode:
+		// Pulumi uses client-go's DefaultClientConfig which auto-detects in-cluster
+		// environment via KUBERNETES_SERVICE_HOST and uses ServiceAccount token,
+		// or falls back to KUBECONFIG or default ~/.kube/config for on-premise setups.
+		providerArgs = kubernetes.ProviderArgs{}
+		ctx.Log.Info(fmt.Sprintf("Using kubeconfig from in-cluster service account or default kubeconfig file"), &pulumi.LogArgs{})
+	}
+
+	// Load vSwitch IDs from config if not already set via StackReference
+	// This supports the ROS template deployment flow where vSwitch IDs are passed
+	// as environment variables and set via "pulumi config set aliyun.vswitch_ids"
+	if cloud == "aliyun" && config.VSwitchIDs == (pulumi.StringArrayOutput{}) {
+		vswitchIDsStr := getConfig(ctx, "aliyun.vswitch_ids", "")
+		if vswitchIDsStr != "" {
+			ids := strings.Split(vswitchIDsStr, ",")
+			for i := range ids {
+				ids[i] = strings.TrimSpace(ids[i])
+			}
+			config.VSwitchIDs = pulumi.ToStringArray(ids).ToStringArrayOutput()
+			ctx.Log.Info(fmt.Sprintf("Loaded %d vSwitch IDs from config: %v", len(ids), ids), &pulumi.LogArgs{})
+		}
+	}
+
+	// Create Kubernetes provider
+	provider, err = kubernetes.NewProvider(ctx, "k8s-provider", &providerArgs)
+	if err != nil {
+		return fmt.Errorf("failed to create k8s provider: %w", err)
+	}
+
+	ctx.Log.Info("✓ Kubernetes provider configured", &pulumi.LogArgs{})
+
+	// Create namespace
+	namespace, err := corev1.NewNamespace(ctx, "ragflow-namespace", &corev1.NamespaceArgs{
+		Metadata: &metav1.ObjectMetaArgs{
+			Name: pulumi.String(config.Namespace),
+		},
+	}, pulumi.Provider(provider))
+	if err != nil {
+		return fmt.Errorf("failed to create namespace: %w", err)
+	}
+
+	// Create registry secret (if configured)
+	registrySecret, err := createRegistrySecret(ctx, &config, namespace, provider)
+	if err != nil {
+		return fmt.Errorf("failed to create registry secret: %w", err)
+	}
+
+	// Create MySQL deployment if not using external MySQL
+	if !config.MySQL.External {
+		ctx.Log.Info("Creating MySQL deployment", &pulumi.LogArgs{})
+		_, _, err = createMySQL(ctx, &config, namespace, provider)
+		if err != nil {
+			return fmt.Errorf("failed to create mysql: %w", err)
+		}
+	}
+
+	// Create Elasticsearch deployment if not using external ES
+	if !config.ES.External {
+		// Deploy ECK Operator before creating Elasticsearch resource
+		// This is required for the Elasticsearch CRD to exist
+		ctx.Log.Info("Deploying ECK Operator for Elasticsearch CRD support...", &pulumi.LogArgs{})
+		if err := deployECK(ctx, provider, nil); err != nil {
+			return fmt.Errorf("failed to deploy ECK: %w", err)
+		}
+
+		ctx.Log.Info("Creating Elasticsearch deployment", &pulumi.LogArgs{})
+		_, _, err = createElasticsearch(ctx, &config, namespace, provider)
+		if err != nil {
+			return fmt.Errorf("failed to create elasticsearch: %w", err)
+		}
+	}
+
+	// Redis is always created internally (no external Redis option)
+	ctx.Log.Info("Creating Redis deployment", &pulumi.LogArgs{})
+	_, _, err = createRedis(ctx, &config, namespace, provider)
+	if err != nil {
+		return fmt.Errorf("failed to create redis: %w", err)
+	}
+
+	// Create TEI service
+	ctx.Log.Info("Creating TEI deployment", &pulumi.LogArgs{})
+	_, _, err = createTEI(ctx, &config, namespace, provider)
+	if err != nil {
+		return fmt.Errorf("failed to create TEI: %w", err)
+	}
+
+	// Create RabbitMQ
+	ctx.Log.Info("Creating RabbitMQ deployment", &pulumi.LogArgs{})
+	_, _, err = createRabbitMQ(ctx, &config, namespace, provider)
+	if err != nil {
+		return fmt.Errorf("failed to create rabbitmq: %w", err)
+	}
+
+	// Create DeepDoc deployment
+	_, _, err = createDeepdocDeployment(ctx, &config, namespace, provider, registrySecret)
+	if err != nil {
+		return fmt.Errorf("failed to create deepdoc deployment: %w", err)
+	}
+
+	// Create RAGFlow deployments and services
+	_, ragflowService, _, err := createRAGFlowDeployment(ctx, &config, namespace, provider, registrySecret)
+	if err != nil {
+		return fmt.Errorf("failed to create ragflow deployment: %w", err)
+	}
+
+	// Create Gateway API or Ingress resources (if enabled)
+	if cloud == "aliyun" {
+		// Create ALB Ingress for Aliyun ACK/ASK
+		_, err = createIngress(ctx, &config, provider, ragflowService)
+		if err != nil {
+			return fmt.Errorf("failed to create ingress: %w", err)
+		}
+	} else {
+		gatewayClass := getConfig(ctx, "kubernetes.gateway_class", "cilium")
+		_, err = createGateway(ctx, &config, provider, ragflowService, gatewayClass)
+		if err != nil {
+			return fmt.Errorf("failed to create gateway: %w", err)
+		}
+	}
+
+	ctx.Log.Info(fmt.Sprintf("✓ Successfully deployed all Kubernetes resources in namespace: %s", config.Namespace), &pulumi.LogArgs{})
+
+	return nil
+}
+
+// createRegistrySecret creates a secret for registry authentication (if configured)
+func createRegistrySecret(ctx *pulumi.Context, config *StackConfig, namespace *corev1.Namespace, provider *kubernetes.Provider) (*corev1.Secret, error) {
+	registryServer := getConfig(ctx, "kubernetes.enterprise_registry", "")
+	username := getConfig(ctx, "kubernetes.enterprise_registry_username", "")
+	password := getConfig(ctx, "kubernetes.enterprise_registry_password", "")
+
+	if registryServer == "" || username == "" || password == "" {
+		ctx.Log.Info("No registry credentials configured, skipping registry secret", nil)
+		return nil, nil
+	}
+
+	// Create Docker config JSON for registry authentication
+	dockerConfigJSON := fmt.Sprintf(`{
+		"auths": {
+			"%s": {
+				"username": "%s",
+				"password": "%s",
+				"auth": "%s"
+			}
+		}
+	}`, registryServer, username, password, base64.StdEncoding.EncodeToString([]byte(username+":"+password)))
+
+	// Kubernetes Secret .Data field requires base64-encoded values
+	encodedDockerConfig := base64.StdEncoding.EncodeToString([]byte(dockerConfigJSON))
+
+	secret, err := corev1.NewSecret(ctx, "registry-secret", &corev1.SecretArgs{
+		Metadata: &metav1.ObjectMetaArgs{
+			Name:      pulumi.String("regcred"),
+			Namespace: namespace.Metadata.Name(),
+		},
+		Type: pulumi.String("kubernetes.io/dockerconfigjson"),
+		Data: pulumi.StringMap{
+			".dockerconfigjson": pulumi.String(encodedDockerConfig),
+		},
+	}, pulumi.Provider(provider))
+
+	return secret, err
+}
+
 func main() {
 	pulumi.Run(func(ctx *pulumi.Context) error {
 		config, err := LoadConfig(ctx)
@@ -436,279 +740,141 @@ func main() {
 			return err
 		}
 
-		// Create Kubernetes provider
-		k8sProvider, err := kubernetes.NewProvider(ctx, "k8s-provider", &kubernetes.ProviderArgs{})
-		if err != nil {
-			return err
+		// Get phase configuration to determine what to deploy
+		// phase: "infra" = deploy infrastructure only (ali stack) - MUST be set
+		// phase: "k8s" = deploy k8s resources only (ali_k8s stack)
+		phase := getConfig(ctx, "phase", "infra")
+		ctx.Log.Info(fmt.Sprintf("Deployment phase: %s", phase), &pulumi.LogArgs{})
+
+		// Phase 2: K8s resources only - skip infrastructure deployment
+		if phase == "k8s" {
+			return deployK8sResources(ctx, config)
 		}
 
-		// Create namespace
-		namespace, err := corev1.NewNamespace(ctx, "ragflow-namespace", &corev1.NamespaceArgs{
-			Metadata: &metav1.ObjectMetaArgs{
-				Name: pulumi.String(config.Namespace),
-			},
-		}, pulumi.Provider(k8sProvider))
-		if err != nil {
-			return err
-		}
+		// Phase 1: Infrastructure deployment (must set phase: infra)
+		ctx.Log.Info("=== Phase 1: Infrastructure Deployment ===", &pulumi.LogArgs{})
+		ctx.Log.Info(fmt.Sprintf("StorageClass: %s (will be used for all PVCs)", config.StorageClass), &pulumi.LogArgs{})
+		ctx.Log.Info("", &pulumi.LogArgs{})
 
-		// Create Docker registry secret for private registry authentication
-		// This secret will be used by pods that need to pull images from private registry
-		var registrySecret *corev1.Secret
-		if config.Registry.Username != "" && config.Registry.Password != "" {
-			// Build dockerconfigjson with base64 encoded auth
-			dockerConfigJSON := fmt.Sprintf(`{
-				"auths": {
-					"%s": {
-						"username": "%s",
-						"password": "%s",
-						"auth": "%s"
-					}
-				}
-			}`, config.Registry.Server, config.Registry.Username, config.Registry.Password,
-				base64.StdEncoding.EncodeToString([]byte(config.Registry.Username+":"+config.Registry.Password)))
+		// Get cloud provider configuration
+		cloudProvider := getConfig(ctx, "cloud", "existing")
+		ctx.Log.Info(fmt.Sprintf("Cloud provider mode: %s", cloudProvider), &pulumi.LogArgs{})
 
-			// Base64 encode the entire JSON config for Kubernetes Secret data field
-			encodedConfig := base64.StdEncoding.EncodeToString([]byte(dockerConfigJSON))
+		var infra *InfraResult
 
-			registrySecret, err = corev1.NewSecret(ctx, "registry-secret", &corev1.SecretArgs{
-				Metadata: &metav1.ObjectMetaArgs{
-					Name:      pulumi.String("ragflow-registry-secret"),
-					Namespace: namespace.Metadata.Name(),
-				},
-				Type: pulumi.String("kubernetes.io/dockerconfigjson"),
-				Data: pulumi.StringMap{
-					".dockerconfigjson": pulumi.String(encodedConfig),
-				},
-			}, pulumi.Provider(k8sProvider))
+		// Route to appropriate cloud provider
+		switch cloudProvider {
+		case "aliyun":
+			// Deploy Aliyun infrastructure ONLY (Phase 1)
+			cfg := pulumiconfig.New(ctx, "")
+			provider, err := NewAliyunProvider(ctx, cfg)
 			if err != nil {
-				return fmt.Errorf("failed to create registry secret: %w", err)
+				return fmt.Errorf("failed to create Aliyun provider: %w", err)
 			}
-			ctx.Log.Info("Created registry secret for enterprise registry authentication", &pulumi.LogArgs{})
-		} else {
-			ctx.Log.Warn("Registry credentials not configured, skipping registry secret creation", &pulumi.LogArgs{})
-		}
-
-		// Create MySQL deployment or use external MySQL
-		// If mysql_host is empty, create MySQL deployment in the cluster
-		// If mysql_host is set, use the external MySQL server
-		var mysqlDeployment *v1.Deployment
-		var mysqlService *corev1.Service
-		if config.MySQL.Host == "" {
-			ctx.Log.Info("Creating MySQL deployment in the cluster", &pulumi.LogArgs{})
-			mysqlDeployment, mysqlService, err = createMySQL(ctx, &config, namespace, k8sProvider)
+			if err := provider.ValidateConfig(); err != nil {
+				return fmt.Errorf("Aliyun config validation failed: %w", err)
+			}
+			infra, err = provider.DeployInfra(ctx)
 			if err != nil {
-				return err
-			}
-		} else {
-			ctx.Log.Info(fmt.Sprintf("Using external MySQL at %s:%s", config.MySQL.Host, config.MySQL.Port), &pulumi.LogArgs{})
-		}
-
-		// Create Redis
-		redisDeployment, redisService, err := createRedis(ctx, &config, namespace, k8sProvider)
-		if err != nil {
-			return err
-		}
-
-		// Create Elasticsearch deployment or use external Elasticsearch
-		// If es_host is empty, create Elasticsearch deployment in the cluster
-		// If es_host is set, use the external Elasticsearch server
-		var esDeployment interface{}
-		var esService *corev1.Service
-		if config.ES.Host == "" {
-			ctx.Log.Info("Creating Elasticsearch deployment in the cluster", &pulumi.LogArgs{})
-			esDeployment, esService, err = createElasticsearch(ctx, &config, namespace, k8sProvider)
-			if err != nil {
-				return err
-			}
-		} else {
-			ctx.Log.Info(fmt.Sprintf("Using external Elasticsearch at %s:%s", config.ES.Host, config.ES.Port), &pulumi.LogArgs{})
-		}
-
-		// MinIO is replaced by Ceph RGW S3-compatible object storage
-
-		// Create TEI
-		teiDeployment, teiService, err := createTEI(ctx, &config, namespace, k8sProvider)
-		if err != nil {
-			return err
-		}
-
-		// Create RabbitMQ
-		rabbitmqDeployment, rabbitmqService, err := createRabbitMQ(ctx, &config, namespace, k8sProvider)
-		if err != nil {
-			return err
-		}
-
-		// Get Elasticsearch secret name (shared by RAGFlow and Parser deployments)
-		//
-		// Two scenarios:
-		// 1. Internal ES (es_host is empty): Use ECK-managed secret name
-		// 2. External ES (es_host is set): Create secret with configured password
-		var esElasticUserSecret *corev1.Secret
-		es_name := "elasticsearch"
-		secretName := fmt.Sprintf("%s-es-elastic-user", es_name)
-
-		if config.ES.Host == "" {
-			// Internal ES: Create a reference to ECK-managed secret (don't manage it)
-			ctx.Log.Info("Using ECK-managed Elasticsearch secret", &pulumi.LogArgs{})
-			// Create a dummy secret resource that we will ignore completely
-			// This allows us to reference the secret in deployments without managing it
-			esElasticUserSecret, err = corev1.NewSecret(ctx, "es-elastic-user-ref", &corev1.SecretArgs{
-				Metadata: &metav1.ObjectMetaArgs{
-					Name:      pulumi.String(secretName),
-					Namespace: namespace.Metadata.Name(),
-				},
-			}, pulumi.Provider(k8sProvider), pulumi.IgnoreChanges([]string{
-				// Ignore all fields - this secret is entirely managed by ECK
-				"data", "stringData", "metadata", "type",
-			}))
-			if err != nil {
-				return fmt.Errorf("failed to create reference to ECK Elasticsearch secret: %w", err)
-			}
-		} else {
-			// External ES: Create secret with configured password
-			ctx.Log.Info("Creating Elasticsearch secret for external ES", &pulumi.LogArgs{})
-			// If es_password is empty, use a default password
-			esPassword := config.ES.Password
-			if esPassword == "" {
-				esPassword = "changeme" // Default password for external ES
-			}
-			// Use a different secret name for external ES to avoid conflicts
-			externalSecretName := "elasticsearch-external-credentials"
-			esElasticUserSecret, err = corev1.NewSecret(ctx, "es-elastic-user-ref", &corev1.SecretArgs{
-				Metadata: &metav1.ObjectMetaArgs{
-					Name:      pulumi.String(externalSecretName),
-					Namespace: namespace.Metadata.Name(),
-				},
-				StringData: pulumi.StringMap{
-					"elastic": pulumi.String(esPassword),
-				},
-			}, pulumi.Provider(k8sProvider))
-			if err != nil {
-				return fmt.Errorf("failed to create Elasticsearch secret for external ES: %w", err)
-			}
-		}
-
-		// Create RAGFlow deployment (includes parser deployment)
-		ragflowDeployment, ragflowService, parserDeployment, err := createRAGFlowDeployment(ctx, &config, namespace, k8sProvider, esElasticUserSecret, registrySecret)
-		if err != nil {
-			return err
-		}
-
-		// Create Unified DeepDoc Service (DLA+OCR+TSR)
-		deepdocDeployment, deepdocService, err := createDeepdocDeployment(ctx, &config, namespace, k8sProvider, registrySecret)
-		if err != nil {
-			return err
-		}
-
-		// Create Gateway/Ingress (always enabled)
-		//
-		// PLATFORM-SPECIFIC ROUTING STRATEGY:
-		// - Aliyun clusters: Use Ingress API (traditional, better controller support)
-		// - Other clusters: Use Gateway API (modern standard)
-		//
-		// WHY DIFFERENT APIS FOR ALIYUN:
-		// Aliyun ALB Gateway API implementation has a known bug where HTTPRoute forwarding
-		// rules fail when pods are recreated. The root cause is that the ALB Gateway API
-		// implementation doesn't properly watch Service Endpoints changes.
-		//
-		// Workaround: Use Ingress API for Aliyun clusters, which has proven Endpoints
-		// watching support through the ALB Ingress Controller.
-		//
-		// BROKEN STATE ON ALIYUN ACS:
-		// - ACS (Aliyun Container Service Serverless) doesn't support LoadBalancer creation
-		// - Ingress resources won't get LoadBalancer IP assigned
-		// - This code is left in broken state as requested for next person to handle
-		var gateway *apiextensions.CustomResource
-		var gatewayClass string
-		var routingAPI pulumi.StringInput
-
-		// if isAliyunCluster(&config) {
-		if false {
-			// Use Ingress API for Aliyun ALB
-			ctx.Log.Info("Detected Aliyun cluster, using Ingress API (automatically creates IngressClass)", &pulumi.LogArgs{})
-			if err := createIngress(ctx, &config, k8sProvider, ragflowService); err != nil {
-				return err
-			}
-			gatewayClass = "alb"
-			routingAPI = pulumi.String("Ingress")
-		} else {
-			// Use Gateway API for non-Aliyun clusters (modern standard)
-			ctx.Log.Info("Non-Aliyun cluster, using Gateway API (modern standard)", &pulumi.LogArgs{})
-			gatewayClass, err = detectGatewayType(ctx, k8sProvider)
-			if err != nil {
-				return fmt.Errorf("failed to detect gateway class: %w", err)
+				return fmt.Errorf("failed to deploy Aliyun infrastructure: %w", err)
 			}
 
-			gateway, err = createGateway(ctx, &config, k8sProvider, ragflowService, gatewayClass)
-			if err != nil {
-				return err
+			// Export infrastructure outputs for Phase 2 (k8s stack)
+			// MySQL complete configuration
+			if config.MySQL.External {
+				ctx.Export("mysql_endpoint", infra.MySqlEndpoint)
+				// Convert IntOutput to StringOutput for consistent type handling
+				ctx.Export("mysql_port", infra.MySqlPort.ApplyT(func(port int) string { return strconv.Itoa(port) }).(pulumi.StringOutput))
+				ctx.Export("mysql_database", infra.MySqlDatabase)
+				// Note: mysql_username is NOT exported because MySQL always uses 'root'
+				ctx.Export("mysql_password", pulumi.ToSecret(infra.MySqlPassword))
+
 			}
-			routingAPI = pulumi.String("Gateway")
-		}
+			// Elasticsearch complete configuration
+			if config.ES.External {
+				ctx.Export("es_endpoint", infra.ESEndpoint)
+				// Convert IntOutput to StringOutput for consistent type handling
+				ctx.Export("es_port", infra.ESPort.ApplyT(func(port int) string { return strconv.Itoa(port) }).(pulumi.StringOutput))
+				ctx.Export("es_protocol", infra.ESProtocol)
+				ctx.Export("es_username", infra.ESUsername)
+				ctx.Export("es_password", pulumi.ToSecret(infra.ESPassword))
+			}
+			// Export kubeconfig for use by ali_k8s stack
+			ctx.Export("kubeconfig", pulumi.ToSecret(infra.Kubeconfig))
 
-		// Export outputs
-		ctx.Export("namespace", namespace.Metadata.Name())
-		if mysqlDeployment != nil {
-			ctx.Export("mysqlDeployment", mysqlDeployment.Metadata.Name())
-		} else {
-			ctx.Export("mysqlDeployment", pulumi.String("external"))
-		}
-		if mysqlService != nil {
-			ctx.Export("mysqlService", mysqlService.Metadata.Name())
-		} else {
-			ctx.Export("mysqlService", pulumi.String("external"))
-		}
-		ctx.Export("redisDeployment", redisDeployment.Metadata.Name())
-		ctx.Export("redisService", redisService.Metadata.Name())
-		if esDeployment != nil {
-			ctx.Export("esDeployment", esDeployment.(*apiextensions.CustomResource).Metadata.Name())
-		} else {
-			ctx.Export("esDeployment", pulumi.String("external"))
-		}
-		if esService != nil {
-			ctx.Export("esService", esService.Metadata.Name())
-		} else {
-			ctx.Export("esService", pulumi.String("external"))
-		}
-		ctx.Export("teiDeployment", teiDeployment.Metadata.Name())
-		ctx.Export("teiService", teiService.Metadata.Name())
-		ctx.Export("rabbitmqDeployment", rabbitmqDeployment.Metadata.Name())
-		ctx.Export("rabbitmqService", rabbitmqService.Metadata.Name())
-		ctx.Export("ragflowDeployment", ragflowDeployment.Metadata.Name())
-		ctx.Export("ragflowService", ragflowService.Metadata.Name())
-		ctx.Export("parserDeployment", parserDeployment.Metadata.Name())
-		ctx.Export("gatewayClass", pulumi.String(gatewayClass))
-		if gateway != nil {
-			ctx.Export("gatewayName", gateway.Metadata.Name())
-		} else {
-			ctx.Export("gatewayName", pulumi.String("none"))
-		}
-		ctx.Export("routingAPI", routingAPI)
+			// Phase 1 complete - stop here, do NOT deploy K8s resources
+			ctx.Log.Info("✓ Phase 1 complete: Infrastructure deployed successfully", &pulumi.LogArgs{})
+			ctx.Log.Info("Kubernetes resources will be deployed in Phase 2", &pulumi.LogArgs{})
+			return nil
 
-		// Export unified DeepDoc service
-		// Note: deepdocDeployment may be nil if using Knative Service
-		if deepdocDeployment != nil {
-			ctx.Export("deepdocDeployment", deepdocDeployment.Metadata.Name())
-		} else {
-			ctx.Export("deepdocDeployment", pulumi.String("knative"))
-		}
+		case "gcp":
+			// TODO: Implement GCP provider
+			return fmt.Errorf("GCP provider not yet implemented")
 
-		if deepdocService != nil {
-			ctx.Export("deepdocService", deepdocService.Metadata.Name())
-		} else {
-			ctx.Export("deepdocService", pulumi.String("deepdoc"))
-		}
+		case "onpremise":
+			// Use existing K8s cluster - delegate to deployK8sResources
+			fallthrough
 
-		return nil
+		default:
+			// For existing/on-premise clusters, create k8sProvider and delegate to deployK8sResources
+			ctx.Log.Info("Creating Kubernetes provider for on-premise cluster", &pulumi.LogArgs{})
+			// Delegate all K8s resource creation to deployK8sResources
+			return deployK8sResources(ctx, config)
+		}
 	})
+}
+
+// deployECK deploys ECK (Elastic Cloud on Kubernetes) Operator
+// This should only be called for cloud providers (aliyun/gcp) where we have admin privileges
+// For existing clusters, ECK should be installed separately by cluster administrators
+// Refers to https://www.elastic.co/docs/deploy-manage/deploy/cloud-on-k8s/install-using-yaml-manifest-quickstart
+func deployECK(ctx *pulumi.Context, k8sProvider *kubernetes.Provider, clusterResource pulumi.Resource) error {
+	ctx.Log.Info("Deploying ECK Operator...", &pulumi.LogArgs{})
+
+	// Ignore changes for fields that may be managed by ECK itself or kubectl
+	ignoreFields := []string{
+		"*.metadata.annotations",
+		"*.metadata.labels",
+		"*.spec.versions",
+	}
+
+	// Build resource options with provider and optional cluster dependency
+	var resourceOpts []pulumi.ResourceOption
+	resourceOpts = append(resourceOpts, pulumi.Provider(k8sProvider), pulumi.IgnoreChanges(ignoreFields))
+	if clusterResource != nil {
+		resourceOpts = append(resourceOpts, pulumi.DependsOn([]pulumi.Resource{clusterResource}))
+	}
+
+	// 1. Deploy ECK CRDs
+	_, err := yaml.NewConfigFile(ctx, "eck-crds", &yaml.ConfigFileArgs{
+		File: "https://download.elastic.co/downloads/eck/3.2.0/crds.yaml",
+	}, resourceOpts...)
+	if err != nil {
+		return fmt.Errorf("failed to deploy ECK CRDs: %w", err)
+	}
+
+	// 2. Deploy ECK Operator
+	_, err = yaml.NewConfigFile(ctx, "eck-operator", &yaml.ConfigFileArgs{
+		File: "https://download.elastic.co/downloads/eck/3.2.0/operator.yaml",
+	}, resourceOpts...)
+	if err != nil {
+		return fmt.Errorf("failed to deploy ECK Operator: %w", err)
+	}
+
+	ctx.Log.Info("ECK Operator deployed successfully", &pulumi.LogArgs{})
+	return nil
 }
 
 func createMySQL(ctx *pulumi.Context, config *StackConfig, namespace *corev1.Namespace, provider pulumi.ProviderResource) (*v1.Deployment, *corev1.Service, error) {
 	// Read MySQL PVC size configuration
-	mysqlStorage := getConfig(ctx, "mysql_storage", "1Gi")
+	mysqlStorage := getStorageSize(ctx, "mysql.disk_size", "1")
 
-	// MySQL init.sql ConfigMap
+	// Use fixed password for internal MySQL deployment
+	// The password must be known by ragflow containers, so we use config.MySQL.Password
+	// instead of generating a random one (which would be inaccessible to ragflow)
+	mysqlPassword := pulumi.String(config.MySQL.Password)
+
+	// MySQL init.sql ConfigMap (fallback if MYSQL_DATABASE env var fails)
 	// This SQL script creates the database on MySQL startup using configured dbname
 	mysqlInitConfigMap, err := corev1.NewConfigMap(ctx, "mysql-init-configmap", &corev1.ConfigMapArgs{
 		Metadata: &metav1.ObjectMetaArgs{
@@ -738,7 +904,7 @@ func createMySQL(ctx *pulumi.Context, config *StackConfig, namespace *corev1.Nam
 					"storage": pulumi.String(mysqlStorage),
 				},
 			},
-			StorageClassName: pulumi.String(config.StorageClass),
+			StorageClassName: getStorageClassPtr(config),
 		},
 	}, pulumi.Provider(provider))
 	if err != nil {
@@ -774,17 +940,25 @@ func createMySQL(ctx *pulumi.Context, config *StackConfig, namespace *corev1.Nam
 							Image: pulumi.String(config.Images.MySQL),
 							Ports: corev1.ContainerPortArray{
 								&corev1.ContainerPortArgs{
-									ContainerPort: pulumi.Int(3306),
+									ContainerPort: pulumi.Int(parsePortWithDefault(config.MySQL.Port, 3306)),
 								},
 							},
 							Env: corev1.EnvVarArray{
 								&corev1.EnvVarArgs{
 									Name:  pulumi.String("MYSQL_ROOT_PASSWORD"),
-									Value: pulumi.String(config.MySQL.Password),
+									Value: mysqlPassword,
 								},
+								&corev1.EnvVarArgs{
+									Name:  pulumi.String("MYSQL_DATABASE"),
+									Value: pulumi.String(config.MySQL.DBName),
+								},
+								// Note: MYSQL_USER and MYSQL_PASSWORD are intentionally NOT set
+								// because we use the root user (same as Aliyun RDS).
+								// The root user created by MYSQL_ROOT_PASSWORD automatically has
+								// full privileges on MYSQL_DATABASE.
 							},
 							Args: pulumi.StringArray{
-								pulumi.String("--max_connections=1000"),
+								pulumi.String("--max_connections=900"),
 								pulumi.String("--character-set-server=utf8mb4"),
 								pulumi.String("--max_allowed_packet=64505856"),
 								pulumi.String("--collation-server=utf8mb4_general_ci"),
@@ -804,6 +978,16 @@ func createMySQL(ctx *pulumi.Context, config *StackConfig, namespace *corev1.Nam
 								&corev1.VolumeMountArgs{
 									Name:      pulumi.String("mysql-init"),
 									MountPath: pulumi.String("/data/application"),
+								},
+							},
+							Resources: &corev1.ResourceRequirementsArgs{
+								Requests: pulumi.StringMap{
+									"memory": pulumi.String("8Gi"),
+									"cpu":    pulumi.String("4000m"),
+								},
+								Limits: pulumi.StringMap{
+									"memory": pulumi.String("8Gi"),
+									"cpu":    pulumi.String("4000m"),
 								},
 							},
 						},
@@ -833,7 +1017,7 @@ func createMySQL(ctx *pulumi.Context, config *StackConfig, namespace *corev1.Nam
 	// MySQL Service
 	mysqlService, err := corev1.NewService(ctx, "mysql-service", &corev1.ServiceArgs{
 		Metadata: &metav1.ObjectMetaArgs{
-			Name:      pulumi.String("mysql"),
+			Name:      pulumi.String(config.MySQL.Host),
 			Namespace: namespace.Metadata.Name(),
 		},
 		Spec: &corev1.ServiceSpecArgs{
@@ -935,50 +1119,45 @@ func createRedis(ctx *pulumi.Context, config *StackConfig, namespace *corev1.Nam
 func createElasticsearch(ctx *pulumi.Context, config *StackConfig, namespace *corev1.Namespace, provider pulumi.ProviderResource) (*apiextensions.CustomResource, *corev1.Service, error) {
 	ctx.Log.Info("Creating Elasticsearch resources...", &pulumi.LogArgs{})
 	// Elasticsearch custom resource using ECK
+	// https://www.elastic.co/docs/deploy-manage/users-roles/cluster-or-deployment-auth/managed-credentials-eck
+	// To access Elastic resources, the operator manages a default user named elastic with the superuser role.
+	// Its password is stored in a Secret named <elasticsearch-name>-es-elastic-user.
+	// For example, if the Elasticsearch resource is named "elasticsearch", the secret will be "elasticsearch-es-elastic-user".
 	es_name := "elasticsearch"
 
 	// Read Elasticsearch configuration
-	es_replicas_str := getConfig(ctx, "es_replicas", "1")
+	es_replicas_str := getConfig(ctx, "elasticsearch.node_amount", "1")
 	es_replicas, _ := strconv.Atoi(es_replicas_str)
-	es_storage := getConfig(ctx, "es_storage", "2Gi")
-	es_memory_request := getConfig(ctx, "es_memory_request", "10Gi")
+	es_storage := getStorageSize(ctx, "elasticsearch.disk_size", "2")
+	es_memory_request := getStorageSize(ctx, "elasticsearch.ram_size", "10")
+	es_cpu_cores := getConfig(ctx, "elasticsearch.cpu_cores", "4")
 
 	// Derive other resources from es_memory_request
 	// Parse memory request (e.g., "2Gi", "4Gi")
 	es_memory_limit := es_memory_request
 	es_jvm_memory := es_memory_request
-	es_cpu_request := "1000m"
-	es_cpu_limit := "2000m"
+	es_cpu_request := es_cpu_cores + "000m"
+	es_cpu_limit := es_cpu_request
 
 	// Simple derivation: assume format "XGi"
 	if strings.HasSuffix(es_memory_request, "Gi") {
 		memStr := strings.TrimSuffix(es_memory_request, "Gi")
 		if memVal, err := strconv.ParseFloat(memStr, 64); err == nil {
-			// memory_limit = memory_request (Required for memory locking)
+			// memory_limit = ram_size (Required for memory locking)
 			// IMPORTANT: When bootstrap.memory_lock=true, memory limits must equal requests
 			// This is necessary for memory locking to work properly in Kubernetes
 			es_memory_limit = es_memory_request
 
-			// JVM memory = 50% of memory_request is safer for ES to avoid OOM
+			// JVM memory = 50% of ram_size is safer for ES to avoid OOM
 			jvmMem := memVal * 0.5
 			if jvmMem < 1 {
 				jvmMem = 1
 			}
 			es_jvm_memory = fmt.Sprintf("%.0fg", jvmMem)
-
-			// CPU request: 1000m per 4Gi, minimum 1000m
-			cpuVal := int((memVal / 4) * 1000)
-			if cpuVal < 1000 {
-				cpuVal = 1000
-			}
-			es_cpu_request = fmt.Sprintf("%dm", cpuVal)
-
-			// CPU limit = CPU request * 2
-			es_cpu_limit = fmt.Sprintf("%dm", cpuVal*2)
 		}
 	}
-	ctx.Log.Info(fmt.Sprintf("Elasticsearch derived resources: memory_request=%s, memory_limit=%s, jvm_memory=%s, cpu_request=%s, cpu_limit=%s",
-		es_memory_request, es_memory_limit, es_jvm_memory, es_cpu_request, es_cpu_limit), &pulumi.LogArgs{})
+	ctx.Log.Info(fmt.Sprintf("Elasticsearch derived resources: ram_size=%s, memory_limit=%s, jvm_memory=%s, cpu=%s",
+		es_memory_request, es_memory_limit, es_jvm_memory, es_cpu_limit), &pulumi.LogArgs{})
 	esResource, err := apiextensions.NewCustomResource(ctx, "elasticsearch", &apiextensions.CustomResourceArgs{
 		ApiVersion: pulumi.String("elasticsearch.k8s.elastic.co/v1"),
 		Kind:       pulumi.String("Elasticsearch"),
@@ -994,8 +1173,12 @@ func createElasticsearch(ctx *pulumi.Context, config *StackConfig, namespace *co
 						"name":  "default",
 						"count": es_replicas,
 						"config": map[string]interface{}{
-							"node.store.allow_mmap":  false,
-							"xpack.security.enabled": true,
+							"node.store.allow_mmap": false,
+							// Note: xpack.security.enabled is managed by ECK Operator and cannot be set by users.
+							// Attempting to configure it will result in a validation error:
+							// "spec.nodeSets[0].config.xpack.security.enabled: Forbidden: Configuration setting is reserved for internal use"
+							// ECK automatically enables security and manages credentials.
+							//
 							// Note: bootstrap.memory_lock is disabled because it requires
 							// additional ulimit configuration that's difficult to set in Kubernetes
 							// without privileged containers. For production, consider using
@@ -1054,7 +1237,7 @@ func createElasticsearch(ctx *pulumi.Context, config *StackConfig, namespace *co
 											"storage": es_storage,
 										},
 									},
-									"storageClassName": config.StorageClass,
+									"storageClassName": getStorageClassMapValue(config),
 								},
 							},
 						},
@@ -1076,19 +1259,32 @@ func createElasticsearch(ctx *pulumi.Context, config *StackConfig, namespace *co
 			},
 		},
 	}, pulumi.Provider(provider), pulumi.IgnoreChanges([]string{
-		// ECK Operator manages these fields and may modify them dynamically
-		// Ignoring them prevents Server-Side Apply conflicts between Pulumi and the Operator
-		// WARNING: This prevents configuration of Elasticsearch parameters (e.g., bootstrap.memory_lock)
-		// Consider more granular ignore patterns for production use
-		"spec.nodeSets",
-		"spec.auth",
-		"spec.monitoring",
-		"spec.transport",
-		"spec.updateStrategy",
-		"spec.http.tls.certificate",
-		"spec.http.tls.certificateAuthorities",
-		"spec.transport.tls",
-		"spec.transport.service",
+		// ECK Operator manages these fields and may modify them dynamically.
+		// Ignoring them prevents Server-Side Apply conflicts between Pulumi and the Operator.
+		//
+		// IMPORTANT: spec.nodeSets is an array type ([]interface{}), so we cannot ignore
+		// nested fields like "spec.nodeSets.podTemplate.metadata.labels" because
+		// Pulumi cannot traverse into array elements for ignore patterns.
+		//
+		// We DO NOT ignore "spec.nodeSets" because important configurations need
+		// to be managed by Pulumi:
+		// - StorageClass changes (e.g., alicloud-disk-alltype) need to be applied
+		// - Resource limits/requests need to be configurable
+		// - Config settings (cluster.max_shards_per_node) need to be applied
+		//
+		// If you encounter SSA conflicts with nodeSets fields, consider:
+		// 1. Deleting the Elasticsearch resource and letting Pulumi recreate it
+		// 2. Or temporarily using broader ignore patterns (not recommended)
+		//
+		// Fields managed by ECK that should be ignored:
+		"spec.auth",                            // ECK manages authentication credentials
+		"spec.monitoring",                      // ECK manages monitoring configuration
+		"spec.transport",                       // ECK manages transport layer configuration
+		"spec.updateStrategy",                  // ECK manages update strategies
+		"spec.http.tls.certificate",            // ECK manages TLS certificates
+		"spec.http.tls.certificateAuthorities", // ECK manages certificate authorities
+		"spec.transport.tls",                   // ECK manages transport TLS
+		"spec.transport.service",               // ECK manages transport service
 	}))
 	if err != nil {
 		return nil, nil, err
@@ -1214,7 +1410,7 @@ func createRabbitMQ(ctx *pulumi.Context, config *StackConfig, namespace *corev1.
 	}
 
 	// Read RabbitMQ PVC size configuration
-	rabbitmqStorage := getConfig(ctx, "rabbitmq_storage", "1Gi")
+	rabbitmqStorage := getStorageSize(ctx, "rabbitmq.disk_size", "1")
 
 	// RabbitMQ PVC
 	rabbitmqPVC, err := corev1.NewPersistentVolumeClaim(ctx, "rabbitmq-pvc", &corev1.PersistentVolumeClaimArgs{
@@ -1231,7 +1427,7 @@ func createRabbitMQ(ctx *pulumi.Context, config *StackConfig, namespace *corev1.
 					"storage": pulumi.String(rabbitmqStorage),
 				},
 			},
-			StorageClassName: pulumi.String(config.StorageClass),
+			StorageClassName: getStorageClassPtr(config),
 		},
 	}, pulumi.Provider(provider))
 	if err != nil {
@@ -1402,111 +1598,77 @@ func createRabbitMQ(ctx *pulumi.Context, config *StackConfig, namespace *corev1.
 }
 
 // buildCommonEnvVars builds common environment variables for RAGFlow and Parser pods
-// For internal ES (ECK managed), uses secret references to always get the current password
-// For external ES, uses the configured password directly
-func buildCommonEnvVars(config *StackConfig, esSecretName pulumi.StringPtrOutput, useInternalES bool) corev1.EnvVarArray {
+func buildCommonEnvVars(config *StackConfig) corev1.EnvVarArray {
 	envVars := corev1.EnvVarArray{}
 
-	// Add all environment variables from config (includes PYTHONPATH, MYSQL_HOST, etc.)
-	// For internal ES, skip ES_PROTOCOL and ES_HOST as they will be set to correct values below
+	// Add common environment variables (skip ES/MYSQL specific ones, handled below)
+	skipKeys := map[string]bool{"ES_PROTOCOL": true, "ES_HOST": true, "ES_PORT": true, "ES_PASSWORD": true,
+		"MYSQL_HOST": true, "MYSQL_PORT": true, "MYSQL_PASSWORD": true}
+
 	keys := make([]string, 0, len(config.Env))
 	for k := range config.Env {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
 	for _, k := range keys {
-		// For internal ES, skip ES_PROTOCOL and ES_HOST - they will be set correctly below
-		if useInternalES && (k == "ES_PROTOCOL" || k == "ES_HOST") {
+		if skipKeys[k] {
 			continue
 		}
-		envVars = append(envVars, &corev1.EnvVarArgs{
-			Name:  pulumi.String(k),
-			Value: pulumi.String(config.Env[k]),
-		})
+		envVars = append(envVars, &corev1.EnvVarArgs{Name: pulumi.String(k), Value: pulumi.String(config.Env[k])})
 	}
 
-	// Add Elasticsearch password
-	// For internal ES: reference the ECK-managed secret directly (runtime lookup)
-	// For external ES: use the configured password value
-	if useInternalES {
-		envVars = append(envVars, &corev1.EnvVarArgs{
-			Name: pulumi.String("ELASTIC_PASSWORD"),
-			ValueFrom: &corev1.EnvVarSourceArgs{
-				SecretKeyRef: &corev1.SecretKeySelectorArgs{
-					Name: esSecretName,
-					Key:  pulumi.String("elastic"),
-				},
-			},
-		})
+	// ===== MySQL Configuration =====
+	if config.MySQL.External && config.MySQLEndpointOutput != (pulumi.StringOutput{}) {
+		// Case 1: MySQL from StackReference (external from infra stack)
+		envVars = append(envVars,
+			&corev1.EnvVarArgs{Name: pulumi.String("MYSQL_HOST"), Value: config.MySQLEndpointOutput},
+			&corev1.EnvVarArgs{Name: pulumi.String("MYSQL_PORT"), Value: config.MySQLPortOutput},
+			&corev1.EnvVarArgs{Name: pulumi.String("MYSQL_PASSWORD"), Value: config.MySQLPasswordOutput},
+		)
 	} else {
-		// External ES: use configured password
-		esPassword := config.ES.Password
-		if esPassword == "" {
-			esPassword = "changeme"
-		}
-		envVars = append(envVars, &corev1.EnvVarArgs{
-			Name:  pulumi.String("ELASTIC_PASSWORD"),
-			Value: pulumi.String(esPassword),
-		})
+		// Case 2: MySQL from config (external, not from StackReference)
+		// Case 3: Internal MySQL (K8s service)
+		// Must explicitly add MYSQL_PASSWORD since it's in skipKeys
+		envVars = append(envVars,
+			&corev1.EnvVarArgs{Name: pulumi.String("MYSQL_HOST"), Value: pulumi.String(config.MySQL.Host)},
+			&corev1.EnvVarArgs{Name: pulumi.String("MYSQL_PORT"), Value: pulumi.String(config.MySQL.Port)},
+			&corev1.EnvVarArgs{Name: pulumi.String("MYSQL_PASSWORD"), Value: pulumi.String(config.MySQL.Password)},
+		)
 	}
 
-	// Add ES configuration JSON
-	// For internal ES: use entrypoint script to build JSON at runtime from ELASTIC_PASSWORD env var
-	// For external ES: include password directly in the JSON
-	var esProtocol, esHost string
-	esPort := config.ES.Port
+	// ===== Elasticsearch Configuration =====
+	useStackRefES := config.ES.External && config.ESEndpointOutput != (pulumi.StringOutput{})
 
-	if useInternalES {
-		// Internal ES (ECK): Force HTTPS and use default ECK service name
-		// Ignore user-configured ES_PROTOCOL and ES_HOST for internal ES
-		esProtocol = "https"
-		esHost = "elasticsearch-es-http"
+	if useStackRefES {
+		// Case 1: ES from StackReference (external from infra stack)
+		envVars = append(envVars,
+			&corev1.EnvVarArgs{Name: pulumi.String("ES_HOST"), Value: config.ESEndpointOutput},
+			&corev1.EnvVarArgs{Name: pulumi.String("ES_PORT"), Value: config.ESPortOutput},
+			&corev1.EnvVarArgs{Name: pulumi.String("ES_PROTOCOL"), Value: config.ESProtocolOutput},
+			&corev1.EnvVarArgs{Name: pulumi.String("ES_USER"), Value: config.ESUsernameOutput},
+			&corev1.EnvVarArgs{Name: pulumi.String("ELASTIC_PASSWORD"), Value: config.ESPasswordOutput},
+		)
+	} else if config.ES.External {
+		// Case 2: ES from config (external, not from StackReference)
+		envVars = append(envVars,
+			&corev1.EnvVarArgs{Name: pulumi.String("ES_HOST"), Value: pulumi.String(config.ES.Host)},
+			&corev1.EnvVarArgs{Name: pulumi.String("ES_PORT"), Value: pulumi.String(config.ES.Port)},
+			&corev1.EnvVarArgs{Name: pulumi.String("ES_PROTOCOL"), Value: pulumi.String(config.ES.Protocol)},
+			&corev1.EnvVarArgs{Name: pulumi.String("ES_USER"), Value: pulumi.String(config.ES.Username)},
+			&corev1.EnvVarArgs{Name: pulumi.String("ELASTIC_PASSWORD"), Value: pulumi.String(config.ES.Password)},
+		)
 	} else {
-		// External ES: use configured values
-		esProtocol = config.Env["ES_PROTOCOL"]
-		if esProtocol == "" {
-			esProtocol = "http" // Default for external ES
-		}
-		esHost = config.Env["ES_HOST"]
-		if esHost == "" {
-			esHost = "elasticsearch"
-		}
-	}
+		// Case 3: Internal ES (ECK managed)
+		esProtocol, esHost := "https", "elasticsearch-es-http"
+		esSecretName := "elasticsearch-es-elastic-user"
 
-	if useInternalES {
-		// Internal ES: password will be substituted from ELASTIC_PASSWORD env var at runtime
-		// The entrypoint script handles this substitution
-		envVars = append(envVars, &corev1.EnvVarArgs{
-			Name:  pulumi.String("ES_HOST_JSON"),
-			Value: pulumi.Sprintf(`"%s://%s:%s"`, esProtocol, esHost, esPort),
-		})
-		envVars = append(envVars, &corev1.EnvVarArgs{
-			Name:  pulumi.String("ES_PROTOCOL"),
-			Value: pulumi.String(esProtocol),
-		})
-		envVars = append(envVars, &corev1.EnvVarArgs{
-			Name:  pulumi.String("ES_HOST"),
-			Value: pulumi.String(esHost),
-		})
-		envVars = append(envVars, &corev1.EnvVarArgs{
-			Name:  pulumi.String("ES_USERNAME"),
-			Value: pulumi.String("elastic"),
-		})
-		// ES_JSON_TEMPLATE will be used by entrypoint to build final ES config
-		envVars = append(envVars, &corev1.EnvVarArgs{
-			Name:  pulumi.String("ES_JSON_TEMPLATE"),
-			Value: pulumi.Sprintf(`{"hosts": "%s://%s:%s", "username": "elastic", "password": "${ELASTIC_PASSWORD}"}`, esProtocol, esHost, esPort),
-		})
-	} else {
-		// External ES: include password directly in JSON
-		esPassword := config.ES.Password
-		if esPassword == "" {
-			esPassword = "changeme"
-		}
-		envVars = append(envVars, &corev1.EnvVarArgs{
-			Name:  pulumi.String("ES"),
-			Value: pulumi.Sprintf(`{"hosts": "%s://%s:%s", "username": "elastic", "password": "%s"}`, esProtocol, esHost, esPort, esPassword),
-		})
+		envVars = append(envVars,
+			&corev1.EnvVarArgs{Name: pulumi.String("ES_HOST"), Value: pulumi.String(esHost)},
+			&corev1.EnvVarArgs{Name: pulumi.String("ES_PORT"), Value: pulumi.String(config.ES.Port)},
+			&corev1.EnvVarArgs{Name: pulumi.String("ES_PROTOCOL"), Value: pulumi.String(esProtocol)},
+			&corev1.EnvVarArgs{Name: pulumi.String("ES_USER"), Value: pulumi.String("elastic")},
+			&corev1.EnvVarArgs{Name: pulumi.String("ELASTIC_PASSWORD"), ValueFrom: &corev1.EnvVarSourceArgs{SecretKeyRef: &corev1.SecretKeySelectorArgs{Name: pulumi.String(esSecretName), Key: pulumi.String("elastic")}}},
+		)
 	}
 
 	return envVars
@@ -1585,66 +1747,18 @@ type ServicePortConfig struct {
 }
 
 // createESWaitInitContainer creates an init container that waits for Elasticsearch to be ready
-func createESWaitInitContainer(config *StackConfig, esSecret *corev1.Secret) *corev1.ContainerArgs {
-	var esWaitCommand pulumi.StringInput
-	var esPasswordEnvVar *corev1.EnvVarArgs
+func createESWaitInitContainer(config *StackConfig) *corev1.ContainerArgs {
+	// Build common environment variables to get ES configuration
+	envVars := buildCommonEnvVars(config)
 
-	if config.ES.Host == "" {
-		// Internal ES - use SecretKeyRef to read password from ECK secret at runtime
-		esWaitCommand = pulumi.String("until curl -k -u elastic:${ES_PASSWORD} https://elasticsearch-es-http:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'; do echo 'Waiting for Elasticsearch...'; sleep 5; done; echo 'Elasticsearch is ready.'")
-		esPasswordEnvVar = &corev1.EnvVarArgs{
-			Name: pulumi.String("ES_PASSWORD"),
-			ValueFrom: &corev1.EnvVarSourceArgs{
-				SecretKeyRef: &corev1.SecretKeySelectorArgs{
-					Name: esSecret.Metadata.Name(),
-					Key:  pulumi.String("elastic"),
-				},
-			},
-		}
-		return &corev1.ContainerArgs{
-			Name:  pulumi.String("wait-for-elasticsearch"),
-			Image: pulumi.String(config.Images.Curl),
-			Env: corev1.EnvVarArray{
-				esPasswordEnvVar,
-			},
-			Command: pulumi.StringArray{
-				pulumi.String("sh"),
-				pulumi.String("-c"),
-				esWaitCommand,
-			},
-		}
-	}
-
-	// External ES - use configured password and connection details
-	esWaitCommand = pulumi.String("until curl -u elastic:${ES_PASSWORD} ${ES_PROTOCOL}://${ES_HOST}:${ES_PORT}/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'; do echo 'Waiting for external Elasticsearch at ${ES_HOST}...'; sleep 5; done; echo 'Elasticsearch is ready.'")
-	// Get password from external ES secret (created at stack level)
-	esPassword := config.ES.Password
-	if esPassword == "" {
-		esPassword = "changeme"
-	}
-	esPasswordEnvVar = &corev1.EnvVarArgs{
-		Name:  pulumi.String("ES_PASSWORD"),
-		Value: pulumi.String(esPassword),
-	}
+	// Unified ES wait command compatible with both internal and external ES
+	// Uses curl with -k to support self-signed certificates (common in internal ECK)
+	esWaitCommand := pulumi.String(`until curl -s -k -u "${ES_USER}:${ELASTIC_PASSWORD}" "${ES_PROTOCOL}://${ES_HOST}:${ES_PORT}/_cluster/health" | grep -q '"status":"green"\|"status":"yellow"'; do echo "Waiting for Elasticsearch at ${ES_HOST}..."; sleep 5; done; echo "Elasticsearch is ready."`)
 
 	return &corev1.ContainerArgs{
 		Name:  pulumi.String("wait-for-elasticsearch"),
 		Image: pulumi.String(config.Images.Curl),
-		Env: corev1.EnvVarArray{
-			esPasswordEnvVar,
-			&corev1.EnvVarArgs{
-				Name:  pulumi.String("ES_HOST"),
-				Value: pulumi.String(config.Env["ES_HOST"]),
-			},
-			&corev1.EnvVarArgs{
-				Name:  pulumi.String("ES_PROTOCOL"),
-				Value: pulumi.String(config.Env["ES_PROTOCOL"]),
-			},
-			&corev1.EnvVarArgs{
-				Name:  pulumi.String("ES_PORT"),
-				Value: pulumi.String(config.ES.Port),
-			},
-		},
+		Env:   envVars,
 		Command: pulumi.StringArray{
 			pulumi.String("sh"),
 			pulumi.String("-c"),
@@ -1653,9 +1767,9 @@ func createESWaitInitContainer(config *StackConfig, esSecret *corev1.Secret) *co
 	}
 }
 
-func createRAGFlowDeployment(ctx *pulumi.Context, config *StackConfig, namespace *corev1.Namespace, provider pulumi.ProviderResource, esSecret *corev1.Secret, registrySecret *corev1.Secret) (*v1.Deployment, *corev1.Service, *v1.Deployment, error) {
+func createRAGFlowDeployment(ctx *pulumi.Context, config *StackConfig, namespace *corev1.Namespace, provider pulumi.ProviderResource, registrySecret *corev1.Secret) (*v1.Deployment, *corev1.Service, *v1.Deployment, error) {
 	// Read parser replicas from config, default to 1
-	parserReplicasStr := getConfig(ctx, "parser_replicas", "1")
+	parserReplicasStr := getConfig(ctx, "parser.replicas", "1")
 	parserReplicas, err := strconv.Atoi(parserReplicasStr)
 	if err != nil {
 		parserReplicas = 1
@@ -1666,10 +1780,10 @@ func createRAGFlowDeployment(ctx *pulumi.Context, config *StackConfig, namespace
 	// Default values: WS=3, RAPTOR=3, GRAPHRAG=3, RESUME=1 (total 10 workers)
 	// Reduced to: WS=1, RAPTOR=1, GRAPHRAG=1, RESUME=0 (total 3 workers)
 	// This reduces the number of fsnotify instances and helps avoid "too many open files" error
-	parserWSWorkers := getConfig(ctx, "parser_ws_workers", "1")
-	parserRaptorWorkers := getConfig(ctx, "parser_raptor_workers", "1")
-	parserGraphragWorkers := getConfig(ctx, "parser_graphrag_workers", "1")
-	parserResumeWorkers := getConfig(ctx, "parser_resume_workers", "0")
+	parserWSWorkers := getConfig(ctx, "parser.ws_workers", "1")
+	parserRaptorWorkers := getConfig(ctx, "parser.raptor_workers", "1")
+	parserGraphragWorkers := getConfig(ctx, "parser.graphrag_workers", "1")
+	parserResumeWorkers := getConfig(ctx, "parser.resume_workers", "1")
 
 	// RAGFlow Deployment
 	ragflowDepCfg := DeploymentConfig{
@@ -1722,14 +1836,34 @@ func createRAGFlowDeployment(ctx *pulumi.Context, config *StackConfig, namespace
 
 	// MySQL database initialization (only for external MySQL)
 	// If using external MySQL, create the database if it doesn't exist
-	if config.MySQL.Host != "" {
+	if config.MySQL.External {
+		// Build MySQL host and password values - use StackReference output if available
+		var mysqlHostValue pulumi.StringInput
+		var mysqlPasswordValue pulumi.StringInput
+
+		if config.MySQLEndpointOutput != (pulumi.StringOutput{}) {
+			// Use MySQL endpoint from StackReference
+			mysqlHostValue = config.MySQLEndpointOutput
+		} else {
+			// Use configured MYSQL_HOST from config
+			mysqlHostValue = pulumi.String(config.Env["MYSQL_HOST"])
+		}
+
+		if config.MySQLPasswordOutput != (pulumi.StringOutput{}) {
+			// Use MySQL password from StackReference
+			mysqlPasswordValue = config.MySQLPasswordOutput
+		} else {
+			// Use configured MySQL password
+			mysqlPasswordValue = pulumi.String(config.MySQL.Password)
+		}
+
 		initContainers = append(initContainers, &corev1.ContainerArgs{
 			Name:  pulumi.String("init-mysql-database"),
 			Image: pulumi.String(config.Images.MySQL),
 			Env: corev1.EnvVarArray{
 				&corev1.EnvVarArgs{
 					Name:  pulumi.String("MYSQL_PWD"),
-					Value: pulumi.String(config.MySQL.Password),
+					Value: mysqlPasswordValue,
 				},
 			},
 			Command: pulumi.StringArray{
@@ -1741,8 +1875,8 @@ func createRAGFlowDeployment(ctx *pulumi.Context, config *StackConfig, namespace
 						"mysql -h \"${MYSQL_HOST}\" -u root -e \"CREATE DATABASE IF NOT EXISTS \\`${MYSQL_DBNAME}\\`;\" 2>/dev/null && "+
 						"echo \"MySQL Init: Database ${MYSQL_DBNAME} created or already exists\" || "+
 						"(echo \"MySQL Init: Error: Failed to create database\" && exit 1)",
-					config.Env["MYSQL_HOST"],
-					config.Env["MYSQL_DBNAME"],
+					mysqlHostValue,
+					pulumi.String(config.Env["MYSQL_DBNAME"]),
 				),
 			},
 		})
@@ -1815,20 +1949,16 @@ func createRAGFlowDeployment(ctx *pulumi.Context, config *StackConfig, namespace
 
 	// ES wait init container (added LAST to ensure it runs after all other init containers)
 	// This ensures MySQL and S3 initialization complete before checking ES readiness
-	initContainers = append(initContainers, createESWaitInitContainer(config, esSecret))
+	esWaitContainer := createESWaitInitContainer(config)
+	initContainers = append(initContainers, esWaitContainer)
 
 	ragflowDepCfg.InitContainers = initContainers
 
 	// Create RAGFlow deployment and service
-	deployment, service, err := createRAGFlowAppDeployment(ctx, config, namespace, provider, esSecret, ragflowDepCfg, registrySecret)
+	deployment, service, err := createRAGFlowAppDeployment(ctx, config, namespace, provider, ragflowDepCfg, registrySecret)
 	if err != nil {
 		return nil, nil, nil, err
 	}
-
-	// Build init containers for parser (parser also needs ES wait)
-	var parserInitContainers corev1.ContainerArray
-	// Add ES wait init container using the same shared function
-	parserInitContainers = append(parserInitContainers, createESWaitInitContainer(config, esSecret))
 
 	// Parser Deployment
 	parserDepCfg := DeploymentConfig{
@@ -1901,11 +2031,11 @@ func createRAGFlowDeployment(ctx *pulumi.Context, config *StackConfig, namespace
 				EmptyDir: &corev1.EmptyDirVolumeSourceArgs{},
 			},
 		},
-		CreateService: false,
+		CreateService:  false,
+		InitContainers: corev1.ContainerArray{esWaitContainer}, //parser also needs ES wait
 	}
-	parserDepCfg.InitContainers = parserInitContainers
 
-	parserDeployment, _, err := createRAGFlowAppDeployment(ctx, config, namespace, provider, esSecret, parserDepCfg, registrySecret)
+	parserDeployment, _, err := createRAGFlowAppDeployment(ctx, config, namespace, provider, parserDepCfg, registrySecret)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -1914,13 +2044,9 @@ func createRAGFlowDeployment(ctx *pulumi.Context, config *StackConfig, namespace
 }
 
 // createRAGFlowAppDeployment creates a RAGFlow or Parser deployment based on the provided configuration
-func createRAGFlowAppDeployment(ctx *pulumi.Context, config *StackConfig, namespace *corev1.Namespace, provider pulumi.ProviderResource, esSecret *corev1.Secret, depCfg DeploymentConfig, registrySecret *corev1.Secret) (*v1.Deployment, *corev1.Service, error) {
-	// Determine if using internal ES (ECK managed) or external ES
-	useInternalES := config.ES.Host == ""
-
+func createRAGFlowAppDeployment(ctx *pulumi.Context, config *StackConfig, namespace *corev1.Namespace, provider pulumi.ProviderResource, depCfg DeploymentConfig, registrySecret *corev1.Secret) (*v1.Deployment, *corev1.Service, error) {
 	// Build common environment variables using shared function
-	// Pass the secret metadata name directly for internal ES, nil for external ES
-	commonEnvVars := buildCommonEnvVars(config, esSecret.Metadata.Name(), useInternalES)
+	commonEnvVars := buildCommonEnvVars(config)
 
 	// Add additional environment variables
 	envVars := commonEnvVars
@@ -2115,13 +2241,6 @@ func detectGatewayType(ctx *pulumi.Context, provider pulumi.ProviderResource) (s
 	return "", fmt.Errorf("no GatewayClass found in cluster")
 }
 
-// Helper struct for HTTPRoute configuration
-type HTTPRouteConfig struct {
-	Name        string
-	SectionName string
-	Port        int
-}
-
 func createCR(ctx *pulumi.Context, name, apiVersion, kind string, namespace pulumi.StringPtrInput, spec map[string]interface{}, provider pulumi.ProviderResource, annotations map[string]string) error {
 	metadataArgs := &metav1.ObjectMetaArgs{
 		Name:      pulumi.String(name),
@@ -2152,27 +2271,17 @@ func createHTTPRouteForPort(
 	routeName string,
 	serviceName pulumi.StringOutput,
 	gatewayNsName, httpRouteNsName string,
-	enableHTTPS bool,
 	provider pulumi.ProviderResource,
 	pathPrefixes []string,
 	port int,
 ) error {
-	// Build parentRefs list (always bind to HTTP, conditionally to HTTPS)
+	// Build parentRefs list (HTTP only)
 	parentRefs := []interface{}{
 		map[string]interface{}{
 			"name":        "ragflow-gateway",
 			"namespace":   gatewayNsName,
 			"sectionName": "http", // Port 80
 		},
-	}
-
-	// Add HTTPS parent ref if enabled
-	if enableHTTPS {
-		parentRefs = append(parentRefs, map[string]interface{}{
-			"name":        "ragflow-gateway",
-			"namespace":   gatewayNsName,
-			"sectionName": "https", // Port 443
-		})
 	}
 
 	// Build matches for all path prefixes
@@ -2216,21 +2325,21 @@ func createHTTPRouteForPort(
 // ports of the same service causes server group registration failures. The Aliyun
 // team will fix this in a future release. The temporary workaround is to create
 // separate HTTPRoutes for different ports of the same service.
-func createPathBasedHTTPRoute(ctx *pulumi.Context, serviceName pulumi.StringOutput, gatewayNsName, httpRouteNsName string, enableHTTPS bool, provider pulumi.ProviderResource) error {
+func createPathBasedHTTPRoute(ctx *pulumi.Context, serviceName pulumi.StringOutput, gatewayNsName, httpRouteNsName string, provider pulumi.ProviderResource) error {
 	// TLS Termination is handled by Gateway, traffic arrives here as HTTP.
 
 	// HTTPRoute 1: /v1 and /api -> port 9380 (API service)
-	if err := createHTTPRouteForPort(ctx, "ragflow-http-route-api", serviceName, gatewayNsName, httpRouteNsName, enableHTTPS, provider, []string{"/v1", "/api"}, 9380); err != nil {
+	if err := createHTTPRouteForPort(ctx, "ragflow-http-route-api", serviceName, gatewayNsName, httpRouteNsName, provider, []string{"/v1", "/api"}, 9380); err != nil {
 		return err
 	}
 
 	// HTTPRoute 2: /api/v1/admin -> port 9381 (admin service)
-	if err := createHTTPRouteForPort(ctx, "ragflow-http-route-admin", serviceName, gatewayNsName, httpRouteNsName, enableHTTPS, provider, []string{"/api/v1/admin"}, 9381); err != nil {
+	if err := createHTTPRouteForPort(ctx, "ragflow-http-route-admin", serviceName, gatewayNsName, httpRouteNsName, provider, []string{"/api/v1/admin"}, 9381); err != nil {
 		return err
 	}
 
 	// HTTPRoute 3: / (root path) -> port 80 (frontend nginx - listening on 80 now)
-	if err := createHTTPRouteForPort(ctx, "ragflow-http-route-frontend", serviceName, gatewayNsName, httpRouteNsName, enableHTTPS, provider, []string{"/"}, 80); err != nil {
+	if err := createHTTPRouteForPort(ctx, "ragflow-http-route-frontend", serviceName, gatewayNsName, httpRouteNsName, provider, []string{"/"}, 80); err != nil {
 		return err
 	}
 
@@ -2243,35 +2352,9 @@ func createGateway(ctx *pulumi.Context, config *StackConfig, provider pulumi.Pro
 	// Create Gateway in configured namespace (default: nginx-gateway)
 	gatewayNsName := config.Gateway.Namespace
 
-	// Handle TLS certificate for HTTPS listener (if enabled)
-	var secretName string
-	if config.Gateway.EnableHTTPS {
-		// Use user-provided certificate (validation in LoadConfig ensures cert and key are present)
-		certPEM := config.Gateway.TLSCertPEM
-		keyPEM := config.Gateway.TLSKeyPEM
-		ctx.Log.Info("Using user-provided TLS certificate for Gateway HTTPS listener", &pulumi.LogArgs{})
-
-		// Create Secret for Gateway TLS
-		secretName = "ragflow-gateway-cert"
-		_, err := corev1.NewSecret(ctx, secretName, &corev1.SecretArgs{
-			Metadata: &metav1.ObjectMetaArgs{
-				Name:      pulumi.String(secretName),
-				Namespace: pulumi.String(gatewayNsName),
-			},
-			Type: pulumi.String("kubernetes.io/tls"),
-			StringData: pulumi.StringMap{
-				"tls.crt": pulumi.String(certPEM),
-				"tls.key": pulumi.String(keyPEM),
-			},
-		}, pulumi.Provider(provider))
-		if err != nil {
-			return nil, fmt.Errorf("failed to create TLS secret: %w", err)
-		}
-	}
-
 	ctx.Log.Info(fmt.Sprintf("Creating Gateway with GatewayClass: %s", gatewayClass), &pulumi.LogArgs{})
 
-	// Build listeners list (always include HTTP, conditionally include HTTPS)
+	// Build listeners list (HTTP only)
 	listeners := []interface{}{
 		// HTTP Listener (Port 80)
 		map[string]interface{}{
@@ -2282,27 +2365,6 @@ func createGateway(ctx *pulumi.Context, config *StackConfig, provider pulumi.Pro
 				"namespaces": map[string]interface{}{"from": "All"},
 			},
 		},
-	}
-
-	// Add HTTPS listener if enabled
-	if config.Gateway.EnableHTTPS {
-		listeners = append(listeners, map[string]interface{}{
-			"name":     "https",
-			"port":     443,
-			"protocol": "HTTPS",
-			"tls": map[string]interface{}{
-				"mode": "Terminate",
-				"certificateRefs": []interface{}{
-					map[string]interface{}{
-						"kind": "Secret",
-						"name": secretName,
-					},
-				},
-			},
-			"allowedRoutes": map[string]interface{}{
-				"namespaces": map[string]interface{}{"from": "All"},
-			},
-		})
 	}
 
 	gatewaySpec := map[string]interface{}{
@@ -2330,327 +2392,363 @@ func createGateway(ctx *pulumi.Context, config *StackConfig, provider pulumi.Pro
 	ctx.Log.Info("Gateway resource created successfully", &pulumi.LogArgs{})
 
 	// Create a single HTTPRoute with path-based routing rules
-	if err := createPathBasedHTTPRoute(ctx, ragflowService.Metadata.Name().Elem(), gatewayNsName, config.Namespace, config.Gateway.EnableHTTPS, provider); err != nil {
+	if err := createPathBasedHTTPRoute(ctx, ragflowService.Metadata.Name().Elem(), gatewayNsName, config.Namespace, provider); err != nil {
 		return nil, err
 	}
+
+	// Export gateway address from Gateway status.addresses
+	//
+	// NOTE: Gateway API Specification (GEP) and Aliyun Implementation
+	// ================================================================
+	// According to Gateway API specification, status.addresses is an OPTIONAL field.
+	// However, Aliyun (ACK) officially supports Gateway API (GA since late 2023) and
+	// WILL populate status.addresses in production environments with:
+	//   - type: IPAddress (for ALB public IP) or Hostname (for ALB DNS name)
+	//   - value: the actual accessible address
+	//
+	// Reference: https://gateway-api.sigs.k8s.io/concepts/api-standards/gateway/#status-addresses
+	//
+	// For non-Aliyun clusters (local dev, other clouds), this may return empty string
+	// depending on the Gateway Controller implementation (Cilium, NGINX Gateway, etc.)
+	gatewayID := gateway.ID()
+	gatewayAddress := gatewayID.ApplyT(func(id string) (string, error) {
+		// Build config using standard loading rules
+		loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
+		configOverrides := &clientcmd.ConfigOverrides{}
+		kubeConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, configOverrides)
+		cfg, err := kubeConfig.ClientConfig()
+		if err != nil {
+			return "", fmt.Errorf("failed to load kube config: %w", err)
+		}
+
+		dyn, err := dynamic.NewForConfig(cfg)
+		if err != nil {
+			return "", fmt.Errorf("failed to create dynamic client: %w", err)
+		}
+
+		// Get Gateway resource by name and namespace
+		gvr := schema.GroupVersionResource{Group: "gateway.networking.k8s.io", Version: "v1", Resource: "gateways"}
+		gwObj, err := dyn.Resource(gvr).Namespace(gatewayNsName).Get(context.Background(), "ragflow-gateway", k8smetav1.GetOptions{})
+		if err != nil {
+			return "", fmt.Errorf("failed to get Gateway resource: %w", err)
+		}
+
+		// Extract address from status.addresses
+		status, ok := gwObj.Object["status"].(map[string]interface{})
+		if !ok {
+			return "", fmt.Errorf("gateway status not available")
+		}
+
+		addresses, ok := status["addresses"].([]interface{})
+		if !ok || len(addresses) == 0 {
+			return "", fmt.Errorf("no addresses in Gateway status")
+		}
+
+		// Get first address (Gateway API supports multiple addresses, but we use the first one)
+		firstAddr, ok := addresses[0].(map[string]interface{})
+		if !ok {
+			return "", fmt.Errorf("invalid address format")
+		}
+
+		// Extract value field (contains the actual IP or hostname)
+		value, ok := firstAddr["value"].(string)
+		if !ok || value == "" {
+			return "", fmt.Errorf("address value is empty")
+		}
+
+		// Log address type for debugging
+		if addrType, ok := firstAddr["type"].(string); ok {
+			ctx.Log.Info(fmt.Sprintf("Gateway address (type=%s): %s", addrType, value), &pulumi.LogArgs{})
+		} else {
+			ctx.Log.Info(fmt.Sprintf("Gateway address: %s", value), &pulumi.LogArgs{})
+		}
+
+		return value, nil
+	}).(pulumi.StringOutput)
+
+	ctx.Export("gateway_address", gatewayAddress)
+
+	// Create ConfigMap to expose gateway address in the same namespace as the Gateway
+	_, err = corev1.NewConfigMap(ctx, "ragflow-gateway-address", &corev1.ConfigMapArgs{
+		Metadata: &metav1.ObjectMetaArgs{
+			Name:      pulumi.String("ragflow-gateway-address"),
+			Namespace: pulumi.String(gatewayNsName),
+		},
+		Data: pulumi.StringMap{
+			"gateway_address": gatewayAddress,
+		},
+	}, pulumi.Provider(provider))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create gateway address ConfigMap: %w", err)
+	}
+	ctx.Log.Info(fmt.Sprintf("ConfigMap 'ragflow-gateway-address' created in namespace: %s", gatewayNsName), &pulumi.LogArgs{})
 
 	return gateway, nil
 }
 
-// isAliyunCluster detects if the current cluster is running on Aliyun
-// by checking if the S3 endpoint is Aliyun OSS
-func isAliyunCluster(config *StackConfig) bool {
-	s3Endpoint := config.Env["S3_ENDPOINT"]
-	return strings.Contains(s3Endpoint, "aliyuncs.com")
+// shouldUseIngress determines if we should use Ingress API instead of Gateway API
+//
+// Routing strategy:
+// - Aliyun ACK (AckBasic, AckPro, AckProAuto) → Gateway API (has real nodes, can install Gateway Controller)
+// - Aliyun ASK (AskBasic, AskPro) → Ingress API (Serverless with virtual nodes, use ALB Ingress Controller)
+// - Other clouds/existing → Gateway API (default)
+func shouldUseIngress(ctx *pulumi.Context, cloudProvider string) bool {
+	if cloudProvider != "aliyun" {
+		return false
+	}
+
+	// Read cluster type configuration
+	// Valid values: AckBasic, AckPro, AckProAuto, AskBasic, AskPro
+	clusterType := getConfig(ctx, "kubernetes.cluster_type", "AckPro")
+
+	// Use Ingress for ASK types (starts with "Ask")
+	// - AskBasic, AskPro → Ingress (Serverless clusters use ALB Ingress Controller)
+	// - AckBasic, AckPro, AckProAuto → Gateway (has real nodes, can use Gateway Controller)
+	isASK := strings.HasPrefix(clusterType, "Ask")
+
+	if isASK {
+		ctx.Log.Info(fmt.Sprintf("Detected Aliyun ASK (Serverless) cluster type: %s - will use Ingress API with ALB Ingress Controller", clusterType), &pulumi.LogArgs{})
+		return true
+	}
+
+	ctx.Log.Info(fmt.Sprintf("Cluster type: %s (Aliyun ACK with real nodes) - will use Gateway API", clusterType), &pulumi.LogArgs{})
+	return false
 }
 
-func getClusterEnvConfig() (string, string, string, error) {
-	// Use client-go to fetch config map
-	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
-	configOverrides := &clientcmd.ConfigOverrides{}
-	kubeConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, configOverrides)
-	config, err := kubeConfig.ClientConfig()
-	if err != nil {
-		return "", "", "", err
-	}
-	clientset, err := k8sclientset.NewForConfig(config)
-	if err != nil {
-		return "", "", "", err
-	}
+// createAlbConfig creates an AlbConfig resource for ALB Ingress Controller
+// AlbConfig defines the ALB instance configuration (IP type, availability zones, listeners)
+// This is required for Aliyun ALB Ingress Controller to provision an ALB instance
+// Returns the AlbConfig resource for reference by IngressClass
+//
+// vSwitch IDs come from either StackReference (infra stack) or config key "aliyun.vswitch_ids".
+func createAlbConfig(ctx *pulumi.Context, config *StackConfig, provider pulumi.ProviderResource) (*apiextensions.CustomResource, error) {
+	// vSwitch IDs from StackReference or config
+	vSwitchIdsOutput := config.VSwitchIDs
 
-	ctx := context.TODO()
-	// Try ack-cluster-profile
-	cm, err := clientset.CoreV1().ConfigMaps("kube-system").Get(ctx, "ack-cluster-profile", k8smetav1.GetOptions{})
-	if err == nil && cm != nil {
-		region := ""
-		if val, ok := cm.Data["vsw-zone"]; ok {
-			parts := strings.Split(val, ":")
-			if len(parts) > 1 {
-				zone := parts[1]
-				// Basic heuristic to get region from zone (e.g. cn-shanghai-l -> cn-shanghai)
-				lastDash := strings.LastIndex(zone, "-")
-				if lastDash > 0 {
-					region = zone[:lastDash]
-				}
-			}
+	// Convert StringArrayOutput to a format we can use in the resource
+	// We need to apply the vSwitch IDs to build the zone mappings
+	zoneMappingsOutput := vSwitchIdsOutput.ApplyT(func(ids []string) []interface{} {
+		if len(ids) < 2 {
+			return nil // Will cause error in ApplyT
 		}
-		return cm.Data["vpcid"], cm.Data["vswitch"], region, nil
+
+		ctx.Log.Info(fmt.Sprintf("Creating AlbConfig with %d vSwitches in different availability zones", len(ids)), &pulumi.LogArgs{})
+		for i, vswId := range ids {
+			ctx.Log.Info(fmt.Sprintf("  vSwitch[%d]: %s", i+1, vswId), &pulumi.LogArgs{})
+		}
+
+		// Build zone mappings from vSwitch IDs
+		zoneMappings := []interface{}{}
+		for _, vswId := range ids {
+			zoneMappings = append(zoneMappings, map[string]interface{}{
+				"vSwitchId": vswId,
+			})
+		}
+		return zoneMappings
+	})
+
+	// Build AlbConfig spec
+	albConfigSpec := map[string]interface{}{
+		"config": map[string]interface{}{
+			"name":         "ragflow-alb",
+			"addressType":  "Internet", // Internet (public) or Intranet (private)
+			"zoneMappings": zoneMappingsOutput,
+		},
+		"listeners": []interface{}{
+			map[string]interface{}{
+				"port":     80,
+				"protocol": "HTTP",
+			},
+		},
 	}
 
-	// Try acs-profile as fallback
-	cm, err = clientset.CoreV1().ConfigMaps("kube-system").Get(ctx, "acs-profile", k8smetav1.GetOptions{})
-	if err == nil && cm != nil {
-		// acs-profile might not easy way to get region, return empty
-		return cm.Data["vpcId"], cm.Data["vSwitchIds"], "", nil
+	albConfig, err := apiextensions.NewCustomResource(ctx, "alb-config", &apiextensions.CustomResourceArgs{
+		ApiVersion: pulumi.String("alibabacloud.com/v1"),
+		Kind:       pulumi.String("AlbConfig"),
+		Metadata: &metav1.ObjectMetaArgs{
+			Name: pulumi.String("alb"),
+		},
+		OtherFields: kubernetes.UntypedArgs{
+			"spec": albConfigSpec,
+		},
+	}, pulumi.Provider(provider), pulumi.IgnoreChanges([]string{
+		// ALB Ingress Controller manages these fields
+		"status",
+	}))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create AlbConfig: %w", err)
 	}
 
-	return "", "", "", fmt.Errorf("could not find cluster profile configmaps")
+	ctx.Log.Info("AlbConfig created successfully - ALB instance will be provisioned by Aliyun controller", &pulumi.LogArgs{})
+	ctx.Log.Info("Note: ALB instance provisioning takes ~20-30 seconds, monitored via: kubectl get albconfig alb -o yaml", &pulumi.LogArgs{})
+
+	return albConfig, nil
 }
 
-// createIngress creates an Ingress resource for Aliyun ALB
-//
-// BROKEN STATE - KNOWN ISSUES:
-// 1. ACS clusters don't support automatic LoadBalancer creation
-// 2. Ingress resources won't get LoadBalancer IP assigned
-// 3. ALB Ingress Controller on ACS has limited/broken functionality
-// 4. Original Gateway API bug remains: HTTPRoute forwarding rules fail when pods are recreated
-//
-// WHY USE INGRESS FOR ALIYUN:
-// - Aliyun ALB Ingress Controller has proven Endpoints watching support
-// - Gateway API implementation on Aliyun ALB has buggy Endpoints watching
-// - Ingress is the traditional Kubernetes API with better controller support
-//
-// This code is left in broken state as requested by user for next person to handle.
-func createIngress(ctx *pulumi.Context, config *StackConfig, provider pulumi.ProviderResource, ragflowService *corev1.Service) error {
-	ingressNsName := config.Namespace
-	var albID pulumi.StringOutput // Use StringOutput to hold the ID
-	var albIDSet bool             // Flag to check if ALB was created manually
-
-	// Check if explicit ALB configuration is present
-	vpcID := getConfig(ctx, "alb_vpc_id", "")
-	subnetIDs := getConfig(ctx, "alb_vswitch_ids", "")
-	aliRegion := ""
-
-	// Always try to read from cluster environment to get defaults and region
-	cVpc, cSubnets, cRegion, err := getClusterEnvConfig()
-	if err == nil {
-		aliRegion = cRegion
-		// Use discovered values if config is missing
-		// Or override config? User said "Must runtime read".
-		// But usually manual config overrides auto-discovery.
-		// However, I need region anyway.
-		if vpcID == "" {
-			vpcID = cVpc
-		}
-		if subnetIDs == "" {
-			subnetIDs = cSubnets
-		}
-		ctx.Log.Info(fmt.Sprintf("Discovered ALB config from cluster: vpc=%s, vswitches=%s, region=%s", cVpc, cSubnets, cRegion), &pulumi.LogArgs{})
-	} else {
-		ctx.Log.Warn(fmt.Sprintf("Failed to discover cluster config: %v", err), &pulumi.LogArgs{})
+// ensureALBIngressClass creates the ALB IngressClass and ensures AlbConfig exists
+// This is required for ALB Ingress Controller to process Ingress resources
+// The IngressClass references the AlbConfig via the parameters field
+func ensureALBIngressClass(ctx *pulumi.Context, config *StackConfig, provider pulumi.ProviderResource) error {
+	// Step 1: Create AlbConfig first (required by IngressClass)
+	ctx.Log.Info("Creating AlbConfig for ALB Ingress Controller...", &pulumi.LogArgs{})
+	albConfig, err := createAlbConfig(ctx, config, provider)
+	if err != nil {
+		return fmt.Errorf("failed to create AlbConfig: %w", err)
 	}
 
-	if vpcID != "" && subnetIDs != "" {
-		ctx.Log.Info("Found ALB config (vpc_id, vswitch_ids). Provisioning ALB via pulumi-alicloud...", &pulumi.LogArgs{})
-
-		// Configure Aliyun Provider dynamically if S3 creds are available
-		var aliProvider pulumi.ProviderResource
-		if config.Env["S3_ACCESS_KEY"] != "" && config.Env["S3_SECRET_KEY"] != "" && isAliyunCluster(config) {
-			ctx.Log.Info("Using S3 credentials for Aliyun Provider (derived from S3 config)", &pulumi.LogArgs{})
-			p, err := alicloud.NewProvider(ctx, "aliyun-dynamic", &alicloud.ProviderArgs{
-				AccessKey: pulumi.String(config.Env["S3_ACCESS_KEY"]),
-				SecretKey: pulumi.String(config.Env["S3_SECRET_KEY"]),
-				Region:    pulumi.String(aliRegion),
-			})
-			if err != nil {
-				return fmt.Errorf("failed to create alicloud provider: %w", err)
-			}
-			aliProvider = p
-		}
-
-		// Split subsystem IDs (preferred but might be insufficient zones)
-		vswitchIDList := strings.Split(subnetIDs, ",")
-		var cleanVswitchIDs []string
-		for _, s := range vswitchIDList {
-			cleanVswitchIDs = append(cleanVswitchIDs, strings.TrimSpace(s))
-		}
-
-		// Initialize opts and resOpts
-		opts := []pulumi.InvokeOption{}
-		resOpts := []pulumi.ResourceOption{}
-		if aliProvider != nil {
-			opts = append(opts, pulumi.Provider(aliProvider))
-			resOpts = append(resOpts, pulumi.Provider(aliProvider))
-		}
-
-		// Get ALL VSwitches in the VPC to ensure we can find enough zones (ALB requires >= 2 zones)
-		// We prioritize the configured ones, but fallback/augment with others if needed.
-		// Actually, just fetching all and picking unique zones is safest for "Manual Mode" in ACS where profile might be incomplete.
-		switches, err := vpc.GetSwitches(ctx, &vpc.GetSwitchesArgs{
-			VpcId: &vpcID,
-		}, opts...)
-		if err != nil {
-			return fmt.Errorf("failed to get vswitches info: %w", err)
-		}
-
-		// Select one switch per zone
-		zoneMap := make(map[string]string) // ZoneID -> VswitchID
-		// First pass: prefer specified switches
-		for _, s := range switches.Vswitches {
-			for _, preferred := range cleanVswitchIDs {
-				if s.Id == preferred {
-					zoneMap[s.ZoneId] = s.Id
-					break
-				}
-			}
-		}
-		// Second pass: fill other zones if needed (ALB needs >= 2 zones usually)
-		if len(zoneMap) < 2 {
-			for _, s := range switches.Vswitches {
-				if _, exists := zoneMap[s.ZoneId]; !exists {
-					zoneMap[s.ZoneId] = s.Id
-				}
-			}
-		}
-
-		var zoneMappings alb.LoadBalancerZoneMappingArray
-		for z, v := range zoneMap {
-			zoneMappings = append(zoneMappings, &alb.LoadBalancerZoneMappingArgs{
-				VswitchId: pulumi.String(v),
-				ZoneId:    pulumi.String(z),
-			})
-		}
-
-		if len(zoneMappings) < 2 {
-			ctx.Log.Warn(fmt.Sprintf("Only found %d zones for ALB. ALB creation might fail if >= 2 zones are required. (Found zones in VPC: %v)", len(zoneMappings), zoneMap), &pulumi.LogArgs{})
-		}
-
-		// Create ALB Load Balancer using Alibaba Cloud provider
-		albInstance, err := alb.NewLoadBalancer(ctx, "ragflow-alb", &alb.LoadBalancerArgs{
-			LoadBalancerName:     pulumi.String("ragflow-alb"),
-			LoadBalancerEdition:  pulumi.String("Basic"),
-			AddressType:          pulumi.String("Internet"),
-			AddressAllocatedMode: pulumi.String("Dynamic"),
-			VpcId:                pulumi.String(vpcID),
-			ZoneMappings:         zoneMappings,
-			LoadBalancerBillingConfig: &alb.LoadBalancerLoadBalancerBillingConfigArgs{
-				PayType: pulumi.String("PayAsYouGo"),
-			},
-		}, append(resOpts, pulumi.IgnoreChanges([]string{"zoneMappings"}))...)
-		if err != nil {
-			return fmt.Errorf("failed to create ALB instance: %w", err)
-		}
-
-		albID = albInstance.ID().ToStringOutput()
-		albIDSet = true
-		ctx.Log.Info("ALB Load Balancer created successfully via Pulumi", &pulumi.LogArgs{})
-
-		// Create a placeholder AlbConfig 'alb' because IngressClass references it.
-		// Even in manual mode (reuse ALB), the controller often expects the AlbConfig to exist
-		// to pick up default settings or simply to validate the IngressClass parameters.
-		ctx.Log.Info("Creating AlbConfig 'alb' (Manual Mode)", &pulumi.LogArgs{})
-		albConfigSpec := map[string]interface{}{
-			"config": map[string]interface{}{
-				"name":                 "ragflow-alb-managed", // Use different name to avoid conflict? Or same?
-				"addressType":          "Internet",
-				"addressAllocatedMode": "Dynamic",
-			},
-		}
-		// We use same name 'alb' for the CR resource to match IngressClass reference
-		if err := createCR(ctx, "alb", "alibabacloud.com/v1", "AlbConfig", nil, albConfigSpec, provider, nil); err != nil {
-			ctx.Log.Warn("Failed to create AlbConfig 'alb': "+err.Error(), &pulumi.LogArgs{})
-		}
-
-	} else {
-		// Existing fallback logic...
-		ctx.Log.Info("No ALB config found (alb_vpc_id, alb_vswitch_ids). Falling back to Ingress Controller provisioning.", &pulumi.LogArgs{})
-
-		// Step 1: Create AlbConfig for Aliyun ALB
-		// This defines the ALB instance configuration (Internet-facing, Dynamic IP)
-		ctx.Log.Info("Creating AlbConfig 'alb'", &pulumi.LogArgs{})
-		albConfigSpec := map[string]interface{}{
-			"config": map[string]interface{}{
-				"name":                 "ragflow-alb",
-				"addressType":          "Internet",
-				"addressAllocatedMode": "Dynamic",
-			},
-		}
-		if err := createCR(ctx, "alb", "alibabacloud.com/v1", "AlbConfig", nil, albConfigSpec, provider, nil); err != nil {
-			ctx.Log.Warn("Failed to create AlbConfig 'alb' (might already exist or CRD unsupported): "+err.Error(), &pulumi.LogArgs{})
-			// Do not return error, proceed to try IngressClass
-		} else {
-			ctx.Log.Info("AlbConfig 'alb' created successfully", &pulumi.LogArgs{})
-		}
-	}
-
-	// Step 2: Create IngressClass for Aliyun ALB Ingress Controller
-	// The IngressClass tells Kubernetes which Ingress controller should handle this Ingress
-	ctx.Log.Info("Creating IngressClass 'alb' for Aliyun ALB Ingress Controller", &pulumi.LogArgs{})
+	// Step 2: Create IngressClass that references the AlbConfig
 	ingressClassSpec := map[string]interface{}{
-		"controller": "alb.k8s.aliyun.com/alb-ingress-controller",
+		"controller": "ingress.k8s.alibabacloud/alb", // Correct controller name for Aliyun ALB
 		"parameters": map[string]interface{}{
 			"apiGroup": "alibabacloud.com",
 			"kind":     "AlbConfig",
-			"name":     "alb",
+			"name":     albConfig.Metadata.Name(),
 			"scope":    "Cluster",
 		},
 	}
-	if err := createCR(ctx, "alb", "networking.k8s.io/v1", "IngressClass", nil, ingressClassSpec, provider, nil); err != nil {
-		return fmt.Errorf("failed to create IngressClass: %w", err)
-	}
-	ctx.Log.Info("IngressClass 'alb' created successfully", &pulumi.LogArgs{})
 
-	// Step 3: Build annotations map for Aliyun ALB Ingress
-	// These annotations tell the ALB Ingress Controller how to configure the load balancer
-	annotations := map[string]string{
-		"alb.ingress.kubernetes.io/ingress-class": "alb",
-		"pulumi.com/skipAwait":                    "true", // Avoid hanging if ALB provisioning takes too long
+	_, err = apiextensions.NewCustomResource(ctx, "alb-ingress-class", &apiextensions.CustomResourceArgs{
+		ApiVersion: pulumi.String("networking.k8s.io/v1"),
+		Kind:       pulumi.String("IngressClass"),
+		Metadata: &metav1.ObjectMetaArgs{
+			Name: pulumi.String("alb"),
+		},
+		OtherFields: kubernetes.UntypedArgs{
+			"spec": ingressClassSpec,
+		},
+	}, pulumi.Provider(provider))
+	if err != nil {
+		return fmt.Errorf("failed to create ALB IngressClass: %w", err)
 	}
-	if config.Gateway.EnableHTTPS {
-		// Configure both HTTP (80) and HTTPS (443) listeners
-		annotations["alb.ingress.kubernetes.io/listen-ports"] = `[{"HTTP": 80}, {"HTTPS": 443}]`
+
+	ctx.Log.Info("ALB IngressClass created/verified - Ingress resources can now use ingressClassName: alb", &pulumi.LogArgs{})
+	return nil
+}
+
+// createIngress creates an Ingress resource for Aliyun ASK (Serverless) clusters
+// Uses ALB Ingress Controller annotations for automatic ALB provisioning with public IP
+// Returns the Ingress resource for extracting address from status
+func createIngress(ctx *pulumi.Context, config *StackConfig, provider pulumi.ProviderResource, ragflowService *corev1.Service) (*networkingv1.Ingress, error) {
+	// Step 1: Ensure ALB IngressClass exists (requires vSwitch IDs for AlbConfig)
+	if config.VSwitchIDs != (pulumi.StringArrayOutput{}) {
+		ctx.Log.Info("Ensuring ALB IngressClass exists...", &pulumi.LogArgs{})
+		if err := ensureALBIngressClass(ctx, config, provider); err != nil {
+			return nil, fmt.Errorf("failed to ensure ALB IngressClass: %w", err)
+		}
 	} else {
-		// Configure only HTTP (80) listener
-		annotations["alb.ingress.kubernetes.io/listen-ports"] = `[{"HTTP": 80}]`
+		ctx.Log.Info("Skipping AlbConfig creation (no vSwitch IDs configured) - using pre-installed ALB IngressClass", &pulumi.LogArgs{})
 	}
 
-	// Step 4: Build ingress rules with path-based routing
-	// Based on docker/nginx/ragflow.conf routing rules:
-	// - /api/v1/admin -> port 9381 (admin service)
-	// - /api or /v1 -> port 9380 (API service)
-	// - / -> port 80 (frontend nginx)
-	ingressRules := []interface{}{
-		map[string]interface{}{
-			"http": map[string]interface{}{
-				"paths": []interface{}{
-					// Rule 1: /api/v1/admin -> port 9381 (admin service)
-					map[string]interface{}{
-						"path":     "/api/v1/admin",
-						"pathType": "Prefix",
-						"backend": map[string]interface{}{
-							"service": map[string]interface{}{
-								"name": ragflowService.Metadata.Name().Elem(),
-								"port": map[string]interface{}{
-									"number": 9381,
+	// Step 2: Create Ingress with minimal ALB annotations
+	// Reference: alb_ingress.yaml
+	// ALB Ingress Controller will auto-configure most settings
+	annotations := map[string]string{
+		// Address type: internet (public) or intranet (private)
+		"alb.ingress.kubernetes.io/address-type": "internet",
+	}
+
+	ctx.Log.Info("ALB Ingress annotations:", &pulumi.LogArgs{})
+	for k, v := range annotations {
+		ctx.Log.Info(fmt.Sprintf("  %s: %s", k, v), &pulumi.LogArgs{})
+	}
+
+	// Build Ingress rules matching the existing Gateway/HTTPRoute configuration
+	// Rule 1: /v1 and /api -> port 9380 (API service)
+	// Rule 2: /api/v1/admin -> port 9381 (admin service)
+	// Rule 3: / (root path) -> port 80 (frontend nginx)
+	ingress, err := networkingv1.NewIngress(ctx, "ragflow-ingress", &networkingv1.IngressArgs{
+		Metadata: &metav1.ObjectMetaArgs{
+			Name:        pulumi.String("ragflow-ingress"),
+			Namespace:   pulumi.String(config.Namespace),
+			Annotations: pulumi.ToStringMap(annotations),
+		},
+		Spec: &networkingv1.IngressSpecArgs{
+			IngressClassName: pulumi.String("alb"),
+			Rules: networkingv1.IngressRuleArray{
+				// Rule 1: API paths (/v1, /api) -> port 9380
+				networkingv1.IngressRuleArgs{
+					Http: &networkingv1.HTTPIngressRuleValueArgs{
+						Paths: networkingv1.HTTPIngressPathArray{
+							networkingv1.HTTPIngressPathArgs{
+								Path:     pulumi.String("/v1"),
+								PathType: pulumi.String("Prefix"),
+								Backend: &networkingv1.IngressBackendArgs{
+									Service: &networkingv1.IngressServiceBackendArgs{
+										Name: ragflowService.Metadata.Name().ApplyT(func(name *string) string {
+											if name == nil {
+												return ""
+											}
+											return *name
+										}).(pulumi.StringOutput),
+										Port: &networkingv1.ServiceBackendPortArgs{
+											Number: pulumi.Int(9380),
+										},
+									},
+								},
+							},
+							networkingv1.HTTPIngressPathArgs{
+								Path:     pulumi.String("/api"),
+								PathType: pulumi.String("Prefix"),
+								Backend: &networkingv1.IngressBackendArgs{
+									Service: &networkingv1.IngressServiceBackendArgs{
+										Name: ragflowService.Metadata.Name().ApplyT(func(name *string) string {
+											if name == nil {
+												return ""
+											}
+											return *name
+										}).(pulumi.StringOutput),
+										Port: &networkingv1.ServiceBackendPortArgs{
+											Number: pulumi.Int(9380),
+										},
+									},
 								},
 							},
 						},
 					},
-					// Rule 2: /api -> port 9380 (API service)
-					map[string]interface{}{
-						"path":     "/api",
-						"pathType": "Prefix",
-						"backend": map[string]interface{}{
-							"service": map[string]interface{}{
-								"name": ragflowService.Metadata.Name().Elem(),
-								"port": map[string]interface{}{
-									"number": 9380,
+				},
+				// Rule 2: Admin path (/api/v1/admin) -> port 9381
+				networkingv1.IngressRuleArgs{
+					Http: &networkingv1.HTTPIngressRuleValueArgs{
+						Paths: networkingv1.HTTPIngressPathArray{
+							networkingv1.HTTPIngressPathArgs{
+								Path:     pulumi.String("/api/v1/admin"),
+								PathType: pulumi.String("Prefix"),
+								Backend: &networkingv1.IngressBackendArgs{
+									Service: &networkingv1.IngressServiceBackendArgs{
+										Name: ragflowService.Metadata.Name().ApplyT(func(name *string) string {
+											if name == nil {
+												return ""
+											}
+											return *name
+										}).(pulumi.StringOutput),
+										Port: &networkingv1.ServiceBackendPortArgs{
+											Number: pulumi.Int(9381),
+										},
+									},
 								},
 							},
 						},
 					},
-					// Rule 3: /v1 -> port 9380 (API service)
-					map[string]interface{}{
-						"path":     "/v1",
-						"pathType": "Prefix",
-						"backend": map[string]interface{}{
-							"service": map[string]interface{}{
-								"name": ragflowService.Metadata.Name().Elem(),
-								"port": map[string]interface{}{
-									"number": 9380,
-								},
-							},
-						},
-					},
-					// Rule 4: / -> port 80 (frontend nginx)
-					map[string]interface{}{
-						"path":     "/",
-						"pathType": "Prefix",
-						"backend": map[string]interface{}{
-							"service": map[string]interface{}{
-								"name": ragflowService.Metadata.Name().Elem(),
-								"port": map[string]interface{}{
-									"number": 80,
+				},
+				// Rule 3: Frontend (root path) -> port 80
+				networkingv1.IngressRuleArgs{
+					Http: &networkingv1.HTTPIngressRuleValueArgs{
+						Paths: networkingv1.HTTPIngressPathArray{
+							networkingv1.HTTPIngressPathArgs{
+								Path:     pulumi.String("/"),
+								PathType: pulumi.String("Prefix"),
+								Backend: &networkingv1.IngressBackendArgs{
+									Service: &networkingv1.IngressServiceBackendArgs{
+										Name: ragflowService.Metadata.Name().ApplyT(func(name *string) string {
+											if name == nil {
+												return ""
+											}
+											return *name
+										}).(pulumi.StringOutput),
+										Port: &networkingv1.ServiceBackendPortArgs{
+											Number: pulumi.Int(80),
+										},
+									},
 								},
 							},
 						},
@@ -2658,55 +2756,62 @@ func createIngress(ctx *pulumi.Context, config *StackConfig, provider pulumi.Pro
 				},
 			},
 		},
+	}, pulumi.Provider(provider))
+	if err != nil {
+		ctx.Log.Error(fmt.Sprintf("Failed to create Ingress: %v", err), &pulumi.LogArgs{})
+		return nil, err
 	}
+	ctx.Log.Info("Ingress resource created successfully - ALB will be automatically provisioned", &pulumi.LogArgs{})
 
-	ingressSpec := map[string]interface{}{
-		"ingressClassName": "alb",
-		"rules":            ingressRules,
+	// Export ingress address (IP or hostname)
+	// Pulumi will automatically wait for the ALB to be provisioned and the status to be populated
+	gatewayAddress := ingress.Status.ApplyT(func(status *networkingv1.IngressStatus) (string, error) {
+		if status == nil || status.LoadBalancer == nil || len(status.LoadBalancer.Ingress) == 0 {
+			ctx.Log.Warn("No ingress address in status - ALB may still be provisioning", &pulumi.LogArgs{})
+			return "", nil
+		}
+
+		firstIngress := status.LoadBalancer.Ingress[0]
+		// Try to get IP first, then hostname
+		if firstIngress.Ip != nil && *firstIngress.Ip != "" {
+			ctx.Log.Info(fmt.Sprintf("Ingress IP address: %s", *firstIngress.Ip), &pulumi.LogArgs{})
+			return *firstIngress.Ip, nil
+		}
+		if firstIngress.Hostname != nil && *firstIngress.Hostname != "" {
+			ctx.Log.Info(fmt.Sprintf("Ingress hostname: %s", *firstIngress.Hostname), &pulumi.LogArgs{})
+			return *firstIngress.Hostname, nil
+		}
+
+		ctx.Log.Warn("No IP or hostname found in ingress status", &pulumi.LogArgs{})
+		return "", nil
+	}).(pulumi.StringOutput)
+
+	ctx.Export("gateway_address", gatewayAddress)
+
+	// Create ConfigMap to expose gateway address in the same namespace as the Ingress
+	_, err = corev1.NewConfigMap(ctx, "ragflow-gateway-address", &corev1.ConfigMapArgs{
+		Metadata: &metav1.ObjectMetaArgs{
+			Name:      pulumi.String("ragflow-gateway-address"),
+			Namespace: pulumi.String(config.Namespace),
+		},
+		Data: pulumi.StringMap{
+			"gateway_address": gatewayAddress,
+		},
+	}, pulumi.Provider(provider))
+	if err != nil {
+		ctx.Log.Error(fmt.Sprintf("Failed to create gateway address ConfigMap: %v", err), &pulumi.LogArgs{})
+		return nil, fmt.Errorf("failed to create gateway address ConfigMap: %w", err)
 	}
+	ctx.Log.Info(fmt.Sprintf("ConfigMap 'ragflow-gateway-address' created in namespace: %s", config.Namespace), &pulumi.LogArgs{})
 
-	ctx.Log.Info("Creating Ingress resource for Aliyun ALB", &pulumi.LogArgs{})
+	return ingress, nil
+}
 
-	// Create Ingress resource
-	if albIDSet {
-		// Manual ALB flow: Use Pulumi Output for the ID
-		ctx.Log.Info("Using Manual ALB ID for Ingress...", &pulumi.LogArgs{})
-
-		// Convert plain annotations map to pulumi.StringMap to support Output values
-		pulumiAnnotations := pulumi.StringMap{}
-		for k, v := range annotations {
-			pulumiAnnotations[k] = pulumi.String(v)
-		}
-		// Add ALB ID to annotations
-		pulumiAnnotations["alb.ingress.kubernetes.io/load-balancer-id"] = albID
-
-		// Create Ingress using generic CustomResource to avoid complex typed struct construction for now
-		// but using proper Metadata with Output-capable Annotations
-		_, err := apiextensions.NewCustomResource(ctx, "ragflow-ingress", &apiextensions.CustomResourceArgs{
-			ApiVersion: pulumi.String("networking.k8s.io/v1"),
-			Kind:       pulumi.String("Ingress"),
-			Metadata: &metav1.ObjectMetaArgs{
-				Name:        pulumi.String("ragflow-ingress"),
-				Namespace:   pulumi.String(ingressNsName),
-				Annotations: pulumiAnnotations,
-			},
-			OtherFields: kubernetes.UntypedArgs{
-				"spec": ingressSpec,
-			},
-		}, pulumi.Provider(provider))
-		if err != nil {
-			return err
-		}
-		ctx.Log.Info("Ingress resource (manual ALB) created successfully", &pulumi.LogArgs{})
-	} else {
-		// Fallback/Standard flow
-		if err := createCR(ctx, "ragflow-ingress", "networking.k8s.io/v1", "Ingress", pulumi.String(ingressNsName), ingressSpec, provider, annotations); err != nil {
-			return err
-		}
-	}
-	ctx.Log.Info("Ingress resource created successfully for Aliyun ALB", &pulumi.LogArgs{})
-
-	return nil
+// isAliyunCluster detects if the current cluster is running on Aliyun
+// by checking if the S3 endpoint is Aliyun OSS
+func isAliyunCluster(config *StackConfig) bool {
+	s3Endpoint := config.Env["S3_ENDPOINT"]
+	return strings.Contains(s3Endpoint, "aliyuncs.com")
 }
 
 // hasKnativeService checks if Knative Serving is installed in the cluster
@@ -2927,7 +3032,7 @@ func createKnativeServiceForDeepdocGPU(ctx *pulumi.Context, config *StackConfig,
 func createDeepdocDeployment(ctx *pulumi.Context, config *StackConfig, namespace *corev1.Namespace, provider pulumi.ProviderResource, registrySecret *corev1.Secret) (*v1.Deployment, *corev1.Service, error) {
 	// Read configuration for whether to use Knative for GPU
 	// Default is false (use standard Deployment with runtimeClassName support)
-	useKnativeGPUStr := getConfig(ctx, "use_knative_gpu", "false")
+	useKnativeGPUStr := getConfig(ctx, "deepdoc.use_knative_gpu", "false")
 	useKnativeGPU, _ := strconv.ParseBool(useKnativeGPUStr)
 
 	// Check if we should use Knative Service for GPU on Aliyun
@@ -3063,7 +3168,7 @@ func createDeepdocDeployment(ctx *pulumi.Context, config *StackConfig, namespace
 			Namespace: namespace.Metadata.Name(),
 			Annotations: pulumi.StringMap{
 				// Add annotation that changes when hardware type changes
-				// This forces a rolling update when deepdoc_hardware config changes
+				// This forces a rolling update when deepdoc.hardware config changes
 				"ragflow/deepdoc-hardware": pulumi.Sprintf("%s/vram-%d", hardwareType, config.Deepdoc.VramMB),
 			},
 		},

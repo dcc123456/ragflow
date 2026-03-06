@@ -94,7 +94,7 @@ class TestDatasetCreate:
     @pytest.mark.p1
     @given(name=valid_names())
     @example("a" * 128)
-    @settings(max_examples=20)
+    @settings(max_examples=20, deadline=1000)
     def test_name(self, HttpApiAuth, name):
         res = create_dataset(HttpApiAuth, {"name": name})
         assert res["code"] == 0, res

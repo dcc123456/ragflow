@@ -9,14 +9,14 @@ metadata:
     {{- include "ragflow.labels" . | nindent 4 }}
     app.kubernetes.io/component: elasticsearch
 spec:
-  {{- with .Values.elasticsearch.storage.className }}
+  {{- with .Values.elasticsearch.disk_size.className }}
   storageClassName: {{ . }}
   {{- end }}
   accessModes:
     - ReadWriteOnce
   resources:
     requests:
-      storage: {{ .Values.elasticsearch.storage.capacity }}
+      storage: {{ .Values.elasticsearch.disk_size.capacity }}
 ---
 apiVersion: apps/v1
 kind: StatefulSet

@@ -3,7 +3,6 @@ import logging
 import json
 import signal
 import sys
-
 import pika
 import requests
 from requests.auth import HTTPBasicAuth
@@ -31,7 +30,7 @@ class RabbitQueue:
                 port=int(self.config["port"]), # Default AMQP port
                 credentials=credentials,
                 socket_timeout=10,
-                heartbeat=30,
+                heartbeat=0,  # Disabled - using manual heartbeat in queue_consumer
                 blocked_connection_timeout=60*60*2
             )
             # Establish the connection
@@ -86,10 +85,66 @@ class RabbitQueue:
         return False
 
     def queue_consumer(self, queue_name, callback):
+        """
+        Consumer that runs callbacks in a separate thread to prevent heartbeat timeout.
+        See: https://github.com/pika/pika/issues/1104#issuecomment-407358142
+
+        Key fix: Use threading for callback execution but don't block the main thread.
+        Use a result queue to communicate ack decisions back to main thread.
+        """
+        import threading
+        import queue
+
+        # Declare queue first
         self._channel.queue_declare(queue_name, durable=True)
         self._channel.basic_qos(prefetch_count=1)
-        self._channel.basic_consume(queue=queue_name, on_message_callback=callback, auto_ack=False)
-        self._channel.start_consuming()
+
+        # Use thread-safe queue for callback results
+        result_queue = queue.Queue()
+
+        def threaded_callback(ch, method, properties, body):
+            delivery_tag = method.delivery_tag
+            should_ack = False
+
+            def run_callback():
+                nonlocal should_ack
+                try:
+                    # Callback can return True (ack) or False (nack), or None (default ack)
+                    result = callback(ch, method, properties, body)
+                    should_ack = result if result is not None else True
+                except Exception as e:
+                    logging.warning(f"Callback exception: {e}")
+                    should_ack = True  # Ack on exception to avoid message redelivery
+                finally:
+                    # Put result back to main thread
+                    result_queue.put((delivery_tag, should_ack))
+
+            # Start callback in separate thread and return immediately
+            # Don't wait for callback to complete - let main thread handle events
+            t = threading.Thread(target=run_callback, daemon=True)
+            t.start()
+
+        self._channel.basic_consume(queue=queue_name, on_message_callback=threaded_callback, auto_ack=False)
+
+        # Process events in main thread - this handles heartbeat and ack/nack
+        while self._channel.consumer_tags:
+            # Process pending results from callback threads
+            while True:
+                try:
+                    tag, should_ack = result_queue.get_nowait()
+                    try:
+                        if should_ack:
+                            self._channel.basic_ack(delivery_tag=tag)
+                        else:
+                            self._channel.basic_nack(delivery_tag=tag, requeue=True)
+                    except Exception as e:
+                        logging.warning(f"Failed to ack/nack delivery tag {tag}: {e}")
+                except queue.Empty:
+                    break
+
+            # Process network events
+            self._channel.connection.process_data_events(time_limit=1)
+            self._channel.connection.sleep(0.5)
 
     def get_queue_length(self, queue_name, vhost: str = "/") -> int:
         for _ in range(3):

@@ -1,0 +1,55 @@
+# =============================================================================
+# Terraform Multicloud RAGFlow Deployment - .gitignore
+# =============================================================================
+
+# Large upstream manifests - download at deploy time, do not check in
+gateway-api-crds-*.yaml
+
+# Terraform files
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfvars
+!example.tfvars
+
+# Provider secrets
+*.secret
+*access-key-secret*
+
+# Terraform plan files
+tfplan
+*.plan
+
+# Terraform crash logs
+crash.log
+crash.*.log
+
+# Terraform override files
+*_override.tf
+*_override.tf.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporary files
+*.tmp
+*.bak
+*.backup
+
+# Log files
+*.log
+
+# Local configuration files (old architecture)
+old_architecture/examples/aliyun/backend.local.tf
+old_architecture/examples/aws/backend.local.tf
+old_architecture/examples/google/backend.local.tf
+old_architecture/examples/*/terraform.tfvars

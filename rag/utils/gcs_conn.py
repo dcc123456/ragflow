@@ -1,3 +1,4 @@
+#
 #  Copyright 2025 The InfiniFlow Authors. All Rights Reserved.
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
@@ -27,8 +28,32 @@ from common import settings
 class RAGFlowGCS:
     def __init__(self):
         self.client = None
-        self.bucket_name = None
-        self.__open__()
+        self._bucket_name = None
+        # Don't open connection in __init__ - wait for first use
+        # This avoids circular import issue where GCS config is empty during import
+
+    @property
+    def gcs_config(self):
+        """Dynamically read GCS config to avoid circular import issues"""
+        cfg = settings.GCS
+        # GCS can be a list in older configs, handle both cases
+        if isinstance(cfg, list) and len(cfg) > 0:
+            return cfg[0] if isinstance(cfg[0], dict) else {}
+        return cfg if isinstance(cfg, dict) else {}
+
+    @property
+    def bucket_name(self):
+        # Prefer explicitly set _bucket_name, fallback to config
+        return self._bucket_name if self._bucket_name else self.gcs_config.get("bucket", None)
+
+    @bucket_name.setter
+    def bucket_name(self, value):
+        self._bucket_name = value
+
+    def _ensure_connection(self):
+        """Lazy connection initialization - only create when first needed"""
+        if self.client is None:
+            self.__open__()
 
     def __open__(self):
         try:
@@ -39,7 +64,7 @@ class RAGFlowGCS:
 
         try:
             self.client = storage.Client()
-            self.bucket_name = settings.GCS["bucket"]
+            # bucket_name is a property, not settable - just rely on gcs_config.get("bucket") in the property
         except Exception:
             logging.exception("Fail to connect to GCS")
 
@@ -50,6 +75,7 @@ class RAGFlowGCS:
         return f"{folder}/{filename}"
 
     def health(self):
+        self._ensure_connection()
         folder, fnm, binary = "ragflow-health", "health_check", b"_t@@@1"
         try:
             bucket_obj = self.client.bucket(self.bucket_name)
@@ -67,12 +93,12 @@ class RAGFlowGCS:
 
     def put(self, bucket, fnm, binary, tenant_id=None):
         # RENAMED PARAMETER: bucket_name -> bucket (to match interface)
+        self._ensure_connection()
         for _ in range(3):
             try:
                 bucket_obj = self.client.bucket(self.bucket_name)
                 blob_path = self._get_blob_path(bucket, fnm)
                 blob = bucket_obj.blob(blob_path)
-
                 blob.upload_from_file(BytesIO(binary), content_type='application/octet-stream')
                 return True
             except NotFound:
@@ -86,6 +112,7 @@ class RAGFlowGCS:
 
     def rm(self, bucket, fnm, tenant_id=None):
         # RENAMED PARAMETER: bucket_name -> bucket
+        self._ensure_connection()
         try:
             bucket_obj = self.client.bucket(self.bucket_name)
             blob_path = self._get_blob_path(bucket, fnm)
@@ -98,6 +125,7 @@ class RAGFlowGCS:
 
     def get(self, bucket, filename, tenant_id=None):
         # RENAMED PARAMETER: bucket_name -> bucket
+        self._ensure_connection()
         for _ in range(1):
             try:
                 bucket_obj = self.client.bucket(self.bucket_name)
@@ -108,13 +136,14 @@ class RAGFlowGCS:
                 logging.warning(f"File not found {bucket}/{filename} in {self.bucket_name}")
                 return None
             except Exception:
-                logging.exception(f"Fail to get {bucket}/{filename}")
+                logging.exception(f"Fail to get {bucket}/{filename}:")
                 self.__open__()
                 time.sleep(1)
         return None
 
     def obj_exist(self, bucket, filename, tenant_id=None):
         # RENAMED PARAMETER: bucket_name -> bucket
+        self._ensure_connection()
         try:
             bucket_obj = self.client.bucket(self.bucket_name)
             blob_path = self._get_blob_path(bucket, filename)
@@ -126,6 +155,7 @@ class RAGFlowGCS:
 
     def bucket_exists(self, bucket):
         # RENAMED PARAMETER: bucket_name -> bucket
+        self._ensure_connection()
         try:
             bucket_obj = self.client.bucket(self.bucket_name)
             return bucket_obj.exists()
@@ -135,16 +165,15 @@ class RAGFlowGCS:
 
     def get_presigned_url(self, bucket, fnm, expires, tenant_id=None):
         # RENAMED PARAMETER: bucket_name -> bucket
+        self._ensure_connection()
         for _ in range(10):
             try:
                 bucket_obj = self.client.bucket(self.bucket_name)
                 blob_path = self._get_blob_path(bucket, fnm)
                 blob = bucket_obj.blob(blob_path)
-
                 expiration = expires
                 if isinstance(expires, int):
                     expiration = datetime.timedelta(seconds=expires)
-
                 url = blob.generate_signed_url(
                     version="v4",
                     expiration=expiration,
@@ -159,37 +188,25 @@ class RAGFlowGCS:
 
     def remove_bucket(self, bucket):
         # RENAMED PARAMETER: bucket_name -> bucket
+        self._ensure_connection()
         try:
             bucket_obj = self.client.bucket(self.bucket_name)
             prefix = f"{bucket}/"
-
             blobs = list(self.client.list_blobs(self.bucket_name, prefix=prefix))
-
             if blobs:
                 bucket_obj.delete_blobs(blobs)
         except Exception:
             logging.exception(f"Fail to remove virtual bucket (folder) {bucket}")
 
-    def copy(self, src_bucket, src_path, dest_bucket, dest_path):
+    def copy(self, src_bucket, src_path, dest_bucket, dest_path, tenant_id=None):
         # RENAMED PARAMETERS to match original interface
+        self._ensure_connection()
         try:
             bucket_obj = self.client.bucket(self.bucket_name)
-
-            src_blob_path = self._get_blob_path(src_bucket, src_path)
-            dest_blob_path = self._get_blob_path(dest_bucket, dest_path)
-
-            src_blob = bucket_obj.blob(src_blob_path)
-
-            if not src_blob.exists():
-                logging.error(f"Source object not found: {src_blob_path}")
-                return False
-
-            bucket_obj.copy_blob(src_blob, bucket_obj, dest_blob_path)
+            src_blob = bucket_obj.blob(self._get_blob_path(src_bucket, src_path))
+            dest_blob = bucket_obj.blob(self._get_blob_path(dest_bucket, dest_path))
+            dest_blob.rewrite(src_blob)
             return True
-
-        except NotFound:
-            logging.error(f"Copy failed: Main bucket {self.bucket_name} does not exist.")
-            return False
         except Exception:
             logging.exception(f"Fail to copy {src_bucket}/{src_path} -> {dest_bucket}/{dest_path}")
             return False

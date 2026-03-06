@@ -299,28 +299,28 @@ cd pulumi_ragflow
 # DeepDoc is always enabled (replaces TSR/DLA/OCR services)
 
 # Configure hardware type (default: cpu)
-pulumi config set deepdoc_hardware cpu    # Use infiniflow-ai/deepdoc_cpu:latest
+pulumi config set deepdoc.hardware cpu    # Use infiniflow-ai/deepdoc_cpu:latest
 # OR
-pulumi config set deepdoc_hardware gpu    # Use infiniflow-ai/deepdoc_gpu:latest
+pulumi config set deepdoc.hardware gpu    # Use infiniflow-ai/deepdoc_gpu:latest
 
 # Configure image tag (default: latest)
-pulumi config set deepdoc_image_tag latest
-# pulumi config set deepdoc_image_tag v1.0.0
+pulumi config set ragflow.image_tag latest
+# pulumi config set ragflow.image_tag v1.0.0
 
 # Configure replicas
-pulumi config set deepdoc_replicas 1
+pulumi config set deepdoc.replicas 1
 
 # GPU Configuration (only for GPU version)
-pulumi config set deepdoc_vram_mb 10240   # Total VRAM for all three models
-pulumi config set deepdoc_vcore 100       # Compute percentage (0-100)
+pulumi config set deepdoc.vram_mb 10240   # Total VRAM for all three models
+pulumi config set deepdoc.vcore 100       # Compute percentage (0-100)
 ```
 
 ### Deployment Matrix
 
 | Configuration | Hardware Type | Image Used | Features Available |
 |--------------|---------------|------------|-------------------|
-| `deepdoc_hardware=cpu` | CPU | `infiniflow-ai/deepdoc_cpu:<tag>` | OCR only |
-| `deepdoc_hardware=gpu` | GPU | `infiniflow-ai/deepdoc_gpu:<tag>` | DLA + OCR + TSR |
+| `deepdoc.hardware=cpu` | CPU | `infiniflow-ai/deepdoc_cpu:<tag>` | OCR only |
+| `deepdoc.hardware=gpu` | GPU | `infiniflow-ai/deepdoc_gpu:<tag>` | DLA + OCR + TSR |
 
 **Note:** When using the unified DeepDoc service, the legacy TSR/DLA/OCR services are automatically disabled.
 
@@ -453,7 +453,7 @@ server = ls.LitServer(
 ### Common Issues
 
 1. **Out of Memory (OOM)**
-   - GPU: Reduce `workers_per_device` or `max_batch_size`, increase `deepdoc_vram_mb`
+   - GPU: Reduce `workers_per_device` or `max_batch_size`, increase `deepdoc.vram_mb`
    - CPU: Increase pod memory limits
 
 2. **Slow First Request**
@@ -462,7 +462,7 @@ server = ls.LitServer(
 
 3. **DLA/TSR Endpoint Not Found (CPU Version)**
    - Expected behavior - DLA and TSR are GPU-only
-   - Use `deepdoc_hardware=gpu` for full functionality
+   - Use `deepdoc.hardware=gpu` for full functionality
 
 4. **GPU Not Detected (GPU Version)**
    - Ensure GPU nodes are available: `kubectl get nodes -L gpu`
@@ -493,8 +493,8 @@ curl http://deepdoc-service:8000/health
 cd pulumi_ragflow
 
 # Configure unified DeepDoc (always enabled)
-pulumi config set deepdoc_hardware gpu    # or cpu
-pulumi config set deepdoc_image_tag latest
+pulumi config set deepdoc.hardware gpu    # or cpu
+pulumi config set ragflow.image_tag latest
 
 # Deploy
 pulumi up

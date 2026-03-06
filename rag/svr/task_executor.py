@@ -16,12 +16,12 @@ import asyncio
 import socket
 import argparse
 import concurrent
-import multiprocessing
 # from beartype import BeartypeConf
 # from beartype.claw import beartype_all  # <-- you didn't sign up for this
 # beartype_all(conf=BeartypeConf(violation_type=UserWarning))    # <-- emit warnings from all code
 import random
 import sys
+import threading
 import time
 from api.db import FileType, PIPELINE_SPECIAL_PROGRESS_FREEZE_TASK_TYPES
 from api.db.joint_services.memory_message_service import handle_save_to_memory_task
@@ -170,6 +170,14 @@ embed_limiter = _LoopLocalSemaphore(MAX_CONCURRENT_CHUNK_BUILDERS)
 minio_limiter = _LoopLocalSemaphore(MAX_CONCURRENT_MINIO)
 kg_limiter = _LoopLocalSemaphore(2)
 WORKER_HEARTBEAT_TIMEOUT = int(os.environ.get('WORKER_HEARTBEAT_TIMEOUT', '120'))
+stop_event = threading.Event()
+
+
+def signal_handler(sig, frame):
+    logging.info("Received interrupt signal, shutting down...")
+    stop_event.set()
+    time.sleep(1)
+    sys.exit(0)
 
 
 def set_progress(task_id, from_page=0, to_page=-1, prog=None, msg="Processing..."):
@@ -1343,12 +1351,18 @@ def report_status():
 
 
 def rabbitmq_callback(ch, method, properties, body):
+    """Callback for processing RabbitMQ messages using pika.
+
+    Note: This callback runs in a separate thread. Do NOT call ch.basic_ack() here
+    as it will cause channel state issues. Instead, return True to ack or False to nack.
+    """
+    routing_key = method.routing_key
     try:
         msg = json.loads(body.decode("utf-8"))
     except Exception:
-        ch.basic_ack(method.delivery_tag)
-        logging.warning("An abnormal message in queue({}): {}".format(method.routing_key, body))
-        return
+        # Return True to signal that message should be acked (invalid message)
+        logging.warning("An abnormal message in queue({}): {}".format(routing_key, body))
+        return True  # Ack invalid message
 
     canceled = False
     task = None
@@ -1363,8 +1377,8 @@ def rabbitmq_callback(ch, method, properties, body):
                     time.sleep(5)
                     task = TaskService.get_task(msg["id"], msg["doc_ids"])
                     if not task:
-                        logging.warning("Miss task info in DB({}): {}".format(method.routing_key, body))
-                        return
+                        logging.warning("Miss task info in DB({}): {}".format(routing_key, body))
+                        return True  # Ack - can't recover
                     task["doc_ids"] = msg["doc_ids"]
             elif msg.get("task_type") == PipelineTaskType.MEMORY.lower():
                 _, task_obj = TaskService.get_by_id(msg["id"])
@@ -1382,10 +1396,9 @@ def rabbitmq_callback(ch, method, properties, body):
         if task:
             canceled = has_canceled(task["id"])
         if not task or canceled:
-            ch.basic_ack(method.delivery_tag)
             state = "is unknown" if not task else "has been cancelled"
             logging.warning(f"collect task {msg['id']} {state}")
-            return
+            return True  # Ack - task not found or cancelled
 
         task_type = task["task_type"] = msg.get("task_type", "")
         if task_type[:8] == "dataflow":
@@ -1399,8 +1412,7 @@ def rabbitmq_callback(ch, method, properties, body):
         asyncio.run(do_handle_task_with_timeout(task, partial(set_progress, task_id)))
         logging.info(f"handle_task done for task {json.dumps(task)}")
     except KeyboardInterrupt:
-        ch.basic_nack(method.delivery_tag)
-        sys.exit()
+        return False  # Nack on interrupt
     except Exception as e:
         try:
             err_msg = str(e)
@@ -1422,20 +1434,17 @@ def rabbitmq_callback(ch, method, properties, body):
                                                                       task_type=pipeline_task_type,
                                                                       fake_document_ids=task_document_ids)
 
-    ch.basic_ack(method.delivery_tag)
+    return True  # Ack after successful processing
 
 
-async def task_manager():
-    global PRIORITY, TASK_TYPE, task_limiter
+def task_manager():
+    global PRIORITY, TASK_TYPE
     logging.info("This is for Q: te.{}.{}".format(PRIORITY, TASK_TYPE))
-    try:
-        RABBITMQ_CONN.queue_consumer(rout_key(PRIORITY, TASK_TYPE), rabbitmq_callback)
-    finally:
-        task_limiter.release()
+    RABBITMQ_CONN.queue_consumer(rout_key(PRIORITY, TASK_TYPE), rabbitmq_callback)
 
 
 def main():
-    global PRIORITY, TASK_TYPE, task_limiter
+    global PRIORITY, TASK_TYPE
     if os.environ.get("DEEPDOC_URL"):
         from deepdoc.vision.tsr_cli import TSRClient
         TSRClient(os.environ["DEEPDOC_URL"])
@@ -1460,15 +1469,16 @@ def main():
     if TRACE_MALLOC_ENABLED:
         start_tracemalloc_and_snapshot(None, None)
 
-    heartbeat_process = multiprocessing.Process(
-        target=report_status,
-        daemon=True
-    )
-    heartbeat_process.start()
-    logging.info("Heartbeat monitoring started")
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+
+    # Start heartbeat reporter in a separate thread
+    heartbeat_thread = threading.Thread(target=report_status, daemon=True)
+    heartbeat_thread.start()
 
     logging.info("This is for Q: te.{}.{}".format(PRIORITY, TASK_TYPE))
-    RABBITMQ_CONN.queue_consumer(rout_key(PRIORITY, TASK_TYPE), rabbitmq_callback)
+    task_manager()
+    logging.error("BUG!!! You should not reach here!!!")
 
 
 if __name__ == "__main__":
@@ -1487,4 +1497,4 @@ if __name__ == "__main__":
 
     faulthandler.enable()
     init_root_logger(CONSUMER_NAME)
-    asyncio.run(main())
+    main()

@@ -358,6 +358,46 @@ npm run test
 - `sdk/python/test/conftest.py` - SDK test configuration
 - `sdk/python/test/test_http_api/conftest.py` - HTTP API test configuration
 
+#### 6. DeepDoc GPU Service Testing
+
+DeepDoc provides OCR, DLA (Document Layout Analysis), and TSR (Table Structure Recognition) services.
+
+**Service Endpoints**:
+| Endpoint | Method | Function | GPU Required |
+|---------|--------|----------|--------------|
+| `/health` | GET | Health check | No |
+| `/predict/ocr` | POST | Text detection and recognition | No |
+| `/predict/dla` | POST | Document layout analysis | Yes |
+| `/predict/tsr` | POST | Table structure recognition | Yes |
+
+**GPU Version Requirements**:
+- **CUDA Driver**: 535+ (supports CUDA 12.1)
+- **TensorRT**: 8.6.3.1 (compatible with CUDA 12.0/12.1 and Driver 535)
+- **Important**: TensorRT 10.x requires CUDA 12.6+ Driver (550+), not compatible with Driver 535
+
+**Testing DeepDoc Service**:
+```bash
+# Run all tests
+python3 deepdoc/servers/deepdoc_test.py --url http://localhost:8000 --service all
+
+# Test individual services
+python3 deepdoc/servers/deepdoc_test.py --url http://localhost:8000 --service ocr
+python3 deepdoc/servers/deepdoc_test.py --url http://localhost:8000 --service dla
+python3 deepdoc/servers/deepdoc_test.py --url http://localhost:8000 --service tsr
+```
+
+**Common Issues**:
+1. **CUDA initialization failure (error: 35)**: TensorRT/CUDA version mismatch with GPU driver
+   - Solution: Use CUDA 12.1 + TensorRT 8.6.3 for Driver 535
+2. **OCR returns empty results**: Image color space issue
+   - Solution: Use `cv2.IMREAD_COLOR` to ensure 3-channel RGB input
+3. **DLA/TSR batch dimension errors**: LitServe adds batch dimension
+   - Solution: Check `x.ndim` to handle both single and batched images
+
+**Performance Reference**:
+- GPU Version: OCR ~100-300ms, DLA/TSR ~50-150ms, GPU memory ~8-10GB
+- CPU Version: OCR ~500-2000ms, only OCR supported
+
 
 ## 9. Database Engines
 RAGFlow supports switching between Elasticsearch (default) and Infinity:

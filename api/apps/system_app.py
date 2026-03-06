@@ -174,6 +174,10 @@ def status():
 @manager.route("/healthz", methods=["GET"])  # noqa: F821
 def healthz():
     result, all_ok = run_health_checks()
+    if all_ok:
+        logging.info(f"healthz result: {result}, all_ok: {all_ok}")
+    else:
+        logging.warn(f"healthz result: {result}, all_ok: {all_ok}")
     return jsonify(result), (200 if all_ok else 500)
 
 

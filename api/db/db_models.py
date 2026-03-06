@@ -13,6 +13,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 #
+import contextvars
 import hashlib
 import inspect
 import logging
@@ -249,11 +250,137 @@ class JsonSerializedField(SerializedField):
         super(JsonSerializedField, self).__init__(serialized_type=SerializedType.JSON, object_hook=object_hook, object_pairs_hook=object_pairs_hook, **kwargs)
 
 
+class _ContextVarConnectionState:
+    """
+    asyncio-compatible replacement for peewee's _ConnectionLocal (threading.local).
+
+    In Quart/asyncio applications, all coroutines run in the same OS thread.
+    peewee's default _ConnectionLocal uses threading.local, so all coroutines
+    inadvertently share one connection state, causing:
+      - Connection leaks (coroutine A's conn silently shared with coroutine B)
+      - Double returns (both coroutines think they own the connection and return it)
+
+    This class uses four independent contextvars.ContextVar instances (one per
+    field) instead of a single ContextVar holding a mutable dict.
+
+    Key design invariant: every setter calls _cv_X.set(val) which creates an
+    *isolated* binding in the *current* asyncio-task context (or thread context).
+    Inherited contexts are never mutated because ContextVar.set() only affects
+    the current context's copy of the binding.  Using a single shared mutable
+    dict (the previous approach) broke this invariant because dict mutations
+    bypassed ContextVar's copy-on-write isolation and were visible to all
+    sibling tasks that had inherited the same dict object.
+
+    Attributes mirror _ConnectionState exactly:
+      closed       (bool)   - whether the connection is closed
+      conn         (object) - the active database connection
+      ctx          (list)   - query context stack
+      transactions (list)   - active transaction stack
+    """
+
+    def __init__(self):
+        # One ContextVar per field.  Scalar fields use immutable defaults;
+        # list fields default to None and create a fresh list on first access
+        # (see property getters below).  Each _cv_X.set() call only affects
+        # the current asyncio-task (or thread) context — never a sibling's.
+        object.__setattr__(self, '_cv_closed',       contextvars.ContextVar('peewee_closed',       default=True))
+        object.__setattr__(self, '_cv_conn',         contextvars.ContextVar('peewee_conn',         default=None))
+        object.__setattr__(self, '_cv_ctx',          contextvars.ContextVar('peewee_ctx',          default=None))
+        object.__setattr__(self, '_cv_transactions', contextvars.ContextVar('peewee_transactions', default=None))
+
+    def reset(self):
+        """Restore closed/empty state in the current context."""
+        self._cv_closed.set(True)
+        self._cv_conn.set(None)
+        self._cv_ctx.set([])
+        self._cv_transactions.set([])
+
+    def set_connection(self, conn):
+        """Called by peewee when a connection is checked out from the pool."""
+        self._cv_closed.set(False)
+        self._cv_conn.set(conn)
+        self._cv_ctx.set([])
+        self._cv_transactions.set([])
+
+    # ------------------------------------------------------------------ #
+    # closed                                                               #
+    # ------------------------------------------------------------------ #
+    @property
+    def closed(self):
+        return self._cv_closed.get()
+
+    @closed.setter
+    def closed(self, val):
+        # set() creates/replaces the binding only in the current context —
+        # sibling asyncio tasks that inherited the previous value are unaffected.
+        self._cv_closed.set(val)
+
+    # ------------------------------------------------------------------ #
+    # conn                                                                 #
+    # ------------------------------------------------------------------ #
+    @property
+    def conn(self):
+        return self._cv_conn.get()
+
+    @conn.setter
+    def conn(self, val):
+        self._cv_conn.set(val)
+
+    # ------------------------------------------------------------------ #
+    # ctx  (execution-context stack — peewee appends/pops in place)       #
+    # ------------------------------------------------------------------ #
+    @property
+    def ctx(self):
+        v = self._cv_ctx.get()
+        if v is None:
+            # First access in this context: allocate a fresh list that belongs
+            # exclusively to this context (set() makes it context-local).
+            v = []
+            self._cv_ctx.set(v)
+        return v
+
+    @ctx.setter
+    def ctx(self, val):
+        self._cv_ctx.set(val)
+
+    # ------------------------------------------------------------------ #
+    # transactions                                                         #
+    # ------------------------------------------------------------------ #
+    @property
+    def transactions(self):
+        v = self._cv_transactions.get()
+        if v is None:
+            v = []
+            self._cv_transactions.set(v)
+        return v
+
+    @transactions.setter
+    def transactions(self, val):
+        self._cv_transactions.set(val)
+
+
 class RetryingPooledMySQLDatabase(PooledMySQLDatabase):
     def __init__(self, *args, **kwargs):
         self.max_retries = kwargs.pop("max_retries", 5)
         self.retry_delay = kwargs.pop("retry_delay", 1)
+        # Force max_connections=100 and stale_timeout=30
+        if 'max_connections' not in kwargs:
+            kwargs['max_connections'] = 100
+        if 'stale_timeout' not in kwargs:
+            kwargs['stale_timeout'] = 30
         super().__init__(*args, **kwargs)
+        # Replace threading.local with contextvars so each asyncio coroutine
+        # running in the same OS thread gets its own isolated connection state.
+        # This prevents cross-coroutine connection sharing / double-return bugs.
+        self._state = _ContextVarConnectionState()
+
+    def _is_closed(self, conn):
+        # Enhanced pre-ping: try to detect closed connections more reliably
+        try:
+            conn.ping(reconnect=False)
+            return False
+        except Exception:
+            return True
 
     def execute_sql(self, sql, params=None, commit=True):
         for attempt in range(self.max_retries + 1):
@@ -275,14 +402,14 @@ class RetryingPooledMySQLDatabase(PooledMySQLDatabase):
 
                 if should_retry and attempt < self.max_retries:
                     logging.warning(
-                        f"Database connection/deadlock issue (attempt {attempt+1}/{self.max_retries}): {e}"
+                        f"Database connection/deadlock issue (attempt {attempt+1}/{self.max_retries}): {e} {str(e)}"
                     )
-                    # Only reconnect for connection issues, not deadlocks
-                    if e.args[0] in [2013, 2006]:
+                    # Reconnect for connection issues (2013, 2006) and InterfaceError (0)
+                    if e.args[0] in error_codes:
                         self._handle_connection_loss()
                     time.sleep(self.retry_delay * (2 ** attempt))
                 else:
-                    logging.error(f"DB execution failure: {e}")
+                    logging.error(f"DB execution failure: {e} {str(e)}")
                     raise
         return None
 
@@ -318,8 +445,8 @@ class RetryingPooledMySQLDatabase(PooledMySQLDatabase):
                     logging.warning(
                         f"Lost connection/deadlock during transaction (attempt {attempt+1}/{self.max_retries}): {e}"
                     )
-                    # Only reconnect for connection issues, not deadlocks
-                    if e.args and e.args[0] in [2013, 2006]:
+                    # Reconnect for connection issues (2013, 2006) and InterfaceError (0)
+                    if e.args and e.args[0] in [2013, 2006, 0]:
                         self._handle_connection_loss()
                     time.sleep(self.retry_delay * (2 ** attempt))
                 else:
@@ -332,6 +459,8 @@ class RetryingPooledPostgresqlDatabase(PooledPostgresqlDatabase):
         self.max_retries = kwargs.pop("max_retries", 5)
         self.retry_delay = kwargs.pop("retry_delay", 1)
         super().__init__(*args, **kwargs)
+        # Same fix as RetryingPooledMySQLDatabase: isolate connection per coroutine.
+        self._state = _ContextVarConnectionState()
 
     def execute_sql(self, sql, params=None, commit=True):
         for attempt in range(self.max_retries + 1):
@@ -415,13 +544,26 @@ class BaseDataBase:
         database_config = settings.DATABASE.copy()
         db_name = database_config.pop("name")
 
+        # Extract connection pool parameters from database config (if present)
+        # These are defined in service_conf.yaml: max_connections, stale_timeout
         pool_config = {
             'max_retries': 5,
             'retry_delay': 1,
+            # Default values: max_connections=100, stale_timeout=30
+            'max_connections': 100,
+            'stale_timeout': 30,
         }
-        database_config.update(pool_config)
+
+        # Preserve pool configuration from service_conf.yaml if present
+        for key in ['max_connections', 'stale_timeout', 'max_allowed_packet']:
+            if key in database_config:
+                pool_config[key] = database_config.pop(key)
+
+        # Keep connection parameters (host, port, user, password) for the database connection
+        # Add them to pool_config so they are passed to PooledMySQLDatabase
+        pool_config.update(database_config)
         self.database_connection = PooledDatabase[settings.DATABASE_TYPE.upper()].value(
-            db_name, **database_config
+            db_name, **pool_config
         )
         # self.database_connection = PooledDatabase[settings.DATABASE_TYPE.upper()].value(db_name, **database_config)
         logging.info("init database on cluster mode successfully")
@@ -572,9 +714,20 @@ DB.lock = DatabaseLock[settings.DATABASE_TYPE.upper()].value
 
 
 def close_connection():
+    """Return the current coroutine's connection to the pool, then clean up stale ones.
+
+    With _ContextVarConnectionState, DB.is_closed() / DB.close() operate on the
+    calling coroutine's own connection (not a shared threading.local).  We call
+    DB.close() to return the connection to the pool immediately after each request
+    rather than waiting for the stale_timeout GC cycle.  DB.close_stale(age=30)
+    is kept as a safety net for any orphaned connections (e.g. background tasks
+    that do not go through teardown_request).
+    """
     try:
         if DB:
-            DB.close_stale(age=30)
+            if not DB.is_closed():
+                DB.close()          # return this coroutine's connection to pool
+            DB.close_stale(age=30)  # GC any orphaned connections older than 30s
     except Exception as e:
         logging.exception(e)
 

@@ -1,0 +1,78 @@
+# =============================================================================
+# RAGFlow Deployment on SMK - Development Environment
+# =============================================================================
+# Copy this file to terraform.tfvars before deployment: cp terraform.tfvars.dev_smk terraform.tfvars
+
+# =============================================================================
+# SMK-Specific Configuration
+# =============================================================================
+
+cloud_provider = "smk"
+
+# SMK typically uses rook-ceph or local storage
+# Uncomment to override: storage_class = "standard"
+
+# =============================================================================
+# S3-Compatible Storage (MinIO or Rook-Ceph RGW)
+# =============================================================================
+
+s3_endpoint = "http://rook-ceph-rgw-my-store.rook-ceph.svc:80"
+s3_bucket   = "ragflow"
+s3_region   = "default"
+
+# Rook-Ceph credentials (required for smk)
+s3_access_key = "9YPCAWLZG3R8M30K7QGZ"
+s3_secret_key = "r3iMxuwRqs9Y0pVd08VEaQQIWkWqGpwZzlL0zz50"
+
+# =============================================================================
+# Image Registry
+# =============================================================================
+
+# Use public registries for development
+private_registry  = "192.168.1.51/infiniflow-ai"
+public_registry   = ""
+
+# =============================================================================
+# Development-Specific Resource Overrides (reduced from production defaults)
+# =============================================================================
+
+# MySQL - reduced for dev
+mysql_k8s_storage     = 20
+mysql_cpu_request     = "4"
+mysql_cpu_limit       = "8"
+mysql_memory_request  = "8Gi"
+mysql_memory_limit    = "16Gi"
+
+# Elasticsearch - single node for dev
+es_k8s_node_count  = 1
+es_k8s_storage    = 20
+es_cpu_request    = "4"
+es_cpu_limit      = "8"
+es_memory_request = "16Gi"
+es_memory_limit   = "16Gi"
+es_heap_size      = "8g"
+
+# RabbitMQ - reduced for dev
+rabbitmq_storage = 20
+
+# RAGFlow application - reduced for dev
+ragflow_replicas         = 1
+ragflow_cpu_request     = "2"
+ragflow_cpu_limit       = "4"
+ragflow_memory_request  = "8Gi"
+ragflow_memory_limit    = "16Gi"
+
+# Parser - reduced for dev
+parser_replicas = 1
+
+# DeepDoc - reduced for dev
+deepdoc_replicas = 1
+
+# Redis - dev environment
+redis_cpu_request    = "2"
+redis_cpu_limit      = "4"
+redis_memory_request = "4Gi"
+redis_memory_limit   = "8Gi"
+
+# TEI - dev environment
+tei_replicas = 1

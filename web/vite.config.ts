@@ -160,7 +160,7 @@ export default defineConfig(({ mode }) => {
         plugins: [],
         treeshake: true,
       },
-      minify: 'terser',
+      minify: env.VITE_MINIFY || 'terser',
       terserOptions: {
         compress: {
           drop_console: true, // delete console
@@ -177,7 +177,7 @@ export default defineConfig(({ mode }) => {
           comments: false, // Delete comments
         },
       },
-      sourcemap: true,
+      sourcemap: env.VITE_BUILD_SOURCEMAP !== 'false',
       cssCodeSplit: true,
       target: 'es2015',
     },

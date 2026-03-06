@@ -3,6 +3,10 @@ runtime:
   name: go
 description: Pulumi component for RAGFlow in Go on Kubernetes
 config:
+  pulumi_ragflow:cloud:
+    type: string
+    default: existing
+    description: 'Cloud provider: aliyun (Alibaba Cloud), gcp, or existing'
   pulumi_ragflow:namespace:
     type: string
     default: ragflow

@@ -45,6 +45,29 @@ __all__ = ["app"]
 app = Quart(__name__)
 app = cors(app, allow_origin="*")
 
+
+# =============================================================================
+# Health check routes for Kubernetes liveness/readiness probes
+# =============================================================================
+# These routes are added to support Kubernetes health checks at the root path "/"
+# which is required by load balancers and gateway controllers (e.g., GKE Gateway)
+@app.route("/", methods=["GET"])
+@app.route("/healthz", methods=["GET"])
+def healthz():
+    """
+    Health check endpoint for Kubernetes probes.
+    Returns health status of all dependencies (DB, Redis, storage, etc.)
+    """
+    from api.utils.health_utils import run_health_checks
+    from quart import jsonify
+    result, all_ok = run_health_checks()
+    if all_ok:
+        logging.info(f"healthz result: {result}, all_ok: {all_ok}")
+    else:
+        logging.warn(f"healthz result: {result}, all_ok: {all_ok}")
+    return jsonify(result), (200 if all_ok else 500)
+
+
 # Add this at the beginning of your file to configure Swagger UI
 swagger_config = {
     "headers": [],

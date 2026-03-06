@@ -1,0 +1,15 @@
+# Kubernetes kubeconfig (contains sensitive credentials)
+kubeconfig
+kubeconfig.tf
+*.tfstate
+*.tfstate.*
+*.tfvars
+!terraform.tfvars.example
+stage1-outputs.json
+stage2-outputs.json
+.terraform/
+.terraform.lock.hcl
+# Terraform plan files
+*.tfplan
+# Temporary files
+*.tfbackup

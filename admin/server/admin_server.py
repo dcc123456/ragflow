@@ -22,7 +22,10 @@ import threading
 import traceback
 import faulthandler
 
-from flask import Flask
+from flask import Flask, jsonify
+
+from api.utils.health_utils import run_health_checks
+from api.db.db_models import close_connection
 from flask_login import LoginManager
 from werkzeug.serving import run_simple
 from routes import admin_bp
@@ -49,6 +52,34 @@ if __name__ == '__main__':
     """)
 
     app = Flask(__name__)
+
+    @app.teardown_request
+    def _db_close(exception):
+        if exception:
+            logging.exception(f"Request failed: {exception}")
+        close_connection()
+
+    # =============================================================================
+    # Health check routes for Kubernetes liveness/readiness probes
+    # =============================================================================
+    # These routes are added to support Kubernetes health checks at the root path "/"
+    # which is required by load balancers and gateway controllers (e.g., GKE Gateway)
+    @app.route("/", methods=["GET"])
+    @app.route("/healthz", methods=["GET"])
+    def healthz():
+        """
+        Health check endpoint for Kubernetes probes.
+        Returns health status of all dependencies (DB, Redis, storage, etc.)
+        """
+        from api.db.db_models import DB
+        with DB.connection_context():
+            result, all_ok = run_health_checks()
+        if all_ok:
+            logging.info(f"healthz result: {result}, all_ok: {all_ok}")
+        else:
+            logging.warn(f"healthz result: {result}, all_ok: {all_ok}")
+        return jsonify(result), (200 if all_ok else 500)
+
     app.register_blueprint(admin_bp)
     app.config["SESSION_PERMANENT"] = False
     app.config["SESSION_TYPE"] = "filesystem"

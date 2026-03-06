@@ -28,21 +28,61 @@ from common import settings
 class RAGFlowS3:
     def __init__(self):
         self.conn = None
-        self.s3_config = settings.S3
-        self.access_key = self.s3_config.get('access_key', None)
-        self.secret_key = self.s3_config.get('secret_key', None)
-        self.session_token = self.s3_config.get('session_token', None)
-        self.region_name = self.s3_config.get('region_name', None)
-        self.endpoint_url = self.s3_config.get('endpoint_url', None)
-        self.signature_version = self.s3_config.get('signature_version', None)
-        self.addressing_style = self.s3_config.get('addressing_style', None)
-        self.bucket = self.s3_config.get('bucket', None)
-        self.prefix_path = self.s3_config.get('prefix_path', None)
-        self.__open__()
+        # Don't cache settings.S3 to avoid circular import issues
+        # Instead, read it dynamically via properties
+        # self.__open__()
+
+    @property
+    def s3_config(self):
+        """Dynamically read S3 config to avoid circular import issues"""
+        return settings.S3 or {}
+
+    @property
+    def access_key(self):
+        return self.s3_config.get('access_key', None)
+
+    @property
+    def secret_key(self):
+        return self.s3_config.get('secret_key', None)
+
+    @property
+    def session_token(self):
+        return self.s3_config.get('session_token', None)
+
+    @property
+    def region_name(self):
+        return self.s3_config.get('region_name', None)
+
+    @property
+    def endpoint_url(self):
+        return self.s3_config.get('endpoint_url', None)
+
+    @property
+    def signature_version(self):
+        return self.s3_config.get('signature_version', None)
+
+    @property
+    def addressing_style(self):
+        return self.s3_config.get('addressing_style', None)
+
+    @property
+    def bucket(self):
+        return self.s3_config.get('bucket', None)
+
+    @property
+    def prefix_path(self):
+        return self.s3_config.get('prefix_path', None)
+
+    def _ensure_connection(self):
+        """Lazy connection initialization - only create when first needed"""
+        if self.conn is None:
+            self.__open__()
 
     @staticmethod
     def use_default_bucket(method):
         def wrapper(self, bucket, *args, **kwargs):
+            # Ensure connection is established before accessing self.bucket
+            self._ensure_connection()
             # If there is a default bucket, use the default bucket
             actual_bucket = self.bucket if self.bucket else bucket
             return method(self, actual_bucket, *args, **kwargs)
@@ -52,8 +92,10 @@ class RAGFlowS3:
     @staticmethod
     def use_prefix_path(method):
         def wrapper(self, bucket, fnm, *args, **kwargs):
+            # Ensure connection is established before accessing self.prefix_path
+            self._ensure_connection()
             # If the prefix path is set, use the prefix path.
-            # The bucket passed from the upstream call is 
+            # The bucket passed from the upstream call is
             # used as the file prefix. This is especially useful when you're using the default bucket
             if self.prefix_path:
                 fnm = f"{self.prefix_path}/{bucket}/{fnm}"
@@ -103,6 +145,7 @@ class RAGFlowS3:
 
     @use_default_bucket
     def bucket_exists(self, bucket, *args, **kwargs):
+        self._ensure_connection()
         try:
             logging.debug(f"head_bucket bucketname {bucket}")
             self.conn[0].head_bucket(Bucket=bucket)
@@ -113,6 +156,7 @@ class RAGFlowS3:
         return exists
 
     def health(self):
+        self._ensure_connection()
         bucket = self.bucket
         fnm = "txtxtxtxt1"
         fnm, binary = f"{self.prefix_path}/{fnm}" if self.prefix_path else fnm, b"_t@@@1"
@@ -132,6 +176,7 @@ class RAGFlowS3:
     @use_prefix_path
     @use_default_bucket
     def put(self, bucket, fnm, binary, *args, **kwargs):
+        self._ensure_connection()
         logging.debug(f"bucket name {bucket}; filename :{fnm}:")
         for _ in range(1):
             try:
@@ -149,6 +194,7 @@ class RAGFlowS3:
     @use_prefix_path
     @use_default_bucket
     def rm(self, bucket, fnm, *args, **kwargs):
+        self._ensure_connection()
         try:
             self.conn[0].delete_object(Bucket=bucket, Key=fnm)
         except Exception:
@@ -157,6 +203,7 @@ class RAGFlowS3:
     @use_prefix_path
     @use_default_bucket
     def get(self, bucket, fnm, *args, **kwargs):
+        self._ensure_connection()
         for _ in range(1):
             try:
                 r = self.conn[0].get_object(Bucket=bucket, Key=fnm)
@@ -171,6 +218,7 @@ class RAGFlowS3:
     @use_prefix_path
     @use_default_bucket
     def obj_exist(self, bucket, fnm, *args, **kwargs):
+        self._ensure_connection()
         try:
             if self.conn[0].head_object(Bucket=bucket, Key=fnm):
                 return True
@@ -183,6 +231,7 @@ class RAGFlowS3:
     @use_prefix_path
     @use_default_bucket
     def get_presigned_url(self, bucket, fnm, expires, *args, **kwargs):
+        self._ensure_connection()
         for _ in range(10):
             try:
                 r = self.conn[0].generate_presigned_url('get_object',
@@ -199,6 +248,7 @@ class RAGFlowS3:
 
     @use_default_bucket
     def rm_bucket(self, bucket, *args, **kwargs):
+        self._ensure_connection()
         for conn in self.conn:
             try:
                 if not conn.bucket_exists(bucket):

@@ -1,62 +1,211 @@
 encryptionsalt: v1:myAJp/oJXzI=:v1:xy+0QsfgBsPr17kl:Tz7Z3QpKyLMp83KHtKXu5YWudx7T8g==
 config:
-  pulumi_ragflow:namespace: ragflow
-  pulumi_ragflow:use_public_registry: "false"
-  pulumi_ragflow:enterprise_registry: infiniflow-registry.cn-shanghai.cr.aliyuncs.com
-  pulumi_ragflow:enterprise_registry_username: infiniflow
-  pulumi_ragflow:enterprise_registry_password:
-    secure: v1:/KzZhHPazzH2PnND:kXOTD6T91ebuSdZVIXZ9Kno1piTb8sXIqfpycU0=
-  pulumi_ragflow:ragflow_replicas: "1"
-  pulumi_ragflow:ragflow_image_tag: latest
-  pulumi_ragflow:parser_replicas: "1"
-  # Unified DeepDoc service (DLA + OCR + TSR)
-  pulumi_ragflow:deepdoc_replicas: "1"
-  pulumi_ragflow:deepdoc_image_tag: latest
-  pulumi_ragflow:deepdoc_hardware: cpu
-  pulumi_ragflow:deepdoc_gpu_model_series: T4
-  pulumi_ragflow:es_replicas: "1"
-  # aliyun pvc shall be no less than 20Gi
-  pulumi_ragflow:es_storage: 20Gi
-  pulumi_ragflow:es_memory_request: 10Gi
-  # Elasticsearch configuration
-  # If es_host is empty, Pulumi will create ES deployment in the cluster
-  # If es_host is set, Pulumi will use the external ES server
-  pulumi_ragflow:es_host: ""
-  pulumi_ragflow:es_port: "9200"
-  pulumi_ragflow:es_protocol: "http"
-  pulumi_ragflow:es_password:
-    secure: v1:kjReyVmrZJY9phAw:LZNmwy7DnJGXn7AN+9XyQQrk2z3UlMPyaNhvKcP3cw==
-  pulumi_ragflow:mysql_host: rm-uf6955n7zw26o99v4.mysql.rds.aliyuncs.com
-  pulumi_ragflow:mysql_password:
-    secure: v1:yEmYRN0xvZwzBMwr:BCyoWevcqd+r1dU0HqS+hCZHmOvcJUEN9vGcuNMPUQ==
-  # aliyun pvc shall be no less than 20Gi
-  pulumi_ragflow:mysql_storage: 20Gi
-  # aliyun pvc shall be no less than 20Gi
-  pulumi_ragflow:rabbitmq_storage: 20Gi
-  pulumi_ragflow:s3_bucket: ragflow-yuzhichang-prod
-  pulumi_ragflow:s3_region: cn-shanghai
-  pulumi_ragflow:s3_endpoint: http://oss-cn-shanghai-internal.aliyuncs.com
-  pulumi_ragflow:s3_access_key:
-    secure: v1:n3A/lz1UsY1ti5dW:zKR4L9s7/VlJIwIe+uWLOt8xV2GTLniCDo19ZpRFLiNWzaERH/ARCA==
-  pulumi_ragflow:s3_secret_key:
-    secure: v1:f/astTP+1krYBHiw:6emu8wnKgI4zJznVoh8kf2TGeBtQ3TxHkslMCUbq93jwUrJXVK/SUXylFssFQA==
-  # ElasticSearch, MySQL, RabbitMQ PVC storage class
-  # Options: alicloud-disk-topology-alltype, alicloud-disk-essd, alicloud-disk-ssd, alicloud-disk-efficiency
-  pulumi_ragflow:storage_class: alicloud-disk-topology-alltype
-  # Gateway HTTPS/TLS configuration
-  # Enable HTTPS listener (default: false)
-  # When enabled, both gateway_tls_cert and gateway_tls_key must be provided
-  pulumi_ragflow:gateway_enable_https: "false"
-  # TLS certificate and private key (PEM format) - REQUIRED when gateway_enable_https is true
-  # pulumi_ragflow:gateway_tls_cert: |
-  #   -----BEGIN CERTIFICATE-----
-  #   MIIC9jCCAd4CCQD2rKXxBHxTzDANBgkqhkiG9w0BAQsFADA9MQswCQYDVQQGEwJV
-  #   ...
-  #   -----END CERTIFICATE-----
-  # pulumi_ragflow:gateway_tls_key: |
-  #   -----BEGIN RSA PRIVATE KEY-----
-  #   MIIEpAIBAAKCAQEA2Z3q3X2X8X9X0X0X0X0X0X0X0X0X0X0X0X0X0X0X0X0X0X0X
-  #   ...
-  #   -----END RSA PRIVATE KEY-----
+  # Cloud provider: "aliyun" (Alibaba Cloud) | "gcp" | "onpremise"
+  # This is Aliyun production environment
+  cloud: aliyun
+  phase: infra
+  aliyun.accessKey:
+    secure: v1:6QN0HJWlNO8wu5H0:p4F3KnH3Vrfp0lHuUixsibblKpfiTV7fWgmB7aPZqvL0ZdMuETq5eA==
+  aliyun.secretKey:
+    secure: v1:ji8Ynay8RxSBm1Oe:gzPahFo2i9daD52mofQRh+vHTUqY+AJaak5ETUbyyA9H1zPtzgDE9+JqgnKf6w==
+  aliyun.region: cn-shanghai
+  # Zones for multi-AZ deployment (comma-separated, REQUIRED, min 2 zones)
+  #
+  # IMPORTANT: You MUST specify at least 2 zones. This configuration is REQUIRED.
+  #
+  # Why manual zone specification?
+  # - Pulumi random resources can be recreated across pulumi up operations
+  # - Even with deterministic seeds, changes to the candidate zone pool (e.g., new zones
+  #   gaining stock, existing zones losing stock) will cause different zones to be selected
+  # - This leads to vSwitch resources being destroyed and recreated, which is disruptive
+  # - Manual zone specification ensures ABSOLUTE stability across deployments
+  #
+  # === How to find zones with stock ===
+  #
+  # To check which zones have sufficient ECS stock, use aliyun CLI:
+  #
+  #   # Query all zones with stock for a specific instance type:
+  #   aliyun ecs DescribeAvailableResource \
+  #     --RegionId cn-shanghai \
+  #     --DestinationResource Zone \
+  #     --IoOptimized optimized \
+  #     --InstanceType ecs.c6.large
+  #
+  # === Key Findings ===
+  #
+  # cn-shanghai has 10 zones (a, b, c, d, e, k, l, m, n, o) but ONLY 2 typically have stock:
+  #    - cn-shanghai-b: StatusCategory = "WithStock" ✓
+  #    - cn-shanghai-e: StatusCategory = "WithStock" ✓
+  #    - Other zones: No stock or SoldOut
+  aliyun.zones: cn-shanghai-b,cn-shanghai-e
 
-  pulumi_ragflow:use_knative_gpu: "true"
+  # Kubernetes cluster configuration (ACK/ASK)
+  # Cluster type options (based on official Aliyun SDK):
+  # Quota reference: https://quotas.console.aliyun.com/products/csk/quotas
+  #   - "AckBasic":   ACK托管集群基础版 (ManagedKubernetes + profile:Default + cluster_spec:ack.standard)
+  #                  Requires: PodCidr, LoginPassword, worker nodes (NodePool)
+  #                  Quota: TBD (check quota console)
+  #                  Use case: Development/testing, cost-effective
+  #   - "AckPro":     ACK托管集群Pro版 (ManagedKubernetes + profile:Default + cluster_spec:ack.pro.small)
+  #                  Requires: PodCidr, LoginPassword, worker nodes (NodePool)
+  #                  Quota: 100
+  #                  Use case: Production workloads, high availability
+  #   - "AckProAuto": ACK托管集群Pro版 + 智能托管模式 (ManagedKubernetes + profile:Default + cluster_spec:ack.pro.small + auto_mode enabled)
+  #                  Requires: PodCidr, LoginPassword, worker nodes (NodePool)
+  #                  Quota: 100
+  #                  Auto Mode: 智能运维（自动故障恢复、自动修复、自动健康检查）
+  #                  IMPORTANT: kubernetes.version is managed by Aliyun (user-specified version is ignored)
+  #                  Use case: Production workloads with intelligent O&M
+  #   - "AskBasic":   ACK Serverless集群基础版 (ManagedKubernetes + profile:Serverless + cluster_spec:ack.standard)
+  #                  No PodCidr, no LoginPassword, no worker nodes
+  #                  Quota: 2
+  #                  Use case: Dev/test, variable workloads
+  #   - "AskPro":     ACK Serverless集群Pro版 (ManagedKubernetes + profile:Serverless + cluster_spec:ack.pro.small)
+  #                  No PodCidr, no LoginPassword, no worker nodes
+  #                  Quota: 100
+  #                  Use case: Production serverless workloads
+  # Note: Auto Mode (智能托管模式) is only supported for ACK托管集群 (AckProAuto)
+  #       ASK Serverless does NOT support Auto Mode
+  kubernetes.cluster_type: AskPro
+  # Kubernetes version (example: "1.34.3-aliyun.1")
+  # NOTE: For AckProAuto, this setting is IGNORED (Aliyun manages version automatically)
+  kubernetes.version: 1.34.3-aliyun.1
+  # Service CIDR for Kubernetes services
+  kubernetes.service_cidr: 172.21.0.0/20
+  # Pod CIDR for pods (only for ACK with Flannel CNI)
+  kubernetes.pod_cidr: 10.1.0.0/16
+  # Kubernetes StorageClass for PVCs (REQUIRED)
+  # - All PVCs (MySQL, Elasticsearch, RabbitMQ) depend on this
+  # - Must match your cluster's available StorageClass
+  # - Run: kubectl get storageclass to see available options
+  # Common values:
+  #   - ACK/ASK (Aliyun): alicloud-disk-alltype
+  #   - Rook/Ceph: rook-ceph-block
+  #   - Local path: local-path
+  #   - ACS (Aliyun): alicloud-disk-topology-alltype
+  kubernetes.storage_class: alicloud-disk-alltype
+
+  # Payment configuration for Aliyun resources (RDS, Elasticsearch)
+  #
+  # Unified configuration values (mapped to resource-specific values in code):
+  #   - PostPaid: Pay-as-you-go (hourly billing, flexible) - Recommended for dev/test
+  #   - PrePaid:  Subscription (fixed period, cost-effective) - For production
+  #
+  # Resource-specific mapping (automatic, no manual conversion needed):
+  #   Config Value    → MySQL InstanceChargeType    → ES PaymentType
+  #   --------------    ---------------------------    ----------------
+  #   PostPaid          Postpaid                     PayAsYouGo
+  #   PrePaid           Prepaid                      Subscription
+  #
+  # For PrePaid subscriptions, also configure:
+  #   payment.period: 1-9 (months), 12, 24, 36
+  #   payment.period_unit: "Month" | "Year"
+  #
+  # Note: elasticsearch.sn1ne.xlarge is NOT available for PayAsYouGo in cn-shanghai
+  # Using elasticsearch.sn2ne.large instead (2 cores, 8GB RAM)
+  payment.type: PostPaid
+  # payment.period: "1"  # Only for PrePaid: duration (numeric value)
+  # payment.period_unit: "Month"  # Only for PrePaid: Month or Year
+
+  # MySQL RDS configuration
+  # Whether to create MySQL cluster outside k8s. Refers to https://rdsnext.console.aliyun.com/
+  mysql.external: "false"
+  # Instance class (DB instance type)
+  # Official specs: https://help.aliyun.com/zh/rds/apsaradb-rds-for-mysql/primary-apsaradb-rds-for-mysql-instance-types
+  #
+  # Available instance types (queried via aliyun CLI for cn-shanghai):
+  #   HighAvailability (高可用版):
+  #     - mysql.x2.large.2c
+  #     - mysql.x2.xlarge.2c
+  #     - mysql.x4.large.2c
+  #   Basic (基础版, cheaper but single-node):
+  #     - mysql.n2.large.1
+  #     - mysql.n2e.medium.1
+  #     - mysql.n1e.small.1
+  #
+  # Note: For CPU/RAM specs, check the official documentation link above
+  mysql.node_spec: mysql.x2.large.2c
+  # Instance storage (disk size for RDS instance)
+  # Range: 20-2000, increments of 5, unit: GB
+  # Note: Must be at least 20GB
+  mysql.disk_size: 20
+
+  # Elasticsearch configuration
+  #
+  # IMPORTANT: Use .new suffix specs (next-generation instances) for better availability
+  # The .new suffix indicates newer instance types that support PostPaid in more zones
+  #
+  # VALID VALUES (tested and confirmed working):
+  # ================================================
+  # Version:
+  #   8.13_with_X-Pack    # Latest stable - BEST for .new specs ✅
+  #   8.9_with_X-Pack     # Previous stable
+  #   7.16_with_X-Pack    # LTS version
+  #   7.10_with_X-Pack    # Older version (limited .new spec support)
+  #   Note: 8.13_with_X-Pack has best .new spec support
+  #
+  # Data Node Spec (with .new suffix):
+  #   elasticsearch.sn1ne.large.new    # 1C 4GB - Best compatibility ✅
+  #   elasticsearch.sn2ne.large.new    # 2C 8GB
+  #   elasticsearch.sn2ne.xlarge.new   # 2C 8GB
+  #   elasticsearch.sn2ne.2xlarge.new  # 2C 16GB
+  #   elasticsearch.sn2ne.4xlarge.new  # 4C 16GB - Production
+  #
+  # Data Node Amount: 3-50 nodes (3 is minimum for production stability)
+  # Data Node Disk: 20-2048 GB (in multiples of 10 for cloud_essd)
+  #
+  # Disk Type: cloud_essd (REQUIRED - cloud_ssd is NOT supported)
+  #
+  # Performance Level (for cloud_essd):
+  #   PL0   # Baseline (10K IOPS)
+  #   PL1   # Recommended (50K IOPS) - Cost-effective ✅
+  #   PL2   # High performance (100K IOPS)
+  #   PL3   # Ultra-high (1M IOPS)
+  #
+  # Kibana Spec (NO .new suffix):
+  #   elasticsearch.sn1ne.large    # 1C 4GB - Recommended ✅
+  #   elasticsearch.sn1ne.xlarge   # 1C 4GB
+  #   elasticsearch.sn2ne.large    # 2C 8GB
+  #
+  # Kibana Amount: 1 node (sufficient for most deployments)
+  # Kibana Disk: MUST be 0 (no dedicated disk allowed)
+  #
+  # Payment Type: PostPaid (pay-as-you-go), PrePaid (subscription)
+  # Payment Period: 1-9 (months), 12, 24, 36 (only for PrePaid)
+  #
+  # HOW TO CHECK AVAILABLE VALUES:
+  # ===============================
+  # 1. Check existing instances in your zone (BEST):
+  #    aliyun elasticsearch GET /openapi/instances --region cn-shanghai | \
+  #      jq '.Result[] | select(.networkConfig.vsArea == "cn-shanghai-b") | \
+  #      {esVersion, nodeSpec: .nodeSpec.spec, paymentType}'
+  #
+  # 2. Use Aliyun Console:
+  #    - Go to Elasticsearch product page
+  #    - Click "Create Instance"
+  #    - Check dropdown menus for available versions/specs/zones
+  #
+  # 3. Create a test instance via Console first to verify availability
+  #
+  # Using .new spec for better PostPaid support in cn-shanghai-b
+  # Whether to create Elasticsearch cluster outside k8s. Refers to https://elasticsearch.console.aliyun.com/
+  elasticsearch.external: "false"
+  elasticsearch.version: 8.13_with_X-Pack
+  elasticsearch.node_spec: elasticsearch.sn1ne.large.new
+  elasticsearch.node_amount: "3"
+  # aliyun pvc shall be no less than 20Gi
+  elasticsearch.disk_size: "20" # GB per data node
+  #
+  # Disk Type Configuration:
+  # - cloud_essd (Enhanced SSD): REQUIRED by Aliyun Elasticsearch
+  # - cloud_ssd (Standard SSD): NOT supported, causes "InvalidComponent" error
+  # - cloud_essd must be used with PerformanceLevel (see below)
+  elasticsearch.disk_type: cloud_essd
+  #
+  # ESSD Performance Level (Required for cloud_essd):
+  # - PL0: Single disk random IOPS up to 10,000 (baseline performance)
+  # - PL1: Single disk random IOPS up to 50,000 (recommended for most workloads)
+  # - PL2: Single disk random IOPS up to 100,000 (high-performance)
+  # - PL3: Single disk random IOPS up to 1,000,000 (ultra-high-performance)
+  # Note: Higher performance levels incur higher costs. PL1 is cost-effective for typical use.
+  elasticsearch.disk_performance_level: PL1

@@ -1,0 +1,1044 @@
+ROSTemplateFormatVersion: "2015-09-01"
+Conditions:
+  IfBuyRds:
+    Fn::Equals:
+      - Ref: RdsOption
+      - 'BuyRds'
+  IfDeployMysqlInK8s:
+    Fn::Equals:
+      - Ref: RdsOption
+      - 'DeployInK8s'
+  IfBuyEsCluster:
+    Fn::Equals:
+      - Ref: EsOption
+      - 'BuyEsCluster'
+  IfDeployEsInK8s:
+    Fn::Equals:
+      - Ref: EsOption
+      - 'DeployInK8s'
+Metadata:
+  ALIYUN::ROS::Interface:
+    ParameterGroups:
+      - Parameters:
+          - ZoneId
+          - ZoneId2
+          - VpcOption
+          - VpcId
+          - VSwitchId
+          - VSwitchId2
+          - VpcCidrBlock
+          - VSwitchCidrBlock
+          - VSwitchCidrBlock2
+          - ServiceCidr
+        Label:
+          default: 网络配置
+      - Parameters:
+          - PayType
+          - PayPeriodUnit
+          - PayPeriod
+        Label:
+          default: 付费配置
+      - Parameters:
+          - EsOption
+          - EsInstanceCountK8s
+          - EsInstanceCpu
+          - EsInstanceMemory
+          - EsInstanceType
+          - EsInstanceCount
+          - EsInstanceDiskSize
+          - EsInstancePassword
+        Label:
+          default: ElasticSearch配置
+      - Parameters:
+          - RdsOption
+          - RdsInstanceCpu
+          - RdsInstanceMemory
+          - RdsInstanceType
+          - RdsInstanceDiskSize
+          - RdsUser
+          - RdsPassword
+        Label:
+          default: Mysql配置
+      - Parameters:
+          - RagflowImageTag
+          - RagflowReplicas
+          - ParserReplicas
+          - DeepdocReplicas
+        Label:
+          default: Ragflow应用配置
+
+Parameters:
+  ZoneId:
+    Type: String
+    AssociationProperty: ALIYUN::ECS::Instance:ZoneId
+    Label:
+      en: Zone ID
+      zh-cn: 可用区
+    Required: true
+    Default: null
+  ZoneId2:
+    Type: String
+    AssociationProperty: ALIYUN::ECS::Instance::ZoneId
+    AssociationPropertyMetadata:
+      ExclusiveTo:
+        - ZoneId
+    Label:
+      en: Availability Zone
+      zh-cn: 可用区2
+  VpcOption:
+    Type: String
+    AllowedValues:
+      - NewVPC
+      - ExistingVPC
+    AssociationPropertyMetadata:
+      ValueLabelMapping:
+        NewVPC:
+          zh-cn: 新建专有网络
+          en: New VPC
+        ExistingVPC:
+          zh-cn: 已有专有网络
+          en: Existing VPC
+    Label:
+      en: Select Existing or New VPC
+      zh-cn: 选择已有/新建的专有网络
+    Required: true
+    Default: NewVPC
+  VpcId:
+    Type: String
+    Label:
+      en: VPC ID
+      zh-cn: 专有网络VPC实例ID
+    Description: '现有虚拟专有网络的实例ID'
+    Required: true
+    Default: null
+    AssociationProperty: 'ALIYUN::ECS::VPC::VPCId'
+    AssociationPropertyMetadata:
+      RegionId: ${RegionId}
+      Visible:
+        Condition:
+          Fn::Equals:
+            - ExistingVPC
+            - ${VpcOption}
+  VSwitchId:
+    Type: String
+    Label:
+      en: VSwitch ID
+      zh-cn: 交换机实例ID
+    Description: 现有业务网络交换机的实例ID
+    Required: true
+    Default: null
+    AssociationProperty: 'ALIYUN::ECS::VSwitch::VSwitchId'
+    AssociationPropertyMetadata:
+      VpcId: '${VpcId}'
+      ZoneId: '${ZoneId}'
+      Visible:
+        Condition:
+          Fn::Equals:
+            - ExistingVPC
+            - ${VpcOption}
+  VSwitchId2:
+    Type: String
+    Label:
+      en: VSwitch ID
+      zh-cn: 交换机实例ID
+    Default: ''
+    AssociationProperty: ALIYUN::ECS::VSwitch::VSwitchId
+    Required: true
+    AssociationPropertyMetadata:
+      VpcId: '${VpcId}'
+      ZoneId: '${ZoneId2}'
+      Visible:
+        Condition:
+          Fn::Equals:
+            - ${VpcOption}
+            - ExistingVPC
+  VpcCidrBlock:
+    Type: String
+    Label:
+      en: VPC CIDR IPv4 Block
+      zh-cn: 专有网络IPv4网段
+    Description:
+      zh-cn: VPC的ip地址段范围，<br>您可以使用以下的ip地址段或其子网:<br><font color='green'>[10.0.0.0/8]</font><br><font color='green'>[172.16.0.0/12]</font><br><font color='green'>[192.168.0.0/16]</font>
+      en: 'The ip address range of the VPC in the CidrBlock form; <br>You can use the following ip address ranges and their subnets: <br><font color=''green''>[10.0.0.0/8]</font><br><font color=''green''>[172.16.0.0/12]</font><br><font color=''green''>[192.168.0.0/16]</font>'
+    Default: 192.168.0.0/16
+    Required: true
+    AssociationProperty: ALIYUN::VPC::VPC::CidrBlock
+    AssociationPropertyMetadata:
+      Visible:
+        Condition:
+          Fn::Equals:
+            - NewVPC
+            - ${VpcOption}
+  VSwitchCidrBlock:
+    Type: String
+    Label:
+      en: VSwitch CIDR Block
+      zh-cn: 交换机子网网段
+    Description:
+      zh-cn: 必须属于VPC的子网段。
+      en: Must belong to the subnet segment of VPC.
+    Default: 192.168.0.0/24
+    Required: true
+    AssociationProperty: ALIYUN::VPC::VSwitch::CidrBlock
+    AssociationPropertyMetadata:
+      VpcCidrBlock: VpcCidrBlock
+      Visible:
+        Condition:
+          Fn::Equals:
+            - NewVPC
+            - ${VpcOption}
+  VSwitchCidrBlock2:
+    Type: String
+    Label:
+      en: VSwitch CIDR Block
+      zh-cn: 交换机子网网段2
+    Description:
+      zh-cn: 必须属于VPC的子网段。
+      en: Must belong to the subnet segment of VPC.
+    Default: 192.168.1.0/24
+    Required: true
+    AssociationProperty: ALIYUN::VPC::VSwitch::CidrBlock
+    AssociationPropertyMetadata:
+      VpcCidrBlock: VpcCidrBlock
+      Visible:
+        Condition:
+          Fn::Equals:
+            - NewVPC
+            - ${VpcOption}
+  ServiceCidr:
+    Type: String
+    Description:
+      zh-cn: 可选范围：10.0.0.0/16-24，172.16-31.0.0/16-24，192.168.0.0/16-24<br>不能与 VPC 及 VPC 内已有 Kubernetes 集群使用的网段重复。<font color='blue'><b>创建成功后不能修改</b></font>
+      en: 'Optional range: 10.0.0.0/16-24, 172.16-31.0.0/16-24, 192.168.0.0/16-24<br> cannot duplicate segments already used by existing Kubernetes clusters in VPC and VPC.<font color=''blue''><b>Cannot be modified after successful creation</b></font>'
+    Label:
+      zh-cn: Service CIDR
+      en: Service CIDR
+    AssociationProperty: ALIYUN::CS::ManagedKubernetesCluster::ServiceCidr
+    AssociationPropertyMetadata:
+      VpcId: ${VpcId}
+      RegionId: ${RegionId}
+      ClusterType: ManagedKubernetes
+      NodeCidrMask: 26
+    Default: 172.16.0.0/16
+  PayType:
+    Type: String
+    Label:
+      en: ECS Instance Charge Type
+      zh-cn: 付费类型
+    Default: PostPaid
+    # Refers to https://help.aliyun.com/zh/ros/user-guide/associationproperty-and-associationpropertymetadata
+    AssociationProperty: ChargeType
+    AssociationPropertyMetadata:
+      LocaleKey: InstanceChargeType
+  PayPeriodUnit:
+    Type: String
+    Label:
+      en: Pay Period Unit
+      zh-cn: 购买资源时长周期
+    Default: Month
+    AllowedValues:
+      - Month
+      - Year
+    AssociationPropertyMetadata:
+      Visible:
+        Condition:
+          Fn::Not:
+            Fn::Equals:
+              - ${PayType}
+              - PostPaid
+  PayPeriod:
+    Type: Number
+    Description:
+      en: When the resource purchase duration is Month, the value of Period ranges from 1 to 9, 12, 24, 36, 48, or 60. <br><b><font color='red'> When ECS instance types are PrePaid valid </b></font>
+      zh-cn: 当购买资源时长为Month时，Period取值：1~9 <br><b>
+    Label:
+      en: Period
+      zh-cn: 购买资源时长
+    Default: 1
+    AllowedValues:
+      - 1
+      - 2
+      - 3
+      - 4
+      - 5
+      - 6
+      - 7
+      - 8
+      - 9
+    AssociationProperty: PayPeriod
+    AssociationPropertyMetadata:
+      Visible:
+        Condition:
+          Fn::Not:
+            Fn::Equals:
+              - ${PayType}
+              - PostPaid
+  EsOption:
+    Type: String
+    AllowedValues:
+      - DeployInK8s
+      - BuyEsCluster
+    AssociationPropertyMetadata:
+      ValueLabelMapping:
+        DeployInK8s:
+          zh-cn: 使用集群上的Elasticsearch
+          en: Use Elasticsearch on the cluster
+        BuyEsCluster:
+          zh-cn: 购买阿里云上的Elasticsearch集群<font color='red'>使用付费配置</b></font>
+          en: Purchase Elasticsearch on Aliyun
+    Label: 选择 Elasticsearch 部署模式
+    Required: true
+    Default: DeployInK8s
+  EsInstanceCountK8s:
+    Type: Number
+    Label: elasticsearch 实例数量
+    Default: 3
+    AllowedValues:
+      - 3
+      - 5
+      - 7
+    AssociationPropertyMetadata:
+      Visible:
+        Condition:
+          Fn::Equals:
+            - DeployInK8s
+            - ${EsOption}
+  EsInstanceCpu:
+    Type: String
+    Label: elasticsearch 结点CPU核数
+    Description:
+      zh-cn: ElasticSearch结点CPU核数
+      en: The CPU core number of ElasticSearch instances
+    Default: 4
+    AllowedValues:
+      - 2
+      - 4
+      - 8
+    Required: true
+    AssociationPropertyMetadata:
+      Visible:
+        Condition:
+          Fn::Equals:
+            - DeployInK8s
+            - ${EsOption}
+  EsInstanceMemory:
+    Type: String
+    Label: elasticsearch 结点内存大小
+    Description:
+      zh-cn: ElasticSearch结点内存大小，单位为 GB
+      en: The memory size of ElasticSearch instances, unit is GB
+    Default: 16
+    AllowedValues:
+      - 8
+      - 16
+      - 32
+    Required: true
+    AssociationPropertyMetadata:
+      Visible:
+        Condition:
+          Fn::Equals:
+            - DeployInK8s
+            - ${EsOption}
+  EsInstanceDiskSize:
+    Type: String
+    Label: elasticsearch 结点硬盘尺寸
+    Description:
+      zh-cn: ElasticSearch结点实例硬盘大小，单位为 GB
+      en: The disk size ElasticSearch instances, unit GB
+    Default: 500
+    AllowedValues:
+      - 100
+      - 200
+      - 500
+      - 1000
+    Required: true
+    AssociationPropertyMetadata:
+      RegionId: ${RegionId}
+  EsInstanceType:
+    Type: String
+    Label: elasticsearch 数据结点实例规格
+    Description:
+      zh-cn: Elasticsearch 数据结点规格，参考https://help.aliyun.com/zh/es/product-overview/node-specifications
+      en: The node specification of Elasticsearch, refer to https://help.aliyun.com/zh/es/product-overview/node-specifications
+    Default: elasticsearch.sn2ne.xlarge.new
+    AssociationProperty: ALIYUN::ElasticSearch::Instance::InstanceType
+    AssociationPropertyMetadata:
+      RegionId: ${RegionId}
+      ZoneId: ${ZoneId}
+      Visible:
+        Condition:
+          Fn::Equals:
+            - BuyEsCluster
+            - ${EsOption}
+  EsInstanceCount:
+    Type: Number
+    Label: elasticsearch 数据结点实例数量
+    Default: 4
+    AllowedValues:
+      - 2
+      - 4
+      - 6
+      - 8
+    AssociationPropertyMetadata:
+      RegionId: ${RegionId}
+      Visible:
+        Condition:
+          Fn::Equals:
+            - BuyEsCluster
+            - ${EsOption}
+  EsInstancePassword:
+    Type: String
+    Label:
+      en: Elasticsearch Cluster Password
+      zh-cn: Elasticsearch集群密码
+    Default: infiniflow@2023
+    Required: true
+    Description:
+      zh-cn: ElasticSearch 访问密码，长度为8~32个字符，必须同时包含大写英文字母、小写英文字母、数字和特殊字符中的三项。支持的特殊字符为：!@#$%&*()_+-=
+      en: ElasticSearch access password, the length is 8~32 characters, and must contain three of the following： capital letters, lowercase letters, numbers, and special characters. The special characters are：!@#$%&*()_+-=
+    NoEcho: true
+    ConstraintDescription:
+      zh-cn: 长度为8~32个字符，必须同时包含大写英文字母、小写英文字母、数字和特殊字符中的三项。支持的特殊字符为：!@#$%&*()_+-=。
+      en: ElasticSearch access password, the length is 8~32 characters, and must contain three of the following： capital letters, lowercase letters, numbers, and special characters. The special characters are：!@#$%&*()_+-=
+    MinLength: 8
+    MaxLength: 30
+    AssociationProperty: ALIYUN::ECS::Instance::Password
+    AssociationPropertyMetadata:
+      RegionId: ${RegionId}
+      Visible:
+        Condition:
+          Fn::Equals:
+            - BuyEsCluster
+            - ${EsOption}
+  RdsOption:
+    Type: String
+    AllowedValues:
+      - DeployInK8s
+      - BuyRds
+    AssociationPropertyMetadata:
+      ValueLabelMapping:
+        DeployInK8s:
+          zh-cn: 使用集群上的MySQL
+          en: Use MySQL on the cluster
+        BuyRds:
+          zh-cn: 购买阿里云上的MySQL集群<font color='red'>使用付费配置</b></font>
+          en: Purchase MySQL on Aliyun
+    Label: 选择 MySQL 部署模式
+    Required: true
+    Default: DeployInK8s
+  RdsInstanceCpu:
+    Type: String
+    Label: MySQL 实例CPU核数
+    Description:
+      zh-cn: MySQL实例CPU核数
+      en: The CPU core number of MySQL instances
+    Default: 4
+    AllowedValues:
+      - 2
+      - 4
+      - 8
+    Required: true
+    AssociationPropertyMetadata:
+      Visible:
+        Condition:
+          Fn::Equals:
+            - DeployInK8s
+            - ${EsOption}
+  RdsInstanceMemory:
+    Type: String
+    Label: MySQL 实例内存大小
+    Description:
+      zh-cn: MySQL实例内存大小，单位为 GB
+      en: The memory size of MySQL instances, unit is GB
+    Default: 8
+    AllowedValues:
+      - 8
+      - 16
+      - 32
+    Required: true
+    AssociationPropertyMetadata:
+      Visible:
+        Condition:
+          Fn::Equals:
+            - DeployInK8s
+            - ${RdsOption}
+  RdsInstanceDiskSize:
+    Label: 磁盘大小
+    Type: Number
+    Description:
+      zh-cn: RDS 实例硬盘大小，范围为 20 - 2000，每 5 个增量，单位为 GB
+      en: The size range of RDS instances is 20 - 2000, Incrementing in every 5, unit GB
+    MinValue: 20
+    MaxValue: 2000
+    ConstraintDescription: The size range of RDS instances is 20 - 2000, Incrementing in every 5, unit GB
+    Default: 200
+  RdsInstanceType:
+    Label: MySQL 实例规格
+    Type: String
+    Description:
+      zh-cn: 根据数据库引擎的类型和可用的区域支持选择实例规格；<br>请参见详细信息：<a href='https://help.aliyun.com/zh/rds/apsaradb-rds-for-mysql/primary-apsaradb-rds-for-mysql-instance-types' target='_blank'><b><font color='blue'>实例规格表</font></b></a>
+      en: 'Select the instance specification based on the type of database engine and the available area support;<br>see detail: <a href=''https://help.aliyun.com/zh/rds/apsaradb-rds-for-mysql/primary-apsaradb-rds-for-mysql-instance-types'' target=''_blank''><b><font color=''blue''>Instance specification sheet</font></b></a>'
+    Default: mysql.n2.large.2c
+    AssociationProperty: ALIYUN::RDS::Instance::InstanceType
+    AssociationPropertyMetadata:
+      RegionId: ${RegionId}
+      ZoneId: ${ZoneId}
+      InstanceChargeType: ${PayType}
+      Engine: MySQL
+      EngineVersion: "8.0"
+      Category: HighAvailability
+      Visible:
+        Condition:
+          Fn::Equals:
+            - BuyRds
+            - ${RdsOption}
+  RdsUser:
+    Type: String
+    Label:
+      en: MySQL account username
+      zh-cn: MySQL账号用户名
+    Default: infiniflow
+    Required: true
+    Description:
+      zh-cn: MySQL账号用户名
+      en: MySQL account username
+    ConstraintDescription:
+      zh-cn: 长度为8~32个字符
+      en: The length is 8~32 characters,
+    MinLength: 8
+    MaxLength: 30
+    AssociationPropertyMetadata:
+      Visible:
+        Condition:
+          Fn::Equals:
+            - BuyRds
+            - ${RdsOption}
+  RdsPassword:
+    Type: String
+    Label:
+      en: MySQL account password
+      zh-cn: MySQL账号密码
+    Default: infiniflow@2023
+    Required: true
+    Description:
+      zh-cn: MySQL账号密码，长度为8~32个字符，必须同时包含大写英文字母、小写英文字母、数字和特殊字符中的三项。支持的特殊字符为：!@#$%&*()_+-=
+      en: MySQL account password, the length is 8~32 characters, and must contain three of the following： capital letters, lowercase letters, numbers, and special characters. The special characters are：!@#$%&*()_+-=
+    NoEcho: true
+    ConstraintDescription:
+      zh-cn: 长度为8~32个字符，必须同时包含大写英文字母、小写英文字母、数字和特殊字符中的三项。支持的特殊字符为：!@#$%&*()_+-=。
+      en: The length is 8~32 characters, and must contain three of the following： capital letters, lowercase letters, numbers, and special characters. The special characters are：!@#$%&*()_+-=
+    MinLength: 8
+    MaxLength: 30
+    AssociationProperty: ALIYUN::ECS::Instance::Password
+    AssociationPropertyMetadata:
+      Visible:
+        Condition:
+          Fn::Equals:
+            - BuyRds
+            - ${RdsOption}
+  RagflowImageTag:
+    Type: String
+    Label: Ragflow 镜像标签
+    Description:
+      zh-cn: Ragflow 镜像标签
+      en: Ragflow image tag
+    Default: latest
+    Required: true
+  RagflowReplicas:
+    Type: Number
+    Label: Ragflow 副本数
+    Description:
+      zh-cn: Ragflow 副本数
+      en: Ragflow replicas
+    Default: 1
+    MinValue: 1
+    MaxValue: 10
+    Required: true
+  ParserReplicas:
+    Type: Number
+    Label: Parser 副本数
+    Description:
+      zh-cn: Parser 副本数
+      en: Parser replicas
+    Default: 1
+    MinValue: 1
+    MaxValue: 10
+    Required: true
+  DeepdocReplicas:
+    Type: Number
+    Label: Deepdoc 副本数
+    Description:
+      zh-cn: Deepdoc 副本数
+      en: Deepdoc replicas
+    Default: 1
+    MinValue: 0
+    MaxValue: 10
+    Required: true
+
+Resources:
+  # 云底座：VPC 和 vSwitch
+  VpcModule:
+    Version: v1
+    Type: MODULE::ACS::ComputeNest::VpcAndVSwitch
+    Properties:
+      EnableDualZones: true
+      VpcOption:
+        Ref: VpcOption
+      VpcId:
+        Ref: VpcId
+      ZoneId:
+        Ref: ZoneId
+      ZoneIdSecondary:
+        Ref: ZoneId2
+      VSwitchId:
+        Ref: VSwitchId
+      VSwitchIdSecondary:
+        Ref: VSwitchId2
+      VpcCidrBlock:
+        Ref: VpcCidrBlock
+      VSwitchCidrBlock:
+        Ref: VSwitchCidrBlock
+      VSwitchCidrBlockSecondary:
+        Ref: VSwitchCidrBlock2
+
+  # OSS 存储配置. Refer to https://help.aliyun.com/zh/ros/developer-reference/aliyun-oss-bucket
+  OSSBucket:
+    Type: 'ALIYUN::OSS::Bucket'
+    Properties:
+      DeletionForce: true
+      # IMPORTANT: BucketName must ONLY contain lowercase letters and numbers
+      # NO hyphens, underscores, or other special characters allowed
+      # ALIYUN::StackId 是 UUID 格式（如 a1b2c3d4-e5f6-7890-abcd-ef1234567890），非字母数字字符只有 -，hex 本身已是小写。
+      # Use Fn::Split + Fn::Join to strip all non-alphanumeric characters from StackId for uniqueness
+      BucketName:
+        Fn::Join:
+          - ''
+          - - 'ragflow'
+            - Ref: ALIYUN::AccountId
+            - Fn::Join:
+                - ''
+                - Fn::Split:
+                    - '-'
+                    - Ref: ALIYUN::StackId
+
+  OSSRamUser:
+    DependsOn: OSSBucket
+    Type: ALIYUN::RAM::User
+    Properties:
+      UserName:
+        Ref: ALIYUN::StackName
+      Policies:
+        - PolicyName:
+            Ref: ALIYUN::StackName
+          PolicyDocument:
+            Statement:
+              - Action:
+                  - oss:*
+                Effect: Allow
+                Resource:
+                  - Fn::Sub:
+                      - "acs:oss:*:*:${BucketName}"
+                      - BucketName:
+                          Fn::GetAtt:
+                            - OSSBucket
+                            - Name
+                  - Fn::Sub:
+                      - "acs:oss:*:*:${BucketName}/*"
+                      - BucketName:
+                          Fn::GetAtt:
+                            - OSSBucket
+                            - Name
+            Version: '1'
+
+  AccessKey:
+    DependsOn: OSSRamUser
+    Type: ALIYUN::RAM::AccessKey
+    Properties:
+      UserName:
+        Ref: ALIYUN::StackName
+
+  # MySQL 数据库实例（仅在 RdsOption=BuyRds 时创建）. Refers to https://help.aliyun.com/zh/ros/developer-reference/aliyun-rds-dbinstance
+  DBInstance:
+    DependsOn:
+      - VpcModule
+    Type: ALIYUN::RDS::DBInstance
+    Condition: IfBuyRds
+    Properties:
+      ZoneId:
+        Ref: ZoneId
+      VPCId:
+        Fn::GetAtt:
+          - VpcModule
+          - VpcId
+      VSwitchId:
+        Fn::GetAtt:
+          - VpcModule
+          - VSwitchId
+      Engine: MySQL
+      EngineVersion: "8.0"
+      DBInstanceClass:
+        Ref: RdsInstanceType
+      DBInstanceStorage:
+        Ref: RdsInstanceDiskSize
+      DBInstanceStorageType: cloud_essd
+      Category: HighAvailability
+      PayType:
+        Ref: PayType
+      PeriodType:
+        Ref: PayPeriodUnit
+      Period:
+        Ref: PayPeriod
+      SecurityIPList:
+        Fn::Join:
+          - ','
+          - - Ref: ServiceCidr
+            - Fn::GetAtt:
+                - VpcModule
+                - VpcCidrBlock
+
+  # Elasticsearch 集群实例（仅在 EsOption=BuyEsCluster 时创建）. Refers to https://help.aliyun.com/zh/ros/developer-reference/aliyun-elasticsearch-instance
+  ElasticSearchInstance:
+    DependsOn:
+      - VpcModule
+    Type: ALIYUN::ElasticSearch::Instance
+    Condition: IfBuyEsCluster
+    Properties:
+      ZoneId:
+        Ref: ZoneId
+      VSwitchId:
+        Fn::GetAtt:
+          - VpcModule
+          - VSwitchId
+      ZoneCount: 1  # Single-zone deployment (no master nodes required)
+      Version: 8.17_with_X-Pack  # elasticsearch版本
+      DataNode:
+        Amount:
+          Ref: EsInstanceCount
+        DiskSize:
+          Ref: EsInstanceDiskSize
+        Spec:
+          Ref: EsInstanceType
+        DiskType: cloud_essd
+        DiskEncryption: false
+        PerformanceLevel: PL1
+      Password:
+        Ref: EsInstancePassword
+      EnableKibanaPublic: true
+      EnablePublic: true
+      KibanaNode:
+        Spec: elasticsearch.sn1ne.large # Match Terraform config for compatibility
+      # KibanaWhitelist 硬编码为 VPC CIDR，限制为仅内网访问（安全配置）
+      KibanaWhitelist:
+        - Fn::GetAtt:
+            - VpcModule
+            - VpcCidrBlock
+      PrivateWhitelist:
+        - Ref: ServiceCidr
+        - Fn::GetAtt:
+            - VpcModule
+            - VpcCidrBlock
+      InstanceChargeType:
+        Ref: PayType
+      Period:
+        Ref: PayPeriod
+      PeriodUnit:
+        Ref: PayPeriodUnit
+
+  # 云底座：ACK Serverless Cluster. Refers to https://help.aliyun.com/zh/ros/developer-reference/aliyun-cs-askcluster
+  AskCluster:
+    DependsOn:
+      - VpcModule
+    Type: ALIYUN::CS::ASKCluster  # 专门用于创建 ACK Serverless 集群的资源类型
+    Properties:
+      Name:
+        Ref: ALIYUN::StackName
+      VpcId:
+        Fn::GetAtt:
+          - VpcModule
+          - VpcId
+      ServiceCidr:
+        Ref: ServiceCidr
+      ClusterSpec: ack.pro.small
+      SnatEntry: true
+      VSwitchIds:
+        - Fn::GetAtt:
+            - VpcModule
+            - VSwitchId
+      ZoneId:
+        Ref: ZoneId
+      ServiceDiscoveryTypes:
+        - CoreDNS
+      PrivateZone: false
+      Addons:
+        - Name: coredns
+        - Name: alb-ingress-controller
+        - Name: csi-provisioner
+        - Name: knative
+        # ACR Credential Helper for private image pull without imagePullSecrets
+        # See: https://help.aliyun.com/zh/ack/product-overview/aliyun-acr-credential-helper
+        - Name: aliyun-acr-credential-helper
+
+  # 应用层：tofu 部署 Job. Refers to https://help.aliyun.com/zh/ros/developer-reference/aliyun-cs-clusterapplication
+  JobApplication:
+    Type: ALIYUN::CS::ClusterApplication
+    DependsOn:
+      - AskCluster
+      - OSSBucket
+      - OSSRamUser
+      - AccessKey
+      - DBInstance
+      - ElasticSearchInstance
+    Properties:
+      # 使用 StackName 作为命名空间，实现多租户隔离
+      # 注意：ALIYUN::StackName 会在运行时替换为实际的堆栈名称
+      DefaultNamespace: default
+      # 删除命名空间时自动清理资源
+      DefaultNamespaceDeletion: true
+      WaitUntil:
+        - Kind: Job
+          Name: tofu-deploy-job
+          JsonPath: $.status.succeeded
+          Operator: Equals
+          Value: '1'
+          ValueType: Json
+          Timeout: 1800
+          FirstMatch: true
+        - Kind: ConfigMap
+          Name: ragflow-gateway-address
+          Namespace: ragflow
+          JsonPath: $.data.gateway_address
+          Operator: NotEmpty
+          ValueType: String
+          Timeout: 1800
+          FirstMatch: true
+      YamlContent:
+        Fn::Sub:
+          - |
+            # 1. 创建专用 ServiceAccount
+            apiVersion: v1
+            kind: ServiceAccount
+            metadata:
+              name: tofu-deployer-sa
+              namespace: default
+            ---
+            # 2. 定义 ClusterRole（tofu 部署 RAGFlow 所需完整权限）
+            # 临时部署角色，使用 cluster-admin 等效权限以简化维护
+            apiVersion: rbac.authorization.k8s.io/v1
+            kind: ClusterRole
+            metadata:
+              name: tofu-deployer-role
+            rules:
+              - apiGroups: ["*"]
+                resources: ["*"]
+                verbs: ["*"]
+            ---
+            # 3. 绑定 ServiceAccount 到 ClusterRole
+            apiVersion: rbac.authorization.k8s.io/v1
+            kind: ClusterRoleBinding
+            metadata:
+              name: tofu-deployer-binding
+            subjects:
+              - kind: ServiceAccount
+                name: tofu-deployer-sa
+                namespace: default
+            roleRef:
+              kind: ClusterRole
+              name: tofu-deployer-role
+              apiGroup: rbac.authorization.k8s.io
+            ---
+            # 4. 执行 tofu 部署的 Job
+            apiVersion: batch/v1
+            kind: Job
+            metadata:
+              name: tofu-deploy-job
+            spec:
+              template:
+                spec:
+                  serviceAccountName: tofu-deployer-sa
+                  restartPolicy: Never
+                  containers:
+                    - name: tofu-deployer
+                      image: infiniflow-registry.cn-shanghai.cr.aliyuncs.com/infiniflow/tofu-ragflow:latest
+                      env:
+                        # ROS 参数作为环境变量传递给 tofu
+                        - name: RegionId
+                          value: "${RegionId}"
+                        - name: VSwitchId1
+                          value: "${VSwitchId1}"
+                        - name: VSwitchId2
+                          value: "${VSwitchId2}"
+                        # OSS 配置参数（使用 ROS 自动生成的凭证）
+                        - name: OssBucketName
+                          value: "${OssBucketName}"
+                        - name: OssAccessKey
+                          value: "${OssAccessKey}"
+                        - name: OssAccessSecret
+                          value: "${OssAccessSecret}"
+                        # ES 购买选项
+                        - name: EsOption
+                          value: "${EsOption}"
+                        # ES 配置信息（仅在非购买ES时可用）
+                        - name: EsInstanceCountK8s
+                          value: "${EsInstanceCountK8s}"
+                        - name: EsInstanceCpu
+                          value: "${EsInstanceCpu}"
+                        - name: EsInstanceMemory
+                          value: "${EsInstanceMemory}"
+                        - name: EsInstanceDiskSize
+                          value: "${EsInstanceDiskSize}"
+                        # ES 连接信息（仅在购买ES集群时可用）
+                        - name: EsInnerDomain
+                          value: "${EsInnerDomain}"
+                        - name: EsInnerPort
+                          value: "${EsInnerPort}"
+                        - name: EsInstancePassword
+                          value: "${EsInstancePassword}"
+                        # MySQL 购买选项
+                        - name: RdsOption
+                          value: "${RdsOption}"
+                        # MySQL 配置信息（仅在非购买RDS时可用）
+                        - name: RdsInstanceCpu
+                          value: "${RdsInstanceCpu}"
+                        - name: RdsInstanceMemory
+                          value: "${RdsInstanceMemory}"
+                        - name: RdsInstanceDiskSize
+                          value: "${RdsInstanceDiskSize}"
+                        # MySQL 连接信息（仅在购买RDS时可用）
+                        - name: RdsInnerIPAddress
+                          value: "${RdsInnerIPAddress}"
+                        - name: RdsInnerPort
+                          value: "${RdsInnerPort}"
+                        - name: RdsUser
+                          value: "${RdsUser}"
+                        - name: RdsPassword
+                          value: "${RdsPassword}"
+                        # Ragflow 应用配置
+                        - name: RagflowImageTag
+                          value: "${RagflowImageTag}"
+                        - name: RagflowReplicas
+                          value: "${RagflowReplicas}"
+                        - name: ParserReplicas
+                          value: "${ParserReplicas}"
+                        - name: DeepdocReplicas
+                          value: "${DeepdocReplicas}"
+              backoffLimit: 2
+          - RegionId:
+              Ref: ALIYUN::Region
+            VSwitchId1:
+              Fn::GetAtt:
+                - VpcModule
+                - VSwitchId
+            VSwitchId2:
+              Fn::GetAtt:
+                - VpcModule
+                - VSwitchIdSecondary
+            OssBucketName:
+              Fn::GetAtt:
+                - OSSBucket
+                - Name
+            OssAccessKey:
+              Fn::GetAtt:
+                - AccessKey
+                - AccessKeyId
+            OssAccessSecret:
+              Fn::GetAtt:
+                - AccessKey
+                - AccessKeySecret
+            EsOption:
+              Ref: EsOption
+            EsInstanceCountK8s:
+              Ref: EsInstanceCountK8s
+            EsInstanceCpu:
+              Ref: EsInstanceCpu
+            EsInstanceMemory:
+              Ref: EsInstanceMemory
+            EsInstanceDiskSize:
+              Ref: EsInstanceDiskSize
+            EsInnerDomain:
+              Fn::If:
+                - IfBuyEsCluster
+                - Fn::GetAtt:
+                    - ElasticSearchInstance
+                    - Domain
+                - ''
+            EsInnerPort:
+              Fn::If:
+                - IfBuyEsCluster
+                - Fn::GetAtt:
+                    - ElasticSearchInstance
+                    - Port
+                - ''
+            EsInstancePassword:
+              Fn::If:
+                - IfBuyEsCluster
+                - Ref: EsInstancePassword
+                - ''
+            RdsOption:
+              Ref: RdsOption
+            RdsUser:
+              Ref: RdsUser
+            RdsPassword:
+              Ref: RdsPassword
+            RdsInstanceCpu:
+              Ref: RdsInstanceCpu
+            RdsInstanceMemory:
+              Ref: RdsInstanceMemory
+            RdsInstanceDiskSize:
+              Ref: RdsInstanceDiskSize
+            RdsInnerIPAddress:
+              Fn::If:
+                - IfBuyRds
+                - Fn::GetAtt:
+                    - DBInstance
+                    - InnerIPAddress
+                - ''
+            RdsInnerPort:
+              Fn::If:
+                - IfBuyRds
+                - Fn::GetAtt:
+                    - DBInstance
+                    - InnerPort
+                - ''
+            RagflowImageTag:
+              Ref: RagflowImageTag
+            RagflowReplicas:
+              Ref: RagflowReplicas
+            ParserReplicas:
+              Ref: ParserReplicas
+            DeepdocReplicas:
+              Ref: DeepdocReplicas
+      ClusterId:
+        Fn::GetAtt:
+          - AskCluster
+          - ClusterId
+
+Outputs:
+  VpcId:
+    Description:
+      zh-cn: VPC ID
+      en: VPC ID
+    Value:
+      Fn::GetAtt:
+        - VpcModule
+        - VpcId
+  ClusterId:
+    Description:
+      zh-cn: ASK 集群 ID
+      en: ASK Cluster ID
+    Value:
+      Fn::GetAtt:
+        - AskCluster
+        - ClusterId
+  # ROS 模板通过 RagflowApplication.WaitUntilData 捕获服务地址
+  # WaitUntilData 返回数组: [Job状态值, ConfigMap的gateway_address值]
+  # 我们只需要第二个元素（索引为1），即 gateway_address
+  GatewayAddress:
+    Description:
+      zh-cn: RAGFlow 服务访问地址 (对应 tofu gateway_address 输出)
+      en: RAGFlow Service Access URL (corresponds to tofu gateway_address output)
+    Value:
+      Fn::Select:
+        - 1  # 索引从 0 开始，1 表示第二个元素（ConfigMap 的 gateway_address）
+        - Fn::GetAtt:
+            - JobApplication
+            - WaitUntilData

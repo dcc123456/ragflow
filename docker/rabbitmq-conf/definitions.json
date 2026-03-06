@@ -87,6 +87,15 @@
             "arguments": {
                 "x-queue-type": "classic"
             }
+        },
+        {
+            "name": "te.0.resume",
+            "vhost": "/",
+            "durable": true,
+            "auto_delete": false,
+            "arguments": {
+                "x-queue-type": "classic"
+            }
         }
     ],
     "exchanges": [
@@ -131,6 +140,14 @@
             "destination": "te.error",
             "destination_type": "queue",
             "routing_key": "te.error",
+            "arguments": {}
+        },
+        {
+            "source": "test1",
+            "vhost": "/",
+            "destination": "te.0.resume",
+            "destination_type": "queue",
+            "routing_key": "te.0.resume",
             "arguments": {}
         }
     ]

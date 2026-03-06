@@ -27,7 +27,18 @@ from common import settings
 class RAGFlowMinio:
     def __init__(self):
         self.conn = []
-        self.__open__()
+        # Don't open connection in __init__ - wait for first use
+        # This avoids circular import issue where MINIO config is empty during import
+
+    @property
+    def minio_config(self):
+        """Dynamically read MINIO config to avoid circular import issues"""
+        return settings.MINIO or []
+
+    def _ensure_connection(self):
+        """Lazy connection initialization - only create when first needed"""
+        if not self.conn:
+            self.__open__()
 
     def __open__(self):
         try:
@@ -36,7 +47,7 @@ class RAGFlowMinio:
         except Exception:
             pass
 
-        for m in settings.MINIO:
+        for m in self.minio_config:
             try:
                 self.conn.append(Minio(m["host"],
                                   access_key=m["user"],
@@ -54,21 +65,24 @@ class RAGFlowMinio:
         self.conn = []
 
     def health(self):
+        self._ensure_connection()
         bucket, fnm, binary = "txtxtxtxt1", "txtxtxtxt1", b"_t@@@1"
-        if not self.conn.bucket_exists(bucket):
-            self.conn.make_bucket(bucket)
-        r = self.conn.put_object(bucket, fnm,
+        if not self.conn[0].bucket_exists(bucket):
+            self.conn[0].make_bucket(bucket)
+        r = self.conn[0].put_object(bucket, fnm,
                                  BytesIO(binary),
                                  len(binary)
                                  )
         return r
 
-    @staticmethod
-    def user_gateway(tenant_id):
+    def user_gateway(self, tenant_id):
+        """Get connection index for tenant using hash-based distribution"""
         hash_obj = hashlib.sha256(tenant_id.encode("utf-8"))
-        return int(hash_obj.hexdigest(), 16)%len(settings.MINIO)
+        config_len = len(self.minio_config)
+        return (int(hash_obj.hexdigest(), 16) % config_len) if config_len > 0 else 0
 
     def put(self, bucket, fnm, binary, tenant_id=None):
+        self._ensure_connection()
         for _ in range(3):
             i = self.user_gateway(tenant_id)
             try:
@@ -86,6 +100,7 @@ class RAGFlowMinio:
                 time.sleep(1)
 
     def rm(self, bucket, fnm, tenant_id=None):
+        self._ensure_connection()
         try:
             i = self.user_gateway(tenant_id)
             self.conn[i].remove_object(bucket, fnm)
@@ -93,6 +108,7 @@ class RAGFlowMinio:
             logging.error(f"Fail rm {bucket}/{fnm}: " + str(e))
 
     def rm_bucket(self, bucket):
+        self._ensure_connection()
         for conn in self.conn:
             try:
                 if not conn.bucket_exists(bucket):
@@ -105,6 +121,7 @@ class RAGFlowMinio:
                 logging.error(f"Fail rm {bucket}: " + str(e))
 
     def get(self, bucket, filename, tenant_id=None):
+        self._ensure_connection()
         for _ in range(1):
             i = self.user_gateway(tenant_id)
             try:
@@ -120,6 +137,7 @@ class RAGFlowMinio:
         return None
 
     def obj_exist(self, bucket, filename, tenant_id):
+        self._ensure_connection()
         try:
             i = self.user_gateway(tenant_id)
             if self.conn[i].stat_object(bucket, filename):
@@ -130,6 +148,7 @@ class RAGFlowMinio:
         return False
 
     def get_presigned_url(self, bucket, fnm, expires, tenant_id=None):
+        self._ensure_connection()
         for _ in range(3):
             try:
                 i = self.user_gateway(tenant_id)
@@ -141,6 +160,7 @@ class RAGFlowMinio:
         return
 
     def remove_bucket(self, bucket, tenant_id=None):
+        self._ensure_connection()
         try:
             i = self.user_gateway(tenant_id)
             if self.conn[i].bucket_exists(bucket):
@@ -152,6 +172,7 @@ class RAGFlowMinio:
             logging.exception(f"Fail to remove bucket {bucket}")
 
     def copy(self, src_bucket, src_path, dest_bucket, dest_path, tenant_id=None):
+        self._ensure_connection()
         try:
             i = self.user_gateway(tenant_id)
             if not self.conn[i].bucket_exists(dest_bucket):
@@ -175,6 +196,7 @@ class RAGFlowMinio:
             return False
 
     def move(self, src_bucket, src_path, dest_bucket, dest_path, tenant_id=None):
+        self._ensure_connection()
         try:
             if self.copy(src_bucket, src_path, dest_bucket, dest_path, tenant_id):
                 self.rm(src_bucket, src_path, tenant_id)

@@ -17,13 +17,15 @@ import json
 import asyncio
 import secrets
 import re
-from flask import Blueprint, request
+import logging
+from flask import Blueprint, request, jsonify
 from flask_login import current_user, logout_user, login_required
 import pandas as pd
 
 from admin.server.white_list import WhiteListMgr
 from auth import login_verify, login_admin, check_admin_auth
 from responses import success_response, error_response
+from api.utils.health_utils import run_health_checks
 from services import UserMgr, ServiceMgr, UserServiceMgr, SettingsMgr, ConfigMgr, EnvironmentsMgr
 from roles import RoleMgr, RoleModelMgr
 from mail_validator import AsyncSMTPValidator
@@ -38,6 +40,17 @@ admin_bp = Blueprint('admin', __name__, url_prefix='/api/v1/admin')
 @admin_bp.route('/ping', methods=['GET'])
 def ping():
     return success_response('PONG')
+
+
+@admin_bp.route('/', methods=['GET'])  # noqa: F821
+@admin_bp.route('/healthz', methods=['GET'])  # noqa: F821
+def healthz():
+    result, all_ok = run_health_checks()
+    if all_ok:
+        logging.info(f"healthz result: {result}, all_ok: {all_ok}")
+    else:
+        logging.warn(f"healthz result: {result}, all_ok: {all_ok}")
+    return jsonify(result), (200 if all_ok else 500)
 
 
 @admin_bp.route('/login', methods=['POST'])

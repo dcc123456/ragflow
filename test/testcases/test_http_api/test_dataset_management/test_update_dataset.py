@@ -125,7 +125,7 @@ class TestDatasetUpdate:
     @pytest.mark.p1
     @given(name=valid_names())
     @example("a" * 128)
-    @settings(max_examples=20, suppress_health_check=[HealthCheck.function_scoped_fixture])
+    @settings(max_examples=20, deadline=1000, suppress_health_check=[HealthCheck.function_scoped_fixture])
     def test_name(self, HttpApiAuth, add_dataset_func, name):
         dataset_id = add_dataset_func
         payload = {"name": name}

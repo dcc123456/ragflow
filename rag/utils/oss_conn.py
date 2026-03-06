@@ -27,18 +27,52 @@ from common import settings
 class RAGFlowOSS:
     def __init__(self):
         self.conn = None
-        self.oss_config = settings.OSS
-        self.access_key = self.oss_config.get('access_key', None)
-        self.secret_key = self.oss_config.get('secret_key', None)
-        self.endpoint_url = self.oss_config.get('endpoint_url', None)
-        self.region = self.oss_config.get('region', None)
-        self.bucket = self.oss_config.get('bucket', None)
-        self.prefix_path = self.oss_config.get('prefix_path', None)
-        self.__open__()
+        # Don't cache settings.OSS to avoid circular import issues
+        # Instead, read it dynamically via properties
+        self._access_key = None
+        self._secret_key = None
+        self._endpoint_url = None
+        self._region = None
+        self._bucket = None
+        self._prefix_path = None
+        # Don't open connection in __init__ - wait for first use
+        # This avoids circular import issue where OSS config is empty during import
+        # self.__open__()
+
+    @property
+    def oss_config(self):
+        """Dynamically read OSS config to avoid circular import issues"""
+        return settings.OSS or {}
+
+    @property
+    def access_key(self):
+        return self.oss_config.get('access_key', None)
+
+    @property
+    def secret_key(self):
+        return self.oss_config.get('secret_key', None)
+
+    @property
+    def endpoint_url(self):
+        return self.oss_config.get('endpoint_url', None)
+
+    @property
+    def region(self):
+        return self.oss_config.get('region', None)
+
+    @property
+    def prefix_path(self):
+        return self.oss_config.get('prefix_path', None)
+
+    @property
+    def bucket(self):
+        return self.oss_config.get('bucket', None)
 
     @staticmethod
     def use_default_bucket(method):
         def wrapper(self, bucket, *args, **kwargs):
+            # Ensure connection is established before accessing self.bucket
+            self._ensure_connection()
             # If there is a default bucket, use the default bucket
             actual_bucket = self.bucket if self.bucket else bucket
             return method(self, actual_bucket, *args, **kwargs)
@@ -48,6 +82,8 @@ class RAGFlowOSS:
     @staticmethod
     def use_prefix_path(method):
         def wrapper(self, bucket, fnm, *args, **kwargs):
+            # Ensure connection is established before accessing self.prefix_path
+            self._ensure_connection()
             # If the prefix path is set, use the prefix path
             fnm = f"{self.prefix_path}/{fnm}" if self.prefix_path else fnm
             return method(self, bucket, fnm, *args, **kwargs)
@@ -74,12 +110,18 @@ class RAGFlowOSS:
         except Exception:
             logging.exception(f"Fail to connect at region {self.region}")
 
+    def _ensure_connection(self):
+        """Lazy connection initialization - only create when first needed"""
+        if self.conn is None:
+            self.__open__()
+
     def __close__(self):
         del self.conn
         self.conn = None
 
     @use_default_bucket
     def bucket_exists(self, bucket):
+        self._ensure_connection()
         try:
             logging.debug(f"head_bucket bucketname {bucket}")
             self.conn.head_bucket(Bucket=bucket)
@@ -90,6 +132,7 @@ class RAGFlowOSS:
         return exists
 
     def health(self):
+        self._ensure_connection()
         bucket = self.bucket
         fnm = "txtxtxtxt1"
         fnm, binary = f"{self.prefix_path}/{fnm}" if self.prefix_path else fnm, b"_t@@@1"
@@ -109,6 +152,7 @@ class RAGFlowOSS:
     @use_prefix_path
     @use_default_bucket
     def put(self, bucket, fnm, binary, tenant_id=None):
+        self._ensure_connection()
         logging.debug(f"bucket name {bucket}; filename :{fnm}:")
         for _ in range(1):
             try:
@@ -126,6 +170,7 @@ class RAGFlowOSS:
     @use_prefix_path
     @use_default_bucket
     def rm(self, bucket, fnm, tenant_id=None):
+        self._ensure_connection()
         try:
             self.conn.delete_object(Bucket=bucket, Key=fnm)
         except Exception:
@@ -134,6 +179,7 @@ class RAGFlowOSS:
     @use_prefix_path
     @use_default_bucket
     def get(self, bucket, fnm, tenant_id=None):
+        self._ensure_connection()
         for _ in range(1):
             try:
                 r = self.conn.get_object(Bucket=bucket, Key=fnm)
@@ -148,6 +194,7 @@ class RAGFlowOSS:
     @use_prefix_path
     @use_default_bucket
     def obj_exist(self, bucket, fnm, tenant_id=None):
+        self._ensure_connection()
         try:
             if self.conn.head_object(Bucket=bucket, Key=fnm):
                 return True
@@ -160,6 +207,7 @@ class RAGFlowOSS:
     @use_prefix_path
     @use_default_bucket
     def get_presigned_url(self, bucket, fnm, expires, tenant_id=None):
+        self._ensure_connection()
         for _ in range(10):
             try:
                 r = self.conn.generate_presigned_url('get_object',

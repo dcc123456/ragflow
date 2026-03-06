@@ -115,8 +115,75 @@ The most complex one is PDF parser since PDF's flexibility. The output of PDF pa
   
 ### Résumé
 
-The résumé is a very complicated kind of document. A résumé which is composed of unstructured text 
+The résumé is a very complicated kind of document. A résumé which is composed of unstructured text
 with various layouts could be resolved into structured data composed of nearly a hundred of fields.
 We haven't opened the parser yet, as we open the processing method after parsing procedure.
 
-    
+## 4. Troubleshooting Guide
+
+### OCR Service Issues
+
+#### Image Color Space Error
+**Symptom**: `ValueError: too many values to unpack (expected 3)`
+
+**Cause**: PaddleOCR expects 3-channel RGB images but receives incorrect channel count.
+
+**Solution**: Use `cv2.IMREAD_COLOR` to ensure 3-channel input:
+```python
+img = cv2.imdecode(np.frombuffer(img_bytes, np.uint8), cv2.IMREAD_COLOR)
+img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)  # Convert to RGB
+```
+
+#### LitServe Batch Dimension Error
+**Symptom**: Image shape mismatch between `decode_request` and `predict`
+
+**Cause**: LitServe automatically adds batch dimension `(N, H, W, C)`.
+
+**Solution**: Check `x.ndim` to handle both single and batched images:
+```python
+if x.ndim == 3:
+    images = [x]  # Single image: (H, W, C)
+elif x.ndim == 4:
+    images = list(x)  # Batched: (N, H, W, C)
+```
+
+#### OCR Client Format Mismatch
+**Symptom**: `TypeError: unsupported operand type(s) for /: 'list' and 'int'`
+
+**Cause**: Client expects `response["output"][0]` to be detection boxes list.
+
+**Solution**: Parse response correctly:
+```python
+boxes = response["output"][0]  # [[[x0,y0], [x1,y1], ...], ...]
+zip(boxes, [("", 0) for _ in range(len(boxes))])
+```
+
+### GPU Service Issues
+
+#### CUDA Initialization Failure (Error 35)
+**Symptom**: `CUDA initialization failure with error: 35`
+
+**Cause**: TensorRT/CUDA version incompatible with GPU driver.
+
+**Solution**:
+- Driver 535: Use CUDA 12.1 + TensorRT 8.6.3
+- Driver 550+: Use CUDA 12.6+ + TensorRT 10.x
+
+### Service Architecture
+
+```
+┌─────────────────────┐         HTTP          ┌──────────────────────┐
+│  Parser Pod         │ ──────────────────────> │  DeepDoc Pod         │
+│  (No torch/AI)     │   DEEPDOC_URL env var   │  (Has AI models)    │
+│  - OCRClient       │                         │  - PaddleOCR         │
+│  - DLAClient       │ <────────────────────── │  - YOLO DLA         │
+│  - TSRClient       │     JSON responses      │  - YOLO TSR         │
+└─────────────────────┘                         └──────────────────────┘
+```
+
+**Key Points**:
+- Parser Pod is lightweight, no GPU/torch required
+- DeepDoc Pod handles all AI inference
+- Services can scale independently
+- Resource utilization is optimized
+

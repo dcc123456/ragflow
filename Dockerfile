@@ -83,6 +83,9 @@ RUN --mount=type=bind,from=infiniflow/ragflow_deps:latest,source=/,target=/deps 
 ENV PYTHONDONTWRITEBYTECODE=1 DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
 ENV PATH=/root/.local/bin:$PATH
 
+# Install profiling tools (SYS_PTRACE capability is added via K8s securityContext)
+RUN uv tool install austin-dist && uv tool install austin-tui && uv tool install py-spy
+
 # Install Node.js 20.x (Ubuntu 24.04's Node.js is too old)
 RUN --mount=type=cache,id=ragflow_apt,target=/var/cache/apt,sharing=locked \
     curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
@@ -176,7 +179,8 @@ RUN --mount=type=cache,id=ragflow_uv,target=/root/.cache/uv,sharing=locked \
 COPY web web
 COPY docs docs
 RUN --mount=type=cache,id=ragflow_npm,target=/root/.npm,sharing=locked \
-    cd web && npm install && npm run build
+    cd web && NODE_OPTIONS="--max-old-space-size=8192" npm install && \
+    NODE_OPTIONS="--max-old-space-size=8192" VITE_BUILD_SOURCEMAP=false VITE_MINIFY=esbuild npm run build
 
 # Get version from git (mount .git directory to compute version dynamically)
 RUN --mount=type=bind,source=.git,target=/ragflow/.git \

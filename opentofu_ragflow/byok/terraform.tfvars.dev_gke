@@ -1,0 +1,77 @@
+# =============================================================================
+# RAGFlow Deployment on Google Cloud Platform (GKE) - Development Environment
+# =============================================================================
+# Copy this file to terraform.tfvars before deployment: cp terraform.tfvars.dev_gke terraform.tfvars
+
+# =============================================================================
+# GKE-Specific Configuration
+# =============================================================================
+
+cloud_provider     = "gcp"
+# GKE Autopilot requires premium-rwo for Elasticsearch mmap; standard-rwo is not supported
+storage_class      = "premium-rwo"
+# GKE built-in GatewayClass for LoadBalancer (regional, external)
+gateway_class_name = "gke-l7-regional-external-managed"
+gcp_project_id     = "ragflow-462809"
+
+# =============================================================================
+# GCS Storage Configuration
+# =============================================================================
+
+s3_bucket = "ragflow-ragflow-462809-a243365a"
+s3_region = "us-west1"
+
+# Leave empty for GKE Workload Identity
+s3_access_key = ""
+s3_secret_key = ""
+
+# =============================================================================
+# Image Registry
+# =============================================================================
+
+private_registry = "gcr.io/ragflow-462809"
+
+# =============================================================================
+# Development-Specific Resource Overrides (reduced from production defaults)
+# =============================================================================
+
+# MySQL - reduced for dev
+mysql_k8s_storage     = 20
+mysql_cpu_request     = "4"
+mysql_cpu_limit       = "8"
+mysql_memory_request  = "8Gi"
+mysql_memory_limit    = "16Gi"
+
+# Elasticsearch - single node for dev
+es_k8s_node_count  = 1
+es_k8s_storage    = 20
+es_cpu_request    = "4"
+es_cpu_limit      = "8"
+es_memory_request = "16Gi"
+es_memory_limit   = "16Gi"
+es_heap_size      = "8g"
+
+# RabbitMQ - reduced for dev
+rabbitmq_storage = 20
+
+# RAGFlow application - reduced for dev
+ragflow_replicas         = 1
+ragflow_cpu_request     = "2"
+ragflow_cpu_limit       = "4"
+ragflow_memory_request  = "8Gi"
+ragflow_memory_limit    = "16Gi"
+
+# Parser - reduced for dev
+parser_replicas = 1
+
+# DeepDoc - reduced for dev
+deepdoc_replicas = 1
+
+# Redis - dev environment
+redis_cpu_request    = "2"
+redis_cpu_limit      = "4"
+redis_memory_request = "4Gi"
+redis_memory_limit   = "8Gi"
+
+# TEI - dev environment
+tei_replicas = 1
