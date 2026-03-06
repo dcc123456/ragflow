@@ -18,14 +18,16 @@ import logging
 import time
 from uuid import uuid4
 from agent.canvas import Canvas
-from api.db import CanvasCategory, TenantPermission
-from api.db.db_models import DB, CanvasTemplate, User, UserCanvas, API4Conversation
+from api.db import CanvasCategory, ResourceType, TenantPermission
+from api.db.db_models import DB, CanvasTemplate, Permission, User, UserCanvas, API4Conversation
 from api.db.services.api_service import API4ConversationService
 from api.db.services.common_service import CommonService
 from common.misc_utils import get_uuid
 from api.utils.api_utils import get_data_openai
 import tiktoken
 from peewee import fn
+from common.constants import StatusEnum
+from api.db import PermissionValue
 
 
 class CanvasTemplateService(CommonService):
@@ -147,6 +149,7 @@ class UserCanvasService(CommonService):
                           page_number, items_per_page,
                           orderby, desc, keywords, canvas_category=None
                           ):
+        from api.db.services.user_service import UserTenantService
         fields = [
             cls.model.id,
             cls.model.avatar,
@@ -160,14 +163,38 @@ class UserCanvasService(CommonService):
             cls.model.update_time,
             cls.model.canvas_category,
         ]
+
+        # Find canvas IDs shared with the user via Permission table
+        user_tenant_ids = [ut.id for ut in (UserTenantService.query(user_id=user_id) or [])]
+        shared_canvas_ids = []
+        if user_tenant_ids:
+            shared_canvas_ids = [
+                row["resource_id"]
+                for row in Permission.select(Permission.resource_id)
+                .where(
+                    (Permission.member_id.in_(user_tenant_ids))
+                    & (Permission.resource_type == ResourceType.CANVAS)
+                    & (Permission.permission >= PermissionValue.PERMISSION_READ.value)
+                    & (Permission.status == StatusEnum.VALID.value)
+                )
+                .dicts()
+            ]
+
+        base_condition = (
+            ((cls.model.user_id.in_(joined_tenant_ids)) & (cls.model.permission == TenantPermission.TEAM.value))
+            | (cls.model.user_id == user_id)
+        )
+        if shared_canvas_ids:
+            base_condition = base_condition | cls.model.id.in_(shared_canvas_ids)
+
         if keywords:
             agents = cls.model.select(*fields).join(User, on=(cls.model.user_id == User.id)).where(
-                (((cls.model.user_id.in_(joined_tenant_ids)) & (cls.model.permission == TenantPermission.TEAM.value)) | (cls.model.user_id == user_id)),
+                base_condition,
                 (fn.LOWER(cls.model.title).contains(keywords.lower()))
             )
         else:
             agents = cls.model.select(*fields).join(User, on=(cls.model.user_id == User.id)).where(
-                (((cls.model.user_id.in_(joined_tenant_ids)) & (cls.model.permission == TenantPermission.TEAM.value)) | (cls.model.user_id == user_id))
+                base_condition
             )
         if canvas_category:
             agents = agents.where(cls.model.canvas_category == canvas_category)
@@ -183,16 +210,31 @@ class UserCanvasService(CommonService):
 
     @classmethod
     @DB.connection_context()
-    def accessible(cls, canvas_id, tenant_id):
+    def accessible(cls, canvas_id, user_id):
         from api.db.services.user_service import UserTenantService
         e, c = UserCanvasService.get_by_canvas_id(canvas_id)
         if not e:
             return False
 
-        tids = [t.tenant_id for t in UserTenantService.query(user_id=tenant_id)]
-        if c["user_id"] != canvas_id and c["user_id"]  not in tids:
-            return False
-        return True
+        # Direct ownership
+        if c["user_id"] == user_id:
+            return True
+
+        # Check Permission table
+        user_tenants = UserTenantService.query(user_id=user_id) or []
+        for user_tenant in user_tenants:
+            if user_tenant.tenant_id != c["user_id"]:
+                continue
+            perm = Permission.get_or_none(
+                (Permission.member_id == user_tenant.id)
+                & (Permission.resource_id == canvas_id)
+                & (Permission.resource_type == ResourceType.CANVAS)
+                & (Permission.permission >= PermissionValue.PERMISSION_READ.value)
+                & (Permission.status == StatusEnum.VALID.value)
+            )
+            if perm:
+                return True
+        return False
 
 
 async def completion(tenant_id, agent_id, session_id=None, **kwargs):
@@ -212,7 +254,7 @@ async def completion(tenant_id, agent_id, session_id=None, **kwargs):
     else:
         e, cvs = UserCanvasService.get_by_id(agent_id)
         assert e, "Agent not found."
-        assert cvs.user_id == tenant_id, "You do not own the agent."
+        assert UserCanvasService.accessible(agent_id, tenant_id), "You do not have access to the agent."
         if not isinstance(cvs.dsl, str):
             cvs.dsl = json.dumps(cvs.dsl, ensure_ascii=False)
         session_id=get_uuid()

@@ -1,5 +1,7 @@
 import logging
+from api.db.services.canvas_service import UserCanvasService
 from api.db.services.dialog_service import DialogService
+from api.db.services.mcp_server_service import MCPServerService
 from quart import request
 from api.apps import login_required, current_user
 from api.db import VALID_RESOURCE_TYPES, ActionEnum, PermissionActionType, PermissionTargetType, PermissionValue, ResourceType, ResourceTypeEnum
@@ -89,6 +91,7 @@ async def update_permission():
         ResourceType.KB: ResourceTypeEnum.DATASET.value,
         ResourceType.DIALOG: ResourceTypeEnum.CHAT.value,
         ResourceType.DOCUMENT: ResourceTypeEnum.DATASET.value,
+        ResourceType.CANVAS: ResourceTypeEnum.AGENT.value,
     }
     role_id = getattr(current_user, "role_id", None)
     target_resource_value = role_resource_map.get(resource_type)
@@ -129,6 +132,14 @@ async def update_permission():
                 document_kb_id = DocumentService.get_knowledgebase_id(resource_id)
                 if not document_kb_id:
                     return get_data_error_result(message=f"Resource Document {resource_id} is not available.")
+            elif resource_type == ResourceType.CANVAS:
+                e, canvas = UserCanvasService.get_by_canvas_id(resource_id)
+                if not e:
+                    return get_data_error_result(message=f"Resource Canvas {resource_id} is not available.")
+            elif resource_type == ResourceType.MCP:
+                e, mcp_server = MCPServerService.get_by_id(resource_id)
+                if not e:
+                    return get_data_error_result(message=f"Resource MCP server {resource_id} is not available.")
             else:
                 return get_data_error_result(message="Un-supported resource type.")
 
@@ -421,6 +432,24 @@ async def list_permissions():
                     permission=PermissionValue.PERMISSION_MANAGE,
                 )[0]
             if not (operator.tenant_id == current_user.id or has_manage_permission):
+                return get_data_error_result(message="Permission denied.")
+    elif resource_type == ResourceType.CANVAS:
+        for canvas_id in resource_ids:
+            e, canvas = UserCanvasService.get_by_canvas_id(canvas_id)
+            if not e:
+                return get_data_error_result(message="Resource is not available.")
+            if not (canvas["user_id"] == current_user.id or has_permission_for_member(
+                operator.id, tenant_id, canvas_id, resource_type=ResourceType.CANVAS, permission=PermissionValue.PERMISSION_MANAGE
+            )[0]):
+                return get_data_error_result(message="Permission denied.")
+    elif resource_type == ResourceType.MCP:
+        for mcp_id in resource_ids:
+            e, mcp_server = MCPServerService.get_by_id(mcp_id)
+            if not e:
+                return get_data_error_result(message="Resource is not available.")
+            if not (mcp_server.tenant_id == current_user.id or has_permission_for_member(
+                operator.id, tenant_id, mcp_id, resource_type=ResourceType.MCP, permission=PermissionValue.PERMISSION_MANAGE
+            )[0]):
                 return get_data_error_result(message="Permission denied.")
 
     permissions = PermissionService.get_permissions_by_tenant_and_resource_ids_with_info(tenant_id=tenant_id, resource_ids=resource_ids, resource_type=resource_type)

@@ -18,8 +18,10 @@ import asyncio
 from quart import Response, request
 from api.apps import current_user, login_required
 
-from api.db.db_models import MCPServer
+from api.db import PermissionValue, ResourceType
+from api.db.db_models import DB, MCPServer
 from api.db.services.mcp_server_service import MCPServerService
+from api.db.services.permission_service import PermissionService
 from api.db.services.user_service import TenantService
 from common.constants import RetCode, VALID_MCP_SERVER_TYPES
 
@@ -32,6 +34,9 @@ from common.mcp_tool_call_conn import MCPToolCallSession, close_multiple_mcp_too
 @manager.route("/list", methods=["POST"])  # noqa: F821
 @login_required
 async def list_mcp() -> Response:
+    from api.utils.permission_utils import has_permission_for_member
+    from api.db.services.user_service import UserTenantService
+    
     keywords = request.args.get("keywords", "")
     page_number = int(request.args.get("page", 0))
     items_per_page = int(request.args.get("page_size", 0))
@@ -47,10 +52,37 @@ async def list_mcp() -> Response:
         servers = MCPServerService.get_servers(current_user.id, mcp_ids, 0, 0, orderby, desc, keywords) or []
         total = len(servers)
 
-        if page_number and items_per_page:
-            servers = servers[(page_number - 1) * items_per_page : page_number * items_per_page]
+        # Add operator_permission for each server
+        server_list = []
+        tenant_member_memo = {}
+        for s in servers:
+            if s["tenant_id"] == current_user.id:
+                s["operator_permission"] = PermissionValue.PERMISSION_OWNER.value
+                server_list.append(s)
+            else:
+                member_id = tenant_member_memo.get(s["tenant_id"])
+                if not member_id:
+                    member = UserTenantService.filter_by_tenant_and_user_id(s["tenant_id"], current_user.id)
+                    member_id = getattr(member, "id", None)
+                    tenant_member_memo[s["tenant_id"]] = member_id
 
-        return get_json_result(data={"mcp_servers": servers, "total": total})
+                permission = has_permission_for_member(
+                    operator_id=member_id,
+                    tenant_id=s["tenant_id"],
+                    resource_id=s["id"],
+                    resource_type=ResourceType.MCP,
+                    permission=PermissionValue.PERMISSION_READ,
+                )
+                if permission[0]:
+                    s["operator_permission"] = permission[2]
+                    server_list.append(s)
+                else:
+                    total -= 1
+
+        if page_number and items_per_page:
+            server_list = server_list[(page_number - 1) * items_per_page : page_number * items_per_page]
+
+        return get_json_result(data={"mcp_servers": server_list, "total": total})
     except Exception as e:
         return server_error_response(e)
 
@@ -60,11 +92,12 @@ async def list_mcp() -> Response:
 def detail() -> Response:
     mcp_id = request.args["mcp_id"]
     try:
-        mcp_server = MCPServerService.get_or_none(id=mcp_id, tenant_id=current_user.id)
-
-        if mcp_server is None:
+        if not MCPServerService.is_accessible(mcp_id, current_user.id, PermissionValue.PERMISSION_READ):
             return get_json_result(code=RetCode.NOT_FOUND, data=None)
 
+        e, mcp_server = MCPServerService.get_by_id(mcp_id)
+        if not e:
+            return get_json_result(code=RetCode.NOT_FOUND, data=None)
         return get_json_result(data=mcp_server.to_dict())
     except Exception as e:
         return server_error_response(e)
@@ -132,8 +165,10 @@ async def update() -> Response:
     req = await get_request_json()
 
     mcp_id = req.get("mcp_id", "")
+    if not MCPServerService.is_accessible(mcp_id, current_user.id, PermissionValue.PERMISSION_MANAGE):
+        return get_data_error_result(message=f"Cannot find MCP server {mcp_id} for user {current_user.id}")
     e, mcp_server = MCPServerService.get_by_id(mcp_id)
-    if not e or mcp_server.tenant_id != current_user.id:
+    if not e:
         return get_data_error_result(message=f"Cannot find MCP server {mcp_id} for user {current_user.id}")
 
     server_type = req.get("server_type", mcp_server.server_type)
@@ -189,7 +224,15 @@ async def rm() -> Response:
     mcp_ids = req.get("mcp_ids", [])
 
     try:
-        req["tenant_id"] = current_user.id
+        for mcp_id in mcp_ids:
+            e, mcp_server = MCPServerService.get_by_id(mcp_id)
+            if not e or mcp_server.tenant_id != current_user.id:
+                return get_data_error_result(message=f"Cannot find MCP server {mcp_id} for user {current_user.id}")
+            with DB.atomic():
+                permission_model_list = PermissionService.get_permissions_by_tenant_and_resource_id(
+                    tenant_id=current_user.id, resource_id=mcp_id, resource_type=ResourceType.MCP)
+                if permission_model_list:
+                    PermissionService.delete(permission_model_list)
 
         if not MCPServerService.delete_by_ids(mcp_ids):
             return get_data_error_result(message=f"Failed to delete MCP servers {mcp_ids}")
@@ -282,7 +325,7 @@ async def export_multiple() -> Response:
         for mcp_id in mcp_ids:
             e, mcp_server = MCPServerService.get_by_id(mcp_id)
 
-            if e and mcp_server.tenant_id == current_user.id:
+            if e and MCPServerService.is_accessible(mcp_id, current_user.id, PermissionValue.PERMISSION_READ):
                 server_key = mcp_server.name
 
                 exported_servers[server_key] = {
@@ -315,7 +358,7 @@ async def list_tools() -> Response:
         for mcp_id in mcp_ids:
             e, mcp_server = MCPServerService.get_by_id(mcp_id)
 
-            if e and mcp_server.tenant_id == current_user.id:
+            if e and MCPServerService.is_accessible(mcp_id, current_user.id, PermissionValue.PERMISSION_READ):
                 server_key = mcp_server.id
 
                 cached_tools = mcp_server.variables.get("tools", {})
@@ -363,7 +406,7 @@ async def test_tool() -> Response:
     tool_call_sessions = []
     try:
         e, mcp_server = MCPServerService.get_by_id(mcp_id)
-        if not e or mcp_server.tenant_id != current_user.id:
+        if not e or not MCPServerService.is_accessible(mcp_id, current_user.id, PermissionValue.PERMISSION_READ):
             return get_data_error_result(message=f"Cannot find MCP server {mcp_id} for user {current_user.id}")
 
         tool_call_session = MCPToolCallSession(mcp_server, mcp_server.variables)
@@ -388,14 +431,14 @@ async def cache_tool() -> Response:
     tools = req.get("tools", [])
 
     e, mcp_server = MCPServerService.get_by_id(mcp_id)
-    if not e or mcp_server.tenant_id != current_user.id:
+    if not e or not MCPServerService.is_accessible(mcp_id, current_user.id, PermissionValue.PERMISSION_MANAGE):
         return get_data_error_result(message=f"Cannot find MCP server {mcp_id} for user {current_user.id}")
 
     variables = mcp_server.variables
     tools = {tool["name"]: tool for tool in tools if isinstance(tool, dict) and "name" in tool}
     variables["tools"] = tools
 
-    if not MCPServerService.filter_update([MCPServer.id == mcp_id, MCPServer.tenant_id == current_user.id], {"variables": variables}):
+    if not MCPServerService.filter_update([MCPServer.id == mcp_id], {"variables": variables}):
         return get_data_error_result(message="Failed to updated MCP server.")
 
     return get_json_result(data=tools)

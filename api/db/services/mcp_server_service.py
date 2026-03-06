@@ -15,8 +15,10 @@
 #
 from peewee import fn
 
-from api.db.db_models import DB, MCPServer
+from api.db import PermissionValue, ResourceType
+from api.db.db_models import DB, MCPServer, Permission
 from api.db.services.common_service import CommonService
+from common.constants import StatusEnum
 
 
 class MCPServerService(CommonService):
@@ -35,21 +37,23 @@ class MCPServerService(CommonService):
     @DB.connection_context()
     def get_servers(cls, tenant_id: str, id_list: list[str] | None, page_number, items_per_page, orderby, desc,
                     keywords):
-        """Retrieve all MCP servers associated with a tenant.
+        """Retrieve all MCP servers associated with a tenant, including shared ones.
 
-        This method fetches all MCP servers for a given tenant, ordered by creation time.
-        It only includes fields for list display.
+        This method fetches all MCP servers for a given tenant (owned or shared via Permission table),
+        ordered by creation time. It only includes fields for list display.
 
         Args:
-            tenant_id (str): The unique identifier of the tenant.
+            tenant_id (str): The unique identifier of the tenant (user_id).
             id_list (list[str]): Get servers by ID list. Will ignore this condition if None.
 
         Returns:
             list[dict]: List of MCP server dictionaries containing MCP server details.
                        Returns None if no MCP servers are found.
         """
+        from api.db.services.user_service import UserTenantService
         fields = [
             cls.model.id,
+            cls.model.tenant_id,
             cls.model.name,
             cls.model.server_type,
             cls.model.url,
@@ -59,7 +63,27 @@ class MCPServerService(CommonService):
             cls.model.update_date,
         ]
 
-        query = cls.model.select(*fields).order_by(cls.model.create_time.desc()).where(cls.model.tenant_id == tenant_id)
+        # Find MCP IDs shared with the user via Permission table
+        user_tenant_ids = [ut.id for ut in (UserTenantService.query(user_id=tenant_id) or [])]
+        shared_mcp_ids = []
+        if user_tenant_ids:
+            shared_mcp_ids = [
+                row["resource_id"]
+                for row in Permission.select(Permission.resource_id)
+                .where(
+                    (Permission.member_id.in_(user_tenant_ids))
+                    & (Permission.resource_type == ResourceType.MCP)
+                    & (Permission.permission >= PermissionValue.PERMISSION_READ.value)
+                    & (Permission.status == StatusEnum.VALID.value)
+                )
+                .dicts()
+            ]
+
+        base_condition = cls.model.tenant_id == tenant_id
+        if shared_mcp_ids:
+            base_condition = base_condition | cls.model.id.in_(shared_mcp_ids)
+
+        query = cls.model.select(*fields).where(base_condition)
 
         if id_list:
             query = query.where(cls.model.id.in_(id_list))
@@ -76,6 +100,44 @@ class MCPServerService(CommonService):
         if not servers:
             return None
         return servers
+
+    @classmethod
+    @DB.connection_context()
+    def is_accessible(cls, mcp_id: str, user_id: str, required_permission: PermissionValue = PermissionValue.PERMISSION_READ) -> bool:
+        """Check if a user has access to an MCP server.
+
+        Args:
+            mcp_id (str): The MCP server ID.
+            user_id (str): The user ID to check access for.
+            required_permission (PermissionValue): The minimum permission level required.
+
+        Returns:
+            bool: True if the user has access, False otherwise.
+        """
+        from api.db.services.user_service import UserTenantService
+        e, mcp_server = cls.get_by_id(mcp_id)
+        if not e:
+            return False
+
+        # Owner check
+        if mcp_server.tenant_id == user_id:
+            return True
+
+        # Permission table check
+        user_tenants = UserTenantService.query(user_id=user_id) or []
+        for user_tenant in user_tenants:
+            if user_tenant.tenant_id != mcp_server.tenant_id:
+                continue
+            perm = Permission.get_or_none(
+                (Permission.member_id == user_tenant.id)
+                & (Permission.resource_id == mcp_id)
+                & (Permission.resource_type == ResourceType.MCP)
+                & (Permission.permission >= required_permission.value)
+                & (Permission.status == StatusEnum.VALID.value)
+            )
+            if perm:
+                return True
+        return False
 
     @classmethod
     @DB.connection_context()

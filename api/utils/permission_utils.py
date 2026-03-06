@@ -426,6 +426,185 @@ def filter_accessible_doc_ids_for_user(user_id, kb_ids, doc_ids=None):
     return list(filtered_doc_ids), list(set(tenant_ids)), ""
 
 
+def check_canvas_permission(permission):
+    from api.utils.api_utils import get_json_result
+    from api.db.services.canvas_service import UserCanvasService
+    from api.db.services.user_service import UserTenantService
+    """
+    ! IMPORTANT:
+    The request data is parsed in this decorator.
+    In view functions, use `g.req_data` instead of `request.get_json()` or `request.form`.
+
+    Supports:
+    - JSON body
+    - Form-data / urlencoded
+    - URL query parameters
+    - URL path parameters (kwargs)
+    """
+
+    def decorator(foo):
+        from quart import request, g
+
+        @wraps(foo)
+        async def wrapper(*args, **kwargs):
+            from api.apps import current_user
+            content_type = request.headers.get("Content-Type") or ""
+
+            if request.method in ["POST", "PUT", "PATCH"]:
+                if "application/json" in content_type:
+                    if not request.is_json:
+                        return get_json_result(data=False, message="Content-Type must be application/json", code=RetCode.ARGUMENT_ERROR)
+                    req_data = (await request.get_json(silent=True)) or {}
+
+                elif "multipart/form-data" in content_type or "application/x-www-form-urlencoded" in content_type:
+                    req_data = (await request.form) or {}
+
+                else:
+                    req_data = request.args or {}
+
+            else:  # GET, DELETE
+                req_data = request.args or {}
+
+            canvas_id = req_data.get("id") or req_data.get("canvas_id") or kwargs.get("canvas_id")
+
+            g.req_data = req_data
+            g.canvas_id = canvas_id
+
+            if not canvas_id:
+                if inspect.iscoroutinefunction(foo):
+                    return await foo(*args, **kwargs)
+                return foo(*args, **kwargs)
+
+            e, canvas = UserCanvasService.get_by_canvas_id(canvas_id)
+            if not e:
+                return get_json_result(data=False, message="Canvas not found.", code=RetCode.OPERATING_ERROR)
+
+            # Owner check
+            if canvas["user_id"] == current_user.id:
+                g.tenant_id = current_user.id
+                g.operator_permission = PermissionValue.PERMISSION_OWNER.value
+                g.member_id = None
+                if inspect.iscoroutinefunction(foo):
+                    return await foo(*args, **kwargs)
+                return foo(*args, **kwargs)
+
+            # Permission table check across all tenants the user belongs to
+            user_tenants = UserTenantService.query(user_id=current_user.id) or []
+            for user_tenant in user_tenants:
+                # Only check tenants where the canvas owner is the tenant owner
+                if user_tenant.tenant_id != canvas["user_id"]:
+                    continue
+                permission_info = has_permission_for_member(
+                    operator_id=user_tenant.id,
+                    tenant_id=user_tenant.tenant_id,
+                    resource_id=canvas_id,
+                    resource_type=ResourceType.CANVAS,
+                    permission=permission,
+                )
+                if permission_info[0]:
+                    g.tenant_id = user_tenant.tenant_id
+                    g.operator_permission = permission_info[2]
+                    g.member_id = user_tenant.id
+                    if inspect.iscoroutinefunction(foo):
+                        return await foo(*args, **kwargs)
+                    return foo(*args, **kwargs)
+
+            return get_json_result(data=False, message="Only canvas owners or members with sufficient permissions can perform this action.", code=RetCode.OPERATING_ERROR)
+
+        return wrapper
+
+    return decorator
+
+
+def check_mcp_permission(permission):
+    from api.utils.api_utils import get_json_result
+    from api.db.services.mcp_server_service import MCPServerService
+    from api.db.services.user_service import UserTenantService
+    """
+    ! IMPORTANT:
+    The request data is parsed in this decorator.
+    In view functions, use `g.req_data` instead of `request.get_json()` or `request.form`.
+
+    Supports:
+    - JSON body
+    - Form-data / urlencoded
+    - URL query parameters
+    - URL path parameters (kwargs)
+    """
+
+    def decorator(foo):
+        from quart import request, g
+
+        @wraps(foo)
+        async def wrapper(*args, **kwargs):
+            from api.apps import current_user
+            content_type = request.headers.get("Content-Type") or ""
+
+            if request.method in ["POST", "PUT", "PATCH"]:
+                if "application/json" in content_type:
+                    if not request.is_json:
+                        return get_json_result(data=False, message="Content-Type must be application/json", code=RetCode.ARGUMENT_ERROR)
+                    req_data = (await request.get_json(silent=True)) or {}
+
+                elif "multipart/form-data" in content_type or "application/x-www-form-urlencoded" in content_type:
+                    req_data = (await request.form) or {}
+
+                else:
+                    req_data = request.args or {}
+
+            else:  # GET, DELETE
+                req_data = request.args or {}
+
+            mcp_id = req_data.get("mcp_id") or kwargs.get("mcp_id")
+
+            g.req_data = req_data
+            g.mcp_id = mcp_id
+
+            if not mcp_id:
+                if inspect.iscoroutinefunction(foo):
+                    return await foo(*args, **kwargs)
+                return foo(*args, **kwargs)
+
+            e, mcp_server = MCPServerService.get_by_id(mcp_id)
+            if not e:
+                return get_json_result(data=False, message="MCP server not found.", code=RetCode.OPERATING_ERROR)
+
+            # Owner check
+            if mcp_server.tenant_id == current_user.id:
+                g.tenant_id = current_user.id
+                g.operator_permission = PermissionValue.PERMISSION_OWNER.value
+                g.member_id = None
+                if inspect.iscoroutinefunction(foo):
+                    return await foo(*args, **kwargs)
+                return foo(*args, **kwargs)
+
+            # Permission table check across all tenants the user belongs to
+            user_tenants = UserTenantService.query(user_id=current_user.id) or []
+            for user_tenant in user_tenants:
+                if user_tenant.tenant_id != mcp_server.tenant_id:
+                    continue
+                permission_info = has_permission_for_member(
+                    operator_id=user_tenant.id,
+                    tenant_id=user_tenant.tenant_id,
+                    resource_id=mcp_id,
+                    resource_type=ResourceType.MCP,
+                    permission=permission,
+                )
+                if permission_info[0]:
+                    g.tenant_id = user_tenant.tenant_id
+                    g.operator_permission = permission_info[2]
+                    g.member_id = user_tenant.id
+                    if inspect.iscoroutinefunction(foo):
+                        return await foo(*args, **kwargs)
+                    return foo(*args, **kwargs)
+
+            return get_json_result(data=False, message="Only MCP server owners or members with sufficient permissions can perform this action.", code=RetCode.OPERATING_ERROR)
+
+        return wrapper
+
+    return decorator
+
+
 def get_owner_id(tid, uid):
     return str(tid).rjust(32, "x") + str(uid).rjust(32, "_")
 
