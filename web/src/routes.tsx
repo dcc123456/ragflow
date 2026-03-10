@@ -485,4 +485,4 @@ const routers = createBrowserRouter(routeConfig, {
   basename: import.meta.env.VITE_BASE_URL || '/',
 });
 
-export { routers };
+export { routeConfig, routers };
