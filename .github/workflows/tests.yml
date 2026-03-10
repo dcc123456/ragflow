@@ -250,7 +250,7 @@ jobs:
 
           sudo docker compose -f docker-compose.yml -p ${GITHUB_RUN_ID} up -d
           cd ..
-          uv sync --python 3.12 --only-group test --no-default-groups --frozen && uv pip install sdk/python --group test
+          uv sync --python 3.12 --group test --frozen && uv pip install -e sdk/python
 
       # - name: Run sdk tests against Elasticsearch
       #   run: |
@@ -282,13 +282,13 @@ jobs:
               echo "Current Container Status:"
               sudo docker ps -a --filter "name=${RAGFLOW_CONTAINER}"
             fi
-            
+
             if [ $COUNT -ge $MAX_RETRIES ]; then
               echo "Error: Service did not become available within 5 minutes."
               sudo docker logs ${RAGFLOW_CONTAINER} --tail 200
               exit 1
             fi
-            
+
             COUNT=$((COUNT + 1))
             sleep 5
           done
@@ -430,7 +430,7 @@ jobs:
           else
             echo ".coverage file not found!"
           fi
-          
+
       - name: Collect ragflow log Elasticsearch
         if: ${{ !cancelled() }}
         run: |
@@ -614,7 +614,7 @@ jobs:
           else
             echo ".coverage file not found!"
           fi
-          
+
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5
         if: ${{ !cancelled() }}
