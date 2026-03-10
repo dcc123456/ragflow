@@ -1,6 +1,6 @@
 import Divider from '@/components/ui/divider';
 import { LoadingButton } from '@/components/ui/loading-button';
-import { nextLayoutRef } from '@/layouts/next';
+import { nextLayoutRef } from '@/layouts/root-layout';
 import billingService from '@/services/price';
 import storagePrivate from '@/utils/authorization-private-util';
 import classNames from 'classnames';

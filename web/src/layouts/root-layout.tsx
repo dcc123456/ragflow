@@ -1,5 +1,8 @@
+import React from 'react';
 import { Outlet } from 'react-router';
 import { Header } from './components/header';
+
+export let nextLayoutRef = React.createRef<HTMLDivElement>();
 
 export function RootLayoutContainer({ children }: React.PropsWithChildren) {
   return (

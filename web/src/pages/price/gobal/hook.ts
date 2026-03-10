@@ -1,4 +1,4 @@
-import { nextLayoutRef } from '@/layouts/next';
+import { nextLayoutRef } from '@/layouts/root-layout';
 import { useCallback, useEffect, useState } from 'react';
 import { showUpgradeTipsModal } from '.';
 import { IConfirmPlan, IPricePlan } from '../interface';

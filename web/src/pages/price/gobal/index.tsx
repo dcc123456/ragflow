@@ -1,4 +1,4 @@
-import { nextLayoutRef } from '@/layouts/next';
+import { nextLayoutRef } from '@/layouts/root-layout';
 import storagePrivate from '@/utils/authorization-private-util';
 import {
   ReactNode,
