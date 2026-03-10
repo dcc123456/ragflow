@@ -35,10 +35,11 @@ def get_model_config_by_id(tenant_model_id: int) -> dict:
 def get_model_config_by_type_and_name(tenant_id: str, model_type: str, model_name: str):
     if not model_name:
         raise Exception("Model Name is required")
-    model_config = TenantLLMService.get_api_key(tenant_id, model_name)
+    pure_model_name, fid, other_tenant_id = TenantLLMService.split_model_name_and_factory(model_name)
+    lookup_tenant_id = other_tenant_id or tenant_id
+    model_config = TenantLLMService.get_api_key(lookup_tenant_id, model_name)
     if not model_config:
-        # model_name in format 'name@factory', split model_name and try again
-        pure_model_name, fid = TenantLLMService.split_model_name_and_factory(model_name)
+        # model_name in format 'name@factory[#tenant_id]', split model_name and try again
         if model_type == LLMType.EMBEDDING and fid == "Builtin" and "tei-" in os.getenv("COMPOSE_PROFILES", "") and pure_model_name == os.getenv("TEI_MODEL", ""):
             # configured local embedding model
             embedding_cfg = settings.EMBEDDING_CFG
@@ -50,7 +51,7 @@ def get_model_config_by_type_and_name(tenant_id: str, model_type: str, model_nam
                 "model_type": LLMType.EMBEDDING,
             }
         else:
-            model_config = TenantLLMService.get_api_key(tenant_id, pure_model_name)
+            model_config = TenantLLMService.get_api_key(lookup_tenant_id, pure_model_name)
             if not model_config:
                 raise LookupError(f"Tenant Model with name {model_name} not found")
             config_dict = model_config.to_dict()
