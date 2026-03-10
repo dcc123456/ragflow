@@ -56,7 +56,7 @@ from api.utils.tenant_utils import ensure_tenant_model_id_for_params
 from rag.nlp import search
 from api.constants import DATASET_NAME_LIMIT
 from rag.utils.redis_conn import REDIS_CONN
-from common.constants import RetCode, PipelineTaskType, StatusEnum, VALID_TASK_STATUS, FileSource, PAGERANK_FLD
+from common.constants import RetCode, PipelineTaskType, StatusEnum, VALID_TASK_STATUS, FileSource, PAGERANK_FLD, LLMType
 from common import settings
 from api.apps import login_required, current_user
 
@@ -971,6 +971,100 @@ def delete_kb_task():
 @login_required
 @kb_role_guard
 async def check_embedding():
+    import random
+    import re
+    from common.doc_store.doc_store_base import OrderByExpr
+
+    def _guess_vec_field(src: dict) -> str | None:
+        for k in src or {}:
+            if k.endswith("_vec"):
+                return k
+        return None
+
+    def _as_float_vec(v):
+        if v is None:
+            return []
+        if isinstance(v, str):
+            return [float(x) for x in v.split("\t") if x != ""]
+        if isinstance(v, (list, tuple, np.ndarray)):
+            return [float(x) for x in v]
+        return []
+
+    def _to_1d(x):
+        a = np.asarray(x, dtype=np.float32)
+        return a.reshape(-1)
+
+    def _cos_sim(a, b, eps=1e-12):
+        a = _to_1d(a)
+        b = _to_1d(b)
+        na = np.linalg.norm(a)
+        nb = np.linalg.norm(b)
+        if na < eps or nb < eps:
+            return 0.0
+        return float(np.dot(a, b) / (na * nb))
+
+    def sample_random_chunks_with_vectors(
+        docStoreConn,
+        tenant_id: str,
+        kb_id: str,
+        n: int = 5,
+        base_fields=("docnm_kwd","doc_id","content_with_weight","page_num_int","position_int","top_int"),
+    ):
+        index_nm = search.index_name(tenant_id)
+
+        res0 = docStoreConn.search(
+            select_fields=[], highlight_fields=[],
+            condition={"kb_id": kb_id, "available_int": 1},
+            match_expressions=[], order_by=OrderByExpr(),
+            offset=0, limit=1,
+            index_names=index_nm, knowledgebase_ids=[kb_id]
+        )
+        total = docStoreConn.get_total(res0)
+        if total <= 0:
+            return []
+
+        n = min(n, total)
+        offsets = sorted(random.sample(range(min(total,1000)), n))
+        out = []
+
+        for off in offsets:
+            res1 = docStoreConn.search(
+                select_fields=list(base_fields),
+                highlight_fields=[],
+                condition={"kb_id": kb_id, "available_int": 1},
+                match_expressions=[], order_by=OrderByExpr(),
+                offset=off, limit=1,
+                index_names=index_nm, knowledgebase_ids=[kb_id]
+            )
+            ids = docStoreConn.get_doc_ids(res1)
+            if not ids:
+                continue
+
+            cid = ids[0]
+            full_doc = docStoreConn.get(cid, index_nm, [kb_id]) or {}
+            vec_field = _guess_vec_field(full_doc)
+            vec = _as_float_vec(full_doc.get(vec_field))
+
+            out.append({
+                "chunk_id": cid,
+                "kb_id": kb_id,
+                "doc_id": full_doc.get("doc_id"),
+                "doc_name": full_doc.get("docnm_kwd"),
+                "vector_field": vec_field,
+                "vector_dim": len(vec),
+                "vector": vec,
+                "page_num_int": full_doc.get("page_num_int"),
+                "position_int": full_doc.get("position_int"),
+                "top_int": full_doc.get("top_int"),
+                "content_with_weight": full_doc.get("content_with_weight") or "",
+                "question_kwd": full_doc.get("question_kwd") or []
+            })
+        return out
+
+    def _clean(s: str) -> str:
+        s = re.sub(r"</?(table|td|caption|tr|th)( [^<>]{0,12})?>", " ", s or "")
+        return s if s else "None"
+
     req = await get_request_json()
     kb_id = req.get("kb_id", "")
     tenant_embd_id = req.get("tenant_embd_id")

@@ -126,6 +126,9 @@ async def set_dialog():
         llm_id = dialog_info.get("llm_id", tenant.llm_id)
         tenant_llm_id = dialog_info.get("tenant_llm_id", tenant.tenant_llm_id)
         if not dialog_id:
+            tenant_id = current_user.id
+            operator = UserTenantService.filter_by_tenant_and_user_id(tenant_id, tenant_id)
+            operator_id = operator.id
             dia = {
                 "id": get_uuid(),
                 "tenant_id": current_user.id,

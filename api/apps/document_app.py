@@ -742,7 +742,6 @@ async def get(doc_id):
         if not e:
             return get_data_error_result(message="Document not found!")
 
-        tenant_id = DocumentService.get_tenant_id(doc_id)
         b, n = File2DocumentService.get_storage_address(doc_id=doc_id)
         data = await thread_pool_exec(settings.STORAGE_IMPL.get, b, n)
         response = await make_response(data)

@@ -16,6 +16,7 @@
 import asyncio
 import logging
 import json
+import os
 from api.db.services.tenant_llm_service import LLMFactoriesService, TenantLLMService
 from api.db.services.llm_service import LLMService
 from api.utils.api_utils import server_error_response, get_data_error_result, get_json_result, validate_request

@@ -14,7 +14,6 @@
 #  limitations under the License
 #
 import logging
-import asyncio
 import os
 import pathlib
 import re
@@ -25,6 +24,7 @@ from api.common.check_team_permission import check_file_team_permission
 from api.db.services.connector_service import Connector2KbService
 from api.db.services.document_service import DocumentService
 from api.db.services.file2document_service import File2DocumentService
+from api.db.services import duplicate_name
 from api.utils.api_utils import server_error_response, get_data_error_result, validate_request
 from common.misc_utils import get_uuid, thread_pool_exec
 from common.constants import RetCode, FileSource
@@ -121,6 +121,7 @@ async def upload():
             inserted = await thread_pool_exec(FileService.insert, file_data)
             return inserted.to_json()
 
+        file_res = []
         for file_obj in file_objs:
             res = await _handle_single_file(file_obj)
             file_res.append(res)
@@ -366,7 +367,7 @@ async def get(file_id):
         return get_data_error_result(message="Document not found!")
     if not check_file_team_permission(file, current_user.id):
         return get_json_result(data=False, message='No authorization.', code=RetCode.AUTHENTICATION_ERROR)
-
+    try:
         blob = await thread_pool_exec(settings.STORAGE_IMPL.get, file.parent_id, file.location)
         if not blob:
             b, n = File2DocumentService.get_storage_address(file_id=file_id)

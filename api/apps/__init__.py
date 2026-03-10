@@ -30,6 +30,7 @@ from api.utils import commands
 
 from quart_auth import Unauthorized as QuartAuthUnauthorized
 from werkzeug.exceptions import Unauthorized as WerkzeugUnauthorized
+from flasgger import Swagger
 from quart_schema import QuartSchema
 from common import settings
 from common.billing_utils import init_stripe_api_key

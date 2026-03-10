@@ -43,7 +43,7 @@ from api.utils.permission_utils import check_canvas_permission
 from api.db import PermissionValue
 from agent.canvas import Canvas
 from peewee import MySQLDatabase, PostgresqlDatabase
-from api.db.db_models import APIToken, Task
+from api.db.db_models import APIToken, Task, DB
 
 from rag.flow.pipeline import Pipeline
 from rag.nlp import search
@@ -318,7 +318,7 @@ async def exp_agent_completion(canvas_id):
     resp.headers.add_header("X-Accel-Buffering", "no")
     resp.headers.add_header("Content-Type", "text/event-stream; charset=utf-8")
     return resp
-    
+
 
 @manager.route('/rerun', methods=['POST'])  # noqa: F821
 @validate_request("id", "dsl", "component_id")
@@ -588,7 +588,7 @@ def getversion( version_id):
 def list_canvas():
     from api.utils.permission_utils import has_permission_for_member
     from api.db.services.user_service import UserTenantService
-    
+
     keywords = request.args.get("keywords", "")
     page_number = int(request.args.get("page", 0))
     items_per_page = int(request.args.get("page_size", 0))
@@ -611,7 +611,7 @@ def list_canvas():
         canvas, total = UserCanvasService.get_by_tenant_ids(
             tenants, current_user.id, 0,
             0, orderby, desc, keywords, canvas_category)
-    
+
     # Add operator_permission for each canvas
     canvas_list = []
     tenant_member_memo = {}
@@ -638,7 +638,7 @@ def list_canvas():
                 canvas_list.append(c)
             else:
                 total -= 1
-    
+
     return get_json_result(data={"canvas": canvas_list, "total": total})
 
 
@@ -685,6 +685,7 @@ def trace():
 @canvas_role_guard
 @check_canvas_permission(PermissionValue.PERMISSION_READ)
 def sessions(canvas_id):
+    tenant_id = current_user.id
     user_id = request.args.get("user_id")
     page_number = int(request.args.get("page", 1))
     items_per_page = int(request.args.get("page_size", 30))
@@ -701,7 +702,7 @@ def sessions(canvas_id):
     if exp_user_id:
         sess = API4ConversationService.get_names(canvas_id, exp_user_id)
         return get_json_result(data={"total": len(sess), "sessions": sess})
-    
+
     # dsl defaults to True in all cases except for False and false
     include_dsl = request.args.get("dsl") != "False" and request.args.get("dsl") != "false"
     total, sess = API4ConversationService.get_list(canvas_id, tenant_id, page_number, items_per_page, orderby, desc,

@@ -245,7 +245,6 @@ class RAGFlowClient:
             system_role: str = system_role_tree.children[0].strip("'\"")
         print(f"Create user: {user_name}, password: ******, resource_role: {resource_role}, system_role: {system_role}")
         # enpass1 = encrypt(password)
-        enc_password = encrypt_password(password)
         response = self.http_client.request(method="POST", path="/admin/users",
                                             json_body={
                                                 'username': user_name,
