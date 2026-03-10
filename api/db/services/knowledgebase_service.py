@@ -14,19 +14,20 @@
 #  limitations under the License.
 #
 from datetime import datetime
-import peewee
-from peewee import fn, JOIN
 
-from api.db import PermissionValue, ResourceType, TenantPermission
-from api.db.db_models import DB, Document, Knowledgebase, Permission, User, UserTenant, UserCanvas
-from api.db.services.common_service import CommonService
-from common.time_utils import current_timestamp, datetime_format
-from api.db.services import duplicate_name
-from api.db.services.user_service import TenantService, UserTenantService
-from common.misc_utils import get_uuid
-from common.constants import StatusEnum, LLMType
+import peewee
+from peewee import JOIN, fn
+
 from api.constants import DATASET_NAME_LIMIT
-from api.utils.api_utils import get_parser_config, get_data_error_result
+from api.db import PermissionValue, ResourceType, TenantPermission
+from api.db.db_models import DB, Document, Knowledgebase, Permission, User, UserCanvas, UserTenant
+from api.db.services import duplicate_name
+from api.db.services.common_service import CommonService
+from api.db.services.user_service import TenantService, UserTenantService
+from api.utils.api_utils import get_data_error_result, get_parser_config
+from common.constants import LLMType, StatusEnum
+from common.misc_utils import get_uuid
+from common.time_utils import current_timestamp, datetime_format
 
 
 class KnowledgebaseService(CommonService):
@@ -46,6 +47,7 @@ class KnowledgebaseService(CommonService):
     Attributes:
         model: The Knowledgebase model class for database operations.
     """
+
     model = Knowledgebase
 
     @classmethod
@@ -103,8 +105,7 @@ class KnowledgebaseService(CommonService):
                 2. The user is not the creator of the dataset
         """
         # Check if a dataset can be deleted by a user
-        docs = cls.model.select(
-            cls.model.id).where(cls.model.id == kb_id, cls.model.created_by == user_id).paginate(0, 1)
+        docs = cls.model.select(cls.model.id).where(cls.model.id == kb_id, cls.model.created_by == user_id).paginate(0, 1)
         docs = docs.dicts()
         if not docs:
             return False
@@ -121,8 +122,8 @@ class KnowledgebaseService(CommonService):
         # Returns:
         #     If all documents are parsed successfully, returns (True, None)
         #     If any document is not fully parsed, returns (False, error_message)
-        from common.constants import TaskStatus
         from api.db.services.document_service import DocumentService
+        from common.constants import TaskStatus
 
         # Get dataset information
         kbs = cls.query(id=kb_id)
@@ -136,10 +137,10 @@ class KnowledgebaseService(CommonService):
         # Check parsing status of each document
         for doc in docs:
             # If document is being parsed, don't allow chat creation
-            if doc['run'] == TaskStatus.RUNNING.value or doc['run'] == TaskStatus.CANCEL.value or doc['run'] == TaskStatus.FAIL.value:
+            if doc["run"] == TaskStatus.RUNNING.value or doc["run"] == TaskStatus.CANCEL.value or doc["run"] == TaskStatus.FAIL.value:
                 return False, f"Document '{doc['name']}' in dataset '{kb.name}' is still being parsed. Please wait until all documents are parsed before starting a chat."
             # If document is not yet parsed and has no chunks, don't allow chat creation
-            if doc['run'] == TaskStatus.UNSTART.value and doc['chunk_num'] == 0:
+            if doc["run"] == TaskStatus.UNSTART.value and doc["chunk_num"] == 0:
                 return False, f"Document '{doc['name']}' in dataset '{kb.name}' has not been parsed yet. Please parse all documents before starting a chat."
 
         return True, None
@@ -152,13 +153,10 @@ class KnowledgebaseService(CommonService):
         #     kb_ids: List of dataset IDs
         # Returns:
         #     List of document IDs
-        doc_ids = cls.model.select(Document.id.alias("document_id")).join(Document, on=(cls.model.id == Document.kb_id)).where(
-            cls.model.id.in_(kb_ids)
-        )
+        doc_ids = cls.model.select(Document.id.alias("document_id")).join(Document, on=(cls.model.id == Document.kb_id)).where(cls.model.id.in_(kb_ids))
         doc_ids = list(doc_ids.dicts())
         doc_ids = [doc["document_id"] for doc in doc_ids]
         return doc_ids
-
 
     @classmethod
     @DB.connection_context()
@@ -189,23 +187,27 @@ class KnowledgebaseService(CommonService):
             cls.model.parser_id,
             cls.model.embd_id,
             User.nickname,
-            User.avatar.alias('tenant_avatar'),
-            cls.model.update_time
+            User.avatar.alias("tenant_avatar"),
+            cls.model.update_time,
         ]
         if keywords:
-            kbs = cls.model.select(*fields).join(User, on=(cls.model.tenant_id == User.id)).where(
-                ((cls.model.tenant_id.in_(joined_tenant_ids) & (cls.model.permission ==
-                                                                TenantPermission.TEAM.value)) | (
-                    cls.model.tenant_id == user_id))
-                & (cls.model.status == StatusEnum.VALID.value),
-                (fn.LOWER(cls.model.name).contains(keywords.lower()))
+            kbs = (
+                cls.model.select(*fields)
+                .join(User, on=(cls.model.tenant_id == User.id))
+                .where(
+                    ((cls.model.tenant_id.in_(joined_tenant_ids) & (cls.model.permission == TenantPermission.TEAM.value)) | (cls.model.tenant_id == user_id))
+                    & (cls.model.status == StatusEnum.VALID.value),
+                    (fn.LOWER(cls.model.name).contains(keywords.lower())),
+                )
             )
         else:
-            kbs = cls.model.select(*fields).join(User, on=(cls.model.tenant_id == User.id)).where(
-                ((cls.model.tenant_id.in_(joined_tenant_ids) & (cls.model.permission ==
-                                                                TenantPermission.TEAM.value)) | (
-                    cls.model.tenant_id == user_id))
-                & (cls.model.status == StatusEnum.VALID.value)
+            kbs = (
+                cls.model.select(*fields)
+                .join(User, on=(cls.model.tenant_id == User.id))
+                .where(
+                    ((cls.model.tenant_id.in_(joined_tenant_ids) & (cls.model.permission == TenantPermission.TEAM.value)) | (cls.model.tenant_id == user_id))
+                    & (cls.model.status == StatusEnum.VALID.value)
+                )
             )
         if parser_id:
             kbs = kbs.where(cls.model.parser_id == parser_id)
@@ -240,7 +242,7 @@ class KnowledgebaseService(CommonService):
             User.nickname,
             User.avatar.alias("user_avatar"),
             cls.model.update_time,
-            #Permission.permission.alias("operator_permission"),
+            # Permission.permission.alias("operator_permission"),
         ]
 
         permission_conditions = (Permission.permission >= permission) & (Permission.status == StatusEnum.VALID.value) & (Permission.resource_type == ResourceType.KB)
@@ -255,10 +257,10 @@ class KnowledgebaseService(CommonService):
             .where(
                 (
                     # KB owner
-                        (cls.model.tenant_id == user_id)
-                        |
-                        # Check permission for joined members
-                        ((cls.model.tenant_id.in_(joined_tenant_ids)) & (Permission.id.is_null(False)))
+                    (cls.model.tenant_id == user_id)
+                    |
+                    # Check permission for joined members
+                    ((cls.model.tenant_id.in_(joined_tenant_ids)) & (Permission.id.is_null(False)))
                 )
                 & (cls.model.status == StatusEnum.VALID.value)
             )
@@ -295,14 +297,10 @@ class KnowledgebaseService(CommonService):
             cls.model.chunk_num,
             cls.model.status,
             cls.model.create_date,
-            cls.model.update_date
+            cls.model.update_date,
         ]
         # find team kb and owned kb
-        kbs = cls.model.select(*fields).where(
-            (cls.model.tenant_id.in_(tenant_ids) & (cls.model.permission == TenantPermission.TEAM.value)) | (
-                    cls.model.tenant_id == user_id
-            )
-        )
+        kbs = cls.model.select(*fields).where((cls.model.tenant_id.in_(tenant_ids) & (cls.model.permission == TenantPermission.TEAM.value)) | (cls.model.tenant_id == user_id))
         # sort by create_time asc
         kbs.order_by(cls.model.create_time.asc())
         # maybe cause slow query by deep paginate, optimize later.
@@ -345,9 +343,7 @@ class KnowledgebaseService(CommonService):
             .distinct()
             .join(User, on=(cls.model.tenant_id == User.id))
             .switch(cls.model)
-            .join(Permission, JOIN.LEFT_OUTER, on=(
-                    (Permission.resource_id == cls.model.id) &
-                    (permission_conditions)))
+            .join(Permission, JOIN.LEFT_OUTER, on=((Permission.resource_id == cls.model.id) & (permission_conditions)))
             .where((cls.model.status == StatusEnum.VALID.value))
         )
 
@@ -390,9 +386,7 @@ class KnowledgebaseService(CommonService):
     @classmethod
     @DB.connection_context()
     def count_by_tenant_id(cls, tenant_id) -> int:
-        return cls.model.select().where(
-            (cls.model.tenant_id == tenant_id) & (cls.model.status == StatusEnum.VALID.value)
-        ).count()
+        return cls.model.select().where((cls.model.tenant_id == tenant_id) & (cls.model.status == StatusEnum.VALID.value)).count()
 
     @classmethod
     @DB.connection_context()
@@ -435,14 +429,14 @@ class KnowledgebaseService(CommonService):
             cls.model.clone_task_id,
             cls.model.clone_task_finish_at,
             cls.model.create_time,
-            cls.model.update_time
-            ]
-        kbs = cls.model.select(*fields)\
-                .join(UserCanvas, on=(cls.model.pipeline_id == UserCanvas.id), join_type=JOIN.LEFT_OUTER)\
-            .where(
-            (cls.model.id == kb_id),
-            (cls.model.status == StatusEnum.VALID.value)
-        ).dicts()
+            cls.model.update_time,
+        ]
+        kbs = (
+            cls.model.select(*fields)
+            .join(UserCanvas, on=(cls.model.pipeline_id == UserCanvas.id), join_type=JOIN.LEFT_OUTER)
+            .where((cls.model.id == kb_id), (cls.model.status == StatusEnum.VALID.value))
+            .dicts()
+        )
         if not kbs:
             return None
         return kbs[0]
@@ -509,11 +503,7 @@ class KnowledgebaseService(CommonService):
         #     tenant_id: Tenant ID
         # Returns:
         #     Tuple of (exists, knowledge_base)
-        kb = cls.model.select().where(
-            (cls.model.name == kb_name)
-            & (cls.model.tenant_id == tenant_id)
-            & (cls.model.status == StatusEnum.VALID.value)
-        )
+        kb = cls.model.select().where((cls.model.name == kb_name) & (cls.model.tenant_id == tenant_id) & (cls.model.status == StatusEnum.VALID.value))
         if kb:
             return True, kb[0]
         return False, None
@@ -526,17 +516,9 @@ class KnowledgebaseService(CommonService):
         #     List of all dataset IDs
         return [m["id"] for m in cls.model.select(cls.model.id).dicts()]
 
-
     @classmethod
     @DB.connection_context()
-    def create_with_name(
-        cls,
-        *,
-        name: str,
-        tenant_id: str,
-        parser_id: str | None = None,
-        **kwargs
-    ):
+    def create_with_name(cls, *, name: str, tenant_id: str, parser_id: str | None = None, **kwargs):
         """Create a dataset (knowledgebase) by name with kb_app defaults.
 
         This encapsulates the creation logic used in kb_app.create so other callers
@@ -580,7 +562,7 @@ class KnowledgebaseService(CommonService):
             "tenant_id": tenant_id,
             "created_by": tenant_id,
             "parser_id": (parser_id or "naive"),
-            **kwargs # Includes optional fields such as description, language, permission, avatar, parser_config, etc.
+            **kwargs,  # Includes optional fields such as description, language, permission, avatar, parser_config, etc.
         }
 
         # Update parser_config (always override with validated default/merged config)
@@ -589,11 +571,9 @@ class KnowledgebaseService(CommonService):
 
         return True, payload
 
-
     @classmethod
     @DB.connection_context()
-    def get_list(cls, joined_tenant_ids, user_id,
-                 page_number, items_per_page, orderby, desc, id, name):
+    def get_list(cls, joined_tenant_ids, user_id, page_number, items_per_page, orderby, desc, id, name):
         # Get list of knowledge bases with filtering and pagination
         # Args:
         #     joined_tenant_ids: List of tenant IDs
@@ -636,8 +616,9 @@ class KnowledgebaseService(CommonService):
     @classmethod
     @DB.connection_context()
     def accessible(cls, kb_id, user_id):
-        from common import settings
         from api.db.services import UserService
+        from common import settings
+
         if settings.ENABLE_ADMIN and UserService.is_admin(user_id):
             return True
         # Check if a knowledge base is accessible by a user
@@ -646,9 +627,7 @@ class KnowledgebaseService(CommonService):
         #     user_id: User ID
         # Returns:
         #     Boolean indicating accessibility
-        docs = cls.model.select(
-            cls.model.id).join(UserTenant, on=(UserTenant.tenant_id == Knowledgebase.tenant_id)
-                               ).where(cls.model.id == kb_id, UserTenant.user_id == user_id).paginate(0, 1)
+        docs = cls.model.select(cls.model.id).join(UserTenant, on=(UserTenant.tenant_id == Knowledgebase.tenant_id)).where(cls.model.id == kb_id, UserTenant.user_id == user_id).paginate(0, 1)
         docs = docs.dicts()
         if not docs:
             return False
@@ -666,10 +645,10 @@ class KnowledgebaseService(CommonService):
                 & (cls.model.status == StatusEnum.VALID.value)
                 & (
                     # KB owner
-                        (cls.model.tenant_id == operator_id)
-                        |
-                        # Check for other joined member
-                        Permission.id.is_null(False)
+                    (cls.model.tenant_id == operator_id)
+                    |
+                    # Check for other joined member
+                    Permission.id.is_null(False)
                 )
             )
             .limit(1)
@@ -686,8 +665,7 @@ class KnowledgebaseService(CommonService):
         #     user_id: User ID
         # Returns:
         #     List containing dataset information
-        kbs = cls.model.select().join(UserTenant, on=(UserTenant.tenant_id == Knowledgebase.tenant_id)
-                                      ).where(cls.model.id == kb_id, UserTenant.user_id == user_id).paginate(0, 1)
+        kbs = cls.model.select().join(UserTenant, on=(UserTenant.tenant_id == Knowledgebase.tenant_id)).where(cls.model.id == kb_id, UserTenant.user_id == user_id).paginate(0, 1)
         kbs = kbs.dicts()
         return list(kbs)
 
@@ -729,9 +707,7 @@ class KnowledgebaseService(CommonService):
             cls.model.update_time,
         ]
 
-        kbs = cls.model.select(*fields).distinct().join(User, on=(cls.model.tenant_id == User.id)).where(
-            cls.model.tenant_id.in_(tenant_ids) & (cls.model.status == StatusEnum.VALID.value)
-        )
+        kbs = cls.model.select(*fields).distinct().join(User, on=(cls.model.tenant_id == User.id)).where(cls.model.tenant_id.in_(tenant_ids) & (cls.model.status == StatusEnum.VALID.value))
 
         if keywords:
             kbs = kbs.where(fn.LOWER(cls.model.name).contains(keywords.lower()))
@@ -761,8 +737,7 @@ class KnowledgebaseService(CommonService):
         #     user_id: User ID
         # Returns:
         #     List containing dataset information
-        kbs = cls.model.select().join(UserTenant, on=(UserTenant.tenant_id == Knowledgebase.tenant_id)
-                                      ).where(cls.model.name == kb_name, UserTenant.user_id == user_id).paginate(0, 1)
+        kbs = cls.model.select().join(UserTenant, on=(UserTenant.tenant_id == Knowledgebase.tenant_id)).where(cls.model.name == kb_name, UserTenant.user_id == user_id).paginate(0, 1)
         kbs = kbs.dicts()
         return list(kbs)
 
@@ -798,7 +773,7 @@ class KnowledgebaseService(CommonService):
             kb.save(only=dirty_fields)
         except ValueError as e:
             if str(e) == "no data to save!":
-                pass # that's OK
+                pass  # that's OK
             else:
                 raise e
 
@@ -809,24 +784,26 @@ class KnowledgebaseService(CommonService):
         if not kb_row:
             raise RuntimeError(f"kb_id {kb_id} does not exist")
         update_dict = {
-            'doc_num': kb_row.doc_num - doc_num_info['doc_num'],
-            'chunk_num': kb_row.chunk_num - doc_num_info['chunk_num'],
-            'token_num': kb_row.token_num - doc_num_info['token_num'],
-            'update_time': current_timestamp(),
-            'update_date': datetime_format(datetime.now())
+            "doc_num": kb_row.doc_num - doc_num_info["doc_num"],
+            "chunk_num": kb_row.chunk_num - doc_num_info["chunk_num"],
+            "token_num": kb_row.token_num - doc_num_info["token_num"],
+            "update_time": current_timestamp(),
+            "update_date": datetime_format(datetime.now()),
         }
         return cls.model.update(update_dict).where(cls.model.id == kb_id).execute()
 
     @classmethod
     @DB.connection_context()
     def check_embedding(cls, kb_id, embd_id, n=5):
-        from rag.nlp import search
-        import numpy as np
         import random
         import re
-        from common import settings
+
+        import numpy as np
+
         from api.db.services.llm_service import LLMBundle
+        from common import settings
         from common.doc_store.doc_store_base import OrderByExpr
+        from rag.nlp import search
 
         def _guess_vec_field(src: dict) -> str | None:
             for k in src or {}:
@@ -861,23 +838,27 @@ class KnowledgebaseService(CommonService):
             tenant_id: str,
             kb_id: str,
             n: int = 5,
-            base_fields=("docnm_kwd","doc_id","content_with_weight","page_num_int","position_int","top_int"),
+            base_fields=("docnm_kwd", "doc_id", "content_with_weight", "page_num_int", "position_int", "top_int"),
         ):
             index_nm = search.index_name(tenant_id)
 
             res0 = docStoreConn.search(
-                select_fields=[], highlight_fields=[],
+                select_fields=[],
+                highlight_fields=[],
                 condition={"kb_id": kb_id, "available_int": 1},
-                match_expressions=[], order_by=OrderByExpr(),
-                offset=0, limit=1,
-                index_names=index_nm, knowledgebase_ids=[kb_id]
+                match_expressions=[],
+                order_by=OrderByExpr(),
+                offset=0,
+                limit=1,
+                index_names=index_nm,
+                knowledgebase_ids=[kb_id],
             )
             total = docStoreConn.get_total(res0)
             if total <= 0:
                 return []
 
             n = min(n, total)
-            offsets = sorted(random.sample(range(min(total,1000)), n))
+            offsets = sorted(random.sample(range(min(total, 1000)), n))
             out = []
 
             for off in offsets:
@@ -885,9 +866,12 @@ class KnowledgebaseService(CommonService):
                     select_fields=list(base_fields),
                     highlight_fields=[],
                     condition={"kb_id": kb_id, "available_int": 1},
-                    match_expressions=[], order_by=OrderByExpr(),
-                    offset=off, limit=1,
-                    index_names=index_nm, knowledgebase_ids=[kb_id]
+                    match_expressions=[],
+                    order_by=OrderByExpr(),
+                    offset=off,
+                    limit=1,
+                    index_names=index_nm,
+                    knowledgebase_ids=[kb_id],
                 )
                 ids = docStoreConn.get_doc_ids(res1)
                 if not ids:
@@ -898,20 +882,22 @@ class KnowledgebaseService(CommonService):
                 vec_field = _guess_vec_field(full_doc)
                 vec = _as_float_vec(full_doc.get(vec_field))
 
-                out.append({
-                    "chunk_id": cid,
-                    "kb_id": kb_id,
-                    "doc_id": full_doc.get("doc_id"),
-                    "doc_name": full_doc.get("docnm_kwd"),
-                    "vector_field": vec_field,
-                    "vector_dim": len(vec),
-                    "vector": vec,
-                    "page_num_int": full_doc.get("page_num_int"),
-                    "position_int": full_doc.get("position_int"),
-                    "top_int": full_doc.get("top_int"),
-                    "content_with_weight": full_doc.get("content_with_weight") or "",
-                    "question_kwd": full_doc.get("question_kwd") or []
-                })
+                out.append(
+                    {
+                        "chunk_id": cid,
+                        "kb_id": kb_id,
+                        "doc_id": full_doc.get("doc_id"),
+                        "doc_name": full_doc.get("docnm_kwd"),
+                        "vector_field": vec_field,
+                        "vector_dim": len(vec),
+                        "vector": vec,
+                        "page_num_int": full_doc.get("page_num_int"),
+                        "position_int": full_doc.get("position_int"),
+                        "top_int": full_doc.get("top_int"),
+                        "content_with_weight": full_doc.get("content_with_weight") or "",
+                        "question_kwd": full_doc.get("question_kwd") or [],
+                    }
+                )
             return out
 
         def _clean(s: str) -> str:
@@ -922,6 +908,7 @@ class KnowledgebaseService(CommonService):
         tenant_id = kb.tenant_id
 
         from api.db.joint_services.tenant_model_service import get_model_config_by_type_and_name
+
         embd_model_config = get_model_config_by_type_and_name(tenant_id, LLMType.EMBEDDING, embd_id)
         emb_mdl = LLMBundle(tenant_id, embd_model_config)
         samples = sample_random_chunks_with_vectors(settings.docStoreConn, tenant_id=tenant_id, kb_id=kb_id, n=n)
@@ -940,7 +927,6 @@ class KnowledgebaseService(CommonService):
                 results.append({"chunk_id": ck["chunk_id"], "reason": "no_stored_vector"})
                 continue
 
-
             v, _ = emb_mdl.encode([title, txt_in])
             if len(v[1]) != len(ck["vector"]):
                 return {
@@ -953,7 +939,7 @@ class KnowledgebaseService(CommonService):
                     "max_cos_sim": 0,
                     "match_mode": "content_only",
                 }
-            #assert len(v[1]) == len(ck["vector"]), f"The dimension ({len(v[1])}) of given embedding model is different from the original ({len(ck['vector'])})"
+            # assert len(v[1]) == len(ck["vector"]), f"The dimension ({len(v[1])}) of given embedding model is different from the original ({len(ck['vector'])})"
             sim_content = _cos_sim(v[1], ck["vector"])
             title_w = 0.1
             qv_mix = title_w * v[0] + (1 - title_w) * v[1]
@@ -964,14 +950,16 @@ class KnowledgebaseService(CommonService):
                 mode = "title+content"
 
             eff_sims.append(sim)
-            results.append({
-                "chunk_id": ck["chunk_id"],
-                "doc_id": ck["doc_id"],
-                "doc_name": ck["doc_name"],
-                "vector_field": ck["vector_field"],
-                "vector_dim": ck["vector_dim"],
-                "cos_sim": round(sim, 6),
-            })
+            results.append(
+                {
+                    "chunk_id": ck["chunk_id"],
+                    "doc_id": ck["doc_id"],
+                    "doc_name": ck["doc_name"],
+                    "vector_field": ck["vector_field"],
+                    "vector_dim": ck["vector_dim"],
+                    "cos_sim": round(sim, 6),
+                }
+            )
 
         return {
             "kb_id": kb_id,
@@ -983,11 +971,10 @@ class KnowledgebaseService(CommonService):
             "max_cos_sim": round(float(np.max(eff_sims)) if eff_sims else 1, 6),
             "match_mode": mode,
         }
+
+    @classmethod
+    @DB.connection_context()
     def get_null_tenant_embd_id_row(cls):
-        fields = [
-            cls.model.id,
-            cls.model.tenant_id,
-            cls.model.embd_id
-        ]
+        fields = [cls.model.id, cls.model.tenant_id, cls.model.embd_id]
         objs = cls.model.select(*fields).where(cls.model.tenant_embd_id.is_null())
         return list(objs)
