@@ -1,3 +1,6 @@
+#
+#  Copyright 2026 The InfiniFlow Authors. All Rights Reserved.
+#
 #  Licensed under the Apache License, Version 2.0 (the "License");
 #  you may not use this file except in compliance with the License.
 #  You may obtain a copy of the License at
@@ -10,9 +13,22 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 #
-import logging
-import base64
-import datetime
+
+"""
+Resume parsing module (aligned with SmartResume Pipeline architecture optimization)
+
+Key optimizations (ref: arXiv:2510.09722):
+    1. PDF text fusion: metadata + OCR dual-path extraction and fusion
+    2. Layout-aware reconstruction: YOLOv10 layout segmentation + hierarchical sorting + line indexing
+    3. Parallel task decomposition: basic info / work experience / education - 3-way parallel LLM extraction
+    4. Index pointer mechanism: LLM returns line number ranges instead of generating full text, reducing hallucination
+    5. Four-stage post-processing: source text re-extraction, domain normalization, context deduplication, source text validation
+
+Compatibility:
+    - chunk(filename, binary, callback, **kwargs) signature remains unchanged
+    - Compatible with FACTORY[ParserType.RESUME.value] in task_executor.py
+"""
+
 import json
 import re
 import random
@@ -688,18 +704,6 @@ def _build_indexed_text(blocks: list[dict]) -> tuple[str, list[str], list[dict]]
             "top": min(b.get("top", 0) for b in line_blocks),
             "bottom": max(b.get("bottom", 0) for b in line_blocks),
         }
-    }
-    for _ in range(3):
-        try:
-            resume = requests.post(
-                "http://172.17.0.1:61670/tog",
-                data=json.dumps(q))
-            resume = resume.json()["response"]["results"]
-            resume = refactor(resume)
-            for k in ["education", "work", "project",
-                      "training", "skill", "certificate", "language"]:
-                if not resume.get(k) and k in resume:
-                    del resume[k]
 
     for b in blocks:
         b_layoutno = b.get("layoutno", "")
