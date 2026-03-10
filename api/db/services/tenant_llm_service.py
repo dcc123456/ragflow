@@ -49,7 +49,7 @@ class LLMFactoriesService(CommonService):
         permission_conditions = (Permission.permission >= PermissionValue.PERMISSION_READ.value) & (Permission.status == StatusEnum.VALID.value) & (Permission.resource_type == ResourceType.LLM)
         query = (
             cls.model.select(cls.model.name, Permission.tenant_id)
-            .join(Permission, JOIN.LEFT_OUTER, on=((Permission.resource_id == cls.model.name) & (Permission.member_id.endswith(peewee.fn.CONCAT("\_", user_id))) & (permission_conditions)))
+            .join(Permission, JOIN.LEFT_OUTER, on=((Permission.resource_id == cls.model.name) & (Permission.member_id.endswith(peewee.fn.CONCAT(r"\_", user_id))) & (permission_conditions)))
             .where(
                 (cls.model.status == 1)
                 & (Permission.id.is_null(False))
