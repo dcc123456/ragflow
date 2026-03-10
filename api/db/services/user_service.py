@@ -14,7 +14,6 @@
 #  limitations under the License.
 #
 from datetime import datetime
-import hashlib
 import logging
 
 import peewee
@@ -24,7 +23,6 @@ from api.db import UserTenantRole
 from api.db.db_models import DB, UserTenant
 from api.db.db_models import User, Tenant
 from api.db.services.common_service import CommonService
-from common import settings
 from common.misc_utils import get_uuid
 from common.time_utils import current_timestamp, datetime_format
 from common.constants import StatusEnum
@@ -219,12 +217,6 @@ class TenantService(CommonService):
             cls.model.id == user_id).execute()
         if num == 0:
             raise LookupError("Tenant not found which is supposed to be there")
-
-    @classmethod
-    @DB.connection_context()
-    def user_gateway(cls, tenant_id):
-        hash_obj = hashlib.sha256(tenant_id.encode("utf-8"))
-        return int(hash_obj.hexdigest(), 16)%len(settings.MINIO)
 
     @classmethod
     @DB.connection_context()
