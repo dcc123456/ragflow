@@ -921,7 +921,9 @@ class KnowledgebaseService(CommonService):
         _, kb = cls.get_by_id(kb_id)
         tenant_id = kb.tenant_id
 
-        emb_mdl = LLMBundle(tenant_id, LLMType.EMBEDDING, embd_id)
+        from api.db.joint_services.tenant_model_service import get_model_config_by_type_and_name
+        embd_model_config = get_model_config_by_type_and_name(tenant_id, LLMType.EMBEDDING, embd_id)
+        emb_mdl = LLMBundle(tenant_id, embd_model_config)
         samples = sample_random_chunks_with_vectors(settings.docStoreConn, tenant_id=tenant_id, kb_id=kb_id, n=n)
 
         mode = "content_only"

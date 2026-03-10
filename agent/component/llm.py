@@ -247,8 +247,10 @@ class LLM(ComponentBase):
 
         self.imgs = self._uniq_images(self.imgs + extracted_imgs)
         if self.imgs and TenantLLMService.llm_id2llm_type(self._param.llm_id) == LLMType.CHAT.value:
-            self.chat_mdl = LLMBundle(self._canvas.get_tenant_id(), LLMType.IMAGE2TEXT.value,
-                                      self._param.llm_id, max_retries=self._param.max_retries,
+            image2text_model_config = get_model_config_by_type_and_name(
+                self._canvas.get_tenant_id(), LLMType.IMAGE2TEXT, self._param.llm_id)
+            self.chat_mdl = LLMBundle(self._canvas.get_tenant_id(), image2text_model_config,
+                                      max_retries=self._param.max_retries,
                                       retry_interval=self._param.delay_after_error
                                       )
 

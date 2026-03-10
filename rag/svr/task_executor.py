@@ -1156,7 +1156,8 @@ async def do_handle_task(task):
     elif task_type == "reembedding":
         start_ts = timer()
         target_embedding_id = task["target_embed_id"]
-        target_embedding_model = LLMBundle(task_tenant_id, LLMType.EMBEDDING, llm_name=target_embedding_id, lang=task_language)
+        target_embedding_config = get_model_config_by_type_and_name(task_tenant_id, LLMType.EMBEDDING, target_embedding_id)
+        target_embedding_model = LLMBundle(task_tenant_id, target_embedding_config, lang=task_language)
         await is_strong_enough(None, target_embedding_model)
         index_name = search.index_name(task_tenant_id)
         flds = ["question_kwd", "content_with_weight", "docnm_kwd"]
