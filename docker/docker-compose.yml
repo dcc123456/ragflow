@@ -6,6 +6,11 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
+      es01:
+        condition: service_healthy
+        required: false
+      redis:
+        condition: service_healthy
     image: ${RAGFLOW_IMAGE}
     # Example configuration to set up an MCP server:
     # command:
@@ -47,6 +52,11 @@ services:
   parser:
     depends_on:
       mysql:
+        condition: service_healthy
+      es01:
+        condition: service_healthy
+        required: false
+      redis:
         condition: service_healthy
     image: ${RAGFLOW_IMAGE}
     entrypoint: /ragflow/entrypoint-parser.sh
