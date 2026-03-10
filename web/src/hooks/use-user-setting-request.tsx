@@ -1,4 +1,5 @@
 import message from '@/components/ui/message';
+import { Modal } from '@/components/ui/modal/modal';
 import { LanguageTranslationMap } from '@/constants/common';
 import { TenantRole } from '@/constants/team';
 import { ResponseGetType } from '@/interfaces/database/base';
@@ -13,6 +14,7 @@ import {
 } from '@/interfaces/database/user-setting';
 import { ISetLangfuseConfigRequestBody } from '@/interfaces/request/system';
 import { changeLanguageAsync } from '@/locales/config';
+import { Routes } from '@/routes';
 import userService, {
   addTenantUser,
   agreeTenant,
@@ -25,6 +27,7 @@ import DOMPurify from 'dompurify';
 import { isEmpty } from 'lodash';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import {
   useFetchEnableAdmin,
@@ -78,6 +81,7 @@ export const useFetchTenantInfo = (
   showEmptyModelWarn = false,
 ): ResponseGetType<ITenantInfo> => {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const { data: isAdmin, loading: isAdminLoading } = useFetchIsAdmin();
   const { data: enableAdmin, loading: enableAdminLoading } =
     useFetchEnableAdmin();
@@ -119,22 +123,21 @@ export const useFetchTenantInfo = (
           id: 'model-providers-warn', // Add a unique ID to prevent duplicate toasts
         });
       } else {
-        toast.warning(t('common.warn'), {
-          position: 'top-center',
-          closeButton: false,
-          description: (
+        Modal.warning({
+          title: t('common.warn'),
+          content: (
             <div
               dangerouslySetInnerHTML={{
                 __html: DOMPurify.sanitize(t('setting.modelProvidersWarn')),
               }}
             ></div>
           ),
-          action: {
-            label: t('common.confirm'),
-            onClick: () => history.push('/user-setting/model'),
+          closable: false,
+          showCancel: false,
+          onOk() {
+            // window.open('/user-setting/model', '_self');
+            navigate(`${Routes.UserSetting}${Routes.Model}`);
           },
-          duration: Infinity,
-          id: 'model-providers-warn-admin', // Add a unique ID to prevent duplicate toasts
         });
       }
     }

@@ -18,6 +18,7 @@ import userService from '@/services/user-service';
 import { getLLMIconName, getRealModelName } from '@/utils/llm-util';
 import { buildLlmId } from '@/utils/private-util';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { orderBy } from 'lodash';
 import { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useFetchTenantInfo } from './use-user-setting-request';
