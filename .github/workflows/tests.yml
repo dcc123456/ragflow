@@ -166,7 +166,7 @@ jobs:
             export HTTP_API_TEST_LEVEL=p2
           fi
           echo "HTTP_API_TEST_LEVEL=${HTTP_API_TEST_LEVEL}" >> ${GITHUB_ENV}
-          echo "RAGFLOW_CONTAINER=${GITHUB_RUN_ID}-ragflow-cpu-1" >> ${GITHUB_ENV}
+          echo "RAGFLOW_CONTAINER=${GITHUB_RUN_ID}-ragflow-1" >> ${GITHUB_ENV}
 
       - name: Run unit test
         run: |
