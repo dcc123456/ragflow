@@ -410,4 +410,27 @@ declare namespace AdminService {
     provider_type: string;
     config: Record<string, unknown>;
   };
+
+  export type SandboxProviderSchema = {
+    provider_type: string;
+    name: string;
+    description: string;
+    fields: Record<string, SandboxConfigField>;
+  };
+
+  export type SetSandboxConfigInput = {
+    provider_type: string;
+    config: Record<string, unknown>;
+  };
+
+  export type TestSandboxConnectionInput = {
+    provider_type: string;
+    config: Record<string, unknown>;
+  };
+
+  export type SandboxTestResult = {
+    success: boolean;
+    message?: string;
+    details?: Record<string, unknown>;
+  };
 }

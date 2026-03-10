@@ -413,3 +413,29 @@ export const addFactory = (inputs: AdminService.AddLlmFactoryInput) =>
       : API.adminSetLlmApiKey,
     inputs,
   );
+
+export const listSandboxProviders = () =>
+  request.get<ResponseData<AdminService.SandboxProvider[]>>(
+    API.adminListSandboxProviders,
+  );
+
+export const getSandboxConfig = () =>
+  request.get<ResponseData<AdminService.SandboxConfig>>(
+    API.adminGetSandboxConfig,
+  );
+
+export const setSandboxConfig = (params: AdminService.SetSandboxConfigInput) =>
+  request.put<ResponseData<never>>(API.adminSetSandboxConfig, params);
+
+export const getSandboxProviderSchema = (providerId: string) =>
+  request.get<ResponseData<AdminService.SandboxProviderSchema>>(
+    API.adminGetSandboxProviderSchema(providerId),
+  );
+
+export const testSandboxConnection = (
+  params: AdminService.TestSandboxConnectionInput,
+) =>
+  request.post<ResponseData<AdminService.SandboxTestResult>>(
+    API.adminTestSandboxConnection,
+    params,
+  );
