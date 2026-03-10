@@ -45,6 +45,7 @@ function RerankFormField({ name = DefaultRerankId }: RerankFormFieldProps) {
           <FormControl>
             <SelectWithSearch
               allowClear
+              placeholder={t('rerankPlaceholder')}
               {...field}
               options={options}
             ></SelectWithSearch>

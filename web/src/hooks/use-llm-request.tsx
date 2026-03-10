@@ -1,6 +1,7 @@
 import { LlmIcon } from '@/components/svg-icon';
 import message from '@/components/ui/message';
 import { LlmModelType } from '@/constants/knowledge';
+import { DefaultOptionType } from '@/interfaces/antd-compat';
 import { ResponseGetType } from '@/interfaces/database/base';
 import {
   IFactory,
@@ -17,8 +18,6 @@ import userService from '@/services/user-service';
 import { getLLMIconName, getRealModelName } from '@/utils/llm-util';
 import { buildLlmId } from '@/utils/private-util';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { DefaultOptionType } from 'antd/es/select';
-import { orderBy } from 'lodash';
 import { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useFetchTenantInfo } from './use-user-setting-request';
@@ -288,11 +287,13 @@ export interface IApiKeySavingParams {
   llm_name?: string;
   model_type?: string;
   base_url?: string;
+  source_fid?: string;
+  verify?: boolean;
 }
 
 export const useSaveApiKey = () => {
   const queryClient = useQueryClient();
-  const { t } = useTranslation();
+  // const { t } = useTranslation();
   const {
     data,
     isPending: loading,
@@ -302,14 +303,14 @@ export const useSaveApiKey = () => {
     mutationFn: async (params: IApiKeySavingParams) => {
       const { data } = await userService.set_api_key(params);
       if (data.code === 0) {
-        message.success(t('message.modified'));
+        // message.success(t('message.modified'));
         queryClient.invalidateQueries({ queryKey: [LLMApiAction.MyLlmList] });
         queryClient.invalidateQueries({
           queryKey: [LLMApiAction.MyLlmListDetailed],
         });
         queryClient.invalidateQueries({ queryKey: [LLMApiAction.FactoryList] });
       }
-      return data.code;
+      return data;
     },
   });
 
@@ -347,25 +348,25 @@ export const useSaveTenantInfo = () => {
 
 export const useAddLlm = () => {
   const queryClient = useQueryClient();
-  const { t } = useTranslation();
+  // const { t } = useTranslation();
   const {
     data,
     isPending: loading,
     mutateAsync,
   } = useMutation({
     mutationKey: [LLMApiAction.AddLlm],
-    mutationFn: async (params: IAddLlmRequestBody) => {
+    mutationFn: async (params: IAddLlmRequestBody & { verify?: boolean }) => {
       const { data } = await userService.add_llm(params);
-      if (data.code === 0) {
+      if (data.code === 0 && !params.verify) {
         queryClient.invalidateQueries({ queryKey: [LLMApiAction.MyLlmList] });
         queryClient.invalidateQueries({
           queryKey: [LLMApiAction.MyLlmListDetailed],
         });
         queryClient.invalidateQueries({ queryKey: [LLMApiAction.FactoryList] });
         queryClient.invalidateQueries({ queryKey: [LLMApiAction.LlmList] });
-        message.success(t('message.modified'));
+        // message.success(t('message.modified'));
       }
-      return data.code;
+      return data;
     },
   });
 

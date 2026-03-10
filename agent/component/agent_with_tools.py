@@ -28,6 +28,7 @@ from agent.tools.base import LLMToolPluginCallSession, ToolParamBase, ToolBase, 
 from api.db.services.llm_service import LLMBundle
 from api.db.services.tenant_llm_service import TenantLLMService
 from api.db.services.mcp_server_service import MCPServerService
+from api.db.joint_services.tenant_model_service import get_model_config_by_type_and_name
 from common.connection_utils import timeout
 from rag.prompts.generator import next_step_async, COMPLETE_TASK, \
     citation_prompt, kb_prompt, citation_plus, full_question, message_fit_in, structured_output_prompt
@@ -76,6 +77,7 @@ class AgentParam(LLMParam, ToolParamBase):
         self.mcp = []
         self.max_rounds = 5
         self.description = ""
+        self.custom_header = {}
 
 
 class Agent(LLM, ToolBase):
@@ -89,8 +91,8 @@ class Agent(LLM, ToolBase):
             original_name = cpn.get_meta()["function"]["name"]
             indexed_name = f"{original_name}_{idx}"
             self.tools[indexed_name] = cpn
-
-        self.chat_mdl = LLMBundle(self._canvas.get_tenant_id(), TenantLLMService.llm_id2llm_type(self._param.llm_id), self._param.llm_id,
+        chat_model_config = get_model_config_by_type_and_name(self._canvas.get_tenant_id(), TenantLLMService.llm_id2llm_type(self._param.llm_id), self._param.llm_id)
+        self.chat_mdl = LLMBundle(self._canvas.get_tenant_id(), chat_model_config,
                                   max_retries=self._param.max_retries,
                                   retry_interval=self._param.delay_after_error,
                                   max_rounds=self._param.max_rounds,
@@ -105,7 +107,8 @@ class Agent(LLM, ToolBase):
 
         for mcp in self._param.mcp:
             _, mcp_server = MCPServerService.get_by_id(mcp["mcp_id"])
-            tool_call_session = MCPToolCallSession(mcp_server, mcp_server.variables)
+            custom_header = self._param.custom_header
+            tool_call_session = MCPToolCallSession(mcp_server, mcp_server.variables, custom_header)
             for tnm, meta in mcp["tools"].items():
                 self.tool_meta.append(mcp_tool_metadata_to_openai_tool(meta))
                 self.tools[tnm] = tool_call_session
@@ -381,7 +384,10 @@ class Agent(LLM, ToolBase):
             token_count += tk or 0
             hist.append({"role": "assistant", "content": response})
             try:
-                functions = json_repair.loads(re.sub(r"```.*", "", response))
+                # Remove markdown code fences properly
+                cleaned_response = re.sub(r"^.*```json\s*", "", response, flags=re.DOTALL)
+                cleaned_response = re.sub(r"```\s*$", "", cleaned_response, flags=re.DOTALL)
+                functions = json_repair.loads(cleaned_response)
                 if not isinstance(functions, list):
                     raise TypeError(f"List should be returned, but `{functions}`")
                 for f in functions:

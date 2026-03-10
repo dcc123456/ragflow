@@ -12,6 +12,7 @@ import { IDataSourceInfoMap } from '../interface';
 import { bitbucketConstant } from './bitbucket-constant';
 import { confluenceConstant } from './confluence-constant';
 import { S3Constant } from './s3-constant';
+import { seafileConstant } from './seafile-constant';
 
 export enum DataSourceKey {
   CONFLUENCE = 'confluence',
@@ -29,6 +30,7 @@ export enum DataSourceKey {
   OCI_STORAGE = 'oci_storage',
   GOOGLE_CLOUD_STORAGE = 'google_cloud_storage',
   AIRTABLE = 'airtable',
+  DINGTALK_AI_TABLE = 'dingtalk_ai_table',
   GITLAB = 'gitlab',
   ASANA = 'asana',
   IMAP = 'imap',
@@ -36,6 +38,9 @@ export enum DataSourceKey {
   BITBUCKET = 'bitbucket',
   ZENDESK = 'zendesk',
   LARK = 'lark',
+  SEAFILE = 'seafile',
+  MYSQL = 'mysql',
+  POSTGRESQL = 'postgresql',
   //   SHAREPOINT = 'sharepoint',
   //   SLACK = 'slack',
   //   TEAMS = 'teams',
@@ -120,6 +125,11 @@ export const generateDataSourceInfo = (t: TFunction) => {
       description: t(`setting.${DataSourceKey.AIRTABLE}Description`),
       icon: <SvgIcon name={'data-source/airtable'} width={38} />,
     },
+    [DataSourceKey.DINGTALK_AI_TABLE]: {
+      name: 'Dingtalk AI Table',
+      description: t(`setting.dingtalkAITableDescription`),
+      icon: <SvgIcon name={'data-source/dingtalk-ai-table'} width={38} />,
+    },
     [DataSourceKey.GITLAB]: {
       name: 'GitLab',
       description: t(`setting.${DataSourceKey.GITLAB}Description`),
@@ -161,6 +171,21 @@ export const generateDataSourceInfo = (t: TFunction) => {
       description: t(`setting.${DataSourceKey.LARK}Description`),
       icon: <SvgIcon name={'data-source/lark'} width={38} />,
     },
+    [DataSourceKey.SEAFILE]: {
+      name: 'SeaFile',
+      description: t(`setting.${DataSourceKey.SEAFILE}Description`),
+      icon: <SvgIcon name={'data-source/seafile'} width={38} />,
+    },
+    [DataSourceKey.MYSQL]: {
+      name: 'MySQL',
+      description: t(`setting.${DataSourceKey.MYSQL}Description`),
+      icon: <SvgIcon name={'data-source/mysql'} width={38} />,
+    },
+    [DataSourceKey.POSTGRESQL]: {
+      name: 'PostgreSQL',
+      description: t(`setting.${DataSourceKey.POSTGRESQL}Description`),
+      icon: <SvgIcon name={'data-source/postgresql'} width={38} />,
+    },
   };
 };
 
@@ -188,6 +213,7 @@ export const DataSourceFormBaseFields = [
     name: 'name',
     type: FormFieldType.Text,
     required: true,
+    tooltip: t('setting.connectorNameTip'),
   },
   {
     label: 'Source',
@@ -644,6 +670,26 @@ export const DataSourceFormFields = {
       required: true,
     },
   ],
+  [DataSourceKey.DINGTALK_AI_TABLE]: [
+    {
+      label: 'Access Token',
+      name: 'config.credentials.access_token',
+      type: FormFieldType.Password,
+      required: true,
+    },
+    {
+      label: 'Base ID',
+      name: 'config.table_id',
+      type: FormFieldType.Text,
+      required: true,
+    },
+    {
+      label: 'Operator ID',
+      name: 'config.operator_id',
+      type: FormFieldType.Text,
+      required: true,
+    },
+  ],
   [DataSourceKey.GITLAB]: [
     {
       label: 'Project Owner',
@@ -825,30 +871,123 @@ export const DataSourceFormFields = {
     {
       label: 'App id',
       name: 'config.credentials.app_id',
-      type: FormFieldType.Text,
-      required: true,
-    },
-    {
-      label: 'App secret',
-      name: 'config.credentials.app_secret',
-      type: FormFieldType.Password,
-      required: true,
-    },
-    {
-      label: 'Token Type',
-      name: 'config.token_type',
-      type: FormFieldType.Segmented,
-      required: false,
-      options: [
-        { label: 'Folder', value: 'folder' },
-        { label: 'Wiki', value: 'wiki' },
+      [DataSourceKey.SEAFILE]: seafileConstant(t),
+      [DataSourceKey.MYSQL]: [
+        {
+          label: 'Host',
+          name: 'config.host',
+          type: FormFieldType.Text,
+          required: true,
+          placeholder: 'localhost',
+        },
+        {
+          label: 'Port',
+          name: 'config.port',
+          type: FormFieldType.Number,
+          required: true,
+          placeholder: '3306',
+        },
+        {
+          label: 'Database',
+          name: 'config.database',
+          type: FormFieldType.Text,
+          required: true,
+        },
+        {
+          label: 'App secret',
+          name: 'config.credentials.app_secret',
+          label: 'Username',
+          name: 'config.credentials.username',
+          type: FormFieldType.Text,
+          required: true,
+        },
+        {
+          label: 'Password',
+          name: 'config.credentials.password',
+          type: FormFieldType.Password,
+          required: true,
+        },
+        {
+          label: 'Token Type',
+          name: 'config.token_type',
+          type: FormFieldType.Segmented,
+          required: false,
+          options: [
+            { label: 'Folder', value: 'folder' },
+            { label: 'Wiki', value: 'wiki' },
+          ],
+        },
+        {
+          label: 'Token',
+          name: 'config.token',
+          type: FormFieldType.Text,
+          required: false,
+          label: 'SQL Query',
+          name: 'config.query',
+          type: FormFieldType.Textarea,
+          required: false,
+          placeholder: 'Leave empty to load all tables',
+          tooltip: t('setting.mysqlQueryTip'),
+        },
+        {
+          label: 'Content Columns',
+          name: 'config.content_columns',
+          type: FormFieldType.Text,
+          required: false,
+          placeholder: 'title,description,content',
+          tooltip: t('setting.mysqlContentColumnsTip'),
+        },
       ],
-    },
-    {
-      label: 'Token',
-      name: 'config.token',
-      type: FormFieldType.Text,
-      required: false,
+      [DataSourceKey.POSTGRESQL]: [
+        {
+          label: 'Host',
+          name: 'config.host',
+          type: FormFieldType.Text,
+          required: true,
+          placeholder: 'localhost',
+        },
+        {
+          label: 'Port',
+          name: 'config.port',
+          type: FormFieldType.Number,
+          required: true,
+          placeholder: '5432',
+        },
+        {
+          label: 'Database',
+          name: 'config.database',
+          type: FormFieldType.Text,
+          required: true,
+        },
+        {
+          label: 'Username',
+          name: 'config.credentials.username',
+          type: FormFieldType.Text,
+          required: true,
+        },
+        {
+          label: 'Password',
+          name: 'config.credentials.password',
+          type: FormFieldType.Password,
+          required: true,
+        },
+        {
+          label: 'SQL Query',
+          name: 'config.query',
+          type: FormFieldType.Textarea,
+          required: false,
+          placeholder: 'Leave empty to load all tables',
+          tooltip: t('setting.postgresqlQueryTip'),
+        },
+        {
+          label: 'Content Columns',
+          name: 'config.content_columns',
+          type: FormFieldType.Text,
+          required: false,
+          placeholder: 'title,description,content',
+          tooltip: t('setting.postgresqlContentColumnsTip'),
+        },
+      ],
     },
   ],
 };
@@ -1050,6 +1189,17 @@ export const DataSourceFormDefaultValues = {
       },
     },
   },
+  [DataSourceKey.DINGTALK_AI_TABLE]: {
+    name: '',
+    source: DataSourceKey.DINGTALK_AI_TABLE,
+    config: {
+      table_id: '',
+      operator_id: '',
+      credentials: {
+        access_token: '',
+      },
+    },
+  },
   [DataSourceKey.GITLAB]: {
     name: '',
     source: DataSourceKey.GITLAB,
@@ -1142,6 +1292,58 @@ export const DataSourceFormDefaultValues = {
       },
       token_type: 'folder',
       token: '',
+      [DataSourceKey.SEAFILE]: {
+        name: '',
+        source: DataSourceKey.SEAFILE,
+        config: {
+          seafile_url: '',
+          sync_scope: 'account',
+          repo_id: '',
+          sync_path: '',
+          include_shared: true,
+          batch_size: 100,
+          credentials: {
+            seafile_token: '',
+            repo_token: '',
+          },
+        },
+      },
+      [DataSourceKey.MYSQL]: {
+        name: '',
+        source: DataSourceKey.MYSQL,
+        config: {
+          host: 'localhost',
+          port: 3306,
+          database: '',
+          query: '',
+          content_columns: '',
+          metadata_columns: '',
+          id_column: '',
+          timestamp_column: '',
+          credentials: {
+            username: '',
+            password: '',
+          },
+        },
+      },
+      [DataSourceKey.POSTGRESQL]: {
+        name: '',
+        source: DataSourceKey.POSTGRESQL,
+        config: {
+          host: 'localhost',
+          port: 5432,
+          database: '',
+          query: '',
+          content_columns: '',
+          metadata_columns: '',
+          id_column: '',
+          timestamp_column: '',
+          credentials: {
+            username: '',
+            password: '',
+          },
+        },
+      },
     },
   },
 };

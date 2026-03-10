@@ -98,6 +98,17 @@ class RAGFlowOSS:
             pass
 
         try:
+            config_kwargs = {}
+
+            if self.signature_version:
+                config_kwargs['signature_version'] = self.signature_version
+            if self.addressing_style:
+                config_kwargs['s3'] = {
+                    'addressing_style': self.addressing_style
+                }
+
+            config = Config(**config_kwargs) if config_kwargs else None
+
             # Reference：https://help.aliyun.com/zh/oss/developer-reference/use-amazon-s3-sdks-to-access-oss
             self.conn = boto3.client(
                 's3',
@@ -105,7 +116,7 @@ class RAGFlowOSS:
                 aws_access_key_id=self.access_key,
                 aws_secret_access_key=self.secret_key,
                 endpoint_url=self.endpoint_url,
-                config=Config(s3={"addressing_style": "virtual"}, signature_version='v4')
+                config=config
             )
         except Exception:
             logging.exception(f"Fail to connect at region {self.region}")

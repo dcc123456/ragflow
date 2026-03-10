@@ -21,7 +21,7 @@ interface ChunkResultBarProps {
   handleInputChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   searchString: string;
 }
-export default ({
+export default function ChunkResultBar({
   changeChunkTextMode,
   available,
   selectAllChunk,
@@ -29,7 +29,7 @@ export default ({
   createChunk,
   handleInputChange,
   searchString,
-}: ChunkResultBarProps) => {
+}: ChunkResultBarProps) {
   const datasetEditButtonDisabled = useDatasetEditButtonDisabled();
 
   const { t } = useTranslate('chunk');
@@ -104,4 +104,4 @@ export default ({
       <div className="w-[20px]"></div> */}
     </div>
   );
-};
+}

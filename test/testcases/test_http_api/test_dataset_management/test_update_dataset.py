@@ -26,7 +26,6 @@ from utils import encode_avatar
 from utils.file_utils import create_image_file
 from utils.hypothesis_utils import valid_names
 from configs import DEFAULT_PARSER_CONFIG
-# TODO: Missing scenario for updating embedding_model with chunk_count != 0
 
 
 class TestAuthorization:
@@ -187,7 +186,7 @@ class TestDatasetUpdate:
         assert res["code"] == 0, res
         assert res["data"][0]["avatar"] == f"data:image/png;base64,{encode_avatar(fn)}", res
 
-    @pytest.mark.p2
+    @pytest.mark.p3
     def test_avatar_exceeds_limit_length(self, HttpApiAuth, add_dataset_func):
         dataset_id = add_dataset_func
         payload = {"avatar": "a" * 65536}
@@ -236,7 +235,7 @@ class TestDatasetUpdate:
         assert res["code"] == 0, res
         assert res["data"][0]["description"] == "description"
 
-    @pytest.mark.p2
+    @pytest.mark.p3
     def test_description_exceeds_limit_length(self, HttpApiAuth, add_dataset_func):
         dataset_id = add_dataset_func
         payload = {"description": "a" * 65536}
@@ -273,6 +272,30 @@ class TestDatasetUpdate:
         res = list_datasets(HttpApiAuth)
         assert res["code"] == 0, res
         assert res["data"][0]["embedding_model"] == embedding_model, res
+
+    @pytest.mark.p1
+    def test_embedding_model_with_existing_chunks(self, HttpApiAuth, add_chunks):
+        """Guard: embedding_model cannot change when dataset has chunks (chunk_count > 0)."""
+        dataset_id, _, _ = add_chunks
+
+        res = list_datasets(HttpApiAuth, {"id": dataset_id})
+        assert res["code"] == 0, res
+        assert res["data"], res
+        dataset = res["data"][0]
+        assert dataset.get("chunk_count", 0) > 0, res
+
+        current_embedding = dataset["embedding_model"]
+        candidates = ["BAAI/bge-small-en-v1.5@Builtin", "embedding-3@ZHIPU-AI"]
+        new_embedding = candidates[0] if current_embedding != candidates[0] else candidates[1]
+
+        payload = {"embedding_model": new_embedding}
+        res = update_dataset(HttpApiAuth, dataset_id, payload)
+        assert res["code"] == 102, res
+        expected_message = (
+            f"When chunk_num ({dataset['chunk_count']}) > 0, "
+            f"embedding_model must remain {current_embedding}"
+        )
+        assert res["message"] == expected_message, res
 
     @pytest.mark.p2
     @pytest.mark.parametrize(
@@ -330,7 +353,7 @@ class TestDatasetUpdate:
         assert res["code"] == 0, res
         assert res["data"][0]["embedding_model"] == "BAAI/bge-small-en-v1.5___OpenAI-API@OpenAI-API-Compatible", res
 
-    @pytest.mark.p1
+    @pytest.mark.p2
     @pytest.mark.parametrize(
         "permission",
         [
@@ -770,7 +793,12 @@ class TestDatasetUpdate:
 
         res = list_datasets(HttpApiAuth)
         assert res["code"] == 0, res
-        assert res["data"][0]["parser_config"] == {"raptor": {"use_raptor": False}, "graphrag": {"use_graphrag": False}}, res
+        assert res["data"][0]["parser_config"] == {
+            "raptor": {"use_raptor": False},
+            "graphrag": {"use_graphrag": False},
+            "image_context_size": 0,
+            "table_context_size": 0,
+        }, res
 
     @pytest.mark.p3
     def test_parser_config_unset_with_chunk_method_change(self, HttpApiAuth, add_dataset_func):
@@ -781,7 +809,12 @@ class TestDatasetUpdate:
 
         res = list_datasets(HttpApiAuth)
         assert res["code"] == 0, res
-        assert res["data"][0]["parser_config"] == {"raptor": {"use_raptor": False}, "graphrag": {"use_graphrag": False}}, res
+        assert res["data"][0]["parser_config"] == {
+            "raptor": {"use_raptor": False},
+            "graphrag": {"use_graphrag": False},
+            "image_context_size": 0,
+            "table_context_size": 0,
+        }, res
 
     @pytest.mark.p3
     def test_parser_config_none_with_chunk_method_change(self, HttpApiAuth, add_dataset_func):
@@ -792,7 +825,12 @@ class TestDatasetUpdate:
 
         res = list_datasets(HttpApiAuth, {"id": dataset_id})
         assert res["code"] == 0, res
-        assert res["data"][0]["parser_config"] == {"raptor": {"use_raptor": False}, "graphrag": {"use_graphrag": False}}, res
+        assert res["data"][0]["parser_config"] == {
+            "raptor": {"use_raptor": False},
+            "graphrag": {"use_graphrag": False},
+            "image_context_size": 0,
+            "table_context_size": 0,
+        }, res
 
     @pytest.mark.p2
     @pytest.mark.parametrize(

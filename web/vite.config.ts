@@ -87,13 +87,32 @@ export default defineConfig(({ mode }) => {
       },
       proxy: {
         '/api/v1/admin': {
-          target: 'http://192.168.1.56:9380/',
-          // target: 'http://127.0.0.1:9381/',
+          target: 'http://127.0.0.1:9381/',
           changeOrigin: true,
           ws: true,
         },
-        '^/(api|v1)': {
-          target: 'http://192.168.1.56:9380/',
+        '/api': {
+          target: 'http://127.0.0.1:9380/',
+          changeOrigin: true,
+          ws: true,
+        },
+        //         '/v1/system/config': {
+        //           target: 'http://127.0.0.1:9382/',
+        //           changeOrigin: true,
+        //           ws: true,
+        //         },
+        //         '/v1/user/login': {
+        //           target: 'http://127.0.0.1:9382/',
+        //           changeOrigin: true,
+        //           ws: true,
+        //         },
+        //         '/v1/user/logout': {
+        //           target: 'http://127.0.0.1:9382/',
+        //           changeOrigin: true,
+        //           ws: true,
+        //         },
+        '/v1': {
+          target: 'http://127.0.0.1:9380/',
           changeOrigin: true,
           ws: true,
         },
@@ -123,11 +142,24 @@ export default defineConfig(({ mode }) => {
       experimentalMinChunkSize: 30 * 1024,
       chunkSizeWarningLimit: 1000,
       rollupOptions: {
+        onwarn(warning, warn) {
+          if (warning.code === 'EMPTY_BUNDLE') {
+            return;
+          }
+          warn(warning);
+        },
         output: {
           manualChunks(id) {
             // if (id.includes('src/components')) {
             //   return 'components';
             // }
+
+            if (id.includes('src/locales/') && id.endsWith('.ts')) {
+              const match = id.match(/src\/locales\/([^/]+)\.ts$/);
+              if (match) {
+                return `locale-${match[1]}`;
+              }
+            }
 
             if (id.includes('node_modules')) {
               if (id.includes('node_modules/d3')) {

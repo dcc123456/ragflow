@@ -5,31 +5,33 @@
 # 先决条件
 
 ## 登录 10.29.35.44
+
 ```shell
 ssh icbccs@10.29.35.44
 ```
 
-### 资源：
+### 资源
+
 ```shell
 docker commit infiniflow-ragflow-server infiniflow-ai/ragflow:latest
 docker save -o infiniflow-ragflow-server.tar infiniflow-ai/ragflow:latest
 scp infiniflow-ragflow-server.tar <目标机器>:/app/infiniflow-ai/
 scp -r /app/infiniflow-ai/docker <目标机器>:/app/infiniflow-ai/
 ```
+
 ```shell
 ssh <目标机器>
 cd /app/infiniflow-ai/
 docker load -i infiniflow-ragflow-server.tar
 ```
 
-
- 
 参见 /app/infiniflow-ai/docker/nginx/svr.conf。其中包含统一认证的地址和RAGFlow server分布机器的节点。
 更改upstream的IP和端口。
 
 ## 单点组件
 
- - 复制镜像
+- 复制镜像
+
 ```shell
 docker save -o mysql.tar mysql:8.0.39
 scp mysql.tar <目标机器>:/app/infiniflow-ai/
@@ -44,7 +46,8 @@ docker save -o nginx.tar nginx:1.26.1-alpine
 scp nginx.tar <目标机器>:/app/infiniflow-ai/
 ```
 
- - 加载镜像
+- 加载镜像
+
 ```shell
 ssh <目标机器>
 cd /app/infiniflow-ai/
@@ -54,7 +57,8 @@ docker load -i kibana.tar
 docker load -i nginx.tar
 ```
 
- - 启动服务
+- 启动服务
+
 1. /app/infiniflow-ai/docker/.env中定义了各个组件的用户名密码，这个文件中更改了内容需重启相关服务才能生效。
 2. /app/infiniflow-ai/docker/nginx/es.conf中包含ES分布机器的节点，请先确认。
 3. /app/infiniflow-ai/docker/.env中包含ELASTICSEARCH_HOSTS为ES的IP和端口，为Kibana所用，请先确认。
@@ -69,7 +73,8 @@ docker-compose -f docker-compose-base.yml up kibana -d
 
 ## 非单点组件
 
- - 复制镜像
+- 复制镜像
+
 ```shell
 docker save -o elasticsearch.tar elasticsearch:8.11.3
 scp elasticsearch.tar <目标机器>:/app/infiniflow-ai/
@@ -77,7 +82,8 @@ docker save -o minio.tar quay.io/minio/minio:RELEASE.2023-12-20T01-00-02Z
 scp minio.tar <目标机器>:/app/infiniflow-ai/
 ```
 
- - 加载镜像
+- 加载镜像
+
 ```shell
 ssh <目标机器>
 cd /app/infiniflow-ai/
@@ -85,10 +91,12 @@ docker load -i elasticsearch.tar
 docker load -i minio.tar
 ```
 
- - 启动服务
+- 启动服务
+
 1. /app/infiniflow-ai/docker/.env中定义了各个组件的用户名密码，这个文件中更改了内容需重启相关服务才能生效。
 2. 启动ES之前，请更改docker-compose-base.yml，每台机器上的这个文件关于ES的服务都不一样，将es01全局替换成相应编号，如：es02，es03.。。更改`discovery.seed_hosts`的IP，需排除本机IP。更改`initial_master_nodes`为所有节点IP。
 3. 保证 vm.max_map_count ≥ 262144
+
 ```
 sysctl vm.max_map_count
 sudo sysctl -w vm.max_map_count=262144
@@ -101,16 +109,19 @@ docker-compose -f docker-compose-base.yml up es -d
 docker-compose -f docker-compose-base.yml up minio -d
 ```
 
-### ES的安装中密钥的生成请参考(可选)：
+### ES的安装中密钥的生成请参考(可选)
+
 ```shell
 /app/infiniflow-ai/docker/certs/gen.sh
 /app/infiniflow-ai/docker/certs/instances.yml
 ```
 
-### ES使用内存大小控制(可选)：
+### ES使用内存大小控制(可选)
+
 ```shell
 vim /app/infiniflow-ai/docker/docker-compose-base.yml
 ```
+
 ```yaml
     environment:
       - ES_JAVA_OPTS=-Xms12g -Xmx12g
@@ -118,8 +129,7 @@ vim /app/infiniflow-ai/docker/docker-compose-base.yml
 
 ```
 
-
-# RAGFlow server的启动。
+# RAGFlow server的启动
 
  1. 确保`/app/infiniflow-ai/docker/service_conf.yaml`中各个组件的IP端口，用户名和密码配置正确（请与/app/infiniflow-ai/docker/.env中的记录核对）。请参考`44`上的文件。
  2. RAGFlow server的启动在`docker-compose.yml`中有定义。
@@ -131,7 +141,9 @@ docker-compose up
 ```
 
 # Rebuild RAGFlow的镜像
+>
 > `/app/infiniflow-ai/ragflow/`目录下为闭源部分代码，`/app/infiniflow-ai/ragflow/oss`为开源部分代码。闭源代码覆盖开源代码后为完整代码。
+
 ```shell
 cd /app/infiniflow-ai/
 ./rebuild.sh
@@ -140,8 +152,10 @@ cd /app/infiniflow-ai/
 # 模型服务的部署
 
 一共有三个模型服务：OCR，TSR（表格结构识别），DLA（文档布局识别）
+
 - 将`58`的容器commit到镜像后部署到目标机器。在目标机器上启动容器。
 - 进入容器分别启动三个模型服务：
+
 ```shell
 cd ~/deepdoc/ocr; CUDA_VISIBLE_DEVICES=0 python paddleocr_server.py > ~/logs/ocr.log 2>&1 &
 cd ~/deepdoc/tsr; CUDA_VISIBLE_DEVICES=0 python tsr_svr.py  --engine tsr.trt  > ~/logs/tsr.log 2>&1 &
@@ -179,6 +193,7 @@ operator: ""
 
 > 返回示例
 > operator: "det", 返回为box的四个角坐标
+
 ```json
 {
   "output": [
@@ -225,6 +240,7 @@ operator: ""
 ```
 
 > operator: "rec"，返回为识别到的文字和置信度。
+
 ```json
 {
     "output": [
@@ -309,6 +325,7 @@ files: ""
 
 > 返回示例
 > 每个单元格的bbox的坐标（left/top/right/bottom）、置信度、类别。
+
 ```json
 类别种类：
 [
@@ -324,6 +341,7 @@ files: ""
     "Figure caption",
 ]
 ```
+
 ```json
 {
   "bboxes": [
@@ -354,5 +372,3 @@ files: ""
   ]
 }
 ```
-
-            

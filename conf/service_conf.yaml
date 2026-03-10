@@ -19,6 +19,7 @@ es:
   password: 'infini_rag_flow'
 infinity:
   uri: 'infinity:23817'
+  postgres_port: 5432
   db_name: 'default_db'
 redis:
   db: 1
@@ -151,6 +152,16 @@ user_default_llm:
 #   access_key: 'access_key'
 #   secret_key: 'secret_key'
 #   region: 'region'
+#gcs:
+#  bucket: 'bridgtl-edm-d-bucket-ragflow'
+# oss:
+#   access_key: 'access_key'
+#   secret_key: 'secret_key'
+#   endpoint_url: 'https://s3.oss-cn-hangzhou.aliyuncs.com'
+#   region: 'cn-hangzhou'
+#   bucket: 'bucket_name'
+#   signature_version: 's3'
+#   addressing_style: 'virtual'
 # azure:
 #   auth_type: 'sas'
 #   container_url: 'container_url'

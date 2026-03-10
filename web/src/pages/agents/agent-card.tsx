@@ -24,6 +24,7 @@ export function AgentCard({
 
   return (
     <HomeCard
+      testId="agent-card"
       data={{ ...data, name: data.title, description: data.description || '' }}
       moreDropdown={
         <AgentDropdown

@@ -13,7 +13,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { useSetModalState, useTranslate } from '@/hooks/common-hooks';
-import { LlmItem, useDeleteFactory } from '@/hooks/use-llm-request';
+import { LlmItem } from '@/hooks/use-llm-request';
 import {
   useFetchEnableAdmin,
   useFetchIsAdmin,
@@ -29,7 +29,11 @@ import {
 } from 'lucide-react';
 import { FC, useCallback, useMemo } from 'react';
 import { isLocalLlmFactory } from '../../utils';
-import { useHandleEnableLlm } from '../hooks';
+import {
+  useHandleDeleteFactory,
+  useHandleDeleteLlm,
+  useHandleEnableLlm,
+} from '../hooks';
 import { useResetDefaultLLM } from '../use-reset-default-llm';
 import { mapModelKey } from './un-add-model';
 
@@ -80,7 +84,6 @@ export const ModelProviderCard: FC<IModelCardProps> = ({
   const { visible, switchVisible } = useSetModalState();
   const { t } = useTranslate('setting');
   const { handleEnableLlm } = useHandleEnableLlm(item.name);
-  const { deleteFactory } = useDeleteFactory();
 
   const { data: isAdmin } = useFetchIsAdmin();
   const { data: enableAdmin } = useFetchEnableAdmin();
@@ -88,6 +91,8 @@ export const ModelProviderCard: FC<IModelCardProps> = ({
   const showResetButton = useMemo(() => {
     return enableAdmin && isAdmin;
   }, [isAdmin, enableAdmin]);
+  const { deleteFactory } = useHandleDeleteFactory(item.name);
+  const { handleDeleteLlm } = useHandleDeleteLlm(item.name);
 
   const handleApiKeyClick = () => {
     clickApiKey(item.name);
@@ -108,7 +113,11 @@ export const ModelProviderCard: FC<IModelCardProps> = ({
   const { handleSetDefaultLlm } = useResetDefaultLLM(item.name);
 
   return (
-    <div className={`w-full rounded-lg border border-border-button`}>
+    <div
+      className={`w-full rounded-lg border border-border-button`}
+      data-testid="added-model-card"
+      data-provider={item.name}
+    >
       {/* Header */}
       <div className="flex h-16  items-center justify-between p-4 cursor-pointer transition-colors text-text-secondary">
         <div className="flex items-center space-x-3">
@@ -164,7 +173,7 @@ export const ModelProviderCard: FC<IModelCardProps> = ({
             content={{
               node: (
                 <ConfirmDeleteDialogNode>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 border-0.5 text-text-secondary border-border-button rounded-lg px-3 py-4">
                     <LlmIcon name={item.name} />
                     {item.name}
                   </div>
@@ -251,6 +260,16 @@ export const ModelProviderCard: FC<IModelCardProps> = ({
                         handleEnableLlm(model.name, value);
                       }}
                     />
+                    <Button
+                      variant={'ghost'}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteLlm(model.name);
+                      }}
+                      className="p-1 hover:text-state-error hover:bg-state-error-5 transition-colors border-none"
+                    >
+                      <Trash2 size={16} />
+                    </Button>
                   </div>
                 </div>
               ))}

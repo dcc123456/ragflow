@@ -1,6 +1,5 @@
 import { ButtonLoading } from '@/components/ui/button';
 import { useFetchDialog } from '@/hooks/use-chat-request';
-import { hasPreviewPermission } from '@/utils/permission-util';
 import { useTranslation } from 'react-i18next';
 
 type SaveButtonProps = {
@@ -13,9 +12,9 @@ export function SavingButton({ loading }: SaveButtonProps) {
 
   return (
     <ButtonLoading
+      data-testid="chat-settings-save"
       type="submit"
       loading={loading}
-      disabled={hasPreviewPermission(data.operator_permission)}
     >
       {t('common.save')}
     </ButtonLoading>

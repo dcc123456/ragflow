@@ -109,6 +109,7 @@ export interface IGenerateForm {
   cite?: boolean;
   prompt: number;
   llm_id: string;
+  tenant_llm_id?: string;
   parameters: { key: string; component_id: string };
 }
 
@@ -144,6 +145,7 @@ export interface IRetrievalForm {
   top_n?: number;
   top_k?: number;
   rerank_id?: string;
+  tenant_rerank_id?: string;
   empty_response?: string;
   kb_ids: string[];
 }
@@ -257,6 +259,7 @@ export interface IAgentLogResponse {
   user_id: string;
   dsl: string;
   reference: IReference;
+  name: string;
 }
 export interface IAgentLogsResponse {
   total: number;
@@ -270,6 +273,7 @@ export interface IAgentLogsRequest {
   desc?: boolean;
   page?: number;
   page_size?: number;
+  exp_user_id?: string; // tenant id
 }
 
 export interface IAgentLogMessage {

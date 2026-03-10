@@ -12,6 +12,7 @@ import {
   IUserInfo,
 } from '@/interfaces/database/user-setting';
 import { ISetLangfuseConfigRequestBody } from '@/interfaces/request/system';
+import { changeLanguageAsync } from '@/locales/config';
 import userService, {
   addTenantUser,
   agreeTenant,
@@ -19,7 +20,6 @@ import userService, {
   listTenant,
   listTenantUser,
 } from '@/services/user-service';
-import { history } from '@/utils/simple-history-util';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import DOMPurify from 'dompurify';
 import { isEmpty } from 'lodash';
@@ -59,11 +59,13 @@ export const useFetchUserInfo = (): ResponseGetType<IUserInfo> => {
     queryFn: async () => {
       const { data } = await userService.user_info();
       if (data.code === 0) {
-        i18n.changeLanguage(
+        const targetLng =
           LanguageTranslationMap[
             data.data.language as keyof typeof LanguageTranslationMap
-          ],
-        );
+          ];
+        if (targetLng) {
+          await changeLanguageAsync(targetLng);
+        }
       }
       return data?.data ?? {};
     },
@@ -159,14 +161,53 @@ export const useSelectParserList = (): Array<{
   label: string;
 }> => {
   const { data: tenantInfo } = useFetchTenantInfo(true);
+  const { t, i18n } = useTranslation();
+
+  const defaultParsers = useMemo(
+    () => [
+      { value: 'naive', label: t('knowledgeConfiguration.parserLabel.naive') },
+      { value: 'qa', label: t('knowledgeConfiguration.parserLabel.qa') },
+      {
+        value: 'resume',
+        label: t('knowledgeConfiguration.parserLabel.resume'),
+      },
+      {
+        value: 'manual',
+        label: t('knowledgeConfiguration.parserLabel.manual'),
+      },
+      { value: 'table', label: t('knowledgeConfiguration.parserLabel.table') },
+      { value: 'paper', label: t('knowledgeConfiguration.parserLabel.paper') },
+      { value: 'book', label: t('knowledgeConfiguration.parserLabel.book') },
+      { value: 'laws', label: t('knowledgeConfiguration.parserLabel.laws') },
+      {
+        value: 'presentation',
+        label: t('knowledgeConfiguration.parserLabel.presentation'),
+      },
+      {
+        value: 'picture',
+        label: t('knowledgeConfiguration.parserLabel.picture'),
+      },
+      { value: 'one', label: t('knowledgeConfiguration.parserLabel.one') },
+      { value: 'audio', label: t('knowledgeConfiguration.parserLabel.audio') },
+      { value: 'email', label: t('knowledgeConfiguration.parserLabel.email') },
+      { value: 'tag', label: t('knowledgeConfiguration.parserLabel.tag') },
+    ],
+    [i18n.language, t],
+  );
 
   const parserList = useMemo(() => {
     const parserArray: Array<string> = tenantInfo?.parser_ids?.split(',') ?? [];
-    return parserArray.map((x) => {
+    const filteredArray = parserArray.filter((x) => x.trim() !== '');
+
+    if (filteredArray.length === 0) {
+      return defaultParsers;
+    }
+
+    return filteredArray.map((x) => {
       const arr = x.split(':');
       return { value: arr[0], label: arr[1] };
     });
-  }, [tenantInfo]);
+  }, [tenantInfo, defaultParsers]);
 
   return parserList;
 };

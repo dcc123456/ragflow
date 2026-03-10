@@ -7,6 +7,7 @@ import { ReactNode, useMemo } from 'react';
 import { useFormContext } from 'react-hook-form';
 import { MinerUOptionsFormField } from './mineru-options-form-field';
 import { SelectWithSearch } from './originui/select-with-search';
+import { PaddleOCROptionsFormField } from './paddleocr-options-form-field';
 import {
   FormControl,
   FormField,
@@ -28,12 +29,16 @@ export function LayoutRecognizeFormField({
   optionsWithoutLLM,
   label,
   showMineruOptions = true,
+  showPaddleocrOptions = true,
+  testId,
 }: {
   name?: string;
   horizontal?: boolean;
   optionsWithoutLLM?: { value: string; label: string }[];
   label?: ReactNode;
   showMineruOptions?: boolean;
+  showPaddleocrOptions?: boolean;
+  testId?: string;
 }) {
   const form = useFormContext();
 
@@ -103,6 +108,7 @@ export function LayoutRecognizeFormField({
                     <SelectWithSearch
                       {...field}
                       options={options}
+                      testId={testId}
                     ></SelectWithSearch>
                   </FormControl>
                 </div>
@@ -113,6 +119,7 @@ export function LayoutRecognizeFormField({
               </div>
             </FormItem>
             {showMineruOptions && <MinerUOptionsFormField />}
+            {showPaddleocrOptions && <PaddleOCROptionsFormField />}
           </>
         );
       }}

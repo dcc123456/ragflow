@@ -20,8 +20,16 @@ import { Switch } from '../ui/switch';
 function buildUploadFormSchema(t: TFunction) {
   const FormSchema = z.object({
     parseOnCreation: z.boolean().optional(),
+    // Update schema to allow files with path property to handle folder uploads
     fileList: z
-      .array(z.instanceof(File))
+      .array(
+        z.instanceof(File).or(
+          z.object({
+            file: z.instanceof(File),
+            path: z.string(), // Store the relative path for files in folders
+          }),
+        ),
+      )
       .min(1, { message: t('fileManager.pleaseUploadAtLeastOneFile') }),
   });
 
@@ -66,18 +74,20 @@ function UploadForm({ submit, showParseOnCreation, accept }: UploadFormProps) {
           >
             {(field) => (
               <Switch
+                data-testid="parse-on-creation-toggle"
                 onCheckedChange={field.onChange}
                 checked={field.value}
               ></Switch>
             )}
           </RAGFlowFormItem>
         )}
-        <RAGFlowFormItem name="fileList" label={t('fileManager.file')}>
+        <RAGFlowFormItem name="fileList" label={''}>
           {(field) => (
             <FileUploader
               value={field.value}
               onValueChange={field.onChange}
-              accept={accept || { '*': [] }}
+              accept={{ '*': [] }}
+              data-testid="dataset-upload-dropzone"
             />
           )}
         </RAGFlowFormItem>
@@ -101,7 +111,7 @@ export function FileUploadDialog({
 
   return (
     <Dialog open onOpenChange={hideModal}>
-      <DialogContent>
+      <DialogContent data-testid="dataset-upload-modal">
         <DialogHeader>
           <DialogTitle>{t('fileManager.uploadFile')}</DialogTitle>
         </DialogHeader>

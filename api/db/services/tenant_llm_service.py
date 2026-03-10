@@ -28,7 +28,7 @@ from peewee import JOIN
 
 from api.db import PermissionValue, ResourceType, UserTenantRole
 from api.db.db_models import Permission
-from common.constants import MINERU_DEFAULT_CONFIG, MINERU_ENV_KEYS, LLMType
+from common.constants import MINERU_DEFAULT_CONFIG, MINERU_ENV_KEYS, PADDLEOCR_DEFAULT_CONFIG, PADDLEOCR_ENV_KEYS, LLMType
 from api.db.db_models import DB, LLMFactories, TenantLLM
 from api.db.services.common_service import CommonService
 from api.db.services.langfuse_service import TenantLangfuseService
@@ -88,7 +88,7 @@ class TenantLLMService(CommonService):
     @DB.connection_context()
     def get_my_llms(cls, tenant_id):
         import os
-        fields = [cls.model.llm_factory, LLMFactories.logo, LLMFactories.tags, cls.model.model_type, cls.model.llm_name,
+        fields = [cls.model.id, cls.model.llm_factory, LLMFactories.logo, LLMFactories.tags, cls.model.model_type, cls.model.llm_name,
                   cls.model.used_tokens, cls.model.status]
         query = cls.model.select(*fields).join(LLMFactories, on=(cls.model.llm_factory == LLMFactories.name)).where(
             cls.model.tenant_id == tenant_id, ~cls.model.api_key.is_null())
@@ -150,6 +150,7 @@ class TenantLLMService(CommonService):
     @DB.connection_context()
     def get_model_config(cls, tenant_id, llm_type, llm_name=None):
         from api.db.services.llm_service import LLMService
+
         e, tenant = TenantService.get_by_id(tenant_id)
         if not e:
             raise LookupError("Tenant not found")
@@ -175,67 +176,97 @@ class TenantLLMService(CommonService):
 
         _mdlnm = mdlnm
         mdlnm, fid, other_tenant_id = TenantLLMService.split_model_name_and_factory(mdlnm)
+
         if other_tenant_id:
             model_config = cls.get_api_key(other_tenant_id, _mdlnm)
         else:
             model_config = cls.get_api_key(tenant_id, _mdlnm)
+
         if model_config:
             model_config = model_config.to_dict()
-            llm = LLMService.query(llm_name=mdlnm) if not fid else LLMService.query(llm_name=mdlnm, fid=fid)
-            if not llm and fid:  # for some cases seems fid mismatch
-                llm = LLMService.query(llm_name=mdlnm)
-            if llm:
-                model_config["is_tools"] = llm[0].is_tools
-        if not model_config:
+
+        elif (
+            llm_type == LLMType.EMBEDDING
+            and fid == "Builtin"
+            and "tei-" in os.getenv("COMPOSE_PROFILES", "")
+            and mdlnm == os.getenv("TEI_MODEL", "")
+        ):
+            embedding_cfg = settings.EMBEDDING_CFG
+            model_config = {
+                "llm_factory": "Builtin",
+                "api_key": embedding_cfg["api_key"],
+                "llm_name": mdlnm,
+                "api_base": embedding_cfg["base_url"],
+            }
+
+        else:
             if llm_type in [LLMType.EMBEDDING, LLMType.RERANK]:
-                llm = LLMService.query(llm_name=mdlnm) if not fid else LLMService.query(llm_name=mdlnm, fid=fid)
+                llm = LLMService.query(llm_name=mdlnm) if not fid else LLMService.query(
+                    llm_name=mdlnm, fid=fid
+                )
                 if llm and llm[0].fid in ["Youdao", "FastEmbed", "BAAI"]:
-                    model_config = {"llm_factory": llm[0].fid, "api_key": "", "llm_name": mdlnm, "api_base": ""}
+                    model_config = {
+                        "llm_factory": llm[0].fid,
+                        "api_key": "",
+                        "llm_name": mdlnm,
+                        "api_base": "",
+                    }
+
             if not model_config:
                 if mdlnm in ["bge-large-zh-v1.5", "bge-large-en-v1.5", "bge-m3"]:
-                    model_config = {"llm_factory": "BAAI", "api_key": "", "llm_name": mdlnm, "api_base": ""}
+                    model_config = {
+                        "llm_factory": "BAAI",
+                        "api_key": "",
+                        "llm_name": mdlnm,
+                        "api_base": "",
+                    }
                 else:
                     if not mdlnm:
                         raise LookupError(f"Type of {llm_type} model is not set.")
-                    raise LookupError("Model({}/{}) not authorized".format(fid, mdlnm))
+                    raise LookupError(f"Model({mdlnm}@{fid}) not authorized")
+
+        llm = LLMService.query(llm_name=mdlnm) if not fid else LLMService.query(
+            llm_name=mdlnm, fid=fid
+        )
+        if not llm and fid:
+            llm = LLMService.query(llm_name=mdlnm)
+
+        if llm:
+            model_config["is_tools"] = llm[0].is_tools
+
         return model_config
 
     @classmethod
     @DB.connection_context()
-    def model_instance(cls, tenant_id, llm_type, llm_name=None, lang="Chinese", **kwargs):
-        model_config = TenantLLMService.get_model_config(tenant_id, llm_type, llm_name)
+    def model_instance(cls, model_config: dict, lang="Chinese", **kwargs):
+        if not model_config:
+            raise LookupError("Model config is required")
         kwargs.update({"provider": model_config["llm_factory"]})
-        if llm_type == LLMType.EMBEDDING.value:
+        if model_config["model_type"] == LLMType.EMBEDDING.value:
             if model_config["llm_factory"] not in EmbeddingModel:
                 return None
-            return EmbeddingModel[model_config["llm_factory"]](model_config["api_key"], model_config["llm_name"],
-                                                               base_url=model_config["api_base"])
+            return EmbeddingModel[model_config["llm_factory"]](model_config["api_key"], model_config["llm_name"], base_url=model_config["api_base"])
 
-        elif llm_type == LLMType.RERANK:
+        elif model_config["model_type"] == LLMType.RERANK:
             if model_config["llm_factory"] not in RerankModel:
                 return None
-            return RerankModel[model_config["llm_factory"]](model_config["api_key"], model_config["llm_name"],
-                                                            base_url=model_config["api_base"])
+            return RerankModel[model_config["llm_factory"]](model_config["api_key"], model_config["llm_name"], base_url=model_config["api_base"])
 
-        elif llm_type == LLMType.IMAGE2TEXT.value:
+        elif model_config["model_type"] == LLMType.IMAGE2TEXT.value:
             if model_config["llm_factory"] not in CvModel:
                 return None
-            return CvModel[model_config["llm_factory"]](model_config["api_key"], model_config["llm_name"], lang,
-                                                        base_url=model_config["api_base"], **kwargs)
+            return CvModel[model_config["llm_factory"]](model_config["api_key"], model_config["llm_name"], lang, base_url=model_config["api_base"], **kwargs)
 
-        elif llm_type == LLMType.CHAT.value:
+        elif model_config["model_type"] == LLMType.CHAT.value:
             if model_config["llm_factory"] not in ChatModel:
                 return None
-            return ChatModel[model_config["llm_factory"]](model_config["api_key"], model_config["llm_name"],
-                                                          base_url=model_config["api_base"], **kwargs)
+            return ChatModel[model_config["llm_factory"]](model_config["api_key"], model_config["llm_name"], base_url=model_config["api_base"], **kwargs)
 
-        elif llm_type == LLMType.SPEECH2TEXT:
+        elif model_config["model_type"] == LLMType.SPEECH2TEXT:
             if model_config["llm_factory"] not in Seq2txtModel:
                 return None
-            return Seq2txtModel[model_config["llm_factory"]](key=model_config["api_key"],
-                                                             model_name=model_config["llm_name"], lang=lang,
-                                                             base_url=model_config["api_base"])
-        elif llm_type == LLMType.TTS:
+            return Seq2txtModel[model_config["llm_factory"]](key=model_config["api_key"], model_name=model_config["llm_name"], lang=lang, base_url=model_config["api_base"])
+        elif model_config["model_type"] == LLMType.TTS:
             if model_config["llm_factory"] not in TTSModel:
                 return None
             return TTSModel[model_config["llm_factory"]](
@@ -244,7 +275,7 @@ class TenantLLMService(CommonService):
                 base_url=model_config["api_base"],
             )
 
-        elif llm_type == LLMType.OCR:
+        elif model_config["model_type"] == LLMType.OCR:
             if model_config["llm_factory"] not in OcrModel:
                 return None
             return OcrModel[model_config["llm_factory"]](
@@ -284,24 +315,29 @@ class TenantLLMService(CommonService):
         try:
             num = (
                 cls.model.update(used_tokens=cls.model.used_tokens + used_tokens)
-                .where(cls.model.tenant_id == tenant_id, cls.model.llm_name == llm_name,
-                       cls.model.llm_factory == llm_factory if llm_factory else True)
+                .where(cls.model.tenant_id == tenant_id, cls.model.llm_name == llm_name, cls.model.llm_factory == llm_factory if llm_factory else True)
                 .execute()
             )
         except Exception:
-            logging.exception(
-                "TenantLLMService.increase_usage got exception,Failed to update used_tokens for tenant_id=%s, llm_name=%s",
-                tenant_id, llm_name)
+            logging.exception("TenantLLMService.increase_usage got exception,Failed to update used_tokens for tenant_id=%s, llm_name=%s", tenant_id, llm_name)
             return 0
 
         return num
 
     @classmethod
     @DB.connection_context()
+    def increase_usage_by_id(cls, tenant_model_id: int, used_tokens: int):
+        try:
+            update_cnt = cls.model.update(used_tokens=cls.model.used_tokens + used_tokens).where(cls.model.id == tenant_model_id).execute()
+        except Exception as e:
+            logging.exception(f"TenantLLMService.increase_usage got exception {e}, Failed to update used_tokens for tenant_model_id {tenant_model_id}")
+            return 0
+        return update_cnt
+
+    @classmethod
+    @DB.connection_context()
     def get_openai_models(cls):
-        objs = cls.model.select().where((cls.model.llm_factory == "OpenAI"),
-                                        ~(cls.model.llm_name == "text-embedding-3-small"),
-                                        ~(cls.model.llm_name == "text-embedding-3-large")).dicts()
+        objs = cls.model.select().where((cls.model.llm_factory == "OpenAI"), ~(cls.model.llm_name == "text-embedding-3-small"), ~(cls.model.llm_name == "text-embedding-3-large")).dicts()
         return list(objs)
 
     @classmethod
@@ -367,6 +403,68 @@ class TenantLLMService(CommonService):
                 continue
 
     @classmethod
+    def _collect_paddleocr_env_config(cls) -> dict | None:
+        cfg = PADDLEOCR_DEFAULT_CONFIG
+        found = False
+        for key in PADDLEOCR_ENV_KEYS:
+            val = os.environ.get(key)
+            if val:
+                found = True
+                cfg[key] = val
+        return cfg if found else None
+
+    @classmethod
+    @DB.connection_context()
+    def ensure_paddleocr_from_env(cls, tenant_id: str) -> str | None:
+        """
+        Ensure a PaddleOCR model exists for the tenant if env variables are present.
+        Return the existing or newly created llm_name, or None if env not set.
+        """
+        cfg = cls._collect_paddleocr_env_config()
+        if not cfg:
+            return None
+
+        saved_paddleocr_models = cls.query(tenant_id=tenant_id, llm_factory="PaddleOCR", model_type=LLMType.OCR.value)
+
+        def _parse_api_key(raw: str) -> dict:
+            try:
+                return json.loads(raw or "{}")
+            except Exception:
+                return {}
+
+        for item in saved_paddleocr_models:
+            api_cfg = _parse_api_key(item.api_key)
+            normalized = {k: api_cfg.get(k, PADDLEOCR_DEFAULT_CONFIG.get(k)) for k in PADDLEOCR_ENV_KEYS}
+            if normalized == cfg:
+                return item.llm_name
+
+        used_names = {item.llm_name for item in saved_paddleocr_models}
+        idx = 1
+        base_name = "paddleocr-from-env"
+        while True:
+            candidate = f"{base_name}-{idx}"
+            if candidate in used_names:
+                idx += 1
+                continue
+
+            try:
+                cls.save(
+                    tenant_id=tenant_id,
+                    llm_factory="PaddleOCR",
+                    llm_name=candidate,
+                    model_type=LLMType.OCR.value,
+                    api_key=json.dumps(cfg),
+                    api_base="",
+                    max_tokens=0,
+                )
+                return candidate
+            except IntegrityError:
+                logging.warning("PaddleOCR env model %s already exists for tenant %s, retry with next name", candidate, tenant_id)
+                used_names.add(candidate)
+                idx += 1
+                continue
+
+    @classmethod
     @DB.connection_context()
     def delete_by_tenant_id(cls, tenant_id):
         return cls.model.delete().where(cls.model.tenant_id == tenant_id).execute()
@@ -374,6 +472,7 @@ class TenantLLMService(CommonService):
     @staticmethod
     def llm_id2llm_type(llm_id: str) -> str | None:
         from api.db.services.llm_service import LLMService
+
         llm_id, *_ = TenantLLMService.split_model_name_and_factory(llm_id)
         llm_factories = settings.FACTORY_LLM_INFOS
         for llm_factory in llm_factories:
@@ -454,13 +553,12 @@ class TenantLLMService(CommonService):
 
 
 class LLM4Tenant:
-    def __init__(self, tenant_id, llm_type, llm_name=None, lang="Chinese", **kwargs):
+    def __init__(self, tenant_id: str, model_config: dict, lang="Chinese", **kwargs):
         self.tenant_id = tenant_id
-        self.llm_type = llm_type
-        self.llm_name = llm_name
-        self.mdl = TenantLLMService.model_instance(tenant_id, llm_type, llm_name, lang=lang, **kwargs)
-        assert self.mdl, "Can't find model for {}/{}/{}".format(tenant_id, llm_type, llm_name)
-        model_config = TenantLLMService.get_model_config(tenant_id, llm_type, llm_name)
+        self.llm_name = model_config["llm_name"]
+        self.model_config = model_config
+        self.mdl = TenantLLMService.model_instance(model_config, lang=lang, **kwargs)
+        assert self.mdl, "Can't find model for {}/{}/{}".format(tenant_id, model_config["llm_type"], model_config["llm_name"])
         self.max_length = model_config.get("max_tokens", 8192)
 
         self.is_tools = model_config.get("is_tools", False)
@@ -492,12 +590,14 @@ class LLM4Tenant:
         langfuse_keys = TenantLangfuseService.filter_by_tenant(tenant_id=tenant_id)
         self.langfuse = None
         if langfuse_keys:
-            langfuse = Langfuse(public_key=langfuse_keys.public_key, secret_key=langfuse_keys.secret_key,
-                                host=langfuse_keys.host)
-            if langfuse.auth_check():
-                self.langfuse = langfuse
-                trace_id = self.langfuse.create_trace_id()
-                self.trace_context = {"trace_id": trace_id}
+            langfuse = Langfuse(public_key=langfuse_keys.public_key, secret_key=langfuse_keys.secret_key, host=langfuse_keys.host)
+            try:
+                if langfuse.auth_check():
+                    self.langfuse = langfuse
+                    trace_id = self.langfuse.create_trace_id()
+                    self.trace_context = {"trace_id": trace_id}
+            except Exception:
+                pass
 
 
 def user_register(user_id, user):

@@ -16,22 +16,33 @@
 import json
 import logging
 import asyncio
-
+from common.metadata_utils import turn2jsonschema
 from quart import request, g
+import numpy as np
 
 from api.db.services.connector_service import Connector2KbService
 from api.db import PermissionActionType, PermissionTargetType, PermissionValue, ResourceType
 from api.db.db_models import DB
-from api.db.services.dialog_service import DialogService
 from api.db.services.document_service import DocumentService, queue_raptor_o_graphrag_tasks, queue_reembedding_dup_tasks
+
+from api.db.services.llm_service import LLMBundle
+from api.db.services.doc_metadata_service import DocMetadataService
 from api.db.services.file2document_service import File2DocumentService
 from api.db.services.file_service import FileService
 from api.db.services.permission_service import PermissionChangeLogService, PermissionService
 from api.db.services.pipeline_operation_log_service import PipelineOperationLogService
 from api.db.services.task_service import TaskService, GRAPH_RAPTOR_FAKE_DOC_ID
 from api.db.services.user_service import TenantService, UserTenantService
-from api.utils.api_utils import get_error_data_result, server_error_response, get_data_error_result, validate_request, not_allowed_parameters, \
-    get_request_json
+from api.db.joint_services.tenant_model_service import get_model_config_by_type_and_name, get_model_config_by_id
+from api.utils.api_utils import (
+    get_error_data_result,
+    server_error_response,
+    get_data_error_result,
+    validate_request,
+    not_allowed_parameters,
+    get_request_json,
+)
+from common.misc_utils import thread_pool_exec
 from api.db import VALID_FILE_TYPES
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.db_models import File
@@ -41,6 +52,7 @@ from api.utils.permission_utils import check_kb_permission, has_permission_for_m
 from common.role_util import check_role_access, KB_API_ACTION_MAP, KB_ROLE_RESOURCE_TYPE
 from common.misc_utils import get_uuid
 
+from api.utils.tenant_utils import ensure_tenant_model_id_for_params
 from rag.nlp import search
 from api.constants import DATASET_NAME_LIMIT
 from rag.utils.redis_conn import REDIS_CONN
@@ -59,11 +71,12 @@ kb_role_guard = check_role_access(KB_API_ACTION_MAP, KB_ROLE_RESOURCE_TYPE)
 @check_resources(apps=1)
 async def create():
     req = await get_request_json()
-    e, req = KnowledgebaseService.create_with_name(
-        name = req.pop("name", None),
+    create_dict = ensure_tenant_model_id_for_params(current_user.id, req)
+    e, res = KnowledgebaseService.create_with_name(
+        name = create_dict.pop("name", None),
         tenant_id = current_user.id,
-        parser_id = req.pop("parser_id", None),
-        **req
+        parser_id = create_dict.pop("parser_id", None),
+        **create_dict
     )
 
     if not e:
@@ -108,28 +121,49 @@ async def create():
 @check_kb_permission(permission=PermissionValue.PERMISSION_WRITE)
 async def update():
     req = await get_request_json()
-    if not isinstance(req["name"], str):
+    update_dict = ensure_tenant_model_id_for_params(current_user.id, req)
+    if not isinstance(update_dict["name"], str):
         return get_data_error_result(message="Dataset name must be string.")
-    if req["name"].strip() == "":
+    if update_dict["name"].strip() == "":
         return get_data_error_result(message="Dataset name can't be empty.")
-    if len(req["name"].encode("utf-8")) > DATASET_NAME_LIMIT:
+    if len(update_dict["name"].encode("utf-8")) > DATASET_NAME_LIMIT:
         return get_data_error_result(
-            message=f"Dataset name length is {len(req['name'])} which is large than {DATASET_NAME_LIMIT}")
-    req["name"] = req["name"].strip()
+            message=f"Dataset name length is {len(update_dict['name'])} which is large than {DATASET_NAME_LIMIT}")
+    update_dict["name"] = update_dict["name"].strip()
     if "operator_permission" in req:
         req.pop("operator_permission", None)
+    if settings.DOC_ENGINE_INFINITY:
+        parser_id = update_dict.get("parser_id")
+        if isinstance(parser_id, str) and parser_id.lower() == "tag":
+            return get_json_result(
+                code=RetCode.OPERATING_ERROR,
+                message="The chunking method Tag has not been supported by Infinity yet.",
+                data=False,
+            )
+        if "pagerank" in update_dict and update_dict["pagerank"] > 0:
+            return get_json_result(
+                code=RetCode.DATA_ERROR,
+                message="'pagerank' can only be set when doc_engine is elasticsearch",
+                data=False,
+            )
 
+    if not KnowledgebaseService.accessible4deletion(update_dict["kb_id"], current_user.id):
+        return get_json_result(
+            data=False,
+            message='No authorization.',
+            code=RetCode.AUTHENTICATION_ERROR
+        )
     try:
         if not KnowledgebaseService.query(
-                created_by=current_user.id, id=req["kb_id"]):
+                created_by=current_user.id, id=update_dict["kb_id"]):
             return get_json_result(
                 data=False, message='Only owner of dataset authorized for this operation.',
                 code=RetCode.OPERATING_ERROR)
 
-        e, kb = KnowledgebaseService.get_by_id(req["kb_id"])
+        e, kb = KnowledgebaseService.get_by_id(update_dict["kb_id"])
 
         # Rename folder in FileService
-        if e and req["name"].lower() != kb.name.lower():
+        if e and update_dict["name"].lower() != kb.name.lower():
             FileService.filter_update(
                 [
                     File.tenant_id == kb.tenant_id,
@@ -137,39 +171,39 @@ async def update():
                     File.type == "folder",
                     File.name == kb.name,
                 ],
-                {"name": req["name"]},
+                {"name": update_dict["name"]},
             )
 
         if not e:
             return get_data_error_result(
                 message="Can't find this dataset!")
 
-        if req["name"].lower() != kb.name.lower() \
+        if update_dict["name"].lower() != kb.name.lower() \
                 and len(
-            KnowledgebaseService.query(name=req["name"], tenant_id=current_user.id, status=StatusEnum.VALID.value)) >= 1:
+            KnowledgebaseService.query(name=update_dict["name"], tenant_id=current_user.id, status=StatusEnum.VALID.value)) >= 1:
             return get_data_error_result(
                 message="Duplicated dataset name.")
 
-        del req["kb_id"]
+        del update_dict["kb_id"]
         connectors = []
-        if "connectors" in req:
-            connectors = req["connectors"]
-            del req["connectors"]
-        if not KnowledgebaseService.update_by_id(kb.id, req):
+        if "connectors" in update_dict:
+            connectors = update_dict["connectors"]
+            del update_dict["connectors"]
+        if not KnowledgebaseService.update_by_id(kb.id, update_dict):
             return get_data_error_result()
 
-        if kb.pagerank != req.get("pagerank", 0):
-            if req.get("pagerank", 0) > 0:
-                await asyncio.to_thread(
+        if kb.pagerank != update_dict.get("pagerank", 0):
+            if update_dict.get("pagerank", 0) > 0:
+                await thread_pool_exec(
                     settings.docStoreConn.update,
                     {"kb_id": kb.id},
-                    {PAGERANK_FLD: req["pagerank"]},
+                    {PAGERANK_FLD: update_dict["pagerank"]},
                     search.index_name(kb.tenant_id),
                     kb.id,
                 )
             else:
                 # Elasticsearch requires PAGERANK_FLD be non-zero!
-                await asyncio.to_thread(
+                await thread_pool_exec(
                     settings.docStoreConn.update,
                     {"exists": PAGERANK_FLD},
                     {"remove": PAGERANK_FLD},
@@ -184,7 +218,7 @@ async def update():
         if errors:
             logging.error("Link KB errors: ", errors)
         kb = kb.to_dict()
-        kb.update(req)
+        kb.update(update_dict)
         kb["connectors"] = connectors
 
         return get_json_result(data=kb)
@@ -203,6 +237,7 @@ async def update_metadata_setting():
             message="Database error (Knowledgebase rename)!")
     kb = kb.to_dict()
     kb["parser_config"]["metadata"] = req["metadata"]
+    kb["parser_config"]["enable_metadata"] = req.get("enable_metadata", True)
     KnowledgebaseService.update_by_id(kb["id"], kb)
     return get_json_result(data=kb)
 
@@ -241,6 +276,8 @@ def detail():
 
         kb["size"] = DocumentService.get_total_size_by_kb_id(kb_id=kb["id"], keywords="", run_status=[], types=[])
         kb["connectors"] = Connector2KbService.list_connectors(kb_id)
+        if kb["parser_config"].get("metadata"):
+            kb["parser_config"]["metadata"] = turn2jsonschema(kb["parser_config"]["metadata"])
 
         for key in ["graphrag_task_finish_at", "raptor_task_finish_at", "mindmap_task_finish_at"]:
             if finish_at := kb.get(key):
@@ -329,7 +366,8 @@ async def list_kbs():
 @validate_request("kb_id")
 async def rm():
     req = await get_request_json()
-    if not KnowledgebaseService.accessible4deletion(req["kb_id"], current_user.id):
+    uid = current_user.id
+    if not KnowledgebaseService.accessible4deletion(req["kb_id"], uid):
         return get_json_result(
             data=False,
             message='No authorization.',
@@ -340,7 +378,7 @@ async def rm():
         return get_json_result(data=False, message="Unrecognized identification.", code=RetCode.AUTHENTICATION_ERROR)
     try:
         kbs = KnowledgebaseService.query(
-            created_by=current_user.id, id=req["kb_id"])
+            created_by=uid, id=req["kb_id"])
         if not kbs:
             return get_json_result(
                 data=False, message='Only owner of dataset authorized for this operation.',
@@ -357,50 +395,31 @@ async def rm():
                 File2DocumentService.delete_by_document_id(doc.id)
 
             FileService.filter_delete(
-                [File.source_type == FileSource.KNOWLEDGEBASE, File.type == "folder", File.name == kbs[0].name])
+                [
+                    File.tenant_id == kbs[0].tenant_id,
+                    File.source_type == FileSource.KNOWLEDGEBASE,
+                    File.type == "folder",
+                    File.name == kbs[0].name,
+                ]
+            )
+            # Delete the table BEFORE deleting the database record
+            for kb in kbs:
+                try:
+                    settings.docStoreConn.delete({"kb_id": kb.id}, search.index_name(kb.tenant_id), kb.id)
+                    settings.docStoreConn.delete_idx(search.index_name(kb.tenant_id), kb.id)
+                    logging.info(f"Dropped index for dataset {kb.id}")
+                except Exception as e:
+                    logging.error(f"Failed to drop index for dataset {kb.id}: {e}")
+
             if not KnowledgebaseService.delete_by_id(req["kb_id"]):
                 return get_data_error_result(
                     message="Database error (Knowledgebase removal)!")
             for kb in kbs:
-                settings.docStoreConn.delete({"kb_id": kb.id}, search.index_name(kb.tenant_id), kb.id)
-                settings.docStoreConn.delete_idx(search.index_name(kb.tenant_id), kb.id)
-                settings.STORAGE_IMPL.rm_bucket(kb.id)
-
-            tenant_id = current_user.id
-            with DB.atomic():
-                permission_model_list = PermissionService.get_permissions_by_tenant_and_resource_id(tenant_id=tenant_id, resource_id=req["kb_id"], resource_type=ResourceType.KB)
-                PermissionService.delete(permission_model_list)
-
-                PermissionChangeLogService.save(
-                    id=get_uuid(),
-                    tenant_id=operator.tenant_id,
-                    operator_id=operator.id,
-                    target_type=PermissionTargetType.TARGET_MEMBER,
-                    target_id=operator.id,
-                    resource_type=ResourceType.KB,
-                    resource_id=req["kb_id"],
-                    old_permission=PermissionValue.PERMISSION_OWNER.value,
-                    new_permission=PermissionValue.PERMISSION_NULL.value,
-                    action_type=PermissionActionType.ACTION_DELETE,
-                )
-
-            dialogs = DialogService.query(
-                status=StatusEnum.VALID.value,
-                tenant_id=current_user.id,
-            )
-            filtered_dialog_ids = []
-            for dialog in dialogs:
-                if req["kb_id"] in dialog.kb_ids:
-                    filtered_dialog_ids.append(dialog.id)
-
-            with DB.atomic():
-                for dialog_id in filtered_dialog_ids:
-                    dialog_permission_model_list = PermissionService.get_permissions_by_tenant_and_resource_id(tenant_id=tenant_id, resource_id=dialog_id, resource_type=ResourceType.DIALOG)
-                    PermissionService.delete(dialog_permission_model_list)
-
+                if hasattr(settings.STORAGE_IMPL, 'remove_bucket'):
+                    settings.STORAGE_IMPL.remove_bucket(kb.id)
             return get_json_result(data=True)
 
-        return await asyncio.to_thread(_rm_sync)
+        return await thread_pool_exec(_rm_sync)
     except Exception as e:
         return server_error_response(e)
 
@@ -489,6 +508,12 @@ async def rename_tags(kb_id):
 @kb_role_guard
 @check_kb_permission(permission=PermissionValue.PERMISSION_READ)
 async def knowledge_graph(kb_id):
+    if not KnowledgebaseService.accessible(kb_id, current_user.id):
+        return get_json_result(
+            data=False,
+            message='No authorization.',
+            code=RetCode.AUTHENTICATION_ERROR
+        )
     _, kb = KnowledgebaseService.get_by_id(kb_id)
     req = {"kb_id": [kb_id], "knowledge_graph_kwd": ["graph"]}
 
@@ -545,7 +570,7 @@ def get_meta():
                 message='No authorization.',
                 code=RetCode.AUTHENTICATION_ERROR
             )
-    return get_json_result(data=DocumentService.get_meta_by_kbs(kb_ids))
+    return get_json_result(data=DocMetadataService.get_flatted_meta_by_kbs(kb_ids))
 
 
 @manager.route("/basic_info", methods=["GET"])  # noqa: F821
@@ -948,12 +973,69 @@ def delete_kb_task():
 async def check_embedding():
     req = await get_request_json()
     kb_id = req.get("kb_id", "")
+    tenant_embd_id = req.get("tenant_embd_id")
     embd_id = req.get("embd_id", "")
-    try:
-        summary = KnowledgebaseService.check_embedding(kb_id, embd_id, int(req.get("check_num", 5)))
-    except Exception as e:
-        return get_error_data_result(message=f"Embedding failure. {e}")
 
+    n = int(req.get("check_num", 5))
+    _, kb = KnowledgebaseService.get_by_id(kb_id)
+    tenant_id = kb.tenant_id
+    if tenant_embd_id:
+        embd_model_config = get_model_config_by_id(tenant_embd_id)
+    elif embd_id:
+        embd_model_config = get_model_config_by_type_and_name(tenant_id, LLMType.EMBEDDING, embd_id)
+    else:
+        return get_error_data_result("`tenant_embd_id` or `embd_id` is required.")
+    emb_mdl = LLMBundle(tenant_id, embd_model_config)
+    samples = sample_random_chunks_with_vectors(settings.docStoreConn, tenant_id=tenant_id, kb_id=kb_id, n=n)
+
+    results, eff_sims = [], []
+    for ck in samples:
+        title = ck.get("doc_name") or "Title"
+        txt_in = "\n".join(ck.get("question_kwd") or []) or ck.get("content_with_weight") or ""
+        txt_in = _clean(txt_in)
+        if not txt_in:
+            results.append({"chunk_id": ck["chunk_id"], "reason": "no_text"})
+            continue
+
+        if not ck.get("vector"):
+            results.append({"chunk_id": ck["chunk_id"], "reason": "no_stored_vector"})
+            continue
+
+        try:
+            v, _ = emb_mdl.encode([title, txt_in])
+            assert len(v[1]) == len(ck["vector"]), f"The dimension ({len(v[1])}) of given embedding model is different from the original ({len(ck['vector'])})"
+            sim_content = _cos_sim(v[1], ck["vector"])
+            title_w = 0.1
+            qv_mix = title_w * v[0] + (1 - title_w) * v[1]
+            sim_mix = _cos_sim(qv_mix, ck["vector"])
+            sim = sim_content
+            mode = "content_only"
+            if sim_mix > sim:
+                sim = sim_mix
+                mode = "title+content"
+        except Exception as e:
+            return get_error_data_result(message=f"Embedding failure. {e}")
+
+        eff_sims.append(sim)
+        results.append({
+            "chunk_id": ck["chunk_id"],
+            "doc_id": ck["doc_id"],
+            "doc_name": ck["doc_name"],
+            "vector_field": ck["vector_field"],
+            "vector_dim": ck["vector_dim"],
+            "cos_sim": round(sim, 6),
+        })
+
+    summary = {
+        "kb_id": kb_id,
+        "model": embd_id,
+        "sampled": len(samples),
+        "valid": len(eff_sims),
+        "avg_cos_sim": round(float(np.mean(eff_sims)) if eff_sims else 0.0, 6),
+        "min_cos_sim": round(float(np.min(eff_sims)) if eff_sims else 0.0, 6),
+        "max_cos_sim": round(float(np.max(eff_sims)) if eff_sims else 0.0, 6),
+        "match_mode": mode,
+    }
     if summary["avg_cos_sim"] > 0.9:
         KnowledgebaseService.update_by_id(kb_id, {"embd_id": embd_id})
         return get_json_result(data={"summary": summary, "results": []})

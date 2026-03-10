@@ -1,15 +1,62 @@
 ---
-sidebar_position: 2
+sidebar_position: 1
 slug: /release_notes
 sidebar_custom_props: {
   sidebarIcon: LucideClipboardPenLine
 }
 ---
-
 # Releases
 
 Key features, improvements and bug fixes in the latest releases.
 
+## v0.24.0
+
+Released on February 10, 2026.
+
+### New features
+
+- Memory
+  - Introduces memory management APIs (HTTP and Python).
+  - Outputs Memory extraction log to the console.
+- Dataset
+  - Supports batch metadata management.
+  - Renames "ToC (Table of Contents)" to "PageIndex". See [here](./guides/dataset/advanced/extract_table_of_contents.md).
+- Agent
+  - Launches a new Chat-like Agent conversation management interface that retains sessions and dialogue history.
+  - Introduces a multi-Sandbox mechanism supporting local gVisor and Alibaba Cloud, with compatibility for mainstream Sandbox APIs (configurable in the Admin page).
+- Chat
+  - Adds a new "Thinking" mode and removes the previous "Reasoning" configuration option.
+  - Optimizes retrieval strategies for deep-research scenarios, enhancing recall accuracy.
+- Admin
+  - Supports multiple Admin accounts.
+- Model configuration center
+  - Adds model connection test for new models.
+
+### MySQL alternative
+
+- Supports OceanBase as an alternative to MySQL.
+
+### Model support
+
+- Kimi 2.5
+- Stepfun 3
+- doubao-embedding-vision
+- PaddleOCR-VL
+
+### Data sources
+
+- Zendesk
+- Bitbucket
+
+### API changes
+
+#### HTTP API
+
+[Memory management API](./references/http_api_reference.md#memory-management)
+
+#### Python API
+
+[Memory management API](./references/python_api_reference.md#memory-management)
 
 ## v0.23.1
 
@@ -23,7 +70,7 @@ Released on December 31, 2025.
 
 ### Fixed issues
 
-- Memory:
+- Memory: 
   - The RAGFlow server failed to start if an empty memory object existed.
   - Unable to delete a newly created empty Memory.
 - RAG: MDX file parsing was not supported.
@@ -178,7 +225,7 @@ Released on October 15, 2025.
 
 - Orchestratable ingestion pipeline: Supports customized data ingestion and cleansing workflows, enabling users to flexibly design their data flows or directly apply the official data flow templates on the canvas.
 - GraphRAG & RAPTOR write process optimized: Replaces the automatic incremental build process with manual batch building, significantly reducing construction overhead.
-- Long-context RAG: Automatically generates document-level table of contents (TOC) structures to mitigate context loss caused by inaccurate or excessive chunking, substantially improving retrieval quality. This feature is now available via a TOC extraction template. See [here](./guides/dataset/extract_table_of_contents.md).
+- Long-context RAG: Automatically generates document-level table of contents (TOC) structures to mitigate context loss caused by inaccurate or excessive chunking, substantially improving retrieval quality. This feature is now available via a TOC extraction template. See [here](./guides/dataset/advanced/extract_table_of_contents.md).
 - Video file parsing: Expands the system's multimodal data processing capabilities by supporting video file parsing.
 - Admin CLI: Introduces a new command-line tool for system administration, allowing users to manage and monitor RAGFlow's service status via command line.
 
@@ -259,7 +306,7 @@ Ecommerce Customer Service Workflow: A template designed to handle enquiries abo
 
 ### Fixed issues
 
-- Dataset:
+- Dataset:  
   - Unable to share resources with the team.
   - Inappropriate restrictions on the number and size of uploaded files.
 - Chat:
@@ -275,13 +322,13 @@ Released on August 20, 2025.
 
 ### Improvements
 
-- Revamps the user interface for the **Datasets**, **Chat**, and **Search** pages.
+- Revamps the user interface for the **Datasets**, **Chat**, and **Search** pages.  
 - Search and Chat: Introduces document-level metadata filtering, allowing automatic or manual filtering during chats or searches.
 - Search: Supports creating search apps tailored to various business scenarios
 - Chat: Supports comparing answer performance of up to three chat model settings on a single **Chat** page.
-- Agent:
-  - Implements a toggle in the **Agent** component to enable or disable citation.
-  - Introduces a drag-and-drop method for creating components.
+- Agent:  
+  - Implements a toggle in the **Agent** component to enable or disable citation.  
+  - Introduces a drag-and-drop method for creating components.  
 - Documentation: Corrects inaccuracies in the API reference.
 
 ### New Agent templates
@@ -291,8 +338,8 @@ Released on August 20, 2025.
 ### Fixed issues
 
 - The timeout mechanism introduced in v0.20.0 caused tasks like GraphRAG to halt.
-- Predefined opening greeting in the **Agent** component was missing during conversations.
-- An automatic line break issue in the prompt editor.
+- Predefined opening greeting in the **Agent** component was missing during conversations.  
+- An automatic line break issue in the prompt editor.  
 - A memory leak issue caused by PyPDF. [#9469](https://github.com/infiniflow/ragflow/pull/9469)
 
 ### API changes
@@ -376,7 +423,7 @@ Released on June 23, 2025.
 
 ### Newly supported models
 
-- Qwen 3 Embedding. [#8184](https://github.com/infiniflow/ragflow/pull/8184)
+- Qwen 3 Embedding. [#8184](https://github.com/infiniflow/ragflow/pull/8184) 
 - Voyage Multimodal 3. [#7987](https://github.com/infiniflow/ragflow/pull/7987)
 
 ## v0.19.0
@@ -433,7 +480,7 @@ From this release onwards, built-in rerank models have been removed because they
 #### Added documents
 
 - [Set page rank](./guides/dataset/set_page_rank.md)
-- [Enable RAPTOR](./guides/dataset/enable_raptor.md)
+- [Enable RAPTOR](./guides/dataset/advanced/enable_raptor.md)
 - [Set variables for your chat assistant](./guides/chat/set_chat_variables.md)
 - [Launch RAGFlow MCP server](./develop/mcp/launch_mcp_server.md)
 
@@ -545,7 +592,7 @@ Released on February 6, 2025.
 ### New features
 
 - Supports DeepSeek R1 and DeepSeek V3.
-- GraphRAG refactor: Knowledge graph is dynamically built on an entire dataset rather than on an individual file, and automatically updated when a newly uploaded file starts parsing. See [here](https://ragflow.io/docs/dev/construct_knowledge_graph).
+- GraphRAG refactor: Knowledge graph is dynamically built on an entire dataset rather than on an individual file, and automatically updated when a newly uploaded file starts parsing. See [here](./guides/dataset/advanced/construct_knowledge_graph.md).
 - Adds an **Iteration** agent component and a **Research report generator** agent template. See [here](./guides/agent/agent_component_reference/iteration.mdx).
 - New UI language: Portuguese.
 - Allows setting metadata for a specific file in a dataset to enhance AI-powered chats. See [here](./guides/dataset/set_metadata.md).
@@ -561,7 +608,7 @@ The **Tag dataset** feature is *unavailable* on the [Infinity](https://github.co
 
 #### Added documents
 
-- [Construct knowledge graph](./guides/dataset/construct_knowledge_graph.md)
+- [Construct knowledge graph](./guides/dataset/advanced/construct_knowledge_graph.md)
 - [Set metadata](./guides/dataset/set_metadata.md)
 - [Begin component](./guides/agent/agent_component_reference/begin.mdx)
 - [Generate component](./guides/agent/agent_component_reference/generate.mdx)
@@ -687,7 +734,7 @@ From this release onwards, **service_config.yaml.template** replaces **service_c
 This approach eliminates the need to manually update **service_config.yaml** after making changes to **.env**, facilitating dynamic environment configurations.
 
 :::danger IMPORTANT
-Ensure that you [upgrade **both** your code **and** Docker image to this release](https://ragflow.io/docs/dev/upgrade_ragflow#upgrade-ragflow-to-the-most-recent-officially-published-release) before trying this new approach.
+Ensure that you [upgrade **both** your code **and** Docker image to this release](./administrator/upgrade_ragflow.mdx#upgrade-ragflow-to-the-most-recent-officially-published-release) before trying this new approach.
 :::
 
 ### API changes
@@ -765,13 +812,13 @@ The default Docker image edition is `nightly-slim`. The following list clarifies
 - `nightly`: The full edition of the most recent tested Docker image.
 - `v0.12.0`: The full edition of the most recent **officially released** Docker image.
 
-See [Upgrade RAGFlow](https://ragflow.io/docs/dev/upgrade_ragflow) for instructions on upgrading.
+See [Upgrade RAGFlow](./administrator/upgrade_ragflow.mdx) for instructions on upgrading.
 
 ### Documentation
 
 #### Added documents
 
-- [Upgrade RAGFlow](https://ragflow.io/docs/dev/upgrade_ragflow)
+- [Upgrade RAGFlow](./administrator/upgrade_ragflow.mdx)
 
 ## v0.11.0
 

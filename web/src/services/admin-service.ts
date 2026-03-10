@@ -1,10 +1,10 @@
 import { history } from '@/utils/simple-history-util';
-import { message, notification } from 'antd';
 import axios, {
   type AxiosResponse,
   type InternalAxiosRequestConfig,
 } from 'axios';
 
+import message from '@/components/ui/message';
 import { Authorization } from '@/constants/authorization';
 import i18n from '@/locales/config';
 import { Routes } from '@/routes';
@@ -26,6 +26,7 @@ import {
   IThirdOAIModelCollection,
 } from '@/interfaces/database/llm';
 import { isLocalLlmFactory } from '@/pages/user-setting/utils';
+import api from '@/utils/api';
 import { keyBy } from 'lodash';
 
 function redirectToLogin() {
@@ -64,36 +65,32 @@ request.interceptors.response.use(
     if (data?.code === 100) {
       message.error(data?.message);
     } else if (data?.code === 401) {
-      notification.error({
-        message: data?.message,
+      message.error(data?.message, {
         description: data?.message,
-        duration: 3,
       });
 
       redirectToLogin();
     } else if (data?.code && data.code !== 0) {
-      notification.error({
-        message: `${i18n.t('message.hint')}: ${data?.code}`,
+      message.error(`${i18n.t('message.hint')}: ${data?.code}`, {
         description: data?.message,
-        duration: 3,
       });
     }
 
     return response;
   },
   (error) => {
-    const { response, message } = error;
+    const { response } = error;
     const { data } = response ?? {};
 
     if (error.message === 'Failed to fetch') {
-      notification.error({
+      message.error({
         description: i18n.t('message.networkAnomalyDescription'),
         message: i18n.t('message.networkAnomaly'),
       });
     } else if (data?.code === 100) {
       message.error(data?.message);
     } else if (response.status === 401 || data?.code === 401) {
-      notification.error({
+      message.error({
         message: data?.message || response.statusText,
         description:
           data?.message || RetcodeMessage[response?.status as ResultCode],
@@ -102,13 +99,13 @@ request.interceptors.response.use(
 
       redirectToLogin();
     } else if (data?.code && data.code !== 0) {
-      notification.error({
+      message.error({
         message: `${i18n.t('message.hint')}: ${data?.code}`,
         description: data?.message,
         duration: 3,
       });
     } else if (response.status) {
-      notification.error({
+      message.error({
         message: `${i18n.t('message.requestError')} ${response.status}: ${response.config.url}`,
         description:
           RetcodeMessage[response.status as ResultCode] || response.statusText,
@@ -162,6 +159,12 @@ export const createUser = (email: string, password: string) =>
     username: email,
     password,
   });
+
+export const grantSuperuser = (email: string) =>
+  request.put<ResponseData<void>>(api.adminSetSuperuser(email));
+
+export const revokeSuperuser = (email: string) =>
+  request.delete<ResponseData<void>>(api.adminSetSuperuser(email));
 
 export const getUserDetails = (email: string) =>
   request.get<ResponseData<[AdminService.UserDetail]>>(

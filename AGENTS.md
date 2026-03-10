@@ -29,7 +29,7 @@ RAGFlow is an open-source RAG (Retrieval-Augmented Generation) engine based on d
 - `rag/`: Core RAG logic
   - `llm/`: LLM, Embedding, and Rerank model abstractions
   - `flow/`: Chunking, parsing, tokenization pipeline
-  - `graphrag/`: Knowledge graph construction and querying
+  - `rag/graphrag/`: Knowledge graph construction and querying
 - `deepdoc/`: Document parsing and OCR modules (PDF parsing, layout analysis)
 - `agent/`: Agentic reasoning components
   - `components/`: Modular workflow components (LLM, retrieval, categorize, etc.)

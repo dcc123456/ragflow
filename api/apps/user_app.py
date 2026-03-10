@@ -46,6 +46,7 @@ from api.utils.api_utils import (
 )
 from api.utils.crypt import decrypt2
 from api.utils.crypt import decrypt
+from api.utils.tenant_utils import ensure_tenant_model_id_for_params
 from api.utils.web_utils import (
     OTP_LENGTH,
     OTP_TTL_SECONDS,
@@ -876,7 +877,8 @@ async def set_tenant_info():
     req = await get_request_json()
     try:
         tid = req.pop("tenant_id")
-        TenantService.update_by_id(tid, req)
+        update_dict = ensure_tenant_model_id_for_params(tid, req)
+        TenantService.update_by_id(tid, update_dict)
         return get_json_result(data=True)
     except Exception as e:
         return server_error_response(e)

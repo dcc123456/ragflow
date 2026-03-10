@@ -16,6 +16,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { UseKnowledgeGraphFormField } from '@/components/use-knowledge-graph-item';
 import { useTranslate } from '@/hooks/common-hooks';
 import { prefixName } from '@/utils/form';
+import { getDirAttribute } from '@/utils/text-direction';
 import { useFormContext } from 'react-hook-form';
 import { DynamicVariableForm } from './dynamic-variable';
 
@@ -26,6 +27,7 @@ interface ChatPromptEngineProps {
 export function ChatPromptEngine({ prefix = '' }: ChatPromptEngineProps) {
   const { t } = useTranslate('chat');
   const form = useFormContext();
+  const systemPromptValue = form.watch('prompt_config.system');
 
   return (
     <div className="space-y-8">
@@ -39,8 +41,9 @@ export function ChatPromptEngine({ prefix = '' }: ChatPromptEngineProps) {
               <Textarea
                 {...field}
                 rows={8}
-                placeholder={t('messagePlaceholder')}
+                placeholder={t('systemPlaceholder')}
                 className="overflow-y-auto"
+                dir={getDirAttribute(systemPromptValue || '')}
               />
             </FormControl>
             <FormMessage />

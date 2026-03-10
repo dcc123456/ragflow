@@ -186,7 +186,9 @@ async def update(tenant_id, chat_id):
             req["llm_id"] = llm.pop("model_name")
             if req.get("llm_id") is not None:
                 llm_name, llm_factory,llm_tenant_id  = TenantLLMService.split_model_name_and_factory(req["llm_id"])
-                if not TenantLLMService.query(tenant_id=llm_tenant_id, llm_name=llm_name, llm_factory=llm_factory, model_type="chat"):
+                model_type = llm.get("model_type")
+                model_type = model_type if model_type in ["chat", "image2text"] else "chat"
+                if not TenantLLMService.query(tenant_id=llm_tenant_id, llm_name=llm_name, llm_factory=llm_factory, model_type=model_type):
                     return get_error_data_result(f"`model_name` {req.get('llm_id')} doesn't exist")
         req["llm_setting"] = req.pop("llm")
     e, tenant = TenantService.get_by_id(tenant_id)
@@ -243,16 +245,13 @@ async def delete_chats(tenant_id):
     success_count = 0
     req = await get_request_json()
     if not req:
-        ids = None
-    else:
-        ids = req.get("ids")
+        return get_result()
+
+    ids = req.get("ids")
     if not ids:
-        id_list = []
-        dias = DialogService.query(tenant_id=tenant_id, status=StatusEnum.VALID.value)
-        for dia in dias:
-            id_list.append(dia.id)
-    else:
-        id_list = ids
+        return get_result()
+
+    id_list = ids
 
     unique_id_list, duplicate_messages = check_duplicate_ids(id_list, "assistant")
 

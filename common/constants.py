@@ -20,6 +20,7 @@ from strenum import StrEnum
 SERVICE_CONF = "service_conf.yaml"
 RAG_FLOW_SERVICE_NAME = "ragflow"
 
+
 class CustomEnum(Enum):
     @classmethod
     def valid(cls, value):
@@ -74,13 +75,13 @@ class ActiveEnum(Enum):
 
 
 class LLMType(StrEnum):
-    CHAT = 'chat'
-    EMBEDDING = 'embedding'
-    SPEECH2TEXT = 'speech2text'
-    IMAGE2TEXT = 'image2text'
-    RERANK = 'rerank'
-    TTS = 'tts'
-    OCR = 'ocr'
+    CHAT = "chat"
+    EMBEDDING = "embedding"
+    SPEECH2TEXT = "speech2text"
+    IMAGE2TEXT = "image2text"
+    RERANK = "rerank"
+    TTS = "tts"
+    OCR = "ocr"
 
 
 class ModelType(StrEnum):
@@ -101,8 +102,7 @@ class TaskStatus(StrEnum):
     SCHEDULE = "5"
 
 
-VALID_TASK_STATUS = {TaskStatus.UNSTART, TaskStatus.RUNNING, TaskStatus.CANCEL, TaskStatus.DONE, TaskStatus.FAIL,
-                     TaskStatus.SCHEDULE}
+VALID_TASK_STATUS = {TaskStatus.UNSTART, TaskStatus.RUNNING, TaskStatus.CANCEL, TaskStatus.DONE, TaskStatus.FAIL, TaskStatus.SCHEDULE}
 
 
 class ParserType(StrEnum):
@@ -151,6 +151,11 @@ class FileSource(StrEnum):
     BITBUCKET = "bitbucket"
     ZENDESK = "zendesk"
     LARK = "lark"
+    SEAFILE = "seafile"
+    MYSQL = "mysql"
+    POSTGRESQL = "postgresql"
+    DINGTALK_AI_TABLE = "dingtalk_ai_table"
+
 
 class PipelineTaskType(StrEnum):
     PARSE = "Parse"
@@ -162,14 +167,16 @@ class PipelineTaskType(StrEnum):
     CLONE = "Clone"
 
 
-VALID_PIPELINE_TASK_TYPES = {PipelineTaskType.PARSE, PipelineTaskType.DOWNLOAD, PipelineTaskType.RAPTOR,
-                             PipelineTaskType.GRAPH_RAG, PipelineTaskType.MINDMAP}
+VALID_PIPELINE_TASK_TYPES = {PipelineTaskType.PARSE, PipelineTaskType.DOWNLOAD, PipelineTaskType.RAPTOR, PipelineTaskType.GRAPH_RAG, PipelineTaskType.MINDMAP}
+
 
 class MCPServerType(StrEnum):
     SSE = "sse"
     STREAMABLE_HTTP = "streamable-http"
 
+
 VALID_MCP_SERVER_TYPES = {MCPServerType.SSE, MCPServerType.STREAMABLE_HTTP}
+
 
 class Storage(Enum):
     MINIO = 1
@@ -182,10 +189,10 @@ class Storage(Enum):
 
 
 class MemoryType(Enum):
-    RAW = 0b0001          # 1 << 0 = 1 (0b00000001)
-    SEMANTIC = 0b0010     # 1 << 1 = 2 (0b00000010)
-    EPISODIC = 0b0100     # 1 << 2 = 4 (0b00000100)
-    PROCEDURAL = 0b1000   # 1 << 3 = 8 (0b00001000)
+    RAW = 0b0001  # 1 << 0 = 1 (0b00000001)
+    SEMANTIC = 0b0010  # 1 << 1 = 2 (0b00000010)
+    EPISODIC = 0b0100  # 1 << 2 = 4 (0b00000100)
+    PROCEDURAL = 0b1000  # 1 << 3 = 8 (0b00001000)
 
 
 class MemoryStorageType(StrEnum):
@@ -255,4 +262,11 @@ MINERU_DEFAULT_CONFIG = {
     "MINERU_BACKEND": "pipeline",
     "MINERU_SERVER_URL": "",
     "MINERU_DELETE_OUTPUT": 1,
+}
+
+PADDLEOCR_ENV_KEYS = ["PADDLEOCR_API_URL", "PADDLEOCR_ACCESS_TOKEN", "PADDLEOCR_ALGORITHM"]
+PADDLEOCR_DEFAULT_CONFIG = {
+    "PADDLEOCR_API_URL": "",
+    "PADDLEOCR_ACCESS_TOKEN": None,
+    "PADDLEOCR_ALGORITHM": "PaddleOCR-VL",
 }

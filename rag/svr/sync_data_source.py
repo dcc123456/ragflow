@@ -19,6 +19,9 @@
 # beartype_all(conf=BeartypeConf(violation_type=UserWarning))    # <-- emit warnings from all code
 
 
+import time
+start_ts = time.time()
+
 import asyncio
 import copy
 import faulthandler
@@ -27,12 +30,12 @@ import os
 import signal
 import sys
 import threading
-import time
 import traceback
 from datetime import datetime, timezone
 from typing import Any
 
 from flask import json
+
 from api.utils.common import hash128
 from api.db.services.connector_service import ConnectorService, SyncLogsService
 from api.db.services.knowledgebase_service import KnowledgebaseService
@@ -50,10 +53,13 @@ from common.data_source import (
     AsanaConnector,
     ImapConnector,
     ZendeskConnector,
+    SeaFileConnector,
+    RDBMSConnector,
+    DingTalkAITableConnector,
 )
 from common.constants import FileSource, TaskStatus
 from common.data_source.config import INDEX_BATCH_SIZE
-from common.data_source.models import ConnectorFailure
+from common.data_source.models import ConnectorFailure, SeafileSyncScope
 from common.data_source.webdav_connector import WebDAVConnector
 from common.data_source.confluence_connector import ConfluenceConnector
 from common.data_source.gmail_connector import GmailConnector
@@ -1150,7 +1156,7 @@ class Gitlab(SyncBase):
         self.connector.load_credentials(
             {
                 "gitlab_access_token": self.conf.get("credentials", {}).get("gitlab_access_token"),
-                "gitlab_url": self.conf.get("credentials", {}).get("gitlab_url"),
+                "gitlab_url": self.conf.get("gitlab_url"),
             }
         )
 
@@ -1232,6 +1238,162 @@ class Bitbucket(SyncBase):
 
         return wrapper()
 
+
+class SeaFile(SyncBase):
+    SOURCE_NAME: str = FileSource.SEAFILE
+
+    async def _generate(self, task: dict):
+        conf = self.conf
+        self.connector = SeaFileConnector(
+            seafile_url=conf["seafile_url"],
+            batch_size=conf.get("batch_size", INDEX_BATCH_SIZE),
+            include_shared=conf.get("include_shared", True),
+            sync_scope=conf.get("sync_scope", SeafileSyncScope.ACCOUNT),
+            repo_id=conf.get("repo_id") or None,
+            sync_path=conf.get("sync_path") or None,
+        )
+        self.connector.load_credentials(conf["credentials"])
+
+        poll_start = task.get("poll_range_start")
+        if task["reindex"] == "1" or poll_start is None:
+            document_generator = self.connector.load_from_state()
+            begin_info = "totally"
+        else:
+            document_generator = self.connector.poll_source(
+                poll_start.timestamp(),
+                datetime.now(timezone.utc).timestamp(),
+            )
+            begin_info = f"from {poll_start}"
+
+        scope = conf.get("sync_scope", "account")
+        extra = ""
+        if scope in ("library", "directory"):
+            extra = f" repo_id={conf.get('repo_id')}"
+        if scope == "directory":
+            extra += f" path={conf.get('sync_path')}"
+
+        logging.info(
+            "Connect to SeaFile: %s (scope=%s%s) %s",
+            conf["seafile_url"], scope, extra, begin_info,
+        )
+        return document_generator
+
+
+class DingTalkAITable(SyncBase):
+    SOURCE_NAME: str = FileSource.DINGTALK_AI_TABLE
+
+    async def _generate(self, task: dict):
+        """
+        Sync records from DingTalk AI Table (Notable).
+        """
+        self.connector = DingTalkAITableConnector(
+            table_id=self.conf.get("table_id"),
+            operator_id=self.conf.get("operator_id"),
+            batch_size=self.conf.get("batch_size", INDEX_BATCH_SIZE),
+        )
+
+        credentials = self.conf.get("credentials", {})
+        if "access_token" not in credentials:
+            raise ValueError("Missing access_token in credentials")
+
+        self.connector.load_credentials(
+            {"access_token": credentials["access_token"]}
+        )
+
+        poll_start = task.get("poll_range_start")
+
+        if task.get("reindex") == "1" or poll_start is None:
+            document_generator = self.connector.load_from_state()
+            begin_info = "totally"
+        else:
+            document_generator = self.connector.poll_source(
+                poll_start.timestamp(),
+                datetime.now(timezone.utc).timestamp(),
+            )
+            begin_info = f"from {poll_start}"
+
+        logging.info(
+            "Connect to DingTalk AI Table: table_id(%s), operator_id(%s) %s",
+            self.conf.get("table_id"),
+            self.conf.get("operator_id"),
+            begin_info,
+        )
+
+        return document_generator
+
+
+class MySQL(SyncBase):
+    SOURCE_NAME: str = FileSource.MYSQL
+
+    async def _generate(self, task: dict):
+        self.connector = RDBMSConnector(
+            db_type="mysql",
+            host=self.conf.get("host", "localhost"),
+            port=int(self.conf.get("port", 3306)),
+            database=self.conf.get("database", ""),
+            query=self.conf.get("query", ""),
+            content_columns=self.conf.get("content_columns", ""),
+            batch_size=self.conf.get("batch_size", INDEX_BATCH_SIZE),
+        )
+
+        credentials = self.conf.get("credentials")
+        if not credentials:
+            raise ValueError("MySQL connector is missing credentials.")
+
+        self.connector.load_credentials(credentials)
+        self.connector.validate_connector_settings()
+
+        if task["reindex"] == "1" or not task["poll_range_start"]:
+            document_generator = self.connector.load_from_state()
+            begin_info = "totally"
+        else:
+            poll_start = task["poll_range_start"]
+            document_generator = self.connector.poll_source(
+                poll_start.timestamp(),
+                datetime.now(timezone.utc).timestamp()
+            )
+            begin_info = f"from {poll_start}"
+
+        logging.info(f"[MySQL] Connect to {self.conf.get('host')}:{self.conf.get('database')} {begin_info}")
+        return document_generator
+
+
+class PostgreSQL(SyncBase):
+    SOURCE_NAME: str = FileSource.POSTGRESQL
+
+    async def _generate(self, task: dict):
+        self.connector = RDBMSConnector(
+            db_type="postgresql",
+            host=self.conf.get("host", "localhost"),
+            port=int(self.conf.get("port", 5432)),
+            database=self.conf.get("database", ""),
+            query=self.conf.get("query", ""),
+            content_columns=self.conf.get("content_columns", ""),
+            batch_size=self.conf.get("batch_size", INDEX_BATCH_SIZE),
+        )
+
+        credentials = self.conf.get("credentials")
+        if not credentials:
+            raise ValueError("PostgreSQL connector is missing credentials.")
+
+        self.connector.load_credentials(credentials)
+        self.connector.validate_connector_settings()
+
+        if task["reindex"] == "1" or not task["poll_range_start"]:
+            document_generator = self.connector.load_from_state()
+            begin_info = "totally"
+        else:
+            poll_start = task["poll_range_start"]
+            document_generator = self.connector.poll_source(
+                poll_start.timestamp(),
+                datetime.now(timezone.utc).timestamp()
+            )
+            begin_info = f"from {poll_start}"
+
+        logging.info(f"[PostgreSQL] Connect to {self.conf.get('host')}:{self.conf.get('database')} {begin_info}")
+        return document_generator
+
+
 func_factory = {
     FileSource.S3: S3,
     FileSource.R2: R2,
@@ -1258,6 +1420,10 @@ func_factory = {
     FileSource.GITHUB: Github,
     FileSource.GITLAB: Gitlab,
     FileSource.BITBUCKET: Bitbucket,
+    FileSource.SEAFILE: SeaFile,
+    FileSource.MYSQL: MySQL,
+    FileSource.POSTGRESQL: PostgreSQL,
+    FileSource.DINGTALK_AI_TABLE: DingTalkAITable,
 }
 
 
@@ -1324,6 +1490,7 @@ async def main():
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
+    logging.info(f"RAGFlow data sync is ready after {time.time() - start_ts}s initialization.")
     while not stop_event.is_set():
         await dispatch_tasks()
     logging.error("BUG!!! You should not reach here!!!")

@@ -15,6 +15,7 @@
 #
 import logging
 import asyncio
+import os
 import pathlib
 import re
 from quart import request, make_response
@@ -25,17 +26,17 @@ from api.db.services.connector_service import Connector2KbService
 from api.db.services.document_service import DocumentService
 from api.db.services.file2document_service import File2DocumentService
 from api.utils.api_utils import server_error_response, get_data_error_result, validate_request
-from common.misc_utils import get_uuid
+from common.misc_utils import get_uuid, thread_pool_exec
 from common.constants import RetCode, FileSource
 from api.db import FileType
 from api.db.services.file_service import FileService
 from api.utils.api_utils import get_json_result, get_request_json
-from api.utils.web_utils import CONTENT_TYPE_MAP
+from api.utils.file_utils import filename_type
+from api.utils.web_utils import CONTENT_TYPE_MAP, apply_safe_file_response_headers
 from common import settings
 from common.role_util import check_role_access, FILE_API_ACTION_MAP, FILE_ROLE_RESOURCE_TYPE
 
 file_role_guard = check_role_access(FILE_API_ACTION_MAP, FILE_ROLE_RESOURCE_TYPE)
-
 
 @manager.route('/upload', methods=['POST'])  # noqa: F821
 @login_required
@@ -60,7 +61,69 @@ async def upload():
             return get_json_result(
                 data=False, message='No file selected!', code=RetCode.ARGUMENT_ERROR)
     try:
-        file_res = await FileService.upload_files(pf_id, file_objs, current_user.id)
+        e, pf_folder = FileService.get_by_id(pf_id)
+        if not e:
+            return get_data_error_result( message="Can't find this folder!")
+
+        async def _handle_single_file(file_obj):
+            MAX_FILE_NUM_PER_USER: int = int(os.environ.get('MAX_FILE_NUM_PER_USER', 0))
+            if 0 < MAX_FILE_NUM_PER_USER <= await thread_pool_exec(DocumentService.get_doc_count, current_user.id):
+                return get_data_error_result( message="Exceed the maximum file number of a free user!")
+
+            # split file name path
+            if not file_obj.filename:
+                file_obj_names = [pf_folder.name, file_obj.filename]
+            else:
+                full_path = '/' + file_obj.filename
+                file_obj_names = full_path.split('/')
+            file_len = len(file_obj_names)
+
+            # get folder
+            file_id_list = await thread_pool_exec(FileService.get_id_list_by_id, pf_id, file_obj_names, 1, [pf_id])
+            len_id_list = len(file_id_list)
+
+            # create folder
+            if file_len != len_id_list:
+                e, file = await thread_pool_exec(FileService.get_by_id, file_id_list[len_id_list - 1])
+                if not e:
+                    return get_data_error_result(message="Folder not found!")
+                last_folder = await thread_pool_exec(FileService.create_folder, file, file_id_list[len_id_list - 1], file_obj_names,
+                                                        len_id_list)
+            else:
+                e, file = await thread_pool_exec(FileService.get_by_id, file_id_list[len_id_list - 2])
+                if not e:
+                    return get_data_error_result(message="Folder not found!")
+                last_folder = await thread_pool_exec(FileService.create_folder, file, file_id_list[len_id_list - 2], file_obj_names,
+                                                        len_id_list)
+
+            # file type
+            filetype = filename_type(file_obj_names[file_len - 1])
+            location = file_obj_names[file_len - 1]
+            while await thread_pool_exec(settings.STORAGE_IMPL.obj_exist, last_folder.id, location):
+                location += "_"
+            blob = await thread_pool_exec(file_obj.read)
+            filename = await thread_pool_exec(
+                duplicate_name,
+                FileService.query,
+                name=file_obj_names[file_len - 1],
+                parent_id=last_folder.id)
+            await thread_pool_exec(settings.STORAGE_IMPL.put, last_folder.id, location, blob)
+            file_data = {
+                "id": get_uuid(),
+                "parent_id": last_folder.id,
+                "tenant_id": current_user.id,
+                "created_by": current_user.id,
+                "type": filetype,
+                "name": filename,
+                "location": location,
+                "size": len(blob),
+            }
+            inserted = await thread_pool_exec(FileService.insert, file_data)
+            return inserted.to_json()
+
+        for file_obj in file_objs:
+            res = await _handle_single_file(file_obj)
+            file_res.append(res)
 
         return get_json_result(data=file_res)
     except Exception as e:
@@ -194,6 +257,7 @@ def get_all_parent_folders():
 async def rm():
     req = await get_request_json()
     file_ids = req["file_ids"]
+    uid = current_user.id
 
     try:
         def _delete_single_file(file):
@@ -232,21 +296,21 @@ async def rm():
                     return get_data_error_result(message="File or Folder not found!")
                 if not file.tenant_id:
                     return get_data_error_result(message="Tenant not found!")
-                if not check_file_team_permission(file, current_user.id):
+                if not check_file_team_permission(file, uid):
                     return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
 
                 if file.source_type == FileSource.KNOWLEDGEBASE:
                     continue
 
                 if file.type == FileType.FOLDER.value:
-                    _delete_folder_recursive(file, current_user.id)
+                    _delete_folder_recursive(file, uid)
                     continue
 
                 _delete_single_file(file)
 
             return get_json_result(data=True)
 
-        return await asyncio.to_thread(_rm_sync)
+        return await thread_pool_exec(_rm_sync)
 
     except Exception as e:
         return server_error_response(e)
@@ -303,30 +367,22 @@ async def get(file_id):
     if not check_file_team_permission(file, current_user.id):
         return get_json_result(data=False, message='No authorization.', code=RetCode.AUTHENTICATION_ERROR)
 
-    for i in range(len(settings.STORAGE_IMPL.conn)):
-        try:
-            blob = await asyncio.to_thread(settings.STORAGE_IMPL.conn[i].get_object, file.parent_id, file.location)
-            blob = blob.read()
-            if not blob:
-                b, n = File2DocumentService.get_storage_address(file_id=file_id)
-                blob = await asyncio.to_thread(settings.STORAGE_IMPL.conn[i].get_object, b, n)
-                blob = blob.read()
-            if not blob:
-                continue
-            response = await make_response(blob)
-            ext = re.search(r"\.([^.]+)$", file.name.lower())
-            ext = ext.group(1) if ext else None
-            if ext:
-                if file.type == FileType.VISUAL.value:
-                    content_type = CONTENT_TYPE_MAP.get(ext, f"image/{ext}")
-                else:
-                    content_type = CONTENT_TYPE_MAP.get(ext, f"application/{ext}")
-                response.headers.set("Content-Type", content_type)
-            return response
-        except Exception as e:
-            logging.exception(e)
+        blob = await thread_pool_exec(settings.STORAGE_IMPL.get, file.parent_id, file.location)
+        if not blob:
+            b, n = File2DocumentService.get_storage_address(file_id=file_id)
+            blob = await thread_pool_exec(settings.STORAGE_IMPL.get, b, n)
 
-    return get_data_error_result(message="""File not found.""")
+        response = await make_response(blob)
+        ext = re.search(r"\.([^.]+)$", file.name.lower())
+        ext = ext.group(1) if ext else None
+        content_type = None
+        if ext:
+            fallback_prefix = "image" if file.type == FileType.VISUAL.value else "application"
+            content_type = CONTENT_TYPE_MAP.get(ext, f"{fallback_prefix}/{ext}")
+        apply_safe_file_response_headers(response, content_type, ext)
+        return response
+    except Exception as e:
+        return server_error_response(e)
 
 
 @manager.route("/mv", methods=["POST"])  # noqa: F821
@@ -414,7 +470,7 @@ async def move():
                 _move_entry_recursive(file, dest_folder)
             return get_json_result(data=True)
 
-        return await asyncio.to_thread(_move_sync)
+        return await thread_pool_exec(_move_sync)
 
     except Exception as e:
         return server_error_response(e)

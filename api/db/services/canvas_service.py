@@ -154,7 +154,6 @@ class UserCanvasService(CommonService):
             cls.model.id,
             cls.model.avatar,
             cls.model.title,
-            cls.model.dsl,
             cls.model.description,
             cls.model.permission,
             cls.model.user_id.alias("tenant_id"),
@@ -242,23 +241,31 @@ async def completion(tenant_id, agent_id, session_id=None, **kwargs):
     files = kwargs.get("files", [])
     inputs = kwargs.get("inputs", {})
     user_id = kwargs.get("user_id", "")
+    custom_header = kwargs.get("custom_header", "")
+    release_mode = str(kwargs.get("release", "")).strip().lower()
 
     if session_id:
         e, conv = API4ConversationService.get_by_id(session_id)
-        assert e, "Session not found!"
+        if not e:
+            raise LookupError("Session not found!")
         if not conv.message:
             conv.message = []
         if not isinstance(conv.dsl, str):
             conv.dsl = json.dumps(conv.dsl, ensure_ascii=False)
-        canvas = Canvas(conv.dsl, tenant_id, agent_id)
+        canvas = Canvas(conv.dsl, tenant_id, agent_id, canvas_id=agent_id, custom_header=custom_header)
     else:
         e, cvs = UserCanvasService.get_by_id(agent_id)
-        assert e, "Agent not found."
-        assert UserCanvasService.accessible(agent_id, tenant_id), "You do not have access to the agent."
+        if not e:
+            raise LookupError("Agent not found.")
+        if cvs.user_id != tenant_id:
+            raise PermissionError("You do not own the agent.")
+        if release_mode == "true" and not bool(cvs.release):
+            raise PermissionError("No available published version")
         if not isinstance(cvs.dsl, str):
             cvs.dsl = json.dumps(cvs.dsl, ensure_ascii=False)
+
         session_id=get_uuid()
-        canvas = Canvas(cvs.dsl, tenant_id, agent_id, canvas_id=cvs.id)
+        canvas = Canvas(cvs.dsl, tenant_id, agent_id, canvas_id=cvs.id, custom_header=custom_header)
         canvas.reset()
         conv = {
             "id": session_id,
@@ -276,7 +283,8 @@ async def completion(tenant_id, agent_id, session_id=None, **kwargs):
     conv.message.append({
         "role": "user",
         "content": query,
-        "id": message_id
+        "id": message_id,
+        "files": files
     })
     txt = ""
     async for ans in canvas.run(query=query, files=files, user_id=user_id, inputs=inputs):

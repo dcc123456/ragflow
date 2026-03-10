@@ -19,7 +19,7 @@ import { useFetchKnowledgeBaseConfiguration } from '@/hooks/use-knowledge-reques
 import { IModalProps } from '@/interfaces/common';
 import { IParserConfig } from '@/interfaces/database/document';
 import { IChangeParserConfigRequestBody } from '@/interfaces/request/document';
-import { MetadataType } from '@/pages/dataset/components/metedata/hooks/use-manage-modal';
+import { MetadataType } from '@/pages/dataset/components/metedata/constant';
 import {
   AutoMetadata,
   ChunkMethodItem,
@@ -43,7 +43,6 @@ import { DataFlowSelect } from '../data-pipeline-select';
 import { DelimiterFormField } from '../delimiter-form-field';
 import { EntityTypesFormField } from '../entity-types-form-field';
 import { ExcelToHtmlFormField } from '../excel-to-html-form-field';
-import { FormContainer } from '../form-container';
 import { LayoutRecognizeFormField } from '../layout-recognize-form-field';
 import { MaxTokenNumberFormField } from '../max-token-number-from-field';
 import { MinerUOptionsFormField } from '../mineru-options-form-field';
@@ -58,11 +57,10 @@ import {
 
 const FormId = 'ChunkMethodDialogForm';
 
-interface IProps
-  extends IModalProps<{
-    parserId: string;
-    parserConfig: IChangeParserConfigRequestBody;
-  }> {
+interface IProps extends IModalProps<{
+  parserId: string;
+  parserConfig: IChangeParserConfigRequestBody;
+}> {
   loading: boolean;
   parserId: string;
   pipelineId?: string;
@@ -148,15 +146,13 @@ export function ChunkMethodDialog({
         pages: z
           .array(z.object({ from: z.coerce.number(), to: z.coerce.number() }))
           .optional(),
-        metadata: z
+        metadata: z.any().optional(),
+        built_in_metadata: z
           .array(
-            z
-              .object({
-                key: z.string().optional(),
-                description: z.string().optional(),
-                enum: z.array(z.string().optional()).optional(),
-              })
-              .optional(),
+            z.object({
+              key: z.string().optional(),
+              type: z.string().optional(),
+            }),
           )
           .optional(),
         enable_metadata: z.boolean().optional(),
@@ -299,22 +295,16 @@ export function ChunkMethodDialog({
         <DialogHeader>
           <DialogTitle>{t('knowledgeDetails.chunkMethod')}</DialogTitle>
         </DialogHeader>
+
         <Form {...form}>
           <form
             onSubmit={form.handleSubmit(onSubmit)}
-            className="space-y-6 max-h-[70vh] overflow-auto"
+            className="space-y-6 max-h-[70vh] overflow-auto -mx-6 px-10 py-5"
             id={FormId}
           >
-            <FormContainer>
+            <div className="space-y-6">
               <ParseTypeItem />
-              {parseType === 1 && <ChunkMethodItem></ChunkMethodItem>}
-              {parseType === 2 && (
-                <DataFlowSelect
-                  isMult={false}
-                  // toDataPipeline={navigateToAgents}
-                  formFieldName="pipeline_id"
-                />
-              )}
+              {parseType === 1 && <ChunkMethodItem />}
 
               {/* <FormField
                 control={form.control}
@@ -332,9 +322,9 @@ export function ChunkMethodDialog({
                   </FormItem>
                 )}
               /> */}
-              {showPages && parseType === 1 && (
-                <DynamicPageRange></DynamicPageRange>
-              )}
+
+              {showPages && parseType === 1 && <DynamicPageRange />}
+
               {showPages && parseType === 1 && layoutRecognize && (
                 <FormField
                   control={form.control}
@@ -347,31 +337,25 @@ export function ChunkMethodDialog({
                         {t('knowledgeDetails.taskPageSize')}
                       </FormLabel>
                       <FormControl>
-                        <Input
-                          {...field}
-                          type={'number'}
-                          min={1}
-                          max={128}
-                        ></Input>
+                        <Input {...field} type={'number'} min={1} max={128} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
               )}
-            </FormContainer>
+            </div>
+
             {parseType === 1 && (
               <>
-                <FormContainer
-                  show={showOne || showMaxTokenNumber}
-                  className="space-y-3"
-                >
+                <div className="space-y-6 border-t-0.5 border-border-button pt-6 empty:hidden">
                   {showOne && (
                     <>
                       <LayoutRecognizeFormField showMineruOptions={false} />
                       {isMineruSelected && <MinerUOptionsFormField />}
                     </>
                   )}
+
                   {showMaxTokenNumber && (
                     <>
                       <MaxTokenNumberFormField
@@ -380,26 +364,21 @@ export function ChunkMethodDialog({
                             ? 8192 * 2
                             : 2048
                         }
-                      ></MaxTokenNumberFormField>
-                      <DelimiterFormField></DelimiterFormField>
+                      />
+                      <DelimiterFormField />
                       <ChildrenDelimiterForm />
                     </>
                   )}
-                </FormContainer>
-                <FormContainer
-                  show={
-                    isMineruSelected ||
-                    showAutoKeywords(selectedTag) ||
-                    showExcelToHtml
-                  }
-                  className="space-y-3"
-                >
+                </div>
+
+                <div className="space-y-6 border-t-0.5 border-border-button pt-6 empty:hidden">
                   {selectedTag === DocumentParserType.Naive && (
                     <>
                       <EnableTocToggle />
                       <ImageContextWindow />
                     </>
                   )}
+
                   {showAutoKeywords(selectedTag) && (
                     <>
                       <AutoMetadata
@@ -410,28 +389,39 @@ export function ChunkMethodDialog({
                       <AutoQuestionsFormField></AutoQuestionsFormField>
                     </>
                   )}
+
                   {showExcelToHtml && (
                     <ExcelToHtmlFormField></ExcelToHtmlFormField>
                   )}
-                </FormContainer>
+                </div>
                 {/* {showRaptorParseConfiguration(
-                  selectedTag as DocumentParserType,
-                ) && (
-                  <FormContainer>
-                    <RaptorFormFields></RaptorFormFields>
-                  </FormContainer>
-                )} */}
-                {/* {showGraphRagItems(selectedTag as DocumentParserType) &&
-                  useGraphRag && (
+                    selectedTag as DocumentParserType,
+                  ) && (
                     <FormContainer>
-                      <UseGraphRagFormField></UseGraphRagFormField>
+                      <RaptorFormFields></RaptorFormFields>
                     </FormContainer>
                   )} */}
-                {showEntityTypes && (
-                  <EntityTypesFormField></EntityTypesFormField>
-                )}
+                {/* {showGraphRagItems(selectedTag as DocumentParserType) &&
+                    useGraphRag && (
+                      <FormContainer>
+                        <UseGraphRagFormField></UseGraphRagFormField>
+                      </FormContainer>
+                    )} */}
+                <div className="space-y-6 border-t-0.5 border-border-button pt-6 empty:hidden">
+                  {showEntityTypes && <EntityTypesFormField />}
+                </div>
               </>
             )}
+
+            <div className="space-y-6 empty:hidden">
+              {parseType === 2 && (
+                <DataFlowSelect
+                  isMult={false}
+                  // toDataPipeline={navigateToAgents}
+                  formFieldName="pipeline_id"
+                />
+              )}
+            </div>
           </form>
         </Form>
         <DialogFooter>

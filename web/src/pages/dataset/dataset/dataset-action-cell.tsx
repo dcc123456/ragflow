@@ -72,12 +72,12 @@ export function DatasetActionCell({
         disabled={isRunning || datasetEditButtonDisabled}
         onClick={handleRename}
       >
-        <PenLine />
+        <PenLine className="size-[1em]" />
       </Button>
       <HoverCard>
         <HoverCardTrigger>
-          <Button variant="ghost" disabled={isRunning} size={'sm'}>
-            <Eye />
+          <Button variant="ghost" disabled={isRunning} size="icon-xs">
+            <Eye className="size-[1em]" />
           </Button>
         </HoverCardTrigger>
         <HoverCardContent className="w-[40vw] max-h-[40vh] overflow-auto">
@@ -103,21 +103,22 @@ export function DatasetActionCell({
 
       {isVirtualDocument || (
         <Button
-          variant={'ghost'}
+          size="icon-xs"
+          variant="ghost"
           onClick={onDownloadDocument}
           disabled={isRunning}
-          size={'sm'}
         >
-          <Download />
+          <Download className="size-[1em]" />
         </Button>
       )}
       <ConfirmDeleteDialog onOk={handleRemove}>
         <Button
-          variant={'ghost'}
-          size={'sm'}
           disabled={isRunning || datasetEditButtonDisabled}
+          data-testid="document-delete"
+          size="icon-xs"
+          variant="ghost"
         >
-          <Trash2 />
+          <Trash2 className="size-[1em]" />
         </Button>
       </ConfirmDeleteDialog>
     </section>

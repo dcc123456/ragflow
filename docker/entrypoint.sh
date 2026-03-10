@@ -156,8 +156,20 @@ TEMPLATE_FILE="${CONF_DIR}/service_conf.yaml.template"
 CONF_FILE="${CONF_DIR}/service_conf.yaml"
 
 rm -f "${CONF_FILE}"
+DEF_ENV_VALUE_PATTERN="\$\{([^:]+):-([^}]+)\}"
 while IFS= read -r line || [[ -n "$line" ]]; do
-    eval "echo \"$line\"" >> "${CONF_FILE}"
+    if [[ "$line" =~ DEF_ENV_VALUE_PATTERN ]]; then
+        varname="${BASH_REMATCH[1]}"
+        default="${BASH_REMATCH[2]}"
+
+        if [ -n "${!varname}" ]; then
+            eval "echo \"$line"\" >> "${CONF_FILE}"
+        else
+            echo "$line" | sed -E "s/\\\$\{[^:]+:-([^}]+)\}/\1/g" >> "${CONF_FILE}"
+        fi
+    else
+        eval "echo \"$line\"" >> "${CONF_FILE}"
+    fi
 done < "${TEMPLATE_FILE}"
 
 export LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu/"
@@ -195,10 +207,14 @@ function start_mcp_server() {
 
 function ensure_docling() {
     [[ "${USE_DOCLING}" == "true" ]] || { echo "[docling] disabled by USE_DOCLING"; return 0; }
-    python3 -c 'import pip' >/dev/null 2>&1 || python3 -m ensurepip --upgrade || true
-    DOCLING_PIN="${DOCLING_VERSION:-==2.58.0}"
-    python3 -c "import importlib.util,sys; sys.exit(0 if importlib.util.find_spec('docling') else 1)" \
-      || python3 -m pip install -i https://pypi.tuna.tsinghua.edu.cn/simple --extra-index-url https://pypi.org/simple --no-cache-dir "docling${DOCLING_PIN}"
+    DOCLING_PIN="${DOCLING_VERSION:-==2.71.0}"
+    "$PY" -c "import importlib.util,sys; sys.exit(0 if importlib.util.find_spec('docling') else 1)" \
+      || uv pip install -i https://pypi.tuna.tsinghua.edu.cn/simple --extra-index-url https://pypi.org/simple --no-cache-dir "docling${DOCLING_PIN}"
+}
+
+function ensure_db_init() {
+  echo "Initializing database tables..."
+  "$PY" -c "from api.db.db_models import init_database_tables as init_web_db; init_web_db()"
 }
 
 function ensure_mineru() {
@@ -240,6 +256,7 @@ function ensure_mineru() {
 # -----------------------------------------------------------------------------
 ensure_docling
 ensure_mineru
+ensure_db_init
 
 if [[ "${ENABLE_WEBSERVER}" -eq 1 ]]; then
     echo "Starting nginx..."
@@ -248,6 +265,7 @@ if [[ "${ENABLE_WEBSERVER}" -eq 1 ]]; then
     echo "Starting ragflow_server..."
     while true; do
         "$PY" api/ragflow_server.py ${INIT_SUPERUSER_ARGS} &
+        bin/server_main &
         wait;
         sleep 1;
     done &

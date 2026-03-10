@@ -79,7 +79,7 @@ export default function Datasets() {
       searchUrl.delete('isCreate');
       setSearchUrl(searchUrl);
     }
-  }, [isCreate, showModal, searchUrl, setSearchUrl]);
+  }, [isCreate, showModal, searchUrl, setSearchUrl, queryClient]);
 
   const {
     privilegeModal,
@@ -90,7 +90,7 @@ export default function Datasets() {
 
   return (
     <>
-      <section className="py-4 flex-1 flex flex-col">
+      <section className="py-4 pt-8 flex-1 flex flex-col">
         {(!kbs?.length || kbs?.length <= 0) && !searchString && (
           <div className="flex w-full items-center justify-center h-[calc(100vh-164px)]">
             <EmptyAppCard

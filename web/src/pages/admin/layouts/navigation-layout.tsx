@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useContext, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { NavLink, Outlet, useNavigate } from 'react-router';
 
@@ -11,6 +11,7 @@ import {
   LucideSquareUserRound,
   LucideUserCog,
   LucideUserStar,
+  LucideZap,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -20,14 +21,16 @@ import { getSystemVersion, logout } from '@/services/admin-service';
 
 import authorizationUtil from '@/utils/authorization-util';
 
+import ThemeSwitch from '../../../components/theme-switch';
 import { LucideCloudKey } from '../components/icons/LucideCloudKey';
-import ThemeSwitch from '../components/theme-switch';
 import useAdminVariables from '../hooks/useAdminVariables';
 import { IS_ENTERPRISE } from '../utils';
+import { CurrentUserInfoContext } from './root-layout';
 
 const AdminNavigationLayout = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const [, setCurrentUserInfo] = useContext(CurrentUserInfoContext);
 
   const { data: version } = useQuery({
     queryKey: ['admin/version'],
@@ -50,7 +53,12 @@ const AdminNavigationLayout = () => {
         name: t('admin.userManagement'),
         icon: <LucideUserCog className="size-[1em]" />,
       },
-      ...(IS_ENTERPRISE && isWhitelistEnabled
+      {
+        path: Routes.AdminSandboxSettings,
+        name: t('admin.sandboxSettings'),
+        icon: <LucideZap className="size-[1em]" />,
+      },
+      ...(IS_ENTERPRISE
         ? [
             {
               path: Routes.AdminWhitelist,
@@ -93,6 +101,10 @@ const AdminNavigationLayout = () => {
       await logout();
       authorizationUtil.removeAll();
       navigate(Routes.Admin);
+      setCurrentUserInfo({
+        userInfo: null,
+        source: null,
+      });
     },
     retry: false,
   });

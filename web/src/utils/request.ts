@@ -1,3 +1,4 @@
+import message from '@/components/ui/message';
 import { Authorization } from '@/constants/authorization';
 import { ResponseType } from '@/interfaces/database/base';
 import i18n from '@/locales/config';
@@ -5,10 +6,12 @@ import { PriceCode, showPriceModal } from '@/pages/price/gobal/hook';
 import authorizationUtil, {
   getAuthorization,
 } from '@/utils/authorization-util';
+import notification from '@/utils/notification';
 import { redirectToLogin } from '@/utils/private-util';
-import { message, notification } from 'antd';
 import { RequestMethod, extend } from 'umi-request';
 import { convertTheKeysOfTheObjectToSnake } from './common-util';
+import { setCachedLlmList } from './llm-cache';
+import { addTenantParams } from './llm-util';
 import { showStarModal } from './star-util';
 
 const FAILED_TO_FETCH = 'Failed to fetch';
@@ -79,17 +82,22 @@ const request: RequestMethod = extend({
   getResponse: true,
 });
 
+// avoid duplicate 401 redirects
+let isRedirecting = false;
+
 request.interceptors.request.use((url: string, options: any) => {
   const data = convertTheKeysOfTheObjectToSnake(options.data);
   const params = convertTheKeysOfTheObjectToSnake(options.params);
 
   showStarModal(url, request);
+  // Add tenant parameters to data
+  const dataWithTenantParams = addTenantParams(data, url);
 
   return {
     url,
     options: {
       ...options,
-      data,
+      data: dataWithTenantParams,
       params,
       headers: {
         ...(options.skipToken
@@ -109,22 +117,57 @@ request.interceptors.response.use(async (response: any, options: any) => {
     }
   }
 
+  // Handle HTTP 401
+  if (response?.status === 401) {
+    if (!isRedirecting) {
+      isRedirecting = true;
+
+      const data = await response
+        .clone()
+        .json()
+        .catch(() => ({}));
+
+      const messageText = data?.message || RetcodeMessage[401];
+      notification.error({
+        message: messageText,
+        description: messageText,
+        duration: 3,
+      });
+      authorizationUtil.removeAll();
+      redirectToLogin();
+    }
+
+    return response;
+  }
+
   if (options.responseType === 'blob') {
     return response;
   }
 
   const data: ResponseType = await response?.clone()?.json();
+
+  // Update LLM list cache when fetching my_llm or llm_list
+  if (data?.code === 0 && data?.data) {
+    const url = response?.url || '';
+    if (url.includes('/v1/llm/my_llms') || url.includes('/v1/llm/list')) {
+      setCachedLlmList(data.data);
+    }
+  }
+
   if (data?.code === 100) {
     if (!options.noToast) {
       message.error(data?.message);
     }
   } else if (data?.code === 401) {
-    if (!options.noToast) {
+    if (!isRedirecting) {
+      isRedirecting = true;
       notification.error({
         message: data?.message,
         description: data?.message,
         duration: 3,
       });
+      authorizationUtil.removeAll();
+      redirectToLogin();
     }
     authorizationUtil.removeAll();
     redirectToLogin();

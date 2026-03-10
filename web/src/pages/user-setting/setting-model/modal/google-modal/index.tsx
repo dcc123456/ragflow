@@ -5,20 +5,31 @@ import {
 } from '@/components/dynamic-form';
 import { Modal } from '@/components/ui/modal/modal';
 import { useCommonTranslation, useTranslate } from '@/hooks/common-hooks';
+import { useBuildModelTypeOptions } from '@/hooks/logic-hooks/use-build-options';
 import { IModalProps } from '@/interfaces/common';
 import { IAddLlmRequestBody } from '@/interfaces/request/llm';
+import { VerifyResult } from '@/pages/user-setting/setting-model/hooks';
+import { memo, useCallback } from 'react';
 import { FieldValues } from 'react-hook-form';
 import { LLMHeader } from '../../components/llm-header';
+import VerifyButton from '../../modal/verify-button';
 
 const GoogleModal = ({
   visible,
   hideModal,
   onOk,
+  onVerify,
   loading,
   llmFactory,
-}: IModalProps<IAddLlmRequestBody> & { llmFactory: string }) => {
+}: IModalProps<IAddLlmRequestBody> & {
+  llmFactory: string;
+  onVerify?: (
+    postBody: any,
+  ) => Promise<boolean | void | VerifyResult | undefined>;
+}) => {
   const { t } = useTranslate('setting');
   const { t: tc } = useCommonTranslation();
+  const { buildModelTypeOptions } = useBuildModelTypeOptions();
 
   const fields: FormFieldConfig[] = [
     {
@@ -26,10 +37,7 @@ const GoogleModal = ({
       label: t('modelType'),
       type: FormFieldType.Select,
       required: true,
-      options: [
-        { label: 'chat', value: 'chat' },
-        { label: 'image2text', value: 'image2text' },
-      ],
+      options: buildModelTypeOptions(['chat', 'image2text']),
       defaultValue: 'chat',
       validation: {
         message: t('modelTypeMessage'),
@@ -113,6 +121,20 @@ const GoogleModal = ({
     await onOk?.(data);
   };
 
+  const verifyParamsFunc = useCallback(() => {
+    return {
+      llm_factory: llmFactory,
+    };
+  }, [llmFactory]);
+
+  const handleVerify = useCallback(
+    async (params: any) => {
+      const verifyParams = verifyParamsFunc();
+      const res = await onVerify?.({ ...params, ...verifyParams });
+      return (res || { isValid: null, logs: '' }) as VerifyResult;
+    },
+    [verifyParamsFunc, onVerify],
+  );
   return (
     <Modal
       title={<LLMHeader name={llmFactory} />}
@@ -133,6 +155,7 @@ const GoogleModal = ({
         }
         labelClassName="font-normal"
       >
+        {onVerify && <VerifyButton onVerify={handleVerify} />}
         <div className="absolute bottom-0 right-0 left-0 flex items-center justify-end w-full gap-2 py-6 px-6">
           <DynamicForm.CancelButton
             handleCancel={() => {
@@ -152,4 +175,4 @@ const GoogleModal = ({
   );
 };
 
-export default GoogleModal;
+export default memo(GoogleModal);

@@ -17,7 +17,6 @@ from collections import defaultdict
 import os
 import json
 import secrets
-from datetime import date
 import logging
 from common.constants import RAG_FLOW_SERVICE_NAME
 from common.file_utils import get_project_base_directory
@@ -35,12 +34,14 @@ from rag.utils.azure_spn_conn import RAGFlowAzureSpnBlob
 from rag.utils.gcs_conn import RAGFlowGCS
 from rag.utils.minio_conn import RAGFlowMinio
 from rag.utils.opendal_conn import OpenDALStorage
+from rag.utils.redis_conn import REDIS_CONN
 from rag.utils.s3_conn import RAGFlowS3
 from rag.utils.oss_conn import RAGFlowOSS
 
 from rag.nlp import search
 import memory.utils.es_conn as memory_es_conn
 import memory.utils.infinity_conn as memory_infinity_conn
+import memory.utils.ob_conn as memory_ob_conn
 
 DEFAULT_ROLE = os.environ.get("DEFAULT_ROLE", "owner")
 ENABLE_WHITELIST = int(os.environ.get("ENABLE_WHITELIST", "0"))
@@ -85,8 +86,12 @@ AUTHENTICATION_CONF = None
 # client
 CLIENT_AUTHENTICATION = None
 HTTP_APP_KEY = None
+GITHUB_OAUTH = None
+FEISHU_OAUTH = None
+OAUTH_CONFIG = None
 DOC_ENGINE = os.getenv("DOC_ENGINE", "elasticsearch")
-DOC_ENGINE_INFINITY = DOC_ENGINE.lower() == "infinity"
+DOC_ENGINE_INFINITY = (DOC_ENGINE.lower() == "infinity")
+DOC_ENGINE_OCEANBASE = (DOC_ENGINE.lower() == "oceanbase")
 
 
 docStoreConn = None
@@ -99,6 +104,9 @@ kg_retriever = None
 REGISTER_ENABLED = 1
 LOCAL_EMBD = None
 RABBIT_CONF = None
+
+# SSO-only mode: hide password login form
+DISABLE_PASSWORD_LOGIN = False
 
 # sandbox-executor-manager
 SANDBOX_HOST = None
@@ -137,21 +145,22 @@ def get_svr_queue_names():
 
 
 def _get_or_create_secret_key():
-    secret_key = os.environ.get("RAGFLOW_SECRET_KEY")
-    if secret_key and len(secret_key) >= 32:
-        return secret_key
-
-    # Check if there's a configured secret key
-    configured_key = get_base_config(RAG_FLOW_SERVICE_NAME, {}).get("secret_key")
-    if configured_key and configured_key != str(date.today()) and len(configured_key) >= 32:
-        return configured_key
+    # secret_key = os.environ.get("RAGFLOW_SECRET_KEY")
+    # if secret_key and len(secret_key) >= 32:
+    #     return secret_key
+    #
+    # # Check if there's a configured secret key
+    # configured_key = get_base_config(RAG_FLOW_SERVICE_NAME, {}).get("secret_key")
+    # if configured_key and configured_key != str(date.today()) and len(configured_key) >= 32:
+    #     return configured_key
 
     # Generate a new secure key and warn about it
     import logging
 
-    new_key = secrets.token_hex(32)
+    generated_key = secrets.token_hex(32)
+    secret_key = REDIS_CONN.get_or_create_secret_key("ragflow:system:secret_key", generated_key)
     logging.warning("SECURITY WARNING: Using auto-generated SECRET_KEY.")
-    return new_key
+    return secret_key
 
 class StorageFactory:
     storage_mapping = {
@@ -184,6 +193,17 @@ def init_settings():
     global REGISTER_ENABLED
     try:
         REGISTER_ENABLED = int(os.environ.get("REGISTER_ENABLED", "1"))
+    except Exception:
+        pass
+
+    global DISABLE_PASSWORD_LOGIN
+    try:
+        env_val = os.environ.get("DISABLE_PASSWORD_LOGIN", "").lower()
+        if env_val in ("1", "true", "yes"):
+            DISABLE_PASSWORD_LOGIN = True
+        else:
+            authentication_conf = get_base_config("authentication", {})
+            DISABLE_PASSWORD_LOGIN = bool(authentication_conf.get("disable_password_login", False))
     except Exception:
         pass
 
@@ -240,9 +260,10 @@ def init_settings():
     CLIENT_AUTHENTICATION = authentication_conf.get("client", {}).get("switch", False)
     HTTP_APP_KEY = authentication_conf.get("client", {}).get("http_app_key")
 
-    global DOC_ENGINE, DOC_ENGINE_INFINITY, docStoreConn, ES, OB, OS, INFINITY
-    DOC_ENGINE = os.environ.get("DOC_ENGINE", "elasticsearch")
-    DOC_ENGINE_INFINITY = DOC_ENGINE.lower() == "infinity"
+    global DOC_ENGINE, DOC_ENGINE_INFINITY, DOC_ENGINE_OCEANBASE, docStoreConn, ES, OB, OS, INFINITY
+    DOC_ENGINE = os.environ.get("DOC_ENGINE", "elasticsearch").strip()
+    DOC_ENGINE_INFINITY = (DOC_ENGINE.lower() == "infinity")
+    DOC_ENGINE_OCEANBASE = (DOC_ENGINE.lower() == "oceanbase")
     lower_case_doc_engine = DOC_ENGINE.lower()
     if lower_case_doc_engine == "elasticsearch":
         ES = get_base_config("es", {})
@@ -255,13 +276,20 @@ def init_settings():
                 ES = {"hosts": ES}
         docStoreConn = rag.utils.es_conn.ESConnection()
     elif lower_case_doc_engine == "infinity":
-        INFINITY = get_base_config("infinity", {"uri": "infinity:23817"})
+        INFINITY = get_base_config("infinity", {
+            "uri": "infinity:23817",
+            "postgres_port": 5432,
+            "db_name": "default_db"
+        })
         docStoreConn = rag.utils.infinity_conn.InfinityConnection()
     elif lower_case_doc_engine == "opensearch":
         OS = get_base_config("os", {})
         docStoreConn = rag.utils.opensearch_conn.OSConnection()
     elif lower_case_doc_engine == "oceanbase":
         OB = get_base_config("oceanbase", {})
+        docStoreConn = rag.utils.ob_conn.OBConnection()
+    elif lower_case_doc_engine == "seekdb":
+        OB = get_base_config("seekdb", {})
         docStoreConn = rag.utils.ob_conn.OBConnection()
     else:
         raise Exception(f"Not supported doc engine: {DOC_ENGINE}")
@@ -272,8 +300,14 @@ def init_settings():
         ES = get_base_config("es", {})
         msgStoreConn = memory_es_conn.ESConnection()
     elif DOC_ENGINE == "infinity":
-        INFINITY = get_base_config("infinity", {"uri": "infinity:23817"})
+        INFINITY = get_base_config("infinity", {
+            "uri": "infinity:23817",
+            "postgres_port": 5432,
+            "db_name": "default_db"
+        })
         msgStoreConn = memory_infinity_conn.InfinityConnection()
+    elif lower_case_doc_engine in ["oceanbase", "seekdb"]:
+        msgStoreConn = memory_ob_conn.OBConnection()
 
     global AZURE, S3, MINIO, OSS, GCS
     if STORAGE_IMPL_TYPE in ["AZURE_SPN", "AZURE_SAS"]:
@@ -327,7 +361,7 @@ def init_settings():
 
     global retriever, kg_retriever
     retriever = search.Dealer(docStoreConn)
-    from graphrag import search as kg_search
+    from rag.graphrag import search as kg_search
 
     kg_retriever = kg_search.KGSearch(docStoreConn)
 

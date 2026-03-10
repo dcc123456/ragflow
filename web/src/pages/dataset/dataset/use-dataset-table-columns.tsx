@@ -12,18 +12,14 @@ import { useDatasetEditButtonDisabled } from '@/hooks/logic-hooks/use-permission
 import { useSetDocumentStatus } from '@/hooks/use-document-request';
 import { IDocumentInfo } from '@/interfaces/database/document';
 import { cn } from '@/lib/utils';
-import { useDataSourceInfo } from '@/pages/user-setting/data-source/constant';
 import { formatDate } from '@/utils/date';
 import { ColumnDef } from '@tanstack/table-core';
-import { ArrowUpDown, MonitorUp } from 'lucide-react';
+import { ArrowUpDown } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import {
-  MetadataType,
-  util,
-} from '../components/metedata/hooks/use-manage-modal';
+import { MetadataType } from '../components/metedata/constant';
 import { ShowManageMetadataModalProps } from '../components/metedata/interface';
 import { DatasetActionCell } from './dataset-action-cell';
-import { ParsingStatusCell } from './parsing-status-cell';
+import { ParseDropdownButton, ParsingStatusCell } from './parsing-status-cell';
 import { UseChangeDocumentParserShowType } from './use-change-document-parser';
 import { UseRenameDocumentShowType } from './use-rename-document';
 
@@ -43,7 +39,7 @@ export function useDatasetTableColumns({
   const { t } = useTranslation('translation', {
     keyPrefix: 'knowledgeDetails',
   });
-  const { dataSourceInfo } = useDataSourceInfo();
+  // const { dataSourceInfo } = useDataSourceInfo();
   const { navigateToChunkParsedResult } = useNavigatePage();
   const { setDocumentStatus } = useSetDocumentStatus();
 
@@ -53,6 +49,7 @@ export function useDatasetTableColumns({
       header: ({ table }) => (
         <Checkbox
           disabled={datasetEditButtonDisabled}
+          className="size-3"
           checked={
             table.getIsAllPageRowsSelected() ||
             (table.getIsSomePageRowsSelected() && 'indeterminate')
@@ -64,6 +61,7 @@ export function useDatasetTableColumns({
       cell: ({ row }) => (
         <Checkbox
           disabled={datasetEditButtonDisabled}
+          className="size-3"
           checked={row.getIsSelected()}
           onCheckedChange={(value) => row.toggleSelected(!!value)}
           aria-label="Select row"
@@ -76,14 +74,19 @@ export function useDatasetTableColumns({
       accessorKey: 'name',
       header: ({ column }) => {
         return (
-          <Button
-            variant="transparent"
-            className="border-none"
-            onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-          >
+          <div className="flex items-center gap-1">
             {t('name')}
-            <ArrowUpDown />
-          </Button>
+
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              onClick={() =>
+                column.toggleSorting(column.getIsSorted() === 'asc')
+              }
+            >
+              <ArrowUpDown />
+            </Button>
+          </div>
         );
       },
       meta: { cellClassName: 'max-w-[20vw]' },
@@ -94,7 +97,7 @@ export function useDatasetTableColumns({
           <Tooltip>
             <TooltipTrigger asChild>
               <div
-                className="flex gap-2 cursor-pointer"
+                className="flex items-center gap-2 cursor-pointer"
                 onClick={navigateToChunkParsedResult(
                   row.original.id,
                   row.original.kb_id,
@@ -115,22 +118,31 @@ export function useDatasetTableColumns({
       accessorKey: 'create_time',
       header: ({ column }) => {
         return (
-          <Button
-            variant="transparent"
-            className="border-none"
-            onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-          >
+          <div className="flex items-center gap-1">
             {t('uploadDate')}
-            <ArrowUpDown />
-          </Button>
+
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              onClick={() =>
+                column.toggleSorting(column.getIsSorted() === 'asc')
+              }
+            >
+              <ArrowUpDown />
+            </Button>
+          </div>
         );
       },
       cell: ({ row }) => (
-        <div className="lowercase">
+        <time
+          className="lowercase"
+          dateTime={new Date(row.getValue('create_time')).toISOString()}
+        >
           {formatDate(row.getValue('create_time'))}
-        </div>
+        </time>
       ),
     },
+    /*
     {
       accessorKey: 'source_from',
       header: t('source'),
@@ -153,6 +165,7 @@ export function useDatasetTableColumns({
         </div>
       ),
     },
+    */
     {
       accessorKey: 'status',
       header: t('enabled'),
@@ -177,34 +190,72 @@ export function useDatasetTableColumns({
       ),
     },
     {
-      accessorKey: 'run',
-      header: t('Parse'),
-      // meta: { cellClassName: 'min-w-[20vw]' },
+      accessorKey: 'meta_fields',
+      header: t('metadata.metadata'),
       cell: ({ row }) => {
+        const length = Object.keys(row.getValue('meta_fields') || {}).length;
         return (
-          <ParsingStatusCell
-            record={row.original}
-            showChangeParserModal={showChangeParserModal}
-            showSetMetaModal={(row) =>
+          <Button
+            variant="static"
+            size="auto"
+            onClick={() => {
               showManageMetadataModal({
-                metadata: util.JSONToMetaDataTableData(row.meta_fields || {}),
+                // metadata: util.JSONToMetaDataTableData(
+                //   row.original.meta_fields || {},
+                // ),
+                isEditField: false,
                 isCanAdd: true,
+                isAddValue: true,
                 type: MetadataType.UpdateSingle,
-                record: row,
+                record: row.original,
                 title: (
                   <div className="flex flex-col gap-2 w-full">
                     <div className="text-base font-normal">
                       {t('metadata.editMetadata')}
                     </div>
-                    <div className="text-sm text-text-secondary w-full truncate">
+                    {/* <div className="text-sm text-text-secondary w-full truncate">
                       {t('metadata.editMetadataForDataset')}
-                      {row.name}
-                    </div>
+                      {row.original.name}
+                    </div> */}
+                  </div>
+                ),
+                secondTitle: (
+                  <div className="w-full flex gap-1 text-sm text-text-secondary">
+                    <FileIcon name={row.original.name}></FileIcon>
+                    <div className="truncate">{row.original.name}</div>
                   </div>
                 ),
                 isDeleteSingleValue: true,
-              })
-            }
+                documentIds: [row.original.id],
+              });
+            }}
+          >
+            {length + ' fields'}
+          </Button>
+        );
+      },
+    },
+    {
+      accessorKey: 'run',
+      header: t('Parse'),
+      // meta: { cellClassName: 'min-w-[20vw]' },
+      cell: ({ row }) => {
+        return (
+          <ParseDropdownButton
+            record={row.original}
+            showChangeParserModal={showChangeParserModal}
+          />
+        );
+      },
+    },
+    {
+      id: 'run-status',
+      header: '',
+      cell: ({ row }) => {
+        return (
+          <ParsingStatusCell
+            record={row.original}
+            showChangeParserModal={showChangeParserModal}
             showLog={showLog}
             datasetEditButtonDisabled={datasetEditButtonDisabled}
           ></ParsingStatusCell>
