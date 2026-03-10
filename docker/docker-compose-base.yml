@@ -193,7 +193,7 @@ services:
       --binlog_expire_logs_seconds=86400
       --init-file /data/application/init.sql
     ports:
-      - ${EXPOSE_MYSQL_PORT}:3306
+      - ${MYSQL_PORT}:3306
     volumes:
       - mysql_data:/var/lib/mysql
       - ./init.sql:/data/application/init.sql
