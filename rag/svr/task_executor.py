@@ -1503,7 +1503,7 @@ def task_manager():
     RABBITMQ_CONN.queue_consumer(rout_key(PRIORITY, TASK_TYPE), rabbitmq_callback)
 
 
-def main():
+async def main():
     global PRIORITY, TASK_TYPE
     if os.environ.get("DEEPDOC_URL"):
         from deepdoc.vision.tsr_cli import TSRClient
@@ -1575,4 +1575,4 @@ if __name__ == "__main__":
 
     faulthandler.enable()
     init_root_logger(CONSUMER_NAME)
-    main()
+    asyncio.run(main())
