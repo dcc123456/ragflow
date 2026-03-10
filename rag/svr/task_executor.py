@@ -236,11 +236,7 @@ def set_progress(task_id, from_page=0, to_page=-1, prog=None, msg="Processing...
 
 
 async def get_storage_binary(bucket, name, tenant_id):
-    return await asyncio.to_thread(settings.STORAGE_IMPL.get, bucket, name, tenant_id)
-
-
-async def get_storage_binary(bucket, name):
-    return await thread_pool_exec(settings.STORAGE_IMPL.get, bucket, name)
+    return await thread_pool_exec(settings.STORAGE_IMPL.get, bucket, name, tenant_id)
 
 
 @timeout(60 * 80, 1)
@@ -833,15 +829,15 @@ async def run_raptor_for_kb(row, kb_parser_config, chat_mdl, embd_mdl, vector_si
                     logging.warning(f"RAPTOR: Chunk missing vector field '{vctr_nm}' in doc {doc_id}, skipping")
                     continue
                 chunks.append((d["content_with_weight"], np.array(d[vctr_nm])))
-            
+
             if skipped_chunks > 0:
                 callback(msg=f"[WARN] Skipped {skipped_chunks} chunks without vector field '{vctr_nm}' for doc {doc_id}. Consider re-parsing the document with the current embedding model.")
-            
+
             if not chunks:
                 logging.warning(f"RAPTOR: No valid chunks with vectors found for doc {doc_id}")
                 callback(msg=f"[WARN] No valid chunks with vectors found for doc {doc_id}, skipping")
                 continue
-                
+
             await generate(chunks, doc_id)
             callback(prog=(x + 1.) / len(doc_ids))
     else:
@@ -983,7 +979,7 @@ async def do_handle_task(task):
                     progress_callback,
                     case_ids=case_ids,
                     metrics_name=metrics_name,
-                ), 
+                ),
                 timeout=((len(case_ids) if case_ids else cases_total)+1)*(len(metrics_name) if metrics_name else 3)*60)
         except Exception:
             EvaluationRun.update(
@@ -992,7 +988,7 @@ async def do_handle_task(task):
                 ).where(EvaluationRun.id == run_id).execute()
             raise
         return
-    
+
     task_id = task["id"]
     task_from_page = task["from_page"]
     task_to_page = task["to_page"]
