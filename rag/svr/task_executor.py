@@ -1532,30 +1532,14 @@ async def main():
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
-    # Merged from OSS from 2026-03-09
-    # Start heartbeat reporter in a separate thread
-    # heartbeat_thread = threading.Thread(target=report_status, daemon=True)
-    # heartbeat_thread.start()
-    #
-    # logging.info("This is for Q: te.{}.{}".format(PRIORITY, TASK_TYPE))
-    # task_manager()
-    # Merged from OSS from 2026-03-09
-
-    report_task = asyncio.create_task(report_status())
-    tasks = []
-
+    heartbeat_thread = threading.Thread(target=report_status, daemon=True)
+    heartbeat_thread.start()
     logging.info(f"RAGFlow ingestion is ready after {time.time() - start_ts}s initialization.")
+    logging.info("This is for Q: te.{}.{}".format(PRIORITY, TASK_TYPE))
     try:
-        while not stop_event.is_set():
-            await task_limiter.acquire()
-            t = asyncio.create_task(task_manager())
-            tasks.append(t)
+        task_manager()
     finally:
-        for t in tasks:
-            t.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
-        report_task.cancel()
-        await asyncio.gather(report_task, return_exceptions=True)
+        stop_event.set()
     logging.error("BUG!!! You should not reach here!!!")
 
 
