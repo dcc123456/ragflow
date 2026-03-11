@@ -442,7 +442,7 @@ class RAGFlowPdfParser:
         rows = gather(r".* (row|header)")
         spans = gather(r".*spanning")
         # clmns = sorted([r for r in self.tb_cpns if re.match(r"table column$", r.get("label", ""))], key=lambda x: (x["pn"], x["layoutno"], x["x0"]))
-        clmns = sorted([r for r in self.tb_cpns if re.match(r"table column$", r["label"])], key=lambda x: (x["pn"], x["layoutno"], x["x0_rotated"] if "x0_rotated" in x else x["x0"]))
+        clmns = sorted([r for r in self.tb_cpns if re.match(r"table column$", r.get("label", ""))], key=lambda x: (x["pn"], x["layoutno"], x["x0_rotated"] if "x0_rotated" in x else x["x0"]))
         clmns = Recognizer.layouts_cleanup(self.boxes, clmns, 5, 0.5)
 
         for b in self.boxes:
