@@ -72,7 +72,7 @@ kb_role_guard = check_role_access(KB_API_ACTION_MAP, KB_ROLE_RESOURCE_TYPE)
 async def create():
     req = await get_request_json()
     create_dict = ensure_tenant_model_id_for_params(current_user.id, req)
-    e, res = KnowledgebaseService.create_with_name(
+    e, kb = KnowledgebaseService.create_with_name(
         name = create_dict.pop("name", None),
         tenant_id = current_user.id,
         parser_id = create_dict.pop("parser_id", None),
@@ -80,16 +80,22 @@ async def create():
     )
 
     if not e:
-        return req
+        return kb
 
     tenant_id = current_user.id
+    current_user_id = current_user.id
     try:
-        operator = UserTenantService.filter_by_tenant_and_user_id(tenant_id, tenant_id)
+        operator = UserTenantService.filter_by_tenant_and_user_id(tenant_id, current_user_id)
         with DB.atomic():
-            if not KnowledgebaseService.save(**req):
+            if not KnowledgebaseService.save(**kb):
                 raise ValueError("KB creation failed")
             if not PermissionService.save(
-                id=get_uuid(), member_id=operator.id, tenant_id=tenant_id, resource_type=ResourceType.KB, resource_id=req["id"], permission=PermissionValue.PERMISSION_OWNER.value
+                id=get_uuid(),
+                member_id=operator.id,
+                tenant_id=tenant_id,
+                resource_type=ResourceType.KB,
+                resource_id=kb["id"],
+                permission=PermissionValue.PERMISSION_OWNER.value,
             ):
                 raise ValueError("Permission creation failed")
             if not PermissionChangeLogService.save(
@@ -99,7 +105,7 @@ async def create():
                 target_type=PermissionTargetType.TARGET_MEMBER,
                 target_id=operator.id,
                 resource_type=ResourceType.KB,
-                resource_id=req["id"],
+                resource_id=kb["id"],
                 old_permission=PermissionValue.PERMISSION_NULL.value,
                 new_permission=PermissionValue.PERMISSION_OWNER.value,
                 action_type=PermissionActionType.ACTION_ADD,
@@ -108,7 +114,7 @@ async def create():
 
         await asyncio.sleep(3)
 
-        return get_json_result(data={"kb_id": req["id"]})
+        return get_json_result(data={"kb_id": kb["id"]})
     except Exception as e:
         return server_error_response(e)
 
