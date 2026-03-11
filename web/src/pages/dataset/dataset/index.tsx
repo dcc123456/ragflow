@@ -212,7 +212,7 @@ export default function Dataset() {
         >
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button size="default">
+              <Button size="default" disabled={datasetEditButtonDisabled}>
                 <LucidePlus />
                 {t('knowledgeDetails.addFile')}
               </Button>
