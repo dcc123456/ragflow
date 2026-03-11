@@ -485,6 +485,7 @@ class TestDocRoutesUnit:
         module = _load_doc_module(monkeypatch)
         _patch_send_file(monkeypatch, module)
         _patch_storage(monkeypatch, module, file_stream=b"")
+        monkeypatch.setattr(module.DocumentService, "get_tenant_id", lambda _doc_id: "tenant-1")
         res = _run(module.download.__wrapped__("tenant-1", "ds-1", ""))
         assert res["message"] == "Specify document_id please."
         monkeypatch.setattr(module.KnowledgebaseService, "query", lambda **_kwargs: [])

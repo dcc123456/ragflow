@@ -619,12 +619,12 @@ class TestFileRouteBranchUnit:
                 self.obj_calls = 0
                 self.put_calls = []
 
-            def obj_exist(self, _bucket, _location):
+            def obj_exist(self, *_args, **_kwargs):
                 self.obj_calls += 1
                 return self.obj_calls == 1
 
-            def put(self, bucket, location, blob):
-                self.put_calls.append((bucket, location, blob))
+            def put(self, *args, **kwargs):
+                self.put_calls.append((args, kwargs))
 
         storage = _Storage()
         monkeypatch.setattr(module.settings, "STORAGE_IMPL", storage)
@@ -991,7 +991,7 @@ class TestFileRouteBranchUnit:
             def __init__(self):
                 self.calls = 0
 
-            def get(self, _bucket, _location):
+            def get(self, *_args, **_kwargs):
                 self.calls += 1
                 if self.calls == 1:
                     return None
