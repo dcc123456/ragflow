@@ -31,6 +31,10 @@ const {
   prompt,
   cancelDataflow,
   cancelCanvas,
+  joinCanvasPresence,
+  heartbeatCanvasPresence,
+  leaveCanvasPresence,
+  fetchCanvasPresence,
 } = api;
 
 const methods = {
@@ -125,6 +129,22 @@ const methods = {
   cancelCanvas: {
     url: cancelCanvas,
     method: 'put',
+  },
+  joinCanvasPresence: {
+    url: joinCanvasPresence,
+    method: 'post',
+  },
+  heartbeatCanvasPresence: {
+    url: heartbeatCanvasPresence,
+    method: 'post',
+  },
+  leaveCanvasPresence: {
+    url: leaveCanvasPresence,
+    method: 'post',
+  },
+  fetchCanvasPresence: {
+    url: fetchCanvasPresence,
+    method: 'get',
   },
 } as const;
 

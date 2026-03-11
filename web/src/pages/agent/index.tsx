@@ -21,6 +21,8 @@ import message from '@/components/ui/message';
 import { SharedFrom } from '@/constants/chat';
 import { useSetModalState } from '@/hooks/common-hooks';
 import { useNavigatePage } from '@/hooks/logic-hooks/navigate-hooks';
+import { useFetchCanvasPresence } from '@/hooks/use-agent-request';
+import { showEditButton } from '@/utils/permission-util';
 import { ReactFlowProvider } from '@xyflow/react';
 import {
   ChevronDown,
@@ -53,6 +55,7 @@ import {
   useSaveGraphBeforeOpeningDebugDrawer,
   useWatchAgentChange,
 } from './hooks/use-save-graph';
+import { OnlineUsers } from './online-users';
 import { PipelineLogSheet } from './pipeline-log-sheet';
 import PipelineRunSheet from './pipeline-run-sheet';
 import { SettingDialog } from './setting-dialog';
@@ -204,6 +207,8 @@ export default function Agent() {
     uploadedFileData,
   } = useRunDataflow({ showLogSheet: showPipelineLogSheet, setMessageId });
 
+  const { data: presence } = useFetchCanvasPresence();
+
   return (
     <section className="h-full">
       <PageHeader>
@@ -225,14 +230,17 @@ export default function Agent() {
             {t('flow.autosaved')} {time}
           </div>
         </section>
-        <div className="flex items-center gap-5">
-          <ButtonLoading
-            variant={'secondary'}
-            onClick={() => saveGraph()}
-            loading={loading}
-          >
-            <LaptopMinimalCheck /> {t('flow.save')}
-          </ButtonLoading>
+        <div className="flex flex-wrap items-center justify-end gap-3">
+          <OnlineUsers></OnlineUsers>
+          {showEditButton(presence.operator_permission ?? 0) && (
+            <ButtonLoading
+              variant={'secondary'}
+              onClick={() => saveGraph()}
+              loading={loading}
+            >
+              <LaptopMinimalCheck /> {t('flow.save')}
+            </ButtonLoading>
+          )}
           <Button variant={'secondary'} onClick={handleButtonRunClick}>
             <CirclePlay />
             {t('flow.run')}

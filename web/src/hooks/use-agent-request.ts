@@ -5,9 +5,12 @@ import { AgentGlobals, initialBeginValues } from '@/constants/agent';
 import {
   IAgentLogsRequest,
   IAgentLogsResponse,
+  ICanvasPresenceHeartbeatData,
+  ICanvasPresenceResponse,
   IFlow,
   IFlowTemplate,
   IPipeLineListRequest,
+  IPresencePayload,
   ITraceData,
   IWebhookTrace,
 } from '@/interfaces/database/agent';
@@ -61,6 +64,10 @@ export const enum AgentApiAction {
   CancelDataflow = 'cancelDataflow',
   CancelCanvas = 'cancelCanvas',
   FetchWebhookTrace = 'fetchWebhookTrace',
+  FetchCanvasPresence = 'fetchCanvasPresence',
+  JoinCanvasPresence = 'joinCanvasPresence',
+  HeartbeatCanvasPresence = 'heartbeatCanvasPresence',
+  LeaveCanvasPresence = 'leaveCanvasPresence',
 }
 
 export const EmptyDsl = {
@@ -872,4 +879,82 @@ export const useFetchWebhookTrace = (autoStart: boolean = true) => {
     currentWebhookId,
     currentNextSinceTs,
   };
+};
+
+const emptyPresence: ICanvasPresenceResponse = {
+  canvas_id: '',
+  online_user_count: 0,
+  users: [],
+};
+
+export const useFetchCanvasPresence = () => {
+  const { id: canvasId } = useParams();
+
+  const {
+    data,
+    isFetching: loading,
+    refetch,
+  } = useQuery<ICanvasPresenceResponse>({
+    queryKey: [AgentApiAction.FetchCanvasPresence, canvasId],
+    queryFn: async () => {
+      if (!canvasId) return emptyPresence;
+      const { data } = await agentService.fetchCanvasPresence(canvasId);
+      return data?.data ?? emptyPresence;
+    },
+    enabled: !!canvasId,
+    refetchInterval: 5000,
+    staleTime: 5000,
+    placeholderData: canvasId
+      ? { ...emptyPresence, canvas_id: canvasId }
+      : emptyPresence,
+  });
+
+  return { data: data ?? emptyPresence, loading, refetch };
+};
+
+export const useJoinCanvasPresence = (canvasId?: string) => {
+  const queryClient = useQueryClient();
+
+  const { mutateAsync, isPending: loading } = useMutation({
+    mutationKey: [AgentApiAction.JoinCanvasPresence],
+    mutationFn: async (payload: IPresencePayload) => {
+      if (!canvasId || !payload.tab_id) return;
+      return agentService.joinCanvasPresence(payload);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: [AgentApiAction.FetchCanvasPresence, canvasId],
+      });
+    },
+  });
+
+  return { joinPresence: mutateAsync, loading };
+};
+
+export const useHeartbeatCanvasPresence = () => {
+  const {
+    mutateAsync,
+    isPending: loading,
+    data,
+  } = useMutation({
+    mutationKey: [AgentApiAction.HeartbeatCanvasPresence],
+    mutationFn: async (payload: IPresencePayload) => {
+      if (!payload.canvas_id || !payload.tab_id) return null;
+      const { data } = await agentService.heartbeatCanvasPresence(payload);
+      return data?.data as ICanvasPresenceHeartbeatData | null;
+    },
+  });
+
+  return { heartbeat: mutateAsync, loading, data };
+};
+
+export const useLeaveCanvasPresence = () => {
+  const { mutateAsync, isPending: loading } = useMutation({
+    mutationKey: [AgentApiAction.LeaveCanvasPresence],
+    mutationFn: async (payload: IPresencePayload) => {
+      return agentService.leaveCanvasPresence(payload);
+    },
+  });
+
+  return { leavePresence: mutateAsync, loading };
 };

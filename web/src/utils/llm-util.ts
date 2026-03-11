@@ -24,5 +24,5 @@ export function buildLlmUuid(llm: IThirdOAIModel) {
 }
 
 export function getLlmFactoryName(name: string) {
-  return name.split('#').at(0) ?? '';
+  return name?.split('#').at(0) ?? '';
 }

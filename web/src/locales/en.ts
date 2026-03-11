@@ -1225,6 +1225,8 @@ Example: Virtual Hosted Style`,
       addGoogleRegion: 'Google Cloud Region',
       GoogleRegionMessage: 'Please input Google Cloud Region',
       modelProvidersWarn: `Please add both embedding model and LLM in <b>Settings > Model providers</b> first. Then, set them in 'Set default models'.`,
+      requestAdminAddModel:
+        'Please contact the administrator to add the model.',
       apiVersion: 'API-Version',
       apiVersionMessage: 'Please input API version',
       add: 'Add',

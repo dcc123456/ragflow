@@ -13,7 +13,6 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 #
-import asyncio
 import inspect
 import json
 import logging
@@ -30,7 +29,7 @@ from api.db.services.task_service import queue_dataflow, CANVAS_DEBUG_DOC_ID, Ta
 from api.db.services.user_service import TenantService
 from api.db.services.user_canvas_version import UserCanvasVersionService
 from common.constants import RetCode
-from common.misc_utils import get_uuid
+from common.misc_utils import get_uuid, thread_pool_exec
 from api.utils.api_utils import get_json_result, server_error_response, validate_request, get_data_error_result, \
     get_request_json
 from api.utils.billing import check_dynamic_resources
@@ -39,15 +38,14 @@ from api.db import PermissionValue
 from agent.canvas import Canvas
 from peewee import MySQLDatabase, PostgresqlDatabase
 from api.db.db_models import APIToken, DB, Task
-import time
 
 from rag.flow.pipeline import Pipeline
 from rag.nlp import search
 from rag.utils.redis_conn import REDIS_CONN
 from common import settings
 from api.apps import login_required, current_user
+from api.apps.services.canvas_replica_service import CanvasReplicaService
 from common.role_util import check_role_access, CANVAS_API_ACTION_MAP, CANVAS_ROLE_RESOURCE_TYPE
-
 
 canvas_role_guard = check_role_access(CANVAS_API_ACTION_MAP, CANVAS_ROLE_RESOURCE_TYPE)
 
@@ -94,16 +92,27 @@ async def rm():
     return get_json_result(data=True)
 
 
+# Save and runtime replica flow.
 @manager.route('/set', methods=['POST'])  # noqa: F821
 @validate_request("dsl", "title")
 @login_required
 @canvas_role_guard
-@check_canvas_permission(PermissionValue.PERMISSION_WRITE)
+@check_canvas_permission(PermissionValue.PERMISSION_READ)
 async def save():
-    req = g.req_data
-    if not isinstance(req["dsl"], str):
-        req["dsl"] = json.dumps(req["dsl"], ensure_ascii=False)
-    req["dsl"] = json.loads(req["dsl"])
+    # Return the latest DB payload together with a simple saved flag.
+    def build_save_response(canvas_id, saved):
+        exists, canvas = UserCanvasService.get_by_canvas_id(canvas_id)
+        if not exists:
+            return get_json_result(data={"id": canvas_id, "saved": saved})
+        canvas["saved"] = saved
+        return get_json_result(data=canvas)
+
+    req = await get_request_json()
+    try:
+        # Keep DSL format consistent across web, SDK, Redis and version history.
+        req["dsl"] = CanvasReplicaService.normalize_dsl(req["dsl"])
+    except ValueError as e:
+        return get_data_error_result(message=str(e))
     cate = req.get("canvas_category", CanvasCategory.Agent)
     if "id" not in req:
         req["user_id"] = current_user.id
@@ -121,13 +130,34 @@ async def save():
         if not UserCanvasService.save(**req):
             return get_data_error_result(message="Fail to save canvas.")
     else:
+        # Read-only collaborators can open the save flow, but they do not persist changes.
+        operator_permission = getattr(g, "operator_permission", PermissionValue.PERMISSION_NULL.value)
+        if operator_permission < PermissionValue.PERMISSION_WRITE.value:
+            return build_save_response(req["id"], False)
         UserCanvasService.update_by_id(req["id"], req)
-    # save version
-    UserCanvasVersionService.insert(user_canvas_id=req["id"], dsl=req["dsl"], title="{0}_{1}".format(req["title"], time.strftime("%Y_%m_%d_%H_%M_%S")))
-    UserCanvasVersionService.delete_all_versions(req["id"])
-    return get_json_result(data=req)
+
+    # Version history only tracks explicit saves.
+    UserCanvasVersionService.save_or_replace_latest(
+        user_canvas_id=req["id"],
+        dsl=req["dsl"],
+        title=UserCanvasVersionService.build_version_title(getattr(current_user, "nickname", current_user.id), req.get("title")),
+    )
+
+    # Refresh the owner's runtime replica after a real save.
+    replica_ok = CanvasReplicaService.replace_for_set(
+        canvas_id=req["id"],
+        tenant_id=str(current_user.id),
+        runtime_user_id=str(current_user.id),
+        dsl=req["dsl"],
+        canvas_category=req.get("canvas_category", cate),
+        title=req.get("title", ""),
+    )
+    if not replica_ok:
+        return get_data_error_result(message="canvas saved, but replica sync failed.")
+    return build_save_response(req["id"], True)
 
 
+# Read and run use the per-user runtime replica in Redis.
 @manager.route('/get/<canvas_id>', methods=['GET'])  # noqa: F821
 @login_required
 @canvas_role_guard
@@ -136,6 +166,21 @@ def get(canvas_id):
     e, c = UserCanvasService.get_by_canvas_id(canvas_id)
     if not e:
         return get_data_error_result(message="canvas not found.")
+    e, c = UserCanvasService.get_by_canvas_id(canvas_id)
+    if not e:
+        return get_data_error_result(message="canvas not found.")
+    try:
+        # First open lazily creates the caller's runtime replica.
+        CanvasReplicaService.bootstrap(
+            canvas_id=canvas_id,
+            tenant_id=str(current_user.id),
+            runtime_user_id=str(current_user.id),
+            dsl=c.get("dsl"),
+            canvas_category=c.get("canvas_category", CanvasCategory.Agent),
+            title=c.get("title", ""),
+        )
+    except ValueError as e:
+        return get_data_error_result(message=str(e))
     return get_json_result(data=c)
 
 
@@ -172,25 +217,40 @@ async def run():
     query = req.get("query", "")
     files = req.get("files", [])
     inputs = req.get("inputs", {})
-    user_id = req.get("user_id", current_user.id)
+    tenant_id = str(current_user.id)
+    runtime_user_id = req.get("user_id") or tenant_id
+    user_id = str(runtime_user_id)
+    if not await thread_pool_exec(UserCanvasService.accessible, req["id"], tenant_id):
+        return get_json_result(
+            data=False, message='Only owner of canvas authorized for this operation.',
+            code=RetCode.OPERATING_ERROR)
 
-    e, cvs = await asyncio.to_thread(UserCanvasService.get_by_id, req["id"])
-    if not e:
-        return get_data_error_result(message="canvas not found.")
+    # Runs always read from the user's runtime replica instead of the stored DSL.
+    replica_payload = CanvasReplicaService.load_for_run(
+        canvas_id=req["id"],
+        tenant_id=tenant_id,
+        runtime_user_id=user_id,
+    )
 
-    if not isinstance(cvs.dsl, str):
-        cvs.dsl = json.dumps(cvs.dsl, ensure_ascii=False)
+    if not replica_payload:
+        return get_data_error_result(message="canvas replica not found, please call /get/<canvas_id> first.")
 
-    if cvs.canvas_category == CanvasCategory.DataFlow:
+    replica_dsl = replica_payload.get("dsl", {})
+    canvas_title = replica_payload.get("title", "")
+    canvas_category = replica_payload.get("canvas_category", CanvasCategory.Agent)
+    dsl_str = json.dumps(replica_dsl, ensure_ascii=False)
+
+    if canvas_category == CanvasCategory.DataFlow:
+        # Dataflow debug also uses the replica so unsaved changes can be tested safely.
         task_id = get_uuid()
-        Pipeline(cvs.dsl, tenant_id=current_user.id, doc_id=CANVAS_DEBUG_DOC_ID, task_id=task_id, flow_id=req["id"])
-        ok, error_message = await asyncio.to_thread(queue_dataflow, user_id, req["id"], task_id, CANVAS_DEBUG_DOC_ID, files[0], 0)
+        Pipeline(dsl_str, tenant_id=tenant_id, doc_id=CANVAS_DEBUG_DOC_ID, task_id=task_id, flow_id=req["id"])
+        ok, error_message = await thread_pool_exec(queue_dataflow, user_id, req["id"], task_id, CANVAS_DEBUG_DOC_ID, files[0], 0)
         if not ok:
             return get_data_error_result(message=error_message)
         return get_json_result(data={"message_id": task_id})
 
     try:
-        canvas = Canvas(cvs.dsl, current_user.id, canvas_id=cvs.id)
+        canvas = Canvas(dsl_str, tenant_id, canvas_id=req["id"])
     except Exception as e:
         return server_error_response(e)
 
@@ -200,8 +260,22 @@ async def run():
             async for ans in canvas.run(query=query, files=files, user_id=user_id, inputs=inputs):
                 yield "data:" + json.dumps(ans, ensure_ascii=False) + "\n\n"
 
-            cvs.dsl = json.loads(str(canvas))
-            UserCanvasService.update_by_id(req["id"], cvs.to_dict())
+            # Runtime mutations go back to Redis first and only save() writes DB state.
+            commit_ok = CanvasReplicaService.commit_after_run(
+                canvas_id=req["id"],
+                tenant_id=tenant_id,
+                runtime_user_id=user_id,
+                dsl=json.loads(str(canvas)),
+                canvas_category=canvas_category,
+                title=canvas_title,
+            )
+            if not commit_ok:
+                logging.error(
+                    "Canvas runtime replica commit failed: canvas_id=%s tenant_id=%s runtime_user_id=%s",
+                    req["id"],
+                    tenant_id,
+                    user_id,
+                )
 
         except Exception as e:
             logging.exception(e)
@@ -569,6 +643,80 @@ def trace():
         return get_json_result(data=json.loads(binary.encode("utf-8")))
     except Exception as e:
         logging.exception(e)
+
+
+# Presence APIs share the tenant and permission context prepared by the decorator.
+@manager.route('/presence/join', methods=['POST'])  # noqa: F821
+@validate_request("canvas_id", "tab_id", "presence_session_id")
+@login_required
+@canvas_role_guard
+@check_canvas_permission(PermissionValue.PERMISSION_READ)
+async def presence_join():
+    req = g.req_data
+    tenant_id = str(g.tenant_id)
+    canvas_id = str(req["canvas_id"])
+
+    data = CanvasReplicaService.join_presence(
+        canvas_id=canvas_id,
+        tenant_id=tenant_id,
+        runtime_user_id=str(current_user.id),
+        tab_id=str(req["tab_id"]),
+        presence_session_id=str(req["presence_session_id"]),
+    )
+    return get_json_result(data=data)
+
+
+@manager.route('/presence/heartbeat', methods=['POST'])  # noqa: F821
+@validate_request("canvas_id", "tab_id", "presence_session_id")
+@login_required
+@canvas_role_guard
+@check_canvas_permission(PermissionValue.PERMISSION_READ)
+async def presence_heartbeat():
+    req = g.req_data
+    tenant_id = str(g.tenant_id)
+    canvas_id = str(req["canvas_id"])
+
+    data = CanvasReplicaService.heartbeat_presence(
+        canvas_id=canvas_id,
+        tenant_id=tenant_id,
+        runtime_user_id=str(current_user.id),
+        tab_id=str(req["tab_id"]),
+        presence_session_id=str(req["presence_session_id"]),
+    )
+    return get_json_result(data=data)
+
+
+@manager.route('/presence/leave', methods=['POST'])  # noqa: F821
+@validate_request("canvas_id", "tab_id", "presence_session_id")
+@login_required
+@canvas_role_guard
+@check_canvas_permission(PermissionValue.PERMISSION_READ)
+async def presence_leave():
+    req = g.req_data
+    tenant_id = str(g.tenant_id)
+    canvas_id = str(req["canvas_id"])
+
+    data = CanvasReplicaService.leave_presence(
+        canvas_id=canvas_id,
+        tenant_id=tenant_id,
+        runtime_user_id=str(current_user.id),
+        tab_id=str(req["tab_id"]),
+        presence_session_id=str(req["presence_session_id"]),
+    )
+    return get_json_result(data=data)
+
+
+@manager.route('/<canvas_id>/presence', methods=['GET'])  # noqa: F821
+@login_required
+@canvas_role_guard
+@check_canvas_permission(PermissionValue.PERMISSION_READ)
+def presence_list(canvas_id):
+    data = CanvasReplicaService.list_presence(
+        canvas_id=str(canvas_id),
+        tenant_id=str(g.tenant_id),
+        operator_permission=g.operator_permission,
+    )
+    return get_json_result(data=data)
 
 
 @manager.route('/<canvas_id>/sessions', methods=['GET'])  # noqa: F821

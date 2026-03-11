@@ -80,6 +80,32 @@ export declare interface IFlow {
   canvas_category: string;
 }
 
+export interface ICanvasPresenceUser {
+  user_id: string;
+  display_name: string;
+  active_tab_count: number;
+  last_seen_at: number;
+  permission: number;
+}
+
+export interface ICanvasPresenceResponse {
+  canvas_id: string;
+  online_user_count: number;
+  operator_permission?: number;
+  users: ICanvasPresenceUser[];
+}
+
+export interface ICanvasPresenceHeartbeatData {
+  ok: boolean;
+  code?: string;
+}
+
+export interface IPresencePayload {
+  canvas_id: string;
+  tab_id: string;
+  presence_session_id: string;
+}
+
 export interface IFlowTemplate {
   avatar: string;
   canvas_type: string;
