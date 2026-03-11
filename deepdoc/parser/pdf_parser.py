@@ -1293,7 +1293,18 @@ class RAGFlowPdfParser:
             img = cropout(bxs, "table", poss)
             if img is None:
                 continue
-            res.append((img, self.tbl_det.construct_table(bxs, html=return_html, is_english=self.is_english)))
+            html = self.tbl_det.construct_table(
+                bxs,
+                is_english=self.is_english,
+                ocr_model=self.ocr,
+                with_image=True,
+                img_cells_pairs=self.tabls_cells,
+            )
+            if not isinstance(html, str):
+                img, html = html
+            if not html:
+                continue
+            res.append((img, html))
             positions.append(poss)
 
         if separate_tables_figures:
