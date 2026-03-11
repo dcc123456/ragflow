@@ -32,8 +32,7 @@ function p_0(){
 # This helps reduce fsnotify usage to avoid "too many open files" error
 # Default: WS=3, RAPTOR=3, GRAPHRAG=3, RESUME=1 (total 10 workers)
 # Recommended for limited fs.inotify: WS=1, RAPTOR=1, GRAPHRAG=1, RESUME=0 (total 3 workers)
-WS=${WS_WORKERS:-1}
-
+WS=${WS_WORKERS:-3}
 for ((i=0;i<WS;i++))
 do
   p_0 common &
@@ -45,20 +44,16 @@ do
   p_0 raptor  &
 done
 
-
 GRAPHRAG=${GRAPHRAG_WORKERS:-1}
 for ((i=0;i<GRAPHRAG;i++))
 do
   p_0 graphrag  &
 done
 
-
 RESUME=${RESUME_WORKERS:-1}
 for ((i=0;i<RESUME;i++))
 do
   p_0 resume  &
 done
-
-
 
 wait;
