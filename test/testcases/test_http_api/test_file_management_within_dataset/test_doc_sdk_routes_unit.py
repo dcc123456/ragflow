@@ -217,9 +217,15 @@ def _load_doc_module(monkeypatch):
                     import numpy as np
                     return [np.array([0.2, 0.8]), np.array([0.3, 0.7])], 1
             return _EmbedModel()
+
+    class _StubLLMFactoriesService:
+        @staticmethod
+        def query(**_kwargs):
+            return []
     
     tenant_llm_service_mod.TenantService = _StubTenantService
     tenant_llm_service_mod.TenantLLMService = _StubTenantLLMService
+    tenant_llm_service_mod.LLMFactoriesService = _StubLLMFactoriesService
     monkeypatch.setitem(sys.modules, "api.db.services.tenant_llm_service", tenant_llm_service_mod)
 
     # Mock LLMService
@@ -530,6 +536,11 @@ class TestDocRoutesUnit:
         assert "don't own the dataset" in res["message"]
 
         monkeypatch.setattr(module.KnowledgebaseService, "accessible", lambda **_kwargs: True)
+        monkeypatch.setattr(
+            module,
+            "filter_accessible_doc_ids_for_user",
+            lambda *_args, **_kwargs: (["doc-1"], ["tenant-1"], ""),
+        )
         monkeypatch.setattr(
             module,
             "request",

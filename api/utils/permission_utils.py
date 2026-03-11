@@ -385,13 +385,14 @@ def filter_accessible_doc_ids_for_user(user_id, kb_ids, doc_ids=None):
     """
     from api.db.services.user_service import UserTenantService
     from api.db.services.knowledgebase_service import KnowledgebaseService
+    permission_error_msg = "Only owner of dataset authorized for this operation."
 
     if not kb_ids:
         return [], [], ""
 
     tenants = UserTenantService.query(user_id=user_id)
     if not tenants:
-        return [], [], ""
+        return [], [], permission_error_msg
 
     tenant_member_id_map = {tenant.tenant_id: tenant.id for tenant in tenants}
     kb_tenant_map = {}
@@ -404,13 +405,13 @@ def filter_accessible_doc_ids_for_user(user_id, kb_ids, doc_ids=None):
                 kb_tenant_map[kb_id] = tenant.tenant_id
                 break
         else:
-            return [], [], ""
+            return [], [], permission_error_msg
 
     filtered_doc_ids = set()
     for kb_tenant_id in set(kb_tenant_map.values()):
         member_id = tenant_member_id_map.get(kb_tenant_id)
         if not member_id:
-            return [], [], ""
+            return [], [], permission_error_msg
         tenant_kb_ids = [kid for kid, tid in kb_tenant_map.items() if tid == kb_tenant_id]
         allowed_doc_ids = _filter_accessible_document_ids(
             kb_tenant_id,

@@ -168,6 +168,7 @@ def _load_session_module(monkeypatch):
         FORBIDDEN = 403
         NOT_FOUND = 404
         CONFLICT = 409
+        BILLING_RESOURCE_INSUFFICIENT = 2000
 
     class _StubStatusEnum(str, Enum):
         VALID = "1"
@@ -345,8 +346,8 @@ def _load_session_module(monkeypatch):
         def split_model_name_and_factory(model_name):
             if "@" in model_name:
                 parts = model_name.split("@")
-                return parts[0], parts[1]
-            return model_name, None
+                return parts[0], parts[1], None
+            return model_name, None, None
 
     class _StubLLMFactoriesService:
         @staticmethod
@@ -558,7 +559,7 @@ def test_create_and_update_guard_matrix(monkeypatch):
     res = _run(inspect.unwrap(module.update)("tenant-1", "chat-1", "session-1"))
     assert res["message"] == "Session does not exist"
 
-    monkeypatch.setattr(module.ConversationService, "query", lambda **_kwargs: [SimpleNamespace(id="session-1")])
+    monkeypatch.setattr(module.ConversationService, "query", lambda **_kwargs: [SimpleNamespace(id="session-1", user_id="tenant-1")])
     monkeypatch.setattr(module.DialogService, "query", lambda **_kwargs: [])
     res = _run(inspect.unwrap(module.update)("tenant-1", "chat-1", "session-1"))
     assert res["message"] == "You do not own the session"
@@ -613,7 +614,7 @@ def test_chat_completion_metadata_and_stream_paths(monkeypatch):
         "metadata_condition": {"logic": "and", "conditions": [{"name": "author", "value": "bob"}]},
         "stream": True,
     }
-    monkeypatch.setattr(module.ConversationService, "query", lambda **_kwargs: [SimpleNamespace(id="session-1")])
+    monkeypatch.setattr(module.ConversationService, "query", lambda **_kwargs: [SimpleNamespace(id="session-1", user_id="tenant-1")])
     monkeypatch.setattr(module, "get_request_json", lambda: _AwaitableValue(req_with_conditions))
     resp = _run(inspect.unwrap(module.chat_completion)("tenant-1", "chat-1"))
     _run(_collect_stream(resp.body))
@@ -1120,10 +1121,11 @@ def test_sessions_ask_route_validation_and_stream_unit(monkeypatch):
     monkeypatch.setattr(module.KnowledgebaseService, "query", lambda **_kwargs: [SimpleNamespace(chunk_num=1)])
     captured = {}
 
-    async def _streaming_async_ask(question, kb_ids, uid):
+    async def _streaming_async_ask(question, kb_ids, uid, *, user_id):
         captured["question"] = question
         captured["kb_ids"] = kb_ids
         captured["uid"] = uid
+        captured["user_id"] = user_id
         yield {"answer": "first"}
         raise RuntimeError("ask stream boom")
 
@@ -1136,7 +1138,7 @@ def test_sessions_ask_route_validation_and_stream_unit(monkeypatch):
     assert any('"answer": "first"' in chunk for chunk in chunks)
     assert any('"code": 500' in chunk and "**ERROR**: ask stream boom" in chunk for chunk in chunks)
     assert '"data": true' in chunks[-1].lower()
-    assert captured == {"question": "q", "kb_ids": ["kb-1"], "uid": "tenant-1"}
+    assert captured == {"question": "q", "kb_ids": ["kb-1"], "uid": "tenant-1", "user_id": "tenant-1"}
 
 
 @pytest.mark.p2
@@ -1306,10 +1308,11 @@ def test_searchbots_ask_embedded_auth_and_stream_unit(monkeypatch):
     monkeypatch.setattr(module.SearchService, "get_detail", lambda _search_id: {"search_config": {"mode": "test"}})
     captured = {}
 
-    async def _embedded_async_ask(question, kb_ids, uid, search_config=None):
+    async def _embedded_async_ask(question, kb_ids, uid, search_config=None, *, user_id):
         captured["question"] = question
         captured["kb_ids"] = kb_ids
         captured["uid"] = uid
+        captured["user_id"] = user_id
         captured["search_config"] = search_config
         yield {"answer": "embedded-answer"}
         raise RuntimeError("embedded stream boom")
@@ -1323,6 +1326,7 @@ def test_searchbots_ask_embedded_auth_and_stream_unit(monkeypatch):
     assert any('"code": 500' in chunk and "**ERROR**: embedded stream boom" in chunk for chunk in chunks)
     assert '"data": true' in chunks[-1].lower()
     assert captured["search_config"] == {"mode": "test"}
+    assert captured["user_id"] == "tenant-1"
 
 
 @pytest.mark.p2
@@ -1351,11 +1355,24 @@ def test_searchbots_retrieval_test_embedded_matrix_unit(monkeypatch):
     assert res["message"] == "permission denined."
 
     monkeypatch.setattr(module.APIToken, "query", lambda **_kwargs: [SimpleNamespace(tenant_id="tenant-1")])
+    monkeypatch.setattr(
+        module,
+        "filter_accessible_doc_ids_for_user",
+        lambda *_args, **_kwargs: ([], [], "Only owner of dataset authorized for this operation."),
+    )
     monkeypatch.setattr(module, "get_request_json", lambda: _AwaitableValue({"kb_id": ["kb-no-access"], "question": "q"}))
-    monkeypatch.setattr(module.UserTenantService, "query", lambda **_kwargs: [SimpleNamespace(tenant_id="tenant-a")])
+    monkeypatch.setattr(module.UserTenantService, "query", lambda **_kwargs: [SimpleNamespace(id="member-a", tenant_id="tenant-a")])
     monkeypatch.setattr(module.KnowledgebaseService, "query", lambda **_kwargs: [])
     res = _run(handler())
     assert "Only owner of dataset authorized for this operation." in res["message"]
+
+    def _allow_docs(_operator_user_id, _kb_ids, _local_doc_ids):
+        local_doc_ids = list(_local_doc_ids or [])
+        if not local_doc_ids:
+            local_doc_ids = ["doc-seed"]
+        return local_doc_ids, ["tenant-a"], ""
+
+    monkeypatch.setattr(module, "filter_accessible_doc_ids_for_user", _allow_docs)
 
     llm_calls = []
 
@@ -1378,7 +1395,7 @@ def test_searchbots_retrieval_test_embedded_matrix_unit(monkeypatch):
         return ["doc-filtered"]
 
     monkeypatch.setattr(module, "apply_meta_data_filter", _apply_filter)
-    monkeypatch.setattr(module.UserTenantService, "query", lambda **_kwargs: [SimpleNamespace(tenant_id="tenant-a")])
+    monkeypatch.setattr(module.UserTenantService, "query", lambda **_kwargs: [SimpleNamespace(id="member-a", tenant_id="tenant-a")])
     monkeypatch.setattr(module.KnowledgebaseService, "query", lambda **_kwargs: [SimpleNamespace(id="kb-1")])
     monkeypatch.setattr(module.KnowledgebaseService, "get_by_id", lambda _kb_id: (False, None))
     res = _run(handler())
@@ -1457,7 +1474,7 @@ def test_searchbots_retrieval_test_embedded_matrix_unit(monkeypatch):
     )
     monkeypatch.setattr(module.DocMetadataService, "get_flatted_meta_by_kbs", lambda _kb_ids: [{"id": "doc-2"}])
     monkeypatch.setattr(module, "apply_meta_data_filter", _apply_filter)
-    monkeypatch.setattr(module.UserTenantService, "query", lambda **_kwargs: [SimpleNamespace(tenant_id="tenant-a")])
+    monkeypatch.setattr(module.UserTenantService, "query", lambda **_kwargs: [SimpleNamespace(id="member-a", tenant_id="tenant-a")])
     monkeypatch.setattr(module.KnowledgebaseService, "query", lambda **_kwargs: [SimpleNamespace(id="kb-1")])
     monkeypatch.setattr(
         module.KnowledgebaseService,
@@ -1647,15 +1664,15 @@ def test_searchbots_mindmap_embedded_matrix_unit(monkeypatch):
 
     captured = {}
 
-    async def _gen_ok(question, kb_ids, tenant_id, search_config):
-        captured["params"] = (question, kb_ids, tenant_id, search_config)
+    async def _gen_ok(question, kb_ids, tenant_id, search_config, *, user_id=None):
+        captured["params"] = (question, kb_ids, tenant_id, search_config, user_id)
         return {"nodes": [question]}
 
     monkeypatch.setattr(module, "gen_mindmap", _gen_ok)
     res = _run(handler())
     assert res["code"] == 0
     assert res["data"] == {"nodes": ["q"]}
-    assert captured["params"] == ("q", ["kb-1"], "tenant-1", {})
+    assert captured["params"] == ("q", ["kb-1"], "tenant-1", {}, "tenant-1")
 
     monkeypatch.setattr(
         module,
@@ -1665,7 +1682,7 @@ def test_searchbots_mindmap_embedded_matrix_unit(monkeypatch):
     monkeypatch.setattr(module.SearchService, "get_detail", lambda _sid: {"search_config": {"mode": "graph"}})
     res = _run(handler())
     assert res["code"] == 0
-    assert captured["params"] == ("q2", ["kb-1"], "tenant-1", {"mode": "graph"})
+    assert captured["params"] == ("q2", ["kb-1"], "tenant-1", {"mode": "graph"}, "tenant-1")
 
     async def _gen_error(*_args, **_kwargs):
         return {"error": "mindmap boom"}

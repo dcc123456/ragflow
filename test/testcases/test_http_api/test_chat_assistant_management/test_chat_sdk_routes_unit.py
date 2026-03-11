@@ -141,7 +141,7 @@ def test_create_internal_failure_paths(monkeypatch):
     monkeypatch.setattr(module.KnowledgebaseService, "accessible", lambda **_kwargs: [SimpleNamespace(id="kb")])
     monkeypatch.setattr(module.KnowledgebaseService, "query", lambda **_kwargs: [_DummyKB(chunk_num=1)])
     monkeypatch.setattr(module.KnowledgebaseService, "get_by_ids", lambda _ids: [_DummyKB(embd_id="embd-a@x"), _DummyKB(embd_id="embd-b@y")])
-    monkeypatch.setattr(module.TenantLLMService, "split_model_name_and_factory", lambda model: (model.split("@")[0], "factory"))
+    monkeypatch.setattr(module.TenantLLMService, "split_model_name_and_factory", lambda model: (model.split("@")[0], "factory", None))
     res = _run(module.create.__wrapped__("tenant-1"))
     assert res["code"] == module.RetCode.AUTHENTICATION_ERROR
     assert "different embedding models" in res["message"]
@@ -205,7 +205,7 @@ def test_update_internal_failure_paths(monkeypatch):
     monkeypatch.setattr(module.KnowledgebaseService, "accessible", lambda **_kwargs: [SimpleNamespace(id="kb")])
     monkeypatch.setattr(module.KnowledgebaseService, "query", lambda **_kwargs: [_DummyKB(chunk_num=1)])
     monkeypatch.setattr(module.KnowledgebaseService, "get_by_ids", lambda _ids: [_DummyKB(embd_id="embd-a@x"), _DummyKB(embd_id="embd-b@y")])
-    monkeypatch.setattr(module.TenantLLMService, "split_model_name_and_factory", lambda model: (model.split("@")[0], "factory"))
+    monkeypatch.setattr(module.TenantLLMService, "split_model_name_and_factory", lambda model: (model.split("@")[0], "factory", None))
     res = _run(module.update.__wrapped__("tenant-1", "chat-1"))
     assert res["code"] == module.RetCode.AUTHENTICATION_ERROR
     assert "different embedding models" in res["message"]
@@ -231,7 +231,7 @@ def test_update_internal_failure_paths(monkeypatch):
     monkeypatch.setattr(
         module.TenantLLMService,
         "split_model_name_and_factory",
-        lambda model: (model.split("@")[0], "factory"),
+        lambda model: (model.split("@")[0], "factory", None),
     )
     monkeypatch.setattr(
         module.TenantLLMService,

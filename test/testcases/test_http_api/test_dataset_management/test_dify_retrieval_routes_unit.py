@@ -156,11 +156,17 @@ def _load_dify_retrieval_module(monkeypatch):
         def split_model_name_and_factory(model_name):
             if "@" in model_name:
                 parts = model_name.split("@")
-                return parts[0], parts[1]
-            return model_name, None
+                return parts[0], parts[1], None
+            return model_name, None, None
+
+    class _StubLLMFactoriesService:
+        @staticmethod
+        def query(**_kwargs):
+            return []
     
     tenant_llm_service_mod.TenantService = _StubTenantService
     tenant_llm_service_mod.TenantLLMService = _StubTenantLLMService
+    tenant_llm_service_mod.LLMFactoriesService = _StubLLMFactoriesService
     monkeypatch.setitem(sys.modules, "api.db.services.tenant_llm_service", tenant_llm_service_mod)
 
     # Mock llm_service for LLMService
@@ -268,7 +274,12 @@ def test_retrieval_success_with_metadata_and_kg(monkeypatch):
     monkeypatch.setattr(module.DocMetadataService, "get_meta_by_kbs", lambda _kb_ids: [{"doc_id": "doc-1"}])
     monkeypatch.setattr(module.KnowledgebaseService, "get_by_id", lambda _kb_id: (True, _DummyKB()))
     monkeypatch.setattr(module, "convert_conditions", lambda cond: cond.get("conditions", []))
-    monkeypatch.setattr(module, "meta_filter", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(module, "meta_filter", lambda *_args, **_kwargs: ["doc-1"])
+    monkeypatch.setattr(
+        module,
+        "filter_accessible_doc_ids_for_user",
+        lambda *_args, **_kwargs: (["doc-1"], ["tenant-1"], ""),
+    )
 
     retriever = _DummyRetriever()
     monkeypatch.setattr(module.settings, "retriever", retriever)
@@ -318,6 +329,11 @@ def test_retrieval_not_found_exception_mapping(monkeypatch):
     monkeypatch.setattr(module.DocMetadataService, "get_meta_by_kbs", lambda _kb_ids: [])
     monkeypatch.setattr(module.KnowledgebaseService, "get_by_id", lambda _kb_id: (True, _DummyKB()))
     monkeypatch.setattr(module, "label_question", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(
+        module,
+        "filter_accessible_doc_ids_for_user",
+        lambda *_args, **_kwargs: (["doc-1"], ["tenant-1"], ""),
+    )
 
     class _BrokenRetriever:
         async def retrieval(self, *_args, **_kwargs):
@@ -337,6 +353,11 @@ def test_retrieval_generic_exception_mapping(monkeypatch):
     monkeypatch.setattr(module.DocMetadataService, "get_meta_by_kbs", lambda _kb_ids: [])
     monkeypatch.setattr(module.KnowledgebaseService, "get_by_id", lambda _kb_id: (True, _DummyKB()))
     monkeypatch.setattr(module, "label_question", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(
+        module,
+        "filter_accessible_doc_ids_for_user",
+        lambda *_args, **_kwargs: (["doc-1"], ["tenant-1"], ""),
+    )
 
     class _BrokenRetriever:
         async def retrieval(self, *_args, **_kwargs):
