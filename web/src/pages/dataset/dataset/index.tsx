@@ -19,7 +19,7 @@ import { useDatasetEditButtonDisabled } from '@/hooks/logic-hooks/use-permission
 import { useRowSelection } from '@/hooks/logic-hooks/use-row-selection';
 import { useFetchDocumentList } from '@/hooks/use-document-request';
 import { useFetchKnowledgeBaseConfiguration } from '@/hooks/use-knowledge-request';
-import { LucidePlus, Upload } from 'lucide-react';
+import { LucidePlus } from 'lucide-react';
 import { useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MetadataType } from '../components/metedata/constant';
@@ -212,9 +212,6 @@ export default function Dataset() {
         >
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button size={'sm'} disabled={datasetEditButtonDisabled}>
-                <Upload />
-              </Button>
               <Button size="default">
                 <LucidePlus />
                 {t('knowledgeDetails.addFile')}
@@ -239,6 +236,9 @@ export default function Dataset() {
             count={selectedCount}
           />
         )}
+      </CardHeader>
+
+      <CardContent className="px-5 py-0">
         <ShowPrivilegeModalContext.Provider value={{ handShowPrivilegeModal }}>
           <DatasetTable
             documents={documents}
@@ -250,18 +250,6 @@ export default function Dataset() {
             loading={loading}
           ></DatasetTable>
         </ShowPrivilegeModalContext.Provider>
-      </CardHeader>
-
-      <CardContent className="px-5 py-0">
-        <DatasetTable
-          documents={documents}
-          pagination={pagination}
-          setPagination={setPagination}
-          rowSelection={rowSelection}
-          setRowSelection={setRowSelection}
-          showManageMetadataModal={showManageMetadataModal}
-          loading={loading}
-        />
 
         {documentUploadVisible && (
           <FileUploadDialog
