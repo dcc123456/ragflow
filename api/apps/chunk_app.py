@@ -203,7 +203,7 @@ async def set():
             if image_base64 and img_id and "-" in img_id:
                 bkt, name = img_id.split("-", 1)
                 image_binary = base64.b64decode(image_base64)
-                settings.STORAGE_IMPL.put(bkt, name, image_binary)
+                settings.STORAGE_IMPL.put(bkt, name, image_binary, tenant_id)
             return get_json_result(data=True)
 
         return await thread_pool_exec(_set_sync)

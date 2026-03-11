@@ -232,16 +232,17 @@ class TaskService(CommonService):
         thread safety when accessing the task information.
 
         Returns:
-            list[tuple]: A list of tuples, each containing (parent_id/kb_id, location)
+            list[tuple]: A list of tuples, each containing (parent_id/kb_id, location, tenant_id)
                         for documents currently being processed. Returns empty list if
                         no documents are being processed.
         """
         with DB.lock("get_task", -1):
             docs = (
                 cls.model.select(
-                    *[Document.id, Document.kb_id, Document.location, File.parent_id]
+                    *[Document.id, Document.kb_id, Document.location, File.parent_id, Knowledgebase.tenant_id]
                 )
                 .join(Document, on=(cls.model.doc_id == Document.id))
+                .join(Knowledgebase, on=(Document.kb_id == Knowledgebase.id))
                 .join(
                     File2Document,
                     on=(File2Document.document_id == Document.id),
@@ -270,6 +271,7 @@ class TaskService(CommonService):
                         (
                             d["parent_id"] if d["parent_id"] else d["kb_id"],
                             d["location"],
+                            d["tenant_id"],
                         )
                         for d in docs
                     ]

@@ -436,9 +436,12 @@ async def download_doc(document_id):
     doc = DocumentService.query(id=document_id)
     if not doc:
         return get_error_data_result(message=f"The dataset not own the document {document_id}.")
+    tenant_id = DocumentService.get_tenant_id(document_id)
+    if not tenant_id:
+        return get_error_data_result(message="Tenant not found!")
     # The process of downloading
     doc_id, doc_location = File2DocumentService.get_storage_address(doc_id=document_id)  # minio address
-    file_stream = settings.STORAGE_IMPL.get(doc_id, doc_location)
+    file_stream = settings.STORAGE_IMPL.get(doc_id, doc_location, tenant_id)
     if not file_stream:
         return construct_json_result(message="This file is empty.", code=RetCode.DATA_ERROR)
     file = BytesIO(file_stream)

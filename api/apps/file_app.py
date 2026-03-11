@@ -368,10 +368,10 @@ async def get(file_id):
     if not check_file_team_permission(file, current_user.id):
         return get_json_result(data=False, message='No authorization.', code=RetCode.AUTHENTICATION_ERROR)
     try:
-        blob = await thread_pool_exec(settings.STORAGE_IMPL.get, file.parent_id, file.location)
+        blob = await thread_pool_exec(settings.STORAGE_IMPL.get, file.parent_id, file.location, file.tenant_id)
         if not blob:
             b, n = File2DocumentService.get_storage_address(file_id=file_id)
-            blob = await thread_pool_exec(settings.STORAGE_IMPL.get, b, n)
+            blob = await thread_pool_exec(settings.STORAGE_IMPL.get, b, n, file.tenant_id)
 
         response = await make_response(blob)
         ext = re.search(r"\.([^.]+)$", file.name.lower())

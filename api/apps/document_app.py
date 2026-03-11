@@ -144,9 +144,9 @@ async def web_crawl():
             raise RuntimeError("This type of file has not been supported yet!")
 
         location = filename
-        while settings.STORAGE_IMPL.obj_exist(kb_id, location):
+        while settings.STORAGE_IMPL.obj_exist(kb_id, location, kb.tenant_id):
             location += "_"
-        settings.STORAGE_IMPL.put(kb_id, location, blob)
+        settings.STORAGE_IMPL.put(kb_id, location, blob, kb.tenant_id)
         doc = {
             "id": get_uuid(),
             "kb_id": kb.id,
@@ -738,12 +738,19 @@ async def rename():
 @login_required
 async def get(doc_id):
     try:
+        if not DocumentService.accessible(doc_id, current_user.id):
+            return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
+
         e, doc = DocumentService.get_by_id(doc_id)
         if not e:
             return get_data_error_result(message="Document not found!")
 
+        tenant_id = DocumentService.get_tenant_id(doc_id)
+        if not tenant_id:
+            return get_data_error_result(message="Tenant not found!")
+
         b, n = File2DocumentService.get_storage_address(doc_id=doc_id)
-        data = await thread_pool_exec(settings.STORAGE_IMPL.get, b, n)
+        data = await thread_pool_exec(settings.STORAGE_IMPL.get, b, n, tenant_id)
         response = await make_response(data)
 
         ext = re.search(r"\.([^.]+)$", doc.name.lower())
@@ -837,7 +844,7 @@ async def get_image(image_id):
         if len(arr) != 2:
             return get_data_error_result(message="Image not found.")
         bkt, nm = image_id.split("-")
-        data = await thread_pool_exec(settings.STORAGE_IMPL.get, bkt, nm)
+        data = await thread_pool_exec(settings.STORAGE_IMPL.get, bkt, nm, bkt)
         response = await make_response(data)
         response.headers.set("Content-Type", "image/JPEG")
         return response

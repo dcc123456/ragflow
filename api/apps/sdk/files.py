@@ -125,7 +125,7 @@ async def upload(tenant_id):
 
             filetype = filename_type(file_obj_names[file_len - 1])
             location = file_obj_names[file_len - 1]
-            while settings.STORAGE_IMPL.obj_exist(last_folder.id, location):
+            while settings.STORAGE_IMPL.obj_exist(last_folder.id, location, tenant_id):
                 location += "_"
             blob = file_obj.read()
             filename = duplicate_name(FileService.query, name=file_obj_names[file_len - 1], parent_id=last_folder.id)
@@ -141,7 +141,7 @@ async def upload(tenant_id):
                 "size": len(blob),
             }
             file = FileService.insert(file)
-            settings.STORAGE_IMPL.put(last_folder.id, location, blob)
+            settings.STORAGE_IMPL.put(last_folder.id, location, blob, tenant_id)
             file_res.append(file.to_json())
         return get_json_result(data=file_res)
     except Exception as e:
@@ -672,10 +672,10 @@ async def get(tenant_id, file_id):
         if not e:
             return get_json_result(message="Document not found!", code=RetCode.NOT_FOUND)
 
-        blob = settings.STORAGE_IMPL.get(file.parent_id, file.location)
+        blob = settings.STORAGE_IMPL.get(file.parent_id, file.location, file.tenant_id)
         if not blob:
             b, n = File2DocumentService.get_storage_address(file_id=file_id)
-            blob = settings.STORAGE_IMPL.get(b, n)
+            blob = settings.STORAGE_IMPL.get(b, n, file.tenant_id)
 
         response = await make_response(blob)
         ext = re.search(r"\.([^.]+)$", file.name)
