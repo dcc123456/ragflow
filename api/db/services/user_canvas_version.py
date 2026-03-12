@@ -2,6 +2,7 @@ import json
 import logging
 import time
 
+
 from api.db.db_models import UserCanvasVersion, DB
 from api.db.services.common_service import CommonService
 from peewee import DoesNotExist
@@ -10,6 +11,7 @@ from peewee import DoesNotExist
 class UserCanvasVersionService(CommonService):
     model = UserCanvasVersion
 
+    # Build a stable display name for saved snapshots.
     @staticmethod
     def build_version_title(user_nickname, agent_title, ts=None):
         tenant = str(user_nickname or "").strip() or "tenant"
@@ -17,6 +19,8 @@ class UserCanvasVersionService(CommonService):
         stamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(ts)) if ts is not None else time.strftime("%Y-%m-%d %H:%M:%S")
         return "{0}_{1}_{2}".format(tenant, title, stamp)
 
+
+    # Normalize DSL before comparing or writing version content.
     @staticmethod
     def _normalize_dsl(dsl):
         normalized = dsl
@@ -53,6 +57,7 @@ class UserCanvasVersionService(CommonService):
         except Exception:
             return None
 
+
     @classmethod
     @DB.connection_context()
     def get_all_canvas_version_by_canvas_ids(cls, canvas_ids):
@@ -68,12 +73,14 @@ class UserCanvasVersionService(CommonService):
                 break
             res.extend(_temp)
             offset += limit
-        return res
+            return res
+
 
     @classmethod
     @DB.connection_context()
     def delete_all_versions(cls, user_canvas_id):
         try:
+            # Keep a small rolling window of recent snapshots.
             user_canvas_version = cls.model.select().where(cls.model.user_canvas_id == user_canvas_id).order_by(
                 cls.model.create_time.desc())
             if user_canvas_version.count() > 20:
@@ -92,10 +99,7 @@ class UserCanvasVersionService(CommonService):
     @DB.connection_context()
     def save_or_replace_latest(cls, user_canvas_id, dsl, title=None, description=None):
         """
-        Persist a canvas snapshot into version history.
-
-        If the latest version has the same DSL content, update that version in place
-        instead of creating a new row.
+        Save a snapshot and collapse repeated DSL content into the latest row.
         """
         try:
             normalized_dsl = cls._normalize_dsl(dsl)
@@ -106,6 +110,7 @@ class UserCanvasVersionService(CommonService):
                 .first()
             )
 
+            # Repeated saves with the same DSL only refresh the latest snapshot.
             if latest and cls._normalize_dsl(latest.dsl) == normalized_dsl:
                 update_data = {"dsl": normalized_dsl}
                 if title is not None:
@@ -116,6 +121,7 @@ class UserCanvasVersionService(CommonService):
                 cls.delete_all_versions(user_canvas_id)
                 return latest.id, False
 
+            # Real content changes create a new snapshot.
             insert_data = {"user_canvas_id": user_canvas_id, "dsl": normalized_dsl}
             if title is not None:
                 insert_data["title"] = title

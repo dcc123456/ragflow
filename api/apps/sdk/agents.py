@@ -42,6 +42,7 @@ from quart import request, Response
 from rag.utils.redis_conn import REDIS_CONN
 
 
+# Keep SDK version titles aligned with web-side save behavior.
 def _get_user_nickname(user_id: str) -> str:
     exists, user = UserService.get_by_id(user_id)
     if not exists:
@@ -77,6 +78,7 @@ async def create_agent(tenant_id: str):
 
     if req.get("dsl") is not None:
         try:
+            # Reuse the same DSL normalization as the web canvas save path.
             req["dsl"] = CanvasReplicaService.normalize_dsl(req["dsl"])
         except ValueError as e:
             return get_json_result(data=False, message=str(e), code=RetCode.ARGUMENT_ERROR)
@@ -106,6 +108,7 @@ async def create_agent(tenant_id: str):
     if not UserCanvasService.save(**req):
         return get_data_error_result(message="Fail to create agent.")
 
+    # Create the first version snapshot right after agent creation.
     owner_nickname = _get_user_nickname(tenant_id)
     UserCanvasVersionService.save_or_replace_latest(
         user_canvas_id=agent_id,
@@ -124,6 +127,7 @@ async def update_agent(tenant_id: str, agent_id: str):
 
     if req.get("dsl") is not None:
         try:
+            # SDK updates use the same DSL validation rules as canvas save().
             req["dsl"] = CanvasReplicaService.normalize_dsl(req["dsl"])
         except ValueError as e:
             return get_json_result(data=False, message=str(e), code=RetCode.ARGUMENT_ERROR)
@@ -136,6 +140,7 @@ async def update_agent(tenant_id: str, agent_id: str):
             data=False, message="Only owner of canvas authorized for this operation.",
             code=RetCode.OPERATING_ERROR)
 
+    # Use the current title as a fallback so version names stay readable.
     _, current_agent = UserCanvasService.get_by_id(agent_id)
     agent_title_for_version = req.get("title") or (current_agent.title if current_agent else "")
     owner_nickname = _get_user_nickname(tenant_id)
@@ -143,6 +148,7 @@ async def update_agent(tenant_id: str, agent_id: str):
     UserCanvasService.update_by_id(agent_id, req)
 
     if req.get("dsl") is not None:
+        # Only create or update a version snapshot when the DSL is part of the update.
         UserCanvasVersionService.save_or_replace_latest(
             user_canvas_id=agent_id,
             title=UserCanvasVersionService.build_version_title(owner_nickname, agent_title_for_version),

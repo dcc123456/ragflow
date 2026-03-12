@@ -13,7 +13,6 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 #
-import copy
 import inspect
 import json
 import logging
@@ -31,13 +30,8 @@ from api.db.services.user_service import TenantService
 from api.db.services.user_canvas_version import UserCanvasVersionService
 from common.constants import RetCode
 from common.misc_utils import get_uuid, thread_pool_exec
-from api.utils.api_utils import (
-    get_json_result,
-    server_error_response,
-    validate_request,
-    get_data_error_result,
-    get_request_json,
-)
+from api.utils.api_utils import get_json_result, server_error_response, validate_request, get_data_error_result, \
+    get_request_json
 from api.utils.billing import check_dynamic_resources
 from api.utils.permission_utils import check_canvas_permission
 from api.db import PermissionValue
@@ -50,8 +44,8 @@ from rag.nlp import search
 from rag.utils.redis_conn import REDIS_CONN
 from common import settings
 from api.apps import login_required, current_user
-from common.role_util import check_role_access, CANVAS_API_ACTION_MAP, CANVAS_ROLE_RESOURCE_TYPE
 from api.apps.services.canvas_replica_service import CanvasReplicaService
+from common.role_util import check_role_access, CANVAS_API_ACTION_MAP, CANVAS_ROLE_RESOURCE_TYPE
 from api.db.services.canvas_service import completion as agent_completion
 
 canvas_role_guard = check_role_access(CANVAS_API_ACTION_MAP, CANVAS_ROLE_RESOURCE_TYPE)
@@ -99,13 +93,28 @@ async def rm():
     return get_json_result(data=True)
 
 
+# Save and runtime replica flow.
 @manager.route('/set', methods=['POST'])  # noqa: F821
 @validate_request("dsl", "title")
 @login_required
 @canvas_role_guard
-@check_canvas_permission(PermissionValue.PERMISSION_WRITE)
+@check_canvas_permission(PermissionValue.PERMISSION_READ)
 async def save():
-    req = g.req_data
+    # Return the latest DB payload together with a simple saved flag.
+    def build_save_response(canvas_id, saved):
+        exists, canvas = UserCanvasService.get_by_canvas_id(canvas_id)
+        if not exists:
+            return get_json_result(data={"id": canvas_id, "saved": saved})
+        canvas["saved"] = saved
+        return get_json_result(data=canvas)
+
+    req = await get_request_json()
+    try:
+        # Keep DSL format consistent across web, SDK, Redis and version history.
+        req["dsl"] = CanvasReplicaService.normalize_dsl(req["dsl"])
+    except ValueError as e:
+        return get_data_error_result(message=str(e))
+
     req['release'] = bool(req.get("release", ""))
     try:
         req["dsl"] = CanvasReplicaService.normalize_dsl(req["dsl"])
@@ -128,13 +137,20 @@ async def save():
         if not UserCanvasService.save(**req):
             return get_data_error_result(message="Fail to save canvas.")
     else:
+        # Read-only collaborators can open the save flow, but they do not persist changes.
+        operator_permission = getattr(g, "operator_permission", PermissionValue.PERMISSION_NULL.value)
+        if operator_permission < PermissionValue.PERMISSION_WRITE.value:
+            return build_save_response(req["id"], False)
         UserCanvasService.update_by_id(req["id"], req)
-    # save version
+
+    # Version history only tracks explicit saves.
     UserCanvasVersionService.save_or_replace_latest(
         user_canvas_id=req["id"],
         dsl=req["dsl"],
         title=UserCanvasVersionService.build_version_title(getattr(current_user, "nickname", current_user.id), req.get("title")),
     )
+
+    # Refresh the owner's runtime replica after a real save.
     replica_ok = CanvasReplicaService.replace_for_set(
         canvas_id=req["id"],
         tenant_id=str(current_user.id),
@@ -145,9 +161,10 @@ async def save():
     )
     if not replica_ok:
         return get_data_error_result(message="canvas saved, but replica sync failed.")
-    return get_json_result(data=req)
+    return build_save_response(req["id"], True)
 
 
+# Read and run use the per-user runtime replica in Redis.
 @manager.route('/get/<canvas_id>', methods=['GET'])  # noqa: F821
 @login_required
 @canvas_role_guard
@@ -156,8 +173,11 @@ def get(canvas_id):
     e, c = UserCanvasService.get_by_canvas_id(canvas_id)
     if not e:
         return get_data_error_result(message="canvas not found.")
+    e, c = UserCanvasService.get_by_canvas_id(canvas_id)
+    if not e:
+        return get_data_error_result(message="canvas not found.")
     try:
-        # DELETE
+        # First open lazily creates the caller's runtime replica.
         CanvasReplicaService.bootstrap(
             canvas_id=canvas_id,
             tenant_id=str(current_user.id),
@@ -212,6 +232,7 @@ async def run():
             data=False, message='Only owner of canvas authorized for this operation.',
             code=RetCode.OPERATING_ERROR)
 
+    # Runs always read from the user's runtime replica instead of the stored DSL.
     replica_payload = CanvasReplicaService.load_for_run(
         canvas_id=req["id"],
         tenant_id=tenant_id,
@@ -246,6 +267,7 @@ async def run():
             async for ans in canvas.run(query=query, files=files, user_id=user_id, inputs=inputs):
                 yield "data:" + json.dumps(ans, ensure_ascii=False) + "\n\n"
 
+            # Runtime mutations go back to Redis first and only save() writes DB state.
             commit_ok = CanvasReplicaService.commit_after_run(
                 canvas_id=req["id"],
                 tenant_id=tenant_id,
@@ -678,6 +700,80 @@ def trace():
         return get_json_result(data=json.loads(binary.encode("utf-8")))
     except Exception as e:
         logging.exception(e)
+
+
+# Presence APIs share the tenant and permission context prepared by the decorator.
+@manager.route('/presence/join', methods=['POST'])  # noqa: F821
+@validate_request("canvas_id", "tab_id", "presence_session_id")
+@login_required
+@canvas_role_guard
+@check_canvas_permission(PermissionValue.PERMISSION_READ)
+async def presence_join():
+    req = g.req_data
+    tenant_id = str(g.tenant_id)
+    canvas_id = str(req["canvas_id"])
+
+    data = CanvasReplicaService.join_presence(
+        canvas_id=canvas_id,
+        tenant_id=tenant_id,
+        runtime_user_id=str(current_user.id),
+        tab_id=str(req["tab_id"]),
+        presence_session_id=str(req["presence_session_id"]),
+    )
+    return get_json_result(data=data)
+
+
+@manager.route('/presence/heartbeat', methods=['POST'])  # noqa: F821
+@validate_request("canvas_id", "tab_id", "presence_session_id")
+@login_required
+@canvas_role_guard
+@check_canvas_permission(PermissionValue.PERMISSION_READ)
+async def presence_heartbeat():
+    req = g.req_data
+    tenant_id = str(g.tenant_id)
+    canvas_id = str(req["canvas_id"])
+
+    data = CanvasReplicaService.heartbeat_presence(
+        canvas_id=canvas_id,
+        tenant_id=tenant_id,
+        runtime_user_id=str(current_user.id),
+        tab_id=str(req["tab_id"]),
+        presence_session_id=str(req["presence_session_id"]),
+    )
+    return get_json_result(data=data)
+
+
+@manager.route('/presence/leave', methods=['POST'])  # noqa: F821
+@validate_request("canvas_id", "tab_id", "presence_session_id")
+@login_required
+@canvas_role_guard
+@check_canvas_permission(PermissionValue.PERMISSION_READ)
+async def presence_leave():
+    req = g.req_data
+    tenant_id = str(g.tenant_id)
+    canvas_id = str(req["canvas_id"])
+
+    data = CanvasReplicaService.leave_presence(
+        canvas_id=canvas_id,
+        tenant_id=tenant_id,
+        runtime_user_id=str(current_user.id),
+        tab_id=str(req["tab_id"]),
+        presence_session_id=str(req["presence_session_id"]),
+    )
+    return get_json_result(data=data)
+
+
+@manager.route('/<canvas_id>/presence', methods=['GET'])  # noqa: F821
+@login_required
+@canvas_role_guard
+@check_canvas_permission(PermissionValue.PERMISSION_READ)
+def presence_list(canvas_id):
+    data = CanvasReplicaService.list_presence(
+        canvas_id=str(canvas_id),
+        tenant_id=str(g.tenant_id),
+        operator_permission=g.operator_permission,
+    )
+    return get_json_result(data=data)
 
 
 @manager.route('/<canvas_id>/sessions', methods=['GET'])  # noqa: F821

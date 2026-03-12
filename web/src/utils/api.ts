@@ -202,6 +202,11 @@ export default {
   debug: `${api_host}/canvas/debug`,
   uploadCanvasFile: `${api_host}/canvas/upload`,
   trace: `${api_host}/canvas/trace`,
+  joinCanvasPresence: `${api_host}/canvas/presence/join`,
+  heartbeatCanvasPresence: `${api_host}/canvas/presence/heartbeat`,
+  leaveCanvasPresence: `${api_host}/canvas/presence/leave`,
+  fetchCanvasPresence: (canvasId: string) =>
+    `${api_host}/canvas/${canvasId}/presence`,
   cancelCanvas: (taskId: string) => `${api_host}/canvas/cancel/${taskId}`, // cancel conversation
   // agent
   inputForm: `${api_host}/canvas/input_form`,
