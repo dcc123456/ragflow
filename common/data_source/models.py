@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Any, Optional, List, Sequence, NamedTuple
 from typing_extensions import TypedDict, NotRequired
 from pydantic import BaseModel
+from enum import Enum
 
 
 @dataclass(frozen=True)
@@ -54,8 +55,8 @@ class ExternalAccess:
         A helper function that returns an *empty* set of external user-emails and group-ids, and sets `is_public` to `False`.
         This effectively makes the document in question "private" or inaccessible to anyone else.
 
-        This is especially helpful to use when you are performing permission-syncing, and some document's permissions aren't able
-        to be determined (for whatever reason). Setting its `ExternalAccess` to "private" is a feasible fallback.
+        This is especially helpful to use when you are performing permission-syncing, and some document's permissions can't
+        be determined (for whatever reason). Setting its `ExternalAccess` to "private" is a feasible fallback.
         """
 
         return cls(
@@ -94,6 +95,10 @@ class Document(BaseModel):
     blob: bytes
     doc_updated_at: datetime
     size_bytes: int
+    externale_access: Optional[ExternalAccess] = None
+    primary_owners: Optional[list] = None
+    metadata: Optional[dict[str, Any]] = None
+    doc_metadata: Optional[dict[str, Any]] = None
 
 
 class BasicExpertInfo(BaseModel):
@@ -179,6 +184,7 @@ class NotionPage(BaseModel):
     archived: bool
     properties: dict[str, Any]
     url: str
+    parent: Optional[dict[str, Any]] = None  # Parent reference for path reconstruction
     database_name: Optional[str] = None  # Only applicable to database type pages
 
 
@@ -301,6 +307,11 @@ class ProcessedSlackMessage:
         self.failure = failure
 
 
+class SeafileSyncScope(str, Enum):
+    """Defines how much of SeaFile to synchronise."""
+    ACCOUNT = "account"      # All libraries the token can see
+    LIBRARY = "library"      # A single library (repo)
+    DIRECTORY = "directory"  # A single directory inside a library
 # Type aliases for type hints
 SecondsSinceUnixEpoch = float
 GenerateDocumentsOutput = Any

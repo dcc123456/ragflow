@@ -67,6 +67,9 @@ export interface ParserConfig {
   tag_kb_ids?: string[];
   topn_tags?: number;
   graphrag?: { use_graphrag?: boolean };
+  enable_metadata?: boolean;
+  metadata?: any;
+  built_in_metadata?: Array<{ key: string; type: string }>;
 }
 
 export interface IKnowledgeFileParserConfig {
@@ -114,7 +117,16 @@ export interface ITenantInfo {
   speech2text_id: string;
   rerank_id?: string;
   tts_id: string;
+  // Tenant model IDs
+  tenant_asr_id?: string;
+  tenant_embd_id?: string;
+  tenant_img2txt_id?: string;
+  tenant_llm_id?: string;
+  tenant_rerank_id?: string;
+  tenant_tts_id?: string;
 }
+
+export type ChunkDocType = 'image' | 'table' | 'text';
 
 export interface IChunk {
   available_int: number; // Whether to enable, 0: not enabled, 1: enabled
@@ -122,6 +134,7 @@ export interface IChunk {
   content_with_weight: string;
   doc_id: string;
   doc_name: string;
+  doc_type_kwd?: ChunkDocType;
   image_id: string;
   important_kwd?: string[];
   question_kwd?: string[]; // keywords

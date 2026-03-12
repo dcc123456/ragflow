@@ -1,9 +1,11 @@
 import { Toaster as Sonner } from '@/components/ui/sonner';
 import { Toaster } from '@/components/ui/toaster';
-import i18n from '@/locales/config';
+import i18n, { changeLanguageAsync } from '@/locales/config';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { App, ConfigProvider, ConfigProviderProps, theme } from 'antd';
+import { configResponsive } from 'ahooks';
+import { ConfigProvider, ConfigProviderProps, theme } from 'antd';
 import pt_BR from 'antd/lib/locale/pt_BR';
+import arEG from 'antd/locale/ar_EG';
 import deDE from 'antd/locale/de_DE';
 import enUS from 'antd/locale/en_US';
 import ru_RU from 'antd/locale/ru_RU';
@@ -17,12 +19,27 @@ import localeData from 'dayjs/plugin/localeData';
 import weekOfYear from 'dayjs/plugin/weekOfYear';
 import weekYear from 'dayjs/plugin/weekYear';
 import weekday from 'dayjs/plugin/weekday';
-import React, { ReactNode, useEffect, useState } from 'react';
+import 'dayjs/locale/ar';
+import 'dayjs/locale/zh-cn';
+import React, { useEffect, useState } from 'react';
+import { RouterProvider } from 'react-router';
 import { ThemeProvider, useTheme } from './components/theme-provider';
-import { SidebarProvider } from './components/ui/sidebar';
 import { TooltipProvider } from './components/ui/tooltip';
 import { ThemeEnum } from './constants/common';
+import { routers } from './routes';
 import storage from './utils/authorization-util';
+
+import 'react-photo-view/dist/react-photo-view.css';
+
+configResponsive({
+  sm: 640,
+  md: 768,
+  lg: 1024,
+  xl: 1280,
+  '2xl': 1536,
+  '3xl': 1780,
+  '4xl': 1980,
+});
 
 dayjs.extend(customParseFormat);
 dayjs.extend(advancedFormat);
@@ -39,18 +56,31 @@ const AntLanguageMap = {
   vi: vi_VN,
   'pt-BR': pt_BR,
   de: deDE,
+  ar: arEG,
 };
 
 if (process.env.NODE_ENV === 'development') {
-  const whyDidYouRender = require('@welldone-software/why-did-you-render');
-  whyDidYouRender(React, {
-    trackAllPureComponents: true,
-    trackExtraHooks: [],
-    logOnDifferentValues: true,
-  });
+  import('@welldone-software/why-did-you-render').then(
+    (whyDidYouRenderModule) => {
+      const whyDidYouRender = whyDidYouRenderModule.default;
+      whyDidYouRender(React, {
+        trackAllPureComponents: true,
+        trackExtraHooks: [],
+        logOnDifferentValues: true,
+        exclude: [/^RouterProvider$/],
+      });
+    },
+  );
 }
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      refetchOnWindowFocus: false,
+      retry: 2,
+    },
+  },
+});
 
 type Locale = ConfigProviderProps['locale'];
 
@@ -58,20 +88,35 @@ function Root({ children }: React.PropsWithChildren) {
   const { theme: themeragflow } = useTheme();
   const getLocale = (lng: string) =>
     AntLanguageMap[lng as keyof typeof AntLanguageMap] ?? enUS;
+  const updateDocumentLocale = (lng: string) => {
+    document.documentElement.lang = lng;
+    document.documentElement.dir = 'ltr';
+    dayjs.locale(lng === 'zh' ? 'zh-cn' : lng);
+  };
 
   const [locale, setLocal] = useState<Locale>(getLocale(storage.getLanguage()));
 
-  i18n.on('languageChanged', function (lng: string) {
-    storage.setLanguage(lng);
-    setLocal(getLocale(lng));
-  });
+  useEffect(() => {
+    const handleLanguageChanged = (lng: string) => {
+      storage.setLanguage(lng);
+      setLocal(getLocale(lng));
+      updateDocumentLocale(lng);
+    };
 
+    updateDocumentLocale(storage.getLanguage() || i18n.language || 'en');
+    i18n.on('languageChanged', handleLanguageChanged);
+
+    return () => {
+      i18n.off('languageChanged', handleLanguageChanged);
+    };
+  }, []);
   return (
     <>
       <ConfigProvider
         theme={{
           token: {
-            fontFamily: 'Inter',
+            fontFamily:
+              "'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif",
           },
           algorithm:
             themeragflow === 'dark'
@@ -79,24 +124,23 @@ function Root({ children }: React.PropsWithChildren) {
               : theme.defaultAlgorithm,
         }}
         locale={locale}
+        direction={'ltr'}
       >
-        <SidebarProvider className="h-full">
-          <App>{children}</App>
-        </SidebarProvider>
-        <Sonner position={'top-right'} expand richColors closeButton></Sonner>
+        {children}
+
+        <Sonner position="top-right" expand richColors closeButton />
+
         <Toaster />
       </ConfigProvider>
-      {/* <ReactQueryDevtools buttonPosition={'top-left'} initialIsOpen={false} /> */}
     </>
   );
 }
 
 const RootProvider = ({ children }: React.PropsWithChildren) => {
   useEffect(() => {
-    // Because the language is saved in the backend, a token is required to obtain the api. However, the login page cannot obtain the language through the getUserInfo api, so the language needs to be saved in localstorage.
     const lng = storage.getLanguage();
     if (lng) {
-      i18n.changeLanguage(lng);
+      void changeLanguageAsync(lng);
     }
   }, []);
 
@@ -113,6 +157,18 @@ const RootProvider = ({ children }: React.PropsWithChildren) => {
     </TooltipProvider>
   );
 };
-export function rootContainer(container: ReactNode) {
-  return <RootProvider>{container}</RootProvider>;
+
+const RouterProviderWrapper: React.FC<{ router: typeof routers }> = ({
+  router,
+}) => {
+  return <RouterProvider router={router}></RouterProvider>;
+};
+RouterProviderWrapper.whyDidYouRender = false;
+
+export default function AppContainer() {
+  return (
+    <RootProvider>
+      <RouterProviderWrapper router={routers} />
+    </RootProvider>
+  );
 }

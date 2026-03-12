@@ -24,8 +24,8 @@ class TestDocumentsDeletion:
     @pytest.mark.parametrize(
         "payload, expected_message, remaining",
         [
-            ({"ids": None}, "", 0),
-            ({"ids": []}, "", 0),
+            ({"ids": None}, "", 3),
+            ({"ids": []}, "", 3),
             ({"ids": ["invalid_id"]}, "Documents not found: ['invalid_id']", 3),
             ({"ids": ["\n!?。；！？\"'"]}, "Documents not found: ['\\n!?。；！？\"\\'']", 3),
             ("not json", "must be a mapping", 3),
@@ -45,9 +45,9 @@ class TestDocumentsDeletion:
             payload = payload([document.id for document in documents])
 
         if expected_message:
-            with pytest.raises(Exception) as excinfo:
+            with pytest.raises(Exception) as exception_info:
                 dataset.delete_documents(**payload)
-            assert expected_message in str(excinfo.value), str(excinfo.value)
+            assert expected_message in str(exception_info.value), str(exception_info.value)
         else:
             dataset.delete_documents(**payload)
 
@@ -67,9 +67,9 @@ class TestDocumentsDeletion:
         dataset, documents = add_documents_func
         payload = payload([document.id for document in documents])
 
-        with pytest.raises(Exception) as excinfo:
+        with pytest.raises(Exception) as exception_info:
             dataset.delete_documents(**payload)
-        assert "Documents not found: ['invalid_id']" in str(excinfo.value), str(excinfo.value)
+        assert "Documents not found: ['invalid_id']" in str(exception_info.value), str(exception_info.value)
 
         documents = dataset.list_documents()
         assert len(documents) == 0, str(documents)
@@ -79,9 +79,9 @@ class TestDocumentsDeletion:
         dataset, documents = add_documents_func
         document_ids = [document.id for document in documents]
         dataset.delete_documents(ids=document_ids)
-        with pytest.raises(Exception) as excinfo:
+        with pytest.raises(Exception) as exception_info:
             dataset.delete_documents(ids=document_ids)
-        assert "Documents not found" in str(excinfo.value), str(excinfo.value)
+        assert "Documents not found" in str(exception_info.value), str(exception_info.value)
 
     @pytest.mark.p2
     def test_duplicate_deletion(self, add_documents_func):

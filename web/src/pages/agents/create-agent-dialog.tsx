@@ -6,7 +6,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { TagRenameId } from '@/pages/add-knowledge/constant';
+import { TagRenameId } from '@/constants/knowledge';
 import { useTranslation } from 'react-i18next';
 import { CreateAgentForm, CreateAgentFormProps } from './create-agent-form';
 
@@ -22,7 +22,7 @@ export function CreateAgentDialog({
 
   return (
     <Dialog open onOpenChange={hideModal}>
-      <DialogContent>
+      <DialogContent data-testid="agent-create-modal">
         <DialogHeader>
           <DialogTitle>{t('flow.createGraph')}</DialogTitle>
         </DialogHeader>
@@ -32,7 +32,12 @@ export function CreateAgentDialog({
           shouldChooseAgent={shouldChooseAgent}
         ></CreateAgentForm>
         <DialogFooter>
-          <ButtonLoading type="submit" form={TagRenameId} loading={loading}>
+          <ButtonLoading
+            data-testid="agent-save"
+            type="submit"
+            form={TagRenameId}
+            loading={loading}
+          >
             {t('common.save')}
           </ButtonLoading>
         </DialogFooter>

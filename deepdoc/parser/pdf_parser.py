@@ -14,6 +14,7 @@
 #  limitations under the License.
 #
 
+import asyncio
 import logging
 import math
 import os
@@ -21,6 +22,7 @@ import random
 import re
 import sys
 import threading
+import unicodedata
 from collections import Counter, defaultdict
 from copy import deepcopy
 from io import BytesIO
@@ -28,7 +30,6 @@ from timeit import default_timer as timer
 
 import numpy as np
 import pdfplumber
-import trio
 import xgboost as xgb
 from huggingface_hub import snapshot_download
 from PIL import Image
@@ -39,10 +40,13 @@ from sklearn.metrics import silhouette_score
 from common.file_utils import get_project_base_directory
 from common.misc_utils import pip_install_torch
 from deepdoc.vision import OCR, AscendLayoutRecognizer, LayoutRecognizer, Recognizer, TableStructureRecognizer
-from rag.app.picture import vision_llm_chunk as picture_vision_llm_chunk
 from rag.nlp import rag_tokenizer
 from rag.prompts.generator import vision_llm_describe_prompt
 from common import settings
+
+
+
+from common.misc_utils import thread_pool_exec
 
 LOCK_KEY_pdfplumber = "global_shared_lock_pdfplumber"
 if LOCK_KEY_pdfplumber not in sys.modules:
@@ -66,7 +70,7 @@ class RAGFlowPdfParser:
         self.ocr = OCR()
         self.parallel_limiter = None
         if settings.PARALLEL_DEVICES > 1:
-            self.parallel_limiter = [trio.CapacityLimiter(1) for _ in range(settings.PARALLEL_DEVICES)]
+            self.parallel_limiter = [asyncio.Semaphore(1) for _ in range(settings.PARALLEL_DEVICES)]
 
         layout_recognizer_type = os.getenv("LAYOUT_RECOGNIZER_TYPE", "onnx").lower()
         if layout_recognizer_type not in ["onnx", "ascend"]:
@@ -89,6 +93,7 @@ class RAGFlowPdfParser:
         try:
             pip_install_torch()
             import torch.cuda
+
             if torch.cuda.is_available():
                 self.updown_cnt_mdl.set_param({"device": "cuda"})
         except Exception:
@@ -193,13 +198,246 @@ class RAGFlowPdfParser:
                     return False
         return True
 
-    def _table_transformer_job(self, ZM):
+    # CID pattern regex for unmapped font characters from pdfminer
+    _CID_PATTERN = re.compile(r"\(cid\s*:\s*\d+\s*\)")
+
+    @staticmethod
+    def _is_garbled_char(ch):
+        """Check if a single character is garbled (unmappable from PDF font encoding).
+
+        A character is considered garbled if it falls into Unicode Private Use Areas
+        or certain replacement/control character ranges that typically indicate
+        pdfminer failed to map a CID to a valid Unicode codepoint.
+        """
+        if not ch:
+            return False
+        cp = ord(ch)
+        if 0xE000 <= cp <= 0xF8FF:
+            return True
+        if 0xF0000 <= cp <= 0xFFFFF:
+            return True
+        if 0x100000 <= cp <= 0x10FFFF:
+            return True
+        if cp == 0xFFFD:
+            return True
+        if cp < 0x20 and ch not in ('\t', '\n', '\r'):
+            return True
+        if 0x80 <= cp <= 0x9F:
+            return True
+        cat = unicodedata.category(ch)
+        if cat in ("Cn", "Cs"):
+            return True
+        return False
+
+    @staticmethod
+    def _is_garbled_text(text, threshold=0.5):
+        """Check if a text string contains too many garbled characters.
+
+        Examines each character and determines if the overall proportion
+        of garbled characters exceeds the given threshold. Also detects
+        pdfminer's CID placeholder patterns like '(cid:123)'.
+        """
+        if not text or not text.strip():
+            return False
+        if RAGFlowPdfParser._CID_PATTERN.search(text):
+            return True
+        garbled_count = 0
+        total = 0
+        for ch in text:
+            if ch.isspace():
+                continue
+            total += 1
+            if RAGFlowPdfParser._is_garbled_char(ch):
+                garbled_count += 1
+        if total == 0:
+            return False
+        return garbled_count / total >= threshold
+
+    @staticmethod
+    def _has_subset_font_prefix(fontname):
+        """Check if a font name has a subset prefix (e.g. 'DY1+ZLQDm1-1').
+
+        PDF subset fonts use a 6-letter uppercase tag followed by '+' before
+        the actual font name. Some tools use shorter tags (e.g. 'DY1+').
+        """
+        if not fontname:
+            return False
+        return bool(re.match(r"^[A-Z0-9]{2,6}\+", fontname))
+
+    @staticmethod
+    def _is_garbled_by_font_encoding(page_chars, min_chars=20):
+        """Detect garbled text caused by broken font encoding mappings.
+
+        Some PDFs (especially older Chinese standards) embed custom fonts that
+        map CJK glyphs to ASCII codepoints. The extracted text appears as
+        random ASCII punctuation/symbols instead of actual CJK characters.
+
+        Detection strategy: if a significant proportion of characters come from
+        subset-embedded fonts and the page produces overwhelmingly ASCII
+        (punctuation, digits, symbols) with virtually no CJK/Hangul/Kana
+        characters, the page is likely garbled due to broken font encoding.
+        """
+        if not page_chars or len(page_chars) < min_chars:
+            return False
+
+        subset_font_count = 0
+        total_non_space = 0
+        ascii_punct_sym = 0
+        cjk_like = 0
+
+        for c in page_chars:
+            text = c.get("text", "")
+            fontname = c.get("fontname", "")
+            if not text or text.isspace():
+                continue
+            total_non_space += 1
+
+            if RAGFlowPdfParser._has_subset_font_prefix(fontname):
+                subset_font_count += 1
+
+            cp = ord(text[0])
+            if (0x2E80 <= cp <= 0x9FFF or 0xF900 <= cp <= 0xFAFF
+                    or 0x20000 <= cp <= 0x2FA1F
+                    or 0xAC00 <= cp <= 0xD7AF
+                    or 0x3040 <= cp <= 0x30FF):
+                cjk_like += 1
+            elif (0x21 <= cp <= 0x2F or 0x3A <= cp <= 0x40
+                    or 0x5B <= cp <= 0x60 or 0x7B <= cp <= 0x7E):
+                ascii_punct_sym += 1
+
+        if total_non_space < min_chars:
+            return False
+
+        subset_ratio = subset_font_count / total_non_space
+        if subset_ratio < 0.3:
+            return False
+
+        cjk_ratio = cjk_like / total_non_space
+        punct_ratio = ascii_punct_sym / total_non_space
+        if cjk_ratio < 0.05 and punct_ratio > 0.4:
+            return True
+
+        return False
+
+    def _evaluate_table_orientation(self, table_img, sample_ratio=0.3):
+        """
+        Evaluate the best rotation orientation for a table image.
+
+        Tests 4 rotation angles (0°, 90°, 180°, 270°) and uses OCR
+        confidence scores to determine the best orientation.
+
+        Args:
+            table_img: PIL Image object of the table region
+            sample_ratio: Sampling ratio for quick evaluation
+
+        Returns:
+            tuple: (best_angle, best_img, confidence_scores)
+                - best_angle: Best rotation angle (0, 90, 180, 270)
+                - best_img: Image rotated to best orientation
+                - confidence_scores: Dict of scores for each angle
+        """
+
+        rotations = [
+            (0, "original"),
+            (90, "rotate_90"),  # clockwise 90°
+            (180, "rotate_180"),  # 180°
+            (270, "rotate_270"),  # clockwise 270° (counter-clockwise 90°)
+        ]
+
+        results = {}
+        best_score = -1
+        best_angle = 0
+        best_img = table_img
+        score_0 = None
+
+        for angle, name in rotations:
+            # Rotate image
+            if angle == 0:
+                rotated_img = table_img
+            else:
+                # PIL's rotate is counter-clockwise, use negative angle for clockwise
+                rotated_img = table_img.rotate(-angle, expand=True)
+
+            # Convert to numpy array for OCR
+            img_array = np.array(rotated_img)
+
+            # Perform OCR detection and recognition
+            try:
+                ocr_results = self.ocr(img_array)
+
+                if ocr_results:
+                    # Calculate average confidence
+                    scores = [conf for _, (_, conf) in ocr_results]
+                    avg_score = sum(scores) / len(scores) if scores else 0
+                    total_regions = len(scores)
+
+                    # Combined score: considers both average confidence and number of regions
+                    # More regions + higher confidence = better orientation
+                    combined_score = avg_score * (1 + 0.1 * min(total_regions, 50) / 50)
+                else:
+                    avg_score = 0
+                    total_regions = 0
+                    combined_score = 0
+
+            except Exception as e:
+                logging.warning(f"OCR failed for angle {angle}: {e}")
+                avg_score = 0
+                total_regions = 0
+                combined_score = 0
+
+            results[angle] = {"avg_confidence": avg_score, "total_regions": total_regions, "combined_score": combined_score}
+            if angle == 0:
+                score_0 = combined_score
+
+            logging.debug(f"Table orientation {angle}°: avg_conf={avg_score:.4f}, regions={total_regions}, combined={combined_score:.4f}")
+
+            if combined_score > best_score:
+                best_score = combined_score
+                best_angle = angle
+                best_img = rotated_img
+
+        # Absolute threshold rule:
+        # Only choose non-0° if it exceeds 0° by more than 0.2 and 0° score is below 0.8.
+        if best_angle != 0 and score_0 is not None:
+            if not (best_score - score_0 > 0.2 and score_0 < 0.8):
+                best_angle = 0
+                best_img = table_img
+                best_score = score_0
+
+        results[best_angle] = results.get(best_angle, {"avg_confidence": 0, "total_regions": 0, "combined_score": 0})
+
+        logging.info(f"Best table orientation: {best_angle}° (score={best_score:.4f})")
+
+        return best_angle, best_img, results
+
+    def _table_transformer_job(self, ZM, auto_rotate=True):
+        """
+        Process table structure recognition.
+
+        When auto_rotate=True, the complete workflow:
+        1. Evaluate table orientation and select the best rotation angle
+        2. Use rotated image for table structure recognition (TSR)
+        3. Re-OCR the rotated image
+        4. Match new OCR results with TSR cell coordinates
+
+        Args:
+            ZM: Zoom factor
+            auto_rotate: Whether to enable auto orientation correction
+        """
         logging.debug("Table processing...")
         imgs, pos = [], []
         tbcnt = [0]
         MARGIN = 10
         self.tb_cpns = []
+        self.table_rotations = {}  # Store rotation info for each table
+        self.rotated_table_imgs = {}  # Store rotated table images
+
         assert len(self.page_layout) == len(self.page_images)
+
+        # Collect layout info for all tables
+        table_layouts = []  # [(page, table_layout, left, top, right, bott), ...]
+
+        table_index = 0
         for p, tbls in enumerate(self.page_layout):  # for page
             tbls = [f for f in tbls if f["type"] == "table"]
             tbcnt.append(len(tbls))
@@ -211,29 +449,68 @@ class RAGFlowPdfParser:
                 top *= ZM
                 right *= ZM
                 bott *= ZM
-                pos.append((left, top))
-                imgs.append(self.page_images[p].crop((left, top, right, bott)))
+                pos.append((left, top, p, table_index))  # Add page and table_index
+
+                # Record table layout info
+                table_layouts.append({"page": p, "table_index": table_index, "layout": tb, "coords": (left, top, right, bott)})
+
+                # Crop table image
+                table_img = self.page_images[p].crop((left, top, right, bott))
+
+                if auto_rotate:
+                    # Evaluate table orientation
+                    logging.debug(f"Evaluating orientation for table {table_index} on page {p}")
+                    best_angle, rotated_img, rotation_scores = self._evaluate_table_orientation(table_img)
+
+                    # Store rotation info
+                    self.table_rotations[table_index] = {
+                        "page": p,
+                        "original_pos": (left, top, right, bott),
+                        "best_angle": best_angle,
+                        "scores": rotation_scores,
+                        "rotated_size": rotated_img.size,  # (width, height)
+                    }
+
+                    # Store the rotated image
+                    self.rotated_table_imgs[table_index] = rotated_img
+                    imgs.append(rotated_img)
+
+                else:
+                    imgs.append(table_img)
+                    self.table_rotations[table_index] = {"page": p, "original_pos": (left, top, right, bott), "best_angle": 0, "scores": {}, "rotated_size": table_img.size}
+                    self.rotated_table_imgs[table_index] = table_img
+
+                table_index += 1
 
         assert len(self.page_images) == len(tbcnt) - 1
         if not imgs:
             return
+
+        # Perform table structure recognition (TSR)
         recos = self.tbl_det(imgs)
+
+        # If tables were rotated, re-OCR the rotated images and replace table boxes
+        if auto_rotate:
+            self._ocr_rotated_tables(ZM, table_layouts, recos, tbcnt)
+
+        # Process TSR results (keep original logic but handle rotated coordinates)
         tbcnt = np.cumsum(tbcnt)
         for i in range(len(tbcnt) - 1):  # for page
             pg = []
             for j, tb_items in enumerate(recos[tbcnt[i] : tbcnt[i + 1]]):  # for table
                 poss = pos[tbcnt[i] : tbcnt[i + 1]]
                 for it in tb_items:  # for table components
-                    it["x0"] = it["x0"] + poss[j][0]
-                    it["x1"] = it["x1"] + poss[j][0]
-                    it["top"] = it["top"] + poss[j][1]
-                    it["bottom"] = it["bottom"] + poss[j][1]
-                    for n in ["x0", "x1", "top", "bottom"]:
-                        it[n] /= ZM
-                    it["top"] += self.page_cum_height[i]
-                    it["bottom"] += self.page_cum_height[i]
-                    it["pn"] = i
+                    # TSR coordinates are relative to rotated image, need to record
+                    it["x0_rotated"] = it["x0"]
+                    it["x1_rotated"] = it["x1"]
+                    it["top_rotated"] = it["top"]
+                    it["bottom_rotated"] = it["bottom"]
+
+                    # For rotated tables, coordinate transformation to page space requires rotation
+                    # Since we already re-OCR'd on rotated image, keep simple processing here
+                    it["pn"] = poss[j][2]  # page number
                     it["layoutno"] = j
+                    it["table_index"] = poss[j][3]  # table index
                     pg.append(it)
             self.tb_cpns.extend(pg)
 
@@ -246,8 +523,9 @@ class RAGFlowPdfParser:
         headers = gather(r".*header$")
         rows = gather(r".* (row|header)")
         spans = gather(r".*spanning")
-        clmns = sorted([r for r in self.tb_cpns if re.match(r"table column$", r["label"])], key=lambda x: (x["pn"], x["layoutno"], x["x0"]))
+        clmns = sorted([r for r in self.tb_cpns if re.match(r"table column$", r["label"])], key=lambda x: (x["pn"], x["layoutno"], x["x0_rotated"] if "x0_rotated" in x else x["x0"]))
         clmns = Recognizer.layouts_cleanup(self.boxes, clmns, 5, 0.5)
+
         for b in self.boxes:
             if b.get("layout_type", "") != "table":
                 continue
@@ -278,6 +556,153 @@ class RAGFlowPdfParser:
                 b["H_left"] = spans[ii]["x0"]
                 b["H_right"] = spans[ii]["x1"]
                 b["SP"] = ii
+
+    def _ocr_rotated_tables(self, ZM, table_layouts, tsr_results, tbcnt):
+        """
+        Re-OCR rotated table images and update self.boxes.
+
+        Args:
+            ZM: Zoom factor
+            table_layouts: List of table layout info
+            tsr_results: TSR recognition results
+            tbcnt: Cumulative table count per page
+        """
+        tbcnt = np.cumsum(tbcnt)
+
+        def _table_region(layout, page_index):
+            table_x0 = layout["x0"]
+            table_top = layout["top"]
+            table_x1 = layout["x1"]
+            table_bottom = layout["bottom"]
+            table_top_cum = table_top + self.page_cum_height[page_index]
+            table_bottom_cum = table_bottom + self.page_cum_height[page_index]
+            return table_x0, table_top, table_x1, table_bottom, table_top_cum, table_bottom_cum
+
+        def _collect_table_boxes(page_index, table_x0, table_x1, table_top_cum, table_bottom_cum):
+            indices = [
+                i
+                for i, b in enumerate(self.boxes)
+                if (
+                    b.get("page_number") == page_index + self.page_from
+                    and b.get("layout_type") == "table"
+                    and b["x0"] >= table_x0 - 5
+                    and b["x1"] <= table_x1 + 5
+                    and b["top"] >= table_top_cum - 5
+                    and b["bottom"] <= table_bottom_cum + 5
+                )
+            ]
+            original_boxes = [self.boxes[i] for i in indices]
+            insert_at = indices[0] if indices else len(self.boxes)
+            for i in reversed(indices):
+                self.boxes.pop(i)
+            return original_boxes, insert_at
+
+        def _restore_boxes(original_boxes, insert_at):
+            for b in original_boxes:
+                self.boxes.insert(insert_at, b)
+                insert_at += 1
+            return insert_at
+
+        def _map_rotated_point(x, y, angle, width, height):
+            # Map a point from rotated image coords back to original image coords.
+            if angle == 0:
+                return x, y
+            if angle == 90:
+                # clockwise 90: original->rotated (x', y') = (y, width - x)
+                # inverse:
+                return width - y, x
+            if angle == 180:
+                return width - x, height - y
+            if angle == 270:
+                # clockwise 270: original->rotated (x', y') = (height - y, x)
+                # inverse:
+                return y, height - x
+            return x, y
+
+        def _insert_ocr_boxes(ocr_results, page_index, table_x0, table_top, insert_at, table_index, best_angle, table_w_px, table_h_px):
+            added = 0
+            for bbox, (text, conf) in ocr_results:
+                if conf < 0.5:
+                    continue
+                mapped = [_map_rotated_point(p[0], p[1], best_angle, table_w_px, table_h_px) for p in bbox]
+                x_coords = [p[0] for p in mapped]
+                y_coords = [p[1] for p in mapped]
+                box_x0 = min(x_coords) / ZM
+                box_x1 = max(x_coords) / ZM
+                box_top = min(y_coords) / ZM
+                box_bottom = max(y_coords) / ZM
+                new_box = {
+                    "text": text,
+                    "x0": box_x0 + table_x0,
+                    "x1": box_x1 + table_x0,
+                    "top": box_top + table_top + self.page_cum_height[page_index],
+                    "bottom": box_bottom + table_top + self.page_cum_height[page_index],
+                    "page_number": page_index + self.page_from,
+                    "layout_type": "table",
+                    "layoutno": f"table-{table_index}",
+                    "_rotated": True,
+                    "_rotation_angle": best_angle,
+                    "_table_index": table_index,
+                    "_rotated_x0": box_x0,
+                    "_rotated_x1": box_x1,
+                    "_rotated_top": box_top,
+                    "_rotated_bottom": box_bottom,
+                }
+                self.boxes.insert(insert_at, new_box)
+                insert_at += 1
+                added += 1
+            return added
+
+        for tbl_info in table_layouts:
+            table_index = tbl_info["table_index"]
+            page = tbl_info["page"]
+            layout = tbl_info["layout"]
+            left, top, right, bott = tbl_info["coords"]
+
+            rotation_info = self.table_rotations.get(table_index, {})
+            best_angle = rotation_info.get("best_angle", 0)
+
+            # Get the rotated table image
+            rotated_img = self.rotated_table_imgs.get(table_index)
+            if rotated_img is None:
+                continue
+
+            # If no rotation, keep original OCR boxes untouched.
+            if best_angle == 0:
+                continue
+
+            # Table region is defined by layout's x0, top, x1, bottom (page-local coords)
+            table_x0, table_top, table_x1, table_bottom, table_top_cum, table_bottom_cum = _table_region(layout, page)
+            original_boxes, insert_at = _collect_table_boxes(page, table_x0, table_x1, table_top_cum, table_bottom_cum)
+
+            logging.info(f"Re-OCR table {table_index} on page {page} with rotation {best_angle}°")
+
+            # Perform OCR on rotated image
+            img_array = np.array(rotated_img)
+            ocr_results = self.ocr(img_array)
+
+            if not ocr_results:
+                logging.warning(f"No OCR results for rotated table {table_index}, restoring originals")
+                _restore_boxes(original_boxes, insert_at)
+                continue
+
+            # Add new OCR results to self.boxes
+            # OCR coordinates are relative to rotated image, map back to original table coords
+            table_w_px = right - left
+            table_h_px = bott - top
+            added = _insert_ocr_boxes(
+                ocr_results,
+                page,
+                table_x0,
+                table_top,
+                insert_at,
+                table_index,
+                best_angle,
+                table_w_px,
+                table_h_px,
+            )
+
+            logging.info(f"Added {added} OCR results from rotated table {table_index}")
 
     def __ocr(self, pagenum, img, chars, ZM=3, device_id: int | None = None):
         start = timer()
@@ -315,14 +740,40 @@ class RAGFlowPdfParser:
             if not b["chars"]:
                 del b["chars"]
                 continue
-            m_ht = np.mean([c["height"] for c in b["chars"]])
-            for c in Recognizer.sort_Y_firstly(b["chars"], m_ht):
+            box_chars = b["chars"]
+            m_ht = np.mean([c["height"] for c in box_chars])
+            garbled_count = 0
+            total_count = 0
+            for c in Recognizer.sort_Y_firstly(box_chars, m_ht):
                 if c["text"] == " " and b["text"]:
                     if re.match(r"[0-9a-zA-Zа-яА-Я,.?;:!%%]", b["text"][-1]):
                         b["text"] += " "
                 else:
                     b["text"] += c["text"]
+                    for ch in c["text"]:
+                        if not ch.isspace():
+                            total_count += 1
+                            if self._is_garbled_char(ch):
+                                garbled_count += 1
             del b["chars"]
+            # If the majority of characters from pdfplumber are garbled,
+            # clear the text so OCR recognition will be used as fallback.
+            # Strategy 1: PUA / unmapped CID characters
+            if total_count > 0 and garbled_count / total_count >= 0.5:
+                logging.info(
+                    "Page %d: detected garbled pdfplumber text (garbled=%d/%d), falling back to OCR for box at (%.1f, %.1f)",
+                    pagenum, garbled_count, total_count, b["x0"], b["top"],
+                )
+                b["text"] = ""
+                continue
+            # Strategy 2: font-encoding garbling — all chars are ASCII
+            # punctuation from subset fonts (no CJK output)
+            if total_count > 0 and self._is_garbled_by_font_encoding(box_chars, min_chars=5):
+                logging.info(
+                    "Page %d: detected font-encoding garbled text (%d chars), falling back to OCR for box at (%.1f, %.1f)",
+                    pagenum, total_count, b["x0"], b["top"],
+                )
+                b["text"] = ""
 
         logging.info(f"__ocr sorting {len(chars)} chars cost {timer() - start}s")
         start = timer()
@@ -383,7 +834,7 @@ class RAGFlowPdfParser:
                 else:
                     x0s.append([x])
             x0s = np.array(x0s, dtype=float)
-            
+
             max_try = min(4, len(bxs))
             if max_try < 2:
                 max_try = 1
@@ -402,7 +853,6 @@ class RAGFlowPdfParser:
                         continue
                 else:
                     score = 0
-                print(f"{k=},{score=}",flush=True)
                 if score > best_score:
                     best_score = score
                     best_k = k
@@ -410,15 +860,13 @@ class RAGFlowPdfParser:
             page_cols[pg] = best_k
             logging.info(f"[Page {pg}] best_score={best_score:.2f}, best_k={best_k}")
 
-
         global_cols = Counter(page_cols.values()).most_common(1)[0][0]
         logging.info(f"Global column_num decided by majority: {global_cols}")
-
 
         for pg, bxs in by_page.items():
             if not bxs:
                 continue
-            k = page_cols[pg] 
+            k = page_cols[pg]
             if len(bxs) < k:
                 k = 1
             x0s = np.array([[b["x0"]] for b in bxs], dtype=float)
@@ -432,7 +880,7 @@ class RAGFlowPdfParser:
 
             for b, lb in zip(bxs, labels):
                 b["col_id"] = remap[lb]
-            
+
             grouped = defaultdict(list)
             for b in bxs:
                 grouped[b["col_id"]].append(b)
@@ -478,11 +926,13 @@ class RAGFlowPdfParser:
         self.boxes = bxs
 
     def _naive_vertical_merge(self, zoomin=3):
-        bxs = self._assign_column(self.boxes, zoomin)
+        # bxs = self._assign_column(self.boxes, zoomin)
+        bxs = self.boxes
 
         grouped = defaultdict(list)
         for b in bxs:
-            grouped[(b["page_number"], b.get("col_id", 0))].append(b)
+            # grouped[(b["page_number"], b.get("col_id", 0))].append(b)
+            grouped[(b["page_number"], "x")].append(b)
 
         merged_boxes = []
         for (pg, col), bxs in grouped.items():
@@ -553,7 +1003,8 @@ class RAGFlowPdfParser:
 
             merged_boxes.extend(bxs)
 
-        self.boxes = sorted(merged_boxes, key=lambda x: (x["page_number"], x.get("col_id", 0), x["top"]))
+        # self.boxes = sorted(merged_boxes, key=lambda x: (x["page_number"], x.get("col_id", 0), x["top"]))
+        self.boxes = merged_boxes
 
     def _final_reading_order_merge(self, zoomin=3):
         if not self.boxes:
@@ -855,7 +1306,30 @@ class RAGFlowPdfParser:
 
         def cropout(bxs, ltype, poss):
             nonlocal ZM
-            pn = set([b["page_number"] - 1 for b in bxs])
+            max_page_index = len(self.page_images) - 1
+
+            def local_page_index(page_number):
+                idx = page_number - 1 if page_number > 0 else 0
+                if idx > max_page_index and self.page_from:
+                    idx = page_number - 1 - self.page_from
+                return idx
+
+            pn = set()
+            for b in bxs:
+                idx = local_page_index(b["page_number"])
+                if 0 <= idx <= max_page_index:
+                    pn.add(idx)
+                else:
+                    logging.warning(
+                        "Skip out-of-range page_number %s (page_from=%s, pages=%s)",
+                        b.get("page_number"),
+                        self.page_from,
+                        len(self.page_images),
+                    )
+
+            if not pn:
+                return None
+
             if len(pn) < 2:
                 pn = list(pn)[0]
                 ht = self.page_cum_height[pn]
@@ -874,12 +1348,16 @@ class RAGFlowPdfParser:
                 return self.page_images[pn].crop((left * ZM, top * ZM, right * ZM, bott * ZM))
             pn = {}
             for b in bxs:
-                p = b["page_number"] - 1
-                if p not in pn:
-                    pn[p] = []
-                pn[p].append(b)
+                p = local_page_index(b["page_number"])
+                if 0 <= p <= max_page_index:
+                    if p not in pn:
+                        pn[p] = []
+                    pn[p].append(b)
             pn = sorted(pn.items(), key=lambda x: x[0])
             imgs = [cropout(arr, ltype, poss) for p, arr in pn]
+            imgs = [img for img in imgs if img is not None]
+            if not imgs:
+                return None
             pic = Image.new("RGB", (int(np.max([i.size[0] for i in imgs])), int(np.sum([m.size[1] for m in imgs]))), (245, 245, 245))
             height = 0
             for img in imgs:
@@ -900,10 +1378,16 @@ class RAGFlowPdfParser:
             poss = []
 
             if separate_tables_figures:
-                figure_results.append((cropout(bxs, "figure", poss), [txt]))
+                img = cropout(bxs, "figure", poss)
+                if img is None:
+                    continue
+                figure_results.append((img, [txt]))
                 figure_positions.append(poss)
             else:
-                res.append((cropout(bxs, "figure", poss), [txt]))
+                img = cropout(bxs, "figure", poss)
+                if img is None:
+                    continue
+                res.append((img, [txt]))
                 positions.append(poss)
 
         for k, bxs in tables.items():
@@ -913,7 +1397,10 @@ class RAGFlowPdfParser:
 
             poss = []
 
-            res.append((cropout(bxs, "table", poss), self.tbl_det.construct_table(bxs, html=return_html, is_english=self.is_english)))
+            img = cropout(bxs, "table", poss)
+            if img is None:
+                continue
+            res.append((img, self.tbl_det.construct_table(bxs, html=return_html, is_english=self.is_english)))
             positions.append(poss)
 
         if separate_tables_figures:
@@ -1061,10 +1548,38 @@ class RAGFlowPdfParser:
                         logging.warning(f"Failed to extract characters for pages {page_from}-{page_to}: {str(e)}")
                         self.page_chars = [[] for _ in range(page_to - page_from)]  # If failed to extract, using empty list instead.
 
+                    # Detect garbled pages and clear their chars so the OCR
+                    # path will be used instead. Two detection strategies:
+                    # 1) PUA / unmapped CID characters (threshold=0.3)
+                    # 2) Font-encoding garbling: subset fonts mapping CJK to ASCII
+                    for pi, page_ch in enumerate(self.page_chars):
+                        if not page_ch:
+                            continue
+                        # Strategy 1: PUA / CID garbling
+                        sample = page_ch if len(page_ch) <= 200 else page_ch[:200]
+                        sample_text = "".join(c.get("text", "") for c in sample)
+                        if self._is_garbled_text(sample_text, threshold=0.3):
+                            logging.warning(
+                                "Page %d: pdfplumber extracted mostly garbled characters (%d chars), "
+                                "clearing to use OCR fallback.",
+                                page_from + pi + 1, len(page_ch),
+                            )
+                            self.page_chars[pi] = []
+                            continue
+                        # Strategy 2: font-encoding garbling (CJK mapped to ASCII)
+                        if self._is_garbled_by_font_encoding(page_ch):
+                            logging.warning(
+                                "Page %d: detected font-encoding garbled text "
+                                "(subset fonts with no CJK output, %d chars), "
+                                "clearing to use OCR fallback.",
+                                page_from + pi + 1, len(page_ch),
+                            )
+                            self.page_chars[pi] = []
+
                     self.total_page = len(self.pdf.pages)
 
-        except Exception:
-            logging.exception("RAGFlowPdfParser __images__")
+        except Exception as e:
+            logging.exception(f"RAGFlowPdfParser __images__, exception: {e}")
         logging.info(f"__images__ dedupe_chars cost {timer() - start}s")
 
         self.outlines = []
@@ -1113,7 +1628,7 @@ class RAGFlowPdfParser:
 
             if limiter:
                 async with limiter:
-                    await trio.to_thread.run_sync(lambda: self.__ocr(i + 1, img, chars, zoomin, id))
+                    await thread_pool_exec(self.__ocr, i + 1, img, chars, zoomin, id)
             else:
                 self.__ocr(i + 1, img, chars, zoomin, id)
 
@@ -1129,12 +1644,34 @@ class RAGFlowPdfParser:
                 return chars
 
             if self.parallel_limiter:
-                async with trio.open_nursery() as nursery:
-                    for i, img in enumerate(self.page_images):
-                        chars = __ocr_preprocess()
+                tasks = []
 
-                        nursery.start_soon(__img_ocr, i, i % settings.PARALLEL_DEVICES, img, chars, self.parallel_limiter[i % settings.PARALLEL_DEVICES])
-                        await trio.sleep(0.1)
+                for i, img in enumerate(self.page_images):
+                    chars = __ocr_preprocess()
+
+                    semaphore = self.parallel_limiter[i % settings.PARALLEL_DEVICES]
+
+                    async def wrapper(i=i, img=img, chars=chars, semaphore=semaphore):
+                        await __img_ocr(
+                            i,
+                            i % settings.PARALLEL_DEVICES,
+                            img,
+                            chars,
+                            semaphore,
+                        )
+
+                    tasks.append(asyncio.create_task(wrapper()))
+                    await asyncio.sleep(0)
+
+                try:
+                    await asyncio.gather(*tasks, return_exceptions=False)
+                except Exception as e:
+                    logging.error(f"Error in OCR: {e}")
+                    for t in tasks:
+                        t.cancel()
+                    await asyncio.gather(*tasks, return_exceptions=True)
+                    raise
+
             else:
                 for i, img in enumerate(self.page_images):
                     chars = __ocr_preprocess()
@@ -1142,7 +1679,7 @@ class RAGFlowPdfParser:
 
         start = timer()
 
-        trio.run(__img_ocr_launcher)
+        asyncio.run(__img_ocr_launcher())
 
         logging.info(f"__images__ {len(self.page_images)} pages cost {timer() - start}s")
 
@@ -1157,10 +1694,26 @@ class RAGFlowPdfParser:
         if len(self.boxes) == 0 and zoomin < 9:
             self.__images__(fnm, zoomin * 3, page_from, page_to, callback)
 
-    def __call__(self, fnm, need_image=True, zoomin=3, return_html=False):
+    def __call__(self, fnm, need_image=True, zoomin=3, return_html=False, auto_rotate_tables=None):
+        """
+        Parse a PDF file.
+
+        Args:
+            fnm: PDF file path or binary content
+            need_image: Whether to extract images
+            zoomin: Zoom factor
+            return_html: Whether to return tables in HTML format
+            auto_rotate_tables: Whether to enable auto orientation correction for tables.
+                               None: Use TABLE_AUTO_ROTATE env var setting (default: True)
+                               True: Enable auto orientation correction
+                               False: Disable auto orientation correction
+        """
+        if auto_rotate_tables is None:
+            auto_rotate_tables = os.getenv("TABLE_AUTO_ROTATE", "true").lower() in ("true", "1", "yes")
+
         self.__images__(fnm, zoomin)
         self._layouts_rec(zoomin)
-        self._table_transformer_job(zoomin)
+        self._table_transformer_job(zoomin, auto_rotate=auto_rotate_tables)
         self._text_merge()
         self._concat_downward()
         self._filter_forpages()
@@ -1178,8 +1731,11 @@ class RAGFlowPdfParser:
         if callback:
             callback(0.63, "Layout analysis ({:.2f}s)".format(timer() - start))
 
+        # Read table auto-rotation setting from environment variable
+        auto_rotate_tables = os.getenv("TABLE_AUTO_ROTATE", "true").lower() in ("true", "1", "yes")
+
         start = timer()
-        self._table_transformer_job(zoomin)
+        self._table_transformer_job(zoomin, auto_rotate=auto_rotate_tables)
         if callback:
             callback(0.83, "Table analysis ({:.2f}s)".format(timer() - start))
 
@@ -1214,15 +1770,32 @@ class RAGFlowPdfParser:
                 return math.sqrt(dx * dx + dy * dy)  # + (pn2-pn1)*10000
 
             for (img, txt), poss in tbls_or_figs:
+                # Positions coming from _extract_table_figure carry absolute 0-based page
+                # indices (page_from offset). Convert back to chunk-local indices so we
+                # stay consistent with self.boxes/page_cum_height, which are all relative
+                # to the current parsing window.
+                local_poss = []
+                for pn, left, right, top, bott in poss:
+                    local_pn = pn - self.page_from
+                    if 0 <= local_pn < len(self.page_cum_height) - 1:
+                        local_poss.append((local_pn, left, right, top, bott))
+                    else:
+                        logging.debug(f"Skip out-of-range table/figure position pn={pn}, page_from={self.page_from}")
+                if not local_poss:
+                    logging.debug("No valid local positions for table/figure; skip insertion.")
+                    continue
+
                 bboxes = [(i, (b["page_number"], b["x0"], b["x1"], b["top"], b["bottom"])) for i, b in enumerate(self.boxes)]
                 dists = [
-                    (min_rectangle_distance((pn, left, right, top + self.page_cum_height[pn], bott + self.page_cum_height[pn]), rect), i) for i, rect in bboxes for pn, left, right, top, bott in poss
+                    (min_rectangle_distance((pn, left, right, top + self.page_cum_height[pn], bott + self.page_cum_height[pn]), rect), i)
+                    for i, rect in bboxes
+                    for pn, left, right, top, bott in local_poss
                 ]
                 min_i = np.argmin(dists, axis=0)[0]
                 min_i, rect = bboxes[dists[min_i][-1]]
                 if isinstance(txt, list):
                     txt = "\n".join(txt)
-                pn, left, right, top, bott = poss[0]
+                pn, left, right, top, bott = local_poss[0]
                 if self.boxes[min_i]["bottom"] < top + self.page_cum_height[pn]:
                     min_i += 1
                 self.boxes.insert(
@@ -1427,6 +2000,7 @@ class VisionParser(RAGFlowPdfParser):
     def __init__(self, vision_model, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.vision_model = vision_model
+        self.outlines = []
 
     def __images__(self, fnm, zoomin=3, page_from=0, page_to=299, callback=None):
         try:
@@ -1456,6 +2030,8 @@ class VisionParser(RAGFlowPdfParser):
             if pdf_page_num < start_page or pdf_page_num >= end_page:
                 continue
 
+            from rag.app.picture import vision_llm_chunk as picture_vision_llm_chunk
+
             text = picture_vision_llm_chunk(
                 binary=img_binary,
                 vision_model=self.vision_model,
@@ -1468,10 +2044,7 @@ class VisionParser(RAGFlowPdfParser):
 
             if text:
                 width, height = self.page_images[idx].size
-                all_docs.append((
-                    text,
-                    f"@@{pdf_page_num + 1}\t{0.0:.1f}\t{width / zoomin:.1f}\t{0.0:.1f}\t{height / zoomin:.1f}##"
-                ))
+                all_docs.append((text, f"@@{pdf_page_num + 1}\t{0.0:.1f}\t{width / zoomin:.1f}\t{0.0:.1f}\t{height / zoomin:.1f}##"))
         return all_docs, []
 
 

@@ -1,13 +1,19 @@
-import { ConfirmDeleteDialog } from '@/components/confirm-delete-dialog';
+import {
+  ConfirmDeleteDialog,
+  ConfirmDeleteDialogNode,
+} from '@/components/confirm-delete-dialog';
+import { FileIcon } from '@/components/icon-font';
 import NewDocumentLink from '@/components/new-document-link';
 import { Button } from '@/components/ui/button';
-import { useDownloadFile } from '@/hooks/file-manager-hooks';
+import { useDownloadFile } from '@/hooks/use-file-request';
 import { IFile } from '@/interfaces/database/file-manager';
+import { cn } from '@/lib/utils';
 import {
   getExtension,
   isSupportedPreviewDocumentType,
 } from '@/utils/document-util';
 import { CellContext } from '@tanstack/react-table';
+import { t } from 'i18next';
 import {
   ArrowDownToLine,
   Eye,
@@ -38,6 +44,9 @@ export function ActionCell({
 }: IProps) {
   const record = row.original;
   const documentId = record.id;
+  const name: string = row.getValue('name');
+  const type = record.type;
+
   const { downloadFile } = useDownloadFile();
   const isFolder = isFolderType(record.type);
   const extension = getExtension(record.name);
@@ -69,12 +78,12 @@ export function ActionCell({
   }, [handleRemoveFile, documentId]);
 
   return (
-    <section className="flex gap-4 items-center text-text-sub-title-invert opacity-0 group-hover:opacity-100 transition-opacity">
+    <section className="flex gap-2 items-center text-text-sub-title-invert opacity-0 group-hover:opacity-100 transition-opacity">
       {isKnowledgeBase || (
         <Button
           variant="transparent"
           className="border-none hover:bg-bg-card text-text-primary"
-          size={'sm'}
+          size="icon-sm"
           onClick={handleShowConnectToKnowledgeModal}
         >
           <Link2 />
@@ -84,7 +93,7 @@ export function ActionCell({
         <Button
           variant="transparent"
           className="border-none hover:bg-bg-card text-text-primary"
-          size={'sm'}
+          size="icon-sm"
           onClick={handleShowMoveFileModal}
         >
           <FolderInput />
@@ -94,7 +103,7 @@ export function ActionCell({
         <Button
           variant="transparent"
           className="border-none hover:bg-bg-card text-text-primary"
-          size={'sm'}
+          size="icon-sm"
           onClick={handleShowFileRenameModal}
         >
           <FolderPen />
@@ -104,7 +113,7 @@ export function ActionCell({
         <Button
           variant="transparent"
           className="border-none hover:bg-bg-card text-text-primary"
-          size={'sm'}
+          size="icon-sm"
           onClick={onDownloadDocument}
         >
           <ArrowDownToLine />
@@ -120,7 +129,7 @@ export function ActionCell({
           <Button
             variant="transparent"
             className="border-none hover:bg-bg-card text-text-primary"
-            size={'sm'}
+            size="icon-sm"
           >
             <Eye />
           </Button>
@@ -151,11 +160,32 @@ export function ActionCell({
         </DropdownMenuContent>
       </DropdownMenu> */}
       {isKnowledgeBase || (
-        <ConfirmDeleteDialog onOk={onRemoveFile}>
+        <ConfirmDeleteDialog
+          onOk={onRemoveFile}
+          title={t('deleteModal.delFile')}
+          content={{
+            node: (
+              <ConfirmDeleteDialogNode>
+                <div className="flex items-center gap-2 text-text-secondary">
+                  <span className="size-4">
+                    <FileIcon name={name} type={type}></FileIcon>
+                  </span>
+                  <span
+                    className={cn('truncate text-xs', {
+                      ['cursor-pointer']: isFolder,
+                    })}
+                  >
+                    {name}
+                  </span>
+                </div>
+              </ConfirmDeleteDialogNode>
+            ),
+          }}
+        >
           <Button
             variant="transparent"
             className="border-none hover:bg-bg-card text-text-primary"
-            size={'sm'}
+            size="icon-sm"
           >
             <Trash2 />
           </Button>

@@ -49,9 +49,9 @@ class TestChatAssistantsList:
     )
     def test_page(self, client, params, expected_page_size, expected_message):
         if expected_message:
-            with pytest.raises(Exception) as excinfo:
+            with pytest.raises(Exception) as exception_info:
                 client.list_chats(**params)
-            assert expected_message in str(excinfo.value)
+            assert expected_message in str(exception_info.value)
         else:
             assistants = client.list_chats(**params)
             assert len(assistants) == expected_page_size
@@ -80,9 +80,9 @@ class TestChatAssistantsList:
     )
     def test_page_size(self, client, params, expected_page_size, expected_message):
         if expected_message:
-            with pytest.raises(Exception) as excinfo:
+            with pytest.raises(Exception) as exception_info:
                 client.list_chats(**params)
-            assert expected_message in str(excinfo.value)
+            assert expected_message in str(exception_info.value)
         else:
             assistants = client.list_chats(**params)
             assert len(assistants) == expected_page_size
@@ -99,9 +99,9 @@ class TestChatAssistantsList:
     )
     def test_orderby(self, client, params, expected_message):
         if expected_message:
-            with pytest.raises(Exception) as excinfo:
+            with pytest.raises(Exception) as exception_info:
                 client.list_chats(**params)
-            assert expected_message in str(excinfo.value)
+            assert expected_message in str(exception_info.value)
         else:
             client.list_chats(**params)
 
@@ -126,9 +126,9 @@ class TestChatAssistantsList:
     )
     def test_desc(self, client, params, expected_message):
         if expected_message:
-            with pytest.raises(Exception) as excinfo:
+            with pytest.raises(Exception) as exception_info:
                 client.list_chats(**params)
-            assert expected_message in str(excinfo.value)
+            assert expected_message in str(exception_info.value)
         else:
             client.list_chats(**params)
 
@@ -144,9 +144,9 @@ class TestChatAssistantsList:
     )
     def test_name(self, client, params, expected_num, expected_message):
         if expected_message:
-            with pytest.raises(Exception) as excinfo:
+            with pytest.raises(Exception) as exception_info:
                 client.list_chats(**params)
-            assert expected_message in str(excinfo.value)
+            assert expected_message in str(exception_info.value)
         else:
             assistants = client.list_chats(**params)
             if params["name"] in [None, ""]:
@@ -172,9 +172,9 @@ class TestChatAssistantsList:
             params = {"id": chat_assistant_id}
 
         if expected_message:
-            with pytest.raises(Exception) as excinfo:
+            with pytest.raises(Exception) as exception_info:
                 client.list_chats(**params)
-            assert expected_message in str(excinfo.value)
+            assert expected_message in str(exception_info.value)
         else:
             assistants = client.list_chats(**params)
             if params["id"] in [None, ""]:
@@ -200,9 +200,9 @@ class TestChatAssistantsList:
             params = {"id": chat_assistant_id, "name": name}
 
         if expected_message:
-            with pytest.raises(Exception) as excinfo:
+            with pytest.raises(Exception) as exception_info:
                 client.list_chats(**params)
-            assert expected_message in str(excinfo.value)
+            assert expected_message in str(exception_info.value)
         else:
             assistants = client.list_chats(**params)
             assert len(assistants) == expected_num
@@ -215,7 +215,7 @@ class TestChatAssistantsList:
         responses = list(as_completed(futures))
         assert len(responses) == count, responses
 
-    @pytest.mark.p2
+    @pytest.mark.p3
     def test_list_chats_after_deleting_associated_dataset(self, client, add_chat_assistants):
         dataset, _, _ = add_chat_assistants
         client.delete_datasets(ids=[dataset.id])

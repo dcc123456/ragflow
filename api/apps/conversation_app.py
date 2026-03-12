@@ -14,19 +14,22 @@
 #  limitations under the License.
 #
 import json
+import os
 import re
 import logging
 from copy import deepcopy
+import tempfile
 from quart import Response, request
 from api.apps import current_user, login_required
 from api.db.db_models import APIToken
 from api.db.services.conversation_service import ConversationService, structure_answer
-from api.db.services.dialog_service import DialogService, ask, chat, gen_mindmap
+from api.db.services.dialog_service import DialogService, async_ask, async_chat, gen_mindmap
 from api.db.services.llm_service import LLMBundle
 from api.db.services.search_service import SearchService
 from api.db.services.tenant_llm_service import TenantLLMService
-from api.db.services.user_service import TenantService, UserTenantService
-from api.utils.api_utils import get_data_error_result, get_json_result, server_error_response, validate_request
+from api.db.services.user_service import UserTenantService
+from api.db.joint_services.tenant_model_service import get_model_config_by_type_and_name, get_tenant_default_model_by_type
+from api.utils.api_utils import get_data_error_result, get_json_result, get_request_json, server_error_response, validate_request
 from rag.prompts.template import load_prompt
 from rag.prompts.generator import chunks_format
 from common.constants import RetCode, LLMType
@@ -35,7 +38,7 @@ from common.constants import RetCode, LLMType
 @manager.route("/set", methods=["POST"])  # noqa: F821
 @login_required
 async def set_conversation():
-    req = await request.json
+    req = await get_request_json()
     conv_id = req.get("conversation_id")
     is_new = req.get("is_new")
     name = req.get("name", "New conversation")
@@ -78,7 +81,7 @@ async def set_conversation():
 
 @manager.route("/get", methods=["GET"])  # noqa: F821
 @login_required
-def get():
+async def get():
     conv_id = request.args["conversation_id"]
     try:
         e, conv = ConversationService.get_by_id(conv_id)
@@ -109,7 +112,7 @@ def get():
 def getsse(dialog_id):
     token = request.headers.get("Authorization").split()
     if len(token) != 2:
-        return get_data_error_result(message='Authorization is not valid!"')
+        return get_data_error_result(message='Authorization is not valid!')
     token = token[1]
     objs = APIToken.query(beta=token)
     if not objs:
@@ -129,7 +132,7 @@ def getsse(dialog_id):
 @manager.route("/rm", methods=["POST"])  # noqa: F821
 @login_required
 async def rm():
-    req = await request.json
+    req = await get_request_json()
     conv_ids = req["conversation_ids"]
     try:
         for cid in conv_ids:
@@ -150,7 +153,7 @@ async def rm():
 
 @manager.route("/list", methods=["GET"])  # noqa: F821
 @login_required
-def list_conversation():
+async def list_conversation():
     dialog_id = request.args["dialog_id"]
     try:
         if not DialogService.query(tenant_id=current_user.id, id=dialog_id):
@@ -167,7 +170,7 @@ def list_conversation():
 @login_required
 @validate_request("conversation_id", "messages")
 async def completion():
-    req = await request.json
+    req = await get_request_json()
     msg = []
     for m in req["messages"]:
         if m["role"] == "system":
@@ -216,10 +219,12 @@ async def completion():
             dia.llm_setting = chat_model_config
 
         is_embedded = bool(chat_model_id)
-        def stream():
+        # Remove stream from req to avoid duplicate argument error
+        stream_mode = req.pop("stream", True)
+        async def stream():
             nonlocal dia, msg, req, conv
             try:
-                for ans in chat(dia, msg, True, **req):
+                async for ans in async_chat(dia, msg, True, **req):
                     ans = structure_answer(conv, ans, message_id, conv.id)
                     yield "data:" + json.dumps({"code": 0, "message": "", "data": ans}, ensure_ascii=False) + "\n\n"
                 if not is_embedded:
@@ -229,7 +234,7 @@ async def completion():
                 yield "data:" + json.dumps({"code": 500, "message": str(e), "data": {"answer": "**ERROR**: " + str(e), "reference": []}}, ensure_ascii=False) + "\n\n"
             yield "data:" + json.dumps({"code": 0, "message": "", "data": True}, ensure_ascii=False) + "\n\n"
 
-        if req.get("stream", True):
+        if stream_mode:
             resp = Response(stream(), mimetype="text/event-stream")
             resp.headers.add_header("Cache-control", "no-cache")
             resp.headers.add_header("Connection", "keep-alive")
@@ -239,7 +244,7 @@ async def completion():
 
         else:
             answer = None
-            for ans in chat(dia, msg, **req):
+            async for ans in async_chat(dia, msg, **req):
                 answer = structure_answer(conv, ans, message_id, conv.id)
                 if not is_embedded:
                     ConversationService.update_by_id(conv.id, conv.to_dict())
@@ -248,22 +253,74 @@ async def completion():
     except Exception as e:
         return server_error_response(e)
 
+@manager.route("/sequence2txt", methods=["POST"])  # noqa: F821
+@login_required
+async def sequence2txt():
+    req = await request.form
+    stream_mode = req.get("stream", "false").lower() == "true"
+    files = await request.files
+    if "file" not in files:
+        return get_data_error_result(message="Missing 'file' in multipart form-data")
+
+    uploaded = files["file"]
+
+    ALLOWED_EXTS = {
+        ".wav", ".mp3", ".m4a", ".aac",
+        ".flac", ".ogg", ".webm",
+        ".opus", ".wma"
+    }
+
+    filename = uploaded.filename or ""
+    suffix = os.path.splitext(filename)[-1].lower()
+    if suffix not in ALLOWED_EXTS:
+        return get_data_error_result(message=
+            f"Unsupported audio format: {suffix}. "
+            f"Allowed: {', '.join(sorted(ALLOWED_EXTS))}"
+        )
+    fd, temp_audio_path = tempfile.mkstemp(suffix=suffix)
+    os.close(fd)
+    await uploaded.save(temp_audio_path)
+
+    try:
+        default_asr_model_config = get_tenant_default_model_by_type(current_user.id, LLMType.SPEECH2TEXT)
+    except Exception as e:
+        return get_data_error_result(message=str(e))
+
+    asr_mdl=LLMBundle(current_user.id, default_asr_model_config)
+    if not stream_mode:
+        text = asr_mdl.transcription(temp_audio_path)
+        try:
+            os.remove(temp_audio_path)
+        except Exception as e:
+            logging.error(f"Failed to remove temp audio file: {str(e)}")
+        return get_json_result(data={"text": text})
+    async def event_stream():
+        try:
+            for evt in asr_mdl.stream_transcription(temp_audio_path):
+                yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
+        except Exception as e:
+            err = {"event": "error", "text": str(e)}
+            yield f"data: {json.dumps(err, ensure_ascii=False)}\n\n"
+        finally:
+            try:
+                os.remove(temp_audio_path)
+            except Exception as e:
+                logging.error(f"Failed to remove temp audio file: {str(e)}")
+
+    return Response(event_stream(), content_type="text/event-stream")
 
 @manager.route("/tts", methods=["POST"])  # noqa: F821
 @login_required
 async def tts():
-    req = await request.json
+    req = await get_request_json()
     text = req["text"]
 
-    tenants = TenantService.get_info_by(current_user.id)
-    if not tenants:
-        return get_data_error_result(message="Tenant not found!")
+    try:
+        default_tts_model_config = get_tenant_default_model_by_type(current_user.id, LLMType.TTS)
+    except Exception as e:
+        return get_data_error_result(message=str(e))
 
-    tts_id = tenants[0]["tts_id"]
-    if not tts_id:
-        return get_data_error_result(message="No default TTS model is set")
-
-    tts_mdl = LLMBundle(tenants[0]["tenant_id"], LLMType.TTS, tts_id)
+    tts_mdl = LLMBundle(current_user.id, default_tts_model_config)
 
     def stream_audio():
         try:
@@ -285,7 +342,7 @@ async def tts():
 @login_required
 @validate_request("conversation_id", "message_id")
 async def delete_msg():
-    req = await request.json
+    req = await get_request_json()
     e, conv = ConversationService.get_by_id(req["conversation_id"])
     if not e:
         return get_data_error_result(message="Conversation not found!")
@@ -308,7 +365,7 @@ async def delete_msg():
 @login_required
 @validate_request("conversation_id", "message_id")
 async def thumbup():
-    req = await request.json
+    req = await get_request_json()
     e, conv = ConversationService.get_by_id(req["conversation_id"])
     if not e:
         return get_data_error_result(message="Conversation not found!")
@@ -335,7 +392,7 @@ async def thumbup():
 @login_required
 @validate_request("question", "kb_ids")
 async def ask_about():
-    req = await request.json
+    req = await get_request_json()
     uid = current_user.id
 
     search_id = req.get("search_id", "")
@@ -346,10 +403,10 @@ async def ask_about():
     if search_app:
         search_config = search_app.get("search_config", {})
 
-    def stream():
+    async def stream():
         nonlocal req, uid
         try:
-            for ans in ask(req["question"], req["kb_ids"], uid, search_config=search_config):
+            async for ans in async_ask(req["question"], req["kb_ids"], uid, search_config=search_config):
                 yield "data:" + json.dumps({"code": 0, "message": "", "data": ans}, ensure_ascii=False) + "\n\n"
         except Exception as e:
             yield "data:" + json.dumps({"code": 500, "message": str(e), "data": {"answer": "**ERROR**: " + str(e), "reference": []}}, ensure_ascii=False) + "\n\n"
@@ -367,7 +424,7 @@ async def ask_about():
 @login_required
 @validate_request("question", "kb_ids")
 async def mindmap():
-    req = await request.json
+    req = await get_request_json()
     search_id = req.get("search_id", "")
     search_app = SearchService.get_detail(search_id) if search_id else {}
     search_config = search_app.get("search_config", {}) if search_app else {}
@@ -375,7 +432,7 @@ async def mindmap():
     kb_ids.extend(req["kb_ids"])
     kb_ids = list(set(kb_ids))
 
-    mind_map = gen_mindmap(req["question"], kb_ids, search_app.get("tenant_id", current_user.id), search_config)
+    mind_map = await gen_mindmap(req["question"], kb_ids, search_app.get("tenant_id", current_user.id), search_config)
     if "error" in mind_map:
         return server_error_response(Exception(mind_map["error"]))
     return get_json_result(data=mind_map)
@@ -385,7 +442,7 @@ async def mindmap():
 @login_required
 @validate_request("question")
 async def related_questions():
-    req = await request.json
+    req = await get_request_json()
 
     search_id = req.get("search_id", "")
     search_config = {}
@@ -396,13 +453,17 @@ async def related_questions():
     question = req["question"]
 
     chat_id = search_config.get("chat_id", "")
-    chat_mdl = LLMBundle(current_user.id, LLMType.CHAT, chat_id)
+    if chat_id:
+        chat_model_config = get_model_config_by_type_and_name(current_user.id, LLMType.CHAT, chat_id)
+    else:
+        chat_model_config = get_tenant_default_model_by_type(current_user.id, LLMType.CHAT)
+    chat_mdl = LLMBundle(current_user.id, chat_model_config)
 
     gen_conf = search_config.get("llm_setting", {"temperature": 0.9})
     if "parameter" in gen_conf:
         del gen_conf["parameter"]
     prompt = load_prompt("related_question")
-    ans = chat_mdl.chat(
+    ans = await chat_mdl.async_chat(
         prompt,
         [
             {

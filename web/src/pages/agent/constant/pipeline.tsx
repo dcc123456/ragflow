@@ -85,6 +85,7 @@ export enum ContextGeneratorFieldName {
   Keywords = 'keywords',
   Questions = 'questions',
   Metadata = 'metadata',
+  TableOfContents = 'toc',
 }
 
 export const FileId = 'File'; // BeginId
@@ -153,6 +154,22 @@ export enum StringTransformDelimiter {
   Space = ' ',
 }
 
+export enum PreprocessValue {
+  main_content = 'main_content',
+  section_title = 'title',
+  abstract = 'abstract',
+  author = 'author',
+}
+
+export const MAIN_CONTENT_PREPROCESS_VALUE: PreprocessValue =
+  PreprocessValue.main_content;
+
+export const PreprocessLabelKeyMap: Record<PreprocessValue, string> = {
+  main_content: 'mainContent',
+  title: 'sectionTitle',
+  abstract: 'abstract',
+  author: 'author',
+};
 export const initialParserValues = {
   outputs: {
     markdown: { type: 'string', value: '' },
@@ -165,35 +182,42 @@ export const initialParserValues = {
       fileFormat: FileType.PDF,
       output_format: PdfOutputFormat.Json,
       parse_method: ParseDocumentType.DeepDOC,
+      preprocess: PreprocessValue.main_content,
     },
     {
       fileFormat: FileType.Spreadsheet,
       output_format: SpreadsheetOutputFormat.Html,
       parse_method: ParseDocumentType.DeepDOC,
+      preprocess: PreprocessValue.main_content,
     },
     {
       fileFormat: FileType.Image,
       output_format: ImageOutputFormat.Text,
       parse_method: ImageParseMethod.OCR,
+      preprocess: PreprocessValue.main_content,
       system_prompt: '',
     },
     {
       fileFormat: FileType.Email,
       fields: Object.values(ParserFields),
       output_format: EmailOutputFormat.Text,
+      preprocess: PreprocessValue.main_content,
     },
     {
       fileFormat: FileType.TextMarkdown,
       output_format: TextMarkdownOutputFormat.Text,
+      preprocess: PreprocessValue.main_content,
     },
     {
       fileFormat: FileType.Docx,
       output_format: DocxOutputFormat.Json,
+      preprocess: PreprocessValue.main_content,
     },
     {
       fileFormat: FileType.PowerPoint,
       output_format: PptOutputFormat.Json,
       parse_method: ParseDocumentType.DeepDOC,
+      preprocess: PreprocessValue.main_content,
     },
   ],
 };
@@ -205,6 +229,7 @@ export const initialSplitterValues = {
   chunk_token_size: 512,
   overlapped_percent: 0,
   delimiters: [{ value: '\n' }],
+  image_table_context_window: 0,
 };
 
 export enum Hierarchy {

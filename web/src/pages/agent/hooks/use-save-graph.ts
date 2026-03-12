@@ -8,7 +8,7 @@ import { RAGFlowNodeType } from '@/interfaces/database/flow';
 import { formatDate } from '@/utils/date';
 import { useDebounceEffect } from 'ahooks';
 import { useCallback, useEffect, useState } from 'react';
-import { useParams } from 'umi';
+import { useParams } from 'react-router';
 import useGraphStore from '../store';
 import { useBuildDslData } from './use-build-dsl';
 
@@ -21,13 +21,22 @@ export const useSaveGraph = (showMessage: boolean = true) => {
   const saveGraph = useCallback(
     async (
       currentNodes?: RAGFlowNodeType[],
-      otherParam?: { globalVariables: Record<string, GlobalVariableType> },
+      otherParam?: {
+        globalVariables: Record<string, GlobalVariableType>;
+      },
+      release?: boolean,
     ) => {
-      return setAgent({
+      const params: Record<string, any> = {
         id,
         title: data.title,
         dsl: buildDslData(currentNodes, otherParam),
-      });
+      };
+
+      if (release) {
+        params.release = 'true';
+      }
+
+      return setAgent(params);
     },
     [setAgent, data, id, buildDslData],
   );

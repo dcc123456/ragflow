@@ -28,6 +28,8 @@ CHUNK_API_URL = f"/api/{VERSION}/datasets/{{dataset_id}}/documents/{{document_id
 CHAT_ASSISTANT_API_URL = f"/api/{VERSION}/chats"
 SESSION_WITH_CHAT_ASSISTANT_API_URL = f"/api/{VERSION}/chats/{{chat_id}}/sessions"
 SESSION_WITH_AGENT_API_URL = f"/api/{VERSION}/agents/{{agent_id}}/sessions"
+AGENT_API_URL = f"/api/{VERSION}/agents"
+RETRIEVAL_API_URL = f"/api/{VERSION}/retrieval"
 
 
 # DATASET MANAGEMENT
@@ -47,8 +49,17 @@ def update_dataset(auth, dataset_id, payload=None, *, headers=HEADERS, data=None
 
 
 def delete_datasets(auth, payload=None, *, headers=HEADERS, data=None):
+    """
+    Delete datasets.
+    The endpoint is DELETE /api/{VERSION}/datasets with payload {"ids": [...]}
+    This is the standard SDK REST API endpoint for dataset deletion.
+    """
     res = requests.delete(url=f"{HOST_ADDRESS}{DATASETS_API_URL}", headers=headers, auth=auth, json=payload, data=data)
     return res.json()
+
+
+def delete_all_datasets(auth, *, page_size=1000):
+    return delete_datasets(auth, {"ids": None, "delete_all": True})
 
 
 def batch_create_datasets(auth, num):
@@ -92,7 +103,8 @@ def download_document(auth, dataset_id, document_id, save_path):
     url = f"{HOST_ADDRESS}{FILE_API_URL}/{document_id}".format(dataset_id=dataset_id)
     res = requests.get(url=url, auth=auth, stream=True)
     try:
-        if res.status_code == 200:
+        # available for unauthed downloads
+        if res.status_code in (200, 401):
             with open(save_path, "wb") as f:
                 for chunk in res.iter_content(chunk_size=8192):
                     f.write(chunk)
@@ -118,6 +130,10 @@ def delete_documents(auth, dataset_id, payload=None):
     url = f"{HOST_ADDRESS}{FILE_API_URL}".format(dataset_id=dataset_id)
     res = requests.delete(url=url, headers=HEADERS, auth=auth, json=payload)
     return res.json()
+
+
+def delete_all_documents(auth, dataset_id, *, page_size=1000):
+    return delete_documents(auth, dataset_id, {"ids": None, "delete_all": True})
 
 
 def parse_documents(auth, dataset_id, payload=None):
@@ -169,8 +185,12 @@ def delete_chunks(auth, dataset_id, document_id, payload=None):
     return res.json()
 
 
+def delete_all_chunks(auth, dataset_id, document_id, *, page_size=1000):
+    return delete_chunks(auth, dataset_id, document_id, {"chunk_ids": None, "delete_all": True})
+
+
 def retrieval_chunks(auth, payload=None):
-    url = f"{HOST_ADDRESS}/api/v1/retrieval"
+    url = f"{HOST_ADDRESS}{RETRIEVAL_API_URL}"
     res = requests.post(url=url, headers=HEADERS, auth=auth, json=payload)
     return res.json()
 
@@ -208,6 +228,10 @@ def delete_chat_assistants(auth, payload=None):
     return res.json()
 
 
+def delete_all_chat_assistants(auth, *, page_size=1000):
+    return delete_chat_assistants(auth, {"ids": None, "delete_all": True})
+
+
 def batch_create_chat_assistants(auth, num):
     chat_assistant_ids = []
     for i in range(num):
@@ -241,9 +265,158 @@ def delete_session_with_chat_assistants(auth, chat_assistant_id, payload=None):
     return res.json()
 
 
+def delete_all_sessions_with_chat_assistant(auth, chat_assistant_id, *, page_size=1000):
+    return delete_session_with_chat_assistants(auth, chat_assistant_id, {"ids": None, "delete_all": True})
+
+
 def batch_add_sessions_with_chat_assistant(auth, chat_assistant_id, num):
     session_ids = []
     for i in range(num):
         res = create_session_with_chat_assistant(auth, chat_assistant_id, {"name": f"session_with_chat_assistant_{i}"})
         session_ids.append(res["data"]["id"])
     return session_ids
+
+
+# DATASET GRAPH AND TASKS
+def knowledge_graph(auth, dataset_id, params=None):
+    url = f"{HOST_ADDRESS}{DATASETS_API_URL}/{dataset_id}/knowledge_graph"
+    res = requests.get(url=url, headers=HEADERS, auth=auth, params=params)
+    return res.json()
+
+
+def delete_knowledge_graph(auth, dataset_id, payload=None):
+    url = f"{HOST_ADDRESS}{DATASETS_API_URL}/{dataset_id}/knowledge_graph"
+    if payload is None:
+        res = requests.delete(url=url, headers=HEADERS, auth=auth)
+    else:
+        res = requests.delete(url=url, headers=HEADERS, auth=auth, json=payload)
+    return res.json()
+
+
+def run_graphrag(auth, dataset_id, payload=None):
+    url = f"{HOST_ADDRESS}{DATASETS_API_URL}/{dataset_id}/run_graphrag"
+    res = requests.post(url=url, headers=HEADERS, auth=auth, json=payload)
+    return res.json()
+
+
+def trace_graphrag(auth, dataset_id, params=None):
+    url = f"{HOST_ADDRESS}{DATASETS_API_URL}/{dataset_id}/trace_graphrag"
+    res = requests.get(url=url, headers=HEADERS, auth=auth, params=params)
+    return res.json()
+
+
+def run_raptor(auth, dataset_id, payload=None):
+    url = f"{HOST_ADDRESS}{DATASETS_API_URL}/{dataset_id}/run_raptor"
+    res = requests.post(url=url, headers=HEADERS, auth=auth, json=payload)
+    return res.json()
+
+
+def trace_raptor(auth, dataset_id, params=None):
+    url = f"{HOST_ADDRESS}{DATASETS_API_URL}/{dataset_id}/trace_raptor"
+    res = requests.get(url=url, headers=HEADERS, auth=auth, params=params)
+    return res.json()
+
+
+def metadata_summary(auth, dataset_id, params=None):
+    url = f"{HOST_ADDRESS}{DATASETS_API_URL}/{dataset_id}/metadata/summary"
+    res = requests.get(url=url, headers=HEADERS, auth=auth, params=params)
+    return res.json()
+
+
+def metadata_batch_update(auth, dataset_id, payload=None):
+    url = f"{HOST_ADDRESS}{DATASETS_API_URL}/{dataset_id}/metadata/update"
+    res = requests.post(url=url, headers=HEADERS, auth=auth, json=payload)
+    return res.json()
+
+
+# CHAT COMPLETIONS AND RELATED QUESTIONS
+def related_questions(auth, payload=None):
+    url = f"{HOST_ADDRESS}/api/{VERSION}/sessions/related_questions"
+    res = requests.post(url=url, headers=HEADERS, auth=auth, json=payload)
+    return res.json()
+
+
+# AGENT MANAGEMENT AND SESSIONS
+def create_agent(auth, payload=None):
+    url = f"{HOST_ADDRESS}{AGENT_API_URL}"
+    res = requests.post(url=url, headers=HEADERS, auth=auth, json=payload)
+    return res.json()
+
+
+def list_agents(auth, params=None):
+    url = f"{HOST_ADDRESS}{AGENT_API_URL}"
+    res = requests.get(url=url, headers=HEADERS, auth=auth, params=params)
+    return res.json()
+
+
+def delete_agent(auth, agent_id):
+    url = f"{HOST_ADDRESS}{AGENT_API_URL}/{agent_id}"
+    res = requests.delete(url=url, headers=HEADERS, auth=auth)
+    return res.json()
+
+
+def create_agent_session(auth, agent_id, payload=None, params=None):
+    url = f"{HOST_ADDRESS}{SESSION_WITH_AGENT_API_URL}".format(agent_id=agent_id)
+    res = requests.post(url=url, headers=HEADERS, auth=auth, json=payload, params=params)
+    return res.json()
+
+
+def list_agent_sessions(auth, agent_id, params=None):
+    url = f"{HOST_ADDRESS}{SESSION_WITH_AGENT_API_URL}".format(agent_id=agent_id)
+    res = requests.get(url=url, headers=HEADERS, auth=auth, params=params)
+    return res.json()
+
+
+def delete_agent_sessions(auth, agent_id, payload=None):
+    url = f"{HOST_ADDRESS}{SESSION_WITH_AGENT_API_URL}".format(agent_id=agent_id)
+    res = requests.delete(url=url, headers=HEADERS, auth=auth, json=payload)
+    return res.json()
+
+
+def delete_all_agent_sessions(auth, agent_id, *, page_size=1000):
+    return delete_agent_sessions(auth, agent_id, {"ids": None, "delete_all": True})
+
+
+def agent_completions(auth, agent_id, payload=None):
+    url = f"{HOST_ADDRESS}{AGENT_API_URL}/{agent_id}/completions"
+    res = requests.post(url=url, headers=HEADERS, auth=auth, json=payload)
+    return res.json()
+
+
+def chat_completions(auth, chat_id, payload=None):
+    """
+    Send a question/message to a chat assistant and get completion.
+
+    Args:
+        auth: Authentication object
+        chat_id: Chat assistant ID
+        payload: Dictionary containing:
+            - question: str (required) - The question to ask
+            - stream: bool (optional) - Whether to stream responses, default False
+            - session_id: str (optional) - Session ID for conversation context
+
+    Returns:
+        Response JSON with answer data
+    """
+    url = f"{HOST_ADDRESS}/api/{VERSION}/chats/{chat_id}/completions"
+    res = requests.post(url=url, headers=HEADERS, auth=auth, json=payload)
+    return res.json()
+
+
+def chat_completions_openai(auth, chat_id, payload=None):
+    """
+    Send a request to the OpenAI-compatible chat completions endpoint.
+
+    Args:
+        auth: Authentication object
+        chat_id: Chat assistant ID
+        payload: Dictionary in OpenAI chat completions format containing:
+            - messages: list (required) - List of message objects with 'role' and 'content'
+            - stream: bool (optional) - Whether to stream responses, default False
+
+    Returns:
+        Response JSON in OpenAI chat completions format with usage information
+    """
+    url = f"{HOST_ADDRESS}/api/{VERSION}/chats_openai/{chat_id}/chat/completions"
+    res = requests.post(url=url, headers=HEADERS, auth=auth, json=payload)
+    return res.json()

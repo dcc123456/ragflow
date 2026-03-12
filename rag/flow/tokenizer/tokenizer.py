@@ -17,12 +17,11 @@ import random
 import re
 
 import numpy as np
-import trio
 
 from common.constants import LLMType
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.llm_service import LLMBundle
-from api.db.services.user_service import TenantService
+from api.db.joint_services.tenant_model_service import get_tenant_default_model_by_type, get_model_config_by_id, get_model_config_by_type_and_name
 from common.connection_utils import timeout
 from rag.flow.base import ProcessBase, ProcessParamBase
 from rag.flow.tokenizer.schema import TokenizerFromUpstream
@@ -31,6 +30,7 @@ from common import settings
 from rag.svr.task_executor import embed_limiter
 from common.token_utils import truncate
 
+from common.misc_utils import thread_pool_exec
 
 class TokenizerParam(ProcessParamBase):
     def __init__(self):
@@ -55,11 +55,13 @@ class Tokenizer(ProcessBase):
         token_count = 0
         if self._canvas._kb_id:
             e, kb = KnowledgebaseService.get_by_id(self._canvas._kb_id)
-            embedding_id = kb.embd_id
+            if kb.tenant_embd_id:
+                embd_model_config = get_model_config_by_id(kb.tenant_embd_id)
+            else:
+                embd_model_config = get_model_config_by_type_and_name(self._canvas._tenant_id, LLMType.EMBEDDING, kb.embd_id)
         else:
-            e, ten = TenantService.get_by_id(self._canvas._tenant_id)
-            embedding_id = ten.embd_id
-        embedding_model = LLMBundle(self._canvas._tenant_id, LLMType.EMBEDDING, llm_name=embedding_id)
+            embd_model_config = get_tenant_default_model_by_type(self._canvas._tenant_id, LLMType.EMBEDDING)
+        embedding_model = LLMBundle(self._canvas._tenant_id, embd_model_config)
         texts = []
         for c in chunks:
             txt = ""
@@ -84,7 +86,7 @@ class Tokenizer(ProcessBase):
         cnts_ = np.array([])
         for i in range(0, len(texts), settings.EMBEDDING_BATCH_SIZE):
             async with embed_limiter:
-                vts, c = await trio.to_thread.run_sync(lambda: batch_encode(texts[i : i + settings.EMBEDDING_BATCH_SIZE]))
+                vts, c = await thread_pool_exec(batch_encode,texts[i : i + settings.EMBEDDING_BATCH_SIZE],)
             if len(cnts_) == 0:
                 cnts_ = vts
             else:
@@ -105,6 +107,9 @@ class Tokenizer(ProcessBase):
 
     async def _invoke(self, **kwargs):
         try:
+            chunks = kwargs.get("chunks")
+            kwargs["chunks"] = [c for c in chunks if c is not None]
+
             from_upstream = TokenizerFromUpstream.model_validate(kwargs)
         except Exception as e:
             self.set_output("_ERROR", f"Input error: {str(e)}")

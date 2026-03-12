@@ -226,10 +226,26 @@ class TestChatAssistantCreate:
                 assert res["data"]["prompt"]["show_quote"] is True
                 assert (
                     res["data"]["prompt"]["prompt"]
-                    == 'You are an intelligent assistant. Please summarize the content of the knowledge base to answer the question. Please list the data in the knowledge base and answer in detail. When all knowledge base content is irrelevant to the question, your answer must include the sentence "The answer you are looking for is not found in the knowledge base!" Answers need to consider chat history.\n      Here is the knowledge base:\n      {knowledge}\n      The above is the knowledge base.'
+                    == 'You are an intelligent assistant. Please summarize the content of the dataset to answer the question. Please list the data in the dataset and answer in detail. When all dataset content is irrelevant to the question, your answer must include the sentence "The answer you are looking for is not found in the dataset!" Answers need to consider chat history.\n      Here is the knowledge base:\n      {knowledge}\n      The above is the knowledge base.'
                 )
         else:
             assert res["message"] == expected_message
+
+    @pytest.mark.p2
+    def test_create_additional_guards_p2(self, HttpApiAuth):
+        tenant_payload = {"name": "guard-tenant-id", "dataset_ids": [], "tenant_id": "tenant-should-not-pass"}
+        res = create_chat_assistant(HttpApiAuth, tenant_payload)
+        assert res["code"] == 102
+        assert res["message"] == "`tenant_id` must not be provided."
+
+        rerank_payload = {
+            "name": "guard-rerank-id",
+            "dataset_ids": [],
+            "prompt": {"rerank_model": "unknown-rerank-model"},
+        }
+        res = create_chat_assistant(HttpApiAuth, rerank_payload)
+        assert res["code"] == 102
+        assert "`rerank_model` unknown-rerank-model doesn't exist" in res["message"]
 
 
 class TestChatAssistantCreate2:

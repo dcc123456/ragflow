@@ -13,6 +13,7 @@ export interface PromptConfig {
   use_kg: boolean;
   reasoning?: boolean;
   cross_languages?: Array<string>;
+  tavily_api_key?: string;
 }
 
 export interface Parameter {
@@ -34,6 +35,7 @@ export interface Variable {
   temperature?: number;
   top_p?: number;
   llm_id?: string;
+  tenant_llm_id?: string;
 }
 
 export interface IDialog {
@@ -47,6 +49,7 @@ export interface IDialog {
   kb_names: string[];
   language: string;
   llm_id: string;
+  tenant_llm_id?: string;
   llm_setting: Variable;
   llm_setting_type: string;
   name: string;
@@ -96,7 +99,7 @@ export interface Message {
   id?: string;
   audio_binary?: string;
   data?: any;
-  files?: File[];
+  files?: (File | UploadResponseDataType)[];
   chatBoxId?: string;
   attachment?: IAttachment;
 }
@@ -182,4 +185,26 @@ export interface IExternalChatInfo {
   avatar?: string;
   title: string;
   prologue?: string;
+  has_tavily_key?: boolean;
+}
+
+export interface IMessage extends Message {
+  id: string;
+  reference?: IReference; // the latest news has reference
+  conversationId?: string; // To distinguish which conversation the message belongs to
+}
+
+export interface IClientConversation extends IConversation {
+  message: IMessage[];
+}
+
+export interface UploadResponseDataType {
+  created_at: number;
+  created_by: string;
+  extension: string;
+  id: string;
+  mime_type: string;
+  name: string;
+  preview_url: null;
+  size: number;
 }

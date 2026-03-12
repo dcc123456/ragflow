@@ -51,6 +51,7 @@ export interface IAttachment {
 }
 export interface IMessageData {
   content: string;
+  audio_binary: string;
   outputs: any;
   start_to_think?: boolean;
   end_to_think?: boolean;
@@ -144,7 +145,7 @@ export const useSendMessageBySSE = (url: string = api.completeConversation) => {
                 const val = JSON.parse(value?.data || '');
 
                 console.info('data:', val);
-                if (val.code === 500) {
+                if (typeof val?.code === 'number' && val.code !== 0) {
                   message.error(val.message);
                 }
 
