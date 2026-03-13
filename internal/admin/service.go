@@ -51,7 +51,6 @@ var (
 type Service struct {
 	userDAO           *dao.UserDAO
 	licenseDAO        *dao.LicenseDAO
-	systemSettingsDAO *dao.SystemSettingsDAO
 	tenantDAO         *dao.TenantDAO
 	userTenantDAO     *dao.UserTenantDAO
 	tenantLLMDAO      *dao.TenantLLMDAO
@@ -65,6 +64,8 @@ type Service struct {
 	apiTokenDAO       *dao.APITokenDAO
 	api4ConvDAO       *dao.API4ConversationDAO
 	llmDAO            *dao.LLMDAO
+	timeRecordDAO     *dao.TimeRecordDAO
+	systemSettingsDAO *dao.SystemSettingsDAO
 }
 
 // NewService create admin service
@@ -72,7 +73,6 @@ func NewService() *Service {
 	return &Service{
 		userDAO:           dao.NewUserDAO(),
 		licenseDAO:        dao.NewLicenseDAO(),
-		systemSettingsDAO: dao.NewSystemSettingsDAO(),
 		tenantDAO:         dao.NewTenantDAO(),
 		userTenantDAO:     dao.NewUserTenantDAO(),
 		tenantLLMDAO:      dao.NewTenantLLMDAO(),
@@ -86,6 +86,8 @@ func NewService() *Service {
 		apiTokenDAO:       dao.NewAPITokenDAO(),
 		api4ConvDAO:       dao.NewAPI4ConversationDAO(),
 		llmDAO:            dao.NewLLMDAO(),
+		timeRecordDAO:     dao.NewTimeRecordDAO(),
+		systemSettingsDAO: dao.NewSystemSettingsDAO(),
 	}
 }
 
@@ -1521,19 +1523,23 @@ func (s *Service) TestSandboxConnection(providerType string, config map[string]i
 	}, nil
 }
 
+var heartBeatCount int64 = 0
+
 // HandleHeartbeat handle heartbeat
-func (s *Service) HandleHeartbeat(msg *common.BaseMessage) error {
+func (s *Service) HandleHeartbeat(message *common.BaseMessage) (common.ErrorCode, string) {
+	heartBeatCount++
+
 	status := &common.BaseMessage{
-		ServerName: msg.ServerName,
-		ServerType: msg.ServerType,
-		Host:       msg.Host,
-		Port:       msg.Port,
-		Version:    msg.Version,
-		Timestamp:  msg.Timestamp,
-		Ext:        msg.Ext,
+		ServerName: message.ServerName,
+		ServerType: message.ServerType,
+		Host:       message.Host,
+		Port:       message.Port,
+		Version:    message.Version,
+		Timestamp:  message.Timestamp,
+		Ext:        message.Ext,
 	}
-	GlobalServerStatusStore.UpdateStatus(msg.ServerName, status)
-	return nil
+	GlobalServerStatusStore.UpdateStatus(message.ServerName, status)
+	return common.CodeLicenseValid, ""
 }
 
 // InitDefaultAdmin initialize default admin user
