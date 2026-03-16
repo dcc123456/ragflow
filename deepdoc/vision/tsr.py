@@ -218,11 +218,37 @@ class TableStructureRecognizer(Recognizer):
         cap = ""
         i = 0
 
+        def get_cell_bbox(cell):
+            candidates = (
+                ("_x0", "_top", "_x1", "_bottom"),
+                ("x0", "top", "x1", "bottom"),
+                ("x0_rotated", "top_rotated", "x1_rotated", "bottom_rotated"),
+            )
+            for keys in candidates:
+                if all(k in cell for k in keys):
+                    left, top, right, bottom = [cell[k] for k in keys]
+                    if None in (left, top, right, bottom):
+                        continue
+                    try:
+                        left, top, right, bottom = float(left), float(top), float(right), float(bottom)
+                    except Exception:
+                        continue
+                    return left, top, right, bottom
+            return None
+
         def ocr(img, cell):
             nonlocal ocr_model
             if not ocr_model:
                 return ""
-            left, t, r, b = cell["_x0"], cell["_top"], cell["_x1"], cell["_bottom"]
+            bbox = get_cell_bbox(cell)
+            if bbox is None:
+                return ""
+            left, t, r, b = bbox
+            width, height = img.size
+            left, r = max(0, min(left, width)), max(0, min(r, width))
+            t, b = max(0, min(t, height)), max(0, min(b, height))
+            if left >= r or t >= b:
+                return ""
             img = img.crop((left, t, r, b))
             bxs = ocr_model.detect(np.array(img))
             txt = ""
@@ -255,9 +281,11 @@ class TableStructureRecognizer(Recognizer):
                 ii = Recognizer.find_overlapped_with_threshold(b, cells, 0.85)
                 if ii is None:
                     continue
-                if re.search(r"[a-zA-Z,:;'!.]{2,}$", cells[ii]["text"]):
-                    cells[ii]["text"] += " "
-                cells[ii]["text"] += b["text"]
+                cell_text = cells[ii].get("text", "")
+                if re.search(r"[a-zA-Z,:;'!.]{2,}$", cell_text):
+                    cell_text += " "
+                cell_text += b["text"]
+                cells[ii]["text"] = cell_text
                 x += 1
             if x == 0 and st > -1:
                 ed = i

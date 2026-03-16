@@ -345,42 +345,20 @@ class RAGFlowPdfParser:
                 - confidence_scores: Dict of scores for each angle
         """
 
-        rotations = [
-            (0, "original"),
-            (90, "rotate_90"),  # clockwise 90°
-            (180, "rotate_180"),  # 180°
-            (270, "rotate_270"),  # clockwise 270° (counter-clockwise 90°)
-        ]
-
         results = {}
-        best_score = -1
+        best_score = 0
         best_angle = 0
         best_img = table_img
-        score_0 = None
 
-        for angle, name in rotations:
-            # Rotate image
-            if angle == 0:
-                rotated_img = table_img
-            else:
-                # PIL's rotate is counter-clockwise, use negative angle for clockwise
-                rotated_img = table_img.rotate(-angle, expand=True)
-
-            # Convert to numpy array for OCR
+        def score_orientation(rotated_img, angle):
             img_array = np.array(rotated_img)
-
-            # Perform OCR detection and recognition
             try:
                 ocr_results = self.ocr(img_array)
 
                 if ocr_results:
-                    # Calculate average confidence
                     scores = [conf for _, (_, conf) in ocr_results]
                     avg_score = sum(scores) / len(scores) if scores else 0
                     total_regions = len(scores)
-
-                    # Combined score: considers both average confidence and number of regions
-                    # More regions + higher confidence = better orientation
                     combined_score = avg_score * (1 + 0.1 * min(total_regions, 50) / 50)
                 else:
                     avg_score = 0
@@ -394,25 +372,30 @@ class RAGFlowPdfParser:
                 combined_score = 0
 
             results[angle] = {"avg_confidence": avg_score, "total_regions": total_regions, "combined_score": combined_score}
-            if angle == 0:
-                score_0 = combined_score
-
             logging.debug(f"Table orientation {angle}°: avg_conf={avg_score:.4f}, regions={total_regions}, combined={combined_score:.4f}")
+            return combined_score
 
-            if combined_score > best_score:
-                best_score = combined_score
-                best_angle = angle
-                best_img = rotated_img
+        score_0 = score_orientation(table_img, 0)
+        best_score = score_0
+
+        # Fast path: keep 0° when OCR confidence is already high.
+        if score_0 < 0.8:
+            for angle in (90, 180, 270):
+                rotated_img = table_img.rotate(-angle, expand=True)
+                combined_score = score_orientation(rotated_img, angle)
+                if combined_score > best_score:
+                    best_score = combined_score
+                    best_angle = angle
+                    best_img = rotated_img
+        else:
+            logging.debug("Skip rotation sweep: 0° score %.4f already above threshold.", score_0)
 
         # Absolute threshold rule:
         # Only choose non-0° if it exceeds 0° by more than 0.2 and 0° score is below 0.8.
-        if best_angle != 0 and score_0 is not None:
-            if not (best_score - score_0 > 0.2 and score_0 < 0.8):
-                best_angle = 0
-                best_img = table_img
-                best_score = score_0
-
-        results[best_angle] = results.get(best_angle, {"avg_confidence": 0, "total_regions": 0, "combined_score": 0})
+        if best_angle != 0 and not (best_score - score_0 > 0.2 and score_0 < 0.8):
+            best_angle = 0
+            best_img = table_img
+            best_score = score_0
 
         logging.info(f"Best table orientation: {best_angle}° (score={best_score:.4f})")
 
@@ -444,7 +427,6 @@ class RAGFlowPdfParser:
 
         # Collect layout info for all tables
         table_layouts = []  # [(page, table_layout, left, top, right, bott), ...]
-
         table_index = 0
         for p, tbls in enumerate(self.page_layout):  # for page
             tbls = [f for f in tbls if f["type"] == "table"]
