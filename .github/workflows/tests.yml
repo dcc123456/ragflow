@@ -36,9 +36,6 @@ jobs:
     if: ${{ github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci') }}
     runs-on: [ "self-hosted", "ragflow-test" ]
     steps:
-      # https://github.com/hmarr/debug-action
-      #- uses: hmarr/debug-action@v2
-
       - name: Ensure workspace ownership
         run: |
           echo "Workflow triggered by ${{ github.event_name }}"
@@ -134,25 +131,17 @@ jobs:
             fi
           fi
 
-      - name: Run unit test
+      - name: Build ragflow go server
         run: |
-          uv sync --python 3.12 --group test --frozen
-          source .venv/bin/activate
-          which pytest || echo "pytest not in PATH"
-          echo "Start to run unit test"
-          python3 run_tests.py
-
-      # - name: Build ragflow go server
-      #   run: |
-      #     BUILDER_CONTAINER=ragflow_build_$(od -An -N4 -tx4 /dev/urandom | tr -d ' ')
-      #     echo "BUILDER_CONTAINER=${BUILDER_CONTAINER}" >> ${GITHUB_ENV}
-      #     TZ=${TZ:-$(readlink -f /etc/localtime | awk -F '/zoneinfo/' '{print $2}')}
-      #     sudo docker run --privileged -d --name ${BUILDER_CONTAINER} -e TZ=${TZ} -e UV_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple -v ${PWD}:/ragflow -v ${PWD}/internal/cpp/resource:/usr/share/infinity/resource infiniflow/infinity_builder:ubuntu22_clang20
-      #     sudo docker exec ${BUILDER_CONTAINER} bash -c "git config --global safe.directory \"*\" && cd /ragflow && ./build.sh --cpp"
-      #     ./build.sh --go
-      #     if [[ -n "${BUILDER_CONTAINER}" ]]; then
-      #       sudo docker rm -f -v "${BUILDER_CONTAINER}"
-      #     fi
+          BUILDER_CONTAINER=ragflow_build_$(od -An -N4 -tx4 /dev/urandom | tr -d ' ')
+          echo "BUILDER_CONTAINER=${BUILDER_CONTAINER}" >> ${GITHUB_ENV}
+          TZ=${TZ:-$(readlink -f /etc/localtime | awk -F '/zoneinfo/' '{print $2}')}
+          sudo docker run --privileged -d --name ${BUILDER_CONTAINER} -e TZ=${TZ} -e UV_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple -v ${PWD}:/ragflow -v ${PWD}/internal/cpp/resource:/usr/share/infinity/resource infiniflow/infinity_builder:ubuntu22_clang20
+          sudo docker exec ${BUILDER_CONTAINER} bash -c "git config --global safe.directory \"*\" && cd /ragflow && ./build.sh --cpp"
+          ./build.sh --go
+          if [[ -n "${BUILDER_CONTAINER}" ]]; then
+            sudo docker rm -f -v "${BUILDER_CONTAINER}"
+          fi
 
       - name: Build ragflow:nightly
         run: |
@@ -168,6 +157,14 @@ jobs:
           fi
           echo "HTTP_API_TEST_LEVEL=${HTTP_API_TEST_LEVEL}" >> ${GITHUB_ENV}
           echo "RAGFLOW_CONTAINER=${GITHUB_RUN_ID}-ragflow-1" >> ${GITHUB_ENV}
+
+      - name: Run unit test
+        run: |
+          uv sync --python 3.12 --group test --frozen
+          source .venv/bin/activate
+          which pytest || echo "pytest not in PATH"
+          echo "Start to run unit test"
+          python3 run_tests.py
 
       - name: Start ragflow:nightly
         working-directory: docker
@@ -228,9 +225,9 @@ jobs:
           echo -e "SVR_HTTP_PORT=${SVR_HTTP_PORT}" >> .env
           echo -e "ADMIN_SVR_HTTP_PORT=${ADMIN_SVR_HTTP_PORT}" >> .env
           echo -e "SVR_MCP_PORT=${SVR_MCP_PORT}" >> .env
-          echo -e "SANDBOX_EXECUTOR_MANAGER_PORT=${SANDBOX_EXECUTOR_MANAGER_PORT}" >> .env
           echo -e "GO_HTTP_PORT=${GO_HTTP_PORT}" >> .env
           echo -e "GO_ADMIN_PORT=${GO_ADMIN_PORT}" >> .env
+          echo -e "SANDBOX_EXECUTOR_MANAGER_PORT=${SANDBOX_EXECUTOR_MANAGER_PORT}" >> .env
           echo -e "SVR_WEB_HTTP_PORT=${SVR_WEB_HTTP_PORT}" >> .env
           echo -e "SVR_WEB_HTTPS_PORT=${SVR_WEB_HTTPS_PORT}" >> .env
           echo -e "RABBITMQ_AMQP_PORT=${RABBITMQ_AMQP_PORT}" >> .env
@@ -403,12 +400,6 @@ jobs:
           fi
           sudo rm -rf docker/ragflow-logs || true
 
-      - name: Stop ragflow:nightly
-        if: always()  # always run this step even if previous steps failed
-        run: |
-          sudo docker compose -f docker/docker-compose.yml -p ${GITHUB_RUN_ID} down -v || true
-          sudo docker ps -a --filter "label=com.docker.compose.project=${GITHUB_RUN_ID}" -q | xargs -r sudo docker rm -f
-      
       - name: Stop ragflow:nightly
         if: always()  # always run this step even if previous steps failed
         working-directory: docker
