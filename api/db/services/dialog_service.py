@@ -622,7 +622,7 @@ async def async_chat(dialog, messages, stream=True, *, user_id: str, **kwargs):
             await task
 
         else:
-            if embd_mdl and attachments:
+            if embd_mdl:
                 kbinfos = await retriever.retrieval(
                     " ".join(questions),
                     embd_mdl,

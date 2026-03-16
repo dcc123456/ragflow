@@ -34,7 +34,7 @@ from common.constants import LLMType
 def test_get_model_config_by_type_and_name_uses_shared_tenant_suffix(monkeypatch):
     calls = []
 
-    def _get_api_key(tenant_id, model_name):
+    def _get_api_key(tenant_id, model_name, model_type=None):
         calls.append((tenant_id, model_name))
         return SimpleNamespace(
             to_dict=lambda: {
@@ -69,7 +69,7 @@ def test_get_model_config_by_type_and_name_uses_shared_tenant_suffix(monkeypatch
 def test_get_model_config_by_type_and_name_falls_back_to_plain_name_on_shared_tenant(monkeypatch):
     calls = []
 
-    def _get_api_key(tenant_id, model_name):
+    def _get_api_key(tenant_id, model_name, model_type=None):
         calls.append((tenant_id, model_name))
         if model_name == "bge-m3":
             return SimpleNamespace(

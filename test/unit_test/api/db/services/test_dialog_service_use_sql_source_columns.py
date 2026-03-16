@@ -301,10 +301,15 @@ def test_async_chat_uses_all_docs_when_no_doc_ids_selected(monkeypatch):
         lambda kbinfos, _max_tokens: ["Chunk text from dataset."] if kbinfos["chunks"] else [],
     )
     monkeypatch.setattr(dialog_service, "message_fit_in", lambda msg, _max_tokens: (0, msg))
+    monkeypatch.setattr(
+        dialog_service,
+        "filter_accessible_doc_ids_for_user",
+        lambda _user_id, _kb_ids, doc_ids: (doc_ids, None, None),
+    )
 
     async def _collect():
         items = []
-        async for item in dialog_service.async_chat(dialog, [{"role": "user", "content": "What does the dataset say?"}], stream=False):
+        async for item in dialog_service.async_chat(dialog, [{"role": "user", "content": "What does the dataset say?"}], stream=False, user_id="test-user"):
             items.append(item)
         return items
 

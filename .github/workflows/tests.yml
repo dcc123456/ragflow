@@ -229,8 +229,8 @@ jobs:
           echo -e "ADMIN_SVR_HTTP_PORT=${ADMIN_SVR_HTTP_PORT}" >> .env
           echo -e "SVR_MCP_PORT=${SVR_MCP_PORT}" >> .env
           echo -e "SANDBOX_EXECUTOR_MANAGER_PORT=${SANDBOX_EXECUTOR_MANAGER_PORT}" >> .env
-          echo -e "GO_HTTP_PORT=${GO_HTTP_PORT}" >> docker/.env
-          echo -e "GO_ADMIN_PORT=${GO_ADMIN_PORT}" >> docker/.env
+          echo -e "GO_HTTP_PORT=${GO_HTTP_PORT}" >> .env
+          echo -e "GO_ADMIN_PORT=${GO_ADMIN_PORT}" >> .env
           echo -e "SVR_WEB_HTTP_PORT=${SVR_WEB_HTTP_PORT}" >> .env
           echo -e "SVR_WEB_HTTPS_PORT=${SVR_WEB_HTTPS_PORT}" >> .env
           echo -e "RABBITMQ_AMQP_PORT=${RABBITMQ_AMQP_PORT}" >> .env

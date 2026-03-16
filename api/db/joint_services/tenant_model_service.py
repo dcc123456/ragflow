@@ -52,7 +52,7 @@ def get_model_config_by_type_and_name(tenant_id: str, model_type: str, model_nam
                 "model_type": LLMType.EMBEDDING.value,
             }
         else:
-            model_config = TenantLLMService.get_api_key(tenant_id, pure_model_name, model_type_val)
+            model_config = TenantLLMService.get_api_key(lookup_tenant_id, pure_model_name, model_type_val)
             if not model_config:
                 raise LookupError(f"Tenant Model with name {model_name} and type {model_type_val} not found")
             config_dict = model_config.to_dict()

@@ -18,8 +18,8 @@ import logging
 import time
 from uuid import uuid4
 from agent.canvas import Canvas
-from api.db import CanvasCategory, TenantPermission
-from api.db.db_models import DB, CanvasTemplate, User, UserCanvas, API4Conversation, UserCanvasVersion
+from api.db import CanvasCategory, ResourceType, TenantPermission
+from api.db.db_models import DB, CanvasTemplate, Permission, User, UserCanvas, API4Conversation, UserCanvasVersion
 from api.db.services.api_service import API4ConversationService
 from api.db.services.common_service import CommonService
 from api.db.services.user_canvas_version import UserCanvasVersionService
