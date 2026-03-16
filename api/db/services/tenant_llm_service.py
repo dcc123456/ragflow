@@ -63,12 +63,16 @@ class TenantLLMService(CommonService):
 
     @classmethod
     @DB.connection_context()
-    def get_api_key(cls, tenant_id, model_name):
+    def get_api_key(cls, tenant_id, model_name, model_type=None):
         mdlnm, fid, _ = TenantLLMService.split_model_name_and_factory(model_name)
+        model_type_val = model_type.value if hasattr(model_type, "value") else model_type
+        query_kwargs = {"tenant_id": tenant_id, "llm_name": mdlnm}
+        if model_type_val is not None:
+            query_kwargs["model_type"] = model_type_val
         if not fid:
-            objs = cls.query(tenant_id=tenant_id, llm_name=mdlnm)
+            objs = cls.query(**query_kwargs)
         else:
-            objs = cls.query(tenant_id=tenant_id, llm_name=mdlnm, llm_factory=fid)
+            objs = cls.query(**query_kwargs, llm_factory=fid)
 
         if (not objs) and fid:
             if fid == "LocalAI":
@@ -79,7 +83,8 @@ class TenantLLMService(CommonService):
                 mdlnm += "___OpenAI-API"
             elif fid == "VLLM":
                 mdlnm += "___VLLM"
-            objs = cls.query(tenant_id=tenant_id, llm_name=mdlnm, llm_factory=fid)
+            query_kwargs["llm_name"] = mdlnm
+            objs = cls.query(**query_kwargs, llm_factory=fid)
         if not objs:
             return None
         return objs[0]
@@ -178,9 +183,9 @@ class TenantLLMService(CommonService):
         mdlnm, fid, other_tenant_id = TenantLLMService.split_model_name_and_factory(mdlnm)
 
         if other_tenant_id:
-            model_config = cls.get_api_key(other_tenant_id, _mdlnm)
+            model_config = cls.get_api_key(other_tenant_id, _mdlnm, llm_type)
         else:
-            model_config = cls.get_api_key(tenant_id, _mdlnm)
+            model_config = cls.get_api_key(tenant_id, _mdlnm, llm_type)
 
         if model_config:
             model_config = model_config.to_dict()
