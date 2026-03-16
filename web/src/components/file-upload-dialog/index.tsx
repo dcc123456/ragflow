@@ -77,7 +77,7 @@ function UploadForm({ submit, showParseOnCreation, accept }: UploadFormProps) {
                 data-testid="parse-on-creation-toggle"
                 onCheckedChange={field.onChange}
                 checked={field.value}
-              ></Switch>
+              />
             )}
           </RAGFlowFormItem>
         )}
@@ -86,7 +86,7 @@ function UploadForm({ submit, showParseOnCreation, accept }: UploadFormProps) {
             <FileUploader
               value={field.value}
               onValueChange={field.onChange}
-              accept={{ '*': [] }}
+              accept={{}}
               data-testid="dataset-upload-dropzone"
             />
           )}

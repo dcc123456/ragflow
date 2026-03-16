@@ -20,6 +20,7 @@ export default {
       chinese: 'Chinois simplifié',
       traditionalChinese: 'Chinois traditionnel',
       bulgarian: 'Bulgare',
+      arabic: 'Arabe',
       language: 'Langue',
       languageMessage: 'Veuillez saisir votre langue !',
       languagePlaceholder: 'Sélectionnez votre langue',
@@ -476,6 +477,13 @@ export default {
       tavilyApiKeyHelp: 'Comment l’obtenir ?',
       crossLanguage: 'Recherche inter-langues',
       crossLanguageTip: `Sélectionnez une ou plusieurs langues pour la recherche inter-langues. Si aucune langue n’est sélectionnée, le système recherche avec la requête originale.`,
+    },
+    language: {
+      english: 'Anglais',
+      chinese: 'Chinois',
+      russian: 'Russe',
+      bulgarian: 'Bulgare',
+      arabic: 'Arabe',
     },
     setting: {
       profile: 'Profil',

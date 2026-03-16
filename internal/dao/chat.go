@@ -62,8 +62,13 @@ func (dao *ChatDAO) ListByTenantIDs(tenantIDs []string, userID string, page, pag
 			user.nickname,
 			user.avatar as tenant_avatar
 		`).
-		Joins("LEFT JOIN user ON dialog.tenant_id = user.id").
-		Where("(dialog.tenant_id IN ? OR dialog.tenant_id = ?) AND dialog.status = ?", tenantIDs, userID, "1")
+		Joins("LEFT JOIN user ON dialog.tenant_id = user.id")
+
+	if len(tenantIDs) > 0 {
+		query = query.Where("(dialog.tenant_id IN ? OR dialog.tenant_id = ?) AND dialog.status = ?", tenantIDs, userID, "1")
+	} else {
+		query = query.Where("dialog.tenant_id = ? AND dialog.status = ?", userID, "1")
+	}
 
 	// Apply keyword filter
 	if keywords != "" {
@@ -209,4 +214,19 @@ func (dao *ChatDAO) UpdateManyByID(updates []map[string]interface{}) error {
 	}
 
 	return tx.Commit().Error
+}
+
+// DeleteByTenantID deletes all chats by tenant ID (hard delete)
+func (dao *ChatDAO) DeleteByTenantID(tenantID string) (int64, error) {
+	result := DB.Unscoped().Where("tenant_id = ?", tenantID).Delete(&model.Chat{})
+	return result.RowsAffected, result.Error
+}
+
+// GetAllDialogIDsByTenantID gets all dialog IDs by tenant ID
+func (dao *ChatDAO) GetAllDialogIDsByTenantID(tenantID string) ([]string, error) {
+	var dialogIDs []string
+	err := DB.Model(&model.Chat{}).
+		Where("tenant_id = ?", tenantID).
+		Pluck("id", &dialogIDs).Error
+	return dialogIDs, err
 }

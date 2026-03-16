@@ -1243,7 +1243,7 @@ class ConfluenceConnector(
         self._confluence_client: OnyxConfluence | None = None
         self._low_timeout_confluence_client: OnyxConfluence | None = None
         self._fetched_titles: set[str] = set()
-        self.allow_images = False
+        self.allow_images = True
         # Track document names to detect duplicates
         self._document_name_counts: dict[str, int] = {}
         self._document_name_paths: dict[str, list[str]] = {}
@@ -1530,7 +1530,7 @@ class ConfluenceConnector(
                 id=page_url,
                 source=DocumentSource.CONFLUENCE,
                 semantic_identifier=semantic_identifier,
-                extension=".txt",  
+                extension=".txt",  # Confluence pages are HTML
                 blob=page_content.encode("utf-8"),  # Encode page content as bytes
                 doc_updated_at=datetime_from_string(page["version"]["when"]),
                 size_bytes=len(page_content.encode("utf-8")),  # Calculate size in bytes

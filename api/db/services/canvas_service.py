@@ -18,10 +18,11 @@ import logging
 import time
 from uuid import uuid4
 from agent.canvas import Canvas
-from api.db import CanvasCategory, ResourceType, TenantPermission
-from api.db.db_models import DB, CanvasTemplate, Permission, User, UserCanvas, API4Conversation
+from api.db import CanvasCategory, TenantPermission
+from api.db.db_models import DB, CanvasTemplate, User, UserCanvas, API4Conversation, UserCanvasVersion
 from api.db.services.api_service import API4ConversationService
 from api.db.services.common_service import CommonService
+from api.db.services.user_canvas_version import UserCanvasVersionService
 from common.misc_utils import get_uuid
 from api.utils.api_utils import get_data_openai
 import tiktoken
@@ -205,7 +206,23 @@ class UserCanvasService(CommonService):
         count = agents.count()
         if page_number and items_per_page:
             agents = agents.paginate(page_number, items_per_page)
-        return list(agents.dicts()), count
+
+        agents_list = list(agents.dicts())
+
+        # Get latest release time for each canvas
+        if agents_list:
+            canvas_ids = [a['id'] for a in agents_list]
+            release_times = (
+                UserCanvasVersion.select(UserCanvasVersion.user_canvas_id, fn.MAX(UserCanvasVersion.create_time).alias("release_time"))
+                .where((UserCanvasVersion.user_canvas_id.in_(canvas_ids)) & (UserCanvasVersion.release))
+                .group_by(UserCanvasVersion.user_canvas_id)
+            )
+            release_time_map = {r.user_canvas_id: r.release_time for r in release_times}
+
+            for agent in agents_list:
+                agent['release_time'] = release_time_map.get(agent['id'])
+
+        return agents_list, count
 
     @classmethod
     @DB.connection_context()
@@ -235,6 +252,27 @@ class UserCanvasService(CommonService):
                 return True
         return False
 
+    @classmethod
+    def get_agent_dsl_with_release(cls, agent_id, release_mode=False, tenant_id=None):
+        e, cvs = cls.get_by_id(agent_id)
+        if not e:
+            raise LookupError("Agent not found.")
+        if tenant_id and cvs.user_id != tenant_id:
+            raise PermissionError("You do not own the agent.")
+
+        if release_mode:
+            released_version = UserCanvasVersionService.get_latest_released(agent_id)
+            if not released_version:
+                raise PermissionError("No available published version")
+            dsl = released_version.dsl
+        else:
+            dsl = cvs.dsl
+
+        if not isinstance(dsl, str):
+            dsl = json.dumps(dsl, ensure_ascii=False)
+
+        return cvs, dsl
+
 
 async def completion(tenant_id, agent_id, session_id=None, **kwargs):
     query = kwargs.get("query", "") or kwargs.get("question", "")
@@ -254,28 +292,12 @@ async def completion(tenant_id, agent_id, session_id=None, **kwargs):
             conv.dsl = json.dumps(conv.dsl, ensure_ascii=False)
         canvas = Canvas(conv.dsl, tenant_id, agent_id, canvas_id=agent_id, custom_header=custom_header)
     else:
-        e, cvs = UserCanvasService.get_by_id(agent_id)
-        if not e:
-            raise LookupError("Agent not found.")
-        if cvs.user_id != tenant_id:
-            raise PermissionError("You do not own the agent.")
-        if release_mode == "true" and not bool(cvs.release):
-            raise PermissionError("No available published version")
-        if not isinstance(cvs.dsl, str):
-            cvs.dsl = json.dumps(cvs.dsl, ensure_ascii=False)
+        cvs, dsl = UserCanvasService.get_agent_dsl_with_release(agent_id, release_mode=release_mode == "true", tenant_id=tenant_id)
 
-        session_id=get_uuid()
-        canvas = Canvas(cvs.dsl, tenant_id, agent_id, canvas_id=cvs.id, custom_header=custom_header)
+        session_id = get_uuid()
+        canvas = Canvas(dsl, tenant_id, agent_id, canvas_id=cvs.id, custom_header=custom_header)
         canvas.reset()
-        conv = {
-            "id": session_id,
-            "dialog_id": cvs.id,
-            "user_id": user_id,
-            "message": [],
-            "source": "agent",
-            "dsl": cvs.dsl,
-            "reference": []
-        }
+        conv = {"id": session_id, "dialog_id": cvs.id, "user_id": user_id, "message": [], "source": "agent", "dsl": dsl, "reference": []}
         API4ConversationService.save(**conv)
         conv = API4Conversation(**conv)
 

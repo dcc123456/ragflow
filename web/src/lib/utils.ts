@@ -1,4 +1,5 @@
 import { clsx, type ClassValue } from 'clsx';
+import React from 'react';
 import { twMerge } from 'tailwind-merge';
 
 export function cn(...inputs: ClassValue[]) {
@@ -44,3 +45,14 @@ export const convertKbToGb = (
     Math.round(gb * Math.pow(10, decimalPlaces)) / Math.pow(10, decimalPlaces)
   );
 };
+export function combineRefs<T>(...refs: React.ForwardedRef<T>[]) {
+  return (node: T) => {
+    refs.forEach((ref) => {
+      if (typeof ref === 'function') {
+        ref(node);
+      } else if (ref) {
+        ref.current = node;
+      }
+    });
+  };
+}

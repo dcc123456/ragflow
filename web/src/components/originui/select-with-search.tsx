@@ -218,10 +218,10 @@ export const SelectWithSearch = forwardRef<
               <CommandEmpty>
                 <div dangerouslySetInnerHTML={{ __html: emptyData }}></div>
               </CommandEmpty>
-              {options.map((group, idx) => {
+              {options.map((group) => {
                 if (group.options) {
                   return (
-                    <Fragment key={idx}>
+                    <Fragment key={group.value}>
                       <CommandGroup heading={group.label} className="mb-1">
                         {group.options.map((option) => (
                           <CommandItem

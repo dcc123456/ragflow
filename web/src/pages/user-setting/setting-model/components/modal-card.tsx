@@ -142,26 +142,22 @@ export const ModelProviderCard: FC<IModelCardProps> = ({
           </Button>
 
           <Button
-            variant={'ghost'}
+            variant="outline"
             onClick={(e) => {
               e.stopPropagation();
               handleApiKeyClick();
             }}
-            className="px-3 py-1 text-sm    rounded-md transition-colors flex items-center space-x-1 border border-border-default"
           >
             <SettingOutlined />
-            <span>
-              {isLocalLlmFactory(item.name) ? t('addTheModel') : 'API-Key'}
-            </span>
+            {isLocalLlmFactory(item.name) ? t('addTheModel') : 'API-Key'}
           </Button>
 
           <Button
-            variant={'ghost'}
+            variant="outline"
             onClick={(e) => {
               e.stopPropagation();
               handleShowMoreClick();
             }}
-            className="px-3 py-1 text-sm   rounded-md transition-colors flex items-center space-x-1 border border-border-default"
           >
             <span>{visible ? t('hideModels') : t('showMoreModels')}</span>
             {!visible ? <ChevronsDown /> : <ChevronsUp />}
@@ -182,12 +178,12 @@ export const ModelProviderCard: FC<IModelCardProps> = ({
             }}
           >
             <Button
-              variant={'ghost'}
+              size="icon"
+              variant="danger-hover"
               // onClick={(e) => {
               //   e.stopPropagation();
               //   handleDeleteFactory(item);
               // }}
-              className="  hover:text-state-error hover:bg-state-error-5 transition-colors border border-border-default"
             >
               <Trash2 />
             </Button>
@@ -210,9 +206,9 @@ export const ModelProviderCard: FC<IModelCardProps> = ({
             ))}
           </div>
           <div className="m-4 bg-bg-card rounded-lg max-h-96 overflow-auto scrollbar-auto">
-            <div className="">
+            <ul>
               {item.llm.map((model) => (
-                <div
+                <li
                   key={model.name}
                   className="flex items-center border-b-[0.5px] border-border-button justify-between p-3 hover:bg-bg-card transition-colors"
                 >
@@ -247,33 +243,35 @@ export const ModelProviderCard: FC<IModelCardProps> = ({
                     )}
                     {isLocalLlmFactory(item.name) && (
                       <Button
-                        variant={'secondary'}
+                        variant="secondary"
+                        size="icon-sm"
                         onClick={() => handleEditModel(model, item)}
-                        className="p-1 text-text-primary transition-colors"
                       >
                         <EditOutlined />
                       </Button>
                     )}
+
                     <Switch
                       checked={model.status === '1'}
                       onCheckedChange={(value) => {
                         handleEnableLlm(model.name, value);
                       }}
                     />
+
                     <Button
-                      variant={'ghost'}
+                      size="icon-sm"
+                      variant="danger-hover"
                       onClick={(e) => {
                         e.stopPropagation();
                         handleDeleteLlm(model.name);
                       }}
-                      className="p-1 hover:text-state-error hover:bg-state-error-5 transition-colors border-none"
                     >
                       <Trash2 size={16} />
                     </Button>
                   </div>
-                </div>
+                </li>
               ))}
-            </div>
+            </ul>
           </div>
         </div>
       )}

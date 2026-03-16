@@ -166,6 +166,10 @@ def _load_dify_retrieval_module(monkeypatch):
     
     tenant_llm_service_mod.TenantService = _StubTenantService
     tenant_llm_service_mod.TenantLLMService = _StubTenantLLMService
+
+    class _StubLLMFactoriesService:
+        pass
+
     tenant_llm_service_mod.LLMFactoriesService = _StubLLMFactoriesService
     monkeypatch.setitem(sys.modules, "api.db.services.tenant_llm_service", tenant_llm_service_mod)
 
@@ -271,7 +275,7 @@ def test_retrieval_success_with_metadata_and_kg(monkeypatch):
     )
 
     monkeypatch.setattr(module, "jsonify", lambda payload: payload)
-    monkeypatch.setattr(module.DocMetadataService, "get_meta_by_kbs", lambda _kb_ids: [{"doc_id": "doc-1"}])
+    monkeypatch.setattr(module.DocMetadataService, "get_flatted_meta_by_kbs", lambda _kbs: [{"doc_id": "doc-1"}])
     monkeypatch.setattr(module.KnowledgebaseService, "get_by_id", lambda _kb_id: (True, _DummyKB()))
     monkeypatch.setattr(module, "convert_conditions", lambda cond: cond.get("conditions", []))
     monkeypatch.setattr(module, "meta_filter", lambda *_args, **_kwargs: ["doc-1"])
@@ -314,7 +318,7 @@ def test_retrieval_success_with_metadata_and_kg(monkeypatch):
 def test_retrieval_kb_not_found(monkeypatch):
     module = _load_dify_retrieval_module(monkeypatch)
     _set_request_json(monkeypatch, module, {"knowledge_id": "kb-missing", "query": "hello"})
-    monkeypatch.setattr(module.DocMetadataService, "get_meta_by_kbs", lambda _kb_ids: [])
+    monkeypatch.setattr(module.DocMetadataService, "get_flatted_meta_by_kbs", lambda _kbs: [])
     monkeypatch.setattr(module.KnowledgebaseService, "get_by_id", lambda _kb_id: (False, None))
 
     res = _run(inspect.unwrap(module.retrieval)("tenant-1"))
@@ -326,7 +330,7 @@ def test_retrieval_kb_not_found(monkeypatch):
 def test_retrieval_not_found_exception_mapping(monkeypatch):
     module = _load_dify_retrieval_module(monkeypatch)
     _set_request_json(monkeypatch, module, {"knowledge_id": "kb-1", "query": "hello"})
-    monkeypatch.setattr(module.DocMetadataService, "get_meta_by_kbs", lambda _kb_ids: [])
+    monkeypatch.setattr(module.DocMetadataService, "get_flatted_meta_by_kbs", lambda _kbs: [])
     monkeypatch.setattr(module.KnowledgebaseService, "get_by_id", lambda _kb_id: (True, _DummyKB()))
     monkeypatch.setattr(module, "label_question", lambda *_args, **_kwargs: [])
     monkeypatch.setattr(
@@ -350,7 +354,7 @@ def test_retrieval_not_found_exception_mapping(monkeypatch):
 def test_retrieval_generic_exception_mapping(monkeypatch):
     module = _load_dify_retrieval_module(monkeypatch)
     _set_request_json(monkeypatch, module, {"knowledge_id": "kb-1", "query": "hello"})
-    monkeypatch.setattr(module.DocMetadataService, "get_meta_by_kbs", lambda _kb_ids: [])
+    monkeypatch.setattr(module.DocMetadataService, "get_flatted_meta_by_kbs", lambda _kbs: [])
     monkeypatch.setattr(module.KnowledgebaseService, "get_by_id", lambda _kb_id: (True, _DummyKB()))
     monkeypatch.setattr(module, "label_question", lambda *_args, **_kwargs: [])
     monkeypatch.setattr(

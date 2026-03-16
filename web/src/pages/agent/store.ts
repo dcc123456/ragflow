@@ -1,5 +1,5 @@
 import type { IAgentForm } from '@/interfaces/database/agent';
-import { IAgentNode, RAGFlowNodeType } from '@/interfaces/database/flow';
+import { RAGFlowNodeType } from '@/interfaces/database/agent';
 import type {} from '@redux-devtools/extension';
 import {
   Connection,
@@ -528,9 +528,7 @@ const useGraphStore = create<RFState>()(
         return generateNodeNamesWithIncreasingIndex(name, nodes);
       },
       generateAgentToolName: (id: string, name: string) => {
-        const node = get().nodes.find(
-          (x) => x.id === id,
-        ) as IAgentNode<IAgentForm>;
+        const node = get().nodes.find((x) => x.id === id) as RAGFlowNodeType;
 
         if (!node) {
           return '';
@@ -540,13 +538,13 @@ const useGraphStore = create<RFState>()(
           (x) => x.component_name === name,
         );
         const lastIndex = tools.length
-          ? tools
+          ? (tools
               .map((x) => {
                 const idx = x.name.match(/(\d+)$/)?.[1];
                 return idx && isNaN(idx) ? -1 : Number(idx);
               })
               .sort((a, b) => a - b)
-              .at(-1) ?? -1
+              .at(-1) ?? -1)
           : -1;
 
         return `${name}_${lastIndex + 1}`;

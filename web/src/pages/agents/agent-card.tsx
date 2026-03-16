@@ -25,7 +25,12 @@ export function AgentCard({
   return (
     <HomeCard
       testId="agent-card"
-      data={{ ...data, name: data.title, description: data.description || '' }}
+      data={{
+        ...data,
+        name: data.title,
+        description: data.description || '',
+        release_time: data.release_time,
+      }}
       moreDropdown={
         <AgentDropdown
           showAgentRenameModal={showAgentRenameModal}
@@ -44,6 +49,7 @@ export function AgentCard({
           </Button>
         )
       }
+      showReleaseTime
     />
   );
 }

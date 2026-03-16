@@ -9,6 +9,7 @@ import { Radio } from '@/components/ui/radio';
 import { Segmented } from '@/components/ui/segmented';
 import { useTranslate } from '@/hooks/common-hooks';
 import { useDatasetEditButtonDisabled } from '@/hooks/logic-hooks/use-permission';
+import { cn } from '@/lib/utils';
 import { ListFilter, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { ChunkTextMode } from '../../constant';
@@ -22,6 +23,7 @@ interface ChunkResultBarProps {
   searchString: string;
 }
 export default function ChunkResultBar({
+  className,
   changeChunkTextMode,
   available,
   selectAllChunk,
@@ -62,8 +64,11 @@ export default function ChunkResultBar({
     changeChunkTextMode(value);
   };
   return (
-    <div className="flex pr-[25px]">
+    <div className={cn('flex justify-end gap-4', className)}>
       <Segmented
+        className="gap-0 me-auto"
+        buttonSize="xs"
+        itemClassName="px-2"
         options={textSelectOptions}
         value={textSelectValue}
         onChange={changeTextSelectValue}
