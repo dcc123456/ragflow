@@ -903,11 +903,12 @@ func (h *Handler) GetVersion(c *gin.Context) {
 
 // GetFingerprint handle get system fingerprint
 func (h *Handler) GetFingerprint(c *gin.Context) {
-	c.JSON(http.StatusNotImplemented, gin.H{
-		"code":    common.CodeServerError,
-		"message": "method not implemented",
-	})
-	return
+	fingerprint, err := h.service.GetFingerprint()
+	if err != nil {
+		errorResponse(c, err.Error(), 400)
+		return
+	}
+	success(c, gin.H{"fingerprint": fingerprint}, "")
 }
 
 type SetLicenseHTTPRequest struct {
@@ -916,11 +917,18 @@ type SetLicenseHTTPRequest struct {
 
 // SetLicense to set system license
 func (h *Handler) SetLicense(c *gin.Context) {
-	c.JSON(http.StatusNotImplemented, gin.H{
-		"code":    common.CodeServerError,
-		"message": "method not implemented",
-	})
-	return
+	var req SetLicenseHTTPRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		errorResponse(c, "Var license are required", 400)
+		return
+	}
+
+	license, err := h.service.SetLicense(req.License)
+	if err != nil {
+		errorResponse(c, err.Error(), 400)
+		return
+	}
+	success(c, license, "")
 }
 
 type SetLicenseConfigHTTPRequest struct {
@@ -929,20 +937,39 @@ type SetLicenseConfigHTTPRequest struct {
 }
 
 func (h *Handler) UpdateLicenseConfig(c *gin.Context) {
-	c.JSON(http.StatusNotImplemented, gin.H{
-		"code":    common.CodeServerError,
-		"message": "method not implemented",
-	})
-	return
+	var req SetLicenseConfigHTTPRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		errorResponse(c, "Var license are required", 400)
+		return
+	}
+
+	err := h.service.SetLicenseConfig(req.TimeRecordSaveInterval, req.TimeRecordTaskDuration)
+	if err != nil {
+		errorResponse(c, err.Error(), 400)
+		return
+	}
+	successNoData(c, "Successfully")
 }
 
 // ShowLicense to get system license
 func (h *Handler) ShowLicense(c *gin.Context) {
-	c.JSON(http.StatusNotImplemented, gin.H{
-		"code":    common.CodeServerError,
-		"message": "method not implemented",
-	})
-	return
+
+	checkParam := c.Query("check")
+	if checkParam == "true" {
+		// GET /admin/license?check=true
+		err := h.service.CheckLicense()
+		success(c, err.Error(), "")
+		return
+	}
+
+	// GET /admin/license
+	license, err := h.service.ShowLicense()
+	if err != nil {
+		errorResponse(c, err.Error(), 400)
+		return
+	}
+
+	success(c, license, "")
 }
 
 // ListSandboxProviders handle list sandbox providers

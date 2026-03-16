@@ -35,6 +35,7 @@ import (
 	"ragflow/internal/utility"
 	"regexp"
 	"strconv"
+	"sync"
 	"time"
 
 	"go.uber.org/zap"
@@ -46,6 +47,41 @@ var (
 	ErrNotAdmin     = errors.New("user is not admin")
 	ErrUserInactive = errors.New("user is inactive")
 )
+
+// Global scheduled task for cleanup
+var (
+	globalUpdateRecordTask     *utility.ScheduledTask
+	globalUpdateRecordTaskOnce sync.Once
+	TimeRecordSaveInterval     int64 = 24 * 60 * 60 // 24 hours by default
+	TimeRecordTaskDuration     int64 = 60 * 60      // 1 hour by default
+)
+
+// StartUpdateRecordTask starts the global update record scheduled task
+func StartUpdateRecordTask() {
+	globalUpdateRecordTaskOnce.Do(func() {
+		//duration := 24 * time.Hour
+		taskDuration := time.Duration(TimeRecordTaskDuration) * time.Second
+		globalUpdateRecordTask = utility.NewScheduledTask("UpdateTimeRecord", taskDuration, func() {
+			// interval := 24* time.Hour
+			interval := time.Duration(TimeRecordSaveInterval) * time.Second
+			if err := StartTimeRecordService(interval); err != nil {
+				logger.Warn(err.Error())
+				//logger.Warn("Failed to update time record", zap.Error(err))
+			}
+		})
+		globalUpdateRecordTask.Start()
+		logger.Info("Time record task is scheduled task started")
+	})
+}
+
+// StopCleanupTask stops the global update record scheduled task
+func StopUpdateRecordTask() {
+	if globalUpdateRecordTask != nil {
+		globalUpdateRecordTask.Stop()
+	}
+
+	globalUpdateRecordTaskOnce = sync.Once{}
+}
 
 // Service admin service layer
 type Service struct {
@@ -1539,7 +1575,31 @@ func (s *Service) HandleHeartbeat(message *common.BaseMessage) (common.ErrorCode
 		Ext:        message.Ext,
 	}
 	GlobalServerStatusStore.UpdateStatus(message.ServerName, status)
-	return common.CodeLicenseValid, ""
+
+	licenseStatus := GetLicenseStatus()
+	if licenseStatus.Code == common.CodeLicenseValid {
+		errorCode := CheckLicenseValidity(&licenseStatus)
+		if errorCode != common.CodeLicenseValid {
+			SetLicenseStatus(errorCode)
+			logger.Warn(errorCode.Message())
+			StopUpdateRecordTask()
+			return errorCode, "Invalid license"
+		}
+
+		if licenseStatus.CurrentLicense.Type == "trial" || heartBeatCount > 50 {
+			// TRIAL license wouldn't check the license digest
+			// Suppose > 50 heartbeats, hardware info will be completely collected.
+			err := ValidateLicenseDigest(licenseStatus.CurrentLicense.Digest)
+			if err != nil {
+				logger.Warn(fmt.Sprintf("Error validating license digest: %v", err))
+				return common.CodeLicenseDigestError, ""
+			}
+		}
+
+		logger.Debug("License is loaded and valid")
+		return common.CodeLicenseValid, ""
+	}
+	return licenseStatus.Code, ""
 }
 
 // InitDefaultAdmin initialize default admin user

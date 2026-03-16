@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"ragflow/internal/common"
 	"ragflow/internal/server"
 	"ragflow/internal/utility"
@@ -39,6 +40,7 @@ type HeartbeatSender struct {
 	version      string
 	lastSuccess  bool
 	attemptCount int
+	clusterInfo  *utility.ClusterInfo
 }
 
 // NewHeartbeatSender creates a new heartbeat service instance
@@ -73,6 +75,13 @@ func (h *HeartbeatSender) InitHTTPClient() error {
 		zap.Int("admin_port", adminConfig.Port),
 	)
 
+	collector := utility.NewFingerprintCollector(true)
+	var err error
+	h.clusterInfo, err = collector.Collect()
+	if err != nil {
+		log.Fatalf("Failed to collect hardware info: %v", err)
+	}
+
 	return nil
 }
 
@@ -106,6 +115,8 @@ func (h *HeartbeatSender) SendHeartbeat() error {
 		Timestamp:   time.Now(),
 		Ext:         nil,
 	}
+
+	message.Ext = h.clusterInfo
 
 	jsonData, err := json.Marshal(message)
 	if err != nil {

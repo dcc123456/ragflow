@@ -108,6 +108,10 @@ func main() {
 		logger.Warn("Failed to initialize server variables from Redis, using defaults", zap.String("error", err.Error()))
 	}
 
+	if err := admin.InitLicense(); err != nil {
+		logger.Fatal("Fail to init license", zap.Error(err))
+	}
+
 	adminService := admin.NewService()
 	adminHandler := admin.NewHandler(adminService)
 
@@ -173,6 +177,10 @@ func main() {
 
 	logger.Info("Received signal", zap.String("signal", sig.String()))
 	logger.Info("Shutting down server...")
+
+	// Stop global cleanup scheduled task
+	admin.StopUpdateRecordTask()
+	logger.Info("Time record update task stopped")
 
 	// Create context with timeout for graceful shutdown
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
