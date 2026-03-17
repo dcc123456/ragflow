@@ -30,49 +30,53 @@ func InitLicense() error {
 	// Check if license can be read from database
 	licenseDAO := dao.NewLicenseDAO()
 	licenseRecord, err := licenseDAO.GetLatest()
-	if err != nil && errors.Is(err, gorm.ErrRecordNotFound) {
-		collector := utility.NewFingerprintCollector(true)
-		clusterInfo, err2 := collector.Collect()
-		if err2 != nil {
-			logger.Fatal(fmt.Sprintf("Failed to collect hardware info: %v", err))
-			return err2
-		}
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			collector := utility.NewFingerprintCollector(true)
+			clusterInfo, err2 := collector.Collect()
+			if err2 != nil {
+				logger.Fatal(fmt.Sprintf("Failed to collect hardware info: %v", err))
+				return err2
+			}
 
-		trialLicenseLimit := os.Getenv("TRIAL_LICENSE_LIMIT")
-		if trialLicenseLimit == "" {
-			trialLicenseLimit = "10080" // 7 * 24 * 60 minutes
-		}
+			trialLicenseLimit := os.Getenv("TRIAL_LICENSE_LIMIT")
+			if trialLicenseLimit == "" {
+				trialLicenseLimit = "10080" // 7 * 24 * 60 minutes
+			}
 
-		var trialLicenseLimitInt int
-		trialLicenseLimitInt, err = strconv.Atoi(trialLicenseLimit)
-		if err != nil {
-			logger.Fatal(fmt.Sprintf("Error parsing trial license limit: %v", err))
+			var trialLicenseLimitInt int
+			trialLicenseLimitInt, err = strconv.Atoi(trialLicenseLimit)
+			if err != nil {
+				logger.Fatal(fmt.Sprintf("Error parsing trial license limit: %v", err))
+				return err
+			}
+
+			if trialLicenseLimitInt <= 0 || trialLicenseLimitInt > 30*24*60 {
+				logger.Fatal("Invalid trial license limit")
+				return errors.New("Invalid trial license limit")
+			}
+
+			duration := time.Duration(trialLicenseLimitInt) * time.Minute
+			license, err2 = generateTrialLicense(duration, clusterInfo)
+			if err2 != nil {
+				logger.Fatal(fmt.Sprintf("Error generating trial license: %v", err))
+				return err2
+			}
+
+			var encryptedData string
+			encryptedData, err2 = utility.GenerateSimpleStringLicense(license)
+			if err2 != nil {
+				logger.Fatal(fmt.Sprintf("Error generating license: %v", err))
+				return err2
+			}
+
+			err2 = licenseDAO.Create(license.LicenseID, encryptedData)
+			if err2 != nil {
+				logger.Fatal(fmt.Sprintf("Error storing license: %v", err))
+				return err2
+			}
+		} else {
 			return err
-		}
-
-		if trialLicenseLimitInt <= 0 || trialLicenseLimitInt > 30*24*60 {
-			logger.Fatal("Invalid trial license limit")
-			return errors.New("Invalid trial license limit")
-		}
-
-		duration := time.Duration(trialLicenseLimitInt) * time.Minute
-		license, err2 = generateTrialLicense(duration, clusterInfo)
-		if err2 != nil {
-			logger.Fatal(fmt.Sprintf("Error generating trial license: %v", err))
-			return err2
-		}
-
-		var encryptedData string
-		encryptedData, err2 = utility.GenerateSimpleStringLicense(license)
-		if err2 != nil {
-			logger.Fatal(fmt.Sprintf("Error generating license: %v", err))
-			return err2
-		}
-
-		err2 = licenseDAO.Create(license.LicenseID, encryptedData)
-		if err2 != nil {
-			logger.Fatal(fmt.Sprintf("Error storing license: %v", err))
-			return err2
 		}
 	} else {
 		license, err = parseLicenseFromStr(licenseRecord.License)
