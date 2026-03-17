@@ -436,34 +436,18 @@ const routeConfigOptions = [
                       path: Routes.AdminMonitoring,
                       Component: () => import('@/pages/admin/monitoring'),
                     },
+                    {
+                      path: Routes.AdminSettings,
+                      Component: () => import('@/pages/admin/settings'),
+                    },
+                    {
+                      path: Routes.AdminSSOProviders,
+                      Component: () => import('@/pages/admin/sso-providers'),
+                    },
                   ]
                 : []),
             ],
           },
-          ...(IS_ENTERPRISE
-            ? [
-                {
-                  path: Routes.AdminWhitelist,
-                  Component: () => import('@/pages/admin/whitelist'),
-                },
-                {
-                  path: Routes.AdminRoles,
-                  Component: () => import('@/pages/admin/roles'),
-                },
-                {
-                  path: Routes.AdminMonitoring,
-                  Component: () => import('@/pages/admin/monitoring'),
-                },
-                {
-                  path: Routes.AdminSettings,
-                  Component: () => import('@/pages/admin/settings'),
-                },
-                {
-                  path: Routes.AdminSSOProviders,
-                  Component: () => import('@/pages/admin/sso-providers'),
-                },
-              ]
-            : []),
         ],
       },
     ],
