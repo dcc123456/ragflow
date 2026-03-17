@@ -143,6 +143,8 @@ func InitDB() error {
 		&model.EvaluationCase{},
 		&model.EvaluationRun{},
 		&model.EvaluationResult{},
+		&model.License{},
+		&model.TimeRecord{},
 	}
 
 	for _, m := range models {
@@ -177,6 +179,16 @@ func autoMigrateSafely(db *gorm.DB, model interface{}) error {
 	errStr := err.Error()
 	if strings.Contains(errStr, "Error 1061") && strings.Contains(errStr, "Duplicate key name") {
 		logger.Info("Index already exists, skipping", zap.String("error", errStr))
+		return nil
+	}
+
+	if strings.Contains(errStr, "Error 1060") && strings.Contains(errStr, "Duplicate column name") {
+		logger.Info("Column already exists, skipping", zap.String("error", errStr))
+		return nil
+	}
+
+	if strings.Contains(errStr, "Error 1050") && strings.Contains(errStr, "Table") {
+		logger.Info("Table already exists, skipping", zap.String("error", errStr))
 		return nil
 	}
 
