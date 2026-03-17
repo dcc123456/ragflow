@@ -19,6 +19,7 @@ package dao
 import (
 	"fmt"
 	"ragflow/internal/logger"
+	"strings"
 
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -172,7 +173,15 @@ func migrateAddUniqueEmail(db *gorm.DB) error {
 	}
 
 	logger.Info("Adding unique index on user.email...")
-	if err := db.Exec(`ALTER TABLE user ADD UNIQUE INDEX idx_user_email_unique (email)`).Error; err != nil {
+	if err = db.Exec(`ALTER TABLE user ADD UNIQUE INDEX idx_user_email_unique (email)`).Error; err != nil {
+
+		// Check if error is MySQL duplicate index error (Error 1061)
+		errStr := err.Error()
+		if strings.Contains(errStr, "Error 1061") && strings.Contains(errStr, "Duplicate key name") {
+			logger.Info("Index already exists, skipping", zap.String("error", errStr))
+			return nil
+		}
+
 		return fmt.Errorf("failed to add unique index on email: %w", err)
 	}
 
