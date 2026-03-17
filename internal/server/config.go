@@ -337,7 +337,7 @@ func Init(configPath string) error {
 		globalConfig.Admin.Host = "127.0.0.1"
 	}
 	if globalConfig.Admin.Port == 0 {
-		globalConfig.Admin.Port = 9385
+		globalConfig.Admin.Port = 9383
 	} else {
 		globalConfig.Admin.Port += 4
 	}
