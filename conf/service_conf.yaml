@@ -134,12 +134,12 @@ rabbitmq:
 task_executor:
   message_queue_type: 'rabbitmq'
 user_default_llm:
-  factory: 'BAAI'
-  api_key: ''
-  base_url: ''
   default_models:
-    embedding_model: 'bge-m3'
-
+    embedding_model:
+      namee: 'bge-m3'
+      factory: 'BAAI'
+      api_key: 'xxx'
+      base_url: 'http://url'
 # postgres:
 #   name: 'rag_flow'
 #   user: 'rag_flow'

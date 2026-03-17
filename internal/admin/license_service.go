@@ -11,11 +11,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"ragflow/internal/common"
 	"ragflow/internal/dao"
 	"ragflow/internal/logger"
 	"ragflow/internal/model"
 	"ragflow/internal/utility"
+	"strconv"
 	"time"
 
 	"go.uber.org/zap"
@@ -36,8 +38,24 @@ func InitLicense() error {
 			return err2
 		}
 
-		//duration := time.Duration(30) * 24 * time.Hour // 30days
-		duration := time.Duration(1) * time.Minute // 1 minute
+		trialLicenseLimit := os.Getenv("TRIAL_LICENSE_LIMIT")
+		if trialLicenseLimit == "" {
+			trialLicenseLimit = "10080" // 7 * 24 * 60 minutes
+		}
+
+		var trialLicenseLimitInt int
+		trialLicenseLimitInt, err = strconv.Atoi(trialLicenseLimit)
+		if err != nil {
+			logger.Fatal(fmt.Sprintf("Error parsing trial license limit: %v", err))
+			return err
+		}
+
+		if trialLicenseLimitInt <= 0 || trialLicenseLimitInt > 30*24*60 {
+			logger.Fatal("Invalid trial license limit")
+			return errors.New("Invalid trial license limit")
+		}
+
+		duration := time.Duration(trialLicenseLimitInt) * time.Minute
 		license, err2 = generateTrialLicense(duration, clusterInfo)
 		if err2 != nil {
 			logger.Fatal(fmt.Sprintf("Error generating trial license: %v", err))
@@ -50,6 +68,7 @@ func InitLicense() error {
 			logger.Fatal(fmt.Sprintf("Error generating license: %v", err))
 			return err2
 		}
+
 		err2 = licenseDAO.Create(license.LicenseID, encryptedData)
 		if err2 != nil {
 			logger.Fatal(fmt.Sprintf("Error storing license: %v", err))

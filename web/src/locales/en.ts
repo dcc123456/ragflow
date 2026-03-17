@@ -545,8 +545,6 @@ Example: A 1 KB message with 1024-dim embedding uses ~9 KB. The 5 MB default lim
       embeddingModel: 'Embedding model',
       chunkTokenNumber: 'Recommended chunk size',
       chunkTokenNumberMessage: 'Chunk token number for text is required',
-      embeddingModelTip:
-        'The default embedding model for the knowledge base. It cannot be changed once the knowledge base has chunks. To switch to a different default embedding model, you must delete all existing chunks in the knowledge base.',
 
       switchEmbeddingModel: {
         title: 'Switch embedding model',
@@ -1290,8 +1288,6 @@ Example: Virtual Hosted Style`,
       modelTypeMessage: 'Please input your model type!',
       addLlmBaseUrl: 'Base URL',
       baseUrlNameMessage: 'Please input your base URL!',
-      addLlmBaseUrl: 'Base url',
-      baseUrlNameMessage: 'Please input your base url!',
       paddleocr: {
         apiUrl: 'PaddleOCR API URL',
         apiUrlPlaceholder:
