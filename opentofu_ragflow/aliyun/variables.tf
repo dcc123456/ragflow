@@ -715,7 +715,7 @@ variable "es_node_count" {
 
 variable "es_node_spec" {
   type        = string
-  default     = "elasticsearch.sn2ne.xlarge.new" # Match existing instance: 4C 16GB
+  default     = "elasticsearch.sn2ne.2xlarge.new" # Match existing instance: 8 vCPU 32GB
   description = <<EOT
   {
     "AssociationProperty": "ALIYUN::Elasticsearch::Instance::NodeSpec",
@@ -949,7 +949,7 @@ variable "es_password" {
 
 variable "es_k8s_node_count" {
   type        = number
-  default     = 3
+  default     = 4
   description = <<EOT
   {
     "MinValue": 1,
@@ -979,7 +979,7 @@ variable "es_k8s_storage" {
   description = <<EOT
   {
     "MinValue": 20,
-    "MaxValue": 500,
+    "MaxValue": 2000,
     "AssociationPropertyMetadata": {
       "Visible": {
         "Condition": {
@@ -1049,7 +1049,7 @@ variable "es_cpu_limit" {
 
 variable "es_memory_request" {
   type        = string
-  default     = "16Gi"
+  default     = "32Gi"
   description = <<EOT
   {
     "AssociationPropertyMetadata": {

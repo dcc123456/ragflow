@@ -216,7 +216,10 @@ def set_progress(task_id, from_page=0, to_page=-1, prog=None, msg="Processing...
                 t = task.to_dict()
                 for c in ["create_date", "update_date"]:
                     del t[c]
-                t["error"] = msg
+                # Truncate all string fields to 512 chars to prevent AMQP frame errors
+                for key, value in t.items():
+                    if isinstance(value, str) and len(value) > 512:
+                        t[key] = value[:512]
                 RABBITMQ_CONN.queue_product("te.error", t)
             except Exception as e:
                 logging.exception(e)
@@ -1424,8 +1427,21 @@ def rabbitmq_callback(ch, method, properties, body):
 
     Note: This callback runs in a separate thread. Do NOT call ch.basic_ack() here
     as it will cause channel state issues. Instead, return True to ack or False to nack.
+
+    Enhanced with:
+    - Event loop cleanup to prevent resource leaks
+    - Exception isolation to prevent cascading failures
+    - Detailed error logging for debugging
     """
     routing_key = method.routing_key
+    task = None
+    task_type = ""
+    task_id = None
+
+    # Track if we created an event loop that needs cleanup
+    event_loop = None
+    created_loop = False
+
     try:
         msg = json.loads(body.decode("utf-8"))
     except Exception:
@@ -1434,10 +1450,9 @@ def rabbitmq_callback(ch, method, properties, body):
         return True  # Ack invalid message
 
     canceled = False
-    task = None
     pipeline_task_type = ""
-    task_type = ""
     task_id = msg["id"]
+
     try:
         for _ in range(3):
             if msg.get("doc_id", "") in [GRAPH_RAPTOR_FAKE_DOC_ID, CANVAS_DEBUG_DOC_ID]:
@@ -1478,30 +1493,65 @@ def rabbitmq_callback(ch, method, properties, body):
         pipeline_task_type = TASK_TYPE_TO_PIPELINE_TASK_TYPE.get(task_type, PipelineTaskType.PARSE) or PipelineTaskType.PARSE
 
         logging.info(f"handle_task begin for task {json.dumps(task)}")
-        asyncio.run(do_handle_task_with_timeout(task, partial(set_progress, task_id)))
+
+        # Check if there's an existing event loop in this thread
+        try:
+            event_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # No running loop, we'll create one
+            event_loop = asyncio.new_event_loop()
+            created_loop = True
+            asyncio.set_event_loop(event_loop)
+
+        try:
+            event_loop.run_until_complete(do_handle_task_with_timeout(task, partial(set_progress, task_id)))
+        finally:
+            # Always close the event loop if we created it to prevent resource leaks
+            if created_loop:
+                event_loop.close()
+                asyncio.set_event_loop(None)
+
         logging.info(f"handle_task done for task {json.dumps(task)}")
     except KeyboardInterrupt:
         return False  # Nack on interrupt
     except Exception as e:
+        # Enhanced exception handling with detailed context
         try:
             err_msg = str(e)
             while isinstance(e, exceptiongroup.ExceptionGroup):
                 e = e.exceptions[0]
                 err_msg += ' -- ' + str(e)
+            error_context = f"task_id={task_id}, task_type={task_type}, routing_key={routing_key}"
             set_progress(task_id, prog=-1, msg=f"[Exception]: {err_msg}")
-        except Exception as e:
-            logging.exception(f"[Exception]: {str(e)}")
+            logging.exception(f"handle_task got exception for task {json.dumps(task) if task else 'N/A'} | Context: {error_context}")
+        except Exception as inner_e:
+            logging.exception(f"[Exception] Failed to log error: {str(inner_e)}")
             pass
-        logging.exception(f"handle_task got exception for task {json.dumps(task)}")
     finally:
+        # Cleanup: cancel any pending asyncio tasks to prevent resource leaks
+        if event_loop and not event_loop.is_closed():
+            try:
+                pending = asyncio.all_tasks(event_loop)
+                for t in pending:
+                    t.cancel()
+                # Give tasks a chance to cancel
+                if created_loop and pending:
+                    event_loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+            except Exception as cleanup_e:
+                logging.warning(f"Event loop cleanup warning: {cleanup_e}")
+
+        # Record pipeline operation if applicable
         if task and task_type != "evaluation":
             task_document_ids = []
             if task_type in ["graphrag", "raptor", "mindmap"]:
                 task_document_ids = task["doc_ids"]
             if not task.get("dataflow_id", "") or task_type != "memory":
-                PipelineOperationLogService.record_pipeline_operation(document_id=task["doc_id"], pipeline_id="",
-                                                                      task_type=pipeline_task_type,
-                                                                      fake_document_ids=task_document_ids)
+                try:
+                    PipelineOperationLogService.record_pipeline_operation(document_id=task["doc_id"], pipeline_id="",
+                                                                          task_type=pipeline_task_type,
+                                                                          fake_document_ids=task_document_ids)
+                except Exception as log_e:
+                    logging.warning(f"Failed to record pipeline operation: {log_e}")
 
     return True  # Ack after successful processing
 
@@ -1558,7 +1608,7 @@ if __name__ == "__main__":
         description='Parsing Task Executor'
     )
     parser.add_argument("-p", "--priority", type=int, default=0)
-    parser.add_argument("-i", "--index", type=int, default=0)
+    parser.add_argument("-i", "--index", type=str, default='0')
     parser.add_argument("-t", "--type", type=str, default="common", help="[common, graphrag, raptor, resume]")
     args = parser.parse_args()
     PRIORITY = args.priority

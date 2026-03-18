@@ -14,7 +14,6 @@
 #  limitations under the License.
 #
 
-import base64
 import click
 import re
 
@@ -36,12 +35,11 @@ def reset_password(email, new_password, password_confirm):
     if not user:
         click.echo(click.style('sorry. The Email is not registered!.', fg='red'))
         return
-    encode_password = base64.b64encode(new_password.encode('utf-8')).decode('utf-8')
-    password_hash = generate_password_hash(encode_password)
+    password_hash = generate_password_hash(new_password)
     user_dict = {
         'password': password_hash
     }
-    UserService.update_user(user[0].id,user_dict)
+    UserService.update_user(user[0].id, user_dict)
     click.echo(click.style('Congratulations! Password has been reset.', fg='green'))
 
 

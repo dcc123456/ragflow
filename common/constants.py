@@ -63,6 +63,8 @@ class RetCode(IntEnum, CustomEnum):
     BILLING_STORAGE_INSUFFICIENT = 2003
     BILLING_POINTS_INSUFFICIENT = 2004
 
+    FEATURE_NOT_ENABLED = 1000
+
 
 class StatusEnum(Enum):
     VALID = "1"

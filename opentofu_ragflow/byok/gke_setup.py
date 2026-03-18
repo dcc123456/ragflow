@@ -33,7 +33,7 @@ Prerequisites:
    This creates a VM with cloud-platform scope (full API access).
 
 Usage:
-    python3 setup_gke_config.py [-h]
+    python3 gke_setup.py [-h]
 """
 
 import os
@@ -41,6 +41,7 @@ import sys
 import subprocess
 import json
 import shutil
+import tempfile
 
 
 def check_kubectl_installed():
@@ -55,8 +56,14 @@ def check_kubectl_installed():
         return
 
     print("kubectl is not installed. Installing via apt...")
+
+    # Add Kubernetes apt repository
+    run_cmd("sudo apt-get install -y apt-transport-https ca-certificates curl gnupg", check=False)
+    run_cmd("sudo curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key | sudo gpg --batch --yes --dearmor -o /usr/share/keyrings/kubernetes-archive-keyring.gpg", check=False)
+    run_cmd('echo "deb [signed-by=/usr/share/keyrings/kubernetes-archive-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.28/deb/ /" | sudo tee /etc/apt/sources.list.d/kubernetes.list', check=False)
+
     run_cmd("sudo apt-get update -qq", check=False)
-    result = run_cmd("sudo apt-get install -y kubectl", check=False)
+    result = run_cmd("sudo apt-get install -y kubectl", check=True)
 
     if result.returncode == 0:
         print("  kubectl installed successfully!")
@@ -75,17 +82,19 @@ def print_help():
 
 GCR_PROJECT_PREFIX = "gcr.io"
 
+POD_STATUS_CHANGE_FILTER = 'log_id("events") AND resource.type="k8s_pod" AND jsonPayload.involvedObject.kind="Pod" AND jsonPayload.involvedObject.namespace="ragflow"'
 
-def run_cmd(cmd, check=True, capture_output=True):
+def run_cmd(cmd, check=True, capture_output=True, timeout=60):
     """Run a shell command and return the result.
 
     Args:
         cmd: A shell command string to be executed with shell=True
         check: If True, exit on command failure; if False, silently handle errors
         capture_output: If True, capture stdout and stderr
+        timeout: Timeout in seconds (default 60)
     """
     # Always use shell=True for string commands
-    result = subprocess.run(cmd, capture_output=capture_output, text=True, check=False, shell=True)
+    result = subprocess.run(cmd, capture_output=capture_output, text=True, check=False, shell=True, timeout=timeout)
     if check and result.returncode != 0:
         print(f"Error running command: {cmd}")
         print(f"stderr: {result.stderr}")
@@ -718,9 +727,17 @@ def create_gcs_service_account(project, cluster_name, region, namespace="ragflow
     else:
         print("  Service account already exists.")
 
+    # Enable Cloud Resource Manager API (required for IAM operations)
+    print("\nEnabling Cloud Resource Manager API...")
+    result = run_cmd(f"gcloud services enable cloudresourcemanager.googleapis.com --project={project}", check=True)
+    if result.returncode == 0:
+        print("  Cloud Resource Manager API enabled successfully!")
+    else:
+        print(f"  Warning: Could not enable API: {result.stderr}")
+
     # Grant Storage Admin role (includes bucket listing and object operations)
     print(f"\nGranting Storage Admin role to {gcs_sa_email}...")
-    result = run_cmd(f'gcloud projects add-iam-policy-binding {project} --member="serviceAccount:{gcs_sa_email}" --role="roles/storage.admin" --condition=None', check=False)
+    result = run_cmd(f'gcloud projects add-iam-policy-binding {project} --member="serviceAccount:{gcs_sa_email}" --role="roles/storage.admin" --quiet', check=False)
 
     if result.returncode == 0:
         print("  Storage Admin role granted successfully!")
@@ -765,12 +782,11 @@ def create_gcs_service_account(project, cluster_name, region, namespace="ragflow
 
     if result.returncode == 0:
         print("    IAM binding created successfully!")
+    elif "already exists" in result.stderr:
+        print("    IAM binding already exists.")
     else:
-        # Check if already bound
-        if "already exists" in result.stderr or result.returncode == 0:
-            print("    IAM binding already exists.")
-        else:
-            print(f"    Warning: {result.stderr}")
+        print(f"    Error: {result.stderr}")
+        sys.exit(1)
 
     # Annotate K8s SA with GCP SA email
     print("\n  Annotating Kubernetes Service Account...")
@@ -781,20 +797,332 @@ def create_gcs_service_account(project, cluster_name, region, namespace="ragflow
     print(f"  Use this K8s SA in your deployment: serviceAccountName: {k8s_sa_name}")
 
 
+def create_log_metric(project):
+    """Create log-based metric for Pod status change events (idempotent).
+
+    This function is idempotent - if the metric already exists, it will
+    return True without creating a duplicate.
+
+    Args:
+        project: GCP project ID
+
+    Returns:
+        True if metric was created or already exists, False on error
+    """
+    print("\n" + "=" * 70)
+    print("Creating Log-Based Metric for Pod Status Changes")
+    print("=" * 70)
+
+    metric_name = "pod_status_change_events"
+    # To debug the log-based metric, use the Google Cloud Logging metrics page:
+    # https://console.cloud.google.com/logs/metrics
+    # Filter to match Kubernetes Pod events in the ragflow namespace.
+    # We use log_id() and resource.type for precise metric matching instead of loose substring matching.
+    filter_query = POD_STATUS_CHANGE_FILTER
+
+    # Check if metric already exists
+    result = run_cmd(f"gcloud logging metrics describe {metric_name} --project={project}", check=False)
+
+    if result.returncode == 0:
+        # Metric exists, check if filter matches
+        existing_filter = ""
+        # Extract filter from output - look for filter: or filter= line
+        for line in result.stdout.split("\n"):
+            if line.startswith("filter:"):
+                existing_filter = line.split("filter:", 1)[1].strip().strip('"')
+                break
+        if existing_filter == filter_query:
+            print(f"  Metric '{metric_name}' already exists with matching filter.")
+            return True
+        else:
+            # Filter changed, update the metric
+            print(f"  Metric '{metric_name}' exists but filter changed. Updating...")
+            result = run_cmd(
+                f'gcloud logging metrics update {metric_name} '
+                f'--description="Pod status change events in Kubernetes" '
+                f'--log-filter="{filter_query}" '
+                f'--project={project}',
+                check=False,
+            )
+            if result.returncode == 0:
+                print(f"  Metric '{metric_name}' updated successfully!")
+                return True
+            else:
+                print(f"  Warning: Could not update metric: {result.stderr}")
+                return False
+
+    # Create the metric
+    print(f"  Creating log-based metric '{metric_name}'...")
+    result = run_cmd(
+        f'gcloud logging metrics create {metric_name} '
+        f'--description="Pod status change events in Kubernetes" '
+        f'--log-filter="{filter_query}" '
+        f'--project={project}',
+        check=False,
+    )
+
+    if result.returncode == 0:
+        print(f"  Metric '{metric_name}' created successfully!")
+        return True
+    else:
+        print(f"  Warning: Could not create metric: {result.stderr}")
+        return False
+
+
+def create_notification_channel(project, email_address):
+    """Create email notification channel for alerts (idempotent).
+
+    This function is idempotent - if a notification channel with the given
+    email address already exists, it will return the existing channel ID
+    instead of creating a duplicate.
+
+    Args:
+        project: GCP project ID
+        email_address: Email address for notifications
+
+    Returns:
+        Channel ID (resource name) if created successfully, None otherwise
+    """
+    # Create unique channel name based on email (use username part to avoid duplicates)
+    email_username = email_address.split("@")[0] if "@" in email_address else email_address
+    channel_name = f"ragflow-alert-{email_username}"
+
+    print("\n" + "=" * 70)
+    print("Creating Notification Channel")
+    print("=" * 70)
+
+    # Check if channel already exists by email address label.
+    # The filter value must be quoted, otherwise gcloud does not match the label reliably.
+    result = run_cmd(
+        f"gcloud alpha monitoring channels list --project={project} --filter='labels.email_address=\"{email_address}\"' --format=json",
+        check=False,
+    )
+
+    if result.returncode == 0:
+        try:
+            channels = json.loads(result.stdout)
+            if channels:
+                # Return the full resource name
+                channel_id = channels[0].get("name", "")
+                print(f"  Notification channel for {email_address} already exists: {channel_id}")
+                return channel_id
+        except (json.JSONDecodeError, KeyError, IndexError):
+            pass
+
+    # Create the channel
+    print(f"  Creating email notification channel for {email_address}...")
+    result = run_cmd(
+        f'gcloud alpha monitoring channels create '
+        f'--display-name="{channel_name}" '
+        f'--type=email '
+        f'--channel-labels=email_address={email_address} '
+        f'--project={project}',
+        check=False,
+    )
+
+    if result.returncode == 0:
+        # Extract channel ID from output
+        output = result.stdout
+        if "name:" in output:
+            channel_id = output.split("name:")[1].strip().split("\n")[0]
+            print(f"  Notification channel created: {channel_id}")
+            return channel_id
+        # Try to get from list by email
+        result = run_cmd(
+            f"gcloud alpha monitoring channels list --project={project} --filter='labels.email_address=\"{email_address}\"' --format=json",
+            check=False,
+        )
+        if result.returncode == 0:
+            channels = json.loads(result.stdout)
+            if channels:
+                channel_id = channels[0].get("name", "")
+                return channel_id
+    else:
+        print(f"  Warning: Could not create notification channel: {result.stderr}")
+
+    return None
+
+
+def setup_monitoring_alerts(project):
+    """Setup monitoring alerts with batched Pod status change notifications.
+
+    Args:
+        project: GCP project ID
+
+    Returns:
+        True if setup was successful, False otherwise
+
+    Note:
+        This function creates:
+        - Log-based metric: pod_status_change_events (captures K8s Pod events)
+        - Alert policy: Batched notifications with 5min duration and 10min cooldown
+        - Email notification channel(s) (if GCP_ALERT_EMAIL is set)
+
+    Environment Variables:
+        GCP_ALERT_EMAIL: Comma-separated list of email addresses (e.g., "a@example.com,b@example.com")
+    """
+    email_config = os.environ.get("GCP_ALERT_EMAIL")
+    if not email_config:
+        print("\nSkipping alert setup: GCP_ALERT_EMAIL not set")
+        return False
+
+    # Support comma-separated multiple email addresses
+    email_addresses = [e.strip() for e in email_config.split(",") if e.strip()]
+    if not email_addresses:
+        print("\nSkipping alert setup: GCP_ALERT_EMAIL is empty")
+        return False
+
+    print("\n" + "=" * 70)
+    print("Setting Up Monitoring Alerts")
+    print("=" * 70)
+    print(f"  Alert emails: {', '.join(email_addresses)}")
+
+    # Create log-based metric first
+    create_log_metric(project)
+
+    # Create notification channels for each email
+    channel_ids = []
+    for email in email_addresses:
+        channel_id = create_notification_channel(project, email)
+        if channel_id:
+            channel_ids.append(channel_id)
+
+    # Create the alert policy using command line arguments
+    return create_alert_policy(project, channel_ids)
+
+
+def create_alert_policy(project, channel_ids):
+    """Create alert policy for Pod status change events (idempotent).
+
+    This function is idempotent - if the alert policy already exists, it will
+    update the notification channels and return True without creating a duplicate.
+
+    Args:
+        project: GCP project ID
+        channel_ids: List of notification channel IDs (resource names)
+
+    Returns:
+        True if created or updated successfully
+    """
+    print("\n" + "=" * 70)
+    print("Creating Alert Policy")
+    print("=" * 70)
+
+    policy_display_name = "Pod Status Change Alert"
+
+    def policy_exists():
+        verify_result = run_cmd(
+            f'gcloud alpha monitoring policies list --project={project} --filter="displayName=\'{policy_display_name}\'" --format="value(name)"',
+            check=False,
+        )
+        if verify_result.returncode != 0:
+            return False, verify_result.stderr, ""
+        policy_name = verify_result.stdout.strip()
+        # Extract policy ID from the full resource name (e.g., projects/xxx/alertPolicies/123456789)
+        policy_id = policy_name.split("/")[-1] if policy_name else ""
+        return bool(policy_name), policy_name, policy_id
+
+    def update_existing_policy(policy_name, policy_id):
+        if not channel_ids:
+            print(f"  Alert policy '{policy_display_name}' already exists, but no notification channels are available to attach.")
+            return True
+
+        channel_arg = ",".join(channel_ids)
+        result = run_cmd(
+            f"gcloud alpha monitoring policies update {policy_name} --project={project} --set-notification-channels={channel_arg}",
+            check=False,
+        )
+        if result.returncode == 0:
+            print(f"  Alert policy '{policy_display_name}' already exists. Notification channels refreshed.")
+            print(f"  Manage alert policy at: https://console.cloud.google.com/monitoring/alerting/policies/{policy_id}?project={project}")
+            return True
+
+        print(f"  Warning: Alert policy exists, but notification channel update failed: {result.stderr}")
+        return False
+
+    # Check if policy already exists
+    exists, existing_policy, existing_policy_id = policy_exists()
+    if exists:
+        return update_existing_policy(existing_policy, existing_policy_id)
+
+    # Define policy in JSON.
+    # The logs-based metric is created from Logging entries with logName="events",
+    # but Cloud Monitoring evaluates user-defined logs-based metrics on the monitored
+    # resource type "global".
+    # Use ALIGN_RATE to detect any events over the alignment window.
+    policy_json = {
+        "displayName": policy_display_name,
+        "combiner": "OR",
+        "conditions": [
+            {
+                "displayName": "Pod Status Change Detected",
+                "conditionThreshold": {
+                    "filter": 'metric.type="logging.googleapis.com/user/pod_status_change_events" AND resource.type="k8s_pod"',
+                    "comparison": "COMPARISON_GT",
+                    "thresholdValue": 0,
+                    "duration": "60s",
+                    "trigger": {"count": 1},
+                    "aggregations": [{"alignmentPeriod": "300s", "perSeriesAligner": "ALIGN_RATE", "crossSeriesReducer": "REDUCE_SUM"}],
+                },
+            }
+        ],
+        "notificationChannels": channel_ids,
+        "enabled": True,
+    }
+
+    if not channel_ids:
+        print("  Warning: No notification channels provided. Creating policy without notification channels.")
+
+    # Create temporary file for policy JSON
+    # Use tempfile to create a uniquely named file
+    fd, policy_file = tempfile.mkstemp(suffix=".json", text=True)
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(policy_json, f, indent=2)
+
+        print(f"  Creating alert policy '{policy_display_name}'...")
+        # Use gcloud to create policy from file
+        result = run_cmd(f"gcloud alpha monitoring policies create --policy-from-file={policy_file} --project={project}", check=False)
+
+        if result.returncode == 0:
+            verified, verify_name, verify_id = policy_exists()
+            if verified:
+                print("  Alert policy created successfully!")
+                print(f"  Manage alert policy at: https://console.cloud.google.com/monitoring/alerting/policies/{verify_id}?project={project}")
+                return True
+
+            print("  Warning: Create command succeeded, but policy verification failed.")
+            if verify_name:
+                print(f"  Verification details: {verify_name}")
+            return False
+        else:
+            print(f"  Warning: Could not create alert policy: {result.stderr}")
+            if "ALIGN_RATE" in result.stderr:
+                print("  Note: Ensure the metric kind matches the aligner.")
+            return False
+    finally:
+        if os.path.exists(policy_file):
+            os.remove(policy_file)
+
 def print_next_steps():
     """Print next steps for the user."""
     print("\n" + "=" * 70)
     print("NEXT STEPS")
     print("=" * 70)
     print("""
-Note: The setup_gke_config.py script has already:
+Note: The gke_setup.py script has already:
   1. Enabled public access to the GKE cluster
   2. Enabled Gateway API on the cluster
   3. Created a proxy-only subnet for GKE Gateway
+  4. Created log-based metric and alert policy (if GCP_ALERT_EMAIL is set)
 
-If running setup_gke_config.py again:
+If running gke_setup.py again:
   - The proxy-only subnet will be created if it doesn't exist
   - If it already exists with the correct purpose, it will be skipped
+  - Alert policy will be updated if already exists
+
+To configure alert email notifications:
+  - Set environment variable: export GCP_ALERT_EMAIL=email1@example.com,email2@example.com
 
 If gke-gcloud-auth-plugin is not available, install via apt:
   echo 'deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main' | sudo tee /etc/apt/sources.list.d/google-cloud-sdk.list
@@ -916,6 +1244,12 @@ def main():
 
     # Create GCS service account and configure Workload Identity
     create_gcs_service_account(project, cluster["name"], region, namespace)
+
+    # Setup monitoring alerts (only if GCP_ALERT_EMAIL is set)
+    if os.environ.get("GCP_ALERT_EMAIL"):
+        if not setup_monitoring_alerts(project):
+            print("\nError: Failed to setup monitoring alerts. Exiting.")
+            sys.exit(1)
 
     # Print next steps
     print_next_steps()

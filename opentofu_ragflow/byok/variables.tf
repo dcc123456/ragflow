@@ -46,18 +46,6 @@ variable "gcp_project_id" {
   default     = ""
 }
 
-variable "storage_class" {
-  description = "Kubernetes StorageClass for PVCs. Overrides cloud_provider auto-detection if specified"
-  type        = string
-  default     = ""  # Empty means use cloud_provider defaults
-}
-
-variable "gateway_class_name" {
-  description = "GatewayClass name for routing (use 'gke-l7-regional-external-managed' for GKE)"
-  type        = string
-  default     = "nginx"
-}
-
 # =============================================================================
 # Private Registry Configuration (Optional)
 # =============================================================================
@@ -128,30 +116,10 @@ variable "region" {
   default     = "cn-shanghai"
 }
 
-# =============================================================================
-# Gateway Configuration
-# =============================================================================
-
-variable "enable_tls" {
-  description = "Enable TLS for gateway"
-  type        = bool
-  default     = false
-}
 
 # =============================================================================
 # MySQL Configuration
 # =============================================================================
-
-variable "mysql_deployment_mode" {
-  description = "MySQL deployment mode: k8s (internal) or cloud (external)"
-  type        = string
-  default     = "k8s"
-
-  validation {
-    condition     = contains(["k8s", "cloud"], var.mysql_deployment_mode)
-    error_message = "mysql_deployment_mode must be 'k8s' or 'cloud'."
-  }
-}
 
 variable "mysql_db_name" {
   description = "MySQL database name for RAGFlow application"
@@ -195,20 +163,15 @@ variable "mysql_max_connections" {
   default     = 2000
 }
 
+variable "mysql_node_selector" {
+  description = "MySQL node selector for scheduling pods on specific nodes (e.g., for GKE Autopilot)"
+  type        = map(string)
+  default     = {}
+}
+
 # =============================================================================
 # Elasticsearch Configuration
 # =============================================================================
-
-variable "es_deployment_mode" {
-  description = "Elasticsearch deployment mode: k8s (internal) or cloud (external)"
-  type        = string
-  default     = "k8s"
-
-  validation {
-    condition     = contains(["k8s", "cloud"], var.es_deployment_mode)
-    error_message = "es_deployment_mode must be 'k8s' or 'cloud'."
-  }
-}
 
 variable "es_image" {
   description = "Elasticsearch container image (including tag)"
@@ -216,57 +179,89 @@ variable "es_image" {
   default     = "elasticsearch:9.3.1"
 }
 
-variable "es_k8s_node_count" {
-  description = "Number of Elasticsearch nodes"
+# Master node configuration (cluster management only)
+variable "es_master_node_count" {
+  description = "Number of Elasticsearch master nodes"
   type        = number
   default     = 3
 }
 
-variable "es_k8s_storage" {
-  description = "Elasticsearch storage size per node in GB"
-  type        = number
-  default     = 500
+variable "es_master_cpu_request" {
+  description = "Elasticsearch master node CPU request"
+  type        = string
+  default     = "2"
 }
 
-variable "es_cpu_request" {
-  description = "Elasticsearch CPU request"
+variable "es_master_cpu_limit" {
+  description = "Elasticsearch master node CPU limit"
   type        = string
   default     = "4"
 }
 
-variable "es_cpu_limit" {
-  description = "Elasticsearch CPU limit"
+variable "es_master_memory_request" {
+  description = "Elasticsearch master node memory request"
+  type        = string
+  default     = "8Gi"
+}
+
+variable "es_master_memory_limit" {
+  description = "Elasticsearch master node memory limit"
+  type        = string
+  default     = "8Gi"
+}
+
+variable "es_master_heap_size" {
+  description = "Elasticsearch master node JVM heap size (should be ~50% of memory limit)"
+  type        = string
+  default     = "4g"
+}
+
+# Data/Ingest node configuration (data storage and ingest pipelines)
+variable "es_data_node_count" {
+  description = "Number of Elasticsearch data/ingest nodes"
+  type        = number
+  default     = 4
+}
+
+variable "es_data_cpu_request" {
+  description = "Elasticsearch data/ingest node CPU request"
+  type        = string
+  default     = "4"
+}
+
+variable "es_data_cpu_limit" {
+  description = "Elasticsearch data/ingest node CPU limit"
   type        = string
   default     = "8"
 }
 
-variable "es_memory_request" {
-  description = "Elasticsearch memory request"
+variable "es_data_memory_request" {
+  description = "Elasticsearch data/ingest node memory request"
   type        = string
   default     = "32Gi"
 }
 
-variable "es_memory_limit" {
-  description = "Elasticsearch memory limit"
+variable "es_data_memory_limit" {
+  description = "Elasticsearch data/ingest node memory limit"
   type        = string
   default     = "32Gi"
 }
 
-variable "es_heap_size" {
-  description = "Elasticsearch JVM heap size (should be ~50% of memory limit)"
+variable "es_data_heap_size" {
+  description = "Elasticsearch data/ingest node JVM heap size (should be ~50% of memory limit)"
   type        = string
   default     = "16g"
+}
+
+variable "es_data_storage" {
+  description = "Elasticsearch data/ingest node storage size per node in GB"
+  type        = number
+  default     = 500
 }
 
 # =============================================================================
 # TEI (Text Embeddings) Configuration
 # =============================================================================
-
-variable "tei_image" {
-  description = "TEI container image"
-  type        = string
-  default     = "infiniflow/text-embeddings-inference:cpu-1.8"
-}
 
 variable "tei_model" {
   description = "TEI model to use"
@@ -308,12 +303,6 @@ variable "tei_memory_limit" {
 # Redis Configuration
 # =============================================================================
 
-variable "redis_image" {
-  description = "Redis container image"
-  type        = string
-  default     = "valkey/valkey:8"
-}
-
 
 variable "redis_cpu_request" {
   description = "Redis CPU request"
@@ -339,21 +328,9 @@ variable "redis_memory_limit" {
   default     = "8Gi"
 }
 
-variable "curl_image" {
-  description = "Curl image for init containers"
-  type        = string
-  default     = "curlimages/curl:latest"
-}
-
 # =============================================================================
 # RabbitMQ Configuration
 # =============================================================================
-
-variable "rabbitmq_image" {
-  description = "RabbitMQ container image"
-  type        = string
-  default     = "rabbitmq:4-management"
-}
 
 variable "rabbitmq_storage" {
   description = "RabbitMQ storage size in GB"
@@ -505,3 +482,39 @@ variable "deepdoc_use_gpu" {
   type        = bool
   default     = false
 }
+
+# =============================================================================
+# ohttps Configuration (for SSL certificate sync)
+# =============================================================================
+
+variable "ohttps_enabled" {
+  description = "Enable ohttps certificate sync. When enabled, HTTPS listener and CronJob will be created."
+  type        = bool
+  default     = false
+}
+
+variable "ohttps_api_id" {
+  description = "ohttps API ID for certificate sync"
+  type        = string
+  default     = ""
+}
+
+variable "ohttps_api_key" {
+  description = "ohttps API Key for certificate sync"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "ohttps_cert_id" {
+  description = "ohttps Certificate ID to sync"
+  type        = string
+  default     = ""
+}
+
+variable "ohttps_sync_image" {
+  description = "Docker image for ohttps certificate sync CronJob"
+  type        = string
+  default     = "infiniflow/sync_ohttps_cert:latest"
+}
+

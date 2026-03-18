@@ -66,9 +66,23 @@ app = cors(app, allow_origin="*")
 # =============================================================================
 # Health check routes for Kubernetes liveness/readiness probes
 # =============================================================================
-# These routes are added to support Kubernetes health checks at the root path "/"
-# which is required by load balancers and gateway controllers (e.g., GKE Gateway)
+# Liveness probe + GKE Gateway NEG health check
+# - K8s livenessProbe: /live (configured in Terraform)
+# - GKE Gateway NEG: uses "/" by default (cannot be configured)
+# Both return 200 OK without checking dependencies to avoid unnecessary pod restarts
 @app.route("/", methods=["GET"])
+@app.route("/live", methods=["GET"])
+def liveness():
+    """
+    Lightweight liveness probe for Kubernetes and GKE Gateway NEG health check.
+    Returns 200 OK immediately without checking any dependencies.
+    - K8s livenessProbe uses this to determine if the container should be restarted
+    - GKE Gateway NEG uses "/" by default for health check
+    """
+    return "", 200
+
+
+# Readiness probe: comprehensive health check including all dependencies
 @app.route("/healthz", methods=["GET"])
 def healthz():
     """

@@ -1,0 +1,30 @@
+# ohttps SSL Certificate Sync Image
+# Pre-installs Python dependencies needed for sync_ohttps_cert.py
+FROM ubuntu:24.04
+
+# Install uv from ragflow_deps image
+RUN --mount=type=bind,from=infiniflow/ragflow_deps:latest,source=/,target=/deps \
+    if [ "$NEED_MIRROR" == "1" ]; then \
+        mkdir -p /etc/uv && \
+        echo 'python-install-mirror = "https://registry.npmmirror.com/-/binary/python-build-standalone/"' > /etc/uv/uv.toml && \
+        echo '[[index]]' >> /etc/uv/uv.toml && \
+        echo 'url = "https://pypi.tuna.tsinghua.edu.cn/simple"' >> /etc/uv/uv.toml && \
+        echo 'default = true' >> /etc/uv/uv.toml; \
+    fi; \
+    tar xzf /deps/uv-x86_64-unknown-linux-gnu.tar.gz \
+    && cp uv-x86_64-unknown-linux-gnu/* /usr/local/bin/ \
+    && rm -rf uv-x86_64-unknown-linux-gnu \
+    && uv python install 3.12
+
+WORKDIR /scripts
+
+# Install dependencies
+RUN uv venv --python 3.12 && uv pip install kubernetes requests
+
+ENV PATH=/scripts/.venv/bin:$PATH
+
+# Copy the sync script
+COPY sync_ohttps_cert.py /scripts/sync_ohttps_cert.py
+
+# Execute the sync script
+CMD ["/scripts/.venv/bin/python3", "/scripts/sync_ohttps_cert.py"]

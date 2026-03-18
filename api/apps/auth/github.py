@@ -28,7 +28,7 @@ class GithubOAuthClient(OAuthClient):
             "token_url": "https://github.com/login/oauth/access_token",
             "userinfo_url": "https://api.github.com/user",
             "client_id": config["client_id"],
-            "client_secret": config["secret_key"],
+            "client_secret": config["client_secret"],
             "redirect_uri": "",
             "scope": "user:email"
         }

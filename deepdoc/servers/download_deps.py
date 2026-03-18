@@ -5,10 +5,12 @@ DeepDoc Dependencies Downloader
 IMPORTANT REQUIREMENTS:
 1. Must be run from project root directory (ragflow_enterprise/)
 2. huggingface.co must be accessible (set up proxy/VPN if needed)
+3. System dependencies for OpenCV must be installed (for Linux):
+   sudo apt-get update && sudo apt-get install -y libgl1 libglib2.0-0
 
 Usage:
     cd /path/to/ragflow_enterprise
-    python deepdoc/servers/download_deps.py
+    uv run deepdoc/servers/download_deps.py
 
 If download fails due to network issues:
 1. Check your proxy settings: echo $http_proxy $https_proxy
@@ -17,9 +19,13 @@ If download fails due to network issues:
 """
 
 # PEP 723 metadata
+# Note: paddlepaddle is explicitly required because paddleocr's package
+# does not declare it as a strict dependency (allowing flexible CPU/GPU choices).
 # /// script
 # requires-python = ">=3.11,<3.16"
 # dependencies = [
+#   "pip",
+#   "paddlepaddle",
 #   "paddleocr>=2.10.0,<3.0.0",
 # ]
 # ///
@@ -35,9 +41,9 @@ def check_prerequisites():
     errors = []
 
     # Check if we're in project root directory
-    # Project root contains: api/, deepdoc/, web/, docker/, pyproject.toml, etc.
+    # Project root contains: .git/, api/, deepdoc/, web/, docker/, pyproject.toml, etc.
     current_dir = Path.cwd()
-    required_items = ["api", "deepdoc", "web", "docker", "pyproject.toml"]
+    required_items = [".git", "api", "deepdoc", "web", "docker", "pyproject.toml"]
 
     missing = [item for item in required_items if not (current_dir / item).exists()]
     if missing:
@@ -45,7 +51,7 @@ def check_prerequisites():
             f"Must run from project root directory!\n"
             f"Current directory: {current_dir}\n"
             f"Missing items: {', '.join(missing)}\n"
-            f"Please run: cd /path/to/ragflow_enterprise && python deepdoc/servers/download_deps.py"
+            f"Please run: cd /path/to/ragflow_enterprise && uv run deepdoc/servers/download_deps.py"
         )
 
     # Check if huggingface.co is accessible

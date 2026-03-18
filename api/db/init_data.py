@@ -265,6 +265,9 @@ def init_web_data():
     logging.info("init web data success:{}".format(time.time() - start_time))
 
 def init_table():
+    # init default roles and permissions
+    init_default_roles()
+
     # init system_settings
     with open(os.path.join(get_project_base_directory(), "conf", "system_settings.json"), "r") as f:
         records_from_file = json.load(f)["system_settings"]

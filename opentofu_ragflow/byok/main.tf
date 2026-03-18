@@ -39,6 +39,11 @@ terraform {
       source  = "hashicorp/external"
       version = "2.3.5"
     }
+
+    google = {
+      source  = "hashicorp/google"
+      version = "~> 6.0"
+    }
   }
 }
 
@@ -60,41 +65,51 @@ provider "random" {}
 
 provider "external" {}
 
+provider "google" {
+  project = var.gcp_project_id
+  region  = var.region
+}
+
 # =============================================================================
 # Local Values
 # =============================================================================
 
 locals {
-  # Construct GCS service account from project ID (only when cloud_provider = 'gcp')
+  # GCS service account for Workload Identity
+  # Usage: admin/parser/ragflow pods use this SA to access GCS for file upload/download (as S3-compatible storage backend)
   # Format: ragflow-gcs@{gcp_project_id}.iam.gserviceaccount.com
   gcs_service_account = var.cloud_provider == "gcp" && var.gcp_project_id != "" ? "ragflow-gcs@${var.gcp_project_id}.iam.gserviceaccount.com" : ""
+
+  # GCS Kubernetes Service Account name (for ES pod to access GCS snapshots)
+  gcs_k8s_service_account = "ragflow-gcs"
 
   # Cloud provider auto-configuration
   # Detect StorageClass and S3 settings based on cloud_provider
   cloud_config = {
     smk = {
-      storage_class = var.storage_class != "" ? var.storage_class : "rook-ceph-block"
+      storage_class = "rook-ceph-block"
       s3_endpoint   = var.s3_endpoint != "" ? var.s3_endpoint : "http://rook-ceph-rgw-my-store.rook-ceph.svc:80"
       s3_region     = var.s3_region != "" ? var.s3_region : "default"
     }
     gcp = {
-      # Note: s3_region is not used by GCS client (rag/utils/gcs_conn.py), but kept for consistency
-      storage_class = var.storage_class != "" ? var.storage_class : "standard-rwo"
+      # GKE Autopilot requires premium-rwo for Elasticsearch mmap; standard-rwo is not supported
+      storage_class = "premium-rwo"
       s3_endpoint   = var.s3_endpoint != "" ? var.s3_endpoint : "https://storage.googleapis.com"
+      # Note: s3_region is not used by GCS client (rag/utils/gcs_conn.py), but kept for consistency
       s3_region     = var.s3_region != "" ? var.s3_region : "us-central1"
     }
     aws = {
-      storage_class = var.storage_class != "" ? var.storage_class : "gp3"
+      storage_class = "gp3"
       s3_endpoint   = var.s3_endpoint != "" ? var.s3_endpoint : "https://s3.amazonaws.com"
       s3_region     = var.s3_region != "" ? var.s3_region : "us-east-1"
     }
     azure = {
-      storage_class = var.storage_class != "" ? var.storage_class : "default"
+      storage_class = "default"
       s3_endpoint   = var.s3_endpoint != "" ? var.s3_endpoint : "https://${var.storage_account_name}.blob.core.windows.net"
       s3_region     = var.s3_region != "" ? var.s3_region : "eastus"
     }
     alicloud = {
-      storage_class = var.storage_class != "" ? var.storage_class : "alicloud-disk-ssd"
+      storage_class = "alicloud-disk-ssd"
       s3_endpoint   = var.s3_endpoint != "" ? var.s3_endpoint : "https://oss-${var.region}.aliyuncs.com"
       s3_region     = var.s3_region != "" ? var.s3_region : "cn-hangzhou"
     }
@@ -120,7 +135,7 @@ locals {
   mysql_image     = var.public_registry != "" ? "${var.public_registry}/mysql:8.0" : "docker.io/library/mysql:8.0"
   redis_image    = var.public_registry != "" ? "${var.public_registry}/valkey:8" : "valkey/valkey:8"
   tei_image      = var.public_registry != "" ? "${var.public_registry}/text-embeddings-inference:cpu-1.8" : "infiniflow/text-embeddings-inference:cpu-1.8"
-  rabbitmq_image = var.public_registry != "" ? "${var.public_registry}/rabbitmq:4-management" : "rabbitmq:4-management"
+  rabbitmq_image = var.public_registry != "" ? "${var.public_registry}/rabbitmq:3-management" : "rabbitmq:3-management"
   curl_image     = var.public_registry != "" ? "${var.public_registry}/curl:latest" : "curlimages/curl:latest"
   minio_mc_image = var.public_registry != "" ? "${var.public_registry}/mc:latest" : "quay.io/minio/mc:latest"
 
@@ -129,8 +144,12 @@ locals {
   # If no tag is provided (image without :tag), defaults to "latest"
   es_version = can(regex(".*:(.+)$", var.es_image)) ? regex(".*:(.+)$", var.es_image)[0] : "latest"
 
+  # GatewayClass name based on cloud provider
+  # GCP uses GKE Gateway, other providers use NGINX Gateway
+  gateway_class_name = var.cloud_provider == "gcp" ? "gke-l7-regional-external-managed" : "nginx"
+
   # Check if using GKE Gateway (vs smk with NGINX Gateway)
-  is_gke_gateway = can(regex("^gke-", var.gateway_class_name))
+  is_gke_gateway = can(regex("^gke-", local.gateway_class_name))
 
   # Database users (consistent across all components)
   mysql_user     = "ragflow"
@@ -196,7 +215,6 @@ resource "random_password" "rabbitmq" {
 # Ref: https://github.com/hashicorp/terraform-provider-kubernetes/issues/1986
 # Workaround for PVC creation timeout due to provider rate limiting
 resource "kubernetes_persistent_volume_claim" "mysql" {
-  count = var.mysql_deployment_mode == "k8s" ? 1 : 0
 
   metadata {
     name      = "mysql-data"
@@ -220,7 +238,6 @@ resource "kubernetes_persistent_volume_claim" "mysql" {
 }
 
 resource "kubernetes_secret" "mysql" {
-  count = var.mysql_deployment_mode == "k8s" ? 1 : 0
 
   metadata {
     name      = "mysql-password"
@@ -233,7 +250,6 @@ resource "kubernetes_secret" "mysql" {
 }
 
 resource "kubernetes_stateful_set" "mysql" {
-  count = var.mysql_deployment_mode == "k8s" ? 1 : 0
 
   metadata {
     name      = "mysql"
@@ -279,7 +295,7 @@ resource "kubernetes_stateful_set" "mysql" {
 
             value_from {
               secret_key_ref {
-                name = kubernetes_secret.mysql[0].metadata[0].name
+                name = kubernetes_secret.mysql.metadata[0].name
                 key  = "password"
               }
             }
@@ -326,7 +342,7 @@ resource "kubernetes_stateful_set" "mysql" {
           name = "data"
 
           persistent_volume_claim {
-            claim_name = kubernetes_persistent_volume_claim.mysql[0].metadata[0].name
+            claim_name = kubernetes_persistent_volume_claim.mysql.metadata[0].name
           }
         }
       }
@@ -341,7 +357,6 @@ resource "kubernetes_stateful_set" "mysql" {
 }
 
 resource "kubernetes_service" "mysql" {
-  count = var.mysql_deployment_mode == "k8s" ? 1 : 0
 
   metadata {
     name      = "mysql"
@@ -891,8 +906,6 @@ resource "kubernetes_service" "rabbitmq" {
 # This installs the CRDs and operator required for Elasticsearch resources
 # Ref: https://artifacthub.io/packages/helm/elastic/eck-operator
 resource "helm_release" "eck_operator" {
-  count = var.es_deployment_mode == "k8s" ? 1 : 0
-
   name             = "eck-operator"
   repository       = "https://helm.elastic.co"
   chart            = "eck-operator"
@@ -919,8 +932,6 @@ resource "helm_release" "eck_operator" {
 # This replaces the fixed time_sleep with a dynamic check.
 
 resource "terraform_data" "wait_for_elasticsearch_crd" {
-  count = var.es_deployment_mode == "k8s" ? 1 : 0
-
   depends_on = [helm_release.eck_operator]
 
   # Idempotent check for CRD - if already established, succeed immediately
@@ -945,7 +956,7 @@ resource "terraform_data" "wait_for_elasticsearch_crd" {
 # Requires GKE >= 1.30.3-gke.1451000
 # Reference: https://www.elastic.co/docs/deploy-manage/deploy/cloud-on-k8s/deploy-eck-on-gke-autopilot
 resource "kubernetes_manifest" "elasticsearch_compute_class" {
-  count = var.es_deployment_mode == "k8s" && var.cloud_provider == "gcp" ? 1 : 0
+  count = var.cloud_provider == "gcp" ? 1 : 0
 
   manifest = {
     apiVersion = "cloud.google.com/v1"
@@ -985,8 +996,6 @@ resource "kubernetes_manifest" "elasticsearch_compute_class" {
 
 # 1. Store the Elasticsearch manifest in a ConfigMap
 resource "kubernetes_config_map" "elasticsearch_manifest" {
-  count = var.es_deployment_mode == "k8s" ? 1 : 0
-
   metadata {
     name      = "elasticsearch-manifest"
     namespace = kubernetes_namespace.ragflow.metadata[0].name
@@ -1002,13 +1011,65 @@ metadata:
 spec:
   version: ${local.es_version}
   nodeSets:
+  # Master nodes - cluster management only, no data storage
   - name: masters
-    count: ${var.es_k8s_node_count}
+    count: ${var.es_master_node_count}
     config:
       node.store.allow_mmap: true
-      node.roles: ["master", "data", "ingest"]
+      node.roles: ["master"]
+      # Some settings apply only to master, some only to data, some to both. Keeping Master and Data consistent is safest.
+      # Set max shards per node (default is typically 1000)
+      cluster.max_shards_per_node: 40000
+      # --- Recovery tuning parameters ---
+      # Limit concurrent shard recoveries per node (default is 2)
+      cluster.routing.allocation.node_concurrent_recoveries: 8
+      # Limit recovery bandwidth (default is 40mb, recommended to increase for high-throughput networks)
+      indices.recovery.max_bytes_per_sec: “150mb”
+      # --- Other recommended stability parameters ---
+      # Delay shard reallocation when node leaves (prevent unnecessary data migration due to Pod flapping)
+      index.unassigned.node_left.delayed_timeout: "5m"
     podTemplate:
       spec:
+%{if local.is_gke_gateway}
+        # ServiceAccount for GCS snapshot backup (requires Workload Identity to be configured)
+        serviceAccountName: ${local.gcs_k8s_service_account}
+        nodeSelector:
+          cloud.google.com/compute_class: elasticsearch
+%{endif}
+        containers:
+        - name: elasticsearch
+          image: ${var.es_image}
+          resources:
+            requests:
+              cpu: "${var.es_master_cpu_request}"
+              memory: "${var.es_master_memory_request}"
+            limits:
+              cpu: "${var.es_master_cpu_limit}"
+              memory: "${var.es_master_memory_limit}"
+          env:
+          - name: ES_JAVA_OPTS
+            value: "-Xms${var.es_master_heap_size} -Xmx${var.es_master_heap_size}"
+  # Data/Ingest nodes - data storage and ingest pipelines
+  - name: data-ingest
+    count: ${var.es_data_node_count}
+    config:
+      node.store.allow_mmap: true
+      node.roles: ["data", "ingest"]
+      # Some settings apply only to master, some only to data, some to both. Keeping Master and Data consistent is safest.
+      # Set max shards per node (default is typically 1000)
+      cluster.max_shards_per_node: 40000
+      # --- Recovery tuning parameters ---
+      # Limit concurrent shard recoveries per node (default is 2)
+      cluster.routing.allocation.node_concurrent_recoveries: 8
+      # Limit recovery bandwidth (default is 40mb, recommended to increase for high-throughput networks)
+      indices.recovery.max_bytes_per_sec: “150mb”
+      # --- Other recommended stability parameters ---
+      # Delay shard reallocation when node leaves (prevent unnecessary data migration due to Pod flapping)
+      index.unassigned.node_left.delayed_timeout: "5m"
+    podTemplate:
+      spec:
+        # ServiceAccount for GCS snapshot backup (requires Workload Identity to be configured)
+        serviceAccountName: ${local.gcs_k8s_service_account}
 %{if local.is_gke_gateway}
         nodeSelector:
           cloud.google.com/compute-class: elasticsearch
@@ -1018,14 +1079,14 @@ spec:
           image: ${var.es_image}
           resources:
             requests:
-              cpu: "${var.es_cpu_request}"
-              memory: "${var.es_memory_request}"
+              cpu: "${var.es_data_cpu_request}"
+              memory: "${var.es_data_memory_request}"
             limits:
-              cpu: "${var.es_cpu_limit}"
-              memory: "${var.es_memory_limit}"
+              cpu: "${var.es_data_cpu_limit}"
+              memory: "${var.es_data_memory_limit}"
           env:
           - name: ES_JAVA_OPTS
-            value: "-Xms${var.es_heap_size} -Xmx${var.es_heap_size}"
+            value: "-Xms${var.es_data_heap_size} -Xmx${var.es_data_heap_size}"
     volumeClaimTemplates:
     - metadata:
         name: elasticsearch-data
@@ -1034,7 +1095,7 @@ spec:
         storageClassName: ${local.config.storage_class}
         resources:
           requests:
-            storage: "${var.es_k8s_storage}Gi"
+            storage: "${var.es_data_storage}Gi"
 YAML
   }
 
@@ -1043,8 +1104,6 @@ YAML
 
 # 2. ServiceAccount for the applier job
 resource "kubernetes_service_account" "elasticsearch_applier" {
-  count = var.es_deployment_mode == "k8s" ? 1 : 0
-
   metadata {
     name      = "elasticsearch-applier"
     namespace = kubernetes_namespace.ragflow.metadata[0].name
@@ -1053,8 +1112,6 @@ resource "kubernetes_service_account" "elasticsearch_applier" {
 
 # 3. Role to allow creating Elasticsearch resources
 resource "kubernetes_role" "elasticsearch_applier" {
-  count = var.es_deployment_mode == "k8s" ? 1 : 0
-
   metadata {
     name      = "elasticsearch-applier"
     namespace = kubernetes_namespace.ragflow.metadata[0].name
@@ -1069,8 +1126,6 @@ resource "kubernetes_role" "elasticsearch_applier" {
 
 # 4. RoleBinding
 resource "kubernetes_role_binding" "elasticsearch_applier" {
-  count = var.es_deployment_mode == "k8s" ? 1 : 0
-
   metadata {
     name      = "elasticsearch-applier"
     namespace = kubernetes_namespace.ragflow.metadata[0].name
@@ -1079,20 +1134,18 @@ resource "kubernetes_role_binding" "elasticsearch_applier" {
   role_ref {
     api_group = "rbac.authorization.k8s.io"
     kind      = "Role"
-    name      = kubernetes_role.elasticsearch_applier[0].metadata[0].name
+    name      = kubernetes_role.elasticsearch_applier.metadata[0].name
   }
 
   subject {
     kind      = "ServiceAccount"
-    name      = kubernetes_service_account.elasticsearch_applier[0].metadata[0].name
+    name      = kubernetes_service_account.elasticsearch_applier.metadata[0].name
     namespace = kubernetes_namespace.ragflow.metadata[0].name
   }
 }
 
 # 5. Job to apply the manifest
 resource "kubernetes_job" "apply_elasticsearch" {
-  count = var.es_deployment_mode == "k8s" ? 1 : 0
-
   metadata {
     name      = "apply-elasticsearch"
     namespace = kubernetes_namespace.ragflow.metadata[0].name
@@ -1104,7 +1157,7 @@ resource "kubernetes_job" "apply_elasticsearch" {
         name = "apply-elasticsearch"
       }
       spec {
-        service_account_name = kubernetes_service_account.elasticsearch_applier[0].metadata[0].name
+        service_account_name = kubernetes_service_account.elasticsearch_applier.metadata[0].name
         restart_policy       = "OnFailure"
         container {
           name    = "kubectl"
@@ -1129,7 +1182,7 @@ resource "kubernetes_job" "apply_elasticsearch" {
         volume {
           name = "manifest"
           config_map {
-            name = kubernetes_config_map.elasticsearch_manifest[0].metadata[0].name
+            name = kubernetes_config_map.elasticsearch_manifest.metadata[0].name
           }
         }
         volume {
@@ -1155,10 +1208,8 @@ resource "kubernetes_job" "apply_elasticsearch" {
 # Wait for Elasticsearch Secret to be Available
 # =============================================================================
 resource "terraform_data" "wait_for_elasticsearch_secret" {
-  count = var.es_deployment_mode == "k8s" ? 1 : 0
-
   triggers_replace = [
-    kubernetes_job.apply_elasticsearch[0].id
+    kubernetes_job.apply_elasticsearch.id
   ]
 
   provisioner "local-exec" {
@@ -1175,8 +1226,6 @@ resource "terraform_data" "wait_for_elasticsearch_secret" {
 # This secret is managed by ECK operator and contains the auto-generated
 # password for the 'elastic' user.
 data "kubernetes_secret" "elasticsearch_es_user" {
-  count = var.es_deployment_mode == "k8s" ? 1 : 0
-
   metadata {
     name      = "elasticsearch-es-elastic-user"
     namespace = kubernetes_namespace.ragflow.metadata[0].name
@@ -1218,6 +1267,7 @@ resource "kubernetes_secret" "ragflow_env" {
     kubernetes_stateful_set.mysql,
     kubernetes_deployment.redis,
     kubernetes_deployment.rabbitmq,
+    kubernetes_service.deepdoc,
     terraform_data.wait_for_elasticsearch_secret,
   ]
 
@@ -1228,21 +1278,21 @@ resource "kubernetes_secret" "ragflow_env" {
 
   data = {
     # MySQL Configuration
-    MYSQL_HOST     = var.mysql_deployment_mode == "k8s" ? "mysql" : ""
+    MYSQL_HOST     = "mysql"
     MYSQL_PORT     = "3306"
     MYSQL_USER     = local.mysql_user
     MYSQL_DB_NAME  = var.mysql_db_name
-    MYSQL_PASSWORD = var.mysql_deployment_mode == "k8s" ? random_password.mysql.result : ""
+    MYSQL_PASSWORD = random_password.mysql.result
 
     # Elasticsearch Configuration
     # Use ES_PROTOCOL=https to enable HTTPS for ECK-managed Elasticsearch
-    ES_PROTOCOL = var.es_deployment_mode == "k8s" ? "https" : "http"
-    ES_HOST     = var.es_deployment_mode == "k8s" ? "elasticsearch-es-http" : ""
+    ES_PROTOCOL = "https"
+    ES_HOST     = "elasticsearch-es-http"
     ES_PORT     = "9200"
     ES_USER     = "elastic"
     # ELASTIC_PASSWORD: use password from ECK-managed secret (k8s mode)
     # data.kubernetes_secret automatically base64-decodes secret data
-    ELASTIC_PASSWORD = var.es_deployment_mode == "k8s" ? data.kubernetes_secret.elasticsearch_es_user[0].data.elastic : ""
+    ELASTIC_PASSWORD = data.kubernetes_secret.elasticsearch_es_user.data.elastic
 
     # Redis Configuration
     REDIS_HOST     = "redis"
@@ -1273,6 +1323,14 @@ resource "kubernetes_secret" "ragflow_env" {
 
     # Application Configuration
     HOST_ADDRESS    = "http://127.0.0.1:9380"
+
+    # DeepDoc Service Configuration
+    # Point to the deepdoc service for OCR, DLA, and TSR tasks
+    DEEPDOC_URL     = "http://deepdoc:8000"
+
+    # Secret key for JWT tokens - must be fixed to maintain session across pod restarts
+    # Generate with: openssl rand -hex 32
+    RAGFLOW_SECRET_KEY = "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2"
   }
 
   type = "Opaque"
@@ -1330,56 +1388,6 @@ resource "kubernetes_service" "ragflow_frontend" {
   }
 }
 
-# BackendConfig for API service health check (GKE Gateway)
-resource "kubernetes_manifest" "ragflow_api_backendconfig" {
-  count = local.is_gke_gateway ? 1 : 0
-
-  manifest = {
-    apiVersion = "cloud.google.com/v1"
-    kind       = "BackendConfig"
-    metadata = {
-      name      = "ragflow-api-backendconfig"
-      namespace = kubernetes_namespace.ragflow.metadata[0].name
-    }
-    spec = {
-      healthCheck = {
-        checkIntervalSec = 60
-        timeoutSec       = 10
-        unhealthyThreshold = 3
-        healthyThreshold = 1
-        type = "HTTP"
-        requestPath = "/"
-        port = 9380
-      }
-    }
-  }
-}
-
-# BackendConfig for Admin service health check (GKE Gateway)
-resource "kubernetes_manifest" "ragflow_admin_backendconfig" {
-  count = local.is_gke_gateway ? 1 : 0
-
-  manifest = {
-    apiVersion = "cloud.google.com/v1"
-    kind       = "BackendConfig"
-    metadata = {
-      name      = "ragflow-admin-backendconfig"
-      namespace = kubernetes_namespace.ragflow.metadata[0].name
-    }
-    spec = {
-      healthCheck = {
-        checkIntervalSec = 30
-        timeoutSec       = 10
-        unhealthyThreshold = 3
-        healthyThreshold = 1
-        type = "HTTP"
-        requestPath = "/api/v1/admin/"
-        port = 9381
-      }
-    }
-  }
-}
-
 # Service 2: API Server - serves REST API at /v1/*
 resource "kubernetes_service" "ragflow_api" {
   metadata {
@@ -1412,9 +1420,9 @@ resource "kubernetes_service" "ragflow_api" {
 }
 
 # Service 3: Admin Server - serves admin API at /api/v1/admin
-resource "kubernetes_service" "ragflow_admin" {
+resource "kubernetes_service" "admin" {
   metadata {
-    name      = "ragflow-admin"
+    name      = "admin"
     namespace = kubernetes_namespace.ragflow.metadata[0].name
 
     labels = {
@@ -1429,7 +1437,7 @@ resource "kubernetes_service" "ragflow_admin" {
 
   spec {
     selector = {
-      app = "ragflow"
+      app = "admin"
     }
 
     port {
@@ -1512,39 +1520,15 @@ resource "kubernetes_deployment" "ragflow" {
 
         # Init container to wait for Elasticsearch to be ready
         dynamic "init_container" {
-          for_each = var.es_deployment_mode == "k8s" ? [1] : []
+          for_each = [1]
           content {
             name  = "wait-for-elasticsearch"
             image = local.curl_image
 
-            env {
-              name  = "ES_HOST"
-              value = var.es_deployment_mode == "k8s" ? "elasticsearch-es-http" : ""
-            }
-
-            env {
-              name  = "ES_PORT"
-              value = "9200"
-            }
-
-            env {
-              name  = "ES_PROTOCOL"
-              value = var.es_deployment_mode == "k8s" ? "https" : "http"
-            }
-
-            env {
-              name  = "ES_USER"
-              value = "elastic"
-            }
-
-            env {
-              name = "ELASTIC_PASSWORD"
-
-              value_from {
-                secret_key_ref {
-                  name = "elasticsearch-es-elastic-user"
-                  key  = "elastic"
-                }
+            # Inherit environment from ragflow_env secret
+            env_from {
+              secret_ref {
+                name = kubernetes_secret.ragflow_env.metadata[0].name
               }
             }
 
@@ -1561,7 +1545,7 @@ resource "kubernetes_deployment" "ragflow" {
 
         # ES CA certificate volume
         dynamic "volume" {
-          for_each = var.es_deployment_mode == "k8s" ? [1] : []
+          for_each = [1]
           content {
             name = "elasticsearch-ca"
 
@@ -1575,7 +1559,7 @@ resource "kubernetes_deployment" "ragflow" {
           name  = "ragflow"
           image = local.ragflow_image_full
 
-          args = ["--disable-taskexecutor", "--enable-adminserver"]
+          args = ["--disable-taskexecutor"]
 
           # Frontend port (nginx)
           port {
@@ -1589,25 +1573,81 @@ resource "kubernetes_deployment" "ragflow" {
             name          = "api"
           }
 
-          # Admin port
-          port {
-            container_port = 9381
-            name          = "admin"
+          # Startup probe: allows slow-starting containers to initialize before liveness/readiness kicks in
+          # RAGFlow API server takes significant time to initialize (connecting to MySQL, Redis,
+          # Elasticsearch, loading models, etc.). This probe allows up to 900 seconds for startup.
+          startup_probe {
+            http_get {
+              path = "/healthz"
+              port = 9380
+            }
+            initial_delay_seconds = 0
+            period_seconds        = 10
+            failure_threshold     = 90  # 90 * 10s = 900s (15 min) max startup time for slow environments
           }
 
+          # Liveness probe: lightweight check - just returns 200 OK without checking dependencies
+          # Note: startupProbe gates liveness/readiness, so they only start after startup succeeds
+          liveness_probe {
+            http_get {
+              path = "/live"
+              port = 9380
+            }
+            initial_delay_seconds = 0
+            period_seconds        = 30
+            timeout_seconds       = 5
+            failure_threshold     = 2
+          }
+
+          # =============================================================================
+          # IMPORTANT: GKE NEG Readiness Gate Behavior
+          # =============================================================================
+          #
+          # When using container-native load balancing (NEG) with GKE Gateway/Ingress,
+          # GKE automatically injects a readiness gate into Pod spec:
+          #   readinessGates:
+          #     - conditionType: cloud.google.com/load-balancer-neg-ready
+          #
+          # Pod Ready State = Container Readiness Probe Success AND All Readiness Gates True
+          #
+          # How it works:
+          #   1. NEG controller creates a NetworkEndpointGroup for the Service
+          #   2. Pod's IP gets registered to NEG when Pod is scheduled
+          #   3. NEG must attach to BackendService with health check configured
+          #   4. Health check uses Readiness Probe path (/healthz on port 9380)
+          #   5. NEG controller sets cloud.google.com/load-balancer-neg-ready = True
+          #   6. Only then Pod.status.conditions Ready = True
+          #
+          # Impact:
+          #   - Pod may show "Running" but "Ready 0/1" for 1-5 minutes after container starts
+          #   - This delay is due to NEG sync + LB health check convergence
+          #   - Common in GKE Autopilot, large clusters, or first-time deployment
+          #   - This does NOT affect actual container functionality, only traffic routing
+          #
+          # Timeline example:
+          #   T+0s:    Pod created
+          #   T+10s:   Container Running ( Readiness Probe passes)
+          #   T+30s:   NEG endpoint registered
+          #   T+60s:   NEG attached to BackendService + LB health check passes
+          #   T+60s:   NEG readiness gate = True → Pod Ready = True
+          #
+          # Reference:
+          #   - https://cloud.google.com/kubernetes-engine/docs/concepts/ingress-xlb#neg
+          #   - https://cloud.google.com/kubernetes-engine/docs/how-to/container-native-load-balancing
+          #   - https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#pod-readiness-gate
+          # =============================================================================
+
           # Readiness probe for GKE Gateway health check
-          # IMPORTANT: RAGFlow API server takes significant time to initialize (connecting to MySQL,
-          # Redis, Elasticsearch, loading models, etc.). We set a generous timeout to allow
-          # up to 600 seconds (60s initial_delay + 54 * 10s period) for startup.
+          # Note: startupProbe gates this, so it only starts after startup succeeds
           readiness_probe {
             http_get {
-              path = "/"
-              port = 80
+              path = "/healthz"
+              port = 9380
             }
-            initial_delay_seconds = 60
-            period_seconds        = 10
+            initial_delay_seconds = 0
+            period_seconds        = 30
             timeout_seconds       = 5
-            failure_threshold     = 54
+            failure_threshold     = 2
           }
 
           env_from {
@@ -1616,24 +1656,9 @@ resource "kubernetes_deployment" "ragflow" {
             }
           }
 
-          # Inject ES password from ECK-managed secret
-          dynamic "env" {
-            for_each = var.es_deployment_mode == "k8s" ? [1] : []
-            content {
-              name = "ELASTIC_PASSWORD"
-
-              value_from {
-                secret_key_ref {
-                  name = "elasticsearch-es-elastic-user"
-                  key  = "elastic"
-                }
-              }
-            }
-          }
-
           # Mount ES CA certificate for HTTPS verification
           dynamic "volume_mount" {
-            for_each = var.es_deployment_mode == "k8s" ? [1] : []
+            for_each = [1]
             content {
               name       = "elasticsearch-ca"
               mount_path = "/etc/elasticsearch/certs"
@@ -1649,6 +1674,151 @@ resource "kubernetes_deployment" "ragflow" {
             limits = {
               cpu    = var.ragflow_cpu_limit
               memory = var.ragflow_memory_limit
+            }
+          }
+        }
+      }
+    }
+  }
+
+  # Increase timeout to accommodate slow startup (startup_probe allows up to 15 min)
+  # Default kubernetes provider timeout is ~10 min, which causes timeout when startup is slow
+  timeouts {
+    create = "20m"
+    update = "20m"
+    delete = "10m"
+  }
+}
+
+# =============================================================================
+# Admin Deployment
+# =============================================================================
+
+resource "kubernetes_deployment" "admin" {
+  depends_on = [kubernetes_secret.ragflow_env]
+
+  metadata {
+    name      = "admin"
+    namespace = kubernetes_namespace.ragflow.metadata[0].name
+
+    labels = {
+      app     = "admin"
+      project = "ragflow"
+    }
+  }
+
+  spec {
+    # Always 1 replica as requested
+    replicas = 1
+
+    # Limit revision history to reduce orphaned ReplicaSets
+    revision_history_limit = 1
+
+    strategy {
+      type = "Recreate"
+    }
+
+    selector {
+      match_labels = {
+        app = "admin"
+      }
+    }
+
+    template {
+      metadata {
+        labels = {
+          app     = "admin"
+          project = "ragflow"
+        }
+        annotations = merge(
+          var.cloud_provider == "gcp" ? {
+            "iam.gke.io/gcp-service-account" = local.gcs_service_account
+          } : {},
+          {
+            # Trigger rollout restart when secret changes
+            "checksum/config" = sha256(jsonencode(kubernetes_secret.ragflow_env.data))
+          }
+        )
+      }
+
+      spec {
+        # Use Workload Identity for GCP
+        service_account_name = var.cloud_provider == "gcp" ? "ragflow-gcs" : "default"
+
+        # ES CA certificate volume
+        dynamic "volume" {
+          for_each = [1]
+          content {
+            name = "elasticsearch-ca"
+
+            secret {
+              secret_name = "elasticsearch-es-http-certs-public"
+            }
+          }
+        }
+
+        container {
+          name  = "admin"
+          image = local.ragflow_image_full
+
+          args = ["--disable-webserver", "--disable-taskexecutor", "--disable-datasync", "--enable-adminserver"]
+
+          # Admin port
+          port {
+            container_port = 9381
+            name          = "admin"
+          }
+
+          # Startup probe: allows slow-starting containers to initialize before liveness/readiness kicks in
+          # RAGFlow admin takes ~2-3 minutes to start (loading configs, connecting to DB/Redis/ES)
+          startup_probe {
+            http_get {
+              path = "/live"
+              port = 9381
+            }
+            initial_delay_seconds = 0
+            period_seconds        = 10
+            failure_threshold     = 30  # 30 * 10s = 300s max startup time
+          }
+
+          # Liveness probe: lightweight check - just returns 200 OK without checking dependencies
+          # Note: startupProbe gates liveness/readiness, so they only start after startup succeeds
+          liveness_probe {
+            http_get {
+              path = "/live"
+              port = 9381
+            }
+            initial_delay_seconds = 0
+            period_seconds        = 30
+            timeout_seconds       = 5
+            failure_threshold     = 2
+          }
+
+          # Standard ragflow environment variables
+          env_from {
+            secret_ref {
+              name = kubernetes_secret.ragflow_env.metadata[0].name
+            }
+          }
+
+          # Mount ES CA certificate for HTTPS verification
+          dynamic "volume_mount" {
+            for_each = [1]
+            content {
+              name       = "elasticsearch-ca"
+              mount_path = "/etc/elasticsearch/certs"
+              read_only  = true
+            }
+          }
+
+          resources {
+            requests = {
+              cpu    = "500m"
+              memory = "1Gi"
+            }
+            limits = {
+              cpu    = "1000m"
+              memory = "2Gi"
             }
           }
         }
@@ -1713,39 +1883,15 @@ resource "kubernetes_deployment" "parser" {
 
         # Init container to wait for Elasticsearch to be ready
         dynamic "init_container" {
-          for_each = var.es_deployment_mode == "k8s" ? [1] : []
+          for_each = [1]
           content {
             name  = "wait-for-elasticsearch"
             image = local.curl_image
 
-            env {
-              name  = "ES_HOST"
-              value = var.es_deployment_mode == "k8s" ? "elasticsearch-es-http" : ""
-            }
-
-            env {
-              name  = "ES_PORT"
-              value = "9200"
-            }
-
-            env {
-              name  = "ES_PROTOCOL"
-              value = var.es_deployment_mode == "k8s" ? "https" : "http"
-            }
-
-            env {
-              name  = "ES_USER"
-              value = "elastic"
-            }
-
-            env {
-              name = "ELASTIC_PASSWORD"
-
-              value_from {
-                secret_key_ref {
-                  name = "elasticsearch-es-elastic-user"
-                  key  = "elastic"
-                }
+            # Inherit environment from ragflow_env secret
+            env_from {
+              secret_ref {
+                name = kubernetes_secret.ragflow_env.metadata[0].name
               }
             }
 
@@ -1762,7 +1908,7 @@ resource "kubernetes_deployment" "parser" {
 
         # ES CA certificate volume
         dynamic "volume" {
-          for_each = var.es_deployment_mode == "k8s" ? [1] : []
+          for_each = [1]
           content {
             name = "elasticsearch-ca"
 
@@ -1789,29 +1935,30 @@ resource "kubernetes_deployment" "parser" {
             }
           }
 
-          # Inject ES password from ECK-managed secret
-          dynamic "env" {
-            for_each = var.es_deployment_mode == "k8s" ? [1] : []
-            content {
-              name = "ELASTIC_PASSWORD"
-
-              value_from {
-                secret_key_ref {
-                  name = "elasticsearch-es-elastic-user"
-                  key  = "elastic"
-                }
-              }
-            }
-          }
-
           # Mount ES CA certificate for HTTPS verification
           dynamic "volume_mount" {
-            for_each = var.es_deployment_mode == "k8s" ? [1] : []
+            for_each = [1]
             content {
               name       = "elasticsearch-ca"
               mount_path = "/etc/elasticsearch/certs"
               read_only  = true
             }
+          }
+
+          readiness_probe {
+            exec {
+              command = ["/bin/bash", "-c", "ps aux | grep '[r]ag/svr/task_executor.py'"]
+            }
+            initial_delay_seconds = 20
+            period_seconds        = 10
+          }
+
+          liveness_probe {
+            exec {
+              command = ["/bin/bash", "-c", "ps aux | grep '[r]ag/svr/task_executor.py'"]
+            }
+            initial_delay_seconds = 60
+            period_seconds        = 20
           }
 
           # Add SYS_PTRACE capability for austin profiler
@@ -1890,6 +2037,43 @@ resource "kubernetes_deployment" "deepdoc" {
 
           port {
             container_port = 8000
+            name           = "http"
+          }
+
+          # Startup probe: allows slow-starting container to initialize before liveness/readiness kicks in
+          # DeepDoc loads OCR, DLA, and TSR models which may take time, especially on GPU
+          startup_probe {
+            http_get {
+              path = "/health"
+              port = 8000
+            }
+            initial_delay_seconds = 0
+            period_seconds        = 10
+            failure_threshold     = 30  # 30 * 10s = 300s max startup time
+          }
+
+          # Readiness probe: check if server is ready to accept requests
+          readiness_probe {
+            http_get {
+              path = "/health"
+              port = 8000
+            }
+            initial_delay_seconds = 0
+            period_seconds        = 10
+            timeout_seconds       = 5
+            failure_threshold     = 3
+          }
+
+          # Liveness probe: check if server is still running
+          liveness_probe {
+            http_get {
+              path = "/health"
+              port = 8000
+            }
+            initial_delay_seconds = 0
+            period_seconds        = 20
+            timeout_seconds       = 5
+            failure_threshold     = 5
           }
 
           # GPU-specific environment variables
@@ -1945,10 +2129,14 @@ resource "kubernetes_service" "deepdoc" {
 }
 
 # =============================================================================
-# Gateway API - NGINX Gateway Fabric (only for non-GKE Gateway)
+# Gateway API
 # =============================================================================
 
 resource "kubernetes_manifest" "gateway" {
+  field_manager {
+    force_conflicts = true
+  }
+
   manifest = {
     apiVersion = "gateway.networking.k8s.io/v1"
     kind       = "Gateway"
@@ -1958,25 +2146,60 @@ resource "kubernetes_manifest" "gateway" {
       labels = {
         app = "ragflow"
       }
+      annotations = {
+        # For ohttps pull mode: TLS is managed via kubernetes.io/tls Secret
+        # The TLS secret will be synced by sync_ohttps_cert.py script
+      }
     }
     spec = {
-      gatewayClassName = var.gateway_class_name
-      listeners = [
-        {
-          name     = "http"
-          protocol = "HTTP"
-          port     = 80
-          allowedRoutes = {
-            namespaces = {
-              selector = {
-                matchLabels = {
-                  "kubernetes.io/metadata.name" = kubernetes_namespace.ragflow.metadata[0].name
+      gatewayClassName = local.gateway_class_name
+      listeners = concat(
+        [
+          {
+            name     = "http"
+            protocol = "HTTP"
+            port     = 80
+            # Note: GKE Gateway does not support httpRedirect
+            # When ohttps is enabled, HTTP (80) and HTTPS (443) both work
+            # Users can access via HTTPS directly, or use the HTTPS URL
+            allowedRoutes = {
+              namespaces = {
+                selector = {
+                  matchLabels = {
+                    "kubernetes.io/metadata.name" = kubernetes_namespace.ragflow.metadata[0].name
+                  }
                 }
               }
             }
           }
-        }
-      ]
+        ],
+        var.ohttps_enabled ? [
+          {
+            name     = "https"
+            protocol = "HTTPS"
+            port     = 443
+            tls = {
+              mode = "Terminate"
+              certificateRefs = [
+                {
+                  name      = kubernetes_secret.tls_secret[0].metadata[0].name
+                  namespace = kubernetes_namespace.ragflow.metadata[0].name
+                  kind      = "Secret"
+                }
+              ]
+            }
+            allowedRoutes = {
+              namespaces = {
+                selector = {
+                  matchLabels = {
+                    "kubernetes.io/metadata.name" = kubernetes_namespace.ragflow.metadata[0].name
+                  }
+                }
+              }
+            }
+          }
+        ] : []
+      )
     }
   }
 
@@ -1992,6 +2215,165 @@ resource "kubernetes_manifest" "gateway" {
 }
 
 # =============================================================================
+# TLS Secret (for ohttps pull mode)
+# Note: Terraform manages the secret creation. The certificate data is
+# updated by sync_ohttps_cert.py script, and Terraform ignores changes to data.
+# =============================================================================
+
+resource "kubernetes_secret" "tls_secret" {
+  count = var.ohttps_enabled ? 1 : 0
+
+  metadata {
+    name      = "ragflow-tls"
+    namespace = kubernetes_namespace.ragflow.metadata[0].name
+    labels = {
+      app         = "ragflow"
+      "managed-by" = "terraform"
+    }
+  }
+
+  type = "kubernetes.io/tls"
+
+  data = {
+    # Initial placeholder: will be updated by sync_ohttps_cert.py script
+    # Terraform ignores changes to data to allow script updates
+    "tls.crt" = ""
+    "tls.key" = ""
+    "tls.expired" = ""
+  }
+
+  lifecycle {
+    ignore_changes = [data]
+  }
+}
+
+# =============================================================================
+# ohttps Sync ServiceAccount (for CronJob)
+# =============================================================================
+
+resource "kubernetes_manifest" "ohttps_sync_sa" {
+  count = var.ohttps_enabled ? 1 : 0
+
+  manifest = {
+    apiVersion = "v1"
+    kind       = "ServiceAccount"
+    metadata = {
+      name      = "ohttps-sync-sa"
+      namespace = kubernetes_namespace.ragflow.metadata[0].name
+      labels = {
+        app = "ragflow"
+      }
+    }
+  }
+}
+
+resource "kubernetes_manifest" "ohttps_sync_role" {
+  count = var.ohttps_enabled ? 1 : 0
+
+  manifest = {
+    apiVersion = "rbac.authorization.k8s.io/v1"
+    kind       = "Role"
+    metadata = {
+      name      = "ohttps-sync-role"
+      namespace = kubernetes_namespace.ragflow.metadata[0].name
+    }
+    rules = [
+      {
+        apiGroups = [""]
+        resources = ["secrets"]
+        verbs = ["get", "list", "create", "update", "patch"]
+      }
+    ]
+  }
+}
+
+resource "kubernetes_manifest" "ohttps_sync_rolebinding" {
+  count = var.ohttps_enabled ? 1 : 0
+
+  manifest = {
+    apiVersion = "rbac.authorization.k8s.io/v1"
+    kind       = "RoleBinding"
+    metadata = {
+      name      = "ohttps-sync-rolebinding"
+      namespace = kubernetes_namespace.ragflow.metadata[0].name
+    }
+    subjects = [
+      {
+        kind      = "ServiceAccount"
+        name      = "ohttps-sync-sa"
+        namespace = kubernetes_namespace.ragflow.metadata[0].name
+      }
+    ]
+    roleRef = {
+      kind     = "Role"
+      name     = "ohttps-sync-role"
+      apiGroup = "rbac.authorization.k8s.io"
+    }
+  }
+}
+
+# =============================================================================
+# ohttps Sync CronJob
+# =============================================================================
+
+resource "kubernetes_manifest" "ohttps_sync_cronjob" {
+  count = var.ohttps_enabled ? 1 : 0
+
+  manifest = {
+    apiVersion = "batch/v1"
+    kind       = "CronJob"
+    metadata = {
+      name      = "ohttps-cert-sync"
+      namespace = kubernetes_namespace.ragflow.metadata[0].name
+      labels = {
+        app         = "ragflow"
+        "managed-by" = "terraform"
+      }
+    }
+    spec = {
+      schedule = "0 3 * * *"
+      successfulJobsHistoryLimit = 3
+      failedJobsHistoryLimit = 3
+      jobTemplate = {
+        spec = {
+          template = {
+            metadata = {
+              labels = {
+                app = "ohttps-cert-sync"
+              }
+            }
+            spec = {
+              restartPolicy = "OnFailure"
+              serviceAccountName = "ohttps-sync-sa"
+              containers = [
+                {
+                  name  = "sync"
+                  image = var.ohttps_sync_image
+                  env = [
+                    {
+                      name  = "OHTTPS_API_ID"
+                      value = var.ohttps_api_id
+                    },
+                    {
+                      name  = "OHTTPS_API_KEY"
+                      value = var.ohttps_api_key
+                    },
+                    {
+                      name  = "OHTTPS_CERT_ID"
+                      value = var.ohttps_cert_id
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+# =============================================================================
 # HTTPRoute Resources
 # =============================================================================
 # WORKAROUND for Aliyun ALB bug: Currently, an HTTPRoute that references multiple
@@ -2000,6 +2382,7 @@ resource "kubernetes_manifest" "gateway" {
 # separate HTTPRoutes for different ports of the same service.
 
 # HTTPRoute 1: /v1 and /api -> port 9380 (API service)
+# Note: /api/v1/admin is excluded and handled by http_route_admin
 resource "kubernetes_manifest" "http_route_api" {
   manifest = {
     apiVersion = "gateway.networking.k8s.io/v1"
@@ -2014,8 +2397,10 @@ resource "kubernetes_manifest" "http_route_api" {
     spec = {
       parentRefs = [
         {
-          name      = "ragflow"
-          namespace = kubernetes_namespace.ragflow.metadata[0].name
+          name        = "ragflow"
+          namespace   = kubernetes_namespace.ragflow.metadata[0].name
+          kind        = "Gateway"
+          sectionName = var.ohttps_enabled ? "https" : "http"
         }
       ]
       rules = [
@@ -2054,6 +2439,10 @@ resource "kubernetes_manifest" "http_route_api" {
       ]
     }
   }
+
+  lifecycle {
+    replace_triggered_by = [kubernetes_manifest.http_route_admin]
+  }
 }
 
 # HTTPRoute 2: /api/v1/admin -> port 9381 (admin service)
@@ -2071,8 +2460,10 @@ resource "kubernetes_manifest" "http_route_admin" {
     spec = {
       parentRefs = [
         {
-          name      = "ragflow"
-          namespace = kubernetes_namespace.ragflow.metadata[0].name
+          name        = "ragflow"
+          namespace   = kubernetes_namespace.ragflow.metadata[0].name
+          kind        = "Gateway"
+          sectionName = var.ohttps_enabled ? "https" : "http"
         }
       ]
       rules = [
@@ -2087,7 +2478,7 @@ resource "kubernetes_manifest" "http_route_admin" {
           ]
           backendRefs = [
             {
-              name = kubernetes_service.ragflow_admin.metadata[0].name
+              name = kubernetes_service.admin.metadata[0].name
               port = 9381
             }
           ]
@@ -2112,8 +2503,10 @@ resource "kubernetes_manifest" "http_route_frontend" {
     spec = {
       parentRefs = [
         {
-          name      = "ragflow"
-          namespace = kubernetes_namespace.ragflow.metadata[0].name
+          name        = "ragflow"
+          namespace   = kubernetes_namespace.ragflow.metadata[0].name
+          kind        = "Gateway"
+          sectionName = var.ohttps_enabled ? "https" : "http"
         }
       ]
       rules = [
@@ -2139,7 +2532,50 @@ resource "kubernetes_manifest" "http_route_frontend" {
 }
 
 # =============================================================================
-# Get Gateway Fabric Service Address
+# HTTPRoute for HTTP to HTTPS Redirect (only when ohttps is enabled)
+# =============================================================================
+# When ohttps is enabled, redirect HTTP requests to HTTPS
+# Uses RequestRedirect filter to return 308 permanent redirect
+# =============================================================================
+resource "kubernetes_manifest" "http_redirect" {
+  count = var.ohttps_enabled ? 1 : 0
+
+  manifest = {
+    apiVersion = "gateway.networking.k8s.io/v1"
+    kind       = "HTTPRoute"
+    metadata = {
+      name      = "ragflow-http-redirect"
+      namespace = kubernetes_namespace.ragflow.metadata[0].name
+      labels = {
+        app = "ragflow"
+      }
+    }
+    spec = {
+      parentRefs = [
+        {
+          name        = "ragflow"
+          namespace   = kubernetes_namespace.ragflow.metadata[0].name
+          kind        = "Gateway"
+          sectionName = "http"
+        }
+      ]
+      rules = [
+        {
+          filters = [
+            {
+              type = "RequestRedirect"
+              requestRedirect = {
+                scheme     = "https"
+                statusCode = 301
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
+
 # =============================================================================
 
 # Get NGINX Gateway Fabric service for on-premises deployments

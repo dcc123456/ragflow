@@ -64,9 +64,23 @@ if __name__ == '__main__':
     # =============================================================================
     # Health check routes for Kubernetes liveness/readiness probes
     # =============================================================================
-    # These routes are added to support Kubernetes health checks at the root path "/"
-    # which is required by load balancers and gateway controllers (e.g., GKE Gateway)
+    # Liveness probe + GKE Gateway NEG health check
+    # - K8s livenessProbe: /live (configured in Terraform)
+    # - GKE Gateway NEG: uses "/" by default (cannot be configured)
+    # Both return 200 OK without checking dependencies to avoid unnecessary pod restarts
     @app.route("/", methods=["GET"])
+    @app.route("/live", methods=["GET"])
+    def liveness():
+        """
+        Lightweight liveness probe for Kubernetes and GKE Gateway NEG health check.
+        Returns 200 OK immediately without checking any dependencies.
+        - K8s livenessProbe uses this to determine if the container should be restarted
+        - GKE Gateway NEG uses "/" by default for health check
+        """
+        return "", 200
+
+
+    # Readiness probe: comprehensive health check including all dependencies
     @app.route("/healthz", methods=["GET"])
     def healthz():
         """
@@ -88,12 +102,18 @@ if __name__ == '__main__':
     app.config["MAX_CONTENT_LENGTH"] = int(
         os.environ.get("MAX_CONTENT_LENGTH", 1024 * 1024 * 1024)
     )
+    # Initialize settings to get SECRET_KEY before Session is configured
+    settings.init_settings()
+    app.secret_key = settings.SECRET_KEY
     Session(app)
     logging.info(f'RAGFlow version: {get_ragflow_version()}')
     show_configs()
     login_manager = LoginManager()
     login_manager.init_app(app)
-    settings.init_settings()
+    # Ensure SECRET_KEY is properly set for auth module
+    from common import settings as _settings
+    from admin.server import auth as _auth
+    _auth.settings = _settings
     setup_auth(login_manager)
     init_default_admin()
     #init_user_role()

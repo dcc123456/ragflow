@@ -66,10 +66,10 @@ function SSOProviderGithubForm({
 
         <FormField
           control={form.control}
-          name="secret_key"
+          name="client_secret"
           render={({ field }) => (
             <FormItem>
-              <FormLabel required>{t('fields.secretKey')}</FormLabel>
+              <FormLabel required>{t('fields.clientSecret')}</FormLabel>
               <FormControl>
                 <PasswordInput
                   {...field}
@@ -88,7 +88,7 @@ function SSOProviderGithubForm({
 
 SSOProviderGithubForm.schema = z.object({
   client_id: z.string().min(1),
-  secret_key: z.string().min(1),
+  client_secret: z.string().min(1),
 });
 
 type SchemaType = z.infer<typeof SSOProviderGithubForm.schema>;

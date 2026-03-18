@@ -20,11 +20,24 @@ done < "${TEMPLATE_FILE}"
 
 export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu/
 
+# Extract TE_IDX from hostname
+# Hostname format: parser-794bc8cf88-d49nt, parser-0 etc.
+HOSTNAME=$(hostname)
+if [[ -n "$HOSTNAME" ]]; then
+    # Extract the ordinal number from hostname (e.g., parser-0 -> 0)
+    TE_IDX=$(echo "$HOSTNAME" | sed 's/.*-//')
+    export TE_IDX
+    echo "Detected hostname=$HOSTNAME, setting TE_IDX=$TE_IDX"
+else
+    export TE_IDX=0
+    echo "hostname not set, defaulting TE_IDX=0"
+fi
+
 PY=/ragflow/.venv/bin/python
 
 function p_0(){
     while [ 1 -eq 1 ];do
-      $PY rag/svr/task_executor.py -p 0 -t $1;
+      $PY rag/svr/task_executor.py -p 0 -i $TE_IDX -t $1;
     done
 }
 

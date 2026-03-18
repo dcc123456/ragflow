@@ -2717,7 +2717,7 @@ Important structured information may include: names, dates, locations, events, k
             loginTip: 'Login with GitHub',
             fields: {
               clientId: 'Client ID',
-              secretKey: 'Secret key',
+              clientSecret: 'Client secret',
               url: 'URL',
             },
           },

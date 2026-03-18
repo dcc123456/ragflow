@@ -9,9 +9,6 @@
 
 cloud_provider     = "gcp"
 # GKE Autopilot requires premium-rwo for Elasticsearch mmap; standard-rwo is not supported
-storage_class      = "premium-rwo"
-# GKE built-in GatewayClass for LoadBalancer (regional, external)
-gateway_class_name = "gke-l7-regional-external-managed"
 gcp_project_id     = "ragflow-462809"
 
 # =============================================================================
@@ -43,13 +40,19 @@ mysql_memory_request  = "8Gi"
 mysql_memory_limit    = "16Gi"
 
 # Elasticsearch - single node for dev
-es_k8s_node_count  = 1
-es_k8s_storage    = 20
-es_cpu_request    = "4"
-es_cpu_limit      = "8"
-es_memory_request = "16Gi"
-es_memory_limit   = "16Gi"
-es_heap_size      = "8g"
+es_master_node_count    = 1
+es_master_cpu_request   = "2"
+es_master_cpu_limit     = "4"
+es_master_memory_request = "4Gi"
+es_master_memory_limit  = "4Gi"
+es_master_heap_size    = "2g"
+es_data_node_count      = 1
+es_data_cpu_request    = "4"
+es_data_cpu_limit      = "8"
+es_data_memory_request = "16Gi"
+es_data_memory_limit   = "16Gi"
+es_data_heap_size      = "8g"
+es_data_storage        = 20
 
 # RabbitMQ - reduced for dev
 rabbitmq_storage = 20
@@ -75,3 +78,8 @@ redis_memory_limit   = "8Gi"
 
 # TEI - dev environment
 tei_replicas = 1
+
+# =============================================================================
+# ohttps Configuration (set for production)
+# =============================================================================
+ohttps_enabled = false

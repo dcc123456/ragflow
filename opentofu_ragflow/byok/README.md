@@ -30,7 +30,6 @@ Single-file Terraform configuration for deploying RAGFlow on existing Kubernetes
 - Ingress controller (nginx-ingress recommended)
 - **OpenTofu** (or Terraform 1.8.0+)
 - **Python 3** with `wait_for_k8s_resource.py` script in the same directory
-- **ECK operator 3.2.0** (if using `es_deployment_mode = "k8s"`)
 
 ### Cloud-Specific Prerequisites
 
@@ -58,7 +57,7 @@ Use the setup script to configure kubectl access:
 
 ```bash
 # Run the GKE configuration helper script
-python3 setup_gke_config.py
+python3 gke_setup.py
 ```
 
 The script will:
@@ -72,7 +71,7 @@ The script will:
 8. Generate kubeconfig with automatic token refresh
 9. Create a timestamped token-based kubeconfig for other environments
 
-For details, see `python3 setup_gke_config.py -h`.
+For details, see `python3 gke_setup.py -h`.
 
 **3. Configure terraform.tfvars for GCP**
 
@@ -450,14 +449,21 @@ The following table shows the default resource values for each environment. Copy
 | CPU Limit | mysql_cpu_limit | 8 | 8 |
 | Memory Request | mysql_memory_request | 8Gi | 8Gi |
 | Memory Limit | mysql_memory_limit | 16Gi | 16Gi |
-| **Elasticsearch** |
-| Node Count | es_k8s_node_count | 3 | 1 |
-| Storage per Node | es_k8s_storage | 500 Gi | 20 Gi |
-| CPU Request | es_cpu_request | 4 | 4 |
-| CPU Limit | es_cpu_limit | 8 | 8 |
-| Memory Request | es_memory_request | 32Gi | 16Gi |
-| Memory Limit | es_memory_limit | 32Gi | 16Gi |
-| Heap Size | es_heap_size | 16g | 8g |
+| **Elasticsearch - Master Nodes** |
+| Node Count | es_master_node_count | 3 | 1 |
+| CPU Request | es_master_cpu_request | 2 | 2 |
+| CPU Limit | es_master_cpu_limit | 4 | 4 |
+| Memory Request | es_master_memory_request | 8Gi | 4Gi |
+| Memory Limit | es_master_memory_limit | 8Gi | 4Gi |
+| Heap Size | es_master_heap_size | 4g | 2g |
+| **Elasticsearch - Data/Ingest Nodes** |
+| Node Count | es_data_node_count | 4 | 1 |
+| Storage per Node | es_data_storage | 500 Gi | 20 Gi |
+| CPU Request | es_data_cpu_request | 4 | 4 |
+| CPU Limit | es_data_cpu_limit | 8 | 8 |
+| Memory Request | es_data_memory_request | 32Gi | 16Gi |
+| Memory Limit | es_data_memory_limit | 32Gi | 16Gi |
+| Heap Size | es_data_heap_size | 16g | 8g |
 | **RabbitMQ** |
 | Storage | rabbitmq_storage | 20 Gi | 20 Gi |
 | CPU Request | rabbitmq_cpu_request | 1 | 1 |
@@ -494,17 +500,106 @@ The following table shows the default resource values for each environment. Copy
 | Memory Request | deepdoc_memory_request | 32Gi | 32Gi |
 | Memory Limit | deepdoc_memory_limit | 64Gi | 64Gi |
 
-### Backups
+### Scaling and Capacity Management
 
-- **MySQL**: Regular backups of MySQL data
-- **Elasticsearch**: Snapshot and restore policies
-- **GCS Bucket**: Enable versioning on GCS bucket
+RAGFlow deployment supports safe, zero-downtime scaling operations through OpenTofu/Terraform:
 
-### Monitoring
+#### Storage Expansion (PVC Scaling)
+You can safely increase the storage capacity of stateful components (MySQL, Elasticsearch, RabbitMQ) without data loss:
+1. Update the corresponding storage variable in your `terraform.tfvars` (e.g., increase `mysql_k8s_storage` from `20` to `50`).
+2. Run `tofu apply -auto-approve`.
 
-- Install metrics server (Prometheus)
-- Install logging stack (ELK/Loki)
-- Configure health checks and alerting
+**How it ensures no data loss:**
+- OpenTofu triggers an **in-place update** of the Kubernetes PersistentVolumeClaim (PVC) resources.
+- Expected default StorageClasses (like GKE's `premium-rwo`, `standard-rwo`, or SMK's `rook-ceph-block`) already have `allowVolumeExpansion: true` configured by default. (See [GKE Volume Expansion Documentation](https://cloud.google.com/kubernetes-engine/docs/how-to/persistent-volumes/volume-expansion) and [Rook/Ceph Volume Expansion Documentation](https://rook.io/docs/rook/latest/Storage-Configuration/Block-Storage-RBD/block-storage/#volume-expansion)). You can verify this in your cluster by running `kubectl get storageclass <your-storage-class> -o yaml | grep allowVolumeExpansion`.
+- The underlying cloud provider or CSI driver (e.g., Rook/Ceph CSI) dynamically resizes the disk and expands the file system seamlessly without recreating the PVC.
+- **⚠️ IMPORTANT:** Kubernetes *only* supports increasing volume size. Attempting to decrease storage size may force Terraform to drop and recreate the PVC, which **will result in permanent data loss**.
+
+#### Stateless Replica Scaling
+Stateless components (`ragflow`, `parser`, `deepdoc`, `tei`) can be scaled out natively:
+1. Increase the replica count variables in `terraform.tfvars` (e.g., change `ragflow_replicas` from `1` to `3`).
+2. Run `tofu apply -auto-approve`.
+
+**How it ensures zero downtime:**
+- Adding replicas simply updates the `replicas` parameter in the Kubernetes Deployment spec.
+- The Kubernetes controller spins up new pods without terminating the existing running pods.
+
+#### Elasticsearch Node Scaling (via ECK Operator)
+You can safely scale out the Elasticsearch cluster by adding more master or data/ingest nodes:
+1. Increase the node count variable in `terraform.tfvars`:
+   - For master nodes: change `es_master_node_count` from `1` to `3`
+   - For data/ingest nodes: change `es_data_node_count` from `1` to `4`
+2. Run `tofu apply -auto-approve`.
+
+**How it ensures no data loss:**
+- OpenTofu updates the `Elasticsearch` Custom Resource (CR) manifest and applies it via a Kubernetes Job.
+- The **Elastic Cloud on Kubernetes (ECK) Operator** detects the change and orchestrates the scaling process.
+- ECK safely provisions new Pods and their associated PersistentVolumeClaims (PVCs).
+- Once the new nodes join the cluster, Elasticsearch automatically migrates and rebalances data shards across the expanded nodes in the background, ensuring high availability and zero data loss.
+
+#### Compute Resource Resizing (CPU and Memory)
+You can adjust the compute resources (CPU request/limit and Memory request/limit) for any component:
+1. Update the corresponding compute variables in `terraform.tfvars` (e.g., change `ragflow_cpu_limit` or `es_data_memory_request`).
+2. Run `tofu apply -auto-approve`.
+
+**How it ensures stability and data integrity:**
+- For stateless components, the Kubernetes Deployment Controller performs a **rolling update**—starting new Pods with the updated specs before gracefully terminating the old ones, meaning zero downtime.
+- For StatefulSets (like MySQL), the controller rolls out the Pods sequentially (one by one) to ensure data stability and cluster health.
+- For Elasticsearch, the ECK Operator manages the rollout smoothly, ensuring the cluster remains green and data is not lost while it restarts pods with the new resource specifications.
+
+### Backups and Data Migration
+
+#### Backups
+- **MySQL**: Regular backups of MySQL data using `mysqldump` or Percona XtraBackup.
+- **Elasticsearch**: Snapshot and restore policies using Elasticsearch Snapshot Lifecycle Management (SLM).
+- **GCS/S3 Bucket**: Enable versioning on your object storage bucket.
+
+#### Data Migration (Cross-Cluster / External to K8s)
+
+**Migrating MySQL Data:**
+The standard and most reliable way to migrate MySQL data between different Kubernetes clusters (or from external to K8s) is via `mysqldump`:
+1. **Export** data from the source database:
+   ```bash
+   mysqldump -h <source-host> -u root -p<source-password> ragflow > ragflow_backup.sql
+   ```
+2. **Import** data into the destination Kubernetes deployment:
+   ```bash
+   # Connect to the target MySQL pod
+   kubectl port-forward svc/mysql 3306:3306 -n ragflow
+   # Import the data
+   mysql -h 127.0.0.1 -u root -p<target-password> ragflow < ragflow_backup.sql
+   ```
+
+**Migrating Elasticsearch Data:**
+Do not copy PVC underlying files directly. The robust method for Elasticsearch data migration is using **Snapshot and Restore** with a shared S3/GCS repository:
+1. **Register a Snapshot Repository** on the source cluster pointing to an S3/GCS bucket:
+   ```json
+   PUT /_snapshot/migration_repo
+   {
+     "type": "s3",
+     "settings": { "bucket": "my-migration-bucket" }
+   }
+   ```
+2. **Take a Snapshot** of your data on the source cluster:
+   ```json
+   PUT /_snapshot/migration_repo/snapshot_1?wait_for_completion=true
+   ```
+3. **Register the same Repository** in the destination Elasticsearch cluster.
+4. **Restore the Snapshot** on the destination cluster:
+   ```json
+   POST /_snapshot/migration_repo/snapshot_1/_restore
+   ```
+*For cloud operator deployments like ECK, refer to the [Elasticsearch Snapshot Documentation](https://www.elastic.co/guide/en/elasticsearch/reference/current/snapshot-restore.html) for detailed configurations on securing repository access.*
+
+### Monitoring and Alerting
+
+- **Prometheus/ELK**: In general environments, it is recommended to install a metrics server (Prometheus) and a logging stack (ELK/Loki) to oversee cluster health.
+- **GKE Pod Status Alerting**: For GKE deployments, you can automatically configure an alert policy that sends email notifications whenever a Pod's status changes. To do this, simply set the `GCP_ALERT_EMAIL` environment variable with a comma-separated list of email addresses before running the GCP setup script:
+  ```bash
+  export GCP_ALERT_EMAIL="admin1@example.com,admin2@example.com"
+  python3 gke_setup.py
+  ```
+  *This leverages Google Cloud Monitoring to create a policy tracking the `logging.googleapis.com/user/pod_status_change_events` metric.*
 
 ## Additional Resources
 

@@ -495,8 +495,8 @@ def set_variable():
             return error_response("Var value is required", 400)
         var_name: str = data['var_name']
         var_value: str = data['var_value']
-        if re.match(r'^ldap\|(.+?)\.(enabled|name|url|dn|password|search_filter|attribute_list)$', var_name):
-            # allow adding new ldap
+        # Allow upsert for LDAP and SSO configurations (github|sso, google|sso, feishu|sso, etc.)
+        if re.match(r'^(ldap\|.+|.+|sso)\.(enabled|name|url|dn|password|search_filter|attribute_list|client_id|client_secret|app_id|app_secret|redirect_uri)$', var_name):
             SettingsMgr.update_by_name(var_name, var_value, allow_upsert=True)
         else:
             SettingsMgr.update_by_name(var_name, var_value)
