@@ -136,7 +136,7 @@ task_executor:
 user_default_llm:
   default_models:
     embedding_model:
-      namee: 'bge-m3'
+      name: 'bge-m3'
       factory: 'BAAI'
       api_key: 'xxx'
       base_url: 'http://url'
