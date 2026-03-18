@@ -78,6 +78,7 @@ func StartUpdateRecordTask() {
 func StopUpdateRecordTask() {
 	if globalUpdateRecordTask != nil {
 		globalUpdateRecordTask.Stop()
+		globalUpdateRecordTask = nil
 	}
 
 	globalUpdateRecordTaskOnce = sync.Once{}

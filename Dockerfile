@@ -217,8 +217,10 @@ COPY docker/entrypoint.sh docker/entrypoint-parser.sh ./
 RUN chmod +x ./entrypoint.sh ./entrypoint-parser.sh
 
 # Copy nginx configuration for frontend serving
-COPY docker/nginx/ragflow.conf docker/nginx/nginx.conf docker/nginx/proxy.conf /etc/nginx/
-RUN mv /etc/nginx/ragflow.conf /etc/nginx/conf.d/ragflow.conf && \
+COPY docker/nginx/ragflow.conf.golang docker/nginx/ragflow.conf.python docker/nginx/ragflow.conf.hybrid docker/nginx/nginx.conf docker/nginx/proxy.conf /etc/nginx/
+RUN mv /etc/nginx/ragflow.conf.golang /etc/nginx/conf.d/ragflow.conf.golang && \
+    mv /etc/nginx/ragflow.conf.python /etc/nginx/conf.d/ragflow.conf.python && \
+    mv /etc/nginx/ragflow.conf.hybrid /etc/nginx/conf.d/ragflow.conf.hybrid && \
     rm -f /etc/nginx/sites-enabled/default
 
 # Copy application code (these change more frequently)
