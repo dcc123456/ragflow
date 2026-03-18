@@ -339,7 +339,7 @@ func Init(configPath string) error {
 	if globalConfig.Admin.Port == 0 {
 		globalConfig.Admin.Port = 9383
 	} else {
-		globalConfig.Admin.Port += 4
+		globalConfig.Admin.Port += 2
 	}
 
 	// Load REGISTER_ENABLED from environment variable (default: 1)
