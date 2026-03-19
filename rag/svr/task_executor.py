@@ -1044,10 +1044,11 @@ async def do_handle_task(task):
         vts, _ = embedding_model.encode(["ok"])
         vector_size = len(vts[0])
     except Exception as e:
-        error_message = f'Fail to bind embedding model: {str(e)}'
-        progress_callback(-1, msg=error_message)
-        logging.exception(error_message)
-        raise
+        warning_message = f'Skipping task due to embedding model unavailable: {str(e)}'
+        logging.warning(warning_message)
+        # Use prog=0 to avoid sending error to RabbitMQ (which would trigger pika buffer issues)
+        progress_callback(prog=0, msg=warning_message)
+        return
 
     init_kb(task, vector_size)
 
