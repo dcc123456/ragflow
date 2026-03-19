@@ -22,7 +22,8 @@ class OCREndpoint(ls.LitAPI):
         self.api_path = "/predict/ocr"
         self.use_gpu = use_gpu
         # Set max_batch_size on the API object (new LitServe usage)
-        self.max_batch_size = 32
+        # IMPORTANT: Must be 1 because images of different sizes cannot be stacked by numpy.stack
+        self.max_batch_size = 1
 
     def setup(self, device):
         # need to run only once to load model into memory
