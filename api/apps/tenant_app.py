@@ -102,7 +102,7 @@ async def create(tenant_id):
         )
     except Exception as e:
         logging.exception(f"Failed to send invite email to {invite_user_email}: {e}")
-        return get_json_result(data=False, message="Failed to send invite email.", code=RetCode.SERVER_ERROR)
+
     usr = invite_users[0].to_dict()
     usr = {k: v for k, v in usr.items() if k in ["id", "avatar", "email", "nickname"]}
 
