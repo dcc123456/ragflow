@@ -44,7 +44,7 @@ export default function ChatBasicSetting({
         <>
           <FormField
             control={form.control}
-            name={prefixName(prefix, 'icon')}
+            name={'icon'}
             render={({ field }) => (
               <div className="space-y-6">
                 <FormItem className="w-full">
@@ -59,12 +59,15 @@ export default function ChatBasicSetting({
           />
           <FormField
             control={form.control}
-            name={prefixName(prefix, 'name')}
+            name="name"
             render={({ field }) => (
               <FormItem>
                 <FormLabel required>{t('assistantName')}</FormLabel>
                 <FormControl>
-                  <Input {...field}></Input>
+                  <Input
+                    {...field}
+                    dir={getDirAttribute(nameValue || '')}
+                  ></Input>
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -72,12 +75,16 @@ export default function ChatBasicSetting({
           />
           <FormField
             control={form.control}
-            name={prefixName(prefix, 'description')}
+            name="description"
             render={({ field }) => (
               <FormItem>
                 <FormLabel>{t('description')}</FormLabel>
                 <FormControl>
-                  <Textarea {...field}></Textarea>
+                  <Textarea
+                    {...field}
+                    placeholder={t('descriptionPlaceholder')}
+                    dir={getDirAttribute(descriptionValue || '')}
+                  ></Textarea>
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -85,51 +92,6 @@ export default function ChatBasicSetting({
           />
         </>
       )}
-      <FormField
-        control={form.control}
-        name={'icon'}
-        render={({ field }) => (
-          <div className="space-y-6">
-            <FormItem className="w-full">
-              <FormLabel>{t('assistantAvatar')}</FormLabel>
-              <FormControl>
-                <AvatarUpload {...field}></AvatarUpload>
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          </div>
-        )}
-      />
-      <FormField
-        control={form.control}
-        name="name"
-        render={({ field }) => (
-          <FormItem>
-            <FormLabel required>{t('assistantName')}</FormLabel>
-            <FormControl>
-              <Input {...field} dir={getDirAttribute(nameValue || '')}></Input>
-            </FormControl>
-            <FormMessage />
-          </FormItem>
-        )}
-      />
-      <FormField
-        control={form.control}
-        name="description"
-        render={({ field }) => (
-          <FormItem>
-            <FormLabel>{t('description')}</FormLabel>
-            <FormControl>
-              <Textarea
-                {...field}
-                placeholder={t('descriptionPlaceholder')}
-                dir={getDirAttribute(descriptionValue || '')}
-              ></Textarea>
-            </FormControl>
-            <FormMessage />
-          </FormItem>
-        )}
-      />
       <FormField
         control={form.control}
         name={'prompt_config.empty_response'}
