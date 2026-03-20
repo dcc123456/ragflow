@@ -1,8 +1,7 @@
 import { Toaster as Sonner } from '@/components/ui/sonner';
 import { Toaster } from '@/components/ui/toaster';
 import i18n, { changeLanguageAsync } from '@/locales/config';
-import QueryClientSingleton from '@/utils/query-client-singleton';
-import { QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { configResponsive } from 'ahooks';
 import { ConfigProvider, ConfigProviderProps, theme } from 'antd';
 import pt_BR from 'antd/lib/locale/pt_BR';
@@ -79,7 +78,14 @@ if (process.env.NODE_ENV === 'development') {
   );
 }
 
-const queryClient = QueryClientSingleton.getInstance();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      refetchOnWindowFocus: false,
+      retry: 2,
+    },
+  },
+});
 
 type Locale = ConfigProviderProps['locale'];
 
