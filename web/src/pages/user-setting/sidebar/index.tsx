@@ -32,6 +32,7 @@ type MenuItem = {
   icon: any;
   label: string;
   key: Routes | PrivateRoutes;
+  'data-testid'?: string;
 };
 // const menuItems = (t: TFunction): MenuItem[] => [
 //   { icon: Server, label: t('setting.dataSources'), key: Routes.DataSource },
@@ -41,7 +42,7 @@ type MenuItem = {
 //   { icon: User, label: t('setting.profile'), key: Routes.Profile },
 //   { icon: Unplug, label: t('setting.api'), key: Routes.Api },
 
-const menuItems = (t: TFunction) => [
+const menuItems = (t: TFunction): MenuItem[] => [
   {
     icon: <LucideServer className="size-[1em]" />,
     label: t('setting.dataSources'),
@@ -99,10 +100,10 @@ export function SideBar() {
   const { logout } = useLogout();
 
   const items = useMemo(() => {
-    const menus = [...menuItems(t)];
+    const menus: MenuItem[] = [...menuItems(t)];
     if (import.meta.env.VITE_BILLING_ENABLED === '1') {
       const billingMenuItem: MenuItem = {
-        icon: ReceiptText,
+        icon: <ReceiptText className="size-[1em]" />,
         label: t('setting.billing'),
         key: PrivateRoutes.Billing,
       };
@@ -142,7 +143,7 @@ export function SideBar() {
 
       <nav className="flex-1 overflow-auto mt-4 py-1">
         <ul className="px-6 flex flex-col gap-5">
-          {menuItems(t).map((item) => {
+          {items.map((item) => {
             const { key, icon, label, ...rest } = item;
 
             return (

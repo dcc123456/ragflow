@@ -10,27 +10,34 @@ export enum PrivateRoutes {
 
 export const privateRoutes = [
   {
-    path: '/user-setting',
     layout: false,
-    Component: lazy(() => import('@/pages/user-setting')),
+    path: Routes.Root,
+    Component: () => import('@/layouts/root-layout'),
     children: [
       {
-        path: `/user-setting/billing`,
-        Component: lazy(() => import(`@/pages/billing`)),
+        path: '/user-setting',
+        layout: false,
+        Component: lazy(() => import('@/pages/user-setting')),
+        children: [
+          {
+            path: `/user-setting/billing`,
+            Component: lazy(() => import(`@/pages/billing`)),
+          },
+        ],
+        errorElement: <FallbackComponent />,
+      },
+      {
+        path: PrivateRoutes.Price,
+        layout: false,
+        Component: lazy(() => import(`@/pages/price`)),
+        errorElement: <FallbackComponent />,
+      },
+      {
+        path: `${Routes.Files}${PrivateRoutes.EvaluationDetail}/:id`,
+        layout: false,
+        Component: lazy(() => import('@/pages/files/evaluation/detail-page')),
+        errorElement: <FallbackComponent />,
       },
     ],
-    errorElement: <FallbackComponent />,
-  },
-  {
-    path: PrivateRoutes.Price,
-    layout: false,
-    Component: lazy(() => import(`@/pages/price`)),
-    errorElement: <FallbackComponent />,
-  },
-  {
-    path: `${Routes.Files}${PrivateRoutes.EvaluationDetail}/:id`,
-    layout: false,
-    Component: lazy(() => import('@/pages/files/evaluation/detail-page')),
-    errorElement: <FallbackComponent />,
   },
 ];
