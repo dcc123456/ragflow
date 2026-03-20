@@ -178,13 +178,13 @@ done < "${TEMPLATE_FILE}"
 NGINX_CONF_DIR="/etc/nginx/conf.d"
 if [ -n "$API_PROXY_SCHEME" ]; then
     if [[ "${API_PROXY_SCHEME}" == "hybrid" ]]; then
-        mv -f "$NGINX_CONF_DIR/ragflow.conf.hybrid" "$NGINX_CONF_DIR/ragflow.conf"
+        cp -f "$NGINX_CONF_DIR/ragflow.conf.hybrid" "$NGINX_CONF_DIR/ragflow.conf"
         echo "Applied nginx config: ragflow.conf.hybrid"
     elif [[ "${API_PROXY_SCHEME}" == "go" ]]; then
-        mv -f "$NGINX_CONF_DIR/ragflow.conf.golang" "$NGINX_CONF_DIR/ragflow.conf"
+        cp -f "$NGINX_CONF_DIR/ragflow.conf.golang" "$NGINX_CONF_DIR/ragflow.conf"
         echo "Applied nginx config: ragflow.conf.golang (default)"
     else
-        mv -f "$NGINX_CONF_DIR/ragflow.conf.python" "$NGINX_CONF_DIR/ragflow.conf"
+        cp -f "$NGINX_CONF_DIR/ragflow.conf.python" "$NGINX_CONF_DIR/ragflow.conf"
         echo "Applied nginx config: ragflow.conf.python"
     fi
 else

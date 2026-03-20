@@ -187,16 +187,16 @@ func (s *Service) SetLicense(licenseStr string) (map[string]interface{}, error) 
 		return nil, err
 	}
 
-	err = s.timeRecordDAO.DeleteAll()
-	if err != nil {
-		logger.Warn("Error deleting time records: ", zap.Error(err))
-		return nil, err
-	}
-
 	// Store license to database
 	err = s.licenseDAO.Create(license.LicenseID, licenseStr)
 	if err != nil {
 		logger.Warn("Error storing license: ", zap.Error(err))
+		return nil, err
+	}
+
+	err = s.timeRecordDAO.DeleteAll()
+	if err != nil {
+		logger.Warn("Error deleting time records: ", zap.Error(err))
 		return nil, err
 	}
 
