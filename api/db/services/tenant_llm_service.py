@@ -554,6 +554,7 @@ class TenantLLMService(CommonService):
             ).count() > 0:
                 continue
             _llm["tenant_id"] = t.id
+            _llm.pop("id", None)
             cls.save(**_llm)
 
 
