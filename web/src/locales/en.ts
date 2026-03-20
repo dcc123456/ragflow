@@ -2960,6 +2960,22 @@ Important structured information may include: names, dates, locations, events, k
       timeout: 'Timeout',
       fail: 'Fail',
     },
+    license: {
+      title: 'License',
+      description: 'Manage your licenses and ensure continuous operation.',
+      addLicense: 'Add license',
+      table: {
+        id: 'ID',
+        startTime: 'Start time',
+        expiryTime: 'Expiry time',
+        status: 'Status',
+      },
+      status: {
+        valid: 'Valid',
+        expired: 'Expired',
+        pending: 'Pending',
+      },
+    },
     explore: {
       title: 'Launch',
       canvasList: 'Canvas List',

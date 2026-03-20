@@ -439,3 +439,20 @@ export const testSandboxConnection = (
     API.adminTestSandboxConnection,
     params,
   );
+
+// License APIs
+export const getLicense = () =>
+  request.get<ResponseData<AdminService.LicenseInfo>>(API.adminGetLicense);
+
+export const setLicense = (license: string) =>
+  request.post<ResponseData<AdminService.LicenseInfo>>(API.adminSetLicense, {
+    license,
+  });
+
+export const checkLicense = () =>
+  request.get<ResponseData<string>>(`${API.adminGetLicense}?check=true`);
+
+export const getFingerprint = () =>
+  request.get<ResponseData<AdminService.FingerprintResponse>>(
+    API.adminGetFingerprint,
+  );

@@ -2287,6 +2287,22 @@ Tokenizer 会根据所选方式将内容存储为对应的数据结构。`,
       addNow: '立即添加',
     },
 
+    license: {
+      title: '许可证',
+      description: '管理您的许可证，确保持续运行。',
+      addLicense: '添加许可证',
+      table: {
+        id: 'ID',
+        startTime: '开始时间',
+        expiryTime: '到期时间',
+        status: '状态',
+      },
+      status: {
+        valid: '有效',
+        expired: '已过期',
+        pending: '待处理',
+      },
+    },
     explore: {
       title: '探索',
       canvasList: '画布列表',

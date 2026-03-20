@@ -433,4 +433,25 @@ declare namespace AdminService {
     message?: string;
     details?: Record<string, unknown>;
   };
+
+  // License types
+  export type LicenseType = 'trial' | 'standard' | 'perpetual' | 'cluster';
+  export type LicenseStatus = 'valid' | 'expired' | 'pending' | 'inactive';
+
+  export type LicenseInfo = {
+    ID: string;
+    Version: string;
+    CustomerName: string;
+    IssuedAt: string;
+    ValidFrom: string;
+    ValidUntil: string;
+  };
+
+  export type SetLicenseInput = {
+    license: string;
+  };
+
+  export type FingerprintResponse = {
+    fingerprint: string;
+  };
 }

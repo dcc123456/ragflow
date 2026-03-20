@@ -427,4 +427,9 @@ export default {
   adminGetSandboxConfig: `${ExternalApi}${api_host}/admin/sandbox/config`,
   adminSetSandboxConfig: `${ExternalApi}${api_host}/admin/sandbox/config`,
   adminTestSandboxConnection: `${ExternalApi}${api_host}/admin/sandbox/test`,
+
+  // License
+  adminGetLicense: `${ExternalApi}${api_host}/admin/license`,
+  adminSetLicense: `${ExternalApi}${api_host}/admin/license`,
+  adminGetFingerprint: `${ExternalApi}${api_host}/admin/fingerprint`,
 };

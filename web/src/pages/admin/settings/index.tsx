@@ -23,6 +23,7 @@ import SMTPSettingsForm from './form-group/smtp';
 import WhitelistSettingsFormGroup from './form-group/whitelist';
 
 import useAdminVariables from '../hooks/useAdminVariables';
+import { License } from './license';
 
 const schema = z.object({
   smtp: SMTPSettingsForm.schema,
@@ -78,6 +79,7 @@ function AdminSettings() {
         <CardContent className="h-0 flex-1 p-0 flex flex-row">
           <div className="w-1/2 min-w-[40rem] max-w-[56rem] h-full flex flex-col">
             <ScrollArea className="flex-1 h-full">
+              <License></License>
               <div className="p-6">
                 <Form {...form}>
                   <form
