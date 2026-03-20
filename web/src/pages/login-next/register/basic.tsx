@@ -77,7 +77,7 @@ export default function BasicRegister() {
           name="email"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>{t('emailLabel')}</FormLabel>
+              <FormLabel required>{t('emailLabel')}</FormLabel>
               <FormControl>
                 <Input
                   className="h-10"
