@@ -10,7 +10,7 @@ import { useCreateNextSharedConversation } from '@/hooks/use-chat-request';
 import { Message } from '@/interfaces/database/chat';
 import { get } from 'lodash';
 import trim from 'lodash/trim';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { v4 as uuid } from 'uuid';
 
@@ -35,10 +35,14 @@ interface SharedChatSearchParams {
 
 export const useGetSharedChatSearchParams = () => {
   const [searchParams] = useSearchParams();
-  const data = Object.fromEntries(
-    Array.from(searchParams.entries())
-      .filter(([key]) => key.startsWith(DATA_PREFIX))
-      .map(([key, value]) => [key.replace(DATA_PREFIX, ''), value]),
+  const data = useMemo(
+    () =>
+      Object.fromEntries(
+        Array.from(searchParams.entries())
+          .filter(([key]) => key.startsWith(DATA_PREFIX))
+          .map(([key, value]) => [key.replace(DATA_PREFIX, ''), value]),
+      ),
+    [searchParams],
   );
   return {
     from: searchParams.get('from') as SharedFrom,
@@ -79,6 +83,7 @@ export const useSendSharedMessage = () => {
     removeAllMessagesExceptFirst,
   } = useSelectDerivedMessages();
   const [hasError, setHasError] = useState(false);
+  const hasFetchedSessionId = useRef(false);
 
   const sendMessage = useCallback(
     async (
@@ -133,6 +138,8 @@ export const useSendSharedMessage = () => {
   );
 
   const fetchSessionId = useCallback(async () => {
+    if (hasFetchedSessionId.current) return;
+    hasFetchedSessionId.current = true;
     const payload = { question: '' };
     const ret = await send({
       ...payload,
@@ -146,8 +153,10 @@ export const useSendSharedMessage = () => {
   }, [sharedData, release, send]);
 
   useEffect(() => {
-    fetchSessionId();
-  }, [fetchSessionId]);
+    if (conversationId) {
+      fetchSessionId();
+    }
+  }, [conversationId, fetchSessionId]);
 
   useEffect(() => {
     if (answer.answer) {
