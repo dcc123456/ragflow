@@ -33,7 +33,7 @@ from api.db.services.user_canvas_version import UserCanvasVersionService
 from common.constants import RetCode
 from common.misc_utils import get_uuid, thread_pool_exec
 from api.utils.api_utils import get_json_result, server_error_response, validate_request, get_data_error_result, \
-    get_request_json
+    get_request_json, _extract_auth_token
 from api.utils.billing import check_dynamic_resources
 from api.utils.permission_utils import check_canvas_permission
 from api.db import PermissionValue
@@ -221,10 +221,9 @@ def get(canvas_id):
 @manager.route('/getsse/<canvas_id>', methods=['GET'])  # type: ignore # noqa: F821
 @canvas_role_guard
 def getsse(canvas_id):
-    token = request.headers.get('Authorization').split()
-    if len(token) != 2:
+    token = _extract_auth_token(request.headers.get("Authorization", ""))
+    if not token:
         return get_data_error_result(message='Authorization is not valid!')
-    token = token[1]
     objs = APIToken.query(beta=token)
     if not objs:
         return get_data_error_result(message='Authentication error: API key is invalid!"')

@@ -60,6 +60,15 @@ def _safe_jsonify(payload: dict):
     return payload
 
 
+def _extract_auth_token(auth_header: str):
+    parts = auth_header.split()
+    if parts[0].lower() == "bearer" and (len(parts) !=2 or not parts[1]):
+        return None
+    if len(parts) != 2 or parts[0].lower() != "bearer" or not parts[1]:
+        return parts[0]
+    return parts[1]
+
+
 async def _coerce_request_data() -> dict:
     """Fetch JSON body with sane defaults; fallback to form data."""
     if hasattr(request, "_cached_payload"):

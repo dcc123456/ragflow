@@ -295,7 +295,7 @@ def _load_session_module(monkeypatch):
 
     # Mock tenant_llm_service for TenantLLMService and TenantService
     tenant_llm_service_mod = ModuleType("api.db.services.tenant_llm_service")
-    
+
     class _MockModelConfig:
         def __init__(self, tenant_id, model_name):
             self.tenant_id = tenant_id
@@ -308,7 +308,7 @@ def _load_session_module(monkeypatch):
             self.used_tokens = 0
             self.status = 1
             self.id = 1
-        
+
         def to_dict(self):
             return {
                 "tenant_id": self.tenant_id,
@@ -322,7 +322,7 @@ def _load_session_module(monkeypatch):
                 "status": self.status,
                 "id": self.id
             }
-    
+
     class _StubTenantService:
         @staticmethod
         def get_by_id(tenant_id):
@@ -336,7 +336,7 @@ def _load_session_module(monkeypatch):
                 rerank_id="rerank-model",
                 tts_id="tts-model"
             )
-    
+
     class _StubTenantLLMService:
         @staticmethod
         def get_api_key(tenant_id, model_name):
@@ -361,16 +361,16 @@ def _load_session_module(monkeypatch):
 
     # Mock LLMService
     llm_service_mod = ModuleType("api.db.services.llm_service")
-    
+
     class _StubLLM:
         def __init__(self, llm_name):
             self.llm_name = llm_name
             self.is_tools = False
-    
+
     llm_service_mod.LLMService = SimpleNamespace(
         query=lambda llm_name: [_StubLLM(llm_name)] if llm_name else []
     )
-    
+
     class _StubLLMBundle:
         def __init__(self, tenant_id: str, model_config: dict, lang="Chinese", **kwargs):
             self.tenant_id = tenant_id
@@ -382,13 +382,13 @@ def _load_session_module(monkeypatch):
 
         def transcription(self, audio_path):
             return "mock transcription"
-    
+
     llm_service_mod.LLMBundle = _StubLLMBundle
     monkeypatch.setitem(sys.modules, "api.db.services.llm_service", llm_service_mod)
 
     # Mock tenant_model_service to ensure it uses mocked services
     tenant_model_service_mod = ModuleType("api.db.joint_services.tenant_model_service")
-    
+
     class _MockModelConfig2:
         def __init__(self, tenant_id, model_name, model_type="chat"):
             self.tenant_id = tenant_id
@@ -461,7 +461,7 @@ def _load_session_module(monkeypatch):
             friendly_name = friendly_names.get(model_type_val, model_type_val)
             raise Exception(f"No default {friendly_name} model is set")
         return _MockModelConfig2(tenant_id, model_name, model_type_val).to_dict()
-    
+
     tenant_model_service_mod.get_model_config_by_id = _get_model_config_by_id
     tenant_model_service_mod.get_model_config_by_type_and_name = _get_model_config_by_type_and_name
     tenant_model_service_mod.get_tenant_default_model_by_type = _get_tenant_default_model_by_type
@@ -501,7 +501,7 @@ def _load_session_module(monkeypatch):
     module.manager = _DummyManager()
     monkeypatch.setitem(sys.modules, "test_session_sdk_routes_unit_module", module)
     spec.loader.exec_module(module)
-    
+
     # Add TenantService to module for test compatibility
     class _StubTenantServiceForTest:
         @staticmethod
@@ -523,11 +523,11 @@ def _load_session_module(monkeypatch):
             )
 
     module.TenantService = _StubTenantServiceForTest
-    
+
     return module
 
 
-@pytest.mark.p3
+@pytest.mark.p2
 def test_create_and_update_guard_matrix(monkeypatch):
     module = _load_session_module(monkeypatch)
 
@@ -586,7 +586,7 @@ def test_create_and_update_guard_matrix(monkeypatch):
     assert res["message"] == "Session updates error"
 
 
-@pytest.mark.p3
+@pytest.mark.p2
 def test_chat_completion_metadata_and_stream_paths(monkeypatch):
     module = _load_session_module(monkeypatch)
 
@@ -636,7 +636,7 @@ def test_chat_completion_metadata_and_stream_paths(monkeypatch):
     assert "doc_ids" not in captured_requests[-1]
 
 
-@pytest.mark.p3
+@pytest.mark.p2
 def test_openai_chat_validation_matrix_unit(monkeypatch):
     module = _load_session_module(monkeypatch)
 
@@ -689,7 +689,7 @@ def test_openai_chat_validation_matrix_unit(monkeypatch):
         assert expected in res["message"]
 
 
-@pytest.mark.p3
+@pytest.mark.p2
 def test_openai_stream_generator_branches_unit(monkeypatch):
     module = _load_session_module(monkeypatch)
 
@@ -740,7 +740,7 @@ def test_openai_stream_generator_branches_unit(monkeypatch):
     assert chunks[-1].strip() == "data:[DONE]"
 
 
-@pytest.mark.p3
+@pytest.mark.p2
 def test_openai_nonstream_branch_unit(monkeypatch):
     module = _load_session_module(monkeypatch)
 
@@ -766,9 +766,9 @@ def test_openai_nonstream_branch_unit(monkeypatch):
 
     res = _run(inspect.unwrap(module.chat_completion_openai_like)("tenant-1", "chat-1"))
     assert res["choices"][0]["message"]["content"] == "world"
-    
 
-@pytest.mark.p3
+
+@pytest.mark.p2
 def test_agents_openai_compatibility_unit(monkeypatch):
     module = _load_session_module(monkeypatch)
 
@@ -855,7 +855,7 @@ def test_agents_openai_compatibility_unit(monkeypatch):
     assert captured_calls[-1][1]["session_id"] == "session-1"
 
 
-@pytest.mark.p3
+@pytest.mark.p2
 def test_agent_completions_stream_and_nonstream_unit(monkeypatch):
     module = _load_session_module(monkeypatch)
 
@@ -897,7 +897,7 @@ def test_agent_completions_stream_and_nonstream_unit(monkeypatch):
     assert res["data"].startswith("**ERROR**")
 
 
-@pytest.mark.p3
+@pytest.mark.p2
 def test_list_session_projection_unit(monkeypatch):
     module = _load_session_module(monkeypatch)
 
@@ -935,7 +935,7 @@ def test_list_session_projection_unit(monkeypatch):
     assert res["data"][0]["messages"][0]["reference"][0]["positions"] == [1, 2]
 
 
-@pytest.mark.p3
+@pytest.mark.p2
 def test_list_agent_session_projection_unit(monkeypatch):
     module = _load_session_module(monkeypatch)
 
@@ -984,7 +984,7 @@ def test_list_agent_session_projection_unit(monkeypatch):
     assert projected_chunk["positions"] == [9]
 
 
-@pytest.mark.p3
+@pytest.mark.p2
 def test_delete_routes_partial_duplicate_unit(monkeypatch):
     module = _load_session_module(monkeypatch)
 
@@ -1044,7 +1044,7 @@ def test_delete_routes_partial_duplicate_unit(monkeypatch):
     assert res["code"] == 0
 
 
-@pytest.mark.p3
+@pytest.mark.p2
 def test_delete_agent_session_error_matrix_unit(monkeypatch):
     module = _load_session_module(monkeypatch)
 
@@ -1093,7 +1093,7 @@ def test_delete_agent_session_error_matrix_unit(monkeypatch):
     assert res["data"]["errors"] == ["Duplicate session ids: ok"]
 
 
-@pytest.mark.p3
+@pytest.mark.p2
 def test_sessions_ask_route_validation_and_stream_unit(monkeypatch):
     module = _load_session_module(monkeypatch)
     monkeypatch.setattr(module, "Response", _StubResponse)
@@ -1144,7 +1144,7 @@ def test_sessions_ask_route_validation_and_stream_unit(monkeypatch):
     assert captured == {"question": "q", "kb_ids": ["kb-1"], "uid": "tenant-1", "user_id": "tenant-1"}
 
 
-@pytest.mark.p3
+@pytest.mark.p2
 def test_sessions_related_questions_prompt_build_unit(monkeypatch):
     module = _load_session_module(monkeypatch)
 
@@ -1180,7 +1180,7 @@ def test_sessions_related_questions_prompt_build_unit(monkeypatch):
     assert captured["options"] == {"temperature": 0.9}
 
 
-@pytest.mark.p3
+@pytest.mark.p2
 def test_chatbot_routes_auth_stream_nonstream_unit(monkeypatch):
     module = _load_session_module(monkeypatch)
     monkeypatch.setattr(module, "Response", _StubResponse)
@@ -1236,7 +1236,7 @@ def test_chatbot_routes_auth_stream_nonstream_unit(monkeypatch):
     assert res["message"] == "Can't find dialog by ID: dialog-404"
 
 
-@pytest.mark.p3
+@pytest.mark.p2
 def test_agentbot_routes_auth_stream_nonstream_unit(monkeypatch):
     module = _load_session_module(monkeypatch)
     monkeypatch.setattr(module, "Response", _StubResponse)
@@ -1287,7 +1287,7 @@ def test_agentbot_routes_auth_stream_nonstream_unit(monkeypatch):
     assert res["message"] == "Can't find agent by ID: agent-404"
 
 
-@pytest.mark.p3
+@pytest.mark.p2
 def test_searchbots_ask_embedded_auth_and_stream_unit(monkeypatch):
     module = _load_session_module(monkeypatch)
     monkeypatch.setattr(module, "Response", _StubResponse)
@@ -1332,7 +1332,7 @@ def test_searchbots_ask_embedded_auth_and_stream_unit(monkeypatch):
     assert captured["user_id"] == "tenant-1"
 
 
-@pytest.mark.p3
+@pytest.mark.p2
 def test_searchbots_retrieval_test_embedded_matrix_unit(monkeypatch):
     module = _load_session_module(monkeypatch)
     handler = inspect.unwrap(module.retrieval_test_embedded)
@@ -1553,7 +1553,7 @@ def test_searchbots_retrieval_test_embedded_matrix_unit(monkeypatch):
     assert res["message"] == "No chunk found! Check the chunk status please!"
 
 
-@pytest.mark.p3
+@pytest.mark.p2
 def test_searchbots_related_questions_embedded_matrix_unit(monkeypatch):
     module = _load_session_module(monkeypatch)
     handler = inspect.unwrap(module.related_questions_embedded)
@@ -1610,7 +1610,7 @@ def test_searchbots_related_questions_embedded_matrix_unit(monkeypatch):
     assert "Keywords: solar" in captured["messages"][0]["content"]
 
 
-@pytest.mark.p3
+@pytest.mark.p2
 def test_searchbots_detail_share_embedded_matrix_unit(monkeypatch):
     module = _load_session_module(monkeypatch)
     handler = inspect.unwrap(module.detail_share_embedded)
@@ -1647,7 +1647,7 @@ def test_searchbots_detail_share_embedded_matrix_unit(monkeypatch):
     assert res["data"]["id"] == "s-1"
 
 
-@pytest.mark.p3
+@pytest.mark.p2
 def test_searchbots_mindmap_embedded_matrix_unit(monkeypatch):
     module = _load_session_module(monkeypatch)
     handler = inspect.unwrap(module.mindmap)
@@ -1695,7 +1695,7 @@ def test_searchbots_mindmap_embedded_matrix_unit(monkeypatch):
     assert "mindmap boom" in res["message"]
 
 
-@pytest.mark.p3
+@pytest.mark.p2
 def test_sequence2txt_embedded_validation_and_stream_matrix_unit(monkeypatch):
     module = _load_session_module(monkeypatch)
     handler = inspect.unwrap(module.sequence2txt)
@@ -1776,7 +1776,7 @@ def test_sequence2txt_embedded_validation_and_stream_matrix_unit(monkeypatch):
     assert any("stream asr boom" in chunk for chunk in chunks)
 
 
-@pytest.mark.p3
+@pytest.mark.p2
 def test_tts_embedded_stream_and_error_matrix_unit(monkeypatch):
     module = _load_session_module(monkeypatch)
     handler = inspect.unwrap(module.tts)
@@ -1819,7 +1819,7 @@ def test_tts_embedded_stream_and_error_matrix_unit(monkeypatch):
     assert any('"code": 500' in chunk and "**ERROR**: tts boom" in chunk for chunk in chunks)
 
 
-@pytest.mark.p3
+@pytest.mark.p2
 def test_build_reference_chunks_metadata_matrix_unit(monkeypatch):
     module = _load_session_module(monkeypatch)
 

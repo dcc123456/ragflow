@@ -31,7 +31,7 @@ from api.db.services.tenant_llm_service import TenantLLMService
 from api.utils.permission_utils import check_dialog_permission
 from api.db.services.user_service import UserTenantService
 from api.db.joint_services.tenant_model_service import get_model_config_by_type_and_name, get_tenant_default_model_by_type
-from api.utils.api_utils import get_data_error_result, get_json_result, get_request_json, server_error_response, validate_request
+from api.utils.api_utils import get_data_error_result, get_json_result, get_request_json, server_error_response, validate_request, _extract_auth_token
 from rag.prompts.template import load_prompt
 from rag.prompts.generator import chunks_format
 from common.constants import RetCode, LLMType
@@ -112,10 +112,9 @@ async def get():
 
 @manager.route("/getsse/<dialog_id>", methods=["GET"])  # type: ignore # noqa: F821
 def getsse(dialog_id):
-    token = request.headers.get("Authorization").split()
-    if len(token) != 2:
+    token = _extract_auth_token(request.headers.get("Authorization", ""))
+    if not token:
         return get_data_error_result(message='Authorization is not valid!')
-    token = token[1]
     objs = APIToken.query(beta=token)
     if not objs:
         return get_data_error_result(message='Authentication error: API key is invalid!"')

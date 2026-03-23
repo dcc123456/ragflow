@@ -1882,7 +1882,7 @@ class EvaluationRun(DataBaseModel):
     id = CharField(max_length=32, primary_key=True)
     collection_id = CharField(max_length=32, null=False, index=True, help_text="FK to evaluation_collections")
     target_type = CharField(max_length=32, null=False, index=True, help_text="chat|agent", default="chat")
-    target_id = CharField(max_length=32, null=False, index=True, help_text="target object id")
+    target_id = CharField(max_length=32, null=False, index=True, help_text="target object id", default="")
     name = CharField(max_length=255, null=False, help_text="run name")
     config_snapshot = JSONField(null=False, help_text="dialog config at time of evaluation")
     metrics_summary = JSONField(null=True, help_text="aggregated metrics")
