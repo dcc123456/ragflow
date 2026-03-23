@@ -952,9 +952,7 @@ async def chatbot_completions(dialog_id):
     req = await get_request_json()
 
     token = request.headers.get("Authorization").split()
-    if len(token) != 2:
-        return get_error_data_result(message='Authorization is not valid!')
-    token = token[1]
+    token = token[-1]
     objs = APIToken.query(beta=token)
     if not objs:
         return get_error_data_result(message='Authentication error: API key is invalid!"')
@@ -988,9 +986,7 @@ async def chatbot_completions(dialog_id):
 @manager.route("/chatbots/<dialog_id>/info", methods=["GET"])  # noqa: F821
 async def chatbots_inputs(dialog_id):
     token = request.headers.get("Authorization").split()
-    if len(token) != 2:
-        return get_error_data_result(message='Authorization is not valid!')
-    token = token[1]
+    token = token[-1]
     objs = APIToken.query(beta=token)
     if not objs:
         return get_error_data_result(message='Authentication error: API key is invalid!"')
@@ -1014,9 +1010,7 @@ async def agent_bot_completions(agent_id):
     req = await get_request_json()
 
     token = request.headers.get("Authorization").split()
-    if len(token) != 2:
-        return get_error_data_result(message='Authorization is not valid!')
-    token = token[1]
+    token = token[-1]
     objs = APIToken.query(beta=token)
     if not objs:
         return get_error_data_result(message='Authentication error: API key is invalid!"')
@@ -1057,9 +1051,7 @@ async def agent_bot_completions(agent_id):
 @manager.route("/agentbots/<agent_id>/inputs", methods=["GET"])  # noqa: F821
 async def begin_inputs(agent_id):
     token = request.headers.get("Authorization").split()
-    if len(token) != 2:
-        return get_error_data_result(message='Authorization is not valid!')
-    token = token[1]
+    token = token[-1]
     objs = APIToken.query(beta=token)
     if not objs:
         return get_error_data_result(message='Authentication error: API key is invalid!"')
@@ -1078,9 +1070,7 @@ async def begin_inputs(agent_id):
 @validate_request("question", "kb_ids")
 async def ask_about_embedded():
     token = request.headers.get("Authorization").split()
-    if len(token) != 2:
-        return get_error_data_result(message='Authorization is not valid!')
-    token = token[1]
+    token = token[-1]
     objs = APIToken.query(beta=token)
     if not objs:
         return get_error_data_result(message='Authentication error: API key is invalid!"')
@@ -1120,9 +1110,7 @@ async def ask_about_embedded():
 @validate_request("kb_id", "question")
 async def retrieval_test_embedded():
     token = request.headers.get("Authorization").split()
-    if len(token) != 2:
-        return get_error_data_result(message='Authorization is not valid!')
-    token = token[1]
+    token = token[-1]
     objs = APIToken.query(beta=token)
     if not objs:
         return get_error_data_result(message='Authentication error: API key is invalid!"')
@@ -1256,9 +1244,7 @@ async def retrieval_test_embedded():
 @validate_request("question")
 async def related_questions_embedded():
     token = request.headers.get("Authorization").split()
-    if len(token) != 2:
-        return get_error_data_result(message='Authorization is not valid!')
-    token = token[1]
+    token = token[-1]
     objs = APIToken.query(beta=token)
     if not objs:
         return get_error_data_result(message='Authentication error: API key is invalid!"')
@@ -1304,9 +1290,7 @@ Related search terms:
 @manager.route("/searchbots/detail", methods=["GET"])  # noqa: F821
 async def detail_share_embedded():
     token = request.headers.get("Authorization").split()
-    if len(token) != 2:
-        return get_error_data_result(message='Authorization is not valid!')
-    token = token[1]
+    token = token[-1]
     objs = APIToken.query(beta=token)
     if not objs:
         return get_error_data_result(message='Authentication error: API key is invalid!"')
@@ -1336,9 +1320,7 @@ async def detail_share_embedded():
 @validate_request("question", "kb_ids")
 async def mindmap():
     token = request.headers.get("Authorization").split()
-    if len(token) != 2:
-        return get_error_data_result(message='Authorization is not valid!')
-    token = token[1]
+    token = token[-1]
     objs = APIToken.query(beta=token)
     if not objs:
         return get_error_data_result(message='Authentication error: API key is invalid!"')
