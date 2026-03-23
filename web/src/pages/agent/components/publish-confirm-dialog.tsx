@@ -84,7 +84,7 @@ export function PublishConfirmDialog({
   const handleConfirmPublish = useCallback(() => {
     onPublish();
     setOpen(false);
-  }, []);
+  }, [onPublish]);
 
   if (isPipeline) {
     return null;

@@ -31,12 +31,11 @@ import { Radio } from '@/components/ui/radio';
 import { Switch } from '@/components/ui/switch';
 import { LlmModelType } from '@/constants/knowledge';
 import { useSetModalState, useTranslate } from '@/hooks/common-hooks';
-import { useFetchKnowledgeBaseConfiguration } from '@/hooks/use-knowledge-request';
 import { useComposeLlmOptionsByModelTypes } from '@/hooks/use-llm-request';
 import { cn } from '@/lib/utils';
 import { history } from '@/utils/simple-history-util';
 import { Settings } from 'lucide-react';
-import { useCallback, useContext, useEffect, useRef } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useRef } from 'react';
 import {
   useFormContext,
   type ControllerRenderProps,
@@ -120,40 +119,27 @@ export const EmbeddingSelect = ({
   field,
   name,
   disabled: propDisabled = false,
-  testId,
+  onChange,
+  children,
 }: {
   isEdit: boolean;
   field: ControllerRenderProps<FieldValues, 'embd_id'>;
   name?: string;
   disabled?: boolean;
   testId?: string;
+  onChange?: (value: string) => void;
+  children?: React.ReactNode;
 }) => {
   const { t } = useTranslate('knowledgeConfiguration');
-  const { t: tCommon } = useTranslate('common');
 
-  const form = useFormContext();
-  const { data: knowledgeDetails, loading: isLoadingKnowledgeDetails } =
-    useFetchKnowledgeBaseConfiguration();
+  // const form = useFormContext();
+
   const embeddingModelOptions = useSelectEmbeddingModelOptions();
   // const { handleChange } = useHandleKbEmbedding();
-  const { switchEmbeddingModel, isLoading: isSwitchingModel } =
-    useKbSwitchEmbeddingModel();
 
-  const { visible, showModal, hideModal } = useSetModalState(false);
+  // const oldValue: string = form.getValues(name || 'embd_id');
 
-  const { hasProgress: isReEmbedding, progress } = useTraceEmbedding();
-
-  const oldValue: string = form.getValues(name || 'embd_id');
-  const nextValueRef = useRef<string>('');
-
-  const disabled =
-    (!isEdit && propDisabled) ||
-    field.disabled ||
-    isReEmbedding ||
-    isSwitchingModel ||
-    isLoadingKnowledgeDetails;
-
-  const hasChunk = knowledgeDetails.chunk_num > 0;
+  const disabled = (!isEdit && propDisabled) || field.disabled;
 
   return (
     <>
@@ -161,11 +147,8 @@ export const EmbeddingSelect = ({
         <SelectWithSearch
           onChange={(value) => {
             // Only pops modal when in dataset configuration page
-            if (isEdit && hasChunk) {
-              if (value !== oldValue && !disabled) {
-                nextValueRef.current = value;
-                showModal();
-              }
+            if (onChange) {
+              onChange(value);
             } else {
               field.onChange(value);
             }
@@ -176,80 +159,27 @@ export const EmbeddingSelect = ({
           options={embeddingModelOptions}
           placeholder={t('embeddingModelPlaceholder')}
         />
-
-        {isReEmbedding && (
-          <Progress
-            value={progress * 100}
-            className="absolute bottom-0 left-0 w-full h-1 bg-bg-component rounded-t-none rounded-b-lg"
-          />
-        )}
+        {children}
       </div>
-
-      <Dialog
-        open={!disabled && visible}
-        onOpenChange={() => !isSwitchingModel && hideModal()}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t('switchEmbeddingModel.title')}</DialogTitle>
-          </DialogHeader>
-
-          <DialogDescription asChild>
-            <div className="text-sm text-text-primary">
-              <Trans
-                t={t}
-                i18nKey="switchEmbeddingModel.description"
-                components={{
-                  p: <p className="mb-4" />,
-                  ol: (
-                    <ol className="mb-4 list-decimal list-inside text-state-error" />
-                  ),
-                  li: <li />,
-                }}
-              />
-            </div>
-          </DialogDescription>
-
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={isSwitchingModel}
-              onClick={() => !isSwitchingModel && hideModal()}
-            >
-              {tCommon('cancel')}
-            </Button>
-
-            <Button
-              type="button"
-              variant="destructive"
-              loading={isSwitchingModel || disabled}
-              onClick={async () => {
-                if (isSwitchingModel || disabled) {
-                  return;
-                }
-
-                await switchEmbeddingModel(nextValueRef.current);
-                field.onChange(nextValueRef.current);
-                hideModal();
-              }}
-            >
-              {tCommon('confirm')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </>
   );
 };
 
 export function EmbeddingModelItem({ line = 1, isEdit }: IProps) {
-  const { hasProgress: isReEmbedding } = useTraceEmbedding();
-
+  const { hasProgress: isReEmbedding, progress } = useTraceEmbedding();
+  const { t: tCommon } = useTranslate('common');
   const { t } = useTranslate('knowledgeConfiguration');
   const form = useFormContext();
-  const disabled = useHasParsedDocument(isEdit) || isReEmbedding;
+  const { switchEmbeddingModel, isLoading: isSwitchingModel } =
+    useKbSwitchEmbeddingModel();
+  const hasChunk = useHasParsedDocument(isEdit);
+  const disabled = useMemo(
+    () => hasChunk || isReEmbedding,
+    [hasChunk, isReEmbedding],
+  );
 
+  const nextValueRef = useRef<string>('');
+  const { visible, showModal, hideModal } = useSetModalState(false);
   return (
     <>
       <FormField
@@ -281,7 +211,26 @@ export function EmbeddingModelItem({ line = 1, isEdit }: IProps) {
                     field={field}
                     disabled={disabled}
                     testId="ds-settings-basic-embedding-model-select"
-                  ></EmbeddingSelect>
+                    onChange={(value) => {
+                      // Only pops modal when in dataset configuration page
+                      if (isEdit && hasChunk) {
+                        if (value !== field.value) {
+                          nextValueRef.current = value;
+                          showModal();
+                        }
+                      } else {
+                        field.onChange(value);
+                      }
+                    }}
+                  >
+                    {' '}
+                    {isReEmbedding && (
+                      <Progress
+                        value={progress * 100}
+                        className="absolute bottom-0 left-0 w-full h-1 bg-bg-component rounded-t-none rounded-b-lg"
+                      />
+                    )}
+                  </EmbeddingSelect>
                 </FormControl>
               </div>
             </div>
@@ -289,6 +238,60 @@ export function EmbeddingModelItem({ line = 1, isEdit }: IProps) {
               <div className={line === 1 ? 'w-1/4' : ''}></div>
               <FormMessage />
             </div>
+            <Dialog
+              open={visible}
+              onOpenChange={() => !isSwitchingModel && hideModal()}
+            >
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>{t('switchEmbeddingModel.title')}</DialogTitle>
+                </DialogHeader>
+
+                <DialogDescription asChild>
+                  <div className="text-sm text-text-primary">
+                    <Trans
+                      t={t}
+                      i18nKey="switchEmbeddingModel.description"
+                      components={{
+                        p: <p className="mb-4" />,
+                        ol: (
+                          <ol className="mb-4 list-decimal list-inside text-state-error" />
+                        ),
+                        li: <li />,
+                      }}
+                    />
+                  </div>
+                </DialogDescription>
+
+                <DialogFooter>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={isSwitchingModel}
+                    onClick={() => !isSwitchingModel && hideModal()}
+                  >
+                    {tCommon('cancel')}
+                  </Button>
+
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    loading={isSwitchingModel}
+                    onClick={async () => {
+                      if (isSwitchingModel) {
+                        return;
+                      }
+
+                      await switchEmbeddingModel(nextValueRef.current);
+                      field.onChange(nextValueRef.current);
+                      hideModal();
+                    }}
+                  >
+                    {tCommon('confirm')}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </FormItem>
         )}
       />
