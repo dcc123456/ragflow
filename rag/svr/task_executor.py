@@ -31,7 +31,7 @@ import random
 import sys
 import threading
 import time
-from api.db import FileType, PIPELINE_SPECIAL_PROGRESS_FREEZE_TASK_TYPES
+from api.db import PIPELINE_SPECIAL_PROGRESS_FREEZE_TASK_TYPES
 from api.db.joint_services.memory_message_service import handle_save_to_memory_task
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.pipeline_operation_log_service import PipelineOperationLogService
@@ -630,26 +630,36 @@ async def embedding(docs, mdl, parser_config=None, callback=None):
 async def run_dataflow(task: dict):
     from api.db.services.canvas_service import UserCanvasService
     from rag.flow.pipeline import Pipeline
+    from api.db.services.billing_service import ParseBillingService
 
     task_start_ts = timer()
     dataflow_id = task["dataflow_id"]
     doc_id = task["doc_id"]
     task_id = task["id"]
     task_dataset_id = task["kb_id"]
+    billing_hold_id = task.get("billing_hold_id")
+    is_debug_dataflow = doc_id == CANVAS_DEBUG_DOC_ID
 
-    if task["task_type"] == "dataflow":
-        e, cvs = UserCanvasService.get_by_id(dataflow_id)
-        assert e, "User pipeline not found."
-        dsl = cvs.dsl
-    else:
-        e, pipeline_log = PipelineOperationLogService.get_by_id(dataflow_id)
-        assert e, "Pipeline log not found."
-        dsl = pipeline_log.dsl
-        dataflow_id = pipeline_log.pipeline_id
-    pipeline = Pipeline(dsl, tenant_id=task["tenant_id"], doc_id=doc_id, task_id=task_id, flow_id=dataflow_id)
-    chunks = await pipeline.run(file=task["file"]) if task.get("file") else await pipeline.run()
-    if doc_id == CANVAS_DEBUG_DOC_ID:
-        return
+    try:
+        if task["task_type"] == "dataflow":
+            e, cvs = UserCanvasService.get_by_id(dataflow_id)
+            assert e, "User pipeline not found."
+            dsl = cvs.dsl
+        else:
+            e, pipeline_log = PipelineOperationLogService.get_by_id(dataflow_id)
+            assert e, "Pipeline log not found."
+            dsl = pipeline_log.dsl
+            dataflow_id = pipeline_log.pipeline_id
+        pipeline = Pipeline(dsl, tenant_id=task["tenant_id"], doc_id=doc_id, task_id=task_id, flow_id=dataflow_id)
+        chunks = await pipeline.run(file=task["file"]) if task.get("file") else await pipeline.run()
+        if is_debug_dataflow:
+            if billing_hold_id:
+                ParseBillingService.finalize_hold(billing_hold_id, success=True)
+            return
+    except Exception:
+        if is_debug_dataflow and billing_hold_id:
+            ParseBillingService.finalize_hold(billing_hold_id, success=False)
+        raise
 
     if not chunks:
         PipelineOperationLogService.create(document_id=doc_id, pipeline_id=dataflow_id,
@@ -1025,14 +1035,6 @@ async def do_handle_task(task):
     if task_canceled:
         progress_callback(-1, msg="Task has been canceled.")
         return
-
-    if settings.BILLING_ENABLED:
-        if task.get("type") == FileType.PDF.value and \
-           task.get("parser_config", {}).get("layout_recognize", "DeepDOC") == "DeepDOC":
-            from api.db.services.billing_service import DeepDocPaygSubscriptionService
-            if not DeepDocPaygSubscriptionService.is_active(task.get("tenant_id", "")):
-                progress_callback(-1, msg="DeepDoc requires PAYG to be enabled.")
-                return
 
     try:
         # bind embedding model

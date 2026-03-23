@@ -13,16 +13,17 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 #
+import logging
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+
 from api.db.db_models import DB
-from peewee import fn
+from api.db import FileType, SubscriptionStatus
 from api.db.services.common_service import CommonService
 from api.db.services.user_service import UserTenantService
 from common import settings
 from common.misc_utils import get_uuid
-import logging
-from datetime import datetime, timedelta, timezone
-
-from api.db import SubscriptionStatus
+from peewee import fn
 from peewee import IntegrityError
 from api.db.db_models import (
     BillingWebhookEvent,
@@ -40,9 +41,11 @@ from api.db.db_models import (
 from api.db.services.dialog_service import DialogService
 from api.db.services.file_service import FileService
 from api.db.services.memory_service import MemoryService
+from api.utils.file_utils import filename_type
 from api.utils.billing import BILLING_PLAN_TRIAL_NAME, create_stripe_customer_id, get_trial_price_id, parse_storage_size
 from common.billing_utils import to_utc_datetime
 from common.time_utils import current_timestamp
+from deepdoc.parser import PdfParser
 import stripe
 
 class ProductService(CommonService):
@@ -647,7 +650,14 @@ class BillingWebhookEventService(CommonService):
 
 class PricePointService(CommonService):
     model = PricePoint
-    VERSION_CHECK_FIELDS = ["unit_quantity"]
+    VERSION_CHECK_FIELDS = [
+        "price_type",
+        "billing_frequency",
+        "included_free_amount",
+        "unit",
+        "unit_quantity",
+        "consuming_point_amount",
+    ]
 
     @classmethod
     def save(cls, **kwargs):
@@ -667,6 +677,7 @@ class PricePointService(CommonService):
             cls.model.billing_frequency,
             cls.model.unit,
             cls.model.unit_quantity,
+            cls.model.consuming_point_amount,
             cls.model.effective_time,
             cls.model.expiry_time,
         ]
@@ -1121,6 +1132,119 @@ class PointAccountService:
             "held_points": account.held_points,
             "total_points": account.available_points + account.held_points,
         }
+
+
+@dataclass(frozen=True)
+class ParseBillingQuote:
+    product_name: str
+    units: int
+    points: int
+
+
+class BaseParseBillingEstimator:
+    product_name = ""
+
+    def quote(self, filename: str, blob: bytes) -> ParseBillingQuote | None:
+        raise NotImplementedError
+
+
+class PdfPageParseBillingEstimator(BaseParseBillingEstimator):
+    product_name = "deepdoc"
+
+    def quote(self, filename: str, blob: bytes) -> ParseBillingQuote | None:
+        if filename_type(filename) != FileType.PDF.value:
+            return None
+
+        pages = PdfParser.total_page_number(filename, blob)
+        pages = max(int(pages or 0), 0)
+        if pages <= 0:
+            return None
+
+        price_point = PricePointService.get_by_name(self.product_name) or {}
+        consuming_point_amount = int(price_point.get("consuming_point_amount") or 1)
+        return ParseBillingQuote(
+            product_name=self.product_name,
+            units=pages,
+            points=pages * consuming_point_amount,
+        )
+
+
+class ParseBillingService:
+    ESTIMATORS = [PdfPageParseBillingEstimator()]
+
+    @classmethod
+    def build_hold_key(cls, doc_id: str) -> str:
+        return f"parse:{doc_id}:{get_uuid()}"
+
+    @classmethod
+    def register_estimator(cls, estimator: BaseParseBillingEstimator) -> None:
+        cls.ESTIMATORS.append(estimator)
+
+    @classmethod
+    def quote_parse(cls, filename: str, blob: bytes) -> list[ParseBillingQuote]:
+        quotes = []
+        for estimator in cls.ESTIMATORS:
+            quote = estimator.quote(filename, blob)
+            if quote:
+                quotes.append(quote)
+        return quotes
+
+    @classmethod
+    def resolve_file_ref(cls, file_ref: dict | None) -> tuple[str, bytes] | None:
+        if not file_ref:
+            return None
+
+        filename = file_ref.get("name") or file_ref.get("filename")
+        blob = file_ref.get("blob")
+        if filename and isinstance(blob, (bytes, bytearray)):
+            return filename, bytes(blob)
+
+        file_id = file_ref.get("id")
+        created_by = file_ref.get("created_by")
+        if filename and file_id and created_by:
+            return filename, FileService.get_blob(created_by, file_id)
+
+        return None
+
+    @classmethod
+    def hold_for_parse(
+        cls,
+        tenant_id: str,
+        doc_id: str,
+        filename: str,
+        blob: bytes,
+        idempotency_key: str | None = None,
+    ) -> dict | None:
+        quotes = cls.quote_parse(filename, blob)
+        points = sum(quote.points for quote in quotes)
+        if points <= 0:
+            return None
+
+        return PointAccountService.hold(
+            tenant_id=tenant_id,
+            doc_id=doc_id,
+            points=points,
+            idempotency_key=idempotency_key or cls.build_hold_key(doc_id),
+        )
+
+    @classmethod
+    def hold_for_file_ref(cls, tenant_id: str, doc_id: str, file_ref: dict | None) -> dict | None:
+        resolved = cls.resolve_file_ref(file_ref)
+        if not resolved:
+            return None
+        filename, blob = resolved
+        return cls.hold_for_parse(
+            tenant_id=tenant_id,
+            doc_id=doc_id,
+            filename=filename,
+            blob=blob,
+        )
+
+    @classmethod
+    def finalize_hold(cls, hold_id: str, success: bool) -> bool:
+        if success:
+            return PointAccountService.commit_hold(hold_id)
+        return PointAccountService.release_hold(hold_id)
 
 
 class PointHoldService:

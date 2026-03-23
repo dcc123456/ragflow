@@ -769,7 +769,17 @@ class Canvas(Graph):
             if file["mime_type"].find("image") >=0:
                 tasks.append(loop.run_in_executor(self._thread_pool, image_to_base64, file))
                 continue
-            tasks.append(loop.run_in_executor(self._thread_pool, parse_file, file))
+            tasks.append(
+                loop.run_in_executor(
+                    self._thread_pool,
+                    FileService.parse_with_billing,
+                    file["name"],
+                    FileService.get_blob(file["created_by"], file["id"]),
+                    file["created_by"],
+                    file["id"],
+                    True,
+                )
+            )
         return await asyncio.gather(*tasks)
 
     def get_files(self, files: Union[None, list[dict]], layout_recognize: str = None) -> list[str]:

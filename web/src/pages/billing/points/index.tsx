@@ -303,7 +303,7 @@ const HoldsTable = () => {
   return (
     <div>
       <h3 className="text-lg font-semibold text-text-primary mb-3">
-        Active Holds
+        Hold History
       </h3>
       <Table
         rowKey="id"

@@ -202,6 +202,7 @@ class SyncLogsService(CommonService):
     @classmethod
     def duplicate_and_parse(cls, kb, docs, tenant_id, src, auto_parse=True, folder_id=None):
         from api.db.services.file_service import FileService
+        from api.db.services.billing_service import InsufficientPointsError
         if not docs:
             return None
 
@@ -242,7 +243,11 @@ class SyncLogsService(CommonService):
             
             if not auto_parse or auto_parse == "0":
                 continue
-            DocumentService.run(tenant_id, doc, kb_table_num_map)
+            try:
+                DocumentService.run(tenant_id, doc, kb_table_num_map)
+            except InsufficientPointsError as exc:
+                errs.append(f"{doc['name']}: {exc}")
+                continue
 
         return errs, doc_ids
 
@@ -307,7 +312,3 @@ class Connector2KbService(CommonService):
                       cls.model.kb_id==kb_id
                     ).dicts()
         )
-
-
-
-

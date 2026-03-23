@@ -394,6 +394,7 @@ def queue_tasks(doc: dict, bucket: str, name: str, priority: int):
         }
 
     parse_task_array = []
+    billing_hold_id = None
 
     if doc["type"] == FileType.PDF.value:
         file_bin = settings.STORAGE_IMPL.get(bucket, name, doc["tenant_id"])
@@ -402,24 +403,16 @@ def queue_tasks(doc: dict, bucket: str, name: str, priority: int):
         if pages is None:
             pages = 0
 
-        if settings.BILLING_ENABLED and do_layout == "DeepDOC":
-            from api.db.services.billing_service import (
-                InsufficientPointsError,
-                PointAccountService,
-                PricePointService,
+        if settings.BILLING_ENABLED:
+            from api.db.services.billing_service import ParseBillingService
+
+            hold = ParseBillingService.hold_for_parse(
+                tenant_id=doc["tenant_id"],
+                doc_id=doc["id"],
+                filename=doc["name"],
+                blob=file_bin,
             )
-            price_point = PricePointService.get_by_name("deepdoc")
-            consuming_point_amount = (price_point or {}).get("consuming_point_amount", 1)
-            required_points = pages * consuming_point_amount
-            try:
-                PointAccountService.hold(
-                    tenant_id=doc["tenant_id"],
-                    doc_id=doc["id"],
-                    points=required_points,
-                    idempotency_key=f"parse:{doc['id']}",
-                )
-            except InsufficientPointsError:
-                raise ValueError("Insufficient points to parse document")
+            billing_hold_id = hold["id"] if hold else None
 
         page_size = doc["parser_config"].get("task_page_size") or 12
         if doc["parser_id"] == "paper":
@@ -481,14 +474,21 @@ def queue_tasks(doc: dict, bucket: str, name: str, priority: int):
                                          chunking_config["kb_id"])
     DocumentService.update_by_id(doc["id"], {"chunk_num": ck_num})
 
-    bulk_insert_into_db(Task, parse_task_array, True)
-    DocumentService.begin2parse(doc["id"])
+    try:
+        bulk_insert_into_db(Task, parse_task_array, True)
+        DocumentService.begin2parse(doc["id"])
 
-    unfinished_task_array = [task for task in parse_task_array if task["progress"] < 1.0]
-    for unfinished_task in unfinished_task_array:
-        assert RABBITMQ_CONN.queue_product(
-            rout_key(priority, suffix), message=unfinished_task
-        ), "Can't access task queue, please retry it later"
+        unfinished_task_array = [task for task in parse_task_array if task["progress"] < 1.0]
+        for unfinished_task in unfinished_task_array:
+            assert RABBITMQ_CONN.queue_product(
+                rout_key(priority, suffix), message=unfinished_task
+            ), "Can't access task queue, please retry it later"
+    except Exception:
+        if billing_hold_id:
+            from api.db.services.billing_service import ParseBillingService
+
+            ParseBillingService.finalize_hold(billing_hold_id, success=False)
+        raise
 
 
 def reuse_prev_task_chunks(task: dict, prev_tasks: list[dict], chunking_config: dict):
@@ -557,6 +557,31 @@ def has_canceled(task_id):
 
 
 def queue_dataflow(tenant_id:str, flow_id:str, task_id:str, doc_id:str=CANVAS_DEBUG_DOC_ID, file:dict=None, priority: int=0, rerun:bool=False) -> tuple[bool, str]:
+    billing_hold_id = None
+    if settings.BILLING_ENABLED:
+        from api.db.services.billing_service import ParseBillingService
+
+        if doc_id not in [CANVAS_DEBUG_DOC_ID, GRAPH_RAPTOR_FAKE_DOC_ID]:
+            from api.db.services.file2document_service import File2DocumentService
+
+            ok, doc = DocumentService.get_by_id(doc_id)
+            if ok and doc:
+                bucket, name = File2DocumentService.get_storage_address(doc_id=doc_id)
+                file_bin = settings.STORAGE_IMPL.get(bucket, name, tenant_id)
+                hold = ParseBillingService.hold_for_parse(
+                    tenant_id=tenant_id,
+                    doc_id=doc_id,
+                    filename=doc.name,
+                    blob=file_bin,
+                )
+                billing_hold_id = hold["id"] if hold else None
+        else:
+            hold = ParseBillingService.hold_for_file_ref(
+                tenant_id=tenant_id,
+                doc_id=task_id,
+                file_ref=file,
+            )
+            billing_hold_id = hold["id"] if hold else None
 
     task = dict(
         id=task_id,
@@ -567,19 +592,33 @@ def queue_dataflow(tenant_id:str, flow_id:str, task_id:str, doc_id:str=CANVAS_DE
         priority=priority,
         begin_at= datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     )
-    if doc_id not in [CANVAS_DEBUG_DOC_ID, GRAPH_RAPTOR_FAKE_DOC_ID]:
-        TaskService.model.delete().where(TaskService.model.doc_id == doc_id).execute()
-        DocumentService.begin2parse(doc_id)
-    bulk_insert_into_db(model=Task, data_source=[task], replace_on_conflict=True)
+    try:
+        if doc_id not in [CANVAS_DEBUG_DOC_ID, GRAPH_RAPTOR_FAKE_DOC_ID]:
+            TaskService.model.delete().where(TaskService.model.doc_id == doc_id).execute()
+            DocumentService.begin2parse(doc_id)
+        bulk_insert_into_db(model=Task, data_source=[task], replace_on_conflict=True)
 
-    task["kb_id"] = DocumentService.get_knowledgebase_id(doc_id)
-    task["tenant_id"] = tenant_id
-    task["dataflow_id"] = flow_id
-    task["file"] = file
+        task_message = dict(task)
+        task_message["kb_id"] = DocumentService.get_knowledgebase_id(doc_id)
+        task_message["tenant_id"] = tenant_id
+        task_message["dataflow_id"] = flow_id
+        task_message["file"] = file
+        if billing_hold_id:
+            task_message["billing_hold_id"] = billing_hold_id
 
-    if not RABBITMQ_CONN.queue_product(
-        rout_key(priority, "common"), message=task
-    ):
-        return False, "Can't access task queue, please retry it later"
+        if not RABBITMQ_CONN.queue_product(
+            rout_key(priority, "common"), message=task_message
+        ):
+            if billing_hold_id:
+                from api.db.services.billing_service import ParseBillingService
+
+                ParseBillingService.finalize_hold(billing_hold_id, success=False)
+            return False, "Can't access task queue, please retry it later"
+    except Exception:
+        if billing_hold_id:
+            from api.db.services.billing_service import ParseBillingService
+
+            ParseBillingService.finalize_hold(billing_hold_id, success=False)
+        raise
 
     return True, ""

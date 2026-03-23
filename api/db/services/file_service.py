@@ -551,14 +551,42 @@ class FileService(CommonService):
 
     @staticmethod
     def parse_docs(file_objs, user_id):
+        from api.db.services.billing_service import (
+            ParseBillingService,
+        )
+
         exe = ThreadPoolExecutor(max_workers=12)
         threads = []
-        for file in file_objs:
-            threads.append(exe.submit(FileService.parse, file.filename, file.read(), False))
+        files = [(file.filename, file.read()) for file in file_objs]
+        pending_holds = []
+
+        for filename, blob in files:
+            hold_id = None
+            if settings.BILLING_ENABLED:
+                hold = ParseBillingService.hold_for_parse(
+                    tenant_id=user_id,
+                    doc_id=get_uuid(),
+                    filename=filename,
+                    blob=blob,
+                )
+                if hold:
+                    hold_id = hold["id"]
+            pending_holds.append(hold_id)
+            threads.append(exe.submit(FileService.parse, filename, blob, False, user_id))
 
         res = []
-        for th in threads:
-            res.append(th.result())
+        try:
+            for idx, ((filename, _), th) in enumerate(zip(files, threads)):
+                res.append(th.result())
+                hold_id = pending_holds[idx]
+                if hold_id:
+                    ParseBillingService.finalize_hold(hold_id, success=True)
+                    pending_holds[idx] = None
+        except Exception:
+            for hold_id in pending_holds:
+                if hold_id:
+                    ParseBillingService.finalize_hold(hold_id, success=False)
+            raise
 
         return "\n\n".join(res)
 
@@ -576,8 +604,33 @@ class FileService(CommonService):
         file_type = filename_type(filename)
         if img_base64 and file_type == FileType.VISUAL.value:
             return GptV4.image2base64(blob)
+
         cks = FACTORY.get(FileService.get_parser(filename_type(filename), filename, ""), naive).chunk(filename, blob, **kwargs)
         return f"\n -----------------\nFile: {filename}\nContent as following: \n" + "\n".join([ck["content_with_weight"] for ck in cks])
+
+    @staticmethod
+    def parse_with_billing(filename, blob, tenant_id, billing_doc_id=None, img_base64=True):
+        from api.db.services.billing_service import ParseBillingService
+
+        hold_id = None
+        if settings.BILLING_ENABLED:
+            hold = ParseBillingService.hold_for_parse(
+                tenant_id=tenant_id,
+                doc_id=billing_doc_id or get_uuid(),
+                filename=filename,
+                blob=blob,
+            )
+            hold_id = hold["id"] if hold else None
+
+        try:
+            result = FileService.parse(filename, blob, img_base64=img_base64, tenant_id=tenant_id)
+            if hold_id:
+                ParseBillingService.finalize_hold(hold_id, success=True)
+            return result
+        except Exception:
+            if hold_id:
+                ParseBillingService.finalize_hold(hold_id, success=False)
+            raise
 
     @staticmethod
     def get_parser(doc_type, filename, default):

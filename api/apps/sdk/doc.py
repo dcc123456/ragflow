@@ -35,7 +35,7 @@ from api.db.services.file_service import FileService
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.llm_service import LLMBundle
 from api.db.services.tenant_llm_service import TenantLLMService
-from api.db.services.task_service import TaskService, queue_tasks, cancel_all_task_of
+from api.db.services.task_service import TaskService, cancel_all_task_of
 from api.db.joint_services.tenant_model_service import get_model_config_by_id, get_tenant_default_model_by_type, get_model_config_by_type_and_name
 from common.metadata_utils import meta_filter, convert_conditions
 from api.utils.api_utils import check_duplicate_ids, construct_json_result, get_error_data_result, get_parser_config, get_result, server_error_response, token_required, \
@@ -876,6 +876,8 @@ async def parse(tenant_id, dataset_id):
     """
     if not KnowledgebaseService.accessible(kb_id=dataset_id, user_id=tenant_id):
         return get_error_data_result(message=f"You don't own the dataset {dataset_id}.")
+    from api.db.services.billing_service import InsufficientPointsError
+
     req = await get_request_json()
     if not req.get("document_ids"):
         return get_error_data_result("`document_ids` is required")
@@ -898,11 +900,12 @@ async def parse(tenant_id, dataset_id):
         DocumentService.update_by_id(id, info)
         settings.docStoreConn.delete({"doc_id": id}, search.index_name(tenant_id), dataset_id)
         TaskService.filter_delete([Task.doc_id == id])
-        e, doc = DocumentService.get_by_id(id)
+        _, doc = DocumentService.get_by_id(id)
         doc = doc.to_dict()
-        doc["tenant_id"] = tenant_id
-        bucket, name = File2DocumentService.get_storage_address(doc_id=doc["id"])
-        queue_tasks(doc, bucket, name, 0)
+        try:
+            DocumentService.run(tenant_id, doc, {})
+        except InsufficientPointsError as e:
+            return get_result(message=str(e), code=RetCode.BILLING_POINTS_INSUFFICIENT)
         success_count += 1
     if not_found:
         return get_result(message=f"Documents not found: {not_found}", code=RetCode.DATA_ERROR)

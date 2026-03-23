@@ -770,7 +770,7 @@ class TestDocRoutesUnit:
         monkeypatch.setattr(module.File2DocumentService, "get_storage_address", lambda **_kwargs: ("b", "n"))
         _patch_docstore(monkeypatch, module, delete=lambda *_args, **_kwargs: None)
         monkeypatch.setattr(module.TaskService, "filter_delete", lambda *_args, **_kwargs: None)
-        monkeypatch.setattr(module, "queue_tasks", lambda *_args, **_kwargs: None)
+        monkeypatch.setattr(module.DocumentService, "run", lambda *_args, **_kwargs: None)
         monkeypatch.setattr(module, "check_duplicate_ids", lambda ids, _kind: (ids, ["Duplicate document ids: doc-1"]))
         res = _run(module.parse.__wrapped__("tenant-1", "ds-1"))
         assert res["code"] == 0

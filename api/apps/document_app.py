@@ -620,6 +620,7 @@ async def rm():
 async def run():
     req = await get_request_json()
     uid = current_user.id
+    from api.db.services.billing_service import InsufficientPointsError
     try:
         def _run_sync():
             for doc_id in req["doc_ids"]:
@@ -667,16 +668,12 @@ async def run():
                         doc.parser_config["metadata"] = kb.parser_config.get("metadata", {})
                         DocumentService.update_parser_config(doc.id, doc.parser_config)
                     doc_dict = doc.to_dict()
-                    try:
-                        DocumentService.run(tenant_id, doc_dict, kb_table_num_map)
-                    except ValueError as ve:
-                        if "Insufficient points" in str(ve):
-                            return get_json_result(data=False, message=str(ve), code=RetCode.BILLING_POINTS_INSUFFICIENT)
-                        raise
+                    DocumentService.run(tenant_id, doc_dict, kb_table_num_map)
 
             return get_json_result(data=True)
-
         return await thread_pool_exec(_run_sync)
+    except InsufficientPointsError as e:
+        return get_json_result(data=False, message=str(e), code=RetCode.BILLING_POINTS_INSUFFICIENT)
     except Exception as e:
         return server_error_response(e)
 
@@ -856,6 +853,8 @@ async def get_image(image_id):
 @login_required
 @validate_request("conversation_id")
 async def upload_and_parse():
+    from api.db.services.billing_service import InsufficientPointsError
+
     files = await request.files
     if "file" not in files:
         return get_json_result(data=False, message="No file part!", code=RetCode.ARGUMENT_ERROR)
@@ -866,8 +865,13 @@ async def upload_and_parse():
             return get_json_result(data=False, message="No file selected!", code=RetCode.ARGUMENT_ERROR)
 
     form = await request.form
-    doc_ids = doc_upload_and_parse(form.get("conversation_id"), file_objs, current_user.id)
-    return get_json_result(data=doc_ids)
+    try:
+        doc_ids = doc_upload_and_parse(form.get("conversation_id"), file_objs, current_user.id)
+        return get_json_result(data=doc_ids)
+    except InsufficientPointsError as e:
+        return get_json_result(data=False, message=str(e), code=RetCode.BILLING_POINTS_INSUFFICIENT)
+    except Exception as e:
+        return server_error_response(e)
 
 
 @manager.route("/parse", methods=["POST"])  # noqa: F821
@@ -875,58 +879,66 @@ async def upload_and_parse():
 async def parse():
     req = await get_request_json()
     url = req.get("url", "")
-    if url:
-        if not is_valid_url(url):
-            return get_json_result(data=False, message="The URL format is invalid", code=RetCode.ARGUMENT_ERROR)
-        download_path = os.path.join(get_project_base_directory(), "logs/downloads")
-        os.makedirs(download_path, exist_ok=True)
-        from seleniumwire.webdriver import Chrome, ChromeOptions
+    from api.db.services.billing_service import InsufficientPointsError
 
-        options = ChromeOptions()
-        options.add_argument("--headless")
-        options.add_argument("--disable-gpu")
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-dev-shm-usage")
-        options.add_experimental_option("prefs", {"download.default_directory": download_path, "download.prompt_for_download": False, "download.directory_upgrade": True, "safebrowsing.enabled": True})
-        driver = Chrome(options=options)
-        driver.get(url)
-        res_headers = [r.response.headers for r in driver.requests if r and r.response]
-        if len(res_headers) > 1:
-            sections = RAGFlowHtmlParser().parser_txt(driver.page_source)
-            driver.quit()
-            return get_json_result(data="\n".join(sections))
+    try:
+        if url:
+            if not is_valid_url(url):
+                return get_json_result(data=False, message="The URL format is invalid", code=RetCode.ARGUMENT_ERROR)
+            download_path = os.path.join(get_project_base_directory(), "logs/downloads")
+            os.makedirs(download_path, exist_ok=True)
+            from seleniumwire.webdriver import Chrome, ChromeOptions
 
-        class File:
-            filename: str
-            filepath: str
+            options = ChromeOptions()
+            options.add_argument("--headless")
+            options.add_argument("--disable-gpu")
+            options.add_argument("--no-sandbox")
+            options.add_argument("--disable-dev-shm-usage")
+            options.add_experimental_option("prefs", {"download.default_directory": download_path, "download.prompt_for_download": False, "download.directory_upgrade": True, "safebrowsing.enabled": True})
+            driver = Chrome(options=options)
+            driver.get(url)
+            res_headers = [r.response.headers for r in driver.requests if r and r.response]
+            if len(res_headers) > 1:
+                sections = RAGFlowHtmlParser().parser_txt(driver.page_source)
+                driver.quit()
+                return get_json_result(data="\n".join(sections))
 
-            def __init__(self, filename, filepath):
-                self.filename = filename
-                self.filepath = filepath
+            class File:
+                filename: str
+                filepath: str
 
-            def read(self):
-                with open(self.filepath, "rb") as f:
-                    return f.read()
+                def __init__(self, filename, filepath):
+                    self.filename = filename
+                    self.filepath = filepath
 
-        r = re.search(r"filename=\"([^\"]+)\"", str(res_headers))
-        if not r or not r.group(1):
-            return get_json_result(data=False, message="Can't not identify downloaded file", code=RetCode.ARGUMENT_ERROR)
-        filename = r.group(1).strip()
-        if not _is_safe_download_filename(filename):
-            return get_json_result(data=False, message="Invalid downloaded filename", code=RetCode.ARGUMENT_ERROR)
-        filepath = os.path.join(download_path, filename)
-        f = File(filename, filepath)
-        txt = FileService.parse_docs([f], current_user.id)
+                def read(self):
+                    with open(self.filepath, "rb") as f:
+                        return f.read()
+
+            r = re.search(r"filename=\"([^\"]+)\"", str(res_headers))
+            if not r or not r.group(1):
+                return get_json_result(data=False, message="Can't not identify downloaded file", code=RetCode.ARGUMENT_ERROR)
+
+            filename = r.group(1).strip()
+            if not _is_safe_download_filename(filename):
+                return get_json_result(data=False, message="Invalid downloaded filename", code=RetCode.ARGUMENT_ERROR)
+            filepath = os.path.join(download_path, filename)
+            f = File(filename, filepath)
+            txt = FileService.parse_docs([f], current_user.id)
+            return get_json_result(data=txt)
+
+        files = await request.files
+        if "file" not in files:
+            return get_json_result(data=False, message="No file part!", code=RetCode.ARGUMENT_ERROR)
+
+        file_objs = files.getlist("file")
+        txt = FileService.parse_docs(file_objs, current_user.id)
+
         return get_json_result(data=txt)
-
-    files = await request.files
-    if "file" not in files:
-        return get_json_result(data=False, message="No file part!", code=RetCode.ARGUMENT_ERROR)
-
-    file_objs = files.getlist("file")
-    txt = FileService.parse_docs(file_objs, current_user.id)
-
-    return get_json_result(data=txt)
+    except InsufficientPointsError as e:
+        return get_json_result(data=False, message=str(e), code=RetCode.BILLING_POINTS_INSUFFICIENT)
+    except Exception as e:
+        return server_error_response(e)
 
 
 @manager.route("/set_meta", methods=["POST"])  # noqa: F821

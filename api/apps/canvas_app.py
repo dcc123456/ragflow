@@ -248,6 +248,8 @@ def getsse(canvas_id):
 @check_canvas_permission(PermissionValue.PERMISSION_READ)
 async def run():
     req = g.req_data
+    from api.db.services.billing_service import InsufficientPointsError
+
     query = req.get("query", "")
     files = req.get("files", [])
     inputs = req.get("inputs", {})
@@ -277,8 +279,11 @@ async def run():
     _, cvs = await thread_pool_exec(UserCanvasService.get_by_id, req["id"])
     if cvs.canvas_category == CanvasCategory.DataFlow:
         task_id = get_uuid()
-        Pipeline(dsl_str, tenant_id=tenant_id, doc_id=CANVAS_DEBUG_DOC_ID, task_id=task_id, flow_id=req["id"])
-        ok, error_message = await thread_pool_exec(queue_dataflow, user_id, req["id"], task_id, CANVAS_DEBUG_DOC_ID, files[0], 0)
+        Pipeline(cvs.dsl, tenant_id=tenant_id, doc_id=CANVAS_DEBUG_DOC_ID, task_id=task_id, flow_id=req["id"])
+        try:
+            ok, error_message = await thread_pool_exec(queue_dataflow, user_id, req["id"], task_id, CANVAS_DEBUG_DOC_ID, files[0], 0)
+        except InsufficientPointsError as e:
+            return get_json_result(data=False, message=str(e), code=RetCode.BILLING_POINTS_INSUFFICIENT)
         if not ok:
             return get_data_error_result(message=error_message)
         return get_json_result(data={"message_id": task_id})
@@ -375,6 +380,8 @@ async def exp_agent_completion(canvas_id):
 @canvas_role_guard
 async def rerun():
     req = await get_request_json()
+    from api.db.services.billing_service import InsufficientPointsError
+
     doc = PipelineOperationLogService.get_documents_info(req["id"])
     if not doc:
         return get_data_error_result(message="Document not found.")
@@ -394,7 +401,12 @@ async def rerun():
     dsl = req["dsl"]
     dsl["path"] = [req["component_id"]]
     PipelineOperationLogService.update_by_id(req["id"], {"dsl": dsl})
-    queue_dataflow(tenant_id=current_user.id, flow_id=req["id"], task_id=get_uuid(), doc_id=doc["id"], priority=0, rerun=True)
+    try:
+        ok, error_message = queue_dataflow(tenant_id=current_user.id, flow_id=req["id"], task_id=get_uuid(), doc_id=doc["id"], priority=0, rerun=True)
+    except InsufficientPointsError as e:
+        return get_json_result(data=False, message=str(e), code=RetCode.BILLING_POINTS_INSUFFICIENT)
+    if not ok:
+        return get_data_error_result(message=error_message)
     return get_json_result(data=True)
 
 
