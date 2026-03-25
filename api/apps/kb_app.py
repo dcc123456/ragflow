@@ -320,7 +320,7 @@ async def list_kbs():
         tenants = TenantService.get_joined_tenants_by_user_id(current_user.id)
         tenant_ids = list({tenant["tenant_id"] for tenant in tenants} | {current_user.id})
 
-        kbs, total = KnowledgebaseService.get_uniqune_kbs_by_tenant_ids(tenant_ids, page_number, items_per_page, orderby, desc, keywords, parser_id)
+        kbs, total = KnowledgebaseService.get_unique_kbs_by_tenant_ids(tenant_ids, current_user.id, page_number, items_per_page, orderby, desc, keywords, parser_id)
         for kb in kbs:
             kb_id = kb["id"]
 
