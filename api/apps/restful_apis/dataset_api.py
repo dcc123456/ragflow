@@ -20,6 +20,7 @@ from quart import request
 from common.constants import RetCode
 from api.apps import login_required, current_user
 from api.utils.api_utils import get_error_argument_result, get_error_data_result, get_result, add_tenant_id_to_kwargs
+from api.utils.billing import check_dynamic_resources
 from api.utils.validation_utils import (
     CreateDatasetReq,
     DeleteDatasetReq,
@@ -95,6 +96,18 @@ async def create(tenant_id: str=None):
         return get_error_argument_result(err)
 
     try:
+        from common import settings
+
+        if settings.BILLING_ENABLED:
+          check_ok, check_info = check_dynamic_resources(tenant_id=tenant_id, apps=1)
+          if not check_ok:
+              error_details = check_info.get("details", {})
+              if "quota_apps" in error_details:
+                  return get_error_data_result(
+                      message=f"Insufficient app quota. Current: {error_details['quota_apps']['current']}, Limit: {error_details['quota_apps']['limit']}"
+                  )
+              return get_error_data_result(message=check_info.get("error", "Insufficient app quota"))
+
         if not tenant_id:
             tenant_id = current_user.id
         success, result = await dataset_api_service.create_dataset(tenant_id, req)
