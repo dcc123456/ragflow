@@ -36,7 +36,7 @@ export function useHasParsedDocument(isEdit?: boolean) {
   const { data: knowledgeDetails } = useFetchKnowledgeBaseConfiguration({
     isEdit,
   });
-  return knowledgeDetails.chunk_num > 0;
+  return knowledgeDetails.chunk_count > 0;
 }
 
 export const useFetchKnowledgeConfigurationOnMount = (
@@ -65,14 +65,14 @@ export const useFetchKnowledgeConfigurationOnMount = (
         'description',
         'name',
         'permission',
-        'embd_id',
-        'parser_id',
         'language',
         'parser_config',
         'connectors',
         'pagerank',
         'avatar',
       ]),
+      embedding_model: knowledgeDetails.embd_id,
+      chunk_method: knowledgeDetails.parser_id,
     } as z.infer<typeof formSchema>;
     form.reset(formValues);
   }, [form, knowledgeDetails]);

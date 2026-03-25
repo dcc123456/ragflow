@@ -124,10 +124,12 @@ export interface IFlowTemplate {
   description: {
     en: string;
     zh: string;
+    de: string;
   };
   title: {
     en: string;
     zh: string;
+    de: string;
   };
 }
 
@@ -291,6 +293,7 @@ export interface IAgentLogResponse {
   dsl: string;
   reference: IReference;
   name: string;
+  version_title: string;
 }
 export interface IAgentLogsResponse {
   total: number;

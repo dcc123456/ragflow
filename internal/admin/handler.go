@@ -109,7 +109,7 @@ func (h *Handler) Health(c *gin.Context) {
 
 // Ping ping endpoint
 func (h *Handler) Ping(c *gin.Context) {
-	successNoData(c, "PONG")
+	successNoData(c, "pong")
 }
 
 // Login handle admin login
@@ -266,12 +266,18 @@ func (h *Handler) DeleteUser(c *gin.Context) {
 		return
 	}
 
-	if err := h.service.DeleteUser(username); err != nil {
+	result, err := h.service.DeleteUser(username)
+	if err != nil {
 		errorResponse(c, err.Error(), 500)
 		return
 	}
 
-	successNoData(c, "User deleted successfully")
+	detailsMsg := "Successfully deleted user. Details:\n"
+	for _, detail := range result.DeletedDetails {
+		detailsMsg += detail + "\n"
+	}
+
+	successNoData(c, detailsMsg)
 }
 
 // ChangePasswordHTTPRequest change password request
@@ -414,15 +420,15 @@ func (h *Handler) GetUserAgents(c *gin.Context) {
 	success(c, agents, "")
 }
 
-// GetUserAPIKeys handle get user API keys
-func (h *Handler) GetUserAPIKeys(c *gin.Context) {
+// ListUserAPITokens handle get user API keys
+func (h *Handler) ListUserAPITokens(c *gin.Context) {
 	username := c.Param("username")
 	if username == "" {
 		errorResponse(c, "Username is required", 400)
 		return
 	}
 
-	apiKeys, err := h.service.GetUserAPIKeys(username)
+	apiKeys, err := h.service.ListUserAPITokens(username)
 	if err != nil {
 		errorResponse(c, err.Error(), 500)
 		return
@@ -431,15 +437,15 @@ func (h *Handler) GetUserAPIKeys(c *gin.Context) {
 	success(c, apiKeys, "Get user API keys")
 }
 
-// GenerateUserAPIKey handle generate user API key
-func (h *Handler) GenerateUserAPIKey(c *gin.Context) {
+// GenerateUserAPIToken handle generate user API key
+func (h *Handler) GenerateUserAPIToken(c *gin.Context) {
 	username := c.Param("username")
 	if username == "" {
 		errorResponse(c, "Username is required", 400)
 		return
 	}
 
-	apiKey, err := h.service.GenerateUserAPIKey(username)
+	apiKey, err := h.service.GenerateUserAPIToken(username)
 	if err != nil {
 		errorResponse(c, err.Error(), 500)
 		return
@@ -448,16 +454,16 @@ func (h *Handler) GenerateUserAPIKey(c *gin.Context) {
 	success(c, apiKey, "API key generated successfully")
 }
 
-// DeleteUserAPIKey handle delete user API key
-func (h *Handler) DeleteUserAPIKey(c *gin.Context) {
+// DeleteUserAPIToken handle delete user API key
+func (h *Handler) DeleteUserAPIToken(c *gin.Context) {
 	username := c.Param("username")
-	key := c.Param("key")
+	key := c.Param("token")
 	if username == "" || key == "" {
 		errorResponse(c, "Username and key are required", 400)
 		return
 	}
 
-	if err := h.service.DeleteUserAPIKey(username, key); err != nil {
+	if err := h.service.DeleteUserAPIToken(username, key); err != nil {
 		errorResponse(c, err.Error(), 404)
 		return
 	}

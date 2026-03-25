@@ -184,7 +184,7 @@ export function EmbeddingModelItem({ line = 1, isEdit }: IProps) {
     <>
       <FormField
         control={form.control}
-        name={'embd_id'}
+        name={'embedding_model'}
         render={({ field }) => (
           <FormItem className={cn(' items-center space-y-0 ')}>
             <div

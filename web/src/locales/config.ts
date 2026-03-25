@@ -24,6 +24,7 @@ const languageImports: Record<string, () => Promise<{ default: any }>> = {
   [LanguageAbbreviation.It]: () => import('./it'),
   [LanguageAbbreviation.Bg]: () => import('./bg'),
   [LanguageAbbreviation.Ar]: () => import('./ar'),
+  [LanguageAbbreviation.Tr]: () => import('./tr'),
 };
 
 const supportedLanguageCodes: Intl.UnicodeBCP47LocaleIdentifier[] =

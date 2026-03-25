@@ -197,6 +197,27 @@ export LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu/"
 PY=python3
 
 # -----------------------------------------------------------------------------
+# Select Nginx Configuration based on API_PROXY_SCHEME
+# -----------------------------------------------------------------------------
+NGINX_CONF_DIR="/etc/nginx/conf.d"
+if [ -n "$API_PROXY_SCHEME" ]; then
+    if [[ "${API_PROXY_SCHEME}" == "hybrid" ]]; then
+        mv -f "$NGINX_CONF_DIR/ragflow.conf.hybrid" "$NGINX_CONF_DIR/ragflow.conf"
+        echo "Applied nginx config: ragflow.conf.hybrid"
+    elif [[ "${API_PROXY_SCHEME}" == "go" ]]; then
+        mv -f "$NGINX_CONF_DIR/ragflow.conf.golang" "$NGINX_CONF_DIR/ragflow.conf"
+        echo "Applied nginx config: ragflow.conf.golang (default)"
+    else
+        mv -f "$NGINX_CONF_DIR/ragflow.conf.python" "$NGINX_CONF_DIR/ragflow.conf"
+        echo "Applied nginx config: ragflow.conf.python"
+    fi
+else
+    # Default to python backend
+    mv -f "$NGINX_CONF_DIR/ragflow.conf.python" "$NGINX_CONF_DIR/ragflow.conf"
+    echo "Default: applied nginx config: ragflow.conf.python"
+fi
+
+# -----------------------------------------------------------------------------
 # Function(s)
 # -----------------------------------------------------------------------------
 
@@ -238,41 +259,6 @@ function ensure_db_init() {
   "$PY" -c "from api.db.db_models import init_database_tables as init_web_db; init_web_db()"
 }
 
-function ensure_mineru() {
-    [[ "${USE_MINERU}" == "true" ]] || { echo "[mineru] disabled by USE_MINERU"; return 0; }
-
-    export HUGGINGFACE_HUB_ENDPOINT="${HF_ENDPOINT:-https://hf-mirror.com}"
-
-    local default_prefix="/ragflow/uv_tools"
-    local venv_dir="${default_prefix}/.venv"
-    local exe="${MINERU_EXECUTABLE:-${venv_dir}/bin/mineru}"
-
-    if [[ -x "${exe}" ]]; then
-      echo "[mineru] found: ${exe}"
-      export MINERU_EXECUTABLE="${exe}"
-      return 0
-    fi
-
-    echo "[mineru] not found, bootstrapping with uv ..."
-
-    (
-        set -e
-        mkdir -p "${default_prefix}"
-        cd "${default_prefix}"
-        [[ -d "${venv_dir}" ]] || uv venv "${venv_dir}"
-
-        source "${venv_dir}/bin/activate"
-        uv pip install -U "mineru[core]" -i https://mirrors.aliyun.com/pypi/simple --extra-index-url https://pypi.org/simple
-        deactivate
-    )
-    export MINERU_EXECUTABLE="${exe}"
-    if ! "${MINERU_EXECUTABLE}" --help >/dev/null 2>&1; then
-      echo "[mineru] installation failed: ${MINERU_EXECUTABLE} not working" >&2
-      return 1
-    fi
-    echo "[mineru] installed: ${MINERU_EXECUTABLE}"
-}
-
 function wait_for_server() {
     local url="$1"
     local server_name="$2"
@@ -295,7 +281,6 @@ function wait_for_server() {
 # Start components based on flags
 # -----------------------------------------------------------------------------
 ensure_docling
-ensure_mineru
 ensure_db_init
 
 if [[ "${ENABLE_WEBSERVER}" -eq 1 ]]; then

@@ -859,6 +859,8 @@ async def set_session(canvas_id):
     session_id=get_uuid()
     canvas = Canvas(cvs.dsl, tenant_id, canvas_id, canvas_id=cvs.id)
     canvas.reset()
+    # Get the version title for this canvas (using latest, not necessarily released)
+    version_title = UserCanvasVersionService.get_latest_version_title(cvs.id, release_mode=False)
     conv = {
         "id": session_id,
         "name": req.get("name", ""),
@@ -868,7 +870,8 @@ async def set_session(canvas_id):
         "message": [],
         "source": "agent",
         "dsl": cvs.dsl,
-        "reference": []
+        "reference": [],
+        "version_title": version_title
     }
     API4ConversationService.save(**conv)
     return get_json_result(data=conv)
