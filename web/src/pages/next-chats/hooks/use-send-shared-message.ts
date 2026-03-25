@@ -10,7 +10,7 @@ import { useCreateNextSharedConversation } from '@/hooks/use-chat-request';
 import { Message } from '@/interfaces/database/chat';
 import { get } from 'lodash';
 import trim from 'lodash/trim';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { v4 as uuid } from 'uuid';
 
@@ -21,57 +21,38 @@ export const useSendButtonDisabled = (value: string) => {
   return trim(value) === '';
 };
 
-const DATA_PREFIX = 'data_';
-
-interface SharedChatSearchParams {
-  from: SharedFrom;
-  sharedId: string | null;
-  release: string | null;
-  locale: string | null;
-  theme: string | null;
-  data: Record<string, string>;
-  visibleAvatar: boolean;
-}
-
 export const useGetSharedChatSearchParams = () => {
   const [searchParams] = useSearchParams();
-  const data = useMemo(
-    () =>
-      Object.fromEntries(
-        Array.from(searchParams.entries())
-          .filter(([key]) => key.startsWith(DATA_PREFIX))
-          .map(([key, value]) => [key.replace(DATA_PREFIX, ''), value]),
-      ),
-    [searchParams],
+  const data_prefix = 'data_';
+  const data = Object.fromEntries(
+    Array.from(searchParams.entries())
+      .filter(([key]) => key.startsWith(data_prefix))
+      .map(([key, value]) => [key.replace(data_prefix, ''), value]),
   );
   return {
     from: searchParams.get('from') as SharedFrom,
     sharedId: searchParams.get('shared_id'),
-    release: searchParams.get('release'),
     locale: searchParams.get('locale'),
     theme: searchParams.get('theme'),
     data: data,
     visibleAvatar: searchParams.get('visible_avatar')
       ? searchParams.get('visible_avatar') !== '1'
       : true,
-  } as SharedChatSearchParams;
+  };
 };
 
 export const useSendSharedMessage = () => {
   const {
     from,
     sharedId: conversationId,
-    release,
-    data: sharedData,
+    data: data,
   } = useGetSharedChatSearchParams();
-  const botType = from === SharedFrom.Agent ? 'agentbots' : 'chatbots';
-  const releaseQuery = release ? `?release=${encodeURIComponent(release)}` : '';
-  const completionUrl = `/api/v1/${botType}/${conversationId}/completions${releaseQuery}`;
   const { createSharedConversation: setConversation } =
     useCreateNextSharedConversation();
   const { handleInputChange, value, setValue } = useHandleMessageInputChange();
-  const { send, answer, done, stopOutputMessage } =
-    useSendMessageWithSse(completionUrl);
+  const { send, answer, done, stopOutputMessage } = useSendMessageWithSse(
+    `/api/v1/${from === SharedFrom.Agent ? 'agentbots' : 'chatbots'}/${conversationId}/completions`,
+  );
   const {
     derivedMessages,
     removeLatestMessage,
@@ -99,7 +80,6 @@ export const useSendSharedMessage = () => {
         session_id: get(derivedMessages, '0.session_id'),
         reasoning: enableThinking,
         internet: enableInternet,
-        ...(release ? { release } : {}),
       });
 
       if (isCompletionError(res)) {
@@ -108,14 +88,7 @@ export const useSendSharedMessage = () => {
         removeLatestMessage();
       }
     },
-    [
-      send,
-      conversationId,
-      derivedMessages,
-      setValue,
-      removeLatestMessage,
-      release,
-    ],
+    [send, conversationId, derivedMessages, setValue, removeLatestMessage],
   );
 
   const handleSendMessage = useCallback(
@@ -141,16 +114,12 @@ export const useSendSharedMessage = () => {
     if (hasFetchedSessionId.current) return;
     hasFetchedSessionId.current = true;
     const payload = { question: '' };
-    const ret = await send({
-      ...payload,
-      ...sharedData,
-      ...(release ? { release } : {}),
-    });
+    const ret = await send({ ...payload, ...data });
     if (isCompletionError(ret)) {
       message.error(ret?.data.message);
       setHasError(true);
     }
-  }, [sharedData, release, send]);
+  }, [send]);
 
   useEffect(() => {
     if (conversationId) {

@@ -43,6 +43,15 @@ func (dao *UserDAO) GetByID(id uint) (*model.User, error) {
 	return &user, nil
 }
 
+func (dao *UserDAO) GetByTenantID(tenantID string) (*model.User, error) {
+	var user model.User
+	err := DB.Where("id = ?", tenantID).First(&user).Error
+	if err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
 // GetByUsername get user by username
 func (dao *UserDAO) GetByUsername(username string) (*model.User, error) {
 	var user model.User
@@ -124,6 +133,6 @@ func (dao *UserDAO) HardDelete(id string) error {
 // Returns all users matching the given email address
 func (dao *UserDAO) ListByEmail(email string) ([]*model.User, error) {
 	var users []*model.User
-	err := DB.Where("email = ? AND (status != ? OR status IS NULL)", email, "0").Find(&users).Error
+	err := DB.Where("email = ?", email).Find(&users).Error
 	return users, err
 }

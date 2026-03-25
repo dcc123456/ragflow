@@ -181,7 +181,6 @@ func migrateAddUniqueEmail(db *gorm.DB) error {
 			logger.Info("Index already exists, skipping", zap.String("error", errStr))
 			return nil
 		}
-
 		return fmt.Errorf("failed to add unique index on email: %w", err)
 	}
 
@@ -302,7 +301,7 @@ func addColumnIfNotExists(db *gorm.DB, tableName, columnName, columnDef string) 
 
 	// Check if column exists using raw SQL
 	var count int64
-	db.Raw(`SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS 
+	db.Raw(`SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
 		WHERE TABLE_NAME = ? AND COLUMN_NAME = ?`, tableName, columnName).Scan(&count)
 	if count > 0 {
 		return nil

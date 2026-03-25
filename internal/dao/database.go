@@ -148,7 +148,7 @@ func InitDB() error {
 	}
 
 	for _, m := range models {
-		if err := autoMigrateSafely(DB, m); err != nil {
+		if err = autoMigrateSafely(DB, m); err != nil {
 			return fmt.Errorf("failed to migrate model %T: %w", m, err)
 		}
 	}

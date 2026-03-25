@@ -8,7 +8,6 @@ import { useTranslate } from '@/hooks/common-hooks';
 import { useNavigatePage } from '@/hooks/logic-hooks/navigate-hooks';
 import { useTraceDuplicate } from '@/hooks/use-knowledge-request';
 import { IKnowledge } from '@/interfaces/database/knowledge';
-import { cn } from '@/lib/utils';
 import { ChevronRight, LucideCircleX } from 'lucide-react';
 import { ProcessingType } from '../dataset/dataset-overview/dataset-common';
 import { useUnBindTask } from '../dataset/dataset/generate-button/hook';
@@ -38,8 +37,10 @@ export function DatasetCard({
 
   return (
     <HomeCard
-      className={cn(hasProgress && 'text-text-disabled')}
-      data={{ ...dataset, description: `${dataset.doc_num} files` }}
+      data={{
+        ...dataset,
+        description: `${dataset.document_count} ${t('knowledgeDetails.files')}`,
+      }}
       moreDropdown={
         !hasProgress ? (
           <DatasetDropdown
