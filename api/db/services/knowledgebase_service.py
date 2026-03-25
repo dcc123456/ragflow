@@ -671,7 +671,7 @@ class KnowledgebaseService(CommonService):
 
     @classmethod
     @DB.connection_context()
-    def get_uniqune_kbs_by_tenant_ids(cls, tenant_ids, page_number, items_per_page, orderby, desc, keywords, parser_id=None):
+    def get_uniqune_kbs_by_tenant_ids(cls, tenant_ids, user_id, page_number, items_per_page, orderby, desc, keywords, parser_id=None):
         """Find unique knowledge bases for given tenant IDs with pagination and filtering.
 
         Args:
@@ -707,10 +707,27 @@ class KnowledgebaseService(CommonService):
             cls.model.update_time,
         ]
 
-        kbs = cls.model.select(*fields).distinct().join(User, on=(cls.model.tenant_id == User.id)).where(cls.model.tenant_id.in_(tenant_ids) & (cls.model.status == StatusEnum.VALID.value))
-
         if keywords:
-            kbs = kbs.where(fn.LOWER(cls.model.name).contains(keywords.lower()))
+            kbs = (
+                cls.model.select(*fields)
+                .distinct()
+                .join(User, on=(cls.model.tenant_id == User.id))
+                .where(
+                    ((cls.model.tenant_id.in_(tenant_ids) & (cls.model.permission == TenantPermission.TEAM.value)) | (cls.model.tenant_id == user_id))
+                    & (cls.model.status == StatusEnum.VALID.value),
+                    (fn.LOWER(cls.model.name).contains(keywords.lower())),
+                )
+            )
+        else:
+            kbs = (
+                cls.model.select(*fields)
+                .distinct()
+                .join(User, on=(cls.model.tenant_id == User.id))
+                .where(
+                    ((cls.model.tenant_id.in_(tenant_ids) & (cls.model.permission == TenantPermission.TEAM.value)) | (cls.model.tenant_id == user_id))
+                    & (cls.model.status == StatusEnum.VALID.value)
+                )
+            )
 
         if parser_id:
             kbs = kbs.where(cls.model.parser_id == parser_id)
