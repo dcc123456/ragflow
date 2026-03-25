@@ -33,7 +33,8 @@ from common.mcp_tool_call_conn import MCPToolCallSession, close_multiple_mcp_too
 async def list_mcp() -> Response:
     from api.utils.permission_utils import has_permission_for_member
     from api.db.services.user_service import UserTenantService
-    
+    from api.db.db_models import User
+
     keywords = request.args.get("keywords", "")
     page_number = int(request.args.get("page", 0))
     items_per_page = int(request.args.get("page_size", 0))
@@ -45,27 +46,34 @@ async def list_mcp() -> Response:
 
     req = await get_request_json()
     mcp_ids = req.get("mcp_ids", [])
+    current_user_id = current_user.id
     try:
-        servers = MCPServerService.get_servers(current_user.id, mcp_ids, 0, 0, orderby, desc, keywords) or []
+        servers = MCPServerService.get_servers(current_user_id, mcp_ids, 0, 0, orderby, desc, keywords) or []
         total = len(servers)
 
-        # Add operator_permission for each server
         server_list = []
         tenant_member_memo = {}
+        user_nickname_memo = {}
         for s in servers:
-            if s["tenant_id"] == current_user.id:
+            tenant_id = s["tenant_id"]
+            if tenant_id not in user_nickname_memo:
+                user = User.select(User.nickname).where(User.id == tenant_id).first()
+                user_nickname_memo[tenant_id] = user.nickname if user else ""
+            s["nickname"] = user_nickname_memo[tenant_id]
+
+            if tenant_id == current_user_id:
                 s["operator_permission"] = PermissionValue.PERMISSION_OWNER.value
                 server_list.append(s)
             else:
-                member_id = tenant_member_memo.get(s["tenant_id"])
+                member_id = tenant_member_memo.get(tenant_id)
                 if not member_id:
-                    member = UserTenantService.filter_by_tenant_and_user_id(s["tenant_id"], current_user.id)
+                    member = UserTenantService.filter_by_tenant_and_user_id(tenant_id, current_user_id)
                     member_id = getattr(member, "id", None)
-                    tenant_member_memo[s["tenant_id"]] = member_id
+                    tenant_member_memo[tenant_id] = member_id
 
                 permission = has_permission_for_member(
                     operator_id=member_id,
-                    tenant_id=s["tenant_id"],
+                    tenant_id=tenant_id,
                     resource_id=s["id"],
                     resource_type=ResourceType.MCP,
                     permission=PermissionValue.PERMISSION_READ,
@@ -147,7 +155,10 @@ async def create() -> Response:
         variables["tools"] = tools
         req["variables"] = variables
 
-        if not MCPServerService.insert(**req):
+        allowed_fields = {"id", "name", "tenant_id", "url", "server_type", "description", "variables", "headers"}
+        create_data = {k: v for k, v in req.items() if k in allowed_fields}
+
+        if not MCPServerService.insert(**create_data):
             return get_data_error_result("Failed to create MCP server.")
 
         return get_json_result(data=req)
@@ -201,7 +212,10 @@ async def update() -> Response:
         variables["tools"] = tools
         req["variables"] = variables
 
-        if not MCPServerService.filter_update([MCPServer.id == mcp_id, MCPServer.tenant_id == current_user.id], req):
+        allowed_fields = {"id", "name", "tenant_id", "url", "server_type", "description", "variables", "headers"}
+        update_data = {k: v for k, v in req.items() if k in allowed_fields}
+
+        if not MCPServerService.filter_update([MCPServer.id == mcp_id, MCPServer.tenant_id == current_user.id], update_data):
             return get_data_error_result(message="Failed to updated MCP server.")
 
         e, updated_mcp = MCPServerService.get_by_id(req["id"])
