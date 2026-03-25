@@ -678,7 +678,7 @@ class KnowledgebaseService(CommonService):
 
     @classmethod
     @DB.connection_context()
-    def get_uniqune_kbs_by_tenant_ids(cls, tenant_ids, user_id, page_number, items_per_page, orderby, desc, keywords, parser_id=None):
+    def get_unique_kbs_by_tenant_ids(cls, tenant_ids, user_id, page_number, items_per_page, orderby, desc, keywords, parser_id=None):
         """Find unique knowledge bases for given tenant IDs with pagination and filtering.
 
         Args:
