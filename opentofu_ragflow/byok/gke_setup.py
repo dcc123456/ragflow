@@ -3,8 +3,9 @@
 GKE Cluster Configuration Helper Script
 
 This script configures GKE cluster access, enables Gateway API, creates
-GCS service account with Workload Identity, and generates the necessary
-configuration for RAGFlow deployment.
+GCS service account with Workload Identity, creates imagePullSecret for
+GCR authentication, and generates the necessary configuration for
+RAGFlow deployment.
 
 NOTE: This script must be run on a GCE Ubuntu VM with full Cloud API access.
 
@@ -82,7 +83,73 @@ def print_help():
 
 GCR_PROJECT_PREFIX = "gcr.io"
 
-POD_STATUS_CHANGE_FILTER = 'log_id("events") AND resource.type="k8s_pod" AND jsonPayload.involvedObject.kind="Pod" AND jsonPayload.involvedObject.namespace="ragflow"'
+# =============================================================================
+# ALERTING APPROACHES: COMPARISON
+# =============================================================================
+#
+# This module supports three approaches for alerting on Kubernetes pod issues:
+#
+# APPROACH 1: Log-Based Metrics
+# ------------------------------------
+# Pros:
+#   + Easy to set up, no additional components needed
+#   + Uses existing Cloud Logging infrastructure
+#   + Can filter on any log field via log filter expressions
+# Cons:
+#   - EVENT-BASED, NOT STATE-BASED: Only triggers on new events, not persistent issues
+#   - Example problem: Pod enters CrashLoopBackOff, event fires alert,
+#     but if pod stays crashed without new events, alert auto-resolves
+#     even though the pod is still down!
+#   - No distinction between severity levels in a single metric
+#   - Requires careful filter design to avoid noise
+#
+#   Filter example: log_id("events") AND resource.type="k8s_pod" AND jsonPayload.involvedObject.kind="Pod" AND jsonPayload.involvedObject.namespace="ragflow"
+#
+# APPROACH 2: GKE Workload Metrics (kubernetes.io/*)
+# ------------------------------------
+# Pros:
+#   + Built into GKE, no extra installation
+#   + Provides actual resource state, not just events
+#   + Metrics like: kubernetes.io/container/state/restart_count
+#   + Good for basic pod health monitoring
+# Cons:
+#   - Limited metric set compared to Prometheus
+#   - No PromQL, only supports simple condition filters
+#   - Cannot easily express complex queries (e.g., "restart count increased by 3 in 5 min")
+#   - Less flexible for custom alerting logic
+#
+#   Metric example: kubernetes.io/container/state/restart_count
+#   Condition: last_value() > 0 for 5m
+#
+# APPROACH 3: Google Managed Prometheus (GMP) + PromQL (RECOMMENDED)
+# ------------------------------------
+# Pros:
+#   + STATE-BASED: Monitors actual pod state continuously, not just events
+#   + Pod crash (CrashLoopBackOff) keeps alerting until pod actually recovers
+#   + Full PromQL expressiveness for complex queries
+#   + Industry standard, widely understood
+#   + Rich kube-state-metrics available:
+#     * kube_pod_status_phase{phase!="Running"}
+#     * kube_pod_container_status_restarts_total
+#     * kube_deployment_status_replicas_available
+#   + Supports "for" clause to require condition persistence
+#   + Can correlate multiple signals (pod down + high memory + many restarts)
+# Cons:
+#   - Requires GKE with managed Prometheus enabled (GKE 1.27+)
+#   - Slightly more complex setup
+#   - Need to enable GMP on the cluster
+#
+#   PromQL example:
+#     kube_pod_status_phase{namespace="ragflow",phase!="Running"} == 1
+#     [for: 2m]  # Condition must persist for 2 minutes
+#
+# GCP Alert Policies support PromQL through conditionPrometheusQueryLanguage.
+# This allows us to use increase(), rate(), etc. for proper state-based alerting.
+#
+# To enable GMP on GKE:
+#   gcloud container clusters update CLUSTER_NAME --region=REGION --enable-managed-prometheus
+#
+# =============================================================================
 
 def run_cmd(cmd, check=True, capture_output=True, timeout=60):
     """Run a shell command and return the result.
@@ -379,6 +446,20 @@ def enable_gateway_api(project, cluster_name, region, zone):
     print("  Gateway API enabled.")
 
 
+def enable_managed_prometheus(project, cluster_name, region, zone):
+    """Enable Managed Prometheus on the GKE cluster."""
+    print(f"\nEnabling Managed Prometheus on cluster {cluster_name}...")
+
+    cmd = f"gcloud container clusters update {cluster_name} --project={project} --enable-managed-prometheus"
+    if zone:
+        cmd += f" --zone={zone}"
+    else:
+        cmd += f" --region={region}"
+
+    run_cmd(cmd, check=True)
+    print("  Managed Prometheus enabled.")
+
+
 def create_proxy_only_subnet(project, cluster_name, region):
     """
     Create a proxy-only subnet for GKE Gateway in the cluster's VPC network.
@@ -460,31 +541,37 @@ def create_proxy_only_subnet(project, cluster_name, region):
     result = run_cmd(cmd, check=False)
 
     if result.returncode != 0:
-        # Try alternative CIDR if the default one fails
-        print("  First attempt failed. Trying alternative CIDR range...")
+        error_output = result.stderr + result.stdout
+        # Only retry with alternative CIDRs if it's a CIDR/IP range conflict error
+        if "IP_RANGE" in error_output or "range is already" in error_output.lower() or "conflicts with" in error_output.lower():
+            print("  First attempt failed (CIDR conflict). Trying alternative CIDR range...")
+            # Try different CIDR ranges
+            alternative_cidrs = ["10.129.0.0/23", "10.130.0.0/23", "10.131.0.0/23"]
 
-        # Try different CIDR ranges
-        alternative_cidrs = ["10.129.0.0/23", "10.130.0.0/23", "10.131.0.0/23"]
+            for alt_cidr in alternative_cidrs:
+                print(f"  Trying CIDR: {alt_cidr}")
+                cmd = f"gcloud compute networks subnets create {subnet_name} "
+                cmd += f"--project={project} "
+                cmd += f"--network={network} "
+                cmd += f"--region={region} "
+                cmd += f"--range={alt_cidr} "
+                cmd += "--purpose=REGIONAL_MANAGED_PROXY "
+                cmd += "--role=ACTIVE"
 
-        for alt_cidr in alternative_cidrs:
-            print(f"  Trying CIDR: {alt_cidr}")
-            cmd = f"gcloud compute networks subnets create {subnet_name} "
-            cmd += f"--project={project} "
-            cmd += f"--network={network} "
-            cmd += f"--region={region} "
-            cmd += f"--range={alt_cidr} "
-            cmd += "--purpose=REGIONAL_MANAGED_PROXY "
-            cmd += "--role=ACTIVE"
-
-            result = run_cmd(cmd, check=False)
-            if result.returncode == 0:
-                print(f"  ✓ Successfully created proxy-only subnet with range {alt_cidr}")
-                break
+                result = run_cmd(cmd, check=False)
+                if result.returncode == 0:
+                    print(f"  ✓ Successfully created proxy-only subnet with range {alt_cidr}")
+                    break
+            else:
+                print("  Error: Could not create proxy-only subnet with any of the attempted CIDR ranges.")
+                print("  Please check the existing subnets in the VPC and specify a non-overlapping CIDR range.")
+                print("\n  To list existing subnets:")
+                print(f"    gcloud compute networks subnets list --project={project} --regions={region}")
+                sys.exit(1)
         else:
-            print("  Error: Could not create proxy-only subnet with any of the attempted CIDR ranges.")
-            print("  Please check the existing subnets in the VPC and specify a non-overlapping CIDR range.")
-            print("\n  To list existing subnets:")
-            print(f"    gcloud compute networks subnets list --project={project} --regions={region}")
+            # Non-CIDR error (e.g., permission denied)
+            print(f"  Error creating subnet: {error_output}")
+            print("  Please check that the service account has 'Compute Network Admin' role.")
             sys.exit(1)
 
     print("\n  ✓ Proxy-only subnet created successfully!")
@@ -673,8 +760,18 @@ def update_terraform_tfvars(variables, example_file=None):
         print(f'  Set {var_name} = "{value}"')
 
 
-def create_gcs_bucket(project, cluster_id):
-    """Create GCS bucket for RAGFlow storage (if not exists)."""
+def create_gcs_bucket(project, cluster_id, gke_namespace="ragflow"):
+    """Create GCS bucket for RAGFlow storage (if not exists) and configure IAM.
+
+    Args:
+        project: GCP project ID
+        cluster_id: GKE cluster ID (used to generate bucket name)
+        gke_namespace: Kubernetes namespace for RAGFlow (used for Workload Identity binding)
+
+    The bucket is configured with:
+    - Bucket-level IAM binding for the GCP service account used by RAGFlow
+    - Workload Identity binding between K8s default SA and GCP SA
+    """
     print("\n" + "=" * 70)
     print("Creating GCS Bucket for RAGFlow")
     print("=" * 70)
@@ -687,185 +784,263 @@ def create_gcs_bucket(project, cluster_id):
 
     # Check if bucket already exists
     print(f"\nChecking if bucket '{bucket_name}' exists...")
-    result = run_cmd(f"gsutil ls -b gs://{bucket_name} 2>/dev/null", check=False)
+    result = run_cmd(f"gcloud storage buckets list --filter='name:{bucket_name}' --format='value(name)'", check=False)
 
-    if result.returncode == 0:
+    bucket_existed = result.returncode == 0
+    if bucket_existed:
         print(f"  Bucket '{bucket_name}' already exists.")
+    else:
+        # Create bucket
+        print(f"  Bucket not found. Creating '{bucket_name}'...")
+        result = run_cmd(f"gsutil mb -p {project} -l us-central1 gs://{bucket_name}/", check=False)
+
+        if result.returncode == 0:
+            print(f"  Bucket '{bucket_name}' created successfully!")
+        else:
+            print(f"  Error: Could not create bucket: {result.stderr}")
+            sys.exit(1)
+
+    # Get project number for service account emails
+    result = run_cmd(f"gcloud projects describe {project} --format='value(projectNumber)'", check=False)
+    if result.returncode != 0:
+        print(f"  Warning: Could not get project number: {result.stderr}")
         return bucket_name
 
-    # Create bucket
-    print(f"  Bucket not found. Creating '{bucket_name}'...")
-    result = run_cmd(f"gsutil mb -p {project} -l us-central1 gs://{bucket_name}/", check=False)
+    project_number = result.stdout.strip()
 
+    # GCP service account for RAGFlow (created separately or used as is)
+    gcp_sa_email = f"ragflow-gcs@{project}.iam.gserviceaccount.com"
+
+    # Node service account (used by GKE nodes via Workload Identity)
+    node_sa_email = f"{project_number}-compute@developer.gserviceaccount.com"
+
+    # Add bucket-level IAM bindings for both node SA and GCP SA
+    print(f"\nConfiguring bucket IAM for '{bucket_name}'...")
+
+    # Grant storage.objectAdmin to node SA and GCP SA
+    for sa_email in [node_sa_email, gcp_sa_email]:
+        result = run_cmd(
+            f"gsutil iam ch serviceAccount:{sa_email}:roles/storage.objectAdmin gs://{bucket_name}",
+            check=False,
+        )
+        if result.returncode == 0:
+            print(f"  storage.objectAdmin granted to {sa_email}")
+        elif "already exists" in result.stderr.lower() or "duplicate" in result.stderr.lower():
+            print(f"  storage.objectAdmin already exists for {sa_email}")
+        else:
+            print(f"  Warning: Could not grant storage.objectAdmin to {sa_email}: {result.stderr}")
+
+    # Set up Workload Identity binding for K8s default SA to GCP SA
+    # This allows pods using the default K8s SA to impersonate the GCP SA
+    print(f"\nSetting up Workload Identity binding for K8s namespace '{gke_namespace}'...")
+
+    workload_pool = f"{project}.svc.id.goog"
+    k8s_sa_member = f"serviceAccount:{workload_pool}[{gke_namespace}/default]"
+
+    # Add iam.serviceAccountTokenCreator to allow K8s SA to impersonate GCP SA
+    result = run_cmd(
+        f"gcloud iam service-accounts add-iam-policy-binding {gcp_sa_email} "
+        f"--project={project} "
+        f'--member="{k8s_sa_member}" '
+        f'--role="roles/iam.serviceAccountTokenCreator"',
+        check=False,
+    )
     if result.returncode == 0:
-        print(f"  Bucket '{bucket_name}' created successfully!")
+        print(f"  roles/iam.serviceAccountTokenCreator granted to {k8s_sa_member}")
+    elif "duplicate" in result.stderr.lower():
+        print(f"  roles/iam.serviceAccountTokenCreator already exists for {k8s_sa_member}")
     else:
-        print(f"  Error: Could not create bucket: {result.stderr}")
-        sys.exit(1)
+        print(f"  Warning: {result.stderr}")
+
+    # Add iam.workloadIdentityUser to allow pods to use the GCP SA identity
+    result = run_cmd(
+        f"gcloud iam service-accounts add-iam-policy-binding {gcp_sa_email} "
+        f"--project={project} "
+        f'--member="{k8s_sa_member}" '
+        f'--role="roles/iam.workloadIdentityUser"',
+        check=False,
+    )
+    if result.returncode == 0:
+        print(f"  roles/iam.workloadIdentityUser granted to {k8s_sa_member}")
+    elif "duplicate" in result.stderr.lower():
+        print(f"  roles/iam.workloadIdentityUser already exists for {k8s_sa_member}")
+    else:
+        print(f"  Warning: {result.stderr}")
 
     return bucket_name
 
 
-def create_gcs_service_account(project, cluster_name, region, namespace="ragflow"):
-    """Create GCS service account and configure Workload Identity."""
-    print("\n" + "=" * 70)
-    print("Creating GCS Service Account with Storage Admin Role")
-    print("=" * 70)
+def add_node_sa_gcs_permissions(project):
+    """Add GCS read/write permissions to node service account.
 
-    gcs_sa_email = f"ragflow-gcs@{project}.iam.gserviceaccount.com"
-    k8s_sa_name = "ragflow-gcs"  # Kubernetes Service Account name
-
-    # Check if service account already exists
-    print(f"\nChecking if service account '{gcs_sa_email}' exists...")
-    result = run_cmd(f"gcloud iam service-accounts describe {gcs_sa_email} --project={project}", check=False)
-
-    if result.returncode != 0:
-        print("  Service account not found. Creating...")
-        # Create service account
-        result = run_cmd(f'gcloud iam service-accounts create ragflow-gcs --display-name="RAGFlow GCS Service Account" --description="Service account for RAGFlow to access GCS" --project={project}')
-        print("  Service account created successfully!")
-    else:
-        print("  Service account already exists.")
-
-    # Enable Cloud Resource Manager API (required for IAM operations)
-    print("\nEnabling Cloud Resource Manager API...")
-    result = run_cmd(f"gcloud services enable cloudresourcemanager.googleapis.com --project={project}", check=True)
-    if result.returncode == 0:
-        print("  Cloud Resource Manager API enabled successfully!")
-    else:
-        print(f"  Warning: Could not enable API: {result.stderr}")
-
-    # Grant Storage Admin role (includes bucket listing and object operations)
-    print(f"\nGranting Storage Admin role to {gcs_sa_email}...")
-    result = run_cmd(f'gcloud projects add-iam-policy-binding {project} --member="serviceAccount:{gcs_sa_email}" --role="roles/storage.admin" --quiet', check=False)
-
-    if result.returncode == 0:
-        print("  Storage Admin role granted successfully!")
-    else:
-        # Check if already has the role
-        check_result = run_cmd(f"gcloud projects get-iam-policy {project} --format=json", check=False)
-        if check_result.returncode == 0:
-            import json
-
-            try:
-                policy = json.loads(check_result.stdout)
-                for binding in policy.get("bindings", []):
-                    if binding.get("role") == "roles/storage.admin":
-                        members = binding.get("members", [])
-                        if f"serviceAccount:{gcs_sa_email}" in members:
-                            print("  Service account already has Storage Object Admin role.")
-                            return
-            except Exception:
-                pass
-        print(f"  Warning: Could not grant role (may already exist): {result.stderr}")
-
-    # Configure Workload Identity
-    print("\nConfiguring Workload Identity...")
-    print(f"  GCP Service Account: {gcs_sa_email}")
-    print(f"  Kubernetes Namespace: {namespace}")
-    print(f"  Kubernetes SA Name: {k8s_sa_name}")
-
-    # Create K8s Service Account if not exists
-    print("\n  Creating Kubernetes Service Account...")
-    result = run_cmd(f"kubectl get serviceaccount {k8s_sa_name} -n {namespace}", check=False)
-
-    if result.returncode != 0:
-        run_cmd(f"kubectl create serviceaccount {k8s_sa_name} -n {namespace}", check=False)
-        print(f"    Created K8s SA: {k8s_sa_name}")
-    else:
-        print(f"    K8s SA already exists: {k8s_sa_name}")
-
-    # Bind GCP SA to K8s SA using IAM
-    print("\n  Binding GCP SA to K8s SA (IAM)...")
-    member = f"serviceAccount:{project}.svc.id.goog[{namespace}/{k8s_sa_name}]"
-    result = run_cmd(f'gcloud iam service-accounts add-iam-policy-binding {gcs_sa_email} --member="{member}" --role=roles/iam.workloadIdentityUser --project={project}', check=False)
-
-    if result.returncode == 0:
-        print("    IAM binding created successfully!")
-    elif "already exists" in result.stderr:
-        print("    IAM binding already exists.")
-    else:
-        print(f"    Error: {result.stderr}")
-        sys.exit(1)
-
-    # Annotate K8s SA with GCP SA email
-    print("\n  Annotating Kubernetes Service Account...")
-    run_cmd(f"kubectl annotate serviceaccount {k8s_sa_name} -n {namespace} iam.gke.io/gcp-service-account={gcs_sa_email} --overwrite", check=False)
-    print(f"    Annotation added: iam.gke.io/gcp-service-account={gcs_sa_email}")
-
-    print("\n  Workload Identity configured successfully!")
-    print(f"  Use this K8s SA in your deployment: serviceAccountName: {k8s_sa_name}")
-
-
-def create_log_metric(project):
-    """Create log-based metric for Pod status change events (idempotent).
-
-    This function is idempotent - if the metric already exists, it will
-    return True without creating a duplicate.
+    The GKE node service account (default SA) needs storage.objectViewer
+    and storage.objectCreator roles to access GCS buckets used by RAGFlow.
 
     Args:
         project: GCP project ID
 
-    Returns:
-        True if metric was created or already exists, False on error
+    Note:
+        Node SA typically has format: PROJECT_NUMBER-compute@developer.gserviceaccount.com
+        The project number can be obtained from the project ID.
     """
     print("\n" + "=" * 70)
-    print("Creating Log-Based Metric for Pod Status Changes")
+    print("Adding GCS Permissions to Node Service Account")
     print("=" * 70)
 
-    metric_name = "pod_status_change_events"
-    # To debug the log-based metric, use the Google Cloud Logging metrics page:
-    # https://console.cloud.google.com/logs/metrics
-    # Filter to match Kubernetes Pod events in the ragflow namespace.
-    # We use log_id() and resource.type for precise metric matching instead of loose substring matching.
-    filter_query = POD_STATUS_CHANGE_FILTER
+    # Get project number
+    result = run_cmd(f"gcloud projects describe {project} --format='value(projectNumber)'", check=False)
+    if result.returncode != 0:
+        print(f"  Error: Could not get project number: {result.stderr}")
+        return False
 
-    # Check if metric already exists
-    result = run_cmd(f"gcloud logging metrics describe {metric_name} --project={project}", check=False)
+    project_number = result.stdout.strip()
+    node_sa_email = f"{project_number}-compute@developer.gserviceaccount.com"
 
-    if result.returncode == 0:
-        # Metric exists, check if filter matches
-        existing_filter = ""
-        # Extract filter from output - look for filter: or filter= line
-        for line in result.stdout.split("\n"):
-            if line.startswith("filter:"):
-                existing_filter = line.split("filter:", 1)[1].strip().strip('"')
-                break
-        if existing_filter == filter_query:
-            print(f"  Metric '{metric_name}' already exists with matching filter.")
-            return True
-        else:
-            # Filter changed, update the metric
-            print(f"  Metric '{metric_name}' exists but filter changed. Updating...")
-            result = run_cmd(
-                f'gcloud logging metrics update {metric_name} '
-                f'--description="Pod status change events in Kubernetes" '
-                f'--log-filter="{filter_query}" '
-                f'--project={project}',
-                check=False,
-            )
-            if result.returncode == 0:
-                print(f"  Metric '{metric_name}' updated successfully!")
-                return True
-            else:
-                print(f"  Warning: Could not update metric: {result.stderr}")
-                return False
+    print(f"\nNode service account: {node_sa_email}")
 
-    # Create the metric
-    print(f"  Creating log-based metric '{metric_name}'...")
+    # Grant storage.objectViewer (read) role
+    print("\nGranting storage.objectViewer role...")
     result = run_cmd(
-        f'gcloud logging metrics create {metric_name} '
-        f'--description="Pod status change events in Kubernetes" '
-        f'--log-filter="{filter_query}" '
-        f'--project={project}',
+        f"gcloud projects add-iam-policy-binding {project} "
+        f'--member="serviceAccount:{node_sa_email}" '
+        f'--role="roles/storage.objectViewer"',
         check=False,
     )
+    if result.returncode == 0:
+        print("  storage.objectViewer role granted.")
+    elif "already exists" in result.stderr or "duplicate" in result.stderr.lower():
+        print("  storage.objectViewer role already granted.")
+    else:
+        print(f"  Warning: {result.stderr}")
+
+    # Grant storage.objectCreator (write) role
+    print("\nGranting storage.objectCreator role...")
+    result = run_cmd(
+        f"gcloud projects add-iam-policy-binding {project} "
+        f'--member="serviceAccount:{node_sa_email}" '
+        f'--role="roles/storage.objectCreator"',
+        check=False,
+    )
+    if result.returncode == 0:
+        print("  storage.objectCreator role granted.")
+    elif "already exists" in result.stderr or "duplicate" in result.stderr.lower():
+        print("  storage.objectCreator role already granted.")
+    else:
+        print(f"  Warning: {result.stderr}")
+
+    print("\nNode service account now has GCS read/write permissions.")
+    return True
+
+
+def create_image_pull_secret(project, namespace="ragflow"):
+    """Create imagePullSecret for GCR authentication.
+
+    This solves the ImagePullBackOff issue when GKE kubelet requests GCR token
+    with incorrect scope format when using Workload Identity.
+
+    The solution uses a dedicated service account with explicit credentials
+    via imagePullSecrets instead of relying on Workload Identity for GCR.
+
+    Args:
+        project: GCP project ID
+        namespace: Kubernetes namespace (default: ragflow)
+
+    Returns:
+        True if secret was created or already exists, False on error
+    """
+    print("\n" + "=" * 70)
+    print("Creating Image Pull Secret for GCR")
+    print("=" * 70)
+
+    image_sa_email = f"ragflow-image-pull@{project}.iam.gserviceaccount.com"
+    secret_name = "gcr-image-pull"
+
+    # Check if secret already exists
+    print(f"\nChecking if imagePullSecret '{secret_name}' exists in namespace '{namespace}'...")
+    result = run_cmd(f"kubectl get secret {secret_name} -n {namespace}", check=False)
 
     if result.returncode == 0:
-        print(f"  Metric '{metric_name}' created successfully!")
+        print(f"  Secret '{secret_name}' already exists.")
+        return True
+
+    # Step 1: Create service account for image pulling
+    print(f"\nCreating service account '{image_sa_email}' for image pulling...")
+    result = run_cmd(
+        f"gcloud iam service-accounts create ragflow-image-pull "
+        f'--display-name="RAGFlow Image Pull" '
+        f'--description="Service account for pulling images from GCR" '
+        f"--project={project}",
+        check=False,
+    )
+    if result.returncode == 0:
+        print("  Service account created.")
+    elif "already exists" in result.stderr:
+        print("  Service account already exists.")
+    else:
+        print(f"  Warning: {result.stderr}")
+
+    # Wait for SA to propagate
+    print("\nWaiting for service account to propagate...")
+    import time
+    time.sleep(5)
+
+    # Step 2: Grant artifactregistry.reader role
+    print(f"\nGranting artifactregistry.reader role to {image_sa_email}...")
+    result = run_cmd(
+        f"gcloud projects add-iam-policy-binding {project} "
+        f'--member="serviceAccount:{image_sa_email}" '
+        f'--role="roles/artifactregistry.reader"',
+        check=False,
+    )
+    if result.returncode == 0:
+        print("  Role granted successfully.")
+    elif "already exists" in result.stderr or "duplicate" in result.stderr.lower():
+        print("  Role already granted.")
+    else:
+        print(f"  Warning: {result.stderr}")
+
+    # Step 3: Create SA key for imagePullSecret
+    print("\nCreating service account key...")
+    key_file = "/tmp/image-pull-key.json"
+    result = run_cmd(
+        f"gcloud iam service-accounts keys create {key_file} "
+        f"--iam-account={image_sa_email}",
+        check=False,
+    )
+    if result.returncode != 0:
+        print(f"  Error: Could not create SA key: {result.stderr}")
+        return False
+
+    # Step 4: Create imagePullSecret
+    print(f"\nCreating imagePullSecret '{secret_name}' in namespace '{namespace}'...")
+    with open(key_file, "r") as f:
+        key_content = f.read()
+
+    # Use kubectl to create the secret
+    cmd = (
+        f'kubectl create secret docker-registry {secret_name} '
+        f'--docker-server=gcr.io '
+        f'--docker-username=_json_key '
+        f'--docker-password=\'{key_content}\' '
+        f'--docker-email={image_sa_email} '
+        f"-n {namespace}"
+    )
+    result = run_cmd(cmd, check=False)
+
+    # Clean up key file
+    try:
+        os.remove(key_file)
+    except OSError:
+        pass
+
+    if result.returncode == 0:
+        print(f"  imagePullSecret '{secret_name}' created successfully!")
+        print("\n  Add to your deployment spec:")
+        print("    image_pull_secrets:")
+        print(f"      - name: {secret_name}")
         return True
     else:
-        print(f"  Warning: Could not create metric: {result.stderr}")
+        print(f"  Error: Could not create secret: {result.stderr}")
         return False
 
 
@@ -943,23 +1118,27 @@ def create_notification_channel(project, email_address):
     return None
 
 
-def setup_monitoring_alerts(project):
-    """Setup monitoring alerts with batched Pod status change notifications.
+def setup_monitoring_alerts(project, cluster_name, region, zone=None):
+    """Setup monitoring alerts for Pod status monitoring using PromQL.
+
+    Uses conditionPrometheusQueryLanguage for PromQL-based alerting with GKE metrics.
 
     Args:
         project: GCP project ID
+        cluster_name: GKE cluster name
+        region: GKE cluster region
+        zone: GKE cluster zone (optional)
 
     Returns:
         True if setup was successful, False otherwise
 
     Note:
         This function creates:
-        - Log-based metric: pod_status_change_events (captures K8s Pod events)
-        - Alert policy: Batched notifications with 5min duration and 10min cooldown
+        - Alert policies using PromQL queries against GKE metrics via GMP
         - Email notification channel(s) (if GCP_ALERT_EMAIL is set)
 
     Environment Variables:
-        GCP_ALERT_EMAIL: Comma-separated list of email addresses (e.g., "a@example.com,b@example.com")
+        GCP_ALERT_EMAIL: Comma-separated list of email addresses
     """
     email_config = os.environ.get("GCP_ALERT_EMAIL")
     if not email_config:
@@ -973,12 +1152,10 @@ def setup_monitoring_alerts(project):
         return False
 
     print("\n" + "=" * 70)
-    print("Setting Up Monitoring Alerts")
+    print("Setting Up Monitoring Alerts (PromQL)")
     print("=" * 70)
     print(f"  Alert emails: {', '.join(email_addresses)}")
-
-    # Create log-based metric first
-    create_log_metric(project)
+    print("  Using PromQL for state-based alerting")
 
     # Create notification channels for each email
     channel_ids = []
@@ -987,193 +1164,172 @@ def setup_monitoring_alerts(project):
         if channel_id:
             channel_ids.append(channel_id)
 
-    # Create the alert policy using command line arguments
-    return create_alert_policy(project, channel_ids)
+    return create_gmp_alert_policy(project, channel_ids, cluster_name, region, zone)
 
 
-def create_alert_policy(project, channel_ids):
-    """Create alert policy for Pod status change events (idempotent).
 
-    This function is idempotent - if the alert policy already exists, it will
-    update the notification channels and return True without creating a duplicate.
+def create_gmp_alert_policy(project, channel_ids, cluster_name, region, zone=None):
+    """Create alert policies for Pod status monitoring using PromQL (idempotent).
+
+    Uses conditionPrometheusQueryLanguage to support PromQL queries including
+    increase(), rate(), and other functions for proper state-based alerting.
+
+    This function is idempotent - if policies already exist, it will update notification
+    channels and return True without creating duplicates.
 
     Args:
         project: GCP project ID
         channel_ids: List of notification channel IDs (resource names)
+        cluster_name: GKE cluster name
+        region: GKE cluster region
+        zone: GKE cluster zone (optional, uses region if not provided)
 
     Returns:
         True if created or updated successfully
     """
     print("\n" + "=" * 70)
-    print("Creating Alert Policy")
+    print("Creating Alert Policies (PromQL)")
     print("=" * 70)
 
-    policy_display_name = "Pod Status Change Alert"
+    # Enable Managed Prometheus on the cluster first
+    enable_managed_prometheus(project, cluster_name, region, zone)
 
-    def policy_exists():
-        verify_result = run_cmd(
-            f'gcloud alpha monitoring policies list --project={project} --filter="displayName=\'{policy_display_name}\'" --format="value(name)"',
-            check=False,
-        )
-        if verify_result.returncode != 0:
-            return False, verify_result.stderr, ""
-        policy_name = verify_result.stdout.strip()
-        # Extract policy ID from the full resource name (e.g., projects/xxx/alertPolicies/123456789)
-        policy_id = policy_name.split("/")[-1] if policy_name else ""
-        return bool(policy_name), policy_name, policy_id
+    # Define alert policies using conditionPrometheusQueryLanguage (PromQL) for
+    # Prometheus metrics or conditionThreshold for Anthos metrics.
+    #
+    # Note: GCP Managed Prometheus only exposes a subset of kube-state-metrics.
+    # For container restart metrics, we must use Anthos metrics
+    # (kubernetes.io/anthos/kube_pod_container_status_restarts_total) with
+    # conditionThreshold, as they are not available via Prometheus.
+    policies = [
+        {
+            "display_name": f"Critical - Pod Not Running ({cluster_name})",
+            "description": "At least one pod is not in Running phase - indicates crash, eviction, or scheduling failure",
+            "condition_type": "promql",
+            "promql": f'kube_pod_status_phase{{cluster="{cluster_name}",namespace="ragflow",phase!="Running"}} == 1',
+            "duration": "120s",
+            "severity": "CRITICAL",
+        },
+        {
+            "display_name": f"Critical - Container Restarting ({cluster_name})",
+            "description": "Containers in ragflow namespace are restarting - indicates unstable workload or resource issues",
+            "condition_type": "threshold",
+            "metric_type": "kubernetes.io/anthos/kube_pod_container_status_restarts_total",
+            "filter_template": 'resource.type="k8s_container" AND metric.type="kubernetes.io/anthos/kube_pod_container_status_restarts_total" AND resource.labels.cluster_name="{cluster}" AND resource.labels.namespace_name="ragflow"',
+            "comparison": "COMPARISON_GT",
+            "threshold_value": 0,
+            "duration": "60s",
+            # Required for CUMULIVE metrics - ALIGN_RATE computes the rate of change
+            "aggregation": {
+                "alignmentPeriod": "60s",
+                "perSeriesAligner": "ALIGN_RATE",
+            },
+            "severity": "CRITICAL",
+        },
+    ]
 
-    def update_existing_policy(policy_name, policy_id):
-        if not channel_ids:
-            print(f"  Alert policy '{policy_display_name}' already exists, but no notification channels are available to attach.")
-            return True
+    all_created = True
 
-        channel_arg = ",".join(channel_ids)
-        result = run_cmd(
-            f"gcloud alpha monitoring policies update {policy_name} --project={project} --set-notification-channels={channel_arg}",
-            check=False,
-        )
-        if result.returncode == 0:
-            print(f"  Alert policy '{policy_display_name}' already exists. Notification channels refreshed.")
-            print(f"  Manage alert policy at: https://console.cloud.google.com/monitoring/alerting/policies/{policy_id}?project={project}")
-            return True
+    for policy_def in policies:
+        policy_display_name = policy_def["display_name"]
 
-        print(f"  Warning: Alert policy exists, but notification channel update failed: {result.stderr}")
-        return False
+        def policy_exists():
+            verify_result = run_cmd(
+                f'gcloud alpha monitoring policies list --project={project} --filter="displayName=\'{policy_display_name}\'" --format="value(name)"',
+                check=False,
+            )
+            if verify_result.returncode != 0:
+                return False, verify_result.stderr, ""
+            policy_name = verify_result.stdout.strip()
+            policy_id = policy_name.split("/")[-1] if policy_name else ""
+            return bool(policy_name), policy_name, policy_id
 
-    # Check if policy already exists
-    exists, existing_policy, existing_policy_id = policy_exists()
-    if exists:
-        return update_existing_policy(existing_policy, existing_policy_id)
-
-    # Define policy in JSON.
-    # The logs-based metric is created from Logging entries with logName="events",
-    # but Cloud Monitoring evaluates user-defined logs-based metrics on the monitored
-    # resource type "global".
-    # Use ALIGN_RATE to detect any events over the alignment window.
-    policy_json = {
-        "displayName": policy_display_name,
-        "combiner": "OR",
-        "conditions": [
-            {
-                "displayName": "Pod Status Change Detected",
-                "conditionThreshold": {
-                    "filter": 'metric.type="logging.googleapis.com/user/pod_status_change_events" AND resource.type="k8s_pod"',
-                    "comparison": "COMPARISON_GT",
-                    "thresholdValue": 0,
-                    "duration": "60s",
-                    "trigger": {"count": 1},
-                    "aggregations": [{"alignmentPeriod": "300s", "perSeriesAligner": "ALIGN_RATE", "crossSeriesReducer": "REDUCE_SUM"}],
-                },
-            }
-        ],
-        "notificationChannels": channel_ids,
-        "enabled": True,
-    }
-
-    if not channel_ids:
-        print("  Warning: No notification channels provided. Creating policy without notification channels.")
-
-    # Create temporary file for policy JSON
-    # Use tempfile to create a uniquely named file
-    fd, policy_file = tempfile.mkstemp(suffix=".json", text=True)
-    try:
-        with os.fdopen(fd, "w") as f:
-            json.dump(policy_json, f, indent=2)
-
-        print(f"  Creating alert policy '{policy_display_name}'...")
-        # Use gcloud to create policy from file
-        result = run_cmd(f"gcloud alpha monitoring policies create --policy-from-file={policy_file} --project={project}", check=False)
-
-        if result.returncode == 0:
-            verified, verify_name, verify_id = policy_exists()
-            if verified:
-                print("  Alert policy created successfully!")
-                print(f"  Manage alert policy at: https://console.cloud.google.com/monitoring/alerting/policies/{verify_id}?project={project}")
+        def update_existing_policy(policy_name, policy_id):
+            if not channel_ids:
+                print(f"  Alert policy '{policy_display_name}' already exists, but no notification channels.")
                 return True
 
-            print("  Warning: Create command succeeded, but policy verification failed.")
-            if verify_name:
-                print(f"  Verification details: {verify_name}")
+            channel_arg = ",".join(channel_ids)
+            result = run_cmd(
+                f"gcloud alpha monitoring policies update {policy_name} --project={project} --set-notification-channels={channel_arg}",
+                check=False,
+            )
+            if result.returncode == 0:
+                print(f"  Alert policy '{policy_display_name}' already exists. Notification channels refreshed.")
+                print(f"  Manage at: https://console.cloud.google.com/monitoring/alerting/policies/{policy_id}?project={project}")
+                return True
+            print(f"  Warning: Policy exists but channel update failed: {result.stderr}")
             return False
-        else:
-            print(f"  Warning: Could not create alert policy: {result.stderr}")
-            if "ALIGN_RATE" in result.stderr:
-                print("  Note: Ensure the metric kind matches the aligner.")
-            return False
-    finally:
-        if os.path.exists(policy_file):
-            os.remove(policy_file)
 
-def print_next_steps():
-    """Print next steps for the user."""
-    print("\n" + "=" * 70)
-    print("NEXT STEPS")
-    print("=" * 70)
-    print("""
-Note: The gke_setup.py script has already:
-  1. Enabled public access to the GKE cluster
-  2. Enabled Gateway API on the cluster
-  3. Created a proxy-only subnet for GKE Gateway
-  4. Created log-based metric and alert policy (if GCP_ALERT_EMAIL is set)
+        # Check if policy already exists
+        exists, existing_policy, existing_policy_id = policy_exists()
+        if exists:
+            update_existing_policy(existing_policy, existing_policy_id)
+            continue
 
-If running gke_setup.py again:
-  - The proxy-only subnet will be created if it doesn't exist
-  - If it already exists with the correct purpose, it will be skipped
-  - Alert policy will be updated if already exists
+        # Build condition based on type: promql or threshold
+        if policy_def["condition_type"] == "promql":
+            condition = {
+                "displayName": policy_def["description"],
+                "conditionPrometheusQueryLanguage": {
+                    "query": policy_def["promql"],
+                    "duration": policy_def["duration"],
+                },
+            }
+        else:  # threshold
+            threshold_cond = {
+                "filter": policy_def["filter_template"].format(cluster=cluster_name),
+                "comparison": policy_def["comparison"],
+                "thresholdValue": policy_def["threshold_value"],
+                "duration": policy_def["duration"],
+            }
+            if "aggregation" in policy_def:
+                threshold_cond["aggregations"] = [policy_def["aggregation"]]
+            condition = {
+                "displayName": policy_def["description"],
+                "conditionThreshold": threshold_cond,
+            }
 
-To configure alert email notifications:
-  - Set environment variable: export GCP_ALERT_EMAIL=email1@example.com,email2@example.com
+        # Build policy JSON for alert policies
+        policy_json = {
+            "displayName": policy_display_name,
+            "combiner": "OR",
+            "conditions": [condition],
+            "notificationChannels": channel_ids,
+            "enabled": True,
+            "severity": policy_def.get("severity", "CRITICAL"),
+        }
 
-If gke-gcloud-auth-plugin is not available, install via apt:
-  echo 'deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main' | sudo tee /etc/apt/sources.list.d/google-cloud-sdk.list
-  curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg
-  sudo apt-get update && sudo apt-get install -y google-cloud-cli-gke-gcloud-auth-plugin
+        if not channel_ids:
+            print(f"  Warning: No notification channels provided for '{policy_display_name}'.")
 
-Manual proxy-only subnet creation (if needed):
-  gcloud compute networks subnets create proxy-only-subnet-asia-east2 \\
-    --network=default \\
-    --region=asia-east2 \\
-    --range=10.120.0.0/23 \\
-    --purpose=REGIONAL_MANAGED_PROXY \\
-    --role=ACTIVE
+        fd, policy_file = tempfile.mkstemp(suffix=".json", text=True)
+        try:
+            with os.fdopen(fd, "w") as f:
+                json.dump(policy_json, f, indent=2)
 
-1. Pull RAGFlow images from Aliyun registry and push to GCR:
+            print(f"  Creating alert policy '{policy_display_name}'...")
+            result = run_cmd(
+                f"gcloud alpha monitoring policies create --policy-from-file={policy_file} --project={project}",
+                check=False,
+            )
 
-   # Login to Aliyun registry (use your Aliyun credentials)
-   sudo docker login infiniflow-registry.cn-shanghai.cr.aliyuncs.com
+            if result.returncode == 0:
+                verified, verify_name, verify_id = policy_exists()
+                if verified:
+                    print("  Alert policy created successfully!")
+                    print(f"  Manage at: https://console.cloud.google.com/monitoring/alerting/policies/{verify_id}?project={project}")
+                else:
+                    print("  Warning: Create succeeded but verification failed.")
+                    all_created = False
+            else:
+                print(f"  Warning: Could not create alert policy: {result.stderr}")
+                all_created = False
+        finally:
+            if os.path.exists(policy_file):
+                os.remove(policy_file)
 
-   # Pull images
-   sudo docker pull infiniflow-registry.cn-shanghai.cr.aliyuncs.com/infiniflow-ai/ragflow:latest
-   sudo docker pull infiniflow-registry.cn-shanghai.cr.aliyuncs.com/infiniflow-ai/deepdoc_cpu:latest
-
-   # Tag for GCR
-   sudo docker tag infiniflow-registry.cn-shanghai.cr.aliyuncs.com/infiniflow-ai/ragflow:latest gcr.io/{PROJECT}/ragflow:latest
-   sudo docker tag infiniflow-registry.cn-shanghai.cr.aliyuncs.com/infiniflow-ai/deepdoc_cpu:latest gcr.io/{PROJECT}/deepdoc_cpu:latest
-
-   # Login to GCR
-   gcloud auth configure-docker
-
-   # Push to GCR
-   sudo docker push gcr.io/{PROJECT}/ragflow:latest
-   sudo docker push gcr.io/{PROJECT}/deepdoc_cpu:latest
-
-2. Deploy RAGFlow with OpenTofu:
-
-   cd onpremises
-   tofu init
-   tofu plan
-   tofu apply
-
-3. Access RAGFlow:
-
-   # Get the gateway IP
-   kubectl get svc -n ragflow
-
-   # Or use port-forward for testing
-   kubectl port-forward -n ragflow svc/ragflow 9380:9380
-   # Then access http://localhost:9380
-""")
-    print("=" * 70)
+    return all_created
 
 
 def main():
@@ -1214,8 +1370,18 @@ def main():
     # Create kubeconfig
     create_kubeconfig(endpoint, cluster_ca_cert, cluster["name"], project)
 
-    # Create GCS bucket for RAGFlow storage
-    bucket_name = create_gcs_bucket(project, cluster.get("id", cluster.get("name", "cluster")))
+    # Read namespace from terraform.tfvars (needed for GCS bucket setup)
+    tfvars_path = "terraform.tfvars"
+    namespace = "ragflow"  # default
+    if os.path.exists(tfvars_path):
+        with open(tfvars_path, "r") as f:
+            for line in f:
+                if line.strip().startswith("namespace"):
+                    namespace = line.split("=")[1].strip().strip('"')
+                    break
+
+    # Create GCS bucket for RAGFlow storage (includes bucket IAM and Workload Identity setup)
+    bucket_name = create_gcs_bucket(project, cluster.get("id", cluster.get("name", "cluster")), namespace)
 
     # Update terraform.tfvars with all variables at once
     tfvars_vars = {
@@ -1228,31 +1394,14 @@ def main():
     example_file = "terraform.tfvars.dev_gke"
     update_terraform_tfvars(tfvars_vars, example_file)
 
-    # Print GCS service account info
-    gcs_sa = f"ragflow-gcs@{project}.iam.gserviceaccount.com"
-    print(f"  GCS service account: {gcs_sa}")
-
-    # Read namespace from terraform.tfvars
-    tfvars_path = "terraform.tfvars"
-    namespace = "ragflow"  # default
-    if os.path.exists(tfvars_path):
-        with open(tfvars_path, "r") as f:
-            for line in f:
-                if line.strip().startswith("namespace"):
-                    namespace = line.split("=")[1].strip().strip('"')
-                    break
-
-    # Create GCS service account and configure Workload Identity
-    create_gcs_service_account(project, cluster["name"], region, namespace)
+    # Create imagePullSecret for GCR (solves ImagePullBackOff issue)
+    create_image_pull_secret(project, namespace)
 
     # Setup monitoring alerts (only if GCP_ALERT_EMAIL is set)
     if os.environ.get("GCP_ALERT_EMAIL"):
-        if not setup_monitoring_alerts(project):
+        if not setup_monitoring_alerts(project, cluster["name"], region, zone):
             print("\nError: Failed to setup monitoring alerts. Exiting.")
             sys.exit(1)
-
-    # Print next steps
-    print_next_steps()
 
 
 if __name__ == "__main__":

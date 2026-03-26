@@ -262,10 +262,10 @@ Finished dump at: 2026-03-15 11:45:00
 
 ```bash
 # 上传到 GCS
-gsutil cp -r ~/ragflow_mydump gs://ragflow-migration/mysql/
+gcloud storage cp -r ~/ragflow_mydump gs://ragflow-migration/mysql/
 
 # 在 GKE 节点下载
-kubectl exec -n ragflow mysql-0 -- gsutil cp -r gs://ragflow-migration/mysql/ /tmp/ragflow_mydump
+kubectl exec -n ragflow mysql-0 -- gcloud storage cp -r gs://ragflow-migration/mysql/ /tmp/ragflow_mydump
 ```
 
 **方式二：直接 SCP 到 GKE 节点**（如果有 bastion 或 VPN）：
@@ -825,7 +825,7 @@ FLUSH PRIVILEGES;
    mc find local/ragflow --type f | wc -l
 
    # 目标 GCS：统计对象总数
-   gsutil ls -r gs://ragflow-77cbf49639d548639a329344f063ba299dc5388f/** | grep -v '/$' | wc -l
+   gcloud storage ls -r gs://ragflow-77cbf49639d548639a329344f063ba299dc5388f/** | grep -v '/$' | wc -l
    ```
    > 若旧环境未预置 `mc alias set local ...`，则可改用 `rclone lsf minio:ragflow -R --files-only | wc -l`。最终应满足：`ragflow01 + ragflow02 + ragflow03 + ragflow04` 的对象数之和与 GCS 中对象总数一致。
 3. **Elasticsearch 健康检查、分片校验与节点存储空间对比**: 除了检查健康状态与分片状态，还应对比 4 个旧节点和 4 个 GKE 内 ES 节点的存储占用是否基本一致（允许存在少量 segment merge 或 metadata 差异）。
@@ -850,7 +850,7 @@ FLUSH PRIVILEGES;
    > 目标是旧 4 节点总占用与 GKE 中 4 个 ES 节点总占用基本一致；单节点之间允许因分片重平衡出现轻微偏差，但不应出现某一节点明显缺失大量数据。
 4. **GCS 对象总大小快速校验**:
    ```bash
-   gsutil du -s gs://ragflow-77cbf49639d548639a329344f063ba299dc5388f/ | awk '{print $1/1024/1024/1024 " GB"}'
+   gcloud storage du -s gs://ragflow-77cbf49639d548639a329344f063ba299dc5388f/ | awk '{print $1/1024/1024/1024 " GB"}'
    ```
 5. **RAGFlow 端到端测试**: 在 GKE 网页界面尝试操作过往的知识库并进行一次新的文档解析，确保 GCS 读写均畅通。
 
@@ -913,12 +913,12 @@ FLUSH PRIVILEGES;
 
 4. **GCS: 统计目标 bucket 对象总数**
    ```bash
-   gsutil ls -r gs://ragflow-77cbf49639d548639a329344f063ba299dc5388f/** | grep -v '/$' | wc -l
+   gcloud storage ls -r gs://ragflow-77cbf49639d548639a329344f063ba299dc5388f/** | grep -v '/$' | wc -l
    ```
 
 5. **GCS: 统计目标 bucket 总大小**
    ```bash
-   gsutil du -s gs://ragflow-77cbf49639d548639a329344f063ba299dc5388f/ | awk '{print $1/1024/1024/1024 " GB"}'
+   gcloud storage du -s gs://ragflow-77cbf49639d548639a329344f063ba299dc5388f/ | awk '{print $1/1024/1024/1024 " GB"}'
    ```
 
 6. **Elasticsearch: 检查集群健康状态**

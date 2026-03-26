@@ -130,7 +130,7 @@ variable "mysql_db_name" {
 variable "mysql_k8s_storage" {
   description = "MySQL storage size in GB"
   type        = number
-  default     = 200
+  default     = 500
 }
 
 variable "mysql_cpu_request" {
@@ -176,7 +176,7 @@ variable "mysql_node_selector" {
 variable "es_image" {
   description = "Elasticsearch container image (including tag)"
   type        = string
-  default     = "elasticsearch:9.3.1"
+  default     = "elasticsearch:9.3.2"
 }
 
 # Master node configuration (cluster management only)
@@ -394,13 +394,13 @@ variable "ragflow_cpu_limit" {
 variable "ragflow_memory_request" {
   description = "RAGFlow memory request"
   type        = string
-  default     = "8Gi"
+  default     = "4Gi"
 }
 
 variable "ragflow_memory_limit" {
   description = "RAGFlow memory limit"
   type        = string
-  default     = "16Gi"
+  default     = "8Gi"
 }
 
 # =============================================================================
@@ -428,13 +428,13 @@ variable "parser_cpu_limit" {
 variable "parser_memory_request" {
   description = "Parser memory request"
   type        = string
-  default     = "8Gi"
+  default     = "16Gi"
 }
 
 variable "parser_memory_limit" {
   description = "Parser memory limit"
   type        = string
-  default     = "16Gi"
+  default     = "20Gi"
 }
 
 # =============================================================================
@@ -450,31 +450,31 @@ variable "deepdoc_image" {
 variable "deepdoc_replicas" {
   description = "Number of DeepDoc replicas"
   type        = number
-  default     = 1
+  default     = 2
 }
 
 variable "deepdoc_cpu_request" {
   description = "DeepDoc CPU request"
   type        = string
-  default     = "8"
+  default     = "4"
 }
 
 variable "deepdoc_cpu_limit" {
   description = "DeepDoc CPU limit"
   type        = string
-  default     = "16"
+  default     = "8"
 }
 
 variable "deepdoc_memory_request" {
   description = "DeepDoc memory request"
   type        = string
-  default     = "32Gi"
+  default     = "16Gi"
 }
 
 variable "deepdoc_memory_limit" {
   description = "DeepDoc memory limit"
   type        = string
-  default     = "64Gi"
+  default     = "32Gi"
 }
 
 variable "deepdoc_use_gpu" {

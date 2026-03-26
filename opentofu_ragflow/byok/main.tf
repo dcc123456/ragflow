@@ -17,12 +17,12 @@
 # =============================================================================
 
 terraform {
-  required_version = ">= 1.8.0"
+  required_version = ">= 1.11.0"
 
   required_providers {
     kubernetes = {
       source  = "hashicorp/kubernetes"
-      version = "2.38.0"
+      version = "3.0.1"
     }
 
     helm = {
@@ -42,7 +42,7 @@ terraform {
 
     google = {
       source  = "hashicorp/google"
-      version = "~> 6.0"
+      version = "7.24"
     }
   }
 }
@@ -75,14 +75,6 @@ provider "google" {
 # =============================================================================
 
 locals {
-  # GCS service account for Workload Identity
-  # Usage: admin/parser/ragflow pods use this SA to access GCS for file upload/download (as S3-compatible storage backend)
-  # Format: ragflow-gcs@{gcp_project_id}.iam.gserviceaccount.com
-  gcs_service_account = var.cloud_provider == "gcp" && var.gcp_project_id != "" ? "ragflow-gcs@${var.gcp_project_id}.iam.gserviceaccount.com" : ""
-
-  # GCS Kubernetes Service Account name (for ES pod to access GCS snapshots)
-  gcs_k8s_service_account = "ragflow-gcs"
-
   # Cloud provider auto-configuration
   # Detect StorageClass and S3 settings based on cloud_provider
   cloud_config = {
@@ -135,7 +127,7 @@ locals {
   mysql_image     = var.public_registry != "" ? "${var.public_registry}/mysql:8.0" : "docker.io/library/mysql:8.0"
   redis_image    = var.public_registry != "" ? "${var.public_registry}/valkey:8" : "valkey/valkey:8"
   tei_image      = var.public_registry != "" ? "${var.public_registry}/text-embeddings-inference:cpu-1.8" : "infiniflow/text-embeddings-inference:cpu-1.8"
-  rabbitmq_image = var.public_registry != "" ? "${var.public_registry}/rabbitmq:3-management" : "rabbitmq:3-management"
+  rabbitmq_image = var.public_registry != "" ? "${var.public_registry}/rabbitmq:4-management" : "rabbitmq:4-management"
   curl_image     = var.public_registry != "" ? "${var.public_registry}/curl:latest" : "curlimages/curl:latest"
   minio_mc_image = var.public_registry != "" ? "${var.public_registry}/mc:latest" : "quay.io/minio/mc:latest"
 
@@ -161,7 +153,7 @@ locals {
 # =============================================================================
 
 
-resource "kubernetes_namespace" "ragflow" {
+resource "kubernetes_namespace_v1" "ragflow" {
   metadata {
     name = var.namespace
   }
@@ -175,23 +167,6 @@ resource "kubernetes_namespace" "ragflow" {
 # =============================================================================
 # GCS Service Account (for Workload Identity when cloud_provider = 'gcp')
 # =============================================================================
-
-resource "kubernetes_service_account" "ragflow_gcs" {
-  count = var.cloud_provider == "gcp" ? 1 : 0
-
-  metadata {
-    name      = "ragflow-gcs"
-    namespace = kubernetes_namespace.ragflow.metadata[0].name
-    annotations = {
-      "iam.gke.io/gcp-service-account" = local.gcs_service_account
-    }
-  }
-
-  lifecycle {
-    # Allow service account to already exist (idempotent)
-    ignore_changes = [metadata]
-  }
-}
 
 # =============================================================================
 # MySQL Deployment (K8s Mode)
@@ -214,11 +189,11 @@ resource "random_password" "rabbitmq" {
 
 # Ref: https://github.com/hashicorp/terraform-provider-kubernetes/issues/1986
 # Workaround for PVC creation timeout due to provider rate limiting
-resource "kubernetes_persistent_volume_claim" "mysql" {
+resource "kubernetes_persistent_volume_claim_v1" "mysql" {
 
   metadata {
     name      = "mysql-data"
-    namespace = kubernetes_namespace.ragflow.metadata[0].name
+    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
   }
 
   spec {
@@ -237,11 +212,11 @@ resource "kubernetes_persistent_volume_claim" "mysql" {
   wait_until_bound = false
 }
 
-resource "kubernetes_secret" "mysql" {
+resource "kubernetes_secret_v1" "mysql" {
 
   metadata {
     name      = "mysql-password"
-    namespace = kubernetes_namespace.ragflow.metadata[0].name
+    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
   }
 
   data = {
@@ -249,11 +224,11 @@ resource "kubernetes_secret" "mysql" {
   }
 }
 
-resource "kubernetes_stateful_set" "mysql" {
+resource "kubernetes_stateful_set_v1" "mysql" {
 
   metadata {
     name      = "mysql"
-    namespace = kubernetes_namespace.ragflow.metadata[0].name
+    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
 
     labels = {
       app = "mysql"
@@ -288,14 +263,17 @@ resource "kubernetes_stateful_set" "mysql" {
             name           = "mysql"
           }
 
-          args = ["--max-connections=2000", "--wait-timeout=600", "--interactive-timeout=600"]
+          # MySQL binlog retention: expire-logs-days=2 (auto-purge logs older than 2 days)
+          # max-binlog-size=1G (default, single file max 1GB)
+          # With 2-day retention and 1GB max per file, worst-case binlog storage is ~2-3GB
+          args = ["--max-connections=2000", "--wait-timeout=600", "--interactive-timeout=600", "--expire-logs-days=2"]
 
           env {
             name = "MYSQL_ROOT_PASSWORD"
 
             value_from {
               secret_key_ref {
-                name = kubernetes_secret.mysql.metadata[0].name
+                name = kubernetes_secret_v1.mysql.metadata[0].name
                 key  = "password"
               }
             }
@@ -342,7 +320,7 @@ resource "kubernetes_stateful_set" "mysql" {
           name = "data"
 
           persistent_volume_claim {
-            claim_name = kubernetes_persistent_volume_claim.mysql.metadata[0].name
+            claim_name = kubernetes_persistent_volume_claim_v1.mysql.metadata[0].name
           }
         }
       }
@@ -356,11 +334,11 @@ resource "kubernetes_stateful_set" "mysql" {
   }
 }
 
-resource "kubernetes_service" "mysql" {
+resource "kubernetes_service_v1" "mysql" {
 
   metadata {
     name      = "mysql"
-    namespace = kubernetes_namespace.ragflow.metadata[0].name
+    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
   }
 
   spec {
@@ -379,10 +357,10 @@ resource "kubernetes_service" "mysql" {
 # Redis Deployment
 # =============================================================================
 
-resource "kubernetes_deployment" "redis" {
+resource "kubernetes_deployment_v1" "redis" {
   metadata {
     name      = "redis"
-    namespace = kubernetes_namespace.ragflow.metadata[0].name
+    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
 
     labels = {
       app = "redis"
@@ -449,10 +427,10 @@ resource "kubernetes_deployment" "redis" {
   }
 }
 
-resource "kubernetes_service" "redis" {
+resource "kubernetes_service_v1" "redis" {
   metadata {
     name      = "redis"
-    namespace = kubernetes_namespace.ragflow.metadata[0].name
+    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
   }
 
   spec {
@@ -471,11 +449,11 @@ resource "kubernetes_service" "redis" {
 # TEI (Text Embeddings) Deployment
 # =============================================================================
 
-resource "kubernetes_deployment" "tei" {
+resource "kubernetes_deployment_v1" "tei" {
   count = var.tei_replicas > 0 ? 1 : 0
   metadata {
     name      = "tei"
-    namespace = kubernetes_namespace.ragflow.metadata[0].name
+    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
 
     labels = {
       app = "tei"
@@ -536,11 +514,11 @@ resource "kubernetes_deployment" "tei" {
   }
 }
 
-resource "kubernetes_service" "tei" {
+resource "kubernetes_service_v1" "tei" {
   count = var.tei_replicas > 0 ? 1 : 0
   metadata {
     name      = "tei"
-    namespace = kubernetes_namespace.ragflow.metadata[0].name
+    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
   }
 
   spec {
@@ -559,10 +537,10 @@ resource "kubernetes_service" "tei" {
 # RabbitMQ Deployment
 # =============================================================================
 
-resource "kubernetes_config_map" "rabbitmq" {
+resource "kubernetes_config_map_v1" "rabbitmq" {
   metadata {
     name      = "rabbitmq-config"
-    namespace = kubernetes_namespace.ragflow.metadata[0].name
+    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
   }
 
   data = {
@@ -714,10 +692,10 @@ EOT
 
 # Ref: https://github.com/hashicorp/terraform-provider-kubernetes/issues/1986
 # Workaround for PVC creation timeout due to provider rate limiting
-resource "kubernetes_persistent_volume_claim" "rabbitmq" {
+resource "kubernetes_persistent_volume_claim_v1" "rabbitmq" {
   metadata {
     name      = "rabbitmq-pvc"
-    namespace = kubernetes_namespace.ragflow.metadata[0].name
+    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
   }
 
   spec {
@@ -736,10 +714,10 @@ resource "kubernetes_persistent_volume_claim" "rabbitmq" {
   wait_until_bound = false
 }
 
-resource "kubernetes_deployment" "rabbitmq" {
+resource "kubernetes_deployment_v1" "rabbitmq" {
   metadata {
     name      = "rabbitmq"
-    namespace = kubernetes_namespace.ragflow.metadata[0].name
+    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
 
     labels = {
       app = "rabbitmq"
@@ -827,7 +805,7 @@ resource "kubernetes_deployment" "rabbitmq" {
           name = "rabbitmq-storage"
 
           persistent_volume_claim {
-            claim_name = kubernetes_persistent_volume_claim.rabbitmq.metadata[0].name
+            claim_name = kubernetes_persistent_volume_claim_v1.rabbitmq.metadata[0].name
           }
         }
 
@@ -835,7 +813,7 @@ resource "kubernetes_deployment" "rabbitmq" {
           name = "rabbitmq-definitions"
 
           config_map {
-            name = kubernetes_config_map.rabbitmq.metadata[0].name
+            name = kubernetes_config_map_v1.rabbitmq.metadata[0].name
 
             items {
               key  = "definitions.json"
@@ -848,7 +826,7 @@ resource "kubernetes_deployment" "rabbitmq" {
           name = "rabbitmq-definitions-conf"
 
           config_map {
-            name = kubernetes_config_map.rabbitmq.metadata[0].name
+            name = kubernetes_config_map_v1.rabbitmq.metadata[0].name
 
             items {
               key  = "10-definitions.conf"
@@ -867,10 +845,10 @@ resource "kubernetes_deployment" "rabbitmq" {
   }
 }
 
-resource "kubernetes_service" "rabbitmq" {
+resource "kubernetes_service_v1" "rabbitmq" {
   metadata {
     name      = "rabbitmq"
-    namespace = kubernetes_namespace.ragflow.metadata[0].name
+    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
   }
 
   spec {
@@ -995,10 +973,10 @@ resource "kubernetes_manifest" "elasticsearch_compute_class" {
 # To assume the CRDs will exist, we use a ConfigMap + Job to apply the manifest.
 
 # 1. Store the Elasticsearch manifest in a ConfigMap
-resource "kubernetes_config_map" "elasticsearch_manifest" {
+resource "kubernetes_config_map_v1" "elasticsearch_manifest" {
   metadata {
     name      = "elasticsearch-manifest"
-    namespace = kubernetes_namespace.ragflow.metadata[0].name
+    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
   }
 
   data = {
@@ -1007,7 +985,7 @@ apiVersion: elasticsearch.k8s.elastic.co/v1
 kind: Elasticsearch
 metadata:
   name: elasticsearch
-  namespace: ${kubernetes_namespace.ragflow.metadata[0].name}
+  namespace: ${kubernetes_namespace_v1.ragflow.metadata[0].name}
 spec:
   version: ${local.es_version}
   nodeSets:
@@ -1021,20 +999,20 @@ spec:
       # Set max shards per node (default is typically 1000)
       cluster.max_shards_per_node: 40000
       # --- Recovery tuning parameters ---
-      # Limit concurrent shard recoveries per node (default is 2)
-      cluster.routing.allocation.node_concurrent_recoveries: 8
       # Limit recovery bandwidth (default is 40mb, recommended to increase for high-throughput networks)
-      indices.recovery.max_bytes_per_sec: “150mb”
+      indices.recovery.max_bytes_per_sec: 150mb
+      # Limit concurrent snapshot file downloads per node during recovery (default is 25, recommended <= 3)
+      indices.recovery.max_concurrent_snapshot_file_downloads_per_node: 5
       # --- Other recommended stability parameters ---
-      # Delay shard reallocation when node leaves (prevent unnecessary data migration due to Pod flapping)
-      index.unassigned.node_left.delayed_timeout: "5m"
+      # Note: index.unassigned.node_left.delayed_timeout is an index-level setting,
+      # not a node-level setting. In ES 9.x it must be set via index templates, not here.
     podTemplate:
       spec:
 %{if local.is_gke_gateway}
-        # ServiceAccount for GCS snapshot backup (requires Workload Identity to be configured)
-        serviceAccountName: ${local.gcs_k8s_service_account}
+        # ServiceAccount: use default (node identity) with node SA having GCS permissions
+        serviceAccountName: "default"
         nodeSelector:
-          cloud.google.com/compute_class: elasticsearch
+          cloud.google.com/compute-class: elasticsearch
 %{endif}
         containers:
         - name: elasticsearch
@@ -1059,17 +1037,17 @@ spec:
       # Set max shards per node (default is typically 1000)
       cluster.max_shards_per_node: 40000
       # --- Recovery tuning parameters ---
-      # Limit concurrent shard recoveries per node (default is 2)
-      cluster.routing.allocation.node_concurrent_recoveries: 8
       # Limit recovery bandwidth (default is 40mb, recommended to increase for high-throughput networks)
-      indices.recovery.max_bytes_per_sec: “150mb”
+      indices.recovery.max_bytes_per_sec: 150mb
+      # Limit concurrent snapshot file downloads per node during recovery (default is 25, recommended <= 3)
+      indices.recovery.max_concurrent_snapshot_file_downloads_per_node: 5
       # --- Other recommended stability parameters ---
-      # Delay shard reallocation when node leaves (prevent unnecessary data migration due to Pod flapping)
-      index.unassigned.node_left.delayed_timeout: "5m"
+      # Note: index.unassigned.node_left.delayed_timeout is an index-level setting,
+      # not a node-level setting. In ES 9.x it must be set via index templates, not here.
     podTemplate:
       spec:
-        # ServiceAccount for GCS snapshot backup (requires Workload Identity to be configured)
-        serviceAccountName: ${local.gcs_k8s_service_account}
+        # ServiceAccount: use default (node identity) with node SA having GCS permissions
+        serviceAccountName: "default"
 %{if local.is_gke_gateway}
         nodeSelector:
           cloud.google.com/compute-class: elasticsearch
@@ -1103,18 +1081,18 @@ YAML
 }
 
 # 2. ServiceAccount for the applier job
-resource "kubernetes_service_account" "elasticsearch_applier" {
+resource "kubernetes_service_account_v1" "elasticsearch_applier" {
   metadata {
     name      = "elasticsearch-applier"
-    namespace = kubernetes_namespace.ragflow.metadata[0].name
+    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
   }
 }
 
 # 3. Role to allow creating Elasticsearch resources
-resource "kubernetes_role" "elasticsearch_applier" {
+resource "kubernetes_role_v1" "elasticsearch_applier" {
   metadata {
     name      = "elasticsearch-applier"
-    namespace = kubernetes_namespace.ragflow.metadata[0].name
+    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
   }
 
   rule {
@@ -1125,30 +1103,30 @@ resource "kubernetes_role" "elasticsearch_applier" {
 }
 
 # 4. RoleBinding
-resource "kubernetes_role_binding" "elasticsearch_applier" {
+resource "kubernetes_role_binding_v1" "elasticsearch_applier" {
   metadata {
     name      = "elasticsearch-applier"
-    namespace = kubernetes_namespace.ragflow.metadata[0].name
+    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
   }
 
   role_ref {
     api_group = "rbac.authorization.k8s.io"
     kind      = "Role"
-    name      = kubernetes_role.elasticsearch_applier.metadata[0].name
+    name      = kubernetes_role_v1.elasticsearch_applier.metadata[0].name
   }
 
   subject {
     kind      = "ServiceAccount"
-    name      = kubernetes_service_account.elasticsearch_applier.metadata[0].name
-    namespace = kubernetes_namespace.ragflow.metadata[0].name
+    name      = kubernetes_service_account_v1.elasticsearch_applier.metadata[0].name
+    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
   }
 }
 
 # 5. Job to apply the manifest
-resource "kubernetes_job" "apply_elasticsearch" {
+resource "kubernetes_job_v1" "apply_elasticsearch" {
   metadata {
     name      = "apply-elasticsearch"
-    namespace = kubernetes_namespace.ragflow.metadata[0].name
+    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
   }
 
   spec {
@@ -1157,7 +1135,7 @@ resource "kubernetes_job" "apply_elasticsearch" {
         name = "apply-elasticsearch"
       }
       spec {
-        service_account_name = kubernetes_service_account.elasticsearch_applier.metadata[0].name
+        service_account_name = kubernetes_service_account_v1.elasticsearch_applier.metadata[0].name
         restart_policy       = "OnFailure"
         container {
           name    = "kubectl"
@@ -1182,7 +1160,7 @@ resource "kubernetes_job" "apply_elasticsearch" {
         volume {
           name = "manifest"
           config_map {
-            name = kubernetes_config_map.elasticsearch_manifest.metadata[0].name
+            name = kubernetes_config_map_v1.elasticsearch_manifest.metadata[0].name
           }
         }
         volume {
@@ -1198,9 +1176,8 @@ resource "kubernetes_job" "apply_elasticsearch" {
 
   depends_on = [
     terraform_data.wait_for_elasticsearch_crd,
-    kubernetes_role_binding.elasticsearch_applier,
-    kubernetes_config_map.elasticsearch_manifest,
-    kubernetes_manifest.elasticsearch_compute_class
+    kubernetes_role_binding_v1.elasticsearch_applier,
+    kubernetes_config_map_v1.elasticsearch_manifest,
   ]
 }
 
@@ -1209,14 +1186,14 @@ resource "kubernetes_job" "apply_elasticsearch" {
 # =============================================================================
 resource "terraform_data" "wait_for_elasticsearch_secret" {
   triggers_replace = [
-    kubernetes_job.apply_elasticsearch.id
+    kubernetes_job_v1.apply_elasticsearch.id
   ]
 
   provisioner "local-exec" {
     environment = {
       KUBECONFIG = pathexpand(var.kubeconfig_path)
     }
-    command = "python3 wait_for_k8s_resource.py ${kubernetes_namespace.ragflow.metadata[0].name} secret elasticsearch-es-elastic-user"
+    command = "python3 wait_for_k8s_resource.py ${kubernetes_namespace_v1.ragflow.metadata[0].name} secret elasticsearch-es-elastic-user"
   }
 }
 
@@ -1225,14 +1202,14 @@ resource "terraform_data" "wait_for_elasticsearch_secret" {
 # =============================================================================
 # This secret is managed by ECK operator and contains the auto-generated
 # password for the 'elastic' user.
-data "kubernetes_secret" "elasticsearch_es_user" {
+data "kubernetes_secret_v1" "elasticsearch_es_user" {
   metadata {
     name      = "elasticsearch-es-elastic-user"
-    namespace = kubernetes_namespace.ragflow.metadata[0].name
+    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
   }
 
   depends_on = [
-    kubernetes_job.apply_elasticsearch,
+    kubernetes_job_v1.apply_elasticsearch,
     terraform_data.wait_for_elasticsearch_secret
   ]
 }
@@ -1241,10 +1218,10 @@ data "kubernetes_secret" "elasticsearch_es_user" {
 # S3 Storage Secret
 # =============================================================================
 
-resource "kubernetes_secret" "storage" {
+resource "kubernetes_secret_v1" "storage" {
   metadata {
     name      = "ragflow-storage"
-    namespace = kubernetes_namespace.ragflow.metadata[0].name
+    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
   }
 
   data = {
@@ -1262,18 +1239,18 @@ resource "kubernetes_secret" "storage" {
 # RAGFlow Environment Secret
 # =============================================================================
 
-resource "kubernetes_secret" "ragflow_env" {
+resource "kubernetes_secret_v1" "ragflow_env" {
   depends_on = [
-    kubernetes_stateful_set.mysql,
-    kubernetes_deployment.redis,
-    kubernetes_deployment.rabbitmq,
-    kubernetes_service.deepdoc,
+    kubernetes_stateful_set_v1.mysql,
+    kubernetes_deployment_v1.redis,
+    kubernetes_deployment_v1.rabbitmq,
+    kubernetes_service_v1.deepdoc,
     terraform_data.wait_for_elasticsearch_secret,
   ]
 
   metadata {
     name      = "ragflow-env"
-    namespace = kubernetes_namespace.ragflow.metadata[0].name
+    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
   }
 
   data = {
@@ -1291,8 +1268,8 @@ resource "kubernetes_secret" "ragflow_env" {
     ES_PORT     = "9200"
     ES_USER     = "elastic"
     # ELASTIC_PASSWORD: use password from ECK-managed secret (k8s mode)
-    # data.kubernetes_secret automatically base64-decodes secret data
-    ELASTIC_PASSWORD = data.kubernetes_secret.elasticsearch_es_user.data.elastic
+    # data.kubernetes_secret_v1 automatically base64-decodes secret data
+    ELASTIC_PASSWORD = data.kubernetes_secret_v1.elasticsearch_es_user.data.elastic
 
     # Redis Configuration
     REDIS_HOST     = "redis"
@@ -1363,10 +1340,10 @@ resource "kubernetes_secret" "ragflow_env" {
 # =============================================================================
 
 # Service 1: Frontend (nginx) - serves React web UI
-resource "kubernetes_service" "ragflow_frontend" {
+resource "kubernetes_service_v1" "ragflow_frontend" {
   metadata {
     name      = "ragflow-frontend"
-    namespace = kubernetes_namespace.ragflow.metadata[0].name
+    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
 
     labels = {
       app = "ragflow"
@@ -1389,10 +1366,10 @@ resource "kubernetes_service" "ragflow_frontend" {
 }
 
 # Service 2: API Server - serves REST API at /v1/*
-resource "kubernetes_service" "ragflow_api" {
+resource "kubernetes_service_v1" "ragflow_api" {
   metadata {
     name      = "ragflow-api"
-    namespace = kubernetes_namespace.ragflow.metadata[0].name
+    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
 
     labels = {
       app = "ragflow"
@@ -1420,10 +1397,10 @@ resource "kubernetes_service" "ragflow_api" {
 }
 
 # Service 3: Admin Server - serves admin API at /api/v1/admin
-resource "kubernetes_service" "admin" {
+resource "kubernetes_service_v1" "admin" {
   metadata {
     name      = "admin"
-    namespace = kubernetes_namespace.ragflow.metadata[0].name
+    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
 
     labels = {
       app = "ragflow"
@@ -1452,18 +1429,18 @@ resource "kubernetes_service" "admin" {
 
 # DEPRECATED: Keeping for backward compatibility reference
 # Original multi-port service - no longer used (replaced by above 3 separate services)
-# resource "kubernetes_service" "ragflow" { ... }
+# resource "kubernetes_service_v1" "ragflow" { ... }
 
 # =============================================================================
 # RAGFlow Deployment
 # =============================================================================
 
-resource "kubernetes_deployment" "ragflow" {
-  depends_on = [kubernetes_secret.ragflow_env]
+resource "kubernetes_deployment_v1" "ragflow" {
+  depends_on = [kubernetes_secret_v1.ragflow_env]
 
   metadata {
     name      = "ragflow"
-    namespace = kubernetes_namespace.ragflow.metadata[0].name
+    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
 
     labels = {
       app     = "ragflow"
@@ -1493,20 +1470,23 @@ resource "kubernetes_deployment" "ragflow" {
           app     = "ragflow"
           project = "ragflow"
         }
-        annotations = merge(
-          var.cloud_provider == "gcp" ? {
-            "iam.gke.io/gcp-service-account" = local.gcs_service_account
-          } : {},
-          {
-            # Trigger rollout restart when secret changes
-            "checksum/config" = sha256(jsonencode(kubernetes_secret.ragflow_env.data))
-          }
-        )
+        annotations = {
+          # Trigger rollout restart when secret changes
+          "checksum/config" = sha256(jsonencode(kubernetes_secret_v1.ragflow_env.data))
+        }
       }
 
       spec {
-        # Use Workload Identity for GCP
-        service_account_name = var.cloud_provider == "gcp" ? "ragflow-gcs" : "default"
+        # Use default SA (node identity) - node SA has storage.objectCreator for GCS access
+        service_account_name = "default"
+
+        # Use imagePullSecrets for GCR authentication (GCP only)
+        dynamic "image_pull_secrets" {
+          for_each = var.cloud_provider == "gcp" ? [1] : []
+          content {
+            name = "gcr-image-pull"
+          }
+        }
 
         # Init container to create S3 bucket if needed
         dynamic "init_container" {
@@ -1528,7 +1508,7 @@ resource "kubernetes_deployment" "ragflow" {
             # Inherit environment from ragflow_env secret
             env_from {
               secret_ref {
-                name = kubernetes_secret.ragflow_env.metadata[0].name
+                name = kubernetes_secret_v1.ragflow_env.metadata[0].name
               }
             }
 
@@ -1629,7 +1609,7 @@ resource "kubernetes_deployment" "ragflow" {
           #   T+10s:   Container Running ( Readiness Probe passes)
           #   T+30s:   NEG endpoint registered
           #   T+60s:   NEG attached to BackendService + LB health check passes
-          #   T+60s:   NEG readiness gate = True → Pod Ready = True
+          #   T+60s:   NEG readiness gate = True -> Pod Ready = True
           #
           # Reference:
           #   - https://cloud.google.com/kubernetes-engine/docs/concepts/ingress-xlb#neg
@@ -1652,7 +1632,7 @@ resource "kubernetes_deployment" "ragflow" {
 
           env_from {
             secret_ref {
-              name = kubernetes_secret.ragflow_env.metadata[0].name
+              name = kubernetes_secret_v1.ragflow_env.metadata[0].name
             }
           }
 
@@ -1694,12 +1674,12 @@ resource "kubernetes_deployment" "ragflow" {
 # Admin Deployment
 # =============================================================================
 
-resource "kubernetes_deployment" "admin" {
-  depends_on = [kubernetes_secret.ragflow_env]
+resource "kubernetes_deployment_v1" "admin" {
+  depends_on = [kubernetes_secret_v1.ragflow_env]
 
   metadata {
     name      = "admin"
-    namespace = kubernetes_namespace.ragflow.metadata[0].name
+    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
 
     labels = {
       app     = "admin"
@@ -1730,20 +1710,23 @@ resource "kubernetes_deployment" "admin" {
           app     = "admin"
           project = "ragflow"
         }
-        annotations = merge(
-          var.cloud_provider == "gcp" ? {
-            "iam.gke.io/gcp-service-account" = local.gcs_service_account
-          } : {},
-          {
-            # Trigger rollout restart when secret changes
-            "checksum/config" = sha256(jsonencode(kubernetes_secret.ragflow_env.data))
-          }
-        )
+        annotations = {
+          # Trigger rollout restart when secret changes
+          "checksum/config" = sha256(jsonencode(kubernetes_secret_v1.ragflow_env.data))
+        }
       }
 
       spec {
-        # Use Workload Identity for GCP
-        service_account_name = var.cloud_provider == "gcp" ? "ragflow-gcs" : "default"
+        # Use default SA (node identity) - node SA has storage.objectCreator for GCS access
+        service_account_name = "default"
+
+        # Use imagePullSecrets for GCR authentication (GCP only)
+        dynamic "image_pull_secrets" {
+          for_each = var.cloud_provider == "gcp" ? [1] : []
+          content {
+            name = "gcr-image-pull"
+          }
+        }
 
         # ES CA certificate volume
         dynamic "volume" {
@@ -1797,7 +1780,7 @@ resource "kubernetes_deployment" "admin" {
           # Standard ragflow environment variables
           env_from {
             secret_ref {
-              name = kubernetes_secret.ragflow_env.metadata[0].name
+              name = kubernetes_secret_v1.ragflow_env.metadata[0].name
             }
           }
 
@@ -1831,12 +1814,12 @@ resource "kubernetes_deployment" "admin" {
 # Parser Deployment
 # =============================================================================
 
-resource "kubernetes_deployment" "parser" {
-  depends_on = [kubernetes_secret.ragflow_env]
+resource "kubernetes_deployment_v1" "parser" {
+  depends_on = [kubernetes_secret_v1.ragflow_env]
 
   metadata {
     name      = "parser"
-    namespace = kubernetes_namespace.ragflow.metadata[0].name
+    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
 
     labels = {
       app     = "parser"
@@ -1866,20 +1849,23 @@ resource "kubernetes_deployment" "parser" {
           app     = "parser"
           project = "ragflow"
         }
-        annotations = merge(
-          var.cloud_provider == "gcp" ? {
-            "iam.gke.io/gcp-service-account" = local.gcs_service_account
-          } : {},
-          {
-            # Trigger rollout restart when secret changes
-            "checksum/config" = sha256(jsonencode(kubernetes_secret.ragflow_env.data))
-          }
-        )
+        annotations = {
+          # Trigger rollout restart when secret changes
+          "checksum/config" = sha256(jsonencode(kubernetes_secret_v1.ragflow_env.data))
+        }
       }
 
       spec {
-        # Use Workload Identity for GCP
-        service_account_name = var.cloud_provider == "gcp" ? "ragflow-gcs" : "default"
+        # Use default SA (node identity) - node SA has storage.objectCreator for GCS access
+        service_account_name = "default"
+
+        # Use imagePullSecrets for GCR authentication (GCP only)
+        dynamic "image_pull_secrets" {
+          for_each = var.cloud_provider == "gcp" ? [1] : []
+          content {
+            name = "gcr-image-pull"
+          }
+        }
 
         # Init container to wait for Elasticsearch to be ready
         dynamic "init_container" {
@@ -1891,7 +1877,7 @@ resource "kubernetes_deployment" "parser" {
             # Inherit environment from ragflow_env secret
             env_from {
               secret_ref {
-                name = kubernetes_secret.ragflow_env.metadata[0].name
+                name = kubernetes_secret_v1.ragflow_env.metadata[0].name
               }
             }
 
@@ -1931,7 +1917,7 @@ resource "kubernetes_deployment" "parser" {
 
           env_from {
             secret_ref {
-              name = kubernetes_secret.ragflow_env.metadata[0].name
+              name = kubernetes_secret_v1.ragflow_env.metadata[0].name
             }
           }
 
@@ -1988,10 +1974,10 @@ resource "kubernetes_deployment" "parser" {
 # DeepDoc Deployment
 # =============================================================================
 
-resource "kubernetes_deployment" "deepdoc" {
+resource "kubernetes_deployment_v1" "deepdoc" {
   metadata {
     name      = "deepdoc"
-    namespace = kubernetes_namespace.ragflow.metadata[0].name
+    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
 
     labels = {
       app = "deepdoc"
@@ -2030,6 +2016,16 @@ resource "kubernetes_deployment" "deepdoc" {
       }
 
       spec {
+        service_account_name = "default"
+
+        # Use imagePullSecrets for GCR authentication (GCP only)
+        dynamic "image_pull_secrets" {
+          for_each = var.cloud_provider == "gcp" ? [1] : []
+          content {
+            name = "gcr-image-pull"
+          }
+        }
+
         # Container
         container {
           name  = "deepdoc"
@@ -2109,10 +2105,10 @@ resource "kubernetes_deployment" "deepdoc" {
   }
 }
 
-resource "kubernetes_service" "deepdoc" {
+resource "kubernetes_service_v1" "deepdoc" {
   metadata {
     name      = "deepdoc"
-    namespace = kubernetes_namespace.ragflow.metadata[0].name
+    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
   }
 
   spec {
@@ -2142,7 +2138,7 @@ resource "kubernetes_manifest" "gateway" {
     kind       = "Gateway"
     metadata = {
       name      = "ragflow"
-      namespace = kubernetes_namespace.ragflow.metadata[0].name
+      namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
       labels = {
         app = "ragflow"
       }
@@ -2166,7 +2162,7 @@ resource "kubernetes_manifest" "gateway" {
               namespaces = {
                 selector = {
                   matchLabels = {
-                    "kubernetes.io/metadata.name" = kubernetes_namespace.ragflow.metadata[0].name
+                    "kubernetes.io/metadata.name" = kubernetes_namespace_v1.ragflow.metadata[0].name
                   }
                 }
               }
@@ -2182,8 +2178,8 @@ resource "kubernetes_manifest" "gateway" {
               mode = "Terminate"
               certificateRefs = [
                 {
-                  name      = kubernetes_secret.tls_secret[0].metadata[0].name
-                  namespace = kubernetes_namespace.ragflow.metadata[0].name
+                  name      = kubernetes_secret_v1.tls_secret[0].metadata[0].name
+                  namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
                   kind      = "Secret"
                 }
               ]
@@ -2192,7 +2188,7 @@ resource "kubernetes_manifest" "gateway" {
               namespaces = {
                 selector = {
                   matchLabels = {
-                    "kubernetes.io/metadata.name" = kubernetes_namespace.ragflow.metadata[0].name
+                    "kubernetes.io/metadata.name" = kubernetes_namespace_v1.ragflow.metadata[0].name
                   }
                 }
               }
@@ -2220,12 +2216,12 @@ resource "kubernetes_manifest" "gateway" {
 # updated by sync_ohttps_cert.py script, and Terraform ignores changes to data.
 # =============================================================================
 
-resource "kubernetes_secret" "tls_secret" {
+resource "kubernetes_secret_v1" "tls_secret" {
   count = var.ohttps_enabled ? 1 : 0
 
   metadata {
     name      = "ragflow-tls"
-    namespace = kubernetes_namespace.ragflow.metadata[0].name
+    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
     labels = {
       app         = "ragflow"
       "managed-by" = "terraform"
@@ -2259,7 +2255,7 @@ resource "kubernetes_manifest" "ohttps_sync_sa" {
     kind       = "ServiceAccount"
     metadata = {
       name      = "ohttps-sync-sa"
-      namespace = kubernetes_namespace.ragflow.metadata[0].name
+      namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
       labels = {
         app = "ragflow"
       }
@@ -2275,7 +2271,7 @@ resource "kubernetes_manifest" "ohttps_sync_role" {
     kind       = "Role"
     metadata = {
       name      = "ohttps-sync-role"
-      namespace = kubernetes_namespace.ragflow.metadata[0].name
+      namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
     }
     rules = [
       {
@@ -2295,13 +2291,13 @@ resource "kubernetes_manifest" "ohttps_sync_rolebinding" {
     kind       = "RoleBinding"
     metadata = {
       name      = "ohttps-sync-rolebinding"
-      namespace = kubernetes_namespace.ragflow.metadata[0].name
+      namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
     }
     subjects = [
       {
         kind      = "ServiceAccount"
         name      = "ohttps-sync-sa"
-        namespace = kubernetes_namespace.ragflow.metadata[0].name
+        namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
       }
     ]
     roleRef = {
@@ -2324,7 +2320,7 @@ resource "kubernetes_manifest" "ohttps_sync_cronjob" {
     kind       = "CronJob"
     metadata = {
       name      = "ohttps-cert-sync"
-      namespace = kubernetes_namespace.ragflow.metadata[0].name
+      namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
       labels = {
         app         = "ragflow"
         "managed-by" = "terraform"
@@ -2389,7 +2385,7 @@ resource "kubernetes_manifest" "http_route_api" {
     kind       = "HTTPRoute"
     metadata = {
       name      = "ragflow-http-route-api"
-      namespace = kubernetes_namespace.ragflow.metadata[0].name
+      namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
       labels = {
         app = "ragflow"
       }
@@ -2398,7 +2394,7 @@ resource "kubernetes_manifest" "http_route_api" {
       parentRefs = [
         {
           name        = "ragflow"
-          namespace   = kubernetes_namespace.ragflow.metadata[0].name
+          namespace   = kubernetes_namespace_v1.ragflow.metadata[0].name
           kind        = "Gateway"
           sectionName = var.ohttps_enabled ? "https" : "http"
         }
@@ -2415,7 +2411,7 @@ resource "kubernetes_manifest" "http_route_api" {
           ]
           backendRefs = [
             {
-              name = kubernetes_service.ragflow_api.metadata[0].name
+              name = kubernetes_service_v1.ragflow_api.metadata[0].name
               port = 9380
             }
           ]
@@ -2431,7 +2427,7 @@ resource "kubernetes_manifest" "http_route_api" {
           ]
           backendRefs = [
             {
-              name = kubernetes_service.ragflow_api.metadata[0].name
+              name = kubernetes_service_v1.ragflow_api.metadata[0].name
               port = 9380
             }
           ]
@@ -2452,7 +2448,7 @@ resource "kubernetes_manifest" "http_route_admin" {
     kind       = "HTTPRoute"
     metadata = {
       name      = "ragflow-http-route-admin"
-      namespace = kubernetes_namespace.ragflow.metadata[0].name
+      namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
       labels = {
         app = "ragflow"
       }
@@ -2461,7 +2457,7 @@ resource "kubernetes_manifest" "http_route_admin" {
       parentRefs = [
         {
           name        = "ragflow"
-          namespace   = kubernetes_namespace.ragflow.metadata[0].name
+          namespace   = kubernetes_namespace_v1.ragflow.metadata[0].name
           kind        = "Gateway"
           sectionName = var.ohttps_enabled ? "https" : "http"
         }
@@ -2478,7 +2474,7 @@ resource "kubernetes_manifest" "http_route_admin" {
           ]
           backendRefs = [
             {
-              name = kubernetes_service.admin.metadata[0].name
+              name = kubernetes_service_v1.admin.metadata[0].name
               port = 9381
             }
           ]
@@ -2495,7 +2491,7 @@ resource "kubernetes_manifest" "http_route_frontend" {
     kind       = "HTTPRoute"
     metadata = {
       name      = "ragflow-http-route-frontend"
-      namespace = kubernetes_namespace.ragflow.metadata[0].name
+      namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
       labels = {
         app = "ragflow"
       }
@@ -2504,7 +2500,7 @@ resource "kubernetes_manifest" "http_route_frontend" {
       parentRefs = [
         {
           name        = "ragflow"
-          namespace   = kubernetes_namespace.ragflow.metadata[0].name
+          namespace   = kubernetes_namespace_v1.ragflow.metadata[0].name
           kind        = "Gateway"
           sectionName = var.ohttps_enabled ? "https" : "http"
         }
@@ -2521,7 +2517,7 @@ resource "kubernetes_manifest" "http_route_frontend" {
           ]
           backendRefs = [
             {
-              name = kubernetes_service.ragflow_frontend.metadata[0].name
+              name = kubernetes_service_v1.ragflow_frontend.metadata[0].name
               port = 80
             }
           ]
@@ -2545,7 +2541,7 @@ resource "kubernetes_manifest" "http_redirect" {
     kind       = "HTTPRoute"
     metadata = {
       name      = "ragflow-http-redirect"
-      namespace = kubernetes_namespace.ragflow.metadata[0].name
+      namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
       labels = {
         app = "ragflow"
       }
@@ -2554,7 +2550,7 @@ resource "kubernetes_manifest" "http_redirect" {
       parentRefs = [
         {
           name        = "ragflow"
-          namespace   = kubernetes_namespace.ragflow.metadata[0].name
+          namespace   = kubernetes_namespace_v1.ragflow.metadata[0].name
           kind        = "Gateway"
           sectionName = "http"
         }
@@ -2579,7 +2575,7 @@ resource "kubernetes_manifest" "http_redirect" {
 # =============================================================================
 
 # Get NGINX Gateway Fabric service for on-premises deployments
-data "kubernetes_service" "gateway_fabric" {
+data "kubernetes_service_v1" "gateway_fabric" {
   metadata {
     name      = "nginx-gateway-nginx-gateway-fabric"
     namespace = "nginx-gateway"
@@ -2652,13 +2648,13 @@ data "external" "nginx_gateway_ip" {
 # ConfigMap to store Gateway address
 # Uses count-based resources to support both GKE and smk (nginx gateway)
 # This avoids ternary expression in map value which is not supported by Terraform
-resource "kubernetes_config_map" "gateway_address_nginx" {
+resource "kubernetes_config_map_v1" "gateway_address_nginx" {
   count = local.is_gke_gateway ? 0 : 1
   depends_on = [kubernetes_manifest.gateway, data.external.nginx_gateway_ip]
 
   metadata {
     name      = "ragflow-gateway-address"
-    namespace = kubernetes_namespace.ragflow.metadata[0].name
+    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
   }
 
   data = {
@@ -2666,13 +2662,13 @@ resource "kubernetes_config_map" "gateway_address_nginx" {
   }
 }
 
-resource "kubernetes_config_map" "gateway_address_gke" {
+resource "kubernetes_config_map_v1" "gateway_address_gke" {
   count = local.is_gke_gateway ? 1 : 0
   depends_on = [kubernetes_manifest.gateway, data.external.gateway_ip]
 
   metadata {
     name      = "ragflow-gateway-address"
-    namespace = kubernetes_namespace.ragflow.metadata[0].name
+    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
   }
 
   data = {

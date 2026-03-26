@@ -64,8 +64,10 @@ def check_doc_engine() -> tuple[bool, dict]:
 def check_storage() -> tuple[bool, dict]:
     st = timer()
     try:
-        settings.STORAGE_IMPL.health()
-        return True, {"elapsed": f"{(timer() - st) * 1000.0:.1f}"}
+        if settings.STORAGE_IMPL.health():
+            return True, {"elapsed": f"{(timer() - st) * 1000.0:.1f}"}
+        else:
+            return False, {"elapsed": f"{(timer() - st) * 1000.0:.1f}", "error": "health check returned False"}
     except Exception as e:
         return False, {"elapsed": f"{(timer() - st) * 1000.0:.1f}", "error": str(e)}
 

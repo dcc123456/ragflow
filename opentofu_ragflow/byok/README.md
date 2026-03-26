@@ -444,7 +444,7 @@ The following table shows the default resource values for each environment. Copy
 | Resource | Variable | Production | Development (dev_gke / dev_smk) |
 |----------|----------|------------|---------------------------------------|
 | **MySQL** |
-| Storage | mysql_k8s_storage | 200 Gi | 20 Gi |
+| Storage | mysql_k8s_storage | 500 Gi | 20 Gi |
 | CPU Request | mysql_cpu_request | 4 | 4 |
 | CPU Limit | mysql_cpu_limit | 8 | 8 |
 | Memory Request | mysql_memory_request | 8Gi | 8Gi |
@@ -485,35 +485,48 @@ The following table shows the default resource values for each environment. Copy
 | Replicas | ragflow_replicas | 3 | 1 |
 | CPU Request | ragflow_cpu_request | 2 | 2 |
 | CPU Limit | ragflow_cpu_limit | 4 | 4 |
-| Memory Request | ragflow_memory_request | 8Gi | 8Gi |
-| Memory Limit | ragflow_memory_limit | 16Gi | 16Gi |
+| Memory Request | ragflow_memory_request | 4Gi | 4Gi |
+| Memory Limit | ragflow_memory_limit | 8Gi | 8Gi |
 | **Parser** |
 | Replicas | parser_replicas | 3 | 1 |
 | CPU Request | parser_cpu_request | 2 | 2 |
 | CPU Limit | parser_cpu_limit | 4 | 4 |
-| Memory Request | parser_memory_request | 8Gi | 8Gi |
-| Memory Limit | parser_memory_limit | 16Gi | 16Gi |
+| Memory Request | parser_memory_request | 16Gi | 16Gi |
+| Memory Limit | parser_memory_limit | 20Gi | 20Gi |
 | **DeepDoc** |
-| Replicas | deepdoc_replicas | 3 | 1 |
-| CPU Request | deepdoc_cpu_request | 8 | 8 |
-| CPU Limit | deepdoc_cpu_limit | 16 | 16 |
-| Memory Request | deepdoc_memory_request | 32Gi | 32Gi |
-| Memory Limit | deepdoc_memory_limit | 64Gi | 64Gi |
+| Replicas | deepdoc_replicas | 2 | 1 |
+| CPU Request | deepdoc_cpu_request | 4 | 4 |
+| CPU Limit | deepdoc_cpu_limit | 8 | 8 |
+| Memory Request | deepdoc_memory_request | 16Gi | 16Gi |
+| Memory Limit | deepdoc_memory_limit | 32Gi | 32Gi |
 
 ### Scaling and Capacity Management
 
 RAGFlow deployment supports safe, zero-downtime scaling operations through OpenTofu/Terraform:
 
 #### Storage Expansion (PVC Scaling)
-You can safely increase the storage capacity of stateful components (MySQL, Elasticsearch, RabbitMQ) without data loss:
-1. Update the corresponding storage variable in your `terraform.tfvars` (e.g., increase `mysql_k8s_storage` from `20` to `50`).
-2. Run `tofu apply -auto-approve`.
 
-**How it ensures no data loss:**
-- OpenTofu triggers an **in-place update** of the Kubernetes PersistentVolumeClaim (PVC) resources.
-- Expected default StorageClasses (like GKE's `premium-rwo`, `standard-rwo`, or SMK's `rook-ceph-block`) already have `allowVolumeExpansion: true` configured by default. (See [GKE Volume Expansion Documentation](https://cloud.google.com/kubernetes-engine/docs/how-to/persistent-volumes/volume-expansion) and [Rook/Ceph Volume Expansion Documentation](https://rook.io/docs/rook/latest/Storage-Configuration/Block-Storage-RBD/block-storage/#volume-expansion)). You can verify this in your cluster by running `kubectl get storageclass <your-storage-class> -o yaml | grep allowVolumeExpansion`.
-- The underlying cloud provider or CSI driver (e.g., Rook/Ceph CSI) dynamically resizes the disk and expands the file system seamlessly without recreating the PVC.
-- **⚠️ IMPORTANT:** Kubernetes *only* supports increasing volume size. Attempting to decrease storage size may force Terraform to drop and recreate the PVC, which **will result in permanent data loss**.
+Storage expansion behavior differs by component:
+
+**MySQL and RabbitMQ** (`kubernetes_persistent_volume_claim` resources):
+1. Update the storage variable in `terraform.tfvars` (e.g., increase `mysql_k8s_storage` from `200` to `500`).
+2. Run `tofu apply -auto-approve` — OpenTofu directly calls the Kubernetes API to resize the PVC, triggering an in-place expansion.
+
+**Elasticsearch** (`volumeClaimTemplates` in StatefulSet):
+Changing the storage size variable only affects **new replicas** when scaling out (e.g., going from `es_data_node_count: 3` to `4`). Existing PVCs for replicas 0 to N are **not** modified by `tofu apply`. To expand storage for existing Elasticsearch PVCs, you must manually resize:
+```bash
+kubectl patch pvc data-elasticsearch-es-data-ingest-N -n ragflow -p '{"spec":{"resources":{"requests":{"storage":"NEW_SIZEGi"}}}}'
+# Then restart the pod to complete filesystem resize
+kubectl delete pod elasticsearch-es-data-ingest-N -n ragflow
+```
+
+**Prerequisites:**
+- StorageClass must have `allowVolumeExpansion: true` (GKE's `premium-rwo`, `standard-rwo`, and Rook/Ceph block storage all enable this by default). Verify with:
+  ```bash
+  kubectl get storageclass <your-storage-class> -o yaml | grep allowVolumeExpansion
+  ```
+
+**⚠️ IMPORTANT:** Kubernetes *only* supports increasing volume size. Decreasing storage size will force Terraform/Kubernetes to drop and recreate the PVC, which **will result in permanent data loss**.
 
 #### Stateless Replica Scaling
 Stateless components (`ragflow`, `parser`, `deepdoc`, `tei`) can be scaled out natively:
