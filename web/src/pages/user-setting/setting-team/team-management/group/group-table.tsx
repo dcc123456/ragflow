@@ -14,13 +14,9 @@ import {
 import { ArrowUpDown } from 'lucide-react';
 import * as React from 'react';
 
+import { RAGFlowAvatar } from '@/components/ragflow-avatar';
 import { TableEmpty, TableSkeleton } from '@/components/table-skeleton';
-import {
-  Avatar,
-  AvatarFallback,
-  AvatarGroup,
-  AvatarImage,
-} from '@/components/ui/avatar';
+import { AvatarGroup } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import {
   Table,
@@ -37,15 +33,8 @@ import { IGroup, IMember } from '@/interfaces/database/team';
 import { useContext, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CellNameWithToolTip } from '../cell-name';
-import { GroupRole } from '../constant';
 import { useModifyGroupMember, useTransferOwner } from '../use-operate-group';
 import { ActionCell } from './action-cell';
-
-const RoleColorMap = {
-  [GroupRole.Owner]: 'bg-red-500',
-  [GroupRole.Admin]: 'bg-indigo-500',
-  [GroupRole.Member]: 'bg-green-500',
-};
 
 type GroupTableProps = Pick<
   ReturnType<typeof useModifyGroupMember>,
@@ -136,17 +125,15 @@ export function GroupTable({
           const members: IMember[] = row.getValue('members');
 
           return (
-            <AvatarGroup>
+            <AvatarGroup className="flex-row">
               {members.map((x) => (
-                <Avatar
-                  className="-ml-2 first:ml-0 cursor-pointer"
+                <RAGFlowAvatar
+                  name={x.nickname}
+                  avatar={x.avatar}
+                  isPerson
+                  className="size-5"
                   key={x.member_id}
-                >
-                  <AvatarImage src={x.avatar} alt={x.nickname} />
-                  <AvatarFallback className={RoleColorMap[x.role as GroupRole]}>
-                    {x.nickname}
-                  </AvatarFallback>
-                </Avatar>
+                />
               ))}
             </AvatarGroup>
           );

@@ -4,6 +4,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
+import { AvatarUpload } from '@/components/avatar-upload';
+import { RAGFlowFormItem } from '@/components/ragflow-form';
 import {
   Form,
   FormControl,
@@ -16,14 +18,8 @@ import { Input } from '@/components/ui/input';
 import { TagRenameId } from '@/constants/knowledge';
 import { IModalProps } from '@/interfaces/common';
 import { IDepartment } from '@/interfaces/database/team';
-import {
-  getBase64FromFileList,
-  transformBase64ToFileWithPreview,
-} from '@/utils/file-util';
-import { omit } from 'lodash';
 import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AvatarUploader } from '../../avatar-uploader';
 
 export function CreateDepartmentForm({
   hideModal,
@@ -41,7 +37,7 @@ export function CreateDepartmentForm({
       })
       .trim(),
     description: z.string().trim().optional(),
-    avatar: z.array(z.instanceof(File)).optional(),
+    avatar: z.string().optional(),
   });
 
   const form = useForm<z.infer<typeof FormSchema>>({
@@ -50,8 +46,7 @@ export function CreateDepartmentForm({
   });
 
   async function onSubmit(data: z.infer<typeof FormSchema>) {
-    const avatarStr = await getBase64FromFileList(data.avatar);
-    const ret = await onOk?.({ ...data, avatar: avatarStr });
+    const ret = await onOk?.(data);
     if (ret) {
       hideModal?.();
     }
@@ -59,16 +54,7 @@ export function CreateDepartmentForm({
 
   useEffect(() => {
     if (initialValues) {
-      const nextValues: z.infer<typeof FormSchema> = omit(
-        initialValues as IDepartment,
-        'avatar',
-      );
-      const avatar = initialValues.avatar;
-      if (avatar) {
-        const file = transformBase64ToFileWithPreview(avatar);
-        nextValues.avatar = [file];
-      }
-      form.reset(nextValues);
+      form.reset(initialValues);
     }
   }, [form, initialValues]);
 
@@ -96,7 +82,9 @@ export function CreateDepartmentForm({
             </FormItem>
           )}
         />
-        <AvatarUploader></AvatarUploader>
+        <RAGFlowFormItem name="avatar" label={t('permission.avatar')}>
+          <AvatarUpload></AvatarUpload>
+        </RAGFlowFormItem>
         <FormField
           control={form.control}
           name="description"

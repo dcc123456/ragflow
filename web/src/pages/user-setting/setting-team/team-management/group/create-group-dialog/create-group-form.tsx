@@ -4,6 +4,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
+import { AvatarUpload } from '@/components/avatar-upload';
+import { RAGFlowFormItem } from '@/components/ragflow-form';
 import {
   Form,
   FormControl,
@@ -16,14 +18,8 @@ import { Input } from '@/components/ui/input';
 import { TagRenameId } from '@/constants/knowledge';
 import { IModalProps } from '@/interfaces/common';
 import { IGroup } from '@/interfaces/database/team';
-import {
-  getBase64FromFileList,
-  transformBase64ToFileWithPreview,
-} from '@/utils/file-util';
-import { omit } from 'lodash';
 import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AvatarUploader } from '../../avatar-uploader';
 
 export function CreateGroupForm({
   initialValues,
@@ -38,7 +34,7 @@ export function CreateGroupForm({
         message: t('common.namePlaceholder'),
       })
       .trim(),
-    avatar: z.array(z.instanceof(File)).optional(),
+    avatar: z.string().optional(),
   });
 
   const form = useForm<z.infer<typeof FormSchema>>({
@@ -48,11 +44,6 @@ export function CreateGroupForm({
 
   async function onSubmit(data: z.infer<typeof FormSchema>) {
     const nextData = { ...data, group_id: initialValues?.group_id };
-    const avatar = data.avatar;
-    if (avatar) {
-      const avatarStr = await getBase64FromFileList(data.avatar);
-      nextData.avatar = avatarStr;
-    }
     const ret = await onOk?.(nextData);
     if (ret) {
       hideModal?.();
@@ -61,16 +52,7 @@ export function CreateGroupForm({
 
   useEffect(() => {
     if (initialValues) {
-      const nextValues: z.infer<typeof FormSchema> = omit(
-        initialValues as IGroup,
-        'avatar',
-      );
-      const avatar = initialValues.avatar;
-      if (avatar) {
-        const file = transformBase64ToFileWithPreview(avatar);
-        nextValues.avatar = [file];
-      }
-      form.reset(nextValues);
+      form.reset(initialValues);
     }
   }, [form, initialValues]);
 
@@ -98,7 +80,9 @@ export function CreateGroupForm({
             </FormItem>
           )}
         />
-        <AvatarUploader></AvatarUploader>
+        <RAGFlowFormItem name="avatar" label={t('permission.avatar')}>
+          <AvatarUpload></AvatarUpload>
+        </RAGFlowFormItem>
       </form>
     </Form>
   );
