@@ -222,7 +222,22 @@ async def async_chat_solo(dialog, messages, stream=True):
         else:
             text_attachments, image_files = split_file_attachments(messages[-1]["files"], raw=True)
         attachments = "\n\n".join(text_attachments)
-    model_config = get_model_config_by_id(dialog.tenant_llm_id)
+    model_config = None
+    if dialog.tenant_llm_id:
+        try:
+            model_config = get_model_config_by_id(dialog.tenant_llm_id)
+        except LookupError:
+            # Legacy/partial records may carry a stale tenant_llm_id while llm_id is still valid.
+            logging.warning(
+                "Fallback to llm_id for dialog %s because tenant_llm_id=%s lookup failed.",
+                getattr(dialog, "id", ""),
+                dialog.tenant_llm_id,
+            )
+    if not model_config:
+        if dialog.llm_id:
+            model_config = get_model_config_by_type_and_name(dialog.tenant_id, LLMType.CHAT, dialog.llm_id)
+        else:
+            model_config = get_tenant_default_model_by_type(dialog.tenant_id, LLMType.CHAT)
     chat_mdl = LLMBundle(dialog.tenant_id, model_config)
     factory = model_config.get("llm_factory", "") if model_config else ""
 
@@ -649,9 +664,8 @@ async def async_chat(dialog, messages, stream=True, *, user_id: str, **kwargs):
                 kbinfos["chunks"].extend(tav_res["chunks"])
                 kbinfos["doc_aggs"].extend(tav_res["doc_aggs"])
             if prompt_config.get("use_kg"):
-                default_chat_model = get_tenant_default_model_by_type(dialog.tenant_id, LLMType.CHAT)
                 ck = await settings.kg_retriever.retrieval(" ".join(questions), tenant_ids, dialog.kb_ids, embd_mdl,
-                                                       LLMBundle(dialog.tenant_id, default_chat_model))
+                                                       chat_mdl)
                 if ck["content_with_weight"]:
                     kbinfos["chunks"].insert(0, ck)
 
