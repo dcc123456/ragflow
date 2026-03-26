@@ -9,6 +9,7 @@ import { useNavigatePage } from '@/hooks/logic-hooks/navigate-hooks';
 import { useTraceDuplicate } from '@/hooks/use-knowledge-request';
 import { IKnowledge } from '@/interfaces/database/knowledge';
 import { ChevronRight, LucideCircleX } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { ProcessingType } from '../dataset/dataset-overview/dataset-common';
 import { useUnBindTask } from '../dataset/dataset/generate-button/hook';
 import { DatasetDropdown } from './dataset-dropdown';
@@ -85,6 +86,7 @@ export function DatasetCard({
 
 export function SeeAllCard() {
   const { navigateToDatasetList } = useNavigatePage();
+  const { t } = useTranslation();
 
   return (
     <Card

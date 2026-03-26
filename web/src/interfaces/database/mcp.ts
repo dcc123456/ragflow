@@ -9,6 +9,7 @@ export interface IMcpServer {
   url: string;
   variables: Record<string, any> & { tools?: IMCPToolObject };
   operator_permission: number;
+  nickname?: string;
 }
 
 export type IMCPToolObject = Record<string, Omit<IMCPTool, 'name'>>;

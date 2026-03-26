@@ -2,6 +2,7 @@ import { CardContainer } from '@/components/card-container';
 import { EmptyCardType } from '@/components/empty/constant';
 import { EmptyAppCard } from '@/components/empty/empty';
 import ListFilterBar from '@/components/list-filter-bar';
+import { PrivilegeManagementDialog } from '@/components/privilege-management/privilege-management-dialog';
 import { RenameDialog } from '@/components/rename-dialog';
 import { Button } from '@/components/ui/button';
 import {
@@ -66,7 +67,7 @@ export default function Agents() {
   } = useHandleImportJsonFile();
 
   const {
-    privilegeModal,
+    privilegeModalVisible,
     hidePrivilegeModal,
     handShowPrivilegeModal,
     recordWithSourceType,
@@ -246,6 +247,12 @@ export default function Agents() {
           hideModal={hideFileUploadModal}
           onOk={onFileUploadOk}
         ></UploadAgentDialog>
+      )}
+      {privilegeModalVisible && (
+        <PrivilegeManagementDialog
+          hideModal={hidePrivilegeModal}
+          initialValues={recordWithSourceType}
+        ></PrivilegeManagementDialog>
       )}
     </>
   );

@@ -1,7 +1,8 @@
 import { RAGFlowAvatar } from '@/components/ragflow-avatar';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { cn } from '@/lib/utils';
 import { formatDate } from '@/utils/date';
-import { ReactNode } from 'react';
+import { PropsWithChildren, ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
 interface IProps {
@@ -34,7 +35,7 @@ export function HomeCard({
   icon,
   testId,
   showReleaseTime = false,
-}: IProps) {
+}: IProps & PropsWithChildren) {
   const { t } = useTranslation();
 
   return (
@@ -47,7 +48,10 @@ export function HomeCard({
         onClick?.();
       }}
       tabIndex={0}
-      className="px-2.5 py-4 flex gap-2 items-start group h-full w-full hover:shadow-md"
+      className={cn(
+        'px-2.5 py-4 flex gap-2 items-start group h-full w-full hover:shadow-md',
+        className,
+      )}
     >
       <div>
         <RAGFlowAvatar
@@ -81,28 +85,32 @@ export function HomeCard({
             <section className="flex justify-between"></section>
 
             <section className="flex flex-col gap-1 mt-1">
-              <div className="whitespace-nowrap overflow-hidden text-ellipsis">
-                {data.description}
-              </div>
-              <div className="flex justify-between items-center">
-                {showReleaseTime ? (
-                  <section className="text-sm text-text-secondary space-y-1">
-                    <div className="flex items-center gap-2">
-                      {`${t('flow.lastSavedAt')}:`}
+              {children || (
+                <>
+                  <div className="whitespace-nowrap overflow-hidden text-ellipsis">
+                    {data.description}
+                  </div>
+                  <div className="flex justify-between items-center">
+                    {showReleaseTime ? (
+                      <section className="text-sm text-text-secondary space-y-1">
+                        <div className="flex items-center gap-2">
+                          {`${t('flow.lastSavedAt')}:`}
+                          <Time time={data.update_time}></Time>
+                        </div>
+                        {data.release_time && (
+                          <div className="flex items-center gap-2">
+                            {`${t('flow.publishedAt')}:`}
+                            <Time time={data.release_time}></Time>
+                          </div>
+                        )}
+                      </section>
+                    ) : (
                       <Time time={data.update_time}></Time>
-                    </div>
-                    {data.release_time && (
-                      <div className="flex items-center gap-2">
-                        {`${t('flow.publishedAt')}:`}
-                        <Time time={data.release_time}></Time>
-                      </div>
                     )}
-                  </section>
-                ) : (
-                  <Time time={data.update_time}></Time>
-                )}
-                {sharedBadge}
-              </div>
+                    {sharedBadge}
+                  </div>
+                </>
+              )}
             </section>
           </div>
         </CardContent>

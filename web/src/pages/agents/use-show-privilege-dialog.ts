@@ -15,7 +15,7 @@ export function useAgentWithSourceType(record: IFlow) {
 
 export function useShowPrivilegeDialog() {
   const {
-    visible: privilegeModal,
+    visible: privilegeModalVisible,
     hideModal: hidePrivilegeModal,
     showModal: showPrivilegeModal,
   } = useSetModalState();
@@ -33,7 +33,7 @@ export function useShowPrivilegeDialog() {
   const recordWithSourceType = useAgentWithSourceType(record);
 
   return {
-    privilegeModal,
+    privilegeModalVisible,
     hidePrivilegeModal,
     handShowPrivilegeModal,
     recordWithSourceType,

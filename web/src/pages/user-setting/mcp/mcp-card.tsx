@@ -1,3 +1,4 @@
+import { SharedBadge } from '@/components/shared-badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { IMcpServer } from '@/interfaces/database/mcp';
@@ -69,7 +70,10 @@ export function McpCard({
             <div className="line-clamp-1 pb-1">
               {toolLength} {t('mcp.cachedTools')}
             </div>
-            <p>{formatDate(data.update_date)}</p>
+            <section className="flex items-center justify-between">
+              <p>{formatDate(data.update_date)}</p>
+              <SharedBadge>{data?.nickname}</SharedBadge>
+            </section>
           </div>
         </div>
       </CardContent>
