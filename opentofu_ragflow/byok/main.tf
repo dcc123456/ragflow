@@ -263,10 +263,11 @@ resource "kubernetes_stateful_set_v1" "mysql" {
             name           = "mysql"
           }
 
-          # MySQL binlog retention: expire-logs-days=2 (auto-purge logs older than 2 days)
+          # MySQL binlog retention: binlog-expire-logs-seconds=172800 (2 days = 172800 seconds)
+          # Note: binlog_expire_logs_seconds takes precedence over expire_logs_days in MySQL 8.0
           # max-binlog-size=1G (default, single file max 1GB)
           # With 2-day retention and 1GB max per file, worst-case binlog storage is ~2-3GB
-          args = ["--max-connections=2000", "--wait-timeout=600", "--interactive-timeout=600", "--expire-logs-days=2"]
+          args = ["--max-connections=2000", "--wait-timeout=600", "--interactive-timeout=600", "--binlog-expire-logs-seconds=172800"]
 
           env {
             name = "MYSQL_ROOT_PASSWORD"

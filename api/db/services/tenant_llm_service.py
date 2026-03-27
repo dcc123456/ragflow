@@ -125,6 +125,17 @@ class TenantLLMService(CommonService):
 
     @staticmethod
     def split_model_name_and_factory(model_name):
+        """
+        Parse model name into (model, factory, tenant_id).
+
+        Note: Due to historical reasons, three formats are supported:
+            - model                          -> ("model", None, None)
+            - model@factory                  -> ("model", "factory", None)
+            - model@factory#tenant_id        -> ("model", "factory", "tenant_id")
+
+        Raises:
+            ValueError: If model_name contains more than one '#' after '@'.
+        """
         arr = model_name.split("@")
         if len(arr) < 2:
             return model_name, None, None
@@ -137,6 +148,8 @@ class TenantLLMService(CommonService):
                 factory, tenant_id = factory_and_tenant
             elif len(factory_and_tenant) == 1:
                 factory, tenant_id = factory_and_tenant[0], None
+            else:
+                factory, tenant_id = None, None
             return model, factory, tenant_id
         else:
             factory, tenant_id = factory_part, None

@@ -1011,6 +1011,78 @@ def parse_source_dest(value: str) -> Tuple[str, str]:
     return parts[0], parts[1]
 
 
+def fix_k8s_sa_annotation_after_cross_project_restore(project: str, gke_namespace: str = "ragflow") -> bool:
+    """Fix K8s ServiceAccount annotation after cross-project restore.
+
+    CRITICAL: This is a MUST action after restoring from GKE backup to a different project.
+    GKE backup/restore preserves K8s ServiceAccount annotations but they may reference
+    the old project's GCP service account, causing Workload Identity to fail.
+
+    This function checks if the K8s default ServiceAccount annotation matches the
+    expected GCP service account for the current project, and updates it if needed.
+
+    Args:
+        project: GCP project ID (e.g., "ragflow-stage")
+        gke_namespace: Kubernetes namespace where the ServiceAccount is located
+
+    Returns:
+        True if annotation is correct or was successfully updated, False otherwise
+
+    Example:
+        # After restoring from ragflow-488401 to ragflow-stage:
+        fix_k8s_sa_annotation_after_cross_project_restore("ragflow-stage", "ragflow")
+    """
+    print("\n" + "=" * 70)
+    print("Fixing K8s ServiceAccount Annotation After Cross-Project Restore")
+    print("=" * 70)
+
+    # Get expected GCP service account for this project
+    expected_gcp_sa = f"ragflow-gcs@{project}.iam.gserviceaccount.com"
+
+    # Get current annotation from K8s ServiceAccount
+    result = run_cmd(
+        f"kubectl get serviceaccount default -n {gke_namespace} "
+        f"-o jsonpath='{{.metadata.annotations.iam.gke.io/gcp-service-account}}'",
+        check=False,
+    )
+    if result.returncode != 0:
+        print(f"  Error: Could not get K8s ServiceAccount: {result.stderr}")
+        return False
+
+    current_annotation = result.stdout.strip()
+
+    if not current_annotation:
+        print("  Warning: K8s ServiceAccount has no iam.gke.io/gcp-service-account annotation")
+        print("  This may cause Workload Identity to not work.")
+        print(f"  Run: kubectl annotate serviceaccount default -n {gke_namespace} "
+              f"iam.gke.io/gcp-service-account={expected_gcp_sa} --overwrite")
+        return False
+
+    if current_annotation == expected_gcp_sa:
+        print(f"  K8s SA annotation is correct: {current_annotation}")
+        return True
+
+    print("  WARNING: K8s SA annotation mismatch detected!")
+    print(f"    Current:   {current_annotation}")
+    print(f"    Expected:   {expected_gcp_sa}")
+    print("  This will cause Workload Identity to fail with 403 Forbidden errors.")
+
+    # Update the annotation
+    print(f"\n  Updating annotation to {expected_gcp_sa}...")
+    result = run_cmd(
+        f"kubectl annotate serviceaccount default -n {gke_namespace} "
+        f"iam.gke.io/gcp-service-account={expected_gcp_sa} --overwrite",
+        check=False,
+    )
+    if result.returncode == 0:
+        print("  SUCCESS: K8s SA annotation updated")
+        print("  Note: Restart pods to apply the new Workload Identity mapping")
+        return True
+    else:
+        print(f"  Error: Could not update annotation: {result.stderr}")
+        return False
+
+
 def cmd_plan(source_project: str, source_cluster: str, dest_project: str, dest_cluster: str):
     """List backup plans, backups, and restore plans with console links."""
     print("=" * 70)
@@ -1359,6 +1431,11 @@ def cmd_apply(source_project: str, source_cluster: str, dest_project: str, dest_
     if not restore_success:
         print("\n[FAIL] Restore failed or timed out")
         sys.exit(1)
+
+
+    # Step 12: Fix K8s SA annotation after cross-project restore
+    if is_cross_project:
+        fix_k8s_sa_annotation_after_cross_project_restore(dest_project, "ragflow")
 
     print("\n" + "=" * 70)
     print("[OK] Backup and Restore Complete!")

@@ -25,7 +25,7 @@ import uuid
 from api.common.base64 import encode_to_base64
 from api.db.services.system_settings_service import SystemSettingsService
 from api.db.db_models import init_database_tables as init_web_db, LLM, Knowledgebase, Dialog, Memory
-from api.db.joint_services.memory_message_service import init_message_id_sequence, init_memory_size_cache, fix_missing_tokenized_memory
+from api.db.joint_services.memory_message_service import init_message_id_sequence, init_memory_size_cache
 from api.db.services.canvas_service import CanvasTemplateService
 from api.db.services.llm_service import LLMService, LLMBundle, get_init_tenant_llm
 from api.db.services.tenant_llm_service import LLMFactoriesService, TenantLLMService
@@ -260,8 +260,8 @@ def init_web_data():
     add_graph_templates()
     init_message_id_sequence()
     init_memory_size_cache()
-    fix_missing_tokenized_memory()
-    fix_empty_tenant_model_id()
+    # fix_missing_tokenized_memory()
+    # fix_empty_tenant_model_id()
     logging.info("init web data success:{}".format(time.time() - start_time))
 
 def init_table():
@@ -306,7 +306,11 @@ def fix_empty_tenant_model_id():
                 kb_groups[(obj.tenant_id, obj.embd_id)] = [obj.id]
         update_cnt = 0
         for k, v in kb_groups.items():
-            tenant_llm = TenantLLMService.get_api_key(k[0], k[1])
+            try:
+                tenant_llm = TenantLLMService.get_api_key(k[0], k[1])
+            except Exception as e:
+                logging.warning(f"Failed to get_api_key for tenant={k[0]}, model_name={k[1]!r}: {e}")
+                continue
             if tenant_llm:
                 update_cnt += KnowledgebaseService.filter_update([Knowledgebase.id.in_(v)], {"tenant_embd_id": tenant_llm.id})
         logging.info(f"Update {update_cnt} tenant_embd_id in table knowledgebase.")
@@ -322,7 +326,11 @@ def fix_empty_tenant_model_id():
                 dialog_groups[(obj.tenant_id, obj.llm_id)] = [obj.id]
         update_cnt = 0
         for k, v in dialog_groups.items():
-            tenant_llm = TenantLLMService.get_api_key(k[0], k[1])
+            try:
+                tenant_llm = TenantLLMService.get_api_key(k[0], k[1])
+            except Exception as e:
+                logging.warning(f"Failed to get_api_key for tenant={k[0]}, model_name={k[1]!r}: {e}")
+                continue
             if tenant_llm:
                 update_cnt += DialogService.filter_update([Dialog.id.in_(v)], {"tenant_llm_id": tenant_llm.id})
         logging.info(f"Update {update_cnt} tenant_llm_id in table dialog.")
@@ -338,7 +346,11 @@ def fix_empty_tenant_model_id():
                 dialog_groups[(obj.tenant_id, obj.rerank_id)] = [obj.id]
         update_cnt = 0
         for k, v in dialog_groups.items():
-            tenant_llm = TenantLLMService.get_api_key(k[0], k[1])
+            try:
+                tenant_llm = TenantLLMService.get_api_key(k[0], k[1])
+            except Exception as e:
+                logging.warning(f"Failed to get_api_key for tenant={k[0]}, model_name={k[1]!r}: {e}")
+                continue
             if tenant_llm:
                 update_cnt += DialogService.filter_update([Dialog.id.in_(v)], {"tenant_rerank_id": tenant_llm.id})
         logging.info(f"Update {update_cnt} tenant_rerank_id in table dialog.")
@@ -354,7 +366,11 @@ def fix_empty_tenant_model_id():
                 memory_groups[(obj.tenant_id, obj.embd_id)] = [obj.id]
         update_cnt = 0
         for k, v in memory_groups.items():
-            tenant_llm = TenantLLMService.get_api_key(k[0], k[1])
+            try:
+                tenant_llm = TenantLLMService.get_api_key(k[0], k[1])
+            except Exception as e:
+                logging.warning(f"Failed to get_api_key for tenant={k[0]}, model_name={k[1]!r}: {e}")
+                continue
             if tenant_llm:
                 update_cnt += MemoryService.filter_update([Memory.id.in_(v)], {"tenant_embd_id": tenant_llm.id})
         logging.info(f"Update {update_cnt} tenant_embd_id in table memory.")
@@ -370,7 +386,11 @@ def fix_empty_tenant_model_id():
                 memory_groups[(obj.tenant_id, obj.llm_id)] = [obj.id]
         update_cnt = 0
         for k, v in memory_groups.items():
-            tenant_llm = TenantLLMService.get_api_key(k[0], k[1])
+            try:
+                tenant_llm = TenantLLMService.get_api_key(k[0], k[1])
+            except Exception as e:
+                logging.warning(f"Failed to get_api_key for tenant={k[0]}, model_name={k[1]!r}: {e}")
+                continue
             if tenant_llm:
                 update_cnt += MemoryService.filter_update([Memory.id.in_(v)], {"tenant_llm_id": tenant_llm.id})
         logging.info(f"Update {update_cnt} tenant_llm_id in table memory.")
@@ -384,7 +404,11 @@ def fix_empty_tenant_model_id():
             update_dict = {}
             for key in ["llm_id", "embd_id", "asr_id", "img2txt_id", "rerank_id", "tts_id"]:
                 if tenant_dict.get(key) and not tenant_dict.get(f"tenant_{key}"):
-                    tenant_model = TenantLLMService.get_api_key(tenant_dict["id"], tenant_dict[key])
+                    try:
+                        tenant_model = TenantLLMService.get_api_key(tenant_dict["id"], tenant_dict[key])
+                    except Exception as e:
+                        logging.warning(f"Failed to get_api_key for tenant={tenant_dict['id']}, model_name={tenant_dict[key]!r}: {e}")
+                        continue
                     if tenant_model:
                         update_dict.update({f"tenant_{key}": tenant_model.id})
             if update_dict:

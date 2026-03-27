@@ -2289,7 +2289,7 @@ def migrate_db():
     alter_db_add_column(migrator, "evaluation_cases", "relevant_kb_ids", JSONField(null=True, help_text="expected relevant knowledge base IDs", default=[]))
     alter_db_add_column(migrator, "evaluation_cases", "metadata", JSONField(null=True, help_text="additional context/tags", default={}))
     alter_db_add_column(migrator, "evaluation_runs", "target_type", CharField(max_length=32, null=False, index=True, help_text="chat|agent|...", default="chat"))
-    alter_db_add_column(migrator, "evaluation_runs", "target_id", CharField(max_length=32, null=False, index=True, help_text="target object id", default=None))
+    alter_db_add_column(migrator, "evaluation_runs", "target_id", CharField(max_length=32, null=False, index=True, help_text="target object id", default=""))
     alter_db_add_column(migrator, "evaluation_collections", "target_type", CharField(max_length=16, null=False, default="chat", help_text="chat|agent", index=True))
     alter_db_add_column(migrator, "evaluation_runs", "task_id", CharField(max_length=32, null=True, help_text="task id"))
 

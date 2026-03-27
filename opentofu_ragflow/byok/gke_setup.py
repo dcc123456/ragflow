@@ -760,13 +760,32 @@ def update_terraform_tfvars(variables, example_file=None):
         print(f'  Set {var_name} = "{value}"')
 
 
-def create_gcs_bucket(project, cluster_id, gke_namespace="ragflow"):
+def create_gcs_bucket(project, cluster_id, region, gke_namespace="ragflow"):
     """Create GCS bucket for RAGFlow storage (if not exists) and configure IAM.
 
     Args:
         project: GCP project ID
         cluster_id: GKE cluster ID (used to generate bucket name)
+        region: GCP region where the bucket should be created
         gke_namespace: Kubernetes namespace for RAGFlow (used for Workload Identity binding)
+
+    Note on Region Selection:
+        While cross-region deployment is technically feasible, it has two significant drawbacks:
+
+        1. Network Egress Costs:
+           - If GKE and GCS are in the same region, data transfer is typically free
+             (uses Google's internal network).
+           - If they are in different regions, Google charges Cross-region Data Transfer
+             fees when reading large amounts of data from GCS to GKE. For TB-scale data,
+             these costs can be substantial.
+
+        2. Latency:
+           - Same-region access typically offers single-digit millisecond latency.
+           - Cross-region access can add tens to hundreds of milliseconds of latency,
+             which may impact real-time applications (e.g., real-time image processing).
+
+        Recommendation: Create the GCS bucket in the same region as your GKE cluster
+        to avoid these extra costs and latency.
 
     The bucket is configured with:
     - Bucket-level IAM binding for the GCP service account used by RAGFlow
@@ -792,7 +811,7 @@ def create_gcs_bucket(project, cluster_id, gke_namespace="ragflow"):
     else:
         # Create bucket
         print(f"  Bucket not found. Creating '{bucket_name}'...")
-        result = run_cmd(f"gsutil mb -p {project} -l us-central1 gs://{bucket_name}/", check=False)
+        result = run_cmd(f"gcloud storage buckets create gs://{bucket_name}/ --project={project} --location={region}", check=False)
 
         if result.returncode == 0:
             print(f"  Bucket '{bucket_name}' created successfully!")
@@ -817,18 +836,18 @@ def create_gcs_bucket(project, cluster_id, gke_namespace="ragflow"):
     # Add bucket-level IAM bindings for both node SA and GCP SA
     print(f"\nConfiguring bucket IAM for '{bucket_name}'...")
 
-    # Grant storage.objectAdmin to node SA and GCP SA
+    # Grant storage.admin to node SA and GCP SA (storage.admin is required for bucket.exists() check, storage.objectAdmin is not enough)
     for sa_email in [node_sa_email, gcp_sa_email]:
         result = run_cmd(
-            f"gsutil iam ch serviceAccount:{sa_email}:roles/storage.objectAdmin gs://{bucket_name}",
+            f"gcloud storage buckets add-iam-policy-binding gs://{bucket_name} --member=serviceAccount:{sa_email} --role=roles/storage.admin",
             check=False,
         )
         if result.returncode == 0:
-            print(f"  storage.objectAdmin granted to {sa_email}")
+            print(f"  storage.admin granted to {sa_email}")
         elif "already exists" in result.stderr.lower() or "duplicate" in result.stderr.lower():
-            print(f"  storage.objectAdmin already exists for {sa_email}")
+            print(f"  storage.admin already exists for {sa_email}")
         else:
-            print(f"  Warning: Could not grant storage.objectAdmin to {sa_email}: {result.stderr}")
+            print(f"  Warning: Could not grant storage.admin to {sa_email}: {result.stderr}")
 
     # Set up Workload Identity binding for K8s default SA to GCP SA
     # This allows pods using the default K8s SA to impersonate the GCP SA
@@ -1381,7 +1400,7 @@ def main():
                     break
 
     # Create GCS bucket for RAGFlow storage (includes bucket IAM and Workload Identity setup)
-    bucket_name = create_gcs_bucket(project, cluster.get("id", cluster.get("name", "cluster")), namespace)
+    bucket_name = create_gcs_bucket(project, cluster.get("id", cluster.get("name", "cluster")), region, namespace)
 
     # Update terraform.tfvars with all variables at once
     tfvars_vars = {
