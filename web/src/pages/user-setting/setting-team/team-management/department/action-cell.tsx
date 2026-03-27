@@ -1,21 +1,16 @@
 import { ConfirmDeleteDialog } from '@/components/confirm-delete-dialog';
 import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+import { TeamRole } from '@/constants/team';
 import {
   useDeleteDepartment,
   useDeleteDepartmentMember,
 } from '@/hooks/use-team';
 import { IDepartment, IMember } from '@/interfaces/database/team';
 import { CellContext } from '@tanstack/react-table';
-import { EllipsisVertical, Move, SquarePen, Trash2 } from 'lucide-react';
-import { useCallback } from 'react';
+import { ArrowLeftRight, Layers, Trash2, UserPen } from 'lucide-react';
+import { useCallback, useContext } from 'react';
 import { useTranslation } from 'react-i18next';
+import { PermissionManagementDialogContext } from '../permission-management-dialog';
 import {
   useModifyDepartment,
   useShowMoveDepartmentDialog,
@@ -39,6 +34,7 @@ export function ActionCell({
   const { deleteDepartment } = useDeleteDepartment();
   const tenantId = useTenantId();
   const isMyCreatedTeam = useIsMyCreatedTeam();
+  const showPermissionModal = useContext(PermissionManagementDialogContext);
   const { deleteDepartmentMember } = useDeleteDepartmentMember(tenantId);
 
   const handleDeleteDepartment = useCallback(() => {
@@ -71,6 +67,18 @@ export function ActionCell({
     }
   }, [row.original, showMoveDepartmentModal]);
 
+  const handleShowPermissionModal = useCallback(() => {
+    const record = row.original;
+    if ('department_id' in record) {
+      showPermissionModal?.({
+        id: record.department_id,
+        name: record.name,
+        avatar: record.avatar,
+        role: TeamRole.Department,
+      });
+    }
+  }, [showPermissionModal, row.original]);
+
   const isDepartment = 'department_id' in row.original;
 
   if (!isMyCreatedTeam) {
@@ -78,33 +86,42 @@ export function ActionCell({
   }
 
   return (
-    <section className="flex gap-4 items-center">
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="secondary" size={'icon'}>
-            <EllipsisVertical />
+    isMyCreatedTeam && (
+      <section className="flex gap-2 items-center opacity-0 group-hover:opacity-100 transition-opacity">
+        {isDepartment && (
+          <>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleShowPermissionModal}
+              title={t('permission.permissionManagement')}
+            >
+              <Layers className="w-4 h-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleShowFileRenameModal}
+              title={t('common.edit')}
+            >
+              <UserPen className="w-4 h-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleShowMoveDepartmentModal}
+              title={t('common.move')}
+            >
+              <ArrowLeftRight className="w-4 h-4" />
+            </Button>
+          </>
+        )}
+        <ConfirmDeleteDialog onOk={handleDeleteDepartment}>
+          <Button variant="ghost" size="icon" title={t('common.delete')}>
+            <Trash2 className="w-4 h-4" />
           </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          {isDepartment && (
-            <>
-              <DropdownMenuItem onClick={handleShowFileRenameModal}>
-                <SquarePen /> {t('common.edit')}
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={handleShowMoveDepartmentModal}>
-                <Move /> {t('common.move')}
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-            </>
-          )}
-          <ConfirmDeleteDialog onOk={handleDeleteDepartment}>
-            <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-              <Trash2 /> {t('common.delete')}
-            </DropdownMenuItem>
-          </ConfirmDeleteDialog>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </section>
+        </ConfirmDeleteDialog>
+      </section>
+    )
   );
 }

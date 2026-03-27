@@ -18,6 +18,8 @@ export default {
       setAsAdministrator: '設為管理者',
       transferOwner: '轉移所有權',
       permissionManagement: '權限管理',
+      permissionManagementDescription:
+        '成員僅可查看自身可見範圍內知識庫以及對應權限，所有者可以分配所有知識庫的所有權限，請謹慎操作！',
       manage: '管理',
       collaborator: '協作者',
       team: '團隊',
@@ -26,6 +28,9 @@ export default {
       writePermission: '寫入權限',
       managePermission: '管理權限',
       ownerPermission: '所有者',
+      invisible: '不可見',
+      read: '讀取',
+      write: '寫入',
       manageCollaborator: '管理協作者',
       permission: '權限',
       transferTo: '轉移給',

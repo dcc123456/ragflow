@@ -23,10 +23,22 @@ import { Group } from './group';
 import { CreateGroupDialog } from './group/create-group-dialog';
 import { InviteDialog } from './member/invite-dialog';
 import { MemberTable } from './member/member-table';
+import {
+  PermissionManagementDialog,
+  PermissionManagementDialogContext,
+} from './permission-management-dialog';
 import { useModifyGroup } from './use-operate-group';
 
 export function TeamManagement() {
   const [activity, setActivity] = useState<TeamRole>(TeamRole.Member);
+  const [permissionDialogVisible, setPermissionDialogVisible] = useState(false);
+  const [permissionTarget, setPermissionTarget] = useState<{
+    id: string;
+    name: string;
+    avatar?: string;
+    email?: string;
+    role: TeamRole;
+  } | null>(null);
   const { t } = useTranslation();
   const { data: tenantList } = useListTenant();
   const { data: tenantInfo } = useFetchTenantInfo();
@@ -85,6 +97,25 @@ export function TeamManagement() {
     showGroupModal();
   }, [showGroupModal]);
 
+  const handleShowPermissionModal = useCallback(
+    (target: {
+      id: string;
+      name: string;
+      avatar?: string;
+      email?: string;
+      role: TeamRole;
+    }) => {
+      setPermissionTarget(target);
+      setPermissionDialogVisible(true);
+    },
+    [],
+  );
+
+  const handleHidePermissionModal = useCallback(() => {
+    setPermissionDialogVisible(false);
+    setPermissionTarget(null);
+  }, []);
+
   useEffect(() => {
     setCurrentTeamId(tenantInfo.tenant_id);
   }, [tenantInfo.tenant_id]);
@@ -105,59 +136,63 @@ export function TeamManagement() {
         </span>
       </div>
       <TenantIdContext.Provider value={currentTeamId}>
-        <Tabs
-          defaultValue="account"
-          value={activity}
-          onValueChange={handleChange}
+        <PermissionManagementDialogContext.Provider
+          value={handleShowPermissionModal}
         >
-          <div className="flex justify-between">
-            <TabsList className="mb-4">
-              <TabsTrigger value={TeamRole.Member}>
-                {t('permission.member')}
-              </TabsTrigger>
-              <TabsTrigger value={TeamRole.Department}>
-                {t('permission.department')}
-              </TabsTrigger>
-              <TabsTrigger value={TeamRole.Group}>
-                {t('permission.group')}
-              </TabsTrigger>
-            </TabsList>
-            <div>
-              {isMyCreatedTeam && activity === TeamRole.Group && (
-                <Button onClick={handleShowGroupModal}>
-                  <UserPlus /> {t('permission.createGroup')}
-                </Button>
-              )}
-              {activity === TeamRole.Member &&
-                (isMyCreatedTeam ? (
-                  <Button onClick={showAddingTenantModal}>
-                    <UserPlus /> {t('setting.invite')}
+          <Tabs
+            defaultValue="account"
+            value={activity}
+            onValueChange={handleChange}
+          >
+            <div className="flex justify-between">
+              <TabsList className="mb-4">
+                <TabsTrigger value={TeamRole.Member}>
+                  {t('permission.member')}
+                </TabsTrigger>
+                <TabsTrigger value={TeamRole.Department}>
+                  {t('permission.department')}
+                </TabsTrigger>
+                <TabsTrigger value={TeamRole.Group}>
+                  {t('permission.group')}
+                </TabsTrigger>
+              </TabsList>
+              <div>
+                {isMyCreatedTeam && activity === TeamRole.Group && (
+                  <Button onClick={handleShowGroupModal}>
+                    <UserPlus /> {t('permission.createGroup')}
                   </Button>
-                ) : (
-                  <ConfirmDeleteDialog
-                    onOk={handleQuitTenantUser}
-                    title={t('setting.sureQuit')}
-                  >
-                    <Button>
-                      <LogOut />
-                      {t('permission.leaveTheTeam')}
+                )}
+                {activity === TeamRole.Member &&
+                  (isMyCreatedTeam ? (
+                    <Button onClick={showAddingTenantModal}>
+                      <UserPlus /> {t('setting.invite')}
                     </Button>
-                  </ConfirmDeleteDialog>
-                ))}
+                  ) : (
+                    <ConfirmDeleteDialog
+                      onOk={handleQuitTenantUser}
+                      title={t('setting.sureQuit')}
+                    >
+                      <Button>
+                        <LogOut />
+                        {t('permission.leaveTheTeam')}
+                      </Button>
+                    </ConfirmDeleteDialog>
+                  ))}
+              </div>
             </div>
-          </div>
-          <TabsContent value={TeamRole.Member}>
-            <MemberTable></MemberTable>
-          </TabsContent>
-          <TabsContent value={TeamRole.Department}>
-            <Department></Department>
-          </TabsContent>
-          <TabsContent value={TeamRole.Group}>
-            <GroupContext.Provider value={showGroupModal}>
-              <Group></Group>
-            </GroupContext.Provider>
-          </TabsContent>
-        </Tabs>
+            <TabsContent value={TeamRole.Member}>
+              <MemberTable></MemberTable>
+            </TabsContent>
+            <TabsContent value={TeamRole.Department}>
+              <Department></Department>
+            </TabsContent>
+            <TabsContent value={TeamRole.Group}>
+              <GroupContext.Provider value={showGroupModal}>
+                <Group></Group>
+              </GroupContext.Provider>
+            </TabsContent>
+          </Tabs>
+        </PermissionManagementDialogContext.Provider>
       </TenantIdContext.Provider>
       {groupVisible && (
         <CreateGroupDialog
@@ -171,6 +206,19 @@ export function TeamManagement() {
           hideModal={hideAddingTenantModal}
           onOk={handleAddUserOk}
         ></InviteDialog>
+      )}
+      {permissionDialogVisible && permissionTarget && (
+        <PermissionManagementDialog
+          hideModal={handleHidePermissionModal}
+          initialValues={{
+            id: permissionTarget.id,
+            name: permissionTarget.name,
+            avatar: permissionTarget.avatar,
+            email: permissionTarget.email,
+            role: permissionTarget.role,
+            tenant_id: currentTeamId,
+          }}
+        ></PermissionManagementDialog>
       )}
     </section>
   );

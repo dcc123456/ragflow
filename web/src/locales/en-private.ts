@@ -18,6 +18,8 @@ export default {
       setAsAdministrator: 'Set as Administrator',
       transferOwner: 'Transfer Owner',
       permissionManagement: 'Permission Management',
+      permissionManagementDescription:
+        'Members can only view knowledge bases within their visible scope and corresponding permissions. Owners can assign all permissions for all knowledge bases. Please proceed with caution!',
       manage: 'Manage',
       collaborator: 'Collaborator',
       team: 'Team',
@@ -26,6 +28,9 @@ export default {
       writePermission: 'Write permission',
       managePermission: 'Manage permission',
       ownerPermission: 'Owner',
+      invisible: 'Invisible',
+      read: 'Read',
+      write: 'Write',
       manageCollaborator: 'Manage collaborator',
       permission: 'Permission',
       transferTo: 'Transfer to',

@@ -18,6 +18,8 @@ export default {
       setAsAdministrator: '设置为管理员',
       transferOwner: '转移所有者',
       permissionManagement: '权限管理',
+      permissionManagementDescription:
+        '成员仅可查看自身可见范围内知识库以及对应权限，所有者可以分配所有知识库的所有权限，请谨慎操作！',
       manage: '管理',
       collaborator: '协作者',
       team: '团队',
@@ -26,6 +28,9 @@ export default {
       writePermission: '写入权限',
       managePermission: '管理权限',
       ownerPermission: '所有者',
+      invisible: '不可见',
+      read: '读取',
+      write: '写入',
       manageCollaborator: '管理协作者',
       permission: '权限',
       transferTo: '转移给',

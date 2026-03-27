@@ -1,26 +1,15 @@
 import { ConfirmDeleteDialog } from '@/components/confirm-delete-dialog';
 import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+import { TeamRole } from '@/constants/team';
 import { TenantIdContext } from '@/contexts/teant-context';
 import { useDeleteGroup } from '@/hooks/use-team';
 import { IGroup } from '@/interfaces/database/team';
 import { CellContext } from '@tanstack/react-table';
-import {
-  ArrowRightLeft,
-  EllipsisVertical,
-  SquarePen,
-  Trash2,
-  Users,
-} from 'lucide-react';
+import { Layers, Trash2, UserCog, UserPen, UserPlus } from 'lucide-react';
 import { memo, useCallback, useContext } from 'react';
 import { useTranslation } from 'react-i18next';
 import { GroupContext } from '../context';
+import { PermissionManagementDialogContext } from '../permission-management-dialog';
 import {
   useModifyGroupMember,
   useShowPartialDropdownItem,
@@ -43,6 +32,7 @@ function GroupActionCell({
   const record = row.original;
   const showGroupModal = useContext(GroupContext);
   const tenantId = useContext(TenantIdContext);
+  const showPermissionModal = useContext(PermissionManagementDialogContext);
 
   const {
     showInfoEditingAndMemberManagementDropdownItem,
@@ -67,45 +57,61 @@ function GroupActionCell({
     showTransferOwnerModal(record);
   }, [record, showTransferOwnerModal]);
 
+  const handleShowPermissionModal = useCallback(() => {
+    showPermissionModal?.({
+      id: record.group_id,
+      name: record.name,
+      avatar: record.avatar,
+      role: TeamRole.Group,
+    });
+  }, [showPermissionModal, record]);
+
   return (
-    <section className="flex gap-4 items-center">
-      {(showInfoEditingAndMemberManagementDropdownItem ||
-        showOwnerTransferAndMemberDeletingDropdownItem) && (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="secondary" size={'icon'}>
-              <EllipsisVertical />
+    <section className="flex gap-2 items-center opacity-0 group-hover:opacity-100 transition-opacity">
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={handleShowPermissionModal}
+        title={t('permission.permissionManagement')}
+      >
+        <Layers className="w-4 h-4" />
+      </Button>
+      {showInfoEditingAndMemberManagementDropdownItem && (
+        <>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleShowGroupModal}
+            title={t('common.edit')}
+          >
+            <UserPen className="w-4 h-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleShowGroupMemberModal}
+            title={t('permission.manageMember')}
+          >
+            <UserCog className="w-4 h-4" />
+          </Button>
+        </>
+      )}
+      {showOwnerTransferAndMemberDeletingDropdownItem && (
+        <>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleTransferOwnerModal}
+            title={t('permission.transferOwner')}
+          >
+            <UserPlus className="w-4 h-4" />
+          </Button>
+          <ConfirmDeleteDialog onOk={handleDeleteGroup}>
+            <Button variant="ghost" size="icon" title={t('common.delete')}>
+              <Trash2 className="w-4 h-4" />
             </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            {showInfoEditingAndMemberManagementDropdownItem && (
-              <>
-                <DropdownMenuItem onClick={handleShowGroupModal}>
-                  <SquarePen /> {t('common.edit')}
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleShowGroupMemberModal}>
-                  <Users />
-                  {t('permission.manageMember')}
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-              </>
-            )}
-            {showOwnerTransferAndMemberDeletingDropdownItem && (
-              <>
-                <DropdownMenuItem onClick={handleTransferOwnerModal}>
-                  <ArrowRightLeft /> {t('permission.transferOwner')}
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <ConfirmDeleteDialog onOk={handleDeleteGroup}>
-                  <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                    <Trash2 /> {t('common.delete')}
-                  </DropdownMenuItem>
-                </ConfirmDeleteDialog>
-              </>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
+          </ConfirmDeleteDialog>
+        </>
       )}
     </section>
   );

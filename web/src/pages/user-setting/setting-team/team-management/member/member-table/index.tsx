@@ -192,6 +192,7 @@ export function MemberTable() {
                 <TableRow
                   key={row.id}
                   data-state={row.getIsSelected() && 'selected'}
+                  className="group"
                 >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell
