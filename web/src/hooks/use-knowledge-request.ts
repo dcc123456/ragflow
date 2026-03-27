@@ -30,7 +30,7 @@ import {
 } from '@tanstack/react-query';
 import { useDebounce } from 'ahooks';
 import { omit } from 'lodash';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router';
 import {
   useGetPaginationWithRouter,

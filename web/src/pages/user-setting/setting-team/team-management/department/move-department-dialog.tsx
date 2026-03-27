@@ -1,4 +1,5 @@
 import { PrivilegeAvatar } from '@/components/privilege-management/privilege-avatar';
+import { ButtonLoading } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -6,7 +7,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { LoadingButton } from '@/components/ui/loading-button';
 import { TreeDataItem, TreeView } from '@/components/ui/tree-view';
 import { TagRenameId } from '@/constants/knowledge';
 import { useFetchDepartmentList } from '@/hooks/use-team';
@@ -94,14 +94,14 @@ export function MoveDepartmentDialog({
           <TreeView data={list} onSelectChange={handleSelect} expandAll />
         </div>
         <DialogFooter>
-          <LoadingButton
+          <ButtonLoading
             type="submit"
             form={TagRenameId}
             loading={loading}
             onClick={handleOk}
           >
             {t('common.save')}
-          </LoadingButton>
+          </ButtonLoading>
         </DialogFooter>
       </DialogContent>
     </Dialog>
