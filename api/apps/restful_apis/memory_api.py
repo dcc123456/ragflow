@@ -33,7 +33,18 @@ async def create_memory():
     timing_enabled = os.getenv("RAGFLOW_API_TIMING")
     t_start = time.perf_counter() if timing_enabled else None
     req = await get_request_json()
-    req = ensure_tenant_model_id_for_params(current_user.id, req)
+    try:
+        req = ensure_tenant_model_id_for_params(current_user.id, req)
+    except LookupError as e:
+        logging.error(e)
+        if timing_enabled:
+            logging.info(
+                "api_timing create_memory error=%s total_ms=%.2f path=%s",
+                str(e),
+                (time.perf_counter() - t_start) * 1000,
+                request.path,
+            )
+        return get_error_argument_result(str(e))
     t_parsed = time.perf_counter() if timing_enabled else None
     try:
         memory_info = {

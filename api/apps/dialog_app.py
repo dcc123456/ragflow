@@ -48,7 +48,10 @@ dialog_role_guard = check_role_access(DIALOG_API_ACTION_MAP, DIALOG_ROLE_RESOURC
 @check_resources(apps=1)
 async def set_dialog():
     req = g.req_data
-    dialog_info = ensure_tenant_model_id_for_params(current_user.id, req)
+    try:
+        dialog_info = ensure_tenant_model_id_for_params(current_user.id, req)
+    except LookupError as e:
+        return get_data_error_result(message=str(e))
     dialog_id = dialog_info.get("dialog_id", "")
     is_create = not dialog_id
     name = dialog_info.get("name", "New Dialog")

@@ -968,6 +968,8 @@ async def set_tenant_info():
         update_dict = ensure_tenant_model_id_for_params(tid, req)
         TenantService.update_by_id(tid, update_dict)
         return get_json_result(data=True)
+    except LookupError as e:
+        return get_data_error_result(message=str(e))
     except Exception as e:
         return server_error_response(e)
 
