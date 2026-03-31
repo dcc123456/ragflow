@@ -24,6 +24,7 @@ import asyncio
 from urllib.parse import urlparse, quote
 from datetime import datetime
 import base64
+from werkzeug.security import generate_password_hash, check_password_hash
 
 from api.apps import current_user, login_required, login_user, logout_user
 from api.db.services.tenant_llm_service import user_register
@@ -44,7 +45,6 @@ from api.utils.api_utils import (
     server_error_response,
     validate_request,
 )
-from api.utils.crypt import decrypt2
 from api.utils.crypt import decrypt
 from api.utils.tenant_utils import ensure_tenant_model_id_for_params
 from api.utils.web_utils import (
@@ -702,18 +702,17 @@ async def setting_user():
     request_data = await get_request_json()
     if request_data.get("password"):
         new_password = request_data.get("new_password")
-        #if not check_password_hash(
-        #        current_user.password, decrypt(request_data["password"])
-        #):
-        #    return get_json_result(
-        #        data=False,
-        #        code=RetCode.AUTHENTICATION_ERROR,
-        #        message="Password error!",
-        #    )
+        if not check_password_hash(
+                current_user.password, decrypt(request_data["password"])
+        ):
+            return get_json_result(
+                data=False,
+                code=RetCode.AUTHENTICATION_ERROR,
+                message="Password error!",
+            )
 
         if new_password:
-            update_dict["password"] = decrypt2(new_password)
-            #update_dict["password"] = generate_password_hash(decrypt(new_password))
+            update_dict["password"] = generate_password_hash(decrypt(new_password))
 
     for k in request_data.keys():
         if k in [
