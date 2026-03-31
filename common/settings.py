@@ -261,11 +261,36 @@ def init_settings():
     HTTP_APP_KEY = authentication_conf.get("client", {}).get("http_app_key")
 
     global DOC_ENGINE, DOC_ENGINE_INFINITY, DOC_ENGINE_OCEANBASE, docStoreConn, ES, OB, OS, INFINITY
-    DOC_ENGINE = os.environ.get("DOC_ENGINE", "elasticsearch").strip()
-    DOC_ENGINE_INFINITY = (DOC_ENGINE.lower() == "infinity")
-    DOC_ENGINE_OCEANBASE = (DOC_ENGINE.lower() == "oceanbase")
-    lower_case_doc_engine = DOC_ENGINE.lower()
-    if lower_case_doc_engine == "elasticsearch":
+    doc_engine_raw = os.environ.get("DOC_ENGINE", "elasticsearch").strip()
+    
+    # Parse multiple doc engines (comma-separated: "elasticsearch,infinity")
+    # First engine is primary, rest are shadow databases
+    doc_engines = [e.strip() for e in doc_engine_raw.split(",") if e.strip()]
+    primary_doc_engine = doc_engines[0].lower()
+    shadow_doc_engines = [e.lower() for e in doc_engines[1:]]
+    
+    # Set DOC_ENGINE to primary engine only for backward compatibility
+    DOC_ENGINE = primary_doc_engine
+    DOC_ENGINE_INFINITY = (primary_doc_engine == "infinity")
+    DOC_ENGINE_OCEANBASE = (primary_doc_engine == "oceanbase")
+    
+    def _create_doc_store_connection(engine_name: str):
+        """Create a document store connection for the given engine name."""
+        if engine_name == "elasticsearch":
+            return rag.utils.es_conn.ESConnection()
+        elif engine_name == "infinity":
+            return rag.utils.infinity_conn.InfinityConnection()
+        elif engine_name == "opensearch":
+            return rag.utils.opensearch_conn.OSConnection()
+        elif engine_name == "oceanbase":
+            return rag.utils.ob_conn.OBConnection()
+        elif engine_name == "seekdb":
+            return rag.utils.ob_conn.OBConnection()
+        else:
+            raise Exception(f"Not supported doc engine: {engine_name}")
+    
+    # Create primary connection
+    if primary_doc_engine == "elasticsearch":
         ES = get_base_config("es", {})
         # If ES is a string (e.g., from environment variable), try to parse it as JSON
         if isinstance(ES, str):
@@ -274,39 +299,63 @@ def init_settings():
             except json.JSONDecodeError:
                 # If not valid JSON, treat it as hosts string
                 ES = {"hosts": ES}
-        docStoreConn = rag.utils.es_conn.ESConnection()
-    elif lower_case_doc_engine == "infinity":
+    elif primary_doc_engine == "infinity":
         INFINITY = get_base_config("infinity", {
             "uri": "infinity:23817",
             "postgres_port": 5432,
             "db_name": "default_db"
         })
-        docStoreConn = rag.utils.infinity_conn.InfinityConnection()
-    elif lower_case_doc_engine == "opensearch":
+    elif primary_doc_engine == "opensearch":
         OS = get_base_config("os", {})
-        docStoreConn = rag.utils.opensearch_conn.OSConnection()
-    elif lower_case_doc_engine == "oceanbase":
-        OB = get_base_config("oceanbase", {})
-        docStoreConn = rag.utils.ob_conn.OBConnection()
-    elif lower_case_doc_engine == "seekdb":
-        OB = get_base_config("seekdb", {})
-        docStoreConn = rag.utils.ob_conn.OBConnection()
+    elif primary_doc_engine in ["oceanbase", "seekdb"]:
+        OB = get_base_config(primary_doc_engine, {})
+    
+    primary_conn = _create_doc_store_connection(primary_doc_engine)
+    
+    # Create shadow connections if any
+    shadow_conns = []
+    for shadow_engine in shadow_doc_engines:
+        try:
+            # Load config for shadow engine if needed
+            if shadow_engine == "elasticsearch":
+                ES = get_base_config("es", {})
+                if isinstance(ES, str):
+                    try:
+                        ES = json.loads(ES)
+                    except json.JSONDecodeError:
+                        ES = {"hosts": ES}
+            elif shadow_engine == "infinity":
+                INFINITY = get_base_config("infinity", {
+                    "uri": "infinity:23817",
+                    "postgres_port": 5432,
+                    "db_name": "default_db"
+                })
+            elif shadow_engine == "opensearch":
+                OS = get_base_config("os", {})
+            elif shadow_engine in ["oceanbase", "seekdb"]:
+                OB = get_base_config(shadow_engine, {})
+            
+            shadow_conn = _create_doc_store_connection(shadow_engine)
+            shadow_conns.append(shadow_conn)
+            logging.info(f"Added shadow doc engine: {shadow_engine}")
+        except Exception as e:
+            logging.warning(f"Failed to create shadow connection for {shadow_engine}: {e}")
+    
+    # Wrap with ShadowWriteProxy if we have shadow connections
+    if shadow_conns:
+        from common.doc_store.shadow_write_proxy import ShadowWriteProxy
+        docStoreConn = ShadowWriteProxy(primary_conn, shadow_conns)
+        logging.info(f"ShadowWriteProxy enabled with {len(shadow_conns)} shadow(s)")
     else:
-        raise Exception(f"Not supported doc engine: {DOC_ENGINE}")
+        docStoreConn = primary_conn
 
     global msgStoreConn
-    # use the same engine for message store
-    if DOC_ENGINE == "elasticsearch":
-        ES = get_base_config("es", {})
+    # use the same engine for message store (based on primary engine)
+    if primary_doc_engine == "elasticsearch":
         msgStoreConn = memory_es_conn.ESConnection()
-    elif DOC_ENGINE == "infinity":
-        INFINITY = get_base_config("infinity", {
-            "uri": "infinity:23817",
-            "postgres_port": 5432,
-            "db_name": "default_db"
-        })
+    elif primary_doc_engine == "infinity":
         msgStoreConn = memory_infinity_conn.InfinityConnection()
-    elif lower_case_doc_engine in ["oceanbase", "seekdb"]:
+    elif primary_doc_engine in ["oceanbase", "seekdb"]:
         msgStoreConn = memory_ob_conn.OBConnection()
 
     global AZURE, S3, MINIO, OSS, GCS
