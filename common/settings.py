@@ -261,13 +261,23 @@ def init_settings():
     HTTP_APP_KEY = authentication_conf.get("client", {}).get("http_app_key")
 
     global DOC_ENGINE, DOC_ENGINE_INFINITY, DOC_ENGINE_OCEANBASE, docStoreConn, ES, OB, OS, INFINITY
+    
+    # Whitelist of supported doc engines
+    SUPPORTED_DOC_ENGINES = {"elasticsearch", "infinity", "opensearch", "oceanbase", "seekdb"}
+    
     doc_engine_raw = os.environ.get("DOC_ENGINE", "elasticsearch").strip()
     
     # Parse multiple doc engines (comma-separated: "elasticsearch,infinity")
     # First engine is primary, rest are shadow databases
-    doc_engines = [e.strip() for e in doc_engine_raw.split(",") if e.strip()]
-    primary_doc_engine = doc_engines[0].lower()
-    shadow_doc_engines = [e.lower() for e in doc_engines[1:]]
+    doc_engines = [e.strip().lower() for e in doc_engine_raw.split(",") if e.strip()]
+    
+    # Validate all engines against whitelist
+    for engine in doc_engines:
+        if engine not in SUPPORTED_DOC_ENGINES:
+            raise ValueError(f"Invalid doc engine '{engine}'. Supported engines: {', '.join(sorted(SUPPORTED_DOC_ENGINES))}")
+    
+    primary_doc_engine = doc_engines[0]
+    shadow_doc_engines = doc_engines[1:]
     
     # Set DOC_ENGINE to primary engine only for backward compatibility
     DOC_ENGINE = primary_doc_engine
