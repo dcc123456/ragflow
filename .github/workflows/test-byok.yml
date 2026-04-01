@@ -1,0 +1,312 @@
+name: test-byok
+permissions:
+  contents: read
+
+on:
+  schedule:
+    - cron: '0 16 * * *'  # This schedule runs every 16:00:00Z(00:00:00+08:00)
+
+# https://docs.github.com/en/actions/using-jobs/using-concurrency
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ragflow_tests_byok:
+    name: ragflow_tests_byok
+    # https://docs.github.com/en/actions/using-jobs/using-conditions-to-control-job-execution
+    # https://github.com/orgs/community/discussions/26261
+    if: ${{ github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci') }}
+    runs-on: [ "self-hosted", "ragflow-test-k8s" ]
+    steps:
+      - name: Ensure workspace ownership
+        run: |
+          echo "Workflow triggered by ${{ github.event_name }}"
+          echo "chown -R ${USER} ${GITHUB_WORKSPACE}" && sudo chown -R ${USER} ${GITHUB_WORKSPACE}
+
+      # https://github.com/actions/checkout/issues/1781
+      - name: Check out code
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && format('refs/pull/{0}/merge', github.event.pull_request.number) || github.sha }}
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Check workflow duplication
+        if: ${{ !cancelled() && !failure() }}
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+        run: |
+          if [[ ${GITHUB_EVENT_NAME} != "pull_request" && ${GITHUB_EVENT_NAME} != "schedule" ]]; then
+            HEAD=$(git rev-parse HEAD)
+            # Find a PR that introduced a given commit
+            echo "${GH_PAT}" | gh auth login --with-token
+            PR_NUMBER=$(gh pr list --search ${HEAD} --state merged --json number --jq .[0].number)
+            echo "HEAD=${HEAD}"
+            echo "PR_NUMBER=${PR_NUMBER}"
+            if [[ -n "${PR_NUMBER}" ]]; then
+              PR_SHA_FP=${RUNNER_WORKSPACE_PREFIX}/artifacts/${GITHUB_REPOSITORY}/PR_${PR_NUMBER}
+              if [[ -f "${PR_SHA_FP}" ]]; then
+                read -r PR_SHA PR_RUN_ID < "${PR_SHA_FP}"
+                # Calculate the hash of the current workspace content
+                HEAD_SHA=$(git rev-parse HEAD^{tree})
+                if [[ "${HEAD_SHA}" == "${PR_SHA}" ]]; then
+                  echo "Cancel myself since the workspace content hash is the same with PR #${PR_NUMBER} merged. See ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${PR_RUN_ID} for details."
+                  gh run cancel ${GITHUB_RUN_ID}
+                  while true; do
+                    status=$(gh run view ${GITHUB_RUN_ID} --json status -q .status)
+                    [ "${status}" = "completed" ] && break
+                    sleep 5
+                  done
+                  exit 1
+                fi
+              fi
+            fi
+          elif [[ ${GITHUB_EVENT_NAME} == "pull_request" ]]; then
+            PR_NUMBER=${{ github.event.pull_request.number }}
+            PR_SHA_FP=${RUNNER_WORKSPACE_PREFIX}/artifacts/${GITHUB_REPOSITORY}/PR_${PR_NUMBER}
+            # Calculate the hash of the current workspace content
+            PR_SHA=$(git rev-parse HEAD^{tree})
+            echo "PR #${PR_NUMBER} workspace content hash: ${PR_SHA}"
+            mkdir -p ${RUNNER_WORKSPACE_PREFIX}/artifacts/${GITHUB_REPOSITORY}
+            echo "${PR_SHA} ${GITHUB_RUN_ID}" > ${PR_SHA_FP}
+          fi
+          ARTIFACTS_DIR=${RUNNER_WORKSPACE_PREFIX}/artifacts/${GITHUB_REPOSITORY}/${GITHUB_RUN_ID}
+          echo "ARTIFACTS_DIR=${ARTIFACTS_DIR}" >> ${GITHUB_ENV}
+          rm -rf ${ARTIFACTS_DIR} && mkdir -p ${ARTIFACTS_DIR}
+
+      # https://github.com/astral-sh/ruff-action
+      - name: Static check with Ruff
+        uses: astral-sh/ruff-action@v3
+        with:
+          version: ">=0.11.x"
+          args: "check"
+
+      - name: Check comments of changed Python files
+        if: ${{ false }}
+        run: |
+          if [[ ${{ github.event_name }} == 'pull_request' || ${{ github.event_name }} == 'pull_request_target' ]]; then
+            CHANGED_FILES=$(git diff --name-only ${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }} \
+              | grep -E '\.(py)$' || true)
+
+            if [ -n "$CHANGED_FILES" ]; then
+              echo "Check comments of changed Python files with check_comment_ascii.py"
+
+              readarray -t files <<< "$CHANGED_FILES"
+              HAS_ERROR=0
+
+              for file in "${files[@]}"; do
+                if [ -f "$file" ]; then
+                  if python3 check_comment_ascii.py "$file"; then
+                    echo "✅ $file"
+                  else
+                    echo "❌ $file"
+                    HAS_ERROR=1
+                  fi
+                fi
+              done
+
+              if [ $HAS_ERROR -ne 0 ]; then
+                exit 1
+              fi
+            else
+              echo "No Python files changed"
+            fi
+          fi
+
+      - name: Build ragflow go server
+        run: |
+          BUILDER_CONTAINER=ragflow_build_$(od -An -N4 -tx4 /dev/urandom | tr -d ' ')
+          echo "BUILDER_CONTAINER=${BUILDER_CONTAINER}" >> ${GITHUB_ENV}
+          TZ=${TZ:-$(readlink -f /etc/localtime | awk -F '/zoneinfo/' '{print $2}')}
+          sudo docker run --privileged -d --name ${BUILDER_CONTAINER} -e TZ=${TZ} -e UV_INDEX=https://mirrors.aliyun.com/pypi/simple -v ${PWD}:/ragflow -v ${PWD}/internal/cpp/resource:/usr/share/infinity/resource infiniflow/infinity_builder:ubuntu22_clang20
+          sudo docker exec ${BUILDER_CONTAINER} bash -c "git config --global safe.directory \"*\" && cd /ragflow && ./build.sh --cpp"
+          ./build.sh --go
+          if [[ -n "${BUILDER_CONTAINER}" ]]; then
+            sudo docker rm -f -v "${BUILDER_CONTAINER}"
+          fi
+
+      - name: Build ragflow:nightly
+        run: |
+          RUNNER_WORKSPACE_PREFIX=${RUNNER_WORKSPACE_PREFIX:-${HOME}}
+          RAGFLOW_IMAGE=infiniflow-ai/ragflow:${GITHUB_RUN_ID}
+          echo "RAGFLOW_IMAGE=${RAGFLOW_IMAGE}" >> ${GITHUB_ENV}
+          sudo docker pull ubuntu:24.04
+          sudo DOCKER_BUILDKIT=1 docker build --build-arg NEED_MIRROR=1 --build-arg HTTPS_PROXY=${HTTPS_PROXY} --build-arg HTTP_PROXY=${HTTP_PROXY} -f Dockerfile -t ${RAGFLOW_IMAGE} .
+          if [[ ${GITHUB_EVENT_NAME} == "schedule" ]]; then
+            export HTTP_API_TEST_LEVEL=p3
+          else
+            export HTTP_API_TEST_LEVEL=p2
+          fi
+          echo "HTTP_API_TEST_LEVEL=${HTTP_API_TEST_LEVEL}" >> ${GITHUB_ENV}
+
+      - name: Run unit test
+        run: |
+          uv sync --python 3.12 --group test --frozen
+          source .venv/bin/activate
+          which pytest || echo "pytest not in PATH"
+          echo "Start to run unit test"
+          python3 run_tests.py
+
+      - name: Prepare http api test environment
+        run: |
+          uv sync --python 3.12 --group test --frozen && uv pip install -e sdk/python
+
+      - name: Set Kubernetes Context
+        uses: azure/k8s-set-context@v4
+        with:
+          method: kubeconfig
+          kubeconfig: ${{ secrets.KUBE_CONFIG }}
+          kubeconfig-encoding: base64
+          
+      - name: Verify Cluster
+        run: |
+          kubectl get nodes
+          kubectl get pods -n default
+
+      - name: Export kubeconfig path for OpenTofu
+        run: |
+          if [[ -z "${KUBECONFIG:-}" ]]; then
+            echo "Error: KUBECONFIG is empty after Set Kubernetes Context."
+            exit 1
+          fi
+          echo "TF_VAR_kubeconfig_path=${KUBECONFIG}" >> "${GITHUB_ENV}"
+
+      - name: Tag and push image to Harbor
+        run: |
+          PRIVATE_RAGFLOW_IMAGE=192.168.1.51/infiniflow-ai/ragflow:${GITHUB_RUN_ID}
+          echo "PRIVATE_RAGFLOW_IMAGE=${PRIVATE_RAGFLOW_IMAGE}" >> ${GITHUB_ENV}
+          sudo docker tag ${RAGFLOW_IMAGE} ${PRIVATE_RAGFLOW_IMAGE}
+
+          PUSH_LOG=$(mktemp)
+          set -o pipefail
+          sudo docker push ${PRIVATE_RAGFLOW_IMAGE} 2>&1 | tee "${PUSH_LOG}"
+
+          PRIVATE_RAGFLOW_DIGEST=$(sudo docker inspect --format='{{index .RepoDigests 0}}' ${PRIVATE_RAGFLOW_IMAGE} 2>/dev/null | sed -nE 's#.*@(sha256:[0-9a-f]{64})#\1#p' | head -n 1)
+          if [[ -z "${PRIVATE_RAGFLOW_DIGEST}" ]]; then
+            PRIVATE_RAGFLOW_DIGEST=$(grep -Eo 'digest: sha256:[0-9a-f]{64}' "${PUSH_LOG}" | tail -n 1 | awk '{print $2}')
+          fi
+          rm -f "${PUSH_LOG}"
+
+          if [[ -z "${PRIVATE_RAGFLOW_DIGEST}" ]]; then
+            echo "Error: failed to capture pushed artifact digest."
+            exit 1
+          fi
+          echo "PRIVATE_RAGFLOW_DIGEST=${PRIVATE_RAGFLOW_DIGEST}" >> ${GITHUB_ENV}
+
+      - name: Ensure OpenTofu is available
+        run: |
+          if command -v tofu >/dev/null 2>&1; then
+            tofu version
+            exit 0
+          fi
+          sudo docker pull ghcr.io/opentofu/opentofu:minimal
+          TOFU_CID=$(sudo docker create ghcr.io/opentofu/opentofu:minimal)
+          sudo docker cp ${TOFU_CID}:/usr/local/bin/tofu /tmp/tofu
+          sudo docker rm -f ${TOFU_CID}
+          sudo install -m 0755 /tmp/tofu /usr/local/bin/tofu
+          rm -f /tmp/tofu
+          tofu version
+
+      - name: Deploy BYOK with OpenTofu
+        working-directory: opentofu_ragflow/byok
+        run: |
+          BYOK_NAMESPACE="ragflow-ci-${GITHUB_RUN_ID}"
+          cp terraform.tfvars.dev_smk terraform.tfvars
+          printf '\nnamespace = "%s"\n' "${BYOK_NAMESPACE}" >> terraform.tfvars
+          printf '\nmanage_eck_operator = false\n' >> terraform.tfvars
+          printf '\nragflow_image = "ragflow:%s"\n' "${GITHUB_RUN_ID}" >> terraform.tfvars
+          echo "BYOK_NAMESPACE=${BYOK_NAMESPACE}" >> "${GITHUB_ENV}"
+          echo "TF_VAR_namespace=${BYOK_NAMESPACE}" >> "${GITHUB_ENV}"
+          tofu init -upgrade
+          tofu plan
+          tofu apply -auto-approve
+          GATEWAY_ADDRESS="$(kubectl get gateway ragflow -n "${BYOK_NAMESPACE}" -o jsonpath='{.status.addresses[0].value}' 2>/dev/null | tr -d '[:space:]')"
+          if [[ -z "${GATEWAY_ADDRESS}" ]]; then
+            echo "Error: gateway_address output is empty."
+            exit 1
+          fi
+          echo "HOST_ADDRESS=http://${GATEWAY_ADDRESS}" >> "${GITHUB_ENV}"
+
+      - name: Run http api tests against Elasticsearch
+        timeout-minutes: 30
+        run: |
+          export http_proxy=""; export https_proxy=""; export no_proxy=""; export HTTP_PROXY=""; export HTTPS_PROXY=""; export NO_PROXY=""
+          MAX_RETRIES=180
+          COUNT=0
+          until curl -s --connect-timeout 5 ${HOST_ADDRESS} > /dev/null; do
+            echo "Waiting for service at ${HOST_ADDRESS} to be available... (Attempt: $COUNT/$MAX_RETRIES)"
+            if [ $COUNT -ge $MAX_RETRIES ]; then
+              echo "Error: Service did not become available within 5 minutes."
+              exit 1
+            fi
+
+            COUNT=$((COUNT + 1))
+            sleep 5
+          done
+          source .venv/bin/activate && set -o pipefail; pytest -s --tb=short --level=${HTTP_API_TEST_LEVEL} test/testcases/test_http_api 2>&1 | tee es_http_api_test.log
+
+      - name: Collect ECK diagnostics on failure
+        if: failure()
+        run: |
+          helm -n elastic-system status eck-operator || true
+          kubectl -n elastic-system get pods -o wide || true
+          kubectl -n elastic-system get events --sort-by=.lastTimestamp | tail -n 100 || true
+
+      - name: Destroy BYOK resources
+        if: always()
+        working-directory: opentofu_ragflow/byok
+        run: |
+          set -euo pipefail
+
+          BYOK_NAMESPACE="${BYOK_NAMESPACE:-${TF_VAR_namespace:-}}"
+          DESTROY_RC=0
+
+          if [[ -n "${BYOK_NAMESPACE}" ]]; then
+            cp terraform.tfvars.dev_smk terraform.tfvars
+            printf '\nnamespace = "%s"\n' "${BYOK_NAMESPACE}" >> terraform.tfvars
+            printf '\nmanage_eck_operator = false\n' >> terraform.tfvars
+            tofu init -upgrade
+            tofu destroy -auto-approve || DESTROY_RC=$?
+          else
+            echo "BYOK_NAMESPACE is empty; skipping OpenTofu destroy."
+          fi
+
+          echo "Force deleting ECK operator release and resources..."
+          helm -n elastic-system uninstall eck-operator --no-hooks || true
+          kubectl -n elastic-system delete secret -l owner=helm,name=eck-operator --ignore-not-found || true
+          mapfile -t eck_release_secrets < <(kubectl -n elastic-system get secret -o name | grep -E '^secret/sh\.helm\.release\.v1\.eck-operator\.v' || true)
+          if [[ ${#eck_release_secrets[@]} -gt 0 ]]; then
+            kubectl -n elastic-system delete "${eck_release_secrets[@]}" --ignore-not-found || true
+          fi
+          kubectl -n elastic-system delete deploy,statefulset,daemonset,svc,sa,role,rolebinding,configmap,secret,pod \
+            -l app.kubernetes.io/name=elastic-operator \
+            --ignore-not-found \
+            --grace-period=0 \
+            --force || true
+
+          exit ${DESTROY_RC}
+
+      - name: Delete Harbor artifact by digest
+        if: always()
+        env:
+          HARBOR_USER: ${{ secrets.HARBOR_USER }}
+          HARBOR_PASSWORD: ${{ secrets.HARBOR_PASSWORD }}
+        run: |
+          if [[ -z "${PRIVATE_RAGFLOW_DIGEST:-}" ]]; then
+            echo "Error: PRIVATE_RAGFLOW_DIGEST is empty."
+            exit 1
+          fi
+          curl -fsS -u "${HARBOR_USER}:${HARBOR_PASSWORD}" \
+            -X DELETE \
+            "http://192.168.1.51/api/v2.0/projects/infiniflow-ai/repositories/ragflow/artifacts/${PRIVATE_RAGFLOW_DIGEST}"
+
+      - name: Remove local Docker images
+        if: always()
+        run: |
+          if [[ -n "${PRIVATE_RAGFLOW_IMAGE:-}" ]]; then
+            sudo docker rmi -f "${PRIVATE_RAGFLOW_IMAGE}" || true
+          fi
+          if [[ -n "${RAGFLOW_IMAGE:-}" ]]; then
+            sudo docker rmi -f "${RAGFLOW_IMAGE}" || true
+          fi

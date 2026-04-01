@@ -1028,6 +1028,15 @@ spec:
           env:
           - name: ES_JAVA_OPTS
             value: "-Xms${var.es_master_heap_size} -Xmx${var.es_master_heap_size}"
+    volumeClaimTemplates:
+    - metadata:
+        name: elasticsearch-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: ${local.config.storage_class}
+        resources:
+          requests:
+            storage: "2Gi"
   # Data/Ingest nodes - data storage and ingest pipelines
   - name: data-ingest
     count: ${var.es_data_node_count}

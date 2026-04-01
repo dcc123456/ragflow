@@ -15,12 +15,34 @@
 #
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from time import sleep
 
 import pytest
 from common import add_chunk, delete_chunks, retrieval_chunks
 from configs import INVALID_API_TOKEN
 from libs.auth import RAGFlowHttpApiAuth
+from utils import wait_for
+
+DETERMINISTIC_RETRIEVAL_PARAMS = {"similarity_threshold": 0, "vector_similarity_weight": 0}
+
+
+def _retrieved_chunk_ids(auth, dataset_id, question, document_id=None):
+    payload = {"question": question, "dataset_ids": [dataset_id], **DETERMINISTIC_RETRIEVAL_PARAMS}
+    if document_id:
+        payload["document_ids"] = [document_id]
+    res = retrieval_chunks(auth, payload)
+    if res.get("code") != 0:
+        return set()
+    return {chunk["id"] for chunk in res.get("data", {}).get("chunks", [])}
+
+
+@wait_for(30, 1, "Chunk indexing timeout")
+def wait_until_chunks_retrievable(auth, dataset_id, question, chunk_ids, document_id=None):
+    return set(chunk_ids).issubset(_retrieved_chunk_ids(auth, dataset_id, question, document_id))
+
+
+@wait_for(30, 1, "Chunk deletion propagation timeout")
+def wait_until_chunks_not_retrievable(auth, dataset_id, question, chunk_ids, document_id=None):
+    return set(chunk_ids).isdisjoint(_retrieved_chunk_ids(auth, dataset_id, question, document_id))
 
 
 @pytest.mark.p1
@@ -54,11 +76,14 @@ class TestChunksRetrieval:
         ],
     )
     def test_basic_scenarios(self, HttpApiAuth, add_chunks, payload, expected_code, expected_page_size, expected_message):
-        dataset_id, document_id, _ = add_chunks
+        dataset_id, document_id, chunk_ids = add_chunks
         if "dataset_ids" in payload:
             payload["dataset_ids"] = [dataset_id]
         if "document_ids" in payload:
             payload["document_ids"] = [document_id]
+        if expected_code == 0:
+            payload.update(DETERMINISTIC_RETRIEVAL_PARAMS)
+            wait_until_chunks_retrievable(HttpApiAuth, dataset_id, "chunk", chunk_ids)
         res = retrieval_chunks(HttpApiAuth, payload)
         assert res["code"] == expected_code
         if expected_code == 0:
@@ -104,8 +129,11 @@ class TestChunksRetrieval:
         ],
     )
     def test_page(self, HttpApiAuth, add_chunks, payload, expected_code, expected_page_size, expected_message):
-        dataset_id, _, _ = add_chunks
+        dataset_id, _, chunk_ids = add_chunks
         payload.update({"question": "chunk", "dataset_ids": [dataset_id]})
+        if expected_code == 0:
+            payload.update(DETERMINISTIC_RETRIEVAL_PARAMS)
+            wait_until_chunks_retrievable(HttpApiAuth, dataset_id, "chunk", chunk_ids)
         res = retrieval_chunks(HttpApiAuth, payload)
         assert res["code"] == expected_code
         if expected_code == 0:
@@ -335,11 +363,10 @@ class TestDeletedChunksNotRetrievable:
         assert res["code"] == 0, f"Failed to add chunk: {res}"
         chunk_id = res["data"]["chunk"]["id"]
 
-        # Wait for indexing to complete
-        sleep(2)
+        wait_until_chunks_retrievable(HttpApiAuth, dataset_id, unique_content, [chunk_id])
 
         # Verify the chunk is retrievable
-        payload = {"question": unique_content, "dataset_ids": [dataset_id]}
+        payload = {"question": unique_content, "dataset_ids": [dataset_id], **DETERMINISTIC_RETRIEVAL_PARAMS}
         res = retrieval_chunks(HttpApiAuth, payload)
         assert res["code"] == 0, f"Retrieval failed: {res}"
         chunk_ids_before = [c["id"] for c in res["data"]["chunks"]]
@@ -349,8 +376,7 @@ class TestDeletedChunksNotRetrievable:
         res = delete_chunks(HttpApiAuth, dataset_id, document_id, {"chunk_ids": [chunk_id]})
         assert res["code"] == 0, f"Failed to delete chunk: {res}"
 
-        # Wait for deletion to propagate
-        sleep(1)
+        wait_until_chunks_not_retrievable(HttpApiAuth, dataset_id, unique_content, [chunk_id])
 
         # Verify the chunk is no longer retrievable
         res = retrieval_chunks(HttpApiAuth, payload)
@@ -373,11 +399,10 @@ class TestDeletedChunksNotRetrievable:
             assert res["code"] == 0, f"Failed to add chunk {i}: {res}"
             chunk_ids.append(res["data"]["chunk"]["id"])
 
-        # Wait for indexing
-        sleep(2)
+        wait_until_chunks_retrievable(HttpApiAuth, dataset_id, "BATCH_DELETE_TEST_CHUNK", chunk_ids)
 
         # Verify chunks are retrievable
-        payload = {"question": "BATCH_DELETE_TEST_CHUNK", "dataset_ids": [dataset_id]}
+        payload = {"question": "BATCH_DELETE_TEST_CHUNK", "dataset_ids": [dataset_id], **DETERMINISTIC_RETRIEVAL_PARAMS}
         res = retrieval_chunks(HttpApiAuth, payload)
         assert res["code"] == 0
         retrieved_ids_before = [c["id"] for c in res["data"]["chunks"]]
@@ -388,8 +413,7 @@ class TestDeletedChunksNotRetrievable:
         res = delete_chunks(HttpApiAuth, dataset_id, document_id, {"chunk_ids": chunk_ids})
         assert res["code"] == 0, f"Failed to delete chunks: {res}"
 
-        # Wait for deletion to propagate
-        sleep(1)
+        wait_until_chunks_not_retrievable(HttpApiAuth, dataset_id, "BATCH_DELETE_TEST_CHUNK", chunk_ids)
 
         # Verify none of the chunks are retrievable
         res = retrieval_chunks(HttpApiAuth, payload)

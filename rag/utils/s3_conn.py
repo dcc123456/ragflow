@@ -164,8 +164,8 @@ class RAGFlowS3:
             self.conn[0].create_bucket(Bucket=bucket)
             logging.debug(f"create bucket {bucket} ********")
 
-        r = self.conn[0].upload_fileobj(BytesIO(binary), bucket, fnm)
-        return r
+        self.conn[0].upload_fileobj(BytesIO(binary), bucket, fnm)
+        return True
 
     def get_properties(self, bucket, key):
         return {}
