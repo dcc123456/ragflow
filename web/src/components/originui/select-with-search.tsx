@@ -197,7 +197,7 @@ export const SelectWithSearch = forwardRef<
               )}
               <ChevronDownIcon
                 size={16}
-                className="text-text-disabled shrink-0 ml-2"
+                className="text-text-disabled shrink-0 ml-1"
                 aria-hidden="true"
               />
             </div>

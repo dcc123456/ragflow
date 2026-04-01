@@ -73,6 +73,7 @@ export enum Routes {
   AdminRoles = `${Admin}/roles`,
   AdminRoleConfigModelProviders = `${AdminRoles}/:roleName/model-providers`,
   AdminMonitoring = `${Admin}/monitoring`,
+  AdminModelUsageStatistics = `${Admin}/model-usage-statistics`,
   AdminSettings = `${Admin}/settings`,
   AdminSSOProviders = `${Admin}/sso`,
   Evaluation = '/evaluation',
@@ -435,6 +436,11 @@ const routeConfigOptions = [
                     {
                       path: Routes.AdminMonitoring,
                       Component: () => import('@/pages/admin/monitoring'),
+                    },
+                    {
+                      path: Routes.AdminModelUsageStatistics,
+                      Component: () =>
+                        import('@/pages/admin/model-usage-statistics'),
                     },
                     {
                       path: Routes.AdminSettings,

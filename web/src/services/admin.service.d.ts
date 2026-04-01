@@ -434,6 +434,95 @@ declare namespace AdminService {
     details?: Record<string, unknown>;
   };
 
+  // LLM Trace Statistics types
+  export type LlmTraceDimension = 'user' | 'team' | 'dept' | 'bu';
+
+  export type PageParams = {
+    page: number;
+    page_size: number;
+  };
+  export type LlmTraceByOrgParams = {
+    hours: string;
+    dimension: LlmTraceDimension;
+    keyword?: string;
+  };
+
+  export type LlmTraceTopConsumersParams = {
+    hours: string;
+    dimension: LlmTraceDimension;
+    limit?: string;
+  };
+
+  export type LlmTraceTrendsParams = {
+    hours: string;
+    dimension: LlmTraceDimension;
+  };
+
+  export type LlmTraceByModelParams = {
+    hours: string;
+  };
+
+  export type LlmTraceSummary = {
+    avg_duration_ms: number;
+    input_tokens: number;
+    output_tokens: number;
+    total_requests: number;
+    total_tokens: number;
+    total_traces: number;
+    unique_depts: number;
+    unique_teams: number;
+    unique_users: number;
+  };
+
+  export type LlmTraceByOrgItem = {
+    name: string;
+    input_tokens: number;
+    output_tokens: number;
+    total_tokens: number;
+    request_count: number;
+    avg_duration_ms: number;
+    user_count?: number;
+  };
+
+  export type LlmTraceTopConsumer = {
+    rank: number;
+    name: string;
+    dimension: LlmTraceDimension;
+    input_tokens: number;
+    output_tokens: number;
+    total_tokens: number;
+    request_count: number;
+    avg_duration_ms: number;
+  };
+
+  export type LlmTraceTrend = {
+    time: string;
+    input_tokens: number;
+    output_tokens: number;
+    total_tokens: number;
+    request_count: number;
+    avg_duration_ms: number;
+  };
+
+  export interface LlmTraceRecentItem {
+    user_name: string;
+    input_tokens: number;
+    output_tokens: number;
+    total_tokens: number;
+    duration_ms: number;
+    model: string;
+    timestamp: string;
+    dept_name: string;
+    team_name: string[];
+  }
+  export type LlmTraceByModelItem = {
+    model_name: string;
+    input_tokens: number;
+    output_tokens: number;
+    total_tokens: number;
+    request_count: number;
+    avg_duration_ms: number;
+  };
   // License types
   export type LicenseType = 'trial' | 'standard' | 'perpetual' | 'cluster';
   export type LicenseStatus = 'valid' | 'expired' | 'pending' | 'inactive';

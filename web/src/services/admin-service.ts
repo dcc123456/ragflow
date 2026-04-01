@@ -440,6 +440,49 @@ export const testSandboxConnection = (
     params,
   );
 
+// LLM Trace Statistics
+export const getLlmTraceSummary = (params: AdminService.LlmTraceByOrgParams) =>
+  request.get<ResponseData<AdminService.LlmTraceSummary>>(
+    API.adminLlmTraceSummary,
+    { params },
+  );
+
+export const getLlmTraceByOrg = (
+  params: AdminService.LlmTraceByOrgParams & AdminService.PageParams,
+) =>
+  request.get<ResponseData<AdminService.LlmTraceByOrgItem[]>>(
+    API.adminLlmTraceByOrg,
+    { params },
+  );
+export const getLlmTraceRecent = (
+  params: AdminService.LlmTraceByOrgParams & AdminService.PageParams,
+) =>
+  request.get<ResponseData<AdminService.LlmTraceRecentItem[]>>(
+    API.adminLlmTraceRecent,
+    { params },
+  );
+
+export const getLlmTraceTopConsumers = (
+  params: AdminService.LlmTraceTopConsumersParams & AdminService.PageParams,
+) =>
+  request.get<ResponseData<AdminService.LlmTraceTopConsumer[]>>(
+    API.adminLlmTraceTopConsumers,
+    { params },
+  );
+
+export const getLlmTraceTrends = (params: AdminService.LlmTraceTrendsParams) =>
+  request.get<ResponseData<AdminService.LlmTraceTrend[]>>(
+    API.adminLlmTraceTrends,
+    { params },
+  );
+
+export const getLlmTraceByModel = (
+  params: AdminService.LlmTraceByModelParams,
+) =>
+  request.get<ResponseData<AdminService.LlmTraceByModelItem[]>>(
+    API.adminLlmTraceByModel,
+    { params },
+  );
 // License APIs
 export const getLicense = () =>
   request.get<ResponseData<AdminService.LicenseInfo>>(API.adminGetLicense);

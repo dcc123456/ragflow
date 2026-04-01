@@ -433,6 +433,13 @@ export default {
   adminSetSandboxConfig: `${ExternalApi}${api_host}/admin/sandbox/config`,
   adminTestSandboxConnection: `${ExternalApi}${api_host}/admin/sandbox/test`,
 
+  // Model Usage Statistics (LLM Trace)
+  adminLlmTraceSummary: `${ExternalApi}${api_host}/admin/llm_trace/stats/summary`,
+  adminLlmTraceByOrg: `${ExternalApi}${api_host}/admin/llm_trace/stats/by-org`,
+  adminLlmTraceTopConsumers: `${ExternalApi}${api_host}/admin/llm_trace/stats/top-consumers`,
+  adminLlmTraceTrends: `${ExternalApi}${api_host}/admin/llm_trace/stats/trends`,
+  adminLlmTraceByModel: `${ExternalApi}${api_host}/admin/llm_trace/stats/by-model`,
+  adminLlmTraceRecent: `${ExternalApi}${api_host}/admin/llm_trace/recent`,
   // License
   adminGetLicense: `${ExternalApi}${api_host}/admin/license`,
   adminSetLicense: `${ExternalApi}${api_host}/admin/license`,

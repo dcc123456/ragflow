@@ -5,6 +5,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router';
 import { useMutation, useQuery } from '@tanstack/react-query';
 
 import {
+  LucideBarChart3,
   LucideMonitor,
   LucideServerCrash,
   LucideSettings,
@@ -78,6 +79,11 @@ const AdminNavigationLayout = () => {
               path: Routes.AdminMonitoring,
               name: t('admin.monitoring'),
               icon: <LucideMonitor className="size-[1em]" />,
+            },
+            {
+              path: Routes.AdminModelUsageStatistics,
+              name: t('admin.modelUsage.modelUsageStatistics'),
+              icon: <LucideBarChart3 className="size-[1em]" />,
             },
             {
               path: Routes.AdminSettings,
