@@ -19,6 +19,7 @@ const {
   updatePermission,
   updateDialogPermission,
   listPermission,
+  listPermissionByTarget,
 } = api;
 
 const methods = {
@@ -56,6 +57,10 @@ const methods = {
   },
   listPermission: {
     url: listPermission,
+    method: 'post',
+  },
+  listPermissionByTarget: {
+    url: listPermissionByTarget,
     method: 'post',
   },
 } as const;

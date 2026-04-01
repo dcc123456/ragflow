@@ -79,3 +79,9 @@ export interface IConfirmDeletePermission {
   resource_ids: string[];
   tenant_id: string;
 }
+
+export interface IListPermissionByTargetRequest {
+  tenant_id: string;
+  target_id: string;
+  target_type: 'member' | 'group' | 'department';
+}

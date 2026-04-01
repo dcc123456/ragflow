@@ -1,89 +1,59 @@
 import { Permission, PermissionResourceType, TeamRole } from '@/constants/team';
-import { useUpdatePermission } from '@/hooks/use-team';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  useFetchPermissionByTarget,
+  useUpdatePermission,
+} from '@/hooks/use-team';
+import { useCallback, useMemo, useState } from 'react';
 import { IKnowledgePermission, PermissionFilter } from './interface';
 
-// 模块类型列表
-const moduleTypes = ['Agent', 'MCP', 'Dataset', 'Chat', 'Model'];
-
-// Mock knowledge base data
-const mockKnowledgeBases = [
-  { id: 'kb-001', name: 'Myrtie Nash', avatar: '' },
-  { id: 'kb-002', name: 'ICBC data demo 0918 for test', avatar: '' },
-  { id: 'kb-003', name: 'Gene Dennis', avatar: '' },
-  { id: 'kb-004', name: 'Myrtie Nash', avatar: '' },
-  { id: 'kb-005', name: 'Gene Dennis', avatar: '' },
-  { id: 'kb-006', name: 'Project Documentation', avatar: '' },
-  { id: 'kb-007', name: 'Customer Support KB', avatar: '' },
-  { id: 'kb-008', name: 'Internal Wiki', avatar: '' },
-];
-
-// Generate mock permissions with module types
-const generateMockPermissions = (
-  targetId: string,
-  role: TeamRole,
-): IKnowledgePermission[] => {
-  return mockKnowledgeBases.map((kb, index) => {
-    // Generate deterministic mock permission based on index
-    const permissions = [
-      Permission.Manage,
-      Permission.Write,
-      Permission.Read,
-      0,
-    ];
-    const mockPermission = permissions[index % 4];
-    // Generate deterministic module type based on index
-    const moduleType = moduleTypes[index % moduleTypes.length];
-
-    return {
-      kb_id: kb.id,
-      name: kb.name,
-      avatar: kb.avatar,
-      permission: mockPermission,
-      module_type: moduleType,
-    };
-  });
-};
+// Maps the frontend TeamRole enum to the backend target_type value.
+const ROLE_TO_TARGET_TYPE: Record<TeamRole, 'member' | 'group' | 'department'> =
+  {
+    [TeamRole.Member]: 'member',
+    [TeamRole.Group]: 'group',
+    [TeamRole.Department]: 'department',
+  };
 
 export function usePermissionData(
   tenantId: string,
   targetId: string,
   role: TeamRole,
 ) {
-  const [permissions, setPermissions] = useState<IKnowledgePermission[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Local overrides applied optimistically before the user hits "Confirm".
+  const [localOverrides, setLocalOverrides] = useState<Record<string, number>>(
+    {},
+  );
 
-  // Simulate API call to fetch permissions
-  useEffect(() => {
-    if (targetId) {
-      setLoading(true);
-      // Simulate network delay
-      const timer = setTimeout(() => {
-        const mockPermissions = generateMockPermissions(targetId, role);
-        setPermissions(mockPermissions);
-        setLoading(false);
-      }, 300);
+  const { data: rawData, loading } = useFetchPermissionByTarget({
+    tenant_id: tenantId,
+    target_id: targetId,
+    target_type: ROLE_TO_TARGET_TYPE[role],
+  });
 
-      return () => clearTimeout(timer);
-    }
-  }, [targetId, role]);
+  // Merge server data with any pending local edits so the table stays in sync.
+  const permissions: IKnowledgePermission[] = useMemo(
+    () =>
+      (rawData ?? []).map((item) => ({
+        kb_id: item.resource_id,
+        name: item.name,
+        avatar: item.avatar,
+        permission:
+          item.resource_id in localOverrides
+            ? localOverrides[item.resource_id]
+            : item.permission,
+        module_type: item.module_type,
+      })),
+    [rawData, localOverrides],
+  );
 
   const updatePermissionLocal = useCallback(
     (kbId: string, newPermission: number) => {
-      setPermissions((prev) =>
-        prev.map((item) =>
-          item.kb_id === kbId ? { ...item, permission: newPermission } : item,
-        ),
-      );
+      setLocalOverrides((prev) => ({ ...prev, [kbId]: newPermission }));
     },
     [],
   );
 
-  return {
-    permissions,
-    loading,
-    updatePermissionLocal,
-  };
+  return { permissions, loading, updatePermissionLocal };
 }
 
 export function useFilteredPermissions(

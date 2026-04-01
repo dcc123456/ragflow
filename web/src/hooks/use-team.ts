@@ -9,6 +9,7 @@ import {
   ICreateGroupRequestBody,
   IDeleteDepartmentMemberRequestBody,
   IFetchDepartmentRequestParams,
+  IListPermissionByTargetRequest,
   IMoveDepartmentRequestBody,
   ITransferGroupOwnerRequestBody,
   IUpdateDepartmentRequestBody,
@@ -54,6 +55,7 @@ export const enum TeamApiAction {
   TransferGroupOwner = 'transferGroupOwner',
   UpdatePermission = 'updatePermission',
   ListPermission = 'listPermission',
+  ListPermissionByTarget = 'listPermissionByTarget',
   UpdateDialogPermission = 'updateDialogPermission',
   ConfirmDeletePermission = 'confirmDeletePermission',
 }
@@ -430,6 +432,47 @@ export const useFetchPermissionList = (
         tenant_id: tenantId,
       });
 
+      return data?.data ?? [];
+    },
+  });
+
+  return { data, loading, refetch };
+};
+
+export const useFetchPermissionByTarget = (
+  params: IListPermissionByTargetRequest,
+) => {
+  const { tenant_id, target_id, target_type } = params;
+
+  const {
+    data,
+    isFetching: loading,
+    refetch,
+  } = useQuery<
+    Array<{
+      resource_id: string;
+      resource_type: string;
+      name: string;
+      avatar: string;
+      permission: number;
+      module_type: string;
+    }>
+  >({
+    queryKey: [
+      TeamApiAction.ListPermissionByTarget,
+      tenant_id,
+      target_id,
+      target_type,
+    ],
+    initialData: [],
+    gcTime: 0,
+    enabled: !!tenant_id && !!target_id && !!target_type,
+    queryFn: async () => {
+      const { data } = await teamService.listPermissionByTarget({
+        tenant_id,
+        target_id,
+        target_type,
+      });
       return data?.data ?? [];
     },
   });

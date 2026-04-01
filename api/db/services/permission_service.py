@@ -17,12 +17,12 @@ from datetime import datetime
 
 import peewee
 
-from api.db import VALID_RESOURCE_TYPES, PermissionValue, ResourceType
-from api.db.db_models import DB, Permission, PermissionChangeLog
+from api.db import VALID_RESOURCE_TYPES, PermissionTargetType, PermissionValue, ResourceType
+from api.db.db_models import DB, Dialog, Knowledgebase, MCPServer, Permission, PermissionChangeLog, UserCanvas
 from api.db.services.common_service import CommonService
+from common.constants import StatusEnum
 from common.misc_utils import get_uuid
 from common.time_utils import current_timestamp, datetime_format
-from common.constants import StatusEnum
 
 
 class PermissionService(CommonService):
@@ -145,6 +145,96 @@ class PermissionService(CommonService):
             return permissions
         except peewee.DoesNotExist:
             return []
+
+    @classmethod
+    @DB.connection_context()
+    def get_target_resource_permissions(cls, tenant_id: str, target_type: str, target_id: str) -> list[dict]:
+        """
+        Returns all non-null permission records for a given target
+        (member / group / department), enriched with the resource's display
+        name, avatar, and module type.
+
+        Args:
+            tenant_id:   Tenant ID.
+            target_type: One of ``"member"``, ``"group"``, ``"department"``.
+            target_id:   ID of the member (UserTenant.id), group, or department.
+
+        Returns:
+            A list of dicts with keys:
+            ``resource_id``, ``resource_type``, ``name``, ``avatar``,
+            ``permission``, ``module_type``.
+        """
+        from collections import defaultdict
+
+        # ── 1. fetch raw permission records ───────────────────────────────────
+        if target_type == PermissionTargetType.TARGET_MEMBER:
+            permissions = cls.get_permissions_by_tenant_and_member_id_with_types(tenant_id, target_id)
+        elif target_type == PermissionTargetType.TARGET_GROUP:
+            permissions = cls.get_permissions_by_tenant_and_group_id_with_types(tenant_id, target_id)
+        elif target_type == PermissionTargetType.TARGET_DEPARTMENT:
+            permissions = cls.get_permissions_by_tenant_and_department_id_with_types(tenant_id, target_id)
+        else:
+            return []
+
+        if not permissions:
+            return []
+
+        # ── 2. group resource IDs by type ─────────────────────────────────────
+        ids_by_type: dict[str, list[str]] = defaultdict(list)
+        for p in permissions:
+            ids_by_type[p.resource_type].append(p.resource_id)
+
+        # ── 3. bulk-fetch resource info ───────────────────────────────────────
+        resource_info: dict[str, dict] = {}  # resource_id -> {name, avatar}
+
+        if ResourceType.KB in ids_by_type:
+            rows = list(Knowledgebase.select(Knowledgebase.id, Knowledgebase.name, Knowledgebase.avatar).where(Knowledgebase.id.in_(ids_by_type[ResourceType.KB])))
+            for r in rows:
+                resource_info[r.id] = {"name": r.name or "", "avatar": r.avatar or ""}
+
+        if ResourceType.CANVAS in ids_by_type:
+            rows = list(UserCanvas.select(UserCanvas.id, UserCanvas.title, UserCanvas.avatar).where(UserCanvas.id.in_(ids_by_type[ResourceType.CANVAS])))
+            for r in rows:
+                resource_info[r.id] = {"name": r.title or "", "avatar": r.avatar or ""}
+
+        if ResourceType.DIALOG in ids_by_type:
+            rows = list(Dialog.select(Dialog.id, Dialog.name, Dialog.icon).where((Dialog.id.in_(ids_by_type[ResourceType.DIALOG])) & (Dialog.status == StatusEnum.VALID.value)))
+            for r in rows:
+                resource_info[r.id] = {"name": r.name or "", "avatar": r.icon or ""}
+
+        if ResourceType.MCP in ids_by_type:
+            rows = list(MCPServer.select(MCPServer.id, MCPServer.name).where(MCPServer.id.in_(ids_by_type[ResourceType.MCP])))
+            for r in rows:
+                resource_info[r.id] = {"name": r.name or "", "avatar": ""}
+
+        # LLM: the resource_id IS the factory name – no extra lookup needed
+        for factory_name in ids_by_type.get(ResourceType.LLM, []):
+            resource_info[factory_name] = {"name": factory_name, "avatar": ""}
+
+        # ── 4. build result ───────────────────────────────────────────────────
+        _module_type_map = {
+            ResourceType.KB: "Dataset",
+            ResourceType.CANVAS: "Agent",
+            ResourceType.DIALOG: "Chat",
+            ResourceType.MCP: "MCP",
+            ResourceType.LLM: "Model",
+        }
+
+        result = []
+        for p in permissions:
+            info = resource_info.get(p.resource_id, {"name": p.resource_id, "avatar": ""})
+            result.append(
+                {
+                    "resource_id": p.resource_id,
+                    "resource_type": p.resource_type,
+                    "name": info["name"],
+                    "avatar": info["avatar"],
+                    "permission": p.permission,
+                    "module_type": _module_type_map.get(p.resource_type, p.resource_type),
+                }
+            )
+
+        return result
 
     @classmethod
     def save(cls, **kwargs):
@@ -275,7 +365,7 @@ class PermissionService(CommonService):
         try:
             permission = (
                 cls.model.select()
-                .where((cls.model.member_id == department_id) & (cls.model.status == StatusEnum.VALID.value) & (cls.model.tenant_id == tenant_id) & (cls.model.resource_type == resource_type))
+                .where((cls.model.department_id == department_id) & (cls.model.status == StatusEnum.VALID.value) & (cls.model.tenant_id == tenant_id) & (cls.model.resource_type == resource_type))
                 .first()
             )
             return permission

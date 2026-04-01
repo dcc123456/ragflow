@@ -33,6 +33,7 @@ export default {
   // permission
   updatePermission: `${api_host}/permission/update`,
   listPermission: `${api_host}/permission/list`,
+  listPermissionByTarget: `${api_host}/permission/list_by_target`,
   updateDialogPermission: `${api_host}/permission/share_dialog`,
 
   // billing

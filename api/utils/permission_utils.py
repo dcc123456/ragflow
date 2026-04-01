@@ -1,11 +1,12 @@
 import inspect
 from functools import wraps
 
-from common import settings
-from common.constants import RetCode
-from api.db import PermissionTargetType, PermissionValue, ResourceType
+from api.db import PermissionActionType, PermissionTargetType, PermissionValue, ResourceType
 from api.db.services.permission_service import PermissionService
 from api.db.services.team_service import DepartmentMemberService, DepartmentService, GroupMemberService, GroupService
+from common import settings
+from common.constants import RetCode, StatusEnum
+from common.misc_utils import get_uuid
 
 
 def is_valid_permission(permission: int) -> bool:
@@ -21,6 +22,7 @@ def has_permission(user_permission: int, required_permission: PermissionValue) -
 
 def has_permission_for_member(operator_id, tenant_id, resource_id, resource_type, permission=PermissionValue.PERMISSION_MANAGE):
     from api.db.services.user_service import UserTenantService
+
     highest_permission = PermissionValue.PERMISSION_NULL.value
     permission_type = None
 
@@ -74,6 +76,7 @@ def wrap_permission_info(permission_info):
       {id, role, name, avatar, tenant_id, resource_type, permissions:{resource_id: permission}}
     """
     from api.db.services.user_service import UserService, UserTenantService
+
     permissions = []
 
     for info in permission_info:
@@ -146,9 +149,10 @@ def wrap_permission_info(permission_info):
 
 
 def check_kb_permission(permission):
-    from api.utils.api_utils import get_json_result
     from api.db.services.knowledgebase_service import KnowledgebaseService
-    from api.db.services.user_service import UserTenantService, UserService
+    from api.db.services.user_service import UserService, UserTenantService
+    from api.utils.api_utils import get_json_result
+
     """
     ! IMPORTANT:
     The request data is parsed in this decorator.
@@ -162,11 +166,12 @@ def check_kb_permission(permission):
     """
 
     def decorator(foo):
-        from quart import request, g
+        from quart import g, request
 
         @wraps(foo)
         async def wrapper(*args, **kwargs):
             from api.apps import current_user
+
             content_type = request.headers.get("Content-Type") or ""
 
             if request.method in ["POST", "PUT", "PATCH"]:
@@ -219,9 +224,10 @@ def check_kb_permission(permission):
 
 
 def check_dialog_permission(permission):
-    from api.utils.api_utils import get_json_result
     from api.db.services.dialog_service import DialogService
     from api.db.services.user_service import UserTenantService
+    from api.utils.api_utils import get_json_result
+
     """
     ! IMPORTANT:
     The request data is parsed in this decorator.
@@ -235,11 +241,12 @@ def check_dialog_permission(permission):
     """
 
     def decorator(foo):
-        from quart import request, g
+        from quart import g, request
 
         @wraps(foo)
         async def wrapper(*args, **kwargs):
             from api.apps import current_user
+
             content_type = request.headers.get("Content-Type") or ""
 
             if request.method in ["POST", "PUT", "PATCH"]:
@@ -297,10 +304,10 @@ def _filter_accessible_document_ids(tenant_id, operator_id, kb_ids, doc_ids=None
     Strict document access filter.
     Returns doc_ids the operator can access. Empty list means no access.
     """
+    from api.db import PermissionValue, ResourceType
     from api.db.db_models import Document, Permission, UserTenant
     from api.db.services.team_service import DepartmentMemberService, DepartmentService, GroupMemberService
     from common.constants import StatusEnum
-    from api.db import PermissionValue, ResourceType
 
     if not kb_ids:
         return []
@@ -309,19 +316,12 @@ def _filter_accessible_document_ids(tenant_id, operator_id, kb_ids, doc_ids=None
     if doc_ids:
         doc_ids = list(dict.fromkeys(doc_ids))
 
-    operator = UserTenant.get_or_none(
-        (UserTenant.id == operator_id) & (UserTenant.status == StatusEnum.VALID.value)
-    )
+    operator = UserTenant.get_or_none((UserTenant.id == operator_id) & (UserTenant.status == StatusEnum.VALID.value))
     # Tenant owner can access all documents under the KBs.
     if operator and operator.user_id == tenant_id:
         if doc_ids:
             return doc_ids
-        return [
-            d["id"]
-            for d in Document.select(Document.id)
-            .where((Document.kb_id.in_(kb_ids)) & (Document.status == StatusEnum.VALID.value))
-            .dicts()
-        ]
+        return [d["id"] for d in Document.select(Document.id).where((Document.kb_id.in_(kb_ids)) & (Document.status == StatusEnum.VALID.value)).dicts()]
 
     permission_conditions = (
         (Permission.tenant_id == tenant_id)
@@ -334,17 +334,13 @@ def _filter_accessible_document_ids(tenant_id, operator_id, kb_ids, doc_ids=None
 
     allowed_doc_ids = set()
 
-    member_docs = Permission.select(Permission.resource_id).where(
-        permission_conditions & (Permission.member_id == operator_id)
-    )
+    member_docs = Permission.select(Permission.resource_id).where(permission_conditions & (Permission.member_id == operator_id))
     allowed_doc_ids.update([r["resource_id"] for r in member_docs.dicts()])
 
     groups = GroupMemberService.get_groups_by_member_id(operator_id)
     group_ids = list({g["group_id"] for g in groups})
     if group_ids:
-        group_docs = Permission.select(Permission.resource_id).where(
-            permission_conditions & (Permission.group_id.in_(group_ids))
-        )
+        group_docs = Permission.select(Permission.resource_id).where(permission_conditions & (Permission.group_id.in_(group_ids)))
         allowed_doc_ids.update([r["resource_id"] for r in group_docs.dicts()])
 
     departments = DepartmentMemberService.get_all_departments_by_member_id(operator_id)
@@ -352,25 +348,14 @@ def _filter_accessible_document_ids(tenant_id, operator_id, kb_ids, doc_ids=None
     for department in departments:
         department_id_set.update(DepartmentService.get_department_hierarchy(department))
     if department_id_set:
-        dept_docs = Permission.select(Permission.resource_id).where(
-            permission_conditions & (Permission.department_id.in_(list(department_id_set)))
-        )
+        dept_docs = Permission.select(Permission.resource_id).where(permission_conditions & (Permission.department_id.in_(list(department_id_set))))
         allowed_doc_ids.update([r["resource_id"] for r in dept_docs.dicts()])
 
     if not allowed_doc_ids:
         return []
 
     allowed_doc_ids = set(
-        [
-            d["id"]
-            for d in Document.select(Document.id)
-            .where(
-                (Document.id.in_(list(allowed_doc_ids)))
-                & (Document.kb_id.in_(kb_ids))
-                & (Document.status == StatusEnum.VALID.value)
-            )
-            .dicts()
-        ]
+        [d["id"] for d in Document.select(Document.id).where((Document.id.in_(list(allowed_doc_ids))) & (Document.kb_id.in_(kb_ids)) & (Document.status == StatusEnum.VALID.value)).dicts()]
     )
 
     if doc_ids:
@@ -383,8 +368,9 @@ def filter_accessible_doc_ids_for_user(user_id, kb_ids, doc_ids=None):
     Filter document IDs for a user across KBs.
     Returns (filtered_doc_ids, tenant_ids, error_message).
     """
-    from api.db.services.user_service import UserTenantService
     from api.db.services.knowledgebase_service import KnowledgebaseService
+    from api.db.services.user_service import UserTenantService
+
     permission_error_msg = "Only owner of dataset authorized for this operation."
 
     if not kb_ids:
@@ -428,9 +414,10 @@ def filter_accessible_doc_ids_for_user(user_id, kb_ids, doc_ids=None):
 
 
 def check_canvas_permission(permission):
-    from api.utils.api_utils import get_json_result
     from api.db.services.canvas_service import UserCanvasService
     from api.db.services.user_service import UserTenantService
+    from api.utils.api_utils import get_json_result
+
     """
     ! IMPORTANT:
     The request data is parsed in this decorator.
@@ -444,11 +431,12 @@ def check_canvas_permission(permission):
     """
 
     def decorator(foo):
-        from quart import request, g
+        from quart import g, request
 
         @wraps(foo)
         async def wrapper(*args, **kwargs):
             from api.apps import current_user
+
             content_type = request.headers.get("Content-Type") or ""
 
             if request.method in ["POST", "PUT", "PATCH"]:
@@ -518,9 +506,10 @@ def check_canvas_permission(permission):
 
 
 def check_mcp_permission(permission):
-    from api.utils.api_utils import get_json_result
     from api.db.services.mcp_server_service import MCPServerService
     from api.db.services.user_service import UserTenantService
+    from api.utils.api_utils import get_json_result
+
     """
     ! IMPORTANT:
     The request data is parsed in this decorator.
@@ -534,11 +523,12 @@ def check_mcp_permission(permission):
     """
 
     def decorator(foo):
-        from quart import request, g
+        from quart import g, request
 
         @wraps(foo)
         async def wrapper(*args, **kwargs):
             from api.apps import current_user
+
             content_type = request.headers.get("Content-Type") or ""
 
             if request.method in ["POST", "PUT", "PATCH"]:
@@ -606,8 +596,131 @@ def check_mcp_permission(permission):
     return decorator
 
 
+def build_permission_records_for_target(
+    operator_id,
+    operator_tenant_id,
+    tenant_id,
+    resource_type,
+    resource_id,
+    permission,
+    target_type,
+    target_id,
+):
+    """
+    Build permission create/update/delete/changelog records for a single (resource, target) pair.
+
+    Args:
+        operator_id:        UserTenant.id of the operator performing the change.
+        operator_tenant_id: tenant_id that the operator belongs to.
+        tenant_id:          tenant scope of the permission.
+        resource_type:      ResourceType value.
+        resource_id:        ID of the resource (may be None/empty for tenant-wide permissions).
+        permission:         Integer permission value to set.
+        target_type:        PermissionTargetType – "member", "group", or "department".
+        target_id:          ID of the member/group/department UserTenant record.
+
+    Returns:
+        tuple: (to_create, to_update, to_delete, changelog, not_found)
+            - to_create  : dict ready for PermissionService.insert_many, or None
+            - to_update  : model object ready for PermissionService.update_many, or None
+            - to_delete  : model object (status set to INVALID) for update_many, or None
+            - changelog  : dict ready for PermissionChangeLogService.insert_many, or None
+            - not_found  : True when the target entity does not exist in the database
+    """
+    from api.db.services.user_service import UserTenantService
+
+    to_create = None
+    to_update = None
+    to_delete = None
+    changelog = None
+    entity_id = None
+    entity_field = None  # key to use in the permission record dict
+
+    # ── resolve target entity ────────────────────────────────────────────────
+    if target_type == PermissionTargetType.TARGET_MEMBER:
+        entity = UserTenantService.filter_by_id(target_id)
+        if not entity:
+            return None, None, None, None, True
+        entity_id = entity.id
+        entity_field = "member_id"
+
+        p = PermissionService.filter_by_member_and_tenant_id_with_resource_id(entity_id, tenant_id, resource_id=resource_id, resource_type=resource_type)
+
+    elif target_type == PermissionTargetType.TARGET_GROUP:
+        entity = GroupService.filter_by_id(target_id)
+        if not entity:
+            return None, None, None, None, True
+        entity_id = entity.id
+        entity_field = "group_id"
+
+        p = PermissionService.filter_by_group_and_tenant_id_with_resource_id(entity_id, tenant_id, resource_id=resource_id, resource_type=resource_type)
+
+    elif target_type == PermissionTargetType.TARGET_DEPARTMENT:
+        entity = DepartmentService.filter_by_id(target_id)
+        if not entity:
+            return None, None, None, None, True
+        entity_id = entity.id
+        entity_field = "department_id"
+
+        p = PermissionService.filter_by_department_and_tenant_id_with_resource_id(entity_id, tenant_id, resource_id=resource_id, resource_type=resource_type)
+
+    else:
+        # Unknown target_type – treat as not-found so the caller can skip gracefully
+        return None, None, None, None, True
+
+    # ── build update / create records ────────────────────────────────────────
+    if p:
+        changelog = dict(
+            id=get_uuid(),
+            tenant_id=operator_tenant_id,
+            operator_id=operator_id,
+            target_type=target_type,
+            target_id=entity_id,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            old_permission=p.permission,
+            new_permission=permission,
+            action_type=PermissionActionType.ACTION_UPDATE,
+        )
+        setattr(p, "permission", permission)
+        if p.permission == PermissionValue.PERMISSION_NULL.value:
+            p.status = StatusEnum.INVALID.value
+            changelog["action_type"] = PermissionActionType.ACTION_DELETE
+            to_delete = p
+        else:
+            to_update = p
+    else:
+        # permission=0 with no existing record is a no-op: nothing to delete or create.
+        if permission == PermissionValue.PERMISSION_NULL.value:
+            return None, None, None, None, False
+
+        to_create = {
+            "id": get_uuid(),
+            "resource_type": resource_type,
+            "resource_id": resource_id if resource_id else None,
+            "tenant_id": tenant_id,
+            "permission": permission,
+            entity_field: entity_id,
+        }
+        changelog = dict(
+            id=get_uuid(),
+            tenant_id=operator_tenant_id,
+            operator_id=operator_id,
+            target_type=target_type,
+            target_id=entity_id,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            old_permission=PermissionValue.PERMISSION_NULL.value,
+            new_permission=permission,
+            action_type=PermissionActionType.ACTION_ADD,
+        )
+
+    return to_create, to_update, to_delete, changelog, False
+
+
 def get_owner_id(tid, uid):
     return str(tid).rjust(32, "x") + str(uid).rjust(32, "_")
+
 
 def tid_uid(owner_id):
     tid, uid = owner_id[:32], owner_id[32:]
