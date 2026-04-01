@@ -2238,6 +2238,8 @@ Tokenizer 会根据所选方式将内容存储为对应的数据结构。`,
       delChat: '删除聊天',
       delMember: '删除成员',
       delMemory: '删除记忆',
+      delDepartment: '删除部门',
+      delGroup: '删除分组',
     },
     evaluation: {
       title: '评估',

@@ -1216,6 +1216,8 @@ Quanto sopra è il contenuto che devi riassumere.`,
       delChat: 'Elimina chat',
       delMember: 'Elimina membro',
       delMemory: 'Elimina memoria',
+      delDepartment: 'Elimina dipartimento',
+      delGroup: 'Elimina gruppo',
     },
     empty: {
       noMCP: 'Nessun server MCP disponibile',

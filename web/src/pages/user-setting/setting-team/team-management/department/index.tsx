@@ -7,6 +7,7 @@ import {
   BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb';
 import { useCallback, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { TriggerMemberManagementDialogType } from '../constant';
 import { MemberManagementDialog } from '../member-management-dialog';
 import {
@@ -111,12 +112,6 @@ export function Department() {
           departmentParentId={departmentParentId}
           showMoveDepartmentModal={handleShowMoveDepartmentModal}
         ></DepartmentTable>
-        <DepartmentSidebar
-          showDepartmentModal={handleShowDepartmentModal}
-          showDepartmentMemberModal={showDepartmentMemberModal}
-          showMoveDepartmentModal={handleShowMoveDepartmentModal}
-          initialId={departmentParentId}
-        ></DepartmentSidebar>
       </div>
       {departmentVisible && (
         <CreateDepartmentDialog
@@ -143,6 +138,18 @@ export function Department() {
           initialDepartmentId={initialDepartmentId}
         ></MoveDepartmentDialog>
       )}
+      {typeof document !== 'undefined' &&
+        document.getElementById('department-toolbar') &&
+        createPortal(
+          <DepartmentSidebar
+            showDepartmentModal={handleShowDepartmentModal}
+            showDepartmentMemberModal={showDepartmentMemberModal}
+            showMoveDepartmentModal={handleShowMoveDepartmentModal}
+            initialId={departmentParentId}
+            horizontal
+          ></DepartmentSidebar>,
+          document.getElementById('department-toolbar')!,
+        )}
     </section>
   );
 }

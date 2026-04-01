@@ -1,4 +1,7 @@
-import { ConfirmDeleteDialog } from '@/components/confirm-delete-dialog';
+import {
+  ConfirmDeleteDialog,
+  ConfirmDeleteDialogNode,
+} from '@/components/confirm-delete-dialog';
 import { Button } from '@/components/ui/button';
 import { TeamRole } from '@/constants/team';
 import { useDeleteTenantUser } from '@/hooks/use-user-setting-request';
@@ -6,6 +9,7 @@ import { ITenantUser } from '@/interfaces/database/user-setting';
 import { CellContext } from '@tanstack/react-table';
 import { Layers, Trash2 } from 'lucide-react';
 import { useCallback, useContext } from 'react';
+import { useTranslation } from 'react-i18next';
 import { PermissionManagementDialogContext } from '../../permission-management-dialog';
 import { useIsMyCreatedTeam } from '../../use-operate-team';
 
@@ -15,6 +19,7 @@ export function ActionCell({ row }: IProps) {
   const record = row.original;
   const isMyCreatedTeam = useIsMyCreatedTeam();
   const showPermissionModal = useContext(PermissionManagementDialogContext);
+  const { t } = useTranslation();
 
   const { deleteTenantUser } = useDeleteTenantUser();
 
@@ -43,7 +48,18 @@ export function ActionCell({ row }: IProps) {
         >
           <Layers className="w-4 h-4" />
         </Button>
-        <ConfirmDeleteDialog onOk={handleOk}>
+        <ConfirmDeleteDialog
+          onOk={handleOk}
+          title={t('deleteModal.delMember')}
+          content={{
+            node: (
+              <ConfirmDeleteDialogNode
+                avatar={{ avatar: record.avatar, name: record.nickname }}
+                name={record.nickname}
+              />
+            ),
+          }}
+        >
           <Button variant="ghost" size="icon" title="Delete">
             <Trash2 className="w-4 h-4" />
           </Button>

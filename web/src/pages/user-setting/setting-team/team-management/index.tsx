@@ -156,7 +156,8 @@ export function TeamManagement() {
                   {t('permission.group')}
                 </TabsTrigger>
               </TabsList>
-              <div>
+              <div className="flex gap-2 items-center">
+                <div id="department-toolbar"></div>
                 {isMyCreatedTeam && activity === TeamRole.Group && (
                   <Button onClick={handleShowGroupModal}>
                     <UserPlus /> {t('permission.createGroup')}

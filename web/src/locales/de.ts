@@ -2509,6 +2509,8 @@ Wichtige strukturierte Informationen können sein: Namen, Daten, Orte, Ereigniss
       delChat: 'Chat löschen',
       delMember: 'Mitglied löschen',
       delMemory: 'Gedächtnis löschen',
+      delDepartment: 'Abteilung löschen',
+      delGroup: 'Gruppe löschen',
     },
     empty: {
       noMCP: 'Keine MCP-Server verfügbar',

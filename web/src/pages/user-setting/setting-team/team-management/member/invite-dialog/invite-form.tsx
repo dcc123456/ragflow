@@ -4,14 +4,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@/components/ui/form';
+import { RAGFlowFormItem } from '@/components/ragflow-form';
+import { Form } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { TagRenameId } from '@/constants/knowledge';
 import { IModalProps } from '@/interfaces/common';
@@ -22,6 +16,7 @@ export function InviteForm({ hideModal, onOk }: IModalProps<any>) {
   const FormSchema = z.object({
     name: z
       .string()
+      .email()
       .min(1, {
         message: t('common.namePlaceholder'),
       })
@@ -47,23 +42,9 @@ export function InviteForm({ hideModal, onOk }: IModalProps<any>) {
         className="space-y-6"
         id={TagRenameId}
       >
-        <FormField
-          control={form.control}
-          name="name"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>{t('common.name')}</FormLabel>
-              <FormControl>
-                <Input
-                  placeholder={t('common.namePlaceholder')}
-                  {...field}
-                  autoComplete="off"
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        <RAGFlowFormItem name="name" label={t('login.emailLabel')}>
+          <Input placeholder={t('login.emailPlaceholder')} autoComplete="off" />
+        </RAGFlowFormItem>
       </form>
     </Form>
   );

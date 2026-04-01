@@ -1,4 +1,7 @@
-import { ConfirmDeleteDialog } from '@/components/confirm-delete-dialog';
+import {
+  ConfirmDeleteDialog,
+  ConfirmDeleteDialogNode,
+} from '@/components/confirm-delete-dialog';
 import { Button } from '@/components/ui/button';
 import { TeamRole } from '@/constants/team';
 import {
@@ -80,6 +83,10 @@ export function ActionCell({
   }, [showPermissionModal, row.original]);
 
   const isDepartment = 'department_id' in row.original;
+  const displayName = isDepartment
+    ? (row.original as IDepartment).name
+    : (row.original as IMember).nickname;
+  const avatar = row.original.avatar;
 
   if (!isMyCreatedTeam) {
     return null;
@@ -116,7 +123,21 @@ export function ActionCell({
             </Button>
           </>
         )}
-        <ConfirmDeleteDialog onOk={handleDeleteDepartment}>
+        <ConfirmDeleteDialog
+          onOk={handleDeleteDepartment}
+          title={t('deleteModal.delDepartment')}
+          content={{
+            node: (
+              <ConfirmDeleteDialogNode
+                avatar={{
+                  avatar: avatar,
+                  name: displayName,
+                }}
+                name={displayName}
+              />
+            ),
+          }}
+        >
           <Button variant="ghost" size="icon" title={t('common.delete')}>
             <Trash2 className="w-4 h-4" />
           </Button>

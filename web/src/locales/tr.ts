@@ -2503,6 +2503,8 @@ Temel Talimatlar:
       delChat: 'Sohbeti sil',
       delMember: 'Üyeyi sil',
       delMemory: 'Belleği sil',
+      delDepartment: 'Departmanı sil',
+      delGroup: 'Grubu sil',
     },
     empty: {
       noMCP: 'Mevcut MCP sunucusu yok',

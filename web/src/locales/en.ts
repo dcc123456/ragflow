@@ -2607,6 +2607,8 @@ Important structured information may include: names, dates, locations, events, k
       delChat: 'Delete chat',
       delMember: 'Delete member',
       delMemory: 'Delete memory',
+      delDepartment: 'Delete department',
+      delGroup: 'Delete group',
     },
 
     evaluation: {

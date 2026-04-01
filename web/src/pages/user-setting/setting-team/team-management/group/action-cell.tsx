@@ -1,4 +1,7 @@
-import { ConfirmDeleteDialog } from '@/components/confirm-delete-dialog';
+import {
+  ConfirmDeleteDialog,
+  ConfirmDeleteDialogNode,
+} from '@/components/confirm-delete-dialog';
 import { Button } from '@/components/ui/button';
 import { TeamRole } from '@/constants/team';
 import { TenantIdContext } from '@/contexts/teant-context';
@@ -106,7 +109,21 @@ function GroupActionCell({
           >
             <UserPlus className="w-4 h-4" />
           </Button>
-          <ConfirmDeleteDialog onOk={handleDeleteGroup}>
+          <ConfirmDeleteDialog
+            onOk={handleDeleteGroup}
+            title={t('deleteModal.delGroup')}
+            content={{
+              node: (
+                <ConfirmDeleteDialogNode
+                  avatar={{
+                    avatar: row.original.avatar,
+                    name: row.original.name,
+                  }}
+                  name={row.original.name}
+                />
+              ),
+            }}
+          >
             <Button variant="ghost" size="icon" title={t('common.delete')}>
               <Trash2 className="w-4 h-4" />
             </Button>

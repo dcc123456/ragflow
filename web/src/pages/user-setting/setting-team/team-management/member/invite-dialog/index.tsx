@@ -18,7 +18,7 @@ export function InviteDialog({ hideModal, onOk, loading }: IModalProps<any>) {
     <Dialog open onOpenChange={hideModal}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>{t('setting.add')}</DialogTitle>
+          <DialogTitle>{t('setting.invite')}</DialogTitle>
         </DialogHeader>
         <InviteForm hideModal={hideModal} onOk={onOk}></InviteForm>
         <DialogFooter>
