@@ -32,6 +32,31 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
+      - name: Set Kubernetes Context for nightly cleanup
+        uses: azure/k8s-set-context@v4
+        with:
+          method: kubeconfig
+          kubeconfig: ${{ secrets.KUBE_CONFIG }}
+          kubeconfig-encoding: base64
+
+      - name: Clean old BYOK namespaces before nightly flow
+        run: |
+          kubectl delete namespace elastic-system ragflow --ignore-not-found=true
+          MAX_RETRIES=180
+          for NS in elastic-system ragflow; do
+            COUNT=0
+            until ! kubectl get namespace "${NS}" >/dev/null 2>&1; do
+              echo "Waiting for namespace ${NS} to be deleted... (Attempt: $COUNT/$MAX_RETRIES)"
+              if [ $COUNT -ge $MAX_RETRIES ]; then
+                echo "Error: namespace ${NS} was not deleted within 15 minutes."
+                kubectl get namespace "${NS}" -o yaml || true
+                exit 1
+              fi
+              COUNT=$((COUNT + 1))
+              sleep 5
+            done
+          done
+
       - name: Check workflow duplication
         if: ${{ !cancelled() && !failure() }}
         env:
@@ -174,7 +199,9 @@ jobs:
 
       - name: Tag and push image to Harbor
         run: |
-          PRIVATE_RAGFLOW_IMAGE=192.168.1.51/infiniflow-ai/ragflow:${GITHUB_RUN_ID}
+          PRIVATE_RAGFLOW_TAG="kube1"
+          echo "PRIVATE_RAGFLOW_TAG=${PRIVATE_RAGFLOW_TAG}" >> ${GITHUB_ENV}
+          PRIVATE_RAGFLOW_IMAGE=192.168.1.51/infiniflow-ai/ragflow:${PRIVATE_RAGFLOW_TAG}
           echo "PRIVATE_RAGFLOW_IMAGE=${PRIVATE_RAGFLOW_IMAGE}" >> ${GITHUB_ENV}
           sudo docker tag ${RAGFLOW_IMAGE} ${PRIVATE_RAGFLOW_IMAGE}
 
@@ -211,11 +238,11 @@ jobs:
       - name: Deploy BYOK with OpenTofu
         working-directory: opentofu_ragflow/byok
         run: |
-          BYOK_NAMESPACE="ragflow-ci-${GITHUB_RUN_ID}"
+          BYOK_NAMESPACE="ragflow"
           cp terraform.tfvars.dev_smk terraform.tfvars
           printf '\nnamespace = "%s"\n' "${BYOK_NAMESPACE}" >> terraform.tfvars
           printf '\nmanage_eck_operator = false\n' >> terraform.tfvars
-          printf '\nragflow_image = "ragflow:%s"\n' "${GITHUB_RUN_ID}" >> terraform.tfvars
+          printf '\nragflow_image = "ragflow:%s"\n' "${PRIVATE_RAGFLOW_TAG}" >> terraform.tfvars
           echo "BYOK_NAMESPACE=${BYOK_NAMESPACE}" >> "${GITHUB_ENV}"
           echo "TF_VAR_namespace=${BYOK_NAMESPACE}" >> "${GITHUB_ENV}"
           tofu init -upgrade
@@ -245,61 +272,6 @@ jobs:
             sleep 5
           done
           source .venv/bin/activate && set -o pipefail; pytest -s --tb=short --level=${HTTP_API_TEST_LEVEL} test/testcases/test_http_api 2>&1 | tee es_http_api_test.log
-
-      - name: Collect ECK diagnostics on failure
-        if: failure()
-        run: |
-          helm -n elastic-system status eck-operator || true
-          kubectl -n elastic-system get pods -o wide || true
-          kubectl -n elastic-system get events --sort-by=.lastTimestamp | tail -n 100 || true
-
-      - name: Destroy BYOK resources
-        if: always()
-        working-directory: opentofu_ragflow/byok
-        run: |
-          set -euo pipefail
-
-          BYOK_NAMESPACE="${BYOK_NAMESPACE:-${TF_VAR_namespace:-}}"
-          DESTROY_RC=0
-
-          if [[ -n "${BYOK_NAMESPACE}" ]]; then
-            cp terraform.tfvars.dev_smk terraform.tfvars
-            printf '\nnamespace = "%s"\n' "${BYOK_NAMESPACE}" >> terraform.tfvars
-            printf '\nmanage_eck_operator = false\n' >> terraform.tfvars
-            tofu init -upgrade
-            tofu destroy -auto-approve || DESTROY_RC=$?
-          else
-            echo "BYOK_NAMESPACE is empty; skipping OpenTofu destroy."
-          fi
-
-          echo "Force deleting ECK operator release and resources..."
-          helm -n elastic-system uninstall eck-operator --no-hooks || true
-          kubectl -n elastic-system delete secret -l owner=helm,name=eck-operator --ignore-not-found || true
-          mapfile -t eck_release_secrets < <(kubectl -n elastic-system get secret -o name | grep -E '^secret/sh\.helm\.release\.v1\.eck-operator\.v' || true)
-          if [[ ${#eck_release_secrets[@]} -gt 0 ]]; then
-            kubectl -n elastic-system delete "${eck_release_secrets[@]}" --ignore-not-found || true
-          fi
-          kubectl -n elastic-system delete deploy,statefulset,daemonset,svc,sa,role,rolebinding,configmap,secret,pod \
-            -l app.kubernetes.io/name=elastic-operator \
-            --ignore-not-found \
-            --grace-period=0 \
-            --force || true
-
-          exit ${DESTROY_RC}
-
-      - name: Delete Harbor artifact by digest
-        if: always()
-        env:
-          HARBOR_USER: ${{ secrets.HARBOR_USER }}
-          HARBOR_PASSWORD: ${{ secrets.HARBOR_PASSWORD }}
-        run: |
-          if [[ -z "${PRIVATE_RAGFLOW_DIGEST:-}" ]]; then
-            echo "Error: PRIVATE_RAGFLOW_DIGEST is empty."
-            exit 1
-          fi
-          curl -fsS -u "${HARBOR_USER}:${HARBOR_PASSWORD}" \
-            -X DELETE \
-            "http://192.168.1.51/api/v2.0/projects/infiniflow-ai/repositories/ragflow/artifacts/${PRIVATE_RAGFLOW_DIGEST}"
 
       - name: Remove local Docker images
         if: always()
