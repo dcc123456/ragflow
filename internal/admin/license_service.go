@@ -14,8 +14,8 @@ import (
 	"os"
 	"ragflow/internal/common"
 	"ragflow/internal/dao"
+	"ragflow/internal/entity"
 	"ragflow/internal/logger"
-	"ragflow/internal/model"
 	"ragflow/internal/utility"
 	"strconv"
 	"time"
@@ -429,7 +429,7 @@ func SaveTimeRecord(lastData *TimeRecord) error {
 	// 5. insert new record
 	var timeRecordDao *dao.TimeRecordDAO
 	timeRecordDao = dao.NewTimeRecordDAO()
-	err = timeRecordDao.Create(&model.TimeRecord{
+	err = timeRecordDao.Create(&entity.TimeRecord{
 		Data:      encrypted,
 		CreatedAt: time.Now(),
 	})

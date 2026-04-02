@@ -18,7 +18,7 @@ package service
 
 import (
 	"ragflow/internal/dao"
-	"ragflow/internal/model"
+	"ragflow/internal/entity"
 )
 
 const (
@@ -39,8 +39,8 @@ func NewLicenseService() *LicenseService {
 }
 
 // InsertWithCleanup inserts data and automatically deletes old records if count exceeds MaxTimeRecords
-func (s *LicenseService) InsertWithCleanup(encryptedData string) (*model.TimeRecord, error) {
-	record := &model.TimeRecord{
+func (s *LicenseService) InsertWithCleanup(encryptedData string) (*entity.TimeRecord, error) {
+	record := &entity.TimeRecord{
 		Data: encryptedData,
 	}
 
@@ -78,7 +78,7 @@ func (s *LicenseService) CleanupOldRecords() error {
 }
 
 // GetRecent retrieves the most recently inserted records
-func (s *LicenseService) GetRecent(limit int) ([]*model.TimeRecord, error) {
+func (s *LicenseService) GetRecent(limit int) ([]*entity.TimeRecord, error) {
 	return s.timeRecordDAO.GetRecent(limit)
 }
 
@@ -88,6 +88,6 @@ func (s *LicenseService) GetCount() (int64, error) {
 }
 
 // GetByID retrieves a single record by its ID
-func (s *LicenseService) GetByID(id int64) (*model.TimeRecord, error) {
+func (s *LicenseService) GetByID(id int64) (*entity.TimeRecord, error) {
 	return s.timeRecordDAO.GetByID(id)
 }

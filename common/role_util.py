@@ -155,8 +155,8 @@ SEARCH_API_ACTION_MAP = {
     "create": ActionEnum.WRITE,
     "update": ActionEnum.WRITE,
     "detail": ActionEnum.READ,
-    "list_search_app": ActionEnum.ENABLE,
-    "rm": ActionEnum.WRITE,
+    "list_searches": ActionEnum.ENABLE,
+    "delete_search": ActionEnum.WRITE,
 }
 
 FILE_ROLE_RESOURCE_TYPE = ResourceTypeEnum.FILE.value

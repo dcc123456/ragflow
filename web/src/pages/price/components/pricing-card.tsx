@@ -1,5 +1,5 @@
+import { ButtonLoading } from '@/components/ui/button';
 import Divider from '@/components/ui/divider';
-import { LoadingButton } from '@/components/ui/loading-button';
 import { nextLayoutRef } from '@/layouts/root-layout';
 import billingService from '@/services/price';
 import storagePrivate from '@/utils/authorization-private-util';
@@ -155,7 +155,7 @@ const PricingCard = (props: IPricePlanWithButton & { name?: string }) => {
         </span>
       </h3>
       {/* bg-gradient-to-r from-gray-900 to-gray-950 */}
-      <LoadingButton
+      <ButtonLoading
         type="button"
         className={classNames(
           'w-full py-2 rounded-lg font-bold bg-bg-card text-text-primary border border-border-default  group-hover:bg-bg-base group-hover:text-text-primary group-hover:border-b-2 group-hover:border-b-[#00BEB4]',
@@ -169,7 +169,7 @@ const PricingCard = (props: IPricePlanWithButton & { name?: string }) => {
       >
         {/* {(loading || upCommingLoading) && <Spin></Spin>} */}
         {buttonLabel}
-      </LoadingButton>
+      </ButtonLoading>
     </div>
   );
 };

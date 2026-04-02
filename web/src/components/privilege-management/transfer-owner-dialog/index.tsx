@@ -1,3 +1,4 @@
+import { ButtonLoading } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -5,7 +6,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { LoadingButton } from '@/components/ui/loading-button';
 import { TagRenameId } from '@/constants/knowledge';
 import { IModalProps } from '@/interfaces/common';
 import { IGroup } from '@/interfaces/database/team';
@@ -40,9 +40,9 @@ export function TransferOwnerDialog({
           initialValues={initialValues}
         ></TransferOwnerForm>
         <DialogFooter>
-          <LoadingButton type="submit" form={TagRenameId} loading={loading}>
+          <ButtonLoading type="submit" form={TagRenameId} loading={loading}>
             {t('common.save')}
-          </LoadingButton>
+          </ButtonLoading>
         </DialogFooter>
       </DialogContent>
     </Dialog>

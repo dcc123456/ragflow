@@ -220,7 +220,7 @@ function AgentForm({ node }: INextOperatorForm) {
                 name={`cite`}
                 render={({ field }) => (
                   <FormItem className="flex-1">
-                    <FormLabel tooltip={t('flow.citeTip')}>
+                    <FormLabel tooltip={t('chat.quoteTip')}>
                       {t('flow.cite')}
                     </FormLabel>
                     <FormControl>

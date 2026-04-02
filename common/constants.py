@@ -131,6 +131,7 @@ class ParserType(StrEnum):
 class FileSource(StrEnum):
     LOCAL = ""
     KNOWLEDGEBASE = "knowledgebase"
+    RSS = "rss"
     S3 = "s3"
     NOTION = "notion"
     DISCORD = "discord"

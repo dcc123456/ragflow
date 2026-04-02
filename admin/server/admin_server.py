@@ -106,7 +106,7 @@ if __name__ == '__main__':
     settings.init_settings()
     app.secret_key = settings.SECRET_KEY
     Session(app)
-    logging.info(f'RAGFlow version: {get_ragflow_version()}')
+    logging.info(f'RAGFlow admin version: {get_ragflow_version()}')
     show_configs()
     login_manager = LoginManager()
     login_manager.init_app(app)

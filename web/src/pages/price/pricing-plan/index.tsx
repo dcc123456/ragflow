@@ -1,5 +1,5 @@
 // pages/PricingPage.tsx
-import { LoadingButton } from '@/components/ui/loading-button';
+import { ButtonLoading } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal/modal';
 import { convertBytesToGb } from '@/lib/utils';
 import { cancelScheduledSubscriptionChange } from '@/services/price';
@@ -288,7 +288,7 @@ const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
               : ' at period end'}
             .
           </div>
-          <LoadingButton
+          <ButtonLoading
             size="sm"
             variant="outline"
             loading={cancelingDowngrade}
@@ -332,7 +332,7 @@ const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
             }}
           >
             Cancel downgrade
-          </LoadingButton>
+          </ButtonLoading>
         </div>
       )}
       {pricePlanList?.map((plan, index) => (

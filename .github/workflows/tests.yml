@@ -166,7 +166,7 @@ jobs:
           echo "Start to run unit test"
           python3 run_tests.py
 
-      - name: Start ragflow:nightly
+      - name: Prepare function test environment
         working-directory: docker
         run: |
           # Copy res directory to docker directory
@@ -182,8 +182,8 @@ jobs:
           sed -i 's|# - \./res/deepdoc:/ragflow/rag/res/deepdoc|- ./res/deepdoc:/ragflow/rag/res/deepdoc|g' docker-compose.yml
 
           # Determine runner number (default to 1 if not found)
-          RUNNER_NUM=$(sudo docker inspect $(hostname) --format '{{index .Config.Labels "com.docker.compose.container-number"}}' 2>/dev/null || true)
-          RUNNER_NUM=${RUNNER_NUM:-1}
+               RUNNER_NUM=$(sudo docker inspect $(hostname) --format '{{index .Config.Labels "com.docker.compose.container-number"}}' 2>/dev/null || true)
+               RUNNER_NUM=${RUNNER_NUM:-1}
 
           # Compute port numbers using bash arithmetic
           ES_PORT=$((1200 + RUNNER_NUM * 100))
@@ -239,12 +239,13 @@ jobs:
           echo -e "RAGFLOW_IMAGE=${RAGFLOW_IMAGE}" >> .env
           echo "HOST_ADDRESS=http://host.docker.internal:${SVR_HTTP_PORT}" >> ${GITHUB_ENV}
 
-          # Patch entrypoint.sh for coverage
-          # sed -i '/"\$PY" api\/ragflow_server.py \${INIT_SUPERUSER_ARGS} &/c\   echo "Ensuring coverage is installed..."\n      "$PY" -m pip install coverage\n     export COVERAGE_FILE=/ragflow/logs/.coverage\n        echo "Starting ragflow_server with coverage..."\n        "$PY" -m coverage run --source=./api/apps --omit="*/tests/*,*/migrations/*" -a api/ragflow_server.py ${INIT_SUPERUSER_ARGS} &' ./entrypoint.sh
-
-          sudo docker compose -f docker-compose.yml -p ${GITHUB_RUN_ID} up -d
           cd ..
           uv sync --python 3.12 --group test --frozen && uv pip install -e sdk/python
+
+      - name: Start ragflow:nightly for Elasticsearch
+        run: |
+          sed -i 's/^DOC_ENGINE=.*$/DOC_ENGINE=elasticsearch/' docker/.env
+          sudo docker compose -f docker/docker-compose.yml -p ${GITHUB_RUN_ID} up -d
 
       # - name: Run sdk tests against Elasticsearch
       #   run: |
@@ -348,8 +349,8 @@ jobs:
           ADMIN_HOST="${USER_HOST}"
           ADMIN_PORT="${ADMIN_SVR_HTTP_PORT}"
 
-          until sudo docker exec ${RAGFLOW_CONTAINER} curl -s --connect-timeout 5 ${HOST_ADDRESS}/v1/system/ping > /dev/null; do
-            echo "Waiting for service to be available..."
+          until sudo docker exec ${RAGFLOW_CONTAINER} curl -s --connect-timeout 5 ${HOST_ADDRESS}/v1/system/ping > /dev/null 2>&1; do
+            echo "Waiting for service to be available... (last exit code: $?)"
             sleep 5
           done
 
@@ -400,12 +401,11 @@ jobs:
           fi
           sudo rm -rf docker/ragflow-logs || true
 
-      - name: Stop ragflow:nightly
+      - name: Stop ragflow:nightly for Elasticsearch
         if: always()  # always run this step even if previous steps failed
-        working-directory: docker
         run: |
           # Sometimes `docker compose down` fail due to hang container, heavy load etc. Need to remove such containers to release resources(for example, listen ports).
-          sudo docker compose -f docker-compose.yml -p ${GITHUB_RUN_ID} down -v || true
+          sudo docker compose -f docker/docker-compose.yml -p ${GITHUB_RUN_ID} down -v || true
           sudo docker ps -a --filter "label=com.docker.compose.project=${GITHUB_RUN_ID}" -q | xargs -r sudo docker rm -f
           if [[ -n ${RAGFLOW_IMAGE} ]]; then
             sudo docker rmi -f ${RAGFLOW_IMAGE}
