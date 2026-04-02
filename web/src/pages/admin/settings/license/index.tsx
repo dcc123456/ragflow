@@ -111,10 +111,10 @@ function LicenseTable({
   }
 
   return (
-    <Table>
-      <TableHeader>
+    <Table rootClassName="bg-transparent border-border-button border">
+      <TableHeader className="bg-transparent [&_tr]:border-b-0">
         <TableRow>
-          <TableHead className="w-[120px]">
+          <TableHead className="w-[120px] truncate">
             {t('license.table.id', 'ID')}
           </TableHead>
           <TableHead>{t('license.table.startTime', 'Start time')}</TableHead>
@@ -126,7 +126,9 @@ function LicenseTable({
       </TableHeader>
       <TableBody>
         <TableRow>
-          <TableCell className="font-medium">{license.ID || '-'}</TableCell>
+          <TableCell className="font-medium truncate max-w-[120px]">
+            {license.ID || '-'}
+          </TableCell>
           <TableCell>{formatDate(license.ValidFrom)}</TableCell>
           <TableCell>{formatDate(license.ValidUntil)}</TableCell>
           <TableCell>
