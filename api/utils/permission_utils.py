@@ -321,7 +321,7 @@ def _filter_accessible_document_ids(tenant_id, operator_id, kb_ids, doc_ids=None
     if operator and operator.user_id == tenant_id:
         if doc_ids:
             return doc_ids
-        return [d["id"] for d in Document.select(Document.id).where((Document.kb_id.in_(kb_ids)) & (Document.status == StatusEnum.VALID.value)).dicts()]
+        return [d["id"] for d in Document.select(Document.id).where(Document.kb_id.in_(kb_ids)).dicts()]
 
     permission_conditions = (
         (Permission.tenant_id == tenant_id)
@@ -355,7 +355,7 @@ def _filter_accessible_document_ids(tenant_id, operator_id, kb_ids, doc_ids=None
         return []
 
     allowed_doc_ids = set(
-        [d["id"] for d in Document.select(Document.id).where((Document.id.in_(list(allowed_doc_ids))) & (Document.kb_id.in_(kb_ids)) & (Document.status == StatusEnum.VALID.value)).dicts()]
+        [d["id"] for d in Document.select(Document.id).where((Document.id.in_(list(allowed_doc_ids))) & (Document.kb_id.in_(kb_ids))).dicts()]
     )
 
     if doc_ids:

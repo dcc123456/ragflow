@@ -18,7 +18,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from types import SimpleNamespace
 
 import pytest
-from common import list_documents
+from common import document_change_status, list_documents
 from configs import INVALID_API_TOKEN
 from libs.auth import RAGFlowWebApiAuth
 from utils import is_sorted
@@ -47,6 +47,24 @@ class TestDocumentsList:
         assert res["code"] == 0
         assert len(res["data"]["docs"]) == 5
         assert res["data"]["total"] == 5
+
+    @pytest.mark.p1
+    def test_disabled_documents_remain_visible(self, WebApiAuth, add_documents):
+        kb_id, document_ids = add_documents
+        disabled_doc_id = document_ids[0]
+
+        status_res = document_change_status(
+            WebApiAuth,
+            {"doc_ids": [disabled_doc_id], "status": "0"},
+        )
+        assert status_res["code"] == 0, status_res
+
+        res = list_documents(WebApiAuth, {"kb_id": kb_id})
+        assert res["code"] == 0, res
+        docs = {doc["id"]: doc for doc in res["data"]["docs"]}
+        assert res["data"]["total"] == 5, res
+        assert disabled_doc_id in docs, res
+        assert docs[disabled_doc_id]["status"] == "0", res
 
     @pytest.mark.p3
     @pytest.mark.parametrize(
