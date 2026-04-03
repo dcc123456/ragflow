@@ -67,6 +67,7 @@ ragflow_memory_limit    = "16Gi"
 
 # Parser - reduced for dev
 parser_replicas = 1
+#parser_ws_workers = "2"
 
 # DeepDoc - reduced for dev
 deepdoc_replicas = 1

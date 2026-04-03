@@ -437,6 +437,12 @@ variable "parser_memory_limit" {
   default     = "20Gi"
 }
 
+variable "parser_ws_workers" {
+  description = "WS_WORKERS value for parser task executors"
+  type        = string
+  default     = "16"
+}
+
 # =============================================================================
 # DeepDoc Configuration
 # =============================================================================

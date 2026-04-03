@@ -353,7 +353,12 @@ class RAGFlowPdfParser:
         def score_orientation(rotated_img, angle):
             img_array = np.array(rotated_img)
             try:
-                ocr_results = self.ocr(img_array)
+                if callable(self.ocr):
+                    ocr_results = self.ocr(img_array)
+                elif hasattr(self.ocr, "detect"):
+                    ocr_results = self.ocr.detect(img_array)
+                else:
+                    raise TypeError(f"Unsupported OCR backend: {type(self.ocr).__name__}")
 
                 if ocr_results:
                     scores = [conf for _, (_, conf) in ocr_results]
@@ -702,7 +707,12 @@ class RAGFlowPdfParser:
 
             # Perform OCR on rotated image
             img_array = np.array(rotated_img)
-            ocr_results = self.ocr(img_array)
+            if callable(self.ocr):
+                ocr_results = self.ocr(img_array)
+            elif hasattr(self.ocr, "detect"):
+                ocr_results = self.ocr.detect(img_array)
+            else:
+                raise TypeError(f"Unsupported OCR backend: {type(self.ocr).__name__}")
 
             if not ocr_results:
                 logging.warning(f"No OCR results for rotated table {table_index}, restoring originals")

@@ -687,6 +687,8 @@ definitions.local.path = /etc/rabbitmq/definitions.json
 
 # Enable RabbitMQ management plugin
 management.tcp.port = 15672
+# Allow longer parser tasks before broker force-closes the channel.
+consumer_timeout = 7200000
 EOT
   }
 }
@@ -1942,6 +1944,11 @@ resource "kubernetes_deployment_v1" "parser" {
             secret_ref {
               name = kubernetes_secret_v1.ragflow_env.metadata[0].name
             }
+          }
+
+          env {
+            name  = "WS_WORKERS"
+            value = var.parser_ws_workers
           }
 
           # Mount ES CA certificate for HTTPS verification

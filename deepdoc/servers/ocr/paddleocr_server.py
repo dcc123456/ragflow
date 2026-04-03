@@ -59,6 +59,13 @@ class OCREndpoint(ls.LitAPI):
         self._last_operator = opt
         return img
 
+    def batch(self, inputs):
+        # OCR requests can contain different image sizes, so avoid numpy.stack batching.
+        return inputs
+
+    def unbatch(self, outputs):
+        return outputs
+
     def predict(self, x):
         import sys
         print(f"OCR predict called: x type={type(x)}, shape={x.shape if hasattr(x, 'shape') else 'N/A'}", file=sys.stderr, flush=True)
