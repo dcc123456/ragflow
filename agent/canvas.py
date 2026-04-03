@@ -193,10 +193,12 @@ class Graph:
     def get_variable_value(self, exp: str) -> Any:
         exp = exp.strip("{").strip("}").strip(" ").strip("{").strip("}")
         if exp.find("@") < 0:
-            return self.globals[exp]
+            val = self.globals[exp]
+            return val
         cpn_id, var_nm = exp.split("@")
         cpn = self.get_component(cpn_id)
         if not cpn:
+            logging.error(f"[{self.task_id}] get_variable_value() component not found: {cpn_id}")
             raise Exception(f"Can't find variable: '{cpn_id}@{var_nm}'")
         parts = var_nm.split(".", 1)
         root_key = parts[0]
@@ -420,8 +422,19 @@ class Canvas(Graph):
                 "data": dt
             }
 
+        def _log_path(operation: str):
+            """Log current path after modification."""
+            path_info = []
+            for pid in self.path:
+                cpn = self.components.get(pid, {})
+                obj = cpn.get("obj") if isinstance(cpn, dict) else None
+                name = obj.component_name if obj else "Unknown"
+                path_info.append(f"{pid}({name})")
+            logging.info(f"[{self.task_id}] PATH CHANGE @{operation}: [{', '.join(path_info)}]")
+
         if not self.path or self.path[-1].lower().find("userfillup") < 0:
             self.path.append("begin")
+            _log_path("L434-begin_append")
             self.retrieval.append({"chunks": [], "doc_aggs": []})
 
         if self.is_canceled():
@@ -445,10 +458,16 @@ class Canvas(Graph):
 
             async def _invoke_one(cpn_obj, sync_fn, call_kwargs, use_async: bool):
                 async with sem:
-                    if use_async:
-                        await cpn_obj.invoke_async(**(call_kwargs or {}))
-                        return
-                    await loop.run_in_executor(self._thread_pool, partial(sync_fn, **(call_kwargs or {})))
+                    logging.info(f"[{self.task_id}] Component entering: component_id={cpn_obj._id}, component_name={cpn_obj.component_name}")
+                    try:
+                        if use_async:
+                            await cpn_obj.invoke_async(**(call_kwargs or {}))
+                        else:
+                            await loop.run_in_executor(self._thread_pool, partial(sync_fn, **(call_kwargs or {})))
+                        logging.info(f"[{self.task_id}] Component exiting: component_id={cpn_obj._id}, component_name={cpn_obj.component_name}")
+                    except Exception as e:
+                        logging.error(f"[{self.task_id}] Component error: component_id={cpn_obj._id}, component_name={cpn_obj.component_name}, error={str(e)}")
+                        raise
 
             i = f
             while i < t:
@@ -497,9 +516,11 @@ class Canvas(Graph):
         idx = len(self.path) - 1
         partials = []
         tts_mdl = None
+        node_started_ids = set()
         while idx < len(self.path):
             to = len(self.path)
             for i in range(idx, to):
+                node_started_ids.add(self.path[i])
                 yield decorate("node_started", {
                     "inputs": None, "created_at": int(time.time()),
                     "component_id": self.path[i],
@@ -507,7 +528,12 @@ class Canvas(Graph):
                     "component_type": self.get_component_type(self.path[i]),
                     "thoughts": self.get_component_thoughts(self.path[i])
                 })
-            await _run_batch(idx, to)
+            logging.info(f"[{self.task_id}] node_started event emitted for: {[self.path[i] for i in range(idx, to)]}, total_started={node_started_ids}")
+            try:
+                await _run_batch(idx, to)
+            except Exception as e:
+                logging.error(f"[{self.task_id}] _run_batch exception during component execution: idx={idx}, to_original={to}, error={e}, path_len={len(self.path)}")
+                raise
             to = len(self.path)
             # post-processing of components invocation
             for i in range(idx, to):
@@ -579,6 +605,7 @@ class Canvas(Graph):
                     ex = cpn_obj.exception_handler()
                     if ex and ex["goto"]:
                         self.path.extend(ex["goto"])
+                        _log_path(f"L599-path_extend_goto_ex:{ex['goto']}")
                         other_branch = True
                     elif ex and ex["default_value"]:
                         yield decorate("message", {"content": ex["default_value"]})
@@ -590,10 +617,13 @@ class Canvas(Graph):
                     if isinstance(cpn_obj.output("content"), partial):
                         if self.error:
                             cpn_obj.set_output("content", None)
+                            logging.info(f"[{self.task_id}] node_finished (partial with error): component_id={cpn_obj._id}, component_name={cpn_obj.component_name}")
                             yield _node_finished(cpn_obj)
                         else:
                             partials.append(self.path[i])
+                            logging.info(f"[{self.task_id}] PARTIAL added to list: component_id={self.path[i]}, partials now={partials}")
                     else:
+                        logging.info(f"[{self.task_id}] node_finished: component_id={cpn_obj._id}, component_name={cpn_obj.component_name}")
                         yield _node_finished(cpn_obj)
 
                 def _append_path(cpn_id):
@@ -603,6 +633,7 @@ class Canvas(Graph):
                     if self.path[-1] == cpn_id:
                         return
                     self.path.append(cpn_id)
+                    _log_path(f"L624-append_path:{cpn_id}")
 
                 def _extend_path(cpn_ids):
                     nonlocal other_branch
@@ -644,9 +675,11 @@ class Canvas(Graph):
                         if o.get_param("enable_tips"):
                             tips = o.output("tips")
                 self.path = path
+                logging.info(f"[{self.task_id}] user_inputs yielded: stopping early (awaiting user input), started_not_finished={node_started_ids}")
                 yield decorate("user_inputs", {"inputs": another_inputs, "tips": tips})
                 return
         self.path = self.path[:idx]
+        logging.info(f"[{self.task_id}] workflow_finished: started_nodes={node_started_ids}, error={self.error!r}, path={self.path}")
         if not self.error:
             yield decorate("workflow_finished",
                        {

@@ -173,10 +173,27 @@ def create_or_update_tls_secret(
     try:
         existing_secret_full = v1.read_namespaced_secret(name=secret_name, namespace=namespace)
         existing_labels = existing_secret_full.metadata.labels or {}
-    except kubernetes.client.exceptions.ApiException:
-        # Terraform creates the secret, this script (inside or outside GKE) updates it.
-        print(f"[{datetime.now().isoformat()}] ERROR: Terraform hasn't created the secret {secret_name} yet", file=sys.stderr)
-        sys.exit(1)
+    except kubernetes.client.exceptions.ApiException as e:
+        if e.status == 404:
+            # Secret doesn't exist - create it
+            print(f"[{datetime.now().isoformat()}] Secret '{secret_name}' not found, creating it...")
+            metadata = kubernetes.client.V1ObjectMeta(
+                name=secret_name,
+                namespace=namespace,
+                labels={"app": "ragflow"}
+            )
+            secret = kubernetes.client.V1Secret(
+                api_version="v1",
+                kind="Secret",
+                metadata=metadata,
+                type="kubernetes.io/tls",
+                data=new_secret_data
+            )
+            v1.create_namespaced_secret(namespace=namespace, body=secret)
+            print(f"[{datetime.now().isoformat()}] Secret '{secret_name}' created successfully")
+            return
+        else:
+            raise
 
     cert_unchanged = True
     for key, val in new_secret_data.items():

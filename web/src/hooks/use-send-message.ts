@@ -124,21 +124,25 @@ export const useSendMessageBySSE = (url: string = api.completeConversation) => {
           signal: controller?.signal || sseRef.current?.signal,
         });
 
-        const res = response.clone().json();
-
         const reader = response?.body
           ?.pipeThrough(new TextDecoderStream())
           .pipeThrough(new EventSourceParserStream())
           .getReader();
 
+        let receivedTerminalEvent = false;
+
         while (true) {
           try {
             const x = await reader?.read();
+            console.info('reader.read() =>', x);
             if (x) {
               const { done, value } = x;
               if (done) {
-                console.info('done');
-                resetAnswerList();
+                if (!receivedTerminalEvent) {
+                  console.warn(
+                    'SSE stream ended without workflow_finished or user_inputs — keeping answerList for UI state',
+                  );
+                }
                 break;
               }
               try {
@@ -147,6 +151,12 @@ export const useSendMessageBySSE = (url: string = api.completeConversation) => {
                 console.info('data:', val);
                 if (typeof val?.code === 'number' && val.code !== 0) {
                   message.error(val.message);
+                }
+                if (
+                  val?.event === 'workflow_finished' ||
+                  val?.event === 'user_inputs'
+                ) {
+                  receivedTerminalEvent = true;
                 }
 
                 setAnswerList((list) => {
@@ -161,14 +171,17 @@ export const useSendMessageBySSE = (url: string = api.completeConversation) => {
           } catch (e) {
             if (e instanceof DOMException && e.name === 'AbortError') {
               console.log('Request was aborted by user or logic.');
+              receivedTerminalEvent = true; // user-initiated abort is intentional
               break;
             }
           }
         }
         console.info('done?');
         setDone(true);
-        resetAnswerList();
-        return { data: await res, response };
+        if (receivedTerminalEvent) {
+          resetAnswerList();
+        }
+        return { data: undefined, response };
       } catch (e) {
         setDone(true);
         resetAnswerList();

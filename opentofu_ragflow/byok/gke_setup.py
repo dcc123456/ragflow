@@ -1225,7 +1225,7 @@ def create_gmp_alert_policy(project, channel_ids, cluster_name, region, zone=Non
             "display_name": f"Critical - Pod Not Running ({cluster_name})",
             "description": "At least one pod is not in Running phase - indicates crash, eviction, or scheduling failure",
             "condition_type": "promql",
-            "promql": f'kube_pod_status_phase{{cluster="{cluster_name}",namespace="ragflow",phase!="Running"}} == 1',
+            "promql": f'kube_pod_status_phase{{cluster="{cluster_name}",namespace="ragflow",phase!="Running","pod"!~"ohttps-cert-sync-*"}} == 1',
             "duration": "120s",
             "severity": "CRITICAL",
         },

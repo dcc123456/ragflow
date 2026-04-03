@@ -25,6 +25,7 @@ import logging
 from typing import Any, List, Union
 import pandas as pd
 from agent import settings
+from agent.context import set as ctx_set, reset, get_log_prefix
 from common.connection_utils import timeout
 
 
@@ -405,15 +406,24 @@ class ComponentBase(ABC):
         return False
 
     def invoke(self, **kwargs) -> dict[str, Any]:
+        ctx_set(
+            task_id=getattr(self._canvas, "task_id", None),
+            component_id=getattr(self, "_id", "unknown"),
+            component_name=getattr(self, "component_name", "unknown"),
+        )
         self.set_output("_created_time", time.perf_counter())
+        logging.info(f"[Component] Entering invoke: {get_log_prefix()}")
         try:
             self._invoke(**kwargs)
+            logging.info(f"[Component] Exiting invoke: {get_log_prefix()}")
         except Exception as e:
             if self.get_exception_default_value():
                 self.set_exception_default_value()
             else:
                 self.set_output("_ERROR", str(e))
-            logging.exception(e)
+            logging.exception(f"[Component] Error in invoke: {get_log_prefix()}, error={str(e)}")
+        finally:
+            reset()
         self._param.debug_inputs = {}
         self.set_output("_elapsed_time", time.perf_counter() - self.output("_created_time"))
         return self.output()
@@ -424,7 +434,13 @@ class ComponentBase(ABC):
         Prefers coroutine `_invoke_async` if present; otherwise falls back to `_invoke`.
         Handles timing and error recording consistently with `invoke`.
         """
+        ctx_set(
+            task_id=getattr(self._canvas, "task_id", None),
+            component_id=getattr(self, "_id", "unknown"),
+            component_name=getattr(self, "component_name", "unknown"),
+        )
         self.set_output("_created_time", time.perf_counter())
+        logging.info(f"[Component] Entering invoke_async: {get_log_prefix()}")
         try:
             if self.check_if_canceled("Component processing"):
                 return
@@ -436,12 +452,15 @@ class ComponentBase(ABC):
                 await self._invoke(**kwargs)
             else:
                 await thread_pool_exec(self._invoke, **kwargs)
+            logging.info(f"[Component] Exiting invoke_async: {get_log_prefix()}")
         except Exception as e:
             if self.get_exception_default_value():
                 self.set_exception_default_value()
             else:
                 self.set_output("_ERROR", str(e))
-            logging.exception(e)
+            logging.exception(f"[Component] Error in invoke_async: {get_log_prefix()}, error={str(e)}")
+        finally:
+            reset()
         self._param.debug_inputs = {}
         self.set_output("_elapsed_time", time.perf_counter() - self.output("_created_time"))
         return self.output()
@@ -481,13 +500,21 @@ class ComponentBase(ABC):
 
         res = {}
         for var, o in self.get_input_elements().items():
-            v = self.get_param(var)
-            if v is None:
-                continue
-            if isinstance(v, str) and self._canvas.is_reff(v):
-                self.set_input_value(var, self._canvas.get_variable_value(v))
-            else:
+            # If o["value"] is available (from get_input_elements_from_text), use it directly
+            # o["value"] is already the resolved value, while var is the reference expression
+            if isinstance(o, dict) and "value" in o and o["value"] is not None:
+                v = o["value"]
                 self.set_input_value(var, v)
+            else:
+                # Fall back to get_param for base get_input_elements() implementation
+                v = self.get_param(var)
+                if v is None:
+                    continue
+                if isinstance(v, str) and self._canvas.is_reff(v):
+                    resolved_val = self._canvas.get_variable_value(v)
+                    self.set_input_value(var, resolved_val)
+                else:
+                    self.set_input_value(var, v)
             res[var] = self.get_input_value(var)
         return res
 

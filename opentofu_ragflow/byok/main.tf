@@ -1028,6 +1028,7 @@ spec:
           env:
           - name: ES_JAVA_OPTS
             value: "-Xms${var.es_master_heap_size} -Xmx${var.es_master_heap_size}"
+%{if !local.is_gke_gateway}
     volumeClaimTemplates:
     - metadata:
         name: elasticsearch-data
@@ -1036,7 +1037,8 @@ spec:
         storageClassName: ${local.config.storage_class}
         resources:
           requests:
-            storage: "2Gi"
+            storage: "1Gi"
+%{endif}
   # Data/Ingest nodes - data storage and ingest pipelines
   - name: data-ingest
     count: ${var.es_data_node_count}
@@ -1307,9 +1309,6 @@ resource "kubernetes_secret_v1" "ragflow_env" {
     # Auto-detect based on cloud_provider or endpoint
     # STORAGE_IMPL: GCS for GCP, OSS for Aliyun, AWS_S3 for others (S3/MinIO)
     STORAGE_IMPL = var.cloud_provider == "gcp" ? "GCS" : (var.cloud_provider == "alicloud" ? "OSS" : "AWS_S3")
-
-    # Application Configuration
-    HOST_ADDRESS    = "http://127.0.0.1:9380"
 
     # DeepDoc Service Configuration
     # Point to the deepdoc service for OCR, DLA, and TSR tasks
@@ -1666,6 +1665,13 @@ resource "kubernetes_deployment_v1" "ragflow" {
               memory = var.ragflow_memory_limit
             }
           }
+
+          # Add SYS_PTRACE capability for austin/py-spy profiler
+          security_context {
+            capabilities {
+              add = ["SYS_PTRACE"]
+            }
+          }
         }
       }
     }
@@ -1812,6 +1818,13 @@ resource "kubernetes_deployment_v1" "admin" {
             limits = {
               cpu    = "1000m"
               memory = "2Gi"
+            }
+          }
+
+          # Add SYS_PTRACE capability for austin/py-spy profiler
+          security_context {
+            capabilities {
+              add = ["SYS_PTRACE"]
             }
           }
         }
@@ -2109,6 +2122,13 @@ resource "kubernetes_deployment_v1" "deepdoc" {
               memory = var.deepdoc_memory_limit
             }
           }
+
+          # Add SYS_PTRACE capability for austin/py-spy profiler
+          security_context {
+            capabilities {
+              add = ["SYS_PTRACE"]
+            }
+          }
         }
       }
     }
@@ -2188,7 +2208,7 @@ resource "kubernetes_manifest" "gateway" {
               mode = "Terminate"
               certificateRefs = [
                 {
-                  name      = kubernetes_secret_v1.tls_secret[0].metadata[0].name
+                  name      = "ragflow-tls"
                   namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
                   kind      = "Secret"
                 }
@@ -2222,36 +2242,9 @@ resource "kubernetes_manifest" "gateway" {
 
 # =============================================================================
 # TLS Secret (for ohttps pull mode)
-# Note: Terraform manages the secret creation. The certificate data is
-# updated by sync_ohttps_cert.py script, and Terraform ignores changes to data.
-# =============================================================================
-
-resource "kubernetes_secret_v1" "tls_secret" {
-  count = var.ohttps_enabled ? 1 : 0
-
-  metadata {
-    name      = "ragflow-tls"
-    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
-    labels = {
-      app         = "ragflow"
-      "managed-by" = "terraform"
-    }
-  }
-
-  type = "kubernetes.io/tls"
-
-  data = {
-    # Initial placeholder: will be updated by sync_ohttps_cert.py script
-    # Terraform ignores changes to data to allow script updates
-    "tls.crt" = ""
-    "tls.key" = ""
-    "tls.expired" = ""
-  }
-
-  lifecycle {
-    ignore_changes = [data]
-  }
-}
+# Note: The TLS secret is created by kubernetes_job_v1.ohttps_sync_initial_job
+# which runs sync_ohttps_cert.py to create/update the secret with actual certificate data.
+# No need for a separate secret resource - the job handles creation when secret doesn't exist.
 
 # =============================================================================
 # ohttps Sync ServiceAccount (for CronJob)
@@ -2315,6 +2308,73 @@ resource "kubernetes_manifest" "ohttps_sync_rolebinding" {
       name     = "ohttps-sync-role"
       apiGroup = "rbac.authorization.k8s.io"
     }
+  }
+}
+
+# =============================================================================
+# ohttps Sync Initial Job (runs once immediately on deployment)
+# =============================================================================
+# This Job runs immediately to create/update the TLS secret before Gateway is created.
+# The CronJob then handles ongoing certificate renewal.
+
+resource "kubernetes_job_v1" "ohttps_sync_initial_job" {
+  count = var.ohttps_enabled ? 1 : 0
+
+  metadata {
+    name      = "ohttps-sync-initial"
+    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
+    labels = {
+      app         = "ragflow"
+      "managed-by" = "terraform"
+    }
+  }
+
+  spec {
+    template {
+      metadata {
+        labels = {
+          app = "ohttps-cert-sync"
+        }
+      }
+      spec {
+        restart_policy       = "OnFailure"
+        service_account_name = "ohttps-sync-sa"
+        container {
+          name  = "sync"
+          image = var.ohttps_sync_image
+          env {
+            name  = "OHTTPS_API_ID"
+            value = var.ohttps_api_id
+          }
+          env {
+            name  = "OHTTPS_API_KEY"
+            value = var.ohttps_api_key
+          }
+          env {
+            name  = "OHTTPS_CERT_ID"
+            value = var.ohttps_cert_id
+          }
+        }
+      }
+    }
+    backoff_limit = 3
+  }
+
+  wait_for_completion = true
+}
+
+# Wait for TLS secret to have non-empty certificate data before creating Gateway
+# This resource depends on the initial sync job completing
+resource "null_resource" "wait_for_tls_secret" {
+  count = var.ohttps_enabled ? 1 : 0
+
+  # Explicitly depend on the initial job (wait_for_completion=true ensures job completes)
+  depends_on = [
+    kubernetes_job_v1.ohttps_sync_initial_job[0]
+  ]
+
+  provisioner "local-exec" {
+    command = "echo 'Waiting for TLS secret to be ready...' && python3 wait_for_k8s_resource.py ${kubernetes_namespace_v1.ragflow.metadata[0].name} secret ragflow-tls"
   }
 }
 
@@ -2390,6 +2450,9 @@ resource "kubernetes_manifest" "ohttps_sync_cronjob" {
 # HTTPRoute 1: /v1 and /api -> port 9380 (API service)
 # Note: /api/v1/admin is excluded and handled by http_route_admin
 resource "kubernetes_manifest" "http_route_api" {
+  field_manager {
+    force_conflicts = true
+  }
   manifest = {
     apiVersion = "gateway.networking.k8s.io/v1"
     kind       = "HTTPRoute"
@@ -2425,6 +2488,13 @@ resource "kubernetes_manifest" "http_route_api" {
               port = 9380
             }
           ]
+          # NOTE: Do NOT use HTTPRoute timeouts {} here.
+          # gke-l7-regional-external-managed does NOT support the
+          # Gateway API timeouts field (GWCER104: "timeouts are not
+          # supported").  Including it causes the entire HTTPRoute to be
+          # rejected (Accepted=false), which also prevents the
+          # GCPBackendPolicy from taking effect.
+          # Use GCPBackendPolicy.spec.default.timeoutSec instead (below).
         },
         {
           matches = [
@@ -2477,8 +2547,45 @@ resource "kubernetes_manifest" "upload_size_policy" {
   depends_on = [kubernetes_manifest.http_route_api]
 }
 
+# GCPBackendPolicy: Extend backend service timeout for long-lived SSE streams.
+# HTTPRoute timeouts.request alone may not be translated to the GCP backend
+# service timeoutSec by all GKE Gateway Controller versions.  This policy
+# provides a direct, reliable override on the backend service resource that
+# the regional external ALB uses.
+resource "kubernetes_manifest" "gcp_backend_policy_api" {
+  count = local.is_gke_gateway ? 1 : 0
+
+  field_manager {
+    force_conflicts = true
+  }
+
+  manifest = {
+    apiVersion = "networking.gke.io/v1"
+    kind       = "GCPBackendPolicy"
+    metadata = {
+      name      = "ragflow-api-backend-policy"
+      namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
+    }
+    spec = {
+      default = {
+        # 24 hours – effectively unlimited for long-running SSE workflows.
+        # GCP does not support a true "unlimited" value; 0 means "use default (30s)".
+        timeoutSec = 86400
+      }
+      targetRef = {
+        group = ""
+        kind  = "Service"
+        name  = kubernetes_service_v1.ragflow_api.metadata[0].name
+      }
+    }
+  }
+}
+
 # HTTPRoute 2: /api/v1/admin -> port 9381 (admin service)
 resource "kubernetes_manifest" "http_route_admin" {
+  field_manager {
+    force_conflicts = true
+  }
   manifest = {
     apiVersion = "gateway.networking.k8s.io/v1"
     kind       = "HTTPRoute"
@@ -2522,6 +2629,9 @@ resource "kubernetes_manifest" "http_route_admin" {
 
 # HTTPRoute 3: / (root path) -> port 80 (frontend nginx)
 resource "kubernetes_manifest" "http_route_frontend" {
+  field_manager {
+    force_conflicts = true
+  }
   manifest = {
     apiVersion = "gateway.networking.k8s.io/v1"
     kind       = "HTTPRoute"

@@ -13,6 +13,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 #
+import asyncio
 import copy
 import inspect
 import json
@@ -51,6 +52,49 @@ from common.role_util import check_role_access, CANVAS_API_ACTION_MAP, CANVAS_RO
 from api.db.services.canvas_service import completion as agent_completion
 
 canvas_role_guard = check_role_access(CANVAS_API_ACTION_MAP, CANVAS_ROLE_RESOURCE_TYPE)
+
+
+async def _with_heartbeat(inner_gen, interval=15):
+    """Wrap an async generator to yield ``: ping\\n\\n`` SSE comment lines when the
+    inner generator hasn't produced a value for *interval* seconds.
+
+    The keep-alive prevents intermediate proxies / load balancers that use
+    **idle-timeout** semantics from closing the connection while the backend is
+    still working (e.g. waiting for an LLM response).
+
+    NOTE: GCP regional external ALB (``gke-l7-regional-external-managed``)
+    uses a **total-duration** backend service timeout (``timeoutSec``, default
+    30 s) rather than an idle timeout, so pings alone cannot prevent that
+    cut-off.  A ``GCPBackendPolicy`` with an explicit ``timeoutSec`` is
+    required in addition.
+    """
+    ait = inner_gen.__aiter__()
+    pending = None
+    ping_count = 0
+    try:
+        while True:
+            if pending is None:
+                pending = asyncio.ensure_future(ait.__anext__())
+            done, _ = await asyncio.wait({pending}, timeout=interval)
+            if not done:
+                # Inner generator hasn't produced anything yet — send keep-alive.
+                ping_count += 1
+                logging.debug("SSE heartbeat ping #%d (interval=%ds)", ping_count, interval)
+                yield ": ping\n\n"
+                continue
+            pending = None
+            try:
+                item = done.pop().result()
+            except StopAsyncIteration:
+                return
+            yield item
+    finally:
+        if pending is not None:
+            pending.cancel()
+            try:
+                await pending
+            except (asyncio.CancelledError, StopAsyncIteration):
+                pass
 
 
 @manager.route('/templates', methods=['GET'])  # noqa: F821
@@ -294,9 +338,15 @@ async def run():
 
     async def sse():
         nonlocal canvas, user_id
+        task_id = canvas.task_id
+        logging.info(f"[{task_id}] SSE stream started: canvas_id={req['id']}, tenant_id={tenant_id}, user_id={user_id}")
         try:
+            event_count = 0
             async for ans in canvas.run(query=query, files=files, user_id=user_id, inputs=inputs):
+                event_count += 1
                 yield "data:" + json.dumps(ans, ensure_ascii=False) + "\n\n"
+
+            logging.info(f"[{task_id}] SSE stream finished normally: canvas_id={req['id']}, event_count={event_count}")
 
             # Runtime mutations go back to Redis first and only save() writes DB state.
             commit_ok = CanvasReplicaService.commit_after_run(
@@ -316,16 +366,15 @@ async def run():
                 )
 
         except Exception as e:
-            logging.exception(e)
+            logging.exception(f"[{task_id}] SSE stream exception: canvas_id={req['id']}, error={e}")
             canvas.cancel_task()
             yield "data:" + json.dumps({"code": 500, "message": str(e), "data": False}, ensure_ascii=False) + "\n\n"
 
-    resp = Response(sse(), mimetype="text/event-stream")
+    resp = Response(_with_heartbeat(sse(), interval=15), mimetype="text/event-stream")
     resp.headers.add_header("Cache-control", "no-cache")
     resp.headers.add_header("Connection", "keep-alive")
     resp.headers.add_header("X-Accel-Buffering", "no")
     resp.headers.add_header("Content-Type", "text/event-stream; charset=utf-8")
-    #resp.call_on_close(lambda: canvas.cancel_task())
     return resp
 
 
@@ -365,7 +414,7 @@ async def exp_agent_completion(canvas_id):
 
         yield "data:[DONE]\n\n"
 
-    resp = Response(generate(), mimetype="text/event-stream")
+    resp = Response(_with_heartbeat(generate(), interval=20), mimetype="text/event-stream")
     resp.headers.add_header("Cache-control", "no-cache")
     resp.headers.add_header("Connection", "keep-alive")
     resp.headers.add_header("X-Accel-Buffering", "no")

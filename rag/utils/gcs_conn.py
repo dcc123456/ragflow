@@ -198,6 +198,14 @@ class RAGFlowGCS:
         except Exception:
             logging.exception(f"Fail to remove virtual bucket (folder) {bucket}")
 
+    def rm_bucket(self, bucket):
+        """Remove all objects with prefix 'bucket/' from the shared physical bucket.
+
+        In the shared-bucket architecture, each kb_id maps to a path prefix.
+        This method only removes objects under that prefix, NOT the physical bucket.
+        """
+        self.remove_bucket(bucket)
+
     def copy(self, src_bucket, src_path, dest_bucket, dest_path, tenant_id=None):
         # RENAMED PARAMETERS to match original interface
         self._ensure_connection()
