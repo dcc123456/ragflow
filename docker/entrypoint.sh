@@ -203,18 +203,18 @@ PY=python3
 # Function(s)
 # -----------------------------------------------------------------------------
 
-function task_exe() {
-    local consumer_id="$1"
-    local host_id="$2"
-
-    JEMALLOC_PATH="$(pkg-config --variable=libdir jemalloc)/libjemalloc.so"
-    while true; do
-        LD_PRELOAD="$JEMALLOC_PATH" \
-        "$PY" rag/svr/task_executor.py "${host_id}_${consumer_id}"  &
-        wait;
-        sleep 1;
-    done
-}
+#function task_exe() {
+#    local consumer_id="$1"
+#    local host_id="$2"
+#
+#    JEMALLOC_PATH="$(pkg-config --variable=libdir jemalloc)/libjemalloc.so"
+#    while true; do
+#        LD_PRELOAD="$JEMALLOC_PATH" \
+#        "$PY" rag/svr/task_executor.py "${host_id}_${consumer_id}"  &
+#        wait;
+#        sleep 1;
+#    done
+#}
 
 function start_mcp_server() {
     echo "Starting MCP Server on ${MCP_HOST}:${MCP_PORT} with base URL ${MCP_BASE_URL}..."
@@ -322,21 +322,21 @@ if [[ "${ENABLE_MCP_SERVER}" -eq 1 ]]; then
 fi
 
 
-if [[ "${ENABLE_TASKEXECUTOR}" -eq 1 ]]; then
-    if [[ "${CONSUMER_NO_END}" -gt "${CONSUMER_NO_BEG}" ]]; then
-        echo "Starting task executors on host '${HOST_ID}' for IDs in [${CONSUMER_NO_BEG}, ${CONSUMER_NO_END})..."
-        for (( i=CONSUMER_NO_BEG; i<CONSUMER_NO_END; i++ ))
-        do
-          task_exe "${i}" "${HOST_ID}" &
-        done
-    else
-        # Otherwise, start a fixed number of workers
-        echo "Starting ${WORKERS} task executor(s) on host '${HOST_ID}'..."
-        for (( i=0; i<WORKERS; i++ ))
-        do
-          task_exe "${i}" "${HOST_ID}" &
-        done
-    fi
-fi
+#if [[ "${ENABLE_TASKEXECUTOR}" -eq 1 ]]; then
+#    if [[ "${CONSUMER_NO_END}" -gt "${CONSUMER_NO_BEG}" ]]; then
+#        echo "Starting task executors on host '${HOST_ID}' for IDs in [${CONSUMER_NO_BEG}, ${CONSUMER_NO_END})..."
+#        for (( i=CONSUMER_NO_BEG; i<CONSUMER_NO_END; i++ ))
+#        do
+#          task_exe "${i}" "${HOST_ID}" &
+#        done
+#    else
+#        # Otherwise, start a fixed number of workers
+#        echo "Starting ${WORKERS} task executor(s) on host '${HOST_ID}'..."
+#        for (( i=0; i<WORKERS; i++ ))
+#        do
+#          task_exe "${i}" "${HOST_ID}" &
+#        done
+#    fi
+#fi
 
 wait
