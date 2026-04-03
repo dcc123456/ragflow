@@ -2451,6 +2451,32 @@ resource "kubernetes_manifest" "http_route_api" {
   }
 }
 
+# NGINX Gateway Fabric policy: allow larger request bodies for API uploads
+resource "kubernetes_manifest" "upload_size_policy" {
+  count = local.is_gke_gateway ? 0 : 1
+
+  manifest = {
+    apiVersion = "gateway.nginx.org/v1alpha1"
+    kind       = "ClientSettingsPolicy"
+    metadata = {
+      name      = "ragflow-upload-size"
+      namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
+    }
+    spec = {
+      targetRef = {
+        group = "gateway.networking.k8s.io"
+        kind  = "HTTPRoute"
+        name  = "ragflow-http-route-api"
+      }
+      body = {
+        maxSize = "100m"
+      }
+    }
+  }
+
+  depends_on = [kubernetes_manifest.http_route_api]
+}
+
 # HTTPRoute 2: /api/v1/admin -> port 9381 (admin service)
 resource "kubernetes_manifest" "http_route_admin" {
   manifest = {
