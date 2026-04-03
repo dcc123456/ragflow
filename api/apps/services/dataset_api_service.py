@@ -18,6 +18,7 @@ import json
 import os
 from common.constants import PAGERANK_FLD
 from common import settings
+from api.db import PermissionValue
 from api.db.db_models import File
 from api.db.services.document_service import DocumentService, queue_raptor_o_graphrag_tasks
 from api.db.services.file2document_service import File2DocumentService
@@ -323,6 +324,8 @@ def list_datasets(tenant_id: str, args: dict):
     user_map = {m.id: m.to_dict() for m in users}
     response_data_list = []
     for kb in kbs:
+        if kb.get("tenant_id") == tenant_id:
+            kb["operator_permission"] = PermissionValue.PERMISSION_OWNER.value
         user_dict = user_map.get(kb["tenant_id"], {})
         kb.update({
             "nickname": user_dict.get("nickname", ""),

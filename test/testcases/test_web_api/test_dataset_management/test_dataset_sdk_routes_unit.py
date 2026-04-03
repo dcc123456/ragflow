@@ -147,6 +147,11 @@ def _load_dataset_module(monkeypatch):
     monkeypatch.setitem(sys.modules, "api.utils", utils_pkg)
     api_pkg.utils = utils_pkg
 
+    billing_mod = ModuleType("api.utils.billing")
+    billing_mod.check_dynamic_resources = lambda *_args, **_kwargs: (lambda func: func)
+    monkeypatch.setitem(sys.modules, "api.utils.billing", billing_mod)
+    utils_pkg.billing = billing_mod
+
     apps_pkg = ModuleType("api.apps")
     apps_pkg.__path__ = [str(repo_root / "api" / "apps")]
     apps_pkg.login_required = lambda func: func
@@ -161,6 +166,10 @@ def _load_dataset_module(monkeypatch):
 
     db_pkg = ModuleType("api.db")
     db_pkg.__path__ = []
+    db_pkg.PermissionValue = SimpleNamespace(
+        PERMISSION_WRITE=SimpleNamespace(value=2),
+        PERMISSION_OWNER=SimpleNamespace(value=7),
+    )
     monkeypatch.setitem(sys.modules, "api.db", db_pkg)
     api_pkg.db = db_pkg
 
@@ -659,6 +668,45 @@ def test_list_knowledge_graph_delete_kg_matrix_unit(monkeypatch):
     monkeypatch.setattr(module.KnowledgebaseService, "accessible", lambda *_args, **_kwargs: False)
     res = inspect.unwrap(module.delete_knowledge_graph)("tenant-1", "kb-1")
     assert res["code"] == module.RetCode.AUTHENTICATION_ERROR, res
+
+
+@pytest.mark.p2
+def test_list_datasets_includes_operator_permission_for_owner_and_member(monkeypatch):
+    module = _load_dataset_module(monkeypatch)
+
+    monkeypatch.setattr(
+        module,
+        "validate_and_parse_request_args",
+        lambda *_args, **_kwargs: (
+            {"id": "", "name": "", "page": 1, "page_size": 30, "orderby": "create_time", "desc": True},
+            None,
+        ),
+    )
+    monkeypatch.setattr(module.TenantService, "get_joined_tenants_by_user_id", lambda _tenant_id: [{"tenant_id": "tenant-2"}])
+    monkeypatch.setattr(module.dataset_api_service.UserService, "get_by_ids", lambda _ids: [])
+    monkeypatch.setattr(
+        module.KnowledgebaseService,
+        "get_list",
+        lambda *_args, **_kwargs: (
+            [
+                {"id": "kb-owner", "tenant_id": "tenant-1", "name": "owner-kb"},
+                {
+                    "id": "kb-member",
+                    "tenant_id": "tenant-2",
+                    "name": "member-kb",
+                    "operator_permission": 2,
+                },
+            ],
+            2,
+        ),
+    )
+
+    res = module.list_datasets("tenant-1")
+
+    assert res["code"] == module.RetCode.SUCCESS, res
+    owner_kb, member_kb = res["data"]
+    assert owner_kb["operator_permission"] == 7, res
+    assert member_kb["operator_permission"] == 2, res
 
 
 @pytest.mark.p3
