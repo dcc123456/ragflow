@@ -13,7 +13,7 @@ import { t } from 'i18next';
 import { debounce } from 'lodash';
 import { ArrowLeft } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import AuthCard from '../components/AuthCard';
+import AuthCard from '../components/auth-card';
 import { formFields } from './constant';
 import {
   useCaptcha,

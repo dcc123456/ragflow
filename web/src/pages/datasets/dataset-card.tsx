@@ -4,7 +4,6 @@ import { SharedBadge } from '@/components/shared-badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { useTranslate } from '@/hooks/common-hooks';
 import { useNavigatePage } from '@/hooks/logic-hooks/navigate-hooks';
 import { useTraceDuplicate } from '@/hooks/use-knowledge-request';
 import { IKnowledge } from '@/interfaces/database/knowledge';
@@ -31,7 +30,7 @@ export function DatasetCard({
   showDatasetDuplicateModal,
   showPrivilegeModal,
 }: DatasetCardProps) {
-  const { t } = useTranslate('knowledgeList');
+  const { t } = useTranslation();
   const { navigateToDataset } = useNavigatePage();
   const { hasProgress = false, progress } = useTraceDuplicate(dataset.id);
   const { handleUnbindTask } = useUnBindTask();
@@ -60,7 +59,9 @@ export function DatasetCard({
     >
       {hasProgress && (
         <>
-          <p className="text-text-secondary">{t('duplicatingTip')}</p>
+          <p className="text-text-secondary">
+            {t('knowledgeList.duplicatingTip')}
+          </p>
 
           <div className="flex items-center gap-2 text-text-primary">
             <Progress className="h-1" value={progress * 100} />

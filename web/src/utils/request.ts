@@ -9,12 +9,25 @@ import authorizationUtil, {
 import notification from '@/utils/notification';
 import { redirectToLogin } from '@/utils/private-util';
 import { RequestMethod, extend } from 'umi-request';
+import api from './api';
 import { convertTheKeysOfTheObjectToSnake } from './common-util';
 import { setCachedLlmList } from './llm-cache';
 import { addTenantParams } from './llm-util';
 import { showStarModal } from './star-util';
 
 const FAILED_TO_FETCH = 'Failed to fetch';
+
+/** Error codes to be silenced per API endpoint */
+const SilentErrors: Record<string, number[]> = {
+  [api.login]: [109], // Login endpoint: 109 = token expired, handle silently
+};
+
+const shouldSilent = (url: string, code: number): boolean => {
+  const matchedKey = Object.keys(SilentErrors).find((path) =>
+    url?.includes(path),
+  );
+  return matchedKey ? SilentErrors[matchedKey].includes(code) : false;
+};
 
 export const RetcodeMessage = {
   200: i18n.t('message.200'),
@@ -178,7 +191,7 @@ request.interceptors.response.use(async (response: any, options: any) => {
     ) {
       showPriceModal(data as any);
     } else {
-      if (!options.noToast) {
+      if (!options.noToast && !shouldSilent(options.url, data?.code)) {
         notification.error({
           message: `${i18n.t('message.hint')} : ${data?.code}`,
           description: data?.message,

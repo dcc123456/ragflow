@@ -47,7 +47,11 @@ const schema = z.object({
 
 type SchemaType = z.infer<typeof schema>;
 
-function LdapLogin() {
+type LdapLoginProps = {
+  onLicenseError?: (error: boolean) => void;
+};
+
+function LdapLogin({ onLicenseError }: LdapLoginProps) {
   const id = useId();
   const { t } = useTranslate('login');
   const { typeGroupedChannels } = useLoginChannels();
@@ -70,16 +74,24 @@ function LdapLogin() {
       try {
         const rsaPassword = rsaPsw(data.password) as string;
 
-        return await loginWithChannel({
+        const res = await loginWithChannel({
           serverName: data.ldap_server,
           username: data.username,
           password: rsaPassword,
         });
+
+        // @ts-ignore - response may contain code
+        if (res?.code === 109) {
+          onLicenseError?.(true);
+        } else {
+          onLicenseError?.(false);
+        }
       } catch (error) {
+        onLicenseError?.(false);
         console.error('Login failed:', error);
       }
     },
-    [loginWithChannel],
+    [loginWithChannel, onLicenseError],
   );
 
   return (

@@ -2,7 +2,7 @@ import { useTranslate } from '@/hooks/common-hooks';
 
 import { useSystemConfig } from '@/hooks/use-system-request';
 import { Navigate } from 'react-router';
-import AuthCard from '../components/AuthCard';
+import AuthCard from '../components/auth-card';
 import BasicRegister from './basic';
 
 export default function RegisterContainer() {

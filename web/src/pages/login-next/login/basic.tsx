@@ -44,7 +44,11 @@ const schema = z.object({
 
 type SchemaType = z.infer<typeof schema>;
 
-export default function BasicLogin() {
+type BasicLoginProps = {
+  onLicenseError?: (error: boolean) => void;
+};
+
+export default function BasicLogin({ onLicenseError }: BasicLoginProps) {
   const id = useId();
   const location = useLocation();
   const navigate = useNavigate();
@@ -80,12 +84,17 @@ export default function BasicLogin() {
 
         if (code === 0) {
           navigate('/');
+        } else if (code === 109) {
+          onLicenseError?.(true);
+        } else {
+          onLicenseError?.(false);
         }
       } catch (e) {
+        onLicenseError?.(false);
         console.error('Login failed:', e);
       }
     },
-    [navigate, login],
+    [navigate, login, onLicenseError],
   );
 
   return (

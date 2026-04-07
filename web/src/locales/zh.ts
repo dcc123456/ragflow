@@ -75,6 +75,7 @@ export default {
       rememberMe: '记住我',
       signInTip: '没有帐户？',
       signUpTip: '已经有帐户？',
+      licenseExpired: '许可证已过期。请联系管理员续期。',
       nicknameLabel: '名称',
       nicknamePlaceholder: '请输入名称',
       register: '创建账户',

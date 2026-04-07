@@ -54,6 +54,7 @@ export default {
       rememberMe: '記住我',
       signInTip: '沒有帳戶？',
       signUpTip: '已經有帳戶？',
+      licenseExpired: '許可證已過期。請聯繫管理員續期。',
       nicknameLabel: '名稱',
       nicknamePlaceholder: '請輸入名稱',
       register: '創建賬戶',

@@ -1,8 +1,10 @@
 import { useTranslate } from '@/hooks/common-hooks';
 import { useLoginChannels } from '@/hooks/use-login-request';
+import { AlertTriangle } from 'lucide-react';
+import { useState } from 'react';
 
 import { Skeleton } from '@/components/ui/skeleton';
-import AuthCard from '../components/AuthCard';
+import AuthCard from '../components/auth-card';
 import BasicLogin from './basic';
 import LdapLogin from './ldap';
 
@@ -31,19 +33,31 @@ function LoginSkeleton() {
   );
 }
 
+function LicenseErrorHeader() {
+  const { t } = useTranslate('login');
+  return (
+    <div className="flex items-center justify-center gap-2 rounded-lg bg-state-error-5 px-4 py-3 text-state-error border border-border-button">
+      <AlertTriangle className="size-3 shrink-0" />
+      <p className="text-sm">{t('licenseExpired')}</p>
+    </div>
+  );
+}
 export default function LoginContainer() {
   const { t } = useTranslate('login');
   const { currentChannelType, loading: channelsLoading = true } =
     useLoginChannels();
+  const [licenseError, setLicenseError] = useState(false);
+
+  const header = licenseError ? <LicenseErrorHeader /> : undefined;
 
   return (
-    <AuthCard title={t('loginTitle')}>
+    <AuthCard title={t('loginTitle')} header={header}>
       {channelsLoading ? (
         <LoginSkeleton />
       ) : currentChannelType === 'ldap' ? (
-        <LdapLogin />
+        <LdapLogin onLicenseError={setLicenseError} />
       ) : (
-        <BasicLogin />
+        <BasicLogin onLicenseError={setLicenseError} />
       )}
     </AuthCard>
   );

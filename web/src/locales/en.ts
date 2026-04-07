@@ -99,6 +99,8 @@ export default {
       rememberMe: 'Remember me',
       signInTip: 'Don’t have an account?',
       signUpTip: 'Already have an account?',
+      licenseExpired:
+        'License expired. Please contact your administrator to renew the license.',
       nicknameLabel: 'Nickname',
       nicknamePlaceholder: 'Please input nickname',
       register: 'Create an account',
