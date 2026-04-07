@@ -257,6 +257,7 @@ resource "kubernetes_stateful_set_v1" "mysql" {
         container {
           name  = "mysql"
           image = local.mysql_image
+          image_pull_policy = "Always"
 
           port {
             container_port = 3306
@@ -395,6 +396,7 @@ resource "kubernetes_deployment_v1" "redis" {
         container {
           name  = "redis"
           image = local.redis_image
+          image_pull_policy = "Always"
 
           port {
             container_port = 6379
@@ -488,6 +490,7 @@ resource "kubernetes_deployment_v1" "tei" {
         container {
           name  = "tei"
           image = local.tei_image
+          image_pull_policy = "Always"
 
           port {
             container_port = 80
@@ -754,6 +757,7 @@ resource "kubernetes_deployment_v1" "rabbitmq" {
         container {
           name  = "rabbitmq"
           image = local.rabbitmq_image
+          image_pull_policy = "Always"
 
           port {
             container_port = 5672
@@ -1020,6 +1024,7 @@ spec:
         containers:
         - name: elasticsearch
           image: ${var.es_image}
+          imagePullPolicy: Always
           resources:
             requests:
               cpu: "${var.es_master_cpu_request}"
@@ -1069,6 +1074,7 @@ spec:
         containers:
         - name: elasticsearch
           image: ${var.es_image}
+          imagePullPolicy: Always
           resources:
             requests:
               cpu: "${var.es_data_cpu_request}"
@@ -1154,6 +1160,7 @@ resource "kubernetes_job_v1" "apply_elasticsearch" {
         container {
           name    = "kubectl"
           image   = "bitnami/kubectl:latest"
+          image_pull_policy = "Always"
           command = ["kubectl", "apply", "-f", "/data/elasticsearch.yaml"]
           
           env {
@@ -1505,6 +1512,7 @@ resource "kubernetes_deployment_v1" "ragflow" {
           content {
             name    = "init-s3-bucket"
             image   = local.minio_mc_image
+            image_pull_policy = "Always"
             command = ["sh", "-c", "mc alias set myminio ${var.s3_endpoint} ${var.s3_access_key} ${var.s3_secret_key} && mc mb myminio/${var.s3_bucket} || exit 0"]
           }
         }
@@ -1515,6 +1523,7 @@ resource "kubernetes_deployment_v1" "ragflow" {
           content {
             name  = "wait-for-elasticsearch"
             image = local.curl_image
+            image_pull_policy = "Always"
 
             # Inherit environment from ragflow_env secret
             env_from {
@@ -1549,6 +1558,7 @@ resource "kubernetes_deployment_v1" "ragflow" {
         container {
           name  = "ragflow"
           image = local.ragflow_image_full
+          image_pull_policy = "Always"
 
           args = ["--disable-taskexecutor"]
 
@@ -1761,6 +1771,7 @@ resource "kubernetes_deployment_v1" "admin" {
         container {
           name  = "admin"
           image = local.ragflow_image_full
+          image_pull_policy = "Always"
 
           args = ["--disable-webserver", "--disable-taskexecutor", "--disable-datasync", "--enable-adminserver"]
 
@@ -1898,6 +1909,7 @@ resource "kubernetes_deployment_v1" "parser" {
           content {
             name  = "wait-for-elasticsearch"
             image = local.curl_image
+            image_pull_policy = "Always"
 
             # Inherit environment from ragflow_env secret
             env_from {
@@ -1932,6 +1944,7 @@ resource "kubernetes_deployment_v1" "parser" {
         container {
           name  = "parser"
           image = local.ragflow_image_full
+          image_pull_policy = "Always"
 
           command = ["/ragflow/entrypoint-parser.sh"]
 
@@ -2060,6 +2073,7 @@ resource "kubernetes_deployment_v1" "deepdoc" {
         container {
           name  = "deepdoc"
           image = local.deepdoc_image_full
+          image_pull_policy = "Always"
 
           port {
             container_port = 8000
@@ -2349,6 +2363,7 @@ resource "kubernetes_job_v1" "ohttps_sync_initial_job" {
         container {
           name  = "sync"
           image = var.ohttps_sync_image
+          image_pull_policy = "Always"
           env {
             name  = "OHTTPS_API_ID"
             value = var.ohttps_api_id
@@ -2422,6 +2437,7 @@ resource "kubernetes_manifest" "ohttps_sync_cronjob" {
                 {
                   name  = "sync"
                   image = var.ohttps_sync_image
+                  imagePullPolicy = "Always"
                   env = [
                     {
                       name  = "OHTTPS_API_ID"
