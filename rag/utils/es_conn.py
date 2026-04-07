@@ -235,18 +235,12 @@ class ESConnection(ESConnectionBase):
             s = s.source(select_fields)
         q = s.to_dict()
         # ES 9.x: dense_vector fields excluded from _source; request them via fields.
-        # Only add "fields" to knn for ES 9+ (ES 8.x doesn't support knn.fields).
+        # Note: knn does NOT have a "fields" parameter - adding it inside the knn
+        # object causes BadRequestError on ES 9.x. We only add "fields" at top level
+        # for non-knn queries (ES 8.x style).
         vector_fields = [f for f in (select_fields or []) if f.endswith("_vec")]
         if vector_fields:
-            if "knn" in q:
-                # ES 9.x supports knn.fields; ES 8.x does not. We detect this by
-                # checking if the ES major version starts with "9". Cache the
-                # result to avoid repeated info() calls.
-                if not hasattr(self, "_es_version"):
-                    self._es_version = self.es.info()["version"]["number"]
-                if self._es_version.startswith("9."):
-                    q["knn"]["fields"] = vector_fields
-            else:
+            if "knn" not in q:
                 q["fields"] = vector_fields
         self.logger.debug(f"ESConnection.search {str(index_names)} query: " + json.dumps(q))
 
