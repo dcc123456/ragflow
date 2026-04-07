@@ -2,7 +2,6 @@ import message from '@/components/ui/message';
 import { Authorization } from '@/constants/authorization';
 import { IReferenceObject } from '@/interfaces/database/chat';
 import { BeginQuery } from '@/pages/agent/interface';
-import api from '@/utils/api';
 import { getAuthorization } from '@/utils/authorization-util';
 import { EventSourceParserStream } from 'eventsource-parser/stream';
 import { useCallback, useRef, useState } from 'react';
@@ -86,7 +85,7 @@ export type IChatEvent = INodeEvent | IMessageEvent | IMessageEndEvent;
 
 export type IEventList = Array<IChatEvent>;
 
-export const useSendMessageBySSE = (url: string = api.completeConversation) => {
+export const useSendMessageBySSE = (url: string) => {
   const [answerList, setAnswerList] = useState<IEventList>([]);
   const [done, setDone] = useState(true);
   const timer = useRef<any>();
@@ -124,25 +123,21 @@ export const useSendMessageBySSE = (url: string = api.completeConversation) => {
           signal: controller?.signal || sseRef.current?.signal,
         });
 
+        const res = response.clone().json();
+
         const reader = response?.body
           ?.pipeThrough(new TextDecoderStream())
           .pipeThrough(new EventSourceParserStream())
           .getReader();
 
-        let receivedTerminalEvent = false;
-
         while (true) {
           try {
             const x = await reader?.read();
-            console.info('reader.read() =>', x);
             if (x) {
               const { done, value } = x;
               if (done) {
-                if (!receivedTerminalEvent) {
-                  console.warn(
-                    'SSE stream ended without workflow_finished or user_inputs — keeping answerList for UI state',
-                  );
-                }
+                console.info('done');
+                resetAnswerList();
                 break;
               }
               try {
@@ -151,12 +146,6 @@ export const useSendMessageBySSE = (url: string = api.completeConversation) => {
                 console.info('data:', val);
                 if (typeof val?.code === 'number' && val.code !== 0) {
                   message.error(val.message);
-                }
-                if (
-                  val?.event === 'workflow_finished' ||
-                  val?.event === 'user_inputs'
-                ) {
-                  receivedTerminalEvent = true;
                 }
 
                 setAnswerList((list) => {
@@ -171,17 +160,14 @@ export const useSendMessageBySSE = (url: string = api.completeConversation) => {
           } catch (e) {
             if (e instanceof DOMException && e.name === 'AbortError') {
               console.log('Request was aborted by user or logic.');
-              receivedTerminalEvent = true; // user-initiated abort is intentional
               break;
             }
           }
         }
         console.info('done?');
         setDone(true);
-        if (receivedTerminalEvent) {
-          resetAnswerList();
-        }
-        return { data: undefined, response };
+        resetAnswerList();
+        return { data: await res, response };
       } catch (e) {
         setDone(true);
         resetAnswerList();
