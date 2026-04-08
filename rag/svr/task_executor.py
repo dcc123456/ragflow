@@ -1506,13 +1506,7 @@ def rabbitmq_callback(ch, method, properties, body):
             created_loop = True
             asyncio.set_event_loop(event_loop)
 
-        try:
-            event_loop.run_until_complete(do_handle_task_with_timeout(task, partial(set_progress, task_id)))
-        finally:
-            # Always close the event loop if we created it to prevent resource leaks
-            if created_loop:
-                event_loop.close()
-                asyncio.set_event_loop(None)
+        event_loop.run_until_complete(do_handle_task_with_timeout(task, partial(set_progress, task_id)))
 
         logging.info(f"handle_task done for task {json.dumps(task)}")
     except KeyboardInterrupt:
@@ -1542,6 +1536,10 @@ def rabbitmq_callback(ch, method, properties, body):
                     event_loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
             except Exception as cleanup_e:
                 logging.warning(f"Event loop cleanup warning: {cleanup_e}")
+            finally:
+                if created_loop:
+                    event_loop.close()
+                    asyncio.set_event_loop(None)
 
         # Record pipeline operation if applicable
         if task and task_type != "evaluation":
