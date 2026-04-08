@@ -68,6 +68,7 @@ export default {
   create_kb: `${ExternalApi}${api_host}/datasets`,
   update_kb: (datasetId: string) =>
     `${ExternalApi}${api_host}/datasets/${datasetId}`,
+  duplicate_kb: `${api_host}/kb/clone`,
   rm_kb: `${ExternalApi}${api_host}/datasets`,
   get_kb_detail: `${api_host}/kb/detail`,
   getKnowledgeGraph: (knowledgeId: string) =>
