@@ -13,7 +13,9 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 #
+import operator
 from datetime import datetime
+from functools import reduce
 
 import peewee
 
@@ -27,6 +29,66 @@ from common.time_utils import current_timestamp, datetime_format
 
 class PermissionService(CommonService):
     model = Permission
+
+    @classmethod
+    @DB.connection_context()
+    def get_user_resource_permission_map(cls, user_id, tenant_ids, resource_type, permission=PermissionValue.PERMISSION_READ):
+        """
+        Return resource_id -> highest permission granted to a user through direct member,
+        group, or department permissions across the specified tenants.
+        """
+        from api.db.services.team_service import DepartmentMemberService, DepartmentService, GroupMemberService
+        from api.db.services.user_service import UserTenantService
+
+        tenant_id_set = set(tenant_ids or [])
+        if not tenant_id_set:
+            return {}
+        required_permission = permission.value if isinstance(permission, PermissionValue) else permission
+
+        tenant_conditions = []
+        user_tenants = UserTenantService.query(user_id=user_id) or []
+        for user_tenant in user_tenants:
+            tenant_id = getattr(user_tenant, "tenant_id", None)
+            if tenant_id not in tenant_id_set:
+                continue
+
+            target_conditions = [cls.model.member_id == user_tenant.id]
+
+            groups = GroupMemberService.get_groups_by_member_id(user_tenant.id)
+            group_ids = list({group["group_id"] for group in groups})
+            if group_ids:
+                target_conditions.append(cls.model.group_id.in_(group_ids))
+
+            department_ids = set()
+            departments = DepartmentMemberService.get_all_departments_by_member_id(user_tenant.id)
+            for department in departments:
+                department_ids.update(DepartmentService.get_department_hierarchy(department))
+            if department_ids:
+                target_conditions.append(cls.model.department_id.in_(list(department_ids)))
+
+            tenant_conditions.append((cls.model.tenant_id == tenant_id) & reduce(operator.or_, target_conditions))
+
+        if not tenant_conditions:
+            return {}
+
+        permission_conditions = (
+            (cls.model.status == StatusEnum.VALID.value)
+            & (cls.model.resource_type == resource_type)
+            & (cls.model.permission >= required_permission)
+            & reduce(operator.or_, tenant_conditions)
+        )
+        permissions = (
+            cls.model.select(cls.model.resource_id, cls.model.permission)
+            .where(permission_conditions)
+            .dicts()
+        )
+
+        permission_map = {}
+        for permission_record in permissions:
+            resource_id = permission_record["resource_id"]
+            permission_map[resource_id] = max(permission_map.get(resource_id, PermissionValue.PERMISSION_NULL.value), permission_record["permission"])
+
+        return permission_map
 
     @classmethod
     @DB.connection_context()

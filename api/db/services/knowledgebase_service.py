@@ -23,6 +23,7 @@ from api.db import PermissionValue, ResourceType, TenantPermission
 from api.db.db_models import DB, Document, Knowledgebase, Permission, User, UserCanvas, UserTenant
 from api.db.services import duplicate_name
 from api.db.services.common_service import CommonService
+from api.db.services.permission_service import PermissionService
 from api.db.services.user_service import TenantService, UserTenantService
 from api.utils.api_utils import get_data_error_result, get_parser_config
 from common.constants import LLMType, StatusEnum
@@ -590,12 +591,10 @@ class KnowledgebaseService(CommonService):
         # Returns:
         #     List of knowledge bases
 
-        permission_conditions = (Permission.permission >= PermissionValue.PERMISSION_READ.value) & (Permission.status == StatusEnum.VALID.value) & (Permission.resource_type == ResourceType.KB)
+        permission_map = PermissionService.get_user_resource_permission_map(user_id, joined_tenant_ids, ResourceType.KB)
+        accessible_kb_ids = list(permission_map)
 
-        kbs = cls.model.select(
-            cls.model,
-            Permission.permission.alias("operator_permission"),
-        )
+        kbs = cls.model.select(cls.model)
         if id:
             kbs = kbs.where(cls.model.id == id)
         if name:
@@ -604,14 +603,11 @@ class KnowledgebaseService(CommonService):
             kbs = kbs.where(fn.LOWER(cls.model.name).contains(keywords.lower()))
         if parser_id:
             kbs = kbs.where(cls.model.parser_id == parser_id)
-        kbs = (
-            kbs.distinct()
-            .join(User, on=(cls.model.tenant_id == User.id))
-            .switch(cls.model)
-            .join(UserTenant, JOIN.LEFT_OUTER, on=((UserTenant.tenant_id == cls.model.tenant_id) & (UserTenant.user_id == user_id)))
-            .join(Permission, JOIN.LEFT_OUTER, on=((Permission.resource_id == cls.model.id) & (Permission.member_id == UserTenant.id) & permission_conditions))
-            .where(((cls.model.tenant_id.in_(joined_tenant_ids) & (Permission.id.is_null(False))) | (cls.model.tenant_id == user_id)) & (cls.model.status == StatusEnum.VALID.value))
-        )
+        visible_condition = cls.model.tenant_id == user_id
+        if accessible_kb_ids:
+            visible_condition = visible_condition | (cls.model.id.in_(accessible_kb_ids))
+
+        kbs = kbs.distinct().join(User, on=(cls.model.tenant_id == User.id)).where(visible_condition & (cls.model.status == StatusEnum.VALID.value))
 
         if desc:
             kbs = kbs.order_by(cls.model.getter_by(orderby).desc())
@@ -620,8 +616,14 @@ class KnowledgebaseService(CommonService):
 
         total = kbs.count()
         kbs = kbs.paginate(page_number, items_per_page)
+        kbs = list(kbs.dicts())
+        for kb in kbs:
+            if kb["tenant_id"] == user_id:
+                kb["operator_permission"] = PermissionValue.PERMISSION_OWNER.value
+            else:
+                kb["operator_permission"] = permission_map.get(kb["id"], PermissionValue.PERMISSION_NULL.value)
 
-        return list(kbs.dicts()), total
+        return kbs, total
 
     @classmethod
     @DB.connection_context()
