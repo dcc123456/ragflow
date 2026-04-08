@@ -297,17 +297,17 @@ class ShadowWriteProxy(DocStoreConnection):
         offset: int,
         limit: int,
         index_names: str | list[str],
-        dataset_ids: list[str],
+        knowledgebase_ids: list[str],
         agg_fields: list[str] | None = None,
         rank_feature: dict | None = None,
     ):
         return self._execute_with_shadows(
             'search', select_fields, highlight_fields, condition, match_expressions,
-            order_by, offset, limit, index_names, dataset_ids, agg_fields, rank_feature
+            order_by, offset, limit, index_names, knowledgebase_ids, agg_fields, rank_feature
         )
     
-    def get(self, data_id: str, index_name: str, dataset_ids: list[str]) -> dict | None:
-        return self._execute_with_shadows('get', data_id, index_name, dataset_ids)
+    def get(self, data_id: str, index_name: str, knowledgebase_ids: list[str]) -> dict | None:
+        return self._execute_with_shadows('get', data_id, index_name, knowledgebase_ids)
     
     def insert(self, rows: list[dict], index_name: str, dataset_id: str = None) -> list[str]:
         return self._execute_with_shadows('insert', rows, index_name, dataset_id)
