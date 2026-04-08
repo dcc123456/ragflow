@@ -257,7 +257,6 @@ resource "kubernetes_stateful_set_v1" "mysql" {
         container {
           name  = "mysql"
           image = local.mysql_image
-          image_pull_policy = "Always"
 
           port {
             container_port = 3306
@@ -396,7 +395,6 @@ resource "kubernetes_deployment_v1" "redis" {
         container {
           name  = "redis"
           image = local.redis_image
-          image_pull_policy = "Always"
 
           port {
             container_port = 6379
@@ -490,7 +488,6 @@ resource "kubernetes_deployment_v1" "tei" {
         container {
           name  = "tei"
           image = local.tei_image
-          image_pull_policy = "Always"
 
           port {
             container_port = 80
@@ -757,7 +754,6 @@ resource "kubernetes_deployment_v1" "rabbitmq" {
         container {
           name  = "rabbitmq"
           image = local.rabbitmq_image
-          image_pull_policy = "Always"
 
           port {
             container_port = 5672
@@ -1160,7 +1156,6 @@ resource "kubernetes_job_v1" "apply_elasticsearch" {
         container {
           name    = "kubectl"
           image   = "bitnami/kubectl:latest"
-          image_pull_policy = "Always"
           command = ["kubectl", "apply", "-f", "/data/elasticsearch.yaml"]
           
           env {
@@ -1512,7 +1507,6 @@ resource "kubernetes_deployment_v1" "ragflow" {
           content {
             name    = "init-s3-bucket"
             image   = local.minio_mc_image
-            image_pull_policy = "Always"
             command = ["sh", "-c", "mc alias set myminio ${var.s3_endpoint} ${var.s3_access_key} ${var.s3_secret_key} && mc mb myminio/${var.s3_bucket} || exit 0"]
           }
         }
@@ -1523,7 +1517,6 @@ resource "kubernetes_deployment_v1" "ragflow" {
           content {
             name  = "wait-for-elasticsearch"
             image = local.curl_image
-            image_pull_policy = "Always"
 
             # Inherit environment from ragflow_env secret
             env_from {
@@ -1908,8 +1901,7 @@ resource "kubernetes_deployment_v1" "parser" {
           for_each = [1]
           content {
             name  = "wait-for-elasticsearch"
-            image = local.curl_image
-            image_pull_policy = "Always"
+            image = local.curl_image          
 
             # Inherit environment from ragflow_env secret
             env_from {
