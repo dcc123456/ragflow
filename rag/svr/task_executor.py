@@ -55,7 +55,6 @@ import json
 import xxhash
 import copy
 import re
-import weakref
 from functools import partial
 from multiprocessing.context import TimeoutError
 from timeit import default_timer as timer
@@ -84,6 +83,7 @@ from rag.utils.redis_conn import REDIS_CONN
 from rag.graphrag.utils import chat_limiter
 from common.signal_utils import start_tracemalloc_and_snapshot, stop_tracemalloc
 from common.exceptions import TaskCanceledException
+from common.asyncio_utils import LoopLocalSemaphore
 from common import settings
 from common.billing_utils import init_stripe_api_key
 from rag.utils.rabbitmq_conn import RABBITMQ_CONN, async_get_queue_status
@@ -136,49 +136,11 @@ MAX_CONCURRENT_CHUNK_BUILDERS = int(os.environ.get('MAX_CONCURRENT_CHUNK_BUILDER
 MAX_CONCURRENT_MINIO = int(os.environ.get('MAX_CONCURRENT_MINIO', '10'))
 
 
-class _LoopLocalSemaphore:
-    """
-    asyncio.Semaphore becomes bound to the first event loop that awaits it.
-    This module runs tasks via asyncio.run() (new loop per task), so we must
-    not reuse the same asyncio.Semaphore instance across loops.
-
-    This wrapper creates one Semaphore per running loop.
-    """
-
-    def __init__(self, value: int):
-        self._value = int(value)
-        self._semaphores: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore]" = (
-            weakref.WeakKeyDictionary()
-        )
-
-    def _get(self) -> asyncio.Semaphore:
-        loop = asyncio.get_running_loop()
-        sem = self._semaphores.get(loop)
-        if sem is None:
-            sem = asyncio.Semaphore(self._value)
-            self._semaphores[loop] = sem
-        return sem
-
-    async def acquire(self) -> bool:
-        return await self._get().acquire()
-
-    def release(self) -> None:
-        self._get().release()
-
-    async def __aenter__(self):
-        await self.acquire()
-        return self
-
-    async def __aexit__(self, exc_type, exc, tb):
-        self.release()
-        return False
-
-
-task_limiter = _LoopLocalSemaphore(MAX_CONCURRENT_TASKS)
-chunk_limiter = _LoopLocalSemaphore(MAX_CONCURRENT_CHUNK_BUILDERS)
-embed_limiter = _LoopLocalSemaphore(MAX_CONCURRENT_CHUNK_BUILDERS)
-minio_limiter = _LoopLocalSemaphore(MAX_CONCURRENT_MINIO)
-kg_limiter = _LoopLocalSemaphore(2)
+task_limiter = LoopLocalSemaphore(MAX_CONCURRENT_TASKS)
+chunk_limiter = LoopLocalSemaphore(MAX_CONCURRENT_CHUNK_BUILDERS)
+embed_limiter = LoopLocalSemaphore(MAX_CONCURRENT_CHUNK_BUILDERS)
+minio_limiter = LoopLocalSemaphore(MAX_CONCURRENT_MINIO)
+kg_limiter = LoopLocalSemaphore(2)
 WORKER_HEARTBEAT_TIMEOUT = int(os.environ.get('WORKER_HEARTBEAT_TIMEOUT', '120'))
 stop_event = threading.Event()
 
