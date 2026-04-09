@@ -440,7 +440,7 @@ variable "parser_memory_limit" {
 variable "parser_ws_workers" {
   description = "WS_WORKERS value for parser task executors"
   type        = string
-  default     = "16"
+  default     = "1"
 }
 
 # =============================================================================

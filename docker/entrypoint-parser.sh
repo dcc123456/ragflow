@@ -4,7 +4,7 @@
 # The parser runs multiple worker processes that use fsnotify for file watching
 ulimit -n 65536
 
-/usr/sbin/nginx
+#/usr/sbin/nginx
 
 # -----------------------------------------------------------------------------
 # Replace env variables in the service_conf.yaml file
