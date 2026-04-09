@@ -14,6 +14,34 @@ class OCRClient:
         self.url = http_ip_port + "/predict/ocr"
         self.session = requests.Session()
 
+    @staticmethod
+    def _is_point(point):
+        return (
+            isinstance(point, (list, tuple))
+            and len(point) >= 2
+            and all(isinstance(v, (int, float)) for v in point[:2])
+        )
+
+    @classmethod
+    def _normalize_box(cls, box):
+        while (
+            isinstance(box, (list, tuple))
+            and len(box) == 1
+            and isinstance(box[0], (list, tuple))
+            and not cls._is_point(box[0])
+        ):
+            box = box[0]
+
+        if not isinstance(box, (list, tuple)):
+            return None
+
+        normalized = []
+        for point in box:
+            if not cls._is_point(point):
+                return None
+            normalized.append([point[0], point[1]])
+        return normalized
+
     @timeout(2)
     def detect(self, arr: np.ndarray, **kwargs):
         img = Image.fromarray(arr, 'RGB')
@@ -32,7 +60,7 @@ class OCRClient:
                 if not response["output"] or not response["output"][0]:
                     return []
                 else:
-                    boxes = response["output"][0]
+                    boxes = [box for raw_box in response["output"][0] if (box := self._normalize_box(raw_box))]
                     return zip(boxes, [("", 0) for _ in range(len(boxes))])
             except Exception as e:
                 logging.exception(e)
