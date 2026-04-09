@@ -94,17 +94,12 @@ class RAGFlowPdfParser:
         self.tbl_det = TableStructureRecognizer()
 
         self.updown_cnt_mdl = xgb.Booster()
+        # xgboost model is very small; using CPU explicitly
+        self.updown_cnt_mdl.set_param({"device": "cpu"})
+        logging.info("updown_cnt_mdl initialized on CPU")
         try:
-            model_dir = os.path.join(
-                get_project_base_directory(),
-                "rag/res/deepdoc")
-            #self.updown_cnt_mdl.load_model(os.path.join(
-            #    model_dir, "updown_concat_xgb.model"))
-            # pip_install_torch()
-            # import torch.cuda
-
-            # if torch.cuda.is_available():
-            #     self.updown_cnt_mdl.set_param({"device": "cuda"})
+            model_dir = os.path.join(get_project_base_directory(), "rag/res/deepdoc")
+            self.updown_cnt_mdl.load_model(os.path.join(model_dir, "updown_concat_xgb.model"))
         except Exception:
             model_dir = snapshot_download(
                 repo_id="InfiniFlow/text_concat_xgb_v1.0",

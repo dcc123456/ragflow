@@ -236,12 +236,10 @@ class ESConnection(ESConnectionBase):
         q = s.to_dict()
         # ES 9.x: dense_vector fields excluded from _source; request them via fields.
         # Note: knn does NOT have a "fields" parameter - adding it inside the knn
-        # object causes BadRequestError on ES 9.x. We only add "fields" at top level
-        # for non-knn queries (ES 8.x style).
+        # object causes BadRequestError on ES 9.x. We add "fields" at top level.
         vector_fields = [f for f in (select_fields or []) if f.endswith("_vec")]
         if vector_fields:
-            if "knn" not in q:
-                q["fields"] = vector_fields
+            q["fields"] = vector_fields
         self.logger.debug(f"ESConnection.search {str(index_names)} query: " + json.dumps(q))
 
         for i in range(ATTEMPT_TIME):
@@ -498,8 +496,6 @@ class ESConnection(ESConnectionBase):
                 elif n in hit_fields:
                     vals = hit_fields[n]
                     # ES fields response wraps dense_vector in 2 levels: [[v1,v2,...]] -> [v1,v2,...]
-                    if isinstance(vals, list) and len(vals) == 1:
-                        vals = vals[0]
                     if isinstance(vals, list) and len(vals) == 1:
                         vals = vals[0]
                     m[n] = vals

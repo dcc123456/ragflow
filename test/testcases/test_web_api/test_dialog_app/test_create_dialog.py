@@ -21,7 +21,7 @@ from hypothesis import example, given, settings
 from libs.auth import RAGFlowWebApiAuth
 from utils.hypothesis_utils import valid_names
 
-from common import create_dialog
+from test_common import create_dialog
 
 
 @pytest.mark.usefixtures("clear_dialogs")

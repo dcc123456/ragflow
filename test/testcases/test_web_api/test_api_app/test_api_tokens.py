@@ -14,7 +14,7 @@
 #  limitations under the License.
 #
 import pytest
-from common import api_new_token, api_rm_token, api_stats, api_token_list, batch_create_dialogs
+from test_common import api_new_token, api_rm_token, api_stats, api_token_list, batch_create_dialogs
 from configs import INVALID_API_TOKEN
 from libs.auth import RAGFlowWebApiAuth
 
