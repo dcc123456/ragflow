@@ -81,10 +81,10 @@ class TestOCRClientDetect:
         results = list(client.detect(np.zeros((8, 8, 3), dtype=np.uint8)))
 
         assert results == [
-            (
-                [[1.0, 2.0], [11.0, 2.0], [11.0, 8.0], [1.0, 8.0]],
-                ("", 0),
-            )
+            ([1.0, 2.0], ("", 0)),
+            ([11.0, 2.0], ("", 0)),
+            ([11.0, 8.0], ("", 0)),
+            ([1.0, 8.0], ("", 0)),
         ]
 
     def test_detect_unwraps_singleton_wrapped_bbox(self):
