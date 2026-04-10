@@ -1238,8 +1238,9 @@ async def clone():
     nm = kb.pop("name")
     kb.pop("tenant_id")
     kb.pop("id")
+    target_name = req.get("name") or f"Copy of {nm}"
     e, kb = KnowledgebaseService.create_with_name(
-        name=f"Copy of {nm}",
+        name=target_name,
         tenant_id=current_user.id,
         ** kb
     )

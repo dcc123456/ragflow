@@ -544,6 +544,37 @@ def test_pipeline_log_detail_and_delete_routes_branches(monkeypatch):
 
 
 @pytest.mark.p3
+def test_clone_uses_requested_name(monkeypatch):
+    module = _load_kb_module(monkeypatch)
+
+    requested_name = "cloned dataset name"
+    source_kb = _DummyKB(kb_id="kb-1", name="source dataset")
+    source_kb.clone_task_id = None
+    _set_request_json(monkeypatch, module, {"kb_id": "kb-1", "name": requested_name})
+
+    create_calls = {}
+
+    def _create_with_name(*, name, tenant_id, **kwargs):
+        create_calls["name"] = name
+        create_calls["tenant_id"] = tenant_id
+        create_calls["kwargs"] = deepcopy(kwargs)
+        return True, {"id": "kb-2", "name": name}
+
+    monkeypatch.setattr(module.KnowledgebaseService, "get_by_id", lambda _kb_id: (True, source_kb))
+    monkeypatch.setattr(module.KnowledgebaseService, "create_with_name", _create_with_name)
+    monkeypatch.setattr(module.KnowledgebaseService, "save", lambda **_kwargs: True)
+    monkeypatch.setattr(module.KnowledgebaseService, "update_by_id", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(module.DocumentService, "get_by_kb_id", lambda **_kwargs: ([{"id": "doc-1"}], 1))
+    monkeypatch.setattr(module, "queue_reembedding_dup_tasks", lambda *_args, **_kwargs: "clone-task-1")
+
+    res = _run(inspect.unwrap(module.clone)())
+
+    assert res["code"] == module.RetCode.SUCCESS, res
+    assert create_calls["name"] == requested_name, create_calls
+    assert create_calls["tenant_id"] == "user-1", create_calls
+
+
+@pytest.mark.p3
 @pytest.mark.parametrize(
     "route_name,task_attr,response_key,task_type",
     [
