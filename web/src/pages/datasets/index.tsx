@@ -123,30 +123,30 @@ export default function Datasets() {
                   />
                 </div>
               )}
-              <div className="flex-1 ">
-                <CardContainer className="h-[calc(100vh-220px)] overflow-auto px-8">
-                  {kbs.map((dataset) => {
-                    return (
-                      <DatasetCard
-                        dataset={dataset}
-                        key={dataset.id}
-                        showDatasetRenameModal={showDatasetRenameModal}
-                        showDatasetDuplicateModal={showDatasetDuplicateModal}
-                        showPrivilegeModal={handShowPrivilegeModal(dataset)}
-                      ></DatasetCard>
-                    );
-                  })}
-                </CardContainer>
-
-                <footer className="mt-4 px-5 pb-5">
-                  <RAGFlowPagination
-                    {...pick(pagination, 'current', 'pageSize')}
-                    total={total_datasets}
-                    onChange={handlePageChange}
-                  />
-                </footer>
-              </div>
             </header>
+            <div className="flex-1 ">
+              <CardContainer className="h-[calc(100vh-220px)] overflow-auto px-8">
+                {kbs.map((dataset) => {
+                  return (
+                    <DatasetCard
+                      dataset={dataset}
+                      key={dataset.id}
+                      showDatasetRenameModal={showDatasetRenameModal}
+                      showDatasetDuplicateModal={showDatasetDuplicateModal}
+                      showPrivilegeModal={handShowPrivilegeModal(dataset)}
+                    ></DatasetCard>
+                  );
+                })}
+              </CardContainer>
+
+              <footer className="mt-4 px-5 pb-5">
+                <RAGFlowPagination
+                  {...pick(pagination, 'current', 'pageSize')}
+                  total={total_datasets}
+                  onChange={handlePageChange}
+                />
+              </footer>
+            </div>
           </article>
         ) : (
           <>
