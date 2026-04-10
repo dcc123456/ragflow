@@ -2264,6 +2264,7 @@ def migrate_db():
     alter_db_column_type(migrator, "tenant_llm", "api_key", TextField(null=True, help_text="API KEY"))
     alter_db_add_column(migrator, "tenant_llm", "status", CharField(max_length=1, null=False, help_text="is it validate(0: wasted, 1: validate)", default="1", index=True))
     alter_db_add_column(migrator, "connector2kb", "auto_parse", CharField(max_length=1, null=False, default="1", index=False))
+    alter_db_add_column(migrator, "connector2kb", "is_kb", CharField(max_length=1, null=True, help_text="is it to kb(0: no, 1: yes)", default="1", index=True))
     alter_db_add_column(migrator, "llm_factories", "rank", IntegerField(default=0, index=False))
 
     # for EE
