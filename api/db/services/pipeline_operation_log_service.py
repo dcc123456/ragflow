@@ -92,6 +92,28 @@ class PipelineOperationLogService(CommonService):
         return sample_obj
 
     @classmethod
+    def update_dataset_task_finish_at(cls, document, task_type):
+        if document.progress != 1:
+            return
+
+        finish_at = document.process_begin_at + timedelta(seconds=document.process_duration)
+        if task_type == PipelineTaskType.GRAPH_RAG:
+            KnowledgebaseService.update_by_id(
+                document.kb_id,
+                {"graphrag_task_finish_at": finish_at},
+            )
+        elif task_type == PipelineTaskType.RAPTOR:
+            KnowledgebaseService.update_by_id(
+                document.kb_id,
+                {"raptor_task_finish_at": finish_at},
+            )
+        elif task_type == PipelineTaskType.MINDMAP:
+            KnowledgebaseService.update_by_id(
+                document.kb_id,
+                {"mindmap_task_finish_at": finish_at},
+            )
+
+    @classmethod
     @DB.connection_context()
     def create(cls, document_id, pipeline_id, task_type, fake_document_ids=[], dsl: str = "{}"):
         referred_document_id = document_id
@@ -131,22 +153,7 @@ class PipelineOperationLogService(CommonService):
             raise ValueError(f"Invalid task type: {task_type}")
 
         if task_type in [PipelineTaskType.GRAPH_RAG, PipelineTaskType.RAPTOR, PipelineTaskType.MINDMAP]:
-            finish_at = document.process_begin_at + timedelta(seconds=document.process_duration)
-            if task_type == PipelineTaskType.GRAPH_RAG:
-                KnowledgebaseService.update_by_id(
-                    document.kb_id,
-                    {"graphrag_task_finish_at": finish_at},
-                )
-            elif task_type == PipelineTaskType.RAPTOR:
-                KnowledgebaseService.update_by_id(
-                    document.kb_id,
-                    {"raptor_task_finish_at": finish_at},
-                )
-            elif task_type == PipelineTaskType.MINDMAP:
-                KnowledgebaseService.update_by_id(
-                    document.kb_id,
-                    {"mindmap_task_finish_at": finish_at},
-                )
+            cls.update_dataset_task_finish_at(document, task_type)
 
         log = dict(
             id=get_uuid(),
