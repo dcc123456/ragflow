@@ -324,7 +324,7 @@ const Login = () => {
       const rsaPassWord = rsaPsw(params.password) as string;
 
       if (title === 'login') {
-        const code = await login({
+        const { code } = await login({
           email: `${params.email}`.trim(),
           password: rsaPassWord,
         });

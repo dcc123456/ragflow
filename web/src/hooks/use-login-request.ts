@@ -120,7 +120,7 @@ export const useLogin = () => {
           Token: token,
         });
       }
-      return res.code;
+      return { code: res.code, message: res.message };
     },
   });
 

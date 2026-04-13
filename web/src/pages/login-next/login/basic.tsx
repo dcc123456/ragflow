@@ -26,7 +26,7 @@ import {
   useLoginWithChannel,
 } from '@/hooks/use-login-request';
 import { useSystemConfig } from '@/hooks/use-system-request';
-import { rsaPsw } from '@/utils';
+import { isLicenseError, rsaPsw } from '@/utils';
 import RememberMeCheckbox from '../components/RememberMeCheckbox';
 
 import { SSO_CLOUD_IDP_PROVIDERS } from '@/pages/admin/sso-providers/cloud-idp';
@@ -77,14 +77,14 @@ export default function BasicLogin({ onLicenseError }: BasicLoginProps) {
     async (data: SchemaType) => {
       try {
         const rsaPassword = rsaPsw(data.password) as string;
-        const code = await login({
+        const { code, message } = await login({
           email: data.email.trim(),
           password: rsaPassword,
         });
 
         if (code === 0) {
           navigate('/');
-        } else if (code === 109) {
+        } else if (isLicenseError(code, message)) {
           onLicenseError?.(true);
         } else {
           onLicenseError?.(false);

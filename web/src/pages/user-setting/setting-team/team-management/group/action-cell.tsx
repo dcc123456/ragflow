@@ -8,7 +8,7 @@ import { TenantIdContext } from '@/contexts/teant-context';
 import { useDeleteGroup } from '@/hooks/use-team';
 import { IGroup } from '@/interfaces/database/team';
 import { CellContext } from '@tanstack/react-table';
-import { Layers, Trash2, UserCog, UserPen, UserPlus } from 'lucide-react';
+import { Trash2, UserCog, UserPen, UserPlus } from 'lucide-react';
 import { memo, useCallback, useContext } from 'react';
 import { useTranslation } from 'react-i18next';
 import { GroupContext } from '../context';
@@ -71,14 +71,14 @@ function GroupActionCell({
 
   return (
     <section className="flex gap-2 items-center opacity-0 group-hover:opacity-100 transition-opacity">
-      <Button
+      {/* <Button
         variant="ghost"
         size="icon"
         onClick={handleShowPermissionModal}
         title={t('permission.permissionManagement')}
       >
         <Layers className="w-4 h-4" />
-      </Button>
+      </Button> */}
       {showInfoEditingAndMemberManagementDropdownItem && (
         <>
           <Button

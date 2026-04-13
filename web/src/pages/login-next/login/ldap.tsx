@@ -20,7 +20,7 @@ import {
   useLoginChannels,
   useLoginWithChannel,
 } from '@/hooks/use-login-request';
-import { rsaPsw } from '@/utils';
+import { isLicenseError, rsaPsw } from '@/utils';
 
 import {
   Select,
@@ -81,7 +81,7 @@ function LdapLogin({ onLicenseError }: LdapLoginProps) {
         });
 
         // @ts-ignore - response may contain code
-        if (res?.code === 109) {
+        if (isLicenseError(res?.code, res?.message)) {
           onLicenseError?.(true);
         } else {
           onLicenseError?.(false);

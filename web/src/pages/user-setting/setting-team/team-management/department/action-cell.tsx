@@ -10,7 +10,7 @@ import {
 } from '@/hooks/use-team';
 import { IDepartment, IMember } from '@/interfaces/database/team';
 import { CellContext } from '@tanstack/react-table';
-import { ArrowLeftRight, Layers, Trash2, UserPen } from 'lucide-react';
+import { ArrowLeftRight, Trash2, UserPen } from 'lucide-react';
 import { useCallback, useContext } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PermissionManagementDialogContext } from '../permission-management-dialog';
@@ -97,14 +97,14 @@ export function ActionCell({
       <section className="flex gap-2 items-center opacity-0 group-hover:opacity-100 transition-opacity">
         {isDepartment && (
           <>
-            <Button
+            {/* <Button
               variant="ghost"
               size="icon"
               onClick={handleShowPermissionModal}
               title={t('permission.permissionManagement')}
             >
               <Layers className="w-4 h-4" />
-            </Button>
+            </Button> */}
             <Button
               variant="ghost"
               size="icon"

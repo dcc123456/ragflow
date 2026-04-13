@@ -17,16 +17,29 @@ import { showStarModal } from './star-util';
 
 const FAILED_TO_FETCH = 'Failed to fetch';
 
+type SilentRule = number | { code: number; messageContains?: string };
+
 /** Error codes to be silenced per API endpoint */
-const SilentErrors: Record<string, number[]> = {
-  [api.login]: [109], // Login endpoint: 109 = token expired, handle silently
+const SilentErrors: Record<string, SilentRule[]> = {
+  [api.login]: [{ code: 109, messageContains: 'license' }], // Login endpoint: 109 = token expired, handle silently
 };
 
-const shouldSilent = (url: string, code: number): boolean => {
+const shouldSilent = (url: string, code: number, message?: string): boolean => {
   const matchedKey = Object.keys(SilentErrors).find((path) =>
     url?.includes(path),
   );
-  return matchedKey ? SilentErrors[matchedKey].includes(code) : false;
+  if (!matchedKey) return false;
+  return SilentErrors[matchedKey].some((rule) => {
+    if (typeof rule === 'number') {
+      return rule === code;
+    }
+    const codeMatch = rule.code === code;
+    const messageMatch = rule.messageContains
+      ? (message?.toLowerCase().includes(rule.messageContains.toLowerCase()) ??
+        false)
+      : true;
+    return codeMatch && messageMatch;
+  });
 };
 
 export const RetcodeMessage = {
@@ -191,7 +204,10 @@ request.interceptors.response.use(async (response: any, options: any) => {
     ) {
       showPriceModal(data as any);
     } else {
-      if (!options.noToast && !shouldSilent(options.url, data?.code)) {
+      if (
+        !options.noToast &&
+        !shouldSilent(options.url, data?.code, data?.message)
+      ) {
         notification.error({
           message: `${i18n.t('message.hint')} : ${data?.code}`,
           description: data?.message,

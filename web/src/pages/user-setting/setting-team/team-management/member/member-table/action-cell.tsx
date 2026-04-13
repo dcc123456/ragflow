@@ -7,7 +7,7 @@ import { TeamRole } from '@/constants/team';
 import { useDeleteTenantUser } from '@/hooks/use-user-setting-request';
 import { ITenantUser } from '@/interfaces/database/user-setting';
 import { CellContext } from '@tanstack/react-table';
-import { Layers, Trash2 } from 'lucide-react';
+import { Trash2 } from 'lucide-react';
 import { useCallback, useContext } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PermissionManagementDialogContext } from '../../permission-management-dialog';
@@ -40,14 +40,14 @@ export function ActionCell({ row }: IProps) {
   return (
     isMyCreatedTeam && (
       <section className="flex gap-2 items-center opacity-0 group-hover:opacity-100 transition-opacity">
-        <Button
+        {/* <Button
           variant="ghost"
           size="icon"
           onClick={handleShowPermissionModal}
           title="Manage permissions"
         >
           <Layers className="w-4 h-4" />
-        </Button>
+        </Button> */}
         <ConfirmDeleteDialog
           onOk={handleOk}
           title={t('deleteModal.delMember')}

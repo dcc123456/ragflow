@@ -28,3 +28,6 @@ export default {
 
 export const getFileExtension = (filename: string) =>
   filename.slice(filename.lastIndexOf('.') + 1).toLowerCase();
+
+export const isLicenseError = (code?: number, message?: string): boolean =>
+  code === 109 && !!message?.toLowerCase().includes('license');
