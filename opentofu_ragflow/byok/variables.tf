@@ -370,7 +370,7 @@ variable "rabbitmq_memory_limit" {
 variable "ragflow_image" {
   description = "RAGFlow container image (including tag, will be prefixed with private_registry)"
   type        = string
-  default     = "ragflow:v0.24.0-3-mt"
+  default     = "ragflow:v0.24.0-4-mt"
 }
 
 variable "ragflow_replicas" {
