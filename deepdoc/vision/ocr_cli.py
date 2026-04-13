@@ -15,6 +15,27 @@ class OCRClient:
         self.session = requests.Session()
 
 
+    @classmethod
+    def _extract_detect_boxes(cls, output):
+        if not isinstance(output, (list, tuple)) or not output:
+            return []
+
+        # LitServe may wrap OCR detection payloads with one extra batch level:
+        # [[[box1, box2, ...]]] instead of [[box1, box2, ...]].
+        # Traverse nested containers and keep only valid quadrilateral boxes.
+        boxes = []
+        stack = [output[0]]
+        while stack:
+            item = stack.pop()
+            box = cls._normalize_box(item)
+            if box:
+                boxes.append(box)
+                continue
+            if isinstance(item, (list, tuple)):
+                for child in reversed(item):
+                    stack.append(child)
+        return boxes
+
     @timeout(2)
     def detect(self, arr: np.ndarray, **kwargs):
         img = Image.fromarray(arr, 'RGB')

@@ -519,15 +519,29 @@ class RAGFlowPdfParser:
                     # it["pn"] = i
                     # merge from OSS 2026-03-09
 
-                    # TSR coordinates are relative to rotated image, need to record
-                    it["x0_rotated"] = it["x0"]
-                    it["x1_rotated"] = it["x1"]
-                    it["top_rotated"] = it["top"]
-                    it["bottom_rotated"] = it["bottom"]
+                    # Keep TSR-local coordinates for cell OCR fallback and rotated debug.
+                    local_x0 = it["x0"]
+                    local_x1 = it["x1"]
+                    local_top = it["top"]
+                    local_bottom = it["bottom"]
+                    it["_x0"] = local_x0
+                    it["_x1"] = local_x1
+                    it["_top"] = local_top
+                    it["_bottom"] = local_bottom
+                    it["x0_rotated"] = local_x0
+                    it["x1_rotated"] = local_x1
+                    it["top_rotated"] = local_top
+                    it["bottom_rotated"] = local_bottom
 
-                    # For rotated tables, coordinate transformation to page space requires rotation
-                    # Since we already re-OCR'd on rotated image, keep simple processing here
-                    it["pn"] = poss[j][2]  # page number
+                    # Restore page-global coordinates for overlap matching with OCR/layout boxes.
+                    page_idx = poss[j][2]
+                    left_px, top_px = poss[j][0], poss[j][1]
+                    it["x0"] = (local_x0 + left_px) / ZM
+                    it["x1"] = (local_x1 + left_px) / ZM
+                    it["top"] = (local_top + top_px) / ZM + self.page_cum_height[page_idx]
+                    it["bottom"] = (local_bottom + top_px) / ZM + self.page_cum_height[page_idx]
+                    it["pn"] = page_idx  # page number
+                    it["text"] = it.get("text", "")
                     it["layoutno"] = j
                     it["table_index"] = poss[j][3]  # table index
                     pg.append(it)
