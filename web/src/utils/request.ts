@@ -13,7 +13,6 @@ import api from './api';
 import { convertTheKeysOfTheObjectToSnake } from './common-util';
 import { setCachedLlmList } from './llm-cache';
 import { addTenantParams } from './llm-util';
-import { showStarModal } from './star-util';
 
 const FAILED_TO_FETCH = 'Failed to fetch';
 
@@ -115,7 +114,7 @@ request.interceptors.request.use((url: string, options: any) => {
   const data = convertTheKeysOfTheObjectToSnake(options.data);
   const params = convertTheKeysOfTheObjectToSnake(options.params);
 
-  showStarModal(url, request);
+  // showStarModal(url, request);
   // Add tenant parameters to data
   const dataWithTenantParams = addTenantParams(data, url);
 

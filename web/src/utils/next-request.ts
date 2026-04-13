@@ -11,7 +11,6 @@ import axios from 'axios';
 import { convertTheKeysOfTheObjectToSnake } from './common-util';
 import { setCachedLlmList } from './llm-cache';
 import { addTenantParams } from './llm-util';
-import { showStarDialog } from './star-util';
 
 const FAILED_TO_FETCH = 'Failed to fetch';
 
@@ -88,7 +87,7 @@ request.interceptors.request.use(
   (config) => {
     const data = convertTheKeysOfTheObjectToSnake(config.data);
     const params = convertTheKeysOfTheObjectToSnake(config.params);
-    showStarDialog(request, config.url);
+    // showStarDialog(request, config.url);
 
     // Add tenant parameters to data
     const dataWithTenantParams = addTenantParams(data, config.url);
