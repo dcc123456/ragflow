@@ -265,7 +265,7 @@ def check_dialog_permission(permission):
             else:  # GET、DELETE
                 req_data = request.args or {}
 
-            dialog_id = req_data.get("dialog_id") or kwargs.get("dialog_id")
+            dialog_id = req_data.get("chat_id") or kwargs.get("chat_id") or req_data.get("dialog_id") or kwargs.get("dialog_id")
 
             g.req_data = req_data
             g.dialog_id = dialog_id

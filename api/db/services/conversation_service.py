@@ -50,8 +50,10 @@ class ConversationService(CommonService):
         return list(sessions.dicts())
 
     @classmethod
-    @DB.connection_context()
     def remove_by(cls, dialog_id):
+        """
+        ! Use this method under DB.atomic() context
+        """
         for id in [m.id for m in cls.model.query(dialog_id=dialog_id)]:
             cls.model.delete_by_id(id)
 

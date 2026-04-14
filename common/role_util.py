@@ -119,6 +119,21 @@ DIALOG_API_ACTION_MAP = {
     "list_dialogs": ActionEnum.ENABLE,
     "list_dialogs_next": ActionEnum.ENABLE,
     "rm": ActionEnum.WRITE,
+    "create": ActionEnum.WRITE,
+    "list_chats": ActionEnum.ENABLE,
+    "get_chat": ActionEnum.READ,
+    "update_chat": ActionEnum.WRITE,
+    "patch_chat": ActionEnum.WRITE,
+    "delete_chat": ActionEnum.WRITE,
+    "bulk_delete_chats": ActionEnum.WRITE,
+    "create_session": ActionEnum.READ,
+    "list_sessions": ActionEnum.READ,
+    "get_session": ActionEnum.READ,
+    "update_session": ActionEnum.READ,
+    "delete_sessions": ActionEnum.READ,
+    "delete_session_message": ActionEnum.READ,
+    "update_message_feedback": ActionEnum.READ,
+    "session_completion": ActionEnum.READ,
 }
 
 CANVAS_ROLE_RESOURCE_TYPE = ResourceTypeEnum.AGENT.value

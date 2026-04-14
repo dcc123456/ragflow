@@ -21,9 +21,11 @@ import re
 import tempfile
 from copy import deepcopy
 
-from quart import Response, request
+from quart import Response, request, g
 
 from api.apps import current_user, login_required
+from api.db import PermissionActionType, PermissionTargetType, PermissionValue, ResourceType
+from api.db.db_models import DB
 from api.db.joint_services.tenant_model_service import (
     get_model_config_by_type_and_name,
     get_tenant_default_model_by_type,
@@ -33,6 +35,7 @@ from api.db.services.conversation_service import ConversationService, structure_
 from api.db.services.dialog_service import DialogService, async_ask, async_chat, gen_mindmap
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.llm_service import LLMBundle
+from api.db.services.permission_service import PermissionChangeLogService, PermissionService
 from api.db.services.search_service import SearchService
 from api.db.services.tenant_llm_service import TenantLLMService
 from api.db.services.user_service import TenantService, UserTenantService
@@ -44,11 +47,16 @@ from api.utils.api_utils import (
     server_error_response,
     validate_request,
 )
+from api.utils.billing import check_resources
+from api.utils.permission_utils import check_dialog_permission, has_permission_for_member
 from api.utils.tenant_utils import ensure_tenant_model_id_for_params
 from common.constants import LLMType, RetCode, StatusEnum
 from common.misc_utils import get_uuid
+from common.role_util import DIALOG_API_ACTION_MAP, DIALOG_ROLE_RESOURCE_TYPE, check_role_access
 from rag.prompts.generator import chunks_format
 from rag.prompts.template import load_prompt
+
+dialog_role_guard = check_role_access(DIALOG_API_ACTION_MAP, DIALOG_ROLE_RESOURCE_TYPE)
 
 _DEFAULT_PROMPT_CONFIG = {
     "system": (
@@ -118,9 +126,44 @@ def _build_session_response(conv: dict) -> dict:
     return conv
 
 
-def _ensure_owned_chat(chat_id):
-    return DialogService.query(
-        tenant_id=current_user.id, id=chat_id, status=StatusEnum.VALID.value
+def _get_chat_operation_tenant_id(chat):
+    if isinstance(chat, dict):
+        tenant_id = chat.get("tenant_id")
+    else:
+        tenant_id = getattr(chat, "tenant_id", None)
+    return tenant_id or getattr(g, "tenant_id", None) or current_user.id
+
+
+def _ensure_session_owned_by_current_user(conv):
+    session_id = conv.get("id") if isinstance(conv, dict) else getattr(conv, "id", None)
+    chat_id = conv.get("dialog_id") if isinstance(conv, dict) else getattr(conv, "dialog_id", None)
+    conv_user_id = conv.get("user_id") if isinstance(conv, dict) else getattr(conv, "user_id", None)
+    if isinstance(conv_user_id, str) and not conv_user_id.strip():
+        conv_user_id = None
+
+    if conv_user_id is None:
+        logging.info(
+            f"Allowing legacy chat session access without strict ownership enforcement for backward compatibility: "
+            f"session_id={session_id} chat_id={chat_id} current_user_id={current_user.id}"
+        )
+        return True
+
+    if conv_user_id != current_user.id:
+        logging.warning(
+            f"Rejecting chat session access because the session is owned by another user: "
+            f"session_id={session_id} chat_id={chat_id} session_user_id={conv_user_id} "
+            f"current_user_id={current_user.id}"
+        )
+        return False
+
+    return True
+
+
+def _session_owner_error():
+    return get_json_result(
+        data=False,
+        message="Only owner of session authorized for this operation.",
+        code=RetCode.OPERATING_ERROR,
     )
 
 
@@ -128,13 +171,13 @@ def _validate_llm_id(llm_id, tenant_id, llm_setting=None):
     if not llm_id:
         return None
 
-    llm_name, llm_factory = TenantLLMService.split_model_name_and_factory(llm_id)
+    llm_name, llm_factory, llm_tenant_id = TenantLLMService.split_model_name_and_factory(llm_id)
     model_type = (llm_setting or {}).get("model_type")
     if model_type not in {"chat", "image2text"}:
         model_type = "chat"
 
     if not TenantLLMService.query(
-        tenant_id=tenant_id,
+        tenant_id=llm_tenant_id,
         llm_name=llm_name,
         llm_factory=llm_factory,
         model_type=model_type,
@@ -146,11 +189,11 @@ def _validate_llm_id(llm_id, tenant_id, llm_setting=None):
 def _validate_rerank_id(rerank_id, tenant_id):
     if not rerank_id:
         return None
-    llm_name, llm_factory = TenantLLMService.split_model_name_and_factory(rerank_id)
+    llm_name, llm_factory, llm_tenant_id = TenantLLMService.split_model_name_and_factory(rerank_id)
     if llm_name in _DEFAULT_RERANK_MODELS:
         return None
     if TenantLLMService.query(
-        tenant_id=tenant_id,
+        tenant_id=llm_tenant_id,
         llm_name=llm_name,
         llm_factory=llm_factory,
         model_type="rerank",
@@ -207,9 +250,12 @@ def _apply_prompt_defaults(req):
 
 @manager.route("/chats", methods=["POST"])  # noqa: F821
 @login_required
+@dialog_role_guard
+@check_dialog_permission(PermissionValue.PERMISSION_MANAGE)
+@check_resources(apps=1)
 async def create():
     try:
-        req = await get_request_json()
+        req = g.req_data
         ok, tenant = TenantService.get_by_id(current_user.id)
         if not ok:
             return get_data_error_result(message="Tenant not found!")
@@ -270,6 +316,9 @@ async def create():
         for field in _READONLY_FIELDS:
             req.pop(field, None)
 
+        if "operator_permission" in req:
+            req.pop("operator_permission", None)
+
         if DialogService.query(
             name=req["name"],
             tenant_id=current_user.id,
@@ -278,9 +327,31 @@ async def create():
             return get_data_error_result(message="Duplicated chat name in creating chat.")
 
         req["id"] = get_uuid()
-        req["tenant_id"] = current_user.id
-        if not DialogService.save(**req):
-            return get_data_error_result(message="Failed to create chat.")
+        tenant_id = current_user.id
+        req["tenant_id"] = tenant_id
+        operator = UserTenantService.filter_by_tenant_and_user_id(tenant_id, tenant_id)
+        operator_id = operator.id
+
+        with DB.atomic():
+            if not DialogService.save(**req):
+                return get_data_error_result(message="Fail to new a dialog!")
+            if not PermissionService.save(
+                id=get_uuid(), member_id=operator_id, tenant_id=tenant_id, resource_type=ResourceType.DIALOG, resource_id=req["id"], permission=PermissionValue.PERMISSION_OWNER.value
+            ):
+                raise ValueError("Permission creation failed")
+            if not PermissionChangeLogService.save(
+                id=get_uuid(),
+                tenant_id=tenant_id,
+                operator_id=operator_id,
+                target_type=PermissionTargetType.TARGET_MEMBER,
+                target_id=operator_id,
+                resource_type=ResourceType.DIALOG,
+                resource_id=req["id"],
+                old_permission=PermissionValue.PERMISSION_NULL.value,
+                new_permission=PermissionValue.PERMISSION_OWNER.value,
+                action_type=PermissionActionType.ACTION_ADD,
+            ):
+                raise ValueError("Permission change log creation failed")
 
         ok, chat = DialogService.get_by_id(req["id"])
         if not ok:
@@ -289,9 +360,84 @@ async def create():
     except Exception as ex:
         return server_error_response(ex)
 
+def get_kb_names(kb_ids):
+    ids, nms = [], []
+    for kid in kb_ids:
+        e, kb = KnowledgebaseService.get_by_id(kid)
+        if not e or kb.status != StatusEnum.VALID.value:
+            continue
+        ids.append(kid)
+        nms.append(kb.name)
+    return ids, nms
+
+
+def _get_user_tenants_for_chat_access():
+    user_tenants = list(UserTenantService.query(user_id=current_user.id) or [])
+    if current_user.id not in {tenant.tenant_id for tenant in user_tenants}:
+        owner_tenant = UserTenantService.filter_by_tenant_and_user_id(
+            tenant_id=current_user.id,
+            user_id=current_user.id,
+        )
+        if owner_tenant:
+            user_tenants.append(owner_tenant)
+    return user_tenants
+
+
+def _get_owned_chat_scope(chat_id):
+    for user_tenant in _get_user_tenants_for_chat_access():
+        chats = DialogService.query(
+            tenant_id=user_tenant.tenant_id,
+            id=chat_id,
+            status=StatusEnum.VALID.value,
+        )
+        if not chats:
+            continue
+
+        if user_tenant.tenant_id == current_user.id:
+            return chats[0], user_tenant
+
+        permission = has_permission_for_member(
+            operator_id=user_tenant.id,
+            tenant_id=user_tenant.tenant_id,
+            resource_id=chat_id,
+            resource_type=ResourceType.DIALOG,
+            permission=PermissionValue.PERMISSION_OWNER,
+        )
+        if permission[0]:
+            return chats[0], user_tenant
+
+    return None, None
+
+
+def _list_owned_chat_ids():
+    owned_chat_ids = []
+
+    for user_tenant in _get_user_tenants_for_chat_access():
+        chats = DialogService.query(
+            tenant_id=user_tenant.tenant_id,
+            status=StatusEnum.VALID.value,
+        )
+        for chat in chats:
+            chat_id = getattr(chat, "id", None) or chat.get("id")
+            if user_tenant.tenant_id == current_user.id:
+                owned_chat_ids.append(chat_id)
+                continue
+
+            permission = has_permission_for_member(
+                operator_id=user_tenant.id,
+                tenant_id=user_tenant.tenant_id,
+                resource_id=chat_id,
+                resource_type=ResourceType.DIALOG,
+                permission=PermissionValue.PERMISSION_OWNER,
+            )
+            if permission[0]:
+                owned_chat_ids.append(chat_id)
+
+    return list(dict.fromkeys(owned_chat_ids))
 
 @manager.route("/chats", methods=["GET"])  # noqa: F821
 @login_required
+@dialog_role_guard
 def list_chats():
     chat_id = request.args.get("id")
     name = request.args.get("name")
@@ -308,18 +454,23 @@ def list_chats():
         items_per_page = int(request.args.get("page_size", 0))
 
         if owner_ids:
-            chats, total = DialogService.get_by_tenant_ids(
-                owner_ids, current_user.id, 0, 0, orderby, desc, keywords, **exact_filters
-            )
-            chats = [chat for chat in chats if chat["tenant_id"] in owner_ids]
-            total = len(chats)
-            if page_number and items_per_page:
-                start = (page_number - 1) * items_per_page
-                chats = chats[start : start + items_per_page]
+            tenants = owner_ids
         else:
-            chats, total = DialogService.get_by_tenant_ids(
-                [], current_user.id, page_number, items_per_page, orderby, desc, keywords, **exact_filters
-            )
+            tenants = TenantService.get_joined_tenants_by_user_id(current_user.id)
+            tenants = list({tenant["tenant_id"] for tenant in tenants} | {current_user.id})
+        chats, total = DialogService.get_by_tenant_ids(
+            tenants,
+            current_user.id,
+            page_number,
+            items_per_page,
+            orderby,
+            desc,
+            keywords,
+            **exact_filters,
+        )
+
+        for chat in chats:
+            chat["kb_ids"], chat["kb_names"] = get_kb_names(chat["kb_ids"])
 
         return get_json_result(
             data={"chats": [_build_chat_response(chat) for chat in chats], "total": total}
@@ -330,6 +481,8 @@ def list_chats():
 
 @manager.route("/chats/<chat_id>", methods=["GET"])  # noqa: F821
 @login_required
+@dialog_role_guard
+@check_dialog_permission(PermissionValue.PERMISSION_READ)
 def get_chat(chat_id):
     try:
         tenants = UserTenantService.query(user_id=current_user.id)
@@ -348,6 +501,8 @@ def get_chat(chat_id):
         ok, chat = DialogService.get_by_id(chat_id)
         if not ok:
             return get_data_error_result(message="Chat not found!")
+        chat = chat.to_dict() if hasattr(chat, "to_dict") else dict(chat)
+        chat["operator_permission"] = g.operator_permission
         return get_json_result(data=_build_chat_response(chat))
     except Exception as ex:
         return server_error_response(ex)
@@ -355,14 +510,11 @@ def get_chat(chat_id):
 
 @manager.route("/chats/<chat_id>", methods=["PUT"])  # noqa: F821
 @login_required
+@dialog_role_guard
+@check_dialog_permission(PermissionValue.PERMISSION_MANAGE)
 async def update_chat(chat_id):
-    if not _ensure_owned_chat(chat_id):
-        return get_json_result(
-            data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR
-        )
-
     try:
-        req = await get_request_json()
+        req = g.req_data
         ok, tenant = TenantService.get_by_id(current_user.id)
         if not ok:
             return get_data_error_result(message="Tenant not found!")
@@ -371,6 +523,7 @@ async def update_chat(chat_id):
         if not ok:
             return get_data_error_result(message="Chat not found!")
         current_chat = current_chat.to_dict()
+        operation_tenant_id = _get_chat_operation_tenant_id(current_chat)
 
         if req.get("tenant_id"):
             return get_data_error_result(message="`tenant_id` must not be provided.")
@@ -412,7 +565,7 @@ async def update_chat(chat_id):
         # if not kb_ids and not prompt_config.get("tavily_api_key") and _has_knowledge_placeholder(prompt_config):
         #     return get_data_error_result(message="Please remove `{knowledge}` in system prompt since no dataset / Tavily used here.")
 
-        req = ensure_tenant_model_id_for_params(current_user.id, req)
+        req = ensure_tenant_model_id_for_params(operation_tenant_id, req)
         req = {field: value for field, value in req.items() if field in _PERSISTED_FIELDS}
         for field in _READONLY_FIELDS:
             req.pop(field, None)
@@ -422,7 +575,7 @@ async def update_chat(chat_id):
             and req["name"].lower() != current_chat["name"].lower()
             and DialogService.query(
                 name=req["name"],
-                tenant_id=current_user.id,
+                tenant_id=operation_tenant_id,
                 status=StatusEnum.VALID.value,
             )
         ):
@@ -441,14 +594,11 @@ async def update_chat(chat_id):
 
 @manager.route("/chats/<chat_id>", methods=["PATCH"])  # noqa: F821
 @login_required
+@dialog_role_guard
+@check_dialog_permission(PermissionValue.PERMISSION_MANAGE)
 async def patch_chat(chat_id):
-    if not _ensure_owned_chat(chat_id):
-        return get_json_result(
-            data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR
-        )
-
     try:
-        req = await get_request_json()
+        req = g.req_data
         ok, tenant = TenantService.get_by_id(current_user.id)
         if not ok:
             return get_data_error_result(message="Tenant not found!")
@@ -457,6 +607,7 @@ async def patch_chat(chat_id):
         if not ok:
             return get_data_error_result(message="Chat not found!")
         current_chat = current_chat.to_dict()
+        operation_tenant_id = _get_chat_operation_tenant_id(current_chat)
 
         if req.get("tenant_id"):
             return get_data_error_result(message="`tenant_id` must not be provided.")
@@ -506,7 +657,7 @@ async def patch_chat(chat_id):
         #     if not kb_ids and not prompt_config.get("tavily_api_key") and _has_knowledge_placeholder(prompt_config):
         #         return get_data_error_result(message="Please remove `{knowledge}` in system prompt since no dataset / Tavily used here.")
 
-        req = ensure_tenant_model_id_for_params(current_user.id, req)
+        req = ensure_tenant_model_id_for_params(operation_tenant_id, req)
         req = {field: value for field, value in req.items() if field in _PERSISTED_FIELDS}
         for field in _READONLY_FIELDS:
             req.pop(field, None)
@@ -516,7 +667,7 @@ async def patch_chat(chat_id):
             and req["name"].lower() != current_chat["name"].lower()
             and DialogService.query(
                 name=req["name"],
-                tenant_id=current_user.id,
+                tenant_id=operation_tenant_id,
                 status=StatusEnum.VALID.value,
             )
         ):
@@ -535,15 +686,43 @@ async def patch_chat(chat_id):
 
 @manager.route("/chats/<chat_id>", methods=["DELETE"])  # noqa: F821
 @login_required
+@dialog_role_guard
+@check_dialog_permission(permission=PermissionValue.PERMISSION_OWNER)
 def delete_chat(chat_id):
-    if not _ensure_owned_chat(chat_id):
-        return get_json_result(
-            data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR
-        )
+    tenant_id = g.tenant_id
+    chat = DialogService.query(
+        tenant_id=tenant_id,
+        id=chat_id,
+        status=StatusEnum.VALID.value,
+    )
+    if not chat:
+        return get_json_result(data={})
 
     try:
-        if not DialogService.update_by_id(chat_id, {"status": StatusEnum.INVALID.value}):
-            return get_data_error_result(message=f"Failed to delete chat {chat_id}")
+        with DB.atomic():
+            if not DialogService.update_by_id(chat_id, {"status": StatusEnum.INVALID.value}):
+                raise RuntimeError(f"Failed to delete chat {chat_id}")
+            ConversationService.remove_by(chat_id)
+
+            operator = UserTenantService.filter_by_tenant_and_user_id(tenant_id=tenant_id, user_id=current_user.id)
+            if not operator:
+                raise RuntimeError("Cannot specify operator")
+
+            permission_model_list = PermissionService.get_permissions_by_tenant_and_resource_id(tenant_id=tenant_id, resource_id=chat_id, resource_type=ResourceType.DIALOG)
+            PermissionService.delete(permission_model_list)
+            if not PermissionChangeLogService.save(
+                id=get_uuid(),
+                tenant_id=operator.tenant_id,
+                operator_id=operator.id,
+                target_type=PermissionTargetType.TARGET_MEMBER,
+                target_id=operator.id,
+                resource_type=ResourceType.DIALOG,
+                resource_id=chat_id,
+                old_permission=PermissionValue.PERMISSION_OWNER.value,
+                new_permission=PermissionValue.PERMISSION_NULL.value,
+                action_type=PermissionActionType.ACTION_DELETE,
+            ):
+                raise ValueError("Permission change log creation failed")
         return get_json_result(data=True)
     except Exception as ex:
         return server_error_response(ex)
@@ -551,6 +730,7 @@ def delete_chat(chat_id):
 
 @manager.route("/chats", methods=["DELETE"])  # noqa: F821
 @login_required
+@dialog_role_guard
 async def bulk_delete_chats():
     req = await get_request_json()
     if not req:
@@ -559,12 +739,7 @@ async def bulk_delete_chats():
     ids = req.get("ids")
     if not ids:
         if req.get("delete_all") is True:
-            ids = [
-                chat.id
-                for chat in DialogService.query(
-                    tenant_id=current_user.id, status=StatusEnum.VALID.value
-                )
-            ]
+            ids = _list_owned_chat_ids()
             if not ids:
                 return get_json_result(data={})
         else:
@@ -573,32 +748,70 @@ async def bulk_delete_chats():
     errors = []
     success_count = 0
     unique_ids, duplicate_messages = check_duplicate_ids(ids, "chat")
+    errors.extend(duplicate_messages)
 
     for chat_id in unique_ids:
-        if not _ensure_owned_chat(chat_id):
+        chat, operator = _get_owned_chat_scope(chat_id)
+        if not chat or not operator:
             errors.append(f"Chat({chat_id}) not found.")
             continue
-        success_count += DialogService.update_by_id(chat_id, {"status": StatusEnum.INVALID.value})
 
-    all_errors = errors + duplicate_messages
-    if all_errors:
+        try:
+            with DB.atomic():
+                if not DialogService.update_by_id(
+                    chat_id,
+                    {"status": StatusEnum.INVALID.value},
+                ):
+                    raise RuntimeError(f"Failed to delete chat {chat_id}")
+
+                ConversationService.remove_by(chat_id)
+
+                permission_model_list = (
+                    PermissionService.get_permissions_by_tenant_and_resource_id(
+                        tenant_id=chat.tenant_id,
+                        resource_id=chat_id,
+                        resource_type=ResourceType.DIALOG,
+                    )
+                )
+                PermissionService.delete(permission_model_list)
+
+                if not PermissionChangeLogService.save(
+                    id=get_uuid(),
+                    tenant_id=operator.tenant_id,
+                    operator_id=operator.id,
+                    target_type=PermissionTargetType.TARGET_MEMBER,
+                    target_id=operator.id,
+                    resource_type=ResourceType.DIALOG,
+                    resource_id=chat_id,
+                    old_permission=PermissionValue.PERMISSION_OWNER.value,
+                    new_permission=PermissionValue.PERMISSION_NULL.value,
+                    action_type=PermissionActionType.ACTION_DELETE,
+                ):
+                    raise ValueError("Permission change log creation failed")
+
+            success_count += 1
+
+        except Exception as ex:
+            errors.append(f"Chat({chat_id}) delete failed: {ex}")
+
+    if errors:
         if success_count > 0:
             return get_json_result(
-                data={"success_count": success_count, "errors": all_errors},
-                message=f"Partially deleted {success_count} chats with {len(all_errors)} errors",
+                data={"success_count": success_count, "errors": errors},
+                message=f"Partially deleted {success_count} chats with {len(errors)} errors",
             )
-        return get_data_error_result(message="; ".join(all_errors))
+        return get_data_error_result(message="; ".join(errors))
 
     return get_json_result(data={"success_count": success_count})
 
 
 @manager.route("/chats/<chat_id>/sessions", methods=["POST"])  # noqa: F821
 @login_required
+@dialog_role_guard
+@check_dialog_permission(PermissionValue.PERMISSION_READ)
 async def create_session(chat_id):
-    if not _ensure_owned_chat(chat_id):
-        return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
     try:
-        req = await get_request_json()
+        req = g.req_data
         ok, dia = DialogService.get_by_id(chat_id)
         if not ok:
             return get_data_error_result(message="Chat not found!")
@@ -611,7 +824,7 @@ async def create_session(chat_id):
             "dialog_id": chat_id,
             "name": name,
             "message": [{"role": "assistant", "content": dia.prompt_config.get("prologue", "")}],
-            "user_id": req.get("user_id", current_user.id),
+            "user_id": current_user.id,
             "reference": [],
         }
         ConversationService.save(**conv)
@@ -625,14 +838,16 @@ async def create_session(chat_id):
 
 @manager.route("/chats/<chat_id>/sessions", methods=["GET"])  # noqa: F821
 @login_required
+@dialog_role_guard
+@check_dialog_permission(PermissionValue.PERMISSION_READ)
 def list_sessions(chat_id):
+    tenant_id = g.tenant_id
+
     try:
-        if not _ensure_owned_chat(chat_id):
-            return get_json_result(
-                data=False,
-                message="No authorization.",
-                code=RetCode.AUTHENTICATION_ERROR,
-            )
+        if not UserTenantService.filter_by_tenant_and_user_id(tenant_id, current_user.id):
+            return get_data_error_result(message="No authorized.", code=RetCode.OPERATING_ERROR)
+        if not DialogService.query(tenant_id=tenant_id, id=chat_id):
+            return get_json_result(data=False, message="No authorized.", code=RetCode.OPERATING_ERROR)
         page_number = int(request.args.get("page", 1))
         items_per_page = int(request.args.get("page_size", 30))
         orderby = request.args.get("orderby", "create_time")
@@ -645,6 +860,15 @@ def list_sessions(chat_id):
         )
         if items_per_page == 0:
             convs = []
+        normalized_convs = []
+        for conv in convs:
+            conv_user_id = conv.get("user_id") if isinstance(conv, dict) else getattr(conv, "user_id", None)
+            if isinstance(conv_user_id, str) and not conv_user_id.strip():
+                conv_user_id = None
+            if conv_user_id not in {None, current_user.id}:
+                continue
+            normalized_convs.append(conv.to_dict() if hasattr(conv, "to_dict") else dict(conv))
+        convs = normalized_convs
         return get_json_result(data=[_build_session_response(c) for c in convs])
     except Exception as ex:
         return server_error_response(ex)
@@ -652,17 +876,19 @@ def list_sessions(chat_id):
 
 @manager.route("/chats/<chat_id>/sessions/<session_id>", methods=["GET"])  # noqa: F821
 @login_required
+@dialog_role_guard
+@check_dialog_permission(PermissionValue.PERMISSION_READ)
 async def get_session(chat_id, session_id):
-    if not _ensure_owned_chat(chat_id):
-        return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
     try:
         ok, conv = ConversationService.get_by_id(session_id)
         if not ok:
             return get_data_error_result(message="Session not found!")
         if conv.dialog_id != chat_id:
             return get_data_error_result(message="Session does not belong to this chat!")
-        dialog = _ensure_owned_chat(chat_id)
-        avatar = dialog[0].icon if dialog else ""
+        if not _ensure_session_owned_by_current_user(conv):
+            return _session_owner_error()
+        dialog_rows = DialogService.query(tenant_id=g.tenant_id, id=chat_id, status=StatusEnum.VALID.value)
+        avatar = dialog_rows[0].icon if dialog_rows else ""
         for ref in conv.reference:
             if isinstance(ref, list):
                 continue
@@ -676,13 +902,16 @@ async def get_session(chat_id, session_id):
 
 @manager.route("/chats/<chat_id>/sessions/<session_id>", methods=["PUT"])  # noqa: F821
 @login_required
+@dialog_role_guard
+@check_dialog_permission(PermissionValue.PERMISSION_READ)
 async def update_session(chat_id, session_id):
-    if not _ensure_owned_chat(chat_id):
-        return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
     try:
-        req = await get_request_json()
-        if not ConversationService.query(id=session_id, dialog_id=chat_id):
+        req = dict(g.req_data or {})
+        ok, conv = ConversationService.get_by_id(session_id)
+        if not ok or conv.dialog_id != chat_id:
             return get_data_error_result(message="Session not found!")
+        if not _ensure_session_owned_by_current_user(conv):
+            return _session_owner_error()
         if "message" in req or "messages" in req:
             return get_data_error_result(message="`messages` cannot be changed.")
         if "reference" in req:
@@ -705,9 +934,9 @@ async def update_session(chat_id, session_id):
 
 @manager.route("/chats/<chat_id>/sessions", methods=["DELETE"])  # noqa: F821
 @login_required
+@dialog_role_guard
+@check_dialog_permission(PermissionValue.PERMISSION_READ)
 async def delete_sessions(chat_id):
-    if not _ensure_owned_chat(chat_id):
-        return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
     try:
         req = await get_request_json()
         if not req:
@@ -716,7 +945,10 @@ async def delete_sessions(chat_id):
         session_ids = req.get("ids")
         if not session_ids:
             if req.get("delete_all") is True:
-                session_ids = [conv.id for conv in ConversationService.query(dialog_id=chat_id)]
+                session_ids = []
+                for conv in ConversationService.query(dialog_id=chat_id):
+                    if _ensure_session_owned_by_current_user(conv):
+                        session_ids.append(conv.id)
                 if not session_ids:
                     return get_json_result(data={})
             else:
@@ -725,8 +957,12 @@ async def delete_sessions(chat_id):
         errors = []
         success_count = 0
         for sid in unique_ids:
-            if not ConversationService.query(id=sid, dialog_id=chat_id):
+            ok, conv = ConversationService.get_by_id(sid)
+            if not ok or conv.dialog_id != chat_id:
                 errors.append(f"The chat doesn't own the session {sid}")
+                continue
+            if not _ensure_session_owned_by_current_user(conv):
+                errors.append(f"Only owner of session can delete {sid}")
                 continue
             ConversationService.delete_by_id(sid)
             success_count += 1
@@ -745,13 +981,15 @@ async def delete_sessions(chat_id):
 
 @manager.route("/chats/<chat_id>/sessions/<session_id>/messages/<msg_id>", methods=["DELETE"])  # noqa: F821
 @login_required
+@dialog_role_guard
+@check_dialog_permission(PermissionValue.PERMISSION_READ)
 async def delete_session_message(chat_id, session_id, msg_id):
-    if not _ensure_owned_chat(chat_id):
-        return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
     try:
         ok, conv = ConversationService.get_by_id(session_id)
         if not ok or conv.dialog_id != chat_id:
             return get_data_error_result(message="Session not found!")
+        if not _ensure_session_owned_by_current_user(conv):
+            return _session_owner_error()
         conv = conv.to_dict()
         for i, msg in enumerate(conv["message"]):
             if msg_id != msg.get("id", ""):
@@ -769,15 +1007,16 @@ async def delete_session_message(chat_id, session_id, msg_id):
 
 @manager.route("/chats/<chat_id>/sessions/<session_id>/messages/<msg_id>/feedback", methods=["PUT"])  # noqa: F821
 @login_required
+@dialog_role_guard
+@check_dialog_permission(PermissionValue.PERMISSION_READ)
 async def update_message_feedback(chat_id, session_id, msg_id):
-    owned = _ensure_owned_chat(chat_id)
-    if not owned:
-        return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
     try:
-        req = await get_request_json()
+        req = dict(g.req_data or {})
         ok, conv = ConversationService.get_by_id(session_id)
         if not ok or conv.dialog_id != chat_id:
             return get_data_error_result(message="Session not found!")
+        if not _ensure_session_owned_by_current_user(conv):
+            return _session_owner_error()
         thumb_raw = req.get("thumbup")
         if not isinstance(thumb_raw, bool):
             return get_data_error_result(message="thumbup must be a boolean")
@@ -930,7 +1169,13 @@ async def mindmap():
     kb_ids.extend(req["kb_ids"])
     kb_ids = list(set(kb_ids))
 
-    mind_map = await gen_mindmap(req["question"], kb_ids, search_app.get("tenant_id", current_user.id), search_config)
+    mind_map = await gen_mindmap(
+        req["question"],
+        kb_ids,
+        search_app.get("tenant_id", current_user.id),
+        search_config,
+        user_id=current_user.id,
+    )
     if "error" in mind_map:
         return server_error_response(Exception(mind_map["error"]))
     return get_json_result(data=mind_map)
@@ -976,11 +1221,22 @@ async def related_questions():
 
 @manager.route("/chats/<chat_id>/sessions/<session_id>/completions", methods=["POST"])  # noqa: F821
 @login_required
-@validate_request("messages")
+@dialog_role_guard
+@check_dialog_permission(PermissionValue.PERMISSION_READ)
 async def session_completion(chat_id, session_id):
-    req = await get_request_json()
+    req = dict(g.req_data or {})
+    messages = req.get("messages")
+    if not isinstance(messages, list) or not messages:
+        return get_json_result(
+            code=RetCode.ARGUMENT_ERROR,
+            message="messages: is required",
+        )
+
+    operator_user_id = current_user.id
+    req.pop("user_id", None)
+
     msg = []
-    for m in req["messages"]:
+    for m in messages:
         if m["role"] == "system":
             continue
         if m["role"] == "assistant" and not msg:
@@ -1001,10 +1257,17 @@ async def session_completion(chat_id, session_id):
             return get_data_error_result(message="Session not found!")
         if conv.dialog_id != chat_id:
             return get_data_error_result(message="Session does not belong to this chat!")
-        conv.message = deepcopy(req["messages"])
-        e, dia = DialogService.get_by_id(chat_id)
-        if not e:
+        if not _ensure_session_owned_by_current_user(conv):
+            return _session_owner_error()
+        conv.message = deepcopy(messages)
+        dialog_rows = DialogService.query(
+            tenant_id=g.tenant_id,
+            id=chat_id,
+            status=StatusEnum.VALID.value,
+        )
+        if not dialog_rows:
             return get_data_error_result(message="Chat not found!")
+        dia = dialog_rows[0]
         del req["messages"]
 
         if not conv.reference:
@@ -1024,7 +1287,7 @@ async def session_completion(chat_id, session_id):
         async def stream():
             nonlocal dia, msg, req, conv
             try:
-                async for ans in async_chat(dia, msg, True, **req):
+                async for ans in async_chat(dia, msg, True, user_id=operator_user_id, **req):
                     ans = structure_answer(conv, ans, message_id, conv.id)
                     yield "data:" + json.dumps({"code": 0, "message": "", "data": ans}, ensure_ascii=False) + "\n\n"
                 if not is_embedded:
@@ -1043,7 +1306,7 @@ async def session_completion(chat_id, session_id):
             return resp
 
         answer = None
-        async for ans in async_chat(dia, msg, **req):
+        async for ans in async_chat(dia, msg, user_id=operator_user_id, **req):
             answer = structure_answer(conv, ans, message_id, conv.id)
             if not is_embedded:
                 ConversationService.update_by_id(conv.id, conv.to_dict())
@@ -1069,7 +1332,7 @@ async def ask():
     async def stream():
         nonlocal req, uid
         try:
-            async for ans in async_ask(req["question"], req["kb_ids"], uid, search_config=search_config):
+            async for ans in async_ask(req["question"], req["kb_ids"], uid, search_config=search_config, user_id=uid):
                 yield "data:" + json.dumps({"code": 0, "message": "", "data": ans}, ensure_ascii=False) + "\n\n"
         except Exception as ex:
             yield "data:" + json.dumps({"code": 500, "message": str(ex), "data": {"answer": "**ERROR**: " + str(ex), "reference": []}}, ensure_ascii=False) + "\n\n"
