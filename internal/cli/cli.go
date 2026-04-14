@@ -29,7 +29,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/peterh/liner"
-	"golang.org/x/term"
 	"gopkg.in/yaml.v3"
 
 	"ragflow/internal/cli/contextengine"
@@ -59,7 +58,7 @@ type ConnectionArgs struct {
 	Password     string
 	APIToken     string
 	UserName     string
-	Command      string   // Original command string (for SQL mode)
+	Command      *string  // Original command string (for SQL mode)
 	CommandArgs  []string // Split command arguments (for ContextEngine mode)
 	IsSQLMode    bool     // true=SQL mode (quoted), false=ContextEngine mode (unquoted)
 	ShowHelp     bool
@@ -305,21 +304,11 @@ func ParseConnectionArgs(args []string) (*ConnectionArgs, error) {
 	}
 
 	// Get command from remaining args (non-flag arguments)
+	// Get command from remaining args (non-flag arguments)
 	if len(nonFlagArgs) > 0 {
-		// Check if this is SQL mode or ContextEngine mode
-		// SQL mode: single argument that looks like SQL (e.g., "LIST DATASETS")
-		// ContextEngine mode: multiple arguments (e.g., "ls", "datasets")
-		if len(nonFlagArgs) == 1 && looksLikeSQL(nonFlagArgs[0]) {
-			// SQL mode: single argument that looks like SQL
-			result.IsSQLMode = true
-			result.Command = nonFlagArgs[0]
-		} else {
-			// ContextEngine mode: multiple arguments
-			result.IsSQLMode = false
-			result.CommandArgs = nonFlagArgs
-			// Also store joined version for backward compatibility
-			result.Command = strings.Join(nonFlagArgs, " ")
-		}
+		command := strings.Join(nonFlagArgs, " ")
+		result.Command = &command
+		fmt.Printf("COMMAND: %s\n", command)
 	}
 
 	return result, nil
@@ -332,7 +321,8 @@ func looksLikeSQL(s string) bool {
 		"LIST ", "SHOW ", "CREATE ", "DROP ", "ALTER ",
 		"LOGIN ", "REGISTER ", "PING", "GRANT ", "REVOKE ",
 		"SET ", "UNSET ", "UPDATE ", "DELETE ", "INSERT ",
-		"SELECT ", "DESCRIBE ", "EXPLAIN ",
+		"SELECT ", "DESCRIBE ", "EXPLAIN ", "ADD ", "ENABLE ", "DISABLE ", "CHAT ", "USE", "THINK",
+		"REMOVE ",
 	}
 	for _, prefix := range sqlPrefixes {
 		if strings.HasPrefix(s, prefix) {
@@ -480,28 +470,13 @@ func NewCLIWithArgs(args *ConnectionArgs) (*CLI, error) {
 func (c *CLI) Run() error {
 	// If username is provided without password, prompt for password
 	if c.args != nil && c.args.UserName != "" && c.args.Password == "" && c.args.APIToken == "" {
-		// Allow 3 attempts for password verification
 		maxAttempts := 3
 		for attempt := 1; attempt <= maxAttempts; attempt++ {
-			var input string
-			var err error
+			fmt.Print("Please input your password: ")
 
-			// Check if terminal supports password masking
-			if term.IsTerminal(int(os.Stdin.Fd())) {
-				input, err = c.line.PasswordPrompt("Please input your password: ")
-			} else {
-				// Terminal doesn't support password masking, use regular prompt
-				fmt.Println("Warning: This terminal does not support secure password input")
-				input, err = c.line.Prompt("Please input your password (will be visible): ")
-			}
-			if err != nil {
-				fmt.Printf("Error reading input: %v\n", err)
-				return err
-			}
+			password, err := ReadPassword()
 
-			input = strings.TrimSpace(input)
-
-			if input == "" {
+			if password == "" {
 				if attempt < maxAttempts {
 					fmt.Println("Password cannot be empty, please try again")
 					continue
@@ -509,8 +484,7 @@ func (c *CLI) Run() error {
 				return errors.New("no password provided after 3 attempts")
 			}
 
-			// Set the password for verification
-			c.args.Password = input
+			c.args.Password = password
 
 			if err = c.VerifyAuth(); err != nil {
 				if attempt < maxAttempts {
@@ -520,7 +494,6 @@ func (c *CLI) Run() error {
 				return fmt.Errorf("authentication failed after %d attempts: %v", maxAttempts, err)
 			}
 
-			// Authentication successful
 			break
 		}
 	}
@@ -565,12 +538,228 @@ func (c *CLI) Run() error {
 			c.line.AppendHistory(input)
 		}
 
-		if err = c.execute(input); err != nil {
+		if err = c.executeNew(input); err != nil {
 			fmt.Printf("CLI error: %v\n", err)
 		}
 	}
 
 	return nil
+}
+
+func (c *CLI) executeNew(input string) error {
+	p := NewParser(input)
+	cmd, err := p.Parse(c.args.AdminMode)
+	if err != nil {
+		return err
+	}
+
+	// Print result
+	// For search command, default to JSON format if not explicitly set to plain/table
+	format := c.outputFormat
+	if ceCmd.Type == contextengine.CommandSearch && format != OutputFormatPlain && format != OutputFormatTable {
+		format = OutputFormatJSON
+	}
+	// Get limit for list command
+	limit := 0
+	if ceCmd.Type == contextengine.CommandList {
+		if l, ok := ceCmd.Params["limit"].(int); ok {
+			limit = l
+		}
+	}
+	c.printContextEngineResult(result, ceCmd.Type, format, limit)
+	return nil
+}
+
+// parseContextEngineArgs parses Context Engine command arguments
+// Supports simple space-separated args and quoted strings
+func parseContextEngineArgs(input string) []string {
+	var args []string
+	var current strings.Builder
+	inQuote := false
+	var quoteChar rune
+
+	for _, ch := range input {
+		switch ch {
+		case '"', '\'':
+			if !inQuote {
+				inQuote = true
+				quoteChar = ch
+				if current.Len() > 0 {
+					args = append(args, current.String())
+					current.Reset()
+				}
+			} else if ch == quoteChar {
+				inQuote = false
+				args = append(args, current.String())
+				current.Reset()
+			} else {
+				current.WriteRune(ch)
+			}
+		case ' ', '\t':
+			if inQuote {
+				current.WriteRune(ch)
+			} else if current.Len() > 0 {
+				args = append(args, current.String())
+				current.Reset()
+			}
+		default:
+			current.WriteRune(ch)
+		}
+	}
+
+	if current.Len() > 0 {
+		args = append(args, current.String())
+	}
+
+	return args
+}
+
+// printContextEngineResult prints the result of a context engine command
+func (c *CLI) printContextEngineResult(result *contextengine.Result, cmdType contextengine.CommandType, format OutputFormat, limit int) {
+	if result == nil {
+		return
+	}
+
+	switch cmdType {
+	case contextengine.CommandList:
+		if len(result.Nodes) == 0 {
+			fmt.Println("(empty)")
+			return
+		}
+		displayCount := len(result.Nodes)
+		if limit > 0 && displayCount > limit {
+			displayCount = limit
+		}
+		if format == OutputFormatPlain {
+			// Plain format: simple space-separated, no headers
+			for i := 0; i < displayCount; i++ {
+				node := result.Nodes[i]
+				fmt.Printf("%s %s %s %s\n", node.Name, node.Type, node.Path, node.CreatedAt.Format("2006-01-02 15:04"))
+			}
+		} else {
+			// Table format: with headers and aligned columns
+			fmt.Printf("%-30s %-12s %-50s %-20s\n", "NAME", "TYPE", "PATH", "CREATED")
+			fmt.Println(strings.Repeat("-", 112))
+			for i := 0; i < displayCount; i++ {
+				node := result.Nodes[i]
+				created := node.CreatedAt.Format("2006-01-02 15:04")
+				if node.CreatedAt.IsZero() {
+					created = "-"
+				}
+				// Remove leading "/" from path for display
+				displayPath := node.Path
+				if strings.HasPrefix(displayPath, "/") {
+					displayPath = displayPath[1:]
+				}
+				fmt.Printf("%-30s %-12s %-50s %-20s\n", node.Name, node.Type, displayPath, created)
+			}
+		}
+		if limit > 0 && result.Total > limit {
+			fmt.Printf("\n... and %d more (use -n to show more)\n", result.Total-limit)
+		}
+		fmt.Printf("Total: %d\n", result.Total)
+	case contextengine.CommandSearch:
+		if len(result.Nodes) == 0 {
+			if format == OutputFormatJSON {
+				fmt.Println("[]")
+			} else {
+				fmt.Println("No results found")
+			}
+			return
+		}
+		// Build data for output (same fields for all formats: content, path, score)
+		type searchResult struct {
+			Content string  `json:"content"`
+			Path    string  `json:"path"`
+			Score   float64 `json:"score,omitempty"`
+		}
+		results := make([]searchResult, 0, len(result.Nodes))
+		for _, node := range result.Nodes {
+			content := node.Name
+			if content == "" {
+				content = "(empty)"
+			}
+			displayPath := node.Path
+			if strings.HasPrefix(displayPath, "/") {
+				displayPath = displayPath[1:]
+			}
+			var score float64
+			if s, ok := node.Metadata["similarity"].(float64); ok {
+				score = s
+			} else if s, ok := node.Metadata["_score"].(float64); ok {
+				score = s
+			}
+			results = append(results, searchResult{
+				Content: content,
+				Path:    displayPath,
+				Score:   score,
+			})
+		}
+		// Output based on format
+		if format == OutputFormatJSON {
+			jsonData, err := json.MarshalIndent(results, "", "  ")
+			if err != nil {
+				fmt.Printf("Error marshaling JSON: %v\n", err)
+				return
+			}
+			fmt.Println(string(jsonData))
+		} else if format == OutputFormatPlain {
+			// Plain format: simple space-separated, no borders
+			fmt.Printf("%-70s  %-50s  %-10s\n", "CONTENT", "PATH", "SCORE")
+			for i, sr := range results {
+				content := strings.Join(strings.Fields(sr.Content), " ")
+				if len(content) > 70 {
+					content = content[:67] + "..."
+				}
+				displayPath := sr.Path
+				if len(displayPath) > 50 {
+					displayPath = displayPath[:47] + "..."
+				}
+				scoreStr := "-"
+				if sr.Score > 0 {
+					scoreStr = fmt.Sprintf("%.4f", sr.Score)
+				}
+				fmt.Printf("%-70s  %-50s  %-10s\n", content, displayPath, scoreStr)
+				if i >= 99 {
+					fmt.Printf("\n... and %d more results\n", result.Total-i-1)
+					break
+				}
+			}
+			fmt.Printf("\nTotal: %d\n", result.Total)
+		} else {
+			// Table format: with borders
+			col1Width, col2Width, col3Width := 70, 50, 10
+			sep := "+" + strings.Repeat("-", col1Width+2) + "+" + strings.Repeat("-", col2Width+2) + "+" + strings.Repeat("-", col3Width+2) + "+"
+			fmt.Println(sep)
+			fmt.Printf("| %-70s | %-50s | %-10s |\n", "CONTENT", "PATH", "SCORE")
+			fmt.Println(sep)
+			for i, sr := range results {
+				content := strings.Join(strings.Fields(sr.Content), " ")
+				if len(content) > 70 {
+					content = content[:67] + "..."
+				}
+				displayPath := sr.Path
+				if len(displayPath) > 50 {
+					displayPath = displayPath[:47] + "..."
+				}
+				scoreStr := "-"
+				if sr.Score > 0 {
+					scoreStr = fmt.Sprintf("%.4f", sr.Score)
+				}
+				fmt.Printf("| %-70s | %-50s | %-10s |\n", content, displayPath, scoreStr)
+				if i >= 99 {
+					fmt.Printf("\n... and %d more results\n", result.Total-i-1)
+					break
+				}
+			}
+			fmt.Println(sep)
+			fmt.Printf("Total: %d\n", result.Total)
+		}
+	case contextengine.CommandCat:
+		// Cat output is handled differently - it returns []byte, not *Result
+		// This case should not be reached in normal flow since Cat returns []byte directly
+		fmt.Println("Content retrieved")
+	}
 }
 
 func (c *CLI) execute(input string) error {
@@ -707,9 +896,9 @@ func (c *CLI) executeContextEngine(input string) error {
 			fmt.Println("(empty file)")
 		} else if isBinaryContent(content) {
 			return fmt.Errorf("cannot display binary file content")
-		} else {
-			fmt.Println(string(content))
 		}
+
+		fmt.Println(string(content))
 		return nil
 	default:
 		return fmt.Errorf("unknown context engine command: %s", cmdType)
@@ -997,6 +1186,7 @@ Meta Commands:
 
 Commands (User Mode):
   LOGIN USER 'email';                                    - Login as user
+  LOGIN USER 'email' PASSWORD 'pwd';                     - Login as user with password
   REGISTER USER 'name' AS 'nickname' PASSWORD 'pwd';     - Register new user
   SHOW VERSION;                                          - Show version info
   PING;                                                  - Ping server
@@ -1008,15 +1198,19 @@ Commands (User Mode):
   LIST TOKENS;                                           - List API tokens
   LIST PROVIDERS;                                        - List available LLM providers
   CREATE TOKEN;                                          - Create new API token
-  CREATE PROVIDER 'name';                                - Create a provider without API key
-  CREATE PROVIDER 'name' 'api_key';                      - Create a provider with API key
+  ADD PROVIDER 'name';                                - Create a provider without API key
+  ADD PROVIDER 'name' 'api_key';                      - Create a provider with API key
   DROP TOKEN 'token_value';                              - Delete an API token
-  DROP PROVIDER 'name';                                  - Delete a provider
+  DELETE PROVIDER 'name';                                  - Delete a provider
   SET TOKEN 'token_value';                               - Set and validate API token
   SHOW TOKEN;                                            - Show current API token
   SHOW PROVIDER 'name';                                  - Show provider details
+  SHOW CURRENT MODEL;                                    - Show current model settings
   UNSET TOKEN;                                           - Remove current API token
   ALTER PROVIDER 'name' NAME 'new_name';                 - Rename a provider
+  USE MODEL 'provider/instance/model';                   - Set current model for chat
+  CHAT 'message';                                        - Chat using current model
+  CHAT 'provider/instance/model' 'message';              - Chat with specified model
 
 Context Engine Commands (no quotes):
   ls [path]                    - List resources
@@ -1071,12 +1265,12 @@ func RunInteractive() error {
 }
 
 // RunSingleCommand executes a single command and exits
-func (c *CLI) RunSingleCommand(command string) error {
+func (c *CLI) RunSingleCommand(command *string) error {
 	// Ensure cleanup is called on exit to restore terminal settings
 	defer c.Cleanup()
 
 	// Execute the command
-	if err := c.execute(command); err != nil {
+	if err := c.executeNew(*command); err != nil {
 		return err
 	}
 	return nil

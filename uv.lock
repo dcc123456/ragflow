@@ -683,7 +683,7 @@ wheels = [
 
 [[package]]
 name = "azure-identity"
-version = "1.17.1"
+version = "1.25.3"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
 dependencies = [
     { name = "azure-core" },
@@ -5234,10 +5234,10 @@ wheels = [
 
 [[package]]
 name = "pluginlib"
-version = "0.9.4"
+version = "0.10.0"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
 dependencies = [
-    { name = "setuptools" },
+    { name = "packaging" },
 ]
 sdist = { url = "https://mirrors.aliyun.com/pypi/packages/58/38/ca974ba2d8ccc7954d8ccb0394cce184ac6269bd1fbfe06f70a0da3c8946/pluginlib-0.9.4.tar.gz", hash = "sha256:88727037138f759a3952f6391ae3751536f04ad8be6023607620ea49695a3a83" }
 wheels = [
@@ -6792,7 +6792,7 @@ requires-dist = [
     { name = "arxiv", specifier = "==2.1.3" },
     { name = "asana", specifier = ">=5.2.2" },
     { name = "atlassian-python-api", specifier = "==4.0.7" },
-    { name = "azure-identity", specifier = "==1.17.1" },
+    { name = "azure-identity", specifier = "==1.25.3" },
     { name = "azure-storage-file-datalake", specifier = "==12.16.0" },
     { name = "beartype", specifier = ">=0.20.0,<1.0.0" },
     { name = "bio", specifier = "==1.7.1" },

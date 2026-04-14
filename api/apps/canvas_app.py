@@ -39,6 +39,7 @@ from api.utils.billing import check_dynamic_resources
 from api.utils.permission_utils import check_canvas_permission
 from api.db import PermissionValue
 from agent.canvas import Canvas
+from agent.dsl_migration import normalize_chunker_dsl
 from peewee import MySQLDatabase, PostgresqlDatabase
 from api.db.db_models import APIToken, Task, DB
 
@@ -248,10 +249,12 @@ def get(canvas_id):
 
     # Add last_publish_time to response data
     if isinstance(c, dict):
+        c["dsl"] = normalize_chunker_dsl(c.get("dsl", {}))
         c["last_publish_time"] = last_publish_time
     else:
         # If c is a model object, convert to dict first
         c = c.to_dict()
+        c["dsl"] = normalize_chunker_dsl(c.get("dsl", {}))
         c["last_publish_time"] = last_publish_time
 
     # For pipeline type, get associated datasets

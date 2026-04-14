@@ -6,17 +6,12 @@ import { IToken } from '@/interfaces/database/chat';
 import { ITenantInfo } from '@/interfaces/database/knowledge';
 import { ILangfuseConfig } from '@/interfaces/database/system';
 import {
-  ISystemStatus,
   ITenant,
   ITenantUser,
   IUserInfo,
 } from '@/interfaces/database/user-setting';
 import { ISetLangfuseConfigRequestBody } from '@/interfaces/request/system';
-import {
-  changeLanguageAsync,
-  DEFAULT_LANGUAGE_CODE,
-  supportedLanguages,
-} from '@/locales/config';
+import { DEFAULT_LANGUAGE_CODE, supportedLanguages } from '@/locales/config';
 import { Routes } from '@/routes';
 import userService, {
   addTenantUser,
@@ -67,10 +62,6 @@ export const useFetchUserInfo = (): ResponseGetType<IUserInfo> => {
         const targetLng =
           supportedLanguages.find((lang) => lang.code === data.data.language)
             ?.code ?? DEFAULT_LANGUAGE_CODE;
-
-        if (targetLng) {
-          await changeLanguageAsync(targetLng);
-        }
 
         return Object.assign({}, data.data, {
           language: targetLng,
@@ -171,7 +162,7 @@ export const useSelectParserList = (): Array<{
   label: string;
 }> => {
   const { data: tenantInfo } = useFetchTenantInfo(true);
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
 
   const defaultParsers = useMemo(
     () => [
@@ -202,7 +193,7 @@ export const useSelectParserList = (): Array<{
       { value: 'email', label: t('knowledgeConfiguration.parserLabel.email') },
       { value: 'tag', label: t('knowledgeConfiguration.parserLabel.tag') },
     ],
-    [i18n.language, t],
+    [t],
   );
 
   const parserList = useMemo(() => {
@@ -222,7 +213,7 @@ export const useSelectParserList = (): Array<{
   return parserList;
 };
 
-export const useSaveSetting = () => {
+export const useSaveSetting = (silent = false) => {
   const queryClient = useQueryClient();
   const { t } = useTranslation();
   const {
@@ -236,7 +227,9 @@ export const useSaveSetting = () => {
     ) => {
       const { data } = await userService.setting(userInfo);
       if (data.code === 0) {
-        message.success(t('message.modified'));
+        if (!silent) {
+          message.success(t('message.modified'));
+        }
         queryClient.invalidateQueries({ queryKey: ['userInfo'] });
       }
       return data?.code;
@@ -264,28 +257,6 @@ export const useFetchSystemVersion = () => {
   }, []);
 
   return { fetchSystemVersion, version, loading };
-};
-
-export const useFetchSystemStatus = () => {
-  const [systemStatus, setSystemStatus] = useState<ISystemStatus>(
-    {} as ISystemStatus,
-  );
-  const [loading, setLoading] = useState(false);
-
-  const fetchSystemStatus = useCallback(async () => {
-    setLoading(true);
-    const { data } = await userService.getSystemStatus();
-    if (data.code === 0) {
-      setSystemStatus(data.data);
-      setLoading(false);
-    }
-  }, []);
-
-  return {
-    systemStatus,
-    fetchSystemStatus,
-    loading,
-  };
 };
 
 export const useFetchManualSystemTokenList = () => {

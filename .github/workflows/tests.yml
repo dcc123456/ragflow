@@ -164,7 +164,7 @@ jobs:
           source .venv/bin/activate
           which pytest || echo "pytest not in PATH"
           echo "Start to run unit test"
-          python3 run_tests.py
+          python3 run_tests.py -i
 
       - name: Prepare function test environment
         working-directory: docker
@@ -234,10 +234,10 @@ jobs:
           echo -e "RABBITMQ_MANAGEMENT_PORT=${RABBITMQ_MANAGEMENT_PORT}" >> .env
           echo -e "RABBITMQ_PROMETHEUS_PORT=${RABBITMQ_PROMETHEUS_PORT}" >> .env
 
-          echo -e "COMPOSE_PROFILES=\${COMPOSE_PROFILES},tei-cpu" >> .env
-          echo -e "TEI_MODEL=BAAI/bge-small-en-v1.5" >> .env
-          echo -e "RAGFLOW_IMAGE=${RAGFLOW_IMAGE}" >> .env
-          echo "HOST_ADDRESS=http://host.docker.internal:${SVR_HTTP_PORT}" >> ${GITHUB_ENV}
+               # Patch entrypoint.sh for coverage
+               sed -i '/"\$PY" api\/ragflow_server.py \${INIT_SUPERUSER_ARGS} &/c\   echo "Ensuring coverage is installed..."\n      "$PY" -m pip install coverage -i https://mirrors.aliyun.com/pypi/simple\n     export COVERAGE_FILE=/ragflow/logs/.coverage\n        echo "Starting ragflow_server with coverage..."\n        "$PY" -m coverage run --source=./api/apps --omit="*/tests/*,*/migrations/*" -a api/ragflow_server.py ${INIT_SUPERUSER_ARGS} &' ./entrypoint.sh
+               cd ..
+               uv sync --python 3.12 --group test --frozen && uv pip install -e sdk/python
 
           cd ..
           uv sync --python 3.12 --group test --frozen && uv pip install -e sdk/python
