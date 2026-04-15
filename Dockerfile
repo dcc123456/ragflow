@@ -11,9 +11,9 @@ WORKDIR /ragflow
 RUN mkdir -p /ragflow/rag/res/deepdoc /root/.ragflow
 RUN --mount=type=bind,from=infiniflow/ragflow_deps:51ce6aab,source=/huggingface.co,target=/huggingface.co \
     tar --exclude='.*' -cf - \
-        /huggingface.co/InfiniFlow/text_concat_xgb_v1.0 \
-        /huggingface.co/InfiniFlow/deepdoc \
-        | tar -xf - --strip-components=3 -C /ragflow/rag/res/deepdoc
+    /huggingface.co/InfiniFlow/text_concat_xgb_v1.0 \
+    /huggingface.co/InfiniFlow/deepdoc \
+    | tar -xf - --strip-components=3 -C /ragflow/rag/res/deepdoc
 
 # Copy Tika server, NLTK data, and tiktoken from ragflow_deps image
 # https://github.com/chrismattmann/tika-python
@@ -36,8 +36,8 @@ RUN --mount=type=cache,id=ragflow_apt,target=/var/cache/apt,sharing=locked \
     apt update && \
     apt --no-install-recommends install -y ca-certificates; \
     if [ "$NEED_MIRROR" == "1" ]; then \
-        sed -i 's|http://archive.ubuntu.com/ubuntu|https://mirrors.aliyun.com/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources; \
-        sed -i 's|http://security.ubuntu.com/ubuntu|https://mirrors.aliyun.com/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources; \
+    sed -i 's|http://archive.ubuntu.com/ubuntu|https://mirrors.aliyun.com/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources; \
+    sed -i 's|http://security.ubuntu.com/ubuntu|https://mirrors.aliyun.com/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources; \
     fi; \
     rm -f /etc/apt/apt.conf.d/docker-clean && \
     echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache && \
@@ -48,9 +48,9 @@ RUN --mount=type=cache,id=ragflow_apt,target=/var/cache/apt,sharing=locked \
 # Download resource from GitHub to /usr/share/infinity
 RUN mkdir -p /usr/share/infinity/resource && \
     if [ "$NEED_MIRROR" == "1" ]; then \
-        git clone --depth 1 --single-branch https://gitee.com/infiniflow/resource /tmp/resource; \
+    git clone --depth 1 --single-branch https://gitee.com/infiniflow/resource /tmp/resource; \
     else \
-        git clone --depth 1 --single-branch https://github.com/infiniflow/resource.git /tmp/resource; \
+    git clone --depth 1 --single-branch https://github.com/infiniflow/resource.git /tmp/resource; \
     fi && \
     cp -r /tmp/resource/* /usr/share/infinity/resource && \
     rm -rf /tmp/resource
@@ -67,11 +67,11 @@ RUN --mount=type=cache,id=ragflow_apt,target=/var/cache/apt,sharing=locked \
 # Install uv from ragflow_deps image
 RUN --mount=type=bind,from=infiniflow/ragflow_deps:51ce6aab,source=/,target=/deps \
     if [ "$NEED_MIRROR" == "1" ]; then \
-        mkdir -p /etc/uv && \
-        echo 'python-install-mirror = "https://registry.npmmirror.com/-/binary/python-build-standalone/"' > /etc/uv/uv.toml && \
-        echo '[[index]]' >> /etc/uv/uv.toml && \
-        echo 'url = "https://mirrors.aliyun.com/pypi/simple"' >> /etc/uv/uv.toml && \
-        echo 'default = true' >> /etc/uv/uv.toml; \
+    mkdir -p /etc/uv && \
+    echo 'python-install-mirror = "https://registry.npmmirror.com/-/binary/python-build-standalone/"' > /etc/uv/uv.toml && \
+    echo '[[index]]' >> /etc/uv/uv.toml && \
+    echo 'url = "https://mirrors.aliyun.com/pypi/simple"' >> /etc/uv/uv.toml && \
+    echo 'default = true' >> /etc/uv/uv.toml; \
     fi; \
     arch="$(uname -m)"; \
     if [ "$arch" = "x86_64" ]; then uv_arch="x86_64"; else uv_arch="aarch64"; fi; \
@@ -105,11 +105,11 @@ RUN --mount=type=cache,id=ragflow_apt,target=/var/cache/apt,sharing=locked \
     apt update && \
     arch="$(uname -m)"; \
     if [ "$arch" = "arm64" ] || [ "$arch" = "aarch64" ]; then \
-        # ARM64 (macOS/Apple Silicon or Linux aarch64) \
-        ACCEPT_EULA=Y apt install -y unixodbc-dev msodbcsql18; \
+    # ARM64 (macOS/Apple Silicon or Linux aarch64) \
+    ACCEPT_EULA=Y apt install -y unixodbc-dev msodbcsql18; \
     else \
-        # x86_64 or others \
-        ACCEPT_EULA=Y apt install -y unixodbc-dev msodbcsql17; \
+    # x86_64 or others \
+    ACCEPT_EULA=Y apt install -y unixodbc-dev msodbcsql17; \
     fi || \
     { echo "Failed to install ODBC driver"; exit 1; }
 
@@ -126,17 +126,17 @@ RUN --mount=type=bind,from=infiniflow/ragflow_deps:51ce6aab,source=/chromedriver
 
 RUN --mount=type=bind,from=infiniflow/ragflow_deps:51ce6aab,source=/,target=/deps \
     if [ "$(uname -m)" = "x86_64" ]; then \
-        dpkg -i /deps/libssl1.1_1.1.1f-1ubuntu2_amd64.deb; \
+    dpkg -i /deps/libssl1.1_1.1.1f-1ubuntu2_amd64.deb; \
     elif [ "$(uname -m)" = "aarch64" ]; then \
-        dpkg -i /deps/libssl1.1_1.1.1f-1ubuntu2_arm64.deb; \
+    dpkg -i /deps/libssl1.1_1.1.1f-1ubuntu2_arm64.deb; \
     fi
 
 # Configure pip to use mirrors if needed
 RUN mkdir -p /root/.config/pip \
     && if [ "$NEED_MIRROR" == "1" ]; then \
-        echo "[global]" > /root/.config/pip/pip.conf \
-        && echo "index-url = https://mirrors.aliyun.com/pypi/simple/" >> /root/.config/pip/pip.conf \
-        && echo "trusted-host = mirrors.aliyun.com" >> /root/.config/pip/pip.conf; \
+    echo "[global]" > /root/.config/pip/pip.conf \
+    && echo "index-url = https://mirrors.aliyun.com/pypi/simple/" >> /root/.config/pip/pip.conf \
+    && echo "trusted-host = mirrors.aliyun.com" >> /root/.config/pip/pip.conf; \
     fi
 
 # builder stage
@@ -152,9 +152,9 @@ COPY pyproject.toml uv.lock ./
 # uv records index url into uv.lock but doesn't failover among multiple indexes
 RUN --mount=type=cache,id=ragflow_uv,target=/root/.cache/uv,sharing=locked \
     if [ "$NEED_MIRROR" == "1" ]; then \
-        sed -i 's|pypi.org|mirrors.aliyun.com/pypi|g' uv.lock; \
+    sed -i 's|pypi.org|mirrors.aliyun.com/pypi|g' uv.lock; \
     else \
-        sed -i 's|mirrors.aliyun.com/pypi|pypi.org|g' uv.lock; \
+    sed -i 's|mirrors.aliyun.com/pypi|pypi.org|g' uv.lock; \
     fi; \
     uv sync --python 3.12 --frozen && \
     # Ensure pip is available in the venv for runtime package installation (fixes #12651)

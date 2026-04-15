@@ -80,6 +80,17 @@ redis_memory_limit   = "8Gi"
 tei_replicas = 1
 
 # =============================================================================
+# Infinity (Shadow Database) - dev environment
+# =============================================================================
+
+infinity_enabled        = true
+infinity_cpu_request    = "2"
+infinity_cpu_limit      = "4"
+infinity_memory_request = "4Gi"
+infinity_memory_limit   = "16Gi"
+infinity_storage        = 20
+
+# =============================================================================
 # ohttps Configuration (set for production)
 # =============================================================================
 ohttps_enabled = false

@@ -27,7 +27,6 @@ s3_secret_key = "r3iMxuwRqs9Y0pVd08VEaQQIWkWqGpwZzlL0zz50"
 
 # Use public registries for development
 private_registry  = "192.168.1.51/infiniflow-ai"
-public_registry   = ""
 
 # =============================================================================
 # Development-Specific Resource Overrides (reduced from production defaults)
@@ -79,6 +78,17 @@ redis_memory_limit   = "8Gi"
 
 # TEI - dev environment
 tei_replicas = 1
+
+# =============================================================================
+# Infinity (Shadow Database) - dev environment
+# =============================================================================
+
+infinity_enabled        = true
+infinity_cpu_request    = "2"
+infinity_cpu_limit      = "4"
+infinity_memory_request = "4Gi"
+infinity_memory_limit   = "16Gi"
+infinity_storage        = 20
 
 # =============================================================================
 # ohttps Configuration (set for production)

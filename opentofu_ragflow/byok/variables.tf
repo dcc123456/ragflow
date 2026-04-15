@@ -525,6 +525,58 @@ variable "ohttps_sync_image" {
 }
 
 # =============================================================================
+# Infinity Configuration (Shadow Database / Alternative Doc Engine)
+# =============================================================================
+
+variable "infinity_enabled" {
+  description = "Enable Infinity as a shadow database alongside Elasticsearch. When enabled, DOC_ENGINE will be set to 'elasticsearch,infinity' for shadow write proxy comparison."
+  type        = bool
+  default     = false
+}
+
+variable "infinity_image" {
+  description = "Infinity container image (including tag)"
+  type        = string
+  default     = "infiniflow/infinity:v0.7.0-dev2"
+}
+
+variable "infinity_replicas" {
+  description = "Number of Infinity replicas"
+  type        = number
+  default     = 1
+}
+
+variable "infinity_cpu_request" {
+  description = "Infinity CPU request"
+  type        = string
+  default     = "2"
+}
+
+variable "infinity_cpu_limit" {
+  description = "Infinity CPU limit"
+  type        = string
+  default     = "8"
+}
+
+variable "infinity_memory_request" {
+  description = "Infinity memory request"
+  type        = string
+  default     = "4Gi"
+}
+
+variable "infinity_memory_limit" {
+  description = "Infinity memory limit"
+  type        = string
+  default     = "16Gi"
+}
+
+variable "infinity_storage" {
+  description = "Infinity storage size in GB"
+  type        = number
+  default     = 500
+}
+
+# =============================================================================
 # Billing Configuration
 # =============================================================================
 

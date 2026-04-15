@@ -499,6 +499,14 @@ The following table shows the default resource values for each environment. Copy
 | CPU Limit | deepdoc_cpu_limit | 8 | 8 |
 | Memory Request | deepdoc_memory_request | 16Gi | 16Gi |
 | Memory Limit | deepdoc_memory_limit | 32Gi | 32Gi |
+| **Infinity (Shadow Database, disabled by default)** |
+| Enabled | infinity_enabled | false | true |
+| Replicas | infinity_replicas | 1 | 1 |
+| Storage | infinity_storage | 500 Gi | 20 Gi |
+| CPU Request | infinity_cpu_request | 2 | 2 |
+| CPU Limit | infinity_cpu_limit | 8 | 4 |
+| Memory Request | infinity_memory_request | 4Gi | 4Gi |
+| Memory Limit | infinity_memory_limit | 16Gi | 16Gi |
 
 ### Scaling and Capacity Management
 
