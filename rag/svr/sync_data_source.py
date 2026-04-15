@@ -174,7 +174,7 @@ class SyncBase:
             next_update = task["poll_range_start"]
 
         def handle_batch(document_batch):
-            nonlocal doc_num, failed_docs, next_update
+            nonlocal added_docs, doc_num, failed_docs, next_update, updated_docs
 
             if not document_batch:
                 return

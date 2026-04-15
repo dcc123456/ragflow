@@ -21,6 +21,7 @@ from api.apps import login_required
 
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.utils.api_utils import (
+    get_data_error_result,
     get_json_result,
 )
 from common.log_utils import get_log_levels, set_log_level
@@ -28,7 +29,8 @@ from common.log_utils import get_log_levels, set_log_level
 from timeit import default_timer as timer
 
 from rag.utils.redis_conn import REDIS_CONN
-from api.utils.health_utils import get_oceanbase_status
+from quart import jsonify
+from api.utils.health_utils import get_oceanbase_status, run_health_checks
 from common import settings
 
 @manager.route("/status", methods=["GET"])  # noqa: F821
