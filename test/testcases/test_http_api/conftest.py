@@ -99,6 +99,7 @@ def clear_chat_assistants(request, HttpApiAuth):
     def cleanup():
         delete_all_chat_assistants(HttpApiAuth)
 
+    cleanup()
     request.addfinalizer(cleanup)
 
 
@@ -156,6 +157,7 @@ def add_chat_assistants(request, HttpApiAuth, add_document):
     def cleanup():
         delete_all_chat_assistants(HttpApiAuth)
 
+    cleanup()
     request.addfinalizer(cleanup)
 
     dataset_id, document_id = add_document

@@ -253,6 +253,8 @@ def batch_create_chat_assistants(auth, num):
     chat_assistant_ids = []
     for i in range(num):
         res = create_chat_assistant(auth, {"name": f"test_chat_assistant_{i}", "dataset_ids": []})
+        if res.get("code") != 0 or not res.get("data") or not res["data"].get("id"):
+            raise AssertionError(f"Failed to create chat assistant test_chat_assistant_{i}: {res}")
         chat_assistant_ids.append(res["data"]["id"])
     return chat_assistant_ids
 
