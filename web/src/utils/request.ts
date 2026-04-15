@@ -115,7 +115,7 @@ request.interceptors.request.use((url: string, options: any) => {
   const data = convertTheKeysOfTheObjectToSnake(options.data);
   const params = convertTheKeysOfTheObjectToSnake(options.params);
 
-  showStarModal(url, request);
+  showStarModal(url, options.method, request);
   // Add tenant parameters to data
   const dataWithTenantParams = addTenantParams(data, url);
 

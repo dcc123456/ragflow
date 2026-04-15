@@ -1,5 +1,5 @@
 import { useFetchModelId } from '@/hooks/logic-hooks';
-import { useFetchDialog } from '@/hooks/use-chat-request';
+import { useFetchChat } from '@/hooks/use-chat-request';
 import { useFetchEvaluationRun } from '@/hooks/use-evaluation-request';
 import { useEvaluationUrl } from '@/hooks/use-evaluation-url';
 import { isEmpty } from 'lodash';
@@ -28,7 +28,7 @@ export function useInitializeSettingsOnMount(form: UseFormReturn<any>) {
   const { data } = useFetchEvaluationRun();
   const { runId } = useEvaluationUrl();
 
-  const { data: dialog } = useFetchDialog();
+  const { data: chat } = useFetchChat();
 
   const { metrics, llmId } = useInitializeMetrics();
 
@@ -42,14 +42,14 @@ export function useInitializeSettingsOnMount(form: UseFormReturn<any>) {
       return {
         config_snapshot: {
           metrics: metrics,
-          target: dialog,
+          target: chat,
         },
         collection_id: '',
       };
     }
 
     return {};
-  }, [data, dialog, form, llmId, metrics, runId]);
+  }, [chat, data, form, llmId, metrics, runId]);
 
   useEffect(() => {
     if (!isEmpty(nextData)) {

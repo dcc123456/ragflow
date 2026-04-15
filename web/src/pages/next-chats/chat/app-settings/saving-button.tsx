@@ -1,5 +1,4 @@
 import { ButtonLoading } from '@/components/ui/button';
-import { useFetchDialog } from '@/hooks/use-chat-request';
 import { useTranslation } from 'react-i18next';
 
 type SaveButtonProps = {
@@ -8,7 +7,6 @@ type SaveButtonProps = {
 
 export function SavingButton({ loading }: SaveButtonProps) {
   const { t } = useTranslation();
-  const { data } = useFetchDialog();
 
   return (
     <ButtonLoading
