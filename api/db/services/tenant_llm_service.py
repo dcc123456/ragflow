@@ -615,6 +615,7 @@ def user_register(user_id, user):
         if not UserService.save(**user):
             return
     except Exception:
+        logging.exception("UserService.save error for user_id=%s", user_id)
         return
 
     tenant = {
