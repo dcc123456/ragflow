@@ -154,7 +154,7 @@ class TestChatAssistantsList:
             else:
                 assert len(assistants) == expected_num
                 if expected_num:
-                    assert assistants[0].name == params["keywords"]
+                    assert params["keywords"] in assistants[0].name
 
     @pytest.mark.p1
     def test_exact_id_and_name_filters(self, client, add_chat_assistants):

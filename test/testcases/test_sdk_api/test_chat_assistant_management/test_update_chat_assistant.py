@@ -15,6 +15,7 @@
 #
 
 import pytest
+from common import make_chat_assistant_name
 from configs import CHAT_ASSISTANT_NAME_LIMIT
 from utils import encode_avatar
 from utils.file_utils import create_image_file
@@ -82,6 +83,13 @@ class TestChatAssistantUpdate:
     def test_name(self, client, add_chat_assistants_func, payload, expected_message):
         _, _, chat_assistants = add_chat_assistants_func
         chat_assistant = chat_assistants[0]
+        payload = dict(payload)
+        if not expected_message and payload.get("name"):
+            payload["name"] = make_chat_assistant_name(payload["name"])
+        elif payload.get("name") == "test_chat_assistant_1":
+            payload["name"] = chat_assistants[1].name
+        elif payload.get("name") == "TEST_CHAT_ASSISTANT_1":
+            payload["name"] = chat_assistants[1].name.upper()
 
         if expected_message:
             with pytest.raises(Exception) as exception_info:
@@ -98,7 +106,7 @@ class TestChatAssistantUpdate:
         chat_assistant = chat_assistants[0]
 
         fn = create_image_file(tmp_path / "ragflow_test.png")
-        payload = {"name": "icon_test", "icon": encode_avatar(fn), "dataset_ids": [dataset.id]}
+        payload = {"name": make_chat_assistant_name("icon_test"), "icon": encode_avatar(fn), "dataset_ids": [dataset.id]}
 
         chat_assistant.update(payload)
         updated_chat = client.get_chat(chat_assistant.id)
@@ -143,7 +151,7 @@ class TestChatAssistantUpdate:
         dataset, _, chat_assistants = add_chat_assistants_func
         chat_assistant = chat_assistants[0]
         llm_id = llm_setting.pop("model_name", None)
-        payload = {"name": "llm_test", "dataset_ids": [dataset.id], "llm_setting": llm_setting}
+        payload = {"name": make_chat_assistant_name("llm_test"), "dataset_ids": [dataset.id], "llm_setting": llm_setting}
         if llm_id is not None:
             payload["llm_id"] = llm_id
 
@@ -192,7 +200,7 @@ class TestChatAssistantUpdate:
     def test_prompt_config(self, client, add_chat_assistants_func, prompt_config, expected_message):
         dataset, _, chat_assistants = add_chat_assistants_func
         chat_assistant = chat_assistants[0]
-        payload = {"name": "prompt_test", "prompt_config": prompt_config, "dataset_ids": [dataset.id]}
+        payload = {"name": make_chat_assistant_name("prompt_test"), "prompt_config": prompt_config, "dataset_ids": [dataset.id]}
 
         if expected_message:
             with pytest.raises(Exception) as exception_info:

@@ -15,6 +15,7 @@
 #
 
 import pytest
+from common import make_chat_assistant_name
 from configs import CHAT_ASSISTANT_NAME_LIMIT
 from utils import encode_avatar
 from utils.file_utils import create_image_file
@@ -37,9 +38,13 @@ class TestChatAssistantCreate:
     )
     def test_name(self, client, name, expected_message):
         if name == "duplicated_name":
+            name = make_chat_assistant_name(name)
             client.create_chat(name=name)
         elif name == "case insensitive":
+            name = make_chat_assistant_name(name)
             client.create_chat(name=name.upper())
+        elif name:
+            name = make_chat_assistant_name(name)
 
         if expected_message:
             with pytest.raises(Exception) as exception_info:
@@ -63,20 +68,22 @@ class TestChatAssistantCreate:
         dataset, _, _ = add_chunks
         if callable(dataset_ids):
             dataset_ids = dataset_ids(dataset.id)
+        name = make_chat_assistant_name("ragflow_test")
 
         if expected_message:
             with pytest.raises(Exception) as exception_info:
-                client.create_chat(name="ragflow test", dataset_ids=dataset_ids)
+                client.create_chat(name=name, dataset_ids=dataset_ids)
             assert expected_message in str(exception_info.value)
         else:
-            chat_assistant = client.create_chat(name="ragflow test", dataset_ids=dataset_ids)
-            assert chat_assistant.name == "ragflow test"
+            chat_assistant = client.create_chat(name=name, dataset_ids=dataset_ids)
+            assert chat_assistant.name == name
 
     @pytest.mark.p3
     def test_icon(self, client, tmp_path):
         fn = create_image_file(tmp_path / "ragflow_test.png")
-        chat_assistant = client.create_chat(name="icon_test", icon=encode_avatar(fn), dataset_ids=[])
-        assert chat_assistant.name == "icon_test"
+        name = make_chat_assistant_name("icon_test")
+        chat_assistant = client.create_chat(name=name, icon=encode_avatar(fn), dataset_ids=[])
+        assert chat_assistant.name == name
 
     @pytest.mark.p3
     @pytest.mark.parametrize(
@@ -113,13 +120,14 @@ class TestChatAssistantCreate:
     )
     def test_llm_setting(self, client, add_chunks, llm_setting, expected_message):
         dataset, _, _ = add_chunks
+        name = make_chat_assistant_name("llm_test")
 
         if expected_message:
             with pytest.raises(Exception) as exception_info:
-                client.create_chat(name="llm_test", dataset_ids=[dataset.id], llm_setting=llm_setting or None)
+                client.create_chat(name=name, dataset_ids=[dataset.id], llm_setting=llm_setting or None)
             assert expected_message in str(exception_info.value)
         else:
-            chat_assistant = client.create_chat(name="llm_test", dataset_ids=[dataset.id], llm_setting=llm_setting or None)
+            chat_assistant = client.create_chat(name=name, dataset_ids=[dataset.id], llm_setting=llm_setting or None)
             for k, v in llm_setting.items():
                 assert getattr(chat_assistant.llm_setting, k) == v
 
@@ -133,13 +141,14 @@ class TestChatAssistantCreate:
     )
     def test_llm_id(self, client, add_chunks, llm_id, expected_message):
         dataset, _, _ = add_chunks
+        name = make_chat_assistant_name("llm_test")
 
         if expected_message:
             with pytest.raises(Exception) as exception_info:
-                client.create_chat(name="llm_test", dataset_ids=[dataset.id], llm_id=llm_id)
+                client.create_chat(name=name, dataset_ids=[dataset.id], llm_id=llm_id)
             assert expected_message in str(exception_info.value)
         else:
-            chat_assistant = client.create_chat(name="llm_test", dataset_ids=[dataset.id], llm_id=llm_id)
+            chat_assistant = client.create_chat(name=name, dataset_ids=[dataset.id], llm_id=llm_id)
             assert chat_assistant.llm_id == llm_id
 
     @pytest.mark.p3
@@ -174,13 +183,14 @@ class TestChatAssistantCreate:
     )
     def test_prompt_config(self, client, add_chunks, prompt_config, expected_message):
         dataset, _, _ = add_chunks
+        name = make_chat_assistant_name("prompt_test")
 
         if expected_message:
             with pytest.raises(Exception) as exception_info:
-                client.create_chat(name="prompt_test", dataset_ids=[dataset.id], prompt_config=prompt_config)
+                client.create_chat(name=name, dataset_ids=[dataset.id], prompt_config=prompt_config)
             assert expected_message in str(exception_info.value)
         else:
-            chat_assistant = client.create_chat(name="prompt_test", dataset_ids=[dataset.id], prompt_config=prompt_config)
+            chat_assistant = client.create_chat(name=name, dataset_ids=[dataset.id], prompt_config=prompt_config)
             for k, v in prompt_config.items():
                 assert getattr(chat_assistant.prompt_config, k) == v
 
@@ -189,6 +199,7 @@ class TestChatAssistantCreate2:
     @pytest.mark.p3
     def test_unparsed_document(self, client, add_document):
         dataset, _ = add_document
+        name = make_chat_assistant_name("prompt_test")
         with pytest.raises(Exception) as exception_info:
-            client.create_chat(name="prompt_test", dataset_ids=[dataset.id])
+            client.create_chat(name=name, dataset_ids=[dataset.id])
         assert "doesn't own parsed file" in str(exception_info.value)

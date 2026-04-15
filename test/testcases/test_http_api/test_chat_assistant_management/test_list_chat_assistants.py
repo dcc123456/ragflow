@@ -218,7 +218,7 @@ class TestChatAssistantsList:
             else:
                 assert len(_chat_list(res)) == expected_num
                 if expected_num:
-                    assert _chat_list(res)[0]["name"] == params["keywords"]
+                    assert params["keywords"] in _chat_list(res)[0]["name"]
         else:
             assert res["message"] == expected_message
 

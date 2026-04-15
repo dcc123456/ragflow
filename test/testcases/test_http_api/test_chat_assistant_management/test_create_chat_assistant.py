@@ -15,7 +15,7 @@
 #
 
 import pytest
-from common import create_chat_assistant
+from common import create_chat_assistant, make_chat_assistant_name
 from configs import CHAT_ASSISTANT_NAME_LIMIT, INVALID_API_TOKEN
 from libs.auth import RAGFlowHttpApiAuth
 from utils import encode_avatar
@@ -52,11 +52,16 @@ class TestChatAssistantCreate:
         ],
     )
     def test_name(self, HttpApiAuth, add_chunks, payload, expected_code, expected_message):
+        payload = dict(payload)
         payload["dataset_ids"] = []  # issues/
         if payload["name"] == "duplicated_name":
+            payload["name"] = make_chat_assistant_name(payload["name"])
             create_chat_assistant(HttpApiAuth, payload)
         elif payload["name"] == "case insensitive":
+            payload["name"] = make_chat_assistant_name(payload["name"])
             create_chat_assistant(HttpApiAuth, {"name": payload["name"].upper()})
+        elif payload["name"]:
+            payload["name"] = make_chat_assistant_name(payload["name"])
 
         res = create_chat_assistant(HttpApiAuth, payload)
         assert res["code"] == expected_code, res
@@ -77,7 +82,7 @@ class TestChatAssistantCreate:
     )
     def test_dataset_ids(self, HttpApiAuth, add_chunks, dataset_ids, expected_code, expected_message):
         dataset_id, _, _ = add_chunks
-        payload = {"name": "ragflow test"}
+        payload = {"name": make_chat_assistant_name("ragflow_test")}
         if callable(dataset_ids):
             payload["dataset_ids"] = dataset_ids(dataset_id)
         else:
@@ -93,7 +98,7 @@ class TestChatAssistantCreate:
     @pytest.mark.p3
     def test_avatar(self, HttpApiAuth, tmp_path):
         fn = create_image_file(tmp_path / "ragflow_test.png")
-        payload = {"name": "avatar_test", "icon": encode_avatar(fn), "dataset_ids": []}
+        payload = {"name": make_chat_assistant_name("avatar_test"), "icon": encode_avatar(fn), "dataset_ids": []}
         res = create_chat_assistant(HttpApiAuth, payload)
         assert res["code"] == 0
 
@@ -134,7 +139,7 @@ class TestChatAssistantCreate:
     )
     def test_llm(self, HttpApiAuth, add_chunks, llm, expected_code, expected_message):
         dataset_id, _, _ = add_chunks
-        payload = {"name": "llm_test", "dataset_ids": [dataset_id]}
+        payload = {"name": make_chat_assistant_name("llm_test"), "dataset_ids": [dataset_id]}
         if "model_name" in llm:
             payload["llm_id"] = llm["model_name"]
         if any(k != "model_name" for k in llm):
@@ -204,7 +209,7 @@ class TestChatAssistantCreate:
     )
     def test_prompt(self, HttpApiAuth, add_chunks, prompt, expected_code, expected_message):
         dataset_id, _, _ = add_chunks
-        payload = {"name": "prompt_test", "dataset_ids": [dataset_id]}
+        payload = {"name": make_chat_assistant_name("prompt_test"), "dataset_ids": [dataset_id]}
         prompt_config = {}
         for k, v in prompt.items():
             if k == "keywords_similarity_weight":
@@ -273,7 +278,7 @@ class TestChatAssistantCreate:
         assert res["message"] == "`tenant_id` must not be provided."
 
         rerank_payload = {
-            "name": "guard-rerank-id",
+            "name": make_chat_assistant_name("guard-rerank-id"),
             "dataset_ids": [],
             "rerank_id": "unknown-rerank-model",
         }
@@ -286,7 +291,7 @@ class TestChatAssistantCreate2:
     @pytest.mark.p2
     def test_unparsed_document(self, HttpApiAuth, add_document):
         dataset_id, _ = add_document
-        payload = {"name": "prompt_test", "dataset_ids": [dataset_id]}
+        payload = {"name": make_chat_assistant_name("prompt_test"), "dataset_ids": [dataset_id]}
         res = create_chat_assistant(HttpApiAuth, payload)
         assert res["code"] == 102
         assert "doesn't own parsed file" in res["message"]
