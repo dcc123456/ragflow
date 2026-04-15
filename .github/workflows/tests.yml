@@ -234,6 +234,11 @@ jobs:
           echo -e "RABBITMQ_MANAGEMENT_PORT=${RABBITMQ_MANAGEMENT_PORT}" >> .env
           echo -e "RABBITMQ_PROMETHEUS_PORT=${RABBITMQ_PROMETHEUS_PORT}" >> .env
 
+          echo -e "COMPOSE_PROFILES=\${COMPOSE_PROFILES},tei-cpu" >> .env
+          echo -e "TEI_MODEL=BAAI/bge-small-en-v1.5" >> .env
+          echo -e "RAGFLOW_IMAGE=${RAGFLOW_IMAGE}" >> .env
+          echo "HOST_ADDRESS=http://host.docker.internal:${SVR_HTTP_PORT}" >> ${GITHUB_ENV}
+
           cd ..
           uv sync --python 3.12 --group test --frozen && uv pip install -e sdk/python
 
