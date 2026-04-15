@@ -13,6 +13,7 @@ import api from './api';
 import { convertTheKeysOfTheObjectToSnake } from './common-util';
 import { setCachedLlmList } from './llm-cache';
 import { addTenantParams } from './llm-util';
+import { isBillingEnabled } from '@/services/billingStatus';
 
 const FAILED_TO_FETCH = 'Failed to fetch';
 
@@ -198,7 +199,7 @@ request.interceptors.response.use(async (response: any, options: any) => {
     redirectToLogin();
   } else if (data?.code !== 0) {
     if (
-      import.meta.env.VITE_BILLING_ENABLED === '1' &&
+      isBillingEnabled() &&
       PriceCode[data?.code as any]
     ) {
       showPriceModal(data as any);

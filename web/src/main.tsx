@@ -5,12 +5,15 @@ import '../tailwind.css';
 import App from './app';
 import './global.less';
 import { initLanguage } from './locales/config';
+import { fetchBillingStatus } from './services/billingStatus';
 
 initLanguage().then(() => {
-  ReactDOM.createRoot(document.getElementById('root')!).render(
-    <React.StrictMode>
-      <Inspector keys={['alt', 'c']} onInspectElement={gotoVSCode} />
-      <App />
-    </React.StrictMode>,
-  );
+  fetchBillingStatus().then(() => {
+    ReactDOM.createRoot(document.getElementById('root')!).render(
+      <React.StrictMode>
+        <Inspector keys={['alt', 'c']} onInspectElement={gotoVSCode} />
+        <App />
+      </React.StrictMode>,
+    );
+  });
 });

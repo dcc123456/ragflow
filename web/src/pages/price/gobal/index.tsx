@@ -27,6 +27,8 @@ import {
   useShowFreeUpgradeTipsModal,
   useShowUpgradeTipsModal,
 } from './hook';
+import { isBillingEnabled } from '@/services/billingStatus';
+
 interface UpgradeModalContextType {
   isModalOpen: boolean;
   openModal: (modalType?: string, modalProps?: any) => void;
@@ -61,7 +63,7 @@ export const showFreeUpgradeTipsModal = (
 export const UpgradeModalProvider: React.FC<UpgradeModalProviderProps> = ({
   children,
 }) => {
-  if (import.meta.env.VITE_BILLING_ENABLED !== '1') {
+  if (!isBillingEnabled()) {
     return <>{children}</>;
   }
   const location = window.location.pathname.toLowerCase();

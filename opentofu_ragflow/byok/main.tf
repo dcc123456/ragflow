@@ -1321,6 +1321,20 @@ resource "kubernetes_secret_v1" "ragflow_env" {
     # Secret key for JWT tokens - must be fixed to maintain session across pod restarts
     # Generate with: openssl rand -hex 32
     RAGFLOW_SECRET_KEY = "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2"
+
+    # Billing Configuration
+    BILLING_ENABLED                    = var.billing_enabled ? "1" : "0"
+    BILLING_STRIPE_API_VERSION         = var.billing_stripe_api_version
+    BILLING_SERVICE_URL                = var.billing_service_url
+    BILLING_STRIPE_API_KEY             = var.billing_stripe_api_key
+    BILLING_STRIPE_ENDPOINT_SECRET     = var.billing_stripe_endpoint_secret
+    BILLING_POINTS_PRICE_ID            = var.billing_price_id_points_recharge
+    BILLING_PRICE_ID_STORAGE           = var.billing_price_id_storage
+    BILLING_PRICE_ID_DEEPDOC           = var.billing_price_id_deepdoc
+    BILLING_PRICE_ID_TRIAL             = var.billing_price_id_trial
+    BILLING_PRICE_ID_STARTER           = var.billing_price_id_starter
+    BILLING_PRICE_ID_PRO               = var.billing_price_id_pro
+    BILLING_PRICE_ID_ENTERPRISE        = var.billing_price_id_enterprise
   }
 
   type = "Opaque"
@@ -2770,6 +2784,9 @@ data "kubernetes_service_v1" "gateway_fabric" {
 # =============================================================================
 
 # Only create this when using GKE Gateway (gke-*)
+# GKE Gateway Controller stores the assigned IP in metadata.annotations.networking.gke.io/addresses,
+# NOT in status.addresses (a known GKE behavior). Extract region and address name from the annotation
+# path to query the actual IP from GCP.
 data "external" "gateway_ip" {
   count = local.is_gke_gateway ? 1 : 0
   program = ["sh", "-c", "kubectl get gateway ragflow -n ragflow -o jsonpath={.status.addresses[0].value} 2>/dev/null | jq -R -s -c '{address: .}'"]

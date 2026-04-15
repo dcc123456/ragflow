@@ -450,7 +450,7 @@ variable "parser_ws_workers" {
 variable "deepdoc_image" {
   description = "DeepDoc container image (including tag, will be prefixed with private_registry)"
   type        = string
-  default     = "deepdoc_cpu:latest"
+  default     = "deepdoc_cpu:v0.24.0-5-mt"
 }
 
 variable "deepdoc_replicas" {
@@ -524,3 +524,120 @@ variable "ohttps_sync_image" {
   default     = "infiniflow/sync_ohttps_cert:latest"
 }
 
+# =============================================================================
+# Billing Configuration
+# =============================================================================
+
+variable "billing_enabled" {
+  description = "Enable billing feature"
+  type        = bool
+  default     = false
+}
+
+variable "billing_stripe_api_key" {
+  description = "Stripe API key. Set via environment variable: export TF_VAR_billing_stripe_api_key='sk_live_xxx'"
+  type        = string
+  sensitive   = true
+  default     = ""
+  validation {
+    condition     = var.billing_enabled == false || substr(var.billing_stripe_api_key, 0, 3) == "sk_"
+    error_message = "billing_stripe_api_key must start with 'sk_' (Stripe secret key prefix)."
+  }
+}
+
+variable "billing_stripe_endpoint_secret" {
+  description = "Stripe webhook endpoint secret. Set via environment variable: export TF_VAR_billing_stripe_endpoint_secret='whsec_xxx'"
+  type        = string
+  sensitive   = true
+  default     = ""
+  validation {
+    condition     = var.billing_enabled == false || substr(var.billing_stripe_endpoint_secret, 0, 6) == "whsec_"
+    error_message = "billing_stripe_endpoint_secret must start with 'whsec_' (Stripe webhook secret prefix)."
+  }
+}
+
+variable "billing_stripe_api_version" {
+  description = "Stripe API version"
+  type        = string
+  default     = "2026-02-25.clover"
+}
+
+variable "billing_service_url" {
+  description = "Billing service base URL for Stripe callbacks and redirects. Must be a publicly accessible URL (e.g., https://billing.example.com). Cannot be localhost or 127.0.0.1."
+  type        = string
+  default     = "http://127.0.0.1:9380"
+  validation {
+    condition     = var.billing_enabled == false || (var.billing_service_url != "" && !can(regex("localhost|127\\.0\\.0\\.1", var.billing_service_url)))
+    error_message = "billing_service_url must be a valid publicly accessible URL and cannot be localhost or 127.0.0.1."
+  }
+}
+
+variable "billing_price_id_points_recharge" {
+  description = "Stripe price ID for points recharge"
+  type        = string
+  default     = ""
+  validation {
+    condition     = var.billing_enabled == false || var.billing_price_id_points_recharge != ""
+    error_message = "billing_price_id_points_recharge must not be empty when billing is enabled."
+  }
+}
+
+variable "billing_price_id_storage" {
+  description = "Stripe price ID for storage subscription"
+  type        = string
+  default     = ""
+  validation {
+    condition     = var.billing_enabled == false || var.billing_price_id_storage != ""
+    error_message = "billing_price_id_storage must not be empty when billing is enabled."
+  }
+}
+
+variable "billing_price_id_deepdoc" {
+  description = "Stripe price ID for deepdoc usage-based billing"
+  type        = string
+  default     = ""
+  validation {
+    condition     = var.billing_enabled == false || var.billing_price_id_deepdoc != ""
+    error_message = "billing_price_id_deepdoc must not be empty when billing is enabled."
+  }
+}
+
+variable "billing_price_id_trial" {
+  description = "Stripe price ID for Trial subscription plan"
+  type        = string
+  default     = ""
+  validation {
+    condition     = var.billing_enabled == false || var.billing_price_id_trial != ""
+    error_message = "billing_price_id_trial must not be empty when billing is enabled."
+  }
+}
+
+variable "billing_price_id_starter" {
+  description = "Stripe price ID for Starter subscription plan"
+  type        = string
+  default     = ""
+  validation {
+    condition     = var.billing_enabled == false || var.billing_price_id_starter != ""
+    error_message = "billing_price_id_starter must not be empty when billing is enabled."
+  }
+}
+
+variable "billing_price_id_pro" {
+  description = "Stripe price ID for Pro subscription plan"
+  type        = string
+  default     = ""
+  validation {
+    condition     = var.billing_enabled == false || var.billing_price_id_pro != ""
+    error_message = "billing_price_id_pro must not be empty when billing is enabled."
+  }
+}
+
+variable "billing_price_id_enterprise" {
+  description = "Stripe price ID for Enterprise subscription plan"
+  type        = string
+  default     = ""
+  validation {
+    condition     = var.billing_enabled == false || var.billing_price_id_enterprise != ""
+    error_message = "billing_price_id_enterprise must not be empty when billing is enabled."
+  }
+}
