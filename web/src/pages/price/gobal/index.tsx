@@ -10,6 +10,7 @@ import {
 import { freePageNumber } from '../config';
 import { PriceName } from '../constant';
 // import { useFetchCurrentPlan } from '../hook/use-price-hooks';
+import { isBillingEnabled } from '@/services/billingStatus';
 import { useFetchCurrentPlan } from '../hook/use-price-hooks';
 import { ICurrentPlan } from '../interface';
 import { FreeUpgradeModal } from '../price-modal/free-upgrade-modal';
@@ -27,6 +28,7 @@ import {
   useShowFreeUpgradeTipsModal,
   useShowUpgradeTipsModal,
 } from './hook';
+
 interface UpgradeModalContextType {
   isModalOpen: boolean;
   openModal: (modalType?: string, modalProps?: any) => void;
@@ -61,7 +63,7 @@ export const showFreeUpgradeTipsModal = (
 export const UpgradeModalProvider: React.FC<UpgradeModalProviderProps> = ({
   children,
 }) => {
-  if (import.meta.env.VITE_BILLING_ENABLED !== '1') {
+  if (!isBillingEnabled()) {
     return <>{children}</>;
   }
   const location = window.location.pathname.toLowerCase();

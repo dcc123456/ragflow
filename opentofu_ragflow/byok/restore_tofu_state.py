@@ -73,6 +73,10 @@ def get_planned_resources():
 
         planned.add(address)
 
+        # Normalize address for metadata lookup keys (strip index to match state file format)
+        # e.g., "kubernetes_job_v1.foo[0]" -> "kubernetes_job_v1.foo"
+        addr_base = address.split("[")[0]
+
         actions = change.get("change", {}).get("actions", [])
 
         # Classify action
@@ -97,16 +101,16 @@ def get_planned_resources():
         if "metadata" in after and isinstance(after["metadata"], list) and len(after["metadata"]) > 0:
             k8s_name = after["metadata"][0].get("name")
             if k8s_name:
-                metadata_names[address] = k8s_name
+                metadata_names[addr_base] = k8s_name
 
         # Extract info for kubernetes_manifest (nested manifest dict)
         elif "manifest" in after and isinstance(after["manifest"], dict):
             manifest = after["manifest"]
             k8s_name = manifest.get("metadata", {}).get("name")
             if k8s_name:
-                metadata_names[address] = k8s_name
+                metadata_names[addr_base] = k8s_name
             # Store full manifest info for dynamic import ID generation
-            manifest_info[address] = {
+            manifest_info[addr_base] = {
                 "api_version": manifest.get("apiVersion"),
                 "kind": manifest.get("kind"),
                 "name": k8s_name,
@@ -119,6 +123,10 @@ def get_planned_resources():
 def parse_state_file(path):
     """Parse tofu state file, return set of resource addresses"""
     if not os.path.exists(path):
+        return set()
+    # Delete empty state file
+    if os.path.getsize(path) == 0:
+        os.remove(path)
         return set()
     with open(path) as f:
         state = json.load(f)
@@ -157,6 +165,7 @@ def discover_cluster_resources():
     resources["httproute"] = kubectl_get("httproute")
     # Custom GKE resources
     resources["computeclass"] = kubectl_get("computeclass")
+    resources["gcpbackendpolicy"] = kubectl_get("gcpbackendpolicy")
     return resources
 
 
@@ -180,7 +189,9 @@ def address_to_k8s_id(address, cluster, metadata_names=None, manifest_info=None)
     tf_name = tf_name.split("[")[0]  # Remove index if present
 
     # Get the evaluated K8s resource name from plan JSON
-    k8s_name = metadata_names.get(address, tf_name)
+    # metadata_names is keyed by addr_base (without index)
+    addr_base = address.split("[")[0]
+    k8s_name = metadata_names.get(addr_base, tf_name)
 
     def search_cluster(k8s_kind):
         """Search pre-fetched cluster dict. Zero subprocess calls."""
@@ -208,7 +219,7 @@ def address_to_k8s_id(address, cluster, metadata_names=None, manifest_info=None)
 
     # --- Case 1: Kubernetes Manifests (Dynamic based on manifest info from plan) ---
     if tf_type == "kubernetes_manifest":
-        info = manifest_info.get(address)
+        info = manifest_info.get(addr_base)
         if not info:
             # Fallback: try to infer from tf_name
             return None
@@ -623,7 +634,9 @@ def main():
     helm_needs_reconcile = []  # Track helm releases needing special handling
 
     for addr in sorted(planned_resources):
-        if addr in state_resources:
+        # Strip index suffix for state comparison (state file doesn't have indices)
+        addr_base = addr.split("[")[0]
+        if addr_base in state_resources:
             continue
         k8s_id = address_to_k8s_id(addr, cluster, metadata_names, manifest_info)
         if k8s_id is None:
@@ -649,7 +662,9 @@ def main():
     #
     # We'll detect this case and offer automatic remediation.
     for addr, (name, namespace) in helm_releases.items():
-        if addr in state_resources:
+        # Strip index suffix for state comparison
+        addr_base = addr.split("[")[0]
+        if addr_base in state_resources:
             continue
 
         # Check if helm release secret exists in the cluster

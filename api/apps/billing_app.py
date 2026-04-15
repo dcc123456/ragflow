@@ -114,6 +114,12 @@ def _billing_disabled_webhook_response():
     return jsonify(success=True)
 
 
+@manager.route("/status", methods=["GET"])  # noqa: F821
+def billing_status():
+    """Return current billing enabled status - no auth required."""
+    return jsonify({"billing_enabled": settings.BILLING_ENABLED == 1})
+
+
 def _storage_effective_kb(tenant_id: str) -> int:
     return StorageSubscriptionService.effective_storage_kb(tenant_id)
 

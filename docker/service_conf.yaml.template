@@ -58,100 +58,99 @@ redis:
 #   bge-large-zh-v1.5: http://10.142.0.6:4567/predict
 #   bce-embedding-base_v1: http://10.142.0.6:4568/predict
 #   bge-m3: http://10.142.0.6:4569/predict
-# billing:
-#   stripe_api_key: 'sk_test_51RLgXMPtsKvwvC5fPPYV143r560uZJMUGcgj58nY6tkrisR6h6QN1EUabEeDTHrs4lQofg87KqF90APIs0PpzIN0002ydK7iJI'
-#   stripe_api_version: '2026-02-25.clover'
-#   stripe_endpoint_secret: 'whsec_10c6b02840850557fda082a0b74293685b26498bf03eb5cdffd1e6db0d077ad8'
-#   session_success_url: 'http://127.0.0.1:9222/success.html'
-#   session_cancel_url: 'http://127.0.0.1:9222/cancel.html'
-#   # webhook_url: 'https://demo.ragflow.io/v1/billing/webhook'
-#   webhook_url: 'http://127.0.0.1:9380/v1/billing/webhook'
-#   customer_portal_return_url: 'http://127.0.0.1:9380'
-#   plans_cache_key: 'saas:billing:plans:latest'
-#   usage_based_plans_cache_key: 'saas:billing:usage_based:latest'
-#   plans_cache_ttl_seconds: 86400
-#   local_price:
-#     - product_name: "deepdoc"
-#       amount: 1
-#       currency: "usd"
-#   price_point:
-#     - product_name: "deepdoc"
-#       price_type: "usage_based"
-#       billing_frequency: "one_time"
-#       unit: "page"
-#       unit_quantity: 1
-#       consuming_point_amount: 1  # points charged per page
-#   points_recharge:
-#     price_id: "price_1T77p7PtsKvwvC5f7w3uFo6g"
-#     points_per_unit: 100 # 1 quantity = 1 USD = 100 points (1 cent = 1 point)
-#   billing_plans:
-#     - name: "storage"
-#       quota_apps: 0
-#       quota_members: 0
-#       quota_kb_storage: 0
-#       task_priority: "low"
-#       price_ids: "price_1Syn0kPtsKvwvC5fd6HYXvCt"
-#       price_lookup_key: "ragflow_subscription_storage"
-#       product_type: "usage_based"
-#       usage_stat_type: "before"
-#       plan_priority: -1
-#     - name: "deepdoc"
-#       quota_apps: 0
-#       quota_members: 0
-#       quota_kb_storage: 0
-#       task_priority: "low"
-#       price_ids: "price_1RRTpfPtsKvwvC5fVsZly0mE"
-#       price_lookup_key: "ragflow_usage_based_deepdoc"
-#       product_type: "usage_based"
-#       usage_stat_type: "before"
-#       plan_priority: -1
-#     - name: "Trial"
-#       quota_apps: 5
-#       quota_members: 1
-#       quota_kb_storage: 100MB
-#       api_request_limit_per_minute: 500
-#       api_request_limit_per_month: 5000
-#       task_priority: "low"
-#       price_ids: "price_1RWUhlPtsKvwvC5fJHfaYeRs"
-#       product_type: "subscription"
-#       usage_stat_type: ""
-#       plan_priority: 0
-#     - name: "Starter"
-#       quota_apps: 100
-#       quota_members: 10
-#       quota_kb_storage: 10G
-#       api_request_limit_per_minute: 2147483647
-#       api_request_limit_per_month: 2147483647
-#       task_priority: "high"
-#       price_ids: "price_1Si7S7PtsKvwvC5f3IjPpPcN"
-#       price_lookup_key: "lk_ragflow_plan_level_1_20251225"
-#       product_type: "subscription"
-#       usage_stat_type: ""
-#       plan_priority: 1
-#     - name: "Pro"
-#       quota_apps: 999999999
-#       quota_members: 50
-#       quota_kb_storage: 100G
-#       api_request_limit_per_minute: 2147483647
-#       api_request_limit_per_month: 2147483647
-#       task_priority: "high"
-#       price_ids: "price_1Si7SyPtsKvwvC5fxloqaKPP"
-#       price_lookup_key: "lk_ragflow_level2_monthly_20251225"
-#       product_type: "subscription"
-#       usage_stat_type: ""
-#       plan_priority: 2
-#     - name: "Enterprise"
-#       quota_apps: 999999999
-#       quota_members: 50
-#       quota_kb_storage: 100G
-#       api_request_limit_per_minute: 2147483647
-#       api_request_limit_per_month: 2147483647
-#       task_priority: "high"
-#       price_ids: "price_1SNQPMPtsKvwvC5fJtR16E6w"
-#       price_lookup_key: "lk_ragflow_enterprise_monthly"
-#       product_type: "subscription"
-#       usage_stat_type: ""
-#       plan_priority: 3
+billing:
+  stripe_api_key: '${BILLING_STRIPE_API_KEY:-sk_test_51RLgXMPtsKvwvC5fPPYV143r560uZJMUGcgj58nY6tkrisR6h6QN1EUabEeDTHrs4lQofg87KqF90APIs0PpzIN0002ydK7iJI}'
+  stripe_api_version: '${BILLING_STRIPE_API_VERSION:-2026-02-25.clover}'
+  stripe_endpoint_secret: '${BILLING_STRIPE_ENDPOINT_SECRET:-whsec_10c6b02840850557fda082a0b74293685b26498bf03eb5cdffd1e6db0d077ad8}'
+  session_success_url: '${BILLING_SERVICE_URL:-http://127.0.0.1:9380}/v1/billing/success'
+  session_cancel_url: '${BILLING_SERVICE_URL-http://127.0.0.1:9380}/v1/billing/cancel'
+  webhook_url: '${BILLING_SERVICE_URL-http://127.0.0.1:9380}/v1/billing/webhook'
+  customer_portal_return_url: '${BILLING_SERVICE_URL-http://127.0.0.1:9380}'
+  plans_cache_key: 'saas:billing:plans:latest'
+  usage_based_plans_cache_key: 'saas:billing:usage_based:latest'
+  plans_cache_ttl_seconds: 86400
+  local_price:
+    - product_name: "deepdoc"
+      amount: 1
+      currency: "usd"
+  price_point:
+    - product_name: "deepdoc"
+      price_type: "usage_based"
+      billing_frequency: "one_time"
+      unit: "page"
+      unit_quantity: 1
+      consuming_point_amount: 1  # points charged per page
+  points_recharge:
+    price_id: '${BILLING_PRICE_ID_RECHARGE:-price_1T77p7PtsKvwvC5f7w3uFo6g}'
+    points_per_unit: 100 # 1 quantity = 1 USD = 100 points (1 cent = 1 point)
+  billing_plans:
+    - name: "storage"
+      quota_apps: 0
+      quota_members: 0
+      quota_kb_storage: 0
+      task_priority: "low"
+      price_ids: '${BILLING_PRICE_ID_STORAGE:-price_1Syn0kPtsKvwvC5fd6HYXvCt}'
+      price_lookup_key: "ragflow_subscription_storage"
+      product_type: "usage_based"
+      usage_stat_type: "before"
+      plan_priority: -1
+    - name: "deepdoc"
+      quota_apps: 0
+      quota_members: 0
+      quota_kb_storage: 0
+      task_priority: "low"
+      price_ids: '${BILLING_PRICE_ID_DEEPDOC:-price_1RRTpfPtsKvwvC5fVsZly0mE}'
+      price_lookup_key: "ragflow_usage_based_deepdoc"
+      product_type: "usage_based"
+      usage_stat_type: "before"
+      plan_priority: -1
+    - name: "Trial"
+      quota_apps: 5
+      quota_members: 1
+      quota_kb_storage: 100MB
+      api_request_limit_per_minute: 500
+      api_request_limit_per_month: 5000
+      task_priority: "low"
+      price_ids: '${BILLING_PRICE_ID_TRIAL:-price_1RWUhlPtsKvwvC5fJHfaYeRs}'
+      product_type: "subscription"
+      usage_stat_type: ""
+      plan_priority: 0
+    - name: "Starter"
+      quota_apps: 100
+      quota_members: 10
+      quota_kb_storage: 10G
+      api_request_limit_per_minute: 2147483647
+      api_request_limit_per_month: 2147483647
+      task_priority: "high"
+      price_ids: '${BILLING_PRICE_ID_STARTER:-price_1Si7S7PtsKvwvC5f3IjPpPcN}'
+      price_lookup_key: "lk_ragflow_plan_level_1_20251225"
+      product_type: "subscription"
+      usage_stat_type: ""
+      plan_priority: 1
+    - name: "Pro"
+      quota_apps: 999999999
+      quota_members: 50
+      quota_kb_storage: 100G
+      api_request_limit_per_minute: 2147483647
+      api_request_limit_per_month: 2147483647
+      task_priority: "high"
+      price_ids: '${BILLING_PRICE_ID_PRO:-price_1Si7SyPtsKvwvC5fxloqaKPP}'
+      price_lookup_key: "lk_ragflow_level2_monthly_20251225"
+      product_type: "subscription"
+      usage_stat_type: ""
+      plan_priority: 2
+    - name: "Enterprise"
+      quota_apps: 999999999
+      quota_members: 50
+      quota_kb_storage: 100G
+      api_request_limit_per_minute: 2147483647
+      api_request_limit_per_month: 2147483647
+      task_priority: "high"
+      price_ids: '${BILLING_PRICE_ID_ENTERPRISE:-price_1SNQPMPtsKvwvC5fJtR16E6w}'
+      price_lookup_key: "lk_ragflow_enterprise_monthly"
+      product_type: "subscription"
+      usage_stat_type: ""
+      plan_priority: 3
 rabbitmq:
   user: "${RABBITMQ_DEFAULT_USER:-rag_flow}"
   password: '${RABBITMQ_DEFAULT_PASS:-infini_rag_flow}'

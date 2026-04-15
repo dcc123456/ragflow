@@ -15,6 +15,7 @@ import {
 import { cn } from '@/lib/utils';
 import { PrivateRoutes } from '@/private-routes';
 import { Routes } from '@/routes';
+import { isBillingEnabled } from '@/services/billingStatus';
 import { TFunction } from 'i18next';
 
 import {
@@ -101,7 +102,7 @@ export function SideBar() {
 
   const items = useMemo(() => {
     const menus: MenuItem[] = [...menuItems(t)];
-    if (import.meta.env.VITE_BILLING_ENABLED === '1') {
+    if (isBillingEnabled()) {
       const billingMenuItem: MenuItem = {
         icon: <ReceiptText className="size-[1em]" />,
         label: t('setting.billing'),

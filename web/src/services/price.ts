@@ -2,6 +2,7 @@ import { IChargePlan } from '@/pages/price/hook/use-price-hooks';
 import api from '@/utils/private-api';
 import registerServer from '@/utils/register-server';
 import request from '@/utils/request';
+import { isBillingEnabled } from './billingStatus';
 
 // function registerServer() {}
 
@@ -62,7 +63,7 @@ const methods = {
 };
 
 const billingService = (() => {
-  if (import.meta.env.VITE_BILLING_ENABLED === '1') {
+  if (isBillingEnabled()) {
     return registerServer<keyof typeof methods>?.(methods, request);
   }
   return null;

@@ -390,7 +390,7 @@ async def oauth_callback(channel):
                         "access_token": get_uuid(),
                         "email": user_info.email,
                         "avatar": avatar,
-                        "nickname": user_info.nickname,
+                        "nickname": user_info.nickname or user_info.email.split("@")[0],
                         "login_channel": channel,
                         "last_login_time": get_format_time(),
                         "is_superuser": False,

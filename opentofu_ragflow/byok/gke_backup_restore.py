@@ -430,6 +430,24 @@ def get_console_url(resource_type: str, project: str, location: str = None, reso
 #
 EXCLUDE_APP_LABELS = ["admin", "deepdoc", "parser", "ragflow"]
 
+# Cluster-scoped Cilium kinds that must be excluded from same-project restore
+# because they already exist on the cluster and conflict on restore.
+# In cross-project restore these are also excluded since Cilium identity/node
+# state is cluster-specific and cannot be migrated between clusters.
+EXCLUDE_CILIUM_KINDS = ["CiliumIdentity", "CiliumNode"]
+
+# Gateway API resources should never be restored into an existing cluster.
+# They are managed by the current cluster's ingress/gateway control plane and
+# restoring backup versions can corrupt the live Gateway controller state.
+EXCLUDE_GATEWAY_API_GROUP = "gateway.networking.k8s.io"
+EXCLUDE_GATEWAY_API_KINDS = [
+    "Gateway",
+    "HTTPRoute",
+    "GatewayClass",
+    "BackendTLSPolicy",
+    "ReferenceGrant",
+]
+
 # Restore order: forces Secret and ConfigMap to be restored BEFORE Workloads.
 # Without this, workloads may start before their Secrets/ConfigMaps exist,
 # causing "secret not found" errors and Workload Validation timeout.
@@ -537,8 +555,13 @@ RESTORE_ORDER_TEMPLATE = """groupKindDependencies:
 def build_exclusion_filter_template() -> str:
     """Build exclusion filter YAML for cross-project restore.
 
-    Excludes Deployments, ReplicaSets, and Pods with app label in
-    (admin, deepdoc, parser, ragflow) using one rule per label value per kind.
+    Excludes:
+    1. Deployments, ReplicaSets, Pods with app label in (admin, deepdoc, parser, ragflow)
+       -- these use project-specific images that cannot be pulled in the destination project.
+    2. Cluster-scoped CiliumIdentity and CiliumNode -- these are cluster-specific and
+       conflict on restore even with USE_BACKUP_VERSION policy.
+    3. Gateway API resources -- these are control-plane-managed ingress resources and
+       should not be replayed from backup into an existing cluster.
 
     Produces YAML like:
     exclusionFilters:
@@ -547,25 +570,18 @@ def build_exclusion_filter_template() -> str:
         resourceKind: Deployment
       labels:
         app: admin
+    ... (repeats for app labels and kinds)
     - groupKind:
-        resourceGroup: apps
-        resourceKind: ReplicaSet
-      labels:
-        app: admin
+        resourceGroup: cilium.io
+        resourceKind: CiliumIdentity
     - groupKind:
-        resourceGroup: ""
-        resourceKind: Pod
-      labels:
-        app: admin
-    ... (repeats for deepdoc, parser, ragflow)
+        resourceGroup: cilium.io
+        resourceKind: CiliumNode
     """
     lines = ["exclusionFilters:"]
 
-    # One rule per (resourceKind, labelValue) -- see NOTE #1 above.
-    # We cannot use operator+values; we must expand each label value
-    # into its own filter entry.
+    # 1. App-label-based exclusions (Deployment, ReplicaSet, Pod per label value)
     for app_name in EXCLUDE_APP_LABELS:
-        # Deployment belongs to apps API group
         lines.append("- groupKind:")
         lines.append("    resourceGroup: apps")
         lines.append("    resourceKind: Deployment")
@@ -573,7 +589,6 @@ def build_exclusion_filter_template() -> str:
         lines.append(f"    app: {app_name}")
 
     for app_name in EXCLUDE_APP_LABELS:
-        # ReplicaSet belongs to apps API group
         lines.append("- groupKind:")
         lines.append("    resourceGroup: apps")
         lines.append("    resourceKind: ReplicaSet")
@@ -581,12 +596,23 @@ def build_exclusion_filter_template() -> str:
         lines.append(f"    app: {app_name}")
 
     for app_name in EXCLUDE_APP_LABELS:
-        # Pod belongs to "" (core/v1 group), NOT apps -- see NOTE #3 above.
         lines.append("- groupKind:")
         lines.append("    resourceGroup: \"\"")
         lines.append("    resourceKind: Pod")
         lines.append("  labels:")
         lines.append(f"    app: {app_name}")
+
+    # 2. Cilium cluster-scoped exclusions (no namespace, no labels needed)
+    for kind in EXCLUDE_CILIUM_KINDS:
+        lines.append("- groupKind:")
+        lines.append("    resourceGroup: cilium.io")
+        lines.append(f"    resourceKind: {kind}")
+
+    # 3. Gateway API exclusions (both namespaced and cluster-scoped kinds)
+    for kind in EXCLUDE_GATEWAY_API_KINDS:
+        lines.append("- groupKind:")
+        lines.append(f"    resourceGroup: {EXCLUDE_GATEWAY_API_GROUP}")
+        lines.append(f"    resourceKind: {kind}")
 
     return "\n".join(lines)
 
@@ -1292,22 +1318,23 @@ def cmd_apply(source_project: str, source_cluster: str, dest_project: str, dest_
         sys.exit(1)
     backup_plan_full = bp_path
 
-    # Step 6: Create restore channel
-    print("\n" + "=" * 70)
-    print("Step 6: Creating Restore Channel")
-    print("=" * 70)
+    # Step 6: Create restore channel (cross-project only; same-project has no need for it)
+    if is_cross_project:
+        print("\n" + "=" * 70)
+        print("Step 6: Creating Restore Channel")
+        print("=" * 70)
 
-    channel_name = f"restore-to-{dest_project}"
-    channel_success, channel_path = create_restore_channel(
-        source_project,
-        location,
-        dest_project,
-        channel_name
-    )
+        channel_name = f"restore-to-{dest_project}"
+        channel_success, channel_path = create_restore_channel(
+            source_project,
+            location,
+            dest_project,
+            channel_name
+        )
 
-    if not channel_success:
-        print("\n[FAIL] Failed to create restore channel")
-        sys.exit(1)
+        if not channel_success:
+            print("\n[FAIL] Failed to create restore channel")
+            sys.exit(1)
 
     # Step 7: Create or update restore plan (idempotent)
     print("\n" + "=" * 70)
@@ -1386,16 +1413,16 @@ def cmd_apply(source_project: str, source_cluster: str, dest_project: str, dest_
     print("Step 10: Triggering Restore on Destination Cluster")
     print("=" * 70)
 
-    # Create exclusion filter file only for cross-project restore.
-    # These deployments (admin, ragflow, parser, deepdoc) use project-specific images
-    # that cannot be pulled in the destination project, causing CrashLoopBackOff.
-    filter_file_path = None
-    if is_cross_project:
-        import tempfile
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
-            f.write(EXCLUSION_FILTER_TEMPLATE)
-            filter_file_path = f.name
-        print(f"  Exclusion filter for cross-project restore: {filter_file_path}")
+    # Create exclusion filter file for all restores.
+    # - Cross-project: excludes app-labeled workloads (project-specific images) and
+    #   Cilium identities (cluster-specific, not migratable).
+    # - Same-project: excludes CiliumIdentity/CiliumNode which already exist on cluster
+    #   and would conflict on restore.
+    import tempfile
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+        f.write(EXCLUSION_FILTER_TEMPLATE)
+        filter_file_path = f.name
+    print(f"  Exclusion filter: {filter_file_path}")
 
     try:
         restore_success, restore_name = trigger_restore(
