@@ -34,20 +34,20 @@ private_registry = "gcr.io/ragflow-462809"
 
 # MySQL - reduced for dev
 mysql_k8s_storage     = 20
-mysql_cpu_request     = "4"
+mysql_cpu_request     = "2"
 mysql_cpu_limit       = "8"
 mysql_memory_request  = "8Gi"
 mysql_memory_limit    = "16Gi"
 
 # Elasticsearch - single node for dev
 es_master_node_count    = 1
-es_master_cpu_request   = "2"
+es_master_cpu_request   = "1"
 es_master_cpu_limit     = "4"
 es_master_memory_request = "4Gi"
 es_master_memory_limit  = "4Gi"
 es_master_heap_size    = "2g"
 es_data_node_count      = 1
-es_data_cpu_request    = "4"
+es_data_cpu_request    = "2"
 es_data_cpu_limit      = "8"
 es_data_memory_request = "16Gi"
 es_data_memory_limit   = "16Gi"
@@ -59,19 +59,20 @@ rabbitmq_storage = 20
 
 # RAGFlow application - reduced for dev
 ragflow_replicas         = 1
-ragflow_cpu_request     = "2"
+ragflow_cpu_request     = "1"
 ragflow_cpu_limit       = "4"
 ragflow_memory_request  = "8Gi"
 ragflow_memory_limit    = "16Gi"
 
 # Parser - reduced for dev
 parser_replicas = 1
+# parser_ws_workers = 2
 
 # DeepDoc - reduced for dev
 deepdoc_replicas = 1
 
 # Redis - dev environment
-redis_cpu_request    = "2"
+redis_cpu_request    = "1"
 redis_cpu_limit      = "4"
 redis_memory_request = "4Gi"
 redis_memory_limit   = "8Gi"

@@ -445,13 +445,13 @@ The following table shows the default resource values for each environment. Copy
 |----------|----------|------------|---------------------------------------|
 | **MySQL** |
 | Storage | mysql_k8s_storage | 500 Gi | 20 Gi |
-| CPU Request | mysql_cpu_request | 4 | 4 |
+| CPU Request | mysql_cpu_request | 4 | 2 |
 | CPU Limit | mysql_cpu_limit | 8 | 8 |
 | Memory Request | mysql_memory_request | 8Gi | 8Gi |
 | Memory Limit | mysql_memory_limit | 16Gi | 16Gi |
 | **Elasticsearch - Master Nodes** |
 | Node Count | es_master_node_count | 3 | 1 |
-| CPU Request | es_master_cpu_request | 2 | 2 |
+| CPU Request | es_master_cpu_request | 2 | 1 |
 | CPU Limit | es_master_cpu_limit | 4 | 4 |
 | Memory Request | es_master_memory_request | 8Gi | 4Gi |
 | Memory Limit | es_master_memory_limit | 8Gi | 4Gi |
@@ -459,7 +459,7 @@ The following table shows the default resource values for each environment. Copy
 | **Elasticsearch - Data/Ingest Nodes** |
 | Node Count | es_data_node_count | 4 | 1 |
 | Storage per Node | es_data_storage | 500 Gi | 20 Gi |
-| CPU Request | es_data_cpu_request | 4 | 4 |
+| CPU Request | es_data_cpu_request | 4 | 2 |
 | CPU Limit | es_data_cpu_limit | 8 | 8 |
 | Memory Request | es_data_memory_request | 32Gi | 16Gi |
 | Memory Limit | es_data_memory_limit | 32Gi | 16Gi |
@@ -471,7 +471,7 @@ The following table shows the default resource values for each environment. Copy
 | Memory Request | rabbitmq_memory_request | 2Gi | 2Gi |
 | Memory Limit | rabbitmq_memory_limit | 4Gi | 4Gi |
 | **Redis** |
-| CPU Request | redis_cpu_request | 2 | 2 |
+| CPU Request | redis_cpu_request | 2 | 1 |
 | CPU Limit | redis_cpu_limit | 4 | 4 |
 | Memory Request | redis_memory_request | 4Gi | 4Gi |
 | Memory Limit | redis_memory_limit | 8Gi | 8Gi |
@@ -483,7 +483,7 @@ The following table shows the default resource values for each environment. Copy
 | Memory Limit | tei_memory_limit | 16Gi | 16Gi |
 | **RAGFlow** |
 | Replicas | ragflow_replicas | 3 | 1 |
-| CPU Request | ragflow_cpu_request | 2 | 2 |
+| CPU Request | ragflow_cpu_request | 2 | 1 |
 | CPU Limit | ragflow_cpu_limit | 4 | 4 |
 | Memory Request | ragflow_memory_request | 4Gi | 4Gi |
 | Memory Limit | ragflow_memory_limit | 8Gi | 8Gi |
