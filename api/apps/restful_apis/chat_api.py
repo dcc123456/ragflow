@@ -690,15 +690,15 @@ def delete_chat(chat_id):
     if not chat:
         return get_json_result(data={})
 
+    operator = UserTenantService.filter_by_tenant_and_user_id(tenant_id=tenant_id, user_id=current_user.id)
+    if not operator:
+        return get_data_error_result(message="Cannot specify operator")
+
     try:
         with DB.atomic():
-            if not DialogService.update_by_id(chat_id, {"status": StatusEnum.INVALID.value}):
+            if not DialogService.invalidate_by_id(chat_id):
                 raise RuntimeError(f"Failed to delete chat {chat_id}")
             ConversationService.remove_by(chat_id)
-
-            operator = UserTenantService.filter_by_tenant_and_user_id(tenant_id=tenant_id, user_id=current_user.id)
-            if not operator:
-                raise RuntimeError("Cannot specify operator")
 
             permission_model_list = PermissionService.get_permissions_by_tenant_and_resource_id(tenant_id=tenant_id, resource_id=chat_id, resource_type=ResourceType.DIALOG)
             PermissionService.delete(permission_model_list)
@@ -750,10 +750,7 @@ async def bulk_delete_chats():
 
         try:
             with DB.atomic():
-                if not DialogService.update_by_id(
-                    chat_id,
-                    {"status": StatusEnum.INVALID.value},
-                ):
+                if not DialogService.invalidate_by_id(chat_id):
                     raise RuntimeError(f"Failed to delete chat {chat_id}")
 
                 ConversationService.remove_by(chat_id)

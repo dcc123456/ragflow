@@ -89,6 +89,18 @@ class DialogService(CommonService):
                 cls.model.update(data).where(cls.model.id == data["id"]).execute()
 
     @classmethod
+    def invalidate_by_id(cls, dialog_id):
+        """
+        ! Use this method under DB.atomic() context.
+        """
+        data = {
+            "status": StatusEnum.INVALID.value,
+            "update_time": current_timestamp(),
+            "update_date": datetime_format(datetime.now()),
+        }
+        return cls.model.update(data).where(cls.model.id == dialog_id).execute()
+
+    @classmethod
     @DB.connection_context()
     def get_list(cls, tenant_id, page_number, items_per_page, orderby, desc, id, name):
         chats = cls.model.select()

@@ -2135,13 +2135,61 @@ def test_delete_sessions_only_deletes_owned_or_legacy_sessions(monkeypatch):
 
 
 @pytest.mark.p2
+def test_delete_chat_uses_dialog_service_invalidate(monkeypatch):
+    module = _load_chat_module(monkeypatch)
+
+    _set_json_request_context(module, {}, method="DELETE")
+    module.g.tenant_id = "tenant-1"
+
+    monkeypatch.setattr(
+        module.DialogService,
+        "query",
+        lambda **_kwargs: [SimpleNamespace(id="chat-1", tenant_id="tenant-1")],
+    )
+    monkeypatch.setattr(
+        module.DialogService,
+        "update_by_id",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("delete_chat should use DialogService.invalidate_by_id inside DB.atomic()")
+        ),
+    )
+    monkeypatch.setattr(
+        module.DialogService,
+        "invalidate_by_id",
+        lambda *_args, **_kwargs: True,
+        raising=False,
+    )
+    monkeypatch.setattr(module.ConversationService, "remove_by", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(
+        module.UserTenantService,
+        "filter_by_tenant_and_user_id",
+        lambda **_kwargs: SimpleNamespace(id="member-1", tenant_id="tenant-1"),
+    )
+    monkeypatch.setattr(module.PermissionService, "get_permissions_by_tenant_and_resource_id", lambda **_kwargs: [])
+    monkeypatch.setattr(module.PermissionService, "delete", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(module.PermissionChangeLogService, "save", lambda **_kwargs: True)
+
+    res = _run(module.delete_chat("chat-1"))
+
+    assert res["code"] == 0
+    assert res["data"] is True
+
+
+@pytest.mark.p2
 def test_bulk_delete_chats_reads_delete_json_body(monkeypatch):
     module = _load_chat_module(monkeypatch)
 
     _set_json_request_context(module, {"ids": ["chat-1"]}, method="DELETE")
     monkeypatch.setattr(module.DialogService, "query", lambda **_kwargs: [SimpleNamespace(id="chat-1", tenant_id="tenant-1")])
     monkeypatch.setattr(module.UserTenantService, "filter_by_tenant_and_user_id", lambda **_kwargs: SimpleNamespace(id="member-1", tenant_id="tenant-1"))
-    monkeypatch.setattr(module.DialogService, "update_by_id", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(
+        module.DialogService,
+        "update_by_id",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("bulk_delete_chats should use DialogService.invalidate_by_id inside DB.atomic()")
+        ),
+    )
+    monkeypatch.setattr(module.DialogService, "invalidate_by_id", lambda *_args, **_kwargs: True, raising=False)
     monkeypatch.setattr(module.ConversationService, "remove_by", lambda *_args, **_kwargs: True)
     monkeypatch.setattr(module.PermissionService, "get_permissions_by_tenant_and_resource_id", lambda **_kwargs: [])
     monkeypatch.setattr(module.PermissionService, "delete", lambda *_args, **_kwargs: True)
@@ -2199,7 +2247,7 @@ def test_bulk_delete_chats_allows_collaborator_owner_scope(monkeypatch):
             module.PermissionValue.PERMISSION_OWNER.value if kwargs["tenant_id"] == "tenant-2" else 0,
         ),
     )
-    monkeypatch.setattr(module.DialogService, "update_by_id", lambda chat_id, *_args, **_kwargs: deleted_ids.append(chat_id) or True)
+    monkeypatch.setattr(module.DialogService, "invalidate_by_id", lambda chat_id, *_args, **_kwargs: deleted_ids.append(chat_id) or True, raising=False)
     monkeypatch.setattr(module.ConversationService, "remove_by", lambda *_args, **_kwargs: True)
     monkeypatch.setattr(module.PermissionService, "get_permissions_by_tenant_and_resource_id", lambda **_kwargs: [])
     monkeypatch.setattr(module.PermissionService, "delete", lambda *_args, **_kwargs: True)
@@ -2235,11 +2283,7 @@ def test_bulk_delete_chats_skips_empty_permission_cleanup(monkeypatch):
         if kwargs.get("tenant_id") == "tenant-1" and kwargs.get("id") == "chat-1"
         else [],
     )
-    monkeypatch.setattr(
-        module.DialogService,
-        "update_by_id",
-        lambda chat_id, *_args, **_kwargs: deleted_ids.append(chat_id) or True,
-    )
+    monkeypatch.setattr(module.DialogService, "invalidate_by_id", lambda chat_id, *_args, **_kwargs: deleted_ids.append(chat_id) or True, raising=False)
     monkeypatch.setattr(module.ConversationService, "remove_by", lambda *_args, **_kwargs: True)
     monkeypatch.setattr(
         module.PermissionService,
@@ -2299,7 +2343,7 @@ def test_bulk_delete_chats_delete_all_includes_collaborator_owner_scope(monkeypa
             module.PermissionValue.PERMISSION_OWNER.value if kwargs["tenant_id"] == "tenant-2" else 0,
         ),
     )
-    monkeypatch.setattr(module.DialogService, "update_by_id", lambda chat_id, *_args, **_kwargs: deleted_ids.append(chat_id) or True)
+    monkeypatch.setattr(module.DialogService, "invalidate_by_id", lambda chat_id, *_args, **_kwargs: deleted_ids.append(chat_id) or True, raising=False)
     monkeypatch.setattr(module.ConversationService, "remove_by", lambda *_args, **_kwargs: True)
     monkeypatch.setattr(module.PermissionService, "get_permissions_by_tenant_and_resource_id", lambda **_kwargs: [])
     monkeypatch.setattr(module.PermissionService, "delete", lambda *_args, **_kwargs: True)
