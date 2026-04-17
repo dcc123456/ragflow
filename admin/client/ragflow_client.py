@@ -2196,10 +2196,6 @@ LIST METADATA OF DATASETS <dataset>[, <dataset>]*
 LIST METADATA SUMMARY OF DATASET <dataset> DOCUMENTS <doc_id>[, <doc_id>]*
 GET CHUNK <chunk_id>
 LIST CHUNKS OF DOCUMENT <doc_id> [PAGE <page>] [SIZE <size>] [KEYWORDS <keywords>] [AVAILABLE <0|1>]
-CREATE INDEX FOR DATASET <dataset> VECTOR_SIZE <vector_size>
-DROP INDEX FOR DATASET <dataset>
-CREATE INDEX DOC_META
-DROP INDEX DOC_META
 
 Meta Commands:
 \\?, \\h, \\help     Show this help
