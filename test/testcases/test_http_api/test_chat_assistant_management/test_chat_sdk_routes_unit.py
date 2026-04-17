@@ -413,6 +413,20 @@ def _load_chat_module(monkeypatch):
         def query(**_kwargs):
             return []
 
+        @classmethod
+        def get_user_tenants_with_owner(cls, user_id):
+            user_tenants = list(cls.query(user_id=user_id) or [])
+            if user_id in {getattr(tenant, "tenant_id", None) for tenant in user_tenants}:
+                return user_tenants
+
+            owner_tenant = cls.filter_by_tenant_and_user_id(
+                tenant_id=user_id,
+                user_id=user_id,
+            )
+            if owner_tenant:
+                user_tenants.append(owner_tenant)
+            return user_tenants
+
         @staticmethod
         def filter_by_tenant_and_user_id(*_args, **_kwargs):
             return SimpleNamespace(id="member-1", tenant_id="tenant-1", user_id="tenant-1")
