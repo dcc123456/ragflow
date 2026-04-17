@@ -184,7 +184,8 @@ def test_check_dialog_permission_accepts_path_chat_id(monkeypatch):
 
     user_service_mod = ModuleType("api.db.services.user_service")
     user_service_mod.UserTenantService = SimpleNamespace(
-        query=lambda **_kwargs: [SimpleNamespace(id="member-1", tenant_id="tenant-1")]
+        query=lambda **_kwargs: [SimpleNamespace(id="member-1", tenant_id="tenant-1")],
+        get_user_tenants_with_owner=lambda _user_id: [SimpleNamespace(id="member-1", tenant_id="tenant-1")],
     )
     monkeypatch.setitem(sys.modules, "api.db.services.user_service", user_service_mod)
 
@@ -240,7 +241,8 @@ def test_check_dialog_permission_accepts_json_dialog_id(monkeypatch):
 
     user_service_mod = ModuleType("api.db.services.user_service")
     user_service_mod.UserTenantService = SimpleNamespace(
-        query=lambda **_kwargs: [SimpleNamespace(id="member-1", tenant_id="tenant-1")]
+        query=lambda **_kwargs: [SimpleNamespace(id="member-1", tenant_id="tenant-1")],
+        get_user_tenants_with_owner=lambda _user_id: [SimpleNamespace(id="member-1", tenant_id="tenant-1")],
     )
     monkeypatch.setitem(sys.modules, "api.db.services.user_service", user_service_mod)
 
@@ -257,3 +259,56 @@ def test_check_dialog_permission_accepts_json_dialog_id(monkeypatch):
     )
 
     assert asyncio.run(_handler()) == "dialog-1"
+
+
+def test_check_dialog_permission_falls_back_to_owner_tenant(monkeypatch):
+    fake_quart = ModuleType("quart")
+    fake_quart.g = SimpleNamespace()
+    fake_quart.request = SimpleNamespace(method="GET", headers={}, args={"dialog_id": "dialog-1"})
+    monkeypatch.setitem(sys.modules, "quart", fake_quart)
+
+    api_apps_mod = ModuleType("api.apps")
+    api_apps_mod.current_user = SimpleNamespace(id="tenant-owner")
+    monkeypatch.setitem(sys.modules, "api.apps", api_apps_mod)
+
+    api_utils_mod = ModuleType("api.utils.api_utils")
+    api_utils_mod.get_json_result = lambda data=None, message="", code=0: {
+        "code": code,
+        "data": data,
+        "message": message,
+    }
+    monkeypatch.setitem(sys.modules, "api.utils.api_utils", api_utils_mod)
+
+    dialog_service_mod = ModuleType("api.db.services.dialog_service")
+    dialog_service_mod.DialogService = SimpleNamespace(
+        query=lambda **kwargs: [SimpleNamespace(tenant_id="tenant-owner")] if kwargs["tenant_id"] == "tenant-owner" else []
+    )
+    monkeypatch.setitem(sys.modules, "api.db.services.dialog_service", dialog_service_mod)
+
+    user_service_mod = ModuleType("api.db.services.user_service")
+    user_service_mod.UserTenantService = SimpleNamespace(
+        query=lambda **_kwargs: [SimpleNamespace(id="member-1", tenant_id="tenant-1")],
+        get_user_tenants_with_owner=lambda _user_id: [
+            SimpleNamespace(id="member-1", tenant_id="tenant-1"),
+            SimpleNamespace(id="owner-member", tenant_id="tenant-owner"),
+        ],
+    )
+    monkeypatch.setitem(sys.modules, "api.db.services.user_service", user_service_mod)
+
+    permission_mod = importlib.reload(importlib.import_module("api.utils.permission_utils"))
+
+    @permission_mod.check_dialog_permission(PermissionValue.PERMISSION_READ)
+    async def _handler():
+        return fake_quart.g.member_id, fake_quart.g.tenant_id, fake_quart.g.operator_permission
+
+    monkeypatch.setattr(
+        permission_mod,
+        "has_permission_for_member",
+        lambda **_kwargs: (False, None, PermissionValue.PERMISSION_NULL.value),
+    )
+
+    assert asyncio.run(_handler()) == (
+        "owner-member",
+        "tenant-owner",
+        PermissionValue.PERMISSION_OWNER.value,
+    )

@@ -372,15 +372,7 @@ def get_kb_names(kb_ids):
 
 
 def _get_user_tenants_for_chat_access():
-    user_tenants = list(UserTenantService.query(user_id=current_user.id) or [])
-    if current_user.id not in {tenant.tenant_id for tenant in user_tenants}:
-        owner_tenant = UserTenantService.filter_by_tenant_and_user_id(
-            tenant_id=current_user.id,
-            user_id=current_user.id,
-        )
-        if owner_tenant:
-            user_tenants.append(owner_tenant)
-    return user_tenants
+    return UserTenantService.get_user_tenants_with_owner(current_user.id)
 
 
 def _get_owned_chat_scope(chat_id):

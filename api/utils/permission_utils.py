@@ -276,14 +276,7 @@ def check_dialog_permission(permission):
                 return foo(*args, **kwargs)
 
             queried_user_tenants = list(UserTenantService.query(user_id=current_user.id) or [])
-            user_tenants = list(queried_user_tenants)
-            if current_user.id not in {tenant.tenant_id for tenant in user_tenants}:
-                owner_tenant = UserTenantService.filter_by_tenant_and_user_id(
-                    tenant_id=current_user.id,
-                    user_id=current_user.id,
-                )
-                if owner_tenant:
-                    user_tenants.append(owner_tenant)
+            user_tenants = UserTenantService.get_user_tenants_with_owner(current_user.id)
 
             for user_tenant in user_tenants:
                 dialog_record = DialogService.query(tenant_id=user_tenant.tenant_id, id=dialog_id)
