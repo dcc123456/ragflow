@@ -393,8 +393,13 @@ def _get_owned_chat_scope(chat_id):
         if not chats:
             continue
 
+        operator = UserTenantService.filter_by_tenant_and_user_id(
+            tenant_id=user_tenant.tenant_id,
+            user_id=current_user.id,
+        ) or user_tenant
+
         if user_tenant.tenant_id == current_user.id:
-            return chats[0], user_tenant
+            return chats[0], operator
 
         permission = has_permission_for_member(
             operator_id=user_tenant.id,
@@ -404,7 +409,7 @@ def _get_owned_chat_scope(chat_id):
             permission=PermissionValue.PERMISSION_OWNER,
         )
         if permission[0]:
-            return chats[0], user_tenant
+            return chats[0], operator
 
     return None, None
 
@@ -485,19 +490,6 @@ def list_chats():
 @check_dialog_permission(PermissionValue.PERMISSION_READ)
 def get_chat(chat_id):
     try:
-        tenants = UserTenantService.query(user_id=current_user.id)
-        for tenant in tenants:
-            if DialogService.query(
-                tenant_id=tenant.tenant_id, id=chat_id, status=StatusEnum.VALID.value
-            ):
-                break
-        else:
-            return get_json_result(
-                data=False,
-                message="No authorization.",
-                code=RetCode.AUTHENTICATION_ERROR,
-            )
-
         ok, chat = DialogService.get_by_id(chat_id)
         if not ok:
             return get_data_error_result(message="Chat not found!")
@@ -773,7 +765,8 @@ async def bulk_delete_chats():
                         resource_type=ResourceType.DIALOG,
                     )
                 )
-                PermissionService.delete(permission_model_list)
+                if permission_model_list:
+                    PermissionService.delete(permission_model_list)
 
                 if not PermissionChangeLogService.save(
                     id=get_uuid(),

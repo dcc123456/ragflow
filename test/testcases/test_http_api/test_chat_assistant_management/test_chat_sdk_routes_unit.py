@@ -868,6 +868,22 @@ def test_patch_chat_requires_manage_permission(monkeypatch):
 
 
 @pytest.mark.p2
+def test_get_chat_returns_auth_error_for_missing_chat_when_user_has_tenants(monkeypatch):
+    module = _load_chat_module(monkeypatch)
+    monkeypatch.setattr(
+        module.UserTenantService,
+        "query",
+        lambda **_kwargs: [SimpleNamespace(id="member-1", tenant_id="tenant-1")],
+    )
+    monkeypatch.setattr(module.DialogService, "query", lambda **_kwargs: [])
+
+    res = _run(module.get_chat(chat_id="missing-chat"))
+
+    assert res["code"] == module.RetCode.AUTHENTICATION_ERROR
+    assert res["message"] == "No authorization."
+
+
+@pytest.mark.p2
 def test_list_chats_returns_old_business_fields(monkeypatch):
     module = _load_chat_module(monkeypatch)
     _set_request_args_context(
@@ -2194,6 +2210,56 @@ def test_bulk_delete_chats_allows_collaborator_owner_scope(monkeypatch):
     assert res["code"] == 0
     assert res["data"]["success_count"] == 1
     assert deleted_ids == ["shared-chat"]
+
+
+@pytest.mark.p2
+def test_bulk_delete_chats_skips_empty_permission_cleanup(monkeypatch):
+    module = _load_chat_module(monkeypatch)
+    deleted_ids = []
+
+    _set_json_request_context(module, {"ids": ["chat-1"]}, method="DELETE")
+    monkeypatch.setattr(
+        module.UserTenantService,
+        "query",
+        lambda **_kwargs: [SimpleNamespace(id="owner-member", tenant_id="tenant-1")],
+    )
+    monkeypatch.setattr(
+        module.UserTenantService,
+        "filter_by_tenant_and_user_id",
+        lambda tenant_id, user_id: SimpleNamespace(id="owner-member", tenant_id=tenant_id, user_id=user_id),
+    )
+    monkeypatch.setattr(
+        module.DialogService,
+        "query",
+        lambda **kwargs: [SimpleNamespace(id="chat-1", tenant_id="tenant-1")]
+        if kwargs.get("tenant_id") == "tenant-1" and kwargs.get("id") == "chat-1"
+        else [],
+    )
+    monkeypatch.setattr(
+        module.DialogService,
+        "update_by_id",
+        lambda chat_id, *_args, **_kwargs: deleted_ids.append(chat_id) or True,
+    )
+    monkeypatch.setattr(module.ConversationService, "remove_by", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(
+        module.PermissionService,
+        "get_permissions_by_tenant_and_resource_id",
+        lambda **_kwargs: [],
+    )
+    monkeypatch.setattr(
+        module.PermissionService,
+        "delete",
+        lambda permission_model_list: (_ for _ in ()).throw(AssertionError("empty permission cleanup should be skipped"))
+        if not permission_model_list
+        else True,
+    )
+    monkeypatch.setattr(module.PermissionChangeLogService, "save", lambda **_kwargs: True)
+
+    res = _run(module.bulk_delete_chats())
+
+    assert res["code"] == 0
+    assert res["data"]["success_count"] == 1
+    assert deleted_ids == ["chat-1"]
 
 
 @pytest.mark.p2
