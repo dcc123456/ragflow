@@ -26,6 +26,7 @@ import storage from './utils/authorization-util';
 
 import 'react-photo-view/dist/react-photo-view.css';
 import { routers } from './merge-routes';
+import { isBillingEnabled } from './services/billingStatus';
 
 configResponsive({
   sm: 640,
@@ -113,9 +114,12 @@ const RootProvider = ({ children }: React.PropsWithChildren) => {
           defaultTheme={ThemeEnum.Dark}
           storageKey="ragflow-ui-theme"
         >
-          <UpgradeModalProvider>
-            <Root>{children}</Root>
-          </UpgradeModalProvider>
+          {isBillingEnabled() && (
+            <UpgradeModalProvider>
+              <Root>{children}</Root>
+            </UpgradeModalProvider>
+          )}
+          {!isBillingEnabled() && <Root>{children}</Root>}
         </ThemeProvider>
       </QueryClientProvider>
     </TooltipProvider>

@@ -84,15 +84,9 @@ export const useFetchUserInfo = (): ResponseGetType<IUserInfo> => {
   return { data, loading };
 };
 
-export const useFetchTenantInfo = (
+export const useFetchTenantData = (
   showEmptyModelWarn = false,
 ): ResponseGetType<ITenantInfo> => {
-  const { t } = useTranslation();
-  const navigate = useNavigate();
-  const { data: isAdmin, loading: isAdminLoading } = useFetchIsAdmin();
-  const { data: enableAdmin, loading: enableAdminLoading } =
-    useFetchEnableAdmin();
-
   const { data, isFetching: loading } = useQuery({
     queryKey: [UserSettingApiAction.TenantInfo, showEmptyModelWarn],
     initialData: {},
@@ -112,6 +106,19 @@ export const useFetchTenantInfo = (
       return res ?? {};
     },
   });
+  return { data, loading };
+};
+
+export const useFetchTenantInfo = (
+  showEmptyModelWarn = false,
+): ResponseGetType<ITenantInfo> => {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  const { data: isAdmin, loading: isAdminLoading } = useFetchIsAdmin();
+  const { data: enableAdmin, loading: enableAdminLoading } =
+    useFetchEnableAdmin();
+
+  const { data, loading } = useFetchTenantData(showEmptyModelWarn);
 
   const run = useCallback(() => {
     if (
@@ -149,6 +156,7 @@ export const useFetchTenantInfo = (
       }
     }
   }, [
+    navigate,
     data,
     enableAdmin,
     enableAdminLoading,

@@ -26,12 +26,7 @@ export const privateRoutes = [
         ],
         errorElement: <FallbackComponent />,
       },
-      {
-        path: PrivateRoutes.Price,
-        layout: false,
-        Component: lazy(() => import(`@/pages/price`)),
-        errorElement: <FallbackComponent />,
-      },
+
       {
         path: `${Routes.Files}${PrivateRoutes.EvaluationDetail}/:id`,
         layout: false,
@@ -39,5 +34,11 @@ export const privateRoutes = [
         errorElement: <FallbackComponent />,
       },
     ],
+  },
+  {
+    path: PrivateRoutes.Price,
+    layout: false,
+    Component: lazy(() => import(`@/pages/price`)),
+    errorElement: <FallbackComponent />,
   },
 ];

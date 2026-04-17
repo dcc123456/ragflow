@@ -1,5 +1,5 @@
 import { Modal } from '@/components/ui/modal/modal';
-import { useFetchTenantInfo } from '@/hooks/use-user-setting-request';
+import { useFetchTenantData } from '@/hooks/use-user-setting-request';
 import billingService, { billinCheckout } from '@/services/price';
 import storagePrivate from '@/utils/authorization-private-util';
 import storage from '@/utils/authorization-util';
@@ -14,7 +14,7 @@ export type IChargePlan = {
 };
 export const PriceChargeKey = 'price-charge';
 const useCharge = () => {
-  const { data: tenantInfo } = useFetchTenantInfo();
+  const { data: tenantInfo } = useFetchTenantData();
   const tenantId = tenantInfo?.tenant_id;
   const url = window.location.href;
   const successUrl = `${url.split('?')[0]}?price-pay-status=success${url.split('?')[1] || ''}`;
@@ -120,7 +120,7 @@ const useFetchCurrentPlan = (force = false) => {
     enabled: !!user,
     gcTime: force ? 0 : 50000,
     queryFn: async () => {
-      const { data: res } = await billingService?.getCurrentPlan();
+      const { data: res } = await billingService.getCurrentPlan();
       if (res.code === 0) {
         const { data } = res;
         storagePrivate.setPricePlan(JSON.stringify(data));
@@ -138,7 +138,7 @@ const useFetchPlanList = (force = false) => {
     // initialData: {},
     gcTime: force ? 0 : 50000,
     queryFn: async () => {
-      const { data: res } = await billingService?.getPlanList();
+      const { data: res } = await billingService.getPlanList();
       if (res.code === 0) {
         const { data } = res;
         // storage.setPricePlan(JSON.stringify(data));

@@ -115,6 +115,15 @@ const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
   // const [searchParams, setSearchParams] = useSearchParams();
   const status = urlParams.get('price-pay-status');
   const { t } = useTranslation();
+  const [successModal, setSuccessModal] = useState<{
+    title: string | JSX.Element;
+    content: string | JSX.Element;
+    open: boolean;
+  }>({
+    title: '',
+    content: '',
+    open: false,
+  });
 
   const { mutateAsync: cancelDowngrade, isPending: cancelingDowngrade } =
     useMutation({
@@ -178,43 +187,48 @@ const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
         }
       };
       if (status) {
+        setSuccessModal({
+          title: title(),
+          content: content(),
+          open: true,
+        });
         // searchParams.delete('status');
         // setSearchParams(searchParams);
-        const successModal = showModal({
-          children: (
-            <Modal
-              open={true}
-              title={title()}
-              onOpenChange={(open) => {
-                if (!open) {
-                  const urlObj = new URL(window.location.href);
-                  urlObj.searchParams.delete('price-pay-status');
-                  window.history.replaceState({}, '', urlObj.toString());
-                  successModal.destroy();
-                }
-              }}
-              className="!w-[400px]"
-              footer={
-                <div className="flex justify-end gap-2 ">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const urlObj = new URL(window.location.href);
-                      urlObj.searchParams.delete('price-pay-status');
-                      window.history.replaceState({}, '', urlObj.toString());
-                      successModal.destroy();
-                    }}
-                    className="px-2 py-1 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
-                  >
-                    {t('modal.okText')}
-                  </button>
-                </div>
-              }
-            >
-              <div className="h-32">{content()}</div>
-            </Modal>
-          ),
-        });
+        // const successModal = showModal({
+        //   children: (
+        //     <Modal
+        //       open={true}
+        //       title={title()}
+        //       onOpenChange={(open) => {
+        //         if (!open) {
+        //           const urlObj = new URL(window.location.href);
+        //           urlObj.searchParams.delete('price-pay-status');
+        //           window.history.replaceState({}, '', urlObj.toString());
+        //           successModal.destroy();
+        //         }
+        //       }}
+        //       className="!w-[400px]"
+        //       footer={
+        //         <div className="flex justify-end gap-2 ">
+        //           <button
+        //             type="button"
+        //             onClick={() => {
+        //               const urlObj = new URL(window.location.href);
+        //               urlObj.searchParams.delete('price-pay-status');
+        //               window.history.replaceState({}, '', urlObj.toString());
+        //               successModal.destroy();
+        //             }}
+        //             className="px-2 py-1 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+        //           >
+        //             {t('modal.okText')}
+        //           </button>
+        //         </div>
+        //       }
+        //     >
+        //       <div className="h-32">{content()}</div>
+        //     </Modal>
+        //   ),
+        // });
       }
     },
     [urlParams, t],
@@ -225,7 +239,7 @@ const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
     let inUseIndex = 4;
 
     let plans = planList?.map((plan, index) => {
-      let tempPlan = {
+      const tempPlan = {
         ...pricingPlans[plan.name as keyof typeof pricingPlans],
         name: plan.name,
         feature: {
@@ -338,6 +352,50 @@ const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
       {pricePlanList?.map((plan, index) => (
         <PricingCard key={index} {...plan} />
       ))}
+
+      {successModal.open && (
+        <Modal
+          open={true}
+          title={successModal.title}
+          onOpenChange={(open) => {
+            if (!open) {
+              const urlObj = new URL(window.location.href);
+              urlObj.searchParams.delete('price-pay-status');
+              window.history.replaceState({}, '', urlObj.toString());
+              // successModal.destroy();
+              setSuccessModal({
+                open: false,
+                title: '',
+                content: '',
+              });
+            }
+          }}
+          className="!w-[400px]"
+          footer={
+            <div className="flex justify-end gap-2 ">
+              <button
+                type="button"
+                onClick={() => {
+                  const urlObj = new URL(window.location.href);
+                  urlObj.searchParams.delete('price-pay-status');
+                  window.history.replaceState({}, '', urlObj.toString());
+                  setSuccessModal({
+                    open: false,
+                    title: '',
+                    content: '',
+                  });
+                  // successModal.destroy();
+                }}
+                className="px-2 py-1 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+              >
+                {t('modal.okText')}
+              </button>
+            </div>
+          }
+        >
+          <div className="h-32">{successModal.content}</div>
+        </Modal>
+      )}
     </>
   );
 };
