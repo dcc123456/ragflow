@@ -9,11 +9,16 @@ export function useShowPrivilegeDialog() {
   const { currentRecord, setRecord } = useSetSelectedRecord<IDialog>();
 
   const privilegeRecord = useMemo(() => {
+    const kbs =
+      currentRecord.dataset_ids ??
+      (currentRecord as IDialog & { kb_ids?: string[] }).kb_ids ??
+      [];
+
     return {
       ...pick(currentRecord, ['id', 'tenant_id', 'name']),
       resourceType: PermissionResourceType.Dialog,
       icon: currentRecord.icon,
-      kbs: currentRecord.kb_ids,
+      kbs,
       llm_id: currentRecord.llm_id,
     };
   }, [currentRecord]);
