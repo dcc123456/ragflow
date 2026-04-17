@@ -101,6 +101,7 @@ export default function BasicLogin({ onLicenseError }: BasicLoginProps) {
     <Form {...form}>
       <form
         id={id}
+        data-testid="auth-form"
         className="space-y-8"
         onSubmit={form.handleSubmit(onSubmit)}
       >
@@ -112,6 +113,7 @@ export default function BasicLogin({ onLicenseError }: BasicLoginProps) {
               <FormLabel required>{t('emailLabel')}</FormLabel>
               <FormControl>
                 <Input
+                  data-testid="auth-email"
                   className="h-10"
                   placeholder={t('emailPlaceholder')}
                   autoComplete="email"
@@ -132,6 +134,7 @@ export default function BasicLogin({ onLicenseError }: BasicLoginProps) {
               <FormControl>
                 <div className="relative">
                   <Input
+                    data-testid="auth-password"
                     type="password"
                     className="h-10"
                     placeholder={t('passwordPlaceholder')}
@@ -164,6 +167,7 @@ export default function BasicLogin({ onLicenseError }: BasicLoginProps) {
         />
 
         <Button
+          data-testid="auth-submit"
           type="submit"
           variant="metallic"
           loading={loginLoading}
@@ -188,25 +192,23 @@ export default function BasicLogin({ onLicenseError }: BasicLoginProps) {
       </div>
 
       {currentChannelType === 'sso' && typeGroupedChannels.sso?.length ? (
-        <div className="mt-8 flex justify-center items-center gap-2">
+        <div className="mt-8 flex justify-center items-center gap-5">
           {typeGroupedChannels.sso.map((ch) => {
             const IconComponent =
               SSO_PROVIDER_ICON_MAP[ch.channel as any]?.Icon;
 
             return (
-              <Button
+              <div
+                className="cursor-pointer"
                 key={ch.channel}
-                className=""
                 onClick={() => loginWithChannel(ch.channel)}
               >
                 {IconComponent ? (
-                  <IconComponent />
+                  <IconComponent className="size-6" />
                 ) : (
-                  <SvgIcon name="sso" width={20} height={20} />
+                  <SvgIcon name="sso" width={24} height={24} />
                 )}
-
-                {t('signInWith', { name: ch.display_name })}
-              </Button>
+              </div>
             );
           })}
         </div>
@@ -217,6 +219,7 @@ export default function BasicLogin({ onLicenseError }: BasicLoginProps) {
           <p className="text-sm text-text-disabled">
             {t('signInTip')}{' '}
             <Link
+              data-testid="auth-toggle-register"
               to="/register"
               state={form.getValues()}
               className="text-accent-primary/90 hover:text-accent-primary hover:bg-transparent font-medium"

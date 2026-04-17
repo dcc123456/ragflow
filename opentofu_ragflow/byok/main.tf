@@ -130,6 +130,7 @@ locals {
   rabbitmq_image = var.public_registry != "" ? "${var.public_registry}/rabbitmq:4-management" : "rabbitmq:4-management"
   curl_image     = var.public_registry != "" ? "${var.public_registry}/curl:latest" : "curlimages/curl:latest"
   minio_mc_image = var.public_registry != "" ? "${var.public_registry}/mc:latest" : "quay.io/minio/mc:latest"
+  infinity_image = var.public_registry != "" ? "${var.public_registry}/infinity:v0.7.0-dev5" : "infiniflow/infinity:v0.7.0-dev5"
 
   # Elasticsearch version extracted from es_image
   # Extracts version from format like "elasticsearch:9.3.1" -> "9.3.1"
@@ -146,6 +147,16 @@ locals {
   # Database users (consistent across all components)
   mysql_user     = "ragflow"
   rabbitmq_user = "ragflow"
+
+  # Infinity memory allocation derived from infinity_memory_request (e.g. "4Gi" -> 4)
+  # Extract numeric GB value from K8s resource string (supports Gi, G suffixes)
+  infinity_memory_gb = tonumber(regex("^(\\d+)(Gi|G)$", var.infinity_memory_request)[0])
+
+  # buffer_manager_size: ~50% of total memory, formatted as "XGB" for infinity_conf.toml
+  infinity_buffer_manager_size = "${local.infinity_memory_gb / 2}GB"
+
+  # memindex_memory_quota: ~25% of total memory, formatted as "XGB" for infinity_conf.toml
+  infinity_memindex_memory_quota = "${max(1, local.infinity_memory_gb / 4)}GB"
 }
 
 # =============================================================================
@@ -1231,6 +1242,294 @@ data "kubernetes_secret_v1" "elasticsearch_es_user" {
 }
 
 # =============================================================================
+# Infinity Deployment (Shadow Database / Alternative Doc Engine)
+# =============================================================================
+# Infinity is deployed as an optional shadow database alongside Elasticsearch.
+# When enabled, RAGFlow uses ShadowWriteProxy to write to both ES and Infinity,
+# allowing comparison and validation between the two doc engines.
+# Ref: docker-compose-base.yml (infinity service)
+# Ref: common/settings.py (DOC_ENGINE=elasticsearch,infinity for shadow mode)
+
+resource "kubernetes_persistent_volume_claim_v1" "infinity" {
+  count = var.infinity_enabled ? 1 : 0
+
+  metadata {
+    name      = "infinity-data"
+    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
+  }
+
+  spec {
+    access_modes = ["ReadWriteOnce"]
+
+    resources {
+      requests = {
+        storage = "${var.infinity_storage}Gi"
+      }
+    }
+
+    storage_class_name = local.config.storage_class
+  }
+
+  wait_until_bound = false
+}
+
+# Infinity configuration file (mirrors docker/infinity_conf.toml)
+resource "kubernetes_config_map_v1" "infinity_conf" {
+  count = var.infinity_enabled ? 1 : 0
+
+  metadata {
+    name      = "infinity-conf"
+    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
+  }
+
+  data = {
+    "infinity_conf.toml" = <<-EOT
+[general]
+version                  = "0.7.0"
+time_zone                = "utc-8"
+
+[network]
+server_address           = "0.0.0.0"
+postgres_port            = 5432
+http_port                = 23820
+client_port              = 23817
+connection_pool_size     = 128
+
+[log]
+log_filename             = "infinity.log"
+log_dir                  = "/var/infinity/log"
+log_to_stdout            = false
+log_file_max_size        = "10GB"
+log_file_rotate_count    = 10
+
+# trace/debug/info/warning/error/critical 6 log levels, default: info
+log_level               = "info"
+
+[storage]
+persistence_dir         = "/var/infinity/persistence"
+data_dir                = "/var/infinity/data"
+catalog_dir             = "/var/infinity/catalog"
+# periodically activates garbage collection:
+# 0 means real-time,
+# s means seconds, for example "60s", 60 seconds
+# m means minutes, for example "60m", 60 minutes
+# h means hours, for example "1h", 1 hour
+optimize_interval        = "10s"
+cleanup_interval         = "60s"
+compact_interval         = "120s"
+storage_type             = "local"
+
+# dump memory index entry when it reachs the capacity
+mem_index_capacity       = 65536
+
+# S3 storage config example:
+# [storage.object_storage]
+# url                      = "127.0.0.1:9005"
+# bucket_name              = "infinity"
+# access_key               = "minioadmin"
+# secret_key               = "minioadmin"
+# enable_https             = false
+
+snapshot_dir            = "/var/infinity/snapshots"
+
+[buffer]
+buffer_manager_size      = "${local.infinity_buffer_manager_size}"
+lru_num                  = 7
+temp_dir                 = "/var/infinity/tmp"
+result_cache             = "off"
+memindex_memory_quota    = "${local.infinity_memindex_memory_quota}"
+
+[wal]
+wal_dir                       = "/var/infinity/wal"
+checkpoint_interval      = "86400s"
+wal_compact_threshold         = "1GB"
+
+# flush_at_once: write and flush log each commit
+# only_write: write log, OS control when to flush the log, default
+# flush_per_second: logs are written after each commit and flushed to disk per second.
+wal_flush                     = "only_write"
+
+[resource]
+resource_dir                  = "/usr/share/infinity/resource"
+EOT
+  }
+}
+
+resource "kubernetes_stateful_set_v1" "infinity" {
+  count = var.infinity_enabled ? 1 : 0
+
+  metadata {
+    name      = "infinity"
+    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
+
+    labels = {
+      app = "infinity"
+    }
+  }
+
+  spec {
+    service_name = "infinity"
+
+    replicas = var.infinity_replicas
+
+    selector {
+      match_labels = {
+        app = "infinity"
+      }
+    }
+
+    template {
+      metadata {
+        labels = {
+          app = "infinity"
+        }
+      }
+
+      spec {
+        container {
+          name  = "infinity"
+          image = local.infinity_image
+
+          # Thrift client port (primary port for RAGFlow)
+          port {
+            container_port = 23817
+            name           = "thrift"
+          }
+
+          # HTTP API port (health check, admin)
+          port {
+            container_port = 23820
+            name           = "http"
+          }
+
+          # PostgreSQL-compatible port
+          port {
+            container_port = 5432
+            name           = "postgresql"
+          }
+
+          args = ["-f", "/etc/infinity/infinity_conf.toml"]
+
+          startup_probe {
+            http_get {
+              path   = "/admin/node/current"
+              port   = 23820
+            }
+            initial_delay_seconds = 10
+            period_seconds        = 10
+            failure_threshold     = 30  # ~5 min max startup
+          }
+
+          readiness_probe {
+            http_get {
+              path   = "/admin/node/current"
+              port   = 23820
+            }
+            initial_delay_seconds = 0
+            period_seconds        = 10
+            timeout_seconds       = 5
+            failure_threshold     = 3
+          }
+
+          liveness_probe {
+            http_get {
+              path   = "/admin/node/current"
+              port   = 23820
+            }
+            initial_delay_seconds = 30
+            period_seconds        = 20
+            timeout_seconds       = 5
+            failure_threshold     = 3
+          }
+
+          resources {
+            requests = {
+              cpu    = var.infinity_cpu_request
+              memory = var.infinity_memory_request
+            }
+            limits = {
+              cpu    = var.infinity_cpu_limit
+              memory = var.infinity_memory_limit
+            }
+          }
+
+          volume_mount {
+            name       = "data"
+            mount_path = "/var/infinity"
+          }
+
+          volume_mount {
+            name       = "config"
+            mount_path = "/etc/infinity"
+            read_only  = true
+          }
+        }
+
+        volume {
+          name = "data"
+
+          persistent_volume_claim {
+            claim_name = kubernetes_persistent_volume_claim_v1.infinity[0].metadata[0].name
+          }
+        }
+
+        volume {
+          name = "config"
+
+          config_map {
+            name = kubernetes_config_map_v1.infinity_conf[0].metadata[0].name
+
+            items {
+              key  = "infinity_conf.toml"
+              path = "infinity_conf.toml"
+            }
+          }
+        }
+      }
+    }
+  }
+
+  timeouts {
+    create = "15m"
+    update = "15m"
+    delete = "10m"
+  }
+}
+
+resource "kubernetes_service_v1" "infinity" {
+  count = var.infinity_enabled ? 1 : 0
+
+  metadata {
+    name      = "infinity"
+    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
+  }
+
+  spec {
+    selector = {
+      app = "infinity"
+    }
+
+    port {
+      name        = "thrift"
+      port        = 23817
+      target_port = 23817
+    }
+
+    port {
+      name        = "http"
+      port        = 23820
+      target_port = 23820
+    }
+
+    port {
+      name        = "postgresql"
+      port        = 5432
+      target_port = 5432
+    }
+  }
+}
+
+# =============================================================================
 # S3 Storage Secret
 # =============================================================================
 
@@ -1262,8 +1561,10 @@ resource "kubernetes_secret_v1" "ragflow_env" {
     kubernetes_deployment_v1.rabbitmq,
     kubernetes_service_v1.deepdoc,
     terraform_data.wait_for_elasticsearch_secret,
+    # When infinity is enabled, wait for it before creating ragflow_env
   ]
 
+  # Infinity dependency is already handled by depends_on above when enabled
   metadata {
     name      = "ragflow-env"
     namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
@@ -1286,6 +1587,20 @@ resource "kubernetes_secret_v1" "ragflow_env" {
     # ELASTIC_PASSWORD: use password from ECK-managed secret (k8s mode)
     # data.kubernetes_secret_v1 automatically base64-decodes secret data
     ELASTIC_PASSWORD = data.kubernetes_secret_v1.elasticsearch_es_user.data.elastic
+
+    # DOC_ENGINE configuration
+    # When infinity_enabled=true, set DOC_ENGINE="elasticsearch,infinity" for shadow write proxy
+    # This makes ES primary and Infinity a shadow database for comparison
+    # Ref: common/settings.py - parses comma-separated engines, first is primary, rest are shadows
+    DOC_ENGINE  = var.infinity_enabled ? "elasticsearch,infinity" : "elasticsearch"
+
+    # Infinity Shadow Database Configuration
+    INFINITY_HOST      = var.infinity_enabled ? "infinity" : ""
+    INFINITY_PORT      = var.infinity_enabled ? "23817" : ""
+    INFINITY_URI       = var.infinity_enabled ? "infinity:23817" : ""
+    INFINITY_HTTP_PORT = var.infinity_enabled ? "23820" : ""
+    INFINITY_PSQL_PORT = var.infinity_enabled ? "5432" : ""
+    INFINITY_DB_NAME   = var.infinity_enabled ? "default_db" : ""
 
     # Redis Configuration
     REDIS_HOST     = "redis"

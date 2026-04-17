@@ -69,6 +69,7 @@ export default function BasicRegister() {
     <Form {...form}>
       <form
         id={id}
+        data-testid="auth-form"
         className="space-y-8"
         onSubmit={form.handleSubmit(onSubmit)}
       >
@@ -80,6 +81,7 @@ export default function BasicRegister() {
               <FormLabel required>{t('emailLabel')}</FormLabel>
               <FormControl>
                 <Input
+                  data-testid="auth-email"
                   className="h-10"
                   placeholder={t('emailPlaceholder')}
                   autoComplete="email"
@@ -99,6 +101,7 @@ export default function BasicRegister() {
               <FormLabel required>{t('nicknameLabel')}</FormLabel>
               <FormControl>
                 <Input
+                  data-testid="auth-nickname"
                   className="h-10"
                   placeholder={t('nicknamePlaceholder')}
                   autoComplete="username"
@@ -119,6 +122,7 @@ export default function BasicRegister() {
               <FormControl>
                 <div className="relative">
                   <Input
+                    data-testid="auth-password"
                     className="h-10"
                     type="password"
                     placeholder={t('passwordPlaceholder')}
@@ -133,6 +137,7 @@ export default function BasicRegister() {
         />
 
         <Button
+          data-testid="auth-submit"
           type="submit"
           variant="metallic"
           loading={registerLoading}
@@ -147,6 +152,7 @@ export default function BasicRegister() {
         <p className="text-sm text-text-disabled">
           {t('signUpTip')}{' '}
           <Link
+            data-testid="auth-toggle-login"
             to="/login"
             state={location.state}
             className="text-accent-primary/90 hover:text-accent-primary hover:bg-transparent font-medium"
