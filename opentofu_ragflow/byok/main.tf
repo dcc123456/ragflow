@@ -110,6 +110,9 @@ locals {
   # Get configuration for selected cloud provider
   config = local.cloud_config[var.cloud_provider]
 
+  ragflow_namespace = var.namespace
+  s3_bucket_name    = var.s3_bucket != "" ? var.s3_bucket : local.ragflow_namespace
+
   # Image transformation logic
   # RAGFlow image (including tag, will be prefixed with private_registry)
   # Format: image:tag (e.g., ragflow:latest)
@@ -166,7 +169,7 @@ locals {
 
 resource "kubernetes_namespace_v1" "ragflow" {
   metadata {
-    name = var.namespace
+    name = local.ragflow_namespace
   }
 
   # Allow namespace to already exist (idempotent)
@@ -894,10 +897,28 @@ resource "kubernetes_service_v1" "rabbitmq" {
 # Elasticsearch Deployment (K8s Mode)
 # =============================================================================
 
+# Detect a shared ECK operator so each RagFlow instance can reuse the same
+# cluster-scoped installation instead of trying to own it from multiple states.
+data "external" "eck_operator_status" {
+  program = ["sh", "-c", <<-EOF
+    export KUBECONFIG="${pathexpand(var.kubeconfig_path)}"
+
+    if kubectl get crd elasticsearches.elasticsearch.k8s.elastic.co >/dev/null 2>&1 && \
+      (kubectl get statefulset elastic-operator -n elastic-system >/dev/null 2>&1 || \
+      kubectl get deployment elastic-operator -n elastic-system >/dev/null 2>&1); then
+      printf '{"installed":"true"}\n'
+    else
+      printf '{"installed":"false"}\n'
+    fi
+  EOF
+  ]
+}
+
 # Deploy ECK (Elastic Cloud on Kubernetes) Operator using Helm
 # This installs the CRDs and operator required for Elasticsearch resources
 # Ref: https://artifacthub.io/packages/helm/elastic/eck-operator
 resource "helm_release" "eck_operator" {
+  count            = data.external.eck_operator_status.result.installed == "true" ? 0 : 1
   name             = "eck-operator"
   repository       = "https://helm.elastic.co"
   chart            = "eck-operator"
@@ -914,6 +935,7 @@ resource "helm_release" "eck_operator" {
   # Allow helm release to already exist (idempotent)
   lifecycle {
     ignore_changes = [name, namespace, repository, chart, version]
+    prevent_destroy = true
   }
 }
 
@@ -947,8 +969,23 @@ resource "terraform_data" "wait_for_elasticsearch_crd" {
 # CustomComputeClass for GKE to set vm.max_map_count
 # Requires GKE >= 1.30.3-gke.1451000
 # Reference: https://www.elastic.co/docs/deploy-manage/deploy/cloud-on-k8s/deploy-eck-on-gke-autopilot
-resource "kubernetes_manifest" "elasticsearch_compute_class" {
+data "external" "elasticsearch_compute_class_status" {
   count = var.cloud_provider == "gcp" ? 1 : 0
+
+  program = ["sh", "-c", <<-EOF
+    export KUBECONFIG="${pathexpand(var.kubeconfig_path)}"
+
+    if kubectl get computeclass elasticsearch >/dev/null 2>&1; then
+      printf '{"installed":"true"}\n'
+    else
+      printf '{"installed":"false"}\n'
+    fi
+  EOF
+  ]
+}
+
+resource "kubernetes_manifest" "elasticsearch_compute_class" {
+  count = var.cloud_provider == "gcp" ? (data.external.elasticsearch_compute_class_status[0].result.installed == "true" ? 0 : 1) : 0
 
   manifest = {
     apiVersion = "cloud.google.com/v1"
@@ -976,6 +1013,10 @@ resource "kubernetes_manifest" "elasticsearch_compute_class" {
         }
       ]
     }
+  }
+
+  lifecycle {
+    prevent_destroy = true
   }
 }
 
@@ -1541,7 +1582,7 @@ resource "kubernetes_secret_v1" "storage" {
 
   data = {
     S3_ENDPOINT   = var.s3_endpoint != "" ? var.s3_endpoint : local.config.s3_endpoint
-    S3_BUCKET     = var.s3_bucket
+    S3_BUCKET     = local.s3_bucket_name
     S3_ACCESS_KEY = var.s3_access_key
     S3_SECRET_KEY = var.s3_secret_key
     S3_REGION     = var.s3_region != "" ? var.s3_region : local.config.s3_region
@@ -1619,7 +1660,7 @@ resource "kubernetes_secret_v1" "ragflow_env" {
 
     # Storage Configuration
     S3_ENDPOINT   = var.s3_endpoint != "" ? var.s3_endpoint : local.config.s3_endpoint
-    S3_BUCKET     = var.s3_bucket
+    S3_BUCKET     = local.s3_bucket_name
     S3_ACCESS_KEY = var.s3_access_key
     S3_SECRET_KEY = var.s3_secret_key
     S3_REGION     = var.s3_region != "" ? var.s3_region : local.config.s3_region
@@ -1836,7 +1877,7 @@ resource "kubernetes_deployment_v1" "ragflow" {
           content {
             name    = "init-s3-bucket"
             image   = local.minio_mc_image
-            command = ["sh", "-c", "mc alias set myminio ${var.s3_endpoint} ${var.s3_access_key} ${var.s3_secret_key} && mc mb myminio/${var.s3_bucket} || exit 0"]
+            command = ["sh", "-c", "mc alias set myminio ${var.s3_endpoint} ${var.s3_access_key} ${var.s3_secret_key} && mc mb myminio/${local.s3_bucket_name} || exit 0"]
           }
         }
 
@@ -2697,6 +2738,14 @@ resource "kubernetes_job_v1" "ohttps_sync_initial_job" {
             name  = "OHTTPS_CERT_ID"
             value = var.ohttps_cert_id
           }
+          env {
+            name  = "SECRET_NAMESPACE"
+            value = local.ragflow_namespace
+          }
+          env {
+            name  = "SECRET_NAME"
+            value = "ragflow-tls"
+          }
         }
       }
     }
@@ -2717,6 +2766,9 @@ resource "null_resource" "wait_for_tls_secret" {
   ]
 
   provisioner "local-exec" {
+    environment = {
+      KUBECONFIG = pathexpand(var.kubeconfig_path)
+    }
     command = "echo 'Waiting for TLS secret to be ready...' && python3 wait_for_k8s_resource.py ${kubernetes_namespace_v1.ragflow.metadata[0].name} secret ragflow-tls"
   }
 }
@@ -2771,6 +2823,14 @@ resource "kubernetes_manifest" "ohttps_sync_cronjob" {
                     {
                       name  = "OHTTPS_CERT_ID"
                       value = var.ohttps_cert_id
+                    },
+                    {
+                      name  = "SECRET_NAMESPACE"
+                      value = local.ragflow_namespace
+                    },
+                    {
+                      name  = "SECRET_NAME"
+                      value = "ragflow-tls"
                     }
                   ]
                 }
@@ -3104,7 +3164,11 @@ data "kubernetes_service_v1" "gateway_fabric" {
 # path to query the actual IP from GCP.
 data "external" "gateway_ip" {
   count = local.is_gke_gateway ? 1 : 0
-  program = ["sh", "-c", "kubectl get gateway ragflow -n ragflow -o jsonpath={.status.addresses[0].value} 2>/dev/null | jq -R -s -c '{address: .}'"]
+  program = ["sh", "-c", <<-EOF
+    export KUBECONFIG="${pathexpand(var.kubeconfig_path)}"
+    kubectl get gateway ragflow -n ${local.ragflow_namespace} -o jsonpath={.status.addresses[0].value} 2>/dev/null | jq -R -s -c '{address: .}'
+  EOF
+  ]
 
   depends_on = [kubernetes_manifest.gateway]
 }
@@ -3114,8 +3178,9 @@ data "external" "gateway_ip" {
 data "external" "nginx_gateway_ip" {
   count = !local.is_gke_gateway ? 1 : 0
   program = ["sh", "-c", <<-EOF
+    export KUBECONFIG="${pathexpand(var.kubeconfig_path)}"
     # Get IP from Gateway CR status (more accurate than service IP)
-    ip=$(kubectl get gateway ragflow -n ragflow -o jsonpath='{.status.addresses[0].value}' 2>/dev/null)
+    ip=$(kubectl get gateway ragflow -n ${local.ragflow_namespace} -o jsonpath='{.status.addresses[0].value}' 2>/dev/null)
     if [ -n "$ip" ]; then
       echo "{\"address\": \"$ip\"}"
     else

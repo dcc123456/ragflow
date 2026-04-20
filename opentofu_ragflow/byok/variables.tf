@@ -79,9 +79,9 @@ variable "s3_endpoint" {
 }
 
 variable "s3_bucket" {
-  description = "S3 bucket name"
+  description = "S3 bucket name. When empty, defaults to the RagFlow instance namespace."
   type        = string
-  default     = "ragflow"
+  default     = ""
 }
 
 variable "s3_access_key" {
