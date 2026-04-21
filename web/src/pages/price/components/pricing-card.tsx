@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { PriceNameMapValue } from '../constant';
-import { showPriceComfirmModal } from '../gobal';
+import { showPriceConfirmModal } from '../gobal';
 import { ConfirmPriceEventDetail } from '../gobal/hook';
 import { useCharge } from '../hook/use-price-hooks';
 import '../index.less';
@@ -87,11 +87,16 @@ const PricingCard = (props: IPricePlanWithButton & { name?: string }) => {
     },
   ] as ISuffixProps[];
   const { loading, charge } = useCharge();
-  const [upCommingLoading, setUpCommingLoading] = useState(false);
+  const [upcomingLoading, setUpComingLoading] = useState(false);
 
-  const handleBuy = async (props: IPricePlanWithButton) => {
+  const handleBuy = async (props: IPricePlanWithButton & { name?: string }) => {
     let isUpgrade = false;
     const currentPlan: ICurrentPlan = storagePrivate.getPricePlan();
+
+    if (props.name === 'Enterprise') {
+      window.open('https://ragflow.io/contact-us', '_blank');
+      return;
+    }
 
     if (
       currentPlan &&
@@ -102,16 +107,16 @@ const PricingCard = (props: IPricePlanWithButton & { name?: string }) => {
       isUpgrade = true;
     }
     if (isUpgrade && currentPlan.price_id) {
-      setUpCommingLoading(true);
-      const { data: upComming } = await billingService.getUpComming({
+      setUpComingLoading(true);
+      const { data: upcoming } = await billingService.getUpcoming({
         old_price_id: currentPlan.price_id,
         new_price_id: props.id,
       });
-      setUpCommingLoading(false);
-      showPriceComfirmModal({
+      setUpComingLoading(false);
+      showPriceConfirmModal({
         plan: {
           ...props,
-          priceDifference: upComming?.data?.amount_due_today,
+          priceDifference: upcoming?.data?.amount_due_today,
         },
         container: nextLayoutRef.current || undefined,
       } as ConfirmPriceEventDetail);
@@ -154,7 +159,6 @@ const PricingCard = (props: IPricePlanWithButton & { name?: string }) => {
           /month
         </span>
       </h3>
-      {/* bg-gradient-to-r from-gray-900 to-gray-950 */}
       <ButtonLoading
         type="button"
         className={classNames(
@@ -164,10 +168,9 @@ const PricingCard = (props: IPricePlanWithButton & { name?: string }) => {
           },
         )}
         onClick={() => handleBuy(props)}
-        disabled={loading || upCommingLoading}
-        loading={loading || upCommingLoading}
+        disabled={loading || upcomingLoading}
+        loading={loading || upcomingLoading}
       >
-        {/* {(loading || upCommingLoading) && <Spin></Spin>} */}
         {buttonLabel}
       </ButtonLoading>
     </div>

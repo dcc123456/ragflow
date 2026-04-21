@@ -60,53 +60,50 @@ const useCharge = () => {
     if (data.isUse) {
       return;
     }
-    if (data.id === 'Enterprise') {
-      // window.open('http://www.baidu.com');
-    } else {
-      const chargeResult = await mutateAsync({
-        price_id: data.id,
-        quantity: '1',
-        payment_type: 'subscription',
-      });
-      if (chargeResult && chargeResult.redirect_to) {
-        window.open(chargeResult.redirect_to);
-      } else if (chargeResult && chargeResult.scheduled_change) {
-        const effectiveAt = chargeResult?.scheduled_change?.effective_at;
-        const modal = showModal({
-          children: React.createElement(
-            Modal,
-            {
-              open: true,
-              title: 'Downgrade scheduled',
-              onOpenChange: (open: boolean) => {
-                if (!open) {
-                  modal.destroy();
-                }
-              },
-              className: '!w-[400px]',
-              footer: React.createElement(
-                'div',
-                { className: 'flex justify-end gap-2' },
-                React.createElement(
-                  'button',
-                  {
-                    type: 'button',
-                    onClick: () => modal.destroy(),
-                    className:
-                      'px-2 py-1 bg-primary text-primary-foreground rounded-md hover:bg-primary/90',
-                  },
-                  'OK',
-                ),
-              ),
+
+    const chargeResult = await mutateAsync({
+      price_id: data.id,
+      quantity: '1',
+      payment_type: 'subscription',
+    });
+    if (chargeResult && chargeResult.redirect_to) {
+      window.open(chargeResult.redirect_to);
+    } else if (chargeResult && chargeResult.scheduled_change) {
+      const effectiveAt = chargeResult?.scheduled_change?.effective_at;
+      const modal = showModal({
+        children: React.createElement(
+          Modal,
+          {
+            open: true,
+            title: 'Downgrade scheduled',
+            onOpenChange: (open: boolean) => {
+              if (!open) {
+                modal.destroy();
+              }
             },
-            React.createElement(
+            className: '!w-[400px]',
+            footer: React.createElement(
               'div',
-              { className: 'h-32' },
-              `Your plan will downgrade at the end of the current billing period${effectiveAt ? ` (${effectiveAt})` : ''}.`,
+              { className: 'flex justify-end gap-2' },
+              React.createElement(
+                'button',
+                {
+                  type: 'button',
+                  onClick: () => modal.destroy(),
+                  className:
+                    'px-2 py-1 bg-primary text-primary-foreground rounded-md hover:bg-primary/90',
+                },
+                'OK',
+              ),
             ),
+          },
+          React.createElement(
+            'div',
+            { className: 'h-32' },
+            `Your plan will downgrade at the end of the current billing period${effectiveAt ? ` (${effectiveAt})` : ''}.`,
           ),
-        });
-      }
+        ),
+      });
     }
   };
   return { data, loading, charge, checkout: mutateAsync };
@@ -157,11 +154,17 @@ const getNextMonth = {
     return nextMonth;
   },
 
-  getNextMonthFirstDayFormatted: () => {
-    const nextMonth = getNextMonth.getNextMonthFirstDay();
-    const year = nextMonth.getFullYear();
-    const month = String(nextMonth.getMonth() + 1).padStart(2, '0');
-    const day = String(nextMonth.getDate()).padStart(2, '0');
+  get31Day: () => {
+    const today = new Date();
+    const futureDate = new Date(today.getTime() + 31 * 24 * 60 * 60 * 1000);
+    return futureDate;
+  },
+
+  getDayFormatted: (date: Date) => {
+    const thisDate = date;
+    const year = thisDate.getFullYear();
+    const month = String(thisDate.getMonth() + 1).padStart(2, '0');
+    const day = String(thisDate.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
   },
 };

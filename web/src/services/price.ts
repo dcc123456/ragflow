@@ -11,7 +11,7 @@ const {
   cancel_scheduled_subscription_change,
   plan_list,
   plan_spend_overview,
-  getUpComming,
+  getUpcoming,
   spendHistory,
   usageBasedPlans,
   storageCurrent,
@@ -39,8 +39,8 @@ const methods = {
     headers: { 'Content-Type': 'application/json' },
     method: 'get',
   },
-  getUpComming: {
-    url: getUpComming,
+  getUpcoming: {
+    url: getUpcoming,
     method: 'post',
   },
   spendHistory: {

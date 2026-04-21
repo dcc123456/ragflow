@@ -44,7 +44,7 @@ export default {
   plan_spend_overview: `${api_host}/billing/spend_metrics`,
   blling_base_overview: `${api_host}/billing/usage_based_overview`,
   plan_overview: `${api_host}/billing/plan_overview`,
-  getUpComming: `${api_host}/billing/upcoming`,
+  getUpcoming: `${api_host}/billing/upcoming`,
   spendHistory: `${api_host}/billing/spend_overview`,
   usageBasedPlans: `${api_host}/billing/usage_based_plans`,
   storageCurrent: `${api_host}/billing/storage/current`,

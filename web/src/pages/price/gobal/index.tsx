@@ -47,7 +47,7 @@ export const showUpgradeTipsModal = (options?: UpgradeTipsEventDetail) => {
   window.dispatchEvent(event);
 };
 
-export const showPriceComfirmModal = (options?: ConfirmPriceEventDetail) => {
+export const showPriceConfirmModal = (options?: ConfirmPriceEventDetail) => {
   const event = new CustomEvent(CONFIRM_PRICE_EVENT, { detail: options });
   window.dispatchEvent(event);
 };

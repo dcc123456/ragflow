@@ -231,7 +231,7 @@ const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
         // });
       }
     },
-    [urlParams, t],
+    [t],
   );
 
   useEffect(() => {
