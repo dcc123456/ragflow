@@ -24,6 +24,7 @@ from api.db.services.llm_service import LLMBundle
 from api.db.joint_services.tenant_model_service import get_tenant_default_model_by_type, get_model_config_by_id, get_model_config_by_type_and_name
 from common.connection_utils import timeout
 from rag.flow.base import ProcessBase, ProcessParamBase
+from rag.flow.parser.pdf_chunk_metadata import finalize_pdf_chunk
 from rag.flow.tokenizer.schema import TokenizerFromUpstream
 from rag.nlp import rag_tokenizer
 from common import settings
@@ -51,6 +52,10 @@ class Tokenizer(ProcessBase):
     component_name = "Tokenizer"
 
     async def _embedding(self, name, chunks):
+        # Tokenization may legitimately produce zero chunks; embedding should be a no-op.
+        if not chunks:
+            return [], 0
+
         parts = sum(["full_text" in self._param.search_method, "embedding" in self._param.search_method])
         token_count = 0
         if self._canvas._kb_id:
@@ -108,7 +113,8 @@ class Tokenizer(ProcessBase):
     async def _invoke(self, **kwargs):
         try:
             chunks = kwargs.get("chunks")
-            kwargs["chunks"] = [c for c in chunks if c is not None]
+            if chunks is not None:
+                kwargs["chunks"] = [c for c in chunks if c is not None]
 
             from_upstream = TokenizerFromUpstream.model_validate(kwargs)
         except Exception as e:
@@ -119,9 +125,11 @@ class Tokenizer(ProcessBase):
         parts = sum(["full_text" in self._param.search_method, "embedding" in self._param.search_method])
         if "full_text" in self._param.search_method:
             self.callback(random.randint(1, 5) / 100.0, "Start to tokenize.")
-            if from_upstream.chunks:
-                chunks = from_upstream.chunks
+            # Branch on the declared upstream format so an empty chunk list stays on the chunk path.
+            if from_upstream.output_format == "chunks":
+                chunks = from_upstream.chunks or []
                 for i, ck in enumerate(chunks):
+                    ck["chunk_order_int"] = i
                     ck["title_tks"] = rag_tokenizer.tokenize(re.sub(r"\.[a-zA-Z]+$", "", from_upstream.name))
                     ck["title_sm_tks"] = rag_tokenizer.fine_grained_tokenize(ck["title_tks"])
                     if ck.get("questions"):
@@ -158,7 +166,8 @@ class Tokenizer(ProcessBase):
                     ck["content_sm_ltks"] = rag_tokenizer.fine_grained_tokenize(ck["content_ltks"])
                 chunks = [ck]
             else:
-                chunks = from_upstream.json_result
+                # Empty JSON payloads are valid and should remain empty downstream.
+                chunks = from_upstream.json_result or []
                 for i, ck in enumerate(chunks):
                     ck["title_tks"] = rag_tokenizer.tokenize(re.sub(r"\.[a-zA-Z]+$", "", from_upstream.name))
                     ck["title_sm_tks"] = rag_tokenizer.fine_grained_tokenize(ck["title_tks"])
@@ -181,5 +190,7 @@ class Tokenizer(ProcessBase):
             self.set_output("embedding_token_consumption", token_count)
 
             self.callback(1.0, "Finish embedding.")
+
+        chunks = [finalize_pdf_chunk(ck) for ck in chunks]
 
         self.set_output("chunks", chunks)

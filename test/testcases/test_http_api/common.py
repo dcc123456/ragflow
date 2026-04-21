@@ -122,7 +122,7 @@ def list_documents(auth, dataset_id, params=None):
 
 def update_document(auth, dataset_id, document_id, payload=None):
     url = f"{HOST_ADDRESS}{FILE_API_URL}/{document_id}".format(dataset_id=dataset_id)
-    res = requests.put(url=url, headers=HEADERS, auth=auth, json=payload)
+    res = requests.patch(url=url, headers=HEADERS, auth=auth, json=payload)
     return res.json()
 
 
@@ -216,9 +216,21 @@ def list_chat_assistants(auth, params=None):
     return res.json()
 
 
+def get_chat_assistant(auth, chat_assistant_id):
+    url = f"{HOST_ADDRESS}{CHAT_ASSISTANT_API_URL}/{chat_assistant_id}"
+    res = requests.get(url=url, headers=HEADERS, auth=auth)
+    return res.json()
+
+
 def update_chat_assistant(auth, chat_assistant_id, payload=None):
     url = f"{HOST_ADDRESS}{CHAT_ASSISTANT_API_URL}/{chat_assistant_id}"
     res = requests.put(url=url, headers=HEADERS, auth=auth, json=payload)
+    return res.json()
+
+
+def patch_chat_assistant(auth, chat_assistant_id, payload=None):
+    url = f"{HOST_ADDRESS}{CHAT_ASSISTANT_API_URL}/{chat_assistant_id}"
+    res = requests.patch(url=url, headers=HEADERS, auth=auth, json=payload)
     return res.json()
 
 

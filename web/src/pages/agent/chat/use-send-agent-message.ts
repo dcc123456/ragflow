@@ -26,7 +26,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { useParams } from 'react-router';
+import { useParams, useSearchParams } from 'react-router';
 import { v4 as uuid } from 'uuid';
 import { BeginId } from '../constant';
 import { AgentChatLogContext } from '../context';
@@ -86,6 +86,7 @@ export function findMessageFromList(eventList: IEventList) {
     content: nextContent,
     audio_binary: audioBinary,
     attachment: workflowFinished?.data?.outputs?.attachment || {},
+    downloads: workflowFinished?.data?.outputs?.downloads || [],
   };
 }
 
@@ -272,6 +273,10 @@ export const useSendAgentMessage = ({
     removeFile,
   } = useSetUploadResponseData();
 
+  const [searchParams] = useSearchParams();
+
+  const userId = searchParams.get('userId');
+
   const { stopMessage } = useStopMessage();
 
   const stopConversation = useCallback(() => {
@@ -315,6 +320,10 @@ export const useSendAgentMessage = ({
         if (releaseMode) {
           params.release = releaseMode;
         }
+
+        if (userId) {
+          params.user_id = userId;
+        }
       }
 
       try {
@@ -341,12 +350,13 @@ export const useSendAgentMessage = ({
       beginParams,
       uploadResponseList,
       sessionId,
+      releaseMode,
+      userId,
       send,
       clearUploadResponseList,
       setValue,
       removeLatestMessage,
       refetch,
-      releaseMode,
     ],
   );
 
@@ -432,7 +442,7 @@ export const useSendAgentMessage = ({
   }, [sendMessageInTaskMode]);
 
   useEffect(() => {
-    const { content, id, attachment, audio_binary } =
+    const { content, id, attachment, audio_binary, downloads } =
       findMessageFromList(answerList);
     const inputAnswer = findInputFromList(answerList);
     const answer = content || getLatestError(answerList);
@@ -442,6 +452,7 @@ export const useSendAgentMessage = ({
         answer: answer ?? '',
         audio_binary: audio_binary,
         attachment: attachment as IAttachment,
+        downloads,
         id: id,
         ...inputAnswer,
       });

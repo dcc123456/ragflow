@@ -158,7 +158,7 @@ export default {
       changeSpecificCategory: 'Thay đổi danh mục cụ thể',
       uploadTitle: 'Nhấp hoặc kéo thả tệp vào khu vực này để tải lên',
       uploadDescription:
-        'RAGFlow hỗ trợ tải lên tệp một lần hoặc theo lô. Đối với RAGFlow triển khai cục bộ: giới hạn tổng kích thước tệp cho mỗi lần tải lên là 1GB, với giới hạn tải lên theo lô là 32 tệp. Không có giới hạn về tổng số tệp trên mỗi tài khoản. Đối với demo.ragflow.io: giới hạn tổng kích thước tệp cho mỗi lần tải lên là 10MB, với mỗi tệp không vượt quá 10MB và tối đa là 128 tệp trên mỗi tài khoản.',
+        'RAGFlow hỗ trợ tải lên tệp một lần hoặc theo lô. Đối với RAGFlow triển khai cục bộ: giới hạn tổng kích thước tệp cho mỗi lần tải lên là 1GB, với giới hạn tải lên theo lô là 32 tệp. Không có giới hạn về tổng số tệp trên mỗi tài khoản. Đối với cloud.ragflow.io: giới hạn tổng kích thước tệp cho mỗi lần tải lên là 10MB, với mỗi tệp không vượt quá 10MB và tối đa là 128 tệp trên mỗi tài khoản.',
       chunk: 'Khối',
       bulk: 'Hàng loạt',
       cancel: 'Hủy bỏ',
@@ -393,6 +393,9 @@ export default {
         'Nếu có những câu hỏi được đưa ra, việc nhúng phần đó sẽ dựa trên những câu hỏi đó.',
     },
     chat: {
+      chatSupport: 'Hỗ trợ trò chuyện',
+      replyInstantly: 'Chúng tôi thường phản hồi ngay lập tức',
+      typeYourMessage: 'Nhập tin nhắn của bạn...',
       newConversation: 'Cuộc trò chuyện mới',
       createAssistant: 'Tạo trợ lý',
       assistantSetting: 'Cài đặt trợ lý',
@@ -776,7 +779,7 @@ export default {
       directory: 'Thư mục',
       uploadTitle: 'Nhấp hoặc kéo thả tệp vào khu vực này để tải lên',
       uploadDescription:
-        'RAGFlow hỗ trợ tải lên tệp một lần hoặc theo lô. Đối với RAGFlow triển khai cục bộ: giới hạn tổng kích thước tệp cho mỗi lần tải lên là 1GB, với giới hạn tải lên theo lô là 32 tệp. Không có giới hạn về tổng số tệp trên mỗi tài khoản. Đối với demo.ragflow.io: giới hạn tổng kích thước tệp cho mỗi lần tải lên là 10MB, với mỗi tệp không vượt quá 10MB và tối đa là 128 tệp trên mỗi tài khoản.',
+        'RAGFlow hỗ trợ tải lên tệp một lần hoặc theo lô. Đối với RAGFlow triển khai cục bộ: giới hạn tổng kích thước tệp cho mỗi lần tải lên là 1GB, với giới hạn tải lên theo lô là 32 tệp. Không có giới hạn về tổng số tệp trên mỗi tài khoản. Đối với cloud.ragflow.io: giới hạn tổng kích thước tệp cho mỗi lần tải lên là 10MB, với mỗi tệp không vượt quá 10MB và tối đa là 128 tệp trên mỗi tài khoản.',
       local: 'Tải lên cục bộ',
       s3: 'Tải lên S3',
       preview: 'Xem trước',
@@ -852,10 +855,8 @@ export default {
       searXNG: 'SearXNG',
       searXNGDescription:
         'Một thành phần tìm kiếm thông qua URL phiên bản SearXNG bạn cung cấp. Chỉ định TopN và URL phiên bản.',
-      pdfGenerator: 'Trình tạo Tài liệu',
-      pDFGenerator: 'Trình tạo Tài liệu',
-      pdfGeneratorDescription: `Một thành phần tạo tài liệu (PDF, DOCX, TXT) từ nội dung định dạng markdown với kiểu tùy chỉnh, hình ảnh và bảng. Hỗ trợ: **in đậm**, *in nghiêng*, # tiêu đề, - danh sách, bảng với cú pháp |.`,
-      pDFGeneratorDescription: `Một thành phần tạo tài liệu (PDF, DOCX, TXT) từ nội dung định dạng markdown với kiểu tùy chỉnh, hình ảnh và bảng. Hỗ trợ: **in đậm**, *in nghiêng*, # tiêu đề, - danh sách, bảng với cú pháp |.`,
+      docGenerator: 'Trình tạo Tài liệu',
+      docGeneratorDescription: `Tạo tệp từ nội dung Markdown.`,
       subtitle: 'Phụ đề',
       logoImage: 'Hình ảnh Logo',
       logoPosition: 'Vị trí Logo',
@@ -1255,6 +1256,7 @@ export default {
       russian: 'Tiếng Nga',
       bulgarian: 'Tiếng Bulgaria',
       arabic: 'Tiếng Ả Rập',
+      turkish: 'Tiếng Thổ Nhĩ Kỳ',
     },
   },
 };

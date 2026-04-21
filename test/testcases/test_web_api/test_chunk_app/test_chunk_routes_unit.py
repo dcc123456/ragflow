@@ -220,6 +220,7 @@ def _load_chunk_module(monkeypatch):
 
     string_utils_mod = ModuleType("common.string_utils")
     string_utils_mod.remove_redundant_spaces = lambda text: " ".join(str(text).split())
+    string_utils_mod.is_content_empty = lambda content: content is None or not str(content).strip()
     monkeypatch.setitem(sys.modules, "common.string_utils", string_utils_mod)
 
     metadata_utils_mod = ModuleType("common.metadata_utils")
@@ -587,6 +588,14 @@ def test_set_chunk_bytes_qa_image_and_guard_matrix_unit(monkeypatch):
     _set_request_json(
         monkeypatch,
         module,
+        {"doc_id": "doc-1", "chunk_id": "chunk-1", "content_with_weight": "abc", "tag_feas": [0.1]},
+    )
+    res = _run(module.set())
+    assert "`tag_feas` must be an object mapping string tags to finite numeric scores" in res["message"], res
+
+    _set_request_json(
+        monkeypatch,
+        module,
         {
             "doc_id": "doc-1",
             "chunk_id": "chunk-1",
@@ -594,7 +603,7 @@ def test_set_chunk_bytes_qa_image_and_guard_matrix_unit(monkeypatch):
             "important_kwd": ["important"],
             "question_kwd": ["question"],
             "tag_kwd": ["tag"],
-            "tag_feas": [0.1],
+            "tag_feas": {"tag": 0.1},
             "available_int": 0,
         },
     )
@@ -765,12 +774,20 @@ def test_create_chunk_guards_pagerank_and_success_unit(monkeypatch):
     _set_request_json(
         monkeypatch,
         module,
+        {"doc_id": "doc-1", "content_with_weight": "chunk", "tag_feas": [0.2]},
+    )
+    res = _run(module.create())
+    assert "`tag_feas` must be an object mapping string tags to finite numeric scores" in res["message"], res
+
+    _set_request_json(
+        monkeypatch,
+        module,
         {
             "doc_id": "doc-1",
             "content_with_weight": "chunk",
             "important_kwd": ["i1"],
             "question_kwd": ["q1"],
-            "tag_feas": [0.2],
+            "tag_feas": {"tag": 0.2},
         },
     )
     res = _run(module.create())
@@ -846,6 +863,9 @@ def test_retrieval_test_branch_matrix_unit(monkeypatch):
             return {"id": "kg-2", "content_with_weight": ""}
 
     monkeypatch.setattr(module, "LLMBundle", lambda *args, **kwargs: llm_calls.append((args, kwargs)) or SimpleNamespace())
+    monkeypatch.setattr(module, "get_model_config_by_type_and_name", lambda *_args, **_kwargs: {"llm_name": "stub-model", "model_type": "chat"})
+    monkeypatch.setattr(module, "get_tenant_default_model_by_type", lambda *_args, **_kwargs: {"llm_name": "stub-model", "model_type": "chat"})
+    monkeypatch.setattr(module, "get_model_config_by_id", lambda *_args, **_kwargs: {"llm_name": "stub-model", "model_type": "embedding"})
     monkeypatch.setattr(module.DocMetadataService, "get_flatted_meta_by_kbs", lambda _kb_ids: [{"meta": "v"}], raising=False)
     monkeypatch.setattr(module, "apply_meta_data_filter", _apply_filter)
     monkeypatch.setattr(module.SearchService, "get_detail", lambda _sid: {"search_config": {"meta_data_filter": {"method": "auto"}, "chat_id": "chat-1"}}, raising=False)

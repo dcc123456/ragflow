@@ -160,12 +160,12 @@ def auth():
 
 @pytest.fixture(scope="session")
 def token(auth):
-    url = HOST_ADDRESS + f"/{VERSION}/system/new_token"
+    url = HOST_ADDRESS + f"/api/{VERSION}/system/tokens"
     auth = {"Authorization": auth}
     response = requests.post(url=url, headers=auth)
     res = response.json()
     if res.get("code") != 0:
-        error_msg = f"access: {url}, POST method, error code: {res.get("code")}, message: {res.get('message')}"
+        error_msg = f"access: {url}, POST method, error code: {res.get('code')}, message: {res.get('message')}"
         raise Exception(error_msg)
     return res["data"].get("token")
 
