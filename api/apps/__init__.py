@@ -438,3 +438,17 @@ def _db_close(exception):
     if exception:
         logging.exception(f"Request failed: {exception}")
     close_connection()
+
+
+from api.utils.active_users import get_active_users
+from common.observer import set_active_users_count
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+@app.get("/metrics")
+def metrics():
+    set_active_users_count(get_active_users(300)) # set active users
+    data = generate_latest()
+    return Response(
+        response=data,
+        status=200,
+        content_type=CONTENT_TYPE_LATEST
+    )

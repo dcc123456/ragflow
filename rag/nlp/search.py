@@ -28,6 +28,7 @@ from common.doc_store.doc_store_base import MatchDenseExpr, FusionExpr, OrderByE
 from common.string_utils import remove_redundant_spaces
 from common.float_utils import get_float
 from common.constants import PAGERANK_FLD, TAG_FLD
+from common.observer import retrieval_metrics
 from common import settings
 
 from common.misc_utils import thread_pool_exec
@@ -363,6 +364,7 @@ class Dealer:
                                            rag_tokenizer.tokenize(ans).split(),
                                            rag_tokenizer.tokenize(inst).split())
 
+    @retrieval_metrics()
     async def retrieval(
             self,
             question,

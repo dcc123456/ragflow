@@ -17,6 +17,8 @@ import logging
 
 from peewee import OperationalError
 from quart import request
+
+from api.utils import active_users
 from common.constants import RetCode
 from api.apps import login_required, current_user
 from api.utils.api_utils import get_error_argument_result, get_error_data_result, get_result, add_tenant_id_to_kwargs
@@ -325,6 +327,8 @@ def list_datasets(tenant_id):
           items:
             type: object
     """
+    active_users.mark_user_active(current_user.id)
+
     args, err = validate_and_parse_request_args(request, ListDatasetReq)
     if err is not None:
         return get_error_argument_result(err)
