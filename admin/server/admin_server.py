@@ -15,6 +15,9 @@
 #
 
 import time
+
+from admin.server.rabbitmq_metrics import rabbitmq_metrics_worker
+
 start_ts = time.time()
 
 import os
@@ -39,6 +42,8 @@ from config import load_configurations, SERVICE_CONFIGS
 from auth import init_default_admin, setup_auth
 from flask_session import Session
 from common.versions import get_ragflow_version
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+from quart import Response
 
 stop_event = threading.Event()
 
@@ -96,6 +101,17 @@ if __name__ == '__main__':
             logging.warn(f"healthz result: {result}, all_ok: {all_ok}")
         return jsonify(result), (200 if all_ok else 500)
 
+
+    @app.get("/metrics")
+    def metrics():
+        data = generate_latest()
+        return Response(
+            response=data,
+            status=200,
+            content_type=CONTENT_TYPE_LATEST
+        )
+
+
     app.register_blueprint(admin_bp)
     app.config["SESSION_PERMANENT"] = False
     app.config["SESSION_TYPE"] = "filesystem"
@@ -118,6 +134,9 @@ if __name__ == '__main__':
     init_default_admin()
     #init_user_role()
     SERVICE_CONFIGS.configs = load_configurations(SERVICE_CONF)
+
+    rabbitmq_metrics_thread = threading.Thread(target=rabbitmq_metrics_worker, args=(60,), daemon=True)
+    rabbitmq_metrics_thread.start()
 
     try:
         logging.info(f"RAGFlow admin is ready after {time.time() - start_ts}s initialization.")
