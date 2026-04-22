@@ -41,7 +41,7 @@ from common.mcp_tool_call_conn import shutdown_all_mcp_sessions
 from common.log_utils import init_root_logger
 from agent.plugin import GlobalPluginManager
 from rag.utils.redis_conn import RedisDistributedLock, REDIS_CONN
-from api.utils.active_users import set_active_users_worker
+from common.active_users import set_active_users_worker
 
 stop_event = threading.Event()
 
@@ -162,7 +162,7 @@ if __name__ == '__main__':
     else:
         threading.Timer(1.0, delayed_start_update_progress).start()
 
-    set_active_users_thread = threading.Thread(target=set_active_users_worker, args=(120,), daemon=True)
+    set_active_users_thread = threading.Thread(target=set_active_users_worker, args=(60,), daemon=True)
     set_active_users_thread.start()
 
     # start http server

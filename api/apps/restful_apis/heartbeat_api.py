@@ -1,6 +1,6 @@
 from api.apps import login_required, current_user
-from api.utils import active_users
 from api.utils.api_utils import get_result
+from common import active_users
 
 
 @manager.route("/heartbeat", methods=["GET"])  # noqa: F821

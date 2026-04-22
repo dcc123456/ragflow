@@ -43,6 +43,8 @@ import memory.utils.es_conn as memory_es_conn
 import memory.utils.infinity_conn as memory_infinity_conn
 import memory.utils.ob_conn as memory_ob_conn
 
+HOSTNAME = os.environ.get("HOSTNAME", "ragflow")
+
 DEFAULT_ROLE = os.environ.get("DEFAULT_ROLE", "owner")
 ENABLE_WHITELIST = int(os.environ.get("ENABLE_WHITELIST", "0"))
 ENABLE_ADMIN = int(os.environ.get("ENABLE_ADMIN", "0"))

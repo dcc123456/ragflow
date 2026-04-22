@@ -1,10 +1,11 @@
 import logging
 import time
 
+import settings
 from common.observer import set_active_users_count
 from rag.utils.redis_conn import REDIS_CONN
 
-ACTIVE_USERS_KEY = "active_users"
+ACTIVE_USERS_KEY = f"active_users_{settings.HOSTNAME}"
 
 
 def mark_user_active(user_id: str):
@@ -20,7 +21,7 @@ def get_active_users(window=300):
     return REDIS_CONN.zcard(ACTIVE_USERS_KEY)
 
 
-def set_active_users_worker(interval=120):
+def set_active_users_worker(interval=60):
     while True:
         try:
             set_active_users_count(get_active_users(300))
