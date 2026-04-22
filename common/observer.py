@@ -41,7 +41,7 @@ def set_active_users_count(count):
     ACTIVE_USERS_GAUGE.labels(hostname=settings.HOSTNAME).set(count)
 
 
-def set_task_metrics(queue):
+def set_queue_metrics(queue):
     name = queue["name"]
     TASKS_PENDING.labels(queue=name).set(queue["ready"])
     TASKS_IN_PROGRESS.labels(queue=name).set(queue["inflight"])
