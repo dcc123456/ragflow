@@ -16,7 +16,7 @@ ACTIVE_USERS_GAUGE = Gauge("active_users_total", "Number of active users in last
 
 TASKS_PENDING = Gauge("queue_tasks_pending", "Tasks pending", ["queue"])
 TASKS_IN_PROGRESS = Gauge("queue_tasks_in_progress", "Tasks in progress", ["queue"])
-TASKS_COMPLETED_TOTAL = Counter("queue_tasks_completed_total", "Total completed tasks", ["queue"])
+TASKS_COMPLETED_TOTAL = Gauge("queue_tasks_completed_total", "Total completed tasks", ["queue"])
 
 
 def retrieval_metrics():
