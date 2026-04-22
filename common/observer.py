@@ -1,11 +1,12 @@
 # To avoid metrics explosion, explicitly set the metric name
 
 import functools
+import os
 import time
 
 from prometheus_client import Counter, Histogram, Gauge
 
-from common import settings
+HOSTNAME = os.environ.get("HOSTNAME", "ragflow")
 
 RETRIEVAL_REQUESTS = Counter("retrieval_requests_total", "Total retrieval requests", ["hostname"])
 RETRIEVAL_FAILURES = Counter("retrieval_failures_total", "Total retrieval failures", ["hostname"])
@@ -22,15 +23,15 @@ def retrieval_metrics():
     def decorator(func):
         @functools.wraps(func)
         async def wrapper(*args, **kwargs):
-            RETRIEVAL_REQUESTS.labels(hostname=settings.HOSTNAME).inc()
+            RETRIEVAL_REQUESTS.labels(hostname=HOSTNAME).inc()
             start = time.perf_counter()
             try:
                 return await func(*args, **kwargs)
             except Exception:
-                RETRIEVAL_FAILURES.labels(hostname=settings.HOSTNAME).inc()
+                RETRIEVAL_FAILURES.labels(hostname=HOSTNAME).inc()
                 raise
             finally:
-                RETRIEVAL_LATENCY.labels(hostname=settings.HOSTNAME).observe(time.perf_counter() - start)
+                RETRIEVAL_LATENCY.labels(hostname=HOSTNAME).observe(time.perf_counter() - start)
 
         return wrapper
 
@@ -38,7 +39,7 @@ def retrieval_metrics():
 
 
 def set_active_users_count(count):
-    ACTIVE_USERS_GAUGE.labels(hostname=settings.HOSTNAME).set(count)
+    ACTIVE_USERS_GAUGE.labels(hostname=HOSTNAME).set(count)
 
 
 def set_queue_metrics(queue):
