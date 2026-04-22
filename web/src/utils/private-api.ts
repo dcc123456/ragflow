@@ -1,4 +1,4 @@
-import { api_host } from './api';
+import { ExternalApi, api_host } from './api';
 
 export default {
   // next team
@@ -60,4 +60,7 @@ export default {
   enableAdmin: `${api_host}/user/enable_admin`, // enable 为true且 is_admin 为false 隐藏model provide
   isAdmin: `${api_host}/user/is_admin`, // 非admin用户不给显示model providers页面
   setDefaultLlm: `${api_host}/llm/set_default_llm`, // 添加一个按钮：重置成默认,需要弹框确认。
+
+  // heart beat
+  heartBeat: `${ExternalApi}${api_host}/heartbeat`,
 };

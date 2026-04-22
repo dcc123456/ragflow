@@ -438,3 +438,15 @@ def _db_close(exception):
     if exception:
         logging.exception(f"Request failed: {exception}")
     close_connection()
+
+
+from quart import Response
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+@app.get("/metrics")
+def metrics():
+    data = generate_latest()
+    return Response(
+        response=data,
+        status=200,
+        content_type=CONTENT_TYPE_LATEST
+    )
