@@ -1,4 +1,4 @@
-import { api_host } from './api';
+import { ExternalApi, api_host } from './api';
 
 export default {
   // next team
@@ -62,5 +62,5 @@ export default {
   setDefaultLlm: `${api_host}/llm/set_default_llm`, // 添加一个按钮：重置成默认,需要弹框确认。
 
   // heart beat
-  heartBeat: `${api_host}/heart_beat`,
+  heartBeat: `${ExternalApi}${api_host}/heartbeat`,
 };
