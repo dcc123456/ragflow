@@ -5,7 +5,7 @@ import time
 
 from prometheus_client import Counter, Histogram, Gauge
 
-import settings
+from common import settings
 
 RETRIEVAL_REQUESTS = Counter("retrieval_requests_total", "Total retrieval requests", ["hostname"])
 RETRIEVAL_FAILURES = Counter("retrieval_failures_total", "Total retrieval failures", ["hostname"])

@@ -1,7 +1,7 @@
 import logging
 import time
 
-import settings
+from common import settings
 from common.observer import set_active_users_count
 from rag.utils.redis_conn import REDIS_CONN
 
