@@ -27,7 +27,7 @@ import threading
 import traceback
 import faulthandler
 
-from flask import Flask, jsonify
+from flask import Flask, jsonify, Response
 
 from api.utils.health_utils import run_health_checks
 from api.db.db_models import close_connection
@@ -43,7 +43,6 @@ from auth import init_default_admin, setup_auth
 from flask_session import Session
 from common.versions import get_ragflow_version
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
-from quart import Response
 
 stop_event = threading.Event()
 
