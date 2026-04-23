@@ -1,5 +1,12 @@
+import { Button } from '@/components/ui/button';
 import { cn, convertKbToGb } from '@/lib/utils';
-import { Check, GitPullRequestArrow } from 'lucide-react';
+import { createBillingPortalSession } from '@/services/price';
+import {
+  AlertTriangle,
+  Check,
+  CreditCard,
+  GitPullRequestArrow,
+} from 'lucide-react';
 import { useEffect, useState } from 'react';
 import ResourceUsage from '../component/resource-usage';
 import { useFetchPlanOverview } from '../hook/overview';
@@ -93,6 +100,19 @@ export const BaseInfo = () => {
     setCurrentPlan(plan);
   }, [planData, setCurrentPlan]);
 
+  const handleRecoverPayment = async () => {
+    if (planData?.payment_recovery_url) {
+      window.open(planData.payment_recovery_url, '_blank');
+      return;
+    }
+
+    const { data: res } = await createBillingPortalSession();
+    const redirectUrl = res?.data?.redirect_to || res?.redirect_to;
+    if (redirectUrl) {
+      window.open(redirectUrl, '_blank');
+    }
+  };
+
   return (
     <>
       <div className="flex justify-between items-center mb-4">
@@ -106,6 +126,20 @@ export const BaseInfo = () => {
           </p>
         </div>
       </div>
+      {planData?.payment_required && (
+        <div className="mb-4 flex items-center justify-between gap-3 rounded border border-red-500/40 bg-red-500/10 px-4 py-3 text-text-primary">
+          <div className="flex items-center gap-2">
+            <AlertTriangle size={18} className="text-red-500" />
+            <span className="text-sm">
+              Your subscription payment needs attention.
+            </span>
+          </div>
+          <Button size="sm" onClick={handleRecoverPayment}>
+            <CreditCard size={16} />
+            {planData.payment_recovery_url ? 'Pay invoice' : 'Update payment'}
+          </Button>
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-4">
         <ResourceUsage
           title="Storage"

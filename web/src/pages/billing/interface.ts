@@ -27,6 +27,9 @@ export interface ISubscriptionData {
   plan_name: string;
   resources: IResources;
   subscription_status: SubscriptionStatus;
+  payment_required?: boolean;
+  payment_recoverable?: boolean;
+  payment_recovery_url?: string;
   billing_cycle: {
     start: string;
     end: string;

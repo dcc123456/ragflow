@@ -548,6 +548,23 @@ async def cancel_scheduled_subscription_change_async(subscription_id: str) -> bo
     return True
 
 
+@billing_enabled_guard(False)
+def cancel_scheduled_subscription_change_sync(subscription_id: str) -> bool:
+    if not subscription_id:
+        return False
+
+    subscription = stripe.Subscription.retrieve(subscription_id)
+    if isinstance(subscription, dict):
+        schedule_id = (subscription.get("schedule") or "").strip()
+    else:
+        schedule_id = (getattr(subscription, "schedule", "") or "").strip()
+    if not schedule_id:
+        return False
+
+    stripe.SubscriptionSchedule.release(schedule_id)
+    return True
+
+
 def get_plans_equal_or_higher(plan_name: str) -> list[tuple[str, list[str]]]:
     """
     return names of equal or higher plans and their price_ids. [name, price_ids]

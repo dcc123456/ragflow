@@ -48,6 +48,9 @@ from common.time_utils import current_timestamp
 from deepdoc.parser import PdfParser
 import stripe
 
+ENTITLED_MAIN_SUBSCRIPTION_STATUSES = {"active", "trialing"}
+
+
 class ProductService(CommonService):
     model = Product
     VERSION_CHECK_FIELDS = ["quota_apps", "quota_members", "quota_kb_storage", "task_priority", "price_ids", "product_type", "usage_stat_type"]
@@ -343,7 +346,10 @@ class SubscriptionService(CommonService):
         tenant_plan_info = (
             cls.model.select(*fields)
             .join(Product, on=(cls.model.plan_name == Product.name))
-            .where((cls.model.tenant_id == tenant_id) & (cls.model.subscription_status == SubscriptionStatus.ACTIVE))
+            .where(
+                (cls.model.tenant_id == tenant_id)
+                & (cls.model.subscription_status.in_(ENTITLED_MAIN_SUBSCRIPTION_STATUSES))
+            )
             .order_by(
                 Product.version.desc(),
                 cls.model.create_time.desc(),
@@ -431,7 +437,7 @@ class SubscriptionService(CommonService):
         if not tenant_plan:
             return 0
         subscription_status = tenant_plan["subscription_status"]
-        if subscription_status != "active":
+        if subscription_status not in ENTITLED_MAIN_SUBSCRIPTION_STATUSES:
             return 0
         return 1
 
@@ -628,6 +634,15 @@ class PaymentOrderService(CommonService):
         if not payment_intent_id:
             return None
         return cls.model.select().where(cls.model.payment_intent_id == payment_intent_id).dicts().first()
+
+    @classmethod
+    @DB.connection_context()
+    def update_by_order_id(cls, order_id: str, update_dict: dict) -> int:
+        if not order_id:
+            return 0
+        update_dict["update_time"] = current_timestamp()
+        update_dict["update_date"] = to_utc_datetime(datetime.now(timezone.utc))
+        return cls.model.update(update_dict).where(cls.model.order_id == order_id).execute()
 
 
 class BillingWebhookEventService(CommonService):

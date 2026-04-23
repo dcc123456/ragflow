@@ -39,6 +39,7 @@ export default {
   // billing
   billin_checkout: `${api_host}/billing/checkout`,
   current_plan: `${api_host}/billing/current_plan`,
+  createPortalSession: `${api_host}/billing/create-portal-session`,
   cancel_scheduled_subscription_change: `${api_host}/billing/cancel-scheduled-subscription-change`,
   plan_list: `${api_host}/billing/plans`,
   plan_spend_overview: `${api_host}/billing/spend_metrics`,

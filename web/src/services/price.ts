@@ -85,6 +85,11 @@ export const cancelScheduledSubscriptionChange = (tenantId: string) => {
   });
 };
 
+export const createBillingPortalSession = (data?: {
+  tenant_id?: string;
+  return_url?: string;
+}) => request.post(api.createPortalSession, { data });
+
 export const getBllingBaseOverview = ({ tenantId }: { tenantId: string }) => {
   return request.get(api.blling_base_overview, {
     params: { tenant_id: tenantId },
