@@ -1,4 +1,5 @@
 import { useFetchTenantInfo } from '@/hooks/use-user-setting-request';
+import { pricePerGB } from '@/pages/price/config';
 import {
   getBillingStorageCurrent,
   postBillingStorageAbandonPending,
@@ -7,17 +8,24 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { message } from 'antd';
 import { camelCase } from 'lodash';
-import { ArrowUpRight, DatabaseZap, LayoutGrid, Users } from 'lucide-react';
-import React from 'react';
+import {
+  ArrowUpRight,
+  Coins,
+  DatabaseZap,
+  LayoutGrid,
+  Users,
+} from 'lucide-react';
+import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   showAbandonPendingModal,
   showAddOnManageModal,
 } from './add-on-manage-modal';
+import BuyCreditsModal from './buy-points-modal';
 import Process from './process';
 
 interface CustomProgressProps {
-  title: 'Apps' | 'Team Member' | 'Storage';
+  title: 'Apps' | 'Team Member' | 'Storage' | 'Document Parse';
   value: number;
   height?: number;
   limit: number;
@@ -54,6 +62,12 @@ const ResourceUsage: React.FC<CustomProgressProps> = ({
       }
     },
   });
+
+  const [isModalVisible, setIsModalVisible] = useState(false);
+
+  const handleCancel = () => {
+    setIsModalVisible(false);
+  };
 
   const invalidateStorageQueries = () =>
     Promise.all([
@@ -124,77 +138,107 @@ const ResourceUsage: React.FC<CustomProgressProps> = ({
     addOnManageModal = showAddOnManageModal({
       defaultValue: currentStorage,
       onOk: addOnManageOk,
-      price: storageCurrent?.unit_price || 0,
+      price: storageCurrent?.unit_price || pricePerGB,
       decreaseEffectiveAt,
     });
   };
 
+  const openBuyPoints = () => {
+    setIsModalVisible(true);
+  };
+
   const storageFooter = () => {
-    if (title !== 'Storage') return null;
-    return (
-      <div className="flex justify-between items-end text-text-primary">
-        <div>
-          {planName} {t('billing.planUsed')}{' '}
-          {value > planValue ? planValue : value}
-          {unit}/{planValue}
-          {unit}
-        </div>
-        <div className="flex items-end gap-3 cursor-pointer ">
-          <span>
-            {t('billing.addonUsed')} {value > planValue ? value - planValue : 0}
-            {unit}/{parseFloat((limit - planValue).toFixed(2))}
+    if (title == 'Storage' || title == 'Document Parse') {
+      return (
+        <div className="flex justify-between items-end text-text-primary">
+          <div>
+            {planName} {t('billing.planUsed')}{' '}
+            {value > planValue ? planValue : value}
+            {unit}/{planValue}
             {unit}
-          </span>
-          <div
-            className="flex items-center text-text-primary text-xs hover:outline outline-1 px-1 py-1 rounded-sm border border-border-button bg-bg-input "
-            onClick={() => {
-              openAddOnManage();
-            }}
-          >
-            {t('billing.manage')}
-            <ArrowUpRight size={12} />
           </div>
+          {!(planName == 'Free Plan' || planName == 'Free') && (
+            <div className="flex items-end gap-3 cursor-pointer ">
+              <span>
+                {title === 'Document Parse'
+                  ? t('billing.creditsUsed')
+                  : t('billing.addonUsed')}{' '}
+                {value > planValue ? value - planValue : 0}
+                {unit}/{parseFloat((limit - planValue).toFixed(2))}
+                {unit}
+              </span>
+              <div
+                className="flex items-center text-text-primary text-xs hover:outline outline-1 px-1 py-1 rounded-sm border border-border-button bg-bg-input "
+                onClick={() => {
+                  if (title === 'Storage') {
+                    openAddOnManage();
+                  } else {
+                    openBuyPoints();
+                  }
+                }}
+              >
+                {title === 'Document Parse'
+                  ? t('billing.buyCredits')
+                  : t('billing.buyStorage')}
+                <ArrowUpRight size={12} />
+              </div>
+            </div>
+          )}
         </div>
-      </div>
-    );
+      );
+    } else {
+      return null;
+    }
   };
   return (
-    <div className="bg-bg-input border border-border-default p-4 rounded mb-4">
-      <div className="flex justify-between items-center mb-2">
-        <div className="flex items-center">
-          <span className="mr-2">
-            {/* icon */}
-            {title === 'Apps' && (
-              <div className=" rounded-sm p-1">
-                <LayoutGrid size={16} />
-              </div>
-            )}
-            {title === 'Team Member' && (
-              <div className=" rounded-sm p-1">
-                <Users size={16} />
-              </div>
-            )}
-            {title === 'Storage' && (
-              <div className=" rounded-sm p-1">
-                <DatabaseZap size={16} />
-              </div>
-            )}
-          </span>
-          <span className="text-text-primary text-base font-normal">
-            {t(`billing.${camelCase(title).replace(' ', '')}`)}
-          </span>
+    <>
+      <div className="bg-bg-input border border-border-default p-4 rounded mb-4">
+        <div className="flex justify-between items-center mb-2">
+          <div className="flex items-center">
+            <span className="mr-2">
+              {/* icon */}
+              {title === 'Apps' && (
+                <div className=" rounded-sm p-1">
+                  <LayoutGrid size={16} />
+                </div>
+              )}
+              {title === 'Team Member' && (
+                <div className=" rounded-sm p-1">
+                  <Users size={16} />
+                </div>
+              )}
+              {title === 'Storage' && (
+                <div className=" rounded-sm p-1">
+                  <DatabaseZap size={16} />
+                </div>
+              )}
+              {title === 'Document Parse' && (
+                <div className=" rounded-sm p-1">
+                  <Coins size={16} />
+                </div>
+              )}
+            </span>
+            <span className="text-text-primary text-base font-normal">
+              {t(`billing.${camelCase(title).replace(' ', '')}`)}
+            </span>
+          </div>
+          <span className="text-text-primary">{`${value}${unit}/${limit}${unit}`}</span>
         </div>
-        <span className="text-text-primary">{`${value}${unit}/${limit}${unit}`}</span>
+        <Process
+          value={value}
+          limit={limit}
+          basicCapacity={basicCapacity}
+          height={height}
+        ></Process>
+        {storageFooter()}
+        {children}
       </div>
-      <Process
-        value={value}
-        limit={limit}
-        basicCapacity={basicCapacity}
-        height={height}
-      ></Process>
-      {storageFooter()}
-      {children}
-    </div>
+      <BuyCreditsModal
+        visible={isModalVisible}
+        onClose={handleCancel}
+        currentPoints={2000}
+      />
+    </>
   );
 };
 

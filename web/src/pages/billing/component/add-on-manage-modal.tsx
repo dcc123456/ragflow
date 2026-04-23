@@ -1,5 +1,6 @@
 import NumberInput from '@/components/originui/number-input';
 import { Modal } from '@/components/ui/modal/modal';
+import { pricePerGB } from '@/pages/price/config';
 import { formatPureDate } from '@/utils/date';
 import React, { useMemo } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -134,7 +135,7 @@ const CustomModal: React.FC<CustomModalProps> = ({
   onClose,
   onOk,
   defaultValue = 0,
-  price = 0.9,
+  price = pricePerGB,
   decreaseEffectiveAt = null,
 }) => {
   const [value, setValue] = React.useState(defaultValue);
@@ -229,7 +230,7 @@ interface IShowUpgradeTipsModalOptions {
 const showAddOnManageModal = ({
   defaultValue = 0,
   onOk,
-  price = 0.9,
+  price = pricePerGB,
   decreaseEffectiveAt = null,
 }: IShowUpgradeTipsModalOptions) => {
   const rootElement = document.createElement('div');

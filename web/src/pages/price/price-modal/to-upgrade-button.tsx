@@ -2,7 +2,7 @@ import { useUpgradeModal } from '../gobal';
 
 const UpgradeButton = ({
   text,
-  isModal = false,
+  isModal = true,
   onCallBack,
 }: {
   text?: string;

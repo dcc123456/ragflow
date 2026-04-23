@@ -110,7 +110,7 @@ export interface IPaygDeepDocUsage {
   currency: string;
 }
 
-export interface IPaygStatusData {
+export interface IPayStatusData {
   status: PaygStatusEnum;
   subscription_id: string;
   current_period_start: string;

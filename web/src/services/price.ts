@@ -6,7 +6,7 @@ import request from '@/utils/request';
 // function registerServer() {}
 
 const {
-  billin_checkout,
+  billing_checkout,
   current_plan,
   cancel_scheduled_subscription_change,
   plan_list,
@@ -18,8 +18,8 @@ const {
   storageSetTarget,
 } = api;
 const methods = {
-  billinCheckout: {
-    url: billin_checkout,
+  billingCheckout: {
+    url: billing_checkout,
     method: 'post',
   },
   getCurrentPlan: {
@@ -65,7 +65,7 @@ const billingService = (() => {
   return registerServer<keyof typeof methods>?.(methods, request);
 })();
 
-export const billinCheckout = (
+export const billingCheckout = (
   data: IChargePlan & {
     payment_type: string;
     tenantId: string;
@@ -73,7 +73,7 @@ export const billinCheckout = (
     session_success_url: string;
   },
 ) => {
-  return request.post(api.billin_checkout, { data });
+  return request.post(api.billing_checkout, { data });
 };
 export const getCurrentPlan = () => {
   return request.get(api.current_plan);
@@ -85,17 +85,19 @@ export const cancelScheduledSubscriptionChange = (tenantId: string) => {
   });
 };
 
+
 export const createBillingPortalSession = (data?: {
   tenant_id?: string;
   return_url?: string;
 }) => request.post(api.createPortalSession, { data });
 
-export const getBllingBaseOverview = ({ tenantId }: { tenantId: string }) => {
-  return request.get(api.blling_base_overview, {
+
+export const getBillingBaseOverview = ({ tenantId }: { tenantId: string }) => {
+  return request.get(api.billing_base_overview, {
     params: { tenant_id: tenantId },
   });
 };
-export const getBllingPlanPverview = ({ tenantId }: { tenantId: string }) => {
+export const getBillingPlanOverview = ({ tenantId }: { tenantId: string }) => {
   return request.get(api.plan_overview, {
     params: { tenant_id: tenantId },
   });

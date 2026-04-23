@@ -2,9 +2,9 @@ import { keyBy } from 'lodash';
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { t } from 'i18next';
-import { useCallback, useId } from 'react';
+import { useCallback, useEffect, useId } from 'react';
 import { useForm } from 'react-hook-form';
-import { Link, useLocation, useNavigate } from 'react-router';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router';
 import z from 'zod';
 
 import {
@@ -29,6 +29,7 @@ import { useSystemConfig } from '@/hooks/use-system-request';
 import { isLicenseError, rsaPsw } from '@/utils';
 import RememberMeCheckbox from '../components/RememberMeCheckbox';
 
+import { useAuth } from '@/hooks/auth-hooks';
 import { SSO_CLOUD_IDP_PROVIDERS } from '@/pages/admin/sso-providers/cloud-idp';
 
 const SSO_PROVIDER_ICON_MAP = keyBy(SSO_CLOUD_IDP_PROVIDERS, 'key');
@@ -52,12 +53,12 @@ export default function BasicLogin({ onLicenseError }: BasicLoginProps) {
   const id = useId();
   const location = useLocation();
   const navigate = useNavigate();
-
+  const [searchParams] = useSearchParams();
   const { t } = useTranslate('login');
   const { login, loading: loginLoading } = useLogin();
   const { config } = useSystemConfig();
   const { currentChannelType, typeGroupedChannels } = useLoginChannels();
-
+  const redirectTo = searchParams.get('redirect') || '/';
   const { login: loginWithChannel } = useLoginWithChannel();
 
   const form = useForm<SchemaType>({
@@ -69,6 +70,12 @@ export default function BasicLogin({ onLicenseError }: BasicLoginProps) {
       ...(location.state || {}),
     },
   });
+  const { isLogin } = useAuth();
+  useEffect(() => {
+    if (isLogin) {
+      navigate(redirectTo, { replace: true });
+    }
+  }, [isLogin, navigate, redirectTo]);
 
   const allowRegister = config?.registerEnabled !== 0;
   const email = form.watch('email');
@@ -83,7 +90,8 @@ export default function BasicLogin({ onLicenseError }: BasicLoginProps) {
         });
 
         if (code === 0) {
-          navigate('/');
+          // navigate('/');
+          navigate(redirectTo, { replace: true });
         } else if (isLicenseError(code, message)) {
           onLicenseError?.(true);
         } else {
@@ -94,7 +102,7 @@ export default function BasicLogin({ onLicenseError }: BasicLoginProps) {
         console.error('Login failed:', e);
       }
     },
-    [navigate, login, onLicenseError],
+    [navigate, login, onLicenseError, redirectTo],
   );
 
   return (

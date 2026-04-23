@@ -11,34 +11,24 @@ import { useEffect, useState } from 'react';
 import ResourceUsage from '../component/resource-usage';
 import { useFetchPlanOverview } from '../hook/overview';
 
-const UNLIMITED_API_REQUESTS = 2147483647;
-
 export const pricingPlans = {
   Trial: 'Free Plan',
   Starter: 'Starter Plan',
   Pro: 'Pro Plan',
   Enterprise: 'Enterprise Plan',
 };
-const apiPlanList = [
-  { planKey: 'Trial', value: 5000, unit: 'month', name: 'Free Plan' },
-  {
-    planKey: 'Starter',
-    value: UNLIMITED_API_REQUESTS,
-    unit: 'month',
-    name: 'Starter Plan',
-  },
-  {
-    planKey: 'Pro',
-    value: UNLIMITED_API_REQUESTS,
-    unit: 'month',
-    name: 'Pro Plan',
-  },
-] as const;
+
 const planTemplate = {
   name: 'Starter Plan',
-  BillingCycle: { start: '2023-04-28', end: '2023-05-28' },
+  BillingCycle: { start: '-', end: '-' },
   price: 0,
   storage: {
+    used: 0,
+    total: 0,
+    base: 0,
+    addOn: 0,
+  },
+  docParse: {
     used: 0,
     total: 0,
     base: 0,
@@ -160,7 +150,16 @@ export const BaseInfo = () => {
           value={currentPlan.teamMember?.used}
           limit={currentPlan.teamMember?.total}
         ></ResourceUsage>
-        <div className="bg-bg-input border border-border-default p-4 rounded mb-4">
+        <ResourceUsage
+          title="Document Parse"
+          value={currentPlan.docParse?.used || 0}
+          planName={currentPlan.name}
+          planValue={currentPlan.docParse?.base}
+          limit={currentPlan.docParse?.total}
+          unit="pts"
+          basicCapacity={currentPlan.docParse?.base}
+        ></ResourceUsage>
+        {/* <div className="bg-bg-input border border-border-default p-4 rounded mb-4">
           <div className="flex justify-between items-center mb-2">
             <div className="flex items-center">
               <span className="mr-2">
@@ -221,7 +220,7 @@ export const BaseInfo = () => {
               );
             })}
           </div>
-        </div>
+        </div> */}
       </div>
     </>
   );

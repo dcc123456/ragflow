@@ -1,6 +1,6 @@
 import { Modal } from '@/components/ui/modal/modal';
 import { useFetchTenantData } from '@/hooks/use-user-setting-request';
-import billingService, { billinCheckout } from '@/services/price';
+import billingService, { billingCheckout } from '@/services/price';
 import storagePrivate from '@/utils/authorization-private-util';
 import storage from '@/utils/authorization-util';
 import { useMutation, useQuery } from '@tanstack/react-query';
@@ -35,7 +35,7 @@ const useCharge = () => {
       quantity: string;
       payment_type: 'subscription' | 'usage_based';
     }) => {
-      const { data } = await billinCheckout({
+      const { data } = await billingCheckout({
         tenantId: tenantId,
         subscription_price_id:
           payment_type === 'subscription' ? price_id : undefined,

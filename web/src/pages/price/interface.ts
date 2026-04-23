@@ -1,17 +1,22 @@
+import React from 'react';
 import { PriceName } from './constant';
 
 export interface IFeatureProps {
-  apps: string;
-  teamMembers: string;
-  datasetStorage: string;
-  apiRequests: string;
+  // apps: string;
+  // teamMembers: string;
+  // datasetStorage: string;
+  // apiRequests: string;
+  key: 'apps' | 'teamMembers' | 'datasetStorage' | 'apiRequests' | 'credits';
+  value: string | number;
+  icon: React.ReactNode;
+  name: string;
 }
 export interface IPricePlan {
   id: string;
   title: string;
   description: string;
   price: string;
-  feature: IFeatureProps;
+  features: IFeatureProps[];
 }
 
 export type IPricePlanWithButton = IPricePlan & {

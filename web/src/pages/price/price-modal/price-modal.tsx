@@ -1,4 +1,5 @@
 import { Modal } from '@/components/ui/modal/modal';
+import FxGradientText from '../components/FxGradientText';
 import PricingPlan from '../pricing-plan';
 // const pricingPlans: IPricePlanWithButton[] = [
 //   {
@@ -84,16 +85,21 @@ export const PriceModalComponent: React.FC<PriceModalProps> = ({
       closable={false}
       showfooter={false}
       footer={<></>}
-      className="!w-[1100px] max-w-[1100px] !bg-bg-base"
+      className="!w-[calc(100%-200px)] max-w-[1800px] !bg-bg-base"
     >
-      <div className="flex flex-col items-center justify-center p-6 !bg-bg-base rounded-lg text-text-primary">
-        <h2 className="text-xl font-bold mb-4 self-start">Manage Plan</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
-          {/* {pricingPlans.map((plan, index) => (
+      <div className="flex flex-col items-center justify-center px-6 pb-12 !bg-bg-base rounded-lg text-text-primary">
+        <div className="text-[48px] leading-[80px] font-medium mb-10 text-center text-text-primary">
+          <FxGradientText preset="primary" direction="right">
+            Scale Your Business with RAG engine
+          </FxGradientText>
+        </div>
+        {/* </h2> */}
+        {/* <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-10"> */}
+        {/* {pricingPlans.map((plan, index) => (
             <PricingCard key={index} {...plan} />
           ))} */}
-          <PricingPlan isUpgrade={true} />
-        </div>
+        <PricingPlan isUpgrade={false} />
+        {/* </div> */}
       </div>
     </Modal>
   );

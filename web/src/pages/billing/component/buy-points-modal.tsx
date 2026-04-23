@@ -1,0 +1,221 @@
+import { Button } from '@/components/ui/button';
+import { NumberInput } from '@/components/ui/input';
+import message from '@/components/ui/message';
+import { Modal } from '@/components/ui/modal/modal';
+import { Coins, DollarSign, Loader2 } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { usePointsCheckout } from '../points/hook/points';
+
+interface BuyPointsModalProps {
+  visible: boolean;
+  onClose: () => void;
+  currentPoints: number;
+}
+
+const POINTS_PER_DOLLAR = 100;
+const QUICK_SELECT_OPTIONS = [
+  { dollars: 10, points: 1000 },
+  { dollars: 25, points: 2500 },
+  { dollars: 50, points: 5000 },
+  { dollars: 100, points: 10000 },
+  { dollars: 200, points: 20000 },
+];
+
+const BuyPointsModal: React.FC<BuyPointsModalProps> = ({
+  visible,
+  onClose,
+  currentPoints = 0,
+}) => {
+  const { t } = useTranslation();
+  const [amount, setAmount] = useState<number>(5);
+  const [selectedQuickOption, setSelectedQuickOption] = useState<number | null>(
+    null,
+  );
+  const checkoutMutation = usePointsCheckout();
+
+  const calculatedPoints = useMemo(() => {
+    return amount * POINTS_PER_DOLLAR;
+  }, [amount]);
+
+  const handleQuickSelect = (dollars: number, index: number) => {
+    setSelectedQuickOption(index);
+    setAmount(dollars);
+  };
+
+  const handleCustomAmountChange = (value: number) => {
+    setSelectedQuickOption(null);
+    setAmount(value);
+  };
+
+  const handleConfirm = () => {
+    if (amount <= 0) {
+      message.error(t('billing.buyPointsMinError'));
+      return;
+    }
+    const points = amount * POINTS_PER_DOLLAR;
+    checkoutMutation.mutate(points, {
+      onSuccess: (res) => {
+        if (res?.code === 0 && res?.data?.checkout_url) {
+          window.open(res.data.checkout_url, '_blank');
+          onClose();
+          setAmount(5);
+          setSelectedQuickOption(null);
+        } else {
+          message.error(res?.message || t('billing.buyPointsFailed'));
+        }
+      },
+      onError: () => {
+        message.error(t('billing.buyPointsRequestFailed'));
+      },
+    });
+  };
+
+  const handleClose = () => {
+    onClose();
+    setAmount(5);
+    setSelectedQuickOption(null);
+  };
+
+  return (
+    <Modal
+      open={visible}
+      onOpenChange={(open) => !open && handleClose()}
+      title={t('billing.buyCredits')}
+      className="!w-[640px]"
+      footer={
+        <div className="flex justify-between items-center w-full p-5">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-text-secondary">
+              {t('billing.youWillReceive')}
+            </span>
+            <span className="text-sm font-semibold text-accent-primary ml-1">
+              {calculatedPoints?.toLocaleString()} {t('billing.points')}
+            </span>
+          </div>
+          <div className="flex justify-end gap-3">
+            <Button variant="outline" onClick={handleClose}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              onClick={handleConfirm}
+              disabled={checkoutMutation.isPending || amount <= 0}
+            >
+              {checkoutMutation.isPending ? (
+                <>
+                  <Loader2 className="animate-spin me-2 h-4 w-4" />
+                  {t('billing.buyPointsCreating')}
+                </>
+              ) : (
+                t('common.confirm')
+              )}
+            </Button>
+          </div>
+        </div>
+      }
+    >
+      <div className="space-y-6 px-5">
+        {/* Current Points Display */}
+        <div className="bg-accent-primary/10 rounded-lg p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-text-secondary flex items-center gap-2">
+              <Coins className="w-4 h-4" />
+              {t('billing.currentPoints')}
+            </span>
+            <span className="text-text-primary font-medium">
+              {currentPoints?.toLocaleString()}
+            </span>
+          </div>
+          {/* <div className="flex items-center justify-between">
+            <span className="text-text-secondary flex items-center gap-2">
+              <DollarSign className="w-4 h-4" />
+              {t('billing.equivalentUsd')}
+            </span>
+            <span className="text-text-primary font-medium">
+              ≈ ${(currentPoints / POINTS_PER_DOLLAR).toFixed(2)}
+            </span>
+          </div> */}
+        </div>
+
+        {/* Quick Select */}
+        <div>
+          <p className="text-base font-medium text-text-primary mb-3">
+            {t('billing.quickSelectTip', {
+              ratio: `$ 1 = ${POINTS_PER_DOLLAR} ${t('billing.points')}`,
+            })}
+            <span className="text-xs font-normal text-text-secondary ml-3">
+              {`$ 1 = ${POINTS_PER_DOLLAR} ${t('billing.points')}`}
+            </span>
+          </p>
+          <div className="grid grid-cols-3 gap-x-10 gap-y-5">
+            {QUICK_SELECT_OPTIONS.map((option, index) => (
+              <button
+                key={option.dollars}
+                onClick={() => handleQuickSelect(option.dollars, index)}
+                className={`
+                  flex flex-col items-start justify-start p-3 rounded-lg border transition-all
+                  ${
+                    selectedQuickOption === index
+                      ? ' bg-text-primary text-text-primary-inverse'
+                      : 'border-border-default hover:border-accent-primary/50 hover:bg-bg-input'
+                  }
+                `}
+              >
+                <span className="text-lg font-semibold">${option.dollars}</span>
+                <span className="text-xs text-text-secondary">
+                  {option.points.toLocaleString()} {t('billing.points')}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Custom Amount */}
+        <div className="flex justify-between items-center w-full gap-x-5">
+          <span className="text-sm text-text-secondary whitespace-nowrap w-40">
+            {t('billing.customAmount')}
+          </span>
+          <div className="flex items-center flex-1">
+            <NumberInput
+              prefix={
+                <div className="px-2 border-r border-border-default mr-3">
+                  <DollarSign className="w-4 h-4 text-text-secondary" />
+                </div>
+              }
+              rootClassName="w-full"
+              min={1}
+              max={10000}
+              value={amount}
+              onChange={handleCustomAmountChange}
+            />
+          </div>
+          <div className="text-sm text-text-secondary bg-bg-card rounded-sm px-3 py-1.5 w-32">
+            {calculatedPoints.toLocaleString()} {t('billing.points')}
+          </div>
+        </div>
+
+        {/* Preview */}
+        {/* <div className="bg-accent-primary/5 rounded-lg p-4 border border-accent-primary/20">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-text-secondary">
+              {t('billing.youWillReceive')}
+            </span>
+            <span className="text-lg font-semibold text-accent-primary">
+              {calculatedPoints?.toLocaleString()} {t('billing.points')}
+            </span>
+          </div>
+          <div className="flex items-center justify-between mt-1">
+            <span className="text-xs text-text-secondary">
+              {t('billing.total')}
+            </span>
+            <span className="text-sm text-text-primary">
+              ${amount.toFixed(2)} USD
+            </span>
+          </div>
+        </div> */}
+      </div>
+    </Modal>
+  );
+};
+
+export default BuyPointsModal;

@@ -1,17 +1,5 @@
-import { nextLayoutRef } from '@/layouts/root-layout';
-import storagePrivate from '@/utils/authorization-private-util';
-import {
-  ReactNode,
-  createContext,
-  useContext,
-  useEffect,
-  useState,
-} from 'react';
-import { freePageNumber } from '../config';
-import { PriceName } from '../constant';
-// import { useFetchCurrentPlan } from '../hook/use-price-hooks';
+import { ReactNode, createContext, useContext, useState } from 'react';
 import { useFetchCurrentPlan } from '../hook/use-price-hooks';
-import { ICurrentPlan } from '../interface';
 import { FreeUpgradeModal } from '../price-modal/free-upgrade-modal';
 import { ConfirmModal } from '../price-modal/price-confirm-modal';
 import { PriceModalComponent } from '../price-modal/price-modal';
@@ -39,7 +27,7 @@ const UpgradeModalContext = createContext<UpgradeModalContextType | undefined>(
 );
 
 interface UpgradeModalProviderProps {
-  children: ReactNode;
+  children?: ReactNode;
 }
 
 export const showUpgradeTipsModal = (options?: UpgradeTipsEventDetail) => {
@@ -62,7 +50,6 @@ export const showFreeUpgradeTipsModal = (
 export const UpgradeModalProvider: React.FC<UpgradeModalProviderProps> = ({
   children,
 }) => {
-  const location = window.location.pathname.toLowerCase();
   useFetchCurrentPlan();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -82,28 +69,6 @@ export const UpgradeModalProvider: React.FC<UpgradeModalProviderProps> = ({
   const { freeUpgradeTips, hideFreeUpgradeTips } =
     useShowFreeUpgradeTipsModal();
 
-  useEffect(() => {
-    const plan: ICurrentPlan = storagePrivate.getPricePlan();
-    if (plan && plan.plan_name !== PriceName.Trial) {
-      return;
-    }
-    const countStr = localStorage.getItem('pageViewCount');
-    let count = countStr ? parseInt(countStr, 10) : 0;
-    count++;
-    localStorage.setItem('pageViewCount', count.toString());
-
-    if (count > freePageNumber) {
-      // Show upgrade tips
-      showFreeUpgradeTipsModal({
-        container: nextLayoutRef?.current || undefined,
-      });
-      localStorage.setItem('pageViewCount', '0');
-    }
-  }, [location]);
-
-  // if (!isBillingEnabled()) {
-  //   return <>{children}</>;
-  // }
   return (
     <UpgradeModalContext.Provider
       value={{
@@ -128,12 +93,10 @@ export const UpgradeModalProvider: React.FC<UpgradeModalProviderProps> = ({
           />
         </div>
       )}
-      {/* {JSON.stringify(freeUpgradeTips)} */}
       {freeUpgradeTips.isOpen && (
         <div className="fixed inset-0 z-50">
           <FreeUpgradeModal
             isOpen={freeUpgradeTips.isOpen}
-            // isOpen={true}
             onClose={hideFreeUpgradeTips}
           />
         </div>

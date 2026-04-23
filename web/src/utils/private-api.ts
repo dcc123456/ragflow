@@ -37,13 +37,13 @@ export default {
   updateDialogPermission: `${api_host}/permission/share_dialog`,
 
   // billing
-  billin_checkout: `${api_host}/billing/checkout`,
+  billing_checkout: `${api_host}/billing/checkout`,
   current_plan: `${api_host}/billing/current_plan`,
   createPortalSession: `${api_host}/billing/create-portal-session`,
   cancel_scheduled_subscription_change: `${api_host}/billing/cancel-scheduled-subscription-change`,
   plan_list: `${api_host}/billing/plans`,
   plan_spend_overview: `${api_host}/billing/spend_metrics`,
-  blling_base_overview: `${api_host}/billing/usage_based_overview`,
+  billing_base_overview: `${api_host}/billing/usage_based_overview`,
   plan_overview: `${api_host}/billing/plan_overview`,
   getUpcoming: `${api_host}/billing/upcoming`,
   spendHistory: `${api_host}/billing/spend_overview`,

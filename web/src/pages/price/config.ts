@@ -1,7 +1,7 @@
 import { PriceName } from './constant';
 
 // A pop-up window appears after viewing a certain number of pages.
-export const freePageNumber = 20;
+export const freePageNumber = 35;
 
 // Price per GB of knowledge base USD
 export const pricePerGB = 0.15;

@@ -5,15 +5,17 @@ import {
 } from '@/components/ui/segmented';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { PriceName } from '../price/constant';
+import { useFetchCurrentPlan } from '../price/hook/use-price-hooks';
 import UpgradeButton from '../price/price-modal/to-upgrade-button';
 import BillingHistory from './billing-history';
 import { Overview } from './overview';
-import PointsPage from './points';
 import UsagePage from './usage';
 
 const Billing = () => {
   const [activeKey, setActiveKey] = useState<SegmentedValue>('overview');
   const { t } = useTranslation();
+  const { data: currentPlan } = useFetchCurrentPlan();
   const navList: SegmentedLabeledOption[] = [
     {
       value: 'overview',
@@ -27,10 +29,10 @@ const Billing = () => {
       value: 'billing-history',
       label: t('billing.billingHistory'),
     },
-    {
-      value: 'points',
-      label: 'Points',
-    },
+    // {
+    //   value: 'points',
+    //   label: 'Points',
+    // },
   ];
 
   const navClickFunc = (e: SegmentedValue) => {
@@ -48,13 +50,19 @@ const Billing = () => {
           <span className="text-text-secondary mr-4">
             {t('billing.needMore')}
           </span>
-          <UpgradeButton />
+          <UpgradeButton
+            text={
+              currentPlan?.plan_name !== PriceName.Trial
+                ? t('billing.changePlan')
+                : t('billing.upgradePlan')
+            }
+          />
         </div>
       </nav>
       {activeKey === 'overview' && <Overview />}
       {activeKey === 'usage' && <UsagePage />}
       {activeKey === 'billing-history' && <BillingHistory />}
-      {activeKey === 'points' && <PointsPage />}
+      {/* {activeKey === 'points' && <PointsPage />} */}
     </div>
   );
 };
