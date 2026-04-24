@@ -20,7 +20,7 @@ import StarModal from './components/star-modal';
 import { ThemeProvider } from './components/theme-provider';
 import { TooltipProvider } from './components/ui/tooltip';
 import { ThemeEnum } from './constants/common';
-import { UpgradeModalProvider } from './pages/price/gobal';
+import { UpgradeModalProvider } from './pages/price/global';
 // import { getRouter } from './routes';
 import storage from './utils/authorization-util';
 

@@ -1,10 +1,16 @@
-import { ReactNode, createContext, useContext, useEffect, useState } from 'react';
-import { useFetchCurrentPlan } from '../hook/use-price-hooks';
-import storagePrivate from '@/utils/authorization-private-util';
 import { nextLayoutRef } from '@/layouts/root-layout';
-import { ICurrentPlan } from '../interface';
-import { PriceName } from '../constant';
+import storagePrivate from '@/utils/authorization-private-util';
+import {
+  ReactNode,
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+} from 'react';
 import { freePageNumber } from '../config';
+import { PriceName } from '../constant';
+import { useFetchCurrentPlan } from '../hook/use-price-hooks';
+import { ICurrentPlan } from '../interface';
 import { FreeUpgradeModal } from '../price-modal/free-upgrade-modal';
 import { ConfirmModal } from '../price-modal/price-confirm-modal';
 import { PriceModalComponent } from '../price-modal/price-modal';

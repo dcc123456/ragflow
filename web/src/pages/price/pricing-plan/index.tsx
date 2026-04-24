@@ -30,6 +30,53 @@ const UNLIMITED_API_REQUESTS = 2147483647;
 
 const formatApiRequests = (limit: number) =>
   limit >= UNLIMITED_API_REQUESTS ? 'Unlimited' : `${limit}/month`;
+
+const enterprise = {
+  id: priceIdConfig[PriceName.Enterprise],
+  title: t('price.enterprise'),
+  description: t('price.enterpriseDesc'),
+  price: -1,
+  buttonLabel: t('price.contactUs'),
+  isUse: false,
+  features: [
+    {
+      key: 'apps',
+      value: -1,
+      name: 'BYOC deployment',
+      icon: (
+        <BanknoteArrowUp
+          size={12}
+          className="text-text-primary font-normal mr-2"
+        />
+      ),
+    },
+    {
+      key: 'teamMembers',
+      value: -1,
+      name: 'On-premises deployment',
+      icon: <Vault size={12} className="text-text-primary font-normal mr-2" />,
+    },
+    {
+      key: 'datasetStorage',
+      value: -1,
+      name: 'Dedicated support',
+      icon: (
+        <HeartHandshake
+          size={12}
+          className="text-text-primary font-normal mr-2"
+        />
+      ),
+    },
+    {
+      key: 'credits',
+      value: -1,
+      name: 'Custom SLA',
+      icon: (
+        <ShieldCheck size={12} className="text-text-primary font-normal mr-2" />
+      ),
+    },
+  ],
+};
 const commonFeatures = [
   {
     key: 'apps',
@@ -89,57 +136,7 @@ const pricingPlans = {
     isPopular: true,
     features: commonFeatures,
   },
-  [PriceName.Enterprise]: {
-    id: '',
-    title: t('price.enterprise'),
-    description: t('price.enterpriseDesc'),
-    price: '',
-    buttonLabel: t('price.contactUs'),
-    isUse: false,
-    features: [
-      {
-        key: 'apps',
-        value: '',
-        name: 'BYOC deployment',
-        icon: (
-          <BanknoteArrowUp
-            size={12}
-            className="text-text-primary font-normal mr-2"
-          />
-        ),
-      },
-      {
-        key: 'teamMembers',
-        value: '',
-        name: 'On-premises deployment',
-        icon: (
-          <Vault size={12} className="text-text-primary font-normal mr-2" />
-        ),
-      },
-      {
-        key: 'datasetStorage',
-        value: '',
-        name: 'Dedicated support',
-        icon: (
-          <HeartHandshake
-            size={12}
-            className="text-text-primary font-normal mr-2"
-          />
-        ),
-      },
-      {
-        key: 'credits',
-        value: '',
-        name: 'Custom SLA',
-        icon: (
-          <ShieldCheck
-            size={12}
-            className="text-text-primary font-normal mr-2"
-          />
-        ),
-      },
-    ],
-  },
+  [PriceName.Enterprise]: enterprise,
 };
 
 const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
@@ -231,43 +228,6 @@ const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
           content: content(),
           open: true,
         });
-        // searchParams.delete('status');
-        // setSearchParams(searchParams);
-        // const successModal = showModal({
-        //   children: (
-        //     <Modal
-        //       open={true}
-        //       title={title()}
-        //       onOpenChange={(open) => {
-        //         if (!open) {
-        //           const urlObj = new URL(window.location.href);
-        //           urlObj.searchParams.delete('price-pay-status');
-        //           window.history.replaceState({}, '', urlObj.toString());
-        //           successModal.destroy();
-        //         }
-        //       }}
-        //       className="!w-[400px]"
-        //       footer={
-        //         <div className="flex justify-end gap-2 ">
-        //           <button
-        //             type="button"
-        //             onClick={() => {
-        //               const urlObj = new URL(window.location.href);
-        //               urlObj.searchParams.delete('price-pay-status');
-        //               window.history.replaceState({}, '', urlObj.toString());
-        //               successModal.destroy();
-        //             }}
-        //             className="px-2 py-1 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
-        //           >
-        //             {t('modal.okText')}
-        //           </button>
-        //         </div>
-        //       }
-        //     >
-        //       <div className="h-32">{content()}</div>
-        //     </Modal>
-        //   ),
-        // });
       }
     },
     [t],
@@ -282,7 +242,7 @@ const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
         apps: plan.feature.quota_apps,
         teamMembers: plan.feature.quota_members,
         datasetStorage: convertBytesToGb(plan.feature.quota_kb_storage),
-        apiRequests: formatApiRequests(plan.feature.quota_api_limits),
+        credits: plan.feature.quota_points,
       };
       const thisPricePlan =
         pricingPlans[plan.name as keyof typeof pricingPlans];
@@ -309,11 +269,7 @@ const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
         };
       } else {
         const buttonLabel =
-          index < inUseIndex
-            ? t('price.reduce')
-            : index < planList.length - 1
-              ? t('price.upgrade')
-              : t('price.contactUs');
+          index < inUseIndex ? t('price.reduce') : t('price.upgrade');
         return {
           ...tempPlan,
           buttonLabel,
@@ -324,6 +280,12 @@ const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
     if (isUpgrade) {
       plans = plans.filter((plan) => plan.name !== PriceName.Trial);
     }
+    plans.push({
+      ...enterprise,
+      name: PriceName.Enterprise,
+      isPopular: false,
+      buttonLabel: t('price.contactUs'),
+    });
     setPricePlanList(plans as unknown as IPricePlanWithButton[]);
   }, [currentPlan, planList, t, isUpgrade]);
 
@@ -341,7 +303,7 @@ const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
           <Loader2 className="animate-spin" />
         </div>
       )}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-10">
+      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-10">
         {currentPlan?.pending_subscription_change?.schedule_id && (
           <div className="mb-4 p-4 rounded-md border border-border-default bg-bg-card flex items-center justify-between">
             <div className="text-sm">

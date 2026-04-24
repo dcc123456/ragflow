@@ -1,4 +1,4 @@
-import { useUpgradeModal } from '../gobal';
+import { useUpgradeModal } from '../global';
 
 const UpgradeButton = ({
   text,

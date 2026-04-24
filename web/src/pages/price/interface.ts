@@ -33,6 +33,7 @@ export type IConfirmPlan = IPricePlan & {
 
 export interface IPlanFeature {
   quota_api_limits: number;
+  quota_points: number;
   quota_apps: number;
   quota_kb_storage: number;
   quota_members: number;

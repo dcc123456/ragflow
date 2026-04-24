@@ -6,8 +6,8 @@ import storagePrivate from '@/utils/authorization-private-util';
 import classNames from 'classnames';
 import { useState } from 'react';
 import { PriceNameMapValue } from '../constant';
-import { showPriceConfirmModal } from '../gobal';
-import { ConfirmPriceEventDetail } from '../gobal/hook';
+import { showPriceConfirmModal } from '../global';
+import { ConfirmPriceEventDetail } from '../global/hook';
 import { useCharge } from '../hook/use-price-hooks';
 import '../index.less';
 import { ICurrentPlan, IPricePlanWithButton } from '../interface';
@@ -79,25 +79,31 @@ const PricingCard = (props: IPricePlanWithButton & { name?: string }) => {
           </div>
           {/* <div className="icon">{icon?.()}</div> */}
         </div>
-        <p className=" text-left h-16">{description}</p>
+        <p className=" text-left line-clamp-3 h-[4.5rem]">{description}</p>
         <Divider className="!border-border-button" />
         <ul className="mb-6">
           {features.map((item) => (
             <li key={item.key} className="mb-2 text-left">
               <div className="flex items-center">
                 {item.icon}
-                <span className="italic font-semibold">{item.value}</span>
+                {Number(item.value) > -1 && (
+                  <span className="italic font-semibold">{item.value}</span>
+                )}
                 <span className="ml-2 text-xm font-normal">{item.name}</span>
               </div>
             </li>
           ))}
         </ul>
-        <h3 className="text-3xl font-bold mb-6 text-left">
-          <span className="text-sm mr-1">$</span>
-          {price}
-          <span className="text-sm text-text-secondary font-normal ml-1">
-            /month
-          </span>
+        <h3 className="text-3xl font-bold mb-6 text-left h-12">
+          {Number(price) > -1 && (
+            <>
+              <span className="text-sm mr-1">$</span>
+              {price}
+              <span className="text-sm text-text-secondary font-normal ml-1">
+                /month
+              </span>
+            </>
+          )}
         </h3>
         <ButtonLoading
           type="button"

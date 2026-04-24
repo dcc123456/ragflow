@@ -1,5 +1,5 @@
 import { useHeartBeat } from '@/hooks/use-heart-beat-request';
-import { useComputedRouterChangeCount } from '@/pages/price/gobal/hook';
+import { useComputedRouterChangeCount } from '@/pages/price/global/hook';
 import React from 'react';
 import { Outlet } from 'react-router';
 import { Header } from './components/header';

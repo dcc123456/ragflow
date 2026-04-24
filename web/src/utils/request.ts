@@ -2,7 +2,8 @@ import message from '@/components/ui/message';
 import { Authorization } from '@/constants/authorization';
 import { ResponseType } from '@/interfaces/database/base';
 import i18n from '@/locales/config';
-import { PriceCode, showPriceModal } from '@/pages/price/gobal/hook';
+import { PriceCode, showPriceModal } from '@/pages/price/global/hook';
+import { isBillingEnabled } from '@/services/billingStatus';
 import authorizationUtil, {
   getAuthorization,
 } from '@/utils/authorization-util';
@@ -13,7 +14,6 @@ import api from './api';
 import { convertTheKeysOfTheObjectToSnake } from './common-util';
 import { setCachedLlmList } from './llm-cache';
 import { addTenantParams } from './llm-util';
-import { isBillingEnabled } from '@/services/billingStatus';
 
 const FAILED_TO_FETCH = 'Failed to fetch';
 
@@ -198,10 +198,7 @@ request.interceptors.response.use(async (response: any, options: any) => {
     authorizationUtil.removeAll();
     redirectToLogin();
   } else if (data?.code !== 0) {
-    if (
-      isBillingEnabled() &&
-      PriceCode[data?.code as any]
-    ) {
+    if (isBillingEnabled() && PriceCode[data?.code as any]) {
       showPriceModal(data as any);
     } else {
       if (
