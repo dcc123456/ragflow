@@ -52,7 +52,6 @@ def user_list(tenant_id):
 @manager.route('/<tenant_id>/user', methods=['POST'])  # noqa: F821
 @login_required
 @validate_request("email")
-@check_resources(seats=1)
 async def create(tenant_id):
     if current_user.id != tenant_id:
         return get_json_result(
