@@ -23,12 +23,14 @@ from common.exceptions import ArgumentException, NotFoundException
 from api.apps import login_required, current_user
 from api.utils.api_utils import validate_request, get_request_json, get_error_argument_result, get_json_result
 from api.apps.services import memory_api_service
+from api.utils.billing import check_resources
 from api.utils.tenant_utils import ensure_tenant_model_id_for_params
 
 
 @manager.route("/memories", methods=["POST"])  # noqa: F821
 @login_required
 @validate_request("name", "memory_type", "embd_id", "llm_id")
+@check_resources(apps=1)
 async def create_memory():
     timing_enabled = os.getenv("RAGFLOW_API_TIMING")
     t_start = time.perf_counter() if timing_enabled else None
