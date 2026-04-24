@@ -18,6 +18,7 @@ import json
 import logging
 import os
 import re
+from contextvars import ContextVar, Token
 from decimal import ROUND_HALF_UP, Decimal
 from functools import wraps
 
@@ -86,6 +87,24 @@ CURRENCY_DIVISORS = {
 
 BILLING_PLAN_TRIAL_NAME = "Trial"
 STORAGE_PRODUCT_NAME = "storage"
+STRIPE_TEST_CLOCK_HEADER = "X-Stripe-Test-Clock"
+_stripe_test_clock_id_context: ContextVar[str] = ContextVar("stripe_test_clock_id", default="")
+
+
+def set_stripe_test_clock_id_for_current_context(test_clock_id: str) -> Token[str]:
+    return _stripe_test_clock_id_context.set((test_clock_id or "").strip())
+
+
+def reset_stripe_test_clock_id_for_current_context(token: Token[str]) -> None:
+    _stripe_test_clock_id_context.reset(token)
+
+
+def get_stripe_test_clock_id_for_current_context() -> str:
+    return (_stripe_test_clock_id_context.get() or "").strip()
+
+
+def resolve_stripe_test_clock_id(test_clock_id: str = "") -> str:
+    return (test_clock_id or get_stripe_test_clock_id_for_current_context() or os.getenv("STRIPE_TEST_CLOCK_ID") or "").strip()
 
 
 def is_trial_plan_name(plan_name: str) -> bool:
@@ -706,14 +725,14 @@ def get_metadata_from_subscription(payment_subscription_id: str) -> dict:
 
 
 @billing_enabled_guard("")
-def create_stripe_customer_id(tenant_id: str) -> str:
+def create_stripe_customer_id(tenant_id: str, test_clock_id: str = "") -> str:
     from api.db.services.user_service import UserService
 
     user = UserService.filter_by_id(tenant_id)
     if not user:
         logging.warning(f"create_stripe_customer_id: tenant {tenant_id} not found")
         return ""
-    test_clock_id = (os.getenv("STRIPE_TEST_CLOCK_ID") or "").strip()
+    test_clock_id = resolve_stripe_test_clock_id(test_clock_id)
     params = {"name": user.nickname, "email": user.email, "metadata": {"tenant_id": tenant_id}}
     if test_clock_id:
         api_key = (getattr(stripe, "api_key", None) or "").strip()
@@ -728,20 +747,20 @@ def create_stripe_customer_id(tenant_id: str) -> str:
 
 
 @billing_enabled_guard("")
-def billing_set_customer_id(tenant_id: str, customer_id: str = "") -> str:
+def billing_set_customer_id(tenant_id: str, customer_id: str = "", test_clock_id: str = "") -> str:
     from api.db.services.billing_service import SubscriptionService
 
     if not customer_id:
-        customer_id = create_stripe_customer_id(tenant_id)
+        customer_id = create_stripe_customer_id(tenant_id, test_clock_id=test_clock_id)
     if customer_id:
         SubscriptionService.set_customer_id(tenant_id, customer_id)
     return customer_id
 
 
-async def billing_set_customer_id_async(tenant_id: str, customer_id: str = "") -> str:
+async def billing_set_customer_id_async(tenant_id: str, customer_id: str = "", test_clock_id: str = "") -> str:
     import asyncio
 
-    return await asyncio.to_thread(billing_set_customer_id, tenant_id, customer_id)
+    return await asyncio.to_thread(billing_set_customer_id, tenant_id, customer_id, test_clock_id)
 
 
 def check_resources(**resource_deltas):

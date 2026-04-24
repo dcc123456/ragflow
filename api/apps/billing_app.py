@@ -23,7 +23,7 @@ from decimal import Decimal
 import stripe
 from peewee import IntegrityError
 from pydantic import ValidationError
-from quart import jsonify, request
+from quart import g, jsonify, request
 
 from api.apps import current_user, login_required
 from api.db import PaymentChannel, PaymentMethod, PaymentStatus, PriceType, ProductType, SubscriptionStatus
@@ -52,8 +52,10 @@ from api.utils.billing import (
     is_storage_plan_name,
     is_storage_price_id,
     is_trial_plan_name,
+    reset_stripe_test_clock_id_for_current_context,
     safe_float,
     safe_int,
+    set_stripe_test_clock_id_for_current_context,
     billing_set_customer_id_async,
     cancel_scheduled_subscription_change_async,
     cancel_scheduled_subscription_change_sync,
@@ -66,6 +68,7 @@ from api.utils.billing import (
     is_subscription_latest_invoice_paid_async,
     is_subscription_latest_invoice_paid_sync,
     get_trial_price_id,
+    STRIPE_TEST_CLOCK_HEADER,
     is_downgrade_by_price_id,
     schedule_subscription_quantity_change_at_period_end_async,
     schedule_subscription_price_change_at_period_end_async,
@@ -121,6 +124,22 @@ MAIN_SUBSCRIPTION_DELINQUENT_STATUSES = {
 MAIN_SUBSCRIPTION_RECOVERABLE_STATUSES = {"incomplete", "past_due", "unpaid"}
 # Cached Stripe webhook endpoint secret (loaded from DB once, cached forever)
 _stripe_webhook_secret: str | None = None
+
+
+@manager.before_request  # noqa: F821
+async def _inject_request_stripe_test_clock_id():
+    if not settings.BILLING_ENABLED:
+        return
+    test_clock_id = (request.headers.get(STRIPE_TEST_CLOCK_HEADER) or "").strip()
+    g.stripe_test_clock_token = set_stripe_test_clock_id_for_current_context(test_clock_id)
+
+
+@manager.after_request  # noqa: F821
+async def _reset_request_stripe_test_clock_id(response):
+    token = getattr(g, "stripe_test_clock_token", None)
+    if token:
+        reset_stripe_test_clock_id_for_current_context(token)
+    return response
 
 
 def _billing_disabled_response():
