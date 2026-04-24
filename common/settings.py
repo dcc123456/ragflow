@@ -54,7 +54,6 @@ BILLING_PRICEID_TO_PRODUCT = {}
 BILLING_PRIORITY_TO_PLANS = defaultdict(list)
 BILLING_PLAN_TO_INFO = {}
 BILLING_PRICE_POINT = {}
-BILLING_LOCAL_PRICE = {}
 
 LLM = None
 LLM_FACTORY = None
@@ -430,14 +429,12 @@ def init_settings():
     if int(os.environ.get("SANDBOX_ENABLED", "0")):
         SANDBOX_HOST = os.environ.get("SANDBOX_HOST", "sandbox-executor-manager")
 
-    global BILLING, BILLING_PRICEID_TO_PRODUCT, BILLING_PRIORITY_TO_PLANS, BILLING_PLAN_TO_INFO, BILLING_PRICE_POINT, BILLING_LOCAL_PRICE
+    global BILLING, BILLING_PRICEID_TO_PRODUCT, BILLING_PRIORITY_TO_PLANS, BILLING_PLAN_TO_INFO, BILLING_PRICE_POINT
     BILLING = get_base_config("billing", {})
     BILLING_PRICE_POINT = BILLING.get("price_point", [])
-    BILLING_LOCAL_PRICE = BILLING.get("local_price", [])
     for plan in BILLING.get("billing_plans", []):
         plan_name = plan.get("name")
         price_ids = plan.get("price_ids", "").split()
-        price_lookup_key = plan.get("price_lookup_key", "")
         api_request_limit_per_minute = plan.get("api_request_limit_per_minute")
         api_request_limit_per_month = plan.get("api_request_limit_per_month")
         for price_id in price_ids:
@@ -448,7 +445,6 @@ def init_settings():
         BILLING_PLAN_TO_INFO[plan_name] = {
             "priority": plan_priority,
             "price_ids": price_ids,
-            "price_lookup_key": price_lookup_key,
             "api_request_limit_per_minute": api_request_limit_per_minute,
             "api_request_limit_per_month": api_request_limit_per_month,
         }

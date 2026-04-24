@@ -38,6 +38,31 @@ class SystemSettingsService(CommonService):
 
     @classmethod
     @DB.connection_context()
+    def insert(cls, **kwargs):
+        """Insert a new record with automatic ID and timestamps.
+
+        This method creates a new record with automatically generated ID and timestamp fields.
+        It handles the creation of create_time, create_date, update_time, and update_date fields.
+
+        Args:
+            **kwargs: Record field values as keyword arguments.
+
+        Returns:
+            Model instance: The newly created record object.
+        """
+        import logging
+        logging.info(f"about to insert {kwargs=}")
+        timestamp = current_timestamp()
+        cur_datetime = datetime_format(datetime.now())
+        kwargs["create_time"] = timestamp
+        kwargs["create_date"] = cur_datetime
+        kwargs["update_time"] = timestamp
+        kwargs["update_date"] = cur_datetime
+        sample_obj = cls.model(**kwargs).save(force_insert=True)
+        return sample_obj
+
+    @classmethod
+    @DB.connection_context()
     def update_by_name(cls, name, obj):
         obj["update_time"] = current_timestamp()
         obj["update_date"] = datetime_format(datetime.now())

@@ -21,7 +21,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { JSX } from 'react/jsx-runtime';
 import PricingCard from '../components/pricing-card';
-import { priceIdConfig } from '../config';
 import { PriceName } from '../constant';
 import { useFetchCurrentPlan, useFetchPlanList } from '../hook/use-price-hooks';
 import { IPricePlanWithButton } from '../interface';
@@ -63,7 +62,7 @@ const commonFeatures = [
 ];
 const pricingPlans = {
   [PriceName.Trial]: {
-    id: priceIdConfig[PriceName.Trial],
+    id: '',
     title: t('price.free'),
     description: t('price.freeDesc'),
     price: '',
@@ -72,7 +71,7 @@ const pricingPlans = {
     features: commonFeatures,
   },
   [PriceName.Starter]: {
-    id: priceIdConfig[PriceName.Starter],
+    id: '',
     title: t('price.starter'),
     description: t('price.starterDesc'),
     price: '',
@@ -81,7 +80,7 @@ const pricingPlans = {
     features: commonFeatures,
   },
   [PriceName.Pro]: {
-    id: priceIdConfig[PriceName.Pro],
+    id: '',
     title: t('price.pro'),
     description: t('price.proDesc'),
     price: '',
@@ -91,7 +90,7 @@ const pricingPlans = {
     features: commonFeatures,
   },
   [PriceName.Enterprise]: {
-    id: priceIdConfig[PriceName.Enterprise],
+    id: '',
     title: t('price.enterprise'),
     description: t('price.enterpriseDesc'),
     price: '',

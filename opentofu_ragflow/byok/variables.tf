@@ -75,7 +75,7 @@ variable "public_registry" {
 variable "s3_endpoint" {
   description = "S3-compatible endpoint URL. Leave empty to use cloud provider defaults (GCP/AWS/Azure)"
   type        = string
-  default     = ""  # Empty for cloud provider auto-detection
+  default     = "" # Empty for cloud provider auto-detection
 }
 
 variable "s3_bucket" {
@@ -597,16 +597,6 @@ variable "billing_stripe_api_key" {
   }
 }
 
-variable "billing_stripe_endpoint_secret" {
-  description = "Stripe webhook endpoint secret. Set via environment variable: export TF_VAR_billing_stripe_endpoint_secret='whsec_xxx'"
-  type        = string
-  sensitive   = true
-  default     = ""
-  validation {
-    condition     = var.billing_enabled == false || substr(var.billing_stripe_endpoint_secret, 0, 6) == "whsec_"
-    error_message = "billing_stripe_endpoint_secret must start with 'whsec_' (Stripe webhook secret prefix)."
-  }
-}
 
 variable "billing_stripe_api_version" {
   description = "Stripe API version"
@@ -624,13 +614,13 @@ variable "billing_service_url" {
   }
 }
 
-variable "billing_price_id_points_recharge" {
+variable "billing_price_id_points" {
   description = "Stripe price ID for points recharge"
   type        = string
   default     = ""
   validation {
-    condition     = var.billing_enabled == false || var.billing_price_id_points_recharge != ""
-    error_message = "billing_price_id_points_recharge must not be empty when billing is enabled."
+    condition     = var.billing_enabled == false || var.billing_price_id_points != ""
+    error_message = "billing_price_id_points must not be empty when billing is enabled."
   }
 }
 
@@ -641,26 +631,6 @@ variable "billing_price_id_storage" {
   validation {
     condition     = var.billing_enabled == false || var.billing_price_id_storage != ""
     error_message = "billing_price_id_storage must not be empty when billing is enabled."
-  }
-}
-
-variable "billing_price_id_deepdoc" {
-  description = "Stripe price ID for deepdoc usage-based billing"
-  type        = string
-  default     = ""
-  validation {
-    condition     = var.billing_enabled == false || var.billing_price_id_deepdoc != ""
-    error_message = "billing_price_id_deepdoc must not be empty when billing is enabled."
-  }
-}
-
-variable "billing_price_id_trial" {
-  description = "Stripe price ID for Trial subscription plan"
-  type        = string
-  default     = ""
-  validation {
-    condition     = var.billing_enabled == false || var.billing_price_id_trial != ""
-    error_message = "billing_price_id_trial must not be empty when billing is enabled."
   }
 }
 
@@ -684,12 +654,3 @@ variable "billing_price_id_pro" {
   }
 }
 
-variable "billing_price_id_enterprise" {
-  description = "Stripe price ID for Enterprise subscription plan"
-  type        = string
-  default     = ""
-  validation {
-    condition     = var.billing_enabled == false || var.billing_price_id_enterprise != ""
-    error_message = "billing_price_id_enterprise must not be empty when billing is enabled."
-  }
-}

@@ -1,0 +1,227 @@
+ragflow:
+  host: 0.0.0.0
+  http_port: 9380
+  secret_key: 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2'
+admin:
+  host: 0.0.0.0
+  http_port: 9381
+mysql:
+  name: 'rag_flow'
+  user: 'ragflow'
+  password: 'rkViURgRvuGriMt8'
+  host: 'mysql'
+  port: 3306
+  max_connections: 900
+  stale_timeout: 300
+  max_allowed_packet: 1073741824
+minio_0:
+  user: 'rag_flow'
+  password: 'infini_rag_flow'
+  host: 'minio:9000'
+  bucket: ''
+  prefix_path: ''
+es:
+  hosts: 'https://elasticsearch-es-http:9200'
+  username: 'elastic'
+  password: 'kjBMKS0DH4kBMPTH1GC3QGd1'
+os:
+  hosts: 'http://opensearch01:9201'
+  username: 'admin'
+  password: 'infini_rag_flow_OS_01'
+infinity:
+  uri: 'infinity:23817'
+  postgres_port: 5432
+  db_name: 'default_db'
+oceanbase:
+  scheme: 'oceanbase' # set 'mysql' to create connection using mysql config
+  config:
+    db_name: 'test'
+    user: 'root@ragflow'
+    password: 'infini_rag_flow'
+    host: 'oceanbase'
+    port: 2881
+seekdb:
+  scheme: 'oceanbase' # SeekDB is the lite version of OceanBase
+  config:
+    db_name: 'ragflow_doc'
+    user: 'root'
+    password: 'infini_rag_flow'
+    host: 'seekdb'
+    port: 2881
+redis:
+  db: 1
+  username: ''
+  password: 'WDz37tjE6tdpi1AI'
+  host: 'redis:6379'
+# local_embd:
+#   bge-large-en-v1.5: http://10.142.0.6:4566/predict
+#   bge-large-zh-v1.5: http://10.142.0.6:4567/predict
+#   bce-embedding-base_v1: http://10.142.0.6:4568/predict
+#   bge-m3: http://10.142.0.6:4569/predict
+billing:
+  stripe_api_key: 'sk_test_51RLgXMPtsKvwvC5fPPYV143r560uZJMUGcgj58nY6tkrisR6h6QN1EUabEeDTHrs4lQofg87KqF90APIs0PpzIN0002ydK7iJI'
+  stripe_api_version: '2026-02-25.clover'
+  session_success_url: 'https://stage.ragflow.io/v1/billing/success'
+  session_cancel_url: 'https://stage.ragflow.io/v1/billing/cancel'
+  webhook_url: 'https://stage.ragflow.io/v1/billing/webhook'
+  customer_portal_return_url: 'https://stage.ragflow.io'
+  price_point:
+    - product_name: deepdoc
+      price_type: usage_based
+      billing_frequency: one_time
+      unit: page
+      unit_quantity: 1
+      consuming_point_amount: 1  # points charged per page
+  points_recharge:
+    price_id: 'price_1T77p7PtsKvwvC5f7w3uFo6g'
+    points_per_unit: 100 # 1 quantity = 1 USD = 100 points (1 cent = 1 point)
+  billing_plans:
+    - name: storage
+      quota_apps: 0
+      quota_members: 0
+      quota_kb_storage: 0
+      task_priority: low
+      price_ids: 'price_1Syn0kPtsKvwvC5fd6HYXvCt'
+      product_type: usage_based
+      usage_stat_type: before
+      plan_priority: -1
+    - name: Trial
+      quota_apps: 5
+      quota_members: 1
+      quota_kb_storage: 100MB
+      api_request_limit_per_minute: 500
+      api_request_limit_per_month: 5000
+      task_priority: low
+      price_ids: 'price_xxx'
+      product_type: subscription
+      usage_stat_type: 
+      plan_priority: 0
+    - name: Starter
+      quota_apps: 100
+      quota_members: 10
+      quota_kb_storage: 10G
+      api_request_limit_per_minute: 2147483647
+      api_request_limit_per_month: 2147483647
+      task_priority: high
+      price_ids: 'price_1Si7S7PtsKvwvC5f3IjPpPcN'
+      product_type: subscription
+      usage_stat_type: 
+      plan_priority: 1
+    - name: Pro
+      quota_apps: 999999999
+      quota_members: 50
+      quota_kb_storage: 100G
+      api_request_limit_per_minute: 2147483647
+      api_request_limit_per_month: 2147483647
+      task_priority: high
+      price_ids: 'price_1Si7SyPtsKvwvC5fxloqaKPP'
+      product_type: subscription
+rabbitmq:
+  user: ragflow
+  password: 'AFuIfnD8p8bUK4dj'
+  host: 'rabbitmq'
+  port: 5672
+  api_port: 15672
+  exchange: test1
+
+task_executor:
+  message_queue_type: 'rabbitmq'
+
+user_default_llm:
+  default_models:
+    embedding_model:
+      factory: Builtin
+      api_key: 'xxx'
+      base_url: 'http://tei:80'
+# postgres:
+#   name: 'rag_flow'
+#   user: 'rag_flow'
+#   password: 'infini_rag_flow'
+#   host: 'postgres'
+#   port: 5432
+#   max_connections: 100
+#   stale_timeout: 30
+s3:
+  access_key: ''
+  secret_key: ''
+  region: 'us-central1'
+  endpoint_url: 'https://storage.googleapis.com'
+  bucket: 'ragflow-1c2ee69e95b8443bb2e133a38801ba6339225982'
+  prefix_path: ''
+  signature_version: 'v4'
+  addressing_style: 'path'
+oss:
+  access_key: ''
+  secret_key: ''
+  endpoint_url: 'https://storage.googleapis.com'
+  region: 'us-central1'
+  bucket: 'ragflow-1c2ee69e95b8443bb2e133a38801ba6339225982'
+  prefix_path: ''
+# GCS uses Workload Identity for authentication (GKE) or GOOGLE_APPLICATION_CREDENTIALS environment variable
+# No access_key/secret_key needed - authentication is handled via GCP IAM service account
+# For GKE: ensure the pod has Workload Identity configured with a service account that has Storage Object Admin role
+# Endpoint URL is optional - used for GCS emulator testing (e.g., http://localhost:9999)
+gcs:
+  bucket: 'ragflow-1c2ee69e95b8443bb2e133a38801ba6339225982'
+  prefix_path: ''
+  endpoint_url: 'https://storage.googleapis.com'
+
+# azure:
+#   auth_type: 'sas'
+#   container_url: 'container_url'
+#   sas_token: 'sas_token'
+# azure:
+#   auth_type: 'spn'
+#   account_url: 'account_url'
+#   client_id: 'client_id'
+#   secret: 'secret'
+#   tenant_id: 'tenant_id'
+#   container_name: 'container_name'
+# The OSS object storage uses the MySQL configuration above by default. If you need to switch to another object storage service, please uncomment and configure the following parameters.
+# opendal:
+#   scheme: 'mysql'  # Storage type, such as s3, oss, azure, etc.
+#   config:
+#     oss_table: 'opendal_storage'
+# user_default_llm:
+#   factory: 'BAAI'
+#   api_key: 'backup'
+#   base_url: 'backup_base_url'
+#   default_models:
+#     chat_model:
+#       name: 'qwen2.5-7b-instruct'
+#       factory: 'xxxx'
+#       api_key: 'xxxx'
+#       base_url: 'https://api.xx.com'
+#     embedding_model:
+#       name: 'bge-m3'
+#     rerank_model: 'bge-reranker-v2'
+#     asr_model:
+#       model: 'whisper-large-v3' # alias of name
+#     image2text_model: ''
+# authentication:
+#  client:
+#    switch: false
+#    http_app_key:
+#    http_secret_key:
+#  site:
+#    switch: false
+#  disable_password_login: false
+# permission:
+#   switch: false
+#   component: false
+#   dataset: false
+# smtp:
+#   mail_server: 
+#   mail_port: 465
+#   mail_use_ssl: true
+#   mail_use_tls: false
+#   mail_username: 
+#   mail_password: 
+#   mail_default_sender:
+#     - RAGFlow # display name
+#     -  # sender email address
+#   mail_frontend_url: https://your-frontend.example.com
+# tcadp_config:
+#   secret_id: ''
+#   secret_key: ''
+#   region: ''

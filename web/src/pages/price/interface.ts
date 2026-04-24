@@ -28,6 +28,7 @@ export type IPricePlanWithButton = IPricePlan & {
 
 export type IConfirmPlan = IPricePlan & {
   priceDifference: string;
+  nextBillingDate?: number;
 };
 
 export interface IPlanFeature {

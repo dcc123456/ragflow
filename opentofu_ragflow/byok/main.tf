@@ -88,7 +88,7 @@ locals {
       storage_class = "premium-rwo"
       s3_endpoint   = var.s3_endpoint != "" ? var.s3_endpoint : "https://storage.googleapis.com"
       # Note: s3_region is not used by GCS client (rag/utils/gcs_conn.py), but kept for consistency
-      s3_region     = var.s3_region != "" ? var.s3_region : "us-central1"
+      s3_region = var.s3_region != "" ? var.s3_region : "us-central1"
     }
     aws = {
       storage_class = "gp3"
@@ -127,7 +127,7 @@ locals {
   # Infrastructure images
   # When public_registry is empty: use original public registry (docker.io, quay.io, etc.)
   # When public_registry is set: use public_registry/image:tag
-  mysql_image     = var.public_registry != "" ? "${var.public_registry}/mysql:8.0" : "docker.io/library/mysql:8.0"
+  mysql_image    = var.public_registry != "" ? "${var.public_registry}/mysql:8.0" : "docker.io/library/mysql:8.0"
   redis_image    = var.public_registry != "" ? "${var.public_registry}/valkey:8" : "valkey/valkey:8"
   tei_image      = var.public_registry != "" ? "${var.public_registry}/text-embeddings-inference:cpu-1.8" : "infiniflow/text-embeddings-inference:cpu-1.8"
   rabbitmq_image = var.public_registry != "" ? "${var.public_registry}/rabbitmq:4-management" : "rabbitmq:4-management"
@@ -148,7 +148,7 @@ locals {
   is_gke_gateway = can(regex("^gke-", local.gateway_class_name))
 
   # Database users (consistent across all components)
-  mysql_user     = "ragflow"
+  mysql_user    = "ragflow"
   rabbitmq_user = "ragflow"
 
   # Infinity memory allocation derived from infinity_memory_request (e.g. "4Gi" -> 4)
@@ -596,7 +596,7 @@ resource "kubernetes_config_map_v1" "rabbitmq" {
           read      = ".*"
         }
       ]
-      parameters        = []
+      parameters = []
       global_parameters = [
         {
           name  = "cluster_tags"
@@ -918,7 +918,7 @@ data "external" "eck_operator_status" {
 # This installs the CRDs and operator required for Elasticsearch resources
 # Ref: https://artifacthub.io/packages/helm/elastic/eck-operator
 resource "helm_release" "eck_operator" {
-  count            = data.external.eck_operator_status.result.installed == "true" ? 0 : 1
+  count            = 1
   name             = "eck-operator"
   repository       = "https://helm.elastic.co"
   chart            = "eck-operator"
@@ -934,7 +934,7 @@ resource "helm_release" "eck_operator" {
 
   # Allow helm release to already exist (idempotent)
   lifecycle {
-    ignore_changes = [name, namespace, repository, chart, version]
+    ignore_changes  = [name, namespace, repository, chart, version]
     prevent_destroy = true
   }
 }
@@ -985,7 +985,7 @@ data "external" "elasticsearch_compute_class_status" {
 }
 
 resource "kubernetes_manifest" "elasticsearch_compute_class" {
-  count = var.cloud_provider == "gcp" ? (data.external.elasticsearch_compute_class_status[0].result.installed == "true" ? 0 : 1) : 0
+  count = var.cloud_provider == "gcp" ? 1 : 0
 
   manifest = {
     apiVersion = "cloud.google.com/v1"
@@ -1209,7 +1209,7 @@ resource "kubernetes_job_v1" "apply_elasticsearch" {
           name    = "kubectl"
           image   = "bitnami/kubectl:latest"
           command = ["kubectl", "apply", "-f", "/data/elasticsearch.yaml"]
-          
+
           env {
             name  = "HOME"
             value = "/tmp"
@@ -1221,8 +1221,8 @@ resource "kubernetes_job_v1" "apply_elasticsearch" {
           }
 
           volume_mount {
-             name       = "tmp"
-             mount_path = "/tmp"
+            name       = "tmp"
+            mount_path = "/tmp"
           }
         }
         volume {
@@ -1453,18 +1453,18 @@ resource "kubernetes_stateful_set_v1" "infinity" {
 
           startup_probe {
             http_get {
-              path   = "/admin/node/current"
-              port   = 23820
+              path = "/admin/node/current"
+              port = 23820
             }
             initial_delay_seconds = 10
             period_seconds        = 10
-            failure_threshold     = 30  # ~5 min max startup
+            failure_threshold     = 30 # ~5 min max startup
           }
 
           readiness_probe {
             http_get {
-              path   = "/admin/node/current"
-              port   = 23820
+              path = "/admin/node/current"
+              port = 23820
             }
             initial_delay_seconds = 0
             period_seconds        = 10
@@ -1474,8 +1474,8 @@ resource "kubernetes_stateful_set_v1" "infinity" {
 
           liveness_probe {
             http_get {
-              path   = "/admin/node/current"
-              port   = 23820
+              path = "/admin/node/current"
+              port = 23820
             }
             initial_delay_seconds = 30
             period_seconds        = 20
@@ -1633,7 +1633,7 @@ resource "kubernetes_secret_v1" "ragflow_env" {
     # When infinity_enabled=true, set DOC_ENGINE="elasticsearch,infinity" for shadow write proxy
     # This makes ES primary and Infinity a shadow database for comparison
     # Ref: common/settings.py - parses comma-separated engines, first is primary, rest are shadows
-    DOC_ENGINE  = var.infinity_enabled ? "elasticsearch,infinity" : "elasticsearch"
+    DOC_ENGINE = var.infinity_enabled ? "elasticsearch,infinity" : "elasticsearch"
 
     # Infinity Shadow Database Configuration
     INFINITY_HOST      = var.infinity_enabled ? "infinity" : ""
@@ -1672,25 +1672,21 @@ resource "kubernetes_secret_v1" "ragflow_env" {
 
     # DeepDoc Service Configuration
     # Point to the deepdoc service for OCR, DLA, and TSR tasks
-    DEEPDOC_URL     = "http://deepdoc:8000"
+    DEEPDOC_URL = "http://deepdoc:8000"
 
     # Secret key for JWT tokens - must be fixed to maintain session across pod restarts
     # Generate with: openssl rand -hex 32
     RAGFLOW_SECRET_KEY = "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2"
 
     # Billing Configuration
-    BILLING_ENABLED                    = var.billing_enabled ? "1" : "0"
-    BILLING_STRIPE_API_VERSION         = var.billing_stripe_api_version
-    BILLING_SERVICE_URL                = var.billing_service_url
-    BILLING_STRIPE_API_KEY             = var.billing_stripe_api_key
-    BILLING_STRIPE_ENDPOINT_SECRET     = var.billing_stripe_endpoint_secret
-    BILLING_POINTS_PRICE_ID            = var.billing_price_id_points_recharge
-    BILLING_PRICE_ID_STORAGE           = var.billing_price_id_storage
-    BILLING_PRICE_ID_DEEPDOC           = var.billing_price_id_deepdoc
-    BILLING_PRICE_ID_TRIAL             = var.billing_price_id_trial
-    BILLING_PRICE_ID_STARTER           = var.billing_price_id_starter
-    BILLING_PRICE_ID_PRO               = var.billing_price_id_pro
-    BILLING_PRICE_ID_ENTERPRISE        = var.billing_price_id_enterprise
+    BILLING_ENABLED            = var.billing_enabled ? "1" : "0"
+    BILLING_STRIPE_API_VERSION = var.billing_stripe_api_version
+    BILLING_SERVICE_URL        = var.billing_service_url
+    BILLING_STRIPE_API_KEY     = var.billing_stripe_api_key
+    BILLING_PRICE_ID_POINTS    = var.billing_price_id_points
+    BILLING_PRICE_ID_STORAGE   = var.billing_price_id_storage
+    BILLING_PRICE_ID_STARTER   = var.billing_price_id_starter
+    BILLING_PRICE_ID_PRO       = var.billing_price_id_pro
   }
 
   type = "Opaque"
@@ -1919,8 +1915,8 @@ resource "kubernetes_deployment_v1" "ragflow" {
         }
 
         container {
-          name  = "ragflow"
-          image = local.ragflow_image_full
+          name              = "ragflow"
+          image             = local.ragflow_image_full
           image_pull_policy = "Always"
 
           args = ["--disable-taskexecutor"]
@@ -1928,13 +1924,13 @@ resource "kubernetes_deployment_v1" "ragflow" {
           # Frontend port (nginx)
           port {
             container_port = 80
-            name          = "http"
+            name           = "http"
           }
 
           # API port
           port {
             container_port = 9380
-            name          = "api"
+            name           = "api"
           }
 
           # Startup probe: allows slow-starting containers to initialize before liveness/readiness kicks in
@@ -1947,7 +1943,7 @@ resource "kubernetes_deployment_v1" "ragflow" {
             }
             initial_delay_seconds = 0
             period_seconds        = 10
-            failure_threshold     = 90  # 90 * 10s = 900s (15 min) max startup time for slow environments
+            failure_threshold     = 90 # 90 * 10s = 900s (15 min) max startup time for slow environments
           }
 
           # Liveness probe: lightweight check - just returns 200 OK without checking dependencies
@@ -2132,8 +2128,8 @@ resource "kubernetes_deployment_v1" "admin" {
         }
 
         container {
-          name  = "admin"
-          image = local.ragflow_image_full
+          name              = "admin"
+          image             = local.ragflow_image_full
           image_pull_policy = "Always"
 
           args = ["--disable-webserver", "--disable-taskexecutor", "--disable-datasync", "--enable-adminserver"]
@@ -2141,7 +2137,7 @@ resource "kubernetes_deployment_v1" "admin" {
           # Admin port
           port {
             container_port = 9381
-            name          = "admin"
+            name           = "admin"
           }
 
           # Startup probe: allows slow-starting containers to initialize before liveness/readiness kicks in
@@ -2153,7 +2149,7 @@ resource "kubernetes_deployment_v1" "admin" {
             }
             initial_delay_seconds = 0
             period_seconds        = 10
-            failure_threshold     = 30  # 30 * 10s = 300s max startup time
+            failure_threshold     = 30 # 30 * 10s = 300s max startup time
           }
 
           # Liveness probe: lightweight check - just returns 200 OK without checking dependencies
@@ -2271,7 +2267,7 @@ resource "kubernetes_deployment_v1" "parser" {
           for_each = [1]
           content {
             name  = "wait-for-elasticsearch"
-            image = local.curl_image          
+            image = local.curl_image
 
             # Inherit environment from ragflow_env secret
             env_from {
@@ -2304,8 +2300,8 @@ resource "kubernetes_deployment_v1" "parser" {
         }
 
         container {
-          name  = "parser"
-          image = local.ragflow_image_full
+          name              = "parser"
+          image             = local.ragflow_image_full
           image_pull_policy = "Always"
 
           command = ["/ragflow/entrypoint-parser.sh"]
@@ -2433,8 +2429,8 @@ resource "kubernetes_deployment_v1" "deepdoc" {
 
         # Container
         container {
-          name  = "deepdoc"
-          image = local.deepdoc_image_full
+          name              = "deepdoc"
+          image             = local.deepdoc_image_full
           image_pull_policy = "Always"
 
           port {
@@ -2451,7 +2447,7 @@ resource "kubernetes_deployment_v1" "deepdoc" {
             }
             initial_delay_seconds = 0
             period_seconds        = 10
-            failure_threshold     = 30  # 30 * 10s = 300s max startup time
+            failure_threshold     = 30 # 30 * 10s = 300s max startup time
           }
 
           # Readiness probe: check if server is ready to accept requests
@@ -2542,6 +2538,10 @@ resource "kubernetes_service_v1" "deepdoc" {
 # =============================================================================
 
 resource "kubernetes_manifest" "gateway" {
+  depends_on = [
+    kubernetes_secret_v1.tls_secret,
+  ]
+
   field_manager {
     force_conflicts = true
   }
@@ -2625,16 +2625,34 @@ resource "kubernetes_manifest" "gateway" {
 
 # =============================================================================
 # TLS Secret (for ohttps pull mode)
-# Note: The TLS secret is created by kubernetes_job_v1.ohttps_sync_initial_job
-# which runs sync_ohttps_cert.py to create/update the secret with actual certificate data.
-# No need for a separate secret resource - the job handles creation when secret doesn't exist.
+# Use local certificate files in the current byok directory when ohttps is enabled.
+
+resource "kubernetes_secret_v1" "tls_secret" {
+  count = var.ohttps_enabled ? 1 : 0
+
+  metadata {
+    name      = "ragflow-tls"
+    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
+    labels = {
+      app          = "ragflow"
+      "managed-by" = "terraform"
+    }
+  }
+
+  type = "kubernetes.io/tls"
+
+  data = {
+    "tls.crt" = file("${path.module}/ragflow-tls.crt")
+    "tls.key" = file("${path.module}/ragflow-tls.key")
+  }
+}
 
 # =============================================================================
 # ohttps Sync ServiceAccount (for CronJob)
 # =============================================================================
 
 resource "kubernetes_manifest" "ohttps_sync_sa" {
-  count = var.ohttps_enabled ? 1 : 0
+  count = 0
 
   manifest = {
     apiVersion = "v1"
@@ -2650,7 +2668,7 @@ resource "kubernetes_manifest" "ohttps_sync_sa" {
 }
 
 resource "kubernetes_manifest" "ohttps_sync_role" {
-  count = var.ohttps_enabled ? 1 : 0
+  count = 0
 
   manifest = {
     apiVersion = "rbac.authorization.k8s.io/v1"
@@ -2663,14 +2681,14 @@ resource "kubernetes_manifest" "ohttps_sync_role" {
       {
         apiGroups = [""]
         resources = ["secrets"]
-        verbs = ["get", "list", "create", "update", "patch"]
+        verbs     = ["get", "list", "create", "update", "patch"]
       }
     ]
   }
 }
 
 resource "kubernetes_manifest" "ohttps_sync_rolebinding" {
-  count = var.ohttps_enabled ? 1 : 0
+  count = 0
 
   manifest = {
     apiVersion = "rbac.authorization.k8s.io/v1"
@@ -2695,90 +2713,11 @@ resource "kubernetes_manifest" "ohttps_sync_rolebinding" {
 }
 
 # =============================================================================
-# ohttps Sync Initial Job (runs once immediately on deployment)
-# =============================================================================
-# This Job runs immediately to create/update the TLS secret before Gateway is created.
-# The CronJob then handles ongoing certificate renewal.
-
-resource "kubernetes_job_v1" "ohttps_sync_initial_job" {
-  count = var.ohttps_enabled ? 1 : 0
-
-  metadata {
-    name      = "ohttps-sync-initial"
-    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
-    labels = {
-      app         = "ragflow"
-      "managed-by" = "terraform"
-    }
-  }
-
-  spec {
-    template {
-      metadata {
-        labels = {
-          app = "ohttps-cert-sync"
-        }
-      }
-      spec {
-        restart_policy       = "OnFailure"
-        service_account_name = "ohttps-sync-sa"
-        container {
-          name  = "sync"
-          image = var.ohttps_sync_image
-          image_pull_policy = "Always"
-          env {
-            name  = "OHTTPS_API_ID"
-            value = var.ohttps_api_id
-          }
-          env {
-            name  = "OHTTPS_API_KEY"
-            value = var.ohttps_api_key
-          }
-          env {
-            name  = "OHTTPS_CERT_ID"
-            value = var.ohttps_cert_id
-          }
-          env {
-            name  = "SECRET_NAMESPACE"
-            value = local.ragflow_namespace
-          }
-          env {
-            name  = "SECRET_NAME"
-            value = "ragflow-tls"
-          }
-        }
-      }
-    }
-    backoff_limit = 3
-  }
-
-  wait_for_completion = true
-}
-
-# Wait for TLS secret to have non-empty certificate data before creating Gateway
-# This resource depends on the initial sync job completing
-resource "null_resource" "wait_for_tls_secret" {
-  count = var.ohttps_enabled ? 1 : 0
-
-  # Explicitly depend on the initial job (wait_for_completion=true ensures job completes)
-  depends_on = [
-    kubernetes_job_v1.ohttps_sync_initial_job[0]
-  ]
-
-  provisioner "local-exec" {
-    environment = {
-      KUBECONFIG = pathexpand(var.kubeconfig_path)
-    }
-    command = "echo 'Waiting for TLS secret to be ready...' && python3 wait_for_k8s_resource.py ${kubernetes_namespace_v1.ragflow.metadata[0].name} secret ragflow-tls"
-  }
-}
-
-# =============================================================================
 # ohttps Sync CronJob
 # =============================================================================
 
 resource "kubernetes_manifest" "ohttps_sync_cronjob" {
-  count = var.ohttps_enabled ? 1 : 0
+  count = 0
 
   manifest = {
     apiVersion = "batch/v1"
@@ -2787,14 +2726,14 @@ resource "kubernetes_manifest" "ohttps_sync_cronjob" {
       name      = "ohttps-cert-sync"
       namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
       labels = {
-        app         = "ragflow"
+        app          = "ragflow"
         "managed-by" = "terraform"
       }
     }
     spec = {
-      schedule = "0 3 * * *"
+      schedule                   = "0 3 * * 1"
       successfulJobsHistoryLimit = 3
-      failedJobsHistoryLimit = 3
+      failedJobsHistoryLimit     = 3
       jobTemplate = {
         spec = {
           template = {
@@ -2804,12 +2743,12 @@ resource "kubernetes_manifest" "ohttps_sync_cronjob" {
               }
             }
             spec = {
-              restartPolicy = "OnFailure"
+              restartPolicy      = "OnFailure"
               serviceAccountName = "ohttps-sync-sa"
               containers = [
                 {
-                  name  = "sync"
-                  image = var.ohttps_sync_image
+                  name            = "sync"
+                  image           = var.ohttps_sync_image
                   imagePullPolicy = "Always"
                   env = [
                     {
@@ -2823,6 +2762,10 @@ resource "kubernetes_manifest" "ohttps_sync_cronjob" {
                     {
                       name  = "OHTTPS_CERT_ID"
                       value = var.ohttps_cert_id
+                    },
+                    {
+                      name  = "SYNC_K8S_SECRET"
+                      value = "1"
                     },
                     {
                       name  = "SECRET_NAMESPACE"
@@ -3207,7 +3150,7 @@ data "external" "nginx_gateway_ip" {
 # Uses count-based resources to support both GKE and smk (nginx gateway)
 # This avoids ternary expression in map value which is not supported by Terraform
 resource "kubernetes_config_map_v1" "gateway_address_nginx" {
-  count = local.is_gke_gateway ? 0 : 1
+  count      = local.is_gke_gateway ? 0 : 1
   depends_on = [kubernetes_manifest.gateway, data.external.nginx_gateway_ip]
 
   metadata {
@@ -3221,7 +3164,7 @@ resource "kubernetes_config_map_v1" "gateway_address_nginx" {
 }
 
 resource "kubernetes_config_map_v1" "gateway_address_gke" {
-  count = local.is_gke_gateway ? 1 : 0
+  count      = local.is_gke_gateway ? 1 : 0
   depends_on = [kubernetes_manifest.gateway, data.external.gateway_ip]
 
   metadata {

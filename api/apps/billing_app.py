@@ -30,7 +30,6 @@ from api.db import PaymentChannel, PaymentMethod, PaymentStatus, PriceType, Prod
 from api.db.db_models import DB, PaymentOrder, PointHold
 from api.db.services.billing_service import (
     BillingWebhookEventService,
-    LocalPriceService,
     PaymentOrderService,
     PointAccountService,
     PricePointService,
@@ -86,7 +85,6 @@ from common.billing_utils import (
 )
 from common.constants import RetCode
 from common.misc_utils import get_uuid
-from rag.utils.redis_conn import REDIS_CONN
 
 UNLIMITED_API_REQUESTS = 2_147_483_647
 LIMITED_API_REQUESTS = 5000
@@ -111,10 +109,6 @@ FOCUSED_STRIPE_WEBHOOK = [
     CHECKOUT_SESSION_COMPLETED,
     PAYMENT_INTENT_SUCCEEDED,
 ]
-PLANS_CACHE_KEY = settings.BILLING.get("plans_cache_key", "saas:billing:plans:latest")
-PLANS_CACHE_TTL_SECONDS = settings.BILLING.get("plans_cache_ttl_seconds", 60 * 60 * 24)
-USAGE_BASED_PLANS_CACHE_KEY = settings.BILLING.get("usage_based_plans_cache_key", "saas:billing:usage_based:latest")
-
 MAIN_SUBSCRIPTION_ENTITLED_STATUSES = {"active", "trialing"}
 MAIN_SUBSCRIPTION_DELINQUENT_STATUSES = {
     "incomplete",
@@ -125,6 +119,8 @@ MAIN_SUBSCRIPTION_DELINQUENT_STATUSES = {
     "paused",
 }
 MAIN_SUBSCRIPTION_RECOVERABLE_STATUSES = {"incomplete", "past_due", "unpaid"}
+# Cached Stripe webhook endpoint secret (loaded from DB once, cached forever)
+_stripe_webhook_secret: str | None = None
 
 
 def _billing_disabled_response():
@@ -1391,15 +1387,14 @@ async def billing_spend_metrics():
             if cached is not None:
                 return cached
             price_point = PricePointService.get_by_name(product_name) or {}
-            local_price = LocalPriceService.get_by_name(product_name) or {}
             unit = price_point.get("unit") or ""
             unit_quantity = price_point.get("unit_quantity") or 0
-            amount_cents_val = local_price.get("amount_cents")
-            price_currency = local_price.get("currency")
+            price_amount_cents = price_point.get("price_amount")
+            price_currency = price_point.get("price_currency")
             pricing = {
                 "unit": unit,
                 "unit_quantity": unit_quantity,
-                "price_amount": Decimal(str(amount_cents_val)) / 100 if amount_cents_val is not None else None,
+                "price_amount": Decimal(str(price_amount_cents)) / 100 if price_amount_cents is not None else None,
                 "price_currency": price_currency,
             }
             product_pricing_cache[product_name] = pricing
@@ -1525,39 +1520,28 @@ async def billing_spend_metrics():
 
 
 @manager.route("/plans", methods=["GET"])  # noqa: F821
-@login_required
 @billing_enabled_guard(_billing_disabled_response)
 async def billing_all_plans():
-    cached_plans = REDIS_CONN.get(PLANS_CACHE_KEY)
-    if cached_plans:
-        try:
-            return get_json_result(data=json.loads(cached_plans))
-        except json.JSONDecodeError:
-            logging.warning("Failed to decode cached billing plans, rebuilding cache.")
-
-    price_lookup_keys = {}
+    price_ids = []
     for plan_name, info in settings.BILLING_PLAN_TO_INFO.items():
-        lookup_key = info.get("price_lookup_key", "")
-        if lookup_key:
-            price_lookup_keys[plan_name] = lookup_key
+        plan_price_ids = info.get("price_ids", [])
+        for pid in plan_price_ids:
+            if pid and pid != "price_xxx":
+                price_ids.append((plan_name, pid))
 
     price_dict = {}
-    if price_lookup_keys and settings.BILLING_ENABLED:
+    if price_ids and settings.BILLING_ENABLED:
         try:
-            prices = await stripe.Price.list_async(lookup_keys=list(price_lookup_keys.values()), limit=len(price_lookup_keys))
-            lookup_price_map = {}
-            for price in prices.data:
-                lookup_key = getattr(price, "lookup_key", None)
-                unit_amount = getattr(price, "unit_amount", None)
-                if lookup_key:
-                    lookup_price_map[lookup_key] = unit_amount
-            for plan_name, lookup_key in price_lookup_keys.items():
-                unit_amount = lookup_price_map.get(lookup_key)
+            for plan_name, price_id in price_ids:
+                price_obj = await stripe.Price.retrieve_async(price_id)
+                logging.info(f"billing_all_plans Stripe price: plan={plan_name}, price_id={price_id}, price_obj={price_obj}")
+                unit_amount = getattr(price_obj, "unit_amount", None)
                 price_dict[plan_name] = unit_amount / 100 if unit_amount else -1
         except Exception as e:
-            logging.warning(f"Failed to fetch Stripe prices by lookup_key: {e}")
+            logging.warning(f"Failed to fetch Stripe prices by price_id: {e}")
     if BILLING_PLAN_TRIAL_NAME not in price_dict:
         price_dict[BILLING_PLAN_TRIAL_NAME] = 0
+    logging.info(f"billing_all_plans price_dict={price_dict}")
 
     latest_plans = ProductService.get_latest_by_type(ProductType.SUBSCRIPTION)
 
@@ -1585,7 +1569,6 @@ async def billing_all_plans():
         }
         plans.append(p)
 
-    REDIS_CONN.set_obj(PLANS_CACHE_KEY, plans, PLANS_CACHE_TTL_SECONDS)
     return get_json_result(data=plans)
 
 
@@ -1593,37 +1576,22 @@ async def billing_all_plans():
 @login_required
 @billing_enabled_guard(_billing_disabled_response)
 async def billing_all_usage_based_plans():
-    cached_plans = REDIS_CONN.get(USAGE_BASED_PLANS_CACHE_KEY)
-    if cached_plans:
-        try:
-            return get_json_result(data=json.loads(cached_plans))
-        except json.JSONDecodeError:
-            logging.warning("Failed to decode cached usage-based plans, rebuilding cache.")
-
     latest_products = ProductService.get_latest_by_type(ProductType.USAGE_BASED)
     latest_products = list(latest_products)
 
-    price_lookup_keys = {}
-    for product in latest_products:
-        lookup_key = settings.BILLING_PLAN_TO_INFO.get(product.name, {}).get("price_lookup_key", "")
-        if lookup_key:
-            price_lookup_keys[product.name] = lookup_key
-
     price_dict = {}
-    if price_lookup_keys and settings.BILLING_ENABLED:
+    if latest_products and settings.BILLING_ENABLED:
         try:
-            prices = await stripe.Price.list_async(lookup_keys=list(price_lookup_keys.values()), limit=len(price_lookup_keys))
-            lookup_price_map = {}
-            for price in prices.data:
-                lookup_key = getattr(price, "lookup_key", None)
-                unit_amount = getattr(price, "unit_amount", None)
-                if lookup_key:
-                    lookup_price_map[lookup_key] = unit_amount
-            for plan_name, lookup_key in price_lookup_keys.items():
-                unit_amount = lookup_price_map.get(lookup_key)
-                price_dict[plan_name] = unit_amount / 100 if unit_amount else -1
+            for product in latest_products:
+                plan_info = settings.BILLING_PLAN_TO_INFO.get(product.name, {})
+                for price_id in plan_info.get("price_ids", []):
+                    if price_id and price_id != "price_xxx":
+                        price_obj = await stripe.Price.retrieve_async(price_id)
+                        unit_amount = getattr(price_obj, "unit_amount", None)
+                        price_dict[product.name] = unit_amount / 100 if unit_amount else -1
+                        break
         except Exception as e:
-            logging.warning(f"Failed to fetch Stripe prices by lookup_key: {e}")
+            logging.warning(f"Failed to fetch Stripe prices by price_id: {e}")
     usage_based_plans = []
     latest_products.sort(key=lambda product: product.name)
     for product in latest_products:
@@ -1638,7 +1606,6 @@ async def billing_all_usage_based_plans():
             }
         )
 
-    REDIS_CONN.set_obj(USAGE_BASED_PLANS_CACHE_KEY, usage_based_plans, PLANS_CACHE_TTL_SECONDS)
     return get_json_result(data=usage_based_plans)
 
 
@@ -1764,6 +1731,7 @@ async def billing_checkout():
         )
 
     logging.info(f"{payment_type=}")
+    logging.info(f"{subscription_price_id=}")
     if payment_type not in (PriceType.SUBSCRIPTION, PriceType.USAGE_BASED):
         return get_data_error_result(message="Unsupported payment type.")
     if payment_type == PriceType.SUBSCRIPTION and not subscription_price_id:
@@ -1805,6 +1773,7 @@ async def billing_checkout():
                     current_price_id = subscription_items[0]["price"]["id"] if subscription_items else ""
 
                     if any(item["price"]["id"] == subscription_price_id for item in subscription_items):
+                        logging.info(f"Tenant {tenant_id} already has subscription {subscription_id} on price {subscription_price_id}, current items: {[item['price']['id'] for item in subscription_items]}")
                         msg = f"Tenant {tenant_id} already has an active subscription {subscription_id} on price {subscription_price_id}"
                         return get_json_result(data=False, message=msg, code=RetCode.SUCCESS)
 
@@ -1863,6 +1832,7 @@ async def billing_checkout():
                         logging.info(f"Skip cancelling scheduled subscription change for {subscription_id}: {e}")
 
                     current_plan_name = tenant_plan.get("plan_name", "")
+                    logging.info(f"Tenant {tenant_id} redirecting to customer portal for plan change: current_plan={current_plan_name}, requested_price={subscription_price_id}")
                     customer_portal_url = _create_customer_portal(tenant_id, current_plan_name, return_url=session_cancel_url)
                     msg = f"Tenant {tenant_id} already has an active subscription {subscription_id}, change plan on customer portal {customer_portal_url}."
                     return get_json_result(
@@ -2154,6 +2124,72 @@ async def customer_portal():
         return get_json_result(data={"redirect_to": return_url})
 
 
+def _get_stripe_webhook_secret(force_refresh: bool = False) -> str | None:
+    """
+    Retrieve the signing secret for our webhook endpoint.
+    Reads from database on first call, then caches in memory forever.
+    The secret is saved at webhook creation time and retrieved from persistent storage.
+
+    Note: Stripe's list API does NOT return the secret - it only returns
+    the secret once when the webhook endpoint is created.
+    """
+    global _stripe_webhook_secret
+
+    # Return cached secret (never expires - it's persistent in DB)
+    if _stripe_webhook_secret and not force_refresh:
+        return _stripe_webhook_secret
+
+    # Load from persistent storage
+    try:
+        from api.db.services.system_settings_service import SystemSettingsService
+        setting = SystemSettingsService.get_by_name("billing_webhook_secret")
+        setting_list = list(setting) if setting else []
+        if setting_list and hasattr(setting_list[0], 'value') and setting_list[0].value:
+            _stripe_webhook_secret = setting_list[0].value
+            return _stripe_webhook_secret
+    except Exception as e:
+        logging.warning(f"Failed to fetch webhook secret from persistent storage: {e}")
+
+    logging.error("Could not retrieve webhook secret from database. Webhook verification will fail.")
+    return None
+    return None
+
+
+@manager.route("/success", methods=["GET"])  # noqa: F821
+async def billing_success():
+    """
+    Handle successful Stripe checkout redirect.
+    Stripe redirects here with ?session_id=xxx query parameter.
+    We extract it and redirect to the frontend price page with success status.
+    """
+    from quart import redirect
+
+    session_id = request.args.get("session_id", "")
+    if not session_id:
+        return redirect(f"{settings.BILLING.get('customer_portal_return_url', '')}/price?price-pay-status=cancel")
+
+    try:
+        checkout_session = stripe.checkout.Session.retrieve(session_id)
+        if checkout_session.payment_status == "paid":
+            return redirect(f"{settings.BILLING.get('customer_portal_return_url', '')}/price?price-pay-status=success")
+        else:
+            return redirect(f"{settings.BILLING.get('customer_portal_return_url', '')}/price?price-pay-status=cancel")
+    except Exception as e:
+        logging.warning(f"Failed to retrieve checkout session {session_id}: {e}")
+        return redirect(f"{settings.BILLING.get('customer_portal_return_url', '')}/price?price-pay-status=error")
+
+
+@manager.route("/cancel", methods=["GET"])  # noqa: F821
+async def billing_cancel():
+    """
+    Handle cancelled Stripe checkout redirect.
+    Redirects back to the price page with cancel status.
+    """
+    from quart import redirect
+
+    return redirect(f"{settings.BILLING.get('customer_portal_return_url', '')}/price?price-pay-status=cancel")
+
+
 @manager.route("/webhook", methods=["POST"])  # noqa: F821
 @billing_enabled_guard(_billing_disabled_webhook_response)
 async def billing_webhook():
@@ -2167,15 +2203,28 @@ async def billing_webhook():
         event = json.loads(payload)
     except json.decoder.JSONDecodeError:
         logging.exception("billing_webhook error while parsing basic request.")
-        return jsonify(success=False)
-    if settings.BILLING["stripe_endpoint_secret"]:
-        # Only verify the event if there is an endpoint secret defined
-        # Otherwise use the basic event deserialized with json
-        sig_header = request.headers.get("stripe-signature")
+        return jsonify(success=True)  # Return 200 to prevent Stripe retry on malformed payload
+
+    # Dynamically fetch the webhook secret from Stripe API to avoid config drift
+    webhook_secret = _get_stripe_webhook_secret()
+    if not webhook_secret:
+        logging.error("Could not retrieve webhook secret from Stripe. Cannot verify webhook signature. Rejecting webhook.")
+        return jsonify(success=False)  # Return 400 to trigger Stripe retry
+
+    sig_header = request.headers.get("stripe-signature")
+    try:
+        event = stripe.Webhook.construct_event(payload, sig_header, webhook_secret)
+    except stripe.SignatureVerificationError:
+        # Secret may have been rotated; force refresh and retry once
+        logging.warning("Signature verification failed, refreshing secret and retrying...")
+        webhook_secret = _get_stripe_webhook_secret(force_refresh=True)
+        if not webhook_secret:
+            logging.error("Could not retrieve webhook secret after refresh. Rejecting webhook.")
+            return jsonify(success=False)
         try:
-            event = stripe.Webhook.construct_event(payload, sig_header, settings.BILLING["stripe_endpoint_secret"])
+            event = stripe.Webhook.construct_event(payload, sig_header, webhook_secret)
         except stripe.SignatureVerificationError:
-            logging.exception("billing_webhook signature verification failed.")
+            logging.exception("Signature verification failed after refresh. Rejecting webhook.")
             return jsonify(success=False)
 
     # Handle the event
@@ -2273,6 +2322,21 @@ def _handle_payment_intent_succeeded(event: dict):
         logging.info(f"{tenant_id} triggered {price_type} product {product_name} in intent succeeded, skipped. May handle in subscription.paid.")
         return
 
+    valid_price_ids = []
+    try:
+        from api.db.services.billing_service import ProductService
+        from api.db.db_models import ProductType
+        latest_usage_based_products = ProductService.get_latest_by_type(ProductType.USAGE_BASED)
+        for product in latest_usage_based_products:
+            if product.price_ids:
+                valid_price_ids.extend(product.price_ids.split())
+    except Exception as e:
+        logging.error(f"Failed to fetch usage_based products for price_id validation: {e}")
+
+    if price_id not in valid_price_ids:
+        logging.info(f"{tenant_id} triggered price_type {price_type} product {product_name} with unhandled price_id {price_id}, skipped.")
+        return
+
     amount_cents = intent.amount
     amount_received = intent.amount_received
     currency = intent.currency
@@ -2293,18 +2357,6 @@ def _handle_payment_intent_succeeded(event: dict):
 
     quota_quantity = quantity
     quota_unit = ""
-    if "storage" in (product_name or "").lower():
-        # For storage add-on, Stripe quantity is in GB (see /billing/checkout). Persist internal quota in KB.
-        if not quantity_unit:
-            quantity_unit = "GB"
-        quota_unit = "KB"
-        if quantity_unit == "GB":
-            quota_quantity = quantity * 1024 * 1024
-        elif quantity_unit == "KB":
-            quota_quantity = quantity
-        else:
-            logging.warning(f"Unknown quantity_unit for storage add-on: {quantity_unit!r}, persisting raw quantity as KB.")
-            quota_quantity = quantity
 
     payment_order = {
         "id": get_uuid(),
@@ -2675,7 +2727,6 @@ def _handle_checkout_session_completed(event: dict):
         print(f"{end_time=}")
 
         subscription = SubscriptionService.get_by_tenant_id(tenant_id)
-        subscription_status = subscription["subscription_status"]
         assert subscription, f"Expected a subscription for {tenant_id} here."
         subscription_dict = {
             "tenant_id": tenant_id,
@@ -2686,7 +2737,7 @@ def _handle_checkout_session_completed(event: dict):
             "customer_id": customer_id,
             "price_id": price_id,
             "subscription_id": subscription_id,
-            "subscription_status": subscription_status if subscription_status else SubscriptionStatus.UNKNOWN,
+            "subscription_status": SubscriptionStatus.ACTIVE,
             "start_time": start_time,
             "end_time": end_time,
             "renew_time": None,

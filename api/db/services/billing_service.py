@@ -27,7 +27,6 @@ from peewee import fn
 from peewee import IntegrityError
 from api.db.db_models import (
     BillingWebhookEvent,
-    LocalPrice,
     PaymentOrder,
     PointAccount,
     PointHold,
@@ -732,86 +731,6 @@ class PricePointService(CommonService):
                     logging.info(f"Billing price point \n\t{ori_price_point} updated to \n\t{price_point}.")
         except Exception as e:
             logging.warning(f"Init billing price point data error for {price_point['product_name']}: {e}")
-
-
-class LocalPriceService(CommonService):
-    model = LocalPrice
-    VERSION_CHECK_FIELDS = ["amount_cents"]
-
-    @classmethod
-    def save(cls, **kwargs):
-        if "id" not in kwargs:
-            kwargs["id"] = get_uuid()
-        obj = cls.model(**kwargs).save(force_insert=True)
-        return obj
-
-    @classmethod
-    @DB.connection_context()
-    def get_by_name(cls, local_price_product_name: str) -> dict | None:
-        fields = [
-            cls.model.id,
-            cls.model.price_point_id,
-            cls.model.product_name,
-            cls.model.amount_cents,
-            cls.model.currency,
-            cls.model.point_value_int,
-            cls.model.effective_time,
-            cls.model.expiry_time,
-        ]
-        now_utc = datetime.now(timezone.utc)
-        local_price = (
-            cls.model.select(*fields)
-            .where(
-                (cls.model.product_name == local_price_product_name)
-                & (cls.model.expiry_time.is_null(True) | (cls.model.expiry_time >= now_utc))
-            )
-            .order_by(cls.model.effective_time.desc())
-            .dicts()
-            .first()
-        )
-        return local_price
-
-    @classmethod
-    def init_data(cls, local_price_list: list[dict]) -> None:
-        try:
-            for local_price in local_price_list:
-                # Convert amount (USD float) to cents and point_value to int
-                raw_amount = local_price.pop("amount", None)
-                raw_point_value = local_price.pop("point_value", None)
-                if raw_amount is not None and "amount_cents" not in local_price:
-                    local_price["amount_cents"] = int(float(raw_amount) * 100)
-                if raw_point_value is not None and "point_value_int" not in local_price:
-                    local_price["point_value_int"] = int(float(raw_point_value) * 100)
-                if "point_value_int" not in local_price:
-                    local_price["point_value_int"] = local_price.get("amount_cents", 0)
-
-                ori_local_price = cls.get_by_name(local_price["product_name"])
-
-                price_point_id = PricePointService.get_by_name(local_price["product_name"]).get("id", "")
-                product_id = ProductService.get_by_name(local_price["product_name"]).get("id", "")
-
-                if not ori_local_price:
-                    cls.save(
-                        **local_price,
-                        price_point_id=price_point_id,
-                        product_id=product_id,
-                        effective_time=to_utc_datetime(datetime.now(timezone.utc)),
-                    )
-                    logging.info(f"Create billing local price {local_price}.")
-                    continue
-
-                is_outdated = any(local_price.get(field, "") != ori_local_price.get(field, "") for field in cls.VERSION_CHECK_FIELDS if local_price.get(field, ""))
-
-                if is_outdated:
-                    cls.save(
-                        **local_price,
-                        price_point_id=price_point_id,
-                        product_id=product_id,
-                        effective_time=to_utc_datetime(datetime.now(timezone.utc)),
-                    )
-                    logging.info(f"Billing local price \n\t{ori_local_price} updated to \n\t{local_price}.")
-        except Exception as e:
-            logging.warning(f"Init billing local price data error for {local_price['product_name']}: {e}")
 
 
 class PurchasedProductOverviewService(CommonService):

@@ -114,7 +114,7 @@ def test_billing_session_urls(billing_auth):
     """
     url = f"{HOST_ADDRESS}{BILLING_API_URL}/checkout"
     payload = {
-        "price_lookup_keys": ["lk_ragflow_plan_level_1_20251225"],
+        "price_ids": ["price_1Si7S7PtsKvwvC5f3IjPpPcN"],
     }
 
     res = requests.post(url, auth=billing_auth, json=payload)

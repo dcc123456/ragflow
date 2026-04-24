@@ -29,7 +29,7 @@ from api.db.joint_services.memory_message_service import init_message_id_sequenc
 from api.db.services.canvas_service import CanvasTemplateService
 from api.db.services.llm_service import LLMService, LLMBundle, get_init_tenant_llm
 from api.db.services.tenant_llm_service import LLMFactoriesService, TenantLLMService
-from api.db.services.billing_service import LocalPriceService, PricePointService, ProductService, SubscriptionService
+from api.db.services.billing_service import PricePointService, ProductService, SubscriptionService
 from peewee import IntegrityError
 from api.db import UserTenantRole
 from api.db.services import UserService
@@ -170,13 +170,21 @@ def add_graph_templates():
         except Exception as e:
             logging.exception(f"Add agent templates error: {e}")
 
+
+
 def register_webhook():
+    INVOICE_PAID = "invoice.paid"
+    INVOICE_FAILED = "invoice.payment_failed"
+    CHECKOUT_SESSION_COMPLETED = "checkout.session.completed"
+    SUBSCRIPTION_UPDATED = "customer.subscription.updated"
+    SUBSCRIPTION_DELETED = "customer.subscription.deleted"
+    PAYMENT_INTENT_SUCCEEDED = "payment_intent.succeeded"
+    FOCUSED_STRIPE_WEBHOOK = [INVOICE_PAID, INVOICE_FAILED, SUBSCRIPTION_UPDATED, SUBSCRIPTION_DELETED, CHECKOUT_SESSION_COMPLETED, PAYMENT_INTENT_SUCCEEDED]
+    
     """
     https://docs.stripe.com/api/webhook_endpoints/object
     https://dashboard.stripe.com/test/workbench/webhooks
     """
-    SUBSCRIPTION_UPDATED = 'customer.subscription.updated'
-    SUBSCRIPTION_DELETED = 'customer.subscription.deleted'
     stripe.api_key = settings.BILLING['stripe_api_key']
     webhook_url = settings.BILLING['webhook_url']
     if urlparse(webhook_url).hostname in ['localhost', '127.0.0.1']:
@@ -185,17 +193,34 @@ def register_webhook():
         exists = False
         webhook_endpoints = stripe.WebhookEndpoint.list()
         for endpoint in webhook_endpoints.data:
-            if endpoint.url == webhook_url and SUBSCRIPTION_UPDATED in endpoint.enabled_events and SUBSCRIPTION_DELETED in endpoint.enabled_events:
+            logging.info(f'Stripe webhook endpoint: id={endpoint.id}, url={endpoint.url}, enabled_events={endpoint.enabled_events}, secret={getattr(endpoint, "secret", "N/A")}')
+            if endpoint.url == webhook_url and set(FOCUSED_STRIPE_WEBHOOK).issubset(set(endpoint.enabled_events)):
                 logging.warning(f'webhook_url {webhook_url} already exists')
                 exists = True
             else:
+                logging.info(f'Delete webhook: id={endpoint.id}')
                 stripe.WebhookEndpoint.delete(endpoint.id)
         if not exists:
-            stripe.WebhookEndpoint.create(
+            endpoint = stripe.WebhookEndpoint.create(
                 url=webhook_url,
-                enabled_events=[SUBSCRIPTION_UPDATED, SUBSCRIPTION_DELETED],
+                enabled_events=FOCUSED_STRIPE_WEBHOOK,
             )
-        logging.warning(f'webhook_url {webhook_url} has just been registered')
+            # Save the webhook secret for signature verification
+            # The secret is only returned once at creation time
+            existing = SystemSettingsService.get_by_name("billing_webhook_secret")
+            if existing:
+                SystemSettingsService.update_by_name(
+                    "billing_webhook_secret",
+                    {"value": endpoint.secret}
+                    )
+            else:
+                SystemSettingsService.insert(
+                    name="billing_webhook_secret",
+                    source="billing",
+                    data_type="string",
+                    value=endpoint.secret
+                )
+            logging.info(f'webhook_url {webhook_url} has just been registered with secret saved')
 
 def handle_undelivered_events():
     """
@@ -252,7 +277,6 @@ def init_web_data():
     if settings.BILLING_ENABLED:
         ProductService.init_data(settings.BILLING["billing_plans"])
         PricePointService.init_data(settings.BILLING_PRICE_POINT)
-        LocalPriceService.init_data(settings.BILLING_LOCAL_PRICE)
         register_webhook()
         handle_undelivered_events()
         configure_decimal()

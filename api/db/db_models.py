@@ -1421,6 +1421,8 @@ class PricePoint(DataBaseModel):
     included_free_amount = IntegerField(null=True)  # ???
     unit = CharField(choices=["token", "page"], null=True)
     unit_quantity = IntegerField(null=True)
+    price_amount = IntegerField(null=True)  # price in cents (e.g., 100 = $1.00)
+    price_currency = CharField(max_length=3, null=True)  # usd, cny
     consuming_point_amount = IntegerField(null=False, default=0)
     effective_time = DateTimeField(null=False)
     expiry_time = DateTimeField(null=True)
@@ -1429,29 +1431,11 @@ class PricePoint(DataBaseModel):
         db_table = "billing_pricepoint"
 
 
-class LocalPrice(DataBaseModel):
-    """price point -> local price"""
-
-    id = CharField(max_length=32, primary_key=True)
-    price_point_id = CharField(max_length=32, index=True)
-    product_id = CharField(max_length=32, index=True)
-    product_name = CharField(null=False, max_length=255)
-    amount_cents = BigIntegerField(null=False, default=0)
-    currency = CharField(max_length=3)  # usd, cny
-    point_value_int = BigIntegerField(null=False, default=0)
-    effective_time = DateTimeField(null=False)
-    expiry_time = DateTimeField(null=True)
-
-    class Meta:
-        db_table = "billing_localprice"
-
-
 class ProductUsageTracing(DataBaseModel):
     id = CharField(max_length=32, primary_key=True)
     tenant_id = CharField(max_length=32, null=False, index=True)
     product_id = CharField(max_length=32, null=False, index=True)
     price_point_id = CharField(max_length=32, null=False, index=True)  # price point table
-    local_price_id = CharField(max_length=32, null=False, index=True)  # local price table
     task_quantity = IntegerField()
     total_cost_cents = BigIntegerField(null=False, default=0)
     currency = CharField(max_length=3)  # usd, cny
