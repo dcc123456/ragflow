@@ -21,7 +21,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { JSX } from 'react/jsx-runtime';
 import PricingCard from '../components/pricing-card';
-import { priceIdConfig } from '../config';
 import { PriceName } from '../constant';
 import { useFetchCurrentPlan, useFetchPlanList } from '../hook/use-price-hooks';
 import { IPricePlanWithButton } from '../interface';
@@ -33,7 +32,7 @@ const formatApiRequests = (limit: number) =>
   limit >= UNLIMITED_API_REQUESTS ? 'Unlimited' : `${limit}/month`;
 
 const enterprise = {
-  id: priceIdConfig[PriceName.Enterprise],
+  id: 'Enterprise',
   title: t('price.enterprise'),
   description: t('price.enterpriseDesc'),
   price: -1,
