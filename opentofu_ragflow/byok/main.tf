@@ -160,6 +160,13 @@ locals {
 
   # memindex_memory_quota: ~25% of total memory, formatted as "XGB" for infinity_conf.toml
   infinity_memindex_memory_quota = "${max(1, local.infinity_memory_gb / 4)}GB"
+
+  # Cluster-scoped ownership resolution:
+  # - auto: resolve from local state ownership + shared ECK detection
+  # - manual: use explicit manage_cluster_scoped_resources variable
+  manage_cluster_scoped_resources_resolved = var.cluster_scoped_resource_mode == "auto" ? (
+    data.external.cluster_scoped_resource_ownership.result.manage_cluster_scoped_resources == "true"
+  ) : var.manage_cluster_scoped_resources
 }
 
 # =============================================================================
@@ -897,34 +904,30 @@ resource "kubernetes_service_v1" "rabbitmq" {
 # Elasticsearch Deployment (K8s Mode)
 # =============================================================================
 
-# Detect a shared ECK operator so each RagFlow instance can reuse the same
-# cluster-scoped installation instead of trying to own it from multiple states.
-data "external" "eck_operator_status" {
-  program = ["sh", "-c", <<-EOF
-    export KUBECONFIG="${pathexpand(var.kubeconfig_path)}"
+# Resolve ownership of cluster-scoped resources so BYOK behavior is reusable
+# across all callers (CI, local runs, and scripts).
+data "external" "cluster_scoped_resource_ownership" {
+  program = ["python3", "${path.module}/resolve_cluster_scoped_ownership.py"]
 
-    if kubectl get crd elasticsearches.elasticsearch.k8s.elastic.co >/dev/null 2>&1 && \
-      (kubectl get statefulset elastic-operator -n elastic-system >/dev/null 2>&1 || \
-      kubectl get deployment elastic-operator -n elastic-system >/dev/null 2>&1); then
-      printf '{"installed":"true"}\n'
-    else
-      printf '{"installed":"false"}\n'
-    fi
-  EOF
-  ]
+  query = {
+    kubeconfig_path = pathexpand(var.kubeconfig_path)
+    cloud_provider  = var.cloud_provider
+    state_path      = "${path.module}/terraform.tfstate"
+  }
 }
 
 # Deploy ECK (Elastic Cloud on Kubernetes) Operator using Helm
 # This installs the CRDs and operator required for Elasticsearch resources
 # Ref: https://artifacthub.io/packages/helm/elastic/eck-operator
 resource "helm_release" "eck_operator" {
-  count            = 1
+  count            = local.manage_cluster_scoped_resources_resolved ? 1 : 0
   name             = "eck-operator"
   repository       = "https://helm.elastic.co"
   chart            = "eck-operator"
   version          = "3.3.1"
   namespace        = "elastic-system"
   create_namespace = true
+  upgrade_install  = true
 
   # Set timeout to wait for CRDs installation
   timeout = 600
@@ -966,26 +969,11 @@ resource "terraform_data" "wait_for_elasticsearch_crd" {
 # This avoids kubectl dependency and uses Terraform's native Kubernetes provider.
 # The CRD is installed by ECK operator helm chart.
 
-# CustomComputeClass for GKE to set vm.max_map_count
-# Requires GKE >= 1.30.3-gke.1451000
-# Reference: https://www.elastic.co/docs/deploy-manage/deploy/cloud-on-k8s/deploy-eck-on-gke-autopilot
-data "external" "elasticsearch_compute_class_status" {
-  count = var.cloud_provider == "gcp" ? 1 : 0
-
-  program = ["sh", "-c", <<-EOF
-    export KUBECONFIG="${pathexpand(var.kubeconfig_path)}"
-
-    if kubectl get computeclass elasticsearch >/dev/null 2>&1; then
-      printf '{"installed":"true"}\n'
-    else
-      printf '{"installed":"false"}\n'
-    fi
-  EOF
-  ]
-}
-
 resource "kubernetes_manifest" "elasticsearch_compute_class" {
-  count = var.cloud_provider == "gcp" ? 1 : 0
+  # CustomComputeClass for GKE to set vm.max_map_count
+  # Requires GKE >= 1.30.3-gke.1451000
+  # Reference: https://www.elastic.co/docs/deploy-manage/deploy/cloud-on-k8s/deploy-eck-on-gke-autopilot
+  count = var.cloud_provider == "gcp" && local.manage_cluster_scoped_resources_resolved ? 1 : 0
 
   manifest = {
     apiVersion = "cloud.google.com/v1"
@@ -1241,6 +1229,11 @@ resource "kubernetes_job_v1" "apply_elasticsearch" {
   }
 
   wait_for_completion = true
+
+  timeouts {
+    create = "5m"
+    update = "5m"
+  }
 
   depends_on = [
     terraform_data.wait_for_elasticsearch_crd,
@@ -2641,10 +2634,10 @@ resource "kubernetes_secret_v1" "tls_secret" {
 
   type = "kubernetes.io/tls"
 
-  data = {
+  data = var.ohttps_enabled ? {
     "tls.crt" = file("${path.module}/ragflow-tls.crt")
     "tls.key" = file("${path.module}/ragflow-tls.key")
-  }
+  } : {}
 }
 
 # =============================================================================

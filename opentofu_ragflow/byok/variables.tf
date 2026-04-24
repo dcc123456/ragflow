@@ -40,6 +40,23 @@ variable "cloud_provider" {
   }
 }
 
+variable "cluster_scoped_resource_mode" {
+  description = "Cluster-scoped ownership mode. 'auto' resolves ownership from BYOK state + cluster detection. 'manual' uses manage_cluster_scoped_resources."
+  type        = string
+  default     = "auto"
+
+  validation {
+    condition     = contains(["auto", "manual"], var.cluster_scoped_resource_mode)
+    error_message = "cluster_scoped_resource_mode must be 'auto' or 'manual'."
+  }
+}
+
+variable "manage_cluster_scoped_resources" {
+  description = "Manual ownership flag for cluster-scoped shared resources (ECK operator and GKE ComputeClass). Used when cluster_scoped_resource_mode = 'manual'."
+  type        = bool
+  default     = true
+}
+
 variable "gcp_project_id" {
   description = "GCP project ID. Required when cloud_provider = 'gcp'. Used to construct GCS service account (ragflow-gcs@{gcp_project_id}.iam.gserviceaccount.com)"
   type        = string
