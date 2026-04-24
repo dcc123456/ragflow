@@ -5,12 +5,13 @@ import billingService from '@/services/price';
 import storagePrivate from '@/utils/authorization-private-util';
 import classNames from 'classnames';
 import { useState } from 'react';
-import { PriceNameMapValue } from '../constant';
+import { PriceName, PriceNameMapValue } from '../constant';
 import { showPriceConfirmModal } from '../global';
 import { ConfirmPriceEventDetail } from '../global/hook';
-import { useCharge } from '../hook/use-price-hooks';
+import { useCharge, useFetchCurrentPlan } from '../hook/use-price-hooks';
 import '../index.less';
 import { ICurrentPlan, IPricePlanWithButton } from '../interface';
+import CancelPlanDialog from './cancel-plan-dialog';
 
 const PricingCard = (props: IPricePlanWithButton & { name?: string }) => {
   const {
@@ -24,9 +25,15 @@ const PricingCard = (props: IPricePlanWithButton & { name?: string }) => {
     name: currentPlanName = '',
   } = props;
   const { loading, charge } = useCharge();
+  const { data: currentPlanData } = useFetchCurrentPlan();
   const [upcomingLoading, setUpComingLoading] = useState(false);
+  const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false);
 
   const handleBuy = async (props: IPricePlanWithButton & { name?: string }) => {
+    if (props.isUse && currentPlanData) {
+      setIsCancelDialogOpen(true);
+      return;
+    }
     let isUpgrade = false;
     const currentPlan: ICurrentPlan = storagePrivate.getPricePlan();
 
@@ -61,6 +68,7 @@ const PricingCard = (props: IPricePlanWithButton & { name?: string }) => {
       charge(props);
     }
   };
+
   return (
     <div className="relative  group">
       <div
@@ -105,22 +113,36 @@ const PricingCard = (props: IPricePlanWithButton & { name?: string }) => {
             </>
           )}
         </h3>
-        <ButtonLoading
-          type="button"
-          className={classNames(
-            'w-full py-2 rounded-lg font-bold bg-bg-card text-text-primary border border-border-default  group-hover:bg-bg-base group-hover:text-text-primary group-hover:border-b-2 group-hover:border-b-[#00BEB4]',
-            {
-              'border border-border-button': isUse,
-            },
-          )}
-          onClick={() => handleBuy(props)}
-          disabled={loading || upcomingLoading}
-          loading={loading || upcomingLoading}
-        >
-          {buttonLabel}
-        </ButtonLoading>
+        {currentPlanName !== PriceName.Trial && (
+          <ButtonLoading
+            type="button"
+            className={classNames(
+              'w-full py-2 rounded-lg font-bold bg-bg-card text-text-primary border border-border-default  group-hover:bg-bg-base group-hover:text-text-primary group-hover:border-b-2 group-hover:border-b-[#00BEB4]',
+              {
+                'border border-border-button': isUse,
+              },
+            )}
+            onClick={() => handleBuy(props)}
+            disabled={loading || upcomingLoading}
+            loading={loading || upcomingLoading}
+          >
+            {buttonLabel}
+          </ButtonLoading>
+        )}
       </div>
       <div className="absolute -inset-2 bg-gradient-to-b from-[#42b6ff] to-[#2be8aa] blur group-hover:opacity-50 z-10 opacity-0"></div>
+
+      <CancelPlanDialog
+        open={isCancelDialogOpen}
+        onOpenChange={setIsCancelDialogOpen}
+        planName={title}
+        endDate={
+          typeof currentPlanData?.end_time === 'string'
+            ? currentPlanData.end_time.split('T')[0]
+            : ''
+        }
+        tenantId={currentPlanData?.tenant_id || ''}
+      />
     </div>
   );
 };

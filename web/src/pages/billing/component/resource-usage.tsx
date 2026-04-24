@@ -1,4 +1,5 @@
 import { useFetchTenantInfo } from '@/hooks/use-user-setting-request';
+import { formatNumber } from '@/pages/admin/model-usage-statistics/utils';
 import { pricePerGB } from '@/pages/price/config';
 import {
   getBillingStorageCurrent,
@@ -33,6 +34,7 @@ interface CustomProgressProps {
   planName?: string;
   planValue?: number;
   unit?: string;
+  showValue?: boolean;
   children?: React.ReactNode;
 }
 
@@ -45,6 +47,7 @@ const ResourceUsage: React.FC<CustomProgressProps> = ({
   planName = 'Free',
   planValue = 0,
   unit = '',
+  showValue = true,
   children,
 }) => {
   let addOnManageModal: { destroy: () => void };
@@ -222,7 +225,10 @@ const ResourceUsage: React.FC<CustomProgressProps> = ({
               {t(`billing.${camelCase(title).replace(' ', '')}`)}
             </span>
           </div>
-          <span className="text-text-primary">{`${value}${unit}/${limit}${unit}`}</span>
+          <div className="text-text-primary">
+            {showValue && <span>{`${value}${unit}`}/</span>}
+            <span>{`${formatNumber(limit)}${unit}`}</span>
+          </div>
         </div>
         <Process
           value={value}

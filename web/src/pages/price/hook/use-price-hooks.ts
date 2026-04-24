@@ -1,9 +1,10 @@
+import message from '@/components/ui/message';
 import { Modal } from '@/components/ui/modal/modal';
 import { useFetchTenantData } from '@/hooks/use-user-setting-request';
-import billingService, { billingCheckout } from '@/services/price';
+import billingService, { billingCheckout, unsubscribe } from '@/services/price';
 import storagePrivate from '@/utils/authorization-private-util';
 import storage from '@/utils/authorization-util';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import React from 'react';
 import { ICurrentPlan, IPlan, IPricePlanWithButton } from '../interface';
 import { showModal } from '../price-modal/show-modal';
@@ -13,6 +14,38 @@ export type IChargePlan = {
   usage_based_price_id?: string;
 };
 export const PriceChargeKey = 'price-charge';
+
+export const useCancelPlan = () => {
+  const queryClient = useQueryClient();
+  const {
+    data,
+    isPending: loading,
+    mutateAsync,
+  } = useMutation({
+    mutationKey: ['cancelPlan'],
+    mutationFn: async (tenantId: string) => {
+      const { data: res } = await unsubscribe({
+        tenant_id: tenantId,
+        cancel_at_period_end: 'yes',
+      });
+      if (res.code === 0) {
+        message.success(res.message);
+        return res.data;
+      }
+      return res?.code;
+    },
+  });
+
+  const cancel = async (tenantId: string) => {
+    const result = await mutateAsync(tenantId);
+    if (result !== undefined) {
+      await queryClient.invalidateQueries({ queryKey: ['currentPlan'] });
+    }
+    return result;
+  };
+
+  return { data, loading, cancel };
+};
 const useCharge = () => {
   const { data: tenantInfo } = useFetchTenantData();
   const tenantId = tenantInfo?.tenant_id;

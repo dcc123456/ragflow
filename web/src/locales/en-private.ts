@@ -83,13 +83,20 @@ export default {
       upgrade: 'Upgrade',
       contactUs: 'Contact Us',
       contactUsTip: 'Contact us for more information.',
-      inUse: 'In Use',
+      inUse: 'Cancel plan',
       paymentSuccessful: 'Payment successful',
       paymentSuccessfulTip:
         'Thank you! Your payment has been successfully processed.',
       paymentFailed: 'Payment failed',
       paymentFailedTip:
         'The transaction was not successful. Please verify your payment information or check your billing account. If this issue persists, contact us at support@ragflow.io with your order id for further assistance.',
+      cancelPlanTitle: 'Cancel {{plan}} Plan?',
+      cancelPlanTip: 'You are canceling the {{plan}} Plan.',
+      cancelPlanEffectiveTip:
+        'After cancellation, you can continue using the current plan benefits until {{date}}, after which they will expire.',
+      cancelPlanSwitchTip:
+        'After expiration, your account will automatically switch to the Free Plan, and features, quotas, or resources beyond the Free Plan scope will no longer be available.',
+      cancelPlanConfirmQuestion: 'Are you sure you want to cancel?',
     },
     setting: {
       billing: 'Billing',

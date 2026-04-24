@@ -41,6 +41,7 @@ export default {
   current_plan: `${api_host}/billing/current_plan`,
   createPortalSession: `${api_host}/billing/create-portal-session`,
   cancel_scheduled_subscription_change: `${api_host}/billing/cancel-scheduled-subscription-change`,
+  unsubscribe: `${api_host}/billing/unsubscribe`,
   plan_list: `${api_host}/billing/plans`,
   plan_spend_overview: `${api_host}/billing/spend_metrics`,
   billing_base_overview: `${api_host}/billing/usage_based_overview`,

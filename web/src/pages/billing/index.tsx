@@ -10,6 +10,7 @@ import { useFetchCurrentPlan } from '../price/hook/use-price-hooks';
 import UpgradeButton from '../price/price-modal/to-upgrade-button';
 import BillingHistory from './billing-history';
 import { Overview } from './overview';
+import PointsPage from './points';
 import UsagePage from './usage';
 
 const Billing = () => {
@@ -29,10 +30,10 @@ const Billing = () => {
       value: 'billing-history',
       label: t('billing.billingHistory'),
     },
-    // {
-    //   value: 'points',
-    //   label: 'Points',
-    // },
+    {
+      value: 'points',
+      label: 'Points',
+    },
   ];
 
   const navClickFunc = (e: SegmentedValue) => {
@@ -62,7 +63,7 @@ const Billing = () => {
       {activeKey === 'overview' && <Overview />}
       {activeKey === 'usage' && <UsagePage />}
       {activeKey === 'billing-history' && <BillingHistory />}
-      {/* {activeKey === 'points' && <PointsPage />} */}
+      {activeKey === 'points' && <PointsPage />}
     </div>
   );
 };

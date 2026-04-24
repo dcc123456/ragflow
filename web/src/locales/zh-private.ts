@@ -64,6 +64,15 @@ export default {
       verifyCodePlaceholder: '验证码',
       checkEmail: '检查邮箱',
     },
+    price: {
+      cancelPlanTitle: '取消 {{plan}} Plan？',
+      cancelPlanTip: '你正在取消 {{plan}} Plan。',
+      cancelPlanEffectiveTip:
+        '取消后，当前套餐权益仍可使用至 {{date}}，并将在该日期后失效。',
+      cancelPlanSwitchTip:
+        '失效后，你的账户将自动切换至 Free Plan，超出 Free Plan 范围的功能、额度或资源将无法继续使用。',
+      cancelPlanConfirmQuestion: '你确定要取消吗？',
+    },
     fileManager: {
       evaluation: {
         export: '导出',

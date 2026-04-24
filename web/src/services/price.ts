@@ -85,12 +85,19 @@ export const cancelScheduledSubscriptionChange = (tenantId: string) => {
   });
 };
 
+export const unsubscribe = (data: {
+  tenant_id: string;
+  cancel_at_period_end?: string;
+  feedback?: string;
+  comment?: string;
+}) => {
+  return request.post(api.unsubscribe, { data });
+};
 
 export const createBillingPortalSession = (data?: {
   tenant_id?: string;
   return_url?: string;
 }) => request.post(api.createPortalSession, { data });
-
 
 export const getBillingBaseOverview = ({ tenantId }: { tenantId: string }) => {
   return request.get(api.billing_base_overview, {

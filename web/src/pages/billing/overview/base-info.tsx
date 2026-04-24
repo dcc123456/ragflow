@@ -1,12 +1,7 @@
 import { Button } from '@/components/ui/button';
-import { cn, convertKbToGb } from '@/lib/utils';
+import { convertKbToGb } from '@/lib/utils';
 import { createBillingPortalSession } from '@/services/price';
-import {
-  AlertTriangle,
-  Check,
-  CreditCard,
-  GitPullRequestArrow,
-} from 'lucide-react';
+import { AlertTriangle, CreditCard } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import ResourceUsage from '../component/resource-usage';
 import { useFetchPlanOverview } from '../hook/overview';
@@ -158,6 +153,7 @@ export const BaseInfo = () => {
           limit={currentPlan.docParse?.total}
           unit="pts"
           basicCapacity={currentPlan.docParse?.base}
+          showValue={false}
         ></ResourceUsage>
         {/* <div className="bg-bg-input border border-border-default p-4 rounded mb-4">
           <div className="flex justify-between items-center mb-2">
