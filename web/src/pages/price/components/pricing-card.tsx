@@ -28,6 +28,11 @@ const PricingCard = (props: IPricePlanWithButton & { name?: string }) => {
   const { data: currentPlanData } = useFetchCurrentPlan();
   const [upcomingLoading, setUpComingLoading] = useState(false);
   const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false);
+  const normalizedPrice =
+    currentPlanName === PriceName.Trial && (price === '' || price === null || price === undefined)
+      ? 0
+      : Number(price);
+  const shouldShowPrice = Number.isFinite(normalizedPrice) && normalizedPrice >= 0;
 
   const handleBuy = async (props: IPricePlanWithButton & { name?: string }) => {
     if (props.isUse && currentPlanData) {
@@ -103,10 +108,10 @@ const PricingCard = (props: IPricePlanWithButton & { name?: string }) => {
           ))}
         </ul>
         <h3 className="text-3xl font-bold mb-6 text-left h-12">
-          {Number(price) > -1 && (
+          {shouldShowPrice && (
             <>
               <span className="text-sm mr-1">$</span>
-              {price}
+              {normalizedPrice}
               <span className="text-sm text-text-secondary font-normal ml-1">
                 /month
               </span>

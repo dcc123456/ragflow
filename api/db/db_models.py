@@ -1384,7 +1384,7 @@ class Product(DataBaseModel):
     name = CharField(null=False, max_length=255, index=True)
     quota_apps = IntegerField(null=False, help_text="Limit number of APP of the tenant, Chat, Search, Agent")
     quota_members = IntegerField(null=False, help_text="Limit number of members of the tenant")
-    quota_kb_storage = BigIntegerField(null=False, help_text="Limit number of kbs of the tenant")
+    quota_kb_storage = BigIntegerField(null=False, help_text="Limit dataset storage bytes of the tenant")
     task_priority = CharField(null=False, help_text="Task priority of the tenant")
     price_ids = TextField(null=False, default="", help_text="price ids on stripe.com")
     description = TextField(null=True)
@@ -1402,8 +1402,8 @@ class QuotaItem(DataBaseModel):
     id = CharField(max_length=32, primary_key=True)
     product_id = CharField(max_length=32, index=True)
     quota_type = CharField(null=False, choices=["app_total", "team_seat", "api_qps", "kb_storage"])
-    quantity = IntegerField(null=False)
-    unit = CharField(null=False, choices=["apps", "seats", "calls", "gb"])
+    quantity = BigIntegerField(null=False)
+    unit = CharField(null=False, choices=["apps", "seats", "calls", "bytes"])
     description = TextField(null=True)
 
     class Meta:
@@ -1547,8 +1547,8 @@ class Subscription(DataBaseModel):
 class StorageSubscription(DataBaseModel):
     """
     One storage add-on subscription per tenant.
-    `effective_quantity_gb` is the currently usable quota.
-    `target_quantity_gb` is the desired quota after pending changes settle.
+    `addon_storage_bytes` is the currently usable quota.
+    `target_quantity_bytes` is the desired quota after pending changes settle.
     """
 
     id = CharField(max_length=32, primary_key=True)
@@ -1560,9 +1560,9 @@ class StorageSubscription(DataBaseModel):
     price_id = CharField(max_length=128, null=False, default="")
     schedule_id = CharField(max_length=255, null=False, default="")
 
-    effective_quantity_gb = IntegerField(null=False, default=0, constraints=[Check("effective_quantity_gb >= 0")])
-    target_quantity_gb = IntegerField(null=False, default=0, constraints=[Check("target_quantity_gb >= 0")])
-    pending_quantity_gb = IntegerField(null=True, constraints=[Check("pending_quantity_gb >= 0")])
+    addon_storage_bytes = BigIntegerField(null=False, default=0, constraints=[Check("addon_storage_bytes >= 0")])
+    target_quantity_bytes = BigIntegerField(null=False, default=0, constraints=[Check("target_quantity_bytes >= 0")])
+    pending_quantity_bytes = BigIntegerField(null=True, constraints=[Check("pending_quantity_bytes >= 0")])
     pending_effective_at = DateTimeField(null=True)
     pending_action = CharField(max_length=32, null=True, default="")
 
@@ -2311,6 +2311,32 @@ def migrate_db():
     alter_db_add_column(migrator, "billing_point_hold", "plan_points", BigIntegerField(null=False, default=0))
     alter_db_add_column(migrator, "billing_point_hold", "addon_points", BigIntegerField(null=False, default=0))
     alter_db_remove_column(migrator, "billing_point_account", "available_points")
+
+    # Billing storage quantity columns migrate from legacy *_gb to *_bytes (int64)
+    alter_db_rename_column(migrator, "billing_storage_subscription", "effective_quantity_gb", "addon_storage_bytes")
+    alter_db_rename_column(migrator, "billing_storage_subscription", "addon_storage_gb", "addon_storage_bytes")
+    alter_db_rename_column(migrator, "billing_storage_subscription", "target_quantity_gb", "target_quantity_bytes")
+    alter_db_rename_column(migrator, "billing_storage_subscription", "pending_quantity_gb", "pending_quantity_bytes")
+    alter_db_add_column(migrator, "billing_storage_subscription", "addon_storage_bytes", BigIntegerField(null=False, default=0))
+    alter_db_add_column(migrator, "billing_storage_subscription", "target_quantity_bytes", BigIntegerField(null=False, default=0))
+    alter_db_add_column(migrator, "billing_storage_subscription", "pending_quantity_bytes", BigIntegerField(null=True))
+    alter_db_column_type(migrator, "billing_storage_subscription", "addon_storage_bytes", BigIntegerField(null=False, default=0))
+    alter_db_column_type(migrator, "billing_storage_subscription", "target_quantity_bytes", BigIntegerField(null=False, default=0))
+    alter_db_column_type(migrator, "billing_storage_subscription", "pending_quantity_bytes", BigIntegerField(null=True))
+
+    # QuotaItem storage unit migration: convert legacy gb entries to bytes.
+    alter_db_column_type(migrator, "billing_quota_item", "quantity", BigIntegerField(null=False))
+    try:
+        DB.execute_sql(
+            """
+            UPDATE billing_quota_item
+            SET quantity = quantity * 1000000000,
+                unit = 'bytes'
+            WHERE quota_type = 'kb_storage' AND unit = 'gb'
+            """
+        )
+    except Exception as ex:
+        logging.critical(f"Failed to migrate billing_quota_item kb_storage gb->bytes, error: {ex}")
 
     logging.disable(logging.NOTSET)
     # this is after re-enabling logging to allow logging changed user emails

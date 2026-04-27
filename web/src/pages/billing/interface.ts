@@ -17,7 +17,7 @@ export interface IResources {
   apps: IResourceDetail;
   members: IResourceDetail;
   plan_storage: IResourceDetail;
-  add_on_storage: IResourceDetail;
+  addon_storage: IResourceDetail;
 }
 
 // export type SubscriptionStatus = 'active' | 'inactive' | 'cancelled' | 'expired';

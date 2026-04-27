@@ -85,7 +85,7 @@ class ProductService(CommonService):
         try:
             for plan in billing_plans:
                 if "quota_kb_storage" in plan and isinstance(plan["quota_kb_storage"], str):
-                    plan["quota_kb_storage"] = parse_storage_size(plan["quota_kb_storage"]) // 1024
+                    plan["quota_kb_storage"] = parse_storage_size(plan["quota_kb_storage"])
 
                 ori_product = cls.get_by_name(plan["name"])
 
@@ -187,10 +187,12 @@ class SubscriptionService(CommonService):
             )
 
             num_members = UserTenantService.get_num_members(tenant_id)
-            num_kb_storage = FileService.get_total_size_by_tenant_id(tenant_id) // 1024
+            num_storage_bytes = FileService.get_total_size_by_tenant_id(tenant_id)
             tenant_plan["num_apps"] = num_apps
             tenant_plan["num_members"] = num_members
-            tenant_plan["num_kb_storage"] = num_kb_storage
+            tenant_plan["num_storage_bytes"] = num_storage_bytes
+            # Keep legacy key for compatibility with older callers.
+            tenant_plan["num_kb_storage"] = num_storage_bytes
         return tenant_plan
 
     @classmethod
@@ -328,7 +330,7 @@ class SubscriptionService(CommonService):
         plan_name = subscription.get("plan_name", "")
         num_apps = subscription.get("num_apps", 0)
         num_members = subscription.get("num_members", 0)
-        num_kb_storage = subscription.get("num_kb_storage", 0)
+        num_storage_bytes = subscription.get("num_storage_bytes", subscription.get("num_kb_storage", 0))
 
         fields = [
             cls.model.id,
@@ -391,15 +393,15 @@ class SubscriptionService(CommonService):
 
         if delta_kb_storage > 0:
             # Storage add-on quota now comes from recurring storage subscription.
-            add_on_storage_kb = StorageSubscriptionService.effective_storage_kb(tenant_id)
+            add_on_storage_bytes = StorageSubscriptionService.effective_storage_bytes(tenant_id)
 
-            storage_limit_kb = int(tenant_plan_info["quota_kb_storage"] or 0) + add_on_storage_kb
+            storage_limit_bytes = int(tenant_plan_info["quota_kb_storage"] or 0) + add_on_storage_bytes
             details["quota_kb_storage"] = {
-                "current": num_kb_storage,
-                "limit": storage_limit_kb,
+                "current": num_storage_bytes,
+                "limit": storage_limit_bytes,
             }
-            if num_kb_storage + delta_kb_storage > storage_limit_kb:
-                error_message += "KB storage quota exceeded\n"
+            if num_storage_bytes + delta_kb_storage > storage_limit_bytes:
+                error_message += "Storage quota exceeded\n"
                 check_pass = False
 
         if not check_pass:
@@ -459,6 +461,7 @@ class SubscriptionService(CommonService):
 class StorageSubscriptionService(CommonService):
     model = StorageSubscription
     BLOCKING_PENDING_ACTIONS = {"create", "increase", "align"}
+    BYTES_PER_KB = 1000
 
     @classmethod
     def save(cls, **kwargs):
@@ -504,9 +507,9 @@ class StorageSubscriptionService(CommonService):
             "subscription_item_id": kwargs.get("subscription_item_id", ""),
             "price_id": kwargs.get("price_id", ""),
             "schedule_id": kwargs.get("schedule_id", ""),
-            "effective_quantity_gb": kwargs.get("effective_quantity_gb", 0),
-            "target_quantity_gb": kwargs.get("target_quantity_gb", 0),
-            "pending_quantity_gb": kwargs.get("pending_quantity_gb"),
+            "addon_storage_bytes": kwargs.get("addon_storage_bytes", 0),
+            "target_quantity_bytes": kwargs.get("target_quantity_bytes", 0),
+            "pending_quantity_bytes": kwargs.get("pending_quantity_bytes"),
             "pending_effective_at": kwargs.get("pending_effective_at"),
             "pending_action": kwargs.get("pending_action", ""),
             "current_period_start": kwargs.get("current_period_start"),
@@ -523,7 +526,7 @@ class StorageSubscriptionService(CommonService):
         row = cls.get_by_tenant_id(tenant_id)
         if not row:
             return False
-        pending_quantity = row.get("pending_quantity_gb")
+        pending_quantity = row.get("pending_quantity_bytes")
         pending_action = (row.get("pending_action") or "").strip().lower()
         if pending_quantity is None or pending_action not in cls.BLOCKING_PENDING_ACTIONS:
             return False
@@ -540,8 +543,18 @@ class StorageSubscriptionService(CommonService):
         status = (row.get("status") or "").strip().lower()
         if status in {"canceled", "incomplete_expired"}:
             return 0
-        quantity_gb = int(row.get("effective_quantity_gb") or 0)
-        return max(quantity_gb, 0) * 1024 * 1024
+        quantity_bytes = int(row.get("addon_storage_bytes") or 0)
+        return max(quantity_bytes, 0) // cls.BYTES_PER_KB
+
+    @classmethod
+    def effective_storage_bytes(cls, tenant_id: str) -> int:
+        row = cls.get_by_tenant_id(tenant_id)
+        if not row:
+            return 0
+        status = (row.get("status") or "").strip().lower()
+        if status in {"canceled", "incomplete_expired"}:
+            return 0
+        return max(int(row.get("addon_storage_bytes") or 0), 0)
 
 
 ####################################################################################

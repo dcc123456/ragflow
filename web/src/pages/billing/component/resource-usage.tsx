@@ -27,6 +27,8 @@ import {
 import BuyCreditsModal from './buy-points-modal';
 import Process from './process';
 
+const BYTES_PER_GB = 1024 * 1024 * 1024;
+
 interface CustomProgressProps {
   title: 'Apps' | 'Team Member' | 'Storage' | 'Document Parse';
   value: number;
@@ -101,7 +103,7 @@ const ResourceUsage: React.FC<CustomProgressProps> = ({
     const errorUrl = `${url.split('?')[0]}?price-pay-status=cancel${url.split('?')[1] || ''}`;
     const { data } = await postBillingStorageSetTarget({
       tenant_id: tenantId,
-      target_quantity_gb: targetGb,
+      target_quantity_bytes: Math.max(0, targetGb) * BYTES_PER_GB,
       session_cancel_url: errorUrl,
       session_success_url: successUrl,
     });
@@ -118,7 +120,7 @@ const ResourceUsage: React.FC<CustomProgressProps> = ({
     if (data?.code !== 0 && res?.can_abandon) {
       addOnManageModal.destroy();
       showAbandonPendingModal({
-        pendingQuantityGb: res.pending_quantity_gb ?? 0,
+        pendingQuantityGb: Math.floor((res.pending_quantity_bytes ?? 0) / BYTES_PER_GB),
         targetQuantityGb: value,
         invoiceUrl: res.invoice_url ?? '',
         onAbandon: async () => {
@@ -152,7 +154,9 @@ const ResourceUsage: React.FC<CustomProgressProps> = ({
   const openAddOnManage = () => {
     const addOnCapacity = Math.max(0, limit - planValue);
     const currentStorage =
-      storageCurrent?.effective_quantity_gb ?? addOnCapacity;
+      storageCurrent?.addon_storage_bytes != null
+        ? Math.floor(storageCurrent.addon_storage_bytes / BYTES_PER_GB)
+        : addOnCapacity;
     const decreaseEffectiveAt = storageCurrent?.decrease_effective_at;
     addOnManageModal = showAddOnManageModal({
       defaultValue: currentStorage,

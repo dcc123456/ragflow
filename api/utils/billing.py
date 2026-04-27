@@ -835,10 +835,10 @@ def check_resources(**resource_deltas):
 
                     delta_app = resource_deltas.get("apps", 0)
                     delta_members = resource_deltas.get("seats", 0)
-                    delta_kb_storage = resource_deltas.get("storage", 0)
+                    delta_storage_bytes = resource_deltas.get("storage", 0)
 
                     check_ok, check_info = PurchasedProductOverviewService.check_subscription_by_tenant_id(
-                        tenant_id, delta_app=delta_app, delta_members=delta_members, delta_kb_storage=delta_kb_storage
+                        tenant_id, delta_app=delta_app, delta_members=delta_members, delta_kb_storage=delta_storage_bytes
                     )
 
                     if not check_ok:
@@ -855,7 +855,10 @@ def check_resources(**resource_deltas):
                             error_code = RetCode.BILLING_SEATS_INSUFFICIENT
 
                         if "quota_kb_storage" in error_details:
-                            error_messages.append(f"Insufficient storage quota. Current: {error_details['quota_kb_storage']['current']} KB, Limit: {error_details['quota_kb_storage']['limit']} KB")
+                            error_messages.append(
+                                f"Insufficient storage quota. Current: {error_details['quota_kb_storage']['current']} bytes, "
+                                f"Limit: {error_details['quota_kb_storage']['limit']} bytes"
+                            )
                             error_code = RetCode.BILLING_STORAGE_INSUFFICIENT
 
                         if error_messages:
@@ -909,7 +912,7 @@ def check_dynamic_resources(tenant_id=None, **resource_deltas):
                                   If not provided, it will be extracted from Flask context.
         **resource_deltas: Keyword arguments specifying resource types and their delta values.
                           Supported types: seats, apps, storage
-                          Example: check_dynamic_resources(tenant_id, storage=file_size_in_kb)
+                          Example: check_dynamic_resources(tenant_id, storage=file_size_in_bytes)
 
     Returns:
         tuple: (check_ok, check_info) where check_ok is a boolean indicating if check passed,
@@ -917,8 +920,8 @@ def check_dynamic_resources(tenant_id=None, **resource_deltas):
 
     Usage:
         # In a function where you calculate file size during execution:
-        file_size_kb = calculate_file_size_in_kb(file_path)
-        check_ok, check_info = check_dynamic_resources(tenant_id, storage=file_size_kb)
+        file_size_bytes = calculate_file_size_in_bytes(file_path)
+        check_ok, check_info = check_dynamic_resources(tenant_id, storage=file_size_bytes)
         if not check_ok:
             return get_data_error_result(message=check_info.get("error", "Insufficient storage"))
     """
@@ -967,6 +970,11 @@ def check_dynamic_resources(tenant_id=None, **resource_deltas):
 
     delta_app = resource_deltas.get("apps", 0)
     delta_members = resource_deltas.get("seats", 0)
-    delta_kb_storage = resource_deltas.get("storage", 0)
+    delta_storage_bytes = resource_deltas.get("storage", 0)
 
-    return PurchasedProductOverviewService.check_subscription_by_tenant_id(tenant_id, delta_app=delta_app, delta_members=delta_members, delta_kb_storage=delta_kb_storage)
+    return PurchasedProductOverviewService.check_subscription_by_tenant_id(
+        tenant_id,
+        delta_app=delta_app,
+        delta_members=delta_members,
+        delta_kb_storage=delta_storage_bytes,
+    )

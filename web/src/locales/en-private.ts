@@ -140,7 +140,7 @@ export default {
       gb: 'GB',
       pendingIncreaseTitle: 'Unpaid storage upgrade',
       pendingIncreaseDescription:
-        'You have an unpaid upgrade to {{pending_quantity_gb}} GB. Complete the payment to activate it, or abandon it and apply {{target_quantity_gb}} GB instead.',
+        'You have an unpaid upgrade to {{pending_quantity_bytes}} GB. Complete the payment to activate it, or abandon it and apply {{target_quantity_bytes}} GB instead.',
       payNow: 'Pay Now',
       abandonAndApply: 'Abandon & Apply',
       abandonPendingFailed:
