@@ -127,7 +127,7 @@ MAIN_SUBSCRIPTION_RECOVERABLE_STATUSES = {"incomplete", "past_due", "unpaid"}
 # Cached Stripe webhook endpoint secret (loaded from DB once, cached forever)
 _stripe_webhook_secret: str | None = None
 STRIPE_CHECKOUT_SESSION_ID_PLACEHOLDER = "{CHECKOUT_SESSION_ID}"
-BYTES_PER_GB = 1024 * 1024 * 1024
+BYTES_PER_GB = 1000 * 1000 * 1000
 
 
 def _storage_gb_to_bytes(value: int | str | None) -> int:
@@ -1760,7 +1760,7 @@ def _calc_storage_price_per_gb(price_usd: float, quota_kb_storage: int) -> float
     """Calculate storage price per GB from plan price and quota. Returns 0 if unavailable."""
     if price_usd <= 0 or quota_kb_storage <= 0:
         return 0.0
-    quota_gb = quota_kb_storage / (1024 * 1024 * 1024)
+    quota_gb = quota_kb_storage / (1000 * 1000 * 1000)
     return price_usd / quota_gb if quota_gb > 0 else 0.0
 
 

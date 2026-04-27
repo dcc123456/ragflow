@@ -30,7 +30,7 @@ export const convertBytesToGb = (
   bytes: number,
   decimalPlaces: number = 2,
 ): number => {
-  const gb = bytes / (1024 * 1024 * 1024);
+  const gb = bytes / (1000 * 1000 * 1000);
   return (
     Math.round(gb * Math.pow(10, decimalPlaces)) / Math.pow(10, decimalPlaces)
   );
@@ -40,7 +40,7 @@ export const convertKbToGb = (
   bytes: number,
   decimalPlaces: number = 2,
 ): number => {
-  const gb = bytes / (1024 * 1024);
+  const gb = bytes / (1000 * 1000);
   return (
     Math.round(gb * Math.pow(10, decimalPlaces)) / Math.pow(10, decimalPlaces)
   );

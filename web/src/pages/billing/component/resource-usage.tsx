@@ -27,7 +27,7 @@ import {
 import BuyCreditsModal from './buy-points-modal';
 import Process from './process';
 
-const BYTES_PER_GB = 1024 * 1024 * 1024;
+const BYTES_PER_GB = 1000 * 1000 * 1000;
 
 interface CustomProgressProps {
   title: 'Apps' | 'Team Member' | 'Storage' | 'Document Parse';
