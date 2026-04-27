@@ -16,8 +16,6 @@
 
 import time
 
-from admin.server.rabbitmq_metrics import rabbitmq_metrics_worker
-
 start_ts = time.time()
 
 import os
@@ -43,6 +41,7 @@ from auth import init_default_admin, setup_auth
 from flask_session import Session
 from common.versions import get_ragflow_version
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+from admin.server.admin_metrics import admin_metrics_worker
 
 stop_event = threading.Event()
 
@@ -134,8 +133,8 @@ if __name__ == '__main__':
     #init_user_role()
     SERVICE_CONFIGS.configs = load_configurations(SERVICE_CONF)
 
-    rabbitmq_metrics_thread = threading.Thread(target=rabbitmq_metrics_worker, args=(60,), daemon=True)
-    rabbitmq_metrics_thread.start()
+    admin_metrics_thread = threading.Thread(target=admin_metrics_worker, args=(60,), daemon=True)
+    admin_metrics_thread.start()
 
     try:
         logging.info(f"RAGFlow admin is ready after {time.time() - start_ts}s initialization.")
