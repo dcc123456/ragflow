@@ -1,9 +1,6 @@
 // pages/PricingPage.tsx
-import { ButtonLoading } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal/modal';
 import { convertBytesToGb } from '@/lib/utils';
-import { cancelScheduledSubscriptionChange } from '@/services/price';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { t } from 'i18next';
 import {
   BanknoteArrowUp,
@@ -21,15 +18,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { JSX } from 'react/jsx-runtime';
 import PricingCard from '../components/pricing-card';
-import { PriceName } from '../constant';
+import { PriceName, PriceNameMapValue } from '../constant';
 import { useFetchCurrentPlan, useFetchPlanList } from '../hook/use-price-hooks';
 import { IPricePlanWithButton } from '../interface';
-import { showModal } from '../price-modal/show-modal';
-
-const UNLIMITED_API_REQUESTS = 2147483647;
-
-const formatApiRequests = (limit: number) =>
-  limit >= UNLIMITED_API_REQUESTS ? 'Unlimited' : `${limit}/month`;
 
 const enterprise = {
   id: 'Enterprise',
@@ -142,7 +133,6 @@ const pricingPlans = {
 const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
   const { data: currentPlan } = useFetchCurrentPlan();
   const { data: planList, loading } = useFetchPlanList();
-  const queryClient = useQueryClient();
   const [pricePlanList, setPricePlanList] = useState<IPricePlanWithButton[]>();
   const urlParams = useMemo(
     () => new URLSearchParams(window.location.search),
@@ -160,22 +150,6 @@ const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
     content: '',
     open: false,
   });
-
-  const { mutateAsync: cancelDowngrade, isPending: cancelingDowngrade } =
-    useMutation({
-      mutationKey: ['cancelScheduledDowngrade'],
-      mutationFn: async () => {
-        if (!currentPlan?.tenant_id) return;
-        const { data: res } = await cancelScheduledSubscriptionChange(
-          currentPlan.tenant_id,
-        );
-        if (res.code === 0) return res.data;
-        throw new Error(res.message || 'Failed to cancel scheduled downgrade');
-      },
-      onSuccess: async () => {
-        await queryClient.invalidateQueries({ queryKey: ['currentPlan'] });
-      },
-    });
 
   const openSuccessModal = useCallback(
     (status: string) => {
@@ -239,9 +213,12 @@ const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
 
   useEffect(() => {
     if (!currentPlan || !planList || planList.length <= 0) return;
-    let inUseIndex = 4;
+    const currentPlanValue =
+      PriceNameMapValue[
+        currentPlan.plan_name as keyof typeof PriceNameMapValue
+      ] ?? -1;
 
-    let plans = planList?.map((plan, index) => {
+    let plans = planList?.map((plan) => {
       const featureValue = {
         apps: plan.feature.quota_apps,
         teamMembers: plan.feature.quota_members,
@@ -250,12 +227,15 @@ const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
       };
       const thisPricePlan =
         pricingPlans[plan.name as keyof typeof pricingPlans];
+      const planValue =
+        PriceNameMapValue[plan.name as keyof typeof PriceNameMapValue] ?? -1;
       const tempPlan = {
         ...thisPricePlan,
         name: plan.name,
         id: plan.price_ids,
         price: plan.price,
         isUse: false,
+        disabled: false,
         features: thisPricePlan.features.map((feature) => {
           return {
             ...feature,
@@ -265,18 +245,16 @@ const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
       };
 
       if (plan.name && currentPlan.plan_name === plan.name) {
-        inUseIndex = index;
         return {
           ...tempPlan,
           isUse: true,
           buttonLabel: t('price.inUse'),
         };
       } else {
-        const buttonLabel =
-          index < inUseIndex ? t('price.reduce') : t('price.upgrade');
         return {
           ...tempPlan,
-          buttonLabel,
+          buttonLabel: t('price.upgrade'),
+          disabled: planValue < currentPlanValue,
         };
       }
     });
@@ -288,6 +266,7 @@ const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
       ...enterprise,
       name: PriceName.Enterprise,
       isPopular: false,
+      disabled: false,
       buttonLabel: t('price.contactUs'),
     });
     setPricePlanList(plans as unknown as IPricePlanWithButton[]);
@@ -308,67 +287,6 @@ const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
         </div>
       )}
       <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-10">
-        {currentPlan?.pending_subscription_change?.schedule_id && (
-          <div className="mb-4 p-4 rounded-md border border-border-default bg-bg-card flex items-center justify-between">
-            <div className="text-sm">
-              Downgrade scheduled to{' '}
-              <span className="font-medium">
-                {currentPlan.pending_subscription_change.pending_plan_name ||
-                  'the selected plan'}
-              </span>
-              {currentPlan.pending_subscription_change.effective_at
-                ? ` at ${currentPlan.pending_subscription_change.effective_at}`
-                : ' at period end'}
-              .
-            </div>
-            <ButtonLoading
-              size="sm"
-              variant="outline"
-              loading={cancelingDowngrade}
-              onClick={async () => {
-                try {
-                  await cancelDowngrade();
-                  const modal = showModal({
-                    children: (
-                      <Modal
-                        open={true}
-                        title="Downgrade canceled"
-                        onOpenChange={(open) => {
-                          if (!open) modal.destroy();
-                        }}
-                        className="!w-[400px]"
-                      >
-                        <div className="h-20">
-                          Your scheduled downgrade has been canceled.
-                        </div>
-                      </Modal>
-                    ),
-                  });
-                } catch (e: any) {
-                  const modal = showModal({
-                    children: (
-                      <Modal
-                        open={true}
-                        title="Cancel failed"
-                        onOpenChange={(open) => {
-                          if (!open) modal.destroy();
-                        }}
-                        className="!w-[400px]"
-                      >
-                        <div className="h-20">
-                          {e?.message ||
-                            'Failed to cancel scheduled downgrade.'}
-                        </div>
-                      </Modal>
-                    ),
-                  });
-                }
-              }}
-            >
-              Cancel downgrade
-            </ButtonLoading>
-          </div>
-        )}
         {!loading &&
           pricePlanList?.map((plan, index) => (
             <PricingCard key={index} {...plan} />

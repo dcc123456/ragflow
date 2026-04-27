@@ -1,9 +1,7 @@
-import { ButtonLoading } from '@/components/ui/button';
 import Divider from '@/components/ui/divider';
 import { nextLayoutRef } from '@/layouts/root-layout';
 import billingService from '@/services/price';
 import storagePrivate from '@/utils/authorization-private-util';
-import classNames from 'classnames';
 import { useState } from 'react';
 import { PriceName, PriceNameMapValue } from '../constant';
 import { showPriceConfirmModal } from '../global';
@@ -12,8 +10,9 @@ import { useCharge, useFetchCurrentPlan } from '../hook/use-price-hooks';
 import '../index.less';
 import { ICurrentPlan, IPricePlanWithButton } from '../interface';
 import CancelPlanDialog from './cancel-plan-dialog';
+import PricingCardButton from './pricing-card-button';
 
-const PricingCard = (props: IPricePlanWithButton & { name?: string }) => {
+const PricingCard = (props: IPricePlanWithButton) => {
   const {
     title,
     isPopular,
@@ -22,6 +21,7 @@ const PricingCard = (props: IPricePlanWithButton & { name?: string }) => {
     features,
     buttonLabel,
     isUse = false,
+    disabled = false,
     name: currentPlanName = '',
   } = props;
   const { loading, charge } = useCharge();
@@ -29,12 +29,14 @@ const PricingCard = (props: IPricePlanWithButton & { name?: string }) => {
   const [upcomingLoading, setUpComingLoading] = useState(false);
   const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false);
   const normalizedPrice =
-    currentPlanName === PriceName.Trial && (price === '' || price === null || price === undefined)
+    currentPlanName === PriceName.Trial &&
+    (price === '' || price === null || price === undefined)
       ? 0
       : Number(price);
-  const shouldShowPrice = Number.isFinite(normalizedPrice) && normalizedPrice >= 0;
+  const shouldShowPrice =
+    Number.isFinite(normalizedPrice) && normalizedPrice >= 0;
 
-  const handleBuy = async (props: IPricePlanWithButton & { name?: string }) => {
+  const handleBuy = async (props: IPricePlanWithButton) => {
     if (props.isUse && currentPlanData) {
       setIsCancelDialogOpen(true);
       return;
@@ -119,20 +121,14 @@ const PricingCard = (props: IPricePlanWithButton & { name?: string }) => {
           )}
         </h3>
         {currentPlanName !== PriceName.Trial && (
-          <ButtonLoading
-            type="button"
-            className={classNames(
-              'w-full py-2 rounded-lg font-bold bg-bg-card text-text-primary border border-border-default  group-hover:bg-bg-base group-hover:text-text-primary group-hover:border-b-2 group-hover:border-b-[#00BEB4]',
-              {
-                'border border-border-button': isUse,
-              },
-            )}
+          <PricingCardButton
+            buttonLabel={buttonLabel}
+            isUse={isUse}
+            disabled={disabled}
+            loading={loading}
+            upcomingLoading={upcomingLoading}
             onClick={() => handleBuy(props)}
-            disabled={loading || upcomingLoading}
-            loading={loading || upcomingLoading}
-          >
-            {buttonLabel}
-          </ButtonLoading>
+          />
         )}
       </div>
       <div className="absolute -inset-2 bg-gradient-to-b from-[#42b6ff] to-[#2be8aa] blur group-hover:opacity-50 z-10 opacity-0"></div>

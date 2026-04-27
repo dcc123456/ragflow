@@ -1,12 +1,13 @@
 import { Button } from '@/components/ui/button';
-import { NumberInput } from '@/components/ui/input';
+import { Input } from '@/components/ui/input';
 import message from '@/components/ui/message';
 import { Modal } from '@/components/ui/modal/modal';
+import { formatNumber } from '@/pages/admin/model-usage-statistics/utils';
+import { getBillingPointsPrice } from '@/services/price';
 import { Coins, DollarSign, Loader2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { usePointsCheckout } from '../points/hook/points';
-import { getBillingPointsPrice } from '@/services/price';
 
 interface BuyPointsModalProps {
   visible: boolean;
@@ -29,15 +30,17 @@ const BuyPointsModal: React.FC<BuyPointsModalProps> = ({
   currentPoints = 0,
 }) => {
   const { t } = useTranslation();
-  const [amount, setAmount] = useState<number>(10);
+  const [amount, setAmount] = useState<number | ''>(10);
   const [selectedQuickOption, setSelectedQuickOption] = useState<number | null>(
     0,
   );
-  const [pointsPriceInfo, setPointsPriceInfo] = useState<PointsPriceInfo | null>(null);
+  const [pointsPriceInfo, setPointsPriceInfo] =
+    useState<PointsPriceInfo | null>(null);
   const [loadingPrice, setLoadingPrice] = useState(false);
   const checkoutMutation = usePointsCheckout();
 
-  const pointsPerUnit = pointsPriceInfo?.points_per_unit || DEFAULT_POINTS_PER_UNIT;
+  const pointsPerUnit =
+    pointsPriceInfo?.points_per_unit || DEFAULT_POINTS_PER_UNIT;
 
   useEffect(() => {
     if (visible) {
@@ -58,7 +61,7 @@ const BuyPointsModal: React.FC<BuyPointsModalProps> = ({
   }, [visible]);
 
   const calculatedPoints = useMemo(() => {
-    return amount * pointsPerUnit;
+    return (amount === '' ? 0 : amount) * pointsPerUnit;
   }, [amount, pointsPerUnit]);
 
   const quickSelectPoints = useMemo(() => {
@@ -73,13 +76,31 @@ const BuyPointsModal: React.FC<BuyPointsModalProps> = ({
     setAmount(dollars);
   };
 
-  const handleCustomAmountChange = (value: number) => {
+  const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSelectedQuickOption(null);
-    setAmount(value);
+    const val = e.target.value as any;
+    if (val === '' || val === 0) {
+      setAmount('');
+    } else {
+      const num = Math.trunc(Number(val));
+      setAmount(Number.isNaN(num) ? '' : num);
+    }
+  };
+
+  const handleAmountBlur = () => {
+    if (amount === '') {
+      setAmount(0);
+    }
+  };
+
+  const handleAmountKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === '.' || e.key === ',') {
+      e.preventDefault();
+    }
   };
 
   const handleConfirm = () => {
-    if (amount <= 0) {
+    if (amount === '' || amount <= 0) {
       message.error(t('billing.buyPointsMinError'));
       return;
     }
@@ -128,7 +149,12 @@ const BuyPointsModal: React.FC<BuyPointsModalProps> = ({
             </Button>
             <Button
               onClick={handleConfirm}
-              disabled={checkoutMutation.isPending || amount <= 0 || loadingPrice}
+              disabled={
+                checkoutMutation.isPending ||
+                amount === '' ||
+                amount <= 0 ||
+                loadingPrice
+              }
             >
               {checkoutMutation.isPending ? (
                 <>
@@ -152,7 +178,7 @@ const BuyPointsModal: React.FC<BuyPointsModalProps> = ({
               {t('billing.currentPoints')}
             </span>
             <span className="text-text-primary font-medium">
-              {currentPoints?.toLocaleString()}
+              {formatNumber(currentPoints)}
             </span>
           </div>
         </div>
@@ -196,7 +222,9 @@ const BuyPointsModal: React.FC<BuyPointsModalProps> = ({
             {t('billing.customAmount')}
           </span>
           <div className="flex items-center flex-1">
-            <NumberInput
+            {/* Replace with D:\work\ragflow_enterprise\web\src\components\originui\number-input.tsx */}
+            <Input
+              type="number"
               prefix={
                 <div className="px-2 border-r border-border-default mr-3">
                   <DollarSign className="w-4 h-4 text-text-secondary" />
@@ -205,8 +233,11 @@ const BuyPointsModal: React.FC<BuyPointsModalProps> = ({
               rootClassName="w-full"
               min={1}
               max={10000}
+              step={1}
               value={amount}
-              onChange={handleCustomAmountChange}
+              onChange={handleAmountChange}
+              onBlur={handleAmountBlur}
+              onKeyDown={handleAmountKeyDown}
             />
           </div>
           <div className="text-sm text-text-secondary bg-bg-card rounded-sm px-3 py-1.5 w-32">
