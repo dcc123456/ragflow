@@ -34,9 +34,11 @@ class DLAClient:
         for i, img in enumerate(images):
             img_byte_arr = io.BytesIO()
             img.save(img_byte_arr, format="jpeg")
+            payload = img_byte_arr.getvalue()
+            success = False
             for _ in range(3):
                 try:
-                    response = self.session.post(self.url, files={"request": img_byte_arr.getvalue()})
+                    response = self.session.post(self.url, files={"request": payload})
                     response = response.json()
                     if "bboxes" not in response:
                         raise Exception(str(response))
@@ -46,11 +48,15 @@ class DLAClient:
                         "bbox": [left, t, r, b,],
                         "score": s
                     } for left, t, r, b, s, ty in response["bboxes"]])
+                    success = True
                     break
-                except Exception as e:
+                except requests.RequestException as e:
+                    # Recreate the session only for transport-level failures.
                     logging.exception(e)
                     self.session = requests.Session()
-            if len(res) == i:
+                except Exception as e:
+                    logging.exception(e)
+            if not success and len(res) <= i:
                 res.append([])
         return res
 

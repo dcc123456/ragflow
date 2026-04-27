@@ -46,13 +46,6 @@ class LayoutRecognizer(Recognizer):
     ]
 
     def __init__(self, domain):
-        try:
-            model_dir = os.path.join(get_project_base_directory(), "rag/res/deepdoc")
-            super().__init__(self.labels, domain, model_dir)
-        except Exception:
-            model_dir = snapshot_download(repo_id="InfiniFlow/deepdoc", local_dir=os.path.join(get_project_base_directory(), "rag/res/deepdoc"), local_dir_use_symlinks=False)
-            super().__init__(self.labels, domain, model_dir)
-
         self.garbage_layouts = ["footer", "header", "reference"]
         self.client = None
 
@@ -60,6 +53,14 @@ class LayoutRecognizer(Recognizer):
             from deepdoc.vision.dla_cli import DLAClient
 
             self.client = DLAClient(os.environ["DEEPDOC_URL"])
+            return
+
+        try:
+            model_dir = os.path.join(get_project_base_directory(), "rag/res/deepdoc")
+            super().__init__(self.labels, domain, model_dir)
+        except Exception:
+            model_dir = snapshot_download(repo_id="InfiniFlow/deepdoc", local_dir=os.path.join(get_project_base_directory(), "rag/res/deepdoc"), local_dir_use_symlinks=False)
+            super().__init__(self.labels, domain, model_dir)
 
     def __call__(self, image_list, ocr_res, scale_factor=3, thr=0.2, batch_size=16, drop=True):
         def __is_garbage(b):
