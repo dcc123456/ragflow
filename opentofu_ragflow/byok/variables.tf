@@ -165,13 +165,13 @@ variable "mysql_cpu_limit" {
 variable "mysql_memory_request" {
   description = "MySQL memory request"
   type        = string
-  default     = "8Gi"
+  default     = "16Gi"
 }
 
 variable "mysql_memory_limit" {
   description = "MySQL memory limit"
   type        = string
-  default     = "16Gi"
+  default     = "20Gi"
 }
 
 variable "mysql_max_connections" {

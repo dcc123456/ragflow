@@ -424,55 +424,20 @@ RAGFlow supports switching between Elasticsearch (default) and Infinity:
 <claude-mem-context>
 # Memory Context
 
-# [ragflow_enterprise] recent context, 2026-04-25 6:14am UTC
+# [ragflow_enterprise] recent context, 2026-04-27 7:54am UTC
 
 Legend: 🎯session 🔴bugfix 🟣feature 🔄refactor ✅change 🔵discovery ⚖️decision 🚨security_alert 🔐security_note
 Format: ID TIME TYPE TITLE
 Fetch details: get_observations([IDs]) | Search: mem-search skill
 
-Stats: 50 obs (13,325t read) | 521,358t work | 97% savings
+Stats: 50 obs (13,527t read) | 579,416t work | 98% savings
 
 ### Apr 24, 2026
-S26 Adjust billing-related fields in conf/service_conf.yaml to match docker/service_conf.yaml.template (some missing, some extraneous) (Apr 24, 2:26 AM)
-S27 billing_webhook_secret stored in MySQL system_settings table (Apr 24, 2:26 AM)
-S29 Investigating billing_webhook_secret in MySQL system_settings table for RAGFlow Enterprise billing configuration (Apr 24, 2:55 AM)
-S31 Typo in Terraform variable validation blocks tofu apply (Apr 24, 2:55 AM)
-S42 Points checkout refactored to use quantity-based API with dynamic pricing (Apr 24, 3:38 AM)
-S44 Buy Credits dialog refactored to use backend-sourced price info and quantity-based checkout (Apr 24, 5:44 AM)
-S56 Root cause: wrong function name in migration (Apr 24, 5:45 AM)
-S57 Fix ragflow pod crash - NameError in db_models.py migration (Apr 24, 2:46 PM)
 S69 Buy Credits payment success shows error dialog (Apr 24, 2:47 PM)
 ### Apr 25, 2026
-64 5:08a 🔵 Buy Credits webhook flow and payment confirmation mechanism
-66 5:09a 🔵 Points recharge webhook uses checkout.session.completed, not payment_intent.succeeded
-67 " 🔵 Root cause: get_metadata_from_intent returns empty dict causing error dialog
-68 5:11a 🔴 Buy Credits payment success shows error dialog
-69 " 🔵 PointAccount.recharge uses idempotency pattern
-70 5:12a 🔵 User rejects kubectl env check for BILLING_SERVICE_URL diagnosis
-71 " 🔵 User disputes kubectl-based BILLING_SERVICE_URL diagnosis approach
-72 5:13a 🔵 Ragflow pods not visible in stage cluster kubectl context
-73 " 🔵 Ragflow pods found in ragflow namespace on stage cluster
-74 " 🔵 Stage cluster ragflow pod billing environment variables discovered
-75 5:14a 🔵 Correct service_conf.yaml path inside ragflow pod is /ragflow/conf/
-77 " 🔵 Stage cluster billing configuration retrieved from /ragflow/conf/service_conf.yaml
-78 " 🔵 Billing success redirect flow in billing_app.py analyzed
-79 " 🔵 Tested billing success endpoint with invalid session_id
-80 5:15a 🔵 Frontend price-pay-status handling in React components
-83 5:17a 🔵 PointAccount.recharge idempotency pattern in billing_service.py
-84 5:18a 🔵 Checkout session completed handler for points_recharge
-86 5:20a 🔵 Stripe webhook endpoint configuration in stage cluster logs
-88 5:21a 🔵 Only one checkout.session.completed reference in logs - webhook registration only
-89 5:22a 🔵 Billing webhook signature verification flow in billing_app.py
-91 5:23a 🔵 Webhook handler prints "Passed in {event_type}" on successful processing
-92 5:24a 🔵 Stripe webhook secret stored in database system_settings table
-93 5:26a 🔵 Billing webhook secret successfully retrieved from database
-95 5:29a 🔵 Buy Credits payment succeeds but shows error dialog
-96 5:30a 🔵 Billing success endpoint redirects to error on invalid session
-98 5:31a 🔵 Stripe checkout sessions confirm successful payments
-S112 Debug Buy Credits payment success showing error dialog despite successful Stripe payment (Apr 25, 5:32 AM)
+S112 Debug Buy Credits payment success showing error dialog despite successful Stripe payment (Apr 25, 5:11 AM)
+S124 Amended billing split commit message from feat to fix (Apr 25, 5:32 AM)
 99 5:43a 🔴 Buy Credits payment success shows error dialog despite successful Stripe payment
-100 " 🔵 PointAccount.recharge uses idempotency pattern with payment_intent_id
-101 " 🔵 No checkout.session.completed events processed since billing pod startup
 102 5:44a 🔴 Buy Credits payment success shows error dialog despite successful Stripe payment
 103 " 🔵 No checkout.session.completed webhook events processed since pod startup
 104 " 🔵 Stripe webhook URL configuration and event delivery verification needed
@@ -494,6 +459,42 @@ S112 Debug Buy Credits payment success showing error dialog despite successful S
 125 " 🔴 /success endpoint now returns error status instead of cancel for missing session_id
 126 5:53a 🔴 Stripe checkout success URL now includes session ID for frontend verification
 127 " 🔴 Buy Credits payment modal now displays correct title and content
+### Apr 27, 2026
+133 1:39a ✅ Amended billing split commit message from feat to fix
+S135 Fix CI test failure: test_invoice_paid_updates_existing_failed_order_and_restores_active caused OperationalError due to unmocked PointAccountService.sync_plan_points_on_subscription_paid (Apr 27, 1:39 AM)
+134 1:55a 🔵 PR #362 review comments reveal 15 code issues
+136 1:56a 🔵 PriceType/ProductType enums confirmed as ADDON not USAGE_BASED
+137 1:57a 🔵 DB model choices use 'usage_based' while enum uses 'addon'
+138 " 🔴 PR #362 review comments fixed in billing_app.py and init_data.py
+139 3:09a 🔵 CI build failure on deepdoc Dockerfile
+140 3:10a 🔵 PointAccount sync_plan_points_on_subscription_paid is idempotent
+141 " 🔵 CI failure in ragflow_enterprise deepdoc Dockerfile
+S136 Fix CI test failure test_invoice_paid_updates_existing_failed_order_and_restores_active (Apr 27, 3:16 AM)
+S140 Fix CI test failure test_invoice_paid_updates_existing_failed_order_and_restores_active in ragflow_enterprise (Apr 27, 3:18 AM)
+144 3:18a 🔵 uv sync fails due to graspologic gitee mirror SSL timeout
+S141 CI failure investigation on ragflow_enterprise GitHub Actions (Apr 27, 3:24 AM)
+145 3:25a 🔵 CI failure investigation on ragflow_enterprise GitHub Actions
+S142 PDF batch processing reduces parser peak memory (Apr 27, 3:25 AM)
+146 3:35a 🟣 Batch PDF parsing reduces parser peak memory
+147 " ✅ OCR memory optimization with lazy numpy view creation
+148 " 🟣 DEEPDOC_URL mode skips local Layout ONNX model initialization
+149 " ✅ DLA serialization JPEG bytes generated once and reused
+150 " 🔵 Memory optimization verification blocked by graspologic dependency timeout
+151 3:36a 🟣 PDF batch processing reduces parser peak memory
+152 " ✅ OCR temporary memory optimization
+153 " ✅ DEEPDOC_URL mode skips local Layout ONNX initialization
+154 " ✅ DLA serialization reuses JPEG bytes to reduce allocations
+S143 billing_all_plans API to include quota_points per plan (Apr 27, 3:36 AM)
+155 5:44a 🟣 billing_all_plans needs to return quota_points per plan
+156 " 🟣 billing_all_plans API to include quota_points per plan
+157 6:18a 🔵 Claude tool call failures traced to bwrap loopback sandbox restriction
+158 6:19a 🔵 ragflow_enterprise has MCP tool-call infrastructure in common/mcp_tool_call_conn.py
+160 7:25a 🔴 Stripe webhook signature verification failing in ragflow pod
+162 7:26a 🔵 Billing webhook secret fetched dynamically from database with in-memory cache
+S152 Investigating billing_webhook signature verification: determine if failed signature check crashes the process or returns 400 correctly (Apr 27, 7:28 AM)
+163 7:29a 🔴 MCP smart_search tool calls failing in ragflow_enterprise
+164 " 🔵 MySQL root access denied - ragflow user credentials work for database queries
+165 7:48a 🔵 Stripe webhook secret verified matching between dashboard and database
 
-Access 521k tokens of past work via get_observations([IDs]) or mem-search skill.
+Access 579k tokens of past work via get_observations([IDs]) or mem-search skill.
 </claude-mem-context>
