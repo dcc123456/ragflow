@@ -92,14 +92,14 @@ billing:
       api_request_limit_per_minute: 500
       api_request_limit_per_month: 5000
       task_priority: low
-      price_ids: 'price_xxx'
+      price_ids: 'price_1TPawr2XhWscgPRmFFLnlhpK'
       product_type: subscription
       usage_stat_type: 
       plan_priority: 0
     - name: Starter
-      quota_apps: 100
-      quota_members: 10
-      quota_kb_storage: 10G
+      quota_apps: 50
+      quota_members: 5
+      quota_kb_storage: 5G
       api_request_limit_per_minute: 2147483647
       api_request_limit_per_month: 2147483647
       task_priority: high
@@ -108,9 +108,9 @@ billing:
       usage_stat_type: 
       plan_priority: 1
     - name: Pro
-      quota_apps: 999999999
-      quota_members: 50
-      quota_kb_storage: 100G
+      quota_apps: 100000
+      quota_members: 20
+      quota_kb_storage: 50G
       api_request_limit_per_minute: 2147483647
       api_request_limit_per_month: 2147483647
       task_priority: high

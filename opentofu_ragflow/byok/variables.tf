@@ -651,6 +651,16 @@ variable "billing_price_id_storage" {
   }
 }
 
+variable "billing_price_id_trial" {
+  description = "Stripe price ID for Trial subscription plan"
+  type        = string
+  default     = ""
+  validation {
+    condition     = var.billing_enabled == false || var.billing_price_id_trial != ""
+    error_message = "billing_price_id_trial must not be empty when billing is enabled."
+  }
+}
+
 variable "billing_price_id_starter" {
   description = "Stripe price ID for Starter subscription plan"
   type        = string
@@ -669,5 +679,11 @@ variable "billing_price_id_pro" {
     condition     = var.billing_enabled == false || var.billing_price_id_pro != ""
     error_message = "billing_price_id_pro must not be empty when billing is enabled."
   }
+}
+
+variable "stripe_test_clock_id" {
+  description = "Stripe test clock ID"
+  type        = string
+  default     = ""
 }
 

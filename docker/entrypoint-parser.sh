@@ -34,6 +34,7 @@ else
 fi
 
 PY=/ragflow/.venv/bin/python
+LD_PRELOAD="$(pkg-config --variable=libdir jemalloc)/libjemalloc.so"
 
 function p_0(){
     while [ 1 -eq 1 ];do

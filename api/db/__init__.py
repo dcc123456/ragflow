@@ -156,7 +156,7 @@ class ProductType(StrEnum):
     """Types of products"""
 
     SUBSCRIPTION = "subscription"
-    USAGE_BASED = "usage_based"
+    ADDON = "addon"
 
 
 class UsageStat(StrEnum):
@@ -188,7 +188,7 @@ class PriceType(StrEnum):
     """Types of pricing methods"""
 
     SUBSCRIPTION = "subscription"
-    USAGE_BASED = "usage_based"
+    ADDON = "addon"
 
 
 class BillingFrequency(StrEnum):

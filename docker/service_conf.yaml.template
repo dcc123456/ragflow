@@ -75,50 +75,50 @@ billing:
       price_currency: "usd"
       consuming_point_amount: 1  # points charged per page
   points_recharge:
-    price_id: '${BILLING_PRICE_ID_POINTS:-price_1TOCQ82XhWscgPRmZOVImako}'
+    price_id: '${BILLING_PRICE_ID_POINTS:-price_1TPcBZ2XhWscgPRm3L4VEsJn}'
     points_per_unit: 100 # 1 quantity = 1 USD = 100 points (1 cent = 1 point)
   billing_plans:
     - name: "storage"
       quota_apps: 0
       quota_members: 0
-      quota_kb_storage: 0
+      quota_kb_storage: 1G
+      quota_points: 0
       task_priority: "low"
       price_ids: '${BILLING_PRICE_ID_STORAGE:-price_1TOCKc2XhWscgPRmJRyTuo5g}'
-      product_type: "usage_based"
-      usage_stat_type: "before"
+      product_type: "addon"
       plan_priority: -1
     - name: "Trial"
       quota_apps: 5
       quota_members: 1
       quota_kb_storage: 100MB
+      quota_points: 500  # monthly quota (reset each billing cycle)
       api_request_limit_per_minute: 500
       api_request_limit_per_month: 5000
       task_priority: "low"
-      price_ids: 'price_xxx'
+      price_ids: '${BILLING_PRICE_ID_TRIAL:-price_1TPawr2XhWscgPRmFFLnlhpK}'
       product_type: "subscription"
-      usage_stat_type: ""
       plan_priority: 0
     - name: "Starter"
-      quota_apps: 100
-      quota_members: 10
-      quota_kb_storage: 10G
+      quota_apps: 50
+      quota_members: 5
+      quota_kb_storage: 5G
+      quota_points: 5000  # monthly quota (reset each billing cycle)
       api_request_limit_per_minute: 2147483647
       api_request_limit_per_month: 2147483647
       task_priority: "high"
       price_ids: '${BILLING_PRICE_ID_STARTER:-price_1TOCIQ2XhWscgPRmUhPHTvBD}'
       product_type: "subscription"
-      usage_stat_type: ""
       plan_priority: 1
     - name: "Pro"
-      quota_apps: 999999999
-      quota_members: 50
-      quota_kb_storage: 100G
+      quota_apps: 100000
+      quota_members: 20
+      quota_kb_storage: 50G
+      quota_points: 20000  # monthly quota (reset each billing cycle)
       api_request_limit_per_minute: 2147483647
       api_request_limit_per_month: 2147483647
       task_priority: "high"
       price_ids: '${BILLING_PRICE_ID_PRO:-price_1TOCIi2XhWscgPRmpUCmNPE7}'
       product_type: "subscription"
-      usage_stat_type: ""
       plan_priority: 2
 rabbitmq:
   user: "${RABBITMQ_DEFAULT_USER:-rag_flow}"

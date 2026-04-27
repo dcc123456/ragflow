@@ -32,6 +32,7 @@ from api.db.services.tenant_llm_service import LLMFactoriesService, TenantLLMSer
 from api.db.services.billing_service import PricePointService, ProductService, SubscriptionService
 from peewee import IntegrityError
 from api.db import UserTenantRole
+from api.db.db_models import DB
 from api.db.services import UserService
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.memory_service import MemoryService
@@ -245,14 +246,22 @@ def handle_undelivered_events():
             subscription_status = subscription['status']
             customer_id = subscription['customer']
             price_id = subscription['items']['data'][0]['price']['id']
-            plan_name = settings.BILLING['plans'].get(price_id)
+            plan_name = settings.BILLING_PRICEID_TO_PRODUCT.get(price_id)
             if not plan_name:
                 logging.warning(f'handle_undelivered_events could not find plan for price {price_id}')
                 continue
-            updated_rows = SubscriptionService.update_subscription(customer_id, subscription_id, subscription_status, plan_name)
-            if not updated_rows:
+            subscription_dict = {
+                "status": subscription_status,
+                "subscription_status": subscription_status,
+                "subscription_id": subscription_id,
+                "plan_name": plan_name,
+            }
+            sub_record = SubscriptionService.get_by_customer_id(customer_id)
+            if not sub_record:
                 logging.warning(f'handle_undelivered_events could not find tenant for customer {customer_id}')
                 continue
+            with DB.atomic():
+                SubscriptionService.update_subscription(sub_record.tenant_id, subscription_dict)
             logging.info(f'handle_undelivered_events updated customer {customer_id} subscription {subscription_id} status {subscription_status} plan {plan_name}')
         if num_events == 0:
             break

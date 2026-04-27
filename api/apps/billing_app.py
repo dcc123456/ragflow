@@ -17,6 +17,8 @@ import json
 import logging
 import time
 import uuid
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from common.time_utils import current_timestamp
 from datetime import datetime, timezone
 from decimal import Decimal
 
@@ -27,7 +29,7 @@ from quart import g, jsonify, request
 
 from api.apps import current_user, login_required
 from api.db import PaymentChannel, PaymentMethod, PaymentStatus, PriceType, ProductType, SubscriptionStatus
-from api.db.db_models import DB, PaymentOrder, PointHold
+from api.db.db_models import DB, PaymentOrder, PointAccount, PointHold
 from api.db.services.billing_service import (
     BillingWebhookEventService,
     PaymentOrderService,
@@ -124,6 +126,7 @@ MAIN_SUBSCRIPTION_DELINQUENT_STATUSES = {
 MAIN_SUBSCRIPTION_RECOVERABLE_STATUSES = {"incomplete", "past_due", "unpaid"}
 # Cached Stripe webhook endpoint secret (loaded from DB once, cached forever)
 _stripe_webhook_secret: str | None = None
+STRIPE_CHECKOUT_SESSION_ID_PLACEHOLDER = "{CHECKOUT_SESSION_ID}"
 
 
 @manager.before_request  # noqa: F821
@@ -149,6 +152,20 @@ def _billing_disabled_response():
 def _billing_disabled_webhook_response():
     logging.info("Billing disabled; ignoring Stripe webhook.")
     return jsonify(success=True)
+
+
+def _build_checkout_success_url(url: str) -> str:
+    if not url:
+        return url
+
+    if STRIPE_CHECKOUT_SESSION_ID_PLACEHOLDER in url:
+        return url
+
+    parsed = urlsplit(url)
+    query_pairs = [(key, value) for key, value in parse_qsl(parsed.query, keep_blank_values=True) if key != "session_id"]
+    query_pairs.append(("session_id", STRIPE_CHECKOUT_SESSION_ID_PLACEHOLDER))
+    query = urlencode(query_pairs, doseq=True)
+    return urlunsplit(parsed._replace(query=query))
 
 
 def _normalize_subscription_status(status: str | None) -> str:
@@ -542,7 +559,7 @@ async def _create_storage_checkout_session_async(
         client_reference_id=f"storage_order_{uuid.uuid4()}",
         line_items=[{"price": storage_price_id, "quantity": target_quantity_gb}],
         mode=PriceType.SUBSCRIPTION,
-        success_url=session_success_url,
+        success_url=_build_checkout_success_url(session_success_url),
         cancel_url=session_cancel_url,
         metadata=metadata,
         subscription_data=subscription_data,
@@ -1034,10 +1051,10 @@ def _get_api_request_limit_by_plan(plan_name: str, limit_type: str = "month") ->
         return LIMITED_API_REQUESTS
 
 
-@manager.route("/usage_based_overview", methods=["GET"])  # noqa: F821
+@manager.route("/addon_overview", methods=["GET"])  # noqa: F821
 @login_required
 @billing_enabled_guard(_billing_disabled_response)
-async def billing_usage_based_overview():
+async def billing_addon_overview():
     """
     Get a comprehensive overview of usage-based products including:
     - DeepDoc page usage and limits
@@ -1095,27 +1112,21 @@ async def billing_points_checkout():
         if current_user.id != tenant_id:
             return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
 
-        points = req.get("points")
+        quantity = req.get("quantity")
         try:
-            points = int(points)
+            quantity = int(quantity)
         except (TypeError, ValueError):
-            return get_json_result(data=False, message="points must be an integer.", code=RetCode.BAD_REQUEST)
-        if points <= 0:
-            return get_json_result(data=False, message="points must be positive.", code=RetCode.BAD_REQUEST)
+            return get_json_result(data=False, message="quantity must be an integer.", code=RetCode.BAD_REQUEST)
+        if quantity <= 0:
+            return get_json_result(data=False, message="quantity must be positive.", code=RetCode.BAD_REQUEST)
 
         recharge_config = settings.BILLING.get("points_recharge") or {}
         price_id = (recharge_config.get("price_id") or "").strip()
         points_per_unit = int(recharge_config.get("points_per_unit") or 100)
         if not price_id or price_id == "price_xxx":
             return get_json_result(data=False, message="Points recharge is not configured.", code=RetCode.SERVER_ERROR)
-        if points % points_per_unit != 0:
-            return get_json_result(
-                data=False,
-                message=f"points must be a multiple of {points_per_unit}.",
-                code=RetCode.BAD_REQUEST,
-            )
 
-        quantity = points // points_per_unit
+        points = quantity * points_per_unit
         tenant_plan = SubscriptionService.get_by_tenant_id(tenant_id)
         customer_id = (tenant_plan.get("customer_id") or "").strip()
         if not customer_id:
@@ -1132,10 +1143,40 @@ async def billing_points_checkout():
                 "tenant_id": tenant_id,
                 "points_amount": str(points),
             },
-            success_url=settings.BILLING.get("session_success_url", ""),
+            success_url=_build_checkout_success_url(settings.BILLING.get("session_success_url", "")),
             cancel_url=settings.BILLING.get("session_cancel_url", ""),
         )
         return get_json_result(data={"checkout_url": session.url})
+    except Exception as e:
+        return server_error_response(e)
+
+
+@manager.route("/points/price", methods=["GET"])  # noqa: F821
+@login_required
+@billing_enabled_guard(_billing_disabled_response)
+async def billing_points_price():
+    """Return the points recharge price info from Stripe."""
+    try:
+        recharge_config = settings.BILLING.get("points_recharge") or {}
+        price_id = (recharge_config.get("price_id") or "").strip()
+        points_per_unit = int(recharge_config.get("points_per_unit") or 100)
+
+        if not price_id or price_id == "price_xxx":
+            return get_json_result(data=False, message="Points recharge is not configured.", code=RetCode.SERVER_ERROR)
+
+        try:
+            price_obj = await stripe.Price.retrieve_async(price_id)
+            unit_amount = getattr(price_obj, "unit_amount", None)
+            price_usd = unit_amount / 100 if unit_amount is not None else None
+        except Exception as e:
+            logging.warning(f"Failed to fetch Stripe price for points: {e}")
+            price_usd = None
+
+        return get_json_result(data={
+            "price_id": price_id,
+            "price_usd": price_usd,
+            "points_per_unit": points_per_unit,
+        })
     except Exception as e:
         return server_error_response(e)
 
@@ -1284,6 +1325,81 @@ async def billing_points_holds():
                 .dicts()
             )
         return get_json_result(data={"total": total, "items": items})
+    except Exception as e:
+        return server_error_response(e)
+
+
+@manager.route("/points/overview", methods=["GET"])  # noqa: F821
+@login_required
+@billing_enabled_guard(_billing_disabled_response)
+async def billing_points_overview():
+    """Return point overview with quota vs addon breakdown."""
+    try:
+        from common import settings
+        from api.db.services.billing_service import PointAccountService, SubscriptionService
+        from api.db.db_models import PointLedger as PointLedgerModel
+        from api.utils.billing import BILLING_PLAN_TRIAL_NAME
+        from peewee import fn
+
+        tenant_id = request.args.get("tenant_id", current_user.id)
+        if current_user.id != tenant_id:
+            return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
+
+        # Get plan info
+        tenant_plan = SubscriptionService.get_by_tenant_id(tenant_id)
+        plan_name = tenant_plan.get("plan_name", BILLING_PLAN_TRIAL_NAME) if tenant_plan else BILLING_PLAN_TRIAL_NAME
+        plan_info = settings.BILLING_PLAN_TO_INFO.get(plan_name, {})
+        plan_quota = plan_info.get("quota_points", 0)
+
+        # Get current account balance
+        balance = PointAccountService.get_balance(tenant_id)
+
+        # Calculate addon purchased (sum of all recharge events with source=addon)
+        with DB.connection_context():
+            addon_purchased = (
+                PointLedgerModel.select(fn.SUM(PointLedgerModel.points))
+                .where(
+                    PointLedgerModel.tenant_id == tenant_id,
+                    PointLedgerModel.event_type == "recharge",
+                    PointLedgerModel.source == "addon",
+                )
+                .scalar()
+                or 0
+            )
+
+            # Calculate quota consumed (sum of consume events with source=quota)
+            quota_consumed = (
+                PointLedgerModel.select(fn.SUM(PointLedgerModel.points * -1))
+                .where(
+                    PointLedgerModel.tenant_id == tenant_id,
+                    PointLedgerModel.event_type == "consume",
+                    PointLedgerModel.source == "plan",
+                )
+                .scalar()
+                or 0
+            )
+
+            # Calculate addon consumed (sum of consume events with source=addon)
+            addon_consumed = (
+                PointLedgerModel.select(fn.SUM(PointLedgerModel.points * -1))
+                .where(
+                    PointLedgerModel.tenant_id == tenant_id,
+                    PointLedgerModel.event_type == "consume",
+                    PointLedgerModel.source == "addon",
+                )
+                .scalar()
+                or 0
+            )
+
+        return get_json_result(data={
+            "plan_quota": plan_quota,
+            "plan_used": quota_consumed,
+            "plan_remaining": max(0, plan_quota - quota_consumed),
+            "addon_total": addon_purchased,
+            "addon_used": addon_consumed,
+            "addon_remaining": max(0, addon_purchased - addon_consumed),
+            "balance": balance,
+        })
     except Exception as e:
         return server_error_response(e)
 
@@ -1457,7 +1573,7 @@ async def billing_spend_metrics():
                 )
                 .where(
                     PaymentOrder.tenant_id == tenant_id,
-                    PaymentOrder.payment_type == PriceType.USAGE_BASED,
+                    PaymentOrder.payment_type == PriceType.ADDON,
                     PaymentOrder.paid,
                 )
                 .order_by(PaymentOrder.order_created_at.asc())
@@ -1573,6 +1689,8 @@ async def billing_all_plans():
         )
     )
     for plan in latest_plans:
+        plan_info = settings.BILLING_PLAN_TO_INFO.get(plan.name, {})
+        quota_kb_storage = getattr(plan, "quota_kb_storage", 0) or plan_info.get("quota_kb_storage", 0) or 0
         p = {
             "id": plan.id,
             "name": plan.name,
@@ -1582,8 +1700,12 @@ async def billing_all_plans():
             "feature": {
                 "quota_apps": plan.quota_apps,
                 "quota_members": plan.quota_members,
-                "quota_kb_storage": plan.quota_kb_storage,
+                "quota_kb_storage": quota_kb_storage,
                 "quota_api_limits": _get_api_request_limit_by_plan(plan.name, limit_type="month"),
+                "price_per_gb": _calc_storage_price_per_gb(
+                    price_dict.get(plan.name, -1),
+                    quota_kb_storage,
+                ),
             },
         }
         plans.append(p)
@@ -1591,11 +1713,19 @@ async def billing_all_plans():
     return get_json_result(data=plans)
 
 
-@manager.route("/usage_based_plans", methods=["GET"])  # noqa: F821
+def _calc_storage_price_per_gb(price_usd: float, quota_kb_storage: int) -> float:
+    """Calculate storage price per GB from plan price and quota. Returns 0 if unavailable."""
+    if price_usd <= 0 or quota_kb_storage <= 0:
+        return 0.0
+    quota_gb = quota_kb_storage / (1024 * 1024)
+    return price_usd / quota_gb if quota_gb > 0 else 0.0
+
+
+@manager.route("/addon_plans", methods=["GET"])  # noqa: F821
 @login_required
 @billing_enabled_guard(_billing_disabled_response)
-async def billing_all_usage_based_plans():
-    latest_products = ProductService.get_latest_by_type(ProductType.USAGE_BASED)
+async def billing_all_addon_plans():
+    latest_products = ProductService.get_latest_by_type(ProductType.ADDON)
     latest_products = list(latest_products)
 
     price_dict = {}
@@ -1611,10 +1741,12 @@ async def billing_all_usage_based_plans():
                         break
         except Exception as e:
             logging.warning(f"Failed to fetch Stripe prices by price_id: {e}")
-    usage_based_plans = []
+    addon_plans = []
     latest_products.sort(key=lambda product: product.name)
     for product in latest_products:
-        usage_based_plans.append(
+        plan_info = settings.BILLING_PLAN_TO_INFO.get(product.name, {})
+        product_quota_kb_storage = getattr(product, "quota_kb_storage", 0) or 0
+        addon_plans.append(
             {
                 "id": product.id,
                 "name": product.name,
@@ -1622,10 +1754,17 @@ async def billing_all_usage_based_plans():
                 "description": product.description,
                 "price_ids": product.price_ids,
                 "usage_stat_type": product.usage_stat_type,
+                "feature": {
+                    "quota_kb_storage": product_quota_kb_storage,
+                    "price_per_gb": _calc_storage_price_per_gb(
+                        price_dict.get(product.name, -1),
+                        product_quota_kb_storage,
+                    ),
+                },
             }
         )
 
-    return get_json_result(data=usage_based_plans)
+    return get_json_result(data=addon_plans)
 
 
 @manager.route("/upcoming", methods=["POST"])  # noqa: F821
@@ -1710,12 +1849,12 @@ async def billing_checkout():
     Arguments:
         tenant_id:
         price_id:
-        payment_type: subscription, usage_based
+        payment_type: subscription, addon
     """
     req = await get_request_json()
     tenant_id = req.get("tenant_id")
     # price_id = req.get("price_id")
-    usage_based_price_id = req.get("usage_based_price_id")
+    addon_price_id = req.get("addon_price_id")
     subscription_price_id = req.get("subscription_price_id")
     quantity = req.get("quantity", 1)
     payment_type = req.get("payment_type")
@@ -1751,7 +1890,7 @@ async def billing_checkout():
 
     logging.info(f"{payment_type=}")
     logging.info(f"{subscription_price_id=}")
-    if payment_type not in (PriceType.SUBSCRIPTION, PriceType.USAGE_BASED):
+    if payment_type not in (PriceType.SUBSCRIPTION, PriceType.ADDON):
         return get_data_error_result(message="Unsupported payment type.")
     if payment_type == PriceType.SUBSCRIPTION and not subscription_price_id:
         return get_json_result(
@@ -1759,10 +1898,10 @@ async def billing_checkout():
             message="Missing required parameters subscription_price_id.",
             code=RetCode.BAD_REQUEST,
         )
-    if payment_type == PriceType.USAGE_BASED and not usage_based_price_id:
+    if payment_type == PriceType.ADDON and not addon_price_id:
         return get_json_result(
             data=False,
-            message="Missing required parameters usage_based_price_id.",
+            message="Missing required parameters addon_price_id.",
             code=RetCode.BAD_REQUEST,
         )
 
@@ -1770,6 +1909,13 @@ async def billing_checkout():
         return get_json_result(
             data=False,
             message="Quantity must be a positive integer.",
+            code=RetCode.BAD_REQUEST,
+        )
+
+    if payment_type == PriceType.SUBSCRIPTION and not float(quantity).is_integer():
+        return get_json_result(
+            data=False,
+            message="Quantity must be an integer.",
             code=RetCode.BAD_REQUEST,
         )
 
@@ -1823,7 +1969,7 @@ async def billing_checkout():
                             client_reference_id=f"order_{uuid.uuid4()}",
                             line_items=[{"price": subscription_price_id, "quantity": quantity}],
                             mode=PriceType.SUBSCRIPTION,
-                            success_url=session_success_url,
+                            success_url=_build_checkout_success_url(session_success_url),
                             cancel_url=session_cancel_url,
                             metadata={
                                 "price_type": PriceType.SUBSCRIPTION,
@@ -1882,7 +2028,7 @@ async def billing_checkout():
                 # automatic_tax={"enabled": True},  # need valid address
                 # phone_number_collection={"enabled": True},
                 "mode": PriceType.SUBSCRIPTION,
-                "success_url": session_success_url,
+                "success_url": _build_checkout_success_url(session_success_url),
                 "cancel_url": session_cancel_url,
                 "metadata": {
                     "price_type": PriceType.SUBSCRIPTION,
@@ -1917,11 +2063,11 @@ async def billing_checkout():
             logging.info(f"created stripe session id {session.id}, url: {session.url}")
             return get_json_result(data={"redirect_to": session.url})
 
-        elif payment_type == PriceType.USAGE_BASED:
+        elif payment_type == PriceType.ADDON:
             logging.info("ENTERING PAYMENT SECTION")
-            usage_product_name = settings.BILLING_PRICEID_TO_PRODUCT.get(usage_based_price_id, "")
+            usage_product_name = settings.BILLING_PRICEID_TO_PRODUCT.get(addon_price_id, "")
 
-            if is_storage_price_id(usage_based_price_id):
+            if is_storage_price_id(addon_price_id):
                 return get_data_error_result(message="Storage add-on checkout moved to /billing/storage/set-target.")
 
             if quantity <= 0:
@@ -1932,9 +2078,9 @@ async def billing_checkout():
                 )
 
             usage_metadata = {
-                "price_type": PriceType.USAGE_BASED,
+                "price_type": PriceType.ADDON,
                 "tenant_id": tenant_id,
-                "price_id": usage_based_price_id,
+                "price_id": addon_price_id,
                 "product_name": usage_product_name,
                 "quantity": quantity,
             }
@@ -1951,14 +2097,14 @@ async def billing_checkout():
                 line_items=[
                     {
                         # TODO: just for testing
-                        "price": usage_based_price_id,
+                        "price": addon_price_id,
                         "quantity": quantity,
                     }
                 ],
                 # automatic_tax={"enabled": True},
                 # phone_number_collection={"enabled": True},
                 mode="payment",
-                success_url=session_success_url,
+                success_url=_build_checkout_success_url(session_success_url),
                 cancel_url=session_cancel_url,
                 payment_intent_data={"metadata": usage_metadata},
             )
@@ -2185,7 +2331,8 @@ async def billing_success():
 
     session_id = request.args.get("session_id", "")
     if not session_id:
-        return redirect(f"{settings.BILLING.get('customer_portal_return_url', '')}/price?price-pay-status=cancel")
+        logging.warning("Stripe success redirect missing session_id.")
+        return redirect(f"{settings.BILLING.get('customer_portal_return_url', '')}/price?price-pay-status=error")
 
     try:
         checkout_session = stripe.checkout.Session.retrieve(session_id)
@@ -2337,7 +2484,7 @@ def _handle_payment_intent_succeeded(event: dict):
     else:
         logging.warning("Expected metadata in _handle_payment_intent_succeeded, but get empty.")
 
-    if not intent_metadata or price_type != PriceType.USAGE_BASED:
+    if not intent_metadata or price_type != PriceType.ADDON:
         logging.info(f"{tenant_id} triggered {price_type} product {product_name} in intent succeeded, skipped. May handle in subscription.paid.")
         return
 
@@ -2345,12 +2492,12 @@ def _handle_payment_intent_succeeded(event: dict):
     try:
         from api.db.services.billing_service import ProductService
         from api.db.db_models import ProductType
-        latest_usage_based_products = ProductService.get_latest_by_type(ProductType.USAGE_BASED)
-        for product in latest_usage_based_products:
+        latest_addon_products = ProductService.get_latest_by_type(ProductType.ADDON)
+        for product in latest_addon_products:
             if product.price_ids:
                 valid_price_ids.extend(product.price_ids.split())
     except Exception as e:
-        logging.error(f"Failed to fetch usage_based products for price_id validation: {e}")
+        logging.error(f"Failed to fetch addon products for price_id validation: {e}")
 
     if price_id not in valid_price_ids:
         logging.info(f"{tenant_id} triggered price_type {price_type} product {product_name} with unhandled price_id {price_id}, skipped.")
@@ -2381,7 +2528,7 @@ def _handle_payment_intent_succeeded(event: dict):
         "id": get_uuid(),
         "tenant_id": tenant_id,
         "customer_id": customer_id,
-        "payment_type": PriceType.USAGE_BASED,
+        "payment_type": PriceType.ADDON,
         "product_id": product_id,
         "product_name": product_name,
         "is_prorated": False,
@@ -2402,7 +2549,7 @@ def _handle_payment_intent_succeeded(event: dict):
         "payment_detail": {"quantity": quantity, "quantity_unit": quantity_unit, "quota_quantity": quota_quantity, "quota_unit": quota_unit},
     }
     print(f"\nintend.succeed parsed payment order {payment_order=}")
-    # NOTE: We intentionally do NOT persist to the legacy `billing_usage_based` table.
+    # NOTE: We intentionally do NOT persist to the legacy `billing_addon` table.
     # The current system uses:
     # - `billing_payment_order` as the per-purchase ledger/history (needed for spend analytics), and
     # - `billing_purchased_product_overview` as the current remaining quota snapshot.
@@ -2643,7 +2790,7 @@ def _handle_checkout_session_completed(event: dict):
                             id=get_uuid(),
                             tenant_id=tenant_id,
                             customer_id=customer_id,
-                            payment_type=PriceType.USAGE_BASED,
+                            payment_type=PriceType.ADDON,
                             product_id=None,
                             product_name="points_recharge",
                             is_prorated=False,
@@ -2976,6 +3123,11 @@ def _handle_invoice_paid(event: dict):
             SubscriptionService.update_subscription(tenant_id, subscription_dict)
     except Exception:
         logging.exception(f"Handle invoice paid subscription sync error: {order_id}")
+
+    # Sync available_plan_points when subscription is paid
+    if payment_order.get("payment_status") == PaymentStatus.SUCCESS.value and plan_name:
+        plan_quota = settings.BILLING_PLAN_TO_INFO.get(plan_name, {}).get("quota_points", 0)
+        PointAccountService.sync_plan_points_on_subscription_paid(tenant_id, plan_quota)
 
     print("\nabove is invoice.paid")
 
@@ -3361,12 +3513,28 @@ def _handle_customer_subscription_updated(event: dict):
             if new_price.unit_amount > (old_amount or 0):
                 old_label = _plan_label(old_price_id, getattr(old_price, "nickname", None) if old_price else None)
                 new_label = _plan_label(new_price_id, new_price.nickname)
-                print(f"UPGRADE from {old_label} to {new_label}")
-                # Additional upgrade-specific logic if needed
+                logging.info(f"UPGRADE from {old_label} to {new_label}")
+                # Preserve mid-cycle usage: compute how many points have been consumed
+                # this cycle, then restore that amount on top of the new quota.
+                account = PointAccount.get_or_none(PointAccount.tenant_id == tenant_id)
+                consumed = 0
+                if account:
+                    old_plan_quota = settings.BILLING_PLAN_TO_INFO.get(
+                        settings.BILLING_PRICEID_TO_PRODUCT.get(old_price_id, ""), {}
+                    ).get("quota_points", 0)
+                    consumed = old_plan_quota - account.available_plan_points
+                new_plan_quota = settings.BILLING_PLAN_TO_INFO.get(product_name, {}).get("quota_points", 0)
+                PointAccountService.sync_plan_points_on_subscription_paid(tenant_id, new_plan_quota)
+                if consumed > 0:
+                    account = PointAccount.get_or_none(PointAccount.tenant_id == tenant_id)
+                    if account:
+                        account.available_plan_points = max(0, new_plan_quota - consumed)
+                        account.update_time = current_timestamp()
+                        account.save()
             else:
                 old_label = _plan_label(old_price_id, getattr(old_price, "nickname", None) if old_price else None)
                 new_label = _plan_label(new_price_id, new_price.nickname)
-                print(f"DOWNGRADE from {old_label} to {new_label}")
+                logging.info(f"DOWNGRADE from {old_label} to {new_label}")
                 # Additional downgrade-specific logic if needed
 
             try:

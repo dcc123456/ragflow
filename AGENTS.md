@@ -419,3 +419,81 @@ RAGFlow supports switching between Elasticsearch (default) and Infinity:
 - **Kubernetes Cluster**: v1.24+ with kubectl access configured
 - **Gateway API**: Requires Cilium or NGINX Gateway support
 - **Helm**: For installing Gateway API components
+
+
+<claude-mem-context>
+# Memory Context
+
+# [ragflow_enterprise] recent context, 2026-04-25 6:14am UTC
+
+Legend: 🎯session 🔴bugfix 🟣feature 🔄refactor ✅change 🔵discovery ⚖️decision 🚨security_alert 🔐security_note
+Format: ID TIME TYPE TITLE
+Fetch details: get_observations([IDs]) | Search: mem-search skill
+
+Stats: 50 obs (13,325t read) | 521,358t work | 97% savings
+
+### Apr 24, 2026
+S26 Adjust billing-related fields in conf/service_conf.yaml to match docker/service_conf.yaml.template (some missing, some extraneous) (Apr 24, 2:26 AM)
+S27 billing_webhook_secret stored in MySQL system_settings table (Apr 24, 2:26 AM)
+S29 Investigating billing_webhook_secret in MySQL system_settings table for RAGFlow Enterprise billing configuration (Apr 24, 2:55 AM)
+S31 Typo in Terraform variable validation blocks tofu apply (Apr 24, 2:55 AM)
+S42 Points checkout refactored to use quantity-based API with dynamic pricing (Apr 24, 3:38 AM)
+S44 Buy Credits dialog refactored to use backend-sourced price info and quantity-based checkout (Apr 24, 5:44 AM)
+S56 Root cause: wrong function name in migration (Apr 24, 5:45 AM)
+S57 Fix ragflow pod crash - NameError in db_models.py migration (Apr 24, 2:46 PM)
+S69 Buy Credits payment success shows error dialog (Apr 24, 2:47 PM)
+### Apr 25, 2026
+64 5:08a 🔵 Buy Credits webhook flow and payment confirmation mechanism
+66 5:09a 🔵 Points recharge webhook uses checkout.session.completed, not payment_intent.succeeded
+67 " 🔵 Root cause: get_metadata_from_intent returns empty dict causing error dialog
+68 5:11a 🔴 Buy Credits payment success shows error dialog
+69 " 🔵 PointAccount.recharge uses idempotency pattern
+70 5:12a 🔵 User rejects kubectl env check for BILLING_SERVICE_URL diagnosis
+71 " 🔵 User disputes kubectl-based BILLING_SERVICE_URL diagnosis approach
+72 5:13a 🔵 Ragflow pods not visible in stage cluster kubectl context
+73 " 🔵 Ragflow pods found in ragflow namespace on stage cluster
+74 " 🔵 Stage cluster ragflow pod billing environment variables discovered
+75 5:14a 🔵 Correct service_conf.yaml path inside ragflow pod is /ragflow/conf/
+77 " 🔵 Stage cluster billing configuration retrieved from /ragflow/conf/service_conf.yaml
+78 " 🔵 Billing success redirect flow in billing_app.py analyzed
+79 " 🔵 Tested billing success endpoint with invalid session_id
+80 5:15a 🔵 Frontend price-pay-status handling in React components
+83 5:17a 🔵 PointAccount.recharge idempotency pattern in billing_service.py
+84 5:18a 🔵 Checkout session completed handler for points_recharge
+86 5:20a 🔵 Stripe webhook endpoint configuration in stage cluster logs
+88 5:21a 🔵 Only one checkout.session.completed reference in logs - webhook registration only
+89 5:22a 🔵 Billing webhook signature verification flow in billing_app.py
+91 5:23a 🔵 Webhook handler prints "Passed in {event_type}" on successful processing
+92 5:24a 🔵 Stripe webhook secret stored in database system_settings table
+93 5:26a 🔵 Billing webhook secret successfully retrieved from database
+95 5:29a 🔵 Buy Credits payment succeeds but shows error dialog
+96 5:30a 🔵 Billing success endpoint redirects to error on invalid session
+98 5:31a 🔵 Stripe checkout sessions confirm successful payments
+S112 Debug Buy Credits payment success showing error dialog despite successful Stripe payment (Apr 25, 5:32 AM)
+99 5:43a 🔴 Buy Credits payment success shows error dialog despite successful Stripe payment
+100 " 🔵 PointAccount.recharge uses idempotency pattern with payment_intent_id
+101 " 🔵 No checkout.session.completed events processed since billing pod startup
+102 5:44a 🔴 Buy Credits payment success shows error dialog despite successful Stripe payment
+103 " 🔵 No checkout.session.completed webhook events processed since pod startup
+104 " 🔵 Stripe webhook URL configuration and event delivery verification needed
+105 " 🔵 Payment success modal logic and redirect flow traced
+109 5:45a 🔵 Points payments ARE succeeding - credits are being added to PointAccount
+110 " 🔵 Billing success/cancel URLs configured to localhost in deployed service_conf.yaml
+111 " 🔵 Frontend success modal has inverted title/content for unrecognized payment status
+112 5:46a 🔵 No checkout.session.completed webhook events processed since pod startup
+113 " 🔵 Success modal logic in pricing-plan/index.tsx maps status to title/content
+114 " 🔵 PointAccount.recharge idempotency pattern uses idempotency_key
+115 5:47a 🔵 GKE cluster context: gke_ragflow-stage_us-east1_stage-cluster-1
+117 " 🔵 Webhook signature verification failing on pod kkfkw
+118 " 🔵 Empty metadata warning in payment_intent.succeeded handler
+119 " 🔵 /v1/billing/success endpoint returns 302 redirect
+121 5:51a 🔴 Added session_id query parameter to Stripe checkout success URLs
+122 " 🔵 Stripe webhook signature verification fails on replica kkfkw
+123 " 🔵 Empty metadata in payment_intent.succeeded causes recharge skip
+124 " 🔴 Applied _build_checkout_success_url across all Stripe checkout paths
+125 " 🔴 /success endpoint now returns error status instead of cancel for missing session_id
+126 5:53a 🔴 Stripe checkout success URL now includes session ID for frontend verification
+127 " 🔴 Buy Credits payment modal now displays correct title and content
+
+Access 521k tokens of past work via get_observations([IDs]) or mem-search skill.
+</claude-mem-context>

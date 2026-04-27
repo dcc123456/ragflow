@@ -1617,7 +1617,8 @@ class PointAccount(DataBaseModel):
 
     id = CharField(max_length=32, primary_key=True)
     tenant_id = CharField(max_length=32, null=False, index=True, unique=True)
-    available_points = BigIntegerField(null=False, default=0)
+    available_plan_points = BigIntegerField(null=False, default=0)  # plan quota remaining (monthly resetting)
+    available_addon_points = BigIntegerField(null=False, default=0)  # addon purchased remaining (permanent)
     held_points = BigIntegerField(null=False, default=0)
 
     class Meta:
@@ -1632,6 +1633,7 @@ class PointLedger(DataBaseModel):
     event_type = CharField(max_length=32, null=False)
     # event_type choices: recharge / hold_created / consume / release
     points = BigIntegerField(null=False)  # positive=credit, negative=debit
+    source = CharField(max_length=16, null=False, default="plan")  # "addon" or "plan"
     idempotency_key = CharField(max_length=128, null=False, unique=True, index=True)
     related_hold_id = CharField(max_length=32, null=True, index=True)
     description = TextField(null=True)
@@ -1648,6 +1650,8 @@ class PointHold(DataBaseModel):
     tenant_id = CharField(max_length=32, null=False, index=True)
     doc_id = CharField(max_length=32, null=False, index=True)
     points = BigIntegerField(null=False)
+    plan_points = BigIntegerField(null=False, default=0)  # portion deducted from plan quota
+    addon_points = BigIntegerField(null=False, default=0)  # portion deducted from addon
     status = CharField(max_length=32, null=False, default="held", index=True)
     # status choices: held / committed / released / expired
     idempotency_key = CharField(max_length=128, null=False, unique=True, index=True)
@@ -2298,6 +2302,16 @@ def migrate_db():
     alter_db_add_column(migrator, "memory", "tenant_llm_id", IntegerField(null=True, help_text="id in tenant_llm", index=True))
     alter_db_add_column(migrator, "user_canvas_version", "release", BooleanField(null=False, help_text="is released", default=False, index=True))
     alter_db_add_column(migrator, "api_4_conversation", "version_title", CharField(max_length=255, null=True, help_text="canvas version title when session created", index=False))
+
+    # Billing points split (2026-04-24)
+    # PointAccount: available_plan_points (plan quota remaining), available_addon_points (addon remaining)
+    alter_db_add_column(migrator, "billing_point_account", "available_plan_points", BigIntegerField(null=False, default=0))
+    alter_db_add_column(migrator, "billing_point_account", "available_addon_points", BigIntegerField(null=False, default=0))
+    alter_db_add_column(migrator, "billing_point_ledger", "source", CharField(max_length=16, null=False, default="plan"))
+    alter_db_add_column(migrator, "billing_point_hold", "plan_points", BigIntegerField(null=False, default=0))
+    alter_db_add_column(migrator, "billing_point_hold", "addon_points", BigIntegerField(null=False, default=0))
+    alter_db_remove_column(migrator, "billing_point_account", "available_points")
+
     logging.disable(logging.NOTSET)
     # this is after re-enabling logging to allow logging changed user emails
     migrate_add_unique_email(migrator)

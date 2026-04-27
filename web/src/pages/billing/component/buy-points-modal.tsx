@@ -3,9 +3,10 @@ import { NumberInput } from '@/components/ui/input';
 import message from '@/components/ui/message';
 import { Modal } from '@/components/ui/modal/modal';
 import { Coins, DollarSign, Loader2 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { usePointsCheckout } from '../points/hook/points';
+import { getBillingPointsPrice } from '@/services/price';
 
 interface BuyPointsModalProps {
   visible: boolean;
@@ -13,14 +14,14 @@ interface BuyPointsModalProps {
   currentPoints: number;
 }
 
-const POINTS_PER_DOLLAR = 100;
-const QUICK_SELECT_OPTIONS = [
-  { dollars: 10, points: 1000 },
-  { dollars: 25, points: 2500 },
-  { dollars: 50, points: 5000 },
-  { dollars: 100, points: 10000 },
-  { dollars: 200, points: 20000 },
-];
+interface PointsPriceInfo {
+  price_id: string;
+  price_usd: number | null;
+  points_per_unit: number;
+}
+
+const DEFAULT_POINTS_PER_UNIT = 100;
+const QUICK_SELECT_DOLLARS = [10, 20, 30, 40, 50];
 
 const BuyPointsModal: React.FC<BuyPointsModalProps> = ({
   visible,
@@ -28,15 +29,44 @@ const BuyPointsModal: React.FC<BuyPointsModalProps> = ({
   currentPoints = 0,
 }) => {
   const { t } = useTranslation();
-  const [amount, setAmount] = useState<number>(5);
+  const [amount, setAmount] = useState<number>(10);
   const [selectedQuickOption, setSelectedQuickOption] = useState<number | null>(
-    null,
+    0,
   );
+  const [pointsPriceInfo, setPointsPriceInfo] = useState<PointsPriceInfo | null>(null);
+  const [loadingPrice, setLoadingPrice] = useState(false);
   const checkoutMutation = usePointsCheckout();
 
+  const pointsPerUnit = pointsPriceInfo?.points_per_unit || DEFAULT_POINTS_PER_UNIT;
+
+  useEffect(() => {
+    if (visible) {
+      setLoadingPrice(true);
+      getBillingPointsPrice()
+        .then((res: any) => {
+          if (res?.data?.code === 0 && res?.data?.data) {
+            setPointsPriceInfo(res.data.data);
+          }
+        })
+        .catch(() => {
+          // Use defaults
+        })
+        .finally(() => {
+          setLoadingPrice(false);
+        });
+    }
+  }, [visible]);
+
   const calculatedPoints = useMemo(() => {
-    return amount * POINTS_PER_DOLLAR;
-  }, [amount]);
+    return amount * pointsPerUnit;
+  }, [amount, pointsPerUnit]);
+
+  const quickSelectPoints = useMemo(() => {
+    return QUICK_SELECT_DOLLARS.map((dollars) => ({
+      dollars,
+      points: dollars * pointsPerUnit,
+    }));
+  }, [pointsPerUnit]);
 
   const handleQuickSelect = (dollars: number, index: number) => {
     setSelectedQuickOption(index);
@@ -53,14 +83,13 @@ const BuyPointsModal: React.FC<BuyPointsModalProps> = ({
       message.error(t('billing.buyPointsMinError'));
       return;
     }
-    const points = amount * POINTS_PER_DOLLAR;
-    checkoutMutation.mutate(points, {
+    checkoutMutation.mutate(amount, {
       onSuccess: (res) => {
         if (res?.code === 0 && res?.data?.checkout_url) {
           window.open(res.data.checkout_url, '_blank');
           onClose();
-          setAmount(5);
-          setSelectedQuickOption(null);
+          setAmount(10);
+          setSelectedQuickOption(0);
         } else {
           message.error(res?.message || t('billing.buyPointsFailed'));
         }
@@ -73,8 +102,8 @@ const BuyPointsModal: React.FC<BuyPointsModalProps> = ({
 
   const handleClose = () => {
     onClose();
-    setAmount(5);
-    setSelectedQuickOption(null);
+    setAmount(10);
+    setSelectedQuickOption(0);
   };
 
   return (
@@ -99,7 +128,7 @@ const BuyPointsModal: React.FC<BuyPointsModalProps> = ({
             </Button>
             <Button
               onClick={handleConfirm}
-              disabled={checkoutMutation.isPending || amount <= 0}
+              disabled={checkoutMutation.isPending || amount <= 0 || loadingPrice}
             >
               {checkoutMutation.isPending ? (
                 <>
@@ -126,29 +155,20 @@ const BuyPointsModal: React.FC<BuyPointsModalProps> = ({
               {currentPoints?.toLocaleString()}
             </span>
           </div>
-          {/* <div className="flex items-center justify-between">
-            <span className="text-text-secondary flex items-center gap-2">
-              <DollarSign className="w-4 h-4" />
-              {t('billing.equivalentUsd')}
-            </span>
-            <span className="text-text-primary font-medium">
-              ≈ ${(currentPoints / POINTS_PER_DOLLAR).toFixed(2)}
-            </span>
-          </div> */}
         </div>
 
         {/* Quick Select */}
         <div>
           <p className="text-base font-medium text-text-primary mb-3">
             {t('billing.quickSelectTip', {
-              ratio: `$ 1 = ${POINTS_PER_DOLLAR} ${t('billing.points')}`,
+              ratio: `$ 1 = ${pointsPerUnit} ${t('billing.points')}`,
             })}
             <span className="text-xs font-normal text-text-secondary ml-3">
-              {`$ 1 = ${POINTS_PER_DOLLAR} ${t('billing.points')}`}
+              {`$ 1 = ${pointsPerUnit} ${t('billing.points')}`}
             </span>
           </p>
           <div className="grid grid-cols-3 gap-x-10 gap-y-5">
-            {QUICK_SELECT_OPTIONS.map((option, index) => (
+            {quickSelectPoints.map((option, index) => (
               <button
                 key={option.dollars}
                 onClick={() => handleQuickSelect(option.dollars, index)}
@@ -193,26 +213,6 @@ const BuyPointsModal: React.FC<BuyPointsModalProps> = ({
             {calculatedPoints.toLocaleString()} {t('billing.points')}
           </div>
         </div>
-
-        {/* Preview */}
-        {/* <div className="bg-accent-primary/5 rounded-lg p-4 border border-accent-primary/20">
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-text-secondary">
-              {t('billing.youWillReceive')}
-            </span>
-            <span className="text-lg font-semibold text-accent-primary">
-              {calculatedPoints?.toLocaleString()} {t('billing.points')}
-            </span>
-          </div>
-          <div className="flex items-center justify-between mt-1">
-            <span className="text-xs text-text-secondary">
-              {t('billing.total')}
-            </span>
-            <span className="text-sm text-text-primary">
-              ${amount.toFixed(2)} USD
-            </span>
-          </div>
-        </div> */}
       </div>
     </Modal>
   );

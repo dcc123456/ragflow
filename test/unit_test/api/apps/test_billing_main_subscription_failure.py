@@ -459,6 +459,7 @@ def test_invoice_paid_updates_existing_failed_order_and_restores_active(monkeypa
     )
     monkeypatch.setattr(billing_app.PaymentOrderService, "update_by_order_id", lambda order_id, data: payment_order_updates.append((order_id, data)))
     monkeypatch.setattr(billing_app.PaymentOrderService, "save", lambda **_kwargs: (_ for _ in ()).throw(AssertionError("should update existing order")))
+    monkeypatch.setattr(billing_app.PointAccountService, "sync_plan_points_on_subscription_paid", lambda _tenant_id, _plan_quota: None)
 
     event = {"type": "invoice.paid", "data": {"object": {"id": "in_failed"}}}
 

@@ -167,7 +167,7 @@ class SubscriptionService(CommonService):
                 return tenant_plan
 
         tenant_plan = cls._ensure_trial_stripe_subscription(tenant_plan)
-        print(f"{tenant_plan=}")
+        logging.debug(f"tenant_plan={tenant_plan}")
         billing_plan = ProductService.get_by_name(tenant_plan["plan_name"])
         assert billing_plan is not None
         plan_name = billing_plan.pop("name")
@@ -439,6 +439,11 @@ class SubscriptionService(CommonService):
         if subscription_status not in ENTITLED_MAIN_SUBSCRIPTION_STATUSES:
             return 0
         return 1
+
+    @classmethod
+    def get_by_customer_id(cls, customer_id: str):
+        """Look up subscription by Stripe customer_id."""
+        return cls.model.get_or_none(cls.model.customer_id == customer_id)
 
     @classmethod
     def update_subscription(cls, tenant_id, subscription_dict):
@@ -898,6 +903,20 @@ class InsufficientPointsError(Exception):
 class PointAccountService:
     """Manages per-tenant point balances with atomic transactions."""
 
+    @staticmethod
+    def _get_plan_quota_points(tenant_id: str) -> int:
+        """Get quota_points from the tenant's current plan (dynamic, not stored)."""
+        try:
+            from api.db.services.billing_service import SubscriptionService
+            from common import settings
+            from api.utils.billing import BILLING_PLAN_TRIAL_NAME
+            subscription = SubscriptionService.get_by_tenant_id(tenant_id)
+            plan_name = subscription.get("plan_name", BILLING_PLAN_TRIAL_NAME) if subscription else BILLING_PLAN_TRIAL_NAME
+            plan_info = settings.BILLING_PLAN_TO_INFO.get(plan_name, {})
+            return plan_info.get("quota_points", 0)
+        except Exception:
+            return 0
+
     @classmethod
     def get_or_create(cls, tenant_id: str) -> dict:
         """Must be called within an existing DB connection context or atomic block."""
@@ -906,7 +925,8 @@ class PointAccountService:
             return {
                 "id": account.id,
                 "tenant_id": account.tenant_id,
-                "available_points": account.available_points,
+                "available_plan_points": account.available_plan_points,
+                "available_addon_points": account.available_addon_points,
                 "held_points": account.held_points,
             }
         account_id = get_uuid()
@@ -914,7 +934,8 @@ class PointAccountService:
             PointAccount.insert(
                 id=account_id,
                 tenant_id=tenant_id,
-                available_points=0,
+                available_plan_points=0,
+                available_addon_points=0,
                 held_points=0,
                 create_time=current_timestamp(),
                 update_time=current_timestamp(),
@@ -925,7 +946,8 @@ class PointAccountService:
         return {
             "id": account.id,
             "tenant_id": account.tenant_id,
-            "available_points": account.available_points,
+            "available_plan_points": account.available_plan_points,
+            "available_addon_points": account.available_addon_points,
             "held_points": account.held_points,
         }
 
@@ -940,6 +962,7 @@ class PointAccountService:
                     tenant_id=tenant_id,
                     event_type="recharge",
                     points=points,
+                    source="addon",  # all recharges go to addon pool
                     idempotency_key=idempotency_key,
                     description=description,
                     metadata=metadata or {},
@@ -949,7 +972,7 @@ class PointAccountService:
             except IntegrityError:
                 # Idempotent: already recharged
                 return PointLedger.get(PointLedger.idempotency_key == idempotency_key).__data__
-            account.available_points += points
+            account.available_addon_points += points
             account.update_time = current_timestamp()
             account.save()
             return ledger.__data__
@@ -965,32 +988,59 @@ class PointAccountService:
             if existing_hold:
                 return existing_hold.__data__
 
-            if account.available_points < points:
+            total_available = account.available_plan_points + account.available_addon_points
+            if total_available < points:
                 raise InsufficientPointsError(
-                    f"Tenant {tenant_id} has {account.available_points} points, need {points}"
+                    f"Tenant {tenant_id} has {total_available} points, need {points}"
                 )
+
+            # Determine how much to deduct from plan vs addon (prefer plan first)
+            plan_used = min(account.available_plan_points, points)
+            addon_used = points - plan_used
 
             hold = PointHold.create(
                 id=get_uuid(),
                 tenant_id=tenant_id,
                 doc_id=doc_id,
                 points=points,
+                plan_points=plan_used,
+                addon_points=addon_used,
                 status="held",
                 idempotency_key=idempotency_key,
                 create_time=current_timestamp(),
                 update_time=current_timestamp(),
             )
-            PointLedger.create(
-                id=get_uuid(),
-                tenant_id=tenant_id,
-                event_type="hold_created",
-                points=-points,
-                idempotency_key=f"hold:{hold.id}",
-                related_hold_id=hold.id,
-                create_time=current_timestamp(),
-                update_time=current_timestamp(),
-            )
-            account.available_points -= points
+
+            # Record plan portion if any
+            if plan_used > 0:
+                PointLedger.create(
+                    id=get_uuid(),
+                    tenant_id=tenant_id,
+                    event_type="hold_created",
+                    points=-plan_used,
+                    source="plan",
+                    idempotency_key=f"hold:{hold.id}:plan",
+                    related_hold_id=hold.id,
+                    create_time=current_timestamp(),
+                    update_time=current_timestamp(),
+                )
+
+            # Record addon portion if any
+            if addon_used > 0:
+                PointLedger.create(
+                    id=get_uuid(),
+                    tenant_id=tenant_id,
+                    event_type="hold_created",
+                    points=-addon_used,
+                    source="addon",
+                    idempotency_key=f"hold:{hold.id}:addon",
+                    related_hold_id=hold.id,
+                    create_time=current_timestamp(),
+                    update_time=current_timestamp(),
+                )
+
+            account.available_plan_points -= plan_used
+            account.available_addon_points -= addon_used
             account.held_points += points
             account.update_time = current_timestamp()
             account.save()
@@ -1010,16 +1060,32 @@ class PointAccountService:
             account.held_points -= hold.points
             account.update_time = current_timestamp()
             account.save()
-            PointLedger.create(
-                id=get_uuid(),
-                tenant_id=hold.tenant_id,
-                event_type="consume",
-                points=-hold.points,
-                idempotency_key=f"commit:{hold_id}",
-                related_hold_id=hold_id,
-                create_time=current_timestamp(),
-                update_time=current_timestamp(),
-            )
+            # Consume events don't restore points - quota/addon already deducted at hold time
+            # Write separate ledger entries for plan and addon portions if both exist
+            if hold.plan_points > 0:
+                PointLedger.create(
+                    id=get_uuid(),
+                    tenant_id=hold.tenant_id,
+                    event_type="consume",
+                    points=-hold.plan_points,
+                    source="plan",
+                    idempotency_key=f"commit:{hold_id}:plan",
+                    related_hold_id=hold_id,
+                    create_time=current_timestamp(),
+                    update_time=current_timestamp(),
+                )
+            if hold.addon_points > 0:
+                PointLedger.create(
+                    id=get_uuid(),
+                    tenant_id=hold.tenant_id,
+                    event_type="consume",
+                    points=-hold.addon_points,
+                    source="addon",
+                    idempotency_key=f"commit:{hold_id}:addon",
+                    related_hold_id=hold_id,
+                    create_time=current_timestamp(),
+                    update_time=current_timestamp(),
+                )
             hold.status = "committed"
             hold.update_time = current_timestamp()
             hold.save()
@@ -1036,20 +1102,37 @@ class PointAccountService:
             if hold.status != "held":
                 return False
             account = PointAccount.select().where(PointAccount.tenant_id == hold.tenant_id).for_update().get()
-            account.available_points += hold.points
+            # Restore points back to plan and addon portions
+            account.available_plan_points += hold.plan_points
+            account.available_addon_points += hold.addon_points
             account.held_points -= hold.points
             account.update_time = current_timestamp()
             account.save()
-            PointLedger.create(
-                id=get_uuid(),
-                tenant_id=hold.tenant_id,
-                event_type="release",
-                points=hold.points,
-                idempotency_key=f"release:{hold_id}",
-                related_hold_id=hold_id,
-                create_time=current_timestamp(),
-                update_time=current_timestamp(),
-            )
+            # Write separate ledger entries for plan and addon portions if both exist
+            if hold.plan_points > 0:
+                PointLedger.create(
+                    id=get_uuid(),
+                    tenant_id=hold.tenant_id,
+                    event_type="release",
+                    points=hold.plan_points,
+                    source="plan",
+                    idempotency_key=f"release:{hold_id}:plan",
+                    related_hold_id=hold_id,
+                    create_time=current_timestamp(),
+                    update_time=current_timestamp(),
+                )
+            if hold.addon_points > 0:
+                PointLedger.create(
+                    id=get_uuid(),
+                    tenant_id=hold.tenant_id,
+                    event_type="release",
+                    points=hold.addon_points,
+                    source="addon",
+                    idempotency_key=f"release:{hold_id}:addon",
+                    related_hold_id=hold_id,
+                    create_time=current_timestamp(),
+                    update_time=current_timestamp(),
+                )
             hold.status = "released"
             hold.update_time = current_timestamp()
             hold.save()
@@ -1060,12 +1143,33 @@ class PointAccountService:
     def get_balance(cls, tenant_id: str) -> dict:
         account = PointAccount.get_or_none(PointAccount.tenant_id == tenant_id)
         if not account:
-            return {"available_points": 0, "held_points": 0, "total_points": 0}
+            return {"available_plan_points": 0, "available_addon_points": 0, "held_points": 0}
         return {
-            "available_points": account.available_points,
+            "available_plan_points": account.available_plan_points,
+            "available_addon_points": account.available_addon_points,
             "held_points": account.held_points,
-            "total_points": account.available_points + account.held_points,
         }
+
+    @classmethod
+    @DB.connection_context()
+    def sync_plan_points_on_subscription_paid(cls, tenant_id: str, plan_quota: int) -> bool:
+        """
+        Sync available_plan_points when subscription is paid (billing cycle start).
+
+        Idempotent: only updates if quota differs from current, preventing
+        double-reset on webhook retries.
+        """
+        with DB.atomic():
+            account = PointAccount.get_or_none(PointAccount.tenant_id == tenant_id)
+            if not account:
+                cls.get_or_create(tenant_id)
+                account = PointAccount.get(PointAccount.tenant_id == tenant_id)
+            if account.available_plan_points == plan_quota:
+                return True  # already synced, skip
+            account.available_plan_points = plan_quota
+            account.update_time = current_timestamp()
+            account.save()
+            return True
 
 
 @dataclass(frozen=True)

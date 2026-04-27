@@ -13,7 +13,7 @@ const {
   plan_spend_overview,
   getUpcoming,
   spendHistory,
-  usageBasedPlans,
+  addonPlans,
   storageCurrent,
   storageSetTarget,
 } = api;
@@ -47,8 +47,8 @@ const methods = {
     url: spendHistory,
     method: 'get',
   },
-  usageBasedPlans: {
-    url: usageBasedPlans,
+  addonPlans: {
+    url: addonPlans,
     method: 'get',
   },
   storageCurrent: {
@@ -158,11 +158,19 @@ export const getBillingDeepDocUsage = (tenantId?: string) =>
 
 export const postBillingPointsCheckout = (data: {
   tenant_id?: string;
-  points: number;
+  quantity: number;
 }) => request.post(api.pointsCheckout, { data });
+
+export const getBillingPointsPrice = () => request.get(api.pointsPrice);
+export const getAddonPlans = () => request.get(api.addonPlans);
 
 export const getBillingPointsBalance = (tenantId?: string) =>
   request.get(api.pointsBalance, {
+    params: tenantId ? { tenant_id: tenantId } : undefined,
+  });
+
+export const getBillingPointsOverview = (tenantId?: string) =>
+  request.get(api.pointsOverview, {
     params: tenantId ? { tenant_id: tenantId } : undefined,
   });
 

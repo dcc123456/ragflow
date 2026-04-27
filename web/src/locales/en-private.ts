@@ -134,7 +134,7 @@ export default {
       ensureBelow: 'Ensure usage is below',
       toAvoidOverage: 'to avoid overage',
       payNowProrated:
-        'Pay {{amount}} now (prorated) and enjoy extra storage immediately.',
+        'Pay ${{amount}} now (prorated) and enjoy extra storage immediately.',
       manageAddonStorage: 'Manage Add-on storage',
       storageTitle: 'Storage',
       gb: 'GB',

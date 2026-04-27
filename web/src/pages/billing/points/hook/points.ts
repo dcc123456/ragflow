@@ -26,7 +26,13 @@ export const useFetchPointsBalance = () => {
     enabled: !!tenantId,
     queryFn: async () => {
       const { data: res } = await getBillingPointsBalance(tenantId);
-      if (res.code === 0) return res.data;
+      if (res.code === 0) {
+        const balance = res.data;
+        return {
+          ...balance,
+          available_points: balance.available_points ?? ((balance.available_plan_points ?? 0) + (balance.available_addon_points ?? 0)),
+        };
+      }
     },
   });
   return { data, loading, refetch };
@@ -92,10 +98,10 @@ export const usePointsCheckout = () => {
   const tenantId = tenantInfo?.tenant_id;
 
   return useMutation({
-    mutationFn: async (points: number) => {
+    mutationFn: async (quantity: number) => {
       const { data: res } = await postBillingPointsCheckout({
         tenant_id: tenantId,
-        points,
+        quantity,
       });
       return res;
     },

@@ -179,48 +179,52 @@ const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
 
   const openSuccessModal = useCallback(
     (status: string) => {
+      const isPaymentFailed = status === 'cancel' || status === 'error';
+
       const title = () => {
-        switch (status) {
-          case 'success':
-            return (
-              <div className="flex gap-2 items-center">
-                {t('price.paymentSuccessful')}
-              </div>
-            );
-          case 'cancel':
-            return (
-              <div className="flex gap-2 items-center">
-                <div className="p-1 w-5 h-5 flex items-center justify-center rounded-full bg-red-500">
-                  <X size={14} fontWeight={'bold'} />
-                </div>
-                {t('price.paymentFailed')}
-              </div>
-            );
-          default:
-            return 'Success';
+        if (status === 'success') {
+          return (
+            <div className="flex gap-2 items-center">
+              {t('price.paymentSuccessful')}
+            </div>
+          );
         }
+
+        if (isPaymentFailed) {
+          return (
+            <div className="flex gap-2 items-center">
+              <div className="p-1 w-5 h-5 flex items-center justify-center rounded-full bg-red-500">
+                <X size={14} fontWeight={'bold'} />
+              </div>
+              {t('price.paymentFailed')}
+            </div>
+          );
+        }
+
+        return '';
       };
       const content = () => {
-        switch (status) {
-          case 'success':
-            return (
-              <div>
-                <div className="flex items-center gap-2">
-                  {t('price.paymentSuccessfulTip')}
-                </div>
+        if (status === 'success') {
+          return (
+            <div>
+              <div className="flex items-center gap-2">
+                {t('price.paymentSuccessfulTip')}
               </div>
-            );
-          case 'error':
-            return (
-              <div>
-                <div className="flex items-center gap-2">
-                  {t('price.paymentFailedTip')}
-                </div>
-              </div>
-            );
-          default:
-            return 'Success';
+            </div>
+          );
         }
+
+        if (isPaymentFailed) {
+          return (
+            <div>
+              <div className="flex items-center gap-2">
+                {t('price.paymentFailedTip')}
+              </div>
+            </div>
+          );
+        }
+
+        return '';
       };
       if (status) {
         setSuccessModal({

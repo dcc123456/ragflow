@@ -150,7 +150,7 @@ export const BaseInfo = () => {
           value={currentPlan.docParse?.used || 0}
           planName={currentPlan.name}
           planValue={currentPlan.docParse?.base}
-          limit={currentPlan.docParse?.total}
+          limit={currentPlan.docParse?.total + currentPlan.docParse?.addOn}
           unit="pts"
           basicCapacity={currentPlan.docParse?.base}
           showValue={false}

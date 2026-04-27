@@ -441,12 +441,14 @@ def init_settings():
            BILLING_PRICEID_TO_PRODUCT[price_id] = plan_name
 
         plan_priority = plan.get("plan_priority")
+        quota_points = plan.get("quota_points", 0)
         BILLING_PRIORITY_TO_PLANS[plan_priority].append(plan_name)
         BILLING_PLAN_TO_INFO[plan_name] = {
             "priority": plan_priority,
             "price_ids": price_ids,
             "api_request_limit_per_minute": api_request_limit_per_minute,
             "api_request_limit_per_month": api_request_limit_per_month,
+            "quota_points": quota_points,
         }
 
     global DOC_MAXIMUM_SIZE, DOC_BULK_SIZE, EMBEDDING_BATCH_SIZE
