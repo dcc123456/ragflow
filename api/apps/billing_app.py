@@ -806,6 +806,26 @@ async def _set_storage_target_quantity_async(
         pending_update = updated.get("pending_update") if isinstance(updated, dict) else getattr(updated, "pending_update", None)
         invoice_paid, invoice_id, invoice_status, invoice_url = await is_subscription_latest_invoice_paid_async(updated)
         payment_pending = bool(pending_update) or not invoice_paid
+
+        redirect_to = ""
+        if payment_pending and not invoice_url:
+            # No hosted_url on the pending invoice; create a Checkout Session instead.
+            customer_id = (tenant_plan.get("customer_id") or "").strip()
+            if customer_id:
+                try:
+                    checkout_session = await _create_storage_checkout_session_async(
+                        tenant_id=tenant_id,
+                        customer_id=customer_id,
+                        storage_price_id=get_storage_price_id_from_config(),
+                        target_quantity_bytes=target_quantity_bytes,
+                        session_success_url=session_success_url or settings.BILLING["session_success_url"],
+                        session_cancel_url=session_cancel_url or settings.BILLING["session_cancel_url"],
+                        main_period_end=main_period_end,
+                    )
+                    redirect_to = checkout_session.url
+                except Exception as e:
+                    logging.warning(f"Failed to create storage checkout session for pending increase: {e}")
+
         _sync_storage_subscription_record(
             tenant_id,
             updated,
@@ -822,7 +842,7 @@ async def _set_storage_target_quantity_async(
             "pending": payment_pending,
             "invoice_id": invoice_id,
             "invoice_status": invoice_status,
-            "redirect_to": invoice_url if payment_pending and invoice_url else "",
+            "redirect_to": redirect_to,
         }
 
     # Decrease path: schedule at period end.
