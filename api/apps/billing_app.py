@@ -2056,8 +2056,49 @@ async def billing_checkout():
                         message=msg,
                         code=RetCode.SUCCESS,
                     )
+            elif subscription_id and subscription_status in MAIN_SUBSCRIPTION_RECOVERABLE_STATUSES:
+                # Subscription exists but renewal payment failed (past_due / unpaid / incomplete).
+                # Users should NOT be allowed to create a brand-new subscription; they need to either
+                # settle the outstanding invoice or explicitly cancel their current subscription first.
+                target_plan_name = settings.BILLING_PRICEID_TO_PRODUCT.get(subscription_price_id, "")
+                if is_trial_plan_name(target_plan_name):
+                    # User explicitly wants to drop to free/trial — cancel the delinquent subscription
+                    # immediately so they are not charged further. Storage add-on is also cancelled.
+                    logging.info(
+                        f"Tenant {tenant_id} has delinquent subscription {subscription_id} "
+                        f"({subscription_status}) and is downgrading to free/trial; cancelling immediately."
+                    )
+                    await _set_storage_cancel_at_period_end_async(tenant_id, value=True)
+                    await stripe.Subscription.cancel_async(subscription_id)
+                    SubscriptionService.update_subscription(
+                        tenant_id,
+                        {
+                            "subscription_id": "",
+                            "subscription_status": SubscriptionStatus.INACTIVE,
+                            "plan_name": target_plan_name,
+                            "price_id": subscription_price_id,
+                        },
+                    )
+                    return get_json_result(
+                        data={"cancelled": True, "plan_name": target_plan_name},
+                        message="Your subscription has been cancelled and your plan downgraded.",
+                        code=RetCode.SUCCESS,
+                    )
+                else:
+                    # User wants to switch to another paid plan while they still owe money —
+                    # send them to the Stripe-hosted invoice page to settle the debt first.
+                    invoice_url = (tenant_plan.get("invoice_url") or "").strip()
+                    logging.info(
+                        f"Tenant {tenant_id} has delinquent subscription {subscription_id} "
+                        f"({subscription_status}); redirecting to invoice {invoice_url} for payment."
+                    )
+                    return get_json_result(
+                        data={"payment_required": True, "invoice_url": invoice_url},
+                        message="Your subscription has an outstanding invoice. Please pay it before changing your plan.",
+                        code=RetCode.SUCCESS,
+                    )
             else:
-                # NO subscription yet
+                # NO subscription yet (status is INACTIVE or subscription_id is absent)
                 logging.info(f"found customer {customer_id} for tenant {tenant_id}")
 
             is_inactive = subscription_status == SubscriptionStatus.INACTIVE

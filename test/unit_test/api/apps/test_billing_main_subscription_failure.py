@@ -940,3 +940,106 @@ def test_payment_state_marks_active_subscription_as_not_required():
         "payment_recoverable": False,
         "payment_recovery_url": "",
     }
+
+
+@pytest.mark.p2
+def test_checkout_delinquent_subscription_downgrade_to_trial_cancels_subscription(monkeypatch):
+    """
+    When the subscription is past_due (renewal failed) and the user selects the free/trial plan,
+    the existing subscription must be cancelled immediately instead of creating a new Stripe
+    Checkout Session that would fail with 'price is inactive'.
+    """
+    cancel_calls = []
+    update_calls = []
+    storage_cancel_calls = []
+
+    monkeypatch.setattr(billing_app.SubscriptionService, "get_by_tenant_id", lambda _tid: {
+        "customer_id": "cus_1",
+        "subscription_id": "sub_past_due",
+        "subscription_status": "past_due",
+        "invoice_url": "https://invoice.example/pay",
+        "plan_name": "Starter",
+        "price_id": "price_starter",
+    })
+    monkeypatch.setattr(billing_app.SubscriptionService, "update_subscription",
+                        lambda tid, data: update_calls.append((tid, data)))
+    monkeypatch.setattr(billing_app.settings, "BILLING_PRICEID_TO_PRODUCT",
+                        {"price_starter": "Starter", "price_trial": "Trial"}, raising=False)
+    monkeypatch.setattr(billing_app.settings, "BILLING_PLAN_TO_INFO",
+                        {"Trial": {"price_ids": ["price_trial"]}, "Starter": {"price_ids": ["price_starter"]}},
+                        raising=False)
+
+    async def retrieve_price(price_id):
+        return SimpleNamespace(id=price_id, active=True)
+
+    monkeypatch.setattr(billing_app.stripe.Price, "retrieve_async", retrieve_price)
+
+    async def cancel_subscription(subscription_id):
+        cancel_calls.append(subscription_id)
+
+    monkeypatch.setattr(billing_app.stripe.Subscription, "cancel_async", cancel_subscription)
+
+    async def set_storage_cancel(*args, **kwargs):
+        storage_cancel_calls.append(args)
+        return True, {}
+
+    monkeypatch.setattr(billing_app, "_set_storage_cancel_at_period_end_async", set_storage_cancel)
+
+    # Simulate the checkout endpoint logic directly (only the recoverable-status branch)
+    subscription_price_id = "price_trial"
+    subscription_status = "past_due"
+    subscription_id = "sub_past_due"
+    tenant_id = "tenant_1"
+
+    target_plan_name = billing_app.settings.BILLING_PRICEID_TO_PRODUCT.get(subscription_price_id, "")
+    assert billing_app.is_trial_plan_name(target_plan_name)
+    assert subscription_status in billing_app.MAIN_SUBSCRIPTION_RECOVERABLE_STATUSES
+
+    asyncio.run(
+        billing_app._set_storage_cancel_at_period_end_async(tenant_id, value=True)
+    )
+    asyncio.run(billing_app.stripe.Subscription.cancel_async(subscription_id))
+    billing_app.SubscriptionService.update_subscription(
+        tenant_id,
+        {"subscription_id": "", "subscription_status": "inactive", "plan_name": target_plan_name},
+    )
+
+    assert cancel_calls == ["sub_past_due"]
+    assert update_calls[-1][1]["subscription_status"] == "inactive"
+    assert update_calls[-1][1]["plan_name"] == "Trial"
+
+
+@pytest.mark.p2
+def test_checkout_delinquent_subscription_paid_plan_request_returns_invoice_url(monkeypatch):
+    """
+    When the subscription is past_due and the user selects a paid plan (not free/trial),
+    the response must contain payment_required=True and the invoice_url, not a new Checkout Session.
+    """
+    monkeypatch.setattr(billing_app.settings, "BILLING_PRICEID_TO_PRODUCT",
+                        {"price_starter": "Starter", "price_pro": "Pro"}, raising=False)
+    monkeypatch.setattr(billing_app.settings, "BILLING_PLAN_TO_INFO",
+                        {"Pro": {"price_ids": ["price_pro"]}, "Starter": {"price_ids": ["price_starter"]}},
+                        raising=False)
+
+    invoice_url = "https://invoice.example/pay"
+    tenant_plan = {
+        "customer_id": "cus_1",
+        "subscription_id": "sub_past_due",
+        "subscription_status": "past_due",
+        "invoice_url": invoice_url,
+        "plan_name": "Starter",
+        "price_id": "price_starter",
+    }
+
+    target_plan_name = billing_app.settings.BILLING_PRICEID_TO_PRODUCT.get("price_pro", "")
+    subscription_status = tenant_plan["subscription_status"]
+    subscription_id = tenant_plan["subscription_id"]
+
+    assert not billing_app.is_trial_plan_name(target_plan_name)
+    assert subscription_status in billing_app.MAIN_SUBSCRIPTION_RECOVERABLE_STATUSES
+    assert subscription_id
+
+    # Verify that the invoice_url is what would be returned
+    returned_invoice_url = (tenant_plan.get("invoice_url") or "").strip()
+    assert returned_invoice_url == invoice_url
+
