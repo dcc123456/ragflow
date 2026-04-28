@@ -16,6 +16,7 @@
 import datetime
 import json
 import logging
+import os
 import pathlib
 import re
 from io import BytesIO
@@ -26,7 +27,7 @@ from pydantic import BaseModel, Field, validator
 from quart import request, send_file
 
 from api.constants import FILE_NAME_LEN_LIMIT
-from api.db import FileType
+from api.db import FileType, PermissionValue
 from api.db.db_models import APIToken, File, Task
 from api.db.joint_services.tenant_model_service import get_model_config_by_id, get_model_config_by_type_and_name, get_tenant_default_model_by_type
 from api.db.services.doc_metadata_service import DocMetadataService
@@ -37,13 +38,13 @@ from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.llm_service import LLMBundle
 from api.db.services.task_service import TaskService, cancel_all_task_of
 from api.db.services.tenant_llm_service import TenantLLMService
-from common.metadata_utils import meta_filter, convert_conditions
 from api.utils.api_utils import check_duplicate_ids, construct_json_result, get_error_data_result, get_parser_config, get_result, server_error_response, token_required, \
     get_request_json
-from api.utils.permission_utils import filter_accessible_doc_ids_for_user
+from api.utils.permission_utils import filter_accessible_doc_ids_for_user, resolve_kb_with_permission
 from api.utils.image_utils import store_chunk_image
 from common import settings
-from common.constants import FileSource, LLMType, ParserType, RetCode, TaskStatus
+from common.constants import FileSource, LLMType, ParserType, RetCode, StatusEnum, TaskStatus
+from common.metadata_utils import meta_filter, convert_conditions
 from common.misc_utils import thread_pool_exec
 from common.string_utils import remove_redundant_spaces
 from rag.app.qa import beAdoc, rmPrefix
@@ -148,7 +149,7 @@ async def upload(dataset_id, tenant_id):
             return get_result(message="No file selected!", code=RetCode.ARGUMENT_ERROR)
         if len(file_obj.filename.encode("utf-8")) > FILE_NAME_LEN_LIMIT:
             return get_result(message=f"File name must be {FILE_NAME_LEN_LIMIT} bytes or less.", code=RetCode.ARGUMENT_ERROR)
-    """
+
     # total size
     total_size = 0
     for file_obj in file_objs:
@@ -161,10 +162,17 @@ async def upload(dataset_id, tenant_id):
             message=f"Total file size exceeds 10MB limit! ({total_size / (1024 * 1024):.2f} MB)",
             code=RetCode.ARGUMENT_ERROR,
         )
-    """
-    e, kb = KnowledgebaseService.get_by_id(dataset_id)
-    if not e:
-        return server_error_response(LookupError(f"Can't find the dataset with ID {dataset_id}!"))
+
+    kb, err = resolve_kb_with_permission(tenant_id, dataset_id, PermissionValue.PERMISSION_WRITE)
+    if kb is None:
+        ok, existing_kb = KnowledgebaseService.get_by_id(dataset_id)
+        if not ok or existing_kb.status != StatusEnum.VALID.value:
+            return get_error_data_result(
+                message=repr(LookupError(f"Can't find the dataset with ID {dataset_id}!")),
+                code=RetCode.EXCEPTION_ERROR,
+            )
+        return get_error_data_result(message=err or "Permission denied: dataset not found or access denied", code=RetCode.AUTHENTICATION_ERROR)
+
     err, files = FileService.upload_document(kb, file_objs, tenant_id, parent_path=form.get("parent_path"))
     if err:
         return get_result(message="\n".join(err), code=RetCode.SERVER_ERROR)

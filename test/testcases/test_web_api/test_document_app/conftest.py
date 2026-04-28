@@ -87,7 +87,12 @@ def document_app_module(monkeypatch):
     class _StubExcelParser:
         pass
 
+    class _StubDocxParser:
+        pass
+
     deepdoc_parser_pkg.PdfParser = _StubPdfParser
+    deepdoc_parser_pkg.ExcelParser = _StubExcelParser
+    deepdoc_parser_pkg.DocxParser = _StubDocxParser
     deepdoc_pkg.parser = deepdoc_parser_pkg
     monkeypatch.setitem(sys.modules, "deepdoc", deepdoc_pkg)
     monkeypatch.setitem(sys.modules, "deepdoc.parser", deepdoc_parser_pkg)
@@ -101,6 +106,9 @@ def document_app_module(monkeypatch):
 
     deepdoc_html_module.RAGFlowHtmlParser = _StubHtmlParser
     monkeypatch.setitem(sys.modules, "deepdoc.parser.html_parser", deepdoc_html_module)
+    deepdoc_parser_utils = ModuleType("deepdoc.parser.utils")
+    deepdoc_parser_utils.get_text = lambda *_args, **_kwargs: ""
+    monkeypatch.setitem(sys.modules, "deepdoc.parser.utils", deepdoc_parser_utils)
     deepdoc_mineru_module = ModuleType("deepdoc.parser.mineru_parser")
 
     class _StubMinerUParser:

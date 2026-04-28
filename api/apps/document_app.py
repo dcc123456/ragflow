@@ -22,9 +22,8 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 from quart import make_response, request
 
 from api.apps import current_user, login_required
-from api.common.check_team_permission import check_kb_team_permission
 from api.constants import FILE_NAME_LEN_LIMIT, IMG_BASE64_PREFIX
-from api.db import VALID_FILE_TYPES, FileType
+from api.db import VALID_FILE_TYPES, FileType, PermissionValue
 from api.db.db_models import Task
 from api.db.services.document_service import DocumentService, doc_upload_and_parse
 from api.db.services.doc_metadata_service import DocMetadataService
@@ -40,7 +39,7 @@ from api.utils.api_utils import (
     server_error_response,
     validate_request,
 )
-from api.utils.permission_utils import filter_accessible_doc_ids_for_user
+from api.utils.permission_utils import filter_accessible_doc_ids_for_user, resolve_kb_with_permission
 from common.file_utils import get_project_base_directory
 from common.constants import RetCode, VALID_TASK_STATUS, TaskStatus
 from api.utils.web_utils import CONTENT_TYPE_MAP, apply_safe_file_response_headers, is_valid_url
@@ -96,10 +95,8 @@ async def upload():
             _close_file_objs(file_objs)
             return get_json_result(data=False, message=f"File name must be {FILE_NAME_LEN_LIMIT} bytes or less.", code=RetCode.ARGUMENT_ERROR)
 
-    e, kb = KnowledgebaseService.get_by_id(kb_id)
-    if not e:
-        raise LookupError("Can't find this dataset!")
-    if not check_kb_team_permission(kb, current_user.id):
+    kb, _ = resolve_kb_with_permission(current_user.id, kb_id, PermissionValue.PERMISSION_WRITE)
+    if kb is None:
         return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
 
     err, files = await thread_pool_exec(FileService.upload_document, kb, file_objs, current_user.id)
@@ -113,7 +110,7 @@ async def upload():
 
     return get_json_result(data=files)
 
-"""
+r"""
 @manager.route("/web_crawl", methods=["POST"])  # noqa: F821
 @login_required
 @validate_request("kb_id", "name", "url")

@@ -113,6 +113,24 @@ class _ToggleBoolDocList:
         return self._calls == 1
 
 
+class _UploadFileObj:
+    def __init__(self, name, content=b"abc"):
+        self.filename = name
+        self._content = content
+        self._pos = 0
+
+    def seek(self, offset, whence=0):
+        if whence == 2:
+            self._pos = len(self._content) + offset
+        elif whence == 1:
+            self._pos += offset
+        else:
+            self._pos = offset
+
+    def tell(self):
+        return self._pos
+
+
 def _run(coro):
     return asyncio.run(coro)
 
@@ -146,6 +164,12 @@ def _load_doc_module(monkeypatch):
     deepdoc_excel_module = ModuleType("deepdoc.parser.excel_parser")
     deepdoc_excel_module.RAGFlowExcelParser = _StubExcelParser
     monkeypatch.setitem(sys.modules, "deepdoc.parser.excel_parser", deepdoc_excel_module)
+    deepdoc_mineru_module = ModuleType("deepdoc.parser.mineru_parser")
+    deepdoc_mineru_module.MinerUParser = type("_StubMinerUParser", (), {})
+    monkeypatch.setitem(sys.modules, "deepdoc.parser.mineru_parser", deepdoc_mineru_module)
+    deepdoc_paddleocr_module = ModuleType("deepdoc.parser.paddleocr_parser")
+    deepdoc_paddleocr_module.PaddleOCRParser = type("_StubPaddleOCRParser", (), {})
+    monkeypatch.setitem(sys.modules, "deepdoc.parser.paddleocr_parser", deepdoc_paddleocr_module)
     deepdoc_parser_utils = ModuleType("deepdoc.parser.utils")
     deepdoc_parser_utils.get_text = lambda *_args, **_kwargs: ""
     monkeypatch.setitem(sys.modules, "deepdoc.parser.utils", deepdoc_parser_utils)
@@ -362,12 +386,41 @@ class TestDocRoutesUnit:
         assert res["code"] == module.RetCode.ARGUMENT_ERROR
         assert "bytes or less" in res["message"]
 
-        monkeypatch.setattr(module, "request", SimpleNamespace(form=_AwaitableValue({}), files=_AwaitableValue(_DummyFiles({"file": [_FileObj("ok.txt")]}))))
-        monkeypatch.setattr(module.KnowledgebaseService, "get_by_id", lambda _id: (True, SimpleNamespace()))
+        monkeypatch.setattr(module, "request", SimpleNamespace(form=_AwaitableValue({}), files=_AwaitableValue(_DummyFiles({"file": [_UploadFileObj("ok.txt")]}))))
+        monkeypatch.setattr(module, "resolve_kb_with_permission", lambda *_args, **_kwargs: (SimpleNamespace(id="ds-1", tenant_id="tenant-1"), None))
         monkeypatch.setattr(module.FileService, "upload_document", lambda *_args, **_kwargs: (["upload failed"], []))
         res = _run(module.upload.__wrapped__("ds-1", "tenant-1"))
         assert res["code"] == module.RetCode.SERVER_ERROR
         assert res["message"] == "upload failed"
+
+    def test_upload_uses_permission_resolution_for_shared_dataset(self, monkeypatch):
+        module = _load_doc_module(monkeypatch)
+        kb = SimpleNamespace(id="ds-1", tenant_id="owner-tenant", name="kb")
+        calls = {}
+
+        def fake_resolve(user_id, kb_id, required_permission):
+            calls["resolve"] = (user_id, kb_id, required_permission)
+            return kb, None
+
+        def fake_upload(resolved_kb, file_objs, user_id, **kwargs):
+            calls["upload"] = (resolved_kb, file_objs, user_id, kwargs)
+            return (None, [({"id": "doc-1", "kb_id": "ds-1", "name": "ok.txt"}, b"abc")])
+
+        monkeypatch.setattr(module, "resolve_kb_with_permission", fake_resolve, raising=False)
+        monkeypatch.setattr(module.FileService, "upload_document", fake_upload)
+        monkeypatch.setattr(
+            module,
+            "request",
+            SimpleNamespace(form=_AwaitableValue({"parent_path": "nested"}), files=_AwaitableValue(_DummyFiles({"file": [_UploadFileObj("ok.txt")]}))),
+        )
+
+        res = _run(module.upload.__wrapped__("ds-1", "tenant-1"))
+
+        assert res["code"] == module.RetCode.SUCCESS, res
+        assert calls["resolve"] == ("tenant-1", "ds-1", module.PermissionValue.PERMISSION_WRITE)
+        assert calls["upload"][0] is kb
+        assert calls["upload"][2] == "tenant-1"
+        assert calls["upload"][3]["parent_path"] == "nested"
 
     def test_update_doc_guards_and_error_paths(self, monkeypatch):
         module = _load_doc_module(monkeypatch)

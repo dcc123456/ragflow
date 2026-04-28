@@ -37,7 +37,7 @@ def check_role_access(action_map, resource_type):
 
     def decorator(func):
         original_name = getattr(inspect.unwrap(func), "__name__", func.__name__)
-        from api.apps import current_user
+        from api.apps import QuartAuthUnauthorized, current_user
 
         @wraps(func)
         async def wrapper(*args, **kwargs):
@@ -48,6 +48,9 @@ def check_role_access(action_map, resource_type):
             if not isinstance(required_action, ActionEnum):
                 logging.warning(f"Role action misconfigured for {original_name}: {required_action}")
                 return get_json_result(data=False, message="Role permission misconfigured.", code=RetCode.SERVER_ERROR)
+
+            if not current_user:
+                raise QuartAuthUnauthorized()
 
             if getattr(current_user, "is_superuser", False):
                 print(f"[role-guard] superuser bypass fn={original_name}", flush=True)
@@ -84,9 +87,11 @@ def check_role_access(action_map, resource_type):
 KB_ROLE_RESOURCE_TYPE = ResourceTypeEnum.DATASET.value
 KB_API_ACTION_MAP = {
     "create": ActionEnum.WRITE,
+    "delete": ActionEnum.WRITE,
     "update": ActionEnum.WRITE,
     "detail": ActionEnum.READ,
     "list_kbs": ActionEnum.ENABLE,
+    "list_datasets": ActionEnum.ENABLE,
     "rm": ActionEnum.WRITE,
     "list_tags": ActionEnum.READ,
     "list_tags_from_kbs": ActionEnum.READ,
@@ -104,6 +109,8 @@ KB_API_ACTION_MAP = {
     "trace_graphrag": ActionEnum.READ,
     "run_raptor": ActionEnum.WRITE,
     "trace_raptor": ActionEnum.READ,
+    "get_auto_metadata": ActionEnum.READ,
+    "update_auto_metadata": ActionEnum.WRITE,
     "run_mindmap": ActionEnum.WRITE,
     "trace_mindmap": ActionEnum.READ,
     "delete_kb_task": ActionEnum.WRITE,

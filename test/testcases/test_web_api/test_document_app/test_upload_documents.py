@@ -284,15 +284,14 @@ class TestDocumentsUploadUnit:
         file_obj = _DummyFile("ragflow_test.txt")
         files = _DummyFiles({"file": [file_obj]})
         monkeypatch.setattr(module, "request", _DummyRequest(form={"kb_id": "missing"}, files=files))
-        monkeypatch.setattr(module.KnowledgebaseService, "get_by_id", lambda _kb_id: (False, None))
-        with pytest.raises(LookupError):
-            _run(module.upload.__wrapped__())
+        monkeypatch.setattr(module, "resolve_kb_with_permission", lambda *_args, **_kwargs: (None, "Dataset not found"))
+        res = _run(module.upload.__wrapped__())
+        assert res["code"] == 109
+        assert res["message"] == "No authorization."
 
     def test_no_permission(self, document_app_module, monkeypatch):
         module = document_app_module
-        kb = SimpleNamespace(id="kb1", tenant_id="tenant1", name="kb", parser_id="parser", parser_config={})
-        monkeypatch.setattr(module.KnowledgebaseService, "get_by_id", lambda _kb_id: (True, kb))
-        monkeypatch.setattr(module, "check_kb_team_permission", lambda *_args, **_kwargs: False)
+        monkeypatch.setattr(module, "resolve_kb_with_permission", lambda *_args, **_kwargs: (None, "No authorization."))
         file_obj = _DummyFile("ragflow_test.txt")
         files = _DummyFiles({"file": [file_obj]})
         monkeypatch.setattr(module, "request", _DummyRequest(form={"kb_id": "kb1"}, files=files))
@@ -300,11 +299,37 @@ class TestDocumentsUploadUnit:
         assert res["code"] == 109
         assert res["message"] == "No authorization."
 
+    def test_permission_granted_user_can_upload_to_shared_dataset(self, document_app_module, monkeypatch):
+        module = document_app_module
+        kb = SimpleNamespace(id="kb1", tenant_id="owner-tenant", name="kb", parser_id="parser", parser_config={})
+        calls = {}
+
+        def fake_resolve(user_id, kb_id, required_permission):
+            calls["resolve"] = (user_id, kb_id, required_permission)
+            return kb, None
+
+        async def fake_thread_pool_exec(func, resolved_kb, file_objs, user_id):
+            calls["upload"] = (func, resolved_kb, file_objs, user_id)
+            return (None, [({"id": "doc-1", "kb_id": "kb1", "name": "ragflow_test.txt"}, b"blob")])
+
+        monkeypatch.setattr(module, "resolve_kb_with_permission", fake_resolve, raising=False)
+        monkeypatch.setattr(module, "thread_pool_exec", fake_thread_pool_exec)
+        file_obj = _DummyFile("ragflow_test.txt")
+        files = _DummyFiles({"file": [file_obj]})
+        monkeypatch.setattr(module, "request", _DummyRequest(form={"kb_id": "kb1"}, files=files))
+
+        res = _run(module.upload.__wrapped__())
+
+        assert res["code"] == 0, res
+        assert res["data"][0]["kb_id"] == "kb1"
+        assert calls["resolve"] == ("user-1", "kb1", module.PermissionValue.PERMISSION_WRITE)
+        assert calls["upload"][1] is kb
+        assert calls["upload"][3] == "user-1"
+
     def test_thread_pool_errors(self, document_app_module, monkeypatch):
         module = document_app_module
         kb = SimpleNamespace(id="kb1", tenant_id="tenant1", name="kb", parser_id="parser", parser_config={})
-        monkeypatch.setattr(module.KnowledgebaseService, "get_by_id", lambda _kb_id: (True, kb))
-        monkeypatch.setattr(module, "check_kb_team_permission", lambda *_args, **_kwargs: True)
+        monkeypatch.setattr(module, "resolve_kb_with_permission", lambda *_args, **_kwargs: (kb, None))
 
         async def fake_thread_pool_exec(*_args, **_kwargs):
             return (["unsupported type"], [("file1", "blob")])
@@ -321,8 +346,7 @@ class TestDocumentsUploadUnit:
     def test_empty_upload_result(self, document_app_module, monkeypatch):
         module = document_app_module
         kb = SimpleNamespace(id="kb1", tenant_id="tenant1", name="kb", parser_id="parser", parser_config={})
-        monkeypatch.setattr(module.KnowledgebaseService, "get_by_id", lambda _kb_id: (True, kb))
-        monkeypatch.setattr(module, "check_kb_team_permission", lambda *_args, **_kwargs: True)
+        monkeypatch.setattr(module, "resolve_kb_with_permission", lambda *_args, **_kwargs: (kb, None))
 
         async def fake_thread_pool_exec(*_args, **_kwargs):
             return (None, [])
