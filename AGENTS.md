@@ -424,34 +424,16 @@ RAGFlow supports switching between Elasticsearch (default) and Infinity:
 <claude-mem-context>
 # Memory Context
 
-# [ragflow_enterprise] recent context, 2026-04-27 7:54am UTC
+# [ragflow_enterprise] recent context, 2026-04-28 3:56am UTC
 
 Legend: 🎯session 🔴bugfix 🟣feature 🔄refactor ✅change 🔵discovery ⚖️decision 🚨security_alert 🔐security_note
 Format: ID TIME TYPE TITLE
 Fetch details: get_observations([IDs]) | Search: mem-search skill
 
-Stats: 50 obs (13,527t read) | 579,416t work | 98% savings
+Stats: 50 obs (12,880t read) | 433,440t work | 97% savings
 
-### Apr 24, 2026
-S69 Buy Credits payment success shows error dialog (Apr 24, 2:47 PM)
 ### Apr 25, 2026
-S112 Debug Buy Credits payment success showing error dialog despite successful Stripe payment (Apr 25, 5:11 AM)
-S124 Amended billing split commit message from feat to fix (Apr 25, 5:32 AM)
-99 5:43a 🔴 Buy Credits payment success shows error dialog despite successful Stripe payment
-102 5:44a 🔴 Buy Credits payment success shows error dialog despite successful Stripe payment
-103 " 🔵 No checkout.session.completed webhook events processed since pod startup
-104 " 🔵 Stripe webhook URL configuration and event delivery verification needed
-105 " 🔵 Payment success modal logic and redirect flow traced
-109 5:45a 🔵 Points payments ARE succeeding - credits are being added to PointAccount
-110 " 🔵 Billing success/cancel URLs configured to localhost in deployed service_conf.yaml
-111 " 🔵 Frontend success modal has inverted title/content for unrecognized payment status
-112 5:46a 🔵 No checkout.session.completed webhook events processed since pod startup
-113 " 🔵 Success modal logic in pricing-plan/index.tsx maps status to title/content
-114 " 🔵 PointAccount.recharge idempotency pattern uses idempotency_key
-115 5:47a 🔵 GKE cluster context: gke_ragflow-stage_us-east1_stage-cluster-1
-117 " 🔵 Webhook signature verification failing on pod kkfkw
-118 " 🔵 Empty metadata warning in payment_intent.succeeded handler
-119 " 🔵 /v1/billing/success endpoint returns 302 redirect
+117 5:47a 🔵 Webhook signature verification failing on pod kkfkw
 121 5:51a 🔴 Added session_id query parameter to Stripe checkout success URLs
 122 " 🔵 Stripe webhook signature verification fails on replica kkfkw
 123 " 🔵 Empty metadata in payment_intent.succeeded causes recharge skip
@@ -461,7 +443,6 @@ S124 Amended billing split commit message from feat to fix (Apr 25, 5:32 AM)
 127 " 🔴 Buy Credits payment modal now displays correct title and content
 ### Apr 27, 2026
 133 1:39a ✅ Amended billing split commit message from feat to fix
-S135 Fix CI test failure: test_invoice_paid_updates_existing_failed_order_and_restores_active caused OperationalError due to unmocked PointAccountService.sync_plan_points_on_subscription_paid (Apr 27, 1:39 AM)
 134 1:55a 🔵 PR #362 review comments reveal 15 code issues
 136 1:56a 🔵 PriceType/ProductType enums confirmed as ADDON not USAGE_BASED
 137 1:57a 🔵 DB model choices use 'usage_based' while enum uses 'addon'
@@ -469,7 +450,6 @@ S135 Fix CI test failure: test_invoice_paid_updates_existing_failed_order_and_re
 139 3:09a 🔵 CI build failure on deepdoc Dockerfile
 140 3:10a 🔵 PointAccount sync_plan_points_on_subscription_paid is idempotent
 141 " 🔵 CI failure in ragflow_enterprise deepdoc Dockerfile
-S136 Fix CI test failure test_invoice_paid_updates_existing_failed_order_and_restores_active (Apr 27, 3:16 AM)
 S140 Fix CI test failure test_invoice_paid_updates_existing_failed_order_and_restores_active in ragflow_enterprise (Apr 27, 3:18 AM)
 144 3:18a 🔵 uv sync fails due to graspologic gitee mirror SSL timeout
 S141 CI failure investigation on ragflow_enterprise GitHub Actions (Apr 27, 3:24 AM)
@@ -487,14 +467,34 @@ S142 PDF batch processing reduces parser peak memory (Apr 27, 3:25 AM)
 S143 billing_all_plans API to include quota_points per plan (Apr 27, 3:36 AM)
 155 5:44a 🟣 billing_all_plans needs to return quota_points per plan
 156 " 🟣 billing_all_plans API to include quota_points per plan
+S152 Investigating billing_webhook signature verification: determine if failed signature check crashes the process or returns 400 correctly (Apr 27, 5:44 AM)
 157 6:18a 🔵 Claude tool call failures traced to bwrap loopback sandbox restriction
 158 6:19a 🔵 ragflow_enterprise has MCP tool-call infrastructure in common/mcp_tool_call_conn.py
 160 7:25a 🔴 Stripe webhook signature verification failing in ragflow pod
 162 7:26a 🔵 Billing webhook secret fetched dynamically from database with in-memory cache
-S152 Investigating billing_webhook signature verification: determine if failed signature check crashes the process or returns 400 correctly (Apr 27, 7:28 AM)
+S156 Storage checkout backend returns redirect_to correctly but frontend not processing it (Apr 27, 7:28 AM)
 163 7:29a 🔴 MCP smart_search tool calls failing in ragflow_enterprise
 164 " 🔵 MySQL root access denied - ragflow user credentials work for database queries
 165 7:48a 🔵 Stripe webhook secret verified matching between dashboard and database
+166 8:09a 🔴 Buy Storage not redirecting to Stripe payment page
+167 " 🔵 Storage checkout returns redirect_to field in response
+169 " 🔵 Storage checkout returns different response formats per scenario
+170 8:10a 🔵 Storage checkout backend returns redirect_to correctly but frontend not processing it
+S179 Implement idempotency for subscription cancellation when managed by subscription schedule (Apr 27, 8:10 AM)
+173 8:40a 🔴 Switched parse_storage_size from binary to decimal units
+175 8:41a 🔴 Aligned convertBytesToGb frontend to use decimal GB units
+176 " 🔵 Three more 1024-based BYTES_PER_GB constants found in billing code
+177 8:42a 🔴 Aligned all storage quota conversions to decimal (1000) units
+178 8:43a 🔵 formatBytes uses inconsistent units after decimal conversion
+179 9:20a 🟣 Subscription cancellation idempotency for subscription schedules
+S181 Rewrite HEAD commit message to describe the actual billing fix for delinquent subscription handling (Apr 27, 9:20 AM)
+### Apr 28, 2026
+S184 Create PR from stage branch to saas branch on origin with auto-generated title and body (Apr 28, 1:43 AM)
+182 3:41a 🔄 billing_points_checkout now extracts session success/cancel URLs like billing_checkout
+S187 billing_points_checkout now extracts session success/cancel URLs like billing_checkout (Apr 28, 3:41 AM)
+183 3:42a 🔄 billing_points_checkout should extract URL params like billing_checkout
+184 3:43a 🔄 billing_points_checkout added session_success_url and session_cancel_url parameter extraction
+185 3:48a 🔄 billing_points_checkout aligned with billing_checkout URL extraction
 
-Access 579k tokens of past work via get_observations([IDs]) or mem-search skill.
+Access 433k tokens of past work via get_observations([IDs]) or mem-search skill.
 </claude-mem-context>

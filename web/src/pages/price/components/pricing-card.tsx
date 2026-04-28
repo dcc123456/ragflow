@@ -143,6 +143,7 @@ const PricingCard = (props: IPricePlanWithButton) => {
             : ''
         }
         tenantId={currentPlanData?.tenant_id || ''}
+        targetPriceId={props.cancelTargetPriceId}
       />
     </div>
   );

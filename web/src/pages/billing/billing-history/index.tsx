@@ -9,20 +9,13 @@ import {
 } from '@/components/ui/table';
 import { pick } from 'lodash';
 import { SquareChartGantt } from 'lucide-react';
-import React, { useState } from 'react';
+import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { useFetchHistoryList } from './hook/billing-history';
 
 const BillingHistory: React.FC = () => {
   const { invoicesData, pagination, setPagination } = useFetchHistoryList();
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
-  const totalPages = Math.ceil(invoicesData.length / itemsPerPage);
   const { t } = useTranslation();
-
-  const handlePageChange = (page: number) => {
-    setCurrentPage(page);
-  };
 
   const handleStatus = (status: string) => {
     let classname = '';
@@ -51,8 +44,8 @@ const BillingHistory: React.FC = () => {
     );
   };
   return (
-    <div>
-      <Table>
+    <div className="flex flex-col h-full">
+      <Table className="flex-1 overflow-auto">
         <TableHeader>
           <TableRow>
             <TableHead>{t('billing.invoiceID')}</TableHead>
@@ -95,28 +88,6 @@ const BillingHistory: React.FC = () => {
             setPagination({ page, pageSize });
           }}
         ></RAGFlowPagination>
-        {/* <Pagination className="justify-end mx-0">
-          <PaginationContent>
-            <PaginationPrevious
-              onClick={() => handlePageChange(currentPage - 1)}
-              disabled={currentPage === 1}
-            />
-            {[...Array(totalPages).keys()].map((page) => (
-              <PaginationItem key={page}>
-                <PaginationLink
-                  isActive={currentPage === page + 1}
-                  onClick={() => handlePageChange(page + 1)}
-                >
-                  {page + 1}
-                </PaginationLink>
-              </PaginationItem>
-            ))}
-            <PaginationNext
-              onClick={() => handlePageChange(currentPage + 1)}
-              disabled={currentPage === totalPages}
-            />
-          </PaginationContent>
-        </Pagination> */}
       </div>
     </div>
   );

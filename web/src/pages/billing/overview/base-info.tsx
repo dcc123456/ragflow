@@ -154,6 +154,8 @@ export const BaseInfo = () => {
           unit="pts"
           basicCapacity={currentPlan.docParse?.base}
           showValue={false}
+          planPoints={planData?.resources?.plan_points}
+          addonPoints={planData?.resources?.addon_points}
         ></ResourceUsage>
         {/* <div className="bg-bg-input border border-border-default p-4 rounded mb-4">
           <div className="flex justify-between items-center mb-2">

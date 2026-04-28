@@ -63,7 +63,6 @@ class ProductService(CommonService):
         return obj
 
     @classmethod
-    @DB.connection_context()
     def get_by_name(cls, product_name: str) -> dict | None:
         fields = [
             cls.model.id,
@@ -76,6 +75,7 @@ class ProductService(CommonService):
             cls.model.product_type,
             cls.model.usage_stat_type,
             cls.model.version,
+            cls.model.quota_points,
         ]
         plan = cls.model.select(*fields).where(cls.model.name == product_name).order_by(cls.model.version.desc()).dicts().first()
         return plan
@@ -923,16 +923,42 @@ class PointAccountService:
 
     @staticmethod
     def _get_plan_quota_points(tenant_id: str) -> int:
-        """Get quota_points from the tenant's current plan (dynamic, not stored)."""
+        """Get quota_points from the tenant's current plan (from billing_product table).
+
+        Must be called inside an existing transaction (e.g. PointAccountService.hold
+        uses DB.atomic()), so performs a direct query instead of going through
+        SubscriptionService.get_by_tenant_id which has its own connection_context
+        decorator that would cause nested transaction errors.
+        """
         try:
-            from api.db.services.billing_service import SubscriptionService
-            from common import settings
             from api.utils.billing import BILLING_PLAN_TRIAL_NAME
-            subscription = SubscriptionService.get_by_tenant_id(tenant_id)
+            from api.db.db_models import Subscription, Product
+
+            # Direct query - uses existing transaction, no new connection_context
+            subscription = (
+                Subscription.select(Subscription.plan_name)
+                .where(Subscription.tenant_id == tenant_id)
+                .order_by(Subscription.create_time.desc())
+                .dicts()
+                .first()
+            )
             plan_name = subscription.get("plan_name", BILLING_PLAN_TRIAL_NAME) if subscription else BILLING_PLAN_TRIAL_NAME
-            plan_info = settings.BILLING_PLAN_TO_INFO.get(plan_name, {})
-            return plan_info.get("quota_points", 0)
+
+            product = (
+                Product.select(Product.quota_points)
+                .where(Product.name == plan_name)
+                .order_by(Product.version.desc())
+                .dicts()
+                .first()
+            )
+            quota = product.get("quota_points") if product else None
+            if quota is not None:
+                logging.info(f"[Points] tenant={tenant_id} plan={plan_name} quota_points={quota}")
+                return quota
+            logging.warning(f"[Points] tenant={tenant_id} plan={plan_name} has no quota_points in billing_product")
+            return 0
         except Exception:
+            logging.exception(f"[Points] _get_plan_quota_points failed for tenant={tenant_id}")
             return 0
 
     @classmethod
@@ -943,8 +969,9 @@ class PointAccountService:
             return {
                 "id": account.id,
                 "tenant_id": account.tenant_id,
-                "available_plan_points": account.available_plan_points,
-                "available_addon_points": account.available_addon_points,
+                "consumed_plan_points": account.consumed_plan_points,
+                "addon_purchased_points": account.addon_purchased_points,
+                "consumed_addon_points": account.consumed_addon_points,
                 "held_points": account.held_points,
             }
         account_id = get_uuid()
@@ -952,8 +979,9 @@ class PointAccountService:
             PointAccount.insert(
                 id=account_id,
                 tenant_id=tenant_id,
-                available_plan_points=0,
-                available_addon_points=0,
+                consumed_plan_points=0,
+                addon_purchased_points=0,
+                consumed_addon_points=0,
                 held_points=0,
                 create_time=current_timestamp(),
                 update_time=current_timestamp(),
@@ -964,8 +992,9 @@ class PointAccountService:
         return {
             "id": account.id,
             "tenant_id": account.tenant_id,
-            "available_plan_points": account.available_plan_points,
-            "available_addon_points": account.available_addon_points,
+            "consumed_plan_points": account.consumed_plan_points,
+            "addon_purchased_points": account.addon_purchased_points,
+            "consumed_addon_points": account.consumed_addon_points,
             "held_points": account.held_points,
         }
 
@@ -990,7 +1019,8 @@ class PointAccountService:
             except IntegrityError:
                 # Idempotent: already recharged
                 return PointLedger.get(PointLedger.idempotency_key == idempotency_key).__data__
-            account.available_addon_points += points
+            # recharge adds to addon purchase count (purchased pool grows)
+            account.addon_purchased_points += points
             account.update_time = current_timestamp()
             account.save()
             return ledger.__data__
@@ -1006,14 +1036,19 @@ class PointAccountService:
             if existing_hold:
                 return existing_hold.__data__
 
-            total_available = account.available_plan_points + account.available_addon_points
+            # In consumed model, available = quota - consumed
+            # Compute total available from plan quota (dynamic) and addon purchased (stored)
+            plan_quota = cls._get_plan_quota_points(tenant_id)
+            plan_available = max(0, plan_quota - account.consumed_plan_points)
+            addon_available = max(0, account.addon_purchased_points - account.consumed_addon_points)
+            total_available = plan_available + addon_available
             if total_available < points:
                 raise InsufficientPointsError(
                     f"Tenant {tenant_id} has {total_available} points, need {points}"
                 )
 
             # Determine how much to deduct from plan vs addon (prefer plan first)
-            plan_used = min(account.available_plan_points, points)
+            plan_used = min(plan_available, points)
             addon_used = points - plan_used
 
             hold = PointHold.create(
@@ -1057,8 +1092,9 @@ class PointAccountService:
                     update_time=current_timestamp(),
                 )
 
-            account.available_plan_points -= plan_used
-            account.available_addon_points -= addon_used
+            # In consumed model, add to consumed amounts (deduct from available)
+            account.consumed_plan_points += plan_used
+            account.consumed_addon_points += addon_used
             account.held_points += points
             account.update_time = current_timestamp()
             account.save()
@@ -1120,9 +1156,9 @@ class PointAccountService:
             if hold.status != "held":
                 return False
             account = PointAccount.select().where(PointAccount.tenant_id == hold.tenant_id).for_update().get()
-            # Restore points back to plan and addon portions
-            account.available_plan_points += hold.plan_points
-            account.available_addon_points += hold.addon_points
+            # Restore: reduce consumed (add back to available)
+            account.consumed_plan_points -= hold.plan_points
+            account.consumed_addon_points -= hold.addon_points
             account.held_points -= hold.points
             account.update_time = current_timestamp()
             account.save()
@@ -1161,30 +1197,35 @@ class PointAccountService:
     def get_balance(cls, tenant_id: str) -> dict:
         account = PointAccount.get_or_none(PointAccount.tenant_id == tenant_id)
         if not account:
-            return {"available_plan_points": 0, "available_addon_points": 0, "held_points": 0}
+            return {"consumed_plan_points": 0, "addon_purchased_points": 0, "consumed_addon_points": 0, "held_points": 0}
         return {
-            "available_plan_points": account.available_plan_points,
-            "available_addon_points": account.available_addon_points,
+            "consumed_plan_points": account.consumed_plan_points,
+            "addon_purchased_points": account.addon_purchased_points,
+            "consumed_addon_points": account.consumed_addon_points,
             "held_points": account.held_points,
+            # Derived available fields for backward compatibility with frontend
+            "available_plan_points": max(0, cls._get_plan_quota_points(account.tenant_id) - account.consumed_plan_points),
+            "available_addon_points": max(0, account.addon_purchased_points - account.consumed_addon_points),
         }
 
     @classmethod
     @DB.connection_context()
-    def sync_plan_points_on_subscription_paid(cls, tenant_id: str, plan_quota: int) -> bool:
+    def reset_plan_consumed_points_at_cycle_start(cls, tenant_id: str) -> bool:
         """
-        Sync available_plan_points when subscription is paid (billing cycle start).
-
-        Idempotent: only updates if quota differs from current, preventing
-        double-reset on webhook retries.
+        Reset consumed_plan_points and consumed_addon_points at the start of a new
+        billing cycle. plan_quota is not stored; it's derived from the subscription
+        plan on each read. Addon points purchased in a previous cycle do not carry over.
+        Idempotent: only updates if at least one consumed value differs from 0.
         """
         with DB.atomic():
             account = PointAccount.get_or_none(PointAccount.tenant_id == tenant_id)
             if not account:
-                cls.get_or_create(tenant_id)
-                account = PointAccount.get(PointAccount.tenant_id == tenant_id)
-            if account.available_plan_points == plan_quota:
-                return True  # already synced, skip
-            account.available_plan_points = plan_quota
+                return True
+            plan_reset = account.consumed_plan_points != 0
+            if not plan_reset:
+                return True
+            if plan_reset:
+                account.consumed_plan_points = 0
             account.update_time = current_timestamp()
             account.save()
             return True

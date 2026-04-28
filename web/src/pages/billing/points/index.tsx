@@ -3,9 +3,9 @@ import { Input, Modal, Pagination, Table, Tag, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { Coins, Loader2, RefreshCw } from 'lucide-react';
 import { useState } from 'react';
+import { useFetchPlanOverview } from '../hook/overview';
 import { IPointHoldItem, IPointLedgerItem } from '../interface';
 import {
-  useFetchPointsBalance,
   useFetchPointsHolds,
   useFetchPointsLedger,
   usePointsCheckout,
@@ -33,8 +33,19 @@ function formatTime(ms: number) {
 // ─── Balance Card ────────────────────────────────────────────────────────────
 
 const BalanceCard = () => {
-  const { data: balance, loading, refetch } = useFetchPointsBalance();
+  const { data: planOverview, loading, refetch } = useFetchPlanOverview();
   const checkoutMutation = usePointsCheckout();
+  const planPoints = planOverview?.resources?.plan_points;
+  const addonPoints = planOverview?.resources?.addon_points;
+  const planRemaining = Math.max(
+    0,
+    (planPoints?.limit ?? 0) - (planPoints?.used ?? 0),
+  );
+  const addonRemaining = Math.max(
+    0,
+    (addonPoints?.limit ?? 0) - (addonPoints?.used ?? 0),
+  );
+  const totalRemaining = planRemaining + addonRemaining;
 
   const [modalOpen, setModalOpen] = useState(false);
   const [inputPoints, setInputPoints] = useState('');
@@ -95,18 +106,18 @@ const BalanceCard = () => {
       ) : (
         <div className="grid grid-cols-3 gap-4">
           <Stat
-            label="Available"
-            value={balance?.available_points ?? 0}
+            label="Plan Remaining"
+            value={planRemaining}
             color="text-green-600"
           />
           <Stat
-            label="Held (in-progress)"
-            value={balance?.held_points ?? 0}
+            label="Addon Remaining"
+            value={addonRemaining}
             color="text-orange-500"
           />
           <Stat
-            label="Total"
-            value={balance?.total_points ?? 0}
+            label="Total Remaining"
+            value={totalRemaining}
             color="text-text-primary"
           />
         </div>

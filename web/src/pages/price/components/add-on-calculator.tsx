@@ -1,4 +1,5 @@
 import NumberInput from '@/components/originui/number-input';
+import { BillingQueryKey } from '@/pages/billing/constants/query-keys';
 import { getBillingPointsPrice } from '@/services/price';
 import { useQuery } from '@tanstack/react-query';
 import React, { useState } from 'react';
@@ -7,7 +8,7 @@ import { useFetchAddonPlans } from '../hook/use-addon-plans';
 const AddOnCalculator: React.FC = () => {
   const [quantities, setQuantities] = useState<{ [key: string]: number }>({});
   const { data: pointsPriceData } = useQuery({
-    queryKey: ['billingPointsPrice'],
+    queryKey: [BillingQueryKey.PointsPrice],
     queryFn: async () => {
       const { data: res } = await getBillingPointsPrice();
       return res?.code === 0 ? res.data : null;

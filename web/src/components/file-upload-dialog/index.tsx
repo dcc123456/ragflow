@@ -6,7 +6,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { useSystemConfig } from '@/hooks/use-system-request';
 import { IModalProps } from '@/interfaces/common';
+import { formatBytes } from '@/lib/utils';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { TFunction } from 'i18next';
 import { useForm } from 'react-hook-form';
@@ -47,8 +49,9 @@ type UploadFormProps = {
   showParseOnCreation?: boolean;
   accept?: Record<string, string[]>;
 };
-function UploadForm({ submit, showParseOnCreation, accept }: UploadFormProps) {
+function UploadForm({ submit, showParseOnCreation }: UploadFormProps) {
   const { t } = useTranslation();
+  const { config } = useSystemConfig();
   const FormSchema = buildUploadFormSchema(t);
 
   type UploadFormSchemaType = z.infer<typeof FormSchema>;
@@ -59,6 +62,13 @@ function UploadForm({ submit, showParseOnCreation, accept }: UploadFormProps) {
       fileList: [],
     },
   });
+
+  const uploadSizeLimit = config?.upload_size_limit;
+  const uploadDescription = uploadSizeLimit
+    ? t('system.uploadDescription', {
+        size: formatBytes(uploadSizeLimit),
+      })
+    : undefined;
 
   return (
     <Form {...form}>
@@ -87,6 +97,7 @@ function UploadForm({ submit, showParseOnCreation, accept }: UploadFormProps) {
               value={field.value}
               onValueChange={field.onChange}
               accept={{}}
+              description={uploadDescription}
               data-testid="dataset-upload-dropzone"
             />
           )}

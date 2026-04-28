@@ -1,0 +1,17 @@
+export enum BillingQueryKey {
+  BillingSession = 'billingSession',
+  CurrentPlan = 'currentPlan',
+  PlanOverview = 'getPlanOverview',
+  BaseOverview = 'getBaseOverview',
+  PointsBalance = 'getPointsBalance',
+  PointsOverview = 'billingPointsOverview',
+  StorageCurrent = 'billingStorageCurrent',
+  DeepDocUsage = 'getDeepDocUsage',
+  HistoryList = 'fetchHistoryList',
+  AllSpends = 'getAllSpends',
+  PointsLedger = 'getPointsLedger',
+  PointsHolds = 'getPointsHolds',
+  AddonPlans = 'addonPlans',
+  PlanList = 'getPlanList',
+  PointsPrice = 'billingPointsPrice',
+}

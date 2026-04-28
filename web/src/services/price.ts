@@ -85,15 +85,6 @@ export const cancelScheduledSubscriptionChange = (tenantId: string) => {
   });
 };
 
-export const unsubscribe = (data: {
-  tenant_id: string;
-  cancel_at_period_end?: string;
-  feedback?: string;
-  comment?: string;
-}) => {
-  return request.post(api.unsubscribe, { data });
-};
-
 export const createBillingPortalSession = (data?: {
   tenant_id?: string;
   return_url?: string;
@@ -128,6 +119,8 @@ export interface IStorageSubscriptionCurrent {
   cancel_at_period_end: boolean;
   current_period_start: string | null;
   current_period_end: string | null;
+  payment_required: boolean;
+  payment_recovery_url: string;
 }
 
 export const getBillingStorageCurrent = (tenantId?: string) => {
@@ -159,6 +152,8 @@ export const getBillingDeepDocUsage = (tenantId?: string) =>
 export const postBillingPointsCheckout = (data: {
   tenant_id?: string;
   quantity: number;
+  session_success_url?: string;
+  session_cancel_url?: string;
 }) => request.post(api.pointsCheckout, { data });
 
 export const getBillingPointsPrice = () => request.get(api.pointsPrice);
@@ -187,5 +182,8 @@ export const getBillingPointsHolds = (params: {
   page_size?: number;
   status?: string;
 }) => request.get(api.pointsHolds, { params });
+
+export const getBillingSession = (sessionId: string) =>
+  request.get(api.session(sessionId));
 
 export default billingService;

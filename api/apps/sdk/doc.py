@@ -156,10 +156,10 @@ async def upload(dataset_id, tenant_id):
         file_obj.seek(0, os.SEEK_END)
         total_size += file_obj.tell()
         file_obj.seek(0)
-    MAX_TOTAL_FILE_SIZE = 10 * 1024 * 1024
+    MAX_TOTAL_FILE_SIZE = settings.DOC_MAXIMUM_SIZE
     if total_size > MAX_TOTAL_FILE_SIZE:
         return get_result(
-            message=f"Total file size exceeds 10MB limit! ({total_size / (1024 * 1024):.2f} MB)",
+            message=f"Total file size exceeds limit! ({total_size / (1024 * 1024):.2f} MB, max: {settings.DOC_MAXIMUM_SIZE / (1024 * 1024):.0f} MB)",
             code=RetCode.ARGUMENT_ERROR,
         )
 

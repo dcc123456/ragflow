@@ -1,9 +1,7 @@
 import { useFetchTenantInfo } from '@/hooks/use-user-setting-request';
 import { formatNumber } from '@/pages/admin/model-usage-statistics/utils';
-import { useFetchPointsBalance } from '@/pages/billing/points/hook/points';
 import { useFetchAddonPlans } from '@/pages/price/hook/use-addon-plans';
 import {
-  getBillingPointsOverview,
   getBillingStorageCurrent,
   postBillingStorageAbandonPending,
   postBillingStorageSetTarget,
@@ -20,6 +18,7 @@ import {
 } from 'lucide-react';
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { BillingQueryKey } from '../constants/query-keys';
 import {
   showAbandonPendingModal,
   showAddOnManageModal,
@@ -39,6 +38,8 @@ interface CustomProgressProps {
   planValue?: number;
   unit?: string;
   showValue?: boolean;
+  planPoints?: { used: number; limit: number; unit?: string };
+  addonPoints?: { used: number; limit: number; unit?: string };
   children?: React.ReactNode;
 }
 
@@ -52,6 +53,8 @@ const ResourceUsage: React.FC<CustomProgressProps> = ({
   planValue = 0,
   unit = '',
   showValue = true,
+  planPoints,
+  addonPoints,
   children,
 }) => {
   let addOnManageModal: { destroy: () => void };
@@ -59,28 +62,29 @@ const ResourceUsage: React.FC<CustomProgressProps> = ({
   const tenantId = tenantInfo?.tenant_id;
   const queryClient = useQueryClient();
   const { t } = useTranslation();
-  const { data: pointsBalance } = useFetchPointsBalance();
-  const currentPoints = pointsBalance?.available_points ?? 0;
+  const planPointsRemaining = Math.max(
+    0,
+    (planPoints?.limit ?? 0) - (planPoints?.used ?? 0),
+  );
+  const addonPointsRemaining = Math.max(
+    0,
+    (addonPoints?.limit ?? 0) - (addonPoints?.used ?? 0),
+  );
+  const currentPoints = planPointsRemaining + addonPointsRemaining;
   const { pricePerGB: pricePerGBFromApi } = useFetchAddonPlans();
-  const { data: storageCurrent } = useQuery({
-    queryKey: ['billingStorageCurrent', tenantId],
+  const {
+    data: storageCurrent,
+    isLoading: isStorageCurrentLoading,
+    isError: isStorageCurrentError,
+  } = useQuery({
+    queryKey: [BillingQueryKey.StorageCurrent, tenantId],
     enabled: title === 'Storage' && !!tenantId,
     queryFn: async () => {
       const { data: res } = await getBillingStorageCurrent(tenantId);
       if (res.code === 0) {
         return res.data;
       }
-    },
-  });
-
-  const { data: pointsOverview } = useQuery({
-    queryKey: ['billingPointsOverview', tenantId],
-    enabled: title === 'Document Parse' && !!tenantId,
-    queryFn: async () => {
-      const { data: res } = await getBillingPointsOverview(tenantId);
-      if (res.code === 0) {
-        return res.data;
-      }
+      throw new Error(res.message || 'Failed to fetch storage current');
     },
   });
 
@@ -92,9 +96,15 @@ const ResourceUsage: React.FC<CustomProgressProps> = ({
 
   const invalidateStorageQueries = () =>
     Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['getPlanOverview'] }),
-      queryClient.invalidateQueries({ queryKey: ['getBaseOverview'] }),
-      queryClient.invalidateQueries({ queryKey: ['billingStorageCurrent'] }),
+      queryClient.invalidateQueries({
+        queryKey: [BillingQueryKey.PlanOverview],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: [BillingQueryKey.BaseOverview],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: [BillingQueryKey.StorageCurrent],
+      }),
     ]);
 
   const submitSetTarget = async (targetGb: number) => {
@@ -186,58 +196,55 @@ const ResourceUsage: React.FC<CustomProgressProps> = ({
             <div className="flex items-end gap-3 cursor-pointer ">
               <span>
                 {t('billing.addonUsed')}{' '}
-                {value > planValue ? value - planValue : 0}
+                {(value > planValue ? value - planValue : 0).toFixed(2)}
                 {unit}/{parseFloat((limit - planValue).toFixed(2))}
                 {unit}
               </span>
-              <div
-                className="flex items-center text-text-primary text-xs hover:outline outline-1 px-1 py-1 rounded-sm border border-border-button bg-bg-input "
-                onClick={() => openAddOnManage()}
-              >
-                {t('billing.buyStorage')}
-                <ArrowUpRight size={12} />
-              </div>
+              {isStorageCurrentLoading ? (
+                <div className="flex items-center text-xs px-1 py-1 rounded-sm border border-border-button bg-bg-input text-text-secondary cursor-not-allowed">
+                  {t('common.loading', 'Loading...')}
+                </div>
+              ) : !isStorageCurrentError && storageCurrent?.payment_required && storageCurrent?.payment_recovery_url ? (
+                <a
+                  href={storageCurrent.payment_recovery_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center text-xs hover:outline outline-1 px-1 py-1 rounded-sm border border-red-400 bg-bg-input text-red-500"
+                >
+                  {t('billing.payStorageInvoice', 'Pay Invoice')}
+                  <ArrowUpRight size={12} />
+                </a>
+              ) : (
+                <div
+                  className="flex items-center text-text-primary text-xs hover:outline outline-1 px-1 py-1 rounded-sm border border-border-button bg-bg-input "
+                  onClick={() => openAddOnManage()}
+                >
+                  {t('billing.buyStorage')}
+                  <ArrowUpRight size={12} />
+                </div>
+              )}
             </div>
           )}
         </div>
       );
     }
-    if (title === 'Document Parse' && pointsOverview) {
-      const {
-        plan_quota,
-        plan_used,
-        // plan_remaining,
-        addon_total,
-        addon_used,
-        // addon_remaining,
-      } = pointsOverview;
-
+    if (title === 'Document Parse' && (planPoints || addonPoints)) {
       return (
         <div className="flex gap-2 text-text-primary justify-between">
           {/* Plan quota row */}
           <div className="flex justify-between items-center flex-col">
             <span>
-              {t('billing.starterPlan') || 'Plan Quota'} {t('billing.planUsed')}
+              {planName} {t('billing.planUsed')}
             </span>
             <span>
-              {plan_used}/{plan_quota} pts
-              {/* {plan_remaining > 0 && (
-                <span className="text-text-secondary">
-                  ({plan_remaining} left)
-                </span>
-              )} */}
+              {planPoints?.used ?? 0}/{planPoints?.limit ?? 0} pts
             </span>
           </div>
           {/* Addon row */}
           <div className="flex justify-between items-center flex-col">
             <span>{t('billing.creditsUsed') || 'Addon Points'}</span>
             <span>
-              {addon_used}/{addon_total} pts
-              {/* {addon_remaining > 0 && (
-                <span className="text-text-secondary">
-                  ({addon_remaining} left)
-                </span>
-              )} */}
+              {addonPoints?.used ?? 0}/{addonPoints?.limit ?? 0} pts
             </span>
           </div>
 
@@ -288,7 +295,7 @@ const ResourceUsage: React.FC<CustomProgressProps> = ({
             </span>
           </div>
           <div className="text-text-primary">
-            {title === 'Document Parse' && pointsOverview ? (
+            {title === 'Document Parse' && (planPoints || addonPoints) ? (
               <span>{`${formatNumber(currentPoints)} ${unit}`}</span>
             ) : (
               <>

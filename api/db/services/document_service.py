@@ -849,6 +849,15 @@ class DocumentService(CommonService):
                 e, doc = DocumentService.get_by_id(d["id"])
                 status = doc.run  # TaskStatus.RUNNING.value
                 if status == TaskStatus.CANCEL.value:
+                    if settings.BILLING_ENABLED:
+                        try:
+                            from api.db.services.billing_service import PointAccountService, PointHoldService
+
+                            hold = PointHoldService.get_by_doc_id(d["id"])
+                            if hold:
+                                PointAccountService.release_hold(hold["id"])
+                        except Exception as _billing_err:
+                            logging.warning(f"Billing hold finalize error for canceled doc {d['id']}: {_billing_err}")
                     continue
                 doc_progress = doc.progress if doc and doc.progress else 0.0
                 special_task_running = False

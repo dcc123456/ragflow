@@ -9,6 +9,7 @@ import { PriceName } from '../price/constant';
 import { useFetchCurrentPlan } from '../price/hook/use-price-hooks';
 import UpgradeButton from '../price/price-modal/to-upgrade-button';
 import BillingHistory from './billing-history';
+import PaymentStatusModal from './component/payment-status-modal';
 import { Overview } from './overview';
 import PointsPage from './points';
 import UsagePage from './usage';
@@ -40,7 +41,7 @@ const Billing = () => {
     setActiveKey(e);
   };
   return (
-    <div className="bg-bg-base text-text-primary p-4 h-[calc(100vh-120px)] overflow-auto w-full">
+    <div className="bg-bg-base text-text-primary p-4 h-[calc(100vh-120px)] w-full flex flex-col">
       <nav className="flex justify-between items-center mb-6">
         <Segmented
           options={navList}
@@ -60,10 +61,13 @@ const Billing = () => {
           />
         </div>
       </nav>
-      {activeKey === 'overview' && <Overview />}
-      {activeKey === 'usage' && <UsagePage />}
-      {activeKey === 'billing-history' && <BillingHistory />}
-      {activeKey === 'points' && <PointsPage />}
+      <section className="flex-1 overflow-auto">
+        {activeKey === 'overview' && <Overview />}
+        {activeKey === 'usage' && <UsagePage />}
+        {activeKey === 'billing-history' && <BillingHistory />}
+        {activeKey === 'points' && <PointsPage />}
+      </section>
+      <PaymentStatusModal />
     </div>
   );
 };

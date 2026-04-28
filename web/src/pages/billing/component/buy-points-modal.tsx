@@ -107,10 +107,10 @@ const BuyPointsModal: React.FC<BuyPointsModalProps> = ({
     checkoutMutation.mutate(amount, {
       onSuccess: (res) => {
         if (res?.code === 0 && res?.data?.checkout_url) {
-          window.open(res.data.checkout_url, '_blank');
           onClose();
           setAmount(10);
           setSelectedQuickOption(0);
+          window.location.href = res.data.checkout_url;
         } else {
           message.error(res?.message || t('billing.buyPointsFailed'));
         }

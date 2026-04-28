@@ -692,3 +692,13 @@ variable "stripe_test_clock_id" {
   default     = ""
 }
 
+# =============================================================================
+# Upload Configuration
+# =============================================================================
+
+variable "upload_size_limit" {
+  description = "Maximum upload file size (e.g., '100m', '500m', '1g'). Applies to both NGINX Gateway (smk) and GKE."
+  type        = string
+  default     = "100m"
+}
+

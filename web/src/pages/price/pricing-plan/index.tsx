@@ -213,6 +213,8 @@ const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
 
   useEffect(() => {
     if (!currentPlan || !planList || planList.length <= 0) return;
+    const trialPlan = planList.find((plan) => plan.name === PriceName.Trial);
+    const trialPriceId = trialPlan?.price_ids;
     const currentPlanValue =
       PriceNameMapValue[
         currentPlan.plan_name as keyof typeof PriceNameMapValue
@@ -233,6 +235,7 @@ const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
         ...thisPricePlan,
         name: plan.name,
         id: plan.price_ids,
+        cancelTargetPriceId: trialPriceId,
         price: plan.price,
         isUse: false,
         disabled: false,
@@ -269,6 +272,16 @@ const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
       disabled: false,
       buttonLabel: t('price.contactUs'),
     });
+
+    // Ensure the pricing cards are displayed in the correct order regardless of the backend response order
+    plans.sort((a, b) => {
+      const valueA =
+        PriceNameMapValue[a.name as keyof typeof PriceNameMapValue] ?? -1;
+      const valueB =
+        PriceNameMapValue[b.name as keyof typeof PriceNameMapValue] ?? -1;
+      return valueA - valueB;
+    });
+
     setPricePlanList(plans as unknown as IPricePlanWithButton[]);
   }, [currentPlan, planList, t, isUpgrade]);
 
