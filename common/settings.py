@@ -440,11 +440,13 @@ def init_settings():
         for price_id in price_ids:
            BILLING_PRICEID_TO_PRODUCT[price_id] = plan_name
 
-        plan_priority = plan.get("plan_priority")
+        task_priority = plan.get("task_priority", "low")
+        priority_int = 1 if task_priority == "high" else 0
         quota_points = plan.get("quota_points", 0)
-        BILLING_PRIORITY_TO_PLANS[plan_priority].append(plan_name)
+        BILLING_PRIORITY_TO_PLANS[priority_int].append(plan_name)
         BILLING_PLAN_TO_INFO[plan_name] = {
-            "priority": plan_priority,
+            "priority": priority_int,
+            "task_priority": task_priority,
             "price_ids": price_ids,
             "api_request_limit_per_minute": api_request_limit_per_minute,
             "api_request_limit_per_month": api_request_limit_per_month,
@@ -508,3 +510,6 @@ def print_rag_settings():
 
 def rout_key(priority: int, suffix="common") -> str:
     return "te.{}.{}".format(priority, suffix)
+
+
+

@@ -425,19 +425,24 @@ variable "ragflow_memory_limit" {
 # =============================================================================
 
 variable "parser_replicas" {
-  description = "Number of Parser replicas"
-  type        = number
-  default     = 3
+  description = "Number of Parser replicas per task type"
+  type        = map(number)
+  default = {
+    common   = 28
+    graphrag = 2
+    raptor   = 1
+    resume   = 1
+  }
 }
 
 variable "parser_cpu_request" {
-  description = "Parser CPU request"
+  description = "Parser CPU request per pod"
   type        = string
   default     = "2"
 }
 
 variable "parser_cpu_limit" {
-  description = "Parser CPU limit"
+  description = "Parser CPU limit per pod"
   type        = string
   default     = "4"
 }
@@ -445,13 +450,13 @@ variable "parser_cpu_limit" {
 variable "parser_memory_request" {
   description = "Parser memory request"
   type        = string
-  default     = "16Gi"
+  default     = "4Gi"
 }
 
 variable "parser_memory_limit" {
   description = "Parser memory limit"
   type        = string
-  default     = "20Gi"
+  default     = "8Gi"
 }
 
 variable "parser_ws_workers" {

@@ -86,7 +86,6 @@ billing:
       task_priority: "low"
       price_ids: '${BILLING_PRICE_ID_STORAGE:-price_1TOCKc2XhWscgPRmJRyTuo5g}'
       product_type: "addon"
-      plan_priority: -1
     - name: "Trial"
       quota_apps: 5
       quota_members: 1
@@ -97,7 +96,6 @@ billing:
       task_priority: "low"
       price_ids: '${BILLING_PRICE_ID_TRIAL:-price_1TPawr2XhWscgPRmFFLnlhpK}'
       product_type: "subscription"
-      plan_priority: 0
     - name: "Starter"
       quota_apps: 50
       quota_members: 5
@@ -108,7 +106,6 @@ billing:
       task_priority: "high"
       price_ids: '${BILLING_PRICE_ID_STARTER:-price_1TOCIQ2XhWscgPRmUhPHTvBD}'
       product_type: "subscription"
-      plan_priority: 1
     - name: "Pro"
       quota_apps: 100000
       quota_members: 20
@@ -119,7 +116,6 @@ billing:
       task_priority: "high"
       price_ids: '${BILLING_PRICE_ID_PRO:-price_1TOCIi2XhWscgPRmpUCmNPE7}'
       product_type: "subscription"
-      plan_priority: 2
 rabbitmq:
   user: "${RABBITMQ_DEFAULT_USER:-rag_flow}"
   password: '${RABBITMQ_DEFAULT_PASS:-infini_rag_flow}'

@@ -64,8 +64,13 @@ ragflow_cpu_limit       = "4"
 ragflow_memory_request  = "8Gi"
 ragflow_memory_limit    = "16Gi"
 
-# Parser - reduced for dev
-parser_replicas = 1
+# Parser replicas per task type
+parser_replicas = {
+  common   = 1
+  graphrag = 1
+  raptor   = 1
+  resume   = 1
+}
 # parser_ws_workers = 2
 
 # DeepDoc - reduced for dev

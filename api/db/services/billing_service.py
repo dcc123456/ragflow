@@ -440,7 +440,12 @@ class SubscriptionService(CommonService):
         subscription_status = tenant_plan["subscription_status"]
         if subscription_status not in ENTITLED_MAIN_SUBSCRIPTION_STATUSES:
             return 0
-        return 1
+        # Look up task_priority from the Product table
+        product = ProductService.get_by_name(tenant_plan["plan_name"])
+        if product:
+            task_priority = product.get("task_priority", "low")
+            return 1 if task_priority == "high" else 0
+        return 0
 
     @classmethod
     def get_by_customer_id(cls, customer_id: str):

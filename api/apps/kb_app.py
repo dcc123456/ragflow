@@ -46,6 +46,7 @@ from rag.nlp import search
 from rag.utils.redis_conn import REDIS_CONN
 from common.constants import RetCode, PipelineTaskType, VALID_TASK_STATUS, LLMType
 from common import settings
+from api.common.priority_provider import get_tenant_priority
 from api.apps import login_required, current_user
 
 
@@ -741,7 +742,7 @@ async def run_graphrag():
     sample_document = documents[0]
     document_ids = [document["id"] for document in documents]
 
-    task_id = queue_raptor_o_graphrag_tasks(sample_doc_id=sample_document, ty="graphrag", priority=0, fake_doc_id=GRAPH_RAPTOR_FAKE_DOC_ID, doc_ids=list(document_ids))
+    task_id = queue_raptor_o_graphrag_tasks(sample_doc_id=sample_document, ty="graphrag", priority=get_tenant_priority(current_user.id), fake_doc_id=GRAPH_RAPTOR_FAKE_DOC_ID, doc_ids=list(document_ids))
 
     if not KnowledgebaseService.update_by_id(kb.id, {"graphrag_task_id": task_id}):
         logging.warning(f"Cannot save graphrag_task_id for kb {kb_id}")
@@ -812,7 +813,7 @@ async def run_raptor():
     sample_document = documents[0]
     document_ids = [document["id"] for document in documents]
 
-    task_id = queue_raptor_o_graphrag_tasks(sample_doc_id=sample_document, ty="raptor", priority=0, fake_doc_id=GRAPH_RAPTOR_FAKE_DOC_ID, doc_ids=list(document_ids))
+    task_id = queue_raptor_o_graphrag_tasks(sample_doc_id=sample_document, ty="raptor", priority=get_tenant_priority(current_user.id), fake_doc_id=GRAPH_RAPTOR_FAKE_DOC_ID, doc_ids=list(document_ids))
 
     if not KnowledgebaseService.update_by_id(kb.id, {"raptor_task_id": task_id}):
         logging.warning(f"Cannot save raptor_task_id for kb {kb_id}")
@@ -883,7 +884,7 @@ async def run_mindmap():
     sample_document = documents[0]
     document_ids = [document["id"] for document in documents]
 
-    task_id = queue_raptor_o_graphrag_tasks(sample_doc_id=sample_document, ty="mindmap", priority=0, fake_doc_id=GRAPH_RAPTOR_FAKE_DOC_ID, doc_ids=list(document_ids))
+    task_id = queue_raptor_o_graphrag_tasks(sample_doc_id=sample_document, ty="mindmap", priority=get_tenant_priority(current_user.id), fake_doc_id=GRAPH_RAPTOR_FAKE_DOC_ID, doc_ids=list(document_ids))
 
     if not KnowledgebaseService.update_by_id(kb.id, {"mindmap_task_id": task_id}):
         logging.warning(f"Cannot save mindmap_task_id for kb {kb_id}")
@@ -1180,7 +1181,7 @@ async def switch_embedding():
     if not documents:
         return get_error_data_result(message=f"No documents in Knowledgebase {kb_id}")
 
-    task_id = queue_reembedding_dup_tasks(documents[0]["id"], ty="reembedding", priority=0, embed_id=embd_id)
+    task_id = queue_reembedding_dup_tasks(documents[0]["id"], ty="reembedding", priority=get_tenant_priority(current_user.id), embed_id=embd_id)
 
     if not KnowledgebaseService.update_by_id(kb.id, {"embed_task_id": task_id, "embd_id": embd_id}):
         logging.warning(f"Cannot save for data {kb.name}")
@@ -1264,7 +1265,7 @@ async def clone():
     if not documents:
         return get_error_data_result(message=f"No documents in Knowledgebase {kb_id}")
 
-    task_id = queue_reembedding_dup_tasks(documents[0]["id"], ty="clone", priority=0, target_kb_id=kb["id"])
+    task_id = queue_reembedding_dup_tasks(documents[0]["id"], ty="clone", priority=get_tenant_priority(current_user.id), target_kb_id=kb["id"])
 
     if not KnowledgebaseService.update_by_id(kb["id"], {"clone_task_id": task_id}):
         logging.warning(f"Cannot save for data {kb.name}")

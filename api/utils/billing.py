@@ -361,8 +361,8 @@ def get_plan_priority_by_price_id(price_id: str) -> int | None:
     if not plan_name:
         return None
     plan_info = settings.BILLING_PLAN_TO_INFO.get(plan_name) or {}
-    priority = plan_info.get("priority")
-    return priority if isinstance(priority, int) else None
+    task_priority = plan_info.get("task_priority", "low")
+    return 1 if task_priority == "high" else 0
 
 
 def is_downgrade_by_price_id(current_price_id: str, target_price_id: str) -> bool:

@@ -46,6 +46,7 @@ from rag.flow.pipeline import Pipeline
 from rag.nlp import search
 from rag.utils.redis_conn import REDIS_CONN
 from common import settings
+from api.common.priority_provider import get_tenant_priority
 from api.apps import login_required, current_user
 from api.apps.services.canvas_replica_service import CanvasReplicaService
 from common.role_util import check_role_access, CANVAS_API_ACTION_MAP, CANVAS_ROLE_RESOURCE_TYPE
@@ -324,7 +325,7 @@ async def run():
         task_id = get_uuid()
         Pipeline(cvs.dsl, tenant_id=tenant_id, doc_id=CANVAS_DEBUG_DOC_ID, task_id=task_id, flow_id=req["id"])
         try:
-            ok, error_message = await thread_pool_exec(queue_dataflow, user_id, req["id"], task_id, CANVAS_DEBUG_DOC_ID, files[0], 0)
+            ok, error_message = await thread_pool_exec(queue_dataflow, user_id, req["id"], task_id, CANVAS_DEBUG_DOC_ID, files[0], get_tenant_priority(user_id))
         except InsufficientPointsError as e:
             return get_json_result(data=False, message=str(e), code=RetCode.BILLING_POINTS_INSUFFICIENT)
         if not ok:
@@ -450,7 +451,7 @@ async def rerun():
     dsl["path"] = [req["component_id"]]
     PipelineOperationLogService.update_by_id(req["id"], {"dsl": dsl})
     try:
-        ok, error_message = queue_dataflow(tenant_id=current_user.id, flow_id=req["id"], task_id=get_uuid(), doc_id=doc["id"], priority=0, rerun=True)
+        ok, error_message = queue_dataflow(tenant_id=current_user.id, flow_id=req["id"], task_id=get_uuid(), doc_id=doc["id"], priority=get_tenant_priority(current_user.id), rerun=True)
     except InsufficientPointsError as e:
         return get_json_result(data=False, message=str(e), code=RetCode.BILLING_POINTS_INSUFFICIENT)
     if not ok:

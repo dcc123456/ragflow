@@ -56,7 +56,6 @@ billing:
       task_priority: "low"
       price_ids: "price_1TOCKc2XhWscgPRmJRyTuo5g"
       product_type: "addon"
-      plan_priority: -1
     - name: "Trial"
       quota_apps: 5
       quota_members: 1
@@ -66,7 +65,6 @@ billing:
       task_priority: "low"
       price_ids: "price_1TPawr2XhWscgPRmFFLnlhpK"
       product_type: "subscription"
-      plan_priority: 0
     - name: "Starter"
       quota_apps: 100
       quota_members: 10
@@ -76,7 +74,6 @@ billing:
       task_priority: "high"
       price_ids: "price_1TOCIQ2XhWscgPRmUhPHTvBD"
       product_type: "subscription"
-      plan_priority: 1
     - name: "Pro"
       quota_apps: 999999999
       quota_members: 50
@@ -86,11 +83,10 @@ billing:
       task_priority: "high"
       price_ids: "price_1TOCIi2XhWscgPRmpUCmNPE7"
       product_type: "subscription"
-      plan_priority: 2
 rabbitmq:
-  user: "kevin"
-  password: 'kevin'
-  host: '192.168.200.143'
+  user: "rag_flow"
+  password: 'infini_rag_flow'
+  host: 'rabbitmq'
   port: 1672
   api_port: 1673
   exchange: "test1"

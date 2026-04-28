@@ -84,7 +84,6 @@ billing:
       price_ids: 'price_1Syn0kPtsKvwvC5fd6HYXvCt'
       product_type: usage_based
       usage_stat_type: before
-      plan_priority: -1
     - name: Trial
       quota_apps: 5
       quota_members: 1
@@ -95,7 +94,6 @@ billing:
       price_ids: 'price_1TPawr2XhWscgPRmFFLnlhpK'
       product_type: subscription
       usage_stat_type: 
-      plan_priority: 0
     - name: Starter
       quota_apps: 50
       quota_members: 5
@@ -106,7 +104,6 @@ billing:
       price_ids: 'price_1Si7S7PtsKvwvC5f3IjPpPcN'
       product_type: subscription
       usage_stat_type: 
-      plan_priority: 1
     - name: Pro
       quota_apps: 100000
       quota_members: 20

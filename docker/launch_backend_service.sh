@@ -69,24 +69,23 @@ trap cleanup SIGINT SIGTERM
 
 # Function to execute task_executor with retry logic
 task_exe(){
-    local task_id=$1
     local retry_count=0
     while ! $STOP && [ $retry_count -lt $MAX_RETRIES ]; do
-        echo "Starting task_executor.py for task $task_id (Attempt $((retry_count+1)))"
-        LD_PRELOAD=$JEMALLOC_PATH $PY rag/svr/task_executor.py "$task_id"
+        echo "Starting task_executor.py for task $* (Attempt $((retry_count+1)))"
+        LD_PRELOAD=$JEMALLOC_PATH $PY rag/svr/task_executor.py "$@"
         EXIT_CODE=$?
         if [ $EXIT_CODE -eq 0 ]; then
-            echo "task_executor.py for task $task_id exited successfully."
+            echo "task_executor.py for task $* exited successfully."
             break
         else
-            echo "task_executor.py for task $task_id failed with exit code $EXIT_CODE. Retrying..." >&2
+            echo "task_executor.py for task $* failed with exit code $EXIT_CODE. Retrying..." >&2
             retry_count=$((retry_count + 1))
             sleep 2
         fi
     done
 
     if [ $retry_count -ge $MAX_RETRIES ]; then
-        echo "task_executor.py for task $task_id failed after $MAX_RETRIES attempts. Exiting..." >&2
+        echo "task_executor.py for task $* failed after $MAX_RETRIES attempts. Exiting..." >&2
         cleanup
     fi
 }
@@ -117,7 +116,7 @@ run_server(){
 # Start task executors
 for ((i=0;i<WS;i++))
 do
-  task_exe "$i" &
+  task_exe "-p" "0" "-i" "$(hostname)" "-t" "common" &
   PIDS+=($!)
 done
 

@@ -251,6 +251,130 @@ class RabbitQueue:
                 else:
                     time.sleep(1)  # Wait before reconnecting
 
+    def priority_queue_consumer(self, high_priority_queue, low_priority_queue, callback):
+        """
+        Consume from two queues with priority-based dispatch.
+        Always checks the high-priority queue first; only consumes from the
+        low-priority queue when no high-priority messages are available.
+
+        Uses basic_get polling so the consumer retains full control over which
+        queue to read next, unlike basic_consume which delivers messages in
+        the order they arrive across all subscribed queues.
+
+        Callbacks are executed in a separate thread to prevent pika heartbeat
+        timeouts during long-running task processing.
+        """
+        import threading
+        import queue as queue_mod
+        import time
+
+        consecutive_failures = 0
+        max_consecutive_failures = 5
+        IDLE_POLL_INTERVAL = 0.5  # seconds to sleep when both queues are empty
+
+        while True:
+            try:
+                # Ensure we have a valid connection
+                if not self._is_connection_healthy():
+                    logging.info("Connection unhealthy, reconnecting...")
+                    self._close_connection()
+                    self.__open__()
+
+                if not self._is_connection_healthy():
+                    logging.warning("Failed to establish healthy connection, retrying...")
+                    time.sleep(2)
+                    continue
+
+                # Declare both queues
+                self._channel.queue_declare(high_priority_queue, durable=True)
+                self._channel.queue_declare(low_priority_queue, durable=True)
+
+                consecutive_failures = 0
+
+                while True:
+                    if not self._is_connection_healthy():
+                        logging.warning("Connection became unhealthy during priority consume loop")
+                        break
+
+                    # Always try high-priority queue first
+                    method_frame = self._channel.basic_get(queue=high_priority_queue, auto_ack=False)
+                    source_queue = high_priority_queue
+
+                    if method_frame[0] is None:
+                        # No high-priority message, try low-priority
+                        method_frame = self._channel.basic_get(queue=low_priority_queue, auto_ack=False)
+                        source_queue = low_priority_queue
+
+                    method, properties, body = method_frame
+
+                    if method is None:
+                        # Both queues empty – keep connection alive and retry
+                        try:
+                            self._channel.connection.process_data_events(time_limit=0.1)
+                        except Exception:
+                            logging.warning("process_data_events failed during idle poll")
+                            break
+                        time.sleep(IDLE_POLL_INTERVAL)
+                        continue
+
+                    # We have a message – process it in a thread (same pattern as queue_consumer)
+                    delivery_tag = method.delivery_tag
+                    result_queue = queue_mod.Queue()
+
+                    def run_callback(ch, mtd, props, bdy, src_q):
+                        should_ack = True
+                        try:
+                            result = callback(ch, mtd, props, bdy)
+                            should_ack = result if result is not None else True
+                        except Exception as e:
+                            logging.warning(f"Callback exception for message from {src_q}: {e}")
+                            should_ack = True
+                        finally:
+                            result_queue.put(should_ack)
+
+                    t = threading.Thread(target=run_callback,
+                                         args=(self._channel, method, properties, body, source_queue),
+                                         daemon=True)
+                    t.start()
+
+                    # Wait for callback completion while keeping the connection alive
+                    while t.is_alive():
+                        try:
+                            self._channel.connection.process_data_events(time_limit=1)
+                        except Exception:
+                            logging.warning("process_data_events failed while waiting for callback")
+                            break
+                        t.join(timeout=0.5)
+
+                    # Ack / nack the processed message
+                    try:
+                        should_ack = result_queue.get_nowait()
+                    except queue_mod.Empty:
+                        should_ack = True  # default ack if something went wrong
+
+                    try:
+                        if should_ack:
+                            self._channel.basic_ack(delivery_tag=delivery_tag)
+                        else:
+                            self._channel.basic_nack(delivery_tag=delivery_tag, requeue=True)
+                    except Exception as e:
+                        logging.warning(f"Failed to ack/nack delivery tag {delivery_tag}: {e}")
+
+            except Exception as e:
+                consecutive_failures += 1
+                logging.warning(
+                    f"priority_queue_consumer exception: {e} "
+                    f"(failure {consecutive_failures}/{max_consecutive_failures})"
+                )
+                self._close_connection()
+
+                if consecutive_failures >= max_consecutive_failures:
+                    logging.error(f"Too many consecutive failures ({consecutive_failures}), taking longer break...")
+                    time.sleep(10)
+                    consecutive_failures = 0
+                else:
+                    time.sleep(1)
+
     def get_queue_length(self, queue_name, vhost: str = "/") -> int:
         for _ in range(3):
             try:

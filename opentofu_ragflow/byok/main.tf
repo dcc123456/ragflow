@@ -613,7 +613,28 @@ resource "kubernetes_config_map_v1" "rabbitmq" {
       policies = []
       queues = [
         {
-          name        = "te.0.raptor"
+          name        = "te.1.common"
+          vhost       = "/"
+          durable     = true
+          auto_delete = false
+          arguments   = { "x-queue-type" = "classic" }
+        },
+        {
+          name        = "te.1.graphrag"
+          vhost       = "/"
+          durable     = true
+          auto_delete = false
+          arguments   = { "x-queue-type" = "classic" }
+        },
+        {
+          name        = "te.1.raptor"
+          vhost       = "/"
+          durable     = true
+          auto_delete = false
+          arguments   = { "x-queue-type" = "classic" }
+        },
+        {
+          name        = "te.1.resume"
           vhost       = "/"
           durable     = true
           auto_delete = false
@@ -627,13 +648,6 @@ resource "kubernetes_config_map_v1" "rabbitmq" {
           arguments   = { "x-queue-type" = "classic" }
         },
         {
-          name        = "te.error"
-          vhost       = "/"
-          durable     = true
-          auto_delete = false
-          arguments   = { "x-queue-type" = "classic" }
-        },
-        {
           name        = "te.0.graphrag"
           vhost       = "/"
           durable     = true
@@ -641,7 +655,21 @@ resource "kubernetes_config_map_v1" "rabbitmq" {
           arguments   = { "x-queue-type" = "classic" }
         },
         {
+          name        = "te.0.raptor"
+          vhost       = "/"
+          durable     = true
+          auto_delete = false
+          arguments   = { "x-queue-type" = "classic" }
+        },
+        {
           name        = "te.0.resume"
+          vhost       = "/"
+          durable     = true
+          auto_delete = false
+          arguments   = { "x-queue-type" = "classic" }
+        },
+        {
+          name        = "te.error"
           vhost       = "/"
           durable     = true
           auto_delete = false
@@ -660,6 +688,38 @@ resource "kubernetes_config_map_v1" "rabbitmq" {
         }
       ]
       bindings = [
+        {
+          source           = "test1"
+          vhost            = "/"
+          destination      = "te.1.common"
+          destination_type = "queue"
+          routing_key      = "te.1.common"
+          arguments        = {}
+        },
+        {
+          source           = "test1"
+          vhost            = "/"
+          destination      = "te.1.graphrag"
+          destination_type = "queue"
+          routing_key      = "te.1.graphrag"
+          arguments        = {}
+        },
+        {
+          source           = "test1"
+          vhost            = "/"
+          destination      = "te.1.raptor"
+          destination_type = "queue"
+          routing_key      = "te.1.raptor"
+          arguments        = {}
+        },
+        {
+          source           = "test1"
+          vhost            = "/"
+          destination      = "te.1.resume"
+          destination_type = "queue"
+          routing_key      = "te.1.resume"
+          arguments        = {}
+        },
         {
           source           = "test1"
           vhost            = "/"
@@ -687,17 +747,17 @@ resource "kubernetes_config_map_v1" "rabbitmq" {
         {
           source           = "test1"
           vhost            = "/"
-          destination      = "te.error"
+          destination      = "te.0.resume"
           destination_type = "queue"
-          routing_key      = "te.error"
+          routing_key      = "te.0.resume"
           arguments        = {}
         },
         {
           source           = "test1"
           vhost            = "/"
-          destination      = "te.0.resume"
+          destination      = "te.error"
           destination_type = "queue"
-          routing_key      = "te.0.resume"
+          routing_key      = "te.error"
           arguments        = {}
         }
       ]
@@ -2201,24 +2261,34 @@ resource "kubernetes_deployment_v1" "admin" {
 }
 
 # =============================================================================
-# Parser Deployment
+# Parser Deployments — one per task type (common, graphrag, raptor, resume)
+# Each pod runs a single task_executor consumer that monitors both priority
+# queues (te.1.<type> and te.0.<type>) via priority_queue_consumer.
 # =============================================================================
+
+locals {
+  parser_types = ["common", "graphrag", "raptor", "resume"]
+}
 
 resource "kubernetes_deployment_v1" "parser" {
   depends_on = [kubernetes_secret_v1.ragflow_env]
 
+  for_each = toset(local.parser_types)
+
   metadata {
-    name      = "parser"
+    name      = "parser-${each.key}"
     namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
 
     labels = {
-      app     = "parser"
-      project = "ragflow"
+      app       = "parser-${each.key}"
+      component = "parser"
+      task-type = each.key
+      project   = "ragflow"
     }
   }
 
   spec {
-    replicas = var.parser_replicas
+    replicas = var.parser_replicas[each.key]
 
     # Limit revision history to reduce orphaned ReplicaSets
     revision_history_limit = 1
@@ -2229,15 +2299,19 @@ resource "kubernetes_deployment_v1" "parser" {
 
     selector {
       match_labels = {
-        app = "parser"
+        app       = "parser-${each.key}"
+        component = "parser"
+        task-type = each.key
       }
     }
 
     template {
       metadata {
         labels = {
-          app     = "parser"
-          project = "ragflow"
+          app       = "parser-${each.key}"
+          component = "parser"
+          task-type = each.key
+          project   = "ragflow"
         }
         annotations = {
           # Trigger rollout restart when secret changes
@@ -2295,7 +2369,7 @@ resource "kubernetes_deployment_v1" "parser" {
         }
 
         container {
-          name              = "parser"
+          name              = "parser-${each.key}"
           image             = local.ragflow_image_full
           image_pull_policy = "Always"
 
@@ -2313,8 +2387,8 @@ resource "kubernetes_deployment_v1" "parser" {
           }
 
           env {
-            name  = "WS_WORKERS"
-            value = var.parser_ws_workers
+            name  = "PARSER_TYPE"
+            value = each.key
           }
 
           # Mount ES CA certificate for HTTPS verification
@@ -2329,7 +2403,7 @@ resource "kubernetes_deployment_v1" "parser" {
 
           readiness_probe {
             exec {
-              command = ["/bin/bash", "-c", "ps aux | grep '[r]ag/svr/task_executor.py'"]
+              command = ["/bin/bash", "-c", "ps aux | grep '[r]ag/svr/task_executor.py.*-t ${each.key}'"]
             }
             initial_delay_seconds = 20
             period_seconds        = 10
@@ -2337,7 +2411,7 @@ resource "kubernetes_deployment_v1" "parser" {
 
           liveness_probe {
             exec {
-              command = ["/bin/bash", "-c", "ps aux | grep '[r]ag/svr/task_executor.py'"]
+              command = ["/bin/bash", "-c", "ps aux | grep '[r]ag/svr/task_executor.py.*-t ${each.key}'"]
             }
             initial_delay_seconds = 60
             period_seconds        = 20
