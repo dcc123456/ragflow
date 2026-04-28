@@ -115,6 +115,8 @@ class RabbitQueue:
                 body = json.dumps(message)
                 if len(body) > 10 * 1024:  # 10KB
                     logging.warning(f"Large message for {routing_key}: {len(body)} bytes")
+                # Ensure the queue exists and is bound to the exchange
+                self._channel.queue_declare(routing_key, durable=True) # routing_key == queue_name
                 self._channel.basic_publish(exchange=self.config["exchange"], routing_key=routing_key, body=body)
                 return True
             except Exception as e:
