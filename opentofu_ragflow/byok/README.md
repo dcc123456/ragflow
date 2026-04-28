@@ -467,8 +467,8 @@ The following table shows the default resource values for each environment. Copy
 | Storage | mysql_k8s_storage | 500 Gi | 20 Gi |
 | CPU Request | mysql_cpu_request | 4 | 2 |
 | CPU Limit | mysql_cpu_limit | 8 | 8 |
-| Memory Request | mysql_memory_request | 8Gi | 8Gi |
-| Memory Limit | mysql_memory_limit | 16Gi | 16Gi |
+| Memory Request | mysql_memory_request | 16Gi | 8Gi |
+| Memory Limit | mysql_memory_limit | 20Gi | 16Gi |
 | **Elasticsearch - Master Nodes** |
 | Node Count | es_master_node_count | 3 | 1 |
 | CPU Request | es_master_cpu_request | 2 | 1 |

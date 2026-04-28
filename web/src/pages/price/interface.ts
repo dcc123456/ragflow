@@ -20,9 +20,11 @@ export interface IPricePlan {
 }
 
 export type IPricePlanWithButton = IPricePlan & {
+  name?: string;
   isPopular?: boolean;
   buttonLabel: string;
   isUse: boolean;
+  disabled?: boolean;
   icon: () => JSX.Element;
 };
 

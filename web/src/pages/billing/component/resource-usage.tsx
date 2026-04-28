@@ -27,7 +27,7 @@ import {
 import BuyCreditsModal from './buy-points-modal';
 import Process from './process';
 
-const BYTES_PER_GB = 1024 * 1024 * 1024;
+const BYTES_PER_GB = 1000 * 1000 * 1000;
 
 interface CustomProgressProps {
   title: 'Apps' | 'Team Member' | 'Storage' | 'Document Parse';
@@ -120,7 +120,9 @@ const ResourceUsage: React.FC<CustomProgressProps> = ({
     if (data?.code !== 0 && res?.can_abandon) {
       addOnManageModal.destroy();
       showAbandonPendingModal({
-        pendingQuantityGb: Math.floor((res.pending_quantity_bytes ?? 0) / BYTES_PER_GB),
+        pendingQuantityGb: Math.floor(
+          (res.pending_quantity_bytes ?? 0) / BYTES_PER_GB,
+        ),
         targetQuantityGb: value,
         invoiceUrl: res.invoice_url ?? '',
         onAbandon: async () => {
@@ -286,8 +288,14 @@ const ResourceUsage: React.FC<CustomProgressProps> = ({
             </span>
           </div>
           <div className="text-text-primary">
-            {showValue && <span>{`${value}${unit}`}/</span>}
-            <span>{`${formatNumber(limit)}${unit}`}</span>
+            {title === 'Document Parse' && pointsOverview ? (
+              <span>{`${formatNumber(currentPoints)} ${unit}`}</span>
+            ) : (
+              <>
+                {showValue && <span>{`${value}${unit}`}/</span>}
+                <span>{`${formatNumber(limit)}${unit}`}</span>
+              </>
+            )}
           </div>
         </div>
         <Process

@@ -80,7 +80,7 @@ export default {
       enterpriseDesc:
         'Enterprise-grade capabilities for production workloads at scale',
       reduce: 'Reduce Now',
-      upgrade: 'Upgrade',
+      upgrade: 'Upgrade now',
       contactUs: 'Contact Us',
       contactUsTip: 'Contact us for more information.',
       inUse: 'Cancel plan',

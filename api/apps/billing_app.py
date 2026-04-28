@@ -127,7 +127,7 @@ MAIN_SUBSCRIPTION_RECOVERABLE_STATUSES = {"incomplete", "past_due", "unpaid"}
 # Cached Stripe webhook endpoint secret (loaded from DB once, cached forever)
 _stripe_webhook_secret: str | None = None
 STRIPE_CHECKOUT_SESSION_ID_PLACEHOLDER = "{CHECKOUT_SESSION_ID}"
-BYTES_PER_GB = 1024 * 1024 * 1024
+BYTES_PER_GB = 1000 * 1000 * 1000
 
 
 def _storage_gb_to_bytes(value: int | str | None) -> int:
@@ -806,6 +806,26 @@ async def _set_storage_target_quantity_async(
         pending_update = updated.get("pending_update") if isinstance(updated, dict) else getattr(updated, "pending_update", None)
         invoice_paid, invoice_id, invoice_status, invoice_url = await is_subscription_latest_invoice_paid_async(updated)
         payment_pending = bool(pending_update) or not invoice_paid
+
+        redirect_to = ""
+        if payment_pending and not invoice_url:
+            # No hosted_url on the pending invoice; create a Checkout Session instead.
+            customer_id = (tenant_plan.get("customer_id") or "").strip()
+            if customer_id:
+                try:
+                    checkout_session = await _create_storage_checkout_session_async(
+                        tenant_id=tenant_id,
+                        customer_id=customer_id,
+                        storage_price_id=get_storage_price_id_from_config(),
+                        target_quantity_bytes=target_quantity_bytes,
+                        session_success_url=session_success_url or settings.BILLING["session_success_url"],
+                        session_cancel_url=session_cancel_url or settings.BILLING["session_cancel_url"],
+                        main_period_end=main_period_end,
+                    )
+                    redirect_to = checkout_session.url
+                except Exception as e:
+                    logging.warning(f"Failed to create storage checkout session for pending increase: {e}")
+
         _sync_storage_subscription_record(
             tenant_id,
             updated,
@@ -822,7 +842,7 @@ async def _set_storage_target_quantity_async(
             "pending": payment_pending,
             "invoice_id": invoice_id,
             "invoice_status": invoice_status,
-            "redirect_to": invoice_url if payment_pending and invoice_url else "",
+            "redirect_to": redirect_to,
         }
 
     # Decrease path: schedule at period end.
@@ -1740,7 +1760,7 @@ def _calc_storage_price_per_gb(price_usd: float, quota_kb_storage: int) -> float
     """Calculate storage price per GB from plan price and quota. Returns 0 if unavailable."""
     if price_usd <= 0 or quota_kb_storage <= 0:
         return 0.0
-    quota_gb = quota_kb_storage / (1024 * 1024 * 1024)
+    quota_gb = quota_kb_storage / (1000 * 1000 * 1000)
     return price_usd / quota_gb if quota_gb > 0 else 0.0
 
 
@@ -2036,8 +2056,49 @@ async def billing_checkout():
                         message=msg,
                         code=RetCode.SUCCESS,
                     )
+            elif subscription_id and subscription_status in MAIN_SUBSCRIPTION_RECOVERABLE_STATUSES:
+                # Subscription exists but renewal payment failed (past_due / unpaid / incomplete).
+                # Users should NOT be allowed to create a brand-new subscription; they need to either
+                # settle the outstanding invoice or explicitly cancel their current subscription first.
+                target_plan_name = settings.BILLING_PRICEID_TO_PRODUCT.get(subscription_price_id, "")
+                if is_trial_plan_name(target_plan_name):
+                    # User explicitly wants to drop to free/trial — cancel the delinquent subscription
+                    # immediately so they are not charged further. Storage add-on is also cancelled.
+                    logging.info(
+                        f"Tenant {tenant_id} has delinquent subscription {subscription_id} "
+                        f"({subscription_status}) and is downgrading to free/trial; cancelling immediately."
+                    )
+                    await _set_storage_cancel_at_period_end_async(tenant_id, value=True)
+                    await stripe.Subscription.cancel_async(subscription_id)
+                    SubscriptionService.update_subscription(
+                        tenant_id,
+                        {
+                            "subscription_id": "",
+                            "subscription_status": SubscriptionStatus.INACTIVE,
+                            "plan_name": target_plan_name,
+                            "price_id": subscription_price_id,
+                        },
+                    )
+                    return get_json_result(
+                        data={"cancelled": True, "plan_name": target_plan_name},
+                        message="Your subscription has been cancelled and your plan downgraded.",
+                        code=RetCode.SUCCESS,
+                    )
+                else:
+                    # User wants to switch to another paid plan while they still owe money —
+                    # send them to the Stripe-hosted invoice page to settle the debt first.
+                    invoice_url = (tenant_plan.get("invoice_url") or "").strip()
+                    logging.info(
+                        f"Tenant {tenant_id} has delinquent subscription {subscription_id} "
+                        f"({subscription_status}); redirecting to invoice {invoice_url} for payment."
+                    )
+                    return get_json_result(
+                        data={"payment_required": True, "invoice_url": invoice_url},
+                        message="Your subscription has an outstanding invoice. Please pay it before changing your plan.",
+                        code=RetCode.SUCCESS,
+                    )
             else:
-                # NO subscription yet
+                # NO subscription yet (status is INACTIVE or subscription_id is absent)
                 logging.info(f"found customer {customer_id} for tenant {tenant_id}")
 
             is_inactive = subscription_status == SubscriptionStatus.INACTIVE
