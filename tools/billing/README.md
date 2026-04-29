@@ -56,6 +56,7 @@ The backend should be accessible at `http://127.0.0.1:9380` (or as configured vi
 | `BILLING_PRICE_ID_TRIAL` | Stripe price ID for Trial plan | `price_...` |
 | `BILLING_PRICE_ID_STARTER` | Stripe price ID for Starter plan | `price_...` |
 | `BILLING_PRICE_ID_PRO` | Stripe price ID for Pro plan | `price_...` |
+| `BILLING_POINTS_PRICE_ID` | Stripe price ID for points recharge | `price_...` |
 | `RAGFLOW_BASE_URL` | RAGFlow backend URL | `http://127.0.0.1:9380` |
 | `RAGFLOW_API_VERSION` | API version (usually `v1`) | `v1` |
 
@@ -67,6 +68,7 @@ The backend should be accessible at `http://127.0.0.1:9380` (or as configured vi
 | `STRIPE_API_VERSION` | (none) | Must match `2026-02-25.clover` if set |
 | `RAGFLOW_TEST_EMAIL` | auto-generated | Email for test user |
 | `RAGFLOW_TEST_PASSWORD` | `Test1234!` | Password for test user |
+| `BILLING_POINTS_PER_UNIT` | config fallback | Override `billing.points_recharge.points_per_unit` for points flows |
 | `BILLING_WEBHOOK_SECRET` / `STRIPE_WEBHOOK_SECRET` | DB fallback | Optional in `manual` mode if `billing_webhook_secret` is already persisted in local DB |
 | `RAGFLOW_BILLING_WEBHOOK_MODE` | `manual` | `manual` (replay) or `stripe-cli` (wait) |
 | `RAGFLOW_WEBHOOK_WAIT_SECONDS` | `8` | Wait time in auto mode |
@@ -97,6 +99,66 @@ billing:
 cd tools/billing
 python billing_plan01_api_flow.py
 ```
+
+For points-recharge flows, you can override the recharge Stripe price and unit size directly from the environment:
+
+```bash
+export BILLING_POINTS_PRICE_ID=price_...
+export BILLING_POINTS_PER_UNIT=100
+python billing_point01_api_flow.py
+```
+
+### Launching Points Gates From Repo Root
+
+Run the points-recharge validation flows from the repository root:
+
+```bash
+cd /home/infiniflow/workspace/close/now_enter
+```
+
+Export the minimum required Stripe key:
+
+```bash
+export BILLING_STRIPE_API_KEY='sk_test_...'
+```
+
+If you want the points flow to use environment overrides instead of `conf/service_conf.yaml`, export these too:
+
+```bash
+export BILLING_POINTS_PRICE_ID='price_...'
+export BILLING_POINTS_PER_UNIT='100'
+```
+
+You can also populate those two variables directly from `conf/service_conf.yaml`:
+
+```bash
+eval "$(
+./.venv/bin/python - <<'PY'
+import yaml
+conf = yaml.safe_load(open('conf/service_conf.yaml')) or {}
+billing = conf.get('billing') or {}
+recharge = billing.get('points_recharge') or {}
+print(f"export BILLING_POINTS_PRICE_ID='{recharge.get('price_id', '')}'")
+print(f"export BILLING_POINTS_PER_UNIT='{recharge.get('points_per_unit', '')}'")
+PY
+)"
+```
+
+Then run the five points gates one by one:
+
+```bash
+./.venv/bin/python -u tools/billing/billing_point01_api_flow.py
+./.venv/bin/python -u tools/billing/billing_point02_api_flow.py
+./.venv/bin/python -u tools/billing/billing_point03_api_flow.py
+./.venv/bin/python -u tools/billing/billing_point04_api_flow.py
+./.venv/bin/python -u tools/billing/billing_point05_api_flow.py
+```
+
+Notes for points flows:
+
+- `billing_webhook_secret` is loaded automatically from the local DB if `BILLING_WEBHOOK_SECRET` / `STRIPE_WEBHOOK_SECRET` is unset.
+- `--webhook-mode manual` is for the `billing_plan0x` scripts, not the `billing_point0x` scripts.
+- The `billing_point0x` scripts no longer require `export PYTHONPATH=$(pwd)` when launched from the repo root.
 
 All scripts accept `--help` for options:
 
