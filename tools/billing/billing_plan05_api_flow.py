@@ -864,7 +864,7 @@ def run_flow(args: argparse.Namespace) -> None:
         raise FlowError(f"expected Stripe to pay pending Pro upgrade invoice, got {pay_dict}")
 
     # Step 7: Sync webhook until the same invoice row becomes paid.
-    payment_order_after_pay = replay_until_payment_order_status(
+    replay_until_payment_order_status(
         client,
         mode=args.webhook_mode,
         webhook_secret=webhook_secret,

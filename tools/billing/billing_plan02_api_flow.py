@@ -515,14 +515,6 @@ def ensure_invoice_finalized(clock_id: str, subscription_id: str) -> dict[str, A
                 return invoice_dict
         return invoice_dict
     return None
-    deadline = time.time() + timeout_seconds
-    last_history: list[dict[str, Any]] = []
-    while time.time() < deadline:
-        last_history = client.spend_history()
-        if len(last_history) >= minimum_count:
-            return last_history
-        time.sleep(3)
-    raise FlowError(f"timed out waiting for {label} billing history row, last count: {len(last_history)}")
 
 
 def find_history_row_by_amount(client: RAGFlowClient, expected_amount_cents: float, timeout_seconds: int) -> dict[str, Any]:
@@ -828,7 +820,7 @@ def run_flow(args: argparse.Namespace) -> None:
         raise FlowError(f"renewal invoice is missing id: {finalized_invoice}")
 
     # Sync webhook events until the renewal failure is reflected locally.
-    payment_order_after_failure = replay_until_payment_order_status(
+    replay_until_payment_order_status(
         client,
         mode=args.webhook_mode,
         webhook_secret=webhook_secret,
