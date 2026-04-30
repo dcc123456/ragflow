@@ -112,6 +112,15 @@ DISABLE_PASSWORD_LOGIN = False
 SANDBOX_HOST = None
 STRONG_TEST_COUNT = int(os.environ.get("STRONG_TEST_COUNT", "8"))
 
+SMTP_CONF = None
+MAIL_SERVER = ""
+MAIL_PORT = 000
+MAIL_USE_SSL = True
+MAIL_USE_TLS = False
+MAIL_USERNAME = ""
+MAIL_PASSWORD = ""
+MAIL_DEFAULT_SENDER = ()
+MAIL_FRONTEND_URL = ""
 
 # move from rag.settings
 ES = {}
@@ -427,6 +436,21 @@ def init_settings():
     global SANDBOX_HOST
     if int(os.environ.get("SANDBOX_ENABLED", "0")):
         SANDBOX_HOST = os.environ.get("SANDBOX_HOST", "sandbox-executor-manager")
+
+    global SMTP_CONF
+    SMTP_CONF = get_base_config("smtp", {})
+
+    global MAIL_SERVER, MAIL_PORT, MAIL_USE_SSL, MAIL_USE_TLS, MAIL_USERNAME, MAIL_PASSWORD, MAIL_DEFAULT_SENDER, MAIL_FRONTEND_URL
+    MAIL_SERVER = SMTP_CONF.get("mail_server", "")
+    MAIL_PORT = SMTP_CONF.get("mail_port", 000)
+    MAIL_USE_SSL = SMTP_CONF.get("mail_use_ssl", True)
+    MAIL_USE_TLS = SMTP_CONF.get("mail_use_tls", False)
+    MAIL_USERNAME = SMTP_CONF.get("mail_username", "")
+    MAIL_PASSWORD = SMTP_CONF.get("mail_password", "")
+    mail_default_sender = SMTP_CONF.get("mail_default_sender", [])
+    if mail_default_sender and len(mail_default_sender) >= 2:
+        MAIL_DEFAULT_SENDER = (mail_default_sender[0], mail_default_sender[1])
+    MAIL_FRONTEND_URL = SMTP_CONF.get("mail_frontend_url", "")
 
     global BILLING, BILLING_PRICEID_TO_PRODUCT, BILLING_PRIORITY_TO_PLANS, BILLING_PLAN_TO_INFO, BILLING_PRICE_POINT, BILLING_LOCAL_PRICE
     BILLING = get_base_config("billing", {})
