@@ -3,6 +3,7 @@ import logging
 import time
 
 
+from agent.dsl_migration import normalize_chunker_dsl
 from api.db.db_models import UserCanvasVersion, DB
 from api.db.services.common_service import CommonService
 from peewee import DoesNotExist
@@ -34,7 +35,7 @@ class UserCanvasVersionService(CommonService):
             raise ValueError("DSL must be a JSON object.")
 
         try:
-            return json.loads(json.dumps(normalized, ensure_ascii=False))
+            return json.loads(json.dumps(normalize_chunker_dsl(normalized), ensure_ascii=False))
         except Exception as e:
             raise ValueError("DSL is not JSON-serializable.") from e
 

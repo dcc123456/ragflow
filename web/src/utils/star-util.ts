@@ -1,7 +1,7 @@
 import { AxiosInstance } from 'axios';
 import get from 'lodash/get';
 import { RequestMethod } from 'umi-request';
-import api from './api';
+import api, { restAPIv1 } from './api';
 
 type Event = (...params: any[]) => unknown;
 
@@ -37,24 +37,41 @@ export class Channel {
   }
 }
 
-const Listeners: string[] = [
+const ExactListeners: string[] = [
   api.document_upload,
   api.chunk_list,
   api.create_kb,
-  api.setDialog,
+  api.createChat,
   api.setCanvas,
   api.runCanvas,
   api.retrieval_test,
-  api.getRelatedQuestions,
-  api.create_kb,
-  api.setCanvas,
-  api.runCanvas,
-  api.setDialog,
+  api.chatsRelatedQuestions,
   api.kb_list,
 ];
 
-export function showStarModal(url: string, request: RequestMethod) {
-  if (Listeners.some((x) => x === url)) {
+const ChatDetailPattern = new RegExp(`^${restAPIv1}/chats/[^/]+$`);
+
+const shouldShowStar = (url?: string, method?: string) => {
+  if (!url) {
+    return false;
+  }
+
+  if (ExactListeners.includes(url)) {
+    return true;
+  }
+
+  return (
+    ChatDetailPattern.test(url) &&
+    ['put', 'patch'].includes((method ?? '').toLowerCase())
+  );
+};
+
+export function showStarModal(
+  url: string,
+  method: string | undefined,
+  request: RequestMethod,
+) {
+  if (shouldShowStar(url, method)) {
     request.get('/v1/user/star').then((ret) => {
       const star = get(ret, 'data.data.star');
       if (star === false) {
@@ -64,8 +81,12 @@ export function showStarModal(url: string, request: RequestMethod) {
   }
 }
 
-export function showStarDialog(request: AxiosInstance, url?: string) {
-  if (Listeners.some((x) => x === url)) {
+export function showStarDialog(
+  request: AxiosInstance,
+  url?: string,
+  method?: string,
+) {
+  if (shouldShowStar(url, method)) {
     request.get('/v1/user/star').then((ret) => {
       const star = get(ret, 'data.data.star');
       if (star === false) {

@@ -44,13 +44,16 @@ class ConversationService(CommonService):
         else:
             sessions = sessions.order_by(cls.model.getter_by(orderby).asc())
 
-        sessions = sessions.paginate(page_number, items_per_page)
+        if items_per_page > 0:
+            sessions = sessions.paginate(page_number, items_per_page)
 
         return list(sessions.dicts())
 
     @classmethod
-    @DB.connection_context()
     def remove_by(cls, dialog_id):
+        """
+        ! Use this method under DB.atomic() context
+        """
         for id in [m.id for m in cls.model.query(dialog_id=dialog_id)]:
             cls.model.delete_by_id(id)
 

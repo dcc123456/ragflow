@@ -31,19 +31,13 @@ class PermissionService(CommonService):
     model = Permission
 
     @classmethod
-    @DB.connection_context()
-    def get_user_resource_permission_map(cls, user_id, tenant_ids, resource_type, permission=PermissionValue.PERMISSION_READ):
-        """
-        Return resource_id -> highest permission granted to a user through direct member,
-        group, or department permissions across the specified tenants.
-        """
+    def _build_user_target_conditions(cls, user_id, tenant_ids):
         from api.db.services.team_service import DepartmentMemberService, DepartmentService, GroupMemberService
         from api.db.services.user_service import UserTenantService
 
         tenant_id_set = set(tenant_ids or [])
         if not tenant_id_set:
-            return {}
-        required_permission = permission.value if isinstance(permission, PermissionValue) else permission
+            return []
 
         tenant_conditions = []
         user_tenants = UserTenantService.query(user_id=user_id) or []
@@ -68,8 +62,28 @@ class PermissionService(CommonService):
 
             tenant_conditions.append((cls.model.tenant_id == tenant_id) & reduce(operator.or_, target_conditions))
 
+        return tenant_conditions
+
+    @classmethod
+    @DB.connection_context()
+    def build_user_resource_permission_subquery(
+        cls,
+        user_id,
+        tenant_ids,
+        resource_type,
+        permission=PermissionValue.PERMISSION_READ,
+    ):
+        tenant_conditions = cls._build_user_target_conditions(user_id, tenant_ids)
         if not tenant_conditions:
-            return {}
+            return (
+                cls.model.select(
+                    cls.model.resource_id.alias("resource_id"),
+                    cls.model.permission.alias("operator_permission"),
+                )
+                .where(cls.model.id == "__ragflow_no_permission__")
+            )
+
+        required_permission = permission.value if isinstance(permission, PermissionValue) else permission
 
         permission_conditions = (
             (cls.model.status == StatusEnum.VALID.value)
@@ -77,16 +91,34 @@ class PermissionService(CommonService):
             & (cls.model.permission >= required_permission)
             & reduce(operator.or_, tenant_conditions)
         )
-        permissions = (
-            cls.model.select(cls.model.resource_id, cls.model.permission)
+
+        return (
+            cls.model.select(
+                cls.model.tenant_id.alias("tenant_id"),
+                cls.model.resource_id.alias("resource_id"),
+                peewee.fn.MAX(cls.model.permission).alias("operator_permission"),
+            )
             .where(permission_conditions)
-            .dicts()
+            .group_by(cls.model.tenant_id, cls.model.resource_id)
         )
+
+    @classmethod
+    @DB.connection_context()
+    def get_user_resource_permission_map(cls, user_id, tenant_ids, resource_type, permission=PermissionValue.PERMISSION_READ):
+        """
+        Return resource_id -> highest permission granted to a user through direct member,
+        group, or department permissions across the specified tenants.
+        """
+        permissions = cls.build_user_resource_permission_subquery(
+            user_id,
+            tenant_ids,
+            resource_type,
+            permission,
+        ).dicts()
 
         permission_map = {}
         for permission_record in permissions:
-            resource_id = permission_record["resource_id"]
-            permission_map[resource_id] = max(permission_map.get(resource_id, PermissionValue.PERMISSION_NULL.value), permission_record["permission"])
+            permission_map[permission_record["resource_id"]] = permission_record["operator_permission"]
 
         return permission_map
 

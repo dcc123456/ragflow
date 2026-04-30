@@ -970,6 +970,7 @@ Bu otomatik etiketleme özelliği, mevcut datasete alanına özgü bilgi katman�
       selectModelPlaceholder: 'Model seçin',
       configureModelTitle: 'Modeli yapılandır',
       connectorNameTip: 'Bağlayıcı için açıklayıcı bir ad',
+      syncDeletedFiles: 'Silinen dosyaları eşitle',
       confluenceIsCloudTip:
         'Bu bir Confluence Cloud örneği ise işaretleyin, Confluence Server/Data Center için işareti kaldırın',
       confluenceWikiBaseUrlTip:
@@ -2179,12 +2180,10 @@ Bu otomatik etiketleme özelliği, mevcut datasete alanına özgü bilgi katman�
       tokenizerRequired: 'Lütfen önce İndeksleyici düğümü ekleyin',
       tokenizerDescription:
         'Metni seçilen arama yöntemine bağlı olarak gerekli veri yapısına dönüştürür.',
-      splitter: 'Token',
-      splitterDescription:
+      tokenChunkerDescription:
         'Metni isteğe bağlı sınırlayıcılar ve örtüşme ile token uzunluğuna göre parçalara böler.',
-      hierarchicalMergerDescription:
+      titleChunkerDescription:
         'Belgeleri daha ince kontrol için regex kurallarıyla başlık hiyerarşisine göre bölümlere böler.',
-      hierarchicalMerger: 'Başlık',
       extractor: 'Dönüştürücü',
       extractorDescription:
         'Belge parçalarından yapılandırılmış içgörüler çıkarmak için LLM kullanır.',
@@ -2196,6 +2195,8 @@ Bu otomatik etiketleme özelliği, mevcut datasete alanına özgü bilgi katman�
         image: 'Görüntü',
         email: 'E-posta',
         'text&markdown': 'Metin ve Biçimlendirme',
+        code: 'Code',
+        html: 'HTML',
         word: 'Word',
         slides: 'PPTX',
         audio: 'Ses',

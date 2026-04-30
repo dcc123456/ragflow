@@ -6,11 +6,16 @@ import userService, {
   loginWithLdap,
   type LoginWithLdapInput,
 } from '@/services/user-service';
-import authorizationUtil, { redirectToLogin } from '@/utils/authorization-util';
+import {
+  default as authorizationUtil,
+  redirectToLogin,
+  default as storage,
+} from '@/utils/authorization-util';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { groupBy } from 'lodash';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSaveSetting } from './use-user-setting-request';
 
 export interface ILoginRequestBody {
   email: string;
@@ -97,6 +102,7 @@ export type LDAPLoginParams = {
 };
 
 export const useLogin = () => {
+  const { saveSetting } = useSaveSetting(true);
   const {
     data,
     isPending: loading,
@@ -106,6 +112,10 @@ export const useLogin = () => {
     mutationFn: async (params: EmailLoginParams | LDAPLoginParams) => {
       const { data: res = {}, response } = await userService.login(params);
       if (res.code === 0) {
+        // The language is based on the .lng stored in the client's local storage.
+        // The language stored in the database is for agent template resources,
+        // since the agent template resources are stored on the server.
+        saveSetting({ language: storage.getLanguage() });
         const { data } = res;
         const authorization = response.headers.get(Authorization);
         const token = data.access_token;

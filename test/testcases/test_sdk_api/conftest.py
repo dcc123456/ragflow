@@ -102,6 +102,7 @@ def clear_chat_assistants(request: FixtureRequest, client: RAGFlow):
     def cleanup():
         delete_all_chats(client)
 
+    cleanup()
     request.addfinalizer(cleanup)
 
 
@@ -169,6 +170,7 @@ def add_chat_assistants(request, client, add_document) -> tuple[DataSet, Documen
         except Exception:
             pass
 
+    cleanup()
     request.addfinalizer(cleanup)
 
     dataset, document = add_document

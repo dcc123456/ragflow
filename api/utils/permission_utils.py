@@ -265,7 +265,7 @@ def check_dialog_permission(permission):
             else:  # GET、DELETE
                 req_data = request.args or {}
 
-            dialog_id = req_data.get("dialog_id") or kwargs.get("dialog_id")
+            dialog_id = req_data.get("chat_id") or kwargs.get("chat_id") or req_data.get("dialog_id") or kwargs.get("dialog_id")
 
             g.req_data = req_data
             g.dialog_id = dialog_id
@@ -275,7 +275,8 @@ def check_dialog_permission(permission):
                     return await foo(*args, **kwargs)
                 return foo(*args, **kwargs)
 
-            user_tenants = UserTenantService.query(user_id=current_user.id) or []
+            queried_user_tenants = list(UserTenantService.query(user_id=current_user.id) or [])
+            user_tenants = UserTenantService.get_user_tenants_with_owner(current_user.id)
 
             for user_tenant in user_tenants:
                 dialog_record = DialogService.query(tenant_id=user_tenant.tenant_id, id=dialog_id)
@@ -291,6 +292,13 @@ def check_dialog_permission(permission):
                         if inspect.iscoroutinefunction(foo):
                             return await foo(*args, **kwargs)
                         return foo(*args, **kwargs)
+
+            if queried_user_tenants:
+                return get_json_result(
+                    data=False,
+                    message="No authorization.",
+                    code=RetCode.AUTHENTICATION_ERROR,
+                )
 
             return get_json_result(data=[], message="Only Chat/Dialog owners or members with management or write permissions can perform this action", code=RetCode.OPERATING_ERROR)
 

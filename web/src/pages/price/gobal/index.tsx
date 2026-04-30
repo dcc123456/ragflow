@@ -10,6 +10,7 @@ import {
 import { freePageNumber } from '../config';
 import { PriceName } from '../constant';
 // import { useFetchCurrentPlan } from '../hook/use-price-hooks';
+import { isBillingEnabled } from '@/services/billingStatus';
 import { useFetchCurrentPlan } from '../hook/use-price-hooks';
 import { ICurrentPlan } from '../interface';
 import { FreeUpgradeModal } from '../price-modal/free-upgrade-modal';
@@ -27,7 +28,6 @@ import {
   useShowFreeUpgradeTipsModal,
   useShowUpgradeTipsModal,
 } from './hook';
-import { isBillingEnabled } from '@/services/billingStatus';
 
 interface UpgradeModalContextType {
   isModalOpen: boolean;

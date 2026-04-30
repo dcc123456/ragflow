@@ -309,6 +309,21 @@ class UserTenantService(CommonService):
 
     @classmethod
     @DB.connection_context()
+    def get_user_tenants_with_owner(cls, user_id):
+        user_tenants = list(cls.query(user_id=user_id) or [])
+        if user_id in {tenant.tenant_id for tenant in user_tenants}:
+            return user_tenants
+
+        owner_tenant = cls.filter_by_tenant_and_user_id(
+            tenant_id=user_id,
+            user_id=user_id,
+        )
+        if owner_tenant:
+            user_tenants.append(owner_tenant)
+        return user_tenants
+
+    @classmethod
+    @DB.connection_context()
     def filter_by_tenant_and_user_id(cls, tenant_id, user_id):
         try:
             user_tenant = cls.model.select().where(

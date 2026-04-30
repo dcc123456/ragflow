@@ -6,7 +6,7 @@ import { PrivilegeManagementDialog } from '@/components/privilege-management/pri
 import { RenameDialog } from '@/components/rename-dialog';
 import { Button } from '@/components/ui/button';
 import { RAGFlowPagination } from '@/components/ui/ragflow-pagination';
-import { useFetchDialogList } from '@/hooks/use-chat-request';
+import { useFetchChatList } from '@/hooks/use-chat-request';
 import { pick } from 'lodash';
 import { Plus } from 'lucide-react';
 import { useCallback, useEffect } from 'react';
@@ -18,7 +18,7 @@ import { useShowPrivilegeDialog } from './use-show-privilege-dialog';
 
 export default function ChatList() {
   const { data, setPagination, pagination, handleInputChange, searchString } =
-    useFetchDialogList();
+    useFetchChatList();
   const { t } = useTranslation();
   const {
     initialChatName,
@@ -59,7 +59,7 @@ export default function ChatList() {
 
   return (
     <>
-      {data.dialogs?.length || searchString ? (
+      {data.chats?.length || searchString ? (
         <article className="size-full flex flex-col" data-testid="chats-list">
           <header className="px-5 pt-8 mb-4">
             <ListFilterBar
@@ -75,10 +75,10 @@ export default function ChatList() {
             </ListFilterBar>
           </header>
 
-          {data.dialogs?.length ? (
+          {data.chats?.length ? (
             <>
               <CardContainer className="flex-1 overflow-auto px-5">
-                {data.dialogs.map((x) => (
+                {data.chats.map((x) => (
                   <ChatCard
                     key={x.id}
                     data={x}

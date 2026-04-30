@@ -6,7 +6,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { SearchInput } from '@/components/ui/input';
 import { useSetModalState } from '@/hooks/common-hooks';
 import { useFetchAgent } from '@/hooks/use-agent-request';
-import { useFetchDialog } from '@/hooks/use-chat-request';
+import { useFetchChat } from '@/hooks/use-chat-request';
 import { useFetchEvaluationRunList } from '@/hooks/use-evaluation-request';
 import { useEvaluationUrl } from '@/hooks/use-evaluation-url';
 import { cn } from '@/lib/utils';
@@ -41,7 +41,7 @@ export function EvaluationList({ selectedRunId, type }: EvaluationListProps) {
 
   const { data: runList } = useFetchEvaluationRunList();
   const useFetchData =
-    type === EvaluationType.Chat ? useFetchDialog : useFetchAgent;
+    type === EvaluationType.Chat ? useFetchChat : useFetchAgent;
 
   const { data } = useFetchData();
 

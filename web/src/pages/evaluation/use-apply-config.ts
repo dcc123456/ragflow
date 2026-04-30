@@ -1,4 +1,4 @@
-import { useSetDialog } from '@/hooks/use-chat-request';
+import { useUpdateChat } from '@/hooks/use-chat-request';
 import { useFetchEvaluationRun } from '@/hooks/use-evaluation-request';
 import { isEmpty } from 'lodash';
 import { useCallback, useMemo } from 'react';
@@ -9,7 +9,7 @@ import { EvaluationSettingsFormType } from './evaluation-schemas';
 export function useApplyConfig(
   form: UseFormReturn<EvaluationSettingsFormType>,
 ) {
-  const { setDialog } = useSetDialog();
+  const { updateChat } = useUpdateChat();
   const { id } = useParams();
   const { data } = useFetchEvaluationRun();
 
@@ -19,13 +19,18 @@ export function useApplyConfig(
   );
 
   const handleApplyConfig = useCallback(() => {
+    if (!id) {
+      return;
+    }
+
     const data = form.getValues();
-    const dialog = data.config_snapshot.target ?? [];
-    setDialog({
-      ...(isEmpty(dialog) ? currentDialog : dialog),
-      dialog_id: id,
+    const chat = data.config_snapshot.target ?? [];
+
+    updateChat({
+      chatId: id,
+      params: isEmpty(chat) ? currentDialog : chat,
     });
-  }, [currentDialog, form, id, setDialog]);
+  }, [currentDialog, form, id, updateChat]);
 
   return { handleApplyConfig };
 }

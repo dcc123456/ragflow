@@ -34,6 +34,7 @@ def add_chat_assistants_func(request: FixtureRequest, client: RAGFlow, add_docum
     def cleanup():
         delete_all_chats(client)
 
+    cleanup()
     request.addfinalizer(cleanup)
 
     dataset, document = add_document

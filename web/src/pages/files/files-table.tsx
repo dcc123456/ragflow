@@ -278,7 +278,7 @@ export function FilesTable({
 
   return (
     <>
-      <div className="flex-1 size-full min-h-0">
+      <div className="flex-1 min-h-0 size-full">
         <Table rootClassName="max-h-full overflow-auto">
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (

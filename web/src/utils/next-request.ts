@@ -87,7 +87,7 @@ request.interceptors.request.use(
   (config) => {
     const data = convertTheKeysOfTheObjectToSnake(config.data);
     const params = convertTheKeysOfTheObjectToSnake(config.params);
-    // showStarDialog(request, config.url);
+    // showStarDialog(request, config.url, config.method);
 
     // Add tenant parameters to data
     const dataWithTenantParams = addTenantParams(data, config.url);

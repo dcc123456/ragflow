@@ -26,7 +26,6 @@ import {
   useRef,
   useState,
 } from 'react';
-import { useTranslation } from 'react-i18next';
 import { v4 as uuid } from 'uuid';
 import { useTranslate } from './common-hooks';
 import { useSetPaginationParams } from './route-hook';
@@ -51,15 +50,15 @@ export const useSetSelectedRecord = <T = IKnowledgeFile>() => {
 };
 
 export const useChangeLanguage = () => {
-  const { i18n } = useTranslation();
   const { saveSetting } = useSaveSetting();
 
-  const changeLanguage = (lng: string) => {
-    // const targetLng = LanguageTranslationMap[lng as keyof typeof LanguageTranslationMap];
-
-    changeLanguageAsync(lng);
-    saveSetting({ language: lng });
-  };
+  const changeLanguage = useCallback(
+    (lng: string) => {
+      changeLanguageAsync(lng);
+      saveSetting({ language: lng });
+    },
+    [saveSetting],
+  );
 
   return changeLanguage;
 };
@@ -220,9 +219,7 @@ function useSetDoneRecord() {
   };
 }
 
-export const useSendMessageWithSse = (
-  url: string = api.completeConversation,
-) => {
+export const useSendMessageWithSse = () => {
   const [answer, setAnswer] = useState<IAnswer>({} as IAnswer);
   const [done, setDone] = useState(true);
   const { doneRecord, clearDoneRecord, setDoneRecordById, allDone } =
@@ -257,6 +254,7 @@ export const useSendMessageWithSse = (
 
   const send = useCallback(
     async (
+      url: string,
       body: any,
       controller?: AbortController,
     ): Promise<{ response: Response; data: ResponseType } | undefined> => {
@@ -280,6 +278,7 @@ export const useSendMessageWithSse = (
           .pipeThrough(new EventSourceParserStream())
           .getReader();
 
+        // eslint-disable-next-line no-constant-condition
         while (true) {
           try {
             const x = await reader?.read();
@@ -341,7 +340,7 @@ export const useSendMessageWithSse = (
         // Swallow fetch errors silently
       }
     },
-    [initializeSseRef, setDoneValue, url, resetAnswer],
+    [initializeSseRef, setDoneValue, resetAnswer],
   );
 
   const stopOutputMessage = useCallback(() => {
@@ -361,7 +360,7 @@ export const useSendMessageWithSse = (
   };
 };
 
-export const useSpeechWithSse = (url: string = api.tts) => {
+export const useSpeechWithSse = (url: string = api.chatsTts) => {
   const read = useCallback(
     async (body: any) => {
       const response = await fetch(url, {

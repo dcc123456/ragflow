@@ -1584,4 +1584,8 @@ if __name__ == "__main__":
 
     faulthandler.enable()
     init_root_logger(CONSUMER_NAME)
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except Exception as e:
+        logging.exception(f"Unhandled exception: {e}")
+        sys.exit(1)

@@ -15,6 +15,7 @@
 #
 
 from pathlib import Path
+from uuid import uuid4
 
 from ragflow_sdk import Chat, Chunk, DataSet, Document, RAGFlow, Session
 from utils.file_utils import create_txt_file
@@ -63,8 +64,13 @@ def batch_add_chunks(document: Document, num: int) -> list[Chunk]:
 
 
 # CHAT ASSISTANT MANAGEMENT
+def make_chat_assistant_name(base_name: str) -> str:
+    return f"{base_name}_{uuid4().hex[:8]}"
+
+
 def batch_create_chat_assistants(client: RAGFlow, num: int) -> list[Chat]:
-    return [client.create_chat(name=f"test_chat_assistant_{i}") for i in range(num)]
+    batch_suffix = uuid4().hex[:8]
+    return [client.create_chat(name=f"test_chat_assistant_{i}_{batch_suffix}") for i in range(num)]
 
 
 # SESSION MANAGEMENT

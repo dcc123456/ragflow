@@ -1,451 +1,442 @@
-const api_host = `/v1`;
-const ExternalApi = `/api`;
+const webAPI = `/v1`;
+const restAPIv1 = `/api/v1`;
 
-export { ExternalApi, api_host };
+export { restAPIv1, webAPI };
 
 export default {
   // user
-  login: `${api_host}/user/login`,
-  logout: `${api_host}/user/logout`,
-  register: `${api_host}/user/register`,
-  setting: `${api_host}/user/setting`,
-  user_info: `${api_host}/user/info`,
-  tenant_info: `${api_host}/user/tenant_info`,
-  set_tenant_info: `${api_host}/user/set_tenant_info`,
-  login_channels: `${api_host}/user/login/channels`,
-  login_channel: (channel: string) => `${api_host}/user/login/${channel}`,
-  loginGetCaptcha: `${api_host}/user/forget/captcha`,
-  loginSendVerifyCode: `${api_host}/user/forget/otp`,
-  loginVerifyEmail: `${api_host}/user/forget/verify-otp`,
-  submitResetPassword: `${api_host}/user/forget/reset-password`,
+  loginGetCaptcha: `${webAPI}/user/forget/captcha`,
+  loginSendVerifyCode: `${webAPI}/user/forget/otp`,
+  loginVerifyEmail: `${webAPI}/user/forget/verify-otp`,
+  submitResetPassword: `${webAPI}/user/forget/reset-password`,
+  login: `${webAPI}/user/login`,
+  logout: `${webAPI}/user/logout`,
+  register: `${webAPI}/user/register`,
+  setting: `${webAPI}/user/setting`,
+  user_info: `${webAPI}/user/info`,
+  tenant_info: `${webAPI}/user/tenant_info`,
+  set_tenant_info: `${webAPI}/user/set_tenant_info`,
+  login_channels: `${webAPI}/user/login/channels`,
+  login_channel: (channel: string) => `${webAPI}/user/login/${channel}`,
 
   // team
-  addTenantUser: (tenantId: string) => `${api_host}/tenant/${tenantId}/user`,
+  addTenantUser: (tenantId: string) => `${webAPI}/tenant/${tenantId}/user`,
   listTenantUser: (tenantId: string) =>
-    `${api_host}/tenant/${tenantId}/user/list`,
+    `${webAPI}/tenant/${tenantId}/user/list`,
   deleteTenantUser: (tenantId: string, userId: string) =>
-    `${api_host}/tenant/${tenantId}/user/${userId}`,
-  listTenant: `${api_host}/tenant/list`,
-  agreeTenant: (tenantId: string) => `${api_host}/tenant/agree/${tenantId}`,
+    `${webAPI}/tenant/${tenantId}/user/${userId}`,
+  listTenant: `${webAPI}/tenant/list`,
+  agreeTenant: (tenantId: string) => `${webAPI}/tenant/agree/${tenantId}`,
 
   // llm model
-  factories_list: `${api_host}/llm/factories`,
-  llm_list: `${api_host}/llm/list`,
-  my_llm: `${api_host}/llm/my_llms`,
-  set_api_key: `${api_host}/llm/set_api_key`,
-  add_llm: `${api_host}/llm/add_llm`,
-  delete_llm: `${api_host}/llm/delete_llm`,
-  enable_llm: `${api_host}/llm/enable_llm`,
-  deleteFactory: `${api_host}/llm/delete_factory`,
+  factories_list: `${webAPI}/llm/factories`,
+  llm_list: `${webAPI}/llm/list`,
+  my_llm: `${webAPI}/llm/my_llms`,
+  set_api_key: `${webAPI}/llm/set_api_key`,
+  add_llm: `${webAPI}/llm/add_llm`,
+  delete_llm: `${webAPI}/llm/delete_llm`,
+  enable_llm: `${webAPI}/llm/enable_llm`,
+  deleteFactory: `${webAPI}/llm/delete_factory`,
 
   // data source
-  dataSourceSet: `${api_host}/connector/set`,
-  dataSourceList: `${api_host}/connector/list`,
-  dataSourceDel: (id: string) => `${api_host}/connector/${id}/rm`,
-  dataSourceResume: (id: string) => `${api_host}/connector/${id}/resume`,
-  dataSourceRebuild: (id: string) => `${api_host}/connector/${id}/rebuild`,
-  dataSourceLogs: (id: string) => `${api_host}/connector/${id}/logs`,
-  dataSourceDetail: (id: string) => `${api_host}/connector/${id}`,
-  dataSourceListFiles: (id: string) => `${api_host}/connector/${id}/list_files`,
-  dataSourceSyncFiles: (id: string) => `${api_host}/connector/${id}/downloads`,
-
+  dataSourceListFiles: (id: string) => `${webAPI}/connector/${id}/list_files`,
+  dataSourceSyncFiles: (id: string) => `${webAPI}/connector/${id}/downloads`,
+  dataSourceSet: `${webAPI}/connector/set`,
+  dataSourceList: `${webAPI}/connector/list`,
+  dataSourceDel: (id: string) => `${webAPI}/connector/${id}/rm`,
+  dataSourceResume: (id: string) => `${webAPI}/connector/${id}/resume`,
+  dataSourceRebuild: (id: string) => `${webAPI}/connector/${id}/rebuild`,
+  dataSourceLogs: (id: string) => `${webAPI}/connector/${id}/logs`,
+  dataSourceDetail: (id: string) => `${webAPI}/connector/${id}`,
   googleWebAuthStart: (type: 'google-drive' | 'gmail') =>
-    `${api_host}/connector/google/oauth/web/start?type=${type}`,
+    `${webAPI}/connector/google/oauth/web/start?type=${type}`,
   googleWebAuthResult: (type: 'google-drive' | 'gmail') =>
-    `${api_host}/connector/google/oauth/web/result?type=${type}`,
-  boxWebAuthStart: () => `${api_host}/connector/box/oauth/web/start`,
-  boxWebAuthResult: () => `${api_host}/connector/box/oauth/web/result`,
+    `${webAPI}/connector/google/oauth/web/result?type=${type}`,
+  boxWebAuthStart: () => `${webAPI}/connector/box/oauth/web/start`,
+  boxWebAuthResult: () => `${webAPI}/connector/box/oauth/web/result`,
 
   // plugin
-  llm_tools: `${api_host}/plugin/llm_tools`,
+  llm_tools: `${webAPI}/plugin/llm_tools`,
 
-  sequence2txt: `${api_host}/conversation/sequence2txt`,
+  chatsTranscriptions: `${restAPIv1}/chats/transcriptions`,
 
   // knowledge base
 
-  check_embedding: `${api_host}/kb/check_embedding`,
-  kb_list: `${ExternalApi}${api_host}/datasets`,
-  create_kb: `${ExternalApi}${api_host}/datasets`,
-  update_kb: (datasetId: string) =>
-    `${ExternalApi}${api_host}/datasets/${datasetId}`,
-  duplicate_kb: `${api_host}/kb/clone`,
-  rm_kb: `${ExternalApi}${api_host}/datasets`,
-  get_kb_detail: `${api_host}/kb/detail`,
+  duplicate_kb: `${webAPI}/kb/clone`,
+  rm_kb: `${restAPIv1}/datasets`,
+  get_kb_detail: `${webAPI}/kb/detail`,
+  check_embedding: `${webAPI}/kb/check_embedding`,
+  kb_list: `${restAPIv1}/datasets`,
+  create_kb: `${restAPIv1}/datasets`,
+  update_kb: (datasetId: string) => `${restAPIv1}/datasets/${datasetId}`,
+  rm_kb: `${restAPIv1}/datasets`,
+  get_kb_detail: `${webAPI}/kb/detail`,
   getKnowledgeGraph: (knowledgeId: string) =>
-    `${ExternalApi}${api_host}/datasets/${knowledgeId}/knowledge_graph`,
+    `${restAPIv1}/datasets/${knowledgeId}/knowledge_graph`,
   deleteKnowledgeGraph: (knowledgeId: string) =>
-    `${ExternalApi}${api_host}/datasets/${knowledgeId}/knowledge_graph`,
-  getMeta: `${api_host}/kb/get_meta`,
-  getKnowledgeBasicInfo: `${api_host}/kb/basic_info`,
+    `${restAPIv1}/datasets/${knowledgeId}/knowledge_graph`,
+  getMeta: `${webAPI}/kb/get_meta`,
+  getKnowledgeBasicInfo: `${webAPI}/kb/basic_info`,
   // data pipeline log
-  fetchDataPipelineLog: `${api_host}/kb/list_pipeline_logs`,
-  get_pipeline_detail: `${api_host}/kb/pipeline_log_detail`,
-  fetchPipelineDatasetLogs: `${api_host}/kb/list_pipeline_dataset_logs`,
+  fetchDataPipelineLog: `${webAPI}/kb/list_pipeline_logs`,
+  get_pipeline_detail: `${webAPI}/kb/pipeline_log_detail`,
+  fetchPipelineDatasetLogs: `${webAPI}/kb/list_pipeline_dataset_logs`,
   runGraphRag: (datasetId: string) =>
-    `${ExternalApi}${api_host}/datasets/${datasetId}/run_graphrag`,
+    `${restAPIv1}/datasets/${datasetId}/run_graphrag`,
   traceGraphRag: (datasetId: string) =>
-    `${ExternalApi}${api_host}/datasets/${datasetId}/trace_graphrag`,
+    `${restAPIv1}/datasets/${datasetId}/trace_graphrag`,
   runRaptor: (datasetId: string) =>
-    `${ExternalApi}${api_host}/datasets/${datasetId}/run_raptor`,
+    `${restAPIv1}/datasets/${datasetId}/run_raptor`,
   traceRaptor: (datasetId: string) =>
-    `${ExternalApi}${api_host}/datasets/${datasetId}/trace_raptor`,
+    `${restAPIv1}/datasets/${datasetId}/trace_raptor`,
   unbindPipelineTask: ({ kb_id, type }: { kb_id: string; type: string }) =>
-    `${api_host}/kb/unbind_task?kb_id=${kb_id}&pipeline_task_type=${type}`,
-  pipelineRerun: `${api_host}/canvas/rerun`,
-  getMetaData: `${api_host}/document/metadata/summary`,
-  updateMetaData: `${api_host}/document/metadata/update`,
-  kbUpdateMetaData: `${api_host}/kb/update_metadata_setting`,
-  documentUpdateMetaData: `${api_host}/document/update_metadata_setting`,
-  traceDuplicate: (id: string) => `${api_host}/kb/trace_clone?kb_id=${id}`,
-  switchEmbeddingModel: `${api_host}/kb/switch_embedding`,
-  traceEmbedding: (id: string) => `${api_host}/kb/trace_embedding?kb_id=${id}`,
+    `${webAPI}/kb/unbind_task?kb_id=${kb_id}&pipeline_task_type=${type}`,
+
+  traceDuplicate: (id: string) => `${webAPI}/kb/trace_clone?kb_id=${id}`,
+  switchEmbeddingModel: `${webAPI}/kb/switch_embedding`,
+  traceEmbedding: (id: string) => `${webAPI}/kb/trace_embedding?kb_id=${id}`,
+  pipelineRerun: `${webAPI}/canvas/rerun`,
+  getMetaData: (datasetId: string) =>
+    `${restAPIv1}/datasets/${datasetId}/metadata/summary`,
+  updateMetaData: `${webAPI}/document/metadata/update`,
+  kbUpdateMetaData: `${webAPI}/kb/update_metadata_setting`,
+  documentUpdateMetaData: `${webAPI}/document/update_metadata_setting`,
 
   // tags
-  listTag: (knowledgeId: string) => `${api_host}/kb/${knowledgeId}/tags`,
-  listTagByKnowledgeIds: `${api_host}/kb/tags`,
-  removeTag: (knowledgeId: string) => `${api_host}/kb/${knowledgeId}/rm_tags`,
-  renameTag: (knowledgeId: string) =>
-    `${api_host}/kb/${knowledgeId}/rename_tag`,
+  listTag: (knowledgeId: string) => `${webAPI}/kb/${knowledgeId}/tags`,
+  listTagByKnowledgeIds: `${webAPI}/kb/tags`,
+  removeTag: (knowledgeId: string) => `${webAPI}/kb/${knowledgeId}/rm_tags`,
+  renameTag: (knowledgeId: string) => `${webAPI}/kb/${knowledgeId}/rename_tag`,
 
   // chunk
-  chunk_list: `${api_host}/chunk/list`,
-  create_chunk: `${api_host}/chunk/create`,
-  set_chunk: `${api_host}/chunk/set`,
-  get_chunk: `${api_host}/chunk/get`,
-  switch_chunk: `${api_host}/chunk/switch`,
-  rm_chunk: `${api_host}/chunk/rm`,
-  retrieval_test: `${api_host}/chunk/retrieval_test`,
-  knowledge_graph: `${api_host}/chunk/knowledge_graph`,
+  chunk_list: `${webAPI}/chunk/list`,
+  create_chunk: `${webAPI}/chunk/create`,
+  set_chunk: `${webAPI}/chunk/set`,
+  get_chunk: `${webAPI}/chunk/get`,
+  switch_chunk: `${webAPI}/chunk/switch`,
+  rm_chunk: `${webAPI}/chunk/rm`,
+  retrieval_test: `${webAPI}/chunk/retrieval_test`,
+  knowledge_graph: `${webAPI}/chunk/knowledge_graph`,
 
   // document
-  get_document_list: `${api_host}/document/list`,
-  document_change_status: `${api_host}/document/change_status`,
-  document_rm: `${api_host}/document/rm`,
-  document_delete: `${api_host}/api/document`,
-  document_rename: `${api_host}/document/rename`,
-  document_create: `${api_host}/document/create`,
-  document_run: `${api_host}/document/run`,
-  document_change_parser: `${api_host}/document/change_parser`,
-  document_thumbnails: `${api_host}/document/thumbnails`,
-  get_document_file: `${api_host}/document/get`,
+  get_document_list: `${webAPI}/document/list`,
+  document_change_status: `${webAPI}/document/change_status`,
+  document_rm: `${webAPI}/document/rm`,
+  document_delete: `${webAPI}/api/document`,
+  document_rename: (datasetId: string, documentId: string) =>
+    `${restAPIv1}/datasets/${datasetId}/documents/${documentId}`,
+  document_create: `${webAPI}/document/create`,
+  document_run: `${webAPI}/document/run`,
+  document_change_parser: `${webAPI}/document/change_parser`,
+  document_thumbnails: `${webAPI}/document/thumbnails`,
+  get_document_file: `${webAPI}/document/get`,
   get_document_file_download: (docId: string) =>
-    `${api_host}/document/download/${docId}`,
-  document_upload: `${api_host}/document/upload`,
-  web_crawl: `${api_host}/document/web_crawl`,
-  document_infos: `${api_host}/document/infos`,
-  upload_and_parse: `${api_host}/document/upload_info`,
-  parse: `${api_host}/document/parse`,
-  setMeta: `${api_host}/document/set_meta`,
-  get_dataset_filter: `${api_host}/document/filter`,
+    `${webAPI}/document/download/${docId}`,
+  document_upload: `${webAPI}/document/upload`,
+  web_crawl: `${webAPI}/document/web_crawl`,
+  document_infos: `${webAPI}/document/infos`,
+  upload_and_parse: `${webAPI}/document/upload_info`,
+  parse: `${webAPI}/document/parse`,
+  setMeta: `${webAPI}/document/set_meta`,
+  get_dataset_filter: `${webAPI}/document/filter`,
 
   // chat
-  setDialog: `${api_host}/dialog/set`,
-  getDialog: `${api_host}/dialog/get`,
-  removeDialog: `${api_host}/dialog/rm`,
-  listDialog: `${api_host}/dialog/list`,
-  setConversation: `${api_host}/conversation/set`,
-  getConversation: `${api_host}/conversation/get`,
-  getConversationSSE: (dialogId: string) =>
-    `${api_host}/conversation/getsse/${dialogId}`,
-  listConversation: `${api_host}/conversation/list`,
-  removeConversation: `${api_host}/conversation/rm`,
-  completeConversation: `${api_host}/conversation/completion`,
-  deleteMessage: `${api_host}/conversation/delete_msg`,
-  thumbup: `${api_host}/conversation/thumbup`,
-  tts: `${api_host}/conversation/tts`,
-  ask: `${api_host}/conversation/ask`,
-  mindmap: `${api_host}/conversation/mindmap`,
-  getRelatedQuestions: `${api_host}/conversation/related_questions`,
-  // chat for external
-  createToken: `${api_host}/api/new_token`,
-  listToken: `${api_host}/api/token_list`,
-  removeToken: `${api_host}/api/rm`,
-  getStats: `${api_host}/api/stats`,
-  createExternalConversation: `${api_host}/api/new_conversation`,
-  getExternalConversation: `${api_host}/api/conversation`,
-  completeExternalConversation: `${api_host}/api/completion`,
-  uploadAndParseExternal: `${api_host}/api/document/upload_and_parse`,
+  createChat: `${restAPIv1}/chats`,
+  listChats: `${restAPIv1}/chats`,
+  getChat: (chatId: string) => `${restAPIv1}/chats/${chatId}`,
+  updateChat: (chatId: string) => `${restAPIv1}/chats/${chatId}`,
+  patchChat: (chatId: string) => `${restAPIv1}/chats/${chatId}`,
+  deleteChat: (chatId: string) => `${restAPIv1}/chats/${chatId}`,
+  bulkDeleteChats: `${restAPIv1}/chats`,
+  createSession: (chatId: string) => `${restAPIv1}/chats/${chatId}/sessions`,
+  listSessions: (chatId: string) => `${restAPIv1}/chats/${chatId}/sessions`,
+  getSession: (chatId: string, sessionId: string) =>
+    `${restAPIv1}/chats/${chatId}/sessions/${sessionId}`,
+  updateSession: (chatId: string, sessionId: string) =>
+    `${restAPIv1}/chats/${chatId}/sessions/${sessionId}`,
+  removeSessions: (chatId: string) => `${restAPIv1}/chats/${chatId}/sessions`,
+  deleteMessage: (chatId: string, sessionId: string, msgId: string) =>
+    `${restAPIv1}/chats/${chatId}/sessions/${sessionId}/messages/${msgId}`,
+  thumbup: (chatId: string, sessionId: string, msgId: string) =>
+    `${restAPIv1}/chats/${chatId}/sessions/${sessionId}/messages/${msgId}/feedback`,
+  completionUrl: (chatId: string, sessionId: string) =>
+    `${restAPIv1}/chats/${chatId}/sessions/${sessionId}/completions`,
+  chatsTts: `${restAPIv1}/chats/tts`,
+  ask: `${restAPIv1}/chats/ask`,
+  chatsMindmap: `${restAPIv1}/chats/mindmap`,
+  chatsRelatedQuestions: `${restAPIv1}/chats/related_questions`,
 
   // next chat
-  listNextDialog: `${api_host}/dialog/next`,
-  fetchExternalChatInfo: (id: string) =>
-    `${ExternalApi}${api_host}/chatbots/${id}/info`,
+  fetchExternalChatInfo: (id: string) => `${restAPIv1}/chatbots/${id}/info`,
 
   // file manager
-  listFile: `${ExternalApi}${api_host}/files`,
-  uploadFile: `${ExternalApi}${api_host}/files`,
-  removeFile: `${ExternalApi}${api_host}/files`,
-  getAllParentFolder: `${ExternalApi}${api_host}/files`,
-  createFolder: `${ExternalApi}${api_host}/files`,
-  connectFileToKnowledge: `${api_host}/file2document/convert`,
-  getFile: `${ExternalApi}${api_host}/files`,
-  moveFile: `${ExternalApi}${api_host}/files/move`,
+  listFile: `${restAPIv1}/files`,
+  uploadFile: `${restAPIv1}/files`,
+  removeFile: `${restAPIv1}/files`,
+  getAllParentFolder: `${restAPIv1}/files`,
+  createFolder: `${restAPIv1}/files`,
+  connectFileToKnowledge: `${webAPI}/file2document/convert`,
+  getFile: `${restAPIv1}/files`,
+  moveFile: `${restAPIv1}/files/move`,
 
   // system
-  getSystemVersion: `${api_host}/system/version`,
-  getSystemStatus: `${api_host}/system/status`,
-  getSystemTokenList: `${api_host}/system/token_list`,
-  createSystemToken: `${api_host}/system/new_token`,
-  listSystemToken: `${api_host}/system/token_list`,
-  removeSystemToken: `${api_host}/system/token`,
-  getSystemConfig: `${api_host}/system/config`,
-  setLangfuseConfig: `${api_host}/langfuse/api_key`,
+  getSystemVersion: `${restAPIv1}/system/version`,
+  getSystemTokenList: `${restAPIv1}/system/tokens`,
+  createSystemToken: `${restAPIv1}/system/tokens`,
+  removeSystemToken: `${restAPIv1}/system/tokens`,
+  getSystemConfig: `${webAPI}/system/config`,
+  setLangfuseConfig: `${webAPI}/langfuse/api_key`,
 
   // flow
-  listTemplates: `${api_host}/canvas/templates`,
-  listCanvas: `${api_host}/canvas/list`,
-  getCanvas: `${api_host}/canvas/get`,
-  getCanvasSSE: (canvasId: string) => `${api_host}/canvas/getsse/${canvasId}`,
-  removeCanvas: `${api_host}/canvas/rm`,
-  setCanvas: `${api_host}/canvas/set`,
-  settingCanvas: `${api_host}/canvas/setting`,
-  getListVersion: `${api_host}/canvas/getlistversion`,
-  getVersion: `${api_host}/canvas/getversion`,
-  resetCanvas: `${api_host}/canvas/reset`,
-  runCanvas: `${api_host}/canvas/completion`,
-  testDbConnect: `${api_host}/canvas/test_db_connect`,
-  getInputElements: `${api_host}/canvas/input_elements`,
-  debug: `${api_host}/canvas/debug`,
-  uploadCanvasFile: `${api_host}/canvas/upload`,
-  trace: `${api_host}/canvas/trace`,
-  joinCanvasPresence: `${api_host}/canvas/presence/join`,
-  heartbeatCanvasPresence: `${api_host}/canvas/presence/heartbeat`,
-  leaveCanvasPresence: `${api_host}/canvas/presence/leave`,
+  joinCanvasPresence: `${webAPI}/canvas/presence/join`,
+  heartbeatCanvasPresence: `${webAPI}/canvas/presence/heartbeat`,
+  leaveCanvasPresence: `${webAPI}/canvas/presence/leave`,
   fetchCanvasPresence: (canvasId: string) =>
-    `${api_host}/canvas/${canvasId}/presence`,
-  cancelCanvas: (taskId: string) => `${api_host}/canvas/cancel/${taskId}`, // cancel conversation
+    `${webAPI}/canvas/${canvasId}/presence`,
+
+  listTemplates: `${webAPI}/canvas/templates`,
+  listCanvas: `${webAPI}/canvas/list`,
+  getCanvas: `${webAPI}/canvas/get`,
+  getCanvasSSE: (canvasId: string) => `${webAPI}/canvas/getsse/${canvasId}`,
+  removeCanvas: `${webAPI}/canvas/rm`,
+  setCanvas: `${webAPI}/canvas/set`,
+  settingCanvas: `${webAPI}/canvas/setting`,
+  getListVersion: `${webAPI}/canvas/getlistversion`,
+  getVersion: `${webAPI}/canvas/getversion`,
+  resetCanvas: `${webAPI}/canvas/reset`,
+  runCanvas: `${webAPI}/canvas/completion`,
+  testDbConnect: `${webAPI}/canvas/test_db_connect`,
+  getInputElements: `${webAPI}/canvas/input_elements`,
+  debug: `${webAPI}/canvas/debug`,
+  uploadCanvasFile: `${webAPI}/canvas/upload`,
+  trace: `${webAPI}/canvas/trace`,
+  cancelCanvas: (taskId: string) => `${webAPI}/canvas/cancel/${taskId}`, // cancel conversation
   // agent
-  inputForm: `${api_host}/canvas/input_form`,
-  fetchVersionList: (id: string) => `${api_host}/canvas/getlistversion/${id}`,
-  fetchVersion: (id: string) => `${api_host}/canvas/getversion/${id}`,
-  fetchCanvas: (id: string) => `${api_host}/canvas/get/${id}`,
-  fetchAgentAvatar: (id: string) => `${api_host}/canvas/getsse/${id}`,
-  uploadAgentFile: (id?: string) => `${api_host}/canvas/upload/${id}`,
-  fetchAgentLogs: (canvasId: string) =>
-    `${api_host}/canvas/${canvasId}/sessions`,
+  inputForm: `${webAPI}/canvas/input_form`,
+  fetchVersionList: (id: string) => `${webAPI}/canvas/getlistversion/${id}`,
+  fetchVersion: (id: string) => `${webAPI}/canvas/getversion/${id}`,
+  fetchCanvas: (id: string) => `${webAPI}/canvas/get/${id}`,
+  fetchAgentAvatar: (id: string) => `${webAPI}/canvas/getsse/${id}`,
+  uploadAgentFile: (id?: string) => `${webAPI}/canvas/upload/${id}`,
+  fetchAgentLogs: (canvasId: string) => `${webAPI}/canvas/${canvasId}/sessions`,
   fetchAgentLogsById: (canvasId: string, sessionId: string) =>
-    `${api_host}/canvas/${canvasId}/sessions/${sessionId}`,
+    `${webAPI}/canvas/${canvasId}/sessions/${sessionId}`,
   fetchExternalAgentInputs: (canvasId: string) =>
-    `${ExternalApi}${api_host}/agentbots/${canvasId}/inputs`,
-  prompt: `${api_host}/canvas/prompts`,
-  cancelDataflow: (id: string) => `${api_host}/canvas/cancel/${id}`,
-  downloadFile: `${api_host}/canvas/download`,
-  testWebhook: (id: string) => `${ExternalApi}${api_host}/webhook_test/${id}`,
-  fetchWebhookTrace: (id: string) =>
-    `${ExternalApi}${api_host}/webhook_trace/${id}`,
+    `${restAPIv1}/agentbots/${canvasId}/inputs`,
+  prompt: `${webAPI}/canvas/prompts`,
+  cancelDataflow: (id: string) => `${webAPI}/canvas/cancel/${id}`,
+  downloadFile: `${webAPI}/canvas/download`,
+  testWebhook: (id: string) => `${restAPIv1}/webhook_test/${id}`,
+  fetchWebhookTrace: (id: string) => `${restAPIv1}/webhook_trace/${id}`,
 
   // explore
 
   runCanvasExplore: (canvasId: string) =>
-    `${api_host}/canvas/${canvasId}/completion`,
+    `${webAPI}/canvas/${canvasId}/completion`,
 
   // mcp server
-  listMcpServer: `${api_host}/mcp_server/list`,
-  getMcpServer: `${api_host}/mcp_server/detail`,
-  createMcpServer: `${api_host}/mcp_server/create`,
-  updateMcpServer: `${api_host}/mcp_server/update`,
-  deleteMcpServer: `${api_host}/mcp_server/rm`,
-  importMcpServer: `${api_host}/mcp_server/import`,
-  exportMcpServer: `${api_host}/mcp_server/export`,
-  listMcpServerTools: `${api_host}/mcp_server/list_tools`,
-  testMcpServerTool: `${api_host}/mcp_server/test_tool`,
-  cacheMcpServerTool: `${api_host}/mcp_server/cache_tools`,
-  testMcpServer: `${api_host}/mcp_server/test_mcp`,
+  listMcpServer: `${webAPI}/mcp_server/list`,
+  getMcpServer: `${webAPI}/mcp_server/detail`,
+  createMcpServer: `${webAPI}/mcp_server/create`,
+  updateMcpServer: `${webAPI}/mcp_server/update`,
+  deleteMcpServer: `${webAPI}/mcp_server/rm`,
+  importMcpServer: `${webAPI}/mcp_server/import`,
+  exportMcpServer: `${webAPI}/mcp_server/export`,
+  listMcpServerTools: `${webAPI}/mcp_server/list_tools`,
+  testMcpServerTool: `${webAPI}/mcp_server/test_tool`,
+  cacheMcpServerTool: `${webAPI}/mcp_server/cache_tools`,
+  testMcpServer: `${webAPI}/mcp_server/test_mcp`,
 
   // next-search
-  createSearch: `${ExternalApi}${api_host}/searches`,
-  getSearchList: `${ExternalApi}${api_host}/searches`,
+  createSearch: `${restAPIv1}/searches`,
+  getSearchList: `${restAPIv1}/searches`,
   deleteSearch: (params: { search_id: string }) =>
-    `${ExternalApi}${api_host}/searches/${params.search_id}`,
+    `${restAPIv1}/searches/${params.search_id}`,
   getSearchDetail: (params: { search_id: string }) =>
-    `${ExternalApi}${api_host}/searches/${params.search_id}`,
-  getSearchDetailShare: `${ExternalApi}${api_host}/searchbots/detail`,
+    `${restAPIv1}/searches/${params.search_id}`,
+  getSearchDetailShare: `${restAPIv1}/searchbots/detail`,
   updateSearchSetting: (params: { search_id: string }) =>
-    `${ExternalApi}${api_host}/searches/${params.search_id}`,
-  askShare: `${ExternalApi}${api_host}/searchbots/ask`,
-  mindmapShare: `${ExternalApi}${api_host}/searchbots/mindmap`,
-  getRelatedQuestionsShare: `${ExternalApi}${api_host}/searchbots/related_questions`,
-  retrievalTestShare: `${ExternalApi}${api_host}/searchbots/retrieval_test`,
+    `${restAPIv1}/searches/${params.search_id}`,
+  askShare: `${restAPIv1}/searchbots/ask`,
+  mindmapShare: `${restAPIv1}/searchbots/mindmap`,
+  getRelatedQuestionsShare: `${restAPIv1}/searchbots/related_questions`,
+  retrievalTestShare: `${restAPIv1}/searchbots/retrieval_test`,
 
   // memory
-  createMemory: `${ExternalApi}${api_host}/memories`,
-  getMemoryList: `${ExternalApi}${api_host}/memories`,
-  getMemoryConfig: (id: string) =>
-    `${ExternalApi}${api_host}/memories/${id}/config`,
-  deleteMemory: (id: string) => `${ExternalApi}${api_host}/memories/${id}`,
-  getMemoryDetail: (id: string) => `${ExternalApi}${api_host}/memories/${id}`,
-  updateMemorySetting: (id: string) =>
-    `${ExternalApi}${api_host}/memories/${id}`,
+  createMemory: `${restAPIv1}/memories`,
+  getMemoryList: `${restAPIv1}/memories`,
+  getMemoryConfig: (id: string) => `${restAPIv1}/memories/${id}/config`,
+  deleteMemory: (id: string) => `${restAPIv1}/memories/${id}`,
+  getMemoryDetail: (id: string) => `${restAPIv1}/memories/${id}`,
+  updateMemorySetting: (id: string) => `${restAPIv1}/memories/${id}`,
   deleteMemoryMessage: (data: { memory_id: string; message_id: string }) =>
-    `${ExternalApi}${api_host}/messages/${data.memory_id}:${data.message_id}`,
+    `${restAPIv1}/messages/${data.memory_id}:${data.message_id}`,
   getMessageContent: (data: { memory_id: string; message_id: string }) =>
-    `${ExternalApi}${api_host}/messages/${data.memory_id}:${data.message_id}/content`,
+    `${restAPIv1}/messages/${data.memory_id}:${data.message_id}/content`,
   updateMessageState: (data: { memory_id: string; message_id: string }) =>
-    `${ExternalApi}${api_host}/messages/${data.memory_id}:${data.message_id}`,
+    `${restAPIv1}/messages/${data.memory_id}:${data.message_id}`,
 
   // data pipeline
-  fetchDataflow: (id: string) => `${api_host}/dataflow/get/${id}`,
-  setDataflow: `${api_host}/dataflow/set`,
-  removeDataflow: `${api_host}/dataflow/rm`,
-  listDataflow: `${api_host}/dataflow/list`,
-  runDataflow: `${api_host}/dataflow/run`,
+  fetchDataflow: (id: string) => `${webAPI}/dataflow/get/${id}`,
+  setDataflow: `${webAPI}/dataflow/set`,
+  removeDataflow: `${webAPI}/dataflow/rm`,
+  listDataflow: `${webAPI}/dataflow/list`,
+  runDataflow: `${webAPI}/dataflow/run`,
 
   // admin
-  adminLogin: `${ExternalApi}${api_host}/admin/login`,
-  adminLogout: `${ExternalApi}${api_host}/admin/logout`,
-  adminListUsers: `${ExternalApi}${api_host}/admin/users`,
-  adminCreateUser: `${ExternalApi}${api_host}/admin/users`,
+  adminLogin: `${restAPIv1}/admin/login`,
+  adminLogout: `${restAPIv1}/admin/logout`,
+  adminListUsers: `${restAPIv1}/admin/users`,
+  adminCreateUser: `${restAPIv1}/admin/users`,
   adminSetSuperuser: (username: string) =>
-    `${ExternalApi}${api_host}/admin/users/${username}/admin`,
+    `${restAPIv1}/admin/users/${username}/admin`,
   adminGetUserDetails: (username: string) =>
-    `${ExternalApi}${api_host}/admin/users/${username}`,
+    `${restAPIv1}/admin/users/${username}`,
   adminUpdateUserStatus: (username: string) =>
-    `${ExternalApi}${api_host}/admin/users/${username}/activate`,
+    `${restAPIv1}/admin/users/${username}/activate`,
   adminUpdateUserPassword: (username: string) =>
-    `${ExternalApi}${api_host}/admin/users/${username}/password`,
-  adminDeleteUser: (username: string) =>
-    `${ExternalApi}${api_host}/admin/users/${username}`,
+    `${restAPIv1}/admin/users/${username}/password`,
+  adminDeleteUser: (username: string) => `${restAPIv1}/admin/users/${username}`,
   adminListUserDatasets: (username: string) =>
-    `${ExternalApi}${api_host}/admin/users/${username}/datasets`,
+    `${restAPIv1}/admin/users/${username}/datasets`,
   adminListUserAgents: (username: string) =>
-    `${ExternalApi}${api_host}/admin/users/${username}/agents`,
+    `${restAPIv1}/admin/users/${username}/agents`,
 
-  adminListServices: `${ExternalApi}${api_host}/admin/services`,
+  adminListServices: `${restAPIv1}/admin/services`,
   adminShowServiceDetails: (serviceId: string) =>
-    `${ExternalApi}${api_host}/admin/services/${serviceId}`,
+    `${restAPIv1}/admin/services/${serviceId}`,
 
-  adminListRoles: `${ExternalApi}${api_host}/admin/roles`,
-  adminListRolesWithPermission: `${ExternalApi}${api_host}/admin/roles_with_permission`,
+  adminListRoles: `${restAPIv1}/admin/roles`,
+  adminListRolesWithPermission: `${restAPIv1}/admin/roles_with_permission`,
   adminGetRolePermissions: (roleName: string) =>
-    `${ExternalApi}${api_host}/admin/roles/${roleName}/permissions`,
+    `${restAPIv1}/admin/roles/${roleName}/permissions`,
   adminAssignRolePermissions: (roleName: string) =>
-    `${ExternalApi}${api_host}/admin/roles/${roleName}/permission`,
+    `${restAPIv1}/admin/roles/${roleName}/permission`,
   adminRevokeRolePermissions: (roleName: string) =>
-    `${ExternalApi}${api_host}/admin/roles/${roleName}/permission`,
-  adminCreateRole: `${ExternalApi}${api_host}/admin/roles`,
-  adminDeleteRole: (roleName: string) =>
-    `${ExternalApi}${api_host}/admin/roles/${roleName}`,
+    `${restAPIv1}/admin/roles/${roleName}/permission`,
+  adminCreateRole: `${restAPIv1}/admin/roles`,
+  adminDeleteRole: (roleName: string) => `${restAPIv1}/admin/roles/${roleName}`,
   adminUpdateRoleDescription: (roleName: string) =>
-    `${ExternalApi}${api_host}/admin/roles/${roleName}`,
+    `${restAPIv1}/admin/roles/${roleName}`,
   adminRoleDefaultModels: (roleName: string) =>
-    `${ExternalApi}${api_host}/admin/roles/${roleName}/default_models`,
+    `${restAPIv1}/admin/roles/${roleName}/default_models`,
 
-  adminListMyLlm: `${ExternalApi}${api_host}/admin/llm/my_llms`,
-  adminListLlmFactories: `${ExternalApi}${api_host}/admin/llm/factories`,
-  adminListAllFactoryLlms: `${ExternalApi}${api_host}/admin/llm/list`,
-  adminSetLlmApiKey: `${ExternalApi}${api_host}/admin/llm/set_api_key`,
-  adminAddLlmFactory: `${ExternalApi}${api_host}/admin/llm/add_llm`,
-  adminDeleteLlmFactory: `${ExternalApi}${api_host}/admin/llm/delete_factory`,
+  adminListMyLlm: `${restAPIv1}/admin/llm/my_llms`,
+  adminListLlmFactories: `${restAPIv1}/admin/llm/factories`,
+  adminListAllFactoryLlms: `${restAPIv1}/admin/llm/list`,
+  adminSetLlmApiKey: `${restAPIv1}/admin/llm/set_api_key`,
+  adminAddLlmFactory: `${restAPIv1}/admin/llm/add_llm`,
+  adminDeleteLlmFactory: `${restAPIv1}/admin/llm/delete_factory`,
 
   adminUpdateUserRole: (username: string) =>
-    `${ExternalApi}${api_host}/admin/users/${username}/role`,
+    `${restAPIv1}/admin/users/${username}/role`,
   adminGetUserPermissions: (username: string) =>
-    `${ExternalApi}${api_host}/admin/users/${username}/permissions`,
+    `${restAPIv1}/admin/users/${username}/permissions`,
 
-  adminListResources: `${ExternalApi}${api_host}/admin/roles/resource`,
+  adminListResources: `${restAPIv1}/admin/roles/resource`,
 
-  adminListWhitelist: `${ExternalApi}${api_host}/admin/whitelist`,
-  adminCreateWhitelistEntry: `${ExternalApi}${api_host}/admin/whitelist/add`,
+  adminListWhitelist: `${restAPIv1}/admin/whitelist`,
+  adminCreateWhitelistEntry: `${restAPIv1}/admin/whitelist/add`,
   adminUpdateWhitelistEntry: (id: number) =>
-    `${ExternalApi}${api_host}/admin/whitelist/${id}`,
+    `${restAPIv1}/admin/whitelist/${id}`,
   adminDeleteWhitelistEntry: (email: string) =>
-    `${ExternalApi}${api_host}/admin/whitelist/${email}`,
-  adminImportWhitelist: `${ExternalApi}${api_host}/admin/whitelist/batch`,
+    `${restAPIv1}/admin/whitelist/${email}`,
+  adminImportWhitelist: `${restAPIv1}/admin/whitelist/batch`,
 
-  adminGetSystemVersion: `${ExternalApi}${api_host}/admin/version`,
+  adminGetSystemVersion: `${restAPIv1}/admin/version`,
 
-  adminVariables: `${ExternalApi}${api_host}/admin/variables`,
-  adminTestSMTPConnection: `${ExternalApi}${api_host}/admin/validate_mail`,
+  adminVariables: `${restAPIv1}/admin/variables`,
+  adminTestSMTPConnection: `${restAPIv1}/admin/validate_mail`,
 
   // evaluation
   listEvaluationDetailFile: (id: string) =>
-    `${api_host}/evaluation/collection/${id}/cases`,
+    `${webAPI}/evaluation/collection/${id}/cases`,
   downloadEvaluationFile: (id: string) =>
-    `${api_host}/evaluation/collection/${id}/case/export`,
+    `${webAPI}/evaluation/collection/${id}/case/export`,
   // collection
-  evaluationCreateCollection: `${api_host}/evaluation/collection/create`,
-  evaluationListCollection: `${api_host}/evaluation/collection/list`,
+  evaluationCreateCollection: `${webAPI}/evaluation/collection/create`,
+  evaluationListCollection: `${webAPI}/evaluation/collection/list`,
   evaluationGetCollection: (collectionId: string) =>
-    `${api_host}/evaluation/collection/${collectionId}`,
+    `${webAPI}/evaluation/collection/${collectionId}`,
   evaluationUpdateCollection: (collectionId: string) =>
-    `${api_host}/evaluation/collection/${collectionId}`,
-  evaluationDeleteCollection: `${api_host}/evaluation/collection/remove`,
+    `${webAPI}/evaluation/collection/${collectionId}`,
+  evaluationDeleteCollection: `${webAPI}/evaluation/collection/remove`,
 
   // case
   evaluationAddCase: (collectionId: string) =>
-    `${api_host}/evaluation/collection/${collectionId}/case/add`,
+    `${webAPI}/evaluation/collection/${collectionId}/case/add`,
   evaluationImportCase: (collectionId: string) =>
-    `${api_host}/evaluation/collection/${collectionId}/case/import`,
+    `${webAPI}/evaluation/collection/${collectionId}/case/import`,
   evaluationListCase: (collectionId: string) =>
-    `${api_host}/evaluation/collection/${collectionId}/cases`,
+    `${webAPI}/evaluation/collection/${collectionId}/cases`,
   evaluationDeleteCase: (caseId: string) =>
-    `${api_host}/evaluation/case/${caseId}`,
+    `${webAPI}/evaluation/case/${caseId}`,
   evaluationUpdateCase: (caseId: string) =>
-    `${api_host}/evaluation/case/${caseId}`,
+    `${webAPI}/evaluation/case/${caseId}`,
 
   // run
 
   evaluationStartRun: (runId: string) =>
-    `${api_host}/evaluation/run/${runId}/start`,
-  evaluationRun: `${api_host}/evaluation/run`,
-  evaluationGetRun: (runId: string) => `${api_host}/evaluation/run/${runId}`,
+    `${webAPI}/evaluation/run/${runId}/start`,
+  evaluationRun: `${webAPI}/evaluation/run`,
+  evaluationGetRun: (runId: string) => `${webAPI}/evaluation/run/${runId}`,
   evaluationGetRunResults: (runId: string) =>
-    `${api_host}/evaluation/run/${runId}/results`,
-  evaluationListRun: `${api_host}/evaluation/run/list`,
-  evaluationDeleteRun: (runId: string) => `${api_host}/evaluation/run/${runId}`,
-  evaluationUpdateRun: (runId: string) => `${api_host}/evaluation/run/${runId}`,
+    `${webAPI}/evaluation/run/${runId}/results`,
+  evaluationListRun: `${webAPI}/evaluation/run/list`,
+  evaluationDeleteRun: (runId: string) => `${webAPI}/evaluation/run/${runId}`,
+  evaluationUpdateRun: (runId: string) => `${webAPI}/evaluation/run/${runId}`,
   evaluationDuplicateRun: (runId: string) =>
-    `${api_host}/evaluation/run/${runId}/duplicate`,
+    `${webAPI}/evaluation/run/${runId}/duplicate`,
 
   evaluationCancelRun: (runId: string) =>
-    `${api_host}/evaluation/run/${runId}/cancel`,
+    `${webAPI}/evaluation/run/${runId}/cancel`,
 
   // execute
   evaluationExecuteAll: (runId: string) =>
-    `${api_host}/evaluation/run/${runId}/execute_all`,
+    `${webAPI}/evaluation/run/${runId}/execute_all`,
   evaluationExecuteCase: (runId: string, caseId: string) =>
-    `${api_host}/evaluation/run/${runId}/case/${caseId}/execute`,
+    `${webAPI}/evaluation/run/${runId}/case/${caseId}/execute`,
 
   // metrics
   evaluationCalculateCaseMetric: (runId: string, caseId: string) =>
-    `${api_host}/evaluation/run/${runId}/case/${caseId}/metric`,
+    `${webAPI}/evaluation/run/${runId}/case/${caseId}/metric`,
   evaluationCalculateRunsMetrics: (runId: string) =>
-    `${api_host}/evaluation/run/${runId}/metrics`,
+    `${webAPI}/evaluation/run/${runId}/metrics`,
   evaluationCalculateRunsMetric: (runId: string) =>
-    `${api_host}/evaluation/run/${runId}/metric`,
+    `${webAPI}/evaluation/run/${runId}/metric`,
   evaluationCalculateCaseMetrics: (runId: string, caseId: string) =>
-    `${api_host}/evaluation/run/${runId}/case/${caseId}/metrics`,
+    `${webAPI}/evaluation/run/${runId}/case/${caseId}/metrics`,
 
   // clear results
   evaluationClearCaseResult: (runId: string, caseId: string) =>
-    `${api_host}/evaluation/run/${runId}/case/${caseId}/result`,
+    `${webAPI}/evaluation/run/${runId}/case/${caseId}/result`,
   evaluationClearCaseMetricResult: (runId: string, caseId: string) =>
-    `${api_host}/evaluation/run/${runId}/case/${caseId}/result/metric`,
+    `${webAPI}/evaluation/run/${runId}/case/${caseId}/result/metric`,
   evaluationClearCaseAnswer: (runId: string, caseId: string) =>
-    `${api_host}/evaluation/run/${runId}/case/${caseId}/result/answer`,
+    `${webAPI}/evaluation/run/${runId}/case/${caseId}/result/answer`,
 
   // other
   evaluationGetRecommendations: (runId: string) =>
-    `${api_host}/evaluation/run/${runId}/recommendations`,
+    `${webAPI}/evaluation/run/${runId}/recommendations`,
   evaluationExportRun: (runId: string) =>
-    `${api_host}/evaluation/run/${runId}/export`,
+    `${webAPI}/evaluation/run/${runId}/export`,
   // Sandbox settings
-  adminListSandboxProviders: `${ExternalApi}${api_host}/admin/sandbox/providers`,
+  adminListSandboxProviders: `${restAPIv1}/admin/sandbox/providers`,
   adminGetSandboxProviderSchema: (providerId: string) =>
-    `${ExternalApi}${api_host}/admin/sandbox/providers/${providerId}/schema`,
-  adminGetSandboxConfig: `${ExternalApi}${api_host}/admin/sandbox/config`,
-  adminSetSandboxConfig: `${ExternalApi}${api_host}/admin/sandbox/config`,
-  adminTestSandboxConnection: `${ExternalApi}${api_host}/admin/sandbox/test`,
+    `${restAPIv1}/admin/sandbox/providers/${providerId}/schema`,
+  adminGetSandboxConfig: `${restAPIv1}/admin/sandbox/config`,
+  adminSetSandboxConfig: `${restAPIv1}/admin/sandbox/config`,
+  adminTestSandboxConnection: `${restAPIv1}/admin/sandbox/test`,
 
   // Model Usage Statistics (LLM Trace)
-  adminLlmTraceSummary: `${ExternalApi}${api_host}/admin/llm_trace/stats/summary`,
-  adminLlmTraceByOrg: `${ExternalApi}${api_host}/admin/llm_trace/stats/by-org`,
-  adminLlmTraceTopConsumers: `${ExternalApi}${api_host}/admin/llm_trace/stats/top-consumers`,
-  adminLlmTraceTrends: `${ExternalApi}${api_host}/admin/llm_trace/stats/trends`,
-  adminLlmTraceByModel: `${ExternalApi}${api_host}/admin/llm_trace/stats/by-model`,
-  adminLlmTraceRecent: `${ExternalApi}${api_host}/admin/llm_trace/recent`,
+  adminLlmTraceSummary: `${restAPIv1}/admin/llm_trace/stats/summary`,
+  adminLlmTraceByOrg: `${restAPIv1}/admin/llm_trace/stats/by-org`,
+  adminLlmTraceTopConsumers: `${restAPIv1}/admin/llm_trace/stats/top-consumers`,
+  adminLlmTraceTrends: `${restAPIv1}/admin/llm_trace/stats/trends`,
+  adminLlmTraceByModel: `${restAPIv1}/admin/llm_trace/stats/by-model`,
+  adminLlmTraceRecent: `${restAPIv1}/admin/llm_trace/recent`,
   // License
-  adminGetLicense: `${ExternalApi}${api_host}/admin/license`,
-  adminSetLicense: `${ExternalApi}${api_host}/admin/license`,
-  adminGetFingerprint: `${ExternalApi}${api_host}/admin/fingerprint`,
+  adminGetLicense: `${restAPIv1}/admin/license`,
+  adminSetLicense: `${restAPIv1}/admin/license`,
+  adminGetFingerprint: `${restAPIv1}/admin/fingerprint`,
 };

@@ -14,8 +14,8 @@ import {
 } from '@/hooks/use-user-setting-request';
 import { cn } from '@/lib/utils';
 import { PrivateRoutes } from '@/private-routes';
-import { isBillingEnabled } from '@/services/billingStatus';
 import { Routes } from '@/routes';
+import { isBillingEnabled } from '@/services/billingStatus';
 import { TFunction } from 'i18next';
 
 import {

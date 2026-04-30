@@ -23,7 +23,8 @@ from datetime import datetime
 from functools import partial
 from timeit import default_timer as timer
 from langfuse import Langfuse
-from peewee import fn
+from peewee import JOIN, fn
+from api.db import PermissionValue, ResourceType
 from api.db.services.file_service import FileService
 from common.constants import LLMType, ParserType, StatusEnum
 from api.db.db_models import DB, Dialog
@@ -32,6 +33,7 @@ from api.db.services.doc_metadata_service import DocMetadataService
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.langfuse_service import TenantLangfuseService
 from api.db.services.llm_service import LLMBundle
+from api.db.services.permission_service import PermissionService
 from common.metadata_utils import apply_meta_data_filter
 from api.db.services.tenant_llm_service import TenantLLMService
 from api.utils.permission_utils import filter_accessible_doc_ids_for_user
@@ -87,6 +89,18 @@ class DialogService(CommonService):
                 cls.model.update(data).where(cls.model.id == data["id"]).execute()
 
     @classmethod
+    def invalidate_by_id(cls, dialog_id):
+        """
+        ! Use this method under DB.atomic() context.
+        """
+        data = {
+            "status": StatusEnum.INVALID.value,
+            "update_time": current_timestamp(),
+            "update_date": datetime_format(datetime.now()),
+        }
+        return cls.model.update(data).where(cls.model.id == dialog_id).execute()
+
+    @classmethod
     @DB.connection_context()
     def get_list(cls, tenant_id, page_number, items_per_page, orderby, desc, id, name):
         chats = cls.model.select()
@@ -113,8 +127,36 @@ class DialogService(CommonService):
 
     @classmethod
     @DB.connection_context()
-    def get_by_tenant_ids(cls, joined_tenant_ids, user_id, page_number, items_per_page, orderby, desc, keywords, parser_id=None):
+    def get_by_tenant_ids(
+        cls,
+        joined_tenant_ids,
+        user_id,
+        page_number,
+        items_per_page,
+        orderby,
+        desc,
+        keywords,
+        id=None,
+        name=None,
+    ):
         from api.db.db_models import User
+
+        joined_tenant_ids = list(dict.fromkeys(joined_tenant_ids or []))
+        owner_scope_ids = set(joined_tenant_ids)
+        include_owned_dialogs = not joined_tenant_ids or user_id in owner_scope_ids
+        shared_tenant_ids = [tenant_id for tenant_id in joined_tenant_ids if tenant_id != user_id]
+        shared_permission_sq = None
+        # Owned dialogs are visible via tenant_id == user_id; permission scans are only for shared tenants.
+        if shared_tenant_ids:
+            shared_permission_sq = (
+                PermissionService.build_user_resource_permission_subquery(
+                    user_id,
+                    shared_tenant_ids,
+                    ResourceType.DIALOG,
+                    PermissionValue.PERMISSION_READ,
+                )
+                .alias("shared_permission_sq")
+            )
 
         fields = [
             cls.model.id,
@@ -140,25 +182,37 @@ class DialogService(CommonService):
             cls.model.update_time,
             cls.model.create_time,
         ]
-        if keywords:
-            dialogs = (
-                cls.model.select(*fields)
-                .join(User, on=(cls.model.tenant_id == User.id))
-                .where(
-                    (cls.model.tenant_id.in_(joined_tenant_ids) | (cls.model.tenant_id == user_id)) & (cls.model.status == StatusEnum.VALID.value),
-                    (fn.LOWER(cls.model.name).contains(keywords.lower())),
-                )
+        if shared_permission_sq is not None:
+            fields.append(shared_permission_sq.c.operator_permission.alias("shared_operator_permission"))
+        dialogs = cls.model.select(*fields).join(User, on=(cls.model.tenant_id == User.id))
+        if shared_permission_sq is not None:
+            dialogs = dialogs.switch(cls.model).join(
+                shared_permission_sq,
+                JOIN.LEFT_OUTER,
+                on=(
+                    (shared_permission_sq.c.resource_id == cls.model.id)
+                    & (shared_permission_sq.c.tenant_id == cls.model.tenant_id)
+                ),
             )
+
+        visible_condition = None
+        if include_owned_dialogs:
+            visible_condition = cls.model.tenant_id == user_id
+        if shared_permission_sq is not None:
+            shared_condition = shared_permission_sq.c.resource_id.is_null(False)
+            visible_condition = shared_condition if visible_condition is None else visible_condition | shared_condition
+
+        if visible_condition is None:
+            dialogs = dialogs.where(cls.model.id == "__ragflow_no_visible_dialog__")
         else:
-            dialogs = (
-                cls.model.select(*fields)
-                .join(User, on=(cls.model.tenant_id == User.id))
-                .where(
-                    (cls.model.tenant_id.in_(joined_tenant_ids) | (cls.model.tenant_id == user_id)) & (cls.model.status == StatusEnum.VALID.value),
-                )
-            )
-        if parser_id:
-            dialogs = dialogs.where(cls.model.parser_id == parser_id)
+            dialogs = dialogs.where(visible_condition)
+        if id:
+            dialogs = dialogs.where(cls.model.id == id)
+        if name:
+            dialogs = dialogs.where(cls.model.name == name)
+        if keywords:
+            dialogs = dialogs.where(fn.LOWER(cls.model.name).contains(keywords.lower()))
+        dialogs = dialogs.where(cls.model.status == StatusEnum.VALID.value)
         if desc:
             dialogs = dialogs.order_by(cls.model.getter_by(orderby).desc())
         else:
@@ -169,7 +223,18 @@ class DialogService(CommonService):
         if page_number and items_per_page:
             dialogs = dialogs.paginate(page_number, items_per_page)
 
-        return list(dialogs.dicts()), count
+        dialogs = list(dialogs.dicts())
+        for dialog in dialogs:
+            if dialog["tenant_id"] == user_id:
+                dialog["operator_permission"] = PermissionValue.PERMISSION_OWNER.value
+            else:
+                dialog["operator_permission"] = dialog.get(
+                    "shared_operator_permission",
+                    PermissionValue.PERMISSION_NULL.value,
+                )
+            dialog.pop("shared_operator_permission", None)
+
+        return dialogs, count
 
     @classmethod
     @DB.connection_context()
