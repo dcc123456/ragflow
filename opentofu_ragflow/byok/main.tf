@@ -1879,6 +1879,91 @@ resource "kubernetes_service_v1" "admin" {
 # resource "kubernetes_service_v1" "ragflow" { ... }
 
 # =============================================================================
+# GKE Managed Prometheus - PodMonitor Resources
+# =============================================================================
+# PodMonitor tells Google Managed Prometheus (GMP) how to scrape metrics from
+# RAGFlow pods. Both ragflow_server (port 9380) and admin_server (port 9381)
+# expose Prometheus /metrics endpoints via prometheus_client.
+#
+# Prerequisites:
+#   - GKE cluster must have Managed Prometheus enabled:
+#     gcloud container clusters update CLUSTER --enable-managed-prometheus
+#   - PodMonitor CRD is auto-installed by GMP
+#
+# Scrape interval is set to 60s as requested.
+# =============================================================================
+
+resource "kubernetes_manifest" "podmonitor_ragflow" {
+  count = var.cloud_provider == "gcp" ? 1 : 0
+
+  field_manager {
+    force_conflicts = true
+  }
+
+  manifest = {
+    apiVersion = "monitoring.googleapis.com/v1"
+    kind       = "PodMonitor"
+    metadata = {
+      name      = "ragflow-metrics"
+      namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
+      labels = {
+        app     = "ragflow"
+        project = "ragflow"
+      }
+    }
+    spec = {
+      selector = {
+        matchLabels = {
+          app = "ragflow"
+        }
+      }
+      endpoints = [
+        {
+          port     = "api"
+          path     = "/metrics"
+          interval = "60s"
+        }
+      ]
+    }
+  }
+}
+
+resource "kubernetes_manifest" "podmonitor_admin" {
+  count = var.cloud_provider == "gcp" ? 1 : 0
+
+  field_manager {
+    force_conflicts = true
+  }
+
+  manifest = {
+    apiVersion = "monitoring.googleapis.com/v1"
+    kind       = "PodMonitor"
+    metadata = {
+      name      = "admin-metrics"
+      namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
+      labels = {
+        app     = "admin"
+        project = "ragflow"
+      }
+    }
+    spec = {
+      selector = {
+        matchLabels = {
+          app = "admin"
+        }
+      }
+      endpoints = [
+        {
+          port     = "admin"
+          path     = "/metrics"
+          interval = "60s"
+        }
+      ]
+    }
+  }
+}
+
+# =============================================================================
 # RAGFlow Deployment
 # =============================================================================
 
@@ -1920,6 +2005,10 @@ resource "kubernetes_deployment_v1" "ragflow" {
         annotations = {
           # Trigger rollout restart when secret changes
           "checksum/config" = sha256(jsonencode(kubernetes_secret_v1.ragflow_env.data))
+          # Prometheus scrape annotations (for self-managed Prometheus or GMP annotation-based discovery)
+          "prometheus.io/scrape" = "true"
+          "prometheus.io/port"   = "9380"
+          "prometheus.io/path"   = "/metrics"
         }
       }
 
@@ -2168,6 +2257,10 @@ resource "kubernetes_deployment_v1" "admin" {
         annotations = {
           # Trigger rollout restart when secret changes
           "checksum/config" = sha256(jsonencode(kubernetes_secret_v1.ragflow_env.data))
+          # Prometheus scrape annotations (for self-managed Prometheus or GMP annotation-based discovery)
+          "prometheus.io/scrape" = "true"
+          "prometheus.io/port"   = "9381"
+          "prometheus.io/path"   = "/metrics"
         }
       }
 

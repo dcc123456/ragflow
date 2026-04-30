@@ -1383,6 +1383,9 @@ def main():
     # Enable Gateway API
     enable_gateway_api(project, cluster["name"], region, zone)
 
+    # Enable Managed Prometheus for GKE monitoring (required for PodMonitor resources)
+    enable_managed_prometheus(project, cluster["name"], region, zone)
+
     # Create proxy-only subnet for GKE Gateway
     create_proxy_only_subnet(project, cluster["name"], region)
 
