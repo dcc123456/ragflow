@@ -1,14 +1,30 @@
 import NumberInput from '@/components/originui/number-input';
+import { BillingQueryKey } from '@/pages/billing/constants/query-keys';
+import { getBillingPointsPrice } from '@/services/price';
+import { useQuery } from '@tanstack/react-query';
 import React, { useState } from 'react';
-import { pricePer100Pages, pricePerGB } from '../config';
+import { useFetchAddonPlans } from '../hook/use-addon-plans';
 
 const AddOnCalculator: React.FC = () => {
   const [quantities, setQuantities] = useState<{ [key: string]: number }>({});
+  const { data: pointsPriceData } = useQuery({
+    queryKey: [BillingQueryKey.PointsPrice],
+    queryFn: async () => {
+      const { data: res } = await getBillingPointsPrice();
+      return res?.code === 0 ? res.data : null;
+    },
+  });
+  const { pricePerGB: pricePerGBFromApi } = useFetchAddonPlans();
+
+  const pricePer100Pages = pointsPriceData?.price_usd
+    ? pointsPriceData.price_usd / (pointsPriceData.points_per_unit / 100)
+    : 0;
+
   const products = [
     {
       name: 'Storage',
       unit: 'GB',
-      pricePerUnit: pricePerGB,
+      pricePerUnit: pricePerGBFromApi,
       per: '/month',
       step: 1,
     },

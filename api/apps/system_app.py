@@ -213,6 +213,7 @@ def get_config():
     return get_json_result(data={
         "registerEnabled": settings.REGISTER_ENABLED,
         "disablePasswordLogin": settings.DISABLE_PASSWORD_LOGIN,
+        "upload_size_limit": settings.DOC_MAXIMUM_SIZE,
     })
 
 

@@ -1,7 +1,7 @@
 import message from '@/components/ui/message';
 import { Authorization } from '@/constants/authorization';
 import i18n from '@/locales/config';
-import { PriceCode, showPriceModal } from '@/pages/price/gobal/hook';
+import { PriceCode, showPriceModal } from '@/pages/price/global/hook';
 import authorizationUtil, {
   getAuthorization,
   redirectToLogin,

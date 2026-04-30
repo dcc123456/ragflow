@@ -26,7 +26,6 @@ _modules_to_mock = [
     "quart",
     "common.connection_utils",
     "common.settings",
-    "common.doc_store",
     "common.doc_store.doc_store_base",
     "api.db.services",
     "api.db.services.task_service",

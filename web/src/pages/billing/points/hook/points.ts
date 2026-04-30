@@ -7,6 +7,7 @@ import {
 } from '@/services/price';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { BillingQueryKey } from '../../constants/query-keys';
 import {
   IPointBalance,
   IPointHoldItem,
@@ -21,12 +22,14 @@ export const useFetchPointsBalance = () => {
     isFetching: loading,
     refetch,
   } = useQuery<IPointBalance>({
-    queryKey: ['getPointsBalance', tenantId],
+    queryKey: [BillingQueryKey.PointsBalance, tenantId],
     gcTime: 10000,
     enabled: !!tenantId,
     queryFn: async () => {
       const { data: res } = await getBillingPointsBalance(tenantId);
-      if (res.code === 0) return res.data;
+      if (res.code === 0) {
+        return res.data;
+      }
     },
   });
   return { data, loading, refetch };
@@ -42,7 +45,7 @@ export const useFetchPointsLedger = () => {
     total: number;
     items: IPointLedgerItem[];
   }>({
-    queryKey: ['getPointsLedger', tenantId, page],
+    queryKey: [BillingQueryKey.PointsLedger, tenantId, page],
     gcTime: 10000,
     enabled: !!tenantId,
     queryFn: async () => {
@@ -69,7 +72,7 @@ export const useFetchPointsHolds = () => {
     total: number;
     items: IPointHoldItem[];
   }>({
-    queryKey: ['getPointsHolds', tenantId, page],
+    queryKey: [BillingQueryKey.PointsHolds, tenantId, page],
     gcTime: 10000,
     enabled: !!tenantId,
     queryFn: async () => {
@@ -92,15 +95,22 @@ export const usePointsCheckout = () => {
   const tenantId = tenantInfo?.tenant_id;
 
   return useMutation({
-    mutationFn: async (points: number) => {
+    mutationFn: async (quantity: number) => {
+      const url = window.location.href;
+      const successUrl = `${url.split('?')[0]}?price-pay-status=success${url.split('?')[1] ? '&' + url.split('?')[1] : ''}`;
+      const errorUrl = `${url.split('?')[0]}?price-pay-status=cancel${url.split('?')[1] ? '&' + url.split('?')[1] : ''}`;
       const { data: res } = await postBillingPointsCheckout({
         tenant_id: tenantId,
-        points,
+        quantity,
+        session_success_url: successUrl,
+        session_cancel_url: errorUrl,
       });
       return res;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['getPointsBalance'] });
+      queryClient.invalidateQueries({
+        queryKey: [BillingQueryKey.PointsBalance],
+      });
     },
   });
 };

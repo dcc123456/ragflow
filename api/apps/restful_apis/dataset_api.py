@@ -17,10 +17,13 @@ import logging
 
 from peewee import OperationalError
 from quart import request
-from common.constants import RetCode
-from api.apps import login_required, current_user
-from api.utils.api_utils import get_error_argument_result, get_error_data_result, get_result, add_tenant_id_to_kwargs
+
+from api.apps import current_user, login_required
+from api.apps.services import dataset_api_service
+from api.db import PermissionValue
+from api.utils.api_utils import add_tenant_id_to_kwargs, get_error_argument_result, get_error_data_result, get_result
 from api.utils.billing import check_dynamic_resources
+from api.utils.permission_utils import check_kb_permission
 from api.utils.validation_utils import (
     CreateDatasetReq,
     DeleteDatasetReq,
@@ -29,13 +32,17 @@ from api.utils.validation_utils import (
     validate_and_parse_json_request,
     validate_and_parse_request_args,
 )
-from api.apps.services import dataset_api_service
+from common.constants import RetCode
+from common.role_util import check_role_access, KB_API_ACTION_MAP, KB_ROLE_RESOURCE_TYPE
+
+kb_role_guard = check_role_access(KB_API_ACTION_MAP, KB_ROLE_RESOURCE_TYPE)
 
 
 @manager.route("/datasets", methods=["POST"])  # noqa: F821
 @login_required
+@kb_role_guard
 @add_tenant_id_to_kwargs
-async def create(tenant_id: str=None):
+async def create(tenant_id: str = None):
     """
     Create a new dataset.
     ---
@@ -99,14 +106,12 @@ async def create(tenant_id: str=None):
         from common import settings
 
         if settings.BILLING_ENABLED:
-          check_ok, check_info = check_dynamic_resources(tenant_id=tenant_id, apps=1)
-          if not check_ok:
-              error_details = check_info.get("details", {})
-              if "quota_apps" in error_details:
-                  return get_error_data_result(
-                      message=f"Insufficient app quota. Current: {error_details['quota_apps']['current']}, Limit: {error_details['quota_apps']['limit']}"
-                  )
-              return get_error_data_result(message=check_info.get("error", "Insufficient app quota"))
+            check_ok, check_info = check_dynamic_resources(tenant_id=tenant_id, apps=1)
+            if not check_ok:
+                error_details = check_info.get("details", {})
+                if "quota_apps" in error_details:
+                    return get_error_data_result(message=f"Insufficient app quota. Current: {error_details['quota_apps']['current']}, Limit: {error_details['quota_apps']['limit']}")
+                return get_error_data_result(message=check_info.get("error", "Insufficient app quota"))
 
         if not tenant_id:
             tenant_id = current_user.id
@@ -122,6 +127,7 @@ async def create(tenant_id: str=None):
 
 @manager.route("/datasets", methods=["DELETE"])  # noqa: F821
 @login_required
+@kb_role_guard
 @add_tenant_id_to_kwargs
 async def delete(tenant_id):
     """
@@ -181,8 +187,10 @@ async def delete(tenant_id):
 
 @manager.route("/datasets/<dataset_id>", methods=["PUT"])  # noqa: F821
 @login_required
+@kb_role_guard
 @add_tenant_id_to_kwargs
-async def update(tenant_id, dataset_id):
+@check_kb_permission(permission=PermissionValue.PERMISSION_WRITE)
+async def update(dataset_id, tenant_id: str = None):
     """
     Update a dataset.
     ---
@@ -268,6 +276,7 @@ async def update(tenant_id, dataset_id):
 
 @manager.route("/datasets", methods=["GET"])  # noqa: F821
 @login_required
+@kb_role_guard
 @add_tenant_id_to_kwargs
 def list_datasets(tenant_id):
     """
@@ -343,39 +352,35 @@ def list_datasets(tenant_id):
         return get_error_data_result(message="Internal server error")
 
 
-@manager.route('/datasets/<dataset_id>/knowledge_graph', methods=['GET'])  # noqa: F821
+@manager.route("/datasets/<dataset_id>/knowledge_graph", methods=["GET"])  # noqa: F821
 @login_required
+@kb_role_guard
 @add_tenant_id_to_kwargs
+@check_kb_permission(permission=PermissionValue.PERMISSION_READ)
 async def knowledge_graph(tenant_id, dataset_id):
     try:
         success, result = await dataset_api_service.get_knowledge_graph(dataset_id, tenant_id)
         if success:
             return get_result(data=result)
         else:
-            return get_result(
-                data=False,
-                message=result,
-                code=RetCode.AUTHENTICATION_ERROR
-            )
+            return get_result(data=False, message=result, code=RetCode.AUTHENTICATION_ERROR)
     except Exception as e:
         logging.exception(e)
         return get_error_data_result(message="Internal server error")
 
 
-@manager.route('/datasets/<dataset_id>/knowledge_graph', methods=['DELETE'])  # noqa: F821
+@manager.route("/datasets/<dataset_id>/knowledge_graph", methods=["DELETE"])  # noqa: F821
 @login_required
+@kb_role_guard
 @add_tenant_id_to_kwargs
+@check_kb_permission(permission=PermissionValue.PERMISSION_WRITE)
 def delete_knowledge_graph(tenant_id, dataset_id):
     try:
         success, result = dataset_api_service.delete_knowledge_graph(dataset_id, tenant_id)
         if success:
             return get_result(data=result)
         else:
-            return get_result(
-                data=False,
-                message=result,
-                code=RetCode.AUTHENTICATION_ERROR
-            )
+            return get_result(data=False, message=result, code=RetCode.AUTHENTICATION_ERROR)
     except Exception as e:
         logging.exception(e)
         return get_error_data_result(message="Internal server error")
@@ -383,7 +388,9 @@ def delete_knowledge_graph(tenant_id, dataset_id):
 
 @manager.route("/datasets/<dataset_id>/run_graphrag", methods=["POST"])  # noqa: F821
 @login_required
+@kb_role_guard
 @add_tenant_id_to_kwargs
+@check_kb_permission(permission=PermissionValue.PERMISSION_WRITE)
 async def run_graphrag(tenant_id, dataset_id):
     try:
         success, result = dataset_api_service.run_graphrag(dataset_id, tenant_id)
@@ -398,7 +405,9 @@ async def run_graphrag(tenant_id, dataset_id):
 
 @manager.route("/datasets/<dataset_id>/trace_graphrag", methods=["GET"])  # noqa: F821
 @login_required
+@kb_role_guard
 @add_tenant_id_to_kwargs
+@check_kb_permission(permission=PermissionValue.PERMISSION_READ)
 def trace_graphrag(tenant_id, dataset_id):
     try:
         success, result = dataset_api_service.trace_graphrag(dataset_id, tenant_id)
@@ -413,7 +422,9 @@ def trace_graphrag(tenant_id, dataset_id):
 
 @manager.route("/datasets/<dataset_id>/run_raptor", methods=["POST"])  # noqa: F821
 @login_required
+@kb_role_guard
 @add_tenant_id_to_kwargs
+@check_kb_permission(permission=PermissionValue.PERMISSION_WRITE)
 async def run_raptor(tenant_id, dataset_id):
     try:
         success, result = dataset_api_service.run_raptor(dataset_id, tenant_id)
@@ -428,7 +439,9 @@ async def run_raptor(tenant_id, dataset_id):
 
 @manager.route("/datasets/<dataset_id>/trace_raptor", methods=["GET"])  # noqa: F821
 @login_required
+@kb_role_guard
 @add_tenant_id_to_kwargs
+@check_kb_permission(permission=PermissionValue.PERMISSION_READ)
 def trace_raptor(tenant_id, dataset_id):
     try:
         success, result = dataset_api_service.trace_raptor(dataset_id, tenant_id)
@@ -443,7 +456,9 @@ def trace_raptor(tenant_id, dataset_id):
 
 @manager.route("/datasets/<dataset_id>/auto_metadata", methods=["GET"])  # noqa: F821
 @login_required
+@kb_role_guard
 @add_tenant_id_to_kwargs
+@check_kb_permission(permission=PermissionValue.PERMISSION_READ)
 def get_auto_metadata(tenant_id, dataset_id):
     """
     Get auto-metadata configuration for a dataset.
@@ -482,7 +497,9 @@ def get_auto_metadata(tenant_id, dataset_id):
 
 @manager.route("/datasets/<dataset_id>/auto_metadata", methods=["PUT"])  # noqa: F821
 @login_required
+@kb_role_guard
 @add_tenant_id_to_kwargs
+@check_kb_permission(permission=PermissionValue.PERMISSION_WRITE)
 async def update_auto_metadata(tenant_id, dataset_id):
     """
     Update auto-metadata configuration for a dataset.
@@ -515,6 +532,7 @@ async def update_auto_metadata(tenant_id, dataset_id):
           type: object
     """
     from api.utils.validation_utils import AutoMetadataConfig
+
     cfg, err = await validate_and_parse_json_request(request, AutoMetadataConfig)
     if err is not None:
         return get_error_argument_result(err)

@@ -88,7 +88,7 @@ locals {
       storage_class = "premium-rwo"
       s3_endpoint   = var.s3_endpoint != "" ? var.s3_endpoint : "https://storage.googleapis.com"
       # Note: s3_region is not used by GCS client (rag/utils/gcs_conn.py), but kept for consistency
-      s3_region     = var.s3_region != "" ? var.s3_region : "us-central1"
+      s3_region = var.s3_region != "" ? var.s3_region : "us-central1"
     }
     aws = {
       storage_class = "gp3"
@@ -110,6 +110,9 @@ locals {
   # Get configuration for selected cloud provider
   config = local.cloud_config[var.cloud_provider]
 
+  ragflow_namespace = var.namespace
+  s3_bucket_name    = var.s3_bucket != "" ? var.s3_bucket : local.ragflow_namespace
+
   # Image transformation logic
   # RAGFlow image (including tag, will be prefixed with private_registry)
   # Format: image:tag (e.g., ragflow:latest)
@@ -124,7 +127,7 @@ locals {
   # Infrastructure images
   # When public_registry is empty: use original public registry (docker.io, quay.io, etc.)
   # When public_registry is set: use public_registry/image:tag
-  mysql_image     = var.public_registry != "" ? "${var.public_registry}/mysql:8.0" : "docker.io/library/mysql:8.0"
+  mysql_image    = var.public_registry != "" ? "${var.public_registry}/mysql:8.0" : "docker.io/library/mysql:8.0"
   redis_image    = var.public_registry != "" ? "${var.public_registry}/valkey:8" : "valkey/valkey:8"
   tei_image      = var.public_registry != "" ? "${var.public_registry}/text-embeddings-inference:cpu-1.8" : "infiniflow/text-embeddings-inference:cpu-1.8"
   rabbitmq_image = var.public_registry != "" ? "${var.public_registry}/rabbitmq:4-management" : "rabbitmq:4-management"
@@ -145,7 +148,7 @@ locals {
   is_gke_gateway = can(regex("^gke-", local.gateway_class_name))
 
   # Database users (consistent across all components)
-  mysql_user     = "ragflow"
+  mysql_user    = "ragflow"
   rabbitmq_user = "ragflow"
 
   # Infinity memory allocation derived from infinity_memory_request (e.g. "4Gi" -> 4)
@@ -157,6 +160,21 @@ locals {
 
   # memindex_memory_quota: ~25% of total memory, formatted as "XGB" for infinity_conf.toml
   infinity_memindex_memory_quota = "${max(1, local.infinity_memory_gb / 4)}GB"
+
+  # Cluster-scoped ownership resolution:
+  # - auto: resolve from local state ownership + shared ECK detection
+  # - manual: use explicit manage_cluster_scoped_resources variable
+  manage_cluster_scoped_resources_resolved = var.cluster_scoped_resource_mode == "auto" ? (
+    data.external.cluster_scoped_resource_ownership.result.manage_cluster_scoped_resources == "true"
+  ) : var.manage_cluster_scoped_resources
+
+  # Parse upload_size_limit string to bytes for MAX_CONTENT_LENGTH env var
+  # Uses decimal units: 1m = 1000*1000, 1g = 1000*1000*1000
+  max_content_length_bytes = floor(
+    tonumber(regex("^(\\d+)", var.upload_size_limit)[0]) *
+    (can(regex("g$", var.upload_size_limit)) ? 1000 * 1000 * 1000 :
+     can(regex("m$", var.upload_size_limit)) ? 1000 * 1000 : 1)
+  )
 }
 
 # =============================================================================
@@ -166,7 +184,7 @@ locals {
 
 resource "kubernetes_namespace_v1" "ragflow" {
   metadata {
-    name = var.namespace
+    name = local.ragflow_namespace
   }
 
   # Allow namespace to already exist (idempotent)
@@ -593,7 +611,7 @@ resource "kubernetes_config_map_v1" "rabbitmq" {
           read      = ".*"
         }
       ]
-      parameters        = []
+      parameters = []
       global_parameters = [
         {
           name  = "cluster_tags"
@@ -603,7 +621,28 @@ resource "kubernetes_config_map_v1" "rabbitmq" {
       policies = []
       queues = [
         {
-          name        = "te.0.raptor"
+          name        = "te.1.common"
+          vhost       = "/"
+          durable     = true
+          auto_delete = false
+          arguments   = { "x-queue-type" = "classic" }
+        },
+        {
+          name        = "te.1.graphrag"
+          vhost       = "/"
+          durable     = true
+          auto_delete = false
+          arguments   = { "x-queue-type" = "classic" }
+        },
+        {
+          name        = "te.1.raptor"
+          vhost       = "/"
+          durable     = true
+          auto_delete = false
+          arguments   = { "x-queue-type" = "classic" }
+        },
+        {
+          name        = "te.1.resume"
           vhost       = "/"
           durable     = true
           auto_delete = false
@@ -617,13 +656,6 @@ resource "kubernetes_config_map_v1" "rabbitmq" {
           arguments   = { "x-queue-type" = "classic" }
         },
         {
-          name        = "te.error"
-          vhost       = "/"
-          durable     = true
-          auto_delete = false
-          arguments   = { "x-queue-type" = "classic" }
-        },
-        {
           name        = "te.0.graphrag"
           vhost       = "/"
           durable     = true
@@ -631,7 +663,21 @@ resource "kubernetes_config_map_v1" "rabbitmq" {
           arguments   = { "x-queue-type" = "classic" }
         },
         {
+          name        = "te.0.raptor"
+          vhost       = "/"
+          durable     = true
+          auto_delete = false
+          arguments   = { "x-queue-type" = "classic" }
+        },
+        {
           name        = "te.0.resume"
+          vhost       = "/"
+          durable     = true
+          auto_delete = false
+          arguments   = { "x-queue-type" = "classic" }
+        },
+        {
+          name        = "te.error"
           vhost       = "/"
           durable     = true
           auto_delete = false
@@ -650,6 +696,38 @@ resource "kubernetes_config_map_v1" "rabbitmq" {
         }
       ]
       bindings = [
+        {
+          source           = "test1"
+          vhost            = "/"
+          destination      = "te.1.common"
+          destination_type = "queue"
+          routing_key      = "te.1.common"
+          arguments        = {}
+        },
+        {
+          source           = "test1"
+          vhost            = "/"
+          destination      = "te.1.graphrag"
+          destination_type = "queue"
+          routing_key      = "te.1.graphrag"
+          arguments        = {}
+        },
+        {
+          source           = "test1"
+          vhost            = "/"
+          destination      = "te.1.raptor"
+          destination_type = "queue"
+          routing_key      = "te.1.raptor"
+          arguments        = {}
+        },
+        {
+          source           = "test1"
+          vhost            = "/"
+          destination      = "te.1.resume"
+          destination_type = "queue"
+          routing_key      = "te.1.resume"
+          arguments        = {}
+        },
         {
           source           = "test1"
           vhost            = "/"
@@ -677,17 +755,17 @@ resource "kubernetes_config_map_v1" "rabbitmq" {
         {
           source           = "test1"
           vhost            = "/"
-          destination      = "te.error"
+          destination      = "te.0.resume"
           destination_type = "queue"
-          routing_key      = "te.error"
+          routing_key      = "te.0.resume"
           arguments        = {}
         },
         {
           source           = "test1"
           vhost            = "/"
-          destination      = "te.0.resume"
+          destination      = "te.error"
           destination_type = "queue"
-          routing_key      = "te.0.resume"
+          routing_key      = "te.error"
           arguments        = {}
         }
       ]
@@ -894,16 +972,30 @@ resource "kubernetes_service_v1" "rabbitmq" {
 # Elasticsearch Deployment (K8s Mode)
 # =============================================================================
 
+# Resolve ownership of cluster-scoped resources so BYOK behavior is reusable
+# across all callers (CI, local runs, and scripts).
+data "external" "cluster_scoped_resource_ownership" {
+  program = ["python3", "${path.module}/resolve_cluster_scoped_ownership.py"]
+
+  query = {
+    kubeconfig_path = pathexpand(var.kubeconfig_path)
+    cloud_provider  = var.cloud_provider
+    state_path      = "${path.module}/terraform.tfstate"
+  }
+}
+
 # Deploy ECK (Elastic Cloud on Kubernetes) Operator using Helm
 # This installs the CRDs and operator required for Elasticsearch resources
 # Ref: https://artifacthub.io/packages/helm/elastic/eck-operator
 resource "helm_release" "eck_operator" {
+  count            = local.manage_cluster_scoped_resources_resolved ? 1 : 0
   name             = "eck-operator"
   repository       = "https://helm.elastic.co"
   chart            = "eck-operator"
   version          = "3.3.1"
   namespace        = "elastic-system"
   create_namespace = true
+  upgrade_install  = true
 
   # Set timeout to wait for CRDs installation
   timeout = 600
@@ -913,7 +1005,8 @@ resource "helm_release" "eck_operator" {
 
   # Allow helm release to already exist (idempotent)
   lifecycle {
-    ignore_changes = [name, namespace, repository, chart, version]
+    ignore_changes  = [name, namespace, repository, chart, version]
+    prevent_destroy = true
   }
 }
 
@@ -944,11 +1037,11 @@ resource "terraform_data" "wait_for_elasticsearch_crd" {
 # This avoids kubectl dependency and uses Terraform's native Kubernetes provider.
 # The CRD is installed by ECK operator helm chart.
 
-# CustomComputeClass for GKE to set vm.max_map_count
-# Requires GKE >= 1.30.3-gke.1451000
-# Reference: https://www.elastic.co/docs/deploy-manage/deploy/cloud-on-k8s/deploy-eck-on-gke-autopilot
 resource "kubernetes_manifest" "elasticsearch_compute_class" {
-  count = var.cloud_provider == "gcp" ? 1 : 0
+  # CustomComputeClass for GKE to set vm.max_map_count
+  # Requires GKE >= 1.30.3-gke.1451000
+  # Reference: https://www.elastic.co/docs/deploy-manage/deploy/cloud-on-k8s/deploy-eck-on-gke-autopilot
+  count = var.cloud_provider == "gcp" && local.manage_cluster_scoped_resources_resolved ? 1 : 0
 
   manifest = {
     apiVersion = "cloud.google.com/v1"
@@ -976,6 +1069,10 @@ resource "kubernetes_manifest" "elasticsearch_compute_class" {
         }
       ]
     }
+  }
+
+  lifecycle {
+    prevent_destroy = true
   }
 }
 
@@ -1168,7 +1265,7 @@ resource "kubernetes_job_v1" "apply_elasticsearch" {
           name    = "kubectl"
           image   = "bitnami/kubectl:latest"
           command = ["kubectl", "apply", "-f", "/data/elasticsearch.yaml"]
-          
+
           env {
             name  = "HOME"
             value = "/tmp"
@@ -1180,8 +1277,8 @@ resource "kubernetes_job_v1" "apply_elasticsearch" {
           }
 
           volume_mount {
-             name       = "tmp"
-             mount_path = "/tmp"
+            name       = "tmp"
+            mount_path = "/tmp"
           }
         }
         volume {
@@ -1200,6 +1297,11 @@ resource "kubernetes_job_v1" "apply_elasticsearch" {
   }
 
   wait_for_completion = true
+
+  timeouts {
+    create = "5m"
+    update = "5m"
+  }
 
   depends_on = [
     terraform_data.wait_for_elasticsearch_crd,
@@ -1412,18 +1514,18 @@ resource "kubernetes_stateful_set_v1" "infinity" {
 
           startup_probe {
             http_get {
-              path   = "/admin/node/current"
-              port   = 23820
+              path = "/admin/node/current"
+              port = 23820
             }
             initial_delay_seconds = 10
             period_seconds        = 10
-            failure_threshold     = 30  # ~5 min max startup
+            failure_threshold     = 30 # ~5 min max startup
           }
 
           readiness_probe {
             http_get {
-              path   = "/admin/node/current"
-              port   = 23820
+              path = "/admin/node/current"
+              port = 23820
             }
             initial_delay_seconds = 0
             period_seconds        = 10
@@ -1433,8 +1535,8 @@ resource "kubernetes_stateful_set_v1" "infinity" {
 
           liveness_probe {
             http_get {
-              path   = "/admin/node/current"
-              port   = 23820
+              path = "/admin/node/current"
+              port = 23820
             }
             initial_delay_seconds = 30
             period_seconds        = 20
@@ -1541,7 +1643,7 @@ resource "kubernetes_secret_v1" "storage" {
 
   data = {
     S3_ENDPOINT   = var.s3_endpoint != "" ? var.s3_endpoint : local.config.s3_endpoint
-    S3_BUCKET     = var.s3_bucket
+    S3_BUCKET     = local.s3_bucket_name
     S3_ACCESS_KEY = var.s3_access_key
     S3_SECRET_KEY = var.s3_secret_key
     S3_REGION     = var.s3_region != "" ? var.s3_region : local.config.s3_region
@@ -1592,7 +1694,7 @@ resource "kubernetes_secret_v1" "ragflow_env" {
     # When infinity_enabled=true, set DOC_ENGINE="elasticsearch,infinity" for shadow write proxy
     # This makes ES primary and Infinity a shadow database for comparison
     # Ref: common/settings.py - parses comma-separated engines, first is primary, rest are shadows
-    DOC_ENGINE  = var.infinity_enabled ? "elasticsearch,infinity" : "elasticsearch"
+    DOC_ENGINE = var.infinity_enabled ? "elasticsearch,infinity" : "elasticsearch"
 
     # Infinity Shadow Database Configuration
     INFINITY_HOST      = var.infinity_enabled ? "infinity" : ""
@@ -1619,7 +1721,7 @@ resource "kubernetes_secret_v1" "ragflow_env" {
 
     # Storage Configuration
     S3_ENDPOINT   = var.s3_endpoint != "" ? var.s3_endpoint : local.config.s3_endpoint
-    S3_BUCKET     = var.s3_bucket
+    S3_BUCKET     = local.s3_bucket_name
     S3_ACCESS_KEY = var.s3_access_key
     S3_SECRET_KEY = var.s3_secret_key
     S3_REGION     = var.s3_region != "" ? var.s3_region : local.config.s3_region
@@ -1631,25 +1733,28 @@ resource "kubernetes_secret_v1" "ragflow_env" {
 
     # DeepDoc Service Configuration
     # Point to the deepdoc service for OCR, DLA, and TSR tasks
-    DEEPDOC_URL     = "http://deepdoc:8000"
+    DEEPDOC_URL = "http://deepdoc:8000"
 
     # Secret key for JWT tokens - must be fixed to maintain session across pod restarts
     # Generate with: openssl rand -hex 32
     RAGFLOW_SECRET_KEY = "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2"
 
     # Billing Configuration
-    BILLING_ENABLED                    = var.billing_enabled ? "1" : "0"
-    BILLING_STRIPE_API_VERSION         = var.billing_stripe_api_version
-    BILLING_SERVICE_URL                = var.billing_service_url
-    BILLING_STRIPE_API_KEY             = var.billing_stripe_api_key
-    BILLING_STRIPE_ENDPOINT_SECRET     = var.billing_stripe_endpoint_secret
-    BILLING_POINTS_PRICE_ID            = var.billing_price_id_points_recharge
-    BILLING_PRICE_ID_STORAGE           = var.billing_price_id_storage
-    BILLING_PRICE_ID_DEEPDOC           = var.billing_price_id_deepdoc
-    BILLING_PRICE_ID_TRIAL             = var.billing_price_id_trial
-    BILLING_PRICE_ID_STARTER           = var.billing_price_id_starter
-    BILLING_PRICE_ID_PRO               = var.billing_price_id_pro
-    BILLING_PRICE_ID_ENTERPRISE        = var.billing_price_id_enterprise
+    BILLING_ENABLED            = var.billing_enabled ? "1" : "0"
+    BILLING_STRIPE_API_VERSION = var.billing_stripe_api_version
+    BILLING_SERVICE_URL        = var.billing_service_url
+    BILLING_STRIPE_API_KEY     = var.billing_stripe_api_key
+    BILLING_PRICE_ID_POINTS    = var.billing_price_id_points
+    BILLING_PRICE_ID_STORAGE   = var.billing_price_id_storage
+    BILLING_PRICE_ID_TRIAL     = var.billing_price_id_trial
+    BILLING_PRICE_ID_STARTER   = var.billing_price_id_starter
+    BILLING_PRICE_ID_PRO       = var.billing_price_id_pro
+    STRIPE_TEST_CLOCK_ID       = var.stripe_test_clock_id
+
+    # Upload size limit for RAGFlow API server (affects file uploads via web UI/API)
+    # This is read by common/settings.py to set MAX_CONTENT_LENGTH in Quart/Flask
+    # and also by rag/svr/task_executor.py to reject oversized documents before processing
+    MAX_CONTENT_LENGTH         = local.max_content_length_bytes
   }
 
   type = "Opaque"
@@ -1774,6 +1879,91 @@ resource "kubernetes_service_v1" "admin" {
 # resource "kubernetes_service_v1" "ragflow" { ... }
 
 # =============================================================================
+# GKE Managed Prometheus - PodMonitor Resources
+# =============================================================================
+# PodMonitor tells Google Managed Prometheus (GMP) how to scrape metrics from
+# RAGFlow pods. Both ragflow_server (port 9380) and admin_server (port 9381)
+# expose Prometheus /metrics endpoints via prometheus_client.
+#
+# Prerequisites:
+#   - GKE cluster must have Managed Prometheus enabled:
+#     gcloud container clusters update CLUSTER --enable-managed-prometheus
+#   - PodMonitor CRD is auto-installed by GMP
+#
+# Scrape interval is set to 60s as requested.
+# =============================================================================
+
+resource "kubernetes_manifest" "podmonitor_ragflow" {
+  count = var.cloud_provider == "gcp" ? 1 : 0
+
+  field_manager {
+    force_conflicts = true
+  }
+
+  manifest = {
+    apiVersion = "monitoring.googleapis.com/v1"
+    kind       = "PodMonitor"
+    metadata = {
+      name      = "ragflow-metrics"
+      namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
+      labels = {
+        app     = "ragflow"
+        project = "ragflow"
+      }
+    }
+    spec = {
+      selector = {
+        matchLabels = {
+          app = "ragflow"
+        }
+      }
+      endpoints = [
+        {
+          port     = "api"
+          path     = "/metrics"
+          interval = "60s"
+        }
+      ]
+    }
+  }
+}
+
+resource "kubernetes_manifest" "podmonitor_admin" {
+  count = var.cloud_provider == "gcp" ? 1 : 0
+
+  field_manager {
+    force_conflicts = true
+  }
+
+  manifest = {
+    apiVersion = "monitoring.googleapis.com/v1"
+    kind       = "PodMonitor"
+    metadata = {
+      name      = "admin-metrics"
+      namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
+      labels = {
+        app     = "admin"
+        project = "ragflow"
+      }
+    }
+    spec = {
+      selector = {
+        matchLabels = {
+          app = "admin"
+        }
+      }
+      endpoints = [
+        {
+          port     = "admin"
+          path     = "/metrics"
+          interval = "60s"
+        }
+      ]
+    }
+  }
+}
+
+# =============================================================================
 # RAGFlow Deployment
 # =============================================================================
 
@@ -1815,6 +2005,10 @@ resource "kubernetes_deployment_v1" "ragflow" {
         annotations = {
           # Trigger rollout restart when secret changes
           "checksum/config" = sha256(jsonencode(kubernetes_secret_v1.ragflow_env.data))
+          # Prometheus scrape annotations (for self-managed Prometheus or GMP annotation-based discovery)
+          "prometheus.io/scrape" = "true"
+          "prometheus.io/port"   = "9380"
+          "prometheus.io/path"   = "/metrics"
         }
       }
 
@@ -1836,7 +2030,7 @@ resource "kubernetes_deployment_v1" "ragflow" {
           content {
             name    = "init-s3-bucket"
             image   = local.minio_mc_image
-            command = ["sh", "-c", "mc alias set myminio ${var.s3_endpoint} ${var.s3_access_key} ${var.s3_secret_key} && mc mb myminio/${var.s3_bucket} || exit 0"]
+            command = ["sh", "-c", "mc alias set myminio ${var.s3_endpoint} ${var.s3_access_key} ${var.s3_secret_key} && mc mb myminio/${local.s3_bucket_name} || exit 0"]
           }
         }
 
@@ -1878,8 +2072,8 @@ resource "kubernetes_deployment_v1" "ragflow" {
         }
 
         container {
-          name  = "ragflow"
-          image = local.ragflow_image_full
+          name              = "ragflow"
+          image             = local.ragflow_image_full
           image_pull_policy = "Always"
 
           args = ["--disable-taskexecutor"]
@@ -1887,13 +2081,13 @@ resource "kubernetes_deployment_v1" "ragflow" {
           # Frontend port (nginx)
           port {
             container_port = 80
-            name          = "http"
+            name           = "http"
           }
 
           # API port
           port {
             container_port = 9380
-            name          = "api"
+            name           = "api"
           }
 
           # Startup probe: allows slow-starting containers to initialize before liveness/readiness kicks in
@@ -1906,7 +2100,7 @@ resource "kubernetes_deployment_v1" "ragflow" {
             }
             initial_delay_seconds = 0
             period_seconds        = 10
-            failure_threshold     = 90  # 90 * 10s = 900s (15 min) max startup time for slow environments
+            failure_threshold     = 90 # 90 * 10s = 900s (15 min) max startup time for slow environments
           }
 
           # Liveness probe: lightweight check - just returns 200 OK without checking dependencies
@@ -2063,6 +2257,10 @@ resource "kubernetes_deployment_v1" "admin" {
         annotations = {
           # Trigger rollout restart when secret changes
           "checksum/config" = sha256(jsonencode(kubernetes_secret_v1.ragflow_env.data))
+          # Prometheus scrape annotations (for self-managed Prometheus or GMP annotation-based discovery)
+          "prometheus.io/scrape" = "true"
+          "prometheus.io/port"   = "9381"
+          "prometheus.io/path"   = "/metrics"
         }
       }
 
@@ -2091,8 +2289,8 @@ resource "kubernetes_deployment_v1" "admin" {
         }
 
         container {
-          name  = "admin"
-          image = local.ragflow_image_full
+          name              = "admin"
+          image             = local.ragflow_image_full
           image_pull_policy = "Always"
 
           args = ["--disable-webserver", "--disable-taskexecutor", "--disable-datasync", "--enable-adminserver"]
@@ -2100,7 +2298,7 @@ resource "kubernetes_deployment_v1" "admin" {
           # Admin port
           port {
             container_port = 9381
-            name          = "admin"
+            name           = "admin"
           }
 
           # Startup probe: allows slow-starting containers to initialize before liveness/readiness kicks in
@@ -2112,7 +2310,7 @@ resource "kubernetes_deployment_v1" "admin" {
             }
             initial_delay_seconds = 0
             period_seconds        = 10
-            failure_threshold     = 30  # 30 * 10s = 300s max startup time
+            failure_threshold     = 30 # 30 * 10s = 300s max startup time
           }
 
           # Liveness probe: lightweight check - just returns 200 OK without checking dependencies
@@ -2169,24 +2367,34 @@ resource "kubernetes_deployment_v1" "admin" {
 }
 
 # =============================================================================
-# Parser Deployment
+# Parser Deployments — one per task type (common, graphrag, raptor, resume)
+# Each pod runs a single task_executor consumer that monitors both priority
+# queues (te.1.<type> and te.0.<type>) via priority_queue_consumer.
 # =============================================================================
+
+locals {
+  parser_types = ["common", "graphrag", "raptor", "resume"]
+}
 
 resource "kubernetes_deployment_v1" "parser" {
   depends_on = [kubernetes_secret_v1.ragflow_env]
 
+  for_each = toset(local.parser_types)
+
   metadata {
-    name      = "parser"
+    name      = "parser-${each.key}"
     namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
 
     labels = {
-      app     = "parser"
-      project = "ragflow"
+      app       = "parser-${each.key}"
+      component = "parser"
+      task-type = each.key
+      project   = "ragflow"
     }
   }
 
   spec {
-    replicas = var.parser_replicas
+    replicas = var.parser_replicas[each.key]
 
     # Limit revision history to reduce orphaned ReplicaSets
     revision_history_limit = 1
@@ -2197,15 +2405,19 @@ resource "kubernetes_deployment_v1" "parser" {
 
     selector {
       match_labels = {
-        app = "parser"
+        app       = "parser-${each.key}"
+        component = "parser"
+        task-type = each.key
       }
     }
 
     template {
       metadata {
         labels = {
-          app     = "parser"
-          project = "ragflow"
+          app       = "parser-${each.key}"
+          component = "parser"
+          task-type = each.key
+          project   = "ragflow"
         }
         annotations = {
           # Trigger rollout restart when secret changes
@@ -2230,7 +2442,7 @@ resource "kubernetes_deployment_v1" "parser" {
           for_each = [1]
           content {
             name  = "wait-for-elasticsearch"
-            image = local.curl_image          
+            image = local.curl_image
 
             # Inherit environment from ragflow_env secret
             env_from {
@@ -2263,8 +2475,8 @@ resource "kubernetes_deployment_v1" "parser" {
         }
 
         container {
-          name  = "parser"
-          image = local.ragflow_image_full
+          name              = "parser-${each.key}"
+          image             = local.ragflow_image_full
           image_pull_policy = "Always"
 
           command = ["/ragflow/entrypoint-parser.sh"]
@@ -2281,8 +2493,8 @@ resource "kubernetes_deployment_v1" "parser" {
           }
 
           env {
-            name  = "WS_WORKERS"
-            value = var.parser_ws_workers
+            name  = "PARSER_TYPE"
+            value = each.key
           }
 
           # Mount ES CA certificate for HTTPS verification
@@ -2297,7 +2509,7 @@ resource "kubernetes_deployment_v1" "parser" {
 
           readiness_probe {
             exec {
-              command = ["/bin/bash", "-c", "ps aux | grep '[r]ag/svr/task_executor.py'"]
+              command = ["/bin/bash", "-c", "ps aux | grep '[r]ag/svr/task_executor.py.*-t ${each.key}'"]
             }
             initial_delay_seconds = 20
             period_seconds        = 10
@@ -2305,7 +2517,7 @@ resource "kubernetes_deployment_v1" "parser" {
 
           liveness_probe {
             exec {
-              command = ["/bin/bash", "-c", "ps aux | grep '[r]ag/svr/task_executor.py'"]
+              command = ["/bin/bash", "-c", "ps aux | grep '[r]ag/svr/task_executor.py.*-t ${each.key}'"]
             }
             initial_delay_seconds = 60
             period_seconds        = 20
@@ -2392,8 +2604,8 @@ resource "kubernetes_deployment_v1" "deepdoc" {
 
         # Container
         container {
-          name  = "deepdoc"
-          image = local.deepdoc_image_full
+          name              = "deepdoc"
+          image             = local.deepdoc_image_full
           image_pull_policy = "Always"
 
           port {
@@ -2410,7 +2622,7 @@ resource "kubernetes_deployment_v1" "deepdoc" {
             }
             initial_delay_seconds = 0
             period_seconds        = 10
-            failure_threshold     = 30  # 30 * 10s = 300s max startup time
+            failure_threshold     = 30 # 30 * 10s = 300s max startup time
           }
 
           # Readiness probe: check if server is ready to accept requests
@@ -2501,6 +2713,10 @@ resource "kubernetes_service_v1" "deepdoc" {
 # =============================================================================
 
 resource "kubernetes_manifest" "gateway" {
+  depends_on = [
+    kubernetes_secret_v1.tls_secret,
+  ]
+
   field_manager {
     force_conflicts = true
   }
@@ -2584,16 +2800,34 @@ resource "kubernetes_manifest" "gateway" {
 
 # =============================================================================
 # TLS Secret (for ohttps pull mode)
-# Note: The TLS secret is created by kubernetes_job_v1.ohttps_sync_initial_job
-# which runs sync_ohttps_cert.py to create/update the secret with actual certificate data.
-# No need for a separate secret resource - the job handles creation when secret doesn't exist.
+# Use local certificate files in the current byok directory when ohttps is enabled.
+
+resource "kubernetes_secret_v1" "tls_secret" {
+  count = var.ohttps_enabled ? 1 : 0
+
+  metadata {
+    name      = "ragflow-tls"
+    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
+    labels = {
+      app          = "ragflow"
+      "managed-by" = "terraform"
+    }
+  }
+
+  type = "kubernetes.io/tls"
+
+  data = var.ohttps_enabled ? {
+    "tls.crt" = file("${path.module}/ragflow-tls.crt")
+    "tls.key" = file("${path.module}/ragflow-tls.key")
+  } : {}
+}
 
 # =============================================================================
 # ohttps Sync ServiceAccount (for CronJob)
 # =============================================================================
 
 resource "kubernetes_manifest" "ohttps_sync_sa" {
-  count = var.ohttps_enabled ? 1 : 0
+  count = 0
 
   manifest = {
     apiVersion = "v1"
@@ -2609,7 +2843,7 @@ resource "kubernetes_manifest" "ohttps_sync_sa" {
 }
 
 resource "kubernetes_manifest" "ohttps_sync_role" {
-  count = var.ohttps_enabled ? 1 : 0
+  count = 0
 
   manifest = {
     apiVersion = "rbac.authorization.k8s.io/v1"
@@ -2622,14 +2856,14 @@ resource "kubernetes_manifest" "ohttps_sync_role" {
       {
         apiGroups = [""]
         resources = ["secrets"]
-        verbs = ["get", "list", "create", "update", "patch"]
+        verbs     = ["get", "list", "create", "update", "patch"]
       }
     ]
   }
 }
 
 resource "kubernetes_manifest" "ohttps_sync_rolebinding" {
-  count = var.ohttps_enabled ? 1 : 0
+  count = 0
 
   manifest = {
     apiVersion = "rbac.authorization.k8s.io/v1"
@@ -2654,79 +2888,11 @@ resource "kubernetes_manifest" "ohttps_sync_rolebinding" {
 }
 
 # =============================================================================
-# ohttps Sync Initial Job (runs once immediately on deployment)
-# =============================================================================
-# This Job runs immediately to create/update the TLS secret before Gateway is created.
-# The CronJob then handles ongoing certificate renewal.
-
-resource "kubernetes_job_v1" "ohttps_sync_initial_job" {
-  count = var.ohttps_enabled ? 1 : 0
-
-  metadata {
-    name      = "ohttps-sync-initial"
-    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
-    labels = {
-      app         = "ragflow"
-      "managed-by" = "terraform"
-    }
-  }
-
-  spec {
-    template {
-      metadata {
-        labels = {
-          app = "ohttps-cert-sync"
-        }
-      }
-      spec {
-        restart_policy       = "OnFailure"
-        service_account_name = "ohttps-sync-sa"
-        container {
-          name  = "sync"
-          image = var.ohttps_sync_image
-          image_pull_policy = "Always"
-          env {
-            name  = "OHTTPS_API_ID"
-            value = var.ohttps_api_id
-          }
-          env {
-            name  = "OHTTPS_API_KEY"
-            value = var.ohttps_api_key
-          }
-          env {
-            name  = "OHTTPS_CERT_ID"
-            value = var.ohttps_cert_id
-          }
-        }
-      }
-    }
-    backoff_limit = 3
-  }
-
-  wait_for_completion = true
-}
-
-# Wait for TLS secret to have non-empty certificate data before creating Gateway
-# This resource depends on the initial sync job completing
-resource "null_resource" "wait_for_tls_secret" {
-  count = var.ohttps_enabled ? 1 : 0
-
-  # Explicitly depend on the initial job (wait_for_completion=true ensures job completes)
-  depends_on = [
-    kubernetes_job_v1.ohttps_sync_initial_job[0]
-  ]
-
-  provisioner "local-exec" {
-    command = "echo 'Waiting for TLS secret to be ready...' && python3 wait_for_k8s_resource.py ${kubernetes_namespace_v1.ragflow.metadata[0].name} secret ragflow-tls"
-  }
-}
-
-# =============================================================================
 # ohttps Sync CronJob
 # =============================================================================
 
 resource "kubernetes_manifest" "ohttps_sync_cronjob" {
-  count = var.ohttps_enabled ? 1 : 0
+  count = 0
 
   manifest = {
     apiVersion = "batch/v1"
@@ -2735,14 +2901,14 @@ resource "kubernetes_manifest" "ohttps_sync_cronjob" {
       name      = "ohttps-cert-sync"
       namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
       labels = {
-        app         = "ragflow"
+        app          = "ragflow"
         "managed-by" = "terraform"
       }
     }
     spec = {
-      schedule = "0 3 * * *"
+      schedule                   = "0 3 * * 1"
       successfulJobsHistoryLimit = 3
-      failedJobsHistoryLimit = 3
+      failedJobsHistoryLimit     = 3
       jobTemplate = {
         spec = {
           template = {
@@ -2752,12 +2918,12 @@ resource "kubernetes_manifest" "ohttps_sync_cronjob" {
               }
             }
             spec = {
-              restartPolicy = "OnFailure"
+              restartPolicy      = "OnFailure"
               serviceAccountName = "ohttps-sync-sa"
               containers = [
                 {
-                  name  = "sync"
-                  image = var.ohttps_sync_image
+                  name            = "sync"
+                  image           = var.ohttps_sync_image
                   imagePullPolicy = "Always"
                   env = [
                     {
@@ -2771,6 +2937,18 @@ resource "kubernetes_manifest" "ohttps_sync_cronjob" {
                     {
                       name  = "OHTTPS_CERT_ID"
                       value = var.ohttps_cert_id
+                    },
+                    {
+                      name  = "SYNC_K8S_SECRET"
+                      value = "1"
+                    },
+                    {
+                      name  = "SECRET_NAMESPACE"
+                      value = local.ragflow_namespace
+                    },
+                    {
+                      name  = "SECRET_NAME"
+                      value = "ragflow-tls"
                     }
                   ]
                 }
@@ -2865,37 +3043,11 @@ resource "kubernetes_manifest" "http_route_api" {
   }
 }
 
-# NGINX Gateway Fabric policy: allow larger request bodies for API uploads
-resource "kubernetes_manifest" "upload_size_policy" {
-  count = local.is_gke_gateway ? 0 : 1
-
-  manifest = {
-    apiVersion = "gateway.nginx.org/v1alpha1"
-    kind       = "ClientSettingsPolicy"
-    metadata = {
-      name      = "ragflow-upload-size"
-      namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
-    }
-    spec = {
-      targetRef = {
-        group = "gateway.networking.k8s.io"
-        kind  = "HTTPRoute"
-        name  = "ragflow-http-route-api"
-      }
-      body = {
-        maxSize = "100m"
-      }
-    }
-  }
-
-  depends_on = [kubernetes_manifest.http_route_api]
-}
-
-# GCPBackendPolicy: Extend backend service timeout for long-lived SSE streams.
-# HTTPRoute timeouts.request alone may not be translated to the GCP backend
-# service timeoutSec by all GKE Gateway Controller versions.  This policy
-# provides a direct, reliable override on the backend service resource that
-# the regional external ALB uses.
+# GCPBackendPolicy: Configure backend service timeout for GKE regional external ALB.
+# Note: GKE Gateway does not support body size limits via any native API.
+# Upload size is enforced at the Python application layer via MAX_CONTENT_LENGTH env var
+# (set in ragflow_env Secret -> common/settings.py -> Quart/Flask).
+# GKE default Cloud LB request limit (~32MB) applies when Python limit is not reached.
 resource "kubernetes_manifest" "gcp_backend_policy_api" {
   count = local.is_gke_gateway ? 1 : 0
 
@@ -3104,7 +3256,11 @@ data "kubernetes_service_v1" "gateway_fabric" {
 # path to query the actual IP from GCP.
 data "external" "gateway_ip" {
   count = local.is_gke_gateway ? 1 : 0
-  program = ["sh", "-c", "kubectl get gateway ragflow -n ragflow -o jsonpath={.status.addresses[0].value} 2>/dev/null | jq -R -s -c '{address: .}'"]
+  program = ["sh", "-c", <<-EOF
+    export KUBECONFIG="${pathexpand(var.kubeconfig_path)}"
+    kubectl get gateway ragflow -n ${local.ragflow_namespace} -o jsonpath={.status.addresses[0].value} 2>/dev/null | jq -R -s -c '{address: .}'
+  EOF
+  ]
 
   depends_on = [kubernetes_manifest.gateway]
 }
@@ -3114,8 +3270,9 @@ data "external" "gateway_ip" {
 data "external" "nginx_gateway_ip" {
   count = !local.is_gke_gateway ? 1 : 0
   program = ["sh", "-c", <<-EOF
+    export KUBECONFIG="${pathexpand(var.kubeconfig_path)}"
     # Get IP from Gateway CR status (more accurate than service IP)
-    ip=$(kubectl get gateway ragflow -n ragflow -o jsonpath='{.status.addresses[0].value}' 2>/dev/null)
+    ip=$(kubectl get gateway ragflow -n ${local.ragflow_namespace} -o jsonpath='{.status.addresses[0].value}' 2>/dev/null)
     if [ -n "$ip" ]; then
       echo "{\"address\": \"$ip\"}"
     else
@@ -3142,7 +3299,7 @@ data "external" "nginx_gateway_ip" {
 # Uses count-based resources to support both GKE and smk (nginx gateway)
 # This avoids ternary expression in map value which is not supported by Terraform
 resource "kubernetes_config_map_v1" "gateway_address_nginx" {
-  count = local.is_gke_gateway ? 0 : 1
+  count      = local.is_gke_gateway ? 0 : 1
   depends_on = [kubernetes_manifest.gateway, data.external.nginx_gateway_ip]
 
   metadata {
@@ -3156,7 +3313,7 @@ resource "kubernetes_config_map_v1" "gateway_address_nginx" {
 }
 
 resource "kubernetes_config_map_v1" "gateway_address_gke" {
-  count = local.is_gke_gateway ? 1 : 0
+  count      = local.is_gke_gateway ? 1 : 0
   depends_on = [kubernetes_manifest.gateway, data.external.gateway_ip]
 
   metadata {

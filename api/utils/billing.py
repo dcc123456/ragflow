@@ -18,6 +18,7 @@ import json
 import logging
 import os
 import re
+from contextvars import ContextVar, Token
 from decimal import ROUND_HALF_UP, Decimal
 from functools import wraps
 
@@ -86,6 +87,24 @@ CURRENCY_DIVISORS = {
 
 BILLING_PLAN_TRIAL_NAME = "Trial"
 STORAGE_PRODUCT_NAME = "storage"
+STRIPE_TEST_CLOCK_HEADER = "X-Stripe-Test-Clock"
+_stripe_test_clock_id_context: ContextVar[str] = ContextVar("stripe_test_clock_id", default="")
+
+
+def set_stripe_test_clock_id_for_current_context(test_clock_id: str) -> Token[str]:
+    return _stripe_test_clock_id_context.set((test_clock_id or "").strip())
+
+
+def reset_stripe_test_clock_id_for_current_context(token: Token[str]) -> None:
+    _stripe_test_clock_id_context.reset(token)
+
+
+def get_stripe_test_clock_id_for_current_context() -> str:
+    return (_stripe_test_clock_id_context.get() or "").strip()
+
+
+def resolve_stripe_test_clock_id(test_clock_id: str = "") -> str:
+    return (test_clock_id or get_stripe_test_clock_id_for_current_context() or os.getenv("STRIPE_TEST_CLOCK_ID") or "").strip()
 
 
 def is_trial_plan_name(plan_name: str) -> bool:
@@ -316,14 +335,14 @@ def parse_storage_size(size_str: str) -> int:
 
     units = {
         "b": 1,
-        "k": 1024,
-        "kb": 1024,
-        "m": 1024**2,
-        "mb": 1024**2,
-        "g": 1024**3,
-        "gb": 1024**3,
-        "t": 1024**4,
-        "tb": 1024**4,
+        "k": 1000,
+        "kb": 1000,
+        "m": 1000**2,
+        "mb": 1000**2,
+        "g": 1000**3,
+        "gb": 1000**3,
+        "t": 1000**4,
+        "tb": 1000**4,
     }
 
     if unit not in units:
@@ -342,8 +361,8 @@ def get_plan_priority_by_price_id(price_id: str) -> int | None:
     if not plan_name:
         return None
     plan_info = settings.BILLING_PLAN_TO_INFO.get(plan_name) or {}
-    priority = plan_info.get("priority")
-    return priority if isinstance(priority, int) else None
+    task_priority = plan_info.get("task_priority", "low")
+    return 1 if task_priority == "high" else 0
 
 
 def is_downgrade_by_price_id(current_price_id: str, target_price_id: str) -> bool:
@@ -548,6 +567,23 @@ async def cancel_scheduled_subscription_change_async(subscription_id: str) -> bo
     return True
 
 
+@billing_enabled_guard(False)
+def cancel_scheduled_subscription_change_sync(subscription_id: str) -> bool:
+    if not subscription_id:
+        return False
+
+    subscription = stripe.Subscription.retrieve(subscription_id)
+    if isinstance(subscription, dict):
+        schedule_id = (subscription.get("schedule") or "").strip()
+    else:
+        schedule_id = (getattr(subscription, "schedule", "") or "").strip()
+    if not schedule_id:
+        return False
+
+    stripe.SubscriptionSchedule.release(schedule_id)
+    return True
+
+
 def get_plans_equal_or_higher(plan_name: str) -> list[tuple[str, list[str]]]:
     """
     return names of equal or higher plans and their price_ids. [name, price_ids]
@@ -689,14 +725,14 @@ def get_metadata_from_subscription(payment_subscription_id: str) -> dict:
 
 
 @billing_enabled_guard("")
-def create_stripe_customer_id(tenant_id: str) -> str:
+def create_stripe_customer_id(tenant_id: str, test_clock_id: str = "") -> str:
     from api.db.services.user_service import UserService
 
     user = UserService.filter_by_id(tenant_id)
     if not user:
         logging.warning(f"create_stripe_customer_id: tenant {tenant_id} not found")
         return ""
-    test_clock_id = (os.getenv("STRIPE_TEST_CLOCK_ID") or "").strip()
+    test_clock_id = resolve_stripe_test_clock_id(test_clock_id)
     params = {"name": user.nickname, "email": user.email, "metadata": {"tenant_id": tenant_id}}
     if test_clock_id:
         api_key = (getattr(stripe, "api_key", None) or "").strip()
@@ -711,20 +747,20 @@ def create_stripe_customer_id(tenant_id: str) -> str:
 
 
 @billing_enabled_guard("")
-def billing_set_customer_id(tenant_id: str, customer_id: str = "") -> str:
+def billing_set_customer_id(tenant_id: str, customer_id: str = "", test_clock_id: str = "") -> str:
     from api.db.services.billing_service import SubscriptionService
 
     if not customer_id:
-        customer_id = create_stripe_customer_id(tenant_id)
+        customer_id = create_stripe_customer_id(tenant_id, test_clock_id=test_clock_id)
     if customer_id:
         SubscriptionService.set_customer_id(tenant_id, customer_id)
     return customer_id
 
 
-async def billing_set_customer_id_async(tenant_id: str, customer_id: str = "") -> str:
+async def billing_set_customer_id_async(tenant_id: str, customer_id: str = "", test_clock_id: str = "") -> str:
     import asyncio
 
-    return await asyncio.to_thread(billing_set_customer_id, tenant_id, customer_id)
+    return await asyncio.to_thread(billing_set_customer_id, tenant_id, customer_id, test_clock_id)
 
 
 def check_resources(**resource_deltas):
@@ -799,10 +835,10 @@ def check_resources(**resource_deltas):
 
                     delta_app = resource_deltas.get("apps", 0)
                     delta_members = resource_deltas.get("seats", 0)
-                    delta_kb_storage = resource_deltas.get("storage", 0)
+                    delta_storage_bytes = resource_deltas.get("storage", 0)
 
                     check_ok, check_info = PurchasedProductOverviewService.check_subscription_by_tenant_id(
-                        tenant_id, delta_app=delta_app, delta_members=delta_members, delta_kb_storage=delta_kb_storage
+                        tenant_id, delta_app=delta_app, delta_members=delta_members, delta_kb_storage=delta_storage_bytes
                     )
 
                     if not check_ok:
@@ -819,7 +855,10 @@ def check_resources(**resource_deltas):
                             error_code = RetCode.BILLING_SEATS_INSUFFICIENT
 
                         if "quota_kb_storage" in error_details:
-                            error_messages.append(f"Insufficient storage quota. Current: {error_details['quota_kb_storage']['current']} KB, Limit: {error_details['quota_kb_storage']['limit']} KB")
+                            error_messages.append(
+                                f"Insufficient storage quota. Current: {error_details['quota_kb_storage']['current']} bytes, "
+                                f"Limit: {error_details['quota_kb_storage']['limit']} bytes"
+                            )
                             error_code = RetCode.BILLING_STORAGE_INSUFFICIENT
 
                         if error_messages:
@@ -873,7 +912,7 @@ def check_dynamic_resources(tenant_id=None, **resource_deltas):
                                   If not provided, it will be extracted from Flask context.
         **resource_deltas: Keyword arguments specifying resource types and their delta values.
                           Supported types: seats, apps, storage
-                          Example: check_dynamic_resources(tenant_id, storage=file_size_in_kb)
+                          Example: check_dynamic_resources(tenant_id, storage=file_size_in_bytes)
 
     Returns:
         tuple: (check_ok, check_info) where check_ok is a boolean indicating if check passed,
@@ -881,8 +920,8 @@ def check_dynamic_resources(tenant_id=None, **resource_deltas):
 
     Usage:
         # In a function where you calculate file size during execution:
-        file_size_kb = calculate_file_size_in_kb(file_path)
-        check_ok, check_info = check_dynamic_resources(tenant_id, storage=file_size_kb)
+        file_size_bytes = calculate_file_size_in_bytes(file_path)
+        check_ok, check_info = check_dynamic_resources(tenant_id, storage=file_size_bytes)
         if not check_ok:
             return get_data_error_result(message=check_info.get("error", "Insufficient storage"))
     """
@@ -931,6 +970,11 @@ def check_dynamic_resources(tenant_id=None, **resource_deltas):
 
     delta_app = resource_deltas.get("apps", 0)
     delta_members = resource_deltas.get("seats", 0)
-    delta_kb_storage = resource_deltas.get("storage", 0)
+    delta_storage_bytes = resource_deltas.get("storage", 0)
 
-    return PurchasedProductOverviewService.check_subscription_by_tenant_id(tenant_id, delta_app=delta_app, delta_members=delta_members, delta_kb_storage=delta_kb_storage)
+    return PurchasedProductOverviewService.check_subscription_by_tenant_id(
+        tenant_id,
+        delta_app=delta_app,
+        delta_members=delta_members,
+        delta_kb_storage=delta_storage_bytes,
+    )

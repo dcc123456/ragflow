@@ -17,7 +17,9 @@ export interface IResources {
   apps: IResourceDetail;
   members: IResourceDetail;
   plan_storage: IResourceDetail;
-  add_on_storage: IResourceDetail;
+  addon_storage: IResourceDetail;
+  plan_points?: IResourceDetail;
+  addon_points?: IResourceDetail;
 }
 
 // export type SubscriptionStatus = 'active' | 'inactive' | 'cancelled' | 'expired';
@@ -27,6 +29,9 @@ export interface ISubscriptionData {
   plan_name: string;
   resources: IResources;
   subscription_status: SubscriptionStatus;
+  payment_required?: boolean;
+  payment_recoverable?: boolean;
+  payment_recovery_url?: string;
   billing_cycle: {
     start: string;
     end: string;
@@ -59,6 +64,8 @@ export interface Invoice {
   hosted_invoice_url?: string;
   invoice_id: string;
   invoice_pdf_url: string;
+  product_id?: string;
+  product?: string;
   status: 'paid' | 'unpaid' | 'pending';
 }
 
@@ -107,7 +114,7 @@ export interface IPaygDeepDocUsage {
   currency: string;
 }
 
-export interface IPaygStatusData {
+export interface IPayStatusData {
   status: PaygStatusEnum;
   subscription_id: string;
   current_period_start: string;
@@ -123,9 +130,18 @@ export interface IPaygDisableResponse {
 }
 
 export interface IPointBalance {
-  available_points: number;
-  held_points: number;
-  total_points: number;
+  plan_points: {
+    used: number;
+    limit: number;
+    remaining?: number;
+    unit: string;
+  };
+  addon_points: {
+    used: number;
+    limit: number;
+    remaining?: number;
+    unit: string;
+  };
 }
 
 export interface IPointLedgerItem {

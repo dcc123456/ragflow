@@ -27,7 +27,6 @@ from peewee import fn
 from peewee import IntegrityError
 from api.db.db_models import (
     BillingWebhookEvent,
-    LocalPrice,
     PaymentOrder,
     PointAccount,
     PointHold,
@@ -48,6 +47,9 @@ from common.time_utils import current_timestamp
 from deepdoc.parser import PdfParser
 import stripe
 
+ENTITLED_MAIN_SUBSCRIPTION_STATUSES = {"active", "trialing"}
+
+
 class ProductService(CommonService):
     model = Product
     VERSION_CHECK_FIELDS = ["quota_apps", "quota_members", "quota_kb_storage", "task_priority", "price_ids", "product_type", "usage_stat_type"]
@@ -61,7 +63,6 @@ class ProductService(CommonService):
         return obj
 
     @classmethod
-    @DB.connection_context()
     def get_by_name(cls, product_name: str) -> dict | None:
         fields = [
             cls.model.id,
@@ -74,6 +75,7 @@ class ProductService(CommonService):
             cls.model.product_type,
             cls.model.usage_stat_type,
             cls.model.version,
+            cls.model.quota_points,
         ]
         plan = cls.model.select(*fields).where(cls.model.name == product_name).order_by(cls.model.version.desc()).dicts().first()
         return plan
@@ -83,7 +85,7 @@ class ProductService(CommonService):
         try:
             for plan in billing_plans:
                 if "quota_kb_storage" in plan and isinstance(plan["quota_kb_storage"], str):
-                    plan["quota_kb_storage"] = parse_storage_size(plan["quota_kb_storage"]) // 1024
+                    plan["quota_kb_storage"] = parse_storage_size(plan["quota_kb_storage"])
 
                 ori_product = cls.get_by_name(plan["name"])
 
@@ -165,7 +167,7 @@ class SubscriptionService(CommonService):
                 return tenant_plan
 
         tenant_plan = cls._ensure_trial_stripe_subscription(tenant_plan)
-        print(f"{tenant_plan=}")
+        logging.debug(f"tenant_plan={tenant_plan}")
         billing_plan = ProductService.get_by_name(tenant_plan["plan_name"])
         assert billing_plan is not None
         plan_name = billing_plan.pop("name")
@@ -185,10 +187,12 @@ class SubscriptionService(CommonService):
             )
 
             num_members = UserTenantService.get_num_members(tenant_id)
-            num_kb_storage = FileService.get_total_size_by_tenant_id(tenant_id) // 1024
+            num_storage_bytes = FileService.get_total_size_by_tenant_id(tenant_id)
             tenant_plan["num_apps"] = num_apps
             tenant_plan["num_members"] = num_members
-            tenant_plan["num_kb_storage"] = num_kb_storage
+            tenant_plan["num_storage_bytes"] = num_storage_bytes
+            # Keep legacy key for compatibility with older callers.
+            tenant_plan["num_kb_storage"] = num_storage_bytes
         return tenant_plan
 
     @classmethod
@@ -326,7 +330,7 @@ class SubscriptionService(CommonService):
         plan_name = subscription.get("plan_name", "")
         num_apps = subscription.get("num_apps", 0)
         num_members = subscription.get("num_members", 0)
-        num_kb_storage = subscription.get("num_kb_storage", 0)
+        num_storage_bytes = subscription.get("num_storage_bytes", subscription.get("num_kb_storage", 0))
 
         fields = [
             cls.model.id,
@@ -343,7 +347,10 @@ class SubscriptionService(CommonService):
         tenant_plan_info = (
             cls.model.select(*fields)
             .join(Product, on=(cls.model.plan_name == Product.name))
-            .where((cls.model.tenant_id == tenant_id) & (cls.model.subscription_status == SubscriptionStatus.ACTIVE))
+            .where(
+                (cls.model.tenant_id == tenant_id)
+                & (cls.model.subscription_status.in_(ENTITLED_MAIN_SUBSCRIPTION_STATUSES))
+            )
             .order_by(
                 Product.version.desc(),
                 cls.model.create_time.desc(),
@@ -386,15 +393,15 @@ class SubscriptionService(CommonService):
 
         if delta_kb_storage > 0:
             # Storage add-on quota now comes from recurring storage subscription.
-            add_on_storage_kb = StorageSubscriptionService.effective_storage_kb(tenant_id)
+            add_on_storage_bytes = StorageSubscriptionService.effective_storage_bytes(tenant_id)
 
-            storage_limit_kb = int(tenant_plan_info["quota_kb_storage"] or 0) + add_on_storage_kb
+            storage_limit_bytes = int(tenant_plan_info["quota_kb_storage"] or 0) + add_on_storage_bytes
             details["quota_kb_storage"] = {
-                "current": num_kb_storage,
-                "limit": storage_limit_kb,
+                "current": num_storage_bytes,
+                "limit": storage_limit_bytes,
             }
-            if num_kb_storage + delta_kb_storage > storage_limit_kb:
-                error_message += "KB storage quota exceeded\n"
+            if num_storage_bytes + delta_kb_storage > storage_limit_bytes:
+                error_message += "Storage quota exceeded\n"
                 check_pass = False
 
         if not check_pass:
@@ -431,9 +438,19 @@ class SubscriptionService(CommonService):
         if not tenant_plan:
             return 0
         subscription_status = tenant_plan["subscription_status"]
-        if subscription_status != "active":
+        if subscription_status not in ENTITLED_MAIN_SUBSCRIPTION_STATUSES:
             return 0
-        return 1
+        # Look up task_priority from the Product table
+        product = ProductService.get_by_name(tenant_plan["plan_name"])
+        if product:
+            task_priority = product.get("task_priority", "low")
+            return 1 if task_priority == "high" else 0
+        return 0
+
+    @classmethod
+    def get_by_customer_id(cls, customer_id: str):
+        """Look up subscription by Stripe customer_id."""
+        return cls.model.get_or_none(cls.model.customer_id == customer_id)
 
     @classmethod
     def update_subscription(cls, tenant_id, subscription_dict):
@@ -449,6 +466,7 @@ class SubscriptionService(CommonService):
 class StorageSubscriptionService(CommonService):
     model = StorageSubscription
     BLOCKING_PENDING_ACTIONS = {"create", "increase", "align"}
+    BYTES_PER_KB = 1000
 
     @classmethod
     def save(cls, **kwargs):
@@ -494,9 +512,9 @@ class StorageSubscriptionService(CommonService):
             "subscription_item_id": kwargs.get("subscription_item_id", ""),
             "price_id": kwargs.get("price_id", ""),
             "schedule_id": kwargs.get("schedule_id", ""),
-            "effective_quantity_gb": kwargs.get("effective_quantity_gb", 0),
-            "target_quantity_gb": kwargs.get("target_quantity_gb", 0),
-            "pending_quantity_gb": kwargs.get("pending_quantity_gb"),
+            "addon_storage_bytes": kwargs.get("addon_storage_bytes", 0),
+            "target_quantity_bytes": kwargs.get("target_quantity_bytes", 0),
+            "pending_quantity_bytes": kwargs.get("pending_quantity_bytes"),
             "pending_effective_at": kwargs.get("pending_effective_at"),
             "pending_action": kwargs.get("pending_action", ""),
             "current_period_start": kwargs.get("current_period_start"),
@@ -513,7 +531,7 @@ class StorageSubscriptionService(CommonService):
         row = cls.get_by_tenant_id(tenant_id)
         if not row:
             return False
-        pending_quantity = row.get("pending_quantity_gb")
+        pending_quantity = row.get("pending_quantity_bytes")
         pending_action = (row.get("pending_action") or "").strip().lower()
         if pending_quantity is None or pending_action not in cls.BLOCKING_PENDING_ACTIONS:
             return False
@@ -530,8 +548,18 @@ class StorageSubscriptionService(CommonService):
         status = (row.get("status") or "").strip().lower()
         if status in {"canceled", "incomplete_expired"}:
             return 0
-        quantity_gb = int(row.get("effective_quantity_gb") or 0)
-        return max(quantity_gb, 0) * 1024 * 1024
+        quantity_bytes = int(row.get("addon_storage_bytes") or 0)
+        return max(quantity_bytes, 0) // cls.BYTES_PER_KB
+
+    @classmethod
+    def effective_storage_bytes(cls, tenant_id: str) -> int:
+        row = cls.get_by_tenant_id(tenant_id)
+        if not row:
+            return 0
+        status = (row.get("status") or "").strip().lower()
+        if status in {"canceled", "incomplete_expired"}:
+            return 0
+        return max(int(row.get("addon_storage_bytes") or 0), 0)
 
 
 ####################################################################################
@@ -629,6 +657,15 @@ class PaymentOrderService(CommonService):
             return None
         return cls.model.select().where(cls.model.payment_intent_id == payment_intent_id).dicts().first()
 
+    @classmethod
+    @DB.connection_context()
+    def update_by_order_id(cls, order_id: str, update_dict: dict) -> int:
+        if not order_id:
+            return 0
+        update_dict["update_time"] = current_timestamp()
+        update_dict["update_date"] = to_utc_datetime(datetime.now(timezone.utc))
+        return cls.model.update(update_dict).where(cls.model.order_id == order_id).execute()
+
 
 class BillingWebhookEventService(CommonService):
     model = BillingWebhookEvent
@@ -717,86 +754,6 @@ class PricePointService(CommonService):
                     logging.info(f"Billing price point \n\t{ori_price_point} updated to \n\t{price_point}.")
         except Exception as e:
             logging.warning(f"Init billing price point data error for {price_point['product_name']}: {e}")
-
-
-class LocalPriceService(CommonService):
-    model = LocalPrice
-    VERSION_CHECK_FIELDS = ["amount_cents"]
-
-    @classmethod
-    def save(cls, **kwargs):
-        if "id" not in kwargs:
-            kwargs["id"] = get_uuid()
-        obj = cls.model(**kwargs).save(force_insert=True)
-        return obj
-
-    @classmethod
-    @DB.connection_context()
-    def get_by_name(cls, local_price_product_name: str) -> dict | None:
-        fields = [
-            cls.model.id,
-            cls.model.price_point_id,
-            cls.model.product_name,
-            cls.model.amount_cents,
-            cls.model.currency,
-            cls.model.point_value_int,
-            cls.model.effective_time,
-            cls.model.expiry_time,
-        ]
-        now_utc = datetime.now(timezone.utc)
-        local_price = (
-            cls.model.select(*fields)
-            .where(
-                (cls.model.product_name == local_price_product_name)
-                & (cls.model.expiry_time.is_null(True) | (cls.model.expiry_time >= now_utc))
-            )
-            .order_by(cls.model.effective_time.desc())
-            .dicts()
-            .first()
-        )
-        return local_price
-
-    @classmethod
-    def init_data(cls, local_price_list: list[dict]) -> None:
-        try:
-            for local_price in local_price_list:
-                # Convert amount (USD float) to cents and point_value to int
-                raw_amount = local_price.pop("amount", None)
-                raw_point_value = local_price.pop("point_value", None)
-                if raw_amount is not None and "amount_cents" not in local_price:
-                    local_price["amount_cents"] = int(float(raw_amount) * 100)
-                if raw_point_value is not None and "point_value_int" not in local_price:
-                    local_price["point_value_int"] = int(float(raw_point_value) * 100)
-                if "point_value_int" not in local_price:
-                    local_price["point_value_int"] = local_price.get("amount_cents", 0)
-
-                ori_local_price = cls.get_by_name(local_price["product_name"])
-
-                price_point_id = PricePointService.get_by_name(local_price["product_name"]).get("id", "")
-                product_id = ProductService.get_by_name(local_price["product_name"]).get("id", "")
-
-                if not ori_local_price:
-                    cls.save(
-                        **local_price,
-                        price_point_id=price_point_id,
-                        product_id=product_id,
-                        effective_time=to_utc_datetime(datetime.now(timezone.utc)),
-                    )
-                    logging.info(f"Create billing local price {local_price}.")
-                    continue
-
-                is_outdated = any(local_price.get(field, "") != ori_local_price.get(field, "") for field in cls.VERSION_CHECK_FIELDS if local_price.get(field, ""))
-
-                if is_outdated:
-                    cls.save(
-                        **local_price,
-                        price_point_id=price_point_id,
-                        product_id=product_id,
-                        effective_time=to_utc_datetime(datetime.now(timezone.utc)),
-                    )
-                    logging.info(f"Billing local price \n\t{ori_local_price} updated to \n\t{local_price}.")
-        except Exception as e:
-            logging.warning(f"Init billing local price data error for {local_price['product_name']}: {e}")
 
 
 class PurchasedProductOverviewService(CommonService):
@@ -964,6 +921,46 @@ class InsufficientPointsError(Exception):
 class PointAccountService:
     """Manages per-tenant point balances with atomic transactions."""
 
+    @staticmethod
+    def _get_plan_quota_points(tenant_id: str) -> int:
+        """Get quota_points from the tenant's current plan (from billing_product table).
+
+        Must be called inside an existing transaction (e.g. PointAccountService.hold
+        uses DB.atomic()), so performs a direct query instead of going through
+        SubscriptionService.get_by_tenant_id which has its own connection_context
+        decorator that would cause nested transaction errors.
+        """
+        try:
+            from api.utils.billing import BILLING_PLAN_TRIAL_NAME
+            from api.db.db_models import Subscription, Product
+
+            # Direct query - uses existing transaction, no new connection_context
+            subscription = (
+                Subscription.select(Subscription.plan_name)
+                .where(Subscription.tenant_id == tenant_id)
+                .order_by(Subscription.create_time.desc())
+                .dicts()
+                .first()
+            )
+            plan_name = subscription.get("plan_name", BILLING_PLAN_TRIAL_NAME) if subscription else BILLING_PLAN_TRIAL_NAME
+
+            product = (
+                Product.select(Product.quota_points)
+                .where(Product.name == plan_name)
+                .order_by(Product.version.desc())
+                .dicts()
+                .first()
+            )
+            quota = product.get("quota_points") if product else None
+            if quota is not None:
+                logging.info(f"[Points] tenant={tenant_id} plan={plan_name} quota_points={quota}")
+                return quota
+            logging.warning(f"[Points] tenant={tenant_id} plan={plan_name} has no quota_points in billing_product")
+            return 0
+        except Exception:
+            logging.exception(f"[Points] _get_plan_quota_points failed for tenant={tenant_id}")
+            return 0
+
     @classmethod
     def get_or_create(cls, tenant_id: str) -> dict:
         """Must be called within an existing DB connection context or atomic block."""
@@ -972,7 +969,9 @@ class PointAccountService:
             return {
                 "id": account.id,
                 "tenant_id": account.tenant_id,
-                "available_points": account.available_points,
+                "consumed_plan_points": account.consumed_plan_points,
+                "addon_purchased_points": account.addon_purchased_points,
+                "consumed_addon_points": account.consumed_addon_points,
                 "held_points": account.held_points,
             }
         account_id = get_uuid()
@@ -980,7 +979,9 @@ class PointAccountService:
             PointAccount.insert(
                 id=account_id,
                 tenant_id=tenant_id,
-                available_points=0,
+                consumed_plan_points=0,
+                addon_purchased_points=0,
+                consumed_addon_points=0,
                 held_points=0,
                 create_time=current_timestamp(),
                 update_time=current_timestamp(),
@@ -991,7 +992,9 @@ class PointAccountService:
         return {
             "id": account.id,
             "tenant_id": account.tenant_id,
-            "available_points": account.available_points,
+            "consumed_plan_points": account.consumed_plan_points,
+            "addon_purchased_points": account.addon_purchased_points,
+            "consumed_addon_points": account.consumed_addon_points,
             "held_points": account.held_points,
         }
 
@@ -1006,6 +1009,7 @@ class PointAccountService:
                     tenant_id=tenant_id,
                     event_type="recharge",
                     points=points,
+                    source="addon",  # all recharges go to addon pool
                     idempotency_key=idempotency_key,
                     description=description,
                     metadata=metadata or {},
@@ -1015,7 +1019,8 @@ class PointAccountService:
             except IntegrityError:
                 # Idempotent: already recharged
                 return PointLedger.get(PointLedger.idempotency_key == idempotency_key).__data__
-            account.available_points += points
+            # recharge adds to addon purchase count (purchased pool grows)
+            account.addon_purchased_points += points
             account.update_time = current_timestamp()
             account.save()
             return ledger.__data__
@@ -1031,32 +1036,65 @@ class PointAccountService:
             if existing_hold:
                 return existing_hold.__data__
 
-            if account.available_points < points:
+            # In consumed model, available = quota - consumed
+            # Compute total available from plan quota (dynamic) and addon purchased (stored)
+            plan_quota = cls._get_plan_quota_points(tenant_id)
+            plan_available = max(0, plan_quota - account.consumed_plan_points)
+            addon_available = max(0, account.addon_purchased_points - account.consumed_addon_points)
+            total_available = plan_available + addon_available
+            if total_available < points:
                 raise InsufficientPointsError(
-                    f"Tenant {tenant_id} has {account.available_points} points, need {points}"
+                    f"Tenant {tenant_id} has {total_available} points, need {points}"
                 )
+
+            # Determine how much to deduct from plan vs addon (prefer plan first)
+            plan_used = min(plan_available, points)
+            addon_used = points - plan_used
 
             hold = PointHold.create(
                 id=get_uuid(),
                 tenant_id=tenant_id,
                 doc_id=doc_id,
                 points=points,
+                plan_points=plan_used,
+                addon_points=addon_used,
                 status="held",
                 idempotency_key=idempotency_key,
                 create_time=current_timestamp(),
                 update_time=current_timestamp(),
             )
-            PointLedger.create(
-                id=get_uuid(),
-                tenant_id=tenant_id,
-                event_type="hold_created",
-                points=-points,
-                idempotency_key=f"hold:{hold.id}",
-                related_hold_id=hold.id,
-                create_time=current_timestamp(),
-                update_time=current_timestamp(),
-            )
-            account.available_points -= points
+
+            # Record plan portion if any
+            if plan_used > 0:
+                PointLedger.create(
+                    id=get_uuid(),
+                    tenant_id=tenant_id,
+                    event_type="hold_created",
+                    points=-plan_used,
+                    source="plan",
+                    idempotency_key=f"hold:{hold.id}:plan",
+                    related_hold_id=hold.id,
+                    create_time=current_timestamp(),
+                    update_time=current_timestamp(),
+                )
+
+            # Record addon portion if any
+            if addon_used > 0:
+                PointLedger.create(
+                    id=get_uuid(),
+                    tenant_id=tenant_id,
+                    event_type="hold_created",
+                    points=-addon_used,
+                    source="addon",
+                    idempotency_key=f"hold:{hold.id}:addon",
+                    related_hold_id=hold.id,
+                    create_time=current_timestamp(),
+                    update_time=current_timestamp(),
+                )
+
+            # In consumed model, add to consumed amounts (deduct from available)
+            account.consumed_plan_points += plan_used
+            account.consumed_addon_points += addon_used
             account.held_points += points
             account.update_time = current_timestamp()
             account.save()
@@ -1076,16 +1114,32 @@ class PointAccountService:
             account.held_points -= hold.points
             account.update_time = current_timestamp()
             account.save()
-            PointLedger.create(
-                id=get_uuid(),
-                tenant_id=hold.tenant_id,
-                event_type="consume",
-                points=-hold.points,
-                idempotency_key=f"commit:{hold_id}",
-                related_hold_id=hold_id,
-                create_time=current_timestamp(),
-                update_time=current_timestamp(),
-            )
+            # Consume events don't restore points - quota/addon already deducted at hold time
+            # Write separate ledger entries for plan and addon portions if both exist
+            if hold.plan_points > 0:
+                PointLedger.create(
+                    id=get_uuid(),
+                    tenant_id=hold.tenant_id,
+                    event_type="consume",
+                    points=-hold.plan_points,
+                    source="plan",
+                    idempotency_key=f"commit:{hold_id}:plan",
+                    related_hold_id=hold_id,
+                    create_time=current_timestamp(),
+                    update_time=current_timestamp(),
+                )
+            if hold.addon_points > 0:
+                PointLedger.create(
+                    id=get_uuid(),
+                    tenant_id=hold.tenant_id,
+                    event_type="consume",
+                    points=-hold.addon_points,
+                    source="addon",
+                    idempotency_key=f"commit:{hold_id}:addon",
+                    related_hold_id=hold_id,
+                    create_time=current_timestamp(),
+                    update_time=current_timestamp(),
+                )
             hold.status = "committed"
             hold.update_time = current_timestamp()
             hold.save()
@@ -1102,20 +1156,37 @@ class PointAccountService:
             if hold.status != "held":
                 return False
             account = PointAccount.select().where(PointAccount.tenant_id == hold.tenant_id).for_update().get()
-            account.available_points += hold.points
+            # Restore: reduce consumed (add back to available)
+            account.consumed_plan_points -= hold.plan_points
+            account.consumed_addon_points -= hold.addon_points
             account.held_points -= hold.points
             account.update_time = current_timestamp()
             account.save()
-            PointLedger.create(
-                id=get_uuid(),
-                tenant_id=hold.tenant_id,
-                event_type="release",
-                points=hold.points,
-                idempotency_key=f"release:{hold_id}",
-                related_hold_id=hold_id,
-                create_time=current_timestamp(),
-                update_time=current_timestamp(),
-            )
+            # Write separate ledger entries for plan and addon portions if both exist
+            if hold.plan_points > 0:
+                PointLedger.create(
+                    id=get_uuid(),
+                    tenant_id=hold.tenant_id,
+                    event_type="release",
+                    points=hold.plan_points,
+                    source="plan",
+                    idempotency_key=f"release:{hold_id}:plan",
+                    related_hold_id=hold_id,
+                    create_time=current_timestamp(),
+                    update_time=current_timestamp(),
+                )
+            if hold.addon_points > 0:
+                PointLedger.create(
+                    id=get_uuid(),
+                    tenant_id=hold.tenant_id,
+                    event_type="release",
+                    points=hold.addon_points,
+                    source="addon",
+                    idempotency_key=f"release:{hold_id}:addon",
+                    related_hold_id=hold_id,
+                    create_time=current_timestamp(),
+                    update_time=current_timestamp(),
+                )
             hold.status = "released"
             hold.update_time = current_timestamp()
             hold.save()
@@ -1126,12 +1197,38 @@ class PointAccountService:
     def get_balance(cls, tenant_id: str) -> dict:
         account = PointAccount.get_or_none(PointAccount.tenant_id == tenant_id)
         if not account:
-            return {"available_points": 0, "held_points": 0, "total_points": 0}
+            return {"consumed_plan_points": 0, "addon_purchased_points": 0, "consumed_addon_points": 0, "held_points": 0}
         return {
-            "available_points": account.available_points,
+            "consumed_plan_points": account.consumed_plan_points,
+            "addon_purchased_points": account.addon_purchased_points,
+            "consumed_addon_points": account.consumed_addon_points,
             "held_points": account.held_points,
-            "total_points": account.available_points + account.held_points,
+            # Derived available fields for backward compatibility with frontend
+            "available_plan_points": max(0, cls._get_plan_quota_points(account.tenant_id) - account.consumed_plan_points),
+            "available_addon_points": max(0, account.addon_purchased_points - account.consumed_addon_points),
         }
+
+    @classmethod
+    @DB.connection_context()
+    def reset_plan_consumed_points_at_cycle_start(cls, tenant_id: str) -> bool:
+        """
+        Reset consumed_plan_points and consumed_addon_points at the start of a new
+        billing cycle. plan_quota is not stored; it's derived from the subscription
+        plan on each read. Addon points purchased in a previous cycle do not carry over.
+        Idempotent: only updates if at least one consumed value differs from 0.
+        """
+        with DB.atomic():
+            account = PointAccount.get_or_none(PointAccount.tenant_id == tenant_id)
+            if not account:
+                return True
+            plan_reset = account.consumed_plan_points != 0
+            if not plan_reset:
+                return True
+            if plan_reset:
+                account.consumed_plan_points = 0
+            account.update_time = current_timestamp()
+            account.save()
+            return True
 
 
 @dataclass(frozen=True)

@@ -1,112 +1,138 @@
 // pages/PricingPage.tsx
-import { ButtonLoading } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal/modal';
 import { convertBytesToGb } from '@/lib/utils';
-import { cancelScheduledSubscriptionChange } from '@/services/price';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { t } from 'i18next';
-import { Building2, Gem, LucideProps, Rocket, X } from 'lucide-react';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  BanknoteArrowUp,
+  Coins,
+  DatabaseZap,
+  HeartHandshake,
+  LayoutGrid,
+  Loader2,
+  ShieldCheck,
+  Users,
+  Vault,
+  X,
+} from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { JSX } from 'react/jsx-runtime';
 import PricingCard from '../components/pricing-card';
-import { priceIdConfig } from '../config';
-import { PriceName } from '../constant';
+import { PriceName, PriceNameMapValue } from '../constant';
 import { useFetchCurrentPlan, useFetchPlanList } from '../hook/use-price-hooks';
 import { IPricePlanWithButton } from '../interface';
-import { showModal } from '../price-modal/show-modal';
 
-const UNLIMITED_API_REQUESTS = 2147483647;
-
-const formatApiRequests = (limit: number) =>
-  limit >= UNLIMITED_API_REQUESTS ? 'Unlimited' : `${limit}/month`;
-
+const enterprise = {
+  id: 'Enterprise',
+  title: t('price.enterprise'),
+  description: t('price.enterpriseDesc'),
+  price: -1,
+  buttonLabel: t('price.contactUs'),
+  isUse: false,
+  features: [
+    {
+      key: 'apps',
+      value: -1,
+      name: 'BYOC deployment',
+      icon: (
+        <BanknoteArrowUp
+          size={12}
+          className="text-text-primary font-normal mr-2"
+        />
+      ),
+    },
+    {
+      key: 'teamMembers',
+      value: -1,
+      name: 'On-premises deployment',
+      icon: <Vault size={12} className="text-text-primary font-normal mr-2" />,
+    },
+    {
+      key: 'datasetStorage',
+      value: -1,
+      name: 'Dedicated support',
+      icon: (
+        <HeartHandshake
+          size={12}
+          className="text-text-primary font-normal mr-2"
+        />
+      ),
+    },
+    {
+      key: 'credits',
+      value: -1,
+      name: 'Custom SLA',
+      icon: (
+        <ShieldCheck size={12} className="text-text-primary font-normal mr-2" />
+      ),
+    },
+  ],
+};
+const commonFeatures = [
+  {
+    key: 'apps',
+    value: '',
+    name: 'Apps',
+    icon: (
+      <LayoutGrid size={12} className="text-text-primary font-normal mr-2" />
+    ),
+  },
+  {
+    key: 'teamMembers',
+    value: '',
+    name: 'team members',
+    icon: <Users size={12} className="text-text-primary font-normal mr-2" />,
+  },
+  {
+    key: 'datasetStorage',
+    value: '',
+    name: 'GB dataset storage',
+    icon: (
+      <DatabaseZap size={12} className="text-text-primary font-normal mr-2" />
+    ),
+  },
+  {
+    key: 'credits',
+    value: '',
+    name: 'credits / month',
+    icon: <Coins size={12} className="text-text-primary font-normal mr-2" />,
+  },
+];
 const pricingPlans = {
   [PriceName.Trial]: {
-    id: priceIdConfig[PriceName.Trial],
+    id: '',
     title: t('price.free'),
     description: t('price.freeDesc'),
     price: '',
-    feature: {
-      apps: '',
-      teamMembers: '',
-      datasetStorage: '',
-      apiRequests: '',
-    },
     buttonLabel: t('price.reduce'),
     isUse: true,
-    icon: () => <></>,
+    features: commonFeatures,
   },
   [PriceName.Starter]: {
-    id: priceIdConfig[PriceName.Starter],
+    id: '',
     title: t('price.starter'),
     description: t('price.starterDesc'),
     price: '',
-    feature: {
-      apps: '',
-      teamMembers: '',
-      datasetStorage: '',
-      apiRequests: '',
-    },
     buttonLabel: t('price.upgrade'),
     isUse: false,
-    icon: (
-      props?: JSX.IntrinsicAttributes &
-        Omit<LucideProps, 'ref'> &
-        React.RefAttributes<SVGSVGElement>,
-    ) => {
-      return <Rocket {...props} />;
-    },
+    features: commonFeatures,
   },
   [PriceName.Pro]: {
-    id: priceIdConfig[PriceName.Pro],
+    id: '',
     title: t('price.pro'),
     description: t('price.proDesc'),
     price: '',
-    feature: {
-      apps: '',
-      teamMembers: '',
-      datasetStorage: '',
-      apiRequests: '',
-    },
     buttonLabel: t('price.upgrade'),
     isUse: false,
     isPopular: true,
-    icon: (
-      props?: JSX.IntrinsicAttributes &
-        Omit<LucideProps, 'ref'> &
-        React.RefAttributes<SVGSVGElement>,
-    ) => {
-      return <Gem {...props} />;
-    },
+    features: commonFeatures,
   },
-  [PriceName.Enterprise]: {
-    id: priceIdConfig[PriceName.Enterprise],
-    title: t('price.enterprise'),
-    description: t('price.enterpriseDesc'),
-    price: '?',
-    feature: {
-      apps: '?',
-      teamMembers: '?',
-      datasetStorage: '?',
-      apiRequests: '?',
-    },
-    buttonLabel: t('price.contactUs'),
-    isUse: false,
-    icon: (
-      props?: JSX.IntrinsicAttributes &
-        Omit<LucideProps, 'ref'> &
-        React.RefAttributes<SVGSVGElement>,
-    ) => {
-      return <Building2 {...props} />;
-    },
-  },
+  [PriceName.Enterprise]: enterprise,
 };
 
 const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
   const { data: currentPlan } = useFetchCurrentPlan();
-  const { data: planList } = useFetchPlanList();
-  const queryClient = useQueryClient();
+  const { data: planList, loading } = useFetchPlanList();
   const [pricePlanList, setPricePlanList] = useState<IPricePlanWithButton[]>();
   const urlParams = useMemo(
     () => new URLSearchParams(window.location.search),
@@ -115,147 +141,123 @@ const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
   // const [searchParams, setSearchParams] = useSearchParams();
   const status = urlParams.get('price-pay-status');
   const { t } = useTranslation();
-
-  const { mutateAsync: cancelDowngrade, isPending: cancelingDowngrade } =
-    useMutation({
-      mutationKey: ['cancelScheduledDowngrade'],
-      mutationFn: async () => {
-        if (!currentPlan?.tenant_id) return;
-        const { data: res } = await cancelScheduledSubscriptionChange(
-          currentPlan.tenant_id,
-        );
-        if (res.code === 0) return res.data;
-        throw new Error(res.message || 'Failed to cancel scheduled downgrade');
-      },
-      onSuccess: async () => {
-        await queryClient.invalidateQueries({ queryKey: ['currentPlan'] });
-      },
-    });
+  const [successModal, setSuccessModal] = useState<{
+    title: string | JSX.Element;
+    content: string | JSX.Element;
+    open: boolean;
+  }>({
+    title: '',
+    content: '',
+    open: false,
+  });
 
   const openSuccessModal = useCallback(
     (status: string) => {
+      const isPaymentFailed = status === 'cancel' || status === 'error';
+
       const title = () => {
-        switch (status) {
-          case 'success':
-            return (
-              <div className="flex gap-2 items-center">
-                {t('price.paymentSuccessful')}
-              </div>
-            );
-          case 'cancel':
-            return (
-              <div className="flex gap-2 items-center">
-                <div className="p-1 w-5 h-5 flex items-center justify-center rounded-full bg-red-500">
-                  <X size={14} fontWeight={'bold'} />
-                </div>
-                {t('price.paymentFailed')}
-              </div>
-            );
-          default:
-            return 'Success';
+        if (status === 'success') {
+          return (
+            <div className="flex gap-2 items-center">
+              {t('price.paymentSuccessful')}
+            </div>
+          );
         }
+
+        if (isPaymentFailed) {
+          return (
+            <div className="flex gap-2 items-center">
+              <div className="p-1 w-5 h-5 flex items-center justify-center rounded-full bg-red-500">
+                <X size={14} fontWeight={'bold'} />
+              </div>
+              {t('price.paymentFailed')}
+            </div>
+          );
+        }
+
+        return '';
       };
       const content = () => {
-        switch (status) {
-          case 'success':
-            return (
-              <div>
-                <div className="flex items-center gap-2">
-                  {t('price.paymentSuccessfulTip')}
-                </div>
+        if (status === 'success') {
+          return (
+            <div>
+              <div className="flex items-center gap-2">
+                {t('price.paymentSuccessfulTip')}
               </div>
-            );
-          case 'error':
-            return (
-              <div>
-                <div className="flex items-center gap-2">
-                  {t('price.paymentFailedTip')}
-                </div>
-              </div>
-            );
-          default:
-            return 'Success';
+            </div>
+          );
         }
+
+        if (isPaymentFailed) {
+          return (
+            <div>
+              <div className="flex items-center gap-2">
+                {t('price.paymentFailedTip')}
+              </div>
+            </div>
+          );
+        }
+
+        return '';
       };
       if (status) {
-        // searchParams.delete('status');
-        // setSearchParams(searchParams);
-        const successModal = showModal({
-          children: (
-            <Modal
-              open={true}
-              title={title()}
-              onOpenChange={(open) => {
-                if (!open) {
-                  const urlObj = new URL(window.location.href);
-                  urlObj.searchParams.delete('price-pay-status');
-                  window.history.replaceState({}, '', urlObj.toString());
-                  successModal.destroy();
-                }
-              }}
-              className="!w-[400px]"
-              footer={
-                <div className="flex justify-end gap-2 ">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const urlObj = new URL(window.location.href);
-                      urlObj.searchParams.delete('price-pay-status');
-                      window.history.replaceState({}, '', urlObj.toString());
-                      successModal.destroy();
-                    }}
-                    className="px-2 py-1 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
-                  >
-                    {t('modal.okText')}
-                  </button>
-                </div>
-              }
-            >
-              <div className="h-32">{content()}</div>
-            </Modal>
-          ),
+        setSuccessModal({
+          title: title(),
+          content: content(),
+          open: true,
         });
       }
     },
-    [urlParams, t],
+    [t],
   );
 
   useEffect(() => {
     if (!currentPlan || !planList || planList.length <= 0) return;
-    let inUseIndex = 4;
+    const trialPlan = planList.find((plan) => plan.name === PriceName.Trial);
+    const trialPriceId = trialPlan?.price_ids;
+    const currentPlanValue =
+      PriceNameMapValue[
+        currentPlan.plan_name as keyof typeof PriceNameMapValue
+      ] ?? -1;
 
-    let plans = planList?.map((plan, index) => {
-      let tempPlan = {
-        ...pricingPlans[plan.name as keyof typeof pricingPlans],
+    let plans = planList?.map((plan) => {
+      const featureValue = {
+        apps: plan.feature.quota_apps,
+        teamMembers: plan.feature.quota_members,
+        datasetStorage: convertBytesToGb(plan.feature.quota_kb_storage),
+        credits: plan.feature.quota_points,
+      };
+      const thisPricePlan =
+        pricingPlans[plan.name as keyof typeof pricingPlans];
+      const planValue =
+        PriceNameMapValue[plan.name as keyof typeof PriceNameMapValue] ?? -1;
+      const tempPlan = {
+        ...thisPricePlan,
         name: plan.name,
-        feature: {
-          apps: plan.feature.quota_apps,
-          teamMembers: plan.feature.quota_members,
-          datasetStorage: convertBytesToGb(plan.feature.quota_kb_storage),
-          apiRequests: formatApiRequests(plan.feature.quota_api_limits),
-        },
         id: plan.price_ids,
+        cancelTargetPriceId: trialPriceId,
         price: plan.price,
         isUse: false,
+        disabled: false,
+        features: thisPricePlan.features.map((feature) => {
+          return {
+            ...feature,
+            value: featureValue[feature.key as keyof typeof featureValue],
+          };
+        }),
       };
 
       if (plan.name && currentPlan.plan_name === plan.name) {
-        inUseIndex = index;
         return {
           ...tempPlan,
           isUse: true,
           buttonLabel: t('price.inUse'),
         };
       } else {
-        const buttonLabel =
-          index < inUseIndex
-            ? t('price.reduce')
-            : index < planList.length - 1
-              ? t('price.upgrade')
-              : t('price.contactUs');
         return {
           ...tempPlan,
-          buttonLabel,
+          buttonLabel: t('price.upgrade'),
+          disabled: planValue < currentPlanValue,
         };
       }
     });
@@ -263,6 +265,23 @@ const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
     if (isUpgrade) {
       plans = plans.filter((plan) => plan.name !== PriceName.Trial);
     }
+    plans.push({
+      ...enterprise,
+      name: PriceName.Enterprise,
+      isPopular: false,
+      disabled: false,
+      buttonLabel: t('price.contactUs'),
+    });
+
+    // Ensure the pricing cards are displayed in the correct order regardless of the backend response order
+    plans.sort((a, b) => {
+      const valueA =
+        PriceNameMapValue[a.name as keyof typeof PriceNameMapValue] ?? -1;
+      const valueB =
+        PriceNameMapValue[b.name as keyof typeof PriceNameMapValue] ?? -1;
+      return valueA - valueB;
+    });
+
     setPricePlanList(plans as unknown as IPricePlanWithButton[]);
   }, [currentPlan, planList, t, isUpgrade]);
 
@@ -275,69 +294,61 @@ const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
   //   showPriceModal(ref);
   return (
     <>
-      {currentPlan?.pending_subscription_change?.schedule_id && (
-        <div className="mb-4 p-4 rounded-md border border-border-default bg-bg-card flex items-center justify-between">
-          <div className="text-sm">
-            Downgrade scheduled to{' '}
-            <span className="font-medium">
-              {currentPlan.pending_subscription_change.pending_plan_name ||
-                'the selected plan'}
-            </span>
-            {currentPlan.pending_subscription_change.effective_at
-              ? ` at ${currentPlan.pending_subscription_change.effective_at}`
-              : ' at period end'}
-            .
-          </div>
-          <ButtonLoading
-            size="sm"
-            variant="outline"
-            loading={cancelingDowngrade}
-            onClick={async () => {
-              try {
-                await cancelDowngrade();
-                const modal = showModal({
-                  children: (
-                    <Modal
-                      open={true}
-                      title="Downgrade canceled"
-                      onOpenChange={(open) => {
-                        if (!open) modal.destroy();
-                      }}
-                      className="!w-[400px]"
-                    >
-                      <div className="h-20">
-                        Your scheduled downgrade has been canceled.
-                      </div>
-                    </Modal>
-                  ),
-                });
-              } catch (e: any) {
-                const modal = showModal({
-                  children: (
-                    <Modal
-                      open={true}
-                      title="Cancel failed"
-                      onOpenChange={(open) => {
-                        if (!open) modal.destroy();
-                      }}
-                      className="!w-[400px]"
-                    >
-                      <div className="h-20">
-                        {e?.message || 'Failed to cancel scheduled downgrade.'}
-                      </div>
-                    </Modal>
-                  ),
+      {(loading || !pricePlanList) && (
+        <div className="flex justify-center items-center h-[200px] w-full">
+          <Loader2 className="animate-spin" />
+        </div>
+      )}
+      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-10">
+        {!loading &&
+          pricePlanList?.map((plan, index) => (
+            <PricingCard key={index} {...plan} />
+          ))}
+
+        {successModal.open && (
+          <Modal
+            open={true}
+            title={successModal.title}
+            onOpenChange={(open) => {
+              if (!open) {
+                const urlObj = new URL(window.location.href);
+                urlObj.searchParams.delete('price-pay-status');
+                window.history.replaceState({}, '', urlObj.toString());
+                // successModal.destroy();
+                setSuccessModal({
+                  open: false,
+                  title: '',
+                  content: '',
                 });
               }
             }}
+            className="!w-[400px]"
+            footer={
+              <div className="flex justify-end gap-2 ">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const urlObj = new URL(window.location.href);
+                    urlObj.searchParams.delete('price-pay-status');
+                    window.history.replaceState({}, '', urlObj.toString());
+                    setSuccessModal({
+                      open: false,
+                      title: '',
+                      content: '',
+                    });
+                    // successModal.destroy();
+                  }}
+                  className="px-2 py-1 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+                >
+                  {t('modal.okText')}
+                </button>
+              </div>
+            }
           >
-            Cancel downgrade
-          </ButtonLoading>
-        </div>
-      )}
-      {pricePlanList?.map((plan, index) => (
-        <PricingCard key={index} {...plan} />
-      ))}
+            <div className="h-32">{successModal.content}</div>
+          </Modal>
+        )}
+      </div>
     </>
   );
 };

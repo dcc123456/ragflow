@@ -39,7 +39,8 @@ from common.config_utils import show_configs
 from common.mcp_tool_call_conn import shutdown_all_mcp_sessions
 from common.log_utils import init_root_logger
 from agent.plugin import GlobalPluginManager
-from rag.utils.redis_conn import RedisDistributedLock, REDIS_CONN
+from rag.utils.redis_conn import RedisDistributedLock
+
 
 stop_event = threading.Event()
 
@@ -71,22 +72,6 @@ def signal_handler(sig, frame):
     sys.exit(0)
 
 
-def clear_billing_plans_cache() -> None:
-    if not settings.BILLING_ENABLED:
-        return
-    cache_keys = [
-        settings.BILLING.get("plans_cache_key", "saas:billing:plans:latest"),
-        settings.BILLING.get("usage_based_plans_cache_key", "saas:billing:usage_based:latest"),
-    ]
-    cache_keys = [key for key in cache_keys if key]
-    if not cache_keys:
-        return
-    if REDIS_CONN.is_alive():
-        for cache_key in cache_keys:
-            REDIS_CONN.delete(cache_key)
-    else:
-        logging.warning("Redis unavailable; skip clearing billing plans cache.")
-
 if __name__ == '__main__':
     faulthandler.enable()
     init_root_logger("ragflow_server")
@@ -107,7 +92,6 @@ if __name__ == '__main__':
     show_configs()
     settings.init_settings()
     settings.print_rag_settings()
-    clear_billing_plans_cache()
 
     if RAGFLOW_DEBUGPY_LISTEN > 0:
         logging.info(f"debugpy listen on {RAGFLOW_DEBUGPY_LISTEN}")

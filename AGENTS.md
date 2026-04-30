@@ -419,3 +419,82 @@ RAGFlow supports switching between Elasticsearch (default) and Infinity:
 - **Kubernetes Cluster**: v1.24+ with kubectl access configured
 - **Gateway API**: Requires Cilium or NGINX Gateway support
 - **Helm**: For installing Gateway API components
+
+
+<claude-mem-context>
+# Memory Context
+
+# [ragflow_enterprise] recent context, 2026-04-28 3:56am UTC
+
+Legend: 🎯session 🔴bugfix 🟣feature 🔄refactor ✅change 🔵discovery ⚖️decision 🚨security_alert 🔐security_note
+Format: ID TIME TYPE TITLE
+Fetch details: get_observations([IDs]) | Search: mem-search skill
+
+Stats: 50 obs (12,880t read) | 433,440t work | 97% savings
+
+### Apr 25, 2026
+117 5:47a 🔵 Webhook signature verification failing on pod kkfkw
+121 5:51a 🔴 Added session_id query parameter to Stripe checkout success URLs
+122 " 🔵 Stripe webhook signature verification fails on replica kkfkw
+123 " 🔵 Empty metadata in payment_intent.succeeded causes recharge skip
+124 " 🔴 Applied _build_checkout_success_url across all Stripe checkout paths
+125 " 🔴 /success endpoint now returns error status instead of cancel for missing session_id
+126 5:53a 🔴 Stripe checkout success URL now includes session ID for frontend verification
+127 " 🔴 Buy Credits payment modal now displays correct title and content
+### Apr 27, 2026
+133 1:39a ✅ Amended billing split commit message from feat to fix
+134 1:55a 🔵 PR #362 review comments reveal 15 code issues
+136 1:56a 🔵 PriceType/ProductType enums confirmed as ADDON not USAGE_BASED
+137 1:57a 🔵 DB model choices use 'usage_based' while enum uses 'addon'
+138 " 🔴 PR #362 review comments fixed in billing_app.py and init_data.py
+139 3:09a 🔵 CI build failure on deepdoc Dockerfile
+140 3:10a 🔵 PointAccount sync_plan_points_on_subscription_paid is idempotent
+141 " 🔵 CI failure in ragflow_enterprise deepdoc Dockerfile
+S140 Fix CI test failure test_invoice_paid_updates_existing_failed_order_and_restores_active in ragflow_enterprise (Apr 27, 3:18 AM)
+144 3:18a 🔵 uv sync fails due to graspologic gitee mirror SSL timeout
+S141 CI failure investigation on ragflow_enterprise GitHub Actions (Apr 27, 3:24 AM)
+145 3:25a 🔵 CI failure investigation on ragflow_enterprise GitHub Actions
+S142 PDF batch processing reduces parser peak memory (Apr 27, 3:25 AM)
+146 3:35a 🟣 Batch PDF parsing reduces parser peak memory
+147 " ✅ OCR memory optimization with lazy numpy view creation
+148 " 🟣 DEEPDOC_URL mode skips local Layout ONNX model initialization
+149 " ✅ DLA serialization JPEG bytes generated once and reused
+150 " 🔵 Memory optimization verification blocked by graspologic dependency timeout
+151 3:36a 🟣 PDF batch processing reduces parser peak memory
+152 " ✅ OCR temporary memory optimization
+153 " ✅ DEEPDOC_URL mode skips local Layout ONNX initialization
+154 " ✅ DLA serialization reuses JPEG bytes to reduce allocations
+S143 billing_all_plans API to include quota_points per plan (Apr 27, 3:36 AM)
+155 5:44a 🟣 billing_all_plans needs to return quota_points per plan
+156 " 🟣 billing_all_plans API to include quota_points per plan
+S152 Investigating billing_webhook signature verification: determine if failed signature check crashes the process or returns 400 correctly (Apr 27, 5:44 AM)
+157 6:18a 🔵 Claude tool call failures traced to bwrap loopback sandbox restriction
+158 6:19a 🔵 ragflow_enterprise has MCP tool-call infrastructure in common/mcp_tool_call_conn.py
+160 7:25a 🔴 Stripe webhook signature verification failing in ragflow pod
+162 7:26a 🔵 Billing webhook secret fetched dynamically from database with in-memory cache
+S156 Storage checkout backend returns redirect_to correctly but frontend not processing it (Apr 27, 7:28 AM)
+163 7:29a 🔴 MCP smart_search tool calls failing in ragflow_enterprise
+164 " 🔵 MySQL root access denied - ragflow user credentials work for database queries
+165 7:48a 🔵 Stripe webhook secret verified matching between dashboard and database
+166 8:09a 🔴 Buy Storage not redirecting to Stripe payment page
+167 " 🔵 Storage checkout returns redirect_to field in response
+169 " 🔵 Storage checkout returns different response formats per scenario
+170 8:10a 🔵 Storage checkout backend returns redirect_to correctly but frontend not processing it
+S179 Implement idempotency for subscription cancellation when managed by subscription schedule (Apr 27, 8:10 AM)
+173 8:40a 🔴 Switched parse_storage_size from binary to decimal units
+175 8:41a 🔴 Aligned convertBytesToGb frontend to use decimal GB units
+176 " 🔵 Three more 1024-based BYTES_PER_GB constants found in billing code
+177 8:42a 🔴 Aligned all storage quota conversions to decimal (1000) units
+178 8:43a 🔵 formatBytes uses inconsistent units after decimal conversion
+179 9:20a 🟣 Subscription cancellation idempotency for subscription schedules
+S181 Rewrite HEAD commit message to describe the actual billing fix for delinquent subscription handling (Apr 27, 9:20 AM)
+### Apr 28, 2026
+S184 Create PR from stage branch to saas branch on origin with auto-generated title and body (Apr 28, 1:43 AM)
+182 3:41a 🔄 billing_points_checkout now extracts session success/cancel URLs like billing_checkout
+S187 billing_points_checkout now extracts session success/cancel URLs like billing_checkout (Apr 28, 3:41 AM)
+183 3:42a 🔄 billing_points_checkout should extract URL params like billing_checkout
+184 3:43a 🔄 billing_points_checkout added session_success_url and session_cancel_url parameter extraction
+185 3:48a 🔄 billing_points_checkout aligned with billing_checkout URL extraction
+
+Access 433k tokens of past work via get_observations([IDs]) or mem-search skill.
+</claude-mem-context>

@@ -303,8 +303,21 @@ class UserTenantService(CommonService):
 
     @classmethod
     @DB.connection_context()
-    def get_num_members(cls, user_id: str):
-        cnt_members = cls.model.select(peewee.fn.COUNT(cls.model.id)).where(cls.model.tenant_id == user_id).scalar()
+    def get_num_members(cls, tenant_id: str):
+        billable_roles = (
+            UserTenantRole.OWNER,
+            UserTenantRole.ADMIN,
+            UserTenantRole.NORMAL,
+        )
+        cnt_members = (
+            cls.model.select(peewee.fn.COUNT(cls.model.id))
+            .where(
+                (cls.model.tenant_id == tenant_id)
+                & (cls.model.status == StatusEnum.VALID.value)
+                & (cls.model.role.in_(billable_roles))
+            )
+            .scalar()
+        )
         return cnt_members
 
     @classmethod

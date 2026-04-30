@@ -28,6 +28,7 @@ const NumberInput = forwardRef<HTMLInputElement, InputProps & NumberInputProps>(
       value: initialValue,
       onChange,
       height,
+      step = 1,
       min = 0,
       max = Infinity,
     },
@@ -47,8 +48,8 @@ const NumberInput = forwardRef<HTMLInputElement, InputProps & NumberInputProps>(
 
     const handleDecrement = () => {
       if (isNumber(value) && value > min) {
-        setValue(value - 1);
-        onChange?.(value - 1);
+        setValue(value - step);
+        onChange?.(value - step);
       }
     };
 
@@ -59,8 +60,8 @@ const NumberInput = forwardRef<HTMLInputElement, InputProps & NumberInputProps>(
       if (value > max - 1) {
         return;
       }
-      setValue(value + 1);
-      onChange?.(value + 1);
+      setValue(value + step);
+      onChange?.(value + step);
     };
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {

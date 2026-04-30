@@ -46,6 +46,7 @@ from api.utils.api_utils import (
     validate_request
 )
 from common.constants import RetCode
+from api.common.priority_provider import get_tenant_priority
 from deepdoc.parser.excel_parser import RAGFlowExcelParser
 from rag.utils.redis_conn import REDIS_CONN
 
@@ -546,6 +547,7 @@ async def start_evaluation(run_id: str):
         metrics_name = req.get("metrics_name")
         success, task_id = EvaluationService.queue_run_task(
             run_id,
+            priority=get_tenant_priority(current_user.id),
             case_ids=case_ids,
             metrics_name=metrics_name,
         )

@@ -18,6 +18,7 @@ import json
 import os
 from common.constants import PAGERANK_FLD
 from common import settings
+from api.common.priority_provider import get_tenant_priority
 from api.db import PermissionValue
 from api.db.db_models import File
 from api.db.services.document_service import DocumentService, queue_raptor_o_graphrag_tasks
@@ -29,6 +30,7 @@ from api.db.services.task_service import GRAPH_RAPTOR_FAKE_DOC_ID, TaskService
 from api.db.services.user_service import TenantService, UserService
 from common.constants import FileSource, StatusEnum
 from api.utils.api_utils import deep_merge, get_parser_config, remap_dictionary_keys, verify_embedding_availability
+
 
 
 async def create_dataset(tenant_id: str, req: dict):
@@ -122,7 +124,7 @@ async def delete_datasets(tenant_id: str, ids: list = None, delete_all: bool = F
     success_count = 0
     for kb_id, kb in kb_id_instance_pairs:
         for doc in DocumentService.query(kb_id=kb_id):
-            if not DocumentService.remove_document(doc, tenant_id):
+            if not DocumentService.remove_document(doc, kb.tenant_id):
                 errors.append(f"Remove document '{doc.id}' error for dataset '{kb_id}'")
                 continue
             f2d = File2DocumentService.get_by_document_id(doc.id)
@@ -171,9 +173,9 @@ async def update_dataset(tenant_id: str, dataset_id: str, req: dict):
     if not req:
         return False, "No properties were modified"
 
-    kb = KnowledgebaseService.get_or_none(id=dataset_id, tenant_id=tenant_id)
-    if kb is None:
-        return False, f"User '{tenant_id}' lacks permission for dataset '{dataset_id}'"
+    ok, kb = KnowledgebaseService.get_by_id(dataset_id)
+    if not ok or kb is None:
+        return False, "Dataset not found"
 
     # Extract ext field for additional parameters
     ext_fields = req.pop("ext", {})
@@ -230,7 +232,7 @@ async def update_dataset(tenant_id: str, dataset_id: str, req: dict):
         req["pipeline_id"] = ""
 
     if "name" in req and req["name"].lower() != kb.name.lower():
-        exists = KnowledgebaseService.get_or_none(name=req["name"], tenant_id=tenant_id,
+        exists = KnowledgebaseService.get_or_none(name=req["name"], tenant_id=kb.tenant_id,
                                                   status=StatusEnum.VALID.value)
         if exists:
             return False, f"Dataset name '{req['name']}' already exists"
@@ -240,7 +242,7 @@ async def update_dataset(tenant_id: str, dataset_id: str, req: dict):
             req["embd_id"] = kb.embd_id
         if kb.chunk_num != 0 and req["embd_id"] != kb.embd_id:
             return False, f"When chunk_num ({kb.chunk_num}) > 0, embedding_model must remain {kb.embd_id}"
-        ok, err = verify_embedding_availability(req["embd_id"], tenant_id)
+        ok, err = verify_embedding_availability(req["embd_id"], kb.tenant_id)
         if not ok:
             return False, err
 
@@ -268,7 +270,7 @@ async def update_dataset(tenant_id: str, dataset_id: str, req: dict):
         return False, "Dataset updated failed"
 
     # Link connectors to the dataset
-    errors = Connector2KbService.link_connectors(kb.id, [conn for conn in connectors], tenant_id)
+    errors = Connector2KbService.link_connectors(kb.id, [conn for conn in connectors], kb.tenant_id)
     if errors:
         logging.error("Link KB errors: %s", errors)
 
@@ -350,9 +352,9 @@ async def get_knowledge_graph(dataset_id: str, tenant_id: str):
     :param tenant_id: tenant ID
     :return: (success, result) or (success, error_message)
     """
-    if not KnowledgebaseService.accessible(dataset_id, tenant_id):
-        return False, "No authorization."
-    _, kb = KnowledgebaseService.get_by_id(dataset_id)
+    ok, kb = KnowledgebaseService.get_by_id(dataset_id)
+    if not ok or kb is None:
+        return False, "Dataset not found"
 
     req = {
         "kb_id": [dataset_id],
@@ -394,9 +396,9 @@ def delete_knowledge_graph(dataset_id: str, tenant_id: str):
     :param tenant_id: tenant ID
     :return: (success, result) or (success, error_message)
     """
-    if not KnowledgebaseService.accessible(dataset_id, tenant_id):
-        return False, "No authorization."
-    _, kb = KnowledgebaseService.get_by_id(dataset_id)
+    ok, kb = KnowledgebaseService.get_by_id(dataset_id)
+    if not ok or kb is None:
+        return False, "Dataset not found"
     from rag.nlp import search
     settings.docStoreConn.delete({"knowledge_graph_kwd": ["graph", "subgraph", "entity", "relation"]},
                                  search.index_name(kb.tenant_id), dataset_id)
@@ -414,12 +416,9 @@ def run_graphrag(dataset_id: str, tenant_id: str):
     """
     if not dataset_id:
         return False, 'Lack of "Dataset ID"'
-    if not KnowledgebaseService.accessible(dataset_id, tenant_id):
-        return False, "No authorization."
-
     ok, kb = KnowledgebaseService.get_by_id(dataset_id)
-    if not ok:
-        return False, "Invalid Dataset ID"
+    if not ok or kb is None:
+        return False, "Dataset not found"
 
     task_id = kb.graphrag_task_id
     if task_id:
@@ -447,7 +446,7 @@ def run_graphrag(dataset_id: str, tenant_id: str):
     sample_document = documents[0]
     document_ids = [document["id"] for document in documents]
 
-    task_id = queue_raptor_o_graphrag_tasks(sample_doc_id=sample_document, ty="graphrag", priority=0, fake_doc_id=GRAPH_RAPTOR_FAKE_DOC_ID, doc_ids=list(document_ids))
+    task_id = queue_raptor_o_graphrag_tasks(sample_doc_id=sample_document, ty="graphrag", priority=get_tenant_priority(tenant_id), fake_doc_id=GRAPH_RAPTOR_FAKE_DOC_ID, doc_ids=list(document_ids))
 
     if not KnowledgebaseService.update_by_id(kb.id, {"graphrag_task_id": task_id}):
         logging.warning(f"Cannot save graphrag_task_id for Dataset {dataset_id}")
@@ -465,12 +464,9 @@ def trace_graphrag(dataset_id: str, tenant_id: str):
     """
     if not dataset_id:
         return False, 'Lack of "Dataset ID"'
-    if not KnowledgebaseService.accessible(dataset_id, tenant_id):
-        return False, "No authorization."
-
     ok, kb = KnowledgebaseService.get_by_id(dataset_id)
     if not ok:
-        return False, "Invalid Dataset ID"
+        return False, "Dataset not found"
 
     task_id = kb.graphrag_task_id
     if not task_id:
@@ -493,12 +489,9 @@ def run_raptor(dataset_id: str, tenant_id: str):
     """
     if not dataset_id:
         return False, 'Lack of "Dataset ID"'
-    if not KnowledgebaseService.accessible(dataset_id, tenant_id):
-        return False, "No authorization."
-
     ok, kb = KnowledgebaseService.get_by_id(dataset_id)
     if not ok:
-        return False, "Invalid Dataset ID"
+        return False, "Dataset not found"
 
     task_id = kb.raptor_task_id
     if task_id:
@@ -526,7 +519,7 @@ def run_raptor(dataset_id: str, tenant_id: str):
     sample_document = documents[0]
     document_ids = [document["id"] for document in documents]
 
-    task_id = queue_raptor_o_graphrag_tasks(sample_doc_id=sample_document, ty="raptor", priority=0, fake_doc_id=GRAPH_RAPTOR_FAKE_DOC_ID, doc_ids=list(document_ids))
+    task_id = queue_raptor_o_graphrag_tasks(sample_doc_id=sample_document, ty="raptor", priority=get_tenant_priority(tenant_id), fake_doc_id=GRAPH_RAPTOR_FAKE_DOC_ID, doc_ids=list(document_ids))
 
     if not KnowledgebaseService.update_by_id(kb.id, {"raptor_task_id": task_id}):
         logging.warning(f"Cannot save raptor_task_id for Dataset {dataset_id}")
@@ -544,13 +537,9 @@ def trace_raptor(dataset_id: str, tenant_id: str):
     """
     if not dataset_id:
         return False, 'Lack of "Dataset ID"'
-
-    if not KnowledgebaseService.accessible(dataset_id, tenant_id):
-        return False, "No authorization."
-
     ok, kb = KnowledgebaseService.get_by_id(dataset_id)
-    if not ok:
-        return False, "Invalid Dataset ID"
+    if not ok or kb is None:
+        return False, "Dataset not found"
 
     task_id = kb.raptor_task_id
     if not task_id:
@@ -571,9 +560,9 @@ def get_auto_metadata(dataset_id: str, tenant_id: str):
     :param tenant_id: tenant ID
     :return: (success, result) or (success, error_message)
     """
-    kb = KnowledgebaseService.get_or_none(id=dataset_id, tenant_id=tenant_id)
-    if kb is None:
-        return False, f"User '{tenant_id}' lacks permission for dataset '{dataset_id}'"
+    ok, kb = KnowledgebaseService.get_by_id(dataset_id)
+    if not ok or kb is None:
+        return False, "Dataset not found"
 
     parser_cfg = kb.parser_config or {}
     metadata = parser_cfg.get("metadata") or []
@@ -604,9 +593,9 @@ async def update_auto_metadata(dataset_id: str, tenant_id: str, cfg: dict):
     :param cfg: auto-metadata configuration
     :return: (success, result) or (success, error_message)
     """
-    kb = KnowledgebaseService.get_or_none(id=dataset_id, tenant_id=tenant_id)
-    if kb is None:
-        return False, f"User '{tenant_id}' lacks permission for dataset '{dataset_id}'"
+    ok, kb = KnowledgebaseService.get_by_id(dataset_id)
+    if not ok or kb is None:
+        return False, "Dataset not found"
 
     parser_cfg = kb.parser_config or {}
     fields = []

@@ -1,9 +1,11 @@
+import message from '@/components/ui/message';
 import { Modal } from '@/components/ui/modal/modal';
-import { useFetchTenantInfo } from '@/hooks/use-user-setting-request';
-import billingService, { billinCheckout } from '@/services/price';
+import { useFetchTenantData } from '@/hooks/use-user-setting-request';
+import { BillingQueryKey } from '@/pages/billing/constants/query-keys';
+import billingService, { billingCheckout } from '@/services/price';
 import storagePrivate from '@/utils/authorization-private-util';
 import storage from '@/utils/authorization-util';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import React from 'react';
 import { ICurrentPlan, IPlan, IPricePlanWithButton } from '../interface';
 import { showModal } from '../price-modal/show-modal';
@@ -13,12 +15,67 @@ export type IChargePlan = {
   usage_based_price_id?: string;
 };
 export const PriceChargeKey = 'price-charge';
-const useCharge = () => {
-  const { data: tenantInfo } = useFetchTenantInfo();
-  const tenantId = tenantInfo?.tenant_id;
+
+const buildCheckoutUrls = () => {
   const url = window.location.href;
-  const successUrl = `${url.split('?')[0]}?price-pay-status=success${url.split('?')[1] || ''}`;
-  const errorUrl = `${url.split('?')[0]}?price-pay-status=cancel${url.split('?')[1] || ''}`;
+
+  return {
+    successUrl: `${url.split('?')[0]}?price-pay-status=success${url.split('?')[1] || ''}`,
+    errorUrl: `${url.split('?')[0]}?price-pay-status=cancel${url.split('?')[1] || ''}`,
+  };
+};
+
+export const useCancelPlan = () => {
+  const queryClient = useQueryClient();
+  const {
+    data,
+    isPending: loading,
+    mutateAsync,
+  } = useMutation({
+    mutationKey: ['cancelPlan'],
+    mutationFn: async ({
+      tenantId,
+      targetPriceId,
+    }: {
+      tenantId: string;
+      targetPriceId: string;
+    }) => {
+      const { successUrl, errorUrl } = buildCheckoutUrls();
+      const { data: res } = await billingCheckout({
+        tenantId,
+        subscription_price_id: targetPriceId,
+        payment_type: 'subscription',
+        quantity: '1',
+        session_cancel_url: errorUrl,
+        session_success_url: successUrl,
+      });
+      if (res.code === 0) {
+        if (res.data?.redirect_to) {
+          window.location.href = res.data.redirect_to;
+        }
+        message.success(res.message);
+        return res.data;
+      }
+      return res?.code;
+    },
+  });
+
+  const cancel = async (tenantId: string, targetPriceId: string) => {
+    const result = await mutateAsync({ tenantId, targetPriceId });
+    if (result !== undefined) {
+      await queryClient.invalidateQueries({
+        queryKey: [BillingQueryKey.CurrentPlan],
+      });
+    }
+    return result;
+  };
+
+  return { data, loading, cancel };
+};
+const useCharge = () => {
+  const { data: tenantInfo } = useFetchTenantData();
+  const tenantId = tenantInfo?.tenant_id;
+  const { successUrl, errorUrl } = buildCheckoutUrls();
 
   const {
     data,
@@ -35,7 +92,7 @@ const useCharge = () => {
       quantity: string;
       payment_type: 'subscription' | 'usage_based';
     }) => {
-      const { data } = await billinCheckout({
+      const { data } = await billingCheckout({
         tenantId: tenantId,
         subscription_price_id:
           payment_type === 'subscription' ? price_id : undefined,
@@ -60,53 +117,50 @@ const useCharge = () => {
     if (data.isUse) {
       return;
     }
-    if (data.id === 'Enterprise') {
-      // window.open('http://www.baidu.com');
-    } else {
-      const chargeResult = await mutateAsync({
-        price_id: data.id,
-        quantity: '1',
-        payment_type: 'subscription',
-      });
-      if (chargeResult && chargeResult.redirect_to) {
-        window.open(chargeResult.redirect_to);
-      } else if (chargeResult && chargeResult.scheduled_change) {
-        const effectiveAt = chargeResult?.scheduled_change?.effective_at;
-        const modal = showModal({
-          children: React.createElement(
-            Modal,
-            {
-              open: true,
-              title: 'Downgrade scheduled',
-              onOpenChange: (open: boolean) => {
-                if (!open) {
-                  modal.destroy();
-                }
-              },
-              className: '!w-[400px]',
-              footer: React.createElement(
-                'div',
-                { className: 'flex justify-end gap-2' },
-                React.createElement(
-                  'button',
-                  {
-                    type: 'button',
-                    onClick: () => modal.destroy(),
-                    className:
-                      'px-2 py-1 bg-primary text-primary-foreground rounded-md hover:bg-primary/90',
-                  },
-                  'OK',
-                ),
-              ),
+
+    const chargeResult = await mutateAsync({
+      price_id: data.id,
+      quantity: '1',
+      payment_type: 'subscription',
+    });
+    if (chargeResult && chargeResult.redirect_to) {
+      window.location.href = chargeResult.redirect_to;
+    } else if (chargeResult && chargeResult.scheduled_change) {
+      const effectiveAt = chargeResult?.scheduled_change?.effective_at;
+      const modal = showModal({
+        children: React.createElement(
+          Modal,
+          {
+            open: true,
+            title: 'Downgrade scheduled',
+            onOpenChange: (open: boolean) => {
+              if (!open) {
+                modal.destroy();
+              }
             },
-            React.createElement(
+            className: '!w-[400px]',
+            footer: React.createElement(
               'div',
-              { className: 'h-32' },
-              `Your plan will downgrade at the end of the current billing period${effectiveAt ? ` (${effectiveAt})` : ''}.`,
+              { className: 'flex justify-end gap-2' },
+              React.createElement(
+                'button',
+                {
+                  type: 'button',
+                  onClick: () => modal.destroy(),
+                  className:
+                    'px-2 py-1 bg-primary text-primary-foreground rounded-md hover:bg-primary/90',
+                },
+                'OK',
+              ),
             ),
+          },
+          React.createElement(
+            'div',
+            { className: 'h-32' },
+            `Your plan will downgrade at the end of the current billing period${effectiveAt ? ` (${effectiveAt})` : ''}.`,
           ),
-        });
-      }
+        ),
+      });
     }
   };
   return { data, loading, charge, checkout: mutateAsync };
@@ -115,12 +169,12 @@ const useCharge = () => {
 const useFetchCurrentPlan = (force = false) => {
   const user = storage.getUserInfo();
   const { data, isFetching: loading } = useQuery<ICurrentPlan>({
-    queryKey: ['currentPlan'],
+    queryKey: [BillingQueryKey.CurrentPlan],
     // initialData: {},
     enabled: !!user,
     gcTime: force ? 0 : 50000,
     queryFn: async () => {
-      const { data: res } = await billingService?.getCurrentPlan();
+      const { data: res } = await billingService.getCurrentPlan();
       if (res.code === 0) {
         const { data } = res;
         storagePrivate.setPricePlan(JSON.stringify(data));
@@ -134,11 +188,11 @@ const useFetchCurrentPlan = (force = false) => {
 
 const useFetchPlanList = (force = false) => {
   const { data, isFetching: loading } = useQuery<IPlan[]>({
-    queryKey: ['getPlanList'],
+    queryKey: [BillingQueryKey.PlanList],
     // initialData: {},
     gcTime: force ? 0 : 50000,
     queryFn: async () => {
-      const { data: res } = await billingService?.getPlanList();
+      const { data: res } = await billingService.getPlanList();
       if (res.code === 0) {
         const { data } = res;
         // storage.setPricePlan(JSON.stringify(data));
@@ -157,11 +211,17 @@ const getNextMonth = {
     return nextMonth;
   },
 
-  getNextMonthFirstDayFormatted: () => {
-    const nextMonth = getNextMonth.getNextMonthFirstDay();
-    const year = nextMonth.getFullYear();
-    const month = String(nextMonth.getMonth() + 1).padStart(2, '0');
-    const day = String(nextMonth.getDate()).padStart(2, '0');
+  get31Day: () => {
+    const today = new Date();
+    const futureDate = new Date(today.getTime() + 31 * 24 * 60 * 60 * 1000);
+    return futureDate;
+  },
+
+  getDayFormatted: (date: Date) => {
+    const thisDate = date;
+    const year = thisDate.getFullYear();
+    const month = String(thisDate.getMonth() + 1).padStart(2, '0');
+    const day = String(thisDate.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
   },
 };

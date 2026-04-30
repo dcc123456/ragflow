@@ -1,32 +1,42 @@
+import React from 'react';
 import { PriceName } from './constant';
 
 export interface IFeatureProps {
-  apps: string;
-  teamMembers: string;
-  datasetStorage: string;
-  apiRequests: string;
+  // apps: string;
+  // teamMembers: string;
+  // datasetStorage: string;
+  // apiRequests: string;
+  key: 'apps' | 'teamMembers' | 'datasetStorage' | 'apiRequests' | 'credits';
+  value: string | number;
+  icon: React.ReactNode;
+  name: string;
 }
 export interface IPricePlan {
   id: string;
   title: string;
   description: string;
   price: string;
-  feature: IFeatureProps;
+  features: IFeatureProps[];
 }
 
 export type IPricePlanWithButton = IPricePlan & {
+  name?: string;
   isPopular?: boolean;
   buttonLabel: string;
   isUse: boolean;
+  disabled?: boolean;
+  cancelTargetPriceId?: string;
   icon: () => JSX.Element;
 };
 
 export type IConfirmPlan = IPricePlan & {
   priceDifference: string;
+  nextBillingDate?: number;
 };
 
 export interface IPlanFeature {
   quota_api_limits: number;
+  quota_points: number;
   quota_apps: number;
   quota_kb_storage: number;
   quota_members: number;

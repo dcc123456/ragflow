@@ -69,6 +69,44 @@ def has_permission_for_member(operator_id, tenant_id, resource_id, resource_type
         return (False, None, PermissionValue.PERMISSION_NULL.value)
 
 
+def resolve_kb_with_permission(user_id, kb_id, required_permission=PermissionValue.PERMISSION_READ):
+    """Resolve a KB for an entrypoint after checking the caller's KB permission.
+
+    Loads the KB and verifies ``user_id`` has at least ``required_permission`` via
+    KB authorship or an explicit Permission-table grant (the same paths the
+    decorator honors via ``has_permission_for_member``). Returns
+    ``(kb, error_message)``; ``kb`` is ``None`` when access is denied.
+
+    Use this from entrypoints where the decorator can't be applied, such as SDK
+    routes that receive the API-token owner as a function argument.
+    """
+    from api.db.services.knowledgebase_service import KnowledgebaseService
+    from api.db.services.user_service import UserTenantService
+    from common.constants import StatusEnum
+
+    ok, kb = KnowledgebaseService.get_by_id(kb_id)
+    if not ok or kb.status != StatusEnum.VALID.value:
+        return None, f"User '{user_id}' lacks permission for dataset '{kb_id}'"
+
+    user_tenants = UserTenantService.query(user_id=user_id) or []
+    for ut in user_tenants:
+        if ut.tenant_id != kb.tenant_id:
+            continue
+        if kb.created_by == user_id:
+            return kb, None
+        granted, _, _ = has_permission_for_member(
+            operator_id=ut.id,
+            tenant_id=ut.tenant_id,
+            resource_id=kb_id,
+            resource_type=ResourceType.KB,
+            permission=required_permission,
+        )
+        if granted:
+            return kb, None
+
+    return None, f"User '{user_id}' lacks permission for dataset '{kb_id}'"
+
+
 def wrap_permission_info(permission_info):
     """
     Return format:
@@ -190,7 +228,12 @@ def check_kb_permission(permission):
             else:  # GET、DELETE
                 req_data = request.args or {}
 
-            kb_id = req_data.get("kb_id") or kwargs.get("kb_id")
+            kb_id = (
+                req_data.get("kb_id")
+                or kwargs.get("kb_id")
+                or req_data.get("dataset_id")
+                or kwargs.get("dataset_id")
+            )
             if not kb_id:
                 return get_json_result(data=False, message="Missing required parameter `kb_id`.", code=RetCode.ARGUMENT_ERROR)
 
@@ -212,6 +255,9 @@ def check_kb_permission(permission):
                         operator_id=user_tenant.id, tenant_id=user_tenant.tenant_id, resource_id=kb_id, resource_type=ResourceType.KB, permission=permission
                     )[0]:
                         g.tenant_id = user_tenant.tenant_id
+                        g.kb = kb_record
+                        if "tenant_id" in kwargs:
+                            kwargs["tenant_id"] = user_tenant.tenant_id
                         if inspect.iscoroutinefunction(foo):
                             return await foo(*args, **kwargs)
                         return foo(*args, **kwargs)

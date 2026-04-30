@@ -247,6 +247,26 @@ tofu plan
 tofu apply -auto-approve
 ```
 
+## Cluster-Scoped Resource Ownership
+
+BYOK now resolves cluster-scoped ownership in Terraform core so behavior is reusable
+across CI and non-CI callers.
+
+- Default mode: `cluster_scoped_resource_mode = "auto"`
+- Auto decision order:
+1. If local state already owns cluster-scoped resources (`helm_release.eck_operator` and, on GKE, `kubernetes_manifest.elasticsearch_compute_class`), BYOK keeps ownership enabled.
+2. Otherwise, if a shared ECK operator is already installed in `elastic-system`, BYOK reuses it (`manage_cluster_scoped_resources=false`).
+3. Otherwise, BYOK bootstraps cluster-scoped resources (`manage_cluster_scoped_resources=true`).
+
+To force manual behavior:
+
+```hcl
+cluster_scoped_resource_mode    = "manual"
+manage_cluster_scoped_resources = false
+```
+
+Use manual mode if you need to explicitly pin ownership regardless of cluster detection.
+
 ## Cloud Provider Configuration
 
 ### Image Registry Configuration
@@ -447,8 +467,8 @@ The following table shows the default resource values for each environment. Copy
 | Storage | mysql_k8s_storage | 500 Gi | 20 Gi |
 | CPU Request | mysql_cpu_request | 4 | 2 |
 | CPU Limit | mysql_cpu_limit | 8 | 8 |
-| Memory Request | mysql_memory_request | 8Gi | 8Gi |
-| Memory Limit | mysql_memory_limit | 16Gi | 16Gi |
+| Memory Request | mysql_memory_request | 16Gi | 8Gi |
+| Memory Limit | mysql_memory_limit | 20Gi | 16Gi |
 | **Elasticsearch - Master Nodes** |
 | Node Count | es_master_node_count | 3 | 1 |
 | CPU Request | es_master_cpu_request | 2 | 1 |

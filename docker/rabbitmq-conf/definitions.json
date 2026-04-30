@@ -96,6 +96,42 @@
             "arguments": {
                 "x-queue-type": "classic"
             }
+        },
+        {
+            "name": "te.1.common",
+            "vhost": "/",
+            "durable": true,
+            "auto_delete": false,
+            "arguments": {
+                "x-queue-type": "classic"
+            }
+        },
+        {
+            "name": "te.1.graphrag",
+            "vhost": "/",
+            "durable": true,
+            "auto_delete": false,
+            "arguments": {
+                "x-queue-type": "classic"
+            }
+        },
+        {
+            "name": "te.1.raptor",
+            "vhost": "/",
+            "durable": true,
+            "auto_delete": false,
+            "arguments": {
+                "x-queue-type": "classic"
+            }
+        },
+        {
+            "name": "te.1.resume",
+            "vhost": "/",
+            "durable": true,
+            "auto_delete": false,
+            "arguments": {
+                "x-queue-type": "classic"
+            }
         }
     ],
     "exchanges": [
@@ -148,6 +184,38 @@
             "destination": "te.0.resume",
             "destination_type": "queue",
             "routing_key": "te.0.resume",
+            "arguments": {}
+        },
+        {
+            "source": "test1",
+            "vhost": "/",
+            "destination": "te.1.common",
+            "destination_type": "queue",
+            "routing_key": "te.1.common",
+            "arguments": {}
+        },
+        {
+            "source": "test1",
+            "vhost": "/",
+            "destination": "te.1.graphrag",
+            "destination_type": "queue",
+            "routing_key": "te.1.graphrag",
+            "arguments": {}
+        },
+        {
+            "source": "test1",
+            "vhost": "/",
+            "destination": "te.1.raptor",
+            "destination_type": "queue",
+            "routing_key": "te.1.raptor",
+            "arguments": {}
+        },
+        {
+            "source": "test1",
+            "vhost": "/",
+            "destination": "te.1.resume",
+            "destination_type": "queue",
+            "routing_key": "te.1.resume",
             "arguments": {}
         }
     ]

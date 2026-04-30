@@ -58,7 +58,7 @@ const AbandonPendingModal: React.FC<IAbandonPendingModalProps> = ({
             onClick={handleAbandon}
           >
             {t('billing.abandonAndApply', {
-              target_quantity_gb: targetQuantityGb,
+              target_quantity_bytes: targetQuantityGb,
             })}
           </button>
         </div>
@@ -66,8 +66,8 @@ const AbandonPendingModal: React.FC<IAbandonPendingModalProps> = ({
     >
       <p className="text-sm text-text-secondary">
         {t('billing.pendingIncreaseDescription', {
-          pending_quantity_gb: pendingQuantityGb,
-          target_quantity_gb: targetQuantityGb,
+          pending_quantity_bytes: pendingQuantityGb,
+          target_quantity_bytes: targetQuantityGb,
         })}
       </p>
     </Modal>
@@ -134,7 +134,7 @@ const CustomModal: React.FC<CustomModalProps> = ({
   onClose,
   onOk,
   defaultValue = 0,
-  price = 0.9,
+  price = 0,
   decreaseEffectiveAt = null,
 }) => {
   const [value, setValue] = React.useState(defaultValue);
@@ -229,7 +229,7 @@ interface IShowUpgradeTipsModalOptions {
 const showAddOnManageModal = ({
   defaultValue = 0,
   onOk,
-  price = 0.9,
+  price = 0,
   decreaseEffectiveAt = null,
 }: IShowUpgradeTipsModalOptions) => {
   const rootElement = document.createElement('div');

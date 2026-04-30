@@ -40,6 +40,23 @@ variable "cloud_provider" {
   }
 }
 
+variable "cluster_scoped_resource_mode" {
+  description = "Cluster-scoped ownership mode. 'auto' resolves ownership from BYOK state + cluster detection. 'manual' uses manage_cluster_scoped_resources."
+  type        = string
+  default     = "auto"
+
+  validation {
+    condition     = contains(["auto", "manual"], var.cluster_scoped_resource_mode)
+    error_message = "cluster_scoped_resource_mode must be 'auto' or 'manual'."
+  }
+}
+
+variable "manage_cluster_scoped_resources" {
+  description = "Manual ownership flag for cluster-scoped shared resources (ECK operator and GKE ComputeClass). Used when cluster_scoped_resource_mode = 'manual'."
+  type        = bool
+  default     = true
+}
+
 variable "gcp_project_id" {
   description = "GCP project ID. Required when cloud_provider = 'gcp'. Used to construct GCS service account (ragflow-gcs@{gcp_project_id}.iam.gserviceaccount.com)"
   type        = string
@@ -75,13 +92,13 @@ variable "public_registry" {
 variable "s3_endpoint" {
   description = "S3-compatible endpoint URL. Leave empty to use cloud provider defaults (GCP/AWS/Azure)"
   type        = string
-  default     = ""  # Empty for cloud provider auto-detection
+  default     = "" # Empty for cloud provider auto-detection
 }
 
 variable "s3_bucket" {
-  description = "S3 bucket name"
+  description = "S3 bucket name. When empty, defaults to the RagFlow instance namespace."
   type        = string
-  default     = "ragflow"
+  default     = ""
 }
 
 variable "s3_access_key" {
@@ -148,13 +165,13 @@ variable "mysql_cpu_limit" {
 variable "mysql_memory_request" {
   description = "MySQL memory request"
   type        = string
-  default     = "8Gi"
+  default     = "16Gi"
 }
 
 variable "mysql_memory_limit" {
   description = "MySQL memory limit"
   type        = string
-  default     = "16Gi"
+  default     = "20Gi"
 }
 
 variable "mysql_max_connections" {
@@ -408,19 +425,24 @@ variable "ragflow_memory_limit" {
 # =============================================================================
 
 variable "parser_replicas" {
-  description = "Number of Parser replicas"
-  type        = number
-  default     = 3
+  description = "Number of Parser replicas per task type"
+  type        = map(number)
+  default = {
+    common   = 28
+    graphrag = 2
+    raptor   = 1
+    resume   = 1
+  }
 }
 
 variable "parser_cpu_request" {
-  description = "Parser CPU request"
+  description = "Parser CPU request per pod"
   type        = string
   default     = "2"
 }
 
 variable "parser_cpu_limit" {
-  description = "Parser CPU limit"
+  description = "Parser CPU limit per pod"
   type        = string
   default     = "4"
 }
@@ -428,13 +450,13 @@ variable "parser_cpu_limit" {
 variable "parser_memory_request" {
   description = "Parser memory request"
   type        = string
-  default     = "16Gi"
+  default     = "4Gi"
 }
 
 variable "parser_memory_limit" {
   description = "Parser memory limit"
   type        = string
-  default     = "20Gi"
+  default     = "8Gi"
 }
 
 variable "parser_ws_workers" {
@@ -597,16 +619,6 @@ variable "billing_stripe_api_key" {
   }
 }
 
-variable "billing_stripe_endpoint_secret" {
-  description = "Stripe webhook endpoint secret. Set via environment variable: export TF_VAR_billing_stripe_endpoint_secret='whsec_xxx'"
-  type        = string
-  sensitive   = true
-  default     = ""
-  validation {
-    condition     = var.billing_enabled == false || substr(var.billing_stripe_endpoint_secret, 0, 6) == "whsec_"
-    error_message = "billing_stripe_endpoint_secret must start with 'whsec_' (Stripe webhook secret prefix)."
-  }
-}
 
 variable "billing_stripe_api_version" {
   description = "Stripe API version"
@@ -624,13 +636,13 @@ variable "billing_service_url" {
   }
 }
 
-variable "billing_price_id_points_recharge" {
+variable "billing_price_id_points" {
   description = "Stripe price ID for points recharge"
   type        = string
   default     = ""
   validation {
-    condition     = var.billing_enabled == false || var.billing_price_id_points_recharge != ""
-    error_message = "billing_price_id_points_recharge must not be empty when billing is enabled."
+    condition     = var.billing_enabled == false || var.billing_price_id_points != ""
+    error_message = "billing_price_id_points must not be empty when billing is enabled."
   }
 }
 
@@ -641,16 +653,6 @@ variable "billing_price_id_storage" {
   validation {
     condition     = var.billing_enabled == false || var.billing_price_id_storage != ""
     error_message = "billing_price_id_storage must not be empty when billing is enabled."
-  }
-}
-
-variable "billing_price_id_deepdoc" {
-  description = "Stripe price ID for deepdoc usage-based billing"
-  type        = string
-  default     = ""
-  validation {
-    condition     = var.billing_enabled == false || var.billing_price_id_deepdoc != ""
-    error_message = "billing_price_id_deepdoc must not be empty when billing is enabled."
   }
 }
 
@@ -684,12 +686,19 @@ variable "billing_price_id_pro" {
   }
 }
 
-variable "billing_price_id_enterprise" {
-  description = "Stripe price ID for Enterprise subscription plan"
+variable "stripe_test_clock_id" {
+  description = "Stripe test clock ID"
   type        = string
   default     = ""
-  validation {
-    condition     = var.billing_enabled == false || var.billing_price_id_enterprise != ""
-    error_message = "billing_price_id_enterprise must not be empty when billing is enabled."
-  }
 }
+
+# =============================================================================
+# Upload Configuration
+# =============================================================================
+
+variable "upload_size_limit" {
+  description = "Maximum upload file size (e.g., '100m', '500m', '1g'). Applies to both NGINX Gateway (smk) and GKE."
+  type        = string
+  default     = "100m"
+}
+

@@ -10,12 +10,11 @@ export const ConfirmModal: React.FC<{
 }> = memo(({ plan, isOpen = true, onClose = () => {} }) => {
   // const [planId, setPlanId] = useState('');
   const priceDifference = plan.priceDifference;
-  const date = getNextMonth.getNextMonthFirstDayFormatted();
+  const date = getNextMonth.getDayFormatted(getNextMonth.get31Day());
   const price = plan.price;
   const { charge } = useCharge();
   const [loading, setLoading] = useState(false);
   const onOk = async () => {
-    console.log('plan', plan);
     if (plan?.id) {
       // setPlanId(plan.id);
       setLoading(true);
@@ -66,3 +65,5 @@ export const ConfirmModal: React.FC<{
     </Modal>
   );
 });
+
+ConfirmModal.displayName = 'ConfirmModal';

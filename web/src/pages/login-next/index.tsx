@@ -14,7 +14,7 @@ import { useSystemConfig } from '@/hooks/use-system-request';
 import { rsaPsw } from '@/utils';
 import { useContext, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 
 import Spotlight from '@/components/spotlight';
 import { Button, ButtonLoading } from '@/components/ui/button';
@@ -251,6 +251,7 @@ function LoginFormContent({
 const Login = () => {
   const [title, setTitle] = useState('login');
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { login, loading: signLoading } = useLogin();
   const { register, loading: registerLoading } = useRegister();
   const { channels, loading: channelsLoading } = useLoginChannels();
@@ -267,12 +268,13 @@ const Login = () => {
   const { config } = useSystemConfig();
   const registerEnabled = config?.registerEnabled !== 0;
   const [isForgetPassword, setIsForgetPassword] = useState(false);
+  const redirectTo = searchParams.get('redirect') || '/';
   const { isLogin } = useAuth();
   useEffect(() => {
     if (isLogin) {
-      navigate('/');
+      navigate(redirectTo, { replace: true });
     }
-  }, [isLogin, navigate]);
+  }, [isLogin, navigate, redirectTo]);
 
   const handleLoginWithChannel = async (channel: string) => {
     await loginWithChannel(channel);
@@ -329,7 +331,7 @@ const Login = () => {
           password: rsaPassWord,
         });
         if (code === 0) {
-          navigate('/');
+          navigate(redirectTo, { replace: true });
         }
       } else {
         const code = await register({

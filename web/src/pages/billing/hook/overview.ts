@@ -1,21 +1,21 @@
 import { useFetchTenantInfo } from '@/hooks/use-user-setting-request';
 import {
   getBillingDeepDocUsage,
-  getBllingBaseOverview,
-  getBllingPlanPverview,
+  getBillingPlanOverview,
 } from '@/services/price';
 import { useQuery } from '@tanstack/react-query';
-import { IPaygStatusData, ISubscriptionData } from '../interface';
+import { BillingQueryKey } from '../constants/query-keys';
+import { IPayStatusData, ISubscriptionData } from '../interface';
 
 export const useFetchBaseOverview = (force = false) => {
   const { data: tenantInfo } = useFetchTenantInfo();
   const tenantId = tenantInfo?.tenant_id;
   const { data, isFetching: loading } = useQuery({
-    queryKey: ['getBaseOverview', tenantId],
+    queryKey: [BillingQueryKey.BaseOverview, tenantId],
     // initialData: {},
     gcTime: force ? 0 : 50000,
     queryFn: async () => {
-      const { data: res } = await getBllingBaseOverview({ tenantId });
+      const { data: res } = await getBillingPlanOverview({ tenantId });
       if (res.code === 0) {
         const { data } = res;
         // storage.setPricePlan(JSON.stringify(data));
@@ -29,12 +29,19 @@ export const useFetchBaseOverview = (force = false) => {
 export const useFetchPlanOverview = (force = false) => {
   const { data: tenantInfo } = useFetchTenantInfo();
   const tenantId = tenantInfo?.tenant_id;
-  const { data, isFetching: loading } = useQuery<ISubscriptionData>({
-    queryKey: ['getPlanOverview', tenantId],
+  const {
+    data,
+    isFetching: loading,
+    refetch,
+  } = useQuery<ISubscriptionData>({
+    queryKey: [BillingQueryKey.PlanOverview, tenantId],
     // initialData: {},
+    staleTime: force ? 0 : Infinity,
     gcTime: force ? 0 : 50000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
     queryFn: async () => {
-      const { data: res } = await getBllingPlanPverview({ tenantId });
+      const { data: res } = await getBillingPlanOverview({ tenantId });
       if (res.code === 0) {
         const { data } = res;
         // storage.setPricePlan(JSON.stringify(data));
@@ -43,7 +50,7 @@ export const useFetchPlanOverview = (force = false) => {
     },
   });
 
-  return { data, loading };
+  return { data, loading, refetch };
 };
 
 export const useFetchDeepDocUsage = () => {
@@ -53,8 +60,8 @@ export const useFetchDeepDocUsage = () => {
     data,
     isFetching: loading,
     refetch,
-  } = useQuery<IPaygStatusData>({
-    queryKey: ['getDeepDocUsage', tenantId],
+  } = useQuery<IPayStatusData>({
+    queryKey: [BillingQueryKey.DeepDocUsage, tenantId],
     gcTime: 30000,
     enabled: !!tenantId,
     queryFn: async () => {

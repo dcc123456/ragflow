@@ -231,3 +231,6 @@ internal/cpp/cmake-build-debug/
 # Go server build output
 bin/*
 !bin/.gitkeep
+
+# oh-my-claudecode session state
+.omc/

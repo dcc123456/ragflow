@@ -12,7 +12,8 @@ export function buildLlmId(
 
 // Will not jump to the login page
 export function redirectToLogin() {
-  window.location.href = location.origin + `/login`;
+  window.location.href =
+    location.origin + `/login` + '?redirect=' + location.pathname;
 }
 
 // Will not jump to the specified page

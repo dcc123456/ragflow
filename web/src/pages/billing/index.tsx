@@ -5,8 +5,11 @@ import {
 } from '@/components/ui/segmented';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { PriceName } from '../price/constant';
+import { useFetchCurrentPlan } from '../price/hook/use-price-hooks';
 import UpgradeButton from '../price/price-modal/to-upgrade-button';
 import BillingHistory from './billing-history';
+import PaymentStatusModal from './component/payment-status-modal';
 import { Overview } from './overview';
 import PointsPage from './points';
 import UsagePage from './usage';
@@ -14,6 +17,7 @@ import UsagePage from './usage';
 const Billing = () => {
   const [activeKey, setActiveKey] = useState<SegmentedValue>('overview');
   const { t } = useTranslation();
+  const { data: currentPlan } = useFetchCurrentPlan();
   const navList: SegmentedLabeledOption[] = [
     {
       value: 'overview',
@@ -37,7 +41,7 @@ const Billing = () => {
     setActiveKey(e);
   };
   return (
-    <div className="bg-bg-base text-text-primary p-4 h-[calc(100vh-120px)] overflow-auto w-full">
+    <div className="bg-bg-base text-text-primary p-4 h-[calc(100vh-120px)] w-full flex flex-col">
       <nav className="flex justify-between items-center mb-6">
         <Segmented
           options={navList}
@@ -48,13 +52,22 @@ const Billing = () => {
           <span className="text-text-secondary mr-4">
             {t('billing.needMore')}
           </span>
-          <UpgradeButton />
+          <UpgradeButton
+            text={
+              currentPlan?.plan_name !== PriceName.Trial
+                ? t('billing.changePlan')
+                : t('billing.upgradePlan')
+            }
+          />
         </div>
       </nav>
-      {activeKey === 'overview' && <Overview />}
-      {activeKey === 'usage' && <UsagePage />}
-      {activeKey === 'billing-history' && <BillingHistory />}
-      {activeKey === 'points' && <PointsPage />}
+      <section className="flex-1 overflow-auto">
+        {activeKey === 'overview' && <Overview />}
+        {activeKey === 'usage' && <UsagePage />}
+        {activeKey === 'billing-history' && <BillingHistory />}
+        {activeKey === 'points' && <PointsPage />}
+      </section>
+      <PaymentStatusModal />
     </div>
   );
 };

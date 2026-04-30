@@ -1,10 +1,10 @@
-import { cn, convertKbToGb } from '@/lib/utils';
-import { Check, GitPullRequestArrow } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { convertBytesToGb } from '@/lib/utils';
+import { createBillingPortalSession } from '@/services/price';
+import { AlertTriangle, CreditCard } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import ResourceUsage from '../component/resource-usage';
 import { useFetchPlanOverview } from '../hook/overview';
-
-const UNLIMITED_API_REQUESTS = 2147483647;
 
 export const pricingPlans = {
   Trial: 'Free Plan',
@@ -12,26 +12,18 @@ export const pricingPlans = {
   Pro: 'Pro Plan',
   Enterprise: 'Enterprise Plan',
 };
-const apiPlanList = [
-  { planKey: 'Trial', value: 5000, unit: 'month', name: 'Free Plan' },
-  {
-    planKey: 'Starter',
-    value: UNLIMITED_API_REQUESTS,
-    unit: 'month',
-    name: 'Starter Plan',
-  },
-  {
-    planKey: 'Pro',
-    value: UNLIMITED_API_REQUESTS,
-    unit: 'month',
-    name: 'Pro Plan',
-  },
-] as const;
+
 const planTemplate = {
   name: 'Starter Plan',
-  BillingCycle: { start: '2023-04-28', end: '2023-05-28' },
+  BillingCycle: { start: '-', end: '-' },
   price: 0,
   storage: {
+    used: 0,
+    total: 0,
+    base: 0,
+    addOn: 0,
+  },
+  docParse: {
     used: 0,
     total: 0,
     base: 0,
@@ -59,16 +51,16 @@ export const BaseInfo = () => {
       name: pricingPlans[planData?.plan_name as keyof typeof pricingPlans],
       storage: {
         ...planTemplate.storage,
-        used: convertKbToGb(
+        used: convertBytesToGb(
           (planData?.resources.plan_storage?.used || 0) +
-            (planData?.resources.add_on_storage?.used || 0),
+            (planData?.resources.addon_storage?.used || 0),
         ),
-        total: convertKbToGb(
+        total: convertBytesToGb(
           (planData?.resources.plan_storage?.limit || 0) +
-            (planData?.resources.add_on_storage?.limit || 0),
+            (planData?.resources.addon_storage?.limit || 0),
         ),
-        base: convertKbToGb(planData?.resources.plan_storage?.limit || 0),
-        addOn: convertKbToGb(planData?.resources.add_on_storage?.limit || 0),
+        base: convertBytesToGb(planData?.resources.plan_storage?.limit || 0),
+        addOn: convertBytesToGb(planData?.resources.addon_storage?.limit || 0),
       },
       apps: {
         ...planTemplate.apps,
@@ -93,6 +85,19 @@ export const BaseInfo = () => {
     setCurrentPlan(plan);
   }, [planData, setCurrentPlan]);
 
+  const handleRecoverPayment = async () => {
+    if (planData?.payment_recovery_url) {
+      window.open(planData.payment_recovery_url, '_blank');
+      return;
+    }
+
+    const { data: res } = await createBillingPortalSession();
+    const redirectUrl = res?.data?.redirect_to || res?.redirect_to;
+    if (redirectUrl) {
+      window.open(redirectUrl, '_blank');
+    }
+  };
+
   return (
     <>
       <div className="flex justify-between items-center mb-4">
@@ -106,6 +111,20 @@ export const BaseInfo = () => {
           </p>
         </div>
       </div>
+      {planData?.payment_required && (
+        <div className="mb-4 flex items-center justify-between gap-3 rounded border border-red-500/40 bg-red-500/10 px-4 py-3 text-text-primary">
+          <div className="flex items-center gap-2">
+            <AlertTriangle size={18} className="text-red-500" />
+            <span className="text-sm">
+              Your subscription payment needs attention.
+            </span>
+          </div>
+          <Button size="sm" onClick={handleRecoverPayment}>
+            <CreditCard size={16} />
+            {planData.payment_recovery_url ? 'Pay invoice' : 'Update payment'}
+          </Button>
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-4">
         <ResourceUsage
           title="Storage"
@@ -126,7 +145,19 @@ export const BaseInfo = () => {
           value={currentPlan.teamMember?.used}
           limit={currentPlan.teamMember?.total}
         ></ResourceUsage>
-        <div className="bg-bg-input border border-border-default p-4 rounded mb-4">
+        <ResourceUsage
+          title="Document Parse"
+          value={currentPlan.docParse?.used || 0}
+          planName={currentPlan.name}
+          planValue={currentPlan.docParse?.base}
+          limit={currentPlan.docParse?.total + currentPlan.docParse?.addOn}
+          unit="pts"
+          basicCapacity={currentPlan.docParse?.base}
+          showValue={false}
+          planPoints={planData?.resources?.plan_points}
+          addonPoints={planData?.resources?.addon_points}
+        ></ResourceUsage>
+        {/* <div className="bg-bg-input border border-border-default p-4 rounded mb-4">
           <div className="flex justify-between items-center mb-2">
             <div className="flex items-center">
               <span className="mr-2">
@@ -187,7 +218,7 @@ export const BaseInfo = () => {
               );
             })}
           </div>
-        </div>
+        </div> */}
       </div>
     </>
   );

@@ -1,8 +1,8 @@
-import { useUpgradeModal } from '../gobal';
+import { useUpgradeModal } from '../global';
 
 const UpgradeButton = ({
   text,
-  isModal = false,
+  isModal = true,
   onCallBack,
 }: {
   text?: string;

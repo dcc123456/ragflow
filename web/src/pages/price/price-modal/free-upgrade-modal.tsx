@@ -23,7 +23,7 @@ export const FreeUpgradeModal: React.FC<CustomModalProps> = ({
     >
       <div>
         <div className="flex items-center mb-4 flex-col justify-center">
-          <div className="text-center text-3xl mb-8 mt-6 bg-gradient-to-r from-indigo-500 from-30% via-sky-500 via-60% to-cyan-400 bg-clip-text text-transparent">
+          <div className="text-center text-3xl mb-8 mt-6 bg-gradient-to-r from-[#42b6ff] to-[#2be8aa] bg-clip-text text-transparent">
             Love RAGFlow?
           </div>
           <div className="text-center text-xl text-text-primary">

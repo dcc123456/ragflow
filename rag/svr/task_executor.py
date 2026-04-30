@@ -86,7 +86,7 @@ from common.exceptions import TaskCanceledException
 from common.asyncio_utils import LoopLocalSemaphore
 from common import settings
 from common.billing_utils import init_stripe_api_key
-from rag.utils.rabbitmq_conn import RABBITMQ_CONN, async_get_queue_status
+from rag.utils.rabbitmq_conn import RABBITMQ_CONN
 from common.constants import PAGERANK_FLD, TAG_FLD
 
 BATCH_SIZE = 64
@@ -1356,10 +1356,6 @@ def report_status():
                 ip_address = await get_server_ip()
                 current = copy.deepcopy(CURRENT_TASKS)
 
-                queue_status = await async_get_queue_status(rout_key(PRIORITY, TASK_TYPE))
-                if queue_status:
-                    LAG_TASKS = queue_status['messages_ready']
-                    PENDING_TASKS = queue_status['messages_unacknowledged']
 
                 heartbeat = json.dumps({
                     "ip_address": ip_address,
@@ -1524,8 +1520,10 @@ def rabbitmq_callback(ch, method, properties, body):
 
 def task_manager():
     global PRIORITY, TASK_TYPE
-    logging.info("This is for Q: te.{}.{}".format(PRIORITY, TASK_TYPE))
-    RABBITMQ_CONN.queue_consumer(rout_key(PRIORITY, TASK_TYPE), rabbitmq_callback)
+    high_priority_queue = rout_key(1, TASK_TYPE)
+    low_priority_queue = rout_key(0, TASK_TYPE)
+    logging.info("Priority consumer: high=%s, low=%s", high_priority_queue, low_priority_queue)
+    RABBITMQ_CONN.priority_queue_consumer(high_priority_queue, low_priority_queue, rabbitmq_callback)
 
 
 async def main():
@@ -1560,7 +1558,7 @@ async def main():
     heartbeat_thread = threading.Thread(target=report_status, daemon=True)
     heartbeat_thread.start()
     logging.info(f"RAGFlow ingestion is ready after {time.time() - start_ts}s initialization.")
-    logging.info("This is for Q: te.{}.{}".format(PRIORITY, TASK_TYPE))
+    logging.info("Priority consumer: high=%s, low=%s", rout_key(1, TASK_TYPE), rout_key(0, TASK_TYPE))
     try:
         task_manager()
     finally:

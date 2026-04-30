@@ -446,10 +446,10 @@ class FileService(CommonService):
     @classmethod
     @DB.connection_context()
     def upload_document(self, kb, file_objs, user_id, src="local", parent_path: str | None = None):
-        root_folder = self.get_root_folder(user_id)
+        root_folder = self.get_root_folder(kb.tenant_id)
         pf_id = root_folder["id"]
-        self.init_knowledgebase_docs(pf_id, user_id)
-        kb_root_folder = self.get_kb_folder(user_id)
+        self.init_knowledgebase_docs(pf_id, kb.tenant_id)
+        kb_root_folder = self.get_kb_folder(kb.tenant_id)
         kb_folder = self.new_a_file_from_kb(kb.tenant_id, kb.name, kb_root_folder["id"])
 
         safe_parent_path = sanitize_path(parent_path)
@@ -502,14 +502,14 @@ class FileService(CommonService):
 
                 if settings.BILLING_ENABLED:
                     from api.utils.billing import check_dynamic_resources
-                    file_size_kb = len(blob) // 1024
-                    check_ok, check_info = check_dynamic_resources(tenant_id=kb.tenant_id, storage=file_size_kb)
+                    file_size_bytes = len(blob)
+                    check_ok, check_info = check_dynamic_resources(tenant_id=kb.tenant_id, storage=file_size_bytes)
                     if not check_ok:
                         error_details = check_info.get("details", {})
                         if "quota_kb_storage" in error_details:
-                            current_gb = error_details['quota_kb_storage']['current'] / 1024 / 1024
-                            limit_gb = error_details['quota_kb_storage']['limit'] / 1024 / 1024
-                            file_size_gb = file_size_kb / 1024 / 1024
+                            current_gb = error_details['quota_kb_storage']['current'] / 1024 / 1024 / 1024
+                            limit_gb = error_details['quota_kb_storage']['limit'] / 1024 / 1024 / 1024
+                            file_size_gb = file_size_bytes / 1024 / 1024 / 1024
                             raise RuntimeError(
                                 f"Insufficient storage quota. Current: {current_gb:.2f} GB, "
                                 f"Limit: {limit_gb:.2f} GB. "
@@ -841,16 +841,16 @@ class FileService(CommonService):
             blob = await asyncio.to_thread(file_obj.read)
 
             from api.utils.billing import check_dynamic_resources
-            file_size_kb = len(blob) // 1024
+            file_size_bytes = len(blob)
             check_ok, check_info = await asyncio.to_thread(
-                check_dynamic_resources, tenant_id=tenant_id, storage=file_size_kb
+                check_dynamic_resources, tenant_id=tenant_id, storage=file_size_bytes
             )
             if not check_ok:
                 error_details = check_info.get("details", {})
                 if "quota_kb_storage" in error_details:
-                    current_gb = error_details['quota_kb_storage']['current'] / 1024 / 1024
-                    limit_gb = error_details['quota_kb_storage']['limit'] / 1024 / 1024
-                    file_size_gb = file_size_kb / 1024 / 1024
+                    current_gb = error_details['quota_kb_storage']['current'] / 1024 / 1024 / 1024
+                    limit_gb = error_details['quota_kb_storage']['limit'] / 1024 / 1024 / 1024
+                    file_size_gb = file_size_bytes / 1024 / 1024 / 1024
                     raise RuntimeError(
                         f"Insufficient storage quota. Current: {current_gb:.2f} GB, "
                         f"Limit: {limit_gb:.2f} GB. "

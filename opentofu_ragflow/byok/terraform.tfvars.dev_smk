@@ -8,13 +8,15 @@
 # =============================================================================
 
 cloud_provider = "smk"
+namespace      = "ragflow"
 
 # =============================================================================
 # S3-Compatible Storage (MinIO or Rook-Ceph RGW)
 # =============================================================================
 
 s3_endpoint = "http://rook-ceph-rgw-my-store.rook-ceph.svc:80"
-s3_bucket   = "ragflow"
+# Leave empty to default to the RagFlow namespace, which keeps instances isolated.
+s3_bucket   = ""
 s3_region   = "default"
 
 # Rook-Ceph credentials (required for smk)
@@ -64,8 +66,13 @@ ragflow_cpu_limit       = "4"
 ragflow_memory_request  = "8Gi"
 ragflow_memory_limit    = "16Gi"
 
-# Parser - reduced for dev
-parser_replicas = 1
+# Parser replicas per task type
+parser_replicas = {
+  common   = 1
+  graphrag = 1
+  raptor   = 1
+  resume   = 1
+}
 # parser_ws_workers = 2
 
 # DeepDoc - reduced for dev
@@ -84,7 +91,7 @@ tei_replicas = 1
 # Infinity (Shadow Database) - dev environment
 # =============================================================================
 
-infinity_enabled        = true
+infinity_enabled        = false
 infinity_cpu_request    = "2"
 infinity_cpu_limit      = "4"
 infinity_memory_request = "4Gi"

@@ -1,7 +1,12 @@
 import { nextLayoutRef } from '@/layouts/root-layout';
+import { isBillingEnabled } from '@/services/billingStatus';
+import storagePrivate from '@/utils/authorization-private-util';
 import { useCallback, useEffect, useState } from 'react';
-import { showUpgradeTipsModal } from '.';
-import { IConfirmPlan, IPricePlan } from '../interface';
+import { useLocation } from 'react-router';
+import { showFreeUpgradeTipsModal, showUpgradeTipsModal } from '.';
+import { freePageNumber } from '../config';
+import { PriceName } from '../constant';
+import { IConfirmPlan, ICurrentPlan, IPricePlan } from '../interface';
 
 export const UPGRADE_TIPS_EVENT = 'SHOW_UPGRADE_TIPS';
 export const CONFIRM_PRICE_EVENT = 'SHOW_CONFIRM_PRICE_TIPS';
@@ -285,4 +290,35 @@ export const useShowConfirmPriceModal = () => {
     showConfirmPrice,
     hideConfirmPrice,
   };
+};
+
+export const useComputedRouterChangeCount = () => {
+  const { pathname } = useLocation();
+  const run = useCallback(() => {
+    const plan: ICurrentPlan = storagePrivate.getPricePlan();
+    const whitelist = ['/login', '/register', '/billing', '/price'];
+    if (whitelist.some((item) => pathname.includes(item))) {
+      return;
+    }
+    if (plan && plan.plan_name !== PriceName.Trial) {
+      return;
+    }
+    const countStr = localStorage.getItem('pageViewCount');
+    let count = countStr ? parseInt(countStr, 10) : 0;
+    count++;
+    localStorage.setItem('pageViewCount', count.toString());
+
+    if (count > freePageNumber) {
+      showFreeUpgradeTipsModal({
+        container: nextLayoutRef?.current || undefined,
+      });
+      localStorage.setItem('pageViewCount', '0');
+    }
+  }, [pathname]);
+
+  useEffect(() => {
+    if (isBillingEnabled()) {
+      run();
+    }
+  }, [pathname, run]);
 };

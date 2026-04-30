@@ -28,6 +28,9 @@ Usage:
         - OHTTPS_API_ID: ohttps API ID (e.g., push-ny5jx0l55gzr7m6p)
         - OHTTPS_API_KEY: ohttps API Key (e.g., f0dd04ac375688e6f590c0cd143690dd)
         - OHTTPS_CERT_ID: Certificate ID to pull (e.g., cert-9dxel044lw604j7o)
+        - CERT_OUTPUT_DIR: Local output directory for certificate files (default: current directory)
+        - CERT_FILE_PREFIX: Local file prefix (default: ragflow-tls)
+        - SYNC_K8S_SECRET: Whether to sync Kubernetes Secret after download (default: 0)
         - KUBECONFIG: Path to kubeconfig file (optional, uses in-cluster config if not set)
         - SECRET_NAMESPACE: Kubernetes namespace (default: ragflow)
         - SECRET_NAME: TLS secret name (default: ragflow-tls)
@@ -36,8 +39,11 @@ Example:
     export OHTTPS_API_ID="push-xxxxxx"
     export OHTTPS_API_KEY="xxxxxxxxxxxxxxxx"
     export OHTTPS_CERT_ID="cert-xxxxxx"
+    export CERT_OUTPUT_DIR="."
+    export CERT_FILE_PREFIX="ragflow-tls"
+    export SYNC_K8S_SECRET="0"
     export SECRET_NAME="ragflow-tls"
-    python3 gke_sync_ssl.py
+    python3 sync_ohttps_cert.py
 
 OHTTPS API 成功响应示例:
 {
@@ -57,6 +63,7 @@ import os
 import sys
 import time
 from datetime import datetime
+from pathlib import Path
 
 import kubernetes
 import requests
@@ -232,12 +239,40 @@ def create_or_update_tls_secret(
     print(f"[{datetime.now().isoformat()}] Secret '{secret_name}' updated successfully")
 
 
+def write_certificate_files(cert_data: dict, output_dir: str, file_prefix: str) -> tuple[str, str]:
+    """Write certificate and private key to local files.
+
+    Returns:
+        Tuple of (cert_file_path, key_file_path).
+    """
+    out_dir = Path(output_dir).resolve()
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    cert_path = out_dir / f"{file_prefix}.crt"
+    key_path = out_dir / f"{file_prefix}.key"
+    expired_path = out_dir / f"{file_prefix}.expired"
+
+    cert_path.write_text(cert_data["fullChainCerts"], encoding="utf-8")
+    key_path.write_text(cert_data["certKey"], encoding="utf-8")
+    expired_path.write_text(cert_data.get("expiredTime", ""), encoding="utf-8")
+
+    print(f"[{datetime.now().isoformat()}] Wrote certificate to: {cert_path}")
+    print(f"[{datetime.now().isoformat()}] Wrote private key to: {key_path}")
+    print(f"[{datetime.now().isoformat()}] Wrote expiry time to: {expired_path}")
+
+    return str(cert_path), str(key_path)
+
+
 def main():
     """Main entry point."""
     # Load configuration from environment variables
     api_id = os.environ.get("OHTTPS_API_ID")
     api_key = os.environ.get("OHTTPS_API_KEY")
     cert_id = os.environ.get("OHTTPS_CERT_ID")
+
+    output_dir = os.environ.get("CERT_OUTPUT_DIR", ".")
+    file_prefix = os.environ.get("CERT_FILE_PREFIX", "ragflow-tls")
+    sync_k8s_secret = os.environ.get("SYNC_K8S_SECRET", "0").lower() in {"1", "true", "yes", "on"}
 
     namespace = os.environ.get("SECRET_NAMESPACE", "ragflow")
     secret_name = os.environ.get("SECRET_NAME", "ragflow-tls")
@@ -260,12 +295,22 @@ def main():
         # Fetch certificate from ohttps
         cert_data = fetch_certificate(api_id, api_key, cert_id)
 
-        # Create/update the secret (function handles in-cluster logic)
-        create_or_update_tls_secret(
-            namespace=namespace,
-            secret_name=secret_name,
+        # Always write local files so tofu can load ragflow-tls.crt/ragflow-tls.key directly.
+        write_certificate_files(
             cert_data=cert_data,
+            output_dir=output_dir,
+            file_prefix=file_prefix,
         )
+
+        # Optionally sync Kubernetes Secret for cluster-side usage.
+        if sync_k8s_secret:
+            create_or_update_tls_secret(
+                namespace=namespace,
+                secret_name=secret_name,
+                cert_data=cert_data,
+            )
+        else:
+            print(f"[{datetime.now().isoformat()}] Skipping Kubernetes Secret sync (SYNC_K8S_SECRET=0)")
 
         print(f"[{datetime.now().isoformat()}] SSL certificate sync completed successfully")
         sys.exit(0)

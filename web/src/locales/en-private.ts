@@ -78,18 +78,25 @@ export default {
         'Perfect for growing businesses requiring more advanced tools and higher limits.',
       enterprise: 'Enterprise',
       enterpriseDesc:
-        'Tailored for large organizations needing custom solutions, priority support, and full scalability.',
+        'Enterprise-grade capabilities for production workloads at scale',
       reduce: 'Reduce Now',
-      upgrade: 'Upgrade',
+      upgrade: 'Upgrade now',
       contactUs: 'Contact Us',
       contactUsTip: 'Contact us for more information.',
-      inUse: 'In Use',
+      inUse: 'Cancel plan',
       paymentSuccessful: 'Payment successful',
       paymentSuccessfulTip:
         'Thank you! Your payment has been successfully processed.',
       paymentFailed: 'Payment failed',
       paymentFailedTip:
         'The transaction was not successful. Please verify your payment information or check your billing account. If this issue persists, contact us at support@ragflow.io with your order id for further assistance.',
+      cancelPlanTitle: 'Cancel {{plan}} Plan?',
+      cancelPlanTip: 'You are canceling the {{plan}} Plan.',
+      cancelPlanEffectiveTip:
+        'After cancellation, you can continue using the current plan benefits until {{date}}, after which they will expire.',
+      cancelPlanSwitchTip:
+        'After expiration, your account will automatically switch to the Free Plan, and features, quotas, or resources beyond the Free Plan scope will no longer be available.',
+      cancelPlanConfirmQuestion: 'Are you sure you want to cancel?',
     },
     setting: {
       billing: 'Billing',
@@ -127,13 +134,13 @@ export default {
       ensureBelow: 'Ensure usage is below',
       toAvoidOverage: 'to avoid overage',
       payNowProrated:
-        'Pay {{amount}} now (prorated) and enjoy extra storage immediately.',
+        'Pay ${{amount}} now (prorated) and enjoy extra storage immediately.',
       manageAddonStorage: 'Manage Add-on storage',
       storageTitle: 'Storage',
       gb: 'GB',
       pendingIncreaseTitle: 'Unpaid storage upgrade',
       pendingIncreaseDescription:
-        'You have an unpaid upgrade to {{pending_quantity_gb}} GB. Complete the payment to activate it, or abandon it and apply {{target_quantity_gb}} GB instead.',
+        'You have an unpaid upgrade to {{pending_quantity_bytes}} GB. Complete the payment to activate it, or abandon it and apply {{target_quantity_bytes}} GB instead.',
       payNow: 'Pay Now',
       abandonAndApply: 'Abandon & Apply',
       abandonPendingFailed:
@@ -168,6 +175,27 @@ export default {
       success: 'Success',
       pending: 'Pending',
       failed: 'Failed',
+      currentPoints: 'Credit balance',
+      equivalentUsd: 'Equivalent USD',
+      points: 'pts',
+      quickSelectTip: 'Quick select',
+      customAmount: 'Custom amount',
+      youWillReceive: 'You will receive',
+      total: 'Total',
+      buyPointsCreating: 'Creating checkout...',
+      buyPointsMinError: 'Please enter a valid amount',
+      buyPointsFailed: 'Failed to create checkout session',
+      buyPointsRequestFailed: 'Request failed, please try again',
+      upgradePlan: 'Upgrade Now',
+      changePlan: 'Change Plan',
+      documentParse: 'Document parsing credits',
+      creditsUsed: 'Credits used',
+      buyCredits: 'Buy Credits',
+      buyStorage: 'Buy Storage',
+      paymentPending: 'Pending',
+      paymentSuccess: 'Payment success',
+      paymentFailed: 'Payment failed',
+      close: 'Close',
     },
     fileManager: {
       evaluation: {
@@ -233,6 +261,10 @@ export default {
         apiCalls: 'api calls',
         avgResponse: 'avg response',
       },
+    },
+    system: {
+      uploadDescription:
+        'The total file size limit per upload is {{size}}. Uploading prohibited files is strictly forbidden.',
     },
   },
 };

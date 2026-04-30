@@ -9,8 +9,6 @@ import {
 } from 'react';
 import { freePageNumber } from '../config';
 import { PriceName } from '../constant';
-// import { useFetchCurrentPlan } from '../hook/use-price-hooks';
-import { isBillingEnabled } from '@/services/billingStatus';
 import { useFetchCurrentPlan } from '../hook/use-price-hooks';
 import { ICurrentPlan } from '../interface';
 import { FreeUpgradeModal } from '../price-modal/free-upgrade-modal';
@@ -40,7 +38,7 @@ const UpgradeModalContext = createContext<UpgradeModalContextType | undefined>(
 );
 
 interface UpgradeModalProviderProps {
-  children: ReactNode;
+  children?: ReactNode;
 }
 
 export const showUpgradeTipsModal = (options?: UpgradeTipsEventDetail) => {
@@ -48,7 +46,7 @@ export const showUpgradeTipsModal = (options?: UpgradeTipsEventDetail) => {
   window.dispatchEvent(event);
 };
 
-export const showPriceComfirmModal = (options?: ConfirmPriceEventDetail) => {
+export const showPriceConfirmModal = (options?: ConfirmPriceEventDetail) => {
   const event = new CustomEvent(CONFIRM_PRICE_EVENT, { detail: options });
   window.dispatchEvent(event);
 };
@@ -63,10 +61,6 @@ export const showFreeUpgradeTipsModal = (
 export const UpgradeModalProvider: React.FC<UpgradeModalProviderProps> = ({
   children,
 }) => {
-  if (!isBillingEnabled()) {
-    return <>{children}</>;
-  }
-  const location = window.location.pathname.toLowerCase();
   useFetchCurrentPlan();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -129,12 +123,10 @@ export const UpgradeModalProvider: React.FC<UpgradeModalProviderProps> = ({
           />
         </div>
       )}
-      {/* {JSON.stringify(freeUpgradeTips)} */}
       {freeUpgradeTips.isOpen && (
         <div className="fixed inset-0 z-50">
           <FreeUpgradeModal
             isOpen={freeUpgradeTips.isOpen}
-            // isOpen={true}
             onClose={hideFreeUpgradeTips}
           />
         </div>

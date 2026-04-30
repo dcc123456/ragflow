@@ -1384,13 +1384,14 @@ class Product(DataBaseModel):
     name = CharField(null=False, max_length=255, index=True)
     quota_apps = IntegerField(null=False, help_text="Limit number of APP of the tenant, Chat, Search, Agent")
     quota_members = IntegerField(null=False, help_text="Limit number of members of the tenant")
-    quota_kb_storage = BigIntegerField(null=False, help_text="Limit number of kbs of the tenant")
+    quota_kb_storage = BigIntegerField(null=False, help_text="Limit dataset storage bytes of the tenant")
     task_priority = CharField(null=False, help_text="Task priority of the tenant")
     price_ids = TextField(null=False, default="", help_text="price ids on stripe.com")
     description = TextField(null=True)
     product_type = CharField(null=False, choices=["subscription", "usage_based"])
     usage_stat_type = CharField(null=True, choices=["before", "after"])  # only for usage_based
     version = IntegerField(null=False, help_text="Product version")
+    quota_points = BigIntegerField(null=True, help_text="Monthly point quota for subscription plans")
 
     class Meta:
         db_table = "billing_product"
@@ -1402,8 +1403,8 @@ class QuotaItem(DataBaseModel):
     id = CharField(max_length=32, primary_key=True)
     product_id = CharField(max_length=32, index=True)
     quota_type = CharField(null=False, choices=["app_total", "team_seat", "api_qps", "kb_storage"])
-    quantity = IntegerField(null=False)
-    unit = CharField(null=False, choices=["apps", "seats", "calls", "gb"])
+    quantity = BigIntegerField(null=False)
+    unit = CharField(null=False, choices=["apps", "seats", "calls", "bytes"])
     description = TextField(null=True)
 
     class Meta:
@@ -1421,6 +1422,8 @@ class PricePoint(DataBaseModel):
     included_free_amount = IntegerField(null=True)  # ???
     unit = CharField(choices=["token", "page"], null=True)
     unit_quantity = IntegerField(null=True)
+    price_amount = IntegerField(null=True)  # price in cents (e.g., 100 = $1.00)
+    price_currency = CharField(max_length=3, null=True)  # usd, cny
     consuming_point_amount = IntegerField(null=False, default=0)
     effective_time = DateTimeField(null=False)
     expiry_time = DateTimeField(null=True)
@@ -1429,29 +1432,11 @@ class PricePoint(DataBaseModel):
         db_table = "billing_pricepoint"
 
 
-class LocalPrice(DataBaseModel):
-    """price point -> local price"""
-
-    id = CharField(max_length=32, primary_key=True)
-    price_point_id = CharField(max_length=32, index=True)
-    product_id = CharField(max_length=32, index=True)
-    product_name = CharField(null=False, max_length=255)
-    amount_cents = BigIntegerField(null=False, default=0)
-    currency = CharField(max_length=3)  # usd, cny
-    point_value_int = BigIntegerField(null=False, default=0)
-    effective_time = DateTimeField(null=False)
-    expiry_time = DateTimeField(null=True)
-
-    class Meta:
-        db_table = "billing_localprice"
-
-
 class ProductUsageTracing(DataBaseModel):
     id = CharField(max_length=32, primary_key=True)
     tenant_id = CharField(max_length=32, null=False, index=True)
     product_id = CharField(max_length=32, null=False, index=True)
     price_point_id = CharField(max_length=32, null=False, index=True)  # price point table
-    local_price_id = CharField(max_length=32, null=False, index=True)  # local price table
     task_quantity = IntegerField()
     total_cost_cents = BigIntegerField(null=False, default=0)
     currency = CharField(max_length=3)  # usd, cny
@@ -1563,8 +1548,8 @@ class Subscription(DataBaseModel):
 class StorageSubscription(DataBaseModel):
     """
     One storage add-on subscription per tenant.
-    `effective_quantity_gb` is the currently usable quota.
-    `target_quantity_gb` is the desired quota after pending changes settle.
+    `addon_storage_bytes` is the currently usable quota.
+    `target_quantity_bytes` is the desired quota after pending changes settle.
     """
 
     id = CharField(max_length=32, primary_key=True)
@@ -1576,9 +1561,9 @@ class StorageSubscription(DataBaseModel):
     price_id = CharField(max_length=128, null=False, default="")
     schedule_id = CharField(max_length=255, null=False, default="")
 
-    effective_quantity_gb = IntegerField(null=False, default=0, constraints=[Check("effective_quantity_gb >= 0")])
-    target_quantity_gb = IntegerField(null=False, default=0, constraints=[Check("target_quantity_gb >= 0")])
-    pending_quantity_gb = IntegerField(null=True, constraints=[Check("pending_quantity_gb >= 0")])
+    addon_storage_bytes = BigIntegerField(null=False, default=0, constraints=[Check("addon_storage_bytes >= 0")])
+    target_quantity_bytes = BigIntegerField(null=False, default=0, constraints=[Check("target_quantity_bytes >= 0")])
+    pending_quantity_bytes = BigIntegerField(null=True, constraints=[Check("pending_quantity_bytes >= 0")])
     pending_effective_at = DateTimeField(null=True)
     pending_action = CharField(max_length=32, null=True, default="")
 
@@ -1633,8 +1618,10 @@ class PointAccount(DataBaseModel):
 
     id = CharField(max_length=32, primary_key=True)
     tenant_id = CharField(max_length=32, null=False, index=True, unique=True)
-    available_points = BigIntegerField(null=False, default=0)
-    held_points = BigIntegerField(null=False, default=0)
+    consumed_plan_points = BigIntegerField(null=False, default=0)  # consumed from plan quota (resets each cycle)
+    addon_purchased_points = BigIntegerField(null=False, default=0)  # total addon points purchased (permanent)
+    consumed_addon_points = BigIntegerField(null=False, default=0)  # consumed from addon purchased
+    held_points = BigIntegerField(null=False, default=0)  # points held pending commit
 
     class Meta:
         db_table = "billing_point_account"
@@ -1648,6 +1635,7 @@ class PointLedger(DataBaseModel):
     event_type = CharField(max_length=32, null=False)
     # event_type choices: recharge / hold_created / consume / release
     points = BigIntegerField(null=False)  # positive=credit, negative=debit
+    source = CharField(max_length=16, null=False, default="plan")  # "addon" or "plan"
     idempotency_key = CharField(max_length=128, null=False, unique=True, index=True)
     related_hold_id = CharField(max_length=32, null=True, index=True)
     description = TextField(null=True)
@@ -1664,6 +1652,8 @@ class PointHold(DataBaseModel):
     tenant_id = CharField(max_length=32, null=False, index=True)
     doc_id = CharField(max_length=32, null=False, index=True)
     points = BigIntegerField(null=False)
+    plan_points = BigIntegerField(null=False, default=0)  # portion deducted from plan quota
+    addon_points = BigIntegerField(null=False, default=0)  # portion deducted from addon
     status = CharField(max_length=32, null=False, default="held", index=True)
     # status choices: held / committed / released / expired
     idempotency_key = CharField(max_length=128, null=False, unique=True, index=True)
@@ -2314,6 +2304,57 @@ def migrate_db():
     alter_db_add_column(migrator, "memory", "tenant_llm_id", IntegerField(null=True, help_text="id in tenant_llm", index=True))
     alter_db_add_column(migrator, "user_canvas_version", "release", BooleanField(null=False, help_text="is released", default=False, index=True))
     alter_db_add_column(migrator, "api_4_conversation", "version_title", CharField(max_length=255, null=True, help_text="canvas version title when session created", index=False))
+
+    # Billing points refactor: consumed-based tracking (2026-04-28)
+    # PointAccount now tracks consumed amounts; available = quota - consumed
+    alter_db_add_column(migrator, "billing_point_account", "consumed_plan_points", BigIntegerField(null=False, default=0))
+    alter_db_add_column(migrator, "billing_point_account", "addon_purchased_points", BigIntegerField(null=False, default=0))
+    alter_db_add_column(migrator, "billing_point_account", "consumed_addon_points", BigIntegerField(null=False, default=0))
+
+    # MIGRATION NOTE (2026-04-28):
+    # Existing accounts need consumed_plan_points and addon_purchased_points populated
+    # from the ledger before the consumed-based model goes live. The migration requires
+    # a three-pass approach (per tenant):
+    #   1. addon_purchased_points = SUM(recharge where source=addon)
+    #      (release events do NOT reduce purchased — release is hold cleanup, not a refund)
+    #   2. consumed_plan_points  = SUM(consume where source=plan)
+    #   3. consumed_addon_points = SUM(consume where source=addon)
+    # After migration completes, available fields can be safely removed.
+    # Add quota_points to billing_product (2026-04-28)
+    alter_db_add_column(migrator, "billing_product", "quota_points", BigIntegerField(null=True))
+    # This migration must be run as an offline batch job before billing_app starts serving
+    # traffic with the new consumed-based model.
+    alter_db_add_column(migrator, "billing_point_ledger", "source", CharField(max_length=16, null=False, default="plan"))
+    alter_db_add_column(migrator, "billing_point_hold", "plan_points", BigIntegerField(null=False, default=0))
+    alter_db_add_column(migrator, "billing_point_hold", "addon_points", BigIntegerField(null=False, default=0))
+    alter_db_remove_column(migrator, "billing_point_account", "available_points")
+
+    # Billing storage quantity columns migrate from legacy *_gb to *_bytes (int64)
+    alter_db_rename_column(migrator, "billing_storage_subscription", "effective_quantity_gb", "addon_storage_bytes")
+    alter_db_rename_column(migrator, "billing_storage_subscription", "addon_storage_gb", "addon_storage_bytes")
+    alter_db_rename_column(migrator, "billing_storage_subscription", "target_quantity_gb", "target_quantity_bytes")
+    alter_db_rename_column(migrator, "billing_storage_subscription", "pending_quantity_gb", "pending_quantity_bytes")
+    alter_db_add_column(migrator, "billing_storage_subscription", "addon_storage_bytes", BigIntegerField(null=False, default=0))
+    alter_db_add_column(migrator, "billing_storage_subscription", "target_quantity_bytes", BigIntegerField(null=False, default=0))
+    alter_db_add_column(migrator, "billing_storage_subscription", "pending_quantity_bytes", BigIntegerField(null=True))
+    alter_db_column_type(migrator, "billing_storage_subscription", "addon_storage_bytes", BigIntegerField(null=False, default=0))
+    alter_db_column_type(migrator, "billing_storage_subscription", "target_quantity_bytes", BigIntegerField(null=False, default=0))
+    alter_db_column_type(migrator, "billing_storage_subscription", "pending_quantity_bytes", BigIntegerField(null=True))
+
+    # QuotaItem storage unit migration: convert legacy gb entries to bytes.
+    alter_db_column_type(migrator, "billing_quota_item", "quantity", BigIntegerField(null=False))
+    try:
+        DB.execute_sql(
+            """
+            UPDATE billing_quota_item
+            SET quantity = quantity * 1000000000,
+                unit = 'bytes'
+            WHERE quota_type = 'kb_storage' AND unit = 'gb'
+            """
+        )
+    except Exception as ex:
+        logging.critical(f"Failed to migrate billing_quota_item kb_storage gb->bytes, error: {ex}")
+
     logging.disable(logging.NOTSET)
     # this is after re-enabling logging to allow logging changed user emails
     migrate_add_unique_email(migrator)

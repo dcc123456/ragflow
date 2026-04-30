@@ -2,7 +2,7 @@ import message from '@/components/ui/message';
 import { Authorization } from '@/constants/authorization';
 import { ResponseType } from '@/interfaces/database/base';
 import i18n from '@/locales/config';
-import { PriceCode, showPriceModal } from '@/pages/price/gobal/hook';
+import { PriceCode, showPriceModal } from '@/pages/price/global/hook';
 import { isBillingEnabled } from '@/services/billingStatus';
 import authorizationUtil, {
   getAuthorization,

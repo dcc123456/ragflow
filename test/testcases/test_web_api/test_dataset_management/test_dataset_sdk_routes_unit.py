@@ -15,6 +15,7 @@
 #
 
 import asyncio
+import ast
 import functools
 import importlib.util
 import inspect
@@ -486,6 +487,35 @@ def test_create_route_error_matrix_unit(monkeypatch):
     monkeypatch.setattr(module.KnowledgebaseService, "save", lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("save boom")))
     res = _run(inspect.unwrap(module.create)("tenant-1"))
     assert res["message"] == "Internal server error", res
+
+
+@pytest.mark.p3
+def test_dataset_rest_role_map_covers_all_guarded_routes():
+    role_util_path = Path(__file__).resolve().parents[4] / "common" / "role_util.py"
+    module_ast = ast.parse(role_util_path.read_text())
+    role_map_keys = set()
+    for node in module_ast.body:
+        if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id == "KB_API_ACTION_MAP" for target in node.targets):
+            role_map_keys = {key.value for key in node.value.keys if isinstance(key, ast.Constant)}
+            break
+    guarded_route_names = {
+        "create",
+        "delete",
+        "update",
+        "list_datasets",
+        "knowledge_graph",
+        "delete_knowledge_graph",
+        "run_graphrag",
+        "trace_graphrag",
+        "run_raptor",
+        "trace_raptor",
+        "get_auto_metadata",
+        "update_auto_metadata",
+    }
+
+    missing = guarded_route_names - role_map_keys
+
+    assert missing == set()
 
 
 @pytest.mark.p3

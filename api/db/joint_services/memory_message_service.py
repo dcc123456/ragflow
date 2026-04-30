@@ -17,6 +17,7 @@ import logging
 from typing import List
 
 from common import settings
+from api.common.priority_provider import get_tenant_priority
 from common.time_utils import current_timestamp, timestamp_to_date, format_iso_8601_to_ymd_hms
 from common.constants import MemoryType, LLMType
 from common.doc_store.doc_store_base import FusionExpr
@@ -400,7 +401,7 @@ async def queue_save_to_memory_task(memory_ids: list[str], message_dict: dict):
             "source_id": raw_message_id,
             "message_dict": message_dict
         }
-        if not RABBITMQ_CONN.queue_product(settings.rout_key(priority=0), message=task_message):
+        if not RABBITMQ_CONN.queue_product(settings.rout_key(priority=get_tenant_priority(memory.tenant_id)), message=task_message):
             failed_memory.append({"memory_id": memory_id, "fail_msg": "Can't access Rabbitmq."})
 
     error_msg = ""

@@ -164,13 +164,11 @@ def login_admin(email: str, password: str):
     :param email: admin email
     :param password: string before decrypt (RSA encrypted + base64 encoded)
     """
-    import base64
     users = UserService.query(email=email)
     if not users:
         raise UserNotFoundError(email)
     decrypted = decrypt(password)
-    psw = base64.b64decode(decrypted).decode('utf-8')  # Double decode: RSA decrypt + base64 decode
-    user = UserService.query_user(email, psw)
+    user = UserService.query_user(email, decrypted)
     if not user:
         raise AdminException("Email and password do not match!")
     if not user.is_superuser:

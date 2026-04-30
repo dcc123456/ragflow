@@ -2,25 +2,24 @@ import { IChargePlan } from '@/pages/price/hook/use-price-hooks';
 import api from '@/utils/private-api';
 import registerServer from '@/utils/register-server';
 import request from '@/utils/request';
-import { isBillingEnabled } from './billingStatus';
 
 // function registerServer() {}
 
 const {
-  billin_checkout,
+  billing_checkout,
   current_plan,
   cancel_scheduled_subscription_change,
   plan_list,
   plan_spend_overview,
-  getUpComming,
+  getUpcoming,
   spendHistory,
-  usageBasedPlans,
+  addonPlans,
   storageCurrent,
   storageSetTarget,
 } = api;
 const methods = {
-  billinCheckout: {
-    url: billin_checkout,
+  billingCheckout: {
+    url: billing_checkout,
     method: 'post',
   },
   getCurrentPlan: {
@@ -40,16 +39,16 @@ const methods = {
     headers: { 'Content-Type': 'application/json' },
     method: 'get',
   },
-  getUpComming: {
-    url: getUpComming,
+  getUpcoming: {
+    url: getUpcoming,
     method: 'post',
   },
   spendHistory: {
     url: spendHistory,
     method: 'get',
   },
-  usageBasedPlans: {
-    url: usageBasedPlans,
+  addonPlans: {
+    url: addonPlans,
     method: 'get',
   },
   storageCurrent: {
@@ -63,13 +62,10 @@ const methods = {
 };
 
 const billingService = (() => {
-  if (isBillingEnabled()) {
-    return registerServer<keyof typeof methods>?.(methods, request);
-  }
-  return null;
+  return registerServer<keyof typeof methods>?.(methods, request);
 })();
 
-export const billinCheckout = (
+export const billingCheckout = (
   data: IChargePlan & {
     payment_type: string;
     tenantId: string;
@@ -77,7 +73,7 @@ export const billinCheckout = (
     session_success_url: string;
   },
 ) => {
-  return request.post(api.billin_checkout, { data });
+  return request.post(api.billing_checkout, { data });
 };
 export const getCurrentPlan = () => {
   return request.get(api.current_plan);
@@ -89,12 +85,17 @@ export const cancelScheduledSubscriptionChange = (tenantId: string) => {
   });
 };
 
-export const getBllingBaseOverview = ({ tenantId }: { tenantId: string }) => {
-  return request.get(api.blling_base_overview, {
+export const createBillingPortalSession = (data?: {
+  tenant_id?: string;
+  return_url?: string;
+}) => request.post(api.createPortalSession, { data });
+
+export const getBillingBaseOverview = ({ tenantId }: { tenantId: string }) => {
+  return request.get(api.billing_base_overview, {
     params: { tenant_id: tenantId },
   });
 };
-export const getBllingPlanPverview = ({ tenantId }: { tenantId: string }) => {
+export const getBillingPlanOverview = ({ tenantId }: { tenantId: string }) => {
   return request.get(api.plan_overview, {
     params: { tenant_id: tenantId },
   });
@@ -105,9 +106,9 @@ export interface IStorageSubscriptionCurrent {
   plan_name: string;
   trial_forbidden: boolean;
   unit_price: number;
-  effective_quantity_gb: number;
-  target_quantity_gb: number;
-  pending_quantity_gb: number | null;
+  addon_storage_bytes: number;
+  target_quantity_bytes: number;
+  pending_quantity_bytes: number | null;
   pending_action: string;
   pending_effective_at: string | null;
   decrease_effective_at: string | null;
@@ -118,6 +119,8 @@ export interface IStorageSubscriptionCurrent {
   cancel_at_period_end: boolean;
   current_period_start: string | null;
   current_period_end: string | null;
+  payment_required: boolean;
+  payment_recovery_url: string;
 }
 
 export const getBillingStorageCurrent = (tenantId?: string) => {
@@ -128,7 +131,7 @@ export const getBillingStorageCurrent = (tenantId?: string) => {
 
 export const postBillingStorageSetTarget = (data: {
   tenant_id?: string;
-  target_quantity_gb: number;
+  target_quantity_bytes: number;
   session_cancel_url?: string;
   session_success_url?: string;
 }) => {
@@ -148,11 +151,21 @@ export const getBillingDeepDocUsage = (tenantId?: string) =>
 
 export const postBillingPointsCheckout = (data: {
   tenant_id?: string;
-  points: number;
+  quantity: number;
+  session_success_url?: string;
+  session_cancel_url?: string;
 }) => request.post(api.pointsCheckout, { data });
+
+export const getBillingPointsPrice = () => request.get(api.pointsPrice);
+export const getAddonPlans = () => request.get(api.addonPlans);
 
 export const getBillingPointsBalance = (tenantId?: string) =>
   request.get(api.pointsBalance, {
+    params: tenantId ? { tenant_id: tenantId } : undefined,
+  });
+
+export const getBillingPointsOverview = (tenantId?: string) =>
+  request.get(api.pointsOverview, {
     params: tenantId ? { tenant_id: tenantId } : undefined,
   });
 
@@ -169,5 +182,8 @@ export const getBillingPointsHolds = (params: {
   page_size?: number;
   status?: string;
 }) => request.get(api.pointsHolds, { params });
+
+export const getBillingSession = (sessionId: string) =>
+  request.get(api.session(sessionId));
 
 export default billingService;

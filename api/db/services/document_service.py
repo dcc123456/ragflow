@@ -40,6 +40,7 @@ from common.constants import LLMType, ParserType, StatusEnum, TaskStatus
 from rag.nlp import rag_tokenizer, search
 from common.doc_store.doc_store_base import OrderByExpr
 from common import settings
+from api.common.priority_provider import get_tenant_priority
 from rag.utils.rabbitmq_conn import RABBITMQ_CONN
 
 
@@ -867,6 +868,15 @@ class DocumentService(CommonService):
                 e, doc = DocumentService.get_by_id(d["id"])
                 status = doc.run  # TaskStatus.RUNNING.value
                 if status == TaskStatus.CANCEL.value:
+                    if settings.BILLING_ENABLED:
+                        try:
+                            from api.db.services.billing_service import PointAccountService, PointHoldService
+
+                            hold = PointHoldService.get_by_doc_id(d["id"])
+                            if hold:
+                                PointAccountService.release_hold(hold["id"])
+                        except Exception as _billing_err:
+                            logging.warning(f"Billing hold finalize error for canceled doc {d['id']}: {_billing_err}")
                     continue
                 doc_progress = doc.progress if doc and doc.progress else 0.0
                 special_task_running = False
@@ -1007,12 +1017,12 @@ class DocumentService(CommonService):
                 if kb_table_num_map[kb_id] <= 0:
                     KnowledgebaseService.delete_field_map(kb_id)
         if doc.get("pipeline_id", ""):
-            ok, error_message = queue_dataflow(tenant_id, flow_id=doc["pipeline_id"], task_id=get_uuid(), doc_id=doc["id"])
+            ok, error_message = queue_dataflow(tenant_id, flow_id=doc["pipeline_id"], task_id=get_uuid(), doc_id=doc["id"], priority=get_tenant_priority(tenant_id))
             if not ok:
                 raise RuntimeError(error_message)
         else:
             bucket, name = File2DocumentService.get_storage_address(doc_id=doc["id"])
-            queue_tasks(doc, bucket, name, 0)
+            queue_tasks(doc, bucket, name, get_tenant_priority(tenant_id))
 
     @classmethod
     @DB.connection_context()

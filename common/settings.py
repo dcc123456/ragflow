@@ -43,6 +43,8 @@ import memory.utils.es_conn as memory_es_conn
 import memory.utils.infinity_conn as memory_infinity_conn
 import memory.utils.ob_conn as memory_ob_conn
 
+HOSTNAME = os.environ.get("HOSTNAME", "ragflow")
+
 DEFAULT_ROLE = os.environ.get("DEFAULT_ROLE", "owner")
 ENABLE_WHITELIST = int(os.environ.get("ENABLE_WHITELIST", "0"))
 ENABLE_ADMIN = int(os.environ.get("ENABLE_ADMIN", "0"))
@@ -52,7 +54,6 @@ BILLING_PRICEID_TO_PRODUCT = {}
 BILLING_PRIORITY_TO_PLANS = defaultdict(list)
 BILLING_PLAN_TO_INFO = {}
 BILLING_PRICE_POINT = {}
-BILLING_LOCAL_PRICE = {}
 
 LLM = None
 LLM_FACTORY = None
@@ -452,27 +453,29 @@ def init_settings():
         MAIL_DEFAULT_SENDER = (mail_default_sender[0], mail_default_sender[1])
     MAIL_FRONTEND_URL = SMTP_CONF.get("mail_frontend_url", "")
 
-    global BILLING, BILLING_PRICEID_TO_PRODUCT, BILLING_PRIORITY_TO_PLANS, BILLING_PLAN_TO_INFO, BILLING_PRICE_POINT, BILLING_LOCAL_PRICE
+    global BILLING, BILLING_PRICEID_TO_PRODUCT, BILLING_PRIORITY_TO_PLANS, BILLING_PLAN_TO_INFO, BILLING_PRICE_POINT
+
     BILLING = get_base_config("billing", {})
     BILLING_PRICE_POINT = BILLING.get("price_point", [])
-    BILLING_LOCAL_PRICE = BILLING.get("local_price", [])
     for plan in BILLING.get("billing_plans", []):
         plan_name = plan.get("name")
         price_ids = plan.get("price_ids", "").split()
-        price_lookup_key = plan.get("price_lookup_key", "")
         api_request_limit_per_minute = plan.get("api_request_limit_per_minute")
         api_request_limit_per_month = plan.get("api_request_limit_per_month")
         for price_id in price_ids:
            BILLING_PRICEID_TO_PRODUCT[price_id] = plan_name
 
-        plan_priority = plan.get("plan_priority")
-        BILLING_PRIORITY_TO_PLANS[plan_priority].append(plan_name)
+        task_priority = plan.get("task_priority", "low")
+        priority_int = 1 if task_priority == "high" else 0
+        quota_points = plan.get("quota_points", 0)
+        BILLING_PRIORITY_TO_PLANS[priority_int].append(plan_name)
         BILLING_PLAN_TO_INFO[plan_name] = {
-            "priority": plan_priority,
+            "priority": priority_int,
+            "task_priority": task_priority,
             "price_ids": price_ids,
-            "price_lookup_key": price_lookup_key,
             "api_request_limit_per_minute": api_request_limit_per_minute,
             "api_request_limit_per_month": api_request_limit_per_month,
+            "quota_points": quota_points,
         }
 
     global DOC_MAXIMUM_SIZE, DOC_BULK_SIZE, EMBEDDING_BATCH_SIZE
@@ -532,3 +535,6 @@ def print_rag_settings():
 
 def rout_key(priority: int, suffix="common") -> str:
     return "te.{}.{}".format(priority, suffix)
+
+
+
