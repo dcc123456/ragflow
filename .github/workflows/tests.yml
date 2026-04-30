@@ -7,6 +7,7 @@ on:
     branches:
       - 'saas'
       - 'jiukun'
+      - 'saas_*'
     paths-ignore:
       - 'docs/**'
       - '*.md'
