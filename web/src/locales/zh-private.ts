@@ -73,6 +73,15 @@ export default {
         '失效后，你的账户将自动切换至 Free Plan，超出 Free Plan 范围的功能、额度或资源将无法继续使用。',
       cancelPlanConfirmQuestion: '你确定要取消吗？',
     },
+    billing: {
+      amount: '金额',
+      points: 'pts',
+      invoiceID: '发票 ID',
+      paymentPending: '处理中',
+      paymentSuccess: '支付成功',
+      paymentFailed: '支付失败',
+      close: '关闭',
+    },
     fileManager: {
       evaluation: {
         export: '导出',
@@ -134,6 +143,10 @@ export default {
         apiCalls: 'API 调用',
         avgResponse: '平均响应',
       },
+    },
+    system: {
+      uploadDescription:
+        '每次上传的总文件大小限制为 {{size}},严禁上传违禁文件。',
     },
   },
 };

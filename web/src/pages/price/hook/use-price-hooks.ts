@@ -1,7 +1,8 @@
 import message from '@/components/ui/message';
 import { Modal } from '@/components/ui/modal/modal';
 import { useFetchTenantData } from '@/hooks/use-user-setting-request';
-import billingService, { billingCheckout, unsubscribe } from '@/services/price';
+import { BillingQueryKey } from '@/pages/billing/constants/query-keys';
+import billingService, { billingCheckout } from '@/services/price';
 import storagePrivate from '@/utils/authorization-private-util';
 import storage from '@/utils/authorization-util';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -15,6 +16,15 @@ export type IChargePlan = {
 };
 export const PriceChargeKey = 'price-charge';
 
+const buildCheckoutUrls = () => {
+  const url = window.location.href;
+
+  return {
+    successUrl: `${url.split('?')[0]}?price-pay-status=success${url.split('?')[1] || ''}`,
+    errorUrl: `${url.split('?')[0]}?price-pay-status=cancel${url.split('?')[1] || ''}`,
+  };
+};
+
 export const useCancelPlan = () => {
   const queryClient = useQueryClient();
   const {
@@ -23,12 +33,26 @@ export const useCancelPlan = () => {
     mutateAsync,
   } = useMutation({
     mutationKey: ['cancelPlan'],
-    mutationFn: async (tenantId: string) => {
-      const { data: res } = await unsubscribe({
-        tenant_id: tenantId,
-        cancel_at_period_end: 'yes',
+    mutationFn: async ({
+      tenantId,
+      targetPriceId,
+    }: {
+      tenantId: string;
+      targetPriceId: string;
+    }) => {
+      const { successUrl, errorUrl } = buildCheckoutUrls();
+      const { data: res } = await billingCheckout({
+        tenantId,
+        subscription_price_id: targetPriceId,
+        payment_type: 'subscription',
+        quantity: '1',
+        session_cancel_url: errorUrl,
+        session_success_url: successUrl,
       });
       if (res.code === 0) {
+        if (res.data?.redirect_to) {
+          window.location.href = res.data.redirect_to;
+        }
         message.success(res.message);
         return res.data;
       }
@@ -36,10 +60,12 @@ export const useCancelPlan = () => {
     },
   });
 
-  const cancel = async (tenantId: string) => {
-    const result = await mutateAsync(tenantId);
+  const cancel = async (tenantId: string, targetPriceId: string) => {
+    const result = await mutateAsync({ tenantId, targetPriceId });
     if (result !== undefined) {
-      await queryClient.invalidateQueries({ queryKey: ['currentPlan'] });
+      await queryClient.invalidateQueries({
+        queryKey: [BillingQueryKey.CurrentPlan],
+      });
     }
     return result;
   };
@@ -49,9 +75,7 @@ export const useCancelPlan = () => {
 const useCharge = () => {
   const { data: tenantInfo } = useFetchTenantData();
   const tenantId = tenantInfo?.tenant_id;
-  const url = window.location.href;
-  const successUrl = `${url.split('?')[0]}?price-pay-status=success${url.split('?')[1] || ''}`;
-  const errorUrl = `${url.split('?')[0]}?price-pay-status=cancel${url.split('?')[1] || ''}`;
+  const { successUrl, errorUrl } = buildCheckoutUrls();
 
   const {
     data,
@@ -100,7 +124,7 @@ const useCharge = () => {
       payment_type: 'subscription',
     });
     if (chargeResult && chargeResult.redirect_to) {
-      window.open(chargeResult.redirect_to);
+      window.location.href = chargeResult.redirect_to;
     } else if (chargeResult && chargeResult.scheduled_change) {
       const effectiveAt = chargeResult?.scheduled_change?.effective_at;
       const modal = showModal({
@@ -145,7 +169,7 @@ const useCharge = () => {
 const useFetchCurrentPlan = (force = false) => {
   const user = storage.getUserInfo();
   const { data, isFetching: loading } = useQuery<ICurrentPlan>({
-    queryKey: ['currentPlan'],
+    queryKey: [BillingQueryKey.CurrentPlan],
     // initialData: {},
     enabled: !!user,
     gcTime: force ? 0 : 50000,
@@ -164,7 +188,7 @@ const useFetchCurrentPlan = (force = false) => {
 
 const useFetchPlanList = (force = false) => {
   const { data, isFetching: loading } = useQuery<IPlan[]>({
-    queryKey: ['getPlanList'],
+    queryKey: [BillingQueryKey.PlanList],
     // initialData: {},
     gcTime: force ? 0 : 50000,
     queryFn: async () => {

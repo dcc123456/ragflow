@@ -192,6 +192,10 @@ export default {
       creditsUsed: 'Credits used',
       buyCredits: 'Buy Credits',
       buyStorage: 'Buy Storage',
+      paymentPending: 'Pending',
+      paymentSuccess: 'Payment success',
+      paymentFailed: 'Payment failed',
+      close: 'Close',
     },
     fileManager: {
       evaluation: {
@@ -257,6 +261,10 @@ export default {
         apiCalls: 'api calls',
         avgResponse: 'avg response',
       },
+    },
+    system: {
+      uploadDescription:
+        'The total file size limit per upload is {{size}}. Uploading prohibited files is strictly forbidden.',
     },
   },
 };

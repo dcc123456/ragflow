@@ -2,6 +2,7 @@ import { DateRange } from '@/components/originui/calendar';
 import billingService from '@/services/price';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
+import { BillingQueryKey } from '../constants/query-keys';
 import {
   ICategoriesChart,
   ITotalSpendLineChart,
@@ -38,7 +39,7 @@ export const useAllSpends = (currentDate: DateRange, force?: boolean) => {
     },
   ]);
   const { data, isFetching: loading } = useQuery<UsageData>({
-    queryKey: ['getAllSpends', currentDate],
+    queryKey: [BillingQueryKey.AllSpends, currentDate],
     // initialData: {},
     gcTime: force ? 0 : 50000,
     queryFn: async () => {

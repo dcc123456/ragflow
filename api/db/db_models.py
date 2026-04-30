@@ -1391,6 +1391,7 @@ class Product(DataBaseModel):
     product_type = CharField(null=False, choices=["subscription", "usage_based"])
     usage_stat_type = CharField(null=True, choices=["before", "after"])  # only for usage_based
     version = IntegerField(null=False, help_text="Product version")
+    quota_points = BigIntegerField(null=True, help_text="Monthly point quota for subscription plans")
 
     class Meta:
         db_table = "billing_product"
@@ -1617,9 +1618,10 @@ class PointAccount(DataBaseModel):
 
     id = CharField(max_length=32, primary_key=True)
     tenant_id = CharField(max_length=32, null=False, index=True, unique=True)
-    available_plan_points = BigIntegerField(null=False, default=0)  # plan quota remaining (monthly resetting)
-    available_addon_points = BigIntegerField(null=False, default=0)  # addon purchased remaining (permanent)
-    held_points = BigIntegerField(null=False, default=0)
+    consumed_plan_points = BigIntegerField(null=False, default=0)  # consumed from plan quota (resets each cycle)
+    addon_purchased_points = BigIntegerField(null=False, default=0)  # total addon points purchased (permanent)
+    consumed_addon_points = BigIntegerField(null=False, default=0)  # consumed from addon purchased
+    held_points = BigIntegerField(null=False, default=0)  # points held pending commit
 
     class Meta:
         db_table = "billing_point_account"
@@ -2303,10 +2305,25 @@ def migrate_db():
     alter_db_add_column(migrator, "user_canvas_version", "release", BooleanField(null=False, help_text="is released", default=False, index=True))
     alter_db_add_column(migrator, "api_4_conversation", "version_title", CharField(max_length=255, null=True, help_text="canvas version title when session created", index=False))
 
-    # Billing points split (2026-04-24)
-    # PointAccount: available_plan_points (plan quota remaining), available_addon_points (addon remaining)
-    alter_db_add_column(migrator, "billing_point_account", "available_plan_points", BigIntegerField(null=False, default=0))
-    alter_db_add_column(migrator, "billing_point_account", "available_addon_points", BigIntegerField(null=False, default=0))
+    # Billing points refactor: consumed-based tracking (2026-04-28)
+    # PointAccount now tracks consumed amounts; available = quota - consumed
+    alter_db_add_column(migrator, "billing_point_account", "consumed_plan_points", BigIntegerField(null=False, default=0))
+    alter_db_add_column(migrator, "billing_point_account", "addon_purchased_points", BigIntegerField(null=False, default=0))
+    alter_db_add_column(migrator, "billing_point_account", "consumed_addon_points", BigIntegerField(null=False, default=0))
+
+    # MIGRATION NOTE (2026-04-28):
+    # Existing accounts need consumed_plan_points and addon_purchased_points populated
+    # from the ledger before the consumed-based model goes live. The migration requires
+    # a three-pass approach (per tenant):
+    #   1. addon_purchased_points = SUM(recharge where source=addon)
+    #      (release events do NOT reduce purchased — release is hold cleanup, not a refund)
+    #   2. consumed_plan_points  = SUM(consume where source=plan)
+    #   3. consumed_addon_points = SUM(consume where source=addon)
+    # After migration completes, available fields can be safely removed.
+    # Add quota_points to billing_product (2026-04-28)
+    alter_db_add_column(migrator, "billing_product", "quota_points", BigIntegerField(null=True))
+    # This migration must be run as an offline batch job before billing_app starts serving
+    # traffic with the new consumed-based model.
     alter_db_add_column(migrator, "billing_point_ledger", "source", CharField(max_length=16, null=False, default="plan"))
     alter_db_add_column(migrator, "billing_point_hold", "plan_points", BigIntegerField(null=False, default=0))
     alter_db_add_column(migrator, "billing_point_hold", "addon_points", BigIntegerField(null=False, default=0))

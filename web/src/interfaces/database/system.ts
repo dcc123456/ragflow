@@ -5,3 +5,9 @@ export interface ILangfuseConfig {
   project_id: string;
   project_name: string;
 }
+
+export interface ISystemConfig {
+  disablePasswordLogin: boolean;
+  registerEnabled: number;
+  upload_size_limit: number;
+}

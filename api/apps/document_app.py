@@ -14,6 +14,7 @@
 #  limitations under the License
 #
 import json
+import logging
 import os.path
 import pathlib
 import re
@@ -650,6 +651,18 @@ async def run():
                     has_unfinished_task = any((task.progress or 0) < 1 for task in tasks)
                     if str(doc.run) in [TaskStatus.RUNNING.value, TaskStatus.CANCEL.value] or has_unfinished_task:
                         cancel_all_task_of(id)
+
+                        # Release billing hold immediately on cancel so held points
+                        # are not stranded waiting for progress sync.
+                        if settings.BILLING_ENABLED:
+                            try:
+                                from api.db.services.billing_service import PointAccountService, PointHoldService
+
+                                hold = PointHoldService.get_by_doc_id(id)
+                                if hold:
+                                    PointAccountService.release_hold(hold["id"])
+                            except Exception as billing_err:
+                                logging.warning(f"Release hold on cancel failed for doc {id}: {billing_err}")
                     else:
                         return get_data_error_result(message="Cannot cancel a task that is not in RUNNING status")
                 if all([("delete" not in req or req["delete"]), str(req["run"]) == TaskStatus.RUNNING.value, str(doc.run) == TaskStatus.DONE.value]):

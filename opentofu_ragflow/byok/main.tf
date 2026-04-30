@@ -167,6 +167,14 @@ locals {
   manage_cluster_scoped_resources_resolved = var.cluster_scoped_resource_mode == "auto" ? (
     data.external.cluster_scoped_resource_ownership.result.manage_cluster_scoped_resources == "true"
   ) : var.manage_cluster_scoped_resources
+
+  # Parse upload_size_limit string to bytes for MAX_CONTENT_LENGTH env var
+  # Uses decimal units: 1m = 1000*1000, 1g = 1000*1000*1000
+  max_content_length_bytes = floor(
+    tonumber(regex("^(\\d+)", var.upload_size_limit)[0]) *
+    (can(regex("g$", var.upload_size_limit)) ? 1000 * 1000 * 1000 :
+     can(regex("m$", var.upload_size_limit)) ? 1000 * 1000 : 1)
+  )
 }
 
 # =============================================================================
@@ -1742,6 +1750,11 @@ resource "kubernetes_secret_v1" "ragflow_env" {
     BILLING_PRICE_ID_STARTER   = var.billing_price_id_starter
     BILLING_PRICE_ID_PRO       = var.billing_price_id_pro
     STRIPE_TEST_CLOCK_ID       = var.stripe_test_clock_id
+
+    # Upload size limit for RAGFlow API server (affects file uploads via web UI/API)
+    # This is read by common/settings.py to set MAX_CONTENT_LENGTH in Quart/Flask
+    # and also by rag/svr/task_executor.py to reject oversized documents before processing
+    MAX_CONTENT_LENGTH         = local.max_content_length_bytes
   }
 
   type = "Opaque"
@@ -2937,37 +2950,11 @@ resource "kubernetes_manifest" "http_route_api" {
   }
 }
 
-# NGINX Gateway Fabric policy: allow larger request bodies for API uploads
-resource "kubernetes_manifest" "upload_size_policy" {
-  count = local.is_gke_gateway ? 0 : 1
-
-  manifest = {
-    apiVersion = "gateway.nginx.org/v1alpha1"
-    kind       = "ClientSettingsPolicy"
-    metadata = {
-      name      = "ragflow-upload-size"
-      namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
-    }
-    spec = {
-      targetRef = {
-        group = "gateway.networking.k8s.io"
-        kind  = "HTTPRoute"
-        name  = "ragflow-http-route-api"
-      }
-      body = {
-        maxSize = "100m"
-      }
-    }
-  }
-
-  depends_on = [kubernetes_manifest.http_route_api]
-}
-
-# GCPBackendPolicy: Extend backend service timeout for long-lived SSE streams.
-# HTTPRoute timeouts.request alone may not be translated to the GCP backend
-# service timeoutSec by all GKE Gateway Controller versions.  This policy
-# provides a direct, reliable override on the backend service resource that
-# the regional external ALB uses.
+# GCPBackendPolicy: Configure backend service timeout for GKE regional external ALB.
+# Note: GKE Gateway does not support body size limits via any native API.
+# Upload size is enforced at the Python application layer via MAX_CONTENT_LENGTH env var
+# (set in ragflow_env Secret -> common/settings.py -> Quart/Flask).
+# GKE default Cloud LB request limit (~32MB) applies when Python limit is not reached.
 resource "kubernetes_manifest" "gcp_backend_policy_api" {
   count = local.is_gke_gateway ? 1 : 0
 

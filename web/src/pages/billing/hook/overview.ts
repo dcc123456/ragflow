@@ -4,13 +4,14 @@ import {
   getBillingPlanOverview,
 } from '@/services/price';
 import { useQuery } from '@tanstack/react-query';
+import { BillingQueryKey } from '../constants/query-keys';
 import { IPayStatusData, ISubscriptionData } from '../interface';
 
 export const useFetchBaseOverview = (force = false) => {
   const { data: tenantInfo } = useFetchTenantInfo();
   const tenantId = tenantInfo?.tenant_id;
   const { data, isFetching: loading } = useQuery({
-    queryKey: ['getBaseOverview', tenantId],
+    queryKey: [BillingQueryKey.BaseOverview, tenantId],
     // initialData: {},
     gcTime: force ? 0 : 50000,
     queryFn: async () => {
@@ -28,10 +29,13 @@ export const useFetchBaseOverview = (force = false) => {
 export const useFetchPlanOverview = (force = false) => {
   const { data: tenantInfo } = useFetchTenantInfo();
   const tenantId = tenantInfo?.tenant_id;
-  const { data, isFetching: loading } = useQuery<ISubscriptionData>({
-    queryKey: ['getPlanOverview', tenantId],
+  const { data, isFetching: loading, refetch } = useQuery<ISubscriptionData>({
+    queryKey: [BillingQueryKey.PlanOverview, tenantId],
     // initialData: {},
+    staleTime: force ? 0 : Infinity,
     gcTime: force ? 0 : 50000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
     queryFn: async () => {
       const { data: res } = await getBillingPlanOverview({ tenantId });
       if (res.code === 0) {
@@ -42,7 +46,7 @@ export const useFetchPlanOverview = (force = false) => {
     },
   });
 
-  return { data, loading };
+  return { data, loading, refetch };
 };
 
 export const useFetchDeepDocUsage = () => {
@@ -53,7 +57,7 @@ export const useFetchDeepDocUsage = () => {
     isFetching: loading,
     refetch,
   } = useQuery<IPayStatusData>({
-    queryKey: ['getDeepDocUsage', tenantId],
+    queryKey: [BillingQueryKey.DeepDocUsage, tenantId],
     gcTime: 30000,
     enabled: !!tenantId,
     queryFn: async () => {

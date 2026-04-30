@@ -5,6 +5,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import classNames from 'classnames';
+import { isEmpty } from 'lodash';
 import { useTranslation } from 'react-i18next';
 import { useFetchCurrentPlan } from '../hook/use-price-hooks';
 
@@ -22,7 +23,11 @@ const PricingCardButton = (props: IPricingCardButtonProps) => {
     props;
   const { t } = useTranslation();
   const { data: currentPlanData } = useFetchCurrentPlan();
-  const hasPendingChange = !!currentPlanData?.pending_subscription_change;
+
+  const hasPendingChange = !isEmpty(
+    currentPlanData?.pending_subscription_change,
+  );
+
   const pendingEffectiveDate =
     typeof currentPlanData?.pending_subscription_change?.effective_at ===
     'string'

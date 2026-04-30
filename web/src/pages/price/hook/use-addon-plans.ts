@@ -1,9 +1,10 @@
-import { useQuery } from '@tanstack/react-query';
+import { BillingQueryKey } from '@/pages/billing/constants/query-keys';
 import { getAddonPlans } from '@/services/price';
+import { useQuery } from '@tanstack/react-query';
 
 export const useFetchAddonPlans = () => {
   const { data, isFetching: loading } = useQuery({
-    queryKey: ['addonPlans'],
+    queryKey: [BillingQueryKey.AddonPlans],
     queryFn: async () => {
       const { data: res } = await getAddonPlans();
       if (res?.code === 0) return res.data;

@@ -17,6 +17,8 @@ interface ICancelPlanDialogProps {
   planName: string;
   endDate: string;
   tenantId: string;
+  /** price_id of the plan to downgrade to (e.g. Free plan's price_id) */
+  targetPriceId?: string;
 }
 
 const CancelPlanDialog: React.FC<ICancelPlanDialogProps> = ({
@@ -25,12 +27,17 @@ const CancelPlanDialog: React.FC<ICancelPlanDialogProps> = ({
   planName,
   endDate,
   tenantId,
+  targetPriceId,
 }) => {
   const { t } = useTranslation();
   const { loading: cancelLoading, cancel } = useCancelPlan();
 
-  const handleConfirmCancel = async () => {
-    const result = await cancel(tenantId);
+  const handleConfirmDowngrade = async () => {
+    if (!targetPriceId) {
+      return;
+    }
+
+    const result = await cancel(tenantId, targetPriceId);
     if (result !== undefined) {
       onOpenChange(false);
     }
@@ -77,8 +84,8 @@ const CancelPlanDialog: React.FC<ICancelPlanDialogProps> = ({
             {t('common.cancel')}
           </AlertDialogCancel>
           <AlertDialogAction
-            disabled={cancelLoading}
-            onClick={handleConfirmCancel}
+            disabled={cancelLoading || !targetPriceId}
+            onClick={handleConfirmDowngrade}
           >
             {cancelLoading && (
               <span className="inline-block me-2 h-4 w-4 animate-spin border-2 border-white border-t-transparent rounded-full" />

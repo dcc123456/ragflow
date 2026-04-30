@@ -450,6 +450,7 @@ def test_invoice_paid_updates_existing_failed_order_and_restores_active(monkeypa
         },
     )
     monkeypatch.setattr(billing_app.SubscriptionService, "update_subscription", lambda tenant_id, data: subscription_updates.append((tenant_id, data)))
+    monkeypatch.setattr(billing_app.StorageSubscriptionService, "get_by_subscription_id", lambda _subscription_id: None)
     monkeypatch.setattr(billing_app.settings, "BILLING_PRICEID_TO_PRODUCT", {"price_pro": "Pro"}, raising=False)
     monkeypatch.setattr(billing_app, "get_product_id_by_name", lambda _plan_name: "prod_pro")
     monkeypatch.setattr(
@@ -459,7 +460,7 @@ def test_invoice_paid_updates_existing_failed_order_and_restores_active(monkeypa
     )
     monkeypatch.setattr(billing_app.PaymentOrderService, "update_by_order_id", lambda order_id, data: payment_order_updates.append((order_id, data)))
     monkeypatch.setattr(billing_app.PaymentOrderService, "save", lambda **_kwargs: (_ for _ in ()).throw(AssertionError("should update existing order")))
-    monkeypatch.setattr(billing_app.PointAccountService, "sync_plan_points_on_subscription_paid", lambda _tenant_id, _plan_quota: None)
+    monkeypatch.setattr(billing_app.PointAccountService, "reset_plan_consumed_points_at_cycle_start", lambda _tenant_id: None)
 
     event = {"type": "invoice.paid", "data": {"object": {"id": "in_failed"}}}
 
@@ -568,7 +569,7 @@ def test_customer_subscription_deleted_syncs_main_subscription_to_canceled(monke
     assert updates[-1][1] == {
         "status": "canceled",
         "subscription_status": "canceled",
-        "subscription_id": "sub_main",
+        "subscription_id": "",
         "customer_id": "cus_main",
     }
 
@@ -748,6 +749,93 @@ def test_storage_cancel_async_skips_canceled_subscription(monkeypatch):
 
     assert ok is True
     assert data == {}
+    assert modify_calls == []
+
+
+@pytest.mark.p2
+def test_storage_increase_async_always_creates_checkout_session(monkeypatch):
+    checkout_calls = []
+    modify_calls = []
+
+    monkeypatch.setattr(
+        billing_app.SubscriptionService,
+        "get_by_tenant_id",
+        lambda _tenant_id: {
+            "tenant_id": "tenant_1",
+            "plan_name": "Pro",
+            "customer_id": "cus_storage",
+            "end_time": datetime(2024, 4, 8, 16, 0, tzinfo=timezone.utc),
+        },
+    )
+    monkeypatch.setattr(
+        billing_app.StorageSubscriptionService,
+        "get_by_tenant_id",
+        lambda _tenant_id: {
+            "tenant_id": "tenant_1",
+            "subscription_id": "sub_storage",
+            "status": "active",
+            "addon_storage_bytes": 2 * billing_app.BYTES_PER_GB,
+            "cancel_at_period_end": False,
+        },
+    )
+    monkeypatch.setattr(billing_app, "_has_storage_blocking_pending", lambda _tenant_id: False)
+    monkeypatch.setattr(billing_app, "cancel_scheduled_subscription_change_async", lambda _subscription_id: None)
+    monkeypatch.setattr(billing_app, "get_storage_price_id_from_config", lambda: "price_storage")
+    monkeypatch.setattr(billing_app, "billing_set_customer_id_async", lambda _tenant_id: "cus_storage")
+
+    async def retrieve_async(subscription_id, **kwargs):
+        assert subscription_id == "sub_storage"
+        assert kwargs == {}
+        return {
+            "id": "sub_storage",
+            "customer": "cus_storage",
+            "status": "active",
+            "current_period_start": 1710000000,
+            "current_period_end": 1712592000,
+            "cancel_at_period_end": False,
+            "items": {"data": [{"id": "si_storage", "price": {"id": "price_storage"}, "quantity": 2}]},
+        }
+
+    async def modify_async(subscription_id, **kwargs):
+        modify_calls.append((subscription_id, kwargs))
+        raise AssertionError("storage increases should no longer update subscriptions directly")
+
+    async def create_checkout_session(**kwargs):
+        checkout_calls.append(kwargs)
+        return SimpleNamespace(url="https://checkout.stripe.test/storage")
+
+    monkeypatch.setattr(billing_app.stripe.Subscription, "retrieve_async", retrieve_async)
+    monkeypatch.setattr(billing_app.stripe.Subscription, "modify_async", modify_async)
+    monkeypatch.setattr(billing_app, "_create_storage_checkout_session_async", create_checkout_session)
+
+    ok, data = asyncio.run(
+        billing_app._set_storage_target_quantity_async(
+            "tenant_1",
+            4 * billing_app.BYTES_PER_GB,
+            session_success_url="https://app.example/success",
+            session_cancel_url="https://app.example/cancel",
+        )
+    )
+
+    assert ok is True
+    assert data == {
+        "pending_payment": True,
+        "addon_storage_bytes": 2 * billing_app.BYTES_PER_GB,
+        "target_quantity_bytes": 4 * billing_app.BYTES_PER_GB,
+        "pending": True,
+        "redirect_to": "https://checkout.stripe.test/storage",
+    }
+    assert checkout_calls == [
+        {
+            "tenant_id": "tenant_1",
+            "customer_id": "cus_storage",
+            "storage_price_id": "price_storage",
+            "target_quantity_bytes": 4 * billing_app.BYTES_PER_GB,
+            "session_success_url": "https://app.example/success",
+            "session_cancel_url": "https://app.example/cancel",
+            "main_period_end": datetime(2024, 4, 8, 16, 0, tzinfo=timezone.utc),
+        }
+    ]
     assert modify_calls == []
 
 
@@ -1042,4 +1130,3 @@ def test_checkout_delinquent_subscription_paid_plan_request_returns_invoice_url(
     # Verify that the invoice_url is what would be returned
     returned_invoice_url = (tenant_plan.get("invoice_url") or "").strip()
     assert returned_invoice_url == invoice_url
-

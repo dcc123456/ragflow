@@ -25,6 +25,7 @@ export type IPricePlanWithButton = IPricePlan & {
   buttonLabel: string;
   isUse: boolean;
   disabled?: boolean;
+  cancelTargetPriceId?: string;
   icon: () => JSX.Element;
 };
 
