@@ -1902,7 +1902,7 @@ resource "kubernetes_manifest" "podmonitor_ragflow" {
 
   manifest = {
     apiVersion = "monitoring.googleapis.com/v1"
-    kind       = "PodMonitor"
+    kind       = "PodMonitoring"
     metadata = {
       name      = "ragflow-metrics"
       namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
@@ -1937,7 +1937,7 @@ resource "kubernetes_manifest" "podmonitor_admin" {
 
   manifest = {
     apiVersion = "monitoring.googleapis.com/v1"
-    kind       = "PodMonitor"
+    kind       = "PodMonitoring"
     metadata = {
       name      = "admin-metrics"
       namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
