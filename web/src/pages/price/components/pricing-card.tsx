@@ -77,7 +77,7 @@ const PricingCard = (props: IPricePlanWithButton) => {
   };
 
   return (
-    <div className="relative  group">
+    <div className="relative  group max-w-[300px]">
       <div
         className={` rounded-lg p-6 text-center border border-border-button transition-transform group-hover:scale-105 bg-bg-base text-text-primary relative z-20 group-hover:border-accent-primary h-full
           `}

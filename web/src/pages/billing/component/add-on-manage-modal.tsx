@@ -88,12 +88,15 @@ const CustomModal: React.FC<CustomModalProps> = ({
             </div>
           )}
           {value > currentValue && (
-            <div className="text-sm">
-              {t('billing.payNowIncremental', {
-                amount: increaseCharge,
-                nextMonthlyCost: newMonthlyCost,
-              })}
-            </div>
+            <div
+              className="text-sm"
+              dangerouslySetInnerHTML={{
+                __html: t('billing.payNowIncremental', {
+                  amount: increaseCharge,
+                  nextMonthlyCost: newMonthlyCost,
+                }),
+              }}
+            ></div>
           )}
         </div>
       </div>

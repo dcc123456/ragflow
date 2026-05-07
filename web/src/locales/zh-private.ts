@@ -82,8 +82,7 @@ export default {
       paymentFailed: '支付失败',
       close: '关闭',
       nextMonthlyCost: '下月费用',
-      payNowIncremental:
-        '立即支付 ${{amount}} 以增加存储空间。您下月的存储费用将为 ${{nextMonthlyCost}}。',
+      payNowIncremental: `立即支付 <strong class='text-text-primary'>{{amount}}</strong> 以增加存储空间。您下月的存储费用将为 <strong class='text-text-primary'>{{nextMonthlyCost}}</strong>。`,
     },
     fileManager: {
       evaluation: {

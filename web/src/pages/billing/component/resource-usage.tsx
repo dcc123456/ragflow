@@ -6,15 +6,10 @@ import {
   getBillingStorageCurrent,
   postBillingStorageSetTarget,
 } from '@/services/price';
+import { formatFileSize } from '@/utils/common-util';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { camelCase } from 'lodash';
-import {
-  ArrowUpRight,
-  Coins,
-  DatabaseZap,
-  LayoutGrid,
-  Users,
-} from 'lucide-react';
+import { Coins, DatabaseZap, LayoutGrid, Users } from 'lucide-react';
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { BillingQueryKey } from '../constants/query-keys';
@@ -158,21 +153,27 @@ const ResourceUsage: React.FC<CustomProgressProps> = ({
   const storageFooter = () => {
     if (title === 'Storage') {
       return (
-        <div className="flex justify-between items-end text-text-primary">
-          <div>
-            {planName} {t('billing.planUsed')}{' '}
-            {value > planValue ? formatNumber(planValue) : formatNumber(value)}{' '}
-            {unit}/{formatNumber(planValue)} {unit}
+        <div className="flex justify-between items-center text-text-primary">
+          <div className="flex flex-col items-start">
+            <span>
+              {planName} {t('billing.planUsed')}
+            </span>
+            {value > planValue
+              ? formatFileSize(planValue)
+              : formatFileSize(value)}{' '}
+            /{formatFileSize(planValue)}
           </div>
           {!(planName == 'Free Plan' || planName == 'Free') && (
-            <div className="flex items-end gap-3 cursor-pointer ">
-              <span>
-                {t('billing.addonUsed')}{' '}
-                {(value > planValue ? value - planValue : 0).toFixed(2)} {unit}/
-                {parseFloat((limit - planValue).toFixed(2))} {unit}
-              </span>
+            <>
+              <div className="flex flex-col items-start">
+                <span>{t('billing.addonUsed')} </span>
+                <span>
+                  {formatFileSize(value > planValue ? value - planValue : 0)}/
+                  {formatFileSize(limit - planValue)}
+                </span>
+              </div>
               {isStorageCurrentLoading ? (
-                <div className="flex items-center text-xs px-1 py-1 rounded-sm border border-border-button bg-bg-input text-text-secondary cursor-not-allowed">
+                <div className="flex items-center text-sm px-1 py-1 rounded-sm border border-border-button bg-bg-input text-text-secondary cursor-not-allowed">
                   {t('common.loading', 'Loading...')}
                 </div>
               ) : !isStorageCurrentError &&
@@ -182,30 +183,30 @@ const ResourceUsage: React.FC<CustomProgressProps> = ({
                   href={storageCurrent.payment_recovery_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center text-xs hover:outline outline-1 px-1 py-1 rounded-sm border border-red-400 bg-bg-input text-red-500"
+                  className="flex items-center text-sm hover:outline outline-1 px-1 py-1 rounded-sm border border-red-400 bg-bg-input text-red-500"
                 >
                   {t('billing.payStorageInvoice', 'Pay Invoice')}
-                  <ArrowUpRight size={12} />
+                  {/* <ArrowUpRight size={12} /> */}
                 </a>
               ) : (
                 <div
-                  className="flex items-center text-text-primary text-xs hover:outline outline-1 px-1 py-1 rounded-sm border border-border-button bg-bg-input "
+                  className="flex items-center justify-center text-text-primary text-sm hover:outline outline-1 px-1 py-1 rounded-sm border border-border-button bg-bg-input cursor-pointer mt-1"
                   onClick={() => openAddOnManage()}
                 >
                   {t('billing.buyStorage')}
-                  <ArrowUpRight size={12} />
+                  {/* <ArrowUpRight size={12} /> */}
                 </div>
               )}
-            </div>
+            </>
           )}
         </div>
       );
     }
     if (title === 'Document Parse' && (planPoints || addonPoints)) {
       return (
-        <div className="flex gap-2 text-text-primary justify-between">
+        <div className="flex gap-2 text-text-primary justify-between items-center">
           {/* Plan quota row */}
-          <div className="flex justify-between items-center flex-col">
+          <div className="flex justify-between items-start flex-col">
             <span>
               {planName} {t('billing.planUsed')}
             </span>
@@ -214,23 +215,25 @@ const ResourceUsage: React.FC<CustomProgressProps> = ({
               {formatNumber(planPoints?.limit ?? 0)} pts
             </span>
           </div>
-          {/* Addon row */}
-          <div className="flex justify-between items-center flex-col">
-            <span>{t('billing.creditsUsed') || 'Addon Points'}</span>
-            <span>
-              {formatNumber(addonPoints?.used ?? 0)}/
-              {formatNumber(addonPoints?.limit ?? 0)} pts
-            </span>
-          </div>
-
           {!(planName == 'Free Plan' || planName == 'Free') && (
-            <div
-              className="flex items-center justify-center text-text-primary text-xs hover:outline outline-1 px-1 py-1 rounded-sm border border-border-button bg-bg-input cursor-pointer mt-1"
-              onClick={() => openBuyPoints()}
-            >
-              {t('billing.buyCredits')}
-              <ArrowUpRight size={12} />
-            </div>
+            <>
+              {/* Addon row */}
+              <div className="flex justify-between items-start flex-col">
+                <span>{t('billing.creditsUsed') || 'Addon Points'}</span>
+                <span>
+                  {formatNumber(addonPoints?.used ?? 0)}/
+                  {formatNumber(addonPoints?.limit ?? 0)} pts
+                </span>
+              </div>
+
+              <div
+                className="flex items-center justify-center text-text-primary text-sm hover:outline outline-1 px-1 py-1 rounded-sm border border-border-button bg-bg-input cursor-pointer mt-1"
+                onClick={() => openBuyPoints()}
+              >
+                {t('billing.buyCredits')}
+                {/* <ArrowUpRight size={12} /> */}
+              </div>
+            </>
           )}
         </div>
       );
@@ -272,6 +275,11 @@ const ResourceUsage: React.FC<CustomProgressProps> = ({
           <div className="text-text-primary">
             {title === 'Document Parse' && (planPoints || addonPoints) ? (
               <span>{`${formatNumber(currentPoints)} ${unit}`}</span>
+            ) : title === 'Storage' ? (
+              <>
+                {showValue && <span>{`${formatFileSize(value)}`}/</span>}
+                <span>{`${formatFileSize(limit)}`}</span>
+              </>
             ) : (
               <>
                 {showValue && <span>{`${value} ${unit}`}/</span>}

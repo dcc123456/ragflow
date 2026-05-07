@@ -87,7 +87,7 @@ export const PriceModalComponent: React.FC<PriceModalProps> = ({
       footer={<></>}
       className="!w-[calc(100%-200px)] max-w-[1800px] !bg-bg-base"
     >
-      <div className="flex flex-col items-center justify-center px-6 pb-12 !bg-bg-base rounded-lg text-text-primary">
+      <div className="flex flex-col items-center justify-center px-[78px] py-[84px] !bg-bg-base rounded-lg text-text-primary">
         <div className="text-[48px] leading-[80px] font-medium mb-10 text-center text-text-primary">
           <FxGradientText preset="primary" direction="right">
             Scale Your Business with RAG engine

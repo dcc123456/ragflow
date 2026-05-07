@@ -133,8 +133,8 @@ export default {
       reducedQuotaEffective: 'Reduced quota takes effect on',
       ensureBelow: 'Ensure usage is below',
       toAvoidOverage: 'to avoid overage',
-      payNowIncremental:
-        'Pay ${{amount}} now for the additional storage. Your next monthly storage cost will be ${{nextMonthlyCost}}.',
+      payNowIncremental: `Pay <strong class='text-text-primary'>{{amount}}</strong> now for the additional storage.<br>
+         Your next monthly storage cost will be <strong class='text-text-primary'>{{nextMonthlyCost}}</strong>.`,
       manageAddonStorage: 'Manage Add-on storage',
       storageTitle: 'Storage',
       gb: 'GB',

@@ -49,10 +49,11 @@ const Billing = () => {
           onChange={navClickFunc}
         ></Segmented>
         <div>
-          <span className="text-text-secondary mr-4">
+          <span className="text-text-secondary mr-4 text-sm">
             {t('billing.needMore')}
           </span>
           <UpgradeButton
+            className="text-sm"
             text={
               currentPlan?.plan_name !== PriceName.Trial
                 ? t('billing.changePlan')

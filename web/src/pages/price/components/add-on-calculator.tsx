@@ -53,7 +53,7 @@ const AddOnCalculator: React.FC = () => {
       </p>
       <div className="rounded-lg overflow-hidden border border-border-default">
         <table
-          className="w-full rounded-lg bg-bg-input border border-border-default"
+          className="w-full rounded-lg bg-bg-input border border-border-button"
           cellPadding={15}
         >
           <thead className="text-left text-base text-text-secondary bg-bg-title rounded-lg ">
@@ -67,7 +67,7 @@ const AddOnCalculator: React.FC = () => {
             {products.map((product) => (
               <tr
                 key={product.name}
-                className="border-border-button border-t-[1px] "
+                className="border-border-default border-t-[1px] "
               >
                 <td className="w-1/3 py-4 text-text-primary">{product.name}</td>
                 <td className="py-4">
@@ -86,7 +86,7 @@ const AddOnCalculator: React.FC = () => {
                   <span className="text-text-primary text-2xl font-bold">
                     ${totalPrice(product)}
                   </span>
-                  <span className="text-gray-500 text-sm ml-2">
+                  <span className="text-text-secondary text-sm ml-2">
                     {product.per}
                   </span>
                 </td>

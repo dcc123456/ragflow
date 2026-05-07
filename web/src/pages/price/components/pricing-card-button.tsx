@@ -75,7 +75,7 @@ const PricingCardButton = (props: IPricingCardButtonProps) => {
     <ButtonLoading
       type="button"
       className={classNames(
-        'w-full py-2 rounded-lg font-bold bg-bg-card text-text-primary border border-border-default  group-hover:bg-bg-base group-hover:text-text-primary group-hover:border-b-2 group-hover:border-b-[#00BEB4]',
+        'w-full py-2 rounded-lg font-bold bg-bg-card text-text-primary border border-border-default  group-hover:bg-text-primary group-hover:text-text-primary-inverse group-hover:border-b-2 group-hover:border-b-[#00BEB4]',
         {
           'border border-border-button': isUse,
           'opacity-50 cursor-not-allowed': !isUse && disabled,

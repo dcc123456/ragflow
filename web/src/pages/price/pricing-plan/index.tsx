@@ -36,7 +36,7 @@ const enterprise = {
       name: 'BYOC deployment',
       icon: (
         <BanknoteArrowUp
-          size={12}
+          size={14}
           className="text-text-primary font-normal mr-2"
         />
       ),
@@ -45,7 +45,7 @@ const enterprise = {
       key: 'teamMembers',
       value: -1,
       name: 'On-premises deployment',
-      icon: <Vault size={12} className="text-text-primary font-normal mr-2" />,
+      icon: <Vault size={14} className="text-text-primary font-normal mr-2" />,
     },
     {
       key: 'datasetStorage',
@@ -53,7 +53,7 @@ const enterprise = {
       name: 'Dedicated support',
       icon: (
         <HeartHandshake
-          size={12}
+          size={14}
           className="text-text-primary font-normal mr-2"
         />
       ),
@@ -63,7 +63,7 @@ const enterprise = {
       value: -1,
       name: 'Custom SLA',
       icon: (
-        <ShieldCheck size={12} className="text-text-primary font-normal mr-2" />
+        <ShieldCheck size={14} className="text-text-primary font-normal mr-2" />
       ),
     },
   ],
@@ -76,28 +76,28 @@ function buildCommonFeatures(priceType: PriceName) {
       value: '',
       name: 'Apps',
       icon: (
-        <LayoutGrid size={12} className="text-text-primary font-normal mr-2" />
+        <LayoutGrid size={14} className="text-text-primary font-normal mr-2" />
       ),
     },
     {
       key: 'teamMembers',
       value: '',
       name: priceType === PriceName.Trial ? 'team member' : 'team members',
-      icon: <Users size={12} className="text-text-primary font-normal mr-2" />,
+      icon: <Users size={14} className="text-text-primary font-normal mr-2" />,
     },
     {
       key: 'datasetStorage',
       value: '',
       name: 'GB dataset storage',
       icon: (
-        <DatabaseZap size={12} className="text-text-primary font-normal mr-2" />
+        <DatabaseZap size={14} className="text-text-primary font-normal mr-2" />
       ),
     },
     {
       key: 'credits',
       value: '',
       name: 'credits / month',
-      icon: <Coins size={12} className="text-text-primary font-normal mr-2" />,
+      icon: <Coins size={14} className="text-text-primary font-normal mr-2" />,
     },
   ];
 
@@ -278,7 +278,6 @@ const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
       isPopular: false,
       disabled: false,
       buttonLabel: t('price.contactUs'),
-      cancelTargetPriceId: undefined,
     });
 
     // Ensure the pricing cards are displayed in the correct order regardless of the backend response order
@@ -307,7 +306,8 @@ const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
           <Loader2 className="animate-spin" />
         </div>
       )}
-      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-10">
+      {/* <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-5"> */}
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] xl:grid-cols-4 gap-5 w-full">
         {!loading &&
           pricePlanList?.map((plan, index) => (
             <PricingCard key={index} {...plan} />

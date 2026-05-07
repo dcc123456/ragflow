@@ -41,8 +41,7 @@ export default {
     },
     billing: {
       nextMonthlyCost: '下月費用',
-      payNowIncremental:
-        '立即支付 ${{amount}} 以增加存儲空間。您下月的存儲費用將為 ${{nextMonthlyCost}}。',
+      payNowIncremental: `立即支付 <strong class='text-text-primary'>{{amount}}</strong>  以增加存儲空間。您下月的存儲費用將為 <strong class='text-text-primary'>{{nextMonthlyCost}}</strong>。`,
     },
   },
 };

@@ -27,7 +27,7 @@ const UpgradeButton = ({
       href="/price"
       onClick={handleClick}
       className={cn(
-        'whitespace-nowrap inline-flex items-center pl-2 py-1 pr-1 text-bg-base font-semibold rounded-md bg-bg-input border-0.5 border-border-default text-text-secondary',
+        'whitespace-nowrap inline-flex font-normal  items-center pl-2 py-1 pr-1 text-bg-base rounded-md bg-bg-input border-0.5 border-border-default text-text-secondary hover:text-text-primary hover:border-text-primary',
         className,
       )}
     >

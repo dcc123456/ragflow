@@ -1,3 +1,5 @@
+import { EmptyType } from '@/components/empty/constant';
+import Empty from '@/components/empty/empty';
 import { RAGFlowPagination } from '@/components/ui/ragflow-pagination';
 import {
   Table,
@@ -9,7 +11,7 @@ import {
 } from '@/components/ui/table';
 import { RAGFlowTooltip } from '@/components/ui/tooltip';
 import { pick } from 'lodash';
-import { SquareChartGantt } from 'lucide-react';
+import { ClipboardList } from 'lucide-react';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { useFetchHistoryList } from './hook/billing-history';
@@ -58,44 +60,55 @@ const BillingHistory: React.FC = () => {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {invoicesData.map((invoice) => (
-            <TableRow key={invoice.id}>
-              <TableCell>
-                <RAGFlowTooltip tooltip={invoice.id}>
-                  <span className="block max-w-[200px] truncate 4xl:max-w-none">
-                    {invoice.id}
-                  </span>
-                </RAGFlowTooltip>
-              </TableCell>
-              <TableCell>{invoice.createDate}</TableCell>
-              <TableCell>{invoice.product}</TableCell>
-              <TableCell>{handleStatus(invoice.status)}</TableCell>
-              <TableCell>{invoice.amount}</TableCell>
-              <TableCell>
-                {invoice.invoiceLink && (
-                  <a
-                    href={invoice.invoiceLink}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    {/* icon */}
-                    <SquareChartGantt />
-                  </a>
-                )}
+          {invoicesData?.length ? (
+            invoicesData.map((invoice) => (
+              <TableRow key={invoice.id} className="group">
+                <TableCell>
+                  <RAGFlowTooltip tooltip={invoice.id}>
+                    <span className="block max-w-[200px] truncate 4xl:max-w-none">
+                      {invoice.id}
+                    </span>
+                  </RAGFlowTooltip>
+                </TableCell>
+                <TableCell>{invoice.createDate}</TableCell>
+                <TableCell>{invoice.product}</TableCell>
+                <TableCell>{handleStatus(invoice.status)}</TableCell>
+                <TableCell>{invoice.amount}</TableCell>
+                <TableCell>
+                  {invoice.invoiceLink && (
+                    <a
+                      href={invoice.invoiceLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className=" hidden group-hover:block"
+                    >
+                      {/* icon */}
+                      <ClipboardList size={14} />
+                    </a>
+                  )}
+                </TableCell>
+              </TableRow>
+            ))
+          ) : (
+            <TableRow>
+              <TableCell colSpan={6} className="h-24 text-center">
+                <Empty type={EmptyType.Data} />
               </TableCell>
             </TableRow>
-          ))}
+          )}
         </TableBody>
       </Table>
-      <div className="flex justify-end items-center mt-4 w-full">
-        <RAGFlowPagination
-          {...pick(pagination, 'current', 'pageSize')}
-          total={pagination.total}
-          onChange={(page, pageSize) => {
-            setPagination({ page, pageSize });
-          }}
-        ></RAGFlowPagination>
-      </div>
+      {pagination.total > 0 && (
+        <div className="flex justify-end items-center mt-4 w-full">
+          <RAGFlowPagination
+            {...pick(pagination, 'current', 'pageSize')}
+            total={pagination.total}
+            onChange={(page, pageSize) => {
+              setPagination({ page, pageSize });
+            }}
+          ></RAGFlowPagination>
+        </div>
+      )}
     </div>
   );
 };

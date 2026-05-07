@@ -101,7 +101,7 @@ export const BaseInfo = () => {
   return (
     <>
       <div className="flex justify-between items-center mb-4">
-        <div className="flex justify-between items-center w-full">
+        <div className="flex justify-start items-end gap-2 w-full">
           <h2 className="text-2xl font-bold text-text-primary">
             {currentPlan.name}
           </h2>
@@ -136,16 +136,6 @@ export const BaseInfo = () => {
           basicCapacity={currentPlan.storage?.base}
         ></ResourceUsage>
         <ResourceUsage
-          title="Apps"
-          value={currentPlan.apps?.used}
-          limit={currentPlan.apps?.total}
-        />
-        <ResourceUsage
-          title="Team Member"
-          value={currentPlan.teamMember?.used}
-          limit={currentPlan.teamMember?.total}
-        ></ResourceUsage>
-        <ResourceUsage
           title="Document Parse"
           value={currentPlan.docParse?.used || 0}
           planName={currentPlan.name}
@@ -156,6 +146,16 @@ export const BaseInfo = () => {
           showValue={false}
           planPoints={planData?.resources?.plan_points}
           addonPoints={planData?.resources?.addon_points}
+        ></ResourceUsage>
+        <ResourceUsage
+          title="Apps"
+          value={currentPlan.apps?.used}
+          limit={currentPlan.apps?.total}
+        />
+        <ResourceUsage
+          title="Team Member"
+          value={currentPlan.teamMember?.used}
+          limit={currentPlan.teamMember?.total}
         ></ResourceUsage>
         {/* <div className="bg-bg-input border border-border-default p-4 rounded mb-4">
           <div className="flex justify-between items-center mb-2">

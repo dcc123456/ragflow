@@ -8,6 +8,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { Modal } from '@/components/ui/modal/modal';
 import { useTranslation } from 'react-i18next';
 import { useCancelPlan } from '../hook/use-price-hooks';
 
@@ -38,6 +39,28 @@ const CancelPlanDialog: React.FC<ICancelPlanDialogProps> = ({
     }
 
     const result = await cancel(tenantId, targetPriceId);
+    if (result?.code === 2000) {
+      const conflicts = result.data?.resource_conflicts;
+      const modal = Modal.confirm({
+        title: t('price.cancelFailed', { defaultValue: 'Cancel Failed' }),
+        content: (
+          <div className="space-y-2">
+            <p className="text-text-secondary">{result.message}</p>
+            {conflicts?.map((c: any, i: number) => (
+              <div
+                key={i}
+                className="text-sm text-text-secondary border-l-2 border-accent-primary pl-3"
+              >
+                {c.message}
+              </div>
+            ))}
+          </div>
+        ),
+        okText: t('common.confirm', { defaultValue: 'Confirm' }),
+        onOk: () => modal?.destroy(),
+      });
+      return;
+    }
     if (result !== undefined) {
       onOpenChange(false);
     }
@@ -45,27 +68,31 @@ const CancelPlanDialog: React.FC<ICancelPlanDialogProps> = ({
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent className="!bg-bg-base !border-border-default !text-text-primary max-w-[500px]">
+      <AlertDialogContent className="!bg-bg-base !border-border-default !text-text-primary max-w-[500px] p-0">
         <AlertDialogHeader>
-          <AlertDialogTitle>
+          <AlertDialogTitle className="border-b border-border-default p-6">
             {t('price.cancelPlanTitle', {
               plan: planName,
               defaultValue: `Cancel ${planName} Plan?`,
             })}
           </AlertDialogTitle>
-          <AlertDialogDescription className="!text-text-secondary space-y-2">
-            <p>
-              {t('price.cancelPlanTip', {
-                plan: planName,
-                defaultValue: `You are canceling the ${planName} Plan.`,
-              })}
-            </p>
-            <p>
-              {t('price.cancelPlanEffectiveTip', {
-                date: endDate,
-                defaultValue: `After cancellation, you can continue using the current plan benefits until ${endDate}, after which they will expire.`,
-              })}
-            </p>
+          <AlertDialogDescription className="!text-text-secondary space-y-2 px-6 pt-6">
+            <p
+              dangerouslySetInnerHTML={{
+                __html: t('price.cancelPlanTip', {
+                  plan: `<strong class='text-text-primary'> ${planName}</strong>`,
+                  defaultValue: `You are canceling the <strong class='text-text-primary'>${planName}</strong>  Plan.`,
+                }),
+              }}
+            ></p>
+            <p
+              dangerouslySetInnerHTML={{
+                __html: t('price.cancelPlanEffectiveTip', {
+                  date: `<strong class='text-text-primary'> ${endDate}</strong>`,
+                  defaultValue: `After cancellation, you can continue using the current plan benefits until <strong class='text-text-primary'>${endDate}</strong>, after which they will expire.`,
+                }),
+              }}
+            ></p>
             <p>
               {t('price.cancelPlanSwitchTip', {
                 defaultValue:
@@ -79,13 +106,14 @@ const CancelPlanDialog: React.FC<ICancelPlanDialogProps> = ({
             </p>
           </AlertDialogDescription>
         </AlertDialogHeader>
-        <AlertDialogFooter>
+        <AlertDialogFooter className="px-6 pb-6">
           <AlertDialogCancel onClick={() => onOpenChange(false)}>
             {t('common.cancel')}
           </AlertDialogCancel>
           <AlertDialogAction
             disabled={cancelLoading || !targetPriceId}
             onClick={handleConfirmDowngrade}
+            className="bg-state-error text-text-primary hover:bg-state-error hover:text-text-primary"
           >
             {cancelLoading && (
               <span className="inline-block me-2 h-4 w-4 animate-spin border-2 border-white border-t-transparent rounded-full" />
