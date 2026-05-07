@@ -142,6 +142,8 @@ class RAGFlowCLI(Cmd):
             try:
                 token = login_user(http_client, server_type, user_name, user_password)
                 http_client.login_token = token
+                if server_type == "user":
+                    http_client.api_key = token
                 self.ragflow_client = RAGFlowClient(http_client, server_type)
                 return True
             except Exception as e:

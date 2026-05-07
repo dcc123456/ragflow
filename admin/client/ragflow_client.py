@@ -960,11 +960,10 @@ class RAGFlowClient:
         if kb_id is None:
             return
 
-        payload = {"kb_id": kb_id}
+        path = f"/datasets/{kb_id}/metadata/summary"
         if doc_ids:
-            payload["doc_ids"] = doc_ids
-        response = self.http_client.request("POST", "/document/metadata/summary", json_body=payload,
-                                            use_api_base=False, auth_kind="web")
+            path = f"{path}?doc_ids={','.join(doc_ids)}"
+        response = self.http_client.request("GET", path, use_api_base=True, auth_kind="web")
         res_json = response.json()
         if response.status_code == 200:
             summary = res_json.get("data", {}).get("summary", {})
@@ -1360,15 +1359,19 @@ class RAGFlowClient:
         if len(document_names) != 0:
             print(f"Documents {document_names} not found in {dataset_name}")
 
-        payload = {"doc_ids": document_ids, "run": 1}
-        response = self.http_client.request("POST", "/document/run", json_body=payload, use_api_base=False,
-                                            auth_kind="web")
+        payload = {"document_ids": document_ids}
+        response = self.http_client.request(
+            "POST",
+            f"/datasets/{dataset_id}/chunks",
+            json_body=payload,
+            use_api_base=True,
+            auth_kind="api",
+        )
         res_json = response.json()
         if response.status_code == 200 and res_json["code"] == 0:
             print(f"Success to parse {to_parse_doc_names} of {dataset_name}")
         else:
-            print(
-                f"Fail to parse documents {res_json["data"]["docs"]}, code: {res_json['code']}, message: {res_json['message']}")
+            print(f"Fail to parse documents, code: {res_json.get('code')}, message: {res_json.get('message')}")
 
     def parse_dataset(self, command_dict):
         if self.server_type != "user":
@@ -1386,9 +1389,18 @@ class RAGFlowClient:
         for doc in res_json:
             document_ids.append(doc["id"])
 
-        payload = {"doc_ids": document_ids, "run": 1}
-        response = self.http_client.request("POST", "/document/run", json_body=payload, use_api_base=False,
-                                            auth_kind="web")
+        if not document_ids:
+            print(f"No documents found in dataset {dataset_name}")
+            return
+
+        payload = {"document_ids": document_ids}
+        response = self.http_client.request(
+            "POST",
+            f"/datasets/{dataset_id}/chunks",
+            json_body=payload,
+            use_api_base=True,
+            auth_kind="api",
+        )
         res_json = response.json()
         if response.status_code == 200 and res_json["code"] == 0:
             pass
@@ -1463,7 +1475,7 @@ class RAGFlowClient:
 
         payload = {
             "question": command_dict["question"],
-            "kb_id": dataset_ids,
+            "dataset_ids": dataset_ids,
             "similarity_threshold": 0.2,
             "vector_similarity_weight": 0.3,
             # "top_k": 1024,
@@ -1471,12 +1483,12 @@ class RAGFlowClient:
         }
         iterations = command_dict.get("iterations", 1)
         if iterations > 1:
-            response = self.http_client.request("POST", "/chunk/retrieval_test", json_body=payload, use_api_base=False,
-                                                auth_kind="web", iterations=iterations)
+            response = self.http_client.request("POST", "/retrieval", json_body=payload, use_api_base=True,
+                                                auth_kind="api", iterations=iterations)
             return response
         else:
-            response = self.http_client.request("POST", "/chunk/retrieval_test", json_body=payload, use_api_base=False,
-                                                auth_kind="web")
+            response = self.http_client.request("POST", "/retrieval", json_body=payload, use_api_base=True,
+                                                auth_kind="api")
             res_json = response.json()
             if response.status_code == 200:
                 if res_json["code"] == 0:
@@ -1601,25 +1613,42 @@ class RAGFlowClient:
             print(f"Fail to update chunk, HTTP {response.status_code}")
 
     def _get_documents_by_ids(self, ids:list[str]):
-        response = self.http_client.request(
-            "POST",
-            "/document/infos",
-            json_body={"doc_ids": ids},
-            use_api_base=False,
-            auth_kind="web"
-        )
-
+        response = self.http_client.request("GET", "/datasets", use_api_base=True, auth_kind="web")
         if response.status_code != 200:
-            return f"Fail to get document info, HTTP {response.status_code}", None
-
+            return f"Fail to list datasets, HTTP {response.status_code}", None
         res_json = response.json()
         if res_json.get("code") != 0:
-            return f"Fail to get document info: {res_json.get('message')}", None
+            return f"Fail to list datasets: {res_json.get('message')}", None
 
-        docs = res_json.get("data", [])
-        if not docs:
-            return f"Document not found: {ids}", None
-
+        datasets = res_json.get("data", []) or []
+        docs = []
+        for doc_id in ids:
+            found = None
+            for dataset in datasets:
+                dataset_id = dataset.get("id")
+                if not dataset_id:
+                    continue
+                list_resp = self.http_client.request(
+                    "GET",
+                    f"/datasets/{dataset_id}/documents?id={doc_id}&page=1&page_size=1",
+                    use_api_base=True,
+                    auth_kind="api",
+                )
+                if list_resp.status_code != 200:
+                    continue
+                list_json = list_resp.json()
+                if list_json.get("code") != 0:
+                    continue
+                data = list_json.get("data")
+                if not isinstance(data, dict):
+                    continue
+                candidate_docs = data.get("docs", [])
+                if candidate_docs:
+                    found = candidate_docs[0]
+                    break
+            if not found:
+                return f"Document not found: {doc_id}", None
+            docs.append(found)
         return None, docs
 
     def set_metadata(self, command_dict):
@@ -1648,7 +1677,7 @@ class RAGFlowClient:
             print(f"no document found for {doc_id}")
             return
 
-        dataset_id = docs[0].get("kb_id")
+        dataset_id = docs[0].get("dataset_id") or docs[0].get("kb_id")
         if not dataset_id:
             print(f"Dataset ID not found for document: {doc_id}")
             return
@@ -1789,7 +1818,8 @@ class RAGFlowClient:
                 return False
             all_done = True
             for doc in docs:
-                if doc.get("run") != "3":
+                run_status = str(doc.get("run", "")).upper()
+                if run_status not in {"3", "DONE"}:
                     print(f"Document {doc["name"]} is not done, status: {doc.get("run")}")
                     all_done = False
                     break
@@ -1800,14 +1830,39 @@ class RAGFlowClient:
             time.sleep(0.5)
 
     def _list_documents(self, dataset_name: str, dataset_id: str):
-        response = self.http_client.request("POST", f"/document/list?id={dataset_id}", use_api_base=False,
-                                            auth_kind="web")
-        res_json = response.json()
-        if response.status_code != 200:
-            print(
-                f"Fail to list files from dataset {dataset_name}, code: {res_json['code']}, message: {res_json['message']}")
-            return None
-        return res_json["data"]["docs"]
+        all_docs = []
+        page = 1
+        page_size = 1000
+        while True:
+            response = self.http_client.request(
+                "GET",
+                f"/datasets/{dataset_id}/documents?page={page}&page_size={page_size}",
+                use_api_base=True,
+                auth_kind="api",
+            )
+            res_json = response.json()
+            if response.status_code != 200 or not isinstance(res_json, dict):
+                print(
+                    f"Fail to list files from dataset {dataset_name}, code: {res_json.get('code') if isinstance(res_json, dict) else response.status_code}, message: {res_json.get('message') if isinstance(res_json, dict) else 'invalid response'}")
+                return None
+            if res_json.get("code") != 0:
+                print(
+                    f"Fail to list files from dataset {dataset_name}, code: {res_json.get('code')}, message: {res_json.get('message')}")
+                return None
+            data = res_json.get("data")
+            if not isinstance(data, dict):
+                print(f"Fail to list files from dataset {dataset_name}, message: Unexpected response shape: data is not an object")
+                return None
+            docs = data.get("docs")
+            if not isinstance(docs, list):
+                print(f"Fail to list files from dataset {dataset_name}, message: Unexpected response shape: data.docs is not a list")
+                return None
+            all_docs.extend(docs)
+            total = data.get("total")
+            if len(docs) < page_size or (isinstance(total, int) and len(all_docs) >= total):
+                break
+            page += 1
+        return all_docs
 
     def _get_dataset_id(self, dataset_name: str):
         response = self.http_client.request("GET", "/datasets", use_api_base=True, auth_kind="web")

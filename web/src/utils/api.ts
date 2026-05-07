@@ -63,8 +63,6 @@ export default {
   // knowledge base
 
   duplicate_kb: `${webAPI}/kb/clone`,
-  rm_kb: `${restAPIv1}/datasets`,
-  get_kb_detail: `${webAPI}/kb/detail`,
   check_embedding: `${webAPI}/kb/check_embedding`,
   kb_list: `${restAPIv1}/datasets`,
   create_kb: `${restAPIv1}/datasets`,

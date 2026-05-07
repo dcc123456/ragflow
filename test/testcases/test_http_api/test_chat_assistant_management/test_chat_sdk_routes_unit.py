@@ -154,16 +154,24 @@ def _load_chat_module(monkeypatch):
     quart_mod.g = SimpleNamespace()
     quart_mod.request = SimpleNamespace(method="GET", headers={}, is_json=False, args=_DummyArgs())
     quart_mod.Response = _StubResponse
+    quart_mod.current_app = SimpleNamespace()
+    quart_mod.has_request_context = lambda: False
+    quart_mod.has_websocket_context = lambda: False
+    quart_mod.websocket = SimpleNamespace(authorization=None)
     monkeypatch.setitem(sys.modules, "quart", quart_mod)
 
     api_pkg = ModuleType("api")
     api_pkg.__path__ = [str(repo_root / "api")]
     monkeypatch.setitem(sys.modules, "api", api_pkg)
 
+    class _QuartAuthUnauthorizedStub(Exception):
+        pass
+
     apps_pkg = ModuleType("api.apps")
     apps_pkg.__path__ = [str(repo_root / "api" / "apps")]
     apps_pkg.current_user = SimpleNamespace(id="tenant-1", role_id="role-1", is_superuser=False)
     apps_pkg.login_required = _passthrough_login_required
+    apps_pkg.QuartAuthUnauthorized = _QuartAuthUnauthorizedStub
     monkeypatch.setitem(sys.modules, "api.apps", apps_pkg)
     api_pkg.apps = apps_pkg
 
