@@ -64,12 +64,13 @@ class ESConnection(ESConnectionBase):
     CRUD operations
     """
 
-    def _es_search_once(self, index_names: list[str], query: dict, track_total_hits: bool):
+    def _es_search_once(self, index_names: list[str], query: dict, track_total_hits: bool, scroll: str | None = None):
         return self.es.search(
             index=index_names,
             body=query,
             timeout="600s",
             track_total_hits=track_total_hits,
+            scroll=scroll,
             _source=True,
         )
 
@@ -304,8 +305,7 @@ class ESConnection(ESConnectionBase):
                 if use_search_after:
                     res = self._search_with_search_after(index_names, q, offset, limit)
                 else:
-                    # print(json.dumps(q, ensure_ascii=False))
-                    res = self._es_search_once(index_names, q, track_total_hits=True)
+                    res = self._es_search_once(index_names, q, track_total_hits=True, scroll=scroll)
 
                 if str(res.get("timed_out", "")).lower() == "true":
                     raise Exception("Es Timeout.")
@@ -664,7 +664,9 @@ class ESConnection(ESConnectionBase):
                              scroll="15m"
                              )
         yield es_res
-        sid = es_res["_scroll_id"]
+        sid = es_res.get("_scroll_id")
+        if not sid:
+            return
         while True:
             es_res = self.es.scroll(scroll_id=sid)
             if not es_res["hits"]["hits"]:

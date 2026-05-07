@@ -407,12 +407,13 @@ def init_settings():
     elif STORAGE_IMPL_TYPE == "AWS_S3":
         S3 = get_base_config("s3", {})
     elif STORAGE_IMPL_TYPE == "MINIO":
+        # Prefer the multi-node minio_0/minio_1/... layout, but keep backward
+        # compatibility with older single-node `minio:` configs.
         MINIO = []
         for i in range(12):
             try:
                 MINIO.append(decrypt_database_config(name=f"minio_{i}"))
             except Exception:
-                print(f"{i} MINIO node, isn't it?")
                 break
         if not MINIO:
             minio_config = get_base_config("minio", {})
