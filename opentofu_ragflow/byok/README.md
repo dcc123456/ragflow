@@ -224,7 +224,7 @@ Copy the appropriate environment configuration file to `terraform.tfvars`:
 
 ```bash
 # For Self-Managed Kubernetes (SMK) / development environment
-cp terraform.tfvars.dev_smk terraform.tfvars
+cp terraform.tfvars.dev_smk_full_instance terraform.tfvars
 ```
 
 Then edit `terraform.tfvars` with your cloud-specific settings as needed.
@@ -245,6 +245,215 @@ tofu plan
 
 ```bash
 tofu apply -auto-approve
+```
+## BYOK multi Ragflow Instance with infra Setup
+
+This document explains how to deploy a new Ragflow instance using the BYOK OpenTofu configuration.
+
+The deployment uses:
+
+- A dedicated Kubernetes namespace for the Ragflow instance
+- Shared infrastructure services where applicable
+- A dedicated Redis database number per instance
+- A configurable Ragflow image
+- `terraform.tfvars` generated from the SMK dev template
+
+### 1. Find a free Redis DB number
+
+Before deploying a new instance, check which Redis DB numbers are already used by existing Ragflow namespaces.
+
+Run:
+
+```bash
+used="$(kubectl get secrets -A -o json | jq -r '
+  .items[]
+  | select(.metadata.name=="ragflow-env")
+  | ((.data.REDIS_DB // "") | @base64d)
+' | grep -E '^[0-9]+$' | sort -nu)"
+
+for db in $(seq 0 15); do
+  [ "$db" = "1" ] && continue
+  echo "$used" | grep -qx "$db" || echo "free: $db"
+done
+```
+
+This prints available Redis DB numbers, for example:
+
+```text
+free: 3
+free: 4
+free: 5
+```
+
+Choose any free value.
+
+Important:
+
+- Do not use Redis DB `1`.
+- Do not reuse a DB number already used by another Ragflow namespace.
+- Redis supports DB numbers from `0` to `15` in this setup.
+
+### 2. Prepare the tfvars file
+
+Go to the BYOK directory:
+
+```bash
+cd opentofu_ragflow/byok
+```
+
+Copy the SMK dev template:
+
+```bash
+cp terraform.tfvars.dev_smk terraform.tfvars
+```
+
+### 3. Update the namespace
+
+Open:
+
+```text
+opentofu_ragflow/byok/terraform.tfvars
+```
+
+Update the namespace value near the top of the file:
+
+```hcl
+namespace = "ragflow"
+```
+
+Replace it with the namespace you want to deploy, for example:
+
+```hcl
+namespace = "ragflow-1"
+```
+
+The namespace value identifies the Ragflow instance.
+
+### 4. Update the Ragflow image
+
+In the same file:
+
+```text
+opentofu_ragflow/byok/terraform.tfvars
+```
+
+Find the Ragflow image setting, usually around line 63:
+
+```hcl
+ragflow_image = "ragflow:..."
+```
+
+Replace it with the image tag you want to deploy, for example:
+
+```hcl
+ragflow_image = "ragflow:latest"
+```
+
+Use the exact image tag required for the environment.
+
+### 5. Review the OpenTofu plan
+
+Run:
+
+```bash
+tofu plan -var 'redis_db=<FREE_REDIS_DB>'
+```
+
+Example:
+
+```bash
+tofu plan -var 'redis_db=3'
+```
+
+Review the plan before applying.
+
+### 6. Apply the deployment
+
+Run:
+
+```bash
+tofu apply -var 'redis_db=<FREE_REDIS_DB>' -auto-approve
+```
+
+Example:
+
+```bash
+tofu apply -var 'redis_db=3' -auto-approve
+```
+
+### Summary
+
+The normal deployment flow is:
+
+```bash
+cd opentofu_ragflow/byok
+
+used="$(kubectl get secrets -A -o json | jq -r '
+  .items[]
+  | select(.metadata.name=="ragflow-env")
+  | ((.data.REDIS_DB // "") | @base64d)
+' | grep -E '^[0-9]+$' | sort -nu)"
+
+for db in $(seq 0 15); do
+  [ "$db" = "1" ] && continue
+  echo "$used" | grep -qx "$db" || echo "free: $db"
+done
+
+cp terraform.tfvars.dev_smk terraform.tfvars
+
+# Edit terraform.tfvars:
+# - namespace
+# - ragflow_image
+
+tofu plan -var 'redis_db=<FREE_REDIS_DB>'
+tofu apply -var 'redis_db=<FREE_REDIS_DB>' -auto-approve
+```
+
+After apply completes, the Ragflow instance should be deployed in the selected namespace.
+### Optional: Use the deployment helper script
+
+If `deploy.sh` is available in `opentofu_ragflow/byok`, you can deploy an instance without copying or editing `terraform.tfvars`.
+
+Example:
+
+```bash
+./deploy.sh -n ragflow-1 -i ragflow:latest
+```
+
+The script should automatically:
+
+- Find a free Redis DB number
+- Skip Redis DB `1`
+- Use `terraform.tfvars.dev_smk`
+- Pass the namespace through `-var`
+- Pass the Redis DB through `-var`
+- Pass the Ragflow image through `-var`
+
+Valid image values should always use the local Ragflow image format:
+
+```text
+ragflow:<tag>
+```
+
+Examples:
+
+```bash
+./deploy.sh -n ragflow-1 -i ragflow:latest
+./deploy.sh -n ragflow-2 -i ragflow:test
+./deploy.sh -n ragflow-3 -i ragflow:v1.2.3
+```
+
+Optional examples:
+
+```bash
+# Only run the OpenTofu plan
+./deploy.sh -n ragflow-1 -i ragflow:latest --plan-only
+
+# Deploy with automatic approval
+./deploy.sh -n ragflow-1 -i ragflow:latest --auto-approve
+
+# Manually force a Redis DB if needed
+./deploy.sh -n ragflow-1 -i ragflow:latest --redis-db 10
 ```
 
 ## Cluster-Scoped Resource Ownership
@@ -537,6 +746,7 @@ kubectl get secret ragflow-env -n ragflow -o jsonpath={.data.REDIS_PASSWORD} | b
 # Get RabbitMQ password
 kubectl get secret ragflow-env -n ragflow -o jsonpath={.data.RABBITMQ_DEFAULT_PASS} | base64 -d
 ```
+
 ### Resource Sizing
 
 
