@@ -1,104 +1,93 @@
 # =============================================================================
-# RAGFlow Deployment on SMK - Development Environment
+# RAGFlow Deployment on SMK - Shared Infra App Template
 # =============================================================================
-# Copy this file to terraform.tfvars before deployment: cp terraform.tfvars.dev_smk terraform.tfvars
-
-# =============================================================================
-# SMK-Specific Configuration
-# =============================================================================
+# Normal SMK app deployment path when shared infra already exists in ragflow-infra.
+# Usage examples:
+#   tofu plan  -var-file=terraform.tfvars.dev_smk -var 'namespace=my-app-ns' -var 'redis_db=10'
+#   tofu apply -var-file=terraform.tfvars.dev_smk -var 'namespace=my-app-ns' -var 'redis_db=10'
 
 cloud_provider = "smk"
 namespace      = "ragflow"
+shared_infra_namespace = "ragflow-infra"
+deploy_app_stack = true
+auto_provision_shared_service_credentials = true
 
-# =============================================================================
-# S3-Compatible Storage (MinIO or Rook-Ceph RGW)
-# =============================================================================
+# App namespaces consume shared infra services from ragflow-infra
+deploy_infra = false
 
-s3_endpoint = "http://rook-ceph-rgw-my-store.rook-ceph.svc:80"
-# Leave empty to default to the RagFlow namespace, which keeps instances isolated.
-s3_bucket   = ""
-s3_region   = "default"
+# Shared infra service endpoints
+mysql_host     = "mysql.ragflow-infra.svc.cluster.local"
+mysql_port     = "3306"
+# Leave empty for namespace-derived auto-provisioned user/password/db
+mysql_user     = ""
+mysql_password = ""
+mysql_db_name  = ""
 
-# Rook-Ceph credentials (required for smk)
+redis_host     = "redis.ragflow-infra.svc.cluster.local"
+redis_port     = "6379"
+# Provide shared Redis credentials here (or via -var/CI secret vars)
+redis_username = ""
+redis_password = ""
+# IMPORTANT: must be unique per concurrent app namespace (0..15)
+redis_db       = 10
+
+# App namespace-local RabbitMQ
+rabbitmq_host      = "rabbitmq"
+rabbitmq_port      = "5672"
+rabbitmq_api_port  = "15672"
+rabbitmq_user      = "ragflow"
+rabbitmq_password  = ""
+rabbitmq_vhost     = "/"
+
+es_protocol = "https"
+es_host     = "elasticsearch-es-http.ragflow-infra.svc.cluster.local"
+es_port     = "9200"
+# Provide shared Elasticsearch credentials here (or via -var/CI secret vars)
+es_user     = "elastic"
+es_password = ""
+
+deepdoc_url = "http://deepdoc.ragflow-infra.svc.cluster.local:8000"
+
+# ES CA secret usually does not exist in app namespaces when ES is shared
+mount_elasticsearch_ca_secret = false
+
+# Shared object storage
+s3_endpoint   = "http://rook-ceph-rgw-my-store.rook-ceph.svc:80"
+s3_bucket     = "ragflow-shared"
+s3_prefix_path = ""
+s3_region     = "default"
 s3_access_key = "9YPCAWLZG3R8M30K7QGZ"
 s3_secret_key = "r3iMxuwRqs9Y0pVd08VEaQQIWkWqGpwZzlL0zz50"
 
-# =============================================================================
-# Image Registry
-# =============================================================================
+private_registry = "192.168.1.51/infiniflow-ai"
+ragflow_image    = "ragflow:latest"
 
-# Use public registries for development
-private_registry  = "192.168.1.51/infiniflow-ai"
+# App-layer sizing (fit multiple concurrent namespaces)
+ragflow_replicas       = 1
+ragflow_cpu_request    = "2"
+ragflow_cpu_limit      = "4"
+ragflow_memory_request = "8Gi"
+ragflow_memory_limit   = "12Gi"
 
-# =============================================================================
-# Development-Specific Resource Overrides (reduced from production defaults)
-# =============================================================================
+admin_cpu_request      = "500m"
+admin_cpu_limit        = "1000m"
+admin_memory_request   = "1Gi"
+admin_memory_limit     = "2Gi"
 
-# MySQL - reduced for dev
-mysql_k8s_storage     = 20
-mysql_cpu_request     = "2"
-mysql_cpu_limit       = "8"
-mysql_memory_request  = "8Gi"
-mysql_memory_limit    = "16Gi"
-
-# Elasticsearch - single node for dev
-es_master_node_count    = 1
-es_master_cpu_request   = "1"
-es_master_cpu_limit     = "4"
-es_master_memory_request = "4Gi"
-es_master_memory_limit  = "4Gi"
-es_master_heap_size    = "2g"
-es_data_node_count      = 1
-es_data_cpu_request    = "2"
-es_data_cpu_limit      = "8"
-es_data_memory_request = "16Gi"
-es_data_memory_limit   = "16Gi"
-es_data_heap_size      = "8g"
-es_data_storage        = 20
-
-# RabbitMQ - reduced for dev
-rabbitmq_storage = 20
-
-# RAGFlow application - reduced for dev
-ragflow_replicas         = 1
-ragflow_cpu_request     = "1"
-ragflow_cpu_limit       = "4"
-ragflow_memory_request  = "8Gi"
-ragflow_memory_limit    = "16Gi"
-
-# Parser replicas per task type
 parser_replicas = {
   common   = 1
-  graphrag = 1
-  raptor   = 1
-  resume   = 1
+  graphrag = 0
+  raptor   = 0
+  resume   = 0
 }
-# parser_ws_workers = 2
+parser_cpu_request    = "1"
+parser_cpu_limit      = "2"
+parser_memory_request = "3Gi"
+parser_memory_limit   = "4Gi"
 
-# DeepDoc - reduced for dev
-deepdoc_replicas = 1
+# TEI disabled in this profile (embedding provider external/shared)
+tei_replicas = 0
+tei_host     = "tei.ragflow-infra.svc.cluster.local"
 
-# Redis - dev environment
-redis_cpu_request    = "1"
-redis_cpu_limit      = "4"
-redis_memory_request = "4Gi"
-redis_memory_limit   = "8Gi"
-
-# TEI - dev environment
-tei_replicas = 1
-
-# =============================================================================
-# Infinity (Shadow Database) - dev environment
-# =============================================================================
-
-infinity_enabled        = false
-infinity_cpu_request    = "2"
-infinity_cpu_limit      = "4"
-infinity_memory_request = "4Gi"
-infinity_memory_limit   = "16Gi"
-infinity_storage        = 20
-
-# =============================================================================
-# ohttps Configuration (set for production)
-# =============================================================================
-ohttps_enabled = false
+infinity_enabled = false
+ohttps_enabled   = false

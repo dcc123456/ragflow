@@ -267,6 +267,96 @@ manage_cluster_scoped_resources = false
 
 Use manual mode if you need to explicitly pin ownership regardless of cluster detection.
 
+## SMK Shared-Infra Profiles
+
+This repository includes:
+
+- `terraform.tfvars.smk_shared_infra` (deploy shared infra namespace, e.g. `ragflow-infra`)
+- `terraform.tfvars.dev_smk` (normal app-namespace template consuming shared infra)
+- `terraform.tfvars.smk_full_instance` (single-namespace full-stack SMK profile, infra+app together)
+
+### Fresh-install sequence (recommended)
+
+1. **Deploy shared infra once**
+   ```bash
+   cp terraform.tfvars.smk_shared_infra terraform.tfvars
+   tofu init -upgrade
+   tofu plan
+   tofu apply
+   ```
+2. **Deploy one app namespace (normal path)**
+   - Use `terraform.tfvars.dev_smk`
+   - Set namespace and a unique `redis_db`
+   - Then run:
+   ```bash
+   tofu plan  -var-file=terraform.tfvars.dev_smk -var 'namespace=ragflow-app-1' -var 'redis_db=10'
+   tofu apply -var-file=terraform.tfvars.dev_smk -var 'namespace=ragflow-app-1' -var 'redis_db=10'
+   ```
+
+### SMK single-namespace full instance (legacy style)
+
+If you want the previous behavior (all infra + app in one namespace), use `terraform.tfvars.smk_full_instance`.
+
+```bash
+tofu workspace select -or-create smk-full-ragflow
+tofu plan  -var-file=terraform.tfvars.smk_full_instance -var 'namespace=ragflow'
+tofu apply -var-file=terraform.tfvars.smk_full_instance -var 'namespace=ragflow'
+```
+
+This path deploys MySQL, Redis, RabbitMQ, Elasticsearch, DeepDoc, and the app stack in the same namespace.
+
+### Migration warning (existing single-namespace state)
+
+If your current `terraform.tfstate` already owns in-namespace infra resources, toggling `deploy_infra = false` in-place can produce destroy plans (including `prevent_destroy` conflicts for ECK operator).
+
+For migration from an existing single namespace, do **not** switch directly in one apply. First split ownership/state (import/move as needed), then disable local infra per namespace.
+
+### Shared-infra conflict matrix (multiple app namespaces)
+
+- **MySQL**: use per-namespace DB/user credentials (auto-provisioned from namespace by default when enabled).
+- **Redis**: use a unique explicit `redis_db` per namespace (0..15, not default 1 in shared mode).
+- **RabbitMQ**: app-local RabbitMQ only (deploy in each app namespace).
+- **S3**: use shared bucket + namespace prefix (derived from namespace when `s3_prefix_path` is empty in shared-app mode).
+- **Elasticsearch / DeepDoc**: shared endpoints are supported via cross-namespace FQDN settings.
+
+### PVC ownership model (explicit)
+
+PVCs are namespaced and owned by the namespace where the component is deployed:
+
+- `deploy_infra=true` -> MySQL/Redis/Elasticsearch/DeepDoc PVCs in that namespace.
+- `deploy_app_stack=true` -> RabbitMQ PVC in that namespace (RabbitMQ stays app-local).
+- `infinity_enabled=true` -> Infinity PVC in that namespace.
+
+With the shared-app profile (`deploy_infra=false`, `deploy_app_stack=true`), app namespaces do not create MySQL/Redis/Elasticsearch/DeepDoc PVCs, but do create RabbitMQ PVCs.
+
+### Capacity sanity (before scaling app namespaces)
+
+Kubernetes scheduling uses **resource requests** for placement. Check headroom before rollout:
+
+```bash
+kubectl get nodes
+kubectl top nodes
+kubectl describe node <node-name>
+```
+
+With the provided shared-app profile, one app namespace is roughly:
+- CPU requests: `~7.5`
+- Memory requests: `~24Gi`
+
+Five app namespaces are roughly:
+- CPU requests: `~37.5`
+- Memory requests: `~120Gi`
+
+Shared infra profile adds approximately:
+- CPU requests: `~14.5`
+- Memory requests: `~55Gi`
+
+Total baseline target for shared-infra + 5 apps is therefore roughly:
+- CPU requests: `~52`
+- Memory requests: `~175Gi`
+
+Tune `parser_replicas`, parser resources, and `ragflow_*` resources if your cluster cannot sustain this baseline.
+
 ## Cloud Provider Configuration
 
 ### Image Registry Configuration
@@ -395,57 +485,48 @@ gcloud container clusters update CLUSTER_NAME \
 - **Network policies**: Consider adding network policies to restrict traffic
 - **Workload Identity**: Use cloud provider's Workload Identity instead of access keys
 
-### Database Credentials Management
+### Credentials and Shared-Service Configuration
 
-RAGFlow uses a consistent approach for managing database credentials across all deployments:
+BYOK supports both:
+- **in-namespace infra deployment** (auto-generated credentials), and
+- **external/shared infra reuse** (cross-namespace/shared services).
 
-**Principles:**
-1. **No hardcoded credentials**: All passwords are randomly generated using Terraform's `random_password` resource
-2. **Consistent usernames**: Usernames are defined as local variables (not variables) to ensure consistency across all components
-3. **No credential variables**: Variables for usernames and passwords are intentionally NOT defined to prevent misconfiguration
+When `deploy_infra = true`, infra credentials default to generated values (via `random_password` resources).  
+When `deploy_infra = false`, shared-service credentials are resolved from tfvars/CI vars, with these automatic helpers:
+- shared MySQL can auto-provision per-namespace user/password/db when `auto_provision_shared_service_credentials=true` and `mysql_password` is empty.
+- shared Redis reads `redis-password` from `shared_infra_namespace` when `deploy_infra=false` and `redis_password` is empty.
 
-**Implementation:**
+**Key inputs for shared-service mode:**
+- MySQL: `mysql_host`, `mysql_port`, `mysql_user`, `mysql_password`, `mysql_db_name`
+- Redis: `redis_host`, `redis_port`, `redis_password`, `redis_db`
+- RabbitMQ: `rabbitmq_host`, `rabbitmq_port`, `rabbitmq_api_port`, `rabbitmq_user`, `rabbitmq_password`, `rabbitmq_vhost`
+- Elasticsearch: `es_protocol`, `es_host`, `es_port`, `es_user`, `es_password`
+- DeepDoc: `deepdoc_url`
+- S3: `s3_bucket`, `s3_prefix_path`, `s3_endpoint`, `s3_access_key`, `s3_secret_key`, `s3_region`
 
-| Component | Username | Password |
-|-----------|----------|----------|
-| MySQL | `ragflow` (local variable) | `random_password.mysql.result` |
-| Redis | N/A (no auth user) | `random_password.redis.result` |
-| RabbitMQ | `ragflow` (local variable) | `random_password.rabbitmq.result` |
+Additional shared-mode controls:
+- `shared_infra_namespace` (default: `ragflow-infra`)
+- `auto_provision_shared_service_credentials` (default: `true`, applies to shared MySQL auto-provision)
+- `shared_es_index_prefix_enabled` (default: `true` for shared ES app mode)
 
-**Local Variables (defined in `locals` block):**
-```hcl
-locals {
-  # Database users (consistent across all components)
-  mysql_user     = "ragflow"
-  rabbitmq_user = "ragflow"
-}
+In shared-app mode (`deploy_app_stack=true`, `deploy_infra=false`):
+- MySQL DB/user and S3 prefix are namespace-derived by default.
+- `redis_db` must be explicitly set per namespace and unique across concurrent app namespaces.
+- `ES_INDEX_PREFIX` is namespace-derived when `shared_es_index_prefix_enabled=true`.
+- Redis password is auto-resolved from `${shared_infra_namespace}/redis-password` when `redis_password=""` (explicit `redis_password` still overrides).
+- Elasticsearch credentials follow the configured per-profile path (explicit vars or shared-ES bootstrap credentials, depending on your profile).
+
+Quick check for shared Redis password resolution:
+
+```bash
+# App secret value used by pods
+kubectl get secret -n <app-namespace> ragflow -o jsonpath='{.data.REDIS_PASSWORD}' | base64 -d; echo
+
+# Shared infra Redis password source
+kubectl get secret -n ragflow-infra redis-password -o jsonpath='{.data.password}' | base64 -d; echo
 ```
 
-**Random Password Generation:**
-```hcl
-resource "random_password" "mysql" {
-  length  = 16
-  special = false
-}
-
-resource "random_password" "redis" {
-  length  = 16
-  special = false
-}
-
-resource "random_password" "rabbitmq" {
-  length  = 16
-  special = false
-}
-```
-
-**Benefits:**
-- Eliminates credential mismatch between components
-- Passwords are automatically generated and stored in Kubernetes secrets
-- No manual password configuration needed
-- Consistent deployment experience across all environments
-
-**Note:** For existing deployments that need to retrieve generated passwords, use:
+**For existing deployments that need to retrieve generated passwords, use:**
 ```bash
 # Get MySQL password
 kubectl get secret mysql-password -n ragflow -o jsonpath={.data.password} | base64 -d

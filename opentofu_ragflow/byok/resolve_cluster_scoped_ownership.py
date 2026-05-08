@@ -81,6 +81,9 @@ def main() -> None:
     kubeconfig_path = query.get("kubeconfig_path", "")
     cloud_provider = query.get("cloud_provider", "")
     state_path = query.get("state_path", str(Path.cwd() / "terraform.tfstate"))
+    workspace = os.environ.get("TF_WORKSPACE", "default")
+    if workspace != "default":
+        state_path = str(Path.cwd() / "terraform.tfstate.d" / workspace / "terraform.tfstate")
 
     state_owns_eck = state_tracks_resource(state_path, "helm_release", "eck_operator")
     state_owns_compute_class = cloud_provider == "gcp" and state_tracks_resource(

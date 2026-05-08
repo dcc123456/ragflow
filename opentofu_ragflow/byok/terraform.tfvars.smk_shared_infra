@@ -1,0 +1,64 @@
+# =============================================================================
+# SMK Shared Infra Namespace Profile
+# =============================================================================
+# Deploy once in ragflow-infra.
+# This profile deploys ONLY shared infra resources.
+
+cloud_provider = "smk"
+namespace      = "ragflow-infra"
+deploy_app_stack = false
+
+private_registry = "192.168.1.51/infiniflow-ai"
+ragflow_image    = "ragflow:latest"
+# Shared object storage (do not commit real secrets)
+s3_endpoint   = "http://rook-ceph-rgw-my-store.rook-ceph.svc:80"
+s3_bucket     = "ragflow-shared"
+s3_prefix_path = ""
+s3_region     = "default"
+s3_access_key = "9YPCAWLZG3R8M30K7QGZ"
+s3_secret_key = "r3iMxuwRqs9Y0pVd08VEaQQIWkWqGpwZzlL0zz50"
+
+# Shared infra components
+deploy_infra = true
+
+# TEI optional; keep off for shared infra footprint
+tei_replicas = 0
+
+# MySQL shared sizing
+mysql_k8s_storage    = 40
+mysql_cpu_request    = "3"
+mysql_cpu_limit      = "6"
+mysql_memory_request = "12Gi"
+mysql_memory_limit   = "16Gi"
+
+# Redis shared sizing
+redis_cpu_request    = "1"
+redis_cpu_limit      = "2"
+redis_memory_request = "4Gi"
+redis_memory_limit   = "6Gi"
+
+# Elasticsearch shared sizing
+es_master_node_count     = 1
+es_master_cpu_request    = "1"
+es_master_cpu_limit      = "2"
+es_master_memory_request = "4Gi"
+es_master_memory_limit   = "4Gi"
+es_master_heap_size      = "2g"
+
+es_data_node_count       = 1
+es_data_cpu_request      = "4"
+es_data_cpu_limit        = "6"
+es_data_memory_request   = "20Gi"
+es_data_memory_limit     = "24Gi"
+es_data_heap_size        = "10g"
+es_data_storage          = 120
+
+# DeepDoc shared sizing
+deepdoc_replicas       = 1
+deepdoc_cpu_request    = "2"
+deepdoc_cpu_limit      = "4"
+deepdoc_memory_request = "6Gi"
+deepdoc_memory_limit   = "8Gi"
+
+infinity_enabled = false
+ohttps_enabled   = false

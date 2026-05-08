@@ -10,7 +10,7 @@ mysql:
   user: '${MYSQL_USER:-root}'
   password: '${MYSQL_PASSWORD:-infini_rag_flow}'
   host: '${MYSQL_HOST:-mysql}'
-  port: 3306
+  port: ${MYSQL_PORT:-3306}
   max_connections: 900
   stale_timeout: 300
   max_allowed_packet: ${MYSQL_MAX_PACKET:-1073741824}
@@ -21,7 +21,7 @@ minio_0:
   bucket: '${MINIO_BUCKET:-}'
   prefix_path: '${MINIO_PREFIX_PATH:-}'
 es:
-  hosts: '${ES_PROTOCOL:-http}://${ES_HOST:-es01}:9200'
+  hosts: '${ES_PROTOCOL:-http}://${ES_HOST:-es01}:${ES_PORT:-9200}'
   username: '${ES_USER:-elastic}'
   password: '${ELASTIC_PASSWORD:-infini_rag_flow}'
 os:
@@ -49,10 +49,10 @@ seekdb:
     host: '${SEEKDB_HOST:-seekdb}'
     port: ${SEEKDB_PORT:-2881}
 redis:
-  db: 1
+  db: ${REDIS_DB:-1}
   username: '${REDIS_USERNAME:-}'
   password: '${REDIS_PASSWORD:-infini_rag_flow}'
-  host: '${REDIS_HOST:-redis}:6379'
+  host: '${REDIS_HOST:-redis}:${REDIS_PORT:-6379}'
 # local_embd:
 #   bge-large-en-v1.5: http://10.142.0.6:4566/predict
 #   bge-large-zh-v1.5: http://10.142.0.6:4567/predict

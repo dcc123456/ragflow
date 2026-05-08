@@ -18,6 +18,7 @@ import json
 import logging
 import re
 import math
+import os
 import time
 from collections import OrderedDict, defaultdict
 from dataclasses import dataclass
@@ -34,7 +35,14 @@ from common import settings
 
 from common.misc_utils import thread_pool_exec
 
-def index_name(uid): return f"ragflow_{uid}"
+
+def _es_index_prefix() -> str:
+    return os.environ.get("ES_INDEX_PREFIX", "").strip()
+
+
+def index_name(uid):
+    prefix = _es_index_prefix()
+    return f"ragflow_{prefix}_{uid}" if prefix else f"ragflow_{uid}"
 
 
 class Dealer:

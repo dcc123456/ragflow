@@ -370,6 +370,7 @@ def set_api_limiter():
     from common.config_utils import decrypt_database_config
     from quart_rate_limiter import RateLimiter, remote_addr_key, RateLimit, timedelta
     from quart_rate_limiter.redis_store import RedisStore
+    from urllib.parse import quote
 
     async def key_func_global():
         ident = {
@@ -386,13 +387,20 @@ def set_api_limiter():
 
     try:
         REDIS = decrypt_database_config(name="redis")
-    except Exception:
+    except Exception as e:
+        logging.warning(f"Failed to load redis config for rate limiter: {e}")
         REDIS = {}
-        pass
 
     redis_password = REDIS.get("password")
+    redis_username = REDIS.get("username")
     redis_host = REDIS.get("host")
     redis_db = REDIS.get("db")
+    redis_auth = ""
+    if redis_username and redis_password:
+        redis_auth = f"{quote(str(redis_username), safe='')}:{quote(str(redis_password), safe='')}@"
+    elif redis_password:
+        redis_auth = f":{quote(str(redis_password), safe='')}@"
+    redis_uri = f"redis://{redis_auth}{redis_host}/{redis_db}"
     global app
     return RateLimiter(
         app,
@@ -401,7 +409,7 @@ def set_api_limiter():
             RateLimit(500, timedelta(seconds=1), skip_function=_skip_static),
             RateLimit(2000, timedelta(minutes=1), skip_function=_skip_static),
         ],
-        store=RedisStore(f"redis://:{redis_password}@{redis_host}/{redis_db}")
+        store=RedisStore(redis_uri)
     )
 
 def register_page(page_path):

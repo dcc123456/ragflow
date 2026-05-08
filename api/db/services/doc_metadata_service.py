@@ -22,6 +22,7 @@ This is the SOLE source of truth for document metadata - MySQL meta_fields colum
 
 import json
 import logging
+import os
 import re
 from copy import deepcopy
 from typing import Dict, List, Optional
@@ -47,6 +48,9 @@ class DocMetadataService:
         Returns:
             Index name for document metadata
         """
+        prefix = os.environ.get("ES_INDEX_PREFIX", "").strip()
+        if prefix:
+            return f"ragflow_doc_meta_{prefix}_{tenant_id}"
         return f"ragflow_doc_meta_{tenant_id}"
 
     @staticmethod

@@ -25,6 +25,41 @@ variable "namespace" {
   default     = "ragflow"
 }
 
+variable "shared_infra_namespace" {
+  description = "Namespace hosting shared infra services (MySQL/Redis/Elasticsearch) reused by app namespaces."
+  type        = string
+  default     = "ragflow-infra"
+}
+
+variable "deploy_infra" {
+  description = "Canonical infra mode flag. true deploys infra services (MySQL/Redis/Elasticsearch/DeepDoc) in this namespace; false reuses shared infra via shared_infra_namespace."
+  type        = bool
+  default     = true
+}
+
+variable "auto_provision_shared_service_credentials" {
+  description = "When true, shared-infra app namespaces (deploy_infra=false) auto-generate and auto-provision per-namespace credentials for shared MySQL when mysql_password is empty."
+  type        = bool
+  default     = true
+}
+
+variable "enable_shared_service_verify_jobs" {
+  description = "When true, create verification Jobs in app namespaces to assert connectivity/auth for shared infra dependencies before app rollout."
+  type        = bool
+  default     = true
+}
+
+variable "shared_service_job_ttl_seconds" {
+  description = "TTL (seconds) for shared-service bootstrap/verification Jobs to remain for debugging after completion/failure."
+  type        = number
+  default     = 86400
+
+  validation {
+    condition     = var.shared_service_job_ttl_seconds >= 300
+    error_message = "shared_service_job_ttl_seconds must be >= 300 seconds."
+  }
+}
+
 # =============================================================================
 # Kubernetes Configuration
 # =============================================================================
@@ -121,6 +156,12 @@ variable "s3_region" {
   default     = ""
 }
 
+variable "s3_prefix_path" {
+  description = "Optional prefix path inside the S3 bucket for tenant/namespace isolation (e.g., ragflow-app-1/)."
+  type        = string
+  default     = ""
+}
+
 variable "storage_account_name" {
   description = "Azure storage account name (required only for Azure cloud provider)"
   type        = string
@@ -142,6 +183,31 @@ variable "mysql_db_name" {
   description = "MySQL database name for RAGFlow application"
   type        = string
   default     = "rag_flow"
+}
+
+variable "mysql_host" {
+  description = "MySQL host for RAGFlow (service name or FQDN). Leave empty to use in-namespace 'mysql' service."
+  type        = string
+  default     = ""
+}
+
+variable "mysql_port" {
+  description = "MySQL port for RAGFlow"
+  type        = string
+  default     = "3306"
+}
+
+variable "mysql_user" {
+  description = "MySQL user for RAGFlow. Leave empty to use default 'ragflow' for in-namespace deployment."
+  type        = string
+  default     = ""
+}
+
+variable "mysql_password" {
+  description = "MySQL password for RAGFlow. Leave empty to use the auto-generated in-namespace password."
+  type        = string
+  sensitive   = true
+  default     = ""
 }
 
 variable "mysql_k8s_storage" {
@@ -194,6 +260,55 @@ variable "es_image" {
   description = "Elasticsearch container image (including tag)"
   type        = string
   default     = "elasticsearch:9.3.2"
+}
+
+variable "es_protocol" {
+  description = "Elasticsearch protocol for RAGFlow connection (http or https). Leave empty to use default behavior (https for in-namespace ECK)."
+  type        = string
+  default     = ""
+}
+
+variable "es_host" {
+  description = "Elasticsearch host for RAGFlow (service name or FQDN). Leave empty to use in-namespace 'elasticsearch-es-http'."
+  type        = string
+  default     = ""
+}
+
+variable "es_port" {
+  description = "Elasticsearch port for RAGFlow"
+  type        = string
+  default     = "9200"
+}
+
+variable "es_user" {
+  description = "Elasticsearch username for RAGFlow"
+  type        = string
+  default     = "elastic"
+}
+
+variable "es_password" {
+  description = "Elasticsearch password for RAGFlow. Required in shared infra mode when auto-provision is not used."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "shared_es_index_prefix_enabled" {
+  description = "Enable namespace-derived Elasticsearch index prefixing for shared infra app mode (deploy_infra=false)."
+  type        = bool
+  default     = true
+}
+
+variable "mount_elasticsearch_ca_secret" {
+  description = "Whether to mount Elasticsearch CA cert secret into RAGFlow/Admin/Parser pods."
+  type        = bool
+  default     = true
+}
+
+variable "elasticsearch_ca_secret_name" {
+  description = "Name of Elasticsearch CA public cert secret to mount when mount_elasticsearch_ca_secret=true."
+  type        = string
+  default     = "elasticsearch-es-http-certs-public"
 }
 
 # Master node configuration (cluster management only)
@@ -327,6 +442,42 @@ variable "redis_cpu_request" {
   default     = "2"
 }
 
+variable "redis_host" {
+  description = "Redis host for RAGFlow (service name or FQDN). Leave empty to use in-namespace 'redis'."
+  type        = string
+  default     = ""
+}
+
+variable "redis_port" {
+  description = "Redis port for RAGFlow"
+  type        = string
+  default     = "6379"
+}
+
+variable "redis_username" {
+  description = "Redis username for ACL auth (optional)"
+  type        = string
+  default     = ""
+}
+
+variable "redis_password" {
+  description = "Redis password for RAGFlow. Leave empty to use the auto-generated in-namespace password."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "redis_db" {
+  description = "Redis logical database index for RAGFlow isolation. In shared infra app mode (deploy_infra=false), this must be explicitly unique per concurrent app namespace."
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.redis_db >= 0 && var.redis_db <= 15
+    error_message = "redis_db must be between 0 and 15 (default Redis logical DB range)."
+  }
+}
+
 variable "redis_cpu_limit" {
   description = "Redis CPU limit"
   type        = string
@@ -353,6 +504,43 @@ variable "rabbitmq_storage" {
   description = "RabbitMQ storage size in GB"
   type        = number
   default     = 20
+}
+
+variable "rabbitmq_host" {
+  description = "RabbitMQ host for RAGFlow (service name or FQDN). Leave empty to use in-namespace 'rabbitmq'."
+  type        = string
+  default     = ""
+}
+
+variable "rabbitmq_port" {
+  description = "RabbitMQ AMQP port"
+  type        = string
+  default     = "5672"
+}
+
+variable "rabbitmq_api_port" {
+  description = "RabbitMQ management API port"
+  type        = string
+  default     = "15672"
+}
+
+variable "rabbitmq_user" {
+  description = "RabbitMQ username for RAGFlow. Leave empty to use default 'ragflow' for in-namespace deployment."
+  type        = string
+  default     = ""
+}
+
+variable "rabbitmq_password" {
+  description = "RabbitMQ password for RAGFlow. Leave empty to use the auto-generated in-namespace password."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "rabbitmq_vhost" {
+  description = "RabbitMQ virtual host used by RAGFlow. Leave empty to use '/'."
+  type        = string
+  default     = ""
 }
 
 variable "rabbitmq_cpu_request" {
@@ -390,6 +578,12 @@ variable "ragflow_image" {
   default     = "ragflow:v0.24.0-5-mt"
 }
 
+variable "deploy_app_stack" {
+  description = "Whether to deploy application-layer resources (ragflow, admin, parser, gateway, and HTTP routes) in this namespace."
+  type        = bool
+  default     = true
+}
+
 variable "ragflow_replicas" {
   description = "Number of RAGFlow replicas"
   type        = number
@@ -418,6 +612,30 @@ variable "ragflow_memory_limit" {
   description = "RAGFlow memory limit"
   type        = string
   default     = "8Gi"
+}
+
+variable "admin_cpu_request" {
+  description = "Admin CPU request"
+  type        = string
+  default     = "500m"
+}
+
+variable "admin_cpu_limit" {
+  description = "Admin CPU limit"
+  type        = string
+  default     = "1000m"
+}
+
+variable "admin_memory_request" {
+  description = "Admin memory request"
+  type        = string
+  default     = "1Gi"
+}
+
+variable "admin_memory_limit" {
+  description = "Admin memory limit"
+  type        = string
+  default     = "2Gi"
 }
 
 # =============================================================================
@@ -479,6 +697,18 @@ variable "deepdoc_replicas" {
   description = "Number of DeepDoc replicas"
   type        = number
   default     = 2
+}
+
+variable "deepdoc_url" {
+  description = "DeepDoc base URL used by parsers (e.g. http://deepdoc:8000 or cross-namespace FQDN). Leave empty to use in-namespace service."
+  type        = string
+  default     = ""
+}
+
+variable "tei_host" {
+  description = "TEI host name used in service_conf (embedding model base URL). Leave empty to use in-namespace service name 'tei'."
+  type        = string
+  default     = ""
 }
 
 variable "deepdoc_cpu_request" {
@@ -701,4 +931,3 @@ variable "upload_size_limit" {
   type        = string
   default     = "100m"
 }
-

@@ -110,8 +110,9 @@ locals {
   # Get configuration for selected cloud provider
   config = local.cloud_config[var.cloud_provider]
 
-  ragflow_namespace = var.namespace
-  s3_bucket_name    = var.s3_bucket != "" ? var.s3_bucket : local.ragflow_namespace
+  ragflow_namespace   = var.namespace
+  s3_bucket_name      = var.s3_bucket != "" ? var.s3_bucket : local.ragflow_namespace
+  namespace_sanitized = replace(lower(local.ragflow_namespace), "-", "_")
 
   # Image transformation logic
   # RAGFlow image (including tag, will be prefixed with private_registry)
@@ -147,9 +148,41 @@ locals {
   # Check if using GKE Gateway (vs smk with NGINX Gateway)
   is_gke_gateway = can(regex("^gke-", local.gateway_class_name))
 
-  # Database users (consistent across all components)
-  mysql_user    = "ragflow"
-  rabbitmq_user = "ragflow"
+  # Service credentials/hosts (allow in-namespace deploy or external/shared services)
+  shared_infra_app_mode = var.deploy_app_stack && !var.deploy_infra
+
+  mysql_user_default       = substr("rf_${local.namespace_sanitized}", 0, 32)
+  mysql_user_effective     = !var.deploy_infra ? (var.mysql_user != "" ? var.mysql_user : local.mysql_user_default) : (var.mysql_user != "" ? var.mysql_user : "ragflow")
+  mysql_password_effective = local.use_shared_mysql_autoprovision ? random_password.shared_mysql[0].result : (var.mysql_password != "" ? var.mysql_password : random_password.mysql.result)
+  mysql_host_effective     = var.mysql_host != "" ? var.mysql_host : "mysql"
+  mysql_db_name_default    = substr("rag_flow_${local.namespace_sanitized}", 0, 64)
+  mysql_db_name_effective  = !var.deploy_infra ? ((var.mysql_db_name != "" && var.mysql_db_name != "rag_flow") ? var.mysql_db_name : local.mysql_db_name_default) : var.mysql_db_name
+
+  use_shared_redis_secret  = var.deploy_app_stack && !var.deploy_infra && var.redis_password == ""
+  redis_host_effective     = var.redis_host != "" ? var.redis_host : "redis"
+  redis_password_effective = var.redis_password != "" ? var.redis_password : (var.deploy_infra ? random_password.redis[0].result : try(data.kubernetes_secret_v1.shared_redis_password[0].data.password, ""))
+  redis_username_effective = var.redis_username
+
+  rabbitmq_user_effective     = var.rabbitmq_user != "" ? var.rabbitmq_user : "ragflow"
+  rabbitmq_password_effective = var.rabbitmq_password != "" ? var.rabbitmq_password : (var.deploy_app_stack ? random_password.rabbitmq[0].result : "")
+  rabbitmq_host_effective     = var.rabbitmq_host != "" ? var.rabbitmq_host : "rabbitmq"
+  rabbitmq_vhost_effective    = var.rabbitmq_vhost != "" ? var.rabbitmq_vhost : "/"
+
+  es_protocol_effective       = var.es_protocol != "" ? var.es_protocol : "https"
+  es_host_effective           = var.es_host != "" ? var.es_host : "elasticsearch-es-http"
+  use_shared_es_autoprovision = var.deploy_app_stack && !var.deploy_infra && var.es_password == ""
+  es_user_default             = substr("rf_${local.namespace_sanitized}_user", 0, 64)
+  es_user_effective           = local.use_shared_es_autoprovision ? local.es_user_default : var.es_user
+  es_password_effective       = var.es_password != "" ? var.es_password : (local.use_shared_es_autoprovision ? random_password.shared_elasticsearch[0].result : try(data.kubernetes_secret_v1.elasticsearch_es_user[0].data.elastic, ""))
+  es_index_prefix             = local.namespace_sanitized
+  es_index_prefix_effective   = local.shared_infra_app_mode && var.shared_es_index_prefix_enabled ? local.es_index_prefix : ""
+
+  deepdoc_url_effective = var.deepdoc_url != "" ? var.deepdoc_url : "http://deepdoc:8000"
+  tei_host_effective    = var.tei_host != "" ? var.tei_host : "tei"
+
+  use_shared_mysql_autoprovision = var.deploy_app_stack && var.auto_provision_shared_service_credentials && !var.deploy_infra && var.mysql_password == ""
+  s3_prefix_path_effective       = trimspace(var.s3_prefix_path) != "" ? var.s3_prefix_path : (local.shared_infra_app_mode ? "${local.ragflow_namespace}/" : "")
+  shared_mysql_root_password     = local.use_shared_mysql_autoprovision ? try(data.kubernetes_secret_v1.shared_mysql_password[0].data.password, "") : ""
 
   # Infinity memory allocation derived from infinity_memory_request (e.g. "4Gi" -> 4)
   # Extract numeric GB value from K8s resource string (supports Gi, G suffixes)
@@ -173,7 +206,7 @@ locals {
   max_content_length_bytes = floor(
     tonumber(regex("^(\\d+)", var.upload_size_limit)[0]) *
     (can(regex("g$", var.upload_size_limit)) ? 1000 * 1000 * 1000 :
-     can(regex("m$", var.upload_size_limit)) ? 1000 * 1000 : 1)
+    can(regex("m$", var.upload_size_limit)) ? 1000 * 1000 : 1)
   )
 }
 
@@ -186,10 +219,45 @@ resource "kubernetes_namespace_v1" "ragflow" {
   metadata {
     name = local.ragflow_namespace
   }
+}
 
-  # Allow namespace to already exist (idempotent)
+resource "terraform_data" "validate_shared_mode_inputs" {
+  count = var.deploy_app_stack ? 1 : 0
+
   lifecycle {
-    ignore_changes = [metadata]
+    precondition {
+      condition     = var.deploy_infra || var.redis_db != 1
+      error_message = "When deploy_infra=false (shared Redis), redis_db must be explicitly set to a unique non-default value (0..15, not 1)."
+    }
+    precondition {
+      condition     = var.deploy_infra || trimspace(local.redis_password_effective) != ""
+      error_message = "When deploy_infra=false (shared Redis), redis_password must be provided or resolvable from shared_infra_namespace redis-password secret."
+    }
+    precondition {
+      condition = (
+        var.cloud_provider == "gcp" ||
+        !var.deploy_app_stack ||
+        trimspace(var.s3_access_key) != "" && trimspace(var.s3_secret_key) != ""
+      )
+      error_message = "S3 credentials are required for this profile. Set s3_access_key and s3_secret_key (GCP workload identity is the only credentialless exception)."
+    }
+  }
+}
+
+# Shared service secrets (used only in app namespaces when deploy_infra=false and auto-provision is enabled)
+data "kubernetes_secret_v1" "shared_mysql_password" {
+  count = local.use_shared_mysql_autoprovision ? 1 : 0
+  metadata {
+    name      = "mysql-password"
+    namespace = var.shared_infra_namespace
+  }
+}
+
+data "kubernetes_secret_v1" "shared_redis_password" {
+  count = local.use_shared_redis_secret ? 1 : 0
+  metadata {
+    name      = "redis-password"
+    namespace = var.shared_infra_namespace
   }
 }
 
@@ -207,18 +275,39 @@ resource "random_password" "mysql" {
 }
 
 resource "random_password" "redis" {
+  count   = var.deploy_infra ? 1 : 0
   length  = 16
   special = false
 }
 
 resource "random_password" "rabbitmq" {
+  count   = var.deploy_app_stack ? 1 : 0
   length  = 16
   special = false
+}
+
+resource "random_password" "shared_mysql" {
+  count   = local.use_shared_mysql_autoprovision ? 1 : 0
+  length  = 24
+  special = false
+  keepers = {
+    namespace = local.ragflow_namespace
+  }
+}
+
+resource "random_password" "shared_elasticsearch" {
+  count   = local.use_shared_es_autoprovision ? 1 : 0
+  length  = 24
+  special = false
+  keepers = {
+    namespace = local.ragflow_namespace
+  }
 }
 
 # Ref: https://github.com/hashicorp/terraform-provider-kubernetes/issues/1986
 # Workaround for PVC creation timeout due to provider rate limiting
 resource "kubernetes_persistent_volume_claim_v1" "mysql" {
+  count = var.deploy_infra ? 1 : 0
 
   metadata {
     name      = "mysql-data"
@@ -242,6 +331,7 @@ resource "kubernetes_persistent_volume_claim_v1" "mysql" {
 }
 
 resource "kubernetes_secret_v1" "mysql" {
+  count = var.deploy_infra ? 1 : 0
 
   metadata {
     name      = "mysql-password"
@@ -254,6 +344,7 @@ resource "kubernetes_secret_v1" "mysql" {
 }
 
 resource "kubernetes_stateful_set_v1" "mysql" {
+  count = var.deploy_infra ? 1 : 0
 
   metadata {
     name      = "mysql"
@@ -303,7 +394,7 @@ resource "kubernetes_stateful_set_v1" "mysql" {
 
             value_from {
               secret_key_ref {
-                name = kubernetes_secret_v1.mysql.metadata[0].name
+                name = kubernetes_secret_v1.mysql[0].metadata[0].name
                 key  = "password"
               }
             }
@@ -316,7 +407,7 @@ resource "kubernetes_stateful_set_v1" "mysql" {
 
           env {
             name  = "MYSQL_USER"
-            value = local.mysql_user
+            value = local.mysql_user_effective
           }
 
           env {
@@ -350,7 +441,7 @@ resource "kubernetes_stateful_set_v1" "mysql" {
           name = "data"
 
           persistent_volume_claim {
-            claim_name = kubernetes_persistent_volume_claim_v1.mysql.metadata[0].name
+            claim_name = kubernetes_persistent_volume_claim_v1.mysql[0].metadata[0].name
           }
         }
       }
@@ -365,6 +456,7 @@ resource "kubernetes_stateful_set_v1" "mysql" {
 }
 
 resource "kubernetes_service_v1" "mysql" {
+  count = var.deploy_infra ? 1 : 0
 
   metadata {
     name      = "mysql"
@@ -383,11 +475,132 @@ resource "kubernetes_service_v1" "mysql" {
   }
 }
 
+resource "kubernetes_config_map_v1" "shared_mysql_bootstrap_sql" {
+  count = local.use_shared_mysql_autoprovision ? 1 : 0
+  metadata {
+    name      = "shared-mysql-bootstrap-sql"
+    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
+  }
+  data = {
+    "bootstrap.sql" = <<-SQL
+      CREATE DATABASE IF NOT EXISTS `${local.mysql_db_name_effective}`;
+      CREATE USER IF NOT EXISTS '${local.mysql_user_effective}'@'%' IDENTIFIED BY '${local.mysql_password_effective}';
+      ALTER USER '${local.mysql_user_effective}'@'%' IDENTIFIED BY '${local.mysql_password_effective}';
+      GRANT ALL PRIVILEGES ON `${local.mysql_db_name_effective}`.* TO '${local.mysql_user_effective}'@'%';
+      FLUSH PRIVILEGES;
+    SQL
+  }
+}
+
+resource "kubernetes_job_v1" "shared_mysql_user_bootstrap" {
+  count = local.use_shared_mysql_autoprovision ? 1 : 0
+  metadata {
+    name      = "shared-mysql-user-bootstrap"
+    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
+  }
+
+  spec {
+    ttl_seconds_after_finished = var.shared_service_job_ttl_seconds
+    template {
+      metadata {
+        name = "shared-mysql-user-bootstrap"
+      }
+      spec {
+        restart_policy = "OnFailure"
+        container {
+          name  = "mysql-bootstrap"
+          image = local.mysql_image
+          command = [
+            "sh",
+            "-c",
+            <<-EOT
+              mysql -h "${local.mysql_host_effective}" -P "${var.mysql_port}" -u root -p"${local.shared_mysql_root_password}" < /work/bootstrap.sql
+            EOT
+          ]
+          volume_mount {
+            name       = "bootstrap-sql"
+            mount_path = "/work/bootstrap.sql"
+            sub_path   = "bootstrap.sql"
+          }
+        }
+        volume {
+          name = "bootstrap-sql"
+          config_map {
+            name = kubernetes_config_map_v1.shared_mysql_bootstrap_sql[0].metadata[0].name
+            items {
+              key  = "bootstrap.sql"
+              path = "bootstrap.sql"
+            }
+          }
+        }
+      }
+    }
+    backoff_limit = 5
+  }
+  wait_for_completion = true
+  timeouts {
+    create = "5m"
+    update = "5m"
+  }
+}
+
+resource "kubernetes_job_v1" "shared_mysql_verify" {
+  count = var.enable_shared_service_verify_jobs && var.deploy_app_stack && !var.deploy_infra ? 1 : 0
+  metadata {
+    name      = "shared-mysql-verify"
+    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
+  }
+
+  spec {
+    ttl_seconds_after_finished = var.shared_service_job_ttl_seconds
+    template {
+      metadata {
+        name = "shared-mysql-verify"
+      }
+      spec {
+        restart_policy = "OnFailure"
+        container {
+          name  = "mysql-verify"
+          image = local.mysql_image
+          command = [
+            "sh",
+            "-c",
+            <<-EOT
+              mysql -h "${local.mysql_host_effective}" -P "${var.mysql_port}" -u "${local.mysql_user_effective}" -p"${local.mysql_password_effective}" -D "${local.mysql_db_name_effective}" -e "SELECT 1;"
+            EOT
+          ]
+        }
+      }
+    }
+    backoff_limit = 5
+  }
+  wait_for_completion = true
+  timeouts {
+    create = "5m"
+    update = "5m"
+  }
+  depends_on = [kubernetes_job_v1.shared_mysql_user_bootstrap]
+}
+
 # =============================================================================
 # Redis Deployment
 # =============================================================================
 
+resource "kubernetes_secret_v1" "redis" {
+  count = var.deploy_infra ? 1 : 0
+
+  metadata {
+    name      = "redis-password"
+    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
+  }
+
+  data = {
+    password = random_password.redis[0].result
+  }
+}
+
 resource "kubernetes_deployment_v1" "redis" {
+  count = var.deploy_infra ? 1 : 0
   metadata {
     name      = "redis"
     namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
@@ -433,7 +646,7 @@ resource "kubernetes_deployment_v1" "redis" {
           command = [
             "valkey-server",
             "--requirepass",
-            random_password.redis.result,
+            local.redis_password_effective,
             "--maxmemory",
             # Convert Kubernetes memory format (Gi, Mi) to Redis/Valkey format (gb, mb)
             lower(replace(replace(var.redis_memory_limit, "Gi", "gb"), "Mi", "mb")),
@@ -458,6 +671,7 @@ resource "kubernetes_deployment_v1" "redis" {
 }
 
 resource "kubernetes_service_v1" "redis" {
+  count = var.deploy_infra ? 1 : 0
   metadata {
     name      = "redis"
     namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
@@ -568,6 +782,7 @@ resource "kubernetes_service_v1" "tei" {
 # =============================================================================
 
 resource "kubernetes_config_map_v1" "rabbitmq" {
+  count = var.deploy_app_stack ? 1 : 0
   metadata {
     name      = "rabbitmq-config"
     namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
@@ -584,17 +799,17 @@ resource "kubernetes_config_map_v1" "rabbitmq" {
       # Password hash is dynamically computed from random_password.rabbitmq using bcrypt
       users = [
         {
-          name     = local.rabbitmq_user
-          password = random_password.rabbitmq.result
+          name     = local.rabbitmq_user_effective
+          password = local.rabbitmq_password_effective
           tags     = ["administrator"]
         }
       ]
       vhosts = [
         {
-          name        = "/"
-          description = "Default virtual host"
+          name        = local.rabbitmq_vhost_effective
+          description = "RAGFlow virtual host"
           metadata = {
-            description        = "Default virtual host"
+            description        = "RAGFlow virtual host"
             tags               = []
             default_queue_type = "classic"
           }
@@ -604,8 +819,8 @@ resource "kubernetes_config_map_v1" "rabbitmq" {
       topic_permissions = []
       permissions = [
         {
-          user      = local.rabbitmq_user
-          vhost     = "/"
+          user      = local.rabbitmq_user_effective
+          vhost     = local.rabbitmq_vhost_effective
           configure = ".*"
           write     = ".*"
           read      = ".*"
@@ -622,63 +837,63 @@ resource "kubernetes_config_map_v1" "rabbitmq" {
       queues = [
         {
           name        = "te.1.common"
-          vhost       = "/"
+          vhost       = local.rabbitmq_vhost_effective
           durable     = true
           auto_delete = false
           arguments   = { "x-queue-type" = "classic" }
         },
         {
           name        = "te.1.graphrag"
-          vhost       = "/"
+          vhost       = local.rabbitmq_vhost_effective
           durable     = true
           auto_delete = false
           arguments   = { "x-queue-type" = "classic" }
         },
         {
           name        = "te.1.raptor"
-          vhost       = "/"
+          vhost       = local.rabbitmq_vhost_effective
           durable     = true
           auto_delete = false
           arguments   = { "x-queue-type" = "classic" }
         },
         {
           name        = "te.1.resume"
-          vhost       = "/"
+          vhost       = local.rabbitmq_vhost_effective
           durable     = true
           auto_delete = false
           arguments   = { "x-queue-type" = "classic" }
         },
         {
           name        = "te.0.common"
-          vhost       = "/"
+          vhost       = local.rabbitmq_vhost_effective
           durable     = true
           auto_delete = false
           arguments   = { "x-queue-type" = "classic" }
         },
         {
           name        = "te.0.graphrag"
-          vhost       = "/"
+          vhost       = local.rabbitmq_vhost_effective
           durable     = true
           auto_delete = false
           arguments   = { "x-queue-type" = "classic" }
         },
         {
           name        = "te.0.raptor"
-          vhost       = "/"
+          vhost       = local.rabbitmq_vhost_effective
           durable     = true
           auto_delete = false
           arguments   = { "x-queue-type" = "classic" }
         },
         {
           name        = "te.0.resume"
-          vhost       = "/"
+          vhost       = local.rabbitmq_vhost_effective
           durable     = true
           auto_delete = false
           arguments   = { "x-queue-type" = "classic" }
         },
         {
           name        = "te.error"
-          vhost       = "/"
+          vhost       = local.rabbitmq_vhost_effective
           durable     = true
           auto_delete = false
           arguments   = { "x-queue-type" = "classic" }
@@ -687,7 +902,7 @@ resource "kubernetes_config_map_v1" "rabbitmq" {
       exchanges = [
         {
           name        = "test1"
-          vhost       = "/"
+          vhost       = local.rabbitmq_vhost_effective
           type        = "direct"
           durable     = true
           auto_delete = false
@@ -698,7 +913,7 @@ resource "kubernetes_config_map_v1" "rabbitmq" {
       bindings = [
         {
           source           = "test1"
-          vhost            = "/"
+          vhost            = local.rabbitmq_vhost_effective
           destination      = "te.1.common"
           destination_type = "queue"
           routing_key      = "te.1.common"
@@ -706,7 +921,7 @@ resource "kubernetes_config_map_v1" "rabbitmq" {
         },
         {
           source           = "test1"
-          vhost            = "/"
+          vhost            = local.rabbitmq_vhost_effective
           destination      = "te.1.graphrag"
           destination_type = "queue"
           routing_key      = "te.1.graphrag"
@@ -714,7 +929,7 @@ resource "kubernetes_config_map_v1" "rabbitmq" {
         },
         {
           source           = "test1"
-          vhost            = "/"
+          vhost            = local.rabbitmq_vhost_effective
           destination      = "te.1.raptor"
           destination_type = "queue"
           routing_key      = "te.1.raptor"
@@ -722,7 +937,7 @@ resource "kubernetes_config_map_v1" "rabbitmq" {
         },
         {
           source           = "test1"
-          vhost            = "/"
+          vhost            = local.rabbitmq_vhost_effective
           destination      = "te.1.resume"
           destination_type = "queue"
           routing_key      = "te.1.resume"
@@ -730,7 +945,7 @@ resource "kubernetes_config_map_v1" "rabbitmq" {
         },
         {
           source           = "test1"
-          vhost            = "/"
+          vhost            = local.rabbitmq_vhost_effective
           destination      = "te.0.common"
           destination_type = "queue"
           routing_key      = "te.0.common"
@@ -738,7 +953,7 @@ resource "kubernetes_config_map_v1" "rabbitmq" {
         },
         {
           source           = "test1"
-          vhost            = "/"
+          vhost            = local.rabbitmq_vhost_effective
           destination      = "te.0.graphrag"
           destination_type = "queue"
           routing_key      = "te.0.graphrag"
@@ -746,7 +961,7 @@ resource "kubernetes_config_map_v1" "rabbitmq" {
         },
         {
           source           = "test1"
-          vhost            = "/"
+          vhost            = local.rabbitmq_vhost_effective
           destination      = "te.0.raptor"
           destination_type = "queue"
           routing_key      = "te.0.raptor"
@@ -754,7 +969,7 @@ resource "kubernetes_config_map_v1" "rabbitmq" {
         },
         {
           source           = "test1"
-          vhost            = "/"
+          vhost            = local.rabbitmq_vhost_effective
           destination      = "te.0.resume"
           destination_type = "queue"
           routing_key      = "te.0.resume"
@@ -762,7 +977,7 @@ resource "kubernetes_config_map_v1" "rabbitmq" {
         },
         {
           source           = "test1"
-          vhost            = "/"
+          vhost            = local.rabbitmq_vhost_effective
           destination      = "te.error"
           destination_type = "queue"
           routing_key      = "te.error"
@@ -785,6 +1000,7 @@ EOT
 # Ref: https://github.com/hashicorp/terraform-provider-kubernetes/issues/1986
 # Workaround for PVC creation timeout due to provider rate limiting
 resource "kubernetes_persistent_volume_claim_v1" "rabbitmq" {
+  count = var.deploy_app_stack ? 1 : 0
   metadata {
     name      = "rabbitmq-pvc"
     namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
@@ -807,6 +1023,7 @@ resource "kubernetes_persistent_volume_claim_v1" "rabbitmq" {
 }
 
 resource "kubernetes_deployment_v1" "rabbitmq" {
+  count = var.deploy_app_stack ? 1 : 0
   metadata {
     name      = "rabbitmq"
     namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
@@ -897,7 +1114,7 @@ resource "kubernetes_deployment_v1" "rabbitmq" {
           name = "rabbitmq-storage"
 
           persistent_volume_claim {
-            claim_name = kubernetes_persistent_volume_claim_v1.rabbitmq.metadata[0].name
+            claim_name = kubernetes_persistent_volume_claim_v1.rabbitmq[0].metadata[0].name
           }
         }
 
@@ -905,7 +1122,7 @@ resource "kubernetes_deployment_v1" "rabbitmq" {
           name = "rabbitmq-definitions"
 
           config_map {
-            name = kubernetes_config_map_v1.rabbitmq.metadata[0].name
+            name = kubernetes_config_map_v1.rabbitmq[0].metadata[0].name
 
             items {
               key  = "definitions.json"
@@ -918,7 +1135,7 @@ resource "kubernetes_deployment_v1" "rabbitmq" {
           name = "rabbitmq-definitions-conf"
 
           config_map {
-            name = kubernetes_config_map_v1.rabbitmq.metadata[0].name
+            name = kubernetes_config_map_v1.rabbitmq[0].metadata[0].name
 
             items {
               key  = "10-definitions.conf"
@@ -938,6 +1155,7 @@ resource "kubernetes_deployment_v1" "rabbitmq" {
 }
 
 resource "kubernetes_service_v1" "rabbitmq" {
+  count = var.deploy_app_stack ? 1 : 0
   metadata {
     name      = "rabbitmq"
     namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
@@ -968,6 +1186,19 @@ resource "kubernetes_service_v1" "rabbitmq" {
   }
 }
 
+resource "kubernetes_secret_v1" "rabbitmq_password" {
+  count = var.deploy_app_stack ? 1 : 0
+
+  metadata {
+    name      = "rabbitmq-password"
+    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
+  }
+
+  data = {
+    password = local.rabbitmq_password_effective
+  }
+}
+
 # =============================================================================
 # Elasticsearch Deployment (K8s Mode)
 # =============================================================================
@@ -980,7 +1211,7 @@ data "external" "cluster_scoped_resource_ownership" {
   query = {
     kubeconfig_path = pathexpand(var.kubeconfig_path)
     cloud_provider  = var.cloud_provider
-    state_path      = "${path.module}/terraform.tfstate"
+    state_path      = terraform.workspace == "default" ? "${path.module}/terraform.tfstate" : "${path.module}/terraform.tfstate.d/${terraform.workspace}/terraform.tfstate"
   }
 }
 
@@ -988,7 +1219,7 @@ data "external" "cluster_scoped_resource_ownership" {
 # This installs the CRDs and operator required for Elasticsearch resources
 # Ref: https://artifacthub.io/packages/helm/elastic/eck-operator
 resource "helm_release" "eck_operator" {
-  count            = local.manage_cluster_scoped_resources_resolved ? 1 : 0
+  count            = var.deploy_infra && local.manage_cluster_scoped_resources_resolved ? 1 : 0
   name             = "eck-operator"
   repository       = "https://helm.elastic.co"
   chart            = "eck-operator"
@@ -1017,6 +1248,7 @@ resource "helm_release" "eck_operator" {
 # This replaces the fixed time_sleep with a dynamic check.
 
 resource "terraform_data" "wait_for_elasticsearch_crd" {
+  count      = var.deploy_infra ? 1 : 0
   depends_on = [helm_release.eck_operator]
 
   # Idempotent check for CRD - if already established, succeed immediately
@@ -1041,7 +1273,7 @@ resource "kubernetes_manifest" "elasticsearch_compute_class" {
   # CustomComputeClass for GKE to set vm.max_map_count
   # Requires GKE >= 1.30.3-gke.1451000
   # Reference: https://www.elastic.co/docs/deploy-manage/deploy/cloud-on-k8s/deploy-eck-on-gke-autopilot
-  count = var.cloud_provider == "gcp" && local.manage_cluster_scoped_resources_resolved ? 1 : 0
+  count = var.deploy_infra && var.cloud_provider == "gcp" && local.manage_cluster_scoped_resources_resolved ? 1 : 0
 
   manifest = {
     apiVersion = "cloud.google.com/v1"
@@ -1085,6 +1317,7 @@ resource "kubernetes_manifest" "elasticsearch_compute_class" {
 
 # 1. Store the Elasticsearch manifest in a ConfigMap
 resource "kubernetes_config_map_v1" "elasticsearch_manifest" {
+  count = var.deploy_infra ? 1 : 0
   metadata {
     name      = "elasticsearch-manifest"
     namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
@@ -1206,6 +1439,7 @@ YAML
 
 # 2. ServiceAccount for the applier job
 resource "kubernetes_service_account_v1" "elasticsearch_applier" {
+  count = var.deploy_infra ? 1 : 0
   metadata {
     name      = "elasticsearch-applier"
     namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
@@ -1214,6 +1448,7 @@ resource "kubernetes_service_account_v1" "elasticsearch_applier" {
 
 # 3. Role to allow creating Elasticsearch resources
 resource "kubernetes_role_v1" "elasticsearch_applier" {
+  count = var.deploy_infra ? 1 : 0
   metadata {
     name      = "elasticsearch-applier"
     namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
@@ -1228,6 +1463,7 @@ resource "kubernetes_role_v1" "elasticsearch_applier" {
 
 # 4. RoleBinding
 resource "kubernetes_role_binding_v1" "elasticsearch_applier" {
+  count = var.deploy_infra ? 1 : 0
   metadata {
     name      = "elasticsearch-applier"
     namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
@@ -1236,18 +1472,19 @@ resource "kubernetes_role_binding_v1" "elasticsearch_applier" {
   role_ref {
     api_group = "rbac.authorization.k8s.io"
     kind      = "Role"
-    name      = kubernetes_role_v1.elasticsearch_applier.metadata[0].name
+    name      = kubernetes_role_v1.elasticsearch_applier[0].metadata[0].name
   }
 
   subject {
     kind      = "ServiceAccount"
-    name      = kubernetes_service_account_v1.elasticsearch_applier.metadata[0].name
+    name      = kubernetes_service_account_v1.elasticsearch_applier[0].metadata[0].name
     namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
   }
 }
 
 # 5. Job to apply the manifest
 resource "kubernetes_job_v1" "apply_elasticsearch" {
+  count = var.deploy_infra ? 1 : 0
   metadata {
     name      = "apply-elasticsearch"
     namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
@@ -1259,7 +1496,7 @@ resource "kubernetes_job_v1" "apply_elasticsearch" {
         name = "apply-elasticsearch"
       }
       spec {
-        service_account_name = kubernetes_service_account_v1.elasticsearch_applier.metadata[0].name
+        service_account_name = kubernetes_service_account_v1.elasticsearch_applier[0].metadata[0].name
         restart_policy       = "OnFailure"
         container {
           name    = "kubectl"
@@ -1284,7 +1521,7 @@ resource "kubernetes_job_v1" "apply_elasticsearch" {
         volume {
           name = "manifest"
           config_map {
-            name = kubernetes_config_map_v1.elasticsearch_manifest.metadata[0].name
+            name = kubernetes_config_map_v1.elasticsearch_manifest[0].metadata[0].name
           }
         }
         volume {
@@ -1314,8 +1551,9 @@ resource "kubernetes_job_v1" "apply_elasticsearch" {
 # Wait for Elasticsearch Secret to be Available
 # =============================================================================
 resource "terraform_data" "wait_for_elasticsearch_secret" {
+  count = var.deploy_infra ? 1 : 0
   triggers_replace = [
-    kubernetes_job_v1.apply_elasticsearch.id
+    kubernetes_job_v1.apply_elasticsearch[0].id
   ]
 
   provisioner "local-exec" {
@@ -1332,6 +1570,7 @@ resource "terraform_data" "wait_for_elasticsearch_secret" {
 # This secret is managed by ECK operator and contains the auto-generated
 # password for the 'elastic' user.
 data "kubernetes_secret_v1" "elasticsearch_es_user" {
+  count = var.deploy_infra ? 1 : 0
   metadata {
     name      = "elasticsearch-es-elastic-user"
     namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
@@ -1341,6 +1580,120 @@ data "kubernetes_secret_v1" "elasticsearch_es_user" {
     kubernetes_job_v1.apply_elasticsearch,
     terraform_data.wait_for_elasticsearch_secret
   ]
+}
+
+data "kubernetes_secret_v1" "shared_elasticsearch_es_user" {
+  count = local.use_shared_es_autoprovision ? 1 : 0
+  metadata {
+    name      = "elasticsearch-es-elastic-user"
+    namespace = var.shared_infra_namespace
+  }
+}
+
+resource "kubernetes_config_map_v1" "shared_elasticsearch_role_payload" {
+  count = local.use_shared_es_autoprovision ? 1 : 0
+  metadata {
+    name      = "shared-es-role-payload"
+    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
+  }
+  data = {
+    "role.json" = jsonencode({
+      cluster = ["monitor"]
+      indices = [
+        for pattern in(
+          local.es_index_prefix_effective != ""
+          ? ["ragflow_${local.es_index_prefix_effective}_*", "ragflow_doc_meta_${local.es_index_prefix_effective}_*"]
+          : ["ragflow_*", "ragflow_doc_meta_*"]
+          ) : {
+          names      = [pattern]
+          privileges = ["read", "write", "create_index", "view_index_metadata", "manage"]
+        }
+      ]
+    })
+  }
+}
+
+resource "kubernetes_config_map_v1" "shared_elasticsearch_user_payload" {
+  count = local.use_shared_es_autoprovision ? 1 : 0
+  metadata {
+    name      = "shared-es-user-payload"
+    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
+  }
+  data = {
+    "user.json" = jsonencode({
+      password = local.es_password_effective
+      roles    = [local.es_user_effective]
+    })
+  }
+}
+
+resource "kubernetes_job_v1" "shared_elasticsearch_user_bootstrap" {
+  count = local.use_shared_es_autoprovision ? 1 : 0
+  metadata {
+    name      = "shared-es-user-bootstrap"
+    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
+  }
+
+  spec {
+    ttl_seconds_after_finished = var.shared_service_job_ttl_seconds
+    template {
+      metadata {
+        name = "shared-es-user-bootstrap"
+      }
+      spec {
+        restart_policy = "OnFailure"
+        container {
+          name  = "es-bootstrap"
+          image = local.curl_image
+          command = [
+            "sh",
+            "-c",
+            <<-EOT
+              set -e
+              curl -sS -k -u "elastic:${data.kubernetes_secret_v1.shared_elasticsearch_es_user[0].data.elastic}" -H "Content-Type: application/json" -X PUT "${local.es_protocol_effective}://${local.es_host_effective}:${var.es_port}/_security/role/${local.es_user_effective}" --data-binary @/payload/role.json
+              curl -sS -k -u "elastic:${data.kubernetes_secret_v1.shared_elasticsearch_es_user[0].data.elastic}" -H "Content-Type: application/json" -X PUT "${local.es_protocol_effective}://${local.es_host_effective}:${var.es_port}/_security/user/${local.es_user_effective}" --data-binary @/payload/user.json
+            EOT
+          ]
+          volume_mount {
+            name       = "role-payload"
+            mount_path = "/payload/role.json"
+            sub_path   = "role.json"
+          }
+          volume_mount {
+            name       = "user-payload"
+            mount_path = "/payload/user.json"
+            sub_path   = "user.json"
+          }
+        }
+        volume {
+          name = "role-payload"
+          config_map {
+            name = kubernetes_config_map_v1.shared_elasticsearch_role_payload[0].metadata[0].name
+            items {
+              key  = "role.json"
+              path = "role.json"
+            }
+          }
+        }
+        volume {
+          name = "user-payload"
+          config_map {
+            name = kubernetes_config_map_v1.shared_elasticsearch_user_payload[0].metadata[0].name
+            items {
+              key  = "user.json"
+              path = "user.json"
+            }
+          }
+        }
+      }
+    }
+    backoff_limit = 5
+  }
+  wait_for_completion = true
+  timeouts {
+    create = "5m"
+    update = "5m"
+  }
 }
 
 # =============================================================================
@@ -1636,6 +1989,8 @@ resource "kubernetes_service_v1" "infinity" {
 # =============================================================================
 
 resource "kubernetes_secret_v1" "storage" {
+  count = var.deploy_app_stack ? 1 : 0
+
   metadata {
     name      = "ragflow-storage"
     namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
@@ -1652,21 +2007,106 @@ resource "kubernetes_secret_v1" "storage" {
   type = "Opaque"
 }
 
+resource "kubernetes_job_v1" "shared_s3_verify" {
+  count = var.enable_shared_service_verify_jobs && var.deploy_app_stack ? 1 : 0
+  metadata {
+    name      = "shared-s3-verify"
+    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
+  }
+
+  spec {
+    ttl_seconds_after_finished = var.shared_service_job_ttl_seconds
+    template {
+      metadata {
+        name = "shared-s3-verify"
+      }
+      spec {
+        restart_policy = "OnFailure"
+        container {
+          name  = "s3-verify"
+          image = local.minio_mc_image
+          command = [
+            "sh",
+            "-c",
+            <<-EOT
+              set -e
+              if [ "${var.cloud_provider}" = "gcp" ] && ( [ -z "${var.s3_access_key}" ] || [ -z "${var.s3_secret_key}" ] ); then
+                echo "Skipping shared-s3-verify: GCP credentialless storage mode."
+                exit 0
+              fi
+              mc alias set verify "${var.s3_endpoint != "" ? var.s3_endpoint : local.config.s3_endpoint}" "${var.s3_access_key}" "${var.s3_secret_key}"
+              PREFIX="${local.s3_prefix_path_effective}"
+              TMP_OBJ="_verify_${local.namespace_sanitized}_$$(date +%s)_$${RANDOM:-0}.tmp"
+              if [ -n "$${PREFIX}" ]; then
+                case "$${PREFIX}" in
+                  */) OBJ_PATH="$${PREFIX}$${TMP_OBJ}" ;;
+                  *) OBJ_PATH="$${PREFIX}/$${TMP_OBJ}" ;;
+                esac
+              else
+                OBJ_PATH="$${TMP_OBJ}"
+              fi
+              printf 'verify\n' | mc pipe "verify/${local.s3_bucket_name}/$${OBJ_PATH}" >/dev/null
+              mc stat "verify/${local.s3_bucket_name}/$${OBJ_PATH}" >/dev/null
+              mc rm "verify/${local.s3_bucket_name}/$${OBJ_PATH}" >/dev/null
+            EOT
+          ]
+        }
+      }
+    }
+    backoff_limit = 5
+  }
+  wait_for_completion = true
+  timeouts {
+    create = "5m"
+    update = "5m"
+  }
+}
+
+resource "kubernetes_job_v1" "shared_deepdoc_verify" {
+  count = var.enable_shared_service_verify_jobs && var.deploy_app_stack && !var.deploy_infra ? 1 : 0
+  metadata {
+    name      = "shared-deepdoc-verify"
+    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
+  }
+
+  spec {
+    ttl_seconds_after_finished = var.shared_service_job_ttl_seconds
+    template {
+      metadata {
+        name = "shared-deepdoc-verify"
+      }
+      spec {
+        restart_policy = "OnFailure"
+        container {
+          name  = "deepdoc-verify"
+          image = local.curl_image
+          command = [
+            "sh",
+            "-c",
+            <<-EOT
+              set -e
+              curl -fsS "${local.deepdoc_url_effective}/health" >/dev/null
+            EOT
+          ]
+        }
+      }
+    }
+    backoff_limit = 5
+  }
+  wait_for_completion = true
+  timeouts {
+    create = "5m"
+    update = "5m"
+  }
+}
+
 # =============================================================================
 # RAGFlow Environment Secret
 # =============================================================================
 
 resource "kubernetes_secret_v1" "ragflow_env" {
-  depends_on = [
-    kubernetes_stateful_set_v1.mysql,
-    kubernetes_deployment_v1.redis,
-    kubernetes_deployment_v1.rabbitmq,
-    kubernetes_service_v1.deepdoc,
-    terraform_data.wait_for_elasticsearch_secret,
-    # When infinity is enabled, wait for it before creating ragflow_env
-  ]
+  count = var.deploy_app_stack ? 1 : 0
 
-  # Infinity dependency is already handled by depends_on above when enabled
   metadata {
     name      = "ragflow-env"
     namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
@@ -1674,21 +2114,20 @@ resource "kubernetes_secret_v1" "ragflow_env" {
 
   data = {
     # MySQL Configuration
-    MYSQL_HOST     = "mysql"
-    MYSQL_PORT     = "3306"
-    MYSQL_USER     = local.mysql_user
-    MYSQL_DB_NAME  = var.mysql_db_name
-    MYSQL_PASSWORD = random_password.mysql.result
+    MYSQL_HOST     = local.mysql_host_effective
+    MYSQL_PORT     = var.mysql_port
+    MYSQL_USER     = local.mysql_user_effective
+    MYSQL_DB_NAME  = local.mysql_db_name_effective
+    MYSQL_DBNAME   = local.mysql_db_name_effective
+    MYSQL_PASSWORD = local.mysql_password_effective
 
     # Elasticsearch Configuration
-    # Use ES_PROTOCOL=https to enable HTTPS for ECK-managed Elasticsearch
-    ES_PROTOCOL = "https"
-    ES_HOST     = "elasticsearch-es-http"
-    ES_PORT     = "9200"
-    ES_USER     = "elastic"
-    # ELASTIC_PASSWORD: use password from ECK-managed secret (k8s mode)
-    # data.kubernetes_secret_v1 automatically base64-decodes secret data
-    ELASTIC_PASSWORD = data.kubernetes_secret_v1.elasticsearch_es_user.data.elastic
+    ES_PROTOCOL      = local.es_protocol_effective
+    ES_HOST          = local.es_host_effective
+    ES_PORT          = var.es_port
+    ES_USER          = local.es_user_effective
+    ELASTIC_PASSWORD = local.es_password_effective
+    ES_INDEX_PREFIX  = local.es_index_prefix_effective
 
     # DOC_ENGINE configuration
     # When infinity_enabled=true, set DOC_ENGINE="elasticsearch,infinity" for shadow write proxy
@@ -1705,26 +2144,31 @@ resource "kubernetes_secret_v1" "ragflow_env" {
     INFINITY_DB_NAME   = var.infinity_enabled ? "default_db" : ""
 
     # Redis Configuration
-    REDIS_HOST     = "redis"
-    REDIS_PASSWORD = random_password.redis.result
+    REDIS_HOST     = local.redis_host_effective
+    REDIS_PORT     = var.redis_port
+    REDIS_USERNAME = local.redis_username_effective
+    REDIS_PASSWORD = local.redis_password_effective
+    REDIS_DB       = tostring(var.redis_db)
 
     # TEI Configuration
-    TEI_HOST  = "tei"
+    TEI_HOST  = local.tei_host_effective
     TEI_MODEL = var.tei_model
 
     # RabbitMQ Configuration
-    RABBITMQ_HOST         = "rabbitmq"
-    RABBITMQ_PORT         = "5672"
-    RABBITMQ_API_PORT     = "15672"
-    RABBITMQ_DEFAULT_USER = local.rabbitmq_user
-    RABBITMQ_DEFAULT_PASS = random_password.rabbitmq.result
+    RABBITMQ_HOST         = local.rabbitmq_host_effective
+    RABBITMQ_PORT         = var.rabbitmq_port
+    RABBITMQ_API_PORT     = var.rabbitmq_api_port
+    RABBITMQ_DEFAULT_USER = local.rabbitmq_user_effective
+    RABBITMQ_DEFAULT_PASS = local.rabbitmq_password_effective
 
     # Storage Configuration
-    S3_ENDPOINT   = var.s3_endpoint != "" ? var.s3_endpoint : local.config.s3_endpoint
-    S3_BUCKET     = local.s3_bucket_name
-    S3_ACCESS_KEY = var.s3_access_key
-    S3_SECRET_KEY = var.s3_secret_key
-    S3_REGION     = var.s3_region != "" ? var.s3_region : local.config.s3_region
+    S3_ENDPOINT       = var.s3_endpoint != "" ? var.s3_endpoint : local.config.s3_endpoint
+    S3_BUCKET         = local.s3_bucket_name
+    S3_ACCESS_KEY     = var.s3_access_key
+    S3_SECRET_KEY     = var.s3_secret_key
+    S3_REGION         = var.s3_region != "" ? var.s3_region : local.config.s3_region
+    S3_PREFIX_PATH    = local.s3_prefix_path_effective
+    MINIO_PREFIX_PATH = local.s3_prefix_path_effective
 
     # Storage Implementation Type (AWS_S3 or OSS)
     # Auto-detect based on cloud_provider or endpoint
@@ -1733,7 +2177,7 @@ resource "kubernetes_secret_v1" "ragflow_env" {
 
     # DeepDoc Service Configuration
     # Point to the deepdoc service for OCR, DLA, and TSR tasks
-    DEEPDOC_URL = "http://deepdoc:8000"
+    DEEPDOC_URL = local.deepdoc_url_effective
 
     # Secret key for JWT tokens - must be fixed to maintain session across pod restarts
     # Generate with: openssl rand -hex 32
@@ -1754,10 +2198,18 @@ resource "kubernetes_secret_v1" "ragflow_env" {
     # Upload size limit for RAGFlow API server (affects file uploads via web UI/API)
     # This is read by common/settings.py to set MAX_CONTENT_LENGTH in Quart/Flask
     # and also by rag/svr/task_executor.py to reject oversized documents before processing
-    MAX_CONTENT_LENGTH         = local.max_content_length_bytes
+    MAX_CONTENT_LENGTH = local.max_content_length_bytes
   }
 
   type = "Opaque"
+
+  depends_on = [
+    kubernetes_job_v1.shared_mysql_user_bootstrap,
+    kubernetes_job_v1.shared_mysql_verify,
+    kubernetes_job_v1.shared_elasticsearch_user_bootstrap,
+    kubernetes_job_v1.shared_s3_verify,
+    kubernetes_job_v1.shared_deepdoc_verify,
+  ]
 }
 
 # =============================================================================
@@ -1788,6 +2240,7 @@ resource "kubernetes_secret_v1" "ragflow_env" {
 
 # Service 1: Frontend (nginx) - serves React web UI
 resource "kubernetes_service_v1" "ragflow_frontend" {
+  count = var.deploy_app_stack ? 1 : 0
   metadata {
     name      = "ragflow-frontend"
     namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
@@ -1814,6 +2267,7 @@ resource "kubernetes_service_v1" "ragflow_frontend" {
 
 # Service 2: API Server - serves REST API at /v1/*
 resource "kubernetes_service_v1" "ragflow_api" {
+  count = var.deploy_app_stack ? 1 : 0
   metadata {
     name      = "ragflow-api"
     namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
@@ -1845,6 +2299,7 @@ resource "kubernetes_service_v1" "ragflow_api" {
 
 # Service 3: Admin Server - serves admin API at /api/v1/admin
 resource "kubernetes_service_v1" "admin" {
+  count = var.deploy_app_stack ? 1 : 0
   metadata {
     name      = "admin"
     namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
@@ -1894,7 +2349,7 @@ resource "kubernetes_service_v1" "admin" {
 # =============================================================================
 
 resource "kubernetes_manifest" "podmonitor_ragflow" {
-  count = var.cloud_provider == "gcp" ? 1 : 0
+  count = var.cloud_provider == "gcp" && var.deploy_app_stack ? 1 : 0
 
   field_manager {
     force_conflicts = true
@@ -1929,7 +2384,7 @@ resource "kubernetes_manifest" "podmonitor_ragflow" {
 }
 
 resource "kubernetes_manifest" "podmonitor_admin" {
-  count = var.cloud_provider == "gcp" ? 1 : 0
+  count = var.cloud_provider == "gcp" && var.deploy_app_stack ? 1 : 0
 
   field_manager {
     force_conflicts = true
@@ -1968,7 +2423,15 @@ resource "kubernetes_manifest" "podmonitor_admin" {
 # =============================================================================
 
 resource "kubernetes_deployment_v1" "ragflow" {
-  depends_on = [kubernetes_secret_v1.ragflow_env]
+  count = var.deploy_app_stack ? 1 : 0
+  depends_on = [
+    kubernetes_secret_v1.ragflow_env[0],
+    kubernetes_stateful_set_v1.mysql,
+    kubernetes_deployment_v1.redis,
+    kubernetes_deployment_v1.rabbitmq,
+    kubernetes_service_v1.deepdoc,
+    terraform_data.wait_for_elasticsearch_secret,
+  ]
 
   metadata {
     name      = "ragflow"
@@ -2004,7 +2467,7 @@ resource "kubernetes_deployment_v1" "ragflow" {
         }
         annotations = {
           # Trigger rollout restart when secret changes
-          "checksum/config" = sha256(jsonencode(kubernetes_secret_v1.ragflow_env.data))
+          "checksum/config" = sha256(jsonencode(kubernetes_secret_v1.ragflow_env[0].data))
           # Prometheus scrape annotations (for self-managed Prometheus or GMP annotation-based discovery)
           "prometheus.io/scrape" = "true"
           "prometheus.io/port"   = "9380"
@@ -2036,7 +2499,7 @@ resource "kubernetes_deployment_v1" "ragflow" {
 
         # Init container to wait for Elasticsearch to be ready
         dynamic "init_container" {
-          for_each = [1]
+          for_each = local.es_host_effective != "" ? [1] : []
           content {
             name  = "wait-for-elasticsearch"
             image = local.curl_image
@@ -2044,7 +2507,7 @@ resource "kubernetes_deployment_v1" "ragflow" {
             # Inherit environment from ragflow_env secret
             env_from {
               secret_ref {
-                name = kubernetes_secret_v1.ragflow_env.metadata[0].name
+                name = kubernetes_secret_v1.ragflow_env[0].metadata[0].name
               }
             }
 
@@ -2061,12 +2524,12 @@ resource "kubernetes_deployment_v1" "ragflow" {
 
         # ES CA certificate volume
         dynamic "volume" {
-          for_each = [1]
+          for_each = var.mount_elasticsearch_ca_secret ? [1] : []
           content {
             name = "elasticsearch-ca"
 
             secret {
-              secret_name = "elasticsearch-es-http-certs-public"
+              secret_name = var.elasticsearch_ca_secret_name
             }
           }
         }
@@ -2169,13 +2632,13 @@ resource "kubernetes_deployment_v1" "ragflow" {
 
           env_from {
             secret_ref {
-              name = kubernetes_secret_v1.ragflow_env.metadata[0].name
+              name = kubernetes_secret_v1.ragflow_env[0].metadata[0].name
             }
           }
 
           # Mount ES CA certificate for HTTPS verification
           dynamic "volume_mount" {
-            for_each = [1]
+            for_each = var.mount_elasticsearch_ca_secret ? [1] : []
             content {
               name       = "elasticsearch-ca"
               mount_path = "/etc/elasticsearch/certs"
@@ -2219,7 +2682,15 @@ resource "kubernetes_deployment_v1" "ragflow" {
 # =============================================================================
 
 resource "kubernetes_deployment_v1" "admin" {
-  depends_on = [kubernetes_secret_v1.ragflow_env]
+  count = var.deploy_app_stack ? 1 : 0
+  depends_on = [
+    kubernetes_secret_v1.ragflow_env[0],
+    kubernetes_stateful_set_v1.mysql,
+    kubernetes_deployment_v1.redis,
+    kubernetes_deployment_v1.rabbitmq,
+    kubernetes_service_v1.deepdoc,
+    terraform_data.wait_for_elasticsearch_secret,
+  ]
 
   metadata {
     name      = "admin"
@@ -2256,7 +2727,7 @@ resource "kubernetes_deployment_v1" "admin" {
         }
         annotations = {
           # Trigger rollout restart when secret changes
-          "checksum/config" = sha256(jsonencode(kubernetes_secret_v1.ragflow_env.data))
+          "checksum/config" = sha256(jsonencode(kubernetes_secret_v1.ragflow_env[0].data))
           # Prometheus scrape annotations (for self-managed Prometheus or GMP annotation-based discovery)
           "prometheus.io/scrape" = "true"
           "prometheus.io/port"   = "9381"
@@ -2278,12 +2749,12 @@ resource "kubernetes_deployment_v1" "admin" {
 
         # ES CA certificate volume
         dynamic "volume" {
-          for_each = [1]
+          for_each = var.mount_elasticsearch_ca_secret ? [1] : []
           content {
             name = "elasticsearch-ca"
 
             secret {
-              secret_name = "elasticsearch-es-http-certs-public"
+              secret_name = var.elasticsearch_ca_secret_name
             }
           }
         }
@@ -2329,13 +2800,13 @@ resource "kubernetes_deployment_v1" "admin" {
           # Standard ragflow environment variables
           env_from {
             secret_ref {
-              name = kubernetes_secret_v1.ragflow_env.metadata[0].name
+              name = kubernetes_secret_v1.ragflow_env[0].metadata[0].name
             }
           }
 
           # Mount ES CA certificate for HTTPS verification
           dynamic "volume_mount" {
-            for_each = [1]
+            for_each = var.mount_elasticsearch_ca_secret ? [1] : []
             content {
               name       = "elasticsearch-ca"
               mount_path = "/etc/elasticsearch/certs"
@@ -2345,12 +2816,12 @@ resource "kubernetes_deployment_v1" "admin" {
 
           resources {
             requests = {
-              cpu    = "500m"
-              memory = "1Gi"
+              cpu    = var.admin_cpu_request
+              memory = var.admin_memory_request
             }
             limits = {
-              cpu    = "1000m"
-              memory = "2Gi"
+              cpu    = var.admin_cpu_limit
+              memory = var.admin_memory_limit
             }
           }
 
@@ -2377,9 +2848,16 @@ locals {
 }
 
 resource "kubernetes_deployment_v1" "parser" {
-  depends_on = [kubernetes_secret_v1.ragflow_env]
+  depends_on = [
+    kubernetes_secret_v1.ragflow_env[0],
+    kubernetes_stateful_set_v1.mysql,
+    kubernetes_deployment_v1.redis,
+    kubernetes_deployment_v1.rabbitmq,
+    kubernetes_service_v1.deepdoc,
+    terraform_data.wait_for_elasticsearch_secret,
+  ]
 
-  for_each = toset(local.parser_types)
+  for_each = var.deploy_app_stack ? toset(local.parser_types) : toset([])
 
   metadata {
     name      = "parser-${each.key}"
@@ -2421,7 +2899,7 @@ resource "kubernetes_deployment_v1" "parser" {
         }
         annotations = {
           # Trigger rollout restart when secret changes
-          "checksum/config" = sha256(jsonencode(kubernetes_secret_v1.ragflow_env.data))
+          "checksum/config" = sha256(jsonencode(kubernetes_secret_v1.ragflow_env[0].data))
         }
       }
 
@@ -2439,7 +2917,7 @@ resource "kubernetes_deployment_v1" "parser" {
 
         # Init container to wait for Elasticsearch to be ready
         dynamic "init_container" {
-          for_each = [1]
+          for_each = local.es_host_effective != "" ? [1] : []
           content {
             name  = "wait-for-elasticsearch"
             image = local.curl_image
@@ -2447,7 +2925,7 @@ resource "kubernetes_deployment_v1" "parser" {
             # Inherit environment from ragflow_env secret
             env_from {
               secret_ref {
-                name = kubernetes_secret_v1.ragflow_env.metadata[0].name
+                name = kubernetes_secret_v1.ragflow_env[0].metadata[0].name
               }
             }
 
@@ -2464,12 +2942,12 @@ resource "kubernetes_deployment_v1" "parser" {
 
         # ES CA certificate volume
         dynamic "volume" {
-          for_each = [1]
+          for_each = var.mount_elasticsearch_ca_secret ? [1] : []
           content {
             name = "elasticsearch-ca"
 
             secret {
-              secret_name = "elasticsearch-es-http-certs-public"
+              secret_name = var.elasticsearch_ca_secret_name
             }
           }
         }
@@ -2488,7 +2966,7 @@ resource "kubernetes_deployment_v1" "parser" {
 
           env_from {
             secret_ref {
-              name = kubernetes_secret_v1.ragflow_env.metadata[0].name
+              name = kubernetes_secret_v1.ragflow_env[0].metadata[0].name
             }
           }
 
@@ -2499,7 +2977,7 @@ resource "kubernetes_deployment_v1" "parser" {
 
           # Mount ES CA certificate for HTTPS verification
           dynamic "volume_mount" {
-            for_each = [1]
+            for_each = var.mount_elasticsearch_ca_secret ? [1] : []
             content {
               name       = "elasticsearch-ca"
               mount_path = "/etc/elasticsearch/certs"
@@ -2551,6 +3029,7 @@ resource "kubernetes_deployment_v1" "parser" {
 # =============================================================================
 
 resource "kubernetes_deployment_v1" "deepdoc" {
+  count = var.deploy_infra ? 1 : 0
   metadata {
     name      = "deepdoc"
     namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
@@ -2690,6 +3169,7 @@ resource "kubernetes_deployment_v1" "deepdoc" {
 }
 
 resource "kubernetes_service_v1" "deepdoc" {
+  count = var.deploy_infra ? 1 : 0
   metadata {
     name      = "deepdoc"
     namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
@@ -2713,6 +3193,7 @@ resource "kubernetes_service_v1" "deepdoc" {
 # =============================================================================
 
 resource "kubernetes_manifest" "gateway" {
+  count = var.deploy_app_stack ? 1 : 0
   depends_on = [
     kubernetes_secret_v1.tls_secret,
   ]
@@ -2803,7 +3284,7 @@ resource "kubernetes_manifest" "gateway" {
 # Use local certificate files in the current byok directory when ohttps is enabled.
 
 resource "kubernetes_secret_v1" "tls_secret" {
-  count = var.ohttps_enabled ? 1 : 0
+  count = var.deploy_app_stack && var.ohttps_enabled ? 1 : 0
 
   metadata {
     name      = "ragflow-tls"
@@ -2972,6 +3453,7 @@ resource "kubernetes_manifest" "ohttps_sync_cronjob" {
 # HTTPRoute 1: /v1 and /api -> port 9380 (API service)
 # Note: /api/v1/admin is excluded and handled by http_route_admin
 resource "kubernetes_manifest" "http_route_api" {
+  count = var.deploy_app_stack ? 1 : 0
   field_manager {
     force_conflicts = true
   }
@@ -3006,7 +3488,7 @@ resource "kubernetes_manifest" "http_route_api" {
           ]
           backendRefs = [
             {
-              name = kubernetes_service_v1.ragflow_api.metadata[0].name
+              name = kubernetes_service_v1.ragflow_api[0].metadata[0].name
               port = 9380
             }
           ]
@@ -3029,7 +3511,7 @@ resource "kubernetes_manifest" "http_route_api" {
           ]
           backendRefs = [
             {
-              name = kubernetes_service_v1.ragflow_api.metadata[0].name
+              name = kubernetes_service_v1.ragflow_api[0].metadata[0].name
               port = 9380
             }
           ]
@@ -3039,8 +3521,38 @@ resource "kubernetes_manifest" "http_route_api" {
   }
 
   lifecycle {
-    replace_triggered_by = [kubernetes_manifest.http_route_admin]
+    replace_triggered_by = [kubernetes_manifest.http_route_admin[0]]
   }
+}
+
+# NGINX Gateway Fabric policy: allow larger request bodies for API uploads
+resource "kubernetes_manifest" "upload_size_policy" {
+  count = var.deploy_app_stack && !local.is_gke_gateway ? 1 : 0
+
+  field_manager {
+    force_conflicts = true
+  }
+
+  manifest = {
+    apiVersion = "gateway.nginx.org/v1alpha1"
+    kind       = "ClientSettingsPolicy"
+    metadata = {
+      name      = "ragflow-upload-size"
+      namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
+    }
+    spec = {
+      targetRef = {
+        group = "gateway.networking.k8s.io"
+        kind  = "Gateway"
+        name  = "ragflow"
+      }
+      body = {
+        maxSize = "1000m"
+      }
+    }
+  }
+
+  depends_on = [kubernetes_manifest.gateway]
 }
 
 # GCPBackendPolicy: Configure backend service timeout for GKE regional external ALB.
@@ -3049,7 +3561,7 @@ resource "kubernetes_manifest" "http_route_api" {
 # (set in ragflow_env Secret -> common/settings.py -> Quart/Flask).
 # GKE default Cloud LB request limit (~32MB) applies when Python limit is not reached.
 resource "kubernetes_manifest" "gcp_backend_policy_api" {
-  count = local.is_gke_gateway ? 1 : 0
+  count = var.deploy_app_stack && local.is_gke_gateway ? 1 : 0
 
   field_manager {
     force_conflicts = true
@@ -3071,7 +3583,7 @@ resource "kubernetes_manifest" "gcp_backend_policy_api" {
       targetRef = {
         group = ""
         kind  = "Service"
-        name  = kubernetes_service_v1.ragflow_api.metadata[0].name
+        name  = kubernetes_service_v1.ragflow_api[0].metadata[0].name
       }
     }
   }
@@ -3079,6 +3591,7 @@ resource "kubernetes_manifest" "gcp_backend_policy_api" {
 
 # HTTPRoute 2: /api/v1/admin -> port 9381 (admin service)
 resource "kubernetes_manifest" "http_route_admin" {
+  count = var.deploy_app_stack ? 1 : 0
   field_manager {
     force_conflicts = true
   }
@@ -3113,7 +3626,7 @@ resource "kubernetes_manifest" "http_route_admin" {
           ]
           backendRefs = [
             {
-              name = kubernetes_service_v1.admin.metadata[0].name
+              name = kubernetes_service_v1.admin[0].metadata[0].name
               port = 9381
             }
           ]
@@ -3125,6 +3638,7 @@ resource "kubernetes_manifest" "http_route_admin" {
 
 # HTTPRoute 3: / (root path) -> port 80 (frontend nginx)
 resource "kubernetes_manifest" "http_route_frontend" {
+  count = var.deploy_app_stack ? 1 : 0
   field_manager {
     force_conflicts = true
   }
@@ -3159,7 +3673,7 @@ resource "kubernetes_manifest" "http_route_frontend" {
           ]
           backendRefs = [
             {
-              name = kubernetes_service_v1.ragflow_frontend.metadata[0].name
+              name = kubernetes_service_v1.ragflow_frontend[0].metadata[0].name
               port = 80
             }
           ]
@@ -3176,7 +3690,7 @@ resource "kubernetes_manifest" "http_route_frontend" {
 # Uses RequestRedirect filter to return 308 permanent redirect
 # =============================================================================
 resource "kubernetes_manifest" "http_redirect" {
-  count = var.ohttps_enabled ? 1 : 0
+  count = var.deploy_app_stack && var.ohttps_enabled ? 1 : 0
 
   manifest = {
     apiVersion = "gateway.networking.k8s.io/v1"
@@ -3218,6 +3732,8 @@ resource "kubernetes_manifest" "http_redirect" {
 
 # Get NGINX Gateway Fabric service for on-premises deployments
 data "kubernetes_service_v1" "gateway_fabric" {
+  count = var.deploy_app_stack && !local.is_gke_gateway ? 1 : 0
+
   metadata {
     name      = "nginx-gateway-nginx-gateway-fabric"
     namespace = "nginx-gateway"
@@ -3255,7 +3771,7 @@ data "kubernetes_service_v1" "gateway_fabric" {
 # NOT in status.addresses (a known GKE behavior). Extract region and address name from the annotation
 # path to query the actual IP from GCP.
 data "external" "gateway_ip" {
-  count = local.is_gke_gateway ? 1 : 0
+  count = var.deploy_app_stack && local.is_gke_gateway ? 1 : 0
   program = ["sh", "-c", <<-EOF
     export KUBECONFIG="${pathexpand(var.kubeconfig_path)}"
     kubectl get gateway ragflow -n ${local.ragflow_namespace} -o jsonpath={.status.addresses[0].value} 2>/dev/null | jq -R -s -c '{address: .}'
@@ -3268,7 +3784,7 @@ data "external" "gateway_ip" {
 # Get Gateway IP for on-premises (non-GKE) deployments
 # Use Gateway CR status instead of LoadBalancer service IP (they may differ)
 data "external" "nginx_gateway_ip" {
-  count = !local.is_gke_gateway ? 1 : 0
+  count = var.deploy_app_stack && !local.is_gke_gateway ? 1 : 0
   program = ["sh", "-c", <<-EOF
     export KUBECONFIG="${pathexpand(var.kubeconfig_path)}"
     # Get IP from Gateway CR status (more accurate than service IP)
@@ -3299,7 +3815,7 @@ data "external" "nginx_gateway_ip" {
 # Uses count-based resources to support both GKE and smk (nginx gateway)
 # This avoids ternary expression in map value which is not supported by Terraform
 resource "kubernetes_config_map_v1" "gateway_address_nginx" {
-  count      = local.is_gke_gateway ? 0 : 1
+  count      = var.deploy_app_stack && !local.is_gke_gateway ? 1 : 0
   depends_on = [kubernetes_manifest.gateway, data.external.nginx_gateway_ip]
 
   metadata {
@@ -3313,7 +3829,7 @@ resource "kubernetes_config_map_v1" "gateway_address_nginx" {
 }
 
 resource "kubernetes_config_map_v1" "gateway_address_gke" {
-  count      = local.is_gke_gateway ? 1 : 0
+  count      = var.deploy_app_stack && local.is_gke_gateway ? 1 : 0
   depends_on = [kubernetes_manifest.gateway, data.external.gateway_ip]
 
   metadata {
@@ -3329,5 +3845,5 @@ resource "kubernetes_config_map_v1" "gateway_address_gke" {
 # Output uses local variable to support both GKE and smk
 output "gateway_address" {
   description = "Gateway IP address or hostname"
-  value       = local.is_gke_gateway ? data.external.gateway_ip[0].result.address : data.external.nginx_gateway_ip[0].result.address
+  value       = var.deploy_app_stack ? (local.is_gke_gateway ? data.external.gateway_ip[0].result.address : data.external.nginx_gateway_ip[0].result.address) : ""
 }
