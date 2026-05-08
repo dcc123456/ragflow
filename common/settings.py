@@ -416,9 +416,10 @@ def init_settings():
             except Exception:
                 break
         if not MINIO:
-            minio_config = get_base_config("minio", {})
-            if minio_config:
-                MINIO = [minio_config]
+            try:
+                MINIO.append(decrypt_database_config(name="minio"))
+            except Exception:
+                MINIO = []
     elif STORAGE_IMPL_TYPE == "OSS":
         OSS = get_base_config("oss", {})
     elif STORAGE_IMPL_TYPE == "GCS":
