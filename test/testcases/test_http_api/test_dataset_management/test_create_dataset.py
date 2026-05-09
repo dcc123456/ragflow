@@ -14,6 +14,7 @@
 #  limitations under the License.
 #
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import os
 
 import pytest
 from configs import DATASET_NAME_LIMIT, DEFAULT_PARSER_CONFIG, INVALID_API_TOKEN
@@ -24,6 +25,12 @@ from utils.file_utils import create_image_file
 from utils.hypothesis_utils import valid_names
 
 from test_http_api.common import create_dataset, delete_all_datasets
+
+
+def _expected_default_embedding_model() -> str:
+    if os.getenv("K8S_CI_USE_SILICONFLOW", "0").lower() in {"1", "true", "yes"}:
+        return f"{os.getenv('SILICONFLOW_EMBEDDING_MODEL', 'BAAI/bge-m3')}@SILICONFLOW"
+    return "BAAI/bge-small-en-v1.5___OpenAI-API@OpenAI-API-Compatible"
 
 
 @pytest.mark.usefixtures("clear_datasets")
@@ -285,14 +292,14 @@ class TestDatasetCreate:
         payload = {"name": "embedding_model_unset"}
         res = create_dataset(HttpApiAuth, payload)
         assert res["code"] == 0, res
-        assert res["data"]["embedding_model"] == "BAAI/bge-small-en-v1.5___OpenAI-API@OpenAI-API-Compatible", res
+        assert res["data"]["embedding_model"] == _expected_default_embedding_model(), res
 
     @pytest.mark.p2
     def test_embedding_model_none(self, HttpApiAuth):
         payload = {"name": "embedding_model_none", "embedding_model": None}
         res = create_dataset(HttpApiAuth, payload)
         assert res["code"] == 0, res
-        assert res["data"]["embedding_model"] == "BAAI/bge-small-en-v1.5___OpenAI-API@OpenAI-API-Compatible", res
+        assert res["data"]["embedding_model"] == _expected_default_embedding_model(), res
 
     @pytest.mark.p2
     @pytest.mark.parametrize(

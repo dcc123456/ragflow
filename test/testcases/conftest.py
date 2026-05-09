@@ -15,6 +15,7 @@
 #
 
 import importlib
+import os
 import sys
 import types
 
@@ -94,6 +95,11 @@ _install_scholarly_stub()
 import pytest
 import requests
 from configs import EMAIL, HOST_ADDRESS, PASSWORD, VERSION, ZHIPU_AI_API_KEY
+
+K8S_CI_USE_SILICONFLOW = os.getenv("K8S_CI_USE_SILICONFLOW", "0").lower() in {"1", "true", "yes"}
+SILICONFLOW_API_KEY = os.getenv("SILICONFLOW_API_KEY")
+SILICONFLOW_BASE_URL = os.getenv("SILICONFLOW_BASE_URL", "https://api.siliconflow.cn/v1")
+SILICONFLOW_EMBEDDING_MODEL = os.getenv("SILICONFLOW_EMBEDDING_MODEL", "BAAI/bge-m3")
 
 MARKER_EXPRESSIONS = {
     "p1": "p1",
@@ -189,15 +195,29 @@ def add_models(auth):
     set_api_key_models_info = {
         "ZHIPU-AI": {"llm_factory": "ZHIPU-AI", "api_key": ZHIPU_AI_API_KEY}
     }
-    add_llm_models_info = {
-        "OpenAI-API-Compatible":{
-            "llm_factory":"OpenAI-API-Compatible",
-            "api_base":"http://tei:80",
-            "llm_name":"BAAI/bge-small-en-v1.5",
-            "max_tokens":8192,
-            "model_type":"embedding"
+    if K8S_CI_USE_SILICONFLOW:
+        if not SILICONFLOW_API_KEY:
+            pytest.exit("Error: Environment variable SILICONFLOW_API_KEY must be set when K8S_CI_USE_SILICONFLOW=1")
+        add_llm_models_info = {
+            "SILICONFLOW": {
+                "llm_factory": "SILICONFLOW",
+                "api_key": SILICONFLOW_API_KEY,
+                "api_base": SILICONFLOW_BASE_URL,
+                "llm_name": SILICONFLOW_EMBEDDING_MODEL,
+                "max_tokens": 8192,
+                "model_type": "embedding",
+            }
         }
-    }
+    else:
+        add_llm_models_info = {
+            "OpenAI-API-Compatible":{
+                "llm_factory":"OpenAI-API-Compatible",
+                "api_base":"http://tei:80",
+                "llm_name":"BAAI/bge-small-en-v1.5",
+                "max_tokens":8192,
+                "model_type":"embedding"
+            }
+        }
 
     for name, model_info in set_api_key_models_info.items():
         if not get_my_llms(auth, name):
@@ -234,10 +254,15 @@ def set_tenant_info(auth):
         pytest.exit(f"Error in set_tenant_info: {str(e)}")
     url = HOST_ADDRESS + f"/api/{VERSION}/users/me/models"
     authorization = {"Authorization": auth}
+    embd_id = (
+        f"{SILICONFLOW_EMBEDDING_MODEL}@SILICONFLOW"
+        if K8S_CI_USE_SILICONFLOW
+        else "BAAI/bge-small-en-v1.5___OpenAI-API@OpenAI-API-Compatible"
+    )
     tenant_info = {
         "tenant_id": tenant_id,
         "llm_id": "glm-4-flash@ZHIPU-AI",
-        "embd_id": "BAAI/bge-small-en-v1.5___OpenAI-API@OpenAI-API-Compatible",
+        "embd_id": embd_id,
         "img2txt_id": "",
         "asr_id": "",
         "tts_id": None,

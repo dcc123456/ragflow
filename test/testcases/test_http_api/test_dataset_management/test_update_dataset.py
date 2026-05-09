@@ -28,6 +28,12 @@ from utils.hypothesis_utils import valid_names
 from configs import DEFAULT_PARSER_CONFIG
 
 
+def _expected_default_embedding_model() -> str:
+    if os.getenv("K8S_CI_USE_SILICONFLOW", "0").lower() in {"1", "true", "yes"}:
+        return f"{os.getenv('SILICONFLOW_EMBEDDING_MODEL', 'BAAI/bge-m3')}@SILICONFLOW"
+    return "BAAI/bge-small-en-v1.5___OpenAI-API@OpenAI-API-Compatible"
+
+
 class TestAuthorization:
     @pytest.mark.p1
     @pytest.mark.parametrize(
@@ -361,7 +367,7 @@ class TestDatasetUpdate:
 
         res = list_datasets(HttpApiAuth)
         assert res["code"] == 0, res
-        assert res["data"][0]["embedding_model"] == "BAAI/bge-small-en-v1.5___OpenAI-API@OpenAI-API-Compatible", res
+        assert res["data"][0]["embedding_model"] == _expected_default_embedding_model(), res
 
     @pytest.mark.p2
     @pytest.mark.parametrize(

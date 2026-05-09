@@ -7,7 +7,6 @@ gateway-api-crds-*.yaml
 
 # Terraform files
 .terraform/
-.terraform.lock.hcl
 *.tfstate
 *.tfstate.*
 *.tfvars
