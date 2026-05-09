@@ -240,6 +240,7 @@ class ESConnection(ESConnectionBase):
             orders = list()
             for field, order in order_by.fields:
                 order = "asc" if order == 0 else "desc"
+                order_field = field
                 if field in ["page_num_int", "top_int"]:
                     order_info = {"order": order, "unmapped_type": "float",
                                   "mode": "avg", "numeric_type": "double"}
@@ -247,13 +248,19 @@ class ESConnection(ESConnectionBase):
                     order_info = {"order": order, "unmapped_type": "float"}
                 elif field == "id":
                     continue # id as "text", not a "keyword", order by it will cause error
+                elif field.endswith("_kwd"):
+                    order_field = f"{field}.keyword"
+                    order_info = {"order": order, "unmapped_type": "keyword"}
                 else:
                     order_info = {"order": order, "unmapped_type": "keyword"}
-                orders.append({field: order_info})
+                orders.append({order_field: order_info})
             s = s.sort(*orders)
         if agg_fields:
             for fld in agg_fields:
-                s.aggs.bucket(f'aggs_{fld}', 'terms', field=fld, size=1000000)
+                agg_field_name = fld
+                if fld.endswith("_kwd"):
+                    agg_field_name = f"{fld}.keyword"
+                s.aggs.bucket(f'aggs_{fld}', 'terms', field=agg_field_name, size=1000000)
 
         has_dense = any(isinstance(m, MatchDenseExpr) for m in match_expressions)
         has_explicit_sort = bool(order_by and order_by.fields)
