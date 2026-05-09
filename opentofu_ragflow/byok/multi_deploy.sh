@@ -124,6 +124,7 @@ if [[ -n "$STATE_NAMESPACE" ]]; then
     fi
   fi
 
+
   if [[ "$REDIS_DB" =~ ^[0-9]+$ ]] && [[ "$NAMESPACE" =~ ^ragflow-[0-9]+$ ]]; then
     REUSE_STATE_NAMESPACE=true
     echo "Detected existing managed namespace in state: $NAMESPACE (redis_db=$REDIS_DB)"
@@ -164,6 +165,13 @@ if [[ "$REUSE_STATE_NAMESPACE" == "false" ]]; then
   done
 
   [[ -n "$REDIS_DB" ]] || fail "No free Redis DB/namespace slot available in range 0..15 (excluding 1)."
+fi
+
+if [[ "$NAMESPACE" =~ ^ragflow-([0-9]+)$ ]]; then
+  ns_suffix_db="${BASH_REMATCH[1]}"
+  if [[ "$REDIS_DB" != "$ns_suffix_db" ]]; then
+    fail "Namespace/redis mismatch: namespace '$NAMESPACE' implies redis_db=$ns_suffix_db but resolved redis_db=$REDIS_DB."
+  fi
 fi
 
 echo "Deployment parameters:"
