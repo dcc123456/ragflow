@@ -4,7 +4,7 @@ set -euo pipefail
 usage() {
   cat <<'USAGE'
 Usage:
-  ./deploy.sh -i <image> [--plan-only]
+  ./multi_deploy.sh -i <image> [--plan-only]
 
 Required:
   -i, --image <image>   Ragflow image tag (example: ragflow:latest)
@@ -32,9 +32,49 @@ is_db_used() {
   return 1
 }
 
+state_file_path() {
+  local ws="default"
+  if [[ -f ".terraform/environment" ]]; then
+    ws="$(tr -d '[:space:]' < .terraform/environment)"
+    [[ -n "$ws" ]] || ws="default"
+  fi
+
+  if [[ "$ws" == "default" ]]; then
+    echo "terraform.tfstate"
+  else
+    echo "terraform.tfstate.d/${ws}/terraform.tfstate"
+  fi
+}
+
+state_namespace_from_local_state() {
+  local state_fp="$1"
+  [[ -f "$state_fp" ]] || return 1
+
+  jq -r '
+    .resources[]?
+    | select(.type == "kubernetes_namespace_v1" and .name == "ragflow")
+    | .instances[]?
+    | (.attributes.metadata[0].name // empty)
+  ' "$state_fp" | head -n 1
+}
+
+namespace_has_ragflow_env() {
+  local ns="$1"
+  local secret_json
+  secret_json="$(kubectl get secret ragflow-env -n "$ns" -o json --ignore-not-found)"
+  [[ -n "$secret_json" ]]
+}
+
+secret_redis_db() {
+  local ns="$1"
+  kubectl get secret ragflow-env -n "$ns" -o json --ignore-not-found \
+    | jq -r '((.data.REDIS_DB // "") | @base64d | gsub("^\\s+|\\s+$"; ""))'
+}
+
 RAGFLOW_IMAGE=""
 PLAN_ONLY=false
 VAR_FILE="terraform.tfvars.dev_smk"
+USED_DBS=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -64,37 +104,66 @@ require_cmd kubectl
 require_cmd jq
 require_cmd tofu
 
-mapfile -t USED_DBS < <(
-  kubectl get secrets -A -o json \
-    | jq -r '
-      .items[]
-      | select(.metadata.name == "ragflow-env")
-      | ((.data.REDIS_DB // "") | @base64d)
-      | select(test("^[0-9]+$"))
-    ' \
-    | sort -nu
-)
+STATE_FILE="$(state_file_path)"
+STATE_NAMESPACE="$(state_namespace_from_local_state "$STATE_FILE" || true)"
 
 REDIS_DB=""
-for db in $(seq 0 15); do
-  [[ "$db" == "1" ]] && continue
-  if ! is_db_used "$db"; then
+NAMESPACE=""
+REUSE_STATE_NAMESPACE=false
+
+if [[ -n "$STATE_NAMESPACE" ]]; then
+  NAMESPACE="$STATE_NAMESPACE"
+
+  if namespace_has_ragflow_env "$NAMESPACE"; then
+    REDIS_DB="$(secret_redis_db "$NAMESPACE")"
+  fi
+
+  if ! [[ "$REDIS_DB" =~ ^[0-9]+$ ]]; then
+    if [[ "$NAMESPACE" =~ ^ragflow-([0-9]+)$ ]]; then
+      REDIS_DB="${BASH_REMATCH[1]}"
+    fi
+  fi
+
+  if [[ "$REDIS_DB" =~ ^[0-9]+$ ]] && [[ "$NAMESPACE" =~ ^ragflow-[0-9]+$ ]]; then
+    REUSE_STATE_NAMESPACE=true
+    echo "Detected existing managed namespace in state: $NAMESPACE (redis_db=$REDIS_DB)"
+  else
+    # Ignore non-app state namespaces (e.g. ragflow-infra) and do fresh-slot allocation.
+    REDIS_DB=""
+    NAMESPACE=""
+  fi
+fi
+
+if [[ "$REUSE_STATE_NAMESPACE" == "false" ]]; then
+  mapfile -t USED_DBS < <(
+    kubectl get secrets -A -o json \
+      | jq -r '
+        .items[]
+        | select(.metadata.name == "ragflow-env")
+        | ((.data.REDIS_DB // "") | @base64d | gsub("^\\s+|\\s+$"; ""))
+        | select(test("^[0-9]+$"))
+      ' \
+      | sort -nu
+  )
+
+  for db in $(seq 0 15); do
+    [[ "$db" == "1" ]] && continue
+    candidate_ns="ragflow-${db}"
+
+    if is_db_used "$db"; then
+      continue
+    fi
+
+    if namespace_has_ragflow_env "$candidate_ns"; then
+      continue
+    fi
+
     REDIS_DB="$db"
+    NAMESPACE="$candidate_ns"
     break
-  fi
-done
+  done
 
-[[ -n "$REDIS_DB" ]] || fail "No free Redis DB available in range 0..15 (excluding 1)."
-
-NAMESPACE="ragflow-${REDIS_DB}"
-
-ns_secret_json="$(kubectl get secret ragflow-env -n "$NAMESPACE" -o json --ignore-not-found)"
-if [[ -n "$ns_secret_json" ]]; then
-  ns_redis_db="$(jq -r '(.data.REDIS_DB // "") | @base64d' <<<"$ns_secret_json")"
-  if [[ "$ns_redis_db" =~ ^[0-9]+$ ]]; then
-    fail "Namespace '$NAMESPACE' already has ragflow-env with REDIS_DB=$ns_redis_db. Refusing deployment conflict."
-  fi
-  fail "Namespace '$NAMESPACE' already has ragflow-env secret. Refusing deployment conflict."
+  [[ -n "$REDIS_DB" ]] || fail "No free Redis DB/namespace slot available in range 0..15 (excluding 1)."
 fi
 
 echo "Deployment parameters:"

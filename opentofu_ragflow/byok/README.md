@@ -412,12 +412,12 @@ tofu apply -var 'redis_db=<FREE_REDIS_DB>' -auto-approve
 After apply completes, the Ragflow instance should be deployed in the selected namespace.
 ### Optional: Use the deployment helper script
 
-If `deploy.sh` is available in `opentofu_ragflow/byok`, you can deploy an instance without copying or editing `terraform.tfvars`.
+If `multi-deploy.sh` is available in `opentofu_ragflow/byok`, you can deploy an instance without copying or editing `terraform.tfvars`.
 
 Example:
 
 ```bash
-./deploy.sh -n ragflow-1 -i ragflow:latest
+./multi-deploy.sh -i ragflow:<tag>
 ```
 
 The script should automatically:
