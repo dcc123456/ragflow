@@ -549,6 +549,56 @@ def test_restful_chunk_list_get_and_delete_unit(monkeypatch):
 
 
 @pytest.mark.p2
+def test_list_chunk_exception_branches_unit(monkeypatch):
+    module = _load_chunk_module(monkeypatch)
+
+    monkeypatch.setattr(module.DocumentService, "get_tenant_id", lambda _doc_id: "")
+    _set_request_json(monkeypatch, module, {"doc_id": "doc-1"})
+    res = _run(module.list_chunk())
+    assert res["code"] == module.RetCode.DATA_ERROR, res
+    assert res["message"] == "Tenant not found!", res
+
+    monkeypatch.setattr(module.DocumentService, "get_tenant_id", lambda _doc_id: "tenant-1")
+    monkeypatch.setattr(module.DocumentService, "get_by_id", lambda _doc_id: (False, None))
+    _set_request_json(monkeypatch, module, {"doc_id": "doc-1"})
+    res = _run(module.list_chunk())
+    assert res["message"] == "Document not found!", res
+
+    async def _raise_not_found(*_args, **_kwargs):
+        raise Exception("x not_found y")
+
+    monkeypatch.setattr(module.settings.retriever, "search", _raise_not_found)
+    monkeypatch.setattr(module.DocumentService, "get_by_id", lambda _doc_id: (True, _DummyDoc()))
+    _set_request_json(monkeypatch, module, {"doc_id": "doc-1"})
+    res = _run(module.list_chunk())
+    assert res["code"] == 0, res
+    assert res["data"]["total"] == 0, res
+    assert res["data"]["chunks"] == [], res
+
+    async def _raise_generic(*_args, **_kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(module.settings.retriever, "search", _raise_generic)
+    _set_request_json(monkeypatch, module, {"doc_id": "doc-1"})
+    res = _run(module.list_chunk())
+    assert res["code"] == module.RetCode.EXCEPTION_ERROR, res
+    assert "boom" in res["message"], res
+
+
+@pytest.mark.p2
+def test_get_chunk_sanitize_and_exception_matrix_unit(monkeypatch):
+    module = _load_chunk_module(monkeypatch)
+    module.request = SimpleNamespace(args={"chunk_id": "chunk-1"}, headers={})
+
+    res = module.get()
+    assert res["code"] == 0, res
+    assert "q_2_vec" not in res["data"], res
+    assert "content_tks" not in res["data"], res
+    assert "content_ltks" not in res["data"], res
+    assert "content_sm_ltks" not in res["data"], res
+
+
+@pytest.mark.p2
 def test_restful_chunk_add_update_and_switch_unit(monkeypatch):
     module = _load_chunk_api_module(monkeypatch)
     module.request = SimpleNamespace(args={}, headers={})
@@ -652,4 +702,3 @@ def test_restful_chunk_guard_branches_unit(monkeypatch):
     monkeypatch.setattr(module, "get_request_json", lambda: _AwaitableValue({"chunk_ids": ["chunk-1"]}))
     res = _run(_route_core(module.switch_chunks)("tenant-1", "kb-1", "doc-1"))
     assert res["message"] == "`available_int` or `available` is required.", res
-

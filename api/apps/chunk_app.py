@@ -57,6 +57,7 @@ async def list_chunk():
     page = int(req.get("page", 1))
     size = int(req.get("size", 30))
     question = req.get("keywords", "")
+    empty_res = None
     try:
         tenant_id = DocumentService.get_tenant_id(req["doc_id"])
         if not tenant_id:
@@ -65,6 +66,7 @@ async def list_chunk():
         if not e:
             return get_data_error_result(message="Document not found!")
         kb_ids = KnowledgebaseService.get_kb_ids(tenant_id)
+        empty_res = {"total": 0, "chunks": [], "doc": doc.to_dict()}
         query = {
             "doc_ids": [doc_id], "page": page, "size": size, "question": question, "sort": True
         }
@@ -93,8 +95,7 @@ async def list_chunk():
         return get_json_result(data=res)
     except Exception as e:
         if str(e).find("not_found") > 0:
-            return get_json_result(data=False, message='No chunk found!',
-                                   code=RetCode.DATA_ERROR)
+            return get_json_result(data=empty_res)
         return server_error_response(e)
 
 
