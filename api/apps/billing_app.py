@@ -55,6 +55,7 @@ from api.utils.billing import (
     get_product_id_by_name,
     get_storage_price_id_from_config,
     is_storage_plan_name,
+    parse_storage_size,
     is_storage_price_id,
     is_trial_plan_name,
     reset_stripe_test_clock_id_for_current_context,
@@ -155,7 +156,7 @@ def _check_downgrade_resource_compatibility(tenant_id: str, target_plan_name: st
     # Resolve target plan quotas from config with a Trial fallback so missing
     # in-memory cache fields do not silently turn every limit into zero.
     target_plan_info = _resolve_billing_plan_info(target_plan_name)
-    target_quota_kb_storage = safe_int(target_plan_info.get("quota_kb_storage", 0), 0)
+    target_quota_storage = parse_storage_size(str(target_plan_info.get("quota_storage", 0)))
     target_quota_points = safe_int(target_plan_info.get("quota_points", 0), 0)
     target_quota_members = safe_int(target_plan_info.get("quota_members", 0), 0)
     target_quota_apps = safe_int(target_plan_info.get("quota_apps", 0), 0)
@@ -164,7 +165,7 @@ def _check_downgrade_resource_compatibility(tenant_id: str, target_plan_name: st
     tenant_plan = SubscriptionService.get_by_tenant_id(tenant_id, require_quota_info=True)
     addon_storage_bytes = _storage_effective_bytes(tenant_id)
     # Total limits = target plan quota + addon
-    total_storage_limit_bytes = (target_quota_kb_storage * 1000) + addon_storage_bytes
+    total_storage_limit_bytes = target_quota_storage + addon_storage_bytes
     total_points_limit = target_quota_points  # Points don't have addons in the same way
     total_members_limit = target_quota_members  # Members don't have addons
     total_apps_limit = target_quota_apps  # Apps don't have addons
@@ -178,7 +179,7 @@ def _check_downgrade_resource_compatibility(tenant_id: str, target_plan_name: st
 
     # Check each resource
     if storage_used_bytes > total_storage_limit_bytes:
-        overage_bytes = storage_used_bytes - (target_quota_kb_storage * 1000)
+        overage_bytes = storage_used_bytes - target_quota_storage
         overage_gb = overage_bytes / BYTES_PER_GB
         conflicts.append({
             "resource": "storage",
@@ -187,7 +188,7 @@ def _check_downgrade_resource_compatibility(tenant_id: str, target_plan_name: st
             "unit": "bytes",
             "message": f"Storage usage ({overage_gb:.2f} GB over limit) exceeds target plan quota including addon storage. Please delete data before downgrading.",
             "action_required": "delete_data",
-            "overage_gb": round(overage_gb, 2),
+            "overage": overage_bytes,
         })
 
     if points_used > total_points_limit:
@@ -235,7 +236,7 @@ def _resolve_billing_plan_info(plan_name: str) -> dict:
         key = BILLING_PLAN_TRIAL_NAME
 
     info = settings.BILLING_PLAN_TO_INFO.get(key) or settings.BILLING_PLAN_TO_INFO.get(key.title()) or {}
-    if info.get("quota_kb_storage") is not None and info.get("quota_members") is not None and info.get("quota_apps") is not None:
+    if info.get("quota_storage") is not None and info.get("quota_members") is not None and info.get("quota_apps") is not None:
         return info
 
     for plan in settings.BILLING.get("billing_plans", []):
@@ -243,7 +244,7 @@ def _resolve_billing_plan_info(plan_name: str) -> dict:
         if candidate_name.lower() == key.lower():
             merged = dict(info)
             merged.update({
-                "quota_kb_storage": plan.get("quota_kb_storage", merged.get("quota_kb_storage", 0)),
+                "quota_storage": plan.get("quota_storage", merged.get("quota_storage", 0)),
                 "quota_points": plan.get("quota_points", merged.get("quota_points", 0)),
                 "quota_members": plan.get("quota_members", merged.get("quota_members", 0)),
                 "quota_apps": plan.get("quota_apps", merged.get("quota_apps", 0)),
@@ -917,7 +918,7 @@ async def billing_plan_overview():
     addon_points_used = safe_int(points_balance.get("consumed_addon_points", 0), 0)
 
     storage_used_bytes = FileService.get_total_size_by_tenant_id(tenant_id) or 0
-    storage_limit_bytes = tenant_plan.get("quota_kb_storage", 0) or 0
+    storage_limit_bytes = tenant_plan.get("quota_storage", 0) or 0
 
     # Extract the relevant information for the overview
     plan_overview = {
@@ -1561,7 +1562,7 @@ async def billing_all_plans():
     )
     for plan in latest_plans:
         plan_info = settings.BILLING_PLAN_TO_INFO.get(plan.name, {})
-        quota_kb_storage = getattr(plan, "quota_kb_storage", 0) or plan_info.get("quota_kb_storage", 0) or 0
+        quota_storage = getattr(plan, "quota_storage", 0) or plan_info.get("quota_storage", 0) or 0
         quota_points = plan_info.get("quota_points", 0)
         p = {
             "id": plan.id,
@@ -1572,12 +1573,12 @@ async def billing_all_plans():
             "feature": {
                 "quota_apps": plan.quota_apps,
                 "quota_members": plan.quota_members,
-                "quota_kb_storage": quota_kb_storage,
+                "quota_storage": quota_storage,
                 "quota_points": quota_points,
                 "quota_api_limits": _get_api_request_limit_by_plan(plan.name),
                 "price_per_gb": _calc_storage_price_per_gb(
                     price_dict.get(plan.name, -1),
-                    quota_kb_storage,
+                    quota_storage,
                 ),
             },
         }
@@ -1586,11 +1587,11 @@ async def billing_all_plans():
     return get_json_result(data=plans)
 
 
-def _calc_storage_price_per_gb(price_usd: float, quota_kb_storage: int) -> float:
+def _calc_storage_price_per_gb(price_usd: float, quota_storage: int) -> float:
     """Calculate storage price per GB from plan price and quota. Returns 0 if unavailable."""
-    if price_usd <= 0 or quota_kb_storage <= 0:
+    if price_usd <= 0 or quota_storage <= 0:
         return 0.0
-    quota_gb = quota_kb_storage / (1000 * 1000 * 1000)
+    quota_gb = quota_storage / (1000 * 1000 * 1000)
     return price_usd / quota_gb if quota_gb > 0 else 0.0
 
 
@@ -1617,7 +1618,7 @@ async def billing_all_addon_plans():
         plan_info = settings.BILLING_PLAN_TO_INFO.get(product.name, {})
         product_quota_apps = getattr(product, "quota_apps", 0) or 0
         product_quota_members = getattr(product, "quota_members", 0) or 0
-        product_quota_kb_storage = getattr(product, "quota_kb_storage", 0) or plan_info.get("quota_kb_storage", 0) or 0
+        product_quota_storage = getattr(product, "quota_storage", 0) or plan_info.get("quota_storage", 0) or 0
         product_quota_points = plan_info.get("quota_points", 0) or 0
         product_quota_api_limits = plan_info.get("api_request_limit_per_minute", 0) or 0
         addon_plans.append(
@@ -1631,12 +1632,12 @@ async def billing_all_addon_plans():
                 "feature": {
                     "quota_apps": product_quota_apps,
                     "quota_members": product_quota_members,
-                    "quota_kb_storage": product_quota_kb_storage,
+                    "quota_storage": product_quota_storage,
                     "quota_points": product_quota_points,
                     "quota_api_limits": product_quota_api_limits,
                     "price_per_gb": _calc_storage_price_per_gb(
                         price_dict.get(product.name, -1),
-                        product_quota_kb_storage,
+                        product_quota_storage,
                     ),
                 },
             }

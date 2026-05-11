@@ -49,7 +49,7 @@ ENTITLED_MAIN_SUBSCRIPTION_STATUSES = {"active", "trialing"}
 
 class ProductService(CommonService):
     model = Product
-    VERSION_CHECK_FIELDS = ["quota_apps", "quota_members", "quota_kb_storage", "task_priority", "price_ids", "product_type", "usage_stat_type"]
+    VERSION_CHECK_FIELDS = ["quota_apps", "quota_members", "quota_storage", "task_priority", "price_ids", "product_type", "usage_stat_type"]
 
     @classmethod
     @DB.connection_context()
@@ -66,7 +66,7 @@ class ProductService(CommonService):
             cls.model.name,
             cls.model.quota_apps,
             cls.model.quota_members,
-            cls.model.quota_kb_storage,
+            cls.model.quota_storage,
             cls.model.task_priority,
             cls.model.price_ids,
             cls.model.product_type,
@@ -80,8 +80,8 @@ class ProductService(CommonService):
     @classmethod
     def init_data(cls, billing_plans: list[dict]) -> None:
         for plan in billing_plans:
-            if "quota_kb_storage" in plan and isinstance(plan["quota_kb_storage"], str):
-                plan["quota_kb_storage"] = parse_storage_size(plan["quota_kb_storage"])
+            if "quota_storage" in plan and isinstance(plan["quota_storage"], str):
+                plan["quota_storage"] = parse_storage_size(plan["quota_storage"])
 
             ori_product = cls.get_by_name(plan["name"])
 
@@ -332,7 +332,7 @@ class SubscriptionService(CommonService):
             Product.id.alias("product_id"),
             Product.quota_apps,
             Product.quota_members,
-            Product.quota_kb_storage,
+            Product.quota_storage,
             Product.task_priority,
             Product.version,
         ]
@@ -387,8 +387,8 @@ class SubscriptionService(CommonService):
             # Storage add-on quota now comes from recurring storage subscription.
             add_on_storage_bytes = SubscriptionService.get_storage_bytes_for_tenant(tenant_id)[0]
 
-            storage_limit_bytes = int(tenant_plan_info["quota_kb_storage"] or 0) + add_on_storage_bytes
-            details["quota_kb_storage"] = {
+            storage_limit_bytes = int(tenant_plan_info["quota_storage"] or 0) + add_on_storage_bytes
+            details["quota_storage"] = {
                 "current": num_storage_bytes,
                 "limit": storage_limit_bytes,
             }

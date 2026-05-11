@@ -235,7 +235,7 @@ const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
       const featureValue = {
         apps: plan.feature.quota_apps,
         teamMembers: plan.feature.quota_members,
-        datasetStorage: convertBytesToGb(plan.feature.quota_kb_storage),
+        datasetStorage: convertBytesToGb(plan.feature.quota_storage),
         credits: plan.feature.quota_points,
       };
       const thisPricePlan =

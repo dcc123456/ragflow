@@ -38,7 +38,7 @@ export interface IPlanFeature {
   quota_api_limits: number;
   quota_points: number;
   quota_apps: number;
-  quota_kb_storage: number;
+  quota_storage: number;
   quota_members: number;
 }
 
@@ -68,7 +68,7 @@ export interface ICurrentPlan {
   price_id: string;
   product_id: string;
   quota_apps: number;
-  quota_kb_storage: number;
+  quota_storage: number;
   quota_members: number;
   start_time: Date | string;
   subscription_id: string;

@@ -497,13 +497,17 @@ def init_settings():
         priority_int = 1 if task_priority == "high" else 0
         quota_points = plan.get("quota_points", 0)
         BILLING_PRIORITY_TO_PLANS[priority_int].append(plan_name)
+        quota_storage = plan.get("quota_storage", 0)
+        if isinstance(quota_storage, str) and quota_storage:
+            from api.utils.billing import parse_storage_size
+            quota_storage = parse_storage_size(quota_storage)
         BILLING_PLAN_TO_INFO[plan_name] = {
             "priority": priority_int,
             "task_priority": task_priority,
             "price_ids": price_ids,
             "api_request_limit_per_minute": api_request_limit_per_minute,
             "quota_points": quota_points,
-            "quota_kb_storage": plan.get("quota_kb_storage", 0),
+            "quota_storage": quota_storage,
             "quota_members": plan.get("quota_members", 0),
             "quota_apps": plan.get("quota_apps", 0),
             "product_type": plan.get("product_type"),

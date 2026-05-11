@@ -56,7 +56,6 @@ from api.db import (
     ResourceType,
     SerializedType,
     TeamRole,
-    UsageTraceStatus,
     PermissionValue,
     VALID_PERMISSION_ACTION_TYPES,
     VALID_PERMISSION_TARGET_TYPES,
@@ -1386,7 +1385,7 @@ class Product(DataBaseModel):
     name = CharField(null=False, max_length=255, index=True)
     quota_apps = IntegerField(null=False, help_text="Limit number of APP of the tenant, Chat, Search, Agent")
     quota_members = IntegerField(null=False, help_text="Limit number of members of the tenant")
-    quota_kb_storage = BigIntegerField(null=False, help_text="Limit dataset storage bytes of the tenant")
+    quota_storage = BigIntegerField(null=False, help_text="Limit dataset storage bytes of the tenant")
     task_priority = CharField(null=False, help_text="Task priority of the tenant")
     price_ids = TextField(null=False, default="", help_text="price ids on stripe.com")
     description = TextField(null=True)
@@ -1399,20 +1398,6 @@ class Product(DataBaseModel):
         db_table = "billing_product"
 
 
-class QuotaItem(DataBaseModel):
-    """Product associated many QuotaItem"""
-
-    id = CharField(max_length=32, primary_key=True)
-    product_id = CharField(max_length=32, index=True)
-    quota_type = CharField(null=False, choices=["app_total", "team_seat", "api_qps", "kb_storage"])
-    quantity = BigIntegerField(null=False)
-    unit = CharField(null=False, choices=["apps", "seats", "calls", "bytes"])
-    description = TextField(null=True)
-
-    class Meta:
-        db_table = "billing_quota_item"
-
-
 class PricePoint(DataBaseModel):
     """product -> price point"""
 
@@ -1421,11 +1406,11 @@ class PricePoint(DataBaseModel):
     product_name = CharField(null=False, max_length=255)
     price_type = CharField(null=False, choices=["subscription", "usage_based"], index=True)
     billing_frequency = CharField(null=False, choices=["monthly", "yearly", "one_time"])
-    included_free_amount = IntegerField(null=True)  # ???
+    included_free_amount = IntegerField(null=True)
     unit = CharField(choices=["token", "page"], null=True)
     unit_quantity = IntegerField(null=True)
-    price_amount = IntegerField(null=True)  # price in cents (e.g., 100 = $1.00)
-    price_currency = CharField(max_length=3, null=True)  # usd, cny
+    price_amount = IntegerField(null=True)
+    price_currency = CharField(max_length=3, null=True)
     consuming_point_amount = IntegerField(null=False, default=0)
     effective_time = DateTimeField(null=False)
     expiry_time = DateTimeField(null=True)
@@ -1434,33 +1419,14 @@ class PricePoint(DataBaseModel):
         db_table = "billing_pricepoint"
 
 
-class ProductUsageTracing(DataBaseModel):
+class PurchasedProductOverview(DataBaseModel):
     id = CharField(max_length=32, primary_key=True)
     tenant_id = CharField(max_length=32, null=False, index=True)
     product_id = CharField(max_length=32, null=False, index=True)
-    price_point_id = CharField(max_length=32, null=False, index=True)  # price point table
-    task_quantity = IntegerField()
-    total_cost_cents = BigIntegerField(null=False, default=0)
-    currency = CharField(max_length=3)  # usd, cny
-    status = CharField(null=False, choices=[item.value for item in UsageTraceStatus])  # Our usage trace status
-    description = TextField(null=True)
-
-    class Meta:
-        db_table = "billing_product_usage_tracing"
-
-
-class PurchasedProductOverview(DataBaseModel):
-    "User can purchase many products"
-
-    id = CharField(max_length=32, primary_key=True)
-    tenant_id = CharField(max_length=32, null=False, index=True)
-    product_id = CharField(max_length=32, null=False, index=True)  # QUESTION: should be delete?
     product_name = CharField(null=False, max_length=255)
     quantity = IntegerField(null=False, constraints=[Check("quantity >= 0")])
     effective_time = DateTimeField(null=False)
     expiry_time = DateTimeField(null=True)
-
-    # QUESTION: union primary key? (tenant_id, product_name)
 
     class Meta:
         db_table = "billing_purchased_product_overview"
@@ -2248,6 +2214,7 @@ def migrate_db():
     alter_db_rename_column(migrator, "evaluation_runs", "dataset_id", "collection_id")
     alter_db_remove_column(migrator, "evaluation_collections", "kb_ids")
     alter_db_remove_column(migrator, "evaluation_cases", "question")
+    alter_db_rename_column(migrator, "billing_product", "quota_kb_storage", "quota_storage")
     alter_db_remove_column(migrator, "evaluation_cases", "reference_answer")
     alter_db_remove_column(migrator, "evaluation_cases", "relevant_doc_ids")
     alter_db_remove_column(migrator, "evaluation_cases", "relevant_chunk_ids")

@@ -52,7 +52,7 @@ billing:
     - name: "storage"
       quota_apps: 0
       quota_members: 0
-      quota_kb_storage: 1G
+      quota_storage: 1G
       quota_points: 0
       task_priority: "low"
       price_ids: "price_1TOCKc2XhWscgPRmJRyTuo5g"
@@ -60,7 +60,7 @@ billing:
     - name: "Trial"
       quota_apps: 5
       quota_members: 1
-      quota_kb_storage: 100MB
+      quota_storage: 100MB
       quota_points: 500
       api_request_limit_per_minute: 60
       task_priority: "low"
@@ -69,7 +69,7 @@ billing:
     - name: "Starter"
       quota_apps: 50
       quota_members: 5
-      quota_kb_storage: 5G
+      quota_storage: 5G
       quota_points: 5000
       api_request_limit_per_minute: 600
       task_priority: "high"
@@ -78,7 +78,7 @@ billing:
     - name: "Pro"
       quota_apps: 100000
       quota_members: 20
-      quota_kb_storage: 50G
+      quota_storage: 50G
       quota_points: 20000
       api_request_limit_per_minute: 6000
       task_priority: "high"

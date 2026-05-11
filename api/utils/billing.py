@@ -634,7 +634,7 @@ async def get_pending_subscription_change_async(subscription_id: str) -> dict:
 
     # Extract pending storage quantity from the next phase items.
     # Phase items are flat dicts: {"price": "<price_id_or_obj>", "quantity": N}
-    # Each Stripe quantity unit = storage plan's quota_kb_storage (e.g. "1G").
+    # Each Stripe quantity unit = storage plan's quota_storage (e.g. "1G").
     pending_storage_quantity_bytes = None
     for item in pending_items:
         if not isinstance(item, dict):
@@ -645,9 +645,9 @@ async def get_pending_subscription_change_async(subscription_id: str) -> dict:
         if _price_id and is_storage_price_id(_price_id):
             qty = safe_int(item.get("quantity", 0), 0)
             storage_plan_info = settings.BILLING_PLAN_TO_INFO.get(STORAGE_PRODUCT_NAME, {}) or {}
-            quota_kb_storage_str = str(storage_plan_info.get("quota_kb_storage", "0"))
+            quota_storage_str = str(storage_plan_info.get("quota_storage", "0"))
             try:
-                bytes_per_unit = parse_storage_size(quota_kb_storage_str)
+                bytes_per_unit = parse_storage_size(quota_storage_str)
             except ValueError:
                 bytes_per_unit = BYTES_PER_GB
             pending_storage_quantity_bytes = qty * bytes_per_unit
@@ -1204,10 +1204,10 @@ def check_resources(**resource_deltas):
                     if "quota_members" in error_details:
                         error_messages.append(f"Insufficient seat quota. Current: {error_details['quota_members']['current']}, Limit: {error_details['quota_members']['limit']}")
 
-                    if "quota_kb_storage" in error_details:
+                    if "quota_storage" in error_details:
                         error_messages.append(
-                            f"Insufficient storage quota. Current: {error_details['quota_kb_storage']['current']} bytes, "
-                            f"Limit: {error_details['quota_kb_storage']['limit']} bytes"
+                            f"Insufficient storage quota. Current: {error_details['quota_storage']['current']} bytes, "
+                            f"Limit: {error_details['quota_storage']['limit']} bytes"
                         )
 
                     if len(error_messages) == 1:
@@ -1221,9 +1221,9 @@ def check_resources(**resource_deltas):
                         elif "quota_members" in error_details:
                             error_code = RetCode.BILLING_SEATS_INSUFFICIENT
                             identified_error_resource = "quota_members"
-                        elif "quota_kb_storage" in error_details:
+                        elif "quota_storage" in error_details:
                             error_code = RetCode.BILLING_STORAGE_INSUFFICIENT
-                            identified_error_resource = "quota_kb_storage"
+                            identified_error_resource = "quota_storage"
 
                     if error_messages:
                         error_msg = "; ".join(error_messages)

@@ -537,9 +537,9 @@ class FileService(CommonService):
                     check_ok, check_info = check_dynamic_resources(tenant_id=kb.tenant_id, storage=file_size_bytes)
                     if not check_ok:
                         error_details = check_info.get("details", {})
-                        if "quota_kb_storage" in error_details:
-                            current_gb = error_details['quota_kb_storage']['current'] / 1024 / 1024 / 1024
-                            limit_gb = error_details['quota_kb_storage']['limit'] / 1024 / 1024 / 1024
+                        if "quota_storage" in error_details:
+                            current_gb = error_details['quota_storage']['current'] / 1024 / 1024 / 1024
+                            limit_gb = error_details['quota_storage']['limit'] / 1024 / 1024 / 1024
                             file_size_gb = file_size_bytes / 1024 / 1024 / 1024
                             raise RuntimeError(
                                 f"Insufficient storage quota. Current: {current_gb:.2f} GB, "
@@ -949,9 +949,9 @@ class FileService(CommonService):
             )
             if not check_ok:
                 error_details = check_info.get("details", {})
-                if "quota_kb_storage" in error_details:
-                    current_gb = error_details['quota_kb_storage']['current'] / 1024 / 1024 / 1024
-                    limit_gb = error_details['quota_kb_storage']['limit'] / 1024 / 1024 / 1024
+                if "quota_storage" in error_details:
+                    current_gb = error_details['quota_storage']['current'] / 1024 / 1024 / 1024
+                    limit_gb = error_details['quota_storage']['limit'] / 1024 / 1024 / 1024
                     file_size_gb = file_size_bytes / 1024 / 1024 / 1024
                     raise RuntimeError(
                         f"Insufficient storage quota. Current: {current_gb:.2f} GB, "
