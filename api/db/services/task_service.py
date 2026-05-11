@@ -39,6 +39,7 @@ from rag.utils.rabbitmq_conn import RABBITMQ_CONN
 
 CANVAS_DEBUG_DOC_ID = "dataflow_x"
 GRAPH_RAPTOR_FAKE_DOC_ID = "graph_raptor_x"
+TASK_MAX_LOG_LENGTH = int(os.environ.get("TASK_MAX_LOG_LENGTH", 3000)) # TEXT MAX is 64 KiB bytes!
 
 def trim_header_by_lines(text: str, max_length) -> str:
     # Trim header text to maximum length while preserving line breaks
@@ -324,7 +325,7 @@ class TaskService(CommonService):
 
         if os.environ.get("MACOS"):
             if info["progress_msg"]:
-                progress_msg = trim_header_by_lines(task.progress_msg + "\n" + info["progress_msg"], 3000)
+                progress_msg = trim_header_by_lines(task.progress_msg + "\n" + info["progress_msg"], TASK_MAX_LOG_LENGTH)
                 cls.model.update(progress_msg=progress_msg).where(cls.model.id == id).execute()
             if "progress" in info:
                 prog = info["progress"]
@@ -336,7 +337,7 @@ class TaskService(CommonService):
         else:
             with DB.lock("update_progress", -1):
                 if info["progress_msg"]:
-                    progress_msg = trim_header_by_lines(task.progress_msg + "\n" + info["progress_msg"], 3000)
+                    progress_msg = trim_header_by_lines(task.progress_msg + "\n" + info["progress_msg"], TASK_MAX_LOG_LENGTH)
                     cls.model.update(progress_msg=progress_msg).where(cls.model.id == id).execute()
                 if "progress" in info:
                     prog = info["progress"]

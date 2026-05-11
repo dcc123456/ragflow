@@ -710,7 +710,7 @@ class DocumentService(CommonService):
         docs = docs.dicts()
         if not docs:
             return False
-        return True
+        return KnowledgebaseService.accessible(doc.kb_id, user_id)
 
     @classmethod
     @DB.connection_context()

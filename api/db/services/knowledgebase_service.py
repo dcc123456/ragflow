@@ -643,7 +643,9 @@ class KnowledgebaseService(CommonService):
         docs = docs.dicts()
         if not docs:
             return False
-        return True
+
+        if kb.tenant_id == user_id:
+            return True
 
     @classmethod
     @DB.connection_context()
@@ -677,9 +679,10 @@ class KnowledgebaseService(CommonService):
         #     user_id: User ID
         # Returns:
         #     List containing dataset information
-        kbs = cls.model.select().join(UserTenant, on=(UserTenant.tenant_id == Knowledgebase.tenant_id)).where(cls.model.id == kb_id, UserTenant.user_id == user_id).paginate(0, 1)
-        kbs = kbs.dicts()
-        return list(kbs)
+        e, kb = cls.get_by_id(kb_id)
+        if not e or not cls.accessible(kb_id, user_id):
+            return []
+        return [kb.to_dict()]
 
     @classmethod
     @DB.connection_context()
@@ -766,9 +769,11 @@ class KnowledgebaseService(CommonService):
         #     user_id: User ID
         # Returns:
         #     List containing dataset information
-        kbs = cls.model.select().join(UserTenant, on=(UserTenant.tenant_id == Knowledgebase.tenant_id)).where(cls.model.name == kb_name, UserTenant.user_id == user_id).paginate(0, 1)
-        kbs = kbs.dicts()
-        return list(kbs)
+        kbs = cls.query(name=kb_name, status=StatusEnum.VALID.value)
+        for kb in kbs:
+            if cls.accessible(kb.id, user_id):
+                return [kb.to_dict()]
+        return []
 
     @classmethod
     @DB.connection_context()

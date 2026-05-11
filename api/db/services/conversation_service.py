@@ -14,6 +14,7 @@
 #  limitations under the License.
 #
 import time
+import logging
 from uuid import uuid4
 from common.constants import StatusEnum
 from api.db.db_models import Conversation, DB
@@ -24,6 +25,9 @@ from common.misc_utils import get_uuid
 import json
 
 from rag.prompts.generator import chunks_format
+
+
+logger = logging.getLogger(__name__)
 
 
 class ConversationService(CommonService):
