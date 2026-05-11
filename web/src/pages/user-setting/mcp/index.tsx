@@ -126,6 +126,23 @@ export default function McpServer() {
                     <Upload className="size-3.5"></Upload>
                     {t('mcp.export')}
                   </Button>
+                  <ConfirmDeleteDialog
+                    onOk={handleDelete}
+                    title={t('common.delete') + ' ' + t('mcp.mcpServers')}
+                    content={{
+                      title: t('common.deleteThem'),
+                      node: (
+                        <ConfirmDeleteDialogNode
+                          name={`${t('mcp.selected')} ${selectedList.length} ${t('mcp.mcpServers')}`}
+                        ></ConfirmDeleteDialogNode>
+                      ),
+                    }}
+                  >
+                    <Button variant={'danger'}>
+                      <Trash2 className="size-3.5 cursor-pointer" />
+                      {t('common.delete')}
+                    </Button>
+                  </ConfirmDeleteDialog>
                 </div>
               </section>
             )}
@@ -148,44 +165,7 @@ export default function McpServer() {
                 total={pagination.total || 0}
                 onChange={handlePageChange}
               ></RAGFlowPagination>
-              <ConfirmDeleteDialog
-                onOk={handleDelete}
-                title={t('common.delete') + ' ' + t('mcp.mcpServers')}
-                content={{
-                  title: t('common.deleteThem'),
-                  node: (
-                    <ConfirmDeleteDialogNode
-                      name={`${t('mcp.selected')} ${selectedList.length} ${t('mcp.mcpServers')}`}
-                    ></ConfirmDeleteDialogNode>
-                  ),
-                }}
-              >
-                <Button variant={'danger'}>
-                  <Trash2 className="size-3.5 cursor-pointer" />
-                  {t('common.delete')}
-                </Button>
-              </ConfirmDeleteDialog>
             </div>
-            {/* )} */}
-            {/* <CardContainer>
-              {data.mcp_servers.map((item) => (
-                <McpCard
-                  key={item.id}
-                  data={item}
-                  selectedList={selectedList}
-                  handleSelectChange={handleSelectChange}
-                  showEditModal={showEditModal}
-                  isSelectionMode={isSelectionMode}
-                ></McpCard>
-              ))}
-            </CardContainer> */}
-            {/* <div className="mt-8">
-              <RAGFlowPagination
-                {...pick(pagination, 'current', 'pageSize')}
-                total={pagination.total || 0}
-                onChange={handlePageChange}
-              ></RAGFlowPagination>
-            </div> */}
           </>
         ) : (
           <div

@@ -34,7 +34,7 @@ export function CreateGroupForm({
         message: t('common.namePlaceholder'),
       })
       .trim(),
-    avatar: z.string().optional(),
+    avatar: z.string().nullish(),
   });
 
   const form = useForm<z.infer<typeof FormSchema>>({
