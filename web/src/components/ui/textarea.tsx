@@ -121,7 +121,7 @@ export const BlurTextarea = forwardRef<
     value: Value;
     onChange(value: Value): void;
   }
->(({ value, onChange, ...props }, ref) => {
+>(function BlurTextarea({ value, onChange, ...props }, ref) {
   const [val, setVal] = useState<Value>();
 
   const handleChange: ChangeEventHandler<HTMLTextAreaElement> = useCallback(

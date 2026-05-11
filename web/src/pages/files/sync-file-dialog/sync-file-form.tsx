@@ -39,8 +39,8 @@ import {
   listDataSourceFiles,
   type DataSourceFileItem,
 } from '@/services/data-source-service';
+import notification from '@/utils/notification';
 import { useQuery } from '@tanstack/react-query';
-import { notification } from 'antd';
 import { t } from 'i18next';
 import { LucideFolder } from 'lucide-react';
 import { useGetFolderId } from '../hooks';

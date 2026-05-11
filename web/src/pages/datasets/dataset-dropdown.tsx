@@ -11,7 +11,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useDeleteKnowledge } from '@/hooks/use-knowledge-request';
-import { IKnowledge } from '@/interfaces/database/knowledge';
+import { IDataset } from '@/interfaces/database/dataset';
 import {
   hasManagePermissionPermission,
   hasOwnerPermission,
@@ -24,7 +24,7 @@ import useDuplicateDataset from './use-duplicate-dataset';
 import { useRenameDataset } from './use-rename-dataset';
 
 type IDatasetDropdownProps = {
-  dataset: IKnowledge;
+  dataset: IDataset;
   showPrivilegeModal(): void;
 } & Pick<ReturnType<typeof useRenameDataset>, 'showDatasetRenameModal'> & {
     showDatasetDuplicateModal: ReturnType<
@@ -38,7 +38,10 @@ export function DatasetDropdown({
   showDatasetDuplicateModal,
   dataset,
   showPrivilegeModal,
-}: PropsWithChildren<IDatasetDropdownProps>) {
+}: PropsWithChildren<IDatasetDropdownProps> &
+  Pick<ReturnType<typeof useRenameDataset>, 'showDatasetRenameModal'> & {
+    dataset: IDataset;
+  }) {
   const { t } = useTranslation();
   const { deleteKnowledge } = useDeleteKnowledge();
 

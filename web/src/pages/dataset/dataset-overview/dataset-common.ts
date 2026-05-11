@@ -4,7 +4,7 @@ export enum LogTabs {
 }
 
 export enum ProcessingType {
-  knowledgeGraph = 'GraphRAG',
+  knowledgeGraph = 'Graph',
   raptor = 'RAPTOR',
   clone = 'Clone',
 }
@@ -13,4 +13,5 @@ export const ProcessingTypeMap = {
   [ProcessingType.knowledgeGraph]: 'Knowledge Graph',
   [ProcessingType.raptor]: 'RAPTOR',
   [ProcessingType.clone]: 'Clone',
+  GraphRAG: 'Knowledge Graph',
 } as const;

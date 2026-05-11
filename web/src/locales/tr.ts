@@ -173,7 +173,7 @@ Prosedürel Bellek: Öğrenilen beceriler, alışkanlıklar ve otomatik prosedü
       config: {
         descriptionPlaceholder: 'Belleğinizi açıklayın',
         memorySizeTooltip: `Her mesajın içeriği + embedding vektörü için geçerlidir (≈ İçerik + Boyutlar × 8 Bayt).
-Örnek: 1024 boyutlu embedding ile 1 KB\'lık bir mesaj ~9 KB kullanır. 5 MB varsayılan sınır ~500 mesaj tutar.`,
+Örnek: 1024 boyutlu embedding ile 1 KB'lık bir mesaj ~9 KB kullanır. 5 MB varsayılan sınır ~500 mesaj tutar.`,
         avatar: 'Avatar',
         description: 'Açıklama',
         memorySize: 'Bellek boyutu',
@@ -752,6 +752,9 @@ Bu otomatik etiketleme özelliği, mevcut datasete alanına özgü bilgi katman�
       delete: 'Sil',
     },
     chat: {
+      chatSupport: 'Sohbet Desteği',
+      replyInstantly: 'Genellikle anında yanıt veririz',
+      typeYourMessage: 'Mesajınızı yazın...',
       messagePlaceholder: 'Mesajınızı buraya yazın...',
       exit: 'Çıkış',
       multipleModels: 'Birden fazla model',
@@ -806,9 +809,9 @@ Bu otomatik etiketleme özelliği, mevcut datasete alanına özgü bilgi katman�
       systemTip:
         'LLM için istemleriniz veya talimatlarınız; rol, yanıtların uzunluğu, tonu ve dili dahil ancak bunlarla sınırlı değildir. Modeliniz doğal olarak akıl yürütmeyi destekliyorsa, akıl yürütmeyi durdurmak için isteme //no_thinking ekleyebilirsiniz.',
       topN: 'İlk N',
-      topNTip: `Benzerlik eşiğinin üzerindeki tüm parçalar LLM\'ye gönderilmeyecek. Bu, alınanlardan 'İlk N' parçayı seçer.`,
+      topNTip: `Benzerlik eşiğinin üzerindeki tüm parçalar LLM'ye gönderilmeyecek. Bu, alınanlardan 'İlk N' parçayı seçer.`,
       variable: 'Değişken',
-      variableTip: `RAGFlow\'nun sohbet asistanı yönetim API\'leri ile birlikte kullanılır.`,
+      variableTip: `RAGFlow'nun sohbet asistanı yönetim API'leri ile birlikte kullanılır.`,
       add: 'Ekle',
       key: 'Anahtar',
       optional: 'İsteğe bağlı',
@@ -977,7 +980,7 @@ Bu otomatik etiketleme özelliği, mevcut datasete alanına özgü bilgi katman�
         "Confluence örneğinizin temel URL'si (örn. https://your-domain.atlassian.net/wiki)",
       confluenceSpaceKeyTip:
         'İsteğe bağlı: Belirli bir alanla senkronizasyonu sınırlamak için alan anahtarı belirtin.',
-      s3PrefixTip: `S3 bucket\'ınızdaki dosyaları almak için klasör yolunu belirtin.`,
+      s3PrefixTip: `S3 bucket'ınızdaki dosyaları almak için klasör yolunu belirtin.`,
       S3CompatibleEndpointUrlTip: `S3 uyumlu Depolama Kutusu için zorunludur.`,
       S3CompatibleAddressingStyleTip: `S3 uyumlu Depolama Kutusu için zorunludur.`,
       addDataSourceModalTitle: '{{name}} bağlayıcınızı oluşturun',
@@ -1330,7 +1333,7 @@ Bu otomatik etiketleme özelliği, mevcut datasete alanına özgü bilgi katman�
         'Lütfen Google Cloud Hizmet Hesabı Anahtarını base64 formatında girin',
       addGoogleRegion: 'Google Cloud Bölgesi',
       GoogleRegionMessage: 'Lütfen Google Cloud Bölgesi girin',
-      modelProvidersWarn: `Lütfen önce <b>Ayarlar > Model sağlayıcıları</b> bölümünde hem embedding modelini hem de LLM\'yi ekleyin.`,
+      modelProvidersWarn: `Lütfen önce <b>Ayarlar > Model sağlayıcıları</b> bölümünde hem embedding modelini hem de LLM'yi ekleyin.`,
       apiVersion: 'API Sürümü',
       apiVersionMessage: 'Lütfen API sürümünü girin',
       add: 'Ekle',
@@ -1589,7 +1592,7 @@ Bu otomatik etiketleme özelliği, mevcut datasete alanına özgü bilgi katman�
       beginDescription: 'Akışın başladığı yer.',
       answerDescription: `İnsan ve bot arasındaki arayüz olarak hizmet eden bir bileşen.`,
       retrievalDescription: `Belirtilen datasets içinden bilgi alan bir bileşen.`,
-      generateDescription: `LLM\'yi yanıt üretmeye yönlendiren bir bileşen.`,
+      generateDescription: `LLM'yi yanıt üretmeye yönlendiren bir bileşen.`,
       categorizeDescription: `Kullanıcı girişlerini önceden tanımlanmış kategorilere sınıflandırmak için LLM kullanan bir bileşen.`,
       relevantDescription: `Yukarı akış çıktısının kullanıcının son sorgusuna uygun olup olmadığını değerlendirmek için LLM kullanan bir bileşen.`,
       rewriteQuestionDescription: `Önceki diyalogların bağlamına dayanarak Etkileşim bileşeninden bir kullanıcı sorgusunu yeniden yazan bir bileşen.`,
@@ -1597,7 +1600,7 @@ Bu otomatik etiketleme özelliği, mevcut datasete alanına özgü bilgi katman�
         'Bu bileşen, önceden tanımlanmış mesaj içeriğiyle birlikte iş akışının nihai veri çıktısını döndürür.',
       keywordDescription: `Kullanıcının girdisinden en fazla N arama sonucunu alan bir bileşen.`,
       switchDescription: `Önceki bileşenlerin çıktısına göre koşulları değerlendiren ve yürütme akışını yönlendiren bir bileşen.`,
-      wikipediaDescription: `wikipedia.org\'dan arama yapan bir bileşen.`,
+      wikipediaDescription: `wikipedia.org'dan arama yapan bir bileşen.`,
       promptText: `Lütfen aşağıdaki paragrafları özetleyin. Sayılara dikkat edin, uydurma yapmayın. Paragraflar aşağıdaki gibidir:
         {input}
   Yukarısı özetlemeniz gereken içeriktir.`,
@@ -1620,16 +1623,14 @@ Bu otomatik etiketleme özelliği, mevcut datasete alanına özgü bilgi katman�
       keywordExtract: 'Anahtar kelime',
       keywordExtractDescription: `Bir kullanıcı sorgusundan anahtar kelimeler çıkaran bir bileşen.`,
       baidu: 'Baidu',
-      baiduDescription: `baidu.com\'dan arama yapan bir bileşen.`,
+      baiduDescription: `baidu.com'dan arama yapan bir bileşen.`,
       duckDuckGo: 'DuckDuckGo',
       duckDuckGoDescription: "duckduckgo.com'dan arama yapan bir bileşen.",
       searXNG: 'SearXNG',
       searXNGDescription:
         "Sağlanan SearXNG örnek URL'si üzerinden arama yapan bir bileşen.",
-      pdfGenerator: 'Belge Oluşturucu',
-      pDFGenerator: 'Belge Oluşturucu',
-      pdfGeneratorDescription: `Markdown biçimli içerikten belgeler (PDF, DOCX, TXT) oluşturan bir bileşen.`,
-      pDFGeneratorDescription: `Markdown biçimli içerikten belgeler (PDF, DOCX, TXT) oluşturan bir bileşen.`,
+      docGenerator: 'Belge Oluşturucu',
+      docGeneratorDescription: `Markdown içeriğinden bir dosya oluşturur.`,
       subtitle: 'Alt başlık',
       logoImage: 'Logo Görüntüsü',
       logoPosition: 'Logo Konumu',
@@ -2468,7 +2469,7 @@ Temel Talimatlar:
       changeStepModalContent: `
       <p>Şu anda bu aşamanın sonuçlarını düzenliyorsunuz.</p>
       <p>Daha sonraki bir aşamaya geçerseniz değişiklikleriniz kaybolacak.</p>
-      <p>Korumak için lütfen Yeniden Çalıştır\'a tıklayın.</p>`,
+      <p>Korumak için lütfen Yeniden Çalıştır'a tıklayın.</p>`,
       changeStepModalConfirmText: 'Yine de Geç',
       changeStepModalCancelText: 'İptal',
       unlinkPipelineModalTitle: 'Alım hattı bağlantısını kes',

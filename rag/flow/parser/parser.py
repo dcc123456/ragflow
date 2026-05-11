@@ -38,6 +38,7 @@ from deepdoc.parser.tcadp_parser import TCADPParser
 from rag.app.naive import Docx
 from rag.flow.base import ProcessBase, ProcessParamBase
 from rag.flow.parser.pdf_chunk_metadata import (
+    extract_pdf_positions,
     normalize_pdf_items_metadata,
     reorder_multi_column_bboxes,
 )
@@ -110,6 +111,7 @@ class ParserParam(ProcessParamBase):
             "pdf": {
                 "parse_method": "deepdoc",  # deepdoc/plain_text/tcadp_parser/vlm
                 "lang": "Chinese",
+                "flatten_media_to_text": False,
                 "remove_toc": False,
                 "suffix": [
                     "pdf",
@@ -118,6 +120,7 @@ class ParserParam(ProcessParamBase):
             },
             "spreadsheet": {
                 "parse_method": "deepdoc",  # deepdoc/tcadp_parser
+                "flatten_media_to_text": False,
                 "output_format": "html",
                 "suffix": [
                     "xls",
@@ -133,6 +136,7 @@ class ParserParam(ProcessParamBase):
                 "output_format": "json",
             },
             "docx": {
+                "flatten_media_to_text": False,
                 "remove_toc": False,
                 "suffix": [
                     "docx",
@@ -140,6 +144,7 @@ class ParserParam(ProcessParamBase):
                 "output_format": "json",
             },
             "markdown": {
+                "flatten_media_to_text": False,
                 "suffix": ["md", "markdown", "mdx"],
                 "remove_toc": False,
                 "output_format": "json",
@@ -235,7 +240,7 @@ class ParserParam(ProcessParamBase):
             pdf_parse_method = pdf_config.get("parse_method", "")
             self.check_empty(pdf_parse_method, "Parse method abnormal.")
 
-            if pdf_parse_method.lower() not in ["deepdoc", "plain_text", "mineru", "docling", "tcadp parser", "paddleocr"]:
+            if pdf_parse_method.lower() not in ["deepdoc", "plain_text", "mineru", "docling", "opendataloader", "tcadp parser", "paddleocr"]:
                 self.check_empty(pdf_config.get("lang", ""), "PDF VLM language")
 
             pdf_output_format = pdf_config.get("output_format", "")
@@ -284,12 +289,13 @@ class ParserParam(ProcessParamBase):
 
         audio_config = self.setups.get("audio", "")
         if audio_config:
-            self.check_empty(audio_config.get("llm_id"), "Audio VLM")
+            audio_vlm = audio_config.get("vlm") or {}
+            self.check_empty(audio_vlm.get("llm_id"), "Audio VLM")
 
         video_config = self.setups.get("video", "")
         if video_config:
-            self.check_empty(video_config.get("llm_id"), "Video VLM")
-
+            video_vlm = video_config.get("vlm") or {}
+            self.check_empty(video_vlm.get("llm_id"), "Video VLM")
         email_config = self.setups.get("email", "")
         if email_config:
             email_output_format = email_config.get("output_format", "")
@@ -312,6 +318,7 @@ class Parser(ProcessBase):
         self.callback(random.randint(1, 5) / 100.0, "Start to work on a PDF.")
         conf = self._param.setups["pdf"]
         self.set_output("output_format", conf["output_format"])
+        flatten_media_to_text = conf.get("flatten_media_to_text")
         pdf_parser = None
 
         # Optional PDF post-processing flags applied after parsing.
@@ -425,6 +432,70 @@ class Parser(ProcessBase):
                     image = pdf_parser.crop(poss, 1)
                     if image is not None:
                         box["image"] = image
+                bboxes.append(box)
+
+        elif parse_method.lower() == "opendataloader":
+
+            def resolve_opendataloader_llm_name():
+                configured = parser_model_name or conf.get("opendataloader_llm_name")
+                if configured:
+                    return configured
+                tenant_id = self._canvas._tenant_id
+                if not tenant_id:
+                    return None
+                from api.db.services.tenant_llm_service import TenantLLMService
+                env_name = TenantLLMService.ensure_opendataloader_from_env(tenant_id)
+                candidates = TenantLLMService.query(tenant_id=tenant_id, llm_factory="OpenDataLoader", model_type=LLMType.OCR.value)
+                if candidates:
+                    return candidates[0].llm_name
+                return env_name
+
+            parser_model_name = resolve_opendataloader_llm_name()
+            if not parser_model_name:
+                raise RuntimeError("OpenDataLoader model not configured. Please add OpenDataLoader in Model Providers.")
+
+            tenant_id = self._canvas._tenant_id
+            ocr_model_config = get_model_config_by_type_and_name(tenant_id, LLMType.OCR, parser_model_name)
+            ocr_model = LLMBundle(tenant_id, ocr_model_config)
+            pdf_parser = ocr_model.mdl
+
+            lines, odl_tables = pdf_parser.parse_pdf(
+                filepath=name,
+                binary=blob,
+                callback=self.callback,
+                parse_method="pipeline",
+            )
+            bboxes = []
+            for item in lines or []:
+                if not isinstance(item, tuple) or len(item) < 3:
+                    continue
+                text, layout_type, poss = item[0], item[1], item[2]
+                box = {
+                    "text": text,
+                    "layout_type": layout_type or "text",
+                }
+                if isinstance(poss, str) and poss:
+                    positions = [[pos[0][-1] + 1, *pos[1:]] for pos in pdf_parser.extract_positions(poss)]
+                    if positions:
+                        box["positions"] = positions
+                    image = pdf_parser.crop(poss, 1)
+                    if image is not None:
+                        box["image"] = image
+                bboxes.append(box)
+            # Merge tables and images from the second return value.
+            for (img, html_or_caption), positions in odl_tables or []:
+                box = {"layout_type": "table" if not isinstance(html_or_caption, list) else "figure"}
+                if isinstance(html_or_caption, str):
+                    box["text"] = html_or_caption
+                elif isinstance(html_or_caption, list):
+                    box["text"] = html_or_caption[0] if html_or_caption else ""
+                if img is not None:
+                    box["image"] = img
+                if positions:
+                    try:
+                        box["positions"] = [[p[0] + 1, p[1], p[2], p[3], p[4]] for p in positions]
+                    except Exception:
+                        pass
                 bboxes.append(box)
 
         elif parse_method.lower() == "tcadp parser":
@@ -552,7 +623,12 @@ class Parser(ProcessBase):
                 first_outline_page = pdf_parser.outlines[0][2]
                 split_at = len(bboxes)
                 for i, item in enumerate(bboxes):
-                    if item["page_number"] >= first_outline_page:
+                    page_number = item.get("page_number")
+                    if page_number is None:
+                        positions = extract_pdf_positions(item)
+                        if positions:
+                            page_number = positions[0][0]
+                    if page_number is not None and page_number >= first_outline_page:
                         split_at = i
                         break
                 toc_bboxes, _ = remove_toc(bboxes[:split_at])
@@ -571,7 +647,9 @@ class Parser(ProcessBase):
                 layout_counters[layout] = seq + 1
                 b["layoutno"] = f"{layout}-{seq}"
 
-            if layout == "table":
+            if flatten_media_to_text:
+                b["doc_type_kwd"] = "text"
+            elif layout == "table":
                 b["doc_type_kwd"] = "table"
             elif layout == "figure":
                 b["doc_type_kwd"] = "image"
@@ -668,6 +746,7 @@ class Parser(ProcessBase):
         self.callback(random.randint(1, 5) / 100.0, "Start to work on a Spreadsheet.")
         conf = self._param.setups["spreadsheet"]
         self.set_output("output_format", conf["output_format"])
+        flatten_media_to_text = conf.get("flatten_media_to_text")
 
         parse_method = conf.get("parse_method", "deepdoc")
 
@@ -723,7 +802,12 @@ class Parser(ProcessBase):
                 # Add tables as text
                 for table in tables:
                     if table:
-                        result.append({"text": table, "doc_type_kwd": "table"})
+                        result.append(
+                            {
+                                "text": table,
+                                "doc_type_kwd": "text" if flatten_media_to_text else "table",
+                            }
+                        )
 
                 self.set_output("json", result)
 
@@ -771,6 +855,7 @@ class Parser(ProcessBase):
         self.callback(random.randint(1, 5) / 100.0, "Start to work on a DOCX document")
         conf = self._param.setups["docx"]
         self.set_output("output_format", conf["output_format"])
+        flatten_media_to_text = conf.get("flatten_media_to_text")
         
         if re.search(r"\.doc$", name, re.IGNORECASE):
             self.set_output("file", {**kwargs.get("file", {}), "outlines": []})
@@ -823,7 +908,7 @@ class Parser(ProcessBase):
                     {
                         "text": text,
                         "image": image,
-                        "doc_type_kwd": "image" if image is not None else "text",
+                        "doc_type_kwd": "text" if flatten_media_to_text or image is None else "image",
                     }
                 )
                 if html:
@@ -831,7 +916,7 @@ class Parser(ProcessBase):
                         {
                             "text": html,
                             "image": None,
-                            "doc_type_kwd": "table",
+                            "doc_type_kwd": "text" if flatten_media_to_text else "table",
                         }
                     )
             enhance_media_sections_with_vision(
@@ -927,6 +1012,7 @@ class Parser(ProcessBase):
         self.callback(random.randint(1, 5) / 100.0, "Start to work on a markdown.")
         conf = self._param.setups["markdown"]
         self.set_output("output_format", conf["output_format"])
+        flatten_media_to_text = conf.get("flatten_media_to_text")
 
         markdown_parser = naive_markdown_parser()
         sections, tables, section_images = markdown_parser(
@@ -952,7 +1038,11 @@ class Parser(ProcessBase):
                     # If multiple images found, combine them using concat_img
                     combined_image = reduce(concat_img, images) if len(images) > 1 else images[0]
                     json_result["image"] = combined_image
-                json_result["doc_type_kwd"] = "image" if json_result.get("image") is not None else "text"
+                json_result["doc_type_kwd"] = (
+                    "text"
+                    if flatten_media_to_text or json_result.get("image") is None
+                    else "image"
+                )
                 json_results.append(json_result)
 
             for table in tables:
@@ -961,7 +1051,7 @@ class Parser(ProcessBase):
                     json_results.append(
                         {
                             "text": table_text,
-                            "doc_type_kwd": "table",
+                            "doc_type_kwd": "text" if flatten_media_to_text else "table",
                         }
                     )
 
@@ -1057,13 +1147,14 @@ class Parser(ProcessBase):
         self.callback(random.randint(1, 5) / 100.0, "Start to work on an audio.")
 
         conf = self._param.setups["audio"]
+        vlm = conf.get("vlm")
         self.set_output("output_format", conf["output_format"])
         _, ext = os.path.splitext(name)
         with tempfile.NamedTemporaryFile(suffix=ext) as tmpf:
             tmpf.write(blob)
             tmpf.flush()
             tmp_path = os.path.abspath(tmpf.name)
-            seq2txt_model_config = get_model_config_by_type_and_name(self._canvas.get_tenant_id(), LLMType.SPEECH2TEXT, conf["llm_id"])
+            seq2txt_model_config = get_model_config_by_type_and_name(self._canvas.get_tenant_id(), LLMType.SPEECH2TEXT, vlm["llm_id"])
             seq2txt_mdl = LLMBundle(self._canvas.get_tenant_id(), seq2txt_model_config)
             txt = seq2txt_mdl.transcription(tmp_path)
 
@@ -1074,8 +1165,9 @@ class Parser(ProcessBase):
         self.callback(random.randint(1, 5) / 100.0, "Start to work on an video.")
 
         conf = self._param.setups["video"]
+        vlm = conf.get("vlm")
         self.set_output("output_format", conf["output_format"])
-        cv_model_config = get_model_config_by_type_and_name(self._canvas.get_tenant_id(), LLMType.IMAGE2TEXT, conf["llm_id"])
+        cv_model_config = get_model_config_by_type_and_name(self._canvas.get_tenant_id(), LLMType.IMAGE2TEXT, vlm["llm_id"])
         cv_mdl = LLMBundle(self._canvas.get_tenant_id(), cv_model_config)
         video_prompt = str(conf.get("prompt", "") or "")
         txt = asyncio.run(cv_mdl.async_chat(system="", history=[], gen_conf={}, video_bytes=blob, filename=name, video_prompt=video_prompt))

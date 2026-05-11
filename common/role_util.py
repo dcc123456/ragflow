@@ -86,6 +86,7 @@ def check_role_access(action_map, resource_type):
 
 KB_ROLE_RESOURCE_TYPE = ResourceTypeEnum.DATASET.value
 KB_API_ACTION_MAP = {
+    "aggregate_tags": ActionEnum.READ,
     "create": ActionEnum.WRITE,
     "delete": ActionEnum.WRITE,
     "update": ActionEnum.WRITE,
@@ -109,8 +110,14 @@ KB_API_ACTION_MAP = {
     "trace_graphrag": ActionEnum.READ,
     "run_raptor": ActionEnum.WRITE,
     "trace_raptor": ActionEnum.READ,
+    "run_index": ActionEnum.WRITE,
+    "trace_index": ActionEnum.READ,
+    "delete_index": ActionEnum.WRITE,
+    "list_ingestion_logs": ActionEnum.READ,
+    "get_ingestion_log": ActionEnum.READ,
     "get_auto_metadata": ActionEnum.READ,
     "update_auto_metadata": ActionEnum.WRITE,
+    "get_knowledge_graph": ActionEnum.READ,
     "run_mindmap": ActionEnum.WRITE,
     "trace_mindmap": ActionEnum.READ,
     "delete_kb_task": ActionEnum.WRITE,

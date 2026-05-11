@@ -41,6 +41,7 @@ class TitleChunkerParam(ProcessParamBase):
         self.levels = []
         self.hierarchy = None
         self.include_heading_content = False
+        self.root_chunk_as_heading = False
 
     def check(self):
         if self.method in {"hierarchy", "group"}:
@@ -222,7 +223,7 @@ class BaseTitleChunker(ABC):
             if level < BODY_LEVEL:
                 most_level = level
                 break
-
+            
         return {
             "levels": levels,
             "most_level": most_level,
@@ -234,23 +235,19 @@ class BaseTitleChunker(ABC):
         return self.resolve_outline_levels(line_records) or self.resolve_frequency_levels(line_records)
 
 
-    def resolve_manual_levels(self, line_records):
-        return self.resolve_title_levels(line_records)["levels"]
-
-
     def build_chunks_from_record_groups(self, record_groups):
         # Strategy code decides record grouping. This method materializes each
         # group into the output chunk representation. For PDF-like inputs, the
         # chunk box is defined by merged source positions and the text payload
         # is normalized by removing parser tags.
         if self.from_upstream.output_format in ["markdown", "text", "html"]:
-            return [
+            chunks = [
                 {"text": "".join(record["text"] + "\n" for record in records)}
                 for records in record_groups
                 if records
             ]
 
-        return [
+        chunks = [
             (
                 {
                     "text": RAGFlowPdfParser.remove_tag("".join(record["text"] + "\n" for record in records)),
@@ -268,6 +265,17 @@ class BaseTitleChunker(ABC):
             for records in record_groups
             if records
         ]
+        
+        if self.param.root_chunk_as_heading and len(chunks) > 1:
+            root_chunk = chunks[0]
+            root_text = root_chunk.get("text", "")
+
+            for ck in chunks[1:]:
+                ck['text'] = root_text + "\n" + ck.get("text", "")
+            
+            return chunks[1:]
+
+        return chunks
 
 
     async def set_chunks(self, chunks):

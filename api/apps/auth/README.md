@@ -44,6 +44,10 @@ google_config = {
     "type": "google",
     "client_id": "your_client_id",
     "client_secret": "your_client_secret",
+    "authorization_url": "https://your-oauth-provider.com/oauth/authorize",
+    "token_url": "https://your-oauth-provider.com/oauth/token",
+    "userinfo_url": "https://your-oauth-provider.com/oauth/userinfo",
+    "redirect_uri": "https://your-app.com/api/v1/auth/oauth/<channel>/callback"
 }
 
 # OIDC OAuth configuration
@@ -53,6 +57,7 @@ oidc_config = {
     "issuer": "https://your-idp.com",  # OIDC issuer URL (e.g., Okta, Auth0)
     "client_id": "your_client_id",
     "client_secret": "your_client_secret",
+    "redirect_uri": "https://your-app.com/api/v1/auth/oauth/<channel>/callback"
 }
 
 # Generic OAuth2 configuration

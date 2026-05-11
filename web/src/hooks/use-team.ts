@@ -1,3 +1,4 @@
+import message from '@/components/ui/message';
 import {
   IDepartment,
   IGroup,
@@ -31,7 +32,6 @@ import teamService, {
 } from '@/services/team-service';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useDebounceFn } from 'ahooks';
-import { message } from 'antd';
 import { isEmpty } from 'lodash';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';

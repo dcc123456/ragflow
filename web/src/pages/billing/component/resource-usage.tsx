@@ -1,3 +1,4 @@
+import message from '@/components/ui/message';
 import { useFetchTenantInfo } from '@/hooks/use-user-setting-request';
 import { formatNumber } from '@/pages/admin/model-usage-statistics/utils';
 import { useFetchAddonPlans } from '@/pages/price/hook/use-addon-plans';
@@ -7,7 +8,6 @@ import {
   postBillingStorageSetTarget,
 } from '@/services/price';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { message } from 'antd';
 import { camelCase } from 'lodash';
 import {
   ArrowUpRight,

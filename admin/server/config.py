@@ -277,6 +277,19 @@ def load_configurations(config_path: str) -> list[BaseConfig]:
                                      store_type="minio", detail_func_name="check_minio_alive")
                 configurations.append(config)
                 id_count += 1
+            case "minio":
+                name: str = 'minio'
+                url = v['host']
+                parts = url.split(':', 1)
+                host = parts[0]
+                port = int(parts[1])
+                user = v.get('user')
+                password = v.get('password')
+                config = MinioConfig(id=id_count, name=name, host=host, port=port, user=user, password=password,
+                                     service_type="file_store",
+                                     store_type="minio", detail_func_name="check_minio_alive")
+                configurations.append(config)
+                id_count += 1
             case "redis":
                 name: str = 'redis'
                 url = v['host']

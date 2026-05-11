@@ -49,10 +49,13 @@ class LayoutRecognizer(Recognizer):
         self.garbage_layouts = ["footer", "header", "reference"]
         self.client = None
 
-        if os.environ.get("DEEPDOC_URL"):
+        dla_url = os.environ.get("DEEPDOC_URL") or os.environ.get("TENSORRT_DLA_SVR")
+        if dla_url:
             from deepdoc.vision.dla_cli import DLAClient
 
-            self.client = DLAClient(os.environ["DEEPDOC_URL"])
+            self.client = DLAClient(dla_url)
+            env_used = "DEEPDOC_URL" if os.environ.get("DEEPDOC_URL") else "TENSORRT_DLA_SVR"
+            logging.info(f"LayoutRecognizer using remote DLA client at {dla_url} (via {env_used})")
             return
 
         try:

@@ -68,8 +68,7 @@ class RAGFlowAzureSasBlob:
         _bucket, fnm, binary = "txtxtxtxt1", "txtxtxtxt1", b"_t@@@1"
         return self.conn.upload_blob(name=fnm, data=BytesIO(binary), length=len(binary))
 
-    def put(self, bucket, fnm, binary):
-        self._ensure_connection()
+    def put(self, bucket, fnm, binary, tenant_id=None):
         for _ in range(3):
             try:
                 return self.conn.upload_blob(name=fnm, data=BytesIO(binary), length=len(binary))

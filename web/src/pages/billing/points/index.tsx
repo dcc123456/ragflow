@@ -1,10 +1,12 @@
 import { Button } from '@/components/ui/button';
-import { Input, Modal, Pagination, Table, Tag, message } from 'antd';
-import type { ColumnsType } from 'antd/es/table';
-import { Coins, Loader2, RefreshCw } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import message from '@/components/ui/message';
+import { Modal } from '@/components/ui/modal/modal';
+import { RAGFlowPagination } from '@/components/ui/ragflow-pagination';
+import { Table } from '@/components/ui/table';
+import { Coins, Loader2, RefreshCw, Tag } from 'lucide-react';
 import { useState } from 'react';
 import { useFetchPlanOverview } from '../hook/overview';
-import { IPointHoldItem, IPointLedgerItem } from '../interface';
 import {
   useFetchPointsHolds,
   useFetchPointsLedger,
@@ -205,7 +207,7 @@ const Stat = ({
 const LedgerTable = () => {
   const { data, loading, page, setPage, pageSize } = useFetchPointsLedger();
 
-  const columns: ColumnsType<IPointLedgerItem> = [
+  const columns = [
     {
       title: 'Time',
       dataIndex: 'create_time',
@@ -262,13 +264,13 @@ const LedgerTable = () => {
         className="border border-border-default rounded-lg"
       />
       <div className="flex justify-end mt-3">
-        <Pagination
+        <RAGFlowPagination
           current={page}
           pageSize={pageSize}
           total={data?.total ?? 0}
           onChange={setPage}
           showSizeChanger={false}
-          showTotal={(total) => `${total} records`}
+          // showTotal={(total) => `${total} records`}
         />
       </div>
     </div>
@@ -280,7 +282,7 @@ const LedgerTable = () => {
 const HoldsTable = () => {
   const { data, loading, page, setPage, pageSize } = useFetchPointsHolds();
 
-  const columns: ColumnsType<IPointHoldItem> = [
+  const columns = [
     {
       title: 'Time',
       dataIndex: 'create_time',
@@ -317,7 +319,7 @@ const HoldsTable = () => {
         Hold History
       </h3>
       <Table
-        rowKey="id"
+        // rowKey="id"
         columns={columns}
         dataSource={data?.items ?? []}
         loading={loading}
@@ -326,13 +328,13 @@ const HoldsTable = () => {
         className="border border-border-default rounded-lg"
       />
       <div className="flex justify-end mt-3">
-        <Pagination
+        <RAGFlowPagination
           current={page}
           pageSize={pageSize}
           total={data?.total ?? 0}
           onChange={setPage}
           showSizeChanger={false}
-          showTotal={(total) => `${total} records`}
+          // showTotal={(total) => `${total} records`}
         />
       </div>
     </div>

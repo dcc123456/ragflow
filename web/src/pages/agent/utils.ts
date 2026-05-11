@@ -228,6 +228,7 @@ function transformParserParams(params: ParserFormSchemaType) {
             parse_method: cur.parse_method,
             lang: cur.lang,
             vlm: { llm_id: cur.vlm?.llm_id },
+            flatten_media_to_text: cur.flatten_media_to_text,
             enable_multi_column: cur.enable_multi_column,
             remove_toc: cur.remove_toc,
           };
@@ -243,6 +244,7 @@ function transformParserParams(params: ParserFormSchemaType) {
             ...filteredSetup,
             parse_method: cur.parse_method,
             vlm: { llm_id: cur.vlm?.llm_id },
+            flatten_media_to_text: cur.flatten_media_to_text,
           };
           // Only include TCADP parameters if TCADP Parser is selected
           if (cur.parse_method?.toLowerCase() === 'tcadp parser') {
@@ -277,10 +279,16 @@ function transformParserParams(params: ParserFormSchemaType) {
             fields: cur.fields,
           };
           break;
-        case FileType.Video:
         case FileType.Docx:
-        case FileType.Audio:
         case FileType.TextMarkdown:
+          filteredSetup = {
+            ...filteredSetup,
+            vlm: { llm_id: cur.vlm?.llm_id },
+            flatten_media_to_text: cur.flatten_media_to_text,
+          };
+          break;
+        case FileType.Video:
+        case FileType.Audio:
           filteredSetup = {
             ...filteredSetup,
             vlm: { llm_id: cur.vlm?.llm_id },
@@ -330,6 +338,7 @@ function transformTitleChunkerParams(params: TitleChunkerFormSchemaType) {
     method: params.method,
     hierarchy: Number(params.hierarchy || 0),
     include_heading_content: Boolean(params.include_heading_content),
+    root_chunk_as_heading: Boolean(params.root_chunk_as_heading),
     levels,
   };
 }

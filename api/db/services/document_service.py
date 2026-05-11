@@ -14,14 +14,14 @@
 #  limitations under the License.
 #
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
+from copy import deepcopy
+from io import BytesIO
 import json
 import logging
 import random
-import re
-from concurrent.futures import ThreadPoolExecutor
-from copy import deepcopy
 from datetime import datetime
-from io import BytesIO
+import re
 
 import xxhash
 from peewee import fn, Case, JOIN
@@ -33,12 +33,14 @@ from api.db.db_utils import bulk_insert_into_db
 from api.db.services.common_service import CommonService, retry_deadlock_operation
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.doc_metadata_service import DocMetadataService
+
+from common.constants import LLMType, ParserType, StatusEnum, TaskStatus, MAXIMUM_TASK_PAGE_NUMBER
+from common.doc_store.doc_store_base import OrderByExpr
 from common.misc_utils import get_uuid
 from common.settings import rout_key
 from common.time_utils import current_timestamp, get_format_time
-from common.constants import LLMType, ParserType, StatusEnum, TaskStatus
+
 from rag.nlp import rag_tokenizer, search
-from common.doc_store.doc_store_base import OrderByExpr
 from common import settings
 from api.common.priority_provider import get_tenant_priority
 from rag.utils.rabbitmq_conn import RABBITMQ_CONN
@@ -139,7 +141,7 @@ class DocumentService(CommonService):
 
     @classmethod
     @DB.connection_context()
-    def get_by_kb_id(cls, kb_id, page_number, items_per_page, orderby, desc, keywords, run_status, types, suffix, doc_ids=None, return_empty_metadata=False):
+    def get_by_kb_id(cls, kb_id, page_number, items_per_page, orderby, desc, keywords, run_status, types, suffix, name=None, doc_ids=None, return_empty_metadata=False):
         fields = cls.get_cls_model_fields()
         if keywords:
             docs = (
@@ -159,7 +161,6 @@ class DocumentService(CommonService):
                 .join(User, on=(cls.model.created_by == User.id), join_type=JOIN.LEFT_OUTER)
                 .where(cls.model.kb_id == kb_id)
             )
-
         if doc_ids:
             docs = docs.where(cls.model.id.in_(doc_ids))
         if run_status:
@@ -168,8 +169,9 @@ class DocumentService(CommonService):
             docs = docs.where(cls.model.type.in_(types))
         if suffix:
             docs = docs.where(cls.model.suffix.in_(suffix))
+        if name:
+            docs = docs.where(cls.model.name == name)
 
-        metadata_map = {}
         if return_empty_metadata:
             metadata_map = DocMetadataService.get_metadata_for_documents(None, kb_id)
             doc_ids_with_metadata = set(metadata_map.keys())
@@ -439,6 +441,9 @@ class DocumentService(CommonService):
         if not cls.delete_document_and_update_kb_counts(doc.id):
             return True
 
+        chunk_index_name = search.index_name(tenant_id)
+        chunk_index_exists = settings.docStoreConn.index_exist(chunk_index_name, doc.kb_id)
+
         # Cancel all running tasks first Using preset function in task_service.py ---  set cancel flag in Redis
         try:
             cancel_all_task_of(doc.id)
@@ -454,7 +459,8 @@ class DocumentService(CommonService):
 
         # Delete chunk images (non-critical, log and continue)
         try:
-            cls.delete_chunk_images(doc, tenant_id)
+            if chunk_index_exists:
+                cls.delete_chunk_images(doc, tenant_id)
         except Exception as e:
             logging.warning(f"Failed to delete chunk images for document {doc.id}: {e}")
 
@@ -468,7 +474,7 @@ class DocumentService(CommonService):
 
         # Delete chunks from doc store - this is critical, log errors
         try:
-            settings.docStoreConn.delete({"doc_id": doc.id}, search.index_name(tenant_id), doc.kb_id)
+            settings.docStoreConn.delete({"doc_id": doc.id}, chunk_index_name, doc.kb_id)
         except Exception as e:
             logging.error(f"Failed to delete chunks from doc store for document {doc.id}: {e}")
 
@@ -480,23 +486,24 @@ class DocumentService(CommonService):
 
         # Cleanup knowledge graph references (non-critical, log and continue)
         try:
-            graph_source = settings.docStoreConn.get_fields(
-                settings.docStoreConn.search(["source_id"], [], {"kb_id": doc.kb_id, "knowledge_graph_kwd": ["graph"]}, [], OrderByExpr(), 0, 1, search.index_name(tenant_id), [doc.kb_id]),
-                ["source_id"],
-            )
-            if len(graph_source) > 0 and doc.id in list(graph_source.values())[0]["source_id"]:
-                settings.docStoreConn.update(
-                    {"kb_id": doc.kb_id, "knowledge_graph_kwd": ["entity", "relation", "graph", "subgraph", "community_report"], "source_id": doc.id},
-                    {"remove": {"source_id": doc.id}},
-                    search.index_name(tenant_id),
-                    doc.kb_id,
+            if chunk_index_exists:
+                graph_source = settings.docStoreConn.get_fields(
+                    settings.docStoreConn.search(["source_id"], [], {"kb_id": doc.kb_id, "knowledge_graph_kwd": ["graph"]}, [], OrderByExpr(), 0, 1, chunk_index_name, [doc.kb_id]),
+                    ["source_id"],
                 )
-                settings.docStoreConn.update({"kb_id": doc.kb_id, "knowledge_graph_kwd": ["graph"]}, {"removed_kwd": "Y"}, search.index_name(tenant_id), doc.kb_id)
-                settings.docStoreConn.delete(
-                    {"kb_id": doc.kb_id, "knowledge_graph_kwd": ["entity", "relation", "graph", "subgraph", "community_report"], "must_not": {"exists": "source_id"}},
-                    search.index_name(tenant_id),
-                    doc.kb_id,
-                )
+                if len(graph_source) > 0 and doc.id in list(graph_source.values())[0]["source_id"]:
+                    settings.docStoreConn.update(
+                        {"kb_id": doc.kb_id, "knowledge_graph_kwd": ["entity", "relation", "graph", "subgraph", "community_report"], "source_id": doc.id},
+                        {"remove": {"source_id": doc.id}},
+                        chunk_index_name,
+                        doc.kb_id,
+                    )
+                    settings.docStoreConn.update({"kb_id": doc.kb_id, "knowledge_graph_kwd": ["graph"]}, {"removed_kwd": "Y"}, chunk_index_name, doc.kb_id)
+                    settings.docStoreConn.delete(
+                        {"kb_id": doc.kb_id, "knowledge_graph_kwd": ["entity", "relation", "graph", "subgraph", "community_report"], "must_not": {"exists": "source_id"}},
+                        chunk_index_name,
+                        doc.kb_id,
+                    )
         except Exception as e:
             logging.warning(f"Failed to cleanup knowledge graph for document {doc.id}: {e}")
 
@@ -1053,25 +1060,24 @@ class DocumentService(CommonService):
         return docid_map
 
 
-def queue_raptor_o_graphrag_tasks(sample_doc_id, ty, priority, fake_doc_id="", doc_ids=[]):
+def queue_raptor_o_graphrag_tasks(sample_doc, ty, priority, fake_doc_id="", doc_ids=[]):
     """
     You can provide a fake_doc_id to bypass the restriction of tasks at the knowledgebase level.
     Optionally, specify a list of doc_ids to determine which documents participate in the task.
     """
     assert ty in ["graphrag", "raptor", "mindmap"], "type should be graphrag, raptor or mindmap"
 
-    chunking_config = DocumentService.get_chunking_config(sample_doc_id["id"])
+    chunking_config = DocumentService.get_chunking_config(sample_doc["id"])
     hasher = xxhash.xxh64()
     for field in sorted(chunking_config.keys()):
         hasher.update(str(chunking_config[field]).encode("utf-8"))
 
     def new_task():
-        nonlocal sample_doc_id
         return {
             "id": get_uuid(),
-            "doc_id": sample_doc_id["id"],
-            "from_page": 100000000,
-            "to_page": 100000000,
+            "doc_id": fake_doc_id,
+            "from_page": MAXIMUM_TASK_PAGE_NUMBER,
+            "to_page": MAXIMUM_TASK_PAGE_NUMBER,
             "task_type": ty,
             "progress_msg": datetime.now().strftime("%H:%M:%S") + " created task " + ty,
             "begin_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -1084,9 +1090,8 @@ def queue_raptor_o_graphrag_tasks(sample_doc_id, ty, priority, fake_doc_id="", d
     task["digest"] = hasher.hexdigest()
     bulk_insert_into_db(Task, [task], True)
 
-    task["doc_id"] = fake_doc_id
     task["doc_ids"] = doc_ids
-    DocumentService.begin2parse(sample_doc_id["id"], keep_progress=True)
+    DocumentService.begin2parse(task["doc_id"], keep_progress=True)
 
     assert RABBITMQ_CONN.queue_product(
         rout_key(priority, ty), message=task
@@ -1110,6 +1115,7 @@ def doc_upload_and_parse(conversation_id, file_objs, user_id):
     from api.db.services.user_service import TenantService
     from api.db.joint_services.tenant_model_service import get_model_config_by_id, get_model_config_by_type_and_name
     from rag.app import audio, email, naive, picture, presentation
+    from rag.graphrag.general.mind_map_extractor import MindMapExtractor
 
     e, conv = ConversationService.get_by_id(conversation_id)
     if not e:
@@ -1210,7 +1216,6 @@ def doc_upload_and_parse(conversation_id, file_objs, user_id):
             cks = [c for c in docs if c["doc_id"] == doc_id]
 
             if parser_ids[doc_id] != ParserType.PICTURE.value:
-                from graphrag.general.mind_map_extractor import MindMapExtractor
                 mindmap = MindMapExtractor(llm_bdl)
                 try:
                     mind_map = asyncio.run(mindmap([c["content_with_weight"] for c in docs if c["doc_id"] == doc_id]))

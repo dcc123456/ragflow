@@ -4,7 +4,10 @@ import { useSetModalState } from '@/hooks/common-hooks';
 import { useFetchKnowledgeBaseConfiguration } from '@/hooks/use-knowledge-request';
 import { useSelectLlmOptionsByModelType } from '@/hooks/use-llm-request';
 import { useSelectParserList } from '@/hooks/use-user-setting-request';
-import kbService, { traceEmbedding } from '@/services/knowledge-service';
+import kbService, {
+  checkEmbedding,
+  traceEmbedding,
+} from '@/services/knowledge-service';
 import {
   useIsFetching,
   useMutation,
@@ -71,8 +74,8 @@ export const useFetchKnowledgeConfigurationOnMount = (
         'pagerank',
         'avatar',
       ]),
-      embedding_model: knowledgeDetails.embd_id,
-      chunk_method: knowledgeDetails.parser_id,
+      embedding_model: knowledgeDetails.embedding_model,
+      chunk_method: knowledgeDetails.chunk_method,
     } as z.infer<typeof formSchema>;
     form.reset(formValues);
   }, [form, knowledgeDetails]);
@@ -114,8 +117,7 @@ export const useHandleKbEmbedding = () => {
 
   const handleChange = useCallback(
     async ({ embed_id }: { embed_id: string }) => {
-      const res = await kbService.checkEmbedding({
-        kb_id: knowledgeBaseId,
+      const res = await checkEmbedding(knowledgeBaseId || '', {
         embd_id: embed_id,
       });
       return res.data;

@@ -10,7 +10,7 @@ import {
   IMessage,
   Message,
 } from '@/interfaces/database/chat';
-import { IKnowledgeFile } from '@/interfaces/database/knowledge';
+import { IKnowledgeFile } from '@/interfaces/database/dataset';
 import { changeLanguageAsync } from '@/locales/config';
 import api from '@/utils/api';
 import { getAuthorization } from '@/utils/authorization-util';
@@ -294,7 +294,7 @@ export const useSendMessageWithSse = () => {
                 if (typeof d !== 'boolean') {
                   setAnswer((prev) => {
                     const prevAnswer = prev.answer || '';
-                    const currentAnswer = d.answer || '';
+                    const currentAnswer = d.final ? '' : d.answer || '';
 
                     let newAnswer: string;
                     if (prevAnswer && currentAnswer.startsWith(prevAnswer)) {
@@ -314,18 +314,17 @@ export const useSendMessageWithSse = () => {
                     return {
                       ...d,
                       answer: newAnswer,
-                      conversationId: body?.conversation_id,
+                      conversationId: body?.session_id ?? body?.conversation_id,
                       chatBoxId: body.chatBoxId,
                     };
                   });
                 }
-              } catch (e) {
+              } catch {
                 // Swallow parse errors silently
               }
             }
-          } catch (e) {
-            if (e instanceof DOMException && e.name === 'AbortError') {
-              console.log('Request was aborted by user or logic.');
+          } catch (error) {
+            if (error instanceof DOMException && error.name === 'AbortError') {
               break;
             }
           }
@@ -333,7 +332,7 @@ export const useSendMessageWithSse = () => {
         setDoneValue(body, true);
         resetAnswer();
         return { data: await res, response };
-      } catch (e) {
+      } catch {
         setDoneValue(body, true);
 
         resetAnswer();
@@ -376,7 +375,7 @@ export const useSpeechWithSse = (url: string = api.chatsTts) => {
         if (res?.code !== 0) {
           message.error(res?.message);
         }
-      } catch (error) {
+      } catch {
         // Swallow errors silently
       }
       return response;
