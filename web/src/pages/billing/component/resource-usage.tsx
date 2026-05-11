@@ -214,25 +214,24 @@ const ResourceUsage: React.FC<CustomProgressProps> = ({
               {formatNumber(planPoints?.limit ?? 0)} pts
             </span>
           </div>
+          {/* Addon row */}
+          {addonPoints?.limit !== 0 && (
+            <div className="flex justify-between items-start flex-col">
+              <span>{t('billing.creditsUsed') || 'Addon Points'}</span>
+              <span>
+                {formatNumber(addonPoints?.used ?? 0)}/
+                {formatNumber(addonPoints?.limit ?? 0)} pts
+              </span>
+            </div>
+          )}
           {!(planName == 'Free Plan' || planName == 'Free') && (
-            <>
-              {/* Addon row */}
-              <div className="flex justify-between items-start flex-col">
-                <span>{t('billing.creditsUsed') || 'Addon Points'}</span>
-                <span>
-                  {formatNumber(addonPoints?.used ?? 0)}/
-                  {formatNumber(addonPoints?.limit ?? 0)} pts
-                </span>
-              </div>
-
-              <div
-                className="flex items-center justify-center text-text-primary text-sm hover:outline outline-1 px-1 py-1 rounded-sm border border-border-button bg-bg-input cursor-pointer mt-1"
-                onClick={() => openBuyPoints()}
-              >
-                {t('billing.buyCredits')}
-                {/* <ArrowUpRight size={12} /> */}
-              </div>
-            </>
+            <div
+              className="flex items-center justify-center text-text-primary text-sm hover:outline outline-1 px-1 py-1 rounded-sm border border-border-button bg-bg-input cursor-pointer mt-1"
+              onClick={() => openBuyPoints()}
+            >
+              {t('billing.buyCredits')}
+              {/* <ArrowUpRight size={12} /> */}
+            </div>
           )}
         </div>
       );

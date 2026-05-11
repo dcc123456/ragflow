@@ -1,8 +1,26 @@
 import { Button } from '@/components/ui/button';
-import { RAGFlowPagination } from '@/components/ui/ragflow-pagination.tsx';
+import { RAGFlowPagination } from '@/components/ui/ragflow-pagination';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { formatIsoDateTime } from '@/utils/date';
-import { Table } from 'antd';
+import {
+  ColumnDef,
+  ColumnFiltersState,
+  SortingState,
+  flexRender,
+  getCoreRowModel,
+  getPaginationRowModel,
+  getSortedRowModel,
+  useReactTable,
+} from '@tanstack/react-table';
 import { Coins, Loader2, RefreshCw } from 'lucide-react';
+import * as React from 'react';
 import { useFetchPlanOverview } from '../hook/overview';
 import { IPointLedgerItem } from '../interface';
 import { useFetchPointsLedger } from './hook/points';
@@ -105,77 +123,132 @@ const Stat = ({
 
 const LedgerTable = () => {
   const { data, loading, page, setPage, pageSize } = useFetchPointsLedger();
+  const [sorting, setSorting] = React.useState<SortingState>([]);
+  const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(
+    [],
+  );
 
-  const columns = [
+  const columns: ColumnDef<IPointLedgerItem>[] = [
     {
-      title: 'Time',
-      dataIndex: 'create_time',
-      key: 'create_time',
-      width: 180,
-      render: (v: number) => formatIsoDateTime(v),
+      accessorKey: 'create_time',
+      header: 'Time',
+      cell: ({ getValue }) => formatIsoDateTime(getValue() as number),
     },
     {
-      title: 'Event',
-      dataIndex: 'event_type',
-      key: 'event_type',
-      width: 130,
-      render: (v: string) => (
-        <span style={{ color: EVENT_TYPE_COLOR[v] ?? 'inherit' }}>
-          {EVENT_TYPE_LABEL[v] ?? v}
-        </span>
-      ),
+      accessorKey: 'event_type',
+      header: 'Event',
+      cell: ({ getValue }) => {
+        const v = getValue() as string;
+        return (
+          <span style={{ color: EVENT_TYPE_COLOR[v] ?? 'inherit' }}>
+            {EVENT_TYPE_LABEL[v] ?? v}
+          </span>
+        );
+      },
     },
     {
-      title: 'Points',
-      dataIndex: 'points',
-      key: 'points',
-      width: 100,
-      render: (v: number) => (v > 0 ? `+${v}` : v),
+      accessorKey: 'points',
+      header: 'Points',
+      cell: ({ getValue }) => {
+        const v = getValue() as number;
+        return v > 0 ? `+${v}` : v;
+      },
     },
     {
-      title: 'Description',
-      dataIndex: 'description',
-      key: 'description',
-      render: (v: string | null, record: IPointLedgerItem) => {
-        if (record.metadata?.doc_id) {
-          const page = record.metadata.page_range
-            ? ` (${record.metadata.page_range})`
+      accessorKey: 'description',
+      header: 'Description',
+      cell: ({ getValue, row }) => {
+        const v = getValue() as string | null;
+        if (row.original.metadata?.doc_id) {
+          const pageRange = row.original.metadata.page_range
+            ? ` (${row.original.metadata.page_range})`
             : '';
-          return `${record.metadata.doc_id}${page}`;
+          return `${row.original.metadata.doc_id}${pageRange}`;
         }
         return v || '-';
       },
     },
     {
-      title: 'Event Key',
-      dataIndex: 'idempotency_key',
-      key: 'idempotency_key',
-      ellipsis: true,
+      accessorKey: 'idempotency_key',
+      header: 'Event Key',
     },
   ];
+
+  const table = useReactTable({
+    data: data?.items ?? [],
+    columns,
+    onSortingChange: setSorting,
+    onColumnFiltersChange: setColumnFilters,
+    getCoreRowModel: getCoreRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getRowId: (row) => row.id,
+    state: {
+      sorting,
+      columnFilters,
+      pagination: { pageIndex: page - 1, pageSize },
+    },
+    pageCount: Math.ceil((data?.total ?? 0) / pageSize),
+  });
 
   return (
     <div className="mb-6">
       <h3 className="text-lg font-semibold text-text-primary mb-3">
         Ledger History
       </h3>
-      <Table
-        rowKey="id"
-        columns={columns}
-        dataSource={data?.items ?? []}
-        loading={loading}
-        pagination={false}
-        size="small"
-        className="border border-border-default rounded-lg"
-      />
+      <Table className="border border-border-default rounded-lg">
+        <TableHeader>
+          {table.getHeaderGroups().map((headerGroup) => (
+            <TableRow key={headerGroup.id}>
+              {headerGroup.headers.map((header) => (
+                <TableHead key={header.id}>
+                  {header.isPlaceholder
+                    ? null
+                    : flexRender(
+                        header.column.columnDef.header,
+                        header.getContext(),
+                      )}
+                </TableHead>
+              ))}
+            </TableRow>
+          ))}
+        </TableHeader>
+        <TableBody>
+          {loading ? (
+            <TableRow>
+              <TableCell colSpan={columns.length} className="h-24 text-center">
+                <div className="flex items-center justify-center gap-2 text-text-secondary">
+                  <Loader2 className="animate-spin" size={16} />
+                  Loading...
+                </div>
+              </TableCell>
+            </TableRow>
+          ) : table.getRowModel().rows?.length ? (
+            table.getRowModel().rows.map((row) => (
+              <TableRow key={row.id}>
+                {row.getVisibleCells().map((cell) => (
+                  <TableCell key={cell.id}>
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  </TableCell>
+                ))}
+              </TableRow>
+            ))
+          ) : (
+            <TableRow>
+              <TableCell colSpan={columns.length} className="h-24 text-center">
+                No data
+              </TableCell>
+            </TableRow>
+          )}
+        </TableBody>
+      </Table>
       <div className="flex justify-end mt-3">
         <RAGFlowPagination
           current={page}
           pageSize={pageSize}
           total={data?.total ?? 0}
-          onChange={setPage}
+          onChange={(newPage) => setPage(newPage)}
           showSizeChanger={false}
-          // showTotal={(total) => `${total} records`}
         />
       </div>
     </div>
