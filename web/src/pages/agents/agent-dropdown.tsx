@@ -45,7 +45,7 @@ export function AgentDropdown({
     );
 
   const handleDelete: MouseEventHandler<HTMLDivElement> = useCallback(() => {
-    deleteAgent([agent.id]);
+    deleteAgent(agent.id);
   }, [agent.id, deleteAgent]);
 
   const handlesShowPrivilegeModal: MouseEventHandler<HTMLDivElement> =

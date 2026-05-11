@@ -3,12 +3,13 @@ import { SelectWithSearch } from '@/components/originui/select-with-search';
 import { RAGFlowFormItem } from '@/components/ragflow-form';
 import { BlockButton, Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Form } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
+import { cn } from '@/lib/utils';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Trash2 } from 'lucide-react';
-import { memo, useEffect, useRef } from 'react';
+import { ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { useFieldArray, useForm, useFormContext } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { z } from 'zod';
@@ -28,6 +29,7 @@ import { transformApiResponseToForm, useDynamicHierarchyOptions } from './hook';
 type FormModeValues = {
   hierarchy?: string;
   include_heading_content?: boolean;
+  root_chunk_as_heading?: boolean;
   rules: Array<{ levels: Array<{ expression: string }> }>;
 };
 
@@ -59,6 +61,7 @@ export const FormSchema = z.object({
   method: z.enum(['hierarchy', 'group']),
   hierarchy: z.string().optional(),
   include_heading_content: z.boolean().optional(),
+  root_chunk_as_heading: z.boolean().optional(),
   rules: rulesSchema,
 });
 
@@ -145,7 +148,7 @@ function CardBody({ cardName }: CardBodyProps) {
         onClick={() => appendLevel({ expression: '' })}
         className="mt-4"
       >
-        {t('flow.addLevel', 'Add Level')}
+        {t('flow.addRegularExpressions')}
       </BlockButton>
     </CardContent>
   );
@@ -197,6 +200,7 @@ const TitleChunkerForm = ({ node }: INextOperatorForm) => {
   });
   const isInitialized = useRef(false);
   const initialMode = useRef<string | undefined>(undefined);
+  const [showAllTip, setShowAllTip] = useState(true);
 
   const method = form.watch('method');
   const name = 'rules';
@@ -210,6 +214,7 @@ const TitleChunkerForm = ({ node }: INextOperatorForm) => {
     }
 
     if (method !== initialMode.current) {
+      setShowAllTip(true);
       const currentMode = initialMode.current;
       const hierarchyValue = form.getValues('hierarchy');
       const rulesValue = form.getValues('rules');
@@ -218,12 +223,14 @@ const TitleChunkerForm = ({ node }: INextOperatorForm) => {
         hierarchyModeValues.current = {
           hierarchy: hierarchyValue,
           include_heading_content: form.getValues('include_heading_content'),
+          root_chunk_as_heading: form.getValues('root_chunk_as_heading'),
           rules: rulesValue,
         };
       } else if (currentMode === 'group') {
         groupValues.current = {
           hierarchy: hierarchyValue,
           include_heading_content: form.getValues('include_heading_content'),
+          root_chunk_as_heading: form.getValues('root_chunk_as_heading'),
           rules: rulesValue,
         };
       }
@@ -236,6 +243,7 @@ const TitleChunkerForm = ({ node }: INextOperatorForm) => {
           method: 'group',
           hierarchy: modeValues?.hierarchy ?? '0',
           include_heading_content: false,
+          root_chunk_as_heading: false,
           rules: modeValues?.rules || initialGroupValues.rules,
         });
       } else {
@@ -248,12 +256,14 @@ const TitleChunkerForm = ({ node }: INextOperatorForm) => {
             hierarchy: modeValues.hierarchy || defaultHierarchy,
             include_heading_content:
               modeValues.include_heading_content || false,
+            root_chunk_as_heading: modeValues.root_chunk_as_heading || false,
             rules: modeValues.rules,
           });
         } else {
           const newModeValues: FormModeValues = {
             hierarchy: defaultHierarchy,
             include_heading_content: false,
+            root_chunk_as_heading: false,
             rules: JSON.parse(JSON.stringify(initialTitleChunkerValues.rules)),
           };
 
@@ -261,6 +271,7 @@ const TitleChunkerForm = ({ node }: INextOperatorForm) => {
             method: method,
             hierarchy: defaultHierarchy,
             include_heading_content: newModeValues.include_heading_content,
+            root_chunk_as_heading: newModeValues.root_chunk_as_heading,
             rules: newModeValues.rules,
           });
         }
@@ -290,29 +301,76 @@ const TitleChunkerForm = ({ node }: INextOperatorForm) => {
             ],
           }}
         />
+        {/* <div className={cn("text-xs text-text-secondary w-full border p-1", showAllTip ? "block" : "")}>
+          {method === 'hierarchy' && t('flow.hierarchyTip')}
+          {method === 'group' && t('flow.groupTip')}
+        </div> */}
+        <div
+          className={`text-xs text-text-secondary w-full cursor-pointer `}
+          onClick={() => setShowAllTip(!showAllTip)}
+        >
+          <div className={cn('flex justify-start items-start')}>
+            <div
+              className={cn(
+                'flex-1 ',
+                showAllTip ? 'whitespace-pre-wrap' : 'truncate',
+              )}
+            >
+              {method === 'hierarchy'
+                ? t('flow.hierarchyTip')
+                : method === 'group'
+                  ? t('flow.groupTip')
+                  : ''}
+            </div>
+            <div className="flex ml-2 text-xs ">
+              {showAllTip ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+            </div>
+          </div>
+        </div>
         <RAGFlowFormItem name={'hierarchy'} label={''}>
           <SelectWithSearch options={hierarchyOptions}></SelectWithSearch>
         </RAGFlowFormItem>
         {method === 'hierarchy' && (
-          <RAGFlowFormItem
-            name="include_heading_content"
-            label={t('flow.includeHeadingContent', 'Include heading content')}
-            tooltip={t(
-              'flow.includeHeadingContentTip',
-              'When enabled, content directly under a heading is kept as its own chunk. Child chunks keep only the heading path.',
-            )}
-            horizontal={true}
-            labelClassName="w-[200px]"
-          >
-            {(field) => (
-              <Checkbox
-                checked={field.value}
-                onCheckedChange={(checked) => {
-                  field.onChange?.(checked);
-                }}
-              />
-            )}
-          </RAGFlowFormItem>
+          <>
+            <RAGFlowFormItem
+              name="include_heading_content"
+              label={t('flow.includeHeadingContent', 'Include heading content')}
+              tooltip={t('flow.includeHeadingContentTip')}
+              horizontal={true}
+              labelClassName="w-full"
+              valueClassName="w-8"
+            >
+              {(field) => (
+                <Switch
+                  checked={field.value}
+                  onCheckedChange={(checked) => {
+                    field.onChange?.(checked);
+                  }}
+                />
+              )}
+            </RAGFlowFormItem>
+
+            <RAGFlowFormItem
+              name="root_chunk_as_heading"
+              label={t('flow.rootAsHeading', 'Use root as heading')}
+              tooltip={t(
+                'flow.rootAsHeadingTip',
+                'Treat the root node as a H0 heading when building the hierarchy',
+              )}
+              horizontal={true}
+              labelClassName="w-full"
+              valueClassName="w-8"
+            >
+              {(field) => (
+                <Switch
+                  checked={field.value}
+                  onCheckedChange={(checked) => {
+                    field.onChange?.(checked);
+                  }}
+                />
+              )}
+            </RAGFlowFormItem>
+          </>
         )}
         {/* {method === 'group' ? (
           <Card>
@@ -362,7 +420,7 @@ const TitleChunkerForm = ({ node }: INextOperatorForm) => {
           }
           className="mt-4"
         >
-          {t('flow.rule', 'Add Rule')}
+          {t('flow.addRule', 'Add Rule')}
         </BlockButton>
         {/* )} */}
       </FormWrapper>

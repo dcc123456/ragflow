@@ -1,5 +1,5 @@
+import message from '@/components/ui/message';
 import authorizationUtil from '@/utils/authorization-util';
-import { message } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 

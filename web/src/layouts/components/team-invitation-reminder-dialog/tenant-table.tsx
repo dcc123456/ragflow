@@ -1,11 +1,10 @@
+import { Button } from '@/components/ui/button';
+import { Table } from '@/components/ui/table';
 import { TenantRole } from '@/constants/team';
 import {
   useFetchUserInfo,
   useListTenant,
 } from '@/hooks/use-user-setting-request';
-import { ITenant } from '@/interfaces/database/user-setting';
-import type { TableProps } from 'antd';
-import { Button, Space, Table } from 'antd';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -23,7 +22,7 @@ const TenantTable = () => {
     return data.filter((x) => x.role === TenantRole.Invite);
   }, [data]);
 
-  const columns: TableProps<ITenant>['columns'] = [
+  const columns = [
     {
       title: t('common.name'),
       dataIndex: 'nickname',
@@ -40,19 +39,19 @@ const TenantTable = () => {
       render: (_, { role, tenant_id }) => {
         if (role === TenantRole.Invite) {
           return (
-            <Space>
-              <Button type="link" onClick={handleAgree(tenant_id, true)}>
+            <div>
+              <Button variant="link" onClick={handleAgree(tenant_id, true)}>
                 {t(`setting.agree`)}
               </Button>
-              <Button type="link" onClick={handleAgree(tenant_id, false)}>
+              <Button variant="link" onClick={handleAgree(tenant_id, false)}>
                 {t(`setting.refuse`)}
               </Button>
-            </Space>
+            </div>
           );
         } else if (role === TenantRole.Normal && user.id !== tenant_id) {
           return (
             <Button
-              type="link"
+              variant="link"
               onClick={handleQuitTenantUser(user.id, tenant_id)}
             >
               {t('setting.quit')}
@@ -64,7 +63,7 @@ const TenantTable = () => {
   ];
 
   return (
-    <Table<ITenant>
+    <Table
       columns={columns}
       dataSource={list}
       rowKey={'tenant_id'}

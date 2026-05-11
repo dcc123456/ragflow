@@ -21,7 +21,7 @@ import re
 from copy import deepcopy
 from typing import Tuple, Optional, Sequence
 
-import jinja2
+from jinja2.sandbox import SandboxedEnvironment
 import json_repair
 from common.misc_utils import hash_str2int
 from common.evaluation_metrics import DEFAULT_EVALUATION_METRICS, EvaluationMetric
@@ -184,7 +184,10 @@ SUMMARY4MEMORY = load_prompt("summary4memory")
 RANK_MEMORY = load_prompt("rank_memory")
 META_FILTER = load_prompt("meta_filter")
 ASK_SUMMARY = load_prompt("ask_summary")
-PROMPT_JINJA_ENV = jinja2.Environment(autoescape=False, trim_blocks=True, lstrip_blocks=True)
+
+PROMPT_JINJA_ENV = SandboxedEnvironment(
+    autoescape=False, trim_blocks=True, lstrip_blocks=True
+)
 
 
 def citation_prompt(user_defined_prompts: dict = {}) -> str:

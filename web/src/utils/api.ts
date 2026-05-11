@@ -9,76 +9,80 @@ export default {
   loginSendVerifyCode: `${webAPI}/user/forget/otp`,
   loginVerifyEmail: `${webAPI}/user/forget/verify-otp`,
   submitResetPassword: `${webAPI}/user/forget/reset-password`,
-  login: `${webAPI}/user/login`,
-  logout: `${webAPI}/user/logout`,
-  register: `${webAPI}/user/register`,
-  setting: `${webAPI}/user/setting`,
-  user_info: `${webAPI}/user/info`,
-  tenant_info: `${webAPI}/user/tenant_info`,
-  set_tenant_info: `${webAPI}/user/set_tenant_info`,
-  login_channels: `${webAPI}/user/login/channels`,
-  login_channel: (channel: string) => `${webAPI}/user/login/${channel}`,
+  login: `${restAPIv1}/auth/login`,
+  logout: `${restAPIv1}/auth/logout`,
+  register: `${restAPIv1}/users`,
+  setting: `${restAPIv1}/users/me`,
+  userInfo: `${restAPIv1}/users/me`,
+  tenantInfo: `${restAPIv1}/users/me/models`,
+  setTenantInfo: `${restAPIv1}/users/me/models`,
+  loginChannels: `${restAPIv1}/auth/login/channels`,
+  loginChannel: (channel: string) => `${restAPIv1}/auth/login/${channel}`,
 
   // team
-  addTenantUser: (tenantId: string) => `${webAPI}/tenant/${tenantId}/user`,
+  addTenantUser: (tenantId: string) => `${restAPIv1}/tenants/${tenantId}/users`,
   listTenantUser: (tenantId: string) =>
-    `${webAPI}/tenant/${tenantId}/user/list`,
-  deleteTenantUser: (tenantId: string, userId: string) =>
-    `${webAPI}/tenant/${tenantId}/user/${userId}`,
-  listTenant: `${webAPI}/tenant/list`,
-  agreeTenant: (tenantId: string) => `${webAPI}/tenant/agree/${tenantId}`,
+    `${restAPIv1}/tenants/${tenantId}/users`,
+  deleteTenantUser: (tenantId: string) =>
+    `${restAPIv1}/tenants/${tenantId}/users`,
+  listTenant: `${restAPIv1}/tenants`,
+  agreeTenant: (tenantId: string) => `${restAPIv1}/tenants/${tenantId}`,
 
   // llm model
-  factories_list: `${webAPI}/llm/factories`,
-  llm_list: `${webAPI}/llm/list`,
-  my_llm: `${webAPI}/llm/my_llms`,
-  set_api_key: `${webAPI}/llm/set_api_key`,
-  add_llm: `${webAPI}/llm/add_llm`,
-  delete_llm: `${webAPI}/llm/delete_llm`,
-  enable_llm: `${webAPI}/llm/enable_llm`,
+  factoriesList: `${webAPI}/llm/factories`,
+  llmList: `${webAPI}/llm/list`,
+  myLlm: `${webAPI}/llm/my_llms`,
+  setApiKey: `${webAPI}/llm/set_api_key`,
+  addLlm: `${webAPI}/llm/add_llm`,
+  deleteLlm: `${webAPI}/llm/delete_llm`,
+  enableLlm: `${webAPI}/llm/enable_llm`,
   deleteFactory: `${webAPI}/llm/delete_factory`,
 
   // data source
   dataSourceListFiles: (id: string) => `${webAPI}/connector/${id}/list_files`,
   dataSourceSyncFiles: (id: string) => `${webAPI}/connector/${id}/downloads`,
-  dataSourceSet: `${webAPI}/connector/set`,
-  dataSourceList: `${webAPI}/connector/list`,
-  dataSourceDel: (id: string) => `${webAPI}/connector/${id}/rm`,
-  dataSourceResume: (id: string) => `${webAPI}/connector/${id}/resume`,
-  dataSourceRebuild: (id: string) => `${webAPI}/connector/${id}/rebuild`,
-  dataSourceLogs: (id: string) => `${webAPI}/connector/${id}/logs`,
-  dataSourceDetail: (id: string) => `${webAPI}/connector/${id}`,
+  dataSourceUpdate: (id: string) => `${restAPIv1}/connectors/${id}`,
+  dataSourceSet: `${restAPIv1}/connectors`,
+  dataSourceList: `${restAPIv1}/connectors`,
+  dataSourceDel: (id: string) => `${restAPIv1}/connectors/${id}`,
+  dataSourceResume: (id: string) => `${restAPIv1}/connectors/${id}/resume`,
+  dataSourceRebuild: (id: string) => `${restAPIv1}/connectors/${id}/rebuild`,
+  dataSourceLogs: (id: string) => `${restAPIv1}/connectors/${id}/logs`,
+  dataSourceDetail: (id: string) => `${restAPIv1}/connectors/${id}`,
   googleWebAuthStart: (type: 'google-drive' | 'gmail') =>
-    `${webAPI}/connector/google/oauth/web/start?type=${type}`,
+    `${restAPIv1}/connectors/google/oauth/web/start?type=${type}`,
   googleWebAuthResult: (type: 'google-drive' | 'gmail') =>
-    `${webAPI}/connector/google/oauth/web/result?type=${type}`,
-  boxWebAuthStart: () => `${webAPI}/connector/box/oauth/web/start`,
-  boxWebAuthResult: () => `${webAPI}/connector/box/oauth/web/result`,
+    `${restAPIv1}/connectors/google/oauth/web/result?type=${type}`,
+  boxWebAuthStart: () => `${restAPIv1}/connectors/box/oauth/web/start`,
+  boxWebAuthResult: () => `${restAPIv1}/connectors/box/oauth/web/result`,
 
   // plugin
-  llm_tools: `${webAPI}/plugin/llm_tools`,
+  llmTools: `${restAPIv1}/plugin/tools`,
 
-  chatsTranscriptions: `${restAPIv1}/chats/transcriptions`,
+  chatsTranscriptions: `${restAPIv1}/chat/audio/transcription`,
 
   // knowledge base
 
   duplicate_kb: `${webAPI}/kb/clone`,
   check_embedding: `${webAPI}/kb/check_embedding`,
-  kb_list: `${restAPIv1}/datasets`,
-  create_kb: `${restAPIv1}/datasets`,
-  update_kb: (datasetId: string) => `${restAPIv1}/datasets/${datasetId}`,
-  rm_kb: `${restAPIv1}/datasets`,
-  get_kb_detail: `${webAPI}/kb/detail`,
+  checkEmbedding: (datasetId: string) =>
+    `${restAPIv1}/datasets/${datasetId}/embedding`,
+  kbList: `${restAPIv1}/datasets`,
+  createKb: `${restAPIv1}/datasets`,
+  updateKb: (datasetId: string) => `${restAPIv1}/datasets/${datasetId}`,
+  rmKb: `${restAPIv1}/datasets`,
+  getKbDetail: (datasetId: string) => `${restAPIv1}/datasets/${datasetId}`,
   getKnowledgeGraph: (knowledgeId: string) =>
-    `${restAPIv1}/datasets/${knowledgeId}/knowledge_graph`,
+    `${restAPIv1}/datasets/${knowledgeId}/graph/search`,
+  knowledgeGraph: (datasetId: string) =>
+    `${restAPIv1}/datasets/${datasetId}/graph`,
   deleteKnowledgeGraph: (knowledgeId: string) =>
-    `${restAPIv1}/datasets/${knowledgeId}/knowledge_graph`,
-  getMeta: `${webAPI}/kb/get_meta`,
-  getKnowledgeBasicInfo: `${webAPI}/kb/basic_info`,
+    `${restAPIv1}/datasets/${knowledgeId}/graph`,
+  getMeta: `${restAPIv1}/datasets/metadata/flattened`,
+  getKnowledgeBasicInfo: (datasetId: string) =>
+    `${restAPIv1}/datasets/${datasetId}/ingestions/summary`,
   // data pipeline log
   fetchDataPipelineLog: `${webAPI}/kb/list_pipeline_logs`,
-  get_pipeline_detail: `${webAPI}/kb/pipeline_log_detail`,
-  fetchPipelineDatasetLogs: `${webAPI}/kb/list_pipeline_dataset_logs`,
   runGraphRag: (datasetId: string) =>
     `${restAPIv1}/datasets/${datasetId}/run_graphrag`,
   traceGraphRag: (datasetId: string) =>
@@ -87,56 +91,73 @@ export default {
     `${restAPIv1}/datasets/${datasetId}/run_raptor`,
   traceRaptor: (datasetId: string) =>
     `${restAPIv1}/datasets/${datasetId}/trace_raptor`,
-  unbindPipelineTask: ({ kb_id, type }: { kb_id: string; type: string }) =>
-    `${webAPI}/kb/unbind_task?kb_id=${kb_id}&pipeline_task_type=${type}`,
-
   traceDuplicate: (id: string) => `${webAPI}/kb/trace_clone?kb_id=${id}`,
   switchEmbeddingModel: `${webAPI}/kb/switch_embedding`,
   traceEmbedding: (id: string) => `${webAPI}/kb/trace_embedding?kb_id=${id}`,
+  fetchDataPipelineLog: (datasetId: string) =>
+    `${restAPIv1}/datasets/${datasetId}/ingestions`,
+  getPipelineDetail: (datasetId: string, logId: string) =>
+    `${restAPIv1}/datasets/${datasetId}/ingestions/${logId}`,
+  fetchPipelineDatasetLogs: (datasetId: string) =>
+    `${restAPIv1}/datasets/${datasetId}/ingestions`,
+  runIndex: (datasetId: string, indexType: string) =>
+    `${restAPIv1}/datasets/${datasetId}/index?type=${indexType.toLowerCase()}`,
+  traceIndex: (datasetId: string, indexType: string) =>
+    `${restAPIv1}/datasets/${datasetId}/index?type=${indexType.toLowerCase()}`,
+  unbindPipelineTask: (datasetId: string, indexType: string) =>
+    `${restAPIv1}/datasets/${datasetId}/${indexType.toLowerCase()}`,
   pipelineRerun: `${webAPI}/canvas/rerun`,
   getMetaData: (datasetId: string) =>
     `${restAPIv1}/datasets/${datasetId}/metadata/summary`,
-  updateMetaData: `${webAPI}/document/metadata/update`,
-  kbUpdateMetaData: `${webAPI}/kb/update_metadata_setting`,
-  documentUpdateMetaData: `${webAPI}/document/update_metadata_setting`,
+  updateDocumentsMetadata: (datasetId: string) =>
+    `${restAPIv1}/datasets/${datasetId}/documents/metadatas`,
+  kbUpdateMetaData: (datasetId: string) =>
+    `${restAPIv1}/datasets/${datasetId}/metadata/config`,
+  documentUpdateMetaDataConfig: (datasetId: string, documentId: string) =>
+    `${restAPIv1}/datasets/${datasetId}/documents/${documentId}/metadata/config`,
 
   // tags
-  listTag: (knowledgeId: string) => `${webAPI}/kb/${knowledgeId}/tags`,
-  listTagByKnowledgeIds: `${webAPI}/kb/tags`,
-  removeTag: (knowledgeId: string) => `${webAPI}/kb/${knowledgeId}/rm_tags`,
-  renameTag: (knowledgeId: string) => `${webAPI}/kb/${knowledgeId}/rename_tag`,
+  listTag: (knowledgeId: string) => `${restAPIv1}/datasets/${knowledgeId}/tags`,
+  listTagByKnowledgeIds: `${restAPIv1}/datasets/tags/aggregation`,
+  removeTag: (knowledgeId: string) =>
+    `${restAPIv1}/datasets/${knowledgeId}/tags`,
+  renameTag: (knowledgeId: string) =>
+    `${restAPIv1}/datasets/${knowledgeId}/tags`,
 
   // chunk
-  chunk_list: `${webAPI}/chunk/list`,
-  create_chunk: `${webAPI}/chunk/create`,
-  set_chunk: `${webAPI}/chunk/set`,
-  get_chunk: `${webAPI}/chunk/get`,
-  switch_chunk: `${webAPI}/chunk/switch`,
-  rm_chunk: `${webAPI}/chunk/rm`,
-  retrieval_test: `${webAPI}/chunk/retrieval_test`,
-  knowledge_graph: `${webAPI}/chunk/knowledge_graph`,
+  chunkList: (datasetId: string, documentId: string) =>
+    `${restAPIv1}/datasets/${datasetId}/documents/${documentId}/chunks`,
+  chunkDetail: (datasetId: string, documentId: string, chunkId: string) =>
+    `${restAPIv1}/datasets/${datasetId}/documents/${documentId}/chunks/${chunkId}`,
+  retrievalTest: (datasetId: string) =>
+    `${restAPIv1}/datasets/${datasetId}/search`,
 
   // document
-  get_document_list: `${webAPI}/document/list`,
-  document_change_status: `${webAPI}/document/change_status`,
-  document_rm: `${webAPI}/document/rm`,
-  document_delete: `${webAPI}/api/document`,
-  document_rename: (datasetId: string, documentId: string) =>
+  getDocumentList: (datasetId: string) =>
+    `${restAPIv1}/datasets/${datasetId}/documents`,
+  documentChangeStatus: (datasetId: string) =>
+    `${restAPIv1}/datasets/${datasetId}/documents/batch-update-status`,
+  documentDelete: (datasetId: string) =>
+    `${restAPIv1}/datasets/${datasetId}/documents`,
+  documentRename: (datasetId: string, documentId: string) =>
     `${restAPIv1}/datasets/${datasetId}/documents/${documentId}`,
-  document_create: `${webAPI}/document/create`,
-  document_run: `${webAPI}/document/run`,
-  document_change_parser: `${webAPI}/document/change_parser`,
-  document_thumbnails: `${webAPI}/document/thumbnails`,
-  get_document_file: `${webAPI}/document/get`,
-  get_document_file_download: (docId: string) =>
+  documentIngest: `${restAPIv1}/documents/ingest`,
+  documentCreate: (datasetId: string) =>
+    `${restAPIv1}/datasets/${datasetId}/documents?type=empty`,
+  documentChangeParser: (datasetId: string, documentId: string) =>
+    `${restAPIv1}/datasets/${datasetId}/documents/${documentId}`,
+  documentThumbnails: `${restAPIv1}/thumbnails`,
+  getDocumentFile: `${webAPI}/document/get`,
+  getDocumentFileDownload: (docId: string) =>
     `${webAPI}/document/download/${docId}`,
-  document_upload: `${webAPI}/document/upload`,
-  web_crawl: `${webAPI}/document/web_crawl`,
-  document_infos: `${webAPI}/document/infos`,
-  upload_and_parse: `${webAPI}/document/upload_info`,
-  parse: `${webAPI}/document/parse`,
+  documentUpload: (datasetId: string) =>
+    `${restAPIv1}/datasets/${datasetId}/documents`,
+  webCrawl: (datasetId: string) =>
+    `${restAPIv1}/datasets/${datasetId}/documents?type=web`,
+  documentInfoUpload: `${restAPIv1}/documents/upload`,
   setMeta: `${webAPI}/document/set_meta`,
-  get_dataset_filter: `${webAPI}/document/filter`,
+  getDatasetFilter: (datasetId: string) =>
+    `${restAPIv1}/datasets/${datasetId}/documents?type=filter`,
 
   // chat
   createChat: `${restAPIv1}/chats`,
@@ -157,12 +178,12 @@ export default {
     `${restAPIv1}/chats/${chatId}/sessions/${sessionId}/messages/${msgId}`,
   thumbup: (chatId: string, sessionId: string, msgId: string) =>
     `${restAPIv1}/chats/${chatId}/sessions/${sessionId}/messages/${msgId}/feedback`,
-  completionUrl: (chatId: string, sessionId: string) =>
-    `${restAPIv1}/chats/${chatId}/sessions/${sessionId}/completions`,
-  chatsTts: `${restAPIv1}/chats/tts`,
-  ask: `${restAPIv1}/chats/ask`,
-  chatsMindmap: `${restAPIv1}/chats/mindmap`,
-  chatsRelatedQuestions: `${restAPIv1}/chats/related_questions`,
+  completionUrl: `${restAPIv1}/chat/completions`,
+  chatsTts: `${restAPIv1}/chat/audio/speech`,
+  searchCompletion: (searchId: string) =>
+    `${restAPIv1}/searches/${searchId}/completion`,
+  chatsMindmap: `${restAPIv1}/chat/mindmap`,
+  chatsRelatedQuestions: `${restAPIv1}/chat/recommendation`,
 
   // next chat
   fetchExternalChatInfo: (id: string) => `${restAPIv1}/chatbots/${id}/info`,
@@ -173,7 +194,7 @@ export default {
   removeFile: `${restAPIv1}/files`,
   getAllParentFolder: `${restAPIv1}/files`,
   createFolder: `${restAPIv1}/files`,
-  connectFileToKnowledge: `${webAPI}/file2document/convert`,
+  connectFileToKnowledge: `${restAPIv1}/files/link-to-datasets`,
   getFile: `${restAPIv1}/files`,
   moveFile: `${restAPIv1}/files/move`,
 
@@ -182,8 +203,8 @@ export default {
   getSystemTokenList: `${restAPIv1}/system/tokens`,
   createSystemToken: `${restAPIv1}/system/tokens`,
   removeSystemToken: `${restAPIv1}/system/tokens`,
-  getSystemConfig: `${webAPI}/system/config`,
-  setLangfuseConfig: `${webAPI}/langfuse/api_key`,
+  getSystemConfig: `${restAPIv1}/system/config`,
+  setLangfuseConfig: `${restAPIv1}/langfuse/api-key`,
 
   // flow
   joinCanvasPresence: `${webAPI}/canvas/presence/join`,
@@ -203,47 +224,55 @@ export default {
   getVersion: `${webAPI}/canvas/getversion`,
   resetCanvas: `${webAPI}/canvas/reset`,
   runCanvas: `${webAPI}/canvas/completion`,
-  testDbConnect: `${webAPI}/canvas/test_db_connect`,
+  listAgentTemplate: `${restAPIv1}/agents/templates`,
+  listAgents: `${restAPIv1}/agents`,
+  createAgent: `${restAPIv1}/agents`,
+  updateAgent: (agentId: string) => `${restAPIv1}/agents/${agentId}`,
+  deleteAgent: (agentId: string) => `${restAPIv1}/agents/${agentId}`,
+  agentChatCompletion: `${restAPIv1}/agents/chat/completion`,
+  resetAgent: (agentId: string) => `${restAPIv1}/agents/${agentId}/reset`,
+  testDbConnect: `${restAPIv1}/agents/test_db_connection`,
   getInputElements: `${webAPI}/canvas/input_elements`,
-  debug: `${webAPI}/canvas/debug`,
-  uploadCanvasFile: `${webAPI}/canvas/upload`,
-  trace: `${webAPI}/canvas/trace`,
-  cancelCanvas: (taskId: string) => `${webAPI}/canvas/cancel/${taskId}`, // cancel conversation
+  debug: (agentId: string, componentId: string) =>
+    `${restAPIv1}/agents/${agentId}/components/${componentId}/debug`,
+  trace: (agentId: string, messageId: string) =>
+    `${restAPIv1}/agents/${agentId}/logs/${messageId}`,
+  cancelCanvas: (taskId: string) => `${restAPIv1}/tasks/${taskId}/cancel`,
   // agent
-  inputForm: `${webAPI}/canvas/input_form`,
-  fetchVersionList: (id: string) => `${webAPI}/canvas/getlistversion/${id}`,
-  fetchVersion: (id: string) => `${webAPI}/canvas/getversion/${id}`,
-  fetchCanvas: (id: string) => `${webAPI}/canvas/get/${id}`,
-  fetchAgentAvatar: (id: string) => `${webAPI}/canvas/getsse/${id}`,
-  uploadAgentFile: (id?: string) => `${webAPI}/canvas/upload/${id}`,
+  inputForm: (agentId: string, componentId: string) =>
+    `${restAPIv1}/agents/${agentId}/components/${componentId}/input-form`,
+  fetchVersionList: (id: string) => `${restAPIv1}/agents/${id}/versions`,
+  fetchVersion: (agentId: string, versionId: string) =>
+    `${restAPIv1}/agents/${agentId}/versions/${versionId}`,
+  getAgent: (id: string) => `${restAPIv1}/agents/${id}`,
+  uploadAgentFile: (id?: string) => `${restAPIv1}/agents/${id}/upload`,
+  createAgentSession: (agentId: string) =>
+    `${restAPIv1}/agents/${agentId}/sessions`,
   fetchAgentLogs: (canvasId: string) => `${webAPI}/canvas/${canvasId}/sessions`,
-  fetchAgentLogsById: (canvasId: string, sessionId: string) =>
-    `${webAPI}/canvas/${canvasId}/sessions/${sessionId}`,
+  fetchAgentSessions: (agentId: string) =>
+    `${restAPIv1}/agents/${agentId}/sessions`,
+  fetchAgentSessionById: (agentId: string, sessionId: string) =>
+    `${restAPIv1}/agents/${agentId}/sessions/${sessionId}`,
   fetchExternalAgentInputs: (canvasId: string) =>
     `${restAPIv1}/agentbots/${canvasId}/inputs`,
-  prompt: `${webAPI}/canvas/prompts`,
-  cancelDataflow: (id: string) => `${webAPI}/canvas/cancel/${id}`,
-  downloadFile: `${webAPI}/canvas/download`,
-  testWebhook: (id: string) => `${restAPIv1}/webhook_test/${id}`,
-  fetchWebhookTrace: (id: string) => `${restAPIv1}/webhook_trace/${id}`,
+  prompt: `${restAPIv1}/agents/prompts`,
+  cancelDataflow: (id: string) => `${restAPIv1}/tasks/${id}/cancel`,
+  downloadFile: `${restAPIv1}/agents/download`,
+  testWebhook: (id: string) => `${restAPIv1}/agents/${id}/webhook/test`,
+  fetchWebhookTrace: (id: string) => `${restAPIv1}/agents/${id}/webhook/logs`,
 
   // explore
 
-  runCanvasExplore: (canvasId: string) =>
-    `${webAPI}/canvas/${canvasId}/completion`,
-
   // mcp server
-  listMcpServer: `${webAPI}/mcp_server/list`,
-  getMcpServer: `${webAPI}/mcp_server/detail`,
-  createMcpServer: `${webAPI}/mcp_server/create`,
-  updateMcpServer: `${webAPI}/mcp_server/update`,
-  deleteMcpServer: `${webAPI}/mcp_server/rm`,
-  importMcpServer: `${webAPI}/mcp_server/import`,
-  exportMcpServer: `${webAPI}/mcp_server/export`,
-  listMcpServerTools: `${webAPI}/mcp_server/list_tools`,
-  testMcpServerTool: `${webAPI}/mcp_server/test_tool`,
-  cacheMcpServerTool: `${webAPI}/mcp_server/cache_tools`,
-  testMcpServer: `${webAPI}/mcp_server/test_mcp`,
+  listMcpServer: `${restAPIv1}/mcp/servers`,
+  getMcpServer: (id: string) => `${restAPIv1}/mcp/servers/${id}`,
+  createMcpServer: `${restAPIv1}/mcp/servers`,
+  updateMcpServer: (id: string) => `${restAPIv1}/mcp/servers/${id}`,
+  deleteMcpServer: (id: string) => `${restAPIv1}/mcp/servers/${id}`,
+  importMcpServer: `${restAPIv1}/mcp/servers/import`,
+  exportMcpServer: (id: string) =>
+    `${restAPIv1}/mcp/servers/${id}?mode=download`,
+  testMcpServer: (id: string) => `${restAPIv1}/mcp/servers/${id}/test`,
 
   // next-search
   createSearch: `${restAPIv1}/searches`,

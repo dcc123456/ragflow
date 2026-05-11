@@ -6,17 +6,18 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { useNavigatePage } from '@/hooks/logic-hooks/navigate-hooks';
 import { useTraceDuplicate } from '@/hooks/use-knowledge-request';
-import { IKnowledge } from '@/interfaces/database/knowledge';
+import { IDataset } from '@/interfaces/database/dataset';
 import { ChevronRight, LucideCircleX } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { ProcessingType } from '../dataset/dataset-overview/dataset-common';
 import { useUnBindTask } from '../dataset/dataset/generate-button/hook';
+
 import { DatasetDropdown } from './dataset-dropdown';
 import useDuplicateDataset from './use-duplicate-dataset';
 import { useRenameDataset } from './use-rename-dataset';
 
 export type DatasetCardProps = {
-  dataset: IKnowledge;
+  dataset: IDataset;
   showPrivilegeModal(): void;
 } & Pick<ReturnType<typeof useRenameDataset>, 'showDatasetRenameModal'> & {
     showDatasetDuplicateModal: ReturnType<

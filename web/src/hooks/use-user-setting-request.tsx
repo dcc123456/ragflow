@@ -3,7 +3,7 @@ import { Modal } from '@/components/ui/modal/modal';
 import { TenantRole } from '@/constants/team';
 import { ResponseGetType } from '@/interfaces/database/base';
 import { IToken } from '@/interfaces/database/chat';
-import { ITenantInfo } from '@/interfaces/database/knowledge';
+import { ITenantInfo } from '@/interfaces/database/dataset';
 import { ILangfuseConfig } from '@/interfaces/database/system';
 import {
   ITenant,
@@ -56,7 +56,7 @@ export const useFetchUserInfo = (): ResponseGetType<IUserInfo> => {
     initialData: {},
     gcTime: 0,
     queryFn: async () => {
-      const { data } = await userService.user_info();
+      const { data } = await userService.userInfo();
 
       if (data.code === 0) {
         const targetLng =
@@ -83,7 +83,7 @@ export const useFetchTenantData = (
     initialData: {},
     gcTime: 0,
     queryFn: async () => {
-      const { data: res = {} } = await userService.get_tenant_info();
+      const { data: res } = await userService.getTenantInfo();
       if (res.code === 0) {
         // llm_id is chat_id
         // asr_id is speech2txt
@@ -260,6 +260,7 @@ export const useFetchSystemVersion = () => {
         setLoading(false);
       }
     } catch (error) {
+      console.warn(error);
       setLoading(false);
     }
   }, []);

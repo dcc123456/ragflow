@@ -19,7 +19,8 @@ type ICheckboxSetProps = {
   checked: boolean;
   selectedChunkIds: string[];
 };
-export default (props: ICheckboxSetProps) => {
+
+export default function CheckboxSets(props: ICheckboxSetProps) {
   const datasetEditButtonDisabled = useDatasetEditButtonDisabled();
   const {
     className,
@@ -83,4 +84,4 @@ export default (props: ICheckboxSetProps) => {
       )}
     </div>
   );
-};
+}

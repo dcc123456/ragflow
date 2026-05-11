@@ -234,3 +234,5 @@ bin/*
 
 # oh-my-claudecode session state
 .omc/
+
+.claude/settings.local.json

@@ -37,8 +37,6 @@ from api.db.db_models import (
     StorageSubscription,
     Subscription,
 )
-from api.db.services.dialog_service import DialogService
-from api.db.services.file_service import FileService
 from api.db.services.memory_service import MemoryService
 from api.utils.file_utils import filename_type
 from api.utils.billing import BILLING_PLAN_TRIAL_NAME, create_stripe_customer_id, get_trial_price_id, parse_storage_size
@@ -178,6 +176,8 @@ class SubscriptionService(CommonService):
             from api.db.services.canvas_service import UserCanvasService
             from api.db.services.knowledgebase_service import KnowledgebaseService
             from api.db.services.search_service import SearchService
+            from api.db.services.dialog_service import DialogService
+            from api.db.services.file_service import FileService
             num_apps = (
                 DialogService.count_by_tenant_id(tenant_id)
                 + KnowledgebaseService.count_by_tenant_id(tenant_id)
@@ -1288,6 +1288,7 @@ class ParseBillingService:
 
     @classmethod
     def resolve_file_ref(cls, file_ref: dict | None) -> tuple[str, bytes] | None:
+        from api.db.services.file_service import FileService
         if not file_ref:
             return None
 

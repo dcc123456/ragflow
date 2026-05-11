@@ -23,6 +23,7 @@ from api.db.db_models import DB, CanvasTemplate, Permission, User, UserCanvas, A
 from api.db.services.api_service import API4ConversationService
 from api.db.services.common_service import CommonService
 from api.db.services.user_canvas_version import UserCanvasVersionService
+from api.db.services.user_service import UserTenantService
 from common.misc_utils import get_uuid
 from api.utils.api_utils import get_data_openai
 import tiktoken
@@ -146,11 +147,17 @@ class UserCanvasService(CommonService):
 
     @classmethod
     @DB.connection_context()
-    def get_by_tenant_ids(cls, joined_tenant_ids, user_id,
-                          page_number, items_per_page,
-                          orderby, desc, keywords, canvas_category=None
-                          ):
-        from api.db.services.user_service import UserTenantService
+    def get_by_tenant_ids(
+        cls,
+        joined_tenant_ids,
+        user_id,
+        page_number,
+        items_per_page,
+        orderby,
+        desc,
+        keywords,
+        canvas_category=None,
+    ):
         fields = [
             cls.model.id,
             cls.model.avatar,
@@ -226,18 +233,23 @@ class UserCanvasService(CommonService):
 
     @classmethod
     @DB.connection_context()
-    def accessible(cls, canvas_id, user_id):
+    def accessible(cls, canvas_id, tenant_id):
         from api.db.services.user_service import UserTenantService
         e, c = UserCanvasService.get_by_canvas_id(canvas_id)
         if not e:
             return False
 
-        # Direct ownership
-        if c["user_id"] == user_id:
+        tids = [t.tenant_id for t in UserTenantService.query(user_id=tenant_id)]
+        if c["user_id"] == tenant_id:
             return True
+        if c["user_id"] not in tids:
+            return False
+        if c["permission"] != TenantPermission.TEAM.value:
+            return False
+        return True
 
         # Check Permission table
-        user_tenants = UserTenantService.query(user_id=user_id) or []
+        user_tenants = UserTenantService.query(user_id=tenant_id) or []
         for user_tenant in user_tenants:
             if user_tenant.tenant_id != c["user_id"]:
                 continue

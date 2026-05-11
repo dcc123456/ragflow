@@ -22,7 +22,6 @@ import { ParsingCard } from './parsing-card';
 import { ReparseDialog } from './reparse-dialog';
 import { UseChangeDocumentParserShowType } from './use-change-document-parser';
 import { useHandleRunDocumentByIds } from './use-run-document';
-import { UseSaveMetaShowType } from './use-save-meta';
 import { isParserRunning } from './utils';
 const IconMap = {
   [RunningStatus.UNSTART]: (
@@ -38,6 +37,9 @@ const IconMap = {
     <IconFontFill name="reparse" className="text-accent-primary" />
   ),
   [RunningStatus.FAIL]: (
+    <IconFontFill name="reparse" className="text-accent-primary" />
+  ),
+  [RunningStatus.SCHEDULE]: (
     <IconFontFill name="reparse" className="text-accent-primary" />
   ),
 };
@@ -59,7 +61,7 @@ export function ParseDropdownButton({
   record: IDocumentInfo;
 } & UseChangeDocumentParserShowType) {
   const { t } = useTranslation();
-  const { pipeline_id, pipeline_name, parser_id } = record;
+  const { pipeline_id, pipeline_name, chunk_method } = record;
 
   const handleShowChangeParserModal = useCallback(() => {
     showChangeParserModal(record);
@@ -74,18 +76,18 @@ export function ParseDropdownButton({
               <Button variant="static" size="auto" className="capitalize">
                 {pipeline_id
                   ? pipeline_name || pipeline_id
-                  : parser_id === 'naive'
+                  : chunk_method === 'naive'
                     ? 'general'
-                    : parser_id}
+                    : chunk_method}
               </Button>
             </TooltipTrigger>
             <TooltipContent>
               <p className="capitalize">
                 {pipeline_id
                   ? pipeline_name || pipeline_id
-                  : parser_id === 'naive'
+                  : chunk_method === 'naive'
                     ? 'general'
-                    : parser_id}
+                    : chunk_method}
               </p>
             </TooltipContent>
           </Tooltip>
@@ -108,18 +110,8 @@ export function ParsingStatusCell({
   record: IDocumentInfo;
   showLog: (record: IDocumentInfo) => void;
   datasetEditButtonDisabled: boolean;
-} & UseChangeDocumentParserShowType &
-  UseSaveMetaShowType) {
-  const { t } = useTranslation();
-  const {
-    run,
-    parser_id,
-    pipeline_id,
-    pipeline_name,
-    progress,
-    chunk_num,
-    id,
-  } = record;
+} & UseChangeDocumentParserShowType) {
+  const { run, progress, chunk_count, id } = record;
   const operationIcon = IconMap[run];
   const p = Number((progress * 100).toFixed(2));
   const {
@@ -129,7 +121,7 @@ export function ParsingStatusCell({
     hideModal: hideReparseDialogModal,
   } = useHandleRunDocumentByIds(id);
   const isRunning = isParserRunning(run);
-  const isZeroChunk = chunk_num === 0;
+  const isZeroChunk = chunk_count === 0;
 
   const handleOperationIconClick = (option: {
     delete: boolean;
@@ -208,7 +200,7 @@ export function ParsingStatusCell({
           // hidden={false}
           enable_metadata={record?.parser_config?.enable_metadata}
           handleOperationIconClick={handleOperationIconClick}
-          chunk_num={chunk_num}
+          chunk_num={chunk_count}
           visible={reparseDialogVisible}
           hideModal={hideReparseDialogModal}
         ></ReparseDialog>
