@@ -10,6 +10,7 @@ import {
   currentReg,
   parseCitationIndex,
   preprocessLaTeX,
+  replaceRetrievingToSection,
   replaceTextByOldReg,
   replaceThinkToSection,
   showImage,
@@ -66,7 +67,11 @@ const FloatingChatWidgetMarkdown = ({
   const contentWithCursor = useMemo(() => {
     const text = content === '' ? t('chat.searching') : content;
     const nextText = replaceTextByOldReg(text);
-    return pipe(replaceThinkToSection, preprocessLaTeX)(nextText);
+    return pipe(
+      replaceThinkToSection,
+      replaceRetrievingToSection,
+      preprocessLaTeX,
+    )(nextText);
   }, [content, t]);
 
   useEffect(() => {
@@ -295,8 +300,8 @@ const FloatingChatWidgetMarkdown = ({
         className="text-sm leading-relaxed space-y-2 prose-sm max-w-full"
         components={
           {
-            p: ({ children, node, ...props }: any) => (
-              <p {...props}>{children}</p>
+            p: ({ children, ...props }: any) => (
+              <p {...omit(props, 'node')}>{children}</p>
             ),
             'custom-typography': ({ children }: { children: string }) =>
               renderReference(children),

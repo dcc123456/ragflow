@@ -18,6 +18,7 @@ export default {
       name: 'Ad',
       save: 'Kaydet',
       namePlaceholder: 'Lütfen ad girin',
+      descriptionPlaceholder: 'Açıklama girin',
       next: 'İleri',
       create: 'Oluştur',
       edit: 'Düzenle',
@@ -43,6 +44,8 @@ export default {
       languagePlaceholder: 'Dilinizi seçin',
       copy: 'Kopyala',
       copied: 'Kopyalandı',
+      viewMore: 'Daha fazla göster',
+      viewLess: 'Daha az göster',
       comingSoon: 'Yakında',
       download: 'İndir',
       close: 'Kapat',
@@ -59,6 +62,7 @@ export default {
       openInNewTab: 'Yeni sekmede sohbet et',
       previousPage: 'Önceki',
       nextPage: 'Sonraki',
+      previous: 'Önceki',
       add: 'Ekle',
       remove: 'Kaldır',
       search: 'Ara',
@@ -110,11 +114,179 @@ export default {
       setting: 'Kullanıcı ayarları',
       logout: 'Çıkış yap',
       fileManager: 'Dosya',
+      skills: 'Beceriler',
       flow: 'Ajan',
       search: 'Ara',
       welcome: 'Hoş geldiniz',
       dataset: 'Dataset',
       memories: 'Bellek',
+    },
+    skills: {
+      title: 'Beceriler',
+      selectSpace: 'Başlamak için bir beceri alanı seçin',
+      spacePlaceholder: 'Alan adını girin',
+      createSpace: 'Beceri alanı oluştur',
+      createSpaceTitle: 'Yeni beceri alanı oluştur',
+      createSpaceDescription:
+        'Becerilerinizi düzenlemek ve yönetmek için yeni bir alan oluşturun.',
+      spaceName: 'Alan adı',
+      spaceNamePlaceholder: 'örn. benim-alanim',
+      spaceNameRequired: 'Lütfen alan adını girin',
+      noSpaces: 'Henüz beceri alanı yok. İlkini oluşturun!',
+      enterSpace: 'Gir',
+      spaceCreated: 'Beceri alanı başarıyla oluşturuldu',
+      spaceDeleted: 'Beceri alanı başarıyla silindi',
+      fetchError: 'Beceriler alınamadı',
+      deleteSpaceTitle: 'Beceri alanını sil',
+      deleteSpaceDescription:
+        'Bu beceri alanını silmek istediğinizden emin misiniz? Bu işlem geri alınamaz ve bu alandaki tüm beceriler kalıcı olarak silinir.',
+      deleteSpaceName: 'Alan adı',
+      uploadSuccess: 'Beceri başarıyla yüklendi',
+      uploadError: 'Beceri yüklenemedi',
+      deleteSuccess: 'Beceri başarıyla silindi',
+      deleteError: 'Beceri silinemedi',
+      skillExists:
+        'Bu ada sahip bir beceri zaten var. Lütfen önce onu silin veya farklı bir ad kullanın.',
+      uploadSkill: 'Beceri yükle',
+      searchPlaceholder: 'Beceri ara...',
+      noSkills: 'Henüz beceri yok. İlk becerinizi yükleyin.',
+      noSearchResults: 'Aramanızla eşleşen beceri yok',
+      filesCount: '{{count}} dosya',
+      foldersCount: '{{count}} klasör',
+      pageInfo: 'Sayfa {{current}} / {{total}}',
+      totalSkills: 'Toplam {{total}} beceri',
+      backToSkills: 'Becerilere dön',
+      selectFileToView: 'Görüntülemek için bir dosya seçin',
+      skillName: 'Beceri adı',
+      skillNamePlaceholder: 'örn. harika-becerim',
+      skillNameHelp: 'Yalnızca harf, rakam, tire ve alt çizgi kullanılabilir',
+      source: 'Kaynak',
+      version: 'Sürüm',
+      skillVersion: 'Sürüm',
+      skillVersionPlaceholder: 'örn. 1.0.0',
+      versionFormatHelp: 'Sürüm semver formatında olmalıdır (örn. 1.0.0)',
+      versionRequired: 'Sürüm zorunludur',
+      selectFilesOrFolder: 'Dosya veya klasör seçin',
+      uploadDescription:
+        'Beceri dosyalarını yükleyin. Dosyaları sürükleyip bırakabilir veya bir klasör seçebilirsiniz.',
+      selectFolder: 'Klasör seç',
+      dragFilesHint: 'veya dosyaları aşağıya sürükleyin',
+      dragFilesTitle: 'Beceri klasörünü buraya sürükleyin',
+      dragFilesDescription:
+        'Bir beceri klasörünü buraya sürükleyip bırakın veya aşağıdaki "Klasör Seç" düğmesini kullanın.',
+      filesSelected: '{{count}} dosya seçildi',
+      uploading: 'Yükleniyor...',
+      files: 'Dosyalar',
+      noFiles: 'Dosya yok',
+      versionHistory: 'Sürüm geçmişi',
+      selectVersion: 'Önizlemek için sürüm seçin',
+      latest: 'En son',
+      metadata: {
+        basic: 'Temel bilgi',
+        emoji: 'Emoji',
+        skillKey: 'Beceri anahtarı',
+        always: 'Her zaman aktif',
+        primaryEnv: 'Birincil Ortam Değişkeni',
+        requires: 'Gereksinimler',
+        requiredBins: 'Zorunlu İkili Dosyalar',
+        requiredEnv: 'Zorunlu Ortam Değişkenleri',
+        anyBins: 'En Az Biri Zorunlu',
+        install: 'Bağımlılıklar',
+        links: 'Bağlantılar',
+        homepage: 'Ana sayfa',
+        repository: 'Depo',
+        documentation: 'Dokümantasyon',
+      },
+      validation: {
+        missing_skill_md:
+          'Geçersiz beceri: SKILL.md bulunamadı. Lütfen beceri dizininizin geçerli bir SKILL.md dosyası içerdiğinden emin olun.',
+        invalid_frontmatter:
+          'Geçersiz beceri: SKILL.md geçerli frontmatter içermelidir (--- ile başlamalı ve bitmelidir).',
+        missing_name:
+          'Geçersiz beceri: SKILL.md frontmatter bir "name" alanı içermelidir.',
+        invalid_name_format:
+          'Geçersiz beceri: "name" küçük harfli ve URL uyumlu olmalıdır (yalnızca harf, rakam ve tire).',
+        invalid_version:
+          'Geçersiz beceri: "version" geçerli semver olmalıdır (örn. 1.0.0).',
+        invalid_metadata:
+          'Geçersiz beceri: meta veriler geçersiz alanlar içeriyor.',
+        invalid_file_type:
+          'Geçersiz beceri: Yalnızca metin tabanlı dosyalara izin verilir.',
+        invalid_path:
+          'Geçersiz beceri: Dosya yolu geçersiz karakterler içeriyor.',
+        file_too_large:
+          'Geçersiz beceri: Tekil dosya boyutu 5MB sınırını aşıyor.',
+        total_size_exceeded:
+          'Geçersiz beceri: Toplam paket boyutu 50MB sınırını aşıyor.',
+        no_files: 'Dosya seçilmedi. Lütfen bir beceri klasörü seçin.',
+        noValidFiles:
+          'Geçerli dosya bulunamadı. Lütfen seçiminizi kontrol edin.',
+        junkFilesFound:
+          'Geçici dosyalar algılandı (örn. .DS_Store). Lütfen yüklemeden önce bunları kaldırın.',
+        read_failed: 'Geçersiz beceri: SKILL.md dosyası okunamadı.',
+        invalid: 'Geçersiz beceri formatı.',
+        valid: 'Geçerli beceri formatı. Yüklemeye hazır.',
+        versionExists:
+          'Bu sürüm zaten mevcut. Lütfen farklı bir sürüm numarası kullanın.',
+        error: 'Doğrulama başarısız',
+      },
+      parsedMetadata: 'SKILL.md dosyasından ayrıştırıldı:',
+      addSkill: 'Beceri Ekle',
+      upload: 'Yükle',
+      importFromGit: "Git'ten içe aktar",
+      gitPlatform: 'Platform',
+      repoUrl: "Depo URL'si",
+      repoUrlHelp: "İsteğe bağlı yol içeren depo URL'sini destekler",
+      accessToken: 'Erişim Tokenı',
+      githubTokenHelp:
+        'Özel depolar veya daha yüksek hız limitleri için (5000 istek/saat)',
+      giteeTokenHelp:
+        'Özel depolar veya daha yüksek hız limitleri için (2000 istek/saat)',
+      rateLimitInfo: 'Hız Limiti Bilgisi',
+      githubRateLimit:
+        'Herkese açık depolar: IP başına 60 istek/saat. 5000 istek/saat için token kullanın.',
+      giteeRateLimit:
+        'Herkese açık depolar: IP başına 1000 istek/saat. 2000 istek/saat için token kullanın.',
+      import: 'İçe aktar',
+      importing: 'İçe aktarılıyor...',
+      configureSearch: 'Aramayı Yapılandır',
+    },
+    skillSearch: {
+      configTitle: 'Beceri Arama Yapılandırması',
+      configDesc:
+        'Becerilerin nasıl indeksleneceğini ve aranacağını yapılandırın',
+      embeddingModel: 'Embedding Modeli',
+      embeddingModelPlaceholder: 'Bir embedding modeli seçin',
+      vectorSimilarityWeight: 'Vektör Benzerlik Ağırlığı',
+      similarityThreshold: 'Benzerlik Eşiği',
+      topK: 'İlk K Sonuç',
+      indexFields: 'İndeks Alanları',
+      indexFieldsDesc: 'Arama indeksine dahil edilecek alanları seçin',
+      fieldName: 'Ad',
+      fieldNameDesc: 'Beceri adı',
+      fieldTags: 'Etiketler',
+      fieldTagsDesc: 'Beceri etiketleri',
+      fieldDescription: 'Açıklama',
+      fieldDescriptionDesc: 'Beceri açıklaması',
+      fieldContent: 'İçerik',
+      fieldContentDesc: 'Beceri içeriği (örn. README)',
+      weight: 'Ağırlık',
+      pureVector: 'Yalnızca Vektör',
+      hybrid: 'Hibrit',
+      keyword: 'Anahtar kelime',
+      vector: 'Vektör',
+      keywordOnly: 'Yalnızca Anahtar Kelime',
+      balanced: 'Dengeli',
+      vectorOnly: 'Yalnızca Vektör',
+      reindex: 'Tümünü Yeniden İndeksle',
+      reindexing: 'Yeniden indeksleniyor...',
+      reindexSuccess: 'Başarıyla yeniden indekslendi',
+      pleaseSelectEmbeddingModel: 'Lütfen bir embedding modeli seçin',
+      saveSuccess: 'Başarıyla kaydedildi',
+      saveError: 'Kaydedilemedi',
+      semanticSearchPlaceholder: 'Becerileri anlama göre ara...',
+      switchToSemantic: 'Anlamsal aramaya geç',
+      switchToLocal: 'Yerel aramaya geç',
     },
     memories: {
       llmTooltip:
@@ -205,6 +377,7 @@ Prosedürel Bellek: Öğrenilen beceriler, alışkanlıklar ve otomatik prosedü
       searchKnowledgePlaceholder: 'Ara',
       noMoreData: `Hepsi bu. Başka bir şey yok.`,
       parserRequired: 'Parçalama yöntemi zorunludur',
+      dataFlowRequired: 'Veri akışı zorunludur',
     },
     knowledgeDetails: {
       metadata: {
@@ -295,6 +468,7 @@ Prosedürel Bellek: Öğrenilen beceriler, alışkanlıklar ve otomatik prosedü
       datasetLog: 'Dataset günlüğü',
       created: 'Oluşturuldu',
       learnMore: 'Yerleşik hat tanıtımı',
+      dataPipelineTitle: 'Alım hattı',
       general: 'Genel',
       chunkMethodTab: 'Parçalama yöntemi',
       testResults: 'Sonuçlar',
@@ -949,6 +1123,9 @@ Bu otomatik etiketleme özelliği, mevcut datasete alanına özgü bilgi katman�
       Verify: 'Doğrula',
       keyValid: 'API anahtarınız geçerli.',
       keyInvalid: 'API anahtarınız geçersiz.',
+      enableToolCall: 'Araç çağrısını etkinleştir',
+      enableToolCallTip:
+        'Seçilen model türü araç çağrısını destekliyorsa bu modelin araçları çağırmasına izin verin.',
       deleteModel: 'Modeli sil',
       bedrockCredentialsHint:
         'İpucu: AWS IAM kimlik doğrulamasını kullanmak için Erişim Anahtarı / Gizli Anahtarı boş bırakın.',
@@ -991,6 +1168,8 @@ Bu otomatik etiketleme özelliği, mevcut datasete alanına özgü bilgi katman�
       newDocs: 'Yeni belgeler',
       timeStarted: 'Başlangıç zamanı',
       log: 'Günlük',
+      rssDescription:
+        "Herkese açık bir RSS veya Atom akışına bağlanın ve akış girdilerini dataset'inize senkronize edin.",
       confluenceDescription:
         'Belgeleri aramak için Confluence çalışma alanınızı entegre edin.',
       s3Description:
@@ -1465,6 +1644,25 @@ Bu otomatik etiketleme özelliği, mevcut datasete alanına özgü bilgi katman�
         author: 'Yazar',
         sectionTitle: 'Bölüm başlığı',
       },
+      includeHeadingContent: 'Üst başlık içeriğini ayır',
+      includeHeadingContentTip:
+        'Etkinleştirildiğinde parçalar yalnızca başlık yolunu ve içeriğini içerir; üst başlıktan hemen sonra gelen içerik ayrı bir parça olarak tutulur.',
+      rootAsHeading: 'İlk parçayı global bağlam olarak ayarla',
+      rootAsHeadingTip:
+        'Belge hiyerarşisi boyunca tutarlı bağlamı korumak için ilk bölümü global başlık olarak ele alır. İlk bölümün özneyi tanımladığı özgeçmişler için idealdir.',
+      hierarchyTip: `Bir başlık ağacı oluşturur ve her biri tam ata yolunu taşıyan kendi içinde yeterli parçalar üretir (örn. Bölüm 1 › Kısım 3 › Alt bölüm 2 + gövde metni).
+
+En uygun olduğu durumlar: Her parçanın hiyerarşideki konumuyla tanımlanması gereken kanunlar, yönetmelikler, sözleşmeler ve teknik şartnameler gibi yüksek düzeyde yapılandırılmış metinler.`,
+      groupTip: `Belgeyi seçilen başlık düzeyinde düz şekilde böler ve anlamsal akışı sağlamak için bitişik küçük bölümleri birleştirir. Parçalar ata yolunu içermez.
+
+En uygun olduğu durumlar: Anlatı bütünlüğünün bitişik paragrafları birlikte tutmaya bağlı olduğu kitaplar, kılavuzlar, raporlar ve makaleler gibi akıcı, bağlamsal olarak bağlantılı içeriğe sahip belgeler.`,
+      enableMultiColumn: 'Çok sütunlu düzeni algıla',
+      enableMultiColumnTip:
+        'Doğru okuma sırasını korumak için çok sütunlu sayfa düzenlerini algılar ve ayrıştırır. İki sütunlu veya gazete tarzı düzene sahip PDF ya da belgelerde bunu açın.',
+      removeToc: 'Orijinal içindekiler tablosunu kaldır',
+      removeTocTip:
+        'Orijinal PDF içinde bulunan içindekiler tablosunu kaldırır; böylece normal içerik olarak ayrıştırılmaz veya alım için parçalanmaz.',
+      removeHeaderFooter: 'Üst bilgi ve alt bilgiyi kaldır',
       autoPlay: 'Sesi otomatik oynat',
       downloadFileTypeTip: 'İndirilecek dosya türü',
       downloadFileType: 'Dosya türünü indir',
@@ -1512,6 +1710,13 @@ Bu otomatik etiketleme özelliği, mevcut datasete alanına özgü bilgi katman�
       tab: 'Sekme',
       space: 'Boşluk',
       delimiters: 'Sınırlayıcılar',
+      one: 'Tek',
+      oneChunkTitle: 'Not',
+      oneChunkDescription:
+        'Ayrıştırılan tüm bölümler sırayla tek bir parçada birleştirilecektir.',
+      flattenMediaToText: 'Görsel modeli devre dışı bırak',
+      flattenMediaToTextTip:
+        'Görüntü ve tablo bölümlerini düz metin olarak ele alır ve görsel geliştirmeyi atlar.',
       enableChildrenDelimiters: 'Alt parçalar alım için kullanılır',
       merge: 'Birleştir',
       split: 'Böl',
@@ -2033,6 +2238,9 @@ Bu otomatik etiketleme özelliği, mevcut datasete alanına özgü bilgi katman�
       }`,
       datatype: 'HTTP isteğinin MIME türü',
       insertVariableTip: `/ Değişken ekle`,
+      mergePath: 'Yolu birleştir',
+      mergePathTip:
+        'Etkinleştirildiğinde, bir değişkenden hemen sonra gelen nokta soneki {node@result.name} gibi bir yol sorgusuyla birleştirilir.',
       historyVersion: 'Sürüm geçmişi',
       version: {
         created: 'Oluşturuldu',
@@ -2181,10 +2389,12 @@ Bu otomatik etiketleme özelliği, mevcut datasete alanına özgü bilgi katman�
       tokenizerRequired: 'Lütfen önce İndeksleyici düğümü ekleyin',
       tokenizerDescription:
         'Metni seçilen arama yöntemine bağlı olarak gerekli veri yapısına dönüştürür.',
+      tokenChunker: 'Token Parçalayıcı',
       tokenChunkerDescription:
         'Metni isteğe bağlı sınırlayıcılar ve örtüşme ile token uzunluğuna göre parçalara böler.',
       titleChunkerDescription:
-        'Belgeleri daha ince kontrol için regex kurallarıyla başlık hiyerarşisine göre bölümlere böler.',
+        'Belgeleri başlık hiyerarşisine göre bölümlere ayırır. Regex kurallarıyla başlık düzeylerini tanımlayın, ardından parçaların nasıl yapılandırılacağını kontrol etmek için Hiyerarşi veya Grup modunu seçin.',
+      titleChunker: 'Başlık Parçalayıcı',
       extractor: 'Dönüştürücü',
       extractorDescription:
         'Belge parçalarından yapılandırılmış içgörüler çıkarmak için LLM kullanır.',
@@ -2195,17 +2405,22 @@ Bu otomatik etiketleme özelliği, mevcut datasete alanına özgü bilgi katman�
         spreadsheet: 'Elektronik tablo',
         image: 'Görüntü',
         email: 'E-posta',
-        'text&markdown': 'Metin ve Biçimlendirme',
-        code: 'Code',
+        markdown: 'Markdown',
+        'text&code': 'Metin ve Kod',
         html: 'HTML',
-        word: 'Word',
+        doc: 'DOC',
+        docx: 'DOCX',
         slides: 'PPTX',
         audio: 'Ses',
         video: 'Video',
       },
       fields: 'Alan',
       addParser: 'Ayrıştırıcı Ekle',
+      rule: 'Kural',
+      addRule: 'Kural ekle',
+      group: 'Grup',
       hierarchy: 'Hiyerarşi',
+      addRegularExpressions: 'Düzenli ifadeler ekle',
       regularExpressions: 'Düzenli İfadeler',
       overlappedPercent: 'Örtüşme yüzdesi (%)',
       searchMethod: 'Arama yöntemi',
@@ -2300,7 +2515,7 @@ Temel Talimatlar:
         renameKeys: 'Anahtarları yeniden adlandır',
       },
       ListOperationsOptions: {
-        topN: 'İlk N',
+        nth: 'N. öğe',
         head: 'Baş',
         tail: 'Kuyruk',
         sort: 'Sırala',
@@ -2308,6 +2523,9 @@ Temel Talimatlar:
         dropDuplicates: 'Tekrarları kaldır',
       },
       sortMethod: 'Sıralama yöntemi',
+      strictMode: 'Katı mod',
+      strictModeTip:
+        'Kapalıyken esnek davranış kullanılır ve geçersiz n için boş sonuç döndürülür. Açıkken katı davranış kullanılır ve aralık dışı n için hata yükseltilir.',
       SortMethodOptions: {
         asc: 'Artan',
         desc: 'Azalan',
@@ -2368,6 +2586,15 @@ Temel Talimatlar:
       },
       saveToMemory: 'Belleğe kaydet',
       retrievalFrom: 'Şuradan al',
+      id: 'Kimlik',
+      state: 'Durum',
+      number: 'Sayı',
+      latestDate: 'Son tarih',
+      createDate: 'Oluşturma tarihi',
+      noDataToExport: 'Dışa aktarılacak veri yok',
+      success: 'Başarılı',
+      failed: 'Başarısız',
+      logTitle: 'Başlık',
     },
     llmTools: {
       bad_calculator: {
@@ -2520,6 +2747,8 @@ Temel Talimatlar:
       notFoundSearch: 'Arama uygulaması bulunamadı',
       memoryTitle: 'Henüz bellek oluşturulmadı',
       notFoundMemory: 'Bellek bulunamadı',
+      skillsTitle: 'Henüz beceri alanı oluşturulmadı',
+      notFoundSkills: 'Beceri alanı bulunamadı',
       addNow: 'Şimdi Ekle',
     },
     admin: {

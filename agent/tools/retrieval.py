@@ -136,7 +136,11 @@ class Retrieval(ToolBase, ABC):
 
         doc_ids = []
         if self._param.meta_data_filter != {}:
-            metas = DocMetadataService.get_flatted_meta_by_kbs(kb_ids)
+            # Defer the (potentially expensive) metadata table load — manual
+            # filters served by ES push-down never need it. The loader is
+            # invoked at most once per request by ``apply_meta_data_filter``.
+            def _load_metas() -> dict:
+                return DocMetadataService.get_flatted_meta_by_kbs(kb_ids)
 
             def _resolve_manual_filter(flt: dict) -> dict:
                 pat = re.compile(self.variable_ref_patt)
@@ -175,11 +179,13 @@ class Retrieval(ToolBase, ABC):
 
             doc_ids = await apply_meta_data_filter(
                 self._param.meta_data_filter,
-                metas,
+                None,
                 query,
                 chat_mdl,
                 doc_ids,
                 _resolve_manual_filter if self._param.meta_data_filter.get("method") == "manual" else None,
+                kb_ids=kb_ids,
+                metas_loader=_load_metas,
             )
 
         doc_ids, _, err_msg = filter_accessible_doc_ids_for_user(
