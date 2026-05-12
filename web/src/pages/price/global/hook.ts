@@ -18,7 +18,7 @@ export interface ConfirmPriceEventDetail {
 }
 
 export interface UpgradeTipsEventDetail {
-  type: 'dataset' | 'team-member' | 'apps' | 'points' | 'points';
+  type: 'storage' | 'team-member' | 'apps' | 'points' | 'points';
   message: string;
   container?: HTMLElement;
 }
@@ -61,21 +61,21 @@ export const showPriceModal = ({ code, detail }: IPriceData) => {
     case PriceCode.SeatsLimit:
       showUpgradeTipsModal({
         type: 'team-member',
-        message: `Your dataset is full (${detail.current}/${detail.limit}). `,
+        message: `You've reached your team member count limit for your plan (${detail.current}/${detail.limit}). `,
         container: nextLayoutRef.current || undefined,
       });
       return true;
     case PriceCode.AppsLimit:
       showUpgradeTipsModal({
         type: 'apps',
-        message: `Your app is full (${detail.current}/${detail.limit}). `,
+        message: `You've reached your app count limit for your plan (${detail.current}/${detail.limit}). `,
         container: nextLayoutRef.current || undefined,
       });
       return true;
     case PriceCode.StorageLimit:
       showUpgradeTipsModal({
-        type: 'dataset',
-        message: `Your dataset is full (${detail.current}GB/${detail.limit} GB}). `,
+        type: 'storage',
+        message: `You've reached your storage limit for your plan (${detail.current}GB/${detail.limit} GB}). `,
         container: nextLayoutRef.current || undefined,
       });
       return true;
@@ -94,7 +94,7 @@ export const showPriceModal = ({ code, detail }: IPriceData) => {
 export const useShowUpgradeTipsModal = () => {
   const [upgradeTips, setUpgradeTips] = useState<{
     isOpen: boolean;
-    type: 'dataset' | 'team-member' | 'apps' | 'points' | null;
+    type: 'storage' | 'team-member' | 'apps' | 'points' | null;
     message: string;
     container?: HTMLElement;
   }>({
@@ -106,7 +106,7 @@ export const useShowUpgradeTipsModal = () => {
 
   const showUpgradeTips = useCallback(
     (options: {
-      type: 'dataset' | 'team-member' | 'apps' | 'points' | 'points';
+      type: 'storage' | 'team-member' | 'apps' | 'points' | 'points';
       message: string;
       container?: HTMLElement;
     }) => {

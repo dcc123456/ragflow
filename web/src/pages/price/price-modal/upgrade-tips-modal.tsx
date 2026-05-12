@@ -9,7 +9,7 @@ import UpgradeButton from './to-upgrade-button';
 interface CustomModalProps {
   isOpen: boolean;
   onClose: () => void;
-  type: 'dataset' | 'team-member' | 'apps' | 'points';
+  type: 'storage' | 'team-member' | 'apps' | 'points';
   message: string;
   container?: HTMLElement;
 }
@@ -30,7 +30,7 @@ export const UpgradeTipsModal: React.FC<CustomModalProps> = ({
             className="w-6 h-6 text-text-primary" /* ...svg attributes... */
           />
         )}
-        {type === 'dataset' && (
+        {type === 'storage' && (
           <DatabaseZap
             className="w-6 h-6 text-text-primary" /* ...svg attributes... */
           />
@@ -46,10 +46,12 @@ export const UpgradeTipsModal: React.FC<CustomModalProps> = ({
     return (
       <div className="flex items-center justify-end gap-2 text-xs">
         {type === 'apps' && <div>Upgrade to get more apps</div>}
-        {type === 'dataset' && <div>Upgrade to get more storage</div>}
-        {type === 'team-member' && <div>Upgrade to invite more</div>}
+        {type === 'storage' && <div>Upgrade to get more storage</div>}
+        {/* {type === 'team-member' && <div>Upgrade to invite more</div>} */}
         {type === 'points' && <div>Upgrade to get more points</div>}
-        <UpgradeButton isModal={true} onCallBack={onClose} />
+        {type !== 'team-member' && (
+          <UpgradeButton isModal={true} onCallBack={onClose} />
+        )}
       </div>
     );
   }, [type, onClose]);
@@ -77,7 +79,7 @@ export const UpgradeTipsModal: React.FC<CustomModalProps> = ({
 
 let currentModal: { destroy: () => void } | null = null;
 interface IShowUpgradeTipsModalOptions {
-  type: 'dataset' | 'team-member' | 'apps' | 'points';
+  type: 'storage' | 'team-member' | 'apps' | 'points';
   message: string;
   container?: HTMLElement;
 }
