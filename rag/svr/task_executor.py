@@ -20,7 +20,11 @@ start_ts = time.time()
 # LiteLLM fetches a model cost map from GitHub during import unless this is set.
 # Parser pods should not block startup on external network access.
 import os
+<<<<<<< HEAD
 os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")  # no internet, save about 10s
+=======
+os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
+>>>>>>> 5a00a7d52 (Reduce task_executor.py start time from 30s to 10s (#417))
 
 from common.misc_utils import thread_pool_exec
 
