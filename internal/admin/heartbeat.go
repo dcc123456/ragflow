@@ -3,7 +3,6 @@ package admin
 import (
 	"encoding/json"
 	"ragflow/internal/common"
-	"ragflow/internal/logger"
 	"ragflow/internal/utility"
 	"sync"
 	"time"
@@ -79,7 +78,6 @@ func (s *ServerStatusStore) UpdateStatus(serverName string, status *common.BaseM
 		s.clusterInfo.SystemInfos = append(s.clusterInfo.SystemInfos, systemInfo)
 		// Sort system infos, order by MachineID, BoardSerial, CPU, Disk, MAC of Network, and MemoryInfo
 		utility.SortSystemInfos(s.clusterInfo.SystemInfos)
-		logger.Debug("Adding new system info to cluster info")
 	}
 }
 

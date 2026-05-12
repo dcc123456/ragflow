@@ -1577,6 +1577,7 @@ async def async_ask(question, kb_ids, tenant_id, chat_llm_name=None, search_conf
     chat_llm_name = search_config.get("chat_id", chat_llm_name)
     rerank_id = search_config.get("rerank_id", "")
     meta_data_filter = search_config.get("meta_data_filter")
+    include_reference_metadata, metadata_fields = _resolve_reference_metadata(search_config)
     if not user_id:
         user_id = tenant_id
 

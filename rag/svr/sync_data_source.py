@@ -220,7 +220,7 @@ class SyncBase:
                 docs.append(d)
 
             try:
-                if task["folder_name"]:
+                if task.get("folder_name"):
                     err, dids = SyncLogsService.duplicate_and_parse(
                         None, docs, task["tenant_id"],
                         f"{self.SOURCE_NAME}/{task['connector_id']}",

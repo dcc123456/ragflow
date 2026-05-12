@@ -309,8 +309,6 @@ async def update_dataset(tenant_id: str, dataset_id: str, req: dict):
     if "embd_id" in req:
         if not req["embd_id"]:
             req["embd_id"] = kb.embd_id
-        if kb.chunk_num != 0 and req["embd_id"] != kb.embd_id:
-            return False, f"When chunk_num ({kb.chunk_num}) > 0, embedding_model must remain {kb.embd_id}"
         ok, err = verify_embedding_availability(req["embd_id"], kb.tenant_id)
         if not ok:
             return False, err

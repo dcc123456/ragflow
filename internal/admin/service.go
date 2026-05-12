@@ -36,7 +36,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
+	"sync"
 	"go.uber.org/zap"
 )
 
@@ -64,12 +64,12 @@ func StartUpdateRecordTask() {
 			// interval := 24* time.Hour
 			interval := time.Duration(TimeRecordSaveInterval) * time.Second
 			if err := StartTimeRecordService(interval); err != nil {
-				logger.Warn(err.Error())
+				common.Warn(err.Error())
 				//logger.Warn("Failed to update time record", zap.Error(err))
 			}
 		})
 		globalUpdateRecordTask.Start()
-		logger.Info("Time record task is scheduled task started")
+		common.Info("Time record task is scheduled task started")
 	})
 }
 
@@ -1753,7 +1753,7 @@ func (s *Service) HandleHeartbeat(message *common.BaseMessage) (common.ErrorCode
 		errorCode := CheckLicenseValidity(&licenseStatus)
 		if errorCode != common.CodeLicenseValid {
 			SetLicenseStatus(errorCode)
-			logger.Warn(errorCode.Message())
+			common.Warn(errorCode.Message())
 			StopUpdateRecordTask()
 			return errorCode, "Invalid license"
 		}
@@ -1763,12 +1763,12 @@ func (s *Service) HandleHeartbeat(message *common.BaseMessage) (common.ErrorCode
 			// Suppose > 50 heartbeats, hardware info will be completely collected.
 			err := ValidateLicenseDigest(licenseStatus.CurrentLicense.Digest)
 			if err != nil {
-				logger.Warn(fmt.Sprintf("Error validating license digest: %v", err))
+				common.Warn(fmt.Sprintf("Error validating license digest: %v", err))
 				return common.CodeLicenseDigestError, ""
 			}
 		}
 
-		logger.Debug("License is loaded and valid")
+		common.Debug("License is loaded and valid")
 		return common.CodeLicenseValid, ""
 	}
 	return licenseStatus.Code, ""

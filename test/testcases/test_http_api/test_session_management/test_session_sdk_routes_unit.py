@@ -278,7 +278,18 @@ def _load_session_module(monkeypatch):
     api_utils_mod.server_error_response = lambda e: {"code": _StubRetCode.SERVER_ERROR, "message": str(e)}
     api_utils_mod.token_required = lambda func: func
     api_utils_mod.validate_request = lambda *_args, **_kwargs: (lambda func: func)
+    api_utils_mod._extract_auth_token = (
+        lambda auth_header: auth_header.split(" ", 1)[1]
+        if isinstance(auth_header, str) and auth_header.startswith("Bearer ")
+        else ""
+    )
     monkeypatch.setitem(sys.modules, "api.utils.api_utils", api_utils_mod)
+
+    permission_utils_mod = ModuleType("api.utils.permission_utils")
+    permission_utils_mod.filter_accessible_doc_ids_for_user = (
+        lambda *_args, **_kwargs: ([], [], "")
+    )
+    monkeypatch.setitem(sys.modules, "api.utils.permission_utils", permission_utils_mod)
 
     rag_app_tag_mod = ModuleType("rag.app.tag")
     rag_app_tag_mod.label_question = lambda *_args, **_kwargs: {}
@@ -629,7 +640,13 @@ def _load_session_module(monkeypatch):
 
     conversation_service_mod = ModuleType("api.db.services.conversation_service")
     conversation_service_mod.ConversationService = SimpleNamespace(query=lambda **_kwargs: [])
-    conversation_service_mod.async_iframe_completion = lambda *_args, **_kwargs: None
+
+    async def _denied_iframe_completion(*_args, **_kwargs):
+        raise AssertionError("no access to this chatbot")
+        if False:
+            yield None
+
+    conversation_service_mod.async_iframe_completion = _denied_iframe_completion
     conversation_service_mod.async_completion = lambda *_args, **_kwargs: None
     monkeypatch.setitem(sys.modules, "api.db.services.conversation_service", conversation_service_mod)
 
@@ -1321,7 +1338,7 @@ def test_chatbot_routes_auth_stream_nonstream_unit(monkeypatch):
     _run(_collect_stream(resp.body))
     assert stream_calls[-1][0] == "dialog-1"
     assert stream_calls[-1][1]["quote"] is False
-    assert stream_calls[-1][1]["tenant_id"] == "tenant-1"
+    assert stream_calls[-1][1]["user_id"] == "tenant-1"
 
     async def _iframe_nonstream(_dialog_id, **_req):
         yield {"answer": "non-stream"}

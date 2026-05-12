@@ -208,6 +208,7 @@ def _load_doc_module(monkeypatch):
         filter_update=lambda *_args, **_kwargs: 0,
         get_by_id=lambda *_args, **_kwargs: (False, None),
         update_by_id=lambda *_args, **_kwargs: True,
+        run=lambda *_args, **_kwargs: None,
         decrement_chunk_num=lambda *_args, **_kwargs: None,
         get_embd_id=lambda *_args, **_kwargs: "",
         get_tenant_embd_id=lambda *_args, **_kwargs: None,
@@ -256,6 +257,20 @@ def _load_doc_module(monkeypatch):
 
     api_utils_mod.token_required = _token_required
     monkeypatch.setitem(sys.modules, "api.utils.api_utils", api_utils_mod)
+
+    permission_utils_mod = ModuleType("api.utils.permission_utils")
+    permission_utils_mod.filter_accessible_doc_ids_for_user = (
+        lambda *_args, **_kwargs: ([], [], "")
+    )
+    monkeypatch.setitem(sys.modules, "api.utils.permission_utils", permission_utils_mod)
+
+    billing_service_mod = ModuleType("api.db.services.billing_service")
+
+    class _StubInsufficientPointsError(Exception):
+        pass
+
+    billing_service_mod.InsufficientPointsError = _StubInsufficientPointsError
+    monkeypatch.setitem(sys.modules, "api.db.services.billing_service", billing_service_mod)
 
     common_metadata_utils_mod = ModuleType("common.metadata_utils")
     common_metadata_utils_mod.convert_conditions = lambda conditions: conditions
@@ -546,7 +561,6 @@ class TestDocRoutesUnit:
         module = _load_doc_module(monkeypatch)
         _patch_send_file(monkeypatch, module)
         _patch_storage(monkeypatch, module, file_stream=b"")
-        monkeypatch.setattr(module.DocumentService, "get_tenant_id", lambda _doc_id: "tenant-1")
         res = _run(module.download.__wrapped__("tenant-1", "ds-1", ""))
         assert res["message"] == "Specify document_id please."
         monkeypatch.setattr(module.KnowledgebaseService, "query", lambda **_kwargs: [])

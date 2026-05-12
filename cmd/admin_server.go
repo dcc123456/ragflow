@@ -101,7 +101,7 @@ func main() {
 	}
 
 	if err := admin.InitLicense(); err != nil {
-		logger.Fatal("Fail to init license", zap.Error(err))
+		common.Fatal("Fail to init license", zap.Error(err))
 	}
 
 	adminService := admin.NewService()
@@ -172,7 +172,7 @@ func main() {
 
 	// Stop global cleanup scheduled task
 	admin.StopUpdateRecordTask()
-	logger.Info("Time record update task stopped")
+	common.Info("Time record update task stopped")
 
 	// Create context with timeout for graceful shutdown
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

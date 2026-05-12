@@ -176,17 +176,7 @@ async def chatbot_completions(dialog_id):
                 raise AssertionError("Session not found!")
             if conv.dialog_id != dialog_id:
                 raise AssertionError("Session does not belong to this dialog")
-            if tenant_id and conv.user_id and conv.user_id != tenant_id:
-                raise AssertionError("Session does not belong to this tenant")
-
-    def _validate_iframe_access():
-        if req.get("session_id"):
-            exists, conv = API4ConversationService.get_by_id(req.get("session_id"))
-            if not exists:
-                raise AssertionError("Session not found!")
-            if conv.dialog_id != dialog_id:
-                raise AssertionError("Session does not belong to this dialog")
-            if tenant_id and conv.user_id and conv.user_id != tenant_id:
+            if operator_user_id and conv.user_id and conv.user_id != operator_user_id:
                 raise AssertionError("Session does not belong to this tenant")
 
     if req.get("stream", True):
@@ -196,9 +186,9 @@ async def chatbot_completions(dialog_id):
             logger.warning(
                 "Denied chatbot completion stream: reason=%s tenant_id=%s dialog_id=%s user_id=%s session_id=%s",
                 "no access to this chatbot",
-                tenant_id,
+                operator_user_id,
                 dialog_id,
-                req.get("user_id"),
+                operator_user_id,
                 req.get("session_id"),
             )
             return get_error_data_result(message="Authentication error: no access to this chatbot!")
@@ -218,9 +208,9 @@ async def chatbot_completions(dialog_id):
         logger.warning(
             "Denied chatbot completion: reason=%s tenant_id=%s dialog_id=%s user_id=%s session_id=%s",
             "no access to this chatbot",
-            tenant_id,
+            operator_user_id,
             dialog_id,
-            req.get("user_id"),
+            operator_user_id,
             req.get("session_id"),
         )
         return get_error_data_result(message="Authentication error: no access to this chatbot!")

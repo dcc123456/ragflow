@@ -643,9 +643,7 @@ class KnowledgebaseService(CommonService):
         docs = docs.dicts()
         if not docs:
             return False
-
-        if kb.tenant_id == user_id:
-            return True
+        return True
 
     @classmethod
     @DB.connection_context()
