@@ -113,6 +113,40 @@ class RAGFlowPdfParser:
         self.page_from = 0
         self.column_num = 1
 
+    def release_page_cache(self):
+        for img in getattr(self, "page_images", []) or []:
+            try:
+                img.close()
+            except Exception:
+                pass
+
+        for img, _ in getattr(self, "tabls_cells", []) or []:
+            if isinstance(img, Image.Image):
+                try:
+                    img.close()
+                except Exception:
+                    pass
+
+        pdf = getattr(self, "pdf", None)
+        if pdf is not None:
+            try:
+                pdf.close()
+            except Exception:
+                pass
+
+        self.pdf = None
+        self.page_images = []
+        self.page_chars = []
+        self.page_layout = []
+        self.page_cum_height = [0]
+        self.mean_height = []
+        self.mean_width = []
+        self.lefted_chars = []
+        self.boxes = []
+        self.garbages = {}
+        self.tb_cpns = []
+        self.tabls_cells = []
+
     def __char_width(self, c):
         return (c["x1"] - c["x0"]) // max(len(c["text"]), 1)
 
@@ -979,6 +1013,16 @@ class RAGFlowPdfParser:
     def _extract_table_figure(self, need_image, ZM, return_html, need_position, separate_tables_figures=False):
         tables = {}
         figures = {}
+
+        def detach_image(img):
+            # load() materializes the cropped pixels now; 
+            # copy() returns an image independent of self.page_images; 
+            # close() releases the temporary crop/composite object held inside this parser.
+            img.load()
+            detached = img.copy()
+            img.close()
+            return detached
+
         # extract figure and table boxes
         i = 0
         lst_lout_no = ""
@@ -1116,7 +1160,7 @@ class RAGFlowPdfParser:
                 if right < left:
                     right = left + 1
                 poss.append((pn + self.page_from, left, right, top, bott))
-                return self.page_images[pn].crop((left * ZM, top * ZM, right * ZM, bott * ZM))
+                return detach_image(self.page_images[pn].crop((left * ZM, top * ZM, right * ZM, bott * ZM)))
             pn = {}
             for b in bxs:
                 p = local_page_index(b["page_number"])
@@ -1134,7 +1178,7 @@ class RAGFlowPdfParser:
             for img in imgs:
                 pic.paste(img, (0, int(height)))
                 height += img.size[1]
-            return pic
+            return detach_image(pic)
 
         res = []
         positions = []
@@ -1180,6 +1224,7 @@ class RAGFlowPdfParser:
             )
             if not isinstance(html, str):
                 img, html = html
+                img = detach_image(img)
             if not html:
                 continue
             res.append((img, html))

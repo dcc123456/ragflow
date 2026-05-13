@@ -20,11 +20,7 @@ start_ts = time.time()
 # LiteLLM fetches a model cost map from GitHub during import unless this is set.
 # Parser pods should not block startup on external network access.
 import os
-<<<<<<< HEAD
 os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")  # no internet, save about 10s
-=======
-os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
->>>>>>> 5a00a7d52 (Reduce task_executor.py start time from 30s to 10s (#417))
 
 from common.misc_utils import thread_pool_exec
 
@@ -97,6 +93,7 @@ from rag.raptor import (
 from common.token_utils import num_tokens_from_string, truncate
 from rag.utils.redis_conn import REDIS_CONN
 from rag.graphrag.utils import chat_limiter
+from rag.utils.lazy_image import LazyImage
 from common.signal_utils import start_tracemalloc_and_snapshot, stop_tracemalloc
 from common.exceptions import TaskCanceledException
 from common.asyncio_utils import LoopLocalSemaphore
@@ -109,6 +106,7 @@ from rag.utils.table_es_metadata import (
     merge_table_parser_config_from_kb,
     table_parser_strip_doc_metadata_keys,
 )
+from PIL import Image
 
 BATCH_SIZE = 64
 
@@ -165,6 +163,23 @@ minio_limiter = LoopLocalSemaphore(MAX_CONCURRENT_MINIO)
 kg_limiter = LoopLocalSemaphore(2)
 WORKER_HEARTBEAT_TIMEOUT = int(os.environ.get('WORKER_HEARTBEAT_TIMEOUT', '120'))
 stop_event = threading.Event()
+
+
+def release_chunk_images(chunks):
+    released = set()
+    for chunk in chunks:
+        image = chunk.pop("image", None)
+        if not isinstance(image, (Image.Image, LazyImage)):
+            continue
+
+        image_id = id(image)
+        if image_id in released:
+            continue
+        released.add(image_id)
+
+        # Table tokenization can attach the same image object to multiple
+        # chunks. Close each owned image once after all MinIO uploads finish.
+        image.close()
 
 
 def signal_handler(sig, frame):
@@ -343,6 +358,8 @@ async def build_chunks(task, progress_callback):
             t.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
         raise
+    finally:
+        release_chunk_images(cks)
 
     el = timer() - st
     logging.info("MINIO PUT({}) cost {:.3f} s".format(task["name"], el))

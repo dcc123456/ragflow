@@ -1112,6 +1112,9 @@ def chunk(filename, binary=None, from_page=0, to_page=MAXIMUM_PAGE_NUMBER, lang=
 
             res.extend(tokenize_chunks(chunks, doc, is_english, pdf_parser, child_delimiters_pattern=child_deli))
 
+    if isinstance(pdf_parser, PdfParser):
+        pdf_parser.release_page_cache()
+
     if urls and parser_config.get("analyze_hyperlink", False) and is_root:
         for index, url in enumerate(urls):
             html_bytes, metadata = extract_html(url)
