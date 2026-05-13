@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from tools.billing.flow_common import FlowError
+from tools.billing.billing_common import FlowError
 
 
 _POINTS_CASE_METADATA = {

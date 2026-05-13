@@ -3,7 +3,10 @@ import { Modal } from '@/components/ui/modal/modal';
 import { useFetchTenantData } from '@/hooks/use-user-setting-request';
 import { BillingQueryKey } from '@/pages/billing/constants/query-keys';
 import type { SessionData } from '@/pages/billing/hook/use-payment-status-request';
-import billingService, { billingCheckout } from '@/services/price';
+import billingService, {
+  billingCheckout,
+  postBillingStorageSetTarget,
+} from '@/services/price';
 import storagePrivate from '@/utils/authorization-private-util';
 import storage from '@/utils/authorization-util';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -23,10 +26,26 @@ export type IChargePlan = {
 };
 export const PriceChargeKey = 'price-charge';
 export const TrialUpgradeSetupRetryKey = 'trial-upgrade-setup-retry';
+export const StorageAddonSetupRetryKey = 'storage-addon-setup-retry';
 export const TrialUpgradeSetupRetryResultKey =
   'trial-upgrade-setup-retry-result';
 export const BillingDirectCheckoutResultEvent =
   'billing-direct-checkout-result';
+
+type PlanSetupRetryPayload = {
+  price_id: string;
+  quantity: string;
+  payment_type: 'subscription' | 'usage_based';
+  auto_retry_pending?: boolean;
+  auto_retry_started?: boolean;
+};
+
+type StorageSetupRetryPayload = {
+  tenant_id?: string;
+  target_storage_bytes: number;
+  auto_retry_pending?: boolean;
+  auto_retry_started?: boolean;
+};
 
 const buildCheckoutUrls = () => {
   const url = new URL(window.location.href);
@@ -87,6 +106,45 @@ const publishDirectCheckoutResult = (res?: ICheckoutResult) => {
   );
 };
 
+const openSetupCheckoutPreservingPage = (redirectTo?: string) => {
+  if (!redirectTo) {
+    return;
+  }
+
+  const paymentSetupWindow = window.open(redirectTo, '_blank');
+  try {
+    if (paymentSetupWindow) {
+      paymentSetupWindow.opener = null;
+    }
+  } catch {
+    // Ignore cross-origin opener hardening failures.
+  }
+  if (!paymentSetupWindow) {
+    window.location.href = redirectTo;
+  }
+};
+
+const openPaymentRedirectPreservingPage = (redirectTo?: string) => {
+  if (!redirectTo) {
+    return;
+  }
+
+  const paymentWindow = window.open(redirectTo, '_blank');
+  try {
+    if (paymentWindow) {
+      paymentWindow.opener = null;
+    }
+  } catch {
+    // Ignore cross-origin opener hardening failures.
+  }
+  if (paymentWindow) {
+    window.close();
+    return;
+  }
+
+  window.location.href = redirectTo;
+};
+
 export const useCancelPlan = () => {
   const queryClient = useQueryClient();
   const {
@@ -133,7 +191,12 @@ export const useCancelPlan = () => {
 };
 const useCharge = () => {
   const { data: tenantInfo } = useFetchTenantData();
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
   const tenantId = tenantInfo?.tenant_id;
+  const cachedCurrentPlan = storagePrivate.getPricePlan() as
+    | ICurrentPlan
+    | undefined;
   const { successUrl, errorUrl } = buildCheckoutUrls();
 
   const {
@@ -151,8 +214,18 @@ const useCharge = () => {
       quantity: string;
       payment_type: 'subscription' | 'usage_based';
     }) => {
+      const resolvedTenantId = tenantId || cachedCurrentPlan?.tenant_id;
+
+      if (!resolvedTenantId) {
+        throw new Error('Unable to determine tenant for billing checkout');
+      }
+
+      if (!price_id) {
+        throw new Error('Missing target price id for billing checkout');
+      }
+
       const { data } = await billingCheckout({
-        tenant_id: tenantId,
+        tenant_id: resolvedTenantId,
         subscription_price_id:
           payment_type === 'subscription' ? price_id : undefined,
         payment_type: payment_type,
@@ -167,7 +240,7 @@ const useCharge = () => {
       });
       if (data.code === 0) {
         if (data.data?.requires_payment_method_setup) {
-          sessionStorage.setItem(
+          localStorage.setItem(
             TrialUpgradeSetupRetryKey,
             JSON.stringify({
               price_id,
@@ -200,7 +273,11 @@ const useCharge = () => {
       return;
     }
     if (chargeResult && chargeResult.redirect_to) {
-      window.location.href = chargeResult.redirect_to;
+      if (chargeResult.requires_payment_method_setup) {
+        openSetupCheckoutPreservingPage(chargeResult.redirect_to);
+      } else {
+        window.location.href = chargeResult.redirect_to;
+      }
     } else if (chargeResult && chargeResult.scheduled_change) {
       const effectiveAt = chargeResult?.scheduled_change?.effective_at;
       const modal = showModal({
@@ -280,85 +357,141 @@ export const useHandleTrialUpgradeSetupRetry = (status: string | null) => {
       return;
     }
 
-    const rawRetryPayload = sessionStorage.getItem(TrialUpgradeSetupRetryKey);
-    if (!rawRetryPayload) {
+    const invalidateBillingQueries = () =>
+      Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: [BillingQueryKey.CurrentPlan],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: [BillingQueryKey.PlanOverview],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: [BillingQueryKey.BaseOverview],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: [BillingQueryKey.StorageCurrent],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: [BillingQueryKey.PlanList],
+        }),
+      ]);
+
+    const rawPlanRetryPayload = localStorage.getItem(TrialUpgradeSetupRetryKey);
+    if (rawPlanRetryPayload) {
+      let retryPayload: PlanSetupRetryPayload | null = null;
+      try {
+        retryPayload = JSON.parse(rawPlanRetryPayload) as PlanSetupRetryPayload;
+      } catch {
+        localStorage.removeItem(TrialUpgradeSetupRetryKey);
+        return;
+      }
+
+      if (
+        retryPayload?.auto_retry_pending &&
+        !retryPayload?.auto_retry_started &&
+        retryPayload?.price_id
+      ) {
+        localStorage.setItem(
+          TrialUpgradeSetupRetryKey,
+          JSON.stringify({
+            ...retryPayload,
+            auto_retry_started: true,
+          }),
+        );
+
+        checkout({
+          price_id: retryPayload.price_id,
+          quantity: retryPayload.quantity || '1',
+          payment_type: retryPayload.payment_type || 'subscription',
+        })
+          .then(async (res) => {
+            localStorage.removeItem(TrialUpgradeSetupRetryKey);
+            if (res?.redirect_to) {
+              openPaymentRedirectPreservingPage(res.redirect_to);
+              return;
+            }
+            publishDirectCheckoutResult(res);
+            await invalidateBillingQueries();
+            const amountText = formatCurrencyAmount(
+              res?.amount_cents,
+              res?.currency,
+            );
+            message.success(
+              amountText
+                ? `${t('price.paymentSuccessfulTip')} (${amountText})`
+                : t('price.paymentSuccessfulTip'),
+            );
+          })
+          .catch((error) => {
+            localStorage.removeItem(TrialUpgradeSetupRetryKey);
+            message.error(
+              (error as Error)?.message || t('price.paymentFailedTip'),
+            );
+          });
+        return;
+      }
+    }
+
+    const rawStorageRetryPayload = localStorage.getItem(
+      StorageAddonSetupRetryKey,
+    );
+    if (!rawStorageRetryPayload) {
       return;
     }
 
-    type RetryPayload = {
-      price_id: string;
-      quantity: string;
-      payment_type: 'subscription' | 'usage_based';
-      auto_retry_pending?: boolean;
-      auto_retry_started?: boolean;
-    };
-
-    let retryPayload: RetryPayload | null = null;
+    let storageRetryPayload: StorageSetupRetryPayload | null = null;
     try {
-      retryPayload = JSON.parse(rawRetryPayload) as RetryPayload;
+      storageRetryPayload = JSON.parse(
+        rawStorageRetryPayload,
+      ) as StorageSetupRetryPayload;
     } catch {
-      sessionStorage.removeItem(TrialUpgradeSetupRetryKey);
+      localStorage.removeItem(StorageAddonSetupRetryKey);
       return;
     }
 
     if (
-      !retryPayload?.auto_retry_pending ||
-      retryPayload?.auto_retry_started ||
-      !retryPayload?.price_id
+      !storageRetryPayload?.auto_retry_pending ||
+      storageRetryPayload?.auto_retry_started ||
+      typeof storageRetryPayload?.target_storage_bytes !== 'number'
     ) {
       return;
     }
 
-    sessionStorage.setItem(
-      TrialUpgradeSetupRetryKey,
+    localStorage.setItem(
+      StorageAddonSetupRetryKey,
       JSON.stringify({
-        ...retryPayload,
+        ...storageRetryPayload,
         auto_retry_started: true,
       }),
     );
 
-    checkout({
-      price_id: retryPayload.price_id,
-      quantity: retryPayload.quantity || '1',
-      payment_type: retryPayload.payment_type || 'subscription',
+    const { successUrl, errorUrl } = buildCheckoutUrls();
+    postBillingStorageSetTarget({
+      tenant_id: storageRetryPayload.tenant_id,
+      target_storage_bytes: storageRetryPayload.target_storage_bytes,
+      session_cancel_url: errorUrl,
+      session_success_url: successUrl,
     })
-      .then(async (res) => {
-        sessionStorage.removeItem(TrialUpgradeSetupRetryKey);
-        if (res?.redirect_to) {
-          window.location.href = res.redirect_to;
+      .then(async ({ data: res }) => {
+        if (res?.code !== 0) {
+          throw new Error(res?.message || t('billing.storageUpgradeFailed'));
+        }
+
+        localStorage.removeItem(StorageAddonSetupRetryKey);
+        await invalidateBillingQueries();
+
+        if (res.data?.redirect_to) {
+          openPaymentRedirectPreservingPage(res.data.redirect_to);
           return;
         }
-        publishDirectCheckoutResult(res);
-        await Promise.all([
-          queryClient.invalidateQueries({
-            queryKey: [BillingQueryKey.CurrentPlan],
-          }),
-          queryClient.invalidateQueries({
-            queryKey: [BillingQueryKey.PlanOverview],
-          }),
-          queryClient.invalidateQueries({
-            queryKey: [BillingQueryKey.BaseOverview],
-          }),
-          queryClient.invalidateQueries({
-            queryKey: [BillingQueryKey.StorageCurrent],
-          }),
-          queryClient.invalidateQueries({
-            queryKey: [BillingQueryKey.PlanList],
-          }),
-        ]);
-        const amountText = formatCurrencyAmount(
-          res?.amount_cents,
-          res?.currency,
-        );
-        message.success(
-          amountText
-            ? `${t('price.paymentSuccessfulTip')} (${amountText})`
-            : t('price.paymentSuccessfulTip'),
-        );
+
+        message.success(t('price.paymentSuccessfulTip'));
       })
       .catch((error) => {
-        sessionStorage.removeItem(TrialUpgradeSetupRetryKey);
-        message.error((error as Error)?.message || t('price.paymentFailedTip'));
+        localStorage.removeItem(StorageAddonSetupRetryKey);
+        message.error(
+          (error as Error)?.message || t('billing.storageUpgradeFailed'),
+        );
       });
   }, [checkout, queryClient, status, t]);
 };

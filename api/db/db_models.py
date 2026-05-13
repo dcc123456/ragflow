@@ -1383,6 +1383,7 @@ class CanvasTemplate(DataBaseModel):
 class Product(DataBaseModel):
     id = CharField(max_length=32, primary_key=True)
     name = CharField(null=False, max_length=255, index=True)
+    priority = IntegerField(null=False, help_text="Billing plan priority, bigger value has high priority")
     quota_apps = IntegerField(null=False, help_text="Limit number of APP of the tenant, Chat, Search, Agent")
     quota_members = IntegerField(null=False, help_text="Limit number of members of the tenant")
     quota_storage = BigIntegerField(null=False, help_text="Limit dataset storage bytes of the tenant")
@@ -1390,7 +1391,6 @@ class Product(DataBaseModel):
     price_ids = TextField(null=False, default="", help_text="price ids on stripe.com")
     description = TextField(null=True)
     product_type = CharField(null=False, choices=["subscription", "usage_based"])
-    usage_stat_type = CharField(null=True, choices=["before", "after"])  # only for usage_based
     version = IntegerField(null=False, help_text="Product version")
     quota_points = BigIntegerField(null=True, help_text="Monthly point quota for subscription plans")
 
@@ -1439,8 +1439,12 @@ class PaymentOrder(DataBaseModel):
     tenant_id = CharField(max_length=32, null=False, index=True)
     customer_id = CharField(max_length=255, null=False, default="", help_text="customer id on stripe.com", index=True)
     payment_type = CharField(choices=["subscription", "usage_based"])
-    product_id = CharField(max_length=32, null=True, index=True)  # Optional for recharge
-    product_name = CharField(null=False, max_length=255)
+    # JSON arrays to support multiple products/price_ids per invoice (e.g. plan + storage on same invoice)
+    product_ids = JSONField(null=True, default=[], help_text="JSON array of product IDs")
+    product_names = JSONField(null=True, default=[], help_text="JSON array of product names")
+    product_quantities = JSONField(null=True, default=[], help_text="JSON array of quantities corresponding to each product")
+    product_amount_cents = JSONField(null=True, default=[], help_text="JSON array of per-product amounts in cents")
+    price_ids = JSONField(null=True, default=[], help_text="JSON array of Stripe price IDs")
     is_prorated = BooleanField(default=False)
 
     # stripe
@@ -1448,8 +1452,7 @@ class PaymentOrder(DataBaseModel):
     currency = CharField(max_length=3, null=False, choices=["usd", "cny"])
     payment_method = CharField(null=False, choices=["card"])
 
-    order_id = CharField(max_length=128, null=False, help_text="Stripe checkout order id")
-    price_id = CharField(max_length=128, null=False, help_text="stripe subscription price_id")
+    order_id = CharField(max_length=128, null=False, index=True, help_text="Stripe invoice/checkout session id — unique per payment")
     payment_intent_id = CharField(max_length=128, null=True, help_text="Stripe payment intent id, for one-off")
     payment_subscription_id = CharField(max_length=128, null=True, help_text="Stripe payment subscription id, for subscription")
     receipt_url = CharField(max_length=512, null=True, help_text="invoice")
@@ -1514,7 +1517,7 @@ class Subscription(DataBaseModel):
     # is a valid storage quantity). After Phase 3, these columns become authoritative.
     addon_subscription_item_id = CharField(max_length=255, null=True, default=None)
     addon_storage_bytes = BigIntegerField(null=True, default=None)
-    target_quantity_bytes = BigIntegerField(null=True, default=None)
+    target_storage_bytes = BigIntegerField(null=True, default=None)
 
     class Meta:
         db_table = "billing_subscription"
@@ -2268,6 +2271,8 @@ def migrate_db():
     # After migration completes, available fields can be safely removed.
     # Add quota_points to billing_product (2026-04-28)
     alter_db_add_column(migrator, "billing_product", "quota_points", BigIntegerField(null=True))
+    # Add priority to billing_product (2026-05-06)
+    alter_db_add_column(migrator, "billing_product", "priority", IntegerField(null=False, default=0, help_text="Billing plan priority, bigger value has high priority"))
     # This migration must be run as an offline batch job before billing_app starts serving
     # traffic with the new consumed-based model.
     alter_db_add_column(migrator, "billing_point_ledger", "source", CharField(max_length=16, null=False, default="plan"))
@@ -2278,13 +2283,13 @@ def migrate_db():
     # Billing storage quantity columns migrate from legacy *_gb to *_bytes (int64)
     alter_db_rename_column(migrator, "billing_storage_subscription", "effective_quantity_gb", "addon_storage_bytes")
     alter_db_rename_column(migrator, "billing_storage_subscription", "addon_storage_gb", "addon_storage_bytes")
-    alter_db_rename_column(migrator, "billing_storage_subscription", "target_quantity_gb", "target_quantity_bytes")
+    alter_db_rename_column(migrator, "billing_storage_subscription", "target_quantity_gb", "target_storage_bytes")
     alter_db_rename_column(migrator, "billing_storage_subscription", "pending_quantity_gb", "pending_quantity_bytes")
     alter_db_add_column(migrator, "billing_storage_subscription", "addon_storage_bytes", BigIntegerField(null=False, default=0))
-    alter_db_add_column(migrator, "billing_storage_subscription", "target_quantity_bytes", BigIntegerField(null=False, default=0))
+    alter_db_add_column(migrator, "billing_storage_subscription", "target_storage_bytes", BigIntegerField(null=False, default=0))
     alter_db_add_column(migrator, "billing_storage_subscription", "pending_quantity_bytes", BigIntegerField(null=True))
     alter_db_column_type(migrator, "billing_storage_subscription", "addon_storage_bytes", BigIntegerField(null=False, default=0))
-    alter_db_column_type(migrator, "billing_storage_subscription", "target_quantity_bytes", BigIntegerField(null=False, default=0))
+    alter_db_column_type(migrator, "billing_storage_subscription", "target_storage_bytes", BigIntegerField(null=False, default=0))
     alter_db_column_type(migrator, "billing_storage_subscription", "pending_quantity_bytes", BigIntegerField(null=True))
 
     # Billing storage pending-state cleanup (2026-04-30)
@@ -2295,25 +2300,67 @@ def migrate_db():
     alter_db_remove_column(migrator, "billing_storage_subscription", "pending_action")
 
     # QuotaItem storage unit migration: convert legacy gb entries to bytes.
-    alter_db_column_type(migrator, "billing_quota_item", "quantity", BigIntegerField(null=False))
-    try:
-        DB.execute_sql(
-            """
-            UPDATE billing_quota_item
-            SET quantity = quantity * 1000000000,
-                unit = 'bytes'
-            WHERE quota_type = 'kb_storage' AND unit = 'gb'
-            """
-        )
-    except Exception as ex:
-        logging.critical(f"Failed to migrate billing_quota_item kb_storage gb->bytes, error: {ex}")
+    if DB.table_exists("billing_quota_item"):
+        alter_db_column_type(migrator, "billing_quota_item", "quantity", BigIntegerField(null=False))
+        try:
+            DB.execute_sql(
+                """
+                UPDATE billing_quota_item
+                SET quantity = quantity * 1000000000,
+                    unit = 'bytes'
+                WHERE quota_type = 'kb_storage' AND unit = 'gb'
+                """
+            )
+        except Exception as ex:
+            logging.critical(f"Failed to migrate billing_quota_item kb_storage gb->bytes, error: {ex}")
+    else:
+        logging.info("Skip billing_quota_item storage migration because legacy table does not exist")
 
     alter_db_column_type(migrator, "document", "size", BigIntegerField(default=0, index=True))
     alter_db_column_type(migrator, "file", "size", BigIntegerField(default=0, index=True))
     # Storage-plan unification (2026-05-08): storage add-on columns on billing_subscription
     alter_db_add_column(migrator, "billing_subscription", "addon_subscription_item_id", CharField(max_length=255, null=True, default=None))
     alter_db_add_column(migrator, "billing_subscription", "addon_storage_bytes", BigIntegerField(null=True, default=None))
-    alter_db_add_column(migrator, "billing_subscription", "target_quantity_bytes", BigIntegerField(null=True, default=None))
+    alter_db_add_column(migrator, "billing_subscription", "target_storage_bytes", BigIntegerField(null=True, default=None))
+
+    # Remove legacy usage_stat_type column from billing_product (2026-05-11)
+    alter_db_remove_column(migrator, "billing_product", "usage_stat_type")
+
+    # billing_pricepoint: add missing columns (2026-05-11)
+    alter_db_add_column(migrator, "billing_pricepoint", "price_amount", IntegerField(null=True))
+    alter_db_add_column(migrator, "billing_pricepoint", "price_currency", CharField(max_length=3, null=True))
+    alter_db_add_column(migrator, "billing_pricepoint", "included_free_amount", IntegerField(null=True))
+    alter_db_add_column(migrator, "billing_pricepoint", "unit", CharField(max_length=16, null=True))
+    alter_db_add_column(migrator, "billing_pricepoint", "unit_quantity", IntegerField(null=True))
+    alter_db_add_column(migrator, "billing_pricepoint", "consuming_point_amount", IntegerField(null=True))
+
+    # PaymentOrder multi-product invoice consolidation (2026-05-11)
+    # Add JSON array columns; copy scalar values into single-element arrays
+    alter_db_add_column(migrator, "billing_payment_order", "product_ids", JSONField(null=True, default=[]))
+    alter_db_add_column(migrator, "billing_payment_order", "product_names", JSONField(null=True, default=[]))
+    alter_db_add_column(migrator, "billing_payment_order", "product_quantities", JSONField(null=True, default=[]))
+    alter_db_add_column(migrator, "billing_payment_order", "product_amount_cents", JSONField(null=True, default=[]))
+    alter_db_add_column(migrator, "billing_payment_order", "price_ids", JSONField(null=True, default=[]))
+    try:
+        # Migrate existing scalar values into JSON arrays
+        DB.execute_sql(
+            """
+            UPDATE billing_payment_order
+            SET product_ids    = JSON_ARRAY(IFNULL(product_id, NULL)),
+                product_names  = JSON_ARRAY(IFNULL(product_name, NULL)),
+                product_quantities = JSON_ARRAY(1),
+                product_amount_cents = JSON_ARRAY(amount_cents),
+                price_ids      = JSON_ARRAY(IFNULL(price_id, NULL))
+            WHERE product_ids IS NULL OR JSON_LENGTH(product_ids) = 0
+            """
+        )
+    except Exception as ex:
+        logging.warning(f"Failed to migrate billing_payment_order scalar->array columns: {ex}")
+    # Remove legacy scalar columns after data migration
+    alter_db_remove_column(migrator, "billing_payment_order", "product_id")
+    alter_db_remove_column(migrator, "billing_payment_order", "product_name")
+    alter_db_remove_column(migrator, "billing_payment_order", "price_id")
+
     logging.disable(logging.NOTSET)
     # this is after re-enabling logging to allow logging changed user emails
     migrate_add_unique_email(migrator)

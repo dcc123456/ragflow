@@ -95,7 +95,7 @@ export default {
       cancelPlanEffectiveTip:
         'After cancellation, you can continue using the current plan benefits until {{date}}, after which they will expire.',
       cancelPlanSwitchTip:
-        'If your current usage exceeds the Free Plan limits, your downgrade will be blocked and you will remain on the current plan. Any add-on storage will also be cancelled when the base plan expires.',
+        'If your current usage exceeds the Trial plan limits, your downgrade will be blocked and you will remain on the current plan. Existing add-on storage does not extend the Trial storage quota, and any add-on storage will be cancelled when the current plan expires.',
       cancelPlanConfirmQuestion: 'Are you sure you want to cancel?',
     },
     setting: {
@@ -164,8 +164,12 @@ export default {
       plan: 'Plan',
       createDate: 'Created At',
       product: 'Product',
+      products: 'Products',
+      quantities: 'Quantities',
+      amounts: 'Amounts',
       status: 'Status',
       amount: 'Amount',
+      total: 'Total',
       invoice: 'Invoice',
       success: 'Success',
       pending: 'Pending',

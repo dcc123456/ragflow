@@ -532,21 +532,22 @@ class FileService(CommonService):
                     blob = read_potential_broken_pdf(blob)
 
                 if settings.BILLING_ENABLED:
-                    from api.utils.billing import check_dynamic_resources
+                    from api.utils.billing import InsufficientResourceError, check_dynamic_resources
                     file_size_bytes = len(blob)
                     check_ok, check_info = check_dynamic_resources(tenant_id=kb.tenant_id, storage=file_size_bytes)
                     if not check_ok:
                         error_details = check_info.get("details", {})
-                        if "quota_storage" in error_details:
-                            current_gb = error_details['quota_storage']['current'] / 1024 / 1024 / 1024
-                            limit_gb = error_details['quota_storage']['limit'] / 1024 / 1024 / 1024
-                            file_size_gb = file_size_bytes / 1024 / 1024 / 1024
-                            raise RuntimeError(
-                                f"Insufficient storage quota. Current: {current_gb:.2f} GB, "
-                                f"Limit: {limit_gb:.2f} GB. "
-                                f"File size: {file_size_gb:.2f} GB"
-                            )
-                        raise RuntimeError(check_info.get("error", "Insufficient storage quota"))
+                        current = int(error_details['quota_storage']['current'])
+                        limit = int(error_details['quota_storage']['limit'])
+                        raise InsufficientResourceError(
+                            resource="storage",
+                            current=current,
+                            limit=limit,
+                            message=f"Insufficient storage quota. Current: {current / 1024 / 1024 / 1024:.2f} GB, "
+                                    f"Limit: {limit / 1024 / 1024 / 1024:.2f} GB. "
+                                    f"File size: {file_size_bytes / 1024 / 1024 / 1024:.2f} GB",
+                            file_size=file_size_bytes,
+                        )
 
                 settings.STORAGE_IMPL.put(kb.id, location, blob, kb.tenant_id)
 
@@ -578,7 +579,19 @@ class FileService(CommonService):
                 FileService.add_file_from_kb(doc, kb_folder["id"], kb.tenant_id)
                 files.append((doc, blob))
             except Exception as e:
-                err.append(file.filename + ": " + str(e))
+                from api.utils.billing import InsufficientResourceError
+
+                if isinstance(e, InsufficientResourceError):
+                    try:
+                        e.detail = {
+                            **getattr(e, "detail", {}),
+                            "filename": file.filename,
+                        }
+                    except Exception:
+                        pass
+                    err.append(e)
+                else:
+                    err.append(file.filename + ": " + str(e))
 
         return err, files
 
@@ -942,23 +955,24 @@ class FileService(CommonService):
                 location += "_"
             blob = await asyncio.to_thread(file_obj.read)
 
-            from api.utils.billing import check_dynamic_resources
+            from api.utils.billing import InsufficientResourceError, check_dynamic_resources
             file_size_bytes = len(blob)
             check_ok, check_info = await asyncio.to_thread(
                 check_dynamic_resources, tenant_id=tenant_id, storage=file_size_bytes
             )
             if not check_ok:
                 error_details = check_info.get("details", {})
-                if "quota_storage" in error_details:
-                    current_gb = error_details['quota_storage']['current'] / 1024 / 1024 / 1024
-                    limit_gb = error_details['quota_storage']['limit'] / 1024 / 1024 / 1024
-                    file_size_gb = file_size_bytes / 1024 / 1024 / 1024
-                    raise RuntimeError(
-                        f"Insufficient storage quota. Current: {current_gb:.2f} GB, "
-                        f"Limit: {limit_gb:.2f} GB. "
-                        f"File size: {file_size_gb:.2f} GB"
-                    )
-                raise RuntimeError(check_info.get("error", "Insufficient storage quota"))
+                current = int(error_details['quota_storage']['current'])
+                limit = int(error_details['quota_storage']['limit'])
+                raise InsufficientResourceError(
+                    resource="storage",
+                    current=current,
+                    limit=limit,
+                    message=f"Insufficient storage quota. Current: {current / 1024 / 1024 / 1024:.2f} GB, "
+                            f"Limit: {limit / 1024 / 1024 / 1024:.2f} GB. "
+                            f"File size: {file_size_bytes / 1024 / 1024 / 1024:.2f} GB",
+                    file_size=file_size_bytes,
+                )
 
             filename = await asyncio.to_thread(
                 duplicate_name,

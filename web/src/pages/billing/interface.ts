@@ -65,8 +65,10 @@ export interface Invoice {
   hosted_invoice_url?: string;
   invoice_id: string;
   invoice_pdf_url: string;
-  product_id?: string;
+  product_ids?: string[];
   product?: string;
+  product_quantities?: number[];
+  product_amount_cents?: number[];
   status: 'paid' | 'unpaid' | 'pending';
 }
 
@@ -74,6 +76,8 @@ export interface ITableInvoice {
   id: string;
   createDate: string;
   product: string;
+  product_quantities?: number[];
+  product_amount_cents?: number[];
   status: string;
   amount: string;
   invoiceLink?: string;

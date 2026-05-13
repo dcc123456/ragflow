@@ -46,6 +46,12 @@ const BillingHistory: React.FC = () => {
       </div>
     );
   };
+
+  const formatAmounts = (amounts?: number[]) => {
+    if (!amounts || amounts.length === 0) return '-';
+    return amounts.map((a) => `$${(a / 100).toFixed(2)}`).join(', ');
+  };
+
   return (
     <div className="flex flex-col h-full">
       <Table className="flex-1 overflow-auto">
@@ -53,9 +59,11 @@ const BillingHistory: React.FC = () => {
           <TableRow>
             <TableHead>{t('billing.invoiceID')}</TableHead>
             <TableHead>{t('billing.createDate')}</TableHead>
-            <TableHead>{t('billing.product')}</TableHead>
+            <TableHead>{t('billing.products')}</TableHead>
+            <TableHead>{t('billing.quantities')}</TableHead>
+            <TableHead>{t('billing.amounts')}</TableHead>
+            <TableHead>{t('billing.total')}</TableHead>
             <TableHead>{t('billing.status')}</TableHead>
-            <TableHead>{t('billing.amount')}</TableHead>
             <TableHead>{t('billing.invoice')}</TableHead>
           </TableRow>
         </TableHeader>
@@ -72,8 +80,16 @@ const BillingHistory: React.FC = () => {
                 </TableCell>
                 <TableCell>{invoice.createDate}</TableCell>
                 <TableCell>{invoice.product}</TableCell>
-                <TableCell>{handleStatus(invoice.status)}</TableCell>
+                <TableCell>
+                  {invoice.product_quantities
+                    ? invoice.product_quantities.join(', ')
+                    : '-'}
+                </TableCell>
+                <TableCell>
+                  {formatAmounts(invoice.product_amount_cents)}
+                </TableCell>
                 <TableCell>{invoice.amount}</TableCell>
+                <TableCell>{handleStatus(invoice.status)}</TableCell>
                 <TableCell>
                   {invoice.invoiceLink && (
                     <a
@@ -91,7 +107,7 @@ const BillingHistory: React.FC = () => {
             ))
           ) : (
             <TableRow>
-              <TableCell colSpan={6} className="h-24 text-center">
+              <TableCell colSpan={8} className="h-24 text-center">
                 <Empty type={EmptyType.Data} />
               </TableCell>
             </TableRow>

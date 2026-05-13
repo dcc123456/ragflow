@@ -494,7 +494,13 @@ def init_settings():
            BILLING_PRICEID_TO_PRODUCT[price_id] = plan_name
 
         task_priority = plan.get("task_priority", "low")
-        priority_int = 1 if task_priority == "high" else 0
+        priority_value = plan.get("priority")
+        if priority_value is None:
+            raise ValueError(f"Billing plan '{plan_name}' is missing required priority in billing.billing_plans")
+        try:
+            priority_int = int(priority_value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Billing plan '{plan_name}' has invalid priority: {priority_value!r}") from exc
         quota_points = plan.get("quota_points", 0)
         BILLING_PRIORITY_TO_PLANS[priority_int].append(plan_name)
         quota_storage = plan.get("quota_storage", 0)

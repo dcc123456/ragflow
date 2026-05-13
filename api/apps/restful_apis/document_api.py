@@ -39,7 +39,9 @@ from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.common.check_team_permission import check_kb_team_permission
 from api.db.services.task_service import TaskService, cancel_all_task_of
 from api.utils.api_utils import get_data_error_result, get_error_data_result, get_result, get_json_result, \
-    server_error_response, add_tenant_id_to_kwargs, get_request_json, get_error_argument_result, check_duplicate_ids
+    server_error_response, add_tenant_id_to_kwargs, get_request_json, get_error_argument_result, check_duplicate_ids, \
+    get_resource_insufficient_result
+from api.utils.billing import InsufficientResourceError
 from api.utils.validation_utils import (
     UpdateDocumentReq, format_validation_error_message, validate_and_parse_json_request, DeleteDocumentReq,
 )
@@ -589,6 +591,22 @@ async def _upload_local_documents(kb, tenant_id):
         parent_path=form.get("parent_path")
     )
     if err:
+        resource_err = next((e for e in err if isinstance(e, InsufficientResourceError)), None)
+        if resource_err:
+            code = {
+                "storage": RetCode.BILLING_STORAGE_INSUFFICIENT,
+                "seats": RetCode.BILLING_SEATS_INSUFFICIENT,
+                "apps": RetCode.BILLING_APPS_INSUFFICIENT,
+                "points": RetCode.BILLING_POINTS_INSUFFICIENT,
+            }.get(resource_err.resource, RetCode.BILLING_RESOURCE_INSUFFICIENT)
+            filename = (resource_err.detail or {}).get("filename")
+            resource_message = f"{filename}: {resource_err}" if filename else str(resource_err)
+            return get_resource_insufficient_result(
+                code=code,
+                message=resource_message,
+                detail=resource_err.detail or {},
+            )
+
         msg = "\n".join(err)
         logging.error(msg)
         return get_error_data_result(message=msg, code=RetCode.SERVER_ERROR)

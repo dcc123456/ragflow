@@ -761,6 +761,29 @@ def test_logout_setting_profile_matrix_unit(monkeypatch):
 
 
 @pytest.mark.p2
+def test_user_profile_normalizes_timestamp_fields(monkeypatch):
+    module = _load_user_app(monkeypatch)
+    module.current_user = SimpleNamespace(
+        to_dict=lambda: {
+            "id": "current-user",
+            "email": "current@example.com",
+            "create_date": "2026-05-08T11:55:03",
+            "create_time": 1778241303969,
+            "update_date": "2026-05-09T12:01:02+00:00",
+            "update_time": 1778328062000,
+        }
+    )
+
+    res = _run(module.user_profile())
+
+    assert res["code"] == 0
+    assert res["data"]["create_date"] == "2026-05-08T11:55:03Z"
+    assert res["data"]["create_time"] == 1778241303
+    assert res["data"]["update_date"] == "2026-05-09T12:01:02Z"
+    assert res["data"]["update_time"] == 1778328062
+
+
+@pytest.mark.p2
 def test_registration_helpers_and_register_route_matrix_unit(monkeypatch):
     module = _load_user_app(monkeypatch)
 

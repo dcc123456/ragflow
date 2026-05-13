@@ -17,32 +17,41 @@
 """
 API-adjusted driver for POINT-01.
 Tests: successful purchase of the minimum valid 100 points recharge.
+
+Test flow:
+- Step 1: Setup - Register user and initialize environment
+- Step 2: Record baseline - Capture points balance, ledger, and spend history before purchase
+- Step 3: Purchase points - Complete a 100 points checkout session
+- Step 4: Verify results - Validate balance increase, ledger entry, and paid history record
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import sys
+import time
 import uuid
 from pathlib import Path
 
-import stripe  # type: ignore[reportMissingImports]
+import stripe
+
+from tools.billing.billing_common import make_default_parser, FlowError, wait_for_clock
+from tools.billing.storage_common import create_clock_customer
+
+from tools.billing.points_common import (
+    PointsClient,
+    complete_points_purchase,
+    load_points_runtime_config,
+)
+from tools.billing.points_case_common import get_checkout_session_amount, get_points_case_metadata
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from tools.billing.flow_common import FlowError
-from tools.billing.points_common import (
-    RAGFlowClient,
-    complete_points_purchase,
-    load_points_runtime_config,
-    make_default_parser,
-)
-from tools.billing.points_case_common import get_checkout_session_amount, get_points_case_metadata
-
-
-def run_flow(args) -> None:
+def run_flow(args: argparse.Namespace) -> None:
+    """Execute POINT-01: successful purchase of 100 points recharge test."""
     case_metadata = get_points_case_metadata("POINT-01")
     runtime = load_points_runtime_config()
     stripe.api_key = runtime["stripe_api_key"]
@@ -50,34 +59,90 @@ def run_flow(args) -> None:
     webhook_secret = runtime["webhook_secret"]
     points_per_unit = int(runtime["points_per_unit"])
 
-    client = RAGFlowClient(args.base_url, args.version)
+    test_clock = stripe.test_helpers.TestClock.create(
+        frozen_time=int(time.time()),
+        name=f"setup-starter-{uuid.uuid4().hex[:8]}",
+    )
+    wait_for_clock(test_clock.id)
+    client = PointsClient(args.base_url, args.version, test_clock.id, webhook_secret, args.webhook_mode)
     client.wait_until_ready(args.ready_timeout_seconds)
     email = args.email or f"billing-point01-{uuid.uuid4().hex[:12]}@example.test"
-    _, tenant_id = client.register_and_login(email, args.password)
+    user_id, tenant_id = client.register_and_login(email, args.password)
+
+    # =============================================================================
+    # Step 1: Setup - Register user and initialize environment
+    # =============================================================================
+    print("=" * 80)
+    print("Step 1: Setup - Register user and initialize environment")
+    print("=" * 80)
+    print(f"  Assert: User registered with email: {email}")
+    print(f"  Assert: Tenant ID: {tenant_id}")
+
+    # =============================================================================
+    # Step 2: Record baseline - Capture pre-purchase state
+    # =============================================================================
+    print("\n" + "=" * 80)
+    print("Step 2: Record baseline - Capture pre-purchase state")
+    print("=" * 80)
 
     before_balance = client.points_balance(tenant_id)
     before_ledger = client.points_ledger(tenant_id)
     before_history = client.spend_history()
 
-    session = complete_points_purchase(client, tenant_id, points_per_unit, webhook_secret)
+    available_before = int(before_balance.get("available_points") or 0)
+    held_before = int(before_balance.get("held_points") or 0)
+    ledger_before_count = int(before_ledger.get("total") or 0)
+    history_before_count = len(before_history)
+
+    print(f"  Assert: Available points before: {available_before}")
+    print(f"  Assert: Held points before: {held_before}")
+    print(f"  Assert: Ledger total before: {ledger_before_count}")
+    print(f"  Assert: History rows before: {history_before_count}")
+
+    # =============================================================================
+    # Step 3: Purchase points - Complete a 100 points checkout session
+    # =============================================================================
+    print("\n" + "=" * 80)
+    print("Step 3: Purchase points - Complete a 100 points checkout session")
+    print("=" * 80)
+
+    customer_id =  create_clock_customer(email, tenant_id, test_clock.id)
+    points_to_buy = 100
+    pi = stripe.PaymentIntent.create(
+        amount=points_to_buy,
+        currency="USD",
+        customer=customer_id,
+        description="Manual points recharge (test)",
+        metadata={"source": "points_common_test"},
+    )
+
+    session = complete_points_purchase(client, tenant_id, points_to_buy, points_per_unit, payment_intent_id=pi.id)
+    print(f"  Assert: Checkout session created: {session['id']}")
+    print(f"  Assert: Points to purchase: {points_to_buy}")
+
+    # =============================================================================
+    # Step 4: Verify results - Validate post-purchase state
+    # =============================================================================
+    print("\n" + "=" * 80)
+    print("Step 4: Verify results - Validate post-purchase state")
+    print("=" * 80)
 
     after_balance = client.points_balance(tenant_id)
     after_ledger = client.points_ledger(tenant_id)
     after_history = client.spend_history()
 
-    available_before = int(before_balance.get("available_points") or 0)
     available_after = int(after_balance.get("available_points") or 0)
+    held_after = int(after_balance.get("held_points") or 0)
     if available_after != available_before + points_per_unit:
         raise FlowError(
             f"available_points should increase by {points_per_unit}, before={available_before}, after={available_after}"
         )
+    print(f"  Assert: Available points after: {available_after} (increased by {points_per_unit})")
 
-    held_before = int(before_balance.get("held_points") or 0)
-    held_after = int(after_balance.get("held_points") or 0)
     if held_after != held_before:
         raise FlowError(f"held_points should not change on recharge, before={held_before}, after={held_after}")
+    print(f"  Assert: Held points unchanged: {held_after}")
 
-    ledger_before_count = int(before_ledger.get("total") or 0)
     ledger_after_count = int(after_ledger.get("total") or 0)
     if ledger_after_count != ledger_before_count + 1:
         raise FlowError(
@@ -92,8 +157,8 @@ def run_flow(args) -> None:
     ]
     if len(recharge_rows) != 1:
         raise FlowError(f"expected exactly one recharge ledger row for session {session['id']}, got {recharge_rows}")
+    print(f"  Assert: New recharge ledger row verified for session {session['id']}")
 
-    history_before_count = len(before_history)
     history_after_count = len(after_history)
     if history_after_count != history_before_count + 1:
         raise FlowError(
@@ -108,7 +173,14 @@ def run_flow(args) -> None:
     expected_amount = get_checkout_session_amount(session)
     if abs(float(history_row.get("amount", 0) or 0) - expected_amount) > 1e-9:
         raise FlowError(f"points recharge history amount should be {expected_amount}, got {history_row}")
+    print(f"  Assert: Billing history row verified with status 'paid' and amount ${expected_amount}")
 
+    # =============================================================================
+    # POINT-01 Test Summary
+    # =============================================================================
+    print("\n" + "=" * 80)
+    print("POINT-01 Test Summary")
+    print("=" * 80)
     print(
         json.dumps(
             {
@@ -132,8 +204,10 @@ def run_flow(args) -> None:
 
 def main() -> int:
     parser = make_default_parser("Run billing POINT-01: successful purchase of 100 points.")
+
+    args = parser.parse_args()
     try:
-        run_flow(parser.parse_args())
+        run_flow(args)
     except Exception as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1

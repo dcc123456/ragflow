@@ -29,24 +29,18 @@ import json
 import sys
 import time
 import uuid
-from datetime import datetime, timezone
 
 import stripe  # type: ignore[reportMissingImports]
 
-clock_id = ""
-
-from tools.billing.flow_common import (  # noqa: E402
+from tools.billing.billing_common import (  # noqa: E402
     FlowError,
+    make_default_parser,
 )
 from tools.billing.storage_common import (  # noqa: E402
     RAGFlowClient,
-    advance_clock,
-    delete_clock,
     gb_to_bytes,
-    make_default_parser,
     replace_storage_subscription_quantity,
     setup_starter,
-    wait_for_storage_status, replay_stripe_events,
 )
 
 
@@ -59,44 +53,17 @@ def run_flow(args) -> None:
     print("=" * 80)
 
     email = args.email or f"billing-storage04-{uuid.uuid4().hex[:12]}@example.test"
-    setup = setup_starter(
-        base_url=args.base_url,
-        version=args.version,
-        email=email,
-        password=args.password,
-        ready_timeout_seconds=args.ready_timeout_seconds,
-        webhook_wait_seconds=args.webhook_wait_seconds,
-        webhook_timeout_seconds=args.webhook_timeout_seconds,
-    )
+    setup = setup_starter(args,email=email)
 
     client: RAGFlowClient = setup["client"]
     tenant_id: str = setup["tenant_id"]
     customer_id: str = setup["customer_id"]
     starter_subscription_id: str = setup["subscription_id"]
-    global clock_id
-    clock_id = setup["clock_id"]
-    webhook_secret: str = setup["webhook_secret"]
 
     print("  Assert: Starter environment ready")
     print(f"  Assert: Tenant ID: {tenant_id}")
     print(f"  Assert: Customer ID: {customer_id}")
     print(f"  Assert: Starter subscription ID: {starter_subscription_id}")
-
-    # Get plan end time for period-end testing
-    plan = client.current_plan()
-    plan_end = plan.get("end_time")
-    if not plan_end:
-        raise FlowError(f"plan response is missing end_time: {plan}")
-    print(f"  Assert: Plan end_time retrieved: {plan_end}")
-
-    if isinstance(plan_end, (int, float)):
-        plan_end_ts = int(plan_end)
-    else:
-        plan_end_str = str(plan_end).replace("Z", "+00:00")
-        plan_end_dt = datetime.fromisoformat(plan_end_str)
-        if plan_end_dt.tzinfo is None:
-            plan_end_dt = plan_end_dt.replace(tzinfo=timezone.utc)
-        plan_end_ts = int(plan_end_dt.timestamp())
 
     # =============================================================================
     # Step 6: Purchase initial storage addon (20GB) via direct subscription modification
@@ -113,13 +80,12 @@ def run_flow(args) -> None:
         client=client,
         tenant_id=tenant_id,
         new_quantity_gb=initial_storage_gb,
-        webhook_secret=webhook_secret,
         customer_id=customer_id,
         subscription_ids={starter_subscription_id},
     )
     print("  Assert: Storage addon modification sent")
 
-    wait_for_storage_status(client, tenant_id, "active", timeout_seconds=30)
+    client.wait_for_storage_status(tenant_id, "active", timeout_seconds=30)
     print("  Assert: Storage addon is active")
 
     storage = client.storage_current(tenant_id)
@@ -154,6 +120,7 @@ def run_flow(args) -> None:
     print("  Assert: Scheduled change is set")
 
     # Verify current quota remains 20GB immediately after scheduling
+    created_gte = int(time.time()) - 5
     if downgrade_result.get("addon_storage_bytes", 0) != initial_target_bytes:
         raise FlowError(
             f"addon_storage_bytes should remain {initial_target_bytes} immediately after downgrade, got {downgrade_result.get('addon_storage_bytes')}"
@@ -174,21 +141,14 @@ def run_flow(args) -> None:
     print("Step 8: Advance clock past period end and verify storage quota decreases")
     print("=" * 80)
 
-    current_ts = int(time.time())
-    advance_seconds = plan_end_ts - current_ts + 120  # 2 minutes after period end
-    print(f"  Info: Advancing clock by {advance_seconds} seconds to after period end")
-    advance_clock(clock_id, current_ts + advance_seconds)
-    print("  Assert: Clock advanced past period end")
-
+    client.advance_clock_to_plan_end()
 
     # Sync webhook events if webhook_secret provided (for test clock sync)
     print("  Replaying webhook events for synchronization")
-    replayed = replay_stripe_events(
-        client,
-        webhook_secret=webhook_secret,
+    replayed = client.sync_webhooks(
         customer_id=customer_id,
         subscription_ids={starter_subscription_id},
-        created_gte=current_ts-5,
+        created_gte=created_gte,
     )
     print(f"  ✅ Webhook events replayed: {replayed} events")
 
@@ -207,7 +167,6 @@ def run_flow(args) -> None:
                 "description": "Storage addon downgrade (at period end, single subscription model)",
                 "tenant_id": tenant_id,
                 "email": email,
-                "plan_end": plan_end,
                 "subscription_id": starter_subscription_id,
                 "initial_storage_gb": initial_storage_gb,
                 "downgrade_storage_gb": downgrade_storage_gb,
@@ -229,9 +188,6 @@ def main() -> int:
     except Exception as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
-    finally:
-        print("=" * 80)
-        delete_clock(clock_id)
     return 0
 
 

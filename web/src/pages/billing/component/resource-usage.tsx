@@ -2,7 +2,8 @@ import message from '@/components/ui/message';
 import { useFetchTenantInfo } from '@/hooks/use-user-setting-request';
 import { formatNumber } from '@/pages/admin/model-usage-statistics/utils';
 import { useFetchAddonPlans } from '@/pages/price/hook/use-addon-plans';
-import {
+import { StorageAddonSetupRetryKey } from '@/pages/price/hook/use-price-hooks';
+import billingService, {
   getBillingStorageCurrent,
   postBillingStorageSetTarget,
 } from '@/services/price';
@@ -18,7 +19,12 @@ import Process from './process';
 
 const BYTES_PER_GB = 1000 * 1000 * 1000;
 
-const formatStorageInGb = (value: number) => `${formatNumber(value)} GB`;
+const formatStorageInGb = (value: number) => {
+  const roundedValue = new Intl.NumberFormat(undefined, {
+    maximumFractionDigits: 2,
+  }).format(value);
+  return `${roundedValue} GB`;
+};
 
 interface CustomProgressProps {
   title: 'Apps' | 'Team Member' | 'Storage' | 'Document Parse';
@@ -107,7 +113,7 @@ const ResourceUsage: React.FC<CustomProgressProps> = ({
     errorUrl.searchParams.set('price-pay-status', 'cancel');
     const { data } = await postBillingStorageSetTarget({
       tenant_id: tenantId,
-      target_quantity_bytes: Math.max(0, targetGb) * BYTES_PER_GB,
+      target_storage_bytes: Math.max(0, targetGb) * BYTES_PER_GB,
       session_cancel_url: errorUrl.toString(),
       session_success_url: successUrl.toString(),
     });
@@ -126,11 +132,49 @@ const ResourceUsage: React.FC<CustomProgressProps> = ({
     }
 
     if (res?.redirect_to) {
+      if (res.requires_payment_method_setup) {
+        localStorage.setItem(
+          StorageAddonSetupRetryKey,
+          JSON.stringify({
+            tenant_id: tenantId,
+            target_storage_bytes: Math.max(0, value) * BYTES_PER_GB,
+            auto_retry_pending: true,
+          }),
+        );
+        addOnManageModal.destroy();
+        const paymentSetupWindow = window.open(res.redirect_to, '_blank');
+        try {
+          if (paymentSetupWindow) {
+            paymentSetupWindow.opener = null;
+          }
+        } catch {
+          // Ignore cross-origin opener hardening failures.
+        }
+        if (!paymentSetupWindow) {
+          window.location.href = res.redirect_to;
+        }
+        return;
+      }
+
       window.open(res.redirect_to);
     }
     await invalidateStorageQueries();
     addOnManageModal.destroy();
   };
+
+  const previewImmediateStorageCharge = async (targetGb: number) => {
+    const { data: upcoming } = await billingService.getUpcoming({
+      tenant_id: tenantId,
+      target_storage_bytes: Math.max(0, targetGb) * BYTES_PER_GB,
+    });
+
+    if (upcoming?.code === 0) {
+      return upcoming?.data?.amount_due_today;
+    }
+
+    return undefined;
+  };
+
   const openAddOnManage = () => {
     const addOnCapacity = Math.max(0, limit - planValue);
     const currentStorage =
@@ -142,6 +186,7 @@ const ResourceUsage: React.FC<CustomProgressProps> = ({
       currentValue: currentStorage,
       onOk: addOnManageOk,
       price: storageCurrent?.unit_price || pricePerGBFromApi,
+      getImmediateCharge: previewImmediateStorageCharge,
     });
   };
 

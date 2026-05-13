@@ -46,9 +46,9 @@ from api.utils.api_utils import (
     get_json_result,
     get_request_json,
     server_error_response,
-    validate_request,
+    validate_request, get_resource_insufficient_result,
 )
-from api.utils.billing import check_resources
+from api.utils.billing import check_resources, check_dynamic_resources
 from api.utils.permission_utils import check_dialog_permission, has_permission_for_member
 from api.utils.tenant_utils import ensure_tenant_model_id_for_params
 from common.constants import LLMType, RetCode, StatusEnum
@@ -341,8 +341,9 @@ def _apply_prompt_defaults(req):
 @check_resources(apps=1)
 async def create():
     try:
+        tenant_id = current_user.id
         req = g.req_data
-        ok, tenant = TenantService.get_by_id(current_user.id)
+        ok, tenant = TenantService.get_by_id(tenant_id)
         if not ok:
             return get_data_error_result(message="Tenant not found!")
 
@@ -356,20 +357,35 @@ async def create():
             return get_data_error_result(message=err)
         req["name"] = name
 
+        check_ok, check_info = check_dynamic_resources(tenant_id=tenant_id, apps=1)
+        if not check_ok:
+            error_details = check_info.get("details", {})
+            if "quota_apps" in error_details:
+                return get_resource_insufficient_result(
+                    code=RetCode.BILLING_APPS_INSUFFICIENT,
+                    message=f"Insufficient app quota. Current: {error_details['quota_apps']['current']}, Limit: {error_details['quota_apps']['limit']}",
+                    detail={"current": error_details['quota_apps']['current'],
+                            "limit": error_details['quota_apps']['limit']},
+                )
+            return get_resource_insufficient_result(
+                code=RetCode.BILLING_APPS_INSUFFICIENT,
+                message=check_info.get("error", "Insufficient app quota"),
+            )
+
         if "dataset_ids" in req:
-            kb_ids = await _validate_dataset_ids(req.get("dataset_ids"), current_user.id)
+            kb_ids = await _validate_dataset_ids(req.get("dataset_ids"), tenant_id)
             if isinstance(kb_ids, str):
                 return get_data_error_result(message=kb_ids)
             req["kb_ids"] = kb_ids
             req.pop("dataset_ids", None)
 
         if "llm_id" in req:
-            err = await _validate_llm_id(req.get("llm_id"), current_user.id, req.get("llm_setting"))
+            err = await _validate_llm_id(req.get("llm_id"), tenant_id, req.get("llm_setting"))
             if err:
                 return get_data_error_result(message=err)
 
         if "rerank_id" in req:
-            err = await _validate_rerank_id(req.get("rerank_id"), current_user.id)
+            err = await _validate_rerank_id(req.get("rerank_id"), tenant_id)
             if err:
                 return get_data_error_result(message=err)
 
@@ -397,7 +413,7 @@ async def create():
         # if err:
         #     return get_data_error_result(message=err)
 
-        req = ensure_tenant_model_id_for_params(current_user.id, req)
+        req = ensure_tenant_model_id_for_params(tenant_id, req)
         req = {field: value for field, value in req.items() if field in _PERSISTED_FIELDS}
         for field in _READONLY_FIELDS:
             req.pop(field, None)
@@ -407,13 +423,12 @@ async def create():
 
         if DialogService.query(
             name=req["name"],
-            tenant_id=current_user.id,
+            tenant_id=tenant_id,
             status=StatusEnum.VALID.value,
         ):
             return get_data_error_result(message="Duplicated chat name in creating chat.")
 
         req["id"] = get_uuid()
-        tenant_id = current_user.id
         req["tenant_id"] = tenant_id
         operator = UserTenantService.filter_by_tenant_and_user_id(tenant_id, tenant_id)
         operator_id = operator.id

@@ -49,7 +49,12 @@ ENTITLED_MAIN_SUBSCRIPTION_STATUSES = {"active", "trialing"}
 
 class ProductService(CommonService):
     model = Product
-    VERSION_CHECK_FIELDS = ["quota_apps", "quota_members", "quota_storage", "task_priority", "price_ids", "product_type", "usage_stat_type"]
+    # Exclude: id (PK), name (used for lookup), version (auto-incremented),
+    # description (informational), and timestamp fields (not in YAML config)
+    _VERSION_CHECK_FIELDS = tuple(
+        f.name for f in Product._meta.sorted_fields
+        if f.name not in ("id", "name", "version", "description", "create_time", "create_date", "update_time", "update_date")
+    )
 
     @classmethod
     @DB.connection_context()
@@ -63,16 +68,16 @@ class ProductService(CommonService):
     def get_by_name(cls, product_name: str) -> dict | None:
         fields = [
             cls.model.id,
+            cls.model.priority,
             cls.model.name,
             cls.model.quota_apps,
             cls.model.quota_members,
             cls.model.quota_storage,
+            cls.model.quota_points,
             cls.model.task_priority,
             cls.model.price_ids,
             cls.model.product_type,
-            cls.model.usage_stat_type,
             cls.model.version,
-            cls.model.quota_points,
         ]
         plan = cls.model.select(*fields).where(cls.model.name == product_name).order_by(cls.model.version.desc()).dicts().first()
         return plan
@@ -90,7 +95,7 @@ class ProductService(CommonService):
                 logging.info(f"Create billing product {plan}.")
                 continue
 
-            is_outdated = any(plan.get(field) != ori_product.get(field) for field in cls.VERSION_CHECK_FIELDS if field in plan)
+            is_outdated = any(plan.get(field) != ori_product.get(field) for field in cls._VERSION_CHECK_FIELDS if field in plan)
 
             if is_outdated:
                 # may have race condition, if launch multiple product-changed config instance concurrently.
@@ -152,7 +157,7 @@ class SubscriptionService(CommonService):
             cls.model.status,
             cls.model.addon_subscription_item_id,
             cls.model.addon_storage_bytes,
-            cls.model.target_quantity_bytes,
+            cls.model.target_storage_bytes,
         ]
         tenant_plan = cls.model.select(*fields).where(cls.model.tenant_id == tenant_id).order_by(cls.model.getter_by("create_time").desc()).dicts().first()
         if not tenant_plan:
@@ -467,7 +472,6 @@ class SubscriptionService(CommonService):
             cls.model.update(subscription_dict).where(cls.model.tenant_id == tenant_id).execute()
 
     @classmethod
-    @DB.connection_context()
     def upsert_subscription(cls, tenant_id: str, subscription_dict: dict):
         """
         Create or update a subscription record for the given tenant.
@@ -498,17 +502,17 @@ class SubscriptionService(CommonService):
                 subscription_dict["update_time"] = current_timestamp()
                 subscription_dict["update_date"] = to_utc_datetime(datetime.now(timezone.utc))
                 cls.model.update(subscription_dict).where(cls.model.tenant_id == tenant_id).execute()
-        return cls.get_by_tenant_id(tenant_id)
+        return cls.model.select().where(cls.model.tenant_id == tenant_id).dicts().first()
 
     @classmethod
     @DB.connection_context()
     def get_storage_bytes_for_tenant(cls, tenant_id: str) -> tuple[int, int]:
-        """Returns (addon_storage_bytes, target_quantity_bytes).
-        Reads from billing_subscription's addon_storage_bytes and target_quantity_bytes columns.
+        """Returns (addon_storage_bytes, target_storage_bytes).
+        Reads from billing_subscription's addon_storage_bytes and target_storage_bytes columns.
         Returns (0, 0) when columns are NULL."""
         main = cls.get_by_tenant_id(tenant_id) or {}
         addon_bytes = main.get("addon_storage_bytes")
-        target_bytes = main.get("target_quantity_bytes")
+        target_bytes = main.get("target_storage_bytes")
         if addon_bytes is not None and target_bytes is not None:
             return addon_bytes, target_bytes
         return 0, 0
@@ -639,14 +643,15 @@ class BillingWebhookEventService(CommonService):
 
 class PricePointService(CommonService):
     model = PricePoint
-    VERSION_CHECK_FIELDS = [
-        "price_type",
-        "billing_frequency",
-        "included_free_amount",
-        "unit",
-        "unit_quantity",
-        "consuming_point_amount",
-    ]
+    # Exclude: id (PK), product_id/product_name (lookup keys), effective/expiry times (set at runtime), timestamp fields
+    _VERSION_CHECK_FIELDS = tuple(
+        f.name for f in PricePoint._meta.sorted_fields
+        if f.name not in (
+            "id", "product_id", "product_name",
+            "effective_time", "expiry_time",
+            "create_time", "create_date", "update_time", "update_date"
+        )
+    )
 
     @classmethod
     def save(cls, **kwargs):
@@ -687,14 +692,19 @@ class PricePointService(CommonService):
     def init_data(cls, price_point_list: list[dict]) -> None:
         for price_point in price_point_list:
             ori_price_point = cls.get_by_name(price_point["product_name"])
+            price_conf_from_db = ProductService.get_by_name(price_point["product_name"])
+            if not price_conf_from_db:
+                cls.save(**price_point, effective_time=to_utc_datetime(datetime.now(timezone.utc)))
+                logging.info(f"Create new billing price point {price_point}.")
+                continue
 
-            product_id = ProductService.get_by_name(price_point["product_name"]).get("id", "")
+            product_id = price_conf_from_db.get("id", "")
             if not ori_price_point:
                 cls.save(**price_point, product_id=product_id, effective_time=to_utc_datetime(datetime.now(timezone.utc)))
                 logging.info(f"Create billing price point {price_point}.")
                 continue
 
-            is_outdated = any(price_point.get(field, "") != ori_price_point.get(field, "") for field in cls.VERSION_CHECK_FIELDS if price_point.get(field, ""))
+            is_outdated = any(price_point.get(field, "") != ori_price_point.get(field, "") for field in cls._VERSION_CHECK_FIELDS if price_point.get(field, ""))
 
             if is_outdated:
                 cls.save(

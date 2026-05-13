@@ -57,6 +57,7 @@ from api.utils.web_utils import (
     hash_code,
     captcha_key,
 )
+from common.billing_utils import milliseconds_to_timestamp_seconds, to_utc_isoformat
 from common import settings
 from common.file_utils import get_project_base_directory
 from api.db.services.user_service import UserService, TenantService, UserTenantService
@@ -764,7 +765,20 @@ async def user_profile():
               type: string
               description: User email.
     """
-    return get_json_result(data=current_user.to_dict())
+    return get_json_result(data=_serialize_user_profile(current_user.to_dict()))
+
+
+def _serialize_user_profile(user_dict: dict) -> dict:
+    profile = dict(user_dict or {})
+    for field in ("create_date", "update_date"):
+        iso_value = to_utc_isoformat(profile.get(field))
+        if iso_value:
+            profile[field] = iso_value
+    for field in ("create_time", "update_time"):
+        timestamp_seconds = milliseconds_to_timestamp_seconds(profile.get(field))
+        if timestamp_seconds is not None:
+            profile[field] = timestamp_seconds
+    return profile
 
 
 def rollback_user_registration(user_id):

@@ -34,7 +34,7 @@ from api.db.services.user_canvas_version import UserCanvasVersionService
 from common.constants import RetCode
 from common.misc_utils import get_uuid, thread_pool_exec
 from api.utils.api_utils import get_json_result, server_error_response, validate_request, get_data_error_result, \
-    get_request_json, _extract_auth_token
+    get_request_json, get_resource_insufficient_result, _extract_auth_token
 from api.utils.billing import check_dynamic_resources
 from api.utils.permission_utils import check_canvas_permission
 from api.db import PermissionValue
@@ -177,10 +177,15 @@ async def save():
         if not check_ok:
             error_details = check_info.get("details", {})
             if "quota_apps" in error_details:
-                return get_data_error_result(
-                    message=f"Insufficient app quota. Current: {error_details['quota_apps']['current']}, Limit: {error_details['quota_apps']['limit']}"
+                return get_resource_insufficient_result(
+                    code=RetCode.BILLING_APPS_INSUFFICIENT,
+                    message=f"Insufficient app quota. Current: {error_details['quota_apps']['current']}, Limit: {error_details['quota_apps']['limit']}",
+                    detail={"current": error_details['quota_apps']['current'], "limit": error_details['quota_apps']['limit']},
                 )
-            return get_data_error_result(message=check_info.get("error", "Insufficient app quota"))
+            return get_resource_insufficient_result(
+                code=RetCode.BILLING_APPS_INSUFFICIENT,
+                message=check_info.get("error", "Insufficient app quota"),
+            )
         req["id"] = get_uuid()
         if not UserCanvasService.save(**req):
             return get_data_error_result(message="Fail to save canvas.")

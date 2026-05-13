@@ -17,32 +17,43 @@
 """
 API-adjusted driver for POINT-02.
 Tests: sequential purchase of 500 points and 1000 points with cumulative accounting.
+
+Test flow:
+- Step 1: Setup - Register user and initialize environment
+- Step 2: Record baseline - Capture points balance, ledger, and spend history before purchase
+- Step 3: Purchase points - Complete two sequential checkout sessions (500 and 1000 points)
+- Step 4: Verify results - Validate cumulative balance increase, ledger entries, and paid history records
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import sys
+import time
 import uuid
 from pathlib import Path
 
 import stripe  # type: ignore[reportMissingImports]
 
+from tools.billing.billing_common import make_default_parser, wait_for_clock
+from tools.billing.storage_common import create_clock_customer
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from tools.billing.flow_common import FlowError
+from tools.billing.billing_common import FlowError
 from tools.billing.points_common import (
-    RAGFlowClient,
+    PointsClient,
     complete_points_purchase,
     load_points_runtime_config,
-    make_default_parser,
 )
 from tools.billing.points_case_common import get_checkout_session_amount, get_points_case_metadata
 
 
-def run_flow(args) -> None:
+def run_flow(args: argparse.Namespace) -> None:
+    """Execute POINT-02: sequential purchase of 500 and 1000 points with cumulative accounting."""
     case_metadata = get_points_case_metadata("POINT-02")
     runtime = load_points_runtime_config()
     stripe.api_key = runtime["stripe_api_key"]
@@ -50,34 +61,112 @@ def run_flow(args) -> None:
     webhook_secret = runtime["webhook_secret"]
     points_per_unit = int(runtime["points_per_unit"])
 
-    client = RAGFlowClient(args.base_url, args.version)
-    client.wait_until_ready(args.ready_timeout_seconds)
+
     email = args.email or f"billing-point02-{uuid.uuid4().hex[:12]}@example.test"
-    _, tenant_id = client.register_and_login(email, args.password)
+    test_clock = stripe.test_helpers.TestClock.create(
+        frozen_time=int(time.time()),
+        name=f"sequential-purchase-{uuid.uuid4().hex[:8]}",
+    )
+    wait_for_clock(test_clock.id)
+    client = PointsClient(args.base_url, args.version, test_clock.id, webhook_secret, args.webhook_mode)
+    client.wait_until_ready(args.ready_timeout_seconds)
+    user_id, tenant_id = client.register_and_login(email, args.password)
+
+    customer_id = create_clock_customer(email, tenant_id, test_clock.id)
 
     points_first = points_per_unit * 5
     points_second = points_per_unit * 10
     total_points = points_first + points_second
 
+    # =============================================================================
+    # Step 1: Setup - Register user and initialize environment
+    # =============================================================================
+    print("=" * 80)
+    print("Step 1: Setup - Register user and initialize environment")
+    print("=" * 80)
+    print(f"  Assert: User registered with email: {email}")
+    print(f"  Assert: Tenant ID: {tenant_id}")
+
+    # =============================================================================
+    # Step 2: Record baseline - Capture pre-purchase state
+    # =============================================================================
+    print("\n" + "=" * 80)
+    print("Step 2: Record baseline - Capture pre-purchase state")
+    print("=" * 80)
+
     before_balance = client.points_balance(tenant_id)
     before_ledger = client.points_ledger(tenant_id)
     before_history = client.spend_history()
 
-    session_first = complete_points_purchase(client, tenant_id, points_first, webhook_secret)
-    session_second = complete_points_purchase(client, tenant_id, points_second, webhook_secret)
+    available_before = int(before_balance.get("available_points") or 0)
+    held_before = int(before_balance.get("held_points") or 0)
+    ledger_before_count = int(before_ledger.get("total") or 0)
+    history_before_count = len(before_history)
+
+    print(f"  Assert: Available points before: {available_before}")
+    print(f"  Assert: Held points before: {held_before}")
+    print(f"  Assert: Ledger total before: {ledger_before_count}")
+    print(f"  Assert: History rows before: {history_before_count}")
+
+    # =============================================================================
+    # Step 3: Purchase points - Complete two sequential checkout sessions
+    # =============================================================================
+    print("\n" + "=" * 80)
+    print("Step 3: Purchase points - Complete two sequential checkout sessions")
+    print("=" * 80)
+
+
+    pi_first = stripe.PaymentIntent.create(
+        amount=points_first,
+        currency="USD",
+        customer=customer_id,
+        description="First points recharge (test)",
+        metadata={"source": "points_common_test", "sequence": "first"},
+    )
+
+    pi_second = stripe.PaymentIntent.create(
+        amount=points_second,
+        currency="USD",
+        customer=customer_id,
+        description="Second points recharge (test)",
+        metadata={"source": "points_common_test", "sequence": "second"},
+    )
+
+    session_first = complete_points_purchase(
+        client, tenant_id, points_first, points_per_unit, payment_intent_id=pi_first.id
+    )
+    print(f"  Assert: First checkout session created: {session_first['id']}")
+    print(f"  Assert: Points to purchase (first): {points_first}")
+
+    session_second = complete_points_purchase(
+        client, tenant_id, points_second, points_per_unit, payment_intent_id=pi_second.id
+    )
+    print(f"  Assert: Second checkout session created: {session_second['id']}")
+    print(f"  Assert: Points to purchase (second): {points_second}")
+
+    # =============================================================================
+    # Step 4: Verify results - Validate post-purchase state
+    # =============================================================================
+    print("\n" + "=" * 80)
+    print("Step 4: Verify results - Validate post-purchase state")
+    print("=" * 80)
 
     after_balance = client.points_balance(tenant_id)
     after_ledger = client.points_ledger(tenant_id)
     after_history = client.spend_history()
 
-    available_before = int(before_balance.get("available_points") or 0)
     available_after = int(after_balance.get("available_points") or 0)
+    held_after = int(after_balance.get("held_points") or 0)
     if available_after != available_before + total_points:
         raise FlowError(
             f"available_points should increase by {total_points}, before={available_before}, after={available_after}"
         )
+    print(f"  Assert: Available points after: {available_after} (increased by {total_points})")
 
-    ledger_before_count = int(before_ledger.get("total") or 0)
+    if held_after != held_before:
+        raise FlowError(f"held_points should not change on recharge, before={held_before}, after={held_after}")
+    print(f"  Assert: Held points unchanged: {held_after}")
+
     ledger_after_count = int(after_ledger.get("total") or 0)
     if ledger_after_count != ledger_before_count + 2:
         raise FlowError(
@@ -100,8 +189,8 @@ def run_flow(args) -> None:
         or points_by_session.get(session_second["id"]) != points_second
     ):
         raise FlowError(f"unexpected ledger point amounts by session: {points_by_session}")
+    print("  Assert: Two recharge ledger rows verified with correct point amounts")
 
-    history_before_count = len(before_history)
     history_after_count = len(after_history)
     if history_after_count != history_before_count + 2:
         raise FlowError(
@@ -110,14 +199,21 @@ def run_flow(args) -> None:
     after_history_rows = [row for row in after_history if row.get("invoice_id") in {session_first["id"], session_second["id"]}]
     if len(after_history_rows) != 2:
         raise FlowError(f"expected exactly two history rows for the new sessions, got {after_history_rows}")
+    if any(row.get("status") != "paid" for row in after_history_rows):
+        raise FlowError(f"all points history rows should be paid, got {after_history_rows}")
     amount_by_session = {row["invoice_id"]: float(row.get("amount", 0) or 0) for row in after_history_rows}
     if abs(amount_by_session.get(session_first["id"], -1) - get_checkout_session_amount(session_first)) > 1e-9:
         raise FlowError(f"unexpected amount for first purchase row: {after_history_rows}")
     if abs(amount_by_session.get(session_second["id"], -1) - get_checkout_session_amount(session_second)) > 1e-9:
         raise FlowError(f"unexpected amount for second purchase row: {after_history_rows}")
-    if any(row.get("status") != "paid" for row in after_history_rows):
-        raise FlowError(f"all points history rows should be paid, got {after_history_rows}")
+    print("  Assert: Two billing history rows verified with status 'paid' and correct amounts")
 
+    # =============================================================================
+    # POINT-02 Test Summary
+    # =============================================================================
+    print("\n" + "=" * 80)
+    print("POINT-02 Test Summary")
+    print("=" * 80)
     print(
         json.dumps(
             {
@@ -143,8 +239,10 @@ def run_flow(args) -> None:
 
 def main() -> int:
     parser = make_default_parser("Run billing POINT-02: sequential purchase of 500 and 1000 points.")
+
+    args = parser.parse_args()
     try:
-        run_flow(parser.parse_args())
+        run_flow(args)
     except Exception as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1

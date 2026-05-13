@@ -163,7 +163,7 @@ class InvoiceLines(BaseModel):
 class InvoicePaid(BaseModel):
     id: str
     object: Literal["invoice"]
-    number: str
+    number: Optional[str] = None
     status: Optional[str] = None  # "paid", "draft", "void"
     currency: str
 
@@ -205,7 +205,7 @@ class SubscriptionUpdatedPlan(BaseModel):
     id: str
     amount: Optional[int] = None
     interval: Optional[str] = None
-    product: str
+    product: Optional[str] = None
     nickname: Optional[str] = None
 
 

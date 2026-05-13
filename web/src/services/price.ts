@@ -107,7 +107,7 @@ export interface IStorageSubscriptionCurrent {
   trial_forbidden: boolean;
   unit_price: number;
   addon_storage_bytes: number;
-  target_quantity_bytes: number;
+  target_storage_bytes: number;
   subscription_id: string;
   price_id: string;
   status: string;
@@ -126,7 +126,7 @@ export const getBillingStorageCurrent = (tenantId?: string) => {
 
 export const postBillingStorageSetTarget = (data: {
   tenant_id?: string;
-  target_quantity_bytes: number;
+  target_storage_bytes: number;
   session_cancel_url?: string;
   session_success_url?: string;
 }) => {

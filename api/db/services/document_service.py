@@ -1165,7 +1165,7 @@ def doc_upload_and_parse(conversation_id, file_objs, user_id):
     embd_mdl = LLMBundle(kb.tenant_id, embd_model_config, lang=kb.language)
 
     err, files = FileService.upload_document(kb, file_objs, user_id)
-    assert not err, "\n".join(err)
+    assert not err, "\n".join(str(e) for e in err)
     pending_hold_ids = {}
     if settings.BILLING_ENABLED:
         for doc_info, blob in files:

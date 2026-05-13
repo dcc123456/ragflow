@@ -39,19 +39,15 @@ import uuid
 
 import stripe  # type: ignore[reportMissingImports]
 
-clock_id = ""
-
-from tools.billing.flow_common import (  # noqa: E402
+from tools.billing.billing_common import (  # noqa: E402
     FlowError,
+    make_default_parser,
 )
 from tools.billing.storage_common import (  # noqa: E402
     RAGFlowClient,
-    delete_clock,
     gb_to_bytes,
-    make_default_parser,
     replace_storage_subscription_quantity,
     setup_starter,
-    wait_for_storage_status,
 )
 
 
@@ -64,24 +60,12 @@ def run_flow(args) -> None:
     print("=" * 80)
 
     email = args.email or f"billing-storage03-{uuid.uuid4().hex[:12]}@example.test"
-    setup = setup_starter(
-        base_url=args.base_url,
-        version=args.version,
-        email=email,
-        password=args.password,
-        ready_timeout_seconds=args.ready_timeout_seconds,
-        webhook_wait_seconds=args.webhook_wait_seconds,
-        webhook_timeout_seconds=args.webhook_timeout_seconds,
-    )
+    setup = setup_starter(args, email=email)
 
     client: RAGFlowClient = setup["client"]
     tenant_id: str = setup["tenant_id"]
     customer_id: str = setup["customer_id"]
     starter_subscription_id: str = setup["subscription_id"]
-    global clock_id
-    clock_id = setup["clock_id"]
-    webhook_secret: str = setup["webhook_secret"]
-
     print("  Assert: Starter environment ready")
     print(f"  Assert: Tenant ID: {tenant_id}")
     print(f"  Assert: Customer ID: {customer_id}")
@@ -102,13 +86,12 @@ def run_flow(args) -> None:
         client=client,
         tenant_id=tenant_id,
         new_quantity_gb=initial_storage_gb,
-        webhook_secret=webhook_secret,
         customer_id=customer_id,
         subscription_ids={starter_subscription_id},
     )
     print("  Assert: Storage addon modification sent")
 
-    wait_for_storage_status(client, tenant_id, "active", timeout_seconds=30)
+    client.wait_for_storage_status(tenant_id, "active", timeout_seconds=30)
     print("  Assert: Storage addon is active")
 
     # Verify storage addon quantity
@@ -140,13 +123,12 @@ def run_flow(args) -> None:
         client=client,
         tenant_id=tenant_id,
         new_quantity_gb=upgraded_storage_gb,
-        webhook_secret=webhook_secret,
         customer_id=customer_id,
         subscription_ids={starter_subscription_id},
     )
     print("  Assert: Storage upgrade modification sent")
 
-    wait_for_storage_status(client, tenant_id, "active", timeout_seconds=30)
+    client.wait_for_storage_status(tenant_id, "active", timeout_seconds=30)
 
     storage_after_upgrade = client.storage_current(tenant_id)
     addon_bytes_upgraded = int(storage_after_upgrade.get("addon_storage_bytes") or 0)
@@ -192,9 +174,6 @@ def main() -> int:
     except Exception as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
-    finally:
-        print("=" * 80)
-        delete_clock(clock_id)
     return 0
 
 

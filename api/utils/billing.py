@@ -19,6 +19,20 @@ import logging
 import os
 import re
 import uuid
+
+
+class InsufficientResourceError(Exception):
+    """Raised when a resource quota check fails, carrying structured detail."""
+
+    def __init__(self, resource: str, current: int, limit: int, message: str, file_size: int | None = None):
+        super().__init__(message)
+        self.resource = resource
+        self.current = current
+        self.limit = limit
+        self.file_size = file_size
+        self.detail = {"current": current, "limit": limit}
+        if file_size is not None:
+            self.detail["file_size"] = file_size
 from contextvars import ContextVar, Token
 from decimal import ROUND_HALF_UP, Decimal
 from functools import wraps
@@ -91,6 +105,7 @@ STORAGE_PRODUCT_NAME = "storage"
 BYTES_PER_GB = 1000 * 1000 * 1000
 STRIPE_TEST_CLOCK_HEADER = "X-Stripe-Test-Clock"
 _stripe_test_clock_id_context: ContextVar[str] = ContextVar("stripe_test_clock_id", default="")
+_storage_quota_bytes_per_unit: int | None = None
 
 
 def set_stripe_test_clock_id_for_current_context(test_clock_id: str) -> Token[str]:
@@ -542,12 +557,34 @@ def parse_storage_size(size_str: str) -> int:
     return int(num * units[unit])
 
 
-def storage_gb_to_bytes(value: int | str | None) -> int:
-    return max(safe_int(value, 0), 0) * BYTES_PER_GB
+def storage_quantity_to_bytes(quantity: int | str | None) -> int:
+    """
+    Convert a storage addon quantity (number of units purchased) to bytes.
+
+    Each Stripe quantity unit for storage equals the quota_storage of the
+    storage plan (e.g. 1G plan -> 1 unit = 1GB = 1_000_000_000 bytes).
+    """
+    global _storage_quota_bytes_per_unit
+    if _storage_quota_bytes_per_unit is None:
+        storage_plan_info = settings.BILLING_PLAN_TO_INFO.get(STORAGE_PRODUCT_NAME, {}) or {}
+        quota_storage_str = str(storage_plan_info.get("quota_storage", "0"))
+        _storage_quota_bytes_per_unit = parse_storage_size(quota_storage_str)
+
+    qty = max(safe_int(quantity, 0), 0)
+    return qty * _storage_quota_bytes_per_unit
 
 
-def storage_bytes_to_gb(value: int | str | None) -> int:
-    return max(safe_int(value, 0), 0) // BYTES_PER_GB
+def storage_bytes_to_quantity(value: int | str | None) -> int:
+    global _storage_quota_bytes_per_unit
+    if _storage_quota_bytes_per_unit is None:
+        storage_plan_info = settings.BILLING_PLAN_TO_INFO.get(STORAGE_PRODUCT_NAME, {}) or {}
+        quota_storage_str = str(storage_plan_info.get("quota_storage", "0"))
+        _storage_quota_bytes_per_unit = parse_storage_size(quota_storage_str)
+
+    if not _storage_quota_bytes_per_unit:
+        _storage_quota_bytes_per_unit = BYTES_PER_GB
+
+    return max(safe_int(value, 0), 0) // _storage_quota_bytes_per_unit
 
 
 def get_trial_price_id(plans: list[dict]) -> str:
@@ -560,8 +597,7 @@ def get_plan_priority_by_price_id(price_id: str) -> int | None:
     if not plan_name:
         return None
     plan_info = settings.BILLING_PLAN_TO_INFO.get(plan_name) or {}
-    task_priority = plan_info.get("task_priority", "low")
-    return 1 if task_priority == "high" else 0
+    return plan_info.get("priority")
 
 
 def is_downgrade_by_price_id(current_price_id: str, target_price_id: str) -> bool:
@@ -594,43 +630,19 @@ async def get_pending_subscription_change_async(subscription_id: str) -> dict:
     if not pending_items:
         return {}
 
-    pending_price_id = pending_items[0].get("price", "") if isinstance(pending_items[0], dict) else ""
-    pending_price_id = pending_price_id.get("id", "") if isinstance(pending_price_id, dict) else pending_price_id
-    pending_price_id = (pending_price_id or "").strip()
+    # Extract pending plan price id (first non-storage item).
+    pending_price_id = ""
+    for item in pending_items:
+        if not isinstance(item, dict):
+            continue
+        _price = item.get("price", "")
+        _price_id = _price.get("id", "") if isinstance(_price, dict) else (_price or "")
+        _price_id = (_price_id or "").strip()
+        if _price_id and not is_storage_price_id(_price_id):
+            pending_price_id = _price_id
+            break
     if not pending_price_id:
         return {}
-
-    # If pending price matches the current subscription's price, the schedule may
-    # be a storage-only change (same plan, different storage item quantity).
-    # Check whether the storage item quantity actually changes before deciding to
-    # release the schedule as stale.
-    current_item_id, current_price_id, _ = extract_plan_subscription_item(subscription)
-    if current_price_id and pending_price_id == current_price_id:
-        # Check if there is a storage item change in the pending phase.
-        _, current_storage_price_id, current_storage_qty = extract_storage_subscription_item(subscription)
-        pending_storage_item = next(
-            (it for it in pending_items[1:] if isinstance(it, dict)),
-            None,
-        )
-        pending_storage_qty = None
-        if pending_storage_item:
-            pending_storage_qty = pending_storage_item.get("quantity")
-
-        has_storage_change = (
-            current_storage_price_id
-            and pending_storage_qty is not None
-            and pending_storage_qty != current_storage_qty
-        )
-        if not has_storage_change:
-            logging.info(
-                f"Stale subscription schedule {schedule_id}: pending plan "
-                f"matches current plan ({current_price_id}) with no storage change. Releasing."
-            )
-            try:
-                await stripe.SubscriptionSchedule.release_async(schedule_id)
-            except Exception:
-                pass
-            return {}
 
     # Extract pending storage quantity from the next phase items.
     # Phase items are flat dicts: {"price": "<price_id_or_obj>", "quantity": N}
@@ -755,14 +767,14 @@ async def schedule_subscription_price_change_at_period_end_async(
     subscription_id: str,
     target_price_id: str,
     *,
-    target_storage_quantity_gb: int | None = None,
+    target_storage_quantity: int | None = None,
 ) -> dict:
     """Schedule a plan price change at period end.
 
     Args:
         subscription_id: Stripe subscription ID.
         target_price_id: Stripe price ID for the new plan.
-        target_storage_quantity_gb: If provided, override the storage item quantity
+        target_storage_quantity: If provided, override the storage item quantity
             in the next phase.  Pass ``0`` to cancel storage at the same period end
             as the plan change (e.g. when downgrading to Trial).  When ``None``
             (default), the live subscription's storage quantity is preserved.
@@ -779,15 +791,36 @@ async def schedule_subscription_price_change_at_period_end_async(
     if not current_price_id:
         return {}
 
-    storage_item_id, storage_price_id, storage_quantity = extract_storage_subscription_item(subscription)
+    target_plan_name = settings.BILLING_PRICEID_TO_PRODUCT.get(target_price_id, "")
+    target_is_trial = is_trial_plan_name(target_plan_name)
+
     current_phase_items = [{"price": current_price_id, "quantity": current_quantity}]
     next_phase_items = [{"price": target_price_id, "quantity": current_quantity}]
-    if storage_item_id and storage_price_id:
-        current_phase_items.append({"price": storage_price_id, "quantity": storage_quantity or 0})
-        # Use caller-supplied target quantity when provided (e.g. 0 to cancel storage
-        # atomically with the plan change), otherwise preserve the live quantity.
-        next_storage_qty = target_storage_quantity_gb if target_storage_quantity_gb is not None else (storage_quantity or 0)
-        next_phase_items.append({"price": storage_price_id, "quantity": next_storage_qty})
+
+    for item in subscription_items:
+        price_obj = item.get("price", {}) if isinstance(item, dict) else getattr(item, "price", None)
+        price_id = price_obj.get("id", "") if isinstance(price_obj, dict) else (getattr(price_obj, "id", "") if price_obj else "")
+        price_id = (price_id or "").strip()
+        if not price_id or price_id == current_price_id:
+            continue
+
+        quantity = item.get("quantity", 0) if isinstance(item, dict) else getattr(item, "quantity", 0)
+        quantity = safe_int(quantity, 0)
+        current_phase_items.append({"price": price_id, "quantity": quantity})
+
+        if target_is_trial:
+            continue
+
+        if is_storage_price_id(price_id):
+            # Omitting the storage item from the next phase removes it. Do not
+            # keep it with quantity=0; Stripe may retain the item instead.
+            next_storage_qty = target_storage_quantity if target_storage_quantity is not None else quantity
+            if next_storage_qty > 0:
+                next_phase_items.append({"price": price_id, "quantity": next_storage_qty})
+            continue
+
+        if quantity > 0:
+            next_phase_items.append({"price": price_id, "quantity": quantity})
 
     scheduled = await schedule_subscription_items_change_at_period_end_async(
         subscription_id,
@@ -864,6 +897,20 @@ async def modify_subscription_plan_async(
     await cancel_scheduled_subscription_change_async(subscription_id)
 
     subscription = await stripe.Subscription.retrieve_async(subscription_id)
+    customer_id = (get_attr_or_item(subscription, "customer", "") or "").strip()
+    has_payment_method = await has_reusable_payment_method_async(
+        customer_id=customer_id,
+        subscription=subscription,
+    )
+    if not has_payment_method:
+        logging.warning(
+            "Skip subscription modification without reusable payment method: tenant_id=%s, subscription_id=%s, target_price_id=%s",
+            tenant_id,
+            subscription_id,
+            target_price_id,
+        )
+        return {"error_message": "No reusable payment method is attached to this customer."}
+
     subscription_item_id, _current_price_id, current_quantity = extract_plan_subscription_item(subscription)
     if not subscription_item_id:
         logging.warning(f"No subscription item found for subscription {subscription_id}")

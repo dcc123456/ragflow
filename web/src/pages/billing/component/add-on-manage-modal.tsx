@@ -1,6 +1,6 @@
 import NumberInput from '@/components/originui/number-input';
 import { Modal } from '@/components/ui/modal/modal';
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { useTranslation } from 'react-i18next';
 interface IOkFuncProps {
@@ -13,6 +13,7 @@ interface CustomModalProps {
   defaultValue?: number;
   currentValue?: number;
   price?: number;
+  getImmediateCharge?: (value: number) => Promise<number | undefined>;
 }
 
 const CustomModal: React.FC<CustomModalProps> = ({
@@ -22,8 +23,14 @@ const CustomModal: React.FC<CustomModalProps> = ({
   defaultValue = 0,
   currentValue = defaultValue,
   price = 0,
+  getImmediateCharge,
 }) => {
-  const [value, setValue] = React.useState(defaultValue);
+  const [value, setValue] = useState(defaultValue);
+  const [immediateCharge, setImmediateCharge] = useState(
+    Math.max(0, (defaultValue - currentValue) * price),
+  );
+  const [isImmediateChargeLoading, setIsImmediateChargeLoading] =
+    useState(false);
   const { t } = useTranslation();
   const handleChange = (e: number) => {
     setValue(e);
@@ -34,9 +41,50 @@ const CustomModal: React.FC<CustomModalProps> = ({
   const currentMonthlyCost = useMemo(() => {
     return (currentValue * price).toFixed(2);
   }, [currentValue, price]);
-  const increaseCharge = useMemo(() => {
-    return Math.max(0, (value - currentValue) * price).toFixed(2);
-  }, [currentValue, price, value]);
+  useEffect(() => {
+    let cancelled = false;
+
+    if (value <= currentValue) {
+      setImmediateCharge(0);
+      setIsImmediateChargeLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    if (!getImmediateCharge) {
+      setImmediateCharge(Math.max(0, (value - currentValue) * price));
+      setIsImmediateChargeLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setIsImmediateChargeLoading(true);
+    getImmediateCharge(value)
+      .then((amount) => {
+        if (!cancelled) {
+          setImmediateCharge(
+            amount ?? Math.max(0, (value - currentValue) * price),
+          );
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setImmediateCharge(Math.max(0, (value - currentValue) * price));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsImmediateChargeLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentValue, getImmediateCharge, price, value]);
+
   const handleOk = () => {
     onOk?.({ value });
   };
@@ -92,8 +140,10 @@ const CustomModal: React.FC<CustomModalProps> = ({
               className="text-sm"
               dangerouslySetInnerHTML={{
                 __html: t('billing.payNowIncremental', {
-                  amount: increaseCharge,
-                  nextMonthlyCost: newMonthlyCost,
+                  amount: isImmediateChargeLoading
+                    ? '...'
+                    : `$${immediateCharge.toFixed(2)}`,
+                  nextMonthlyCost: `$${newMonthlyCost}`,
                 }),
               }}
             ></div>
@@ -110,12 +160,14 @@ interface IShowUpgradeTipsModalOptions {
   currentValue?: number;
   onOk: (T: IOkFuncProps) => void;
   price?: number;
+  getImmediateCharge?: (value: number) => Promise<number | undefined>;
 }
 const showAddOnManageModal = ({
   defaultValue = 0,
   currentValue = defaultValue,
   onOk,
   price = 0,
+  getImmediateCharge,
 }: IShowUpgradeTipsModalOptions) => {
   const rootElement = document.createElement('div');
   document.body.appendChild(rootElement);
@@ -135,6 +187,7 @@ const showAddOnManageModal = ({
       currentValue={currentValue}
       onClose={closeModal}
       price={price}
+      getImmediateCharge={getImmediateCharge}
     />,
   );
 

@@ -39,6 +39,8 @@ export const useFetchHistoryList = () => {
       createDate: formatIsoDateTime(item.created_at),
       invoiceLink: item.invoice_pdf_url,
       product: item.product || 'UNKNOWN',
+      product_quantities: item.product_quantities,
+      product_amount_cents: item.product_amount_cents,
     }));
   }, [data]);
 

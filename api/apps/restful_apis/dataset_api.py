@@ -21,7 +21,7 @@ from quart import request
 from api.apps import current_user, login_required
 from api.apps.services import dataset_api_service
 from api.db import PermissionValue
-from api.utils.api_utils import add_tenant_id_to_kwargs, get_error_argument_result, get_error_data_result, get_json_result, get_result
+from api.utils.api_utils import add_tenant_id_to_kwargs, get_error_argument_result, get_error_data_result, get_resource_insufficient_result, get_result, get_json_result
 from api.utils.billing import check_dynamic_resources
 from api.utils.permission_utils import check_kb_permission
 from api.utils.validation_utils import (
@@ -157,8 +157,15 @@ async def create(tenant_id: str = None):
             if not check_ok:
                 error_details = check_info.get("details", {})
                 if "quota_apps" in error_details:
-                    return get_error_data_result(message=f"Insufficient app quota. Current: {error_details['quota_apps']['current']}, Limit: {error_details['quota_apps']['limit']}")
-                return get_error_data_result(message=check_info.get("error", "Insufficient app quota"))
+                    return get_resource_insufficient_result(
+                        code=RetCode.BILLING_APPS_INSUFFICIENT,
+                        message=f"Insufficient resources in tenant {tenant_id}: Insufficient app quota. Current: {error_details['quota_apps']['current']}, Limit: {error_details['quota_apps']['limit']}",
+                        detail={"current": error_details['quota_apps']['current'], "limit": error_details['quota_apps']['limit']},
+                    )
+                return get_error_data_result(
+                    code=RetCode.BILLING_APPS_INSUFFICIENT,
+                    message=check_info.get("error", "Insufficient app quota"),
+                )
 
         if not tenant_id:
             tenant_id = current_user.id

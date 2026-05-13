@@ -25,35 +25,22 @@ import json
 import sys
 import time
 import uuid
-from datetime import datetime, timezone
 
 import stripe  # type: ignore[reportMissingImports]
 
-clock_id = ""
-
-from tools.billing.flow_common import (  # noqa: E402
+from tools.billing.billing_common import (  # noqa: E402
     FlowError,
+    make_default_parser,
 )
 from tools.billing.storage_common import (  # noqa: E402
     RAGFlowClient,
-    advance_clock,
-    attach_default_test_card,
-    delete_clock,
-    first_plan_price_id,
+    downgrade_pro_to_starter,
+    downgrade_to_trial,
     gb_to_bytes,
-    load_billing_config,
-    make_default_parser,
-    replay_until_payment_order_status,
     replace_storage_subscription_quantity,
-    replace_subscription_price,
     setup_starter,
-    stripe_dict,
-    sync_webhooks,
-    wait_for_plan,
-    wait_for_storage_status,
+    upgrade_starter_to_pro, BYTES_PER_GB,
 )
-
-BYTES_PER_GB = 1000 * 1000 * 1000
 
 
 def run_flow(args) -> None:
@@ -65,36 +52,17 @@ def run_flow(args) -> None:
     print("=" * 80)
 
     email = args.email or f"billing-storage05-{uuid.uuid4().hex[:12]}@example.test"
-    setup = setup_starter(
-        base_url=args.base_url,
-        version=args.version,
-        email=email,
-        password=args.password,
-        ready_timeout_seconds=args.ready_timeout_seconds,
-        webhook_wait_seconds=args.webhook_wait_seconds,
-        webhook_timeout_seconds=args.webhook_timeout_seconds,
-    )
+    setup = setup_starter(args,email=email)
 
     client: RAGFlowClient = setup["client"]
     tenant_id: str = setup["tenant_id"]
     customer_id: str = setup["customer_id"]
     starter_subscription_id: str = setup["subscription_id"]
-    global clock_id
-    clock_id = setup["clock_id"]
-    webhook_secret: str = setup["webhook_secret"]
-    starter_price_id: str = setup["starter_price_id"]
 
     print("  Assert: Starter environment ready")
     print(f"  Assert: Tenant ID: {tenant_id}")
     print(f"  Assert: Customer ID: {customer_id}")
     print(f"  Assert: Starter subscription ID: {starter_subscription_id}")
-
-    # Load Pro price ID for later upgrade
-    billing_config = load_billing_config()
-    pro_price_id = first_plan_price_id(billing_config, "Pro")
-    if not pro_price_id:
-        raise FlowError("Pro plan price_id not found in config")
-    print(f"  Assert: Pro plan price_id found: {pro_price_id[:20]}...")
 
     subscription_ids: set[str] = {starter_subscription_id}
 
@@ -110,26 +78,25 @@ def run_flow(args) -> None:
     print(f"  Assert: Initial addon storage: {initial_addon_bytes} bytes")
 
     storage_gb = 30
-    target_quantity_bytes = gb_to_bytes(storage_gb)
+    target_storage_bytes = gb_to_bytes(storage_gb)
     print(f"  Info: Adding {storage_gb}GB storage addon to subscription {starter_subscription_id}")
 
     replace_storage_subscription_quantity(
         client=client,
         tenant_id=tenant_id,
         new_quantity_gb=storage_gb,
-        webhook_secret=webhook_secret,
         customer_id=customer_id,
         subscription_ids={starter_subscription_id},
     )
     print("  Assert: Storage addon modification sent")
 
-    wait_for_storage_status(client, tenant_id, "active", timeout_seconds=30)
+    client.wait_for_storage_status(tenant_id, "active", timeout_seconds=30)
     print("  Assert: Storage subscription is active")
 
     after_addon_storage = client.storage_current(tenant_id)
     after_addon_addon_bytes = int(after_addon_storage.get("addon_storage_bytes") or 0)
-    if after_addon_addon_bytes != target_quantity_bytes:
-        raise FlowError(f"addon_storage_bytes should be {target_quantity_bytes} after purchase, got {after_addon_addon_bytes}")
+    if after_addon_addon_bytes != target_storage_bytes:
+        raise FlowError(f"addon_storage_bytes should be {target_storage_bytes} after purchase, got {after_addon_addon_bytes}")
     print(f"  Assert: Addon storage equals target: {after_addon_addon_bytes} bytes")
 
     # Verify subscription has two items (plan + storage)
@@ -140,126 +107,25 @@ def run_flow(args) -> None:
     print(f"  Assert: Subscription has {len(items)} items (plan + storage)")
 
     # =============================================================================
-    # Step 7: Upgrade plan from Starter to Pro
+    # Step 7: Upgrade plan from Starter to Pro (using shared utility)
     # =============================================================================
     print("\n" + "=" * 80)
-    print("Step 7: Upgrade plan from Starter to Pro (PLAN-05 mode)")
+    print("Step 7: Upgrade plan from Starter to Pro (using upgrade_starter_to_pro)")
     print("=" * 80)
 
-    subscription_id = client.current_plan().get("subscription_id", "")
-    if not subscription_id:
-        raise FlowError("no active subscription found for plan upgrade")
-    print(f"  Assert: Current subscription ID: {subscription_id}")
-
-    print(f"  Calling replace_subscription_price: sub={subscription_id}, price={pro_price_id}")
-    updated_sub = replace_subscription_price(
-        subscription_id,
-        pro_price_id,
-        proration_behavior="always_invoice",
-        payment_behavior="error_if_incomplete",
-        expand=["latest_invoice.payment_intent"],
-    )
-    updated_sub_dict = stripe_dict(updated_sub)
-    subscription_id = updated_sub_dict.get("id", "")
-    subscription_ids.add(subscription_id)
-    print(f"  Assert: Updated subscription ID: {subscription_id}")
-
-    latest_invoice = updated_sub_dict.get("latest_invoice") or {}
-    if isinstance(latest_invoice, dict):
-        pro_invoice_id = str(latest_invoice.get("id") or "")
-        payment_intent = latest_invoice.get("payment_intent") or {}
-        if isinstance(payment_intent, dict):
-            pro_payment_intent_id = str(payment_intent.get("id") or "")
-        else:
-            pro_payment_intent_id = str(payment_intent or "")
-    else:
-        pro_invoice_id = f"in_{uuid.uuid4().hex[:24]}"
-        pro_payment_intent_id = f"pi_{uuid.uuid4().hex[:24]}"
-    print(f"  Assert: Pro invoice ID: {pro_invoice_id}")
-    print(f"  Assert: Pro payment intent ID: {pro_payment_intent_id}")
-
-    updated_event = {
-        "id": f"evt_storage05_upgrade_{uuid.uuid4().hex[:20]}",
-        "object": "event",
-        "api_version": stripe.api_version,
-        "created": int(datetime.now().timestamp()),
-        "data": {"object": updated_sub_dict},
-        "livemode": False,
-        "pending_webhooks": 0,
-        "type": "customer.subscription.updated",
-    }
-    client.post_signed_webhook(updated_event, webhook_secret)
-    print("  Sent customer.subscription.updated webhook for plan upgrade")
-
-    sync_webhooks(
+    upgrade_result = upgrade_starter_to_pro(
         client,
-        webhook_secret=webhook_secret,
-        customer_id=customer_id,
-        subscription_ids=subscription_ids,
-        created_gte=int(time.time()) - 10,
-        wait_seconds=args.webhook_wait_seconds,
+        tenant_id,
+        customer_id,
+        starter_subscription_id,
+        webhook_wait_seconds=args.webhook_wait_seconds,
+        webhook_timeout_seconds=args.webhook_timeout_seconds,
     )
-    print("  Assert: Webhooks synced after subscription update")
+    subscription_id = upgrade_result.get("subscription_id", "")
+    subscription_ids.add(subscription_id)
+    print(f"  Assert: Upgraded subscription ID: {subscription_id}")
 
-    if pro_invoice_id and pro_invoice_id.startswith("in_"):
-        invoice = stripe_dict(stripe.Invoice.retrieve(pro_invoice_id))
-        invoice_status = invoice.get("status", "")
-        print(f"  Info: Invoice status after upgrade: {invoice_status}")
-
-        if invoice_status in {"open", "uncollectible", "unpaid", "draft"}:
-            pay_started_at = int(time.time()) - 5
-            print(f"  Info: Paying invoice {pro_invoice_id}")
-            pm_id = attach_default_test_card(customer_id)
-            try:
-                pay_result = stripe.Invoice.pay(pro_invoice_id, payment_method=pm_id)
-                pay_dict = stripe_dict(pay_result)
-                if pay_dict.get("status") != "paid":
-                    raise FlowError(f"expected Stripe to pay invoice, got {pay_dict}")
-                print("  Assert: Invoice paid successfully")
-            except Exception as exc:
-                raise FlowError(f"failed to pay invoice {pro_invoice_id}: {exc}") from exc
-
-            print(f"  Info: Waiting for payment order {pro_invoice_id} to reach success")
-            replay_until_payment_order_status(
-                client,
-                webhook_secret=webhook_secret,
-                customer_id=customer_id,
-                subscription_ids=subscription_ids,
-                created_gte=pay_started_at,
-                order_id=pro_invoice_id,
-                expected_status="success",
-                timeout_seconds=args.webhook_timeout_seconds,
-                wait_seconds=args.webhook_wait_seconds,
-            )
-            print("  Assert: Payment order reached success status")
-        elif invoice_status == "paid":
-            print("  Info: Invoice already paid")
-
-    if pro_invoice_id and pro_invoice_id.startswith("in_"):
-        invoice = stripe_dict(stripe.Invoice.retrieve(pro_invoice_id))
-        if invoice.get("status") == "paid":
-            invoice_paid_event = {
-                "id": f"evt_manual_invoice_{uuid.uuid4().hex[:20]}",
-                "object": "event",
-                "type": "invoice.paid",
-                "api_version": stripe.api_version,
-                "created": int(time.time()),
-                "data": {"object": invoice}
-            }
-            client.post_signed_webhook(invoice_paid_event, webhook_secret)
-            print("  Sent manual invoice.paid webhook for plan upgrade")
-
-    print("  Waiting for plan to become Pro...")
-    for retry in range(30):
-        current_plan = client.current_plan()
-        if current_plan.get("plan_name") == "Pro":
-            print(f"  ✅ Plan upgraded to Pro after {retry+1} attempts")
-            break
-        time.sleep(2)
-    else:
-        raise FlowError("plan should be Pro after upgrade, got Starter")
-
-    after_upgrade_plan = client.current_plan()
+    after_upgrade_plan = upgrade_result.get("current_plan", {})
     after_upgrade_plan_name = after_upgrade_plan.get("plan_name", "")
     after_upgrade_plan_overview = client.plan_overview()
     after_upgrade_storage = client.storage_current(tenant_id)
@@ -273,70 +139,43 @@ def run_flow(args) -> None:
     plan_storage_limit_after_upgrade = int(plan_storage_after_upgrade.get("limit") or 0)
     print(f"  Assert: Plan storage limit after upgrade: {plan_storage_limit_after_upgrade} bytes")
 
-    if after_upgrade_addon_bytes != target_quantity_bytes:
-        raise FlowError(f"addon_storage_bytes should remain {target_quantity_bytes} after plan upgrade, got {after_upgrade_addon_bytes}")
+    if after_upgrade_addon_bytes != target_storage_bytes:
+        raise FlowError(f"addon_storage_bytes should remain {target_storage_bytes} after plan upgrade, got {after_upgrade_addon_bytes}")
     print(f"  Assert: Addon storage unchanged after upgrade: {after_upgrade_addon_bytes} bytes")
 
-    # Step 8: Downgrade plan Pro -> Starter
+    # Step 8: Downgrade plan Pro -> Starter (using shared utility)
     print("\n" + "=" * 80)
-    print("Step 8: Downgrade plan from Pro to Starter (PLAN-05 mode)")
+    print("Step 8: Downgrade plan from Pro to Starter (using downgrade_pro_to_starter)")
     print("=" * 80)
 
     if not subscription_id:
         raise FlowError("no active subscription found for plan downgrade")
     print(f"  Assert: Current subscription ID: {subscription_id}")
 
-    print(f"  Calling replace_subscription_price: sub={subscription_id}, price={starter_price_id}")
-    updated_sub = replace_subscription_price(
-        subscription_id,
-        starter_price_id,
-        proration_behavior="always_invoice",
-        payment_behavior="error_if_incomplete",
-        expand=["latest_invoice.payment_intent"],
-    )
-    updated_sub_dict = stripe_dict(updated_sub)
-    downgrade_subscription_id = updated_sub_dict.get("id", "")
-    subscription_ids.add(downgrade_subscription_id)
-    print(f"  Assert: Updated subscription ID: {downgrade_subscription_id}")
-
-    latest_invoice = updated_sub_dict.get("latest_invoice") or {}
-    if isinstance(latest_invoice, dict):
-        downgrade_invoice_id = str(latest_invoice.get("id") or "")
-        payment_intent = latest_invoice.get("payment_intent") or {}
-        if isinstance(payment_intent, dict):
-            downgrade_payment_intent_id = str(payment_intent.get("id") or "")
-        else:
-            downgrade_payment_intent_id = str(payment_intent or "")
-    else:
-        downgrade_invoice_id = f"in_{uuid.uuid4().hex[:24]}"
-        downgrade_payment_intent_id = f"pi_{uuid.uuid4().hex[:24]}"
-    print(f"  Assert: Downgrade invoice ID: {downgrade_invoice_id}")
-    print(f"  Assert: Downgrade payment intent ID: {downgrade_payment_intent_id}")
-
-    updated_event = {
-        "id": f"evt_storage05_downgrade_{uuid.uuid4().hex[:20]}",
-        "object": "event",
-        "api_version": stripe.api_version,
-        "created": int(datetime.now().timestamp()),
-        "data": {"object": updated_sub_dict},
-        "livemode": False,
-        "pending_webhooks": 0,
-        "type": "customer.subscription.updated",
-    }
-    client.post_signed_webhook(updated_event, webhook_secret)
-    print("  Sent customer.subscription.updated webhook for plan downgrade")
-
-    sync_webhooks(
+    # Use shared downgrade_pro_to_starter() method (schedules downgrade, waits for pending)
+    downgrade_created_gte = int(time.time()) - 5
+    downgrade_result = downgrade_pro_to_starter(
         client,
-        webhook_secret=webhook_secret,
+        tenant_id,
+        subscription_id,
+    )
+    print(f"  Assert: Pro -> Starter downgrade scheduled, schedule_id: {downgrade_result.get('schedule_id')}")
+
+    # Advance clock to plan end using shared utility to apply the downgrade
+    client.advance_clock_to_plan_end()
+    print("  Assert: Clock advanced to plan end for downgrade to take effect")
+
+    # Sync webhooks after clock advance
+    client.sync_webhooks(
         customer_id=customer_id,
         subscription_ids=subscription_ids,
-        created_gte=int(time.time()) - 10,
-        wait_seconds=args.webhook_wait_seconds,
+        created_gte=downgrade_created_gte,
+        wait_seconds=8,
     )
-    print("  Assert: Webhooks synced after subscription downgrade")
+    print("  Assert: Webhooks synced after clock advance")
 
-    after_downgrade_plan = wait_for_plan(client, "Starter", args.webhook_timeout_seconds)
+    # Wait for plan to become Starter
+    after_downgrade_plan = client.wait_for_plan("Starter", args.webhook_timeout_seconds)
     after_downgrade_plan_name = after_downgrade_plan.get("plan_name", "")
     after_downgrade_plan_overview = client.plan_overview()
     after_downgrade_storage = client.storage_current(tenant_id)
@@ -350,8 +189,8 @@ def run_flow(args) -> None:
     plan_storage_limit_after_downgrade = int(plan_storage_after_downgrade.get("limit") or 0)
     print(f"  Assert: Plan storage limit after downgrade: {plan_storage_limit_after_downgrade} bytes")
 
-    if after_downgrade_addon_bytes != target_quantity_bytes:
-        raise FlowError(f"addon_storage_bytes should remain {target_quantity_bytes} after plan downgrade, got {after_downgrade_addon_bytes}")
+    if after_downgrade_addon_bytes != target_storage_bytes:
+        raise FlowError(f"addon_storage_bytes should remain {target_storage_bytes} after plan downgrade, got {after_downgrade_addon_bytes}")
     print(f"  Assert: Addon storage unchanged after downgrade: {after_downgrade_addon_bytes} bytes")
 
     # =============================================================================
@@ -360,35 +199,11 @@ def run_flow(args) -> None:
     print("\n" + "=" * 80)
     print("Step 9: Verify quota after downgrade takes effect")
     print("=" * 80)
-
-    current_plan = client.current_plan()
-    plan_end = current_plan.get("end_time")
-    if not plan_end:
-        raise FlowError(f"plan response is missing end_time: {current_plan}")
-
-    if isinstance(plan_end, (int, float)):
-        plan_end_ts = int(plan_end)
-    else:
-        plan_end_str = str(plan_end).replace("Z", "+00:00")
-        plan_end_dt = datetime.fromisoformat(plan_end_str)
-        if plan_end_dt.tzinfo is None:
-            plan_end_dt = plan_end_dt.replace(tzinfo=timezone.utc)
-        plan_end_ts = int(plan_end_dt.timestamp())
-
-    current_ts = int(time.time())
-    advance_seconds = plan_end_ts - current_ts - 86400
-    if advance_seconds > 0:
-        print(f"  Info: Advancing clock by {advance_seconds} seconds to near plan end")
-        advance_clock(clock_id, current_ts + advance_seconds)
-        print("  Assert: Clock advanced near plan end")
-    else:
-        print("  Info: Already near plan end, skipping advance")
-
     after_downgrade_effective_storage = client.storage_current(tenant_id)
     after_downgrade_effective_addon_bytes = int(after_downgrade_effective_storage.get("addon_storage_bytes") or 0)
 
-    if after_downgrade_effective_addon_bytes != target_quantity_bytes:
-        raise FlowError(f"addon_storage_bytes should remain {target_quantity_bytes} after downgrade takes effect, got {after_downgrade_effective_addon_bytes}")
+    if after_downgrade_effective_addon_bytes != target_storage_bytes:
+        raise FlowError(f"addon_storage_bytes should remain {target_storage_bytes} after downgrade takes effect, got {after_downgrade_effective_addon_bytes}")
     print(f"  Assert: Addon storage unchanged after downgrade takes effect: {after_downgrade_effective_addon_bytes} bytes")
 
 
@@ -403,7 +218,7 @@ def run_flow(args) -> None:
     print(f"  Assert: Final addon storage limit: {final_addon_storage_limit} bytes")
 
     total_storage_after_downgrade = final_plan_storage_limit + final_addon_storage_limit
-    expected_total = plan_storage_limit_after_downgrade + target_quantity_bytes
+    expected_total = plan_storage_limit_after_downgrade + target_storage_bytes
     if total_storage_after_downgrade != expected_total:
         raise FlowError(f"total storage should be {expected_total} bytes (5GB plan + 30GB addon), got {total_storage_after_downgrade} bytes")
     print(f"  Assert: Total storage quota: {total_storage_after_downgrade} bytes (5GB plan + 30GB addon)")
@@ -418,65 +233,34 @@ def run_flow(args) -> None:
     history_before_trial_downgrade = client.spend_history()
     print(f"  Assert: Billing history rows before Trial downgrade: {len(history_before_trial_downgrade)}")
 
-    trial_price_id = first_plan_price_id(billing_config, "Trial")
-    if not trial_price_id:
-        raise FlowError("Trial plan price_id not found in config")
-    print(f"  Info: Scheduling downgrade to Trial with price_id: {trial_price_id}...")
-    schedule_result = client.schedule_plan_change(tenant_id, trial_price_id)
+    # Use shared downgrade_to_trial() method (handles scheduling + verification)
+    created_gte = int(time.time()) - 5
+    downgrade_result = downgrade_to_trial(
+        client,
+        tenant_id,
+        starter_subscription_id,
+        webhook_timeout_seconds=args.webhook_timeout_seconds,
+    )
+    print(f"  Assert: Downgrade to Trial scheduled successfully, schedule_id: {downgrade_result.get('schedule_id')}")
 
-    scheduled_change = schedule_result.get("pending_subscription_change") or {}
-    schedule_id = scheduled_change.get("schedule_id", "")
-    if schedule_id:
-        print(f"  Assert: Scheduled change ID: {schedule_id}")
-    else:
-        print(f"  Info: Schedule result: {schedule_result}")
-
-    before_period_end_plan = client.current_plan()
-    before_period_end_plan_name = before_period_end_plan.get("plan_name", "")
-    if before_period_end_plan_name != "Starter":
-        raise FlowError(f"plan changed prematurely to {before_period_end_plan_name}, expected Starter")
-    print(f"  Assert: Plan remains Starter before period end: {before_period_end_plan_name}")
-
+    # Verify addon storage unchanged after scheduling downgrade
     before_period_end_storage = client.storage_current(tenant_id)
     before_period_end_addon_bytes = int(before_period_end_storage.get("addon_storage_bytes") or 0)
-    if before_period_end_addon_bytes != target_quantity_bytes:
-        raise FlowError(f"addon_storage_bytes should remain {target_quantity_bytes} before period end, got {before_period_end_addon_bytes}")
+    if before_period_end_addon_bytes != target_storage_bytes:
+        raise FlowError(f"addon_storage_bytes should remain {target_storage_bytes} before period end, got {before_period_end_addon_bytes}")
     print(f"  Assert: Addon storage unchanged before period end: {before_period_end_addon_bytes} bytes")
 
-    current_plan = client.current_plan()
-    plan_end = current_plan.get("end_time")
-    if not plan_end:
-        raise FlowError(f"plan response is missing end_time: {current_plan}")
-
-    if isinstance(plan_end, (int, float)):
-        plan_end_ts = int(plan_end)
-    else:
-        plan_end_str = str(plan_end).replace("Z", "+00:00")
-        plan_end_dt = datetime.fromisoformat(plan_end_str)
-        if plan_end_dt.tzinfo is None:
-            plan_end_dt = plan_end_dt.replace(tzinfo=timezone.utc)
-        plan_end_ts = int(plan_end_dt.timestamp())
-
-    current_ts = int(time.time())
-    advance_seconds = plan_end_ts - current_ts + 120
-    if advance_seconds > 0:
-        print(f"  Info: Advancing clock by {advance_seconds} seconds to after plan end")
-        advance_clock(clock_id, current_ts + advance_seconds)
-        print("  Assert: Clock advanced to after plan end")
-    else:
-        print("  Info: Already past plan end, skipping advance")
-
-    sync_webhooks(
-        client,
-        webhook_secret=webhook_secret,
+    # Advance clock to after plan end using shared utility
+    client.advance_clock_to_plan_end()
+    client.sync_webhooks(
         customer_id=customer_id,
         subscription_ids=subscription_ids,
-        created_gte=current_ts - 10,
-        wait_seconds=args.webhook_wait_seconds,
+        created_gte=created_gte,
+        wait_seconds=15,
     )
     print("  Assert: Webhooks synced after period end")
 
-    after_trial_plan = wait_for_plan(client, "Trial", args.webhook_timeout_seconds)
+    after_trial_plan = client.wait_for_plan("Trial", args.webhook_timeout_seconds)
     after_trial_plan_name = after_trial_plan.get("plan_name", "")
     if after_trial_plan_name != "Trial":
         raise FlowError(f"plan should be Trial after period end, got {after_trial_plan_name}")
@@ -552,9 +336,6 @@ def main() -> int:
     except Exception as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
-    finally:
-        print("=" * 80)
-        delete_clock(clock_id)
     return 0
 
 

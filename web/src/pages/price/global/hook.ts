@@ -1,4 +1,5 @@
 import { nextLayoutRef } from '@/layouts/root-layout';
+import { convertBytesToGb } from '@/lib/utils';
 import { isBillingEnabled } from '@/services/billingStatus';
 import storagePrivate from '@/utils/authorization-private-util';
 import { useCallback, useEffect, useState } from 'react';
@@ -75,7 +76,7 @@ export const showPriceModal = ({ code, detail }: IPriceData) => {
     case PriceCode.StorageLimit:
       showUpgradeTipsModal({
         type: 'storage',
-        message: `You've reached your storage limit for your plan (${detail.current}GB/${detail.limit} GB}). `,
+        message: `You've reached your storage limit for your plan (${convertBytesToGb(detail.current)} GB/${convertBytesToGb(detail.limit)} GB). `,
         container: nextLayoutRef.current || undefined,
       });
       return true;
@@ -241,12 +242,7 @@ export const useShowConfirmPriceModal = () => {
       description: '',
       title: '',
       price: '0',
-      feature: {
-        apps: '0',
-        teamMembers: '0',
-        datasetStorage: '0',
-        apiRequests: '0',
-      },
+      features: [],
     },
     container: undefined,
   });
@@ -270,12 +266,7 @@ export const useShowConfirmPriceModal = () => {
         description: '',
         title: '',
         price: '0',
-        feature: {
-          apps: '0',
-          teamMembers: '0',
-          datasetStorage: '0',
-          apiRequests: '0',
-        },
+        features: [],
       },
       container: undefined,
     });

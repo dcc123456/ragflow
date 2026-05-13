@@ -17,10 +17,17 @@
 """
 API-adjusted driver for POINT-03.
 Tests: invalid points purchase inputs are rejected by API and do not mutate state.
+
+Test flow:
+- Step 1: Setup - Register user and initialize environment
+- Step 2: Record baseline - Capture points balance, ledger, and spend history before testing
+- Step 3: Test invalid inputs - Submit invalid points values and verify rejection
+- Step 4: Verify results - Validate no state mutation occurred
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 import time
@@ -29,40 +36,76 @@ from pathlib import Path
 
 import stripe  # type: ignore[reportMissingImports]
 
+from tools.billing.billing_common import make_default_parser
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from tools.billing.flow_common import FlowError
+from tools.billing.billing_common import FlowError
 from tools.billing.points_common import (
-    RAGFlowClient,
+    PointsClient,
     list_recent_points_checkout_sessions,
     load_points_runtime_config,
-    make_default_parser,
 )
 from tools.billing.points_case_common import get_points_case_metadata
 
 
-def run_flow(args) -> None:
+def run_flow(args: argparse.Namespace) -> None:
+    """Execute POINT-03: invalid points purchase inputs are rejected by API and do not mutate state."""
     case_metadata = get_points_case_metadata("POINT-03")
     runtime = load_points_runtime_config()
+    webhook_secret = runtime["webhook_secret"]
     stripe.api_key = runtime["stripe_api_key"]
     stripe.api_version = runtime["stripe_api_version"]
 
-    client = RAGFlowClient(args.base_url, args.version)
+    client = PointsClient(args.base_url, args.version, "", webhook_secret, args.webhook_mode)
     client.wait_until_ready(args.ready_timeout_seconds)
     email = args.email or f"billing-point03-{uuid.uuid4().hex[:12]}@example.test"
-    _, tenant_id = client.register_and_login(email, args.password)
+    user_id, tenant_id = client.register_and_login(email, args.password)
+
+    # =============================================================================
+    # Step 1: Setup - Register user and initialize environment
+    # =============================================================================
+    print("=" * 80)
+    print("Step 1: Setup - Register user and initialize environment")
+    print("=" * 80)
+    print(f"  Assert: User registered with email: {email}")
+    print(f"  Assert: Tenant ID: {tenant_id}")
+
+    # =============================================================================
+    # Step 2: Record baseline - Capture pre-test state
+    # =============================================================================
+    print("\n" + "=" * 80)
+    print("Step 2: Record baseline - Capture pre-test state")
+    print("=" * 80)
 
     before_balance = client.points_balance(tenant_id)
     before_ledger = client.points_ledger(tenant_id)
     before_history = client.spend_history()
 
+    available_before = int(before_balance.get("available_points") or 0)
+    held_before = int(before_balance.get("held_points") or 0)
+    ledger_before_count = int(before_ledger.get("total") or 0)
+    history_before_count = len(before_history)
+
+    print(f"  Assert: Available points before: {available_before}")
+    print(f"  Assert: Held points before: {held_before}")
+    print(f"  Assert: Ledger total before: {ledger_before_count}")
+    print(f"  Assert: History rows before: {history_before_count}")
+
+    # =============================================================================
+    # Step 3: Test invalid inputs - Submit invalid points values and verify rejection
+    # =============================================================================
+    print("\n" + "=" * 80)
+    print("Step 3: Test invalid inputs - Submit invalid points values and verify rejection")
+    print("=" * 80)
+
     invalid_cases = [
         {"points": 0, "expected_message_part": "positive"},
-        {"points": -100, "expected_message_part": "positive"},
-        {"points": 50, "expected_message_part": "multiple of 100"},
-        {"points": 100.5, "expected_message_part": "integer"},
+        {"points": -1, "expected_message_part": "positive"},
+        {"points": 0.1, "expected_message_part": "positive"},
+        {"points": 0.9, "expected_message_part": "positive"},
         {"points": "abc", "expected_message_part": "integer"},
     ]
 
@@ -83,6 +126,14 @@ def run_flow(args) -> None:
                 f"invalid points value {case['points']} should mention {case['expected_message_part']!r}, got {payload}"
             )
         results.append({"points": case["points"], "message": message, "code": payload.get("code")})
+        print(f"  Assert: Invalid input {case['points']} rejected with message: {message}")
+
+    # =============================================================================
+    # Step 4: Verify results - Validate no state mutation occurred
+    # =============================================================================
+    print("\n" + "=" * 80)
+    print("Step 4: Verify results - Validate no state mutation occurred")
+    print("=" * 80)
 
     after_balance = client.points_balance(tenant_id)
     after_ledger = client.points_ledger(tenant_id)
@@ -93,17 +144,39 @@ def run_flow(args) -> None:
         if (session.get("metadata") or {}).get("tenant_id") == tenant_id
     ]
 
-    if after_balance != before_balance:
-        raise FlowError(f"invalid points requests should not change balance: before={before_balance}, after={after_balance}")
-    if after_ledger.get("total") != before_ledger.get("total"):
-        raise FlowError(f"invalid points requests should not change ledger count: before={before_ledger}, after={after_ledger}")
-    if len(after_history) != len(before_history):
+    available_after = int(after_balance.get("available_points") or 0)
+    held_after = int(after_balance.get("held_points") or 0)
+    ledger_after_count = int(after_ledger.get("total") or 0)
+    history_after_count = len(after_history)
+
+    if available_after != available_before:
+        raise FlowError(f"invalid points requests should not change balance: before={available_before}, after={available_after}")
+    print(f"  Assert: Available points unchanged: {available_after}")
+
+    if held_after != held_before:
+        raise FlowError(f"invalid points requests should not change held points: before={held_before}, after={held_after}")
+    print(f"  Assert: Held points unchanged: {held_after}")
+
+    if ledger_after_count != ledger_before_count:
+        raise FlowError(f"invalid points requests should not change ledger count: before={ledger_before_count}, after={ledger_after_count}")
+    print(f"  Assert: Ledger total unchanged: {ledger_after_count}")
+
+    if history_after_count != history_before_count:
         raise FlowError(
-            f"invalid points requests should not change billing history count: before={len(before_history)}, after={len(after_history)}"
+            f"invalid points requests should not change billing history count: before={history_before_count}, after={history_after_count}"
         )
+    print(f"  Assert: History total unchanged: {history_after_count}")
+
     if after_sessions:
         raise FlowError(f"invalid points requests should not create Stripe checkout sessions, got {after_sessions}")
+    print("  Assert: No Stripe checkout sessions created")
 
+    # =============================================================================
+    # POINT-03 Test Summary
+    # =============================================================================
+    print("\n" + "=" * 80)
+    print("POINT-03 Test Summary")
+    print("=" * 80)
     print(
         json.dumps(
             {
@@ -112,8 +185,8 @@ def run_flow(args) -> None:
                 "email": email,
                 "invalid_case_results": results,
                 "balance_after": after_balance,
-                "ledger_total_after": after_ledger.get("total"),
-                "history_total_after": len(after_history),
+                "ledger_total_after": ledger_after_count,
+                "history_total_after": history_after_count,
             },
             indent=2,
             sort_keys=True,
@@ -123,8 +196,10 @@ def run_flow(args) -> None:
 
 def main() -> int:
     parser = make_default_parser("Run billing POINT-03: invalid inputs for points checkout.")
+
+    args = parser.parse_args()
     try:
-        run_flow(parser.parse_args())
+        run_flow(args)
     except Exception as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1

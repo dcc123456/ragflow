@@ -32,32 +32,23 @@ import json
 import sys
 import time
 import uuid
-from datetime import datetime, timezone
 from pathlib import Path
 
 import stripe  # type: ignore[reportMissingImports]
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-
-from tools.billing.flow_common import (  # noqa: E402
-    FlowError,
-)
+from tools.billing.billing_common import FlowError, make_default_parser
 from tools.billing.storage_common import (  # noqa: E402
     RAGFlowClient,
     add_storage_to_subscription_with_webhook,
-    advance_clock,
-    delete_clock,
     gb_to_bytes,
-    make_default_parser,
     setup_starter,
     stripe_dict,
-    wait_for_storage_status, replace_storage_subscription_quantity,
+    replace_storage_subscription_quantity,
 )
 
-clock_id = ""
-
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 def run_flow(args: argparse.Namespace) -> None:
     # =============================================================================
@@ -69,23 +60,12 @@ def run_flow(args: argparse.Namespace) -> None:
     print("=" * 80)
 
     email = args.email or f"billing-storage01-{uuid.uuid4().hex[:12]}@example.test"
-    setup = setup_starter(
-        base_url=args.base_url,
-        version=args.version,
-        email=email,
-        password=args.password,
-        ready_timeout_seconds=args.ready_timeout_seconds,
-        webhook_wait_seconds=args.webhook_wait_seconds,
-        webhook_timeout_seconds=args.webhook_timeout_seconds,
-    )
+    setup = setup_starter(args, email=email)
 
     client: RAGFlowClient = setup["client"]
     tenant_id: str = setup["tenant_id"]
     customer_id: str = setup["customer_id"]
     starter_subscription_id: str = setup["subscription_id"]
-    global clock_id
-    clock_id = setup["clock_id"]
-    webhook_secret: str = setup["webhook_secret"]
 
     print("  Assert: Starter environment ready")
     print(f"  Assert: Tenant ID: {tenant_id}")
@@ -115,7 +95,6 @@ def run_flow(args: argparse.Namespace) -> None:
         client=client,
         tenant_id=tenant_id,
         storage_quantity_gb=storage_gb,
-        webhook_secret=webhook_secret,
         customer_id=customer_id,
         subscription_ids={starter_subscription_id},
         created_gte=storage_added_at,
@@ -123,7 +102,7 @@ def run_flow(args: argparse.Namespace) -> None:
     print(f"  Assert: Storage addon added for tenant: {tenant_id}")
 
     # Wait for storage status to become active
-    wait_for_storage_status(client, tenant_id, "active", timeout_seconds=30)
+    client.wait_for_storage_status(tenant_id, "active", timeout_seconds=30)
     print("  Assert: Storage status is active")
 
     # Verify subscription now has two items (plan + storage)
@@ -179,34 +158,7 @@ def run_flow(args: argparse.Namespace) -> None:
     print("Step 7: Advance 15 days and upgrade storage addon mid-cycle")
     print("=" * 80)
 
-    current_plan = client.current_plan()
-    plan_end = current_plan.get("end_time")
-    if not plan_end:
-        raise FlowError(f"plan response is missing end_time: {current_plan}")
-
-    if isinstance(plan_end, (int, float)):
-        plan_end_ts = int(plan_end)
-    else:
-        plan_end_str = str(plan_end).replace("Z", "+00:00")
-        plan_end_dt = datetime.fromisoformat(plan_end_str)
-        if plan_end_dt.tzinfo is None:
-            plan_end_dt = plan_end_dt.replace(tzinfo=timezone.utc)
-        plan_end_ts = int(plan_end_dt.timestamp())
-
-    current_ts = int(time.time())
-    days_15_seconds = 15 * 86400
-    advance_to_ts = current_ts + days_15_seconds
-
-    if advance_to_ts >= plan_end_ts - 86400:
-        advance_to_ts = plan_end_ts - 86400
-
-    advance_seconds = advance_to_ts - current_ts
-    if advance_seconds < 0:
-        raise FlowError(f"cannot advance time: current={current_ts}, target={advance_to_ts}")
-
-    print(f"  Info: Advancing clock by {advance_seconds} seconds ({advance_seconds/86400:.1f} days)")
-    advance_clock(clock_id, advance_to_ts)
-    print("  Assert: Clock advanced")
+    client.advance_clock_to_plan_end()
 
     before_mid_storage = client.storage_current(tenant_id)
     before_mid_addon_bytes = int(before_mid_storage.get("addon_storage_bytes") or 0)
@@ -218,14 +170,13 @@ def run_flow(args: argparse.Namespace) -> None:
         client=client,
         tenant_id=tenant_id,
         new_quantity_gb=storage_gb_mid,
-        webhook_secret=webhook_secret,
         customer_id=customer_id,
         subscription_ids={starter_subscription_id},
     )
     print(f"  Assert: Storage upgraded to {storage_gb_mid}GB")
 
     # Wait for storage status update
-    wait_for_storage_status(client, tenant_id, "active", timeout_seconds=30)
+    client.wait_for_storage_status(tenant_id, "active", timeout_seconds=30)
 
     # =============================================================================
     # Step 8: Verify invoice proration for storage upgrade
@@ -304,14 +255,6 @@ def run_flow(args: argparse.Namespace) -> None:
     }, indent=2, sort_keys=True))
 
 
-def clean_up():
-    if clock_id:
-        print("\n" + "=" * 80)
-        print("Cleanup: Deleting Stripe test clock")
-        print("=" * 80)
-        delete_clock(clock_id)
-
-
 def main() -> int:
     parser = make_default_parser("Run billing STORAGE-01: first storage addon purchase (prorated) - NEW LOGIC.")
     args = parser.parse_args()
@@ -320,8 +263,6 @@ def main() -> int:
     except Exception as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
-    finally:
-        clean_up()
     return 0
 
 

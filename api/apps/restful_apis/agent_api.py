@@ -57,8 +57,9 @@ from api.utils.api_utils import (
     get_result,
     get_request_json,
     server_error_response,
-    validate_request,
+    validate_request, get_resource_insufficient_result,
 )
+from api.utils.billing import check_dynamic_resources
 from common import settings
 from common.constants import RetCode
 from common.misc_utils import get_uuid, thread_pool_exec
@@ -452,6 +453,27 @@ async def create_agent(tenant_id):
         canvas_category=req["canvas_category"],
     ):
         return get_data_error_result(message=f"{req['title']} already exists.")
+
+    check_ok, check_info = check_dynamic_resources(tenant_id=tenant_id, apps=1)
+    if not check_ok:
+        error_details = check_info.get("details", {})
+        if "quota_apps" in error_details:
+            return get_resource_insufficient_result(
+                code=RetCode.BILLING_APPS_INSUFFICIENT,
+                message=(
+                    "Insufficient app quota. Current: "
+                    f"{error_details['quota_apps']['current']}, "
+                    f"Limit: {error_details['quota_apps']['limit']}"
+                ),
+                detail={
+                    "current": error_details["quota_apps"]["current"],
+                    "limit": error_details["quota_apps"]["limit"],
+                },
+            )
+        return get_resource_insufficient_result(
+            code=RetCode.BILLING_APPS_INSUFFICIENT,
+            message="Insufficient app quota",
+        )
 
     req["id"] = get_uuid()
     if not UserCanvasService.save(**req):

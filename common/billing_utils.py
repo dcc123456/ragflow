@@ -37,6 +37,25 @@ def to_utc_date_str(value: Any) -> str:
     return dt.date().isoformat() if dt else ""
 
 
+def to_utc_isoformat(value: datetime | str | None) -> str:
+    dt = to_utc_datetime(value)
+    if not dt:
+        return ""
+    dt = dt.replace(microsecond=0)
+    return dt.isoformat().replace("+00:00", "Z")
+
+
+def milliseconds_to_timestamp_seconds(timestamp_ms: int | float | str | None) -> Optional[int]:
+    if timestamp_ms is None:
+        return None
+    if isinstance(timestamp_ms, str):
+        text = timestamp_ms.strip()
+        if not text:
+            return None
+        timestamp_ms = int(text)
+    return int(float(timestamp_ms) / 1000)
+
+
 def parse_datetime_arg(value: Any) -> Optional[datetime]:
     if value is None:
         return None

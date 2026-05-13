@@ -97,7 +97,7 @@ const CancelPlanDialog: React.FC<ICancelPlanDialogProps> = ({
             <p>
               {t('price.cancelPlanSwitchTip', {
                 defaultValue:
-                  'If your current usage exceeds the Free Plan limits, your downgrade will be blocked and you will remain on the current plan. Any add-on storage will also be cancelled when the base plan expires.',
+                  'If your current usage exceeds the Trial plan limits, your downgrade will be blocked and you will remain on the current plan. Existing add-on storage does not extend the Trial storage quota, and any add-on storage will be cancelled when the current plan expires.',
               })}
             </p>
             <p>

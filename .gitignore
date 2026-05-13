@@ -26,6 +26,7 @@ Cargo.lock
 
 .idea/
 .vscode/
+.emdash/
 
 # Exclude Mac generated files
 .DS_Store

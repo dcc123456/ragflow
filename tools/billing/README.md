@@ -4,17 +4,48 @@ Automated end-to-end test suite for RAGFlow's billing API integration with Strip
 
 ## Overview
 
-This suite contains 5 test scripts (`billing_plan0{1-5}_api_flow.py`) that validate complete billing workflows using Stripe's test clock and webhook replay mechanisms. Each script is self-contained and can be run independently.
+This suite contains 15+ test scripts organized into three categories that validate complete billing workflows using Stripe's test clock and webhook replay mechanisms. Each script is self-contained and can be run independently.
+
+### Test Categories
+
+| Category | Scripts | Description |
+|----------|---------|-------------|
+| **Plan** | `billing_plan0{1-5}_api_flow.py` | Subscription lifecycle, renewal, and plan transitions |
+| **Points** | `billing_point0{1-5}_api_flow.py` | Points recharge purchase flows |
+| **Storage** | `billing_storage0{1-5}_api_flow.py` | Storage addon lifecycle and interactions |
 
 ### Test Scripts
+
+#### Plan Tests (billing_plan0{1-5})
 
 | Script | Test Scenario | Key Validations |
 |--------|--------------|-----------------|
 | `billing_plan01_api_flow.py` | Full subscription lifecycle | Trial→Pro→renew→Starter→renew→Trial→renew→Starter |
 | `billing_plan02_api_flow.py` | Renewal failure & recovery | Failed renewal → attention banner → invoice recovery → same history row becomes paid |
-| `billing_plan03_api_flow.py` | Customer Portal upgrade | Starter→Pro upgrade via Stripe Customer Portal, quota entitlement |
-| `billing_plan04_api_flow.py` | Cancel scheduled downgrade | Schedule downgrade Pro→Starter, cancel before period end, verify no change |
+| `billing_plan03_api_flow.py` | Direct API checkout upgrade | Starter→Pro upgrade via API checkout, quota entitlement |
+| `billing_plan04_api_flow.py` | Storage addon quantity change | Scheduled storage addon downgrade is replaced by immediate upgrade |
 | `billing_plan05_api_flow.py` | Unpaid invoice prevents entitlement | Starter→Pro upgrade invoice unpaid means Starter entitlement remains until recovery payment |
+
+#### Points Tests (billing_point0{1-5})
+
+| Script | Test Scenario | Key Validations |
+|--------|--------------|-----------------|
+| `billing_point01_api_flow.py` | Successful minimum recharge | Purchase 100 points, validate balance increase, ledger entry, and paid history |
+| `billing_point02_api_flow.py` | Sequential purchases | Purchase 500 then 1000 points, validate cumulative accounting |
+| `billing_point03_api_flow.py` | Invalid input rejection | Submit invalid points values, verify API rejection and no state mutation |
+| `billing_point04_api_flow.py` | Canceled checkout | Create and expire points checkout, validate no credits or recovery state |
+| `billing_point05_api_flow.py` | Webhook idempotency | Replay successful points webhook, validate no duplicate state mutation |
+
+#### Storage Tests (billing_storage0{1-5})
+
+| Script | Test Scenario | Key Validations |
+|--------|--------------|-----------------|
+| `billing_storage01_api_flow.py` | First storage addon purchase | Add 20GB storage with proration, verify immediate effect |
+| `billing_storage02_api_flow.py` | Storage lifecycle with plan downgrade | Add storage → cancel → downgrade to Trial → verify storage cannot be re-added |
+| `billing_storage02b_api_flow.py` | *(reserved)* | *(placeholder for future storage test)* |
+| `billing_storage03_api_flow.py` | Storage upgrade (increase quantity) | Upgrade from 10GB to 30GB, verify immediate effect |
+| `billing_storage04_api_flow.py` | Storage downgrade (decrease quantity) | Downgrade from 20GB to 10GB, verify period-end effect |
+| `billing_storage05_api_flow.py` | Plan transitions with storage | Starter→Pro→Starter→Trial with 30GB storage addon, verify storage persistence |
 
 ## Prerequisites
 
@@ -220,34 +251,32 @@ Tests the attention-banner flow:
 
 **Key assertions**: `payment_required`, delinquent subscription status, exactly one failed invoice row before recovery, and in-place history-row update from failed/unpaid to paid.
 
-### PLAN-03: Customer Portal Upgrade
+### PLAN-03: Direct API Checkout Upgrade
 
 **File**: `billing_plan03_api_flow.py`
 
-Tests the Stripe Customer Portal flow:
+Tests the direct API checkout upgrade flow:
 1. Prepare a tenant already on `Starter`
-2. Call `/billing/checkout` → expects `redirect_to` portal URL (not direct charge)
-3. Simulate portal completion using the same always-invoice behavior as the real portal configuration
+2. Call `/billing/checkout` with Pro price ID → expects `redirect_to` URL
+3. Simulate checkout completion using Stripe test clock
 4. Verify the tenant switches to `Pro` only after payment + webhook sync complete
 5. Verify `billing_overview` reflects the configured `Pro` quota
 6. Verify billing history records the upgrade invoice
 
-**Key assertions**: Portal redirect URL, payment-gated plan switch, configured `Pro` quota entitlement, and upgrade invoice visibility in billing history.
+**Key assertions**: API checkout redirect URL, payment-gated plan switch, configured `Pro` quota entitlement, and upgrade invoice visibility in billing history.
 
-### PLAN-04: Cancel Scheduled Downgrade
+### PLAN-04: Storage Addon Quantity Change
 
 **File**: `billing_plan04_api_flow.py`
 
-Tests downgrade scheduling and cancellation:
-1. Start on Pro plan
-2. Schedule downgrade to Starter via `/billing/checkout` (at period end)
-3. Verify `pending_subscription_change` appears in `current_plan`
-4. Cancel the scheduled change via API
-5. Verify banner disappears
-6. Advance clock to original period end
-7. Verify still on Pro (downgrade did not happen)
+Tests storage addon quantity changes:
+1. Start on Starter plan with 20GB storage addon
+2. Schedule storage downgrade to 10GB (takes effect at period end)
+3. Before period end, upgrade storage to 30GB
+4. Verify the scheduled downgrade is replaced by the immediate upgrade
+5. Verify storage is now 30GB immediately
 
-**Key assertions**: `pending_subscription_change` presence/absence, plan persistence after period end.
+**Key assertions**: Scheduled storage downgrade replacement, immediate effect of storage upgrade.
 
 ### PLAN-05: Unpaid Invoice Prevents Entitlement
 
@@ -255,14 +284,140 @@ Tests downgrade scheduling and cancellation:
 
 Tests that upgrade doesn't grant entitlements until invoice paid:
 1. Prepare a tenant already on `Starter`
-2. Trigger the paid-plan upgrade path (`Starter` → `Pro`) through the Customer Portal redirect flow
-3. Simulate the portal-side upgrade while leaving the proration invoice unpaid
+2. Trigger the paid-plan upgrade path (`Starter` → `Pro`) through the API checkout flow
+3. Simulate the upgrade while leaving the proration invoice unpaid
 4. Immediately check `current_plan` and `plan_overview`
    - **Expected**: plan and entitlement remain at `Starter`, and payment-attention state is recoverable
 5. Pay the same unpaid upgrade invoice
 6. Verify `Pro` entitlement unlocks only after payment + webhook sync
 
 **Key assertions**: no premature `Pro` entitlement, recoverable unpaid-upgrade state, and post-payment switch to configured `Pro` quota.
+
+### POINT-01: Successful Minimum Recharge
+
+**File**: `billing_point01_api_flow.py`
+
+Tests successful purchase of minimum valid 100 points recharge:
+1. Register user and initialize environment
+2. Record baseline points balance, ledger, and spend history
+3. Complete a 100 points checkout session
+4. Validate balance increase, ledger entry, and paid history record
+
+**Key assertions**: Points balance increases by exactly 100, new ledger entry created, billing history shows paid record.
+
+### POINT-02: Sequential Purchases
+
+**File**: `billing_point02_api_flow.py`
+
+Tests sequential purchase of 500 points and 1000 points with cumulative accounting:
+1. Register user and initialize environment
+2. Record baseline points balance, ledger, and spend history
+3. Complete two sequential checkout sessions (500 and 1000 points)
+4. Validate cumulative balance increase, ledger entries, and paid history records
+
+**Key assertions**: Points balance increases by 1500 total (500 + 1000), two ledger entries created, two paid history records.
+
+### POINT-03: Invalid Input Rejection
+
+**File**: `billing_point03_api_flow.py`
+
+Tests that invalid points purchase inputs are rejected by API and do not mutate state:
+1. Register user and initialize environment
+2. Record baseline points balance, ledger, and spend history
+3. Submit invalid points values and verify rejection
+4. Validate no state mutation occurred
+
+**Key assertions**: API returns error for invalid inputs, points balance unchanged, no new ledger entries or history records.
+
+### POINT-04: Canceled Checkout
+
+**File**: `billing_point04_api_flow.py`
+
+Tests that a canceled or abandoned points checkout does not create credits or recovery state:
+1. Register user and initialize environment
+2. Record baseline points balance, ledger, spend history, and plan overview
+3. Create a points checkout session and expire it
+4. Validate no state mutation or payment recovery occurred
+
+**Key assertions**: Points balance unchanged, no ledger entries created, no payment recovery state.
+
+### POINT-05: Webhook Idempotency
+
+**File**: `billing_point05_api_flow.py`
+
+Tests that replaying the same successful points webhook remains idempotent:
+1. Register user and initialize environment
+2. Record baseline points balance, ledger, and spend history
+3. Create checkout session and post signed webhook event
+4. Replay webhook and validate no duplicate state mutation
+
+**Key assertions**: Points balance increases only once, no duplicate ledger entries, no duplicate history records.
+
+### STORAGE-01: First Storage Addon Purchase
+
+**File**: `billing_storage01_api_flow.py`
+
+Tests first storage addon purchase with proration:
+1. Setup Starter environment
+2. Add 20GB storage addon to Starter subscription
+3. Verify proration invoice created
+4. Verify storage quota updated immediately
+
+**Key assertions**: Storage addon added successfully, proration invoice created, storage quota reflects new limit.
+
+### STORAGE-02: Storage Lifecycle with Plan Downgrade
+
+**File**: `billing_storage02_api_flow.py`
+
+Tests storage addon lifecycle combined with plan downgrade:
+1. Setup Starter environment
+2. Add 30GB storage addon to Starter subscription
+3. Cancel storage addon (quantity set to 0, takes effect at period end)
+4. Downgrade from Starter to Trial
+5. Verify storage addon cannot be re-added on Trial plan
+
+**Key assertions**: Storage cancellation scheduled, plan downgrade cancels storage, Trial plan cannot have storage addon.
+
+### STORAGE-03: Storage Upgrade (Increase Quantity)
+
+**File**: `billing_storage03_api_flow.py`
+
+Tests upgrading storage addon (increase quantity) takes effect immediately:
+1. Setup Starter environment
+2. Purchase initial 10GB storage addon
+3. Upgrade storage from 10GB to 30GB
+4. Verify storage updated immediately with proration invoice
+
+**Key assertions**: Storage upgrade takes effect immediately, proration invoice created for the difference.
+
+### STORAGE-04: Storage Downgrade (Decrease Quantity)
+
+**File**: `billing_storage04_api_flow.py`
+
+Tests downgrading storage addon (decrease quantity) takes effect at period end:
+1. Setup Starter environment
+2. Purchase initial 20GB storage addon
+3. Downgrade storage from 20GB to 10GB
+4. Verify downgrade scheduled (takes effect at period end)
+5. Advance clock to period end
+6. Verify storage reduced to 10GB
+
+**Key assertions**: Storage downgrade scheduled, takes effect at period end, storage reduced after period end.
+
+### STORAGE-05: Plan Transitions with Storage
+
+**File**: `billing_storage05_api_flow.py`
+
+Tests plan upgrade/downgrade with existing storage addon:
+1. Setup Starter environment with 30GB storage addon
+2. Upgrade from Starter to Pro
+3. Verify storage addon persists through upgrade
+4. Downgrade from Pro to Starter
+5. Verify storage addon persists through downgrade
+6. Downgrade from Starter to Trial
+7. Verify storage addon cancelled on Trial
+
+**Key assertions**: Storage addon persists through plan upgrades/downgrades, storage cancelled on Trial downgrade.
 
 ## Stripe API Version
 
@@ -362,12 +517,27 @@ Required packages: `requests`, `stripe`, `pyyaml`, `passlib` (for `crypt`), `rag
 
 ```
 tools/billing/
-├── billing_plan01_api_flow.py   # 27K - Full lifecycle
-├── billing_plan02_api_flow.py   # 26K - Renewal failure/recovery
-├── billing_plan03_api_flow.py   # 23K - Customer Portal upgrade
-├── billing_plan04_api_flow.py   # 25K - Cancel scheduled downgrade
-├── billing_plan05_api_flow.py   # 30K - Unpaid invoice guard
-└── README.md                    # This file
+├── billing_plan01_api_flow.py      # Full subscription lifecycle
+├── billing_plan02_api_flow.py      # Renewal failure & recovery
+├── billing_plan03_api_flow.py      # Direct API checkout upgrade
+├── billing_plan04_api_flow.py      # Storage addon quantity change
+├── billing_plan05_api_flow.py      # Unpaid invoice prevents entitlement
+├── billing_point01_api_flow.py     # Successful minimum recharge (100 points)
+├── billing_point02_api_flow.py     # Sequential purchases (500 + 1000 points)
+├── billing_point03_api_flow.py     # Invalid input rejection
+├── billing_point04_api_flow.py     # Canceled checkout
+├── billing_point05_api_flow.py     # Webhook idempotency
+├── billing_storage01_api_flow.py   # First storage addon purchase (20GB)
+├── billing_storage02_api_flow.py   # Storage lifecycle with plan downgrade
+├── billing_storage03_api_flow.py   # Storage upgrade (10GB → 30GB)
+├── billing_storage04_api_flow.py   # Storage downgrade (20GB → 10GB)
+├── billing_storage05_api_flow.py   # Plan transitions with storage
+├── billing_common.py               # Common billing utilities
+├── flow_common.py                  # Common flow helpers for plan tests
+├── points_common.py                # Common utilities for points tests
+├── points_case_common.py           # Points case-specific utilities
+├── storage_common.py               # Common utilities for storage tests
+└── README.md                       # This file
 ```
 
 ## Notes
