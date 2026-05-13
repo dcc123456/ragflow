@@ -678,12 +678,14 @@ jobs:
           tofu plan -var-file=terraform.tfvars.dev_smk \
             -var "namespace=${BYOK_NAMESPACE}" \
             -var "redis_db=${BYOK_REDIS_DB}" \
-            -var "ragflow_image=${BYOK_RAGFLOW_IMAGE_VAR}"
+            -var "ragflow_image=${BYOK_RAGFLOW_IMAGE_VAR}" \
+            -var "deploy_zammad=false"
   
           tofu apply -auto-approve -var-file=terraform.tfvars.dev_smk \
             -var "namespace=${BYOK_NAMESPACE}" \
             -var "redis_db=${BYOK_REDIS_DB}" \
-            -var "ragflow_image=${BYOK_RAGFLOW_IMAGE_VAR}"
+            -var "ragflow_image=${BYOK_RAGFLOW_IMAGE_VAR}" \
+            -var "deploy_zammad=false"
   
           GATEWAY_ADDRESS="$(kubectl get gateway ragflow -n "${BYOK_NAMESPACE}" -o jsonpath='{.status.addresses[0].value}' 2>/dev/null | tr -d '[:space:]')"
           if [[ -z "${GATEWAY_ADDRESS}" ]]; then
@@ -745,7 +747,8 @@ jobs:
           tofu destroy -auto-approve -var-file=terraform.tfvars.dev_smk \
             -var "namespace=${BYOK_NAMESPACE}" \
             -var "redis_db=${BYOK_REDIS_DB}" \
-            -var "ragflow_image=${BYOK_RAGFLOW_IMAGE_VAR}"
+            -var "ragflow_image=${BYOK_RAGFLOW_IMAGE_VAR}" \
+            -var "deploy_zammad=false"
 
       - name: Delete Harbor artifact
         if: always()

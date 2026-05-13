@@ -923,6 +923,35 @@ variable "stripe_test_clock_id" {
 }
 
 # =============================================================================
+# Zammad Configuration (Support Ticket System)
+# =============================================================================
+
+variable "zammad_url" {
+  description = "Zammad API base URL for support ticket integration (e.g., https://support.example.com/api/v1/)"
+  type        = string
+  default     = ""
+}
+
+variable "zammad_token" {
+  description = "Zammad API token for authentication"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "deploy_zammad" {
+  description = "Whether to deploy Zammad support ticket system in the same cluster"
+  type        = bool
+  default     = true
+}
+
+variable "zammad_image_tag" {
+  description = "Zammad Docker image tag"
+  type        = string
+  default     = "6.4"
+}
+
+# =============================================================================
 # Upload Configuration
 # =============================================================================
 

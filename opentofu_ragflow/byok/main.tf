@@ -304,6 +304,12 @@ resource "random_password" "shared_elasticsearch" {
   }
 }
 
+resource "random_password" "zammad_secret" {
+  count   = var.deploy_zammad ? 1 : 0
+  length  = 64
+  special = false
+}
+
 # Ref: https://github.com/hashicorp/terraform-provider-kubernetes/issues/1986
 # Workaround for PVC creation timeout due to provider rate limiting
 resource "kubernetes_persistent_volume_claim_v1" "mysql" {
@@ -2195,6 +2201,12 @@ resource "kubernetes_secret_v1" "ragflow_env" {
     BILLING_PRICE_ID_PRO       = var.billing_price_id_pro
     STRIPE_TEST_CLOCK_ID       = var.stripe_test_clock_id
 
+    # Zammad Support Ticket Configuration
+    # When deploy_zammad=true and zammad_url is empty, auto-resolve to the
+    # in-cluster Zammad nginx service endpoint.
+    ZAMMAD_URL   = var.zammad_url != "" ? var.zammad_url : (var.deploy_zammad ? "http://zammad:8080/api/v1/" : "")
+    ZAMMAD_TOKEN = var.zammad_token
+
     # Upload size limit for RAGFlow API server (affects file uploads via web UI/API)
     # This is read by common/settings.py to set MAX_CONTENT_LENGTH in Quart/Flask
     # and also by rag/svr/task_executor.py to reject oversized documents before processing
@@ -2209,6 +2221,63 @@ resource "kubernetes_secret_v1" "ragflow_env" {
     kubernetes_job_v1.shared_elasticsearch_user_bootstrap,
     kubernetes_job_v1.shared_s3_verify,
     kubernetes_job_v1.shared_deepdoc_verify,
+  ]
+}
+
+# =============================================================================
+# Zammad Support Ticket System
+# =============================================================================
+
+resource "helm_release" "zammad" {
+  count = var.deploy_zammad ? 1 : 0
+
+  name             = "zammad"
+  namespace        = kubernetes_namespace_v1.ragflow.metadata[0].name
+  repository       = "https://zammad.github.io/zammad-helm"
+  chart            = "zammad"
+  version          = "13.0.0"
+  create_namespace = false
+  timeout          = 900
+
+  set = [
+    {
+      name  = "image.tag"
+      value = var.zammad_image_tag
+    },
+    {
+      name  = "postgresql.enabled"
+      value = "true"
+    },
+    {
+      name  = "redis.enabled"
+      value = "true"
+    },
+    {
+      name  = "elasticsearch.enabled"
+      value = "false"
+    },
+    {
+      name  = "persistence.size"
+      value = "5Gi"
+    },
+  ]
+
+  set_sensitive = [
+    {
+      name  = "zammadConfig.rails.secretKeyBase"
+      value = random_password.zammad_secret[0].result
+    },
+  ]
+
+  values = [
+    <<-EOT
+      env:
+        RAILS_RELATIVE_URL_ROOT: "/zammad"
+    EOT
+  ]
+
+  depends_on = [
+    kubernetes_namespace_v1.ragflow,
   ]
 }
 
@@ -3726,6 +3795,65 @@ resource "kubernetes_manifest" "http_redirect" {
       ]
     }
   }
+}
+
+# =============================================================================
+# Zammad HTTPRoute (Path-based routing)
+# =============================================================================
+# Routes /zammad and all subpaths to the Zammad nginx service.
+# Zammad is configured with RAILS_RELATIVE_URL_ROOT=/zammad so that all
+# generated URLs (assets, API, WebSocket) include the /zammad prefix.
+# =============================================================================
+
+resource "kubernetes_manifest" "http_route_zammad" {
+  count = var.deploy_app_stack && var.deploy_zammad ? 1 : 0
+  field_manager {
+    force_conflicts = true
+  }
+  manifest = {
+    apiVersion = "gateway.networking.k8s.io/v1"
+    kind       = "HTTPRoute"
+    metadata = {
+      name      = "zammad-http-route"
+      namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
+      labels = {
+        app = "zammad"
+      }
+    }
+    spec = {
+      parentRefs = [
+        {
+          name        = "ragflow"
+          namespace   = kubernetes_namespace_v1.ragflow.metadata[0].name
+          kind        = "Gateway"
+          sectionName = var.ohttps_enabled ? "https" : "http"
+        }
+      ]
+      rules = [
+        {
+          matches = [
+            {
+              path = {
+                type  = "PathPrefix"
+                value = "/zammad"
+              }
+            }
+          ]
+          backendRefs = [
+            {
+              name = "zammad"
+              port = 8080
+            }
+          ]
+        }
+      ]
+    }
+  }
+
+  depends_on = [
+    kubernetes_manifest.gateway,
+    helm_release.zammad,
+  ]
 }
 
 # =============================================================================

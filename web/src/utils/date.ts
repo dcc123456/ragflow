@@ -1,23 +1,23 @@
-import dayjs from 'dayjs';
+import dayjs, { type ConfigType } from 'dayjs';
 
 const hasTimezoneSuffix = (value: string) =>
   /(?:GMT|Z|[+-]\d{2}:?\d{2})$/.test(value.trim());
 
-const parseDate = (date: any) => {
+const parseDate = (date: ConfigType) => {
   if (typeof date === 'string' && hasTimezoneSuffix(date)) {
     return dayjs(date).utc();
   }
   return dayjs(date);
 };
 
-export function formatDate(date: any) {
+export function formatDate(date: ConfigType) {
   if (!date) {
     return '';
   }
   return parseDate(date).format('DD/MM/YYYY HH:mm:ss');
 }
 
-export function formatTime(date: any) {
+export function formatTime(date: ConfigType) {
   if (!date) {
     return '';
   }
@@ -36,14 +36,14 @@ export function lastWeek() {
   return formatDate(dayjs().subtract(1, 'weeks'));
 }
 
-export function formatPureDate(date: any) {
+export function formatPureDate(date: ConfigType) {
   if (!date) {
     return '';
   }
   return parseDate(date).format('DD/MM/YYYY');
 }
 
-export function formatStandardDate(date: any) {
+export function formatStandardDate(date: ConfigType) {
   if (!date) {
     return '';
   }
@@ -59,6 +59,13 @@ export function formatIsoDateTime(timestamp_ms: number): string {
     return '';
   }
   return dayjs(timestamp_ms).format('YYYY-MM-DDTHH:mm:ssZ');
+}
+
+export function formatDateToLocal(date: ConfigType) {
+  if (!date) {
+    return '';
+  }
+  return dayjs(date).format('DD/MM/YYYY HH:mm:ss');
 }
 
 export function formatSecondsToHumanReadable(seconds: number): string {

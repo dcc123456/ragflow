@@ -7,6 +7,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { RAGFlowTooltip } from '@/components/ui/tooltip';
 import { useChangeLanguage } from '@/hooks/logic-hooks';
 import {
   useFetchUserInfo,
@@ -15,8 +16,9 @@ import {
 import { cn } from '@/lib/utils';
 import { TenantRole } from '@/pages/user-setting/constants';
 import { Routes } from '@/routes';
-import { LucideChevronDown, LucideCircleHelp } from 'lucide-react';
+import { LucideChevronDown, LucideCircleHelp, Tickets } from 'lucide-react';
 import React, { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Link, useLocation } from 'react-router';
 import { BellButton } from './bell-button';
 import GlobalNavbar from './global-navbar';
@@ -28,6 +30,7 @@ export function Header({
   className,
   ...props
 }: React.HTMLAttributes<HTMLElement>) {
+  const { t } = useTranslation();
   const { pathname } = useLocation();
 
   const changeLanguage = useChangeLanguage();
@@ -73,6 +76,15 @@ export function Header({
         className="flex items-center justify-end gap-4 text-text-badge"
         data-testid="auth-status"
       >
+        <RAGFlowTooltip tooltip={t('header.tickets')}>
+          <Link
+            className="p-2 text-text-secondary hover:text-text-primary focus-visible:text-text-primary"
+            to={Routes.Tickets}
+          >
+            <Tickets className="size-5" />
+          </Link>
+        </RAGFlowTooltip>
+
         <a
           className="p-2 text-text-secondary hover:text-text-primary focus-visible:text-text-primary"
           target="_blank"

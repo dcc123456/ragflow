@@ -65,4 +65,17 @@ export default {
 
   // heart beat
   heartBeat: `${restAPIv1}/heartbeat`,
+
+  // tickets
+  ticketGroups: `${restAPIv1}/ticket/groups`,
+  tickets: `${restAPIv1}/ticket/`,
+  ticketDetail: (id: number) => `${restAPIv1}/ticket/${id}`,
+  ticketArticles: (id: number) => `${restAPIv1}/ticket/${id}/articles`,
+  ticketClose: (id: number) => `${restAPIv1}/ticket/${id}/close`,
+  ticketAttachment: (
+    ticketId: number,
+    articleId: number,
+    attachmentId: number,
+  ) =>
+    `${restAPIv1}/ticket/${ticketId}/articles/${articleId}/attachments/${attachmentId}`,
 };

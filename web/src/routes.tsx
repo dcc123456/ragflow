@@ -79,6 +79,9 @@ export enum Routes {
   AdminSettings = `${Admin}/settings`,
   AdminSSOProviders = `${Admin}/sso`,
   Evaluation = '/evaluation',
+  Tickets = '/support',
+  TicketCreate = '/support/create',
+  TicketDetail = '/support/:id',
 }
 
 const defaultRouteFallback = (
@@ -204,6 +207,18 @@ const routeConfigOptions = [
     Component: () => import('@/pages/evaluation'),
     children: [{}],
     errorElement: <FallbackComponent />,
+  },
+  {
+    path: Routes.Tickets,
+    Component: () => import('@/pages/tickets'),
+  },
+  {
+    path: Routes.TicketCreate,
+    Component: () => import('@/pages/tickets/create'),
+  },
+  {
+    path: Routes.TicketDetail,
+    Component: () => import('@/pages/tickets/detail'),
   },
   {
     // path: Routes.Searches,
