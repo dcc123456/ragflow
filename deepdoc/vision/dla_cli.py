@@ -3,7 +3,8 @@ import io
 import logging
 from api.utils.api_utils import timeout
 import requests
-from PIL import Image
+from PIL import Image as PILImage
+from PIL.Image import Image
 
 # Import vis module only when needed (lazy import to avoid torch dependency in client-only mode)
 # vis = None  # Will be imported if needed
@@ -75,7 +76,7 @@ if __name__ == "__main__":
     from deepdoc.servers.dla.yolov10_to_tensor.utils import vis
     args = parse_args()
     cli = DLAClient(f"http://{args.ip}:{args.port}")
-    img = Image.open(args.image, mode='r')
+    img = PILImage.open(args.image, mode='r')
     draw = cv2.imread(args.image)
     preds = cli.predict([img.convert("RGB")])
     final_boxes = [p["bbox"] for p in preds[0]]

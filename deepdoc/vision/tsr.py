@@ -222,7 +222,6 @@ class TableStructureRecognizer(Recognizer):
             candidates = (
                 ("_x0", "_top", "_x1", "_bottom"),
                 ("x0", "top", "x1", "bottom"),
-                ("x0_rotated", "top_rotated", "x1_rotated", "bottom_rotated"),
             )
             for keys in candidates:
                 if all(k in cell for k in keys):
