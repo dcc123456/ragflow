@@ -180,7 +180,6 @@ export default {
       quickSelectTip: 'Quick select',
       customAmount: 'Custom amount',
       youWillReceive: 'You will receive',
-      total: 'Total',
       buyPointsCreating: 'Creating checkout...',
       buyPointsMinError: 'Please enter a valid amount',
       buyPointsFailed: 'Failed to create checkout session',

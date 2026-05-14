@@ -228,16 +228,20 @@ const Generate: React.FC<GenerateProps> = (props) => {
           const data = (
             name === GenerateType.KnowledgeGraph ? graphRunData : raptorRunData
           ) as ITraceInfo;
-          return (
-            <div key={name}>
-              <MenuItem
-                name={name}
-                runGenerate={runGenerate}
-                data={data}
-                pauseGenerate={pauseGenerate}
-              />
-            </div>
-          );
+          if (name === GenerateType.Raptor) {
+            return (
+              <div key={name}>
+                <MenuItem
+                  name={name}
+                  runGenerate={runGenerate}
+                  data={data}
+                  pauseGenerate={pauseGenerate}
+                />
+              </div>
+            );
+          } else {
+            return <></>;
+          }
         })}
       </DropdownMenuContent>
     </DropdownMenu>
