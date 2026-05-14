@@ -15,6 +15,7 @@
 #
 import logging
 
+from api.utils.permission_utils import filter_accessible_doc_ids_for_user
 from quart import jsonify, request
 from werkzeug.exceptions import BadRequest as WerkzeugBadRequest
 

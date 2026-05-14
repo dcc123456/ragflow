@@ -520,9 +520,8 @@ def _list_owned_chat_ids():
 
 @manager.route("/chats", methods=["GET"])  # noqa: F821
 @login_required
-async def list_chats():
 @dialog_role_guard
-def list_chats():
+async def list_chats():
     chat_id = request.args.get("id")
     name = request.args.get("name")
     keywords = request.args.get("keywords", "")
