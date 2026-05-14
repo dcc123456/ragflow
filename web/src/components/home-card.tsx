@@ -2,7 +2,7 @@ import { RAGFlowAvatar } from '@/components/ragflow-avatar';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 import { formatDate } from '@/utils/date';
-import { PropsWithChildren, ReactNode } from 'react';
+import { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
 interface IProps {
@@ -20,6 +20,7 @@ interface IProps {
   icon?: React.ReactNode;
   testId?: string;
   showReleaseTime?: boolean;
+  extra?: ReactNode;
 }
 
 function Time({ time }: { time: string | number | undefined }) {
@@ -35,7 +36,8 @@ export function HomeCard({
   icon,
   testId,
   showReleaseTime = false,
-}: IProps & PropsWithChildren) {
+  extra,
+}: IProps) {
   const { t } = useTranslation();
 
   return (
@@ -90,6 +92,7 @@ export function HomeCard({
                   <div className="whitespace-nowrap overflow-hidden text-ellipsis">
                     {data.description}
                   </div>
+                  {extra}
                   <div className="flex justify-between items-center">
                     {showReleaseTime ? (
                       <section className="text-sm text-text-secondary space-y-1">

@@ -726,7 +726,7 @@ class FileService(CommonService):
                     deleted_file_count = FileService.filter_delete([File.source_type == FileSource.KNOWLEDGEBASE, File.id == f2d[0].file_id])
                 File2DocumentService.delete_by_document_id(doc_id)
                 if deleted_file_count > 0:
-                    settings.STORAGE_IMPL.rm(b, n)
+                    settings.STORAGE_IMPL.rm(b, n, tenant_id)
 
                 doc_parser = doc.parser_id
                 if doc_parser == ParserType.TABLE:

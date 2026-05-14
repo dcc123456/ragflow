@@ -54,6 +54,10 @@ const methods = {
     url: listAgents,
     method: 'get',
   },
+  listAgentTags: {
+    url: api.listAgentTags,
+    method: 'get',
+  },
   resetAgent: {
     url: resetAgent,
     method: 'post',
@@ -153,6 +157,13 @@ export const updateAgent = (
   },
 ) => {
   return request(updateAgentApi(agentId), { method: 'put', data: params });
+};
+
+export const updateAgentTags = (agentId: string, tags: string[]) => {
+  return request(api.updateAgentTags(agentId), {
+    method: 'put',
+    data: { tags: tags.join(',') },
+  });
 };
 
 export const fetchTrace = (data: { canvas_id: string; message_id: string }) => {

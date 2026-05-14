@@ -490,9 +490,9 @@ async def _upload_web_document(dataset_id, kb, tenant_id):
             raise RuntimeError("This type of file has not been supported yet!")
 
         location = filename
-        while settings.STORAGE_IMPL.obj_exist(dataset_id, location):
+        while settings.STORAGE_IMPL.obj_exist(dataset_id, location, tenant_id):
             location += "_"
-        settings.STORAGE_IMPL.put(dataset_id, location, blob)
+        settings.STORAGE_IMPL.put(dataset_id, location, blob, tenant_id)
 
         doc = {
             "id": get_uuid(),
@@ -1643,7 +1643,7 @@ async def get_document_image(image_id):
         if len(arr) != 2:
             return get_data_error_result(message="Image not found.")
         bkt, nm = image_id.split("-")
-        data = await thread_pool_exec(settings.STORAGE_IMPL.get, bkt, nm)
+        data = await thread_pool_exec(settings.STORAGE_IMPL.get, bkt, nm, current_user.id)
         response = await make_response(data)
         response.headers.set("Content-Type", "image/JPEG")
         return response
@@ -1699,7 +1699,7 @@ async def get_artifact(filename):
         ext = os.path.splitext(basename)[1].lower()
         if ext not in ARTIFACT_CONTENT_TYPES:
             return get_data_error_result(message="Invalid file type.")
-        data = await thread_pool_exec(settings.STORAGE_IMPL.get, bucket, basename)
+        data = await thread_pool_exec(settings.STORAGE_IMPL.get, bucket, basename, current_user.id)
         if not data:
             return get_data_error_result(message="Artifact not found.")
         content_type = ARTIFACT_CONTENT_TYPES.get(ext, "application/octet-stream")
@@ -1851,7 +1851,8 @@ async def get(doc_id):
             return get_data_error_result(message="Document not found!")
 
         b, n = File2DocumentService.get_storage_address(doc_id=doc_id)
-        data = await thread_pool_exec(settings.STORAGE_IMPL.get, b, n)
+        tenant_id = DocumentService.get_tenant_id(doc_id)
+        data = await thread_pool_exec(settings.STORAGE_IMPL.get, b, n, tenant_id)
         response = await make_response(data)
 
         ext = re.search(r"\.([^.]+)$", doc.name.lower())
@@ -1884,7 +1885,7 @@ async def download_attachment(tenant_id=None, doc_id=None, attachment_id=None):
         if not DocumentService.accessible(doc_id, current_user.id):
             return get_data_error_result(message="Document not found!")
         ext = request.args.get("ext", "markdown")
-        data = await thread_pool_exec(settings.STORAGE_IMPL.get, tenant_id, doc_id)
+        data = await thread_pool_exec(settings.STORAGE_IMPL.get, tenant_id, doc_id, tenant_id)
         response = await make_response(data)
         content_type = CONTENT_TYPE_MAP.get(ext, f"application/{ext}")
         apply_safe_file_response_headers(response, content_type, ext)

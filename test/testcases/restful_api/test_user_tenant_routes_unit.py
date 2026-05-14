@@ -18,6 +18,7 @@ import asyncio
 import base64
 import importlib.util
 import sys
+from urllib.parse import unquote
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
@@ -113,6 +114,10 @@ def _load_tenant_module(monkeypatch):
 
     class _UserTenantService:
         @staticmethod
+        def filter_by_tenant_and_user_id(_tenant_id, _user_id):
+            return False
+
+        @staticmethod
         def get_by_tenant_id(_tenant_id):
             return []
 
@@ -149,6 +154,27 @@ def _load_tenant_module(monkeypatch):
     user_service_mod.UserService = _UserService
     monkeypatch.setitem(sys.modules, "api.db.services.user_service", user_service_mod)
 
+    system_settings_mod = ModuleType("api.db.services.system_settings_service")
+
+    class _SystemSettingsService:
+        @staticmethod
+        def get_smtp_config():
+            return {"mail_frontend_url": "https://frontend.example/invite"}
+
+    system_settings_mod.SystemSettingsService = _SystemSettingsService
+    monkeypatch.setitem(sys.modules, "api.db.services.system_settings_service", system_settings_mod)
+
+    team_service_mod = ModuleType("api.db.services.team_service")
+
+    class _DepartmentMemberService:
+        @staticmethod
+        def get_all_departments_by_member_id(member_id):
+            _ = member_id
+            return []
+
+    team_service_mod.DepartmentMemberService = _DepartmentMemberService
+    monkeypatch.setitem(sys.modules, "api.db.services.team_service", team_service_mod)
+
     api_utils_mod = ModuleType("api.utils.api_utils")
     api_utils_mod.get_json_result = lambda data=None, message="", code=0: {"code": code, "message": message, "data": data}
     api_utils_mod.get_data_error_result = lambda message="": {"code": 102, "message": message, "data": False}
@@ -160,6 +186,10 @@ def _load_tenant_module(monkeypatch):
     web_utils_mod = ModuleType("api.utils.web_utils")
     web_utils_mod.send_invite_email = lambda **_kwargs: {"ok": True}
     monkeypatch.setitem(sys.modules, "api.utils.web_utils", web_utils_mod)
+
+    billing_mod = ModuleType("api.utils.billing")
+    billing_mod.check_resources = lambda **_kwargs: (lambda fn: fn)
+    monkeypatch.setitem(sys.modules, "api.utils.billing", billing_mod)
 
     common_pkg = ModuleType("common")
     common_pkg.__path__ = [str(repo_root / "common")]
@@ -435,6 +465,7 @@ def _load_user_app(monkeypatch):
     db_mod = ModuleType("api.db")
     db_mod.FileType = SimpleNamespace(FOLDER=SimpleNamespace(value="folder"))
     db_mod.UserTenantRole = SimpleNamespace(OWNER="owner")
+    db_mod.TeamRole = SimpleNamespace(NORMAL="normal", OWNER="owner")
     monkeypatch.setitem(sys.modules, "api.db", db_mod)
     api_pkg.db = db_mod
 
@@ -506,6 +537,7 @@ def _load_user_app(monkeypatch):
             )
 
     tenant_llm_service_mod.TenantLLMService = _StubTenantLLMService
+    tenant_llm_service_mod.user_register = lambda _user_id, _user: None
     monkeypatch.setitem(sys.modules, "api.db.services.tenant_llm_service", tenant_llm_service_mod)
 
     user_service_mod = ModuleType("api.db.services.user_service")
@@ -630,6 +662,34 @@ def _load_user_app(monkeypatch):
     web_utils_mod.captcha_key = lambda email: f"captcha:{email}"
     monkeypatch.setitem(sys.modules, "api.utils.web_utils", web_utils_mod)
 
+    sync_icbccs_mod = ModuleType("api.utils.sync_icbccs_user")
+    sync_icbccs_mod.icbccs_user_register = lambda _user_id, _user: None
+    monkeypatch.setitem(sys.modules, "api.utils.sync_icbccs_user", sync_icbccs_mod)
+
+    system_settings_mod = ModuleType("api.db.services.system_settings_service")
+
+    class _StubSystemSettingsService:
+        @staticmethod
+        def get_channel_oauth_config(channel=None):
+            if channel is None:
+                return {}
+            return settings_mod.OAUTH_CONFIG.get(channel, {})
+
+        @staticmethod
+        def get_oauth_config():
+            return settings_mod.OAUTH_CONFIG
+
+    system_settings_mod.SystemSettingsService = _StubSystemSettingsService
+    monkeypatch.setitem(sys.modules, "api.db.services.system_settings_service", system_settings_mod)
+
+    role_service_mod = ModuleType("api.db.services.role_service")
+    role_service_mod.RoleService = SimpleNamespace(get_by_role_name=lambda _name: [{"id": "role-1"}])
+    monkeypatch.setitem(sys.modules, "api.db.services.role_service", role_service_mod)
+
+    mail_service_mod = ModuleType("api.db.joint_services.mail_service")
+    mail_service_mod.send_email_html = lambda *_args, **_kwargs: _AwaitableValue(True)
+    monkeypatch.setitem(sys.modules, "api.db.joint_services.mail_service", mail_service_mod)
+
     common_pkg = ModuleType("common")
     common_pkg.__path__ = [str(repo_root / "common")]
     monkeypatch.setitem(sys.modules, "common", common_pkg)
@@ -654,6 +714,7 @@ def _load_user_app(monkeypatch):
     settings_mod.IMAGE2TEXT_MDL = "img-mdl"
     settings_mod.RERANK_MDL = "rerank-mdl"
     settings_mod.REGISTER_ENABLED = True
+    settings_mod.DEFAULT_ROLE = "default-role"
     monkeypatch.setitem(sys.modules, "common.settings", settings_mod)
     common_pkg.settings = settings_mod
 
@@ -828,7 +889,7 @@ def test_oauth_callback_matrix_unit(monkeypatch):
     _set_request_args(monkeypatch, module, {"state": "x", "code": "c"})
     module.session.clear()
     res = _run(module.oauth_callback("missing"))
-    assert "Invalid channel name: missing" in res["redirect"]
+    assert "Invalid channel name: missing" in unquote(res["redirect"])
 
     sync_ok = _SyncAuthClient(
         token_info={"access_token": "token-sync", "id_token": "id-sync"},
@@ -889,7 +950,7 @@ def test_oauth_callback_matrix_unit(monkeypatch):
     module.session["oauth_state"] = "new-user-state"
     _set_request_args(monkeypatch, module, {"state": "new-user-state", "code": "code"})
     res = _run(module.oauth_callback("github"))
-    assert "Failed to register new@example.com" in res["redirect"]
+    assert "Failed to register new@example.com" in unquote(res["redirect"])
     assert rollback_calls == ["new-user-id"]
 
     monkeypatch.setattr(module, "download_img", lambda _url: "avatar")
@@ -903,7 +964,7 @@ def test_oauth_callback_matrix_unit(monkeypatch):
     module.session["oauth_state"] = "dup-user-state"
     _set_request_args(monkeypatch, module, {"state": "dup-user-state", "code": "code"})
     res = _run(module.oauth_callback("github"))
-    assert "Same email: new@example.com exists!" in res["redirect"]
+    assert "Same email: new@example.com exists!" in unquote(res["redirect"])
     assert rollback_calls == ["new-user-id"]
 
     new_user = _DummyUser("new-user", "new@example.com")

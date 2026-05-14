@@ -32,6 +32,7 @@ import agentService, {
   fetchTrace,
   fetchWebhookTrace,
   updateAgent,
+  updateAgentTags,
   uploadAgentFile,
 } from '@/services/agent-service';
 import { buildMessageListWithUuid } from '@/utils/chat';
@@ -80,6 +81,8 @@ export const enum AgentApiAction {
   LeaveCanvasPresence = 'leaveCanvasPresence',
   FetchAgentLog = 'fetchAgentLog',
   FetchSharedAgent = 'fetchSharedAgent',
+  FetchAgentTags = 'fetchAgentTags',
+  UpdateAgentTags = 'updateAgentTags',
 }
 
 export const useFetchAgentTemplates = () => {
@@ -102,12 +105,14 @@ const buildAgentListParams = ({
   keywords,
   canvasCategory,
   ownerIds,
+  tags,
 }: {
   page: number;
   pageSize: number;
   keywords?: string;
   canvasCategory?: string;
   ownerIds?: string[];
+  tags?: string[];
 }) => {
   const params: Record<string, unknown> = {
     page,
@@ -123,6 +128,9 @@ const buildAgentListParams = ({
   if (Array.isArray(ownerIds) && ownerIds.length > 0) {
     params.owner_ids = ownerIds.join(',');
   }
+  if (Array.isArray(tags) && tags.length > 0) {
+    params.tags = tags.join(',');
+  }
 
   return params;
 };
@@ -136,6 +144,7 @@ export const useFetchAgentListByPage = () => {
     ? filterValue.canvasCategory
     : [];
   const owner = filterValue.owner;
+  const tags = Array.isArray(filterValue.tags) ? filterValue.tags : undefined;
 
   const requestParams = buildAgentListParams({
     page: pagination.current,
@@ -143,6 +152,7 @@ export const useFetchAgentListByPage = () => {
     keywords: debouncedSearchString,
     canvasCategory: canvasCategory.length === 1 ? canvasCategory[0] : undefined,
     ownerIds: Array.isArray(owner) ? owner : undefined,
+    tags,
   });
 
   const { data, isFetching: loading } = useQuery<{
@@ -269,6 +279,57 @@ export const useDeleteAgent = () => {
   });
 
   return { data, loading, deleteAgent: mutateAsync };
+};
+
+export interface IAgentTagCount {
+  tag: string;
+  count: number;
+}
+
+export const useFetchAgentTags = (canvasCategory?: string) => {
+  const { data, isFetching: loading } = useQuery<IAgentTagCount[]>({
+    queryKey: [AgentApiAction.FetchAgentTags, canvasCategory],
+    initialData: [],
+    gcTime: 0,
+    queryFn: async () => {
+      const { data } = await agentService.listAgentTags(
+        {
+          params: canvasCategory ? { canvas_category: canvasCategory } : {},
+        },
+        true,
+      );
+      return data?.data ?? [];
+    },
+  });
+  return { data, loading };
+};
+
+export const useUpdateAgentTags = () => {
+  const queryClient = useQueryClient();
+  const { isPending: loading, mutateAsync } = useMutation({
+    mutationKey: [AgentApiAction.UpdateAgentTags],
+    mutationFn: async ({
+      agentId,
+      tags,
+    }: {
+      agentId: string;
+      tags: string[];
+    }) => {
+      const { data } = await updateAgentTags(agentId, tags);
+      if (data?.code === 0) {
+        queryClient.invalidateQueries({
+          queryKey: [AgentApiAction.FetchAgentListByPage],
+        });
+        queryClient.invalidateQueries({
+          queryKey: [AgentApiAction.FetchAgentTags],
+        });
+      } else {
+        message.error(data?.message || 'Update failed');
+      }
+      return data?.code === 0;
+    },
+  });
+  return { loading, updateAgentTags: mutateAsync };
 };
 
 export const useFetchAgent = (): {

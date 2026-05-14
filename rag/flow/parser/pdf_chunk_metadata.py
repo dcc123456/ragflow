@@ -202,7 +202,11 @@ def finalize_pdf_chunk(chunk):
 def _fetch_source_blob(from_upstream, canvas):
     if canvas._doc_id:
         bucket, name = File2DocumentService.get_storage_address(doc_id=canvas._doc_id)
-        return settings.STORAGE_IMPL.get(bucket, name)
+        tenant_id = getattr(canvas, "_tenant_id", None)
+        if tenant_id is None:
+            nested_canvas = getattr(canvas, "_canvas", None)
+            tenant_id = getattr(nested_canvas, "_tenant_id", None)
+        return settings.STORAGE_IMPL.get(bucket, name, tenant_id)
     if from_upstream.file:
         return FileService.get_blob(from_upstream.file["created_by"], from_upstream.file["id"])
     return None
