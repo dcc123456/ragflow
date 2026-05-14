@@ -17,9 +17,10 @@
 from quart import Response, request
 
 from api.apps import current_user, login_required
-from api.db import PermissionValue
-from api.db.db_models import MCPServer
+from api.db import PermissionValue, ResourceType
+from api.db.db_models import MCPServer, DB
 from api.db.services.mcp_server_service import MCPServerService
+from api.db.services.permission_service import PermissionService
 from api.db.services.user_service import TenantService
 from api.utils.api_utils import get_data_error_result, get_json_result, get_mcp_tools, get_request_json, server_error_response, validate_request
 from api.utils.web_utils import get_float, safe_json_parse
@@ -215,9 +216,18 @@ async def update(mcp_id: str) -> Response:
 @login_required
 async def rm(mcp_id: str) -> Response:
     try:
+        current_user_id = current_user.id
         e, mcp_server = MCPServerService.get_by_id(mcp_id)
-        if not e or mcp_server.tenant_id != current_user.id:
-            return get_data_error_result(message=f"Cannot find MCP server {mcp_id} for user {current_user.id}")
+        if not e or mcp_server.tenant_id != current_user_id:
+            return get_data_error_result(message=f"Cannot find MCP server {mcp_id} for user {current_user_id}")
+
+        # enterprise edition
+        with DB.atomic():
+            permission_model_list = PermissionService.get_permissions_by_tenant_and_resource_id(
+                tenant_id=current_user_id, resource_id=mcp_id, resource_type=ResourceType.MCP)
+            if permission_model_list:
+                PermissionService.delete(permission_model_list)
+
         if not MCPServerService.delete_by_ids([mcp_id]):
             return get_data_error_result(message=f"Failed to delete MCP servers {[mcp_id]}")
 
