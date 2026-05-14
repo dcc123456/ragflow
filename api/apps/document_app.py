@@ -68,7 +68,7 @@ async def get(doc_id):
 async def download_attachment(attachment_id):
     try:
         ext = request.args.get("ext", "markdown")
-        data = await thread_pool_exec(settings.STORAGE_IMPL.get, current_user.id, attachment_id)
+        data = await thread_pool_exec(settings.STORAGE_IMPL.get, current_user.id, attachment_id, current_user.id)
         response = await make_response(data)
         content_type = CONTENT_TYPE_MAP.get(ext, f"application/{ext}")
         apply_safe_file_response_headers(response, content_type, ext)
@@ -77,4 +77,3 @@ async def download_attachment(attachment_id):
 
     except Exception as e:
         return server_error_response(e)
-

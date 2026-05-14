@@ -822,6 +822,13 @@ async def user_add():
     req = await get_request_json()
     email_address = req["email"]
 
+    if not settings.REGISTER_ENABLED:
+        return get_json_result(
+            data=False,
+            message="User registration is disabled.",
+            code=RetCode.OPERATING_ERROR,
+        )
+
     # Validate the email address
     if not re.match(r"^[\w\._-]+@([\w_-]+\.)+[\w-]{2,}$", email_address):
         return get_json_result(

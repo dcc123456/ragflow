@@ -120,7 +120,7 @@ def test_related_questions_compatibility_requires_auth(rest_client_noauth):
     assert res.status_code == 200
     payload = res.json()
     assert payload["code"] == 102, payload
-    assert "Authorization is not valid!" in payload["message"], payload
+    assert "API key is invalid" in payload["message"], payload
 
 
 @pytest.mark.p2
@@ -189,7 +189,7 @@ def test_chat_completion_validation_errors(rest_client, create_chat):
     assert missing_messages.status_code == 200
     missing_messages_payload = missing_messages.json()
     assert missing_messages_payload["code"] == 101, missing_messages_payload
-    assert "required argument are missing: messages" in missing_messages_payload["message"], missing_messages_payload
+    assert "messages: is required" in missing_messages_payload["message"], missing_messages_payload
 
     missing_chat_for_session = rest_client.post(
         "/chat/completions",
