@@ -28,9 +28,9 @@ from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.llm_service import LLMBundle
 from api.db.services.task_service import TaskService, cancel_all_task_of
 from api.db.services.tenant_llm_service import TenantLLMService
-from api.utils.api_utils import check_duplicate_ids, construct_json_result, get_error_data_result, get_result, server_error_response, token_required, \
+from api.utils.api_utils import add_tenant_id_to_kwargs, check_duplicate_ids, construct_json_result, get_error_data_result, get_result, server_error_response, token_required, \
     get_request_json
-from api.utils.permission_utils import filter_accessible_doc_ids_for_user, add_tenant_id_to_kwargs
+from api.utils.permission_utils import filter_accessible_doc_ids_for_user
 from common import settings
 from common.constants import  LLMType, RetCode, TaskStatus
 from common.metadata_utils import meta_filter, convert_conditions
