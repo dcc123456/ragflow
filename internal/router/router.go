@@ -90,15 +90,7 @@ func (r *Router) Setup(engine *gin.Engine) {
 
 	// System endpoints
 	engine.GET("/v1/system/configs", r.systemHandler.GetConfigs)
-	engine.GET("/v1/system/version", r.systemHandler.GetVersion)
-	engine.GET("/v1/system/log_level", r.systemHandler.GetLogLevel)
-	engine.PUT("/v1/system/log_level", r.systemHandler.SetLogLevel)
-	engine.POST("/v1/user/register", r.userHandler.Register)
-	// User login channels endpoint
-	engine.GET("/v1/user/login/channels", r.userHandler.GetLoginChannels)
-
-	// User login by email endpoint
-	engine.POST("/v1/user/login", r.userHandler.LoginByEmail)
+	//engine.POST("/v1/user/register", r.userHandler.Register)
 
 	// User logout endpoint
 	engine.GET("/v1/user/logout", r.userHandler.Logout)
@@ -181,6 +173,7 @@ func (r *Router) Setup(engine *gin.Engine) {
 			datasets := v1.Group("/datasets")
 			{
 				datasets.GET("", r.datasetsHandler.ListDatasets)
+				datasets.GET("/:dataset_id", r.datasetsHandler.GetDataset)
 				datasets.POST("", r.datasetsHandler.CreateDataset)
 				datasets.DELETE("", r.datasetsHandler.DeleteDatasets)
 				datasets.POST("/search", r.chunkHandler.RetrievalTest)
@@ -279,6 +272,9 @@ func (r *Router) Setup(engine *gin.Engine) {
 				v1.POST("/chat/completions", r.providerHandler.ChatToModel)
 				v1.POST("/embeddings", r.providerHandler.EmbedText)
 				v1.POST("/rerank", r.providerHandler.RerankDocument)
+				v1.POST("/audio/transcriptions", r.providerHandler.TranscribeAudio)
+				v1.POST("/audio/speech", r.providerHandler.AudioSpeech)
+				v1.POST("/file/ocr", r.providerHandler.OCRFile)
 			}
 
 			model := v1.Group("/models")

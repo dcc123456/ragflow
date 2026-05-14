@@ -82,7 +82,6 @@ export default {
   getKnowledgeBasicInfo: (datasetId: string) =>
     `${restAPIv1}/datasets/${datasetId}/ingestions/summary`,
   // data pipeline log
-  fetchDataPipelineLog: `${webAPI}/kb/list_pipeline_logs`,
   runGraphRag: (datasetId: string) =>
     `${restAPIv1}/datasets/${datasetId}/run_graphrag`,
   traceGraphRag: (datasetId: string) =>
