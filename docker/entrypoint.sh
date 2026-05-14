@@ -186,9 +186,9 @@ fi
 
 export LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu/"
 PY=python3
-mkdir -p /tmp/jemalloc
 export LD_PRELOAD="$(pkg-config --variable=libdir jemalloc)/libjemalloc.so"
 export MALLOC_CONF="dirty_decay_ms:2000,muzzy_decay_ms:2000"
+export PYTHONMALLOC=malloc
 
 function start_mcp_server() {
     echo "Starting MCP Server on ${MCP_HOST}:${MCP_PORT} with base URL ${MCP_BASE_URL}..."

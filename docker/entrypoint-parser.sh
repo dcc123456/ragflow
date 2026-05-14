@@ -34,9 +34,9 @@ else
 fi
 
 PY=/ragflow/.venv/bin/python
-mkdir -p /tmp/jemalloc
 export LD_PRELOAD="$(pkg-config --variable=libdir jemalloc)/libjemalloc.so"
 export MALLOC_CONF="dirty_decay_ms:2000,muzzy_decay_ms:2000"
+export PYTHONMALLOC=malloc
 
 # PARSER_TYPE determines which task type this pod handles.
 # Valid values: common, graphrag, raptor, resume

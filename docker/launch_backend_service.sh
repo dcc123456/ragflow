@@ -32,6 +32,9 @@ export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu/
 JEMALLOC_PATH=$(pkg-config --variable=libdir jemalloc)/libjemalloc.so
 
 PY=python3
+export LD_PRELOAD="$(pkg-config --variable=libdir jemalloc)/libjemalloc.so"
+export MALLOC_CONF="dirty_decay_ms:2000,muzzy_decay_ms:2000"
+export PYTHONMALLOC=malloc
 
 # Set default number of workers if WS is not set or less than 1
 if [[ -z "$WS" || $WS -lt 1 ]]; then
@@ -72,7 +75,7 @@ task_exe(){
     local retry_count=0
     while ! $STOP && [ $retry_count -lt $MAX_RETRIES ]; do
         echo "Starting task_executor.py for task $* (Attempt $((retry_count+1)))"
-        LD_PRELOAD=$JEMALLOC_PATH $PY rag/svr/task_executor.py "$@"
+        $PY rag/svr/task_executor.py "$@"
         EXIT_CODE=$?
         if [ $EXIT_CODE -eq 0 ]; then
             echo "task_executor.py for task $* exited successfully."
