@@ -218,7 +218,6 @@ def _load_chat_module(monkeypatch):
         DATA_ERROR = 102
         OPERATING_ERROR = 103
         AUTHENTICATION_ERROR = 109
-        OPERATING_ERROR = 110
 
     class _StubStatusEnum(str, Enum):
         VALID = "1"
