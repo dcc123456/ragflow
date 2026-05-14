@@ -18,7 +18,7 @@ import { useDatasetEditButtonDisabled } from '@/hooks/logic-hooks/use-permission
 import { useFetchKnowledgeBaseConfiguration } from '@/hooks/use-knowledge-request';
 import { IModalProps } from '@/interfaces/common';
 import { IParserConfig } from '@/interfaces/database/document';
-import { IChangeParserConfigRequestBody } from '@/interfaces/request/document';
+import { IChangeParserRequestBody } from '@/interfaces/request/document';
 import { MetadataType } from '@/pages/dataset/components/metedata/constant';
 import {
   AutoMetadata,
@@ -29,7 +29,6 @@ import {
 } from '@/pages/dataset/dataset-setting/configuration/common-item';
 import { zodResolver } from '@hookform/resolvers/zod';
 import omit from 'lodash/omit';
-import {} from 'module';
 import { useEffect, useMemo } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
@@ -57,10 +56,7 @@ import {
 
 const FormId = 'ChunkMethodDialogForm';
 
-interface IProps extends IModalProps<{
-  parserId: string;
-  parserConfig: IChangeParserConfigRequestBody;
-}> {
+interface IProps extends IModalProps<IChangeParserRequestBody> {
   loading: boolean;
   parserId: string;
   pipelineId?: string;
@@ -129,16 +125,19 @@ export function ChunkMethodDialog({
         mineru_formula_enable: z.boolean().optional(),
         mineru_table_enable: z.boolean().optional(),
         mineru_lang: z.string().optional(),
-        // raptor: z
-        //   .object({
-        //     use_raptor: z.boolean().optional(),
-        //     prompt: z.string().optional().optional(),
-        //     max_token: z.coerce.number().optional(),
-        //     threshold: z.coerce.number().optional(),
-        //     max_cluster: z.coerce.number().optional(),
-        //     random_seed: z.coerce.number().optional(),
-        //   })
-        //   .optional(),
+        raptor: z
+          .object({
+            use_raptor: z.boolean().optional(),
+            prompt: z.string().optional(),
+            max_token: z.coerce.number().optional(),
+            threshold: z.coerce.number().optional(),
+            max_cluster: z.coerce.number().optional(),
+            random_seed: z.coerce.number().optional(),
+            scope: z.string().optional(),
+            clustering_method: z.enum(['gmm', 'ahc']).optional(),
+            tree_builder: z.enum(['raptor', 'psi']).optional(),
+          })
+          .optional(),
         // graphrag: z.object({
         //   use_graphrag: z.boolean().optional(),
         // }),

@@ -64,8 +64,8 @@ export const DocPreviewer: React.FC<DocPreviewerProps> = ({
 
     try {
       const blob: Blob = res.data;
-      const contentType: string =
-        blob.type || (res as any).headers?.['content-type'] || '';
+      // const contentType: string =
+      //   blob.type || (res as any).headers?.['content-type'] || '';
 
       // Execution path selection: ZIP-like payloads are treated as .docx and rendered via Mammoth;
       // non-ZIP payloads receive an explicit unsupported notice.
@@ -118,7 +118,7 @@ export const DocPreviewer: React.FC<DocPreviewerProps> = ({
   return (
     <div
       className={classNames(
-        'relative w-full h-full p-4 bg-background-paper border border-border-normal rounded-md',
+        'relative w-full h-full p-4 bg-background-paper border border-border-normal rounded-md overflow-auto',
         className,
       )}
     >

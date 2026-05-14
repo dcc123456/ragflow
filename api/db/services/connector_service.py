@@ -17,7 +17,7 @@ import hashlib
 import logging
 from datetime import datetime
 import os
-from typing import Tuple, List
+from typing import Optional, Tuple, List
 
 from anthropic import BaseModel
 from peewee import SQL, fn, JOIN
@@ -281,6 +281,7 @@ class SyncLogsService(CommonService):
             id: str
             filename: str
             blob: bytes
+            fingerprint: Optional[str] = None
 
             def read(self) -> bytes:
                 return self.blob

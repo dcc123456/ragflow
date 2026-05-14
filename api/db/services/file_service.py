@@ -498,7 +498,12 @@ class FileService(CommonService):
                         err.append(file.filename + ": " + user_msg)
                         continue
                     blob = file.read()
-                    new_hash = xxhash.xxh128(blob).hexdigest()
+                    # Connector-supplied fingerprint (e.g. xxhash128(S3 ETag))
+                    # takes precedence: for connector-sourced docs the bypass
+                    # path uses the fingerprint as content_hash, so reverting
+                    # to xxhash128(blob) here would defeat it.
+                    incoming_fp = getattr(file, "fingerprint", None)
+                    new_hash = incoming_fp or xxhash.xxh128(blob).hexdigest()
                     old_hash = doc.content_hash or ""
                     settings.STORAGE_IMPL.put(kb.id, doc.location, blob, kb.tenant_id)
                     doc.size = len(blob)
@@ -551,6 +556,7 @@ class FileService(CommonService):
                     thumbnail_location = f"thumbnail_{doc_id}.png"
                     settings.STORAGE_IMPL.put(kb.id, thumbnail_location, img, kb.tenant_id)
 
+                incoming_fp = getattr(file, "fingerprint", None)
                 doc = {
                     "id": doc_id,
                     "kb_id": kb.id,
@@ -565,7 +571,7 @@ class FileService(CommonService):
                     "location": location,
                     "size": len(blob),
                     "thumbnail": thumbnail_location,
-                    "content_hash": xxhash.xxh128(blob).hexdigest(),
+                    "content_hash": incoming_fp or xxhash.xxh128(blob).hexdigest(),
                 }
                 DocumentService.insert(doc)
 
@@ -785,7 +791,7 @@ class FileService(CommonService):
 
             # Pre-resolve the full redirect chain so that AsyncWebCrawler never
             # follows a server-sent redirect to an unvalidated (potentially
-            # internal) host.  Each hop is SSRF-checked before being followed;
+            # internal) host. Each hop is SSRF-checked before being followed;
             # the validated (hostname, ip) pairs are pinned via Chromium's
             # --host-resolver-rules so the browser cannot re-resolve any of them
             # through a fresh DNS query.
@@ -821,7 +827,7 @@ class FileService(CommonService):
                 )
 
             # Build a single MAP rule string covering every validated hostname
-            # in the redirect chain.  Chromium uses the pinned IP for each,
+            # in the redirect chain. Chromium uses the pinned IP for each,
             # skipping DNS entirely and eliminating the rebinding window.
             _map_rules = ",".join(f"MAP {h} {ip}" for h, ip in host_pins.items())
 
