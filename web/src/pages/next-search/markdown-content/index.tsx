@@ -92,12 +92,15 @@ const MarkdownContent = ({
     (
       documentId: string,
       chunk: IReferenceChunk,
-      // isPdf: boolean = false,
-      // documentUrl?: string,
-    ) =>
-      () => {
+      isPdf: boolean = false,
+      documentUrl?: string,
+    ) => {
+      void isPdf;
+      void documentUrl;
+      return () => {
         clickDocumentButton?.(documentId, chunk);
-      },
+      };
+    },
     [clickDocumentButton],
   );
 
