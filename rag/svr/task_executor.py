@@ -1691,7 +1691,7 @@ async def do_handle_task_with_timeout(task, callback):
     global DONE_TASKS, FAILED_TASKS, CURRENT_TASKS
     try:
         CURRENT_TASKS[task["id"]] = copy.deepcopy(task)
-        await asyncio.wait_for(do_handle_task(task), timeout=60*40)
+        await asyncio.wait_for(do_handle_task(task), timeout=60*60)
         DONE_TASKS += 1
         CURRENT_TASKS.pop(task["id"])
     except asyncio.TimeoutError:

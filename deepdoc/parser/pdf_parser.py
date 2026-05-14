@@ -1023,6 +1023,12 @@ class RAGFlowPdfParser:
             img.close()
             return detached
 
+        def copy_shared_image(img):
+            # construct_table returns images owned by self.tabls_cells; keep
+            # that shared cache open for later table OCR and return a copy.
+            img.load()
+            return img.copy()
+
         # extract figure and table boxes
         i = 0
         lst_lout_no = ""
@@ -1224,7 +1230,7 @@ class RAGFlowPdfParser:
             )
             if not isinstance(html, str):
                 img, html = html
-                img = detach_image(img)
+                img = copy_shared_image(img)
             if not html:
                 continue
             res.append((img, html))
