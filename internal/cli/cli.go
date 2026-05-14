@@ -589,213 +589,22 @@ func (c *CLI) executeNew(input string) error {
 		return err
 	}
 
-	// Print result
-	// For search command, default to JSON format if not explicitly set to plain/table
-	format := c.outputFormat
-	if ceCmd.Type == contextengine.CommandSearch && format != OutputFormatPlain && format != OutputFormatTable {
-		format = OutputFormatJSON
-	}
-	// Get limit for list command
-	limit := 0
-	if ceCmd.Type == contextengine.CommandList {
-		if l, ok := ceCmd.Params["limit"].(int); ok {
-			limit = l
-		}
-	}
-	c.printContextEngineResult(result, ceCmd.Type, format, limit)
-	return nil
-}
-
-// parseContextEngineArgs parses Context Engine command arguments
-// Supports simple space-separated args and quoted strings
-func parseContextEngineArgs(input string) []string {
-	var args []string
-	var current strings.Builder
-	inQuote := false
-	var quoteChar rune
-
-	for _, ch := range input {
-		switch ch {
-		case '"', '\'':
-			if !inQuote {
-				inQuote = true
-				quoteChar = ch
-				if current.Len() > 0 {
-					args = append(args, current.String())
-					current.Reset()
-				}
-			} else if ch == quoteChar {
-				inQuote = false
-				args = append(args, current.String())
-				current.Reset()
-			} else {
-				current.WriteRune(ch)
-			}
-		case ' ', '\t':
-			if inQuote {
-				current.WriteRune(ch)
-			} else if current.Len() > 0 {
-				args = append(args, current.String())
-				current.Reset()
-			}
-		default:
-			current.WriteRune(ch)
-		}
+	if cmd == nil {
+		return nil
 	}
 
-	if current.Len() > 0 {
-		args = append(args, current.String())
+	// Handle meta commands
+	if cmd.Type == "meta" {
+		return c.handleMetaCommand(cmd)
 	}
 
-	return args
-}
-
-// printContextEngineResult prints the result of a context engine command
-func (c *CLI) printContextEngineResult(result *contextengine.Result, cmdType contextengine.CommandType, format OutputFormat, limit int) {
-	if result == nil {
-		return
+	// Execute the command using the client
+	var result ResponseIf
+	result, err = c.client.ExecuteCommand(cmd)
+	if result != nil {
+		result.PrintOut()
 	}
-
-	switch cmdType {
-	case contextengine.CommandList:
-		if len(result.Nodes) == 0 {
-			fmt.Println("(empty)")
-			return
-		}
-		displayCount := len(result.Nodes)
-		if limit > 0 && displayCount > limit {
-			displayCount = limit
-		}
-		if format == OutputFormatPlain {
-			// Plain format: simple space-separated, no headers
-			for i := 0; i < displayCount; i++ {
-				node := result.Nodes[i]
-				fmt.Printf("%s %s %s %s\n", node.Name, node.Type, node.Path, node.CreatedAt.Format("2006-01-02 15:04"))
-			}
-		} else {
-			// Table format: with headers and aligned columns
-			fmt.Printf("%-30s %-12s %-50s %-20s\n", "NAME", "TYPE", "PATH", "CREATED")
-			fmt.Println(strings.Repeat("-", 112))
-			for i := 0; i < displayCount; i++ {
-				node := result.Nodes[i]
-				created := node.CreatedAt.Format("2006-01-02 15:04")
-				if node.CreatedAt.IsZero() {
-					created = "-"
-				}
-				// Remove leading "/" from path for display
-				displayPath := node.Path
-				if strings.HasPrefix(displayPath, "/") {
-					displayPath = displayPath[1:]
-				}
-				fmt.Printf("%-30s %-12s %-50s %-20s\n", node.Name, node.Type, displayPath, created)
-			}
-		}
-		if limit > 0 && result.Total > limit {
-			fmt.Printf("\n... and %d more (use -n to show more)\n", result.Total-limit)
-		}
-		fmt.Printf("Total: %d\n", result.Total)
-	case contextengine.CommandSearch:
-		if len(result.Nodes) == 0 {
-			if format == OutputFormatJSON {
-				fmt.Println("[]")
-			} else {
-				fmt.Println("No results found")
-			}
-			return
-		}
-		// Build data for output (same fields for all formats: content, path, score)
-		type searchResult struct {
-			Content string  `json:"content"`
-			Path    string  `json:"path"`
-			Score   float64 `json:"score,omitempty"`
-		}
-		results := make([]searchResult, 0, len(result.Nodes))
-		for _, node := range result.Nodes {
-			content := node.Name
-			if content == "" {
-				content = "(empty)"
-			}
-			displayPath := node.Path
-			if strings.HasPrefix(displayPath, "/") {
-				displayPath = displayPath[1:]
-			}
-			var score float64
-			if s, ok := node.Metadata["similarity"].(float64); ok {
-				score = s
-			} else if s, ok := node.Metadata["_score"].(float64); ok {
-				score = s
-			}
-			results = append(results, searchResult{
-				Content: content,
-				Path:    displayPath,
-				Score:   score,
-			})
-		}
-		// Output based on format
-		if format == OutputFormatJSON {
-			jsonData, err := json.MarshalIndent(results, "", "  ")
-			if err != nil {
-				fmt.Printf("Error marshaling JSON: %v\n", err)
-				return
-			}
-			fmt.Println(string(jsonData))
-		} else if format == OutputFormatPlain {
-			// Plain format: simple space-separated, no borders
-			fmt.Printf("%-70s  %-50s  %-10s\n", "CONTENT", "PATH", "SCORE")
-			for i, sr := range results {
-				content := strings.Join(strings.Fields(sr.Content), " ")
-				if len(content) > 70 {
-					content = content[:67] + "..."
-				}
-				displayPath := sr.Path
-				if len(displayPath) > 50 {
-					displayPath = displayPath[:47] + "..."
-				}
-				scoreStr := "-"
-				if sr.Score > 0 {
-					scoreStr = fmt.Sprintf("%.4f", sr.Score)
-				}
-				fmt.Printf("%-70s  %-50s  %-10s\n", content, displayPath, scoreStr)
-				if i >= 99 {
-					fmt.Printf("\n... and %d more results\n", result.Total-i-1)
-					break
-				}
-			}
-			fmt.Printf("\nTotal: %d\n", result.Total)
-		} else {
-			// Table format: with borders
-			col1Width, col2Width, col3Width := 70, 50, 10
-			sep := "+" + strings.Repeat("-", col1Width+2) + "+" + strings.Repeat("-", col2Width+2) + "+" + strings.Repeat("-", col3Width+2) + "+"
-			fmt.Println(sep)
-			fmt.Printf("| %-70s | %-50s | %-10s |\n", "CONTENT", "PATH", "SCORE")
-			fmt.Println(sep)
-			for i, sr := range results {
-				content := strings.Join(strings.Fields(sr.Content), " ")
-				if len(content) > 70 {
-					content = content[:67] + "..."
-				}
-				displayPath := sr.Path
-				if len(displayPath) > 50 {
-					displayPath = displayPath[:47] + "..."
-				}
-				scoreStr := "-"
-				if sr.Score > 0 {
-					scoreStr = fmt.Sprintf("%.4f", sr.Score)
-				}
-				fmt.Printf("| %-70s | %-50s | %-10s |\n", content, displayPath, scoreStr)
-				if i >= 99 {
-					fmt.Printf("\n... and %d more results\n", result.Total-i-1)
-					break
-				}
-			}
-			fmt.Println(sep)
-			fmt.Printf("Total: %d\n", result.Total)
-		}
-	case contextengine.CommandCat:
-		// Cat output is handled differently - it returns []byte, not *Result
-		// This case should not be reached in normal flow since Cat returns []byte directly
-		fmt.Println("Content retrieved")
-	}
+	return err
 }
 
 func (c *CLI) execute(input string) error {

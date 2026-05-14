@@ -90,15 +90,7 @@ func (r *Router) Setup(engine *gin.Engine) {
 
 	// System endpoints
 	engine.GET("/v1/system/configs", r.systemHandler.GetConfigs)
-	engine.GET("/v1/system/version", r.systemHandler.GetVersion)
-	engine.GET("/v1/system/log_level", r.systemHandler.GetLogLevel)
-	engine.PUT("/v1/system/log_level", r.systemHandler.SetLogLevel)
-	engine.POST("/v1/user/register", r.userHandler.Register)
-	// User login channels endpoint
-	engine.GET("/v1/user/login/channels", r.userHandler.GetLoginChannels)
-
-	// User login by email endpoint
-	engine.POST("/v1/user/login", r.userHandler.LoginByEmail)
+	//engine.POST("/v1/user/register", r.userHandler.Register)
 
 	// User logout endpoint
 	engine.GET("/v1/user/logout", r.userHandler.Logout)
