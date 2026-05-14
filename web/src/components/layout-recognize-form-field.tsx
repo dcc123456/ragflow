@@ -3,8 +3,8 @@ import { useTranslate } from '@/hooks/common-hooks';
 import { useSelectLlmOptionsByModelType } from '@/hooks/use-llm-request';
 import { cn } from '@/lib/utils';
 import { camelCase } from 'lodash';
-import { ReactNode, useMemo } from 'react';
-import { useFormContext } from 'react-hook-form';
+import { ReactNode, useEffect, useMemo } from 'react';
+import { useFormContext, useWatch } from 'react-hook-form';
 import { MinerUOptionsFormField } from './mineru-options-form-field';
 import { SelectWithSearch } from './originui/select-with-search';
 import { PaddleOCROptionsFormField } from './paddleocr-options-form-field';
@@ -23,6 +23,11 @@ export const enum ParseDocumentType {
   OpenDataLoader = 'OpenDataLoader',
   TCADPParser = 'TCADP Parser',
 }
+
+const hiddenDefaultParserTypes = [
+  ParseDocumentType.Docling,
+  ParseDocumentType.TCADPParser,
+];
 
 export function LayoutRecognizeFormField({
   name = 'parser_config.layout_recognize',
@@ -45,17 +50,24 @@ export function LayoutRecognizeFormField({
 
   const { t } = useTranslate('knowledgeDetails');
   const allOptions = useSelectLlmOptionsByModelType();
+  const selectedParser = useWatch({ name });
+
+  useEffect(() => {
+    if (
+      !optionsWithoutLLM &&
+      hiddenDefaultParserTypes.includes(selectedParser)
+    ) {
+      form.setValue(name, ParseDocumentType.DeepDOC, {
+        shouldValidate: true,
+        shouldDirty: true,
+      });
+    }
+  }, [form, name, optionsWithoutLLM, selectedParser]);
 
   const options = useMemo(() => {
     const list = optionsWithoutLLM
       ? optionsWithoutLLM
-      : [
-          ParseDocumentType.DeepDOC,
-          ParseDocumentType.PlainText,
-          ParseDocumentType.Docling,
-          ParseDocumentType.OpenDataLoader,
-          ParseDocumentType.TCADPParser,
-        ].map((x) => ({
+      : [ParseDocumentType.DeepDOC, ParseDocumentType.PlainText].map((x) => ({
           label: x === ParseDocumentType.PlainText ? t(camelCase(x)) : x,
           value: x,
         }));
