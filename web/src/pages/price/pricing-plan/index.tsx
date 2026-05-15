@@ -274,6 +274,7 @@ const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
     plans.push({
       ...enterprise,
       name: PriceName.Enterprise,
+      cancelTargetPriceId: undefined,
       isPopular: false,
       disabled: false,
       buttonLabel: t('price.contactUs'),

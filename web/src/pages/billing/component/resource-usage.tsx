@@ -161,17 +161,15 @@ const ResourceUsage: React.FC<CustomProgressProps> = ({
         <div className="flex justify-between items-end text-text-primary">
           <div>
             {planName} {t('billing.planUsed')}{' '}
-            {value > planValue ? planValue : value}
-            {unit}/{planValue}
-            {unit}
+            {value > planValue ? formatNumber(planValue) : formatNumber(value)}{' '}
+            {unit}/{formatNumber(planValue)} {unit}
           </div>
           {!(planName == 'Free Plan' || planName == 'Free') && (
             <div className="flex items-end gap-3 cursor-pointer ">
               <span>
                 {t('billing.addonUsed')}{' '}
-                {(value > planValue ? value - planValue : 0).toFixed(2)}
-                {unit}/{parseFloat((limit - planValue).toFixed(2))}
-                {unit}
+                {(value > planValue ? value - planValue : 0).toFixed(2)} {unit}/
+                {parseFloat((limit - planValue).toFixed(2))} {unit}
               </span>
               {isStorageCurrentLoading ? (
                 <div className="flex items-center text-xs px-1 py-1 rounded-sm border border-border-button bg-bg-input text-text-secondary cursor-not-allowed">
@@ -212,14 +210,16 @@ const ResourceUsage: React.FC<CustomProgressProps> = ({
               {planName} {t('billing.planUsed')}
             </span>
             <span>
-              {planPoints?.used ?? 0}/{planPoints?.limit ?? 0} pts
+              {formatNumber(planPoints?.used ?? 0)}/
+              {formatNumber(planPoints?.limit ?? 0)} pts
             </span>
           </div>
           {/* Addon row */}
           <div className="flex justify-between items-center flex-col">
             <span>{t('billing.creditsUsed') || 'Addon Points'}</span>
             <span>
-              {addonPoints?.used ?? 0}/{addonPoints?.limit ?? 0} pts
+              {formatNumber(addonPoints?.used ?? 0)}/
+              {formatNumber(addonPoints?.limit ?? 0)} pts
             </span>
           </div>
 
@@ -274,8 +274,8 @@ const ResourceUsage: React.FC<CustomProgressProps> = ({
               <span>{`${formatNumber(currentPoints)} ${unit}`}</span>
             ) : (
               <>
-                {showValue && <span>{`${value}${unit}`}/</span>}
-                <span>{`${formatNumber(limit)}${unit}`}</span>
+                {showValue && <span>{`${value} ${unit}`}/</span>}
+                <span>{`${formatNumber(limit)} ${unit}`}</span>
               </>
             )}
           </div>
