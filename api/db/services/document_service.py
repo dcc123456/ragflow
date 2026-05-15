@@ -730,7 +730,7 @@ class DocumentService(CommonService):
             return True
 
         docs = (
-            cls.model.select(cls.model.id)
+            cls.model.select(cls.model.id, cls.model.kb_id)
             .join(Knowledgebase, on=(Knowledgebase.id == cls.model.kb_id))
             .join(UserTenant, on=(UserTenant.tenant_id == Knowledgebase.tenant_id))
             .where(cls.model.id == doc_id, UserTenant.user_id == user_id)
@@ -739,7 +739,7 @@ class DocumentService(CommonService):
         docs = docs.dicts()
         if not docs:
             return False
-        return KnowledgebaseService.accessible(doc_id, user_id)
+        return KnowledgebaseService.accessible(docs[0]["kb_id"], user_id)
 
     @classmethod
     @DB.connection_context()
