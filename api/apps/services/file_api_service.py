@@ -79,13 +79,13 @@ async def upload_file(tenant_id: str, pf_id: str, file_objs: list):
 
         filetype = filename_type(file_obj_names[file_len - 1])
         location = file_obj_names[file_len - 1]
-        while await thread_pool_exec(settings.STORAGE_IMPL.obj_exist, last_folder.id, location):
+        while await thread_pool_exec(settings.STORAGE_IMPL.obj_exist, last_folder.id, location, tenant_id):
             location += "_"
         blob = await thread_pool_exec(file_obj.read)
         filename = await thread_pool_exec(
             duplicate_name, FileService.query, name=file_obj_names[file_len - 1], parent_id=last_folder.id
         )
-        await thread_pool_exec(settings.STORAGE_IMPL.put, last_folder.id, location, blob)
+        await thread_pool_exec(settings.STORAGE_IMPL.put, last_folder.id, location, blob, tenant_id)
         file_data = {
             "id": get_uuid(),
             "parent_id": last_folder.id,
@@ -322,10 +322,10 @@ async def delete_files(uid: str, file_ids: list, auth_header: str = ""):
             )
             return False
 
-    def _delete_single_file(file) -> int:
+    def _delete_single_file(file, tenant_id):
         try:
             if file.location:
-                settings.STORAGE_IMPL.rm(file.parent_id, file.location)
+                settings.STORAGE_IMPL.rm(file.parent_id, file.location, tenant_id)
         except Exception as e:
             logging.exception(f"Fail to remove object: {file.parent_id}/{file.location}, error: {e}")
             errors.append(f"Failed to remove object {file.parent_id}/{file.location}: {e}")
@@ -424,7 +424,7 @@ async def delete_files(uid: str, file_ids: list, auth_header: str = ""):
             if sub_file.type == FileType.FOLDER.value:
                 deleted += _delete_folder_recursive(sub_file, tenant_id)
             else:
-                deleted += _delete_single_file(sub_file)
+                deleted += _delete_single_file(sub_file, tenant_id)
         try:
             FileService.delete(folder)
         except Exception as e:
@@ -565,12 +565,12 @@ async def move_files(uid: str, src_file_ids: list, dest_file_id: str = None, new
 
         if need_storage_move:
             new_location = effective_name
-            while settings.STORAGE_IMPL.obj_exist(dest_folder_entry.id, new_location):
+            while settings.STORAGE_IMPL.obj_exist(dest_folder_entry.id, new_location, source_file_entry.tenant_id):
                 new_location += "_"
             try:
                 settings.STORAGE_IMPL.move(
                     source_file_entry.parent_id, source_file_entry.location,
-                    dest_folder_entry.id, new_location,
+                    dest_folder_entry.id, new_location, source_file_entry.tenant_id
                 )
             except Exception as storage_err:
                 raise RuntimeError(f"Move file failed at storage layer: {str(storage_err)}")

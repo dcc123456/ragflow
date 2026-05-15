@@ -225,7 +225,7 @@ def test_upload_file_success_uses_new_service_layer(monkeypatch):
     )
     monkeypatch.setattr(module.settings, "STORAGE_IMPL", SimpleNamespace(
         obj_exist=lambda *_args, **_kwargs: False,
-        put=lambda bucket, location, blob: storage_puts.append((bucket, location, blob)),
+        put=lambda bucket, location, blob, _tenant_id: storage_puts.append((bucket, location, blob)),
         rm=lambda *_args, **_kwargs: None,
         move=lambda *_args, **_kwargs: None,
     ))
@@ -295,7 +295,7 @@ def test_move_files_handles_dest_and_storage_move(monkeypatch):
         obj_exist=lambda *_args, **_kwargs: False,
         put=lambda *_args, **_kwargs: None,
         rm=lambda *_args, **_kwargs: None,
-        move=lambda old_bucket, old_loc, new_bucket, new_loc: moved.append((old_bucket, old_loc, new_bucket, new_loc)),
+        move=lambda old_bucket, old_loc, new_bucket, new_loc, _tenant_id: moved.append((old_bucket, old_loc, new_bucket, new_loc)),
     ))
     monkeypatch.setattr(module.FileService, "update_by_id", lambda file_id, data: updated.append((file_id, data)) or True)
 
