@@ -155,9 +155,9 @@ def _check_downgrade_resource_compatibility(tenant_id: str, target_plan_name: st
 
     # Resolve target plan quotas from config with a Trial fallback so missing
     # in-memory cache fields do not silently turn every limit into zero.
+    # Don't check consumed_plan_points since it's resetted at every cycle's end.
     target_plan_info = _resolve_billing_plan_info(target_plan_name)
     target_quota_storage = parse_storage_size(str(target_plan_info.get("quota_storage", 0)))
-    target_quota_points = safe_int(target_plan_info.get("quota_points", 0), 0)
     target_quota_members = safe_int(target_plan_info.get("quota_members", 0), 0)
     target_quota_apps = safe_int(target_plan_info.get("quota_apps", 0), 0)
 
@@ -167,14 +167,11 @@ def _check_downgrade_resource_compatibility(tenant_id: str, target_plan_name: st
     # Trial cannot retain storage addons after downgrade, so only the Trial
     # plan quota counts toward the compatibility check in that case.
     total_storage_limit_bytes = target_quota_storage if is_trial_plan_name(target_plan_name) else target_quota_storage + addon_storage_bytes
-    total_points_limit = target_quota_points  # Points don't have addons in the same way
     total_members_limit = target_quota_members  # Members don't have addons
     total_apps_limit = target_quota_apps  # Apps don't have addons
 
     # Get current usage
     storage_used_bytes = FileService.get_total_size_by_tenant_id(tenant_id) or 0
-    points_balance = PointAccountService.get_balance(tenant_id) or {}
-    points_used = safe_int(points_balance.get("consumed_plan_points", 0), 0)
     members_used = safe_int(tenant_plan.get("num_members", 0), 0)
     apps_used = safe_int(tenant_plan.get("num_apps", 0), 0)
 
@@ -190,18 +187,6 @@ def _check_downgrade_resource_compatibility(tenant_id: str, target_plan_name: st
             "message": f"Storage usage ({overage_gb:.2f} GB over limit) exceeds target plan quota including addon storage. Please delete data before downgrading.",
             "action_required": "delete_data",
             "overage": overage_bytes,
-        })
-
-    if points_used > total_points_limit:
-        overage_points = points_used - total_points_limit
-        conflicts.append({
-            "resource": "points",
-            "used": points_used,
-            "limit": total_points_limit,
-            "unit": "points",
-            "message": f"Points usage ({overage_points} points over limit) exceeds target plan quota. Please use or remove points before downgrading.",
-            "action_required": "reduce_usage",
-            "overage_points": overage_points,
         })
 
     if members_used > total_members_limit:
