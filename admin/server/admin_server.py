@@ -117,7 +117,7 @@ if __name__ == '__main__':
     )
     # Initialize settings to get SECRET_KEY before Session is configured
     settings.init_settings()
-    app.secret_key = settings.SECRET_KEY
+    app.secret_key = settings.get_secret_key()
     Session(app)
     logging.info(f'RAGFlow admin version: {get_ragflow_version()}')
     show_configs()
