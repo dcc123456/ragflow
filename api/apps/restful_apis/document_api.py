@@ -1166,7 +1166,10 @@ async def update_metadata_config(tenant_id, dataset_id, document_id):
 
     # Update parser config with metadata
     try:
-        DocumentService.update_parser_config(doc.id, {"metadata": req["metadata"]})
+        parser_config_update = {"metadata": req["metadata"]}
+        if "builtInMetadata" in req:
+            parser_config_update["built_in_metadata"] = req["builtInMetadata"]
+        DocumentService.update_parser_config(doc.id, parser_config_update)
     except Exception as e:
         logging.error("error when update_parser_config", exc_info=e)
         return get_json_result(code=RetCode.EXCEPTION_ERROR, message=repr(e))
@@ -1412,6 +1415,7 @@ def _run_sync(user_id:str, req):
                 doc.parser_config["llm_id"] = kb.parser_config.get("llm_id")
                 doc.parser_config["enable_metadata"] = kb.parser_config.get("enable_metadata", False)
                 doc.parser_config["metadata"] = kb.parser_config.get("metadata", {})
+                doc.parser_config["built_in_metadata"] = kb.parser_config.get("built_in_metadata", [])
                 DocumentService.update_parser_config(doc.id, doc.parser_config)
             doc_dict = doc.to_dict()
             DocumentService.run(doc_tenant_id, doc_dict, kb_table_num_map)

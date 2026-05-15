@@ -210,6 +210,8 @@ export function useDatasetTableColumns({
                 isAddValue: true,
                 type: MetadataType.UpdateSingle,
                 record: row.original,
+                builtInMetadata:
+                  row.original.parser_config?.built_in_metadata || [],
                 title: (
                   <div className="flex flex-col gap-2 w-full">
                     <div className="text-base font-normal">

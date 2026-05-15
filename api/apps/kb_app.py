@@ -235,6 +235,7 @@ async def update_metadata_setting():
     kb = kb.to_dict()
     kb["parser_config"]["metadata"] = req["metadata"]
     kb["parser_config"]["enable_metadata"] = req.get("enable_metadata", True)
+    kb["parser_config"]["built_in_metadata"] = req.get("builtInMetadata", [])
     KnowledgebaseService.update_by_id(kb["id"], kb)
     return get_json_result(data=kb)
 

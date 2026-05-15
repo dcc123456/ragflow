@@ -467,6 +467,13 @@ export const useManageMetaDataModal = (
         case MetadataType.UpdateSingle:
           // handleSaveUpdateSingle(callback);
           handleSaveManage(callback);
+          if (builtInMetadata && documentIds?.length) {
+            await kbService.documentUpdateMetaData({
+              doc_id: documentIds[0],
+              metadata: util.tableDataToMetaDataSettingJSON(tableData),
+              builtInMetadata,
+            });
+          }
           break;
         case MetadataType.Manage:
           handleSaveManage(callback);
@@ -475,7 +482,7 @@ export const useManageMetaDataModal = (
           return handleSaveSettings(callback, builtInMetadata);
 
         case MetadataType.SingleFileSetting:
-          return handleSaveSingleFileSettings(callback);
+          return handleSaveSingleFileSettings(callback, builtInMetadata);
         default:
           handleSaveManage(callback);
           break;

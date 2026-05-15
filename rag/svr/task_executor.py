@@ -493,6 +493,22 @@ async def build_chunks(task, progress_callback):
             DocMetadataService.update_document_metadata(task["doc_id"], metadata)
         progress_callback(msg="Question generation {} chunks completed in {:.2f}s".format(len(docs), timer() - st))
 
+    # Apply built-in metadata (update_time, file_name)
+    built_in_meta_config = task["parser_config"].get("built_in_metadata", [])
+    if built_in_meta_config:
+        built_in_meta = {}
+        for item in built_in_meta_config:
+            key = item.get("key", "")
+            if key == "update_time":
+                built_in_meta["update_time"] = str(datetime.now()).replace("T", " ")[:19]
+            elif key == "file_name":
+                built_in_meta["file_name"] = task.get("name", "")
+        if built_in_meta:
+            existing_meta = DocMetadataService.get_document_metadata(task["doc_id"])
+            existing_meta = existing_meta if isinstance(existing_meta, dict) else {}
+            existing_meta = update_metadata_to(existing_meta, built_in_meta)
+            DocMetadataService.update_document_metadata(task["doc_id"], existing_meta)
+
     if task["kb_parser_config"].get("tag_kb_ids", []):
         progress_callback(msg="Start to tag for every chunk ...")
         kb_ids = task["kb_parser_config"]["tag_kb_ids"]
