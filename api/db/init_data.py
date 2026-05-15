@@ -204,9 +204,6 @@ def register_webhook():
             if endpoint.url == webhook_url and set(FOCUSED_STRIPE_WEBHOOK).issubset(set(endpoint.enabled_events)):
                 logging.warning(f'webhook_url {webhook_url} already exists')
                 exists = True
-            else:
-                logging.info(f'Delete webhook: id={endpoint.id}')
-                stripe.WebhookEndpoint.delete(endpoint.id)
         if not exists:
             endpoint = stripe.WebhookEndpoint.create(
                 url=webhook_url,
