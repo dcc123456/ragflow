@@ -96,28 +96,43 @@ const PricingCard = (props: IPricePlanWithButton) => {
         </div>
         <p className=" text-left line-clamp-3 h-[4.5rem]">{description}</p>
         <Divider className="!border-border-button" />
-        <ul className="mb-6">
+        <ul className="mb-6 ">
           {features.map((item) => (
             <li key={item.key} className="mb-2 text-left">
-              <div className="flex items-center">
+              <div className="flex items-center flex-nowrap">
                 {item.icon}
                 {Number(item.value) > -1 && (
                   <span className="italic font-semibold">{item.value}</span>
                 )}
-                <span className="ml-2 text-xm font-normal">{item.name}</span>
+                <span className="ml-2 text-xm font-normal whitespace-nowrap">
+                  {item.name}
+                </span>
               </div>
             </li>
           ))}
         </ul>
-        <h3 className="text-3xl font-bold mb-6 text-left h-12">
+        <h3 className="text-3xl flex items-center  font-bold mb-6  text-left h-16">
           {shouldShowPrice && (
-            <>
-              <span className="text-sm mr-1">$</span>
-              {normalizedPrice}
-              <span className="text-sm text-text-secondary font-normal ml-1">
-                /month
-              </span>
-            </>
+            <div className="flex items-end gap-2">
+              <div>
+                <span className="text-sm mr-1">$</span>
+                {normalizedPrice}
+                <span className="text-sm text-text-secondary font-normal ml-1">
+                  /month
+                </span>
+              </div>
+              {
+                <div className="  font-normal text-text-secondary text-xl">
+                  <span className="mr-0.5 text-sm">$</span>
+                  <span className="line-through ">
+                    {Number(normalizedPrice) > 0
+                      ? Number(normalizedPrice) * 2 + 1
+                      : ''}
+                  </span>
+                  <span className="ml-0.5 text-sm">/month</span>
+                </div>
+              }
+            </div>
           )}
         </h3>
         {currentPlanName !== PriceName.Trial && (

@@ -1,5 +1,6 @@
 import { nextLayoutRef } from '@/layouts/root-layout';
 import { convertBytesToGb } from '@/lib/utils';
+import i18n from '@/locales/config';
 import { isBillingEnabled } from '@/services/billingStatus';
 import storagePrivate from '@/utils/authorization-private-util';
 import { useCallback, useEffect, useState } from 'react';

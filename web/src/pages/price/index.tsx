@@ -39,7 +39,7 @@ const PricingPage: React.FC = () => {
       <div className="w-[1500px]">
         <div className="text-[64px] leading-[80px] font-medium mb-[130px] text-center text-text-primary">
           <FxGradientText preset="primary" direction="right">
-            Scale Your Business with RAG engine
+            Scale Your Business with RAGFlow
           </FxGradientText>
         </div>
 

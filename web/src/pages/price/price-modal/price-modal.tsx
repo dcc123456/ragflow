@@ -90,7 +90,7 @@ export const PriceModalComponent: React.FC<PriceModalProps> = ({
       <div className="flex flex-col items-center justify-center px-[78px] py-[84px] !bg-bg-base rounded-lg text-text-primary">
         <div className="text-[48px] leading-[80px] font-medium mb-10 text-center text-text-primary">
           <FxGradientText preset="primary" direction="right">
-            Scale Your Business with RAG engine
+            Scale Your Business with RAGFlow
           </FxGradientText>
         </div>
         {/* </h2> */}
