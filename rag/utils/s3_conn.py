@@ -143,6 +143,12 @@ class RAGFlowS3:
         del self.conn[0]
         self.conn = None
 
+    def _actual_bucket(self, bucket):
+        return self.bucket if self.bucket else bucket
+
+    def _object_key(self, bucket, fnm):
+        return f"{self.prefix_path}/{bucket}/{fnm}" if self.prefix_path else fnm
+
     @use_default_bucket
     def bucket_exists(self, bucket, *args, **kwargs):
         self._ensure_connection()
@@ -227,6 +233,60 @@ class RAGFlowS3:
                 return False
             else:
                 raise
+
+    def copy(self, src_bucket, src_path, dest_bucket, dest_path, *args, **kwargs):
+        self._ensure_connection()
+        try:
+            actual_src_bucket = self._actual_bucket(src_bucket)
+            actual_dest_bucket = self._actual_bucket(dest_bucket)
+            actual_src_path = self._object_key(src_bucket, src_path)
+            actual_dest_path = self._object_key(dest_bucket, dest_path)
+
+            if not self.bucket_exists(actual_dest_bucket):
+                self.conn[0].create_bucket(Bucket=actual_dest_bucket)
+
+            self.conn[0].copy_object(
+                Bucket=actual_dest_bucket,
+                Key=actual_dest_path,
+                CopySource={"Bucket": actual_src_bucket, "Key": actual_src_path},
+            )
+            return True
+        except Exception:
+            logging.exception(f"Fail to copy {src_bucket}/{src_path} -> {dest_bucket}/{dest_path}")
+            return False
+
+    def move(self, src_bucket, src_path, dest_bucket, dest_path, *args, **kwargs):
+        self._ensure_connection()
+        try:
+            if self.copy(src_bucket, src_path, dest_bucket, dest_path, *args, **kwargs):
+                actual_src_bucket = self._actual_bucket(src_bucket)
+                actual_src_path = self._object_key(src_bucket, src_path)
+                self.conn[0].delete_object(Bucket=actual_src_bucket, Key=actual_src_path)
+                return True
+            logging.error(f"Copy failed, move aborted: {src_bucket}/{src_path}")
+            return False
+        except Exception:
+            logging.exception(f"Fail to move {src_bucket}/{src_path} -> {dest_bucket}/{dest_path}")
+            return False
+
+    def remove_bucket(self, bucket, *args, **kwargs):
+        self._ensure_connection()
+        try:
+            actual_bucket = self._actual_bucket(bucket)
+            if not self.bucket_exists(actual_bucket):
+                return
+            paginator = self.conn[0].get_paginator("list_objects_v2")
+            prefix = f"{self.prefix_path}/{bucket}/" if self.prefix_path else ""
+            paginate_kwargs = {"Bucket": actual_bucket}
+            if prefix:
+                paginate_kwargs["Prefix"] = prefix
+            for page in paginator.paginate(**paginate_kwargs):
+                for obj in page.get("Contents", []):
+                    self.conn[0].delete_object(Bucket=actual_bucket, Key=obj["Key"])
+            if not prefix:
+                self.conn[0].delete_bucket(Bucket=actual_bucket)
+        except Exception:
+            logging.exception(f"Fail to remove bucket {bucket}")
 
     @use_prefix_path
     @use_default_bucket
