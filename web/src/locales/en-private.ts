@@ -129,22 +129,15 @@ export default {
       planUsed: 'used',
       addonUsed: 'Add-on used',
       currentMonthlyCost: 'Current monthly cost',
-      newMonthlyCost: 'New monthly cost',
+      nextMonthlyCost: 'Next monthly cost',
       reducedQuotaEffective: 'Reduced quota takes effect on',
       ensureBelow: 'Ensure usage is below',
       toAvoidOverage: 'to avoid overage',
-      payNowProrated:
-        'Pay ${{amount}} now (prorated) and enjoy extra storage immediately.',
+      payNowIncremental:
+        'Pay ${{amount}} now for the additional storage. Your next monthly storage cost will be ${{nextMonthlyCost}}.',
       manageAddonStorage: 'Manage Add-on storage',
       storageTitle: 'Storage',
       gb: 'GB',
-      pendingIncreaseTitle: 'Unpaid storage upgrade',
-      pendingIncreaseDescription:
-        'You have an unpaid upgrade to {{pending_quantity_bytes}} GB. Complete the payment to activate it, or abandon it and apply {{target_quantity_bytes}} GB instead.',
-      payNow: 'Pay Now',
-      abandonAndApply: 'Abandon & Apply',
-      abandonPendingFailed:
-        'Failed to cancel the pending upgrade. Please try again.',
       storageUpgradeSuccess:
         'Storage upgraded to {{value}}GB. Your payment has been processed.',
       storageUpgradeFailed:

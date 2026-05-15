@@ -108,13 +108,8 @@ export interface IStorageSubscriptionCurrent {
   unit_price: number;
   addon_storage_bytes: number;
   target_quantity_bytes: number;
-  pending_quantity_bytes: number | null;
-  pending_action: string;
-  pending_effective_at: string | null;
-  decrease_effective_at: string | null;
   subscription_id: string;
   price_id: string;
-  schedule_id: string;
   status: string;
   cancel_at_period_end: boolean;
   current_period_start: string | null;
@@ -136,12 +131,6 @@ export const postBillingStorageSetTarget = (data: {
   session_success_url?: string;
 }) => {
   return request.post(api.storageSetTarget, { data });
-};
-
-export const postBillingStorageAbandonPending = (data: {
-  tenant_id?: string;
-}) => {
-  return request.post(api.storageAbandonPending, { data });
 };
 
 export const getBillingDeepDocUsage = (tenantId?: string) =>

@@ -116,7 +116,7 @@ const PaymentStatusModal: React.FC = () => {
                 {t('billing.amount')}
               </span>
               <span className="text-sm font-medium text-cyan-400">
-                $ {sessionData.amount}
+                $ {sessionData.amount.toLocaleString()}
               </span>
             </div>
           )}

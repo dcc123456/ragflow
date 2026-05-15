@@ -1,13 +1,17 @@
+import { cn } from '@/lib/utils';
+import { ArrowUpRight } from 'lucide-react';
 import { useUpgradeModal } from '../global';
 
 const UpgradeButton = ({
   text,
   isModal = true,
   onCallBack,
+  className,
 }: {
   text?: string;
   isModal?: boolean;
   onCallBack?: () => void;
+  className?: string;
 }) => {
   const { openModal } = useUpgradeModal();
 
@@ -22,10 +26,13 @@ const UpgradeButton = ({
     <a
       href="/price"
       onClick={handleClick}
-      className="whitespace-nowrap inline-flex items-center pl-2 py-1 pr-1 text-bg-base font-semibold rounded-md bg-text-primary border-b-2 border-accent-primary"
+      className={cn(
+        'whitespace-nowrap inline-flex items-center pl-2 py-1 pr-1 text-bg-base font-semibold rounded-md bg-bg-input border-0.5 border-border-default text-text-secondary',
+        className,
+      )}
     >
       {text ?? 'Upgrade Now'}
-      {/* <ArrowUpRight /> */}
+      <ArrowUpRight />
     </a>
   );
 };

@@ -4,7 +4,6 @@ import { formatNumber } from '@/pages/admin/model-usage-statistics/utils';
 import { useFetchAddonPlans } from '@/pages/price/hook/use-addon-plans';
 import {
   getBillingStorageCurrent,
-  postBillingStorageAbandonPending,
   postBillingStorageSetTarget,
 } from '@/services/price';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -19,10 +18,7 @@ import {
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { BillingQueryKey } from '../constants/query-keys';
-import {
-  showAbandonPendingModal,
-  showAddOnManageModal,
-} from './add-on-manage-modal';
+import { showAddOnManageModal } from './add-on-manage-modal';
 import BuyCreditsModal from './buy-points-modal';
 import Process from './process';
 
@@ -126,34 +122,8 @@ const ResourceUsage: React.FC<CustomProgressProps> = ({
     const data = await submitSetTarget(value);
     const res = data?.data;
 
-    // Pending increase blocks the request — offer "Pay Now" or "Abandon & Apply".
-    if (data?.code !== 0 && res?.can_abandon) {
-      addOnManageModal.destroy();
-      showAbandonPendingModal({
-        pendingQuantityGb: Math.floor(
-          (res.pending_quantity_bytes ?? 0) / BYTES_PER_GB,
-        ),
-        targetQuantityGb: value,
-        invoiceUrl: res.invoice_url ?? '',
-        onAbandon: async () => {
-          await postBillingStorageAbandonPending({ tenant_id: tenantId });
-          // Re-submit the original target now that the pending increase is gone.
-          const retryData = await submitSetTarget(value);
-          await invalidateStorageQueries();
-          if (retryData?.code !== 0) {
-            message.error(t('billing.storageUpgradeFailed'));
-            return;
-          }
-          const retryRes = retryData?.data;
-          if (retryRes?.redirect_to) {
-            // Payment required — open Stripe payment page.
-            window.open(retryRes.redirect_to);
-          } else {
-            // Auto-charged via default payment method — confirm to the user.
-            message.success(t('billing.storageUpgradeSuccess', { value }));
-          }
-        },
-      });
+    if (data?.code !== 0) {
+      message.error(t('billing.storageUpgradeFailed'));
       return;
     }
 
@@ -169,12 +139,15 @@ const ResourceUsage: React.FC<CustomProgressProps> = ({
       storageCurrent?.addon_storage_bytes != null
         ? Math.floor(storageCurrent.addon_storage_bytes / BYTES_PER_GB)
         : addOnCapacity;
-    const decreaseEffectiveAt = storageCurrent?.decrease_effective_at;
+    const targetStorage =
+      storageCurrent?.target_quantity_bytes != null
+        ? Math.floor(storageCurrent.target_quantity_bytes / BYTES_PER_GB)
+        : currentStorage;
     addOnManageModal = showAddOnManageModal({
-      defaultValue: currentStorage,
+      defaultValue: targetStorage,
+      currentValue: currentStorage,
       onOk: addOnManageOk,
       price: storageCurrent?.unit_price || pricePerGBFromApi,
-      decreaseEffectiveAt,
     });
   };
 

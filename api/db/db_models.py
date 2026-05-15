@@ -1551,7 +1551,6 @@ class StorageSubscription(DataBaseModel):
     """
     One storage add-on subscription per tenant.
     `addon_storage_bytes` is the currently usable quota.
-    `target_quantity_bytes` is the desired quota after pending changes settle.
     """
 
     id = CharField(max_length=32, primary_key=True)
@@ -1561,13 +1560,9 @@ class StorageSubscription(DataBaseModel):
     subscription_id = CharField(max_length=255, null=False, default="", index=True)
     subscription_item_id = CharField(max_length=255, null=False, default="")
     price_id = CharField(max_length=128, null=False, default="")
-    schedule_id = CharField(max_length=255, null=False, default="")
 
     addon_storage_bytes = BigIntegerField(null=False, default=0, constraints=[Check("addon_storage_bytes >= 0")])
     target_quantity_bytes = BigIntegerField(null=False, default=0, constraints=[Check("target_quantity_bytes >= 0")])
-    pending_quantity_bytes = BigIntegerField(null=True, constraints=[Check("pending_quantity_bytes >= 0")])
-    pending_effective_at = DateTimeField(null=True)
-    pending_action = CharField(max_length=32, null=True, default="")
 
     current_period_start = DateTimeField(null=True)
     current_period_end = DateTimeField(null=True)
@@ -2344,6 +2339,13 @@ def migrate_db():
     alter_db_column_type(migrator, "billing_storage_subscription", "addon_storage_bytes", BigIntegerField(null=False, default=0))
     alter_db_column_type(migrator, "billing_storage_subscription", "target_quantity_bytes", BigIntegerField(null=False, default=0))
     alter_db_column_type(migrator, "billing_storage_subscription", "pending_quantity_bytes", BigIntegerField(null=True))
+
+    # Billing storage pending-state cleanup (2026-04-30)
+    # Runtime no longer maintains local pending/schedule state for storage add-ons.
+    alter_db_remove_column(migrator, "billing_storage_subscription", "schedule_id")
+    alter_db_remove_column(migrator, "billing_storage_subscription", "pending_quantity_bytes")
+    alter_db_remove_column(migrator, "billing_storage_subscription", "pending_effective_at")
+    alter_db_remove_column(migrator, "billing_storage_subscription", "pending_action")
 
     # QuotaItem storage unit migration: convert legacy gb entries to bytes.
     alter_db_column_type(migrator, "billing_quota_item", "quantity", BigIntegerField(null=False))

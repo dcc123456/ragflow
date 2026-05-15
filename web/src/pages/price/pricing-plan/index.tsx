@@ -68,36 +68,42 @@ const enterprise = {
     },
   ],
 };
-const commonFeatures = [
-  {
-    key: 'apps',
-    value: '',
-    name: 'Apps',
-    icon: (
-      <LayoutGrid size={12} className="text-text-primary font-normal mr-2" />
-    ),
-  },
-  {
-    key: 'teamMembers',
-    value: '',
-    name: 'team members',
-    icon: <Users size={12} className="text-text-primary font-normal mr-2" />,
-  },
-  {
-    key: 'datasetStorage',
-    value: '',
-    name: 'GB dataset storage',
-    icon: (
-      <DatabaseZap size={12} className="text-text-primary font-normal mr-2" />
-    ),
-  },
-  {
-    key: 'credits',
-    value: '',
-    name: 'credits / month',
-    icon: <Coins size={12} className="text-text-primary font-normal mr-2" />,
-  },
-];
+
+function buildCommonFeatures(priceType: PriceName) {
+  const commonFeatures = [
+    {
+      key: 'apps',
+      value: '',
+      name: 'Apps',
+      icon: (
+        <LayoutGrid size={12} className="text-text-primary font-normal mr-2" />
+      ),
+    },
+    {
+      key: 'teamMembers',
+      value: '',
+      name: priceType === PriceName.Trial ? 'team member' : 'team members',
+      icon: <Users size={12} className="text-text-primary font-normal mr-2" />,
+    },
+    {
+      key: 'datasetStorage',
+      value: '',
+      name: 'GB dataset storage',
+      icon: (
+        <DatabaseZap size={12} className="text-text-primary font-normal mr-2" />
+      ),
+    },
+    {
+      key: 'credits',
+      value: '',
+      name: 'credits / month',
+      icon: <Coins size={12} className="text-text-primary font-normal mr-2" />,
+    },
+  ];
+
+  return commonFeatures;
+}
+
 const pricingPlans = {
   [PriceName.Trial]: {
     id: '',
@@ -106,7 +112,7 @@ const pricingPlans = {
     price: '',
     buttonLabel: t('price.reduce'),
     isUse: true,
-    features: commonFeatures,
+    features: buildCommonFeatures(PriceName.Trial),
   },
   [PriceName.Starter]: {
     id: '',
@@ -115,7 +121,7 @@ const pricingPlans = {
     price: '',
     buttonLabel: t('price.upgrade'),
     isUse: false,
-    features: commonFeatures,
+    features: buildCommonFeatures(PriceName.Starter),
   },
   [PriceName.Pro]: {
     id: '',
@@ -125,7 +131,7 @@ const pricingPlans = {
     buttonLabel: t('price.upgrade'),
     isUse: false,
     isPopular: true,
-    features: commonFeatures,
+    features: buildCommonFeatures(PriceName.Pro),
   },
   [PriceName.Enterprise]: enterprise,
 };
@@ -271,6 +277,7 @@ const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
       isPopular: false,
       disabled: false,
       buttonLabel: t('price.contactUs'),
+      cancelTargetPriceId: undefined,
     });
 
     // Ensure the pricing cards are displayed in the correct order regardless of the backend response order

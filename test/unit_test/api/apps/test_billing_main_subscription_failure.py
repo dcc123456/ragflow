@@ -114,6 +114,21 @@ def test_normalize_subscription_status_trims_and_lowercases():
 
 
 @pytest.mark.p2
+def test_upcoming_preview_trial_to_starter_uses_new_subscription_cycle():
+    assert billing_app._should_preview_as_new_subscription("Trial", "Starter") is True
+
+
+@pytest.mark.p2
+def test_upcoming_preview_trial_to_pro_uses_new_subscription_cycle():
+    assert billing_app._should_preview_as_new_subscription("Trial", "Pro") is True
+
+
+@pytest.mark.p2
+def test_upcoming_preview_starter_to_pro_uses_existing_subscription_cycle():
+    assert billing_app._should_preview_as_new_subscription("Starter", "Pro") is False
+
+
+@pytest.mark.p2
 def test_safe_payment_order_datetime_ignores_invalid_zero_date():
     assert billing_app._safe_payment_order_created_at("0000-00-00 00:00:00", "in_bad") is None
 
@@ -753,8 +768,7 @@ def test_storage_cancel_async_skips_canceled_subscription(monkeypatch):
 
 
 @pytest.mark.p2
-def test_storage_increase_async_always_creates_checkout_session(monkeypatch):
-    checkout_calls = []
+def test_storage_increase_async_modifies_subscription_and_returns_invoice_url(monkeypatch):
     modify_calls = []
 
     monkeypatch.setattr(
@@ -778,10 +792,7 @@ def test_storage_increase_async_always_creates_checkout_session(monkeypatch):
             "cancel_at_period_end": False,
         },
     )
-    monkeypatch.setattr(billing_app, "_has_storage_blocking_pending", lambda _tenant_id: False)
     monkeypatch.setattr(billing_app, "cancel_scheduled_subscription_change_async", lambda _subscription_id: None)
-    monkeypatch.setattr(billing_app, "get_storage_price_id_from_config", lambda: "price_storage")
-    monkeypatch.setattr(billing_app, "billing_set_customer_id_async", lambda _tenant_id: "cus_storage")
 
     async def retrieve_async(subscription_id, **kwargs):
         assert subscription_id == "sub_storage"
@@ -798,15 +809,24 @@ def test_storage_increase_async_always_creates_checkout_session(monkeypatch):
 
     async def modify_async(subscription_id, **kwargs):
         modify_calls.append((subscription_id, kwargs))
-        raise AssertionError("storage increases should no longer update subscriptions directly")
-
-    async def create_checkout_session(**kwargs):
-        checkout_calls.append(kwargs)
-        return SimpleNamespace(url="https://checkout.stripe.test/storage")
+        return {
+            "id": "sub_storage",
+            "customer": "cus_storage",
+            "status": "active",
+            "current_period_start": 1710000000,
+            "current_period_end": 1712592000,
+            "cancel_at_period_end": False,
+            "pending_update": {"expires_at": 1710003600},
+            "latest_invoice": {
+                "id": "in_storage_upgrade",
+                "status": "open",
+                "hosted_invoice_url": "https://invoice.stripe.test/in_storage_upgrade",
+            },
+            "items": {"data": [{"id": "si_storage", "price": {"id": "price_storage"}, "quantity": 2}]},
+        }
 
     monkeypatch.setattr(billing_app.stripe.Subscription, "retrieve_async", retrieve_async)
     monkeypatch.setattr(billing_app.stripe.Subscription, "modify_async", modify_async)
-    monkeypatch.setattr(billing_app, "_create_storage_checkout_session_async", create_checkout_session)
 
     ok, data = asyncio.run(
         billing_app._set_storage_target_quantity_async(
@@ -819,24 +839,22 @@ def test_storage_increase_async_always_creates_checkout_session(monkeypatch):
 
     assert ok is True
     assert data == {
-        "pending_payment": True,
         "addon_storage_bytes": 2 * billing_app.BYTES_PER_GB,
         "target_quantity_bytes": 4 * billing_app.BYTES_PER_GB,
-        "pending": True,
-        "redirect_to": "https://checkout.stripe.test/storage",
+        "redirect_to": "https://invoice.stripe.test/in_storage_upgrade",
     }
-    assert checkout_calls == [
-        {
-            "tenant_id": "tenant_1",
-            "customer_id": "cus_storage",
-            "storage_price_id": "price_storage",
-            "target_quantity_bytes": 4 * billing_app.BYTES_PER_GB,
-            "session_success_url": "https://app.example/success",
-            "session_cancel_url": "https://app.example/cancel",
-            "main_period_end": datetime(2024, 4, 8, 16, 0, tzinfo=timezone.utc),
-        }
+    assert modify_calls == [
+        (
+            "sub_storage",
+            {
+                "items": [{"id": "si_storage", "quantity": 4}],
+                "proration_behavior": "always_invoice",
+                "payment_behavior": "pending_if_incomplete",
+                "billing_cycle_anchor": "unchanged",
+                "expand": ["latest_invoice"],
+            },
+        )
     ]
-    assert modify_calls == []
 
 
 @pytest.mark.p2
@@ -853,7 +871,6 @@ def test_storage_cancel_async_releases_schedule_and_retries_on_schedule_managed_
             "subscription_id": "sub_sched_managed",
             "status": "active",
             "effective_quantity_gb": 2,
-            "schedule_id": "sub_sched_123",
         },
     )
 
@@ -903,7 +920,6 @@ def test_storage_cancel_async_releases_schedule_and_retries_on_schedule_managed_
     assert len(modify_calls) == 2
     assert all(call[1] == {"cancel_at_period_end": True} for call in modify_calls)
     assert sync_calls[0][0] == "tenant_1"
-    assert sync_calls[0][2]["pending_action"] == "cancel"
     assert data == {
         "cancel_at_period_end": True,
         "effective_at": datetime(2024, 4, 8, 16, 0, tzinfo=timezone.utc),
@@ -951,7 +967,6 @@ def test_storage_cancel_sync_releases_schedule_and_retries_on_schedule_managed_e
             "subscription_id": "sub_sched_managed",
             "status": "active",
             "effective_quantity_gb": 2,
-            "schedule_id": "sub_sched_123",
         },
     )
 
@@ -1001,10 +1016,237 @@ def test_storage_cancel_sync_releases_schedule_and_retries_on_schedule_managed_e
     assert len(modify_calls) == 2
     assert all(call[1] == {"cancel_at_period_end": True} for call in modify_calls)
     assert sync_calls[0][0] == "tenant_1"
-    assert sync_calls[0][2]["pending_action"] == "cancel"
     assert data == {
         "cancel_at_period_end": True,
         "effective_at": datetime(2024, 4, 8, 16, 0, tzinfo=timezone.utc),
+    }
+
+
+@pytest.mark.p2
+def test_storage_checkout_session_completed_clears_pending_state(monkeypatch):
+    sync_calls = []
+    price_updates = []
+
+    monkeypatch.setattr(
+        billing_app.stripe.Subscription,
+        "retrieve",
+        lambda subscription_id: {
+            "id": subscription_id,
+            "customer": "cus_storage",
+            "status": "active",
+            "current_period_start": 1710000000,
+            "current_period_end": 1712592000,
+            "cancel_at_period_end": False,
+            "items": {
+                "data": [
+                    {
+                        "id": "si_storage",
+                        "price": {"id": "price_storage"},
+                        "quantity": 4,
+                    }
+                ]
+            },
+        },
+    )
+    monkeypatch.setattr(
+        billing_app,
+        "_sync_storage_subscription_record",
+        lambda tenant_id, subscription_obj, **kwargs: sync_calls.append((tenant_id, subscription_obj, kwargs)),
+    )
+    monkeypatch.setattr(
+        billing_app.StorageSubscriptionService,
+        "upsert_by_tenant_id",
+        lambda tenant_id, **kwargs: price_updates.append((tenant_id, kwargs)),
+    )
+
+    checkout_session = billing_app.CheckoutSessionCompleted(
+        id="cs_storage",
+        object="checkout.session",
+        mode="subscription",
+        customer="cus_storage",
+        subscription="sub_storage",
+        payment_intent="pi_storage",
+        payment_status="complete",
+        created=datetime(2024, 3, 9, 12, 0, tzinfo=timezone.utc),
+        expires_at=datetime(2024, 3, 10, 12, 0, tzinfo=timezone.utc),
+        metadata={
+            "tenant_id": "tenant_1",
+            "target_quantity_bytes": str(4 * billing_app.BYTES_PER_GB),
+            "price_id": "price_storage",
+        },
+    )
+
+    billing_app._handle_storage_checkout_session_completed(checkout_session, checkout_session.metadata)
+
+    assert sync_calls == [
+        (
+            "tenant_1",
+            {
+                "id": "sub_storage",
+                "customer": "cus_storage",
+                "status": "active",
+                "current_period_start": 1710000000,
+                "current_period_end": 1712592000,
+                "cancel_at_period_end": False,
+                "items": {
+                    "data": [
+                        {
+                            "id": "si_storage",
+                            "price": {"id": "price_storage"},
+                            "quantity": 4,
+                        }
+                    ]
+                },
+            },
+            {
+                "customer_id": "cus_storage",
+                "target_quantity_bytes": 4 * billing_app.BYTES_PER_GB,
+            },
+        )
+    ]
+    assert price_updates == []
+
+
+@pytest.mark.p2
+def test_storage_target_quantity_reads_scheduled_decrease_from_stripe_schedule(monkeypatch):
+    async def retrieve_async(_schedule_id):
+        return {
+            "id": "sub_sched_1",
+            "status": "active",
+            "phases": [
+                {
+                    "start_date": 1710000000,
+                    "end_date": 1712592000,
+                    "items": [{"price": "price_storage", "quantity": 4}],
+                },
+                {
+                    "start_date": 1712592000,
+                    "items": [{"price": "price_storage", "quantity": 2}],
+                },
+            ],
+        }
+
+    monkeypatch.setattr(billing_app.stripe.SubscriptionSchedule, "retrieve_async", retrieve_async)
+
+    target_bytes = asyncio.run(
+        billing_app._get_storage_target_quantity_bytes_async(
+            {
+                "tenant_id": "tenant_1",
+                "subscription_id": "sub_storage",
+                "addon_storage_bytes": 4 * billing_app.BYTES_PER_GB,
+                "target_quantity_bytes": 4 * billing_app.BYTES_PER_GB,
+                "cancel_at_period_end": False,
+            },
+            {"id": "sub_storage", "schedule": "sub_sched_1"},
+        )
+    )
+
+    assert target_bytes == 2 * billing_app.BYTES_PER_GB
+
+
+@pytest.mark.p2
+def test_storage_partial_readd_after_scheduled_decrease_updates_schedule_only(monkeypatch):
+    modify_calls = []
+    schedule_calls = []
+
+    monkeypatch.setattr(
+        billing_app.SubscriptionService,
+        "get_by_tenant_id",
+        lambda _tenant_id: {
+            "tenant_id": "tenant_1",
+            "plan_name": "Pro",
+            "end_time": datetime(2024, 4, 8, 16, 0, tzinfo=timezone.utc),
+        },
+    )
+    monkeypatch.setattr(
+        billing_app.StorageSubscriptionService,
+        "get_by_tenant_id",
+        lambda _tenant_id: {
+            "tenant_id": "tenant_1",
+            "subscription_id": "sub_storage",
+            "status": "active",
+            "addon_storage_bytes": 10 * billing_app.BYTES_PER_GB,
+            "target_quantity_bytes": 10 * billing_app.BYTES_PER_GB,
+            "cancel_at_period_end": False,
+        },
+    )
+
+    async def retrieve_async(subscription_id, **kwargs):
+        assert subscription_id == "sub_storage"
+        return {
+            "id": "sub_storage",
+            "customer": "cus_1",
+            "status": "active",
+            "schedule": "sub_sched_1",
+            "current_period_start": 1710000000,
+            "current_period_end": 1712592000,
+            "items": {"data": [{"id": "si_storage", "price": {"id": "price_storage"}, "quantity": 10}]},
+        }
+
+    async def retrieve_schedule_async(_schedule_id):
+        return {
+            "id": "sub_sched_1",
+            "status": "active",
+            "phases": [
+                {
+                    "start_date": 1710000000,
+                    "end_date": 1712592000,
+                    "items": [{"price": "price_storage", "quantity": 10}],
+                },
+                {
+                    "start_date": 1712592000,
+                    "items": [{"price": "price_storage", "quantity": 6}],
+                },
+            ],
+        }
+
+    async def modify_async(subscription_id, **kwargs):
+        modify_calls.append((subscription_id, kwargs))
+        raise AssertionError("partial re-add after scheduled decrease should not modify subscription immediately")
+
+    async def schedule_quantity_change(subscription_id, target_quantity):
+        schedule_calls.append((subscription_id, target_quantity))
+        return {
+            "schedule_id": "sub_sched_1",
+            "subscription_item_id": "si_storage",
+            "price_id": "price_storage",
+            "current_quantity": 10,
+            "target_quantity": 8,
+            "effective_at": datetime(2024, 4, 8, 16, 0, tzinfo=timezone.utc),
+        }
+
+    monkeypatch.setattr(billing_app.stripe.Subscription, "retrieve_async", retrieve_async)
+    monkeypatch.setattr(billing_app.stripe.SubscriptionSchedule, "retrieve_async", retrieve_schedule_async)
+    monkeypatch.setattr(billing_app.stripe.Subscription, "modify_async", modify_async)
+    monkeypatch.setattr(
+        billing_app,
+        "schedule_subscription_quantity_change_at_period_end_async",
+        schedule_quantity_change,
+    )
+
+    ok, data = asyncio.run(
+        billing_app._set_storage_target_quantity_async(
+            "tenant_1",
+            8 * billing_app.BYTES_PER_GB,
+            session_success_url="https://app.example/success",
+            session_cancel_url="https://app.example/cancel",
+        )
+    )
+
+    assert ok is True
+    assert modify_calls == []
+    assert schedule_calls == [("sub_storage", 8)]
+    assert data == {
+        "scheduled_change": {
+            "schedule_id": "sub_sched_1",
+            "subscription_item_id": "si_storage",
+            "price_id": "price_storage",
+            "current_quantity": 10,
+            "target_quantity": 8,
+            "effective_at": datetime(2024, 4, 8, 16, 0, tzinfo=timezone.utc),
+        },
+        "addon_storage_bytes": 10 * billing_app.BYTES_PER_GB,
+        "target_quantity_bytes": 8 * billing_app.BYTES_PER_GB,
     }
 
 

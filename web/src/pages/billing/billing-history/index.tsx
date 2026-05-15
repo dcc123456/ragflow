@@ -7,6 +7,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { RAGFlowTooltip } from '@/components/ui/tooltip';
 import { pick } from 'lodash';
 import { SquareChartGantt } from 'lucide-react';
 import React from 'react';
@@ -59,7 +60,13 @@ const BillingHistory: React.FC = () => {
         <TableBody>
           {invoicesData.map((invoice) => (
             <TableRow key={invoice.id}>
-              <TableCell>{invoice.id}</TableCell>
+              <TableCell>
+                <RAGFlowTooltip tooltip={invoice.id}>
+                  <span className="block max-w-[200px] truncate 4xl:max-w-none">
+                    {invoice.id}
+                  </span>
+                </RAGFlowTooltip>
+              </TableCell>
               <TableCell>{invoice.createDate}</TableCell>
               <TableCell>{invoice.product}</TableCell>
               <TableCell>{handleStatus(invoice.status)}</TableCell>

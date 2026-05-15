@@ -39,5 +39,10 @@ export default {
       deleteConfirmMessage: '{{id}} 正被 {{type}} 使用，如下所示',
       pleaseShareTheModelFirst: '請先分享以下知識庫或模型',
     },
+    billing: {
+      nextMonthlyCost: '下月費用',
+      payNowIncremental:
+        '立即支付 ${{amount}} 以增加存儲空間。您下月的存儲費用將為 ${{nextMonthlyCost}}。',
+    },
   },
 };

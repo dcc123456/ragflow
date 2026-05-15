@@ -79,7 +79,7 @@ const PricingCard = (props: IPricePlanWithButton) => {
   return (
     <div className="relative  group">
       <div
-        className={` rounded-lg p-6 text-center border border-border-button transition-transform group-hover:scale-105 bg-bg-base text-text-primary relative z-20 group-hover:border-accent-primary
+        className={` rounded-lg p-6 text-center border border-border-button transition-transform group-hover:scale-105 bg-bg-base text-text-primary relative z-20 group-hover:border-accent-primary h-full
           `}
         // after:absolute after:-inset-4 after:bg-gradient-to-b after:from-[#42b6ff] after:to-[#2be8aa] after:blur group-hover:after:opacity-50 after:z-10 after:opacity-0
       >

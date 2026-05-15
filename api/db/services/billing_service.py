@@ -465,7 +465,6 @@ class SubscriptionService(CommonService):
 
 class StorageSubscriptionService(CommonService):
     model = StorageSubscription
-    BLOCKING_PENDING_ACTIONS = {"create", "increase", "align"}
     BYTES_PER_KB = 1000
 
     @classmethod
@@ -511,33 +510,14 @@ class StorageSubscriptionService(CommonService):
             "subscription_id": kwargs.get("subscription_id", ""),
             "subscription_item_id": kwargs.get("subscription_item_id", ""),
             "price_id": kwargs.get("price_id", ""),
-            "schedule_id": kwargs.get("schedule_id", ""),
             "addon_storage_bytes": kwargs.get("addon_storage_bytes", 0),
             "target_quantity_bytes": kwargs.get("target_quantity_bytes", 0),
-            "pending_quantity_bytes": kwargs.get("pending_quantity_bytes"),
-            "pending_effective_at": kwargs.get("pending_effective_at"),
-            "pending_action": kwargs.get("pending_action", ""),
             "current_period_start": kwargs.get("current_period_start"),
             "current_period_end": kwargs.get("current_period_end"),
             "cancel_at_period_end": kwargs.get("cancel_at_period_end", False),
             "status": kwargs.get("status", ""),
         }
         cls.model.insert(**insert_dict).execute()
-        return True
-
-    @classmethod
-    @DB.connection_context()
-    def has_blocking_pending_by_tenant_id(cls, tenant_id: str) -> bool:
-        row = cls.get_by_tenant_id(tenant_id)
-        if not row:
-            return False
-        pending_quantity = row.get("pending_quantity_bytes")
-        pending_action = (row.get("pending_action") or "").strip().lower()
-        if pending_quantity is None or pending_action not in cls.BLOCKING_PENDING_ACTIONS:
-            return False
-        status = (row.get("status") or "").strip().lower()
-        if status in {"canceled", "incomplete_expired"}:
-            return False
         return True
 
     @classmethod

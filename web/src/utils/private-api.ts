@@ -49,7 +49,6 @@ export default {
   addonPlans: `${webAPI}/billing/addon_plans`,
   storageCurrent: `${webAPI}/billing/storage/current`,
   storageSetTarget: `${webAPI}/billing/storage/set-target`,
-  storageAbandonPending: `${webAPI}/billing/storage/abandon-pending`,
   deepdocUsage: `${webAPI}/billing/deepdoc/usage`,
   pointsCheckout: `${webAPI}/billing/points/checkout`,
   pointsPrice: `${webAPI}/billing/points/price`,
