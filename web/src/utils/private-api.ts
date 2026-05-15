@@ -60,8 +60,8 @@ export default {
   session: (sessionId: string) => `${webAPI}/billing/session/${sessionId}`,
 
   // premise
-  enableAdmin: `${restAPIv1}/user/enable_admin`, // enable 为true且 is_admin 为false 隐藏model provide
-  isAdmin: `${restAPIv1}/user/is_admin`, // 非admin用户不给显示model providers页面
+  enableAdmin: `${restAPIv1}/enable_admin`, // enable 为true且 is_admin 为false 隐藏model provide
+  isAdmin: `${restAPIv1}/is_admin`, // 非admin用户不给显示model providers页面
   setDefaultLlm: `${webAPI}/llm/set_default_llm`, // 添加一个按钮：重置成默认,需要弹框确认。
 
   // heart beat
