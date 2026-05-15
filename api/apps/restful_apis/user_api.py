@@ -646,7 +646,7 @@ async def user_info_from_github(access_token):
     return user_info
 
 
-@manager.route("/logout", methods=["GET"])  # noqa: F821
+@manager.route("/auth/logout", methods=["POST"])  # noqa: F821
 @login_required
 async def log_out():
     """
