@@ -37,12 +37,9 @@ from tools.billing.billing_common import (  # noqa: E402
     FlowError,
     make_default_parser,
 )
+from tools.billing.billing_client import BillingClient, create_client
 from tools.billing.storage_common import (  # noqa: E402
-    RAGFlowClient,
-    downgrade_to_trial,
     gb_to_bytes,
-    replace_storage_subscription_quantity,
-    setup_starter,
 )
 
 
@@ -55,16 +52,12 @@ def run_flow(args) -> None:
     print("=" * 80)
 
     email = args.email or f"billing-storage02-{uuid.uuid4().hex[:12]}@example.test"
-    setup = setup_starter(args, email=email)
-
-    client: RAGFlowClient = setup["client"]
-    tenant_id: str = setup["tenant_id"]
-    customer_id: str = setup["customer_id"]
-    starter_subscription_id: str = setup["subscription_id"]
+    client: BillingClient = create_client(args, email)
+    starter_subscription_id: str = client.upgrade_trial_to_starter()["subscription_id"]
 
     print("  Assert: Starter environment ready")
-    print(f"  Assert: Tenant ID: {tenant_id}")
-    print(f"  Assert: Customer ID: {customer_id}")
+    print(f"  Assert: Tenant ID: {client.tenant_id}")
+    print(f"  Assert: Customer ID: {client.customer_id}")
     print(f"  Assert: Starter subscription ID: {starter_subscription_id}")
 
     # =============================================================================
@@ -77,21 +70,18 @@ def run_flow(args) -> None:
     storage_gb = 30
     target_storage_bytes = gb_to_bytes(storage_gb)
 
-    print(f"  Info: Adding {storage_gb}GB storage addon to tenant {tenant_id}")
-    replace_storage_subscription_quantity(
-        client=client,
-        tenant_id=tenant_id,
+    print(f"  Info: Adding {storage_gb}GB storage addon to tenant {client.tenant_id}")
+    client.replace_storage_subscription_quantity(
         new_quantity_gb=storage_gb,
-        customer_id=customer_id,
         subscription_ids={starter_subscription_id},
     )
     print("  Assert: Storage addon modification sent")
 
-    client.wait_for_storage_status(tenant_id, "active", timeout_seconds=30)
+    client.wait_for_storage_status("active", timeout_seconds=30)
     print("  Assert: Storage addon is active")
 
     # Verify storage addon quantity
-    storage = client.storage_current(tenant_id)
+    storage = client.storage_current()
     addon_bytes = int(storage.get("addon_storage_bytes") or 0)
     if addon_bytes != target_storage_bytes:
         raise FlowError(f"expected addon_storage_bytes={target_storage_bytes}, got {addon_bytes}")
@@ -111,19 +101,16 @@ def run_flow(args) -> None:
     print("Step 7: Cancel storage addon (quantity = 0) - scheduled for period end")
     print("=" * 80)
 
-    print(f"  Info: Setting storage quantity to 0GB for tenant {tenant_id}")
-    replace_storage_subscription_quantity(
-        client=client,
-        tenant_id=tenant_id,
+    print(f"  Info: Setting storage quantity to 0GB for tenant {client.tenant_id}")
+    client.replace_storage_subscription_quantity(
         new_quantity_gb=0,
-        customer_id=customer_id,
         subscription_ids={starter_subscription_id},
     )
     print("  Assert: Storage cancellation modification sent")
 
     # After cancellation request, storage should still be active (not yet effective until period end)
-    client.wait_for_storage_status(tenant_id, "active", timeout_seconds=30)
-    storage_after_cancel = client.storage_current(tenant_id)
+    client.wait_for_storage_status("active", timeout_seconds=30)
+    storage_after_cancel = client.storage_current()
     addon_bytes_after_cancel = int(storage_after_cancel.get("addon_storage_bytes") or 0)
     # Storage should still be 30GB because cancellation takes effect at period end
     if addon_bytes_after_cancel != target_storage_bytes:
@@ -137,7 +124,6 @@ def run_flow(args) -> None:
 
     # Replay webhooks after clock advance
     client.sync_webhooks(
-        customer_id=customer_id,
         subscription_ids={starter_subscription_id},
         created_gte=storage_cancel_at,
         wait_seconds=8,
@@ -145,7 +131,7 @@ def run_flow(args) -> None:
     print("  Assert: Webhooks synced after clock advance")
 
     # Now verify storage addon is 0 after period end
-    storage_after_period_end = client.storage_current(tenant_id)
+    storage_after_period_end = client.storage_current()
     addon_bytes_after_period_end = int(storage_after_period_end.get("addon_storage_bytes") or 0)
     if addon_bytes_after_period_end != 0:
         raise FlowError(f"addon_storage_bytes should be 0 after period end, got {addon_bytes_after_period_end}")
@@ -168,18 +154,14 @@ def run_flow(args) -> None:
     storage_gb_2 = 20
     target_storage_bytes_2 = gb_to_bytes(storage_gb_2)
 
-    print(f"  Info: Setting storage quantity to {storage_gb_2}GB for tenant {tenant_id}")
-    replace_storage_subscription_quantity(
-        client=client,
-        tenant_id=tenant_id,
+    print(f"  Info: Setting storage quantity to {storage_gb_2}GB for tenant {client.tenant_id}")
+    client.replace_storage_subscription_quantity(
         new_quantity_gb=storage_gb_2,
-        customer_id=customer_id,
         subscription_ids={starter_subscription_id},
     )
     print("  Assert: Storage re-add modification sent")
-
-    client.wait_for_storage_status(tenant_id, "active", timeout_seconds=30)
-    storage_after_readd = client.storage_current(tenant_id)
+    client.wait_for_storage_status("active", timeout_seconds=30)
+    storage_after_readd = client.storage_current()
 
     addon_bytes_after_readd = int(storage_after_readd.get("addon_storage_bytes") or 0)
     if addon_bytes_after_readd != target_storage_bytes_2:
@@ -201,7 +183,7 @@ def run_flow(args) -> None:
     print(f"  Assert: Plan is Starter before downgrade: {before_downgrade_plan_name}")
 
     # Verify storage still has positive quantity before downgrade
-    before_downgrade_storage = client.storage_current(tenant_id)
+    before_downgrade_storage = client.storage_current()
     before_downgrade_addon_bytes = int(before_downgrade_storage.get("addon_storage_bytes") or 0)
     if before_downgrade_addon_bytes != target_storage_bytes_2:
         raise FlowError(
@@ -211,26 +193,20 @@ def run_flow(args) -> None:
 
     # Use downgrade_to_trial to perform the plan downgrade
     created_gte = int(time.time()) - 5
-    downgrade_to_trial(
-        client=client,
-        tenant_id=tenant_id,
-        subscription_id=starter_subscription_id,
-    )
+    client.downgrade_to_trial(starter_subscription_id)
     print("  Assert: Plan downgraded to Trial - scheduled")
-
     client.advance_clock_to_plan_end()
-
     # Sync webhook events if webhook_secret provided (for test clock sync)
     print("  Replaying webhook events for synchronization")
     replayed = client.sync_webhooks(
-        customer_id=customer_id,
         subscription_ids={starter_subscription_id},
         created_gte=created_gte,
     )
     print(f"  ✅ Webhook events replayed: {replayed} events")
 
+    client.wait_for_plan("Trial", 30)
     # Verify storage addon was automatically cleared (quantity set to 0)
-    after_trial_storage = client.storage_current(tenant_id)
+    after_trial_storage = client.storage_current()
 
     after_trial_addon_bytes = int(after_trial_storage.get("addon_storage_bytes") or 0)
     if after_trial_addon_bytes != 0:
@@ -249,11 +225,8 @@ def run_flow(args) -> None:
     print("=" * 80)
 
     try:
-        replace_storage_subscription_quantity(
-            client=client,
-            tenant_id=tenant_id,
+        client.replace_storage_subscription_quantity(
             new_quantity_gb=10,
-            customer_id=customer_id,
             subscription_ids={starter_subscription_id},
         )
         # If we get here, the API allowed it, which is incorrect
@@ -273,7 +246,7 @@ def run_flow(args) -> None:
             {
                 "case": "STORAGE-02",
                 "description": "Storage addon lifecycle + plan downgrade auto-cancel",
-                "tenant_id": tenant_id,
+                "tenant_id": client.tenant_id,
                 "email": email,
                 "initial_storage_gb": storage_gb,
                 "re_added_storage_gb": storage_gb_2,

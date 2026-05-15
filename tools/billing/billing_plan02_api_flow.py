@@ -31,20 +31,14 @@ import stripe
 
 from tools.billing.billing_common import (  # noqa: E402
     FlowError, stripe_dict,
-    make_default_parser,
-)
-from tools.billing.flow_common import (  # noqa: E402
-    find_new_positive_paid_invoice,
-    parse_plan_end,
+    make_default_parser, find_new_positive_paid_invoice, parse_plan_end, get_pro_quota_apps,
     remove_customer_payment_method,
-    replay_until_payment_order_status,
+)
+from tools.billing.billing_client import (  # noqa: E402
+    BillingClient, create_client,
 )
 from tools.billing.storage_common import (  # noqa: E402
-    RAGFlowClient,
     attach_default_test_card,
-    get_pro_quota_apps,
-    setup_starter,
-    upgrade_starter_to_pro,
 )
 
 def run_flow(args: argparse.Namespace) -> None:
@@ -58,18 +52,12 @@ def run_flow(args: argparse.Namespace) -> None:
     print("=" * 80)
 
     email = args.email or f"billing-plan02-{uuid.uuid4().hex[:12]}@example.test"
-    setup = setup_starter(args, email=email)
-
-    client: RAGFlowClient = setup["client"]
-    tenant_id: str = setup["tenant_id"]
-    customer_id: str = setup["customer_id"]
-    starter_subscription_id: str = setup["subscription_id"]
-    clock_id = setup["clock_id"]
-    webhook_secret: str = setup["webhook_secret"]
+    client: BillingClient = create_client(args, email)
+    starter_subscription_id: str = client.upgrade_trial_to_starter()["subscription_id"]
 
     print("  Assert: Starter environment ready")
-    print(f"  Assert: Tenant ID: {tenant_id}")
-    print(f"  Assert: Customer ID: {customer_id}")
+    print(f"  Assert: Tenant ID: {client.tenant_id}")
+    print(f"  Assert: Customer ID: {client.customer_id}")
     print(f"  Assert: Starter subscription ID: {starter_subscription_id}")
 
     # =============================================================================
@@ -79,10 +67,7 @@ def run_flow(args: argparse.Namespace) -> None:
     print("Step 5: Upgrade Starter -> Pro")
     print("=" * 80)
     history_before_pro = client.spend_history()
-    upgrade_result = upgrade_starter_to_pro(
-        client=client,
-        tenant_id=tenant_id,
-        customer_id=customer_id,
+    upgrade_result = client.upgrade_starter_to_pro(
         starter_subscription_id=starter_subscription_id,
         webhook_wait_seconds=args.webhook_wait_seconds,
         webhook_timeout_seconds=args.webhook_timeout_seconds,
@@ -119,7 +104,7 @@ def run_flow(args: argparse.Namespace) -> None:
     print("Step 6: Remove payment method to cause renewal failure")
     print("=" * 80)
 
-    remove_customer_payment_method(customer_id)
+    remove_customer_payment_method(client.customer_id)
     stripe.Subscription.modify(pro_subscription_id, default_payment_method="")
     sub_after_clear = stripe.Subscription.retrieve(pro_subscription_id)
     sub_dict = stripe_dict(sub_after_clear)
@@ -150,10 +135,7 @@ def run_flow(args: argparse.Namespace) -> None:
         raise FlowError(f"renewal invoice is missing id: {finalized_invoice}")
 
     # Sync webhook events until the renewal failure is reflected locally
-    replay_until_payment_order_status(
-        client,
-        webhook_secret=webhook_secret,
-        customer_id=customer_id,
+    client.replay_until_payment_order_status(
         subscription_ids={pro_subscription_id},
         created_gte=int(time.time()) - 60,
         order_id=renewal_invoice_id,
@@ -205,16 +187,13 @@ def run_flow(args: argparse.Namespace) -> None:
     print("Step 9: Pay the failed invoice (recovery)")
     print("=" * 80)
 
-    pm_id = attach_default_test_card(customer_id)
+    pm_id = attach_default_test_card(client.customer_id)
     pay_result = stripe.Invoice.pay(renewal_invoice_id, payment_method=pm_id)
     pay_dict = stripe_dict(pay_result)
     print(f"[DEBUG] Pay invoice result status: {pay_dict.get('status')}, amount_paid: {pay_dict.get('amount_paid')}")
 
     pay_started_at = int(time.time()) - 5
-    payment_order_after_pay = replay_until_payment_order_status(
-        client,
-        webhook_secret=webhook_secret,
-        customer_id=customer_id,
+    payment_order_after_pay = client.replay_until_payment_order_status(
         subscription_ids={pro_subscription_id},
         created_gte=pay_started_at,
         order_id=renewal_invoice_id,
@@ -295,10 +274,10 @@ def run_flow(args: argparse.Namespace) -> None:
             {
                 "case": "PLAN-02",
                 "description": "Renewal failure → attention banner → invoice recovery",
-                "tenant_id": tenant_id,
+                "tenant_id": client.tenant_id,
                 "email": email,
-                "test_clock_id": clock_id,
-                "customer_id": customer_id,
+                "test_clock_id": client.clock_id,
+                "customer_id": client.customer_id,
                 "pro_subscription_id": pro_subscription_id,
                 "failed_invoice_id": renewal_invoice_id,
                 "final_plan": overview_after.get("plan_name"),

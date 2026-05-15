@@ -30,14 +30,13 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-import time
 import uuid
 from pathlib import Path
 
-import stripe  # type: ignore[reportMissingImports]
+import stripe
 
-from tools.billing.billing_common import make_default_parser, wait_for_clock
-from tools.billing.storage_common import create_clock_customer
+from tools.billing.billing_common import make_default_parser
+from tools.billing.billing_client import create_client_with_type
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
@@ -46,7 +45,6 @@ if str(PROJECT_ROOT) not in sys.path:
 from tools.billing.billing_common import FlowError
 from tools.billing.points_common import (
     PointsClient,
-    complete_points_purchase,
     load_points_runtime_config,
 )
 from tools.billing.points_case_common import get_checkout_session_amount, get_points_case_metadata
@@ -56,23 +54,11 @@ def run_flow(args: argparse.Namespace) -> None:
     """Execute POINT-02: sequential purchase of 500 and 1000 points with cumulative accounting."""
     case_metadata = get_points_case_metadata("POINT-02")
     runtime = load_points_runtime_config()
-    stripe.api_key = runtime["stripe_api_key"]
-    stripe.api_version = runtime["stripe_api_version"]
-    webhook_secret = runtime["webhook_secret"]
     points_per_unit = int(runtime["points_per_unit"])
 
 
     email = args.email or f"billing-point02-{uuid.uuid4().hex[:12]}@example.test"
-    test_clock = stripe.test_helpers.TestClock.create(
-        frozen_time=int(time.time()),
-        name=f"sequential-purchase-{uuid.uuid4().hex[:8]}",
-    )
-    wait_for_clock(test_clock.id)
-    client = PointsClient(args.base_url, args.version, test_clock.id, webhook_secret, args.webhook_mode)
-    client.wait_until_ready(args.ready_timeout_seconds)
-    user_id, tenant_id = client.register_and_login(email, args.password)
-
-    customer_id = create_clock_customer(email, tenant_id, test_clock.id)
+    client:PointsClient = create_client_with_type(args, email, PointsClient)
 
     points_first = points_per_unit * 5
     points_second = points_per_unit * 10
@@ -85,7 +71,7 @@ def run_flow(args: argparse.Namespace) -> None:
     print("Step 1: Setup - Register user and initialize environment")
     print("=" * 80)
     print(f"  Assert: User registered with email: {email}")
-    print(f"  Assert: Tenant ID: {tenant_id}")
+    print(f"  Assert: Tenant ID: {client.tenant_id}")
 
     # =============================================================================
     # Step 2: Record baseline - Capture pre-purchase state
@@ -94,8 +80,8 @@ def run_flow(args: argparse.Namespace) -> None:
     print("Step 2: Record baseline - Capture pre-purchase state")
     print("=" * 80)
 
-    before_balance = client.points_balance(tenant_id)
-    before_ledger = client.points_ledger(tenant_id)
+    before_balance = client.points_balance()
+    before_ledger = client.points_ledger()
     before_history = client.spend_history()
 
     available_before = int(before_balance.get("available_points") or 0)
@@ -119,7 +105,7 @@ def run_flow(args: argparse.Namespace) -> None:
     pi_first = stripe.PaymentIntent.create(
         amount=points_first,
         currency="USD",
-        customer=customer_id,
+        customer=client.customer_id,
         description="First points recharge (test)",
         metadata={"source": "points_common_test", "sequence": "first"},
     )
@@ -127,19 +113,19 @@ def run_flow(args: argparse.Namespace) -> None:
     pi_second = stripe.PaymentIntent.create(
         amount=points_second,
         currency="USD",
-        customer=customer_id,
+        customer=client.customer_id,
         description="Second points recharge (test)",
         metadata={"source": "points_common_test", "sequence": "second"},
     )
 
-    session_first = complete_points_purchase(
-        client, tenant_id, points_first, points_per_unit, payment_intent_id=pi_first.id
+    session_first = client.complete_points_purchase(
+        points_first, points_per_unit, payment_intent_id=pi_first.id
     )
     print(f"  Assert: First checkout session created: {session_first['id']}")
     print(f"  Assert: Points to purchase (first): {points_first}")
 
-    session_second = complete_points_purchase(
-        client, tenant_id, points_second, points_per_unit, payment_intent_id=pi_second.id
+    session_second = client.complete_points_purchase(
+        points_second, points_per_unit, payment_intent_id=pi_second.id
     )
     print(f"  Assert: Second checkout session created: {session_second['id']}")
     print(f"  Assert: Points to purchase (second): {points_second}")
@@ -151,8 +137,8 @@ def run_flow(args: argparse.Namespace) -> None:
     print("Step 4: Verify results - Validate post-purchase state")
     print("=" * 80)
 
-    after_balance = client.points_balance(tenant_id)
-    after_ledger = client.points_ledger(tenant_id)
+    after_balance = client.points_balance()
+    after_ledger = client.points_ledger()
     after_history = client.spend_history()
 
     available_after = int(after_balance.get("available_points") or 0)
@@ -218,7 +204,7 @@ def run_flow(args: argparse.Namespace) -> None:
         json.dumps(
             {
                 **case_metadata,
-                "tenant_id": tenant_id,
+                "tenant_id": client.tenant_id,
                 "email": email,
                 "first_checkout_session_id": session_first["id"],
                 "second_checkout_session_id": session_second["id"],

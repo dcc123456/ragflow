@@ -36,14 +36,10 @@ from pathlib import Path
 
 import stripe  # type: ignore[reportMissingImports]
 
-from tools.billing.billing_common import FlowError, make_default_parser
+from tools.billing.billing_common import FlowError, make_default_parser, stripe_dict  # noqa: E402
+from tools.billing.billing_client import BillingClient, create_client
 from tools.billing.storage_common import (  # noqa: E402
-    RAGFlowClient,
-    add_storage_to_subscription_with_webhook,
     gb_to_bytes,
-    setup_starter,
-    stripe_dict,
-    replace_storage_subscription_quantity,
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -60,16 +56,12 @@ def run_flow(args: argparse.Namespace) -> None:
     print("=" * 80)
 
     email = args.email or f"billing-storage01-{uuid.uuid4().hex[:12]}@example.test"
-    setup = setup_starter(args, email=email)
-
-    client: RAGFlowClient = setup["client"]
-    tenant_id: str = setup["tenant_id"]
-    customer_id: str = setup["customer_id"]
-    starter_subscription_id: str = setup["subscription_id"]
+    client: BillingClient = create_client(args, email)
+    starter_subscription_id: str = client.upgrade_trial_to_starter()["subscription_id"]
 
     print("  Assert: Starter environment ready")
-    print(f"  Assert: Tenant ID: {tenant_id}")
-    print(f"  Assert: Customer ID: {customer_id}")
+    print(f"  Assert: Tenant ID: {client.tenant_id}")
+    print(f"  Assert: Customer ID: {client.customer_id}")
     print(f"  Assert: Starter subscription ID: {starter_subscription_id}")
 
     # =============================================================================
@@ -88,21 +80,18 @@ def run_flow(args: argparse.Namespace) -> None:
     proration_invoice_amount = 0
     proration_storage_line_amount = 0
 
-    # Use add_storage_to_subscription_with_webhook to add storage addon
+    # Use client.add_storage_to_subscription_with_webhook to add storage addon
     # This function calls the backend API and handles webhook synchronization.
-    print(f"  Info: Adding {storage_gb}GB storage addon to tenant {tenant_id}")
-    add_storage_to_subscription_with_webhook(
-        client=client,
-        tenant_id=tenant_id,
+    print(f"  Info: Adding {storage_gb}GB storage addon to tenant {client.tenant_id}")
+    client.add_storage_to_subscription_with_webhook(
         storage_quantity_gb=storage_gb,
-        customer_id=customer_id,
         subscription_ids={starter_subscription_id},
         created_gte=storage_added_at,
     )
-    print(f"  Assert: Storage addon added for tenant: {tenant_id}")
+    print(f"  Assert: Storage addon added for tenant: {client.tenant_id}")
 
     # Wait for storage status to become active
-    client.wait_for_storage_status(tenant_id, "active", timeout_seconds=30)
+    client.wait_for_storage_status("active", timeout_seconds=30)
     print("  Assert: Storage status is active")
 
     # Verify subscription now has two items (plan + storage)
@@ -137,7 +126,7 @@ def run_flow(args: argparse.Namespace) -> None:
     print("=" * 80)
 
     time.sleep(3)
-    storage = client.storage_current(tenant_id)
+    storage = client.storage_current()
 
     addon_storage_bytes = int(storage.get("addon_storage_bytes") or 0)
     expected_storage_bytes = gb_to_bytes(storage_gb)
@@ -160,23 +149,20 @@ def run_flow(args: argparse.Namespace) -> None:
 
     client.advance_clock_to_plan_end()
 
-    before_mid_storage = client.storage_current(tenant_id)
+    before_mid_storage = client.storage_current()
     before_mid_addon_bytes = int(before_mid_storage.get("addon_storage_bytes") or 0)
     print(f"  Assert: Addon storage before upgrade: {before_mid_addon_bytes} bytes")
 
     storage_gb_mid = storage_gb + 10
     print(f"  Info: Upgrading storage from {storage_gb}GB to {storage_gb_mid}GB mid-cycle")
-    replace_storage_subscription_quantity(
-        client=client,
-        tenant_id=tenant_id,
+    client.replace_storage_subscription_quantity(
         new_quantity_gb=storage_gb_mid,
-        customer_id=customer_id,
         subscription_ids={starter_subscription_id},
     )
     print(f"  Assert: Storage upgraded to {storage_gb_mid}GB")
 
     # Wait for storage status update
-    client.wait_for_storage_status(tenant_id, "active", timeout_seconds=30)
+    client.wait_for_storage_status("active", timeout_seconds=30)
 
     # =============================================================================
     # Step 8: Verify invoice proration for storage upgrade
@@ -216,8 +202,7 @@ def run_flow(args: argparse.Namespace) -> None:
             else:
                 print(f"  Assert: Invoice proration verified: ${proration_invoice_amount/100:.2f}")
 
-    time.sleep(1)
-    after_mid_storage = client.storage_current(tenant_id)
+    after_mid_storage = client.storage_current()
     after_mid_addon_bytes = int(after_mid_storage.get("addon_storage_bytes") or 0)
 
     expected_increase = gb_to_bytes(10)
@@ -233,7 +218,7 @@ def run_flow(args: argparse.Namespace) -> None:
     print(json.dumps({
         "case": "STORAGE-01",
         "description": "Storage addon purchase with proration (single subscription model)",
-        "tenant_id": tenant_id,
+        "tenant_id": client.tenant_id,
         "email": email,
         "subscription_id": starter_subscription_id,
         "storage_gb": storage_gb,

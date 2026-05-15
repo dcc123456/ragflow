@@ -30,19 +30,16 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-import time
 import uuid
 from pathlib import Path
 
 import stripe
 
-from tools.billing.billing_common import make_default_parser, FlowError, wait_for_clock
-from tools.billing.storage_common import create_clock_customer
+from tools.billing.billing_common import make_default_parser, FlowError
+from tools.billing.billing_client import create_client_with_type
 
 from tools.billing.points_common import (
-    PointsClient,
-    complete_points_purchase,
-    load_points_runtime_config,
+    PointsClient, load_points_runtime_config
 )
 from tools.billing.points_case_common import get_checkout_session_amount, get_points_case_metadata
 
@@ -54,20 +51,10 @@ def run_flow(args: argparse.Namespace) -> None:
     """Execute POINT-01: successful purchase of 100 points recharge test."""
     case_metadata = get_points_case_metadata("POINT-01")
     runtime = load_points_runtime_config()
-    stripe.api_key = runtime["stripe_api_key"]
-    stripe.api_version = runtime["stripe_api_version"]
-    webhook_secret = runtime["webhook_secret"]
     points_per_unit = int(runtime["points_per_unit"])
 
-    test_clock = stripe.test_helpers.TestClock.create(
-        frozen_time=int(time.time()),
-        name=f"setup-starter-{uuid.uuid4().hex[:8]}",
-    )
-    wait_for_clock(test_clock.id)
-    client = PointsClient(args.base_url, args.version, test_clock.id, webhook_secret, args.webhook_mode)
-    client.wait_until_ready(args.ready_timeout_seconds)
     email = args.email or f"billing-point01-{uuid.uuid4().hex[:12]}@example.test"
-    user_id, tenant_id = client.register_and_login(email, args.password)
+    client:PointsClient = create_client_with_type(args, email, PointsClient)
 
     # =============================================================================
     # Step 1: Setup - Register user and initialize environment
@@ -76,7 +63,7 @@ def run_flow(args: argparse.Namespace) -> None:
     print("Step 1: Setup - Register user and initialize environment")
     print("=" * 80)
     print(f"  Assert: User registered with email: {email}")
-    print(f"  Assert: Tenant ID: {tenant_id}")
+    print(f"  Assert: Tenant ID: {client.tenant_id}")
 
     # =============================================================================
     # Step 2: Record baseline - Capture pre-purchase state
@@ -85,8 +72,8 @@ def run_flow(args: argparse.Namespace) -> None:
     print("Step 2: Record baseline - Capture pre-purchase state")
     print("=" * 80)
 
-    before_balance = client.points_balance(tenant_id)
-    before_ledger = client.points_ledger(tenant_id)
+    before_balance = client.points_balance()
+    before_ledger = client.points_ledger()
     before_history = client.spend_history()
 
     available_before = int(before_balance.get("available_points") or 0)
@@ -106,17 +93,16 @@ def run_flow(args: argparse.Namespace) -> None:
     print("Step 3: Purchase points - Complete a 100 points checkout session")
     print("=" * 80)
 
-    customer_id =  create_clock_customer(email, tenant_id, test_clock.id)
     points_to_buy = 100
     pi = stripe.PaymentIntent.create(
         amount=points_to_buy,
         currency="USD",
-        customer=customer_id,
+        customer=client.customer_id,
         description="Manual points recharge (test)",
         metadata={"source": "points_common_test"},
     )
 
-    session = complete_points_purchase(client, tenant_id, points_to_buy, points_per_unit, payment_intent_id=pi.id)
+    session = client.complete_points_purchase(points_to_buy, points_per_unit, payment_intent_id=pi.id)
     print(f"  Assert: Checkout session created: {session['id']}")
     print(f"  Assert: Points to purchase: {points_to_buy}")
 
@@ -127,8 +113,8 @@ def run_flow(args: argparse.Namespace) -> None:
     print("Step 4: Verify results - Validate post-purchase state")
     print("=" * 80)
 
-    after_balance = client.points_balance(tenant_id)
-    after_ledger = client.points_ledger(tenant_id)
+    after_balance = client.points_balance()
+    after_ledger = client.points_ledger()
     after_history = client.spend_history()
 
     available_after = int(after_balance.get("available_points") or 0)
@@ -185,7 +171,7 @@ def run_flow(args: argparse.Namespace) -> None:
         json.dumps(
             {
                 **case_metadata,
-                "tenant_id": tenant_id,
+                "tenant_id": client.tenant_id,
                 "email": email,
                 "checkout_session_id": session["id"],
                 "points_purchased": points_per_unit,

@@ -25,7 +25,8 @@ from typing import Any
 import stripe
 
 from tools.billing.billing_common import load_persisted_webhook_secret, \
-    stripe_dict, FlowError, RAGFlowClient, env, load_billing_config
+    stripe_dict, FlowError, env, load_billing_config
+from tools.billing.billing_client import BillingClient
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
@@ -123,27 +124,27 @@ def cal_available_points(points_balance: dict[str, Any]) -> dict[str, Any]:
     points_balance["available_points"] = available_points
     return points_balance
 
-class PointsClient(RAGFlowClient):
+class PointsClient(BillingClient):
     """HTTP client for RAGFlow billing APIs used by points flows."""
 
-    def points_balance(self, tenant_id: str) -> dict[str, Any]:
-        points = self.request_json("GET", f"/billing/points/balance?tenant_id={tenant_id}")["data"]
+    def points_balance(self) -> dict[str, Any]:
+        points = self.request_json("GET", f"/billing/points/balance?tenant_id={self.tenant_id}")["data"]
         return cal_available_points(points)
 
-    def points_ledger(self, tenant_id: str, *, page: int = 1, page_size: int = 100) -> dict[str, Any]:
+    def points_ledger(self, page: int = 1, page_size: int = 100) -> dict[str, Any]:
         return self.request_json(
             "GET",
-            f"/billing/points/ledger?tenant_id={tenant_id}&page={page}&page_size={page_size}",
+            f"/billing/points/ledger?tenant_id={self.tenant_id}&page={page}&page_size={page_size}",
         )["data"]
 
-    def points_checkout(self, tenant_id: str, points: Any) -> dict[str, Any]:
-        return self.request_json("POST", "/billing/points/checkout", json={"tenant_id": tenant_id, "quantity": points})["data"]
+    def points_checkout(self, points: Any) -> dict[str, Any]:
+        return self.request_json("POST", "/billing/points/checkout", json={"tenant_id": self.tenant_id, "quantity": points})["data"]
 
-    def points_checkout_raw(self, tenant_id: str, points: Any) -> dict[str, Any]:
+    def points_checkout_raw(self, points: Any) -> dict[str, Any]:
         response = self.session.post(
             self.url("/billing/points/checkout"),
             headers=self.headers(auth=True),
-            json={"tenant_id": tenant_id, "quantity": points},
+            json={"tenant_id": self.tenant_id, "quantity": points},
             timeout=60,
         )
         try:
@@ -153,6 +154,35 @@ class PointsClient(RAGFlowClient):
                 f"POST /billing/points/checkout returned non-JSON status={response.status_code}: {response.text[:500]}"
             ) from exc
         return {"status_code": response.status_code, "payload": payload}
+
+    def create_points_checkout_session(self, unit_amount: int, points_per_unit: int) -> tuple[dict[str, Any], dict[str, Any]]:
+        started_at = int(time.time()) - 5
+        checkout = self.points_checkout(unit_amount)
+        if not checkout.get("checkout_url"):
+            raise FlowError(f"expected checkout_url for points purchase, got: {checkout}")
+        sessions = list_recent_points_checkout_sessions(started_at)
+        session = select_points_checkout_session(sessions, tenant_id=self.tenant_id, unit_amount=unit_amount, points_per_unit=points_per_unit)
+        return checkout, session
+
+
+    def complete_points_purchase(
+            self,
+            points_to_buy: int,
+            points_per_unit: int,
+            event_id: str | None = None,
+            payment_intent_id: str | None = None,
+    ) -> dict[str, Any]:
+        unit_amount = int(points_to_buy / points_per_unit)
+        _, session = self.create_points_checkout_session(unit_amount, points_per_unit)
+
+        completed_event = build_points_checkout_completed_event(
+            event_id=event_id or f"evt_manual_points_{uuid.uuid4().hex[:20]}",
+            session=session,
+            points=points_to_buy,
+            payment_intent_id=payment_intent_id,
+        )
+        self.post_signed_webhook(completed_event)
+        return session
 
 
 def build_points_checkout_completed_event(
@@ -222,7 +252,6 @@ def list_recent_points_checkout_sessions(created_gte: int) -> list[dict[str, Any
 
 def select_points_checkout_session(
     sessions: list[dict[str, Any]],
-    *,
     tenant_id: str,
     unit_amount: int,
     points_per_unit: int,
@@ -237,37 +266,3 @@ def select_points_checkout_session(
         if session_points == points_expected:
             return session
     raise FlowError(f"expected a matching points checkout session for tenant {tenant_id}, points {points_expected}")
-
-
-def create_points_checkout_session(client: PointsClient, tenant_id: str, unit_amount: int, points_per_unit: int) -> tuple[dict[str, Any], dict[str, Any]]:
-    started_at = int(time.time()) - 5
-    checkout = client.points_checkout(tenant_id, unit_amount)
-    if not checkout.get("checkout_url"):
-        raise FlowError(f"expected checkout_url for points purchase, got: {checkout}")
-    sessions = list_recent_points_checkout_sessions(started_at)
-    session = select_points_checkout_session(sessions, tenant_id=tenant_id, unit_amount=unit_amount, points_per_unit=points_per_unit)
-    return checkout, session
-
-
-def complete_points_purchase(
-    client: PointsClient,
-    tenant_id: str,
-    points_to_buy: int,
-    points_per_unit: int,
-    *,
-    event_id: str | None = None,
-    payment_intent_id: str | None = None,
-) -> dict[str, Any]:
-    unit_amount = int(points_to_buy / points_per_unit)
-    _, session = create_points_checkout_session(client, tenant_id, unit_amount, points_per_unit)
-
-    completed_event = build_points_checkout_completed_event(
-        event_id=event_id or f"evt_manual_points_{uuid.uuid4().hex[:20]}",
-        session=session,
-        points=points_to_buy,
-        payment_intent_id=payment_intent_id,
-    )
-    client.post_signed_webhook(completed_event)
-    return session
-
-

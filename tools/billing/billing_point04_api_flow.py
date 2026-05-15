@@ -36,6 +36,7 @@ from pathlib import Path
 import stripe  # type: ignore[reportMissingImports]
 
 from tools.billing.billing_common import make_default_parser
+from tools.billing.billing_client import create_client_with_type
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
@@ -43,7 +44,6 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from tools.billing.billing_common import FlowError
 from tools.billing.points_common import (
-    create_points_checkout_session,
     load_points_runtime_config, PointsClient,
 )
 from tools.billing.points_case_common import get_points_case_metadata
@@ -53,15 +53,10 @@ def run_flow(args: argparse.Namespace) -> None:
     """Execute POINT-04: a canceled or abandoned points checkout does not create credits or recovery state."""
     case_metadata = get_points_case_metadata("POINT-04")
     runtime = load_points_runtime_config()
-    webhook_secret = runtime["webhook_secret"]
-    stripe.api_key = runtime["stripe_api_key"]
-    stripe.api_version = runtime["stripe_api_version"]
     points_per_unit = int(runtime["points_per_unit"])
 
-    client = PointsClient(args.base_url, args.version, "", webhook_secret, args.webhook_mode)
-    client.wait_until_ready(args.ready_timeout_seconds)
     email = args.email or f"billing-point04-{uuid.uuid4().hex[:12]}@example.test"
-    user_id, tenant_id = client.register_and_login(email, args.password)
+    client: PointsClient = create_client_with_type(args, email, PointsClient)
 
     # =============================================================================
     # Step 1: Setup - Register user and initialize environment
@@ -70,7 +65,7 @@ def run_flow(args: argparse.Namespace) -> None:
     print("Step 1: Setup - Register user and initialize environment")
     print("=" * 80)
     print(f"  Assert: User registered with email: {email}")
-    print(f"  Assert: Tenant ID: {tenant_id}")
+    print(f"  Assert: Tenant ID: {client.tenant_id}")
 
     # =============================================================================
     # Step 2: Record baseline - Capture pre-test state
@@ -79,8 +74,8 @@ def run_flow(args: argparse.Namespace) -> None:
     print("Step 2: Record baseline - Capture pre-test state")
     print("=" * 80)
 
-    before_balance = client.points_balance(tenant_id)
-    before_ledger = client.points_ledger(tenant_id)
+    before_balance = client.points_balance()
+    before_ledger = client.points_ledger()
     before_history = client.spend_history()
     before_overview = client.plan_overview()
 
@@ -104,7 +99,7 @@ def run_flow(args: argparse.Namespace) -> None:
     print("=" * 80)
 
     points_to_buy = 100
-    _, session = create_points_checkout_session(client, tenant_id, points_to_buy, points_per_unit)
+    _, session = client.create_points_checkout_session(points_to_buy, points_per_unit)
     expired = stripe.checkout.Session.expire(session["id"])
     expired_dict = expired.to_dict_recursive() if hasattr(expired, "to_dict_recursive") else dict(expired)
     expired_status = str(expired_dict.get("status") or "")
@@ -120,8 +115,8 @@ def run_flow(args: argparse.Namespace) -> None:
     print("Step 4: Verify results - Validate no state mutation or payment recovery occurred")
     print("=" * 80)
 
-    after_balance = client.points_balance(tenant_id)
-    after_ledger = client.points_ledger(tenant_id)
+    after_balance = client.points_balance()
+    after_ledger = client.points_ledger()
     after_history = client.spend_history()
     after_overview = client.plan_overview()
 
@@ -171,7 +166,7 @@ def run_flow(args: argparse.Namespace) -> None:
         json.dumps(
             {
                 **case_metadata,
-                "tenant_id": tenant_id,
+                "tenant_id": client.tenant_id,
                 "email": email,
                 "checkout_session_id": session["id"],
                 "stripe_session_status": expired_status,

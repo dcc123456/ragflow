@@ -43,11 +43,9 @@ from tools.billing.billing_common import (  # noqa: E402
     FlowError,
     make_default_parser,
 )
+from tools.billing.billing_client import BillingClient, create_client
 from tools.billing.storage_common import (  # noqa: E402
-    RAGFlowClient,
     gb_to_bytes,
-    replace_storage_subscription_quantity,
-    setup_starter,
 )
 
 
@@ -60,15 +58,12 @@ def run_flow(args) -> None:
     print("=" * 80)
 
     email = args.email or f"billing-storage03-{uuid.uuid4().hex[:12]}@example.test"
-    setup = setup_starter(args, email=email)
+    client: BillingClient = create_client(args, email)
+    starter_subscription_id: str = client.upgrade_trial_to_starter()["subscription_id"]
 
-    client: RAGFlowClient = setup["client"]
-    tenant_id: str = setup["tenant_id"]
-    customer_id: str = setup["customer_id"]
-    starter_subscription_id: str = setup["subscription_id"]
     print("  Assert: Starter environment ready")
-    print(f"  Assert: Tenant ID: {tenant_id}")
-    print(f"  Assert: Customer ID: {customer_id}")
+    print(f"  Assert: Tenant ID: {client.tenant_id}")
+    print(f"  Assert: Customer ID: {client.customer_id}")
     print(f"  Assert: Starter subscription ID: {starter_subscription_id}")
 
     # =============================================================================
@@ -82,20 +77,17 @@ def run_flow(args) -> None:
     initial_target_bytes = gb_to_bytes(initial_storage_gb)
     print(f"  Info: Adding {initial_storage_gb}GB storage addon to subscription {starter_subscription_id}")
 
-    replace_storage_subscription_quantity(
-        client=client,
-        tenant_id=tenant_id,
+    client.replace_storage_subscription_quantity(
         new_quantity_gb=initial_storage_gb,
-        customer_id=customer_id,
         subscription_ids={starter_subscription_id},
     )
     print("  Assert: Storage addon modification sent")
 
-    client.wait_for_storage_status(tenant_id, "active", timeout_seconds=30)
+    client.wait_for_storage_status("active", timeout_seconds=30)
     print("  Assert: Storage addon is active")
 
     # Verify storage addon quantity
-    storage = client.storage_current(tenant_id)
+    storage = client.storage_current()
     addon_bytes_initial = int(storage.get("addon_storage_bytes") or 0)
     if addon_bytes_initial != initial_target_bytes:
         raise FlowError(f"expected addon_storage_bytes={initial_target_bytes}, got {addon_bytes_initial}")
@@ -119,18 +111,15 @@ def run_flow(args) -> None:
     upgraded_target_bytes = gb_to_bytes(upgraded_storage_gb)
 
     print(f"  Info: Upgrading storage quantity to {upgraded_storage_gb}GB")
-    replace_storage_subscription_quantity(
-        client=client,
-        tenant_id=tenant_id,
+    client.replace_storage_subscription_quantity(
         new_quantity_gb=upgraded_storage_gb,
-        customer_id=customer_id,
         subscription_ids={starter_subscription_id},
     )
     print("  Assert: Storage upgrade modification sent")
 
-    client.wait_for_storage_status(tenant_id, "active", timeout_seconds=30)
+    client.wait_for_storage_status("active", timeout_seconds=30)
 
-    storage_after_upgrade = client.storage_current(tenant_id)
+    storage_after_upgrade = client.storage_current()
     addon_bytes_upgraded = int(storage_after_upgrade.get("addon_storage_bytes") or 0)
 
     if addon_bytes_upgraded != upgraded_target_bytes:
@@ -153,7 +142,7 @@ def run_flow(args) -> None:
             {
                 "case": "STORAGE-03",
                 "description": "Storage addon upgrade (immediate effect)",
-                "tenant_id": tenant_id,
+                "tenant_id": client.tenant_id,
                 "email": email,
                 "initial_storage_gb": initial_storage_gb,
                 "upgraded_storage_gb": upgraded_storage_gb,

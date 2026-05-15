@@ -17,7 +17,7 @@
 """
 Common utilities shared across all billing test flows.
 
-This module breaks the circular dependency between storage_common.py and flow_common.py
+This module breaks the circular dependency between storage_common.py and billing_client.py
 by providing shared utilities that both can import from.
 """
 
@@ -25,13 +25,10 @@ from __future__ import annotations
 
 import argparse
 import json
-import hashlib
 import os
 import time
-import uuid
 from datetime import datetime, timezone
 
-from api.utils.crypt import crypt
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -39,7 +36,6 @@ from urllib.parse import urlparse
 import requests
 import stripe  # type: ignore[reportMissingImports]
 import yaml
-import hmac
 
 TEST_CLOCK_HEADER = "X-Stripe-Test-Clock"
 
@@ -52,337 +48,6 @@ FOCUSED_STRIPE_WEBHOOKS = {
     "checkout.session.completed",
     "payment_intent.succeeded",
 }
-
-def _event_matches_customer(event: dict[str, Any], customer_id: str, subscription_ids: set[str]) -> bool:
-    obj = event.get("data", {}).get("object", {}) or {}
-    if obj.get("customer") == customer_id:
-        return True
-    subscription = obj.get("subscription")
-    if isinstance(subscription, str) and subscription in subscription_ids:
-        return True
-    if obj.get("id") in subscription_ids and obj.get("object") == "subscription":
-        return True
-    return False
-
-class RAGFlowClient:
-    """HTTP client for RAGFlow billing APIs used by storage flows."""
-
-    def __init__(self, base_url: str, version: str, clock_id: str, webhook_secret: str, mode:str):
-        self.base_url = base_url.rstrip("/")
-        self.version = version.strip("/")
-        self.clock_id = clock_id
-        self.session = requests.Session()
-        self.session.trust_env = False
-        self.auth_header = ""
-        self.webhook_secret = webhook_secret
-        self.mode = mode
-        print(f"------------RAGFlowClient mode:{mode}")
-
-
-    def __del__(self):
-        if self.clock_id:
-            print(f" delete clock:{self.clock_id}")
-            delete_clock(clock_id=self.clock_id)
-
-    def wait_for_plan(self, expected: str, timeout_seconds: int) -> dict[str, Any]:
-        deadline = time.time() + timeout_seconds
-        last_plan = {}
-        while time.time() < deadline:
-            last_plan = self.current_plan()
-            if last_plan.get("plan_name") == expected:
-                return last_plan
-            time.sleep(1)
-        raise FlowError(f"timed out waiting for plan {expected}, last plan: {last_plan}")
-
-
-    def wait_for_storage_status(
-            self,
-            tenant_id: str,
-            expected_status: str,
-            timeout_seconds: int = 30,
-    ) -> dict[str, Any]:
-        """Wait for storage subscription to reach the specified status."""
-        deadline = time.time() + timeout_seconds
-        last_storage = {}
-        while time.time() < deadline:
-            last_storage = self.storage_current(tenant_id)
-            status = last_storage.get("status", "")
-            if status == expected_status:
-                return last_storage
-            print(f"-----sleep 1 seconds, waiting for storage status to be {expected_status}, current: {status}")
-            time.sleep(1)
-        raise FlowError(f"timed out waiting for storage status {expected_status}, last: {last_storage}")
-
-    def wait_for_history_count(self, minimum_count: int, timeout_seconds: int, label: str) -> list[dict[str, Any]]:
-        """Wait until billing history has at least minimum_count rows."""
-        deadline = time.time() + timeout_seconds
-        last_history: list[dict[str, Any]] = []
-        while time.time() < deadline:
-            last_history = self.spend_history()
-            if len(last_history) >= minimum_count:
-                return last_history
-            time.sleep(3)
-        raise FlowError(f"timed out waiting for {label} billing history row, last count: {len(last_history)}")
-
-    def url(self, path: str) -> str:
-        return f"{self.base_url}/{self.version}/{path.lstrip('/')}"
-
-    def headers(self, *, auth: bool = True) -> dict[str, str]:
-        headers: dict[str, str] = {}
-        if self.clock_id:
-            headers[TEST_CLOCK_HEADER] = self.clock_id
-        if auth and self.auth_header:
-            headers["Authorization"] = self.auth_header
-        return headers
-
-    def request_json(self, method: str, path: str, *, auth: bool = True, **kwargs) -> dict[str, Any]:
-        response = self.session.request(method, self.url(path), headers=self.headers(auth=auth), timeout=60, **kwargs)
-        try:
-            payload = response.json()
-        except ValueError as exc:
-            raise FlowError(
-                f"{method} {path} returned non-JSON status={response.status_code}: {response.text[:500]}"
-            ) from exc
-        if response.status_code >= 400 or payload.get("code") not in (0, None):
-            raise FlowError(f"{method} {path} failed status={response.status_code}: {payload}")
-        return payload
-
-    def wait_until_ready(self, timeout_seconds: int) -> None:
-        deadline = time.time() + timeout_seconds
-        last_error = ""
-        while time.time() < deadline:
-            try:
-                response = self.session.get(self.url("/billing/status"), headers=self.headers(auth=False), timeout=10)
-                if response.status_code == 200 and response.headers.get("content-type", "").startswith("application/json"):
-                    response.json()
-                    return
-                last_error = f"status={response.status_code} body={response.text[:200]}"
-            except Exception as exc:
-                last_error = str(exc)
-            time.sleep(2)
-        raise FlowError(f"RAGFlow API did not become ready: {last_error}")
-
-    def register_and_login(self, email: str, password: str) -> tuple[str, str]:
-        encrypted_password = crypt(password)
-        register_payload = {
-            "email": email,
-            "nickname": email.split("@", 1)[0],
-            "password": encrypted_password,
-        }
-        register_response = self.session.post(
-            self.url("/user/register"),
-            headers=self.headers(auth=False),
-            json=register_payload,
-            timeout=60,
-        )
-        try:
-            register_data = register_response.json()
-        except ValueError as exc:
-            raise FlowError(
-                f"register returned non-JSON status={register_response.status_code}: {register_response.text[:500]}"
-            ) from exc
-        if register_data.get("code") != 0 and "has already registered" not in (register_data.get("message") or ""):
-            raise FlowError(f"register failed: {register_data}")
-
-        login_response = self.session.post(
-            self.url("/user/login"),
-            headers=self.headers(auth=False),
-            json={"email": email, "password": encrypted_password},
-            timeout=60,
-        )
-        try:
-            login_data = login_response.json()
-        except ValueError as exc:
-            raise FlowError(
-                f"login returned non-JSON status={login_response.status_code}: {login_response.text[:500]}"
-            ) from exc
-        if login_data.get("code") != 0:
-            raise FlowError(f"login failed: {login_data}")
-        self.auth_header = login_response.headers.get("Authorization", "")
-        if not self.auth_header:
-            raise FlowError("login succeeded without Authorization header")
-        data = login_data.get("data") or {}
-        user_id = data.get("id") or data.get("user_id") or ""
-        tenant_id = data.get("tenant_id") or data.get("tenantId") or user_id
-        if not user_id or not tenant_id:
-            raise FlowError(f"login response missing ids: {login_data}")
-        return user_id, tenant_id
-
-    def current_plan(self) -> dict[str, Any]:
-        return self.request_json("GET", "/billing/current_plan")["data"]
-
-    def plan_overview(self) -> dict[str, Any]:
-        return self.request_json("GET", "/billing/plan_overview")["data"]
-
-    def storage_current(self, tenant_id: str) -> dict[str, Any]:
-        return self.request_json("GET", f"/billing/storage/current?tenant_id={tenant_id}")["data"]
-
-    def storage_set_target(self, tenant_id: str, target_storage_bytes: int) -> dict[str, Any]:
-        return self.request_json(
-            "POST",
-            "/billing/storage/set-target",
-            json={"tenant_id": tenant_id, "target_storage_bytes": target_storage_bytes},
-        )["data"]
-
-    def spend_history(self) -> list[dict[str, Any]]:
-        return self.request_json("GET", "/billing/spend_overview")["data"].get("items", [])
-
-    def schedule_plan_change(self, tenant_id: str, price_id: str) -> dict[str, Any]:
-        """Initiate a subscription change via checkout (upgrade/downgrade)."""
-        payload = {
-            "tenant_id": tenant_id,
-            "payment_type": "subscription",
-            "subscription_price_id": price_id,
-            "quantity": 1,
-        }
-        return self.request_json("POST", "/billing/checkout", json=payload)["data"]
-
-    def cancel_scheduled_change(self, tenant_id: str) -> dict[str, Any]:
-        """Cancel a pending scheduled subscription change."""
-        payload = {"tenant_id": tenant_id}
-        return self.request_json("POST", "/billing/cancel-scheduled-subscription-change", json=payload)["data"]
-
-    def post_signed_webhook(self, event: dict[str, Any]) -> None:
-        payload = json_dumps_compact(event)
-        timestamp = str(int(time.time()))
-        signed_payload = f"{timestamp}.{payload}".encode("utf-8")
-        signature = hmac.new(self.webhook_secret.encode("utf-8"), signed_payload, hashlib.sha256).hexdigest()
-        headers = {
-            "Stripe-Signature": f"t={timestamp},v1={signature}",
-            "Content-Type": "application/json",
-        }
-        response = self.session.post(self.url("/billing/webhook"), data=payload, headers=headers, timeout=60)
-        ensure_webhook_delivery_success(response, str(event.get("type") or "unknown"))
-
-    def post_invoice_paid_event(self, invoice_id:str):
-        latest_invoice = stripe.Invoice.retrieve(invoice_id, expand=["payment_intent"])
-        invoice_dict = stripe_dict(latest_invoice)
-        invoice_paid_event = {
-            "id": f"evt_manual_invoice_{uuid.uuid4().hex[:20]}",
-            "object": "event",
-            "type": "invoice.paid",
-            "api_version": stripe.api_version,
-            "created": int(time.time()),
-            "data": {"object": invoice_dict},
-            "livemode": False,
-            "pending_webhooks": 0,
-        }
-
-        self.post_signed_webhook(invoice_paid_event)
-
-    def sync_webhooks(self,
-            customer_id: str,
-            subscription_ids: set[str],
-            created_gte: int,
-            wait_seconds = 10,
-    ) -> int:
-        print(f"-------sleep {wait_seconds} seconds")
-        time.sleep(wait_seconds)
-        """Synchronize webhook events: manual mode replays from test clock; auto mode just waits."""
-        if self.mode != "manual":
-            print(f"-------self.mode is {self.mode}, not manual, ignore")
-            return 0
-        return self._replay_stripe_events(
-            customer_id=customer_id,
-            subscription_ids=subscription_ids,
-            created_gte=created_gte,
-        )
-
-    def _replay_stripe_events(self,
-            customer_id: str,
-            subscription_ids: set[str],
-            created_gte: int,
-    ) -> int:
-        """Fetch and replay matching Stripe events from test clock (without sleep)."""
-        replayed = 0
-        events = stripe.Event.list(limit=100, created={"gte": created_gte})
-        event_dicts = [stripe_dict(event) for event in events.auto_paging_iter()]
-        event_dicts.sort(key=lambda event: (event.get("created", 0), event.get("id", "")))
-        for event in event_dicts:
-            if event.get("type") not in FOCUSED_STRIPE_WEBHOOKS:
-                continue
-            if not _event_matches_customer(event, customer_id, subscription_ids):
-                continue
-            self.post_signed_webhook(event)
-            obj = event.get("data", {}).get("object", {}) or {}
-            subscription = obj.get("subscription")
-            print(f"-------event type:{event.get('type')}, customer:{obj.get("customer")}, subscription:{subscription}")
-            # if event.get("type") == "invoice.paid":
-                # print(f"--------invoice paid event:{event}")
-            replayed += 1
-        return replayed
-
-
-    def advance_clock_to_plan_end(
-            self,
-            offset_seconds: int = 86400,
-    ) -> int:
-        """Advance Stripe test clock to after the current plan's period end.
-
-        This method retrieves the current plan's end_time, calculates the target
-        timestamp by adding the offset, and advances the test clock to that time.
-
-        Args:
-            offset_seconds: Seconds to add after plan end (default: 120)
-
-        Returns:
-            The target timestamp the clock was advanced to
-
-        Raises:
-            FlowError: If plan end_time is missing or clock advance fails
-        """
-        current_plan = self.current_plan()
-        plan_end = current_plan.get("end_time")
-        if not plan_end:
-            raise FlowError(f"plan response is missing end_time: {current_plan}")
-
-        if isinstance(plan_end, (int, float)):
-            plan_end_ts = int(plan_end)
-        else:
-            plan_end_str = str(plan_end).replace("Z", "+00:00")
-            plan_end_dt = datetime.fromisoformat(plan_end_str)
-            if plan_end_dt.tzinfo is None:
-                plan_end_dt = plan_end_dt.replace(tzinfo=timezone.utc)
-            plan_end_ts = int(plan_end_dt.timestamp())
-
-        print(f"  Info: Advancing clock by {offset_seconds} seconds to after plan end:{plan_end}")
-        advance_clock(self.clock_id, plan_end_ts + offset_seconds)
-        print(f"  Assert: Clock advanced to after plan end {plan_end}, new end:{plan_end} + {offset_seconds} seconds")
-
-        return plan_end_ts + offset_seconds
-
-
-    def ensure_invoice_finalized(self, subscription_id: str) -> dict[str, Any] | None:
-        """Ensure the latest subscription invoice is finalized (not draft). Returns invoice dict or None."""
-        for attempt in range(3):
-            subscription = stripe.Subscription.retrieve(subscription_id, expand=["latest_invoice"])
-            subscription_dict = stripe_dict(subscription)
-            latest_invoice = subscription_dict.get("latest_invoice")
-            if not latest_invoice:
-                return None
-            invoice = latest_invoice if isinstance(latest_invoice, dict) else stripe.Invoice.retrieve(str(latest_invoice))
-            invoice_dict = stripe_dict(invoice)
-            status = invoice_dict.get("status")
-            if status in {"paid", "void", "uncollectible"}:
-                return invoice_dict
-            if status == "draft":
-                finalize_at = invoice_dict.get("automatically_finalizes_at") or int(invoice_dict.get("created", 0)) + 3660
-                clock = stripe_dict(stripe.test_helpers.TestClock.retrieve(self.clock_id))
-                frozen = int(clock.get("frozen_time", 0))
-                if finalize_at and int(finalize_at) > frozen:
-                    print(f"[DEBUG] Invoice draft, advancing clock from {frozen} to {finalize_at} for auto-finalize...")
-                    advance_clock(self.clock_id, int(finalize_at))
-                    continue
-                # We're at or past auto-finalize time but still draft; finalize manually
-                print("[DEBUG] Invoice still draft after time advance, finalizing manually...")
-                try:
-                    finalized = stripe.Invoice.finalize_invoice(invoice_dict["id"])
-                    return stripe_dict(finalized)
-                except Exception as e:
-                    print(f"[DEBUG] Finalize failed: {e}")
-                    return invoice_dict
-            return invoice_dict
-        return None
 
 
 def advance_clock(clock_id: str, frozen_time: int) -> dict[str, Any]:
@@ -407,19 +72,6 @@ def wait_for_clock(clock_id: str) -> dict[str, Any]:
 class FlowError(RuntimeError):
     """Custom exception for billing flow errors."""
     pass
-
-def wait_for_pending_downgrade(client: "RAGFlowClient", expected_target: str, timeout_seconds: int = 60) -> dict[str, Any]:
-    """Wait for pending_subscription_change to appear with target plan."""
-    deadline = time.time() + timeout_seconds
-    while time.time() < deadline:
-        plan = client.current_plan()
-        pending = plan.get("pending_subscription_change", {})
-        if pending:
-            pending_plan = pending.get("pending_plan_name", "")
-            if pending_plan.lower() == expected_target.lower():
-                return plan
-        time.sleep(1)
-    raise FlowError(f"timed out waiting for pending downgrade to {expected_target}")
 
 
 def env(name: str, default: str = "") -> str:
@@ -477,6 +129,17 @@ def load_persisted_webhook_secret() -> str:
     if not rows or not getattr(rows[0], "value", ""):
         raise FlowError("billing_webhook_secret is not persisted in local DB")
     return str(rows[0].value)
+
+
+def create_clock_customer(email: str, tenant_id: str, clock_id: str) -> str:
+    """Create a Stripe customer with test clock."""
+    customer = stripe.Customer.create(
+        email=email,
+        name=email.split("@", 1)[0],
+        test_clock=clock_id,
+        metadata={"tenant_id": tenant_id},
+    )
+    return stripe_dict(customer)["id"]
 
 
 def build_checkout_session_completed_event(
@@ -701,13 +364,52 @@ def replace_subscription_price(subscription_id: str, price_id: str, **kwargs):
     )
 
 
-def wait_for_no_pending_downgrade(client: "RAGFlowClient", timeout_seconds: int = 180) -> dict[str, Any]:
-    """Wait for pending_subscription_change to disappear."""
-    deadline = time.time() + timeout_seconds
-    while time.time() < deadline:
-        plan = client.current_plan()
-        pending = plan.get("pending_subscription_change", {})
-        if not pending:
-            return plan
-        time.sleep(3)
-    raise FlowError("timed out waiting for pending downgrade to be canceled")
+def parse_plan_end(plan: dict[str, Any]) -> int:
+    """Extract period end timestamp from plan response, handling multiple formats."""
+    value = plan.get("end_time") or plan.get("billing_cycle", {}).get("end")
+    if not value:
+        raise FlowError(f"plan response is missing end_time: {plan}")
+    if isinstance(value, (int, float)):
+        return int(value)
+    text = str(value).replace("Z", "+00:00")
+    if len(text) == 10:
+        dt = datetime.fromisoformat(text).replace(tzinfo=timezone.utc)
+    else:
+        dt = datetime.fromisoformat(text)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+    return int(dt.timestamp())
+
+
+def find_new_positive_paid_invoice(history: list[dict[str, Any]], previous_invoice_ids: set[str]) -> dict[str, Any]:
+    """Find a new paid invoice with positive amount not in previous_invoice_ids."""
+    for row in history:
+        invoice_id = str(row.get("invoice_id") or "")
+        if not invoice_id or invoice_id in previous_invoice_ids:
+            continue
+        amount_val = float(row.get("amount", 0) or 0)
+        if amount_val > 0 and row.get("status") == "paid":
+            return row
+    raise FlowError(f"no new paid invoice with positive amount found; history={history}")
+
+
+def remove_customer_payment_method(customer_id: str) -> None:
+    """Remove all payment methods from customer to trigger payment failure."""
+    payment_methods = stripe.PaymentMethod.list(customer=customer_id, type="card")
+    for pm in payment_methods.auto_paging_iter():
+        stripe.PaymentMethod.detach(pm.id)
+
+
+def extract_scheduled_change(data: dict[str, Any]) -> dict[str, Any]:
+    """Extract scheduled_change from response data."""
+    scheduled = data.get("scheduled_change")
+    return scheduled if isinstance(scheduled, dict) else data
+
+
+def get_pro_quota_apps() -> int:
+    """Pro plan apps quota from service_conf.yaml."""
+    billing_config = load_billing_config()
+    for plan in billing_config.get("billing_plans", []):
+        if plan.get("name") == "Pro":
+            return int(plan.get("quota_apps", 999999999))
+    return 999999999

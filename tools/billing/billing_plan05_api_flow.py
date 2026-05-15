@@ -48,17 +48,13 @@ from tools.billing.billing_common import (  # noqa: E402
     get_starter_quota_apps,
     load_billing_config,
     stripe_dict,
-    make_default_parser, replace_subscription_price,
+    make_default_parser, replace_subscription_price, remove_customer_payment_method, get_pro_quota_apps,
 )
-from tools.billing.flow_common import (  # noqa: E402
-    remove_customer_payment_method,
-    replay_until_payment_order_status,
+from tools.billing.billing_client import (  # noqa: E402
+    BillingClient, create_client,
 )
 from tools.billing.storage_common import (  # noqa: E402
-    RAGFlowClient,
     attach_default_test_card,
-    setup_starter,
-    get_pro_quota_apps,
 )
 
 def run_flow(args: argparse.Namespace) -> None:
@@ -75,18 +71,12 @@ def run_flow(args: argparse.Namespace) -> None:
     print("=" * 80)
 
     email = args.email or f"billing-plan05-{uuid.uuid4().hex[:12]}@example.test"
-    setup = setup_starter(args, email=email)
-
-    client: RAGFlowClient = setup["client"]
-    tenant_id: str = setup["tenant_id"]
-    customer_id: str = setup["customer_id"]
-    starter_subscription_id: str = setup["subscription_id"]
-    clock_id = setup["clock_id"]
-    webhook_secret: str = setup["webhook_secret"]
+    client: BillingClient = create_client(args, email)
+    starter_subscription_id: str = client.upgrade_trial_to_starter()["subscription_id"]
 
     print("  Assert: Starter environment ready")
-    print(f"  Assert: Tenant ID: {tenant_id}")
-    print(f"  Assert: Customer ID: {customer_id}")
+    print(f"  Assert: Tenant ID: {client.tenant_id}")
+    print(f"  Assert: Customer ID: {client.customer_id}")
     print(f"  Assert: Starter subscription ID: {starter_subscription_id}")
 
     # Verify Starter quota before upgrade
@@ -105,8 +95,8 @@ def run_flow(args: argparse.Namespace) -> None:
     print("=" * 80)
 
     # Remove payment method to ensure the upgrade invoice remains unpaid
-    remove_customer_payment_method(customer_id)
-    stripe.Customer.modify(customer_id, invoice_settings={"default_payment_method": None}, default_payment_method=None)
+    remove_customer_payment_method(client.customer_id)
+    stripe.Customer.modify(client.customer_id, invoice_settings={"default_payment_method": None}, default_payment_method=None)
     stripe.Subscription.modify(starter_subscription_id, default_payment_method=None)
     print("  Assert: Payment method removed from customer")
 
@@ -141,7 +131,6 @@ def run_flow(args: argparse.Namespace) -> None:
 
     history_count_before_failed_upgrade = len(client.spend_history())
     client.sync_webhooks(
-        customer_id=customer_id,
         subscription_ids={starter_subscription_id},
         created_gte=upgrade_attempt_started_at,
         wait_seconds=args.webhook_wait_seconds,
@@ -202,7 +191,7 @@ def run_flow(args: argparse.Namespace) -> None:
     print("Step 8: Pay the pending Pro upgrade invoice")
     print("=" * 80)
 
-    pm_id = attach_default_test_card(customer_id)
+    pm_id = attach_default_test_card(client.customer_id)
     pay_started_at = int(time.time()) - 5
     try:
         pay_result = stripe.Invoice.pay(latest_invoice_id, payment_method=pm_id)
@@ -220,10 +209,7 @@ def run_flow(args: argparse.Namespace) -> None:
     print("Step 9: Sync webhooks for paid invoice")
     print("=" * 80)
 
-    replay_until_payment_order_status(
-        client,
-        webhook_secret=webhook_secret,
-        customer_id=customer_id,
+    client.replay_until_payment_order_status(
         subscription_ids={starter_subscription_id},
         created_gte=pay_started_at,
         order_id=latest_invoice_id,
@@ -279,10 +265,10 @@ def run_flow(args: argparse.Namespace) -> None:
             {
                 "case": "PLAN-05",
                 "description": "Upgrade with unpaid invoice must NOT grant higher entitlements early",
-                "tenant_id": tenant_id,
+                "tenant_id": client.tenant_id,
                 "email": email,
-                "test_clock_id": clock_id,
-                "customer_id": customer_id,
+                "test_clock_id": client.clock_id,
+                "customer_id": client.customer_id,
                 "starter_subscription_id": starter_subscription_id,
                 "pro_subscription_id": starter_subscription_id,
                 "unpaid_invoice_id": latest_invoice_id,

@@ -41,14 +41,11 @@ import time
 import uuid
 
 from tools.billing.billing_common import (  # noqa: E402
-    FlowError, make_default_parser, 
+    FlowError, make_default_parser,
 )
+from tools.billing.billing_client import BillingClient, create_client
 from tools.billing.storage_common import (  # noqa: E402
-    RAGFlowClient,
-    add_storage_to_subscription_with_webhook,
     gb_to_bytes,
-    setup_starter,
-    replace_storage_subscription_quantity,
 )
 
 def run_flow(args: argparse.Namespace) -> None:
@@ -62,16 +59,12 @@ def run_flow(args: argparse.Namespace) -> None:
     print("=" * 80)
 
     email = args.email or f"billing-plan04-{uuid.uuid4().hex[:12]}@example.test"
-    setup = setup_starter(args, email=email)
+    client: BillingClient = create_client(args, email)
+    starter_subscription_id: str = client.upgrade_trial_to_starter()["subscription_id"]
 
-    client: RAGFlowClient = setup["client"]
-    tenant_id: str = setup["tenant_id"]
-    customer_id: str = setup["customer_id"]
-    starter_subscription_id: str = setup["subscription_id"]
-    clock_id = setup["clock_id"]
     print("  Assert: Starter environment ready")
-    print(f"  Assert: Tenant ID: {tenant_id}")
-    print(f"  Assert: Customer ID: {customer_id}")
+    print(f"  Assert: Tenant ID: {client.tenant_id}")
+    print(f"  Assert: Customer ID: {client.customer_id}")
     print(f"  Assert: Starter subscription ID: {starter_subscription_id}")
 
     # =============================================================================
@@ -82,18 +75,15 @@ def run_flow(args: argparse.Namespace) -> None:
     print("=" * 80)
 
     initial_storage_gb = 20
-    add_storage_to_subscription_with_webhook(
-        client,
-        tenant_id,
+    client.add_storage_to_subscription_with_webhook(
         initial_storage_gb,
-        customer_id=customer_id,
         subscription_ids={starter_subscription_id},
         created_gte=int(time.time()) - 5,
     )
     print(f"  Assert: Storage addon added: {initial_storage_gb}GB")
 
     # Verify initial storage
-    storage_info = client.storage_current(tenant_id)
+    storage_info = client.storage_current()
     initial_addon_bytes = storage_info.get("addon_storage_bytes", 0)
     expected_initial_bytes = gb_to_bytes(initial_storage_gb)
     if initial_addon_bytes != expected_initial_bytes:
@@ -110,20 +100,11 @@ def run_flow(args: argparse.Namespace) -> None:
     print("=" * 80)
 
     downgrade_storage_gb = 10
-    downgrade_started_at = int(time.time()) - 5
 
     # Call the backend API to set a lower storage target (this schedules a downgrade)
     target_quantity_bytes = gb_to_bytes(downgrade_storage_gb)
-    result = client.storage_set_target(tenant_id, target_quantity_bytes)
+    result = client.storage_set_target(target_quantity_bytes)
     print(f"  Assert: Storage downgrade scheduled, target: {downgrade_storage_gb}GB, result:{result}")
-
-    # Sync webhook events
-    client.sync_webhooks(
-        customer_id=customer_id,
-        subscription_ids={starter_subscription_id},
-        created_gte=downgrade_started_at,
-        wait_seconds=args.webhook_wait_seconds,
-    )
 
     # =============================================================================
     # Step 7: Verify downgrade is pending in storage info
@@ -132,7 +113,7 @@ def run_flow(args: argparse.Namespace) -> None:
     print("Step 7: Verify downgrade is pending in storage info")
     print("=" * 80)
 
-    storage_after_downgrade = client.storage_current(tenant_id)
+    storage_after_downgrade = client.storage_current()
     pending_change = storage_after_downgrade.get("pending_subscription_change", {})
     if pending_change:
         print(f"  Assert: Pending storage downgrade confirmed: {pending_change}")
@@ -149,18 +130,14 @@ def run_flow(args: argparse.Namespace) -> None:
     upgrade_storage_gb = 70
     upgrade_started_at = int(time.time()) - 5
 
-    replace_storage_subscription_quantity(
-        client,
-        tenant_id,
+    client.replace_storage_subscription_quantity(
         upgrade_storage_gb,
-        customer_id=customer_id,
         subscription_ids={starter_subscription_id},
     )
     print(f"  Assert: Storage upgrade submitted: {upgrade_storage_gb}GB")
 
     # Sync webhook events for the upgrade
     client.sync_webhooks(
-        customer_id=customer_id,
         subscription_ids={starter_subscription_id},
         created_gte=upgrade_started_at,
         wait_seconds=args.webhook_wait_seconds,
@@ -173,7 +150,7 @@ def run_flow(args: argparse.Namespace) -> None:
     print("Step 9: Verify upgrade succeeded immediately")
     print("=" * 80)
 
-    storage_after_upgrade = client.storage_current(tenant_id)
+    storage_after_upgrade = client.storage_current()
     actual_addon_bytes = storage_after_upgrade.get("addon_storage_bytes", 0)
     expected_upgrade_bytes = gb_to_bytes(upgrade_storage_gb)
 
@@ -190,7 +167,7 @@ def run_flow(args: argparse.Namespace) -> None:
     print("Step 10: Verify no pending downgrade remains in database")
     print("=" * 80)
 
-    storage_final = client.storage_current(tenant_id)
+    storage_final = client.storage_current()
     pending_change_final = storage_final.get("pending_subscription_change", {})
     if pending_change_final:
         raise FlowError(
@@ -217,10 +194,10 @@ def run_flow(args: argparse.Namespace) -> None:
             {
                 "case": "PLAN-04",
                 "description": "Scheduled storage addon downgrade is replaced by immediate upgrade",
-                "tenant_id": tenant_id,
+                "tenant_id": client.tenant_id,
                 "email": email,
-                "test_clock_id": clock_id,
-                "customer_id": customer_id,
+                "test_clock_id": client.clock_id,
+                "customer_id": client.customer_id,
                 "subscription_id": starter_subscription_id,
                 "initial_storage_gb": initial_storage_gb,
                 "scheduled_downgrade_gb": downgrade_storage_gb,

@@ -32,14 +32,9 @@ from tools.billing.billing_common import (  # noqa: E402
     FlowError,
     make_default_parser,
 )
+from tools.billing.billing_client import BillingClient, create_client
 from tools.billing.storage_common import (  # noqa: E402
-    RAGFlowClient,
-    downgrade_pro_to_starter,
-    downgrade_to_trial,
     gb_to_bytes,
-    replace_storage_subscription_quantity,
-    setup_starter,
-    upgrade_starter_to_pro, BYTES_PER_GB,
 )
 
 
@@ -52,16 +47,12 @@ def run_flow(args) -> None:
     print("=" * 80)
 
     email = args.email or f"billing-storage05-{uuid.uuid4().hex[:12]}@example.test"
-    setup = setup_starter(args,email=email)
-
-    client: RAGFlowClient = setup["client"]
-    tenant_id: str = setup["tenant_id"]
-    customer_id: str = setup["customer_id"]
-    starter_subscription_id: str = setup["subscription_id"]
+    client: BillingClient = create_client(args, email)
+    starter_subscription_id: str = client.upgrade_trial_to_starter()["subscription_id"]
 
     print("  Assert: Starter environment ready")
-    print(f"  Assert: Tenant ID: {tenant_id}")
-    print(f"  Assert: Customer ID: {customer_id}")
+    print(f"  Assert: Tenant ID: {client.tenant_id}")
+    print(f"  Assert: Customer ID: {client.customer_id}")
     print(f"  Assert: Starter subscription ID: {starter_subscription_id}")
 
     subscription_ids: set[str] = {starter_subscription_id}
@@ -73,7 +64,7 @@ def run_flow(args) -> None:
     print("Step 6: Purchase storage addon (30GB) on Starter plan")
     print("=" * 80)
 
-    initial_storage = client.storage_current(tenant_id)
+    initial_storage = client.storage_current()
     initial_addon_bytes = int(initial_storage.get("addon_storage_bytes") or 0)
     print(f"  Assert: Initial addon storage: {initial_addon_bytes} bytes")
 
@@ -81,19 +72,16 @@ def run_flow(args) -> None:
     target_storage_bytes = gb_to_bytes(storage_gb)
     print(f"  Info: Adding {storage_gb}GB storage addon to subscription {starter_subscription_id}")
 
-    replace_storage_subscription_quantity(
-        client=client,
-        tenant_id=tenant_id,
+    client.replace_storage_subscription_quantity(
         new_quantity_gb=storage_gb,
-        customer_id=customer_id,
         subscription_ids={starter_subscription_id},
     )
     print("  Assert: Storage addon modification sent")
 
-    client.wait_for_storage_status(tenant_id, "active", timeout_seconds=30)
+    client.wait_for_storage_status("active", timeout_seconds=30)
     print("  Assert: Storage subscription is active")
 
-    after_addon_storage = client.storage_current(tenant_id)
+    after_addon_storage = client.storage_current()
     after_addon_addon_bytes = int(after_addon_storage.get("addon_storage_bytes") or 0)
     if after_addon_addon_bytes != target_storage_bytes:
         raise FlowError(f"addon_storage_bytes should be {target_storage_bytes} after purchase, got {after_addon_addon_bytes}")
@@ -113,10 +101,7 @@ def run_flow(args) -> None:
     print("Step 7: Upgrade plan from Starter to Pro (using upgrade_starter_to_pro)")
     print("=" * 80)
 
-    upgrade_result = upgrade_starter_to_pro(
-        client,
-        tenant_id,
-        customer_id,
+    upgrade_result = client.upgrade_starter_to_pro(
         starter_subscription_id,
         webhook_wait_seconds=args.webhook_wait_seconds,
         webhook_timeout_seconds=args.webhook_timeout_seconds,
@@ -128,7 +113,7 @@ def run_flow(args) -> None:
     after_upgrade_plan = upgrade_result.get("current_plan", {})
     after_upgrade_plan_name = after_upgrade_plan.get("plan_name", "")
     after_upgrade_plan_overview = client.plan_overview()
-    after_upgrade_storage = client.storage_current(tenant_id)
+    after_upgrade_storage = client.storage_current()
     after_upgrade_addon_bytes = int(after_upgrade_storage.get("addon_storage_bytes") or 0)
 
     if after_upgrade_plan_name != "Pro":
@@ -154,11 +139,7 @@ def run_flow(args) -> None:
 
     # Use shared downgrade_pro_to_starter() method (schedules downgrade, waits for pending)
     downgrade_created_gte = int(time.time()) - 5
-    downgrade_result = downgrade_pro_to_starter(
-        client,
-        tenant_id,
-        subscription_id,
-    )
+    downgrade_result = client.downgrade_pro_to_starter(subscription_id)
     print(f"  Assert: Pro -> Starter downgrade scheduled, schedule_id: {downgrade_result.get('schedule_id')}")
 
     # Advance clock to plan end using shared utility to apply the downgrade
@@ -167,7 +148,6 @@ def run_flow(args) -> None:
 
     # Sync webhooks after clock advance
     client.sync_webhooks(
-        customer_id=customer_id,
         subscription_ids=subscription_ids,
         created_gte=downgrade_created_gte,
         wait_seconds=8,
@@ -178,7 +158,7 @@ def run_flow(args) -> None:
     after_downgrade_plan = client.wait_for_plan("Starter", args.webhook_timeout_seconds)
     after_downgrade_plan_name = after_downgrade_plan.get("plan_name", "")
     after_downgrade_plan_overview = client.plan_overview()
-    after_downgrade_storage = client.storage_current(tenant_id)
+    after_downgrade_storage = client.storage_current()
     after_downgrade_addon_bytes = int(after_downgrade_storage.get("addon_storage_bytes") or 0)
 
     if after_downgrade_plan_name != "Starter":
@@ -199,7 +179,7 @@ def run_flow(args) -> None:
     print("\n" + "=" * 80)
     print("Step 9: Verify quota after downgrade takes effect")
     print("=" * 80)
-    after_downgrade_effective_storage = client.storage_current(tenant_id)
+    after_downgrade_effective_storage = client.storage_current()
     after_downgrade_effective_addon_bytes = int(after_downgrade_effective_storage.get("addon_storage_bytes") or 0)
 
     if after_downgrade_effective_addon_bytes != target_storage_bytes:
@@ -235,16 +215,14 @@ def run_flow(args) -> None:
 
     # Use shared downgrade_to_trial() method (handles scheduling + verification)
     created_gte = int(time.time()) - 5
-    downgrade_result = downgrade_to_trial(
-        client,
-        tenant_id,
+    downgrade_result = client.downgrade_to_trial(
         starter_subscription_id,
         webhook_timeout_seconds=args.webhook_timeout_seconds,
     )
     print(f"  Assert: Downgrade to Trial scheduled successfully, schedule_id: {downgrade_result.get('schedule_id')}")
 
     # Verify addon storage unchanged after scheduling downgrade
-    before_period_end_storage = client.storage_current(tenant_id)
+    before_period_end_storage = client.storage_current()
     before_period_end_addon_bytes = int(before_period_end_storage.get("addon_storage_bytes") or 0)
     if before_period_end_addon_bytes != target_storage_bytes:
         raise FlowError(f"addon_storage_bytes should remain {target_storage_bytes} before period end, got {before_period_end_addon_bytes}")
@@ -253,7 +231,6 @@ def run_flow(args) -> None:
     # Advance clock to after plan end using shared utility
     client.advance_clock_to_plan_end()
     client.sync_webhooks(
-        customer_id=customer_id,
         subscription_ids=subscription_ids,
         created_gte=created_gte,
         wait_seconds=15,
@@ -266,12 +243,12 @@ def run_flow(args) -> None:
         raise FlowError(f"plan should be Trial after period end, got {after_trial_plan_name}")
     print(f"  Assert: Plan changed to Trial after period end: {after_trial_plan_name}")
 
-    after_trial_storage = client.storage_current(tenant_id)
+    after_trial_storage = client.storage_current()
     after_trial_addon_bytes = int(after_trial_storage.get("addon_storage_bytes") or 0)
     after_trial_plan_storage = int(after_trial_storage.get("plan_storage_bytes") or 0)
 
     trial_storage_gb = 0
-    expected_trial_plan_storage = trial_storage_gb * BYTES_PER_GB
+    expected_trial_plan_storage =  gb_to_bytes(trial_storage_gb)
     print(f"  Assert: Plan storage after Trial downgrade: {after_trial_plan_storage} bytes (expected: {expected_trial_plan_storage})")
 
     if after_trial_addon_bytes != 0:
@@ -305,7 +282,7 @@ def run_flow(args) -> None:
             {
                 "case": "STORAGE-05",
                 "description": "Plan change with existing addon (PLAN-05 mode)",
-                "tenant_id": tenant_id,
+                "tenant_id": client.tenant_id,
                 "email": email,
                 "initial_plan": "Starter",
                 "storage_gb": storage_gb,

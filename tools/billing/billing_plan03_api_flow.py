@@ -45,15 +45,10 @@ from tools.billing.billing_common import (  # noqa: E402
     first_plan_price_id,
     get_starter_quota_apps,
     load_billing_config,
-    make_default_parser,
+    make_default_parser, find_new_positive_paid_invoice, get_pro_quota_apps,
 )
-from tools.billing.flow_common import (  # noqa: E402
-    find_new_positive_paid_invoice,
-)
-from tools.billing.storage_common import (  # noqa: E402
-    RAGFlowClient,
-    setup_starter,
-    get_pro_quota_apps,
+from tools.billing.billing_client import (  # noqa: E402
+    BillingClient, create_client,
 )
 
 def run_flow(args: argparse.Namespace) -> None:
@@ -67,13 +62,10 @@ def run_flow(args: argparse.Namespace) -> None:
     print("=" * 80)
 
     email = args.email or f"billing-plan03-{uuid.uuid4().hex[:12]}@example.test"
-    setup = setup_starter(args, email=email)
-
-    client: RAGFlowClient = setup["client"]
-    tenant_id: str = setup["tenant_id"]
-    customer_id: str = setup["customer_id"]
-    starter_subscription_id: str = setup["subscription_id"]
-    clock_id = setup["clock_id"]
+    client: BillingClient = create_client(args, email)
+    tenant_id: str = client.tenant_id
+    customer_id: str = client.customer_id
+    starter_subscription_id: str = client.upgrade_trial_to_starter()["subscription_id"]
 
     print("  Assert: Starter environment ready")
     print(f"  Assert: Tenant ID: {tenant_id}")
@@ -105,7 +97,7 @@ def run_flow(args: argparse.Namespace) -> None:
 
     # The /billing/checkout endpoint modifies the subscription directly
     # for active paid subscriptions (no Customer Portal redirect)
-    checkout_result = client.schedule_plan_change(tenant_id, pro_price_id)
+    checkout_result = client.schedule_plan_change(pro_price_id)
 
     # Validate the checkout response contains expected fields
     plan_name = checkout_result.get("plan_name", "")
@@ -129,7 +121,7 @@ def run_flow(args: argparse.Namespace) -> None:
     print("=" * 80)
 
     pro_upgrade_started_at = int(time.time()) - 5
-    client.schedule_plan_change(tenant_id, pro_price_id)
+    client.schedule_plan_change(pro_price_id)
     print("  Assert: Subscription price replaced with Pro price")
 
     # =============================================================================
@@ -140,7 +132,6 @@ def run_flow(args: argparse.Namespace) -> None:
     print("=" * 80)
 
     client.sync_webhooks(
-        customer_id=customer_id,
         subscription_ids={starter_subscription_id},
         created_gte=pro_upgrade_started_at,
         wait_seconds=args.webhook_wait_seconds,
@@ -204,10 +195,10 @@ def run_flow(args: argparse.Namespace) -> None:
             {
                 "case": "PLAN-03",
                 "description": "Starter → Pro upgrade via direct API checkout",
-                "tenant_id": tenant_id,
+                "tenant_id": client.tenant_id,
                 "email": email,
-                "test_clock_id": clock_id,
-                "customer_id": customer_id,
+                "test_clock_id": client.clock_id,
+                "customer_id": client.customer_id,
                 "starter_subscription_id": starter_subscription_id,
                 "final_plan": overview.get("plan_name"),
                 "quota_apps": overview.get("resources", {}).get("apps", {}).get("limit"),

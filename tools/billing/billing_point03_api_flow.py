@@ -34,9 +34,8 @@ import time
 import uuid
 from pathlib import Path
 
-import stripe  # type: ignore[reportMissingImports]
-
 from tools.billing.billing_common import make_default_parser
+from tools.billing.billing_client import create_client_with_type
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
@@ -46,7 +45,6 @@ from tools.billing.billing_common import FlowError
 from tools.billing.points_common import (
     PointsClient,
     list_recent_points_checkout_sessions,
-    load_points_runtime_config,
 )
 from tools.billing.points_case_common import get_points_case_metadata
 
@@ -54,15 +52,9 @@ from tools.billing.points_case_common import get_points_case_metadata
 def run_flow(args: argparse.Namespace) -> None:
     """Execute POINT-03: invalid points purchase inputs are rejected by API and do not mutate state."""
     case_metadata = get_points_case_metadata("POINT-03")
-    runtime = load_points_runtime_config()
-    webhook_secret = runtime["webhook_secret"]
-    stripe.api_key = runtime["stripe_api_key"]
-    stripe.api_version = runtime["stripe_api_version"]
 
-    client = PointsClient(args.base_url, args.version, "", webhook_secret, args.webhook_mode)
-    client.wait_until_ready(args.ready_timeout_seconds)
     email = args.email or f"billing-point03-{uuid.uuid4().hex[:12]}@example.test"
-    user_id, tenant_id = client.register_and_login(email, args.password)
+    client: PointsClient = create_client_with_type(args, email, PointsClient)
 
     # =============================================================================
     # Step 1: Setup - Register user and initialize environment
@@ -71,7 +63,7 @@ def run_flow(args: argparse.Namespace) -> None:
     print("Step 1: Setup - Register user and initialize environment")
     print("=" * 80)
     print(f"  Assert: User registered with email: {email}")
-    print(f"  Assert: Tenant ID: {tenant_id}")
+    print(f"  Assert: Tenant ID: {client.tenant_id}")
 
     # =============================================================================
     # Step 2: Record baseline - Capture pre-test state
@@ -80,8 +72,8 @@ def run_flow(args: argparse.Namespace) -> None:
     print("Step 2: Record baseline - Capture pre-test state")
     print("=" * 80)
 
-    before_balance = client.points_balance(tenant_id)
-    before_ledger = client.points_ledger(tenant_id)
+    before_balance = client.points_balance()
+    before_ledger = client.points_ledger()
     before_history = client.spend_history()
 
     available_before = int(before_balance.get("available_points") or 0)
@@ -112,7 +104,7 @@ def run_flow(args: argparse.Namespace) -> None:
     started_at = int(time.time()) - 5
     results: list[dict[str, object]] = []
     for case in invalid_cases:
-        result = client.points_checkout_raw(tenant_id, case["points"])
+        result = client.points_checkout_raw(case["points"])
         payload = result["payload"]
         if result["status_code"] != 200:
             raise FlowError(f"invalid points request should return JSON body with 200 status, got {result}")
@@ -135,13 +127,13 @@ def run_flow(args: argparse.Namespace) -> None:
     print("Step 4: Verify results - Validate no state mutation occurred")
     print("=" * 80)
 
-    after_balance = client.points_balance(tenant_id)
-    after_ledger = client.points_ledger(tenant_id)
+    after_balance = client.points_balance()
+    after_ledger = client.points_ledger()
     after_history = client.spend_history()
     after_sessions = [
         session
         for session in list_recent_points_checkout_sessions(started_at)
-        if (session.get("metadata") or {}).get("tenant_id") == tenant_id
+        if (session.get("metadata") or {}).get("tenant_id") == client.tenant_id
     ]
 
     available_after = int(after_balance.get("available_points") or 0)
@@ -181,7 +173,7 @@ def run_flow(args: argparse.Namespace) -> None:
         json.dumps(
             {
                 **case_metadata,
-                "tenant_id": tenant_id,
+                "tenant_id": client.tenant_id,
                 "email": email,
                 "invalid_case_results": results,
                 "balance_after": after_balance,

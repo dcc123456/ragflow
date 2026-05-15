@@ -30,14 +30,13 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-import time
 import uuid
 from pathlib import Path
 
 import stripe  # type: ignore[reportMissingImports]
 
-from tools.billing.billing_common import make_default_parser, wait_for_clock
-from tools.billing.storage_common import create_clock_customer
+from tools.billing.billing_common import make_default_parser
+from tools.billing.billing_client import create_client_with_type
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
@@ -46,7 +45,6 @@ if str(PROJECT_ROOT) not in sys.path:
 from tools.billing.billing_common import FlowError
 from tools.billing.points_common import (
     build_points_checkout_completed_event,
-    create_points_checkout_session,
     load_points_runtime_config, PointsClient,
 )
 from tools.billing.points_case_common import get_points_case_metadata
@@ -56,20 +54,10 @@ def run_flow(args: argparse.Namespace) -> None:
     """Execute POINT-05: replaying the same successful points webhook remains idempotent."""
     case_metadata = get_points_case_metadata("POINT-05")
     runtime = load_points_runtime_config()
-    stripe.api_key = runtime["stripe_api_key"]
-    stripe.api_version = runtime["stripe_api_version"]
-    webhook_secret = runtime["webhook_secret"]
     points_per_unit = int(runtime["points_per_unit"])
 
-    test_clock = stripe.test_helpers.TestClock.create(
-        frozen_time=int(time.time()),
-        name=f"point05-replay-{uuid.uuid4().hex[:8]}",
-    )
-    wait_for_clock(test_clock.id)
-    client = PointsClient(args.base_url, args.version, test_clock.id, webhook_secret, args.webhook_mode)
-    client.wait_until_ready(args.ready_timeout_seconds)
     email = args.email or f"billing-point05-{uuid.uuid4().hex[:12]}@example.test"
-    user_id, tenant_id = client.register_and_login(email, args.password)
+    client: PointsClient = create_client_with_type(args, email, PointsClient)
 
     # =============================================================================
     # Step 1: Setup - Register user and initialize environment
@@ -78,7 +66,7 @@ def run_flow(args: argparse.Namespace) -> None:
     print("Step 1: Setup - Register user and initialize environment")
     print("=" * 80)
     print(f"  Assert: User registered with email: {email}")
-    print(f"  Assert: Tenant ID: {tenant_id}")
+    print(f"  Assert: Tenant ID: {client.tenant_id}")
 
     # =============================================================================
     # Step 2: Record baseline - Capture pre-test state
@@ -87,8 +75,8 @@ def run_flow(args: argparse.Namespace) -> None:
     print("Step 2: Record baseline - Capture pre-test state")
     print("=" * 80)
 
-    before_balance = client.points_balance(tenant_id)
-    before_ledger = client.points_ledger(tenant_id)
+    before_balance = client.points_balance()
+    before_ledger = client.points_ledger()
     before_history = client.spend_history()
 
     available_before = int(before_balance.get("available_points") or 0)
@@ -108,20 +96,17 @@ def run_flow(args: argparse.Namespace) -> None:
     print("Step 3: Process webhook - Create checkout session and post signed webhook event")
     print("=" * 80)
 
-
-    customer_id = create_clock_customer(email, tenant_id, test_clock.id)
-
     points_to_buy = points_per_unit
     pi = stripe.PaymentIntent.create(
         amount=points_to_buy,
         currency="USD",
-        customer=customer_id,
+        customer=client.customer_id,
         description="Points recharge for idempotency test",
         metadata={"source": "point05_test"},
     )
     payment_intent_id = pi.id
 
-    _, session = create_points_checkout_session(client, tenant_id, 1, points_per_unit)
+    _, session = client.create_points_checkout_session(int(points_to_buy/points_per_unit), points_per_unit)
     event = build_points_checkout_completed_event(
         event_id=f"evt_manual_points_replay_{uuid.uuid4().hex[:20]}",
         session=session,
@@ -133,8 +118,8 @@ def run_flow(args: argparse.Namespace) -> None:
     print(f"  Assert: Checkout session created: {session['id']}")
     print("  Assert: First webhook posted successfully")
 
-    after_first_balance = client.points_balance(tenant_id)
-    after_first_ledger = client.points_ledger(tenant_id)
+    after_first_balance = client.points_balance()
+    after_first_ledger = client.points_ledger()
     after_first_history = client.spend_history()
 
     available_after_first = int(after_first_balance.get("available_points") or 0)
@@ -169,8 +154,8 @@ def run_flow(args: argparse.Namespace) -> None:
     client.post_signed_webhook(event)
     print("  Assert: Second webhook (replay) posted successfully")
 
-    after_replay_balance = client.points_balance(tenant_id)
-    after_replay_ledger = client.points_ledger(tenant_id)
+    after_replay_balance = client.points_balance()
+    after_replay_ledger = client.points_ledger()
     after_replay_history = client.spend_history()
 
     available_after_replay = int(after_replay_balance.get("available_points") or 0)
@@ -219,7 +204,7 @@ def run_flow(args: argparse.Namespace) -> None:
         json.dumps(
             {
                 **case_metadata,
-                "tenant_id": tenant_id,
+                "tenant_id": client.tenant_id,
                 "email": email,
                 "checkout_session_id": session["id"],
                 "available_points_before": available_before,

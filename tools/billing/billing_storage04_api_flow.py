@@ -36,11 +36,9 @@ from tools.billing.billing_common import (  # noqa: E402
     FlowError,
     make_default_parser,
 )
+from tools.billing.billing_client import BillingClient, create_client
 from tools.billing.storage_common import (  # noqa: E402
-    RAGFlowClient,
     gb_to_bytes,
-    replace_storage_subscription_quantity,
-    setup_starter,
 )
 
 
@@ -53,16 +51,12 @@ def run_flow(args) -> None:
     print("=" * 80)
 
     email = args.email or f"billing-storage04-{uuid.uuid4().hex[:12]}@example.test"
-    setup = setup_starter(args,email=email)
-
-    client: RAGFlowClient = setup["client"]
-    tenant_id: str = setup["tenant_id"]
-    customer_id: str = setup["customer_id"]
-    starter_subscription_id: str = setup["subscription_id"]
+    client: BillingClient = create_client(args, email)
+    starter_subscription_id: str = client.upgrade_trial_to_starter()["subscription_id"]
 
     print("  Assert: Starter environment ready")
-    print(f"  Assert: Tenant ID: {tenant_id}")
-    print(f"  Assert: Customer ID: {customer_id}")
+    print(f"  Assert: Tenant ID: {client.tenant_id}")
+    print(f"  Assert: Customer ID: {client.customer_id}")
     print(f"  Assert: Starter subscription ID: {starter_subscription_id}")
 
     # =============================================================================
@@ -76,19 +70,16 @@ def run_flow(args) -> None:
     initial_target_bytes = gb_to_bytes(initial_storage_gb)
 
     print(f"  Info: Adding {initial_storage_gb}GB storage addon to subscription {starter_subscription_id}")
-    replace_storage_subscription_quantity(
-        client=client,
-        tenant_id=tenant_id,
+    client.replace_storage_subscription_quantity(
         new_quantity_gb=initial_storage_gb,
-        customer_id=customer_id,
         subscription_ids={starter_subscription_id},
     )
     print("  Assert: Storage addon modification sent")
 
-    client.wait_for_storage_status(tenant_id, "active", timeout_seconds=30)
+    client.wait_for_storage_status("active", timeout_seconds=30)
     print("  Assert: Storage addon is active")
 
-    storage = client.storage_current(tenant_id)
+    storage = client.storage_current()
     after_addon_bytes = int(storage.get("addon_storage_bytes") or 0)
     if after_addon_bytes != initial_target_bytes:
         raise FlowError(f"expected addon_storage_bytes={initial_target_bytes}, got {after_addon_bytes}")
@@ -113,7 +104,7 @@ def run_flow(args) -> None:
     print(f"  Info: Scheduling downgrade to {downgrade_storage_gb}GB")
 
     # Schedule the downgrade via the storage set-target endpoint
-    downgrade_result = client.storage_set_target(tenant_id, downgrade_target_bytes)
+    downgrade_result = client.storage_set_target(downgrade_target_bytes)
     scheduled_change = downgrade_result.get("scheduled_change")
     if not scheduled_change:
         raise FlowError(f"scheduled_change should be set after downgrade request, got: {downgrade_result}")
@@ -128,7 +119,7 @@ def run_flow(args) -> None:
     print("  Assert: Addon quota unchanged immediately after downgrade request")
 
     # Also re-fetch from API to ensure backend reflects the same
-    storage_after_schedule = client.storage_current(tenant_id)
+    storage_after_schedule = client.storage_current()
     after_downgrade_addon_bytes = int(storage_after_schedule.get("addon_storage_bytes") or 0)
     if after_downgrade_addon_bytes != initial_target_bytes:
         raise FlowError(f"API shows addon_storage_bytes changed prematurely to {after_downgrade_addon_bytes}")
@@ -146,13 +137,12 @@ def run_flow(args) -> None:
     # Sync webhook events if webhook_secret provided (for test clock sync)
     print("  Replaying webhook events for synchronization")
     replayed = client.sync_webhooks(
-        customer_id=customer_id,
         subscription_ids={starter_subscription_id},
         created_gte=created_gte,
     )
     print(f"  ✅ Webhook events replayed: {replayed} events")
 
-    storage_after_period = client.storage_current(tenant_id)
+    storage_after_period = client.storage_current()
     after_period_addon_bytes = int(storage_after_period.get("addon_storage_bytes") or 0)
     if after_period_addon_bytes != downgrade_target_bytes:
         raise FlowError(
@@ -165,7 +155,7 @@ def run_flow(args) -> None:
             {
                 "case": "STORAGE-04",
                 "description": "Storage addon downgrade (at period end, single subscription model)",
-                "tenant_id": tenant_id,
+                "tenant_id": client.tenant_id,
                 "email": email,
                 "subscription_id": starter_subscription_id,
                 "initial_storage_gb": initial_storage_gb,
