@@ -414,6 +414,10 @@ def init_settings():
             except Exception:
                 print(f"{i} MINIO node, isn't it?")
                 break
+        if not MINIO:
+            minio_config = get_base_config("minio", {})
+            if minio_config:
+                MINIO = [minio_config]
     elif STORAGE_IMPL_TYPE == "OSS":
         OSS = get_base_config("oss", {})
     elif STORAGE_IMPL_TYPE == "GCS":
@@ -558,6 +562,5 @@ def print_rag_settings():
 
 def rout_key(priority: int, suffix="common") -> str:
     return "te.{}.{}".format(priority, suffix)
-
 
 

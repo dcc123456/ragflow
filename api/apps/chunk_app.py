@@ -244,6 +244,7 @@ async def switch():
 @validate_request("doc_id")
 async def rm():
     req = await get_request_json()
+    user_id = current_user.id
     try:
         def _rm_sync():
             deleted_chunk_ids = req.get("chunk_ids")
@@ -293,8 +294,8 @@ async def rm():
             chunk_number = deleted_count
             DocumentService.decrement_chunk_num(doc.id, doc.kb_id, 1, chunk_number, 0)
             for cid in deleted_chunk_ids:
-                if settings.STORAGE_IMPL.obj_exist(doc.kb_id, cid, current_user.id):
-                    settings.STORAGE_IMPL.rm(doc.kb_id, cid, current_user.id)
+                if settings.STORAGE_IMPL.obj_exist(doc.kb_id, cid, user_id):
+                    settings.STORAGE_IMPL.rm(doc.kb_id, cid, user_id)
             return get_json_result(data=True)
 
         return await thread_pool_exec(_rm_sync)
