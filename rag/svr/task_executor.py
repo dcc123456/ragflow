@@ -150,8 +150,9 @@ DONE_TASKS = 0
 FAILED_TASKS = 0
 
 CURRENT_TASKS = {}
+TASK_STATS_LOCK = threading.Lock()
 
-MAX_CONCURRENT_TASKS = int(os.environ.get('MAX_CONCURRENT_TASKS', "5"))
+MAX_CONCURRENT_TASKS = int(os.environ.get('MAX_CONCURRENT_TASKS', "4"))
 MAX_CONCURRENT_CHUNK_BUILDERS = int(os.environ.get('MAX_CONCURRENT_CHUNK_BUILDERS', "1"))
 MAX_CONCURRENT_MINIO = int(os.environ.get('MAX_CONCURRENT_MINIO', '10'))
 
@@ -1689,15 +1690,24 @@ async def do_handle_task(task):
 
 async def do_handle_task_with_timeout(task, callback):
     global DONE_TASKS, FAILED_TASKS, CURRENT_TASKS
+    task_id = task["id"]
+    with TASK_STATS_LOCK:
+        CURRENT_TASKS[task_id] = copy.deepcopy(task)
     try:
-        CURRENT_TASKS[task["id"]] = copy.deepcopy(task)
         await asyncio.wait_for(do_handle_task(task), timeout=60*60)
-        DONE_TASKS += 1
-        CURRENT_TASKS.pop(task["id"])
+        with TASK_STATS_LOCK:
+            DONE_TASKS += 1
     except asyncio.TimeoutError:
-        FAILED_TASKS += 1
-        CURRENT_TASKS.pop(task["id"])
+        with TASK_STATS_LOCK:
+            FAILED_TASKS += 1
         callback(prog=-1, msg="[Error]: Task failed due to timeout.(40 min)")
+    except Exception:
+        with TASK_STATS_LOCK:
+            FAILED_TASKS += 1
+        raise
+    finally:
+        with TASK_STATS_LOCK:
+            CURRENT_TASKS.pop(task_id, None)
 
 
 async def get_server_ip() -> str:
@@ -1723,7 +1733,12 @@ def report_status():
 
                 pid = os.getpid()
                 ip_address = await get_server_ip()
-                current = copy.deepcopy(CURRENT_TASKS)
+                with TASK_STATS_LOCK:
+                    current = copy.deepcopy(CURRENT_TASKS)
+                    pending = PENDING_TASKS
+                    lag = LAG_TASKS
+                    done = DONE_TASKS
+                    failed = FAILED_TASKS
 
 
                 heartbeat = json.dumps({
@@ -1732,10 +1747,10 @@ def report_status():
                     "name": CONSUMER_NAME,
                     "now": now.astimezone().isoformat(timespec="milliseconds"),
                     "boot_at": BOOT_AT,
-                    "pending": PENDING_TASKS,
-                    "lag": LAG_TASKS,
-                    "done": DONE_TASKS,
-                    "failed": FAILED_TASKS,
+                    "pending": pending,
+                    "lag": lag,
+                    "done": done,
+                    "failed": failed,
                     "current": current,
                 })
 
@@ -1891,8 +1906,18 @@ def task_manager():
     global PRIORITY, TASK_TYPE
     high_priority_queue = rout_key(1, TASK_TYPE)
     low_priority_queue = rout_key(0, TASK_TYPE)
-    logging.info("Priority consumer: high=%s, low=%s", high_priority_queue, low_priority_queue)
-    RABBITMQ_CONN.priority_queue_consumer(high_priority_queue, low_priority_queue, rabbitmq_callback)
+    logging.info(
+        "Priority consumer: high=%s, low=%s, max_concurrency=%s",
+        high_priority_queue,
+        low_priority_queue,
+        MAX_CONCURRENT_TASKS,
+    )
+    RABBITMQ_CONN.priority_queue_consumer(
+        high_priority_queue,
+        low_priority_queue,
+        rabbitmq_callback,
+        max_concurrency=MAX_CONCURRENT_TASKS,
+    )
 
 
 async def main():
@@ -1927,7 +1952,12 @@ async def main():
     heartbeat_thread = threading.Thread(target=report_status, daemon=True)
     heartbeat_thread.start()
     logging.info(f"RAGFlow ingestion is ready after {time.time() - start_ts}s initialization.")
-    logging.info("Priority consumer: high=%s, low=%s", rout_key(1, TASK_TYPE), rout_key(0, TASK_TYPE))
+    logging.info(
+        "Priority consumer: high=%s, low=%s, max_concurrency=%s",
+        rout_key(1, TASK_TYPE),
+        rout_key(0, TASK_TYPE),
+        MAX_CONCURRENT_TASKS,
+    )
     try:
         task_manager()
     finally:
