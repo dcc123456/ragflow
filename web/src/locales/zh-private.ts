@@ -72,6 +72,16 @@ export default {
       cancelPlanSwitchTip:
         '如果当前使用量超出 Free Plan 范围，您的降级将被阻止并继续使用当前套餐。附加存储将在基础套餐失效时同时取消。',
       cancelPlanConfirmQuestion: '你确定要取消吗？',
+      upgradeTips: {
+        seatsLimit: '您的套餐团队成员数量已达上限（{{current}}/{{limit}}）。',
+        appsLimit: '您的套餐应用数量已达上限（{{current}}/{{limit}}）。',
+        storageLimit: '您的套餐存储空间已达上限（{{current}}GB/{{limit}}GB）。',
+        pointsInsufficient: '您的积分余额不足。',
+        appsUpgrade: '升级以获取更多应用',
+        storageUpgrade: '升级以获取更多存储',
+        pointsUpgrade: '升级以获取更多积分',
+        teamMemberUpgrade: '升级以邀请更多成员',
+      },
     },
     billing: {
       overview: '概览',
@@ -162,6 +172,9 @@ export default {
       paymentSuccess: '支付成功',
       paymentFailed: '支付失败',
       close: '关闭',
+      nextMonthlyCost: '下月费用',
+      payNowIncremental: `立即支付 <strong class='text-text-primary'>{{amount}}</strong> 以增加存储空间。<br />
+      您下月的存储费用将为 <strong class='text-text-primary'>{{nextMonthlyCost}}</strong>。`,
     },
     fileManager: {
       evaluation: {

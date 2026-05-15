@@ -97,6 +97,19 @@ export default {
       cancelPlanSwitchTip:
         'If your current usage exceeds the Trial plan limits, your downgrade will be blocked and you will remain on the current plan. Existing add-on storage does not extend the Trial storage quota, and any add-on storage will be cancelled when the current plan expires.',
       cancelPlanConfirmQuestion: 'Are you sure you want to cancel?',
+      upgradeTips: {
+        seatsLimit:
+          "You've reached your team member count limit for your plan ({{current}}/{{limit}}). ",
+        appsLimit:
+          "You've reached your app count limit for your plan ({{current}}/{{limit}}). ",
+        storageLimit:
+          "You've reached your storage limit for your plan ({{current}}GB/{{limit}} GB). ",
+        pointsInsufficient: 'Your points balance is insufficient. ',
+        appsUpgrade: 'Upgrade to get more apps',
+        storageUpgrade: 'Upgrade to get more storage',
+        pointsUpgrade: 'Upgrade to get more points',
+        teamMemberUpgrade: 'Upgrade to invite more',
+      },
     },
     setting: {
       billing: 'Billing',

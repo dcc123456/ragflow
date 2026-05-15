@@ -196,7 +196,7 @@ const LedgerTable = () => {
       <h3 className="text-lg font-semibold text-text-primary mb-3">
         Ledger History
       </h3>
-      <Table className="border border-border-default rounded-lg">
+      <Table className="rounded-lg">
         <TableHeader>
           {table.getHeaderGroups().map((headerGroup) => (
             <TableRow key={headerGroup.id}>

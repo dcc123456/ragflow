@@ -4,6 +4,7 @@ import { Coins, DatabaseZap, LayoutGrid, Users } from 'lucide-react';
 import React, { useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { createRoot } from 'react-dom/client';
+import { useTranslation } from 'react-i18next';
 import UpgradeButton from './to-upgrade-button';
 
 interface CustomModalProps {
@@ -21,6 +22,7 @@ export const UpgradeTipsModal: React.FC<CustomModalProps> = ({
   message,
   container,
 }) => {
+  const { t } = useTranslation();
   const title = useMemo(() => {
     return (
       <div className="mr-4">
@@ -45,16 +47,18 @@ export const UpgradeTipsModal: React.FC<CustomModalProps> = ({
   const footer = useMemo(() => {
     return (
       <div className="flex items-center justify-end gap-2 text-xs">
-        {type === 'apps' && <div>Upgrade to get more apps</div>}
-        {type === 'storage' && <div>Upgrade to get more storage</div>}
-        {/* {type === 'team-member' && <div>Upgrade to invite more</div>} */}
-        {type === 'points' && <div>Upgrade to get more points</div>}
+        {type === 'apps' && <div>{t('price.upgradeTips.appsUpgrade')}</div>}
+        {type === 'storage' && (
+          <div>{t('price.upgradeTips.storageUpgrade')}</div>
+        )}
+        {/* {type === 'team-member' && <div>{t('price.upgradeTips.teamMemberUpgrade')}</div>} */}
+        {type === 'points' && <div>{t('price.upgradeTips.pointsUpgrade')}</div>}
         {type !== 'team-member' && (
           <UpgradeButton isModal={true} onCallBack={onClose} />
         )}
       </div>
     );
-  }, [type, onClose]);
+  }, [type, onClose, t]);
   const modalContent = (
     <Modal
       open={isOpen}

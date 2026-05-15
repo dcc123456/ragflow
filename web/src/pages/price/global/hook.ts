@@ -62,14 +62,20 @@ export const showPriceModal = ({ code, detail }: IPriceData) => {
     case PriceCode.SeatsLimit:
       showUpgradeTipsModal({
         type: 'team-member',
-        message: `You've reached your team member count limit for your plan (${detail.current}/${detail.limit}). `,
+        message: i18n.t('price.upgradeTips.seatsLimit', {
+          current: detail.current || 0,
+          limit: detail.limit || 0,
+        }),
         container: nextLayoutRef.current || undefined,
       });
       return true;
     case PriceCode.AppsLimit:
       showUpgradeTipsModal({
         type: 'apps',
-        message: `You've reached your app count limit for your plan (${detail.current}/${detail.limit}). `,
+        message: i18n.t('price.upgradeTips.appsLimit', {
+          current: detail.current || 0,
+          limit: detail.limit || 0,
+        }),
         container: nextLayoutRef.current || undefined,
       });
       return true;
@@ -83,7 +89,7 @@ export const showPriceModal = ({ code, detail }: IPriceData) => {
     case PriceCode.PointsLimit:
       showUpgradeTipsModal({
         type: 'points',
-        message: `Your points balance is insufficient. `,
+        message: i18n.t('price.upgradeTips.pointsInsufficient'),
         container: nextLayoutRef.current || undefined,
       });
       return true;
