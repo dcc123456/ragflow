@@ -1263,7 +1263,10 @@ async def clone():
         suffix=[],
     )
     if not documents:
-        return get_error_data_result(message=f"No documents in Knowledgebase {kb_id}")
+        # Duplicating an empty knowledge base is still a valid operation.
+        # The target KB has already been created successfully, so return success
+        # without scheduling a clone task.
+        return get_json_result(data={"clone_task_id": None, "kb_id": kb["id"]})
 
     task_id = queue_reembedding_dup_tasks(documents[0]["id"], ty="clone", priority=get_tenant_priority(current_user.id), target_kb_id=kb["id"])
 

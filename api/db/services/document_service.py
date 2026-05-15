@@ -903,6 +903,7 @@ class DocumentService(CommonService):
                 bad = 0
                 e, doc = DocumentService.get_by_id(d["id"])
                 status = doc.run  # TaskStatus.RUNNING.value
+                skip_doc_update = False
                 if status == TaskStatus.CANCEL.value:
                     if settings.BILLING_ENABLED:
                         try:
@@ -922,6 +923,11 @@ class DocumentService(CommonService):
                     task_type = (t.task_type or task_type).lower()
                     if task_type in PIPELINE_SPECIAL_PROGRESS_FREEZE_TASK_TYPES:
                         special_task_running = True
+                    if task_type == "clone":
+                        # Clone tasks copy chunks between knowledge bases and should not
+                        # mutate the source document's parsing state.
+                        skip_doc_update = True
+                        continue
                     if 0 <= t.progress < 1:
                         finished = False
                     if t.progress == -1:
@@ -930,6 +936,8 @@ class DocumentService(CommonService):
                     if t.progress_msg.strip():
                         msg.append(t.progress_msg)
                     priority = max(priority, t.priority)
+                if skip_doc_update:
+                    continue
                 prg /= len(tsks)
                 if finished and bad:
                     prg = -1
@@ -1305,6 +1313,7 @@ def queue_reembedding_dup_tasks(
     Optionally, specify a list of doc_ids to determine which documents participate in the task.
     """
     assert ty in ["reembedding", "clone", "evaluation"], "type should be reembedding / clone / evaluation."
+    task_name = {"reembedding": "re-embedding"}.get(ty, ty)
     hasher = xxhash.xxh64()
     def new_task():
         return {
@@ -1313,7 +1322,7 @@ def queue_reembedding_dup_tasks(
             "from_page": 100000000,
             "to_page": 100000000,
             "task_type": ty,
-            "progress_msg":  datetime.now().strftime("%H:%M:%S") + " created task re-embedding",
+            "progress_msg":  datetime.now().strftime("%H:%M:%S") + f" created task {task_name}",
             "begin_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
 
