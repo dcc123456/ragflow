@@ -20,7 +20,7 @@ s3_secret_key = "r3iMxuwRqs9Y0pVd08VEaQQIWkWqGpwZzlL0zz50"
 
 # Shared infra components
 deploy_infra = true
-
+deploy_zammad=false
 # TEI optional; keep off for shared infra footprint
 tei_replicas = 0
 

@@ -410,51 +410,61 @@ tofu apply -var 'redis_db=<FREE_REDIS_DB>' -auto-approve
 ```
 
 After apply completes, the Ragflow instance should be deployed in the selected namespace.
-### Optional: Use the deployment helper script
+### Optional: Use the helper scripts
 
-If `multi-deploy.sh` is available in `opentofu_ragflow/byok`, you can deploy an instance without copying or editing `terraform.tfvars`.
+Two helper entrypoints are available, depending on whether the image already
+exists.
 
-Example:
+#### `multi_deploy.sh` (deploy an already-built image)
+
+Run this from the BYOK directory when you already have a published image and
+only want the OpenTofu deployment flow:
 
 ```bash
-./multi-deploy.sh -i ragflow:<tag>
+cd opentofu_ragflow/byok
+./multi_deploy.sh -i ragflow:latest
 ```
 
-The script should automatically:
+`multi_deploy.sh`:
 
-- Find a free Redis DB number
-- Skip Redis DB `1`
-- Use `terraform.tfvars.dev_smk`
-- Pass the namespace through `-var`
-- Pass the Redis DB through `-var`
-- Pass the Ragflow image through `-var`
+- uses `terraform.tfvars.dev_smk`
+- resolves or interactively allocates a `ragflow-<redis_db>` namespace
+- passes `namespace`, `redis_db`, and `ragflow_image` to OpenTofu
+- runs `tofu plan`, then prompts before apply unless `--plan-only` is used
 
-Valid image values should always use the local Ragflow image format:
+#### `k8s_full.sh` (select slot, build, push, then deploy)
+
+Run this from the **repo root** when you want one command to select a Redis DB,
+build the image from the root `Dockerfile`, push it, then start the BYOK
+OpenTofu flow from `opentofu_ragflow/byok`:
+
+```bash
+./k8s_full.sh -i dev-test-1
+```
+
+`k8s_full.sh` accepts only a short tag. It builds and pushes the full registry image:
+
+```text
+192.168.1.51/infiniflow-ai/ragflow:<tag>
+```
+
+It still passes the normal BYOK image value to OpenTofu:
 
 ```text
 ragflow:<tag>
 ```
 
-Examples:
+The script prints the final deployment summary variables on the apply-skip and
+apply-success paths:
 
-```bash
-./deploy.sh -n ragflow-1 -i ragflow:latest
-./deploy.sh -n ragflow-2 -i ragflow:test
-./deploy.sh -n ragflow-3 -i ragflow:v1.2.3
+```text
+RAGFLOW_IMAGE=...
+RAGFLOW_NAMESPACE=...
+REDIS_DB=...
+BYOK_DIR=opentofu_ragflow/byok
 ```
 
-Optional examples:
-
-```bash
-# Only run the OpenTofu plan
-./deploy.sh -n ragflow-1 -i ragflow:latest --plan-only
-
-# Deploy with automatic approval
-./deploy.sh -n ragflow-1 -i ragflow:latest --auto-approve
-
-# Manually force a Redis DB if needed
-./deploy.sh -n ragflow-1 -i ragflow:latest --redis-db 10
-```
+OpenTofu still executes from `opentofu_ragflow/byok` in both flows.
 
 ## Cluster-Scoped Resource Ownership
 
