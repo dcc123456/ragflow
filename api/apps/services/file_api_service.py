@@ -468,7 +468,7 @@ async def delete_files(uid: str, file_ids: list, auth_header: str = ""):
                 success_count += _delete_folder_recursive(file, uid)
                 continue
 
-            success_count += _delete_single_file(file)
+            success_count += _delete_single_file(file, file.tenant_id)
 
         if errors:
             return False, {"success_count": success_count, "errors": errors}
