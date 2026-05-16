@@ -103,6 +103,10 @@ class _DummyMCPServerService:
     def delete_by_ids(*_args, **_kwargs):
         return True
 
+    @staticmethod
+    def is_accessible(*_args, **_kwargs):
+        return True
+
 
 class _DummyTenantService:
     @staticmethod
@@ -167,7 +171,7 @@ def _load_mcp_api(monkeypatch):
     monkeypatch.setitem(sys.modules, "common.constants", constants_mod)
 
     apps_mod = ModuleType("api.apps")
-    apps_mod.current_user = SimpleNamespace(id="tenant_1")
+    apps_mod.current_user = SimpleNamespace(id="tenant_1", email="test@test.com")
     apps_mod.login_required = lambda func: func
     monkeypatch.setitem(sys.modules, "api.apps", apps_mod)
 
@@ -202,8 +206,8 @@ def _load_mcp_api(monkeypatch):
     def _server_error_response(error):
         return {"code": 100, "message": repr(error)}
 
-    async def _get_mcp_tools(*_args, **_kwargs):
-        return {}
+    def _get_mcp_tools(*_args, **_kwargs):
+        return {}, None
 
     def _validate_request(*_args, **_kwargs):
         def _decorator(func):
@@ -413,13 +417,16 @@ def test_update_validation_guards(monkeypatch):
     assert "Cannot find MCP server" in res["message"]
 
     _set_request_json(monkeypatch, module, {"mcp_id": "mcp-1"})
-    monkeypatch.setattr(
-        module.MCPServerService,
-        "get_by_id",
-        lambda _mcp_id: (True, _DummyMCPServer(id="mcp-1", name="srv", url="http://server", server_type="sse", tenant_id="other", variables={}, headers={})),
+    other_server = _DummyMCPServer(
+        id="mcp-1", name="srv", url="http://server",
+        server_type="sse", tenant_id="other", variables={}, headers={}
     )
+    monkeypatch.setattr(module.MCPServerService, "get_by_id", lambda _mcp_id: (True, other_server))
+    monkeypatch.setattr(module.MCPServerService, "is_accessible", lambda _mcp_id, _user_id, _perm: False)
     res = _run(module.update("mcp-1"))
-    assert "Cannot find MCP server" in res["message"]
+    assert "Cannot access MCP server" in res["message"]
+
+    monkeypatch.setattr(module.MCPServerService, "is_accessible", lambda _mcp_id, _user_id, _perm: True)
 
     _set_request_json(monkeypatch, module, {"mcp_id": "mcp-1", "server_type": "invalid"})
     monkeypatch.setattr(module.MCPServerService, "get_by_id", lambda _mcp_id: (True, existing))

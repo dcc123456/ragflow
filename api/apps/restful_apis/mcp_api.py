@@ -17,6 +17,7 @@
 from quart import Response, request
 
 from api.apps import current_user, login_required
+from api.db import PermissionValue
 from api.db.db_models import MCPServer
 from api.db.services.mcp_server_service import MCPServerService
 from api.db.services.user_service import TenantService
@@ -161,8 +162,10 @@ async def update(mcp_id: str) -> Response:
     req = await get_request_json()
 
     e, mcp_server = MCPServerService.get_by_id(mcp_id)
-    if not e or mcp_server.tenant_id != current_user.id:
-        return get_data_error_result(message=f"Cannot find MCP server {mcp_id} for user {current_user.id}")
+    if not e:
+        return get_data_error_result(message=f"Cannot find MCP server {mcp_id} for user {current_user.email}.")
+    if not MCPServerService.is_accessible(mcp_id, current_user.id, PermissionValue.PERMISSION_MANAGE):
+        return get_data_error_result(message=f"Cannot access MCP server {mcp_server.name} for user {current_user.email} with manage permission.")
 
     server_type = req.get("server_type", mcp_server.server_type)
     if server_type and server_type not in VALID_MCP_SERVER_TYPES:
@@ -183,9 +186,6 @@ async def update(mcp_id: str) -> Response:
     timeout = get_float(req, "timeout", 10)
 
     try:
-        req["tenant_id"] = current_user.id
-        req["id"] = mcp_id
-
         mcp_server = MCPServer(id=server_name, name=server_name, url=url, server_type=server_type, variables=variables, headers=headers)
         server_tools, err_message = await thread_pool_exec(get_mcp_tools, [mcp_server], timeout)
         if err_message:
@@ -196,10 +196,13 @@ async def update(mcp_id: str) -> Response:
         variables["tools"] = tools
         req["variables"] = variables
 
-        if not MCPServerService.filter_update([MCPServer.id == mcp_id, MCPServer.tenant_id == current_user.id], req):
+        allowed_fields = {"name", "tenant_id", "url", "server_type", "description", "variables", "headers"}
+        update_data = {k: v for k, v in req.items() if k in allowed_fields}
+
+        if not MCPServerService.filter_update([MCPServer.id == mcp_id], update_data):
             return get_data_error_result(message="Failed to updated MCP server.")
 
-        e, updated_mcp = MCPServerService.get_by_id(req["id"])
+        e, updated_mcp = MCPServerService.get_by_id(mcp_id)
         if not e:
             return get_data_error_result(message="Failed to fetch updated MCP server.")
 
