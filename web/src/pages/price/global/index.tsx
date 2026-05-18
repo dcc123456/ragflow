@@ -1,3 +1,4 @@
+import PaymentStatusModal from '@/pages/billing/component/payment-status-modal';
 import { ReactNode, createContext, useContext, useState } from 'react';
 import { useFetchCurrentPlan } from '../hook/use-price-hooks';
 import { FreeUpgradeModal } from '../price-modal/free-upgrade-modal';
@@ -109,6 +110,7 @@ export const UpgradeModalProvider: React.FC<UpgradeModalProviderProps> = ({
           onClose={hideConfirmPrice}
         />
       )}
+      <PaymentStatusModal />
     </UpgradeModalContext.Provider>
   );
 };

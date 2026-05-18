@@ -12,7 +12,6 @@ import {
 } from '../price/hook/use-price-hooks';
 import UpgradeButton from '../price/price-modal/to-upgrade-button';
 import BillingHistory from './billing-history';
-import PaymentStatusModal from './component/payment-status-modal';
 import { Overview } from './overview';
 import PointsPage from './points';
 
@@ -69,7 +68,6 @@ const Billing = () => {
         {activeKey === 'billing-history' && <BillingHistory />}
         {activeKey === 'points' && <PointsPage />}
       </section>
-      <PaymentStatusModal />
     </div>
   );
 };

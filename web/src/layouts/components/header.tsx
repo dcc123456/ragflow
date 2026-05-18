@@ -16,7 +16,7 @@ import {
 import { cn } from '@/lib/utils';
 import { TenantRole } from '@/pages/user-setting/constants';
 import { Routes } from '@/routes';
-import { LucideChevronDown, LucideCircleHelp, Tickets } from 'lucide-react';
+import { LucideChevronDown, LucideCircleHelp } from 'lucide-react';
 import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation } from 'react-router';
@@ -25,6 +25,9 @@ import GlobalNavbar from './global-navbar';
 import ThemeButton from './theme-button';
 
 import { supportedLanguages } from '@/locales/config';
+import { useUpgradeModal } from '@/pages/price/global';
+import { useFetchCurrentPlan } from '@/pages/price/hook/use-price-hooks';
+import { isBillingEnabled } from '@/services/billingStatus';
 
 export function Header({
   className,
@@ -46,6 +49,13 @@ export function Header({
   );
 
   const currentLanguage = supportedLanguages.find((x) => x.code === language);
+  const { data: currentPlan } = useFetchCurrentPlan();
+  const { openModal } = useUpgradeModal();
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    openModal();
+  };
 
   // const langItems = LanguageList.map((x) => ({
   //   key: x,
@@ -61,13 +71,21 @@ export function Header({
       )}
       {...props}
     >
-      <div className="inline-flex items-center">
+      <div className="inline-flex items-center gap-3">
         <Link
           to={Routes.Root}
           aria-current={pathname === Routes.Root ? 'page' : undefined}
         >
           <img src={'/logo.svg'} alt="RAGFlow logo" className="size-10" />
         </Link>
+        {isBillingEnabled() && (
+          <div
+            className="bg-gradient-to-r from-[#00BEB4] to-[#43FFA4] rounded-full px-2 py-1 text-sm  font-normal text-black cursor-pointer"
+            onClick={handleClick}
+          >
+            {t('price.upgrade')}
+          </div>
+        )}
       </div>
 
       <GlobalNavbar />
@@ -76,15 +94,6 @@ export function Header({
         className="flex items-center justify-end gap-4 text-text-badge"
         data-testid="auth-status"
       >
-        <RAGFlowTooltip tooltip={t('header.tickets')}>
-          <Link
-            className="p-2 text-text-secondary hover:text-text-primary focus-visible:text-text-primary"
-            to={Routes.Tickets}
-          >
-            <Tickets className="size-5" />
-          </Link>
-        </RAGFlowTooltip>
-
         <a
           className="p-2 text-text-secondary hover:text-text-primary focus-visible:text-text-primary"
           target="_blank"
@@ -123,6 +132,19 @@ export function Header({
           </DropdownMenuContent>
         </DropdownMenu>
 
+        <RAGFlowTooltip tooltip={t('header.tickets')}>
+          <Link
+            className="p-2 text-text-secondary hover:text-text-primary focus-visible:text-text-primary"
+            to={Routes.Tickets}
+          >
+            <IconFontFill
+              name={`kefu`}
+              className="text-text-primary"
+            ></IconFontFill>
+          </Link>
+          {/* <Tickets className="size-5" /> */}
+        </RAGFlowTooltip>
+
         <Button
           asLink
           variant="ghost"
@@ -140,7 +162,7 @@ export function Header({
 
         <Link
           to={Routes.UserSetting}
-          className="relative ms-3"
+          className="relative ms-3 flex items-start "
           data-testid="settings-entrypoint"
         >
           <RAGFlowAvatar
@@ -149,10 +171,21 @@ export function Header({
             isPerson
             className="size-8"
           />
-          {/* Temporarily hidden */}
-          {/* <Badge className="h-5 w-8 absolute font-normal p-0 justify-center -right-8 -top-2 text-bg-base bg-gradient-to-l from-[#42D7E7] to-[#478AF5]">
-            Pro
-          </Badge> */}
+
+          {(currentPlan?.plan_name === 'Starter' ||
+            currentPlan?.plan_name === 'Pro') && (
+            <div
+              className={cn(
+                '-mt-1 z-20 bg-gradient-to-r from-[#00BEB4] to-[#43FFA4] rounded-full px-1 py-0.5 text-xs font-normal text-black cursor-pointer',
+                currentPlan?.plan_name === 'Starter'
+                  ? 'scale-90 -ml-1.5 '
+                  : '-ml-1',
+              )}
+              onClick={handleClick}
+            >
+              <span className={cn()}>{currentPlan?.plan_name}</span>
+            </div>
+          )}
         </Link>
       </div>
     </header>

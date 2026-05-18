@@ -79,8 +79,9 @@ export default {
       enterprise: 'Enterprise',
       enterpriseDesc:
         'Enterprise-grade capabilities for production workloads at scale',
+      upgrade: 'Upgrade',
       reduce: 'Reduce Now',
-      upgrade: 'Upgrade now',
+      upgradeNow: 'Upgrade now',
       contactUs: 'Contact Us',
       contactUsTip: 'Contact us for more information.',
       inUse: 'Cancel plan',

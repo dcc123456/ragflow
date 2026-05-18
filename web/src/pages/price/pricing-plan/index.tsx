@@ -123,7 +123,7 @@ const pricingPlans = {
     title: t('price.starter'),
     description: t('price.starterDesc'),
     price: '',
-    buttonLabel: t('price.upgrade'),
+    buttonLabel: t('price.upgradeNow'),
     isUse: false,
     features: buildCommonFeatures(PriceName.Starter),
   },
@@ -132,7 +132,7 @@ const pricingPlans = {
     title: t('price.pro'),
     description: t('price.proDesc'),
     price: '',
-    buttonLabel: t('price.upgrade'),
+    buttonLabel: t('price.upgradeNow'),
     isUse: false,
     isPopular: true,
     features: buildCommonFeatures(PriceName.Pro),
@@ -267,7 +267,7 @@ const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
       } else {
         return {
           ...tempPlan,
-          buttonLabel: t('price.upgrade'),
+          buttonLabel: t('price.upgradeNow'),
           disabled: planValue < currentPlanValue,
         };
       }

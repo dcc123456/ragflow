@@ -114,7 +114,7 @@ const PricingCard = (props: IPricePlanWithButton) => {
         <h3 className="text-3xl flex items-center  font-bold mb-6  text-left h-16">
           {shouldShowPrice && (
             <div className="flex items-end gap-2">
-              <div>
+              <div className="flex flex-nowrap items-end">
                 <span className="text-sm mr-1">$</span>
                 {normalizedPrice}
                 <span className="text-sm text-text-secondary font-normal ml-1">
@@ -122,7 +122,7 @@ const PricingCard = (props: IPricePlanWithButton) => {
                 </span>
               </div>
               {
-                <div className="  font-normal text-text-secondary text-xl">
+                <div className="  font-normal text-text-secondary text-xl flex flex-nowrap items-end">
                   <span className="mr-0.5 text-sm">$</span>
                   <span className="line-through ">
                     {Number(normalizedPrice) > 0

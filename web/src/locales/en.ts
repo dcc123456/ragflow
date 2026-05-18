@@ -131,7 +131,7 @@ export default {
       welcome: 'Welcome to',
       dataset: 'Dataset',
       memories: 'Memory',
-      tickets: 'Tickets',
+      tickets: 'Support',
     },
     skills: {
       title: 'Skills',

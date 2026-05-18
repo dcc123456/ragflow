@@ -105,7 +105,7 @@ export default {
       welcome: '欢迎来到',
       dataset: '知识库',
       memories: '记忆',
-      tickets: '工单',
+      tickets: '技术支持',
     },
     skills: {
       title: '技能',

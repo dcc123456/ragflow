@@ -2,7 +2,7 @@ import NumberInput from '@/components/originui/number-input';
 import { BillingQueryKey } from '@/pages/billing/constants/query-keys';
 import { getBillingPointsPrice } from '@/services/price';
 import { useQuery } from '@tanstack/react-query';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useFetchAddonPlans } from '../hook/use-addon-plans';
 
 const AddOnCalculator: React.FC = () => {
@@ -16,26 +16,31 @@ const AddOnCalculator: React.FC = () => {
   });
   const { pricePerGB: pricePerGBFromApi } = useFetchAddonPlans();
 
-  const pricePer100Pages = pointsPriceData?.price_usd
-    ? pointsPriceData.price_usd / (pointsPriceData.points_per_unit / 100)
-    : 0;
+  const pricePer100Pages = useMemo(() => {
+    return pointsPriceData?.price_usd
+      ? pointsPriceData.price_usd / Number(pointsPriceData.points_per_unit || 1)
+      : 0;
+  }, [pointsPriceData]);
 
-  const products = [
-    {
-      name: 'Storage',
-      unit: 'GB',
-      pricePerUnit: pricePerGBFromApi,
-      per: '/month',
-      step: 1,
-    },
-    {
-      name: 'Document Parsing',
-      unit: 'page',
-      pricePerUnit: pricePer100Pages,
-      per: '',
-      step: 100,
-    },
-  ];
+  const products = useMemo(
+    () => [
+      {
+        name: 'Storage',
+        unit: 'GB',
+        pricePerUnit: pricePerGBFromApi,
+        per: '/month',
+        step: 1,
+      },
+      {
+        name: 'Document Parsing',
+        unit: 'page',
+        pricePerUnit: pricePer100Pages,
+        per: '',
+        step: 100,
+      },
+    ],
+    [pricePer100Pages, pricePerGBFromApi],
+  );
 
   const handleQuantityChange = (productName: string, value: number) => {
     setQuantities({ ...quantities, [productName]: value });
