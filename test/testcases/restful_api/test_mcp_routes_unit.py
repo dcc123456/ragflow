@@ -177,7 +177,16 @@ def _load_mcp_api(monkeypatch):
 
     db_models_mod = ModuleType("api.db.db_models")
     db_models_mod.MCPServer = _DummyMCPServer
+    class _DummyAtomic:
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+    db_models_mod.DB = SimpleNamespace(atomic=lambda: _DummyAtomic())
     monkeypatch.setitem(sys.modules, "api.db.db_models", db_models_mod)
+
+    # mock api.db.services package so its __init__.py doesn't execute
+    services_pkg = ModuleType("api.db.services")
+    services_pkg.__path__ = []
+    monkeypatch.setitem(sys.modules, "api.db.services", services_pkg)
 
     mcp_service_mod = ModuleType("api.db.services.mcp_server_service")
     mcp_service_mod.MCPServerService = _DummyMCPServerService
@@ -185,7 +194,15 @@ def _load_mcp_api(monkeypatch):
 
     user_service_mod = ModuleType("api.db.services.user_service")
     user_service_mod.TenantService = _DummyTenantService
+    user_service_mod.UserService = SimpleNamespace()
     monkeypatch.setitem(sys.modules, "api.db.services.user_service", user_service_mod)
+
+    permission_service_mod = ModuleType("api.db.services.permission_service")
+    permission_service_mod.PermissionService = SimpleNamespace(
+        get_permissions_by_tenant_and_resource_id=lambda **kwargs: [],
+        delete=lambda _list: None,
+    )
+    monkeypatch.setitem(sys.modules, "api.db.services.permission_service", permission_service_mod)
 
     mcp_conn_mod = ModuleType("common.mcp_tool_call_conn")
     mcp_conn_mod.MCPToolCallSession = _DummyMCPToolCallSession
