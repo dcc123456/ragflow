@@ -1,5 +1,6 @@
 import { useGetPaginationWithRouter } from '@/hooks/logic-hooks';
 import billingService from '@/services/price';
+import { formatIsoDateTime } from '@/utils/date';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { BillingQueryKey } from '../../constants/query-keys';
@@ -35,7 +36,7 @@ export const useFetchHistoryList = () => {
       id: item.invoice_id,
       amount: item.amount.toFixed(2),
       status: item.status ? stateMap[item.status] : '-',
-      createDate: new Date(item.created_at * 1000).toLocaleDateString(),
+      createDate: formatIsoDateTime(item.created_at),
       invoiceLink: item.invoice_pdf_url,
       product: item.product || 'UNKNOWN',
     }));

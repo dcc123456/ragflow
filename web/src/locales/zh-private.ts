@@ -70,13 +70,15 @@ export default {
       cancelPlanEffectiveTip:
         '取消后，当前套餐权益仍可使用至 {{date}}，并将在该日期后失效。',
       cancelPlanSwitchTip:
-        '失效后，你的账户将自动切换至 Free Plan，超出 Free Plan 范围的功能、额度或资源将无法继续使用。',
+        '如果当前使用量超出 Free Plan 范围，您的降级将被阻止并继续使用当前套餐。附加存储将在基础套餐失效时同时取消。',
       cancelPlanConfirmQuestion: '你确定要取消吗？',
     },
     billing: {
       amount: '金额',
       points: 'pts',
       invoiceID: '发票 ID',
+      subscriptionID: '订阅 ID',
+      plan: '套餐',
       paymentPending: '处理中',
       paymentSuccess: '支付成功',
       paymentFailed: '支付失败',

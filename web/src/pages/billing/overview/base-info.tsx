@@ -74,7 +74,7 @@ export const BaseInfo = () => {
       },
       apiRequests: {
         ...planTemplate.apiRequests,
-        used: planData?.api_request_limits?.requests_per_month || 0,
+        used: planData?.api_request_limits?.requests_per_minute || 0,
       },
       BillingCycle: {
         ...planTemplate.BillingCycle,

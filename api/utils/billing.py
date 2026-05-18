@@ -18,6 +18,7 @@ import json
 import logging
 import os
 import re
+import uuid
 from contextvars import ContextVar, Token
 from decimal import ROUND_HALF_UP, Decimal
 from functools import wraps
@@ -87,6 +88,7 @@ CURRENCY_DIVISORS = {
 
 BILLING_PLAN_TRIAL_NAME = "Trial"
 STORAGE_PRODUCT_NAME = "storage"
+BYTES_PER_GB = 1000 * 1000 * 1000
 STRIPE_TEST_CLOCK_HEADER = "X-Stripe-Test-Clock"
 _stripe_test_clock_id_context: ContextVar[str] = ContextVar("stripe_test_clock_id", default="")
 
@@ -160,6 +162,12 @@ def safe_float(value, default: float = 0.0) -> float:
         return default
 
 
+def get_attr_or_item(obj, key: str, default=None):
+    if isinstance(obj, dict):
+        return obj.get(key, default)
+    return getattr(obj, key, default)
+
+
 def get_product_id_by_name(product_name: str) -> str:
     # local import to avoid circular dependency in module import phase
     from api.db.services.billing_service import ProductService
@@ -168,12 +176,29 @@ def get_product_id_by_name(product_name: str) -> str:
     return (product.get("id") or "").strip()
 
 
-def extract_subscription_item(subscription_obj) -> tuple[str, str, int]:
+def extract_storage_subscription_item(subscription_obj) -> tuple[str, str, int]:
+    """Return the storage subscription item tuple ``(item_id, price_id, quantity)``.
+
+    When a subscription carries multiple items (e.g. a plan item **and** a
+    storage add-on), this function selects the storage item instead of assuming
+    the first item is the desired one. If no storage item exists, it returns
+    an empty tuple payload.
+    """
     if isinstance(subscription_obj, dict):
         data = (subscription_obj.get("items") or {}).get("data", []) or []
         if not data:
             return "", "", 0
-        item = data[0]
+        item = None
+        for _item in data:
+            if not isinstance(_item, dict):
+                continue
+            _price_obj = _item.get("price", {})
+            _price_id = _price_obj.get("id", "") if isinstance(_price_obj, dict) else ""
+            if is_storage_price_id(_price_id):
+                item = _item
+                break
+        if not item:
+            return "", "", 0
         price_obj = item.get("price", {}) if isinstance(item, dict) else {}
         return (
             item.get("id", "") if isinstance(item, dict) else "",
@@ -184,13 +209,134 @@ def extract_subscription_item(subscription_obj) -> tuple[str, str, int]:
     data = getattr(getattr(subscription_obj, "items", None), "data", []) or []
     if not data:
         return "", "", 0
-    item = data[0]
+    item = None
+    for _item in data:
+        _price_obj = getattr(_item, "price", None)
+        _price_id = (getattr(_price_obj, "id", "") or "") if _price_obj else ""
+        if is_storage_price_id(_price_id):
+            item = _item
+            break
+    if not item:
+        return "", "", 0
     price_obj = getattr(item, "price", None)
     return (
         getattr(item, "id", "") or "",
         getattr(price_obj, "id", "") if price_obj else "",
         safe_int(getattr(item, "quantity", 0), 0),
     )
+
+
+def extract_plan_subscription_item(subscription_obj) -> tuple[str, str, int]:
+    """Return the plan (non-storage) subscription item tuple ``(item_id, price_id, quantity)``.
+
+    When a subscription carries multiple items (e.g. a plan item **and** a
+    storage add-on), this function skips storage items and returns the first
+    non-storage item.  If every item maps to storage (unlikely but safe), it
+    falls back to the first item so the caller always gets a result.
+    """
+    if isinstance(subscription_obj, dict):
+        data = (subscription_obj.get("items") or {}).get("data", []) or []
+        if not data:
+            return "", "", 0
+        plan_item = None
+        for _item in data:
+            if not isinstance(_item, dict):
+                continue
+            _price_obj = _item.get("price", {})
+            _price_id = _price_obj.get("id", "") if isinstance(_price_obj, dict) else ""
+            if not is_storage_price_id(_price_id):
+                plan_item = _item
+                break
+        item = plan_item or data[0]
+        price_obj = item.get("price", {}) if isinstance(item, dict) else {}
+        return (
+            item.get("id", "") if isinstance(item, dict) else "",
+            price_obj.get("id", "") if isinstance(price_obj, dict) else "",
+            safe_int(item.get("quantity", 0) if isinstance(item, dict) else 0, 0),
+        )
+
+    data = getattr(getattr(subscription_obj, "items", None), "data", []) or []
+    if not data:
+        return "", "", 0
+    plan_item = None
+    for _item in data:
+        _price_obj = getattr(_item, "price", None)
+        _price_id = (getattr(_price_obj, "id", "") or "") if _price_obj else ""
+        if not is_storage_price_id(_price_id):
+            plan_item = _item
+            break
+    item = plan_item or data[0]
+    price_obj = getattr(item, "price", None)
+    return (
+        getattr(item, "id", "") or "",
+        getattr(price_obj, "id", "") if price_obj else "",
+        safe_int(getattr(item, "quantity", 0), 0),
+    )
+
+
+def _dedupe_schedule_phase_items(items: list[dict]) -> list[dict]:
+    """Return Stripe phase items with one entry per price ID.
+
+    Stripe rejects phases that contain the same price more than once. When a
+    caller accidentally builds duplicates, keep the latest item payload for that
+    price while preserving the original order slot.
+    """
+    deduped: list[dict] = []
+    seen_indexes: dict[str, int] = {}
+    for item in items or []:
+        if not isinstance(item, dict):
+            continue
+        price = item.get("price", "")
+        price_id = price.get("id", "") if isinstance(price, dict) else (price or "")
+        price_id = (price_id or "").strip()
+        if not price_id:
+            continue
+        normalized_item = {**item, "price": price_id}
+        existing_index = seen_indexes.get(price_id)
+        if existing_index is None:
+            seen_indexes[price_id] = len(deduped)
+            deduped.append(normalized_item)
+            continue
+        deduped[existing_index] = normalized_item
+    return deduped
+
+
+def extract_plan_item_and_price(subscription_obj):
+    data = get_attr_or_item(get_attr_or_item(subscription_obj, "items", None), "data", []) or []
+    if not data:
+        return None, None, ""
+
+    fallback_item = data[0]
+    fallback_price = get_attr_or_item(fallback_item, "price", None)
+    fallback_price_id = (get_attr_or_item(fallback_price, "id", "") or "").strip() if fallback_price else ""
+
+    for item in data:
+        price_obj = get_attr_or_item(item, "price", None)
+        price_id = (get_attr_or_item(price_obj, "id", "") or "").strip() if price_obj else ""
+        if price_id and not is_storage_price_id(price_id):
+            return item, price_obj, price_id
+
+    return fallback_item, fallback_price, fallback_price_id
+
+
+def extract_previous_plan_price(previous_obj):
+    previous_data = get_attr_or_item(get_attr_or_item(previous_obj, "items", None), "data", []) or []
+    fallback_price = None
+    if previous_data:
+        first_item = previous_data[0]
+        fallback_price = get_attr_or_item(first_item, "price", None)
+        for item in previous_data:
+            price_obj = get_attr_or_item(item, "price", None)
+            price_id = (get_attr_or_item(price_obj, "id", "") or "").strip() if price_obj else ""
+            if price_id and not is_storage_price_id(price_id):
+                return price_obj
+
+    previous_plan = get_attr_or_item(previous_obj, "plan", None)
+    previous_plan_id = (get_attr_or_item(previous_plan, "id", "") or "").strip() if previous_plan else ""
+    if previous_plan and (not previous_plan_id or not is_storage_price_id(previous_plan_id)):
+        return previous_plan
+
+    return fallback_price
 
 
 def extract_subscription_period(subscription_obj):
@@ -222,14 +368,6 @@ def extract_subscription_period(subscription_obj):
     return item_start, item_end
 
 
-def extract_invoice_id_and_status(invoice_obj) -> tuple[str, str]:
-    return _extract_invoice_id(invoice_obj), _extract_invoice_status_and_url(invoice_obj)[0]
-
-
-def extract_invoice_hosted_url(invoice_obj) -> str:
-    return _extract_invoice_status_and_url(invoice_obj)[1]
-
-
 def extract_latest_invoice_obj(subscription_obj):
     if isinstance(subscription_obj, dict):
         return subscription_obj.get("latest_invoice")
@@ -251,6 +389,53 @@ def _extract_invoice_id(invoice_obj) -> str:
     return (getattr(invoice_obj, "id", "") or "").strip()
 
 
+def _get_nested_invoice_value(data: dict, *keys):
+    value = data
+    for key in keys:
+        if not isinstance(value, dict):
+            return None
+        value = value.get(key)
+    return value
+
+
+def extract_invoice_subscription_id(invoice: dict) -> str:
+    subscription_id = invoice.get("subscription")
+    if isinstance(subscription_id, str) and subscription_id.strip():
+        return subscription_id.strip()
+
+    candidates = [
+        _get_nested_invoice_value(invoice, "parent", "subscription_details", "subscription"),
+        _get_nested_invoice_value(invoice, "parent", "subscription_item_details", "subscription"),
+    ]
+    lines = invoice.get("lines") or {}
+    if isinstance(lines, dict):
+        for line in lines.get("data") or []:
+            candidates.append(_get_nested_invoice_value(line, "parent", "subscription_item_details", "subscription"))
+
+    for candidate in candidates:
+        if isinstance(candidate, str) and candidate.strip():
+            return candidate.strip()
+    return ""
+
+
+def extract_invoice_failure_context(invoice: dict) -> dict:
+    return {
+        "invoice_id": (invoice.get("id") or "").strip(),
+        "invoice_url": (invoice.get("hosted_invoice_url") or "").strip(),
+        "invoice_pdf_url": (invoice.get("invoice_pdf") or "").strip(),
+        "invoice_status": (invoice.get("status") or "").strip().lower(),
+        "customer_id": (invoice.get("customer") or "").strip(),
+        "subscription_id": extract_invoice_subscription_id(invoice),
+        "payment_intent_id": (invoice.get("payment_intent") or "").strip(),
+        "amount_cents": invoice.get("amount_due") or invoice.get("amount_remaining") or 0,
+        "currency": invoice.get("currency") or "usd",
+        "attempt_count": invoice.get("attempt_count"),
+        "next_payment_attempt": invoice.get("next_payment_attempt"),
+        "billing_reason": invoice.get("billing_reason"),
+        "created": invoice.get("created"),
+    }
+
+
 def _extract_invoice_status_and_url(invoice_obj) -> tuple[str, str]:
     if not invoice_obj or isinstance(invoice_obj, str):
         return "", ""
@@ -269,10 +454,24 @@ def _is_paid_invoice_status(invoice_status: str) -> bool:
     return normalize_stripe_invoice_status(invoice_status) == "success"
 
 
+def _extract_payment_intent_status(invoice_obj) -> str:
+    if not invoice_obj or isinstance(invoice_obj, str):
+        return ""
+
+    if isinstance(invoice_obj, dict):
+        payment_intent = invoice_obj.get("payment_intent")
+    else:
+        payment_intent = getattr(invoice_obj, "payment_intent", None)
+
+    if isinstance(payment_intent, dict):
+        return (payment_intent.get("status") or "").strip().lower()
+    return (getattr(payment_intent, "status", "") or "").strip().lower()
+
+
 async def is_subscription_latest_invoice_paid_async(subscription_obj) -> tuple[bool, str, str, str]:
     latest_invoice = extract_latest_invoice_obj(subscription_obj)
-    invoice_id, invoice_status = extract_invoice_id_and_status(latest_invoice)
-    invoice_url = extract_invoice_hosted_url(latest_invoice)
+    invoice_id = _extract_invoice_id(latest_invoice)
+    invoice_status, invoice_url = _extract_invoice_status_and_url(latest_invoice)
     if not invoice_id:
         # No invoice means there's nothing to collect for this update.
         return True, "", "", ""
@@ -280,32 +479,24 @@ async def is_subscription_latest_invoice_paid_async(subscription_obj) -> tuple[b
     if invoice_status and invoice_url:
         return _is_paid_invoice_status(invoice_status), invoice_id, invoice_status, invoice_url
 
-    try:
-        invoice = await stripe.Invoice.retrieve_async(invoice_id)
-        invoice_status, invoice_url = _extract_invoice_status_and_url(invoice)
-        return _is_paid_invoice_status(invoice_status), invoice_id, invoice_status, invoice_url
-    except Exception as e:
-        logging.warning(f"Failed to retrieve storage latest invoice {invoice_id}: {e}")
-        # Fail closed: keep upgrade pending until webhook confirms payment.
-        return False, invoice_id, "", ""
+    invoice = await stripe.Invoice.retrieve_async(invoice_id)
+    invoice_status, invoice_url = _extract_invoice_status_and_url(invoice)
+    return _is_paid_invoice_status(invoice_status), invoice_id, invoice_status, invoice_url
 
 
 def is_subscription_latest_invoice_paid_sync(subscription_obj) -> bool:
     latest_invoice = extract_latest_invoice_obj(subscription_obj)
-    invoice_id, invoice_status = extract_invoice_id_and_status(latest_invoice)
+    invoice_id = _extract_invoice_id(latest_invoice)
+    invoice_status, _invoice_url = _extract_invoice_status_and_url(latest_invoice)
     if not invoice_id:
         return True
 
     if invoice_status:
         return _is_paid_invoice_status(invoice_status)
 
-    try:
-        invoice = stripe.Invoice.retrieve(invoice_id)
-        invoice_status, _ = _extract_invoice_status_and_url(invoice)
-        return _is_paid_invoice_status(invoice_status)
-    except Exception as e:
-        logging.warning(f"Failed to retrieve storage latest invoice {invoice_id}: {e}")
-        return False
+    invoice = stripe.Invoice.retrieve(invoice_id)
+    invoice_status, _ = _extract_invoice_status_and_url(invoice)
+    return _is_paid_invoice_status(invoice_status)
 
 
 def cents_to_decimal(amount_in_cents: int, currency: str = "usd", decimal_places: int = 2) -> Decimal:
@@ -349,6 +540,14 @@ def parse_storage_size(size_str: str) -> int:
         raise ValueError(f"Unknown unit '{unit}' in storage size")
 
     return int(num * units[unit])
+
+
+def storage_gb_to_bytes(value: int | str | None) -> int:
+    return max(safe_int(value, 0), 0) * BYTES_PER_GB
+
+
+def storage_bytes_to_gb(value: int | str | None) -> int:
+    return max(safe_int(value, 0), 0) // BYTES_PER_GB
 
 
 def get_trial_price_id(plans: list[dict]) -> str:
@@ -401,40 +600,109 @@ async def get_pending_subscription_change_async(subscription_id: str) -> dict:
     if not pending_price_id:
         return {}
 
+    # If pending price matches the current subscription's price, the schedule may
+    # be a storage-only change (same plan, different storage item quantity).
+    # Check whether the storage item quantity actually changes before deciding to
+    # release the schedule as stale.
+    current_item_id, current_price_id, _ = extract_plan_subscription_item(subscription)
+    if current_price_id and pending_price_id == current_price_id:
+        # Check if there is a storage item change in the pending phase.
+        _, current_storage_price_id, current_storage_qty = extract_storage_subscription_item(subscription)
+        pending_storage_item = next(
+            (it for it in pending_items[1:] if isinstance(it, dict)),
+            None,
+        )
+        pending_storage_qty = None
+        if pending_storage_item:
+            pending_storage_qty = pending_storage_item.get("quantity")
+
+        has_storage_change = (
+            current_storage_price_id
+            and pending_storage_qty is not None
+            and pending_storage_qty != current_storage_qty
+        )
+        if not has_storage_change:
+            logging.info(
+                f"Stale subscription schedule {schedule_id}: pending plan "
+                f"matches current plan ({current_price_id}) with no storage change. Releasing."
+            )
+            try:
+                await stripe.SubscriptionSchedule.release_async(schedule_id)
+            except Exception:
+                pass
+            return {}
+
+    # Extract pending storage quantity from the next phase items.
+    # Phase items are flat dicts: {"price": "<price_id_or_obj>", "quantity": N}
+    # Each Stripe quantity unit = storage plan's quota_kb_storage (e.g. "1G").
+    pending_storage_quantity_bytes = None
+    for item in pending_items:
+        if not isinstance(item, dict):
+            continue
+        _price = item.get("price", "")
+        _price_id = _price.get("id", "") if isinstance(_price, dict) else (_price or "")
+        _price_id = (_price_id or "").strip()
+        if _price_id and is_storage_price_id(_price_id):
+            qty = safe_int(item.get("quantity", 0), 0)
+            storage_plan_info = settings.BILLING_PLAN_TO_INFO.get(STORAGE_PRODUCT_NAME, {}) or {}
+            quota_kb_storage_str = str(storage_plan_info.get("quota_kb_storage", "0"))
+            try:
+                bytes_per_unit = parse_storage_size(quota_kb_storage_str)
+            except ValueError:
+                bytes_per_unit = BYTES_PER_GB
+            pending_storage_quantity_bytes = qty * bytes_per_unit
+            break
+
     effective_at = pending_phase.get("start_date")
-    return {
+    result: dict = {
         "schedule_id": schedule_id,
         "pending_price_id": pending_price_id,
         "pending_plan_name": settings.BILLING_PRICEID_TO_PRODUCT.get(pending_price_id, ""),
         "effective_at": to_utc_datetime(effective_at),
     }
+    if pending_storage_quantity_bytes is not None:
+        result["pending_storage_quantity_bytes"] = pending_storage_quantity_bytes
+    return result
 
 
 @billing_enabled_guard({})
-async def schedule_subscription_price_change_at_period_end_async(subscription_id: str, target_price_id: str) -> dict:
-    if not subscription_id or not target_price_id:
+async def schedule_subscription_items_change_at_period_end_async(
+    subscription_id: str,
+    *,
+    current_phase_items: list[dict],
+    next_phase_items: list[dict],
+) -> dict:
+    """Schedule a full subscription-items snapshot change at period end.
+
+    Both ``current_phase_items`` and ``next_phase_items`` must describe the
+    complete set of subscription items that should exist in each phase, not only
+    the item being changed. In this codebase that means:
+
+    - include the plan item in both phases
+    - include the storage item only when the subscription currently has storage
+      or the next phase should keep/add storage
+
+    Passing only the delta item is incorrect because Stripe interprets phase
+    ``items`` as the full item list for that phase.
+    """
+    if not subscription_id or not current_phase_items or not next_phase_items:
+        return {}
+
+    current_phase_items = _dedupe_schedule_phase_items(current_phase_items)
+    next_phase_items = _dedupe_schedule_phase_items(next_phase_items)
+    if not current_phase_items or not next_phase_items:
         return {}
 
     subscription = await stripe.Subscription.retrieve_async(subscription_id)
     period_start = subscription.get("current_period_start")
     period_end = subscription.get("current_period_end")
 
-    subscription_items = (subscription.get("items") or {}).get("data", []) if isinstance(subscription, dict) else subscription["items"]["data"]
-    if not subscription_items:
-        return {}
-
-    current_item = subscription_items[0]
-    current_price = current_item.get("price", {}) if isinstance(current_item, dict) else current_item["price"]
-    current_price_id = current_price.get("id", "") if isinstance(current_price, dict) else (getattr(current_price, "id", "") or "")
-    current_quantity = current_item.get("quantity", 1) if isinstance(current_item, dict) else (getattr(current_item, "quantity", 1) or 1)
-
     schedule_id = (subscription.get("schedule") or "").strip()
     schedule = None
     if schedule_id:
         schedule = await stripe.SubscriptionSchedule.retrieve_async(schedule_id)
-        schedule_status = (schedule.get("status") or "").strip()
+        schedule_status = (schedule.get("status") or "").strip().lower()
         if schedule_status in {"released", "canceled", "completed"}:
-            schedule_id = ""
             schedule = None
 
     if not schedule:
@@ -448,10 +716,14 @@ async def schedule_subscription_price_change_at_period_end_async(subscription_id
         or schedule.get("start_date")
         or period_start
     )
-    phase_end_date = current_phase.get("end_date") or (phases[0].get("end_date") if phases else None) or period_end
+    phase_end_date = (
+        current_phase.get("end_date")
+        or (phases[0].get("end_date") if phases else None)
+        or period_end
+    )
     if not phase_start_date or not phase_end_date:
         logging.warning(
-            "Cannot schedule subscription change due to missing schedule/period boundaries: "
+            "Cannot schedule subscription item change due to missing schedule/period boundaries: "
             f"{subscription_id=}, {period_start=}, {period_end=}, {phase_start_date=}, {phase_end_date=}"
         )
         return {}
@@ -463,93 +735,73 @@ async def schedule_subscription_price_change_at_period_end_async(subscription_id
             {
                 "start_date": phase_start_date,
                 "end_date": phase_end_date,
-                "items": [{"price": current_price_id, "quantity": current_quantity}],
+                "items": current_phase_items,
             },
             {
                 "start_date": phase_end_date,
-                "items": [{"price": target_price_id, "quantity": current_quantity}],
+                "items": next_phase_items,
             },
         ],
     )
 
     return {
         "schedule_id": updated_schedule.id,
-        "current_price_id": current_price_id,
-        "target_price_id": target_price_id,
         "effective_at": to_utc_datetime(phase_end_date),
     }
 
 
 @billing_enabled_guard({})
-async def schedule_subscription_quantity_change_at_period_end_async(subscription_id: str, target_quantity: int) -> dict:
-    if not subscription_id or target_quantity < 0:
+async def schedule_subscription_price_change_at_period_end_async(
+    subscription_id: str,
+    target_price_id: str,
+    *,
+    target_storage_quantity_gb: int | None = None,
+) -> dict:
+    """Schedule a plan price change at period end.
+
+    Args:
+        subscription_id: Stripe subscription ID.
+        target_price_id: Stripe price ID for the new plan.
+        target_storage_quantity_gb: If provided, override the storage item quantity
+            in the next phase.  Pass ``0`` to cancel storage at the same period end
+            as the plan change (e.g. when downgrading to Trial).  When ``None``
+            (default), the live subscription's storage quantity is preserved.
+    """
+    if not subscription_id or not target_price_id:
         return {}
 
     subscription = await stripe.Subscription.retrieve_async(subscription_id)
-    period_start = subscription.get("current_period_start")
-    period_end = subscription.get("current_period_end")
-
     subscription_items = (subscription.get("items") or {}).get("data", []) if isinstance(subscription, dict) else subscription["items"]["data"]
     if not subscription_items:
         return {}
 
-    current_item = subscription_items[0]
-    current_item_id = current_item.get("id", "") if isinstance(current_item, dict) else (getattr(current_item, "id", "") or "")
-    current_price = current_item.get("price", {}) if isinstance(current_item, dict) else current_item["price"]
-    current_price_id = current_price.get("id", "") if isinstance(current_price, dict) else (getattr(current_price, "id", "") or "")
-    current_quantity = current_item.get("quantity", 1) if isinstance(current_item, dict) else (getattr(current_item, "quantity", 1) or 1)
-
-    schedule_id = (subscription.get("schedule") or "").strip()
-    schedule = None
-    if schedule_id:
-        schedule = await stripe.SubscriptionSchedule.retrieve_async(schedule_id)
-        schedule_status = (schedule.get("status") or "").strip()
-        if schedule_status in {"released", "canceled", "completed"}:
-            schedule_id = ""
-            schedule = None
-
-    if not schedule:
-        schedule = await stripe.SubscriptionSchedule.create_async(from_subscription=subscription_id)
-
-    phases = schedule.get("phases", []) or []
-    current_phase = schedule.get("current_phase") or {}
-    phase_start_date = (
-        current_phase.get("start_date")
-        or (phases[0].get("start_date") if phases else None)
-        or schedule.get("start_date")
-        or period_start
-    )
-    phase_end_date = current_phase.get("end_date") or (phases[0].get("end_date") if phases else None) or period_end
-    if not phase_start_date or not phase_end_date:
-        logging.warning(
-            "Cannot schedule quantity change due to missing schedule/period boundaries: "
-            f"{subscription_id=}, {period_start=}, {period_end=}, {phase_start_date=}, {phase_end_date=}"
-        )
+    _plan_item_id, current_price_id, current_quantity = extract_plan_subscription_item(subscription)
+    if not current_price_id:
         return {}
 
-    updated_schedule = await stripe.SubscriptionSchedule.modify_async(
-        schedule.id,
-        end_behavior="release",
-        phases=[
-            {
-                "start_date": phase_start_date,
-                "end_date": phase_end_date,
-                "items": [{"price": current_price_id, "quantity": current_quantity}],
-            },
-            {
-                "start_date": phase_end_date,
-                "items": [{"price": current_price_id, "quantity": target_quantity}],
-            },
-        ],
+    storage_item_id, storage_price_id, storage_quantity = extract_storage_subscription_item(subscription)
+    current_phase_items = [{"price": current_price_id, "quantity": current_quantity}]
+    next_phase_items = [{"price": target_price_id, "quantity": current_quantity}]
+    if storage_item_id and storage_price_id:
+        current_phase_items.append({"price": storage_price_id, "quantity": storage_quantity or 0})
+        # Use caller-supplied target quantity when provided (e.g. 0 to cancel storage
+        # atomically with the plan change), otherwise preserve the live quantity.
+        next_storage_qty = target_storage_quantity_gb if target_storage_quantity_gb is not None else (storage_quantity or 0)
+        next_phase_items.append({"price": storage_price_id, "quantity": next_storage_qty})
+
+    scheduled = await schedule_subscription_items_change_at_period_end_async(
+        subscription_id,
+        current_phase_items=current_phase_items,
+        next_phase_items=next_phase_items,
     )
+    if not scheduled:
+        return {}
 
     return {
-        "schedule_id": updated_schedule.id,
-        "subscription_item_id": current_item_id,
-        "price_id": current_price_id,
-        "current_quantity": current_quantity,
-        "target_quantity": target_quantity,
-        "effective_at": to_utc_datetime(phase_end_date),
+        "schedule_id": scheduled["schedule_id"],
+        "current_price_id": current_price_id,
+        "target_price_id": target_price_id,
+        "effective_at": scheduled["effective_at"],
     }
 
 
@@ -567,21 +819,125 @@ async def cancel_scheduled_subscription_change_async(subscription_id: str) -> bo
     return True
 
 
-@billing_enabled_guard(False)
-def cancel_scheduled_subscription_change_sync(subscription_id: str) -> bool:
-    if not subscription_id:
+@billing_enabled_guard({})
+async def modify_subscription_plan_async(
+    *,
+    tenant_id: str,
+    subscription_id: str,
+    target_price_id: str,
+    reset_billing_cycle: bool,
+    end_trial_now: bool,
+) -> dict:
+    """Immediately switch a subscription to a new plan price in-place.
+
+    Cancels any pending scheduled change first, then calls Stripe's
+    ``Subscription.modify`` with ``proration_behavior="always_invoice"`` so
+    the customer is charged (or credited) the prorated difference right away.
+
+    When a subscription has multiple items (e.g. plan + storage add-on), only
+    the plan item is replaced; the storage item is left untouched.
+
+    When the resulting invoice requires additional authentication (SCA), Stripe
+    returns a ``payment_intent`` with status ``requires_action``.  The caller
+    must check ``payment_intent_status`` in the returned dict and redirect the
+    customer to ``invoice_url`` to complete 3DS if needed.
+
+    Args:
+        tenant_id: Internal tenant identifier; used as part of the idempotency key.
+        subscription_id: Stripe subscription ID to modify.
+        target_price_id: Stripe price ID for the new plan.
+        reset_billing_cycle: If True, anchors the billing cycle to now (used for upgrades from trial).
+        end_trial_now: If True, ends the trial period immediately before switching.
+
+    Returns:
+        A dict with keys ``subscription``, ``idempotency_key``, ``invoice_id``,
+        ``invoice_status``, ``invoice_url``, ``amount_cents``,
+        ``currency``, and ``payment_intent_status``; or an error dict
+        containing ``error_message`` on failure.
+    """
+    if not tenant_id or not subscription_id or not target_price_id:
+        return {}
+
+    # A stale schedule changes the Stripe write semantics for the next modify
+    # call, so cancellation failure must stop the plan change instead of
+    # silently continuing with an unknown pending state.
+    await cancel_scheduled_subscription_change_async(subscription_id)
+
+    subscription = await stripe.Subscription.retrieve_async(subscription_id)
+    subscription_item_id, _current_price_id, current_quantity = extract_plan_subscription_item(subscription)
+    if not subscription_item_id:
+        logging.warning(f"No subscription item found for subscription {subscription_id}")
+        return {}
+
+    request_quantity = max(current_quantity, 1)
+    idempotency_key = f"{tenant_id}:{subscription_id}:{target_price_id}:{uuid.uuid4()}"
+
+    modify_params = {
+        "items": [{"id": subscription_item_id, "price": target_price_id, "quantity": request_quantity}],
+        "proration_behavior": "always_invoice",
+        "expand": ["latest_invoice.payment_intent"],
+    }
+    if reset_billing_cycle:
+        modify_params["billing_cycle_anchor"] = "now"
+    if end_trial_now:
+        modify_params["trial_end"] = "now"
+
+    modified = await stripe.Subscription.modify_async(
+        subscription_id,
+        idempotency_key=idempotency_key,
+        **modify_params,
+    )
+
+    latest_invoice = extract_latest_invoice_obj(modified)
+    invoice_id = _extract_invoice_id(latest_invoice)
+    invoice_status, invoice_url = _extract_invoice_status_and_url(latest_invoice)
+    payment_intent_status = _extract_payment_intent_status(latest_invoice)
+    amount_cents = latest_invoice.get("amount_due") or latest_invoice.get("amount_paid") or 0
+    currency = (latest_invoice.get("currency") or "").upper()
+    if not payment_intent_status and invoice_status == "paid":
+        payment_intent_status = "succeeded"
+
+    return {
+        "subscription": modified,
+        "idempotency_key": idempotency_key,
+        "invoice_id": invoice_id,
+        "invoice_status": invoice_status,
+        "invoice_url": invoice_url,
+        "amount_cents": amount_cents,
+        "currency": currency,
+        "payment_intent_status": payment_intent_status,
+    }
+
+
+def _extract_default_payment_method_or_source(obj) -> str:
+    if not obj:
+        return ""
+
+    if isinstance(obj, dict):
+        invoice_settings = obj.get("invoice_settings") or {}
+        default_payment_method = (invoice_settings.get("default_payment_method") or "").strip() if isinstance(invoice_settings, dict) else ""
+        if default_payment_method:
+            return default_payment_method
+        return (obj.get("default_source") or obj.get("default_payment_method") or "").strip()
+
+    invoice_settings = getattr(obj, "invoice_settings", None)
+    default_payment_method = (getattr(invoice_settings, "default_payment_method", "") or "").strip() if invoice_settings else ""
+    if default_payment_method:
+        return default_payment_method
+    return (getattr(obj, "default_source", "") or getattr(obj, "default_payment_method", "") or "").strip()
+
+
+@billing_enabled_guard({})
+async def has_reusable_payment_method_async(*, customer_id: str = "", subscription=None) -> bool:
+    """Return True when Stripe already has a reusable payment method/source for upgrades."""
+    if _extract_default_payment_method_or_source(subscription):
+        return True
+    if not customer_id:
         return False
 
-    subscription = stripe.Subscription.retrieve(subscription_id)
-    if isinstance(subscription, dict):
-        schedule_id = (subscription.get("schedule") or "").strip()
-    else:
-        schedule_id = (getattr(subscription, "schedule", "") or "").strip()
-    if not schedule_id:
-        return False
+    customer = await stripe.Customer.retrieve_async(customer_id)
 
-    stripe.SubscriptionSchedule.release(schedule_id)
-    return True
+    return bool(_extract_default_payment_method_or_source(customer))
 
 
 def get_plans_equal_or_higher(plan_name: str) -> list[tuple[str, list[str]]]:
@@ -631,10 +987,7 @@ def create_or_get_portal_configuration(product_id_to_prices: dict[str, list[str]
     if REDIS_CONN.is_alive():
         cached_id = REDIS_CONN.get(cache_key)
         if cached_id:
-            try:
-                return stripe.billing_portal.Configuration.retrieve(cached_id)
-            except Exception:
-                logging.warning("Failed to retrieve cached Stripe portal configuration, recreating.")
+            return stripe.billing_portal.Configuration.retrieve(cached_id)
 
     configuration = stripe.billing_portal.Configuration.create(
         features={
@@ -663,12 +1016,8 @@ def get_product_ids_for_prices(price_ids: list[str]) -> dict[str, str]:
 
     result = {}
     for price_id in price_ids:
-        try:
-            price = stripe.Price.retrieve(price_id)
-            result[price_id] = price.product
-        except Exception:
-            logging.warning(f"get_product_ids_for_prices cannot get stripe product_id for {price_id}")
-            pass
+        price = stripe.Price.retrieve(price_id)
+        result[price_id] = price.product
 
     return result
 
@@ -785,113 +1134,112 @@ def check_resources(**resource_deltas):
     def decorator(f):
         @wraps(f)
         async def decorated_function(*args, **kwargs):
-            try:
-                from quart import current_app
+            from quart import current_app
 
-                if settings.BILLING_ENABLED:
-                    from quart import g, request
-                    from api.apps import current_user
-                    from api.utils.api_utils import (
-                        get_data_error_result,
-                        get_resource_insufficient_result,
-                        server_error_response,
-                    )
+            if settings.BILLING_ENABLED:
+                from quart import g, request
+                from api.apps import current_user
+                from api.utils.api_utils import (
+                    get_data_error_result,
+                    get_resource_insufficient_result,
+                )
 
-                    tenant_id = None
+                tenant_id = None
 
-                    if hasattr(g, "tenant_id") and g.tenant_id:
-                        tenant_id = g.tenant_id
+                if hasattr(g, "tenant_id") and g.tenant_id:
+                    tenant_id = g.tenant_id
 
-                    if not tenant_id:
-                        tenant_id = request.view_args.get("tenant_id") if request.view_args else None
+                if not tenant_id:
+                    tenant_id = request.view_args.get("tenant_id") if request.view_args else None
 
-                    if not tenant_id:
-                        content_type = request.content_type or ""
+                if not tenant_id:
+                    content_type = request.content_type or ""
 
-                        if request.method in ["POST", "PUT", "PATCH"]:
-                            if "application/json" in content_type:
-                                if request.is_json:
-                                    req_data = await request.get_json(silent=True) or {}
-                                    tenant_id = req_data.get("tenant_id") or kwargs.get("tenant_id")
-
-                            elif "multipart/form-data" in content_type or "application/x-www-form-urlencoded" in content_type:
-                                form = await request.form
-                                req_data = form or {}
+                    if request.method in ["POST", "PUT", "PATCH"]:
+                        if "application/json" in content_type:
+                            if request.is_json:
+                                req_data = await request.get_json(silent=True) or {}
                                 tenant_id = req_data.get("tenant_id") or kwargs.get("tenant_id")
 
-                            else:
-                                req_data = request.args or {}
-                                tenant_id = req_data.get("tenant_id") or kwargs.get("tenant_id")
+                        elif "multipart/form-data" in content_type or "application/x-www-form-urlencoded" in content_type:
+                            form = await request.form
+                            req_data = form or {}
+                            tenant_id = req_data.get("tenant_id") or kwargs.get("tenant_id")
 
-                        else:  # GET、DELETE
+                        else:
                             req_data = request.args or {}
                             tenant_id = req_data.get("tenant_id") or kwargs.get("tenant_id")
 
-                    if not tenant_id:
-                        tenant_id = current_user.id if hasattr(current_user, "id") else None
+                    else:  # GET、DELETE
+                        req_data = request.args or {}
+                        tenant_id = req_data.get("tenant_id") or kwargs.get("tenant_id")
 
-                    if not tenant_id:
-                        return get_data_error_result(message="Unable to determine tenant_id for resource checking.")
+                if not tenant_id:
+                    tenant_id = current_user.id if hasattr(current_user, "id") else None
 
-                    delta_app = resource_deltas.get("apps", 0)
-                    delta_members = resource_deltas.get("seats", 0)
-                    delta_storage_bytes = resource_deltas.get("storage", 0)
+                if not tenant_id:
+                    return get_data_error_result(message="Unable to determine tenant_id for resource checking.")
 
-                    check_ok, check_info = PurchasedProductOverviewService.check_subscription_by_tenant_id(
-                        tenant_id, delta_app=delta_app, delta_members=delta_members, delta_kb_storage=delta_storage_bytes
-                    )
+                delta_app = resource_deltas.get("apps", 0)
+                delta_members = resource_deltas.get("seats", 0)
+                delta_storage_bytes = resource_deltas.get("storage", 0)
 
-                    if not check_ok:
-                        error_details = check_info.get("details", {})
-                        error_messages = []
-                        error_code = RetCode.BILLING_RESOURCE_INSUFFICIENT
+                check_ok, check_info = PurchasedProductOverviewService.check_subscription_by_tenant_id(
+                    tenant_id, delta_app=delta_app, delta_members=delta_members, delta_kb_storage=delta_storage_bytes
+                )
 
-                        if "quota_apps" in error_details:
-                            error_messages.append(f"Insufficient app quota. Current: {error_details['quota_apps']['current']}, Limit: {error_details['quota_apps']['limit']}")
+                if not check_ok:
+                    error_details = check_info.get("details", {})
+                    error_messages = []
+                    # Default to BILLING_RESOURCE_INSUFFICIENT when multiple resources are exceeded
+                    error_code = RetCode.BILLING_RESOURCE_INSUFFICIENT
+                    identified_error_resource = ""
+
+                    if "quota_points" in error_details:
+                        error_messages.append(f"Insufficient points. Current: {error_details['quota_points']['current']}, Limit: {error_details['quota_points']['limit']}")
+
+                    if "quota_apps" in error_details:
+                        error_messages.append(f"Insufficient app quota. Current: {error_details['quota_apps']['current']}, Limit: {error_details['quota_apps']['limit']}")
+
+                    if "quota_members" in error_details:
+                        error_messages.append(f"Insufficient seat quota. Current: {error_details['quota_members']['current']}, Limit: {error_details['quota_members']['limit']}")
+
+                    if "quota_kb_storage" in error_details:
+                        error_messages.append(
+                            f"Insufficient storage quota. Current: {error_details['quota_kb_storage']['current']} bytes, "
+                            f"Limit: {error_details['quota_kb_storage']['limit']} bytes"
+                        )
+
+                    if len(error_messages) == 1:
+                        # Only one resource exceeded — use the specific code
+                        if "quota_points" in error_details:
+                            error_code = RetCode.BILLING_POINTS_INSUFFICIENT
+                            identified_error_resource = "quota_points"
+                        elif "quota_apps" in error_details:
                             error_code = RetCode.BILLING_APPS_INSUFFICIENT
-
-                        if "quota_members" in error_details:
-                            error_messages.append(f"Insufficient seat quota. Current: {error_details['quota_members']['current']}, Limit: {error_details['quota_members']['limit']}")
+                            identified_error_resource = "quota_apps"
+                        elif "quota_members" in error_details:
                             error_code = RetCode.BILLING_SEATS_INSUFFICIENT
-
-                        if "quota_kb_storage" in error_details:
-                            error_messages.append(
-                                f"Insufficient storage quota. Current: {error_details['quota_kb_storage']['current']} bytes, "
-                                f"Limit: {error_details['quota_kb_storage']['limit']} bytes"
-                            )
+                            identified_error_resource = "quota_members"
+                        elif "quota_kb_storage" in error_details:
                             error_code = RetCode.BILLING_STORAGE_INSUFFICIENT
+                            identified_error_resource = "quota_kb_storage"
 
-                        if error_messages:
-                            error_msg = "; ".join(error_messages)
-                        else:
-                            error_msg = "Insufficient resources available. Contact the owner for further assistance."
+                    if error_messages:
+                        error_msg = "; ".join(error_messages)
+                    else:
+                        error_msg = "Insufficient resources available. Contact the owner for further assistance."
 
-                        try:
-                            ok, tenant = TenantService.get_by_id(tenant_id)
-                            if ok:
-                                error_msg = f"Insufficient resources in {tenant.name}: {error_msg}"
-                        except Exception:
-                            pass
+                    ok, tenant = TenantService.get_by_id(tenant_id)
+                    if ok:
+                        error_msg = f"Insufficient resources in {tenant.name}: {error_msg}"
 
-                        identified_error_resource = ""
-                        match error_code:
-                            case RetCode.BILLING_RESOURCE_INSUFFICIENT:
-                                pass  # return all details
-                            case RetCode.BILLING_APPS_INSUFFICIENT:
-                                identified_error_resource = "quota_apps"
-                            case RetCode.BILLING_SEATS_INSUFFICIENT:
-                                identified_error_resource = "quota_members"
-                            case RetCode.BILLING_STORAGE_INSUFFICIENT:
-                                identified_error_resource = "quota_kb_storage"
+                    if identified_error_resource:
+                        error_details = {"current": error_details[identified_error_resource]["current"], "limit": error_details[identified_error_resource]["limit"]}
+                    else:
+                        error_details = {}
 
-                        if identified_error_resource:
-                            error_details = {"current": error_details[identified_error_resource]["current"], "limit": error_details[identified_error_resource]["limit"]}
-
-                        return get_resource_insufficient_result(code=error_code, message=error_msg, detail=error_details)
-            except Exception as e:
-                from api.utils.api_utils import server_error_response
-
-                return server_error_response(e)
+                    return get_resource_insufficient_result(code=error_code, message=error_msg, detail=error_details)
             return await current_app.ensure_async(f)(*args, **kwargs)
 
         return decorated_function
@@ -930,40 +1278,37 @@ def check_dynamic_resources(tenant_id=None, **resource_deltas):
     from api.db.services.billing_service import PurchasedProductOverviewService
 
     if not tenant_id:
-        try:
-            from flask import g
-            from flask_login import current_user
+        from flask import g
+        from flask_login import current_user
 
-            if hasattr(g, "tenant_id") and g.tenant_id:
-                tenant_id = g.tenant_id
+        if hasattr(g, "tenant_id") and g.tenant_id:
+            tenant_id = g.tenant_id
 
-            if not tenant_id:
-                from flask import request as flask_request
+        if not tenant_id:
+            from flask import request as flask_request
 
-                content_type = flask_request.content_type or ""
+            content_type = flask_request.content_type or ""
 
-                if flask_request.method in ["POST", "PUT", "PATCH"]:
-                    if "application/json" in content_type:
-                        if flask_request.is_json:
-                            req_data = flask_request.get_json(silent=True) or {}
-                            tenant_id = req_data.get("tenant_id")
-
-                    elif "multipart/form-data" in content_type or "application/x-www-form-urlencoded" in content_type:
-                        req_data = flask_request.form or {}
+            if flask_request.method in ["POST", "PUT", "PATCH"]:
+                if "application/json" in content_type:
+                    if flask_request.is_json:
+                        req_data = flask_request.get_json(silent=True) or {}
                         tenant_id = req_data.get("tenant_id")
 
-                    else:
-                        req_data = flask_request.args or {}
-                        tenant_id = req_data.get("tenant_id")
+                elif "multipart/form-data" in content_type or "application/x-www-form-urlencoded" in content_type:
+                    req_data = flask_request.form or {}
+                    tenant_id = req_data.get("tenant_id")
 
-                else:  # GET、DELETE
+                else:
                     req_data = flask_request.args or {}
                     tenant_id = req_data.get("tenant_id")
 
-            if not tenant_id:
-                tenant_id = current_user.id if hasattr(current_user, "id") else None
-        except Exception:
-            pass
+            else:  # GET、DELETE
+                req_data = flask_request.args or {}
+                tenant_id = req_data.get("tenant_id")
+
+        if not tenant_id:
+            tenant_id = current_user.id if hasattr(current_user, "id") else None
 
     if not tenant_id:
         return False, {"error": "Unable to determine tenant_id for resource checking."}

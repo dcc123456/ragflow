@@ -488,7 +488,6 @@ def init_settings():
         plan_name = plan.get("name")
         price_ids = plan.get("price_ids", "").split()
         api_request_limit_per_minute = plan.get("api_request_limit_per_minute")
-        api_request_limit_per_month = plan.get("api_request_limit_per_month")
         for price_id in price_ids:
            BILLING_PRICEID_TO_PRODUCT[price_id] = plan_name
 
@@ -501,8 +500,11 @@ def init_settings():
             "task_priority": task_priority,
             "price_ids": price_ids,
             "api_request_limit_per_minute": api_request_limit_per_minute,
-            "api_request_limit_per_month": api_request_limit_per_month,
             "quota_points": quota_points,
+            "quota_kb_storage": plan.get("quota_kb_storage", 0),
+            "quota_members": plan.get("quota_members", 0),
+            "quota_apps": plan.get("quota_apps", 0),
+            "product_type": plan.get("product_type"),
         }
 
     global DOC_MAXIMUM_SIZE, DOC_BULK_SIZE, EMBEDDING_BATCH_SIZE
@@ -562,5 +564,3 @@ def print_rag_settings():
 
 def rout_key(priority: int, suffix="common") -> str:
     return "te.{}.{}".format(priority, suffix)
-
-

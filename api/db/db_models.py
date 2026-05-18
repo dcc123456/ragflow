@@ -1524,7 +1524,7 @@ class Subscription(DataBaseModel):
     """
 
     id = CharField(max_length=32, primary_key=True)
-    tenant_id = CharField(max_length=32, null=False, index=True)
+    tenant_id = CharField(max_length=32, null=False, index=True, unique=True)
     product_id = CharField(max_length=32, null=False)
     plan_name = CharField(max_length=255, null=False, default="trial", help_text="billing plan", index=True)
     order_id = CharField(max_length=128, null=False, help_text="from RAGFlow Order")
@@ -1543,35 +1543,15 @@ class Subscription(DataBaseModel):
     renew_time = DateTimeField(null=True)
     original_subscription_id = CharField(max_length=32)
 
+    # Phase 3: storage add-on fields — nullable until dual-write window closes.
+    # NULL means "no storage subscription on this tenant" (preferred over 0, which
+    # is a valid storage quantity). After Phase 3, these columns become authoritative.
+    addon_subscription_item_id = CharField(max_length=255, null=True, default=None)
+    addon_storage_bytes = BigIntegerField(null=True, default=None)
+    target_quantity_bytes = BigIntegerField(null=True, default=None)
+
     class Meta:
         db_table = "billing_subscription"
-
-
-class StorageSubscription(DataBaseModel):
-    """
-    One storage add-on subscription per tenant.
-    `addon_storage_bytes` is the currently usable quota.
-    """
-
-    id = CharField(max_length=32, primary_key=True)
-    tenant_id = CharField(max_length=32, null=False, index=True, unique=True)
-    customer_id = CharField(max_length=255, null=False, default="", index=True)
-
-    subscription_id = CharField(max_length=255, null=False, default="", index=True)
-    subscription_item_id = CharField(max_length=255, null=False, default="")
-    price_id = CharField(max_length=128, null=False, default="")
-
-    addon_storage_bytes = BigIntegerField(null=False, default=0, constraints=[Check("addon_storage_bytes >= 0")])
-    target_quantity_bytes = BigIntegerField(null=False, default=0, constraints=[Check("target_quantity_bytes >= 0")])
-
-    current_period_start = DateTimeField(null=True)
-    current_period_end = DateTimeField(null=True)
-    cancel_at_period_end = BooleanField(default=False)
-    status = CharField(max_length=64, null=False, default="", index=True)
-
-    class Meta:
-        db_table = "billing_storage_subscription"
-
 
 
 # -----------------------------------------------------------------------------
@@ -2363,6 +2343,10 @@ def migrate_db():
 
     alter_db_column_type(migrator, "document", "size", BigIntegerField(default=0, index=True))
     alter_db_column_type(migrator, "file", "size", BigIntegerField(default=0, index=True))
+    # Storage-plan unification (2026-05-08): storage add-on columns on billing_subscription
+    alter_db_add_column(migrator, "billing_subscription", "addon_subscription_item_id", CharField(max_length=255, null=True, default=None))
+    alter_db_add_column(migrator, "billing_subscription", "addon_storage_bytes", BigIntegerField(null=True, default=None))
+    alter_db_add_column(migrator, "billing_subscription", "target_quantity_bytes", BigIntegerField(null=True, default=None))
     logging.disable(logging.NOTSET)
     # this is after re-enabling logging to allow logging changed user emails
     migrate_add_unique_email(migrator)

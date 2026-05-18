@@ -15,12 +15,18 @@ export const ConfirmModal: React.FC<{
   const { charge } = useCharge();
   const [loading, setLoading] = useState(false);
   const onOk = async () => {
-    if (plan?.id) {
-      // setPlanId(plan.id);
-      setLoading(true);
+    if (!plan?.id) {
+      return;
+    }
+    setLoading(true);
+    try {
       await charge(plan as unknown as IPricePlanWithButton);
+    } catch (e) {
+      // charge() shows its own error message; we just ensure spinner stops
+      console.error('Failed to inspect blob header', e);
+      return;
+    } finally {
       setLoading(false);
-      // refetch();
     }
     onClose();
   };

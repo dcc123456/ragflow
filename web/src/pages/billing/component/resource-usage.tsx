@@ -6,7 +6,6 @@ import {
   getBillingStorageCurrent,
   postBillingStorageSetTarget,
 } from '@/services/price';
-import { formatFileSize } from '@/utils/common-util';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { camelCase } from 'lodash';
 import { Coins, DatabaseZap, LayoutGrid, Users } from 'lucide-react';
@@ -18,6 +17,8 @@ import BuyCreditsModal from './buy-points-modal';
 import Process from './process';
 
 const BYTES_PER_GB = 1000 * 1000 * 1000;
+
+const formatStorageInGb = (value: number) => `${formatNumber(value)} GB`;
 
 interface CustomProgressProps {
   title: 'Apps' | 'Team Member' | 'Storage' | 'Document Parse';
@@ -99,14 +100,16 @@ const ResourceUsage: React.FC<CustomProgressProps> = ({
     ]);
 
   const submitSetTarget = async (targetGb: number) => {
-    const url = window.location.href;
-    const successUrl = `${url.split('?')[0]}?price-pay-status=success${url.split('?')[1] || ''}`;
-    const errorUrl = `${url.split('?')[0]}?price-pay-status=cancel${url.split('?')[1] || ''}`;
+    const currentUrl = new URL(window.location.href);
+    const successUrl = new URL(currentUrl.toString());
+    const errorUrl = new URL(currentUrl.toString());
+    successUrl.searchParams.set('price-pay-status', 'success');
+    errorUrl.searchParams.set('price-pay-status', 'cancel');
     const { data } = await postBillingStorageSetTarget({
       tenant_id: tenantId,
       target_quantity_bytes: Math.max(0, targetGb) * BYTES_PER_GB,
-      session_cancel_url: errorUrl,
-      session_success_url: successUrl,
+      session_cancel_url: errorUrl.toString(),
+      session_success_url: successUrl.toString(),
     });
     return data;
   };
@@ -134,12 +137,8 @@ const ResourceUsage: React.FC<CustomProgressProps> = ({
       storageCurrent?.addon_storage_bytes != null
         ? Math.floor(storageCurrent.addon_storage_bytes / BYTES_PER_GB)
         : addOnCapacity;
-    const targetStorage =
-      storageCurrent?.target_quantity_bytes != null
-        ? Math.floor(storageCurrent.target_quantity_bytes / BYTES_PER_GB)
-        : currentStorage;
     addOnManageModal = showAddOnManageModal({
-      defaultValue: targetStorage,
+      defaultValue: currentStorage,
       currentValue: currentStorage,
       onOk: addOnManageOk,
       price: storageCurrent?.unit_price || pricePerGBFromApi,
@@ -159,17 +158,17 @@ const ResourceUsage: React.FC<CustomProgressProps> = ({
               {planName} {t('billing.planUsed')}
             </span>
             {value > planValue
-              ? formatFileSize(planValue)
-              : formatFileSize(value)}{' '}
-            /{formatFileSize(planValue)}
+              ? formatStorageInGb(planValue)
+              : formatStorageInGb(value)}{' '}
+            /{formatStorageInGb(planValue)}
           </div>
           {!(planName == 'Free Plan' || planName == 'Free') && (
             <>
               <div className="flex flex-col items-start">
                 <span>{t('billing.addonUsed')} </span>
                 <span>
-                  {formatFileSize(value > planValue ? value - planValue : 0)}/
-                  {formatFileSize(limit - planValue)}
+                  {formatStorageInGb(value > planValue ? value - planValue : 0)}
+                  /{formatStorageInGb(limit - planValue)}
                 </span>
               </div>
               {isStorageCurrentLoading ? (
@@ -277,8 +276,8 @@ const ResourceUsage: React.FC<CustomProgressProps> = ({
               <span>{`${formatNumber(currentPoints)} ${unit}`}</span>
             ) : title === 'Storage' ? (
               <>
-                {showValue && <span>{`${formatFileSize(value)}`}/</span>}
-                <span>{`${formatFileSize(limit)}`}</span>
+                {showValue && <span>{`${formatStorageInGb(value)}`}/</span>}
+                <span>{`${formatStorageInGb(limit)}`}</span>
               </>
             ) : (
               <>

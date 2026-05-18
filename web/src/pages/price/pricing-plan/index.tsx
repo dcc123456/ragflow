@@ -19,7 +19,11 @@ import { useTranslation } from 'react-i18next';
 import { JSX } from 'react/jsx-runtime';
 import PricingCard from '../components/pricing-card';
 import { PriceName, PriceNameMapValue } from '../constant';
-import { useFetchCurrentPlan, useFetchPlanList } from '../hook/use-price-hooks';
+import {
+  useFetchCurrentPlan,
+  useFetchPlanList,
+  useHandleTrialUpgradeSetupRetry,
+} from '../hook/use-price-hooks';
 import { IPricePlanWithButton } from '../interface';
 
 const enterprise = {
@@ -146,6 +150,7 @@ const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
   );
   // const [searchParams, setSearchParams] = useSearchParams();
   const status = urlParams.get('price-pay-status');
+  useHandleTrialUpgradeSetupRetry(status);
   const { t } = useTranslation();
   const [successModal, setSuccessModal] = useState<{
     title: string | JSX.Element;

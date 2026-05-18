@@ -54,6 +54,13 @@ export function formatStandardDate(date: any) {
   return parsedDate.format('YYYY-MM-DD');
 }
 
+export function formatIsoDateTime(timestamp_ms: number): string {
+  if (!timestamp_ms) {
+    return '';
+  }
+  return dayjs(timestamp_ms).format('YYYY-MM-DDTHH:mm:ssZ');
+}
+
 export function formatSecondsToHumanReadable(seconds: number): string {
   if (isNaN(seconds) || seconds < 0) {
     return '0s';

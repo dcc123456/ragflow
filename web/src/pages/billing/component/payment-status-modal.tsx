@@ -1,5 +1,9 @@
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal/modal';
+import {
+  BillingDirectCheckoutResultEvent,
+  TrialUpgradeSetupRetryResultKey,
+} from '@/pages/price/hook/use-price-hooks';
 import { CheckCircle, Loader2, XCircle } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -8,6 +12,23 @@ import {
   SessionData,
   useFetchPaymentSession,
 } from '../hook/use-payment-status-request';
+
+const formatCurrencyAmount = (amount?: number, currency?: string) => {
+  if (amount === undefined) {
+    return '';
+  }
+
+  const normalizedCurrency = (currency || 'USD').toUpperCase();
+
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency: normalizedCurrency,
+    }).format(amount);
+  } catch {
+    return `${normalizedCurrency} ${amount.toLocaleString()}`;
+  }
+};
 
 const PaymentStatusModal: React.FC = () => {
   const { t } = useTranslation();
@@ -31,8 +52,43 @@ const PaymentStatusModal: React.FC = () => {
   useEffect(() => {
     if (payStatus && sessionId) {
       setStatus(PaymentStatus.Pending);
+      return;
+    }
+
+    const retryResult = sessionStorage.getItem(TrialUpgradeSetupRetryResultKey);
+    if (!retryResult) {
+      return;
+    }
+
+    try {
+      setSessionData(JSON.parse(retryResult) as SessionData);
+      setStatus(PaymentStatus.Success);
+    } catch {
+      sessionStorage.removeItem(TrialUpgradeSetupRetryResultKey);
     }
   }, [payStatus, sessionId]);
+
+  useEffect(() => {
+    const handleDirectCheckoutResult = (event: Event) => {
+      const customEvent = event as CustomEvent<SessionData>;
+      if (!customEvent.detail) {
+        return;
+      }
+      setSessionData(customEvent.detail);
+      setStatus(PaymentStatus.Success);
+    };
+
+    window.addEventListener(
+      BillingDirectCheckoutResultEvent,
+      handleDirectCheckoutResult as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        BillingDirectCheckoutResultEvent,
+        handleDirectCheckoutResult as EventListener,
+      );
+    };
+  }, []);
 
   useEffect(() => {
     if (!pollingData) return;
@@ -53,6 +109,7 @@ const PaymentStatusModal: React.FC = () => {
       urlObj.searchParams.delete('price-pay-status');
       urlObj.searchParams.delete('session_id');
       window.history.replaceState({}, '', urlObj.toString());
+      sessionStorage.removeItem(TrialUpgradeSetupRetryResultKey);
     }
   }, [status]);
 
@@ -116,7 +173,7 @@ const PaymentStatusModal: React.FC = () => {
                 {t('billing.amount')}
               </span>
               <span className="text-sm font-medium text-cyan-400">
-                $ {sessionData.amount.toLocaleString()}
+                {formatCurrencyAmount(sessionData.amount, sessionData.currency)}
               </span>
             </div>
           )}
@@ -137,6 +194,26 @@ const PaymentStatusModal: React.FC = () => {
               </span>
               <span className="text-sm font-medium text-cyan-400">
                 {sessionData.invoice_id}
+              </span>
+            </div>
+          )}
+          {sessionData?.subscription_id && (
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-text-secondary">
+                {t('billing.subscriptionID')}
+              </span>
+              <span className="text-sm font-medium text-cyan-400">
+                {sessionData.subscription_id}
+              </span>
+            </div>
+          )}
+          {sessionData?.plan_name && (
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-text-secondary">
+                {t('billing.plan')}
+              </span>
+              <span className="text-sm font-medium text-cyan-400">
+                {sessionData.plan_name}
               </span>
             </div>
           )}

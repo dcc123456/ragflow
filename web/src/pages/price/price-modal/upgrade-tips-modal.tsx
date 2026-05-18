@@ -1,6 +1,6 @@
 // src/components/CustomModal.tsx
 import { Modal } from '@/components/ui/modal/modal';
-import { DatabaseZap, LayoutGrid, Users } from 'lucide-react';
+import { Coins, DatabaseZap, LayoutGrid, Users } from 'lucide-react';
 import React, { useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { createRoot } from 'react-dom/client';
@@ -9,7 +9,7 @@ import UpgradeButton from './to-upgrade-button';
 interface CustomModalProps {
   isOpen: boolean;
   onClose: () => void;
-  type: 'dataset' | 'team-member' | 'apps';
+  type: 'dataset' | 'team-member' | 'apps' | 'points';
   message: string;
   container?: HTMLElement;
 }
@@ -38,6 +38,7 @@ export const UpgradeTipsModal: React.FC<CustomModalProps> = ({
         {type === 'team-member' && (
           <Users className="w-6 h-6 text-text-primary" />
         )}
+        {type === 'points' && <Coins className="w-6 h-6 text-text-primary" />}
       </div>
     );
   }, [type]);
@@ -47,6 +48,7 @@ export const UpgradeTipsModal: React.FC<CustomModalProps> = ({
         {type === 'apps' && <div>Upgrade to get more apps</div>}
         {type === 'dataset' && <div>Upgrade to get more storage</div>}
         {type === 'team-member' && <div>Upgrade to invite more</div>}
+        {type === 'points' && <div>Upgrade to get more points</div>}
         <UpgradeButton isModal={true} onCallBack={onClose} />
       </div>
     );
@@ -75,7 +77,7 @@ export const UpgradeTipsModal: React.FC<CustomModalProps> = ({
 
 let currentModal: { destroy: () => void } | null = null;
 interface IShowUpgradeTipsModalOptions {
-  type: 'dataset' | 'team-member' | 'apps';
+  type: 'dataset' | 'team-member' | 'apps' | 'points';
   message: string;
   container?: HTMLElement;
 }

@@ -68,7 +68,7 @@ const billingService = (() => {
 export const billingCheckout = (
   data: IChargePlan & {
     payment_type: string;
-    tenantId: string;
+    tenant_id: string;
     session_cancel_url: string;
     session_success_url: string;
   },
@@ -138,15 +138,15 @@ export const getBillingDeepDocUsage = (tenantId?: string) =>
     params: tenantId ? { tenant_id: tenantId } : undefined,
   });
 
+export const getBillingPointsPrice = () => request.get(api.pointsPrice);
+export const getAddonPlans = () => request.get(api.addonPlans);
+
 export const postBillingPointsCheckout = (data: {
   tenant_id?: string;
   quantity: number;
   session_success_url?: string;
   session_cancel_url?: string;
 }) => request.post(api.pointsCheckout, { data });
-
-export const getBillingPointsPrice = () => request.get(api.pointsPrice);
-export const getAddonPlans = () => request.get(api.addonPlans);
 
 export const getBillingPointsBalance = (tenantId?: string) =>
   request.get(api.pointsBalance, {
@@ -164,13 +164,6 @@ export const getBillingPointsLedger = (params: {
   page_size?: number;
   event_type?: string;
 }) => request.get(api.pointsLedger, { params });
-
-export const getBillingPointsHolds = (params: {
-  tenant_id?: string;
-  page?: number;
-  page_size?: number;
-  status?: string;
-}) => request.get(api.pointsHolds, { params });
 
 export const getBillingSession = (sessionId: string) =>
   request.get(api.session(sessionId));

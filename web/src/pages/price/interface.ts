@@ -77,3 +77,20 @@ export interface ICurrentPlan {
   tenant_id: string;
   version: number;
 }
+
+export interface ICheckoutResult {
+  redirect_to?: string;
+  requires_payment_method_setup?: boolean;
+  scheduled_change?: {
+    effective_at?: string;
+  };
+  subscription_id?: string;
+  plan_name?: string;
+  price_id?: string;
+  invoice_id?: string;
+  invoice_url?: string;
+  invoice_status?: string;
+  payment_intent_status?: string;
+  amount_cents?: number;
+  currency?: string;
+}

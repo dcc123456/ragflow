@@ -2,12 +2,19 @@ import message from '@/components/ui/message';
 import { Modal } from '@/components/ui/modal/modal';
 import { useFetchTenantData } from '@/hooks/use-user-setting-request';
 import { BillingQueryKey } from '@/pages/billing/constants/query-keys';
+import type { SessionData } from '@/pages/billing/hook/use-payment-status-request';
 import billingService, { billingCheckout } from '@/services/price';
 import storagePrivate from '@/utils/authorization-private-util';
 import storage from '@/utils/authorization-util';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import React from 'react';
-import { ICurrentPlan, IPlan, IPricePlanWithButton } from '../interface';
+import React, { useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
+import {
+  ICheckoutResult,
+  ICurrentPlan,
+  IPlan,
+  IPricePlanWithButton,
+} from '../interface';
 import { showModal } from '../price-modal/show-modal';
 export type IChargePlan = {
   subscription_price_id?: string;
@@ -15,14 +22,69 @@ export type IChargePlan = {
   usage_based_price_id?: string;
 };
 export const PriceChargeKey = 'price-charge';
+export const TrialUpgradeSetupRetryKey = 'trial-upgrade-setup-retry';
+export const TrialUpgradeSetupRetryResultKey =
+  'trial-upgrade-setup-retry-result';
+export const BillingDirectCheckoutResultEvent =
+  'billing-direct-checkout-result';
 
 const buildCheckoutUrls = () => {
-  const url = window.location.href;
+  const url = new URL(window.location.href);
+  const successUrl = new URL(url.toString());
+  const errorUrl = new URL(url.toString());
+
+  successUrl.searchParams.set('price-pay-status', 'success');
+  errorUrl.searchParams.set('price-pay-status', 'cancel');
 
   return {
-    successUrl: `${url.split('?')[0]}?price-pay-status=success${url.split('?')[1] || ''}`,
-    errorUrl: `${url.split('?')[0]}?price-pay-status=cancel${url.split('?')[1] || ''}`,
+    successUrl: successUrl.toString(),
+    errorUrl: errorUrl.toString(),
   };
+};
+
+const formatCurrencyAmount = (amountCents?: number, currency?: string) => {
+  if (amountCents === undefined) {
+    return undefined;
+  }
+
+  const amount = amountCents / 100;
+  const normalizedCurrency = (currency || 'USD').toUpperCase();
+
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency: normalizedCurrency,
+    }).format(amount);
+  } catch {
+    return `${normalizedCurrency} ${amount.toLocaleString()}`;
+  }
+};
+
+const publishDirectCheckoutResult = (res?: ICheckoutResult) => {
+  if (!res) {
+    return;
+  }
+
+  const payload = {
+    status: 'paid',
+    amount:
+      typeof res.amount_cents === 'number' ? res.amount_cents / 100 : undefined,
+    currency: res.currency,
+    invoice_id: res.invoice_id,
+    subscription_id: res.subscription_id,
+    plan_name: res.plan_name,
+    price_id: res.price_id,
+  } satisfies SessionData;
+
+  sessionStorage.setItem(
+    TrialUpgradeSetupRetryResultKey,
+    JSON.stringify(payload),
+  );
+  window.dispatchEvent(
+    new CustomEvent(BillingDirectCheckoutResultEvent, {
+      detail: payload,
+    }),
+  );
 };
 
 export const useCancelPlan = () => {
@@ -42,27 +104,24 @@ export const useCancelPlan = () => {
     }) => {
       const { successUrl, errorUrl } = buildCheckoutUrls();
       const { data: res } = await billingCheckout({
-        tenantId,
+        tenant_id: tenantId,
         subscription_price_id: targetPriceId,
         payment_type: 'subscription',
         quantity: '1',
         session_cancel_url: errorUrl,
         session_success_url: successUrl,
       });
-      if (res.code === 0) {
-        if (res.data?.redirect_to) {
-          window.location.href = res.data.redirect_to;
-        }
-        message.success(res.message);
-        return res.data;
-      }
-      return res?.code;
+      return res;
     },
   });
 
   const cancel = async (tenantId: string, targetPriceId: string) => {
     const result = await mutateAsync({ tenantId, targetPriceId });
-    if (result !== undefined) {
+    if (result?.code === 0) {
+      if (result.data?.redirect_to) {
+        window.location.href = result.data.redirect_to;
+      }
+      message.success(result.message);
       await queryClient.invalidateQueries({
         queryKey: [BillingQueryKey.CurrentPlan],
       });
@@ -93,7 +152,7 @@ const useCharge = () => {
       payment_type: 'subscription' | 'usage_based';
     }) => {
       const { data } = await billingCheckout({
-        tenantId: tenantId,
+        tenant_id: tenantId,
         subscription_price_id:
           payment_type === 'subscription' ? price_id : undefined,
         payment_type: payment_type,
@@ -107,9 +166,20 @@ const useCharge = () => {
         session_success_url: successUrl,
       });
       if (data.code === 0) {
-        return data.data;
+        if (data.data?.requires_payment_method_setup) {
+          sessionStorage.setItem(
+            TrialUpgradeSetupRetryKey,
+            JSON.stringify({
+              price_id,
+              quantity,
+              payment_type,
+              auto_retry_pending: true,
+            }),
+          );
+        }
+        return data.data as ICheckoutResult;
       }
-      return data?.code;
+      throw new Error(data?.message || 'Modify subscription failed');
     },
   });
 
@@ -118,11 +188,17 @@ const useCharge = () => {
       return;
     }
 
-    const chargeResult = await mutateAsync({
-      price_id: data.id,
-      quantity: '1',
-      payment_type: 'subscription',
-    });
+    let chargeResult;
+    try {
+      chargeResult = await mutateAsync({
+        price_id: data.id,
+        quantity: '1',
+        payment_type: 'subscription',
+      });
+    } catch (error) {
+      message.error((error as Error)?.message || 'Modify subscription failed');
+      return;
+    }
     if (chargeResult && chargeResult.redirect_to) {
       window.location.href = chargeResult.redirect_to;
     } else if (chargeResult && chargeResult.scheduled_change) {
@@ -161,9 +237,130 @@ const useCharge = () => {
           ),
         ),
       });
+    } else if (chargeResult) {
+      publishDirectCheckoutResult(chargeResult);
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: [BillingQueryKey.CurrentPlan],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: [BillingQueryKey.PlanOverview],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: [BillingQueryKey.BaseOverview],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: [BillingQueryKey.StorageCurrent],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: [BillingQueryKey.PlanList],
+        }),
+      ]);
+      const amountText = formatCurrencyAmount(
+        chargeResult.amount_cents,
+        chargeResult.currency,
+      );
+      message.success(
+        amountText
+          ? `${t('price.paymentSuccessfulTip')} (${amountText})`
+          : t('price.paymentSuccessfulTip'),
+      );
     }
   };
   return { data, loading, charge, checkout: mutateAsync };
+};
+
+export const useHandleTrialUpgradeSetupRetry = (status: string | null) => {
+  const { checkout } = useCharge();
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (status !== 'success') {
+      return;
+    }
+
+    const rawRetryPayload = sessionStorage.getItem(TrialUpgradeSetupRetryKey);
+    if (!rawRetryPayload) {
+      return;
+    }
+
+    type RetryPayload = {
+      price_id: string;
+      quantity: string;
+      payment_type: 'subscription' | 'usage_based';
+      auto_retry_pending?: boolean;
+      auto_retry_started?: boolean;
+    };
+
+    let retryPayload: RetryPayload | null = null;
+    try {
+      retryPayload = JSON.parse(rawRetryPayload) as RetryPayload;
+    } catch {
+      sessionStorage.removeItem(TrialUpgradeSetupRetryKey);
+      return;
+    }
+
+    if (
+      !retryPayload?.auto_retry_pending ||
+      retryPayload?.auto_retry_started ||
+      !retryPayload?.price_id
+    ) {
+      return;
+    }
+
+    sessionStorage.setItem(
+      TrialUpgradeSetupRetryKey,
+      JSON.stringify({
+        ...retryPayload,
+        auto_retry_started: true,
+      }),
+    );
+
+    checkout({
+      price_id: retryPayload.price_id,
+      quantity: retryPayload.quantity || '1',
+      payment_type: retryPayload.payment_type || 'subscription',
+    })
+      .then(async (res) => {
+        sessionStorage.removeItem(TrialUpgradeSetupRetryKey);
+        if (res?.redirect_to) {
+          window.location.href = res.redirect_to;
+          return;
+        }
+        publishDirectCheckoutResult(res);
+        await Promise.all([
+          queryClient.invalidateQueries({
+            queryKey: [BillingQueryKey.CurrentPlan],
+          }),
+          queryClient.invalidateQueries({
+            queryKey: [BillingQueryKey.PlanOverview],
+          }),
+          queryClient.invalidateQueries({
+            queryKey: [BillingQueryKey.BaseOverview],
+          }),
+          queryClient.invalidateQueries({
+            queryKey: [BillingQueryKey.StorageCurrent],
+          }),
+          queryClient.invalidateQueries({
+            queryKey: [BillingQueryKey.PlanList],
+          }),
+        ]);
+        const amountText = formatCurrencyAmount(
+          res?.amount_cents,
+          res?.currency,
+        );
+        message.success(
+          amountText
+            ? `${t('price.paymentSuccessfulTip')} (${amountText})`
+            : t('price.paymentSuccessfulTip'),
+        );
+      })
+      .catch((error) => {
+        sessionStorage.removeItem(TrialUpgradeSetupRetryKey);
+        message.error((error as Error)?.message || t('price.paymentFailedTip'));
+      });
+  }, [checkout, queryClient, status, t]);
 };
 
 const useFetchCurrentPlan = (force = false) => {

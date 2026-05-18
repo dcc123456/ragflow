@@ -1471,7 +1471,7 @@ NER：使用 spaCy NER 和基于规则的关键词提取来抽取实体和关系
       state: '状态',
       number: '轮数',
       latestDate: '最新日期',
-      createDate: '创建日期',
+      createDate: '创建时间',
       publishedAt: '发布于',
       beginInput: '开始输入',
       seconds: '秒',

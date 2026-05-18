@@ -13,6 +13,9 @@ export interface SessionData {
   credits?: number;
   invoice_id?: string;
   currency?: string;
+  subscription_id?: string;
+  plan_name?: string;
+  price_id?: string;
 }
 
 interface RawSessionResponse {

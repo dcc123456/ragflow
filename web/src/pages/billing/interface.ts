@@ -2,9 +2,7 @@
 
 import { PaygStatusEnum, SubscriptionStatus } from './contant';
 export interface IApiRequestLimits {
-  requests_per_day?: number;
   requests_per_minute?: number;
-  requests_per_month?: number;
 }
 
 export interface IResourceDetail {
@@ -26,6 +24,9 @@ export interface IResources {
 
 export interface ISubscriptionData {
   api_request_limits: IApiRequestLimits;
+  customer_id?: string;
+  subscription_id?: string;
+  price_id?: string;
   plan_name: string;
   resources: IResources;
   subscription_status: SubscriptionStatus;
@@ -153,6 +154,10 @@ export interface IPointLedgerItem {
   related_hold_id: string | null;
   description: string | null;
   create_time: number;
+  metadata?: {
+    doc_id?: string;
+    page_range?: string;
+  };
 }
 
 export interface IPointHoldItem {

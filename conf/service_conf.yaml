@@ -53,6 +53,7 @@ billing:
       quota_apps: 0
       quota_members: 0
       quota_kb_storage: 1G
+      quota_points: 0
       task_priority: "low"
       price_ids: "price_1TOCKc2XhWscgPRmJRyTuo5g"
       product_type: "addon"
@@ -60,26 +61,26 @@ billing:
       quota_apps: 5
       quota_members: 1
       quota_kb_storage: 100MB
-      api_request_limit_per_minute: 500
-      api_request_limit_per_month: 5000
+      quota_points: 500
+      api_request_limit_per_minute: 60
       task_priority: "low"
       price_ids: "price_1TPawr2XhWscgPRmFFLnlhpK"
       product_type: "subscription"
     - name: "Starter"
-      quota_apps: 100
-      quota_members: 10
-      quota_kb_storage: 10G
-      api_request_limit_per_minute: 2147483647
-      api_request_limit_per_month: 2147483647
+      quota_apps: 50
+      quota_members: 5
+      quota_kb_storage: 5G
+      quota_points: 5000
+      api_request_limit_per_minute: 600
       task_priority: "high"
       price_ids: "price_1TOCIQ2XhWscgPRmUhPHTvBD"
       product_type: "subscription"
     - name: "Pro"
-      quota_apps: 999999999
-      quota_members: 50
-      quota_kb_storage: 100G
-      api_request_limit_per_minute: 2147483647
-      api_request_limit_per_month: 2147483647
+      quota_apps: 100000
+      quota_members: 20
+      quota_kb_storage: 50G
+      quota_points: 20000
+      api_request_limit_per_minute: 6000
       task_priority: "high"
       price_ids: "price_1TOCIi2XhWscgPRmpUCmNPE7"
       product_type: "subscription"

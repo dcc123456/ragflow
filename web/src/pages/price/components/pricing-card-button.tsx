@@ -5,8 +5,8 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import classNames from 'classnames';
-import { isEmpty } from 'lodash';
 import { useTranslation } from 'react-i18next';
+import { PriceName } from '../constant';
 import { useFetchCurrentPlan } from '../hook/use-price-hooks';
 
 interface IPricingCardButtonProps {
@@ -24,9 +24,12 @@ const PricingCardButton = (props: IPricingCardButtonProps) => {
   const { t } = useTranslation();
   const { data: currentPlanData } = useFetchCurrentPlan();
 
-  const hasPendingChange = !isEmpty(
-    currentPlanData?.pending_subscription_change,
-  );
+  // The Cancel-plan button should be disabled only when a downgrade to Trial is
+  // already scheduled.  A storage-only schedule (same plan, different storage
+  // quantity) must not block cancellation.
+  const hasPendingTrialDowngrade =
+    currentPlanData?.pending_subscription_change?.pending_plan_name ===
+    PriceName.Trial;
 
   const pendingEffectiveDate =
     typeof currentPlanData?.pending_subscription_change?.effective_at ===
@@ -34,7 +37,7 @@ const PricingCardButton = (props: IPricingCardButtonProps) => {
       ? currentPlanData.pending_subscription_change.effective_at.split('T')[0]
       : '';
 
-  if (isUse && hasPendingChange) {
+  if (isUse && hasPendingTrialDowngrade) {
     return (
       <Tooltip>
         <TooltipTrigger asChild>
@@ -62,7 +65,7 @@ const PricingCardButton = (props: IPricingCardButtonProps) => {
             <p className="mt-1">
               {t('price.cancelPlanSwitchTip', {
                 defaultValue:
-                  'After expiration, your account will automatically switch to the Free Plan, and features, quotas, or resources beyond the Free Plan scope will no longer be available.',
+                  'If your current usage exceeds the Free Plan limits, your downgrade will be blocked and you will remain on the current plan. Any add-on storage will also be cancelled when the base plan expires.',
               })}
             </p>
           </div>

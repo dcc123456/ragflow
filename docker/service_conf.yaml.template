@@ -91,8 +91,7 @@ billing:
       quota_members: 1
       quota_kb_storage: 100MB
       quota_points: 500  # monthly quota (reset each billing cycle)
-      api_request_limit_per_minute: 500
-      api_request_limit_per_month: 5000
+      api_request_limit_per_minute: 60
       task_priority: "low"
       price_ids: '${BILLING_PRICE_ID_TRIAL:-price_1TPawr2XhWscgPRmFFLnlhpK}'
       product_type: "subscription"
@@ -101,8 +100,7 @@ billing:
       quota_members: 5
       quota_kb_storage: 5G
       quota_points: 5000  # monthly quota (reset each billing cycle)
-      api_request_limit_per_minute: 2147483647
-      api_request_limit_per_month: 2147483647
+      api_request_limit_per_minute: 600
       task_priority: "high"
       price_ids: '${BILLING_PRICE_ID_STARTER:-price_1TOCIQ2XhWscgPRmUhPHTvBD}'
       product_type: "subscription"
@@ -111,8 +109,7 @@ billing:
       quota_members: 20
       quota_kb_storage: 50G
       quota_points: 20000  # monthly quota (reset each billing cycle)
-      api_request_limit_per_minute: 2147483647
-      api_request_limit_per_month: 2147483647
+      api_request_limit_per_minute: 6000
       task_priority: "high"
       price_ids: '${BILLING_PRICE_ID_PRO:-price_1TOCIi2XhWscgPRmpUCmNPE7}'
       product_type: "subscription"

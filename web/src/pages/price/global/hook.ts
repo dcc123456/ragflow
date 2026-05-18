@@ -18,7 +18,7 @@ export interface ConfirmPriceEventDetail {
 }
 
 export interface UpgradeTipsEventDetail {
-  type: 'dataset' | 'team-member' | 'apps';
+  type: 'dataset' | 'team-member' | 'apps' | 'points' | 'points';
   message: string;
   container?: HTMLElement;
 }
@@ -27,12 +27,28 @@ export interface FreeUpgradeTipsEventDetail {
   container?: HTMLElement;
 }
 
+/**
+ * Frontend error codes for billing resource insufficient errors.
+ * Must stay in sync with RetCode.BILLING_* in common/constants.py
+ */
 export enum PriceCode {
-  MultLimit = 600,
-  SeatsLimit = 601,
-  AppsLimit = 602,
-  StorageLimit = 603,
+  MultLimit = 2000,
+  AppsLimit = 2001,
+  SeatsLimit = 2002,
+  StorageLimit = 2003,
+  PointsLimit = 2004,
 }
+
+export const RESOURCE_INSUFFICIENT_PRICE_CODES = new Set<number>([
+  PriceCode.MultLimit,
+  PriceCode.AppsLimit,
+  PriceCode.SeatsLimit,
+  PriceCode.StorageLimit,
+  PriceCode.PointsLimit,
+]);
+
+export const isResourceInsufficientPriceCode = (code?: number) =>
+  typeof code === 'number' && RESOURCE_INSUFFICIENT_PRICE_CODES.has(code);
 
 interface IPriceData {
   code: PriceCode;
@@ -63,6 +79,13 @@ export const showPriceModal = ({ code, detail }: IPriceData) => {
         container: nextLayoutRef.current || undefined,
       });
       return true;
+    case PriceCode.PointsLimit:
+      showUpgradeTipsModal({
+        type: 'points',
+        message: `Your points balance is insufficient. `,
+        container: nextLayoutRef.current || undefined,
+      });
+      return true;
     default:
       return false;
   }
@@ -71,7 +94,7 @@ export const showPriceModal = ({ code, detail }: IPriceData) => {
 export const useShowUpgradeTipsModal = () => {
   const [upgradeTips, setUpgradeTips] = useState<{
     isOpen: boolean;
-    type: 'dataset' | 'team-member' | 'apps' | null;
+    type: 'dataset' | 'team-member' | 'apps' | 'points' | null;
     message: string;
     container?: HTMLElement;
   }>({
@@ -83,7 +106,7 @@ export const useShowUpgradeTipsModal = () => {
 
   const showUpgradeTips = useCallback(
     (options: {
-      type: 'dataset' | 'team-member' | 'apps';
+      type: 'dataset' | 'team-member' | 'apps' | 'points' | 'points';
       message: string;
       container?: HTMLElement;
     }) => {

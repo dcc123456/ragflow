@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Modal } from '@/components/ui/modal/modal';
 import { useTranslation } from 'react-i18next';
+import { isResourceInsufficientPriceCode } from '../global/hook';
 import { useCancelPlan } from '../hook/use-price-hooks';
 
 interface ICancelPlanDialogProps {
@@ -39,7 +40,7 @@ const CancelPlanDialog: React.FC<ICancelPlanDialogProps> = ({
     }
 
     const result = await cancel(tenantId, targetPriceId);
-    if (result?.code === 2000) {
+    if (isResourceInsufficientPriceCode(result?.code)) {
       const conflicts = result.data?.resource_conflicts;
       const modal = Modal.confirm({
         title: t('price.cancelFailed', { defaultValue: 'Cancel Failed' }),
@@ -96,7 +97,7 @@ const CancelPlanDialog: React.FC<ICancelPlanDialogProps> = ({
             <p>
               {t('price.cancelPlanSwitchTip', {
                 defaultValue:
-                  'After expiration, your account will automatically switch to the Free Plan, and features, quotas, or resources beyond the Free Plan scope will no longer be available.',
+                  'If your current usage exceeds the Free Plan limits, your downgrade will be blocked and you will remain on the current plan. Any add-on storage will also be cancelled when the base plan expires.',
               })}
             </p>
             <p>

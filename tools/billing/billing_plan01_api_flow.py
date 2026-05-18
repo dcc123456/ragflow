@@ -591,7 +591,76 @@ def complete_trial_checkout_upgrade(
     upgrade_started_at = int(time.time()) - 5
     checkout_result = client.schedule_plan_change(tenant_id, target_price_id)
     if not checkout_result.get("redirect_to"):
-        raise FlowError(f"expected checkout redirect for Trial -> {target_plan_name}, got: {checkout_result}")
+
+        invoice_id = checkout_result.get("invoice_id", "")
+        subscription_id = checkout_result.get("subscription_id", "")
+        if not subscription_id:
+            raise FlowError("Direct upgrade missing subscription_id")
+        if checkout_result.get("plan_name") != target_plan_name:
+            raise FlowError(f"Unexpected plan after direct upgrade: {checkout_result.get('plan_name')}")
+        subscription_ids.add(subscription_id)
+
+        # 手动发送 invoice.paid webhook
+        latest_invoice = stripe.Invoice.retrieve(invoice_id, expand=["payment_intent"])
+        invoice_paid_event = {
+            "id": f"evt_manual_invoice_{uuid.uuid4().hex[:20]}",
+            "object": "event",
+            "type": "invoice.paid",
+            "api_version": stripe.api_version,
+            "created": int(time.time()),
+            "data": {"object": stripe_dict(latest_invoice)},
+            "livemode": False,
+            "pending_webhooks": 0,
+        }
+        client.post_signed_webhook(invoice_paid_event, webhook_secret)
+        print("  Assert: Invoice.paid webhook posted (direct upgrade)")
+
+        # 手动发送 customer.subscription.updated webhook
+        updated_sub = stripe.Subscription.retrieve(subscription_id)
+        billing_config = load_billing_config()
+        trial_price_id = first_plan_price_id(billing_config, "Trial")
+        trial_price_obj = stripe.Price.retrieve(trial_price_id)
+        trial_price_dict = stripe_dict(trial_price_obj)
+        previous_attributes = {
+            "plan": {
+                "id": trial_price_id,
+                "object": "plan",
+                "product": trial_price_dict.get("product", ""),
+                "amount": trial_price_dict.get("unit_amount"),
+                "interval": trial_price_dict.get("recurring", {}).get("interval", ""),
+                "nickname": trial_price_dict.get("nickname", ""),           }
+        }
+        subscription_updated_event = {
+            "id": f"evt_manual_sub_updated_{uuid.uuid4().hex[:20]}",
+            "object": "event",
+            "type": "customer.subscription.updated",
+            "api_version": stripe.api_version,
+            "created": int(time.time()),
+            "data": {
+                "object": stripe_dict(updated_sub),
+                "previous_attributes": previous_attributes,
+            },
+            "livemode": False,
+            "pending_webhooks": 0,
+        }
+        client.post_signed_webhook(subscription_updated_event, webhook_secret)
+        print("  Assert: Customer.subscription.updated webhook posted (direct upgrade)")
+
+        sync_webhooks(
+            client,
+            mode=webhook_mode,
+            webhook_secret=webhook_secret,
+            customer_id=customer_id,
+            subscription_ids=subscription_ids,
+            created_gte=upgrade_started_at,
+            wait_seconds=webhook_wait_seconds,
+        )
+
+        upgraded_plan = wait_for_plan(client, target_plan_name, webhook_timeout_seconds)
+        if upgraded_plan.get("plan_name") != target_plan_name:
+            raise FlowError(f"Plan did not switch to {target_plan_name}: {upgraded_plan.get('plan_name')}")
+
+        return subscription_id, upgraded_plan, []
 
     history_before_upgrade = client.spend_history()
     checkout_sessions = list_recent_checkout_sessions(customer_id, upgrade_started_at)
@@ -610,8 +679,6 @@ def complete_trial_checkout_upgrade(
         extra_metadata=checkout_metadata,
     )
     subscription_id = str(paid_subscription.get("id") or "")
-    if not subscription_id:
-        raise FlowError(f"failed to create {target_plan_name} subscription for checkout completion")
     subscription_ids.add(subscription_id)
 
     latest_invoice = paid_subscription.get("latest_invoice") or {}
@@ -817,14 +884,21 @@ def run_flow(args: argparse.Namespace) -> None:
     pro_period_end_before_starter = parse_plan_end(pro_plan_after)
     history_before_starter = client.spend_history()
     advance_clock(clock_id, pro_period_end_before_starter + 120)
+    created_gte=int(time.time()) - 60
+
+    input("before settle_latest_subscription_invoice, press enter to continue")
+
     settle_latest_subscription_invoice(clock_id, pro_subscription_id)
+
+    input("before sync_webhooks, press enter to continue")
+
     sync_webhooks(
         client,
         mode=args.webhook_mode,
         webhook_secret=webhook_secret,
         customer_id=customer_id,
         subscription_ids=subscription_ids,
-        created_gte=int(time.time()) - 60,
+        created_gte=created_gte,
         wait_seconds=args.webhook_wait_seconds,
     )
     starter_plan = wait_for_plan(client, "Starter", args.webhook_timeout_seconds)

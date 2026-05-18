@@ -74,6 +74,7 @@ class CheckoutSessionCompleted(BaseModel):
     customer_id: Optional[str] = Field(default=None, alias="customer")
     customer_email: Optional[str] = None
     payment_intent_id: Optional[str] = Field(alias="payment_intent")
+    setup_intent_id: Optional[str] = Field(default=None, alias="setup_intent")
     subscription_id: Optional[str] = Field(alias="subscription")
     payment_status: str
     status: Optional[str] = None

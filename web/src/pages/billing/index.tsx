@@ -6,26 +6,28 @@ import {
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PriceName } from '../price/constant';
-import { useFetchCurrentPlan } from '../price/hook/use-price-hooks';
+import {
+  useFetchCurrentPlan,
+  useHandleTrialUpgradeSetupRetry,
+} from '../price/hook/use-price-hooks';
 import UpgradeButton from '../price/price-modal/to-upgrade-button';
 import BillingHistory from './billing-history';
 import PaymentStatusModal from './component/payment-status-modal';
 import { Overview } from './overview';
 import PointsPage from './points';
-import UsagePage from './usage';
 
 const Billing = () => {
   const [activeKey, setActiveKey] = useState<SegmentedValue>('overview');
   const { t } = useTranslation();
   const { data: currentPlan } = useFetchCurrentPlan();
+  const status = new URLSearchParams(window.location.search).get(
+    'price-pay-status',
+  );
+  useHandleTrialUpgradeSetupRetry(status);
   const navList: SegmentedLabeledOption[] = [
     {
       value: 'overview',
       label: t('billing.overview'),
-    },
-    {
-      value: 'usage',
-      label: t('billing.usage'),
     },
     {
       value: 'billing-history',
@@ -35,7 +37,7 @@ const Billing = () => {
       value: 'points',
       label: 'Points',
     },
-  ];
+  ].filter((x) => x.value !== 'usage');
 
   const navClickFunc = (e: SegmentedValue) => {
     setActiveKey(e);
@@ -64,7 +66,6 @@ const Billing = () => {
       </nav>
       <section className="flex-1 overflow-auto">
         {activeKey === 'overview' && <Overview />}
-        {activeKey === 'usage' && <UsagePage />}
         {activeKey === 'billing-history' && <BillingHistory />}
         {activeKey === 'points' && <PointsPage />}
       </section>

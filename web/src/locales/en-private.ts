@@ -95,7 +95,7 @@ export default {
       cancelPlanEffectiveTip:
         'After cancellation, you can continue using the current plan benefits until {{date}}, after which they will expire.',
       cancelPlanSwitchTip:
-        'After expiration, your account will automatically switch to the Free Plan, and features, quotas, or resources beyond the Free Plan scope will no longer be available.',
+        'If your current usage exceeds the Free Plan limits, your downgrade will be blocked and you will remain on the current plan. Any add-on storage will also be cancelled when the base plan expires.',
       cancelPlanConfirmQuestion: 'Are you sure you want to cancel?',
     },
     setting: {
@@ -160,7 +160,9 @@ export default {
       totalSpend: 'Total Spend',
       spendCategories: 'Spend Categories',
       invoiceID: 'Invoice ID',
-      createDate: 'Create Date',
+      subscriptionID: 'Subscription ID',
+      plan: 'Plan',
+      createDate: 'Created At',
       product: 'Product',
       status: 'Status',
       amount: 'Amount',

@@ -10,7 +10,6 @@ export enum BillingQueryKey {
   HistoryList = 'fetchHistoryList',
   AllSpends = 'getAllSpends',
   PointsLedger = 'getPointsLedger',
-  PointsHolds = 'getPointsHolds',
   AddonPlans = 'addonPlans',
   PlanList = 'getPlanList',
   PointsPrice = 'billingPointsPrice',
