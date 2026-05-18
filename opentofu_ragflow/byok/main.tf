@@ -2235,7 +2235,7 @@ resource "helm_release" "zammad" {
   namespace        = kubernetes_namespace_v1.ragflow.metadata[0].name
   repository       = "https://zammad.github.io/zammad-helm"
   chart            = "zammad"
-  version          = "13.0.0"
+  version          = "16.1.0"
   create_namespace = false
   timeout          = 900
 
@@ -2273,6 +2273,15 @@ resource "helm_release" "zammad" {
     <<-EOT
       env:
         RAILS_RELATIVE_URL_ROOT: "/zammad"
+
+      zammadConfig:
+        initContainers:
+          volumePermissions:
+            enabled: false
+
+      elasticsearch:
+        sysctlImage:
+          enabled: false
     EOT
   ]
 

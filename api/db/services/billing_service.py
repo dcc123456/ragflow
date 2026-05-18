@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 from api.db.db_models import DB
-from api.db import FileType, SubscriptionStatus
+from api.db import SubscriptionStatus
 from api.db.services.common_service import CommonService
 from api.db.services.user_service import UserTenantService
 from common import settings
@@ -37,8 +37,8 @@ from api.db.db_models import (
     Subscription,
 )
 from api.db.services.memory_service import MemoryService
-from api.utils.file_utils import filename_type
 from api.utils.billing import BILLING_PLAN_TRIAL_NAME, create_stripe_customer_id, get_trial_price_id, parse_storage_size
+from common.parser_config_utils import is_pdf_deepdoc_parse
 from common.billing_utils import to_utc_datetime
 from common.time_utils import current_timestamp
 from deepdoc.parser import PdfParser
@@ -1213,15 +1213,15 @@ class ParseBillingQuote:
 class BaseParseBillingEstimator:
     product_name = ""
 
-    def quote(self, filename: str, blob: bytes) -> ParseBillingQuote | None:
+    def quote(self, filename: str, blob: bytes, parser_config: dict | None = None) -> ParseBillingQuote | None:
         raise NotImplementedError
 
 
 class PdfPageParseBillingEstimator(BaseParseBillingEstimator):
     product_name = "deepdoc"
 
-    def quote(self, filename: str, blob: bytes) -> ParseBillingQuote | None:
-        if filename_type(filename) != FileType.PDF.value:
+    def quote(self, filename: str, blob: bytes, parser_config: dict | None = None) -> ParseBillingQuote | None:
+        if not is_pdf_deepdoc_parse(filename, parser_config):
             return None
 
         pages = PdfParser.total_page_number(filename, blob)
@@ -1251,10 +1251,10 @@ class ParseBillingService:
         cls.ESTIMATORS.append(estimator)
 
     @classmethod
-    def quote_parse(cls, filename: str, blob: bytes) -> list[ParseBillingQuote]:
+    def quote_parse(cls, filename: str, blob: bytes, parser_config: dict | None = None) -> list[ParseBillingQuote]:
         quotes = []
         for estimator in cls.ESTIMATORS:
-            quote = estimator.quote(filename, blob)
+            quote = estimator.quote(filename, blob, parser_config=parser_config)
             if quote:
                 quotes.append(quote)
         return quotes
@@ -1284,10 +1284,11 @@ class ParseBillingService:
         doc_id: str,
         filename: str,
         blob: bytes,
+        parser_config: dict | None = None,
         idempotency_key: str | None = None,
         page_range: str = "",
     ) -> dict | None:
-        quotes = cls.quote_parse(filename, blob)
+        quotes = cls.quote_parse(filename, blob, parser_config=parser_config)
         points = sum(quote.points for quote in quotes)
         if points <= 0:
             return None
@@ -1312,6 +1313,7 @@ class ParseBillingService:
             doc_id=doc_id,
             filename=filename,
             blob=blob,
+            parser_config=file_ref.get("parser_config") if file_ref else None,
         )
 
     @classmethod

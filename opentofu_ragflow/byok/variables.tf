@@ -948,7 +948,7 @@ variable "deploy_zammad" {
 variable "zammad_image_tag" {
   description = "Zammad Docker image tag"
   type        = string
-  default     = "6.4"
+  default     = "7.0.1-0035"
 }
 
 # =============================================================================

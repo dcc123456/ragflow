@@ -240,23 +240,37 @@ function wait_for_server() {
 ensure_docling
 ensure_db_init
 
+run_with_restart() {
+  local process_name="$1"
+  shift
+
+  while true; do
+    echo "Attempt to start ${process_name}..."
+    set +e
+    "$@"
+    local exit_code=$?
+    set -e
+    echo "${process_name} exited with code ${exit_code}. Restarting in 1 second..."
+    sleep 1
+  done
+}
+
 if [[ "${ENABLE_WEBSERVER}" -eq 1 ]]; then
     echo "Starting nginx..."
     /usr/sbin/nginx
 
-    while true; do
-        echo "Attempt to start RAGFlow server..."
-        "$PY" api/ragflow_server.py ${INIT_SUPERUSER_ARGS}
-        echo "RAGFlow python server started."
-        sleep 1;
-    done &
+    run_with_restart "RAGFlow server" "$PY" api/ragflow_server.py ${INIT_SUPERUSER_ARGS} &
 
     if [[ "${API_PROXY_SCHEME}" == "hybrid" ]]; then
         while true; do
             echo "Attempt to start RAGFlow go server..."
             wait_for_server "http://127.0.0.1:9380/healthz" "ragflow_server"
             echo "Starting RAGFlow go server..."
-            bin/server_main
+      set +e
+      bin/server_main
+      exit_code=$?
+      set -e
+      echo "RAGFlow go server exited with code ${exit_code}. Restarting in 1 second..."
             sleep 1;
         done &
     fi
@@ -264,19 +278,18 @@ fi
 
 
 if [[ "${ENABLE_ADMIN_SERVER}" -eq 1 ]]; then
-    while true; do
-        echo "Attempt to start Admin python server..."
-        "$PY" admin/server/admin_server.py
-        echo "Admin python server started"
-        sleep 1;
-    done &
+    run_with_restart "Admin python server" "$PY" admin/server/admin_server.py &
 
     if [[ "${API_PROXY_SCHEME}" == "hybrid" ]]; then
         while true; do
             echo "Attempt to starting Admin go server..."
             wait_for_server "http://127.0.0.1:9381/api/v1/admin/ping" "admin_server"
             echo "Starting Admin go server..."
-            bin/admin_server
+      set +e
+      bin/admin_server
+      exit_code=$?
+      set -e
+      echo "Admin go server exited with code ${exit_code}. Restarting in 1 second..."
             sleep 1;
         done &
     fi
@@ -284,11 +297,7 @@ fi
 
 if [[ "${ENABLE_DATASYNC}" -eq 1 ]]; then
     echo "Starting data sync..."
-    while true; do
-        "$PY" rag/svr/sync_data_source.py &
-        wait;
-        sleep 1;
-    done &
+    run_with_restart "data sync" "$PY" rag/svr/sync_data_source.py &
 fi
 
 if [[ "${ENABLE_MCP_SERVER}" -eq 1 ]]; then

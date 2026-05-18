@@ -619,11 +619,13 @@ class FileService(CommonService):
         for filename, blob in files:
             hold_id = None
             if settings.BILLING_ENABLED:
+                parser_config = {"layout_recognize": "Plain Text"}
                 hold = ParseBillingService.hold_for_parse(
                     tenant_id=user_id,
                     doc_id=get_uuid(),
                     filename=filename,
                     blob=blob,
+                    parser_config=parser_config,
                 )
                 if hold:
                     hold_id = hold["id"]
@@ -670,11 +672,13 @@ class FileService(CommonService):
 
         hold_id = None
         if settings.BILLING_ENABLED:
+            parser_config = {"layout_recognize": "Plain Text"}
             hold = ParseBillingService.hold_for_parse(
                 tenant_id=tenant_id,
                 doc_id=billing_doc_id or get_uuid(),
                 filename=filename,
                 blob=blob,
+                parser_config=parser_config,
             )
             hold_id = hold["id"] if hold else None
 

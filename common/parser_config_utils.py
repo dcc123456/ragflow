@@ -16,6 +16,9 @@
 
 from typing import Any
 
+from api.db import FileType
+from api.utils.file_utils import filename_type
+
 
 def normalize_layout_recognizer(layout_recognizer_raw: Any) -> tuple[Any, str | None]:
     parser_model_name: str | None = None
@@ -34,3 +37,19 @@ def normalize_layout_recognizer(layout_recognizer_raw: Any) -> tuple[Any, str | 
             layout_recognizer = "OpenDataLoader"
 
     return layout_recognizer, parser_model_name
+
+
+def is_pdf_deepdoc_parse(filename: str, parser_config: dict | None = None) -> bool:
+    if filename_type(filename) != FileType.PDF.value:
+        return False
+
+    parser_config = parser_config or {}
+    layout_recognizer, _ = normalize_layout_recognizer(parser_config.get("layout_recognize", "DeepDOC"))
+
+    if isinstance(layout_recognizer, bool):
+        return layout_recognizer
+
+    if not isinstance(layout_recognizer, str):
+        return False
+
+    return layout_recognizer.strip().lower() == "deepdoc"

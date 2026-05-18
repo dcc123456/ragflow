@@ -412,6 +412,7 @@ def queue_tasks(doc: dict, bucket: str, name: str, priority: int):
                 doc_id=doc["id"],
                 filename=doc["name"],
                 blob=file_bin,
+                parser_config=doc.get("parser_config"),
             )
             billing_hold_id = hold["id"] if hold else None
 

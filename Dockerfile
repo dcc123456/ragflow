@@ -89,13 +89,15 @@ ENV PATH=/root/.local/bin:$PATH
 # Install profiling tools (SYS_PTRACE capability is added via K8s securityContext)
 RUN uv tool install austin-dist && uv tool install austin-tui && uv tool install py-spy
 
-# Install Node.js 20.x (Ubuntu 24.04's Node.js is too old)
+# Install Node.js 22.x (Ubuntu 24.04's Node.js is too old)
 RUN --mount=type=cache,id=ragflow_apt,target=/var/cache/apt,sharing=locked \
-    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
     apt purge -y nodejs npm && \
     apt autoremove -y && \
     apt update && \
     apt install -y nodejs
+
+RUN corepack enable
 
 # Add msssql ODBC driver
 # macOS ARM64 environment, install msodbcsql18.
@@ -165,8 +167,9 @@ RUN --mount=type=cache,id=ragflow_uv,target=/root/.cache/uv,sharing=locked \
 COPY web web
 COPY docs docs
 RUN --mount=type=cache,id=ragflow_npm,target=/root/.npm,sharing=locked \
+    --mount=type=cache,id=ragflow_vite,target=/ragflow/web/.vite-cache,sharing=locked \
     cd web && NODE_OPTIONS="--max-old-space-size=8192" npm install && \
-    NODE_OPTIONS="--max-old-space-size=8192" VITE_BUILD_SOURCEMAP=false VITE_MINIFY=esbuild npm run build
+    NODE_OPTIONS="--max-old-space-size=8192" VITE_BUILD_SOURCEMAP=false npm run build
 
 # Get version from git (mount .git directory to compute version dynamically)
 RUN --mount=type=bind,source=.git,target=/ragflow/.git \

@@ -238,6 +238,9 @@ internal/cpp/cmake-build-debug/
 bin/*
 !bin/.gitkeep
 
+# Vite build cache
+.vite-cache/
+
 # oh-my-claudecode session state
 .omc/
 

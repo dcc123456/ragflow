@@ -713,6 +713,56 @@ def test_customer_subscription_updated_status_only_syncs_main_subscription(monke
 
 
 @pytest.mark.p2
+def test_customer_subscription_updated_no_actionable_fields_syncs_trial_placeholder_to_paid_plan(monkeypatch):
+    updates = []
+
+    event_model = SimpleNamespace(
+        created=1710000003,
+        data=SimpleNamespace(
+            object=_stripe_subscription(price_id="price_pro"),
+            previous_attributes=SimpleNamespace(status=None, plan=None, items=None, trial_end=None),
+        ),
+        model_dump=lambda: {},
+    )
+
+    monkeypatch.setattr(billing_app, "SubscriptionUpdated", lambda **_kwargs: event_model)
+    monkeypatch.setattr(billing_app.SubscriptionService, "get_by_subscription_id", lambda _subscription_id: None)
+    monkeypatch.setattr(billing_app.SubscriptionService, "get_tenant_id_by_customer_id", lambda _customer_id: "tenant_1")
+    monkeypatch.setattr(
+        billing_app.SubscriptionService,
+        "get_by_tenant_id",
+        lambda _tenant_id: {
+            "tenant_id": "tenant_1",
+            "customer_id": "cus_main",
+            "subscription_id": "",
+            "subscription_status": "active",
+            "product_id": "prod_trial",
+            "plan_name": "Trial",
+            "price_id": "price_trial",
+            "order_id": "order_trial",
+            "invoice_id": "",
+            "invoice_url": "",
+            "invoice_pdf_url": "",
+            "start_time": datetime(2026, 5, 14, 6, 55, 21, tzinfo=timezone.utc),
+            "end_time": datetime(2027, 5, 14, 6, 55, 21, tzinfo=timezone.utc),
+            "original_subscription_id": "",
+        },
+    )
+    monkeypatch.setattr(billing_app.SubscriptionService, "upsert_subscription", lambda tenant_id, data: updates.append((tenant_id, data)))
+    monkeypatch.setattr(billing_app.settings, "BILLING_PRICEID_TO_PRODUCT", {"price_trial": "Trial", "price_pro": "Pro"}, raising=False)
+    monkeypatch.setattr(billing_app, "get_product_id_by_name", lambda plan_name: f"prod_{plan_name.lower()}")
+
+    billing_app._handle_customer_subscription_updated({"type": "customer.subscription.updated", "data": {"object": {"id": "sub_main"}}})
+
+    assert updates[-1][0] == "tenant_1"
+    assert updates[-1][1]["plan_name"] == "Pro"
+    assert updates[-1][1]["price_id"] == "price_pro"
+    assert updates[-1][1]["subscription_id"] == "sub_main"
+    assert updates[-1][1]["start_time"] == billing_app.to_utc_datetime(1710000000)
+    assert updates[-1][1]["end_time"] == billing_app.to_utc_datetime(1712592000)
+
+
+@pytest.mark.p2
 def test_customer_subscription_deleted_syncs_main_subscription_to_canceled(monkeypatch):
     updates = []
 

@@ -3576,7 +3576,26 @@ def _handle_customer_subscription_updated(event: dict):
         logging.info("Subscription trial_end changed: %s -> %s", previous.trial_end, subscription.trial_end)
 
     else:
-        logging.debug("Subscription updated with no actionable fields.")
+        current_plan_name = (existing_main_subscription.get("plan_name") or "") if existing_main_subscription else ""
+        event_plan_name = settings.BILLING_PRICEID_TO_PRODUCT.get(first_price_id, "") if first_price_id else ""
+
+        if existing_main_subscription and _should_preview_as_new_subscription(current_plan_name, event_plan_name):
+            _sync_main_subscription_from_stripe(
+                tenant_id=tenant_id,
+                stripe_subscription=subscription,
+                subscription_status=_normalize_subscription_status(subscription.status),
+                invoice_id=subscription.latest_invoice_id or "",
+            )
+            logging.info(
+                "subscription.updated fallback sync from trial placeholder: "
+                "tenant_id=%s, subscription_id=%s, db_plan=%s, event_plan=%s",
+                tenant_id,
+                subscription_id,
+                current_plan_name,
+                event_plan_name,
+            )
+        else:
+            logging.debug("Subscription updated with no actionable fields.")
 
 
 def _handle_customer_subscription_deleted(event: dict):

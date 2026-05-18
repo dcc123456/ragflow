@@ -1167,6 +1167,7 @@ def doc_upload_and_parse(conversation_id, file_objs, user_id):
     err, files = FileService.upload_document(kb, file_objs, user_id)
     assert not err, "\n".join(str(e) for e in err)
     pending_hold_ids = {}
+    parser_config = {"chunk_token_num": 4096, "delimiter": "\n!?;。；！？", "layout_recognize": "Plain Text", "table_context_size": 0, "image_context_size": 0}
     if settings.BILLING_ENABLED:
         for doc_info, blob in files:
             hold = ParseBillingService.hold_for_parse(
@@ -1174,6 +1175,7 @@ def doc_upload_and_parse(conversation_id, file_objs, user_id):
                 doc_id=doc_info["id"],
                 filename=doc_info["name"],
                 blob=blob,
+                parser_config=parser_config,
             )
             if hold:
                 pending_hold_ids[doc_info["id"]] = hold["id"]
@@ -1182,7 +1184,6 @@ def doc_upload_and_parse(conversation_id, file_objs, user_id):
         pass
 
     FACTORY = {ParserType.PRESENTATION.value: presentation, ParserType.PICTURE.value: picture, ParserType.AUDIO.value: audio, ParserType.EMAIL.value: email}
-    parser_config = {"chunk_token_num": 4096, "delimiter": "\n!?;。；！？", "layout_recognize": "Plain Text", "table_context_size": 0, "image_context_size": 0}
     exe = ThreadPoolExecutor(max_workers=12)
     threads = []
     doc_nm = {}

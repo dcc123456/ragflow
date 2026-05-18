@@ -75,7 +75,7 @@ def get_planned_resources():
 
         # Normalize address for metadata lookup keys (strip index to match state file format)
         # e.g., "kubernetes_job_v1.foo[0]" -> "kubernetes_job_v1.foo"
-        addr_base = address.split("[")[0]
+        # (kept for reference; state comparison now uses full address)
 
         actions = change.get("change", {}).get("actions", [])
 
@@ -98,19 +98,21 @@ def get_planned_resources():
             continue
 
         # Extract name for standard kubernetes_* resources
+        # Use FULL address (including index) as key to avoid collisions between
+        # multiple instances of the same resource (e.g., parser["common"] vs parser["raptor"])
         if "metadata" in after and isinstance(after["metadata"], list) and len(after["metadata"]) > 0:
             k8s_name = after["metadata"][0].get("name")
             if k8s_name:
-                metadata_names[addr_base] = k8s_name
+                metadata_names[address] = k8s_name
 
         # Extract info for kubernetes_manifest (nested manifest dict)
         elif "manifest" in after and isinstance(after["manifest"], dict):
             manifest = after["manifest"]
             k8s_name = manifest.get("metadata", {}).get("name")
             if k8s_name:
-                metadata_names[addr_base] = k8s_name
+                metadata_names[address] = k8s_name
             # Store full manifest info for dynamic import ID generation
-            manifest_info[addr_base] = {
+            manifest_info[address] = {
                 "api_version": manifest.get("apiVersion"),
                 "kind": manifest.get("kind"),
                 "name": k8s_name,
@@ -120,11 +122,31 @@ def get_planned_resources():
     return planned, metadata_names, plan_summary, manifest_info, data
 
 
+def parse_state_instances(path):
+    """Parse tofu state file, return dict mapping base_addr -> set of existing index_keys."""
+    if not os.path.exists(path):
+        return {}
+    if os.path.getsize(path) == 0:
+        os.remove(path)
+        return {}
+    with open(path) as f:
+        state = json.load(f)
+    instances = {}
+    for r in state.get("resources", []):
+        base = r["type"] + "." + r["name"]
+        idx_keys = set()
+        for inst in r.get("instances", []):
+            idx = inst.get("index_key")
+            if idx is not None:
+                idx_keys.add(str(idx))
+        instances[base] = idx_keys
+    return instances
+
+
 def parse_state_file(path):
-    """Parse tofu state file, return set of resource addresses"""
+    """Parse tofu state file, return set of base resource addresses."""
     if not os.path.exists(path):
         return set()
-    # Delete empty state file
     if os.path.getsize(path) == 0:
         os.remove(path)
         return set()
@@ -158,7 +180,8 @@ def discover_cluster_resources():
     resources["namespace"] = kubectl_get("namespace")
     # Namespaced resources
     for kind in ["pvc", "statefulset", "secret", "configmap", "service",
-                 "deployment", "serviceaccount", "role", "rolebinding", "job", "cronjob"]:
+                 "deployment", "serviceaccount", "role", "rolebinding", "job", "cronjob",
+                 "podmonitoring"]:
         resources[kind] = kubectl_get(kind)
     # Gateway API (cluster-scoped but queried with -A)
     resources["gateway"] = kubectl_get("gateway")
@@ -189,9 +212,8 @@ def address_to_k8s_id(address, cluster, metadata_names=None, manifest_info=None)
     tf_name = tf_name.split("[")[0]  # Remove index if present
 
     # Get the evaluated K8s resource name from plan JSON
-    # metadata_names is keyed by addr_base (without index)
-    addr_base = address.split("[")[0]
-    k8s_name = metadata_names.get(addr_base, tf_name)
+    # metadata_names is keyed by FULL address (with index) to support multi-instance resources
+    k8s_name = metadata_names.get(address, tf_name)
 
     def search_cluster(k8s_kind):
         """Search pre-fetched cluster dict. Zero subprocess calls."""
@@ -219,7 +241,7 @@ def address_to_k8s_id(address, cluster, metadata_names=None, manifest_info=None)
 
     # --- Case 1: Kubernetes Manifests (Dynamic based on manifest info from plan) ---
     if tf_type == "kubernetes_manifest":
-        info = manifest_info.get(addr_base)
+        info = manifest_info.get(address)
         if not info:
             # Fallback: try to infer from tf_name
             return None
@@ -244,8 +266,8 @@ def address_to_k8s_id(address, cluster, metadata_names=None, manifest_info=None)
         return [(import_id, match_type) for _, match_type in matches]
 
     # --- Case 2: Standard K8s Resources (Generic mapping) ---
-    # Dynamically extract K8s kind (e.g., "kubernetes_config_map_v1" -> "configmap")
-    kind_match = re.match(r"kubernetes_(.+?)(?:_v\d+)?$", tf_type)
+    # Dynamically extract K8s kind (e.g., "kubernetes_deployment_v1" -> "deployment")
+    kind_match = re.match(r"kubernetes_(.+?)_v\d+$", tf_type)
     if not kind_match:
         return None
 
@@ -627,6 +649,10 @@ def main():
     helm_releases = get_helm_releases()
     print(f"  {len(helm_releases)} helm releases in plan")
 
+    # Step 1b: Also parse state instances for fine-grained instance-level check
+    state_instances = parse_state_instances(state_file)
+    print(f"  {sum(len(v) for v in state_instances.values())} instances across all resources")
+
     # Step 4: Find missing resources (in plan ∧ K8s) - state
     print("\n=== Step 4: Find missing resources ===")
     to_import = []
@@ -634,10 +660,17 @@ def main():
     helm_needs_reconcile = []  # Track helm releases needing special handling
 
     for addr in sorted(planned_resources):
-        # Strip index suffix for state comparison (state file doesn't have indices)
+        # Extract instance index (e.g., "common" from parser["common"])
         addr_base = addr.split("[")[0]
-        if addr_base in state_resources:
-            continue
+        instance_idx = None
+        if "[" in addr:
+            instance_idx = addr.split("[")[1].rstrip("]")
+
+        # Skip if the base resource type is in state AND the specific instance index exists
+        if addr_base in state_instances:
+            existing_instances = state_instances[addr_base]
+            if instance_idx in existing_instances:
+                continue  # This specific instance already exists in state
         k8s_id = address_to_k8s_id(addr, cluster, metadata_names, manifest_info)
         if k8s_id is None:
             print(f"  [NO_MATCH]  {addr}")

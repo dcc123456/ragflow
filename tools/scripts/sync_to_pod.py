@@ -6,6 +6,8 @@ Usage:
     python sync_to_pod.py --pod POD_NAME   # Direct sync to specific pod
     python sync_to_pod.py --python-only    # Skip npm build + dist sync
     python sync_to_pod.py --dist-only      # Only sync dist (after manual npm build)
+    python sync_to_pod.py --patch-liveness-threshold 40
+                                          # Explicitly patch Deployment probe (rolls pods)
 
 Prereq:
     - rsync installed in the pod (apt install rsync)
@@ -13,6 +15,7 @@ Prereq:
     - Frontend: npm run build must work locally (Node.js required)
 """
 
+import os
 import subprocess
 import time
 import sys
@@ -196,9 +199,15 @@ def start_port_forward(pod, namespace="ragflow", local_port=8873, remote_port=88
         except (socket.timeout, ConnectionRefusedError, OSError):
             return False
 
-    if not port_open("localhost", local_port):
+    max_retries = 10
+    for attempt in range(max_retries):
+        if port_open("localhost", local_port):
+            break
+        time.sleep(1)
+    else:
         raise RuntimeError(
-            f"port-forward started but localhost:{local_port} is not open"
+            f"port-forward started but localhost:{local_port} is not open "
+            f"after {max_retries}s"
         )
     print(f"  port-forward active: localhost:{local_port} -> {pod}:{remote_port}")
     return pf_proc
@@ -212,13 +221,16 @@ def is_port_open(port, timeout=2):
         return False
 
 
+# Repository root (two levels up from tools/scripts/)
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+
 # ---------------------------------------------------------------------------
 # Build and sync
 # ---------------------------------------------------------------------------
 
 def run_npm_build():
     """Run npm run build in the web/ directory."""
-    web_dir = Path(__file__).parent / "web"
+    web_dir = _REPO_ROOT / "web"
     if not web_dir.exists():
         print("  [WARN] web/ directory not found, skipping frontend build")
         return False
@@ -227,7 +239,8 @@ def run_npm_build():
     result = subprocess.run(
         ["npm", "run", "build"],
         cwd=web_dir,
-        capture_output=True, text=True
+        capture_output=True, text=True,
+        env={**os.environ, "NODE_OPTIONS": "--max-old-space-size=8192"}
     )
     if result.returncode != 0:
         print(f"  [ERROR] npm run build failed:\n{result.stderr[-500:]}")
@@ -256,7 +269,7 @@ RSYNC_EXCLUDES = [
 
 def sync_python_files(pod, namespace="ragflow", local_port=8873):
     """rsync all *.py files from repo root to pod's /ragflow."""
-    repo_root = Path(__file__).parent
+    repo_root = _REPO_ROOT
     dest = f"rsync://localhost:{local_port}/ragflow"
 
     print("  Syncing Python files to pod ...")
@@ -283,7 +296,7 @@ def sync_python_files(pod, namespace="ragflow", local_port=8873):
 
 def sync_dist_files(pod, namespace="ragflow", local_port=8873):
     """rsync web/dist/ to pod's /ragflow/web/dist/."""
-    repo_root = Path(__file__).parent
+    repo_root = _REPO_ROOT
     dist_dir = repo_root / "web" / "dist"
 
     if not dist_dir.exists():
@@ -314,9 +327,9 @@ def sync_dist_files(pod, namespace="ragflow", local_port=8873):
 # ---------------------------------------------------------------------------
 
 def patch_liveness_threshold(deployment, namespace="ragflow", threshold=40):
-    """Set liveness_probe failure_threshold to threshold (default 40 = 20 min at 30s interval).
+    """Patch the Deployment livenessProbe failure_threshold.
 
-    This prevents the pod from being killed during code sync + restart.
+    Warning: patching Deployment.spec.template triggers a rollout and replaces pods.
     """
     import json
     d = {'spec': {'template': {'spec': {'containers': [{'name': 'ragflow', 'livenessProbe': {'failureThreshold': threshold}}]}}}}
@@ -335,18 +348,30 @@ def patch_liveness_threshold(deployment, namespace="ragflow", threshold=40):
         print(f"  liveness_probe.failure_threshold -> {threshold} (20 min @ 30s interval)")
 
 
+ENTRYPOINT_PYTHON_SCRIPTS = [
+    "api/ragflow_server.py",
+    "admin/server/admin_server.py",
+    "rag/svr/sync_data_source.py",
+]
+
+
 def kill_ragflow_server(pod, namespace="ragflow"):
-    """Kill ragflow_server process in the pod to trigger graceful restart."""
+    """Kill entrypoint-managed Python processes in the pod to trigger restart."""
+    script_patterns = " || ".join(f"index($2, \"{script}\") > 0" for script in ENTRYPOINT_PYTHON_SCRIPTS)
+    shell_command = (
+        "pids=$(ps -eo pid=,args= | "
+        f"awk '/python/ && ({script_patterns}) {{print $1}}'); "
+        "if [[ -n \"$pids\" ]]; then kill -TERM $pids; fi"
+    )
     result = subprocess.run(
         ["kubectl", "exec", pod, "-n", namespace, "--",
-         "sh", "-c",
-         "kill -TERM $(pgrep -f 'api/ragflow_server.py') 2>/dev/null || true"],
+         "bash", "-lc", shell_command],
         capture_output=True, text=True
     )
     # exit code 143 = SIGTERM (container exec connection killed, likely means process died)
     # exit code 137 = SIGKILL. Both usually mean the kill succeeded but connection dropped.
     if result.returncode in (0, 143, 137):
-        print("  ragflow_server process killed")
+        print("  entrypoint-managed Python processes signaled for restart")
 
 
 def reload_nginx(pod, namespace="ragflow"):
@@ -380,6 +405,15 @@ def main():
                         help="Only sync Python files, skip npm build and dist")
     parser.add_argument("--dist-only", action="store_true",
                         help="Only sync web/dist (assumes build already done)")
+    parser.add_argument(
+        "--patch-liveness-threshold",
+        type=int,
+        default=None,
+        help=(
+            "Patch Deployment livenessProbe.failureThreshold before sync. "
+            "This changes the Pod template and triggers a rollout."
+        ),
+    )
     parser.add_argument("--build", action="store_true", default=True,
                         help="Run npm build before syncing (default: True)")
     parser.add_argument("--no-build", dest="build", action="store_false",
@@ -396,10 +430,17 @@ def main():
     pod = args.pod_name or pick_pod(pods)
     print(f"    Selected: {pod}")
 
-    # ---- 2. Patch liveness threshold to survive restart -----------------------
-    print("\n[2] Patching liveness_probe.failure_threshold to 40 (20 min) ...")
-    deployment = find_deployment_name(namespace)
-    patch_liveness_threshold(deployment, namespace)
+    # ---- 2. Optionally patch liveness threshold ------------------------------
+    if args.patch_liveness_threshold is not None:
+        print(
+            "\n[2] Patching Deployment liveness_probe.failure_threshold to "
+            f"{args.patch_liveness_threshold} ..."
+        )
+        print("    Warning: this updates the Pod template and triggers a rollout.")
+        deployment = find_deployment_name(namespace)
+        patch_liveness_threshold(deployment, namespace, args.patch_liveness_threshold)
+    else:
+        print("\n[2] Skipping Deployment liveness patch (default safe mode; no rollout).")
 
     # ---- 3. Start rsyncd in pod ---------------------------------------------
     print(f"\n[3] Starting rsyncd in pod {pod} ...")
