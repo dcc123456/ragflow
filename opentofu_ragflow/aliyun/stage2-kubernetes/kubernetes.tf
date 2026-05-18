@@ -1112,8 +1112,9 @@ resource "kubernetes_secret" "ragflow_env" {
     REDIS_PASSWORD = random_password.redis.result
 
     # TEI Configuration
-    TEI_HOST  = "tei"
-    TEI_MODEL = var.tei_model
+    TEI_ENABLED = var.tei_replicas > 0 ? "1" : "0"
+    TEI_HOST    = "tei"
+    TEI_MODEL   = var.tei_replicas > 0 ? var.tei_model : ""
 
     # RabbitMQ Configuration
     RABBITMQ_HOST         = "rabbitmq"

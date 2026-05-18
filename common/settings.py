@@ -270,8 +270,11 @@ def init_settings():
 
     CHAT_MDL = CHAT_CFG.get("model", "") or ""
     EMBEDDING_MDL = EMBEDDING_CFG.get("model", "") or ""
+    tei_enabled = os.getenv("TEI_ENABLED")
     compose_profiles = os.getenv("COMPOSE_PROFILES", "")
-    if "tei-" in compose_profiles:
+    if (tei_enabled is not None and tei_enabled.lower() in ("1", "true", "yes")) or (
+        tei_enabled is None and "tei-" in compose_profiles
+    ):
         EMBEDDING_MDL = os.getenv("TEI_MODEL", EMBEDDING_MDL or "BAAI/bge-small-en-v1.5")
     RERANK_MDL = RERANK_CFG.get("model", "") or ""
     ASR_MDL = ASR_CFG.get("model", "") or ""

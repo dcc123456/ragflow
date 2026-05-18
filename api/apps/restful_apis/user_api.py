@@ -61,6 +61,7 @@ from common.billing_utils import milliseconds_to_timestamp_seconds, to_utc_isofo
 from common import settings
 from common.file_utils import get_project_base_directory
 from api.db.services.user_service import UserService, TenantService, UserTenantService
+from api.db.services.tenant_llm_service import is_tei_enabled
 from api.db.services.system_settings_service import SystemSettingsService
 from api.db.services.role_service import RoleService
 from api.db.joint_services.mail_service import send_email_html
@@ -937,7 +938,10 @@ async def tenant_info():
         tenants = TenantService.get_info_by(current_user.id)
         if not tenants:
             return get_data_error_result(message="Tenant not found!")
-        return get_json_result(data=tenants[0])
+        tenant = tenants[0]
+        if not is_tei_enabled() and tenant.get("embd_id", "").endswith("@Builtin"):
+            tenant = {**tenant, "embd_id": ""}
+        return get_json_result(data=tenant)
     except Exception as e:
         return server_error_response(e)
 

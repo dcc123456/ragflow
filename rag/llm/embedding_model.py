@@ -61,7 +61,11 @@ class BuiltinEmbed(Base):
     def __init__(self, key, model_name, **kwargs):
         logging.info(f"Initialize BuiltinEmbed according to settings.EMBEDDING_CFG: {settings.EMBEDDING_CFG}")
         embedding_cfg = settings.EMBEDDING_CFG
-        if not BuiltinEmbed._model and "tei-" in os.getenv("COMPOSE_PROFILES", ""):
+        tei_enabled = os.getenv("TEI_ENABLED")
+        is_tei_enabled = (tei_enabled is not None and tei_enabled.lower() in ("1", "true", "yes")) or (
+            tei_enabled is None and "tei-" in os.getenv("COMPOSE_PROFILES", "")
+        )
+        if not BuiltinEmbed._model and is_tei_enabled:
             with BuiltinEmbed._model_lock:
                 BuiltinEmbed._model_name = settings.EMBEDDING_MDL
                 BuiltinEmbed._max_tokens = BuiltinEmbed.MAX_TOKENS.get(settings.EMBEDDING_MDL, 500)

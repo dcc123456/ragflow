@@ -17,7 +17,12 @@ import asyncio
 import logging
 import json
 import os
-from api.db.services.tenant_llm_service import LLMFactoriesService, TenantLLMService
+from api.db.services.tenant_llm_service import (
+    LLMFactoriesService,
+    TenantLLMService,
+    get_enabled_tei_model,
+    is_tei_enabled,
+)
 from api.db.services.llm_service import LLMService
 from api.utils.api_utils import server_error_response, get_data_error_result, get_json_result, validate_request
 from quart import request
@@ -53,6 +58,14 @@ def _resolve_my_llm_is_tools(o_dict: dict) -> bool:
     except Exception:
         return False
 
+def _filter_builtin_tei_models(llms):
+    if not is_tei_enabled():
+        return [m for m in llms if m.get("fid") != "Builtin"]
+    tei_model = get_enabled_tei_model()
+    if tei_model:
+        logger.info(f"TEI_MODEL={tei_model}, filtering Builtin models")
+        return [m for m in llms if not (m.get("fid") == "Builtin" and m.get("llm_name") != tei_model)]
+    return llms
 
 @manager.route("/factories", methods=["GET"])  # noqa: F821
 @login_required
@@ -542,10 +555,11 @@ def my_llms():
             objs = TenantLLMService.query(tenant_id=current_user.id)
             factories = LLMFactoriesService.query(status=StatusEnum.VALID.value)
 
-            # For Builtin factory, only show the model specified in TEI_MODEL
-            import os
-            tei_model = os.getenv("TEI_MODEL", "")
-            if tei_model:
+            # Builtin embedding models are backed by TEI. Hide them when TEI is disabled.
+            tei_model = get_enabled_tei_model()
+            if not is_tei_enabled():
+                objs = [o for o in objs if o.llm_factory != "Builtin"]
+            elif tei_model:
                 logger.info(f"[my_llms] TEI_MODEL={tei_model}, filtering Builtin models")
                 objs = [o for o in objs if not (o.llm_factory == "Builtin" and o.llm_name != tei_model)]
 
@@ -631,12 +645,7 @@ def list_app():
                 for m in llms:
                     m["available"] = m["fid"] in available_fact
 
-                # For Builtin factory, filter models by TEI_MODEL environment variable
-                import os
-                tei_model = os.getenv("TEI_MODEL", "")
-                if tei_model:
-                    logger.info(f"[list] TEI_MODEL={tei_model}, filtering Builtin models (from_other)")
-                    llms = [m for m in llms if not (m["fid"] == "Builtin" and m["llm_name"] != tei_model)]
+                llms = _filter_builtin_tei_models(llms)
             else:
                 llm_set = set([m["llm_name"] + "@" + m["fid"] for m in llms])
                 for o in objs:
@@ -646,12 +655,7 @@ def list_app():
                         continue
                     llms.append({"llm_name": o.llm_name, "model_type": o.model_type, "fid": o.llm_factory, "available": True, "status": StatusEnum.VALID.value})
 
-            # For Builtin factory, filter models by TEI_MODEL environment variable
-            import os
-            tei_model = os.getenv("TEI_MODEL", "")
-            if tei_model:
-                logger.info(f"[list] TEI_MODEL={tei_model}, filtering Builtin models")
-                llms = [m for m in llms if not (m.get("fid") == "Builtin" and m.get("llm_name") != tei_model)]
+            llms = _filter_builtin_tei_models(llms)
 
             for m in llms:
                 m["tenant_id"] = tenant_id

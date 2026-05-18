@@ -538,6 +538,7 @@ def _load_user_app(monkeypatch):
 
     tenant_llm_service_mod.TenantLLMService = _StubTenantLLMService
     tenant_llm_service_mod.user_register = lambda _user_id, _user: None
+    tenant_llm_service_mod.is_tei_enabled = lambda: False
     monkeypatch.setitem(sys.modules, "api.db.services.tenant_llm_service", tenant_llm_service_mod)
 
     user_service_mod = ModuleType("api.db.services.user_service")

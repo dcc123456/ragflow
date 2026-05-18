@@ -2157,8 +2157,9 @@ resource "kubernetes_secret_v1" "ragflow_env" {
     REDIS_DB       = tostring(var.redis_db)
 
     # TEI Configuration
-    TEI_HOST  = local.tei_host_effective
-    TEI_MODEL = var.tei_model
+    TEI_ENABLED = var.tei_replicas > 0 ? "1" : "0"
+    TEI_HOST    = local.tei_host_effective
+    TEI_MODEL   = var.tei_replicas > 0 ? var.tei_model : ""
 
     # RabbitMQ Configuration
     RABBITMQ_HOST         = local.rabbitmq_host_effective

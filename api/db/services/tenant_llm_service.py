@@ -40,6 +40,17 @@ from common.misc_utils import get_uuid
 from rag.llm import ChatModel, CvModel, EmbeddingModel, OcrModel, RerankModel, Seq2txtModel, TTSModel
 
 
+def is_tei_enabled():
+    enabled = os.getenv("TEI_ENABLED")
+    if enabled is not None:
+        return enabled.lower() in ("1", "true", "yes")
+    return "tei-" in os.getenv("COMPOSE_PROFILES", "")
+
+
+def get_enabled_tei_model():
+    return os.getenv("TEI_MODEL", "") if is_tei_enabled() else ""
+
+
 class LLMFactoriesService(CommonService):
     model = LLMFactories
 
@@ -128,14 +139,15 @@ class TenantLLMService(CommonService):
     @classmethod
     @DB.connection_context()
     def get_my_llms(cls, tenant_id):
-        import os
         fields = [cls.model.id, cls.model.llm_factory, LLMFactories.logo, LLMFactories.tags, cls.model.model_type, cls.model.llm_name,
                   cls.model.used_tokens, cls.model.status]
         query = cls.model.select(*fields).join(LLMFactories, on=(cls.model.llm_factory == LLMFactories.name)).where(
             cls.model.tenant_id == tenant_id, ~cls.model.api_key.is_null())
 
-        # For Builtin factory, only return the model specified in TEI_MODEL environment variable
-        tei_model = os.getenv("TEI_MODEL", "")
+        # Builtin embedding models are backed by TEI. Hide them when TEI is disabled.
+        tei_model = get_enabled_tei_model()
+        if not is_tei_enabled():
+            query = query.where(cls.model.llm_factory != "Builtin")
         if tei_model:
             # Filter out other Builtin models that don't match TEI_MODEL
             query = query.where(
@@ -248,8 +260,8 @@ class TenantLLMService(CommonService):
         elif (
             llm_type == LLMType.EMBEDDING
             and fid == "Builtin"
-            and "tei-" in os.getenv("COMPOSE_PROFILES", "")
-            and mdlnm == os.getenv("TEI_MODEL", "")
+            and is_tei_enabled()
+            and mdlnm == get_enabled_tei_model()
         ):
             embedding_cfg = settings.EMBEDDING_CFG
             model_config = {

@@ -14,12 +14,16 @@
 #  limitations under the License.
 #
 import logging
-import os
 import enum
 from common import settings
 from common.constants import LLMType
 from api.db.services.llm_service import LLMService
-from api.db.services.tenant_llm_service import TenantLLMService, TenantService
+from api.db.services.tenant_llm_service import (
+    TenantLLMService,
+    TenantService,
+    get_enabled_tei_model,
+    is_tei_enabled,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +73,12 @@ def get_model_config_by_type_and_name(tenant_id: str, model_type: str, model_nam
     model_config = TenantLLMService.get_api_key(lookup_tenant_id, model_name, model_type_val)
     if not model_config:
         # model_name in format 'name@factory[#tenant_id]', split model_name and try again
-        if model_type == LLMType.EMBEDDING and fid == "Builtin" and "tei-" in os.getenv("COMPOSE_PROFILES", "") and pure_model_name == os.getenv("TEI_MODEL", ""):
+        if (
+            model_type == LLMType.EMBEDDING
+            and fid == "Builtin"
+            and is_tei_enabled()
+            and pure_model_name == get_enabled_tei_model()
+        ):
             # configured local embedding model
             embedding_cfg = settings.EMBEDDING_CFG
             config_dict = {
