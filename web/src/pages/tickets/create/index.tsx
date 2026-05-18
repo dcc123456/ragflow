@@ -94,7 +94,7 @@ export default function CreateTicketPage() {
   };
 
   return (
-    <section className="p-8 max-w-3xl mx-auto">
+    <section className="p-8 w-full h-full flex flex-col">
       <div className="flex items-center gap-2 mb-6">
         <Button variant="ghost" size="sm" onClick={navigateToTickets}>
           <ArrowLeft className="size-4" />
@@ -103,7 +103,11 @@ export default function CreateTicketPage() {
       </div>
 
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+        <form
+          id="create-ticket-form"
+          onSubmit={form.handleSubmit(onSubmit)}
+          className="space-y-6 flex-1 overflow-auto"
+        >
           <RAGFlowFormItem
             name="title"
             label={t('tickets.form.title')}
@@ -183,17 +187,16 @@ export default function CreateTicketPage() {
               // className="h-32"
             />
           </div>
-
-          <div className="flex justify-end gap-3">
-            <Button type="button" variant="outline" onClick={navigateToTickets}>
-              {t('common.cancel')}
-            </Button>
-            <Button type="submit" loading={loading}>
-              {t('common.submit')}
-            </Button>
-          </div>
         </form>
       </Form>
+      <div className="flex justify-end gap-3 pt-4">
+        <Button type="button" variant="outline" onClick={navigateToTickets}>
+          {t('common.cancel')}
+        </Button>
+        <Button type="submit" form="create-ticket-form" loading={loading}>
+          {t('common.submit')}
+        </Button>
+      </div>
     </section>
   );
 }

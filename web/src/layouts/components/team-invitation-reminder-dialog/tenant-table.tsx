@@ -1,5 +1,13 @@
+import { TableEmpty, TableSkeleton } from '@/components/table-skeleton';
 import { Button } from '@/components/ui/button';
-import { Table } from '@/components/ui/table';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { TenantRole } from '@/constants/team';
 import {
   useFetchUserInfo,
@@ -22,54 +30,57 @@ const TenantTable = () => {
     return data.filter((x) => x.role === TenantRole.Invite);
   }, [data]);
 
-  const columns = [
-    {
-      title: t('common.name'),
-      dataIndex: 'nickname',
-      key: 'nickname',
-    },
-    {
-      title: t('setting.email'),
-      dataIndex: 'email',
-      key: 'email',
-    },
-    {
-      title: t('common.action'),
-      key: 'action',
-      render: (_, { role, tenant_id }) => {
-        if (role === TenantRole.Invite) {
-          return (
-            <div>
-              <Button variant="link" onClick={handleAgree(tenant_id, true)}>
-                {t(`setting.agree`)}
-              </Button>
-              <Button variant="link" onClick={handleAgree(tenant_id, false)}>
-                {t(`setting.refuse`)}
-              </Button>
-            </div>
-          );
-        } else if (role === TenantRole.Normal && user.id !== tenant_id) {
-          return (
-            <Button
-              variant="link"
-              onClick={handleQuitTenantUser(user.id, tenant_id)}
-            >
-              {t('setting.quit')}
-            </Button>
-          );
-        }
-      },
-    },
-  ];
+  const columnsLength = 3;
 
   return (
-    <Table
-      columns={columns}
-      dataSource={list}
-      rowKey={'tenant_id'}
-      loading={loading}
-      pagination={false}
-    />
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>{t('common.name')}</TableHead>
+          <TableHead>{t('setting.email')}</TableHead>
+          <TableHead>{t('common.action')}</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {loading ? (
+          <TableSkeleton columnsLength={columnsLength} />
+        ) : list.length === 0 ? (
+          <TableEmpty columnsLength={columnsLength} />
+        ) : (
+          list.map(({ nickname, email, role, tenant_id }) => (
+            <TableRow key={tenant_id}>
+              <TableCell>{nickname}</TableCell>
+              <TableCell>{email}</TableCell>
+              <TableCell>
+                {role === TenantRole.Invite ? (
+                  <div>
+                    <Button
+                      variant="link"
+                      onClick={handleAgree(tenant_id, true)}
+                    >
+                      {t('setting.agree')}
+                    </Button>
+                    <Button
+                      variant="link"
+                      onClick={handleAgree(tenant_id, false)}
+                    >
+                      {t('setting.refuse')}
+                    </Button>
+                  </div>
+                ) : role === TenantRole.Normal && user.id !== tenant_id ? (
+                  <Button
+                    variant="link"
+                    onClick={handleQuitTenantUser(user.id, tenant_id)}
+                  >
+                    {t('setting.quit')}
+                  </Button>
+                ) : null}
+              </TableCell>
+            </TableRow>
+          ))
+        )}
+      </TableBody>
+    </Table>
   );
 };
 

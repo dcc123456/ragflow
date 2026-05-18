@@ -29,7 +29,6 @@ const StarModal = () => {
       open={isModalOpen}
       onOk={handleOk}
       onCancel={handleCancel}
-      // width={920}
       footer={null}
       className={styles.starModal}
       maskClosable={false}

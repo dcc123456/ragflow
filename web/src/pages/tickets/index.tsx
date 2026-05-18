@@ -43,8 +43,8 @@ export default function TicketsPage() {
   const { closeTicket, loading: closing } = useCloseTicket();
 
   return (
-    <section className="p-8">
-      <header className="mb-4">
+    <section className="flex flex-col h-full p-8">
+      <header className="shrink-0 mb-4">
         <ListFilterBar
           showFilter={false}
           searchString={searchString}
@@ -65,110 +65,112 @@ export default function TicketsPage() {
         </ListFilterBar>
       </header>
 
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>ID</TableHead>
-            <TableHead>{t('tickets.title')}</TableHead>
-            <TableHead>{t('tickets.state')}</TableHead>
-            <TableHead>{t('tickets.priority')}</TableHead>
-            <TableHead>{t('tickets.group')}</TableHead>
-            <TableHead>{t('tickets.customer')}</TableHead>
-            <TableHead>{t('tickets.createdAt')}</TableHead>
-            <TableHead className="w-[100px]">{t('common.action')}</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {loading ? (
+      <div className="flex-1 overflow-auto">
+        <Table>
+          <TableHeader>
             <TableRow>
-              <TableCell colSpan={8} className="text-center">
-                {'Loading...'}
-              </TableCell>
+              <TableHead>ID</TableHead>
+              <TableHead>{t('tickets.title')}</TableHead>
+              <TableHead>{t('tickets.state')}</TableHead>
+              <TableHead>{t('tickets.priority')}</TableHead>
+              <TableHead>{t('tickets.group')}</TableHead>
+              <TableHead>{t('tickets.customer')}</TableHead>
+              <TableHead>{t('tickets.createdAt')}</TableHead>
+              <TableHead className="w-[100px]">{t('common.action')}</TableHead>
             </TableRow>
-          ) : tickets.length === 0 ? (
-            <TableRow>
-              <TableCell colSpan={8} className="text-center">
-                {t('common.noData')}
-              </TableCell>
-            </TableRow>
-          ) : (
-            tickets.map((ticket) => (
-              <TableRow key={ticket.id}>
-                <TableCell>{ticket.id}</TableCell>
-                <TableCell className="font-medium">{ticket.title}</TableCell>
-                <TableCell>
-                  {(() => {
-                    const key = getTicketStateI18nKey(ticket.state);
-                    return key ? t(key) : ticket.state || '-';
-                  })()}
+          </TableHeader>
+          <TableBody>
+            {loading ? (
+              <TableRow>
+                <TableCell colSpan={8} className="text-center">
+                  {'Loading...'}
                 </TableCell>
-                <TableCell>
-                  {(() => {
-                    const key = getTicketPriorityI18nKey(ticket.priority);
-                    return key ? t(key) : ticket.priority || '-';
-                  })()}
+              </TableRow>
+            ) : tickets.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={8} className="text-center">
+                  {t('common.noData')}
                 </TableCell>
-                <TableCell>{ticket.group}</TableCell>
-                <TableCell>{ticket.customer}</TableCell>
-                <TableCell>
-                  {ticket.created_at
-                    ? formatDateToLocal(ticket.created_at)
-                    : '-'}
-                </TableCell>
-                <TableCell>
-                  <TooltipProvider delayDuration={0}>
-                    <div className="flex items-center gap-2">
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="px-1"
-                            onClick={navigateToTicketDetail(ticket.id)}
-                          >
-                            <MessageCircle className="size-4 text-text-primary" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          {t('tickets.viewConversation')}
-                        </TooltipContent>
-                      </Tooltip>
-
-                      {ticket.state !== 'closed' &&
-                        ticket.state !== 'Closed' && (
-                          <ConfirmDeleteDialog
-                            title={t('tickets.closeTitle')}
-                            content={{
-                              title: t('tickets.closeConfirmMessage'),
-                              node: undefined,
-                            }}
-                            okButtonText={t('common.confirm')}
-                            cancelButtonText={t('common.cancel')}
-                            onOk={async () => {
-                              await closeTicket(ticket.id);
-                            }}
-                          >
+              </TableRow>
+            ) : (
+              tickets.map((ticket) => (
+                <TableRow key={ticket.id}>
+                  <TableCell>{ticket.id}</TableCell>
+                  <TableCell className="font-medium">{ticket.title}</TableCell>
+                  <TableCell>
+                    {(() => {
+                      const key = getTicketStateI18nKey(ticket.state);
+                      return key ? t(key) : ticket.state || '-';
+                    })()}
+                  </TableCell>
+                  <TableCell>
+                    {(() => {
+                      const key = getTicketPriorityI18nKey(ticket.priority);
+                      return key ? t(key) : ticket.priority || '-';
+                    })()}
+                  </TableCell>
+                  <TableCell>{ticket.group}</TableCell>
+                  <TableCell>{ticket.customer}</TableCell>
+                  <TableCell>
+                    {ticket.created_at
+                      ? formatDateToLocal(ticket.created_at)
+                      : '-'}
+                  </TableCell>
+                  <TableCell>
+                    <TooltipProvider delayDuration={0}>
+                      <div className="flex items-center gap-2">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
                             <Button
                               variant="ghost"
                               size="sm"
                               className="px-1"
-                              disabled={closing}
+                              onClick={navigateToTicketDetail(ticket.id)}
                             >
-                              <CircleX className="size-4 text-state-error" />
+                              <MessageCircle className="size-4 text-text-primary" />
                             </Button>
-                          </ConfirmDeleteDialog>
-                        )}
-                    </div>
-                  </TooltipProvider>
-                </TableCell>
-              </TableRow>
-            ))
-          )}
-        </TableBody>
-      </Table>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            {t('tickets.viewConversation')}
+                          </TooltipContent>
+                        </Tooltip>
+
+                        {ticket.state !== 'closed' &&
+                          ticket.state !== 'Closed' && (
+                            <ConfirmDeleteDialog
+                              title={t('tickets.closeTitle')}
+                              content={{
+                                title: t('tickets.closeConfirmMessage'),
+                                node: undefined,
+                              }}
+                              okButtonText={t('common.confirm')}
+                              cancelButtonText={t('common.cancel')}
+                              onOk={async () => {
+                                await closeTicket(ticket.id);
+                              }}
+                            >
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="px-1"
+                                disabled={closing}
+                              >
+                                <CircleX className="size-4 text-state-error" />
+                              </Button>
+                            </ConfirmDeleteDialog>
+                          )}
+                      </div>
+                    </TooltipProvider>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </div>
 
       {pagination.total > 0 && (
-        <footer className="mt-4 px-5 pb-5">
+        <footer className="shrink-0 mt-4 px-5 pb-5">
           <RAGFlowPagination
             {...pick(pagination, 'current', 'pageSize')}
             total={pagination.total}

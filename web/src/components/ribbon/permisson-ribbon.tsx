@@ -25,16 +25,23 @@ export function PermissionRibbon({
     return name || list.find((x) => x.user_id === tenantId)?.nickname;
   }, [list, name, tenantId]);
 
+  if (permission === Permission.Owner) {
+    return <>{children}</>;
+  }
+
+  const isCurrentUser = userInfo?.nickname === nextName;
+
   return (
-    <Badge.Ribbon
-      text={nextName}
-      color={userInfo?.nickname === nextName ? '#1677ff' : 'pink'}
-      rootClassName="w-[96%]"
-      className={cn('top-0', {
-        hidden: permission === Permission.Owner,
-      })}
-    >
+    <div className="relative w-[96%]">
+      <Badge
+        className={cn(
+          'absolute -top-2 -right-2 z-10',
+          isCurrentUser ? 'bg-bg-card' : 'bg-bg-accent',
+        )}
+      >
+        {nextName}
+      </Badge>
       {children}
-    </Badge.Ribbon>
+    </div>
   );
 }
