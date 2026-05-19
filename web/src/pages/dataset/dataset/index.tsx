@@ -21,6 +21,7 @@ import {
   useSelectedIds,
 } from '@/hooks/logic-hooks/use-row-selection';
 import { useFetchDocumentList } from '@/hooks/use-document-request';
+import { useFetchKnowledgeBaseConfiguration } from '@/hooks/use-knowledge-request';
 import { LucidePlus } from 'lucide-react';
 import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -64,7 +65,7 @@ export default function Dataset() {
     checkValue,
   } = useFetchDocumentList();
 
-  //   const { data: dataSetData } = useFetchKnowledgeBaseConfiguration();
+  const { data: dataSetData } = useFetchKnowledgeBaseConfiguration();
 
   const { filters, onOpenChange, filterGroup } = useSelectDatasetFilters();
 

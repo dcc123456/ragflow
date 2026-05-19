@@ -30,6 +30,7 @@ export function useDisableDifferenceEmbeddingDataset(name: string) {
   const debouncedSearchString = useDebounce(searchString, { wait: 500 });
   const { list: datasetListOrigin, loading } = useFetchKnowledgeList(
     true,
+    true,
     debouncedSearchString,
   );
   const datasetCacheRef = useRef(new Map<string, IDataset>());

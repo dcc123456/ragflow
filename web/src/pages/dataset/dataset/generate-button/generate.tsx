@@ -20,7 +20,7 @@ import { UseMutateAsyncFunction } from '@tanstack/react-query';
 import { t } from 'i18next';
 import { lowerFirst } from 'lodash';
 import { CirclePause, Trash2, WandSparkles } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ProcessingType } from '../../dataset-overview/dataset-common';
 import { replaceText } from '../../process-log-modal';
@@ -240,7 +240,7 @@ const Generate: React.FC<GenerateProps> = (props) => {
               </div>
             );
           } else {
-            return <></>;
+            return <Fragment key={name} />;
           }
         })}
       </DropdownMenuContent>
