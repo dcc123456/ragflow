@@ -3,6 +3,7 @@ import { Modal } from '@/components/ui/modal/modal';
 import { useFetchTenantData } from '@/hooks/use-user-setting-request';
 import { BillingQueryKey } from '@/pages/billing/constants/query-keys';
 import type { SessionData } from '@/pages/billing/hook/use-payment-status-request';
+import { isBillingEnabled } from '@/services/billingStatus';
 import billingService, {
   billingCheckout,
   postBillingStorageSetTarget,
@@ -501,7 +502,7 @@ const useFetchCurrentPlan = (force = false) => {
   const { data, isFetching: loading } = useQuery<ICurrentPlan>({
     queryKey: [BillingQueryKey.CurrentPlan],
     // initialData: {},
-    enabled: !!user,
+    enabled: !!user && !!isBillingEnabled(),
     gcTime: force ? 0 : 50000,
     queryFn: async () => {
       const { data: res } = await billingService.getCurrentPlan();

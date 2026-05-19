@@ -1,4 +1,5 @@
 import PaymentStatusModal from '@/pages/billing/component/payment-status-modal';
+import { isBillingEnabled } from '@/services/billingStatus';
 import { ReactNode, createContext, useContext, useState } from 'react';
 import { useFetchCurrentPlan } from '../hook/use-price-hooks';
 import { FreeUpgradeModal } from '../price-modal/free-upgrade-modal';
@@ -117,10 +118,13 @@ export const UpgradeModalProvider: React.FC<UpgradeModalProviderProps> = ({
 
 export const useUpgradeModal = () => {
   const context = useContext(UpgradeModalContext);
+  if (!isBillingEnabled()) {
+    return {};
+  }
   if (context === undefined) {
     throw new Error(
       'useUpgradeModal must be used within an UpgradeModalProvider',
     );
   }
-  return context;
+  return context as UpgradeModalContextType;
 };
