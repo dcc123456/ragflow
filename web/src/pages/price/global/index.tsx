@@ -119,7 +119,7 @@ export const UpgradeModalProvider: React.FC<UpgradeModalProviderProps> = ({
 export const useUpgradeModal = () => {
   const context = useContext(UpgradeModalContext);
   if (!isBillingEnabled()) {
-    return {};
+    return {} as UpgradeModalContextType;
   }
   if (context === undefined) {
     throw new Error(

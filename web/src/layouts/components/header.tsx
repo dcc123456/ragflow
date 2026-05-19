@@ -19,14 +19,14 @@ import { Routes } from '@/routes';
 import { LucideChevronDown, LucideCircleHelp } from 'lucide-react';
 import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link, useLocation } from 'react-router';
+import { Link, useLocation, useNavigate } from 'react-router';
 import { BellButton } from './bell-button';
 import GlobalNavbar from './global-navbar';
 import ThemeButton from './theme-button';
 
 import { supportedLanguages } from '@/locales/config';
-import { useUpgradeModal } from '@/pages/price/global';
 import { useFetchCurrentPlan } from '@/pages/price/hook/use-price-hooks';
+import { PrivateRoutes } from '@/private-routes';
 import { isBillingEnabled } from '@/services/billingStatus';
 
 export function Header({
@@ -35,7 +35,7 @@ export function Header({
 }: React.HTMLAttributes<HTMLElement>) {
   const { t } = useTranslation();
   const { pathname } = useLocation();
-
+  const navigate = useNavigate();
   const changeLanguage = useChangeLanguage();
 
   const {
@@ -50,11 +50,12 @@ export function Header({
 
   const currentLanguage = supportedLanguages.find((x) => x.code === language);
   const { data: currentPlan } = useFetchCurrentPlan();
-  const { openModal } = useUpgradeModal();
+  // const { openModal } = useUpgradeModal();
 
   const handleClick = (e: React.MouseEvent) => {
     e.preventDefault();
-    openModal();
+    // openModal();
+    navigate(PrivateRoutes.Price);
   };
 
   // const langItems = LanguageList.map((x) => ({

@@ -44,14 +44,15 @@ const PricingPage: React.FC = () => {
         </div>
 
         <PricingPlan isUpgrade={false} />
-        <AddOnCalculator />
+
+        {false && <AddOnCalculator />}
         {false && <FAQs faqs={faqs} />}
         {false && (
           <div className="my-10">
             <ComparisonTable features={features} planNames={planNames} />
           </div>
         )}
-        <Spotlight />
+        <Spotlight opcity={0.4} coverage={60} color="#00BEB4" />
       </div>
     </div>
   );

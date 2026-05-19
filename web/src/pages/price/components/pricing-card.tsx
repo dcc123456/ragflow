@@ -2,6 +2,7 @@ import Divider from '@/components/ui/divider';
 import { nextLayoutRef } from '@/layouts/root-layout';
 import billingService from '@/services/price';
 import storagePrivate from '@/utils/authorization-private-util';
+import { formatNumberWithThousandsSeparator } from '@/utils/common-util';
 import { useState } from 'react';
 import { PriceName, PriceNameMapValue } from '../constant';
 import { showPriceConfirmModal } from '../global';
@@ -79,7 +80,7 @@ const PricingCard = (props: IPricePlanWithButton) => {
   return (
     <div className="relative  group max-w-[300px]">
       <div
-        className={` rounded-lg p-6 text-center border border-border-button transition-transform group-hover:scale-105 bg-bg-base text-text-primary relative z-20 group-hover:border-accent-primary h-full
+        className={` rounded-lg p-6 text-center border border-border-button transition-transform group-hover:scale-y-110 group-hover:scale-x-105 bg-bg-base text-text-primary relative z-20 group-hover:border-accent-primary h-full
           `}
         // after:absolute after:-inset-4 after:bg-gradient-to-b after:from-[#42b6ff] after:to-[#2be8aa] after:blur group-hover:after:opacity-50 after:z-10 after:opacity-0
       >
@@ -101,9 +102,15 @@ const PricingCard = (props: IPricePlanWithButton) => {
             <li key={item.key} className="mb-2 text-left">
               <div className="flex items-center flex-nowrap">
                 {item.icon}
-                {Number(item.value) > -1 && (
-                  <span className="italic font-semibold">{item.value}</span>
+                {item.key === 'apps' && Number(item.value) >= 100000 && (
+                  <span className="italic font-semibold">Unlimited</span>
                 )}
+                {Number(item.value) > -1 &&
+                  !(item.key === 'apps' && Number(item.value) >= 100000) && (
+                    <span className="italic font-semibold">
+                      {formatNumberWithThousandsSeparator(item.value + '')}
+                    </span>
+                  )}
                 <span className="ml-2 text-xm font-normal whitespace-nowrap">
                   {item.name}
                 </span>
@@ -146,7 +153,7 @@ const PricingCard = (props: IPricePlanWithButton) => {
           />
         )}
       </div>
-      <div className="absolute -inset-2 bg-gradient-to-b from-[#42b6ff] to-[#2be8aa] blur group-hover:opacity-50 z-10 opacity-0"></div>
+      <div className="absolute -inset-0.5 bg-gradient-to-b from-[#42b6ff] to-[#2be8aa] group-hover:scale-y-110 group-hover:scale-x-105 blur group-hover:opacity-70 z-10 opacity-0"></div>
 
       <CancelPlanDialog
         open={isCancelDialogOpen}

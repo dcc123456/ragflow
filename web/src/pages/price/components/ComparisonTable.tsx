@@ -24,13 +24,13 @@ const ComparisonTable: React.FC<ComparisonTableProps> = ({
       <table className="w-full text-left text-sm text-text-primary">
         <thead>
           <tr className="border-b border-border-default">
-            <th className="px-6 py-4 font-semibold text-text-primary">
+            <th className="px-6 py-4 font-semibold text-text-primary border-r border-border-default first:border-l-0 last:border-r-0">
               Features
             </th>
             {planNames.map((plan) => (
               <th
                 key={plan}
-                className="px-6 py-4 font-semibold text-center text-text-primary"
+                className="px-6 py-4 font-semibold text-center text-text-primary border-r border-border-default last:border-r-0"
               >
                 {plan}
               </th>
@@ -41,9 +41,9 @@ const ComparisonTable: React.FC<ComparisonTableProps> = ({
           {features.map((feature, idx) => (
             <tr
               key={idx}
-              className={`border-b border-border-default hover:bg-bg-list transition-colors bg-bg-base`}
+              className={`border-border-default hover:bg-bg-list transition-colors bg-bg-base`}
             >
-              <td className="px-6 py-4 font-medium text-text-primary">
+              <td className="px-6 py-4 font-medium text-text-primary border-r border-border-default last:border-r-0">
                 {feature.name}
               </td>
               {planNames.map((plan) => {
@@ -65,7 +65,10 @@ const ComparisonTable: React.FC<ComparisonTableProps> = ({
                 }
 
                 return (
-                  <td key={plan} className="px-6 py-4 text-center">
+                  <td
+                    key={plan}
+                    className="px-6 py-4 text-center border-r border-border-default last:border-r-0"
+                  >
                     {content}
                   </td>
                 );

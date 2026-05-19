@@ -3,6 +3,7 @@ import { Modal } from '@/components/ui/modal/modal';
 import { convertBytesToGb } from '@/lib/utils';
 import { t } from 'i18next';
 import {
+  ArrowUpRight,
   BanknoteArrowUp,
   Coins,
   DatabaseZap,
@@ -305,64 +306,79 @@ const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
 
   //   showPriceModal(ref);
   return (
-    <>
-      {(loading || !pricePlanList) && (
-        <div className="flex justify-center items-center h-[200px] w-full">
-          <Loader2 className="animate-spin" />
-        </div>
-      )}
-      {/* <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-5"> */}
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] xl:grid-cols-4 gap-5 w-full">
-        {!loading &&
-          pricePlanList?.map((plan, index) => (
-            <PricingCard key={index} {...plan} />
-          ))}
+    <section className="flex items-center justify-center">
+      <div className="flex flex-col items-end justify-center w-fit">
+        {(loading || !pricePlanList) && (
+          <div className="flex justify-center items-center h-[200px] w-full">
+            <Loader2 className="animate-spin" />
+          </div>
+        )}
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-5 gap-y-10 w-full">
+          {!loading &&
+            pricePlanList?.map((plan, index) => (
+              <PricingCard key={index} {...plan} />
+            ))}
 
-        {successModal.open && (
-          <Modal
-            open={true}
-            title={successModal.title}
-            onOpenChange={(open) => {
-              if (!open) {
-                const urlObj = new URL(window.location.href);
-                urlObj.searchParams.delete('price-pay-status');
-                window.history.replaceState({}, '', urlObj.toString());
-                // successModal.destroy();
-                setSuccessModal({
-                  open: false,
-                  title: '',
-                  content: '',
-                });
+          {successModal.open && (
+            <Modal
+              open={true}
+              title={successModal.title}
+              onOpenChange={(open) => {
+                if (!open) {
+                  const urlObj = new URL(window.location.href);
+                  urlObj.searchParams.delete('price-pay-status');
+                  window.history.replaceState({}, '', urlObj.toString());
+                  // successModal.destroy();
+                  setSuccessModal({
+                    open: false,
+                    title: '',
+                    content: '',
+                  });
+                }
+              }}
+              className="!w-[400px]"
+              footer={
+                <div className="flex justify-end gap-2 ">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const urlObj = new URL(window.location.href);
+                      urlObj.searchParams.delete('price-pay-status');
+                      window.history.replaceState({}, '', urlObj.toString());
+                      setSuccessModal({
+                        open: false,
+                        title: '',
+                        content: '',
+                      });
+                      // successModal.destroy();
+                    }}
+                    className="px-2 py-1 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+                  >
+                    {t('modal.okText')}
+                  </button>
+                </div>
               }
-            }}
-            className="!w-[400px]"
-            footer={
-              <div className="flex justify-end gap-2 ">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const urlObj = new URL(window.location.href);
-                    urlObj.searchParams.delete('price-pay-status');
-                    window.history.replaceState({}, '', urlObj.toString());
-                    setSuccessModal({
-                      open: false,
-                      title: '',
-                      content: '',
-                    });
-                    // successModal.destroy();
-                  }}
-                  className="px-2 py-1 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
-                >
-                  {t('modal.okText')}
-                </button>
-              </div>
-            }
-          >
-            <div className="h-32">{successModal.content}</div>
-          </Modal>
+            >
+              <div className="h-32">{successModal.content}</div>
+            </Modal>
+          )}
+        </div>
+        {!loading && (
+          <div className="mt-[110px]">
+            <a
+              href="https://ragflow.io/pricing/details"
+              // target="_blank"
+              // rel="noopener noreferrer"
+              // onClick={handleClick}
+              className="whitespace-nowrap gap-1 inline-flex font-normal  items-center pl-2 py-1 pr-1 text-bg-base rounded-md bg-bg-input border-0.5 border-border-default text-text-secondary hover:text-text-primary hover:border-text-primary"
+            >
+              {t('price.pricingDetails', 'Pricing details')}
+              <ArrowUpRight size={12} />
+            </a>
+          </div>
         )}
       </div>
-    </>
+    </section>
   );
 };
 
