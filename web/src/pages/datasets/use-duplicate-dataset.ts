@@ -1,18 +1,18 @@
 import { useSetModalState } from '@/hooks/common-hooks';
 import { useDuplicateKnowledge } from '@/hooks/use-knowledge-request';
-import type { IKnowledge } from '@/interfaces/database/knowledge';
+import { IDataset } from '@/interfaces/database/dataset';
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 export default function useDuplicateDataset() {
-  const [dataset, setDataset] = useState<IKnowledge>({} as IKnowledge);
+  const [dataset, setDataset] = useState<IDataset>({} as IDataset);
   const { visible, hideModal, showModal } = useSetModalState();
 
   const { t } = useTranslation();
   const { duplicateKnowledge, loading } = useDuplicateKnowledge(true);
 
   const handleShowModal = useCallback(
-    (record: IKnowledge) => {
+    (record: IDataset) => {
       setDataset(record);
       showModal();
     },

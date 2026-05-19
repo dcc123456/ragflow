@@ -1,8 +1,8 @@
 import { PermissionResourceType } from '@/constants/team';
-import { IKnowledge } from '@/interfaces/database/knowledge';
+import { IDataset } from '@/interfaces/database/dataset';
 import { useMemo } from 'react';
 
-export function useKnowledgeWithSourceType(record: IKnowledge) {
+export function useKnowledgeWithSourceType(record: IDataset) {
   return useMemo(() => {
     return { ...record, resourceType: PermissionResourceType.KnowledgeBase };
   }, [record]);

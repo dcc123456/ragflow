@@ -1,6 +1,6 @@
 import { useSetModalState } from '@/hooks/common-hooks';
 import { useKnowledgeWithSourceType } from '@/hooks/logic-hooks/use-knowledge';
-import { IKnowledge } from '@/interfaces/database/knowledge';
+import { IDataset } from '@/interfaces/database/dataset';
 import { useCallback, useState } from 'react';
 
 export function useShowPrivilegeDialog() {
@@ -10,10 +10,10 @@ export function useShowPrivilegeDialog() {
     showModal: showPrivilegeModal,
   } = useSetModalState();
 
-  const [record, setRecord] = useState<IKnowledge>({} as IKnowledge);
+  const [record, setRecord] = useState<IDataset>({} as IDataset);
 
   const handShowPrivilegeModal = useCallback(
-    (item: IKnowledge) => () => {
+    (item: IDataset) => () => {
       setRecord(item);
       showPrivilegeModal();
     },

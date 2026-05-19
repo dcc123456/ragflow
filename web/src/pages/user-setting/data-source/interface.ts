@@ -1,5 +1,5 @@
 import { RunningStatus } from '@/constants/knowledge';
-import { DataSourceKey } from './contant';
+import { DataSourceKey } from './constant';
 
 export interface IDataSorceInfo {
   id: DataSourceKey;
