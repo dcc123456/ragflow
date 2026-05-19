@@ -70,8 +70,7 @@ class ESConnection(ESConnectionBase):
             body=query,
             timeout="600s",
             track_total_hits=track_total_hits,
-            scroll=scroll,
-            _source=True,
+            scroll=scroll
         )
 
     def _search_with_search_after(self, index_names: list[str], query: dict, offset: int, limit: int):
