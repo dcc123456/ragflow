@@ -578,51 +578,145 @@ async def build_chunks(task, progress_callback):
     return docs
 
 
-def build_TOC(task, docs, progress_callback):
+def load_toc_chunks(task):
+    # Fetch only fields needed to build TOC and clone the last chunk's lightweight metadata.
+    fields = [
+        "content_with_weight",
+        "page_num_int",
+        "top_int",
+        "toc_kwd",
+        "doc_id",
+        "kb_id",
+        "docnm_kwd",
+        "title_tks",
+        "title_sm_tks",
+        "create_time",
+        "create_timestamp_flt",
+        "position_int",
+        PAGERANK_FLD,
+    ]
+    chunks = []
+    offset = 0
+    batch_size = 1024
+    while True:
+        batch = settings.retriever.chunk_list(
+            task["doc_id"],
+            task["tenant_id"],
+            [str(task["kb_id"])],
+            max_count=offset + batch_size,
+            offset=offset,
+            fields=fields,
+            sort_by_position=True,
+        )
+        if not batch:
+            break
+        chunks.extend([chunk for chunk in batch if chunk.get("toc_kwd") != "toc"])
+        if len(batch) < batch_size:
+            break
+        offset += batch_size
+    return chunks
+
+
+async def build_toc(task, chunks, progress_callback):
+    start_ts = timer()
     progress_callback(msg="Start to generate table of content ...")
+    logging.info("build_toc loading chat model: doc_id=%s task_id=%s chunks=%s", task["doc_id"], task["id"], len(chunks))
     chat_model_config = get_model_config_by_type_and_name(task["tenant_id"], LLMType.CHAT, task["llm_id"])
     chat_mdl = LLMBundle(task["tenant_id"], chat_model_config, lang=task["language"])
-    docs = sorted(docs, key=lambda d: (
+    progress_callback(msg="Loaded chat model for table of content.")
+    # Preserve old behavior: TOC generation depends on document-order chunks, not page-task order.
+    chunks = sorted(chunks, key=lambda d: (
         d.get("page_num_int", 0)[0] if isinstance(d.get("page_num_int", 0), list) else d.get("page_num_int", 0),
         d.get("top_int", 0)[0] if isinstance(d.get("top_int", 0), list) else d.get("top_int", 0)
     ))
-    toc: list[dict] = asyncio.run(
-        run_toc_from_text([d["content_with_weight"] for d in docs], chat_mdl, progress_callback))
-    logging.info("------------ T O C -------------\n" + json.dumps(toc, ensure_ascii=False, indent='  '))
+    if not chunks:
+        progress_callback(msg="No chunks available for table of content.")
+        logging.info("build_toc skipped because no chunks are available: doc_id=%s task_id=%s", task["doc_id"], task["id"])
+        return None
+    progress_callback(msg="Generating table of content from {} chunks.".format(len(chunks)))
+    llm_start_ts = timer()
+    toc: list[dict] = await run_toc_from_text([d["content_with_weight"] for d in chunks], chat_mdl, progress_callback)
+    progress_callback(msg="Generated {} table of content entries ({:.2f}s).".format(len(toc), timer() - llm_start_ts))
+    logging.info(
+        "build_toc generated toc entries: doc_id=%s task_id=%s entries=%s elapsed=%.2fs",
+        task["doc_id"], task["id"], len(toc), timer() - llm_start_ts
+    )
+    logging.info("------------PAGE INDEX -------------\n" + json.dumps(toc, ensure_ascii=False, indent='  '))
+    mapped_items = 0
+    skipped_items = 0
+    progress_callback(msg="Mapping table of content entries to chunks.")
     for ii, item in enumerate(toc):
         try:
             chunk_val = item.pop("chunk_id", None)
             if chunk_val is None or str(chunk_val).strip() == "":
+                skipped_items += 1
                 logging.warning(f"Index {ii}: chunk_id is missing or empty. Skipping.")
                 continue
             curr_idx = int(chunk_val)
-            if curr_idx >= len(docs):
-                logging.error(f"Index {ii}: chunk_id {curr_idx} exceeds docs length {len(docs)}.")
+            if curr_idx >= len(chunks):
+                skipped_items += 1
+                logging.error(f"Index {ii}: chunk_id {curr_idx} exceeds chunks length {len(chunks)}.")
                 continue
-            item["ids"] = [docs[curr_idx]["id"]]
+            item["ids"] = [chunks[curr_idx]["id"]]
             if ii + 1 < len(toc):
                 next_chunk_val = toc[ii + 1].get("chunk_id", "")
                 if str(next_chunk_val).strip() != "":
                     next_idx = int(next_chunk_val)
-                    for jj in range(curr_idx + 1, min(next_idx + 1, len(docs))):
-                        item["ids"].append(docs[jj]["id"])
+                    for jj in range(curr_idx + 1, min(next_idx + 1, len(chunks))):
+                        item["ids"].append(chunks[jj]["id"])
                 else:
                     logging.warning(f"Index {ii + 1}: next chunk_id is empty, range fill skipped.")
+            mapped_items += 1
         except (ValueError, TypeError) as e:
+            skipped_items += 1
             logging.error(f"Index {ii}: Data conversion error - {e}")
         except Exception as e:
+            skipped_items += 1
             logging.exception(f"Index {ii}: Unexpected error - {e}")
+    progress_callback(msg="Mapped {} table of content entries to chunks; skipped {} entries.".format(mapped_items, skipped_items))
+    logging.info(
+        "build_toc mapped toc entries: doc_id=%s task_id=%s mapped=%s skipped=%s",
+        task["doc_id"], task["id"], mapped_items, skipped_items
+    )
 
     if toc:
-        d = copy.deepcopy(docs[-1])
+        # Preserve old behavior: clone the last normal chunk and overwrite only TOC-specific fields.
+        d = copy.deepcopy(chunks[-1])
         d["content_with_weight"] = json.dumps(toc, ensure_ascii=False)
         d["toc_kwd"] = "toc"
         d["available_int"] = 0
         d["page_num_int"] = [100000000]
         d["id"] = xxhash.xxh64(
             (d["content_with_weight"] + str(d["doc_id"])).encode("utf-8", "surrogatepass")).hexdigest()
+        progress_callback(msg="Prepared table of content chunk ({:.2f}s).".format(timer() - start_ts))
+        logging.info("build_toc prepared toc chunk: doc_id=%s task_id=%s chunk_id=%s", task["doc_id"], task["id"], d["id"])
         return d
+    progress_callback(msg="No table of content entries generated.")
+    logging.info("build_toc finished without toc entries: doc_id=%s task_id=%s", task["doc_id"], task["id"])
     return None
+
+
+async def run_build_toc(task, progress_callback):
+    start_ts = timer()
+    logging.info("Start build_toc: doc_id=%s task_id=%s", task["doc_id"], task["id"])
+    chunks = load_toc_chunks(task)
+    progress_callback(msg="Loaded {} chunks for table of content.".format(len(chunks)))
+    logging.info("Loaded chunks for build_toc: doc_id=%s task_id=%s chunks=%s", task["doc_id"], task["id"], len(chunks))
+    toc_chunk = await build_toc(task, chunks, progress_callback)
+    if toc_chunk:
+        # Store TOC as its own unavailable chunk and keep task chunk_ids/doc statistics consistent.
+        progress_callback(msg="Saving table of content chunk.")
+        if not await insert_chunks(task["id"], task["tenant_id"], task["kb_id"], [toc_chunk], progress_callback):
+            progress_callback(msg="Table of content chunk was not saved.")
+            logging.warning("Failed to save toc chunk: doc_id=%s task_id=%s chunk_id=%s", task["doc_id"], task["id"], toc_chunk["id"])
+            return
+        DocumentService.increment_chunk_num(task["doc_id"], task["kb_id"], 0, 1, 0)
+        progress_callback(msg="Saved table of content chunk.")
+        logging.info("Saved toc chunk: doc_id=%s task_id=%s chunk_id=%s", task["doc_id"], task["id"], toc_chunk["id"])
+    else:
+        progress_callback(msg="No table of content chunk to save.")
+        logging.info("No toc chunk generated: doc_id=%s task_id=%s", task["doc_id"], task["id"])
+    progress_callback(prog=1.0, msg="Task done ({:.2f}s)".format(timer() - start_ts))
 
 
 def init_kb(row, vector_size: int):
@@ -1341,6 +1435,11 @@ async def do_handle_task(task):
         progress_callback(-1, msg="Task has been canceled.")
         return
 
+    if task_type == "build_toc":
+        task["llm_id"] = doc_task_llm_id
+        await run_build_toc(task, progress_callback)
+        return
+
     try:
         # bind embedding model
         if task_embedding_id:
@@ -1568,6 +1667,7 @@ async def do_handle_task(task):
         chunks = await build_chunks(task, progress_callback)
         logging.info("Build document {}: {:.2f}s".format(task_document_name, timer() - start_ts))
         if not chunks:
+            TaskService.if_all_sub_tasks_completed(task, task_id)
             progress_callback(1., msg=f"No chunk built from {task_document_name}")
             return
         progress_callback(msg="Generate {} chunks".format(len(chunks)))
@@ -1583,8 +1683,6 @@ async def do_handle_task(task):
         progress_message = "Embedding chunks ({:.2f}s)".format(timer() - start_ts)
         logging.info(progress_message)
         progress_callback(msg=progress_message)
-        if task["parser_id"].lower() == "naive" and task["parser_config"].get("toc_extraction", False):
-            toc_thread = asyncio.create_task(asyncio.to_thread(build_TOC, task, chunks, progress_callback))
 
     chunk_count = len(set([chunk["id"] for chunk in chunks]))
 
@@ -1663,18 +1761,12 @@ async def do_handle_task(task):
 
         progress_callback(msg="Indexing done ({:.2f}s).".format(timer() - start_ts))
 
-        if toc_thread:
-            d = await toc_thread
-            if d:
-                if not await _maybe_insert_chunks([d]):
-                    return
-                DocumentService.increment_chunk_num(task_doc_id, task_dataset_id, 0, 1, 0)
-
         if has_canceled(task_id):
             progress_callback(-1, msg="Task has been canceled.")
             return
 
         task_time_cost = timer() - task_start_ts
+        TaskService.if_all_sub_tasks_completed(task, task_id)
         progress_callback(prog=1.0, msg="Task done ({:.2f}s)".format(task_time_cost))
         logging.info(
             "Chunk doc({}), page({}-{}), chunks({}), token({}), elapsed:{:.2f}".format(

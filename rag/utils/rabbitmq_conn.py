@@ -3,6 +3,7 @@ import logging
 import json
 import signal
 import sys
+import threading
 import pika
 import requests
 from requests.auth import HTTPBasicAuth
@@ -16,27 +17,30 @@ from common.config_utils import get_base_config
 class RabbitQueue:
 
     def __init__(self):
-        self._setup_signal_handlers()
         self._channel = None
         self._conn = None
+        self._publisher = threading.local()
+        self._setup_signal_handlers()
         self.config = settings.RABBIT_CONF if settings.RABBIT_CONF else get_base_config("rabbitmq")
         self.__open__()
+
+    def _connection_parameters(self):
+        credentials = pika.PlainCredentials(self.config["user"], self.config["password"])
+        return pika.ConnectionParameters(
+            host=self.config["host"],
+            port=int(self.config["port"]), # Default AMQP port
+            credentials=credentials,
+            socket_timeout=10,
+            heartbeat=0,  # Disabled - using manual heartbeat in queue_consumer
+            blocked_connection_timeout=60*60*2
+        )
 
     def __open__(self):
         # Close existing connection before creating new one
         self._close_connection()
         try:
-            credentials = pika.PlainCredentials(self.config["user"], self.config["password"])
-            parameters = pika.ConnectionParameters(
-                host=self.config["host"],
-                port=int(self.config["port"]), # Default AMQP port
-                credentials=credentials,
-                socket_timeout=10,
-                heartbeat=0,  # Disabled - using manual heartbeat in queue_consumer
-                blocked_connection_timeout=60*60*2
-            )
             # Establish the connection
-            self._conn = pika.BlockingConnection(parameters)
+            self._conn = pika.BlockingConnection(self._connection_parameters())
             self._channel = self._conn.channel()
             logging.info("Connect to RabbitMQ: {}".format(self.config))
         except Exception:
@@ -57,10 +61,47 @@ class RabbitQueue:
         self._channel = None
         self._conn = None
 
+    def _close_publisher_connection(self):
+        """Close the publisher connection owned by the current thread."""
+        try:
+            channel = getattr(self._publisher, "channel", None)
+            if channel and channel.is_open:
+                channel.close()
+        except Exception:
+            pass
+        try:
+            conn = getattr(self._publisher, "conn", None)
+            if conn and conn.is_open:
+                conn.close()
+        except Exception:
+            pass
+        self._publisher.channel = None
+        self._publisher.conn = None
+
+    def _get_publisher_channel(self):
+        """Return a thread-local channel for publishing.
+
+        pika BlockingConnection/BlockingChannel objects are not thread-safe.
+        The consumer loop uses self._channel, while task callbacks may publish
+        follow-up work from worker threads.
+        """
+        conn = getattr(self._publisher, "conn", None)
+        channel = getattr(self._publisher, "channel", None)
+        if conn and conn.is_open and channel and channel.is_open:
+            return channel
+
+        self._close_publisher_connection()
+        conn = pika.BlockingConnection(self._connection_parameters())
+        channel = conn.channel()
+        self._publisher.conn = conn
+        self._publisher.channel = channel
+        return channel
+
     def _setup_signal_handlers(self):
         def signal_handler(signum, frame):
             print(f"Received {signum}，closing...")
-            self._conn.close()
+            self._close_publisher_connection()
+            self._close_connection()
             sys.exit(0)
 
         signal.signal(signal.SIGTERM, signal_handler)  # kill
@@ -116,16 +157,16 @@ class RabbitQueue:
                 if len(body) > 10 * 1024:  # 10KB
                     logging.warning(f"Large message for {routing_key}: {len(body)} bytes")
                 # Ensure the queue exists and is bound to the exchange
-                self._channel.queue_declare(routing_key, durable=True) # routing_key == queue_name
-                self._channel.basic_publish(exchange=self.config["exchange"], routing_key=routing_key, body=body)
+                channel = self._get_publisher_channel()
+                channel.queue_declare(routing_key, durable=True) # routing_key == queue_name
+                channel.queue_bind(queue=routing_key, exchange=self.config["exchange"], routing_key=routing_key)
+                channel.basic_publish(exchange=self.config["exchange"], routing_key=routing_key, body=body)
                 return True
             except Exception as e:
                 logging.exception(
                     "RabbitMQ.queue_product " + str(routing_key) + " got exception: " + str(e)
                 )
-                # Only reconnect after exception to avoid corrupted connection state
-                self._close_connection()
-                self.__open__()
+                self._close_publisher_connection()
                 import time
                 time.sleep(0.5 * (i + 1))  # Exponential backoff
         return False

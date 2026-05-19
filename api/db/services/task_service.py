@@ -29,7 +29,7 @@ from api.db.services.common_service import CommonService
 from api.db.services.document_service import DocumentService
 from common.misc_utils import get_uuid
 from common.time_utils import current_timestamp
-from common.constants import StatusEnum, TaskStatus, MAXIMUM_PAGE_NUMBER, MAXIMUM_TASK_PAGE_NUMBER
+from common.constants import StatusEnum, TaskStatus, MAXIMUM_TASK_PAGE_NUMBER
 from deepdoc.parser.excel_parser import RAGFlowExcelParser
 from common.settings import rout_key
 from rag.utils.redis_conn import REDIS_CONN
@@ -98,6 +98,8 @@ class TaskService(CommonService):
             cls.model.doc_id,
             cls.model.from_page,
             cls.model.to_page,
+            cls.model.task_type,
+            cls.model.priority,
             cls.model.retry_count,
             Document.kb_id,
             Document.parser_id,
@@ -162,6 +164,7 @@ class TaskService(CommonService):
         fields = [
             cls.model.id,
             cls.model.from_page,
+            cls.model.task_type,
             cls.model.progress,
             cls.model.digest,
             cls.model.chunk_ids,
@@ -222,6 +225,51 @@ class TaskService(CommonService):
             chunk_ids (str): Space-separated string of chunk identifiers.
         """
         cls.model.update(chunk_ids=chunk_ids).where(cls.model.id == id).execute()
+
+    @classmethod
+    @DB.connection_context()
+    def if_all_sub_tasks_completed(cls, task: dict, done_task_id: str | None = None):
+        """Queue build_toc after normal chunk tasks finish."""
+        if task.get("task_type") or str(task["parser_id"]).lower() != "naive" \
+                or not task["parser_config"].get("toc_extraction", False):
+            return
+
+        doc_id = task["doc_id"]
+        with DB.lock(f"if_all_sub_tasks_completed:{doc_id}", -1):
+            tasks = list(
+                cls.model.select(cls.model.id, cls.model.progress, cls.model.task_type)
+                .where(cls.model.doc_id == doc_id)
+                .dicts()
+            )
+            if any(t["task_type"] == "build_toc" for t in tasks):
+                return
+            # The finishing task calls this before its progress row is set to 1.0, so treat it as done.
+            if any(
+                (t["task_type"] or "") == "" and t["id"] != done_task_id and t["progress"] < 1.0
+                for t in tasks
+            ):
+                return
+
+            toc_task = {
+                "id": get_uuid(),
+                "doc_id": doc_id,
+                "from_page": 100000000,
+                "to_page": 100000000,
+                "task_type": "build_toc",
+                "priority": task["priority"],
+                "progress": 0.0,
+                "progress_msg": datetime.now().strftime("%H:%M:%S") + " created task build_toc",
+                "begin_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            }
+            hasher = xxhash.xxh64()
+            hasher.update(str(doc_id).encode("utf-8"))
+            hasher.update(b"build_toc")
+            toc_task["digest"] = hasher.hexdigest()
+            bulk_insert_into_db(Task, [toc_task], True)
+
+        assert RABBITMQ_CONN.queue_product(
+            rout_key(task["priority"], "common"), message=toc_task
+        ), "Can't access task queue, please retry it later"
 
     @classmethod
     @DB.connection_context()
@@ -419,9 +467,9 @@ def queue_tasks(doc: dict, bucket: str, name: str, priority: int):
         page_size = doc["parser_config"].get("task_page_size") or 12
         if doc["parser_id"] == "paper":
             page_size = doc["parser_config"].get("task_page_size") or 22
-        if doc["parser_id"] in ["one", "knowledge_graph"] or do_layout != "DeepDOC" or doc["parser_config"].get("toc_extraction", False):
-            page_size = MAXIMUM_TASK_PAGE_NUMBER
-        page_ranges = doc["parser_config"].get("pages") or [(1, MAXIMUM_PAGE_NUMBER)]
+        if doc["parser_id"] in ["one", "knowledge_graph"] or do_layout != "DeepDOC":
+            page_size = 10 ** 9
+        page_ranges = doc["parser_config"].get("pages") or [(1, 10 ** 5)]
         for s, e in page_ranges:
             s -= 1
             s = max(0, s)
@@ -518,6 +566,7 @@ def reuse_prev_task_chunks(task: dict, prev_tasks: list[dict], chunking_config: 
     while idx < len(prev_tasks):
         prev_task = prev_tasks[idx]
         if prev_task.get("from_page", 0) == task.get("from_page", 0) \
+                and (prev_task.get("task_type") or "") == (task.get("task_type") or "") \
                 and prev_task.get("digest", 0) == task.get("digest", ""):
             break
         idx += 1
