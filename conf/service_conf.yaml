@@ -62,7 +62,7 @@ billing:
       quota_apps: 5
       quota_members: 1
       quota_storage: 100MB
-      quota_points: 500
+      quota_points: 60
       api_request_limit_per_minute: 60
       task_priority: "low"
       price_ids: "price_1TPawr2XhWscgPRmFFLnlhpK"
