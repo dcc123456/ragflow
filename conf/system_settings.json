@@ -203,6 +203,18 @@
       "source": "variable",
       "data_type": "json",
       "value": "{}"
+    },
+    {
+      "name": "notification.content",
+      "source": "variable",
+      "data_type": "string",
+      "value": ""
+    },
+    {
+      "name": "notification.enabled",
+      "source": "variable",
+      "data_type": "bool",
+      "value": "false"
     }
   ]
 }
