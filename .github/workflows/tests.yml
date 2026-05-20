@@ -687,8 +687,7 @@ jobs:
             -var "namespace=${BYOK_NAMESPACE}" \
             -var "redis_db=${BYOK_REDIS_DB}" \
             -var "ragflow_image=${BYOK_RAGFLOW_IMAGE_VAR}" \
-            -var "rate_limit_disabled=true" \
-            -var "deploy_zammad=false"
+            -var "rate_limit_disabled=true"
   
           GATEWAY_ADDRESS="$(kubectl get gateway ragflow -n "${BYOK_NAMESPACE}" -o jsonpath='{.status.addresses[0].value}' 2>/dev/null | tr -d '[:space:]')"
           if [[ -z "${GATEWAY_ADDRESS}" ]]; then

@@ -13,7 +13,6 @@ deploy_app_stack = true
 
 # Full in-namespace stack
 deploy_infra = true
-deploy_zammad=false
 # Optional local storage settings (replace with your own values or -var overrides)
 s3_endpoint   = "http://rook-ceph-rgw-my-store.rook-ceph.svc:80"
 s3_bucket     = "ragflow"

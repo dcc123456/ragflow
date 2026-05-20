@@ -14,7 +14,6 @@ auto_provision_shared_service_credentials = true
 
 # App namespaces consume shared infra services from ragflow-infra
 deploy_infra = false
-deploy_zammad=false
 # Shared infra service endpoints
 mysql_host     = "mysql.ragflow-infra.svc.cluster.local"
 mysql_port     = "3306"
