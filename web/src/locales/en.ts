@@ -3183,6 +3183,14 @@ Important structured information may include: names, dates, locations, events, k
             enableModule: 'Enable module',
           },
         },
+        notification: {
+          title: 'Notification',
+          description: 'Manage notification content and delivery settings.',
+          fields: {
+            content: 'Content',
+            enableModule: 'Enable',
+          },
+        },
       },
 
       sandboxSettingsPage: {

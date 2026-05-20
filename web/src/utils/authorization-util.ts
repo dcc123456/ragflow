@@ -1,6 +1,7 @@
 import { Authorization, Token, UserInfo } from '@/constants/authorization';
 import { getSearchValue } from './common-util';
 const KeySet = [Authorization, Token, UserInfo];
+const DISMISSED_NOTIFICATION_KEY = 'dismissed_notification_id';
 
 const storage = {
   getAuthorization: () => {
@@ -44,6 +45,18 @@ const storage = {
   },
   getLanguage: (): string => {
     return localStorage.getItem('lng') as string;
+  },
+
+  getDismissedNotificationId: (): string | null => {
+    return localStorage.getItem(DISMISSED_NOTIFICATION_KEY);
+  },
+
+  setDismissedNotificationId: (id: string): void => {
+    localStorage.setItem(DISMISSED_NOTIFICATION_KEY, id);
+  },
+
+  removeDismissedNotificationId: (): void => {
+    localStorage.removeItem(DISMISSED_NOTIFICATION_KEY);
   },
 };
 

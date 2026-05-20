@@ -241,6 +241,11 @@ declare namespace AdminService {
       default_role: 'string';
     }>;
 
+    type notification = Utilities.DefineVariables<{
+      'notification.enabled': 'bool';
+      'notification.content': 'string';
+    }>;
+
     type Mail = Utilities.DefineVariables<
       {
         server: 'string';
@@ -311,6 +316,7 @@ declare namespace AdminService {
   }
 
   type SystemVariables = SystemVariables.Basic &
+    SystemVariables.notification &
     PrefixKeys<SystemVariables.Mail, 'mail'> &
     PrefixKeys<SystemVariables.SSO.IDP.Google, 'google|sso'> &
     PrefixKeys<SystemVariables.SSO.IDP.GitHub, 'github|sso'> &

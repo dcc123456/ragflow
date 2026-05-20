@@ -4,6 +4,9 @@ const restAPIv1 = `/api/v1`;
 export { restAPIv1, webAPI };
 
 export default {
+  // notification
+  notification: `${ExternalApi}${api_host}/notification`,
+
   // user
   loginGetCaptcha: `${webAPI}/user/forget/captcha`,
   loginSendVerifyCode: `${webAPI}/user/forget/otp`,

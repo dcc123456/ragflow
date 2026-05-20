@@ -19,6 +19,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 
 import Spotlight from '@/components/spotlight';
 
+import NotificationSettingsFormGroup from './form-group/notification';
 import SMTPSettingsForm from './form-group/smtp';
 import WhitelistSettingsFormGroup from './form-group/whitelist';
 
@@ -28,6 +29,7 @@ import { License } from './license';
 const schema = z.object({
   smtp: SMTPSettingsForm.schema,
   whitelist: WhitelistSettingsFormGroup.schema,
+  notification: NotificationSettingsFormGroup.schema,
 });
 
 export type AdminSettingsFormValues = z.infer<typeof schema>;
@@ -42,6 +44,7 @@ function AdminSettings() {
     return {
       smtp: SMTPSettingsForm.mapValuesFromData(variables),
       whitelist: WhitelistSettingsFormGroup.mapValuesFromData(variables),
+      notification: NotificationSettingsFormGroup.mapValuesFromData(variables),
     };
   }, [variables]);
 
@@ -91,12 +94,17 @@ function AdminSettings() {
                           data.whitelist,
                         ),
                         ...SMTPSettingsForm.mapValuesToData(data.smtp),
+                        ...NotificationSettingsFormGroup.mapValuesToData(
+                          data.notification,
+                        ),
                       });
                     })}
                   >
                     <SMTPSettingsForm />
                     <hr className="border-border-button" />
                     <WhitelistSettingsFormGroup />
+                    <hr className="border-border-button" />
+                    <NotificationSettingsFormGroup />
                   </form>
                 </Form>
               </div>
