@@ -64,7 +64,7 @@ export interface ICurrentPlan {
     pending_plan_name: string;
     effective_at: string | null;
   };
-  plan_name: string;
+  plan_name: PriceName;
   price_id: string;
   product_id: string;
   quota_apps: number;

@@ -25,6 +25,7 @@ import GlobalNavbar from './global-navbar';
 import ThemeButton from './theme-button';
 
 import { supportedLanguages } from '@/locales/config';
+import { PriceName } from '@/pages/price/constant';
 import { useFetchCurrentPlan } from '@/pages/price/hook/use-price-hooks';
 import { PrivateRoutes } from '@/private-routes';
 import { isBillingEnabled } from '@/services/billingStatus';
@@ -173,8 +174,8 @@ export function Header({
             className="size-8"
           />
 
-          {(currentPlan?.plan_name === 'Starter' ||
-            currentPlan?.plan_name === 'Pro') && (
+          {(currentPlan?.plan_name === PriceName.Starter ||
+            currentPlan?.plan_name === PriceName.Pro) && (
             <div
               className={cn(
                 '-mt-1 z-20 bg-gradient-to-r from-[#00BEB4] to-[#43FFA4] rounded-full px-1 py-0.5 text-xs font-normal text-black cursor-pointer',

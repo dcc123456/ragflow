@@ -17,6 +17,8 @@ import { Routes } from '@/routes';
 import { isBillingEnabled } from '@/services/billingStatus';
 import { TFunction } from 'i18next';
 
+import { PriceName } from '@/pages/price/constant';
+import { useFetchCurrentPlan } from '@/pages/price/hook/use-price-hooks';
 import {
   LucideBox,
   LucideServer,
@@ -96,6 +98,7 @@ export function SideBar() {
     fetchSystemVersion();
   }, [fetchSystemVersion]);
   const { logout } = useLogout();
+  const { data: currentPlan } = useFetchCurrentPlan();
 
   const items = useMemo(() => {
     const menus: MenuItem[] = [...menuItems(t)];
@@ -109,7 +112,13 @@ export function SideBar() {
     }
     return menus.filter((x) => {
       if (x.key === Routes.Api) {
-        if (enableAdmin && isAdmin) {
+        if (
+          (enableAdmin && isAdmin) ||
+          (currentPlan?.plan_name &&
+            [PriceName.Starter, PriceName.Pro].includes(
+              currentPlan.plan_name as PriceName,
+            ))
+        ) {
           return true;
         }
         return false;
@@ -123,7 +132,7 @@ export function SideBar() {
 
       return x;
     });
-  }, [enableAdmin, isAdmin, t]);
+  }, [enableAdmin, isAdmin, t, currentPlan]);
 
   return (
     <aside className="w-[303px] bg-bg-base flex flex-col">
