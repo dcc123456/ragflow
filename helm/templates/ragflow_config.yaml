@@ -24,14 +24,6 @@ data:
         server_name _;
         root /ragflow/web/dist;
 
-        # Rewrite $remote_addr from trusted proxy headers so rate limiter
-        # sees the real client IP instead of the LB/Ingress pod IP.
-        set_real_ip_from 10.0.0.0/8;
-        set_real_ip_from 172.16.0.0/12;
-        set_real_ip_from 192.168.0.0/16;
-        real_ip_header  X-Forwarded-For;
-        real_ip_recursive on;
-
         gzip on;
         gzip_min_length 1k;
         gzip_comp_level 9;
@@ -45,12 +37,6 @@ data:
         }
 
         location ~ ^/(v1|api) {
-            access_by_lua_block {
-                local rate_limit = package.loaded.rate_limit
-                if rate_limit then
-                    rate_limit.check()
-                end
-            }
             proxy_pass http://localhost:9380;
             include proxy.conf;
         }
@@ -82,13 +68,6 @@ data:
     error_log  /var/log/nginx/error.log notice;
     pid        /var/run/nginx.pid;
 
-    # Expose environment variables to Nginx workers so Lua can read them via os.getenv
-    env RATELIMIT_REDIS_HOST;
-    env RATELIMIT_REDIS_PORT;
-    env RATELIMIT_REDIS_PASSWORD;
-    env RATELIMIT_REDIS_DB;
-    env RATELIMIT_DISABLED;
-
     events {
         worker_connections  1024;
     }
@@ -99,8 +78,7 @@ data:
 
         log_format  main  '$remote_addr - $remote_user [$time_local] "$request" '
                         '$status $body_bytes_sent "$http_referer" '
-                        '"$http_user_agent" "$http_x_forwarded_for" '
-                        'tenant=$http_x_billing_tenant_id';
+                        '"$http_user_agent" "$http_x_forwarded_for"';
 
         access_log  /var/log/nginx/access.log  main;
 
@@ -111,24 +89,6 @@ data:
 
         #gzip  on;
         client_max_body_size 128M;
-
-        # Shared dict for in-process caching (tenant lookup, rate-limit configs)
-        lua_shared_dict billing_cache 4m;
-
-        # Lua package path for rate limiting module
-        lua_package_path "/etc/nginx/?.lua;;";
-
-        # Init: load the rate_limit module on worker start
-        init_worker_by_lua_block {
-            local ok, rate_limit = pcall(require, "rate_limit")
-            if ok then
-                package.loaded.rate_limit = rate_limit
-                ngx.log(ngx.NOTICE, "rate_limit module loaded successfully")
-            else
-                ngx.log(ngx.WARN, "rate_limit module not available: ", rate_limit)
-                package.loaded.rate_limit = nil
-            end
-        }
 
         include /etc/nginx/conf.d/ragflow.conf;
     }
