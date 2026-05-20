@@ -839,7 +839,7 @@ variable "billing_enabled" {
 }
 
 variable "billing_stripe_api_key" {
-  description = "Stripe API key. Set via environment variable: export TF_VAR_billing_stripe_api_key='sk_live_xxx'"
+  description = "Stripe Secret API key. Set via environment variable: export TF_VAR_billing_stripe_api_key='sk_live_xxx'"
   type        = string
   sensitive   = true
   default     = ""
@@ -849,11 +849,20 @@ variable "billing_stripe_api_key" {
   }
 }
 
+variable "billing_stripe_publishable_key" {
+  description = "Stripe Publishable API key for frontend. Set via environment variable: export TF_VAR_billing_stripe_publishable_key='pk_live_xxx'"
+  type        = string
+  default     = ""
+  validation {
+    condition     = var.billing_enabled == false || substr(var.billing_stripe_publishable_key, 0, 3) == "pk_"
+    error_message = "billing_stripe_publishable_key must start with 'pk_' (Stripe publishable key prefix)."
+  }
+}
 
 variable "billing_stripe_api_version" {
   description = "Stripe API version"
   type        = string
-  default     = "2026-02-25.clover"
+  default     = "2026-04-22.dahlia"
 }
 
 variable "billing_service_url" {
@@ -937,18 +946,6 @@ variable "zammad_token" {
   type        = string
   sensitive   = true
   default     = ""
-}
-
-variable "deploy_zammad" {
-  description = "Whether to deploy Zammad support ticket system in the same cluster"
-  type        = bool
-  default     = true
-}
-
-variable "zammad_image_tag" {
-  description = "Zammad Docker image tag"
-  type        = string
-  default     = "7.0.1-0035"
 }
 
 # =============================================================================

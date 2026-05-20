@@ -897,19 +897,6 @@ async def modify_subscription_plan_async(
     await cancel_scheduled_subscription_change_async(subscription_id)
 
     subscription = await stripe.Subscription.retrieve_async(subscription_id)
-    customer_id = (get_attr_or_item(subscription, "customer", "") or "").strip()
-    has_payment_method = await has_reusable_payment_method_async(
-        customer_id=customer_id,
-        subscription=subscription,
-    )
-    if not has_payment_method:
-        logging.warning(
-            "Skip subscription modification without reusable payment method: tenant_id=%s, subscription_id=%s, target_price_id=%s",
-            tenant_id,
-            subscription_id,
-            target_price_id,
-        )
-        return {"error_message": "No reusable payment method is attached to this customer."}
 
     subscription_item_id, _current_price_id, current_quantity = extract_plan_subscription_item(subscription)
     if not subscription_item_id:
@@ -919,10 +906,28 @@ async def modify_subscription_plan_async(
     request_quantity = max(current_quantity, 1)
     idempotency_key = f"{tenant_id}:{subscription_id}:{target_price_id}:{uuid.uuid4()}"
 
+    # Build the full items list: update plan item price + preserve all other items
+    # (e.g. storage add-on). Stripe replaces all items, so omitting any would drop them.
+    modify_items = [{"id": subscription_item_id, "price": target_price_id, "quantity": request_quantity}]
+    subscription_items = (subscription.get("items") or {}).get("data", []) if isinstance(subscription, dict) else subscription["items"]["data"]
+    for item in subscription_items or []:
+        price_obj = item.get("price", {}) if isinstance(item, dict) else getattr(item, "price", None)
+        price_id = price_obj.get("id", "") if isinstance(price_obj, dict) else (getattr(price_obj, "id", "") if price_obj else "")
+        price_id = (price_id or "").strip()
+        if not price_id or price_id == _current_price_id:
+            # Skip the plan item we're already replacing
+            continue
+        quantity = item.get("quantity", 0) if isinstance(item, dict) else getattr(item, "quantity", 0)
+        quantity = safe_int(quantity, 0)
+        if quantity > 0:
+            # Preserve this non-plan item (e.g. storage add-on) as-is
+            modify_items.append({"id": item.get("id", "") if isinstance(item, dict) else getattr(item, "id", ""), "price": price_id, "quantity": quantity})
+
     modify_params = {
-        "items": [{"id": subscription_item_id, "price": target_price_id, "quantity": request_quantity}],
+        "items": modify_items,
         "proration_behavior": "always_invoice",
         "expand": ["latest_invoice.payment_intent"],
+        "payment_behavior": "pending_if_incomplete",
     }
     if reset_billing_cycle:
         modify_params["billing_cycle_anchor"] = "now"
@@ -982,7 +987,14 @@ async def has_reusable_payment_method_async(*, customer_id: str = "", subscripti
     if not customer_id:
         return False
 
-    customer = await stripe.Customer.retrieve_async(customer_id)
+    try:
+        customer = await stripe.Customer.retrieve_async(customer_id)
+    except stripe.AuthenticationError:
+        logging.warning(
+            "Stripe API key missing while checking reusable payment method for customer %s; treating as unavailable.",
+            customer_id,
+        )
+        return False
 
     return bool(_extract_default_payment_method_or_source(customer))
 
@@ -1090,6 +1102,22 @@ def get_receipt_url_from_intent_latest_charge(latest_charge_id: str) -> str:
     try:
         if latest_charge_id:
             charge = stripe.Charge.retrieve(latest_charge_id)
+            if not charge:
+                logging.warning("Expecting get metadata from stripe intent, but failed.")
+                return ""
+            receipt_url = charge.get("receipt_url", "")
+            return receipt_url
+    except stripe.StripeError as e:
+        print(f"An error occurred: {str(e)}")
+
+    return ""
+
+
+@billing_enabled_guard("")
+async def get_receipt_url_from_intent_latest_charge_async(latest_charge_id: str) -> str:
+    try:
+        if latest_charge_id:
+            charge = await stripe.Charge.retrieve_async(latest_charge_id)
             if not charge:
                 logging.warning("Expecting get metadata from stripe intent, but failed.")
                 return ""

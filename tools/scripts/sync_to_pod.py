@@ -6,8 +6,6 @@ Usage:
     python sync_to_pod.py --pod POD_NAME   # Direct sync to specific pod
     python sync_to_pod.py --python-only    # Skip npm build + dist sync
     python sync_to_pod.py --dist-only      # Only sync dist (after manual npm build)
-    python sync_to_pod.py --patch-liveness-threshold 40
-                                          # Explicitly patch Deployment probe (rolls pods)
 
 Prereq:
     - rsync installed in the pod (apt install rsync)
@@ -21,6 +19,7 @@ import time
 import sys
 import argparse
 import socket
+import shlex
 from pathlib import Path
 
 
@@ -57,19 +56,6 @@ def find_ragflow_pods(namespace="ragflow"):
         age = age_r.stdout.strip()
         pods.append((name, phase, age))
     return pods
-
-
-def find_deployment_name(namespace="ragflow"):
-    """Return the ragflow deployment name."""
-    result = subprocess.run(
-        ["kubectl", "get", "deployment", "-n", namespace, "-l", "app=ragflow",
-         "-o", "jsonpath={.items[0].metadata.name}"],
-        capture_output=True, text=True
-    )
-    name = result.stdout.strip()
-    if not name:
-        raise RuntimeError(f"No ragflow deployment found in namespace '{namespace}'")
-    return name
 
 
 def pick_pod(pods):
@@ -326,28 +312,6 @@ def sync_dist_files(pod, namespace="ragflow", local_port=8873):
 # Main
 # ---------------------------------------------------------------------------
 
-def patch_liveness_threshold(deployment, namespace="ragflow", threshold=40):
-    """Patch the Deployment livenessProbe failure_threshold.
-
-    Warning: patching Deployment.spec.template triggers a rollout and replaces pods.
-    """
-    import json
-    d = {'spec': {'template': {'spec': {'containers': [{'name': 'ragflow', 'livenessProbe': {'failureThreshold': threshold}}]}}}}
-    patch = json.dumps(d)
-    with open("/tmp/live_patch.json", "w") as f:
-        f.write(patch)
-    cmd = [
-        "kubectl", "patch", "deployment", deployment,
-        "-n", namespace,
-        "--patch-file", "/tmp/live_patch.json",
-    ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        print(f"  [WARN] Failed to patch liveness threshold: {result.stderr[-300:]}")
-    else:
-        print(f"  liveness_probe.failure_threshold -> {threshold} (20 min @ 30s interval)")
-
-
 ENTRYPOINT_PYTHON_SCRIPTS = [
     "api/ragflow_server.py",
     "admin/server/admin_server.py",
@@ -357,21 +321,64 @@ ENTRYPOINT_PYTHON_SCRIPTS = [
 
 def kill_ragflow_server(pod, namespace="ragflow"):
     """Kill entrypoint-managed Python processes in the pod to trigger restart."""
-    script_patterns = " || ".join(f"index($2, \"{script}\") > 0" for script in ENTRYPOINT_PYTHON_SCRIPTS)
-    shell_command = (
-        "pids=$(ps -eo pid=,args= | "
-        f"awk '/python/ && ({script_patterns}) {{print $1}}'); "
-        "if [[ -n \"$pids\" ]]; then kill -TERM $pids; fi"
+    ps_command = ["kubectl", "exec", pod, "-n", namespace, "--", "bash", "-lc", "ps -auxf"]
+    print(f"  process snapshot before kill: {shlex.join(ps_command)}")
+    ps_before = subprocess.run(ps_command, capture_output=True, text=True)
+    if ps_before.returncode == 0:
+        print(ps_before.stdout.rstrip())
+    else:
+        print(f"  [WARN] Failed to capture process snapshot before kill: {ps_before.stderr[-300:]}")
+
+    list_command = f"pgrep -f {shlex.quote('|'.join(ENTRYPOINT_PYTHON_SCRIPTS))}"
+    list_process_command = ["kubectl", "exec", pod, "-n", namespace, "--", "bash", "-lc", list_command]
+    print(f"  process match command: {shlex.join(list_process_command)}")
+    list_result = subprocess.run(
+        list_process_command,
+        capture_output=True,
+        text=True,
     )
-    result = subprocess.run(
-        ["kubectl", "exec", pod, "-n", namespace, "--",
-         "bash", "-lc", shell_command],
-        capture_output=True, text=True
-    )
-    # exit code 143 = SIGTERM (container exec connection killed, likely means process died)
-    # exit code 137 = SIGKILL. Both usually mean the kill succeeded but connection dropped.
-    if result.returncode in (0, 143, 137):
-        print("  entrypoint-managed Python processes signaled for restart")
+    if list_result.returncode not in (0, 1):
+        print(f"  [WARN] Failed to list entrypoint-managed Python processes: {list_result.stderr[-300:]}")
+        return
+
+    processes = []
+    for line in list_result.stdout.strip().splitlines():
+        pid = line.strip()
+        if not pid:
+            continue
+        describe_command = [
+            "kubectl", "exec", pod, "-n", namespace, "--",
+            "bash", "-lc", f"ps -p {shlex.quote(pid)} -o args=",
+        ]
+        describe_result = subprocess.run(describe_command, capture_output=True, text=True)
+        command = describe_result.stdout.strip() if describe_result.returncode == 0 else ""
+        processes.append((pid, command))
+
+    if not processes:
+        print("  no entrypoint-managed Python processes found")
+        return
+
+    for pid, command in processes:
+        kill_command = [
+            "kubectl", "exec", pod, "-n", namespace, "--",
+            "bash", "-lc", f"kill -TERM {shlex.quote(pid)}",
+        ]
+        print(f"  killing pid={pid}: {command}")
+        print(f"  command: {shlex.join(kill_command)}")
+        result = subprocess.run(kill_command, capture_output=True, text=True)
+        # exit code 143 = SIGTERM (container exec connection killed, likely means process died)
+        # exit code 137 = SIGKILL. Both usually mean the kill succeeded but connection dropped.
+        if result.returncode not in (0, 143, 137):
+            print(f"  [WARN] Failed to signal pid={pid} command={command}: {result.stderr[-300:]}")
+        else:
+            print(f"  pid={pid} command={command} signaled for restart")
+
+    print(f"  process snapshot after kill: {shlex.join(ps_command)}")
+    ps_after = subprocess.run(ps_command, capture_output=True, text=True)
+    if ps_after.returncode == 0:
+        print(ps_after.stdout.rstrip())
+    else:
+        print(f"  [WARN] Failed to capture process snapshot after kill: {ps_after.stderr[-300:]}")
 
 
 def reload_nginx(pod, namespace="ragflow"):
@@ -405,15 +412,6 @@ def main():
                         help="Only sync Python files, skip npm build and dist")
     parser.add_argument("--dist-only", action="store_true",
                         help="Only sync web/dist (assumes build already done)")
-    parser.add_argument(
-        "--patch-liveness-threshold",
-        type=int,
-        default=None,
-        help=(
-            "Patch Deployment livenessProbe.failureThreshold before sync. "
-            "This changes the Pod template and triggers a rollout."
-        ),
-    )
     parser.add_argument("--build", action="store_true", default=True,
                         help="Run npm build before syncing (default: True)")
     parser.add_argument("--no-build", dest="build", action="store_false",
@@ -430,24 +428,12 @@ def main():
     pod = args.pod_name or pick_pod(pods)
     print(f"    Selected: {pod}")
 
-    # ---- 2. Optionally patch liveness threshold ------------------------------
-    if args.patch_liveness_threshold is not None:
-        print(
-            "\n[2] Patching Deployment liveness_probe.failure_threshold to "
-            f"{args.patch_liveness_threshold} ..."
-        )
-        print("    Warning: this updates the Pod template and triggers a rollout.")
-        deployment = find_deployment_name(namespace)
-        patch_liveness_threshold(deployment, namespace, args.patch_liveness_threshold)
-    else:
-        print("\n[2] Skipping Deployment liveness patch (default safe mode; no rollout).")
-
-    # ---- 3. Start rsyncd in pod ---------------------------------------------
-    print(f"\n[3] Starting rsyncd in pod {pod} ...")
+    # ---- 2. Start rsyncd in pod ---------------------------------------------
+    print(f"\n[2] Starting rsyncd in pod {pod} ...")
     start_rsync_daemon(pod, namespace)
 
-    # ---- 4. Port-forward -----------------------------------------------------
-    print("\n[4] Setting up kubectl port-forward ...")
+    # ---- 3. Port-forward -----------------------------------------------------
+    print("\n[3] Setting up kubectl port-forward ...")
     pf_proc = start_port_forward(pod, namespace, local_port, remote_port)
 
     try:
@@ -457,23 +443,23 @@ def main():
             sys.exit(1)
         print("  rsync endpoint ready at rsync://localhost:{}/ragflow".format(local_port))
 
-        # ---- 5. Frontend build + dist sync + nginx reload --------------------
+        # ---- 4. Frontend build + dist sync + nginx reload --------------------
         if not args.python_only:
-            print("\n[5] Building frontend (npm run build) ...")
+            print("\n[4] Building frontend (npm run build) ...")
             if args.build:
                 run_npm_build()
-            print("\n[6] Syncing web/dist/ -> /ragflow/web/dist/ ...")
+            print("\n[5] Syncing web/dist/ -> /ragflow/web/dist/ ...")
             if not sync_dist_files(pod, namespace, local_port):
                 sys.exit(1)
-            print("\n[6b] Reloading nginx ...")
+            print("\n[5b] Reloading nginx ...")
             reload_nginx(pod, namespace)
 
-        # ---- 7. Python sync + kill ragflow_server ----------------------------
+        # ---- 6. Python sync + kill ragflow_server ----------------------------
         if not args.dist_only:
-            print("\n[7] Syncing Python files -> /ragflow/ ...")
+            print("\n[6] Syncing Python files -> /ragflow/ ...")
             if not sync_python_files(pod, namespace, local_port):
                 sys.exit(1)
-            print("\n[8] Killing ragflow_server process ...")
+            print("\n[7] Killing ragflow_server process ...")
             kill_ragflow_server(pod, namespace)
 
         print("\n✓ Sync complete!\n")

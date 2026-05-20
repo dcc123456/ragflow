@@ -1,11 +1,9 @@
-import { nextLayoutRef } from '@/layouts/root-layout';
 import { convertBytesToGb } from '@/lib/utils';
 import i18n from '@/locales/config';
 import { isBillingEnabled } from '@/services/billingStatus';
 import storagePrivate from '@/utils/authorization-private-util';
 import { useCallback, useEffect, useState } from 'react';
 import { useLocation } from 'react-router';
-import { showFreeUpgradeTipsModal, showUpgradeTipsModal } from '.';
 import { freePageNumber } from '../config';
 import { PriceName } from '../constant';
 import { IConfirmPlan, ICurrentPlan, IPricePlan } from '../interface';
@@ -17,6 +15,8 @@ export const FREE_UPGRADE_TIPS_EVENT = 'SHOW_FREE_UPGRADE_TIPS';
 export interface ConfirmPriceEventDetail {
   plan: IConfirmPlan;
   container?: HTMLElement;
+  has_reusable_payment_method?: boolean;
+  stripe_publishable_key?: string | null;
 }
 
 export interface UpgradeTipsEventDetail {
@@ -28,6 +28,23 @@ export interface UpgradeTipsEventDetail {
 export interface FreeUpgradeTipsEventDetail {
   container?: HTMLElement;
 }
+
+export const showUpgradeTipsModal = (options?: UpgradeTipsEventDetail) => {
+  const event = new CustomEvent(UPGRADE_TIPS_EVENT, { detail: options });
+  window.dispatchEvent(event);
+};
+
+export const showPriceConfirmModal = (options?: ConfirmPriceEventDetail) => {
+  const event = new CustomEvent(CONFIRM_PRICE_EVENT, { detail: options });
+  window.dispatchEvent(event);
+};
+
+export const showFreeUpgradeTipsModal = (
+  options?: FreeUpgradeTipsEventDetail,
+) => {
+  const event = new CustomEvent(FREE_UPGRADE_TIPS_EVENT, { detail: options });
+  window.dispatchEvent(event);
+};
 
 /**
  * Frontend error codes for billing resource insufficient errors.
@@ -67,7 +84,6 @@ export const showPriceModal = ({ code, detail }: IPriceData) => {
           current: detail.current || 0,
           limit: detail.limit || 0,
         }),
-        container: nextLayoutRef.current || undefined,
       });
       return true;
     case PriceCode.AppsLimit:
@@ -77,21 +93,18 @@ export const showPriceModal = ({ code, detail }: IPriceData) => {
           current: detail.current || 0,
           limit: detail.limit || 0,
         }),
-        container: nextLayoutRef.current || undefined,
       });
       return true;
     case PriceCode.StorageLimit:
       showUpgradeTipsModal({
         type: 'storage',
         message: `You've reached your storage limit for your plan (${convertBytesToGb(detail.current)} GB/${convertBytesToGb(detail.limit)} GB). `,
-        container: nextLayoutRef.current || undefined,
       });
       return true;
     case PriceCode.PointsLimit:
       showUpgradeTipsModal({
         type: 'points',
         message: i18n.t('price.upgradeTips.pointsInsufficient'),
-        container: nextLayoutRef.current || undefined,
       });
       return true;
     default:
@@ -242,6 +255,8 @@ export const useShowConfirmPriceModal = () => {
     isOpen: boolean;
     plan: IPricePlan;
     container?: HTMLElement;
+    has_reusable_payment_method?: boolean;
+    stripe_publishable_key?: string | null;
   }>({
     isOpen: false,
     plan: {
@@ -252,14 +267,23 @@ export const useShowConfirmPriceModal = () => {
       features: [],
     },
     container: undefined,
+    has_reusable_payment_method: true,
+    stripe_publishable_key: null,
   });
 
   const showConfirmPrice = useCallback(
-    (options: { plan: IPricePlan; container?: HTMLElement }) => {
+    (options: {
+      plan: IPricePlan;
+      container?: HTMLElement;
+      has_reusable_payment_method?: boolean;
+      stripe_publishable_key?: string | null;
+    }) => {
       setConfirmPrice({
         isOpen: true,
         plan: options.plan,
         container: options.container,
+        has_reusable_payment_method: options.has_reusable_payment_method,
+        stripe_publishable_key: options.stripe_publishable_key ?? null,
       });
     },
     [],
@@ -276,6 +300,8 @@ export const useShowConfirmPriceModal = () => {
         features: [],
       },
       container: undefined,
+      has_reusable_payment_method: true,
+      stripe_publishable_key: null,
     });
   };
 
@@ -330,9 +356,7 @@ export const useComputedRouterChangeCount = () => {
     localStorage.setItem('pageViewCount', count.toString());
 
     if (count > freePageNumber) {
-      showFreeUpgradeTipsModal({
-        container: nextLayoutRef?.current || undefined,
-      });
+      showFreeUpgradeTipsModal({});
       localStorage.setItem('pageViewCount', '0');
     }
   }, [pathname]);

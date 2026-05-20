@@ -6,7 +6,6 @@ import message from '@/components/ui/message';
 import { Authorization } from '@/constants/authorization';
 import { ResponseType } from '@/interfaces/database/base';
 import i18n from '@/locales/config';
-import { PriceCode, showPriceModal } from '@/pages/price/global/hook';
 import { isBillingEnabled } from '@/services/billingStatus';
 import authorizationUtil, {
   getAuthorization,
@@ -44,6 +43,22 @@ const shouldSilent = (url: string, code: number, message?: string): boolean => {
       : true;
     return codeMatch && messageMatch;
   });
+};
+
+const showBillingUpgradeModalIfNeeded = async (data: ResponseType) => {
+  if (!isBillingEnabled()) {
+    return false;
+  }
+
+  const { PriceCode, showPriceModal } =
+    await import('@/pages/price/global/hook');
+
+  if (!PriceCode[data?.code as keyof typeof PriceCode]) {
+    return false;
+  }
+
+  showPriceModal(data as any);
+  return true;
 };
 
 export const RetcodeMessage = {
@@ -202,9 +217,7 @@ request.interceptors.response.use(async (response: any, options: any) => {
     authorizationUtil.removeAll();
     redirectToLogin();
   } else if (data?.code !== 0) {
-    if (isBillingEnabled() && PriceCode[data?.code as any]) {
-      showPriceModal(data as any);
-    } else {
+    if (!(await showBillingUpgradeModalIfNeeded(data))) {
       if (
         !options.noToast &&
         !shouldSilent(options.url, data?.code, data?.message)

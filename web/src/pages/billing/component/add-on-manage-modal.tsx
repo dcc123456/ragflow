@@ -1,29 +1,142 @@
 import NumberInput from '@/components/originui/number-input';
+import message from '@/components/ui/message';
 import { Modal } from '@/components/ui/modal/modal';
-import React, { useEffect, useMemo, useState } from 'react';
+import {
+  StripeProvider,
+  useStripe as useStripeContext,
+} from '@/contexts/stripe-context';
+import {
+  StorageAddonSetupRetryKey,
+  useSetupIntentPayment,
+} from '@/pages/price/hook/use-price-hooks';
+import QueryClientSingleton from '@/utils/query-client-singleton';
+import {
+  Elements,
+  PaymentElement,
+  useElements,
+  useStripe,
+} from '@stripe/react-stripe-js';
+import { QueryClientProvider } from '@tanstack/react-query';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { useTranslation } from 'react-i18next';
+
 interface IOkFuncProps {
   value: number;
+  paymentMethodReady?: boolean;
+  setupIntentId?: string;
+}
+
+interface IStorageUpgradePreview {
+  amount_due_today?: number;
+  has_reusable_payment_method?: boolean;
+  stripe_publishable_key?: string | null;
 }
 interface CustomModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onOk: (T: IOkFuncProps) => void;
+  onOk: (T: IOkFuncProps) => Promise<void> | void;
+  tenantId?: string;
   defaultValue?: number;
   currentValue?: number;
   price?: number;
-  getImmediateCharge?: (value: number) => Promise<number | undefined>;
+  getUpgradePreview?: (
+    value: number,
+  ) => Promise<IStorageUpgradePreview | undefined>;
 }
+
+type ConfirmSetupHandler = () => Promise<{ status?: string }>;
+
+const SetupIntentPaymentElement = ({
+  onReady,
+}: {
+  onReady: (handler: ConfirmSetupHandler | null) => void;
+}) => {
+  const stripe = useStripe();
+  const elements = useElements();
+
+  useEffect(() => {
+    if (!stripe || !elements) {
+      onReady(null);
+      return;
+    }
+
+    onReady(async () => {
+      const result = await stripe.confirmSetup({
+        elements,
+        confirmParams: {
+          return_url: window.location.href,
+        },
+        redirect: 'if_required',
+      });
+
+      if (result.error) {
+        throw new Error(
+          result.error.message || 'Failed to confirm payment details',
+        );
+      }
+
+      if (!result.setupIntent) {
+        throw new Error(
+          'Setup intent confirmation did not return a setup intent',
+        );
+      }
+
+      if (result.setupIntent.status !== 'succeeded') {
+        throw new Error(`Setup intent is ${result.setupIntent.status}`);
+      }
+
+      return result.setupIntent;
+    });
+
+    return () => onReady(null);
+  }, [elements, onReady, stripe]);
+
+  return <PaymentElement />;
+};
+
+const StorageSetupPaymentSection = ({
+  clientSecret,
+  onReady,
+}: {
+  clientSecret: string;
+  onReady: (handler: ConfirmSetupHandler | null) => void;
+}) => {
+  const { stripe } = useStripeContext();
+
+  if (!stripe) {
+    return null;
+  }
+
+  return (
+    <div className="mb-2 p-4 border border-border-button rounded-md">
+      <div className="text-sm text-text-secondary mb-4">
+        Please enter your payment details to complete the storage upgrade
+      </div>
+      <Elements
+        stripe={stripe}
+        options={{
+          clientSecret,
+          appearance: {
+            theme: 'stripe',
+          },
+        }}
+      >
+        <SetupIntentPaymentElement onReady={onReady} />
+      </Elements>
+    </div>
+  );
+};
 
 const CustomModal: React.FC<CustomModalProps> = ({
   isOpen,
   onClose,
   onOk,
+  tenantId = '',
   defaultValue = 0,
   currentValue = defaultValue,
   price = 0,
-  getImmediateCharge,
+  getUpgradePreview,
 }) => {
   const [value, setValue] = useState(defaultValue);
   const [immediateCharge, setImmediateCharge] = useState(
@@ -31,7 +144,17 @@ const CustomModal: React.FC<CustomModalProps> = ({
   );
   const [isImmediateChargeLoading, setIsImmediateChargeLoading] =
     useState(false);
+  const [loading, setLoading] = useState(false);
+  const [hasReusablePaymentMethod, setHasReusablePaymentMethod] =
+    useState(true);
+  const [publishableKey, setPublishableKey] = useState<string | null>(null);
+  const [showPaymentForm, setShowPaymentForm] = useState(false);
+  const [clientSecret, setClientSecret] = useState<string | null>(null);
+  const [confirmSetupHandler, setConfirmSetupHandler] =
+    useState<ConfirmSetupHandler | null>(null);
+  const { createSetupIntent } = useSetupIntentPayment();
   const { t } = useTranslation();
+
   const handleChange = (e: number) => {
     setValue(e);
   };
@@ -47,12 +170,17 @@ const CustomModal: React.FC<CustomModalProps> = ({
     if (value <= currentValue) {
       setImmediateCharge(0);
       setIsImmediateChargeLoading(false);
+      setHasReusablePaymentMethod(true);
+      setPublishableKey(null);
+      setShowPaymentForm(false);
+      setClientSecret(null);
+      setConfirmSetupHandler(null);
       return () => {
         cancelled = true;
       };
     }
 
-    if (!getImmediateCharge) {
+    if (!getUpgradePreview) {
       setImmediateCharge(Math.max(0, (value - currentValue) * price));
       setIsImmediateChargeLoading(false);
       return () => {
@@ -61,17 +189,24 @@ const CustomModal: React.FC<CustomModalProps> = ({
     }
 
     setIsImmediateChargeLoading(true);
-    getImmediateCharge(value)
-      .then((amount) => {
+    getUpgradePreview(value)
+      .then((preview) => {
         if (!cancelled) {
           setImmediateCharge(
-            amount ?? Math.max(0, (value - currentValue) * price),
+            preview?.amount_due_today ??
+              Math.max(0, (value - currentValue) * price),
           );
+          setHasReusablePaymentMethod(
+            preview?.has_reusable_payment_method ?? true,
+          );
+          setPublishableKey(preview?.stripe_publishable_key ?? null);
         }
       })
       .catch(() => {
         if (!cancelled) {
           setImmediateCharge(Math.max(0, (value - currentValue) * price));
+          setHasReusablePaymentMethod(true);
+          setPublishableKey(null);
         }
       })
       .finally(() => {
@@ -83,10 +218,98 @@ const CustomModal: React.FC<CustomModalProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [currentValue, getImmediateCharge, price, value]);
+  }, [currentValue, getUpgradePreview, price, value]);
 
-  const handleOk = () => {
-    onOk?.({ value });
+  const handleCreateSetupIntent = useCallback(async () => {
+    const result = await createSetupIntent({
+      setup_type: 'storage_addon',
+      target_storage_bytes: Math.max(0, value) * 1000 * 1000 * 1000,
+    });
+    setClientSecret(result.client_secret);
+    setShowPaymentForm(true);
+  }, [createSetupIntent, value]);
+
+  useEffect(() => {
+    setShowPaymentForm(false);
+    setClientSecret(null);
+    setConfirmSetupHandler(null);
+  }, [value, isOpen]);
+
+  useEffect(() => {
+    if (
+      !isOpen ||
+      value <= currentValue ||
+      hasReusablePaymentMethod ||
+      !publishableKey ||
+      clientSecret ||
+      loading ||
+      isImmediateChargeLoading
+    ) {
+      return;
+    }
+
+    handleCreateSetupIntent().catch((e) => {
+      message.error((e as Error)?.message || 'Failed to initialize payment');
+    });
+  }, [
+    clientSecret,
+    currentValue,
+    handleCreateSetupIntent,
+    hasReusablePaymentMethod,
+    isImmediateChargeLoading,
+    isOpen,
+    loading,
+    publishableKey,
+    value,
+  ]);
+
+  const handleConfirmWithNewPaymentMethod = async () => {
+    if (!confirmSetupHandler) {
+      throw new Error('Payment form is still loading');
+    }
+
+    localStorage.setItem(
+      StorageAddonSetupRetryKey,
+      JSON.stringify({
+        tenant_id: tenantId,
+        target_storage_bytes: Math.max(0, value) * 1000 * 1000 * 1000,
+        auto_retry_pending: true,
+      }),
+    );
+    const setupIntent = await confirmSetupHandler();
+    const setupIntentId =
+      typeof (setupIntent as { id?: string })?.id === 'string'
+        ? (setupIntent as { id?: string }).id
+        : '';
+    if (!setupIntentId) {
+      throw new Error('Setup intent confirmation did not return an ID');
+    }
+    localStorage.removeItem(StorageAddonSetupRetryKey);
+    return setupIntentId;
+  };
+
+  const handleOk = async () => {
+    setLoading(true);
+    try {
+      if (value > currentValue && !hasReusablePaymentMethod) {
+        if (!showPaymentForm || !clientSecret) {
+          await handleCreateSetupIntent();
+          return;
+        }
+        const setupIntentId = await handleConfirmWithNewPaymentMethod();
+        await onOk?.({ value, paymentMethodReady: true, setupIntentId });
+        onClose();
+        return;
+      }
+
+      await onOk?.({ value });
+      onClose();
+    } catch (e) {
+      localStorage.removeItem(StorageAddonSetupRetryKey);
+      message.error((e as Error)?.message || 'Failed to update storage');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -97,6 +320,7 @@ const CustomModal: React.FC<CustomModalProps> = ({
       closable={false}
       title={t('billing.manageAddonStorage')}
       className="!w-[500px]"
+      confirmLoading={loading}
     >
       <div className="flex flex-col gap-4 text-text-secondary">
         <div className="flex items-center mb-4 gap-8 text-text-primary">
@@ -149,6 +373,27 @@ const CustomModal: React.FC<CustomModalProps> = ({
             ></div>
           )}
         </div>
+        {value > currentValue &&
+          showPaymentForm &&
+          clientSecret &&
+          publishableKey && (
+            <StripeProvider publishableKey={publishableKey}>
+              <StorageSetupPaymentSection
+                clientSecret={clientSecret}
+                onReady={(handler) => {
+                  setConfirmSetupHandler(() => handler);
+                }}
+              />
+            </StripeProvider>
+          )}
+        {value > currentValue &&
+          !hasReusablePaymentMethod &&
+          !showPaymentForm && (
+            <div className="text-sm text-text-secondary p-3 bg-accent-primary-5 rounded-md">
+              No payment method on file. Initializing secure payment details
+              form for this storage upgrade.
+            </div>
+          )}
       </div>
     </Modal>
   );
@@ -156,18 +401,22 @@ const CustomModal: React.FC<CustomModalProps> = ({
 
 let currentModal: { destroy: () => void } | null = null;
 interface IShowUpgradeTipsModalOptions {
+  tenantId?: string;
   defaultValue: number;
   currentValue?: number;
-  onOk: (T: IOkFuncProps) => void;
+  onOk: (T: IOkFuncProps) => Promise<void> | void;
   price?: number;
-  getImmediateCharge?: (value: number) => Promise<number | undefined>;
+  getUpgradePreview?: (
+    value: number,
+  ) => Promise<IStorageUpgradePreview | undefined>;
 }
 const showAddOnManageModal = ({
+  tenantId = '',
   defaultValue = 0,
   currentValue = defaultValue,
   onOk,
   price = 0,
-  getImmediateCharge,
+  getUpgradePreview,
 }: IShowUpgradeTipsModalOptions) => {
   const rootElement = document.createElement('div');
   document.body.appendChild(rootElement);
@@ -180,15 +429,18 @@ const showAddOnManageModal = ({
   };
 
   reactRoot.render(
-    <CustomModal
-      isOpen={true}
-      onOk={onOk}
-      defaultValue={defaultValue}
-      currentValue={currentValue}
-      onClose={closeModal}
-      price={price}
-      getImmediateCharge={getImmediateCharge}
-    />,
+    <QueryClientProvider client={QueryClientSingleton.getInstance()}>
+      <CustomModal
+        isOpen={true}
+        tenantId={tenantId}
+        onOk={onOk}
+        defaultValue={defaultValue}
+        currentValue={currentValue}
+        onClose={closeModal}
+        price={price}
+        getUpgradePreview={getUpgradePreview}
+      />
+    </QueryClientProvider>,
   );
 
   currentModal = { destroy: closeModal };

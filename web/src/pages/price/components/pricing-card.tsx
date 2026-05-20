@@ -70,6 +70,9 @@ const PricingCard = (props: IPricePlanWithButton) => {
           ...props,
           priceDifference: upcoming?.data?.amount_due_today,
         },
+        has_reusable_payment_method:
+          upcoming?.data?.has_reusable_payment_method ?? true,
+        stripe_publishable_key: upcoming?.data?.stripe_publishable_key ?? null,
         container: nextLayoutRef.current || undefined,
       } as ConfirmPriceEventDetail);
     } else {

@@ -1483,6 +1483,11 @@ class BillingWebhookEvent(DataBaseModel):
     payload = JSONField(null=False)
     created_at = DateTimeField(null=True)
     received_at = DateTimeField(null=False)
+    processing_status = CharField(max_length=16, null=False, default="completed", help_text="processing|completed|failed|unhandled", index=True)
+    processing_started_at = DateTimeField(null=True)
+    processed_at = DateTimeField(null=True)
+    failed_at = DateTimeField(null=True)
+    last_error = TextField(null=True, default="")
 
     class Meta:
         db_table = "billing_webhook_event"
@@ -2260,6 +2265,11 @@ def migrate_db():
     alter_db_add_column(migrator, "billing_point_account", "consumed_plan_points", BigIntegerField(null=False, default=0))
     alter_db_add_column(migrator, "billing_point_account", "addon_purchased_points", BigIntegerField(null=False, default=0))
     alter_db_add_column(migrator, "billing_point_account", "consumed_addon_points", BigIntegerField(null=False, default=0))
+    alter_db_add_column(migrator, "billing_webhook_event", "processing_status", CharField(max_length=16, null=False, default="completed", help_text="processing|completed|failed|unhandled", index=True))
+    alter_db_add_column(migrator, "billing_webhook_event", "processing_started_at", DateTimeField(null=True))
+    alter_db_add_column(migrator, "billing_webhook_event", "processed_at", DateTimeField(null=True))
+    alter_db_add_column(migrator, "billing_webhook_event", "failed_at", DateTimeField(null=True))
+    alter_db_add_column(migrator, "billing_webhook_event", "last_error", TextField(null=True, default=""))
 
     # MIGRATION NOTE (2026-04-28):
     # Existing accounts need consumed_plan_points and addon_purchased_points populated

@@ -1,6 +1,8 @@
 # RAGFlow 计费系统文档
 
-## 1. 概述
+计费系统业务规则参考 [billing_spec_zh.md](./billing_spec_zh.md)。本文档记录系统实现、接口与测试流程说明。
+
+## 1. 系统概述
 
 RAGFlow 使用 Stripe 作为支付提供商，采用**单租户单订阅**模型。每个租户只有一个订阅，该订阅可以包含多个产品（套餐 + 存储附加）。所有计费操作都通过 Stripe Checkout 或直接 Stripe API 调用完成，Webhook 处理器将状态同步回本地数据库。
 
@@ -19,12 +21,12 @@ RAGFlow 使用 Stripe 作为支付提供商，采用**单租户单订阅**模型
 
 | 事件 | 用途 |
 |------|------|
-| `checkout.session.completed` | 新订阅或升级已启动 |
-| `invoice.paid` | 收到付款（续费、升级、附加） |
+| `checkout.session.completed` | 订阅 Checkout 完成；积分充值成功时直接入账 |
+| `invoice.paid` | 收到订阅或附加项付款（续费、升级、存储加购） |
 | `invoice.payment_failed` | 付款失败 → 欠费状态 |
-| `customer.subscription.updated` | 套餐/存储变更生效 |
+| `customer.subscription.updated` | 订阅状态、套餐或存储变更同步回本地 |
 | `customer.subscription.deleted` | 订阅已取消 |
-| `payment_intent.succeeded` | 一次性付款（积分充值） |
+| `payment_intent.succeeded` | 一次性支付成功事件，保留给兼容的一次性 addon 流程 |
 
 ---
 
@@ -44,10 +46,10 @@ Trial → Starter → Pro
 
 | 资源 | Trial | Starter | Pro |
 |------|-------|---------|-----|
-| `quota_apps` | 5 | 100 | 999999999 |
-| `quota_members` | 3 | 10 | 999999999 |
-| `quota_storage` | 1GB | 10GB | 100GB |
-| `quota_points` | 100 | 1000 | 10000 |
+| `quota_apps` | 5 | 50 | 100000 |
+| `quota_members` | 1 | 5 | 20 |
+| `quota_storage` | 100MB | 5GB | 50GB |
+| `quota_points` | 500 | 5000 | 20000 |
 
 ### 订阅状态
 
@@ -72,9 +74,9 @@ Trial → Starter → Pro
 
 **流程**：
 1. 前端调用 `POST /billing/checkout`，传入 Starter 的 `price_id`
-2. 后端创建 Stripe Checkout 会话 → 返回 `checkout_url`
-3. 用户在 Stripe 付款 → 触发 `checkout.session.completed` Webhook
-4. Webhook 处理器在数据库中创建订阅，设置套餐为 "Starter"
+2. 后端创建 Stripe Checkout 会话 → 返回跳转地址
+3. 用户在 Stripe 完成订阅 Checkout → 触发 `checkout.session.completed`
+4. 订阅状态由 `customer.subscription.updated` 同步到本地数据库
 5. 计费周期立即开始（从现在开始新周期）
 
 **前置条件**：
@@ -90,7 +92,7 @@ Trial → Starter → Pro
 **流程**：
 1. 后端调用 `modify_subscription_plan_async()` 修改 Stripe 订阅
 2. Stripe 立即收取按比例计算的差价（`proration_behavior: always_invoice`）
-3. `invoice.paid` Webhook 确认付款
+3. `invoice.paid` 与 `customer.subscription.updated` Webhook 同步付款和订阅状态
 4. 数据库更新为 "Pro" 套餐
 
 **前置条件**：
@@ -133,7 +135,6 @@ Trial → Starter → Pro
   - `apps_used ≤ Trial quota_apps`
   - `members_used ≤ Trial quota_members`
   - `storage_used ≤ Trial quota_storage`（不保留附加存储）
-  - `points_used ≤ Trial quota_points`
 
 **生效时间**：当前计费周期结束时
 
@@ -147,15 +148,15 @@ Trial → Starter → Pro
 
 ```python
 conflicts = []
-if storage_used > target_quota_storage + addon_storage:
+if storage_used > total_storage_limit:
     conflicts.append({"resource": "storage", ...})
-if points_used > target_quota_points:
-    conflicts.append({"resource": "points", ...})
 if members_used > target_quota_members:
     conflicts.append({"resource": "members", ...})
 if apps_used > target_quota_apps:
     conflicts.append({"resource": "apps", ...})
 ```
+
+说明：当前实现不检查 points 使用量；当目标套餐为 Trial 时，存储兼容性仅按 Trial 套餐自带存储配额计算，不保留已购存储附加。
 
 **冲突响应**：
 ```json
@@ -187,8 +188,8 @@ if apps_used > target_quota_apps:
 
 **流程**：
 1. 如果 `target > current` → 立即修改 Stripe 订阅，按比例收费
-2. Stripe 创建按比例计算的发票
-3. `invoice.paid` Webhook 更新数据库
+2. 系统立即同步新的目标存储额度，并返回 Stripe 发票跳转地址
+3. `invoice.paid` 与 `customer.subscription.updated` 后续同步付款和订阅状态
 
 **前置条件**：
 - 活跃的付费订阅（非 Trial）
@@ -235,7 +236,7 @@ if apps_used > target_quota_apps:
 
 **流程**：
 1. 创建 Stripe Checkout 会话（`mode=payment`，非订阅）
-2. 用户付款 → 触发 `payment_intent.succeeded` Webhook
+2. 用户付款成功 → 触发 `checkout.session.completed`（`mode=payment`）
 3. 积分记入租户的 `PointAccount`
 4. 创建账本条目，`event_type=recharge`
 
@@ -254,7 +255,8 @@ Webhook 处理器使用 `BillingWebhookEventService` 跟踪已处理的事件。
 
 - 优先消耗套餐积分（在配额内）
 - 套餐配额用完后消耗附加积分
-- DeepDoc 页面解析根据 `consuming_point_amount` 消耗积分
+- DeepDoc 页面解析按 `page_count × consuming_point_amount` 消耗积分
+- 当前配置下，`consuming_point_amount = 100`，即 1 个 DeepDoc PDF 页面消耗 100 points
 
 ---
 
@@ -277,9 +279,9 @@ Webhook 处理器使用 `BillingWebhookEventService` 跟踪已处理的事件。
 ### 7.3 欠费订阅处理
 
 当订阅变为欠费时：
-- 现有资源保持可访问（可能只读）
-- 无法创建新资源
-- 在付款恢复或资源减少之前，降级被阻止
+- 主订阅被视为非 entitled 状态，不再属于 `active` / `trialing`
+- 如果用户仍要变更到付费套餐，接口会返回当前未支付发票 URL，要求先完成补款
+- 如果用户改为降级到 Trial，系统会立即取消当前欠费订阅，并同步取消存储附加目标额度
 
 ---
 
@@ -290,15 +292,21 @@ Webhook 处理器使用 `BillingWebhookEventService` 跟踪已处理的事件。
 | GET | `/billing/status` | 检查计费是否启用 |
 | GET | `/billing/current_plan` | 当前套餐 + 待处理变更 |
 | GET | `/billing/plan_overview` | 完整概览，含资源使用量 |
+| GET | `/billing/addon_overview` | 附加资源概览 |
 | POST | `/billing/checkout` | 发起套餐变更 |
-| GET | `/billing/all_plans` | 列出可用套餐及配额 |
+| GET | `/billing/plans` | 列出可用套餐及配额 |
+| GET | `/billing/addon_plans` | 列出可购买的附加项 |
 | POST | `/billing/upcoming` | 预览升级发票 |
 | GET | `/billing/storage/current` | 当前存储状态 |
 | POST | `/billing/storage/set-target` | 变更存储数量 |
 | POST | `/billing/points/checkout` | 购买积分 |
+| GET | `/billing/points/price` | 查看积分充值单价 |
+| GET | `/billing/deepdoc/usage` | 查看 DeepDoc 解析用量 |
 | GET | `/billing/points/balance` | 积分余额 |
 | GET | `/billing/points/ledger` | 积分交易历史 |
+| GET | `/billing/points/holds` | 积分预占记录 |
 | GET | `/billing/spend_overview` | 计费历史 |
+| GET | `/billing/spend_metrics` | 计费聚合指标 |
 | POST | `/billing/webhook` | Stripe Webhook 处理器 |
 
 ---

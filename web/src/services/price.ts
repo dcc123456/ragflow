@@ -71,6 +71,7 @@ export const billingCheckout = (
     tenant_id: string;
     session_cancel_url: string;
     session_success_url: string;
+    setup_intent_id?: string;
   },
 ) => {
   return request.post(api.billing_checkout, { data });
@@ -129,6 +130,7 @@ export const postBillingStorageSetTarget = (data: {
   target_storage_bytes: number;
   session_cancel_url?: string;
   session_success_url?: string;
+  setup_intent_id?: string;
 }) => {
   return request.post(api.storageSetTarget, { data });
 };
@@ -167,5 +169,14 @@ export const getBillingPointsLedger = (params: {
 
 export const getBillingSession = (sessionId: string) =>
   request.get(api.session(sessionId));
+
+export const postBillingSetupIntent = (data: {
+  tenant_id?: string;
+  setup_type: 'subscription_upgrade' | 'storage_addon';
+  price_id?: string;
+  target_storage_bytes?: number;
+}) => {
+  return request.post(api.billingSetupIntent, { data });
+};
 
 export default billingService;

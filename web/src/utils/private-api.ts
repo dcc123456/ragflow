@@ -55,8 +55,8 @@ export default {
   pointsBalance: `${webAPI}/billing/points/balance`,
   pointsOverview: `${webAPI}/billing/points/overview`,
   pointsLedger: `${webAPI}/billing/points/ledger`,
-  pointsHolds: `${webAPI}/billing/points/holds`,
   session: (sessionId: string) => `${webAPI}/billing/session/${sessionId}`,
+  billingSetupIntent: `${webAPI}/billing/setup-intent`,
 
   // premise
   enableAdmin: `${restAPIv1}/enable_admin`, // enable 为true且 is_admin 为false 隐藏model provide

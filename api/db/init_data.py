@@ -13,8 +13,8 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 #
-import asyncio
 import logging
+import asyncio
 import json
 import os
 import time
@@ -29,10 +29,9 @@ from api.db.joint_services.memory_message_service import init_message_id_sequenc
 from api.db.services.canvas_service import CanvasTemplateService
 from api.db.services.llm_service import LLMService, LLMBundle, get_init_tenant_llm
 from api.db.services.tenant_llm_service import LLMFactoriesService, TenantLLMService
-from api.db.services.billing_service import PricePointService, ProductService, SubscriptionService
+from api.db.services.billing_service import PricePointService, ProductService
 from peewee import IntegrityError
 from api.db import UserTenantRole
-from api.db.db_models import DB
 from api.db.services import UserService
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.memory_service import MemoryService
@@ -49,6 +48,13 @@ import stripe
 DEFAULT_SUPERUSER_NICKNAME = os.getenv("DEFAULT_SUPERUSER_NICKNAME", "admin")
 DEFAULT_SUPERUSER_EMAIL = os.getenv("DEFAULT_SUPERUSER_EMAIL", "admin@ragflow.io")
 DEFAULT_SUPERUSER_PASSWORD = os.getenv("DEFAULT_SUPERUSER_PASSWORD", "admin")
+
+
+def _describe_webhook_secret(secret: str | None) -> str:
+    if not secret:
+        return "missing"
+    suffix = secret[-6:] if len(secret) > 6 else secret
+    return f"present(len={len(secret)}, suffix={suffix})"
 
 def init_superuser(nickname=DEFAULT_SUPERUSER_NICKNAME, email=DEFAULT_SUPERUSER_EMAIL, password=DEFAULT_SUPERUSER_PASSWORD, role=UserTenantRole.OWNER):
     if UserService.query(email=email):
@@ -187,7 +193,7 @@ def register_webhook():
     SUBSCRIPTION_DELETED = "customer.subscription.deleted"
     PAYMENT_INTENT_SUCCEEDED = "payment_intent.succeeded"
     FOCUSED_STRIPE_WEBHOOK = [INVOICE_PAID, INVOICE_FAILED, SUBSCRIPTION_UPDATED, SUBSCRIPTION_DELETED, CHECKOUT_SESSION_COMPLETED, PAYMENT_INTENT_SUCCEEDED]
-    
+
     """
     https://docs.stripe.com/api/webhook_endpoints/object
     https://dashboard.stripe.com/test/workbench/webhooks
@@ -196,79 +202,110 @@ def register_webhook():
     webhook_url = settings.BILLING['webhook_url']
     if urlparse(webhook_url).hostname in ['localhost', '127.0.0.1']:
         logging.warning(f'webhook_url {webhook_url} is invalid since it is unreachable')
-    else:
-        exists = False
-        webhook_endpoints = stripe.WebhookEndpoint.list()
-        for endpoint in webhook_endpoints.data:
-            logging.info(f'Stripe webhook endpoint: id={endpoint.id}, url={endpoint.url}, enabled_events={endpoint.enabled_events}, secret={getattr(endpoint, "secret", "N/A")}')
-            if endpoint.url == webhook_url and set(FOCUSED_STRIPE_WEBHOOK).issubset(set(endpoint.enabled_events)):
-                logging.warning(f'webhook_url {webhook_url} already exists')
-                exists = True
-        if not exists:
-            endpoint = stripe.WebhookEndpoint.create(
-                url=webhook_url,
-                enabled_events=FOCUSED_STRIPE_WEBHOOK,
-            )
-            # Save the webhook secret for signature verification
-            # The secret is only returned once at creation time
-            existing = SystemSettingsService.get_by_name("billing_webhook_secret")
-            if existing:
-                SystemSettingsService.update_by_name(
-                    "billing_webhook_secret",
-                    {"value": endpoint.secret}
-                    )
-            else:
-                SystemSettingsService.insert(
-                    name="billing_webhook_secret",
-                    source="billing",
-                    data_type="string",
-                    value=endpoint.secret
+        return
+
+    # Load stored webhook state from SystemSettingsService
+    stored_id = SystemSettingsService.get_first_by_name("billing_webhook_id")
+    webhook_id = stored_id.value if stored_id and stored_id.value else None
+    stored_secret = SystemSettingsService.get_first_by_name("billing_webhook_secret")
+    webhook_secret = stored_secret.value if stored_secret and stored_secret.value else None
+    logging.info(
+        "register_webhook start: url=%s stored_id=%s stored_secret=%s",
+        webhook_url,
+        webhook_id or "",
+        _describe_webhook_secret(webhook_secret),
+    )
+
+    verified_endpoint = None
+    stored_endpoint_matches_url = False
+
+    # Verify the stored webhook_id still exists in Stripe
+    if webhook_id:
+        try:
+            endpoint = stripe.WebhookEndpoint.retrieve(webhook_id)
+            if endpoint:
+                verified_endpoint = endpoint
+                stored_endpoint_matches_url = endpoint.url == webhook_url
+                logging.info(
+                    "verified stored Stripe webhook endpoint: id=%s endpoint_url=%s matches_target=%s",
+                    webhook_id,
+                    endpoint.url,
+                    stored_endpoint_matches_url,
                 )
-            logging.info(f'webhook_url {webhook_url} has just been registered with secret saved')
+        except stripe.error.InvalidRequestError:
+            logging.info(f'webhook_id {webhook_id} not found in Stripe, will re-register')
+        except Exception as e:
+            logging.warning(f'webhook_id {webhook_id} verification failed: {e}, will re-register')
+
+    # Always reconcile same-URL endpoints before deciding whether registration can be skipped.
+    webhook_endpoints = stripe.WebhookEndpoint.list()
+    duplicate_endpoint_ids = []
+    for endpoint in webhook_endpoints.data:
+        if endpoint.url == webhook_url:
+            if webhook_id and endpoint.id == webhook_id:
+                logging.info("keeping stored Stripe webhook endpoint: id=%s url=%s", endpoint.id, webhook_url)
+                continue
+            duplicate_endpoint_ids.append(endpoint.id)
+
+    for duplicate_id in duplicate_endpoint_ids:
+        logging.warning(
+            "deleting duplicate Stripe webhook endpoint: stored_id=%s duplicate_id=%s url=%s",
+            webhook_id or "",
+            duplicate_id,
+            webhook_url,
+        )
+        stripe.WebhookEndpoint.delete(duplicate_id)
+
+    if stored_endpoint_matches_url and webhook_secret:
+        logging.info(
+            "stored Stripe webhook endpoint is usable after reconciliation; skipping registration: id=%s url=%s duplicates_removed=%s",
+            webhook_id,
+            webhook_url,
+            len(duplicate_endpoint_ids),
+        )
+        return
+
+    if stored_endpoint_matches_url and verified_endpoint and not webhook_secret:
+        logging.warning(
+            "stored Stripe webhook endpoint matches target URL but persisted secret is missing; recreating endpoint: id=%s url=%s",
+            webhook_id,
+            webhook_url,
+        )
+        stripe.WebhookEndpoint.delete(verified_endpoint.id)
+
+    # No existing endpoint with this URL - register new one
+    endpoint = stripe.WebhookEndpoint.create(
+        url=webhook_url,
+        enabled_events=FOCUSED_STRIPE_WEBHOOK,
+    )
+    new_webhook_id = endpoint.id
+    new_webhook_secret = endpoint.secret
+
+    # Persist webhook_id and webhook_secret
+    _upsert_system_setting("billing_webhook_id", new_webhook_id)
+    _upsert_system_setting("billing_webhook_secret", new_webhook_secret)
+    logging.info(f'webhook_url {webhook_url} registered with id={new_webhook_id} and secret saved')
+
+
+def _upsert_system_setting(name, value):
+    existing = SystemSettingsService.get_first_by_name(name)
+    if existing:
+        SystemSettingsService.update_by_name(name, {"value": value})
+    else:
+        SystemSettingsService.insert(
+            name=name,
+            source="billing",
+            data_type="string",
+            value=value
+        )
 
 
 def handle_undelivered_events():
-    """
-    https://docs.stripe.com/webhooks/process-undelivered-events
-    """
-    SUBSCRIPTION_UPDATED = 'customer.subscription.updated'
-    SUBSCRIPTION_DELETED = 'customer.subscription.deleted'
-    stripe.api_key = settings.BILLING['stripe_api_key']
-    starting_after = None
-    while True:
-        events = stripe.Event.list(delivery_success=False, limit=100, starting_after=starting_after)
-        num_events = 0
-        for event in events.auto_paging_iter():
-            starting_after = event['id']
-            num_events += 1
-            event_type = event['type']
-            if event_type not in [SUBSCRIPTION_UPDATED, SUBSCRIPTION_DELETED]:
-                continue
-            subscription = event['data']['object']
-            # Refers to https://docs.stripe.com/api/subscriptions/object
-            subscription_id = subscription['id']
-            subscription_status = subscription['status']
-            customer_id = subscription['customer']
-            price_id = subscription['items']['data'][0]['price']['id']
-            plan_name = settings.BILLING_PRICEID_TO_PRODUCT.get(price_id)
-            if not plan_name:
-                logging.warning(f'handle_undelivered_events could not find plan for price {price_id}')
-                continue
-            subscription_dict = {
-                "status": subscription_status,
-                "subscription_status": subscription_status,
-                "subscription_id": subscription_id,
-                "plan_name": plan_name,
-            }
-            sub_record = SubscriptionService.get_by_customer_id(customer_id)
-            if not sub_record:
-                logging.warning(f'handle_undelivered_events could not find tenant for customer {customer_id}')
-                continue
-            with DB.atomic():
-                SubscriptionService.update_subscription(sub_record.tenant_id, subscription_dict)
-            logging.info(f'handle_undelivered_events updated customer {customer_id} subscription {subscription_id} status {subscription_status} plan {plan_name}')
-        if num_events == 0:
-            break
+    from api.services.billing_webhook_service import (
+        handle_undelivered_events as _handle_undelivered_events,
+    )
+
+    return _handle_undelivered_events()
 
 
 

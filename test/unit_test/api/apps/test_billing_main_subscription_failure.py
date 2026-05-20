@@ -68,6 +68,7 @@ def _load_billing_app_module():
 
 
 billing_app = _load_billing_app_module()
+billing_webhook_service = importlib.import_module("api.services.billing_webhook_service")
 
 
 class _StripeLikeDict(dict):
@@ -81,6 +82,7 @@ class _StripeLikeDict(dict):
 @pytest.fixture(autouse=True)
 def _stub_billing_db_atomic(monkeypatch):
     monkeypatch.setattr(billing_app.DB, "atomic", lambda: nullcontext())
+    monkeypatch.setattr(billing_webhook_service.DB, "atomic", lambda: nullcontext())
 
 
 def _stripe_subscription(status="active", price_id="price_pro", subscription_id="sub_main", customer_id="cus_main"):
@@ -105,6 +107,30 @@ def _stripe_subscription(status="active", price_id="price_pro", subscription_id=
                 )
             ]
         ),
+    )
+
+
+def _stripe_subscription_with_items(
+    *,
+    status="active",
+    subscription_id="sub_main",
+    customer_id="cus_main",
+    current_period_start=1710000000,
+    current_period_end=1712592000,
+    items=None,
+):
+    return SimpleNamespace(
+        id=subscription_id,
+        customer=customer_id,
+        customer_id=customer_id,
+        status=status,
+        latest_invoice_id="in_latest",
+        current_period_start=current_period_start,
+        current_period_end=current_period_end,
+        metadata={},
+        trial_end=None,
+        pending_update=None,
+        items=SimpleNamespace(data=items or []),
     )
 
 
@@ -396,9 +422,12 @@ def test_invoice_payment_failed_syncs_main_subscription_to_past_due(monkeypatch)
         },
     )
     monkeypatch.setattr(billing_app.SubscriptionService, "upsert_subscription", lambda tenant_id, data: updates.append((tenant_id, data)))
-    monkeypatch.setattr(billing_app.stripe.Subscription, "retrieve", lambda _subscription_id: _stripe_subscription(status="active"))
+    async def retrieve_subscription_async(_subscription_id):
+        return _stripe_subscription(status="active")
+
+    monkeypatch.setattr(billing_app.stripe.Subscription, "retrieve_async", retrieve_subscription_async)
     monkeypatch.setattr(billing_app.settings, "BILLING_PRICEID_TO_PRODUCT", {"price_pro": "Pro"}, raising=False)
-    monkeypatch.setattr(billing_app, "get_product_id_by_name", lambda _plan_name: "prod_pro")
+    monkeypatch.setattr(billing_webhook_service, "get_product_id_by_name", lambda _plan_name: "prod_pro")
     monkeypatch.setattr(billing_app.PaymentOrderService, "get_by_order_id", lambda _order_id: None)
     monkeypatch.setattr(billing_app.PaymentOrderService, "save", lambda **kwargs: saved_orders.append(kwargs))
 
@@ -423,7 +452,12 @@ def test_invoice_payment_failed_syncs_main_subscription_to_past_due(monkeypatch)
         },
     }
 
-    billing_app._handle_invoice_payment_failed(event)
+    asyncio.run(
+        billing_webhook_service._handle_main_subscription_invoice_not_paid(
+            event,
+            "Main subscription invoice payment failed",
+        )
+    )
 
     assert updates[-1][0] == "tenant_1"
     assert updates[-1][1]["subscription_status"] == "past_due"
@@ -464,15 +498,15 @@ def test_invoice_payment_failed_uses_parent_subscription_details(monkeypatch):
     )
     monkeypatch.setattr(billing_app.SubscriptionService, "upsert_subscription", lambda tenant_id, data: updates.append((tenant_id, data)))
     monkeypatch.setattr(billing_app.settings, "BILLING_PRICEID_TO_PRODUCT", {"price_pro": "Pro"}, raising=False)
-    monkeypatch.setattr(billing_app, "get_product_id_by_name", lambda _plan_name: "prod_pro")
+    monkeypatch.setattr(billing_webhook_service, "get_product_id_by_name", lambda _plan_name: "prod_pro")
     monkeypatch.setattr(billing_app.PaymentOrderService, "get_by_order_id", lambda _order_id: None)
     monkeypatch.setattr(billing_app.PaymentOrderService, "save", lambda **kwargs: saved_orders.append(kwargs))
 
-    def retrieve_subscription(subscription_id):
+    async def retrieve_subscription_async(subscription_id):
         retrieved_subscription_ids.append(subscription_id)
         return _stripe_subscription(status="past_due", subscription_id=subscription_id)
 
-    monkeypatch.setattr(billing_app.stripe.Subscription, "retrieve", retrieve_subscription)
+    monkeypatch.setattr(billing_app.stripe.Subscription, "retrieve_async", retrieve_subscription_async)
 
     event = {
         "type": "invoice.payment_failed",
@@ -499,7 +533,12 @@ def test_invoice_payment_failed_uses_parent_subscription_details(monkeypatch):
         },
     }
 
-    billing_app._handle_invoice_payment_failed(event)
+    asyncio.run(
+        billing_webhook_service._handle_main_subscription_invoice_not_paid(
+            event,
+            "Main subscription invoice payment failed",
+        )
+    )
 
     assert retrieved_subscription_ids == ["sub_main"]
     assert updates[-1][1]["subscription_status"] == "past_due"
@@ -513,7 +552,7 @@ def test_main_subscription_payment_order_converts_unix_created_at(monkeypatch):
     monkeypatch.setattr(billing_app.PaymentOrderService, "get_by_order_id", lambda _order_id: None)
     monkeypatch.setattr(billing_app.PaymentOrderService, "save", lambda **kwargs: saved_orders.append(kwargs))
 
-    billing_app._upsert_main_subscription_payment_order(
+    billing_webhook_service._upsert_main_subscription_payment_order(
         tenant_id="tenant_1",
         customer_id="cus_main",
         subscription_id="sub_main",
@@ -563,7 +602,7 @@ def test_invoice_payment_action_required_uses_same_main_failure_path(monkeypatch
     monkeypatch.setattr(billing_app.SubscriptionService, "upsert_subscription", lambda tenant_id, data: updates.append((tenant_id, data)))
     monkeypatch.setattr(billing_app.stripe.Subscription, "retrieve", lambda _subscription_id: _stripe_subscription(status="past_due"))
     monkeypatch.setattr(billing_app.settings, "BILLING_PRICEID_TO_PRODUCT", {"price_pro": "Pro"}, raising=False)
-    monkeypatch.setattr(billing_app, "get_product_id_by_name", lambda _plan_name: "prod_pro")
+    monkeypatch.setattr(billing_webhook_service, "get_product_id_by_name", lambda _plan_name: "prod_pro")
     monkeypatch.setattr(billing_app.PaymentOrderService, "get_by_order_id", lambda _order_id: None)
     monkeypatch.setattr(billing_app.PaymentOrderService, "save", lambda **_kwargs: None)
 
@@ -583,7 +622,12 @@ def test_invoice_payment_action_required_uses_same_main_failure_path(monkeypatch
         },
     }
 
-    billing_app._handle_invoice_payment_action_required(event)
+    asyncio.run(
+        billing_webhook_service._handle_main_subscription_invoice_not_paid(
+            event,
+            "Main subscription invoice payment action required",
+        )
+    )
 
     assert updates[-1][1]["subscription_status"] == "past_due"
     assert updates[-1][1]["invoice_id"] == "in_action"
@@ -621,7 +665,7 @@ def test_invoice_paid_updates_existing_failed_order_and_restores_active(monkeypa
         model_dump=lambda: {},
     )
 
-    monkeypatch.setattr(billing_app, "InvoicePaid", lambda **_kwargs: invoice_paid)
+    monkeypatch.setattr(billing_webhook_service, "InvoicePaid", lambda **_kwargs: invoice_paid)
     monkeypatch.setattr(billing_app.SubscriptionService, "get_tenant_id_by_customer_id", lambda _customer_id: "tenant_1")
     monkeypatch.setattr(
         billing_app.SubscriptionService,
@@ -645,7 +689,7 @@ def test_invoice_paid_updates_existing_failed_order_and_restores_active(monkeypa
     )
     monkeypatch.setattr(billing_app.SubscriptionService, "get_by_subscription_id", lambda _subscription_id: None)
     monkeypatch.setattr(billing_app.settings, "BILLING_PRICEID_TO_PRODUCT", {"price_pro": "Pro"}, raising=False)
-    monkeypatch.setattr(billing_app, "get_product_id_by_name", lambda _plan_name: "prod_pro")
+    monkeypatch.setattr(billing_webhook_service, "get_product_id_by_name", lambda _plan_name: "prod_pro")
     monkeypatch.setattr(
         billing_app.PaymentOrderService,
         "get_by_order_id",
@@ -656,7 +700,7 @@ def test_invoice_paid_updates_existing_failed_order_and_restores_active(monkeypa
 
     event = {"type": "invoice.paid", "data": {"object": {"id": "in_failed"}}}
 
-    billing_app._handle_invoice_paid(event)
+    asyncio.run(billing_webhook_service._handle_invoice_paid(event))
 
     assert payment_order_updates[-1][0] == "in_failed"
     assert payment_order_updates[-1][1]["payment_status"] == "success"
@@ -678,7 +722,7 @@ def test_customer_subscription_updated_status_only_syncs_main_subscription(monke
         model_dump=lambda: {},
     )
 
-    monkeypatch.setattr(billing_app, "SubscriptionUpdated", lambda **_kwargs: event_model)
+    monkeypatch.setattr(billing_webhook_service, "SubscriptionUpdated", lambda **_kwargs: event_model)
     monkeypatch.setattr(billing_app.SubscriptionService, "get_by_subscription_id", lambda _subscription_id: None)
     monkeypatch.setattr(billing_app.SubscriptionService, "get_tenant_id_by_customer_id", lambda _customer_id: "tenant_1")
     monkeypatch.setattr(
@@ -703,11 +747,11 @@ def test_customer_subscription_updated_status_only_syncs_main_subscription(monke
     )
     monkeypatch.setattr(billing_app.SubscriptionService, "upsert_subscription", lambda tenant_id, data: updates.append((tenant_id, data)))
     monkeypatch.setattr(billing_app.settings, "BILLING_PRICEID_TO_PRODUCT", {"price_pro": "Pro"}, raising=False)
-    monkeypatch.setattr(billing_app, "get_product_id_by_name", lambda _plan_name: "prod_pro")
+    monkeypatch.setattr(billing_webhook_service, "get_product_id_by_name", lambda _plan_name: "prod_pro")
 
     event = {"type": "customer.subscription.updated", "data": {"object": {"id": "sub_main"}}}
 
-    billing_app._handle_customer_subscription_updated(event)
+    asyncio.run(billing_webhook_service._handle_customer_subscription_updated(event))
 
     assert updates[-1][1]["subscription_status"] == status
 
@@ -725,7 +769,7 @@ def test_customer_subscription_updated_no_actionable_fields_syncs_trial_placehol
         model_dump=lambda: {},
     )
 
-    monkeypatch.setattr(billing_app, "SubscriptionUpdated", lambda **_kwargs: event_model)
+    monkeypatch.setattr(billing_webhook_service, "SubscriptionUpdated", lambda **_kwargs: event_model)
     monkeypatch.setattr(billing_app.SubscriptionService, "get_by_subscription_id", lambda _subscription_id: None)
     monkeypatch.setattr(billing_app.SubscriptionService, "get_tenant_id_by_customer_id", lambda _customer_id: "tenant_1")
     monkeypatch.setattr(
@@ -750,9 +794,9 @@ def test_customer_subscription_updated_no_actionable_fields_syncs_trial_placehol
     )
     monkeypatch.setattr(billing_app.SubscriptionService, "upsert_subscription", lambda tenant_id, data: updates.append((tenant_id, data)))
     monkeypatch.setattr(billing_app.settings, "BILLING_PRICEID_TO_PRODUCT", {"price_trial": "Trial", "price_pro": "Pro"}, raising=False)
-    monkeypatch.setattr(billing_app, "get_product_id_by_name", lambda plan_name: f"prod_{plan_name.lower()}")
+    monkeypatch.setattr(billing_webhook_service, "get_product_id_by_name", lambda plan_name: f"prod_{plan_name.lower()}")
 
-    billing_app._handle_customer_subscription_updated({"type": "customer.subscription.updated", "data": {"object": {"id": "sub_main"}}})
+    asyncio.run(billing_webhook_service._handle_customer_subscription_updated({"type": "customer.subscription.updated", "data": {"object": {"id": "sub_main"}}}))
 
     assert updates[-1][0] == "tenant_1"
     assert updates[-1][1]["plan_name"] == "Pro"
@@ -760,6 +804,282 @@ def test_customer_subscription_updated_no_actionable_fields_syncs_trial_placehol
     assert updates[-1][1]["subscription_id"] == "sub_main"
     assert updates[-1][1]["start_time"] == billing_app.to_utc_datetime(1710000000)
     assert updates[-1][1]["end_time"] == billing_app.to_utc_datetime(1712592000)
+
+
+@pytest.mark.p2
+def test_customer_subscription_updated_no_actionable_fields_syncs_paid_plan_to_trial(monkeypatch):
+    updates = []
+
+    event_model = SimpleNamespace(
+        created=1710000003,
+        data=SimpleNamespace(
+            object=_stripe_subscription(price_id="price_trial", status="trialing"),
+            previous_attributes=SimpleNamespace(status=None, plan=None, items=None, trial_end=None),
+        ),
+        model_dump=lambda: {},
+    )
+
+    monkeypatch.setattr(billing_webhook_service, "SubscriptionUpdated", lambda **_kwargs: event_model)
+    monkeypatch.setattr(billing_app.SubscriptionService, "get_by_subscription_id", lambda _subscription_id: None)
+    monkeypatch.setattr(billing_app.SubscriptionService, "get_tenant_id_by_customer_id", lambda _customer_id: "tenant_1")
+    monkeypatch.setattr(
+        billing_app.SubscriptionService,
+        "get_by_tenant_id",
+        lambda _tenant_id: {
+            "tenant_id": "tenant_1",
+            "customer_id": "cus_main",
+            "subscription_id": "sub_main",
+            "subscription_status": "active",
+            "product_id": "prod_pro",
+            "plan_name": "Pro",
+            "price_id": "price_pro",
+            "order_id": "order_pro",
+            "invoice_id": "",
+            "invoice_url": "",
+            "invoice_pdf_url": "",
+            "start_time": datetime(2026, 5, 14, 6, 55, 21, tzinfo=timezone.utc),
+            "end_time": datetime(2027, 5, 14, 6, 55, 21, tzinfo=timezone.utc),
+            "original_subscription_id": "sub_main",
+        },
+    )
+    monkeypatch.setattr(billing_app.SubscriptionService, "upsert_subscription", lambda tenant_id, data: updates.append((tenant_id, data)))
+    monkeypatch.setattr(billing_app.settings, "BILLING_PRICEID_TO_PRODUCT", {"price_trial": "Trial", "price_pro": "Pro"}, raising=False)
+    monkeypatch.setattr(billing_webhook_service, "get_product_id_by_name", lambda plan_name: f"prod_{plan_name.lower()}")
+
+    asyncio.run(billing_webhook_service._handle_customer_subscription_updated({"type": "customer.subscription.updated", "data": {"object": {"id": "sub_main"}}}))
+
+    assert updates[-1][0] == "tenant_1"
+    assert updates[-1][1]["plan_name"] == "Trial"
+    assert updates[-1][1]["price_id"] == "price_trial"
+    assert updates[-1][1]["subscription_id"] == "sub_main"
+    assert updates[-1][1]["subscription_status"] == "trialing"
+    assert updates[-1][1]["start_time"] == billing_app.to_utc_datetime(1710000000)
+    assert updates[-1][1]["end_time"] == billing_app.to_utc_datetime(1712592000)
+
+
+@pytest.mark.p2
+def test_customer_subscription_updated_replacement_subscription_takes_over_current_and_syncs_storage(monkeypatch):
+    updates = []
+    storage_syncs = []
+    replacement_period_start = int(datetime(2026, 4, 13, 16, 0, 0, tzinfo=timezone.utc).timestamp())
+    replacement_period_end = int(datetime(2026, 5, 13, 16, 0, 0, tzinfo=timezone.utc).timestamp())
+
+    replacement_subscription = _stripe_subscription_with_items(
+        subscription_id="sub_new",
+        status="active",
+        current_period_start=replacement_period_start,
+        current_period_end=replacement_period_end,
+        items=[
+            SimpleNamespace(
+                id="si_plan_new",
+                price=SimpleNamespace(id="price_starter", unit_amount=500, currency="usd", nickname="price_starter"),
+                quantity=1,
+                current_period_start=replacement_period_start,
+                current_period_end=replacement_period_end,
+            ),
+            SimpleNamespace(
+                id="si_storage_new",
+                price=SimpleNamespace(id="price_storage", unit_amount=1000, currency="usd", nickname="price_storage"),
+                quantity=4,
+                current_period_start=replacement_period_start,
+                current_period_end=replacement_period_end,
+            ),
+        ],
+    )
+    event_model = SimpleNamespace(
+        created=1713000003,
+        data=SimpleNamespace(
+            object=replacement_subscription,
+            previous_attributes=SimpleNamespace(status=None, plan=None, items=None, trial_end=None),
+        ),
+        model_dump=lambda: {},
+    )
+
+    monkeypatch.setattr(billing_webhook_service, "SubscriptionUpdated", lambda **_kwargs: event_model)
+    monkeypatch.setattr(billing_app.SubscriptionService, "get_tenant_id_by_customer_id", lambda _customer_id: "tenant_1")
+    monkeypatch.setattr(billing_app.SubscriptionService, "get_by_subscription_id", lambda _subscription_id: None)
+    monkeypatch.setattr(
+        billing_app.SubscriptionService,
+        "get_by_tenant_id",
+        lambda _tenant_id: {
+            "tenant_id": "tenant_1",
+            "customer_id": "cus_main",
+            "subscription_id": "sub_old",
+            "subscription_status": "active",
+            "product_id": "prod_pro",
+            "plan_name": "Pro",
+            "price_id": "price_pro",
+            "order_id": "order_pro",
+            "invoice_id": "",
+            "invoice_url": "",
+            "invoice_pdf_url": "",
+            "start_time": datetime(2026, 3, 9, 16, 0, 0, tzinfo=timezone.utc),
+            "end_time": datetime(2026, 4, 8, 16, 0, 0, tzinfo=timezone.utc),
+            "original_subscription_id": "sub_old",
+            "addon_subscription_item_id": "si_storage_old",
+            "addon_storage_bytes": 2 * billing_app.BYTES_PER_GB,
+            "target_storage_bytes": 2 * billing_app.BYTES_PER_GB,
+        },
+    )
+    monkeypatch.setattr(billing_app.SubscriptionService, "upsert_subscription", lambda tenant_id, data: updates.append((tenant_id, data)))
+    monkeypatch.setattr(
+        billing_app.settings,
+        "BILLING_PRICEID_TO_PRODUCT",
+        {"price_pro": "Pro", "price_starter": "Starter", "price_storage": "storage"},
+        raising=False,
+    )
+    monkeypatch.setattr(billing_webhook_service, "get_product_id_by_name", lambda plan_name: f"prod_{plan_name.lower()}")
+    monkeypatch.setattr(
+        billing_webhook_service,
+        "_sync_storage_subscription_record",
+        lambda tenant_id, subscription_obj, customer_id="", target_storage_bytes=None: storage_syncs.append(
+            {
+                "tenant_id": tenant_id,
+                "subscription_id": subscription_obj.id,
+                "customer_id": customer_id,
+                "item_id": subscription_obj.items.data[1].id,
+                "quantity": subscription_obj.items.data[1].quantity,
+                "target_storage_bytes": target_storage_bytes,
+            }
+        )
+        or True,
+    )
+
+    asyncio.run(billing_webhook_service._handle_customer_subscription_updated({"type": "customer.subscription.updated", "data": {"object": {"id": "sub_new"}}}))
+
+    assert updates[-1][0] == "tenant_1"
+    assert updates[-1][1]["plan_name"] == "Starter"
+    assert updates[-1][1]["price_id"] == "price_starter"
+    assert updates[-1][1]["subscription_id"] == "sub_new"
+    assert storage_syncs == [
+        {
+            "tenant_id": "tenant_1",
+            "subscription_id": "sub_new",
+            "customer_id": "cus_main",
+            "item_id": "si_storage_new",
+            "quantity": 4,
+            "target_storage_bytes": None,
+        }
+    ]
+
+
+@pytest.mark.p2
+def test_customer_subscription_updated_ignores_stale_old_subscription_when_current_replacement_exists(monkeypatch):
+    updates = []
+
+    stale_subscription = _stripe_subscription(
+        status="active",
+        price_id="price_pro",
+        subscription_id="sub_old",
+        customer_id="cus_main",
+    )
+    stale_subscription.current_period_start = 1710000000
+    stale_subscription.current_period_end = 1712592000
+    event_model = SimpleNamespace(
+        created=1710000003,
+        data=SimpleNamespace(
+            object=stale_subscription,
+            previous_attributes=SimpleNamespace(status="past_due", plan=None, items=None, trial_end=None),
+        ),
+        model_dump=lambda: {},
+    )
+
+    monkeypatch.setattr(billing_webhook_service, "SubscriptionUpdated", lambda **_kwargs: event_model)
+    monkeypatch.setattr(billing_app.SubscriptionService, "get_tenant_id_by_customer_id", lambda _customer_id: "tenant_1")
+    monkeypatch.setattr(
+        billing_app.SubscriptionService,
+        "get_by_tenant_id",
+        lambda _tenant_id: {
+            "tenant_id": "tenant_1",
+            "customer_id": "cus_main",
+            "subscription_id": "sub_new",
+            "subscription_status": "active",
+            "product_id": "prod_starter",
+            "plan_name": "Starter",
+            "price_id": "price_starter",
+            "order_id": "order_starter",
+            "invoice_id": "",
+            "invoice_url": "",
+            "invoice_pdf_url": "",
+            "start_time": datetime(2026, 4, 13, 9, 20, 0, tzinfo=timezone.utc),
+            "end_time": datetime(2026, 5, 13, 9, 20, 0, tzinfo=timezone.utc),
+            "original_subscription_id": "sub_old",
+            "addon_subscription_item_id": None,
+            "addon_storage_bytes": 0,
+            "target_storage_bytes": 0,
+        },
+    )
+    monkeypatch.setattr(billing_app.SubscriptionService, "upsert_subscription", lambda tenant_id, data: updates.append((tenant_id, data)))
+    monkeypatch.setattr(
+        billing_app.settings,
+        "BILLING_PRICEID_TO_PRODUCT",
+        {"price_pro": "Pro", "price_starter": "Starter"},
+        raising=False,
+    )
+
+    asyncio.run(billing_webhook_service._handle_customer_subscription_updated({"type": "customer.subscription.updated", "data": {"object": {"id": "sub_old"}}}))
+
+    assert updates == []
+
+
+@pytest.mark.p2
+def test_customer_subscription_updated_ignores_older_same_subscription_snapshot(monkeypatch):
+    updates = []
+
+    stale_same_subscription = _stripe_subscription(
+        status="active",
+        price_id="price_trial",
+        subscription_id="sub_main",
+        customer_id="cus_main",
+    )
+    stale_same_subscription.current_period_start = 1710000000
+    stale_same_subscription.current_period_end = 1712592000
+    event_model = SimpleNamespace(
+        created=1710000001,
+        data=SimpleNamespace(
+            object=stale_same_subscription,
+            previous_attributes=SimpleNamespace(status="active", plan=None, items=None, trial_end=None),
+        ),
+        model_dump=lambda: {},
+    )
+
+    monkeypatch.setattr(billing_webhook_service, "SubscriptionUpdated", lambda **_kwargs: event_model)
+    monkeypatch.setattr(billing_app.SubscriptionService, "get_tenant_id_by_customer_id", lambda _customer_id: "tenant_1")
+    monkeypatch.setattr(
+        billing_app.SubscriptionService,
+        "get_by_tenant_id",
+        lambda _tenant_id: {
+            "tenant_id": "tenant_1",
+            "customer_id": "cus_main",
+            "subscription_id": "sub_main",
+            "subscription_status": "active",
+            "product_id": "prod_pro",
+            "plan_name": "Pro",
+            "price_id": "price_pro",
+            "order_id": "order_pro",
+            "invoice_id": "",
+            "invoice_url": "",
+            "invoice_pdf_url": "",
+            "start_time": datetime(2026, 5, 1, 0, 0, 0, tzinfo=timezone.utc),
+            "end_time": datetime(2026, 6, 1, 0, 0, 0, tzinfo=timezone.utc),
+            "update_time": datetime(2026, 5, 19, 11, 18, 0, tzinfo=timezone.utc),
+            "original_subscription_id": "sub_main",
+            "addon_subscription_item_id": None,
+            "addon_storage_bytes": 0,
+            "target_storage_bytes": 0,
+        },
+    )
+    monkeypatch.setattr(billing_app.SubscriptionService, "upsert_subscription", lambda tenant_id, data: updates.append((tenant_id, data)))
+    monkeypatch.setattr(
+        billing_app.settings,
+        "BILLING_PRICEID_TO_PRODUCT",
+        {"price_trial": "Trial", "price_pro": "Pro"},
+        raising=False,
+    )
+
+    asyncio.run(billing_webhook_service._handle_customer_subscription_updated({"type": "customer.subscription.updated", "created": 1710000001, "data": {"object": {"id": "sub_main"}}}))
+
+    assert updates == []
 
 
 @pytest.mark.p2
@@ -804,7 +1124,7 @@ def test_customer_subscription_deleted_syncs_main_subscription_to_canceled(monke
         "data": {"object": {"id": "sub_main", "customer": "cus_main"}},
     }
 
-    billing_app._handle_customer_subscription_deleted(event)
+    asyncio.run(billing_webhook_service._handle_customer_subscription_deleted(event))
 
     assert updates[-1][0] == "tenant_1"
     assert updates[-1][1] == {
@@ -858,7 +1178,7 @@ def test_customer_subscription_deleted_ignores_stale_main_subscription(monkeypat
         "data": {"object": {"id": "sub_old", "customer": "cus_main"}},
     }
 
-    billing_app._handle_customer_subscription_deleted(event)
+    asyncio.run(billing_webhook_service._handle_customer_subscription_deleted(event))
 
     assert updates == []
 
@@ -880,7 +1200,7 @@ def test_subscription_updated_with_pending_update_does_not_upgrade_entitlement(m
         model_dump=lambda: {},
     )
 
-    monkeypatch.setattr(billing_app, "SubscriptionUpdated", lambda **_kwargs: event_model)
+    monkeypatch.setattr(billing_webhook_service, "SubscriptionUpdated", lambda **_kwargs: event_model)
     monkeypatch.setattr(billing_app.SubscriptionService, "get_by_subscription_id", lambda _subscription_id: None)
     monkeypatch.setattr(billing_app.SubscriptionService, "get_tenant_id_by_customer_id", lambda _customer_id: "tenant_1")
     monkeypatch.setattr(
@@ -906,11 +1226,11 @@ def test_subscription_updated_with_pending_update_does_not_upgrade_entitlement(m
     monkeypatch.setattr(billing_app.SubscriptionService, "upsert_subscription", lambda tenant_id, data: None)
     monkeypatch.setattr(billing_app.PaymentOrderService, "get_by_order_id", lambda _invoice_id: None)
     monkeypatch.setattr(billing_app.settings, "BILLING_PRICEID_TO_PRODUCT", {"price_starter": "Starter", "price_pro": "Pro"}, raising=False)
-    monkeypatch.setattr(billing_app, "get_product_id_by_name", lambda plan_name: f"prod_{plan_name.lower()}")
+    monkeypatch.setattr(billing_webhook_service, "get_product_id_by_name", lambda plan_name: f"prod_{plan_name.lower()}")
     monkeypatch.setattr(billing_app, "get_plan_priority_by_price_id", lambda price_id: {"price_starter": 1, "price_pro": 2}.get(price_id), raising=False)
     monkeypatch.setattr(billing_app.Subscription, "update", lambda **_: SimpleNamespace(where=lambda _: SimpleNamespace(execute=lambda: 1)))
 
-    billing_app._handle_customer_subscription_updated({"type": "customer.subscription.updated", "data": {"object": {"id": "sub_main"}}})
+    asyncio.run(billing_webhook_service._handle_customer_subscription_updated({"type": "customer.subscription.updated", "data": {"object": {"id": "sub_main"}}}))
 
 
 @pytest.mark.p2
@@ -931,7 +1251,7 @@ def test_scheduled_downgrade_price_change_still_updates_plan(monkeypatch):
         model_dump=lambda: {},
     )
 
-    monkeypatch.setattr(billing_app, "SubscriptionUpdated", lambda **_kwargs: event_model)
+    monkeypatch.setattr(billing_webhook_service, "SubscriptionUpdated", lambda **_kwargs: event_model)
     monkeypatch.setattr(billing_app.SubscriptionService, "get_by_subscription_id", lambda _subscription_id: None)
     monkeypatch.setattr(billing_app.SubscriptionService, "get_tenant_id_by_customer_id", lambda _customer_id: "tenant_1")
     monkeypatch.setattr(
@@ -958,11 +1278,11 @@ def test_scheduled_downgrade_price_change_still_updates_plan(monkeypatch):
     monkeypatch.setattr(billing_app.PaymentOrderService, "get_by_order_id", lambda _invoice_id: None)
     monkeypatch.setattr(billing_app.PaymentOrderService, "save", lambda **kwargs: saved_orders.append(kwargs))
     monkeypatch.setattr(billing_app.settings, "BILLING_PRICEID_TO_PRODUCT", {"price_starter": "Starter", "price_pro": "Pro"}, raising=False)
-    monkeypatch.setattr(billing_app, "get_product_id_by_name", lambda plan_name: f"prod_{plan_name.lower()}")
+    monkeypatch.setattr(billing_webhook_service, "get_product_id_by_name", lambda plan_name: f"prod_{plan_name.lower()}")
     monkeypatch.setattr(billing_app, "get_plan_priority_by_price_id", lambda price_id: {"price_starter": 1, "price_pro": 2}.get(price_id), raising=False)
-    monkeypatch.setattr(billing_app, "is_subscription_latest_invoice_paid_sync", lambda _subscription: True)
+    monkeypatch.setattr(billing_webhook_service, "is_subscription_latest_invoice_paid_async", lambda _subscription: asyncio.sleep(0, result=(True, "", "", "")))
 
-    billing_app._handle_customer_subscription_updated({"type": "customer.subscription.updated", "data": {"object": {"id": "sub_main"}}})
+    asyncio.run(billing_webhook_service._handle_customer_subscription_updated({"type": "customer.subscription.updated", "data": {"object": {"id": "sub_main"}}}))
 
     assert updates[-1][1]["plan_name"] == "Starter"
     assert updates[-1][1]["subscription_status"] == "active"
@@ -1085,7 +1405,7 @@ def test_subscription_checkout_session_completed_defers_storage_state_to_subscri
         },
     }
 
-    billing_app._handle_checkout_session_completed(event)
+    asyncio.run(billing_webhook_service._handle_checkout_session_completed(event))
 
 
 @pytest.mark.p2

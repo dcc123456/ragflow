@@ -32,6 +32,32 @@ class SystemSettingsService(CommonService):
 
     @classmethod
     @DB.connection_context()
+    def get_first_by_name(cls, name):
+        return cls.model.select().where(cls.model.name.startswith(name)).first()
+
+    @classmethod
+    @DB.connection_context()
+    def get_by_exact_name(cls, name: str):
+        return cls.model.select().where(cls.model.name == name)
+
+    @classmethod
+    @DB.connection_context()
+    def get_singleton_by_exact_name(cls, name: str):
+        rows = list(
+            cls.model.select()
+            .where(cls.model.name == name)
+            .order_by(cls.model.update_time.desc(), cls.model.create_time.desc())
+        )
+        if not rows:
+            return None
+        keeper = rows[0]
+        duplicate_ids = [row.id for row in rows[1:]]
+        if duplicate_ids:
+            cls.model.delete().where(cls.model.id.in_(duplicate_ids)).execute()
+        return keeper
+
+    @classmethod
+    @DB.connection_context()
     def get_by_source(cls, source: str):
         objs = cls.model.select().where(cls.model.source == source)
         return objs
@@ -71,6 +97,29 @@ class SystemSettingsService(CommonService):
 
     @classmethod
     @DB.connection_context()
+    def update_by_exact_name(cls, name: str, obj: dict):
+        obj["update_time"] = current_timestamp()
+        obj["update_date"] = datetime_format(datetime.now())
+        cls.model.update(obj).where(cls.model.name == name).execute()
+        return SystemSettings(**obj)
+
+    @classmethod
+    @DB.connection_context()
+    def upsert_singleton_by_exact_name(
+        cls,
+        *,
+        name: str,
+        source: str,
+        data_type: str,
+        value: str,
+    ):
+        current = cls.get_singleton_by_exact_name(name)
+        if current:
+            return cls.update_by_exact_name(name, {"value": value, "source": source, "data_type": data_type})
+        return cls.insert(name=name, source=source, data_type=data_type, value=value)
+
+    @classmethod
+    @DB.connection_context()
     def get_record_count(cls):
         count = cls.model.select().count()
         return count
@@ -84,6 +133,11 @@ class SystemSettingsService(CommonService):
     @DB.connection_context()
     def delete_by_name(cls, name: str):
         return cls.model.delete().where(cls.model.name.startswith(name)).execute()
+
+    @classmethod
+    @DB.connection_context()
+    def delete_by_exact_name(cls, name: str):
+        return cls.model.delete().where(cls.model.name == name).execute()
 
     @classmethod
     @DB.connection_context()

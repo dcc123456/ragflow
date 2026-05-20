@@ -1,7 +1,6 @@
 import message from '@/components/ui/message';
 import { Authorization } from '@/constants/authorization';
 import i18n from '@/locales/config';
-import { PriceCode, showPriceModal } from '@/pages/price/global/hook';
 import authorizationUtil, {
   getAuthorization,
   redirectToLogin,
@@ -13,6 +12,18 @@ import { setCachedLlmList } from './llm-cache';
 import { addTenantParams } from './llm-util';
 
 const FAILED_TO_FETCH = 'Failed to fetch';
+
+const showBillingUpgradeModalIfNeeded = async (data: any) => {
+  const { PriceCode, showPriceModal } =
+    await import('@/pages/price/global/hook');
+
+  if (!PriceCode[data?.code as keyof typeof PriceCode]) {
+    return false;
+  }
+
+  showPriceModal(data);
+  return true;
+};
 
 export const RetcodeMessage = {
   200: i18n.t('message.200'),
@@ -139,9 +150,7 @@ request.interceptors.response.use(
         redirectToLogin();
       }
     } else if (data?.code !== 0) {
-      if (PriceCode[data?.code as any]) {
-        showPriceModal(data);
-      } else {
+      if (!(await showBillingUpgradeModalIfNeeded(data))) {
         notification.error({
           message: `${i18n.t('message.hint')} : ${data?.code}`,
           description: data?.message,

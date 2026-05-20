@@ -173,7 +173,11 @@ class SubscriptionService(CommonService):
         tenant_plan = cls._ensure_trial_stripe_subscription(tenant_plan)
         logging.debug(f"tenant_plan={tenant_plan}")
         billing_plan = ProductService.get_by_name(tenant_plan["plan_name"])
-        assert billing_plan is not None
+        if billing_plan is None:
+            raise ValueError(
+                f"Product not found for plan_name={tenant_plan['plan_name']!r}, "
+                f"tenant_id={tenant_id!r}, customer_id={tenant_plan.get('customer_id', '')!r}"
+            )
         plan_name = billing_plan.pop("name")
         billing_plan["plan_name"] = plan_name
         tenant_plan.update(billing_plan)
@@ -519,77 +523,6 @@ class SubscriptionService(CommonService):
         return 0, 0
 
 
-####################################################################################
-
-
-# -----------------------------------------------------------------------------
-# Deprecated: UsageBasedService
-# -----------------------------------------------------------------------------
-# The app currently does not use the legacy `billing_usage_based` table for
-# usage-based purchases. We keep this code commented out for potential future
-# extension (e.g., a dedicated usage-based purchase history table).
-#
-# If this is ever re-enabled, revisit schema constraints (tenant_id/customer_id
-# were unique) and make webhook handling idempotent to avoid transaction
-# rollbacks on retries.
-#
-# class UsageBasedService(CommonService):
-#     model = UsageBased
-#
-#     @classmethod
-#     def save(cls, **kwargs):
-#         if "id" not in kwargs:
-#             kwargs["id"] = get_uuid()
-#         obj = cls.model(**kwargs).save(force_insert=True)
-#         return obj
-#
-#     @classmethod
-#     @DB.connection_context()
-#     def get_by_tenant_id(cls, tenant_id: str, start_time=None) -> dict:
-#         fields = [
-#             cls.model.tenant_id,
-#             cls.model.customer_id,
-#             cls.model.payment_id,
-#             cls.model.payment_status,
-#             cls.model.product_name,
-#         ]
-#
-#         query = cls.model.select(*fields).where(cls.model.tenant_id == tenant_id)
-#
-#         if start_time:
-#             query = query.where(cls.model.create_time >= start_time)
-#
-#         purchased_usage_based = query.order_by(cls.model.create_time.desc()).dicts().first()
-#         return purchased_usage_based
-#
-#     @classmethod
-#     @DB.connection_context()
-#     def set_customer_id(cls, tenant_id: str, customer_id: str):
-#         _updated = cls.model.update(customer_id=customer_id).where(cls.model.tenant_id == tenant_id).execute()
-#
-#     @classmethod
-#     @DB.connection_context()
-#     def get_tenant_id_by_customer_id(cls, customer_id: str) -> str:
-#         tenant = cls.model.select(cls.model.tenant_id).where(cls.model.customer_id == customer_id).first()
-#         if tenant:
-#             return tenant.tenant_id
-#         return None
-#
-#     @classmethod
-#     @DB.connection_context()
-#     def get_by_payment_id(cls, payment_id: str) -> dict | None:
-#         if not payment_id:
-#             return None
-#         return cls.model.select().where(cls.model.payment_id == payment_id).dicts().first()
-#
-#     @classmethod
-#     @DB.connection_context()
-#     def get_by_order_id(cls, order_id: str) -> dict | None:
-#         if not order_id:
-#             return None
-#         return cls.model.select().where(cls.model.order_id == order_id).dicts().first()
-
-
 class PaymentOrderService(CommonService):
     model = PaymentOrder
 
@@ -640,6 +573,55 @@ class BillingWebhookEventService(CommonService):
         if not event_id:
             return None
         return cls.model.select().where(cls.model.event_id == event_id).dicts().first()
+
+    @classmethod
+    @DB.connection_context()
+    def update_by_event_id(cls, event_id: str, update_dict: dict) -> int:
+        if not event_id:
+            return 0
+        now_utc = to_utc_datetime(datetime.now(timezone.utc))
+        update_dict["update_time"] = current_timestamp()
+        update_dict["update_date"] = now_utc
+        return cls.model.update(update_dict).where(cls.model.event_id == event_id).execute()
+
+    @classmethod
+    def mark_processing(cls, event_id: str) -> int:
+        now_utc = to_utc_datetime(datetime.now(timezone.utc))
+        return cls.update_by_event_id(
+            event_id,
+            {
+                "processing_status": "processing",
+                "processing_started_at": now_utc,
+                "processed_at": None,
+                "failed_at": None,
+                "last_error": "",
+            },
+        )
+
+    @classmethod
+    def mark_completed(cls, event_id: str, status: str = "completed") -> int:
+        now_utc = to_utc_datetime(datetime.now(timezone.utc))
+        return cls.update_by_event_id(
+            event_id,
+            {
+                "processing_status": status,
+                "processed_at": now_utc,
+                "failed_at": None,
+                "last_error": "",
+            },
+        )
+
+    @classmethod
+    def mark_failed(cls, event_id: str, error_message: str) -> int:
+        now_utc = to_utc_datetime(datetime.now(timezone.utc))
+        return cls.update_by_event_id(
+            event_id,
+            {
+                "processing_status": "failed",
+                "failed_at": now_utc,
+                "last_error": (error_message or "")[:4096],
+            },
+        )
 
 
 class PricePointService(CommonService):

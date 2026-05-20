@@ -2,7 +2,6 @@ import message from '@/components/ui/message';
 import { useFetchTenantInfo } from '@/hooks/use-user-setting-request';
 import { formatNumber } from '@/pages/admin/model-usage-statistics/utils';
 import { useFetchAddonPlans } from '@/pages/price/hook/use-addon-plans';
-import { StorageAddonSetupRetryKey } from '@/pages/price/hook/use-price-hooks';
 import billingService, {
   getBillingStorageCurrent,
   postBillingStorageSetTarget,
@@ -105,7 +104,7 @@ const ResourceUsage: React.FC<CustomProgressProps> = ({
       }),
     ]);
 
-  const submitSetTarget = async (targetGb: number) => {
+  const submitSetTarget = async (targetGb: number, setupIntentId?: string) => {
     const currentUrl = new URL(window.location.href);
     const successUrl = new URL(currentUrl.toString());
     const errorUrl = new URL(currentUrl.toString());
@@ -116,14 +115,22 @@ const ResourceUsage: React.FC<CustomProgressProps> = ({
       target_storage_bytes: Math.max(0, targetGb) * BYTES_PER_GB,
       session_cancel_url: errorUrl.toString(),
       session_success_url: successUrl.toString(),
+      setup_intent_id: setupIntentId,
     });
     return data;
   };
 
-  const addOnManageOk = async ({ value }: { value: number }) => {
+  const addOnManageOk = async ({
+    value,
+    setupIntentId,
+  }: {
+    value: number;
+    paymentMethodReady?: boolean;
+    setupIntentId?: string;
+  }) => {
     if (!addOnManageModal) return;
 
-    const data = await submitSetTarget(value);
+    const data = await submitSetTarget(value, setupIntentId);
     const res = data?.data;
 
     if (data?.code !== 0) {
@@ -132,34 +139,9 @@ const ResourceUsage: React.FC<CustomProgressProps> = ({
     }
 
     if (res?.redirect_to) {
-      if (res.requires_payment_method_setup) {
-        localStorage.setItem(
-          StorageAddonSetupRetryKey,
-          JSON.stringify({
-            tenant_id: tenantId,
-            target_storage_bytes: Math.max(0, value) * BYTES_PER_GB,
-            auto_retry_pending: true,
-          }),
-        );
-        addOnManageModal.destroy();
-        const paymentSetupWindow = window.open(res.redirect_to, '_blank');
-        try {
-          if (paymentSetupWindow) {
-            paymentSetupWindow.opener = null;
-          }
-        } catch {
-          // Ignore cross-origin opener hardening failures.
-        }
-        if (!paymentSetupWindow) {
-          window.location.href = res.redirect_to;
-        }
-        return;
-      }
-
       window.open(res.redirect_to);
     }
     await invalidateStorageQueries();
-    addOnManageModal.destroy();
   };
 
   const previewImmediateStorageCharge = async (targetGb: number) => {
@@ -169,7 +151,7 @@ const ResourceUsage: React.FC<CustomProgressProps> = ({
     });
 
     if (upcoming?.code === 0) {
-      return upcoming?.data?.amount_due_today;
+      return upcoming?.data;
     }
 
     return undefined;
@@ -182,11 +164,12 @@ const ResourceUsage: React.FC<CustomProgressProps> = ({
         ? Math.floor(storageCurrent.addon_storage_bytes / BYTES_PER_GB)
         : addOnCapacity;
     addOnManageModal = showAddOnManageModal({
+      tenantId,
       defaultValue: currentStorage,
       currentValue: currentStorage,
       onOk: addOnManageOk,
       price: storageCurrent?.unit_price || pricePerGBFromApi,
-      getImmediateCharge: previewImmediateStorageCharge,
+      getUpgradePreview: previewImmediateStorageCharge,
     });
   };
 

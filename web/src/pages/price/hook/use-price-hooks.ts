@@ -6,6 +6,7 @@ import type { SessionData } from '@/pages/billing/hook/use-payment-status-reques
 import { isBillingEnabled } from '@/services/billingStatus';
 import billingService, {
   billingCheckout,
+  postBillingSetupIntent,
   postBillingStorageSetTarget,
 } from '@/services/price';
 import storagePrivate from '@/utils/authorization-private-util';
@@ -44,6 +45,7 @@ type PlanSetupRetryPayload = {
 type StorageSetupRetryPayload = {
   tenant_id?: string;
   target_storage_bytes: number;
+  setup_intent_id?: string;
   auto_retry_pending?: boolean;
   auto_retry_started?: boolean;
 };
@@ -105,24 +107,6 @@ const publishDirectCheckoutResult = (res?: ICheckoutResult) => {
       detail: payload,
     }),
   );
-};
-
-const openSetupCheckoutPreservingPage = (redirectTo?: string) => {
-  if (!redirectTo) {
-    return;
-  }
-
-  const paymentSetupWindow = window.open(redirectTo, '_blank');
-  try {
-    if (paymentSetupWindow) {
-      paymentSetupWindow.opener = null;
-    }
-  } catch {
-    // Ignore cross-origin opener hardening failures.
-  }
-  if (!paymentSetupWindow) {
-    window.location.href = redirectTo;
-  }
 };
 
 const openPaymentRedirectPreservingPage = (redirectTo?: string) => {
@@ -210,10 +194,12 @@ const useCharge = () => {
       price_id,
       quantity,
       payment_type,
+      setup_intent_id,
     }: {
       price_id: string;
       quantity: string;
       payment_type: 'subscription' | 'usage_based';
+      setup_intent_id?: string;
     }) => {
       const resolvedTenantId = tenantId || cachedCurrentPlan?.tenant_id;
 
@@ -238,26 +224,19 @@ const useCharge = () => {
         // 'price_1RRTpfPtsKvwvC5fVsZly0mE',
         session_cancel_url: errorUrl,
         session_success_url: successUrl,
+        setup_intent_id,
       });
       if (data.code === 0) {
-        if (data.data?.requires_payment_method_setup) {
-          localStorage.setItem(
-            TrialUpgradeSetupRetryKey,
-            JSON.stringify({
-              price_id,
-              quantity,
-              payment_type,
-              auto_retry_pending: true,
-            }),
-          );
-        }
         return data.data as ICheckoutResult;
       }
       throw new Error(data?.message || 'Modify subscription failed');
     },
   });
 
-  const charge = async (data: IPricePlanWithButton) => {
+  const charge = async (
+    data: IPricePlanWithButton,
+    options?: { setupIntentId?: string },
+  ) => {
     if (data.isUse) {
       return;
     }
@@ -268,17 +247,14 @@ const useCharge = () => {
         price_id: data.id,
         quantity: '1',
         payment_type: 'subscription',
+        setup_intent_id: options?.setupIntentId,
       });
     } catch (error) {
       message.error((error as Error)?.message || 'Modify subscription failed');
       return;
     }
     if (chargeResult && chargeResult.redirect_to) {
-      if (chargeResult.requires_payment_method_setup) {
-        openSetupCheckoutPreservingPage(chargeResult.redirect_to);
-      } else {
-        window.location.href = chargeResult.redirect_to;
-      }
+      window.location.href = chargeResult.redirect_to;
     } else if (chargeResult && chargeResult.scheduled_change) {
       const effectiveAt = chargeResult?.scheduled_change?.effective_at;
       const modal = showModal({
@@ -379,40 +355,44 @@ export const useHandleTrialUpgradeSetupRetry = (status: string | null) => {
 
     const rawPlanRetryPayload = localStorage.getItem(TrialUpgradeSetupRetryKey);
     if (rawPlanRetryPayload) {
-      let retryPayload: PlanSetupRetryPayload | null = null;
+      let planRetryPayload: PlanSetupRetryPayload | null = null;
       try {
-        retryPayload = JSON.parse(rawPlanRetryPayload) as PlanSetupRetryPayload;
+        planRetryPayload = JSON.parse(
+          rawPlanRetryPayload,
+        ) as PlanSetupRetryPayload;
       } catch {
         localStorage.removeItem(TrialUpgradeSetupRetryKey);
         return;
       }
 
       if (
-        retryPayload?.auto_retry_pending &&
-        !retryPayload?.auto_retry_started &&
-        retryPayload?.price_id
+        planRetryPayload?.auto_retry_pending &&
+        !planRetryPayload?.auto_retry_started &&
+        planRetryPayload?.price_id
       ) {
         localStorage.setItem(
           TrialUpgradeSetupRetryKey,
           JSON.stringify({
-            ...retryPayload,
+            ...planRetryPayload,
             auto_retry_started: true,
           }),
         );
 
         checkout({
-          price_id: retryPayload.price_id,
-          quantity: retryPayload.quantity || '1',
-          payment_type: retryPayload.payment_type || 'subscription',
+          price_id: planRetryPayload.price_id,
+          quantity: planRetryPayload.quantity || '1',
+          payment_type: planRetryPayload.payment_type,
         })
           .then(async (res) => {
             localStorage.removeItem(TrialUpgradeSetupRetryKey);
+
             if (res?.redirect_to) {
               openPaymentRedirectPreservingPage(res.redirect_to);
               return;
             }
-            publishDirectCheckoutResult(res);
+
             await invalidateBillingQueries();
+            publishDirectCheckoutResult(res);
             const amountText = formatCurrencyAmount(
               res?.amount_cents,
               res?.currency,
@@ -472,6 +452,7 @@ export const useHandleTrialUpgradeSetupRetry = (status: string | null) => {
       target_storage_bytes: storageRetryPayload.target_storage_bytes,
       session_cancel_url: errorUrl,
       session_success_url: successUrl,
+      setup_intent_id: storageRetryPayload.setup_intent_id,
     })
       .then(async ({ data: res }) => {
         if (res?.code !== 0) {
@@ -556,4 +537,35 @@ const getNextMonth = {
     return `${year}-${month}-${day}`;
   },
 };
+
+export const useSetupIntentPayment = () => {
+  const { data: tenantInfo } = useFetchTenantData();
+  const tenantId = tenantInfo?.tenant_id;
+
+  const createSetupIntent = async (params: {
+    setup_type: 'subscription_upgrade' | 'storage_addon';
+    price_id?: string;
+    target_storage_bytes?: number;
+  }) => {
+    if (!tenantId) {
+      throw new Error('No tenant ID');
+    }
+
+    const { data } = await postBillingSetupIntent({
+      tenant_id: tenantId,
+      ...params,
+    });
+
+    if (data.code !== 0) {
+      throw new Error(data.message || 'Failed to create setup intent');
+    }
+
+    return data.data;
+  };
+
+  return {
+    createSetupIntent,
+  };
+};
+
 export { getNextMonth, useCharge, useFetchCurrentPlan, useFetchPlanList };
