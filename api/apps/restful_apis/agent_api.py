@@ -34,7 +34,7 @@ from agent.component import LLM
 from agent.dsl_migration import normalize_chunker_dsl
 from api.apps import current_user, login_required
 from api.apps.services.canvas_replica_service import CanvasReplicaService
-from api.db import CanvasCategory
+from api.db import CanvasCategory, PermissionValue, ResourceType
 from api.db.db_models import Task
 from api.db.services.api_service import API4ConversationService
 from api.db.services.canvas_service import (
@@ -47,6 +47,7 @@ from api.db.services.document_service import DocumentService
 from api.db.services.file_service import FileService
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.pipeline_operation_log_service import PipelineOperationLogService
+from api.db.services.permission_service import PermissionService
 from api.db.services.task_service import CANVAS_DEBUG_DOC_ID, TaskService, queue_dataflow
 from api.db.services.user_service import TenantService, UserService
 from api.db.services.user_canvas_version import UserCanvasVersionService
@@ -352,6 +353,22 @@ def list_agents(tenant_id):
         canvas_category,
         tags,
     )
+
+    permission_map = PermissionService.get_user_resource_permission_map(
+        tenant_id,
+        effective_owner_ids,
+        ResourceType.CANVAS,
+        PermissionValue.PERMISSION_READ,
+    )
+
+    for item in canvas:
+        if item["tenant_id"] == tenant_id:
+            item["operator_permission"] = PermissionValue.PERMISSION_OWNER.value
+        else:
+            item["operator_permission"] = permission_map.get(
+                item["id"],
+                PermissionValue.PERMISSION_NULL.value,
+            )
 
     return get_json_result(data={"canvas": canvas, "total": total})
 
