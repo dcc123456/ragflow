@@ -1,7 +1,6 @@
 import { cn } from '@/lib/utils';
 import { PrivateRoutes } from '@/private-routes';
 import { ArrowUpRight } from 'lucide-react';
-import { useNavigate } from 'react-router';
 
 const UpgradeButton = ({
   text,
@@ -14,14 +13,15 @@ const UpgradeButton = ({
   onCallBack?: () => void;
   className?: string;
 }) => {
-  const navigate = useNavigate();
+  // const navigate = useNavigate();
   // const { openModal } = useUpgradeModal();
 
   const handleClick = (e: React.MouseEvent) => {
     if (isModal) {
       e.preventDefault();
       // openModal();
-      navigate(PrivateRoutes.Price);
+      // navigate(PrivateRoutes.Price);
+      window.location.href = PrivateRoutes.Price;
       onCallBack?.();
     }
   };
