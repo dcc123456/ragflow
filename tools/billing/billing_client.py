@@ -281,17 +281,63 @@ class BillingClient:
     def storage_current(self) -> dict[str, Any]:
         return self.request_json("GET", f"/billing/storage/current?tenant_id={self.tenant_id}")["data"]
 
-    def storage_set_target(self, target_storage_bytes: int) -> dict[str, Any]:
+    def upcoming_plan_change(self, new_price_id: str) -> dict[str, Any]:
+        return self.request_json(
+            "POST",
+            "/billing/upcoming",
+            json={"tenant_id": self.tenant_id, "new_price_id": new_price_id},
+        )["data"]
+
+    def upcoming_storage_change(self, target_storage_bytes: int) -> dict[str, Any]:
+        return self.request_json(
+            "POST",
+            "/billing/upcoming",
+            json={"tenant_id": self.tenant_id, "target_storage_bytes": target_storage_bytes},
+        )["data"]
+
+    def storage_set_target(self, target_storage_bytes: int, *, setup_intent_id: str = "") -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "tenant_id": self.tenant_id,
+            "target_storage_bytes": target_storage_bytes,
+        }
+        if setup_intent_id:
+            payload["setup_intent_id"] = setup_intent_id
         return self.request_json(
             "POST",
             "/billing/storage/set-target",
-            json={"tenant_id": self.tenant_id, "target_storage_bytes": target_storage_bytes},
+            json=payload,
         )["data"]
+
+    def create_setup_intent(
+            self,
+            *,
+            setup_type: str,
+            price_id: str = "",
+            target_storage_bytes: int | None = None,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "tenant_id": self.tenant_id,
+            "setup_type": setup_type,
+        }
+        if price_id:
+            payload["price_id"] = price_id
+        if target_storage_bytes is not None:
+            payload["target_storage_bytes"] = target_storage_bytes
+        return self.request_json("POST", "/billing/setup-intent", json=payload)["data"]
+
+    def succeed_setup_intent(self, setup_intent_id: str, payment_method_id: str = "pm_card_visa") -> dict[str, Any]:
+        if not setup_intent_id:
+            raise FlowError("setup_intent_id is required")
+        setup_intent = stripe.SetupIntent.confirm(setup_intent_id, payment_method=payment_method_id)
+        setup_intent_dict = stripe_dict(setup_intent)
+        if setup_intent_dict.get("status") != "succeeded":
+            raise FlowError(f"expected SetupIntent to succeed, got {setup_intent_dict}")
+        return setup_intent_dict
 
     def spend_history(self) -> list[dict[str, Any]]:
         return self.request_json("GET", "/billing/spend_overview")["data"].get("items", [])
 
-    def schedule_plan_change(self, price_id: str) -> dict[str, Any]:
+    def schedule_plan_change(self, price_id: str, *, setup_intent_id: str = "") -> dict[str, Any]:
         """Initiate a subscription change via checkout (upgrade/downgrade)."""
         payload = {
             "tenant_id": self.tenant_id,
@@ -299,7 +345,37 @@ class BillingClient:
             "subscription_price_id": price_id,
             "quantity": 1,
         }
+        if setup_intent_id:
+            payload["setup_intent_id"] = setup_intent_id
         return self.request_json("POST", "/billing/checkout", json=payload)["data"]
+
+    def ensure_setup_intent_for_plan_change(self, target_price_id: str) -> str:
+        upcoming = self.upcoming_plan_change(target_price_id)
+        if upcoming.get("has_reusable_payment_method", True):
+            return ""
+        setup_result = self.create_setup_intent(
+            setup_type="subscription_upgrade",
+            price_id=target_price_id,
+        )
+        setup_intent_id = str(setup_result.get("setup_intent_id") or "")
+        if not setup_intent_id:
+            raise FlowError(f"setup-intent response missing setup_intent_id: {setup_result}")
+        self.succeed_setup_intent(setup_intent_id)
+        return setup_intent_id
+
+    def ensure_setup_intent_for_storage_change(self, target_storage_bytes: int) -> str:
+        upcoming = self.upcoming_storage_change(target_storage_bytes)
+        if upcoming.get("has_reusable_payment_method", True):
+            return ""
+        setup_result = self.create_setup_intent(
+            setup_type="storage_addon",
+            target_storage_bytes=target_storage_bytes,
+        )
+        setup_intent_id = str(setup_result.get("setup_intent_id") or "")
+        if not setup_intent_id:
+            raise FlowError(f"setup-intent response missing setup_intent_id: {setup_result}")
+        self.succeed_setup_intent(setup_intent_id)
+        return setup_intent_id
 
 
     def post_signed_webhook(self, event: dict[str, Any]) -> None:
@@ -339,7 +415,7 @@ class BillingClient:
         time.sleep(wait_seconds)
         """Synchronize webhook events: manual mode replays from test clock; auto mode just waits."""
         if self.mode != "manual":
-            print(f"-------self.mode is {self.mode}, not manual, ignore")
+            print(f"-------self.mode is {self.mode}, waiting for forwarded webhooks")
             return 0
         return self._replay_stripe_events(
             subscription_ids=subscription_ids,
@@ -469,12 +545,13 @@ class BillingClient:
             raise FlowError("new_quantity_gb must be non-negative")
 
         target_storage_bytes = new_quantity_gb * BYTES_PER_GB
+        setup_intent_id = self.ensure_setup_intent_for_storage_change(target_storage_bytes)
 
         # Step 1: Call backend API to set storage target
         print(f"  Setting storage target: tenant={self.tenant_id}, quantity={new_quantity_gb}GB ({target_storage_bytes} bytes)")
         created_gte = int(time.time()) - 5
         try:
-            result = self.storage_set_target(target_storage_bytes)
+            result = self.storage_set_target(target_storage_bytes, setup_intent_id=setup_intent_id)
             print("  ✅ Storage target updated via backend API")
         except FlowError as exc:
             raise FlowError(f"Failed to update storage target via backend API: {exc}") from exc
@@ -482,14 +559,13 @@ class BillingClient:
         addon_storage_bytes = result.get("addon_storage_bytes", 0)
         returned_target_bytes = result.get("target_storage_bytes", 0)
 
-        # Step 2: Replay webhook events if created_gte provided (for test clock sync)
-
-        print("  Replaying webhook events for synchronization")
+        # Step 2: Wait for webhook sync; manual mode will replay selected events.
+        print("  Waiting for webhook synchronization")
         self.sync_webhooks(
             subscription_ids=subscription_ids or set(),
             created_gte=created_gte,
         )
-        print("  ✅ Webhook events replayed")
+        print("  ✅ Webhook synchronization finished")
 
         # Step 3: Verify the storage was updated correctly
         print("  Verifying storage update result")
@@ -698,11 +774,12 @@ class BillingClient:
             raise FlowError("storage_quantity_gb must be positive")
 
         target_storage_bytes = storage_quantity_gb * BYTES_PER_GB
+        setup_intent_id = self.ensure_setup_intent_for_storage_change(target_storage_bytes)
 
         # Step 1: Call backend API to set storage target
         print(f"  Setting storage target: tenant={self.tenant_id}, quantity={storage_quantity_gb}GB ({target_storage_bytes} bytes)")
         try:
-            result = self.storage_set_target(target_storage_bytes)
+            result = self.storage_set_target(target_storage_bytes, setup_intent_id=setup_intent_id)
             print("  ✅ Storage target set via backend API")
         except FlowError as exc:
             raise FlowError(f"Failed to set storage target via backend API: {exc}") from exc
@@ -710,14 +787,14 @@ class BillingClient:
         addon_storage_bytes = result.get("addon_storage_bytes", 0)
         returned_target_bytes = result.get("target_storage_bytes", 0)
 
-        # Step 2: Replay webhook events if created_gte provided (for test clock sync)
+        # Step 2: Wait for webhook sync; manual mode will replay selected events.
         if created_gte and self.customer_id:
-            print("  Replaying webhook events for synchronization")
+            print("  Waiting for webhook synchronization")
             self.sync_webhooks(
                 subscription_ids=subscription_ids or set(),
                 created_gte=created_gte,
             )
-            print("  ✅ Webhook events replayed")
+            print("  ✅ Webhook synchronization finished")
 
         # Step 3: Verify the storage was added correctly
         print("  Verifying storage addition result")
@@ -749,12 +826,13 @@ class BillingClient:
         billing_config = load_billing_config()
         starter_price_id = first_plan_price_id(billing_config, "Starter")
         starter_checkout_started_at = int(time.time()) - 10
+        setup_intent_id = self.ensure_setup_intent_for_plan_change(starter_price_id)
 
         # Record invoice count before upgrade
         history_before_upgrade = self.spend_history()
         invoice_count_before_upgrade = len(history_before_upgrade)
 
-        checkout_result = self.schedule_plan_change(starter_price_id)
+        checkout_result = self.schedule_plan_change(starter_price_id, setup_intent_id=setup_intent_id)
         subscription_id_from_result = checkout_result.get("subscription_id", "")
 
         starter_subscription_id = subscription_id_from_result
@@ -817,7 +895,8 @@ class BillingClient:
         # Call server API to perform the upgrade
         print("  Scheduling upgrade to Pro via server API")
         upgrade_started_at = int(time.time()) - 5
-        checkout_result = self.schedule_plan_change(pro_price_id)
+        setup_intent_id = self.ensure_setup_intent_for_plan_change(pro_price_id)
+        checkout_result = self.schedule_plan_change(pro_price_id, setup_intent_id=setup_intent_id)
 
         subscription_id = checkout_result.get("subscription_id") or starter_subscription_id
         plan_name = checkout_result.get("plan_name", "")
@@ -831,7 +910,7 @@ class BillingClient:
         print(f"  ✅ Upgrade submitted, plan_name={plan_name}, subscription_id={subscription_id}")
 
         # Sync webhooks for test clock consistency
-        print("  Replaying webhook events for synchronization")
+        print("  Waiting for webhook synchronization")
         # self.ensure_invoice_finalized(starter_subscription_id)
         subscription_ids = {starter_subscription_id}
         self.sync_webhooks(
@@ -839,7 +918,7 @@ class BillingClient:
             created_gte=upgrade_started_at,
             wait_seconds=webhook_wait_seconds,
         )
-        print("  ✅ Webhook events replayed")
+        print("  ✅ Webhook synchronization finished")
 
         # 7. Wait for plan to actually become Pro
         print("  Waiting for plan to become Pro")
@@ -916,7 +995,8 @@ class BillingClient:
     ) -> tuple[str, dict[str, Any], list[dict[str, Any]]]:
         """Complete a Trial→Target plan upgrade with webhook synchronization."""
         upgrade_started_at = int(time.time()) - 5
-        checkout_result = self.schedule_plan_change(target_price_id)
+        setup_intent_id = self.ensure_setup_intent_for_plan_change(target_price_id)
+        checkout_result = self.schedule_plan_change(target_price_id, setup_intent_id=setup_intent_id)
         if not checkout_result.get("redirect_to"):
             # Direct upgrade path
             checkout_result.get("invoice_id", "")

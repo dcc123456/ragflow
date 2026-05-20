@@ -13,14 +13,22 @@ interface IPricingCardButtonProps {
   buttonLabel: string;
   isUse: boolean;
   disabled: boolean;
+  paymentRequired?: boolean;
   loading: boolean;
   upcomingLoading: boolean;
   onClick: () => void;
 }
 
 const PricingCardButton = (props: IPricingCardButtonProps) => {
-  const { buttonLabel, isUse, disabled, loading, upcomingLoading, onClick } =
-    props;
+  const {
+    buttonLabel,
+    isUse,
+    disabled,
+    paymentRequired,
+    loading,
+    upcomingLoading,
+    onClick,
+  } = props;
   const { t } = useTranslation();
   const { data: currentPlanData } = useFetchCurrentPlan();
 
@@ -36,8 +44,9 @@ const PricingCardButton = (props: IPricingCardButtonProps) => {
     'string'
       ? currentPlanData.pending_subscription_change.effective_at.split('T')[0]
       : '';
+  const disableCurrentPlanButton = isUse && paymentRequired;
 
-  if (isUse && hasPendingTrialDowngrade) {
+  if (isUse && (hasPendingTrialDowngrade || disableCurrentPlanButton)) {
     return (
       <Tooltip>
         <TooltipTrigger asChild>
@@ -55,20 +64,29 @@ const PricingCardButton = (props: IPricingCardButtonProps) => {
           </span>
         </TooltipTrigger>
         <TooltipContent>
-          <div>
+          {disableCurrentPlanButton ? (
             <p>
-              {t('price.cancelPlanEffectiveTip', {
-                date: pendingEffectiveDate,
-                defaultValue: `After cancellation, you can continue using the current plan benefits until ${pendingEffectiveDate}, after which they will expire.`,
-              })}
-            </p>
-            <p className="mt-1">
-              {t('price.cancelPlanSwitchTip', {
+              {t('billing.subscription.paymentRequired', {
                 defaultValue:
-                  'If your current usage exceeds the Trial plan limits, your downgrade will be blocked and you will remain on the current plan. Existing add-on storage does not extend the Trial storage quota, and any add-on storage will be cancelled when the current plan expires.',
+                  'This subscription needs payment recovery before it can be changed or cancelled.',
               })}
             </p>
-          </div>
+          ) : (
+            <div>
+              <p>
+                {t('price.cancelPlanEffectiveTip', {
+                  date: pendingEffectiveDate,
+                  defaultValue: `After cancellation, you can continue using the current plan benefits until ${pendingEffectiveDate}, after which they will expire.`,
+                })}
+              </p>
+              <p className="mt-1">
+                {t('price.cancelPlanSwitchTip', {
+                  defaultValue:
+                    'If your current usage exceeds the Trial plan limits, your downgrade will be blocked and you will remain on the current plan. Existing add-on storage does not extend the Trial storage quota, and any add-on storage will be cancelled when the current plan expires.',
+                })}
+              </p>
+            </div>
+          )}
         </TooltipContent>
       </Tooltip>
     );
@@ -85,7 +103,12 @@ const PricingCardButton = (props: IPricingCardButtonProps) => {
         },
       )}
       onClick={onClick}
-      disabled={loading || upcomingLoading || (!isUse && disabled)}
+      disabled={
+        loading ||
+        upcomingLoading ||
+        disableCurrentPlanButton ||
+        (!isUse && disabled)
+      }
       loading={loading || upcomingLoading}
     >
       {buttonLabel}

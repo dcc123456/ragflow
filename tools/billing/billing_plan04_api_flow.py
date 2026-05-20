@@ -29,7 +29,7 @@ Optional environment:
   RAGFLOW_API_VERSION=v1
   RAGFLOW_TEST_EMAIL=<fresh email>
   RAGFLOW_TEST_PASSWORD=Test1234!
-  BILLING_WEBHOOK_SECRET or STRIPE_WEBHOOK_SECRET (optional if local DB already stores billing_webhook_secret for manual webhook mode)
+  BILLING_WEBHOOK_SECRET or STRIPE_WEBHOOK_SECRET (optional only for legacy manual webhook mode)
 """
 
 from __future__ import annotations
@@ -136,7 +136,7 @@ def run_flow(args: argparse.Namespace) -> None:
     )
     print(f"  Assert: Storage upgrade submitted: {upgrade_storage_gb}GB")
 
-    # Sync webhook events for the upgrade
+    # In stripe-cli mode this only waits; in manual mode it replays selected events.
     client.sync_webhooks(
         subscription_ids={starter_subscription_id},
         created_gte=upgrade_started_at,

@@ -712,6 +712,7 @@ def test_invoice_paid_updates_existing_failed_order_and_restores_active(monkeypa
 @pytest.mark.parametrize("status", ["past_due", "unpaid", "canceled", "paused", "incomplete", "incomplete_expired", "active"])
 def test_customer_subscription_updated_status_only_syncs_main_subscription(monkeypatch, status):
     updates = []
+    rate_limit_syncs = []
 
     event_model = SimpleNamespace(
         created=1710000003,
@@ -748,12 +749,19 @@ def test_customer_subscription_updated_status_only_syncs_main_subscription(monke
     monkeypatch.setattr(billing_app.SubscriptionService, "upsert_subscription", lambda tenant_id, data: updates.append((tenant_id, data)))
     monkeypatch.setattr(billing_app.settings, "BILLING_PRICEID_TO_PRODUCT", {"price_pro": "Pro"}, raising=False)
     monkeypatch.setattr(billing_webhook_service, "get_product_id_by_name", lambda _plan_name: "prod_pro")
+    monkeypatch.setattr(
+        billing_webhook_service,
+        "sync_tenant_rate_limit",
+        lambda tenant_id, plan_name, period_end=None: rate_limit_syncs.append((tenant_id, plan_name, period_end)) or True,
+    )
 
     event = {"type": "customer.subscription.updated", "data": {"object": {"id": "sub_main"}}}
 
     asyncio.run(billing_webhook_service._handle_customer_subscription_updated(event))
 
     assert updates[-1][1]["subscription_status"] == status
+    expected_plan_name = "Pro" if status == "active" else "Trial"
+    assert rate_limit_syncs[-1][:2] == ("tenant_1", expected_plan_name)
 
 
 @pytest.mark.p2
@@ -809,6 +817,7 @@ def test_customer_subscription_updated_no_actionable_fields_syncs_trial_placehol
 @pytest.mark.p2
 def test_customer_subscription_updated_no_actionable_fields_syncs_paid_plan_to_trial(monkeypatch):
     updates = []
+    rate_limit_syncs = []
 
     event_model = SimpleNamespace(
         created=1710000003,
@@ -845,6 +854,11 @@ def test_customer_subscription_updated_no_actionable_fields_syncs_paid_plan_to_t
     monkeypatch.setattr(billing_app.SubscriptionService, "upsert_subscription", lambda tenant_id, data: updates.append((tenant_id, data)))
     monkeypatch.setattr(billing_app.settings, "BILLING_PRICEID_TO_PRODUCT", {"price_trial": "Trial", "price_pro": "Pro"}, raising=False)
     monkeypatch.setattr(billing_webhook_service, "get_product_id_by_name", lambda plan_name: f"prod_{plan_name.lower()}")
+    monkeypatch.setattr(
+        billing_webhook_service,
+        "sync_tenant_rate_limit",
+        lambda tenant_id, plan_name, period_end=None: rate_limit_syncs.append((tenant_id, plan_name, period_end)) or True,
+    )
 
     asyncio.run(billing_webhook_service._handle_customer_subscription_updated({"type": "customer.subscription.updated", "data": {"object": {"id": "sub_main"}}}))
 
@@ -855,6 +869,7 @@ def test_customer_subscription_updated_no_actionable_fields_syncs_paid_plan_to_t
     assert updates[-1][1]["subscription_status"] == "trialing"
     assert updates[-1][1]["start_time"] == billing_app.to_utc_datetime(1710000000)
     assert updates[-1][1]["end_time"] == billing_app.to_utc_datetime(1712592000)
+    assert rate_limit_syncs[-1][:2] == ("tenant_1", "Trial")
 
 
 @pytest.mark.p2
@@ -1802,3 +1817,43 @@ def test_checkout_delinquent_subscription_paid_plan_request_returns_invoice_url(
     # Verify that the invoice_url is what would be returned
     returned_invoice_url = (tenant_plan.get("invoice_url") or "").strip()
     assert returned_invoice_url == invoice_url
+
+
+@pytest.mark.p2
+def test_checkout_delinquent_subscription_trial_request_returns_invoice_url_without_cancel(monkeypatch):
+    invoice_url = "https://invoice.example/pay"
+    tenant_plan = {
+        "customer_id": "cus_1",
+        "subscription_id": "sub_past_due",
+        "subscription_status": "past_due",
+        "invoice_url": invoice_url,
+        "plan_name": "Starter",
+        "price_id": "price_starter",
+    }
+    cancel_calls = []
+
+    async def cancel_async(_subscription_id):
+        cancel_calls.append(_subscription_id)
+        raise AssertionError("recoverable subscription checkout must not cancel immediately")
+
+    monkeypatch.setattr(
+        billing_app.settings,
+        "BILLING_PRICEID_TO_PRODUCT",
+        {"price_starter": "Starter", "price_trial": "Trial"},
+        raising=False,
+    )
+    monkeypatch.setattr(billing_app.stripe.Subscription, "cancel_async", cancel_async)
+
+    result = asyncio.run(
+        billing_app._handle_recoverable_subscription_checkout(
+            tenant_id="tenant_1",
+            tenant_plan=tenant_plan,
+            subscription_id="sub_past_due",
+            subscription_status="past_due",
+            subscription_price_id="price_trial",
+        )
+    )
+
+    assert cancel_calls == []
+    assert result["code"] == billing_app.RetCode.SUCCESS
+    assert result["data"] == {"payment_required": True, "invoice_url": invoice_url}

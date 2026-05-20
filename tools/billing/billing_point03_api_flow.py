@@ -18,6 +18,11 @@
 API-adjusted driver for POINT-03.
 Tests: invalid points purchase inputs are rejected by API and do not mutate state.
 
+This is an adjusted automation case:
+- it validates the billing API rejection path directly,
+- and intentionally does not drive hosted Stripe Checkout because no checkout
+  session should be created for invalid inputs.
+
 Test flow:
 - Step 1: Setup - Register user and initialize environment
 - Step 2: Record baseline - Capture points balance, ledger, and spend history before testing

@@ -25,6 +25,7 @@ export type IPricePlanWithButton = IPricePlan & {
   buttonLabel: string;
   isUse: boolean;
   disabled?: boolean;
+  paymentRequired?: boolean;
   cancelTargetPriceId?: string;
   icon: () => JSX.Element;
 };
@@ -67,6 +68,9 @@ export interface ICurrentPlan {
   plan_name: PriceName;
   price_id: string;
   product_id: string;
+  payment_required?: boolean;
+  payment_recoverable?: boolean;
+  payment_recovery_url?: string;
   quota_apps: number;
   quota_storage: number;
   quota_members: number;

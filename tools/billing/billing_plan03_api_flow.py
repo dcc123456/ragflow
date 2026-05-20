@@ -29,7 +29,7 @@ Optional environment:
   RAGFLOW_API_VERSION=v1
   RAGFLOW_TEST_EMAIL=<fresh email>
   RAGFLOW_TEST_PASSWORD=Test1234!
-  BILLING_WEBHOOK_SECRET or STRIPE_WEBHOOK_SECRET (optional if local DB already stores billing_webhook_secret for manual webhook mode)
+  BILLING_WEBHOOK_SECRET or STRIPE_WEBHOOK_SECRET (optional only for legacy manual webhook mode)
 """
 
 from __future__ import annotations
@@ -95,9 +95,18 @@ def run_flow(args: argparse.Namespace) -> None:
     billing_config = load_billing_config()
     pro_price_id = first_plan_price_id(billing_config, "Pro")
 
-    # The /billing/checkout endpoint modifies the subscription directly
-    # for active paid subscriptions (no Customer Portal redirect)
-    checkout_result = client.schedule_plan_change(pro_price_id)
+    preview = client.upcoming_plan_change(pro_price_id)
+    print(
+        "  Assert: Upcoming preview fetched, "
+        f"amount_due_today={preview.get('amount_due_today')}, "
+        f"has_reusable_payment_method={preview.get('has_reusable_payment_method')}"
+    )
+
+    setup_intent_id = client.ensure_setup_intent_for_plan_change(pro_price_id)
+    if setup_intent_id:
+        print(f"  Assert: SetupIntent confirmed before paid upgrade: {setup_intent_id}")
+
+    checkout_result = client.schedule_plan_change(pro_price_id, setup_intent_id=setup_intent_id)
 
     # Validate the checkout response contains expected fields
     plan_name = checkout_result.get("plan_name", "")
@@ -113,22 +122,14 @@ def run_flow(args: argparse.Namespace) -> None:
     print(f"  Assert: Upgrade submitted, plan_name={plan_name}")
     print(f"  Assert: Subscription ID: {subscription_id}")
 
-    # =============================================================================
-    # Step 6: Simulate completing the upgrade via Stripe API
-    # =============================================================================
-    print("\n" + "=" * 80)
-    print("Step 6: Simulate completing the upgrade via Stripe API")
-    print("=" * 80)
-
     pro_upgrade_started_at = int(time.time()) - 5
-    client.schedule_plan_change(pro_price_id)
-    print("  Assert: Subscription price replaced with Pro price")
+    print("  Assert: Subscription price change submitted through billing API")
 
     # =============================================================================
     # Step 7: Sync webhook events to reflect the upgrade
     # =============================================================================
     print("\n" + "=" * 80)
-    print("Step 7: Sync webhook events to reflect the upgrade")
+    print("Step 6: Wait for webhook sync to reflect the upgrade")
     print("=" * 80)
 
     client.sync_webhooks(
@@ -138,20 +139,20 @@ def run_flow(args: argparse.Namespace) -> None:
     )
 
     # =============================================================================
-    # Step 8: Wait for plan to switch to Pro
+    # Step 7: Wait for plan to switch to Pro
     # =============================================================================
     print("\n" + "=" * 80)
-    print("Step 8: Wait for plan to switch to Pro")
+    print("Step 7: Wait for plan to switch to Pro")
     print("=" * 80)
 
     client.wait_for_plan("Pro", args.webhook_timeout_seconds)
     print("  Assert: Plan switched to Pro")
 
     # =============================================================================
-    # Step 9: Verify billing overview shows Pro quota
+    # Step 8: Verify billing overview shows Pro quota
     # =============================================================================
     print("\n" + "=" * 80)
-    print("Step 9: Verify billing overview shows Pro quota")
+    print("Step 8: Verify billing overview shows Pro quota")
     print("=" * 80)
 
     overview = client.plan_overview()
@@ -166,10 +167,10 @@ def run_flow(args: argparse.Namespace) -> None:
     print(f"  Assert: Pro apps quota verified: {apps_limit}")
 
     # =============================================================================
-    # Step 10: Verify billing history records the upgrade with a paid invoice
+    # Step 9: Verify billing history records the upgrade with a paid invoice
     # =============================================================================
     print("\n" + "=" * 80)
-    print("Step 10: Verify billing history records the upgrade with a paid invoice")
+    print("Step 9: Verify billing history records the upgrade with a paid invoice")
     print("=" * 80)
 
     # Wait for new history entry to appear

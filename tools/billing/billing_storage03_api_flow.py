@@ -18,6 +18,12 @@
 API-adjusted driver for STORAGE-03.
 Tests: upgrading storage addon (increase quantity) takes effect immediately.
 
+This case now follows the same immediate-paid-change contract as plan upgrades:
+- preview via `/billing/upcoming`
+- collect a payment method via `/billing/setup-intent` only when needed
+- execute the real mutation via `/billing/storage/set-target`
+- rely on webhook-synchronized backend state for final assertions
+
 Required environment:
   BILLING_STRIPE_API_KEY or STRIPE_API_KEY
   BILLING_PRICE_ID_STARTER (for plan subscription)
@@ -67,7 +73,7 @@ def run_flow(args) -> None:
     print(f"  Assert: Starter subscription ID: {starter_subscription_id}")
 
     # =============================================================================
-    # Step 6: Purchase initial storage addon (10GB) via direct subscription modification
+    # Step 6: Purchase initial storage addon (10GB) via billing storage target flow
     # =============================================================================
     print("\n" + "=" * 80)
     print("Step 6: Purchase initial storage addon (10GB)")
@@ -81,7 +87,7 @@ def run_flow(args) -> None:
         new_quantity_gb=initial_storage_gb,
         subscription_ids={starter_subscription_id},
     )
-    print("  Assert: Storage addon modification sent")
+    print("  Assert: Storage addon request sent through billing API")
 
     client.wait_for_storage_status("active", timeout_seconds=30)
     print("  Assert: Storage addon is active")
@@ -115,7 +121,7 @@ def run_flow(args) -> None:
         new_quantity_gb=upgraded_storage_gb,
         subscription_ids={starter_subscription_id},
     )
-    print("  Assert: Storage upgrade modification sent")
+    print("  Assert: Storage upgrade request sent through billing API")
 
     client.wait_for_storage_status("active", timeout_seconds=30)
 

@@ -55,6 +55,7 @@ from api.utils.billing import (
 )
 from api.utils.billing_schema import CheckoutSessionCompleted, IntentSucceed, InvoicePaid, SubscriptionUpdated
 from common import settings
+from common.billing_rate_limit_sync import sync_tenant_rate_limit
 from common.billing_utils import normalize_stripe_payment_intent_status
 from common.misc_utils import get_uuid
 from common.time_utils import current_timestamp
@@ -83,6 +84,7 @@ WEBHOOK_CHECKPOINT_SETTING_NAME = "billing_webhook_event_checkpoint"
 
 def _normalize_subscription_status(status: str | None) -> str:
     return (status or "").strip().lower()
+
 
 
 def _load_webhook_checkpoint() -> dict[str, str | int]:
@@ -192,6 +194,32 @@ def _sync_main_subscription_from_stripe(
 
     with DB.atomic():
         SubscriptionService.upsert_subscription(tenant_id, subscription_dict)
+    _sync_tenant_rate_limit_for_subscription(
+        tenant_id=tenant_id,
+        plan_name=subscription_dict.get("plan_name"),
+        subscription_status=subscription_dict.get("subscription_status"),
+    )
+
+
+def _sync_tenant_rate_limit_for_subscription(
+    *,
+    tenant_id: str,
+    plan_name: str | None,
+    subscription_status: str | None,
+) -> None:
+    if not tenant_id:
+        return
+    normalized_status = _normalize_subscription_status(subscription_status)
+    rate_limit_plan_name = plan_name if normalized_status == SubscriptionStatus.ACTIVE else "Trial"
+    try:
+        sync_tenant_rate_limit(tenant_id, rate_limit_plan_name)
+    except Exception:
+        logging.exception(
+            "Failed to sync tenant rate limit after subscription update: tenant_id=%s plan_name=%s subscription_status=%s",
+            tenant_id,
+            rate_limit_plan_name,
+            normalized_status,
+        )
 
 
 def _sync_storage_subscription_record(
@@ -380,7 +408,6 @@ async def _handle_main_subscription_invoice_not_paid(event: dict, description: s
             "billing_reason": context["billing_reason"],
         },
     )
-
 
 def _prepare_webhook_event_processing(
     event_id,
@@ -895,7 +922,6 @@ def _should_apply_subscription_event(
     event_status: str,
     event_period_start=None,
     event_period_end=None,
-    event_created_at=None,
     allow_same_subscription_backfill: bool = False,
 ) -> bool:
     if not existing_main_subscription:
@@ -911,7 +937,6 @@ def _should_apply_subscription_event(
     existing_end = to_utc_datetime(existing_main_subscription.get("end_time"))
     current_start = to_utc_datetime(event_period_start)
     current_end = to_utc_datetime(event_period_end)
-    existing_updated_at = to_utc_datetime(existing_main_subscription.get("update_time"))
 
     if event_subscription_id == current_subscription_id:
         # Stripe may emit a same-subscription snapshot without actionable
@@ -928,13 +953,6 @@ def _should_apply_subscription_event(
             not current_end or (existing_end and current_end <= existing_end)
         ):
             return False
-        if (
-            event_created_at
-            and existing_updated_at
-            and event_created_at < existing_updated_at
-            and (not current_end or not existing_end or current_end <= existing_end)
-        ):
-            return False
         return True
 
     if not _is_non_canceled_subscription_status(event_status):
@@ -949,6 +967,23 @@ def _should_apply_subscription_event(
     if existing_start and current_start and current_start < existing_start and (not current_end or (existing_end and current_end <= existing_end)):
         return False
     return True
+
+
+def _is_same_billing_period(existing_main_subscription: dict | None, event_period_start=None, event_period_end=None) -> bool:
+    if not existing_main_subscription:
+        return False
+    existing_start = to_utc_datetime(existing_main_subscription.get("start_time"))
+    existing_end = to_utc_datetime(existing_main_subscription.get("end_time"))
+    current_start = to_utc_datetime(event_period_start)
+    current_end = to_utc_datetime(event_period_end)
+    return bool(
+        existing_start
+        and existing_end
+        and current_start
+        and current_end
+        and existing_start == current_start
+        and existing_end == current_end
+    )
 
 
 async def _handle_storage_subscription_updated(subscription_updated: SubscriptionUpdated):
@@ -1014,7 +1049,6 @@ async def _handle_customer_subscription_updated(event: dict):
         event_status=subscription.status,
         event_period_start=event_period_start,
         event_period_end=event_period_end,
-        event_created_at=to_utc_datetime(event.get("created")),
         allow_same_subscription_backfill=no_actionable_previous_fields,
     )
     if not should_apply_event:
@@ -1026,6 +1060,40 @@ async def _handle_customer_subscription_updated(event: dict):
             (existing_main_subscription.get("subscription_id") or "").strip() if existing_main_subscription else "",
         )
         return
+
+    if (
+        existing_main_subscription
+        and subscription_id == (existing_main_subscription.get("subscription_id") or "").strip()
+        and _is_same_billing_period(
+            existing_main_subscription,
+            event_period_start=event_period_start,
+            event_period_end=event_period_end,
+        )
+    ):
+        try:
+            # Multiple customer.subscription.updated events for the same
+            # subscription and the same billing period are usually just
+            # different snapshots taken at different moments. In that case we
+            # intentionally do not trust the event payload as the source of
+            # truth, because an older same-period snapshot can arrive after a
+            # newer one and roll local state backward. Instead, once we decide
+            # the event belongs to the current period, we fetch the current
+            # Stripe subscription object and continue reconciliation from that
+            # latest authoritative state.
+            subscription = await stripe.Subscription.retrieve_async(subscription_id)
+            previous = subscription_updated.data.previous_attributes
+            event_period_start, event_period_end = extract_subscription_period(subscription)
+            logging.info(
+                "Use current Stripe subscription state for same-period customer.subscription.updated: tenant_id=%s subscription_id=%s",
+                tenant_id,
+                subscription_id,
+            )
+        except Exception:
+            logging.exception(
+                "Failed to retrieve current Stripe subscription for same-period update; falling back to event snapshot: tenant_id=%s subscription_id=%s",
+                tenant_id,
+                subscription_id,
+            )
 
     has_storage_item_in_event = False
     if existing_main_subscription:
@@ -1072,6 +1140,11 @@ async def _handle_customer_subscription_updated(event: dict):
         if pending_update:
             with DB.atomic():
                 Subscription.update(subscription_status="past_due", status="past_due", invoice_id=subscription.latest_invoice_id or "", update_time=current_timestamp()).where(Subscription.tenant_id == tenant_id).execute()
+            _sync_tenant_rate_limit_for_subscription(
+                tenant_id=tenant_id,
+                plan_name=product_name,
+                subscription_status="past_due",
+            )
             logging.info("Skip main subscription entitlement update because pending_update exists: subscription_id=%s", subscription_id)
             return
 
@@ -1089,6 +1162,11 @@ async def _handle_customer_subscription_updated(event: dict):
         if is_upgrade and not is_paid:
             with DB.atomic():
                 Subscription.update(subscription_status="past_due", status="past_due", invoice_id=subscription.latest_invoice_id or "", update_time=current_timestamp()).where(Subscription.tenant_id == tenant_id).execute()
+            _sync_tenant_rate_limit_for_subscription(
+                tenant_id=tenant_id,
+                plan_name=product_name,
+                subscription_status="past_due",
+            )
             logging.info("Skip main subscription upgrade entitlement until latest invoice is paid: subscription_id=%s", subscription_id)
             return
 
@@ -1143,6 +1221,11 @@ async def _handle_customer_subscription_updated(event: dict):
                 "original_subscription_id": previous_subscription_id if previous_subscription_id else subscription_id,
             }
             SubscriptionService.upsert_subscription(tenant_id, subscription_dict)
+            _sync_tenant_rate_limit_for_subscription(
+                tenant_id=tenant_id,
+                plan_name=subscription_dict.get("plan_name"),
+                subscription_status=subscription_dict.get("subscription_status"),
+            )
             if tenant_id and _period_changed(previous_main_start, previous_main_end, current_period_start, current_period_end):
                 PointAccountService.reset_plan_consumed_points_at_cycle_start(tenant_id)
             schedule_id = (event.get("data", {}).get("object", {}) or {}).get("schedule") if isinstance(event, dict) else ""

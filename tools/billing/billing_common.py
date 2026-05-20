@@ -278,8 +278,8 @@ def make_default_parser(description: str) -> argparse.ArgumentParser:
     parser.add_argument("--webhook-wait-seconds", type=int, default=int(env("RAGFLOW_WEBHOOK_WAIT_SECONDS", "8")))
     parser.add_argument("--webhook-timeout-seconds", type=int, default=int(env("RAGFLOW_WEBHOOK_TIMEOUT_SECONDS", "60")))
     parser.add_argument("--ready-timeout-seconds", type=int, default=int(env("RAGFLOW_READY_TIMEOUT_SECONDS", "60")))
-    parser.add_argument("--webhook-mode", choices=("manual", "stripe-cli"), default=env("RAGFLOW_BILLING_WEBHOOK_MODE", "manual"),
-                        help="manual signs/replays Stripe events itself; stripe-cli waits for `stripe listen --forward-to ...`.",
+    parser.add_argument("--webhook-mode", choices=("manual", "stripe-cli"), default=env("RAGFLOW_BILLING_WEBHOOK_MODE", "stripe-cli"),
+                        help="stripe-cli is the preferred mode for plan/storage flows; manual remains for legacy synthetic-webhook cases.",
                         )
     return parser
 

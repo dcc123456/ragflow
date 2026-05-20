@@ -18,10 +18,15 @@
 API-adjusted driver for POINT-04.
 Tests: a canceled or abandoned points checkout does not create credits or recovery state.
 
+This is an adjusted automation case:
+- it creates the Checkout Session through the billing API,
+- then uses Stripe's session-expire API as the automation proxy for a canceled
+  or abandoned hosted Checkout session.
+
 Test flow:
 - Step 1: Setup - Register user and initialize environment
 - Step 2: Record baseline - Capture points balance, ledger, spend history, and plan overview before testing
-- Step 3: Create and expire checkout - Create a points checkout session and expire it
+- Step 3: Create and expire checkout - Create a points checkout session and expire it as a cancel proxy
 - Step 4: Verify results - Validate no state mutation or payment recovery occurred
 """
 
@@ -95,7 +100,7 @@ def run_flow(args: argparse.Namespace) -> None:
     # Step 3: Create and expire checkout - Create a points checkout session and expire it
     # =============================================================================
     print("\n" + "=" * 80)
-    print("Step 3: Create and expire checkout - Create a points checkout session and expire it")
+    print("Step 3: Create and expire checkout - Create a points checkout session and expire it as a cancel proxy")
     print("=" * 80)
 
     points_to_buy = 100

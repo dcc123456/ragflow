@@ -23,6 +23,7 @@ const PricingCard = (props: IPricePlanWithButton) => {
     buttonLabel,
     isUse = false,
     disabled = false,
+    paymentRequired = false,
     name: currentPlanName = '',
   } = props;
   const { loading, charge } = useCharge();
@@ -38,6 +39,9 @@ const PricingCard = (props: IPricePlanWithButton) => {
     Number.isFinite(normalizedPrice) && normalizedPrice >= 0;
 
   const handleBuy = async (props: IPricePlanWithButton) => {
+    if (props.isUse && paymentRequired) {
+      return;
+    }
     if (props.isUse && currentPlanData) {
       setIsCancelDialogOpen(true);
       return;
@@ -150,6 +154,7 @@ const PricingCard = (props: IPricePlanWithButton) => {
             buttonLabel={buttonLabel}
             isUse={isUse}
             disabled={disabled}
+            paymentRequired={paymentRequired}
             loading={loading}
             upcomingLoading={upcomingLoading}
             onClick={() => handleBuy(props)}

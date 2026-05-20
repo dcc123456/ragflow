@@ -87,6 +87,12 @@ export default {
       overview: '概览',
       usage: '用量',
       billingHistory: '账单历史',
+      managePaymentMethods: '管理支付方式',
+      updatePaymentMethod: '更新支付方式',
+      payInvoice: '支付账单',
+      subscription: {
+        paymentRequired: '当前订阅需要先完成补款恢复，之后才能变更或取消。',
+      },
       needMore: '需要更多？',
       freePlan: '免费套餐',
       starterPlan: 'Starter 套餐',

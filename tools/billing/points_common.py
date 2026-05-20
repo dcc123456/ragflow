@@ -165,7 +165,7 @@ class PointsClient(BillingClient):
         return checkout, session
 
 
-    def complete_points_purchase(
+    def complete_points_purchase_via_synthetic_webhook(
             self,
             points_to_buy: int,
             points_per_unit: int,
@@ -183,6 +183,26 @@ class PointsClient(BillingClient):
         )
         self.post_signed_webhook(completed_event)
         return session
+
+    def complete_points_purchase(
+            self,
+            points_to_buy: int,
+            points_per_unit: int,
+            event_id: str | None = None,
+            payment_intent_id: str | None = None,
+    ) -> dict[str, Any]:
+        """
+        Legacy compatibility wrapper.
+
+        Points automation still uses a synthetic checkout.session.completed event
+        because these scripts do not drive the hosted Stripe Checkout UI.
+        """
+        return self.complete_points_purchase_via_synthetic_webhook(
+            points_to_buy,
+            points_per_unit,
+            event_id=event_id,
+            payment_intent_id=payment_intent_id,
+        )
 
 
 def build_points_checkout_completed_event(

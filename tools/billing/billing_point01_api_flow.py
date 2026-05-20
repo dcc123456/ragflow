@@ -18,10 +18,15 @@
 API-adjusted driver for POINT-01.
 Tests: successful purchase of the minimum valid 100 points recharge.
 
+This is an adjusted automation case:
+- it creates the Checkout Session through the billing API,
+- but completes the purchase via a synthetic signed `checkout.session.completed`
+  webhook instead of driving hosted Stripe Checkout in a browser.
+
 Test flow:
 - Step 1: Setup - Register user and initialize environment
 - Step 2: Record baseline - Capture points balance, ledger, and spend history before purchase
-- Step 3: Purchase points - Complete a 100 points checkout session
+- Step 3: Purchase points - Complete a 100 points checkout session via synthetic webhook
 - Step 4: Verify results - Validate balance increase, ledger entry, and paid history record
 """
 
@@ -90,7 +95,7 @@ def run_flow(args: argparse.Namespace) -> None:
     # Step 3: Purchase points - Complete a 100 points checkout session
     # =============================================================================
     print("\n" + "=" * 80)
-    print("Step 3: Purchase points - Complete a 100 points checkout session")
+    print("Step 3: Purchase points - Complete a 100 points checkout session via synthetic webhook")
     print("=" * 80)
 
     points_to_buy = 100
@@ -102,7 +107,11 @@ def run_flow(args: argparse.Namespace) -> None:
         metadata={"source": "points_common_test"},
     )
 
-    session = client.complete_points_purchase(points_to_buy, points_per_unit, payment_intent_id=pi.id)
+    session = client.complete_points_purchase_via_synthetic_webhook(
+        points_to_buy,
+        points_per_unit,
+        payment_intent_id=pi.id,
+    )
     print(f"  Assert: Checkout session created: {session['id']}")
     print(f"  Assert: Points to purchase: {points_to_buy}")
 

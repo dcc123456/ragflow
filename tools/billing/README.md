@@ -4,7 +4,7 @@ Automated end-to-end test suite for RAGFlow's billing API integration with Strip
 
 ## Overview
 
-This suite contains 15+ test scripts organized into three categories that validate complete billing workflows using Stripe's test clock and webhook replay mechanisms. Each script is self-contained and can be run independently.
+This suite contains 15+ test scripts organized into three categories that validate complete billing workflows using Stripe test clocks plus webhook delivery. For plan and storage flows, the preferred mode is Stripe CLI forwarding so the scripts exercise the same `/billing/setup-intent` and webhook path used by the product. Points flows are currently backend-focused adjusted automation cases: they validate billing API and webhook handling, but most of them do not drive hosted Stripe Checkout in a browser.
 
 ### Test Categories
 
@@ -101,7 +101,7 @@ The backend should be accessible at `http://127.0.0.1:9380` (or as configured vi
 | `RAGFLOW_TEST_PASSWORD` | `Test1234!` | Password for test user |
 | `BILLING_POINTS_PER_UNIT` | config fallback | Override `billing.points_recharge.points_per_unit` for points flows |
 | `BILLING_WEBHOOK_SECRET` / `STRIPE_WEBHOOK_SECRET` | DB fallback | Optional in `manual` mode if `billing_webhook_secret` is already persisted in local DB |
-| `RAGFLOW_BILLING_WEBHOOK_MODE` | `manual` | `manual` (replay) or `stripe-cli` (wait) |
+| `RAGFLOW_BILLING_WEBHOOK_MODE` | `stripe-cli` | `stripe-cli` (preferred) or `manual` |
 | `RAGFLOW_WEBHOOK_WAIT_SECONDS` | `8` | Wait time in auto mode |
 | `RAGFLOW_WEBHOOK_TIMEOUT_SECONDS` | `180` | Webhook sync timeout |
 | `RAGFLOW_READY_TIMEOUT_SECONDS` | `180` | Server ready timeout |
@@ -188,7 +188,7 @@ Then run the five points gates one by one:
 Notes for points flows:
 
 - `billing_webhook_secret` is loaded automatically from the local DB if `BILLING_WEBHOOK_SECRET` / `STRIPE_WEBHOOK_SECRET` is unset.
-- `--webhook-mode manual` is for the `billing_plan0x` scripts, not the `billing_point0x` scripts.
+- `--webhook-mode manual` remains valid for points synthetic-webhook and idempotency cases.
 - The `billing_point0x` scripts no longer require `export PYTHONPATH=$(pwd)` when launched from the repo root.
 
 All scripts accept `--help` for options:
@@ -205,15 +205,15 @@ python billing_plan03_api_flow.py --help
 | `--version` | `v1` | API version path |
 | `--email` | auto-generated | Test user email (must be unique per run) |
 | `--password` | `Test1234!` | Test user password |
-| `--webhook-mode` | `manual` | `manual` (replay events) or `stripe-cli` |
+| `--webhook-mode` | `stripe-cli` | `stripe-cli` (preferred) or `manual` |
 | `--webhook-wait-seconds` | `8` | Wait duration in auto mode |
 | `--webhook-timeout-seconds` | `180` | Webhook sync timeout |
 | `--ready-timeout-seconds` | `180` | Server ready timeout |
 
 ### Webhook Modes
 
-- **`manual`** (default): The script uses Stripe's Test Clock `replay_events` API to fetch and re-send events to the local webhook endpoint. No external dependencies.
-- **`stripe-cli`**: The script waits for Stripe CLI (`stripe listen --forward-to ...`) to deliver events. Use when you want live event forwarding.
+- **`stripe-cli`** (preferred): Start `stripe listen --forward-to localhost:9380/v1/billing/webhook` and let Stripe CLI forward real webhook deliveries to RAGFlow. This is the recommended mode for plan and storage flows, especially immediate paid changes that use `/billing/setup-intent`.
+- **`manual`**: Legacy mode that fetches and replays selected Stripe events directly to the local webhook endpoint. Keep this for synthetic/idempotency tests where replaying the exact same payload is the point of the case.
 
 ### Exit Codes
 
@@ -257,13 +257,14 @@ Tests the attention-banner flow:
 
 Tests the direct API checkout upgrade flow:
 1. Prepare a tenant already on `Starter`
-2. Call `/billing/checkout` with Pro price ID → expects `redirect_to` URL
-3. Simulate checkout completion using Stripe test clock
-4. Verify the tenant switches to `Pro` only after payment + webhook sync complete
-5. Verify `billing_overview` reflects the configured `Pro` quota
-6. Verify billing history records the upgrade invoice
+2. Call `/billing/upcoming` to preview the immediate charge and reusable-payment-method state
+3. If needed, create and confirm `/billing/setup-intent`
+4. Call `/billing/checkout` with Pro price ID and optional `setup_intent_id`
+5. Verify the tenant switches to `Pro` only after payment + webhook sync complete
+6. Verify `billing_overview` reflects the configured `Pro` quota
+7. Verify billing history records the upgrade invoice
 
-**Key assertions**: API checkout redirect URL, payment-gated plan switch, configured `Pro` quota entitlement, and upgrade invoice visibility in billing history.
+**Key assertions**: amount-first preview, `SetupIntent` fallback when no reusable payment method exists, payment-gated plan switch, configured `Pro` quota entitlement, and upgrade invoice visibility in billing history.
 
 ### PLAN-04: Storage Addon Quantity Change
 
@@ -300,10 +301,10 @@ Tests that upgrade doesn't grant entitlements until invoice paid:
 Tests successful purchase of minimum valid 100 points recharge:
 1. Register user and initialize environment
 2. Record baseline points balance, ledger, and spend history
-3. Complete a 100 points checkout session
+3. Create a 100 points Checkout Session and complete it via a synthetic signed webhook
 4. Validate balance increase, ledger entry, and paid history record
 
-**Key assertions**: Points balance increases by exactly 100, new ledger entry created, billing history shows paid record.
+**Key assertions**: points balance increases by exactly 100, new ledger entry created, billing history shows paid record. This case validates the billing backend contract, not the hosted Checkout browser UI.
 
 ### POINT-02: Sequential Purchases
 
@@ -312,10 +313,10 @@ Tests successful purchase of minimum valid 100 points recharge:
 Tests sequential purchase of 500 points and 1000 points with cumulative accounting:
 1. Register user and initialize environment
 2. Record baseline points balance, ledger, and spend history
-3. Complete two sequential checkout sessions (500 and 1000 points)
+3. Create two Checkout Sessions (500 and 1000 points) and complete both via synthetic signed webhooks
 4. Validate cumulative balance increase, ledger entries, and paid history records
 
-**Key assertions**: Points balance increases by 1500 total (500 + 1000), two ledger entries created, two paid history records.
+**Key assertions**: points balance increases by 1500 total (500 + 1000), two ledger entries created, two paid history records. This case validates backend accounting and id mapping, not the hosted Checkout browser UI.
 
 ### POINT-03: Invalid Input Rejection
 
@@ -336,10 +337,10 @@ Tests that invalid points purchase inputs are rejected by API and do not mutate 
 Tests that a canceled or abandoned points checkout does not create credits or recovery state:
 1. Register user and initialize environment
 2. Record baseline points balance, ledger, spend history, and plan overview
-3. Create a points checkout session and expire it
+3. Create a points checkout session and expire it as an automation proxy for cancellation/abandonment
 4. Validate no state mutation or payment recovery occurred
 
-**Key assertions**: Points balance unchanged, no ledger entries created, no payment recovery state.
+**Key assertions**: points balance unchanged, no ledger entries created, no payment recovery state. This case uses Stripe session expiration as a backend-focused proxy rather than browser-driven cancel navigation.
 
 ### POINT-05: Webhook Idempotency
 
@@ -351,7 +352,7 @@ Tests that replaying the same successful points webhook remains idempotent:
 3. Create checkout session and post signed webhook event
 4. Replay webhook and validate no duplicate state mutation
 
-**Key assertions**: Points balance increases only once, no duplicate ledger entries, no duplicate history records.
+**Key assertions**: points balance increases only once, no duplicate ledger entries, no duplicate history records. This case intentionally remains synthetic because replaying the exact same payload is the behavior under test.
 
 ### STORAGE-01: First Storage Addon Purchase
 
@@ -359,11 +360,13 @@ Tests that replaying the same successful points webhook remains idempotent:
 
 Tests first storage addon purchase with proration:
 1. Setup Starter environment
-2. Add 20GB storage addon to Starter subscription
-3. Verify proration invoice created
-4. Verify storage quota updated immediately
+2. Call `/billing/upcoming` for the target storage quantity
+3. If needed, create and confirm `/billing/setup-intent`
+4. Call `/billing/storage/set-target` with optional `setup_intent_id` to add 20GB storage
+5. Verify proration invoice created
+6. Verify storage quota updated immediately
 
-**Key assertions**: Storage addon added successfully, proration invoice created, storage quota reflects new limit.
+**Key assertions**: storage addon added through the same preview/setup/mutation contract as paid plan upgrades, proration invoice created, storage quota reflects new limit.
 
 ### STORAGE-02: Storage Lifecycle with Plan Downgrade
 
@@ -385,10 +388,11 @@ Tests storage addon lifecycle combined with plan downgrade:
 Tests upgrading storage addon (increase quantity) takes effect immediately:
 1. Setup Starter environment
 2. Purchase initial 10GB storage addon
-3. Upgrade storage from 10GB to 30GB
-4. Verify storage updated immediately with proration invoice
+3. Preview the 10GB → 20GB increase and create `/billing/setup-intent` if required
+4. Upgrade storage through `/billing/storage/set-target`
+5. Verify storage updated immediately with proration invoice
 
-**Key assertions**: Storage upgrade takes effect immediately, proration invoice created for the difference.
+**Key assertions**: storage upgrade takes effect immediately, setup-intent fallback is covered, proration invoice created for the difference.
 
 ### STORAGE-04: Storage Downgrade (Decrease Quantity)
 
@@ -427,11 +431,12 @@ All scripts explicitly enforce `stripe.api_version = "2026-02-25.clover"`. This 
 
 ### RAGFlowClient
 
-Each script defines a `RAGFlowClient` class encapsulating:
+Each script defines a `RAGFlowClient`/`BillingClient` style client encapsulating:
 - Base URL construction
 - Authentication header management (JWT from login)
 - JSON request/response handling with error translation (`FlowError`)
-- Webhook event posting with HMAC signature
+- Stripe preview / setup-intent helpers for immediate paid changes
+- Webhook waiting or replay helpers depending on mode
 - Helper methods: `current_plan()`, `plan_overview()`, `spend_history()`, `schedule_plan_change()`
 
 ### Test Helpers
@@ -446,7 +451,7 @@ Common helper functions (across all scripts):
 - `bind_local_subscription_customer()` - sync Stripe customer_id to local DB
 - `wait_for_plan()` / `wait_for_plan_status()` - polling with timeout
 - `parse_plan_end()` - multi-format timestamp parser
-- `sync_webhooks()` / `replay_stripe_events()` - webhook delivery
+- `sync_webhooks()` / `replay_stripe_events()` - webhook waiting or replay
 - `advance_clock()` / `wait_for_clock()` - test clock control
 
 ### Stripe Test Clock
@@ -487,6 +492,12 @@ Set `RAGFLOW_SERVICE_CONF` or ensure `conf/service_conf.yaml` exists at project 
   ```bash
   stripe listen --forward-to localhost:9380/v1/billing/webhook
   ```
+
+### "Immediate paid change did not ask for SetupIntent"
+
+- Check `/billing/upcoming` for `has_reusable_payment_method`.
+- If it is `true`, the script should skip `/billing/setup-intent` and call the mutation API directly.
+- If it is `false`, the script should create `/billing/setup-intent`, confirm it with Stripe, and resend the mutation with `setup_intent_id`.
 
 ### "Invoice already settled" in PLAN-05
 

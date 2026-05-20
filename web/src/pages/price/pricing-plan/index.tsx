@@ -263,6 +263,7 @@ const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
         return {
           ...tempPlan,
           isUse: true,
+          paymentRequired: currentPlan.payment_required ?? false,
           buttonLabel: t('price.inUse'),
         };
       } else {

@@ -6,6 +6,22 @@
 
 RAGFlow 使用 Stripe 作为支付提供商，采用**单租户单订阅**模型。每个租户只有一个订阅，该订阅可以包含多个产品（套餐 + 存储附加）。所有计费操作都通过 Stripe Checkout 或直接 Stripe API 调用完成，Webhook 处理器将状态同步回本地数据库。
 
+### 设计约束：不做 subscription 操作幂等控制
+
+- 当前实现**不在应用层对 subscription 操作做额外幂等或互斥控制**。
+- 原因不是“重复提交绝对无副作用”，而是系统权衡后认为这层控制的收益不足以覆盖其复杂度。
+- 对于套餐升级、套餐降级、存储增加等通过 `stripe.Subscription.modify` 或 Stripe schedule 提交的操作，Stripe 负责维护订阅对象的一致状态；最终本地状态以后端 webhook 收敛为准。
+- 在这个前提下，短时间重复请求或并发请求更可能带来的是：
+  - 多次返回不同的发票 URL 或待支付状态
+  - 多个 proration 相关中间状态
+  - webhook 到达顺序更复杂
+- 但系统判断这些影响主要体现在过程复杂度与用户体验上，而不是“Stripe 最终金额被算错”。
+- 因此当前设计选择：
+  - 不新增 `pending_operation_type` 一类的本地互斥字段
+  - 不在 `checkout` / `storage/set-target` 请求入口做 subscription 级幂等锁
+  - 继续依赖 Stripe 订阅对象语义与 webhook 最终收敛
+- 积分充值等一次性支付仍然遵循它们各自的订单 / webhook 幂等处理，不受本结论影响。
+
 ### 核心组件
 
 | 组件 | 说明 |
@@ -27,6 +43,27 @@ RAGFlow 使用 Stripe 作为支付提供商，采用**单租户单订阅**模型
 | `customer.subscription.updated` | 订阅状态、套餐或存储变更同步回本地 |
 | `customer.subscription.deleted` | 订阅已取消 |
 | `payment_intent.succeeded` | 一次性支付成功事件，保留给兼容的一次性 addon 流程 |
+
+### Webhook 处理设计
+
+- 系统启动时会确保 Stripe webhook 配置已注册，并从持久化配置读取 webhook id / secret 供验签使用。
+- 系统启动时会调用 `handle_undelivered_events()` 回补最近未成功投递的 Stripe events，而不是假设在线 webhook 一定完整到达。
+- 启动回补只处理计费子系统关注的事件类型，并按 `(created, event_id)` 排序后串行重放，尽量逼近 Stripe 真实时间顺序。
+- 系统维护一个单调递增的 webhook checkpoint：
+  - `created`
+  - `event_id`
+- 启动回补时，会从 checkpoint 向前留一个小的时间缓冲区重新拉取事件，并结合 `ending_before` 限制范围，兼顾“补漏”与“避免无限回放”。
+- 每个 webhook event 都会先落到本地 `billing_webhook_event` 记录中，再进入业务处理；重复 event 依靠 event id 去重。
+- 乱序是设计前提而不是异常情况，主要来自：
+  - Stripe 重试
+  - 网络延迟
+  - 启动回补时重放历史事件
+  - 同一 subscription 在短时间内产生多个状态快照
+- 对 `customer.subscription.updated` 事件，系统不会简单按“后到者覆盖先到者”处理，而是先比较 subscription 所属计费周期：
+  - 如果 event 的计费周期明显早于本地当前周期，则视为旧事件并跳过
+  - 如果是同一 subscription、同一计费周期的多个 events，则进一步调用 Stripe API 读取当前 subscription 状态，而不是直接信任 event payload snapshot
+- 这样设计的原因是：同一计费周期内的多个 `customer.subscription.updated` 往往只是不同时间点的快照，较旧 snapshot 可能晚到；直接套用 event body 容易把本地状态回滚到旧值。
+- webhook 是本地订阅状态的最终收敛来源，但不是盲目覆盖来源；系统会结合本地当前周期、event 周期、Stripe 当前对象状态共同决定是否应用某个 event。
 
 ---
 
@@ -68,16 +105,32 @@ Trial → Starter → Pro
 
 ## 3. 套餐升级/降级流程
 
+### 3.0 统一的付费订阅变更链路
+
+对所有“立即生效且可能立即扣款”的套餐升级/存储增加场景，前后端遵循统一链路：
+
+1. 前端调用 `POST /billing/upcoming`
+2. 后端返回预览金额，以及 `has_reusable_payment_method`
+3. 如果 `has_reusable_payment_method=true`，前端可直接调用真实变更接口
+4. 如果 `has_reusable_payment_method=false`，前端先调用 `POST /billing/setup-intent` 并完成 `confirmSetup`
+5. 前端再调用真实变更接口，并携带已成功的 `setup_intent_id`
+6. 后端校验 `SetupIntent`、保存默认支付方式，然后执行唯一一次真实订阅修改
+7. 最终订阅状态以后端 webhook 同步结果为准，而不是以前端乐观状态为准
+
+套餐升级与存储增加必须共享上述契约，避免两条链路行为漂移。
+
 ### 3.1 Trial → Starter（升级）
 
-**触发条件**：用户完成 Stripe Checkout 会话。
+**触发条件**：用户调用 `POST /billing/checkout`，传入 Starter 的 `price_id`。
 
 **流程**：
-1. 前端调用 `POST /billing/checkout`，传入 Starter 的 `price_id`
-2. 后端创建 Stripe Checkout 会话 → 返回跳转地址
-3. 用户在 Stripe 完成订阅 Checkout → 触发 `checkout.session.completed`
-4. 订阅状态由 `customer.subscription.updated` 同步到本地数据库
-5. 计费周期立即开始（从现在开始新周期）
+1. 前端先调用 `POST /billing/upcoming`
+2. 如无可复用支付方式，则前端调用 `POST /billing/setup-intent` 并完成 `confirmSetup`
+3. 前端调用 `POST /billing/checkout`
+4. 后端在必要时应用 `setup_intent_id` 对应的默认支付方式
+5. 后端创建新的订阅或执行首次付费订阅切换
+6. 订阅状态由 `checkout.session.completed` / `customer.subscription.updated` 同步到本地数据库
+7. 计费周期立即开始（从现在开始新周期）
 
 **前置条件**：
 - 租户必须有 Stripe `customer_id`
@@ -90,10 +143,14 @@ Trial → Starter → Pro
 **触发条件**：用户调用 `POST /billing/checkout`，传入 Pro 的 `price_id`。
 
 **流程**：
-1. 后端调用 `modify_subscription_plan_async()` 修改 Stripe 订阅
-2. Stripe 立即收取按比例计算的差价（`proration_behavior: always_invoice`）
-3. `invoice.paid` 与 `customer.subscription.updated` Webhook 同步付款和订阅状态
-4. 数据库更新为 "Pro" 套餐
+1. 前端先调用 `POST /billing/upcoming`
+2. 如无可复用支付方式，则前端调用 `POST /billing/setup-intent` 并完成 `confirmSetup`
+3. 前端调用 `POST /billing/checkout`
+4. 后端在必要时应用 `setup_intent_id` 对应的默认支付方式
+5. 后端调用 `modify_subscription_plan_async()` 修改 Stripe 订阅
+6. Stripe 立即收取按比例计算的差价（`proration_behavior: always_invoice`）
+7. `invoice.paid` 与 `customer.subscription.updated` Webhook 同步付款和订阅状态
+8. 数据库更新为 "Pro" 套餐
 
 **前置条件**：
 - 活跃的 Starter 订阅
@@ -112,6 +169,8 @@ Trial → Starter → Pro
 4. 在计费周期结束时 → 触发 `customer.subscription.updated` Webhook
 5. 数据库更新为 "Starter" 套餐，开始新的计费周期
 
+说明：这类“期末生效”的降级不需要 `setup-intent`，当前实现也不额外增加本地 subscription 互斥控制。
+
 **前置条件**：
 - 活跃的 Pro 订阅
 - 无资源冲突（apps ≤ Starter 配额等）
@@ -128,6 +187,8 @@ Trial → Starter → Pro
 3. 如果兼容 → 在计费周期结束时安排降级
 4. **存储附加自动取消**（数量设为 0）
 5. 在计费周期结束时 → 套餐变更为 "Trial"
+
+说明：这类“期末生效”的降级不需要 `setup-intent`，当前实现也不额外增加本地 subscription 互斥控制。
 
 **前置条件**：
 - 活跃的付费订阅
@@ -187,9 +248,13 @@ if apps_used > target_quota_apps:
 **端点**：`POST /billing/storage/set-target`
 
 **流程**：
-1. 如果 `target > current` → 立即修改 Stripe 订阅，按比例收费
-2. 系统立即同步新的目标存储额度，并返回 Stripe 发票跳转地址
-3. `invoice.paid` 与 `customer.subscription.updated` 后续同步付款和订阅状态
+1. 前端先调用 `POST /billing/upcoming`
+2. 如无可复用支付方式，则前端调用 `POST /billing/setup-intent` 并完成 `confirmSetup`
+3. 前端调用 `POST /billing/storage/set-target`
+4. 后端在必要时应用 `setup_intent_id` 对应的默认支付方式
+5. 如果 `target > current` → 立即修改 Stripe 订阅，按比例收费
+6. 系统立即同步新的目标存储额度，并按场景返回发票链接或待处理结果
+7. `invoice.paid` 与 `customer.subscription.updated` 后续同步付款和订阅状态
 
 **前置条件**：
 - 活跃的付费订阅（非 Trial）
@@ -201,6 +266,8 @@ if apps_used > target_quota_apps:
 1. 如果 `target < current` → 通过 SubscriptionSchedule 在计费周期结束时安排
 2. `target_storage_bytes` 立即在数据库中更新
 3. 在计费周期结束时 → 数量变更生效
+
+说明：存储减少/取消通常不需要 `setup-intent`，当前实现也不额外增加本地 subscription 互斥控制。
 
 **特殊情况 — 降级到 Trial**：
 降级到 Trial 时，存储会作为同一调度调用的一部分**自动取消**（原子操作）。
@@ -297,6 +364,7 @@ Webhook 处理器使用 `BillingWebhookEventService` 跟踪已处理的事件。
 | GET | `/billing/plans` | 列出可用套餐及配额 |
 | GET | `/billing/addon_plans` | 列出可购买的附加项 |
 | POST | `/billing/upcoming` | 预览升级发票 |
+| POST | `/billing/setup-intent` | 为套餐/存储立即支付场景采集可复用支付方式 |
 | GET | `/billing/storage/current` | 当前存储状态 |
 | POST | `/billing/storage/set-target` | 变更存储数量 |
 | POST | `/billing/points/checkout` | 购买积分 |
@@ -308,6 +376,16 @@ Webhook 处理器使用 `BillingWebhookEventService` 跟踪已处理的事件。
 | GET | `/billing/spend_overview` | 计费历史 |
 | GET | `/billing/spend_metrics` | 计费聚合指标 |
 | POST | `/billing/webhook` | Stripe Webhook 处理器 |
+
+### 8.1 为什么不做 subscription 操作幂等控制
+
+- 当前系统不新增本地 subscription 互斥锁，也不额外保存 subscription 操作 request id。
+- 主要原因是：重复或并发的 `subscription.modify` / schedule 操作更可能造成过程复杂度，而不是 Stripe 最终金额错误。
+- 对系统而言，更重要的是：
+  - 前端先拿到准确预览金额
+  - 后端只通过真实 Stripe 操作提交变更
+  - 本地最终状态由 webhook 收敛
+- 如果未来观察到真实生产问题主要来自“重复请求导致金额错误”而不是“中间状态更复杂”，再重新引入应用层幂等控制会更合适。
 
 ---
 

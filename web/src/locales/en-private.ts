@@ -119,6 +119,13 @@ export default {
       overview: 'Overview',
       usage: 'Usage',
       billingHistory: 'Billing History',
+      managePaymentMethods: 'Manage payment methods',
+      updatePaymentMethod: 'Update payment method',
+      payInvoice: 'Pay invoice',
+      subscription: {
+        paymentRequired:
+          'This subscription needs payment recovery before it can be changed or cancelled.',
+      },
       needMore: 'Need more?',
       freePlan: 'Free Plan',
       starterPlan: 'Starter Plan',

@@ -3,6 +3,7 @@ import { convertBytesToGb } from '@/lib/utils';
 import { createBillingPortalSession } from '@/services/price';
 import { AlertTriangle, CreditCard } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import ResourceUsage from '../component/resource-usage';
 import { useFetchPlanOverview } from '../hook/overview';
 
@@ -43,6 +44,7 @@ const planTemplate = {
 };
 export const BaseInfo = () => {
   const [currentPlan, setCurrentPlan] = useState(planTemplate);
+  const { t } = useTranslation();
   // const { data: baseData } = useFetchBaseOverview();
   const { data: planData } = useFetchPlanOverview();
   useEffect(() => {
@@ -85,17 +87,21 @@ export const BaseInfo = () => {
     setCurrentPlan(plan);
   }, [planData, setCurrentPlan]);
 
+  const handleManagePaymentMethods = async () => {
+    const { data: res } = await createBillingPortalSession();
+    const redirectUrl = res?.data?.redirect_to || res?.redirect_to;
+    if (redirectUrl) {
+      window.open(redirectUrl, '_blank');
+    }
+  };
+
   const handleRecoverPayment = async () => {
     if (planData?.payment_recovery_url) {
       window.open(planData.payment_recovery_url, '_blank');
       return;
     }
 
-    const { data: res } = await createBillingPortalSession();
-    const redirectUrl = res?.data?.redirect_to || res?.redirect_to;
-    if (redirectUrl) {
-      window.open(redirectUrl, '_blank');
-    }
+    await handleManagePaymentMethods();
   };
 
   return (
@@ -110,6 +116,16 @@ export const BaseInfo = () => {
             {currentPlan.BillingCycle.end}
           </p>
         </div>
+        <Button
+          variant={'outline'}
+          size="sm"
+          onClick={handleManagePaymentMethods}
+        >
+          <CreditCard size={16} />
+          {t('billing.managePaymentMethods', {
+            defaultValue: 'Manage payment methods',
+          })}
+        </Button>
       </div>
       {planData?.payment_required && (
         <div className="mb-4 flex items-center justify-between gap-3 rounded border border-red-500/40 bg-red-500/10 px-4 py-3 text-text-primary">
@@ -121,7 +137,11 @@ export const BaseInfo = () => {
           </div>
           <Button size="sm" onClick={handleRecoverPayment}>
             <CreditCard size={16} />
-            {planData.payment_recovery_url ? 'Pay invoice' : 'Update payment'}
+            {planData.payment_recovery_url
+              ? t('billing.payInvoice', { defaultValue: 'Pay invoice' })
+              : t('billing.updatePaymentMethod', {
+                  defaultValue: 'Update payment method',
+                })}
           </Button>
         </div>
       )}

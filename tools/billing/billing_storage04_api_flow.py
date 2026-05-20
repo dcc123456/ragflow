@@ -21,6 +21,7 @@ Tests: downgrading storage addon (decrease quantity) takes effect at period end.
 New subscription model:
 - Storage addon shares the same subscription with the plan (cannot be independent).
 - During downgrade, the quantity decrease is scheduled and takes effect at the next period end.
+- Unlike immediate paid changes, this case does not require `/billing/setup-intent`.
 """
 
 from __future__ import annotations
@@ -60,7 +61,7 @@ def run_flow(args) -> None:
     print(f"  Assert: Starter subscription ID: {starter_subscription_id}")
 
     # =============================================================================
-    # Step 6: Purchase initial storage addon (20GB) via direct subscription modification
+    # Step 6: Purchase initial storage addon (20GB) via billing storage target flow
     # =============================================================================
     print("\n" + "=" * 80)
     print("Step 6: Purchase initial storage addon (20GB) on Starter plan")
@@ -74,7 +75,7 @@ def run_flow(args) -> None:
         new_quantity_gb=initial_storage_gb,
         subscription_ids={starter_subscription_id},
     )
-    print("  Assert: Storage addon modification sent")
+    print("  Assert: Storage addon request sent through billing API")
 
     client.wait_for_storage_status("active", timeout_seconds=30)
     print("  Assert: Storage addon is active")
@@ -134,13 +135,13 @@ def run_flow(args) -> None:
 
     client.advance_clock_to_plan_end()
 
-    # Sync webhook events if webhook_secret provided (for test clock sync)
-    print("  Replaying webhook events for synchronization")
+    # In stripe-cli mode this only waits; in manual mode it replays selected events.
+    print("  Waiting for webhook synchronization after period end")
     replayed = client.sync_webhooks(
         subscription_ids={starter_subscription_id},
         created_gte=created_gte,
     )
-    print(f"  ✅ Webhook events replayed: {replayed} events")
+    print(f"  ✅ Webhook synchronization finished: {replayed} replayed events")
 
     storage_after_period = client.storage_current()
     after_period_addon_bytes = int(storage_after_period.get("addon_storage_bytes") or 0)

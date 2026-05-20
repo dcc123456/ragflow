@@ -13,12 +13,9 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 #
-import hashlib
-import json
 import logging
 import os
 import re
-import uuid
 
 
 class InsufficientResourceError(Exception):
@@ -904,7 +901,7 @@ async def modify_subscription_plan_async(
         return {}
 
     request_quantity = max(current_quantity, 1)
-    idempotency_key = f"{tenant_id}:{subscription_id}:{target_price_id}:{uuid.uuid4()}"
+    idempotency_key = f"billing:{tenant_id}:plan_change:{subscription_id}:{target_price_id}"
 
     # Build the full items list: update plan item price + preserve all other items
     # (e.g. storage add-on). Stripe replaces all items, so omitting any would drop them.
@@ -1029,20 +1026,10 @@ def _normalize_portal_products(product_id_to_prices: dict[str, list[str]]) -> li
     return products
 
 
-def _portal_configuration_cache_key(products: list[dict]) -> str:
-    payload = json.dumps(products, separators=(",", ":"), ensure_ascii=True)
-    digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
-    return f"saas:billing:portal_config:{digest}"
-
-
 @billing_enabled_guard(None)
-def create_or_get_portal_configuration(product_id_to_prices: dict[str, list[str]]):
-    """
-    Create a Billing Portal Configuration that restricts price_ids.
-    Reuse if needed (e.g., caching in DB).
-    """
-    products = _normalize_portal_products(product_id_to_prices)
-    cache_key = _portal_configuration_cache_key(products)
+def create_or_get_portal_configuration():
+    """Create or retrieve a fixed Billing Portal Configuration for self-service payment management."""
+    cache_key = "saas:billing:portal_config:payment_method_only"
     if REDIS_CONN.is_alive():
         cached_id = REDIS_CONN.get(cache_key)
         if cached_id:
@@ -1051,12 +1038,6 @@ def create_or_get_portal_configuration(product_id_to_prices: dict[str, list[str]
     configuration = stripe.billing_portal.Configuration.create(
         features={
             "invoice_history": {"enabled": True},
-            "subscription_update": {
-                "enabled": True,
-                "default_allowed_updates": ["price"],
-                "proration_behavior": "always_invoice",
-                "products": products,
-            },
             "payment_method_update": {"enabled": True},
         }
     )

@@ -935,6 +935,12 @@ variable "stripe_test_clock_id" {
 # Zammad Configuration (Support Ticket System)
 # =============================================================================
 
+variable "deploy_zammad" {
+  description = "Whether to deploy Zammad-related resources. Currently kept for CI/tfvars compatibility."
+  type        = bool
+  default     = false
+}
+
 variable "zammad_url" {
   description = "Zammad API base URL for support ticket integration (e.g., https://support.example.com/api/v1/)"
   type        = string

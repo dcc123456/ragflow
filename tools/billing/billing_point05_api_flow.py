@@ -18,6 +18,11 @@
 API-adjusted driver for POINT-05.
 Tests: replaying the same successful points webhook remains idempotent.
 
+This is an intentionally synthetic automation case:
+- it creates the Checkout Session through the billing API,
+- then replays the exact same signed `checkout.session.completed` payload twice,
+- because payload-level idempotency is the behavior under test.
+
 Test flow:
 - Step 1: Setup - Register user and initialize environment
 - Step 2: Record baseline - Capture points balance, ledger, and spend history before testing

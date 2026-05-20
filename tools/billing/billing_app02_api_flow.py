@@ -26,7 +26,7 @@ Test Scenarios:
 3. Try to downgrade to Trial - should fail (apps_used=6 > Trial quota_apps=5)
 4. Delete one dataset (now 5 apps total)
 5. Downgrade to Trial - should succeed
-6. Advance clock to period end, replay webhook events
+6. Advance clock to period end, wait for webhook synchronization
 7. Verify plan is now Trial
 
 APIs Used:
@@ -162,13 +162,13 @@ def run_flow(args: argparse.Namespace) -> None:
     client.advance_clock_to_plan_end()
     print("  Assert: Clock advanced past period end")
 
-    # Replay webhook events
-    print("  Assert: Replaying webhook events")
+    # In stripe-cli mode this waits; in manual mode it replays selected events.
+    print("  Assert: Waiting for webhook synchronization")
     replayed = client.sync_webhooks(
         subscription_ids={starter_subscription_id},
         created_gte=created_gte,
     )
-    print(f"  Assert: Webhook events replayed: {replayed} events")
+    print(f"  Assert: Webhook synchronization finished: {replayed} replayed events")
 
     # Step 7: Verify plan is now Trial
     print("\n  Assert: Verifying plan is now Trial")

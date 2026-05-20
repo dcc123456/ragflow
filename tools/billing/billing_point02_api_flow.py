@@ -18,10 +18,16 @@
 API-adjusted driver for POINT-02.
 Tests: sequential purchase of 500 points and 1000 points with cumulative accounting.
 
+This is an adjusted automation case:
+- it creates Checkout Sessions through the billing API,
+- but completes both purchases via synthetic signed
+  `checkout.session.completed` webhooks instead of driving hosted Stripe
+  Checkout in a browser.
+
 Test flow:
 - Step 1: Setup - Register user and initialize environment
 - Step 2: Record baseline - Capture points balance, ledger, and spend history before purchase
-- Step 3: Purchase points - Complete two sequential checkout sessions (500 and 1000 points)
+- Step 3: Purchase points - Complete two sequential checkout sessions via synthetic webhooks
 - Step 4: Verify results - Validate cumulative balance increase, ledger entries, and paid history records
 """
 
@@ -98,7 +104,7 @@ def run_flow(args: argparse.Namespace) -> None:
     # Step 3: Purchase points - Complete two sequential checkout sessions
     # =============================================================================
     print("\n" + "=" * 80)
-    print("Step 3: Purchase points - Complete two sequential checkout sessions")
+    print("Step 3: Purchase points - Complete two sequential checkout sessions via synthetic webhooks")
     print("=" * 80)
 
 
@@ -118,13 +124,13 @@ def run_flow(args: argparse.Namespace) -> None:
         metadata={"source": "points_common_test", "sequence": "second"},
     )
 
-    session_first = client.complete_points_purchase(
+    session_first = client.complete_points_purchase_via_synthetic_webhook(
         points_first, points_per_unit, payment_intent_id=pi_first.id
     )
     print(f"  Assert: First checkout session created: {session_first['id']}")
     print(f"  Assert: Points to purchase (first): {points_first}")
 
-    session_second = client.complete_points_purchase(
+    session_second = client.complete_points_purchase_via_synthetic_webhook(
         points_second, points_per_unit, payment_intent_id=pi_second.id
     )
     print(f"  Assert: Second checkout session created: {session_second['id']}")

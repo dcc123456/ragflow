@@ -75,7 +75,7 @@ def run_flow(args) -> None:
         new_quantity_gb=storage_gb,
         subscription_ids={starter_subscription_id},
     )
-    print("  Assert: Storage addon modification sent")
+    print("  Assert: Storage addon request sent through billing API")
 
     client.wait_for_storage_status("active", timeout_seconds=30)
     print("  Assert: Storage addon is active")
@@ -106,7 +106,7 @@ def run_flow(args) -> None:
         new_quantity_gb=0,
         subscription_ids={starter_subscription_id},
     )
-    print("  Assert: Storage cancellation modification sent")
+    print("  Assert: Storage cancellation request sent through billing API")
 
     # After cancellation request, storage should still be active (not yet effective until period end)
     client.wait_for_storage_status("active", timeout_seconds=30)
@@ -122,13 +122,13 @@ def run_flow(args) -> None:
     client.advance_clock_to_plan_end()
     print("  Assert: Test clock advanced past period end")
 
-    # Replay webhooks after clock advance
+    # In stripe-cli mode this waits; in manual mode it replays selected events.
     client.sync_webhooks(
         subscription_ids={starter_subscription_id},
         created_gte=storage_cancel_at,
         wait_seconds=8,
     )
-    print("  Assert: Webhooks synced after clock advance")
+    print("  Assert: Webhook synchronization finished after clock advance")
 
     # Now verify storage addon is 0 after period end
     storage_after_period_end = client.storage_current()
@@ -159,7 +159,7 @@ def run_flow(args) -> None:
         new_quantity_gb=storage_gb_2,
         subscription_ids={starter_subscription_id},
     )
-    print("  Assert: Storage re-add modification sent")
+    print("  Assert: Storage re-add request sent through billing API")
     client.wait_for_storage_status("active", timeout_seconds=30)
     storage_after_readd = client.storage_current()
 
@@ -196,13 +196,13 @@ def run_flow(args) -> None:
     client.downgrade_to_trial(starter_subscription_id)
     print("  Assert: Plan downgraded to Trial - scheduled")
     client.advance_clock_to_plan_end()
-    # Sync webhook events if webhook_secret provided (for test clock sync)
-    print("  Replaying webhook events for synchronization")
+    # In stripe-cli mode this waits; in manual mode it replays selected events.
+    print("  Waiting for webhook synchronization")
     replayed = client.sync_webhooks(
         subscription_ids={starter_subscription_id},
         created_gte=created_gte,
     )
-    print(f"  ✅ Webhook events replayed: {replayed} events")
+    print(f"  ✅ Webhook synchronization finished: {replayed} replayed events")
 
     client.wait_for_plan("Trial", 30)
     # Verify storage addon was automatically cleared (quantity set to 0)

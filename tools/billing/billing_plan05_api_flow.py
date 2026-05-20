@@ -29,7 +29,7 @@ Optional environment:
   RAGFLOW_API_VERSION=v1
   RAGFLOW_TEST_EMAIL=<fresh email>
   RAGFLOW_TEST_PASSWORD=Test1234!
-  BILLING_WEBHOOK_SECRET or STRIPE_WEBHOOK_SECRET (optional if local DB already stores billing_webhook_secret for manual webhook mode)
+  BILLING_WEBHOOK_SECRET or STRIPE_WEBHOOK_SECRET (optional only for legacy manual webhook mode)
 """
 
 from __future__ import annotations

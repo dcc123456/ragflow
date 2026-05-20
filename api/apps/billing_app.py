@@ -56,9 +56,7 @@ from api.utils.billing import (
     set_stripe_test_clock_id_for_current_context,
     billing_set_customer_id_async,
     create_or_get_portal_configuration,
-    get_plans_equal_or_higher,
     get_pending_subscription_change_async,
-    get_product_ids_for_prices,
     is_subscription_latest_invoice_paid_async,
     get_trial_price_id,
     has_reusable_payment_method_async,
@@ -136,6 +134,7 @@ def _get_stored_stripe_webhook_id() -> str:
 
     setting = SystemSettingsService.get_first_by_name("billing_webhook_id")
     return getattr(setting, "value", "") or ""
+
 
 
 def _summarize_stripe_signature_header(sig_header: str | None) -> dict:
@@ -826,7 +825,7 @@ async def _set_storage_target_storage_bytes_async(
                 payment_behavior="pending_if_incomplete",
                 billing_cycle_anchor="unchanged",
                 expand=["latest_invoice"],
-                idempotency_key=f"{tenant_id}:{main_subscription_id}:storage-modify:{uuid.uuid4()}",
+                idempotency_key=f"billing:{tenant_id}:storage_change:{main_subscription_id}:{target_storage_bytes}",
             )
         else:
             modify_items = [
@@ -841,7 +840,7 @@ async def _set_storage_target_storage_bytes_async(
                 payment_behavior="pending_if_incomplete",
                 billing_cycle_anchor="unchanged",
                 expand=["latest_invoice"],
-                idempotency_key=f"{tenant_id}:{main_subscription_id}:storage-add:{uuid.uuid4()}",
+                idempotency_key=f"billing:{tenant_id}:storage_change:{main_subscription_id}:{target_storage_bytes}",
             )
     except stripe.InvalidRequestError as e:
         if "Item already exists" in str(e):
@@ -2425,38 +2424,7 @@ async def _handle_recoverable_subscription_checkout(
     subscription_status: str,
     subscription_price_id: str,
 ):
-    """Handle delinquent but recoverable subscriptions: downgrade-to-trial cancel path or invoice-recovery path."""
-    target_plan_name = settings.BILLING_PRICEID_TO_PRODUCT.get(subscription_price_id, "")
-    if is_trial_plan_name(target_plan_name):
-        logging.info(
-            f"Tenant {tenant_id} has delinquent subscription {subscription_id} "
-            f"({subscription_status}) and is downgrading to free/trial; cancelling immediately."
-        )
-        await _schedule_storage_target_storage_bytes_at_period_end_async(tenant_id, 0)
-        await stripe.Subscription.cancel_async(subscription_id)
-        SubscriptionService.update_subscription(
-            tenant_id,
-            {
-                "subscription_id": "",
-                "subscription_status": SubscriptionStatus.INACTIVE,
-                "plan_name": target_plan_name,
-                "price_id": subscription_price_id,
-            },
-        )
-        # Downgrade rate limits since plan changed
-        try:
-            from common.billing_rate_limit_sync import sync_tenant_rate_limit
-
-            sync_tenant_rate_limit(tenant_id, target_plan_name)
-        except Exception as rl_err:
-            logging.warning(f"Failed to sync rate limit for tenant {tenant_id} on downgrade: {rl_err}")
-            _invalidate_api_limit_cache(target_plan_name)
-            return get_json_result(
-                data={"cancelled": True, "plan_name": target_plan_name},
-                message="Your subscription has been cancelled and your plan downgraded.",
-                code=RetCode.SUCCESS,
-            )
-
+    """Handle delinquent but recoverable subscriptions by requiring payment recovery first."""
     invoice_url = (tenant_plan.get("invoice_url") or "").strip()
     logging.info(f"Tenant {tenant_id} has delinquent subscription {subscription_id} ({subscription_status}); redirecting to invoice {invoice_url} for payment.")
     return get_json_result(
@@ -2546,7 +2514,30 @@ async def _handle_subscription_checkout(
     subscription_id = tenant_plan.get("subscription_id")
     subscription_status = tenant_plan.get("subscription_status")
 
-    if subscription_status in {SubscriptionStatus.ACTIVE, "trialing"} and subscription_id:
+    if not subscription_id:
+        logging.info(
+            "No existing subscription for tenant %s; creating subscription Checkout Session for customer %s",
+            tenant_id,
+            customer_id,
+        )
+        return await _create_subscription_checkout_session(
+            tenant_id=tenant_id,
+            customer_id=customer_id,
+            subscription_status=subscription_status,
+            subscription_price_id=subscription_price_id,
+            quantity=quantity,
+            session_success_url=session_success_url,
+            session_cancel_url=session_cancel_url,
+        )
+    elif subscription_status in MAIN_SUBSCRIPTION_RECOVERABLE_STATUSES:
+        return await _handle_recoverable_subscription_checkout(
+            tenant_id=tenant_id,
+            tenant_plan=tenant_plan,
+            subscription_id=subscription_id,
+            subscription_status=subscription_status,
+            subscription_price_id=subscription_price_id,
+        )
+    else:
         return await _handle_active_subscription_checkout(
             tenant_id=tenant_id,
             tenant_plan=tenant_plan,
@@ -2557,26 +2548,6 @@ async def _handle_subscription_checkout(
             session_success_url=session_success_url,
             session_cancel_url=session_cancel_url,
         )
-
-    if subscription_id and subscription_status in MAIN_SUBSCRIPTION_RECOVERABLE_STATUSES:
-        return await _handle_recoverable_subscription_checkout(
-            tenant_id=tenant_id,
-            tenant_plan=tenant_plan,
-            subscription_id=subscription_id,
-            subscription_status=subscription_status,
-            subscription_price_id=subscription_price_id,
-        )
-
-    logging.info(f"found customer {customer_id} for tenant {tenant_id}")
-    return await _create_subscription_checkout_session(
-        tenant_id=tenant_id,
-        customer_id=customer_id,
-        subscription_status=subscription_status,
-        subscription_price_id=subscription_price_id,
-        quantity=quantity,
-        session_success_url=session_success_url,
-        session_cancel_url=session_cancel_url,
-    )
 
 
 async def _handle_addon_checkout(
@@ -2765,15 +2736,7 @@ async def customer_portal():
         return get_json_result(data={"redirect_to": return_url})
 
     try:
-        advancer_plans = get_plans_equal_or_higher(current_plan_name)
-        advancer_price_ids = list({price_id for _, price_ids in advancer_plans for price_id in price_ids})
-
-        price_to_product = get_product_ids_for_prices(advancer_price_ids)
-        product_id_to_prices: dict[str, list[str]] = {}
-        for price_id, product_id in price_to_product.items():
-            product_id_to_prices.setdefault(product_id, []).append(price_id)
-
-        configuration = create_or_get_portal_configuration(product_id_to_prices)
+        configuration = create_or_get_portal_configuration()
         logging.debug("Resolved customer portal configuration id=%s", getattr(configuration, "id", ""))
 
         portal_session = stripe.billing_portal.Session.create(
