@@ -13,6 +13,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 #
+import os
 import sys
 from typing import List
 
@@ -20,8 +21,12 @@ from common import settings
 from common.constants import MemoryType
 from common.doc_store.doc_store_base import OrderByExpr, MatchExpr
 
+def _es_index_prefix() -> str:
+    return os.environ.get("ES_INDEX_PREFIX", "").strip()
 
-def index_name(uid: str): return f"memory_{uid}"
+def index_name(uid: str):
+    prefix = _es_index_prefix()
+    return f"memory_{prefix}_{uid}" if prefix else f"memory_{uid}"
 
 
 class MessageService:
