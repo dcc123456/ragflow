@@ -389,6 +389,33 @@ Webhook 处理器使用 `BillingWebhookEventService` 跟踪已处理的事件。
 
 ---
 
+## 附录：关键术语表
+
+### Stripe 术语
+
+| 术语 | 说明 |
+|------|------|
+| `invoice_url` | Stripe Invoice 页面 URL。Stripe 生成的正式发票，可有 `open`/`paid`/`draft` 等状态。用户可用来付款或查看账单明细。可包含多个产品行（套餐 + 存储附加）。 |
+| `receipt_url` | Payment Receipt URL。支付成功后自动生成的收据，仅在支付完成后才有。只能查看，不能用于付款。 |
+| `payment_state` | 后端返回的支付状态语义：`paid`（已完成）、`requires_action`（需继续操作）、`pending`（处理中）、`scheduled`（已安排待生效）。用于前端判断展示弹窗还是跳转 Stripe 页面。 |
+| `product_type` | 产品类型标识：`subscription`（套餐）、`storage`（存储附加）、`points`（积分充值）。驱动成功弹窗的标题和内容展示。 |
+| `setup_intent_id` | Stripe SetupIntent ID。用于采集可复用的支付方式，区别于一次性 Checkout。套餐立即升级和存储立即增加场景需要先完成 SetupIntent 再执行真实变更。 |
+| `subscription` | Stripe 订阅对象。单租户单订阅模型中，每个租户对应一个 Stripe Subscription，包含套餐行项目和可能的存储附加行项目。订阅状态决定了用户是否有权使用付费功能。 |
+| `subscription_schedule` | Stripe SubscriptionSchedule。用于安排计费周期结束时生效的变更（如降级、存储减少），而不是立即执行的修改。 |
+| `proration` | 按比例计算。套餐升级时立即收取差价，或降级时安排期末退还。Stripe 按 `proration_behavior: always_invoice` 处理。 |
+| `webhook` | Stripe Webhook。后端通过 webhook 事件（`invoice.paid`、`customer.subscription.updated` 等）同步订阅和付款状态到本地数据库，webhook 是本地状态的最终权威来源。 |
+
+### 业务术语
+
+| 术语 | 说明 |
+|------|------|
+| `quota_points` | 套餐包含的积分配额。每个计费周期重置，不累计。 |
+| `addon_points` | 通过充值购买的附加积分，不过期。优先在套餐积分用完后消耗。 |
+| `pending_subscription_change` | 已安排但未生效的套餐变更。在当前计费周期结束前以 `SubscriptionSchedule` 形式存在，期末自动执行。 |
+| `payment_required` | 欠费标志。当 `invoice.payment_failed` 触发后变为 `true`，表示需要用户更新支付方式才能恢复服务。 |
+
+---
+
 ## 9. 测试流程参考
 
 | 测试 | 说明 |

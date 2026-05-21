@@ -81,7 +81,7 @@ def test_billing_enabled_guard(billing_auth):
 
     This test is skipped when billing is disabled.
     """
-    url = f"{HOST_ADDRESS}{BILLING_API_URL}/plan_overview"
+    url = f"{HOST_ADDRESS}{BILLING_API_URL}/subscription/overview"
     res = requests.get(url, auth=billing_auth)
     assert res.status_code == 200, f"Expected 200 when billing enabled, got {res.status_code}"
 
@@ -93,7 +93,7 @@ def test_billing_config_loading(billing_auth):
     Verify billing config is safely loaded from environment variables.
     """
     # Test: Check plan_overview endpoint (doesn't require real Stripe credentials)
-    url = f"{HOST_ADDRESS}{BILLING_API_URL}/plan_overview"
+    url = f"{HOST_ADDRESS}{BILLING_API_URL}/subscription/overview"
     res = requests.get(url, auth=billing_auth)
 
     # Should either work (billing enabled) or return disabled message
@@ -107,12 +107,12 @@ def test_billing_session_urls(billing_auth):
     Verify billing callback URLs are correctly constructed.
 
     Tests that billing_service_url is properly used to construct:
-    - session_success_url: {BILLING_SERVICE_URL}/v1/billing/success
-    - session_cancel_url: {BILLING_SERVICE_URL}/v1/billing/cancel
+    - session_success_url: {BILLING_SERVICE_URL}/v1/billing/callbacks/success
+    - session_cancel_url: {BILLING_SERVICE_URL}/v1/billing/callbacks/cancel
     - webhook_url: {BILLING_SERVICE_URL}/v1/billing/webhook
     - customer_portal_return_url: {BILLING_SERVICE_URL}
     """
-    url = f"{HOST_ADDRESS}{BILLING_API_URL}/checkout"
+    url = f"{HOST_ADDRESS}{BILLING_API_URL}/addon-purchases"
     payload = {
         "price_ids": ["price_1Si7S7PtsKvwvC5f3IjPpPcN"],
     }
@@ -143,7 +143,7 @@ def test_stripe_webhook_validation():
     Sends a request to the webhook endpoint with an invalid/missing
     Stripe-Signature header and expects the request to be rejected.
     """
-    url = f"{HOST_ADDRESS}{BILLING_API_URL}/webhook"
+    url = f"{HOST_ADDRESS}{BILLING_API_URL}/webhooks/stripe"
 
     # Test 1: Missing signature header
     res = requests.post(url, data=json.dumps({"type": "test"}))

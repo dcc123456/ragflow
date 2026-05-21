@@ -133,7 +133,7 @@ def billing_enabled_guard(default):
 @billing_enabled_guard(None)
 def init_stripe_api_key() -> None:
     api_key = settings.BILLING.get("stripe_api_key")
-    api_version = settings.BILLING.get("stripe_api_version", "2026-02-25.clover")
+    api_version = settings.BILLING.get("stripe_api_version", "2026-04-22.dahlia")
     if api_key:
         stripe.api_key = api_key
         stripe.api_version = api_version

@@ -215,10 +215,20 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 # ---------------------------------------------------------------------------
 
 def run_npm_build():
-    """Run npm run build in the web/ directory."""
+    """Run npm install && npm run build in the web/ directory."""
     web_dir = _REPO_ROOT / "web"
     if not web_dir.exists():
         print("  [WARN] web/ directory not found, skipping frontend build")
+        return False
+
+    print("  Running npm install ...")
+    result = subprocess.run(
+        ["npm", "install"],
+        cwd=web_dir,
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        print(f"  [ERROR] npm install failed:\n{result.stderr[-500:]}")
         return False
 
     print("  Running npm run build ...")
@@ -250,6 +260,7 @@ RSYNC_EXCLUDES = [
     "--exclude=**/.ruff_cache/",
     "--exclude=**/*.pyc",
     "--exclude=**/.DS_Store",
+    "--exclude=**/.emdash/",
 ]
 
 
@@ -421,6 +432,9 @@ def main():
     namespace = args.namespace
     local_port = args.local_port
     remote_port = args.remote_port
+    needs_dist_sync = not args.python_only
+    needs_python_sync = not args.dist_only
+    needs_rsync = needs_dist_sync or needs_python_sync
 
     # ---- 1. List and pick pod ------------------------------------------------
     print(f"\n[1] Finding ragflow pods in namespace '{namespace}' ...")
@@ -428,26 +442,32 @@ def main():
     pod = args.pod_name or pick_pod(pods)
     print(f"    Selected: {pod}")
 
-    # ---- 2. Start rsyncd in pod ---------------------------------------------
-    print(f"\n[2] Starting rsyncd in pod {pod} ...")
-    start_rsync_daemon(pod, namespace)
+    pf_proc = None
 
-    # ---- 3. Port-forward -----------------------------------------------------
-    print("\n[3] Setting up kubectl port-forward ...")
-    pf_proc = start_port_forward(pod, namespace, local_port, remote_port)
+    def ensure_rsync_ready():
+        nonlocal pf_proc
+        if pf_proc is not None:
+            return
+        print(f"\n[2] Starting rsyncd in pod {pod} ...")
+        start_rsync_daemon(pod, namespace)
+        print("\n[3] Setting up kubectl port-forward ...")
+        pf_proc = start_port_forward(pod, namespace, local_port, remote_port)
 
-    try:
-        # Verify rsync endpoint
         if not is_port_open(local_port):
             print(f"  [ERROR] rsync endpoint localhost:{local_port} not reachable")
             sys.exit(1)
         print("  rsync endpoint ready at rsync://localhost:{}/ragflow".format(local_port))
 
+    try:
         # ---- 4. Frontend build + dist sync + nginx reload --------------------
-        if not args.python_only:
+        if needs_dist_sync:
             print("\n[4] Building frontend (npm run build) ...")
             if args.build:
-                run_npm_build()
+                if not run_npm_build():
+                    print("  [ERROR] Frontend build failed. Aborting sync to avoid deploying stale web/dist.")
+                    sys.exit(1)
+            if needs_rsync:
+                ensure_rsync_ready()
             print("\n[5] Syncing web/dist/ -> /ragflow/web/dist/ ...")
             if not sync_dist_files(pod, namespace, local_port):
                 sys.exit(1)
@@ -455,7 +475,9 @@ def main():
             reload_nginx(pod, namespace)
 
         # ---- 6. Python sync + kill ragflow_server ----------------------------
-        if not args.dist_only:
+        if needs_python_sync:
+            if needs_rsync:
+                ensure_rsync_ready()
             print("\n[6] Syncing Python files -> /ragflow/ ...")
             if not sync_python_files(pod, namespace, local_port):
                 sys.exit(1)
@@ -465,9 +487,10 @@ def main():
         print("\n✓ Sync complete!\n")
 
     finally:
-        print("Stopping port-forward ...")
-        pf_proc.terminate()
-        pf_proc.wait(timeout=5)
+        if pf_proc is not None:
+            print("Stopping port-forward ...")
+            pf_proc.terminate()
+            pf_proc.wait(timeout=5)
         print("Done.")
 
 

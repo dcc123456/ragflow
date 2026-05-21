@@ -33,6 +33,7 @@ export const TrialUpgradeSetupRetryResultKey =
   'trial-upgrade-setup-retry-result';
 export const BillingDirectCheckoutResultEvent =
   'billing-direct-checkout-result';
+export const StorageAddonResultKey = 'storage-addon-result';
 
 type PlanSetupRetryPayload = {
   price_id: string;
@@ -93,13 +94,22 @@ const publishDirectCheckoutResult = (res?: ICheckoutResult) => {
       typeof res.amount_cents === 'number' ? res.amount_cents / 100 : undefined,
     currency: res.currency,
     invoice_id: res.invoice_id,
+    invoice_url: res.invoice_url,
+    invoice_pdf_url: res.invoice_pdf_url,
     subscription_id: res.subscription_id,
     plan_name: res.plan_name,
     price_id: res.price_id,
+    product_type: res.product_type,
+    storage_gb:
+      typeof res.target_storage_bytes === 'number'
+        ? res.target_storage_bytes / 1000 / 1000 / 1000
+        : undefined,
   } satisfies SessionData;
 
   sessionStorage.setItem(
-    TrialUpgradeSetupRetryResultKey,
+    res.product_type === 'storage'
+      ? StorageAddonResultKey
+      : TrialUpgradeSetupRetryResultKey,
     JSON.stringify(payload),
   );
   window.dispatchEvent(
@@ -462,11 +472,20 @@ export const useHandleTrialUpgradeSetupRetry = (status: string | null) => {
         localStorage.removeItem(StorageAddonSetupRetryKey);
         await invalidateBillingQueries();
 
-        if (res.data?.redirect_to) {
+        if (
+          res.data?.payment_state === 'requires_action' &&
+          res.data?.redirect_to
+        ) {
           openPaymentRedirectPreservingPage(res.data.redirect_to);
           return;
         }
 
+        if (res.data?.payment_state === 'paid') {
+          publishDirectCheckoutResult({
+            ...(res.data as ICheckoutResult),
+            product_type: 'storage',
+          });
+        }
         message.success(t('price.paymentSuccessfulTip'));
       })
       .catch((error) => {

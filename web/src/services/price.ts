@@ -8,7 +8,6 @@ import request from '@/utils/request';
 const {
   billing_checkout,
   current_plan,
-  cancel_scheduled_subscription_change,
   plan_list,
   plan_spend_overview,
   getUpcoming,
@@ -25,10 +24,6 @@ const methods = {
   getCurrentPlan: {
     url: current_plan,
     method: 'get',
-  },
-  cancelScheduledSubscriptionChange: {
-    url: cancel_scheduled_subscription_change,
-    method: 'post',
   },
   getPlanList: {
     url: plan_list,
@@ -80,12 +75,6 @@ export const getCurrentPlan = () => {
   return request.get(api.current_plan);
 };
 
-export const cancelScheduledSubscriptionChange = (tenantId: string) => {
-  return request.post(api.cancel_scheduled_subscription_change, {
-    data: { tenant_id: tenantId },
-  });
-};
-
 export const createBillingPortalSession = (data?: {
   tenant_id?: string;
   return_url?: string;
@@ -132,7 +121,7 @@ export const postBillingStorageSetTarget = (data: {
   session_success_url?: string;
   setup_intent_id?: string;
 }) => {
-  return request.post(api.storageSetTarget, { data });
+  return request.patch(api.storageSetTarget, { data });
 };
 
 export const getBillingDeepDocUsage = (tenantId?: string) =>
@@ -166,6 +155,15 @@ export const getBillingPointsLedger = (params: {
   page_size?: number;
   event_type?: string;
 }) => request.get(api.pointsLedger, { params });
+
+export const getBillingPointsHolds = (params: {
+  tenant_id?: string;
+  page?: number;
+  page_size?: number;
+  status?: string;
+  start_date?: string;
+  end_date?: string;
+}) => request.get(api.pointsHolds, { params });
 
 export const getBillingSession = (sessionId: string) =>
   request.get(api.session(sessionId));

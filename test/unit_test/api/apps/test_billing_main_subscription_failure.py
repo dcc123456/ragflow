@@ -1335,7 +1335,6 @@ def test_storage_increase_async_modifies_subscription_and_returns_invoice_url(mo
                         raising=False)
     monkeypatch.setattr(billing_app, "is_storage_price_id", lambda price_id: price_id == "price_storage")
     monkeypatch.setattr(billing_app, "get_storage_price_id_from_config", lambda: "price_storage")
-    monkeypatch.setattr(billing_utils, "cancel_scheduled_subscription_change_async", lambda _subscription_id: None)
     monkeypatch.setattr(billing_app, "_sync_storage_subscription_record", lambda *args, **kwargs: None)
     monkeypatch.setattr(billing_utils, "has_reusable_payment_method_async", lambda **kwargs: False)
 

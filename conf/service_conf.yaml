@@ -34,11 +34,11 @@ local_embd:
 billing:
   stripe_api_key: 'sk_test_51TOCFU2XhWscgPRmTT7EcKsPc7g8CTiGtC6MY6IAUYWBF9P1y8bXjmpQiX7ecn1SUlu3qiwkz3hIpBM9lmSdXdPb00sKLS0WWt'
   stripe_publishable_key: 'pk_test_51TOCFU2XhWscgPRmvl64yFyx6ZpCPDtUYFidcrefpjoJk4pDWuzZFycwSFXSMbNgiN6iRzovJdxUiP6nymVSI6ds004OM8okoV'
-  stripe_api_version: '2026-02-25.clover'
+  stripe_api_version: '2026-04-22.dahlia'
   session_success_url: 'http://127.0.0.1:9222/success.html'
   session_cancel_url: 'http://127.0.0.1:9222/cancel.html'
-  # webhook_url: 'https://demo.ragflow.io/v1/billing/webhook'
-  webhook_url: 'http://127.0.0.1:9380/v1/billing/webhook'
+  # webhook_url: 'https://demo.ragflow.io/v1/billing/webhooks/stripe'
+  webhook_url: 'http://127.0.0.1:9380/v1/billing/webhooks/stripe'
   price_point:
     - product_name: "deepdoc"
       price_type: "usage_based"

@@ -285,8 +285,8 @@ local function is_exempt_path()
     if uri:match("^/v1/user/(login|logout)") then return true end
     if uri:match("^/v1/system/config") then return true end
     if uri:match("^/v1/billing/webhook") then return true end
-    if uri:match("^/v1/billing/success") then return true end
-    if uri:match("^/v1/billing/cancel") then return true end
+    if uri:match("^/v1/billing/callbacks/success") then return true end
+    if uri:match("^/v1/billing/callbacks/cancel") then return true end
     if uri:match("^/static/") then return true end
     if uri:match("^/metrics") then return true end
     if uri:match("^/apidocs") then return true end

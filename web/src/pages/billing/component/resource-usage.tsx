@@ -2,6 +2,10 @@ import message from '@/components/ui/message';
 import { useFetchTenantInfo } from '@/hooks/use-user-setting-request';
 import { formatNumber } from '@/pages/admin/model-usage-statistics/utils';
 import { useFetchAddonPlans } from '@/pages/price/hook/use-addon-plans';
+import {
+  BillingDirectCheckoutResultEvent,
+  StorageAddonResultKey,
+} from '@/pages/price/hook/use-price-hooks';
 import billingService, {
   getBillingStorageCurrent,
   postBillingStorageSetTarget,
@@ -138,8 +142,30 @@ const ResourceUsage: React.FC<CustomProgressProps> = ({
       return;
     }
 
-    if (res?.redirect_to) {
+    // Use payment_state to determine flow: paid -> modal, requires_action -> redirect
+    // Also handle requires_payment_method_setup case which has no payment_state
+    if (
+      (res?.payment_state === 'requires_action' ||
+        res?.requires_payment_method_setup) &&
+      res?.redirect_to
+    ) {
       window.open(res.redirect_to);
+    } else if (res?.payment_state === 'paid') {
+      // Publish success event for in-app modal
+      const payload = {
+        status: 'paid' as const,
+        amount: res?.amount_cents ? res.amount_cents / 100 : undefined,
+        currency: res?.currency,
+        invoice_id: res?.invoice_id,
+        invoice_url: res?.invoice_url,
+        invoice_pdf_url: res?.invoice_pdf_url,
+        storage_gb: value,
+        product_type: 'storage' as const,
+      };
+      sessionStorage.setItem(StorageAddonResultKey, JSON.stringify(payload));
+      window.dispatchEvent(
+        new CustomEvent(BillingDirectCheckoutResultEvent, { detail: payload }),
+      );
     }
     await invalidateStorageQueries();
   };

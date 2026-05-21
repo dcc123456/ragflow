@@ -93,8 +93,12 @@ export interface ICheckoutResult {
   price_id?: string;
   invoice_id?: string;
   invoice_url?: string;
+  invoice_pdf_url?: string;
   invoice_status?: string;
   payment_intent_status?: string;
+  payment_state?: 'paid' | 'requires_action' | 'pending' | 'scheduled';
+  product_type?: 'subscription' | 'storage' | 'points';
   amount_cents?: number;
   currency?: string;
+  target_storage_bytes?: number;
 }

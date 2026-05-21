@@ -214,6 +214,12 @@ export default {
       paymentPending: 'Pending',
       paymentSuccess: 'Payment success',
       paymentFailed: 'Payment failed',
+      planUpgradedSuccess: 'Plan upgraded successfully',
+      storageAddedSuccess: 'Storage added successfully',
+      pointsPurchasedSuccess: 'Points purchased successfully',
+      viewInvoice: 'View Invoice',
+      downloadPdf: 'Download PDF',
+      viewReceipt: 'View Receipt',
       close: 'Close',
     },
     fileManager: {

@@ -36,12 +36,16 @@ from api.db.services.billing_service import (
 from api.db.services.system_settings_service import SystemSettingsService
 from api.utils.billing import (
     extract_invoice_failure_context,
+    extract_latest_invoice_id,
+    extract_list_data,
     extract_plan_item_and_price,
     extract_plan_subscription_item,
     extract_previous_plan_price,
     extract_storage_subscription_item,
+    extract_subscription_items_data,
     extract_subscription_period,
     get_attr_or_item,
+    get_nested_attr_or_item,
     get_product_id_by_name,
     get_receipt_url_from_intent_latest_charge_async,
     is_storage_plan_name,
@@ -494,6 +498,7 @@ def _update_webhook_event_checkpoint(event_timestamp, event_id: str = ""):
 
 def handle_undelivered_events():
     stripe.api_key = settings.BILLING["stripe_api_key"]
+    stripe.api_version = settings.BILLING.get("stripe_api_version", "2026-04-22.dahlia")
     focused_event_types = [
         INVOICE_PAID,
         INVOICE_FAILED,
@@ -702,9 +707,9 @@ async def _handle_checkout_session_completed(event: dict):
             payment_intent_id = checkout_session_completed.payment_intent_id or ""
             if payment_intent_id:
                 payment_intent = await stripe.PaymentIntent.retrieve_async(payment_intent_id)
-                charges = getattr(payment_intent, "charges", None)
-                if charges and hasattr(charges, "data") and charges.data:
-                    receipt_url = (getattr(charges.data[0], "receipt_url", None) or "").strip()
+                charges = extract_list_data(get_attr_or_item(payment_intent, "charges", None))
+                if charges:
+                    receipt_url = (get_attr_or_item(charges[0], "receipt_url", "") or "").strip()
             if not PaymentOrderService.get_by_order_id(checkout_session_completed.id):
                 PaymentOrderService.save(
                     id=get_uuid(),
@@ -808,7 +813,7 @@ async def _handle_invoice_paid(event: dict):
         logging.warning("InvoicePaid data validation failed: %s", exc)
         return
 
-    line_items = invoice_paid.lines.data
+    line_items = extract_list_data(get_attr_or_item(invoice_paid, "lines", None))
     customer_id = invoice_paid.customer_id
     tenant_id = (invoice_paid.metadata or {}).get("tenant_id", "") if invoice_paid.metadata else ""
     if not tenant_id:
@@ -832,8 +837,8 @@ async def _handle_invoice_paid(event: dict):
 
     for item in line_items:
         item_description = item.description or ""
-        item_subscription_detail = item.parent.subscription_item_details
-        item_subscription_id = item_subscription_detail.subscription if item_subscription_detail else ""
+        item_subscription_detail = get_nested_attr_or_item(item, "parent", "subscription_item_details")
+        item_subscription_id = get_attr_or_item(item_subscription_detail, "subscription", "") if item_subscription_detail else ""
         item_price_id = getattr(getattr(getattr(item, "pricing", None), "price_details", None), "price", "") or ((invoice_paid.metadata or {}).get("price_id", "") if invoice_paid.metadata else "")
         item_tenant_id, item_customer_id = await _resolve_tenant_context_for_invoice_line(
             invoice_paid=invoice_paid,
@@ -987,10 +992,10 @@ def _is_same_billing_period(existing_main_subscription: dict | None, event_perio
 
 
 async def _handle_storage_subscription_updated(subscription_updated: SubscriptionUpdated):
-    subscription = subscription_updated.data.object
-    subscription_id = subscription.id
-    customer_id = subscription.customer_id
-    tenant_id = subscription.metadata.get("tenant_id", "")
+    subscription = get_nested_attr_or_item(subscription_updated, "data", "object")
+    subscription_id = get_attr_or_item(subscription, "id", "")
+    customer_id = get_attr_or_item(subscription, "customer_id", "") or get_attr_or_item(subscription, "customer", "")
+    tenant_id = (get_attr_or_item(subscription, "metadata", {}) or {}).get("tenant_id", "")
     if not tenant_id:
         plan_sub = SubscriptionService.get_by_subscription_id(subscription_id) or {}
         tenant_id = plan_sub.get("tenant_id", "")
@@ -1020,11 +1025,11 @@ async def _handle_customer_subscription_updated(event: dict):
         logging.warning("Subscription Updated data validation failed: %s", exc)
         return
 
-    subscription = subscription_updated.data.object
-    previous = subscription_updated.data.previous_attributes
-    subscription_id = subscription.id
-    customer_id = subscription.customer_id
-    tenant_id = subscription.metadata.get("tenant_id", "")
+    subscription = get_nested_attr_or_item(subscription_updated, "data", "object")
+    previous = get_nested_attr_or_item(subscription_updated, "data", "previous_attributes")
+    subscription_id = get_attr_or_item(subscription, "id", "")
+    customer_id = get_attr_or_item(subscription, "customer_id", "") or get_attr_or_item(subscription, "customer", "")
+    tenant_id = (get_attr_or_item(subscription, "metadata", {}) or {}).get("tenant_id", "")
     if not tenant_id:
         tenant_id = SubscriptionService.get_tenant_id_by_customer_id(customer_id)
     if not tenant_id:
@@ -1081,7 +1086,7 @@ async def _handle_customer_subscription_updated(event: dict):
             # Stripe subscription object and continue reconciliation from that
             # latest authoritative state.
             subscription = await stripe.Subscription.retrieve_async(subscription_id)
-            previous = subscription_updated.data.previous_attributes
+            previous = get_nested_attr_or_item(subscription_updated, "data", "previous_attributes")
             event_period_start, event_period_end = extract_subscription_period(subscription)
             logging.info(
                 "Use current Stripe subscription state for same-period customer.subscription.updated: tenant_id=%s subscription_id=%s",
@@ -1100,13 +1105,14 @@ async def _handle_customer_subscription_updated(event: dict):
         _si_item_id, _si_price_id, _si_qty = extract_storage_subscription_item(subscription)
         has_storage_item_in_event = bool(_si_item_id)
 
-    if not subscription.items or not subscription.items.data:
+    subscription_items = extract_subscription_items_data(subscription)
+    if not subscription_items:
         logging.warning("subscription.updated missing subscription items; running fallback sync.")
         _sync_main_subscription_from_stripe(
             tenant_id=tenant_id,
             stripe_subscription=subscription,
             subscription_status=_normalize_subscription_status(subscription.status),
-            invoice_id=subscription.latest_invoice_id or "",
+            invoice_id=extract_latest_invoice_id(subscription),
         )
         return
 
@@ -1122,14 +1128,15 @@ async def _handle_customer_subscription_updated(event: dict):
         with DB.atomic():
             Subscription.update(addon_subscription_item_id=None, addon_storage_bytes=0, target_storage_bytes=0).where(Subscription.tenant_id == tenant_id).execute()
 
-    if previous and (previous.plan or previous.items):
+    previous_items = extract_subscription_items_data(previous)
+    if previous and (get_attr_or_item(previous, "plan", None) or previous_items):
         if not plan_price or not plan_price_id:
             logging.warning("subscription.updated missing non-storage plan item; running fallback sync: subscription_id=%s", subscription_id)
             _sync_main_subscription_from_stripe(
                 tenant_id=tenant_id,
                 stripe_subscription=subscription,
                 subscription_status=_normalize_subscription_status(subscription.status),
-                invoice_id=subscription.latest_invoice_id or "",
+                invoice_id=extract_latest_invoice_id(subscription),
             )
             return
         product_name = settings.BILLING_PRICEID_TO_PRODUCT.get(plan_price_id, "")
@@ -1137,9 +1144,10 @@ async def _handle_customer_subscription_updated(event: dict):
         old_price = extract_previous_plan_price(previous)
         old_price_id = getattr(old_price, "id", "") if old_price else ""
         pending_update = getattr(subscription, "pending_update", None)
+        latest_invoice_id = extract_latest_invoice_id(subscription)
         if pending_update:
             with DB.atomic():
-                Subscription.update(subscription_status="past_due", status="past_due", invoice_id=subscription.latest_invoice_id or "", update_time=current_timestamp()).where(Subscription.tenant_id == tenant_id).execute()
+                Subscription.update(subscription_status="past_due", status="past_due", invoice_id=latest_invoice_id, update_time=current_timestamp()).where(Subscription.tenant_id == tenant_id).execute()
             _sync_tenant_rate_limit_for_subscription(
                 tenant_id=tenant_id,
                 plan_name=product_name,
@@ -1161,7 +1169,7 @@ async def _handle_customer_subscription_updated(event: dict):
         is_paid, _invoice_id, _invoice_status, _invoice_url = await is_subscription_latest_invoice_paid_async(subscription)
         if is_upgrade and not is_paid:
             with DB.atomic():
-                Subscription.update(subscription_status="past_due", status="past_due", invoice_id=subscription.latest_invoice_id or "", update_time=current_timestamp()).where(Subscription.tenant_id == tenant_id).execute()
+                Subscription.update(subscription_status="past_due", status="past_due", invoice_id=latest_invoice_id, update_time=current_timestamp()).where(Subscription.tenant_id == tenant_id).execute()
             _sync_tenant_rate_limit_for_subscription(
                 tenant_id=tenant_id,
                 plan_name=product_name,
@@ -1170,7 +1178,6 @@ async def _handle_customer_subscription_updated(event: dict):
             logging.info("Skip main subscription upgrade entitlement until latest invoice is paid: subscription_id=%s", subscription_id)
             return
 
-        latest_invoice_id = subscription.latest_invoice_id or ""
         invoice_url = ""
         invoice_pdf_url = ""
         invoice_created = subscription_updated.created
@@ -1183,10 +1190,7 @@ async def _handle_customer_subscription_updated(event: dict):
         else:
             existing_payment_order = None
 
-        period_start_value = subscription.current_period_start or (getattr(plan_item, "current_period_start", None) if plan_item else None)
-        period_end_value = subscription.current_period_end or (getattr(plan_item, "current_period_end", None) if plan_item else None)
-        current_period_start = to_utc_datetime(period_start_value)
-        current_period_end = to_utc_datetime(period_end_value)
+        current_period_start, current_period_end = extract_subscription_period(subscription)
         if not current_period_start or not current_period_end:
             logging.warning("subscription.updated missing current period boundaries: subscription_id=%s", subscription_id)
             return
@@ -1194,10 +1198,9 @@ async def _handle_customer_subscription_updated(event: dict):
         if old_price:
             existing_payment_order_id = existing_payment_order.get("id") if latest_invoice_id and existing_payment_order else ""
             subscription_order_id = existing_payment_order_id or existing_main_subscription.get("order_id", "")
-            previous_subscription_items = previous.items
             previous_subscription_id = ""
-            if previous_subscription_items and previous_subscription_items.data:
-                previous_subscription_id = previous_subscription_items.data[0].subscription_id or ""
+            if previous_items:
+                previous_subscription_id = get_attr_or_item(previous_items[0], "subscription_id", "") or get_attr_or_item(previous_items[0], "subscription", "")
             if not previous_subscription_id:
                 current_sub = SubscriptionService.get_by_tenant_id(tenant_id)
                 previous_subscription_id = current_sub.get("original_subscription_id") or current_sub.get("subscription_id", "")
@@ -1233,10 +1236,10 @@ async def _handle_customer_subscription_updated(event: dict):
                 test_clock_id = (event.get("data", {}).get("object", {}) or {}).get("test_clock") if isinstance(event, dict) else ""
                 delay = 30 if test_clock_id else 0
                 asyncio.ensure_future(_release_schedule_async(schedule_id, delay))
-    elif previous and previous.status:
+    elif previous and get_attr_or_item(previous, "status", None):
         new_status = _normalize_subscription_status(subscription.status)
         db_price_id = (existing_main_subscription.get("price_id") or "").strip() if existing_main_subscription else ""
-        latest_invoice_id = subscription.latest_invoice_id or ""
+        latest_invoice_id = extract_latest_invoice_id(subscription)
         if first_price_id and first_price_id != db_price_id:
             _sync_main_subscription_from_stripe(
                 tenant_id=tenant_id,
@@ -1258,7 +1261,7 @@ async def _handle_customer_subscription_updated(event: dict):
                 tenant_id=tenant_id,
                 stripe_subscription=subscription,
                 subscription_status=_normalize_subscription_status(subscription.status),
-                invoice_id=subscription.latest_invoice_id or "",
+                invoice_id=extract_latest_invoice_id(subscription),
             )
             return
 
@@ -1269,7 +1272,7 @@ async def _handle_customer_subscription_updated(event: dict):
                 tenant_id=tenant_id,
                 stripe_subscription=subscription,
                 subscription_status=_normalize_subscription_status(subscription.status),
-                invoice_id=subscription.latest_invoice_id or "",
+                invoice_id=extract_latest_invoice_id(subscription),
             )
 
 

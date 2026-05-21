@@ -42,10 +42,12 @@ from api.utils.billing import (
     BYTES_PER_GB,
     BILLING_PLAN_TRIAL_NAME,
     extract_latest_invoice_obj,
+    extract_list_data,
     extract_plan_subscription_item,
     extract_storage_subscription_item,
     extract_subscription_period,
     get_attr_or_item,
+    get_receipt_url_from_intent_latest_charge_async,
     get_storage_price_id_from_config,
     parse_storage_size,
     is_storage_price_id,
@@ -67,6 +69,7 @@ from api.utils.billing import (
     schedule_subscription_price_change_at_period_end_async,
     storage_bytes_to_quantity,
     storage_quantity_to_bytes,
+    extract_subscription_items_data,
 )
 from api.services.billing_webhook_service import handle_billing_webhook_event
 from common import settings
@@ -849,10 +852,24 @@ async def _set_storage_target_storage_bytes_async(
             return False, {"error": f"Failed to modify subscription: {e}"}
 
     latest_invoice = extract_latest_invoice_obj(updated)
-    if isinstance(latest_invoice, dict):
-        invoice_url = latest_invoice.get("hosted_invoice_url", "") or ""
+    invoice_url = (get_attr_or_item(latest_invoice, "hosted_invoice_url", "") or "").strip()
+    invoice_status = (get_attr_or_item(latest_invoice, "status", "") or "").strip().lower()
+    invoice_id = (get_attr_or_item(latest_invoice, "id", "") or "").strip()
+    invoice_pdf_url = (get_attr_or_item(latest_invoice, "invoice_pdf", "") or "").strip()
+    amount_cents = get_attr_or_item(latest_invoice, "amount_due", None)
+    if amount_cents is None:
+        amount_cents = get_attr_or_item(latest_invoice, "amount_paid", 0) or 0
+    currency = (get_attr_or_item(latest_invoice, "currency", "") or "").upper()
+
+    # Determine payment_state based on invoice status and amount_due
+    # If amount_due is 0 or invoice is paid, treat as paid
+    amount_due = get_attr_or_item(latest_invoice, "amount_due", None) or 0
+    if invoice_status == "paid" or amount_due == 0:
+        payment_state = "paid"
+    elif invoice_status in ("open", "draft") and amount_due > 0:
+        payment_state = "requires_action"
     else:
-        invoice_url = getattr(latest_invoice, "hosted_invoice_url", "") or ""
+        payment_state = "pending"
 
     _sync_storage_subscription_record(
         tenant_id,
@@ -863,7 +880,14 @@ async def _set_storage_target_storage_bytes_async(
     return True, {
         "addon_storage_bytes": addon_storage_bytes,
         "target_storage_bytes": target_storage_bytes,
-        "redirect_to": invoice_url,
+        "payment_state": payment_state,
+        "redirect_to": invoice_url if payment_state == "requires_action" else None,
+        "invoice_url": invoice_url,
+        "invoice_pdf_url": invoice_pdf_url,
+        "invoice_id": invoice_id,
+        "amount_cents": amount_cents,
+        "currency": currency,
+        "product_type": "storage",
     }
 
 
@@ -915,7 +939,7 @@ def _serialize_current_plan_payload(tenant_plan: dict) -> dict:
     return payload
 
 
-@manager.route("/current_plan", methods=["GET"])  # noqa: F821
+@manager.route("/subscription", methods=["GET"])
 @login_required
 @billing_enabled_guard(_billing_disabled_response)
 async def billing_current_plan():
@@ -928,7 +952,7 @@ async def billing_current_plan():
     return get_json_result(data=_serialize_current_plan_payload(tenant_plan))
 
 
-@manager.route("/storage/current", methods=["GET"])  # noqa: F821
+@manager.route("/storage", methods=["GET"])
 @login_required
 @billing_enabled_guard(_billing_disabled_response)
 async def billing_storage_current():
@@ -996,7 +1020,7 @@ async def billing_storage_current():
     return get_json_result(data=data)
 
 
-@manager.route("/storage/set-target", methods=["POST"])  # noqa: F821
+@manager.route("/storage", methods=["PATCH"])
 @login_required
 @billing_enabled_guard(_billing_disabled_response)
 async def billing_storage_set_target():
@@ -1029,7 +1053,7 @@ async def billing_storage_set_target():
     return get_json_result(data=data)
 
 
-@manager.route("/plan_overview", methods=["GET"])  # noqa: F821
+@manager.route("/subscription/overview", methods=["GET"])  # noqa: F821
 @login_required
 @billing_enabled_guard(_billing_disabled_response)
 async def billing_plan_overview():
@@ -1191,7 +1215,7 @@ def _get_api_request_limit_by_plan(plan_name: str) -> int:
     return result
 
 
-@manager.route("/addon_overview", methods=["GET"])  # noqa: F821
+@manager.route("/addons/overview", methods=["GET"])  # noqa: F821
 @login_required
 @billing_enabled_guard(_billing_disabled_response)
 async def billing_addon_overview():
@@ -1280,6 +1304,7 @@ async def billing_points_checkout():
             "payment_type": "points_recharge",
             "tenant_id": tenant_id,
             "points_amount": str(points),
+            "product_type": "points",
         },
         success_url=_build_checkout_success_url(session_success_url),
         cancel_url=session_cancel_url,
@@ -1312,7 +1337,7 @@ async def billing_points_price():
     )
 
 
-@manager.route("/deepdoc/usage", methods=["GET"])  # noqa: F821
+@manager.route("/usages/deepdoc", methods=["GET"])  # noqa: F821
 @login_required
 @billing_enabled_guard(_billing_disabled_response)
 async def billing_deepdoc_usage():
@@ -1321,35 +1346,37 @@ async def billing_deepdoc_usage():
     if current_user.id != tenant_id:
         return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
 
-        price_point = PricePointService.get_by_name("deepdoc") or {}
-        consuming_point_amount = price_point.get("consuming_point_amount") or 1
+    price_point = PricePointService.get_by_name("deepdoc") or {}
+    consuming_point_amount = price_point.get("consuming_point_amount") or 1
 
-        # Committed holds = successfully parsed pages in the current billing cycle
-        subscription = SubscriptionService.get_by_tenant_id(tenant_id)
-        cycle_start = subscription.get("start_time") if subscription else None
-        cycle_end = subscription.get("end_time") if subscription else None
-        start_ms = int(to_utc_datetime(cycle_start).timestamp() * 1000) if cycle_start else None
-        end_ms = int(to_utc_datetime(cycle_end).timestamp() * 1000) if cycle_end else None
+    # Committed holds = successfully parsed pages in the current billing cycle
+    subscription = SubscriptionService.get_by_tenant_id(tenant_id)
+    cycle_start = subscription.get("start_time") if subscription else None
+    cycle_end = subscription.get("end_time") if subscription else None
+    start_ms = int(to_utc_datetime(cycle_start).timestamp() * 1000) if cycle_start else None
+    end_ms = int(to_utc_datetime(cycle_end).timestamp() * 1000) if cycle_end else None
 
-        committed_points = 0
-        held_points = 0
+    committed_points = 0
+    held_points = 0
 
-        with DB.connection_context():
-            query = PointHold.select(PointHold.points, PointHold.status, PointHold.create_time).where(
-                PointHold.tenant_id == tenant_id,
-            )
-            for hold in query:
-                if hold.status == "committed":
-                    if start_ms is None or (hold.create_time >= start_ms and hold.create_time <= end_ms):
-                        committed_points += hold.points
-                elif hold.status == "held":
-                    held_points += hold.points
+    with DB.connection_context():
+        query = PointHold.select(PointHold.points, PointHold.status, PointHold.create_time).where(
+            PointHold.tenant_id == tenant_id,
+        )
+        for hold in query:
+            if hold.status == "committed":
+                if start_ms is None or (hold.create_time >= start_ms and hold.create_time <= end_ms):
+                    committed_points += hold.points
+            elif hold.status == "held":
+                committed_points += hold.points
+            elif hold.status == "held":
+                held_points += hold.points
 
-        pages_paid = committed_points // consuming_point_amount
-        pages_unpaid = held_points // consuming_point_amount
-        # 1 point = 1 cent = 0.01 USD
-        amount_paid = round(committed_points / 100, 2)
-        amount_unpaid = round(held_points / 100, 2)
+    pages_paid = committed_points // consuming_point_amount
+    pages_unpaid = held_points // consuming_point_amount
+    # 1 point = 1 cent = 0.01 USD
+    amount_paid = round(committed_points / 100, 2)
+    amount_unpaid = round(held_points / 100, 2)
 
     return get_json_result(
         data={
@@ -1399,6 +1426,14 @@ async def billing_points_balance():
     }
 
     return get_json_result(data=normalized_balance)
+
+
+@manager.route("/points/overview", methods=["GET"])  # noqa: F821
+@login_required
+@billing_enabled_guard(_billing_disabled_response)
+async def billing_points_overview():
+    """Alias for /points/balance — returns normalized point usage overview."""
+    return await billing_points_balance()
 
 
 @manager.route("/points/ledger", methods=["GET"])  # noqa: F821
@@ -1798,7 +1833,7 @@ def _calc_storage_price_per_gb(price_usd: float, quota_storage: int) -> float:
     return price_usd / quota_gb if quota_gb > 0 else 0.0
 
 
-@manager.route("/addon_plans", methods=["GET"])  # noqa: F821
+@manager.route("/addons", methods=["GET"])
 @login_required
 @billing_enabled_guard(_billing_disabled_response)
 async def billing_all_addon_plans():
@@ -1848,7 +1883,7 @@ async def billing_all_addon_plans():
     return get_json_result(data=addon_plans)
 
 
-@manager.route("/upcoming", methods=["POST"])  # noqa: F821
+@manager.route("/subscription/preview", methods=["POST"])
 @login_required
 @billing_enabled_guard(_billing_disabled_response)
 async def billing_upcoming():
@@ -2216,10 +2251,7 @@ async def _handle_active_subscription_checkout(
     Webhook handlers own all DB updates and side effects.
     """
     subscription = await stripe.Subscription.retrieve_async(subscription_id)
-    if isinstance(subscription, dict):
-        subscription_items = (subscription.get("items") or {}).get("data", []) or []
-    else:
-        subscription_items = getattr(getattr(subscription, "items", None), "data", []) or []
+    subscription_items = extract_subscription_items_data(subscription)
 
     _current_item_id, current_price_id, _current_quantity = extract_plan_subscription_item(subscription)
     current_item_price_ids = []
@@ -2393,6 +2425,15 @@ async def _handle_active_subscription_checkout(
         "requires_source",
         "processing",
     }
+
+    # Determine payment_state based on invoice/payment status
+    if invoice_status == "paid" or payment_intent_status == "succeeded":
+        payment_state = "paid"
+    elif payment_intent_status in payment_action_statuses or invoice_status in payment_action_statuses:
+        payment_state = "requires_action"
+    else:
+        payment_state = "pending"
+
     accepted_data = {
         "customer_id": (tenant_plan.get("customer_id") or "").strip()
         or ((getattr(updated_subscription, "customer", "") or "").strip() if not isinstance(updated_subscription, dict) else (updated_subscription.get("customer") or "").strip()),
@@ -2405,6 +2446,8 @@ async def _handle_active_subscription_checkout(
         "amount_cents": modified_result.get("amount_cents", 0),
         "currency": modified_result.get("currency", ""),
         "payment_intent_status": payment_intent_status,
+        "payment_state": payment_state,
+        "product_type": "subscription",
     }
     if payment_intent_status in payment_action_statuses and invoice_url:
         accepted_data["redirect_to"] = invoice_url
@@ -2599,7 +2642,8 @@ async def _handle_addon_checkout(
     return get_json_result(data={"redirect_to": session.url})
 
 
-@manager.route("/checkout", methods=["POST"])  # noqa: F821
+@manager.route("/subscription", methods=["PATCH", "POST"])
+@manager.route("/addon-purchases", methods=["POST"])
 @login_required
 @billing_enabled_guard(_billing_disabled_response)
 async def billing_checkout():
@@ -2650,7 +2694,7 @@ async def billing_checkout():
     )
 
 
-@manager.route("/setup-intent", methods=["POST"])  # noqa: F821
+@manager.route("/setup-intents", methods=["POST"])
 @login_required
 @billing_enabled_guard(_billing_disabled_response)
 async def billing_create_setup_intent():
@@ -2707,7 +2751,7 @@ async def billing_create_setup_intent():
     )
 
 
-@manager.route("/create-portal-session", methods=["POST"])  # noqa: F821
+@manager.route("/portal-sessions", methods=["POST"])
 @login_required
 @billing_enabled_guard(_billing_disabled_response)
 async def customer_portal():
@@ -2782,7 +2826,7 @@ def _get_stripe_webhook_secret(force_refresh: bool = False) -> str | None:
     return None
 
 
-@manager.route("/success", methods=["GET"])  # noqa: F821
+@manager.route("/callbacks/success", methods=["GET"])
 async def billing_success():
     """
     Handle successful Stripe checkout redirect.
@@ -2802,7 +2846,7 @@ async def billing_success():
     return redirect(f"{settings.BILLING.get('customer_portal_return_url', '')}/price?price-pay-status=success")
 
 
-@manager.route("/cancel", methods=["GET"])  # noqa: F821
+@manager.route("/callbacks/cancel", methods=["GET"])
 async def billing_cancel():
     """
     Handle cancelled Stripe checkout redirect.
@@ -2813,7 +2857,7 @@ async def billing_cancel():
     return redirect(f"{settings.BILLING.get('customer_portal_return_url', '')}/price?price-pay-status=cancel")
 
 
-@manager.route("/session/<session_id>", methods=["GET"])  # noqa: F821
+@manager.route("/checkouts/<session_id>", methods=["GET"])
 @login_required
 @billing_enabled_guard(_billing_disabled_response)
 async def billing_session_status(session_id: str):
@@ -2822,19 +2866,60 @@ async def billing_session_status(session_id: str):
     Frontend polls this after redirect from Stripe to determine outcome.
     """
     checkout_session = await stripe.checkout.Session.retrieve_async(session_id)
+
+    payment_intent_id = get_attr_or_item(checkout_session, "payment_intent", None)
+    if payment_intent_id and not isinstance(payment_intent_id, str):
+        payment_intent_id = get_attr_or_item(payment_intent_id, "id", None)
+    receipt_url = None
+    invoice_id = None
+    invoice_url = None
+    invoice_pdf_url = None
+
+    if isinstance(payment_intent_id, str):
+        try:
+            payment_intent = await stripe.PaymentIntent.retrieve_async(payment_intent_id)
+            latest_charge = get_attr_or_item(payment_intent, "latest_charge", None)
+            latest_charge_id = latest_charge if isinstance(latest_charge, str) else get_attr_or_item(latest_charge, "id", "")
+            if latest_charge_id:
+                receipt_url = await get_receipt_url_from_intent_latest_charge_async(latest_charge_id)
+            if not receipt_url:
+                charges = extract_list_data(get_attr_or_item(payment_intent, "charges", None))
+                if charges:
+                    receipt_url = get_attr_or_item(charges[0], "receipt_url", None)
+        except stripe.StripeError as e:
+            logging.warning("Failed to retrieve Stripe payment intent details for checkout session %s: %s", session_id, e)
+
+    raw_invoice = get_attr_or_item(checkout_session, "invoice", None)
+    if raw_invoice:
+        invoice_id = raw_invoice if isinstance(raw_invoice, str) else get_attr_or_item(raw_invoice, "id", None)
+        invoice_obj = raw_invoice if not isinstance(raw_invoice, str) else None
+        if isinstance(invoice_id, str) and not invoice_obj:
+            try:
+                invoice_obj = await stripe.Invoice.retrieve_async(invoice_id)
+            except stripe.StripeError as e:
+                logging.warning("Failed to retrieve Stripe invoice details for checkout session %s: %s", session_id, e)
+        if invoice_obj:
+            invoice_url = get_attr_or_item(invoice_obj, "hosted_invoice_url", None)
+            invoice_pdf_url = get_attr_or_item(invoice_obj, "invoice_pdf", None)
+
     return get_json_result(
         data={
-            "payment_status": checkout_session.payment_status,
-            "mode": getattr(checkout_session, "mode", None),
-            "amount_cents": checkout_session.amount_total,
-            "currency": checkout_session.currency,
-            "created": checkout_session.created,
-            "metadata": dict(checkout_session.metadata or {}),
+            "payment_status": get_attr_or_item(checkout_session, "payment_status", "unknown"),
+            "mode": get_attr_or_item(checkout_session, "mode", None),
+            "amount_cents": get_attr_or_item(checkout_session, "amount_total", None),
+            "currency": get_attr_or_item(checkout_session, "currency", None),
+            "created": get_attr_or_item(checkout_session, "created", None),
+            "metadata": dict(get_attr_or_item(checkout_session, "metadata", None) or {}),
+            "payment_intent_id": payment_intent_id,
+            "receipt_url": receipt_url,
+            "invoice_id": invoice_id,
+            "invoice_url": invoice_url,
+            "invoice_pdf_url": invoice_pdf_url,
         }
     )
 
 
-@manager.route("/webhook", methods=["POST"])  # noqa: F821
+@manager.route("/webhooks/stripe", methods=["POST"])
 @billing_enabled_guard(_billing_disabled_webhook_response)
 async def billing_webhook():
     """

@@ -956,7 +956,7 @@ class BillingClient:
     def _cancel_scheduled_change_api(self, tenant_id: str) -> dict[str, Any]:
         """Internal method to call the cancel scheduled change API."""
         payload = {"tenant_id": tenant_id}
-        return self.request_json("POST", "/billing/cancel-scheduled-subscription-change", json=payload)["data"]
+        return self.request_json("POST", "/billing/callbacks/cancel-scheduled-subscription-change", json=payload)["data"]
 
 
 

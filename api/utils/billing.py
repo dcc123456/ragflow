@@ -180,6 +180,45 @@ def get_attr_or_item(obj, key: str, default=None):
     return getattr(obj, key, default)
 
 
+def get_nested_attr_or_item(obj, *keys: str, default=None):
+    value = obj
+    for key in keys:
+        value = get_attr_or_item(value, key, None)
+        if value is None:
+            return default
+    return value
+
+
+def extract_list_data(obj) -> list:
+    if not obj:
+        return []
+    if callable(obj):
+        try:
+            obj = obj()
+        except TypeError:
+            return []
+    data = get_attr_or_item(obj, "data", []) or []
+    return data if isinstance(data, list) else []
+
+
+def extract_subscription_items_data(obj) -> list:
+    """Return Stripe subscription items regardless of dict/object/method style.
+
+    Stripe SDK v14+ may expose nested resources like ``subscription.items`` as a
+    callable accessor instead of a plain attribute on some live objects. Older
+    objects and typed webhook models may still expose ``items.data`` directly.
+    This helper normalizes all known shapes into a list.
+    """
+    if not obj:
+        return []
+
+    return extract_list_data(get_attr_or_item(obj, "items", None))
+
+
+def extract_latest_invoice_id(subscription_obj) -> str:
+    return _extract_invoice_id(extract_latest_invoice_obj(subscription_obj))
+
+
 def get_product_id_by_name(product_name: str) -> str:
     # local import to avoid circular dependency in module import phase
     from api.db.services.billing_service import ProductService
@@ -218,7 +257,7 @@ def extract_storage_subscription_item(subscription_obj) -> tuple[str, str, int]:
             safe_int(item.get("quantity", 0) if isinstance(item, dict) else 0, 0),
         )
 
-    data = getattr(getattr(subscription_obj, "items", None), "data", []) or []
+    data = extract_subscription_items_data(subscription_obj)
     if not data:
         return "", "", 0
     item = None
@@ -267,7 +306,7 @@ def extract_plan_subscription_item(subscription_obj) -> tuple[str, str, int]:
             safe_int(item.get("quantity", 0) if isinstance(item, dict) else 0, 0),
         )
 
-    data = getattr(getattr(subscription_obj, "items", None), "data", []) or []
+    data = extract_subscription_items_data(subscription_obj)
     if not data:
         return "", "", 0
     plan_item = None
@@ -314,7 +353,7 @@ def _dedupe_schedule_phase_items(items: list[dict]) -> list[dict]:
 
 
 def extract_plan_item_and_price(subscription_obj):
-    data = get_attr_or_item(get_attr_or_item(subscription_obj, "items", None), "data", []) or []
+    data = extract_subscription_items_data(subscription_obj)
     if not data:
         return None, None, ""
 
@@ -332,7 +371,7 @@ def extract_plan_item_and_price(subscription_obj):
 
 
 def extract_previous_plan_price(previous_obj):
-    previous_data = get_attr_or_item(get_attr_or_item(previous_obj, "items", None), "data", []) or []
+    previous_data = extract_subscription_items_data(previous_obj)
     fallback_price = None
     if previous_data:
         first_item = previous_data[0]
@@ -373,7 +412,7 @@ def extract_subscription_period(subscription_obj):
     end = to_utc_datetime(getattr(subscription_obj, "current_period_end", None))
     if start and end:
         return start, end
-    item_data = getattr(getattr(subscription_obj, "items", None), "data", []) or []
+    item_data = extract_subscription_items_data(subscription_obj)
     first_item = item_data[0] if item_data else None
     item_start = to_utc_datetime(getattr(first_item, "current_period_start", None)) if first_item else None
     item_end = to_utc_datetime(getattr(first_item, "current_period_end", None)) if first_item else None

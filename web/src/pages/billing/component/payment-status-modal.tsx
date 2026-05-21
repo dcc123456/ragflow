@@ -2,9 +2,10 @@ import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal/modal';
 import {
   BillingDirectCheckoutResultEvent,
+  StorageAddonResultKey,
   TrialUpgradeSetupRetryResultKey,
 } from '@/pages/price/hook/use-price-hooks';
-import { CheckCircle, Loader2, XCircle } from 'lucide-react';
+import { CheckCircle, Eye, Loader2, XCircle } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PaymentStatus, PaymentStatusMap } from '../constants/payment-status';
@@ -57,6 +58,16 @@ const PaymentStatusModal: React.FC = () => {
 
     const retryResult = sessionStorage.getItem(TrialUpgradeSetupRetryResultKey);
     if (!retryResult) {
+      const storageResult = sessionStorage.getItem(StorageAddonResultKey);
+      if (storageResult) {
+        try {
+          setSessionData(JSON.parse(storageResult) as SessionData);
+          setStatus(PaymentStatus.Success);
+          return;
+        } catch {
+          sessionStorage.removeItem(StorageAddonResultKey);
+        }
+      }
       return;
     }
 
@@ -110,6 +121,7 @@ const PaymentStatusModal: React.FC = () => {
       urlObj.searchParams.delete('session_id');
       window.history.replaceState({}, '', urlObj.toString());
       sessionStorage.removeItem(TrialUpgradeSetupRetryResultKey);
+      sessionStorage.removeItem(StorageAddonResultKey);
     }
   }, [status]);
 
@@ -134,6 +146,23 @@ const PaymentStatusModal: React.FC = () => {
   }, [status]);
 
   const title = useMemo(() => {
+    if (status === PaymentStatus.Success && sessionData?.product_type) {
+      switch (sessionData.product_type) {
+        case 'subscription':
+          return (
+            t('billing.planUpgradedSuccess') || 'Plan upgraded successfully'
+          );
+        case 'storage':
+          return (
+            t('billing.storageAddedSuccess') || 'Storage added successfully'
+          );
+        case 'points':
+          return (
+            t('billing.pointsPurchasedSuccess') ||
+            'Points purchased successfully'
+          );
+      }
+    }
     switch (status) {
       case PaymentStatus.Pending:
         return t('billing.paymentPending');
@@ -144,7 +173,14 @@ const PaymentStatusModal: React.FC = () => {
       default:
         return '';
     }
-  }, [status, t]);
+  }, [status, sessionData?.product_type, t]);
+
+  const handleViewReceipt = () => {
+    const url = sessionData?.receipt_url || sessionData?.invoice_url;
+    if (url) {
+      window.open(url, '_blank');
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -155,10 +191,16 @@ const PaymentStatusModal: React.FC = () => {
       title={null}
       className="!w-[400px]"
       footer={
-        <div className="flex justify-end">
-          <Button variant="outline" onClick={handleClose}>
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={handleClose}>
             {t('billing.close')}
           </Button>
+          {(sessionData?.receipt_url || sessionData?.invoice_url) && (
+            <Button variant="outline" size="sm" onClick={handleViewReceipt}>
+              <Eye className="w-4 h-4 mr-1" />
+              {t('billing.viewReceipt')}
+            </Button>
+          )}
         </div>
       }
     >
@@ -184,6 +226,16 @@ const PaymentStatusModal: React.FC = () => {
               </span>
               <span className="text-sm font-medium text-cyan-400">
                 {sessionData.credits.toLocaleString()} {t('billing.points')}
+              </span>
+            </div>
+          )}
+          {sessionData?.storage_gb !== undefined && (
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-text-secondary">
+                {t('billing.storage')}
+              </span>
+              <span className="text-sm font-medium text-cyan-400">
+                {sessionData.storage_gb} {t('billing.gb')}
               </span>
             </div>
           )}

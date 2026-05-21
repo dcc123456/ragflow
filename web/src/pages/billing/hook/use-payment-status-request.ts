@@ -11,11 +11,16 @@ export interface SessionData {
   status: StripePaymentStatus;
   amount?: number;
   credits?: number;
+  storage_gb?: number;
   invoice_id?: string;
+  invoice_url?: string;
+  invoice_pdf_url?: string;
+  receipt_url?: string;
   currency?: string;
   subscription_id?: string;
   plan_name?: string;
   price_id?: string;
+  product_type?: 'subscription' | 'storage' | 'points';
 }
 
 interface RawSessionResponse {
@@ -24,8 +29,13 @@ interface RawSessionResponse {
   currency?: string;
   metadata?: {
     points_amount?: string;
+    product_type?: 'subscription' | 'storage' | 'points';
   };
   invoice_id?: string;
+  invoice_url?: string;
+  invoice_pdf_url?: string;
+  receipt_url?: string;
+  payment_intent_id?: string;
 }
 
 const PollingInterval = 3000;
@@ -52,6 +62,11 @@ export const useFetchPaymentSession = (
             : undefined,
           currency: raw.currency,
           invoice_id: raw.invoice_id,
+          invoice_url: raw.invoice_url,
+          invoice_pdf_url: raw.invoice_pdf_url,
+          receipt_url: raw.receipt_url,
+          product_type: raw.metadata
+            ?.product_type as SessionData['product_type'],
         };
       }
       throw new Error(res.message || 'Session check failed');

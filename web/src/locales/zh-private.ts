@@ -175,6 +175,12 @@ export default {
       paymentPending: '处理中',
       paymentSuccess: '支付成功',
       paymentFailed: '支付失败',
+      planUpgradedSuccess: '套餐升级成功',
+      storageAddedSuccess: '存储购买成功',
+      pointsPurchasedSuccess: '积分购买成功',
+      viewInvoice: '查看发票',
+      downloadPdf: '下载 PDF',
+      viewReceipt: '查看收据',
       close: '关闭',
       nextMonthlyCost: '下月费用',
       payNowIncremental: `立即支付 <strong class='text-text-primary'>{{amount}}</strong> 以增加存储空间。<br />
