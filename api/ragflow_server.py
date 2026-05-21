@@ -106,6 +106,9 @@ if __name__ == '__main__':
     # init db
     init_web_db()
     init_web_data()
+    # Start billing rate-limit sync AFTER DB + product data are ready
+    from api.apps import start_billing_rate_limit_sync
+    start_billing_rate_limit_sync()
     # init runtime config
     import argparse
 

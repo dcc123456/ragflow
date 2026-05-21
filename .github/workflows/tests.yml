@@ -238,6 +238,7 @@ jobs:
           echo -e "COMPOSE_PROFILES=\${COMPOSE_PROFILES},tei-cpu" >> .env
           echo -e "TEI_MODEL=BAAI/bge-small-en-v1.5" >> .env
           echo -e "RAGFLOW_IMAGE=${RAGFLOW_IMAGE}" >> .env
+          echo -e "RATELIMIT_DISABLED=1" >> .env
           echo "HOST_ADDRESS=http://host.docker.internal:${SVR_HTTP_PORT}" >> ${GITHUB_ENV}
 
           cd ..
@@ -679,12 +680,14 @@ jobs:
             -var "namespace=${BYOK_NAMESPACE}" \
             -var "redis_db=${BYOK_REDIS_DB}" \
             -var "ragflow_image=${BYOK_RAGFLOW_IMAGE_VAR}" \
+            -var "rate_limit_disabled=true" \
             -var "deploy_zammad=false"
   
           tofu apply -auto-approve -var-file=terraform.tfvars.dev_smk \
             -var "namespace=${BYOK_NAMESPACE}" \
             -var "redis_db=${BYOK_REDIS_DB}" \
             -var "ragflow_image=${BYOK_RAGFLOW_IMAGE_VAR}" \
+            -var "rate_limit_disabled=true" \
             -var "deploy_zammad=false"
   
           GATEWAY_ADDRESS="$(kubectl get gateway ragflow -n "${BYOK_NAMESPACE}" -o jsonpath='{.status.addresses[0].value}' 2>/dev/null | tr -d '[:space:]')"
@@ -748,6 +751,7 @@ jobs:
             -var "namespace=${BYOK_NAMESPACE}" \
             -var "redis_db=${BYOK_REDIS_DB}" \
             -var "ragflow_image=${BYOK_RAGFLOW_IMAGE_VAR}" \
+            -var "rate_limit_disabled=true" \
             -var "deploy_zammad=false"
 
       - name: Delete Harbor artifact

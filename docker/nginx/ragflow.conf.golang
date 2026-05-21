@@ -21,6 +21,12 @@ server {
     }
 
     location ~ ^/(v1|api) {
+        access_by_lua_block {
+            local rate_limit = package.loaded.rate_limit
+            if rate_limit then
+                rate_limit.check()
+            end
+        }
         proxy_pass http://127.0.0.1:9382;
         include proxy.conf;
     }

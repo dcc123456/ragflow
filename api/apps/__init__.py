@@ -366,52 +366,6 @@ def search_pages_path(page_path):
     return app_path_list
 
 
-def set_api_limiter():
-    from common.config_utils import decrypt_database_config
-    from quart_rate_limiter import RateLimiter, remote_addr_key, RateLimit, timedelta
-    from quart_rate_limiter.redis_store import RedisStore
-    from urllib.parse import quote
-
-    async def key_func_global():
-        ident = {
-            "tenant": current_user.id if current_user else "",
-            "ip": await remote_addr_key()
-        }
-        endpoint = request.endpoint or "unknown"
-        if ident["tenant"]:
-            return f"tenant:{ident['tenant']}|ep:{endpoint}"
-        return f"ip:{ident['ip']}|ep:{endpoint}"
-
-    async def _skip_static() -> bool:
-        return request.endpoint.endswith("static")
-
-    try:
-        REDIS = decrypt_database_config(name="redis")
-    except Exception as e:
-        logging.warning(f"Failed to load redis config for rate limiter: {e}")
-        REDIS = {}
-
-    redis_password = REDIS.get("password")
-    redis_username = REDIS.get("username")
-    redis_host = REDIS.get("host")
-    redis_db = REDIS.get("db")
-    redis_auth = ""
-    if redis_username and redis_password:
-        redis_auth = f"{quote(str(redis_username), safe='')}:{quote(str(redis_password), safe='')}@"
-    elif redis_password:
-        redis_auth = f":{quote(str(redis_password), safe='')}@"
-    redis_uri = f"redis://{redis_auth}{redis_host}/{redis_db}"
-    global app
-    return RateLimiter(
-        app,
-        key_function=key_func_global,
-        default_limits=[
-            RateLimit(500, timedelta(seconds=1), skip_function=_skip_static),
-            RateLimit(2000, timedelta(minutes=1), skip_function=_skip_static),
-        ],
-        store=RedisStore(redis_uri)
-    )
-
 def register_page(page_path):
     path = f"{page_path}"
 
@@ -448,7 +402,34 @@ from api.apps.backward_compat import register_backward_compat_routes
 register_backward_compat_routes(app)
 
 
-set_api_limiter()
+# Billing rate limit sync is deferred until after DB init (see ragflow_server.py).
+# Do NOT start sync here — settings and billing_product data are not ready yet.
+_billing_sync_started = False
+
+
+def start_billing_rate_limit_sync():
+    """Start the background rate-limit sync thread.
+
+    Must be called AFTER ``init_web_db()`` + ``init_web_data()`` so that
+    MySQL tables and billing product rows are available.
+    """
+    global _billing_sync_started
+    if _billing_sync_started:
+        return
+    _billing_sync_started = True
+    try:
+        from common.billing_rate_limit_sync import sync_all_rate_limits, start_periodic_sync
+        import threading
+        def _bg_sync():
+            try:
+                sync_all_rate_limits()
+                start_periodic_sync(interval=3600)  # hourly refresh
+            except Exception as e:
+                logging.warning(f"Background billing rate limit sync failed: {e}")
+        threading.Thread(target=_bg_sync, daemon=True).start()
+        logging.info("Billing rate limit sync scheduled in background")
+    except Exception as e:
+        logging.warning(f"Could not start billing rate limit sync: {e}")
 
 @app.errorhandler(404)
 async def not_found(error):

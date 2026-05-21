@@ -1393,6 +1393,7 @@ class Product(DataBaseModel):
     product_type = CharField(null=False, choices=["subscription", "usage_based"])
     version = IntegerField(null=False, help_text="Product version")
     quota_points = BigIntegerField(null=True, help_text="Monthly point quota for subscription plans")
+    api_request_limit_per_minute = BigIntegerField(null=True, default=500, help_text="API requests allowed per minute")
 
     class Meta:
         db_table = "billing_product"
@@ -2273,6 +2274,8 @@ def migrate_db():
     alter_db_add_column(migrator, "billing_product", "quota_points", BigIntegerField(null=True))
     # Add priority to billing_product (2026-05-06)
     alter_db_add_column(migrator, "billing_product", "priority", IntegerField(null=False, default=0, help_text="Billing plan priority, bigger value has high priority"))
+    # Add api_request_limit_per_minute to billing_product (2026-05-20)
+    alter_db_add_column(migrator, "billing_product", "api_request_limit_per_minute", BigIntegerField(null=True, default=500))
     # This migration must be run as an offline batch job before billing_app starts serving
     # traffic with the new consumed-based model.
     alter_db_add_column(migrator, "billing_point_ledger", "source", CharField(max_length=16, null=False, default="plan"))

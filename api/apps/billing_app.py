@@ -16,6 +16,7 @@
 import asyncio
 import json
 import logging
+import time
 import uuid
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from datetime import datetime, timezone
@@ -76,6 +77,7 @@ from api.utils.billing import (
     is_downgrade_by_price_id,
     modify_subscription_plan_async,
     schedule_subscription_items_change_at_period_end_async,
+    cancel_scheduled_subscription_change_async,
     schedule_subscription_price_change_at_period_end_async,
     storage_bytes_to_quantity,
     storage_quantity_to_bytes,
@@ -98,8 +100,6 @@ from common.constants import RetCode
 from common.misc_utils import get_uuid
 from common.time_utils import current_timestamp
 
-UNLIMITED_API_REQUESTS = 2_147_483_647
-LIMITED_API_REQUESTS = 5000
 
 # subscription
 INVOICE_PAID = "invoice.paid"  # store 'subscription.id' and 'customer.id'verification.
@@ -136,6 +136,8 @@ MAIN_SUBSCRIPTION_RECOVERABLE_STATUSES = {"incomplete", "past_due", "unpaid"}
 # Cached Stripe webhook endpoint secret (loaded from DB once, cached forever)
 _stripe_webhook_secret: str | None = None
 STRIPE_CHECKOUT_SESSION_ID_PLACEHOLDER = "{CHECKOUT_SESSION_ID}"
+
+
 def _get_default_currency() -> str:
     """Return the default currency from BILLING_PRICE_POINT config, falling back to 'usd'."""
     price_points = getattr(settings, "BILLING_PRICE_POINT", []) or []
@@ -179,39 +181,46 @@ def _check_downgrade_resource_compatibility(tenant_id: str, target_plan_name: st
     if storage_used_bytes > total_storage_limit_bytes:
         overage_bytes = storage_used_bytes - target_quota_storage
         overage_gb = overage_bytes / BYTES_PER_GB
-        conflicts.append({
-            "resource": "storage",
-            "used": storage_used_bytes,
-            "limit": total_storage_limit_bytes,
-            "unit": "bytes",
-            "message": f"Storage usage ({overage_gb:.2f} GB over limit) exceeds target plan quota including addon storage. Please delete data before downgrading.",
-            "action_required": "delete_data",
-            "overage": overage_bytes,
-        })
+        conflicts.append(
+            {
+                "resource": "storage",
+                "used": storage_used_bytes,
+                "limit": total_storage_limit_bytes,
+                "unit": "bytes",
+                "message": f"Storage usage ({overage_gb:.2f} GB over limit) exceeds target plan quota including addon storage. Please delete data before downgrading.",
+                "action_required": "delete_data",
+                "overage": overage_bytes,
+            }
+        )
+
 
     if members_used > total_members_limit:
         overage_members = members_used - total_members_limit
-        conflicts.append({
-            "resource": "members",
-            "used": members_used,
-            "limit": total_members_limit,
-            "unit": "users",
-            "message": f"Member count ({overage_members} users over limit) exceeds target plan quota. Please remove members before downgrading.",
-            "action_required": "remove_members",
-            "overage_members": overage_members,
-        })
+        conflicts.append(
+            {
+                "resource": "members",
+                "used": members_used,
+                "limit": total_members_limit,
+                "unit": "users",
+                "message": f"Member count ({overage_members} users over limit) exceeds target plan quota. Please remove members before downgrading.",
+                "action_required": "remove_members",
+                "overage_members": overage_members,
+            }
+        )
 
     if apps_used > total_apps_limit:
         overage_apps = apps_used - total_apps_limit
-        conflicts.append({
-            "resource": "apps",
-            "used": apps_used,
-            "limit": total_apps_limit,
-            "unit": "applications",
-            "message": f"App count ({overage_apps} apps over limit) exceeds target plan quota. Please remove apps before downgrading.",
-            "action_required": "remove_apps",
-            "overage_apps": overage_apps,
-        })
+        conflicts.append(
+            {
+                "resource": "apps",
+                "used": apps_used,
+                "limit": total_apps_limit,
+                "unit": "applications",
+                "message": f"App count ({overage_apps} apps over limit) exceeds target plan quota. Please remove apps before downgrading.",
+                "action_required": "remove_apps",
+                "overage_apps": overage_apps,
+            }
+        )
 
     return conflicts
 
@@ -229,13 +238,15 @@ def _resolve_billing_plan_info(plan_name: str) -> dict:
         candidate_name = (plan.get("name") or "").strip()
         if candidate_name.lower() == key.lower():
             merged = dict(info)
-            merged.update({
-                "quota_storage": plan.get("quota_storage", merged.get("quota_storage", 0)),
-                "quota_points": plan.get("quota_points", merged.get("quota_points", 0)),
-                "quota_members": plan.get("quota_members", merged.get("quota_members", 0)),
-                "quota_apps": plan.get("quota_apps", merged.get("quota_apps", 0)),
-                "product_type": plan.get("product_type", merged.get("product_type")),
-            })
+            merged.update(
+                {
+                    "quota_storage": plan.get("quota_storage", merged.get("quota_storage", 0)),
+                    "quota_points": plan.get("quota_points", merged.get("quota_points", 0)),
+                    "quota_members": plan.get("quota_members", merged.get("quota_members", 0)),
+                    "quota_apps": plan.get("quota_apps", merged.get("quota_apps", 0)),
+                    "product_type": plan.get("product_type", merged.get("product_type")),
+                }
+            )
             return merged
 
     if key != BILLING_PLAN_TRIAL_NAME:
@@ -278,7 +289,7 @@ def _build_checkout_success_url(url: str) -> str:
     parsed = urlsplit(url)
     query_pairs = [(key, value) for key, value in parse_qsl(parsed.query, keep_blank_values=True) if key != "session_id"]
     query_pairs.append(("session_id", STRIPE_CHECKOUT_SESSION_ID_PLACEHOLDER))
-    query = urlencode(query_pairs, doseq=True, safe='{}')
+    query = urlencode(query_pairs, doseq=True, safe="{}")
     return urlunsplit(parsed._replace(query=query))
 
 
@@ -396,6 +407,15 @@ def _sync_main_subscription_from_stripe(
     with DB.atomic():
         SubscriptionService.upsert_subscription(tenant_id, subscription_dict)
 
+    # Sync rate limits to Redis for Nginx Lua gateway rate limiter
+    try:
+        from common.billing_rate_limit_sync import sync_tenant_rate_limit, _to_unix_ts
+
+        sync_tenant_rate_limit(tenant_id, plan_name, period_end=_to_unix_ts(period_end or existing.get("end_time")))
+    except Exception as rl_err:
+        logging.warning(f"Failed to sync rate limit for tenant {tenant_id}: {rl_err}")
+    _invalidate_api_limit_cache(plan_name)
+
 
 @manager.route("/status", methods=["GET"])  # noqa: F821
 def billing_status():
@@ -504,6 +524,7 @@ def _sync_storage_subscription_record(
     # New columns (addon_subscription_item_id, addon_storage_bytes, target_storage_bytes)
     # are authoritative for storage information.
     from api.db.db_models import Subscription
+
     with DB.atomic():
         Subscription.update(
             addon_subscription_item_id=item_id or None,
@@ -785,8 +806,7 @@ async def _get_tenant_plan_with_customer_id(tenant_id: str, *, require_quota_inf
     customer_id = (tenant_plan.get("customer_id") or "").strip()
     if not customer_id:
         logging.warning(
-            "No customer_id found while loading billing plan, expected one after registration; "
-            "trying to create a Stripe customer for tenant %s",
+            "No customer_id found while loading billing plan, expected one after registration; trying to create a Stripe customer for tenant %s",
             tenant_id,
         )
         customer_id = await billing_set_customer_id_async(tenant_id)
@@ -1022,9 +1042,31 @@ async def billing_plan_overview():
     return get_json_result(data=plan_overview)
 
 
+# Short-lived in-memory cache for _get_api_request_limit_by_plan().
+# Avoids a MySQL query on every API request; 60 s TTL keeps it fresh
+# while still providing significant relief under high QPS.
+_api_limit_cache: dict[str, tuple[float, int]] = {}  # key -> (expiry_ts, value)
+_API_LIMIT_CACHE_TTL = 60  # seconds
+
+
+def _invalidate_api_limit_cache(plan_name: str | None = None) -> None:
+    """Evict cached API limit entries.  If *plan_name* is given only that plan's
+    entries are removed; otherwise the entire cache is cleared."""
+    if not plan_name:
+        _api_limit_cache.clear()
+        return
+    key = plan_name.strip()
+    _api_limit_cache.pop(f"{key}:minute", None)
+
+
 def _get_api_request_limit_by_plan(plan_name: str) -> int:
     """
     Get per-minute API request limit based on plan type.
+
+    Reads from MySQL billing_product table (durable). Falls back to
+    in-memory YAML config if MySQL has no data.  Results are cached
+    in-process for up to 60 seconds to avoid hammering MySQL on every
+    API request.
 
     Args:
         plan_name: Name of the plan (e.g., "Trial", "Starter", "Pro", "Enterprise")
@@ -1034,19 +1076,52 @@ def _get_api_request_limit_by_plan(plan_name: str) -> int:
     """
     key = (plan_name or "").strip()
     if not key:
-        return LIMITED_API_REQUESTS
+        return 500
 
-    info = settings.BILLING_PLAN_TO_INFO.get(key) or settings.BILLING_PLAN_TO_INFO.get(key.title()) or {}
-    if not info:
-        info = settings.BILLING_PLAN_TO_INFO.get(BILLING_PLAN_TRIAL_NAME) or {}
-    value = info.get("api_request_limit_per_minute")
+    # Check in-memory cache first
+    cache_key = f"{key}:minute"
+    cached = _api_limit_cache.get(cache_key)
+    if cached:
+        expiry_ts, cached_val = cached
+        if time.time() < expiry_ts:
+            return cached_val
+        # Expired — evict
+        del _api_limit_cache[cache_key]
 
-    if not value:
-        return LIMITED_API_REQUESTS
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return LIMITED_API_REQUESTS
+    # Try MySQL first (durable source of truth)
+    from api.db.services.billing_service import ProductService
+
+    plan = ProductService.get_by_name(key)
+    if not plan:
+        plan = ProductService.get_by_name(BILLING_PLAN_TRIAL_NAME)
+
+    result = None
+    if plan:
+        value = plan.get("api_request_limit_per_minute")
+        if value:
+            try:
+                result = int(value)
+            except (TypeError, ValueError):
+                pass
+
+    if result is None:
+        # Fallback to in-memory YAML config
+        info = settings.BILLING_PLAN_TO_INFO.get(key) or settings.BILLING_PLAN_TO_INFO.get(key.title()) or {}
+        if not info:
+            info = settings.BILLING_PLAN_TO_INFO.get(BILLING_PLAN_TRIAL_NAME) or {}
+        value = info.get("api_request_limit_per_minute")
+
+        if not value:
+            result = 500
+        else:
+            try:
+                result = int(value)
+            except (TypeError, ValueError):
+                result = 500
+
+    # Populate cache
+    _api_limit_cache[cache_key] = (time.time() + _API_LIMIT_CACHE_TTL, result)
+    return result
 
 
 @manager.route("/addon_overview", methods=["GET"])  # noqa: F821
@@ -1161,11 +1236,13 @@ async def billing_points_price():
     unit_amount = getattr(price_obj, "unit_amount", None)
     price_usd = unit_amount / 100 if unit_amount is not None else None
 
-    return get_json_result(data={
-        "price_id": price_id,
-        "price_usd": price_usd,
-        "points_per_unit": points_per_unit,
-    })
+    return get_json_result(
+        data={
+            "price_id": price_id,
+            "price_usd": price_usd,
+            "points_per_unit": points_per_unit,
+        }
+    )
 
 
 @manager.route("/deepdoc/usage", methods=["GET"])  # noqa: F821
@@ -1207,17 +1284,19 @@ async def billing_deepdoc_usage():
         amount_paid = round(committed_points / 100, 2)
         amount_unpaid = round(held_points / 100, 2)
 
-    return get_json_result(data={
-        "current_period_start": to_utc_date_str(cycle_start),
-        "current_period_end": to_utc_date_str(cycle_end),
-        "deepdoc": {
-            "pages_paid": pages_paid,
-            "pages_unpaid": pages_unpaid,
-            "amount_paid": amount_paid,
-            "amount_unpaid": amount_unpaid,
-            "currency": "USD",
-        },
-    })
+    return get_json_result(
+        data={
+            "current_period_start": to_utc_date_str(cycle_start),
+            "current_period_end": to_utc_date_str(cycle_end),
+            "deepdoc": {
+                "pages_paid": pages_paid,
+                "pages_unpaid": pages_unpaid,
+                "amount_paid": amount_paid,
+                "amount_unpaid": amount_unpaid,
+                "currency": "USD",
+            },
+        }
+    )
 
 
 @manager.route("/points/balance", methods=["GET"])  # noqa: F821
@@ -1261,6 +1340,7 @@ async def billing_points_balance():
 async def billing_points_ledger():
     """Return paginated point ledger entries for the authenticated tenant."""
     from api.db.db_models import PointLedger as PointLedgerModel
+
     tenant_id = request.args.get("tenant_id", current_user.id)
     if current_user.id != tenant_id:
         return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
@@ -1283,11 +1363,7 @@ async def billing_points_ledger():
             if end_dt:
                 query = query.where(PointLedgerModel.create_time <= int(end_dt.timestamp() * 1000))
         total = query.count()
-        items = list(
-            query.order_by(PointLedgerModel.create_time.desc())
-            .paginate(page, page_size)
-            .dicts()
-        )
+        items = list(query.order_by(PointLedgerModel.create_time.desc()).paginate(page, page_size).dicts())
     return get_json_result(data={"total": total, "items": items})
 
 
@@ -1297,6 +1373,7 @@ async def billing_points_ledger():
 async def billing_points_holds():
     """Return paginated point hold records for the authenticated tenant."""
     from api.db.db_models import PointHold as PointHoldModel
+
     tenant_id = request.args.get("tenant_id", current_user.id)
     if current_user.id != tenant_id:
         return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
@@ -1319,11 +1396,7 @@ async def billing_points_holds():
             if end_dt:
                 query = query.where(PointHoldModel.create_time <= int(end_dt.timestamp() * 1000))
         total = query.count()
-        items = list(
-            query.order_by(PointHoldModel.create_time.desc())
-            .paginate(page, page_size)
-            .dicts()
-        )
+        items = list(query.order_by(PointHoldModel.create_time.desc()).paginate(page, page_size).dicts())
     return get_json_result(data={"total": total, "items": items})
 
 
@@ -1683,7 +1756,7 @@ async def billing_all_addon_plans():
         product_quota_members = getattr(product, "quota_members", 0) or 0
         product_quota_storage = getattr(product, "quota_storage", 0) or plan_info.get("quota_storage", 0) or 0
         product_quota_points = plan_info.get("quota_points", 0) or 0
-        product_quota_api_limits = plan_info.get("api_request_limit_per_minute", 0) or 0
+        product_quota_api_limits = getattr(product, "api_request_limit_per_minute", 0) or 0
         addon_plans.append(
             {
                 "id": product.id,
@@ -1866,10 +1939,7 @@ async def billing_upcoming():
         target_plan_name = settings.BILLING_PRICEID_TO_PRODUCT.get(new_price_id, "")
         force_new_subscription_preview = _should_preview_as_new_subscription(current_plan_name, target_plan_name)
         if force_new_subscription_preview:
-            logging.info(
-                f"billing_upcoming: preview Trial->paid as new subscription, "
-                f"current_plan={current_plan_name}, target_plan={target_plan_name}, customer={customer_id}"
-            )
+            logging.info(f"billing_upcoming: preview Trial->paid as new subscription, current_plan={current_plan_name}, target_plan={target_plan_name}, customer={customer_id}")
 
     if is_valid_subscription and not force_new_subscription_preview:
         logging.info(f"Previewing price change for subscription {subscription_id}: new_price_id={new_price_id}")
@@ -2055,14 +2125,8 @@ async def _handle_active_subscription_checkout(
     requested_plan_name = settings.BILLING_PRICEID_TO_PRODUCT.get(subscription_price_id, "")
 
     if subscription_price_id in current_item_price_ids:
-        logging.info(
-            f"Tenant {tenant_id} already has subscription {subscription_id} on price {subscription_price_id}, "
-            f"current items: {current_item_price_ids}"
-        )
-        msg = (
-            f"Tenant {tenant_id} already has an active subscription {subscription_id} on price {subscription_price_id}. "
-            f"Requested price_id matches the current plan '{current_plan_name}'."
-        )
+        logging.info(f"Tenant {tenant_id} already has subscription {subscription_id} on price {subscription_price_id}, current items: {current_item_price_ids}")
+        msg = f"Tenant {tenant_id} already has an active subscription {subscription_id} on price {subscription_price_id}. Requested price_id matches the current plan '{current_plan_name}'."
         if trial_price_id and subscription_price_id != trial_price_id:
             msg += f" To downgrade, pass the Trial price_id {trial_price_id}."
         return get_json_result(
@@ -2106,6 +2170,7 @@ async def _handle_active_subscription_checkout(
         # DB target so storage quota reads reflect the pending cancellation immediately.
         if is_trial_target:
             from api.db.db_models import Subscription as _Sub
+
             _storage_item_id = (SubscriptionService.get_by_tenant_id(tenant_id) or {}).get("addon_subscription_item_id") or None
             with DB.atomic():
                 _Sub.update(
@@ -2197,11 +2262,7 @@ async def _handle_active_subscription_checkout(
     }
     accepted_data = {
         "customer_id": (tenant_plan.get("customer_id") or "").strip()
-        or (
-            (getattr(updated_subscription, "customer", "") or "").strip()
-            if not isinstance(updated_subscription, dict)
-            else (updated_subscription.get("customer") or "").strip()
-        ),
+        or ((getattr(updated_subscription, "customer", "") or "").strip() if not isinstance(updated_subscription, dict) else (updated_subscription.get("customer") or "").strip()),
         "subscription_id": subscription_id,
         "plan_name": plan_name_after_upgrade,
         "price_id": subscription_price_id,
@@ -2248,17 +2309,22 @@ async def _handle_recoverable_subscription_checkout(
                 "price_id": subscription_price_id,
             },
         )
-        return get_json_result(
-            data={"cancelled": True, "plan_name": target_plan_name},
-            message="Your subscription has been cancelled and your plan downgraded.",
-            code=RetCode.SUCCESS,
-        )
+        # Downgrade rate limits since plan changed
+        try:
+            from common.billing_rate_limit_sync import sync_tenant_rate_limit
+
+            sync_tenant_rate_limit(tenant_id, target_plan_name)
+        except Exception as rl_err:
+            logging.warning(f"Failed to sync rate limit for tenant {tenant_id} on downgrade: {rl_err}")
+            _invalidate_api_limit_cache(target_plan_name)
+            return get_json_result(
+                data={"cancelled": True, "plan_name": target_plan_name},
+                message="Your subscription has been cancelled and your plan downgraded.",
+                code=RetCode.SUCCESS,
+            )
 
     invoice_url = (tenant_plan.get("invoice_url") or "").strip()
-    logging.info(
-        f"Tenant {tenant_id} has delinquent subscription {subscription_id} "
-        f"({subscription_status}); redirecting to invoice {invoice_url} for payment."
-    )
+    logging.info(f"Tenant {tenant_id} has delinquent subscription {subscription_id} ({subscription_status}); redirecting to invoice {invoice_url} for payment.")
     return get_json_result(
         data={"payment_required": True, "invoice_url": invoice_url},
         message="Your subscription has an outstanding invoice. Please pay it before changing your plan.",
@@ -2475,6 +2541,57 @@ async def billing_checkout():
     )
 
 
+@manager.route("/cancel-scheduled-subscription-change", methods=["POST"])  # noqa: F821
+@login_required
+@billing_enabled_guard(_billing_disabled_response)
+async def billing_cancel_scheduled_subscription_change():
+    req = await get_request_json()
+    tenant_id = req.get("tenant_id")
+    if not tenant_id:
+        return get_json_result(
+            data=False,
+            message="Missing required parameters tenant_id.",
+            code=RetCode.BAD_REQUEST,
+        )
+    if current_user.id != tenant_id:
+        return get_json_result(
+            data=False,
+            message="No authorization.",
+            code=RetCode.AUTHENTICATION_ERROR,
+        )
+
+    tenant_plan = SubscriptionService.get_by_tenant_id(tenant_id)
+    subscription_id = (tenant_plan.get("subscription_id") or "").strip()
+    if not subscription_id:
+        return get_json_result(
+            data=False,
+            message="Subscription not found.",
+            code=RetCode.BAD_REQUEST,
+        )
+
+    canceled = await cancel_scheduled_subscription_change_async(subscription_id)
+
+    if canceled:
+        # When the schedule is released, target_quantity_bytes in the DB still holds
+        # the pending value (e.g. 0 for a storage cancellation that was just aborted).
+        # _get_storage_target_quantity_bytes_async falls back to that stale value once
+        # the schedule is gone (status == "released"), so reset it to the current live
+        # addon_storage_bytes so storage quota reads stay correct.
+        current_addon_bytes = safe_int((tenant_plan or {}).get("addon_storage_bytes"), 0)
+        from api.db.db_models import Subscription as _Sub
+
+        with DB.atomic():
+            _Sub.update(
+                target_quantity_bytes=current_addon_bytes,
+            ).where(_Sub.tenant_id == tenant_id).execute()
+
+    return get_json_result(
+        data={"canceled": bool(canceled)},
+        message="Scheduled subscription change canceled." if canceled else "No scheduled subscription change found.",
+        code=RetCode.SUCCESS,
+    )
+
+
 @manager.route("/create-portal-session", methods=["POST"])  # noqa: F821
 @login_required
 @billing_enabled_guard(_billing_disabled_response)
@@ -2544,9 +2661,10 @@ def _get_stripe_webhook_secret(force_refresh: bool = False) -> str | None:
 
     # Load from persistent storage
     from api.db.services.system_settings_service import SystemSettingsService
+
     setting = SystemSettingsService.get_by_name("billing_webhook_secret")
     setting_list = list(setting) if setting else []
-    if setting_list and hasattr(setting_list[0], 'value') and setting_list[0].value:
+    if setting_list and hasattr(setting_list[0], "value") and setting_list[0].value:
         _stripe_webhook_secret = setting_list[0].value
         return _stripe_webhook_secret
 
@@ -2595,14 +2713,16 @@ async def billing_session_status(session_id: str):
     Frontend polls this after redirect from Stripe to determine outcome.
     """
     checkout_session = await stripe.checkout.Session.retrieve_async(session_id)
-    return get_json_result(data={
-        "payment_status": checkout_session.payment_status,
-        "mode": getattr(checkout_session, "mode", None),
-        "amount_cents": checkout_session.amount_total,
-        "currency": checkout_session.currency,
-        "created": checkout_session.created,
-        "metadata": dict(checkout_session.metadata or {}),
-    })
+    return get_json_result(
+        data={
+            "payment_status": checkout_session.payment_status,
+            "mode": getattr(checkout_session, "mode", None),
+            "amount_cents": checkout_session.amount_total,
+            "currency": checkout_session.currency,
+            "created": checkout_session.created,
+            "metadata": dict(checkout_session.metadata or {}),
+        }
+    )
 
 
 @manager.route("/webhook", methods=["POST"])  # noqa: F821
@@ -2754,6 +2874,7 @@ def _handle_payment_intent_succeeded(event: dict):
     valid_price_ids = []
     from api.db.services.billing_service import ProductService
     from api.db.db_models import ProductType
+
     latest_addon_products = ProductService.get_latest_by_type(ProductType.ADDON)
     for product in latest_addon_products:
         if product.price_ids:
@@ -3380,10 +3501,7 @@ def _handle_customer_subscription_updated(event: dict):
     elif (
         existing_main_subscription
         and subscription_id == existing_main_subscription.get("subscription_id")
-        and (
-            existing_main_subscription.get("addon_subscription_item_id")
-            or safe_int(existing_main_subscription.get("addon_storage_bytes", 0), 0) > 0
-        )
+        and (existing_main_subscription.get("addon_subscription_item_id") or safe_int(existing_main_subscription.get("addon_storage_bytes", 0), 0) > 0)
     ):
         # Storage item is absent from this event but DB still records one.
         # This happens when storage is downgraded to 0: Stripe removes the item
@@ -3394,6 +3512,7 @@ def _handle_customer_subscription_updated(event: dict):
             tenant_id,
         )
         from api.db.db_models import Subscription as _Subscription
+
         with DB.atomic():
             _Subscription.update(
                 addon_subscription_item_id=None,
@@ -3542,10 +3661,7 @@ def _handle_customer_subscription_updated(event: dict):
                 subscription_status=new_status or _normalize_subscription_status(subscription.status),
                 invoice_id=latest_invoice_id,
             )
-            logging.info(
-                "subscription.updated fallback sync by item diff: "
-                f"tenant_id={tenant_id}, subscription_id={subscription_id}, db_price_id={db_price_id}, event_price_id={first_price_id}"
-            )
+            logging.info(f"subscription.updated fallback sync by item diff: tenant_id={tenant_id}, subscription_id={subscription_id}, db_price_id={db_price_id}, event_price_id={first_price_id}")
 
         if new_status:
             _sync_main_subscription_from_stripe(
@@ -3635,6 +3751,16 @@ def _handle_customer_subscription_deleted(event: dict):
                 "target_storage_bytes": None,
             }
             SubscriptionService.upsert_subscription(tenant_id, subscription_dict)
+
+            # Downgrade rate limits to Trial/default since subscription is deleted
+            try:
+                from common.billing_rate_limit_sync import sync_tenant_rate_limit
+
+                sync_tenant_rate_limit(tenant_id, None)
+            except Exception as rl_err:
+                logging.warning(f"Failed to downgrade rate limit for tenant {tenant_id} on subscription deletion: {rl_err}")
+            _invalidate_api_limit_cache()  # clear all — subscription deleted, falling back to Trial
+
         logging.info("Handled main customer.subscription.deleted for tenant %s", tenant_id)
         return
     logging.info("customer.subscription.deleted without tenant context: subscription_id=%s", subscription_id)

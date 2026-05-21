@@ -284,6 +284,18 @@ async def login():
         user.save()
         msg = "Welcome back!"
 
+        # Sync session token to Redis for rate limiter
+        try:
+            from common.billing_rate_limit_sync import sync_session_token
+            from api.db.db_models import UserTenant
+            ut = UserTenant.select(UserTenant.tenant_id).where(
+                UserTenant.user_id == user.id, UserTenant.status == "1"
+            ).dicts().first()
+            if ut:
+                sync_session_token(user.access_token, ut["tenant_id"])
+        except Exception:
+            pass
+
         return await construct_response(data=response_data, auth=user.get_id(), message=msg)
     else:
         return get_json_result(

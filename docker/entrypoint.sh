@@ -164,6 +164,42 @@ while IFS= read -r line || [[ -n "$line" ]]; do
 done < "${TEMPLATE_FILE}"
 
 # -----------------------------------------------------------------------------
+# Export Redis connection info for Nginx Lua rate limiter
+# -----------------------------------------------------------------------------
+PY=python3
+# Parse redis config using a Python script file (avoids quoting issues with inline -c)
+"$PY" <<'PYEOF' > /tmp/ratelimit_env.sh
+import yaml, os
+conf = os.environ.get("CONF_FILE", "/ragflow/conf/service_conf.yaml")
+try:
+    with open(conf) as f:
+        cfg = yaml.safe_load(f) or {}
+except Exception:
+    cfg = {}
+redis_cfg = cfg.get("redis", {})
+host_port = str(redis_cfg.get("host", "redis:6379"))
+parts = host_port.split(":")
+host = parts[0] if parts[0] else "redis"
+port = parts[1] if len(parts) > 1 else "6379"
+import shlex
+password = str(redis_cfg.get("password", ""))
+db = str(redis_cfg.get("db", "1"))
+print(f"export RATELIMIT_REDIS_HOST={shlex.quote(host)}")
+print(f"export RATELIMIT_REDIS_PORT={shlex.quote(port)}")
+print(f"export RATELIMIT_REDIS_PASSWORD={shlex.quote(password)}")
+print(f"export RATELIMIT_REDIS_DB={shlex.quote(db)}")
+PYEOF
+source /tmp/ratelimit_env.sh
+echo "Rate limiter Redis: ${RATELIMIT_REDIS_HOST}:${RATELIMIT_REDIS_PORT} db=${RATELIMIT_REDIS_DB}"
+
+# Inject DNS resolver into nginx.conf (required for Lua cosocket DNS resolution in K8s)
+DNS_RESOLVER=$(grep '^nameserver' /etc/resolv.conf | head -1 | awk '{print $2}')
+if [ -n "$DNS_RESOLVER" ]; then
+    sed -i "s/^http {/http {\n    resolver ${DNS_RESOLVER} valid=30s ipv6=off;/" /etc/nginx/nginx.conf
+    echo "Nginx DNS resolver: ${DNS_RESOLVER}"
+fi
+
+# -----------------------------------------------------------------------------
 # Select Nginx Configuration based on API_PROXY_SCHEME
 # -----------------------------------------------------------------------------
 NGINX_CONF_DIR="/etc/nginx/conf.d"
@@ -184,7 +220,7 @@ else
     echo "Default: applied nginx config: ragflow.conf.python"
 fi
 
-export LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu/"
+export LD_LIBRARY_PATH="/usr/local/openresty/openssl3/lib:/usr/local/openresty/openssl/lib:/usr/lib/x86_64-linux-gnu/"
 PY=python3
 export LD_PRELOAD="$(pkg-config --variable=libdir jemalloc)/libjemalloc.so"
 export MALLOC_CONF="dirty_decay_ms:2000,muzzy_decay_ms:2000"
@@ -257,7 +293,7 @@ run_with_restart() {
 
 if [[ "${ENABLE_WEBSERVER}" -eq 1 ]]; then
     echo "Starting nginx..."
-    /usr/sbin/nginx
+    /usr/sbin/nginx -c /etc/nginx/nginx.conf
 
     run_with_restart "RAGFlow server" "$PY" api/ragflow_server.py ${INIT_SUPERUSER_ARGS} &
 

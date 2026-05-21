@@ -89,7 +89,6 @@ billing:
       quota_members: 1
       quota_storage: 100MB
       api_request_limit_per_minute: 500
-      api_request_limit_per_month: 5000
       task_priority: low
       price_ids: 'price_1TPawr2XhWscgPRmFFLnlhpK'
       product_type: subscription
@@ -99,7 +98,6 @@ billing:
       quota_members: 5
       quota_storage: 5G
       api_request_limit_per_minute: 2147483647
-      api_request_limit_per_month: 2147483647
       task_priority: high
       price_ids: 'price_1Si7S7PtsKvwvC5f3IjPpPcN'
       product_type: subscription
@@ -109,7 +107,6 @@ billing:
       quota_members: 20
       quota_storage: 50G
       api_request_limit_per_minute: 2147483647
-      api_request_limit_per_month: 2147483647
       task_priority: high
       price_ids: 'price_1Si7SyPtsKvwvC5fxloqaKPP'
       product_type: subscription

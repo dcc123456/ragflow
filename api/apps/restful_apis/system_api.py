@@ -13,7 +13,6 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 #
-
 import json
 import logging
 from datetime import datetime
@@ -325,6 +324,13 @@ def new_token():
         if not APITokenService.save(**obj):
             return get_data_error_result(message="Fail to new a dialog!")
 
+        # Sync new API token to Redis for Nginx Lua rate limiter
+        try:
+            from common.billing_rate_limit_sync import sync_api_token
+            sync_api_token(obj["token"], tenant_id)
+        except Exception:
+            pass
+
         return get_json_result(data=obj)
     except Exception as e:
         return server_error_response(e)
@@ -363,6 +369,14 @@ def rm(token):
 
         tenant_id = tenants[0].tenant_id
         APITokenService.filter_delete([APIToken.tenant_id == tenant_id, APIToken.token == token])
+
+        # Remove API token from Redis rate limiter cache
+        try:
+            from common.billing_rate_limit_sync import remove_api_token
+            remove_api_token(token)
+        except Exception:
+            pass
+
         return get_json_result(data=True)
     except Exception as e:
         return server_error_response(e)
@@ -392,18 +406,18 @@ async def set_logger_level():
     tags:
         - System
     parameters:
-        - in: body
-          name: body
-          required: true
-          schema:
-            type: object
-            properties:
-                pkg_name:
-                    type: string
-                    description: Package name (e.g., "rag.utils.es_conn")
-                level:
-                    type: string
-                    description: Log level (DEBUG, INFO, WARNING, ERROR)
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          properties:
+              pkg_name:
+                  type: string
+                  description: Package name (e.g., "rag.utils.es_conn")
+              level:
+                  type: string
+                  description: Log level (DEBUG, INFO, WARNING, ERROR)
     responses:
         200:
             description: Log level updated successfully

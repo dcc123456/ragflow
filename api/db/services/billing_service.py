@@ -78,6 +78,7 @@ class ProductService(CommonService):
             cls.model.price_ids,
             cls.model.product_type,
             cls.model.version,
+            cls.model.api_request_limit_per_minute,
         ]
         plan = cls.model.select(*fields).where(cls.model.name == product_name).order_by(cls.model.version.desc()).dicts().first()
         return plan

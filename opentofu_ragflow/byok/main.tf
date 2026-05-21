@@ -2212,6 +2212,9 @@ resource "kubernetes_secret_v1" "ragflow_env" {
     # This is read by common/settings.py to set MAX_CONTENT_LENGTH in Quart/Flask
     # and also by rag/svr/task_executor.py to reject oversized documents before processing
     MAX_CONTENT_LENGTH = local.max_content_length_bytes
+
+    # Rate limiting control (set to "1" to disable, useful for CI)
+    RATELIMIT_DISABLED = var.rate_limit_disabled ? "1" : "0"
   }
 
   type = "Opaque"
@@ -2345,6 +2348,8 @@ resource "kubernetes_service_v1" "ragflow_frontend" {
 }
 
 # Service 2: API Server - serves REST API at /v1/*
+# Routes through pod's nginx (port 80) so that rate_limit.lua executes
+# before proxying to the Python backend (127.0.0.1:9380) inside the pod.
 resource "kubernetes_service_v1" "ragflow_api" {
   count = var.deploy_app_stack ? 1 : 0
   metadata {
@@ -2367,8 +2372,8 @@ resource "kubernetes_service_v1" "ragflow_api" {
     }
 
     port {
-      port        = 9380
-      target_port = 9380
+      port        = 80
+      target_port = 80
       name        = "api"
     }
 
@@ -2527,6 +2532,9 @@ resource "kubernetes_deployment_v1" "ragflow" {
 
     # Limit revision history to reduce orphaned ReplicaSets
     revision_history_limit = 1
+
+    # Must be >= startup_probe max time (900s) to avoid "exceeded progress deadline"
+    progress_deadline_seconds = 1200
 
     strategy {
       type = "Recreate"
@@ -2788,6 +2796,9 @@ resource "kubernetes_deployment_v1" "admin" {
     # Limit revision history to reduce orphaned ReplicaSets
     revision_history_limit = 1
 
+    # Must be >= startup_probe max time (300s) to avoid "exceeded progress deadline"
+    progress_deadline_seconds = 600
+
     strategy {
       type = "Recreate"
     }
@@ -2876,6 +2887,19 @@ resource "kubernetes_deployment_v1" "admin" {
             failure_threshold     = 2
           }
 
+          # Readiness probe for admin health check
+          # Note: startupProbe gates this, so it only starts after startup succeeds
+          readiness_probe {
+            http_get {
+              path = "/live"
+              port = 9381
+            }
+            initial_delay_seconds = 0
+            period_seconds        = 30
+            timeout_seconds       = 5
+            failure_threshold     = 2
+          }
+
           # Standard ragflow environment variables
           env_from {
             secret_ref {
@@ -2913,6 +2937,14 @@ resource "kubernetes_deployment_v1" "admin" {
         }
       }
     }
+  }
+
+  # Increase timeout to accommodate slow startup (startup_probe allows up to 5 min)
+  # Default kubernetes provider timeout is ~10 min, add margin for image pull + NEG readiness gate
+  timeouts {
+    create = "20m"
+    update = "20m"
+    delete = "10m"
   }
 }
 
@@ -3529,7 +3561,7 @@ resource "kubernetes_manifest" "ohttps_sync_cronjob" {
 # team will fix this in a future release. The temporary workaround is to create
 # separate HTTPRoutes for different ports of the same service.
 
-# HTTPRoute 1: /v1 and /api -> port 9380 (API service)
+# HTTPRoute 1: /v1 and /api -> port 80 (nginx with rate limiting -> Python backend)
 # Note: /api/v1/admin is excluded and handled by http_route_admin
 resource "kubernetes_manifest" "http_route_api" {
   count = var.deploy_app_stack ? 1 : 0
@@ -3568,7 +3600,7 @@ resource "kubernetes_manifest" "http_route_api" {
           backendRefs = [
             {
               name = kubernetes_service_v1.ragflow_api[0].metadata[0].name
-              port = 9380
+              port = 80
             }
           ]
           # NOTE: Do NOT use HTTPRoute timeouts {} here.
@@ -3591,7 +3623,7 @@ resource "kubernetes_manifest" "http_route_api" {
           backendRefs = [
             {
               name = kubernetes_service_v1.ragflow_api[0].metadata[0].name
-              port = 9380
+              port = 80
             }
           ]
         }
