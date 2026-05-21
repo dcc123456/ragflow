@@ -15,7 +15,7 @@
 #
 
 from enum import IntEnum, Enum
-from strenum import StrEnum
+from enum import StrEnum
 
 
 class PermissionOperationEnum(StrEnum):

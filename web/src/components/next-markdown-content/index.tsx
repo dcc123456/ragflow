@@ -1,5 +1,6 @@
 import Image from '@/components/image';
 import SvgIcon from '@/components/svg-icon';
+import { MarkdownRemarkPlugins } from '@/constants/markdown-remark-plugins';
 import { IReferenceChunk, IReferenceObject } from '@/interfaces/database/chat';
 import { getExtension } from '@/utils/document-util';
 import { downloadFileFromBlob } from '@/utils/file-util';
@@ -10,8 +11,6 @@ import Markdown from 'react-markdown';
 import SyntaxHighlighter from 'react-syntax-highlighter';
 import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
-import remarkGfm from 'remark-gfm';
-import remarkMath from 'remark-math';
 import { visitParents } from 'unist-util-visit-parents';
 
 import { useTranslation } from 'react-i18next';
@@ -359,7 +358,7 @@ function MarkdownContent({
     <div dir={dir} className={styles.markdownContentWrapper}>
       <Markdown
         rehypePlugins={[rehypeWrapReference, rehypeKatex, rehypeRaw]}
-        remarkPlugins={[remarkGfm, remarkMath]}
+        remarkPlugins={MarkdownRemarkPlugins}
         components={
           {
             p: ({ children, ...props }: any) => <p {...props}>{children}</p>,

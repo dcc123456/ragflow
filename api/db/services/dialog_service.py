@@ -14,7 +14,6 @@
 #  limitations under the License.
 #
 import asyncio
-import binascii
 import logging
 import re
 import time
@@ -53,6 +52,7 @@ from rag.nlp.search import index_name
 from rag.prompts.generator import chunks_format, citation_prompt, cross_languages, full_question, kb_prompt, keyword_extraction, message_fit_in, PROMPT_JINJA_ENV, ASK_SUMMARY
 from common.token_utils import num_tokens_from_string
 from rag.utils.tavily_conn import Tavily
+from rag.utils.tts_cache import synthesize_with_cache
 from common.string_utils import remove_redundant_spaces
 from common import settings
 
@@ -113,7 +113,6 @@ async def _hydrate_chunk_vectors(retriever, chunks, tenant_ids, kb_ids):
         cid = ck.get("chunk_id")
         if cid and cid in vectors:
             ck["vector"] = vectors[cid]
-
 
 def _normalize_internet_flag(value):
     if isinstance(value, bool):
@@ -639,6 +638,7 @@ async def async_chat(dialog, messages, stream=True, *, user_id: str|None=None, *
     check_llm_ts = timer()
 
     langfuse_tracer = None
+    langfuse_generation = None
     trace_context = {}
     langfuse_keys = TenantLangfuseService.filter_by_tenant(tenant_id=dialog.tenant_id)
     if langfuse_keys:
@@ -874,7 +874,7 @@ async def async_chat(dialog, messages, stream=True, *, user_id: str|None=None, *
         gen_conf["max_tokens"] = min(gen_conf["max_tokens"], max_tokens - used_token_count)
 
     async def decorate_answer(answer):
-        nonlocal embd_mdl, prompt_config, knowledges, kwargs, kbinfos, prompt, retrieval_ts, questions, langfuse_tracer
+        nonlocal embd_mdl, prompt_config, knowledges, kwargs, kbinfos, prompt, retrieval_ts, questions, langfuse_generation
 
         refs = {}
         ans = answer.split("</think>")
@@ -887,6 +887,8 @@ async def async_chat(dialog, messages, stream=True, *, user_id: str|None=None, *
             idx = set([])
             normalized_answer = normalize_arabic_digits(answer) or ""
             if embd_mdl and not CITATION_MARKER_PATTERN.search(normalized_answer):
+                # Main retrieval no longer ships chunk vectors back from ES.
+                # Pull them on demand for the chunks we are about to cite.
                 await _hydrate_chunk_vectors(retriever, kbinfos.get("chunks", []), tenant_ids, dialog.kb_ids)
                 answer, idx = retriever.insert_citations(
                     answer,
@@ -944,19 +946,35 @@ async def async_chat(dialog, messages, stream=True, *, user_id: str|None=None, *
             f"  - Token speed: {int(tk_num / (generate_result_time_cost / 1000.0))}/s"
         )
 
-        # Add a condition check to call the end method only if langfuse_tracer exists
-        if langfuse_tracer and "langfuse_generation" in locals():
+        # Add a condition check to call the end method only if langfuse_generation exists
+        if langfuse_generation is not None:
             langfuse_output = "\n" + re.sub(r"^.*?(### Query:.*)", r"\1", prompt, flags=re.DOTALL)
             langfuse_output = {"time_elapsed:": re.sub(r"\n", "  \n", langfuse_output), "created_at": time.time()}
-            langfuse_generation.update(output=langfuse_output)
+            langfuse_generation.update(
+                output=langfuse_output,
+                usage_details={
+                    "input": used_token_count,
+                    "output": tk_num,
+                    "total": used_token_count + tk_num,
+                },
+            )
             langfuse_generation.end()
 
         return {"answer": think + answer, "reference": refs, "prompt": re.sub(r"\n", "  \n", prompt), "created_at": time.time()}
 
     if langfuse_tracer:
-        langfuse_generation = langfuse_tracer.start_generation(
-            trace_context=trace_context, name="chat", model=llm_model_config["llm_name"], input={"prompt": prompt, "prompt4citation": prompt4citation, "messages": msg}
-        )
+        try:
+            langfuse_generation = langfuse_tracer.start_observation(
+                as_type="generation",
+                trace_context=trace_context,
+                name="chat",
+                model=llm_model_config["llm_name"],
+                input={"prompt": prompt, "prompt4citation": prompt4citation, "messages": msg},
+            )
+        except Exception as e:  # noqa: BLE001 - tracing must not break chat flow
+            logger.warning("Langfuse start_observation failed; continuing without tracing: %s", e)
+            langfuse_tracer = None
+            langfuse_generation = None
 
     if stream:
         if llm_type == "chat":
@@ -1509,14 +1527,7 @@ def tts(tts_mdl, text):
     text = clean_tts_text(text)
     if not text:
         return None
-    bin = b""
-    try:
-        for chunk in tts_mdl.tts(text):
-            bin += chunk
-    except Exception as e:
-        logging.error(f"TTS failed: {e}, text={text!r}")
-        return None
-    return binascii.hexlify(bin).decode("utf-8")
+    return synthesize_with_cache(tts_mdl, text)
 
 
 class _ThinkStreamState:
@@ -1700,6 +1711,8 @@ async def async_ask(question, kb_ids, tenant_id, chat_llm_name=None, search_conf
 
     async def decorate_answer(answer):
         nonlocal knowledges, kbinfos, sys_prompt
+        # Main retrieval no longer ships chunk vectors back from ES. Pull
+        # them on demand for the chunks we are about to cite.
         await _hydrate_chunk_vectors(retriever, kbinfos.get("chunks", []), tenant_ids, kb_ids)
         answer, idx = retriever.insert_citations(answer, [ck["content_ltks"] for ck in kbinfos["chunks"]], [ck["vector"] for ck in kbinfos["chunks"]], embd_mdl, tkweight=0.7, vtweight=0.3)
         idx = set([kbinfos["chunks"][int(i)]["doc_id"] for i in idx])
