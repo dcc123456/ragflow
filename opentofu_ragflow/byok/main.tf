@@ -1602,8 +1602,8 @@ resource "kubernetes_config_map_v1" "shared_elasticsearch_role_payload" {
       indices = [
         for pattern in(
           local.es_index_prefix_effective != ""
-          ? ["ragflow_${local.es_index_prefix_effective}_*", "ragflow_doc_meta_${local.es_index_prefix_effective}_*"]
-          : ["ragflow_*", "ragflow_doc_meta_*"]
+          ? ["ragflow_${local.es_index_prefix_effective}_*", "ragflow_doc_meta_${local.es_index_prefix_effective}_*", "memory_${local.es_index_prefix_effective}_*"]
+          : ["ragflow_*", "ragflow_doc_meta_*", "memory_*"]
           ) : {
           names      = [pattern]
           privileges = ["read", "write", "create_index", "view_index_metadata", "manage"]
