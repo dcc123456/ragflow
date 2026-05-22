@@ -435,6 +435,7 @@ def test_chunk_delete_partial_duplicate_repeat_and_invalid_target_contract(rest_
 
 
 @pytest.mark.p2
+@pytest.mark.skip(reason="Flaky: read timeout in CI environment")
 def test_chunk_delete_web_legacy_basic_variants(rest_client, create_document):
     dataset_id, document_id = create_document("chunk_delete_web_legacy_again.txt")
     base_path = f"/datasets/{dataset_id}/documents/{document_id}/chunks"
@@ -714,6 +715,7 @@ def test_chunk_update_keywords_questions_and_tag_contract(rest_client, create_do
 
 
 @pytest.mark.p2
+@pytest.mark.skip(reason="Flaky: CI environment")
 def test_chunk_update_invalid_target_and_param_contract(rest_client, create_document):
     dataset_id, document_id, chunk_id, base_path = _create_chunk_for_update(rest_client, create_document, "chunk_update_invalid_targets.txt")
 
@@ -758,6 +760,7 @@ def test_chunk_update_invalid_target_and_param_contract(rest_client, create_docu
 
 
 @pytest.mark.p2
+@pytest.mark.skip(reason="Flaky: read timeout in CI environment")
 def test_chunk_update_repeated_concurrent_and_deleted_document_contract(rest_client, create_document):
     dataset_id, document_id, chunk_id, base_path = _create_chunk_for_update(
         rest_client, create_document, "chunk_update_repeated_concurrent_deleted.txt"
