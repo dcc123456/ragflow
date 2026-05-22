@@ -191,6 +191,12 @@ class Dealer:
             else:
                 matchDense = await self.get_vector(qst, emb_mdl, topk, req.get("similarity", 0.1))
                 q_vec = matchDense.embedding_data
+                # ES path no longer fetches chunk vectors here. The clean
+                # cosine score is recovered later via a second KNN-only call
+                # in retrieval(); chunk vectors are fetched on demand for
+                # citations (see Dealer.fetch_chunk_vectors). OceanBase
+                # still relies on local rerank against chunk vectors, so
+                # keep pulling them for that backend.
                 if settings.DOC_ENGINE_OCEANBASE:
                     src.append(f"q_{len(q_vec)}_vec")
 
@@ -700,6 +706,11 @@ class Dealer:
             did = chunk.get("doc_id", "")
 
             position_int = chunk.get("position_int", [])
+            # Chunk vectors are no longer fetched during the main retrieval
+            # call. Fall back to whatever the chunk happens to carry (Infinity
+            # path) and otherwise emit a zero placeholder so the downstream
+            # shape stays stable. Citation callers refill this via
+            # Dealer.fetch_chunk_vectors when needed.
             d = {
                 "chunk_id": id,
                 "content_ltks": chunk["content_ltks"],
@@ -763,7 +774,13 @@ class Dealer:
                    kb_ids: list[str], max_count=1024,
                    offset=0,
                    fields=["docnm_kwd", "content_with_weight", "img_id"],
-                   sort_by_position: bool = False):
+                   sort_by_position: bool = False,
+                   retrieve_all: bool = False):
+        """Return chunks for a document.
+
+        By default, preserve the historical max_count cap. When retrieve_all is
+        True, keep paging until the doc store returns fewer rows than requested.
+        """
         condition = {"doc_id": doc_id}
 
         fields_set = set(fields or [])
@@ -781,8 +798,9 @@ class Dealer:
 
         res = []
         bs = 128
-        for p in range(offset, max_count, bs):
-            limit = min(bs, max_count - p)
+        p = offset
+        while retrieve_all or p < max_count:
+            limit = bs if retrieve_all else min(bs, max_count - p)
             if limit <= 0:
                 break
             es_res = self.dataStore.search(fields, [], condition, [], orderBy, p, limit, index_name(tenant_id),
@@ -795,6 +813,7 @@ class Dealer:
             chunk_count = len(dict_chunks)
             if chunk_count == 0 or chunk_count < limit:
                 break
+            p += limit
         return res
 
     def all_tags(self, tenant_id: str, kb_ids: list[str], S=1000):

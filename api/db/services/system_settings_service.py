@@ -27,11 +27,17 @@ class SystemSettingsService(CommonService):
     @classmethod
     @DB.connection_context()
     def get_by_name(cls, name):
-        objs = cls.model.select().where(cls.model.name.startswith(name))
+        objs = cls.model.select().where(cls.model.name == name).order_by(cls.model.name.asc())
         return objs
 
     @classmethod
     @DB.connection_context()
+    def get_by_name_prefix(cls, name_prefix):
+        objs = cls.model.select().where(cls.model.name.startswith(name_prefix)).order_by(cls.model.name.asc())
+        return objs
+    
+    @classmethod
+    @DB.connection_context()    
     def get_first_by_name(cls, name):
         return cls.model.select().where(cls.model.name.startswith(name)).first()
 

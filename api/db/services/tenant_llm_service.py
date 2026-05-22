@@ -37,7 +37,6 @@ from api.db.services.user_service import UserTenantService
 from common.constants import StatusEnum
 from api.db.services.user_service import TenantService
 from common.misc_utils import get_uuid
-from rag.llm import ChatModel, CvModel, EmbeddingModel, OcrModel, RerankModel, Seq2txtModel, TTSModel
 
 
 def is_tei_enabled():
@@ -312,6 +311,8 @@ class TenantLLMService(CommonService):
     def model_instance(cls, model_config: dict, lang="Chinese", **kwargs):
         if not model_config:
             raise LookupError("Model config is required")
+        from rag.llm import ChatModel, CvModel, EmbeddingModel, OcrModel, RerankModel, Seq2txtModel, TTSModel
+
         kwargs.update({"provider": model_config["llm_factory"]})
         api_key = model_config.get("api_key_payload", model_config["api_key"])
         if model_config["model_type"] == LLMType.EMBEDDING.value:
