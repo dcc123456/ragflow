@@ -143,7 +143,7 @@ export default function ChatBasicSetting({
         name={prefixName(prefix, 'prompt_config.tavily_api_key')}
       ></TavilyFormField>
       <KnowledgeBaseFormField
-        name={prefixName(prefix, 'kb_ids')}
+        name={prefixName(prefix, 'dataset_ids')}
       ></KnowledgeBaseFormField>
       <MetadataFilter prefix={prefix}></MetadataFilter>
       <FormField

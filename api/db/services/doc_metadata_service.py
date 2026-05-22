@@ -417,6 +417,27 @@ class DocMetadataService:
             return False
 
     @classmethod
+    def clone_document_metadata(cls, source_kb_id: str, target_kb_id: str, docid_map: dict, tenant_id: str):
+        metadata_map = cls.get_metadata_for_documents(None, source_kb_id)
+        if not metadata_map:
+            return
+        index_name = cls._get_doc_meta_index_name(tenant_id)
+        docs_to_insert = []
+        for old_doc_id, meta_fields in metadata_map.items():
+            new_doc_id = docid_map.get(old_doc_id)
+            if not new_doc_id:
+                continue
+            docs_to_insert.append(
+                {
+                    "id": new_doc_id,
+                    "kb_id": target_kb_id,
+                    "meta_fields": meta_fields,
+                }
+            )
+        if docs_to_insert:
+            settings.docStoreConn.insert(docs_to_insert, index_name, target_kb_id)
+
+    @classmethod
     @DB.connection_context()
     def update_document_metadata(cls, doc_id: str, meta_fields: Dict) -> bool:
         """

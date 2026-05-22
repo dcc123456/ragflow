@@ -15,7 +15,9 @@ export function RootLayoutContainer({ children }: React.PropsWithChildren) {
       className="size-full grid grid-rows-[auto_auto_1fr] grid-cols-1 grid-flow-col"
       ref={nextLayoutRef}
     >
-      <NotificationBanner />
+      <div>
+        <NotificationBanner />
+      </div>
       <Header className="px-5 py-4" />
 
       <main className="size-full overflow-hidden">{children}</main>

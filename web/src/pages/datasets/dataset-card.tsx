@@ -1,16 +1,13 @@
 import { HomeCard } from '@/components/home-card';
 import { MoreButton } from '@/components/more-button';
 import { SharedBadge } from '@/components/shared-badge';
-import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { useNavigatePage } from '@/hooks/logic-hooks/navigate-hooks';
 import { useTraceDuplicate } from '@/hooks/use-knowledge-request';
 import { IDataset } from '@/interfaces/database/dataset';
-import { ChevronRight, LucideCircleX } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { ProcessingType } from '../dataset/dataset-overview/dataset-common';
-import { useUnBindTask } from '../dataset/dataset/generate-button/hook';
 
 import { DatasetDropdown } from './dataset-dropdown';
 import useDuplicateDataset from './use-duplicate-dataset';
@@ -34,7 +31,7 @@ export function DatasetCard({
   const { t } = useTranslation();
   const { navigateToDataset } = useNavigatePage();
   const { hasProgress = false, progress } = useTraceDuplicate(dataset.id);
-  const { handleUnbindTask } = useUnBindTask();
+  // const { handleUnbindTask } = useUnBindTask();
 
   return (
     <HomeCard
@@ -68,7 +65,7 @@ export function DatasetCard({
             <Progress className="h-1" value={progress * 100} />
             <span>{`${(progress * 100).toFixed(0)}%`}</span>
 
-            <Button
+            {/* <Button
               variant="danger"
               size="icon"
               className="
@@ -78,7 +75,7 @@ export function DatasetCard({
               onClick={() => handleUnbindTask({ type: ProcessingType.clone })}
             >
               <LucideCircleX />
-            </Button>
+            </Button> */}
           </div>
         </>
       )}

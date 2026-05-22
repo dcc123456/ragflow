@@ -427,13 +427,10 @@ export const useDeleteTenantUser = () => {
       if (data.code === 0) {
         message.success(t('message.deleted'));
         queryClient.invalidateQueries({
-          queryKey: [UserSettingApiAction.ListTenantUser],
-        });
-        queryClient.invalidateQueries({
           queryKey: [UserSettingApiAction.ListTenant],
         });
       }
-      return data?.data ?? [];
+      return data.code;
     },
   });
 

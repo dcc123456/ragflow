@@ -1628,6 +1628,7 @@ async def do_handle_task(task):
         target_kb_id = task["target_kb_id"]
         flds = ["docnm_kwd"]
         docid_map = DocumentService.clone_kb(task_dataset_id, target_kb_id, task_tenant_id)
+        DocMetadataService.clone_document_metadata(task_dataset_id, target_kb_id, docid_map, task_tenant_id)
         es_res = settings.docStoreConn.search([], [], {"kb_id": task_dataset_id}, [], None, 0, 1, index_name, [task_dataset_id])
         total = settings.docStoreConn.get_total(es_res)
         if total == 0:

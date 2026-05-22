@@ -2,7 +2,7 @@ import { RAGFlowAvatar } from '@/components/ragflow-avatar';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 import { formatDate } from '@/utils/date';
-import { ReactNode } from 'react';
+import { PropsWithChildren, ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
 interface IProps {
@@ -37,7 +37,7 @@ export function HomeCard({
   testId,
   showReleaseTime = false,
   extra,
-}: IProps) {
+}: PropsWithChildren<IProps>) {
   const { t } = useTranslation();
 
   return (

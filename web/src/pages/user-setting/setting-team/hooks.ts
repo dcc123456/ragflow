@@ -43,9 +43,8 @@ export const useHandleDeleteUser = () => {
     showDeleteConfirm({
       title: t('setting.sureDelete'),
       onOk: async () => {
-        const code = await deleteTenantUser({ userId });
-        if (code === 0) {
-        }
+        deleteTenantUser({ userId });
+
         return;
       },
     });
