@@ -5,7 +5,7 @@ export { restAPIv1, webAPI };
 
 export default {
   // notification
-  notification: `${ExternalApi}${api_host}/notification`,
+  notification: `${restAPIv1}/notification`,
 
   // user
   loginGetCaptcha: `${webAPI}/user/forget/captcha`,

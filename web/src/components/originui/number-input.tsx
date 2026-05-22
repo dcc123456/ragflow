@@ -65,7 +65,7 @@ const NumberInput = forwardRef<
     if (!isNumber(value)) {
       return;
     }
-    if (value > max - 1) {
+    if (value > max - step) {
       return;
     }
     setValue(value + step);
@@ -155,6 +155,7 @@ const NumberInput = forwardRef<
           )}
           style={style}
           min={min}
+          step={step}
           {...omit(props, ['prefix', 'suffix'])}
         />
         {hideIcons || (

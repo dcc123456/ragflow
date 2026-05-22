@@ -133,7 +133,7 @@ const SearchSetting: React.FC<SearchSettingProps> = ({
         kb_ids: search_config?.kb_ids || [],
         vector_similarity_weight:
           (search_config?.vector_similarity_weight
-            ? 1 - search_config?.vector_similarity_weight
+            ? Number((1 - search_config?.vector_similarity_weight).toFixed(2))
             : 0.3) || 0.3,
         web_search: search_config?.web_search || false,
         doc_ids: [],
@@ -309,7 +309,9 @@ const SearchSetting: React.FC<SearchSettingProps> = ({
           ...other_config,
           reference_metadata: normalizedReferenceMetadata,
           chat_id: llm_setting.llm_id,
-          vector_similarity_weight: 1 - vector_similarity_weight,
+          vector_similarity_weight: Number(
+            (1 - vector_similarity_weight).toFixed(2),
+          ),
           rerank_id: use_rerank ? rerank_id : '',
           llm_setting: { ...llmSetting },
         },

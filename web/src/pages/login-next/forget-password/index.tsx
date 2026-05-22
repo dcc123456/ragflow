@@ -121,6 +121,8 @@ export const ForgetPassword = ({
               .finally(() => {
                 setSendLoading(false);
               });
+          } else {
+            setSendLoading(false);
           }
         }
         if (step === 2) {

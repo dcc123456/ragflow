@@ -118,7 +118,7 @@ export const SliderInputFormField = forwardRef<
                   }
                   onChange={(val) => {
                     const value = Number(val || 0);
-                    if (!isNaN(value)) {
+                    if (value >= 0) {
                       field.onChange(
                         percentage ? (value / 100).toFixed(0) : value,
                       );

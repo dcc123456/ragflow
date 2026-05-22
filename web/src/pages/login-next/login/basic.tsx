@@ -190,7 +190,9 @@ export default function BasicLogin({ onLicenseError }: BasicLoginProps) {
         <Link
           to={{
             pathname: '/forget-password',
-            search: email ? `?u=${form.getValues('email')}` : '',
+            search: email
+              ? `?u=${encodeURIComponent(form.getValues('email'))}`
+              : '',
           }}
           state={form.getValues()}
           className="text-xs text-text-secondary hover:text-text-primary focus-visible:text-text-primary"

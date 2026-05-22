@@ -31,7 +31,7 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 import { useDebounce } from 'ahooks';
-import { omit } from 'lodash';
+import { isEmpty, omit } from 'lodash';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router';
 import {
@@ -298,7 +298,7 @@ export const useUpdateKnowledge = (shouldFetchList = false) => {
         embedding_model,
         chunk_method,
         pipeline_id,
-        avatar,
+        avatar: !isEmpty(avatar) ? avatar : null,
         description,
         permission,
         pagerank,
