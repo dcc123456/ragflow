@@ -2376,6 +2376,34 @@ def migrate_db():
     alter_db_remove_column(migrator, "billing_payment_order", "product_name")
     alter_db_remove_column(migrator, "billing_payment_order", "price_id")
 
+    # Clean up legacy columns from saas_v0.24.0-5-x that are no longer in the saas schema (2026-05-22)
+    # billing_subscription: old branch renamed target_quantity_bytes -> target_storage_bytes,
+    # saas branch adds target_storage_bytes as a new column instead.
+    # If upgrading from old branch, target_quantity_bytes may still exist; migrate data and drop it.
+    if DB.table_exists("billing_subscription"):
+        try:
+            # Copy any data from the legacy column to the new column where the new column is still NULL
+            DB.execute_sql(
+                """
+                UPDATE billing_subscription
+                SET target_storage_bytes = target_quantity_bytes
+                WHERE target_storage_bytes IS NULL AND target_quantity_bytes IS NOT NULL
+                """
+            )
+        except Exception as ex:
+            logging.warning(f"Failed to migrate billing_subscription.target_quantity_bytes -> target_storage_bytes: {ex}")
+    alter_db_remove_column(migrator, "billing_subscription", "target_quantity_bytes")
+
+    # billing_webhook_event: old branch added 5 processing-related columns that saas branch no longer has
+    alter_db_remove_column(migrator, "billing_webhook_event", "processing_status")
+    alter_db_remove_column(migrator, "billing_webhook_event", "processing_started_at")
+    alter_db_remove_column(migrator, "billing_webhook_event", "processed_at")
+    alter_db_remove_column(migrator, "billing_webhook_event", "failed_at")
+    alter_db_remove_column(migrator, "billing_webhook_event", "last_error")
+
+    # billing_product: old branch added api_request_limit_per_minute, saas branch no longer has it
+    alter_db_remove_column(migrator, "billing_product", "api_request_limit_per_minute")
+
     logging.disable(logging.NOTSET)
     # this is after re-enabling logging to allow logging changed user emails
     migrate_add_unique_email(migrator)
