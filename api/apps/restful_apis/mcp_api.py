@@ -23,6 +23,7 @@ from api.db.services.mcp_server_service import MCPServerService
 from api.db.services.permission_service import PermissionService
 from api.db.services.user_service import TenantService
 from api.utils.api_utils import get_data_error_result, get_json_result, get_mcp_tools, get_request_json, server_error_response, validate_request
+from api.utils.permission_utils import has_permission_for_member
 from api.utils.web_utils import get_float, safe_json_parse
 from common.constants import VALID_MCP_SERVER_TYPES
 from common.mcp_tool_call_conn import MCPToolCallSession, close_multiple_mcp_toolcall_sessions
@@ -73,6 +74,34 @@ async def list_mcp() -> Response:
     try:
         servers = MCPServerService.get_servers(current_user.id, mcp_ids, 0, 0, orderby, desc, keywords) or []
         total = len(servers)
+
+        from api.db.services.user_service import UserTenantService
+
+        user_tenants = UserTenantService.query(user_id=current_user.id) or []
+        for server in servers:
+            tenant_id = server.get("tenant_id")
+            if not tenant_id:
+                continue
+
+            if tenant_id == current_user.id:
+                server["operator_permission"] = PermissionValue.PERMISSION_OWNER.value
+                continue
+
+            highest_permission = PermissionValue.PERMISSION_NULL.value
+            for user_tenant in user_tenants:
+                if user_tenant.tenant_id != tenant_id:
+                    continue
+                permission_info = has_permission_for_member(
+                    operator_id=user_tenant.id,
+                    tenant_id=tenant_id,
+                    resource_id=server["id"],
+                    resource_type=ResourceType.MCP,
+                    permission=PermissionValue.PERMISSION_READ,
+                )
+                if permission_info[0] and permission_info[2] > highest_permission:
+                    highest_permission = permission_info[2]
+
+            server["operator_permission"] = highest_permission
 
         if page_number and items_per_page:
             servers = servers[(page_number - 1) * items_per_page : page_number * items_per_page]
@@ -216,15 +245,16 @@ async def update(mcp_id: str) -> Response:
 @login_required
 async def rm(mcp_id: str) -> Response:
     try:
-        current_user_id = current_user.id
         e, mcp_server = MCPServerService.get_by_id(mcp_id)
-        if not e or mcp_server.tenant_id != current_user_id:
-            return get_data_error_result(message=f"Cannot find MCP server {mcp_id} for user {current_user_id}")
+        if not e:
+            return get_data_error_result(message=f"Cannot find MCP server {mcp_id} for user {current_user.id}")
+        if not MCPServerService.is_accessible(mcp_id, current_user.id, PermissionValue.PERMISSION_MANAGE):
+            return get_data_error_result(message=f"Cannot access MCP server {mcp_server.name} for user {current_user.email} with manage permission.")
 
         # enterprise edition
         with DB.atomic():
             permission_model_list = PermissionService.get_permissions_by_tenant_and_resource_id(
-                tenant_id=current_user_id, resource_id=mcp_id, resource_type=ResourceType.MCP)
+                tenant_id=mcp_server.tenant_id, resource_id=mcp_id, resource_type=ResourceType.MCP)
             if permission_model_list:
                 PermissionService.delete(permission_model_list)
 

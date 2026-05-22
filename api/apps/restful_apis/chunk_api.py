@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field, validator
 from quart import request
 
 from api.apps import login_required
+from api.db import PermissionValue
 from api.db.joint_services.tenant_model_service import (
     get_model_config_by_id,
     get_model_config_by_type_and_name,
@@ -38,6 +39,7 @@ from api.utils.api_utils import (
     server_error_response,
 )
 from api.utils.image_utils import store_chunk_image
+from api.utils.permission_utils import check_doc_permission
 from common import settings
 from common.constants import LLMType, ParserType, RetCode
 from common.misc_utils import thread_pool_exec
@@ -104,6 +106,7 @@ def _get_dataset_tenant_id(dataset_id):
 @manager.route("/datasets/<dataset_id>/documents/<document_id>/chunks", methods=["GET"])  # noqa: F821
 @login_required
 @add_tenant_id_to_kwargs
+@check_doc_permission(permission=PermissionValue.PERMISSION_READ)
 async def list_chunks(tenant_id, dataset_id, document_id):
     from rag.nlp import search
 
@@ -190,6 +193,7 @@ async def list_chunks(tenant_id, dataset_id, document_id):
 @manager.route("/datasets/<dataset_id>/documents/<document_id>/chunks/<chunk_id>", methods=["GET"])  # noqa: F821
 @login_required
 @add_tenant_id_to_kwargs
+@check_doc_permission(permission=PermissionValue.PERMISSION_READ)
 async def get_chunk(tenant_id, dataset_id, document_id, chunk_id):
     from rag.nlp import search
 
@@ -215,6 +219,7 @@ async def get_chunk(tenant_id, dataset_id, document_id, chunk_id):
 @manager.route("/datasets/<dataset_id>/documents/<document_id>/chunks", methods=["POST"])  # noqa: F821
 @login_required
 @add_tenant_id_to_kwargs
+@check_doc_permission(permission=PermissionValue.PERMISSION_WRITE)
 async def add_chunk(tenant_id, dataset_id, document_id):
     from rag.nlp import rag_tokenizer, search
 
@@ -306,6 +311,7 @@ async def add_chunk(tenant_id, dataset_id, document_id):
 @manager.route("/datasets/<dataset_id>/documents/<document_id>/chunks", methods=["DELETE"])  # noqa: F821
 @login_required
 @add_tenant_id_to_kwargs
+@check_doc_permission(permission=PermissionValue.PERMISSION_WRITE)
 async def rm_chunk(tenant_id, dataset_id, document_id):
     from rag.nlp import search
 
@@ -355,6 +361,7 @@ async def rm_chunk(tenant_id, dataset_id, document_id):
 @manager.route("/datasets/<dataset_id>/documents/<document_id>/chunks/<chunk_id>", methods=["PATCH"])  # noqa: F821
 @login_required
 @add_tenant_id_to_kwargs
+@check_doc_permission(permission=PermissionValue.PERMISSION_WRITE)
 async def update_chunk(tenant_id, dataset_id, document_id, chunk_id):
     from rag.app.qa import beAdoc, rmPrefix
     from rag.nlp import rag_tokenizer, search
@@ -444,6 +451,7 @@ async def update_chunk(tenant_id, dataset_id, document_id, chunk_id):
 @manager.route("/datasets/<dataset_id>/documents/<document_id>/chunks", methods=["PATCH"])  # noqa: F821
 @login_required
 @add_tenant_id_to_kwargs
+@check_doc_permission(permission=PermissionValue.PERMISSION_WRITE)
 async def switch_chunks(tenant_id, dataset_id, document_id):
     from rag.nlp import search
 

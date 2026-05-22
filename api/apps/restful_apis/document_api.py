@@ -28,7 +28,7 @@ from api.constants import FILE_NAME_LEN_LIMIT, IMG_BASE64_PREFIX
 from api.apps.services.document_api_service import validate_document_update_fields, map_doc_keys, \
     map_doc_keys_with_run_status, update_document_name_only, update_chunk_method, update_document_status_only, \
     reset_document_for_reparse
-from api.db import VALID_FILE_TYPES, FileType
+from api.db import VALID_FILE_TYPES, FileType, PermissionValue, ResourceType
 from api.db.services import duplicate_name
 from api.db.services.doc_metadata_service import DocMetadataService
 from api.db.db_models import Task
@@ -36,12 +36,12 @@ from api.db.services.document_service import DocumentService
 from api.db.services.file2document_service import File2DocumentService
 from api.db.services.file_service import FileService
 from api.db.services.knowledgebase_service import KnowledgebaseService
-from api.common.check_team_permission import check_kb_team_permission
 from api.db.services.task_service import TaskService, cancel_all_task_of
 from api.utils.api_utils import get_data_error_result, get_error_data_result, get_result, get_json_result, \
     server_error_response, add_tenant_id_to_kwargs, get_request_json, get_error_argument_result, check_duplicate_ids, \
     get_resource_insufficient_result
 from api.utils.billing import InsufficientResourceError
+from api.utils.permission_utils import check_doc_permission, check_kb_permission, has_permission_for_member
 from api.utils.validation_utils import (
     UpdateDocumentReq, format_validation_error_message, validate_and_parse_json_request, DeleteDocumentReq,
 )
@@ -122,6 +122,7 @@ async def upload_info(tenant_id: str):
 @manager.route("/datasets/<dataset_id>/documents/<document_id>", methods=["PATCH"]) # noqa: F821
 @login_required
 @add_tenant_id_to_kwargs
+@check_doc_permission(permission=PermissionValue.PERMISSION_MANAGE)
 async def update_document(tenant_id, dataset_id, document_id):
     """
     Update a document within a dataset.
@@ -367,6 +368,7 @@ async def metadata_batch_update(dataset_id, tenant_id):
 @manager.route("/datasets/<dataset_id>/documents", methods=["POST"])  # noqa: F821
 @login_required
 @add_tenant_id_to_kwargs
+@check_kb_permission(permission=PermissionValue.PERMISSION_WRITE)
 async def upload_document(dataset_id, tenant_id):
     """
     Upload documents to a dataset.
@@ -434,15 +436,10 @@ async def upload_document(dataset_id, tenant_id):
                     type: string
                     description: Processing status.
     """
-    upload_type = (request.args.get("type") or "local").lower()
-    e, kb = KnowledgebaseService.get_by_id(dataset_id)
-    if not e:
-        logging.error(f"Can't find the dataset with ID {dataset_id}!")
-        return get_error_data_result(message=f"Can't find the dataset with ID {dataset_id}!", code=RetCode.DATA_ERROR)
+    from quart import g
 
-    if not check_kb_team_permission(kb, tenant_id):
-        logging.error("No authorization.")
-        return get_error_data_result(message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
+    upload_type = (request.args.get("type") or "local").lower()
+    kb = g.kb
 
     if upload_type == "web":
         return await _upload_web_document(dataset_id, kb, tenant_id)
@@ -1016,6 +1013,54 @@ def _parse_doc_id_filter_with_metadata(req, kb_id):
     return RetCode.SUCCESS, "", list(doc_ids_filter) if doc_ids_filter is not None else None, return_empty_metadata
 
 
+def _check_document_batch_permission(doc_ids, required_permission: PermissionValue):
+    from api.apps import current_user
+    from api.db.services.user_service import UserTenantService
+
+    user_tenants = UserTenantService.query(user_id=current_user.id) or []
+    if not user_tenants:
+        return False
+
+    for doc_id in doc_ids:
+        e, doc = DocumentService.get_by_id(doc_id)
+        if not e:
+            return False
+
+        kb_id = DocumentService.get_knowledgebase_id(doc_id)
+        if not kb_id:
+            return False
+
+        doc_tenant_id = DocumentService.get_tenant_id(doc_id)
+        if not doc_tenant_id:
+            return False
+
+        kb_record = KnowledgebaseService.filter_by_id_and_tenant_id(tenant_id=doc_tenant_id, kb_id=kb_id)
+        if not kb_record:
+            return False
+
+        if doc.created_by == current_user.id or kb_record.created_by == current_user.id:
+            continue
+
+        allowed = False
+        for user_tenant in user_tenants:
+            if user_tenant.tenant_id != doc_tenant_id:
+                continue
+            granted, _, _ = has_permission_for_member(
+                operator_id=user_tenant.id,
+                tenant_id=doc_tenant_id,
+                resource_id=doc_id,
+                resource_type=ResourceType.DOCUMENT,
+                permission=required_permission,
+            )
+            if granted:
+                allowed = True
+                break
+
+        if not allowed:
+            return False
+    return True
+
+
 @manager.route("/datasets/<dataset_id>/documents", methods=["DELETE"])  # noqa: F821
 @login_required
 @add_tenant_id_to_kwargs
@@ -1096,6 +1141,9 @@ async def delete_documents(tenant_id, dataset_id):
         else:
             doc_ids = unique_doc_ids
 
+        if not _check_document_batch_permission(doc_ids, PermissionValue.PERMISSION_MANAGE):
+            return get_error_data_result(message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
+
         # Delete documents using existing FileService.delete_docs
         errors = await thread_pool_exec(FileService.delete_docs, doc_ids, tenant_id)
 
@@ -1110,6 +1158,7 @@ async def delete_documents(tenant_id, dataset_id):
 @manager.route("/datasets/<dataset_id>/documents/<document_id>/metadata/config", methods=["PUT"])  # noqa: F821
 @login_required
 @add_tenant_id_to_kwargs
+@check_doc_permission(permission=PermissionValue.PERMISSION_WRITE)
 async def update_metadata_config(tenant_id, dataset_id, document_id):
     """
     Update document metadata configuration.
@@ -1347,6 +1396,8 @@ async def update_metadata(tenant_id, dataset_id):
 
     # Convert to list and perform update
     target_doc_ids = list(target_doc_ids)
+    if target_doc_ids and not _check_document_batch_permission(target_doc_ids, PermissionValue.PERMISSION_WRITE):
+        return get_error_data_result(message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
     updated = DocMetadataService.batch_update_metadata(dataset_id, target_doc_ids, updates, deletes)
     return get_result(data={"updated": updated, "matched_docs": len(target_doc_ids)})
 
@@ -1372,7 +1423,7 @@ async def ingest(tenant_id):
 
 def _run_sync(user_id:str, req):
     for doc_id in req["doc_ids"]:
-        if not DocumentService.accessible(doc_id, user_id):
+        if not _check_document_batch_permission([doc_id], PermissionValue.PERMISSION_WRITE):
             return RetCode.AUTHENTICATION_ERROR, "No authorization."
 
     kb_table_num_map = {}
@@ -1494,6 +1545,9 @@ async def parse_documents(tenant_id, dataset_id):
         if not valid_doc_ids:
             return get_error_data_result(message=f"Documents not found: {not_found_ids}")
 
+    if valid_doc_ids and not _check_document_batch_permission(valid_doc_ids, PermissionValue.PERMISSION_WRITE):
+        return get_error_data_result(message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
+
     try:
         def _run_sync():
             kb_table_num_map = {}
@@ -1602,6 +1656,9 @@ async def stop_parse_documents(tenant_id, dataset_id):
 
     if not_found_ids:
         return get_error_data_result(message=f"Documents not found: {not_found_ids}")
+
+    if valid_doc_ids and not _check_document_batch_permission(valid_doc_ids, PermissionValue.PERMISSION_WRITE):
+        return get_error_data_result(message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
 
     try:
         def _run_sync():
@@ -1816,6 +1873,11 @@ async def batch_update_document_status(tenant_id, dataset_id):
                 has_error = True
                 continue
 
+            if not DocumentService.accessible(doc_id, current_user.id):
+                result[doc_id] = {"error": "No authorization."}
+                has_error = True
+                continue
+
             current_status = str(doc.status)
             if current_status == status:
                 result[doc_id] = {"status": status}
@@ -1857,6 +1919,7 @@ async def batch_update_document_status(tenant_id, dataset_id):
 
 @manager.route("/documents/<doc_id>/preview", methods=["GET"])  # noqa: F821
 @login_required
+@check_doc_permission(permission=PermissionValue.PERMISSION_READ)
 async def get(doc_id):
     """Return the raw file bytes for a document the requesting user is authorized to read.
 

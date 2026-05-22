@@ -19,6 +19,7 @@ from io import BytesIO
 from quart import send_file
 
 from api.apps import login_required
+from api.db import PermissionValue
 from api.db.db_models import Task, Document
 from api.db.joint_services.tenant_model_service import get_model_config_by_id, get_model_config_by_type_and_name, get_tenant_default_model_by_type
 from api.db.services.doc_metadata_service import DocMetadataService
@@ -30,7 +31,7 @@ from api.db.services.task_service import TaskService, cancel_all_task_of
 from api.db.services.tenant_llm_service import TenantLLMService
 from api.utils.api_utils import add_tenant_id_to_kwargs, check_duplicate_ids, construct_json_result, get_error_data_result, get_result, server_error_response, token_required, \
     get_request_json
-from api.utils.permission_utils import filter_accessible_doc_ids_for_user
+from api.utils.permission_utils import check_doc_permission, filter_accessible_doc_ids_for_user
 from common import settings
 from common.constants import  LLMType, RetCode, TaskStatus
 from common.metadata_utils import meta_filter, convert_conditions
@@ -53,6 +54,7 @@ def _resolve_reference_metadata(req: dict, search_config: dict | None = None):
 @manager.route("/datasets/<dataset_id>/documents/<document_id>", methods=["GET"])  # noqa: F821
 @login_required
 @add_tenant_id_to_kwargs
+@check_doc_permission(permission=PermissionValue.PERMISSION_READ)
 async def download(tenant_id, dataset_id, document_id):
     """
     Download a document from a dataset.

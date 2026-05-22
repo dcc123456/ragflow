@@ -3,7 +3,6 @@ from functools import wraps
 
 from api.db import PermissionActionType, PermissionTargetType, PermissionValue, ResourceType
 from api.db.services.permission_service import PermissionService
-from api.db.services.team_service import DepartmentMemberService, DepartmentService, GroupMemberService, GroupService
 from common import settings
 from common.constants import RetCode, StatusEnum
 from common.misc_utils import get_uuid
@@ -22,6 +21,7 @@ def has_permission(user_permission: int, required_permission: PermissionValue) -
 
 def has_permission_for_member(operator_id, tenant_id, resource_id, resource_type, permission=PermissionValue.PERMISSION_MANAGE):
     from api.db.services.user_service import UserTenantService
+    from api.db.services.team_service import DepartmentMemberService, DepartmentService, GroupMemberService
 
     highest_permission = PermissionValue.PERMISSION_NULL.value
     permission_type = None
@@ -82,7 +82,6 @@ def resolve_kb_with_permission(user_id, kb_id, required_permission=PermissionVal
     """
     from api.db.services.knowledgebase_service import KnowledgebaseService
     from api.db.services.user_service import UserTenantService
-    from common.constants import StatusEnum
 
     ok, kb = KnowledgebaseService.get_by_id(kb_id)
     if not ok or kb.status != StatusEnum.VALID.value:
@@ -114,6 +113,7 @@ def wrap_permission_info(permission_info):
       {id, role, name, avatar, tenant_id, resource_type, permissions:{resource_id: permission}}
     """
     from api.db.services.user_service import UserService, UserTenantService
+    from api.db.services.team_service import DepartmentService, GroupService
 
     permissions = []
 
@@ -347,6 +347,126 @@ def check_dialog_permission(permission):
                 )
 
             return get_json_result(data=[], message="Only Chat/Dialog owners or members with management or write permissions can perform this action", code=RetCode.OPERATING_ERROR)
+
+        return wrapper
+
+    return decorator
+
+
+def check_doc_permission(permission):
+    from api.db.services.document_service import DocumentService
+    from api.db.services.knowledgebase_service import KnowledgebaseService
+    from api.db.services.user_service import UserService, UserTenantService
+    from api.utils.api_utils import get_json_result
+
+    """
+    ! IMPORTANT:
+    The request data is parsed in this decorator.
+    In view functions, use `g.req_data` instead of `request.get_json()` or `request.form`.
+
+    Supports:
+    - JSON body
+    - Form-data / urlencoded
+    - URL query parameters
+    - URL path parameters (kwargs)
+    """
+
+    def decorator(foo):
+        from quart import g, request
+
+        @wraps(foo)
+        async def wrapper(*args, **kwargs):
+            from api.apps import current_user
+
+            content_type = request.headers.get("Content-Type") or ""
+
+            if request.method in ["POST", "PUT", "PATCH"]:
+                if "application/json" in content_type:
+                    if not request.is_json:
+                        return get_json_result(
+                            data=False,
+                            message="Content-Type must be application/json",
+                            code=RetCode.ARGUMENT_ERROR,
+                        )
+                    req_data = (await request.get_json(silent=True)) or {}
+                elif "multipart/form-data" in content_type or "application/x-www-form-urlencoded" in content_type:
+                    req_data = (await request.form) or {}
+                else:
+                    req_data = request.args or {}
+            else:  # GET、DELETE
+                req_data = request.args or {}
+
+            doc_id = (
+                req_data.get("doc_id")
+                or kwargs.get("doc_id")
+                or req_data.get("document_id")
+                or kwargs.get("document_id")
+                or req_data.get("attachment_id")
+                or kwargs.get("attachment_id")
+            )
+            if not doc_id:
+                return get_json_result(data=False, message="Missing required parameter `doc_id`.", code=RetCode.ARGUMENT_ERROR)
+
+            g.req_data = req_data
+            g.doc_id = doc_id
+
+            if settings.ENABLE_ADMIN and UserService.is_admin(current_user.id) and permission == PermissionValue.PERMISSION_READ:
+                g.tenant_id = current_user.id
+                if inspect.iscoroutinefunction(foo):
+                    return await foo(*args, **kwargs)
+                return foo(*args, **kwargs)
+
+            doc_tenant_id = DocumentService.get_tenant_id(doc_id)
+            if not doc_tenant_id:
+                return get_json_result(data=False, message="Document not found!", code=RetCode.DATA_ERROR)
+
+            user_tenants = UserTenantService.query(user_id=current_user.id) or []
+            for user_tenant in user_tenants:
+                if user_tenant.tenant_id != doc_tenant_id:
+                    continue
+
+                kb_id = DocumentService.get_knowledgebase_id(doc_id)
+                if not kb_id:
+                    continue
+
+                kb_record = KnowledgebaseService.filter_by_id_and_tenant_id(tenant_id=user_tenant.tenant_id, kb_id=kb_id)
+                if not kb_record:
+                    continue
+
+                if kb_record.created_by == current_user.id:
+                    g.tenant_id = user_tenant.tenant_id
+                    g.kb = kb_record
+                    g.operator_permission = PermissionValue.PERMISSION_OWNER.value
+                    g.member_id = user_tenant.id
+                    if "tenant_id" in kwargs:
+                        kwargs["tenant_id"] = user_tenant.tenant_id
+                    if inspect.iscoroutinefunction(foo):
+                        return await foo(*args, **kwargs)
+                    return foo(*args, **kwargs)
+
+                permission_info = has_permission_for_member(
+                    operator_id=user_tenant.id,
+                    tenant_id=user_tenant.tenant_id,
+                    resource_id=doc_id,
+                    resource_type=ResourceType.DOCUMENT,
+                    permission=permission,
+                )
+                if permission_info[0]:
+                    g.tenant_id = user_tenant.tenant_id
+                    g.kb = kb_record
+                    g.operator_permission = permission_info[2]
+                    g.member_id = user_tenant.id
+                    if "tenant_id" in kwargs:
+                        kwargs["tenant_id"] = user_tenant.tenant_id
+                    if inspect.iscoroutinefunction(foo):
+                        return await foo(*args, **kwargs)
+                    return foo(*args, **kwargs)
+
+            return get_json_result(
+                data=False,
+                message="Only document owners or members with management or write permissions can perform this action.",
+                code=RetCode.OPERATING_ERROR,
+            )
 
         return wrapper
 
@@ -682,6 +802,7 @@ def build_permission_records_for_target(
             - not_found  : True when the target entity does not exist in the database
     """
     from api.db.services.user_service import UserTenantService
+    from api.db.services.team_service import DepartmentService, GroupService
 
     to_create = None
     to_update = None

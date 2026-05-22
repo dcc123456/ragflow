@@ -245,7 +245,7 @@ async def delete(tenant_id):
 @login_required
 @kb_role_guard
 @add_tenant_id_to_kwargs
-@check_kb_permission(permission=PermissionValue.PERMISSION_WRITE)
+@check_kb_permission(permission=PermissionValue.PERMISSION_MANAGE)
 async def update(dataset_id, tenant_id: str = None):
     """
     Update a dataset.
@@ -808,7 +808,7 @@ def get_auto_metadata(tenant_id, dataset_id):
 @login_required
 @kb_role_guard
 @add_tenant_id_to_kwargs
-@check_kb_permission(permission=PermissionValue.PERMISSION_WRITE)
+@check_kb_permission(permission=PermissionValue.PERMISSION_MANAGE)
 async def update_auto_metadata(tenant_id, dataset_id):
     """
     Update auto-metadata configuration for a dataset.

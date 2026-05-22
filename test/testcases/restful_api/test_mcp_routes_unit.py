@@ -20,6 +20,7 @@ import json
 import sys
 from functools import wraps
 from pathlib import Path
+from enum import Enum
 from types import ModuleType, SimpleNamespace
 
 import pytest
@@ -114,6 +115,12 @@ class _DummyTenantService:
         return True, SimpleNamespace(id="tenant_1")
 
 
+class _DummyUserTenantService:
+    @staticmethod
+    def query(*_args, **_kwargs):
+        return [SimpleNamespace(id="member_1", tenant_id="tenant_1")]
+
+
 class _DummyTool:
     def __init__(self, name):
         self._name = name
@@ -131,6 +138,21 @@ class _DummyMCPToolCallSession:
 
     def tool_call(self, _name, _arguments, _timeout):
         return "ok"
+
+
+class _DummyRetCode(int, Enum):
+    SUCCESS = 0
+    ARGUMENT_ERROR = 1
+    DATA_ERROR = 102
+    AUTHENTICATION_ERROR = 103
+    OPERATING_ERROR = 104
+    EXCEPTION_ERROR = 105
+    SERVER_ERROR = 500
+
+
+class _DummyStatusEnum(int, Enum):
+    VALID = 1
+    INVALID = 0
 
 
 def _run(coro):
@@ -166,9 +188,53 @@ def _load_mcp_api(monkeypatch):
     common_pkg.__path__ = [str(repo_root / "common")]
     monkeypatch.setitem(sys.modules, "common", common_pkg)
 
+    settings_mod = ModuleType("common.settings")
+    settings_mod.MAIL_DEFAULT_SENDER = ("RAGFlow", "noreply@example.com")
+    settings_mod.MAIL_SERVER = "localhost"
+    settings_mod.MAIL_PORT = 25
+    settings_mod.MAIL_USERNAME = ""
+    settings_mod.MAIL_PASSWORD = ""
+    monkeypatch.setitem(sys.modules, "common.settings", settings_mod)
+    common_pkg.settings = settings_mod
+
     constants_mod = ModuleType("common.constants")
     constants_mod.VALID_MCP_SERVER_TYPES = {"sse", "streamable-http"}
+    constants_mod.RetCode = _DummyRetCode
+    constants_mod.StatusEnum = _DummyStatusEnum
     monkeypatch.setitem(sys.modules, "common.constants", constants_mod)
+    common_pkg.constants = constants_mod
+
+    api_db_mod = ModuleType("api.db")
+
+    class _DummyPermissionValue(int, Enum):
+        PERMISSION_NULL = 0
+        PERMISSION_READ = 1
+        PERMISSION_WRITE = 2
+        PERMISSION_MANAGE = 4
+        PERMISSION_OWNER = 7
+
+    class _DummyPermissionTargetType(str, Enum):
+        TARGET_MEMBER = "member"
+        TARGET_GROUP = "group"
+        TARGET_DEPARTMENT = "department"
+
+    class _DummyPermissionActionType(str, Enum):
+        ACTION_ADD = "add"
+        ACTION_UPDATE = "update"
+        ACTION_DELETE = "delete"
+
+    class _DummyResourceType(str, Enum):
+        KB = "KB"
+        DIALOG = "DIALOG"
+        DOCUMENT = "DOCUMENT"
+        CANVAS = "CANVAS"
+        MCP = "MCP"
+
+    api_db_mod.PermissionValue = _DummyPermissionValue
+    api_db_mod.ResourceType = _DummyResourceType
+    api_db_mod.PermissionTargetType = _DummyPermissionTargetType
+    api_db_mod.PermissionActionType = _DummyPermissionActionType
+    monkeypatch.setitem(sys.modules, "api.db", api_db_mod)
 
     apps_mod = ModuleType("api.apps")
     apps_mod.current_user = SimpleNamespace(id="tenant_1", email="test@test.com")
@@ -194,6 +260,7 @@ def _load_mcp_api(monkeypatch):
 
     user_service_mod = ModuleType("api.db.services.user_service")
     user_service_mod.TenantService = _DummyTenantService
+    user_service_mod.UserTenantService = _DummyUserTenantService
     user_service_mod.UserService = SimpleNamespace()
     monkeypatch.setitem(sys.modules, "api.db.services.user_service", user_service_mod)
 

@@ -136,14 +136,6 @@ def _build_session_response(conv: dict) -> dict:
     return conv
 
 
-async def _ensure_owned_chat(chat_id):
-    return await thread_pool_exec(
-        DialogService.query,
-        tenant_id=current_user.id, id=chat_id, status=StatusEnum.VALID.value
-    )
-
-
-
 def _get_chat_operation_tenant_id(chat):
     if isinstance(chat, dict):
         tenant_id = chat.get("tenant_id")
@@ -1358,12 +1350,6 @@ async def session_completion(chat_id_in_arg=""):
             return get_data_error_result(message="`chat_id` is required when `session_id` is provided.")
 
         if chat_id:
-            if not await _ensure_owned_chat(chat_id):
-                return get_json_result(
-                    data=False,
-                    message="No authorization.",
-                    code=RetCode.AUTHENTICATION_ERROR,
-                )
             e, dia = await thread_pool_exec(DialogService.get_by_id, chat_id)
             if not e:
                 return get_data_error_result(message="Chat not found!")
