@@ -148,10 +148,19 @@ export const login = (params: EmailLoginParams | LDAPLoginParams) =>
 
 export const logout = () => request.get<ResponseData<boolean>>(API.adminLogout);
 
-export const listUsers = () =>
-  request.get<ResponseData<AdminService.ListUsersItem[]>>(
+export const listUsers = (params?: {
+  keyword?: string;
+  sort?: string;
+  order?: 'asc' | 'desc';
+  page?: number;
+  page_size?: number;
+  role?: string;
+  status?: string;
+  plan?: string;
+}) =>
+  request.get<ResponseData<AdminService.ListUsersResponse>>(
     API.adminListUsers,
-    {},
+    { params },
   );
 
 export const createUser = (email: string, password: string) =>

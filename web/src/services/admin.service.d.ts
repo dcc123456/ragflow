@@ -22,6 +22,13 @@ declare namespace AdminService {
     update_time: [number];
   };
 
+  export type ListUsersResponse = {
+    total: number;
+    page: number;
+    page_size: number;
+    users: ListUsersItem[];
+  };
+
   export type ListUsersItem = {
     create_date: string;
     email: string;
@@ -30,6 +37,8 @@ declare namespace AdminService {
     role: string;
     nickname: string;
     ldap_server?: string;
+    last_login_time?: string;
+    plan?: string;
   };
 
   export type UserDetail = {

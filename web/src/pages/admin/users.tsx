@@ -1,4 +1,4 @@
-import { useContext, useLayoutEffect, useMemo, useState } from 'react';
+import { useContext, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
 
@@ -6,9 +6,8 @@ import {
   createColumnHelper,
   flexRender,
   getCoreRowModel,
-  getFilteredRowModel,
-  getPaginationRowModel,
   getSortedRowModel,
+  SortingState,
   useReactTable,
 } from '@tanstack/react-table';
 
@@ -20,6 +19,9 @@ import {
 } from '@tanstack/react-query';
 
 import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
   LucideClipboardList,
   LucideDot,
   LucideTrash2,
@@ -72,6 +74,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { PriceName } from '@/pages/price/constant';
 import { Routes } from '@/routes';
 import { LucideFilter, LucideSearch } from 'lucide-react';
 
@@ -106,6 +109,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { useDebounce } from 'ahooks';
 import EnterpriseFeature from './components/enterprise-feature';
 import { CurrentUserInfoContext } from './layouts/root-layout';
 
@@ -121,6 +125,13 @@ const STATUS_FILTER_OPTIONS = [
   { value: 'inactive', label: 'admin.inactive' },
 ];
 
+const PLAN_FILTER_OPTIONS = [
+  { value: '', label: 'admin.all' },
+  { value: PriceName.Trial, label: 'admin.trial' },
+  { value: PriceName.Starter, label: 'admin.starter' },
+  { value: PriceName.Pro, label: 'admin.pro' },
+];
+
 function AdminUserManagement() {
   const [{ userInfo }] = useContext(CurrentUserInfoContext);
 
@@ -133,6 +144,11 @@ function AdminUserManagement() {
   const [createUserModalOpen, setCreateUserModalOpen] = useState(false);
   const [userToMakeAction, setUserToMakeAction] =
     useState<AdminService.ListUsersItem | null>(null);
+  const [keyword, setKeyword] = useState('');
+  const [sorting, setSorting] = useState<SortingState>([]);
+  const [pagination, setPagination] = useState({ page: 1, pageSize: 10 });
+  const [filters, setFilters] = useState({ role: '', status: '', plan: '' });
+  const debouncedKeyword = useDebounce(keyword, { wait: 500 });
 
   const changePasswordForm = useChangePasswordForm();
   const createUserForm = useCreateUserForm();
@@ -145,12 +161,35 @@ function AdminUserManagement() {
     placeholderData: keepPreviousData,
   });
 
-  const { data: usersList } = useQuery({
-    queryKey: ['admin/listUsers'],
-    queryFn: async () => (await listUsers()).data.data,
+  const { data: usersResponse } = useQuery({
+    queryKey: [
+      'admin/listUsers',
+      debouncedKeyword,
+      sorting,
+      pagination,
+      filters,
+    ],
+    queryFn: async () => {
+      const { data } = await listUsers({
+        keyword: debouncedKeyword || undefined,
+        sort: sorting[0]?.id,
+        order: sorting[0]?.desc ? 'desc' : 'asc',
+        page: pagination.page,
+        page_size: pagination.pageSize,
+        role: filters.role || undefined,
+        status: filters.status || undefined,
+        plan: filters.plan || undefined,
+      });
+      if (data.code === 0) {
+        return data.data;
+      }
+    },
     retry: false,
     placeholderData: keepPreviousData,
   });
+
+  const usersList = usersResponse?.users ?? EMPTY_DATA;
+  const paginationInfo = usersResponse ?? { page: 1, page_size: 10, total: 0 };
 
   // Delete user mutation
   const deleteUserMutation = useMutation({
@@ -395,6 +434,27 @@ function AdminUserManagement() {
         },
       }),
 
+      columnHelper.accessor('plan', {
+        header: t('admin.plan'),
+        cell: ({ cell }) => cell.getValue() || '-',
+      }),
+
+      columnHelper.accessor('last_login_time', {
+        header: ({ column }) => (
+          <Button
+            variant={'ghost'}
+            onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
+          >
+            {t('admin.lastLoginTime')}
+            {column.getIsSorted() !== 'asc' &&
+              column.getIsSorted() !== 'desc' && <ArrowUpDown />}
+            {column.getIsSorted() == 'asc' && <ArrowUp />}
+            {column.getIsSorted() == 'desc' && <ArrowDown />}
+          </Button>
+        ),
+        cell: ({ cell }) => (cell.getValue() ? cell.getValue() : '-'),
+      }),
+
       columnHelper.display({
         id: 'actions',
         header: t('admin.actions'),
@@ -459,24 +519,22 @@ function AdminUserManagement() {
   );
 
   const table = useReactTable({
-    data: usersList ?? EMPTY_DATA,
+    data: usersList,
     columns: columnDefs,
 
     globalFilterFn,
+    manualSorting: true,
+
+    state: {
+      sorting,
+    },
+    onSortingChange: setSorting,
 
     getCoreRowModel: getCoreRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
     getSortedRowModel: getSortedRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
 
     autoResetPageIndex: false,
   });
-
-  useLayoutEffect(() => {
-    if (table.getState().pagination.pageIndex > table.getPageCount()) {
-      table.setPageIndex(Math.max(0, table.getPageCount() - 1));
-    }
-  }, [usersList, table]);
 
   return (
     <>
@@ -508,13 +566,9 @@ function AdminUserManagement() {
                           </div>
 
                           <RadioGroup
-                            value={
-                              (table
-                                .getColumn('role')
-                                ?.getFilterValue() as string) ?? ''
-                            }
+                            value={filters.role}
                             onValueChange={(value) =>
-                              table.getColumn('role')?.setFilterValue(value)
+                              setFilters((prev) => ({ ...prev, role: value }))
                             }
                           >
                             <Label className="flex items-center space-x-2">
@@ -543,16 +597,36 @@ function AdminUserManagement() {
                       <div className="font-bold mb-3">{t('admin.status')}</div>
 
                       <RadioGroup
-                        value={
-                          (table
-                            .getColumn('is_active')
-                            ?.getFilterValue() as string) ?? ''
-                        }
+                        value={filters.status}
                         onValueChange={(value) =>
-                          table.getColumn('is_active')?.setFilterValue(value)
+                          setFilters((prev) => ({ ...prev, status: value }))
                         }
                       >
                         {STATUS_FILTER_OPTIONS.map(({ label, value }) => (
+                          <Label
+                            key={value}
+                            className="flex items-center space-x-2"
+                          >
+                            <RadioGroupItem
+                              className="bg-bg-input border-border-button"
+                              value={value}
+                            />
+                            <span>{t(label)}</span>
+                          </Label>
+                        ))}
+                      </RadioGroup>
+                    </section>
+
+                    <section>
+                      <div className="font-bold mb-3">{t('admin.plan')}</div>
+
+                      <RadioGroup
+                        value={filters.plan}
+                        onValueChange={(value) =>
+                          setFilters((prev) => ({ ...prev, plan: value }))
+                        }
+                      >
+                        {PLAN_FILTER_OPTIONS.map(({ label, value }) => (
                           <Label
                             key={value}
                             className="flex items-center space-x-2"
@@ -572,7 +646,9 @@ function AdminUserManagement() {
                     <Button
                       variant="outline"
                       className="dark:bg-bg-input dark:border-border-button text-text-secondary"
-                      onClick={() => table.resetColumnFilters()}
+                      onClick={() =>
+                        setFilters({ role: '', status: '', plan: '' })
+                      }
                     >
                       {t('admin.reset')}
                     </Button>
@@ -586,8 +662,8 @@ function AdminUserManagement() {
                 <Input
                   className="pl-10 h-10 bg-bg-input border-border-button"
                   placeholder={t('header.search')}
-                  value={table.getState().globalFilter}
-                  onChange={(e) => table.setGlobalFilter(e.target.value)}
+                  value={keyword}
+                  onChange={(e) => setKeyword(e.target.value)}
                 />
               </div>
 
@@ -615,6 +691,8 @@ function AdminUserManagement() {
 
                 <col className="w-40" />
                 <col className="w-40" />
+                <col className="w-40" />
+                <col className="w-52" />
                 <col className="w-52" />
               </colgroup>
 
@@ -658,14 +736,11 @@ function AdminUserManagement() {
 
           <CardFooter className="flex items-center justify-end">
             <RAGFlowPagination
-              total={table.getFilteredRowModel().rows.length}
-              current={table.getState().pagination.pageIndex + 1}
-              pageSize={table.getState().pagination.pageSize}
+              total={paginationInfo.total}
+              current={paginationInfo.page}
+              pageSize={paginationInfo.page_size}
               onChange={(page, pageSize) => {
-                table.setPagination({
-                  pageIndex: page - 1,
-                  pageSize,
-                });
+                setPagination({ page, pageSize });
               }}
             />
           </CardFooter>

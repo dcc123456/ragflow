@@ -3257,6 +3257,10 @@ Important structured information may include: names, dates, locations, events, k
       createTime: 'Create time',
       lastLoginTime: 'Last login time',
       lastUpdateTime: 'Last update time',
+      plan: 'Plan',
+      trial: 'Trial',
+      starter: 'Starter',
+      pro: 'Pro',
 
       isAnonymous: 'Is anonymous',
       isSuperuser: 'Is superuser',
