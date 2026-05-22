@@ -337,6 +337,37 @@ def test_move_files_renames_in_place_without_storage_move(monkeypatch):
 
 
 @pytest.mark.p2
+def test_move_files_folder_to_same_parent_is_noop(monkeypatch):
+    module = _load_file_api_service(monkeypatch)
+    deleted = []
+
+    folder = _DummyFile("folder1", module.FileType.FOLDER.value, tenant_id="tenant1", parent_id="folder2", name="folder-a")
+    monkeypatch.setattr(
+        module.FileService,
+        "get_by_ids",
+        lambda _ids: [folder],
+    )
+    monkeypatch.setattr(
+        module.FileService,
+        "get_by_id",
+        lambda file_id: (True, _DummyFile(file_id, module.FileType.FOLDER.value, tenant_id="tenant1", parent_id="root", name="folder-b"))
+        if file_id == "folder2"
+        else (False, None),
+    )
+    monkeypatch.setattr(
+        module.FileService,
+        "query",
+        lambda **_kwargs: [folder],
+    )
+    monkeypatch.setattr(module.FileService, "delete_by_id", lambda file_id: deleted.append(file_id) or True)
+
+    ok, data = _run(module.move_files("tenant1", ["folder1"], "folder2"))
+    assert ok is True
+    assert data is True
+    assert deleted == []
+
+
+@pytest.mark.p2
 def test_get_file_content_checks_permission(monkeypatch):
     module = _load_file_api_service(monkeypatch)
     monkeypatch.setattr(module, "check_file_team_permission", lambda *_args, **_kwargs: False)

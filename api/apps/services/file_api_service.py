@@ -540,6 +540,8 @@ async def move_files(uid: str, src_file_ids: list, dest_file_id: str = None, new
             existing_folder = FileService.query(name=effective_name, parent_id=dest_folder_entry.id)
             if existing_folder:
                 new_folder = existing_folder[0]
+                if new_folder.id == source_file_entry.id:
+                    return
             else:
                 new_folder = FileService.insert({
                     "id": get_uuid(),
