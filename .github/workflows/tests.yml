@@ -726,6 +726,27 @@ jobs:
           done
           source .venv/bin/activate && set -o pipefail; pytest -s --tb=short --level=${HTTP_API_TEST_LEVEL} test/testcases/restful_api 2>&1 | tee k8s_restful_api_test.log
 
+      - name: Tail BYOK ragflow pod logs
+        if: always()
+        run: |
+          if [[ -z "${BYOK_NAMESPACE:-}" ]]; then
+            echo "BYOK_NAMESPACE is empty; skipping pod log tail."
+            exit 0
+          fi
+
+          POD_NAME="$(kubectl get pods -n "${BYOK_NAMESPACE}" -l app=ragflow --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)"
+          if [[ -z "${POD_NAME}" ]]; then
+            POD_NAME="$(kubectl get pods -n "${BYOK_NAMESPACE}" -l app=ragflow -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)"
+          fi
+
+          if [[ -z "${POD_NAME}" ]]; then
+            echo "No BYOK ragflow pod found in namespace ${BYOK_NAMESPACE}; skipping pod log tail."
+            exit 0
+          fi
+
+          echo "Tailing last 1000 lines from pod ${POD_NAME} (namespace: ${BYOK_NAMESPACE}, container: ragflow)"
+          kubectl logs -n "${BYOK_NAMESPACE}" "${POD_NAME}" -c ragflow --tail=1000 || true
+
       - name: Destroy BYOK instance
         if: always()
         working-directory: opentofu_ragflow/byok
