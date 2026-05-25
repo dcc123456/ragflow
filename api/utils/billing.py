@@ -16,6 +16,7 @@
 import logging
 import os
 import re
+import hashlib
 
 
 class InsufficientResourceError(Exception):
@@ -117,7 +118,20 @@ def get_stripe_test_clock_id_for_current_context() -> str:
 
 
 def resolve_stripe_test_clock_id(test_clock_id: str = "") -> str:
-    return (test_clock_id or get_stripe_test_clock_id_for_current_context() or os.getenv("STRIPE_TEST_CLOCK_ID") or "").strip()
+    if test_clock_id:
+        return test_clock_id.strip()
+
+    try:
+        from quart import has_request_context, request
+
+        if has_request_context():
+            request_test_clock_id = (request.headers.get(STRIPE_TEST_CLOCK_HEADER) or "").strip()
+            if request_test_clock_id:
+                return request_test_clock_id
+    except Exception:
+        pass
+
+    return (get_stripe_test_clock_id_for_current_context() or os.getenv("STRIPE_TEST_CLOCK_ID") or "").strip()
 
 
 def is_trial_plan_name(plan_name: str) -> bool:
@@ -647,6 +661,9 @@ async def get_pending_subscription_change_async(subscription_id: str) -> dict:
         return {}
 
     subscription = await stripe.Subscription.retrieve_async(subscription_id)
+    current_plan_item_id, current_price_id, _current_quantity = extract_plan_subscription_item(subscription)
+    if not current_plan_item_id or not current_price_id:
+        return {}
     schedule_id = (subscription.get("schedule") or "").strip()
     if not schedule_id:
         return {}
@@ -677,6 +694,13 @@ async def get_pending_subscription_change_async(subscription_id: str) -> dict:
             pending_price_id = _price_id
             break
     if not pending_price_id:
+        return {}
+
+    # Stripe can keep a schedule attached briefly after the phase has already
+    # taken effect. Once the live subscription's current plan item matches the
+    # pending phase target, this is no longer a future change and should not be
+    # exposed as pending state.
+    if pending_price_id == current_price_id:
         return {}
 
     # Extract pending storage quantity from the next phase items.
@@ -939,7 +963,6 @@ async def modify_subscription_plan_async(
         return {}
 
     request_quantity = max(current_quantity, 1)
-    idempotency_key = f"billing:{tenant_id}:plan_change:{subscription_id}:{target_price_id}"
 
     # Build the full items list: update plan item price + preserve all other items
     # (e.g. storage add-on). Stripe replaces all items, so omitting any would drop them.
@@ -957,6 +980,19 @@ async def modify_subscription_plan_async(
         if quantity > 0:
             # Preserve this non-plan item (e.g. storage add-on) as-is
             modify_items.append({"id": item.get("id", "") if isinstance(item, dict) else getattr(item, "id", ""), "price": price_id, "quantity": quantity})
+
+    item_fingerprint = ",".join(
+        f"{item.get('id', '')}:{item.get('price', '')}:{item.get('quantity', 0)}"
+        for item in modify_items
+    )
+    item_fingerprint_hash = hashlib.sha1(item_fingerprint.encode("utf-8")).hexdigest()[:12]
+    idempotency_key = (
+        f"billing:{tenant_id}:plan_change:{subscription_id}:"
+        f"{_current_price_id}->{target_price_id}:"
+        f"anchor={int(bool(reset_billing_cycle))}:"
+        f"trial={int(bool(end_trial_now))}:"
+        f"items={item_fingerprint_hash}"
+    )
 
     modify_params = {
         "items": modify_items,

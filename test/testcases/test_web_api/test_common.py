@@ -265,11 +265,13 @@ def rename_tags(auth, dataset_id, payload=None, *, headers=HEADERS, data=None):
 
 
 def batch_create_datasets(auth, num):
-    ids = []
+    dataset_ids = []
     for i in range(num):
-        res = create_dataset(auth, {"name": f"kb_{i}"})
-        ids.append(res["data"]["id"])
-    return ids
+        res = create_dataset(auth, {"name": f"dataset_{i}"})
+        if res.get("code") != 0:
+            raise RuntimeError(f"Dataset creation failed: {res.get('message', 'Unknown error')}")
+        dataset_ids.append(res["data"]["id"])
+    return dataset_ids
 
 
 # DOCUMENT APP

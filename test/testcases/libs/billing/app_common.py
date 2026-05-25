@@ -26,45 +26,83 @@ Provides:
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 
-import stripe
-
-from tools.billing.billing_common import (  # noqa: E402
+from libs.billing.billing_common import (  # noqa: E402
+    BillingClient,
     FlowError,
+    create_client_with_type,
     get_trial_quota_apps,
     get_starter_quota_apps,
 )
-from tools.billing.billing_client import create_client_with_type, BillingClient
-from tools.billing.member_common import load_member_runtime_config
+
+logger = logging.getLogger(__name__)
 
 
 class AppClient(BillingClient):
     """Client for testing app quota enforcement."""
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.sdk_auth_header = ""
+
+    def init_sdk_token(self) -> None:
+        """Create a tenant API token and switch app operations to Bearer auth."""
+        result = self.request_json("POST", "system/new_token")
+        token = ((result.get("data") or {}).get("token") or "").strip()
+        if not token:
+            raise FlowError(f"system/new_token did not return token: {result}")
+        self.sdk_auth_header = f"Bearer {token}"
+
+    def sdk_headers(self) -> dict[str, str]:
+        headers = self.headers()
+        if not self.sdk_auth_header:
+            raise FlowError("SDK auth header not initialized")
+        headers["Authorization"] = self.sdk_auth_header
+        return headers
+
+    def sdk_request_json(self, method: str, path: str, **kwargs) -> dict:
+        response = self.session.request(
+            method,
+            self.url(path, need_api_path=True),
+            headers=self.sdk_headers(),
+            timeout=60,
+            **kwargs,
+        )
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise FlowError(
+                f"{method} {path} returned non-JSON status={response.status_code}: {response.text[:500]}"
+            ) from exc
+        if response.status_code >= 400 or payload.get("code") not in (0, None):
+            raise FlowError(f"{method} {path} failed status={response.status_code}: {payload}")
+        return payload
+
     def create_dataset(self, name: str, description: str = "") -> dict:
-        """Create a dataset via REST API."""
+        """Create a dataset via the RESTful API using SDK Bearer auth."""
         payload = {
             "name": name,
             "description": description,
         }
-        return self.request_json("POST", "datasets", need_api_path=True, json=payload)
+        return self.sdk_request_json("POST", "datasets", json=payload)
 
     def delete_dataset(self, dataset_id: str) -> dict:
-        """Delete a dataset via REST API."""
-        return self.request_json("DELETE", "datasets", need_api_path=True, json={"ids": [dataset_id]})
+        """Delete a dataset via the RESTful API using SDK Bearer auth."""
+        return self.sdk_request_json("DELETE", "datasets", json={"ids": [dataset_id]})
 
-    def create_chat(self, name: str, dataset_ids: list = None) -> dict:
-        """Create a chat via SDK API."""
+    def create_chat(self, name: str, dataset_ids: list | None = None) -> dict:
+        """Create a chat via the SDK API."""
         payload = {
             "name": name,
             "description": "Test chat",
             "dataset_ids": dataset_ids or [],
         }
-        return self.request_json("POST", "chats", need_api_path=True, json=payload)
+        return self.sdk_request_json("POST", "chats", json=payload)
 
-    def create_agent(self, title: str, dsl: dict = None) -> dict:
-        """Create an agent via SDK API."""
+    def create_agent(self, title: str, dsl: dict | None = None) -> dict:
+        """Create an agent via the SDK API."""
         if dsl is None:
             dsl = {
                 "components": {
@@ -85,10 +123,10 @@ class AppClient(BillingClient):
             "dsl": dsl,
             "canvas_category": "agent",
         }
-        return self.request_json("POST", "agents", need_api_path=True, json=payload)
+        return self.sdk_request_json("POST", "agents", json=payload)
 
-    def create_canvas(self, title: str, dsl: dict = None) -> dict:
-        """Create a canvas via web API."""
+    def create_canvas(self, title: str, dsl: dict | None = None) -> dict:
+        """Create a canvas via the web canvas API using SDK Bearer auth."""
         if dsl is None:
             dsl = {
                 "components": {
@@ -109,7 +147,22 @@ class AppClient(BillingClient):
             "dsl": dsl,
             "canvas_category": "agent",
         }
-        return self.request_json("POST", "canvas/set", json=payload)
+        response = self.session.request(
+            "POST",
+            self.url("canvas/set"),
+            headers=self.sdk_headers(),
+            timeout=60,
+            json=payload,
+        )
+        try:
+            result = response.json()
+        except ValueError as exc:
+            raise FlowError(
+                f"POST canvas/set returned non-JSON status={response.status_code}: {response.text[:500]}"
+            ) from exc
+        if response.status_code >= 400 or result.get("code") not in (0, None):
+            raise FlowError(f"POST canvas/set failed status={response.status_code}: {result}")
+        return result
 
     def get_apps_quota_overview(self) -> dict:
         """Get apps quota overview from billing plan overview."""
@@ -135,36 +188,29 @@ def setup_app_test(
     Returns:
         Tuple of (client, email, trial_quota_apps, starter_quota_apps).
     """
-    print("\n" + "=" * 80)
-    print(f"Testing {case_name}")
-    print("=" * 80)
-
-    # Load runtime configuration
-    config = load_member_runtime_config()
-    stripe.api_key = config["stripe_api_key"]
-    stripe.api_version = config["stripe_api_version"]
-    print("  Assert: Runtime config loaded successfully")
+    logger.info("Testing %s", case_name)
 
     # Get expected quotas
     trial_quota_apps = get_trial_quota_apps()
     starter_quota_apps = get_starter_quota_apps()
-    print(f"  Assert: Expected quota_apps for Trial: {trial_quota_apps}")
-    print(f"  Assert: Expected quota_apps for Starter: {starter_quota_apps}")
+    logger.info("Assert: Expected quota_apps for Trial: %s", trial_quota_apps)
+    logger.info("Assert: Expected quota_apps for Starter: %s", starter_quota_apps)
 
     # Create client
     email = f"{case_name}-{uuid.uuid4().hex[:12]}@example.test"
     client: AppClient = create_client_with_type(args, email, client_type)
+    client.init_sdk_token()
 
-    print(f"  Assert: Tenant ID: {client.tenant_id}")
-    print(f"  Assert: User ID: {client.user_id}")
-    print(f"  Assert: Customer ID: {client.customer_id}")
+    logger.info("Assert: Tenant ID: %s", client.tenant_id)
+    logger.info("Assert: User ID: %s", client.user_id)
+    logger.info("Assert: Customer ID: %s", client.customer_id)
 
     # Verify initial plan quota
     apps_quota = client.get_apps_quota_overview()
     expected_limit = trial_quota_apps if initial_plan == "Trial" else starter_quota_apps
     if apps_quota.get("limit") != expected_limit:
         raise FlowError(f"Expected {initial_plan} apps quota {expected_limit}, got {apps_quota.get('limit')}")
-    print(f"  Assert: Apps quota from overview ({initial_plan}): {apps_quota.get('used')}/{apps_quota.get('limit')}")
+    logger.info("Assert: Apps quota from overview (%s): %s/%s", initial_plan, apps_quota.get('used'), apps_quota.get('limit'))
 
     return client, email, trial_quota_apps, starter_quota_apps
 
@@ -186,13 +232,10 @@ def print_app_summary(case: str, description: str, client: AppClient, email: str
         "email": email,
         "test_clock_id": client.clock_id,
         "customer_id": client.customer_id,
-        "webhook_mode": getattr(client, "mode", None),
         "status": "PASSED",
     }
     if extra:
         summary.update(extra)
 
-    print("\n" + "=" * 80)
-    print(f"{case} Test Summary")
-    print("=" * 80)
-    print(json.dumps(summary, indent=2, sort_keys=True))
+    logger.info("%s Test Summary", case)
+    logger.info(json.dumps(summary, indent=2, sort_keys=True))

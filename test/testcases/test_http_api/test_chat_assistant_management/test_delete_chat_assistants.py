@@ -108,9 +108,9 @@ class TestChatAssistantsDelete:
         ids = batch_create_chat_assistants(HttpApiAuth, count)
 
         with ThreadPoolExecutor(max_workers=5) as executor:
-            futures = [executor.submit(delete_chat_assistants, HttpApiAuth, {"ids": ids[i : i + 1]}) for i in range(count)]
+            futures = [executor.submit(delete_chat_assistants, HttpApiAuth, {"ids": ids[i : i + 1]}) for i in range(len(ids))]
         responses = list(as_completed(futures))
-        assert len(responses) == count, responses
+        assert len(responses) == len(ids), responses
         assert all(future.result()["code"] == 0 for future in futures)
 
     @pytest.mark.p3

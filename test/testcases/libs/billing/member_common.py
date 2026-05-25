@@ -21,50 +21,34 @@ Provides MemberClient class extending RAGFlowClient with member/tenant managemen
 """
 from __future__ import annotations
 
+import base64
 import sys
 from pathlib import Path
 from typing import Any
 
-from api.db import UserTenantRole
-from api.utils.crypt import crypt
-from tools.billing.billing_common import (
+from libs.billing.billing_common import (
+    BillingClient,
+    DEFAULT_TEST_PASSWORD_ENCRYPTED,
     FlowError,
-    env,
-    load_billing_config,
-    load_persisted_webhook_secret,
+    load_stripe_test_runtime_config,
+    prepare_backend_imports,
 )
-from tools.billing.billing_client import BillingClient
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = Path(__file__).resolve().parents[4]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
+
+DEFAULT_MEMBER_TEST_PASSWORD = "Test123456"
+DEFAULT_MEMBER_TEST_PASSWORD_ENCRYPTED = (
+    "XR5GxBUSJS13cx9NafOYP/ROYad03zudlCuy+IBCMjelkLICT09LUp1RYzM0AJlLjjs40aMFeckDfVTvUxx1JXABhITTaHUhYDtgL2I+doEyNyGZvz1M8"
+    "CvkQEOf5dfKWDrZuttD7iPFRdo14hehoCGgRaQo5e7sivRLcMDROCySa6kGfI7Xob19wS1ts+pgJS9IlAFjVwyHnjWjDzgUX/wf45F2TH/UQ+2zOnCglB"
+    "/8TlxQSUT2jJiqiF7mACtsHmAo1V6QzQaj7QTUyM9y8e2DxMTTRs8jBu5g78L1P1epBOyfq/WhZdKpP3gDVVQ2QeNBDWymj9JOTdaesLyABA=="
+)
 
 
 def load_member_runtime_config() -> dict[str, Any]:
     """Load runtime configuration for member test flows."""
-    billing_config = load_billing_config()
-    stripe_api_key = env("BILLING_STRIPE_API_KEY", env("STRIPE_API_KEY", str(billing_config.get("stripe_api_key") or "")))
-    stripe_api_version = str(billing_config.get("stripe_api_version") or "2026-02-25.clover")
-    stripe_api_version_override = env("STRIPE_API_VERSION")
-    if stripe_api_version_override and stripe_api_version_override != stripe_api_version:
-        raise FlowError(
-            f"STRIPE_API_VERSION={stripe_api_version_override} does not match service_conf.yaml={stripe_api_version}"
-        )
-    if not stripe_api_key:
-        raise FlowError("BILLING_STRIPE_API_KEY or STRIPE_API_KEY is required")
-    if not stripe_api_key.startswith("sk_test_"):
-        raise FlowError("Member automation requires a Stripe test-mode secret key")
-
-    webhook_secret = env("BILLING_WEBHOOK_SECRET", env("STRIPE_WEBHOOK_SECRET"))
-    if not webhook_secret:
-        webhook_secret = load_persisted_webhook_secret()
-
-    return {
-        "billing_config": billing_config,
-        "stripe_api_key": stripe_api_key,
-        "stripe_api_version": stripe_api_version,
-        "webhook_secret": webhook_secret,
-    }
+    return load_stripe_test_runtime_config(require_test_mode_message="Member automation requires a Stripe test-mode secret key")
 
 
 class MemberClient(BillingClient):
@@ -87,6 +71,9 @@ class MemberClient(BillingClient):
         Raises:
             FlowError: If the API request fails.
         """
+        prepare_backend_imports()
+        from api.db import UserTenantRole
+
         members_may_include_owner: list[dict[str, Any]] = self.request_json("GET", f"/tenant/{self.tenant_id}/user/list")["data"]
         return [m for m in members_may_include_owner if m["role"] != UserTenantRole.OWNER]
 
@@ -140,8 +127,10 @@ class MemberClient(BillingClient):
     def register_member_only(self, email: str, password: str = "Test123456") -> dict[str, Any]:
         """Register a new user without logging them in.
 
-        This is used to create user accounts that can then be invited to a tenant.
-        The invite_member API requires the user to already exist in the system.
+        Member tests may need many users under a single Stripe test clock. The
+        normal registration API creates a Stripe customer per user, which quickly
+        exceeds Stripe's per-clock customer limit. For member-only test accounts
+        we create the minimal local user record directly instead.
 
         Args:
             email: Email address for the new user.
@@ -153,27 +142,44 @@ class MemberClient(BillingClient):
         Raises:
             FlowError: If the registration fails.
         """
-        encrypted_password = crypt(password)
-        register_payload = {
+        prepare_backend_imports()
+        from api.db.services.role_service import RoleService
+        from api.db.services.user_service import UserService
+        from common import settings
+        from common.misc_utils import get_uuid
+        from common.time_utils import get_format_time
+
+        existing_users = UserService.query(email=email)
+        if existing_users:
+            return {"code": 0, "data": existing_users[0].to_json(), "message": "already registered"}
+
+        role_name = settings.DEFAULT_ROLE
+        roles = RoleService.get_by_role_name(role_name)
+        if not roles:
+            raise FlowError(f"Role not found for lightweight member registration: {role_name}")
+
+        user_id = get_uuid()
+        user_dict = {
+            "access_token": get_uuid(),
             "email": email,
             "nickname": email.split("@", 1)[0],
-            "password": encrypted_password,
+            # Match the normal register endpoint, which stores decrypt(req["password"]):
+            # that value is base64(plain_password), and UserService.save() hashes it.
+            "password": base64.b64encode(password.encode("utf-8")).decode("utf-8"),
+            "login_channel": "password",
+            "last_login_time": get_format_time(),
+            "is_superuser": False,
+            "role_id": roles[0]["id"],
         }
-        response = self.session.post(
-            self.url("/user/register"),
-            headers=self.headers(auth=False),
-            json=register_payload,
-            timeout=60,
-        )
+
         try:
-            data = response.json()
-        except ValueError as exc:
-            raise FlowError(
-                f"register returned non-JSON status={response.status_code}: {response.text[:500]}"
-            ) from exc
-        if data.get("code") != 0 and "has already registered" not in (data.get("message") or ""):
-            raise FlowError(f"register failed for {email}: {data}")
-        return data
+            UserService.save(id=user_id, **user_dict)
+            users = UserService.query(email=email)
+        except Exception as exc:
+            raise FlowError(f"lightweight register failed for {email}: {exc}") from exc
+        if not users:
+            raise FlowError(f"lightweight register returned no user for {email}")
+        return {"code": 0, "data": users[0].to_json(), "message": "registered"}
 
     def login_as_member(self, email: str, password: str = "Test123456") -> tuple[str, str]:
         """Login as a member user and return (user_id, tenant_id).
@@ -191,7 +197,14 @@ class MemberClient(BillingClient):
         Raises:
             FlowError: If login fails.
         """
-        encrypted_password = crypt(password)
+        if password == DEFAULT_MEMBER_TEST_PASSWORD:
+            encrypted_password = DEFAULT_MEMBER_TEST_PASSWORD_ENCRYPTED
+        elif password == "Test1234!":
+            encrypted_password = DEFAULT_TEST_PASSWORD_ENCRYPTED
+        else:
+            raise FlowError(
+                "member billing test helper only supports the fixed default test passwords"
+            )
         login_response = self.session.post(
             self.url("/user/login"),
             headers=self.headers(auth=False),
@@ -264,83 +277,17 @@ class MemberClient(BillingClient):
         Raises:
             FlowError: If the API request fails.
         """
-        return self.request_json("GET", "/billing/plan_overview")["data"]["resources"]["members"]
-
-def get_trial_price_id() -> str:
-    """Get the Trial plan price ID from billing configuration.
-
-    Returns:
-        Stripe price ID for the Trial plan.
-
-    Raises:
-        FlowError: If Trial plan is not found in configuration.
-    """
-    config = load_billing_config()
-    plans = config.get("billing_plans", [])
-    for plan in plans:
-        if plan.get("name") == "Trial":
-            price_ids = plan.get("price_ids", [])
-            if isinstance(price_ids, list) and price_ids:
-                return price_ids[0]
-            if isinstance(price_ids, str) and price_ids:
-                return price_ids
-    raise FlowError("Trial plan not found in billing configuration")
-
-def get_starter_price_id() -> str:
-    """Get the Starter plan price ID from billing configuration.
-
-    Returns:
-        Stripe price ID for the Starter plan.
-
-    Raises:
-        FlowError: If Starter plan is not found in configuration.
-    """
-    config = load_billing_config()
-    plans = config.get("billing_plans", [])
-    for plan in plans:
-        if plan.get("name") == "Starter":
-            price_ids = plan.get("price_ids", [])
-            if isinstance(price_ids, list) and price_ids:
-                return price_ids[0]
-            if isinstance(price_ids, str) and price_ids:
-                return price_ids
-    raise FlowError("Starter plan not found in billing configuration")
-
-def get_pro_price_id() -> str:
-    """Get the Pro plan price ID from billing configuration.
-
-    Returns:
-        Stripe price ID for the Pro plan.
-
-    Raises:
-        FlowError: If Pro plan is not found in configuration.
-    """
-    config = load_billing_config()
-    plans = config.get("billing_plans", [])
-    for plan in plans:
-        if plan.get("name") == "Pro":
-            price_ids = plan.get("price_ids", [])
-            if isinstance(price_ids, list) and price_ids:
-                return price_ids[0]
-            if isinstance(price_ids, str) and price_ids:
-                return price_ids
-    raise FlowError("Pro plan not found in billing configuration")
-
-def get_quota_members_limit(plan_name: str) -> int:
-    """Get the member quota limit for a specific plan from billing configuration.
-
-    Args:
-        plan_name: Name of the plan (Trial, Starter, Pro).
-
-    Returns:
-        Member quota limit for the plan.
-
-    Raises:
-        FlowError: If the plan is not found in configuration.
-    """
-    config = load_billing_config()
-    plans = config.get("billing_plans", [])
-    for plan in plans:
-        if plan.get("name") == plan_name:
-            return int(plan.get("quota_members", 0))
-    raise FlowError(f"Plan '{plan_name}' not found in billing configuration")
+        response = self.session.get(
+            self.billing_url("/subscription/overview"),
+            headers=self.headers(auth=True),
+            timeout=60,
+        )
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise FlowError(
+                f"GET /billing/subscription/overview returned non-JSON status={response.status_code}: {response.text[:500]}"
+            ) from exc
+        if response.status_code >= 400 or payload.get("code") not in (0, None):
+            raise FlowError(f"GET /billing/subscription/overview failed status={response.status_code}: {payload}")
+        return payload["data"]["resources"]["members"]

@@ -22,7 +22,6 @@ class RabbitQueue:
         self._publisher = threading.local()
         self._setup_signal_handlers()
         self.config = settings.RABBIT_CONF if settings.RABBIT_CONF else get_base_config("rabbitmq")
-        self.__open__()
 
     def _connection_parameters(self):
         credentials = pika.PlainCredentials(self.config["user"], self.config["password"])
@@ -45,6 +44,13 @@ class RabbitQueue:
             logging.info("Connect to RabbitMQ: {}".format(self.config))
         except Exception:
             logging.warning("RabbitMQ can't be connected.")
+
+    def _ensure_connection(self):
+        """Open the shared connection lazily when queue operations need it."""
+        if self._is_connection_healthy():
+            return True
+        self.__open__()
+        return self._is_connection_healthy()
 
     def _close_connection(self):
         """Safely close existing connection and channel."""
@@ -91,6 +97,8 @@ class RabbitQueue:
             return channel
 
         self._close_publisher_connection()
+        if not self._ensure_connection():
+            raise ConnectionError("RabbitMQ shared connection is unavailable.")
         conn = pika.BlockingConnection(self._connection_parameters())
         channel = conn.channel()
         self._publisher.conn = conn
@@ -209,7 +217,7 @@ class RabbitQueue:
                 if not self._is_connection_healthy():
                     logging.info("Connection unhealthy, reconnecting...")
                     self._close_connection()
-                    self.__open__()
+                    self._ensure_connection()
 
                 if not self._is_connection_healthy():
                     logging.warning("Failed to establish healthy connection, retrying...")
@@ -323,7 +331,7 @@ class RabbitQueue:
                 if not self._is_connection_healthy():
                     logging.info("Connection unhealthy, reconnecting...")
                     self._close_connection()
-                    self.__open__()
+                    self._ensure_connection()
 
                 if not self._is_connection_healthy():
                     logging.warning("Failed to establish healthy connection, retrying...")
@@ -438,7 +446,7 @@ class RabbitQueue:
                 return q.method.message_count
             except Exception as e:
                 logging.exception(e)
-                self.__open__()
+                self._ensure_connection()
         return 110
 
     

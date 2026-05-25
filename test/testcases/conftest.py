@@ -108,6 +108,14 @@ MARKER_EXPRESSIONS = {
 }
 
 
+def pytest_configure(config: pytest.Config) -> None:
+    config.addinivalue_line("markers", "billing: billing integration tests requiring Stripe test mode")
+    level = config.getoption("--level")
+    config.option.markexpr = MARKER_EXPRESSIONS[level]
+    if config.option.verbose > 0:
+        print(f"\n[CONFIG] Active test level: {level}")
+
+
 def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addoption(
         "--level",
@@ -124,13 +132,6 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         choices=["python_sdk", "http", "web"],
         help="Test client type: 'python_sdk', 'http', 'web'",
     )
-
-
-def pytest_configure(config: pytest.Config) -> None:
-    level = config.getoption("--level")
-    config.option.markexpr = MARKER_EXPRESSIONS[level]
-    if config.option.verbose > 0:
-        print(f"\n[CONFIG] Active test level: {level}")
 
 
 def register():
@@ -154,6 +155,18 @@ def login():
     return auth
 
 
+def _request_json_with_auth_retry(method, url, auth, *, json_payload=None):
+    headers = {"Authorization": auth}
+    response = requests.request(method=method, url=url, headers=headers, json=json_payload)
+    if response.status_code != 401:
+        return response, auth
+
+    refreshed_auth = login()
+    headers = {"Authorization": refreshed_auth}
+    response = requests.request(method=method, url=url, headers=headers, json=json_payload)
+    return response, refreshed_auth
+
+
 @pytest.fixture(scope="session")
 def auth():
     try:
@@ -166,9 +179,8 @@ def auth():
 
 @pytest.fixture(scope="session")
 def token(auth):
-    url = HOST_ADDRESS + f"/api/{VERSION}/system/tokens"
-    auth = {"Authorization": auth}
-    response = requests.post(url=url, headers=auth)
+    url = HOST_ADDRESS + f"/{VERSION}/system/new_token"
+    response, _ = _request_json_with_auth_retry("POST", url, auth)
     res = response.json()
     if res.get("code") != 0:
         error_msg = f"access: {url}, POST method, error code: {res.get('code')}, message: {res.get('message')}"
@@ -176,10 +188,15 @@ def token(auth):
     return res["data"].get("token")
 
 
+@pytest.fixture(scope="session")
+def tenant_id(auth):
+    tenant_id, _ = get_tenant_info(auth)
+    return tenant_id
+
+
 def get_my_llms(auth, name):
     url = HOST_ADDRESS + f"/{VERSION}/llm/my_llms"
-    authorization = {"Authorization": auth}
-    response = requests.get(url=url, headers=authorization)
+    response, _ = _request_json_with_auth_retry("GET", url, auth)
     res = response.json()
     if res.get("code") != 0:
         raise Exception(res.get("message"))
@@ -191,7 +208,6 @@ def get_my_llms(auth, name):
 def add_models(auth):
     set_api_key_url = HOST_ADDRESS + f"/{VERSION}/llm/set_api_key"
     add_llm_url = HOST_ADDRESS + f"/{VERSION}/llm/add_llm"
-    authorization = {"Authorization": auth}
     set_api_key_models_info = {
         "ZHIPU-AI": {"llm_factory": "ZHIPU-AI", "api_key": ZHIPU_AI_API_KEY}
     }
@@ -221,27 +237,30 @@ def add_models(auth):
 
     for name, model_info in set_api_key_models_info.items():
         if not get_my_llms(auth, name):
-            response = requests.post(url=set_api_key_url, headers=authorization, json=model_info)
+            response, auth = _request_json_with_auth_retry("POST", set_api_key_url, auth, json_payload=model_info)
             res = response.json()
             if res.get("code") != 0:
                 pytest.exit(f"Critical error in add_models: {res.get('message')}")
 
     for name, model_info in add_llm_models_info.items():
         if not get_my_llms(auth, name):
-            response = requests.post(url=add_llm_url, headers=authorization, json=model_info)
+            response, auth = _request_json_with_auth_retry("POST", add_llm_url, auth, json_payload=model_info)
             res = response.json()
             if res.get("code") != 0:
-                pytest.exit(f"Critical error in add_models: {res.get('message')}")
+                message = res.get("message", "")
+                if "Fail to access embedding model" in message or "Connection error" in message:
+                    print(f"[WARN] Skipping embedding model warmup due to backend connectivity issue: {message}")
+                    continue
+                pytest.exit(f"Critical error in add_models: {message}")
 
 
 def get_tenant_info(auth):
-    url = HOST_ADDRESS + f"/api/{VERSION}/users/me/models"
-    authorization = {"Authorization": auth}
-    response = requests.get(url=url, headers=authorization)
+    url = HOST_ADDRESS + f"/{VERSION}/user/tenant_info"
+    response, auth = _request_json_with_auth_retry("GET", url, auth)
     res = response.json()
     if res.get("code") != 0:
         raise Exception(res.get("message"))
-    return res["data"].get("tenant_id")
+    return res["data"].get("tenant_id"), auth
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -249,11 +268,10 @@ def set_tenant_info(auth):
     tenant_id = None
     try:
         add_models(auth)
-        tenant_id = get_tenant_info(auth)
+        tenant_id, auth = get_tenant_info(auth)
     except Exception as e:
         pytest.exit(f"Error in set_tenant_info: {str(e)}")
-    url = HOST_ADDRESS + f"/api/{VERSION}/users/me/models"
-    authorization = {"Authorization": auth}
+    url = HOST_ADDRESS + f"/{VERSION}/user/set_tenant_info"
     embd_id = (
         f"{SILICONFLOW_EMBEDDING_MODEL}@SILICONFLOW"
         if K8S_CI_USE_SILICONFLOW
@@ -267,7 +285,7 @@ def set_tenant_info(auth):
         "asr_id": "",
         "tts_id": None,
     }
-    response = requests.patch(url=url, headers=authorization, json=tenant_info)
+    response, _ = _request_json_with_auth_retry("POST", url, auth, json_payload=tenant_info)
     res = response.json()
     if res.get("code") != 0:
         raise Exception(res.get("message"))

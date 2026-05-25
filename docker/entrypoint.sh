@@ -206,8 +206,12 @@ fi
 # Inject DNS resolver into nginx.conf (required for Lua cosocket DNS resolution in K8s)
 DNS_RESOLVER=$(grep '^nameserver' /etc/resolv.conf | head -1 | awk '{print $2}')
 if [ -n "$DNS_RESOLVER" ]; then
-    sed -i "s/^http {/http {\n    resolver ${DNS_RESOLVER} valid=30s ipv6=off;/" /etc/nginx/nginx.conf
-    echo "Nginx DNS resolver: ${DNS_RESOLVER}"
+    if grep -Eq '^[[:space:]]*resolver[[:space:]]+' /etc/nginx/nginx.conf; then
+        echo "Nginx DNS resolver already configured, skipping injection"
+    else
+        sed -i "s/^http {/http {\n    resolver ${DNS_RESOLVER} valid=30s ipv6=off;/" /etc/nginx/nginx.conf
+        echo "Nginx DNS resolver: ${DNS_RESOLVER}"
+    fi
 fi
 
 # -----------------------------------------------------------------------------

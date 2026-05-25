@@ -88,7 +88,9 @@ export const BaseInfo = () => {
   }, [planData, setCurrentPlan]);
 
   const handleManagePaymentMethods = async () => {
-    const { data: res } = await createBillingPortalSession();
+    const { data: res } = await createBillingPortalSession({
+      return_url: window.location.href,
+    });
     const redirectUrl = res?.data?.redirect_to || res?.redirect_to;
     if (redirectUrl) {
       window.open(redirectUrl, '_blank');

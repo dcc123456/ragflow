@@ -424,77 +424,76 @@ RAGFlow supports switching between Elasticsearch (default) and Infinity:
 <claude-mem-context>
 # Memory Context
 
-# [ragflow_enterprise] recent context, 2026-04-28 3:56am UTC
+# [ragflow_enterprise/billing-refactor-9smmy] recent context, 2026-05-25 5:45pm GMT+8
 
 Legend: 🎯session 🔴bugfix 🟣feature 🔄refactor ✅change 🔵discovery ⚖️decision 🚨security_alert 🔐security_note
 Format: ID TIME TYPE TITLE
 Fetch details: get_observations([IDs]) | Search: mem-search skill
 
-Stats: 50 obs (12,880t read) | 433,440t work | 97% savings
+Stats: 50 obs (14,413t read) | 2,091,054t work | 99% savings
 
-### Apr 25, 2026
-117 5:47a 🔵 Webhook signature verification failing on pod kkfkw
-121 5:51a 🔴 Added session_id query parameter to Stripe checkout success URLs
-122 " 🔵 Stripe webhook signature verification fails on replica kkfkw
-123 " 🔵 Empty metadata in payment_intent.succeeded causes recharge skip
-124 " 🔴 Applied _build_checkout_success_url across all Stripe checkout paths
-125 " 🔴 /success endpoint now returns error status instead of cancel for missing session_id
-126 5:53a 🔴 Stripe checkout success URL now includes session ID for frontend verification
-127 " 🔴 Buy Credits payment modal now displays correct title and content
-### Apr 27, 2026
-133 1:39a ✅ Amended billing split commit message from feat to fix
-134 1:55a 🔵 PR #362 review comments reveal 15 code issues
-136 1:56a 🔵 PriceType/ProductType enums confirmed as ADDON not USAGE_BASED
-137 1:57a 🔵 DB model choices use 'usage_based' while enum uses 'addon'
-138 " 🔴 PR #362 review comments fixed in billing_app.py and init_data.py
-139 3:09a 🔵 CI build failure on deepdoc Dockerfile
-140 3:10a 🔵 PointAccount sync_plan_points_on_subscription_paid is idempotent
-141 " 🔵 CI failure in ragflow_enterprise deepdoc Dockerfile
-S140 Fix CI test failure test_invoice_paid_updates_existing_failed_order_and_restores_active in ragflow_enterprise (Apr 27, 3:18 AM)
-144 3:18a 🔵 uv sync fails due to graspologic gitee mirror SSL timeout
-S141 CI failure investigation on ragflow_enterprise GitHub Actions (Apr 27, 3:24 AM)
-145 3:25a 🔵 CI failure investigation on ragflow_enterprise GitHub Actions
-S142 PDF batch processing reduces parser peak memory (Apr 27, 3:25 AM)
-146 3:35a 🟣 Batch PDF parsing reduces parser peak memory
-147 " ✅ OCR memory optimization with lazy numpy view creation
-148 " 🟣 DEEPDOC_URL mode skips local Layout ONNX model initialization
-149 " ✅ DLA serialization JPEG bytes generated once and reused
-150 " 🔵 Memory optimization verification blocked by graspologic dependency timeout
-151 3:36a 🟣 PDF batch processing reduces parser peak memory
-152 " ✅ OCR temporary memory optimization
-153 " ✅ DEEPDOC_URL mode skips local Layout ONNX initialization
-154 " ✅ DLA serialization reuses JPEG bytes to reduce allocations
-S143 billing_all_plans API to include quota_points per plan (Apr 27, 3:36 AM)
-155 5:44a 🟣 billing_all_plans needs to return quota_points per plan
-156 " 🟣 billing_all_plans API to include quota_points per plan
-S152 Investigating billing_webhook signature verification: determine if failed signature check crashes the process or returns 400 correctly (Apr 27, 5:44 AM)
-157 6:18a 🔵 Claude tool call failures traced to bwrap loopback sandbox restriction
-158 6:19a 🔵 ragflow_enterprise has MCP tool-call infrastructure in common/mcp_tool_call_conn.py
-160 7:25a 🔴 Stripe webhook signature verification failing in ragflow pod
-162 7:26a 🔵 Billing webhook secret fetched dynamically from database with in-memory cache
-S156 Storage checkout backend returns redirect_to correctly but frontend not processing it (Apr 27, 7:28 AM)
-163 7:29a 🔴 MCP smart_search tool calls failing in ragflow_enterprise
-164 " 🔵 MySQL root access denied - ragflow user credentials work for database queries
-165 7:48a 🔵 Stripe webhook secret verified matching between dashboard and database
-166 8:09a 🔴 Buy Storage not redirecting to Stripe payment page
-167 " 🔵 Storage checkout returns redirect_to field in response
-169 " 🔵 Storage checkout returns different response formats per scenario
-170 8:10a 🔵 Storage checkout backend returns redirect_to correctly but frontend not processing it
-S179 Implement idempotency for subscription cancellation when managed by subscription schedule (Apr 27, 8:10 AM)
-173 8:40a 🔴 Switched parse_storage_size from binary to decimal units
-175 8:41a 🔴 Aligned convertBytesToGb frontend to use decimal GB units
-176 " 🔵 Three more 1024-based BYTES_PER_GB constants found in billing code
-177 8:42a 🔴 Aligned all storage quota conversions to decimal (1000) units
-178 8:43a 🔵 formatBytes uses inconsistent units after decimal conversion
-179 9:20a 🟣 Subscription cancellation idempotency for subscription schedules
-S181 Rewrite HEAD commit message to describe the actual billing fix for delinquent subscription handling (Apr 27, 9:20 AM)
-### Apr 28, 2026
-S184 Create PR from stage branch to saas branch on origin with auto-generated title and body (Apr 28, 1:43 AM)
-182 3:41a 🔄 billing_points_checkout now extracts session success/cancel URLs like billing_checkout
-S187 billing_points_checkout now extracts session success/cancel URLs like billing_checkout (Apr 28, 3:41 AM)
-183 3:42a 🔄 billing_points_checkout should extract URL params like billing_checkout
-184 3:43a 🔄 billing_points_checkout added session_success_url and session_cancel_url parameter extraction
-185 3:48a 🔄 billing_points_checkout aligned with billing_checkout URL extraction
+### May 24, 2026
+S1228 CI runner credentials migration — replace GitHub secrets with runner env vars (May 24, 8:11 PM)
+S1279 Fix CI failures on billing-refactor branch (PR #533) - KeyError: 'data' in chat assistant tests (May 24, 8:17 PM)
+S1301 Fix test fixture batch_create_chat_assistants exceeding BILLING_QUOTA_TRIAL_APPS quota (May 24, 10:23 PM)
+S1306 batch_create_chat_assistants quota clamping risks misleading callers (May 24, 10:40 PM)
+S1308 batch_create_chat_assistants return signature fix: tuple with quota metadata (May 24, 10:43 PM)
+S1394 PR #533 draft-to-review CI trigger failure investigation (May 24, 10:43 PM)
+### May 25, 2026
+S1465 PR #533 draft→ready transition not triggering CI (May 25, 10:07 AM)
+S1466 PR #533 draft→ready not triggering CI — traced to tests.yml syntax error in commit 615c3e7f9 (May 25, 10:31 AM)
+S1469 PR #533 CI not triggering — tests.yml env.KUBE_CONFIG syntax error confirmed (May 25, 10:32 AM)
+S1472 Fix pushed to branch for PR #533 CI workflow syntax error (May 25, 10:35 AM)
+1068 11:03a ✅ PR #533 CI: Refined bridge step — writes to both GITHUB_ENV and GITHUB_OUTPUT, references via step outputs
+1069 11:10a 🔵 PR #533 CI: The same BYOK kubeconfig error persists after workflow changes — fix may not be applied to correct job
+1070 11:11a 🔵 PR #533 CI: ragflow_tests_byok is a separate job, not part of ragflow_tests — bridge step not applied to it
+1071 11:35a ✅ CI workflow GH_PAT secret replaced with MY_GH_TOKEN runner env var
+1073 11:38a 🔴 CI workflow now uses MY_GH_TOKEN runner env var instead of GH_PAT secret
+1075 11:42a 🔴 CI workflow GH_PAT secret replaced with MY_GH_TOKEN runner env var
+1078 11:50a 🔴 PR #533 CI BYOK jobs: GH_PAT replaced with MY_GH_TOKEN runner env var
+1079 " ✅ Elasticsearch test log collection changed from !cancelled() to always()
+1080 " ✅ Two commits pending push on billing-refactor-9smmy branch
+1081 11:56a 🔴 PR #533 CI still failing: kubeconfig input not supplied after bridge_ci_env fix
+1083 12:02p 🔴 Merge conflict resolved: kubeconfig now uses bridge_ci_env output
+1084 12:52p 🔵 tests.yml Set Kubernetes Context step present but Python assertion logic flawed
+1085 12:53p 🔵 Pytest test level and client type infrastructure discovered
+1086 12:55p 🔵 Local ragflow-1 container fails due to missing GitHub runner registration token
+1087 1:19p ✅ Built infiniflow-ai/ragflow:latest Docker image
+1088 " 🔵 HTTP API pytest suite testing plan initiated
+1091 1:22p 🔵 RAGFlow container logs reveal port binding and health issues
+1092 " 🔵 RAGFlow HTTP API pytest passed with local Docker stack
+1093 " 🔵 RAGFlow API endpoints and JWT parsing warnings during pytest
+1094 1:27p 🔵 CI workflow env configuration discovered for local match
+1095 1:28p ✅ Added tei-cpu compose profile to local docker/.env
+1096 " ✅ Added tei-cpu compose profile and TEI_MODEL to docker/.env
+1099 1:37p 🔵 RabbitMQ management port mismatch: .env uses 1673, actual service exposes 15672
+1100 1:40p 🔴 admin_metrics.py now reads RabbitMQ config from settings.RABBIT_CONF instead of env vars
+1101 1:43p 🔵 Dockerfile git describe fails in worktree builds, VERSION file ends up empty
+1102 1:45p 🔴 RAGFlow server fails to start because DOC_ENGINE env var contains literal shell substitution syntax
+1103 " 🔵 docker-compose .env does not support shell default syntax ${VAR:-default} for custom variables
+1104 1:48p 🔵 Multiple .env variables use shell default syntax that docker-compose passes through literally
+1105 1:49p 🔴 admin_metrics.py RabbitMQ fix confirmed: metrics collection now works in locally-built Docker image
+1106 1:50p 🔵 RAGFlow API server (9380) and admin metrics (9381) both returning HTTP 200
+1108 2:06p 🔵 RabbitMQ container IP discovered at 172.18.0.3
+1110 2:09p 🔵 RabbitMQ lazy-init fix unblocks billing quota enforcement
+1111 2:14p ⚖️ Third test resource cleanup approach: immediate deletion without affecting test logic
+1113 2:15p 🔵 Billing subscription overview API returns 404 with /api/v1 prefix
+1114 2:22p 🔵 Billing subscription overview endpoint works at correct path without /api prefix
+1115 2:30p ⚖️ BILLING_QUOTA_TRIAL_APPS=3 to preserve test logic
+1117 2:31p ✅ BILLING_QUOTA_TRIAL_APPS bumped from 1 to 3 across config, CI, and docs
+1122 2:39p 🔴 S3 storage NoSuchBucket causes document parsing timeout
+1124 2:40p 🔵 RAGFlow container uses MINIO storage (not S3) for document uploads
+1127 2:44p ✅ Trial apps quota bumped from 1 to 3 across env, CI, and docs
+1128 " 🔵 test_metadata_retrieval.py parsing timeout investigated — RTK proxy vs direct pytest difference
+1130 2:45p 🔵 test_metadata_retrieval.py fails in full suite run but passes individually
+1131 2:46p 🔴 test_metadata_retrieval.py ImportError root cause identified
+1132 " 🔴 test_metadata_retrieval.py import fix: moved upload_documents/parse_documents/retrieval_chunks to top-level
+1135 2:48p 🔴 test_metadata_retrieval.py import fix verified in full p2 suite rerun
+1136 2:49p 🔴 Full p2 suite rerun passed: 806 passed, 97 skipped, 0 failures
+1143 2:52p 🔴 BYOK CI kubeconfig unavailable in pull_request context — azure/k8s-set-context fails
+1146 " ✅ BILLING_QUOTA_STARTER_APPS raised from 3 to 4 across CI, env, and docs
+1147 " 🔄 RabbitMQ connection management refactored to lazy _ensure_connection() pattern
+1148 " ✅ docker/.env tei-cpu compose profile and TEI_MODEL variable added
 
-Access 433k tokens of past work via get_observations([IDs]) or mem-search skill.
+Access 2091k tokens of past work via get_observations([IDs]) or mem-search skill.
 </claude-mem-context>

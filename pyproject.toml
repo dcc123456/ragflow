@@ -258,7 +258,8 @@ ignore = ["E402"]
 
 [tool.pytest.ini_options]
 pythonpath = [
-    "."
+    ".",
+    "sdk/python",
 ]
 
 testpaths = ["test"]
@@ -282,7 +283,7 @@ asyncio_default_fixture_loop_scope = "function"
 filterwarnings = [
     "error",  # Treat warnings as errors
     "ignore::DeprecationWarning",  # Ignore specific warnings
-    "ignore:pkg_resources is deprecated:UserWarning",
+    "ignore:pkg_resources is deprecated as an API",  # xgboost compat uses deprecated pkg_resources
 ]
 
 # Command line options

@@ -131,6 +131,25 @@ class ProductService(CommonService):
 class SubscriptionService(CommonService):
     model = Subscription
 
+    _RAW_SUBSCRIPTION_FIELDS = [
+        model.tenant_id,
+        model.customer_id,
+        model.subscription_id,
+        model.subscription_status,
+        model.product_id,
+        model.plan_name,
+        model.price_id,
+        model.start_time,
+        model.end_time,
+        model.invoice_url,
+        model.invoice_pdf_url,
+        model.original_subscription_id,
+        model.status,
+        model.addon_subscription_item_id,
+        model.addon_storage_bytes,
+        model.target_storage_bytes,
+    ]
+
     @classmethod
     @DB.connection_context()
     def save(cls, **kwargs):
@@ -142,25 +161,7 @@ class SubscriptionService(CommonService):
     @classmethod
     @DB.connection_context()
     def get_by_tenant_id(cls, tenant_id: str, require_quota_info: bool = False) -> dict:
-        fields = [
-            cls.model.tenant_id,
-            cls.model.customer_id,
-            cls.model.subscription_id,
-            cls.model.subscription_status,
-            cls.model.product_id,
-            cls.model.plan_name,
-            cls.model.price_id,
-            cls.model.start_time,
-            cls.model.end_time,
-            cls.model.invoice_url,
-            cls.model.invoice_pdf_url,
-            cls.model.original_subscription_id,
-            cls.model.status,
-            cls.model.addon_subscription_item_id,
-            cls.model.addon_storage_bytes,
-            cls.model.target_storage_bytes,
-        ]
-        tenant_plan = cls.model.select(*fields).where(cls.model.tenant_id == tenant_id).order_by(cls.model.getter_by("create_time").desc()).dicts().first()
+        tenant_plan = cls.get_raw_by_tenant_id(tenant_id)
         if not tenant_plan:
             logging.warning(f"Tenant {tenant_id} plan not found, use trial plan")
             customer_id = create_stripe_customer_id(tenant_id) if settings.BILLING_ENABLED else ""
@@ -204,6 +205,17 @@ class SubscriptionService(CommonService):
             # Keep legacy key for compatibility with older callers.
             tenant_plan["num_kb_storage"] = num_storage_bytes
         return tenant_plan
+
+    @classmethod
+    @DB.connection_context()
+    def get_raw_by_tenant_id(cls, tenant_id: str) -> dict | None:
+        return (
+            cls.model.select(*cls._RAW_SUBSCRIPTION_FIELDS)
+            .where(cls.model.tenant_id == tenant_id)
+            .order_by(cls.model.getter_by("create_time").desc())
+            .dicts()
+            .first()
+        )
 
     @classmethod
     def _ensure_trial_stripe_subscription(cls, tenant_plan: dict) -> dict:

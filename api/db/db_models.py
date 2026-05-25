@@ -1899,32 +1899,54 @@ class SystemSettings(DataBaseModel):
         db_table = "system_settings"
 
 def alter_db_add_column(migrator, table_name, column_name, column_type):
+    if not DB.table_exists(table_name):
+        logging.info(f"Skip add column {settings.DATABASE_TYPE.upper()}.{table_name}.{column_name} because table does not exist")
+        return
     try:
         migrate(migrator.add_column(table_name, column_name, column_type))
     except OperationalError as ex:
-        error_codes = [1060]
-        error_messages = ['Duplicate column name']
+        error_codes = [1060, 1146]
+        error_messages = ['Duplicate column name', "doesn't exist", "does not exist"]
 
         should_skip_error = (
                 (hasattr(ex, 'args') and ex.args and ex.args[0] in error_codes) or
-                (str(ex) in error_messages)
+                any(message in str(ex) for message in error_messages)
         )
 
         if not should_skip_error:
             logging.critical(f"Failed to add {settings.DATABASE_TYPE.upper()}.{table_name} column {column_name}, operation error: {ex}")
 
     except Exception as ex:
-        logging.critical(f"Failed to add {settings.DATABASE_TYPE.upper()}.{table_name} column {column_name}, error: {ex}")
+        if "doesn't exist" not in str(ex) and "does not exist" not in str(ex):
+            logging.critical(f"Failed to add {settings.DATABASE_TYPE.upper()}.{table_name} column {column_name}, error: {ex}")
         pass
 
 def alter_db_column_type(migrator, table_name, column_name, new_column_type):
+    if not DB.table_exists(table_name):
+        logging.info(f"Skip alter column type {settings.DATABASE_TYPE.upper()}.{table_name}.{column_name} because table does not exist")
+        return
     try:
         migrate(migrator.alter_column_type(table_name, column_name, new_column_type))
+    except OperationalError as ex:
+        error_codes = [1146]
+        error_messages = ["doesn't exist", "does not exist"]
+
+        should_skip_error = (
+                (hasattr(ex, 'args') and ex.args and ex.args[0] in error_codes) or
+                any(message in str(ex) for message in error_messages)
+        )
+
+        if not should_skip_error:
+            logging.critical(f"Failed to alter {settings.DATABASE_TYPE.upper()}.{table_name} column {column_name} type, operation error: {ex}")
     except Exception as ex:
-        logging.critical(f"Failed to alter {settings.DATABASE_TYPE.upper()}.{table_name} column {column_name} type, error: {ex}")
+        if "doesn't exist" not in str(ex) and "does not exist" not in str(ex):
+            logging.critical(f"Failed to alter {settings.DATABASE_TYPE.upper()}.{table_name} column {column_name} type, error: {ex}")
         pass
 
 def alter_db_rename_column(migrator, table_name, old_column_name, new_column_name):
+    if not DB.table_exists(table_name):
+        logging.info(f"Skip rename column {settings.DATABASE_TYPE.upper()}.{table_name}.{old_column_name} because table does not exist")
+        return
     try:
         migrate(migrator.rename_column(table_name, old_column_name, new_column_name))
     except Exception:
@@ -1941,10 +1963,13 @@ def alter_db_rename_table(migrator, old_table_name, new_table_name):
         pass
 
 def alter_db_remove_column(migrator, table_name, column_name):
+    if not DB.table_exists(table_name):
+        logging.info(f"Skip drop column {settings.DATABASE_TYPE.upper()}.{table_name}.{column_name} because table does not exist")
+        return
     try:
         migrate(migrator.drop_column(table_name, column_name))
     except OperationalError as ex:
-        error_codes = [1091]
+        error_codes = [1091, 1146]
         error_messages = ["Check that column/key exists", "doesn't exist", "does not exist"]
 
         should_skip_error = (
@@ -2308,25 +2333,6 @@ def migrate_db():
     alter_db_add_column(migrator, "billing_point_hold", "plan_points", BigIntegerField(null=False, default=0))
     alter_db_add_column(migrator, "billing_point_hold", "addon_points", BigIntegerField(null=False, default=0))
     alter_db_remove_column(migrator, "billing_point_account", "available_points")
-
-    # Billing storage quantity columns migrate from legacy *_gb to *_bytes (int64)
-    alter_db_rename_column(migrator, "billing_storage_subscription", "effective_quantity_gb", "addon_storage_bytes")
-    alter_db_rename_column(migrator, "billing_storage_subscription", "addon_storage_gb", "addon_storage_bytes")
-    alter_db_rename_column(migrator, "billing_storage_subscription", "target_quantity_gb", "target_storage_bytes")
-    alter_db_rename_column(migrator, "billing_storage_subscription", "pending_quantity_gb", "pending_quantity_bytes")
-    alter_db_add_column(migrator, "billing_storage_subscription", "addon_storage_bytes", BigIntegerField(null=False, default=0))
-    alter_db_add_column(migrator, "billing_storage_subscription", "target_storage_bytes", BigIntegerField(null=False, default=0))
-    alter_db_add_column(migrator, "billing_storage_subscription", "pending_quantity_bytes", BigIntegerField(null=True))
-    alter_db_column_type(migrator, "billing_storage_subscription", "addon_storage_bytes", BigIntegerField(null=False, default=0))
-    alter_db_column_type(migrator, "billing_storage_subscription", "target_storage_bytes", BigIntegerField(null=False, default=0))
-    alter_db_column_type(migrator, "billing_storage_subscription", "pending_quantity_bytes", BigIntegerField(null=True))
-
-    # Billing storage pending-state cleanup (2026-04-30)
-    # Runtime no longer maintains local pending/schedule state for storage add-ons.
-    alter_db_remove_column(migrator, "billing_storage_subscription", "schedule_id")
-    alter_db_remove_column(migrator, "billing_storage_subscription", "pending_quantity_bytes")
-    alter_db_remove_column(migrator, "billing_storage_subscription", "pending_effective_at")
-    alter_db_remove_column(migrator, "billing_storage_subscription", "pending_action")
 
     # QuotaItem storage unit migration: convert legacy gb entries to bytes.
     if DB.table_exists("billing_quota_item"):

@@ -24,13 +24,14 @@ from typing import Any
 
 import stripe
 
-from tools.billing.billing_common import load_persisted_webhook_secret, \
-    stripe_dict, FlowError, env, load_billing_config
-from tools.billing.billing_client import BillingClient
+from libs.billing.billing_common import BillingClient, FlowError, env, load_stripe_test_runtime_config, stripe_dict
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = Path(__file__).resolve().parents[4]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
+
+POINTS_SUCCESS_URL = "http://127.0.0.1:9380/billing/points?price-pay-status=success"
+POINTS_CANCEL_URL = "http://127.0.0.1:9380/billing/points?price-pay-status=cancel"
 
 
 def parse_positive_int_env(name: str, fallback: Any) -> int:
@@ -45,36 +46,18 @@ def parse_positive_int_env(name: str, fallback: Any) -> int:
 
 
 def load_points_runtime_config() -> dict[str, Any]:
-    billing_config = load_billing_config()
-    stripe_api_key = env("BILLING_STRIPE_API_KEY", env("STRIPE_API_KEY", str(billing_config.get("stripe_api_key") or "")))
-    stripe_api_version = str(billing_config.get("stripe_api_version") or "2026-02-25.clover")
-    stripe_api_version_override = env("STRIPE_API_VERSION")
-    if stripe_api_version_override and stripe_api_version_override != stripe_api_version:
-        raise FlowError(
-            f"STRIPE_API_VERSION={stripe_api_version_override} does not match service_conf.yaml={stripe_api_version}"
-        )
-    if not stripe_api_key:
-        raise FlowError("BILLING_STRIPE_API_KEY or STRIPE_API_KEY is required")
-    if not stripe_api_key.startswith("sk_test_"):
-        raise FlowError("Points automation requires a Stripe test-mode secret key")
-
+    runtime = load_stripe_test_runtime_config(require_test_mode_message="Points automation requires a Stripe test-mode secret key")
+    billing_config = runtime["billing_config"]
     recharge_config = billing_config.get("points_recharge") or {}
     if not isinstance(recharge_config, dict):
         raise FlowError("billing.points_recharge must be a map in service_conf.yaml")
     price_id = env("BILLING_POINTS_PRICE_ID", str(recharge_config.get("price_id") or ""))
     if not price_id or price_id == "price_xxx":
-        raise FlowError("BILLING_POINTS_PRICE_ID or billing.points_recharge.price_id is not configured")
+        raise FlowError("billing.points_recharge.price_id is not configured in conf/service_conf.yaml")
     points_per_unit = parse_positive_int_env("BILLING_POINTS_PER_UNIT", recharge_config.get("points_per_unit") or 100)
 
-    webhook_secret = env("BILLING_WEBHOOK_SECRET", env("STRIPE_WEBHOOK_SECRET"))
-    if not webhook_secret:
-        webhook_secret = load_persisted_webhook_secret()
-
     return {
-        "billing_config": billing_config,
-        "stripe_api_key": stripe_api_key,
-        "stripe_api_version": stripe_api_version,
-        "webhook_secret": webhook_secret,
+        **runtime,
         "points_price_id": price_id,
         "points_per_unit": points_per_unit,
     }
@@ -128,23 +111,70 @@ class PointsClient(BillingClient):
     """HTTP client for RAGFlow billing APIs used by points flows."""
 
     def points_balance(self) -> dict[str, Any]:
-        points = self.request_json("GET", f"/billing/points/balance?tenant_id={self.tenant_id}")["data"]
+        response = self.session.get(
+            self.billing_url(f"/points/balance?tenant_id={self.tenant_id}"),
+            headers=self.headers(auth=True),
+            timeout=60,
+        )
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise FlowError(
+                f"GET /billing/points/balance returned non-JSON status={response.status_code}: {response.text[:500]}"
+            ) from exc
+        if response.status_code >= 400 or payload.get("code") not in (0, None):
+            raise FlowError(f"GET /billing/points/balance failed status={response.status_code}: {payload}")
+        points = payload["data"]
         return cal_available_points(points)
 
     def points_ledger(self, page: int = 1, page_size: int = 100) -> dict[str, Any]:
-        return self.request_json(
-            "GET",
-            f"/billing/points/ledger?tenant_id={self.tenant_id}&page={page}&page_size={page_size}",
-        )["data"]
+        response = self.session.get(
+            self.billing_url(f"/points/ledger?tenant_id={self.tenant_id}&page={page}&page_size={page_size}"),
+            headers=self.headers(auth=True),
+            timeout=60,
+        )
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise FlowError(
+                f"GET /billing/points/ledger returned non-JSON status={response.status_code}: {response.text[:500]}"
+            ) from exc
+        if response.status_code >= 400 or payload.get("code") not in (0, None):
+            raise FlowError(f"GET /billing/points/ledger failed status={response.status_code}: {payload}")
+        return payload["data"]
 
     def points_checkout(self, points: Any) -> dict[str, Any]:
-        return self.request_json("POST", "/billing/points/checkout", json={"tenant_id": self.tenant_id, "quantity": points})["data"]
+        response = self.session.post(
+            self.billing_url("/points/checkout"),
+            headers=self.headers(auth=True),
+            json={
+                "tenant_id": self.tenant_id,
+                "quantity": points,
+                "session_success_url": POINTS_SUCCESS_URL,
+                "session_cancel_url": POINTS_CANCEL_URL,
+            },
+            timeout=60,
+        )
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise FlowError(
+                f"POST /billing/points/checkout returned non-JSON status={response.status_code}: {response.text[:500]}"
+            ) from exc
+        if response.status_code >= 400 or payload.get("code") not in (0, None):
+            raise FlowError(f"POST /billing/points/checkout failed status={response.status_code}: {payload}")
+        return payload["data"]
 
     def points_checkout_raw(self, points: Any) -> dict[str, Any]:
         response = self.session.post(
-            self.url("/billing/points/checkout"),
+            self.billing_url("/points/checkout"),
             headers=self.headers(auth=True),
-            json={"tenant_id": self.tenant_id, "quantity": points},
+            json={
+                "tenant_id": self.tenant_id,
+                "quantity": points,
+                "session_success_url": POINTS_SUCCESS_URL,
+                "session_cancel_url": POINTS_CANCEL_URL,
+            },
             timeout=60,
         )
         try:
@@ -286,3 +316,61 @@ def select_points_checkout_session(
         if session_points == points_expected:
             return session
     raise FlowError(f"expected a matching points checkout session for tenant {tenant_id}, points {points_expected}")
+
+
+_POINTS_CASE_METADATA = {
+    "POINT-01": {
+        "case_adjusted": True,
+        "case_adjustment_notes": [
+            "Uses a synthetic signed checkout.session.completed webhook after creating the Checkout Session instead of driving the hosted Stripe Checkout UI.",
+        ],
+    },
+    "POINT-02": {
+        "case_adjusted": True,
+        "case_adjustment_notes": [
+            "Uses synthetic signed checkout.session.completed webhooks for both purchases instead of completing two hosted Stripe Checkout UI sessions.",
+        ],
+    },
+    "POINT-03": {
+        "case_adjusted": True,
+        "case_adjustment_notes": [
+            "Covers API-side rejection and no-mutation guarantees only; frontend validation still needs separate manual verification.",
+        ],
+    },
+    "POINT-04": {
+        "case_adjusted": True,
+        "case_adjustment_notes": [
+            "Uses Stripe Checkout Session expire as the automation proxy for a user-cancelled or abandoned Checkout.",
+        ],
+    },
+    "POINT-05": {
+        "case_adjusted": True,
+        "case_adjustment_notes": [
+            "Replays the same synthetic signed checkout.session.completed payload twice instead of using Stripe dashboard or CLI replay tooling.",
+        ],
+    },
+}
+
+
+def get_points_case_metadata(case_id: str) -> dict[str, Any]:
+    metadata = _POINTS_CASE_METADATA.get(case_id)
+    if metadata is None:
+        raise ValueError(f"Unknown points case id: {case_id}")
+    return {
+        "case_id": case_id,
+        "case_adjusted": metadata["case_adjusted"],
+        "case_adjustment_notes": list(metadata["case_adjustment_notes"]),
+    }
+
+
+def get_checkout_session_amount(session: dict[str, Any]) -> float:
+    raw_amount = session.get("amount_total")
+    if isinstance(raw_amount, bool):
+        raise FlowError(f"checkout session amount_total is invalid: {raw_amount!r}")
+    try:
+        amount_cents = int(raw_amount)
+    except (TypeError, ValueError) as exc:
+        raise FlowError(f"checkout session amount_total is invalid: {raw_amount!r}") from exc
+    if amount_cents < 0:
+        raise FlowError(f"checkout session amount_total must be non-negative, got {amount_cents}")
+    return amount_cents / 100

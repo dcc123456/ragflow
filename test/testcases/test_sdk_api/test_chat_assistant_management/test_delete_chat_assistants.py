@@ -98,7 +98,7 @@ class TestChatAssistantsDelete:
     @pytest.mark.p3
     def test_concurrent_deletion(self, client):
         count = 100
-        chat_ids = [client.create_chat(name=f"test_{i}").id for i in range(count)]
+        chat_ids = [chat.id for chat in batch_create_chat_assistants(client, count)]
 
         with ThreadPoolExecutor(max_workers=5) as executor:
             futures = [executor.submit(client.delete_chats, ids=[chat_ids[i]]) for i in range(count)]

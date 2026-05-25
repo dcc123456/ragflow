@@ -53,7 +53,7 @@ function run_task_executor(){
 
 if [[ "$PARSER_TYPE" == "all" ]]; then
     # Legacy mode: start all task types in one pod
-    WS=${WS_WORKERS:-3}
+    WS=${WS_WORKERS:-1}
     for ((i=0;i<WS;i++))
     do
       run_task_executor common &

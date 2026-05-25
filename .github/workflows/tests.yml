@@ -50,15 +50,54 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
+      - name: Bridge runner CI environment into workflow env
+        id: bridge_ci_env
+        run: |
+          bridge_env_var() {
+            local name="$1"
+            local required="${2:-0}"
+            local value="${!name:-}"
+            local lower_name
+
+            if [[ -z "${value}" ]]; then
+              if [[ "${required}" == "1" ]]; then
+                echo "Error: required runner environment variable ${name} is not set."
+                exit 1
+              fi
+              return 0
+            fi
+
+            lower_name="$(echo "${name}" | tr '[:upper:]' '[:lower:]')"
+
+            {
+              echo "${name}<<__EOF__"
+              echo "${value}"
+              echo "__EOF__"
+            } >> "${GITHUB_ENV}"
+
+            {
+              echo "${lower_name}<<__EOF__"
+              echo "${value}"
+              echo "__EOF__"
+            } >> "${GITHUB_OUTPUT}"
+          }
+
+          bridge_env_var KUBE_CONFIG 1
+          bridge_env_var BILLING_STRIPE_API_KEY
+          bridge_env_var SILICONFLOW_API_KEY
+          bridge_env_var SILICONFLOW_BASE_URL
+          bridge_env_var SILICONFLOW_EMBEDDING_MODEL
+          bridge_env_var HARBOR_USER
+          bridge_env_var HARBOR_PASSWORD
+          bridge_env_var MY_GH_TOKEN
+
       - name: Check workflow duplication
         if: ${{ !cancelled() && !failure() }}
-        env:
-          GH_PAT: ${{ secrets.GH_PAT }}
         run: |
           if [[ ${GITHUB_EVENT_NAME} != "pull_request" && ${GITHUB_EVENT_NAME} != "schedule" ]]; then
             HEAD=$(git rev-parse HEAD)
             # Find a PR that introduced a given commit
-            echo "${GH_PAT}" | gh auth login --with-token
+            echo "${MY_GH_TOKEN}" | gh auth login --with-token
             PR_NUMBER=$(gh pr list --search ${HEAD} --state merged --json number --jq .[0].number)
             echo "HEAD=${HEAD}"
             echo "PR_NUMBER=${PR_NUMBER}"
@@ -168,19 +207,18 @@ jobs:
           python3 run_tests.py -i
 
       - name: Prepare function test environment
-        working-directory: docker
         run: |
           # Copy res directory to docker directory
           RUNNER_WORKSPACE_PREFIX=${RUNNER_WORKSPACE_PREFIX:-${HOME}}
           if [ -d "${RUNNER_WORKSPACE_PREFIX}/res" ]; then
             echo "Copying ${RUNNER_WORKSPACE_PREFIX}/res to docker directory..."
-            cp -r ${RUNNER_WORKSPACE_PREFIX}/res .
+            cp -r ${RUNNER_WORKSPACE_PREFIX}/res docker/
           else
             echo "Warning: ${RUNNER_WORKSPACE_PREFIX}/res directory not found"
           fi
 
           # Uncomment the res/deepdoc volume mount in docker-compose.yml
-          sed -i 's|# - \./res/deepdoc:/ragflow/rag/res/deepdoc|- ./res/deepdoc:/ragflow/rag/res/deepdoc|g' docker-compose.yml
+          sed -i 's|# - \./res/deepdoc:/ragflow/rag/res/deepdoc|- ./res/deepdoc:/ragflow/rag/res/deepdoc|g' docker/docker-compose.yml
 
           # Determine runner number (default to 1 if not found)
                RUNNER_NUM=$(sudo docker inspect $(hostname) --format '{{index .Config.Labels "com.docker.compose.container-number"}}' 2>/dev/null || true)
@@ -211,40 +249,44 @@ jobs:
           RABBITMQ_PROMETHEUS_PORT=$((1674 + RUNNER_NUM * 100))
 
           # Persist computed ports into .env so docker-compose uses the correct host bindings
-          echo "" >> .env
-          echo -e "ES_PORT=${ES_PORT}" >> .env
-          echo -e "OS_PORT=${OS_PORT}" >> .env
-          echo -e "INFINITY_THRIFT_PORT=${INFINITY_THRIFT_PORT}" >> .env
-          echo -e "INFINITY_HTTP_PORT=${INFINITY_HTTP_PORT}" >> .env
-          echo -e "INFINITY_PSQL_PORT=${INFINITY_PSQL_PORT}" >> .env
-          echo -e "MYSQL_PORT=${MYSQL_PORT}" >> .env
-          echo -e "MINIO_PORT=${MINIO_PORT}" >> .env
-          echo -e "MINIO_CONSOLE_PORT=${MINIO_CONSOLE_PORT}" >> .env
-          echo -e "REDIS_PORT=${REDIS_PORT}" >> .env
-          echo -e "TEI_PORT=${TEI_PORT}" >> .env
-          echo -e "KIBANA_PORT=${KIBANA_PORT}" >> .env
-          echo -e "SVR_HTTP_PORT=${SVR_HTTP_PORT}" >> .env
-          echo -e "ADMIN_SVR_HTTP_PORT=${ADMIN_SVR_HTTP_PORT}" >> .env
-          echo -e "SVR_MCP_PORT=${SVR_MCP_PORT}" >> .env
-          echo -e "GO_HTTP_PORT=${GO_HTTP_PORT}" >> .env
-          echo -e "GO_ADMIN_PORT=${GO_ADMIN_PORT}" >> .env
-          echo -e "SANDBOX_EXECUTOR_MANAGER_PORT=${SANDBOX_EXECUTOR_MANAGER_PORT}" >> .env
-          echo -e "SVR_WEB_HTTP_PORT=${SVR_WEB_HTTP_PORT}" >> .env
-          echo -e "SVR_WEB_HTTPS_PORT=${SVR_WEB_HTTPS_PORT}" >> .env
-          echo -e "RABBITMQ_AMQP_PORT=${RABBITMQ_AMQP_PORT}" >> .env
-          echo -e "RABBITMQ_MANAGEMENT_PORT=${RABBITMQ_MANAGEMENT_PORT}" >> .env
-          echo -e "RABBITMQ_PROMETHEUS_PORT=${RABBITMQ_PROMETHEUS_PORT}" >> .env
+          echo "" >> docker/.env
+          echo -e "ES_PORT=${ES_PORT}" >> docker/.env
+          echo -e "OS_PORT=${OS_PORT}" >> docker/.env
+          echo -e "INFINITY_THRIFT_PORT=${INFINITY_THRIFT_PORT}" >> docker/.env
+          echo -e "INFINITY_HTTP_PORT=${INFINITY_HTTP_PORT}" >> docker/.env
+          echo -e "INFINITY_PSQL_PORT=${INFINITY_PSQL_PORT}" >> docker/.env
+          echo -e "MYSQL_PORT=${MYSQL_PORT}" >> docker/.env
+          echo -e "MINIO_PORT=${MINIO_PORT}" >> docker/.env
+          echo -e "MINIO_CONSOLE_PORT=${MINIO_CONSOLE_PORT}" >> docker/.env
+          echo -e "REDIS_PORT=${REDIS_PORT}" >> docker/.env
+          echo -e "TEI_PORT=${TEI_PORT}" >> docker/.env
+          echo -e "KIBANA_PORT=${KIBANA_PORT}" >> docker/.env
+          echo -e "SVR_HTTP_PORT=${SVR_HTTP_PORT}" >> docker/.env
+          echo -e "ADMIN_SVR_HTTP_PORT=${ADMIN_SVR_HTTP_PORT}" >> docker/.env
+          echo -e "SVR_MCP_PORT=${SVR_MCP_PORT}" >> docker/.env
+          echo -e "GO_HTTP_PORT=${GO_HTTP_PORT}" >> docker/.env
+          echo -e "GO_ADMIN_PORT=${GO_ADMIN_PORT}" >> docker/.env
+          echo -e "SANDBOX_EXECUTOR_MANAGER_PORT=${SANDBOX_EXECUTOR_MANAGER_PORT}" >> docker/.env
+          echo -e "SVR_WEB_HTTP_PORT=${SVR_WEB_HTTP_PORT}" >> docker/.env
+          echo -e "SVR_WEB_HTTPS_PORT=${SVR_WEB_HTTPS_PORT}" >> docker/.env
+          echo -e "RABBITMQ_AMQP_PORT=${RABBITMQ_AMQP_PORT}" >> docker/.env
+          echo -e "RABBITMQ_MANAGEMENT_PORT=${RABBITMQ_MANAGEMENT_PORT}" >> docker/.env
+          echo -e "RABBITMQ_PROMETHEUS_PORT=${RABBITMQ_PROMETHEUS_PORT}" >> docker/.env
 
-          echo -e "COMPOSE_PROFILES=\${COMPOSE_PROFILES},tei-cpu" >> .env
-          echo -e "TEI_MODEL=BAAI/bge-small-en-v1.5" >> .env
-          echo -e "RAGFLOW_IMAGE=${RAGFLOW_IMAGE}" >> .env
-          echo -e "RATELIMIT_DISABLED=1" >> .env
+          echo -e "COMPOSE_PROFILES=\${COMPOSE_PROFILES},tei-cpu" >> docker/.env
+          echo -e "TEI_MODEL=BAAI/bge-small-en-v1.5" >> docker/.env
+          echo -e "RAGFLOW_IMAGE=${RAGFLOW_IMAGE}" >> docker/.env
+          echo -e "RATELIMIT_DISABLED=1" >> docker/.env
+          echo -e "WS_WORKERS=1" >> docker/.env
+          echo -e "RAPTOR_WORKERS=1" >> docker/.env
+          echo -e "GRAPHRAG_WORKERS=0" >> docker/.env
+          echo -e "RESUME_WORKERS=0" >> docker/.env
+          sed -i 's/^BILLING_ENABLED=.*/BILLING_ENABLED=0/' docker/.env
           echo "HOST_ADDRESS=http://host.docker.internal:${SVR_HTTP_PORT}" >> ${GITHUB_ENV}
 
-               # Patch entrypoint.sh for coverage
-               sed -i '/"\$PY" api\/ragflow_server.py \${INIT_SUPERUSER_ARGS} &/c\   echo "Ensuring coverage is installed..."\n      "$PY" -m pip install coverage -i https://mirrors.aliyun.com/pypi/simple\n     export COVERAGE_FILE=/ragflow/logs/.coverage\n        echo "Starting ragflow_server with coverage..."\n        "$PY" -m coverage run --source=./api/apps --omit="*/tests/*,*/migrations/*" -a api/ragflow_server.py ${INIT_SUPERUSER_ARGS} &' ./entrypoint.sh
-               cd ..
-               uv sync --python 3.13 --group test --frozen && uv pip install -e sdk/python
+          # Patch entrypoint.sh for coverage
+          sed -i '/"\$PY" api\/ragflow_server.py \${INIT_SUPERUSER_ARGS} &/c\   echo "Ensuring coverage is installed..."\n      "$PY" -m pip install coverage -i https://mirrors.aliyun.com/pypi/simple\n     export COVERAGE_FILE=/ragflow/logs/.coverage\n        echo "Starting ragflow_server with coverage..."\n        "$PY" -m coverage run --source=./api/apps --omit="*/tests/*,*/migrations/*" -a api/ragflow_server.py ${INIT_SUPERUSER_ARGS} &' docker/entrypoint.sh
+          uv sync --python 3.12 --group test --frozen && uv pip install -e sdk/python
 
       - name: Start ragflow:nightly for Elasticsearch
         run: |
@@ -271,31 +313,8 @@ jobs:
       #     done
       #     source .venv/bin/activate && pytest -s --tb=short sdk/python/test/test_frontend_api/get_email.py sdk/python/test/test_frontend_api/test_dataset.py
 
-      # - name: Run http api tests against Elasticsearch
-      #   timeout-minutes: 30
-      #   run: |
-      #     export http_proxy=""; export https_proxy=""; export no_proxy=""; export HTTP_PROXY=""; export HTTPS_PROXY=""; export NO_PROXY=""
-      #     MAX_RETRIES=180
-      #     COUNT=0
-      #     until curl -s --connect-timeout 5 ${HOST_ADDRESS} > /dev/null; do
-      #       echo "Waiting for service at ${HOST_ADDRESS} to be available... (Attempt: $COUNT/$MAX_RETRIES)"
-      #       if [ $((COUNT % 5)) -eq 0 ]; then
-      #         echo "Current Container Status:"
-      #         sudo docker ps -a --filter "name=${RAGFLOW_CONTAINER}"
-      #       fi
-
-      #       if [ $COUNT -ge $MAX_RETRIES ]; then
-      #         echo "Error: Service did not become available within 5 minutes."
-      #         sudo docker logs ${RAGFLOW_CONTAINER} --tail 200
-      #         exit 1
-      #       fi
-
-      #       COUNT=$((COUNT + 1))
-      #       sleep 5
-      #     done
-      #     source .venv/bin/activate && set -o pipefail; pytest -s --tb=short --level=${HTTP_API_TEST_LEVEL} test/testcases/test_http_api 2>&1 | tee es_http_api_test.log
-      
-      - name: Run New RESTFUL api tests against Elasticsearch
+      - name: Run non-billing http api tests against Elasticsearch
+        timeout-minutes: 30
         run: |
           export http_proxy=""; export https_proxy=""; export no_proxy=""; export HTTP_PROXY=""; export HTTPS_PROXY=""; export NO_PROXY=""
           MAX_RETRIES=180
@@ -316,7 +335,62 @@ jobs:
             COUNT=$((COUNT + 1))
             sleep 5
           done
-          source .venv/bin/activate && set -o pipefail; pytest -s --tb=short --level=${HTTP_API_TEST_LEVEL} test/testcases/restful_api 2>&1 | tee docker_restful_api_test.log
+          source .venv/bin/activate && set -o pipefail; pytest -s --tb=short --level=${HTTP_API_TEST_LEVEL} \
+            test/testcases/test_http_api \
+            --ignore=test/testcases/test_http_api/test_billing \
+                        2>&1 | tee es_http_api_test.log
+
+      - name: Enable billing for dedicated HTTP API billing tests
+        if: ${{ env.HTTP_API_TEST_LEVEL == 'p3' }}
+        run: |
+          sed -i 's/^BILLING_ENABLED=.*/BILLING_ENABLED=1/' docker/.env
+          sudo docker compose -f docker/docker-compose.yml -p ${GITHUB_RUN_ID} up -d --force-recreate ragflow parser
+
+      - name: Start Stripe CLI webhook forwarding for Elasticsearch billing tests
+        if: ${{ env.HTTP_API_TEST_LEVEL == 'p3' }}
+        env:
+          STRIPE_API_KEY: ${{ env.BILLING_STRIPE_API_KEY }}
+        run: |
+          if [[ -z "${STRIPE_API_KEY:-}" ]]; then
+            echo "Error: missing BILLING_STRIPE_API_KEY secret for billing P3 tests."
+            exit 1
+          fi
+          if ! command -v stripe >/dev/null 2>&1; then
+            echo "Error: stripe CLI is required on the runner for billing P3 tests."
+            exit 1
+          fi
+          stripe listen \
+            --api-key "${STRIPE_API_KEY}" \
+            --forward-to "${HOST_ADDRESS}/v1/billing/webhooks/stripe" \
+            > stripe_listen_es.log 2>&1 &
+          echo $! > stripe_listen_es.pid
+          sleep 5
+          if ! kill -0 "$(cat stripe_listen_es.pid)" 2>/dev/null; then
+            echo "Error: stripe listen failed to stay running."
+            cat stripe_listen_es.log || true
+            exit 1
+          fi
+
+      - name: Run billing http api tests against Elasticsearch
+        if: ${{ env.HTTP_API_TEST_LEVEL == 'p3' }}
+        timeout-minutes: 30
+        run: |
+          export http_proxy=""; export https_proxy=""; export no_proxy=""; export HTTP_PROXY=""; export HTTPS_PROXY=""; export NO_PROXY=""
+          MAX_RETRIES=180
+          COUNT=0
+          until curl -s --connect-timeout 5 ${HOST_ADDRESS}/v1/system/ping > /dev/null; do
+            echo "Waiting for billing-enabled service at ${HOST_ADDRESS} to be available... (Attempt: $COUNT/$MAX_RETRIES)"
+            if [ $COUNT -ge $MAX_RETRIES ]; then
+              echo "Error: Billing-enabled service did not become available within 5 minutes."
+              sudo docker logs ${RAGFLOW_CONTAINER} --tail 200
+              exit 1
+            fi
+            COUNT=$((COUNT + 1))
+            sleep 5
+          done
+          source .venv/bin/activate && set -o pipefail; pytest -s --tb=short -m billing \
+            test/testcases/test_http_api/test_billing \
+            2>&1 | tee es_http_api_billing_test.log
 
       - name: RAGFlow CLI retrieval test Elasticsearch
         env:
@@ -402,7 +476,7 @@ jobs:
           run_cli "${LOG_FILE}" $CLI --type user --host "$USER_HOST" --port "$USER_PORT" --username "$EMAIL" --password "$PASS" command "Benchmark 16 100 search 'what are these documents about' on datasets '$DATASET'"
 
       - name: Collect ragflow log Elasticsearch
-        if: ${{ !cancelled() }}
+        if: ${{ always() }}
         run: |
           if [ -d docker/ragflow-logs ]; then
             cp -r docker/ragflow-logs ${ARTIFACTS_DIR}/ragflow-logs-es
@@ -410,7 +484,19 @@ jobs:
           else
             echo "No docker/ragflow-logs directory found; skipping log collection"
           fi
+          if [[ -f stripe_listen_es.log ]]; then
+            cp stripe_listen_es.log ${ARTIFACTS_DIR}/stripe-listen-es.log
+            tail -n 200 stripe_listen_es.log || true
+          fi
           sudo rm -rf docker/ragflow-logs || true
+
+      - name: Stop Stripe CLI webhook forwarding for Elasticsearch billing tests
+        if: always()
+        run: |
+          if [[ -f stripe_listen_es.pid ]]; then
+            kill "$(cat stripe_listen_es.pid)" 2>/dev/null || true
+            rm -f stripe_listen_es.pid
+          fi
 
       - name: Stop ragflow:nightly for Elasticsearch
         if: always()  # always run this step even if previous steps failed
@@ -439,14 +525,53 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
+      - name: Bridge runner CI environment into workflow env
+        id: bridge_ci_env
+        run: |
+          bridge_env_var() {
+            local name="$1"
+            local required="${2:-0}"
+            local value="${!name:-}"
+            local lower_name
+
+            if [[ -z "${value}" ]]; then
+              if [[ "${required}" == "1" ]]; then
+                echo "Error: required runner environment variable ${name} is not set."
+                exit 1
+              fi
+              return 0
+            fi
+
+            lower_name="$(echo "${name}" | tr '[:upper:]' '[:lower:]')"
+
+            {
+              echo "${name}<<__EOF__"
+              echo "${value}"
+              echo "__EOF__"
+            } >> "${GITHUB_ENV}"
+
+            {
+              echo "${lower_name}<<__EOF__"
+              echo "${value}"
+              echo "__EOF__"
+            } >> "${GITHUB_OUTPUT}"
+          }
+
+          bridge_env_var KUBE_CONFIG 1
+          bridge_env_var BILLING_STRIPE_API_KEY
+          bridge_env_var SILICONFLOW_API_KEY
+          bridge_env_var SILICONFLOW_BASE_URL
+          bridge_env_var SILICONFLOW_EMBEDDING_MODEL
+          bridge_env_var HARBOR_USER
+          bridge_env_var HARBOR_PASSWORD
+          bridge_env_var MY_GH_TOKEN
+
       - name: Check workflow duplication
         if: ${{ !cancelled() && !failure() }}
-        env:
-          GH_PAT: ${{ secrets.GH_PAT }}
         run: |
           if [[ ${GITHUB_EVENT_NAME} != "pull_request" && ${GITHUB_EVENT_NAME} != "schedule" ]]; then
             HEAD=$(git rev-parse HEAD)
-            echo "${GH_PAT}" | gh auth login --with-token
+            echo "${MY_GH_TOKEN}" | gh auth login --with-token
             PR_NUMBER=$(gh pr list --search ${HEAD} --state merged --json number --jq .[0].number)
             echo "HEAD=${HEAD}"
             echo "PR_NUMBER=${PR_NUMBER}"
@@ -566,28 +691,22 @@ jobs:
         run: |
           uv sync --python 3.13 --group test --frozen && uv pip install -e sdk/python
 
-      - name: Set Kubernetes Context
-        uses: azure/k8s-set-context@v4
-        with:
-          method: kubeconfig
-          kubeconfig: ${{ secrets.KUBE_CONFIG }}
-          kubeconfig-encoding: base64
-
       - name: Verify Cluster
         run: |
+          kubectl config current-context
           kubectl get nodes
-          kubectl get pods -n default
 
       - name: Export kubeconfig path for OpenTofu
         run: |
           if [[ -z "${KUBECONFIG:-}" ]]; then
-            echo "Error: KUBECONFIG is empty after Set Kubernetes Context."
+            echo "Error: KUBECONFIG is empty on the runner."
             exit 1
           fi
           echo "TF_VAR_kubeconfig_path=${KUBECONFIG}" >> "${GITHUB_ENV}"
 
       - name: Tag and push image to Harbor
         run: |
+          echo "${HARBOR_PASSWORD}" | sudo docker login 192.168.1.51 -u "${HARBOR_USER}" --password-stdin
           sudo docker tag ${RAGFLOW_IMAGE} ${PRIVATE_RAGFLOW_IMAGE}
 
           PUSH_LOG=$(mktemp)
@@ -681,11 +800,36 @@ jobs:
           fi
           echo "HOST_ADDRESS=http://${GATEWAY_ADDRESS}" >> "${GITHUB_ENV}"
 
-      - name: Run http api tests against Elasticsearch
+      - name: Start Stripe CLI webhook forwarding for BYOK billing tests
+        if: ${{ env.HTTP_API_TEST_LEVEL == 'p3' }}
+        env:
+          STRIPE_API_KEY: ${{ env.BILLING_STRIPE_API_KEY }}
+        run: |
+          if [[ -z "${STRIPE_API_KEY:-}" ]]; then
+            echo "Error: missing BILLING_STRIPE_API_KEY secret for billing P3 tests."
+            exit 1
+          fi
+          if ! command -v stripe >/dev/null 2>&1; then
+            echo "Error: stripe CLI is required on the runner for billing P3 tests."
+            exit 1
+          fi
+          stripe listen \
+            --api-key "${STRIPE_API_KEY}" \
+            --forward-to "${HOST_ADDRESS}/v1/billing/webhooks/stripe" \
+            > stripe_listen_byok.log 2>&1 &
+          echo $! > stripe_listen_byok.pid
+          sleep 5
+          if ! kill -0 "$(cat stripe_listen_byok.pid)" 2>/dev/null; then
+            echo "Error: stripe listen failed to stay running."
+            cat stripe_listen_byok.log || true
+            exit 1
+          fi
+
+      - name: Run non-billing http api tests against Elasticsearch
         timeout-minutes: 30
         env:
           K8S_CI_USE_SILICONFLOW: "1"
-          SILICONFLOW_API_KEY: ${{ secrets.SILICONFLOW_API_KEY }}
+          SILICONFLOW_API_KEY: ${{ env.SILICONFLOW_API_KEY }}
           SILICONFLOW_BASE_URL: ${{ vars.SILICONFLOW_BASE_URL }}
           SILICONFLOW_EMBEDDING_MODEL: ${{ vars.SILICONFLOW_EMBEDDING_MODEL }}
         run: |
@@ -708,7 +852,9 @@ jobs:
             COUNT=$((COUNT + 1))
             sleep 5
           done
-          source .venv/bin/activate && set -o pipefail; pytest -s --tb=short --level=${HTTP_API_TEST_LEVEL} test/testcases/restful_api 2>&1 | tee k8s_restful_api_test.log
+          source .venv/bin/activate && set -o pipefail; pytest -s --tb=short --level=${HTTP_API_TEST_LEVEL} \
+            test/testcases/test_http_api \
+            --ignore=test/testcases/test_http_api/test_billing 2>&1 | tee k8s_restful_api_test.log
 
       - name: Tail BYOK ragflow pod logs
         if: always()
@@ -758,11 +904,19 @@ jobs:
             -var "ragflow_image=${BYOK_RAGFLOW_IMAGE_VAR}" \
             -var "rate_limit_disabled=true" \
 
+      - name: Stop Stripe CLI webhook forwarding for BYOK billing tests
+        if: always()
+        run: |
+          if [[ -f stripe_listen_byok.pid ]]; then
+            kill "$(cat stripe_listen_byok.pid)" 2>/dev/null || true
+            rm -f stripe_listen_byok.pid
+          fi
+          if [[ -f stripe_listen_byok.log ]]; then
+            tail -n 200 stripe_listen_byok.log || true
+          fi
+
       - name: Delete Harbor artifact
         if: always()
-        env:
-          HARBOR_USER: ${{ secrets.HARBOR_USER }}
-          HARBOR_PASSWORD: ${{ secrets.HARBOR_PASSWORD }}
         run: |
           if [[ -z "${PRIVATE_RAGFLOW_DIGEST:-}" ]]; then
             echo "Skip Harbor cleanup because PRIVATE_RAGFLOW_DIGEST is empty."

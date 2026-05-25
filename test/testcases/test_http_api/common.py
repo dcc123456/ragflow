@@ -65,11 +65,13 @@ def delete_all_datasets(auth, *, page_size=1000):
 
 
 def batch_create_datasets(auth, num):
-    ids = []
+    dataset_ids = []
     for i in range(num):
         res = create_dataset(auth, {"name": f"dataset_{i}"})
-        ids.append(res["data"]["id"])
-    return ids
+        if res.get("code") != 0:
+            raise RuntimeError(f"Dataset creation failed: {res.get('message', 'Unknown error')}")
+        dataset_ids.append(res["data"]["id"])
+    return dataset_ids
 
 
 # FILE MANAGEMENT WITHIN DATASET
@@ -257,18 +259,28 @@ def delete_all_chat_assistants(auth, *, page_size=1000):
     return delete_chat_assistants(auth, {"ids": None, "delete_all": True})
 
 
-def make_chat_assistant_name(base_name):
-    return f"{base_name}_{uuid4().hex[:8]}"
+def get_billing_apps_limit(auth):
+    """Get the apps limit from billing plan overview. Returns None if billing disabled or error."""
+    import os
+    if not os.environ.get("BILLING_ENABLED"):
+        return None
+    url = f"{HOST_ADDRESS}/api/v1/billing/subscription/overview"
+    res = requests.get(url=url, headers=HEADERS, auth=auth)
+    data = res.json()
+    if data.get("code") != 0:
+        return None
+    resources = data.get("data", {}).get("resources", {})
+    apps = resources.get("apps", {})
+    return apps.get("limit")
 
 
 def batch_create_chat_assistants(auth, num):
     chat_assistant_ids = []
     batch_suffix = uuid4().hex[:8]
     for i in range(num):
-        chat_name = f"test_chat_assistant_{i}_{batch_suffix}"
-        res = create_chat_assistant(auth, {"name": chat_name, "dataset_ids": []})
-        if res.get("code") != 0 or not res.get("data") or not res["data"].get("id"):
-            raise AssertionError(f"Failed to create chat assistant {chat_name}: {res}")
+        res = create_chat_assistant(auth, {"name": f"test_chat_assistant_{i}", "dataset_ids": []})
+        if res.get("code") != 0:
+            raise RuntimeError(f"Chat assistant creation failed: {res.get('message', 'Unknown error')}")
         chat_assistant_ids.append(res["data"]["id"])
     return chat_assistant_ids
 

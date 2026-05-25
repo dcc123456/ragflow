@@ -18,7 +18,7 @@ import json
 import logging
 import time
 import uuid
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 from datetime import datetime, timezone
 from decimal import Decimal
 
@@ -38,6 +38,17 @@ from api.db.services.billing_service import (  # noqa: F401
 )
 from api.db.services.file_service import FileService
 from api.utils.api_utils import get_data_error_result, get_json_result, get_request_json
+from pydantic import ValidationError
+from api.utils.validation_utils import format_validation_error_message
+
+from api.apps.schemas.billing_schemas import (  # noqa: F401
+    CheckoutRequest,
+    PointsCheckoutRequest,
+    PortalSessionRequest,
+    SetupIntentRequest,
+    StorageSetTargetRequest,
+    SubscriptionPreviewRequest,
+)
 from api.utils.billing import (
     BYTES_PER_GB,
     BILLING_PLAN_TRIAL_NAME,
@@ -84,6 +95,29 @@ from common.billing_utils import (
     to_utc_isoformat,
 )
 from common.constants import RetCode
+
+
+# Global cached values for billing webhook
+_stripe_webhook_secret: str | None = None
+_is_local_webhook_url: str | None = None
+_is_local_webhook: bool | None = None
+
+
+def _format_request_validation_error(e: ValidationError) -> str:
+    raw = format_validation_error_message(e).strip()
+    if not raw:
+        return "Invalid request."
+
+    first_line = raw.splitlines()[0]
+    prefix = "Field: <"
+    middle = "> - Message: <"
+    suffix = ">"
+    if first_line.startswith(prefix) and middle in first_line:
+        field, remainder = first_line[len(prefix):].split(middle, 1)
+        message = remainder.rsplit(suffix, 1)[0]
+        return f"{field}: {message}"
+
+    return first_line
 
 
 # subscription
@@ -702,8 +736,8 @@ async def _set_storage_target_storage_bytes_async(
     target_storage_bytes: int,
     *,
     setup_intent_id: str = "",
-    session_success_url: str = "",
-    session_cancel_url: str = "",
+    session_success_url: str,
+    session_cancel_url: str,
 ) -> tuple[bool, dict]:
     if target_storage_bytes < 0:
         return False, {"error": "Quantity must be a non-negative integer."}
@@ -973,7 +1007,7 @@ async def billing_storage_current():
     sub_id = (tenant_plan.get("subscription_id") or "").strip()
     if sub_id:
         stripe_sub = await stripe.Subscription.retrieve_async(sub_id, expand=["latest_invoice"])
-        _item_id, stripe_price_id, stripe_quantity_gb = extract_storage_subscription_item(stripe_sub)
+        storage_item_id, stripe_price_id, stripe_quantity_gb = extract_storage_subscription_item(stripe_sub)
         stripe_period_start, stripe_period_end = extract_subscription_period(stripe_sub)
         storage_current_period_start = stripe_period_start or storage_current_period_start
         storage_current_period_end = stripe_period_end or storage_current_period_end
@@ -983,6 +1017,24 @@ async def billing_storage_current():
         if stripe_price_id:
             storage["price_id"] = stripe_price_id
             unit_price = await _get_storage_unit_price_async(stripe_price_id)
+        elif safe_int(storage.get("addon_storage_bytes"), 0) > 0 or safe_int(storage.get("target_storage_bytes"), 0) > 0:
+            # Stripe is authoritative: if the live subscription no longer has a
+            # storage item, clear stale local storage quota cached in DB.
+            with DB.atomic():
+                Subscription.update(
+                    addon_subscription_item_id=None,
+                    addon_storage_bytes=0,
+                    target_storage_bytes=0,
+                ).where(Subscription.tenant_id == tenant_id).execute()
+            storage["addon_subscription_item_id"] = None
+            storage["addon_storage_bytes"] = 0
+            storage["target_storage_bytes"] = 0
+            logging.info(
+                "Cleared stale local storage quota from Stripe state: tenant_id=%s subscription_id=%s status=%s",
+                tenant_id,
+                sub_id,
+                storage_status,
+            )
 
     # When storage subscription renewal fails, expose the invoice URL so the
     # frontend can offer a "Pay Invoice" link — mirroring the main plan flow.
@@ -1023,7 +1075,12 @@ async def billing_storage_current():
 @billing_enabled_guard(_billing_disabled_response)
 async def billing_storage_set_target():
     req = await get_request_json()
-    tenant_id = req.get("tenant_id", current_user.id)
+    try:
+        validated: StorageSetTargetRequest = StorageSetTargetRequest.model_validate(req)
+    except ValidationError as e:
+        return get_json_result(data=False, message=_format_request_validation_error(e), code=RetCode.BAD_REQUEST)
+
+    tenant_id = validated.tenant_id or current_user.id
     if current_user.id != tenant_id:
         return get_json_result(
             data=False,
@@ -1031,20 +1088,12 @@ async def billing_storage_set_target():
             code=RetCode.AUTHENTICATION_ERROR,
         )
 
-    target_storage = req.get("target_storage_bytes")
-    try:
-        target_storage_bytes = int(target_storage)
-    except (TypeError, ValueError):
-        return get_json_result(data=False, message="target_storage_bytes must be an integer.", code=RetCode.BAD_REQUEST)
-    if target_storage_bytes < 0:
-        return get_json_result(data=False, message="target_storage_bytes must be >= 0.", code=RetCode.BAD_REQUEST)
-
     ok, data = await _set_storage_target_storage_bytes_async(
         tenant_id,
-        target_storage_bytes,
-        setup_intent_id=(req.get("setup_intent_id") or "").strip(),
-        session_success_url=req.get("session_success_url", settings.BILLING["session_success_url"]),
-        session_cancel_url=req.get("session_cancel_url", settings.BILLING["session_cancel_url"]),
+        validated.target_storage_bytes,
+        setup_intent_id=(validated.setup_intent_id or "").strip(),
+        session_success_url=validated.session_success_url,
+        session_cancel_url=validated.session_cancel_url,
     )
     if not ok:
         return get_data_error_result(message=data.get("error", "Failed to set storage target."))
@@ -1266,20 +1315,16 @@ async def billing_addon_overview():
 async def billing_points_checkout():
     """Create a Stripe Checkout session for purchasing points."""
     req = await get_request_json()
-    tenant_id = req.get("tenant_id", current_user.id)
-    session_success_url = req.get("session_success_url", settings.BILLING["session_success_url"])
-    session_cancel_url = req.get("session_cancel_url", settings.BILLING["session_cancel_url"])
+    try:
+        validated: PointsCheckoutRequest = PointsCheckoutRequest.model_validate(req)
+    except ValidationError as e:
+        return get_json_result(data=False, message=_format_request_validation_error(e), code=RetCode.BAD_REQUEST)
+
+    tenant_id = validated.tenant_id or current_user.id
     if current_user.id != tenant_id:
         return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
 
-    quantity = req.get("quantity")
-    try:
-        quantity = int(quantity)
-    except (TypeError, ValueError):
-        return get_json_result(data=False, message="quantity must be an integer.", code=RetCode.BAD_REQUEST)
-    if quantity <= 0:
-        return get_json_result(data=False, message="quantity must be positive.", code=RetCode.BAD_REQUEST)
-
+    quantity = validated.quantity
     recharge_config = settings.BILLING.get("points_recharge") or {}
     price_id = (recharge_config.get("price_id") or "").strip()
     points_per_unit = int(recharge_config.get("points_per_unit") or 100)
@@ -1304,8 +1349,8 @@ async def billing_points_checkout():
             "points_amount": str(points),
             "product_type": "points",
         },
-        success_url=_build_checkout_success_url(session_success_url),
-        cancel_url=session_cancel_url,
+        success_url=_build_checkout_success_url(validated.session_success_url),
+        cancel_url=validated.session_cancel_url,
     )
     return get_json_result(data={"checkout_url": session.url})
 
@@ -1914,13 +1959,17 @@ async def billing_upcoming():
         invoice_preview (dict): Full Stripe invoice preview object.
     """
     req = await get_request_json()
+    try:
+        validated: SubscriptionPreviewRequest = SubscriptionPreviewRequest.model_validate(req)
+    except ValidationError as e:
+        return get_json_result(data=False, message=_format_request_validation_error(e), code=RetCode.BAD_REQUEST)
 
-    new_price_id = req.get("new_price_id")
-    tenant_id = req.get("tenant_id") or current_user.id
-    target_storage_bytes_raw = req.get("target_storage_bytes")
+    new_price_id = validated.new_price_id
+    tenant_id = validated.tenant_id or current_user.id
+    target_storage_bytes_raw = validated.target_storage_bytes
 
     current_plan = SubscriptionService.get_by_tenant_id(tenant_id=tenant_id)
-    customer_id = req.get("customer_id") or current_plan.get("customer_id")
+    customer_id = validated.customer_id or current_plan.get("customer_id")
     subscription_id = current_plan.get("subscription_id")
 
     logging.debug(
@@ -1930,8 +1979,6 @@ async def billing_upcoming():
         subscription_id,
         new_price_id,
     )
-    if not new_price_id and target_storage_bytes_raw is None:
-        return get_data_error_result(message="Missing required parameters")
     if not customer_id:
         customer_id = await billing_set_customer_id_async(tenant_id)
     if not customer_id:
@@ -1940,16 +1987,6 @@ async def billing_upcoming():
     if target_storage_bytes_raw is not None:
         if not subscription_id:
             return get_data_error_result(message="No active plan subscription found")
-
-        try:
-            target_storage_bytes = int(target_storage_bytes_raw)
-        except (TypeError, ValueError):
-            return get_data_error_result(message="target_storage_bytes must be an integer")
-
-        if target_storage_bytes < 0:
-            return get_data_error_result(message="target_storage_bytes must be non-negative")
-        if target_storage_bytes % BYTES_PER_GB != 0:
-            return get_data_error_result(message="Storage quantity must be a multiple of 1GB")
 
         subscription = stripe.Subscription.retrieve(subscription_id)
         if not subscription or not subscription.get("items") or not subscription["items"].get("data"):
@@ -1960,7 +1997,7 @@ async def billing_upcoming():
             return get_data_error_result(message="Plan subscription item not found")
 
         storage_item_id, storage_price_id, _current_storage_quantity = extract_storage_subscription_item(subscription)
-        target_storage_quantity = storage_bytes_to_quantity(target_storage_bytes)
+        target_storage_quantity = storage_bytes_to_quantity(target_storage_bytes_raw)
         preview_items = [
             {
                 "id": plan_item_id,
@@ -2106,102 +2143,6 @@ async def billing_upcoming():
             "stripe_publishable_key": _get_safe_stripe_publishable_key(),
         }
     )
-
-
-def _validate_billing_checkout_request(req: dict):
-    """Normalize and validate checkout input so route logic stays branch-focused."""
-    tenant_id = req.get("tenant_id") or current_user.id
-    addon_price_id = req.get("addon_price_id")
-    subscription_price_id = req.get("subscription_price_id")
-    quantity = req.get("quantity", 1)
-    payment_type = req.get("payment_type")
-    expiry_time = req.get("expiry_time")
-    setup_intent_id = (req.get("setup_intent_id") or "").strip()
-    session_success_url = req.get("session_success_url", settings.BILLING["session_success_url"])
-    session_cancel_url = req.get("session_cancel_url", settings.BILLING["session_cancel_url"])
-
-    if not tenant_id:
-        return None, get_json_result(
-            data=False,
-            message="Missing required parameter tenant_id.",
-            code=RetCode.BAD_REQUEST,
-        )
-
-    if not payment_type:
-        return None, get_json_result(
-            data=False,
-            message="Missing required parameter payment_type.",
-            code=RetCode.BAD_REQUEST,
-        )
-
-    try:
-        quantity = int(quantity)
-    except (TypeError, ValueError):
-        return None, get_json_result(
-            data=False,
-            message="Invalid quantity.",
-            code=RetCode.BAD_REQUEST,
-        )
-
-    if quantity < 0:
-        return None, get_json_result(
-            data=False,
-            message="Quantity must be a non-negative integer.",
-            code=RetCode.BAD_REQUEST,
-        )
-
-    if current_user.id != tenant_id:
-        return None, get_json_result(
-            data=False,
-            message="No authorization.",
-            code=RetCode.AUTHENTICATION_ERROR,
-        )
-
-    logging.info(f"{payment_type=}")
-    logging.info(f"{subscription_price_id=}")
-
-    if payment_type not in (PriceType.SUBSCRIPTION, PriceType.ADDON):
-        return None, get_data_error_result(message="Unsupported payment type.")
-
-    if payment_type == PriceType.SUBSCRIPTION and not subscription_price_id:
-        return None, get_json_result(
-            data=False,
-            message="Missing required parameters subscription_price_id.",
-            code=RetCode.BAD_REQUEST,
-        )
-
-    if payment_type == PriceType.ADDON and not addon_price_id:
-        return None, get_json_result(
-            data=False,
-            message="Missing required parameters addon_price_id.",
-            code=RetCode.BAD_REQUEST,
-        )
-
-    if payment_type == PriceType.SUBSCRIPTION and quantity <= 0:
-        return None, get_json_result(
-            data=False,
-            message="Quantity must be a positive integer.",
-            code=RetCode.BAD_REQUEST,
-        )
-
-    if payment_type == PriceType.SUBSCRIPTION and not float(quantity).is_integer():
-        return None, get_json_result(
-            data=False,
-            message="Quantity must be an integer.",
-            code=RetCode.BAD_REQUEST,
-        )
-
-    return {
-        "tenant_id": tenant_id,
-        "addon_price_id": addon_price_id,
-        "subscription_price_id": subscription_price_id,
-        "quantity": quantity,
-        "payment_type": payment_type,
-        "expiry_time": expiry_time,
-        "setup_intent_id": setup_intent_id,
-        "session_success_url": session_success_url,
-        "session_cancel_url": session_cancel_url,
-    }, None
 
 
 async def _apply_setup_intent_payment_method_if_present(*, customer_id: str, setup_intent_id: str) -> str:
@@ -2645,19 +2586,15 @@ async def billing_checkout():
     Handles subscription purchase, upgrade, and downgrade via Stripe Checkout.
     """
     req = await get_request_json()
-    params, error_response = _validate_billing_checkout_request(req)
-    if error_response:
-        return error_response
+    try:
+        validated: CheckoutRequest = CheckoutRequest.model_validate(req)
+    except ValidationError as e:
+        return get_json_result(data=False, message=_format_request_validation_error(e), code=RetCode.BAD_REQUEST)
 
-    tenant_id = params["tenant_id"]
-    payment_type = params["payment_type"]
-    subscription_price_id = params["subscription_price_id"]
-    addon_price_id = params["addon_price_id"]
-    quantity = params["quantity"]
-    expiry_time = params["expiry_time"]
-    setup_intent_id = params["setup_intent_id"]
-    session_success_url = params["session_success_url"]
-    session_cancel_url = params["session_cancel_url"]
+    # Authorization check (kept separate from Pydantic validation)
+    tenant_id = validated.tenant_id or current_user.id
+    if current_user.id != tenant_id:
+        return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
 
     tenant_plan = SubscriptionService.get_by_tenant_id(tenant_id)
     customer_id = tenant_plan.get("customer_id")
@@ -2665,26 +2602,26 @@ async def billing_checkout():
         logging.warning("No customer_id found while checkout, it was expected create when user registion, try to create a stripe accout to proceed...")
         customer_id = await billing_set_customer_id_async(tenant_id)
 
-    if payment_type == PriceType.SUBSCRIPTION:
+    if validated.payment_type == PriceType.SUBSCRIPTION:
         return await _handle_subscription_checkout(
             tenant_id=tenant_id,
             tenant_plan=tenant_plan,
             customer_id=customer_id,
-            subscription_price_id=subscription_price_id,
-            quantity=quantity,
-            setup_intent_id=setup_intent_id,
-            session_success_url=session_success_url,
-            session_cancel_url=session_cancel_url,
+            subscription_price_id=validated.subscription_price_id,
+            quantity=validated.quantity,
+            setup_intent_id=validated.setup_intent_id,
+            session_success_url=validated.session_success_url,
+            session_cancel_url=validated.session_cancel_url,
         )
 
     return await _handle_addon_checkout(
         tenant_id=tenant_id,
         customer_id=customer_id,
-        addon_price_id=addon_price_id,
-        quantity=quantity,
-        expiry_time=expiry_time,
-        session_success_url=session_success_url,
-        session_cancel_url=session_cancel_url,
+        addon_price_id=validated.addon_price_id,
+        quantity=validated.quantity,
+        expiry_time=validated.expiry_time,
+        session_success_url=validated.session_success_url,
+        session_cancel_url=validated.session_cancel_url,
     )
 
 
@@ -2706,15 +2643,12 @@ async def billing_create_setup_intent():
         setup_intent_id (str): Stripe SetupIntent ID for confirmation.
     """
     req = await get_request_json()
-
-    setup_type = req.get("setup_type")
-    price_id = req.get("price_id")
-    target_storage_bytes_raw = req.get("target_storage_bytes")
+    try:
+        validated: SetupIntentRequest = SetupIntentRequest.model_validate(req)
+    except ValidationError as e:
+        return get_json_result(data=False, message=_format_request_validation_error(e), code=RetCode.BAD_REQUEST)
 
     tenant_id = current_user.id
-
-    if not setup_type or setup_type not in ("subscription_upgrade", "storage_addon"):
-        return get_data_error_result(message="Invalid setup_type. Must be 'subscription_upgrade' or 'storage_addon'")
 
     tenant_plan = SubscriptionService.get_by_tenant_id(tenant_id)
     customer_id = tenant_plan.get("customer_id")
@@ -2729,13 +2663,13 @@ async def billing_create_setup_intent():
         usage="off_session",
         metadata={
             "tenant_id": tenant_id,
-            "setup_type": setup_type,
-            "price_id": price_id or "",
-            "target_storage_bytes": str(target_storage_bytes_raw or ""),
+            "setup_type": validated.setup_type,
+            "price_id": validated.price_id or "",
+            "target_storage_bytes": str(validated.target_storage_bytes or ""),
         },
     )
 
-    logging.info(f"Created SetupIntent {setup_intent.id} for tenant {tenant_id}, type={setup_type}")
+    logging.info(f"Created SetupIntent {setup_intent.id} for tenant {tenant_id}, type={validated.setup_type}")
 
     return get_json_result(
         data={
@@ -2750,8 +2684,13 @@ async def billing_create_setup_intent():
 @billing_enabled_guard(_billing_disabled_response)
 async def customer_portal():
     req = await get_request_json()
-    tenant_id = req.get("tenant_id") or current_user.id
-    return_url = req.get("return_url", settings.BILLING["customer_portal_return_url"])
+    try:
+        validated: PortalSessionRequest = PortalSessionRequest.model_validate(req)
+    except ValidationError as e:
+        return get_json_result(data=False, message=_format_request_validation_error(e), code=RetCode.BAD_REQUEST)
+
+    tenant_id = validated.tenant_id or current_user.id
+    return_url = validated.return_url
 
     if current_user.id != tenant_id:
         return get_json_result(
@@ -2821,35 +2760,26 @@ def _get_stripe_webhook_secret(force_refresh: bool = False) -> str | None:
     return None
 
 
-@manager.route("/callbacks/success", methods=["GET"])
-async def billing_success():
+def _get_is_local_webhook() -> bool:
     """
-    Handle successful Stripe checkout redirect.
-    Stripe redirects here with ?session_id=xxx query parameter.
-    We extract it and redirect to the frontend price page with success status.
+    Check if the configured webhook URL is a local address.
+    Cache the result only for the currently configured webhook URL.
+
+    The billing config may be initialized lazily or refreshed after process
+    startup. A plain boolean cache can therefore become stale and incorrectly
+    force local Stripe CLI webhooks down the signature-verification path.
     """
-    from quart import redirect
+    global _is_local_webhook, _is_local_webhook_url
 
-    session_id = request.args.get("session_id", "")
-    if not session_id:
-        logging.warning("Stripe success redirect missing session_id.")
-        return redirect(f"{settings.BILLING.get('customer_portal_return_url', '')}/price?price-pay-status=error")
+    webhook_url = settings.BILLING.get("webhook_url", "")
+    if _is_local_webhook is not None and _is_local_webhook_url == webhook_url:
+        return _is_local_webhook
 
-    # session_id present = Stripe confirmed success. Trust the redirect.
-    # Actual payment state is verified asynchronously by the checkout.session.completed
-    # webhook (with idempotency via payment_intent_id), so we don't query Stripe here.
-    return redirect(f"{settings.BILLING.get('customer_portal_return_url', '')}/price?price-pay-status=success")
-
-
-@manager.route("/callbacks/cancel", methods=["GET"])
-async def billing_cancel():
-    """
-    Handle cancelled Stripe checkout redirect.
-    Redirects back to the price page with cancel status.
-    """
-    from quart import redirect
-
-    return redirect(f"{settings.BILLING.get('customer_portal_return_url', '')}/price?price-pay-status=cancel")
+    hostname = urlparse(webhook_url).hostname
+    _is_local_webhook_url = webhook_url
+    _is_local_webhook = hostname in ["localhost", "127.0.0.1"]
+    logging.info("Detected local webhook: %s (is_local=%s)", webhook_url, _is_local_webhook)
+    return _is_local_webhook
 
 
 @manager.route("/checkouts/<session_id>", methods=["GET"])
@@ -2933,7 +2863,12 @@ async def billing_webhook():
 
     # Dynamically fetch the webhook secret from Stripe API to avoid config drift
     webhook_secret = _get_stripe_webhook_secret()
-    if not webhook_secret:
+    is_local_webhook = _get_is_local_webhook()
+    webhook_url = settings.BILLING.get("webhook_url", "")
+
+    # For local webhooks (stripe CLI forwarding), skip signature verification
+    # regardless of whether we have a webhook secret in the database.
+    if not is_local_webhook and not webhook_secret:
         logging.error("Could not retrieve webhook secret from Stripe. Cannot verify webhook signature. Rejecting webhook.")
         # Signature verification cannot proceed without the endpoint secret.
         # Return non-2xx so Stripe retries after transient config/database issues.
@@ -2945,40 +2880,50 @@ async def billing_webhook():
     stored_webhook_id = _get_stored_stripe_webhook_id()
     sig_header_summary = _summarize_stripe_signature_header(sig_header)
     payload_summary = _summarize_webhook_payload(payload)
-    try:
-        event = stripe.Webhook.construct_event(payload, sig_header, webhook_secret)
-    except stripe.SignatureVerificationError:
-        # Secret may have been rotated; force refresh and retry once
+
+    # Skip signature verification for local webhook URLs (e.g., when using stripe CLI forwarding)
+    if is_local_webhook:
         logging.warning(
-            "Signature verification failed, refreshing secret and retrying: stored_webhook_id=%s webhook_url=%s raw_event_id=%s raw_event_type=%s sig_header=%s payload=%s",
-            stored_webhook_id,
-            settings.BILLING.get("webhook_url", ""),
+            "Skipping webhook signature verification for local webhook_url=%s. raw_event_id=%s raw_event_type=%s",
+            webhook_url,
             raw_event_id,
             raw_event_type,
-            sig_header_summary,
-            payload_summary,
         )
-        webhook_secret = _get_stripe_webhook_secret(force_refresh=True)
-        if not webhook_secret:
-            logging.error("Could not retrieve webhook secret after refresh. Rejecting webhook.")
-            return jsonify(success=False), 400
+    else:
         try:
             event = stripe.Webhook.construct_event(payload, sig_header, webhook_secret)
         except stripe.SignatureVerificationError:
-            event_lookup = _diagnose_unverified_stripe_event(raw_event_id)
-            logging.exception(
-                "Signature verification failed after refresh. Rejecting webhook: stored_webhook_id=%s webhook_url=%s raw_event_id=%s raw_event_type=%s sig_header=%s payload=%s event_lookup=%s",
+            # Secret may have been rotated; force refresh and retry once
+            logging.warning(
+                "Signature verification failed, refreshing secret and retrying: stored_webhook_id=%s webhook_url=%s raw_event_id=%s raw_event_type=%s sig_header=%s payload=%s",
                 stored_webhook_id,
-                settings.BILLING.get("webhook_url", ""),
+                webhook_url,
                 raw_event_id,
                 raw_event_type,
                 sig_header_summary,
                 payload_summary,
-                event_lookup,
             )
-            # Invalid signatures must never be acknowledged with 2xx, otherwise
-            # we would accept an event we cannot trust or replay safely.
-            return jsonify(success=False), 400
+            webhook_secret = _get_stripe_webhook_secret(force_refresh=True)
+            if not webhook_secret:
+                logging.error("Could not retrieve webhook secret after refresh. Rejecting webhook.")
+                return jsonify(success=False), 400
+            try:
+                event = stripe.Webhook.construct_event(payload, sig_header, webhook_secret)
+            except stripe.SignatureVerificationError:
+                event_lookup = _diagnose_unverified_stripe_event(raw_event_id)
+                logging.exception(
+                    "Signature verification failed after refresh. Rejecting webhook: stored_webhook_id=%s webhook_url=%s raw_event_id=%s raw_event_type=%s sig_header=%s payload=%s event_lookup=%s",
+                    stored_webhook_id,
+                    webhook_url,
+                    raw_event_id,
+                    raw_event_type,
+                    sig_header_summary,
+                    payload_summary,
+                    event_lookup,
+                )
+                # Invalid signatures must never be acknowledged with 2xx, otherwise
+                # we would accept an event we cannot trust or replay safely.
+                return jsonify(success=False), 400
 
     # Handle the event
     event_type = event["type"]
