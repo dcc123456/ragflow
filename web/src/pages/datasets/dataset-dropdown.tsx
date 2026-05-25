@@ -17,7 +17,7 @@ import {
   hasOwnerPermission,
   showEditButton,
 } from '@/utils/permission-util';
-import { LucideCopy, PenLine, Trash2 } from 'lucide-react';
+import { PenLine, Trash2 } from 'lucide-react';
 import { MouseEventHandler, PropsWithChildren, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import useDuplicateDataset from './use-duplicate-dataset';
@@ -35,7 +35,7 @@ type IDatasetDropdownProps = {
 export function DatasetDropdown({
   children,
   showDatasetRenameModal,
-  showDatasetDuplicateModal,
+  // showDatasetDuplicateModal,
   dataset,
   showPrivilegeModal,
 }: PropsWithChildren<IDatasetDropdownProps> &
@@ -79,7 +79,7 @@ export function DatasetDropdown({
           {t('common.rename')} <PenLine />
         </DropdownMenuItem>
 
-        {hasManagePermissionPermission(dataset.operator_permission) && (
+        {/* {hasManagePermissionPermission(dataset.operator_permission) && (
           <DropdownMenuItem
             onClick={(e) => {
               e.stopPropagation();
@@ -88,7 +88,7 @@ export function DatasetDropdown({
           >
             {t('common.duplicate')} <LucideCopy />
           </DropdownMenuItem>
-        )}
+        )} */}
 
         <DropdownMenuSeparator />
 
