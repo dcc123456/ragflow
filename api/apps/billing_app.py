@@ -139,7 +139,6 @@ def _get_stored_stripe_webhook_id() -> str:
     return getattr(setting, "value", "") or ""
 
 
-
 def _summarize_stripe_signature_header(sig_header: str | None) -> dict:
     if not sig_header:
         return {
@@ -275,7 +274,6 @@ def _check_downgrade_resource_compatibility(tenant_id: str, target_plan_name: st
             }
         )
 
-
     if members_used > total_members_limit:
         overage_members = members_used - total_members_limit
         conflicts.append(
@@ -347,7 +345,7 @@ except NameError:
         {
             "before_request": lambda self, f: f,
             "after_request": lambda self, f: f,
-            "route": lambda self, *_args, **_kwargs: (lambda f: f),
+            "route": lambda self, *_args, **_kwargs: lambda f: f,
         },
     )()
 
@@ -1590,20 +1588,22 @@ async def billing_spend_overview():
             created_at = _safe_payment_order_created_at(order.order_created_at, order.order_id)
             product_names = order.product_names or []
             product_quantities = order.product_quantities or []
-            product_amount_cents = getattr(order, 'product_amount_cents', None) or []
-            spend_overview.append({
-                "invoice_id": order.order_id,
-                "amount": float((order.amount_cents or 0) / 100),
-                "currency": (order.currency or "").upper() if order.currency else None,
-                "status": status_map.get(order.payment_status, "pending"),
-                "created_at": int(created_at.timestamp() * 1000) if created_at else None,
-                "hosted_invoice_url": order.receipt_url,
-                "invoice_pdf_url": order.receipt_pdf_url or order.receipt_url,
-                "product_ids": order.product_ids or [],
-                "product": ", ".join(product_names) if product_names else "UNKNOWN",
-                "product_quantities": product_quantities,
-                "product_amount_cents": product_amount_cents,
-            })
+            product_amount_cents = getattr(order, "product_amount_cents", None) or []
+            spend_overview.append(
+                {
+                    "invoice_id": order.order_id,
+                    "amount": float((order.amount_cents or 0) / 100),
+                    "currency": (order.currency or "").upper() if order.currency else None,
+                    "status": status_map.get(order.payment_status, "pending"),
+                    "created_at": int(created_at.timestamp() * 1000) if created_at else None,
+                    "hosted_invoice_url": order.receipt_url,
+                    "invoice_pdf_url": order.receipt_pdf_url or order.receipt_url,
+                    "product_ids": order.product_ids or [],
+                    "product": ", ".join(product_names) if product_names else "UNKNOWN",
+                    "product_quantities": product_quantities,
+                    "product_amount_cents": product_amount_cents,
+                }
+            )
 
     return get_json_result(data={"total": total, "items": spend_overview})
 
@@ -2305,9 +2305,7 @@ async def _handle_active_subscription_checkout(
         # call so the two phases cannot diverge (a separate prior call would be
         # overwritten by the plan-change call which re-reads the live quantity).
         target_storage_quantity = 0 if is_trial_target else None
-        scheduled = await schedule_subscription_price_change_at_period_end_async(
-            subscription_id, subscription_price_id, target_storage_quantity=target_storage_quantity
-        )
+        scheduled = await schedule_subscription_price_change_at_period_end_async(subscription_id, subscription_price_id, target_storage_quantity=target_storage_quantity)
         if not scheduled:
             return get_data_error_result(message="Failed to schedule plan downgrade.")
 
@@ -2814,6 +2812,7 @@ def _get_stripe_webhook_secret(force_refresh: bool = False) -> str | None:
 
     # Load from persistent storage
     from api.db.services.system_settings_service import SystemSettingsService
+
     if force_refresh:
         logging.info("Refreshing Stripe webhook secret from database for stored webhook id=%s", stored_webhook_id)
     setting = SystemSettingsService.get_first_by_name("billing_webhook_secret")

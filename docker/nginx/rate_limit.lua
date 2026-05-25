@@ -327,6 +327,7 @@ local function _t3_local_ip_rate_limit()
         ngx.header["X-RateLimit-Limit"] = tostring(FALLBACK_RPM)
         ngx.header["X-RateLimit-Remaining"] = "0"
         ngx.header["Retry-After"] = "1"
+        ngx.header["X-RateLimit-Tier"] = "T3 (local)"
         ngx.status = 429
         ngx.header["Content-Type"] = "application/json"
         ngx.say('{"code":429,"message":"Rate limit exceeded. Please slow down your requests.","data":null}')
@@ -338,6 +339,7 @@ local function _t3_local_ip_rate_limit()
         ngx.header["X-RateLimit-Limit"] = tostring(FALLBACK_RPM)
         ngx.header["X-RateLimit-Remaining"] = "0"
         ngx.header["Retry-After"] = "2"
+        ngx.header["X-RateLimit-Tier"] = "T3 (local)"
         ngx.status = 429
         ngx.header["Content-Type"] = "application/json"
         ngx.say('{"code":429,"message":"Rate limit exceeded. Too many requests per minute.","data":null}')
@@ -386,6 +388,7 @@ local function _t2_redis_ip_rate_limit(red)
         ngx.header["X-RateLimit-Limit"] = tostring(FALLBACK_RPM)
         ngx.header["X-RateLimit-Remaining"] = "0"
         ngx.header["Retry-After"] = "1"
+        ngx.header["X-RateLimit-Tier"] = "T2 (ip)"
         ngx.status = 429
         ngx.header["Content-Type"] = "application/json"
         ngx.say('{"code":429,"message":"Rate limit exceeded. Please slow down your requests.","data":null}')
@@ -406,6 +409,7 @@ local function _t2_redis_ip_rate_limit(red)
         ngx.header["X-RateLimit-Limit"] = tostring(FALLBACK_RPM)
         ngx.header["X-RateLimit-Remaining"] = "0"
         ngx.header["Retry-After"] = "2"
+        ngx.header["X-RateLimit-Tier"] = "T2 (ip)"
         ngx.status = 429
         ngx.header["Content-Type"] = "application/json"
         ngx.say('{"code":429,"message":"Rate limit exceeded. Too many requests per minute.","data":null}')
@@ -419,6 +423,13 @@ end
 ---------------------------------------------------------------------------
 -- T1 — Per-tenant (user-id) rate limiting via Redis token bucket
 -- Falls back to T2 (Redis IP) on any error, which in turn falls back to T3.
+--
+-- Diagnostic: sets X-RateLimit-Tier header on every request to indicate
+-- which tier handled it and why T1 was skipped:
+--   "T1"          — per-tenant token bucket applied
+--   "T2 (ip)"     — per-IP via Redis (no token / token not found / limits not found)
+--   "T2 (err)"    — per-IP via Redis (T1 error, e.g. Redis failure)
+--   "T3 (local)"  — per-IP via ngx.shared.dict (Redis completely unavailable)
 ---------------------------------------------------------------------------
 
 --- Resolve tenant_id from token via cache → Redis → miss cache.
@@ -445,6 +456,7 @@ local function _resolve_tenant(token)
         return nil, nil
     end
 
+    -- Step 1: Direct lookup by the full token string
     local token_key = "billing:token:" .. token
     local tid, terr = red:get(token_key)
     if terr then
@@ -453,17 +465,60 @@ local function _resolve_tenant(token)
         return nil, nil
     end
 
-    if not tid or tid == ngx.null then
-        -- Token not in Redis — session token or unknown.
-        -- Cache the miss briefly to avoid hammering Redis for the same token.
-        cache_set(cache_key_token, "__miss__", CACHE_TTL_MISS)
-        _release_redis(red)
-        return nil, nil
+    if tid and tid ~= ngx.null then
+        -- Found tenant by exact JWT match
+        cache_set(cache_key_token, tid, CACHE_TTL_OK)
+        return tid, red
     end
 
-    -- Cache the tenant lookup
-    cache_set(cache_key_token, tid, CACHE_TTL_OK)
-    return tid, red
+    -- Step 2: JWT not found directly. The frontend sends URLSafeTimedSerializer
+    -- tokens (base64 payload + timestamp + signature) which change on every call.
+    -- Try to extract the raw access_token from the base64 payload and look that up.
+    -- Format: <base64_payload>.<timestamp>.<signature>  (3 dot-separated parts)
+    -- or     <base64_payload>.<signature>                 (2 dot-separated parts)
+    local dot_count = 0
+    local first_dot = 0
+    for i = 1, #token do
+        if token:sub(i, i) == "." then
+            dot_count = dot_count + 1
+            if first_dot == 0 then first_dot = i end
+        end
+    end
+
+    if first_dot > 1 and dot_count >= 2 then
+        -- Extract base64 payload (before the first dot)
+        local b64_payload = token:sub(1, first_dot - 1)
+        -- Decode base64: URLSafeTimedSerializer uses URL-safe base64 (no padding).
+        -- Convert URL-safe chars back and add padding for ngx.decode_base64.
+        local b64_fixed = b64_payload:gsub("-", "+"):gsub("_", "/")
+        local pad = #b64_fixed % 4
+        if pad == 2 then
+            b64_fixed = b64_fixed .. "=="
+        elseif pad == 3 then
+            b64_fixed = b64_fixed .. "="
+        end
+        local raw_payload = ngx.decode_base64(b64_fixed)
+        if raw_payload then
+            -- Payload is JSON-quoted string, e.g. '"uuid"'
+            -- Strip surrounding quotes
+            local raw_token = raw_payload:match('^"(.+)"$') or raw_payload
+            if #raw_token >= 32 then
+                local raw_key = "billing:token:" .. raw_token
+                local raw_tid = red:get(raw_key)
+                if raw_tid and raw_tid ~= ngx.null then
+                    -- Found tenant via raw access_token fallback
+                    -- Cache using the original JWT as key
+                    cache_set(cache_key_token, raw_tid, CACHE_TTL_OK)
+                    return raw_tid, red
+                end
+            end
+        end
+    end
+
+    -- Token not found — cache the miss briefly
+    cache_set(cache_key_token, "__miss__", CACHE_TTL_MISS)
+    _release_redis(red)
+    return nil, nil
 end
 
 --- Look up rate limits for a tenant from cache → Redis.
@@ -520,15 +575,17 @@ end
 
 --- T1: enforce per-tenant rate limits using Redis token bucket.
 --- Returns:
----   "ok"    — tenant resolved and request allowed (no need for T2)
----   true    — request rejected (429 already sent)
----   false   — tenant could not be resolved or error occurred (fall through to T2)
+---   "ok"            — tenant resolved and request allowed (no need for T2)
+---   true            — request rejected (429 already sent)
+---   false, reason   — tenant could not be resolved or error occurred (fall through to T2)
+---                      reason is a string like "no_token", "tenant_not_found",
+---                      "limits_not_found", "redis_err", "tb_err"
 local function _t1_tenant_rate_limit(token)
     -- Step 1: Resolve tenant_id from token
     local tenant_id, red = _resolve_tenant(token)
     if not tenant_id then
         -- Cannot identify tenant — fall through to T2
-        return false
+        return false, "tenant_not_found"
     end
 
     -- Step 2: Resolve rate limits for this tenant
@@ -536,7 +593,8 @@ local function _t1_tenant_rate_limit(token)
     if not limits then
         -- No limits configured or error — clean up and fall through to T2
         if red then _release_redis(red) end
-        return false
+        ngx.log(ngx.WARN, "rate_limit: T1 no limits configured for tenant ", tenant_id)
+        return false, "limits_not_found"
     end
 
     -- Use the Redis connection from limits lookup (may be the same as tenant lookup)
@@ -548,7 +606,7 @@ local function _t1_tenant_rate_limit(token)
         red, err = _get_redis()
         if not red then
             ngx.log(ngx.WARN, "rate_limit: redis unavailable for token bucket: ", err)
-            return false
+            return false, "redis_err"
         end
     end
 
@@ -576,7 +634,7 @@ local function _t1_tenant_rate_limit(token)
     if err_min then
         ngx.log(ngx.WARN, "rate_limit: per-minute eval failed: ", err_min)
         _release_redis(red)
-        return false  -- fall through to T2
+        return false, "tb_err"
     end
 
     if type(res_min) == "table" and tonumber(res_min[1]) == 0 then
@@ -586,6 +644,7 @@ local function _t1_tenant_rate_limit(token)
         ngx.header["X-RateLimit-Limit"] = tostring(rpm)
         ngx.header["X-RateLimit-Remaining"] = "0"
         ngx.header["Retry-After"] = tostring(math.max(1, wait_sec))
+        ngx.header["X-RateLimit-Tier"] = "T1"
         ngx.status = 429
         ngx.header["Content-Type"] = "application/json"
         ngx.say('{"code":429,"message":"Rate limit exceeded. Too many requests per minute.","data":null}')
@@ -597,6 +656,7 @@ local function _t1_tenant_rate_limit(token)
     if type(res_min) == "table" and res_min[2] then
         ngx.header["X-RateLimit-Remaining"] = res_min[2]
     end
+    ngx.header["X-RateLimit-Tier"] = "T1"
 
     -- Set tenant_id header for downstream use
     ngx.req.set_header("X-Billing-Tenant-Id", tenant_id)
@@ -624,15 +684,22 @@ function _M.check()
 
     -- T1: Per-tenant rate limiting (only if token is present)
     if token then
-        local result = _t1_tenant_rate_limit(token)
+        local result, reason = _t1_tenant_rate_limit(token)
         if result == true then return end   -- 429 already sent
         if result == "ok" then return end   -- tenant resolved, request allowed
         -- result == false: tenant not resolved or error — fall through to T2
+        -- Add diagnostic header showing why T1 was skipped
+        ngx.header["X-RateLimit-T1-Skip"] = reason or "unknown"
+    else
+        ngx.header["X-RateLimit-T1-Skip"] = "no_token"
     end
 
     -- T2: Per-IP rate limiting via Redis
     local rejected = _t2_redis_ip_rate_limit(nil)
     if rejected then return end  -- 429 already sent
+
+    -- T2 passed — set diagnostic header so client knows which tier handled it
+    ngx.header["X-RateLimit-Tier"] = "T2 (ip)"
 end
 
 return _M

@@ -284,19 +284,21 @@ async def login():
         user.save()
         msg = "Welcome back!"
 
-        # Sync session token to Redis for rate limiter
+        jwt_token = user.get_id()
+        # Sync the exact JWT that will be sent to the frontend so the
+        # Nginx Lua rate limiter (T1) can resolve tenant_id from it.
         try:
-            from common.billing_rate_limit_sync import sync_session_token
+            from common.billing_rate_limit_sync import sync_jwt_to_redis
             from api.db.db_models import UserTenant
             ut = UserTenant.select(UserTenant.tenant_id).where(
                 UserTenant.user_id == user.id, UserTenant.status == "1"
             ).dicts().first()
             if ut:
-                sync_session_token(user.access_token, ut["tenant_id"])
+                sync_jwt_to_redis(jwt_token, ut["tenant_id"])
         except Exception:
-            pass
+            logging.exception("Failed to sync JWT to Redis after login")
 
-        return await construct_response(data=response_data, auth=user.get_id(), message=msg)
+        return await construct_response(data=response_data, auth=jwt_token, message=msg)
     else:
         return get_json_result(
             data=False,
@@ -1217,7 +1219,18 @@ async def forget_reset_password():
         pass
 
     msg = "Password reset successful. Logged in."
-    return await construct_response(data=user.to_json(), auth=user.get_id(), message=msg)
+    jwt_token = user.get_id()
+    try:
+        from common.billing_rate_limit_sync import sync_jwt_to_redis
+        from api.db.db_models import UserTenant
+        ut = UserTenant.select(UserTenant.tenant_id).where(
+            UserTenant.user_id == user.id, UserTenant.status == "1"
+        ).dicts().first()
+        if ut:
+            sync_jwt_to_redis(jwt_token, ut["tenant_id"])
+    except Exception:
+        logging.exception("Failed to sync JWT to Redis after password reset")
+    return await construct_response(data=user.to_json(), auth=jwt_token, message=msg)
 
 
 

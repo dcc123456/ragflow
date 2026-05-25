@@ -162,6 +162,24 @@ def sync_api_token(token: str, tenant_id: str) -> bool:
         return False
 
 
+def delete_api_token(token: str) -> bool:
+    """
+    Remove an API token -> tenant_id mapping from Redis.
+    """
+    redis = _get_redis()
+    if not redis:
+        return False
+
+    key = f"{_TOKEN_KEY_PREFIX}{token}"
+    try:
+        redis.delete(key)
+        logging.debug(f"delete_api_token: {key[:30]}...")
+        return True
+    except Exception as e:
+        logging.warning(f"delete_api_token failed: {e}")
+        return False
+
+
 def sync_session_token(access_token: str, tenant_id: str) -> bool:
     """
     Sync a session (User) token -> tenant_id mapping to Redis.
@@ -183,9 +201,11 @@ def sync_session_token(access_token: str, tenant_id: str) -> bool:
         redis.set(f"{_TOKEN_KEY_PREFIX}{access_token}", tenant_id, ex=_RATELIMIT_KEY_TTL)
 
         # Store JWT-encoded access_token -> tenant_id
-        from itsdangerous import Serializer
+        # NOTE: Must use URLSafeTimedSerializer to match User.get_id()
+        # which imports `from itsdangerous.url_safe import URLSafeTimedSerializer as Serializer`
+        from itsdangerous.url_safe import URLSafeTimedSerializer
         from common import settings as _settings
-        jwt_serializer = Serializer(secret_key=_settings.get_secret_key())
+        jwt_serializer = URLSafeTimedSerializer(secret_key=_settings.get_secret_key())
         jwt_token = jwt_serializer.dumps(str(access_token))
         if isinstance(jwt_token, bytes):
             jwt_token = jwt_token.decode("utf-8")
@@ -194,6 +214,32 @@ def sync_session_token(access_token: str, tenant_id: str) -> bool:
         return True
     except Exception as e:
         logging.warning(f"sync_session_token failed: {e}")
+        return False
+
+
+def sync_jwt_to_redis(jwt_token: str, tenant_id: str) -> bool:
+    """
+    Sync the exact JWT token (as returned by User.get_id()) to Redis.
+
+    This must be called AFTER get_id() because URLSafeTimedSerializer.dumps()
+    includes a timestamp and produces a unique token each call.  We store the
+    exact JWT string that will be sent to the frontend so the Lua rate limiter
+    can look it up directly.
+
+    Args:
+        jwt_token: The JWT string from User.get_id() (sent in Authorization header).
+        tenant_id: The tenant_id to associate with this token.
+    """
+    redis = _get_redis()
+    if not redis:
+        return False
+
+    try:
+        redis.set(f"{_TOKEN_KEY_PREFIX}{jwt_token}", tenant_id, ex=_RATELIMIT_KEY_TTL)
+        logging.debug(f"sync_jwt_to_redis: stored JWT -> {tenant_id}")
+        return True
+    except Exception as e:
+        logging.warning(f"sync_jwt_to_redis failed: {e}")
         return False
 
 
@@ -267,15 +313,19 @@ def sync_all_rate_limits() -> int:
         # The frontend sends JWT-encoded access_token in the Authorization header.
         # Lua receives the JWT string, so we store both raw UUID and JWT-encoded form.
         from api.db.db_models import User, UserTenant
-        from itsdangerous import Serializer
+        # NOTE: Must use URLSafeTimedSerializer to match User.get_id()
+        from itsdangerous.url_safe import URLSafeTimedSerializer
         from common import settings as _settings
 
-        jwt_serializer = Serializer(secret_key=_settings.get_secret_key())
+        jwt_serializer = URLSafeTimedSerializer(secret_key=_settings.get_secret_key())
         session_token_count = 0
+        session_skip_no_token = 0
+        session_skip_no_tenant = 0
         users = User.select(User.id, User.access_token).where(User.status == "1").dicts()
         pipe = redis.pipeline()
         for u in users:
             if not u["access_token"] or not u["access_token"].strip():
+                session_skip_no_token += 1
                 continue
             # Look up the user's default tenant_id via UserTenant
             ut = UserTenant.select(UserTenant.tenant_id).where(
@@ -283,6 +333,7 @@ def sync_all_rate_limits() -> int:
                 UserTenant.status == "1"
             ).dicts().first()
             if not ut:
+                session_skip_no_tenant += 1
                 continue
             # Store raw access_token -> tenant_id (for API-token style matching)
             key_raw = f"{_TOKEN_KEY_PREFIX}{u['access_token']}"
@@ -300,7 +351,10 @@ def sync_all_rate_limits() -> int:
 
         if session_token_count % 500 != 0:
             pipe.execute()
-        logging.info(f"sync_all_rate_limits: synced {session_token_count} session token mappings")
+        logging.info(
+            f"sync_all_rate_limits: synced {session_token_count} session token mappings "
+            f"(skipped: {session_skip_no_token} no_token, {session_skip_no_tenant} no_tenant)"
+        )
 
         # Sync rate limits for ALL tenants with active/trialing subscriptions
         from api.db.db_models import Subscription
@@ -336,7 +390,7 @@ def sync_all_rate_limits() -> int:
         )
 
     except Exception as e:
-        logging.warning(f"sync_all_rate_limits failed: {e}")
+        logging.exception(f"sync_all_rate_limits failed: {e}")
 
     return count
 

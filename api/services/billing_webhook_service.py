@@ -1313,6 +1313,11 @@ async def _handle_customer_subscription_deleted(event: dict):
                     "target_storage_bytes": None,
                 },
             )
+        _sync_tenant_rate_limit_for_subscription(
+            tenant_id=tenant_id,
+            plan_name=None,
+            subscription_status="canceled",
+        )
         logging.info("Handled main customer.subscription.deleted for tenant %s", tenant_id)
         return
     logging.info("customer.subscription.deleted without tenant context: subscription_id=%s", subscription_id)

@@ -330,6 +330,23 @@ def login_user(user, remember=False, duration=None, force=False, fresh=True):
     session["_user_id"] = user.id
     session["_fresh"] = fresh
     session["_id"] = get_uuid()
+
+    # Sync rate limit to Redis so the Nginx Lua rate limiter (T1) can enforce limits.
+    # NOTE: JWT token sync happens in sync_jwt_to_redis() after get_id() is called,
+    # because URLSafeTimedSerializer.dumps() includes a timestamp and produces a
+    # different token each time — we must sync the exact JWT sent to the frontend.
+    try:
+        from common.billing_rate_limit_sync import sync_tenant_rate_limit
+        from api.db.db_models import UserTenant
+        if hasattr(user, "access_token") and user.access_token:
+            ut = UserTenant.select(UserTenant.tenant_id).where(
+                UserTenant.user_id == user.id, UserTenant.status == "1"
+            ).dicts().first()
+            if ut:
+                sync_tenant_rate_limit(ut["tenant_id"], None)
+    except Exception:
+        logging.exception("Failed to sync rate limit to Redis in login_user")
+
     return True
 
 
