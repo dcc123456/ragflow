@@ -10,7 +10,7 @@ NOTIFICATION_FIELDS = {
 
 @manager.route("/notification", methods=["GET"])  # noqa: F821
 def get_notification():
-    notification_rows = SystemSettingsService.get_by_name("notification.")
+    notification_rows = SystemSettingsService.get_by_name_prefix("notification.")
     result = {}
     for row in notification_rows:
         key = NOTIFICATION_FIELDS.get(row.name)

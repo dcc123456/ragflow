@@ -123,7 +123,7 @@ def load_persisted_webhook_secret() -> str:
         raise FlowError(f"failed to import DB services for billing_webhook_secret lookup: {exc}") from exc
 
     with DB.connection_context():
-        setting = SystemSettingsService.get_by_name("billing_webhook_secret")
+        setting = SystemSettingsService.get_by_name_prefix("billing_webhook_secret")
         rows = list(setting) if setting else []
 
     if not rows or not getattr(rows[0], "value", ""):

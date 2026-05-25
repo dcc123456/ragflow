@@ -489,7 +489,7 @@ class SettingsMgr:
             SettingsMgr._validate_value(name, setting.data_type, value)
             setting.value = value
             setting_dict = setting.to_dict()
-            SystemSettingsService.update_by_name(name, setting_dict)
+            SystemSettingsService.update_by_exact_name(name, setting_dict)
         elif len(settings) > 1:
             raise AdminException(f"Can't update more than 1 setting: {name}")
         elif allow_upsert:

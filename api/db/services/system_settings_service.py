@@ -175,7 +175,7 @@ class SystemSettingsService(CommonService):
             setting_dict.update({"type": "google"})
             if setting_dict.get("enabled"):
                 oauth_config.update({"google": setting_dict})
-        ldap_configs = cls.get_by_name("ldap")
+        ldap_configs = cls.get_by_name_prefix("ldap")
         if ldap_configs:
             ldap_config_mapping = {}
             for config in ldap_configs:
@@ -210,7 +210,7 @@ class SystemSettingsService(CommonService):
 
     @classmethod
     def get_smtp_config(cls):
-        mail_config_rows = cls.get_by_name("mail")
+        mail_config_rows = cls.get_by_name_prefix("mail")
         if not mail_config_rows:
             return {}
         mail_config = {
