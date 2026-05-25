@@ -324,6 +324,48 @@ class TestDocumentsUploadUnit:
         assert calls["upload"][1] is kb
         assert calls["upload"][3] == "user-1"
 
+    def test_document_permission_accepts_explicit_user_id_without_request_context(self, document_app_module, monkeypatch):
+        module = document_app_module
+
+        class _RequestContextUser:
+            @property
+            def id(self):
+                raise AssertionError("current_user should not be used when user_id is provided")
+
+        sys.modules["api.apps"].current_user = _RequestContextUser()
+
+        from api.db.services.user_service import UserTenantService
+
+        monkeypatch.setattr(
+            UserTenantService,
+            "query",
+            lambda user_id: [SimpleNamespace(id="operator-1", tenant_id="tenant-1")] if user_id == "user-2" else [],
+        )
+        monkeypatch.setattr(
+            module.DocumentService,
+            "get_by_id",
+            lambda doc_id: (True, SimpleNamespace(id=doc_id, created_by="owner-2")),
+        )
+        monkeypatch.setattr(module.DocumentService, "get_knowledgebase_id", lambda _doc_id: "kb-1")
+        monkeypatch.setattr(module.DocumentService, "get_tenant_id", lambda _doc_id: "tenant-1")
+        monkeypatch.setattr(
+            module.KnowledgebaseService,
+            "filter_by_id_and_tenant_id",
+            lambda tenant_id, kb_id: SimpleNamespace(created_by="owner-1"),
+        )
+        captured = {}
+
+        def fake_has_permission_for_member(**kwargs):
+            captured.update(kwargs)
+            return True, None, None
+
+        monkeypatch.setattr(module, "has_permission_for_member", fake_has_permission_for_member)
+
+        assert module._check_document_batch_permission(["doc-1"], module.PermissionValue.PERMISSION_WRITE, user_id="user-2")
+        assert captured["operator_id"] == "operator-1"
+        assert captured["tenant_id"] == "tenant-1"
+        assert captured["resource_id"] == "doc-1"
+
     def test_thread_pool_errors(self, document_app_module, monkeypatch):
         module = document_app_module
         kb = SimpleNamespace(id="kb1", tenant_id="tenant1", name="kb", parser_id="parser", parser_config={})

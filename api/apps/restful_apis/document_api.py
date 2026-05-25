@@ -1013,11 +1013,15 @@ def _parse_doc_id_filter_with_metadata(req, kb_id):
     return RetCode.SUCCESS, "", list(doc_ids_filter) if doc_ids_filter is not None else None, return_empty_metadata
 
 
-def _check_document_batch_permission(doc_ids, required_permission: PermissionValue):
-    from api.apps import current_user
+def _check_document_batch_permission(doc_ids, required_permission: PermissionValue, user_id=None):
     from api.db.services.user_service import UserTenantService
 
-    user_tenants = UserTenantService.query(user_id=current_user.id) or []
+    if user_id is None:
+        from api.apps import current_user
+
+        user_id = current_user.id
+
+    user_tenants = UserTenantService.query(user_id=user_id) or []
     if not user_tenants:
         return False
 
@@ -1038,7 +1042,7 @@ def _check_document_batch_permission(doc_ids, required_permission: PermissionVal
         if not kb_record:
             return False
 
-        if doc.created_by == current_user.id or kb_record.created_by == current_user.id:
+        if doc.created_by == user_id or kb_record.created_by == user_id:
             continue
 
         allowed = False
@@ -1421,9 +1425,9 @@ async def ingest(tenant_id):
         logging.exception("document ingest/run failed")
         return server_error_response(e)
 
-def _run_sync(user_id:str, req):
+def _run_sync(user_id: str, req):
     for doc_id in req["doc_ids"]:
-        if not _check_document_batch_permission([doc_id], PermissionValue.PERMISSION_WRITE):
+        if not _check_document_batch_permission([doc_id], PermissionValue.PERMISSION_WRITE, user_id=user_id):
             return RetCode.AUTHENTICATION_ERROR, "No authorization."
 
     kb_table_num_map = {}
