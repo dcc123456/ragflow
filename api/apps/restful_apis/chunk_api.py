@@ -106,7 +106,7 @@ def _get_dataset_tenant_id(dataset_id):
 @manager.route("/datasets/<dataset_id>/documents/<document_id>/chunks", methods=["GET"])  # noqa: F821
 @login_required
 @add_tenant_id_to_kwargs
-@check_doc_permission(permission=PermissionValue.PERMISSION_READ)
+@check_doc_permission(permission=PermissionValue.PERMISSION_READ, allow_missing_document=True)
 async def list_chunks(tenant_id, dataset_id, document_id):
     from rag.nlp import search
 
@@ -193,7 +193,7 @@ async def list_chunks(tenant_id, dataset_id, document_id):
 @manager.route("/datasets/<dataset_id>/documents/<document_id>/chunks/<chunk_id>", methods=["GET"])  # noqa: F821
 @login_required
 @add_tenant_id_to_kwargs
-@check_doc_permission(permission=PermissionValue.PERMISSION_READ)
+@check_doc_permission(permission=PermissionValue.PERMISSION_READ, allow_missing_document=True)
 async def get_chunk(tenant_id, dataset_id, document_id, chunk_id):
     from rag.nlp import search
 
@@ -219,7 +219,7 @@ async def get_chunk(tenant_id, dataset_id, document_id, chunk_id):
 @manager.route("/datasets/<dataset_id>/documents/<document_id>/chunks", methods=["POST"])  # noqa: F821
 @login_required
 @add_tenant_id_to_kwargs
-@check_doc_permission(permission=PermissionValue.PERMISSION_WRITE)
+@check_doc_permission(permission=PermissionValue.PERMISSION_WRITE, allow_missing_document=True)
 async def add_chunk(tenant_id, dataset_id, document_id):
     from rag.nlp import rag_tokenizer, search
 
@@ -311,7 +311,7 @@ async def add_chunk(tenant_id, dataset_id, document_id):
 @manager.route("/datasets/<dataset_id>/documents/<document_id>/chunks", methods=["DELETE"])  # noqa: F821
 @login_required
 @add_tenant_id_to_kwargs
-@check_doc_permission(permission=PermissionValue.PERMISSION_WRITE)
+@check_doc_permission(permission=PermissionValue.PERMISSION_WRITE, allow_missing_document=True)
 async def rm_chunk(tenant_id, dataset_id, document_id):
     from rag.nlp import search
 
@@ -361,7 +361,7 @@ async def rm_chunk(tenant_id, dataset_id, document_id):
 @manager.route("/datasets/<dataset_id>/documents/<document_id>/chunks/<chunk_id>", methods=["PATCH"])  # noqa: F821
 @login_required
 @add_tenant_id_to_kwargs
-@check_doc_permission(permission=PermissionValue.PERMISSION_WRITE)
+@check_doc_permission(permission=PermissionValue.PERMISSION_WRITE, allow_missing_document=True)
 async def update_chunk(tenant_id, dataset_id, document_id, chunk_id):
     from rag.app.qa import beAdoc, rmPrefix
     from rag.nlp import rag_tokenizer, search
@@ -451,7 +451,7 @@ async def update_chunk(tenant_id, dataset_id, document_id, chunk_id):
 @manager.route("/datasets/<dataset_id>/documents/<document_id>/chunks", methods=["PATCH"])  # noqa: F821
 @login_required
 @add_tenant_id_to_kwargs
-@check_doc_permission(permission=PermissionValue.PERMISSION_WRITE)
+@check_doc_permission(permission=PermissionValue.PERMISSION_WRITE, allow_missing_document=True)
 async def switch_chunks(tenant_id, dataset_id, document_id):
     from rag.nlp import search
 

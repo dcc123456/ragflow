@@ -201,6 +201,9 @@ def check_kb_permission(permission):
     - Form-data / urlencoded
     - URL query parameters
     - URL path parameters (kwargs)
+
+    allow_missing_document lets routes with their own dataset/document contract
+    handle missing documents instead of returning the generic not-found response.
     """
 
     def decorator(foo):
@@ -353,7 +356,7 @@ def check_dialog_permission(permission):
     return decorator
 
 
-def check_doc_permission(permission):
+def check_doc_permission(permission, allow_missing_document=False):
     from api.db.services.document_service import DocumentService
     from api.db.services.knowledgebase_service import KnowledgebaseService
     from api.db.services.user_service import UserService, UserTenantService
@@ -418,6 +421,10 @@ def check_doc_permission(permission):
 
             doc_tenant_id = DocumentService.get_tenant_id(doc_id)
             if not doc_tenant_id:
+                if allow_missing_document:
+                    if inspect.iscoroutinefunction(foo):
+                        return await foo(*args, **kwargs)
+                    return foo(*args, **kwargs)
                 return get_json_result(data=False, message="Document not found!", code=RetCode.DATA_ERROR)
 
             user_tenants = UserTenantService.query(user_id=current_user.id) or []

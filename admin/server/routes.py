@@ -96,8 +96,33 @@ def auth_admin():
 @check_admin_auth
 def list_users():
     try:
-        users = UserMgr.get_all_users()
+        name = (request.args.get("keyword") or "").strip()
+        status = request.args.get("status")
+        role = request.args.get("role")
+        plan = request.args.get("plan")
+        sort = (request.args.get("sort") or "").strip()
+        order = (request.args.get("order") or "").strip()
+        page = int(request.args.get("page", 1))
+        page_size = int(request.args.get("page_size", 10))
+        if page < 1 or page_size < 1:
+            return error_response("page and page_size must be positive integers", 400)
+
+        users, total = UserMgr.get_users(
+            name=name,
+            status=status,
+            role=role,
+            plan=plan,
+            sort=sort,
+            order=order,
+            page=page,
+            page_size=page_size,
+        )
+        users = {"users": users, "total": total, "page": page, "page_size": page_size}
         return success_response(users, "Get all users", 0)
+    except ValueError:
+        return error_response("page and page_size must be integers", 400)
+    except AdminException as e:
+        return error_response(e.message, e.code)
     except Exception as e:
         return error_response(str(e), 500)
 

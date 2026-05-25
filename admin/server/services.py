@@ -37,16 +37,28 @@ from api.utils import health_utils
 from common.time_utils import current_timestamp, timestamp_to_date
 
 from api.common.exceptions import AdminException, UserAlreadyExistsError, UserNotFoundError, RoleNotFoundError
+from api.utils.billing import BILLING_PLAN_TRIAL_NAME
 from config import SERVICE_CONFIGS
 from common.settings import ENABLE_WHITELIST
 
 
 class UserMgr:
     @staticmethod
-    def get_all_users():
-        users = UserService.get_all_users()
+    def get_users(name="", status=None, role=None, plan=None, sort="", order="", page=0, page_size=0):
         roles = RoleService.get_all_roles()
         role_map = {role['id']: role['role_name'] for role in roles}
+        role_id = UserMgr._get_role_id(role, roles)
+        sort, order = UserMgr._get_sort_values(sort, order)
+        users, total = UserService.list_users(
+            name=name,
+            status=UserMgr._get_status_value(status),
+            role_id=role_id,
+            plan=plan,
+            sort=sort,
+            order=order,
+            page=page,
+            page_size=page_size,
+        )
         result = []
         for user in users:
             result.append(
@@ -54,12 +66,56 @@ class UserMgr:
                     "email": user.email,
                     "nickname": user.nickname,
                     "create_date": user.create_date,
-                    "is_active": user.is_active,
+                    "last_login_time": user.last_login_time,
+                    "status": user.status,
                     "is_superuser": user.is_superuser,
-                    "role": role_map.get(user.role_id, "")
+                    "role": role_map.get(user.role_id, ""),
+                    "plan": getattr(user, "plan", None) or BILLING_PLAN_TRIAL_NAME,
                 }
             )
-        return result
+        return result, total
+
+    @staticmethod
+    def _get_status_value(status):
+        if status is None or str(status).strip() == "":
+            return None
+
+        status_map = {
+            "1": "1",
+            "true": "1",
+            "on": "1",
+            "active": "1",
+            "0": "0",
+            "false": "0",
+            "off": "0",
+            "inactive": "0",
+        }
+        status_value = status_map.get(str(status).strip().lower())
+        if status_value is None:
+            raise AdminException("status must be one of: 1, 0, true, false, on, off, valid, invalid")
+        return status_value
+
+    @staticmethod
+    def _get_role_id(role, roles):
+        if not role:
+            return None
+        role = str(role).strip()
+        for role_info in roles:
+            if role in {str(role_info["id"]), str(role_info["role_name"])}:
+                return role_info["id"]
+        return None
+
+    @staticmethod
+    def _get_sort_values(sort, order):
+        if not sort:
+            return "", ""
+        if sort != "last_login_time":
+            raise AdminException("sort must be: last_login_time")
+
+        order = (order or "asc").strip().lower()
+        if order not in {"asc", "desc"}:
+            raise AdminException("order must be one of: asc, desc")
+        return sort, order
 
     @staticmethod
     def get_user_details(username):

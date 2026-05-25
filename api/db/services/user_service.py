@@ -21,8 +21,9 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 from api.db import UserTenantRole
 from api.db.db_models import DB, UserTenant
-from api.db.db_models import User, Tenant
+from api.db.db_models import User, Tenant, Subscription
 from api.db.services.common_service import CommonService
+from api.utils.billing import BILLING_PLAN_TRIAL_NAME
 from common.misc_utils import get_uuid
 from common.time_utils import current_timestamp, datetime_format
 from common.constants import StatusEnum
@@ -164,6 +165,49 @@ class UserService(CommonService):
     def get_all_users(cls):
         users = cls.model.select().order_by(cls.model.email)
         return list(users)
+
+    @classmethod
+    @DB.connection_context()
+    def list_users(cls, name="", status=None, role_id=None, plan=None, sort="", order="", page=1, page_size=10):
+        plan_expr = peewee.fn.COALESCE(Subscription.plan_name, BILLING_PLAN_TRIAL_NAME)
+        query = (
+            cls.model.select(cls.model, plan_expr.alias("plan"))
+            .join(Subscription, peewee.JOIN.LEFT_OUTER, on=(Subscription.tenant_id == cls.model.id))
+            .order_by(cls.model.email)
+        )
+        name = (name or "").strip()
+        if name:
+            keywords = name.lower()
+            query = query.where(
+                peewee.fn.LOWER(cls.model.nickname).contains(keywords)
+                | peewee.fn.LOWER(cls.model.email).contains(keywords)
+            )
+        if status is not None:
+            query = query.where(cls.model.is_active == status)
+        if role_id is not None:
+            query = query.where(cls.model.role_id == role_id)
+        plan = (plan or "").strip()
+        if plan:
+            plan_name = plan.lower()
+            if plan_name == BILLING_PLAN_TRIAL_NAME.lower():
+                query = query.where(
+                    Subscription.plan_name.is_null(True)
+                    | (peewee.fn.LOWER(Subscription.plan_name) == plan_name)
+                )
+            else:
+                query = query.where(peewee.fn.LOWER(Subscription.plan_name) == plan_name)
+
+        total = query.count()
+        if sort:
+            if sort != "last_login_time":
+                raise ValueError("sort must be: last_login_time")
+            if order == "desc":
+                query = query.order_by(cls.model.last_login_time.desc())
+            else:
+                query = query.order_by(cls.model.last_login_time.asc())
+        if page and page_size:
+            query = query.paginate(page, page_size)
+        return list(query), total
 
 
 class TenantService(CommonService):

@@ -39,7 +39,6 @@ import stripe
 from common import settings
 from common.billing_utils import billing_enabled_guard, normalize_stripe_invoice_status, to_utc_datetime
 from common.constants import RetCode
-from api.db.services.user_service import TenantService
 from rag.utils.redis_conn import REDIS_CONN
 
 
@@ -1324,6 +1323,8 @@ def check_resources(**resource_deltas):
                         error_msg = "; ".join(error_messages)
                     else:
                         error_msg = "Insufficient resources available. Contact the owner for further assistance."
+
+                    from api.db.services.user_service import TenantService
 
                     ok, tenant = TenantService.get_by_id(tenant_id)
                     if ok:
