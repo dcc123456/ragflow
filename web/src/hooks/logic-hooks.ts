@@ -125,7 +125,7 @@ export const useHandleSearchChange = () => {
 export const useGetPagination = () => {
   const [pagination, setPagination] = useState({
     page: 1,
-    pageSize: 10,
+    pageSize: 50,
     total: 0,
   });
   const { t } = useTranslate('common');

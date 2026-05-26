@@ -71,7 +71,7 @@ export default function Files() {
   });
 
   return (
-    <section className="p-8">
+    <section className="p-8 flex flex-col gap-4 h-full">
       <ListFilterBar
         leftPanel={leftPanel}
         searchString={fileInstance.searchString}
@@ -79,7 +79,7 @@ export default function Files() {
         showFilter={false}
       >
         {activeTab === FileTabs.FILE ? (
-          <FilesManager.fileUpload
+          <FilesManager.FileUpload
             showFileUploadModal={fileInstance.showFileUploadModal || (() => {})}
             showSyncFileModal={fileInstance.showSyncFileModal || (() => {})}
             showFolderCreateModal={
@@ -87,7 +87,7 @@ export default function Files() {
             }
           />
         ) : (
-          <EvaluationPage.fileUpload
+          <EvaluationPage.FileUpload
             showFileUploadModal={fileInstance.showFileUploadModal || (() => {})}
           />
         )}
@@ -95,9 +95,9 @@ export default function Files() {
 
       {/* Content */}
       {activeTab === FileTabs.FILE ? (
-        <FilesManager.root setFileInstance={setFileInstance} />
+        <FilesManager.Root setFileInstance={setFileInstance} />
       ) : (
-        <EvaluationPage.root setFileInstance={setFileInstance} />
+        <EvaluationPage.Root setFileInstance={setFileInstance} />
       )}
     </section>
   );

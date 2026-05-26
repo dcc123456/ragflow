@@ -29,7 +29,7 @@ export enum FileTabs {
   EVALUATION = 'evaluation',
 }
 export const FilesManager = {
-  root: ({
+  Root: ({
     setFileInstance,
   }: {
     setFileInstance: Dispatch<SetStateAction<FilesInstanceType>>;
@@ -158,7 +158,7 @@ export const FilesManager = {
       </>
     );
   },
-  fileUpload: ({
+  FileUpload: ({
     showFileUploadModal,
     showSyncFileModal,
     showFolderCreateModal,

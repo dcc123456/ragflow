@@ -24,7 +24,7 @@ import {
 } from './use-evaluation-operation';
 
 export const EvaluationPage = {
-  root: ({
+  Root: ({
     setFileInstance,
   }: {
     setFileInstance: Dispatch<SetStateAction<FilesInstanceType>>;
@@ -81,7 +81,7 @@ export const EvaluationPage = {
     }, [searchString, setFileInstance, handleInputChange, showFileUploadModal]);
 
     return (
-      <div className="w-full">
+      <>
         {!rowSelectionIsEmpty && (
           <BulkOperateBar list={list} count={selectedCount}></BulkOperateBar>
         )}
@@ -122,10 +122,10 @@ export const EvaluationPage = {
             initialName={selectedItem.name}
           />
         )}
-      </div>
+      </>
     );
   },
-  fileUpload: ({
+  FileUpload: ({
     showFileUploadModal,
   }: {
     showFileUploadModal: () => void;
