@@ -2208,6 +2208,12 @@ resource "kubernetes_secret_v1" "ragflow_env" {
 
     # Rate limiting control (set to "1" to disable, useful for CI)
     RATELIMIT_DISABLED = var.rate_limit_disabled ? "1" : "0"
+
+    # Rate limiting Redis configuration (used by OpenResty rate_limit.lua)
+    RATELIMIT_REDIS_HOST     = local.redis_host_effective
+    RATELIMIT_REDIS_PORT     = var.redis_port
+    RATELIMIT_REDIS_PASSWORD = local.redis_password_effective
+    RATELIMIT_REDIS_DB       = tostring(var.redis_db)
   }
 
   type = "Opaque"

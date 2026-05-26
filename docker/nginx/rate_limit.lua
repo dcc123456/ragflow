@@ -26,20 +26,55 @@
     billing:fb:min:<ip>                  -> counter  (per-minute IP fallback via Redis)
 ]]
 
-local _M = {}
-_M._VERSION = "2.0.0"
+local _M                  = {}
+_M._VERSION               = "2.1.0"
 
 ---------------------------------------------------------------------------
 -- Constants
 ---------------------------------------------------------------------------
-local CACHE_TTL_OK    = 60       -- cache positive lookups for 60s
-local CACHE_TTL_MISS  = 5        -- cache misses for only 5s (quick retry)
-local POOL_IDLE       = 10000    -- keepalive idle timeout ms
-local POOL_SIZE       = 64       -- max connections in pool
+local CACHE_TTL_OK        = 60 -- cache positive lookups for 60s
+local CACHE_TTL_MISS      = 5 -- cache misses for only 5s (quick retry)
+local POOL_IDLE           = 10000 -- keepalive idle timeout ms
+local POOL_SIZE           = 64 -- max connections in pool
 
 -- Fallback per-IP rate limits (applied when tenant is unknown)
-local FALLBACK_RPM    = 120      -- 120 requests per minute per IP
-local FALLBACK_RPS    = 30       -- 30 requests per second per IP
+local FALLBACK_RPM        = 120 -- 120 requests per minute per IP
+local FALLBACK_RPS        = 30 -- 30 requests per second per IP
+
+---------------------------------------------------------------------------
+-- Pre-resolved Redis config (populated once in init_worker)
+-- NOTE: nginx's env directive only passes listed variables to workers.
+-- We use init_by_lua_block (runs in master) to snapshot env vars into
+-- ngx.shared.dict, so workers can read them reliably via _read_env().
+---------------------------------------------------------------------------
+local _redis_config = nil
+
+local function _read_env(name)
+    -- Priority 1: ngx.shared.dict (populated by init_by_lua_block in master)
+    local cache = ngx.shared.billing_cache
+    if cache then
+        local v = cache:get("_env:" .. name)
+        if v and v ~= "" then return v end
+    end
+    -- Priority 2: os.getenv (works for env vars listed in nginx env directives)
+    local v = os.getenv(name)
+    if v and v ~= "" then return v end
+    return nil
+end
+
+--- Called from init_worker_by_lua_block to snapshot environment variables.
+function _M.init_worker()
+    _redis_config = {
+        host     = _read_env("RATELIMIT_REDIS_HOST") or _read_env("REDIS_HOST") or "redis",
+        port     = tonumber(_read_env("RATELIMIT_REDIS_PORT") or _read_env("REDIS_PORT")) or 6379,
+        password = _read_env("RATELIMIT_REDIS_PASSWORD") or _read_env("REDIS_PASSWORD") or "",
+        db       = tonumber(_read_env("REDIS_DB") or _read_env("RATELIMIT_REDIS_DB")) or 1,
+    }
+    ngx.log(ngx.NOTICE,
+        "rate_limit init_worker: host=", _redis_config.host,
+        " port=", _redis_config.port,
+        " db=", _redis_config.db)
+end
 
 -- Token bucket Lua script executed inside Redis (same algorithm as Python/Go)
 local TOKEN_BUCKET_SCRIPT = [[
@@ -78,13 +113,13 @@ return {1, tostring(math.floor(tokens))}
 ]]
 
 -- Will be populated by init_worker via SCRIPT LOAD
-local _script_sha = nil
+local _script_sha         = nil
 
 -- Fixed-window counter Lua script for per-IP rate limiting (Redis-based).
 -- Atomically increments a counter, sets TTL on first write, returns count + TTL.
 -- KEYS[1]   = counter key (e.g. billing:fb:sec:<ip>)
 -- ARGV[1]   = window TTL in seconds
-local IP_RATE_SCRIPT = [[
+local IP_RATE_SCRIPT      = [[
 local key = KEYS[1]
 local ttl = tonumber(ARGV[1])
 local count = redis.call("INCR", key)
@@ -96,7 +131,7 @@ return {count, remain}
 ]]
 
 -- Separate SHA cache for the IP rate script (avoids collision with token bucket SHA)
-local _ip_script_sha = nil
+local _ip_script_sha      = nil
 
 ---------------------------------------------------------------------------
 -- Shared-dict cache helpers
@@ -116,20 +151,19 @@ end
 ---------------------------------------------------------------------------
 -- Redis connection helpers
 ---------------------------------------------------------------------------
+
+--- Get the pre-resolved Redis config (captured during init_worker).
 local function _get_redis_config()
-    local host = os.getenv("RATELIMIT_REDIS_HOST")
-    if not host or host == "" then host = "redis" end
-    local port = os.getenv("RATELIMIT_REDIS_PORT")
-    if not port or port == "" then port = 6379 else port = tonumber(port) end
-    local password = os.getenv("RATELIMIT_REDIS_PASSWORD")
-    if not password then password = "" end
-    local db = os.getenv("RATELIMIT_REDIS_DB")
-    if not db or db == "" then db = 1 else db = tonumber(db) end
+    if _redis_config then
+        return _redis_config
+    end
+    -- Fallback: should not happen, but just in case init_worker was not called
+    ngx.log(ngx.WARN, "rate_limit: _redis_config not initialized, reading env directly")
     return {
-        host     = host,
-        port     = port,
-        password = password,
-        db       = db,
+        host     = os.getenv("RATELIMIT_REDIS_HOST") or os.getenv("REDIS_HOST") or "redis",
+        port     = tonumber(os.getenv("RATELIMIT_REDIS_PORT") or os.getenv("REDIS_PORT")) or 6379,
+        password = os.getenv("RATELIMIT_REDIS_PASSWORD") or os.getenv("REDIS_PASSWORD") or "",
+        db       = tonumber(os.getenv("RATELIMIT_REDIS_DB") or os.getenv("REDIS_DB")) or 1,
     }
 end
 
@@ -138,7 +172,7 @@ end
 local function _get_redis()
     local redis = require "resty.redis"
     local red = redis:new()
-    red:set_timeouts(200, 200, 200)  -- 200ms connect/read/write
+    red:set_timeouts(2000, 2000, 2000) -- 200ms connect/read/write
 
     local cfg = _get_redis_config()
     local ok, err = red:connect(cfg.host, cfg.port)
@@ -304,20 +338,22 @@ end
 --- Returns true if within limits, false if rate-limited.
 local function _local_rate_check(key_prefix, ip, limit, window_sec)
     local cache = ngx.shared.billing_cache
-    if not cache then return true end  -- no cache → pass through
+    if not cache then return true end -- no cache → pass through
 
     local now_sec = ngx.now()
     local window_key = key_prefix .. ip .. ":" .. tostring(math.floor(now_sec / window_sec))
     local count, err = cache:incr(window_key, 1, 0, window_sec * 2)
     if not count then
         ngx.log(ngx.WARN, "rate_limit: shared_dict incr failed: ", err)
-        return true  -- fail-open
+        return true -- fail-open
     end
     return count <= limit
 end
 
 --- T3: apply per-IP rate limit using only ngx.shared.dict.
---- Returns true if the request was rejected (429 sent), false otherwise.
+--- Returns:
+---   true            — request rejected (429 already sent)
+---   false           — request allowed (tier header set to "T3 (local)")
 local function _t3_local_ip_rate_limit()
     local ip = get_client_ip()
     if not ip or ip == "" then return false end
@@ -346,6 +382,8 @@ local function _t3_local_ip_rate_limit()
         return ngx.exit(429)
     end
 
+    -- Set tier header on pass-through so caller knows T3 handled it
+    ngx.header["X-RateLimit-Tier"] = "T3 (local)"
     return false
 end
 
@@ -376,7 +414,7 @@ local function _t2_redis_ip_rate_limit(red)
 
     -- Per-second burst via Redis
     local sec_key = "billing:fb:sec:" .. ip
-    local res_sec, err_sec = _run_ip_rate_script(red, sec_key, 2)  -- TTL = 2s
+    local res_sec, err_sec = _run_ip_rate_script(red, sec_key, 2) -- TTL = 2s
     if err_sec then
         ngx.log(ngx.WARN, "rate_limit: redis IP per-sec failed: ", err_sec)
         if own_conn then _release_redis(red) end
@@ -397,7 +435,7 @@ local function _t2_redis_ip_rate_limit(red)
 
     -- Per-minute sustained via Redis
     local min_key = "billing:fb:min:" .. ip
-    local res_min, err_min = _run_ip_rate_script(red, min_key, 120)  -- TTL = 120s
+    local res_min, err_min = _run_ip_rate_script(red, min_key, 120) -- TTL = 120s
     if err_min then
         ngx.log(ngx.WARN, "rate_limit: redis IP per-min failed: ", err_min)
         if own_conn then _release_redis(red) end
@@ -446,7 +484,7 @@ local function _resolve_tenant(token)
 
     -- Cached hit — tenant_id found in shared dict
     if cached_tenant then
-        return cached_tenant, nil  -- no Redis connection needed for cache hit
+        return cached_tenant, nil -- no Redis connection needed for cache hit
     end
 
     -- No cache entry — look up from Redis
@@ -532,7 +570,7 @@ local function _resolve_limits(tenant_id, red)
         local cjson = require "cjson.safe"
         local limits = cjson.decode(cached_limits_json)
         if limits then
-            return limits, nil  -- cache hit, no Redis needed
+            return limits, nil -- cache hit, no Redis needed
         end
     end
 
@@ -612,7 +650,7 @@ local function _t1_tenant_rate_limit(token)
 
     -- Unpack limits:
     -- rpm = requests per minute (capacity for per-minute bucket)
-    local rpm       = tonumber(limits.rpm)       or 500
+    local rpm = tonumber(limits.rpm) or 500
 
     -- Guard: treat 0 rpm as "block all"
     if rpm <= 0 then
@@ -662,7 +700,7 @@ local function _t1_tenant_rate_limit(token)
     ngx.req.set_header("X-Billing-Tenant-Id", tenant_id)
 
     _release_redis(red)
-    return "ok"  -- tenant resolved and request allowed
+    return "ok" -- tenant resolved and request allowed
 end
 
 ---------------------------------------------------------------------------
@@ -675,7 +713,7 @@ function _M.check()
     if is_exempt_path() then return end
 
     -- Allow disabling rate limiting entirely (e.g. for CI/test environments)
-    local disabled = os.getenv("RATELIMIT_DISABLED")
+    local disabled = _read_env("RATELIMIT_DISABLED")
     if disabled and (disabled == "1" or disabled:lower() == "true") then
         return
     end
@@ -685,8 +723,8 @@ function _M.check()
     -- T1: Per-tenant rate limiting (only if token is present)
     if token then
         local result, reason = _t1_tenant_rate_limit(token)
-        if result == true then return end   -- 429 already sent
-        if result == "ok" then return end   -- tenant resolved, request allowed
+        if result == true then return end -- 429 already sent
+        if result == "ok" then return end -- tenant resolved, request allowed
         -- result == false: tenant not resolved or error — fall through to T2
         -- Add diagnostic header showing why T1 was skipped
         ngx.header["X-RateLimit-T1-Skip"] = reason or "unknown"
@@ -694,12 +732,16 @@ function _M.check()
         ngx.header["X-RateLimit-T1-Skip"] = "no_token"
     end
 
-    -- T2: Per-IP rate limiting via Redis
+    -- T2: Per-IP rate limiting via Redis (may internally fall back to T3)
     local rejected = _t2_redis_ip_rate_limit(nil)
-    if rejected then return end  -- 429 already sent
+    if rejected then return end -- 429 already sent
 
-    -- T2 passed — set diagnostic header so client knows which tier handled it
-    ngx.header["X-RateLimit-Tier"] = "T2 (ip)"
+    -- Set tier header only if T3 (local fallback) did not already set it.
+    -- T3 sets "T3 (local)" on both pass and reject; T2 sets "T2 (ip)" on reject.
+    -- If neither rejection path set the tier, this is a genuine T2 pass.
+    if not ngx.header["X-RateLimit-Tier"] then
+        ngx.header["X-RateLimit-Tier"] = "T2 (ip)"
+    end
 end
 
 return _M

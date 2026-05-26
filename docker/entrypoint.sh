@@ -181,13 +181,18 @@ host_port = str(redis_cfg.get("host", "redis:6379"))
 parts = host_port.split(":")
 host = parts[0] if parts[0] else "redis"
 port = parts[1] if len(parts) > 1 else "6379"
-import shlex
+import shlex, os
 password = str(redis_cfg.get("password", ""))
 db = str(redis_cfg.get("db", "1"))
-print(f"export RATELIMIT_REDIS_HOST={shlex.quote(host)}")
-print(f"export RATELIMIT_REDIS_PORT={shlex.quote(port)}")
-print(f"export RATELIMIT_REDIS_PASSWORD={shlex.quote(password)}")
-print(f"export RATELIMIT_REDIS_DB={shlex.quote(db)}")
+# Prefer existing env vars (from K8s Secret) over yaml defaults
+if not os.environ.get("RATELIMIT_REDIS_HOST"):
+    print(f"export RATELIMIT_REDIS_HOST={shlex.quote(host)}")
+if not os.environ.get("RATELIMIT_REDIS_PORT"):
+    print(f"export RATELIMIT_REDIS_PORT={shlex.quote(port)}")
+if not os.environ.get("RATELIMIT_REDIS_PASSWORD"):
+    print(f"export RATELIMIT_REDIS_PASSWORD={shlex.quote(password)}")
+if not os.environ.get("RATELIMIT_REDIS_DB"):
+    print(f"export RATELIMIT_REDIS_DB={shlex.quote(db)}")
 PYEOF
 source /tmp/ratelimit_env.sh
 echo "Rate limiter Redis: ${RATELIMIT_REDIS_HOST}:${RATELIMIT_REDIS_PORT} db=${RATELIMIT_REDIS_DB}"

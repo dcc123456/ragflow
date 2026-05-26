@@ -51,11 +51,50 @@ _sync_thread: Optional[threading.Thread] = None
 _sync_stop_event = threading.Event()
 
 
+_cached_billing_redis = None
+
+
 def _get_redis():
-    """Get the Redis client, returns None if unavailable."""
+    """Get a Redis client connected to the correct billing database.
+
+    REDIS_CONN (used by the app) may point to a different Redis DB than what
+    the Nginx Lua rate limiter uses.  The Lua side reads RATELIMIT_REDIS_DB /
+    REDIS_DB from the environment, so we must use the same DB here.
+
+    Returns a Redis client connected to the billing-rate-limit DB, or None.
+    """
+    global _cached_billing_redis
+    if _cached_billing_redis is not None:
+        return _cached_billing_redis
+
+    import os
+    import redis as _redis
+
+    target_db = int(os.environ.get("RATELIMIT_REDIS_DB") or os.environ.get("REDIS_DB") or "1")
+
+    # If REDIS_CONN happens to use the same DB, reuse it
     if REDIS_CONN and REDIS_CONN.REDIS:
-        return REDIS_CONN.REDIS
-    return None
+        pool_kwargs = REDIS_CONN.REDIS.connection_pool.connection_kwargs
+        conn_db = pool_kwargs.get("db", 0)
+        if conn_db == target_db:
+            _cached_billing_redis = REDIS_CONN.REDIS
+            return _cached_billing_redis
+
+    # Otherwise, create a dedicated connection to the target DB
+    try:
+        host = os.environ.get("REDIS_HOST", "redis")
+        port = int(os.environ.get("REDIS_PORT", "6379"))
+        password = os.environ.get("REDIS_PASSWORD") or None
+        _cached_billing_redis = _redis.StrictRedis(
+            host=host, port=port, db=target_db,
+            password=password, decode_responses=True,
+        )
+        _cached_billing_redis.ping()
+        logging.info(f"billing_rate_limit_sync: connected to Redis db={target_db}")
+        return _cached_billing_redis
+    except Exception as e:
+        logging.warning(f"billing_rate_limit_sync: failed to connect to Redis db={target_db}: {e}")
+        return None
 
 
 def _to_unix_ts(dt_val) -> float | None:
