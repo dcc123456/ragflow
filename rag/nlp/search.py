@@ -819,30 +819,10 @@ class Dealer:
     def all_tags(self, tenant_id: str, kb_ids: list[str], S=1000):
         if not self.dataStore.index_exist(index_name(tenant_id), kb_ids[0]):
             return []
-        # Prefer keyword subfield on ES/OS to avoid fielddata errors when legacy
         # indices have tag_kwd as text + keyword multi-field.
-        agg_fields = ["tag_kwd"]
-        if not settings.DOC_ENGINE_INFINITY and not settings.DOC_ENGINE_OCEANBASE:
-            agg_fields = ["tag_kwd.keyword", "tag_kwd"]
 
-        last_error = None
-        for agg_field in agg_fields:
-            try:
-                res = self.dataStore.search(
-                    [], [], {}, [], OrderByExpr(), 0, 0, index_name(tenant_id), kb_ids, [agg_field]
-                )
-                return self.dataStore.get_aggregation(res, agg_field)
-            except Exception as e:
-                last_error = e
-                logging.warning(
-                    "all_tags aggregation failed for field %s on tenant %s: %s",
-                    agg_field,
-                    tenant_id,
-                    e,
-                )
-        if last_error is not None:
-            raise last_error
-        return []
+        res = self.dataStore.search([], [], {}, [], OrderByExpr(), 0, 0, index_name(tenant_id), kb_ids, ["tag_kwd"])
+        return self.dataStore.get_aggregation(res, "tag_kwd")
 
     def all_tags_in_portion(self, tenant_id: str, kb_ids: list[str], S=1000):
         res = self.dataStore.search([], [], {}, [], OrderByExpr(), 0, 0, index_name(tenant_id), kb_ids, ["tag_kwd"])

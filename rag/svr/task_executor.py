@@ -522,7 +522,10 @@ async def build_chunks(task, progress_callback):
         all_tags = get_tags_from_cache(kb_ids)
         if not all_tags:
             all_tags = settings.retriever.all_tags_in_portion(tenant_id, kb_ids, S)
-            set_tags_to_cache(kb_ids, all_tags)
+            if all_tags:
+                set_tags_to_cache(kb_ids, all_tags)
+            else:
+                logging.warning("No tags found for tag KBs %s while tagging task %s.", kb_ids, task["id"])
         else:
             all_tags = json.loads(all_tags)
         chat_model_config = get_model_config_by_type_and_name(tenant_id, LLMType.CHAT, task["llm_id"])
