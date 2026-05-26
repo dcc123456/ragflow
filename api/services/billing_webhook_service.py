@@ -510,9 +510,21 @@ def handle_undelivered_events():
     ]
 
     checkpoint = _load_webhook_checkpoint()
-    last_timestamp = int(checkpoint.get("created") or 0) or None
     ending_before = str(checkpoint.get("id") or "")
 
+    if ending_before:
+        try:
+            stripe.Event.retrieve(ending_before)
+        except stripe.error.InvalidRequestError as exc:
+            if "No such" in str(exc):
+                logging.warning(
+                    "Stripe checkpoint event '%s' no longer exists, resetting checkpoint.",
+                    ending_before,
+                )
+                ending_before = ""
+                checkpoint = {"created": 0, "id": ""}
+
+    last_timestamp = int(checkpoint.get("created") or 0) or None
     if last_timestamp:
         start_time = max(0, last_timestamp - 600)
     else:
@@ -1371,6 +1383,12 @@ async def handle_billing_webhook_event(event, retry_inflight=False):
             retry_inflight=retry_inflight,
         )
         if not should_process:
+            logging.info(
+                "Webhook event skipped (duplicate or already processed): event_id=%s event_type=%s object_id=%s",
+                event_id,
+                event_type,
+                object_id,
+            )
             return
 
     handler = handlers.get(event_type)
@@ -1381,13 +1399,50 @@ async def handle_billing_webhook_event(event, retry_inflight=False):
         _update_webhook_event_checkpoint(payload_created, event_id=event_id)
         return
 
+    handler_start = time.monotonic()
+    handler_error: str | None = None
     try:
         await handler(event)
     except Exception as exc:
+        handler_error = str(exc)
         if event_id:
-            BillingWebhookEventService.mark_failed(event_id, str(exc))
+            BillingWebhookEventService.mark_failed(event_id, handler_error)
         raise
-
-    if event_id:
-        BillingWebhookEventService.mark_completed(event_id)
-    _update_webhook_event_checkpoint(payload_created, event_id=event_id)
+    finally:
+        handler_duration_ms = (time.monotonic() - handler_start) * 1000
+        if event_id:
+            if handler_error:
+                logging.warning(
+                    "Webhook handler failed: event_id=%s event_type=%s object_id=%s duration_ms=%.1f error=%s",
+                    event_id,
+                    event_type,
+                    object_id,
+                    handler_duration_ms,
+                    handler_error,
+                )
+            else:
+                logging.info(
+                    "Webhook handler completed: event_id=%s event_type=%s object_id=%s duration_ms=%.1f",
+                    event_id,
+                    event_type,
+                    object_id,
+                    handler_duration_ms,
+                )
+                BillingWebhookEventService.mark_completed(event_id)
+                _update_webhook_event_checkpoint(payload_created, event_id=event_id)
+        else:
+            if handler_error:
+                logging.warning(
+                    "Webhook handler failed (no event_id): event_type=%s object_id=%s duration_ms=%.1f error=%s",
+                    event_type,
+                    object_id,
+                    handler_duration_ms,
+                    handler_error,
+                )
+            else:
+                logging.info(
+                    "Webhook handler completed (no event_id): event_type=%s object_id=%s duration_ms=%.1f",
+                    event_type,
+                    object_id,
+                    handler_duration_ms,
+                )

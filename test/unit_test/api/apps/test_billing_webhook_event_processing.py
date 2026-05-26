@@ -270,6 +270,7 @@ def test_handle_undelivered_events_filters_types_and_uses_ending_before_checkpoi
     monkeypatch.setattr(billing_webhook_service, "SystemSettingsService", _MockSystemSettingsService)
     monkeypatch.setattr(billing_app.settings, "BILLING", {"stripe_api_key": "sk_test"}, raising=False)
     monkeypatch.setattr(billing_app.stripe.Event, "list", list_events)
+    billing_webhook_service.stripe.Event.retrieve = lambda id: SimpleNamespace(id=id)
     monkeypatch.setattr(
         importlib.import_module("api.services.billing_webhook_service"),
         "handle_billing_webhook_event",

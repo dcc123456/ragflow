@@ -2507,16 +2507,12 @@ async def _create_subscription_checkout_session(
         "metadata": {
             "price_type": PriceType.SUBSCRIPTION,
             "tenant_id": tenant_id,
-            "price_id": subscription_price_id,
-            "product_name": settings.BILLING_PRICEID_TO_PRODUCT.get(subscription_price_id, ""),
             **(extra_metadata or {}),
         },
         "subscription_data": {
             "metadata": {
                 "price_type": PriceType.SUBSCRIPTION,
                 "tenant_id": tenant_id,
-                "price_id": subscription_price_id,
-                "product_name": settings.BILLING_PRICEID_TO_PRODUCT.get(subscription_price_id, ""),
                 **(extra_metadata or {}),
             },
         },
