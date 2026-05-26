@@ -3092,7 +3092,7 @@ Important structured information may include: names, dates, locations, events, k
               redirectUri: 'Redirect URI',
             },
             placeholder: {
-              redirectUri: 'http://<domain>/v1/user/oauth/callback/google',
+              redirectUri: 'http://<domain>/api/v1/auth/oauth/google/callback',
             },
           },
           feishu: {

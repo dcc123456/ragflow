@@ -427,8 +427,8 @@ class SettingsMgr:
                 raise AdminException(f"Invalid integer value for {name}: {value}")
             return
         if data_type in {"bool", "boolean"}:
-            if value not in {"true", "false"}:
-                raise AdminException(f"Invalid bool value for {name}: expected true or false")
+            if value not in {"true", "false", "True", "False"}:
+                raise AdminException(f"Invalid bool value {value} for {name}: expected true or false")
             return
         if data_type == "json":
             try:
