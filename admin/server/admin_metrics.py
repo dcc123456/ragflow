@@ -29,9 +29,7 @@ def fetch_rabbitmq_queues(url, user, pwd):
 
 def admin_metrics_worker(interval=60):
     host = os.environ.get("RABBITMQ_HOST", "rabbitmq")
-    port = os.environ.get("RABBITMQ_API_PORT")
-    if not port:
-        port = os.environ.get("RABBITMQ_MANAGEMENT_PORT", "15672")
+    port = os.environ.get("RABBITMQ_API_PORT", "15672")
     user = os.environ.get("RABBITMQ_DEFAULT_USER", "ragflow")
     pwd = os.environ.get("RABBITMQ_DEFAULT_PASS", "")
     url = f"http://{host}:{port}/api/queues"
