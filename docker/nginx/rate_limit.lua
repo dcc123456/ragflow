@@ -53,6 +53,9 @@ local FALLBACK_RPS        = 30 -- 30 requests per second per IP
 ---------------------------------------------------------------------------
 local _redis_config = nil
 
+-- Forward declaration: _resolve_host is defined later but called from init_worker.
+local _resolve_host
+
 local function _read_env(name)
     -- Priority 1: ngx.shared.dict (populated by init_by_lua_block in master)
     local cache = ngx.shared.billing_cache
@@ -68,8 +71,21 @@ end
 
 --- Called from init_worker_by_lua_block to snapshot environment variables.
 function _M.init_worker()
+    -- K8s injects <SVC>_SERVICE_HOST with the cluster IP (e.g. REDIS_SERVICE_HOST).
+    -- Use it directly to avoid cosocket DNS resolution in init_worker context
+    -- (resty.dns.resolver requires cosocket, which is unavailable in init_worker).
+    local host = _read_env("RATELIMIT_REDIS_HOST") or _read_env("REDIS_HOST") or "redis"
+
+    -- Prefer K8s-injected service host IP over bare hostname to avoid DNS issues.
+    local k8s_ip = _read_env("REDIS_SERVICE_HOST")
+    if k8s_ip and k8s_ip ~= "" and host == "redis" then
+        ngx.log(ngx.NOTICE,
+            "rate_limit init_worker: using K8s service IP ", k8s_ip, " instead of ", host)
+        host = k8s_ip
+    end
+
     _redis_config = {
-        host     = _read_env("RATELIMIT_REDIS_HOST") or _read_env("REDIS_HOST") or "redis",
+        host     = host,
         port     = tonumber(_read_env("RATELIMIT_REDIS_PORT") or _read_env("REDIS_PORT")) or 6379,
         password = _read_env("RATELIMIT_REDIS_PASSWORD") or _read_env("REDIS_PASSWORD") or "",
         db       = tonumber(_read_env("REDIS_DB") or _read_env("RATELIMIT_REDIS_DB")) or 1,
@@ -78,6 +94,25 @@ function _M.init_worker()
         "rate_limit init_worker: host=", _redis_config.host,
         " port=", _redis_config.port,
         " db=", _redis_config.db)
+
+    -- Schedule async DNS resolution to update the host with a fresh IP
+    -- (in case the service IP changes, e.g. redis pod restart).
+    local ok, err = ngx.timer.at(0, function(premature)
+        if premature then return end
+        local cfg_host = _redis_config and _redis_config.host or host
+        -- Skip if already an IP
+        if cfg_host:match("^%d+%.%d+%.%d+%.%d+$") then return end
+        local resolved_ip, dns_err = _resolve_host(cfg_host)
+        if resolved_ip and resolved_ip ~= cfg_host then
+            ngx.log(ngx.NOTICE, "rate_limit: async resolved ", cfg_host, " -> ", resolved_ip)
+            _redis_config.host = resolved_ip
+        elseif dns_err then
+            ngx.log(ngx.WARN, "rate_limit: async DNS failed for ", cfg_host, ": ", dns_err)
+        end
+    end)
+    if not ok then
+        ngx.log(ngx.WARN, "rate_limit: failed to schedule async DNS: ", err)
+    end
 end
 
 -- Token bucket Lua script executed inside Redis (same algorithm as Python/Go)
@@ -153,23 +188,8 @@ local function cache_set(key, value, ttl)
 end
 
 ---------------------------------------------------------------------------
--- Redis connection helpers
+-- DNS resolver helper (defined before init_worker so it can be called there)
 ---------------------------------------------------------------------------
-
---- Get the pre-resolved Redis config (captured during init_worker).
-local function _get_redis_config()
-    if _redis_config then
-        return _redis_config
-    end
-    -- Fallback: should not happen, but just in case init_worker was not called
-    ngx.log(ngx.WARN, "rate_limit: _redis_config not initialized, reading env directly")
-    return {
-        host     = os.getenv("RATELIMIT_REDIS_HOST") or os.getenv("REDIS_HOST") or "redis",
-        port     = tonumber(os.getenv("RATELIMIT_REDIS_PORT") or os.getenv("REDIS_PORT")) or 6379,
-        password = os.getenv("RATELIMIT_REDIS_PASSWORD") or os.getenv("REDIS_PASSWORD") or "",
-        db       = tonumber(os.getenv("RATELIMIT_REDIS_DB") or os.getenv("REDIS_DB")) or 1,
-    }
-end
 
 --- Resolve a hostname to an IP address using resty.dns.resolver.
 --- Reads nameservers AND search domains from /etc/resolv.conf so that
@@ -177,7 +197,7 @@ end
 --- The nginx `resolver` directive does NOT honour the `search` directive
 --- in resolv.conf, which is why bare hostnames fail inside cosocket calls.
 --- Returns resolved_ip, dns_error (nil on success).
-local function _resolve_host(host)
+_resolve_host = function (host)
     if not host or host == "" then return host, nil end
     -- Already an IP address (IPv4 or IPv6)? Return as-is.
     if host:match("^%d+%.%d+%.%d+%.%d+$") then return host, nil end
@@ -245,6 +265,25 @@ local function _resolve_host(host)
     return host, "dns_no_answer(host=" .. host .. ", searched " .. #search_domains .. " domains)"
 end
 
+---------------------------------------------------------------------------
+-- Redis connection helpers
+---------------------------------------------------------------------------
+
+--- Get the pre-resolved Redis config (captured during init_worker).
+local function _get_redis_config()
+    if _redis_config then
+        return _redis_config
+    end
+    -- Fallback: should not happen, but just in case init_worker was not called
+    ngx.log(ngx.WARN, "rate_limit: _redis_config not initialized, reading env directly")
+    return {
+        host     = os.getenv("RATELIMIT_REDIS_HOST") or os.getenv("REDIS_HOST") or "redis",
+        port     = tonumber(os.getenv("RATELIMIT_REDIS_PORT") or os.getenv("REDIS_PORT")) or 6379,
+        password = os.getenv("RATELIMIT_REDIS_PASSWORD") or os.getenv("REDIS_PASSWORD") or "",
+        db       = tonumber(os.getenv("RATELIMIT_REDIS_DB") or os.getenv("REDIS_DB")) or 1,
+    }
+end
+
 --- Get a Redis connection from pool (or create a new one).
 --- Returns red, err.  Caller must call _release_redis(red) when done.
 local function _get_redis()
@@ -254,29 +293,12 @@ local function _get_redis()
     red:set_timeouts(2000, 2000, 2000) -- 2s connect/read/write
 
     local cfg = _get_redis_config()
-    local connect_host = cfg.host
-    local ok, err = red:connect(connect_host, cfg.port)
+    -- cfg.host is pre-resolved to an IP in init_worker, so cosocket
+    -- connect() should work directly without DNS resolution.
+    local ok, err = red:connect(cfg.host, cfg.port)
     if not ok then
-        local first_err = err
-        -- DNS resolution via nginx resolver may have failed.
-        -- Try manual DNS resolution as fallback.
-        local resolved, dns_err = _resolve_host(connect_host)
-        if resolved ~= connect_host then
-            ngx.log(ngx.NOTICE, "rate_limit: resolved ", connect_host, " -> ", resolved)
-            ok, err = red:connect(resolved, cfg.port)
-            if not ok then
-                _last_redis_err = "connect_failed(" .. connect_host .. "->" .. resolved .. "): " .. (err or "unknown")
-                return nil, _last_redis_err
-            end
-        else
-            -- Resolution did not produce a new IP — classify the error
-            if dns_err then
-                _last_redis_err = "dns_error(" .. connect_host .. "): " .. dns_err
-            else
-                _last_redis_err = "connect_failed(" .. connect_host .. "): " .. (first_err or "unknown")
-            end
-            return nil, _last_redis_err
-        end
+        _last_redis_err = "connect_failed(" .. cfg.host .. "): " .. (err or "unknown")
+        return nil, _last_redis_err
     end
 
     if cfg.password and cfg.password ~= "" then
