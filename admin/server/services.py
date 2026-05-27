@@ -67,7 +67,7 @@ class UserMgr:
                     "nickname": user.nickname,
                     "create_date": user.create_date,
                     "last_login_time": user.last_login_time,
-                    "status": user.status,
+                    "status": user.is_active,
                     "is_superuser": user.is_superuser,
                     "role": role_map.get(user.role_id, ""),
                     "plan": getattr(user, "plan", None) or BILLING_PLAN_TRIAL_NAME,
