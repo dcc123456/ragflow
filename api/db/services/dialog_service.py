@@ -56,12 +56,6 @@ from rag.utils.tts_cache import synthesize_with_cache
 from common.string_utils import remove_redundant_spaces
 from common import settings
 
-def _resolve_reference_metadata(request_payload=None, config=None):
-    return resolve_reference_metadata_preferences(request_payload or {}, config)
-
-def _enrich_chunks_with_document_metadata(chunks, metadata_fields=None):
-    enrich_chunks_with_document_metadata(chunks, metadata_fields)
-
 def _chunk_kb_id_for_doc(row_dict, kb_ids, doc_id):
     if len(kb_ids or []) == 1:
         return kb_ids[0]
@@ -1689,12 +1683,13 @@ async def async_ask(question, kb_ids, tenant_id, chat_llm_name=None, search_conf
         page=1,
         page_size=12,
         similarity_threshold=search_config.get("similarity_threshold", 0.1),
-        vector_similarity_weight=search_config.get("vector_similarity_weight", 0.3),
+        vector_similarity_weight=vector_similarity_weight,
         top=search_config.get("top_k", 1024),
         doc_ids=doc_ids,
         aggs=True,
         rerank_mdl=rerank_mdl,
         rank_feature=label_question(question, kbs),
+        trace_id=search_id,
     )
     if include_reference_metadata:
         logging.debug(
