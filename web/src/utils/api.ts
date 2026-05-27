@@ -8,10 +8,13 @@ export default {
   notification: `${restAPIv1}/notification`,
 
   // user
-  loginGetCaptcha: `${webAPI}/user/forget/captcha`,
-  loginSendVerifyCode: `${webAPI}/user/forget/otp`,
-  loginVerifyEmail: `${webAPI}/user/forget/verify-otp`,
-  submitResetPassword: `${webAPI}/user/forget/reset-password`,
+  loginGetCaptcha: `${restAPIv1}/auth/password/forgot/captcha`,
+  loginSendVerifyCode: `${restAPIv1}/auth/password/forgot/otp`,
+  loginVerifyEmail: `${restAPIv1}/auth/password/forgot/otp/verify`,
+  submitResetPassword: `${restAPIv1}/auth/password/reset`,
+  registerGetCaptcha: `${restAPIv1}/auth/register/captcha`,
+  registerSendVerifyCode: `${restAPIv1}/auth/register/otp`,
+  registerVerifyEmail: `${restAPIv1}/auth/register/otp/verify`,
   login: `${restAPIv1}/auth/login`,
   logout: `${restAPIv1}/auth/logout`,
   register: `${restAPIv1}/users`,

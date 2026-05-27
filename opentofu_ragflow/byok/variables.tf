@@ -973,3 +973,13 @@ variable "rate_limit_disabled" {
   type        = bool
   default     = false
 }
+
+# =============================================================================
+# Email Verification Configuration
+# =============================================================================
+
+variable "email_verification_enabled" {
+  description = "Enable email verification for user registration. When true, users must verify their email via OTP before registering."
+  type        = bool
+  default     = false
+}

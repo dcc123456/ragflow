@@ -63,6 +63,7 @@ export default {
       verificationCode: '验证码',
       verifyCodePlaceholder: '验证码',
       checkEmail: '检查邮箱',
+      registerVerifyCodeTip: `我们已向 <span style='color: rgb(var(--accent-primary));font-style: italic;'>{{email}}</span> 发送了验证码，请输入验证码以验证您的邮箱地址。`,
     },
     price: {
       cancelPlanTitle: '取消 {{plan}} Plan？',

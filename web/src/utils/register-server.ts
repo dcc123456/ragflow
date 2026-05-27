@@ -28,6 +28,7 @@ const registerServer = <T extends string>(
         return request(url, {
           method: opt[key].method,
           data: params,
+          responseType: opt[key].responseType,
         });
       }
 

@@ -65,6 +65,7 @@ export default {
       verificationCode: 'Verification code',
       verifyCodePlaceholder: 'Verification code',
       checkEmail: 'Check email',
+      registerVerifyCodeTip: `We sent a verification code to <span style='color: rgb(var(--accent-primary));font-style: italic;'>{{email}}</span>. Please enter the code to verify your email address.`,
     },
     price: {
       free: 'Free',

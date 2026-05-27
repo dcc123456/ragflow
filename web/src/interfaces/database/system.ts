@@ -9,5 +9,6 @@ export interface ILangfuseConfig {
 export interface ISystemConfig {
   disablePasswordLogin: boolean;
   registerEnabled: number;
+  emailVerificationEnabled: boolean;
   upload_size_limit: number;
 }

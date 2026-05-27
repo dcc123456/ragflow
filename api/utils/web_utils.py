@@ -261,6 +261,16 @@ def otp_keys(email: str):
     )
 
 
+def register_otp_keys(email: str):
+    email = (email or "").strip().lower()
+    return (
+        f"reg_otp:{email}",
+        f"reg_otp_attempts:{email}",
+        f"reg_otp_last_sent:{email}",
+        f"reg_otp_lock:{email}",
+    )
+
+
 def hash_code(code: str, salt: bytes) -> str:
     import hashlib
     import hmac
@@ -270,3 +280,11 @@ def hash_code(code: str, salt: bytes) -> str:
 
 def captcha_key(email: str) -> str:
     return f"captcha:{email}"
+
+
+def register_captcha_key(email: str) -> str:
+    return f"reg_captcha:{email}"
+
+
+def register_verified_key(email: str) -> str:
+    return f"reg_otp:verified:{email}"

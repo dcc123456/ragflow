@@ -26,6 +26,8 @@ async def send_email_html(to_email: str, subject: str, template_key: str, **cont
     msg = MIMEText(body, "plain", "utf-8")
     msg["Subject"] = Header(subject, "utf-8")
     mail_config = SystemSettingsService.get_smtp_config()
+    if not mail_config or not mail_config.get("mail_server"):
+        raise Exception("SMTP config is not set")
     msg["From"] = mail_config['mail_default_sender']
     msg["To"] = to_email
 

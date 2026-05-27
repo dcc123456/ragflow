@@ -224,6 +224,7 @@ def get_config():
     return get_json_result(data={
         "registerEnabled": settings.REGISTER_ENABLED,
         "disablePasswordLogin": settings.DISABLE_PASSWORD_LOGIN,
+        "emailVerificationEnabled": settings.EMAIL_VERIFICATION_ENABLED,
     })
 
 @manager.route("/system/healthz", methods=["GET"])  # noqa: F821

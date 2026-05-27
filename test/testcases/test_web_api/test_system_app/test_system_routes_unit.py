@@ -77,6 +77,7 @@ def _load_system_module(monkeypatch):
     settings_mod.DATABASE_TYPE = "MYSQL"
     settings_mod.REGISTER_ENABLED = True
     settings_mod.DISABLE_PASSWORD_LOGIN = False
+    settings_mod.EMAIL_VERIFICATION_ENABLED = False
     common_pkg.settings = settings_mod
     monkeypatch.setitem(sys.modules, "common.settings", settings_mod)
 
@@ -221,3 +222,12 @@ def test_get_config_returns_register_enabled_unit(monkeypatch):
     res = module.get_config()
     assert res["code"] == 0
     assert res["data"]["registerEnabled"] is False
+
+
+@pytest.mark.p2
+def test_get_config_returns_email_verification_enabled_unit(monkeypatch):
+    module = _load_system_module(monkeypatch)
+    monkeypatch.setattr(module.settings, "EMAIL_VERIFICATION_ENABLED", True)
+    res = module.get_config()
+    assert res["code"] == 0
+    assert res["data"]["emailVerificationEnabled"] is True

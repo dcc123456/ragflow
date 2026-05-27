@@ -31,6 +31,9 @@ const {
   loginSendVerifyCode,
   loginVerifyEmail,
   submitResetPassword,
+  registerGetCaptcha,
+  registerSendVerifyCode,
+  registerVerifyEmail,
 } = api;
 
 const methods = {
@@ -40,7 +43,7 @@ const methods = {
   },
   loginGetCaptcha: {
     url: loginGetCaptcha,
-    method: 'get',
+    method: 'post',
     responseType: 'blob',
   },
   loginSendVerifyCode: {
@@ -53,6 +56,19 @@ const methods = {
   },
   submitResetPassword: {
     url: submitResetPassword,
+    method: 'post',
+  },
+  registerGetCaptcha: {
+    url: registerGetCaptcha,
+    method: 'post',
+    responseType: 'blob',
+  },
+  registerSendVerifyCode: {
+    url: registerSendVerifyCode,
+    method: 'post',
+  },
+  registerVerifyEmail: {
+    url: registerVerifyEmail,
     method: 'post',
   },
   logout: {

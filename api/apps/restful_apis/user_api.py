@@ -54,8 +54,11 @@ from api.utils.web_utils import (
     ATTEMPT_LOCK_SECONDS,
     RESEND_COOLDOWN_SECONDS,
     otp_keys,
+    register_otp_keys,
     hash_code,
     captcha_key,
+    register_captcha_key,
+    register_verified_key,
 )
 from common.billing_utils import milliseconds_to_timestamp_seconds, to_utc_isoformat
 from common import settings
@@ -826,6 +829,169 @@ def rollback_user_registration(user_id):
         pass
 
 
+@manager.route("/auth/register/captcha", methods=["POST"])  # noqa: F821
+async def register_get_captcha():
+    """
+    POST /auth/register/captcha
+    - Generate an image captcha for registration and cache it in Redis.
+    - Returns the captcha as a JPEG image.
+    """
+    if not settings.EMAIL_VERIFICATION_ENABLED:
+        return get_json_result(data=False, code=RetCode.OPERATING_ERROR, message="Email verification is not enabled")
+
+    request_body = await get_request_json()
+    email = (request_body.get("email") or "") if request_body else "".strip()
+    if not email:
+        return get_json_result(data=False, code=RetCode.ARGUMENT_ERROR, message="email is required")
+
+    # For registration, the email should NOT already exist
+    if UserService.query(email=email):
+        return get_json_result(data=False, code=RetCode.DATA_ERROR, message="Email has already been registered!")
+
+    # Generate captcha text
+    allowed = string.ascii_uppercase + string.digits
+    captcha_text = "".join(secrets.choice(allowed) for _ in range(OTP_LENGTH))
+    REDIS_CONN.set(register_captcha_key(email), captcha_text, 60)  # Valid for 60 seconds
+
+    from captcha.image import ImageCaptcha
+    image = ImageCaptcha(width=300, height=120, font_sizes=(50, 60, 70))
+    img_bytes = image.generate(captcha_text).read()
+    response = await make_response(img_bytes)
+    response.headers.set("Content-Type", "image/jpeg")
+    return response
+
+
+@manager.route("/auth/register/otp", methods=["POST"])  # noqa: F821
+async def register_send_otp():
+    """
+    POST /auth/register/otp
+    - Verify the image captcha stored at reg_captcha:{email} (case-insensitive).
+    - On success, generate an email OTP, store hash + salt in Redis, and send the OTP via email.
+    """
+    if not settings.EMAIL_VERIFICATION_ENABLED:
+        return get_json_result(data=False, code=RetCode.OPERATING_ERROR, message="Email verification is not enabled")
+
+    req = await get_request_json()
+    email = (req.get("email") or "").strip()
+    captcha = (req.get("captcha") or "").strip()
+
+    if not email or not captcha:
+        return get_json_result(data=False, code=RetCode.ARGUMENT_ERROR, message="email and captcha required")
+
+    # For registration, the email should NOT already exist
+    if UserService.query(email=email):
+        return get_json_result(data=False, code=RetCode.DATA_ERROR, message="Email has already been registered!")
+
+    stored_captcha = REDIS_CONN.get(register_captcha_key(email))
+    if not stored_captcha:
+        return get_json_result(data=False, code=RetCode.NOT_EFFECTIVE, message="invalid or expired captcha")
+    if (stored_captcha or "").strip().lower() != captcha.lower():
+        return get_json_result(data=False, code=RetCode.AUTHENTICATION_ERROR, message="invalid or expired captcha")
+
+    # Delete captcha to prevent reuse
+    REDIS_CONN.delete(register_captcha_key(email))
+
+    k_code, k_attempts, k_last, k_lock = register_otp_keys(email)
+    now = int(time.time())
+    last_ts = REDIS_CONN.get(k_last)
+    if last_ts:
+        try:
+            elapsed = now - int(last_ts)
+        except Exception:
+            elapsed = RESEND_COOLDOWN_SECONDS
+        remaining = RESEND_COOLDOWN_SECONDS - elapsed
+        if remaining > 0:
+            return get_json_result(data=False, code=RetCode.NOT_EFFECTIVE, message=f"you still have to wait {remaining} seconds")
+
+    # Generate OTP and store hashed
+    otp = "".join(secrets.choice(string.ascii_uppercase) for _ in range(OTP_LENGTH))
+    salt = os.urandom(16)
+    code_hash = hash_code(otp, salt)
+    REDIS_CONN.set(k_code, f"{code_hash}:{salt.hex()}", OTP_TTL_SECONDS)
+    REDIS_CONN.set(k_attempts, 0, OTP_TTL_SECONDS)
+    REDIS_CONN.set(k_last, now, OTP_TTL_SECONDS)
+    REDIS_CONN.delete(k_lock)
+
+    ttl_min = OTP_TTL_SECONDS // 60
+
+    try:
+        await send_email_html(
+            subject="Your Registration Verification Code",
+            to_email=email,
+            template_key="reset_code",
+            code=otp,
+            ttl_min=ttl_min,
+        )
+    except Exception as e:
+        logging.exception(e)
+        return get_json_result(data=False, code=RetCode.SERVER_ERROR, message="failed to send email")
+
+    return get_json_result(data=True, code=RetCode.SUCCESS, message="verification passed, email sent")
+
+
+@manager.route("/auth/register/otp/verify", methods=["POST"])  # noqa: F821
+async def register_verify_otp():
+    """
+    Verify email + OTP for registration. On success:
+    - consume the OTP and attempt counters
+    - set a short-lived verified flag in Redis for the email
+    Request JSON: { email, otp }
+    """
+    if not settings.EMAIL_VERIFICATION_ENABLED:
+        return get_json_result(data=False, code=RetCode.OPERATING_ERROR, message="Email verification is not enabled")
+
+    req = await get_request_json()
+    email = (req.get("email") or "").strip()
+    otp = (req.get("otp") or "").strip()
+
+    if not all([email, otp]):
+        return get_json_result(data=False, code=RetCode.ARGUMENT_ERROR, message="email and otp are required")
+
+    # For registration, the email should NOT already exist
+    if UserService.query(email=email):
+        return get_json_result(data=False, code=RetCode.DATA_ERROR, message="Email has already been registered!")
+
+    # Verify OTP from Redis
+    k_code, k_attempts, k_last, k_lock = register_otp_keys(email)
+    if REDIS_CONN.get(k_lock):
+        return get_json_result(data=False, code=RetCode.NOT_EFFECTIVE, message="too many attempts, try later")
+
+    stored = REDIS_CONN.get(k_code)
+    if not stored:
+        return get_json_result(data=False, code=RetCode.NOT_EFFECTIVE, message="expired otp")
+
+    try:
+        stored_hash, salt_hex = str(stored).split(":", 1)
+        salt = bytes.fromhex(salt_hex)
+    except Exception:
+        return get_json_result(data=False, code=RetCode.EXCEPTION_ERROR, message="otp storage corrupted")
+
+    calc = hash_code(otp.upper(), salt)
+    if calc != stored_hash:
+        # bump attempts
+        try:
+            attempts = int(REDIS_CONN.get(k_attempts) or 0) + 1
+        except Exception:
+            attempts = 1
+        REDIS_CONN.set(k_attempts, attempts, OTP_TTL_SECONDS)
+        if attempts >= ATTEMPT_LIMIT:
+            REDIS_CONN.set(k_lock, int(time.time()), ATTEMPT_LOCK_SECONDS)
+        return get_json_result(data=False, code=RetCode.AUTHENTICATION_ERROR, message="expired otp")
+
+    # Success: consume OTP and attempts; mark verified
+    REDIS_CONN.delete(k_code)
+    REDIS_CONN.delete(k_attempts)
+    REDIS_CONN.delete(k_last)
+    REDIS_CONN.delete(k_lock)
+
+    try:
+        REDIS_CONN.set(register_verified_key(email), "1", OTP_TTL_SECONDS)
+    except Exception:
+        return get_json_result(data=False, code=RetCode.SERVER_ERROR, message="failed to set verification state")
+
+    return get_json_result(data=True, code=RetCode.SUCCESS, message="otp verified")
+
+
 @manager.route("/users", methods=["POST"])  # noqa: F821
 @validate_request("nickname", "email", "password")
 async def user_add():
@@ -866,6 +1032,20 @@ async def user_add():
             message="User registration is disabled.",
             code=RetCode.OPERATING_ERROR,
         )
+
+    # Check that the email has been verified via OTP (when enabled)
+    if settings.EMAIL_VERIFICATION_ENABLED:
+        if not REDIS_CONN.get(register_verified_key(email_address)):
+            return get_json_result(
+                data=False,
+                message="Email not verified. Please verify your email first.",
+                code=RetCode.AUTHENTICATION_ERROR,
+            )
+        # clear verified flag
+        try:
+            REDIS_CONN.delete(register_verified_key(email_address))
+        except Exception:
+            pass
 
     # Validate the email address
     if not re.match(r"^[\w\._-]+@([\w_-]+\.)+[\w-]{2,}$", email_address):
@@ -1028,7 +1208,8 @@ async def forget_get_captcha():
     - Generate an image captcha and cache it in Redis under key captcha:{email} with TTL = OTP_TTL_SECONDS.
     - Returns the captcha as a PNG image.
     """
-    email = (request.args.get("email") or "")
+    request_body = await get_request_json()
+    email = (request_body.get("email") or "") if request_body else ""
     if not email:
         return get_json_result(data=False, code=RetCode.ARGUMENT_ERROR, message="email is required")
 
@@ -1042,10 +1223,10 @@ async def forget_get_captcha():
     REDIS_CONN.set(captcha_key(email), captcha_text, 60) # Valid for 60 seconds
 
     from captcha.image import ImageCaptcha
-    image = ImageCaptcha(width=300, height=120, font_sizes=[50, 60, 70])
+    image = ImageCaptcha(width=300, height=120, font_sizes=(50, 60, 70))
     img_bytes = image.generate(captcha_text).read()
     response = await make_response(img_bytes)
-    response.headers.set("Content-Type", "image/JPEG")
+    response.headers.set("Content-Type", "image/jpeg")
     return response
 
 

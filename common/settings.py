@@ -106,6 +106,8 @@ kg_retriever = None
 
 # user registration switch
 REGISTER_ENABLED = 1
+# email verification for registration
+EMAIL_VERIFICATION_ENABLED = False
 LOCAL_EMBD = None
 RABBIT_CONF = None
 
@@ -225,6 +227,12 @@ def init_settings():
     global REGISTER_ENABLED
     try:
         REGISTER_ENABLED = int(os.environ.get("REGISTER_ENABLED", "1"))
+    except Exception:
+        pass
+
+    global EMAIL_VERIFICATION_ENABLED
+    try:
+        EMAIL_VERIFICATION_ENABLED = os.environ.get("EMAIL_VERIFICATION_ENABLED", "false").lower() in ("true", "1", "yes")
     except Exception:
         pass
 

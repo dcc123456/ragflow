@@ -155,6 +155,27 @@ def _load_tenant_module(monkeypatch):
 
     web_utils_mod = ModuleType("api.utils.web_utils")
     web_utils_mod.send_invite_email = lambda **_kwargs: {"ok": True}
+    web_utils_mod.OTP_LENGTH = 6
+    web_utils_mod.OTP_TTL_SECONDS = 600
+    web_utils_mod.ATTEMPT_LIMIT = 5
+    web_utils_mod.ATTEMPT_LOCK_SECONDS = 600
+    web_utils_mod.RESEND_COOLDOWN_SECONDS = 60
+    web_utils_mod.otp_keys = lambda email: (
+        f"otp:{email}:code",
+        f"otp:{email}:attempts",
+        f"otp:{email}:last",
+        f"otp:{email}:lock",
+    )
+    web_utils_mod.register_otp_keys = lambda email: (
+        f"reg_otp:{email}:code",
+        f"reg_otp:{email}:attempts",
+        f"reg_otp:{email}:last",
+        f"reg_otp:{email}:lock",
+    )
+    web_utils_mod.hash_code = lambda code, _salt: f"hash:{code}"
+    web_utils_mod.captcha_key = lambda email: f"captcha:{email}"
+    web_utils_mod.register_captcha_key = lambda email: f"reg_captcha:{email}"
+    web_utils_mod.register_verified_key = lambda email: f"reg_otp:verified:{email}"
     monkeypatch.setitem(sys.modules, "api.utils.web_utils", web_utils_mod)
 
     common_pkg = ModuleType("common")
@@ -176,6 +197,7 @@ def _load_tenant_module(monkeypatch):
 
     settings_mod = ModuleType("common.settings")
     settings_mod.MAIL_FRONTEND_URL = "https://frontend.example/invite"
+    settings_mod.EMAIL_VERIFICATION_ENABLED = False
     monkeypatch.setitem(sys.modules, "common.settings", settings_mod)
     common_pkg.settings = settings_mod
 

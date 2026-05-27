@@ -104,7 +104,7 @@ def show_configs():
                 for key, val in v.items():
                     if isinstance(val, dict) and "http_secret_key" in val:
                         val["http_secret_key"] = "*" * 8
-            if "stripe_api_key" in k:
+            if "stripe_api_key" in v:
                 v = copy.deepcopy(v)
                 v["stripe_api_key"] = "*" * 8
 

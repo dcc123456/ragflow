@@ -193,6 +193,27 @@ def _load_tenant_module(monkeypatch):
 
     web_utils_mod = ModuleType("api.utils.web_utils")
     web_utils_mod.send_invite_email = lambda **_kwargs: {"ok": True}
+    web_utils_mod.OTP_LENGTH = 6
+    web_utils_mod.OTP_TTL_SECONDS = 600
+    web_utils_mod.ATTEMPT_LIMIT = 5
+    web_utils_mod.ATTEMPT_LOCK_SECONDS = 600
+    web_utils_mod.RESEND_COOLDOWN_SECONDS = 60
+    web_utils_mod.otp_keys = lambda email: (
+        f"otp:{email}:code",
+        f"otp:{email}:attempts",
+        f"otp:{email}:last",
+        f"otp:{email}:lock",
+    )
+    web_utils_mod.register_otp_keys = lambda email: (
+        f"reg_otp:{email}:code",
+        f"reg_otp:{email}:attempts",
+        f"reg_otp:{email}:last",
+        f"reg_otp:{email}:lock",
+    )
+    web_utils_mod.hash_code = lambda code, _salt: f"hash:{code}"
+    web_utils_mod.captcha_key = lambda email: f"captcha:{email}"
+    web_utils_mod.register_captcha_key = lambda email: f"reg_captcha:{email}"
+    web_utils_mod.register_verified_key = lambda email: f"reg_otp:verified:{email}"
     monkeypatch.setitem(sys.modules, "api.utils.web_utils", web_utils_mod)
 
     billing_mod = ModuleType("api.utils.billing")
@@ -674,8 +695,16 @@ def _load_user_app(monkeypatch):
         f"otp:{email}:last",
         f"otp:{email}:lock",
     )
+    web_utils_mod.register_otp_keys = lambda email: (
+        f"reg_otp:{email}:code",
+        f"reg_otp:{email}:attempts",
+        f"reg_otp:{email}:last",
+        f"reg_otp:{email}:lock",
+    )
     web_utils_mod.hash_code = lambda code, _salt: f"hash:{code}"
     web_utils_mod.captcha_key = lambda email: f"captcha:{email}"
+    web_utils_mod.register_captcha_key = lambda email: f"reg_captcha:{email}"
+    web_utils_mod.register_verified_key = lambda email: f"reg_otp:verified:{email}"
     monkeypatch.setitem(sys.modules, "api.utils.web_utils", web_utils_mod)
 
     sync_icbccs_mod = ModuleType("api.utils.sync_icbccs_user")
@@ -730,6 +759,7 @@ def _load_user_app(monkeypatch):
     settings_mod.IMAGE2TEXT_MDL = "img-mdl"
     settings_mod.RERANK_MDL = "rerank-mdl"
     settings_mod.REGISTER_ENABLED = True
+    settings_mod.EMAIL_VERIFICATION_ENABLED = False
     settings_mod.DEFAULT_ROLE = "default-role"
     monkeypatch.setitem(sys.modules, "common.settings", settings_mod)
     common_pkg.settings = settings_mod
@@ -1243,21 +1273,21 @@ def test_forget_captcha_and_send_otp_matrix_unit(monkeypatch):
     monkeypatch.setitem(sys.modules, "captcha", captcha_pkg)
     monkeypatch.setitem(sys.modules, "captcha.image", captcha_image_mod)
 
-    _set_request_args(monkeypatch, module, {"email": ""})
+    _set_request_json(monkeypatch, module, {"email": ""})
     res = _run(module.forget_get_captcha())
     assert res["code"] == module.RetCode.ARGUMENT_ERROR, res
 
     monkeypatch.setattr(module.UserService, "query", lambda **_kwargs: [])
-    _set_request_args(monkeypatch, module, {"email": "nobody@example.com"})
+    _set_request_json(monkeypatch, module, {"email": "nobody@example.com"})
     res = _run(module.forget_get_captcha())
     assert res["code"] == module.RetCode.DATA_ERROR, res
 
     monkeypatch.setattr(module.UserService, "query", lambda **_kwargs: [_DummyUser("u1", "ok@example.com")])
     monkeypatch.setattr(module.secrets, "choice", lambda _allowed: "A")
-    _set_request_args(monkeypatch, module, {"email": "ok@example.com"})
+    _set_request_json(monkeypatch, module, {"email": "ok@example.com"})
     res = _run(module.forget_get_captcha())
     assert res.data.startswith(b"img:"), res
-    assert res.headers["Content-Type"] == "image/JPEG", res.headers
+    assert res.headers["Content-Type"] == "image/jpeg", res.headers
     assert module.REDIS_CONN.get(module.captcha_key("ok@example.com")), module.REDIS_CONN.store
 
     _set_request_json(monkeypatch, module, {"email": "", "captcha": ""})

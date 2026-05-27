@@ -1,13 +1,12 @@
 import message from '@/components/ui/message';
 import { useSetModalState } from '@/hooks/common-hooks';
 import userService from '@/services/user-service';
-import { rsaPsw } from '@/utils';
 import { useCallback, useState } from 'react';
+
 export { useCountdown } from '../hooks/use-countdown';
 
-export const useCaptcha = () => {
+export const useRegisterCaptcha = () => {
   const [captcha, setCaptcha] = useState('');
-  const [imgLoading, setImgLoading] = useState(false);
   const [captchaValue, setCaptchaValue] = useState('');
   const [verifyLoading, setVerifyLoading] = useState(false);
   const {
@@ -21,7 +20,7 @@ export const useCaptcha = () => {
     if (!email) {
       return {};
     }
-    const res = await userService.loginGetCaptcha({
+    const res = await userService.registerGetCaptcha({
       email,
     });
 
@@ -44,12 +43,10 @@ export const useCaptcha = () => {
   };
 
   const getCaptcha = async (emailStr?: string) => {
-    setImgLoading(true);
     if (emailStr) {
       setEmail(emailStr);
     }
     const res = await fetchCaptcha(emailStr || email);
-    setImgLoading(false);
     if (res instanceof Blob) {
       const url = URL.createObjectURL(res);
       setCaptcha(url);
@@ -57,24 +54,21 @@ export const useCaptcha = () => {
     } else {
       return false;
     }
-    // }
   };
 
   const sendVerify = async (email: string, code: string) => {
     if (!code || !email) {
       return;
     }
-    const res = await userService.loginSendVerifyCode({
+    const res = await userService.registerSendVerifyCode({
       email,
       captcha: code,
     });
     if (res?.data.code === 0) {
       return true;
     } else {
-      // message.error(res.data?.message);
       return false;
     }
-    // return res?.data;
   };
 
   const handleClose = useCallback(() => {
@@ -98,7 +92,6 @@ export const useCaptcha = () => {
 
   return {
     captcha,
-    imgLoading,
     setCaptchaValue,
     captchaValue,
     embedVisible,
@@ -110,7 +103,7 @@ export const useCaptcha = () => {
   };
 };
 
-export const useVerifyCode = () => {
+export const useRegisterVerifyCode = () => {
   const verifyEmail = async ({
     email,
     code,
@@ -118,7 +111,7 @@ export const useVerifyCode = () => {
     email: string;
     code: string;
   }) => {
-    const res = await userService.loginVerifyEmail({
+    const res = await userService.registerVerifyEmail({
       email,
       otp: code,
     });
@@ -129,29 +122,4 @@ export const useVerifyCode = () => {
     }
   };
   return { verifyEmail };
-};
-
-export const usePasswordRequest = () => {
-  const submit = async ({
-    email,
-    password,
-    confirmPassword,
-  }: {
-    email: string;
-    code: string;
-    password: string;
-    confirmPassword: string;
-  }) => {
-    const res = await userService.submitResetPassword({
-      email,
-      new_password: rsaPsw(password),
-      confirm_new_password: rsaPsw(confirmPassword),
-    });
-    if (res?.data.code === 0) {
-      return true;
-    } else {
-      return false;
-    }
-  };
-  return { submit };
 };
