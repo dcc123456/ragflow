@@ -434,21 +434,77 @@ local function get_client_ip()
     return "0.0.0.0"
 end
 
---- Check if a path should be exempt from rate limiting
-local function is_exempt_path()
+--- Check if a path+method combination should be rate-limited (blacklist model).
+--- Only listed endpoints are rate-limited; everything else passes through freely.
+local function is_rate_limited_path()
     local uri = ngx.var.uri
-    -- Health checks, billing webhooks, static files, login/logout
-    if uri == "/" or uri == "/live" or uri == "/healthz" then return true end
-    if uri:match("^/v1/user/(login|logout)") then return true end
-    if uri:match("^/v1/system/config") then return true end
-    if uri:match("^/v1/billing/webhook") then return true end
-    if uri:match("^/v1/billing/callbacks/success") then return true end
-    if uri:match("^/v1/billing/callbacks/cancel") then return true end
-    if uri:match("^/static/") then return true end
-    if uri:match("^/metrics") then return true end
-    if uri:match("^/apidocs") then return true end
-    if uri:match("^/apispec") then return true end
-    if uri:match("^/flasgger") then return true end
+    local method = ngx.req.get_method()
+
+    -- Canvas completion (agent workflow execution)
+    -- /v1/canvas/completion  POST
+    -- /v1/canvas/<id>/completion  POST
+    if method == "POST" and uri:match("^/v1/canvas/.-/completion$") then return true end
+    if method == "POST" and uri == "/v1/canvas/completion" then return true end
+
+    -- Retrieval (vector search)
+    -- /api/v1/retrieval  POST
+    if method == "POST" and uri == "/api/v1/retrieval" then return true end
+
+    -- Chunk operations
+    -- /api/v1/datasets/<id>/chunks  POST
+    if method == "POST" and uri:match("^/api/v1/datasets/[^/]+/chunks$") then return true end
+    -- /v1/chunk/retrieval_test  POST
+    if method == "POST" and uri == "/v1/chunk/retrieval_test" then return true end
+
+    -- Ask (search bot)
+    -- /api/v1/searchbots/ask  POST
+    if method == "POST" and uri == "/api/v1/searchbots/ask" then return true end
+
+    -- Document upload / creation
+    -- /api/v1/documents/upload  POST  (and legacy /v1/document/upload)
+    if method == "POST" and uri == "/api/v1/documents/upload" then return true end
+    if method == "POST" and uri:match("^/v1/document/upload") then return true end
+    -- /api/v1/datasets/<id>/documents  POST
+    if method == "POST" and uri:match("^/api/v1/datasets/[^/]+/documents$") then return true end
+
+    -- File upload
+    -- /api/v1/files  POST
+    if method == "POST" and uri == "/api/v1/files" then return true end
+
+    -- KB clone
+    -- /v1/kb/clone  POST
+    if method == "POST" and uri == "/v1/kb/clone" then return true end
+
+    -- Document listing / info
+    -- /api/v1/documents/<id>  GET
+    if method == "GET" and uri:match("^/api/v1/documents/[^/]+$") then return true end
+    -- /v1/document/get/<id>  GET  (legacy)
+    if method == "GET" and uri:match("^/v1/document/get/") then return true end
+
+    -- Dataset listing
+    -- /api/v1/datasets  GET (list all datasets)
+    if method == "GET" and uri == "/api/v1/datasets" then return true end
+
+    -- Backward-compat chat/agent completions
+    -- /api/v1/chats/<id>/completions  POST
+    if method == "POST" and uri:match("^/api/v1/chats/[^/]+/completions$") then return true end
+    -- /api/v1/chats_openai/<id>/chat/completions  POST
+    if method == "POST" and uri:match("^/api/v1/chats_openai/[^/]+/chat/completions$") then return true end
+    -- /api/v1/agents_openai/<id>/chat/completions  POST
+    if method == "POST" and uri:match("^/api/v1/agents_openai/[^/]+/chat/completions$") then return true end
+    -- /api/v1/agents/<id>/completions  POST
+    if method == "POST" and uri:match("^/api/v1/agents/[^/]+/completions$") then return true end
+    -- /api/v1/chatbots/<id>/completions  POST
+    if method == "POST" and uri:match("^/api/v1/chatbots/[^/]+/completions$") then return true end
+    -- /api/v1/agentbots/<id>/completions  POST
+    if method == "POST" and uri:match("^/api/v1/agentbots/[^/]+/completions$") then return true end
+    -- /api/v1/searchbots/retrieval_test  POST
+    if method == "POST" and uri == "/api/v1/searchbots/retrieval_test" then return true end
+
+    -- Dify retrieval
+    -- /api/v1/dify/retrieval  POST
+    if method == "POST" and uri == "/api/v1/dify/retrieval" then return true end
+
     return false
 end
 
@@ -832,8 +888,8 @@ end
 
 --- Run rate limiting logic (T1 → T2 → T3 cascade)
 function _M.check()
-    -- Skip for non-API paths
-    if is_exempt_path() then return end
+    -- Only rate-limit blacklisted paths; everything else passes through.
+    if not is_rate_limited_path() then return end
 
     -- Allow disabling rate limiting entirely (e.g. for CI/test environments)
     local disabled = _read_env("RATELIMIT_DISABLED")

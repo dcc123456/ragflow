@@ -197,6 +197,12 @@ PYEOF
 source /tmp/ratelimit_env.sh
 echo "Rate limiter Redis: ${RATELIMIT_REDIS_HOST}:${RATELIMIT_REDIS_PORT} db=${RATELIMIT_REDIS_DB}"
 
+# Ensure RATELIMIT_DISABLED is exported so nginx workers can read it via os.getenv
+if [ -n "${RATELIMIT_DISABLED}" ]; then
+    export RATELIMIT_DISABLED
+    echo "Rate limiter disabled: ${RATELIMIT_DISABLED}"
+fi
+
 # Inject DNS resolver into nginx.conf (required for Lua cosocket DNS resolution in K8s)
 DNS_RESOLVER=$(grep '^nameserver' /etc/resolv.conf | head -1 | awk '{print $2}')
 if [ -n "$DNS_RESOLVER" ]; then
