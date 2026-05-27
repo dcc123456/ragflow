@@ -309,32 +309,32 @@ class UserCanvasService(CommonService):
     @DB.connection_context()
     def accessible(cls, canvas_id, tenant_id):
         from api.db.services.user_service import UserTenantService
+        from api.db.services.permission_service import PermissionService
         e, c = UserCanvasService.get_by_canvas_id(canvas_id)
         if not e:
             return False
 
-        tids = [t.tenant_id for t in UserTenantService.query(user_id=tenant_id)]
+        user_tenants = UserTenantService.query(user_id=tenant_id) or []
+        tids = [t.tenant_id for t in user_tenants]
         if c["user_id"] == tenant_id:
             return True
-        if c["user_id"] not in tids:
-            return False
-        if c["permission"] != TenantPermission.TEAM.value:
-            return False
-        return True
+        if c["user_id"] in tids and c["permission"] == TenantPermission.TEAM.value:
+            return True
 
-        # Check Permission table
-        user_tenants = UserTenantService.query(user_id=tenant_id) or []
         for user_tenant in user_tenants:
             if user_tenant.tenant_id != c["user_id"]:
                 continue
-            perm = Permission.get_or_none(
-                (Permission.member_id == user_tenant.id)
-                & (Permission.resource_id == canvas_id)
-                & (Permission.resource_type == ResourceType.CANVAS)
-                & (Permission.permission >= PermissionValue.PERMISSION_READ.value)
-                & (Permission.status == StatusEnum.VALID.value)
+            perm = PermissionService.filter_by_member_and_tenant_id_with_resource_id(
+                user_tenant.id,
+                user_tenant.tenant_id,
+                canvas_id,
+                resource_type=ResourceType.CANVAS,
             )
-            if perm:
+            if (
+                perm
+                and perm.permission >= PermissionValue.PERMISSION_READ.value
+                and getattr(perm, "status", StatusEnum.VALID.value) == StatusEnum.VALID.value
+            ):
                 return True
         return False
 

@@ -634,10 +634,12 @@ def verify_embedding_availability(embd_id: str, tenant_id: str) -> tuple[bool, s
         (False, {'code': 101, 'message': "Unsupported model: <invalid_model>"})
     """
     try:
-        llm_name, llm_factory,_ = TenantLLMService.split_model_name_and_factory(embd_id)
+        llm_name, llm_factory, owner_tenant_id = TenantLLMService.split_model_name_and_factory(embd_id)
+
         in_llm_service = bool(LLMService.query(llm_name=llm_name, fid=llm_factory, model_type="embedding"))
 
-        tenant_llms = TenantLLMService.get_my_llms(tenant_id=tenant_id)
+        lookup_tenant_id = owner_tenant_id or tenant_id
+        tenant_llms = TenantLLMService.get_my_llms(tenant_id=lookup_tenant_id)
         is_tenant_model = any(llm["llm_name"] == llm_name and llm["llm_factory"] == llm_factory and llm["model_type"] == "embedding" for llm in tenant_llms)
 
         is_builtin_model = llm_factory == "Builtin"
