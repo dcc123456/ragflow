@@ -27,7 +27,11 @@
 ]]
 
 local _M                  = {}
-_M._VERSION               = "2.1.0"
+_M._VERSION               = "2.2.0"
+
+-- Last Redis error encountered during this request (set by _get_redis,
+-- read by check() to add diagnostic response header).
+local _last_redis_err     = nil
 
 ---------------------------------------------------------------------------
 -- Constants
@@ -167,30 +171,127 @@ local function _get_redis_config()
     }
 end
 
+--- Resolve a hostname to an IP address using resty.dns.resolver.
+--- Reads nameservers AND search domains from /etc/resolv.conf so that
+--- short K8s service names (e.g. "redis") are resolved correctly.
+--- The nginx `resolver` directive does NOT honour the `search` directive
+--- in resolv.conf, which is why bare hostnames fail inside cosocket calls.
+--- Returns resolved_ip, dns_error (nil on success).
+local function _resolve_host(host)
+    if not host or host == "" then return host, nil end
+    -- Already an IP address (IPv4 or IPv6)? Return as-is.
+    if host:match("^%d+%.%d+%.%d+%.%d+$") then return host, nil end
+    if host:match("^%[") then return host, nil end -- IPv6 literal
+
+    local resolver = require "resty.dns.resolver"
+
+    -- Collect nameservers and search domains from /etc/resolv.conf
+    local nameservers = {}
+    local search_domains = {}
+    local f = io.open("/etc/resolv.conf", "r")
+    if f then
+        for line in f:lines() do
+            local ns = line:match("^nameserver%s+(%S+)")
+            if ns then
+                nameservers[#nameservers + 1] = ns
+            end
+            local search = line:match("^search%s+(.+)")
+            if search then
+                for dom in search:gmatch("(%S+)") do
+                    search_domains[#search_domains + 1] = dom
+                end
+            end
+        end
+        f:close()
+    end
+    -- Add public DNS as fallback
+    nameservers[#nameservers + 1] = "8.8.8.8"
+
+    local r, err = resolver:new{
+        nameservers = nameservers,
+        retrans = 2,
+        timeout = 2000,
+    }
+    if not r then
+        return host, "dns_resolver_init_failed: " .. (err or "unknown")
+    end
+
+    -- Helper: query a single hostname
+    local function _query(name)
+        local answers, qerr = r:query(name, { qtype = r.TYPE_A })
+        if not answers then return nil, qerr end
+        for _, ans in ipairs(answers) do
+            if ans.type == r.TYPE_A and ans.address then
+                return ans.address
+            end
+        end
+        return nil, "no_answer"
+    end
+
+    -- 1) Try the bare hostname first
+    local ip, qerr = _query(host)
+    if ip then return ip, nil end
+
+    -- 2) Append each search domain (e.g. "redis" -> "redis.ragflow.svc.cluster.local")
+    for _, domain in ipairs(search_domains) do
+        local fqdn = host .. "." .. domain
+        ip, qerr = _query(fqdn)
+        if ip then
+            ngx.log(ngx.NOTICE, "rate_limit: DNS resolved ", host, " -> ", fqdn, " -> ", ip)
+            return ip, nil
+        end
+    end
+
+    return host, "dns_no_answer(host=" .. host .. ", searched " .. #search_domains .. " domains)"
+end
+
 --- Get a Redis connection from pool (or create a new one).
 --- Returns red, err.  Caller must call _release_redis(red) when done.
 local function _get_redis()
+    _last_redis_err = nil  -- reset per-call
     local redis = require "resty.redis"
     local red = redis:new()
-    red:set_timeouts(2000, 2000, 2000) -- 200ms connect/read/write
+    red:set_timeouts(2000, 2000, 2000) -- 2s connect/read/write
 
     local cfg = _get_redis_config()
-    local ok, err = red:connect(cfg.host, cfg.port)
+    local connect_host = cfg.host
+    local ok, err = red:connect(connect_host, cfg.port)
     if not ok then
-        return nil, "connect: " .. (err or "unknown")
+        local first_err = err
+        -- DNS resolution via nginx resolver may have failed.
+        -- Try manual DNS resolution as fallback.
+        local resolved, dns_err = _resolve_host(connect_host)
+        if resolved ~= connect_host then
+            ngx.log(ngx.NOTICE, "rate_limit: resolved ", connect_host, " -> ", resolved)
+            ok, err = red:connect(resolved, cfg.port)
+            if not ok then
+                _last_redis_err = "connect_failed(" .. connect_host .. "->" .. resolved .. "): " .. (err or "unknown")
+                return nil, _last_redis_err
+            end
+        else
+            -- Resolution did not produce a new IP — classify the error
+            if dns_err then
+                _last_redis_err = "dns_error(" .. connect_host .. "): " .. dns_err
+            else
+                _last_redis_err = "connect_failed(" .. connect_host .. "): " .. (first_err or "unknown")
+            end
+            return nil, _last_redis_err
+        end
     end
 
     if cfg.password and cfg.password ~= "" then
         local ok2, err2 = red:auth(cfg.password)
         if not ok2 then
-            return nil, "auth: " .. (err2 or "unknown")
+            _last_redis_err = "auth_failed: " .. (err2 or "unknown")
+            return nil, _last_redis_err
         end
     end
 
     if cfg.db and cfg.db ~= 0 then
         local ok3, err3 = red:select(cfg.db)
         if not ok3 then
-            return nil, "select db: " .. (err3 or "unknown")
+            _last_redis_err = "select_db_failed(db=" .. tostring(cfg.db) .. "): " .. (err3 or "unknown")
+            return nil, _last_redis_err
         end
     end
 
@@ -735,6 +836,11 @@ function _M.check()
     -- T2: Per-IP rate limiting via Redis (may internally fall back to T3)
     local rejected = _t2_redis_ip_rate_limit(nil)
     if rejected then return end -- 429 already sent
+
+    -- Expose Redis error diagnostics when Redis was unreachable
+    if _last_redis_err then
+        ngx.header["X-RateLimit-Redis-Error"] = _last_redis_err
+    end
 
     -- Set tier header only if T3 (local fallback) did not already set it.
     -- T3 sets "T3 (local)" on both pass and reject; T2 sets "T2 (ip)" on reject.
