@@ -333,7 +333,7 @@ function AdminUserManagement() {
           ]
         : []),
 
-      columnHelper.accessor('is_active', {
+      columnHelper.accessor('status', {
         header: t('admin.status'),
         cell: ({ cell, row }) => {
           const isMe = row.original.email === userInfo?.email;
@@ -681,7 +681,7 @@ function AdminUserManagement() {
             <Table>
               <colgroup>
                 <col width="*" />
-                <col className="w-[22%]" />
+                <col className="w-[20%]" />
 
                 {USE_LDAP && <col width="*" />}
 
@@ -692,7 +692,7 @@ function AdminUserManagement() {
                 <col className="w-40" />
                 <col className="w-40" />
                 <col className="w-40" />
-                <col className="w-52" />
+                <col className="w-[20%]" />
                 <col className="w-52" />
               </colgroup>
 
