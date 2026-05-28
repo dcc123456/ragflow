@@ -15,6 +15,7 @@ interface ProfileData {
   avatar: string;
   email: string;
   confirmPasswd?: string;
+  loginChannel?: string;
 }
 
 export const EditType = {
@@ -60,6 +61,7 @@ export const useProfile = () => {
           : userInfo.timezone,
       avatar: userInfo.avatar || '',
       email: userInfo.email,
+      loginChannel: userInfo.login_channel,
       currPasswd: userInfo.password,
     };
     setProfile(profile);
