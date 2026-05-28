@@ -271,7 +271,7 @@ func (r *Router) Setup(engine *gin.Engine) {
 			// provider pool route group
 			provider := v1.Group("/providers")
 			{
-				provider.GET("/", r.providerHandler.ListProviders)
+				provider.GET("", r.providerHandler.ListProviders)
 				provider.PUT("/", r.providerHandler.AddProvider)
 				provider.GET("/:provider_name", r.providerHandler.ShowProvider)
 				provider.DELETE("/:provider_name", r.providerHandler.DeleteProvider)
@@ -301,8 +301,9 @@ func (r *Router) Setup(engine *gin.Engine) {
 
 			model := v1.Group("/models")
 			{
-				model.GET("/", r.tenantHandler.GetModels)
-				model.PATCH("/", r.tenantHandler.SetModels)
+				model.GET("/default", r.tenantHandler.GetModels)
+				model.PATCH("/default", r.tenantHandler.SetModels)
+				model.GET("", r.tenantHandler.GetAddedModels) // GET /api/v1/models - list tenant added models
 			}
 
 			connector := v1.Group("/connectors")

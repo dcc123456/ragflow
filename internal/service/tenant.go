@@ -23,6 +23,7 @@ import (
 	"ragflow/internal/dao"
 	"ragflow/internal/engine"
 	"ragflow/internal/entity"
+	"ragflow/internal/server"
 	"strings"
 )
 
@@ -404,7 +405,19 @@ func (s *TenantService) GetDefaultModelName(tenantID string, modelType entity.Mo
 	return modelID, nil
 }
 
-func (s *TenantService) GetModelInfo(tenantID string, defaultModel string, modelType string) (*string, *string, *string, bool, error) {
+// MODEL_TAG_TO_TYPE maps model type tags to standard model type names
+// This matches Python's MODEL_TAG_TO_TYPE in models_api_service.py
+var MODEL_TAG_TO_TYPE = map[string]string{
+	"chat":      "chat",
+	"embedding": "embedding",
+	"rerank":    "rerank",
+	"asr":       "speech2text",
+	"vision":    "image2text",
+	"tts":       "tts",
+	"ocr":       "ocr",
+}
+
+func (s *TenantService) GetModelInfo(tenantID string, defaultModel string, modelType string) (*string, *string, *string, string, bool, error) {
 	// normally the model string is: modelName@instanceName@providerName, sometimes it's just modelName@providerName
 	// for the 1st case, parse defaultChatModel into three parts
 	defaultChatModelParts := strings.Split(defaultModel, "@")
@@ -422,47 +435,52 @@ func (s *TenantService) GetModelInfo(tenantID string, defaultModel string, model
 		*instanceName = "default"
 		modelName = &defaultChatModelParts[0]
 	} else {
-		return nil, nil, nil, false, fmt.Errorf("invalid model string: %s", defaultModel)
+		return nil, nil, nil, "", false, fmt.Errorf("invalid model string: %s", defaultModel)
 	}
 
-	if modelType == "ocr" {
+	// Convert model type tag to standard model type name (matches Python's MODEL_TAG_TO_TYPE)
+	mappedModelType, ok := MODEL_TAG_TO_TYPE[modelType]
+	if !ok {
+		mappedModelType = modelType
+	}
+
+	if mappedModelType == "ocr" {
 		if *providerName == "infiniflow" && *instanceName == "default" && *modelName == "deepdoc" {
-			return providerName, instanceName, modelName, true, nil
+			return providerName, instanceName, modelName, mappedModelType, true, nil
 		}
 	}
 
 	// Check if the provider and instance exists
 	modelProvider, err := s.modelProviderDAO.GetByTenantIDAndProviderName(tenantID, *providerName)
 	if err != nil {
-		return nil, nil, nil, false, err
+		return nil, nil, nil, "", false, err
 	}
 
 	modelInstance, err := s.modelInstanceDAO.GetByProviderIDAndInstanceName(modelProvider.ID, *instanceName)
 	if err != nil {
-		return nil, nil, nil, false, err
+		return nil, nil, nil, "", false, err
 	}
 
 	modelSchema, err := dao.GetModelProviderManager().GetModelByName(*providerName, *modelName)
-	if err != nil {
-		return nil, nil, nil, false, err
-	}
-
-	if !modelSchema.ModelTypeMap[modelType] {
-		return nil, nil, nil, false, fmt.Errorf("model %s isn't a chat model", *modelName)
+	if err == nil && !modelSchema.ModelTypeMap[mappedModelType] {
+		return nil, nil, nil, "", false, fmt.Errorf("model %s isn't a %s model", *modelName, mappedModelType)
 	}
 
 	var modelEntity *entity.TenantModel
-	modelEntity, err = s.modelDAO.GetModelByProviderIDAndInstanceIDAndModelName(modelProvider.ID, modelInstance.ID, *modelName)
+	modelEntity, err = s.modelDAO.GetModelByProviderIDAndInstanceIDAndModelTypeAndModelName(modelProvider.ID, modelInstance.ID, mappedModelType, *modelName)
 	if err != nil {
 		errString := err.Error()
 		if !strings.Contains(errString, "record not found") {
-			return nil, nil, nil, false, err
+			return nil, nil, nil, "", false, err
 		}
 	}
 
-	enable := modelEntity == nil
+	// enable = true if:
+	// 1. modelEntity is nil (no record exists), OR
+	// 2. modelEntity exists but status is NOT "inactive"
+	enable := modelEntity == nil || modelEntity.Status != "inactive"
 
-	return providerName, instanceName, modelName, enable, nil
+	return providerName, instanceName, modelName, mappedModelType, enable, nil
 
 }
 
@@ -480,68 +498,68 @@ func (s *TenantService) ListTenantDefaultModels(userID string) ([]ModelItem, err
 
 	var result []ModelItem
 
-	defaultChatModelProvider, defaultChatModelInstance, defaultChatModelName, defaultChatModelEnable, err := s.GetModelInfo(ownedTenant.TenantID, ownedTenant.LLMID, "chat")
+	defaultChatModelProvider, defaultChatModelInstance, defaultChatModelName, defaultChatModelType, defaultChatModelEnable, err := s.GetModelInfo(ownedTenant.TenantID, ownedTenant.LLMID, "chat")
 	if err == nil {
 		result = append(result, ModelItem{
 			ModelProvider: defaultChatModelProvider,
 			ModelInstance: defaultChatModelInstance,
 			ModelName:     defaultChatModelName,
-			ModelType:     "chat",
+			ModelType:     defaultChatModelType,
 			Enable:        defaultChatModelEnable,
 		})
 	}
 
-	defaultEmbeddingModelProvider, defaultEmbeddingModelInstance, defaultEmbeddingModelName, defaultEmbeddingModelEnable, err := s.GetModelInfo(ownedTenant.TenantID, ownedTenant.EmbDID, "embedding")
+	defaultEmbeddingModelProvider, defaultEmbeddingModelInstance, defaultEmbeddingModelName, defaultEmbeddingModelType, defaultEmbeddingModelEnable, err := s.GetModelInfo(ownedTenant.TenantID, ownedTenant.EmbDID, "embedding")
 	if err == nil {
 		result = append(result, ModelItem{
 			ModelProvider: defaultEmbeddingModelProvider,
 			ModelInstance: defaultEmbeddingModelInstance,
 			ModelName:     defaultEmbeddingModelName,
-			ModelType:     "embedding",
+			ModelType:     defaultEmbeddingModelType,
 			Enable:        defaultEmbeddingModelEnable,
 		})
 	}
 
-	defaultRerankModelProvider, defaultRerankModelInstance, defaultRerankModelName, defaultRerankModelEnable, err := s.GetModelInfo(ownedTenant.TenantID, ownedTenant.RerankID, "rerank")
+	defaultRerankModelProvider, defaultRerankModelInstance, defaultRerankModelName, defaultRerankModelType, defaultRerankModelEnable, err := s.GetModelInfo(ownedTenant.TenantID, ownedTenant.RerankID, "rerank")
 	if err == nil {
 		result = append(result, ModelItem{
 			ModelProvider: defaultRerankModelProvider,
 			ModelInstance: defaultRerankModelInstance,
 			ModelName:     defaultRerankModelName,
-			ModelType:     "rerank",
+			ModelType:     defaultRerankModelType,
 			Enable:        defaultRerankModelEnable,
 		})
 	}
 
-	defaultASRModelProvider, defaultASRModelInstance, defaultASRModelName, defaultASREnable, err := s.GetModelInfo(ownedTenant.TenantID, ownedTenant.ASRID, "asr")
+	defaultASRModelProvider, defaultASRModelInstance, defaultASRModelName, defaultASRModelType, defaultASREnable, err := s.GetModelInfo(ownedTenant.TenantID, ownedTenant.ASRID, "asr")
 	if err == nil {
 		result = append(result, ModelItem{
 			ModelProvider: defaultASRModelProvider,
 			ModelInstance: defaultASRModelInstance,
 			ModelName:     defaultASRModelName,
-			ModelType:     "asr",
+			ModelType:     defaultASRModelType,
 			Enable:        defaultASREnable,
 		})
 	}
 
-	defaultImage2TextModelProvider, defaultImage2TextModelInstance, defaultImage2TextModelName, defaultImage2TextModelEnable, err := s.GetModelInfo(ownedTenant.TenantID, ownedTenant.Img2TxtID, "vision")
+	defaultImage2TextModelProvider, defaultImage2TextModelInstance, defaultImage2TextModelName, defaultImage2TextModelType, defaultImage2TextModelEnable, err := s.GetModelInfo(ownedTenant.TenantID, ownedTenant.Img2TxtID, "vision")
 	if err == nil {
 		result = append(result, ModelItem{
 			ModelProvider: defaultImage2TextModelProvider,
 			ModelInstance: defaultImage2TextModelInstance,
 			ModelName:     defaultImage2TextModelName,
-			ModelType:     "vision",
+			ModelType:     defaultImage2TextModelType,
 			Enable:        defaultImage2TextModelEnable,
 		})
 	}
 
-	defaultOCRModelProvider, defaultOCRModelInstance, defaultOCRModelName, defaultOCRModelEnable, err := s.GetModelInfo(ownedTenant.TenantID, ownedTenant.OCRID, "ocr")
+	defaultOCRModelProvider, defaultOCRModelInstance, defaultOCRModelName, defaultOCRModelType, defaultOCRModelEnable, err := s.GetModelInfo(ownedTenant.TenantID, ownedTenant.OCRID, "ocr")
 	if err == nil {
 		result = append(result, ModelItem{
 			ModelProvider: defaultOCRModelProvider,
 			ModelInstance: defaultOCRModelInstance,
 			ModelName:     defaultOCRModelName,
-			ModelType:     "ocr",
+			ModelType:     defaultOCRModelType,
 			Enable:        defaultOCRModelEnable,
 		})
 	}
@@ -550,13 +568,13 @@ func (s *TenantService) ListTenantDefaultModels(userID string) ([]ModelItem, err
 		return result, nil
 	}
 
-	defaultTTSModelProvider, defaultTTSModelInstance, defaultTTSModelName, defaultTTSModelEnable, err := s.GetModelInfo(ownedTenant.TenantID, *ownedTenant.TTSID, "tts")
+	defaultTTSModelProvider, defaultTTSModelInstance, defaultTTSModelName, defaultTTSModelType, defaultTTSModelEnable, err := s.GetModelInfo(ownedTenant.TenantID, *ownedTenant.TTSID, "tts")
 	if err == nil {
 		result = append(result, ModelItem{
 			ModelProvider: defaultTTSModelProvider,
 			ModelInstance: defaultTTSModelInstance,
 			ModelName:     defaultTTSModelName,
-			ModelType:     "tts",
+			ModelType:     defaultTTSModelType,
 			Enable:        defaultTTSModelEnable,
 		})
 	}
@@ -586,7 +604,7 @@ func (s *TenantService) checkModelAvailable(tenantID, providerName, instanceName
 	}
 
 	var modelEntity *entity.TenantModel
-	modelEntity, err = s.modelDAO.GetModelByProviderIDAndInstanceIDAndModelName(modelProvider.ID, modelInstance.ID, modelName)
+	modelEntity, err = s.modelDAO.GetModelByProviderIDAndInstanceIDAndModelTypeAndModelName(modelProvider.ID, modelInstance.ID, modelType, modelName)
 	if err != nil || modelEntity != nil {
 		var errString = err.Error()
 		if errString == "record not found" {
@@ -653,4 +671,233 @@ func (s *TenantService) SetTenantDefaultModels(userID, modelProvider, modelInsta
 	})
 
 	return nil
+}
+
+// AddedModelItem represents a model in the list of added models
+type AddedModelItem struct {
+	ModelType    []string `json:"model_type"`
+	Name         string   `json:"name"`
+	ProviderID   string   `json:"provider_id"`
+	ProviderName string   `json:"provider_name"`
+	InstanceID   string   `json:"instance_id"`
+	InstanceName string   `json:"instance_name"`
+}
+
+// ListTenantAddedModels lists all added models for a tenant
+// This implements the Python models_api_service.list_tenant_added_models function
+func (s *TenantService) ListTenantAddedModels(tenantID string, modelTypeFilter string) ([]AddedModelItem, error) {
+	// Step 1: Verify tenant exists
+	tenant, err := s.tenantDAO.GetByID(tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("tenant not found")
+	}
+	if tenant == nil {
+		return nil, fmt.Errorf("tenant not found")
+	}
+
+	// Step 2: Normalize model type filter (lowercase if provided)
+	if modelTypeFilter != "" {
+		modelTypeFilter = strings.ToLower(modelTypeFilter)
+	}
+
+	// Step 3: Get all providers for tenant
+	providers, err := s.modelProviderDAO.GetByTenantID(tenantID)
+	if err != nil {
+		return nil, err
+	}
+	if len(providers) == 0 {
+		return []AddedModelItem{}, nil
+	}
+
+	// Step 4: Get all instances for those providers
+	providerIDs := make([]string, len(providers))
+	providerInfoMap := make(map[string]*entity.TenantModelProvider)
+	for i, p := range providers {
+		providerIDs[i] = p.ID
+		providerInfoMap[p.ID] = p
+	}
+
+	instances, err := s.modelInstanceDAO.GetByProviderIDs(providerIDs)
+	if err != nil {
+		return nil, err
+	}
+	if len(instances) == 0 {
+		return []AddedModelItem{}, nil
+	}
+
+	// Step 5: Build provider_instance_map: map[provider_name][]instance
+	providerInstanceMap := make(map[string][]*entity.TenantModelInstance)
+	for _, inst := range instances {
+		providerName := ""
+		if p, ok := providerInfoMap[inst.ProviderID]; ok {
+			providerName = p.ProviderName
+		}
+		providerInstanceMap[providerName] = append(providerInstanceMap[providerName], inst)
+	}
+
+	// Step 6: Get all model records
+	instanceIDs := make([]string, len(instances))
+	instanceInfoMap := make(map[string]*entity.TenantModelInstance)
+	for i, inst := range instances {
+		instanceIDs[i] = inst.ID
+		instanceInfoMap[inst.ID] = inst
+	}
+
+	modelRecords, err := s.modelDAO.GetModelsByProviderIDsAndInstanceIDs(providerIDs, instanceIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	// Step 7: Filter by model_type if provided and build model_record_map
+	modelRecordMap := make(map[string][]*entity.TenantModel)
+	for _, model := range modelRecords {
+		if modelTypeFilter != "" && model.ModelType != modelTypeFilter {
+			continue
+		}
+		key := fmt.Sprintf("%s_%s_%s", model.ProviderID, model.InstanceID, model.ModelName)
+		modelRecordMap[key] = append(modelRecordMap[key], model)
+	}
+
+	// Step 8: Build provider_names list for factory matching
+	providerNames := make([]string, len(providers))
+	for i, p := range providers {
+		providerNames[i] = p.ProviderName
+	}
+
+	var addedModels []AddedModelItem
+	modelKeyInFactory := make(map[string]bool)
+
+	// Step 9: Iterate through factory providers
+	factories := server.GetModelProviders()
+	for _, factory := range factories {
+		// Check if this factory is in our tenant's providers
+		found := false
+		for _, pn := range providerNames {
+			if pn == factory.Name {
+				found = true
+				break
+			}
+		}
+		if !found {
+			continue
+		}
+
+		factoryInstances, ok := providerInstanceMap[factory.Name]
+		if !ok || len(factoryInstances) == 0 {
+			continue
+		}
+
+		// Step 10: Iterate through each LLM in the factory
+		for _, llm := range factory.LLMs {
+			// Apply model type filter
+			if modelTypeFilter != "" && llm.ModelType != modelTypeFilter {
+				continue
+			}
+
+			// Step 11: For each factory instance, check model records
+			for _, factoryInstance := range factoryInstances {
+				modelRecordKey := fmt.Sprintf("%s_%s_%s", factoryInstance.ProviderID, factoryInstance.ID, llm.LLMName)
+				modelKeyInFactory[modelRecordKey] = true
+
+				manualModifiedModels := modelRecordMap[modelRecordKey]
+
+				// Determine active and inactive model types
+				var activeModelTypes []string
+				var inactiveModelTypes []string
+				for _, manualModel := range manualModifiedModels {
+					if manualModel.Status == "inactive" {
+						inactiveModelTypes = append(inactiveModelTypes, manualModel.ModelType)
+					} else {
+						activeModelTypes = append(activeModelTypes, manualModel.ModelType)
+					}
+				}
+
+				// Calculate final model_types: (set([llm["model_type"]] + active_model_types) - set(inactive_model_types))
+				modelTypesSet := make(map[string]bool)
+				modelTypesSet[llm.ModelType] = true
+				for _, t := range activeModelTypes {
+					modelTypesSet[t] = true
+				}
+				for _, t := range inactiveModelTypes {
+					delete(modelTypesSet, t)
+				}
+
+				if len(modelTypesSet) == 0 {
+					continue
+				}
+
+				var modelTypes []string
+				for t := range modelTypesSet {
+					modelTypes = append(modelTypes, t)
+				}
+
+				providerName := ""
+				if p, ok := providerInfoMap[factoryInstance.ProviderID]; ok {
+					providerName = p.ProviderName
+				}
+
+				addedModels = append(addedModels, AddedModelItem{
+					ModelType:    modelTypes,
+					Name:         llm.LLMName,
+					ProviderID:   factoryInstance.ProviderID,
+					ProviderName: providerName,
+					InstanceID:   factoryInstance.ID,
+					InstanceName: factoryInstance.InstanceName,
+				})
+			}
+		}
+	}
+
+	// Step 12: Handle manual_added_models (models in tenant_model but not in factory)
+	for modelRecordKey, modelRecords := range modelRecordMap {
+		if modelKeyInFactory[modelRecordKey] {
+			continue
+		}
+
+		if len(modelRecords) == 0 {
+			continue
+		}
+
+		// Parse key: provider_id_instance_id_model_name
+		parts := strings.Split(modelRecordKey, "_")
+		if len(parts) < 3 {
+			continue
+		}
+		providerID := parts[0]
+		instanceID := parts[1]
+		modelName := strings.Join(parts[2:], "_") // model name might contain underscores
+
+		// Get active model types
+		var modelTypes []string
+		for _, model := range modelRecords {
+			if model.Status != "inactive" {
+				modelTypes = append(modelTypes, model.ModelType)
+			}
+		}
+
+		if len(modelTypes) == 0 {
+			continue
+		}
+
+		providerName := ""
+		if p, ok := providerInfoMap[providerID]; ok {
+			providerName = p.ProviderName
+		}
+
+		instanceName := ""
+		if inst, ok := instanceInfoMap[instanceID]; ok {
+			instanceName = inst.InstanceName
+		}
+
+		addedModels = append(addedModels, AddedModelItem{
+			ModelType:    modelTypes,
+			Name:         modelName,
+			ProviderID:   providerID,
+			ProviderName: providerName,
+			InstanceID:   instanceID,
+			InstanceName: instanceName,
+		})
+	}
+
+	return addedModels, nil
 }

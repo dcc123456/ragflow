@@ -271,6 +271,7 @@ func (pm *ProviderManager) ListProviders() ([]map[string]interface{}, error) {
 
 		modelTypeSet := make(map[string]struct{})
 		for _, model := range provider.Models {
+			
 			for _, modelType := range model.ModelTypes {
 				modelTypeSet[modelType] = struct{}{}
 			}
@@ -286,6 +287,9 @@ func (pm *ProviderManager) ListProviders() ([]map[string]interface{}, error) {
 			"url":         provider.URL,
 			"model_types": modelTypes,
 			"url_suffix":  provider.URLSuffix,
+		}
+		if (len(modelTypes) == 0) {
+			continue
 		}
 		providers = append(providers, providerData)
 	}
@@ -305,10 +309,25 @@ func (pm *ProviderManager) GetProviderByName(providerName string) (map[string]in
 		return nil, fmt.Errorf("provider '%s' not found", providerName)
 	}
 
+	modelTypeSet := make(map[string]struct{})
+	for _, model := range provider.Models {
+		if len(model.ModelTypes) == 0 {
+			continue
+		}
+		for _, modelType := range model.ModelTypes {
+			modelTypeSet[modelType] = struct{}{}
+		}
+	}
+
+	var modelTypes []string
+	for modelType := range modelTypeSet {
+		modelTypes = append(modelTypes, modelType)
+	}
+
 	providerInfo := map[string]interface{}{
-		"name":         provider.Name,
-		"base_url":     provider.URL,
-		"total_models": len(provider.Models),
+		"name":        provider.Name,
+		"url":         provider.URL,
+		"model_types": modelTypes,
 	}
 
 	return providerInfo, nil

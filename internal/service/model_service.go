@@ -306,16 +306,16 @@ func (m *ModelProviderService) ListProviderInstances(providerName, userID string
 		var extra map[string]string
 		err = json.Unmarshal([]byte(instance.Extra), &extra)
 		if err != nil {
-			return nil, common.CodeServerError, err
+			extra = make(map[string]string)
 		}
 
 		result = append(result, map[string]interface{}{
-			"id":           instance.ID,
-			"instanceName": instance.InstanceName,
-			"providerID":   instance.ProviderID,
-			"apiKey":       instance.APIKey,
-			"status":       instance.Status,
-			"extra":        instance.Extra,
+			"api_key":       instance.APIKey,
+			"id":            instance.ID,
+			"instance_name":  instance.InstanceName,
+			"provider_id":   instance.ProviderID,
+			"region":        extra["region"],
+			"status":        instance.Status,
 		})
 	}
 
@@ -351,15 +351,15 @@ func (m *ModelProviderService) ShowProviderInstance(providerName, instanceName, 
 	var extra map[string]string
 	err = json.Unmarshal([]byte(instance.Extra), &extra)
 	if err != nil {
-		return nil, common.CodeServerError, err
+		extra = make(map[string]string)
 	}
 
 	result := map[string]interface{}{
-		"id":           instance.ID,
-		"instanceName": instance.InstanceName,
-		"providerID":   instance.ProviderID,
-		"status":       instance.Status,
-		"region":       extra["region"],
+		"id":            instance.ID,
+		"instance_name":  instance.InstanceName,
+		"provider_id":   instance.ProviderID,
+		"status":        instance.Status,
+		"region":        extra["region"],
 	}
 
 	return result, common.CodeSuccess, nil
@@ -744,6 +744,8 @@ func (m *ModelProviderService) ListInstanceModels(providerName, instanceName, us
 	for _, model := range allModels {
 		// convert model["name"] to string
 		modelName := model["name"].(string)
+		model["model_type"] = model["model_types"]
+		delete(model, "model_types")
 		if modelNames[modelName] {
 			model["status"] = "inactive"
 		} else {

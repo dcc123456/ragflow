@@ -72,3 +72,13 @@ func (dao *TenantModelProviderDAO) ListByID(id string) ([]string, error) {
 		Pluck("provider_name", &providerNames).Error
 	return providerNames, err
 }
+
+// GetByTenantID get all model providers by tenant ID
+func (dao *TenantModelProviderDAO) GetByTenantID(tenantID string) ([]*entity.TenantModelProvider, error) {
+	var providers []*entity.TenantModelProvider
+	err := DB.Where("tenant_id = ?", tenantID).Find(&providers).Error
+	if err != nil {
+		return nil, err
+	}
+	return providers, nil
+}

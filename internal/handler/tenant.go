@@ -73,7 +73,7 @@ func (h *TenantHandler) GetModels(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"code":    common.CodeSuccess,
 		"message": "success",
-		"data":    defaultModels,
+		"data":    gin.H{"models": defaultModels},
 	})
 }
 
@@ -116,6 +116,63 @@ func (h *TenantHandler) SetModels(c *gin.Context) {
 		"code":    common.CodeSuccess,
 		"message": "success",
 		"data":    nil,
+	})
+}
+
+// GetAddedModels lists all added models for the current user's tenant
+// @Summary List Added Models
+// @Description List all models added to the current user's tenant
+// @Tags models
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param type query string false "Model type filter (chat, embedding, rerank, asr, vision, tts, ocr)"
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/models [get]
+func (h *TenantHandler) GetAddedModels(c *gin.Context) {
+	user, errorCode, errorMessage := GetUser(c)
+	if errorCode != common.CodeSuccess {
+		jsonError(c, errorCode, errorMessage)
+		return
+	}
+
+	// Get tenant ID for the user
+	tenantInfos, err := h.tenantService.GetTenantInfo(user.ID)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"code":    common.CodeExceptionError,
+			"message": err.Error(),
+			"data":    nil,
+		})
+		return
+	}
+
+	if tenantInfos == nil {
+		c.JSON(http.StatusOK, gin.H{
+			"code":    common.CodeDataError,
+			"message": "Tenant not found",
+			"data":    nil,
+		})
+		return
+	}
+
+	// Get optional model type filter from query params
+	modelTypeFilter := c.Query("type")
+
+	addedModels, err := h.tenantService.ListTenantAddedModels(tenantInfos.TenantID, modelTypeFilter)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"code":    common.CodeExceptionError,
+			"message": err.Error(),
+			"data":    nil,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    common.CodeSuccess,
+		"message": "success",
+		"data":    addedModels,
 	})
 }
 
