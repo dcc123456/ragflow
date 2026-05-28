@@ -10,7 +10,6 @@ import billingService, {
   postBillingStorageSetTarget,
 } from '@/services/price';
 import storagePrivate from '@/utils/authorization-private-util';
-import storage from '@/utils/authorization-util';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import React, { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -498,11 +497,10 @@ export const useHandleTrialUpgradeSetupRetry = (status: string | null) => {
 };
 
 const useFetchCurrentPlan = (force = false) => {
-  const user = storage.getUserInfo();
   const { data, isFetching: loading } = useQuery<ICurrentPlan>({
     queryKey: [BillingQueryKey.CurrentPlan],
     // initialData: {},
-    enabled: !!user && !!isBillingEnabled(),
+    enabled: !!isBillingEnabled(),
     gcTime: force ? 0 : 50000,
     queryFn: async () => {
       const { data: res } = await billingService.getCurrentPlan();
