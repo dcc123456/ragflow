@@ -445,18 +445,11 @@ local function is_rate_limited_path()
     end
 
     -- Rate-limit any method when the path contains these hot endpoints.
-    if contains("/completion") then return true end
-    if contains("/retrieval") then return true end
+    if method == "POST" and contains("/completions") then return true end
+    if method == "POST" and contains("/datasets/search") then return true end
+    if method == "POST" and contains("/retrieval") then return true end
+    if method == "POST" and contains("/ask") then return true end
     if contains("/chunk") then return true end
-    if contains("/ask") then return true end
-
-    -- Rate-limit method-specific upload / clone / listing endpoints.
-    if method == "POST" and contains("/documents") then return true end
-    if method == "POST" and contains("/v1/document/upload") then return true end
-    if method == "POST" and contains("/api/v1/files") then return true end
-    if method == "POST" and contains("/v1/kb/clone") then return true end
-    if method == "GET" and contains("/document") then return true end
-    if method == "GET" and contains("/dataset") then return true end
 
     return false
 end
