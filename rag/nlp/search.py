@@ -408,7 +408,21 @@ class Dealer:
             idx_names,
             kb_ids,
         )
-        return self.dataStore.get_scores(res)
+        get_scores = getattr(self.dataStore, "get_scores", None)
+        if callable(get_scores):
+            return get_scores(res)
+
+        if not isinstance(res, dict):
+            return {}
+
+        out = {}
+        for hit in res.get("hits", {}).get("hits", []):
+            doc_id = hit.get("_id")
+            if doc_id is None:
+                continue
+            score = hit.get("_score")
+            out[doc_id] = float(score) if score is not None else 0.0
+        return out
 
     async def fetch_chunk_vectors(self, chunk_ids: list[str],
                                   tenant_ids: str | list[str],
