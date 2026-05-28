@@ -510,7 +510,7 @@ local function _t3_local_ip_rate_limit()
         ngx.header["X-RateLimit-Tier"] = "T3 (local)"
         ngx.status = 429
         ngx.header["Content-Type"] = "application/json"
-        ngx.say('{"code":429,"message":"Rate limit exceeded. Too many requests per minute.","data":null}')
+        ngx.say('{"code":429,"message":"Rate limit exceeded. You're sending requests too quickly. Please wait a moment and try again.","data":null}')
         return ngx.exit(429)
     end
 
@@ -582,7 +582,7 @@ local function _t2_redis_ip_rate_limit(red)
         ngx.header["X-RateLimit-Tier"] = "T2 (ip)"
         ngx.status = 429
         ngx.header["Content-Type"] = "application/json"
-        ngx.say('{"code":429,"message":"Rate limit exceeded. Too many requests per minute.","data":null}')
+        ngx.say('{"code":429,"message":"Rate limit exceeded. You're sending requests too quickly. Please wait a moment and try again.","data":null}')
         return ngx.exit(429)
     end
 
@@ -817,7 +817,7 @@ local function _t1_tenant_rate_limit(token)
         ngx.header["X-RateLimit-Tier"] = "T1"
         ngx.status = 429
         ngx.header["Content-Type"] = "application/json"
-        ngx.say('{"code":429,"message":"Rate limit exceeded. Too many requests per minute.","data":null}')
+        ngx.say('{"code":429,"message":"Rate limit exceeded. You're sending requests too quickly. Please wait a moment and try again.","data":null}')
         return ngx.exit(429)
     end
 
