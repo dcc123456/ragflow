@@ -184,7 +184,11 @@ class MessageService:
 
     @staticmethod
     def calculate_message_size(message: dict):
-        return sys.getsizeof(message["content"]) + sys.getsizeof(message["content_embed"][0]) * len(message["content_embed"])
+        content_embed = message.get("content_embed")
+        if content_embed is None:
+            content_embed = []
+        embed_size = sys.getsizeof(content_embed[0]) * len(content_embed) if content_embed else 0
+        return sys.getsizeof(message.get("content", "")) + embed_size
 
     @classmethod
     def calculate_memory_size(cls, memory_ids: List[str], uid_list: List[str]):
