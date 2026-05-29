@@ -2004,7 +2004,7 @@ async def get(doc_id):
         return server_error_response(e)
 
 
-@manager.route("/datasets/<dataset_id>/documents/<document_id>", methods=["GET"])  # noqa: F821
+@manager.route("/documents/<doc_id>/attachment", methods=["GET"])  # noqa: F821
 @login_required
 @add_tenant_id_to_kwargs
 async def download_attachment(tenant_id=None, doc_id=None, attachment_id=None):
@@ -2076,7 +2076,8 @@ async def download(dataset_id, document_id):
         return get_error_data_result(message=f"The dataset not own the document {document_id}.")
     # The process of downloading
     doc_id, doc_location = File2DocumentService.get_storage_address(doc_id=document_id)  # minio address
-    file_stream = settings.STORAGE_IMPL.get(doc_id, doc_location)
+    tenant_id = DocumentService.get_tenant_id(document_id)
+    file_stream = settings.STORAGE_IMPL.get(doc_id, doc_location, tenant_id)
     if not file_stream:
         return construct_json_result(message="This file is empty.", code=RetCode.DATA_ERROR)
     file = BytesIO(file_stream)

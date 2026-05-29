@@ -169,8 +169,30 @@ def _load_doc_module(monkeypatch):
     monkeypatch.setitem(sys.modules, "common", common_pkg)
 
     apps_mod = ModuleType("api.apps")
+    apps_mod.__path__ = [str(repo_root / "api" / "apps")]
+    apps_mod.current_user = SimpleNamespace(id="user-1")
     apps_mod.login_required = lambda func: func
     monkeypatch.setitem(sys.modules, "api.apps", apps_mod)
+
+    api_constants_mod = ModuleType("api.constants")
+    api_constants_mod.FILE_NAME_LEN_LIMIT = 255
+    api_constants_mod.IMG_BASE64_PREFIX = "data:image/"
+    monkeypatch.setitem(sys.modules, "api.constants", api_constants_mod)
+
+    document_api_service_mod = ModuleType("api.apps.services.document_api_service")
+    document_api_service_mod.validate_document_update_fields = lambda *_args, **_kwargs: ("", None)
+    document_api_service_mod.map_doc_keys = lambda doc: doc.to_dict() if hasattr(doc, "to_dict") else doc
+    document_api_service_mod.map_doc_keys_with_run_status = (
+        lambda doc, run_status="0": {
+            **(doc.to_dict() if hasattr(doc, "to_dict") else dict(doc)),
+            "run": run_status,
+        }
+    )
+    document_api_service_mod.update_document_name_only = lambda *_args, **_kwargs: None
+    document_api_service_mod.update_chunk_method = lambda *_args, **_kwargs: None
+    document_api_service_mod.update_document_status_only = lambda *_args, **_kwargs: None
+    document_api_service_mod.reset_document_for_reparse = lambda *_args, **_kwargs: None
+    monkeypatch.setitem(sys.modules, "api.apps.services.document_api_service", document_api_service_mod)
 
     common_settings_mod = ModuleType("common.settings")
     common_settings_mod.retriever = SimpleNamespace()
@@ -187,6 +209,7 @@ def _load_doc_module(monkeypatch):
     async def _thread_pool_exec(func, *args, **kwargs):
         return func(*args, **kwargs)
     common_misc_utils_mod.thread_pool_exec = _thread_pool_exec
+    common_misc_utils_mod.get_uuid = lambda: "uuid-1"
     monkeypatch.setitem(sys.modules, "common.misc_utils", common_misc_utils_mod)
 
     common_string_utils_mod = ModuleType("common.string_utils")
@@ -233,6 +256,7 @@ def _load_doc_module(monkeypatch):
     services_pkg = ModuleType("api.db.services")
     services_pkg.__path__ = [str(repo_root / "api" / "db" / "services")]
     services_pkg.UserService = SimpleNamespace(query=lambda *_args, **_kwargs: [])
+    services_pkg.duplicate_name = lambda *_args, **_kwargs: False
     monkeypatch.setitem(sys.modules, "api.db.services", services_pkg)
 
     doc_metadata_service_mod = ModuleType("api.db.services.doc_metadata_service")
@@ -247,6 +271,7 @@ def _load_doc_module(monkeypatch):
         query=lambda **_kwargs: [],
         filter_update=lambda *_args, **_kwargs: 0,
         get_by_id=lambda *_args, **_kwargs: (False, None),
+        get_tenant_id=lambda *_args, **_kwargs: "tenant-1",
         update_by_id=lambda *_args, **_kwargs: True,
         run=lambda *_args, **_kwargs: None,
         decrement_chunk_num=lambda *_args, **_kwargs: None,
@@ -277,11 +302,20 @@ def _load_doc_module(monkeypatch):
     task_service_mod.queue_tasks = lambda *_args, **_kwargs: None
     monkeypatch.setitem(sys.modules, "api.db.services.task_service", task_service_mod)
 
+    file_service_mod = ModuleType("api.db.services.file_service")
+    file_service_mod.FileService = SimpleNamespace(
+        upload_info=lambda *_args, **_kwargs: {},
+        add_file_from_kb=lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setitem(sys.modules, "api.db.services.file_service", file_service_mod)
+
     api_utils_mod = ModuleType("api.utils.api_utils")
     api_utils_mod.add_tenant_id_to_kwargs = _identity_decorator
     api_utils_mod.check_duplicate_ids = lambda ids, _kind="item": (ids, [])
     api_utils_mod.construct_json_result = lambda code=0, message="success", data=None: {"code": code, "message": message, "data": data}
+    api_utils_mod.get_data_error_result = lambda message="Sorry! Data missing!", code=102: {"code": code, "message": message}
     api_utils_mod.get_error_data_result = lambda message="Sorry! Data missing!", code=102: {"code": code, "message": message}
+    api_utils_mod.get_error_argument_result = lambda message="", code=101: {"code": code, "message": message}
     api_utils_mod.get_json_result = lambda data=None, message="", code=0, **_kwargs: {"code": code, "message": message, "data": data}
     api_utils_mod.get_request_json = lambda: _AwaitableValue({})
     api_utils_mod.get_result = lambda code=0, message="", data=None, total=None: {
@@ -289,6 +323,7 @@ def _load_doc_module(monkeypatch):
         for key, value in {"code": code, "message": message, "data": data, "total": total}.items()
         if value is not None
     }
+    api_utils_mod.get_resource_insufficient_result = lambda *_args, **_kwargs: {"code": 103, "message": "Insufficient resources"}
     api_utils_mod.server_error_response = lambda e: {"code": 500, "message": str(e)}
     def _token_required(func):
         @wraps(func)
@@ -305,7 +340,17 @@ def _load_doc_module(monkeypatch):
         lambda *_args, **_kwargs: ([], [], "")
     )
     permission_utils_mod.check_doc_permission = lambda *args, **kwargs: (lambda func: func)
+    permission_utils_mod.check_kb_permission = lambda *args, **kwargs: (lambda func: func)
+    permission_utils_mod.has_permission_for_member = lambda *_args, **_kwargs: True
     monkeypatch.setitem(sys.modules, "api.utils.permission_utils", permission_utils_mod)
+
+    billing_utils_mod = ModuleType("api.utils.billing")
+
+    class _StubInsufficientResourceError(Exception):
+        pass
+
+    billing_utils_mod.InsufficientResourceError = _StubInsufficientResourceError
+    monkeypatch.setitem(sys.modules, "api.utils.billing", billing_utils_mod)
 
     billing_service_mod = ModuleType("api.db.services.billing_service")
 
@@ -318,6 +363,7 @@ def _load_doc_module(monkeypatch):
     common_metadata_utils_mod = ModuleType("common.metadata_utils")
     common_metadata_utils_mod.convert_conditions = lambda conditions: conditions
     common_metadata_utils_mod.meta_filter = lambda *_args, **_kwargs: []
+    common_metadata_utils_mod.turn2jsonschema = lambda *_args, **_kwargs: {}
     monkeypatch.setitem(sys.modules, "common.metadata_utils", common_metadata_utils_mod)
 
     reference_metadata_utils_mod = ModuleType("api.utils.reference_metadata_utils")
@@ -389,6 +435,29 @@ def _load_doc_module(monkeypatch):
     reference_metadata_utils_mod.enrich_chunks_with_document_metadata = _enrich_chunks_with_document_metadata
     reference_metadata_utils_mod.resolve_reference_metadata_preferences = _resolve_reference_metadata_preferences
     monkeypatch.setitem(sys.modules, "api.utils.reference_metadata_utils", reference_metadata_utils_mod)
+
+    validation_utils_mod = ModuleType("api.utils.validation_utils")
+    validation_utils_mod.UpdateDocumentReq = type("UpdateDocumentReq", (), {})
+    validation_utils_mod.DeleteDocumentReq = type("DeleteDocumentReq", (), {})
+    validation_utils_mod.format_validation_error_message = lambda exc: str(exc)
+    validation_utils_mod.validate_and_parse_json_request = lambda *_args, **_kwargs: {}
+    monkeypatch.setitem(sys.modules, "api.utils.validation_utils", validation_utils_mod)
+
+    file_utils_mod = ModuleType("api.utils.file_utils")
+    file_utils_mod.filename_type = lambda name: name.rsplit(".", 1)[-1] if "." in name else ""
+    file_utils_mod.thumbnail = lambda *_args, **_kwargs: ""
+    monkeypatch.setitem(sys.modules, "api.utils.file_utils", file_utils_mod)
+
+    web_utils_mod = ModuleType("api.utils.web_utils")
+    web_utils_mod.CONTENT_TYPE_MAP = {"txt": "text/plain"}
+    web_utils_mod.html2pdf = lambda *_args, **_kwargs: b""
+    web_utils_mod.is_valid_url = lambda *_args, **_kwargs: True
+    web_utils_mod.apply_safe_file_response_headers = lambda response, *_args, **_kwargs: response
+    monkeypatch.setitem(sys.modules, "api.utils.web_utils", web_utils_mod)
+
+    ssrf_guard_mod = ModuleType("common.ssrf_guard")
+    ssrf_guard_mod.assert_url_is_safe = lambda *_args, **_kwargs: None
+    monkeypatch.setitem(sys.modules, "common.ssrf_guard", ssrf_guard_mod)
 
     rag_app_tag_mod = ModuleType("rag.app.tag")
     rag_app_tag_mod.label_question = lambda *_args, **_kwargs: {}
@@ -603,7 +672,7 @@ def _load_doc_module(monkeypatch):
     tenant_model_service_mod.get_tenant_default_model_by_type = _get_tenant_default_model_by_type
     monkeypatch.setitem(sys.modules, "api.db.joint_services.tenant_model_service", tenant_model_service_mod)
 
-    module_path = repo_root / "api" / "apps" / "restful_apis" / "chunk_api.py"
+    module_path = repo_root / "api" / "apps" / "restful_apis" / "document_api.py"
     spec = importlib.util.spec_from_file_location("test_doc_sdk_routes_unit", module_path)
     module = importlib.util.module_from_spec(spec)
     module.manager = _DummyManager()
@@ -735,44 +804,44 @@ class TestDocRoutesUnit:
         module = _load_doc_module(monkeypatch)
         _patch_send_file(monkeypatch, module)
         _patch_storage(monkeypatch, module, file_stream=b"")
-        res = _run(module.download.__wrapped__("tenant-1", "ds-1", ""))
+        res = _run(module.download("ds-1", ""))
         assert res["message"] == "Specify document_id please."
         monkeypatch.setattr(module.DocumentService, "query", lambda **_kwargs: [])
-        res = _run(module.download.__wrapped__("tenant-1", "ds-1", "doc-1"))
+        res = _run(module.download("ds-1", "doc-1"))
         assert "not own the document" in res["message"]
 
         monkeypatch.setattr(module.KnowledgebaseService, "query", lambda **_kwargs: [1])
         monkeypatch.setattr(module.DocumentService, "query", lambda **_kwargs: [])
-        res = _run(module.download.__wrapped__("tenant-1", "ds-1", "doc-1"))
+        res = _run(module.download("ds-1", "doc-1"))
         assert "not own the document" in res["message"]
 
         monkeypatch.setattr(module.DocumentService, "query", lambda **_kwargs: [_DummyDoc()])
         monkeypatch.setattr(module.File2DocumentService, "get_storage_address", lambda **_kwargs: ("b", "n"))
-        res = _run(module.download.__wrapped__("tenant-1", "ds-1", "doc-1"))
+        res = _run(module.download("ds-1", "doc-1"))
         assert res["message"] == "This file is empty."
 
-        res = _run(module.download_document(""))
+        res = _run(module.download_document("tenant-1", ""))
         assert res["message"] == "Specify document_id please."
 
         monkeypatch.setattr(module.DocumentService, "query", lambda **_kwargs: [])
-        res = _run(module.download_document("doc-1"))
+        res = _run(module.download_document("tenant-1", "doc-1"))
         assert "not own the document" in res["message"]
 
         monkeypatch.setattr(module.DocumentService, "query", lambda **_kwargs: [_DummyDoc()])
         monkeypatch.setattr(module.File2DocumentService, "get_storage_address", lambda **_kwargs: ("b", "n"))
         _patch_storage(monkeypatch, module, file_stream=b"")
-        res = _run(module.download_document("doc-1"))
+        res = _run(module.download_document("tenant-1", "doc-1"))
         assert res["message"] == "This file is empty."
 
         _patch_storage(monkeypatch, module, file_stream=b"abc")
-        res = _run(module.download_document("doc-1"))
+        res = _run(module.download_document("tenant-1", "doc-1"))
         assert res["filename"] == "doc.txt"
 
 
     def test_parse_branches(self, monkeypatch):
-        module = _load_doc_module(monkeypatch)
+        module = _load_restful_chunk_module(monkeypatch)
         monkeypatch.setattr(module.KnowledgebaseService, "accessible", lambda **_kwargs: False)
-        res = _run(module.parse.__wrapped__("tenant-1", "ds-1"))
+        res = _run(module.parse("tenant-1", "ds-1"))
         assert "don't own the dataset" in res["message"]
 
         monkeypatch.setattr(module.KnowledgebaseService, "accessible", lambda **_kwargs: True)
@@ -780,7 +849,7 @@ class TestDocRoutesUnit:
         monkeypatch.setattr(module, "check_duplicate_ids", lambda ids, _kind: (ids, []))
         toggle_doc = _ToggleBoolDocList(_DummyDoc(progress=0))
         monkeypatch.setattr(module.DocumentService, "query", lambda **_kwargs: toggle_doc)
-        res = _run(module.parse.__wrapped__("tenant-1", "ds-1"))
+        res = _run(module.parse("tenant-1", "ds-1"))
         assert "don't own the document" in res["message"]
 
         monkeypatch.setattr(module.DocumentService, "query", lambda **_kwargs: [_DummyDoc(run=module.TaskStatus.RUNNING.value)])
@@ -789,7 +858,7 @@ class TestDocRoutesUnit:
             "filter_update",
             lambda *_args, **_kwargs: 0,
         )
-        res = _run(module.parse.__wrapped__("tenant-1", "ds-1"))
+        res = _run(module.parse("tenant-1", "ds-1"))
         assert "currently being processed" in res["message"]
 
         monkeypatch.setattr(module.DocumentService, "query", lambda **_kwargs: [_DummyDoc(progress=0)])
@@ -800,31 +869,31 @@ class TestDocRoutesUnit:
         monkeypatch.setattr(module.TaskService, "filter_delete", lambda *_args, **_kwargs: None)
         monkeypatch.setattr(module.DocumentService, "run", lambda *_args, **_kwargs: None)
         monkeypatch.setattr(module, "check_duplicate_ids", lambda ids, _kind: (ids, ["Duplicate document ids: doc-1"]))
-        res = _run(module.parse.__wrapped__("tenant-1", "ds-1"))
+        res = _run(module.parse("tenant-1", "ds-1"))
         assert res["code"] == 0
         assert res["data"]["success_count"] == 1
         assert "Duplicate document ids" in res["data"]["errors"][0]
 
         monkeypatch.setattr(module, "check_duplicate_ids", lambda _ids, _kind: ([], ["Duplicate document ids: doc-1"]))
-        res = _run(module.parse.__wrapped__("tenant-1", "ds-1"))
+        res = _run(module.parse("tenant-1", "ds-1"))
         assert res["code"] == module.RetCode.DATA_ERROR
         assert "Duplicate document ids" in res["message"]
 
     def test_stop_parsing_branches(self, monkeypatch):
-        module = _load_doc_module(monkeypatch)
+        module = _load_restful_chunk_module(monkeypatch)
         monkeypatch.setattr(module.KnowledgebaseService, "accessible", lambda **_kwargs: False)
-        res = _run(module.stop_parsing.__wrapped__("tenant-1", "ds-1"))
+        res = _run(module.stop_parsing("tenant-1", "ds-1"))
         assert "don't own the dataset" in res["message"]
 
         monkeypatch.setattr(module.KnowledgebaseService, "accessible", lambda **_kwargs: True)
         monkeypatch.setattr(module, "get_request_json", lambda: _AwaitableValue({}))
-        res = _run(module.stop_parsing.__wrapped__("tenant-1", "ds-1"))
+        res = _run(module.stop_parsing("tenant-1", "ds-1"))
         assert "`document_ids` is required" in res["message"]
 
         monkeypatch.setattr(module, "get_request_json", lambda: _AwaitableValue({"document_ids": ["doc-1"]}))
         monkeypatch.setattr(module, "check_duplicate_ids", lambda ids, _kind: (ids, []))
         monkeypatch.setattr(module.DocumentService, "query", lambda **_kwargs: [])
-        res = _run(module.stop_parsing.__wrapped__("tenant-1", "ds-1"))
+        res = _run(module.stop_parsing("tenant-1", "ds-1"))
         assert "don't own the document" in res["message"]
 
         monkeypatch.setattr(module.DocumentService, "query", lambda **_kwargs: [_DummyDoc(run=module.TaskStatus.DONE.value)])
@@ -838,7 +907,7 @@ class TestDocRoutesUnit:
             "update_by_id",
             lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("update_by_id must not be called for non-running docs")),
         )
-        res = _run(module.stop_parsing.__wrapped__("tenant-1", "ds-1"))
+        res = _run(module.stop_parsing("tenant-1", "ds-1"))
         assert res["code"] == module.RetCode.DATA_ERROR
         assert res["data"]["error_code"] == module.DOC_STOP_PARSING_INVALID_STATE_ERROR_CODE
         assert res["message"] == module.DOC_STOP_PARSING_INVALID_STATE_MESSAGE
@@ -848,19 +917,19 @@ class TestDocRoutesUnit:
         monkeypatch.setattr(module.DocumentService, "update_by_id", lambda *_args, **_kwargs: True)
         _patch_docstore(monkeypatch, module, delete=lambda *_args, **_kwargs: None)
         monkeypatch.setattr(module, "check_duplicate_ids", lambda ids, _kind: (ids, ["Duplicate document ids: doc-1"]))
-        res = _run(module.stop_parsing.__wrapped__("tenant-1", "ds-1"))
+        res = _run(module.stop_parsing("tenant-1", "ds-1"))
         assert res["code"] == 0
         assert res["data"]["success_count"] == 1
         assert "Duplicate document ids" in res["data"]["errors"][0]
 
         monkeypatch.setattr(module, "check_duplicate_ids", lambda _ids, _kind: ([], ["Duplicate document ids: doc-1"]))
-        res = _run(module.stop_parsing.__wrapped__("tenant-1", "ds-1"))
+        res = _run(module.stop_parsing("tenant-1", "ds-1"))
         assert res["code"] == module.RetCode.DATA_ERROR
         assert "Duplicate document ids" in res["message"]
 
         monkeypatch.setattr(module, "check_duplicate_ids", lambda ids, _kind: (ids, []))
         monkeypatch.setattr(module.DocumentService, "query", lambda **_kwargs: [_DummyDoc(run=module.TaskStatus.RUNNING.value)])
-        res = _run(module.stop_parsing.__wrapped__("tenant-1", "ds-1"))
+        res = _run(module.stop_parsing("tenant-1", "ds-1"))
         assert res["code"] == 0
 
     def test_list_chunks_branches(self, monkeypatch):
@@ -1040,24 +1109,24 @@ class TestDocRoutesUnit:
         assert res["code"] == 0
 
     def test_retrieval_metadata_validation_matrix(self, monkeypatch):
-        module = _load_doc_module(monkeypatch)
+        module = _load_restful_chunk_module(monkeypatch)
         monkeypatch.setattr(module, "get_request_json", lambda: _AwaitableValue({"dataset_ids": "bad"}))
-        res = _run(module.retrieval_test.__wrapped__("tenant-1"))
+        res = _run(module.retrieval_test("tenant-1"))
         assert "`dataset_ids` should be a list" in res["message"]
 
         monkeypatch.setattr(module, "get_request_json", lambda: _AwaitableValue({"dataset_ids": ["ds-1"]}))
         monkeypatch.setattr(module.KnowledgebaseService, "accessible", lambda **_kwargs: False)
-        res = _run(module.retrieval_test.__wrapped__("tenant-1"))
+        res = _run(module.retrieval_test("tenant-1"))
         assert "don't own the dataset" in res["message"]
 
         monkeypatch.setattr(module.KnowledgebaseService, "accessible", lambda **_kwargs: True)
         monkeypatch.setattr(module.KnowledgebaseService, "get_by_ids", lambda _ids: [SimpleNamespace(embd_id="m1"), SimpleNamespace(embd_id="m2")])
         monkeypatch.setattr(module.TenantLLMService, "split_model_name_and_factory", lambda embd_id: (embd_id, "f"))
-        res = _run(module.retrieval_test.__wrapped__("tenant-1"))
+        res = _run(module.retrieval_test("tenant-1"))
         assert "different embedding models" in res["message"]
 
         monkeypatch.setattr(module.KnowledgebaseService, "get_by_ids", lambda _ids: [SimpleNamespace(embd_id="m1", tenant_id="tenant-1")])
-        res = _run(module.retrieval_test.__wrapped__("tenant-1"))
+        res = _run(module.retrieval_test("tenant-1"))
         assert "`question` is required." in res["message"]
 
         monkeypatch.setattr(
@@ -1065,7 +1134,7 @@ class TestDocRoutesUnit:
             "get_request_json",
             lambda: _AwaitableValue({"dataset_ids": ["ds-1"], "question": "   "}),
         )
-        res = _run(module.retrieval_test.__wrapped__("tenant-1"))
+        res = _run(module.retrieval_test("tenant-1"))
         assert res["code"] == 0
         assert res["data"]["chunks"] == []
 
@@ -1074,7 +1143,7 @@ class TestDocRoutesUnit:
             "get_request_json",
             lambda: _AwaitableValue({"dataset_ids": ["ds-1"], "question": "q", "document_ids": "bad"}),
         )
-        res = _run(module.retrieval_test.__wrapped__("tenant-1"))
+        res = _run(module.retrieval_test("tenant-1"))
         assert "`documents` should be a list" in res["message"]
 
         monkeypatch.setattr(
@@ -1083,7 +1152,7 @@ class TestDocRoutesUnit:
             lambda: _AwaitableValue({"dataset_ids": ["ds-1"], "question": "q", "document_ids": ["not-owned"]}),
         )
         monkeypatch.setattr(module.KnowledgebaseService, "list_documents_by_ids", lambda _ids: ["doc-1"])
-        res = _run(module.retrieval_test.__wrapped__("tenant-1"))
+        res = _run(module.retrieval_test("tenant-1"))
         assert "don't own the document" in res["message"]
 
         monkeypatch.setattr(
@@ -1093,7 +1162,7 @@ class TestDocRoutesUnit:
         )
         monkeypatch.setattr(module.DocMetadataService, "get_flatted_meta_by_kbs", lambda _kbs: [])
         monkeypatch.setattr(module, "meta_filter", lambda *_args, **_kwargs: [])
-        res = _run(module.retrieval_test.__wrapped__("tenant-1"))
+        res = _run(module.retrieval_test("tenant-1"))
         assert "code" in res
 
         monkeypatch.setattr(
@@ -1114,7 +1183,7 @@ class TestDocRoutesUnit:
         monkeypatch.setattr(module, "LLMBundle", lambda *_args, **_kwargs: SimpleNamespace())
         monkeypatch.setattr(module, "label_question", lambda *_args, **_kwargs: {})
         monkeypatch.setattr(module.settings, "retriever", _Retriever())
-        res = _run(module.retrieval_test.__wrapped__("tenant-1"))
+        res = _run(module.retrieval_test("tenant-1"))
         assert res["code"] == 0, res["message"]
         assert res["data"]["chunks"] == []
 
@@ -1123,7 +1192,7 @@ class TestDocRoutesUnit:
             "get_request_json",
             lambda: _AwaitableValue({"dataset_ids": ["ds-1"], "question": "q", "highlight": True}),
         )
-        res = _run(module.retrieval_test.__wrapped__("tenant-1"))
+        res = _run(module.retrieval_test("tenant-1"))
         assert res["code"] == 0
 
         monkeypatch.setattr(
@@ -1131,7 +1200,7 @@ class TestDocRoutesUnit:
             "get_request_json",
             lambda: _AwaitableValue({"dataset_ids": ["ds-1"], "question": "q", "highlight": "yes"}),
         )
-        res = _run(module.retrieval_test.__wrapped__("tenant-1"))
+        res = _run(module.retrieval_test("tenant-1"))
         assert "`highlight` should be a boolean" in res["message"]
 
         monkeypatch.setattr(
@@ -1139,7 +1208,7 @@ class TestDocRoutesUnit:
             "get_request_json",
             lambda: _AwaitableValue({"dataset_ids": ["ds-1"], "question": "q", "highlight": 1}),
         )
-        res = _run(module.retrieval_test.__wrapped__("tenant-1"))
+        res = _run(module.retrieval_test("tenant-1"))
         assert "`highlight` should be a boolean" in res["message"]
 
         monkeypatch.setattr(
@@ -1148,7 +1217,7 @@ class TestDocRoutesUnit:
             lambda: _AwaitableValue({"dataset_ids": ["ds-1"], "question": "q"}),
         )
         monkeypatch.setattr(module.KnowledgebaseService, "get_by_id", lambda _id: (False, None))
-        res = _run(module.retrieval_test.__wrapped__("tenant-1"))
+        res = _run(module.retrieval_test("tenant-1"))
         assert "Dataset not found!" in res["message"]
 
         feature_calls = {"cross": None, "keyword": None, "retrieval_question": None}
@@ -1242,7 +1311,7 @@ class TestDocRoutesUnit:
                 "doc-kg": {"author": "kg-author"},
             },
         )
-        res = _run(module.retrieval_test.__wrapped__("tenant-1"))
+        res = _run(module.retrieval_test("tenant-1"))
         assert res["code"] == 0, res["message"]
         assert feature_calls["cross"] == ("fr",)
         assert feature_calls["keyword"] == "q-xl"
@@ -1266,6 +1335,6 @@ class TestDocRoutesUnit:
             lambda: _AwaitableValue({"dataset_ids": ["ds-1"], "question": "q"}),
         )
         monkeypatch.setattr(module.settings, "retriever", _NotFoundRetriever())
-        res = _run(module.retrieval_test.__wrapped__("tenant-1"))
+        res = _run(module.retrieval_test("tenant-1"))
         assert res["code"] == module.RetCode.DATA_ERROR
         assert "No chunk found! Check the chunk status please!" in res["message"]

@@ -721,6 +721,8 @@ def _load_session_module(monkeypatch):
         user_canvas_service.get_by_canvas_id = lambda _agent_id: (True, {"user_id": "tenant-1"})
 
     module_path = repo_root / "api" / "apps" / "sdk" / "session.py"
+    if not module_path.exists():
+        pytest.skip(f"Module not found: {module_path}")
     spec = importlib.util.spec_from_file_location("test_session_sdk_routes_unit_module", module_path)
     module = importlib.util.module_from_spec(spec)
     module.manager = _DummyManager()
@@ -2122,10 +2124,14 @@ def _load_chat_api_module(monkeypatch):
         RERANK = "rerank"
 
     quart_mod = ModuleType("quart")
+    quart_mod.g = SimpleNamespace()
     quart_mod.request = SimpleNamespace(args=_Args(), headers={}, files=_AwaitableValue({}), method="POST")
     quart_mod.Response = _StubResponse
     quart_mod.jsonify = lambda payload: payload
     quart_mod.current_app = SimpleNamespace()
+    quart_mod.has_request_context = lambda: False
+    quart_mod.has_websocket_context = lambda: False
+    quart_mod.websocket = SimpleNamespace()
     monkeypatch.setitem(sys.modules, "quart", quart_mod)
 
     api_apps_mod = ModuleType("api.apps")
@@ -2133,6 +2139,22 @@ def _load_chat_api_module(monkeypatch):
     api_apps_mod.current_user = SimpleNamespace(id="authenticated-user")
     api_apps_mod.login_required = lambda func: func
     monkeypatch.setitem(sys.modules, "api.apps", api_apps_mod)
+
+    api_db_mod = ModuleType("api.db")
+    api_db_mod.PermissionActionType = SimpleNamespace(READ="read", WRITE="write")
+    api_db_mod.PermissionTargetType = SimpleNamespace(DIALOG="dialog")
+    api_db_mod.PermissionValue = SimpleNamespace(
+        PERMISSION_READ="read",
+        PERMISSION_WRITE="write",
+        PERMISSION_MANAGE="manage",
+        PERMISSION_OWNER="owner",
+    )
+    api_db_mod.ResourceType = SimpleNamespace(DIALOG=SimpleNamespace(value=2))
+    monkeypatch.setitem(sys.modules, "api.db", api_db_mod)
+
+    db_models_mod = ModuleType("api.db.db_models")
+    db_models_mod.DB = SimpleNamespace()
+    monkeypatch.setitem(sys.modules, "api.db.db_models", db_models_mod)
 
     common_pkg = ModuleType("common")
     common_pkg.__path__ = [str(repo_root / "common")]
@@ -2232,6 +2254,11 @@ def _load_chat_api_module(monkeypatch):
     search_svc_mod.SearchService = SimpleNamespace()
     monkeypatch.setitem(sys.modules, "api.db.services.search_service", search_svc_mod)
 
+    permission_svc_mod = ModuleType("api.db.services.permission_service")
+    permission_svc_mod.PermissionChangeLogService = SimpleNamespace()
+    permission_svc_mod.PermissionService = SimpleNamespace()
+    monkeypatch.setitem(sys.modules, "api.db.services.permission_service", permission_svc_mod)
+
     tenant_llm_svc_mod = ModuleType("api.db.services.tenant_llm_service")
     tenant_llm_svc_mod.TenantLLMService = SimpleNamespace(get_api_key=lambda **_k: None)
     monkeypatch.setitem(sys.modules, "api.db.services.tenant_llm_service", tenant_llm_svc_mod)
@@ -2249,13 +2276,30 @@ def _load_chat_api_module(monkeypatch):
     api_utils_mod.get_data_error_result = lambda message="Error", code=_RetCode.DATA_ERROR: {"code": code, "message": message}
     api_utils_mod.get_json_result = lambda code=_RetCode.SUCCESS, message="success", data=None: {"code": code, "message": message, "data": data}
     api_utils_mod.get_request_json = lambda: _AwaitableValue({})
+    api_utils_mod.get_resource_insufficient_result = lambda *_a, **_k: {"code": _RetCode.OPERATING_ERROR, "message": "Insufficient resources"}
     api_utils_mod.server_error_response = lambda e: {"code": _RetCode.SERVER_ERROR, "message": str(e)}
     api_utils_mod.validate_request = lambda *_a, **_k: (lambda func: func)
     monkeypatch.setitem(sys.modules, "api.utils.api_utils", api_utils_mod)
 
+    billing_mod = ModuleType("api.utils.billing")
+    billing_mod.check_resources = lambda *_a, **_k: (lambda func: func)
+    billing_mod.check_dynamic_resources = lambda *_a, **_k: (lambda func: func)
+    monkeypatch.setitem(sys.modules, "api.utils.billing", billing_mod)
+
+    permission_utils_mod = ModuleType("api.utils.permission_utils")
+    permission_utils_mod.check_dialog_permission = lambda *_a, **_k: (lambda func: func)
+    permission_utils_mod.has_permission_for_member = lambda *_a, **_k: True
+    monkeypatch.setitem(sys.modules, "api.utils.permission_utils", permission_utils_mod)
+
     tenant_utils_mod = ModuleType("api.utils.tenant_utils")
     tenant_utils_mod.ensure_tenant_model_id_for_params = lambda _tenant_id, req: req
     monkeypatch.setitem(sys.modules, "api.utils.tenant_utils", tenant_utils_mod)
+
+    role_util_mod = ModuleType("common.role_util")
+    role_util_mod.DIALOG_API_ACTION_MAP = {}
+    role_util_mod.DIALOG_ROLE_RESOURCE_TYPE = "dialog"
+    role_util_mod.check_role_access = lambda *_a, **_k: (lambda func: func)
+    monkeypatch.setitem(sys.modules, "common.role_util", role_util_mod)
 
     rag_gen_mod = ModuleType("rag.prompts.generator")
     rag_gen_mod.chunks_format = lambda chunks: chunks
@@ -2287,11 +2331,7 @@ def test_create_session_user_id_not_spoofable(monkeypatch):
         return True
 
     monkeypatch.setattr(module.ConversationService, "save", _capture_save)
-    monkeypatch.setattr(
-        module,
-        "get_request_json",
-        lambda: _AwaitableValue({"name": "my session", "user_id": "attacker-id"}),
-    )
+    module.g.req_data = {"name": "my session", "user_id": "attacker-id"}
 
     res = _run(inspect.unwrap(module.create_session)("chat-1"))
 

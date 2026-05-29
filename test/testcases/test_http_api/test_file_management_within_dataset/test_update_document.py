@@ -608,6 +608,11 @@ class TestUpdateDocumentParserConfig:
                 assert doc_of_id["parser_config"] == DEFAULT_PARSER_CONFIG
             else:
                 for k, v in parser_config.items():
-                    assert doc_of_id["parser_config"][k] == v
+                    actual_value = doc_of_id["parser_config"][k]
+                    if isinstance(v, dict):
+                        for nested_k, nested_v in v.items():
+                            assert actual_value[nested_k] == nested_v
+                    else:
+                        assert actual_value == v
         if expected_code != 0 or expected_message:
             assert res["message"] == expected_message

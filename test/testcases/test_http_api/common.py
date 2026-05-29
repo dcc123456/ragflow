@@ -70,7 +70,10 @@ def batch_create_datasets(auth, num):
         res = create_dataset(auth, {"name": f"dataset_{i}"})
         if res.get("code") != 0:
             raise RuntimeError(f"Dataset creation failed: {res.get('message', 'Unknown error')}")
-        dataset_ids.append(res["data"]["id"])
+        data = res.get("data", {})
+        if not data or "id" not in data:
+            raise RuntimeError(f"Dataset creation returned unexpected response: {res}")
+        dataset_ids.append(data["id"])
     return dataset_ids
 
 

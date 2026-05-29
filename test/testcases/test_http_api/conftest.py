@@ -46,8 +46,11 @@ from utils.file_utils import (
 @wait_for(200, 1, "Document parsing timeout")
 def condition(_auth, _dataset_id):
     res = list_documents(_auth, _dataset_id)
-    for doc in res["data"]["docs"]:
-        if doc["run"] != "DONE":
+    if res.get("code") != 0:
+        raise RuntimeError(f"list_documents failed: {res}")
+    docs = res.get("data", {}).get("docs", [])
+    for doc in docs:
+        if doc.get("run") != "DONE":
             return False
     return True
 

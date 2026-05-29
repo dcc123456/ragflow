@@ -33,7 +33,7 @@ def get_urls(use_china_mirrors=False) -> list[Union[str, list[str]]]:
         ]
     else:
         return [
-            "http://archive.ubuntu.com/ubuntu/pool/main/o/openssl/libssl1.1_1.1.1f-1ubuntu2_amd64.deb",
+            "http://security.ubuntu.com/ubuntu/pool/main/o/openssl/libssl1.1_1.1.1f-1ubuntu2_amd64.deb",
             "http://ports.ubuntu.com/pool/main/o/openssl/libssl1.1_1.1.1f-1ubuntu2_arm64.deb",
             "https://repo1.maven.org/maven2/org/apache/tika/tika-server-standard/3.3.0/tika-server-standard-3.3.0.jar",
             "https://repo1.maven.org/maven2/org/apache/tika/tika-server-standard/3.3.0/tika-server-standard-3.3.0.jar.md5",
@@ -63,6 +63,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     urls = get_urls(args.china_mirrors)
+
+    opener = urllib.request.build_opener()
+    opener.addheaders = [("User-Agent", "Mozilla/5.0 (compatible; RAGFlow-deps/1.0)")]
+    urllib.request.install_opener(opener)
 
     for url in urls:
         download_url = url[0] if isinstance(url, list) else url

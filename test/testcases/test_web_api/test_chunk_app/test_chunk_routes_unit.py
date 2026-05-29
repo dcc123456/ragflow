@@ -191,6 +191,10 @@ def _load_chunk_module(monkeypatch):
 
     quart_mod = ModuleType("quart")
     quart_mod.request = SimpleNamespace(args={}, headers={})
+    quart_mod.current_app = SimpleNamespace(config={})
+    quart_mod.has_request_context = lambda: True
+    quart_mod.has_websocket_context = lambda: False
+    quart_mod.websocket = SimpleNamespace(headers={})
     monkeypatch.setitem(sys.modules, "quart", quart_mod)
 
     xxhash_mod = ModuleType("xxhash")
@@ -203,6 +207,7 @@ def _load_chunk_module(monkeypatch):
 
     settings_mod = ModuleType("common.settings")
     settings_mod.retriever = _DummyRetriever()
+    settings_mod.kg_retriever = SimpleNamespace(retrieval=lambda *_args, **_kwargs: None)
     settings_mod.docStoreConn = _DummyDocStore()
     settings_mod.STORAGE_IMPL = _DummyStorage()
     monkeypatch.setitem(sys.modules, "common.settings", settings_mod)
@@ -219,10 +224,18 @@ def _load_chunk_module(monkeypatch):
         TTS = SimpleNamespace(value="tts")
         OCR = SimpleNamespace(value="ocr")
 
+    class _DummyTaskStatus:
+        UNSTART = SimpleNamespace(value="0")
+        RUNNING = SimpleNamespace(value="1")
+        CANCEL = SimpleNamespace(value="2")
+        DONE = SimpleNamespace(value="3")
+        FAIL = SimpleNamespace(value="4")
+
     constants_mod.RetCode = _DummyRetCode
     constants_mod.LLMType = _DummyLLMType
     constants_mod.ParserType = _DummyParserType
     constants_mod.PAGERANK_FLD = "pagerank_flt"
+    constants_mod.TaskStatus = _DummyTaskStatus
     monkeypatch.setitem(sys.modules, "common.constants", constants_mod)
 
     string_utils_mod = ModuleType("common.string_utils")
@@ -232,7 +245,13 @@ def _load_chunk_module(monkeypatch):
 
     metadata_utils_mod = ModuleType("common.metadata_utils")
     metadata_utils_mod.apply_meta_data_filter = lambda *_args, **_kwargs: {}
+    metadata_utils_mod.convert_conditions = lambda condition: condition
+    metadata_utils_mod.meta_filter = lambda *_args, **_kwargs: []
     monkeypatch.setitem(sys.modules, "common.metadata_utils", metadata_utils_mod)
+
+    tag_feature_utils_mod = ModuleType("common.tag_feature_utils")
+    tag_feature_utils_mod.validate_tag_features = lambda *_args, **_kwargs: None
+    monkeypatch.setitem(sys.modules, "common.tag_feature_utils", tag_feature_utils_mod)
 
     misc_utils_mod = ModuleType("common.misc_utils")
 
@@ -292,12 +311,84 @@ def _load_chunk_module(monkeypatch):
     api_utils_mod.validate_request = lambda *_args, **_kwargs: (lambda fn: fn)
     api_utils_mod.add_tenant_id_to_kwargs = lambda func: func
     api_utils_mod.check_duplicate_ids = lambda ids, _kind: (list(dict.fromkeys(ids)), [] if len(ids) == len(set(ids)) else [f"Duplicate {_kind} ids"])
+    api_utils_mod.construct_json_result = lambda data=None, message="", code=0: {"code": code, "message": message, "data": data}
     api_utils_mod.get_request_json = lambda: _AwaitableValue({})
+    api_utils_mod.token_required = lambda func: func
     monkeypatch.setitem(sys.modules, "api.utils.api_utils", api_utils_mod)
 
     image_utils_mod = ModuleType("api.utils.image_utils")
     image_utils_mod.store_chunk_image = lambda *_args, **_kwargs: None
     monkeypatch.setitem(sys.modules, "api.utils.image_utils", image_utils_mod)
+
+    reference_metadata_utils_mod = ModuleType("api.utils.reference_metadata_utils")
+
+    def _enrich_chunks_with_document_metadata(
+        chunks,
+        metadata_fields=None,
+        *,
+        kb_field="kb_id",
+        doc_field="doc_id",
+        output_field="document_metadata",
+    ):
+        for chunk in chunks:
+            kb_id = chunk.get(kb_field)
+            doc_id = chunk.get(doc_field)
+            if not kb_id or not doc_id:
+                continue
+            meta_map = doc_metadata_service_mod.DocMetadataService.get_metadata_for_documents([doc_id], kb_id)
+            meta = meta_map.get(doc_id) if meta_map else None
+            if not meta:
+                continue
+            if metadata_fields is not None:
+                meta = {key: value for key, value in meta.items() if key in metadata_fields}
+            if meta:
+                chunk[output_field] = meta
+
+    reference_metadata_utils_mod.enrich_chunks_with_document_metadata = _enrich_chunks_with_document_metadata
+    reference_metadata_utils_mod.resolve_reference_metadata_preferences = (
+        lambda req, _search_config=None: (
+            bool((req or {}).get("reference_metadata", {}).get("include", False) or (req or {}).get("include_metadata", False)),
+            None
+            if (
+                (req or {}).get("metadata_fields") is None
+                and (req or {}).get("reference_metadata", {}).get("fields") is None
+            )
+            else {
+                field
+                for field in (
+                    (req or {}).get("metadata_fields")
+                    if (req or {}).get("metadata_fields") is not None
+                    else (req or {}).get("reference_metadata", {}).get("fields", [])
+                )
+                if isinstance(field, str)
+            },
+        )
+    )
+    monkeypatch.setitem(sys.modules, "api.utils.reference_metadata_utils", reference_metadata_utils_mod)
+
+    class _DummyFieldExpr:
+        def __init__(self, name):
+            self.name = name
+
+        def __eq__(self, _other):
+            return self
+
+        def __ne__(self, _other):
+            return self
+
+        def __or__(self, _other):
+            return self
+
+        def __and__(self, _other):
+            return self
+
+        def is_null(self, *_args, **_kwargs):
+            return self
+
+    db_models_mod = ModuleType("api.db.db_models")
+    db_models_mod.Document = SimpleNamespace(id=_DummyFieldExpr("id"), run=_DummyFieldExpr("run"))
+    db_models_mod.Task = SimpleNamespace(doc_id=_DummyFieldExpr("doc_id"))
+    monkeypatch.setitem(sys.modules, "api.db.db_models", db_models_mod)
 
     services_pkg = ModuleType("api.db.services")
     services_pkg.__path__ = []
@@ -340,12 +431,24 @@ def _load_chunk_module(monkeypatch):
             return None
 
         @staticmethod
+        def filter_update(*_args, **_kwargs):
+            return 1
+
+        @staticmethod
         def get_embd_id(_doc_id):
             return "embed-1"
 
         @staticmethod
         def get_tenant_embd_id(_doc_id):
             return 1
+
+        @staticmethod
+        def update_by_id(*_args, **_kwargs):
+            return True
+
+        @staticmethod
+        def run(*_args, **_kwargs):
+            return None
 
         @staticmethod
         def decrement_chunk_num(*args):
@@ -359,8 +462,22 @@ def _load_chunk_module(monkeypatch):
     monkeypatch.setitem(sys.modules, "api.db.services.document_service", document_service_mod)
     services_pkg.document_service = document_service_mod
 
+    file2document_service_mod = ModuleType("api.db.services.file2document_service")
+    file2document_service_mod.File2DocumentService = SimpleNamespace(
+        get_storage_address=lambda **_kwargs: ("bucket", "name")
+    )
+    monkeypatch.setitem(sys.modules, "api.db.services.file2document_service", file2document_service_mod)
+    services_pkg.file2document_service = file2document_service_mod
+
     doc_metadata_service_mod = ModuleType("api.db.services.doc_metadata_service")
-    doc_metadata_service_mod.DocMetadataService = type("DocMetadataService", (), {})
+    doc_metadata_service_mod.DocMetadataService = type(
+        "DocMetadataService",
+        (),
+        {
+            "get_flatted_meta_by_kbs": staticmethod(lambda *_args, **_kwargs: []),
+            "get_metadata_for_documents": staticmethod(lambda *_args, **_kwargs: {}),
+        },
+    )
     monkeypatch.setitem(sys.modules, "api.db.services.doc_metadata_service", doc_metadata_service_mod)
     services_pkg.doc_metadata_service = doc_metadata_service_mod
 
@@ -378,6 +495,14 @@ def _load_chunk_module(monkeypatch):
         @staticmethod
         def get_by_id(_kb_id):
             return True, SimpleNamespace(pagerank=0.6, tenant_id="tenant-1", tenant_embd_id=2, tenant_llm_id=1)
+
+        @staticmethod
+        def get_by_ids(kb_ids):
+            return [SimpleNamespace(id=kb_id, embd_id="embed", tenant_id="tenant-1") for kb_id in kb_ids]
+
+        @staticmethod
+        def list_documents_by_ids(doc_ids):
+            return list(doc_ids)
 
     kb_service_mod.KnowledgebaseService = _KnowledgebaseService
     monkeypatch.setitem(sys.modules, "api.db.services.knowledgebase_service", kb_service_mod)
@@ -478,6 +603,15 @@ def _load_chunk_module(monkeypatch):
     tenant_llm_service_mod.TenantService = _TenantService
     monkeypatch.setitem(sys.modules, "api.db.services.tenant_llm_service", tenant_llm_service_mod)
     services_pkg.tenant_llm_service = tenant_llm_service_mod
+
+    task_service_mod = ModuleType("api.db.services.task_service")
+    task_service_mod.TaskService = SimpleNamespace(
+        filter_delete=lambda *_args, **_kwargs: None,
+    )
+    task_service_mod.cancel_all_task_of = lambda *_args, **_kwargs: None
+    task_service_mod.queue_tasks = lambda *_args, **_kwargs: None
+    monkeypatch.setitem(sys.modules, "api.db.services.task_service", task_service_mod)
+    services_pkg.task_service = task_service_mod
 
     user_service_mod = ModuleType("api.db.services.user_service")
 

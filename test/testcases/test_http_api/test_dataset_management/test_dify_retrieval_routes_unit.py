@@ -151,7 +151,7 @@ def _load_dify_retrieval_module(monkeypatch):
     monkeypatch.setitem(sys.modules, "api.db.services", api_db_services_pkg)
 
     document_service_mod = ModuleType("api.db.services.document_service")
-    document_service_mod.DocumentService = SimpleNamespace(get_by_id=lambda *_args, **_kwargs: (False, None))
+    document_service_mod.DocumentService = SimpleNamespace(get_by_id=lambda *_args, **_kwargs: (False, None), get_by_ids=lambda *_args, **_kwargs: [])
     monkeypatch.setitem(sys.modules, "api.db.services.document_service", document_service_mod)
     api_db_services_pkg.document_service = document_service_mod
 
@@ -161,7 +161,10 @@ def _load_dify_retrieval_module(monkeypatch):
     api_db_services_pkg.doc_metadata_service = doc_metadata_service_mod
 
     knowledgebase_service_mod = ModuleType("api.db.services.knowledgebase_service")
-    knowledgebase_service_mod.KnowledgebaseService = SimpleNamespace(get_by_id=lambda *_args, **_kwargs: (False, None))
+    knowledgebase_service_mod.KnowledgebaseService = SimpleNamespace(
+        get_by_id=lambda *_args, **_kwargs: (False, None),
+        accessible=lambda *_args, **_kwargs: True,
+    )
     monkeypatch.setitem(sys.modules, "api.db.services.knowledgebase_service", knowledgebase_service_mod)
     api_db_services_pkg.knowledgebase_service = knowledgebase_service_mod
 
@@ -378,8 +381,8 @@ def test_retrieval_success_with_metadata_and_kg(monkeypatch):
     monkeypatch.setattr(module.settings, "kg_retriever", _DummyKgRetriever())
     monkeypatch.setattr(
         module.DocumentService,
-        "get_by_id",
-        lambda doc_id: (True, SimpleNamespace(meta_fields={"origin": f"meta-{doc_id}"})),
+        "get_by_ids",
+        lambda doc_ids: [SimpleNamespace(id=doc_id, meta_fields={"origin": f"meta-{doc_id}"}) for doc_id in doc_ids],
     )
     monkeypatch.setattr(module, "label_question", lambda *_args, **_kwargs: [])
 

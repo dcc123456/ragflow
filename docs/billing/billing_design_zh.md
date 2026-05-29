@@ -332,7 +332,7 @@ docker compose -f docker/docker-compose.yml up -d --build
 2. 安装测试依赖并激活虚拟环境：
 
 ```bash
-uv sync --python 3.12 --all-extras --group test
+uv sync --python 3.13 --all-extras --group test
 source .venv/bin/activate
 ```
 

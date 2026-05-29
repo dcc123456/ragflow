@@ -18,16 +18,28 @@
 from time import sleep
 
 import pytest
-from common import add_chunk, batch_add_chunks, delete_all_chunks
+from common import add_chunk, batch_add_chunks, delete_all_chunks, list_documents
+from utils import wait_for
+
+
+@wait_for(200, 1, "Document upload visibility timeout")
+def condition(_auth, _dataset_id, _document_id):
+    res = list_documents(_auth, _dataset_id)
+    if res.get("code") != 0:
+        raise RuntimeError(f"list_documents failed: {res}")
+    docs = res.get("data", {}).get("docs", [])
+    return any(str(doc.get("id")) == str(_document_id) for doc in docs)
 
 
 def _add_baseline_chunk(auth, dataset_id, document_id):
-    add_chunk(auth, dataset_id, document_id, {"content": "ragflow test upload"})
-
+    res = add_chunk(auth, dataset_id, document_id, {"content": "ragflow test upload"})
+    if res.get("code") != 0:
+        raise RuntimeError(f"add_chunk failed: {res}")
 
 @pytest.fixture(scope="class")
 def add_chunks(HttpApiAuth, add_document):
     dataset_id, document_id = add_document
+    condition(HttpApiAuth, dataset_id, document_id)
     _add_baseline_chunk(HttpApiAuth, dataset_id, document_id)
     chunk_ids = batch_add_chunks(HttpApiAuth, dataset_id, document_id, 4)
     sleep(1)  # issues/6487
@@ -42,6 +54,7 @@ def add_chunks_func(request, HttpApiAuth, add_document):
     request.addfinalizer(cleanup)
 
     dataset_id, document_id = add_document
+    condition(HttpApiAuth, dataset_id, document_id)
     _add_baseline_chunk(HttpApiAuth, dataset_id, document_id)
     chunk_ids = batch_add_chunks(HttpApiAuth, dataset_id, document_id, 4)
     # issues/6487
