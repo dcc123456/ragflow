@@ -50,6 +50,7 @@ func NewRouter(
 	documentHandler *handler.DocumentHandler,
 	datasetsHandler *handler.DatasetsHandler,
 	systemHandler *handler.SystemHandler,
+	knowledgebaseHandler *handler.KnowledgebaseHandler,
 	chunkHandler *handler.ChunkHandler,
 	llmHandler *handler.LLMHandler,
 	chatHandler *handler.ChatHandler,
@@ -62,22 +63,23 @@ func NewRouter(
 	providerHandler *handler.ProviderHandler,
 ) *Router {
 	return &Router{
-		authHandler:        authHandler,
-		userHandler:        userHandler,
-		tenantHandler:      tenantHandler,
-		documentHandler:    documentHandler,
-		datasetsHandler:    datasetsHandler,
-		systemHandler:      systemHandler,
-		chunkHandler:       chunkHandler,
-		llmHandler:         llmHandler,
-		chatHandler:        chatHandler,
-		chatSessionHandler: chatSessionHandler,
-		connectorHandler:   connectorHandler,
-		searchHandler:      searchHandler,
-		fileHandler:        fileHandler,
-		memoryHandler:      memoryHandler,
-		skillSearchHandler: skillSearchHandler,
-		providerHandler:    providerHandler,
+		authHandler:          authHandler,
+		userHandler:          userHandler,
+		tenantHandler:        tenantHandler,
+		documentHandler:      documentHandler,
+		datasetsHandler:      datasetsHandler,
+		systemHandler:        systemHandler,
+		knowledgebaseHandler: knowledgebaseHandler,
+		chunkHandler:         chunkHandler,
+		llmHandler:           llmHandler,
+		chatHandler:          chatHandler,
+		chatSessionHandler:   chatSessionHandler,
+		connectorHandler:     connectorHandler,
+		searchHandler:        searchHandler,
+		fileHandler:          fileHandler,
+		memoryHandler:        memoryHandler,
+		skillSearchHandler:   skillSearchHandler,
+		providerHandler:      providerHandler,
 	}
 }
 
@@ -163,7 +165,6 @@ func (r *Router) Setup(engine *gin.Engine) {
 				documents.GET("/:id", r.documentHandler.GetDocumentByID)
 				documents.PUT("/:id", r.documentHandler.UpdateDocument)
 				documents.DELETE("/:id", r.documentHandler.DeleteDocument)
-				documents.POST("/parse", r.documentHandler.ParseDocuments)
 			}
 
 			// Chat routes
@@ -180,13 +181,20 @@ func (r *Router) Setup(engine *gin.Engine) {
 				datasets.GET("", r.datasetsHandler.ListDatasets)
 				datasets.GET("/:dataset_id", r.datasetsHandler.GetDataset)
 				datasets.GET("/:dataset_id/graph", r.datasetsHandler.GetKnowledgeGraph)
+				datasets.DELETE("/:dataset_id/tags", r.datasetsHandler.RemoveTags)
 				datasets.DELETE("/:dataset_id/graph", r.datasetsHandler.DeleteKnowledgeGraph)
 				datasets.POST("", r.datasetsHandler.CreateDataset)
 				datasets.DELETE("", r.datasetsHandler.DeleteDatasets)
 				datasets.POST("/search", r.chunkHandler.RetrievalTest)
+				datasets.GET("/metadata/flattened", r.datasetsHandler.ListMetadataFlattened)
 
 				// Dataset documents
 				datasets.GET("/:dataset_id/documents", r.documentHandler.ListDocuments)
+
+				// Dataset document chunk
+				datasets.GET("/:dataset_id/documents/:document_id/chunks/:chunk_id", r.chunkHandler.Get)
+				datasets.POST("/:dataset_id/documents/parse", r.documentHandler.ParseDocuments)
+				datasets.DELETE("/:dataset_id/documents/:document_id/chunks", r.chunkHandler.RemoveChunks)
 			}
 
 			// Search routes
@@ -326,7 +334,7 @@ func (r *Router) Setup(engine *gin.Engine) {
 		}
 
 		// Knowledge base routes
-		kb := authorized.Group("/v1/kb")
+		kb := v1.Group("/kb")
 		{
 			kb.POST("/update", r.knowledgebaseHandler.UpdateKB)
 			kb.POST("/update_metadata_setting", r.knowledgebaseHandler.UpdateMetadataSetting)
@@ -334,15 +342,11 @@ func (r *Router) Setup(engine *gin.Engine) {
 			kb.GET("/tags", r.knowledgebaseHandler.ListTagsFromKbs)
 			kb.GET("/get_meta", r.knowledgebaseHandler.GetMeta)
 			kb.GET("/basic_info", r.knowledgebaseHandler.GetBasicInfo)
-			kb.POST("/doc_engine_table", r.knowledgebaseHandler.CreateDatasetInDocEngine)   // Internal API only for GO
-			kb.DELETE("/doc_engine_table", r.knowledgebaseHandler.DeleteDatasetInDocEngine) // Internal API only for GO
-			kb.POST("/insert_from_file", r.knowledgebaseHandler.InsertDatasetFromFile)      // Internal API only for GO
 
 			// KB ID specific routes
 			kbByID := kb.Group("/:kb_id")
 			{
 				kbByID.GET("/tags", r.knowledgebaseHandler.ListTags)
-				kbByID.POST("/rm_tags", r.knowledgebaseHandler.RemoveTags)
 				kbByID.POST("/rename_tag", r.knowledgebaseHandler.RenameTag)
 				kbByID.GET("/knowledge_graph", r.knowledgebaseHandler.KnowledgeGraph)
 				kbByID.DELETE("/knowledge_graph", r.knowledgebaseHandler.DeleteKnowledgeGraph)
@@ -350,29 +354,30 @@ func (r *Router) Setup(engine *gin.Engine) {
 		}
 
 		// Tenant routes (per-tenant resources)
-		tenant := authorized.Group("/v1/tenant")
+		tenant := v1.Group("/tenant")
 		{
-			tenant.POST("/doc_engine_metadata_table", r.tenantHandler.CreateMetadataInDocEngine)   // Internal API only for GO
-			tenant.DELETE("/doc_engine_metadata_table", r.tenantHandler.DeleteMetadataInDocEngine) // Internal API only for GO
+			tenant.POST("/chunk_store", r.tenantHandler.CreateChunkStore)        // Internal API only for GO
+			tenant.DELETE("/chunk_store", r.tenantHandler.DeleteChunkStore)     // Internal API only for GO
+			tenant.POST("/metadata_store", r.tenantHandler.CreateMetadataStore)      // Internal API only for GO
+			tenant.DELETE("/metadata_store", r.tenantHandler.DeleteMetadataStore)  // Internal API only for GO
+			tenant.POST("/insert_chunks_from_file", r.tenantHandler.InsertChunksFromFile)   // Internal API only for GO
 			tenant.POST("/insert_metadata_from_file", r.tenantHandler.InsertMetadataFromFile)      // Internal API only for GO
 		}
 
 		// Document routes
-		doc := authorized.Group("/v1/document")
+		doc := v1.Group("/document")
 		{
 			doc.POST("/list", r.documentHandler.ListDocuments)
 			doc.POST("/metadata/summary", r.documentHandler.MetadataSummary)
 			doc.POST("/set_meta", r.documentHandler.SetMeta)
+			doc.POST("/delete_meta", r.documentHandler.DeleteMeta) // Internal API only for GO
 		}
 
 		// Chunk routes
-		chunk := authorized.Group("/v1/chunk")
+		chunk := v1.Group("/chunk")
 		{
-			chunk.POST("/retrieval_test", r.chunkHandler.RetrievalTest)
-			chunk.GET("/get", r.chunkHandler.Get)
 			chunk.POST("/list", r.chunkHandler.List)
 			chunk.POST("/update", r.chunkHandler.UpdateChunk) // Internal API only for GO
-			chunk.POST("/rm", r.chunkHandler.Remove)
 		}
 
 		// LLM routes

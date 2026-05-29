@@ -155,11 +155,30 @@ def _load_doc_module(monkeypatch):
     common_pkg.__path__ = [str(repo_root / "common")]
     monkeypatch.setitem(sys.modules, "common", common_pkg)
 
+    apps_mod = ModuleType("api.apps")
+    apps_mod.login_required = lambda func: func
+    monkeypatch.setitem(sys.modules, "api.apps", apps_mod)
+
     common_settings_mod = ModuleType("common.settings")
     common_settings_mod.retriever = SimpleNamespace()
     common_settings_mod.kg_retriever = SimpleNamespace()
     common_settings_mod.STORAGE_IMPL = SimpleNamespace(get=lambda *_args, **_kwargs: b"", rm=lambda *_args, **_kwargs: None)
     monkeypatch.setitem(sys.modules, "common.settings", common_settings_mod)
+
+    common_misc_utils_mod = ModuleType("common.misc_utils")
+    async def _thread_pool_exec(func, *args, **kwargs):
+        return func(*args, **kwargs)
+    common_misc_utils_mod.thread_pool_exec = _thread_pool_exec
+    monkeypatch.setitem(sys.modules, "common.misc_utils", common_misc_utils_mod)
+
+    common_string_utils_mod = ModuleType("common.string_utils")
+    common_string_utils_mod.is_content_empty = lambda content: content is None or not str(content).strip()
+    common_string_utils_mod.remove_redundant_spaces = lambda text: " ".join(str(text).split())
+    monkeypatch.setitem(sys.modules, "common.string_utils", common_string_utils_mod)
+
+    tag_feature_utils_mod = ModuleType("common.tag_feature_utils")
+    tag_feature_utils_mod.validate_tag_features = lambda value: value
+    monkeypatch.setitem(sys.modules, "common.tag_feature_utils", tag_feature_utils_mod)
 
     class _FakeExpr:
         def __or__(self, other):
@@ -238,6 +257,7 @@ def _load_doc_module(monkeypatch):
     monkeypatch.setitem(sys.modules, "api.db.services.task_service", task_service_mod)
 
     api_utils_mod = ModuleType("api.utils.api_utils")
+    api_utils_mod.add_tenant_id_to_kwargs = lambda func: func
     api_utils_mod.check_duplicate_ids = lambda ids, _kind="item": (ids, [])
     api_utils_mod.construct_json_result = lambda code=0, message="success", data=None: {"code": code, "message": message, "data": data}
     api_utils_mod.get_error_data_result = lambda message="Sorry! Data missing!", code=102: {"code": code, "message": message}
@@ -490,7 +510,7 @@ def _load_doc_module(monkeypatch):
     tenant_model_service_mod.get_tenant_default_model_by_type = _get_tenant_default_model_by_type
     monkeypatch.setitem(sys.modules, "api.db.joint_services.tenant_model_service", tenant_model_service_mod)
 
-    module_path = repo_root / "api" / "apps" / "sdk" / "doc.py"
+    module_path = repo_root / "api" / "apps" / "restful_apis" / "chunk_api.py"
     spec = importlib.util.spec_from_file_location("test_doc_sdk_routes_unit", module_path)
     module = importlib.util.module_from_spec(spec)
     module.manager = _DummyManager()

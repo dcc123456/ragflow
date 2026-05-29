@@ -51,6 +51,7 @@ from common.string_utils import remove_redundant_spaces
 from common.time_utils import current_timestamp
 from common.constants import StatusEnum, LLMType
 from common.evaluation_metrics import EvaluationRunStatus, DEFAULT_EVALUATION_METRICS
+from common.token_utils import num_tokens_from_string
 
 
 class EvaluationService(CommonService):

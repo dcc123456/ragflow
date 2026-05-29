@@ -16,6 +16,7 @@
 
 import asyncio
 import logging
+from typing import Set
 
 from api.db import UserTenantRole
 from api.db.db_models import UserTenant
@@ -31,10 +32,14 @@ from api.utils.api_utils import (
 )
 from api.utils.billing import check_resources
 from api.utils.web_utils import send_invite_email
+from common import settings
 from common.constants import RetCode, StatusEnum
 from common.misc_utils import get_uuid
 from common.time_utils import delta_seconds
 from api.apps import login_required, current_user
+
+# Keeps strong references to fire-and-forget tasks so they are not GC'd before completion.
+_background_tasks: Set[asyncio.Task] = set()
 
 
 @manager.route("/tenants/<tenant_id>/users", methods=["GET"])  # noqa: F821
@@ -98,15 +103,27 @@ async def create(tenant_id):
         _, user = UserService.get_by_id(current_user.id)
         if user:
             user_name = user.nickname
-        mail_config = SystemSettingsService.get_smtp_config()
-        asyncio.create_task(
+
+        def _on_invite_email_done(done_task: asyncio.Task) -> None:
+            _background_tasks.discard(done_task)
+            try:
+                done_task.result()
+            except asyncio.CancelledError:
+                logging.warning("Invite email task cancelled: tenant_id=%s to=%s", tenant_id, invite_user_email)
+            except Exception:
+                logging.exception("Invite email task failed: tenant_id=%s to=%s", tenant_id, invite_user_email)
+
+        task = asyncio.create_task(
             send_invite_email(
                 to_email=invite_user_email,
-                invite_url=mail_config["mail_frontend_url"],
+                invite_url=settings.MAIL_FRONTEND_URL,
                 tenant_id=tenant_id,
                 inviter=user_name or current_user.email,
             )
         )
+        if isinstance(task, asyncio.Task):
+            _background_tasks.add(task)
+            task.add_done_callback(_on_invite_email_done)
     except Exception as exc:
         logging.exception(f"Failed to send invite email to {invite_user_email}: {exc}")
         return get_json_result(

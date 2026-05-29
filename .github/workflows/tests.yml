@@ -249,6 +249,8 @@ jobs:
       - name: Start ragflow:nightly for Elasticsearch
         run: |
           sed -i 's/^DOC_ENGINE=.*$/DOC_ENGINE=elasticsearch/' docker/.env
+          sudo docker compose -f docker/docker-compose.yml -p ${GITHUB_RUN_ID} down -v || true
+          sudo docker ps -a --filter "label=com.docker.compose.project=${GITHUB_RUN_ID}" -q | xargs -r sudo docker rm -f
           sudo docker compose -f docker/docker-compose.yml -p ${GITHUB_RUN_ID} up -d
 
       # - name: Run sdk tests against Elasticsearch
@@ -380,6 +382,11 @@ jobs:
             echo "Waiting for service to be available... (last exit code: $?)"
             sleep 5
           done
+          if [ "$svc_ready" -ne 1 ]; then
+            echo "Service did not become ready after 5 minutes. Docker logs:"
+            sudo docker logs ${RAGFLOW_CONTAINER}
+            exit 1
+          fi
 
           admin_ready=0
           for i in $(seq 1 30); do

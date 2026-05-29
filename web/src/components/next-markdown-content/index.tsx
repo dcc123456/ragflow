@@ -7,7 +7,7 @@ import { downloadFileFromBlob } from '@/utils/file-util';
 import request from '@/utils/request';
 import DOMPurify from 'dompurify';
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
-import Markdown from 'react-markdown';
+import Markdown, { defaultUrlTransform } from 'react-markdown';
 import SyntaxHighlighter from 'react-syntax-highlighter';
 import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
@@ -359,6 +359,15 @@ function MarkdownContent({
       <Markdown
         rehypePlugins={[rehypeWrapReference, rehypeKatex, rehypeRaw]}
         remarkPlugins={MarkdownRemarkPlugins}
+        urlTransform={(url, key) => {
+          if (
+            key === 'src' &&
+            /^data:image\/(png|jpe?g|gif|webp|svg\+xml);base64,/.test(url)
+          ) {
+            return url;
+          }
+          return defaultUrlTransform(url);
+        }}
         components={
           {
             p: ({ children, ...props }: any) => <p {...props}>{children}</p>,

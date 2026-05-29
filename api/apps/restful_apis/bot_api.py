@@ -54,6 +54,13 @@ from api.utils.reference_metadata_utils import (
 logger = logging.getLogger(__name__)
 
 
+def _get_sdk_authorization_token():
+    token = request.headers.get("Authorization", "").split()
+    if len(token) != 2:
+        return None
+    return token[1]
+
+
 @token_required
 async def create_agent_session(tenant_id, agent_id):
     req = await get_request_json()
@@ -148,11 +155,9 @@ async def delete_agent_session(tenant_id, agent_id):
 @manager.route("/chatbots/<dialog_id>/completions", methods=["POST"])  # noqa: F821
 async def chatbot_completions(dialog_id):
     req = await get_request_json()
-
     token = _extract_auth_token(request.headers.get("Authorization", ""))
     if not token:
         return get_error_data_result(message='Authorization is not valid!')
-    token = token[1]
     objs = await thread_pool_exec(APIToken.query, beta=token)
     if not objs:
         return get_error_data_result(message='Authentication error: API key is invalid!"')
@@ -219,12 +224,12 @@ async def chatbot_completions(dialog_id):
 
     return None
 
+
 @manager.route("/chatbots/<dialog_id>/info", methods=["GET"])  # noqa: F821
 async def chatbots_inputs(dialog_id):
     token = _extract_auth_token(request.headers.get("Authorization", ""))
     if not token:
         return get_error_data_result(message='Authorization is not valid!')
-    token = token[1]
     objs = await thread_pool_exec(APIToken.query, beta=token)
     if not objs:
         return get_error_data_result(message='Authentication error: API key is invalid!"')
@@ -262,7 +267,6 @@ async def agent_bot_completions(agent_id):
     token = _extract_auth_token(request.headers.get("Authorization", ""))
     if not token:
         return get_error_data_result(message='Authorization is not valid!')
-    token = token[1]
     objs = await thread_pool_exec(APIToken.query, beta=token)
     if not objs:
         return get_error_data_result(message='Authentication error: API key is invalid!"')
@@ -348,7 +352,6 @@ async def begin_inputs(agent_id):
     token = _extract_auth_token(request.headers.get("Authorization", ""))
     if not token:
         return get_error_data_result(message='Authorization is not valid!')
-    token = token[1]
     objs = await thread_pool_exec(APIToken.query, beta=token)
     if not objs:
         return get_error_data_result(message='Authentication error: API key is invalid!"')
@@ -369,7 +372,6 @@ async def ask_about_embedded():
     token = _extract_auth_token(request.headers.get("Authorization", ""))
     if not token:
         return get_error_data_result(message='Authorization is not valid!')
-    token = token[1]
     objs = await thread_pool_exec(APIToken.query, beta=token)
     if not objs:
         return get_error_data_result(message='Authentication error: API key is invalid!"')
@@ -411,7 +413,6 @@ async def retrieval_test_embedded():
     token = _extract_auth_token(request.headers.get("Authorization", ""))
     if not token:
         return get_error_data_result(message='Authorization is not valid!')
-    token = token[1]
     objs = await thread_pool_exec(APIToken.query, beta=token)
     if not objs:
         return get_error_data_result(message='Authentication error: API key is invalid!"')
@@ -559,7 +560,7 @@ async def retrieval_test_embedded():
     try:
         return await _retrieval()
     except Exception as e:
-        if str(e).find("not_found") > 0:
+        if "not_found" in str(e):
             return get_json_result(data=False, message="No chunk found! Check the chunk status please!",
                                    code=RetCode.DATA_ERROR)
         return server_error_response(e)
@@ -571,7 +572,6 @@ async def related_questions_embedded():
     token = _extract_auth_token(request.headers.get("Authorization", ""))
     if not token:
         return get_error_data_result(message='Authorization is not valid!')
-    token = token[1]
     objs = await thread_pool_exec(APIToken.query, beta=token)
     if not objs:
         return get_error_data_result(message='Authentication error: API key is invalid!"')
@@ -619,7 +619,6 @@ async def detail_share_embedded():
     token = _extract_auth_token(request.headers.get("Authorization", ""))
     if not token:
         return get_error_data_result(message='Authorization is not valid!')
-    token = token[1]
     objs = await thread_pool_exec(APIToken.query, beta=token)
     if not objs:
         return get_error_data_result(message='Authentication error: API key is invalid!"')
@@ -651,7 +650,6 @@ async def mindmap():
     token = _extract_auth_token(request.headers.get("Authorization", ""))
     if not token:
         return get_error_data_result(message='Authorization is not valid!')
-    token = token[1]
     objs = await thread_pool_exec(APIToken.query, beta=token)
     if not objs:
         return get_error_data_result(message='Authentication error: API key is invalid!"')
