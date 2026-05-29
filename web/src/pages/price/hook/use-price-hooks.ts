@@ -1,6 +1,9 @@
 import message from '@/components/ui/message';
 import { Modal } from '@/components/ui/modal/modal';
-import { useFetchTenantData } from '@/hooks/use-user-setting-request';
+import {
+  useFetchTenantData,
+  useFetchUserInfo,
+} from '@/hooks/use-user-setting-request';
 import { BillingQueryKey } from '@/pages/billing/constants/query-keys';
 import type { SessionData } from '@/pages/billing/hook/use-payment-status-request';
 import { isBillingEnabled } from '@/services/billingStatus';
@@ -10,7 +13,6 @@ import billingService, {
   postBillingStorageSetTarget,
 } from '@/services/price';
 import storagePrivate from '@/utils/authorization-private-util';
-import storage from '@/utils/authorization-util';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import React, { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -498,7 +500,7 @@ export const useHandleTrialUpgradeSetupRetry = (status: string | null) => {
 };
 
 const useFetchCurrentPlan = (force = false) => {
-  const user = storage.getUserInfo();
+  const { data: user } = useFetchUserInfo();
   const { data, isFetching: loading } = useQuery<ICurrentPlan>({
     queryKey: [BillingQueryKey.CurrentPlan],
     // initialData: {},

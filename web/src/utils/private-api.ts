@@ -69,7 +69,7 @@ export default {
 
   // tickets
   ticketGroups: `${webAPI}/ticket/groups`,
-  tickets: `${webAPI}/ticket`,
+  tickets: `${webAPI}/ticket/`,
   ticketDetail: (id: number) => `${webAPI}/ticket/${id}`,
   ticketArticles: (id: number) => `${webAPI}/ticket/${id}/articles`,
   ticketClose: (id: number) => `${webAPI}/ticket/${id}/close`,
