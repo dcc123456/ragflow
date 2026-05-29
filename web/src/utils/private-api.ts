@@ -68,15 +68,15 @@ export default {
   heartBeat: `${restAPIv1}/heartbeat`,
 
   // tickets
-  ticketGroups: `${restAPIv1}/ticket/groups`,
-  tickets: `${restAPIv1}/ticket/`,
-  ticketDetail: (id: number) => `${restAPIv1}/ticket/${id}`,
-  ticketArticles: (id: number) => `${restAPIv1}/ticket/${id}/articles`,
-  ticketClose: (id: number) => `${restAPIv1}/ticket/${id}/close`,
+  ticketGroups: `${webAPI}/ticket/groups`,
+  tickets: `${webAPI}/ticket`,
+  ticketDetail: (id: number) => `${webAPI}/ticket/${id}`,
+  ticketArticles: (id: number) => `${webAPI}/ticket/${id}/articles`,
+  ticketClose: (id: number) => `${webAPI}/ticket/${id}/close`,
   ticketAttachment: (
     ticketId: number,
     articleId: number,
     attachmentId: number,
   ) =>
-    `${restAPIv1}/ticket/${ticketId}/articles/${articleId}/attachments/${attachmentId}`,
+    `${webAPI}/ticket/${ticketId}/articles/${articleId}/attachments/${attachmentId}`,
 };
