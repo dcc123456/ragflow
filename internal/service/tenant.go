@@ -18,6 +18,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"ragflow/internal/common"
 	"ragflow/internal/dao"
@@ -685,7 +686,18 @@ type AddedModelItem struct {
 
 // ListTenantAddedModels lists all added models for a tenant
 // This implements the Python models_api_service.list_tenant_added_models function
-func (s *TenantService) ListTenantAddedModels(tenantID string, modelTypeFilter string) ([]AddedModelItem, error) {
+func (s *TenantService) ListTenantAddedModels(userID string, modelTypeFilter string) ([]AddedModelItem, error) {
+
+	tenants, err := s.userTenantDAO.GetByUserIDAndRole(userID, "owner")
+	if err != nil {
+		return nil, err
+	}
+
+	if len(tenants) == 0 {
+		return nil, errors.New("user has no tenants")
+	}
+
+	tenantID := tenants[0].TenantID
 	// Step 1: Verify tenant exists
 	tenant, err := s.tenantDAO.GetByID(tenantID)
 	if err != nil {
@@ -701,7 +713,7 @@ func (s *TenantService) ListTenantAddedModels(tenantID string, modelTypeFilter s
 	}
 
 	// Step 3: Get all providers for tenant
-	providers, err := s.modelProviderDAO.GetByTenantID(tenantID)
+	providers, err := s.modelProviderDAO.ListByID(tenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -717,7 +729,7 @@ func (s *TenantService) ListTenantAddedModels(tenantID string, modelTypeFilter s
 		providerInfoMap[p.ID] = p
 	}
 
-	instances, err := s.modelInstanceDAO.GetByProviderIDs(providerIDs)
+	instances, err := s.modelInstanceDAO.GetAllInstancesByProviderIDs(providerIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -743,7 +755,7 @@ func (s *TenantService) ListTenantAddedModels(tenantID string, modelTypeFilter s
 		instanceInfoMap[inst.ID] = inst
 	}
 
-	modelRecords, err := s.modelDAO.GetModelsByProviderIDsAndInstanceIDs(providerIDs, instanceIDs)
+	modelRecords, err := s.modelDAO.GetModelsByInstanceIDs(instanceIDs)
 	if err != nil {
 		return nil, err
 	}

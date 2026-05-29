@@ -131,14 +131,14 @@ func (m *ModelProviderService) ListProvidersOfTenant(userID string) ([]map[strin
 
 	tenantID := tenants[0].TenantID
 
-	providerNames, err := m.modelProviderDAO.ListByID(tenantID)
+	providers, err := m.modelProviderDAO.ListByID(tenantID)
 	if err != nil {
 		return nil, common.CodeServerError, err
 	}
 
 	var result []map[string]interface{}
-	for _, providerName := range providerNames {
-		provider, err := dao.GetModelProviderManager().GetProviderByName(providerName)
+	for _, p := range providers {
+		provider, err := dao.GetModelProviderManager().GetProviderByName(p.ProviderName)
 		if err != nil {
 			return nil, common.CodeServerError, err
 		}
@@ -295,7 +295,7 @@ func (m *ModelProviderService) ListProviderInstances(providerName, userID string
 	}
 
 	// Check if provider exists
-	instances, err := m.modelInstanceDAO.GetAllInstancesByProviderID(provider.ID)
+	instances, err := m.modelInstanceDAO.GetAllInstancesByProviderIDs([]string{provider.ID})
 	if err != nil {
 		return nil, common.CodeServerError, err
 	}
@@ -720,7 +720,7 @@ func (m *ModelProviderService) ListInstanceModels(providerName, instanceName, us
 	}
 
 	// Get all models for this instance
-	disabledModels, err := m.modelDAO.GetModelsByInstanceID(instance.ID)
+	disabledModels, err := m.modelDAO.GetModelsByInstanceIDs([]string{instance.ID})
 	if err != nil {
 		return nil, err
 	}

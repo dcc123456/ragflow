@@ -32,15 +32,6 @@ func (dao *TenantModelInstanceDAO) Create(instance *entity.TenantModelInstance) 
 	return DB.Create(instance).Error
 }
 
-func (dao *TenantModelInstanceDAO) GetAllInstancesByProviderID(providerID string) ([]*entity.TenantModelInstance, error) {
-	var instances []*entity.TenantModelInstance
-	err := DB.Where("provider_id = ?", providerID).Find(&instances).Error
-	if err != nil {
-		return nil, err
-	}
-	return instances, nil
-}
-
 func (dao *TenantModelInstanceDAO) GetByProviderIDAndInstanceName(providerID, instanceName string) (*entity.TenantModelInstance, error) {
 	var instance entity.TenantModelInstance
 	err := DB.Where("provider_id = ? AND instance_name = ?", providerID, instanceName).First(&instance).Error
@@ -65,8 +56,8 @@ func (dao *TenantModelInstanceDAO) DeleteByProviderIDAndInstanceName(providerID,
 	return result.RowsAffected, result.Error
 }
 
-// GetByProviderIDs get all instances by provider IDs
-func (dao *TenantModelInstanceDAO) GetByProviderIDs(providerIDs []string) ([]*entity.TenantModelInstance, error) {
+// GetAllInstancesByProviderIDs get all instances by provider IDs
+func (dao *TenantModelInstanceDAO) GetAllInstancesByProviderIDs(providerIDs []string) ([]*entity.TenantModelInstance, error) {
 	var instances []*entity.TenantModelInstance
 	err := DB.Where("provider_id IN ?", providerIDs).Find(&instances).Error
 	if err != nil {

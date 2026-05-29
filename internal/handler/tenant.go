@@ -136,30 +136,10 @@ func (h *TenantHandler) GetAddedModels(c *gin.Context) {
 		return
 	}
 
-	// Get tenant ID for the user
-	tenantInfos, err := h.tenantService.GetTenantInfo(user.ID)
-	if err != nil {
-		c.JSON(http.StatusOK, gin.H{
-			"code":    common.CodeExceptionError,
-			"message": err.Error(),
-			"data":    nil,
-		})
-		return
-	}
-
-	if tenantInfos == nil {
-		c.JSON(http.StatusOK, gin.H{
-			"code":    common.CodeDataError,
-			"message": "Tenant not found",
-			"data":    nil,
-		})
-		return
-	}
-
 	// Get optional model type filter from query params
 	modelTypeFilter := c.Query("type")
 
-	addedModels, err := h.tenantService.ListTenantAddedModels(tenantInfos.TenantID, modelTypeFilter)
+	addedModels, err := h.tenantService.ListTenantAddedModels(user.ID, modelTypeFilter)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"code":    common.CodeExceptionError,

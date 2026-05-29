@@ -64,17 +64,8 @@ func (dao *TenantModelProviderDAO) DeleteByTenantIDAndProviderName(tenantID, pro
 	return result.RowsAffected, result.Error
 }
 
-// ListByID list tenant model providers by ID
-func (dao *TenantModelProviderDAO) ListByID(id string) ([]string, error) {
-	var providerNames []string
-	err := DB.Model(&entity.TenantModelProvider{}).
-		Where("tenant_id = ?", id).
-		Pluck("provider_name", &providerNames).Error
-	return providerNames, err
-}
-
-// GetByTenantID get all model providers by tenant ID
-func (dao *TenantModelProviderDAO) GetByTenantID(tenantID string) ([]*entity.TenantModelProvider, error) {
+// ListByID list tenant model providers by tenant ID, returns full provider objects
+func (dao *TenantModelProviderDAO) ListByID(tenantID string) ([]*entity.TenantModelProvider, error) {
 	var providers []*entity.TenantModelProvider
 	err := DB.Where("tenant_id = ?", tenantID).Find(&providers).Error
 	if err != nil {
