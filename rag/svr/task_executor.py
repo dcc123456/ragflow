@@ -97,7 +97,6 @@ from rag.utils.lazy_image import LazyImage
 from common.signal_utils import start_tracemalloc_and_snapshot, stop_tracemalloc
 from common.exceptions import TaskCanceledException
 from common.asyncio_utils import LoopLocalSemaphore
-from common.asyncio_utils import LoopLocalSemaphore
 from common import settings
 from common.billing_utils import init_stripe_api_key
 from rag.utils.rabbitmq_conn import RABBITMQ_CONN

@@ -1674,6 +1674,20 @@ async def async_ask(question, kb_ids, tenant_id, chat_llm_name=None, search_conf
     if not doc_ids:
         yield {"answer": "", "reference": {"total": 0, "chunks": [], "doc_aggs": []}}
         return
+    
+    vector_similarity_weight = search_config.get("vector_similarity_weight", 0.3)
+    try:
+        full_text_weight = 1 - vector_similarity_weight
+    except TypeError:
+        full_text_weight = None
+    logger.debug(
+        "Search async_ask retrieval weight: tenant_id=%s kb_count=%s "
+        "vector_similarity_weight=%s full_text_weight=%s",
+        tenant_id,
+        len(kb_ids),
+        vector_similarity_weight,
+        full_text_weight,
+    )
 
     kbinfos = await retriever.retrieval(
         question=question,
@@ -1688,8 +1702,7 @@ async def async_ask(question, kb_ids, tenant_id, chat_llm_name=None, search_conf
         doc_ids=doc_ids,
         aggs=True,
         rerank_mdl=rerank_mdl,
-        rank_feature=label_question(question, kbs),
-        trace_id=search_id,
+        rank_feature=label_question(question, kbs)
     )
     if include_reference_metadata:
         logging.debug(

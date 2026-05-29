@@ -33,6 +33,11 @@ def _stub(monkeypatch, name, **attrs):
     for key, value in attrs.items():
         setattr(mod, key, value)
     monkeypatch.setitem(sys.modules, name, mod)
+    if "." in name:
+        parent_name, _, child_name = name.rpartition(".")
+        parent_mod = sys.modules.get(parent_name)
+        if parent_mod is not None:
+            monkeypatch.setattr(parent_mod, child_name, mod, raising=False)
     return mod
 
 
@@ -44,7 +49,20 @@ def _load_agent_api(monkeypatch, get_by_id_result):
     """
     _stub(monkeypatch, "api.apps", current_user=SimpleNamespace(id="tenant-1"), login_required=lambda func: func)
     _stub(monkeypatch, "api.apps.services.canvas_replica_service", CanvasReplicaService=SimpleNamespace())
-    _stub(monkeypatch, "api.db", CanvasCategory=SimpleNamespace())
+    quart_stub = ModuleType("quart")
+    quart_stub.Response = SimpleNamespace
+    quart_stub.jsonify = lambda payload: payload
+    quart_stub.request = SimpleNamespace(args={}, method="GET")
+    quart_stub.make_response = lambda payload, *_args, **_kwargs: payload
+    monkeypatch.setitem(sys.modules, "quart", quart_stub)
+
+    _stub(
+        monkeypatch,
+        "api.db",
+        CanvasCategory=SimpleNamespace(),
+        PermissionValue=SimpleNamespace(),
+        ResourceType=SimpleNamespace(),
+    )
     _stub(monkeypatch, "api.db.db_models", Task=SimpleNamespace())
     _stub(
         monkeypatch,
@@ -63,6 +81,7 @@ def _load_agent_api(monkeypatch, get_by_id_result):
     _stub(monkeypatch, "api.db.services.file_service", FileService=SimpleNamespace())
     _stub(monkeypatch, "api.db.services.knowledgebase_service", KnowledgebaseService=SimpleNamespace())
     _stub(monkeypatch, "api.db.services.pipeline_operation_log_service", PipelineOperationLogService=SimpleNamespace())
+    _stub(monkeypatch, "api.db.services.permission_service", PermissionService=SimpleNamespace())
     _stub(monkeypatch, "api.db.services.task_service", CANVAS_DEBUG_DOC_ID="", TaskService=SimpleNamespace(), queue_dataflow=lambda *_a, **_k: None)
     _stub(monkeypatch, "api.db.services.user_service", TenantService=SimpleNamespace(), UserService=SimpleNamespace(get_by_id=lambda *_a, **_k: (False, None)))
     _stub(monkeypatch, "api.db.services.user_canvas_version", UserCanvasVersionService=SimpleNamespace())
@@ -74,9 +93,17 @@ def _load_agent_api(monkeypatch, get_by_id_result):
         get_json_result=lambda code=0, message="", data=None: {"code": code, "message": message, "data": data},
         get_result=lambda **kwargs: kwargs,
         get_request_json=lambda: {},
+        get_resource_insufficient_result=lambda *_a, **_k: {"code": 2000, "message": "insufficient", "data": None},
         server_error_response=lambda exc: {"code": 500, "message": str(exc)},
         validate_request=lambda *_a, **_k: lambda func: func,
     )
+    _stub(
+        monkeypatch,
+        "api.utils.web_utils",
+        CONTENT_TYPE_MAP={},
+        apply_safe_file_response_headers=lambda response, *_a, **_k: response,
+    )
+    _stub(monkeypatch, "api.utils.billing", check_dynamic_resources=lambda *_a, **_k: None)
     _stub(monkeypatch, "common.settings", retriever=SimpleNamespace(), kg_retriever=SimpleNamespace())
     _stub(monkeypatch, "common.ssrf_guard", assert_host_is_safe=lambda *_a, **_k: None)
 

@@ -93,6 +93,15 @@ def _load_dify_retrieval(monkeypatch, *, kb, accessible, request_body, chunks=No
         get_request_json=lambda: _AwaitableValue(request_body),
         get_json_result=lambda code=0, message="", data=None: {"code": code, "message": message, "data": data},
     )
+    _stub(
+        monkeypatch,
+        "api.utils.permission_utils",
+        filter_accessible_doc_ids_for_user=lambda user_id, kb_ids, doc_ids=None: (
+            list(doc_ids) if doc_ids else ["d1"],
+            [user_id],
+            "",
+        ),
+    )
 
     _stub(
         monkeypatch,

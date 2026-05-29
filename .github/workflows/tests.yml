@@ -378,29 +378,6 @@ jobs:
           ADMIN_HOST="${USER_HOST}"
           ADMIN_PORT="${ADMIN_SVR_HTTP_PORT}"
 
-          until sudo docker exec ${RAGFLOW_CONTAINER} curl -s --connect-timeout 5 ${HOST_ADDRESS}/api/v1/system/ping > /dev/null 2>&1; do
-            echo "Waiting for service to be available... (last exit code: $?)"
-            sleep 5
-          done
-          if [ "$svc_ready" -ne 1 ]; then
-            echo "Service did not become ready after 5 minutes. Docker logs:"
-            sudo docker logs ${RAGFLOW_CONTAINER}
-            exit 1
-          fi
-
-          admin_ready=0
-          for i in $(seq 1 30); do
-            if run_cli "${LOG_FILE}" $CLI --type admin --host "$ADMIN_HOST" --port "$ADMIN_PORT" --username "admin@ragflow.io" --password "admin" command "ping"; then
-              admin_ready=1
-              break
-            fi
-            sleep 1
-          done
-          if [[ "${admin_ready}" -ne 1 ]]; then
-            echo "Admin service did not become ready"
-            exit 1
-          fi
-
           run_cli "${LOG_FILE}" $CLI --type admin --host "$ADMIN_HOST" --port "$ADMIN_PORT" --username "admin@ragflow.io" --password "admin" command "show version"
           ALLOW_USER_EXISTS_RE='already exists|already exist|duplicate|already.*registered|exist(s)?'
           run_cli "${LOG_FILE}" --allow "${ALLOW_USER_EXISTS_RE}" $CLI --type admin --host "$ADMIN_HOST" --port "$ADMIN_PORT" --username "admin@ragflow.io" --password "admin" command "create user '$EMAIL' '$PASS'"

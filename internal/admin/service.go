@@ -36,16 +36,10 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 	"sync"
-	"go.uber.org/zap"
-)
+	"time"
 
-// Service errors
-var (
-	ErrInvalidToken = errors.New("invalid token")
-	ErrNotAdmin     = errors.New("user is not admin")
-	ErrUserInactive = errors.New("user is inactive")
+	"go.uber.org/zap"
 )
 
 // Global scheduled task for cleanup

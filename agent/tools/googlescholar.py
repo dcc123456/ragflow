@@ -17,7 +17,6 @@ import logging
 import os
 import time
 from abc import ABC
-from scholarly import scholarly
 from agent.tools.base import ToolMeta, ToolParamBase, ToolBase
 from common.connection_utils import timeout
 
@@ -78,6 +77,8 @@ class GoogleScholar(ToolBase, ABC):
                 return
 
             try:
+                from scholarly import scholarly
+
                 scholar_client = scholarly.search_pubs(kwargs["query"], patents=self._param.patents, year_low=self._param.year_low,
                                                        year_high=self._param.year_high, sort_by=self._param.sort_by)
 

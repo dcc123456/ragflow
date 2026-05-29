@@ -26,6 +26,12 @@ from test.testcases.utils import encode_avatar
 from test.testcases.utils.file_utils import create_image_file, create_txt_file
 
 
+def _expected_default_embedding_model() -> str:
+    if os.getenv("K8S_CI_USE_SILICONFLOW", "0").lower() in {"1", "true", "yes"}:
+        return f"{os.getenv('SILICONFLOW_EMBEDDING_MODEL', 'BAAI/bge-m3')}@SILICONFLOW"
+    return "BAAI/bge-small-en-v1.5___OpenAI-API@OpenAI-API-Compatible"
+
+
 @pytest.mark.p1
 class TestDatasetsAuthorization:
     def test_create_requires_auth(self, rest_client_noauth):
@@ -814,7 +820,7 @@ def test_dataset_update_embedding_model_invalid_and_none_contract(rest_client, c
     assert list_res.status_code == 200
     list_payload = list_res.json()
     assert list_payload["code"] == 0, list_payload
-    assert list_payload["data"][0]["embedding_model"] == "BAAI/bge-small-en-v1.5@Builtin", list_payload
+    assert list_payload["data"][0]["embedding_model"] == _expected_default_embedding_model(), list_payload
 
 
 @pytest.mark.p2
@@ -1146,8 +1152,8 @@ def test_dataset_create_permission_contract(rest_client, clear_datasets, name, p
     [
         ("builtin_baai", "BAAI/bge-small-en-v1.5@Builtin", 0, "BAAI/bge-small-en-v1.5@Builtin", None, False),
         ("tenant_zhipu", "embedding-3@ZHIPU-AI", 0, "embedding-3@ZHIPU-AI", None, True),
-        ("embedding_model_unset", "__UNSET__", 0, "BAAI/bge-small-en-v1.5@Builtin", None, False),
-        ("embedding_model_none", None, 0, "BAAI/bge-small-en-v1.5@Builtin", None, False),
+        ("embedding_model_unset", "__UNSET__", 0, _expected_default_embedding_model(), None, False),
+        ("embedding_model_none", None, 0, _expected_default_embedding_model(), None, False),
         ("unknown_llm_name", "unknown@ZHIPU-AI", 102, None, "Unsupported model: <unknown@ZHIPU-AI>", False),
         ("unknown_llm_factory", "embedding-3@unknown", 102, None, "Unsupported model: <embedding-3@unknown>", False),
         (

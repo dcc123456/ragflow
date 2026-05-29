@@ -18,8 +18,8 @@ import asyncio
 import logging
 import threading
 import weakref
-from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
+from contextlib import suppress
 from dataclasses import dataclass
 from string import Template
 from typing import Any, Literal, Protocol
@@ -57,12 +57,37 @@ class MCPToolCallSession(ToolCallSession):
         self._server_variables = server_variables or {}
         self._queue = asyncio.Queue()
         self._close = False
+        self._close_lock = threading.Lock()
+        self._closed_event = threading.Event()
 
         self._event_loop = asyncio.new_event_loop()
-        self._thread_pool = ThreadPoolExecutor(max_workers=1)
-        self._thread_pool.submit(self._event_loop.run_forever)
+        self._loop_thread = threading.Thread(
+            target=self._run_event_loop,
+            daemon=True,
+            name=f"mcp-tool-call-{getattr(mcp_server, 'id', 'unknown')}",
+        )
+        self._loop_thread.start()
 
-        asyncio.run_coroutine_threadsafe(self._mcp_server_loop(), self._event_loop)
+        self._server_task = asyncio.run_coroutine_threadsafe(self._mcp_server_loop(), self._event_loop)
+
+    def _run_event_loop(self) -> None:
+        asyncio.set_event_loop(self._event_loop)
+        try:
+            self._event_loop.run_forever()
+        finally:
+            pending = [task for task in asyncio.all_tasks(self._event_loop) if not task.done()]
+            for task in pending:
+                task.cancel()
+            if pending:
+                with suppress(Exception):
+                    self._event_loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+            with suppress(Exception):
+                self._event_loop.run_until_complete(self._event_loop.shutdown_asyncgens())
+            with suppress(Exception):
+                self._event_loop.run_until_complete(self._event_loop.shutdown_default_executor())
+            self._event_loop.close()
+            asyncio.set_event_loop(None)
+            self._closed_event.set()
 
     async def _mcp_server_loop(self) -> None:
         url = self._mcp_server.url.strip()
@@ -236,7 +261,7 @@ class MCPToolCallSession(ToolCallSession):
             logging.exception(f"Error calling tool '{name}' on MCP server: {self._mcp_server.id}")
             return f"Error calling tool '{name}': {e}."
 
-    async def close(self) -> None:
+    async def _mark_closing(self) -> None:
         if self._close:
             return
 
@@ -254,58 +279,83 @@ class MCPToolCallSession(ToolCallSession):
             except Exception:
                 break
 
+    def _stop_loop(self) -> None:
+        if self._event_loop.is_closed():
+            return
         try:
             self._event_loop.call_soon_threadsafe(self._event_loop.stop)
-        except Exception:
+        except RuntimeError:
             pass
-
-        try:
-            self._thread_pool.shutdown(wait=True)
         except Exception:
-            pass
+            logging.exception("Exception while stopping MCP event loop")
 
+    def _wait_until_closed(self, timeout: float | int | None = 5) -> None:
+        if self._loop_thread.is_alive():
+            self._loop_thread.join(timeout=timeout)
+        if self._loop_thread.is_alive():
+            logging.error(f"Timeout while waiting for MCP loop thread shutdown: {self._mcp_server.id} (timeout={timeout})")
+            return
         self.__class__._ALL_INSTANCES.discard(self)
 
-    def close_sync(self, timeout: float | int = 5) -> None:
-        if not self._event_loop.is_running():
-            logging.warning(f"Event loop already stopped for {self._mcp_server.id}")
+    async def close(self) -> None:
+        if self._closed_event.is_set():
+            self.__class__._ALL_INSTANCES.discard(self)
             return
 
-        try:
-            future = asyncio.run_coroutine_threadsafe(self.close(), self._event_loop)
-            try:
-                future.result(timeout=timeout)
-            except FuturesTimeoutError:
-                logging.error(f"Timeout while closing session for server {self._mcp_server.id} (timeout={timeout})")
-            except Exception:
-                logging.exception(f"Unexpected error during close_sync for {self._mcp_server.id}")
-        except Exception:
-            logging.exception(f"Exception while scheduling close for server {self._mcp_server.id}")
+        with self._close_lock:
+            if not self._close and not self._event_loop.is_closed():
+                try:
+                    await asyncio.wrap_future(
+                        asyncio.run_coroutine_threadsafe(self._mark_closing(), self._event_loop)
+                    )
+                except RuntimeError:
+                    self._close = True
+                except Exception:
+                    logging.exception(f"Unexpected error while closing session for server {self._mcp_server.id}")
+                    self._close = True
+            else:
+                self._close = True
+
+        self._stop_loop()
+        await asyncio.to_thread(self._wait_until_closed)
+
+    def close_sync(self, timeout: float | int = 5) -> None:
+        if self._closed_event.is_set():
+            self.__class__._ALL_INSTANCES.discard(self)
+            return
+
+        with self._close_lock:
+            if not self._close and not self._event_loop.is_closed():
+                try:
+                    future = asyncio.run_coroutine_threadsafe(self._mark_closing(), self._event_loop)
+                    future.result(timeout=timeout)
+                except FuturesTimeoutError:
+                    logging.error(f"Timeout while closing session for server {self._mcp_server.id} (timeout={timeout})")
+                except RuntimeError:
+                    self._close = True
+                except Exception:
+                    logging.exception(f"Unexpected error during close_sync for {self._mcp_server.id}")
+                    self._close = True
+            else:
+                self._close = True
+
+        self._stop_loop()
+        self._wait_until_closed(timeout)
 
 
 def close_multiple_mcp_toolcall_sessions(sessions: list[MCPToolCallSession]) -> None:
     logging.info(f"Want to clean up {len(sessions)} MCP sessions")
 
-    async def _gather_and_stop() -> None:
+    async def _gather_and_close() -> None:
         try:
             await asyncio.gather(*[s.close() for s in sessions if s is not None], return_exceptions=True)
         except Exception:
             logging.exception("Exception during MCP session cleanup")
-        finally:
-            try:
-                loop.call_soon_threadsafe(loop.stop)
-            except Exception:
-                pass
 
     try:
-        loop = asyncio.new_event_loop()
-        thread = threading.Thread(target=loop.run_forever, daemon=True)
-        thread.start()
-
-        asyncio.run_coroutine_threadsafe(_gather_and_stop(), loop).result()
-        thread.join()
+        asyncio.run(_gather_and_close())
     except Exception:
-        logging.exception("Exception during MCP session cleanup thread management")
+        logging.exception("Exception during MCP session cleanup")
 
     logging.info(
         f"{len(sessions)} MCP sessions has been cleaned up. {len(list(MCPToolCallSession._ALL_INSTANCES))} in global context.")

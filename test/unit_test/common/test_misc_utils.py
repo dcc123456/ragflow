@@ -15,7 +15,9 @@
 #
 import asyncio
 import hashlib
+import queue
 import sys
+import threading
 import types
 import uuid
 from contextlib import contextmanager
@@ -105,6 +107,25 @@ def _fake_httpx_sys_modules(client):
             sys.modules.pop("httpx", None)
 
 
+def _run_in_fresh_loop(coro):
+    results: queue.Queue = queue.Queue()
+
+    def _runner():
+        try:
+            results.put(("ok", asyncio.run(coro)))
+        except Exception as exc:
+            results.put(("err", exc))
+
+    thread = threading.Thread(target=_runner)
+    thread.start()
+    thread.join()
+
+    status, payload = results.get()
+    if status == "err":
+        raise payload
+    return payload
+
+
 class TestGetUuid:
     """Test cases for get_uuid function"""
 
@@ -180,26 +201,26 @@ class TestDownloadImg:
 
     def test_empty_url_returns_empty_string(self):
         """Test that empty URL returns empty string"""
-        result = asyncio.run(download_img(""))
+        result = _run_in_fresh_loop(download_img(""))
         assert result == ""
 
     def test_none_url_returns_empty_string(self):
         """Test that None URL returns empty string"""
-        result = asyncio.run(download_img(None))
+        result = _run_in_fresh_loop(download_img(None))
         assert result == ""
 
     def test_loopback_url_blocked(self):
         """OAuth avatar fetch must not call loopback (SSRF regression)."""
-        result = asyncio.run(download_img("http://127.0.0.1/avatar.png"))
+        result = _run_in_fresh_loop(download_img("http://127.0.0.1/avatar.png"))
         assert result == ""
 
     def test_metadata_ip_blocked(self):
         """Link-local / cloud metadata ranges are non-global and must be rejected."""
-        result = asyncio.run(download_img("http://169.254.169.254/latest/meta-data/"))
+        result = _run_in_fresh_loop(download_img("http://169.254.169.254/latest/meta-data/"))
         assert result == ""
 
     def test_disallowed_scheme_blocked(self):
-        result = asyncio.run(download_img("file:///etc/passwd"))
+        result = _run_in_fresh_loop(download_img("file:///etc/passwd"))
         assert result == ""
 
     def test_redirect_to_loopback_blocked(self):
@@ -220,7 +241,7 @@ class TestDownloadImg:
             patch.object(ssrf_guard, "assert_url_is_safe", side_effect=selective_assert),
             _fake_httpx_sys_modules(client),
         ):
-            result = asyncio.run(download_img("http://public-avatar.test/start.png"))
+            result = _run_in_fresh_loop(download_img("http://public-avatar.test/start.png"))
         assert result == ""
 
     def test_redirect_too_many_hops_blocked(self):
@@ -239,7 +260,7 @@ class TestDownloadImg:
             patch.object(ssrf_guard, "assert_url_is_safe", return_value=("h.example", "8.8.8.8")),
             _fake_httpx_sys_modules(client),
         ):
-            result = asyncio.run(misc_utils.download_img("http://h.example/start"))
+            result = _run_in_fresh_loop(misc_utils.download_img("http://h.example/start"))
         assert result == ""
 
 

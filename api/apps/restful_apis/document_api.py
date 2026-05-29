@@ -24,7 +24,7 @@ from quart import request, make_response,send_file
 from peewee import OperationalError
 from pydantic import ValidationError
 
-from api.apps import login_required
+from api.apps import current_user, login_required
 from api.constants import FILE_NAME_LEN_LIMIT, IMG_BASE64_PREFIX
 from api.apps.services.document_api_service import validate_document_update_fields, map_doc_keys, \
     map_doc_keys_with_run_status, update_document_name_only, update_chunk_method, update_document_status_only, \
@@ -46,7 +46,6 @@ from api.utils.permission_utils import check_doc_permission, check_kb_permission
 from api.utils.validation_utils import (
     UpdateDocumentReq, format_validation_error_message, validate_and_parse_json_request, DeleteDocumentReq,
 )
-
 from common import settings
 from common.constants import ParserType, RetCode, TaskStatus, SANDBOX_ARTIFACT_BUCKET
 from common.metadata_utils import convert_conditions, meta_filter, turn2jsonschema

@@ -36,7 +36,6 @@ from rag.utils.azure_spn_conn import RAGFlowAzureSpnBlob
 from rag.utils.gcs_conn import RAGFlowGCS
 from rag.utils.minio_conn import RAGFlowMinio
 from rag.utils.opendal_conn import OpenDALStorage
-from rag.utils.redis_conn import REDIS_CONN
 from rag.utils.s3_conn import RAGFlowS3
 from rag.utils.oss_conn import RAGFlowOSS
 
@@ -187,6 +186,7 @@ def _get_or_create_secret_key():
 
     # Generate a new secure key and warn about it
     import logging
+    from rag.utils.redis_conn import REDIS_CONN
 
     generated_key = secrets.token_hex(32)
     secret_key = REDIS_CONN.get_or_create_secret_key("ragflow:system:secret_key", generated_key)

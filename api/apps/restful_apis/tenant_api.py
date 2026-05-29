@@ -20,7 +20,6 @@ from typing import Set
 
 from api.db import UserTenantRole
 from api.db.db_models import UserTenant
-from api.db.services.system_settings_service import SystemSettingsService
 from api.db.services.team_service import DepartmentMemberService
 from api.db.services.user_service import UserService, UserTenantService
 from api.utils.api_utils import (

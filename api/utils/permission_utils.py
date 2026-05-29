@@ -1,5 +1,6 @@
 import inspect
 from functools import wraps
+from uuid import UUID
 
 from api.db import PermissionActionType, PermissionTargetType, PermissionValue, ResourceType
 from api.db.services.permission_service import PermissionService
@@ -220,6 +221,8 @@ def check_kb_permission(permission):
                     if not request.is_json:
                         return get_json_result(data=False, message="Content-Type must be application/json", code=RetCode.ARGUMENT_ERROR)
                     req_data = await request.get_json(silent=True) or {}
+                    if not isinstance(req_data, dict):
+                        req_data = {}
 
                 # Form
                 elif "multipart/form-data" in content_type or "application/x-www-form-urlencoded" in content_type:
@@ -239,6 +242,14 @@ def check_kb_permission(permission):
             )
             if not kb_id:
                 return get_json_result(data=False, message="Missing required parameter `kb_id`.", code=RetCode.ARGUMENT_ERROR)
+
+            if "dataset_id" in kwargs:
+                try:
+                    uuid_obj = UUID(str(kb_id))
+                    if uuid_obj.version != 1:
+                        return get_json_result(data=False, message="dataset_id: Invalid UUID1 format", code=RetCode.ARGUMENT_ERROR)
+                except (AttributeError, ValueError, TypeError):
+                    return get_json_result(data=False, message="dataset_id: Invalid UUID1 format", code=RetCode.ARGUMENT_ERROR)
 
             g.req_data = req_data
             g.kb_id = kb_id
@@ -264,6 +275,13 @@ def check_kb_permission(permission):
                         if inspect.iscoroutinefunction(foo):
                             return await foo(*args, **kwargs)
                         return foo(*args, **kwargs)
+
+            if "dataset_id" in kwargs:
+                return get_json_result(
+                    data=False,
+                    message=f"User '{current_user.id}' lacks permission for dataset '{kb_id}'",
+                    code=RetCode.DATA_ERROR,
+                )
 
             return get_json_result(data=False, message="Only knowledgebase owners or members with management or write permissions can perform this action.", code=RetCode.OPERATING_ERROR)
 

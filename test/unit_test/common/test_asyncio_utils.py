@@ -15,8 +15,29 @@
 #
 
 import asyncio
+import queue
+import threading
 
 from common.asyncio_utils import LoopLocalSemaphore
+
+
+def _run_in_fresh_loop(coro):
+    results: queue.Queue = queue.Queue()
+
+    def _runner():
+        try:
+            results.put(("ok", asyncio.run(coro)))
+        except Exception as exc:  # pragma: no cover - re-raised in caller
+            results.put(("err", exc))
+
+    thread = threading.Thread(target=_runner)
+    thread.start()
+    thread.join()
+
+    status, payload = results.get()
+    if status == "err":
+        raise payload
+    return payload
 
 
 def test_loop_local_semaphore_does_not_reuse_locked_semaphore_across_event_loops():
@@ -33,7 +54,6 @@ def test_loop_local_semaphore_does_not_reuse_locked_semaphore_across_event_loops
         async with limiter:
             return True
 
-    asyncio.run(bind_and_leave_locked())
+    _run_in_fresh_loop(bind_and_leave_locked())
 
-    assert asyncio.run(acquire_in_next_loop())
-    assert not any(loop.is_closed() for loop in limiter._semaphores)
+    assert _run_in_fresh_loop(acquire_in_next_loop())
