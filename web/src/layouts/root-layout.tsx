@@ -1,4 +1,6 @@
 import { useHeartBeat } from '@/hooks/use-heart-beat-request';
+import { UpgradeModalProvider } from '@/pages/price/global';
+import { isBillingEnabled } from '@/services/billingStatus';
 import React from 'react';
 import { Outlet } from 'react-router';
 import { Header } from './components/header';
@@ -28,7 +30,12 @@ export function RootLayoutContainer({ children }: React.PropsWithChildren) {
 export default function RootLayout() {
   return (
     <RootLayoutContainer>
-      <Outlet />
+      {isBillingEnabled() && (
+        <UpgradeModalProvider>
+          <Outlet />
+        </UpgradeModalProvider>
+      )}
+      {!isBillingEnabled() && <Outlet />}
     </RootLayoutContainer>
   );
 }

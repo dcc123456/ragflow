@@ -20,13 +20,11 @@ import StarModal from './components/star-modal';
 import { ThemeProvider } from './components/theme-provider';
 import { TooltipProvider } from './components/ui/tooltip';
 import { ThemeEnum } from './constants/common';
-import { UpgradeModalProvider } from './pages/price/global';
 // import { getRouter } from './routes';
 import storage from './utils/authorization-util';
 
 import 'react-photo-view/dist/react-photo-view.css';
 import { routers } from './merge-routes';
-import { isBillingEnabled } from './services/billingStatus';
 
 configResponsive({
   sm: 640,
@@ -97,12 +95,7 @@ const RootProvider = ({ children }: React.PropsWithChildren) => {
           defaultTheme={ThemeEnum.Dark}
           storageKey="ragflow-ui-theme"
         >
-          {isBillingEnabled() && (
-            <UpgradeModalProvider>
-              <Root>{children}</Root>
-            </UpgradeModalProvider>
-          )}
-          {!isBillingEnabled() && <Root>{children}</Root>}
+          <Root>{children}</Root>
         </ThemeProvider>
       </QueryClientProvider>
     </TooltipProvider>
