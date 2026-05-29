@@ -33,12 +33,12 @@ export const privateRoutes = [
         Component: lazy(() => import('@/pages/files/evaluation/detail-page')),
         errorElement: <FallbackComponent />,
       },
+      {
+        path: PrivateRoutes.Price,
+        layout: false,
+        Component: lazy(() => import(`@/pages/price`)),
+        errorElement: <FallbackComponent />,
+      },
     ],
-  },
-  {
-    path: PrivateRoutes.Price,
-    layout: false,
-    Component: lazy(() => import(`@/pages/price`)),
-    errorElement: <FallbackComponent />,
   },
 ];
