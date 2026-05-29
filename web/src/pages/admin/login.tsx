@@ -89,7 +89,8 @@ function AdminLogin() {
   const loading = loginMutation.isPending;
 
   useEffect(() => {
-    if (isLogin) {
+    // if (isLogin) {
+    if (isLogin && authorizationUtil.getUserInfoObject()) {
       navigate(Routes.AdminServices);
     }
   }, [isLogin, navigate]);
@@ -191,7 +192,7 @@ function AdminLogin() {
                               className="h-10"
                               type="password"
                               placeholder={t('passwordPlaceholder')}
-                              autoComplete="password"
+                              autoComplete="current-password"
                             />
                           </FormControl>
 
