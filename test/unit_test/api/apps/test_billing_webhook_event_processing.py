@@ -288,6 +288,7 @@ def test_handle_undelivered_events_filters_types_and_uses_ending_before_checkpoi
         "invoice.payment_action_required",
         "customer.subscription.updated",
         "customer.subscription.deleted",
+        "customer.subscription.created",
         "checkout.session.completed",
         "payment_intent.succeeded",
     }

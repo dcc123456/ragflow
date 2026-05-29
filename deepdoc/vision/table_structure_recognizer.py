@@ -19,12 +19,49 @@ import re
 from collections import Counter
 
 import numpy as np
-from huggingface_hub import snapshot_download
-
 from common.file_utils import get_project_base_directory
+
 from rag.nlp import rag_tokenizer
 
-from .recognizer import Recognizer
+from .tsr_cli import TSRClient
+
+
+class Recognizer:
+    @staticmethod
+    def sort_Y_firstly(arr, threshold):
+        def cmp_key(item):
+            return (round(item["top"] / max(threshold, 1e-6)) if threshold else item["top"], item["x0"])
+
+        return sorted(arr, key=cmp_key)
+
+    @staticmethod
+    def sort_X_firstly(arr, threshold):
+        def cmp_key(item):
+            return (round(item["x0"] / max(threshold, 1e-6)) if threshold else item["x0"], item["top"])
+
+        return sorted(arr, key=cmp_key)
+
+    @staticmethod
+    def sort_C_firstly(arr, thr=0):
+        arr = Recognizer.sort_X_firstly(arr, thr)
+        for i in range(len(arr) - 1):
+            for j in range(i, -1, -1):
+                if "C" not in arr[j] or "C" not in arr[j + 1]:
+                    continue
+                if arr[j + 1]["C"] < arr[j]["C"] or (arr[j + 1]["C"] == arr[j]["C"] and arr[j + 1]["top"] < arr[j]["top"]):
+                    arr[j], arr[j + 1] = arr[j + 1], arr[j]
+        return arr
+
+    @staticmethod
+    def sort_R_firstly(arr, thr=0):
+        arr = Recognizer.sort_Y_firstly(arr, thr)
+        for i in range(len(arr) - 1):
+            for j in range(i, -1, -1):
+                if "R" not in arr[j] or "R" not in arr[j + 1]:
+                    continue
+                if arr[j + 1]["R"] < arr[j]["R"] or (arr[j + 1]["R"] == arr[j]["R"] and arr[j + 1]["x0"] < arr[j]["x0"]):
+                    arr[j], arr[j + 1] = arr[j + 1], arr[j]
+        return arr
 
 
 class TableStructureRecognizer(Recognizer):
@@ -38,30 +75,27 @@ class TableStructureRecognizer(Recognizer):
     ]
 
     def __init__(self):
-        try:
-            super().__init__(self.labels, "tsr", os.path.join(get_project_base_directory(), "rag/res/deepdoc"))
-        except Exception:
-            super().__init__(
-                self.labels,
-                "tsr",
-                snapshot_download(
-                    repo_id="InfiniFlow/deepdoc",
-                    local_dir=os.path.join(get_project_base_directory(), "rag/res/deepdoc"),
-                    local_dir_use_symlinks=False,
-                ),
-            )
+        tsr_url = (os.environ.get("DEEPDOC_URL") or "").strip()
+        if not tsr_url:
+            raise RuntimeError("DEEPDOC_URL environment variable is required for TSR")
+        self.client = TSRClient(tsr_url)
 
     def __call__(self, images, thr=0.2):
-        table_structure_recognizer_type = os.getenv("TABLE_STRUCTURE_RECOGNIZER_TYPE", "onnx").lower()
-        if table_structure_recognizer_type not in ["onnx", "ascend"]:
-            raise RuntimeError("Unsupported table structure recognizer type.")
-
-        if table_structure_recognizer_type == "onnx":
-            logging.debug("Using Onnx table structure recognizer")
-            tbls = super().__call__(images, thr)
-        else:  # ascend
-            logging.debug("Using Ascend table structure recognizer")
-            tbls = self._run_ascend_tsr(images, thr)
+        del thr
+        preds = self.client.predict(images)
+        tbls = []
+        for pred in preds:
+            bboxs = pred.boxes.data.tolist()
+            tbls.append(
+                [
+                    {
+                        "type": self.labels[int(cls_idx)],
+                        "bbox": [left, top, right, bottom],
+                        "score": sc,
+                    }
+                    for left, top, right, bottom, sc, cls_idx in bboxs
+                ]
+            )
 
         res = []
         # align left&right for rows, align top&bottom for columns

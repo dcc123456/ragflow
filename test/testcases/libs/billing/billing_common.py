@@ -581,8 +581,8 @@ class BillingClient:
             delete_clock(clock_id=self.clock_id)
             self._clock_deleted = True
 
-    def wait_for_plan(self, expected: str) -> dict[str, Any]:
-        deadline = time.time() + DEFAULT_WEBHOOK_TIMEOUT_SECONDS
+    def wait_for_plan(self, expected: str, timeout_seconds: int | None = None) -> dict[str, Any]:
+        deadline = time.time() + (timeout_seconds or DEFAULT_WEBHOOK_TIMEOUT_SECONDS)
         last_plan = {}
         while time.time() < deadline:
             last_plan = self.current_plan()
@@ -691,7 +691,7 @@ class BillingClient:
             "password": encrypted_password,
         }
         register_response = self.session.post(
-            self.url("/user/register"),
+            self.url("/users", True),
             headers=self.headers(auth=False),
             json=register_payload,
             timeout=60,
@@ -706,7 +706,7 @@ class BillingClient:
             raise FlowError(f"register failed: {register_data}")
 
         login_response = self.session.post(
-            self.url("/user/login"),
+            self.url("/auth/login", True),
             headers=self.headers(auth=False),
             json={"email": email, "password": encrypted_password},
             timeout=60,
@@ -881,6 +881,30 @@ class BillingClient:
         if response.status_code >= 400 or payload.get("code") not in (0, None):
             raise FlowError(f"GET /billing/spend_overview failed status={response.status_code}: {payload}")
         return payload["data"].get("items", [])
+
+    def init_sdk_token(self) -> None:
+        """Create a tenant API token and switch app operations to Bearer auth."""
+        result = self.request_json("POST", "system/tokens", need_api_path=True)
+        token = ((result.get("data") or {}).get("token") or "").strip()
+        if not token:
+            raise FlowError(f"system/tokens did not return token: {result}")
+        self.auth_header = f"Bearer {token}"
+
+    def points_balance(self) -> dict[str, Any]:
+        response = self.session.get(
+            self.billing_url(f"/points/balance?tenant_id={self.tenant_id}"),
+            headers=self.headers(auth=True),
+            timeout=60,
+        )
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise FlowError(
+                f"GET /billing/points/balance returned non-JSON status={response.status_code}: {response.text[:500]}"
+            ) from exc
+        if response.status_code >= 400 or payload.get("code") not in (0, None):
+            raise FlowError(f"GET /billing/points/balance failed status={response.status_code}: {payload}")
+        return payload["data"]
 
     def schedule_plan_change(self, price_id: str, *, setup_intent_id: str = "") -> dict[str, Any]:
         """Initiate a subscription change via checkout (upgrade/downgrade)."""

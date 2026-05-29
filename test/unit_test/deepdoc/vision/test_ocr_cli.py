@@ -80,12 +80,14 @@ class TestOCRClientDetect:
 
         results = list(client.detect(np.zeros((8, 8, 3), dtype=np.uint8)))
 
-        assert results == [
-            ([1.0, 2.0], ("", 0)),
-            ([11.0, 2.0], ("", 0)),
-            ([11.0, 8.0], ("", 0)),
-            ([1.0, 8.0], ("", 0)),
-        ]
+        # New OCRClient._normalize_detect_output returns list of quadrilateral boxes
+        # wrapped in a list as single batch item, matching the 4D input format.
+        assert len(results) == 1
+        bbox, text_score = results[0]
+        assert isinstance(bbox, list)
+        assert len(bbox) == 4
+        assert bbox == [[1.0, 2.0], [11.0, 2.0], [11.0, 8.0], [1.0, 8.0]]
+        assert text_score == ("", 0)
 
     def test_detect_unwraps_singleton_wrapped_bbox(self):
         client = OCRClient("http://deepdoc")

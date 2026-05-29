@@ -21,7 +21,8 @@ Provides MemberClient class extending RAGFlowClient with member/tenant managemen
 """
 from __future__ import annotations
 
-import base64
+import json
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -30,6 +31,7 @@ from libs.billing.billing_common import (
     BillingClient,
     DEFAULT_TEST_PASSWORD_ENCRYPTED,
     FlowError,
+    env,
     load_stripe_test_runtime_config,
     prepare_backend_imports,
 )
@@ -74,7 +76,11 @@ class MemberClient(BillingClient):
         prepare_backend_imports()
         from api.db import UserTenantRole
 
-        members_may_include_owner: list[dict[str, Any]] = self.request_json("GET", f"/tenant/{self.tenant_id}/user/list")["data"]
+        members_may_include_owner: list[dict[str, Any]] = self.request_json(
+            "GET",
+            f"/tenants/{self.tenant_id}/users",
+            need_api_path=True,
+        )["data"]
         return [m for m in members_may_include_owner if m["role"] != UserTenantRole.OWNER]
 
 
@@ -90,7 +96,12 @@ class MemberClient(BillingClient):
         Raises:
             FlowError: If the API request fails (e.g., user not found, already in team).
         """
-        return self.request_json("POST", f"/tenant/{self.tenant_id}/user", json={"email": email})
+        return self.request_json(
+            "POST",
+            f"/tenants/{self.tenant_id}/users",
+            need_api_path=True,
+            json={"email": email},
+        )
 
     def remove_member(self, tenant_id: str, user_id: str) -> dict[str, Any]:
         """Remove a member from the tenant.
@@ -105,7 +116,12 @@ class MemberClient(BillingClient):
         Raises:
             FlowError: If the API request fails.
         """
-        return self.request_json("DELETE", f"/tenant/{tenant_id}/user/{user_id}")
+        return self.request_json(
+            "DELETE",
+            f"/tenants/{tenant_id}/users",
+            need_api_path=True,
+            json={"user_id": user_id},
+        )
 
     def accept_invitation(self, tenant_id: str) -> dict[str, Any]:
         """Accept an invitation to join a tenant.
@@ -122,7 +138,11 @@ class MemberClient(BillingClient):
         Raises:
             FlowError: If the API request fails (e.g., insufficient quota).
         """
-        return self.request_json("PUT", f"/tenant/agree/{tenant_id}")
+        return self.request_json(
+            "PATCH",
+            f"/tenants/{tenant_id}",
+            need_api_path=True,
+        )
 
     def register_member_only(self, email: str, password: str = "Test123456") -> dict[str, Any]:
         """Register a new user without logging them in.
@@ -142,44 +162,85 @@ class MemberClient(BillingClient):
         Raises:
             FlowError: If the registration fails.
         """
-        prepare_backend_imports()
-        from api.db.services.role_service import RoleService
-        from api.db.services.user_service import UserService
-        from common import settings
-        from common.misc_utils import get_uuid
-        from common.time_utils import get_format_time
+        if password == DEFAULT_MEMBER_TEST_PASSWORD:
+            pass
+        elif password == "Test1234!":
+            pass
+        else:
+            raise FlowError(
+                "member billing test helper only supports the fixed default test passwords"
+            )
 
-        existing_users = UserService.query(email=email)
-        if existing_users:
-            return {"code": 0, "data": existing_users[0].to_json(), "message": "already registered"}
+        container_name = env("RAGFLOW_SERVICE_CONTAINER", "docker-ragflow-1")
+        script = f"""
+import base64, json, sys
+from common import settings
+settings.init_settings()
+from api.db.services.role_service import RoleService
+from api.db.services.user_service import UserService
+from common.misc_utils import get_uuid
+from common.time_utils import get_format_time
 
-        role_name = settings.DEFAULT_ROLE
-        roles = RoleService.get_by_role_name(role_name)
-        if not roles:
-            raise FlowError(f"Role not found for lightweight member registration: {role_name}")
+email = sys.argv[1]
+password = sys.argv[2]
+existing_users = UserService.query(email=email)
+if existing_users:
+    existing = existing_users[0]
+    print(json.dumps({
+        "code": 0,
+        "data": {"id": existing.id, "email": existing.email, "nickname": existing.nickname},
+        "message": "already registered",
+    }))
+    raise SystemExit(0)
 
-        user_id = get_uuid()
-        user_dict = {
-            "access_token": get_uuid(),
-            "email": email,
-            "nickname": email.split("@", 1)[0],
-            # Match the normal register endpoint, which stores decrypt(req["password"]):
-            # that value is base64(plain_password), and UserService.save() hashes it.
-            "password": base64.b64encode(password.encode("utf-8")).decode("utf-8"),
-            "login_channel": "password",
-            "last_login_time": get_format_time(),
-            "is_superuser": False,
-            "role_id": roles[0]["id"],
-        }
+role_name = settings.DEFAULT_ROLE
+roles = RoleService.get_by_role_name(role_name)
+if not roles:
+    raise RuntimeError("Role not found for lightweight member registration: " + role_name)
 
+user_dict = {
+    "access_token": get_uuid(),
+    "email": email,
+    "nickname": email.split("@", 1)[0],
+    "password": base64.b64encode(password.encode("utf-8")).decode("utf-8"),
+    "login_channel": "password",
+    "last_login_time": get_format_time(),
+    "is_superuser": False,
+    "role_id": roles[0]["id"],
+}
+UserService.save(id=get_uuid(), **user_dict)
+users = UserService.query(email=email)
+if not users:
+    raise RuntimeError(f"lightweight register returned no user for {email}")
+created = users[0]
+print(json.dumps({
+    "code": 0,
+    "data": {"id": created.id, "email": created.email, "nickname": created.nickname},
+    "message": "registered",
+}))
+"""
+        result = subprocess.run(
+            ["docker", "exec", container_name, "python", "-c", script, email, password],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            raise FlowError(
+                f"lightweight register failed for {email}: "
+                f"returncode={result.returncode}, stdout={result.stdout.strip()}, stderr={result.stderr.strip()}"
+            )
+        stdout = result.stdout.strip()
+        if not stdout:
+            raise FlowError(f"lightweight register for {email} returned empty stdout")
         try:
-            UserService.save(id=user_id, **user_dict)
-            users = UserService.query(email=email)
+            return_data = stdout.splitlines()[-1]
+            register_data = json.loads(return_data)
         except Exception as exc:
-            raise FlowError(f"lightweight register failed for {email}: {exc}") from exc
-        if not users:
-            raise FlowError(f"lightweight register returned no user for {email}")
-        return {"code": 0, "data": users[0].to_json(), "message": "registered"}
+            raise FlowError(f"lightweight register returned invalid JSON for {email}: {stdout}") from exc
+        if register_data.get("code") != 0:
+            raise FlowError(f"lightweight register failed for {email}: {register_data}")
+        return register_data
 
     def login_as_member(self, email: str, password: str = "Test123456") -> tuple[str, str]:
         """Login as a member user and return (user_id, tenant_id).
@@ -206,7 +267,7 @@ class MemberClient(BillingClient):
                 "member billing test helper only supports the fixed default test passwords"
             )
         login_response = self.session.post(
-            self.url("/user/login"),
+            self.url("/auth/login", True),
             headers=self.headers(auth=False),
             json={"email": email, "password": encrypted_password},
             timeout=60,

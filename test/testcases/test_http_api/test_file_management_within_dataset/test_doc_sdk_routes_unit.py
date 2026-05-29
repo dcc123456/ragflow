@@ -149,8 +149,21 @@ def _run(coro):
     return asyncio.run(coro)
 
 
+def _identity_decorator(func):
+    @wraps(func)
+    async def wrapper(*args, **kwargs):
+        return await func(*args, **kwargs)
+
+    return wrapper
+
+
 def _load_doc_module(monkeypatch):
     repo_root = Path(__file__).resolve().parents[4]
+    api_apps_mod = ModuleType("api.apps")
+    api_apps_mod.__path__ = [str(repo_root / "api" / "apps")]
+    api_apps_mod.login_required = _identity_decorator
+    monkeypatch.setitem(sys.modules, "api.apps", api_apps_mod)
+
     common_pkg = ModuleType("common")
     common_pkg.__path__ = [str(repo_root / "common")]
     monkeypatch.setitem(sys.modules, "common", common_pkg)
@@ -163,7 +176,12 @@ def _load_doc_module(monkeypatch):
     common_settings_mod.retriever = SimpleNamespace()
     common_settings_mod.kg_retriever = SimpleNamespace()
     common_settings_mod.STORAGE_IMPL = SimpleNamespace(get=lambda *_args, **_kwargs: b"", rm=lambda *_args, **_kwargs: None)
+    common_settings_mod.init_settings = lambda *_args, **_kwargs: None
+    common_settings_mod.BILLING_ENABLED = False
+    common_settings_mod.decrypt_database_config = lambda *args, **kwargs: None
+    common_settings_mod.get_secret_key = lambda *args, **kwargs: "secret"
     monkeypatch.setitem(sys.modules, "common.settings", common_settings_mod)
+    common_pkg.settings = common_settings_mod
 
     common_misc_utils_mod = ModuleType("common.misc_utils")
     async def _thread_pool_exec(func, *args, **kwargs):
@@ -208,10 +226,13 @@ def _load_doc_module(monkeypatch):
     db_models_mod.APIToken = SimpleNamespace(query=lambda **_kwargs: [])
     db_models_mod.Document = _StubDocumentModel
     db_models_mod.Task = _StubTaskModel
+    db_models_mod.close_connection = lambda *_args, **_kwargs: None
+    db_models_mod.DB = SimpleNamespace()
     monkeypatch.setitem(sys.modules, "api.db.db_models", db_models_mod)
 
     services_pkg = ModuleType("api.db.services")
     services_pkg.__path__ = [str(repo_root / "api" / "db" / "services")]
+    services_pkg.UserService = SimpleNamespace(query=lambda *_args, **_kwargs: [])
     monkeypatch.setitem(sys.modules, "api.db.services", services_pkg)
 
     doc_metadata_service_mod = ModuleType("api.db.services.doc_metadata_service")
@@ -257,10 +278,11 @@ def _load_doc_module(monkeypatch):
     monkeypatch.setitem(sys.modules, "api.db.services.task_service", task_service_mod)
 
     api_utils_mod = ModuleType("api.utils.api_utils")
-    api_utils_mod.add_tenant_id_to_kwargs = lambda func: func
+    api_utils_mod.add_tenant_id_to_kwargs = _identity_decorator
     api_utils_mod.check_duplicate_ids = lambda ids, _kind="item": (ids, [])
     api_utils_mod.construct_json_result = lambda code=0, message="success", data=None: {"code": code, "message": message, "data": data}
     api_utils_mod.get_error_data_result = lambda message="Sorry! Data missing!", code=102: {"code": code, "message": message}
+    api_utils_mod.get_json_result = lambda data=None, message="", code=0, **_kwargs: {"code": code, "message": message, "data": data}
     api_utils_mod.get_request_json = lambda: _AwaitableValue({})
     api_utils_mod.get_result = lambda code=0, message="", data=None, total=None: {
         key: value
@@ -282,6 +304,7 @@ def _load_doc_module(monkeypatch):
     permission_utils_mod.filter_accessible_doc_ids_for_user = (
         lambda *_args, **_kwargs: ([], [], "")
     )
+    permission_utils_mod.check_doc_permission = lambda *args, **kwargs: (lambda func: func)
     monkeypatch.setitem(sys.modules, "api.utils.permission_utils", permission_utils_mod)
 
     billing_service_mod = ModuleType("api.db.services.billing_service")
@@ -296,6 +319,76 @@ def _load_doc_module(monkeypatch):
     common_metadata_utils_mod.convert_conditions = lambda conditions: conditions
     common_metadata_utils_mod.meta_filter = lambda *_args, **_kwargs: []
     monkeypatch.setitem(sys.modules, "common.metadata_utils", common_metadata_utils_mod)
+
+    reference_metadata_utils_mod = ModuleType("api.utils.reference_metadata_utils")
+
+    def _resolve_reference_metadata_preferences(request_payload=None, config_payload=None):
+        request_payload = request_payload or {}
+        config_payload = config_payload or {}
+        resolved = {}
+        if isinstance(config_payload.get("reference_metadata"), dict):
+            resolved.update(config_payload["reference_metadata"])
+        if isinstance(request_payload.get("reference_metadata"), dict):
+            resolved.update(request_payload["reference_metadata"])
+        if "include_metadata" in request_payload:
+            resolved["include"] = bool(request_payload.get("include_metadata"))
+        if "metadata_fields" in request_payload:
+            resolved["fields"] = request_payload.get("metadata_fields")
+        include_metadata = bool(resolved.get("include", False))
+        fields = resolved.get("fields")
+        if fields is None:
+            return include_metadata, None
+        if not isinstance(fields, list):
+            return include_metadata, set()
+        return include_metadata, {field for field in fields if isinstance(field, str)}
+
+    def _enrich_chunks_with_document_metadata(
+        chunks,
+        metadata_fields=None,
+        *,
+        kb_field="kb_id",
+        doc_field="doc_id",
+        output_field="document_metadata",
+    ):
+        metadata_by_pair = {}
+        for chunk in chunks:
+            kb_id = chunk.get(kb_field)
+            doc_id = chunk.get(doc_field)
+            if not kb_id or not doc_id:
+                continue
+            if isinstance(kb_id, (list, tuple)):
+                kb_values = [kid for kid in kb_id if kid]
+            else:
+                kb_values = [kb_id]
+            for kid in kb_values:
+                if (kid, doc_id) not in metadata_by_pair:
+                    metadata_by_pair[(kid, doc_id)] = None
+
+        for kb_id, doc_id in list(metadata_by_pair.keys()):
+            meta_map = doc_metadata_service_mod.DocMetadataService.get_metadata_for_documents([doc_id], kb_id)
+            metadata_by_pair[(kb_id, doc_id)] = meta_map.get(doc_id) if meta_map else None
+
+        for chunk in chunks:
+            kb_id = chunk.get(kb_field)
+            doc_id = chunk.get(doc_field)
+            if not kb_id or not doc_id:
+                continue
+            kb_values = [kid for kid in kb_id if kid] if isinstance(kb_id, (list, tuple)) else [kb_id]
+            meta = None
+            for kid in kb_values:
+                meta = metadata_by_pair.get((kid, doc_id))
+                if meta:
+                    break
+            if not meta:
+                continue
+            if metadata_fields is not None:
+                meta = {key: value for key, value in meta.items() if key in metadata_fields}
+            if meta:
+                chunk[output_field] = meta
+
+    reference_metadata_utils_mod.enrich_chunks_with_document_metadata = _enrich_chunks_with_document_metadata
+    reference_metadata_utils_mod.resolve_reference_metadata_preferences = _resolve_reference_metadata_preferences
+    monkeypatch.setitem(sys.modules, "api.utils.reference_metadata_utils", reference_metadata_utils_mod)
 
     rag_app_tag_mod = ModuleType("rag.app.tag")
     rag_app_tag_mod.label_question = lambda *_args, **_kwargs: {}
@@ -520,10 +613,50 @@ def _load_doc_module(monkeypatch):
 
 def _load_restful_chunk_module(monkeypatch):
     repo_root = Path(__file__).resolve().parents[4]
+    pydantic_mod = ModuleType("pydantic")
+
+    class _BaseModel:
+        def __init__(self, **kwargs):
+            annotations = getattr(type(self), "__annotations__", {})
+            for name in annotations:
+                default = getattr(type(self), name, None)
+                value = kwargs.get(name, default() if callable(default) and getattr(default, "__name__", "") == "<lambda>" else default)
+                setattr(self, name, value)
+
+            validator_names = []
+            for attr_name in dir(type(self)):
+                attr = getattr(type(self), attr_name)
+                field_name = getattr(attr, "_validator_field", None)
+                if field_name:
+                    validator_names.append((field_name, attr))
+            for field_name, validator_fn in validator_names:
+                setattr(self, field_name, validator_fn(type(self), getattr(self, field_name)))
+
+        def dict(self):
+            return self.__dict__
+
+    def _field(*, default=None, default_factory=None, **_kwargs):
+        if default_factory is not None:
+            return default_factory
+        return default
+
+    def _validator(field_name):
+        def decorator(func):
+            func._validator_field = field_name
+            return func
+
+        return decorator
+
+    pydantic_mod.BaseModel = _BaseModel
+    pydantic_mod.Field = _field
+    pydantic_mod.validator = _validator
+    monkeypatch.setitem(sys.modules, "pydantic", pydantic_mod)
+
     permission_utils_mod = ModuleType("api.utils.permission_utils")
     permission_utils_mod.filter_accessible_doc_ids_for_user = (
         lambda *_args, **_kwargs: ([], [], "")
     )
+    permission_utils_mod.check_doc_permission = lambda *args, **kwargs: (lambda func: func)
     monkeypatch.setitem(sys.modules, "api.utils.permission_utils", permission_utils_mod)
 
     permission_service_mod = ModuleType("api.db.services.permission_service")
@@ -550,7 +683,16 @@ def _load_restful_chunk_module(monkeypatch):
     spec = importlib.util.spec_from_file_location("test_restful_chunk_route_helpers", helper_path)
     helper = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(helper)
-    return helper._load_chunk_api_module(monkeypatch)
+    module = helper._load_chunk_api_module(monkeypatch)
+    if not hasattr(module, "rag_tokenizer"):
+        from rag.nlp import rag_tokenizer
+
+        module.rag_tokenizer = rag_tokenizer
+    if not hasattr(module, "beAdoc"):
+        from rag.app.qa import beAdoc
+
+        module.beAdoc = beAdoc
+    return module
 
 
 def _route_core(func):
@@ -595,9 +737,9 @@ class TestDocRoutesUnit:
         _patch_storage(monkeypatch, module, file_stream=b"")
         res = _run(module.download.__wrapped__("tenant-1", "ds-1", ""))
         assert res["message"] == "Specify document_id please."
-        monkeypatch.setattr(module.KnowledgebaseService, "query", lambda **_kwargs: [])
+        monkeypatch.setattr(module.DocumentService, "query", lambda **_kwargs: [])
         res = _run(module.download.__wrapped__("tenant-1", "ds-1", "doc-1"))
-        assert "do not own the dataset" in res["message"]
+        assert "not own the document" in res["message"]
 
         monkeypatch.setattr(module.KnowledgebaseService, "query", lambda **_kwargs: [1])
         monkeypatch.setattr(module.DocumentService, "query", lambda **_kwargs: [])
@@ -609,52 +751,21 @@ class TestDocRoutesUnit:
         res = _run(module.download.__wrapped__("tenant-1", "ds-1", "doc-1"))
         assert res["message"] == "This file is empty."
 
-        monkeypatch.setattr(module, "request", SimpleNamespace(headers={"Authorization": "Bearer"}))
-        res = _run(module.download_doc("doc-1"))
-        assert "Authorization is not valid" in res["message"]
-
-        monkeypatch.setattr(module, "request", SimpleNamespace(headers={"Authorization": "Bearer token"}))
-        monkeypatch.setattr(module.APIToken, "query", lambda **_kwargs: [])
-        res = _run(module.download_doc("doc-1"))
-        assert "API key is invalid" in res["message"]
-
-        monkeypatch.setattr(module.APIToken, "query", lambda **_kwargs: [SimpleNamespace(tenant_id="tenant-1"), SimpleNamespace(tenant_id="tenant-2")])
-        res = _run(module.download_doc("doc-1"))
-        assert "API key configuration is ambiguous" in res["message"]
-
-        monkeypatch.setattr(module.APIToken, "query", lambda **_kwargs: [SimpleNamespace(tenant_id="tenant-1")])
-        res = _run(module.download_doc(""))
+        res = _run(module.download_document(""))
         assert res["message"] == "Specify document_id please."
 
         monkeypatch.setattr(module.DocumentService, "query", lambda **_kwargs: [])
-        res = _run(module.download_doc("doc-1"))
+        res = _run(module.download_document("doc-1"))
         assert "not own the document" in res["message"]
 
         monkeypatch.setattr(module.DocumentService, "query", lambda **_kwargs: [_DummyDoc()])
-        kb_query_calls = []
-
-        def _deny_kb_query(**kwargs):
-            kb_query_calls.append(kwargs)
-            return []
-
-        monkeypatch.setattr(module.KnowledgebaseService, "query", _deny_kb_query)
-        monkeypatch.setattr(
-            module.File2DocumentService,
-            "get_storage_address",
-            lambda **_kwargs: (_ for _ in ()).throw(AssertionError("storage lookup must not run before tenant authorization")),
-        )
-        res = _run(module.download_doc("doc-1"))
-        assert res["message"] == "You do not have access to this document."
-        assert kb_query_calls == [{"id": "kb-1", "tenant_id": "tenant-1"}]
-
-        monkeypatch.setattr(module.KnowledgebaseService, "query", lambda **_kwargs: [1])
         monkeypatch.setattr(module.File2DocumentService, "get_storage_address", lambda **_kwargs: ("b", "n"))
         _patch_storage(monkeypatch, module, file_stream=b"")
-        res = _run(module.download_doc("doc-1"))
+        res = _run(module.download_document("doc-1"))
         assert res["message"] == "This file is empty."
 
         _patch_storage(monkeypatch, module, file_stream=b"abc")
-        res = _run(module.download_doc("doc-1"))
+        res = _run(module.download_document("doc-1"))
         assert res["filename"] == "doc.txt"
 
 

@@ -31,23 +31,18 @@ import fitz
 import numpy as np
 import pdfplumber
 import xgboost as xgb
-from huggingface_hub import snapshot_download
 from PIL import Image
 from pypdf import PdfReader as pdf2_read
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 
+from common import settings
 from common.constants import MAXIMUM_PAGE_NUMBER
-from common.file_utils import get_project_base_directory
-from deepdoc.vision import OCR, AscendLayoutRecognizer, LayoutRecognizer, Recognizer, TableStructureRecognizer
+from common.misc_utils import thread_pool_exec
+from deepdoc.parser.utils import extract_pdf_outlines
+from deepdoc.vision import AscendLayoutRecognizer, LayoutRecognizer, Recognizer, TableStructureRecognizer
 from rag.nlp import rag_tokenizer
 from rag.prompts.generator import vision_llm_describe_prompt
-from deepdoc.parser.utils import extract_pdf_outlines
-from common import settings
-
-
-
-from common.misc_utils import thread_pool_exec
 
 LOCK_KEY_pdfplumber = "global_shared_lock_pdfplumber"
 if LOCK_KEY_pdfplumber not in sys.modules:
@@ -56,23 +51,13 @@ if LOCK_KEY_pdfplumber not in sys.modules:
 
 class RAGFlowPdfParser:
     def __init__(self, **kwargs):
-        """
-        If you have trouble downloading HuggingFace models, -_^ this might help!!
-
-        For Linux:
-        export HF_ENDPOINT=https://hf-mirror.com
-
-        For Windows:
-        Good luck
-        ^_-
-
-        """
 
         if os.environ.get("DEEPDOC_URL"):
             from deepdoc.vision.ocr_cli import OCRClient
+
             self.ocr = OCRClient(os.environ["DEEPDOC_URL"])
         else:
-            self.ocr = OCR()
+            raise RuntimeError("DEEPDOC_URL environment variable is required for OCR")
 
         self.parallel_limiter = None
         if settings.PARALLEL_DEVICES > 1:
@@ -94,21 +79,10 @@ class RAGFlowPdfParser:
             logging.debug("Using Onnx LayoutRecognizer")
             self.layouter = LayoutRecognizer(recognizer_domain)
         self.tbl_det = TableStructureRecognizer()
-
         self.updown_cnt_mdl = xgb.Booster()
         # xgboost model is very small; using CPU explicitly
         self.updown_cnt_mdl.set_param({"device": "cpu"})
         logging.info("updown_cnt_mdl initialized on CPU")
-        try:
-            model_dir = os.path.join(get_project_base_directory(), "rag/res/deepdoc")
-            self.updown_cnt_mdl.load_model(os.path.join(model_dir, "updown_concat_xgb.model"))
-        except Exception:
-            model_dir = snapshot_download(
-                repo_id="InfiniFlow/text_concat_xgb_v1.0",
-                local_dir=os.path.join(get_project_base_directory(), "rag/res/deepdoc"),
-                local_dir_use_symlinks=False)
-            self.updown_cnt_mdl.load_model(os.path.join(
-                model_dir, "updown_concat_xgb.model"))
 
         self.page_from = 0
         self.column_num = 1
@@ -259,7 +233,7 @@ class RAGFlowPdfParser:
             return True
         if cp == 0xFFFD:
             return True
-        if cp < 0x20 and ch not in ('\t', '\n', '\r'):
+        if cp < 0x20 and ch not in ("\t", "\n", "\r"):
             return True
         if 0x80 <= cp <= 0x9F:
             return True
@@ -335,13 +309,9 @@ class RAGFlowPdfParser:
                 subset_font_count += 1
 
             cp = ord(text[0])
-            if (0x2E80 <= cp <= 0x9FFF or 0xF900 <= cp <= 0xFAFF
-                    or 0x20000 <= cp <= 0x2FA1F
-                    or 0xAC00 <= cp <= 0xD7AF
-                    or 0x3040 <= cp <= 0x30FF):
+            if 0x2E80 <= cp <= 0x9FFF or 0xF900 <= cp <= 0xFAFF or 0x20000 <= cp <= 0x2FA1F or 0xAC00 <= cp <= 0xD7AF or 0x3040 <= cp <= 0x30FF:
                 cjk_like += 1
-            elif (0x21 <= cp <= 0x2F or 0x3A <= cp <= 0x40
-                    or 0x5B <= cp <= 0x60 or 0x7B <= cp <= 0x7E):
+            elif 0x21 <= cp <= 0x2F or 0x3A <= cp <= 0x40 or 0x5B <= cp <= 0x60 or 0x7B <= cp <= 0x7E:
                 ascii_punct_sym += 1
 
         if total_non_space < min_chars:
@@ -383,8 +353,7 @@ class RAGFlowPdfParser:
             for tb in tbls:  # for table
                 w, h = tb["x1"] - tb["x0"], tb["bottom"] - tb["top"]
                 w_margin, h_margin = w * 0.03, h * 0.03
-                left, top, right, bott = max(0, tb["x0"] - w_margin), max(tb["top"] - h_margin, 0), \
-                                         tb["x1"] + w_margin, tb["bottom"] + h_margin
+                left, top, right, bott = max(0, tb["x0"] - w_margin), max(tb["top"] - h_margin, 0), tb["x1"] + w_margin, tb["bottom"] + h_margin
                 left *= ZM
                 top *= ZM
                 right *= ZM
@@ -413,12 +382,11 @@ class RAGFlowPdfParser:
         tbcnt = np.cumsum(tbcnt)
         for i in range(len(tbcnt) - 1):  # for page
             pg = []
-            poss = pos[tbcnt[i]: tbcnt[i + 1]]
-            figs = imgs[tbcnt[i]: tbcnt[i + 1]]
-            for j, tb_items in enumerate(recos[tbcnt[i]: tbcnt[i + 1]]):  # for table
+            poss = pos[tbcnt[i] : tbcnt[i + 1]]
+            figs = imgs[tbcnt[i] : tbcnt[i + 1]]
+            for j, tb_items in enumerate(recos[tbcnt[i] : tbcnt[i + 1]]):  # for table
                 cells = []
                 for it in tb_items:  # for table components
-
                     # merge from OSS 2026-03-09
                     # for k in ["x0", "x1", "top", "bottom"]:
                     #     it[f"_{k}"] = it[k]
@@ -562,7 +530,11 @@ class RAGFlowPdfParser:
             if total_count > 0 and garbled_count / total_count >= 0.5:
                 logging.info(
                     "Page %d: detected garbled pdfplumber text (garbled=%d/%d), falling back to OCR for box at (%.1f, %.1f)",
-                    pagenum, garbled_count, total_count, b["x0"], b["top"],
+                    pagenum,
+                    garbled_count,
+                    total_count,
+                    b["x0"],
+                    b["top"],
                 )
                 b["text"] = ""
                 continue
@@ -571,7 +543,10 @@ class RAGFlowPdfParser:
             if total_count > 0 and self._is_garbled_by_font_encoding(box_chars, min_chars=5):
                 logging.info(
                     "Page %d: detected font-encoding garbled text (%d chars), falling back to OCR for box at (%.1f, %.1f)",
-                    pagenum, total_count, b["x0"], b["top"],
+                    pagenum,
+                    total_count,
+                    b["x0"],
+                    b["top"],
                 )
                 b["text"] = ""
 
@@ -1015,8 +990,8 @@ class RAGFlowPdfParser:
         figures = {}
 
         def detach_image(img):
-            # load() materializes the cropped pixels now; 
-            # copy() returns an image independent of self.page_images; 
+            # load() materializes the cropped pixels now;
+            # copy() returns an image independent of self.page_images;
             # close() releases the temporary crop/composite object held inside this parser.
             img.load()
             detached = img.copy()
@@ -1358,8 +1333,7 @@ class RAGFlowPdfParser:
             return total_page
         except Exception:
             with sys.modules[LOCK_KEY_pdfplumber]:
-                pdf = fitz.open(fnm) if not binary else fitz.open(
-                    stream=fnm, filetype="pdf")
+                pdf = fitz.open(fnm) if not binary else fitz.open(stream=fnm, filetype="pdf")
                 total_page = len(pdf.pages)
                 pdf.close()
             return total_page
@@ -1398,28 +1372,25 @@ class RAGFlowPdfParser:
                         sample_text = "".join(c.get("text", "") for c in sample)
                         if self._is_garbled_text(sample_text, threshold=0.3):
                             logging.warning(
-                                "Page %d: pdfplumber extracted mostly garbled characters (%d chars), "
-                                "clearing to use OCR fallback.",
-                                page_from + pi + 1, len(page_ch),
+                                "Page %d: pdfplumber extracted mostly garbled characters (%d chars), clearing to use OCR fallback.",
+                                page_from + pi + 1,
+                                len(page_ch),
                             )
                             self.page_chars[pi] = []
                             continue
                         # Strategy 2: font-encoding garbling (CJK mapped to ASCII)
                         if self._is_garbled_by_font_encoding(page_ch):
                             logging.warning(
-                                "Page %d: detected font-encoding garbled text "
-                                "(subset fonts with no CJK output, %d chars), "
-                                "clearing to use OCR fallback.",
-                                page_from + pi + 1, len(page_ch),
+                                "Page %d: detected font-encoding garbled text (subset fonts with no CJK output, %d chars), clearing to use OCR fallback.",
+                                page_from + pi + 1,
+                                len(page_ch),
                             )
                             self.page_chars[pi] = []
 
                     self.total_page = len(self.pdf.pages)
 
         except Exception:
-            self.pdf = fitz.open(fnm) if isinstance(
-                fnm, str) else fitz.open(
-                stream=fnm, filetype="pdf")
+            self.pdf = fitz.open(fnm) if isinstance(fnm, str) else fitz.open(stream=fnm, filetype="pdf")
             self.page_images = []
             self.page_chars = []
             mat = fitz.Matrix(zoomin, zoomin)
@@ -1430,8 +1401,7 @@ class RAGFlowPdfParser:
                 if i >= page_to:
                     break
                 pix = page.get_pixmap(matrix=mat)
-                img = Image.frombytes("RGB", [pix.width, pix.height],
-                                      pix.samples)
+                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
                 self.page_images.append(img)
                 self.page_chars.append([])
         logging.info(f"__images__ dedupe_chars cost {timer() - start}s")
@@ -1703,12 +1673,7 @@ class RAGFlowPdfParser:
             if isinstance(box.get("position_tag"), str):
                 box["position_tag"] = self._offset_position_tag(box["position_tag"], self.page_from)
             if isinstance(box.get("positions"), list):
-                box["positions"] = [
-                    [int(pos[0]) + self.page_from, *pos[1:]]
-                    if isinstance(pos, list) and len(pos) > 0 and isinstance(pos[0], (int, float))
-                    else pos
-                    for pos in box["positions"]
-                ]
+                box["positions"] = [[int(pos[0]) + self.page_from, *pos[1:]] if isinstance(pos, list) and pos else pos for pos in box["positions"]]
         return boxes
 
     @staticmethod

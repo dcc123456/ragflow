@@ -1,4 +1,5 @@
 import { UploadFormSchemaType } from '@/components/file-upload-dialog';
+import message from '@/components/ui/message';
 import { useSetModalState } from '@/hooks/common-hooks';
 import {
   useRunDocument,
@@ -44,6 +45,10 @@ export const useHandleUploadDocument = () => {
         const isPartialSuccess = ret?.code === 500 && ret?.message;
 
         if (!isSuccess && !isPartialSuccess) {
+          // Handle resource quota errors (2000-2006): show error popup with message
+          if (ret?.code >= 2000 && ret?.code <= 2006) {
+            message.error(ret.message || 'Insufficient resources');
+          }
           return;
         }
 

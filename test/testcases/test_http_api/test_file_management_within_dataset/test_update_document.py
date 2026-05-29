@@ -167,7 +167,7 @@ class TestDocumentsUpdated:
         "meta_fields, expected_code, expected_message",
         [
             # Test with invalid document ID (not owned by dataset)
-            ({"author": "alice"}, 102, "The dataset doesn't own the document."),
+            ({"author": "alice"}, 102, "Document not found!"),
         ],
     )
     def test_meta_fields_invalid_document(self, HttpApiAuth, add_documents, meta_fields, expected_code, expected_message):

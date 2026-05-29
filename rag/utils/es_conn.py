@@ -257,7 +257,8 @@ class ESConnection(ESConnectionBase):
             s = s.sort(*orders)
         if agg_fields:
             for fld in agg_fields:
-                s.aggs.bucket(f'aggs_{fld}', 'terms', field=fld, size=1000000)
+                agg_field = f"{fld}.keyword" if fld.endswith("_kwd") else fld
+                s.aggs.bucket(f'aggs_{fld}', 'terms', field=agg_field, size=1000000)
 
         has_dense = any(isinstance(m, MatchDenseExpr) for m in match_expressions)
         has_explicit_sort = bool(order_by and order_by.fields)

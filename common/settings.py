@@ -23,7 +23,6 @@ from datetime import date
 from common.constants import RAG_FLOW_SERVICE_NAME
 from common.file_utils import get_project_base_directory
 from common.config_utils import get_base_config, decrypt_database_config
-from common.misc_utils import pip_install_torch
 from common.constants import SVR_QUEUE_NAME, Storage
 
 import rag.utils
@@ -540,14 +539,8 @@ def init_settings():
 
 def check_and_install_torch():
     global PARALLEL_DEVICES
-    try:
-        pip_install_torch()
-        import torch.cuda
-
-        PARALLEL_DEVICES = torch.cuda.device_count()
-        logging.info(f"found {PARALLEL_DEVICES} gpus")
-    except Exception:
-        logging.info("can't import package 'torch'")
+    PARALLEL_DEVICES = 0
+    logging.info("PARALLEL_DEVICES disabled: deepdoc runs as remote service")
 
 
 def _parse_model_entry(entry):

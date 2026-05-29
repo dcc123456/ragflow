@@ -42,6 +42,7 @@ from libs.billing.billing_common import (
     load_stripe_test_runtime_config,
     stripe_dict,
 )
+from libs.billing.app_common import AppClient
 from libs.billing.points_common import PointsClient
 
 logger = logging.getLogger(__name__)
@@ -166,7 +167,7 @@ def billing_client(
     billing_runtime_config: dict[str, Any],
     billing_test_args: Any,
     billing_email_factory,
-) -> BillingClient:
+) -> AppClient:
     """Create a BillingClient with Stripe test clock lifecycle.
 
     The client is cleaned up via finalizer after each test.
@@ -175,7 +176,7 @@ def billing_client(
     clock_id = _create_test_clock()
 
     email = billing_email_factory("billing-client")
-    client = BillingClient(
+    client = AppClient(
         base_url=billing_test_args.base_url,
         version=billing_test_args.version,
         clock_id=clock_id,

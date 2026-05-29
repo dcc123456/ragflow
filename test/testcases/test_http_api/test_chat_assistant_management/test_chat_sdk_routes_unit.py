@@ -234,6 +234,7 @@ def _load_chat_module(monkeypatch):
 
     common_settings_mod = ModuleType("common.settings")
     common_settings_mod.ENABLE_ADMIN = False
+    common_settings_mod.BILLING_ENABLED = False
     monkeypatch.setitem(sys.modules, "common.settings", common_settings_mod)
 
     misc_utils_mod = ModuleType("common.misc_utils")
@@ -508,6 +509,7 @@ def _load_chat_module(monkeypatch):
     api_utils_mod.get_request_json = lambda: _AwaitableValue({})
     api_utils_mod.server_error_response = lambda ex: {"code": 500, "data": None, "message": str(ex)}
     api_utils_mod.validate_request = lambda *_args, **_kwargs: (lambda func: func)
+    api_utils_mod.get_resource_insufficient_result = lambda **kwargs: {"code": 403, "data": None, "message": "Insufficient resources"}
     monkeypatch.setitem(sys.modules, "api.utils.api_utils", api_utils_mod)
 
     tenant_utils_mod = ModuleType("api.utils.tenant_utils")
@@ -515,8 +517,8 @@ def _load_chat_module(monkeypatch):
     monkeypatch.setitem(sys.modules, "api.utils.tenant_utils", tenant_utils_mod)
 
     billing_mod = ModuleType("api.utils.billing")
-    billing_mod.check_dynamic_resources = lambda *_args, **_kwargs: (lambda func: func)
-    billing_mod.check_resources = lambda *_args, **_kwargs: (lambda func: func)
+    billing_mod.check_dynamic_resources = lambda *_args, **_kwargs: (True, {"details": {}, "error": ""})
+    billing_mod.check_resources = lambda **_: (lambda f: f)
     monkeypatch.setitem(sys.modules, "api.utils.billing", billing_mod)
 
     rag_pkg = ModuleType("rag")

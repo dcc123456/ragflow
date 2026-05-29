@@ -2,6 +2,21 @@ include:
   - ./docker-compose-base.yml
 # To ensure that the container processes the locally modified `service_conf.yaml.template` instead of the one included in its image, you need to mount the local `service_conf.yaml.template` to the container.
 services:
+  # DeepDoc model server (OCR, DLA, TSR) - separate from RAGFlow API/parser
+  deepdoc:
+    image: ${DEEPDOC_IMAGE:-infiniflow-ai/deepdoc_cpu:latest}
+    hostname: deepdoc
+    networks:
+      - ragflow
+    restart: on-failure
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 10s
+      retries: 120
+    environment:
+      - TZ=${TZ}
+
   ragflow:
     depends_on:
       mysql:
@@ -9,9 +24,13 @@ services:
       es01:
         condition: service_healthy
         required: false
-      redis:
+      valkey:
+        condition: service_healthy
+      deepdoc:
         condition: service_healthy
     image: ${RAGFLOW_IMAGE}
+    environment:
+      - DEEPDOC_URL=http://deepdoc:8000
     # Example configuration to set up an MCP server:
     # command:
     #   - --enable-mcpserver
@@ -60,10 +79,14 @@ services:
       es01:
         condition: service_healthy
         required: false
-      redis:
+      valkey:
+        condition: service_healthy
+      deepdoc:
         condition: service_healthy
     image: ${RAGFLOW_IMAGE}
     entrypoint: /ragflow/entrypoint-parser.sh
+    environment:
+      - DEEPDOC_URL=http://deepdoc:8000
     volumes:
       - ./ragflow-logs:/ragflow/logs
       # - ./nginx/ragflow.conf:/etc/nginx/conf.d/ragflow.conf

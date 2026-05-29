@@ -34,14 +34,7 @@ class TableStructureRecognizer(Recognizer):
             from deepdoc.vision.tsr_cli import TSRClient
             self.model = TSRClient(os.environ["DEEPDOC_URL"])
         else:
-            if os.environ.get("TABLE_STRUCTURE_RECOGNIZER_TYPE", "") == "ascend":
-                pass
-            else:
-                # Lazy import torch for local inference mode only
-                import torch
-                with torch.amp.autocast(device_type="cuda"):
-                    from ultralytics import YOLO
-                    self.model = YOLO(os.path.join(get_project_base_directory(), "rag/res/deepdoc/tsr.pt"))
+            raise RuntimeError("DEEPDOC_URL environment variable is required for TSR")
 
     def __call__(self, images, **kwargs):
         cell_bbx_list = []

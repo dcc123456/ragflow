@@ -269,6 +269,13 @@ def _load_session_module(monkeypatch):
     api_utils_mod.get_data_error_result = lambda message="Sorry! Data missing!", code=_StubRetCode.DATA_ERROR: {"code": code, "message": message}
     api_utils_mod.get_error_data_result = lambda message="Sorry! Data missing!", code=_StubRetCode.DATA_ERROR: {"code": code, "message": message}
     api_utils_mod.get_json_result = lambda code=_StubRetCode.SUCCESS, message="success", data=None: {"code": code, "message": message, "data": data}
+    api_utils_mod.get_resource_insufficient_result = (
+        lambda message="", code=_StubRetCode.BILLING_RESOURCE_INSUFFICIENT, data=None, **_kwargs: {
+            "code": code,
+            "message": message,
+            "data": data,
+        }
+    )
     api_utils_mod.get_result = lambda code=_StubRetCode.SUCCESS, message="", data=None, total=None: {
         key: value
         for key, value in {"code": code, "message": message, "data": data, "total": total}.items()
@@ -708,7 +715,12 @@ def _load_session_module(monkeypatch):
     )
     monkeypatch.setitem(sys.modules, "api.db.services.user_canvas_version", user_canvas_version_mod)
 
-    module_path = repo_root / "api" / "apps" / "restful_apis" / "bot_api.py"
+    # New agent routes resolve canvas ownership via get_by_canvas_id.
+    user_canvas_service = getattr(sys.modules.get("api.db.services.canvas_service"), "UserCanvasService", None)
+    if user_canvas_service is not None and not hasattr(user_canvas_service, "get_by_canvas_id"):
+        user_canvas_service.get_by_canvas_id = lambda _agent_id: (True, {"user_id": "tenant-1"})
+
+    module_path = repo_root / "api" / "apps" / "sdk" / "session.py"
     spec = importlib.util.spec_from_file_location("test_session_sdk_routes_unit_module", module_path)
     module = importlib.util.module_from_spec(spec)
     module.manager = _DummyManager()
@@ -743,6 +755,14 @@ def _load_session_module(monkeypatch):
 def _load_agent_api_module(monkeypatch):
     _load_session_module(monkeypatch)
     repo_root = Path(__file__).resolve().parents[4]
+    jwt_mod = ModuleType("jwt")
+    jwt_mod.encode = lambda *_args, **_kwargs: "encoded"
+    jwt_mod.decode = lambda *_args, **_kwargs: {}
+    monkeypatch.setitem(sys.modules, "jwt", jwt_mod)
+    peewee_mod = ModuleType("peewee")
+    peewee_mod.MySQLDatabase = type("MySQLDatabase", (), {})
+    peewee_mod.PostgresqlDatabase = type("PostgresqlDatabase", (), {})
+    monkeypatch.setitem(sys.modules, "peewee", peewee_mod)
 
     agent_component_mod = ModuleType("agent.component")
 
@@ -757,6 +777,13 @@ def _load_agent_api_module(monkeypatch):
     api_apps_mod.current_user = SimpleNamespace(id="tenant-1")
     api_apps_mod.login_required = lambda func: func
     monkeypatch.setitem(sys.modules, "api.apps", api_apps_mod)
+
+    permission_service_mod = ModuleType("api.db.services.permission_service")
+    permission_service_mod.PermissionService = SimpleNamespace(
+        get_dataset_permissions=lambda *_args, **_kwargs: [],
+        get_dataset_permissions_by_doc_ids=lambda *_args, **_kwargs: {},
+    )
+    monkeypatch.setitem(sys.modules, "api.db.services.permission_service", permission_service_mod)
 
     api_apps_services_mod = ModuleType("api.apps.services")
     api_apps_services_mod.__path__ = [str(repo_root / "api" / "apps" / "services")]
@@ -878,6 +905,14 @@ def _load_agent_api_module(monkeypatch):
 def _load_openai_api_module(monkeypatch):
     _load_session_module(monkeypatch)
     repo_root = Path(__file__).resolve().parents[4]
+    tiktoken_mod = ModuleType("tiktoken")
+
+    class _Encoding:
+        def encode(self, text):
+            return list(str(text))
+
+    tiktoken_mod.get_encoding = lambda _name: _Encoding()
+    monkeypatch.setitem(sys.modules, "tiktoken", tiktoken_mod)
 
     api_apps_mod = ModuleType("api.apps")
     api_apps_mod.__path__ = [str(repo_root / "api" / "apps")]
@@ -1570,12 +1605,12 @@ def test_agentbot_routes_auth_stream_nonstream_unit(monkeypatch):
     _run(_collect_stream(resp.body))
 
     async def _agent_nonstream(*_args, **_kwargs):
-        yield {"answer": "agent-non-stream"}
+        yield 'data: {"event":"message","data":{"content":"agent-non-stream"}}\n\n'
 
     monkeypatch.setattr(module, "agent_completion", _agent_nonstream)
     monkeypatch.setattr(module, "get_request_json", lambda: _AwaitableValue({"stream": False}))
     res = _run(inspect.unwrap(module.agent_bot_completions)("agent-1"))
-    assert res["data"]["answer"] == "agent-non-stream"
+    assert res["data"]["data"]["content"] == "agent-non-stream"
 
     monkeypatch.setattr(module, "request", SimpleNamespace(headers={"Authorization": "Bearer"}))
     res = _run(inspect.unwrap(module.begin_inputs)("agent-1"))

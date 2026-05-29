@@ -23,7 +23,6 @@ from copy import deepcopy
 
 import cv2
 import numpy as np
-from huggingface_hub import snapshot_download
 
 from common.file_utils import get_project_base_directory
 from deepdoc.vision import Recognizer
@@ -58,12 +57,7 @@ class LayoutRecognizer(Recognizer):
             logging.info(f"LayoutRecognizer using remote DLA client at {dla_url} (via {env_used})")
             return
 
-        try:
-            model_dir = os.path.join(get_project_base_directory(), "rag/res/deepdoc")
-            super().__init__(self.labels, domain, model_dir)
-        except Exception:
-            model_dir = snapshot_download(repo_id="InfiniFlow/deepdoc", local_dir=os.path.join(get_project_base_directory(), "rag/res/deepdoc"), local_dir_use_symlinks=False)
-            super().__init__(self.labels, domain, model_dir)
+        raise RuntimeError("DEEPDOC_URL environment variable is required for DLA")
 
     def __call__(self, image_list, ocr_res, scale_factor=3, thr=0.2, batch_size=16, drop=True):
         def __is_garbage(b):

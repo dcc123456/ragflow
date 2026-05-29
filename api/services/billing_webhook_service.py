@@ -76,6 +76,20 @@ CHECKOUT_SESSION_COMPLETED = "checkout.session.completed"
 INVOICE_PAID = "invoice.paid"
 SUBSCRIPTION_UPDATED = "customer.subscription.updated"
 SUBSCRIPTION_DELETED = "customer.subscription.deleted"
+SUBSCRIPTION_CREATED = "customer.subscription.created"
+
+# All Stripe event types that the billing webhook handler cares about.
+# Used both for filtering handle_undelivered_events and for registering the webhook endpoint.
+FOCUSED_STRIPE_WEBHOOK = [
+    INVOICE_PAID,
+    INVOICE_FAILED,
+    INVOICE_PAYMENT_ACTION_REQUIRED,
+    SUBSCRIPTION_UPDATED,
+    SUBSCRIPTION_DELETED,
+    SUBSCRIPTION_CREATED,
+    CHECKOUT_SESSION_COMPLETED,
+    PAYMENT_INTENT_SUCCEEDED,
+]
 
 WEBHOOK_EVENT_STATUS_PROCESSING = "processing"
 WEBHOOK_EVENT_STATUS_COMPLETED = "completed"
@@ -576,15 +590,7 @@ def handle_undelivered_events():
 
     stripe.api_key = settings.BILLING["stripe_api_key"]
     stripe.api_version = settings.BILLING.get("stripe_api_version", "2026-04-22.dahlia")
-    focused_event_types = [
-        INVOICE_PAID,
-        INVOICE_FAILED,
-        INVOICE_PAYMENT_ACTION_REQUIRED,
-        SUBSCRIPTION_UPDATED,
-        SUBSCRIPTION_DELETED,
-        CHECKOUT_SESSION_COMPLETED,
-        PAYMENT_INTENT_SUCCEEDED,
-    ]
+    focused_event_types = FOCUSED_STRIPE_WEBHOOK
 
     checkpoint = _load_webhook_checkpoint()
     ending_before = str(checkpoint.get("id") or "")
@@ -933,6 +939,33 @@ async def _handle_invoice_paid(event: dict):
     if not tenant_id:
         tenant_id = SubscriptionService.get_tenant_id_by_customer_id(customer_id)
 
+    # Guard: skip invoice.paid for Trial tenant renewals (Phase 1C - Plan B).
+    # Allow upgrade invoices (price_id belongs to a paid plan) even if the
+    # subscription object still references Trial — Stripe delivers upgrade
+    # invoices before the subscription swap is complete.
+    invoice_subscription_id = getattr(invoice_paid, "subscription", None) or ""
+    if invoice_subscription_id:
+        sub = SubscriptionService.get_by_subscription_id(invoice_subscription_id)
+        if sub and is_trial_plan_name(sub.get("plan_name", "")):
+            # Check whether this invoice is for a paid plan upgrade (Starter/Pro/etc).
+            # If so, it is NOT a Trial renewal — let it through to create the
+            # billing history row for the upgrade.
+            _invoice_price_id = (invoice_paid.metadata or {}).get("price_id", "") if invoice_paid.metadata else ""
+            if not _invoice_price_id:
+                line_items = extract_list_data(get_attr_or_item(invoice_paid, "lines", None))
+                if line_items:
+                    first_price = getattr(line_items[0], "price", None) or {}
+                    _invoice_price_id = getattr(first_price, "id", "") or ""
+            if _invoice_price_id and not is_trial_plan_name(settings.BILLING_PRICEID_TO_PRODUCT.get(_invoice_price_id, "")):
+                logging.info(
+                    "Allowing upgrade invoice.paid for Trial subscription %s: invoice price_id=%s is a paid plan",
+                    invoice_subscription_id,
+                    _invoice_price_id,
+                )
+            else:
+                logging.info("Skipping invoice.paid for Trial subscription %s", invoice_subscription_id)
+                return
+
     order_id = invoice_paid.id
     stripe_status = invoice_paid.status or ""
     status = normalize_stripe_invoice_status(stripe_status)
@@ -1122,27 +1155,28 @@ async def _handle_storage_subscription_updated(subscription_updated: Subscriptio
 
 
 async def _handle_customer_subscription_updated(event: dict):
-    logging.info("Handling customer.subscription.updated")
-    try:
-        subscription_updated = SubscriptionUpdated(**event)
-    except ValidationError as exc:
-        logging.warning("Subscription Updated data validation failed: %s", exc)
+    event_type = event.get("type", "")
+    logging.info("Handling %s", event_type)
+
+    # customer.subscription.created does not match SubscriptionUpdated's type literal,
+    # so we extract the subscription_id directly from the event payload.
+    event_data_object = (event.get("data") or {}).get("object") or {}
+    subscription_id = get_attr_or_item(event_data_object, "id", "")
+    if not subscription_id:
+        logging.warning("Skip %s without subscription_id in event payload.", event_type)
         return
 
-    subscription = get_nested_attr_or_item(subscription_updated, "data", "object")
-    subscription_id = get_attr_or_item(subscription, "id", "")
-    if not subscription_id:
-        logging.warning("Skip subscription.updated without subscription_id in event payload.")
-        return
     try:
         subscription = await stripe.Subscription.retrieve_async(subscription_id)
         logging.info(
-            "Using authoritative Stripe subscription state for customer.subscription.updated: subscription_id=%s",
+            "Using authoritative Stripe subscription state for %s: subscription_id=%s",
+            event_type,
             subscription_id,
         )
     except Exception:
         logging.exception(
-            "Failed to retrieve authoritative Stripe subscription for customer.subscription.updated: subscription_id=%s",
+            "Failed to retrieve authoritative Stripe subscription for %s: subscription_id=%s",
+            event_type,
             subscription_id,
         )
         return
@@ -1151,7 +1185,7 @@ async def _handle_customer_subscription_updated(event: dict):
     if not tenant_id:
         tenant_id = SubscriptionService.get_tenant_id_by_customer_id(customer_id)
     if not tenant_id:
-        logging.warning("Skip subscription.updated without tenant context: %s", subscription_id)
+        logging.warning("Skip %s without tenant context: subscription_id=%s", event_type, subscription_id)
         return
 
     existing_main_subscription = SubscriptionService.get_raw_by_tenant_id(tenant_id) if tenant_id else {}
@@ -1162,7 +1196,7 @@ async def _handle_customer_subscription_updated(event: dict):
     previous_addon_storage_bytes = safe_int(existing_main_subscription.get("addon_storage_bytes", 0), 0) if existing_main_subscription else 0
     subscription_items = extract_subscription_items_data(subscription)
     if not subscription_items:
-        logging.warning("subscription.updated missing subscription items; running fallback sync.")
+        logging.warning("subscription.%s missing subscription items; running fallback sync.", event_type.replace("customer.", ""))
         _sync_main_subscription_from_stripe(
             tenant_id=tenant_id,
             stripe_subscription=subscription,
@@ -1176,7 +1210,8 @@ async def _handle_customer_subscription_updated(event: dict):
     current_period_start, current_period_end = extract_subscription_period(subscription)
     if not current_period_start or not current_period_end:
         logging.warning(
-            "subscription.updated authoritative Stripe state missing current period boundaries: subscription_id=%s",
+            "subscription.%s authoritative Stripe state missing current period boundaries: subscription_id=%s",
+            event_type.replace("customer.", ""),
             subscription_id,
         )
         return
@@ -1210,31 +1245,36 @@ async def _handle_customer_subscription_updated(event: dict):
 
     storage_item_id, _storage_price_id, _storage_qty = extract_storage_subscription_item(subscription)
     if storage_item_id:
-        await _handle_storage_subscription_updated(subscription_updated)
+        await _handle_storage_subscription_updated(subscription)
     elif subscription_id == previous_subscription_id and (previous_addon_item_id or previous_addon_storage_bytes > 0):
-        logging.info("Storage item absent from subscription.updated for tenant %s; clearing storage fields in DB.", tenant_id)
+        logging.info("Storage item absent from subscription.%s for tenant %s; clearing storage fields in DB.", event_type.replace("customer.", ""), tenant_id)
         with DB.atomic():
             Subscription.update(addon_subscription_item_id=None, addon_storage_bytes=0, target_storage_bytes=0).where(Subscription.tenant_id == tenant_id).execute()
 
     if tenant_id and _period_changed(previous_main_start, previous_main_end, current_period_start, current_period_end):
-        PointAccountService.reset_plan_consumed_points_at_cycle_start(tenant_id)
+        # Guard: skip quota reset for Trial tenants (Phase 1B - Plan B)
+        tenant_sub = SubscriptionService.get_by_tenant_id(tenant_id)
+        if tenant_sub and is_trial_plan_name(tenant_sub.get("plan_name", "")):
+            logging.info("Trial plan tenant %s period changed, skipping quota reset", tenant_id)
+        else:
+            PointAccountService.reset_plan_consumed_points_at_cycle_start(tenant_id)
+
 
 async def _handle_customer_subscription_deleted(event: dict):
     event_data = event["data"]["object"]
     subscription_id = (event_data.get("id") or "").strip() if isinstance(event_data, dict) else ""
     customer_id = (event_data.get("customer") or "").strip() if isinstance(event_data, dict) else ""
-    if subscription_id:
-        candidate_tenant_id = SubscriptionService.get_tenant_id_by_customer_id(customer_id) if customer_id else ""
-        if candidate_tenant_id:
-            plan_sub = SubscriptionService.get_by_tenant_id(candidate_tenant_id)
-            if plan_sub and subscription_id == plan_sub.get("subscription_id"):
-                storage_item_id, _storage_price_id, _storage_qty = extract_storage_subscription_item(event_data)
-                if storage_item_id:
-                    logging.info("Plan subscription with storage item deleted for tenant %s; falling through to main cancel handler.", candidate_tenant_id)
     tenant_id = SubscriptionService.get_tenant_id_by_customer_id(customer_id) if customer_id else ""
     if tenant_id:
         existing = SubscriptionService.get_by_tenant_id(tenant_id)
         if existing:
+            # Guard: skip fallback for Trial tenants (Phase 1D - Plan B)
+            if is_trial_plan_name(existing.get("plan_name", "")):
+                logging.info(
+                    "customer.subscription.deleted for Trial tenant %s: no fallback needed, subscription already local",
+                    tenant_id,
+                )
+                return
             current_subscription_id = (existing.get("subscription_id") or "").strip()
             if subscription_id and current_subscription_id and subscription_id != current_subscription_id:
                 logging.info(
@@ -1247,16 +1287,7 @@ async def _handle_customer_subscription_deleted(event: dict):
             trial_subscription = SubscriptionService._build_trial_subscription(
                 tenant_id,
                 customer_id or existing.get("customer_id", ""),
-            )
-            trial_subscription.update(
-                {
-                    "customer_id": customer_id or existing.get("customer_id", ""),
-                    "subscription_id": "",
-                    "original_subscription_id": existing.get("original_subscription_id", "") or "",
-                    "addon_subscription_item_id": None,
-                    "addon_storage_bytes": 0,
-                    "target_storage_bytes": 0,
-                }
+                existing.get("original_subscription_id", "") or ""
             )
             SubscriptionService.upsert_subscription(tenant_id, trial_subscription)
             PointAccountService.reset_plan_consumed_points_at_cycle_start(tenant_id)
@@ -1283,6 +1314,7 @@ def _default_event_handlers():
         ),
         CHECKOUT_SESSION_COMPLETED: _handle_checkout_session_completed,
         INVOICE_PAID: _handle_invoice_paid,
+        SUBSCRIPTION_CREATED: _handle_customer_subscription_updated,
         SUBSCRIPTION_UPDATED: _handle_customer_subscription_updated,
         SUBSCRIPTION_DELETED: _handle_customer_subscription_deleted,
     }

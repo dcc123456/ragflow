@@ -230,11 +230,11 @@ services:
       timeout: 10s
       retries: 120
 
-  redis:
-    image: redis:7.2.4
+  valkey:
+    image: valkey/valkey:8
     command:
       [
-        "redis-server",
+        "valkey-server",
         "--requirepass",
         "${REDIS_PASSWORD}",
         "--maxmemory",
@@ -246,12 +246,12 @@ services:
     ports:
       - ${REDIS_PORT}:6379
     volumes:
-      - redis_data:/data
+      - valkey_data:/data
     networks:
       - ragflow
     restart: on-failure
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      test: ["CMD", "valkey-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 10s
       timeout: 10s
       retries: 120
@@ -374,7 +374,7 @@ volumes:
     driver: local
   minio_data:
     driver: local
-  redis_data:
+  valkey_data:
     driver: local
   rabbitmq_data:
     driver: local

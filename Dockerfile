@@ -213,7 +213,17 @@ COPY web web
 COPY admin admin
 COPY api api
 COPY conf conf
-COPY deepdoc deepdoc
+COPY deepdoc/__init__.py deepdoc/__init__.py
+COPY deepdoc/parser deepdoc/parser
+COPY deepdoc/vision/__init__.py deepdoc/vision/__init__.py
+COPY deepdoc/vision/recognizer.py deepdoc/vision/recognizer.py
+COPY deepdoc/vision/ocr_cli.py deepdoc/vision/ocr_cli.py
+COPY deepdoc/vision/dla_cli.py deepdoc/vision/dla_cli.py
+COPY deepdoc/vision/tsr.py deepdoc/vision/tsr.py
+COPY deepdoc/vision/tsr_cli.py deepdoc/vision/tsr_cli.py
+COPY deepdoc/README.md deepdoc/README.md
+COPY deepdoc/README_zh.md deepdoc/README_zh.md
+COPY deepdoc/README_tr.md deepdoc/README_tr.md
 COPY rag rag
 COPY agent agent
 COPY pyproject.toml uv.lock ./

@@ -531,7 +531,7 @@ def _extract_ocr_text(binary: bytes, meta_blocks: list[dict] | None = None) -> l
         meta_blocks = []
     try:
         import pdfplumber
-        from deepdoc.vision.ocr import OCR
+        from deepdoc.vision import OCR
         import numpy as np
 
         ocr = OCR()

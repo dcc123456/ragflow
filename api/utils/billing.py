@@ -675,6 +675,39 @@ async def get_pending_subscription_change_async(subscription_id: str) -> dict:
 
     phases = schedule.get("phases", []) or []
     if len(phases) < 2:
+        # Single-phase schedule: check if end_behavior="cancel" signals a pending
+        # Trial downgrade.  The schedule's phases[0] items describe the plan being
+        # canceled; we derive the pending target from the subscription metadata
+        # or fall back to the current phase's plan as the pending target.
+        end_behavior = (schedule.get("end_behavior") or "").strip().lower()
+        if end_behavior == "cancel":
+            current_items = phases[0].get("items", []) if phases else []
+            # Use current phase price as pending_price (subscription will end)
+            pending_price_id = ""
+            for item in current_items:
+                if not isinstance(item, dict):
+                    continue
+                _price = item.get("price", "")
+                _price_id = _price.get("id", "") if isinstance(_price, dict) else (_price or "")
+                _price_id = (_price_id or "").strip()
+                if _price_id and not is_storage_price_id(_price_id):
+                    pending_price_id = _price_id
+                    break
+            if not pending_price_id:
+                pending_price_id = current_price_id
+            # end_behavior=cancel + single phase means the subscription is
+            # scheduled to cancel — pending target is Trial (no price_id in billing)
+            pending_plan_name = "Trial"
+            return {
+                "schedule_id": schedule_id,
+                "pending_price_id": pending_price_id,
+                "pending_plan_name": pending_plan_name,
+                "effective_at": to_utc_datetime(
+                    (phases[0].get("end_date") if phases else None)
+                    or schedule.get("end_date")
+                    or 0
+                ),
+            }
         return {}
 
     pending_phase = phases[1]
@@ -756,13 +789,82 @@ async def schedule_subscription_items_change_at_period_end_async(
     Passing only the delta item is incorrect because Stripe interprets phase
     ``items`` as the full item list for that phase.
     """
-    if not subscription_id or not current_phase_items or not next_phase_items:
+    if not subscription_id or not current_phase_items:
         return {}
+
+    # When downgrading to Trial (next_phase_items=[]), omit the second phase entirely —
+    # Stripe rejects an empty items array in phases[1]. Instead, pass a single-phase
+    # schedule that ends the subscription at period end via end_behavior="cancel".
+    if not next_phase_items:
+        current_phase_items = _dedupe_schedule_phase_items(current_phase_items)
+        if not current_phase_items:
+            return {}
+
+        subscription = await stripe.Subscription.retrieve_async(subscription_id)
+        period_start = subscription.get("current_period_start")
+        period_end = subscription.get("current_period_end")
+
+        schedule_id = (subscription.get("schedule") or "").strip()
+        schedule = None
+        if schedule_id:
+            schedule = await stripe.SubscriptionSchedule.retrieve_async(schedule_id)
+            schedule_status = (schedule.get("status") or "").strip().lower()
+            if schedule_status in {"released", "canceled", "completed"}:
+                schedule = None
+
+        # If an existing schedule is found with phases that may have already ended,
+        # release it first and create a fresh schedule so Stripe accepts brand-new
+        # phase boundaries instead of rejecting a modification to an ended phase.
+        if schedule_id:
+            try:
+                await stripe.SubscriptionSchedule.release_async(schedule_id)
+                logging.info("Released ended schedule %s for Trial downgrade, will replace", schedule_id)
+            except Exception:
+                pass
+            schedule = None
+
+        if not schedule:
+            schedule = await stripe.SubscriptionSchedule.create_async(from_subscription=subscription_id)
+
+        phases = schedule.get("phases", []) or []
+        phase_start_date = (
+            (phases[0].get("start_date") if phases else None)
+            or schedule.get("start_date")
+            or period_start
+        )
+        phase_end_date = (
+            (phases[0].get("end_date") if phases else None)
+            or period_end
+        )
+
+        updated_schedule = await stripe.SubscriptionSchedule.modify_async(
+            schedule.id,
+            end_behavior="cancel",
+            phases=[
+                {
+                    "start_date": phase_start_date,
+                    "end_date": phase_end_date,
+                    "items": current_phase_items,
+                },
+            ],
+        )
+
+        # pending_price_id / pending_plan_name: derive from current phase (the
+        # plan being canceled).  The caller is responsible for mapping this to the
+        # actual target plan name when next_phase_items is empty.
+        first_item = current_phase_items[0]
+        pending_price_id = first_item.get("price", "") if isinstance(first_item, dict) else ""
+        pending_plan_name = settings.BILLING_PRICEID_TO_PRODUCT.get(pending_price_id, "")
+
+        return {
+            "schedule_id": updated_schedule.id,
+            "pending_price_id": pending_price_id,
+            "pending_plan_name": pending_plan_name,
+            "effective_at": phase_end_date,
+        }
 
     current_phase_items = _dedupe_schedule_phase_items(current_phase_items)
     next_phase_items = _dedupe_schedule_phase_items(next_phase_items)
-    if not current_phase_items or not next_phase_items:
-        return {}
 
     subscription = await stripe.Subscription.retrieve_async(subscription_id)
     period_start = subscription.get("current_period_start")
@@ -846,15 +948,13 @@ async def schedule_subscription_price_change_at_period_end_async(
     if not subscription_items:
         return {}
 
-    _plan_item_id, current_price_id, current_quantity = extract_plan_subscription_item(subscription)
-    if not current_price_id:
-        return {}
-
+    _item_id, current_price_id, current_quantity = extract_plan_subscription_item(subscription)
     target_plan_name = settings.BILLING_PRICEID_TO_PRODUCT.get(target_price_id, "")
     target_is_trial = is_trial_plan_name(target_plan_name)
 
     current_phase_items = [{"price": current_price_id, "quantity": current_quantity}]
-    next_phase_items = [{"price": target_price_id, "quantity": current_quantity}]
+    # Trial: clear all items so subscription becomes inactive with no invoice
+    next_phase_items = [] if target_is_trial else [{"price": target_price_id, "quantity": current_quantity}]
 
     for item in subscription_items:
         price_obj = item.get("price", {}) if isinstance(item, dict) else getattr(item, "price", None)
@@ -867,6 +967,7 @@ async def schedule_subscription_price_change_at_period_end_async(
         quantity = safe_int(quantity, 0)
         current_phase_items.append({"price": price_id, "quantity": quantity})
 
+        # next_phase_items already [] for Trial — nothing to add
         if target_is_trial:
             continue
 
@@ -889,8 +990,15 @@ async def schedule_subscription_price_change_at_period_end_async(
     if not scheduled:
         return {}
 
+    if target_is_trial:
+        pending_plan_name = target_plan_name
+    else:
+        pending_plan_name = scheduled.get("pending_plan_name", settings.BILLING_PRICEID_TO_PRODUCT.get(current_price_id, ""))
+
     return {
         "schedule_id": scheduled["schedule_id"],
+        "pending_price_id": scheduled.get("pending_price_id", current_price_id),
+        "pending_plan_name": pending_plan_name,
         "current_price_id": current_price_id,
         "target_price_id": target_price_id,
         "effective_at": scheduled["effective_at"],
@@ -1368,6 +1476,10 @@ def check_resources(**resource_deltas):
 
                     if identified_error_resource:
                         error_details = {"current": error_details[identified_error_resource]["current"], "limit": error_details[identified_error_resource]["limit"]}
+                    elif error_details:
+                        # Multiple resources exceeded — pick the first available for detail
+                        first_resource = next(iter(error_details.keys()))
+                        error_details = {"current": error_details[first_resource]["current"], "limit": error_details[first_resource]["limit"]}
                     else:
                         error_details = {}
 

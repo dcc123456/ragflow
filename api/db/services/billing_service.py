@@ -37,12 +37,11 @@ from api.db.db_models import (
     Subscription,
 )
 from api.db.services.memory_service import MemoryService
-from api.utils.billing import BILLING_PLAN_TRIAL_NAME, create_stripe_customer_id, get_trial_price_id, parse_storage_size
+from api.utils.billing import BILLING_PLAN_TRIAL_NAME, create_stripe_customer_id, parse_storage_size
 from common.parser_config_utils import is_pdf_deepdoc_parse
 from common.billing_utils import to_utc_datetime
 from common.time_utils import current_timestamp
 from deepdoc.parser import PdfParser
-import stripe
 
 ENTITLED_MAIN_SUBSCRIPTION_STATUSES = {"active", "trialing"}
 
@@ -165,7 +164,7 @@ class SubscriptionService(CommonService):
         if not tenant_plan:
             logging.warning(f"Tenant {tenant_id} plan not found, use trial plan")
             customer_id = create_stripe_customer_id(tenant_id) if settings.BILLING_ENABLED else ""
-            tenant_plan = cls._build_trial_subscription(tenant_id, customer_id)
+            tenant_plan = cls._build_trial_subscription(tenant_id, customer_id, "")
             if settings.BILLING_ENABLED and customer_id:
                 SubscriptionService.save(**tenant_plan)
             else:
@@ -220,61 +219,10 @@ class SubscriptionService(CommonService):
     @classmethod
     def _ensure_trial_stripe_subscription(cls, tenant_plan: dict) -> dict:
         """
-        Ensure Trial/Free tenants have a Stripe subscription so we can schedule
-        plan changes at period end consistently.
+        Trial/Free tenants do NOT get a Stripe subscription.
+        Quota is controlled locally; Stripe subscription lifecycle only applies to paid plans.
+        Kept as a no-op for backwards compatibility.
         """
-        if not settings.BILLING_ENABLED:
-            return tenant_plan
-        if tenant_plan.get("plan_name") != BILLING_PLAN_TRIAL_NAME:
-            return tenant_plan
-        if tenant_plan.get("subscription_id"):
-            return tenant_plan
-
-        trial_price_id = get_trial_price_id(settings.BILLING.get("billing_plans", []))
-        if not trial_price_id:
-            return tenant_plan
-
-        customer_id = (tenant_plan.get("customer_id") or "").strip()
-        if not customer_id:
-            customer_id = create_stripe_customer_id(tenant_plan.get("tenant_id", ""))
-            if not customer_id:
-                return tenant_plan
-
-        stripe_subscription = stripe.Subscription.create(
-            customer=customer_id,
-            items=[{"price": trial_price_id, "quantity": 1}],
-            metadata={
-                "price_type": "subscription",
-                "tenant_id": tenant_plan.get("tenant_id", ""),
-                "price_id": trial_price_id,
-                "product_name": BILLING_PLAN_TRIAL_NAME,
-            },
-        )
-
-        subscription_id = getattr(stripe_subscription, "id", "") if not isinstance(stripe_subscription, dict) else stripe_subscription.get("id", "")
-        subscription_status = getattr(stripe_subscription, "status", "") if not isinstance(stripe_subscription, dict) else stripe_subscription.get("status", "")
-        current_period_start = (
-            getattr(stripe_subscription, "current_period_start", None) if not isinstance(stripe_subscription, dict) else stripe_subscription.get("current_period_start")
-        )
-        current_period_end = (
-            getattr(stripe_subscription, "current_period_end", None) if not isinstance(stripe_subscription, dict) else stripe_subscription.get("current_period_end")
-        )
-
-        update_dict = {
-            "customer_id": customer_id,
-            "price_id": trial_price_id,
-            "subscription_id": subscription_id,
-            "subscription_status": subscription_status or SubscriptionStatus.ACTIVE,
-            "start_time": to_utc_datetime(current_period_start) or tenant_plan.get("start_time"),
-            "end_time": to_utc_datetime(current_period_end) or tenant_plan.get("end_time"),
-        }
-        if not tenant_plan.get("original_subscription_id"):
-            update_dict["original_subscription_id"] = subscription_id
-
-        with DB.atomic():
-            cls.model.update(update_dict).where(cls.model.tenant_id == tenant_plan.get("tenant_id")).execute()
-
-        tenant_plan.update(update_dict)
         return tenant_plan
 
     @classmethod
@@ -284,25 +232,21 @@ class SubscriptionService(CommonService):
         if not tenant_plan.get("customer_id"):
             updated = cls.model.update(customer_id=customer_id, plan_name=BILLING_PLAN_TRIAL_NAME).where(cls.model.tenant_id == tenant_id).execute()
             if not updated:
-                tenant_plan = cls._build_trial_subscription(tenant_id, customer_id)
+                tenant_plan = cls._build_trial_subscription(tenant_id, customer_id, "")
                 cls.model.insert(**tenant_plan).execute()
 
     @classmethod
-    def _build_trial_subscription(cls, tenant_id: str, customer_id: str) -> dict:
+    def _build_trial_subscription(cls, tenant_id: str, customer_id: str, original_subscription_id: str) -> dict:
         now = datetime.now(timezone.utc)
-        trial_product = ProductService.get_by_name(BILLING_PLAN_TRIAL_NAME) or {}
-        trial_price_id = get_trial_price_id(settings.BILLING.get("billing_plans", []))
-        price_ids = trial_product.get("price_ids", "")
-        fallback_price_id = price_ids.split()[0] if price_ids else ""
         return {
             "id": get_uuid(),
             "tenant_id": tenant_id,
-            "customer_id": customer_id or "",
-            "product_id": trial_product.get("id", ""),
+            "customer_id": customer_id,
+            "product_id": "",
             "plan_name": BILLING_PLAN_TRIAL_NAME,
             "order_id": f"trial_{get_uuid()}",
             "status": SubscriptionStatus.ACTIVE,
-            "price_id": trial_price_id or fallback_price_id,
+            "price_id": "",
             "subscription_id": "",
             "subscription_status": SubscriptionStatus.ACTIVE,
             "invoice_id": "",
@@ -311,7 +255,10 @@ class SubscriptionService(CommonService):
             "start_time": to_utc_datetime(now),
             "end_time": to_utc_datetime(now + timedelta(days=365)),
             "renew_time": None,
-            "original_subscription_id": "",
+            "original_subscription_id": original_subscription_id,
+            "addon_subscription_item_id": None,
+            "addon_storage_bytes": 0,
+            "target_storage_bytes": 0,
         }
 
     @classmethod

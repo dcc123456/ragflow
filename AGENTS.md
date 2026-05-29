@@ -424,76 +424,76 @@ RAGFlow supports switching between Elasticsearch (default) and Infinity:
 <claude-mem-context>
 # Memory Context
 
-# [ragflow_enterprise/billing-refactor-9smmy] recent context, 2026-05-25 5:45pm GMT+8
+# [ragflow_enterprise/billing-refactor-9smmy] recent context, 2026-05-29 1:34pm GMT+8
 
 Legend: 🎯session 🔴bugfix 🟣feature 🔄refactor ✅change 🔵discovery ⚖️decision 🚨security_alert 🔐security_note
 Format: ID TIME TYPE TITLE
 Fetch details: get_observations([IDs]) | Search: mem-search skill
 
-Stats: 50 obs (14,413t read) | 2,091,054t work | 99% savings
+Stats: 50 obs (18,833t read) | 2,631,719t work | 99% savings
 
-### May 24, 2026
-S1228 CI runner credentials migration — replace GitHub secrets with runner env vars (May 24, 8:11 PM)
-S1279 Fix CI failures on billing-refactor branch (PR #533) - KeyError: 'data' in chat assistant tests (May 24, 8:17 PM)
-S1301 Fix test fixture batch_create_chat_assistants exceeding BILLING_QUOTA_TRIAL_APPS quota (May 24, 10:23 PM)
-S1306 batch_create_chat_assistants quota clamping risks misleading callers (May 24, 10:40 PM)
-S1308 batch_create_chat_assistants return signature fix: tuple with quota metadata (May 24, 10:43 PM)
-S1394 PR #533 draft-to-review CI trigger failure investigation (May 24, 10:43 PM)
-### May 25, 2026
-S1465 PR #533 draft→ready transition not triggering CI (May 25, 10:07 AM)
-S1466 PR #533 draft→ready not triggering CI — traced to tests.yml syntax error in commit 615c3e7f9 (May 25, 10:31 AM)
-S1469 PR #533 CI not triggering — tests.yml env.KUBE_CONFIG syntax error confirmed (May 25, 10:32 AM)
-S1472 Fix pushed to branch for PR #533 CI workflow syntax error (May 25, 10:35 AM)
-1068 11:03a ✅ PR #533 CI: Refined bridge step — writes to both GITHUB_ENV and GITHUB_OUTPUT, references via step outputs
-1069 11:10a 🔵 PR #533 CI: The same BYOK kubeconfig error persists after workflow changes — fix may not be applied to correct job
-1070 11:11a 🔵 PR #533 CI: ragflow_tests_byok is a separate job, not part of ragflow_tests — bridge step not applied to it
-1071 11:35a ✅ CI workflow GH_PAT secret replaced with MY_GH_TOKEN runner env var
-1073 11:38a 🔴 CI workflow now uses MY_GH_TOKEN runner env var instead of GH_PAT secret
-1075 11:42a 🔴 CI workflow GH_PAT secret replaced with MY_GH_TOKEN runner env var
-1078 11:50a 🔴 PR #533 CI BYOK jobs: GH_PAT replaced with MY_GH_TOKEN runner env var
-1079 " ✅ Elasticsearch test log collection changed from !cancelled() to always()
-1080 " ✅ Two commits pending push on billing-refactor-9smmy branch
-1081 11:56a 🔴 PR #533 CI still failing: kubeconfig input not supplied after bridge_ci_env fix
-1083 12:02p 🔴 Merge conflict resolved: kubeconfig now uses bridge_ci_env output
-1084 12:52p 🔵 tests.yml Set Kubernetes Context step present but Python assertion logic flawed
-1085 12:53p 🔵 Pytest test level and client type infrastructure discovered
-1086 12:55p 🔵 Local ragflow-1 container fails due to missing GitHub runner registration token
-1087 1:19p ✅ Built infiniflow-ai/ragflow:latest Docker image
-1088 " 🔵 HTTP API pytest suite testing plan initiated
-1091 1:22p 🔵 RAGFlow container logs reveal port binding and health issues
-1092 " 🔵 RAGFlow HTTP API pytest passed with local Docker stack
-1093 " 🔵 RAGFlow API endpoints and JWT parsing warnings during pytest
-1094 1:27p 🔵 CI workflow env configuration discovered for local match
-1095 1:28p ✅ Added tei-cpu compose profile to local docker/.env
-1096 " ✅ Added tei-cpu compose profile and TEI_MODEL to docker/.env
-1099 1:37p 🔵 RabbitMQ management port mismatch: .env uses 1673, actual service exposes 15672
-1100 1:40p 🔴 admin_metrics.py now reads RabbitMQ config from settings.RABBIT_CONF instead of env vars
-1101 1:43p 🔵 Dockerfile git describe fails in worktree builds, VERSION file ends up empty
-1102 1:45p 🔴 RAGFlow server fails to start because DOC_ENGINE env var contains literal shell substitution syntax
-1103 " 🔵 docker-compose .env does not support shell default syntax ${VAR:-default} for custom variables
-1104 1:48p 🔵 Multiple .env variables use shell default syntax that docker-compose passes through literally
-1105 1:49p 🔴 admin_metrics.py RabbitMQ fix confirmed: metrics collection now works in locally-built Docker image
-1106 1:50p 🔵 RAGFlow API server (9380) and admin metrics (9381) both returning HTTP 200
-1108 2:06p 🔵 RabbitMQ container IP discovered at 172.18.0.3
-1110 2:09p 🔵 RabbitMQ lazy-init fix unblocks billing quota enforcement
-1111 2:14p ⚖️ Third test resource cleanup approach: immediate deletion without affecting test logic
-1113 2:15p 🔵 Billing subscription overview API returns 404 with /api/v1 prefix
-1114 2:22p 🔵 Billing subscription overview endpoint works at correct path without /api prefix
-1115 2:30p ⚖️ BILLING_QUOTA_TRIAL_APPS=3 to preserve test logic
-1117 2:31p ✅ BILLING_QUOTA_TRIAL_APPS bumped from 1 to 3 across config, CI, and docs
-1122 2:39p 🔴 S3 storage NoSuchBucket causes document parsing timeout
-1124 2:40p 🔵 RAGFlow container uses MINIO storage (not S3) for document uploads
-1127 2:44p ✅ Trial apps quota bumped from 1 to 3 across env, CI, and docs
-1128 " 🔵 test_metadata_retrieval.py parsing timeout investigated — RTK proxy vs direct pytest difference
-1130 2:45p 🔵 test_metadata_retrieval.py fails in full suite run but passes individually
-1131 2:46p 🔴 test_metadata_retrieval.py ImportError root cause identified
-1132 " 🔴 test_metadata_retrieval.py import fix: moved upload_documents/parse_documents/retrieval_chunks to top-level
-1135 2:48p 🔴 test_metadata_retrieval.py import fix verified in full p2 suite rerun
-1136 2:49p 🔴 Full p2 suite rerun passed: 806 passed, 97 skipped, 0 failures
-1143 2:52p 🔴 BYOK CI kubeconfig unavailable in pull_request context — azure/k8s-set-context fails
-1146 " ✅ BILLING_QUOTA_STARTER_APPS raised from 3 to 4 across CI, env, and docs
-1147 " 🔄 RabbitMQ connection management refactored to lazy _ensure_connection() pattern
-1148 " ✅ docker/.env tei-cpu compose profile and TEI_MODEL variable added
+### May 28, 2026
+S2270 Evaluate removing onnxruntime-gpu from pyproject.toml dependencies (May 28, 2:59 PM)
+S2297 Rewrite current commit message to reflect all changes in the commit (May 28, 3:01 PM)
+S2300 PR #577 opened: localize Trial, remove Pulumi/k8s, refactor OCR to HTTP (May 28, 5:44 PM)
+S2302 Open PR targeting origin/saas_v0.25.5-x branch (May 28, 5:48 PM)
+S2460 401 redirect loop root cause: billing status raw fetch + redirect path bug (May 28, 5:48 PM)
+1679 8:10p 🔵 Billing check_resources is a decorator gated on BILLING_ENABLED setting
+1680 8:11p 🔄 Billing refactor replaces Stripe Checkout Session with direct Subscription API
+1681 " ✅ Billing refactor branch has 7 commits from saas_v0.25.5-x
+1682 8:12p 🟣 document_api.py adds regex-based quota error detection and response wrapping
+1683 " 🟣 Main billing refactor: Trial plan localization, OCR refactor to HTTP, Pulumi/k8s removal
+1684 " 🔵 check_resources decorator was introduced by the billing refactor — not present in target branch
+1685 8:13p 🔵 check_resources decorator pre-existed in target branch — billing refactor did not introduce it
+1686 " 🔵 PR 577 CI shows pattern of failures — multiple recent runs failing
+1687 " 🔵 Unit test mock is identical between branches — 500 errors come from real billing module behavior
+1688 8:14p 🔴 get_resource_insufficient_result returns jsonify response object, not plain dict
+1689 8:58p 🔴 Billing subscription 401 redirect loop on stage.ragflow.io
+1691 " 🔵 Billing subscription 401 loop traced to frontend redirect flow
+1693 8:59p 🔵 401 redirect loop root cause: billing status raw fetch + redirect path bug
+S2464 401 redirect loop root cause identified: three contributing factors (May 28, 8:59 PM)
+1694 9:01p 🔵 401 redirect loop root cause identified: three contributing factors
+S2471 Revert PR 573 — investigating whether saas_v0.25.5-x branch already contains PR 573 changes (May 28, 9:01 PM)
+1695 9:06p ✅ Reverted PR 573 changes in ragflow_enterprise repository
+1697 " 🔵 PR 573 was a Google account price plan bug fix
+1698 " 🔵 PR 573 fix: removed user info gate from price plan query
+S2474 Billing 401 redirect loop on stage deployment — investigating root cause and fix (May 28, 9:07 PM)
+1699 9:07p 🔴 Billing 401 redirect loop on stage deployment
+1700 9:08p 🔵 use-price-hooks.ts imports storage from authorization-util
+S2475 Clear Microsoft Edge browser cookies (May 28, 9:08 PM)
+1701 9:20p 🔵 Billing 401 redirect loop investigation results
+1702 " 🔵 Billing 401 redirect loop traced to api_utils.py auth guard
+1703 " 🔵 next-request.ts is the 401 redirect handler with a deduplication guard
+1704 9:21p 🔵 next-request.ts 401 redirect has no flag reset — isRedirecting never resets to false
+1705 " 🔵 Billing service uses deprecated umi-request client with wrong redirectToLogin
+1706 " 🔵 isBillingEnabled() uses raw fetch (not axios), bypasses 401 interceptors
+1707 9:22p 🔴 Billing 401 redirect loop fixed — two-part frontend patch
+1708 " 🔵 Billing 401 redirect loop: next-request.ts isRedirecting flag mechanism analyzed
+1709 " ⚖️ Billing 401 redirect loop next steps: investigate login page API calls on mount
+1710 " 🔴 useFetchCurrentPlan hook now accepts enabled parameter to prevent unconditional API call on login page
+1711 9:23p 🔵 Billing 401 redirect loop on stage.ragflow.io — isRedirecting flag is a notification suppressor, not a redirect preventer
+1713 " ✅ Two-part fix for billing 401 redirect loop: safe redirect path + login-page billing call guard
+1714 9:27p 🔵 Billing 401 redirect loop on stage.ragflow.io
+1715 " 🔴 Billing 401 redirect loop on stage.ragflow.io
+1716 " 🔴 Billing 401 redirect loop on stage.ragflow.io — two-part fix
+### May 29, 2026
+1743 10:12a 🔴 PR 577 CI fails: non-billing HTTP API tests time out after 30 minutes
+1744 " 🔴 PR 577 CI failures: two distinct root causes in non-billing HTTP API tests
+1746 10:13a 🔵 PR 577 CI exit code 2: set_tenant_info fixture calls /v1/user/tenant_info which returns 404 in Docker
+1747 " 🔵 PR 577 CI exit code 2: test fixture uses wrong URL path — /v1/user/tenant_info vs /v1/users/me/models
+1773 10:23a 🔴 Claude Code 2.1.154 + Minimax 2.7 system role API error
+1775 10:24a 🔵 Minimax API rejects "system" role in messages array
+1782 10:28a 🔵 CI test fixture calls deprecated /v1/user/set_tenant_info endpoint
+S2575 PR 577 CI failure root cause identified — API path mismatch between conftest.py fixtures and user_api.py routes (May 29, 10:33 AM)
+1791 10:35a 🔴 conftest.py get_tenant_info URL reverted to match backend route
+1794 11:21a 🔵 Docker tenant_info route 404 auth bypass — login_required initialization order issue
+1796 11:22a 🔵 Docker HTTP API tests pass at p2 level despite set_tenant_info fixture 404
+1798 " 🔵 Docker logs confirm /v1/users/me/models route not registered — /v1/llm/my_llms works
+1802 11:23a 🔵 Route path prefix mismatch: set_tenant_info calls /v1/ but user_api registers at /api/v1/
+1803 11:24a 🔴 conftest.py set_tenant_info uses wrong URL prefix — calls /v1/ instead of /api/v1/
+1805 11:26a 🔴 conftest.py token fixture calls non-existent /system/new_token — correct path is /system/tokens
+1809 11:32a 🔴 conftest.py fixture URL prefix mismatch — restful_apis routes need /api/v1/ not /v1/
+1810 11:33a 🔵 test_dify_retrieval unit tests fail with ModuleNotFoundError — deep import chain blocks mocking
 
-Access 2091k tokens of past work via get_observations([IDs]) or mem-search skill.
+Access 2632k tokens of past work via get_observations([IDs]) or mem-search skill.
 </claude-mem-context>

@@ -18,6 +18,7 @@ import asyncio
 import json
 import os
 import time
+import threading
 from copy import deepcopy
 from decimal import getcontext, ROUND_HALF_UP
 from urllib.parse import urlparse
@@ -186,13 +187,7 @@ def add_graph_templates():
 
 
 def register_webhook():
-    INVOICE_PAID = "invoice.paid"
-    INVOICE_FAILED = "invoice.payment_failed"
-    CHECKOUT_SESSION_COMPLETED = "checkout.session.completed"
-    SUBSCRIPTION_UPDATED = "customer.subscription.updated"
-    SUBSCRIPTION_DELETED = "customer.subscription.deleted"
-    PAYMENT_INTENT_SUCCEEDED = "payment_intent.succeeded"
-    FOCUSED_STRIPE_WEBHOOK = [INVOICE_PAID, INVOICE_FAILED, SUBSCRIPTION_UPDATED, SUBSCRIPTION_DELETED, CHECKOUT_SESSION_COMPLETED, PAYMENT_INTENT_SUCCEEDED]
+    from api.services.billing_webhook_service import FOCUSED_STRIPE_WEBHOOK
 
     """
     https://docs.stripe.com/api/webhook_endpoints/object
@@ -330,7 +325,7 @@ def init_web_data():
         ProductService.init_data(settings.BILLING["billing_plans"])
         PricePointService.init_data(settings.BILLING_PRICE_POINT)
         register_webhook()
-        handle_undelivered_events()
+        threading.Thread(target=handle_undelivered_events, daemon=True).start()
         configure_decimal()
 
     add_graph_templates()

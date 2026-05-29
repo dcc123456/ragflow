@@ -620,6 +620,32 @@ async def _upload_local_documents(kb, tenant_id):
                 detail=resource_err.detail or {},
             )
 
+        # Check if any error is a quota-related error that slipped through
+        # without being wrapped in InsufficientResourceError
+        for e in err:
+            e_str = str(e)
+            if "quota_storage" in e_str or "quota_apps" in e_str or "quota_members" in e_str or "quota_points" in e_str:
+                # Try to extract current/limit from the error message
+                import re
+                current_match = re.search(r"Current:\s*([\d.]+)", e_str)
+                limit_match = re.search(r"Limit:\s*([\d.]+)", e_str)
+                detail = {}
+                if current_match and limit_match:
+                    try:
+                        detail = {"current": int(float(current_match.group(1))), "limit": int(float(limit_match.group(1)))}
+                    except (ValueError, TypeError):
+                        pass
+                resource_code = RetCode.BILLING_RESOURCE_INSUFFICIENT
+                if "quota_storage" in e_str:
+                    resource_code = RetCode.BILLING_STORAGE_INSUFFICIENT
+                elif "quota_apps" in e_str:
+                    resource_code = RetCode.BILLING_APPS_INSUFFICIENT
+                elif "quota_members" in e_str:
+                    resource_code = RetCode.BILLING_SEATS_INSUFFICIENT
+                elif "quota_points" in e_str:
+                    resource_code = RetCode.BILLING_POINTS_INSUFFICIENT
+                return get_resource_insufficient_result(code=resource_code, message=e_str, detail=detail)
+
         msg = "\n".join(err)
         logging.error(msg)
         return get_error_data_result(message=msg, code=RetCode.SERVER_ERROR)

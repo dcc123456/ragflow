@@ -102,9 +102,9 @@ SILICONFLOW_BASE_URL = os.getenv("SILICONFLOW_BASE_URL", "https://api.siliconflo
 SILICONFLOW_EMBEDDING_MODEL = os.getenv("SILICONFLOW_EMBEDDING_MODEL", "BAAI/bge-m3")
 
 MARKER_EXPRESSIONS = {
-    "p1": "p1",
-    "p2": "p1 or p2",
-    "p3": "p1 or p2 or p3",
+    "p1": "p1 or billing",
+    "p2": "p1 or p2 or billing",
+    "p3": "p1 or p2 or p3 or billing",
 }
 
 
@@ -179,7 +179,7 @@ def auth():
 
 @pytest.fixture(scope="session")
 def token(auth):
-    url = HOST_ADDRESS + f"/{VERSION}/system/new_token"
+    url = HOST_ADDRESS + f"/api/{VERSION}/system/tokens"
     response, _ = _request_json_with_auth_retry("POST", url, auth)
     res = response.json()
     if res.get("code") != 0:
@@ -255,7 +255,7 @@ def add_models(auth):
 
 
 def get_tenant_info(auth):
-    url = HOST_ADDRESS + f"/{VERSION}/user/tenant_info"
+    url = HOST_ADDRESS + f"/api/{VERSION}/users/me/models"
     response, auth = _request_json_with_auth_retry("GET", url, auth)
     res = response.json()
     if res.get("code") != 0:
@@ -271,7 +271,7 @@ def set_tenant_info(auth):
         tenant_id, auth = get_tenant_info(auth)
     except Exception as e:
         pytest.exit(f"Error in set_tenant_info: {str(e)}")
-    url = HOST_ADDRESS + f"/{VERSION}/user/set_tenant_info"
+    url = HOST_ADDRESS + f"/api/{VERSION}/users/me/models"
     embd_id = (
         f"{SILICONFLOW_EMBEDDING_MODEL}@SILICONFLOW"
         if K8S_CI_USE_SILICONFLOW
@@ -285,7 +285,7 @@ def set_tenant_info(auth):
         "asr_id": "",
         "tts_id": None,
     }
-    response, _ = _request_json_with_auth_retry("POST", url, auth, json_payload=tenant_info)
+    response, _ = _request_json_with_auth_retry("PATCH", url, auth, json_payload=tenant_info)
     res = response.json()
     if res.get("code") != 0:
         raise Exception(res.get("message"))

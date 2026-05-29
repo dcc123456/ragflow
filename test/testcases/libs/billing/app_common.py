@@ -49,10 +49,10 @@ class AppClient(BillingClient):
 
     def init_sdk_token(self) -> None:
         """Create a tenant API token and switch app operations to Bearer auth."""
-        result = self.request_json("POST", "system/new_token")
+        result = self.request_json("POST", "system/tokens", need_api_path=True)
         token = ((result.get("data") or {}).get("token") or "").strip()
         if not token:
-            raise FlowError(f"system/new_token did not return token: {result}")
+            raise FlowError(f"system/tokens did not return token: {result}")
         self.sdk_auth_header = f"Bearer {token}"
 
     def sdk_headers(self) -> dict[str, str]:
@@ -169,6 +169,68 @@ class AppClient(BillingClient):
         overview = self.plan_overview()
         resources = overview.get("resources", {})
         return resources.get("apps", {})
+
+    def upload_document(self, dataset_id: str, file_path: str) -> dict:
+        """Upload a document to a dataset via the RESTful API using SDK Bearer auth."""
+        from pathlib import Path
+        from requests_toolbelt import MultipartEncoder  # noqa: E402
+        p = Path(file_path)
+        m = MultipartEncoder(fields=[("file", (p.name, p.open("rb")))])
+        try:
+            response = self.session.post(
+                f"{self.base_url}/api/{self.version}/datasets/{dataset_id}/documents",
+                headers={**self.sdk_headers(), "Content-Type": m.content_type},
+                data=m,
+                timeout=60,
+            )
+            try:
+                result = response.json()
+            except ValueError as exc:
+                raise FlowError(f"upload_document returned non-JSON: {response.text[:500]}") from exc
+            if response.status_code >= 400 or result.get("code") not in (0, None):
+                raise FlowError(f"upload_document failed status={response.status_code}: {result}")
+            return result
+        finally:
+            m.fields[0][1][1].close()
+
+    def parse_documents(self, dataset_id: str, document_ids: list[str]) -> dict:
+        """Trigger parsing for documents in a dataset via the RESTful API."""
+        response = self.session.post(
+            f"{self.base_url}/api/{self.version}/datasets/{dataset_id}/chunks",
+            headers=self.sdk_headers(),
+            json={"document_ids": document_ids},
+            timeout=60,
+        )
+        try:
+            result = response.json()
+        except ValueError as exc:
+            raise FlowError(f"parse_documents returned non-JSON: {response.text[:500]}") from exc
+        if response.status_code >= 400 or result.get("code") not in (0, None):
+            raise FlowError(f"parse_documents failed status={response.status_code}: {result}")
+        return result
+
+    def list_documents(self, dataset_id: str) -> dict:
+        """List documents in a dataset."""
+        return self.sdk_request_json("GET", f"datasets/{dataset_id}/documents")
+
+    def points_balance(self) -> dict:
+        """Get points balance for this tenant."""
+        from libs.billing.points_common import cal_available_points
+        response = self.session.get(
+            self.billing_url(f"/points/balance?tenant_id={self.tenant_id}"),
+            headers=self.headers(auth=True),
+            timeout=60,
+        )
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise FlowError(
+                f"GET /billing/points/balance returned non-JSON status={response.status_code}: {response.text[:500]}"
+            ) from exc
+        if response.status_code >= 400 or payload.get("code") not in (0, None):
+            raise FlowError(f"GET /billing/points/balance failed status={response.status_code}: {payload}")
+        points = payload["data"]
+        return cal_available_points(points)
 
 
 def setup_app_test(

@@ -259,6 +259,10 @@ def delete_all_chat_assistants(auth, *, page_size=1000):
     return delete_chat_assistants(auth, {"ids": None, "delete_all": True})
 
 
+def make_chat_assistant_name(base_name):
+    return f"{base_name}_{uuid4().hex[:8]}"
+
+
 def get_billing_apps_limit(auth):
     """Get the apps limit from billing plan overview. Returns None if billing disabled or error."""
     import os
@@ -276,7 +280,6 @@ def get_billing_apps_limit(auth):
 
 def batch_create_chat_assistants(auth, num):
     chat_assistant_ids = []
-    batch_suffix = uuid4().hex[:8]
     for i in range(num):
         res = create_chat_assistant(auth, {"name": f"test_chat_assistant_{i}", "dataset_ids": []})
         if res.get("code") != 0:

@@ -276,6 +276,7 @@ jobs:
           echo -e "COMPOSE_PROFILES=\${COMPOSE_PROFILES},tei-cpu" >> docker/.env
           echo -e "TEI_MODEL=BAAI/bge-small-en-v1.5" >> docker/.env
           echo -e "RAGFLOW_IMAGE=${RAGFLOW_IMAGE}" >> docker/.env
+          echo -e "DEEPDOC_IMAGE=192.168.1.51/infiniflow-ai/deepdoc_cpu:latest" >> docker/.env
           echo -e "RATELIMIT_DISABLED=1" >> docker/.env
           echo -e "WS_WORKERS=1" >> docker/.env
           echo -e "RAPTOR_WORKERS=1" >> docker/.env
@@ -286,7 +287,7 @@ jobs:
 
           # Patch entrypoint.sh for coverage
           sed -i '/"\$PY" api\/ragflow_server.py \${INIT_SUPERUSER_ARGS} &/c\   echo "Ensuring coverage is installed..."\n      "$PY" -m pip install coverage -i https://mirrors.aliyun.com/pypi/simple\n     export COVERAGE_FILE=/ragflow/logs/.coverage\n        echo "Starting ragflow_server with coverage..."\n        "$PY" -m coverage run --source=./api/apps --omit="*/tests/*,*/migrations/*" -a api/ragflow_server.py ${INIT_SUPERUSER_ARGS} &' docker/entrypoint.sh
-          uv sync --python 3.12 --group test --frozen && uv pip install -e sdk/python
+          uv sync --python 3.13 --group test --frozen && uv pip install -e sdk/python
 
       - name: Start ragflow:nightly for Elasticsearch
         run: |
@@ -295,27 +296,11 @@ jobs:
           sudo docker ps -a --filter "label=com.docker.compose.project=${GITHUB_RUN_ID}" -q | xargs -r sudo docker rm -f
           sudo docker compose -f docker/docker-compose.yml -p ${GITHUB_RUN_ID} up -d
 
-      # - name: Run sdk tests against Elasticsearch
-      #   run: |
-      #     export http_proxy=""; export https_proxy=""; export no_proxy=""; export HTTP_PROXY=""; export HTTPS_PROXY=""; export NO_PROXY=""
-      #     until curl -s --connect-timeout 5 ${HOST_ADDRESS} > /dev/null; do
-      #       echo "Waiting for service to be available..."
-      #       sleep 5
-      #     done
-      #     source .venv/bin/activate && pytest -s --tb=short --level=${HTTP_API_TEST_LEVEL} test/testcases/test_sdk_api
-
-      # - name: Run frontend api tests against Elasticsearch
-      #   run: |
-      #     export http_proxy=""; export https_proxy=""; export no_proxy=""; export HTTP_PROXY=""; export HTTPS_PROXY=""; export NO_PROXY=""
-      #     until curl -s --connect-timeout 5 ${HOST_ADDRESS} > /dev/null; do
-      #       echo "Waiting for service to be available..."
-      #       sleep 5
-      #     done
-      #     source .venv/bin/activate && pytest -s --tb=short sdk/python/test/test_frontend_api/get_email.py sdk/python/test/test_frontend_api/test_dataset.py
-
       - name: Run non-billing http api tests against Elasticsearch
         timeout-minutes: 30
         run: |
+          # Disable billing for non-billing tests (billing tests run separately when p3)
+          sed -i 's/BILLING_ENABLED=.*/BILLING_ENABLED=0/' docker/.env
           export http_proxy=""; export https_proxy=""; export no_proxy=""; export HTTP_PROXY=""; export HTTPS_PROXY=""; export NO_PROXY=""
           MAX_RETRIES=180
           COUNT=0
@@ -339,58 +324,6 @@ jobs:
             test/testcases/test_http_api \
             --ignore=test/testcases/test_http_api/test_billing \
                         2>&1 | tee es_http_api_test.log
-
-      - name: Enable billing for dedicated HTTP API billing tests
-        if: ${{ env.HTTP_API_TEST_LEVEL == 'p3' }}
-        run: |
-          sed -i 's/^BILLING_ENABLED=.*/BILLING_ENABLED=1/' docker/.env
-          sudo docker compose -f docker/docker-compose.yml -p ${GITHUB_RUN_ID} up -d --force-recreate ragflow parser
-
-      - name: Start Stripe CLI webhook forwarding for Elasticsearch billing tests
-        if: ${{ env.HTTP_API_TEST_LEVEL == 'p3' }}
-        env:
-          STRIPE_API_KEY: ${{ env.BILLING_STRIPE_API_KEY }}
-        run: |
-          if [[ -z "${STRIPE_API_KEY:-}" ]]; then
-            echo "Error: missing BILLING_STRIPE_API_KEY secret for billing P3 tests."
-            exit 1
-          fi
-          if ! command -v stripe >/dev/null 2>&1; then
-            echo "Error: stripe CLI is required on the runner for billing P3 tests."
-            exit 1
-          fi
-          stripe listen \
-            --api-key "${STRIPE_API_KEY}" \
-            --forward-to "${HOST_ADDRESS}/v1/billing/webhooks/stripe" \
-            > stripe_listen_es.log 2>&1 &
-          echo $! > stripe_listen_es.pid
-          sleep 5
-          if ! kill -0 "$(cat stripe_listen_es.pid)" 2>/dev/null; then
-            echo "Error: stripe listen failed to stay running."
-            cat stripe_listen_es.log || true
-            exit 1
-          fi
-
-      - name: Run billing http api tests against Elasticsearch
-        if: ${{ env.HTTP_API_TEST_LEVEL == 'p3' }}
-        timeout-minutes: 30
-        run: |
-          export http_proxy=""; export https_proxy=""; export no_proxy=""; export HTTP_PROXY=""; export HTTPS_PROXY=""; export NO_PROXY=""
-          MAX_RETRIES=180
-          COUNT=0
-          until curl -s --connect-timeout 5 ${HOST_ADDRESS}/v1/system/ping > /dev/null; do
-            echo "Waiting for billing-enabled service at ${HOST_ADDRESS} to be available... (Attempt: $COUNT/$MAX_RETRIES)"
-            if [ $COUNT -ge $MAX_RETRIES ]; then
-              echo "Error: Billing-enabled service did not become available within 5 minutes."
-              sudo docker logs ${RAGFLOW_CONTAINER} --tail 200
-              exit 1
-            fi
-            COUNT=$((COUNT + 1))
-            sleep 5
-          done
-          source .venv/bin/activate && set -o pipefail; pytest -s --tb=short -m billing \
-            test/testcases/test_http_api/test_billing \
-            2>&1 | tee es_http_api_billing_test.log
 
       - name: RAGFlow CLI retrieval test Elasticsearch
         env:
@@ -479,23 +412,86 @@ jobs:
         if: ${{ always() }}
         run: |
           if [ -d docker/ragflow-logs ]; then
-            cp -r docker/ragflow-logs ${ARTIFACTS_DIR}/ragflow-logs-es
+            cp -r docker/ragflow-logs ${ARTIFACTS_DIR}/ragflow-logs
             echo "ragflow log" && tail -n 200 docker/ragflow-logs/ragflow_server.log || true
           else
             echo "No docker/ragflow-logs directory found; skipping log collection"
           fi
-          if [[ -f stripe_listen_es.log ]]; then
-            cp stripe_listen_es.log ${ARTIFACTS_DIR}/stripe-listen-es.log
-            tail -n 200 stripe_listen_es.log || true
+          sudo rm -rf docker/ragflow-logs || true
+
+      - name: Enable billing for dedicated HTTP API billing tests
+        if: ${{ env.HTTP_API_TEST_LEVEL == 'p3' }}
+        run: |
+          sed -i 's/^BILLING_ENABLED=.*/BILLING_ENABLED=1/' docker/.env
+          sudo docker compose -f docker/docker-compose.yml -p ${GITHUB_RUN_ID} up -d --force-recreate ragflow parser
+
+      - name: Start Stripe CLI webhook forwarding for Elasticsearch billing tests
+        if: ${{ env.HTTP_API_TEST_LEVEL == 'p3' }}
+        env:
+          STRIPE_API_KEY: ${{ env.BILLING_STRIPE_API_KEY }}
+        run: |
+          if [[ -z "${STRIPE_API_KEY:-}" ]]; then
+            echo "Error: missing BILLING_STRIPE_API_KEY secret for billing P3 tests."
+            exit 1
+          fi
+          if ! command -v stripe >/dev/null 2>&1; then
+            echo "Error: stripe CLI is required on the runner for billing P3 tests."
+            exit 1
+          fi
+          stripe listen \
+            --api-key "${STRIPE_API_KEY}" \
+            --forward-to "${HOST_ADDRESS}/v1/billing/webhooks/stripe" \
+            > stripe_listen.log 2>&1 &
+          echo $! > stripe_listen.pid
+          sleep 5
+          if ! kill -0 "$(cat stripe_listen.pid)" 2>/dev/null; then
+            echo "Error: stripe listen failed to stay running."
+            cat stripe_listen.log || true
+            exit 1
+          fi
+
+      - name: Run billing http api tests against Elasticsearch
+        if: ${{ env.HTTP_API_TEST_LEVEL == 'p3' }}
+        timeout-minutes: 30
+        run: |
+          export http_proxy=""; export https_proxy=""; export no_proxy=""; export HTTP_PROXY=""; export HTTPS_PROXY=""; export NO_PROXY=""
+          MAX_RETRIES=180
+          COUNT=0
+          until curl -s --connect-timeout 5 ${HOST_ADDRESS}/v1/system/ping > /dev/null; do
+            echo "Waiting for billing-enabled service at ${HOST_ADDRESS} to be available... (Attempt: $COUNT/$MAX_RETRIES)"
+            if [ $COUNT -ge $MAX_RETRIES ]; then
+              echo "Error: Billing-enabled service did not become available within 5 minutes."
+              sudo docker logs ${RAGFLOW_CONTAINER} --tail 200
+              exit 1
+            fi
+            COUNT=$((COUNT + 1))
+            sleep 5
+          done
+          source .venv/bin/activate && set -o pipefail; pytest -s --tb=short -m billing \
+            test/testcases/test_http_api/test_billing \
+            2>&1 | tee es_http_api_billing_test.log
+
+      - name: Collect ragflow log Elasticsearch
+        if: ${{ always() }}
+        run: |
+          if [ -d docker/ragflow-logs ]; then
+            cp -r docker/ragflow-logs ${ARTIFACTS_DIR}/ragflow-logs-billing
+            echo "ragflow log" && tail -n 200 docker/ragflow-logs/ragflow_server.log || true
+          else
+            echo "No docker/ragflow-logs directory found; skipping log collection"
+          fi
+          if [[ -f stripe_listen.log ]]; then
+            cp stripe_listen.log ${ARTIFACTS_DIR}/stripe-listen.log
+            tail -n 200 stripe_listen.log || true
           fi
           sudo rm -rf docker/ragflow-logs || true
 
       - name: Stop Stripe CLI webhook forwarding for Elasticsearch billing tests
         if: always()
         run: |
-          if [[ -f stripe_listen_es.pid ]]; then
-            kill "$(cat stripe_listen_es.pid)" 2>/dev/null || true
-            rm -f stripe_listen_es.pid
+          if [[ -f stripe_listen.pid ]]; then
+            kill "$(cat stripe_listen.pid)" 2>/dev/null || true
+            rm -f stripe_listen.pid
           fi
 
       - name: Stop ragflow:nightly for Elasticsearch
@@ -800,31 +796,6 @@ jobs:
           fi
           echo "HOST_ADDRESS=http://${GATEWAY_ADDRESS}" >> "${GITHUB_ENV}"
 
-      - name: Start Stripe CLI webhook forwarding for BYOK billing tests
-        if: ${{ env.HTTP_API_TEST_LEVEL == 'p3' }}
-        env:
-          STRIPE_API_KEY: ${{ env.BILLING_STRIPE_API_KEY }}
-        run: |
-          if [[ -z "${STRIPE_API_KEY:-}" ]]; then
-            echo "Error: missing BILLING_STRIPE_API_KEY secret for billing P3 tests."
-            exit 1
-          fi
-          if ! command -v stripe >/dev/null 2>&1; then
-            echo "Error: stripe CLI is required on the runner for billing P3 tests."
-            exit 1
-          fi
-          stripe listen \
-            --api-key "${STRIPE_API_KEY}" \
-            --forward-to "${HOST_ADDRESS}/v1/billing/webhooks/stripe" \
-            > stripe_listen_byok.log 2>&1 &
-          echo $! > stripe_listen_byok.pid
-          sleep 5
-          if ! kill -0 "$(cat stripe_listen_byok.pid)" 2>/dev/null; then
-            echo "Error: stripe listen failed to stay running."
-            cat stripe_listen_byok.log || true
-            exit 1
-          fi
-
       - name: Run non-billing http api tests against Elasticsearch
         timeout-minutes: 30
         env:
@@ -832,7 +803,9 @@ jobs:
           SILICONFLOW_API_KEY: ${{ env.SILICONFLOW_API_KEY }}
           SILICONFLOW_BASE_URL: ${{ vars.SILICONFLOW_BASE_URL }}
           SILICONFLOW_EMBEDDING_MODEL: ${{ vars.SILICONFLOW_EMBEDDING_MODEL }}
+          BILLING_ENABLED: "0"
         run: |
+          # Billing tests currently disabled on k8s (BILLING_ENABLED=0)
           export http_proxy=""; export https_proxy=""; export no_proxy=""; export HTTP_PROXY=""; export HTTPS_PROXY=""; export NO_PROXY=""
           if [[ -z "${SILICONFLOW_API_KEY:-}" ]]; then
             echo "Error: missing SILICONFLOW_API_KEY secret for k8s CI embedding setup."
@@ -903,17 +876,6 @@ jobs:
             -var "redis_db=${BYOK_REDIS_DB}" \
             -var "ragflow_image=${BYOK_RAGFLOW_IMAGE_VAR}" \
             -var "rate_limit_disabled=true" \
-
-      - name: Stop Stripe CLI webhook forwarding for BYOK billing tests
-        if: always()
-        run: |
-          if [[ -f stripe_listen_byok.pid ]]; then
-            kill "$(cat stripe_listen_byok.pid)" 2>/dev/null || true
-            rm -f stripe_listen_byok.pid
-          fi
-          if [[ -f stripe_listen_byok.log ]]; then
-            tail -n 200 stripe_listen_byok.log || true
-          fi
 
       - name: Delete Harbor artifact
         if: always()

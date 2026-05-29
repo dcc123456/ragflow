@@ -74,6 +74,49 @@ def _load_dify_retrieval_module(monkeypatch):
     common_pkg.__path__ = [str(repo_root / "common")]
     monkeypatch.setitem(sys.modules, "common", common_pkg)
 
+    metadata_utils_mod = ModuleType("common.metadata_utils")
+    metadata_utils_mod.meta_filter = lambda *_args, **_kwargs: []
+    metadata_utils_mod.convert_conditions = lambda condition: condition
+    monkeypatch.setitem(sys.modules, "common.metadata_utils", metadata_utils_mod)
+    common_pkg.metadata_utils = metadata_utils_mod
+
+    settings_mod = ModuleType("common.settings")
+    settings_mod.retriever = _DummyRetriever()
+    settings_mod.kg_retriever = SimpleNamespace(retrieval=lambda *_args, **_kwargs: None)
+    monkeypatch.setitem(sys.modules, "common.settings", settings_mod)
+    common_pkg.settings = settings_mod
+
+    api_utils_mod = ModuleType("api.utils.api_utils")
+    api_utils_mod.apikey_required = lambda func: func
+    api_utils_mod.get_request_json = lambda: _AwaitableValue({})
+    api_utils_mod.get_json_result = lambda data=None, message="", code=0, **kwargs: {
+        "code": code,
+        "data": data,
+        "message": message,
+        **kwargs,
+    }
+    api_utils_mod.build_error_result = lambda message="", code=500, data=None, **kwargs: {
+        "code": code,
+        "data": data,
+        "message": message,
+        **kwargs,
+    }
+    monkeypatch.setitem(sys.modules, "api.utils.api_utils", api_utils_mod)
+
+    rag_pkg = ModuleType("rag")
+    rag_pkg.__path__ = [str(repo_root / "rag")]
+    monkeypatch.setitem(sys.modules, "rag", rag_pkg)
+
+    rag_app_pkg = ModuleType("rag.app")
+    rag_app_pkg.__path__ = []
+    monkeypatch.setitem(sys.modules, "rag.app", rag_app_pkg)
+    rag_pkg.app = rag_app_pkg
+
+    rag_app_tag_mod = ModuleType("rag.app.tag")
+    rag_app_tag_mod.label_question = lambda *_args, **_kwargs: []
+    monkeypatch.setitem(sys.modules, "rag.app.tag", rag_app_tag_mod)
+    rag_app_pkg.tag = rag_app_tag_mod
+
     deepdoc_pkg = ModuleType("deepdoc")
     deepdoc_parser_pkg = ModuleType("deepdoc.parser")
     deepdoc_parser_pkg.__path__ = []
@@ -102,6 +145,25 @@ def _load_dify_retrieval_module(monkeypatch):
     deepdoc_parser_utils.get_text = lambda *_args, **_kwargs: ""
     monkeypatch.setitem(sys.modules, "deepdoc.parser.utils", deepdoc_parser_utils)
     monkeypatch.setitem(sys.modules, "xgboost", ModuleType("xgboost"))
+
+    api_db_services_pkg = ModuleType("api.db.services")
+    api_db_services_pkg.__path__ = []
+    monkeypatch.setitem(sys.modules, "api.db.services", api_db_services_pkg)
+
+    document_service_mod = ModuleType("api.db.services.document_service")
+    document_service_mod.DocumentService = SimpleNamespace(get_by_id=lambda *_args, **_kwargs: (False, None))
+    monkeypatch.setitem(sys.modules, "api.db.services.document_service", document_service_mod)
+    api_db_services_pkg.document_service = document_service_mod
+
+    doc_metadata_service_mod = ModuleType("api.db.services.doc_metadata_service")
+    doc_metadata_service_mod.DocMetadataService = SimpleNamespace(get_flatted_meta_by_kbs=lambda *_args, **_kwargs: [])
+    monkeypatch.setitem(sys.modules, "api.db.services.doc_metadata_service", doc_metadata_service_mod)
+    api_db_services_pkg.doc_metadata_service = doc_metadata_service_mod
+
+    knowledgebase_service_mod = ModuleType("api.db.services.knowledgebase_service")
+    knowledgebase_service_mod.KnowledgebaseService = SimpleNamespace(get_by_id=lambda *_args, **_kwargs: (False, None))
+    monkeypatch.setitem(sys.modules, "api.db.services.knowledgebase_service", knowledgebase_service_mod)
+    api_db_services_pkg.knowledgebase_service = knowledgebase_service_mod
 
     # Mock tenant_llm_service for TenantLLMService and TenantService
     tenant_llm_service_mod = ModuleType("api.db.services.tenant_llm_service")
@@ -256,6 +318,10 @@ def _load_dify_retrieval_module(monkeypatch):
     tenant_model_service_mod.get_model_config_by_type_and_name = _get_model_config_by_type_and_name
     tenant_model_service_mod.get_tenant_default_model_by_type = _get_tenant_default_model_by_type
     monkeypatch.setitem(sys.modules, "api.db.joint_services.tenant_model_service", tenant_model_service_mod)
+
+    permission_utils_mod = ModuleType("api.utils.permission_utils")
+    permission_utils_mod.filter_accessible_doc_ids_for_user = lambda *_args, **_kwargs: ([], [], "")
+    monkeypatch.setitem(sys.modules, "api.utils.permission_utils", permission_utils_mod)
 
     module_name = "test_dify_retrieval_routes_unit_module"
     module_path = repo_root / "api" / "apps" / "restful_apis" / "dify_retrieval_api.py"

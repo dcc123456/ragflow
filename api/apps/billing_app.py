@@ -26,7 +26,7 @@ import stripe
 from quart import g, jsonify, request
 
 from api.apps import current_user, login_required
-from api.db import PaymentStatus, PriceType, ProductType, SubscriptionStatus
+from api.db import PaymentStatus, PriceType, ProductType
 from api.db.db_models import DB, PaymentOrder, PointHold, Subscription
 from api.db.services.billing_service import (  # noqa: F401
     PaymentOrderService,
@@ -82,7 +82,10 @@ from api.utils.billing import (
     storage_quantity_to_bytes,
     extract_subscription_items_data,
 )
-from api.services.billing_webhook_service import handle_billing_webhook_event
+from api.services.billing_webhook_service import (
+    FOCUSED_STRIPE_WEBHOOK,
+    handle_billing_webhook_event,
+)
 from common import settings
 from common.billing_utils import (
     amount_to_float,
@@ -121,36 +124,6 @@ def _format_request_validation_error(e: ValidationError) -> str:
 
 
 # subscription
-INVOICE_PAID = "invoice.paid"  # store 'subscription.id' and 'customer.id'verification.
-INVOICE_FAILED = "invoice.payment_failed"  #  notify customers and send them to the customer portal to update their payment method.
-INVOICE_PAYMENT_ACTION_REQUIRED = "invoice.payment_action_required"
-CHECKOUT_SESSION_COMPLETED = "checkout.session.completed"
-# Stripe fires this on ANY subscription state change: creation, renewal, upgrade/downgrade,
-# cancellation, trial-end, pending_update resolution, etc. Guard with _period_changed()
-# to isolate only cycle-start events (creation / renewal).
-SUBSCRIPTION_UPDATED = "customer.subscription.updated"
-SUBSCRIPTION_DELETED = "customer.subscription.deleted"
-# one-off
-PAYMENT_INTENT_SUCCEEDED = "payment_intent.succeeded"
-
-WEBHOOK_EVENT_STATUS_PROCESSING = "processing"
-WEBHOOK_EVENT_STATUS_COMPLETED = "completed"
-WEBHOOK_EVENT_STATUS_FAILED = "failed"
-WEBHOOK_EVENT_STATUS_UNHANDLED = "unhandled"
-WEBHOOK_EVENT_TERMINAL_STATUSES = {
-    WEBHOOK_EVENT_STATUS_COMPLETED,
-    WEBHOOK_EVENT_STATUS_UNHANDLED,
-}
-
-FOCUSED_STRIPE_WEBHOOK = [
-    INVOICE_PAID,
-    INVOICE_FAILED,
-    INVOICE_PAYMENT_ACTION_REQUIRED,
-    SUBSCRIPTION_UPDATED,
-    SUBSCRIPTION_DELETED,
-    CHECKOUT_SESSION_COMPLETED,
-    PAYMENT_INTENT_SUCCEEDED,
-]
 MAIN_SUBSCRIPTION_ENTITLED_STATUSES = {"active", "trialing"}
 MAIN_SUBSCRIPTION_DELINQUENT_STATUSES = {
     "incomplete",
@@ -933,6 +906,17 @@ async def _get_tenant_plan_with_customer_id(tenant_id: str, *, require_quota_inf
         )
         customer_id = await billing_set_customer_id_async(tenant_id)
         tenant_plan["customer_id"] = customer_id
+    else:
+        try:
+            await stripe.Customer.retrieve_async(customer_id)
+        except stripe.InvalidRequestError:
+            logging.warning(
+                "Stripe customer %s not found for tenant %s (likely deleted); provisioning a new one",
+                customer_id,
+                tenant_id,
+            )
+            customer_id = await billing_set_customer_id_async(tenant_id)
+            tenant_plan["customer_id"] = customer_id
     return tenant_plan
 
 
@@ -2416,65 +2400,58 @@ async def _handle_recoverable_subscription_checkout(
     )
 
 
-async def _create_subscription_checkout_session(
+async def _create_subscription_checkout(
     *,
     tenant_id: str,
     customer_id: str,
-    subscription_status: str,
     subscription_price_id: str,
     quantity: int,
-    session_success_url: str,
-    session_cancel_url: str,
-    extra_metadata: dict | None = None,
+    setup_intent_id: str = "",
 ):
-    """Create a fresh subscription checkout session for tenants without a modifiable subscription."""
-    is_inactive = subscription_status == SubscriptionStatus.INACTIVE
+    """
+    Create a subscription directly via Stripe Subscription API (no Checkout Session).
+
+    Args:
+        setup_intent_id: If provided, apply the SetupIntent's payment method as the
+            customer's default before creating the subscription.
+
+    Raises:
+        ValueError: if subscription_price_id belongs to Trial plan (Trial must not
+            go through Stripe subscription lifecycle per Plan B).
+    """
+    from api.utils.billing import get_trial_price_id
+
+    # Trial plan must NOT be created via Stripe subscription (Plan B)
     trail_price_id = get_trial_price_id(settings.BILLING.get("billing_plans", []))
-    is_trail_plan = subscription_price_id == trail_price_id
+    if subscription_price_id == trail_price_id:
+        raise ValueError(
+            f"Trial plan price_id {subscription_price_id!r} must not be used with "
+            "_create_subscription_checkout. Trial tenants do not create Stripe subscriptions."
+        )
+
     logging.info(
-        "Create subscription checkout session: tenant_id=%s, price_id=%s, plan=%s",
+        "Create subscription (direct API): tenant_id=%s, price_id=%s, plan=%s",
         tenant_id,
         subscription_price_id,
         settings.BILLING_PRICEID_TO_PRODUCT.get(subscription_price_id, ""),
     )
 
-    session_params = {
-        "customer": customer_id,
-        "client_reference_id": f"order_{uuid.uuid4()}",
-        "line_items": [{"price": subscription_price_id, "quantity": quantity}],
-        "mode": PriceType.SUBSCRIPTION,
-        "success_url": _build_checkout_success_url(session_success_url),
-        "cancel_url": session_cancel_url,
-        "metadata": {
-            "price_type": PriceType.SUBSCRIPTION,
-            "tenant_id": tenant_id,
-            **(extra_metadata or {}),
-        },
-        "subscription_data": {
-            "metadata": {
-                "price_type": PriceType.SUBSCRIPTION,
-                "tenant_id": tenant_id,
-                **(extra_metadata or {}),
-            },
-        },
-    }
-
-    if is_inactive and is_trail_plan:
-        session_params.update(
-            {
-                "payment_method_collection": "if_required",
-                "subscription_data": session_params.get("subscription_data", {})
-                | {
-                    "trial_period_days": 365,
-                    "trial_settings": {"end_behavior": {"missing_payment_method": "pause"}},
-                },
-            }
+    # Apply SetupIntent payment method as customer's default before creating subscription
+    if setup_intent_id:
+        await _apply_setup_intent_payment_method_if_present(
+            customer_id=customer_id,
+            setup_intent_id=setup_intent_id,
         )
 
-    logging.debug("subscription checkout session params prepared for tenant_id=%s", tenant_id)
-    session = await stripe.checkout.Session.create_async(**session_params)
-    logging.info(f"created stripe session id {session.id}, url: {session.url}")
-    return get_json_result(data={"redirect_to": session.url})
+    subscription_params = {
+        "customer": customer_id,
+        "items": [{"price": subscription_price_id, "quantity": quantity}],
+        "payment_behavior": "error_if_incomplete",
+    }
+
+    subscription = await stripe.Subscription.create_async(**subscription_params)
+    logging.info(f"created stripe subscription id {subscription.id}")
+    return get_json_result(data={"subscription_id": subscription.id})
 
 
 async def _handle_subscription_checkout(
@@ -2494,18 +2471,16 @@ async def _handle_subscription_checkout(
 
     if not subscription_id:
         logging.info(
-            "No existing subscription for tenant %s; creating subscription Checkout Session for customer %s",
+            "No existing subscription for tenant %s; creating subscription for customer %s",
             tenant_id,
             customer_id,
         )
-        return await _create_subscription_checkout_session(
+        return await _create_subscription_checkout(
             tenant_id=tenant_id,
             customer_id=customer_id,
-            subscription_status=subscription_status,
             subscription_price_id=subscription_price_id,
             quantity=quantity,
-            session_success_url=session_success_url,
-            session_cancel_url=session_cancel_url,
+            setup_intent_id=setup_intent_id,
         )
     elif subscription_status in MAIN_SUBSCRIPTION_RECOVERABLE_STATUSES:
         return await _handle_recoverable_subscription_checkout(

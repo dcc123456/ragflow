@@ -16,16 +16,35 @@
 import io
 import sys
 import threading
-from .ocr import OCR
-from .recognizer import Recognizer
-from .layout_recognizer import AscendLayoutRecognizer
-from .layout_recognizer import LayoutRecognizer4YOLOv10 as LayoutRecognizer
-from .tsr import TableStructureRecognizer
 
 
 LOCK_KEY_pdfplumber = "global_shared_lock_pdfplumber"
 if LOCK_KEY_pdfplumber not in sys.modules:
     sys.modules[LOCK_KEY_pdfplumber] = threading.Lock()
+
+
+def __getattr__(name):
+    if name == "OCR":
+        from .ocr_cli import OCR
+
+        return OCR
+    if name == "Recognizer":
+        from .recognizer import Recognizer
+
+        return Recognizer
+    if name == "LayoutRecognizer":
+        from .dla_cli import LayoutRecognizer
+
+        return LayoutRecognizer
+    if name == "AscendLayoutRecognizer":
+        from .dla_cli import AscendLayoutRecognizer
+
+        return AscendLayoutRecognizer
+    if name == "TableStructureRecognizer":
+        from .tsr import TableStructureRecognizer
+
+        return TableStructureRecognizer
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def init_in_out(args):
