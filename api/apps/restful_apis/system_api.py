@@ -32,6 +32,15 @@ from api.db.services.user_service import UserTenantService
 from common.log_utils import get_log_levels, set_log_level
 from common import settings
 from rag.utils.redis_conn import REDIS_CONN
+from api.db.services.system_settings_service import SystemSettingsService
+from api.utils.system_settings_utils import load_value_from_string
+
+
+def _is_email_verification_enabled() -> bool:
+    record = SystemSettingsService.get_singleton_by_exact_name("email_verification.enabled")
+    if record:
+        return load_value_from_string(record.value, record.data_type)
+    return False
 
 @manager.route("/system/ping", methods=["GET"])  # noqa: F821
 async def ping():
@@ -224,7 +233,7 @@ def get_config():
     return get_json_result(data={
         "registerEnabled": settings.REGISTER_ENABLED,
         "disablePasswordLogin": settings.DISABLE_PASSWORD_LOGIN,
-        "emailVerificationEnabled": settings.EMAIL_VERIFICATION_ENABLED,
+        "emailVerificationEnabled": _is_email_verification_enabled(),
     })
 
 @manager.route("/system/healthz", methods=["GET"])  # noqa: F821

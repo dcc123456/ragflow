@@ -7,6 +7,9 @@ export default {
   // notification
   notification: `${restAPIv1}/notification`,
 
+  // expose model provider
+  exposeModelProvider: `${restAPIv1}/expose_model_provider`,
+
   // user
   loginGetCaptcha: `${restAPIv1}/auth/password/forgot/captcha`,
   loginSendVerifyCode: `${restAPIv1}/auth/password/forgot/otp`,

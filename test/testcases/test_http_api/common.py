@@ -14,12 +14,12 @@
 #  limitations under the License.
 #
 from pathlib import Path
-from uuid import uuid4
 
 import requests
 from configs import HOST_ADDRESS, VERSION
 from requests_toolbelt import MultipartEncoder
 from utils.file_utils import create_txt_file
+from uuid import uuid4
 
 HEADERS = {"Content-Type": "application/json"}
 DATASETS_API_URL = f"/api/{VERSION}/datasets"
@@ -289,6 +289,10 @@ def batch_create_chat_assistants(auth, num):
             raise RuntimeError(f"Chat assistant creation failed: {res.get('message', 'Unknown error')}")
         chat_assistant_ids.append(res["data"]["id"])
     return chat_assistant_ids
+
+
+def make_chat_assistant_name(base_name: str) -> str:
+    return f"{base_name}_{uuid4().hex[:8]}"
 
 
 # SESSION MANAGEMENT

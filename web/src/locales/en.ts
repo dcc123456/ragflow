@@ -3211,6 +3211,21 @@ Important structured information may include: names, dates, locations, events, k
             enableModule: 'Enable',
           },
         },
+        exposeModelProvider: {
+          title: 'Expose Model Provider',
+          description: 'Display the model provider page to non-admin users.',
+          fields: {
+            enableModule: 'Enable',
+          },
+        },
+        emailVerification: {
+          title: 'Email Verification',
+          description:
+            "Send verification code to the user's registered email via the system default mailbox.",
+          fields: {
+            enableModule: 'Enable',
+          },
+        },
       },
 
       sandboxSettingsPage: {

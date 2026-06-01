@@ -17,3 +17,12 @@ def get_notification():
         if key:
             result[key] = load_value_from_string(row.value, row.data_type)
     return get_json_result(data=result)
+
+
+@manager.route("/expose_model_provider", methods=["GET"])  # noqa: F821
+def get_expose_model_provider():
+    record = SystemSettingsService.get_singleton_by_exact_name("expose_model_provider.enabled")
+    enabled = False
+    if record:
+        enabled = load_value_from_string(record.value, record.data_type)
+    return get_json_result(data={"enabled": enabled})

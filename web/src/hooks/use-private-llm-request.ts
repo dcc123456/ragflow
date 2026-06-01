@@ -1,4 +1,5 @@
 import message from '@/components/ui/message';
+import exposeModelProviderService from '@/services/expose-model-provider-service';
 import privateLLMService from '@/services/private-llm-service';
 import { useMutation, useQuery } from '@tanstack/react-query';
 
@@ -6,6 +7,7 @@ export const enum PrivateLLMApiAction {
   FetchEnableAdmin = 'fetchEnableAdmin',
   FetchIsAdmin = 'fetchIsAdmin',
   SetDefaultLlm = 'setDefaultLlm',
+  FetchExposeModelProvider = 'fetchExposeModelProvider',
 }
 
 export async function fetchEnableAdminQueryFn() {
@@ -57,3 +59,18 @@ export const useSetDefaultLlm = () => {
 
   return { data, loading, setDefaultLlm: mutateAsync };
 };
+
+export async function fetchExposeModelProviderQueryFn() {
+  const { data } = await exposeModelProviderService.getExposeModelProvider();
+  return data?.data?.enabled === true;
+}
+
+export function useFetchExposeModelProvider() {
+  const { data, isFetching: loading } = useQuery<boolean>({
+    queryKey: [PrivateLLMApiAction.FetchExposeModelProvider],
+    initialData: false,
+    queryFn: fetchExposeModelProviderQueryFn,
+  });
+
+  return { data, loading };
+}

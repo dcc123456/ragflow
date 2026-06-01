@@ -77,9 +77,28 @@ def _load_system_module(monkeypatch):
     settings_mod.DATABASE_TYPE = "MYSQL"
     settings_mod.REGISTER_ENABLED = True
     settings_mod.DISABLE_PASSWORD_LOGIN = False
-    settings_mod.EMAIL_VERIFICATION_ENABLED = False
     common_pkg.settings = settings_mod
     monkeypatch.setitem(sys.modules, "common.settings", settings_mod)
+
+    system_settings_service_mod = ModuleType("api.db.services.system_settings_service")
+
+    class _StubSystemSettingsService:
+        @staticmethod
+        def get_singleton_by_exact_name(name):
+            return None
+
+    system_settings_service_mod.SystemSettingsService = _StubSystemSettingsService
+    monkeypatch.setitem(sys.modules, "api.db.services.system_settings_service", system_settings_service_mod)
+
+    system_settings_utils_mod = ModuleType("api.utils.system_settings_utils")
+
+    def _load_value_from_string(value, data_type):
+        if data_type == "bool":
+            return value.lower() in ["true", "True"]
+        return value
+
+    system_settings_utils_mod.load_value_from_string = _load_value_from_string
+    monkeypatch.setitem(sys.modules, "api.utils.system_settings_utils", system_settings_utils_mod)
 
     versions_mod = ModuleType("common.versions")
     versions_mod.get_ragflow_version = lambda: "0.0.0-unit"
@@ -227,7 +246,7 @@ def test_get_config_returns_register_enabled_unit(monkeypatch):
 @pytest.mark.p2
 def test_get_config_returns_email_verification_enabled_unit(monkeypatch):
     module = _load_system_module(monkeypatch)
-    monkeypatch.setattr(module.settings, "EMAIL_VERIFICATION_ENABLED", True)
+    monkeypatch.setattr(module._is_email_verification_enabled, lambda: True)
     res = module.get_config()
     assert res["code"] == 0
     assert res["data"]["emailVerificationEnabled"] is True

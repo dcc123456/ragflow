@@ -67,9 +67,17 @@ from api.db.services.user_service import UserService, TenantService, UserTenantS
 from api.db.services.tenant_llm_service import is_tei_enabled
 from api.db.services.system_settings_service import SystemSettingsService
 from api.db.services.role_service import RoleService
+from api.utils.system_settings_utils import load_value_from_string
 from api.db.joint_services.mail_service import send_email_html
 from rag.utils.redis_conn import REDIS_CONN
 from common.http_client import async_request
+
+
+def _is_email_verification_enabled() -> bool:
+    record = SystemSettingsService.get_singleton_by_exact_name("email_verification.enabled")
+    if record:
+        return load_value_from_string(record.value, record.data_type)
+    return False
 
 
 async def ldap_login(channel_name: str, username: str, user_password: str):
@@ -836,7 +844,7 @@ async def register_get_captcha():
     - Generate an image captcha for registration and cache it in Redis.
     - Returns the captcha as a JPEG image.
     """
-    if not settings.EMAIL_VERIFICATION_ENABLED:
+    if not _is_email_verification_enabled():
         return get_json_result(data=False, code=RetCode.OPERATING_ERROR, message="Email verification is not enabled")
 
     request_body = await get_request_json()
@@ -868,7 +876,7 @@ async def register_send_otp():
     - Verify the image captcha stored at reg_captcha:{email} (case-insensitive).
     - On success, generate an email OTP, store hash + salt in Redis, and send the OTP via email.
     """
-    if not settings.EMAIL_VERIFICATION_ENABLED:
+    if not _is_email_verification_enabled():
         return get_json_result(data=False, code=RetCode.OPERATING_ERROR, message="Email verification is not enabled")
 
     req = await get_request_json()
@@ -937,7 +945,7 @@ async def register_verify_otp():
     - set a short-lived verified flag in Redis for the email
     Request JSON: { email, otp }
     """
-    if not settings.EMAIL_VERIFICATION_ENABLED:
+    if not _is_email_verification_enabled():
         return get_json_result(data=False, code=RetCode.OPERATING_ERROR, message="Email verification is not enabled")
 
     req = await get_request_json()
@@ -1034,7 +1042,7 @@ async def user_add():
         )
 
     # Check that the email has been verified via OTP (when enabled)
-    if settings.EMAIL_VERIFICATION_ENABLED:
+    if _is_email_verification_enabled():
         if not REDIS_CONN.get(register_verified_key(email_address)):
             return get_json_result(
                 data=False,

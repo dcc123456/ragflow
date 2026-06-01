@@ -215,6 +215,16 @@
       "source": "variable",
       "data_type": "bool",
       "value": "false"
+    },{
+      "name": "expose_model_provider.enabled",
+      "source": "variable",
+      "data_type": "bool",
+      "value": "false"
+    },{
+      "name": "email_verification.enabled",
+      "source": "variable",
+      "data_type": "bool",
+      "value": "false"
     }
   ]
 }

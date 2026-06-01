@@ -255,6 +255,14 @@ declare namespace AdminService {
       'notification.content': 'string';
     }>;
 
+    type ExposeModelProvider = Utilities.DefineVariables<{
+      'expose_model_provider.enabled': 'bool';
+    }>;
+
+    type EmailVerification = Utilities.DefineVariables<{
+      'email_verification.enabled': 'bool';
+    }>;
+
     type Mail = Utilities.DefineVariables<
       {
         server: 'string';
@@ -326,6 +334,8 @@ declare namespace AdminService {
 
   type SystemVariables = SystemVariables.Basic &
     SystemVariables.notification &
+    SystemVariables.ExposeModelProvider &
+    SystemVariables.EmailVerification &
     PrefixKeys<SystemVariables.Mail, 'mail'> &
     PrefixKeys<SystemVariables.SSO.IDP.Google, 'google|sso'> &
     PrefixKeys<SystemVariables.SSO.IDP.GitHub, 'github|sso'> &

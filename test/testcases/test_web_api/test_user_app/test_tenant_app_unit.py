@@ -197,7 +197,6 @@ def _load_tenant_module(monkeypatch):
 
     settings_mod = ModuleType("common.settings")
     settings_mod.MAIL_FRONTEND_URL = "https://frontend.example/invite"
-    settings_mod.EMAIL_VERIFICATION_ENABLED = False
     monkeypatch.setitem(sys.modules, "common.settings", settings_mod)
     common_pkg.settings = settings_mod
 

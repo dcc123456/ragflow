@@ -401,9 +401,38 @@ def _load_user_app(monkeypatch):
     settings_mod.IMAGE2TEXT_MDL = "img-mdl"
     settings_mod.RERANK_MDL = "rerank-mdl"
     settings_mod.REGISTER_ENABLED = True
-    settings_mod.EMAIL_VERIFICATION_ENABLED = False
     monkeypatch.setitem(sys.modules, "common.settings", settings_mod)
     common_pkg.settings = settings_mod
+
+    system_settings_service_mod = ModuleType("api.db.services.system_settings_service")
+
+    class _StubSystemSettingsService:
+        @staticmethod
+        def get_channel_oauth_config(channel=None):
+            if channel is None:
+                return {}
+            return settings_mod.OAUTH_CONFIG.get(channel, {})
+
+        @staticmethod
+        def get_oauth_config():
+            return settings_mod.OAUTH_CONFIG
+
+        @staticmethod
+        def get_singleton_by_exact_name(name):
+            return None
+
+    system_settings_service_mod.SystemSettingsService = _StubSystemSettingsService
+    monkeypatch.setitem(sys.modules, "api.db.services.system_settings_service", system_settings_service_mod)
+
+    system_settings_utils_mod = ModuleType("api.utils.system_settings_utils")
+
+    def _load_value_from_string(value, data_type):
+        if data_type == "bool":
+            return value.lower() in ["true", "True"]
+        return value
+
+    system_settings_utils_mod.load_value_from_string = _load_value_from_string
+    monkeypatch.setitem(sys.modules, "api.utils.system_settings_utils", system_settings_utils_mod)
 
     constants_mod = ModuleType("common.constants")
     constants_mod.RetCode = SimpleNamespace(

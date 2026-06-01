@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { useLogout } from '@/hooks/use-login-request';
 import {
   useFetchEnableAdmin,
+  useFetchExposeModelProvider,
   useFetchIsAdmin,
 } from '@/hooks/use-private-llm-request';
 import {
@@ -93,6 +94,7 @@ export function SideBar() {
   const { t } = useTranslation();
   const { data: isAdmin } = useFetchIsAdmin();
   const { data: enableAdmin } = useFetchEnableAdmin();
+  const { data: exposeModelProvider } = useFetchExposeModelProvider();
 
   useEffect(() => {
     fetchSystemVersion();
@@ -124,15 +126,18 @@ export function SideBar() {
         return false;
       }
 
-      if (enableAdmin) {
-        if (!isAdmin) {
-          return x.key !== Routes.Model;
+      if (x.key === Routes.Model) {
+        if (exposeModelProvider) {
+          return true;
+        }
+        if (enableAdmin && !isAdmin) {
+          return false;
         }
       }
 
       return x;
     });
-  }, [enableAdmin, isAdmin, t, currentPlan]);
+  }, [enableAdmin, isAdmin, exposeModelProvider, t, currentPlan]);
 
   return (
     <aside className="w-[303px] bg-bg-base flex flex-col">

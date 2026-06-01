@@ -19,6 +19,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 
 import Spotlight from '@/components/spotlight';
 
+import EmailVerificationFormGroup from './form-group/email-verification';
+import ExposeModelProviderFormGroup from './form-group/expose-model-provider';
 import NotificationSettingsFormGroup from './form-group/notification';
 import SMTPSettingsForm from './form-group/smtp';
 import WhitelistSettingsFormGroup from './form-group/whitelist';
@@ -30,6 +32,8 @@ const schema = z.object({
   smtp: SMTPSettingsForm.schema,
   whitelist: WhitelistSettingsFormGroup.schema,
   notification: NotificationSettingsFormGroup.schema,
+  exposeModelProvider: ExposeModelProviderFormGroup.schema,
+  emailVerification: EmailVerificationFormGroup.schema,
 });
 
 export type AdminSettingsFormValues = z.infer<typeof schema>;
@@ -45,6 +49,10 @@ function AdminSettings() {
       smtp: SMTPSettingsForm.mapValuesFromData(variables),
       whitelist: WhitelistSettingsFormGroup.mapValuesFromData(variables),
       notification: NotificationSettingsFormGroup.mapValuesFromData(variables),
+      exposeModelProvider:
+        ExposeModelProviderFormGroup.mapValuesFromData(variables),
+      emailVerification:
+        EmailVerificationFormGroup.mapValuesFromData(variables),
     };
   }, [variables]);
 
@@ -97,6 +105,12 @@ function AdminSettings() {
                         ...NotificationSettingsFormGroup.mapValuesToData(
                           data.notification,
                         ),
+                        ...ExposeModelProviderFormGroup.mapValuesToData(
+                          data.exposeModelProvider,
+                        ),
+                        ...EmailVerificationFormGroup.mapValuesToData(
+                          data.emailVerification,
+                        ),
                       });
                     })}
                   >
@@ -105,6 +119,10 @@ function AdminSettings() {
                     <WhitelistSettingsFormGroup />
                     <hr className="border-border-button" />
                     <NotificationSettingsFormGroup />
+                    <hr className="border-border-button" />
+                    <ExposeModelProviderFormGroup />
+                    <hr className="border-border-button" />
+                    <EmailVerificationFormGroup />
                   </form>
                 </Form>
               </div>
