@@ -64,7 +64,7 @@ billing:
       quota_points: 60
       api_request_limit_per_minute: 10
       task_priority: "low"
-      price_ids: "price_1TPawr2XhWscgPRmFFLnlhpK"
+      price_ids: "price_trailtrailtrailtrailtrai"
       product_type: "subscription"
       priority: 1
     - name: "Starter"

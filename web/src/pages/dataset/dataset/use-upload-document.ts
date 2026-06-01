@@ -1,5 +1,4 @@
 import { UploadFormSchemaType } from '@/components/file-upload-dialog';
-import message from '@/components/ui/message';
 import { useSetModalState } from '@/hooks/common-hooks';
 import {
   useRunDocument,
@@ -45,10 +44,11 @@ export const useHandleUploadDocument = () => {
         const isPartialSuccess = ret?.code === 500 && ret?.message;
 
         if (!isSuccess && !isPartialSuccess) {
-          // Handle resource quota errors (2000-2006): show error popup with message
-          if (ret?.code >= 2000 && ret?.code <= 2006) {
-            message.error(ret.message || 'Insufficient resources');
-          }
+          // Resource quota errors (2000-2006) are handled centrally by the
+          // global request interceptor: 2001-2004 open the centered
+          // UpgradeTipsModal via showPriceModal, and 2000/2005/2006 fall
+          // through to notification.error. Returning here avoids a duplicate
+          // top-of-page toast.
           return;
         }
 

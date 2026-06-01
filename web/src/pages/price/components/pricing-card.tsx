@@ -4,12 +4,13 @@ import billingService from '@/services/price';
 import storagePrivate from '@/utils/authorization-private-util';
 import { formatNumberWithThousandsSeparator } from '@/utils/common-util';
 import { useState } from 'react';
-import { PriceName, PriceNameMapValue } from '../constant';
+import { PriceName } from '../constant';
 import { showPriceConfirmModal } from '../global';
 import { ConfirmPriceEventDetail } from '../global/hook';
 import { useCharge, useFetchCurrentPlan } from '../hook/use-price-hooks';
 import '../index.less';
 import { ICurrentPlan, IPricePlanWithButton } from '../interface';
+import { shouldPreviewPlanUpgrade } from '../utils/upgrade';
 import CancelPlanDialog from './cancel-plan-dialog';
 import PricingCardButton from './pricing-card-button';
 
@@ -46,7 +47,6 @@ const PricingCard = (props: IPricePlanWithButton) => {
       setIsCancelDialogOpen(true);
       return;
     }
-    let isUpgrade = false;
     const currentPlan: ICurrentPlan = storagePrivate.getPricePlan();
 
     if (props.name === 'Enterprise') {
@@ -54,31 +54,29 @@ const PricingCard = (props: IPricePlanWithButton) => {
       return;
     }
 
-    if (
-      currentPlan &&
-      PriceNameMapValue[
-        currentPlan.plan_name as keyof typeof PriceNameMapValue
-      ] < PriceNameMapValue[currentPlanName as keyof typeof PriceNameMapValue]
-    ) {
-      isUpgrade = true;
-    }
-    if (isUpgrade && currentPlan.price_id) {
+    const isUpgrade = shouldPreviewPlanUpgrade(currentPlan, currentPlanName);
+    if (isUpgrade) {
       setUpComingLoading(true);
-      const { data: upcoming } = await billingService.getUpcoming({
-        old_price_id: currentPlan.price_id,
-        new_price_id: props.id,
-      });
-      setUpComingLoading(false);
-      showPriceConfirmModal({
-        plan: {
-          ...props,
-          priceDifference: upcoming?.data?.amount_due_today,
-        },
-        has_reusable_payment_method:
-          upcoming?.data?.has_reusable_payment_method ?? true,
-        stripe_publishable_key: upcoming?.data?.stripe_publishable_key ?? null,
-        container: nextLayoutRef.current || undefined,
-      } as ConfirmPriceEventDetail);
+      try {
+        const { data: upcoming } = await billingService.getUpcoming({
+          tenant_id: currentPlan?.tenant_id,
+          new_price_id: props.id,
+        });
+
+        showPriceConfirmModal({
+          plan: {
+            ...props,
+            priceDifference: upcoming?.data?.amount_due_today,
+          },
+          has_reusable_payment_method:
+            upcoming?.data?.has_reusable_payment_method ?? true,
+          stripe_publishable_key:
+            upcoming?.data?.stripe_publishable_key ?? null,
+          container: nextLayoutRef.current || undefined,
+        } as ConfirmPriceEventDetail);
+      } finally {
+        setUpComingLoading(false);
+      }
     } else {
       charge(props);
     }

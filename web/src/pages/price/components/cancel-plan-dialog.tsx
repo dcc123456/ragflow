@@ -19,7 +19,7 @@ interface ICancelPlanDialogProps {
   planName: string;
   endDate: string;
   tenantId: string;
-  /** price_id of the plan to downgrade to (e.g. Free plan's price_id) */
+  /** Internal billing target id for the downgrade destination plan. */
   targetPriceId?: string;
 }
 

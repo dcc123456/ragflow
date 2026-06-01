@@ -71,40 +71,50 @@ export const isResourceInsufficientPriceCode = (code?: number) =>
 
 interface IPriceData {
   code: PriceCode;
-  detail: { current: number; limit: number };
+  detail?: { current?: number; limit?: number; [key: string]: any };
+  message?: string;
 }
-export const showPriceModal = ({ code, detail }: IPriceData) => {
+export const showPriceModal = ({ code, detail = {}, message }: IPriceData) => {
   switch (code) {
     case PriceCode.MultLimit:
       return true;
     case PriceCode.SeatsLimit:
       showUpgradeTipsModal({
         type: 'team-member',
-        message: i18n.t('price.upgradeTips.seatsLimit', {
-          current: detail.current || 0,
-          limit: detail.limit || 0,
-        }),
+        message:
+          message ||
+          i18n.t('price.upgradeTips.seatsLimit', {
+            current: detail.current || 0,
+            limit: detail.limit || 0,
+          }),
       });
       return true;
     case PriceCode.AppsLimit:
       showUpgradeTipsModal({
         type: 'apps',
-        message: i18n.t('price.upgradeTips.appsLimit', {
-          current: detail.current || 0,
-          limit: detail.limit || 0,
-        }),
+        message:
+          message ||
+          i18n.t('price.upgradeTips.appsLimit', {
+            current: detail.current || 0,
+            limit: detail.limit || 0,
+          }),
       });
       return true;
     case PriceCode.StorageLimit:
       showUpgradeTipsModal({
         type: 'storage',
-        message: `You've reached your storage limit for your plan (${convertBytesToGb(detail.current)} GB/${convertBytesToGb(detail.limit)} GB). `,
+        message:
+          message ||
+          i18n.t('price.upgradeTips.storageLimit', {
+            current: convertBytesToGb(detail.current || 0),
+            limit: convertBytesToGb(detail.limit || 0),
+          }),
       });
       return true;
     case PriceCode.PointsLimit:
       showUpgradeTipsModal({
         type: 'points',
-        message: i18n.t('price.upgradeTips.pointsInsufficient'),
+        message: message || i18n.t('price.upgradeTips.pointsInsufficient'),
       });
       return true;
     default:

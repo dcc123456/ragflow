@@ -2194,7 +2194,6 @@ resource "kubernetes_secret_v1" "ragflow_env" {
     BILLING_STRIPE_PUBLISHABLE_KEY = var.billing_stripe_publishable_key
     BILLING_PRICE_ID_POINTS       = var.billing_price_id_points
     BILLING_PRICE_ID_STORAGE   = var.billing_price_id_storage
-    BILLING_PRICE_ID_TRIAL     = var.billing_price_id_trial
     BILLING_PRICE_ID_STARTER   = var.billing_price_id_starter
     BILLING_PRICE_ID_PRO       = var.billing_price_id_pro
     STRIPE_TEST_CLOCK_ID       = var.stripe_test_clock_id

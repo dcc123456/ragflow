@@ -226,7 +226,7 @@ const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
   useEffect(() => {
     if (!currentPlan || !planList || planList.length <= 0) return;
     const trialPlan = planList.find((plan) => plan.name === PriceName.Trial);
-    const trialPriceId = trialPlan?.price_ids;
+    const trialPlanTargetId = trialPlan?.price_ids;
     const currentPlanValue =
       PriceNameMapValue[
         currentPlan.plan_name as keyof typeof PriceNameMapValue
@@ -246,8 +246,9 @@ const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
       const tempPlan = {
         ...thisPricePlan,
         name: plan.name,
-        id: plan.price_ids,
-        cancelTargetPriceId: trialPriceId,
+        // Trial does not have a purchasable Stripe price id on the frontend.
+        id: plan.name === PriceName.Trial ? '' : plan.price_ids,
+        cancelTargetPriceId: trialPlanTargetId,
         price: plan.price,
         isUse: false,
         disabled: false,

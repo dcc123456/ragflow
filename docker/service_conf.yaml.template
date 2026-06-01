@@ -92,7 +92,7 @@ billing:
       quota_points: ${BILLING_QUOTA_TRIAL_POINTS:-500}  # monthly quota (reset each billing cycle)
       api_request_limit_per_minute: ${BILLING_QUOTA_TRIAL_RPM:-10}
       task_priority: "low"
-      price_ids: '${BILLING_PRICE_ID_TRIAL:-price_1TPawr2XhWscgPRmFFLnlhpK}'
+      price_ids: 'price_trailtrailtrailtrailtrai'
       product_type: "subscription"
       priority: 1
     - name: "Starter"

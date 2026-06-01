@@ -1803,7 +1803,7 @@ async def billing_all_plans():
     for plan_name, info in settings.BILLING_PLAN_TO_INFO.items():
         plan_price_ids = info.get("price_ids", [])
         for pid in plan_price_ids:
-            if pid and pid != "price_xxx":
+            if pid and pid != "price_xxx" and not pid.startswith("price_trail"):
                 price_ids.append((plan_name, pid))
 
     price_dict = {}

@@ -26,6 +26,8 @@ export type IPricePlanWithButton = IPricePlan & {
   isUse: boolean;
   disabled?: boolean;
   paymentRequired?: boolean;
+  // Internal billing target identifier for scheduled downgrade flows.
+  // For Trial this may be a backend placeholder, not a Stripe Dashboard price id.
   cancelTargetPriceId?: string;
   icon: () => JSX.Element;
 };
