@@ -251,7 +251,7 @@ async def completion(search_id):
     async def stream():
         nonlocal req, uid, kb_ids, search_config
         try:
-            async for ans in async_ask(req["question"], kb_ids, uid, search_config=search_config, search_id=search_id):
+            async for ans in async_ask(req["question"], kb_ids, uid, search_config=search_config):
                 yield "data:" + json.dumps({"code": 0, "message": "", "data": ans}, ensure_ascii=False) + "\n\n"
         except Exception as ex:
             yield "data:" + json.dumps(
