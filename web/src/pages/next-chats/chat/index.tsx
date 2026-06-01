@@ -1,5 +1,7 @@
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { EvaluationType } from '@/constants/evaluation';
+import { useNavigatePage } from '@/hooks/logic-hooks/navigate-hooks';
 import {
   useFetchSessionList,
   useFetchSessionManually,
@@ -10,9 +12,14 @@ import { RootLayoutContainer } from '@/layouts/root-layout';
 import { cn } from '@/lib/utils';
 import { useMount } from 'ahooks';
 import { isEmpty } from 'lodash';
-import { LucideArrowBigLeft, LucideArrowUpRight } from 'lucide-react';
+import {
+  ChartColumn,
+  LucideArrowBigLeft,
+  LucideArrowUpRight,
+} from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useParams } from 'react-router';
 import { useHandleClickConversationCard } from '../hooks/use-click-card';
 import { ChatSettings } from './app-settings/chat-settings';
 import { MultipleChatBox } from './chat-box/next-multiple-chat-box';
@@ -35,9 +42,13 @@ export default function Chat() {
   const { removeChatBox, addChatBox, chatBoxIds, hasSingleChatBox } =
     useAddChatBox(isDebugMode);
 
+  const { navigateToEvaluation } = useNavigatePage();
+
   const { conversationId, isNew } = useGetChatSearchParams();
 
   const { data: dialogList } = useFetchSessionList();
+
+  const { id } = useParams();
 
   const currentConversationName = useMemo(() => {
     return (
@@ -121,15 +132,22 @@ export default function Chat() {
                 >
                   <CardTitle className="flex justify-between items-center text-base gap-2">
                     <div className="truncate">{currentConversationName}</div>
-
-                    <Button
-                      variant="ghost"
-                      onClick={switchDebugMode}
-                      data-testid="chat-detail-multimodel-toggle"
-                    >
-                      <LucideArrowUpRight />
-                      {t('chat.multipleModels')}
-                    </Button>
+                    <div className="flex gap-4 items-center">
+                      <Button
+                        variant={'ghost'}
+                        onClick={navigateToEvaluation(EvaluationType.Chat, id!)}
+                      >
+                        <ChartColumn /> {t('evaluation.title')}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        onClick={switchDebugMode}
+                        data-testid="chat-detail-multimodel-toggle"
+                      >
+                        <LucideArrowUpRight />
+                        {t('chat.multipleModels')}
+                      </Button>
+                    </div>
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="flex-1 p-0 min-h-0">
