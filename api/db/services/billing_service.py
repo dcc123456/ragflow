@@ -147,6 +147,7 @@ class SubscriptionService(CommonService):
         model.addon_subscription_item_id,
         model.addon_storage_bytes,
         model.target_storage_bytes,
+        model.target_plan_name,
     ]
 
     @classmethod
@@ -259,6 +260,7 @@ class SubscriptionService(CommonService):
             "addon_subscription_item_id": None,
             "addon_storage_bytes": 0,
             "target_storage_bytes": 0,
+            "target_plan_name": None,
         }
 
     @classmethod
@@ -480,6 +482,38 @@ class SubscriptionService(CommonService):
         if addon_bytes is not None and target_bytes is not None:
             return addon_bytes, target_bytes
         return 0, 0
+
+    @classmethod
+    @DB.connection_context()
+    def get_scheduled_downgrades(cls):
+        """Return all subscriptions with a pending downgrade (plan or storage addon)."""
+        return (
+            cls.model.select(
+                cls.model.tenant_id,
+                cls.model.plan_name,
+                cls.model.target_plan_name,
+                cls.model.addon_storage_bytes,
+                cls.model.target_storage_bytes,
+                cls.model.end_time,
+                cls.model.subscription_id,
+            )
+            .where(
+                cls.model.status.in_(["active", "trialing"]),
+                cls.model.end_time.is_null(False),
+                (
+                    (
+                        cls.model.target_plan_name.is_null(False)
+                        & (cls.model.target_plan_name != cls.model.plan_name)
+                    )
+                    | (
+                        cls.model.target_storage_bytes.is_null(False)
+                        & cls.model.addon_storage_bytes.is_null(False)
+                        & (cls.model.target_storage_bytes < cls.model.addon_storage_bytes)
+                    )
+                ),
+            )
+            .dicts()
+        )
 
 
 class PaymentOrderService(CommonService):

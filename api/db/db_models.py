@@ -1538,6 +1538,7 @@ class Subscription(DataBaseModel):
     addon_subscription_item_id = CharField(max_length=255, null=True, default=None)
     addon_storage_bytes = BigIntegerField(null=True, default=None)
     target_storage_bytes = BigIntegerField(null=True, default=None)
+    target_plan_name = CharField(max_length=255, null=True, default=None, index=True)
 
     class Meta:
         db_table = "billing_subscription"
@@ -2357,6 +2358,7 @@ def migrate_db():
     alter_db_add_column(migrator, "billing_subscription", "addon_subscription_item_id", CharField(max_length=255, null=True, default=None))
     alter_db_add_column(migrator, "billing_subscription", "addon_storage_bytes", BigIntegerField(null=True, default=None))
     alter_db_add_column(migrator, "billing_subscription", "target_storage_bytes", BigIntegerField(null=True, default=None))
+    alter_db_add_column(migrator, "billing_subscription", "target_plan_name", CharField(max_length=255, null=True, default=None))
 
     # Remove legacy usage_stat_type column from billing_product (2026-05-11)
     alter_db_remove_column(migrator, "billing_product", "usage_stat_type")

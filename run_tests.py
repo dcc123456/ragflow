@@ -41,7 +41,7 @@ class TestRunner:
         self.coverage = False
         self.parallel = False
         self.verbose = False
-        self.ignore_syntax_warning = False
+        self.ignore_warnings = False
         self.markers = ""
         self.test_path = ""
         self.keyword = ""
@@ -70,7 +70,7 @@ OPTIONS:
     -h, --help              Show this help message
     -c, --coverage          Run tests with coverage report
     -p, --parallel          Run tests in parallel (requires pytest-xdist)
-    -i, --ignore            Run tests with "-W ignore::SyntaxWarning" option
+    -i, --ignore            Run tests with "-W ignore::SyntaxWarning" and "-W ignore::ImportWarning"
     -v, --verbose           Verbose output
     -t, --test FILE         Run specific test file or directory
     -m, --markers MARKERS   Run tests with specific markers (e.g., "unit", "integration")
@@ -85,7 +85,7 @@ EXAMPLES:
     # Run in parallel
     python run_tests.py --parallel
     
-    # Run tests with "-W ignore::SyntaxWarning" option
+    # Run tests with "-W ignore::SyntaxWarning" and "-W ignore::ImportWarning" options
     python run_tests.py --ignore
 
     # Run specific test file
@@ -144,9 +144,10 @@ EXAMPLES:
                 # Fallback to auto if multiprocessing not available
                 cmd.extend(["-n", "auto"])
 
-        # Add ignore syntax warning
-        if self.ignore_syntax_warning:
+        # Add ignore warnings
+        if self.ignore_warnings:
             cmd.extend(["-W", "ignore::SyntaxWarning"])
+            cmd.extend(["-W", "ignore::ImportWarning"])
 
         # Add default options from pyproject.toml if it exists
         pyproject_path = self.project_root / "pyproject.toml"
@@ -222,7 +223,7 @@ Examples:
   python run_tests.py --parallel         # Run in parallel
   python run_tests.py --test services/test_dialog_service.py  # Run specific test
   python run_tests.py --markers "unit"   # Run only unit tests
-  python run_tests.py --ignore           # Run with "-W ignore::SyntaxWarning" option
+  python run_tests.py --ignore           # Run with "-W ignore::SyntaxWarning" and "-W ignore::ImportWarning"
 """
         )
 
@@ -239,10 +240,10 @@ Examples:
         )
 
         parser.add_argument(
-            "-i", "--ignore",
+"-i", "--ignore",
             action="store_true",
-            help="Run tests with '-W ignore::SyntaxWarning' "
-        )
+            help="Run tests with '-W ignore::SyntaxWarning' and '-W ignore::ImportWarning' "
+    )
 
         parser.add_argument(
             "-v", "--verbose",
@@ -279,7 +280,7 @@ Examples:
             self.parallel = args.parallel
             self.verbose = args.verbose
             self.markers = args.markers
-            self.ignore_syntax_warning = args.ignore
+            self.ignore_warnings = args.ignore
             self.test_path = args.test
             self.keyword = args.keyword
 

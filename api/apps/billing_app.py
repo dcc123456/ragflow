@@ -474,6 +474,34 @@ def billing_status():
     return jsonify({"billing_enabled": settings.BILLING_ENABLED == 1})
 
 
+@manager.route("/downgrade-guard/health", methods=["GET"])  # noqa: F821
+def downgrade_guard_health():
+    """Health check for the downgrade guard daemon."""
+    from datetime import datetime, timezone, timedelta
+    from rag.utils.redis_conn import REDIS_CONN
+    from api.services.downgrade_guard import get_metrics
+
+    beijing_tz = timezone(timedelta(hours=8))
+    today = datetime.now(beijing_tz).strftime("%Y-%m-%d")
+    last_scan_date = REDIS_CONN.get("downgrade:last_scan_date") or ""
+    daily_scan_ok = last_scan_date == today
+
+    pool_size = 0
+    try:
+        members = REDIS_CONN.smembers("downgrade:high_freq_pool")
+        if members:
+            pool_size = len(members)
+    except Exception:
+        pool_size = -1
+
+    return jsonify({
+        "daily_scan_ok": daily_scan_ok,
+        "last_scan_date": last_scan_date,
+        "high_freq_pool_size": pool_size,
+        "metrics": get_metrics(),
+    })
+
+
 def _storage_effective_kb(tenant_id: str) -> int:
     addon_bytes, _ = SubscriptionService.get_storage_bytes_for_tenant(tenant_id)
     return addon_bytes // 1024
@@ -2234,16 +2262,22 @@ async def _handle_active_subscription_checkout(
         if not scheduled:
             return get_data_error_result(message="Failed to schedule plan downgrade.")
 
-        # When storage is being cancelled as part of a Trial downgrade, update the
-        # DB target so storage quota reads reflect the pending cancellation immediately.
-        if is_trial_target:
-            from api.db.db_models import Subscription as _Sub
+        # Record the downgrade target so the downgrade guard daemon can monitor
+        # resource usage vs. post-downgrade quotas.
+        from api.db.db_models import Subscription as _Sub
 
+        if is_trial_target:
             _storage_item_id = (SubscriptionService.get_by_tenant_id(tenant_id) or {}).get("addon_subscription_item_id") or None
             with DB.atomic():
                 _Sub.update(
+                    target_plan_name=target_plan_name_for_downgrade,
                     target_storage_bytes=0,
                     addon_subscription_item_id=_storage_item_id,
+                ).where(_Sub.tenant_id == tenant_id).execute()
+        else:
+            with DB.atomic():
+                _Sub.update(
+                    target_plan_name=target_plan_name_for_downgrade,
                 ).where(_Sub.tenant_id == tenant_id).execute()
 
         msg = f"Tenant {tenant_id} scheduled a plan downgrade at period end."

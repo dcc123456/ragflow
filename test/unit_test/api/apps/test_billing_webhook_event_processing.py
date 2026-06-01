@@ -27,7 +27,20 @@ from peewee import IntegrityError
 from quart import Blueprint
 
 
-def _load_billing_app_module():
+def _billing_app_stub():
+    project_root = Path(__file__).resolve().parents[4]
+    apps_dir = project_root / "api" / "apps"
+    stub = types.ModuleType("api.apps")
+    stub.__file__ = str(apps_dir / "__init__.py")
+    stub.__package__ = "api.apps"
+    stub.__path__ = [str(apps_dir)]
+    stub.current_user = SimpleNamespace(id="test-user")
+    stub.login_required = lambda func: func
+    return stub
+
+
+@pytest.fixture
+def billing_app(monkeypatch):
     module_name = "api.apps.billing"
     if module_name in sys.modules:
         return sys.modules[module_name]
@@ -36,13 +49,7 @@ def _load_billing_app_module():
     apps_dir = project_root / "api" / "apps"
     billing_path = apps_dir / "billing_app.py"
 
-    api_apps_stub = types.ModuleType("api.apps")
-    api_apps_stub.__file__ = str(apps_dir / "__init__.py")
-    api_apps_stub.__package__ = "api.apps"
-    api_apps_stub.__path__ = [str(apps_dir)]
-    api_apps_stub.current_user = SimpleNamespace(id="test-user")
-    api_apps_stub.login_required = lambda func: func
-    sys.modules["api.apps"] = api_apps_stub
+    monkeypatch.setitem(sys.modules, "api.apps", _billing_app_stub())
 
     spec = importlib.util.spec_from_file_location(module_name, billing_path)
     module = importlib.util.module_from_spec(spec)
@@ -53,12 +60,11 @@ def _load_billing_app_module():
     return module
 
 
-billing_app = _load_billing_app_module()
 billing_webhook_service = importlib.import_module("api.services.billing_webhook_service")
 
 
 @pytest.fixture(autouse=True)
-def _stub_billing_db_atomic(monkeypatch):
+def _stub_billing_db_atomic(monkeypatch, billing_app):
     monkeypatch.setattr(billing_app.DB, "atomic", lambda: nullcontext())
     monkeypatch.setattr(billing_webhook_service.DB, "atomic", lambda: nullcontext())
 
@@ -244,7 +250,7 @@ def test_update_webhook_event_checkpoint_is_monotonic(monkeypatch):
 
 
 @pytest.mark.p2
-def test_handle_undelivered_events_filters_types_and_uses_ending_before_checkpoint(monkeypatch):
+def test_handle_undelivered_events_filters_types_and_uses_ending_before_checkpoint(monkeypatch, billing_app):
     captured = {}
     processed = []
 

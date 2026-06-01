@@ -146,11 +146,25 @@ if __name__ == '__main__':
         t = threading.Thread(target=update_progress, daemon=True)
         t.start()
 
+    def delayed_start_downgrade_guard():
+        if os.environ.get("DOWNGRADE_GUARD_ENABLED", "true").lower() == "false":
+            logging.info("Downgrade guard disabled via DOWNGRADE_GUARD_ENABLED=false")
+            return
+        from api.services.downgrade_guard import DowngradeGuard, send_startup_test_email
+        guard = DowngradeGuard()
+        threading.Thread(target=guard.run_daily_scan, daemon=True, name="downgrade-daily").start()
+        threading.Thread(target=guard.run_high_freq_check, daemon=True, name="downgrade-hf").start()
+        threading.Thread(target=guard.run_cleanup, daemon=True, name="downgrade-cleanup").start()
+        logging.info("Downgrade guard threads started")
+        send_startup_test_email()
+
     if RuntimeConfig.DEBUG:
         if os.environ.get("WERKZEUG_RUN_MAIN") == "true":
             threading.Timer(1.0, delayed_start_update_progress).start()
+            threading.Timer(1.0, delayed_start_downgrade_guard).start()
     else:
         threading.Timer(1.0, delayed_start_update_progress).start()
+        threading.Timer(1.0, delayed_start_downgrade_guard).start()
 
     # start http server
     try:

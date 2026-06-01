@@ -34,8 +34,61 @@ Your password reset code is: {{ code }}
 This code will expire in {{ ttl_min }} minutes.
 """
 
+# Downgrade warning email (daily, rate-limited)
+DOWNGRADE_WARNING_EMAIL_TMPL = """
+Hi {{ nickname }},
+
+Your scheduled downgrade ({{ current_plan }} -> {{ target_plan }}) will take
+effect in {{ remaining_days }} day(s) ({{ downgrade_date }}).  However, your
+current resource usage exceeds the downgraded plan's quota limits:
+
+- Storage: {{ current_storage }} used, {{ target_storage }} limit after downgrade
+- Members: {{ current_members }} used, {{ target_members }} limit after downgrade
+- Apps:   {{ current_apps }} used, {{ target_apps }} limit after downgrade
+
+If you do not reduce usage to within limits before the downgrade date, the
+scheduled downgrade will be automatically cancelled.  No additional charges
+have been applied.
+"""
+
+DOWNGRADE_CANCELLED_EMAIL_TMPL = """
+Hi {{ nickname }},
+
+Your scheduled downgrade ({{ current_plan }} -> {{ target_plan }}) has been
+automatically cancelled because your current resource usage exceeds the
+downgraded plan's quota limits:
+
+- Storage: {{ current_storage }} used, {{ target_storage }} limit after downgrade
+- Members: {{ current_members }} used, {{ target_members }} limit after downgrade
+- Apps:   {{ current_apps }} used, {{ target_apps }} limit after downgrade
+
+No additional charges have been applied.  If you still wish to downgrade,
+please reduce your usage to within the target plan's limits and resubmit the
+downgrade request.
+
+If you have any questions, please contact our support team.
+"""
+
+DOWNGRADE_EFFECTIVE_EXCEEDED_EMAIL_TMPL = """
+Hi {{ nickname }},
+
+Your downgrade ({{ current_plan }} -> {{ target_plan }}) has taken effect, but your
+current resource usage exceeds the new plan's quota limits:
+
+- Storage: {{ current_storage }} used, {{ target_storage }} current limit
+- Members: {{ current_members }} used, {{ target_members }} current limit
+- Apps:   {{ current_apps }} used, {{ target_apps }} current limit
+
+You may encounter restrictions when uploading files, adding members, or
+performing other operations that require additional quota.  Please contact
+our support team for assistance.
+"""
+
 # Template registry
 EMAIL_TEMPLATES = {
     "invite": INVITE_EMAIL_TMPL,
     "reset_code": RESET_CODE_EMAIL_TMPL,
+    "downgrade_warning": DOWNGRADE_WARNING_EMAIL_TMPL,
+    "downgrade_cancelled": DOWNGRADE_CANCELLED_EMAIL_TMPL,
+    "downgrade_effective_exceeded": DOWNGRADE_EFFECTIVE_EXCEEDED_EMAIL_TMPL,
 }

@@ -96,6 +96,7 @@ Trial -> Starter -> Pro
 - `Pro -> Starter` 在周期末生效
 - 后端通过 Stripe `SubscriptionSchedule` 记录待生效的降级
 - 当前周期结束前，租户继续保留原套餐权益
+- 降级预约到生效之间可能存在配额超限风险，详见 [subscription_downgrade_quota_guard.md](subscription_downgrade_quota_guard.md)
 
 ### 4.4 回落到 Trial
 
@@ -247,6 +248,7 @@ stripe listen --forward-to 127.0.0.1:9380/v1/billing/webhooks/stripe
 | `/billing/spend_metrics` | GET | `billing_spend_metrics` |
 | `/billing/usages/deepdoc` | GET | `billing_deepdoc_usage` |
 | `/billing/status` | GET | `billing_status` |
+| `/billing/downgrade-guard/health` | GET | `downgrade_guard_health` |
 
 ## 9. 当前支付交互结果
 

@@ -187,6 +187,13 @@ def _sync_main_subscription_from_stripe(
     plan_name = settings.BILLING_PRICEID_TO_PRODUCT.get(price_id, "") or existing.get("plan_name", "")
     product_id = get_product_id_by_name(plan_name)
 
+    # Only clear target_plan_name when the plan price actually changes.
+    # A SubscriptionSchedule creation/modification also triggers
+    # customer.subscription.updated with the same price_id — in that
+    # case the downgrade guard's marker must be preserved.
+    existing_price_id = (existing.get("price_id") or "").strip() if existing else ""
+    plan_changed = bool(existing_price_id) and existing_price_id != (price_id or "").strip()
+
     if preserve_existing_plan and existing.get("price_id") and existing.get("plan_name"):
         preserved_price_id = (existing.get("price_id") or "").strip()
         preserved_plan_name = (existing.get("plan_name") or "").strip()
@@ -247,6 +254,7 @@ def _sync_main_subscription_from_stripe(
         "end_time": period_end or existing.get("end_time"),
         "renew_time": None,
         "original_subscription_id": existing.get("original_subscription_id") or subscription_id,
+        **({"target_plan_name": None} if plan_changed else {}),
     }
 
     with DB.atomic():
@@ -1219,6 +1227,12 @@ async def _handle_customer_subscription_updated(event: dict):
     latest_invoice_paid, resolved_invoice_id, _resolved_invoice_status, resolved_invoice_url = await is_subscription_latest_invoice_paid_async(subscription)
     preserve_existing_plan = _should_preserve_existing_plan_for_unpaid_upgrade(existing_main_subscription, subscription, latest_invoice_paid)
 
+    # Capture pre-sync price_id for plan_changed detection (needed by the
+    # final-defense check below).
+    _, new_price_id, _ = extract_plan_subscription_item(subscription)
+    old_price_id = (existing_main_subscription.get("price_id") or "").strip() if existing_main_subscription else ""
+    plan_changed = bool(old_price_id) and old_price_id != (new_price_id or "").strip()
+
     _sync_main_subscription_from_stripe(
         tenant_id=tenant_id,
         stripe_subscription=subscription,
@@ -1227,6 +1241,34 @@ async def _handle_customer_subscription_updated(event: dict):
         invoice_url=resolved_invoice_url,
         preserve_existing_plan=preserve_existing_plan,
     )
+
+    # ── Webhook final defense: detect downgrade effective but quota exceeded ──
+    try:
+        from api.services.downgrade_guard import check_downgrade_effective_exceeded, _inc_metric
+
+        exceed_info = check_downgrade_effective_exceeded(
+            tenant_id, existing_main_subscription, plan_changed=plan_changed,
+        )
+        if exceed_info:
+            logging.critical(
+                "DOWNGRADE EFFECTIVE BUT QUOTA EXCEEDED: tenant=%s old_plan=%s "
+                "target_plan=%s storage=%d limit=%d members=%d apps=%d",
+                tenant_id,
+                (existing_main_subscription.get("plan_name") or "").strip(),
+                (existing_main_subscription.get("target_plan_name") or ""),
+                exceed_info.get("storage_used", 0) or 0,
+                exceed_info.get("storage_limit", 0) or 0,
+                exceed_info.get("members_used", 0) or 0,
+                exceed_info.get("apps_used", 0) or 0,
+            )
+            _inc_metric("webhook_violations_total")
+            target_plan = (existing_main_subscription.get("target_plan_name") or "") if existing_main_subscription else ""
+            old_plan = (existing_main_subscription.get("plan_name") or "").strip() if existing_main_subscription else ""
+            await _send_downgrade_effective_exceeded_email(
+                tenant_id, old_plan, target_plan, exceed_info,
+            )
+    except Exception:
+        logging.exception("Webhook final defense check failed for tenant %s", tenant_id)
 
     try:
         pending_change = await get_pending_subscription_change_async(subscription_id)
@@ -1258,6 +1300,24 @@ async def _handle_customer_subscription_updated(event: dict):
             logging.info("Trial plan tenant %s period changed, skipping quota reset", tenant_id)
         else:
             PointAccountService.reset_plan_consumed_points_at_cycle_start(tenant_id)
+
+
+async def _send_downgrade_effective_exceeded_email(
+    tenant_id: str, old_plan: str, target_plan: str | None, exceed_info: dict,
+) -> None:
+    from api.services.downgrade_guard import _send_guard_email
+
+    try:
+        await _send_guard_email(
+            tenant_id,
+            {"plan_name": old_plan, "target_plan_name": target_plan},
+            exceed_info,
+            template_key="downgrade_effective_exceeded",
+            subject="Downgrade Effective — Usage Exceeds New Quota",
+        )
+        logging.info("Sent downgrade-effective-exceeded email to tenant %s", tenant_id)
+    except Exception:
+        logging.exception("Failed to send downgrade-effective-exceeded email to tenant %s", tenant_id)
 
 
 async def _handle_customer_subscription_deleted(event: dict):
