@@ -658,10 +658,12 @@ resource "kubernetes_deployment_v1" "redis" {
             requests = {
               cpu    = var.redis_cpu_request
               memory = var.redis_memory_request
+              ephemeral-storage  = var.redis_ephemeral_storage_request
             }
             limits = {
               cpu    = var.redis_cpu_limit
               memory = var.redis_memory_limit
+              ephemeral-storage  = var.redis_ephemeral_storage_limit
             }
           }
         }

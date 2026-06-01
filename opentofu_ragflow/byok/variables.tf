@@ -496,6 +496,18 @@ variable "redis_memory_limit" {
   default     = "8Gi"
 }
 
+variable "redis_ephemeral_storage_request" {
+  description = "Ephemeral storage request for Redis container"
+  type        = string
+  default     = "2Gi"
+}
+
+variable "redis_ephemeral_storage_limit" {
+  description = "Ephemeral storage limit for Redis container"
+  type        = string
+  default     = "2Gi"
+}
+
 # =============================================================================
 # RabbitMQ Configuration
 # =============================================================================
