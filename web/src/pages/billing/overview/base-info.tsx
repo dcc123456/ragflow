@@ -64,6 +64,19 @@ export const BaseInfo = () => {
         base: convertBytesToGb(planData?.resources.plan_storage?.limit || 0),
         addOn: convertBytesToGb(planData?.resources.addon_storage?.limit || 0),
       },
+      docParse: {
+        ...planTemplate.docParse,
+        used:
+          (planData?.resources.plan_points?.used || 0) +
+          (planData?.resources.addon_points?.used || 0),
+
+        total:
+          (planData?.resources.plan_points?.limit || 0) +
+          (planData?.resources.addon_points?.limit || 0),
+
+        base: planData?.resources.plan_points?.limit || 0,
+        addOn: planData?.resources.addon_points?.limit || 0,
+      },
       apps: {
         ...planTemplate.apps,
         used: planData?.resources.apps?.used || 0,
@@ -162,12 +175,12 @@ export const BaseInfo = () => {
           value={currentPlan.docParse?.used || 0}
           planName={currentPlan.name}
           planValue={currentPlan.docParse?.base}
-          limit={currentPlan.docParse?.total + currentPlan.docParse?.addOn}
+          limit={currentPlan.docParse?.total}
           unit="pts"
           basicCapacity={currentPlan.docParse?.base}
           showValue={false}
-          planPoints={planData?.resources?.plan_points}
-          addonPoints={planData?.resources?.addon_points}
+          // planPoints={planData?.resources?.plan_points}
+          // addonPoints={planData?.resources?.addon_points}
         ></ResourceUsage>
         <ResourceUsage
           title="Apps"
