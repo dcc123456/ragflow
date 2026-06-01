@@ -2470,7 +2470,13 @@ resource "kubernetes_deployment_v1" "ragflow" {
     progress_deadline_seconds = 1200
 
     strategy {
-      type = "Recreate"
+      ####type = "Recreate"
+      #RollingUpdate strategy
+      type = "RollingUpdate"
+         rolling_update {
+            max_surge       = "100%"
+            max_unavailable = 0
+         }  
     }
 
     selector {
