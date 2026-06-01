@@ -291,10 +291,6 @@ def batch_create_chat_assistants(auth, num):
     return chat_assistant_ids
 
 
-def make_chat_assistant_name(base_name: str) -> str:
-    return f"{base_name}_{uuid4().hex[:8]}"
-
-
 # SESSION MANAGEMENT
 def create_session_with_chat_assistant(auth, chat_assistant_id, payload=None, *, headers=HEADERS):
     url = f"{HOST_ADDRESS}{SESSION_WITH_CHAT_ASSISTANT_API_URL}".format(chat_id=chat_assistant_id)
