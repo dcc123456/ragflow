@@ -1614,7 +1614,7 @@ async def webhook(agent_id: str):
             return
 
         # Convert "10MB" → bytes
-        units = {"kb": 1024, "mb": 1024**2}
+        units = {"kb": 1000, "mb": 1000**2}
         size_str = max_size.lower()
 
         for suffix, factor in units.items():

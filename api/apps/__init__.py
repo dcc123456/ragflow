@@ -149,7 +149,7 @@ app.config["SESSION_PERMANENT"] = False
 app.config["SESSION_TYPE"] = "redis"
 app.config["SESSION_REDIS"] = settings.decrypt_database_config(name="redis")
 app.config["MAX_CONTENT_LENGTH"] = int(
-    os.environ.get("MAX_CONTENT_LENGTH", 1024 * 1024 * 1024)
+    os.environ.get("MAX_CONTENT_LENGTH", 1000 * 1000 * 1000)
 )
 app.config['SECRET_KEY'] = settings.get_secret_key()
 app.secret_key = settings.get_secret_key()

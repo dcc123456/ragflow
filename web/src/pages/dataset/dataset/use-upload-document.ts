@@ -1,9 +1,11 @@
 import { UploadFormSchemaType } from '@/components/file-upload-dialog';
+import message from '@/components/ui/message';
 import { useSetModalState } from '@/hooks/common-hooks';
 import {
   useRunDocument,
   useUploadNextDocument,
 } from '@/hooks/use-document-request';
+import { showPriceModal } from '@/pages/price/global/hook';
 import { getUnSupportedFilesCount } from '@/utils/document-util';
 import { useCallback } from 'react';
 
@@ -44,11 +46,29 @@ export const useHandleUploadDocument = () => {
         const isPartialSuccess = ret?.code === 500 && ret?.message;
 
         if (!isSuccess && !isPartialSuccess) {
-          // Resource quota errors (2000-2006) are handled centrally by the
-          // global request interceptor: 2001-2004 open the centered
-          // UpgradeTipsModal via showPriceModal, and 2000/2005/2006 fall
-          // through to notification.error. Returning here avoids a duplicate
-          // top-of-page toast.
+          // The upload service uses raw axios (see knowledge-service.ts:347),
+          // which bypasses the global request interceptor that would otherwise
+          // dispatch the UpgradeTipsModal for billing codes. We must handle the
+          // display here for codes 2000-2006:
+          //   - 2001-2004 -> centered UpgradeTipsModal
+          //   - 2000, 2005, 2006 -> top-center toast
+          if (
+            typeof ret?.code === 'number' &&
+            ret.code >= 2001 &&
+            ret.code <= 2004
+          ) {
+            showPriceModal({
+              code: ret.code,
+              detail: (ret as any).detail,
+              message: ret.message,
+            });
+          } else if (
+            typeof ret?.code === 'number' &&
+            ret.code >= 2000 &&
+            ret.code <= 2006
+          ) {
+            message.error(ret.message || 'Insufficient resources');
+          }
           return;
         }
 
