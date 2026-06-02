@@ -161,7 +161,7 @@ class TestDatasetsDelete:
         payload = {"ids": ["d94a8dc02c9711f0930f7fbc369eab6d"]}
         res = delete_datasets(HttpApiAuth, payload)
         assert res["code"] == 102, res
-        assert "lacks permission for dataset" in res["message"], res
+        assert "No authorization for dataset(s):" in res["message"], res
 
         res = list_datasets(HttpApiAuth)
         assert len(res["data"]) == 1, res
@@ -181,7 +181,7 @@ class TestDatasetsDelete:
             payload = func(dataset_ids)
         res = delete_datasets(HttpApiAuth, payload)
         assert res["code"] == 102, res
-        assert "lacks permission for dataset" in res["message"], res
+        assert "No authorization for dataset(s):" in res["message"], res
 
         res = list_datasets(HttpApiAuth)
         assert len(res["data"]) == 3, res
@@ -206,7 +206,7 @@ class TestDatasetsDelete:
 
         res = delete_datasets(HttpApiAuth, payload)
         assert res["code"] == 102, res
-        assert "lacks permission for dataset" in res["message"], res
+        assert "No authorization for dataset(s):" in res["message"], res
 
     @pytest.mark.p3
     @pytest.mark.usefixtures("add_dataset_func")

@@ -29,7 +29,7 @@ from api.constants import FILE_NAME_LEN_LIMIT, IMG_BASE64_PREFIX
 from api.apps.services.document_api_service import validate_document_update_fields, map_doc_keys, \
     map_doc_keys_with_run_status, update_document_name_only, update_chunk_method, update_document_status_only, \
     reset_document_for_reparse
-from api.db import VALID_FILE_TYPES, FileType, PermissionValue, ResourceType
+from api.db import VALID_FILE_TYPES, FileType, PermissionActionType, PermissionTargetType, PermissionValue, ResourceType
 from api.db.services import duplicate_name
 from api.db.services.doc_metadata_service import DocMetadataService
 from api.db.db_models import Task
@@ -37,12 +37,14 @@ from api.db.services.document_service import DocumentService
 from api.db.services.file2document_service import File2DocumentService
 from api.db.services.file_service import FileService
 from api.db.services.knowledgebase_service import KnowledgebaseService
+from api.db.services.permission_service import PermissionChangeLogService, PermissionService
 from api.db.services.task_service import TaskService, cancel_all_task_of
+from api.db.services.user_service import UserTenantService
 from api.utils.api_utils import construct_json_result, get_data_error_result, get_error_data_result, get_result, get_json_result, \
     server_error_response, add_tenant_id_to_kwargs, get_request_json, get_error_argument_result, check_duplicate_ids, \
     get_resource_insufficient_result
 from api.utils.billing import InsufficientResourceError
-from api.utils.permission_utils import check_doc_permission, check_kb_permission, has_permission_for_member
+from api.utils.permission_utils import check_doc_permission, check_kb_permission, filter_accessible_doc_ids_for_user
 from api.utils.validation_utils import (
     UpdateDocumentReq, format_validation_error_message, validate_and_parse_json_request, DeleteDocumentReq,
 )
@@ -54,6 +56,63 @@ from api.utils.file_utils import filename_type, thumbnail
 from api.utils.web_utils import CONTENT_TYPE_MAP, html2pdf, is_valid_url, apply_safe_file_response_headers
 from common.ssrf_guard import assert_url_is_safe
 from rag.nlp import search
+
+
+def _grant_document_manage_permission_if_needed(doc_id: str, kb) -> None:
+    """Grant document manage permission to the uploader when they are not the KB owner."""
+    if kb.created_by == current_user.id:
+        return
+
+    operator = UserTenantService.filter_by_tenant_and_user_id(kb.tenant_id, current_user.id)
+    if not operator:
+        return
+
+    permission = PermissionService.filter_by_member_and_tenant_id_with_resource_id(
+        operator.id,
+        kb.tenant_id,
+        resource_id=doc_id,
+        resource_type=ResourceType.DOCUMENT,
+    )
+    if permission:
+        if permission.permission >= PermissionValue.PERMISSION_MANAGE:
+            return
+        old_permission = permission.permission
+        permission.permission = PermissionValue.PERMISSION_MANAGE.value
+        PermissionService.update_many([permission])
+        PermissionChangeLogService.save(
+            id=get_uuid(),
+            tenant_id=kb.tenant_id,
+            operator_id=operator.id,
+            target_type=PermissionTargetType.TARGET_MEMBER,
+            target_id=operator.id,
+            resource_type=ResourceType.DOCUMENT,
+            resource_id=doc_id,
+            old_permission=old_permission,
+            new_permission=PermissionValue.PERMISSION_MANAGE.value,
+            action_type=PermissionActionType.ACTION_UPDATE,
+        )
+        return
+
+    PermissionService.save(
+        id=get_uuid(),
+        member_id=operator.id,
+        tenant_id=kb.tenant_id,
+        resource_type=ResourceType.DOCUMENT,
+        resource_id=doc_id,
+        permission=PermissionValue.PERMISSION_MANAGE.value,
+    )
+    PermissionChangeLogService.save(
+        id=get_uuid(),
+        tenant_id=kb.tenant_id,
+        operator_id=operator.id,
+        target_type=PermissionTargetType.TARGET_MEMBER,
+        target_id=operator.id,
+        resource_type=ResourceType.DOCUMENT,
+        resource_id=doc_id,
+        old_permission=PermissionValue.PERMISSION_NULL.value,
+        new_permission=PermissionValue.PERMISSION_MANAGE.value,
+        action_type=PermissionActionType.ACTION_ADD,
+    )
 
 
 @manager.route("/documents/upload", methods=["POST"])  # noqa: F821
@@ -271,13 +330,14 @@ async def metadata_summary(dataset_id, tenant_id):
       200:
         description: Metadata summary retrieved successfully.
     """
-    if not KnowledgebaseService.accessible(kb_id=dataset_id, user_id=tenant_id):
-        return get_error_data_result(message=f"You don't own the dataset {dataset_id}. ")
     # Get doc_ids from query parameters (comma-separated string)
     doc_ids_param = request.args.get("doc_ids", "")
     doc_ids = doc_ids_param.split(",") if doc_ids_param else None
     try:
-        summary = DocMetadataService.get_metadata_summary(dataset_id, doc_ids)
+        accessible_doc_ids, _, err_msg = filter_accessible_doc_ids_for_user(tenant_id, [dataset_id], doc_ids)
+        if err_msg:
+            return get_error_data_result(message=err_msg, code=RetCode.AUTHENTICATION_ERROR)
+        summary = DocMetadataService.get_metadata_summary(dataset_id, accessible_doc_ids)
         return get_result(data={"summary": summary})
     except Exception as e:
         return server_error_response(e)
@@ -361,6 +421,10 @@ async def metadata_batch_update(dataset_id, tenant_id):
             return get_result(data={"updated": 0, "matched_docs": 0})
 
     target_doc_ids = list(target_doc_ids)
+    if target_doc_ids:
+        target_doc_ids, _, err_msg = filter_accessible_doc_ids_for_user(tenant_id, [dataset_id], target_doc_ids)
+        if err_msg:
+            return get_error_data_result(message=err_msg, code=RetCode.AUTHENTICATION_ERROR)
     updated = DocMetadataService.batch_update_metadata(dataset_id, target_doc_ids, updates, deletes)
     return get_result(data={"updated": updated, "matched_docs": len(target_doc_ids)})
 
@@ -518,6 +582,7 @@ async def _upload_web_document(dataset_id, kb, tenant_id):
 
         DocumentService.insert(doc)
         FileService.add_file_from_kb(doc, kb_folder["id"], kb.tenant_id)
+        _grant_document_manage_permission_if_needed(doc["id"], kb)
         return get_result(data=map_doc_keys_with_run_status(doc, run_status="0"))
     except Exception as e:
         return server_error_response(e)
@@ -561,6 +626,7 @@ async def _upload_empty_document(dataset_id, kb, tenant_id):
             }
         )
         FileService.add_file_from_kb(doc.to_dict(), kb_folder["id"], kb.tenant_id)
+        _grant_document_manage_permission_if_needed(doc.id, kb)
         return get_result(data=map_doc_keys(doc))
     except Exception as e:
         return server_error_response(e)
@@ -656,6 +722,8 @@ async def _upload_local_documents(kb, tenant_id):
         return get_error_data_result(message=msg, code=RetCode.DATA_ERROR)
 
     files = [f[0] for f in files]  # remove the blob
+    for doc in files:
+        _grant_document_manage_permission_if_needed(doc["id"], kb)
     return_raw_files = request.args.get("return_raw_files", "false").lower() == "true"
 
     if return_raw_files:
@@ -668,6 +736,7 @@ async def _upload_local_documents(kb, tenant_id):
 @manager.route("/datasets/<dataset_id>/documents", methods=["GET"])  # noqa: F821
 @login_required
 @add_tenant_id_to_kwargs
+@check_kb_permission(permission=PermissionValue.PERMISSION_READ)
 def list_docs(dataset_id, tenant_id):
     """
     List documents in a dataset.
@@ -875,6 +944,11 @@ def _get_docs_with_request(req, dataset_id:str):
     if len(doc_ids) > 0:
         doc_ids_filter = doc_ids
 
+    accessible_doc_ids, _, err_msg = filter_accessible_doc_ids_for_user(current_user.id, [dataset_id], doc_ids_filter)
+    if err_msg:
+        return RetCode.AUTHENTICATION_ERROR, err_msg, [], 0
+    doc_ids_filter = accessible_doc_ids
+
     docs, total = DocumentService.get_by_kb_id(dataset_id, page, page_size, orderby, desc, keywords, run_status_converted, types, suffix,
                                                name=doc_name, doc_ids=doc_ids_filter, return_empty_metadata=return_empty_metadata)
 
@@ -1065,6 +1139,7 @@ def _parse_doc_id_filter_with_metadata(req, kb_id):
 
 def _check_document_batch_permission(doc_ids, required_permission: PermissionValue, user_id=None):
     from api.db.services.user_service import UserTenantService
+    from api.utils import permission_utils
 
     if user_id is None:
         from api.apps import current_user
@@ -1099,7 +1174,7 @@ def _check_document_batch_permission(doc_ids, required_permission: PermissionVal
         for user_tenant in user_tenants:
             if user_tenant.tenant_id != doc_tenant_id:
                 continue
-            granted, _, _ = has_permission_for_member(
+            granted, _, _ = permission_utils.has_permission_for_member(
                 operator_id=user_tenant.id,
                 tenant_id=doc_tenant_id,
                 resource_id=doc_id,
@@ -1118,6 +1193,7 @@ def _check_document_batch_permission(doc_ids, required_permission: PermissionVal
 @manager.route("/datasets/<dataset_id>/documents", methods=["DELETE"])  # noqa: F821
 @login_required
 @add_tenant_id_to_kwargs
+@check_kb_permission(permission=PermissionValue.PERMISSION_WRITE)
 async def delete_documents(tenant_id, dataset_id):
     """
     Delete documents from a dataset.
@@ -1212,7 +1288,7 @@ async def delete_documents(tenant_id, dataset_id):
 @manager.route("/datasets/<dataset_id>/documents/<document_id>/metadata/config", methods=["PUT"])  # noqa: F821
 @login_required
 @add_tenant_id_to_kwargs
-@check_doc_permission(permission=PermissionValue.PERMISSION_WRITE)
+@check_doc_permission(permission=PermissionValue.PERMISSION_MANAGE)
 async def update_metadata_config(tenant_id, dataset_id, document_id):
     """
     Update document metadata configuration.
@@ -1531,6 +1607,7 @@ def _run_sync(user_id: str, req):
 @manager.route("/datasets/<dataset_id>/documents/parse", methods=["POST"])  # noqa: F821
 @login_required
 @add_tenant_id_to_kwargs
+@check_kb_permission(permission=PermissionValue.PERMISSION_WRITE)
 async def parse_documents(tenant_id, dataset_id):
     """
     Start parsing documents in a dataset.
@@ -1646,6 +1723,7 @@ async def parse_documents(tenant_id, dataset_id):
 @manager.route("/datasets/<dataset_id>/documents/stop", methods=["POST"])  # noqa: F821
 @login_required
 @add_tenant_id_to_kwargs
+@check_kb_permission(permission=PermissionValue.PERMISSION_WRITE)
 async def stop_parse_documents(tenant_id, dataset_id):
     """
     Stop parsing documents in a dataset.
@@ -1903,16 +1981,9 @@ async def batch_update_document_status(tenant_id, dataset_id):
     if status not in ["0", "1"]:
         return get_error_argument_result(message=f'"Status" must be either 0 or 1:{status}!')
 
-    # Verify dataset ownership
-    if not KnowledgebaseService.query(id=dataset_id, tenant_id=tenant_id):
-        return get_error_data_result(message="You don't own the dataset.")
-
-    e, kb = KnowledgebaseService.get_by_id(dataset_id)
-    if not e:
-        return get_error_data_result(message="Can't find this dataset!")
-
     result = {}
     has_error = False
+    valid_doc_ids = []
     for doc_id in doc_ids:
         try:
             e, doc = DocumentService.get_by_id(doc_id)
@@ -1927,8 +1998,20 @@ async def batch_update_document_status(tenant_id, dataset_id):
                 has_error = True
                 continue
 
-            if not DocumentService.accessible(doc_id, current_user.id):
-                result[doc_id] = {"error": "No authorization."}
+            valid_doc_ids.append(doc_id)
+            result[doc_id] = {"status": status}
+        except Exception as e:
+            result[doc_id] = {"error": f"Internal server error: {str(e)}"}
+            has_error = True
+
+    if valid_doc_ids and not _check_document_batch_permission(valid_doc_ids, PermissionValue.PERMISSION_WRITE):
+        return get_error_data_result(message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
+
+    for doc_id in valid_doc_ids:
+        try:
+            e, doc = DocumentService.get_by_id(doc_id)
+            if not e:
+                result[doc_id] = {"error": "Document not found"}
                 has_error = True
                 continue
 
@@ -1944,10 +2027,11 @@ async def batch_update_document_status(tenant_id, dataset_id):
             status_int = int(status)
             if getattr(doc, "chunk_num", 0) > 0:
                 try:
+                    doc_tenant_id = DocumentService.get_tenant_id(doc_id)
                     ok = settings.docStoreConn.update(
                         {"doc_id": doc_id},
                         {"available_int": status_int},
-                        search.index_name(kb.tenant_id),
+                        search.index_name(doc_tenant_id),
                         doc.kb_id,
                     )
                 except Exception as exc:
@@ -2004,35 +2088,9 @@ async def get(doc_id):
         return server_error_response(e)
 
 
-@manager.route("/documents/<doc_id>/attachment", methods=["GET"])  # noqa: F821
-@login_required
-@add_tenant_id_to_kwargs
-async def download_attachment(tenant_id=None, doc_id=None, attachment_id=None):
-    """Stream a document's underlying file to the requesting user.
-
-    Mirrors the authorization model of the preview endpoint: the user must belong
-    to the tenant that owns the document's knowledge base. A denial returns the
-    same "Document not found!" response so the endpoint cannot be used to
-    enumerate doc ids across tenants.
-    """
-    try:
-        # Keep backward compatibility with older callers and unit tests that still
-        # pass `attachment_id` instead of the route parameter name.
-        doc_id = doc_id or attachment_id
-        ext = request.args.get("ext", "markdown")
-        data = await thread_pool_exec(settings.STORAGE_IMPL.get, tenant_id, doc_id, tenant_id)
-        response = await make_response(data)
-        content_type = CONTENT_TYPE_MAP.get(ext, f"application/{ext}")
-        apply_safe_file_response_headers(response, content_type, ext)
-
-        return response
-
-    except Exception as e:
-        return server_error_response(e)
-
-
 @manager.route("/datasets/<dataset_id>/documents/<document_id>", methods=["GET"])  # noqa: F821
 @login_required
+@check_doc_permission(permission=PermissionValue.PERMISSION_READ)
 async def download(dataset_id, document_id):
     """
     Download a document from a dataset.
@@ -2093,6 +2151,7 @@ async def download(dataset_id, document_id):
 @manager.route("/documents/<document_id>", methods=["GET"])  # noqa: F821
 @login_required
 @add_tenant_id_to_kwargs
+@check_doc_permission(permission=PermissionValue.PERMISSION_READ)
 async def download_document(tenant_id=None, document_id=None):
     """
     Download a document.

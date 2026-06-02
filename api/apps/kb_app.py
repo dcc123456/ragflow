@@ -1142,6 +1142,7 @@ async def check_embedding():
 @login_required
 @validate_request("kb_id", "embd_id")
 @kb_role_guard
+@check_kb_permission(permission=PermissionValue.PERMISSION_MANAGE)
 async def switch_embedding():
     req = await get_request_json()
 

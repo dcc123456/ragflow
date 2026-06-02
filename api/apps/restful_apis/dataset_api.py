@@ -20,10 +20,10 @@ from quart import request
 
 from api.apps import current_user, login_required
 from api.apps.services import dataset_api_service
-from api.db import PermissionValue
+from api.db import PermissionValue, ResourceType
 from api.utils.api_utils import add_tenant_id_to_kwargs, get_error_argument_result, get_error_data_result, get_resource_insufficient_result, get_result, get_json_result
 from api.utils.billing import check_dynamic_resources
-from api.utils.permission_utils import check_kb_permission
+from api.utils.permission_utils import check_kb_permission, has_permission_for_member
 from api.utils.validation_utils import (
     CreateDatasetReq,
     DeleteDatasetReq,
@@ -35,9 +35,62 @@ from api.utils.validation_utils import (
     validate_and_parse_request_args,
 )
 from common.constants import RetCode
+from common.constants import StatusEnum
 from common.role_util import check_role_access, KB_API_ACTION_MAP, KB_ROLE_RESOURCE_TYPE
+from api.db.services.knowledgebase_service import KnowledgebaseService
+from api.db.services.user_service import UserTenantService
+from api.utils.permission_utils import filter_accessible_doc_ids_for_user
 
 kb_role_guard = check_role_access(KB_API_ACTION_MAP, KB_ROLE_RESOURCE_TYPE)
+
+
+def _unique_ids(ids):
+    return [item for item in dict.fromkeys(ids or []) if item]
+
+
+def _check_dataset_permissions(user_id: str, dataset_ids: list[str], required_permission: PermissionValue):
+    dataset_ids = _unique_ids(dataset_ids)
+    if not dataset_ids:
+        return [], ""
+
+    kbs = KnowledgebaseService.filter_by_ids(dataset_ids) or []
+    kb_map = {kb.id: kb for kb in kbs}
+    missing_ids = [dataset_id for dataset_id in dataset_ids if dataset_id not in kb_map]
+    if missing_ids:
+        return [], f"Datasets not found: {', '.join(missing_ids)}"
+
+    user_tenants = UserTenantService.query(user_id=user_id) or []
+    tenant_member_map = {tenant.tenant_id: tenant for tenant in user_tenants}
+
+    denied_ids = []
+    allowed_kbs = []
+    for dataset_id in dataset_ids:
+        kb = kb_map[dataset_id]
+        if kb.created_by == user_id:
+            allowed_kbs.append(kb)
+            continue
+
+        user_tenant = tenant_member_map.get(kb.tenant_id)
+        if not user_tenant:
+            denied_ids.append(dataset_id)
+            continue
+
+        granted, _, _ = has_permission_for_member(
+            operator_id=user_tenant.id,
+            tenant_id=kb.tenant_id,
+            resource_id=dataset_id,
+            resource_type=ResourceType.KB,
+            permission=required_permission,
+        )
+        if granted:
+            allowed_kbs.append(kb)
+        else:
+            denied_ids.append(dataset_id)
+
+    if denied_ids:
+        return [], f"No authorization for dataset(s): {', '.join(denied_ids)}"
+
+    return allowed_kbs, ""
 
 
 @manager.route("/datasets/tags/aggregation", methods=["GET"])  # noqa: F821
@@ -50,8 +103,12 @@ def aggregate_tags(tenant_id):
     if not dataset_ids:
         return get_error_data_result(message="Lack of dataset_ids in query parameters")
 
+    allowed_kbs, err = _check_dataset_permissions(current_user.id, dataset_ids, PermissionValue.PERMISSION_READ)
+    if err:
+        return get_error_data_result(message=err)
+
     try:
-        success, result = dataset_api_service.aggregate_tags(dataset_ids, tenant_id)
+        success, result = dataset_api_service.aggregate_tags([kb.id for kb in allowed_kbs], tenant_id)
         if success:
             return get_result(data=result)
         else:
@@ -72,8 +129,12 @@ def get_flattened_metadata(tenant_id):
     if not dataset_ids:
         return get_error_data_result(message="Lack of dataset_ids in query parameters")
 
+    allowed_kbs, err = _check_dataset_permissions(current_user.id, dataset_ids, PermissionValue.PERMISSION_READ)
+    if err:
+        return get_error_data_result(message=err)
+
     try:
-        success, result = dataset_api_service.get_flattened_metadata(dataset_ids, tenant_id)
+        success, result = dataset_api_service.get_flattened_metadata([kb.id for kb in allowed_kbs], tenant_id)
         if success:
             return get_result(data=result)
         else:
@@ -228,7 +289,24 @@ async def delete(tenant_id):
         return get_error_argument_result(err)
 
     try:
-        success, result = await dataset_api_service.delete_datasets(tenant_id, req.get("ids"), req.get("delete_all", False))
+        owned_kbs = KnowledgebaseService.query(created_by=current_user.id, status=StatusEnum.VALID.value) or []
+        owned_kb_ids = {kb.id for kb in owned_kbs}
+        dataset_ids = _unique_ids(req.get("ids"))
+        delete_all = req.get("delete_all", False)
+
+        if delete_all:
+            dataset_ids = list(owned_kb_ids)
+        elif dataset_ids:
+            invalid_ids = [dataset_id for dataset_id in dataset_ids if dataset_id not in owned_kb_ids]
+            if invalid_ids:
+                return get_error_data_result(message=f"No authorization for dataset(s): {', '.join(invalid_ids)}")
+        else:
+            return get_result(data={"success_count": 0})
+
+        if not dataset_ids:
+            return get_result(data={"success_count": 0})
+
+        success, result = await dataset_api_service.delete_datasets(current_user.id, dataset_ids, False)
         if success:
             return get_result(data=result)
         else:
@@ -411,6 +489,7 @@ def list_datasets(tenant_id):
 @manager.route("/datasets/<dataset_id>", methods=["GET"])  # noqa: F821
 @login_required
 @add_tenant_id_to_kwargs
+@check_kb_permission(permission=PermissionValue.PERMISSION_READ)
 def get_dataset(tenant_id, dataset_id):
     try:
         success, result = dataset_api_service.get_dataset(dataset_id, tenant_id)
@@ -428,6 +507,7 @@ def get_dataset(tenant_id, dataset_id):
 @manager.route("/datasets/<dataset_id>/ingestions/summary", methods=["GET"])  # noqa: F821
 @login_required
 @add_tenant_id_to_kwargs
+@check_kb_permission(permission=PermissionValue.PERMISSION_READ)
 def get_ingestion_summary(tenant_id, dataset_id):
     try:
         success, result = dataset_api_service.get_ingestion_summary(dataset_id, tenant_id)
@@ -445,6 +525,7 @@ def get_ingestion_summary(tenant_id, dataset_id):
 @manager.route("/datasets/<dataset_id>/tags", methods=["GET"])  # noqa: F821
 @login_required
 @add_tenant_id_to_kwargs
+@check_kb_permission(permission=PermissionValue.PERMISSION_READ)
 def list_tags(tenant_id, dataset_id):
     try:
         success, result = dataset_api_service.list_tags(dataset_id, tenant_id)
@@ -462,6 +543,7 @@ def list_tags(tenant_id, dataset_id):
 @manager.route("/datasets/<dataset_id>/tags", methods=["DELETE"])  # noqa: F821
 @login_required
 @add_tenant_id_to_kwargs
+@check_kb_permission(permission=PermissionValue.PERMISSION_WRITE)
 async def delete_tags(tenant_id, dataset_id):
     req = await request.get_json()
     if not req or "tags" not in req:
@@ -485,6 +567,7 @@ async def delete_tags(tenant_id, dataset_id):
 @manager.route("/datasets/<dataset_id>/tags", methods=["PUT"])  # noqa: F821
 @login_required
 @add_tenant_id_to_kwargs
+@check_kb_permission(permission=PermissionValue.PERMISSION_WRITE)
 async def rename_tag(tenant_id, dataset_id):
     req = await request.get_json()
     if not req or "from_tag" not in req or "to_tag" not in req:
@@ -524,6 +607,16 @@ async def search_datasets(tenant_id):
     req, err = await validate_and_parse_json_request(request, SearchDatasetsReq)
     if err is not None:
         return get_error_argument_result(err)
+
+    dataset_ids = _unique_ids(req.get("dataset_ids"))
+    if not dataset_ids:
+        return get_error_argument_result("`dataset_ids` is required")
+
+    allowed_kbs, err = _check_dataset_permissions(current_user.id, dataset_ids, PermissionValue.PERMISSION_READ)
+    if err:
+        return get_error_data_result(message=err)
+    req["dataset_ids"] = [kb.id for kb in allowed_kbs]
+
     try:
         success, result = await dataset_api_service.search_datasets(tenant_id, req)
         if success:
@@ -540,6 +633,7 @@ async def search_datasets(tenant_id):
 @manager.route("/datasets/<dataset_id>/search", methods=["POST"])  # noqa: F821
 @login_required
 @add_tenant_id_to_kwargs
+@check_kb_permission(permission=PermissionValue.PERMISSION_READ)
 async def search(tenant_id, dataset_id):
     """Search (retrieval test) within a dataset.
 
@@ -683,8 +777,8 @@ def delete_index(tenant_id, dataset_id, index_type):
 @login_required
 @kb_role_guard
 @add_tenant_id_to_kwargs
-@check_kb_permission(permission=PermissionValue.PERMISSION_READ)
-def trace_graphrag(tenant_id, dataset_id):
+@check_kb_permission(permission=PermissionValue.PERMISSION_WRITE)
+def embedding(tenant_id, dataset_id):
     try:
         success, result = dataset_api_service.run_embedding(dataset_id, tenant_id)
         if success:
@@ -720,6 +814,7 @@ async def check_embedding(tenant_id, dataset_id):
 @login_required
 @kb_role_guard
 @add_tenant_id_to_kwargs
+@check_kb_permission(permission=PermissionValue.PERMISSION_READ)
 def list_ingestion_logs(tenant_id, dataset_id):
     try:
         page = int(request.args.get("page", 0))
@@ -731,7 +826,25 @@ def list_ingestion_logs(tenant_id, dataset_id):
         create_date_to = request.args.get("create_date_to", None)
         log_type = request.args.get("log_type", "dataset")
         keywords = request.args.get("keywords", None)
-        success, result = dataset_api_service.list_ingestion_logs(dataset_id, tenant_id, page, page_size, orderby, desc, operation_status, create_date_from, create_date_to, log_type, keywords)
+        accessible_doc_ids, _, err_msg = filter_accessible_doc_ids_for_user(current_user.id, [dataset_id])
+        if err_msg:
+            return get_error_data_result(message=err_msg)
+        if not accessible_doc_ids:
+            return get_result(data={"total": 0, "logs": []})
+        success, result = dataset_api_service.list_ingestion_logs(
+            dataset_id,
+            tenant_id,
+            page,
+            page_size,
+            orderby,
+            desc,
+            operation_status,
+            create_date_from,
+            create_date_to,
+            log_type,
+            keywords,
+            accessible_doc_ids,
+        )
         if success:
             return get_result(data=result)
         else:
@@ -747,6 +860,7 @@ def list_ingestion_logs(tenant_id, dataset_id):
 @login_required
 @kb_role_guard
 @add_tenant_id_to_kwargs
+@check_kb_permission(permission=PermissionValue.PERMISSION_READ)
 def get_ingestion_log(tenant_id, dataset_id, log_id):
     try:
         success, result = dataset_api_service.get_ingestion_log(dataset_id, tenant_id, log_id)

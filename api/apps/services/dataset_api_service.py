@@ -705,6 +705,7 @@ def list_ingestion_logs(
     create_date_to: str = None,
     log_type: str = "dataset",
     keywords: str = None,
+    doc_ids: list[str] | None = None,
 ):
     """
     List ingestion logs for a dataset.
@@ -750,7 +751,20 @@ def list_ingestion_logs(
     )
 
     if log_type == "file":
-        logs, total = PipelineOperationLogService.get_file_logs_by_kb_id(dataset_id, page, page_size, orderby, desc, keywords, operation_status or [], None, None, create_date_from, create_date_to)
+        logs, total = PipelineOperationLogService.get_file_logs_by_kb_id(
+            dataset_id,
+            page,
+            page_size,
+            orderby,
+            desc,
+            keywords,
+            operation_status or [],
+            None,
+            None,
+            create_date_from,
+            create_date_to,
+            doc_ids=doc_ids,
+        )
     else:
         logs, total = PipelineOperationLogService.get_dataset_logs_by_kb_id(dataset_id, page, page_size, orderby, desc, operation_status or [], create_date_from, create_date_to, keywords)
     return True, {"total": total, "logs": logs}
@@ -1308,6 +1322,7 @@ async def search_datasets(tenant_id: str, req: dict):
     from api.db.services.user_service import UserTenantService
     from common.constants import LLMType
     from common.metadata_utils import apply_meta_data_filter
+    from api.utils.permission_utils import filter_accessible_doc_ids_for_user
     from rag.app.tag import label_question
     from rag.prompts.generator import cross_languages, keyword_extraction
 
@@ -1346,7 +1361,11 @@ async def search_datasets(tenant_id: str, req: dict):
 
     if doc_ids is not None and not isinstance(doc_ids, list):
         return False, "`doc_ids` should be a list"
-    local_doc_ids = list(doc_ids) if doc_ids else []
+    local_doc_ids, _, err_msg = filter_accessible_doc_ids_for_user(tenant_id, kb_ids, doc_ids if doc_ids else None)
+    if err_msg:
+        return False, err_msg
+    if not local_doc_ids:
+        return True, {"chunks": [], "total": 0, "labels": []}
 
     meta_data_filter = {}
     search_id = req.get("search_id", "")

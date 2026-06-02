@@ -121,6 +121,7 @@ KB_API_ACTION_MAP = {
     "run_mindmap": ActionEnum.WRITE,
     "trace_mindmap": ActionEnum.READ,
     "delete_kb_task": ActionEnum.WRITE,
+    "embedding": ActionEnum.WRITE,
     "check_embedding": ActionEnum.WRITE,
     "switch_embedding": ActionEnum.WRITE,
     "clone": ActionEnum.WRITE,

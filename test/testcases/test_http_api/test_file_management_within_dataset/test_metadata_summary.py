@@ -33,7 +33,8 @@ class TestMetadataSummary:
         Call with non-existent dataset
         """
         res = metadata_summary(HttpApiAuth, "0" * 32)
-        assert res["code"] == 102, res
+        assert res["code"] == 109, res
+        assert "Only owner of dataset authorized for this operation." in res["message"], res
 
     @pytest.mark.p2
     def test_metadata_summary_invalid_kb_id(self, HttpApiAuth, add_document_func):
@@ -42,8 +43,8 @@ class TestMetadataSummary:
         invalid_kb_id = "invalid_" + kb_id
         # Call with a dataset that the user doesn't have access to
         res = metadata_summary(HttpApiAuth, invalid_kb_id)
-        assert res["code"] == 102, res
-        assert res["message"] == f"You don't own the dataset {invalid_kb_id}. "
+        assert res["code"] == 109, res
+        assert "Only owner of dataset authorized for this operation." in res["message"], res
 
     @pytest.mark.p2
     def test_metadata_summary_success(self, HttpApiAuth, add_document_func):

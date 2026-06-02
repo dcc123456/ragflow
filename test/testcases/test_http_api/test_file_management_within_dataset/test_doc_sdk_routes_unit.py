@@ -245,18 +245,57 @@ def _load_doc_module(monkeypatch):
     class _StubTaskModel:
         doc_id = _FakeField()
 
+    class _StubPermissionModel:
+        id = _FakeField()
+        status = _FakeField()
+        tenant_id = _FakeField()
+        member_id = _FakeField()
+        group_id = _FakeField()
+        department_id = _FakeField()
+        resource_type = _FakeField()
+        resource_id = _FakeField()
+        permission = _FakeField()
+
+    class _StubDB:
+        @staticmethod
+        def connection_context():
+            def _decorator(func):
+                return func
+
+            return _decorator
+
     db_models_mod = ModuleType("api.db.db_models")
     db_models_mod.APIToken = SimpleNamespace(query=lambda **_kwargs: [])
     db_models_mod.Document = _StubDocumentModel
+    db_models_mod.Dialog = _StubPermissionModel
+    db_models_mod.Knowledgebase = _StubPermissionModel
+    db_models_mod.MCPServer = _StubPermissionModel
+    db_models_mod.Permission = _StubPermissionModel
+    db_models_mod.PermissionChangeLog = _StubPermissionModel
+    db_models_mod.UserCanvas = _StubPermissionModel
+    db_models_mod.UserTenant = _StubPermissionModel
+    db_models_mod.Tenant = _StubPermissionModel
+    db_models_mod.Subscription = _StubPermissionModel
     db_models_mod.Task = _StubTaskModel
-    db_models_mod.close_connection = lambda *_args, **_kwargs: None
-    db_models_mod.DB = SimpleNamespace()
+    db_models_mod.DB = _StubDB()
+    db_models_mod.Search = SimpleNamespace()
+    db_models_mod.User = SimpleNamespace()
+    db_models_mod.close_connection = lambda: None
     monkeypatch.setitem(sys.modules, "api.db.db_models", db_models_mod)
+
+    apps_mod = ModuleType("api.apps")
+    apps_mod.__path__ = [str(repo_root / "api" / "apps")]
+    apps_mod.current_user = SimpleNamespace(id="user-1")
+    apps_mod.login_required = lambda func: func
+    monkeypatch.setitem(sys.modules, "api.apps", apps_mod)
 
     services_pkg = ModuleType("api.db.services")
     services_pkg.__path__ = [str(repo_root / "api" / "db" / "services")]
-    services_pkg.UserService = SimpleNamespace(query=lambda *_args, **_kwargs: [])
-    services_pkg.duplicate_name = lambda *_args, **_kwargs: False
+    services_pkg.UserService = SimpleNamespace(
+        is_admin=lambda *_args, **_kwargs: False,
+        query=lambda **_kwargs: [SimpleNamespace(id="user-1", access_token="valid-token", email="test@test.com")],
+    )
+    services_pkg.duplicate_name = lambda *_args, **_kwargs: "default_name"
     monkeypatch.setitem(sys.modules, "api.db.services", services_pkg)
 
     doc_metadata_service_mod = ModuleType("api.db.services.doc_metadata_service")
@@ -309,6 +348,12 @@ def _load_doc_module(monkeypatch):
     )
     monkeypatch.setitem(sys.modules, "api.db.services.file_service", file_service_mod)
 
+    search_service_mod = ModuleType("api.db.services.search_service")
+    search_service_mod.SearchService = SimpleNamespace(
+        get_detail=lambda *_args, **_kwargs: {"search_config": {}},
+    )
+    monkeypatch.setitem(sys.modules, "api.db.services.search_service", search_service_mod)
+
     api_utils_mod = ModuleType("api.utils.api_utils")
     api_utils_mod.add_tenant_id_to_kwargs = _identity_decorator
     api_utils_mod.check_duplicate_ids = lambda ids, _kind="item": (ids, [])
@@ -333,14 +378,26 @@ def _load_doc_module(monkeypatch):
         return wrapper
 
     api_utils_mod.token_required = _token_required
+
+    def _add_tenant_id_to_kwargs(func):
+        @wraps(func)
+        async def wrapper(**kwargs):
+            kwargs["tenant_id"] = "tenant-1"
+            return await func(**kwargs)
+
+        return wrapper
+
+    api_utils_mod.add_tenant_id_to_kwargs = _add_tenant_id_to_kwargs
     monkeypatch.setitem(sys.modules, "api.utils.api_utils", api_utils_mod)
 
     permission_utils_mod = ModuleType("api.utils.permission_utils")
-    permission_utils_mod.filter_accessible_doc_ids_for_user = (
-        lambda *_args, **_kwargs: ([], [], "")
-    )
-    permission_utils_mod.check_doc_permission = lambda *args, **kwargs: (lambda func: func)
-    permission_utils_mod.check_kb_permission = lambda *args, **kwargs: (lambda func: func)
+    def _filter_accessible_doc_ids_for_user(user_id, kb_ids, doc_ids=None):
+        accessible_doc_ids = list(doc_ids) if doc_ids is not None else []
+        return accessible_doc_ids, [user_id], ""
+
+    permission_utils_mod.filter_accessible_doc_ids_for_user = _filter_accessible_doc_ids_for_user
+    permission_utils_mod.check_doc_permission = lambda *_args, **_kwargs: (lambda func: func)
+    permission_utils_mod.check_kb_permission = lambda *_args, **_kwargs: (lambda func: func)
     permission_utils_mod.has_permission_for_member = lambda *_args, **_kwargs: True
     monkeypatch.setitem(sys.modules, "api.utils.permission_utils", permission_utils_mod)
 
@@ -350,6 +407,7 @@ def _load_doc_module(monkeypatch):
         pass
 
     billing_utils_mod.InsufficientResourceError = _StubInsufficientResourceError
+    billing_utils_mod.BILLING_PLAN_TRIAL_NAME = "trial"
     monkeypatch.setitem(sys.modules, "api.utils.billing", billing_utils_mod)
 
     billing_service_mod = ModuleType("api.db.services.billing_service")
@@ -676,6 +734,7 @@ def _load_doc_module(monkeypatch):
     spec = importlib.util.spec_from_file_location("test_doc_sdk_routes_unit", module_path)
     module = importlib.util.module_from_spec(spec)
     module.manager = _DummyManager()
+    module.request = SimpleNamespace(headers={})
     spec.loader.exec_module(module)
     return module
 
@@ -727,6 +786,12 @@ def _load_restful_chunk_module(monkeypatch):
     )
     permission_utils_mod.check_doc_permission = lambda *args, **kwargs: (lambda func: func)
     monkeypatch.setitem(sys.modules, "api.utils.permission_utils", permission_utils_mod)
+
+    search_service_mod = ModuleType("api.db.services.search_service")
+    search_service_mod.SearchService = SimpleNamespace(
+        get_detail=lambda *_args, **_kwargs: {"search_config": {}},
+    )
+    monkeypatch.setitem(sys.modules, "api.db.services.search_service", search_service_mod)
 
     permission_service_mod = ModuleType("api.db.services.permission_service")
     permission_service_mod.PermissionService = SimpleNamespace(
@@ -820,21 +885,22 @@ class TestDocRoutesUnit:
         res = _run(module.download("ds-1", "doc-1"))
         assert res["message"] == "This file is empty."
 
-        res = _run(module.download_document("tenant-1", ""))
+        res = _run(module.download_document(tenant_id="tenant-1", document_id=""))
         assert res["message"] == "Specify document_id please."
 
         monkeypatch.setattr(module.DocumentService, "query", lambda **_kwargs: [])
-        res = _run(module.download_document("tenant-1", "doc-1"))
+        res = _run(module.download_document(tenant_id="tenant-1", document_id="doc-1"))
         assert "not own the document" in res["message"]
 
         monkeypatch.setattr(module.DocumentService, "query", lambda **_kwargs: [_DummyDoc()])
         monkeypatch.setattr(module.File2DocumentService, "get_storage_address", lambda **_kwargs: ("b", "n"))
+
         _patch_storage(monkeypatch, module, file_stream=b"")
-        res = _run(module.download_document("tenant-1", "doc-1"))
+        res = _run(module.download_document(tenant_id="tenant-1", document_id="doc-1"))
         assert res["message"] == "This file is empty."
 
         _patch_storage(monkeypatch, module, file_stream=b"abc")
-        res = _run(module.download_document("tenant-1", "doc-1"))
+        res = _run(module.download_document(tenant_id="tenant-1", document_id="doc-1"))
         assert res["filename"] == "doc.txt"
 
 

@@ -237,7 +237,7 @@ class PipelineOperationLogService(CommonService):
 
     @classmethod
     @DB.connection_context()
-    def get_file_logs_by_kb_id(cls, kb_id, page_number, items_per_page, orderby, desc, keywords, operation_status, types, suffix, create_date_from=None, create_date_to=None):
+    def get_file_logs_by_kb_id(cls, kb_id, page_number, items_per_page, orderby, desc, keywords, operation_status, types, suffix, create_date_from=None, create_date_to=None, doc_ids: list[str] | None = None):
         fields = cls.get_file_logs_fields()
         if keywords:
             logs = cls.model.select(*fields).where((cls.model.kb_id == kb_id), (fn.LOWER(cls.model.document_name).contains(keywords.lower())))
@@ -245,6 +245,8 @@ class PipelineOperationLogService(CommonService):
             logs = cls.model.select(*fields).where(cls.model.kb_id == kb_id)
 
         logs = logs.where(cls.model.document_id != GRAPH_RAPTOR_FAKE_DOC_ID)
+        if doc_ids:
+            logs = logs.where(cls.model.document_id.in_(doc_ids))
 
         if operation_status:
             logs = logs.where(cls.model.operation_status.in_(operation_status))
