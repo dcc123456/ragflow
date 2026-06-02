@@ -585,10 +585,23 @@ variable "rabbitmq_memory_limit" {
 # =============================================================================
 
 variable "ragflow_image" {
-  description = "RAGFlow container image (including tag, will be prefixed with private_registry)"
+  description = "RAGFlow parser image (including tag, will be prefixed with private_registry)"
   type        = string
   default     = "ragflow:v0.24.0-5-mt"
 }
+
+variable "ragflow_image_platform" {
+  description = "RAGFlow platform image (including tag, will be prefixed with private_registry)"
+  type        = string
+  default     = "ragflow:v0.24.0-5-mt"
+}
+
+variable "ragflow_image_admin" {
+  description = "RAGFlow admin image (including tag, will be prefixed with private_registry)"
+  type        = string
+  default     = "ragflow:v0.24.0-5-mt"
+}
+
 
 variable "deploy_app_stack" {
   description = "Whether to deploy application-layer resources (ragflow, admin, parser, gateway, and HTTP routes) in this namespace."
@@ -974,4 +987,13 @@ variable "rate_limit_disabled" {
   description = "Disable Nginx rate limiting entirely (useful for CI/test environments). Set to true to bypass."
   type        = bool
   default     = false
+}
+
+#===============================================================
+# enabled /admin url deny
+#===============================================================
+variable "enable_admin_deny" {
+  description = "Disable /admin url deny（request transfer to deny-admin-service）"
+  type        = bool
+  default     = true   # defaut true，enabled deny
 }

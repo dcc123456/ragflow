@@ -118,6 +118,10 @@ locals {
   # RAGFlow image (including tag, will be prefixed with private_registry)
   # Format: image:tag (e.g., ragflow:latest)
   ragflow_image_full = "${var.private_registry}/${var.ragflow_image}"
+  ragflow_image_platform_full = "${var.private_registry}/${var.ragflow_image_platform}"
+  ragflow_image_admin_full = "${var.private_registry}/${var.ragflow_image_admin}"
+
+
 
   # Deepdoc image selection based on deepdoc_use_gpu
   # When deepdoc_use_gpu=true: use deepdoc_gpu
@@ -2563,7 +2567,7 @@ resource "kubernetes_deployment_v1" "ragflow" {
 
         container {
           name              = "ragflow"
-          image             = local.ragflow_image_full
+          image             = local.ragflow_image_platform_full
           image_pull_policy = "Always"
 
           args = ["--disable-taskexecutor"]
@@ -2791,7 +2795,7 @@ resource "kubernetes_deployment_v1" "admin" {
 
         container {
           name              = "admin"
-          image             = local.ragflow_image_full
+          image             = local.ragflow_image_admin_full
           image_pull_policy = "Always"
 
           args = ["--disable-webserver", "--disable-taskexecutor", "--disable-datasync", "--enable-adminserver"]
@@ -3687,7 +3691,7 @@ resource "kubernetes_manifest" "http_route_admin" {
   }
 }
 
-# HTTPRoute 3: / (root path) -> port 80 (frontend nginx)
+# HTTPRoute 3: / (root path) -> port 80 (frontend nginx),add admin deny rule if enabled
 resource "kubernetes_manifest" "http_route_frontend" {
   count = var.deploy_app_stack ? 1 : 0
   field_manager {
@@ -3712,7 +3716,9 @@ resource "kubernetes_manifest" "http_route_frontend" {
           sectionName = var.ohttps_enabled ? "https" : "http"
         }
       ]
-      rules = [
+      
+      rules = concat (
+       [
         {
           matches = [
             {
@@ -3729,10 +3735,31 @@ resource "kubernetes_manifest" "http_route_frontend" {
             }
           ]
         }
-      ]
+        ],
+
+      var.enable_admin_deny ? [
+          {
+            matches = [
+              {
+                path = {
+                  type  = "PathPrefix"
+                  value = "/admin"
+                }
+              }
+            ]
+            backendRefs = [
+              {
+                name = "deny-admin-service"
+                port = 80
+              }
+            ]
+          }
+        ] : []
+      )
     }
   }
 }
+
 
 # =============================================================================
 # HTTPRoute for HTTP to HTTPS Redirect (only when ohttps is enabled)
@@ -3791,6 +3818,37 @@ data "kubernetes_service_v1" "gateway_fabric" {
   # This will fail if the service doesn't exist, which is OK
   # We'll handle the error in the output
 }
+
+
+#=============================================================================
+# deny-admin-server is null service , Forbidden admin access. use proxy access
+#=============================================================================
+resource "kubernetes_service_v1" "deny_admin_service" {
+  metadata {
+    name      = "deny-admin-service"
+    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
+  }                               
+  spec {              
+    port {      
+      port = 80
+      target_port = 80
+    }                     
+    selector = {
+      app = "deny-app" 
+    }         
+     type = "ClusterIP"
+  }  
+  
+  lifecycle {
+    ignore_changes = [
+      metadata.0.annotations["cloud.google.com/neg"],
+      metadata.0.annotations["cloud.google.com/neg-status"],
+    ]
+  }
+  
+}
+
+
 
 # =============================================================================
 # Outputs
