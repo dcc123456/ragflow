@@ -84,10 +84,21 @@ performing other operations that require additional quota.  Please contact
 our support team for assistance.
 """
 
+# Startup test email template
+DOWNGRADE_STARTUP_TEST_EMAIL_TMPL = """
+Downgrade Guard Daemon Started
+
+This is an automated test message to verify SMTP configuration.
+
+If you received this email, the downgrade guard daemon has started
+successfully and the email system is working correctly.
+"""
+
 # Template registry
 EMAIL_TEMPLATES = {
     "invite": INVITE_EMAIL_TMPL,
     "reset_code": RESET_CODE_EMAIL_TMPL,
+    "downgrade_startup_test": DOWNGRADE_STARTUP_TEST_EMAIL_TMPL,
     "downgrade_warning": DOWNGRADE_WARNING_EMAIL_TMPL,
     "downgrade_cancelled": DOWNGRADE_CANCELLED_EMAIL_TMPL,
     "downgrade_effective_exceeded": DOWNGRADE_EFFECTIVE_EXCEEDED_EMAIL_TMPL,

@@ -30,9 +30,7 @@ REDIS_WARN_KEY = "downgrade:warn"  # suffix :{tenant_id}, TTL 7 days
 
 CHECK_LOCK_TTL = 600  # 10 min per-tenant lock during high-freq check
 WARN_RATE_LIMIT_SEC = 7 * 24 * 3600  # 7 days between warning emails
-DOWNGRADE_GUARD_TEST_EMAIL = os.environ.get(
-    "DOWNGRADE_GUARD_TEST_EMAIL", "gangqiang.xu@infiniflow.org"
-)
+DOWNGRADE_GUARD_TEST_EMAIL = os.environ.get("DOWNGRADE_GUARD_TEST_EMAIL", "")
 
 # Simple thread-safe metrics (no external dependency required)
 _metrics_lock = threading.Lock()
@@ -247,16 +245,7 @@ async def _send_smtp_test_email() -> None:
             await send_email_html(
                 to_email=to,
                 subject="Downgrade Guard Daemon Started",
-                template_key="downgrade_warning",
-                nickname="Admin",
-                current_plan="-",
-                target_plan="-",
-                current_storage="0",
-                target_storage="0",
-                current_members=0,
-                target_members=0,
-                current_apps=0,
-                target_apps=0,
+                template_key="downgrade_startup_test",
             )
         logger.info("Sent startup test email to %s", to)
     except Exception:
