@@ -971,7 +971,7 @@ class GeminiCV(Base):
         from google import genai
         from google.genai import types
 
-        video_size_mb = len(video_bytes) / (1000 * 1000)
+        video_size_mb = len(video_bytes) / (1024 * 1024)
         client = self.client if hasattr(self, "client") else genai.Client(api_key=self.api_key)
         logging.info(f"[GeminiCV] _process_video called: filename={filename} size_mb={video_size_mb:.2f}")
 

@@ -34,8 +34,8 @@ from api.constants import FILE_NAME_LEN_LIMIT, IMG_BASE64_PREFIX
 from api.db import FileType
 
 # Robustness and resource limits: reject oversized inputs to avoid DoS and OOM.
-MAX_BLOB_SIZE_THUMBNAIL = 50 * 1000 * 1000  # 50 MB for thumbnail generation
-MAX_BLOB_SIZE_PDF = 100 * 1000 * 1000  # 100 MB for PDF repair / read
+MAX_BLOB_SIZE_THUMBNAIL = 50 * 1024 * 1024  # 50 MiB for thumbnail generation
+MAX_BLOB_SIZE_PDF = 100 * 1024 * 1024  # 100 MiB for PDF repair / read
 GHOSTSCRIPT_TIMEOUT_SEC = 120  # Timeout for Ghostscript subprocess
 
 LOCK_KEY_pdfplumber = "global_shared_lock_pdfplumber"

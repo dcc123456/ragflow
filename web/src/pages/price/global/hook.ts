@@ -77,7 +77,7 @@ interface IPriceData {
 export const showPriceModal = ({ code, detail = {}, message }: IPriceData) => {
   switch (code) {
     case PriceCode.MultLimit:
-      return false;
+      return true;
     case PriceCode.SeatsLimit:
       showUpgradeTipsModal({
         type: 'team-member',

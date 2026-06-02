@@ -246,7 +246,7 @@ async def get_storage_binary(bucket, name, tenant_id):
 async def build_chunks(task, progress_callback):
     if task["size"] > settings.DOC_MAXIMUM_SIZE:
         set_progress(task["id"], prog=-1, msg="File size exceeds( <= %dMb )" %
-                                              (int(settings.DOC_MAXIMUM_SIZE / 1000 / 1000)))
+                                              (int(settings.DOC_MAXIMUM_SIZE / 1024 / 1024)))
         return []
 
     chunker = FACTORY[task["parser_id"].lower()]

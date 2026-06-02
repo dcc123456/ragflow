@@ -156,13 +156,13 @@ class RabbitQueue:
     def queue_product(self, routing_key:str, message:dict) -> bool:
         # Estimate size before serialization to catch large messages early
         estimated_size = self._estimate_size(message)
-        if estimated_size > 10 * 1000:
+        if estimated_size > 10 * 1024:
             logging.warning(f"Large message estimated {estimated_size} bytes for {routing_key}")
 
         for i in range(3):
             try:
                 body = json.dumps(message)
-                if len(body) > 10 * 1000:  # 10KB
+                if len(body) > 10 * 1024:  # 10KB
                     logging.warning(f"Large message for {routing_key}: {len(body)} bytes")
                 # Ensure the queue exists and is bound to the exchange
                 channel = self._get_publisher_channel()
