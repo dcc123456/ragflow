@@ -504,7 +504,7 @@ def downgrade_guard_health():
 
 def _storage_effective_kb(tenant_id: str) -> int:
     addon_bytes, _ = SubscriptionService.get_storage_bytes_for_tenant(tenant_id)
-    return addon_bytes // 1024
+    return addon_bytes // 1000
 
 
 def _storage_effective_bytes(tenant_id: str) -> int:
@@ -1315,7 +1315,7 @@ async def billing_addon_overview():
     usage_overview["storage"]["purchased"] = storage_quota_kb
     usage_overview["storage"]["remaining"] = storage_quota_kb
 
-    num_storage_in_kb = FileService.get_total_size_by_tenant_id(tenant_id) // 1024
+    num_storage_in_kb = FileService.get_total_size_by_tenant_id(tenant_id) // 1000
     usage_overview["storage"]["remaining"] -= num_storage_in_kb
 
     return get_json_result(data=usage_overview)

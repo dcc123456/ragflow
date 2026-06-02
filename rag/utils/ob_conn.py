@@ -422,7 +422,7 @@ class OBConnection(OBConnectionBase):
         try:
             # Get database size
             result = self.client.perform_raw_text_sql(
-                f"SELECT ROUND(SUM(data_length + index_length) / 1024 / 1024, 2) AS 'size_mb' "
+                f"SELECT ROUND(SUM(data_length + index_length) / 1000 / 1000, 2) AS 'size_mb' "
                 f"FROM information_schema.tables WHERE table_schema = '{self.db_name}'"
             ).fetchone()
 
@@ -431,7 +431,7 @@ class OBConnection(OBConnectionBase):
             # Try to get total available space (may not be available in all OceanBase versions)
             try:
                 result = self.client.perform_raw_text_sql(
-                    "SELECT ROUND(SUM(total_size) / 1024 / 1024 / 1024, 2) AS 'total_gb' "
+                    "SELECT ROUND(SUM(total_size) / 1000 / 1000 / 1000, 2) AS 'total_gb' "
                     "FROM oceanbase.__all_disk_stat"
                 ).fetchone()
                 total_gb = float(result[0]) if result and result[0] else None

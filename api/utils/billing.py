@@ -1357,12 +1357,12 @@ def check_resources(**resource_deltas):
     Args:
         **resource_deltas: Keyword arguments specifying resource types and their delta values.
                           Supported types: seats, apps, storage
-                          Example: @check_resources(seats=1, apps=1, storage=1024)
+                          Example: @check_resources(seats=1, apps=1, storage=1000)
 
     Usage:
         @check_resources(seats=1)  # Check for 1 additional seat
         @check_resources(apps=1)   # Check for 1 additional app
-        @check_resources(storage=1024)  # Check for 1KB additional storage
+        @check_resources(storage=1000)  # Check for 1KB additional storage
         @check_resources(seats=1, apps=1)  # Check for both seats and apps
     """
 

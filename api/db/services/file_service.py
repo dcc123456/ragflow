@@ -550,9 +550,9 @@ class FileService(CommonService):
                             resource="storage",
                             current=current,
                             limit=limit,
-                            message=f"Insufficient storage quota. Current: {current / 1024 / 1024 / 1024:.2f} GB, "
-                                    f"Limit: {limit / 1024 / 1024 / 1024:.2f} GB. "
-                                    f"File size: {file_size_bytes / 1024 / 1024 / 1024:.2f} GB",
+                            message=f"Insufficient storage quota. Current: {current} B, "
+                                    f"Limit: {limit} B. "
+                                    f"File size: {file_size_bytes} B",
                             file_size=file_size_bytes,
                         )
 
@@ -979,9 +979,9 @@ class FileService(CommonService):
                     resource="storage",
                     current=current,
                     limit=limit,
-                    message=f"Insufficient storage quota. Current: {current / 1024 / 1024 / 1024:.2f} GB, "
-                            f"Limit: {limit / 1024 / 1024 / 1024:.2f} GB. "
-                            f"File size: {file_size_bytes / 1024 / 1024 / 1024:.2f} GB",
+                    message=f"Insufficient storage quota. Current: {current} B, "
+                            f"Limit: {limit} B. "
+                            f"File size: {file_size_bytes} B",
                     file_size=file_size_bytes,
                 )
 
