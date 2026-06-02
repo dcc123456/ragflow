@@ -58,6 +58,13 @@ _stub_module(
     "api.db.services.billing_service",
     PricePointService=object,
     ProductService=object,
+    # register_webhook() does an inline import of api.services.billing_webhook_service,
+    # which transitively pulls these names from api.db.services.billing_service.
+    BillingWebhookEventService=object,
+    PaymentOrderService=object,
+    PointAccountService=object,
+    PurchasedProductOverviewService=object,
+    SubscriptionService=object,
 )
 _stub_module("api.db.services.knowledgebase_service", KnowledgebaseService=object)
 _stub_module("api.db.services.memory_service", MemoryService=object)
@@ -74,6 +81,20 @@ _stub_module(
 )
 
 from api.db import init_data
+
+# Mirror of api.services.billing_webhook_service.FOCUSED_STRIPE_WEBHOOK. The test
+# stubs api.db.services.billing_service, so we cannot import the real constant
+# without pulling in the full webhook service module's transitive dependencies.
+FOCUSED_STRIPE_WEBHOOK = [
+    "invoice.paid",
+    "invoice.payment_failed",
+    "invoice.payment_action_required",
+    "customer.subscription.updated",
+    "customer.subscription.deleted",
+    "customer.subscription.created",
+    "checkout.session.completed",
+    "payment_intent.succeeded",
+]
 
 
 @pytest.mark.p2
@@ -92,6 +113,8 @@ def test_register_webhook_deletes_duplicate_same_url_endpoint_before_skipping(mo
         raising=False,
     )
 
+    webhook_url = "https://example.com/api/billing/webhook"
+
     def _get_first_by_name(name):
         if name == "billing_webhook_id":
             return SimpleNamespace(value="we_primary")
@@ -103,15 +126,19 @@ def test_register_webhook_deletes_duplicate_same_url_endpoint_before_skipping(mo
     monkeypatch.setattr(
         init_data.stripe.WebhookEndpoint,
         "retrieve",
-        lambda webhook_id: SimpleNamespace(id=webhook_id, url="https://example.com/api/billing/webhook"),
+        lambda webhook_id: SimpleNamespace(
+            id=webhook_id,
+            url=webhook_url,
+            enabled_events=list(FOCUSED_STRIPE_WEBHOOK),
+        ),
     )
     monkeypatch.setattr(
         init_data.stripe.WebhookEndpoint,
         "list",
         lambda: SimpleNamespace(
             data=[
-                SimpleNamespace(id="we_primary", url="https://example.com/api/billing/webhook"),
-                SimpleNamespace(id="we_duplicate", url="https://example.com/api/billing/webhook"),
+                SimpleNamespace(id="we_primary", url=webhook_url, enabled_events=list(FOCUSED_STRIPE_WEBHOOK)),
+                SimpleNamespace(id="we_duplicate", url=webhook_url, enabled_events=list(FOCUSED_STRIPE_WEBHOOK)),
             ]
         ),
     )

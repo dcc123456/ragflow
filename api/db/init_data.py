@@ -212,7 +212,7 @@ def register_webhook():
     )
 
     verified_endpoint = None
-    stored_endpoint_matches_url = False
+    verified_endpoint_matches = False
 
     # Verify the stored webhook_id still exists in Stripe
     if webhook_id:
@@ -220,53 +220,39 @@ def register_webhook():
             endpoint = stripe.WebhookEndpoint.retrieve(webhook_id)
             if endpoint:
                 verified_endpoint = endpoint
-                stored_endpoint_matches_url = endpoint.url == webhook_url
-                logging.info(
-                    "verified stored Stripe webhook endpoint: id=%s endpoint_url=%s matches_target=%s",
-                    webhook_id,
-                    endpoint.url,
-                    stored_endpoint_matches_url,
-                )
+                verified_endpoint_matches = endpoint.url == webhook_url and set(verified_endpoint.enabled_events) == set(FOCUSED_STRIPE_WEBHOOK)
         except stripe.error.InvalidRequestError:
             logging.info(f'webhook_id {webhook_id} not found in Stripe, will re-register')
         except Exception as e:
             logging.warning(f'webhook_id {webhook_id} verification failed: {e}, will re-register')
 
-    # Always reconcile same-URL endpoints before deciding whether registration can be skipped.
+    # Reconcile duplicate endpoints (same URL, different id)
     webhook_endpoints = stripe.WebhookEndpoint.list()
-    duplicate_endpoint_ids = []
-    for endpoint in webhook_endpoints.data:
-        if endpoint.url == webhook_url:
-            if webhook_id and endpoint.id == webhook_id:
-                logging.info("keeping stored Stripe webhook endpoint: id=%s url=%s", endpoint.id, webhook_url)
-                continue
-            duplicate_endpoint_ids.append(endpoint.id)
+    for ep in webhook_endpoints.data:
+        if ep.url == webhook_url and ep.id != webhook_id:
+            logging.warning(
+                "deleting duplicate Stripe webhook endpoint: stored_id=%s duplicate_id=%s url=%s enabled_events=%s",
+                webhook_id or "",
+                ep.id,
+                webhook_url,
+                set(ep.enabled_events),
+            )
+            stripe.WebhookEndpoint.delete(ep.id)
 
-    for duplicate_id in duplicate_endpoint_ids:
-        logging.warning(
-            "deleting duplicate Stripe webhook endpoint: stored_id=%s duplicate_id=%s url=%s",
-            webhook_id or "",
-            duplicate_id,
-            webhook_url,
-        )
-        stripe.WebhookEndpoint.delete(duplicate_id)
-
-    if stored_endpoint_matches_url and webhook_secret:
-        logging.info(
-            "stored Stripe webhook endpoint is usable after reconciliation; skipping registration: id=%s url=%s duplicates_removed=%s",
-            webhook_id,
-            webhook_url,
-            len(duplicate_endpoint_ids),
-        )
-        return
-
-    if stored_endpoint_matches_url and verified_endpoint and not webhook_secret:
-        logging.warning(
-            "stored Stripe webhook endpoint matches target URL but persisted secret is missing; recreating endpoint: id=%s url=%s",
-            webhook_id,
-            webhook_url,
-        )
-        stripe.WebhookEndpoint.delete(verified_endpoint.id)
+    if verified_endpoint:
+        if verified_endpoint_matches and webhook_secret:
+            # Skip if endpoint is fully current: URL + secret + enabled_events all match
+            logging.info(
+                "stored Stripe webhook endpoint is usable; skipping registration: id=%s url=%s enabled_events=%s",
+                webhook_id,
+                webhook_url,
+                set(FOCUSED_STRIPE_WEBHOOK),
+            )
+            return
+        else:
+            # Delete if URL matches but enabled_events are stale (will recreate below)
+            logging.warning("stored Stripe webhook endpoint is stale, delete it; id=%s", verified_endpoint.id)
+            stripe.WebhookEndpoint.delete(verified_endpoint.id)
 
     # No existing endpoint with this URL - register new one
     endpoint = stripe.WebhookEndpoint.create(
@@ -279,7 +265,7 @@ def register_webhook():
     # Persist webhook_id and webhook_secret
     _upsert_system_setting("billing_webhook_id", new_webhook_id)
     _upsert_system_setting("billing_webhook_secret", new_webhook_secret)
-    logging.info(f'webhook_url {webhook_url} registered with id={new_webhook_id} and secret saved')
+    logging.info(f'webhook registered with id={new_webhook_id} url={webhook_url} enabled_events={FOCUSED_STRIPE_WEBHOOK} and secret saved')
 
 
 def _upsert_system_setting(name, value):
