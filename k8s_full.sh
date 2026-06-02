@@ -113,11 +113,13 @@ print_summary
 
 cd "$BYOK_DIR"
 TF_ARGS=(
-  -var-file="$VAR_FILE"
-  -var "namespace=$NAMESPACE"
-  -var "redis_db=$REDIS_DB"
-  -var "ragflow_image=$RAGFLOW_IMAGE"
-)
+    -var-file="$VAR_FILE"
+    -var "namespace=$NAMESPACE"
+    -var "redis_db=$REDIS_DB"
+    -var "ragflow_image=$RAGFLOW_IMAGE"
+    -var "ragflow_image_platform=$RAGFLOW_IMAGE"
+    -var "ragflow_image_admin=$RAGFLOW_IMAGE"
+  )
 
 echo "Running: tofu plan ..."
 tofu plan "${TF_ARGS[@]}"
