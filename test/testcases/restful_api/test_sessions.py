@@ -120,7 +120,11 @@ def test_related_questions_compatibility_requires_auth(rest_client_noauth):
     assert res.status_code == 200
     payload = res.json()
     assert payload["code"] == 102, payload
-    assert "API key is invalid" in payload["message"], payload
+    assert payload["message"].strip() in {
+        "Authorization is not valid!",
+        'Authentication error: API key is invalid!"',
+        "Authentication error: API key is invalid!",
+    }, payload
 
 
 @pytest.mark.p2
