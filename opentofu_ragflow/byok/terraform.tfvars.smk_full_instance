@@ -7,7 +7,6 @@
 #   tofu apply -var-file=terraform.tfvars.smk_full_instance -var 'namespace=ragflow'
 
 cloud_provider = "smk"
-load_balancer_provider = "metallb"
 namespace      = "ragflow"
 
 deploy_app_stack = true

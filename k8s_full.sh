@@ -119,7 +119,6 @@ TF_ARGS=(
     -var "ragflow_image=$RAGFLOW_IMAGE"
     -var "ragflow_image_platform=$RAGFLOW_IMAGE"
     -var "ragflow_image_admin=$RAGFLOW_IMAGE"
-    -var "load_balancer_provider=metallb"
   )
 
 echo "Running: tofu plan ..."

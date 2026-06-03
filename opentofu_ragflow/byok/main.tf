@@ -149,28 +149,18 @@ locals {
   # GCP uses GKE Gateway, other providers use NGINX Gateway
   gateway_class_name = var.cloud_provider == "gcp" ? "gke-l7-regional-external-managed" : "nginx"
 
-  # Check if using GKE Gateway (vs smk with NGINX Gateway)
+  # Check if using GKE Gateway (vs SMK with NGINX Gateway)
   is_gke_gateway = can(regex("^gke-", local.gateway_class_name))
   is_smk_gateway = var.cloud_provider == "smk" && !local.is_gke_gateway
 
-  # BYOK Gateway VIP owner selection. This only affects the external SMK
-  # LoadBalancer path. Shared infra connectivity remains ClusterIP/FQDN based.
-  smk_load_balancer_provider     = local.is_smk_gateway ? var.load_balancer_provider : "controller-default"
+  # For SMK, keep Cilium as the CNI/dataplane and let MetalLB remain the only
+  # LoadBalancer IP allocator/announcer for the Gateway service.
   use_smk_gateway_proxy_override = var.deploy_app_stack && local.is_smk_gateway
 
-  smk_gateway_infrastructure_labels = local.smk_load_balancer_provider == "cilium" ? {
-    "networking.ragflow.io/cilium-l2" = "true"
-  } : {}
-
-  smk_gateway_service_override = merge(
-    {
-      type                  = "LoadBalancer"
-      externalTrafficPolicy = "Local"
-    },
-    local.smk_load_balancer_provider == "cilium" ? {
-      loadBalancerClass = "io.cilium/l2-announcer"
-    } : {}
-  )
+  smk_gateway_service_override = {
+    type                  = "LoadBalancer"
+    externalTrafficPolicy = "Local"
+  }
 
   # Service credentials/hosts (allow in-namespace deploy or external/shared services)
   shared_infra_app_mode = var.deploy_app_stack && !var.deploy_infra
@@ -3345,7 +3335,6 @@ resource "kubernetes_manifest" "gateway" {
       },
       local.use_smk_gateway_proxy_override ? {
         infrastructure = {
-          labels = local.smk_gateway_infrastructure_labels
           parametersRef = {
             group = "gateway.nginx.org"
             kind  = "NginxProxy"
@@ -3368,7 +3357,7 @@ resource "kubernetes_manifest" "gateway" {
 }
 
 # =============================================================================
-# SMK Gateway Service ownership override
+# SMK Gateway Service override for MetalLB-backed ingress
 # =============================================================================
 
 resource "kubernetes_manifest" "smk_gateway_proxy_override" {

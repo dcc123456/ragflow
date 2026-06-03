@@ -783,7 +783,6 @@ jobs:
             -var "ragflow_image=${BYOK_RAGFLOW_IMAGE_VAR}" \
             -var "ragflow_image_platform=${BYOK_RAGFLOW_IMAGE_VAR}" \
             -var "ragflow_image_admin=${BYOK_RAGFLOW_IMAGE_VAR}" \
-            -var "load_balancer_provider=metallb" \
             -var "rate_limit_disabled=true" 
   
           tofu apply -auto-approve -var-file=terraform.tfvars.dev_smk \
@@ -792,7 +791,6 @@ jobs:
             -var "ragflow_image=${BYOK_RAGFLOW_IMAGE_VAR}" \
             -var "ragflow_image_platform=${BYOK_RAGFLOW_IMAGE_VAR}" \
             -var "ragflow_image_admin=${BYOK_RAGFLOW_IMAGE_VAR}" \
-            -var "load_balancer_provider=metallb" \
             -var "rate_limit_disabled=true"
   
           GATEWAY_ADDRESS="$(kubectl get gateway ragflow -n "${BYOK_NAMESPACE}" -o jsonpath='{.status.addresses[0].value}' 2>/dev/null | tr -d '[:space:]')"
@@ -883,7 +881,6 @@ jobs:
             -var "ragflow_image=${BYOK_RAGFLOW_IMAGE_VAR}" \
             -var "ragflow_image_platform=${BYOK_RAGFLOW_IMAGE_VAR}" \
             -var "ragflow_image_admin=${BYOK_RAGFLOW_IMAGE_VAR}" \
-            -var "load_balancer_provider=metallb" \
             -var "rate_limit_disabled=true" \
 
       - name: Delete Harbor artifact

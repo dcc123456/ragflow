@@ -75,17 +75,6 @@ variable "cloud_provider" {
   }
 }
 
-variable "load_balancer_provider" {
-  description = "LoadBalancer owner for SMK Gateway VIPs. 'metallb' keeps BYOK Gateway VIPs on MetalLB. 'cilium' opts a BYOK Gateway into Cilium LB IPAM/L2. Ignored outside SMK."
-  type        = string
-  default     = "metallb"
-
-  validation {
-    condition     = contains(["metallb", "cilium"], var.load_balancer_provider)
-    error_message = "load_balancer_provider must be either 'metallb' or 'cilium'."
-  }
-}
-
 variable "cluster_scoped_resource_mode" {
   description = "Cluster-scoped ownership mode. 'auto' resolves ownership from BYOK state + cluster detection. 'manual' uses manage_cluster_scoped_resources."
   type        = string
@@ -1006,5 +995,5 @@ variable "rate_limit_disabled" {
 variable "enable_admin_deny" {
   description = "Disable /admin url deny（request transfer to deny-admin-service）"
   type        = bool
-  default     = true   # defaut true，enabled deny
+  default     = true # defaut true，enabled deny
 }

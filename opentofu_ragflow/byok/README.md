@@ -83,14 +83,14 @@ For Self-Managed Kubernetes (SMK) clusters, you need to set up a Gateway API con
 
 ##### Gateway API Controllers
 
-RAGFlow uses the Kubernetes Gateway API for ingress. You have two options:
+RAGFlow uses the Kubernetes Gateway API for ingress.
 
-##### Option 1: NGINX Gateway Fabric + MetalLB (Recommended)
+##### NGINX Gateway Fabric + MetalLB (SMK)
 
-This is the recommended setup for Self-Managed Kubernetes (SMK) clusters, providing:
+This is the supported Self-Managed Kubernetes (SMK) setup:
 - NGINX Gateway Fabric as the Gateway API controller
-- MetalLB for LoadBalancer IP address allocation
-- BYOK `load_balancer_provider = "metallb"` as the default Gateway VIP owner
+- MetalLB as the only LoadBalancer IP allocator and announcer
+- Cilium kept only as the Kubernetes CNI/dataplane when your cluster uses Cilium
 
 **Quick Setup:**
 
@@ -158,51 +158,19 @@ spec:
 
 **Cilium Integration (if using Cilium CNI):**
 
-If your Self-Managed Kubernetes (SMK) cluster uses Cilium CNI, apply the MetalLB webhook policy:
+If your SMK cluster uses Cilium as the CNI/dataplane, keep Cilium installed but do not use Cilium for LoadBalancer IPAM, L2 announcements, or BGP service advertisement for BYOK ingress.
+
+Apply the MetalLB webhook policy:
 
 ```bash
 kubectl apply -f smk-allow-metallb-webhook.yaml
 ```
 
-##### Option 2: Cilium Gateway (if using Cilium CNI)
+Architecture rule for SMK BYOK:
+- Cilium = CNI/dataplane only
+- MetalLB = only LoadBalancer IP allocator and announcer
 
-If your cluster already has Cilium installed with L2 announcement support, you can use Cilium Gateway instead:
-
-```bash
-# Apply Cilium L2 announcement policy
-kubectl apply -f smk-cilium-l2-policy.yaml
-```
-
-**Important controller ownership rule:** do **not** let both Cilium and MetalLB manage the same LoadBalancer services or the same LAN VIP range.
-
-- If you use **Option 1 (NGINX Gateway Fabric + MetalLB)**, configure Cilium LB IPAM/L2 announcement to stay out of those services. In practice that means:
-  - keep `smk-cilium-l2-policy.yaml` opt-in only, not cluster-wide
-  - set Cilium `defaultLBServiceIPAM=none` (or equivalent Helm value) so MetalLB remains the sole LoadBalancer IP allocator on SMK
-- If you use **Option 2 (Cilium Gateway/L2)**, do not apply the MetalLB pool/advertisement for the same VIP range.
-
-`smk-cilium-l2-policy.yaml` is intentionally label-scoped. Only Services labeled:
-
-```yaml
-networking.ragflow.io/cilium-l2: "true"
-```
-
-should be announced by Cilium. Do not add that label to BYOK `ragflow-nginx` services when using MetalLB.
-
-**Note:** Update the interface name in `smk-cilium-l2-policy.yaml` to match your physical network interface (e.g., `^eth0`, `^ens.*`) if you narrow it from the permissive default.
-
-##### BYOK provider switch
-
-BYOK now exposes an explicit SMK Gateway VIP owner:
-
-```hcl
-load_balancer_provider = "metallb" # default for SMK
-# or
-load_balancer_provider = "cilium"
-```
-
-This setting only affects the controller-managed `ragflow-nginx` LoadBalancer service behind the Gateway. It does **not** change shared infra wiring (`mysql_host`, `redis_host`, `es_host`, `deepdoc_url`, `tei_host`).
-
-See `SMK_LOAD_BALANCER_PROVIDER.md` for the required cluster-side Cilium/MetalLB isolation steps, cleanup commands for stale Cilium ownership, and rollout validation.
+If the cluster still has Cilium LoadBalancer resources such as `CiliumLoadBalancerIPPool` or `CiliumL2AnnouncementPolicy`, remove or disable those outside this BYOK codebase before applying changes here so they do not compete with MetalLB.
 
 ##### Verifying Gateway Setup
 
