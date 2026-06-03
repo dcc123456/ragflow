@@ -45,7 +45,6 @@ from api.utils.api_utils import (
     get_request_json,
     get_result,
     server_error_response,
-    token_required,
 )
 from api.utils.image_utils import store_chunk_image
 from api.utils.permission_utils import check_doc_permission
@@ -133,7 +132,8 @@ def _enrich_chunks_with_document_metadata(chunks: list[dict], metadata_fields=No
 
 
 @manager.route("/datasets/<dataset_id>/chunks", methods=["POST"])  # noqa: F821
-@token_required
+@login_required
+@add_tenant_id_to_kwargs
 async def parse(tenant_id, dataset_id):
     if not KnowledgebaseService.accessible(kb_id=dataset_id, user_id=tenant_id):
         return get_error_data_result(message=f"You don't own the dataset {dataset_id}.")
@@ -188,7 +188,8 @@ async def parse(tenant_id, dataset_id):
 
 
 @manager.route("/datasets/<dataset_id>/chunks", methods=["DELETE"])  # noqa: F821
-@token_required
+@login_required
+@add_tenant_id_to_kwargs
 async def stop_parsing(tenant_id, dataset_id):
     if not KnowledgebaseService.accessible(kb_id=dataset_id, user_id=tenant_id):
         return get_error_data_result(message=f"You don't own the dataset {dataset_id}.")
@@ -228,7 +229,8 @@ async def stop_parsing(tenant_id, dataset_id):
 
 
 @manager.route("/retrieval", methods=["POST"])  # noqa: F821
-@token_required
+@login_required
+@add_tenant_id_to_kwargs
 async def retrieval_test(tenant_id):
     req = await get_request_json()
     if not req.get("dataset_ids"):
