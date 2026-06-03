@@ -117,9 +117,9 @@ locals {
   # Image transformation logic
   # RAGFlow image (including tag, will be prefixed with private_registry)
   # Format: image:tag (e.g., ragflow:latest)
-  ragflow_image_full = "${var.private_registry}/${var.ragflow_image}"
+  ragflow_image_full          = "${var.private_registry}/${var.ragflow_image}"
   ragflow_image_platform_full = "${var.private_registry}/${var.ragflow_image_platform}"
-  ragflow_image_admin_full = "${var.private_registry}/${var.ragflow_image_admin}"
+  ragflow_image_admin_full    = "${var.private_registry}/${var.ragflow_image_admin}"
 
 
 
@@ -151,6 +151,26 @@ locals {
 
   # Check if using GKE Gateway (vs smk with NGINX Gateway)
   is_gke_gateway = can(regex("^gke-", local.gateway_class_name))
+  is_smk_gateway = var.cloud_provider == "smk" && !local.is_gke_gateway
+
+  # BYOK Gateway VIP owner selection. This only affects the external SMK
+  # LoadBalancer path. Shared infra connectivity remains ClusterIP/FQDN based.
+  smk_load_balancer_provider     = local.is_smk_gateway ? var.load_balancer_provider : "controller-default"
+  use_smk_gateway_proxy_override = var.deploy_app_stack && local.is_smk_gateway
+
+  smk_gateway_infrastructure_labels = local.smk_load_balancer_provider == "cilium" ? {
+    "networking.ragflow.io/cilium-l2" = "true"
+  } : {}
+
+  smk_gateway_service_override = merge(
+    {
+      type                  = "LoadBalancer"
+      externalTrafficPolicy = "Local"
+    },
+    local.smk_load_balancer_provider == "cilium" ? {
+      loadBalancerClass = "io.cilium/l2-announcer"
+    } : {}
+  )
 
   # Service credentials/hosts (allow in-namespace deploy or external/shared services)
   shared_infra_app_mode = var.deploy_app_stack && !var.deploy_infra
@@ -660,14 +680,14 @@ resource "kubernetes_deployment_v1" "redis" {
 
           resources {
             requests = {
-              cpu    = var.redis_cpu_request
-              memory = var.redis_memory_request
-              ephemeral-storage  = var.redis_ephemeral_storage_request
+              cpu               = var.redis_cpu_request
+              memory            = var.redis_memory_request
+              ephemeral-storage = var.redis_ephemeral_storage_request
             }
             limits = {
-              cpu    = var.redis_cpu_limit
-              memory = var.redis_memory_limit
-              ephemeral-storage  = var.redis_ephemeral_storage_limit
+              cpu               = var.redis_cpu_limit
+              memory            = var.redis_memory_limit
+              ephemeral-storage = var.redis_ephemeral_storage_limit
             }
           }
         }
@@ -2191,16 +2211,16 @@ resource "kubernetes_secret_v1" "ragflow_env" {
     RAGFLOW_SECRET_KEY = "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2"
 
     # Billing Configuration
-    BILLING_ENABLED               = var.billing_enabled ? "1" : "0"
-    BILLING_STRIPE_API_VERSION    = var.billing_stripe_api_version
-    BILLING_SERVICE_URL           = var.billing_service_url
-    BILLING_STRIPE_API_KEY        = var.billing_stripe_api_key
+    BILLING_ENABLED                = var.billing_enabled ? "1" : "0"
+    BILLING_STRIPE_API_VERSION     = var.billing_stripe_api_version
+    BILLING_SERVICE_URL            = var.billing_service_url
+    BILLING_STRIPE_API_KEY         = var.billing_stripe_api_key
     BILLING_STRIPE_PUBLISHABLE_KEY = var.billing_stripe_publishable_key
-    BILLING_PRICE_ID_POINTS       = var.billing_price_id_points
-    BILLING_PRICE_ID_STORAGE   = var.billing_price_id_storage
-    BILLING_PRICE_ID_STARTER   = var.billing_price_id_starter
-    BILLING_PRICE_ID_PRO       = var.billing_price_id_pro
-    STRIPE_TEST_CLOCK_ID       = var.stripe_test_clock_id
+    BILLING_PRICE_ID_POINTS        = var.billing_price_id_points
+    BILLING_PRICE_ID_STORAGE       = var.billing_price_id_storage
+    BILLING_PRICE_ID_STARTER       = var.billing_price_id_starter
+    BILLING_PRICE_ID_PRO           = var.billing_price_id_pro
+    STRIPE_TEST_CLOCK_ID           = var.stripe_test_clock_id
 
     # Zammad Support Ticket Configuration
     ZAMMAD_URL   = var.zammad_url
@@ -2478,10 +2498,10 @@ resource "kubernetes_deployment_v1" "ragflow" {
       ####type = "Recreate"
       #RollingUpdate strategy
       type = "RollingUpdate"
-         rolling_update {
-            max_surge       = "100%"
-            max_unavailable = 0
-         }  
+      rolling_update {
+        max_surge       = "100%"
+        max_unavailable = 0
+      }
     }
 
     selector {
@@ -3251,6 +3271,7 @@ resource "kubernetes_manifest" "gateway" {
   count = var.deploy_app_stack ? 1 : 0
   depends_on = [
     kubernetes_secret_v1.tls_secret,
+    kubernetes_manifest.smk_gateway_proxy_override,
   ]
 
   field_manager {
@@ -3271,56 +3292,68 @@ resource "kubernetes_manifest" "gateway" {
         # The TLS secret will be synced by sync_ohttps_cert.py script
       }
     }
-    spec = {
-      gatewayClassName = local.gateway_class_name
-      listeners = concat(
-        [
-          {
-            name     = "http"
-            protocol = "HTTP"
-            port     = 80
-            # Note: GKE Gateway does not support httpRedirect
-            # When ohttps is enabled, HTTP (80) and HTTPS (443) both work
-            # Users can access via HTTPS directly, or use the HTTPS URL
-            allowedRoutes = {
-              namespaces = {
-                selector = {
-                  matchLabels = {
-                    "kubernetes.io/metadata.name" = kubernetes_namespace_v1.ragflow.metadata[0].name
+    spec = merge(
+      {
+        gatewayClassName = local.gateway_class_name
+        listeners = concat(
+          [
+            {
+              name     = "http"
+              protocol = "HTTP"
+              port     = 80
+              # Note: GKE Gateway does not support httpRedirect
+              # When ohttps is enabled, HTTP (80) and HTTPS (443) both work
+              # Users can access via HTTPS directly, or use the HTTPS URL
+              allowedRoutes = {
+                namespaces = {
+                  selector = {
+                    matchLabels = {
+                      "kubernetes.io/metadata.name" = kubernetes_namespace_v1.ragflow.metadata[0].name
+                    }
                   }
                 }
               }
             }
-          }
-        ],
-        var.ohttps_enabled ? [
-          {
-            name     = "https"
-            protocol = "HTTPS"
-            port     = 443
-            tls = {
-              mode = "Terminate"
-              certificateRefs = [
-                {
-                  name      = "ragflow-tls"
-                  namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
-                  kind      = "Secret"
-                }
-              ]
-            }
-            allowedRoutes = {
-              namespaces = {
-                selector = {
-                  matchLabels = {
-                    "kubernetes.io/metadata.name" = kubernetes_namespace_v1.ragflow.metadata[0].name
+          ],
+          var.ohttps_enabled ? [
+            {
+              name     = "https"
+              protocol = "HTTPS"
+              port     = 443
+              tls = {
+                mode = "Terminate"
+                certificateRefs = [
+                  {
+                    name      = "ragflow-tls"
+                    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
+                    kind      = "Secret"
+                  }
+                ]
+              }
+              allowedRoutes = {
+                namespaces = {
+                  selector = {
+                    matchLabels = {
+                      "kubernetes.io/metadata.name" = kubernetes_namespace_v1.ragflow.metadata[0].name
+                    }
                   }
                 }
               }
             }
+          ] : []
+        )
+      },
+      local.use_smk_gateway_proxy_override ? {
+        infrastructure = {
+          labels = local.smk_gateway_infrastructure_labels
+          parametersRef = {
+            group = "gateway.nginx.org"
+            kind  = "NginxProxy"
+            name  = "ragflow-gateway-proxy"
           }
-        ] : []
-      )
-    }
+        }
+      } : {}
+    )
   }
 
   # Wait for Gateway to be programmed (status.addresses available)
@@ -3330,6 +3363,31 @@ resource "kubernetes_manifest" "gateway" {
     condition {
       type   = "Programmed"
       status = "True"
+    }
+  }
+}
+
+# =============================================================================
+# SMK Gateway Service ownership override
+# =============================================================================
+
+resource "kubernetes_manifest" "smk_gateway_proxy_override" {
+  count = local.use_smk_gateway_proxy_override ? 1 : 0
+
+  manifest = {
+    apiVersion = "gateway.nginx.org/v1alpha2"
+    kind       = "NginxProxy"
+    metadata = {
+      name      = "ragflow-gateway-proxy"
+      namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
+      labels = {
+        app = "ragflow"
+      }
+    }
+    spec = {
+      kubernetes = {
+        service = local.smk_gateway_service_override
+      }
     }
   }
 }
@@ -3716,28 +3774,28 @@ resource "kubernetes_manifest" "http_route_frontend" {
           sectionName = var.ohttps_enabled ? "https" : "http"
         }
       ]
-      
-      rules = concat (
-       [
-        {
-          matches = [
-            {
-              path = {
-                type  = "PathPrefix"
-                value = "/"
+
+      rules = concat(
+        [
+          {
+            matches = [
+              {
+                path = {
+                  type  = "PathPrefix"
+                  value = "/"
+                }
               }
-            }
-          ]
-          backendRefs = [
-            {
-              name = kubernetes_service_v1.ragflow_frontend[0].metadata[0].name
-              port = 80
-            }
-          ]
-        }
+            ]
+            backendRefs = [
+              {
+                name = kubernetes_service_v1.ragflow_frontend[0].metadata[0].name
+                port = 80
+              }
+            ]
+          }
         ],
 
-      var.enable_admin_deny ? [
+        var.enable_admin_deny ? [
           {
             matches = [
               {
@@ -3827,25 +3885,25 @@ resource "kubernetes_service_v1" "deny_admin_service" {
   metadata {
     name      = "deny-admin-service"
     namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
-  }                               
-  spec {              
-    port {      
-      port = 80
+  }
+  spec {
+    port {
+      port        = 80
       target_port = 80
-    }                     
+    }
     selector = {
-      app = "deny-app" 
-    }         
-     type = "ClusterIP"
-  }  
-  
+      app = "deny-app"
+    }
+    type = "ClusterIP"
+  }
+
   lifecycle {
     ignore_changes = [
       metadata.0.annotations["cloud.google.com/neg"],
       metadata.0.annotations["cloud.google.com/neg-status"],
     ]
   }
-  
+
 }
 
 

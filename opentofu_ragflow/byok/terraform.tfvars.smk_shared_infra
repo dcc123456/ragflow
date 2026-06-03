@@ -5,6 +5,7 @@
 # This profile deploys ONLY shared infra resources.
 
 cloud_provider = "smk"
+load_balancer_provider = "metallb"
 namespace      = "ragflow-infra"
 deploy_app_stack = false
 

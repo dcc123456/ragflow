@@ -15,13 +15,20 @@ spec:
   # -------------------------------------------------------------------------
   # Service Selector
   # -------------------------------------------------------------------------
-  # Using an empty matchLabels map selects ALL Services in the cluster.
-  # While this technically matches ClusterIP/NodePort services too, 
-  # L2 Announcement only activates for services that actually possess
-  # an External IP or LoadBalancer IP. Therefore, this effectively 
-  # acts as "Select all Services of type LoadBalancer".
+  # IMPORTANT:
+  # Do NOT use a cluster-wide selector in environments that also run MetalLB.
+  # Cilium L2 announcements and MetalLB will both try to own the same
+  # LoadBalancer services and VIPs unless you explicitly scope one of them out.
+  #
+  # Keep this policy opt-in: only Services labeled with
+  #   networking.ragflow.io/cilium-l2: "true"
+  # are eligible for Cilium L2 announcement.
+  #
+  # Upstream note: a Service must also have loadBalancerClass unspecified or set
+  # to io.cilium/l2-announcer for Cilium to announce it.
   serviceSelector:
-    matchLabels: {}
+    matchLabels:
+      networking.ragflow.io/cilium-l2: "true"
 
   # -------------------------------------------------------------------------
   # Network Interfaces

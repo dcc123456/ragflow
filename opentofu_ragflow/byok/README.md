@@ -90,6 +90,7 @@ RAGFlow uses the Kubernetes Gateway API for ingress. You have two options:
 This is the recommended setup for Self-Managed Kubernetes (SMK) clusters, providing:
 - NGINX Gateway Fabric as the Gateway API controller
 - MetalLB for LoadBalancer IP address allocation
+- BYOK `load_balancer_provider = "metallb"` as the default Gateway VIP owner
 
 **Quick Setup:**
 
@@ -172,7 +173,36 @@ If your cluster already has Cilium installed with L2 announcement support, you c
 kubectl apply -f smk-cilium-l2-policy.yaml
 ```
 
-**Note:** Update the interface name in `smk-cilium-l2-policy.yaml` to match your physical network interface (e.g., `^eth0`, `^ens.*`).
+**Important controller ownership rule:** do **not** let both Cilium and MetalLB manage the same LoadBalancer services or the same LAN VIP range.
+
+- If you use **Option 1 (NGINX Gateway Fabric + MetalLB)**, configure Cilium LB IPAM/L2 announcement to stay out of those services. In practice that means:
+  - keep `smk-cilium-l2-policy.yaml` opt-in only, not cluster-wide
+  - set Cilium `defaultLBServiceIPAM=none` (or equivalent Helm value) so MetalLB remains the sole LoadBalancer IP allocator on SMK
+- If you use **Option 2 (Cilium Gateway/L2)**, do not apply the MetalLB pool/advertisement for the same VIP range.
+
+`smk-cilium-l2-policy.yaml` is intentionally label-scoped. Only Services labeled:
+
+```yaml
+networking.ragflow.io/cilium-l2: "true"
+```
+
+should be announced by Cilium. Do not add that label to BYOK `ragflow-nginx` services when using MetalLB.
+
+**Note:** Update the interface name in `smk-cilium-l2-policy.yaml` to match your physical network interface (e.g., `^eth0`, `^ens.*`) if you narrow it from the permissive default.
+
+##### BYOK provider switch
+
+BYOK now exposes an explicit SMK Gateway VIP owner:
+
+```hcl
+load_balancer_provider = "metallb" # default for SMK
+# or
+load_balancer_provider = "cilium"
+```
+
+This setting only affects the controller-managed `ragflow-nginx` LoadBalancer service behind the Gateway. It does **not** change shared infra wiring (`mysql_host`, `redis_host`, `es_host`, `deepdoc_url`, `tei_host`).
+
+See `SMK_LOAD_BALANCER_PROVIDER.md` for the required cluster-side Cilium/MetalLB isolation steps, cleanup commands for stale Cilium ownership, and rollout validation.
 
 ##### Verifying Gateway Setup
 
