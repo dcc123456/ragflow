@@ -150,36 +150,109 @@ export default function BasicRegister() {
     [formData, verifyEmail, registerUser, navigate],
   );
 
-  if (showVerifyStep && formData) {
+  const registerFormContent = () => {
+    if (showVerifyStep && formData) {
+      return (
+        <div className="space-y-8">
+          <div
+            className="text-xl"
+            dangerouslySetInnerHTML={{
+              __html: t('login.registerVerifyCodeTip', {
+                email: formData.email.trim(),
+              }),
+            }}
+          />
+          <Form {...verifyForm}>
+            <form
+              id={id}
+              data-testid="auth-form-verify"
+              className="space-y-8"
+              onSubmit={verifyForm.handleSubmit(onVerifySubmit)}
+            >
+              <FormField
+                control={verifyForm.control}
+                name="verifyCode"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel required>
+                      {translate('verificationCode')}
+                    </FormLabel>
+                    <FormControl>
+                      <OriginInput
+                        className="h-10"
+                        placeholder={translate('verifyCodePlaceholder')}
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <Button
+                data-testid="auth-submit-verify"
+                type="submit"
+                variant="metallic"
+                loading={registerLoading}
+                block
+                className="!mt-12 h-10"
+              >
+                {translate('verifyCode')}
+              </Button>
+            </form>
+          </Form>
+
+          <div className="flex w-full items-center justify-between">
+            <Button
+              className="text-sm text-text-secondary bg-transparent px-0 hover:bg-transparent"
+              variant="ghost"
+              onClick={() => setShowVerifyStep(false)}
+            >
+              {translate('back')}
+            </Button>
+            <div className="text-sm text-text-secondary flex items-center gap-2">
+              {translate('notGotEmail')}
+              {isActive && (
+                <span className="text-sm text-accent-primary">{seconds}s</span>
+              )}
+              {!isActive && (
+                <span
+                  className="text-sm text-accent-primary cursor-pointer"
+                  onClick={() => {
+                    getCaptcha().then((valid: boolean) => {
+                      if (valid) showEmbedModal();
+                    });
+                  }}
+                >
+                  {translate('resendEmail')}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
     return (
-      <div className="space-y-8">
-        <div
-          className="text-xl"
-          dangerouslySetInnerHTML={{
-            __html: t('login.registerVerifyCodeTip', {
-              email: formData.email.trim(),
-            }),
-          }}
-        />
-        <Form {...verifyForm}>
+      <>
+        <Form {...registerForm}>
           <form
             id={id}
-            data-testid="auth-form-verify"
+            data-testid="auth-form"
             className="space-y-8"
-            onSubmit={verifyForm.handleSubmit(onVerifySubmit)}
+            onSubmit={registerForm.handleSubmit(onRegisterSubmit)}
           >
             <FormField
-              control={verifyForm.control}
-              name="verifyCode"
+              control={registerForm.control}
+              name="email"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel required>
-                    {translate('verificationCode')}
-                  </FormLabel>
+                  <FormLabel required>{translate('emailLabel')}</FormLabel>
                   <FormControl>
                     <OriginInput
+                      data-testid="auth-email"
                       className="h-10"
-                      placeholder={translate('verifyCodePlaceholder')}
+                      placeholder={translate('emailPlaceholder')}
+                      autoComplete="email"
                       {...field}
                     />
                   </FormControl>
@@ -188,149 +261,82 @@ export default function BasicRegister() {
               )}
             />
 
+            <FormField
+              control={registerForm.control}
+              name="nickname"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel required>{translate('nicknameLabel')}</FormLabel>
+                  <FormControl>
+                    <OriginInput
+                      data-testid="auth-nickname"
+                      className="h-10"
+                      placeholder={translate('nicknamePlaceholder')}
+                      autoComplete="username"
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={registerForm.control}
+              name="password"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel required>{translate('passwordLabel')}</FormLabel>
+                  <FormControl>
+                    <div className="relative">
+                      <OriginInput
+                        data-testid="auth-password"
+                        className="h-10"
+                        type="password"
+                        placeholder={translate('passwordPlaceholder')}
+                        autoComplete="new-password"
+                        {...field}
+                      />
+                    </div>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
             <Button
-              data-testid="auth-submit-verify"
+              data-testid="auth-submit"
               type="submit"
               variant="metallic"
-              loading={registerLoading}
+              loading={!config?.emailVerificationEnabled && registerLoading}
               block
               className="!mt-12 h-10"
             >
-              {translate('verifyCode')}
+              {translate('continue')}
             </Button>
           </form>
         </Form>
 
-        <div className="flex w-full items-center justify-between">
-          <Button
-            className="text-sm text-text-secondary bg-transparent px-0 hover:bg-transparent"
-            variant="ghost"
-            onClick={() => setShowVerifyStep(false)}
-          >
-            {translate('back')}
-          </Button>
-          <div className="text-sm text-text-secondary flex items-center gap-2">
-            {translate('notGotEmail')}
-            {isActive && (
-              <span className="text-sm text-accent-primary">{seconds}s</span>
-            )}
-            {!isActive && (
-              <span
-                className="text-sm text-accent-primary cursor-pointer"
-                onClick={() => {
-                  getCaptcha().then((valid: boolean) => {
-                    if (valid) showEmbedModal();
-                  });
-                }}
-              >
-                {translate('resendEmail')}
-              </span>
-            )}
-          </div>
+        <div className="mt-10 text-right">
+          <p className="text-sm text-text-disabled">
+            {translate('signUpTip')}{' '}
+            <Link
+              data-testid="auth-toggle-login"
+              to="/login"
+              state={location.state}
+              className="text-accent-primary/90 hover:text-accent-primary hover:bg-transparent font-medium"
+            >
+              {translate('login')}
+            </Link>
+          </p>
         </div>
-      </div>
+      </>
     );
-  }
+  };
 
   return (
     <>
-      <Form {...registerForm}>
-        <form
-          id={id}
-          data-testid="auth-form"
-          className="space-y-8"
-          onSubmit={registerForm.handleSubmit(onRegisterSubmit)}
-        >
-          <FormField
-            control={registerForm.control}
-            name="email"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel required>{translate('emailLabel')}</FormLabel>
-                <FormControl>
-                  <OriginInput
-                    data-testid="auth-email"
-                    className="h-10"
-                    placeholder={translate('emailPlaceholder')}
-                    autoComplete="email"
-                    {...field}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          <FormField
-            control={registerForm.control}
-            name="nickname"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel required>{translate('nicknameLabel')}</FormLabel>
-                <FormControl>
-                  <OriginInput
-                    data-testid="auth-nickname"
-                    className="h-10"
-                    placeholder={translate('nicknamePlaceholder')}
-                    autoComplete="username"
-                    {...field}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          <FormField
-            control={registerForm.control}
-            name="password"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel required>{translate('passwordLabel')}</FormLabel>
-                <FormControl>
-                  <div className="relative">
-                    <OriginInput
-                      data-testid="auth-password"
-                      className="h-10"
-                      type="password"
-                      placeholder={translate('passwordPlaceholder')}
-                      autoComplete="new-password"
-                      {...field}
-                    />
-                  </div>
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          <Button
-            data-testid="auth-submit"
-            type="submit"
-            variant="metallic"
-            loading={!config?.emailVerificationEnabled && registerLoading}
-            block
-            className="!mt-12 h-10"
-          >
-            {translate('continue')}
-          </Button>
-        </form>
-      </Form>
-
-      <div className="mt-10 text-right">
-        <p className="text-sm text-text-disabled">
-          {translate('signUpTip')}{' '}
-          <Link
-            data-testid="auth-toggle-login"
-            to="/login"
-            state={location.state}
-            className="text-accent-primary/90 hover:text-accent-primary hover:bg-transparent font-medium"
-          >
-            {translate('login')}
-          </Link>
-        </p>
-      </div>
-
+      {registerFormContent()}
       {embedVisible && (
         <Modal
           open={embedVisible}
