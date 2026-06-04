@@ -105,7 +105,7 @@ def _load_agent_api(monkeypatch, get_by_id_result):
         CONTENT_TYPE_MAP={},
         apply_safe_file_response_headers=lambda response, *_a, **_k: response,
     )
-    _stub(monkeypatch, "api.utils.billing", check_dynamic_resources=lambda *_a, **_k: None)
+    _stub(monkeypatch, "api.utils.billing", check_dynamic_resources=lambda *_a, **_k: None, get_dynamic_resource_error_result=lambda *_a, **_k: None)
     _stub(monkeypatch, "common.settings", retriever=SimpleNamespace(), kg_retriever=SimpleNamespace())
     _stub(monkeypatch, "common.ssrf_guard", assert_host_is_safe=lambda *_a, **_k: None)
 

@@ -46,9 +46,9 @@ from api.utils.api_utils import (
     get_json_result,
     get_request_json,
     server_error_response,
-    validate_request, get_resource_insufficient_result,
+    validate_request,
 )
-from api.utils.billing import check_resources, check_dynamic_resources
+from api.utils.billing import check_resources, check_dynamic_resources, get_dynamic_resource_error_result
 from api.utils.permission_utils import check_dialog_permission, has_permission_for_member
 from api.utils.tenant_utils import ensure_tenant_model_id_for_params
 from common.constants import LLMType, RetCode, StatusEnum
@@ -61,8 +61,8 @@ dialog_role_guard = check_role_access(DIALOG_API_ACTION_MAP, DIALOG_ROLE_RESOURC
 
 _DEFAULT_PROMPT_CONFIG = {
     "system": (
-        'You are an intelligent assistant. Please summarize the content of the dataset to answer the question. '
-        'Please list the data in the dataset and answer in detail. When all dataset content is irrelevant to the '
+        "You are an intelligent assistant. Please summarize the content of the dataset to answer the question. "
+        "Please list the data in the dataset and answer in detail. When all dataset content is irrelevant to the "
         'question, your answer must include the sentence "The answer you are looking for is not found in the dataset!" '
         "Answers need to consider chat history.\n"
         "      Here is the knowledge base:\n"
@@ -152,16 +152,13 @@ def _ensure_session_owned_by_current_user(conv):
         conv_user_id = None
     if conv_user_id is None:
         logging.info(
-            f"Allowing legacy chat session access without strict ownership enforcement for backward compatibility: "
-            f"session_id={session_id} chat_id={chat_id} current_user_id={current_user.id}"
+            f"Allowing legacy chat session access without strict ownership enforcement for backward compatibility: session_id={session_id} chat_id={chat_id} current_user_id={current_user.id}"
         )
         return True
 
     if conv_user_id != current_user.id:
         logging.warning(
-            f"Rejecting chat session access because the session is owned by another user: "
-            f"session_id={session_id} chat_id={chat_id} session_user_id={conv_user_id} "
-            f"current_user_id={current_user.id}"
+            f"Rejecting chat session access because the session is owned by another user: session_id={session_id} chat_id={chat_id} session_user_id={conv_user_id} current_user_id={current_user.id}"
         )
         return False
 
@@ -309,7 +306,6 @@ def _normalize_completion_messages(req):
     return (messages, msg), None
 
 
-
 async def _validate_llm_id(llm_id, tenant_id, llm_setting=None):
     if not llm_id:
         return None
@@ -377,7 +373,7 @@ async def _validate_dataset_ids(dataset_ids, tenant_id):
 
     embd_ids = [TenantLLMService.split_model_name_and_factory(kb.embd_id)[0] for kb in kbs]
     if len(set(embd_ids)) > 1:
-        return f'Datasets use different embedding models: {[kb.embd_id for kb in kbs]}'
+        return f"Datasets use different embedding models: {[kb.embd_id for kb in kbs]}"
 
     return normalized_ids
 
@@ -418,18 +414,7 @@ async def create():
 
         check_ok, check_info = check_dynamic_resources(tenant_id=tenant_id, apps=1)
         if not check_ok:
-            error_details = check_info.get("details", {})
-            if "quota_apps" in error_details:
-                return get_resource_insufficient_result(
-                    code=RetCode.BILLING_APPS_INSUFFICIENT,
-                    message=f"Insufficient app quota. Current: {error_details['quota_apps']['current']}, Limit: {error_details['quota_apps']['limit']}",
-                    detail={"current": error_details['quota_apps']['current'],
-                            "limit": error_details['quota_apps']['limit']},
-                )
-            return get_resource_insufficient_result(
-                code=RetCode.BILLING_APPS_INSUFFICIENT,
-                message=check_info.get("error", "Insufficient app quota"),
-            )
+            return get_dynamic_resource_error_result(check_info, tenant_id)
 
         if "dataset_ids" in req:
             kb_ids = await _validate_dataset_ids(req.get("dataset_ids"), tenant_id)
@@ -520,6 +505,7 @@ async def create():
     except Exception as ex:
         return server_error_response(ex)
 
+
 def get_kb_names(kb_ids):
     ids, nms = [], []
     for kid in kb_ids:
@@ -545,10 +531,13 @@ def _get_owned_chat_scope(chat_id):
         if not chats:
             continue
 
-        operator = UserTenantService.filter_by_tenant_and_user_id(
-            tenant_id=user_tenant.tenant_id,
-            user_id=current_user.id,
-        ) or user_tenant
+        operator = (
+            UserTenantService.filter_by_tenant_and_user_id(
+                tenant_id=user_tenant.tenant_id,
+                user_id=current_user.id,
+            )
+            or user_tenant
+        )
 
         if user_tenant.tenant_id == current_user.id:
             return chats[0], operator
@@ -592,6 +581,7 @@ def _list_owned_chat_ids():
 
     return list(dict.fromkeys(owned_chat_ids))
 
+
 @manager.route("/chats", methods=["GET"])  # noqa: F821
 @login_required
 @dialog_role_guard
@@ -633,9 +623,7 @@ async def list_chats():
         for chat in chats:
             chat["kb_ids"], chat["kb_names"] = get_kb_names(chat["kb_ids"])
 
-        return get_json_result(
-            data={"chats": [_build_chat_response(chat) for chat in chats], "total": total}
-        )
+        return get_json_result(data={"chats": [_build_chat_response(chat) for chat in chats], "total": total})
     except Exception as ex:
         return server_error_response(ex)
 
@@ -920,12 +908,10 @@ async def bulk_delete_chats():
 
                 ConversationService.remove_by(chat_id)
 
-                permission_model_list = (
-                    PermissionService.get_permissions_by_tenant_and_resource_id(
-                        tenant_id=chat.tenant_id,
-                        resource_id=chat_id,
-                        resource_type=ResourceType.DIALOG,
-                    )
+                permission_model_list = PermissionService.get_permissions_by_tenant_and_resource_id(
+                    tenant_id=chat.tenant_id,
+                    resource_id=chat_id,
+                    resource_type=ResourceType.DIALOG,
                 )
                 if permission_model_list:
                     PermissionService.delete(permission_model_list)
@@ -1010,9 +996,7 @@ def list_sessions(chat_id):
         session_id = request.args.get("id")
         name = request.args.get("name")
         user_id = request.args.get("user_id")
-        convs = ConversationService.get_list(
-            chat_id, page_number, items_per_page, orderby, desc, session_id, name, user_id
-        )
+        convs = ConversationService.get_list(chat_id, page_number, items_per_page, orderby, desc, session_id, name, user_id)
         if items_per_page == 0:
             convs = []
         normalized_convs = []
@@ -1268,17 +1252,21 @@ async def transcription():
     uploaded = files["file"]
 
     ALLOWED_EXTS = {
-        ".wav", ".mp3", ".m4a", ".aac",
-        ".flac", ".ogg", ".webm",
-        ".opus", ".wma",
+        ".wav",
+        ".mp3",
+        ".m4a",
+        ".aac",
+        ".flac",
+        ".ogg",
+        ".webm",
+        ".opus",
+        ".wma",
     }
 
     filename = uploaded.filename or ""
     suffix = os.path.splitext(filename)[-1].lower()
     if suffix not in ALLOWED_EXTS:
-        return get_data_error_result(
-            message=f"Unsupported audio format: {suffix}. Allowed: {', '.join(sorted(ALLOWED_EXTS))}"
-        )
+        return get_data_error_result(message=f"Unsupported audio format: {suffix}. Allowed: {', '.join(sorted(ALLOWED_EXTS))}")
 
     fd, temp_audio_path = tempfile.mkstemp(suffix=suffix)
     os.close(fd)

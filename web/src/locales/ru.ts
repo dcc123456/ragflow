@@ -483,15 +483,6 @@ export default {
       scopeDataset: 'Датасет',
       generationScope: 'Область генерации',
       scopeSingleFile: 'Один файл',
-      mineruOptions: 'Опции MinerU',
-      mineruParseMethod: 'Метод парсинга',
-      mineruParseMethodTip:
-        'Метод для парсинга PDF: auto (автоматическое определение), txt (извлечение текста), ocr (оптическое распознавание символов)',
-      mineruFormulaEnable: 'Распознавание формул',
-      mineruFormulaEnableTip:
-        'Включает распознавание формул. Примечание: Для документов, написанных кириллицей, это может работать некорректно.',
-      mineruTableEnable: 'Распознавание таблиц',
-      mineruTableEnableTip: 'Включает распознавание и извлечение таблиц.',
       autoParse: 'Авто-парсинг',
       rebuildTip:
         'Повторно загружает файлы из связанного источника данных и снова их парсит.',
@@ -521,9 +512,7 @@ export default {
       editLinkDataPipeline: 'Редактировать пайплайн обработки',
       linkPipelineSetTip:
         'Управление связью пайплайна обработки с этим набором данных',
-      globalIndexModel: 'Индексирующая модель',
       default: 'По умолчанию',
-      settings: 'Настройки',
       dataPipeline: 'Переключить или настроить конвейер приема данных',
       linkDataPipeline: 'Связать пайплайн обработки',
       enableAutoGenerate: 'Включить авто-генерацию',

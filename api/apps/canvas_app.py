@@ -33,9 +33,8 @@ from api.db.services.user_service import TenantService
 from api.db.services.user_canvas_version import UserCanvasVersionService
 from common.constants import RetCode
 from common.misc_utils import get_uuid, thread_pool_exec
-from api.utils.api_utils import get_json_result, server_error_response, validate_request, get_data_error_result, \
-    get_request_json, get_resource_insufficient_result, _extract_auth_token
-from api.utils.billing import check_dynamic_resources
+from api.utils.api_utils import get_json_result, server_error_response, validate_request, get_data_error_result, get_request_json, _extract_auth_token
+from api.utils.billing import check_dynamic_resources, get_dynamic_resource_error_result
 from api.utils.permission_utils import check_canvas_permission
 from api.db import PermissionValue
 from agent.canvas import Canvas
@@ -99,25 +98,26 @@ async def _with_heartbeat(inner_gen, interval=15):
                 pass
 
 
-@manager.route('/templates', methods=['GET'])  # noqa: F821
+@manager.route("/templates", methods=["GET"])  # noqa: F821
 @login_required
 @canvas_role_guard
 def templates():
     return get_json_result(data=[c.to_dict() for c in CanvasTemplateService.get_all()])
 
 
-@manager.route('/rm', methods=['POST'])  # noqa: F821
+@manager.route("/rm", methods=["POST"])  # noqa: F821
 @validate_request("canvas_ids")
 @login_required
 @canvas_role_guard
 async def rm():
     from api.utils.permission_utils import has_permission_for_member
     from api.db.services.user_service import UserTenantService
+
     req = await get_request_json()
     for i in req["canvas_ids"]:
         e, canvas = UserCanvasService.get_by_canvas_id(i)
         if not e:
-            return get_json_result(data=False, message='Canvas not found.', code=RetCode.OPERATING_ERROR)
+            return get_json_result(data=False, message="Canvas not found.", code=RetCode.OPERATING_ERROR)
         # Check owner or MANAGE permission
         has_access = canvas["user_id"] == current_user.id
         if not has_access:
@@ -129,12 +129,9 @@ async def rm():
                     has_access = True
                     break
         if not has_access:
-            return get_json_result(
-                data=False, message='Only canvas owners or members with management permissions can perform this operation.',
-                code=RetCode.OPERATING_ERROR)
+            return get_json_result(data=False, message="Only canvas owners or members with management permissions can perform this operation.", code=RetCode.OPERATING_ERROR)
         with DB.atomic():
-            permission_model_list = PermissionService.get_permissions_by_tenant_and_resource_id(
-                tenant_id=canvas["user_id"], resource_id=i, resource_type=ResourceType.CANVAS)
+            permission_model_list = PermissionService.get_permissions_by_tenant_and_resource_id(tenant_id=canvas["user_id"], resource_id=i, resource_type=ResourceType.CANVAS)
             if permission_model_list:
                 PermissionService.delete(permission_model_list)
         UserCanvasService.delete_by_id(i)
@@ -142,7 +139,7 @@ async def rm():
 
 
 # Save and runtime replica flow.
-@manager.route('/set', methods=['POST'])  # noqa: F821
+@manager.route("/set", methods=["POST"])  # noqa: F821
 @validate_request("dsl", "title")
 @login_required
 @canvas_role_guard
@@ -163,7 +160,7 @@ async def save():
     except ValueError as e:
         return get_data_error_result(message=str(e))
 
-    req['release'] = bool(req.get("release", ""))
+    req["release"] = bool(req.get("release", ""))
     try:
         req["dsl"] = CanvasReplicaService.normalize_dsl(req["dsl"])
     except ValueError as e:
@@ -175,17 +172,7 @@ async def save():
             return get_data_error_result(message=f"{req['title'].strip()} already exists.")
         check_ok, check_info = check_dynamic_resources(tenant_id=current_user.id, apps=1)
         if not check_ok:
-            error_details = check_info.get("details", {})
-            if "quota_apps" in error_details:
-                return get_resource_insufficient_result(
-                    code=RetCode.BILLING_APPS_INSUFFICIENT,
-                    message=f"Insufficient app quota. Current: {error_details['quota_apps']['current']}, Limit: {error_details['quota_apps']['limit']}",
-                    detail={"current": error_details['quota_apps']['current'], "limit": error_details['quota_apps']['limit']},
-                )
-            return get_resource_insufficient_result(
-                code=RetCode.BILLING_APPS_INSUFFICIENT,
-                message=check_info.get("error", "Insufficient app quota"),
-            )
+            return get_dynamic_resource_error_result(check_info, current_user.id)
         req["id"] = get_uuid()
         if not UserCanvasService.save(**req):
             return get_data_error_result(message="Fail to save canvas.")
@@ -219,7 +206,7 @@ async def save():
 
 
 # Read and run use the per-user runtime replica in Redis.
-@manager.route('/get/<canvas_id>', methods=['GET'])  # noqa: F821
+@manager.route("/get/<canvas_id>", methods=["GET"])  # noqa: F821
 @login_required
 @canvas_role_guard
 @check_canvas_permission(PermissionValue.PERMISSION_READ)
@@ -271,29 +258,25 @@ def get(canvas_id):
     return get_json_result(data=c)
 
 
-@manager.route('/getsse/<canvas_id>', methods=['GET'])  # type: ignore # noqa: F821
+@manager.route("/getsse/<canvas_id>", methods=["GET"])  # type: ignore # noqa: F821
 @canvas_role_guard
 def getsse(canvas_id):
     token = _extract_auth_token(request.headers.get("Authorization", ""))
     if not token:
-        return get_data_error_result(message='Authorization is not valid!')
+        return get_data_error_result(message="Authorization is not valid!")
     objs = APIToken.query(beta=token)
     if not objs:
         return get_data_error_result(message='Authentication error: API key is invalid!"')
     tenant_id = objs[0].tenant_id
     if not UserCanvasService.query(user_id=tenant_id, id=canvas_id):
-        return get_json_result(
-            data=False,
-            message='Only owner of canvas authorized for this operation.',
-            code=RetCode.OPERATING_ERROR
-        )
+        return get_json_result(data=False, message="Only owner of canvas authorized for this operation.", code=RetCode.OPERATING_ERROR)
     e, c = UserCanvasService.get_by_id(canvas_id)
     if not e or c.user_id != tenant_id:
         return get_data_error_result(message="canvas not found.")
     return get_json_result(data=c.to_dict())
 
 
-@manager.route('/completion', methods=['POST'])  # noqa: F821
+@manager.route("/completion", methods=["POST"])  # noqa: F821
 @validate_request("id")
 @login_required
 @canvas_role_guard
@@ -309,9 +292,7 @@ async def run():
     runtime_user_id = req.get("user_id") or tenant_id
     user_id = str(runtime_user_id)
     if not await thread_pool_exec(UserCanvasService.accessible, req["id"], tenant_id):
-        return get_json_result(
-            data=False, message='Only owner of canvas authorized for this operation.',
-            code=RetCode.OPERATING_ERROR)
+        return get_json_result(data=False, message="Only owner of canvas authorized for this operation.", code=RetCode.OPERATING_ERROR)
 
     # Runs always read from the user's runtime replica instead of the stored DSL.
     replica_payload = CanvasReplicaService.load_for_run(
@@ -393,6 +374,7 @@ async def exp_agent_completion(canvas_id):
     tenant_id = current_user.id
     req = await get_request_json()
     return_trace = bool(req.get("return_trace", False))
+
     async def generate():
         trace_items = []
         async for answer in agent_completion(tenant_id=tenant_id, agent_id=canvas_id, **req):
@@ -431,7 +413,7 @@ async def exp_agent_completion(canvas_id):
     return resp
 
 
-@manager.route('/rerun', methods=['POST'])  # noqa: F821
+@manager.route("/rerun", methods=["POST"])  # noqa: F821
 @validate_request("id", "dsl", "component_id")
 @login_required
 @canvas_role_guard
@@ -467,7 +449,7 @@ async def rerun():
     return get_json_result(data=True)
 
 
-@manager.route('/cancel/<task_id>', methods=['PUT'])  # noqa: F821
+@manager.route("/cancel/<task_id>", methods=["PUT"])  # noqa: F821
 @login_required
 @canvas_role_guard
 def cancel(task_id):
@@ -478,7 +460,7 @@ def cancel(task_id):
     return get_json_result(data=True)
 
 
-@manager.route('/reset', methods=['POST'])  # noqa: F821
+@manager.route("/reset", methods=["POST"])  # noqa: F821
 @validate_request("id")
 @login_required
 @canvas_role_guard
@@ -517,7 +499,7 @@ async def upload(canvas_id):
         return server_error_response(e)
 
 
-@manager.route('/input_form', methods=['GET'])  # noqa: F821
+@manager.route("/input_form", methods=["GET"])  # noqa: F821
 @login_required
 @canvas_role_guard
 @check_canvas_permission(PermissionValue.PERMISSION_READ)
@@ -534,7 +516,7 @@ def input_form():
         return server_error_response(e)
 
 
-@manager.route('/debug', methods=['POST'])  # noqa: F821
+@manager.route("/debug", methods=["POST"])  # noqa: F821
 @validate_request("id", "component_id", "params")
 @login_required
 @canvas_role_guard
@@ -551,7 +533,7 @@ async def debug():
 
         if isinstance(component, LLM):
             component.set_debug_inputs(req["params"])
-        component.invoke(**{k: o["value"] for k,o in req["params"].items()})
+        component.invoke(**{k: o["value"] for k, o in req["params"].items()})
         outputs = component.output()
         for k in outputs.keys():
             if isinstance(outputs[k], partial):
@@ -569,7 +551,7 @@ async def debug():
         return server_error_response(e)
 
 
-@manager.route('/test_db_connect', methods=['POST'])  # noqa: F821
+@manager.route("/test_db_connect", methods=["POST"])  # noqa: F821
 @validate_request("db_type", "database", "username", "host", "port", "password")
 @login_required
 @canvas_role_guard
@@ -577,52 +559,32 @@ async def test_db_connect():
     req = await get_request_json()
     try:
         if req["db_type"] in ["mysql", "mariadb"]:
-            db = MySQLDatabase(req["database"], user=req["username"], host=req["host"], port=req["port"],
-                               password=req["password"])
+            db = MySQLDatabase(req["database"], user=req["username"], host=req["host"], port=req["port"], password=req["password"])
         elif req["db_type"] == "oceanbase":
-            db = MySQLDatabase(req["database"], user=req["username"], host=req["host"], port=req["port"],
-                               password=req["password"], charset="utf8mb4")
-        elif req["db_type"] == 'postgres':
-            db = PostgresqlDatabase(req["database"], user=req["username"], host=req["host"], port=req["port"],
-                                    password=req["password"])
-        elif req["db_type"] == 'mssql':
+            db = MySQLDatabase(req["database"], user=req["username"], host=req["host"], port=req["port"], password=req["password"], charset="utf8mb4")
+        elif req["db_type"] == "postgres":
+            db = PostgresqlDatabase(req["database"], user=req["username"], host=req["host"], port=req["port"], password=req["password"])
+        elif req["db_type"] == "mssql":
             import pyodbc
-            connection_string = (
-                f"DRIVER={{ODBC Driver 17 for SQL Server}};"
-                f"SERVER={req['host']},{req['port']};"
-                f"DATABASE={req['database']};"
-                f"UID={req['username']};"
-                f"PWD={req['password']};"
-            )
+
+            connection_string = f"DRIVER={{ODBC Driver 17 for SQL Server}};SERVER={req['host']},{req['port']};DATABASE={req['database']};UID={req['username']};PWD={req['password']};"
             db = pyodbc.connect(connection_string)
             cursor = db.cursor()
             cursor.execute("SELECT 1")
             cursor.close()
-        elif req["db_type"] == 'IBM DB2':
+        elif req["db_type"] == "IBM DB2":
             import ibm_db
-            conn_str = (
-                f"DATABASE={req['database']};"
-                f"HOSTNAME={req['host']};"
-                f"PORT={req['port']};"
-                f"PROTOCOL=TCPIP;"
-                f"UID={req['username']};"
-                f"PWD={req['password']};"
-            )
-            redacted_conn_str = (
-                f"DATABASE={req['database']};"
-                f"HOSTNAME={req['host']};"
-                f"PORT={req['port']};"
-                f"PROTOCOL=TCPIP;"
-                f"UID={req['username']};"
-                f"PWD=****;"
-            )
+
+            conn_str = f"DATABASE={req['database']};HOSTNAME={req['host']};PORT={req['port']};PROTOCOL=TCPIP;UID={req['username']};PWD={req['password']};"
+            redacted_conn_str = f"DATABASE={req['database']};HOSTNAME={req['host']};PORT={req['port']};PROTOCOL=TCPIP;UID={req['username']};PWD=****;"
             logging.info(redacted_conn_str)
             conn = ibm_db.connect(conn_str, "", "")
             stmt = ibm_db.exec_immediate(conn, "SELECT 1 FROM sysibm.sysdummy1")
             ibm_db.fetch_assoc(stmt)
             ibm_db.close(conn)
             return get_json_result(data="Database Connection Successful!")
-        elif req["db_type"] == 'trino':
+        elif req["db_type"] == "trino":
+
             def _parse_catalog_schema(db_name: str):
                 if not db_name:
                     return None, None
@@ -633,6 +595,7 @@ async def test_db_connect():
                 else:
                     catalog_name, schema_name = db_name, "default"
                 return catalog_name, schema_name
+
             try:
                 import trino
                 import os
@@ -650,13 +613,7 @@ async def test_db_connect():
                 auth = trino.BasicAuthentication(req.get("username") or "ragflow", req["password"])
 
             conn = trino.dbapi.connect(
-                host=req["host"],
-                port=int(req["port"] or 8080),
-                user=req["username"] or "ragflow",
-                catalog=catalog,
-                schema=schema or "default",
-                http_scheme=http_scheme,
-                auth=auth
+                host=req["host"], port=int(req["port"] or 8080), user=req["username"] or "ragflow", catalog=catalog, schema=schema or "default", http_scheme=http_scheme, auth=auth
             )
             cur = conn.cursor()
             cur.execute("SELECT 1")
@@ -666,7 +623,7 @@ async def test_db_connect():
             return get_json_result(data="Database Connection Successful!")
         else:
             return server_error_response("Unsupported database type.")
-        if req["db_type"] != 'mssql':
+        if req["db_type"] != "mssql":
             db.connect()
         db.close()
 
@@ -675,23 +632,23 @@ async def test_db_connect():
         return server_error_response(e)
 
 
-#api get list version dsl of canvas
-@manager.route('/getlistversion/<canvas_id>', methods=['GET'])  # noqa: F821
+# api get list version dsl of canvas
+@manager.route("/getlistversion/<canvas_id>", methods=["GET"])  # noqa: F821
 @login_required
 @canvas_role_guard
 def getlistversion(canvas_id):
     try:
-        versions =sorted([c.to_dict() for c in UserCanvasVersionService.list_by_canvas_id(canvas_id)], key=lambda x: x["update_time"]*-1)
+        versions = sorted([c.to_dict() for c in UserCanvasVersionService.list_by_canvas_id(canvas_id)], key=lambda x: x["update_time"] * -1)
         return get_json_result(data=versions)
     except Exception as e:
         return get_data_error_result(message=f"Error getting history files: {e}")
 
 
-#api get version dsl of canvas
-@manager.route('/getversion/<version_id>', methods=['GET'])  # noqa: F821
+# api get version dsl of canvas
+@manager.route("/getversion/<version_id>", methods=["GET"])  # noqa: F821
 @login_required
 @canvas_role_guard
-def getversion( version_id):
+def getversion(version_id):
     try:
         e, version = UserCanvasVersionService.get_by_id(version_id)
         if version:
@@ -700,7 +657,7 @@ def getversion( version_id):
         return get_json_result(data=f"Error getting history file: {e}")
 
 
-@manager.route('/list', methods=['GET'])  # noqa: F821
+@manager.route("/list", methods=["GET"])  # noqa: F821
 @login_required
 @canvas_role_guard
 def list_canvas():
@@ -721,14 +678,10 @@ def list_canvas():
         tenants = TenantService.get_joined_tenants_by_user_id(current_user.id)
         tenants = [m["tenant_id"] for m in tenants]
         tenants.append(current_user.id)
-        canvas, total = UserCanvasService.get_by_tenant_ids(
-            tenants, current_user.id, page_number,
-            items_per_page, orderby, desc, keywords, canvas_category)
+        canvas, total = UserCanvasService.get_by_tenant_ids(tenants, current_user.id, page_number, items_per_page, orderby, desc, keywords, canvas_category)
     else:
         tenants = owner_ids
-        canvas, total = UserCanvasService.get_by_tenant_ids(
-            tenants, current_user.id, 0,
-            0, orderby, desc, keywords, canvas_category)
+        canvas, total = UserCanvasService.get_by_tenant_ids(tenants, current_user.id, 0, 0, orderby, desc, keywords, canvas_category)
 
     # Add operator_permission for each canvas
     canvas_list = []
@@ -760,7 +713,7 @@ def list_canvas():
     return get_json_result(data={"canvas": canvas_list, "total": total})
 
 
-@manager.route('/setting', methods=['POST'])  # noqa: F821
+@manager.route("/setting", methods=["POST"])  # noqa: F821
 @validate_request("id", "title", "permission")
 @login_required
 @canvas_role_guard
@@ -769,7 +722,7 @@ async def setting():
     req = g.req_data
     req["user_id"] = current_user.id
 
-    e,flow = UserCanvasService.get_by_id(req["id"])
+    e, flow = UserCanvasService.get_by_id(req["id"])
     if not e:
         return get_data_error_result(message="canvas not found.")
     flow = flow.to_dict()
@@ -779,11 +732,11 @@ async def setting():
         if value := req.get(key):
             flow[key] = value
 
-    num= UserCanvasService.update_by_id(req["id"], flow)
+    num = UserCanvasService.update_by_id(req["id"], flow)
     return get_json_result(data=num)
 
 
-@manager.route('/trace', methods=['GET'])  # noqa: F821
+@manager.route("/trace", methods=["GET"])  # noqa: F821
 @canvas_role_guard
 def trace():
     cvs_id = request.args.get("canvas_id")
@@ -799,7 +752,7 @@ def trace():
 
 
 # Presence APIs share the tenant and permission context prepared by the decorator.
-@manager.route('/presence/join', methods=['POST'])  # noqa: F821
+@manager.route("/presence/join", methods=["POST"])  # noqa: F821
 @validate_request("canvas_id", "tab_id", "presence_session_id")
 @login_required
 @canvas_role_guard
@@ -819,7 +772,7 @@ async def presence_join():
     return get_json_result(data=data)
 
 
-@manager.route('/presence/heartbeat', methods=['POST'])  # noqa: F821
+@manager.route("/presence/heartbeat", methods=["POST"])  # noqa: F821
 @validate_request("canvas_id", "tab_id", "presence_session_id")
 @login_required
 @canvas_role_guard
@@ -839,7 +792,7 @@ async def presence_heartbeat():
     return get_json_result(data=data)
 
 
-@manager.route('/presence/leave', methods=['POST'])  # noqa: F821
+@manager.route("/presence/leave", methods=["POST"])  # noqa: F821
 @validate_request("canvas_id", "tab_id", "presence_session_id")
 @login_required
 @canvas_role_guard
@@ -859,7 +812,7 @@ async def presence_leave():
     return get_json_result(data=data)
 
 
-@manager.route('/<canvas_id>/presence', methods=['GET'])  # noqa: F821
+@manager.route("/<canvas_id>/presence", methods=["GET"])  # noqa: F821
 @login_required
 @canvas_role_guard
 @check_canvas_permission(PermissionValue.PERMISSION_READ)
@@ -872,7 +825,7 @@ def presence_list(canvas_id):
     return get_json_result(data=data)
 
 
-@manager.route('/<canvas_id>/sessions', methods=['GET'])  # noqa: F821
+@manager.route("/<canvas_id>/sessions", methods=["GET"])  # noqa: F821
 @login_required
 @canvas_role_guard
 @check_canvas_permission(PermissionValue.PERMISSION_READ)
@@ -897,15 +850,14 @@ def sessions(canvas_id):
 
     # dsl defaults to True in all cases except for False and false
     include_dsl = request.args.get("dsl") != "False" and request.args.get("dsl") != "false"
-    total, sess = API4ConversationService.get_list(canvas_id, tenant_id, page_number, items_per_page, orderby, desc,
-                                             None, user_id, include_dsl, keywords, from_date, to_date, exp_user_id=exp_user_id)
+    total, sess = API4ConversationService.get_list(canvas_id, tenant_id, page_number, items_per_page, orderby, desc, None, user_id, include_dsl, keywords, from_date, to_date, exp_user_id=exp_user_id)
     try:
         return get_json_result(data={"total": total, "sessions": sess})
     except Exception as e:
         return server_error_response(e)
 
 
-@manager.route('/<canvas_id>/sessions', methods=['PUT'])  # noqa: F821
+@manager.route("/<canvas_id>/sessions", methods=["PUT"])  # noqa: F821
 @login_required
 async def set_session(canvas_id):
     req = await get_request_json()
@@ -914,7 +866,7 @@ async def set_session(canvas_id):
     assert e, "Agent not found."
     if not isinstance(cvs.dsl, str):
         cvs.dsl = json.dumps(cvs.dsl, ensure_ascii=False)
-    session_id=get_uuid()
+    session_id = get_uuid()
     canvas = Canvas(cvs.dsl, tenant_id, canvas_id, canvas_id=cvs.id)
     canvas.reset()
     # Get the version title for this canvas (using latest, not necessarily released)
@@ -929,52 +881,50 @@ async def set_session(canvas_id):
         "source": "agent",
         "dsl": cvs.dsl,
         "reference": [],
-        "version_title": version_title
+        "version_title": version_title,
     }
     API4ConversationService.save(**conv)
     return get_json_result(data=conv)
 
 
-@manager.route('/<canvas_id>/sessions/<session_id>', methods=['GET'])  # noqa: F821
+@manager.route("/<canvas_id>/sessions/<session_id>", methods=["GET"])  # noqa: F821
 @login_required
 def get_session(canvas_id, session_id):
     tenant_id = current_user.id
     if not UserCanvasService.accessible(canvas_id, tenant_id):
-        return get_json_result(
-            data=False, message='Only owner of canvas authorized for this operation.',
-            code=RetCode.OPERATING_ERROR)
+        return get_json_result(data=False, message="Only owner of canvas authorized for this operation.", code=RetCode.OPERATING_ERROR)
     _, conv = API4ConversationService.get_by_id(session_id)
     return get_json_result(data=conv.to_dict())
 
 
-@manager.route('/<canvas_id>/sessions/<session_id>', methods=['DELETE'])  # noqa: F821
+@manager.route("/<canvas_id>/sessions/<session_id>", methods=["DELETE"])  # noqa: F821
 @login_required
 def del_session(canvas_id, session_id):
     tenant_id = current_user.id
     if not UserCanvasService.accessible(canvas_id, tenant_id):
-        return get_json_result(
-            data=False, message='Only owner of canvas authorized for this operation.',
-            code=RetCode.OPERATING_ERROR)
+        return get_json_result(data=False, message="Only owner of canvas authorized for this operation.", code=RetCode.OPERATING_ERROR)
     return get_json_result(data=API4ConversationService.delete_by_id(session_id))
 
 
-@manager.route('/prompts', methods=['GET'])  # noqa: F821
+@manager.route("/prompts", methods=["GET"])  # noqa: F821
 @login_required
 @canvas_role_guard
 def prompts():
     from rag.prompts.generator import ANALYZE_TASK_SYSTEM, ANALYZE_TASK_USER, NEXT_STEP, REFLECT, CITATION_PROMPT_TEMPLATE
 
-    return get_json_result(data={
-        "task_analysis": ANALYZE_TASK_SYSTEM +"\n\n"+ ANALYZE_TASK_USER,
-        "plan_generation": NEXT_STEP,
-        "reflection": REFLECT,
-        #"context_summary": SUMMARY4MEMORY,
-        #"context_ranking": RANK_MEMORY,
-        "citation_guidelines": CITATION_PROMPT_TEMPLATE
-    })
+    return get_json_result(
+        data={
+            "task_analysis": ANALYZE_TASK_SYSTEM + "\n\n" + ANALYZE_TASK_USER,
+            "plan_generation": NEXT_STEP,
+            "reflection": REFLECT,
+            # "context_summary": SUMMARY4MEMORY,
+            # "context_ranking": RANK_MEMORY,
+            "citation_guidelines": CITATION_PROMPT_TEMPLATE,
+        }
+    )
 
 
-@manager.route('/download', methods=['GET'])  # noqa: F821
+@manager.route("/download", methods=["GET"])  # noqa: F821
 async def download():
     id = request.args.get("id")
     created_by = request.args.get("created_by")

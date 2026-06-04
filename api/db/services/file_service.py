@@ -276,9 +276,8 @@ class FileService(CommonService):
         This is used for billing storage quota calculation.
         """
         from peewee import fn
-        total_size = cls.model.select(fn.COALESCE(fn.SUM(cls.model.size), 0)).where(
-            (cls.model.tenant_id == tenant_id) & (cls.model.type != FileType.FOLDER.value)
-        ).scalar()
+
+        total_size = cls.model.select(fn.COALESCE(fn.SUM(cls.model.size), 0)).where((cls.model.tenant_id == tenant_id) & (cls.model.type != FileType.FOLDER.value)).scalar()
         return int(total_size) or 0
 
     @classmethod
@@ -495,8 +494,7 @@ class FileService(CommonService):
                 try:
                     if str(doc.kb_id) != str(kb.id):
                         logging.warning(
-                            "Existing document id collision detected for %s: belongs to kb_id=%s, incoming kb_id=%s. "
-                            "Skipping update to avoid cross-KB overwrite.",
+                            "Existing document id collision detected for %s: belongs to kb_id=%s, incoming kb_id=%s. Skipping update to avoid cross-KB overwrite.",
                             doc_id,
                             doc.kb_id,
                             kb.id,
@@ -539,22 +537,12 @@ class FileService(CommonService):
                     blob = read_potential_broken_pdf(blob)
 
                 if settings.BILLING_ENABLED:
-                    from api.utils.billing import InsufficientResourceError, check_dynamic_resources
+                    from api.utils.billing import check_dynamic_resources, raise_dynamic_resource_error
+
                     file_size_bytes = len(blob)
                     check_ok, check_info = check_dynamic_resources(tenant_id=kb.tenant_id, storage=file_size_bytes)
                     if not check_ok:
-                        error_details = check_info.get("details", {})
-                        current = int(error_details['quota_storage']['current'])
-                        limit = int(error_details['quota_storage']['limit'])
-                        raise InsufficientResourceError(
-                            resource="storage",
-                            current=current,
-                            limit=limit,
-                            message=f"Insufficient storage quota. Current: {current} B, "
-                                    f"Limit: {limit} B. "
-                                    f"File size: {file_size_bytes} B",
-                            file_size=file_size_bytes,
-                        )
+                        raise_dynamic_resource_error(check_info, kb.tenant_id, file_size=file_size_bytes)
 
                 settings.STORAGE_IMPL.put(kb.id, location, blob, kb.tenant_id)
 
@@ -781,13 +769,14 @@ class FileService(CommonService):
         written to the log.
         """
         from urllib.parse import urlparse
+
         parsed = urlparse(url)
         port_suffix = f":{parsed.port}" if parsed.port else ""
         redacted = f"{parsed.scheme}://{parsed.hostname}{port_suffix}"
         return assert_url_is_safe(redacted, allowed_schemes=FileService._ALLOWED_SCHEMES)
 
     @staticmethod
-    def upload_info(user_id, file, url: str|None=None):
+    def upload_info(user_id, file, url: str | None = None):
         def structured(filename, filetype, blob, content_type):
             nonlocal user_id
             if filetype == FileType.PDF.value:
@@ -804,7 +793,7 @@ class FileService(CommonService):
                 "mime_type": content_type,
                 "created_by": user_id,
                 "created_at": time.time(),
-                "preview_url": None
+                "preview_url": None,
             }
 
         if url:
@@ -846,24 +835,17 @@ class FileService(CommonService):
                 host_pins[_next_hostname] = _next_ip
                 current_url = _next_url
             else:
-                raise ValueError(
-                    f"Exceeded {_MAX_CRAWL_REDIRECTS} redirects fetching {url!r}"
-                )
+                raise ValueError(f"Exceeded {_MAX_CRAWL_REDIRECTS} redirects fetching {url!r}")
 
             # Build a single MAP rule string covering every validated hostname
             # in the redirect chain. Chromium uses the pinned IP for each,
             # skipping DNS entirely and eliminating the rebinding window.
             _map_rules = ",".join(f"MAP {h} {ip}" for h, ip in host_pins.items())
 
-            from crawl4ai import (
-                AsyncWebCrawler,
-                BrowserConfig,
-                CrawlerRunConfig,
-                DefaultMarkdownGenerator,
-                PruningContentFilter,
-                CrawlResult
-            )
+            from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, DefaultMarkdownGenerator, PruningContentFilter, CrawlResult
+
             filename = re.sub(r"\?.*", "", url.split("/")[-1])
+
             async def adownload():
                 browser_config = BrowserConfig(
                     headless=True,
@@ -871,20 +853,12 @@ class FileService(CommonService):
                     extra_args=[f"--host-resolver-rules={_map_rules}"],
                 )
                 async with AsyncWebCrawler(config=browser_config) as crawler:
-                    crawler_config = CrawlerRunConfig(
-                        markdown_generator=DefaultMarkdownGenerator(
-                            content_filter=PruningContentFilter()
-                        ),
-                        pdf=True,
-                        screenshot=False
-                    )
+                    crawler_config = CrawlerRunConfig(markdown_generator=DefaultMarkdownGenerator(content_filter=PruningContentFilter()), pdf=True, screenshot=False)
                     # Use the final resolved URL so the browser starts at the
                     # redirect destination rather than re-following the chain.
-                    result: CrawlResult = await crawler.arun(
-                        url=current_url,
-                        config=crawler_config
-                    )
+                    result: CrawlResult = await crawler.arun(url=current_url, config=crawler_config)
                     return result
+
             page = asyncio.run(adownload())
             if page.pdf:
                 if filename.split(".")[-1].lower() != "pdf":
@@ -899,15 +873,16 @@ class FileService(CommonService):
     @staticmethod
     def get_files(files: Union[None, list[dict]], raw: bool = False, layout_recognize: str = None) -> Union[list[str], tuple[list[str], list[dict]]]:
         if not files:
-            return  []
+            return []
+
         def image_to_base64(file):
-            return "data:{};base64,{}".format(file["mime_type"],
-                                        base64.b64encode(FileService.get_blob(file["created_by"], file["id"])).decode("utf-8"))
+            return "data:{};base64,{}".format(file["mime_type"], base64.b64encode(FileService.get_blob(file["created_by"], file["id"])).decode("utf-8"))
+
         exe = ThreadPoolExecutor(max_workers=5)
         threads = []
         imgs = []
         for file in files:
-            if file["mime_type"].find("image") >=0:
+            if file["mime_type"].find("image") >= 0:
                 if raw:
                     imgs.append(FileService.get_blob(file["created_by"], file["id"]))
                 else:
@@ -922,14 +897,15 @@ class FileService(CommonService):
 
     @classmethod
     @DB.connection_context()
-    async def upload_files(cls, pf_id:str, file_objs: Union[None, list[dict]], tenant_id:str) -> Tuple[list[str], list[str]]:
+    async def upload_files(cls, pf_id: str, file_objs: Union[None, list[dict]], tenant_id: str) -> Tuple[list[str], list[str]]:
         import os
+
         e, pf_folder = cls.get_by_id(pf_id)
         if not e:
             raise LookupError("Can't find this folder!")
 
         async def _handle_single_file(file_obj):
-            MAX_FILE_NUM_PER_USER: int = int(os.environ.get('MAX_FILE_NUM_PER_USER', 0))
+            MAX_FILE_NUM_PER_USER: int = int(os.environ.get("MAX_FILE_NUM_PER_USER", 0))
             if 0 < MAX_FILE_NUM_PER_USER <= await asyncio.to_thread(DocumentService.get_doc_count, tenant_id):
                 raise PermissionError("Exceed the maximum file number of a free user!")
 
@@ -937,8 +913,8 @@ class FileService(CommonService):
             if not file_obj.filename:
                 file_obj_names = [pf_folder.name, file_obj.filename]
             else:
-                full_path = '/' + file_obj.filename
-                file_obj_names = full_path.split('/')
+                full_path = "/" + file_obj.filename
+                file_obj_names = full_path.split("/")
             file_len = len(file_obj_names)
 
             # get folder
@@ -950,14 +926,12 @@ class FileService(CommonService):
                 e, file = await asyncio.to_thread(cls.get_by_id, file_id_list[len_id_list - 1])
                 if not e:
                     raise LookupError("Folder not found!")
-                last_folder = await asyncio.to_thread(cls.create_folder, file, file_id_list[len_id_list - 1], file_obj_names,
-                                                      len_id_list)
+                last_folder = await asyncio.to_thread(cls.create_folder, file, file_id_list[len_id_list - 1], file_obj_names, len_id_list)
             else:
                 e, file = await asyncio.to_thread(cls.get_by_id, file_id_list[len_id_list - 2])
                 if not e:
                     raise LookupError("Folder not found!")
-                last_folder = await asyncio.to_thread(cls.create_folder, file, file_id_list[len_id_list - 2], file_obj_names,
-                                                      len_id_list)
+                last_folder = await asyncio.to_thread(cls.create_folder, file, file_id_list[len_id_list - 2], file_obj_names, len_id_list)
 
             # file type
             filetype = filename_type(file_obj_names[file_len - 1])
@@ -966,30 +940,14 @@ class FileService(CommonService):
                 location += "_"
             blob = await asyncio.to_thread(file_obj.read)
 
-            from api.utils.billing import InsufficientResourceError, check_dynamic_resources
-            file_size_bytes = len(blob)
-            check_ok, check_info = await asyncio.to_thread(
-                check_dynamic_resources, tenant_id=tenant_id, storage=file_size_bytes
-            )
-            if not check_ok:
-                error_details = check_info.get("details", {})
-                current = int(error_details['quota_storage']['current'])
-                limit = int(error_details['quota_storage']['limit'])
-                raise InsufficientResourceError(
-                    resource="storage",
-                    current=current,
-                    limit=limit,
-                    message=f"Insufficient storage quota. Current: {current} B, "
-                            f"Limit: {limit} B. "
-                            f"File size: {file_size_bytes} B",
-                    file_size=file_size_bytes,
-                )
+            from api.utils.billing import check_dynamic_resources, raise_dynamic_resource_error
 
-            filename = await asyncio.to_thread(
-                duplicate_name,
-                cls.query,
-                name=file_obj_names[file_len - 1],
-                parent_id=last_folder.id)
+            file_size_bytes = len(blob)
+            check_ok, check_info = await asyncio.to_thread(check_dynamic_resources, tenant_id=tenant_id, storage=file_size_bytes)
+            if not check_ok:
+                raise_dynamic_resource_error(check_info, tenant_id, file_size=file_size_bytes)
+
+            filename = await asyncio.to_thread(duplicate_name, cls.query, name=file_obj_names[file_len - 1], parent_id=last_folder.id)
             await asyncio.to_thread(settings.STORAGE_IMPL.put, last_folder.id, location, blob, tenant_id)
             file_data = {
                 "id": file_obj.id if hasattr(file_obj, "id") else get_uuid(),

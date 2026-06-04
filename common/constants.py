@@ -65,8 +65,7 @@ class RetCode(IntEnum, CustomEnum):
     BILLING_SEATS_INSUFFICIENT = 2002
     BILLING_STORAGE_INSUFFICIENT = 2003
     BILLING_POINTS_INSUFFICIENT = 2004
-    BILLING_UPGRADE_PENDING_PAYMENT = 2005
-    BILLING_UPGRADE_FAILED = 2006
+    BILLING_SUBSCRIPTION_INVALID = 2005
 
     FEATURE_NOT_ENABLED = 1000
 
@@ -92,12 +91,12 @@ class LLMType(StrEnum):
 
 
 class ModelType(StrEnum):
-    LLM = 'llm'
-    EMBEDDING = 'embedding'
-    VLM = 'vlm'
-    ASR = 'asr'
-    RERANK = 'rerank'
-    TTS = 'tts'
+    LLM = "llm"
+    EMBEDDING = "embedding"
+    VLM = "vlm"
+    ASR = "asr"
+    RERANK = "rerank"
+    TTS = "tts"
 
 
 class TaskStatus(StrEnum):

@@ -66,6 +66,7 @@ _install_cv2_stub_if_unavailable()
 _install_xgboost_stub_if_unavailable()
 
 from api.db.services import file_service as file_service_module  # noqa: E402
+from api.db.services import user_service as user_service_module  # noqa: E402
 from api.db.services.file_service import FileService  # noqa: E402
 
 
@@ -80,6 +81,16 @@ class _DummyUploadFile:
 
 def _unwrapped_upload_document():
     return FileService.upload_document.__func__.__wrapped__
+
+
+class _ReadableUploadFile:
+    def __init__(self, filename, doc_id, data=b"test"):
+        self.filename = filename
+        self.id = doc_id
+        self._data = data
+
+    def read(self):
+        return self._data
 
 
 @pytest.mark.p2
@@ -123,9 +134,83 @@ def test_upload_document_skips_cross_kb_document_id_collision(monkeypatch):
     assert "Existing document id collision with another knowledge base; skipping update." in err[0]
 
 
+@pytest.mark.p2
+def test_upload_document_returns_subscription_invalid_error(monkeypatch):
+    kb = SimpleNamespace(
+        id="kb-target",
+        tenant_id="tenant-1",
+        name="Target KB",
+        parser_id="default",
+        pipeline_id=None,
+        parser_config={},
+    )
+
+    fake_storage = SimpleNamespace(
+        obj_exist=lambda *_args, **_kwargs: False,
+        put=lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(file_service_module.settings, "STORAGE_IMPL", fake_storage, raising=False)
+    monkeypatch.setattr(file_service_module.settings, "BILLING_ENABLED", True, raising=False)
+    monkeypatch.setattr(FileService, "get_root_folder", classmethod(lambda cls, _uid: {"id": "root"}))
+    monkeypatch.setattr(FileService, "init_knowledgebase_docs", classmethod(lambda cls, _pf_id, _uid: None))
+    monkeypatch.setattr(FileService, "get_kb_folder", classmethod(lambda cls, _uid: {"id": "kb-root"}))
+    monkeypatch.setattr(
+        FileService,
+        "new_a_file_from_kb",
+        classmethod(lambda cls, _tenant_id, _name, _parent_id: {"id": "kb-folder"}),
+    )
+    # Pretend the document does not exist yet so upload_document takes the
+    # new-document path (the `else` branch) where the billing check lives.
+    monkeypatch.setattr(file_service_module.DocumentService, "get_by_id", lambda _doc_id: (False, None))
+    monkeypatch.setattr(file_service_module.DocumentService, "check_doc_health", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(file_service_module.DocumentService, "query", lambda **_kwargs: [])
+    monkeypatch.setattr(file_service_module, "filename_type", lambda _name: file_service_module.FileType.PDF.value)
+    monkeypatch.setattr(file_service_module, "read_potential_broken_pdf", lambda blob: blob)
+    monkeypatch.setattr(file_service_module, "thumbnail_img", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(file_service_module, "duplicate_name", lambda *_args, **_kwargs: "invoice.pdf")
+    # UserTenantService is lazy-imported inside api.utils.billing._normalize_resource_check_failure,
+    # so we have to patch it on the source class. Wrapping in classmethod preserves the descriptor
+    # protocol (the production code calls it as a classmethod).
+    monkeypatch.setattr(
+        user_service_module.UserTenantService,
+        "get_owner_email",
+        classmethod(lambda cls, _tenant_id: "an.liu@ragflow.io"),
+    )
+
+    from api.utils.billing import InsufficientResourceError
+
+    def _fake_check_dynamic_resources(*_args, **_kwargs):
+        return False, {"error": "No active subscription found for tenant tenant-1", "tenant_id": "tenant-1"}
+
+    monkeypatch.setattr(
+        sys.modules["api.utils.billing"],
+        "check_dynamic_resources",
+        _fake_check_dynamic_resources,
+    )
+
+    err, files = _unwrapped_upload_document()(
+        FileService,
+        kb,
+        [_ReadableUploadFile(filename="invoice.pdf", doc_id="doc-1")],
+        "user-1",
+    )
+
+    assert files == []
+    assert len(err) == 1
+    assert isinstance(err[0], InsufficientResourceError)
+    assert err[0].resource == "subscription"
+    # _normalize_resource_check_failure rewrites the raw "No active subscription …" error
+    # to "Tenant <owner_email> subscription is invalid" before raise_dynamic_resource_error
+    # builds the InsufficientResourceError. The owner email is supplied by the mocked
+    # UserTenantService.get_owner_email above.
+    assert str(err[0]) == "Tenant an.liu@ragflow.io subscription is invalid"
+    assert err[0].detail == {"current": 0, "limit": 0, "file_size": 4, "filename": "invoice.pdf"}
+
+
 # ---------------------------------------------------------------------------
 # Helpers shared by TestValidateUrlForCrawl
 # ---------------------------------------------------------------------------
+
 
 def _addrinfo(ip_str: str) -> list:
     """Build a minimal getaddrinfo-style result for a single address string."""
@@ -136,6 +221,7 @@ def _addrinfo(ip_str: str) -> list:
 # ---------------------------------------------------------------------------
 # _validate_url_for_crawl SSRF-guard tests
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.p2
 class TestValidateUrlForCrawl:
@@ -268,10 +354,7 @@ class TestValidateUrlForCrawl:
         monkeypatch.setattr(
             socket,
             "getaddrinfo",
-            lambda h, p: (
-                _addrinfo("93.184.216.34")
-                + _addrinfo("2606:2800:220:1:248:1893:25c8:1946")
-            ),
+            lambda h, p: _addrinfo("93.184.216.34") + _addrinfo("2606:2800:220:1:248:1893:25c8:1946"),
         )
         hostname, resolved_ip = FileService._validate_url_for_crawl("https://example.com/")
         assert hostname == "example.com"

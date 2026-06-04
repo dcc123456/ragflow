@@ -154,6 +154,7 @@ def _load_file_api_service(monkeypatch):
     common_root_mod = ModuleType("common")
     common_root_mod.__path__ = [str(repo_root / "common")]
     common_root_mod.settings = SimpleNamespace(
+        BILLING_ENABLED=False,
         STORAGE_IMPL=SimpleNamespace(
             obj_exist=lambda *_args, **_kwargs: False,
             put=lambda *_args, **_kwargs: None,

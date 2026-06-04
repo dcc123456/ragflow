@@ -48,15 +48,15 @@ async def upload_file(tenant_id: str, pf_id: str, file_objs: list):
 
     file_res = []
     for file_obj in file_objs:
-        MAX_FILE_NUM_PER_USER = int(os.environ.get('MAX_FILE_NUM_PER_USER', 0))
+        MAX_FILE_NUM_PER_USER = int(os.environ.get("MAX_FILE_NUM_PER_USER", 0))
         if 0 < MAX_FILE_NUM_PER_USER <= await thread_pool_exec(DocumentService.get_doc_count, tenant_id):
             return False, "Exceed the maximum file number of a free user!"
 
         if not file_obj.filename:
             file_obj_names = [pf_folder.name, file_obj.filename]
         else:
-            full_path = '/' + file_obj.filename
-            file_obj_names = full_path.split('/')
+            full_path = "/" + file_obj.filename
+            file_obj_names = full_path.split("/")
         file_len = len(file_obj_names)
 
         file_id_list = await thread_pool_exec(FileService.get_id_list_by_id, pf_id, file_obj_names, 1, [pf_id])
@@ -66,25 +66,34 @@ async def upload_file(tenant_id: str, pf_id: str, file_objs: list):
             e, file = await thread_pool_exec(FileService.get_by_id, file_id_list[len_id_list - 1])
             if not e:
                 return False, "Folder not found!"
-            last_folder = await thread_pool_exec(
-                FileService.create_folder, file, file_id_list[len_id_list - 1], file_obj_names, len_id_list, tenant_id, tenant_id
-            )
+            last_folder = await thread_pool_exec(FileService.create_folder, file, file_id_list[len_id_list - 1], file_obj_names, len_id_list, tenant_id, tenant_id)
         else:
             e, file = await thread_pool_exec(FileService.get_by_id, file_id_list[len_id_list - 2])
             if not e:
                 return False, "Folder not found!"
-            last_folder = await thread_pool_exec(
-                FileService.create_folder, file, file_id_list[len_id_list - 2], file_obj_names, len_id_list, tenant_id, tenant_id
-            )
+            last_folder = await thread_pool_exec(FileService.create_folder, file, file_id_list[len_id_list - 2], file_obj_names, len_id_list, tenant_id, tenant_id)
 
         filetype = filename_type(file_obj_names[file_len - 1])
         location = file_obj_names[file_len - 1]
         while await thread_pool_exec(settings.STORAGE_IMPL.obj_exist, last_folder.id, location, tenant_id):
             location += "_"
         blob = await thread_pool_exec(file_obj.read)
-        filename = await thread_pool_exec(
-            duplicate_name, FileService.query, name=file_obj_names[file_len - 1], parent_id=last_folder.id
-        )
+        filename = await thread_pool_exec(duplicate_name, FileService.query, name=file_obj_names[file_len - 1], parent_id=last_folder.id)
+
+        # Enforce subscription + storage quota before writing to storage.
+        # Mirrors the dataset upload path in api/db/services/file_service.py
+        # so the same billing codes (2003/2005/...) reach the frontend.
+        if settings.BILLING_ENABLED:
+            from api.utils.billing import (
+                check_dynamic_resources,
+                raise_dynamic_resource_error,
+            )
+
+            file_size_bytes = len(blob)
+            check_ok, check_info = await thread_pool_exec(check_dynamic_resources, tenant_id=tenant_id, storage=file_size_bytes)
+            if not check_ok:
+                raise_dynamic_resource_error(check_info, tenant_id, file_size=file_size_bytes)
+
         await thread_pool_exec(settings.STORAGE_IMPL.put, last_folder.id, location, blob, tenant_id)
         file_data = {
             "id": get_uuid(),
@@ -126,16 +135,18 @@ async def create_folder(tenant_id: str, name: str, pf_id: str = None, file_type:
     else:
         ft = FileType.VIRTUAL.value
 
-    file = FileService.insert({
-        "id": get_uuid(),
-        "parent_id": pf_id,
-        "tenant_id": tenant_id,
-        "created_by": tenant_id,
-        "name": name,
-        "location": "",
-        "size": 0,
-        "type": ft,
-    })
+    file = FileService.insert(
+        {
+            "id": get_uuid(),
+            "parent_id": pf_id,
+            "tenant_id": tenant_id,
+            "created_by": tenant_id,
+            "name": name,
+            "location": "",
+            "size": 0,
+            "type": ft,
+        }
+    )
     return True, file.to_json()
 
 
@@ -171,7 +182,6 @@ def list_files(tenant_id: str, args: dict):
         return False, "File not found!"
 
     return True, {"total": total, "files": files, "parent_folder": parent_folder.to_json()}
-
 
 
 def get_parent_folder(file_id: str, user_id: str = None):
@@ -235,9 +245,9 @@ async def delete_files(uid: str, file_ids: list, auth_header: str = ""):
         try:
             import requests
 
-            host = getattr(settings, 'HOST_IP', '127.0.0.1')
+            host = getattr(settings, "HOST_IP", "127.0.0.1")
             # Go service runs on port+4 (9384 by default)
-            port = getattr(settings, 'HOST_PORT', 9380) + 4
+            port = getattr(settings, "HOST_PORT", 9380) + 4
             service_url = f"http://{host}:{port}"
 
             # List all spaces and find the one matching the name
@@ -270,9 +280,9 @@ async def delete_files(uid: str, file_ids: list, auth_header: str = ""):
             from urllib.parse import quote
 
             # Construct service URL from settings
-            host = getattr(settings, 'HOST_IP', '127.0.0.1')
+            host = getattr(settings, "HOST_IP", "127.0.0.1")
             # Go service runs on port+4 (9384 by default)
-            port = getattr(settings, 'HOST_PORT', 9380) + 4
+            port = getattr(settings, "HOST_PORT", 9380) + 4
             service_url = f"http://{host}:{port}"
 
             # Get space UUID from space name
@@ -289,37 +299,24 @@ async def delete_files(uid: str, file_ids: list, auth_header: str = ""):
                 try:
                     data = response.json()
                     if data.get("code") == 0:
-                        logging.info(
-                            f"Successfully deleted skill index: space={space_name}, skill={skill_name}, "
-                            f"status={response.status_code}, code=0"
-                        )
+                        logging.info(f"Successfully deleted skill index: space={space_name}, skill={skill_name}, status={response.status_code}, code=0")
                         return True
                     else:
                         app_code = data.get("code", "unknown")
                         app_msg = data.get("message", "no message")
                         logging.error(
-                            f"Failed to delete skill index: space={space_name}, skill={skill_name}, "
-                            f"status={response.status_code}, app_code={app_code}, app_msg={app_msg}, "
-                            f"response={response.text}"
+                            f"Failed to delete skill index: space={space_name}, skill={skill_name}, status={response.status_code}, app_code={app_code}, app_msg={app_msg}, response={response.text}"
                         )
                         return False
                 except ValueError as json_err:
                     # JSON decode error - treat as failure
-                    logging.error(
-                        f"Failed to parse delete response JSON: space={space_name}, skill={skill_name}, "
-                        f"error={json_err}, raw_response={response.text}"
-                    )
+                    logging.error(f"Failed to parse delete response JSON: space={space_name}, skill={skill_name}, error={json_err}, raw_response={response.text}")
                     return False
             else:
-                logging.error(
-                    f"Failed to delete skill index: space={space_name}, skill={skill_name}, "
-                    f"status={response.status_code}, response={response.text}"
-                )
+                logging.error(f"Failed to delete skill index: space={space_name}, skill={skill_name}, status={response.status_code}, response={response.text}")
                 return False
         except Exception as e:
-            logging.error(
-                f"Exception deleting skill index: space={space_name}, skill={skill_name}, error={e}"
-            )
+            logging.error(f"Exception deleting skill index: space={space_name}, skill={skill_name}, error={e}")
             return False
 
     def _delete_single_file(file, tenant_id):
@@ -408,18 +405,12 @@ async def delete_files(uid: str, file_ids: list, auth_header: str = ""):
             logging.info(f"Deleting skill index for skill '{folder.name}' in space '{current_space_name}'")
             index_deleted = _delete_skill_index(tenant_id, current_space_name, folder.name, auth_header)
             if not index_deleted:
-                logging.error(
-                    f"Aborting folder deletion due to index deletion failure: "
-                    f"folder={folder.name}, space={current_space_name}"
-                )
-                errors.append(
-                    f"Failed to delete skill index for folder '{folder.name}' in space '{current_space_name}'. "
-                    f"Folder deletion aborted to prevent orphaned indexes."
-                )
+                logging.error(f"Aborting folder deletion due to index deletion failure: folder={folder.name}, space={current_space_name}")
+                errors.append(f"Failed to delete skill index for folder '{folder.name}' in space '{current_space_name}'. Folder deletion aborted to prevent orphaned indexes.")
                 return deleted
         sub_files = FileService.list_all_files_by_parent_id(folder.id)
         logging.info(f"Folder '{folder.name}': found {len(sub_files)} children to delete")
-        
+
         for sub_file in sub_files:
             if sub_file.type == FileType.FOLDER.value:
                 deleted += _delete_folder_recursive(sub_file, tenant_id)
@@ -432,16 +423,16 @@ async def delete_files(uid: str, file_ids: list, auth_header: str = ""):
             errors.append(f"Failed to delete folder record {folder.id}: {e}")
         else:
             deleted += 1
-        
+
         try:
-            if hasattr(settings.STORAGE_IMPL, 'remove_bucket'):
+            if hasattr(settings.STORAGE_IMPL, "remove_bucket"):
                 logging.info(f"Removing storage bucket for folder '{folder.name}' (id={folder.id})")
                 settings.STORAGE_IMPL.remove_bucket(folder.id)
             else:
                 logging.debug(f"Storage implementation does not support remove_bucket, skipping for folder '{folder.name}'")
         except Exception as e:
             logging.warning(f"Failed to remove storage bucket for folder '{folder.name}' (id={folder.id}): {e}")
-        
+
         return deleted
 
     def _rm_sync():
@@ -513,8 +504,7 @@ async def move_files(uid: str, src_file_ids: list, dest_file_id: str = None, new
 
     if new_name:
         file = files_dict[src_file_ids[0]]
-        if file.type != FileType.FOLDER.value and \
-                pathlib.Path(new_name.lower()).suffix != pathlib.Path(file.name.lower()).suffix:
+        if file.type != FileType.FOLDER.value and pathlib.Path(new_name.lower()).suffix != pathlib.Path(file.name.lower()).suffix:
             return False, "The extension of file can't be changed"
         target_parent_id = dest_folder.id if dest_folder else file.parent_id
         for f in FileService.query(name=new_name, parent_id=target_parent_id):
@@ -543,16 +533,18 @@ async def move_files(uid: str, src_file_ids: list, dest_file_id: str = None, new
                 if new_folder.id == source_file_entry.id:
                     return
             else:
-                new_folder = FileService.insert({
-                    "id": get_uuid(),
-                    "parent_id": dest_folder_entry.id,
-                    "tenant_id": source_file_entry.tenant_id,
-                    "created_by": source_file_entry.tenant_id,
-                    "name": effective_name,
-                    "location": "",
-                    "size": 0,
-                    "type": FileType.FOLDER.value,
-                })
+                new_folder = FileService.insert(
+                    {
+                        "id": get_uuid(),
+                        "parent_id": dest_folder_entry.id,
+                        "tenant_id": source_file_entry.tenant_id,
+                        "created_by": source_file_entry.tenant_id,
+                        "name": effective_name,
+                        "location": "",
+                        "size": 0,
+                        "type": FileType.FOLDER.value,
+                    }
+                )
 
             sub_files = FileService.list_all_files_by_parent_id(source_file_entry.id)
             for sub_file in sub_files:
@@ -570,10 +562,7 @@ async def move_files(uid: str, src_file_ids: list, dest_file_id: str = None, new
             while settings.STORAGE_IMPL.obj_exist(dest_folder_entry.id, new_location, source_file_entry.tenant_id):
                 new_location += "_"
             try:
-                settings.STORAGE_IMPL.move(
-                    source_file_entry.parent_id, source_file_entry.location,
-                    dest_folder_entry.id, new_location, source_file_entry.tenant_id
-                )
+                settings.STORAGE_IMPL.move(source_file_entry.parent_id, source_file_entry.location, dest_folder_entry.id, new_location, source_file_entry.tenant_id)
             except Exception as storage_err:
                 raise RuntimeError(f"Move file failed at storage layer: {str(storage_err)}")
             updates["parent_id"] = dest_folder_entry.id

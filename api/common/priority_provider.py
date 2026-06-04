@@ -18,12 +18,14 @@
 def get_tenant_priority(tenant_id: str) -> int:
     """Return the task queue priority for a tenant based on their billing plan.
 
-    Returns 0 when billing is disabled or no active subscription is found,
+    Returns 0 when billing is disabled or No active subscription is found,
     otherwise maps task_priority from the tenant's Product record:
     "high" -> 1, "low" -> 0.
     """
     from common.settings import BILLING_ENABLED
+
     if not BILLING_ENABLED:
         return 0
     from api.db.services.billing_service import SubscriptionService
+
     return SubscriptionService.get_priority(tenant_id)

@@ -50,10 +50,7 @@ class ProductService(CommonService):
     model = Product
     # Exclude: id (PK), name (used for lookup), version (auto-incremented),
     # description (informational), and timestamp fields (not in YAML config)
-    _VERSION_CHECK_FIELDS = tuple(
-        f.name for f in Product._meta.sorted_fields
-        if f.name not in ("id", "name", "version", "description", "create_time", "create_date", "update_time", "update_date")
-    )
+    _VERSION_CHECK_FIELDS = tuple(f.name for f in Product._meta.sorted_fields if f.name not in ("id", "name", "version", "description", "create_time", "create_date", "update_time", "update_date"))
 
     @classmethod
     @DB.connection_context()
@@ -118,10 +115,7 @@ class ProductService(CommonService):
             cls.model.select()
             .join(
                 max_versions,
-                on=(
-                    (cls.model.name == max_versions.c.name)
-                    & (cls.model.version == max_versions.c.max_version)
-                ),
+                on=((cls.model.name == max_versions.c.name) & (cls.model.version == max_versions.c.max_version)),
             )
             .where(cls.model.product_type == product_type)
         )
@@ -175,10 +169,7 @@ class SubscriptionService(CommonService):
         logging.debug(f"tenant_plan={tenant_plan}")
         billing_plan = ProductService.get_by_name(tenant_plan["plan_name"])
         if billing_plan is None:
-            raise ValueError(
-                f"Product not found for plan_name={tenant_plan['plan_name']!r}, "
-                f"tenant_id={tenant_id!r}, customer_id={tenant_plan.get('customer_id', '')!r}"
-            )
+            raise ValueError(f"Product not found for plan_name={tenant_plan['plan_name']!r}, tenant_id={tenant_id!r}, customer_id={tenant_plan.get('customer_id', '')!r}")
         plan_name = billing_plan.pop("name")
         billing_plan["plan_name"] = plan_name
         tenant_plan.update(billing_plan)
@@ -189,6 +180,7 @@ class SubscriptionService(CommonService):
             from api.db.services.search_service import SearchService
             from api.db.services.dialog_service import DialogService
             from api.db.services.file_service import FileService
+
             num_apps = (
                 DialogService.count_by_tenant_id(tenant_id)
                 + KnowledgebaseService.count_by_tenant_id(tenant_id)
@@ -209,13 +201,7 @@ class SubscriptionService(CommonService):
     @classmethod
     @DB.connection_context()
     def get_raw_by_tenant_id(cls, tenant_id: str) -> dict | None:
-        return (
-            cls.model.select(*cls._RAW_SUBSCRIPTION_FIELDS)
-            .where(cls.model.tenant_id == tenant_id)
-            .order_by(cls.model.getter_by("create_time").desc())
-            .dicts()
-            .first()
-        )
+        return cls.model.select(*cls._RAW_SUBSCRIPTION_FIELDS).where(cls.model.tenant_id == tenant_id).order_by(cls.model.getter_by("create_time").desc()).dicts().first()
 
     @classmethod
     def _ensure_trial_stripe_subscription(cls, tenant_plan: dict) -> dict:
@@ -282,14 +268,15 @@ class SubscriptionService(CommonService):
         delta_kb_storage: int = 0,
     ) -> tuple[bool, dict]:
         subscription = cls.get_by_tenant_id(tenant_id, require_quota_info=True)
-        if not subscription:
+        if not subscription or (subscription.get("plan_name", "") != "Trial" and subscription.get("subscription_status", "") not in ENTITLED_MAIN_SUBSCRIPTION_STATUSES):
             return (
                 False,
                 {
-                    "error": f"No valid activate Subscription found for tenant {tenant_id}",
+                    "error": f"No active subscription found for tenant {tenant_id}",
                     "tenant_id": tenant_id,
                 },
             )
+
         plan_name = subscription.get("plan_name", "")
         num_apps = subscription.get("num_apps", 0)
         num_members = subscription.get("num_members", 0)
@@ -310,10 +297,7 @@ class SubscriptionService(CommonService):
         tenant_plan_info = (
             cls.model.select(*fields)
             .join(Product, on=(cls.model.plan_name == Product.name))
-            .where(
-                (cls.model.tenant_id == tenant_id)
-                & (cls.model.subscription_status.in_(ENTITLED_MAIN_SUBSCRIPTION_STATUSES))
-            )
+            .where((cls.model.tenant_id == tenant_id) & (cls.model.subscription_status.in_(ENTITLED_MAIN_SUBSCRIPTION_STATUSES)))
             .order_by(
                 Product.version.desc(),
                 cls.model.create_time.desc(),
@@ -326,7 +310,7 @@ class SubscriptionService(CommonService):
             return (
                 False,
                 {
-                    "error": f"No valid activate Subscription found for tenant {tenant_id} and subscription {plan_name}",
+                    "error": f"No active subscription found for tenant {tenant_id} and subscription {plan_name}",
                     "plan_name": plan_name,
                     "tenant_id": tenant_id,
                 },
@@ -420,12 +404,7 @@ class SubscriptionService(CommonService):
     def get_by_subscription_id(cls, subscription_id: str) -> dict | None:
         if not subscription_id:
             return None
-        return (
-            cls.model.select()
-            .where(cls.model.subscription_id == subscription_id)
-            .dicts()
-            .first()
-        )
+        return cls.model.select().where(cls.model.subscription_id == subscription_id).dicts().first()
 
     @classmethod
     def update_subscription(cls, tenant_id, subscription_dict):
@@ -501,15 +480,8 @@ class SubscriptionService(CommonService):
                 cls.model.status.in_(["active", "trialing"]),
                 cls.model.end_time.is_null(False),
                 (
-                    (
-                        cls.model.target_plan_name.is_null(False)
-                        & (cls.model.target_plan_name != cls.model.plan_name)
-                    )
-                    | (
-                        cls.model.target_storage_bytes.is_null(False)
-                        & cls.model.addon_storage_bytes.is_null(False)
-                        & (cls.model.target_storage_bytes < cls.model.addon_storage_bytes)
-                    )
+                    (cls.model.target_plan_name.is_null(False) & (cls.model.target_plan_name != cls.model.plan_name))
+                    | (cls.model.target_storage_bytes.is_null(False) & cls.model.addon_storage_bytes.is_null(False) & (cls.model.target_storage_bytes < cls.model.addon_storage_bytes))
                 ),
             )
             .dicts()
@@ -621,12 +593,9 @@ class PricePointService(CommonService):
     model = PricePoint
     # Exclude: id (PK), product_id/product_name (lookup keys), effective/expiry times (set at runtime), timestamp fields
     _VERSION_CHECK_FIELDS = tuple(
-        f.name for f in PricePoint._meta.sorted_fields
-        if f.name not in (
-            "id", "product_id", "product_name",
-            "effective_time", "expiry_time",
-            "create_time", "create_date", "update_time", "update_date"
-        )
+        f.name
+        for f in PricePoint._meta.sorted_fields
+        if f.name not in ("id", "product_id", "product_name", "effective_time", "expiry_time", "create_time", "create_date", "update_time", "update_date")
     )
 
     @classmethod
@@ -654,10 +623,7 @@ class PricePointService(CommonService):
         now_utc = datetime.now(timezone.utc)
         price_point = (
             cls.model.select(*fields)
-            .where(
-                (cls.model.product_name == price_point_product_name)
-                & (cls.model.expiry_time.is_null(True) | (cls.model.expiry_time >= now_utc))
-            )
+            .where((cls.model.product_name == price_point_product_name) & (cls.model.expiry_time.is_null(True) | (cls.model.expiry_time >= now_utc)))
             .order_by(cls.model.effective_time.desc())
             .dicts()
             .first()
@@ -723,122 +689,6 @@ class PurchasedProductOverviewService(CommonService):
 
         return updated > 0
 
-    @classmethod
-    @DB.connection_context()
-    def check_usage_based_by_tenant_id(
-        cls,
-        tenant_id: str,
-        # customer_id: str  # QUESTION: is that possible many tenant_ids share the same customer_id?
-        product_name: str,
-        delta_page: int = 0,
-        delta_token: int = 0,
-    ) -> tuple[bool, dict]:
-        """
-        (is_pass, info)
-        """
-        if delta_page < 0 or delta_token < 0:
-            return (
-                False,
-                {"error": "Delta values must be non-negative."},
-            )
-
-        fields = [
-            cls.model.id,
-            cls.model.tenant_id,
-            cls.model.product_name,
-            cls.model.quantity,
-            cls.model.effective_time,
-            cls.model.expiry_time,
-        ]
-
-        purchased_overview = (
-            cls.model.select(*fields)
-            .where((cls.model.product_name == product_name) & (cls.model.tenant_id == tenant_id) & (cls.model.quantity > 0))
-            .order_by(cls.model.effective_time.desc())
-            .dicts()
-            .first()
-        )
-
-        if not purchased_overview:
-            return (
-                False,
-                {
-                    "error": f"No valid purchased product found for tenant {tenant_id} and product {product_name}",
-                    "product_name": product_name,
-                    "tenant_id": tenant_id,
-                },
-            )
-
-        now = datetime.now(timezone.utc)
-        expiry_time = to_utc_datetime(purchased_overview["expiry_time"])
-        if expiry_time and expiry_time < now:
-            return (
-                False,
-                {
-                    "error": "Product has expired.",
-                    "expiry_time": expiry_time,
-                    "current_time": now,
-                },
-            )
-
-        remaining_quantity = purchased_overview["quantity"]
-
-        if "deepdoc" in product_name.lower():
-            is_enough = remaining_quantity >= delta_page
-            remaining = remaining_quantity - delta_page
-            resource_type = "page"
-        elif "token" in product_name.lower():
-            is_enough = remaining_quantity >= delta_token
-            remaining = remaining_quantity - delta_token
-            resource_type = "token"
-        else:
-            logging.error(f"Unhandled product_name in purchased overview check_usage_based_by_tenant_id. {tenant_id=}, {product_name=}")
-            return (
-                False,
-                {
-                    "error": "internal error",
-                },
-            )
-
-        if not is_enough:
-            return (
-                False,
-                {
-                    "error": f"Insufficient {resource_type}.",
-                    "requested": delta_page if "page" in product_name.lower() else delta_token,
-                    "remaining": remaining_quantity,
-                    "product_id": purchased_overview["id"],
-                    "product_name": product_name,
-                    "tenant_id": tenant_id,
-                },
-            )
-
-        return (
-            True,
-            {
-                "remaining": remaining,
-                "product_id": purchased_overview["id"],
-                "product_name": product_name,
-                "expiry_time": purchased_overview["expiry_time"],
-                "tenant_id": tenant_id,
-            },
-        )
-
-    @classmethod
-    @DB.connection_context()
-    def check_subscription_by_tenant_id(
-        cls,
-        tenant_id: str,
-        # customer_id: str  # QUESTION: is that possible many tenant_ids share the same customer_id?
-        delta_app=0,
-        delta_members: int = 0,
-        delta_kb_storage: int = 0,
-    ) -> tuple[bool, dict]:
-        """
-        alias of Subscription.check_by_tenant_id
-        """
-        return SubscriptionService.check_by_tenant_id(tenant_id, delta_app, delta_members, delta_kb_storage)
-
 
 # ---------------------------------------------------------------------------
 # Point system
@@ -865,22 +715,10 @@ class PointAccountService:
         from api.db.db_models import Subscription, Product
 
         # Direct query - uses existing transaction, no new connection_context
-        subscription = (
-            Subscription.select(Subscription.plan_name)
-            .where(Subscription.tenant_id == tenant_id)
-            .order_by(Subscription.create_time.desc())
-            .dicts()
-            .first()
-        )
+        subscription = Subscription.select(Subscription.plan_name).where(Subscription.tenant_id == tenant_id).order_by(Subscription.create_time.desc()).dicts().first()
         plan_name = subscription.get("plan_name", BILLING_PLAN_TRIAL_NAME) if subscription else BILLING_PLAN_TRIAL_NAME
 
-        product = (
-            Product.select(Product.quota_points)
-            .where(Product.name == plan_name)
-            .order_by(Product.version.desc())
-            .dicts()
-            .first()
-        )
+        product = Product.select(Product.quota_points).where(Product.name == plan_name).order_by(Product.version.desc()).dicts().first()
         quota = product.get("quota_points") if product else None
         if quota is not None:
             logging.info(f"[Points] tenant={tenant_id} plan={plan_name} quota_points={quota}")
@@ -970,9 +808,7 @@ class PointAccountService:
             addon_available = max(0, account.addon_purchased_points - account.consumed_addon_points)
             total_available = plan_available + addon_available
             if total_available < points:
-                raise InsufficientPointsError(
-                    f"Tenant {tenant_id} has {total_available} points, need {points}"
-                )
+                raise InsufficientPointsError(f"Tenant {tenant_id} has {total_available} points, need {points}")
 
             # Determine how much to deduct from plan vs addon (prefer plan first)
             plan_used = min(plan_available, points)
@@ -1044,11 +880,7 @@ class PointAccountService:
             account.update_time = current_timestamp()
             account.save()
             # Look up the original hold_created ledger entry to get metadata (doc_id, page_range)
-            orig_ledger = (
-                PointLedger.select()
-                .where(PointLedger.related_hold_id == hold_id, PointLedger.event_type == "hold_created")
-                .first()
-            )
+            orig_ledger = PointLedger.select().where(PointLedger.related_hold_id == hold_id, PointLedger.event_type == "hold_created").first()
             ledger_meta = orig_ledger.metadata if orig_ledger and orig_ledger.metadata else {}
             # Consume events don't restore points - quota/addon already deducted at hold time
             # Write separate ledger entries for plan and addon portions if both exist
@@ -1101,11 +933,7 @@ class PointAccountService:
             account.update_time = current_timestamp()
             account.save()
             # Look up the original hold_created ledger entry to get metadata (doc_id, page_range)
-            orig_ledger = (
-                PointLedger.select()
-                .where(PointLedger.related_hold_id == hold_id, PointLedger.event_type == "hold_created")
-                .first()
-            )
+            orig_ledger = PointLedger.select().where(PointLedger.related_hold_id == hold_id, PointLedger.event_type == "hold_created").first()
             ledger_meta = orig_ledger.metadata if orig_ledger and orig_ledger.metadata else {}
             # Write separate ledger entries for plan and addon portions if both exist
             if hold.plan_points > 0:
@@ -1238,7 +1066,8 @@ class ParseBillingService:
     @classmethod
     def resolve_file_ref(cls, file_ref: dict | None) -> tuple[str, bytes] | None:
         from api.db.services.file_service import FileService
-        if not file_ref:
+
+        if not file_ref or not isinstance(file_ref, dict):
             return None
 
         filename = file_ref.get("name") or file_ref.get("filename")
@@ -1305,12 +1134,7 @@ class PointHoldService:
     @classmethod
     @DB.connection_context()
     def get_by_doc_id(cls, doc_id: str) -> dict | None:
-        hold = (
-            PointHold.select()
-            .where(PointHold.doc_id == doc_id, PointHold.status == "held")
-            .order_by(PointHold.create_time.desc())
-            .first()
-        )
+        hold = PointHold.select().where(PointHold.doc_id == doc_id, PointHold.status == "held").order_by(PointHold.create_time.desc()).first()
         return hold.__data__ if hold else None
 
     @classmethod

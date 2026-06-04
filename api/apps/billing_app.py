@@ -116,7 +116,7 @@ def _format_request_validation_error(e: ValidationError) -> str:
     middle = "> - Message: <"
     suffix = ">"
     if first_line.startswith(prefix) and middle in first_line:
-        field, remainder = first_line[len(prefix):].split(middle, 1)
+        field, remainder = first_line[len(prefix) :].split(middle, 1)
         message = remainder.rsplit(suffix, 1)[0]
         return f"{field}: {message}"
 
@@ -452,10 +452,13 @@ def _should_preview_as_new_subscription(current_plan_name: str, target_plan_name
 
 def _main_subscription_payment_state(subscription: dict) -> dict:
     status = _normalize_subscription_status(subscription.get("subscription_status"))
-    invoice_url = subscription.get("invoice_url") or ""
+    is_recoverable = _is_main_subscription_recoverable(status)
+    invoice_url = (subscription.get("invoice_url") or "") if is_recoverable else ""
     return {
+        # payment_required is a broad indicator for billing attention in UI.
+        # payment_recoverable is the actionable subset that can be recovered by paying invoices.
         "payment_required": _is_main_subscription_delinquent(status),
-        "payment_recoverable": _is_main_subscription_recoverable(status),
+        "payment_recoverable": is_recoverable,
         "payment_recovery_url": invoice_url,
     }
 
@@ -494,12 +497,14 @@ def downgrade_guard_health():
     except Exception:
         pool_size = -1
 
-    return jsonify({
-        "daily_scan_ok": daily_scan_ok,
-        "last_scan_date": last_scan_date,
-        "high_freq_pool_size": pool_size,
-        "metrics": get_metrics(),
-    })
+    return jsonify(
+        {
+            "daily_scan_ok": daily_scan_ok,
+            "last_scan_date": last_scan_date,
+            "high_freq_pool_size": pool_size,
+            "metrics": get_metrics(),
+        }
+    )
 
 
 def _storage_effective_kb(tenant_id: str) -> int:
@@ -2357,13 +2362,13 @@ async def _handle_active_subscription_checkout(
             error_message,
         )
         return get_json_result(
-            code=RetCode.BILLING_UPGRADE_FAILED,
+            code=RetCode.BILLING_SUBSCRIPTION_INVALID,
             message=error_message,
         )
     updated_subscription = modified_result.get("subscription")
     if not updated_subscription:
         return get_json_result(
-            code=RetCode.BILLING_UPGRADE_FAILED,
+            code=RetCode.BILLING_SUBSCRIPTION_INVALID,
             message=modified_result.get("error_message") or "Failed to modify subscription.",
             data=None,
         )
@@ -2458,10 +2463,7 @@ async def _create_subscription_checkout(
     # Trial plan must NOT be created via Stripe subscription (Plan B)
     trail_price_id = get_trial_price_id(settings.BILLING.get("billing_plans", []))
     if subscription_price_id == trail_price_id:
-        raise ValueError(
-            f"Trial plan price_id {subscription_price_id!r} must not be used with "
-            "_create_subscription_checkout. Trial tenants do not create Stripe subscriptions."
-        )
+        raise ValueError(f"Trial plan price_id {subscription_price_id!r} must not be used with _create_subscription_checkout. Trial tenants do not create Stripe subscriptions.")
 
     logging.info(
         "Create subscription (direct API): tenant_id=%s, price_id=%s, plan=%s",
@@ -2501,13 +2503,80 @@ async def _handle_subscription_checkout(
 ):
     """Dispatch subscription checkout to active/recoverable/new-subscription flows."""
     subscription_id = tenant_plan.get("subscription_id")
-    subscription_status = tenant_plan.get("subscription_status")
+    subscription_status = _normalize_subscription_status(tenant_plan.get("subscription_status"))
 
-    if not subscription_id:
+    if subscription_id:
+        try:
+            stripe_subscription = await stripe.Subscription.retrieve_async(subscription_id)
+            stripe_status = _normalize_subscription_status(get_attr_or_item(stripe_subscription, "status", ""))
+            if stripe_status:
+                subscription_status = stripe_status
+        except Exception:
+            logging.exception(
+                "Failed to retrieve Stripe subscription %s for tenant %s; falling back to local status %s",
+                subscription_id,
+                tenant_id,
+                subscription_status,
+            )
+
+    terminal_or_non_modifiable_statuses = {"canceled", "incomplete_expired", "paused"}
+    trial_price_id = get_trial_price_id(settings.BILLING.get("billing_plans", []))
+
+    # For canceled/non-modifiable subscriptions, switching to Trial should be an
+    # immediate local transition instead of going through Stripe subscription creation.
+    if subscription_status in terminal_or_non_modifiable_statuses and subscription_price_id == trial_price_id:
+        original_subscription_id = (subscription_id or "").strip() or (tenant_plan.get("original_subscription_id") or "").strip()
+        trial_snapshot = SubscriptionService._build_trial_subscription(
+            tenant_id=tenant_id,
+            customer_id=customer_id,
+            original_subscription_id=original_subscription_id,
+        )
+        with DB.atomic():
+            SubscriptionService.update_subscription(
+                tenant_id,
+                {
+                    "product_id": trial_snapshot["product_id"],
+                    "plan_name": trial_snapshot["plan_name"],
+                    "order_id": trial_snapshot["order_id"],
+                    "status": trial_snapshot["status"],
+                    "price_id": trial_snapshot["price_id"],
+                    "subscription_id": trial_snapshot["subscription_id"],
+                    "subscription_status": trial_snapshot["subscription_status"],
+                    "invoice_id": trial_snapshot["invoice_id"],
+                    "invoice_url": trial_snapshot["invoice_url"],
+                    "invoice_pdf_url": trial_snapshot["invoice_pdf_url"],
+                    "start_time": trial_snapshot["start_time"],
+                    "end_time": trial_snapshot["end_time"],
+                    "renew_time": trial_snapshot["renew_time"],
+                    "original_subscription_id": trial_snapshot["original_subscription_id"],
+                    "addon_subscription_item_id": trial_snapshot["addon_subscription_item_id"],
+                    "addon_storage_bytes": trial_snapshot["addon_storage_bytes"],
+                    "target_storage_bytes": trial_snapshot["target_storage_bytes"],
+                    "target_plan_name": trial_snapshot["target_plan_name"],
+                },
+            )
+
         logging.info(
-            "No existing subscription for tenant %s; creating subscription for customer %s",
+            "Switched tenant %s to Trial immediately from non-modifiable status %s",
+            tenant_id,
+            subscription_status,
+        )
+        return get_json_result(
+            code=RetCode.SUCCESS,
+            message="Switched to Trial plan successfully.",
+            data={
+                "plan_name": BILLING_PLAN_TRIAL_NAME,
+                "effective_at": to_utc_isoformat(trial_snapshot["start_time"]),
+            },
+        )
+
+    if not subscription_id or subscription_status in terminal_or_non_modifiable_statuses:
+        logging.info(
+            "Creating new subscription for tenant %s and customer %s: subscription_id=%s, subscription_status=%s",
             tenant_id,
             customer_id,
+            subscription_id,
+            subscription_status,
         )
         return await _create_subscription_checkout(
             tenant_id=tenant_id,
@@ -2524,7 +2593,8 @@ async def _handle_subscription_checkout(
             subscription_status=subscription_status,
             subscription_price_id=subscription_price_id,
         )
-    else:
+
+    if subscription_status in MAIN_SUBSCRIPTION_ENTITLED_STATUSES:
         return await _handle_active_subscription_checkout(
             tenant_id=tenant_id,
             tenant_plan=tenant_plan,
@@ -2535,6 +2605,19 @@ async def _handle_subscription_checkout(
             session_success_url=session_success_url,
             session_cancel_url=session_cancel_url,
         )
+
+    logging.info(
+        "Unsupported subscription status %s for modify flow; creating new subscription for tenant %s",
+        subscription_status,
+        tenant_id,
+    )
+    return await _create_subscription_checkout(
+        tenant_id=tenant_id,
+        customer_id=customer_id,
+        subscription_price_id=subscription_price_id,
+        quantity=quantity,
+        setup_intent_id=setup_intent_id,
+    )
 
 
 async def _handle_addon_checkout(

@@ -31,6 +31,8 @@ class InsufficientResourceError(Exception):
         self.detail = {"current": current, "limit": limit}
         if file_size is not None:
             self.detail["file_size"] = file_size
+
+
 from contextvars import ContextVar, Token
 from decimal import ROUND_HALF_UP, Decimal
 from functools import wraps
@@ -413,7 +415,7 @@ def extract_subscription_period(subscription_obj):
         end = to_utc_datetime(subscription_obj.get("current_period_end"))
         if start and end:
             return start, end
-        item_data = ((subscription_obj.get("items") or {}).get("data") or [])
+        item_data = (subscription_obj.get("items") or {}).get("data") or []
         first_item = item_data[0] if item_data else {}
         if isinstance(first_item, dict):
             item_start = to_utc_datetime(first_item.get("current_period_start"))
@@ -702,11 +704,7 @@ async def get_pending_subscription_change_async(subscription_id: str) -> dict:
                 "schedule_id": schedule_id,
                 "pending_price_id": pending_price_id,
                 "pending_plan_name": pending_plan_name,
-                "effective_at": to_utc_datetime(
-                    (phases[0].get("end_date") if phases else None)
-                    or schedule.get("end_date")
-                    or 0
-                ),
+                "effective_at": to_utc_datetime((phases[0].get("end_date") if phases else None) or schedule.get("end_date") or 0),
             }
         return {}
 
@@ -827,15 +825,8 @@ async def schedule_subscription_items_change_at_period_end_async(
             schedule = await stripe.SubscriptionSchedule.create_async(from_subscription=subscription_id)
 
         phases = schedule.get("phases", []) or []
-        phase_start_date = (
-            (phases[0].get("start_date") if phases else None)
-            or schedule.get("start_date")
-            or period_start
-        )
-        phase_end_date = (
-            (phases[0].get("end_date") if phases else None)
-            or period_end
-        )
+        phase_start_date = (phases[0].get("start_date") if phases else None) or schedule.get("start_date") or period_start
+        phase_end_date = (phases[0].get("end_date") if phases else None) or period_end
 
         updated_schedule = await stripe.SubscriptionSchedule.modify_async(
             schedule.id,
@@ -883,21 +874,11 @@ async def schedule_subscription_items_change_at_period_end_async(
 
     phases = schedule.get("phases", []) or []
     current_phase = schedule.get("current_phase") or {}
-    phase_start_date = (
-        current_phase.get("start_date")
-        or (phases[0].get("start_date") if phases else None)
-        or schedule.get("start_date")
-        or period_start
-    )
-    phase_end_date = (
-        current_phase.get("end_date")
-        or (phases[0].get("end_date") if phases else None)
-        or period_end
-    )
+    phase_start_date = current_phase.get("start_date") or (phases[0].get("start_date") if phases else None) or schedule.get("start_date") or period_start
+    phase_end_date = current_phase.get("end_date") or (phases[0].get("end_date") if phases else None) or period_end
     if not phase_start_date or not phase_end_date:
         logging.warning(
-            "Cannot schedule subscription item change due to missing schedule/period boundaries: "
-            f"{subscription_id=}, {period_start=}, {period_end=}, {phase_start_date=}, {phase_end_date=}"
+            f"Cannot schedule subscription item change due to missing schedule/period boundaries: {subscription_id=}, {period_start=}, {period_end=}, {phase_start_date=}, {phase_end_date=}"
         )
         return {}
 
@@ -1089,10 +1070,7 @@ async def modify_subscription_plan_async(
             # Preserve this non-plan item (e.g. storage add-on) as-is
             modify_items.append({"id": item.get("id", "") if isinstance(item, dict) else getattr(item, "id", ""), "price": price_id, "quantity": quantity})
 
-    item_fingerprint = ",".join(
-        f"{item.get('id', '')}:{item.get('price', '')}:{item.get('quantity', 0)}"
-        for item in modify_items
-    )
+    item_fingerprint = ",".join(f"{item.get('id', '')}:{item.get('price', '')}:{item.get('quantity', 0)}" for item in modify_items)
     item_fingerprint_hash = hashlib.sha1(item_fingerprint.encode("utf-8")).hexdigest()[:12]
     idempotency_key = (
         f"billing:{tenant_id}:plan_change:{subscription_id}:"
@@ -1367,7 +1345,7 @@ def check_resources(**resource_deltas):
     """
 
     assert set(resource_deltas.keys()).issubset({"seats", "apps", "storage"}), f"resources should in ['seats', 'apps', 'storage'], get {resource_deltas}"
-    from api.db.services.billing_service import PurchasedProductOverviewService
+    from api.db.services.billing_service import SubscriptionService
 
     def decorator(f):
         @wraps(f)
@@ -1422,73 +1400,146 @@ def check_resources(**resource_deltas):
                 delta_members = resource_deltas.get("seats", 0)
                 delta_storage_bytes = resource_deltas.get("storage", 0)
 
-                check_ok, check_info = PurchasedProductOverviewService.check_subscription_by_tenant_id(
-                    tenant_id, delta_app=delta_app, delta_members=delta_members, delta_kb_storage=delta_storage_bytes
-                )
+                check_ok, check_info = SubscriptionService.check_by_tenant_id(tenant_id, delta_app=delta_app, delta_members=delta_members, delta_kb_storage=delta_storage_bytes)
 
                 if not check_ok:
-                    error_details = check_info.get("details", {})
-                    error_messages = []
-                    # Default to BILLING_RESOURCE_INSUFFICIENT when multiple resources are exceeded
-                    error_code = RetCode.BILLING_RESOURCE_INSUFFICIENT
-                    identified_error_resource = ""
-
-                    if "quota_points" in error_details:
-                        error_messages.append(f"Insufficient points. Current: {error_details['quota_points']['current']}, Limit: {error_details['quota_points']['limit']}")
-
-                    if "quota_apps" in error_details:
-                        error_messages.append(f"Insufficient app quota. Current: {error_details['quota_apps']['current']}, Limit: {error_details['quota_apps']['limit']}")
-
-                    if "quota_members" in error_details:
-                        error_messages.append(f"Insufficient seat quota. Current: {error_details['quota_members']['current']}, Limit: {error_details['quota_members']['limit']}")
-
-                    if "quota_storage" in error_details:
-                        error_messages.append(
-                            f"Insufficient storage quota. Current: {error_details['quota_storage']['current']} bytes, "
-                            f"Limit: {error_details['quota_storage']['limit']} bytes"
-                        )
-
-                    if len(error_messages) == 1:
-                        # Only one resource exceeded — use the specific code
-                        if "quota_points" in error_details:
-                            error_code = RetCode.BILLING_POINTS_INSUFFICIENT
-                            identified_error_resource = "quota_points"
-                        elif "quota_apps" in error_details:
-                            error_code = RetCode.BILLING_APPS_INSUFFICIENT
-                            identified_error_resource = "quota_apps"
-                        elif "quota_members" in error_details:
-                            error_code = RetCode.BILLING_SEATS_INSUFFICIENT
-                            identified_error_resource = "quota_members"
-                        elif "quota_storage" in error_details:
-                            error_code = RetCode.BILLING_STORAGE_INSUFFICIENT
-                            identified_error_resource = "quota_storage"
-
-                    if error_messages:
-                        error_msg = "; ".join(error_messages)
-                    else:
-                        error_msg = "Insufficient resources available. Contact the owner for further assistance."
-
-                    from api.db.services.user_service import TenantService
-
-                    ok, tenant = TenantService.get_by_id(tenant_id)
-                    if ok:
-                        error_msg = f"Insufficient resources in {tenant.name}: {error_msg}"
-
-                    if identified_error_resource:
-                        error_details = {"current": error_details[identified_error_resource]["current"], "limit": error_details[identified_error_resource]["limit"]}
-                    elif error_details:
-                        # Multiple resources exceeded — pick the first available for detail
-                        first_resource = next(iter(error_details.keys()))
-                        error_details = {"current": error_details[first_resource]["current"], "limit": error_details[first_resource]["limit"]}
-                    else:
-                        error_details = {}
-
-                    return get_resource_insufficient_result(code=error_code, message=error_msg, detail=error_details)
+                    check_info = _normalize_resource_check_failure(check_info, tenant_id)
+                    return get_resource_insufficient_result(
+                        code=check_info["code"],
+                        message=check_info["message"],
+                        detail=check_info["detail"],
+                    )
             return await current_app.ensure_async(f)(*args, **kwargs)
 
         return decorated_function
 
     return decorator
+
+
+def _normalize_resource_check_failure(check_info: dict, tenant_id: str) -> dict:
+    check_info = dict(check_info or {})
+    error_details = check_info.get("details", {}) or {}
+
+    from api.db.services.user_service import UserTenantService
+
+    tenant_email = UserTenantService.get_owner_email(tenant_id)
+    raw_error = check_info.get("error", "")
+
+    if "No active subscription" in raw_error:
+        error_msg = f"Tenant {tenant_email} subscription is invalid"
+        check_info.update(
+            {
+                "resource": "subscription",
+                "code": RetCode.BILLING_SUBSCRIPTION_INVALID,
+                "message": error_msg,
+                "detail": {},
+            }
+        )
+        return check_info
+
+    resource_map = {
+        "quota_points": (RetCode.BILLING_POINTS_INSUFFICIENT, "points"),
+        "quota_apps": (RetCode.BILLING_APPS_INSUFFICIENT, "apps"),
+        "quota_members": (RetCode.BILLING_SEATS_INSUFFICIENT, "seats"),
+        "quota_storage": (RetCode.BILLING_STORAGE_INSUFFICIENT, "storage"),
+    }
+    error_messages = []
+    error_code = RetCode.BILLING_RESOURCE_INSUFFICIENT
+    identified_error_resource = ""
+
+    if "quota_points" in error_details:
+        error_messages.append(f"Insufficient points quota of tenant {tenant_email}. Current: {error_details['quota_points']['current']}, Limit: {error_details['quota_points']['limit']}")
+
+    if "quota_apps" in error_details:
+        error_messages.append(f"Insufficient app quota of tenant {tenant_email}. Current: {error_details['quota_apps']['current']}, Limit: {error_details['quota_apps']['limit']}")
+
+    if "quota_members" in error_details:
+        error_messages.append(f"Insufficient seat quota of tenant {tenant_email}. Current: {error_details['quota_members']['current']}, Limit: {error_details['quota_members']['limit']}")
+
+    if "quota_storage" in error_details:
+        error_messages.append(
+            f"Insufficient storage quota of tenant {tenant_email}. Current: {error_details['quota_storage']['current']} Bytes, Limit: {error_details['quota_storage']['limit']} Bytes"
+        )
+
+    if len(error_messages) == 1:
+        for detail_key, (code, resource_name) in resource_map.items():
+            if detail_key in error_details:
+                error_code = code
+                identified_error_resource = detail_key
+                resource = resource_name
+                break
+        else:
+            resource = "resource"
+    else:
+        resource = "resource"
+
+    if error_messages:
+        error_msg = "; ".join(error_messages)
+    else:
+        error_msg = "Insufficient resources available. Contact the owner for further assistance."
+
+    if identified_error_resource:
+        detail = {
+            "current": error_details[identified_error_resource]["current"],
+            "limit": error_details[identified_error_resource]["limit"],
+        }
+    elif error_details:
+        first_resource = next(iter(error_details.keys()))
+        detail = {
+            "current": error_details[first_resource]["current"],
+            "limit": error_details[first_resource]["limit"],
+        }
+        resource = resource_map.get(first_resource, (None, "resource"))[1]
+    else:
+        detail = {}
+
+    check_info.update(
+        {
+            "resource": resource,
+            "code": error_code,
+            "message": error_msg,
+            "detail": detail,
+        }
+    )
+    return check_info
+
+
+def raise_dynamic_resource_error(check_info: dict, tenant_id: str, *, file_size: int | None = None) -> None:
+    normalized = _normalize_resource_check_failure(check_info, tenant_id)
+    resource = normalized.get("resource", "resource")
+    detail = normalized.get("detail") or {}
+    message = normalized.get("message") or normalized.get("error", "")
+
+    current = int(detail.get("current", 0))
+    limit = int(detail.get("limit", 0))
+
+    if resource == "storage" and file_size is not None and message and "File size:" not in message:
+        message = f"{message}. File size: {file_size} Bytes"
+
+    raise InsufficientResourceError(
+        resource=resource,
+        current=current,
+        limit=limit,
+        message=message,
+        file_size=file_size,
+    )
+
+
+def get_dynamic_resource_error_result(check_info: dict, tenant_id: str, *, file_size: int | None = None):
+    normalized = _normalize_resource_check_failure(check_info, tenant_id)
+    detail = normalized.get("detail") or {}
+    message = normalized.get("message") or normalized.get("error", "")
+
+    if normalized.get("resource") == "storage" and file_size is not None and message and "File size:" not in message:
+        message = f"{message}. File size: {file_size} Bytes"
+
+    from api.utils.api_utils import get_resource_insufficient_result
+
+    return get_resource_insufficient_result(
+        code=normalized["code"],
+        message=message,
+        detail=detail,
+    )
 
 
 @billing_enabled_guard((True, {}))
@@ -1519,7 +1570,7 @@ def check_dynamic_resources(tenant_id=None, **resource_deltas):
     """
     assert set(resource_deltas.keys()).issubset({"seats", "apps", "storage"}), f"resources should in ['seats', 'apps', 'storage'], get {resource_deltas}"
 
-    from api.db.services.billing_service import PurchasedProductOverviewService
+    from api.db.services.billing_service import SubscriptionService
 
     if not tenant_id:
         from flask import g
@@ -1561,9 +1612,12 @@ def check_dynamic_resources(tenant_id=None, **resource_deltas):
     delta_members = resource_deltas.get("seats", 0)
     delta_storage_bytes = resource_deltas.get("storage", 0)
 
-    return PurchasedProductOverviewService.check_subscription_by_tenant_id(
+    check_ok, check_info = SubscriptionService.check_by_tenant_id(
         tenant_id,
         delta_app=delta_app,
         delta_members=delta_members,
         delta_kb_storage=delta_storage_bytes,
     )
+    if check_ok:
+        return True, check_info
+    return False, _normalize_resource_check_failure(check_info, tenant_id)

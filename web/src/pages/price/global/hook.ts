@@ -56,6 +56,7 @@ export enum PriceCode {
   SeatsLimit = 2002,
   StorageLimit = 2003,
   PointsLimit = 2004,
+  SubscriptionInvalid = 2005,
 }
 
 export const RESOURCE_INSUFFICIENT_PRICE_CODES = new Set<number>([
@@ -64,6 +65,7 @@ export const RESOURCE_INSUFFICIENT_PRICE_CODES = new Set<number>([
   PriceCode.SeatsLimit,
   PriceCode.StorageLimit,
   PriceCode.PointsLimit,
+  PriceCode.SubscriptionInvalid,
 ]);
 
 export const isResourceInsufficientPriceCode = (code?: number) =>
@@ -77,7 +79,17 @@ interface IPriceData {
 export const showPriceModal = ({ code, detail = {}, message }: IPriceData) => {
   switch (code) {
     case PriceCode.MultLimit:
-      return false;
+    case PriceCode.SubscriptionInvalid:
+      showUpgradeTipsModal({
+        type: 'apps',
+        message:
+          message ||
+          i18n.t('price.upgradeTips.appsLimit', {
+            current: detail.current || 0,
+            limit: detail.limit || 0,
+          }),
+      });
+      return true;
     case PriceCode.SeatsLimit:
       showUpgradeTipsModal({
         type: 'team-member',

@@ -1,5 +1,12 @@
 import { Button } from '@/components/ui/button';
+import message from '@/components/ui/message';
 import { convertBytesToGb } from '@/lib/utils';
+import { PriceName } from '@/pages/price/constant';
+import {
+  useCharge,
+  useFetchPlanList,
+} from '@/pages/price/hook/use-price-hooks';
+import type { IPricePlanWithButton } from '@/pages/price/interface';
 import { createBillingPortalSession } from '@/services/price';
 import { AlertTriangle, CreditCard } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -47,6 +54,8 @@ export const BaseInfo = () => {
   const { t } = useTranslation();
   // const { data: baseData } = useFetchBaseOverview();
   const { data: planData } = useFetchPlanOverview();
+  const { data: planList } = useFetchPlanList();
+  const { charge } = useCharge();
   useEffect(() => {
     const plan = {
       ...planTemplate,
@@ -100,6 +109,40 @@ export const BaseInfo = () => {
     setCurrentPlan(plan);
   }, [planData, setCurrentPlan]);
 
+  const trialPriceId =
+    planList
+      ?.find((plan) => plan.name === PriceName.Trial)
+      ?.price_ids?.split(/\s+/)?.[0] || '';
+
+  const handleChangeToFree = async () => {
+    if (!trialPriceId) {
+      message.error(
+        t('billing.trialPlanUnavailable', {
+          defaultValue: 'Free plan is currently unavailable.',
+        }),
+      );
+      return;
+    }
+
+    const trialPlan: IPricePlanWithButton = {
+      id: trialPriceId,
+      title: t('price.free', { defaultValue: 'Free Plan' }),
+      description: t('price.freeDesc', {
+        defaultValue: 'Start with the free plan.',
+      }),
+      price: '',
+      features: [],
+      buttonLabel: t('billing.changeToFree', {
+        defaultValue: 'Change to Free',
+      }),
+      isUse: false,
+      icon: () => <></>,
+      name: PriceName.Trial,
+    };
+
+    await charge(trialPlan);
+  };
+
   const handleManagePaymentMethods = async () => {
     const { data: res } = await createBillingPortalSession({
       return_url: window.location.href,
@@ -142,23 +185,39 @@ export const BaseInfo = () => {
           })}
         </Button>
       </div>
-      {planData?.payment_required && (
+      {planData?.subscription_status === 'canceled' ? (
         <div className="mb-4 flex items-center justify-between gap-3 rounded border border-red-500/40 bg-red-500/10 px-4 py-3 text-text-primary">
           <div className="flex items-center gap-2">
             <AlertTriangle size={18} className="text-red-500" />
             <span className="text-sm">
-              Your subscription payment needs attention.
+              Your subscription has been canceled in Stripe. Switch to the Free
+              plan to continue.
             </span>
           </div>
-          <Button size="sm" onClick={handleRecoverPayment}>
+          <Button size="sm" onClick={handleChangeToFree}>
             <CreditCard size={16} />
-            {planData.payment_recovery_url
-              ? t('billing.payInvoice', { defaultValue: 'Pay invoice' })
-              : t('billing.updatePaymentMethod', {
-                  defaultValue: 'Update payment method',
-                })}
+            {t('billing.changeToFree', { defaultValue: 'Change to Free' })}
           </Button>
         </div>
+      ) : (
+        planData?.payment_required && (
+          <div className="mb-4 flex items-center justify-between gap-3 rounded border border-red-500/40 bg-red-500/10 px-4 py-3 text-text-primary">
+            <div className="flex items-center gap-2">
+              <AlertTriangle size={18} className="text-red-500" />
+              <span className="text-sm">
+                Your subscription payment needs attention.
+              </span>
+            </div>
+            <Button size="sm" onClick={handleRecoverPayment}>
+              <CreditCard size={16} />
+              {planData.payment_recovery_url
+                ? t('billing.payInvoice', { defaultValue: 'Pay invoice' })
+                : t('billing.updatePaymentMethod', {
+                    defaultValue: 'Update payment method',
+                  })}
+            </Button>
+          </div>
+        )
       )}
       <div className="grid grid-cols-2 gap-4">
         <ResourceUsage

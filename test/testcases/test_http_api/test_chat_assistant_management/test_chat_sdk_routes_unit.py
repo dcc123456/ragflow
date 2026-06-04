@@ -519,6 +519,8 @@ def _load_chat_module(monkeypatch):
     billing_mod = ModuleType("api.utils.billing")
     billing_mod.check_dynamic_resources = lambda *_args, **_kwargs: (True, {"details": {}, "error": ""})
     billing_mod.check_resources = lambda **_: (lambda f: f)
+    billing_mod.get_dynamic_resource_error_result = lambda *_a, **_k: {"code": 0, "data": None, "message": ""}
+    billing_mod.InsufficientResourceError = type("InsufficientResourceError", (Exception,), {})
     monkeypatch.setitem(sys.modules, "api.utils.billing", billing_mod)
 
     rag_pkg = ModuleType("rag")

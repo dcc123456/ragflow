@@ -1,6 +1,7 @@
 import { UploadFormSchemaType } from '@/components/file-upload-dialog';
 import { useSetModalState } from '@/hooks/common-hooks';
 import { useUploadFile } from '@/hooks/use-file-request';
+import { showPriceModal } from '@/pages/price/global/hook';
 import { useCallback } from 'react';
 import { useGetFolderId } from './hooks';
 
@@ -16,11 +17,33 @@ export const useHandleUploadFile = () => {
   const onFileUploadOk = useCallback(
     async ({ fileList }: UploadFormSchemaType): Promise<number | undefined> => {
       if (fileList.length > 0) {
-        const ret: number = await uploadFile({ fileList, parentId: id });
-        if (ret === 0) {
-          hideFileUploadModal();
+        const ret = await uploadFile({ fileList, parentId: id });
+
+        // The upload goes through umi-request (not raw axios), so the
+        // global response interceptor in utils/request.ts already shows
+        // the upgrade modal for billing codes 2000-2005. We also dispatch
+        // the modal explicitly here so codes 2006/2007 are covered and the
+        // file-management page matches the dataset upload behavior.
+        if (
+          ret &&
+          typeof ret.code === 'number' &&
+          ret.code >= 2000 &&
+          ret.code <= 2007
+        ) {
+          showPriceModal({
+            code: ret.code,
+            detail: (ret as any).detail,
+            message: ret.message,
+          });
+          return ret.code;
         }
-        return ret;
+
+        if (ret?.code === 0) {
+          hideFileUploadModal();
+          return 0;
+        }
+
+        return ret?.code;
       }
     },
     [uploadFile, hideFileUploadModal, id],

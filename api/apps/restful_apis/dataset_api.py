@@ -21,8 +21,8 @@ from quart import request
 from api.apps import current_user, login_required
 from api.apps.services import dataset_api_service
 from api.db import PermissionValue, ResourceType
-from api.utils.api_utils import add_tenant_id_to_kwargs, get_error_argument_result, get_error_data_result, get_resource_insufficient_result, get_result, get_json_result
-from api.utils.billing import check_dynamic_resources
+from api.utils.api_utils import add_tenant_id_to_kwargs, get_error_argument_result, get_error_data_result, get_result, get_json_result
+from api.utils.billing import check_dynamic_resources, get_dynamic_resource_error_result
 from api.utils.permission_utils import check_kb_permission, has_permission_for_member
 from api.utils.validation_utils import (
     CreateDatasetReq,
@@ -216,17 +216,7 @@ async def create(tenant_id: str = None):
         if settings.BILLING_ENABLED:
             check_ok, check_info = check_dynamic_resources(tenant_id=tenant_id, apps=1)
             if not check_ok:
-                error_details = check_info.get("details", {})
-                if "quota_apps" in error_details:
-                    return get_resource_insufficient_result(
-                        code=RetCode.BILLING_APPS_INSUFFICIENT,
-                        message=f"Insufficient resources in tenant {tenant_id}: Insufficient app quota. Current: {error_details['quota_apps']['current']}, Limit: {error_details['quota_apps']['limit']}",
-                        detail={"current": error_details['quota_apps']['current'], "limit": error_details['quota_apps']['limit']},
-                    )
-                return get_error_data_result(
-                    code=RetCode.BILLING_APPS_INSUFFICIENT,
-                    message=check_info.get("error", "Insufficient app quota"),
-                )
+                return get_dynamic_resource_error_result(check_info, tenant_id)
 
         if not tenant_id:
             tenant_id = current_user.id
@@ -647,7 +637,7 @@ async def search(tenant_id, dataset_id):
     req, err = await validate_and_parse_json_request(request, SearchDatasetReq)
     if err is not None:
         return get_error_argument_result(err)
-    req['dataset_ids'] = [dataset_id]
+    req["dataset_ids"] = [dataset_id]
     try:
         success, result = await dataset_api_service.search_datasets(tenant_id, req)
         if success:
