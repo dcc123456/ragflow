@@ -110,9 +110,9 @@ class TenantLLMService(CommonService):
     @classmethod
     @DB.connection_context()
     def get_api_key(cls, tenant_id, model_name, model_type=None):
-        mdlnm, fid, _ = TenantLLMService.split_model_name_and_factory(model_name)
+        mdlnm, fid, model_tenant_id = TenantLLMService.split_model_name_and_factory(model_name)
         model_type_val = model_type.value if hasattr(model_type, "value") else model_type
-        query_kwargs = {"tenant_id": tenant_id, "llm_name": mdlnm}
+        query_kwargs = {"tenant_id": model_tenant_id or tenant_id, "llm_name": mdlnm}
         if model_type_val is not None:
             query_kwargs["model_type"] = model_type_val
         if not fid:

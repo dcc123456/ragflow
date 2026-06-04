@@ -321,7 +321,7 @@ async def _validate_llm_id(llm_id, tenant_id, llm_setting=None):
 
     if not await thread_pool_exec(
         TenantLLMService.query,
-        tenant_id=tenant_id,
+        tenant_id=llm_tenant_id or tenant_id,
         llm_name=llm_name,
         llm_factory=llm_factory,
         model_type=model_type,
@@ -338,7 +338,7 @@ async def _validate_rerank_id(rerank_id, tenant_id):
         return None
     if await thread_pool_exec(
         TenantLLMService.query,
-        tenant_id=tenant_id,
+        tenant_id=llm_tenant_id or tenant_id,
         llm_name=llm_name,
         llm_factory=llm_factory,
         model_type="rerank",
