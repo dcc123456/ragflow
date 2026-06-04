@@ -43,8 +43,11 @@ from rag.utils.redis_conn import REDIS_CONN
 # Redis key patterns
 _TOKEN_KEY_PREFIX = "billing:token:"
 _RATELIMIT_KEY_PREFIX = "billing:ratelimit:"
+_API_AUTH_PLAN_KEY_PREFIX = "billing:api_auth_plan:"
+_API_AUTH_ALLOWED_PLANS = {"starter", "pro"}
 # Set a TTL on rate limit keys so stale entries auto-expire
-_RATELIMIT_KEY_TTL = 86400 * 31  # 31 days
+_RATELIMIT_KEY_TTL = 86400
+_API_AUTH_PLAN_KEY_TTL = 86400
 
 # Periodic sync state
 _sync_thread: Optional[threading.Thread] = None
@@ -199,6 +202,124 @@ def sync_api_token(token: str, tenant_id: str) -> bool:
     except Exception as e:
         logging.warning(f"sync_api_token failed: {e}")
         return False
+
+
+def _is_api_auth_plan_allowed(plan_name: str | None, subscription_status: str | None = None) -> bool:
+    return (plan_name or "").strip().lower() in _API_AUTH_ALLOWED_PLANS and(subscription_status or "").strip().lower() in {"active"}
+
+
+def sync_api_auth_plan(tenant_id: str, plan_name: str | None, subscription_status: str | None = None) -> bool:
+    """
+    Cache whether a tenant is allowed to authenticate with API/Beta keys.
+
+    Only Starter and Pro tenants are stored as positive Redis entries. Missing
+    keys intentionally fall back to SQL in the application auth path.
+    """
+    redis = _get_redis()
+    if not redis or not tenant_id:
+        return False
+
+    key = f"{_API_AUTH_PLAN_KEY_PREFIX}{tenant_id}"
+    try:
+        if _is_api_auth_plan_allowed(plan_name, subscription_status):
+            redis.set(key, "1", ex=_API_AUTH_PLAN_KEY_TTL)
+        else:
+            redis.delete(key)
+        return True
+    except Exception as e:
+        logging.warning(f"sync_api_auth_plan failed for {tenant_id}: {e}")
+        return False
+
+
+def sync_api_auth_plan_from_db(tenant_id: str) -> bool:
+    """Refresh a tenant's API/Beta-key entitlement cache from MySQL."""
+    if not tenant_id:
+        return False
+
+    try:
+        from api.db.db_models import DB, Subscription
+
+        with DB.connection_context():
+            subscription = (
+                Subscription.select(
+                    Subscription.plan_name,
+                    Subscription.subscription_status,
+                )
+                .where(Subscription.tenant_id == tenant_id)
+                .order_by(Subscription.getter_by("create_time").desc())
+                .dicts()
+                .first()
+            )
+    except Exception as e:
+        logging.warning(f"sync_api_auth_plan_from_db failed for {tenant_id}: {e}")
+        return False
+
+    if not subscription:
+        return sync_api_auth_plan(tenant_id, None)
+    return sync_api_auth_plan(
+        tenant_id,
+        subscription.get("plan_name"),
+        subscription.get("subscription_status"),
+    )
+
+
+def is_api_auth_plan_allowed(tenant_id: str) -> bool:
+    """
+    Return whether API/Beta-key auth is allowed for this tenant.
+
+    Redis is checked first. If the tenant is not cached as Starter/Pro, SQL is
+    used as the source of truth and positive results are cached.
+    """
+    from common import settings
+
+    if not settings.BILLING_ENABLED:
+        return True
+    if not tenant_id:
+        return False
+
+    redis = _get_redis()
+    key = f"{_API_AUTH_PLAN_KEY_PREFIX}{tenant_id}"
+    if redis:
+        try:
+            if redis.get(key) == "1":
+                return True
+        except Exception as e:
+            logging.warning(f"is_api_auth_plan_allowed Redis lookup failed for {tenant_id}: {e}")
+
+    try:
+        from api.db.db_models import DB, Subscription
+
+        with DB.connection_context():
+            subscription = (
+                Subscription.select(
+                    Subscription.plan_name,
+                    Subscription.subscription_status,
+                )
+                .where(Subscription.tenant_id == tenant_id)
+                .order_by(Subscription.getter_by("create_time").desc())
+                .dicts()
+                .first()
+            )
+    except Exception as e:
+        logging.warning(f"is_api_auth_plan_allowed SQL lookup failed for {tenant_id}: {e}")
+        return False
+
+    allowed = bool(subscription) and _is_api_auth_plan_allowed(
+        subscription.get("plan_name"),
+        subscription.get("subscription_status"),
+    )
+    if allowed:
+        sync_api_auth_plan(
+            tenant_id,
+            subscription.get("plan_name"),
+            subscription.get("subscription_status"),
+        )
+    elif redis:
+        try:
+            redis.delete(key)
+        except Exception:
+            pass
+    return allowed
 
 
 def delete_api_token(token: str) -> bool:
@@ -399,7 +520,7 @@ def sync_all_rate_limits() -> int:
         from api.db.db_models import Subscription
         subscriptions = (
             Subscription
-            .select(Subscription.tenant_id, Subscription.plan_name, Subscription.end_time)
+            .select(Subscription.tenant_id, Subscription.plan_name, Subscription.subscription_status, Subscription.end_time)
             .where(Subscription.subscription_status.in_(["active", "trialing"]))
             .dicts()
         )
@@ -412,6 +533,7 @@ def sync_all_rate_limits() -> int:
             tenant_ids_seen.add(tid)
             period_end = _to_unix_ts(sub.get("end_time"))
             sync_tenant_rate_limit(tid, sub["plan_name"], period_end=period_end)
+            sync_api_auth_plan(tid, sub["plan_name"], sub["subscription_status"])
             count += 1
 
         # Also sync tenants that have no subscription — apply default (Trial) limits

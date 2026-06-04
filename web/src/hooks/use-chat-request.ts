@@ -544,7 +544,7 @@ export const useFetchExternalChatInfo = () => {
     queryFn: async () => {
       const { data } = await chatService.fetchExternalChatInfo(id!);
 
-      return data?.data;
+      return data?.data ?? ({} as IExternalChatInfo);
     },
   });
 

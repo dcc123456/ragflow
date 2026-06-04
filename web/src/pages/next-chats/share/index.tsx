@@ -48,7 +48,7 @@ const ChatContainer = () => {
     }
   }, [locale, visibleAvatar]);
 
-  const avatarDialogSrc = chatInfo.avatar;
+  const avatarDialogSrc = chatInfo?.avatar;
 
   if (!conversationId) {
     return <div>empty</div>;
@@ -57,8 +57,8 @@ const ChatContainer = () => {
   return (
     <>
       <EmbedContainer
-        title={chatInfo.title}
-        avatar={chatInfo.avatar}
+        title={chatInfo?.title ?? ''}
+        avatar={chatInfo?.avatar}
         handleReset={removeAllMessagesExceptFirst}
       >
         <div className="flex flex-1 flex-col p-2.5 h-[90vh] m-3">

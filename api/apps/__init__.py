@@ -34,7 +34,13 @@ from flasgger import Swagger
 from quart_schema import QuartSchema
 from common import settings
 from common.billing_utils import init_stripe_api_key
-from api.utils.api_utils import server_error_response, get_json_result
+from api.utils.api_utils import (
+    API_KEY_INVALID,
+    API_KEY_PLAN_UPGRADE_MESSAGE,
+    get_json_result,
+    is_api_key_plan_allowed,
+    server_error_response,
+)
 from api.constants import API_VERSION
 from common.misc_utils import get_uuid
 
@@ -245,13 +251,17 @@ def _load_user(auth_types=None):
             if objs:
                 user = UserService.query(id=objs[0].tenant_id, status=StatusEnum.VALID.value)
                 if user:
+                    if not is_api_key_plan_allowed(objs[0].tenant_id):
+                        g.auth_error_code = RetCode.FORBIDDEN
+                        g.auth_error_message = API_KEY_PLAN_UPGRADE_MESSAGE
+                        return None
                     g.auth_type = AUTH_BETA
                     g.user = user[0]
                     return user[0]
-            g.auth_error_message = 'Authentication error: API key is invalid! '
+            g.auth_error_message = API_KEY_INVALID
         except Exception as e_beta:
+            g.auth_error_message = API_KEY_INVALID
             logging.warning(f"load_user from beta token got exception {e_beta}")
-            g.auth_error_message = 'Authentication error: API key is invalid!'
 
     # Try JWT decoding
     if AUTH_JWT in auth_types:
@@ -289,6 +299,10 @@ def _load_user(auth_types=None):
                     if not user[0].access_token or not user[0].access_token.strip():
                         logging.warning(f"User {user[0].email} has empty access_token in database")
                         return _load_user_from_session() if AUTH_JWT in auth_types else None
+                    if not is_api_key_plan_allowed(objs[0].tenant_id):
+                        g.auth_error_code = RetCode.FORBIDDEN
+                        g.auth_error_message = API_KEY_PLAN_UPGRADE_MESSAGE
+                        return None
                     g.auth_type = AUTH_API
                     g.user = user[0]
                     return user[0]
@@ -337,11 +351,14 @@ def login_required(func: Callable[P, Awaitable[T]] = None, auth_types=None) -> C
                     request.path,
                 )
             if not user:  # or not session.get("_user_id"):
-                if _normalize_auth_types(auth_types) == {AUTH_BETA}:
-                    return get_json_result(
-                        code=RetCode.DATA_ERROR,
-                        message=getattr(g, "auth_error_message", None) or "Authorization is not valid!",
-                    )
+                auth_types_set = _normalize_auth_types(auth_types)
+                code = getattr(g, "auth_error_code", RetCode.UNAUTHORIZED)
+                message = getattr(g, "auth_error_message", API_KEY_INVALID)
+                if {AUTH_BETA} == auth_types_set:
+                    # Avoid 401 return to login page for chatbot
+                    return get_json_result(code=RetCode.DATA_ERROR if code == RetCode.UNAUTHORIZED else code, message=message)
+                if (AUTH_BETA in auth_types_set or AUTH_API in auth_types_set) and code == RetCode.FORBIDDEN:
+                    return get_json_result(code=code, message=message or API_KEY_PLAN_UPGRADE_MESSAGE)
                 raise QuartAuthUnauthorized()
             return await current_app.ensure_async(func)(*args, **kwargs)
 

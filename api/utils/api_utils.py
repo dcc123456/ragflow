@@ -269,6 +269,24 @@ def get_json_result(code: RetCode = RetCode.SUCCESS, message="success", data=Non
     response = {"code": code, "message": message, "data": data}
     return _safe_jsonify(response)
 
+API_KEY_INVALID = "Authentication error: API key is invalid!"
+API_KEY_PLAN_UPGRADE_MESSAGE = "You need to upgrade to a Starter or Pro plan to use an API key."
+
+
+def is_api_key_plan_allowed(tenant_id: str) -> bool:
+    if not settings.BILLING_ENABLED:
+        return True
+    try:
+        from common.billing_rate_limit_sync import is_api_auth_plan_allowed
+        return is_api_auth_plan_allowed(tenant_id)
+    except Exception as e:
+        logging.warning(f"Failed to check API key plan for tenant {tenant_id}: {e}")
+        return False
+
+
+def get_api_key_plan_error_result():
+    return build_error_result(message=API_KEY_PLAN_UPGRADE_MESSAGE, code=RetCode.FORBIDDEN)
+
 
 def apikey_required(func):
     @wraps(func)

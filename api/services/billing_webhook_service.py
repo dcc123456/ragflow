@@ -264,6 +264,24 @@ def _sync_main_subscription_from_stripe(
         plan_name=subscription_dict.get("plan_name"),
         subscription_status=subscription_dict.get("subscription_status"),
     )
+    _sync_api_auth_plan_for_subscription(
+        tenant_id=tenant_id,
+        plan_name=subscription_dict.get("plan_name"),
+        subscription_status=subscription_dict.get("subscription_status"),
+    )
+
+
+def _sync_api_auth_plan_for_subscription(
+    *,
+    tenant_id: str,
+    plan_name: str | None,
+    subscription_status: str | None,
+) -> None:
+    try:
+        from common.billing_rate_limit_sync import sync_api_auth_plan
+        sync_api_auth_plan(tenant_id, plan_name, subscription_status)
+    except Exception:
+        logging.exception("Failed to sync API auth plan cache for tenant %s", tenant_id)
 
 
 def _sync_tenant_rate_limit_for_subscription(
@@ -1352,6 +1370,11 @@ async def _handle_customer_subscription_deleted(event: dict):
             SubscriptionService.upsert_subscription(tenant_id, trial_subscription)
             PointAccountService.reset_plan_consumed_points_at_cycle_start(tenant_id)
             _sync_tenant_rate_limit_for_subscription(
+                tenant_id=tenant_id,
+                plan_name=trial_subscription.get("plan_name"),
+                subscription_status=trial_subscription.get("subscription_status"),
+            )
+            _sync_api_auth_plan_for_subscription(
                 tenant_id=tenant_id,
                 plan_name=trial_subscription.get("plan_name"),
                 subscription_status=trial_subscription.get("subscription_status"),

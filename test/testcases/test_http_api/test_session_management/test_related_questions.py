@@ -14,21 +14,34 @@
 #  limitations under the License.
 #
 import pytest
+import requests
 from common import related_questions
-from configs import INVALID_API_TOKEN
+from configs import HOST_ADDRESS, INVALID_API_TOKEN, VERSION
 from libs.auth import RAGFlowHttpApiAuth
+
+
+def _get_beta_auth(auth):
+    tokens_res = requests.get(
+        f"{HOST_ADDRESS}/api/{VERSION}/system/tokens",
+        headers={"Authorization": auth},
+        timeout=30,
+    )
+    assert tokens_res.status_code == 200, tokens_res.text
+    tokens_payload = tokens_res.json()
+    assert tokens_payload["code"] == 0, tokens_payload
+    return RAGFlowHttpApiAuth(tokens_payload["data"][0]["beta"])
 
 
 class TestRelatedQuestions:
     @pytest.mark.p3
-    def test_related_questions_success(self, HttpApiAuth):
-        res = related_questions(HttpApiAuth, {"question": "ragflow", "industry": "search"})
+    def test_related_questions_success(self, auth):
+        res = related_questions(_get_beta_auth(auth), {"question": "ragflow", "industry": "search"})
         assert res["code"] == 0, res
         assert isinstance(res.get("data"), list), res
 
     @pytest.mark.p2
-    def test_related_questions_missing_question(self, HttpApiAuth):
-        res = related_questions(HttpApiAuth, {"industry": "search"})
+    def test_related_questions_missing_question(self, auth):
+        res = related_questions(_get_beta_auth(auth), {"industry": "search"})
         assert res["code"] == 101, res
         assert "question" in res.get("message", ""), res
 

@@ -149,19 +149,31 @@ def _run(coro):
     return asyncio.run(coro)
 
 
-def _identity_decorator(func):
-    @wraps(func)
-    async def wrapper(*args, **kwargs):
-        return await func(*args, **kwargs)
+def _identity_decorator(func=None, **_kwargs):
+    def decorator(inner):
+        @wraps(inner)
+        async def wrapper(*args, **kwargs):
+            return await inner(*args, **kwargs)
 
-    return wrapper
+        return wrapper
+
+    if func is None:
+        return decorator
+    return decorator(func)
+
+
+def _patch_apps_auth(apps_mod):
+    apps_mod.AUTH_JWT = "JWT"
+    apps_mod.AUTH_API = "API"
+    apps_mod.AUTH_BETA = "BETA"
+    apps_mod.login_required = _identity_decorator
 
 
 def _load_doc_module(monkeypatch):
     repo_root = Path(__file__).resolve().parents[4]
     api_apps_mod = ModuleType("api.apps")
     api_apps_mod.__path__ = [str(repo_root / "api" / "apps")]
-    api_apps_mod.login_required = _identity_decorator
+    _patch_apps_auth(api_apps_mod)
     monkeypatch.setitem(sys.modules, "api.apps", api_apps_mod)
 
     common_pkg = ModuleType("common")
@@ -171,7 +183,7 @@ def _load_doc_module(monkeypatch):
     apps_mod = ModuleType("api.apps")
     apps_mod.__path__ = [str(repo_root / "api" / "apps")]
     apps_mod.current_user = SimpleNamespace(id="user-1")
-    apps_mod.login_required = lambda func: func
+    _patch_apps_auth(apps_mod)
     monkeypatch.setitem(sys.modules, "api.apps", apps_mod)
 
     api_constants_mod = ModuleType("api.constants")
@@ -286,7 +298,7 @@ def _load_doc_module(monkeypatch):
     apps_mod = ModuleType("api.apps")
     apps_mod.__path__ = [str(repo_root / "api" / "apps")]
     apps_mod.current_user = SimpleNamespace(id="user-1")
-    apps_mod.login_required = lambda func: func
+    _patch_apps_auth(apps_mod)
     monkeypatch.setitem(sys.modules, "api.apps", apps_mod)
 
     services_pkg = ModuleType("api.db.services")
