@@ -548,12 +548,27 @@ def _get_subscription_downgrade_info(tenant_id: str) -> dict | None:
 async def _send_cancelled_email(
     tenant_id: str, sub: dict, exceed_info: dict
 ) -> None:
-    """Notify the tenant owner that their downgrade has been cancelled."""
+    """Notify the tenant owner that their downgrade has been cancelled.
+
+    The email tells the user the deadline (period_end_date) to resubmit
+    and what happens if they do nothing.
+    """
+    from datetime import datetime as _dt
+
+    end_time = sub.get("end_time")
+    if hasattr(end_time, "strftime"):
+        period_end_str = end_time.strftime("%Y-%m-%d")
+    elif isinstance(end_time, (int, float)):
+        period_end_str = _dt.fromtimestamp(end_time).strftime("%Y-%m-%d")
+    else:
+        period_end_str = str(end_time or "")
+
     try:
         await _send_guard_email(
             tenant_id, sub, exceed_info,
             template_key="downgrade_cancelled",
             subject="Your Scheduled Downgrade Has Been Cancelled",
+            period_end_date=period_end_str,
         )
         logger.info("Sent cancellation email to tenant %s", tenant_id)
     except Exception:

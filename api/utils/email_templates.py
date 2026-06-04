@@ -62,9 +62,13 @@ downgraded plan's quota limits:
 - Members: {{ current_members }} used, {{ target_members }} limit after downgrade
 - Apps:   {{ current_apps }} used, {{ target_apps }} limit after downgrade
 
-No additional charges have been applied.  If you still wish to downgrade,
-please reduce your usage to within the target plan's limits and resubmit the
-downgrade request.
+No additional charges have been applied, and you will remain on your current
+{{ current_plan }} plan.
+
+If you reduce your usage to within the limits above and resubmit your downgrade
+request before {{ period_end_date }}, the downgrade will take effect at the end
+of your current billing cycle.  Otherwise, your {{ current_plan }} plan will
+renew at the standard rate on {{ period_end_date }}.
 
 If you have any questions, please contact our support team.
 """
