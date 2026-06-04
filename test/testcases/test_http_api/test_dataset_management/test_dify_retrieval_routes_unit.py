@@ -67,6 +67,11 @@ def _run(coro):
     return asyncio.run(coro)
 
 
+@pytest.fixture(scope="session", autouse=True)
+def set_tenant_info():
+    return None
+
+
 def _load_dify_retrieval_module(monkeypatch):
     repo_root = Path(__file__).resolve().parents[4]
 
@@ -86,8 +91,11 @@ def _load_dify_retrieval_module(monkeypatch):
     monkeypatch.setitem(sys.modules, "common.settings", settings_mod)
     common_pkg.settings = settings_mod
 
+    api_apps_mod = ModuleType("api.apps")
+    api_apps_mod.login_required = lambda func: func
+    monkeypatch.setitem(sys.modules, "api.apps", api_apps_mod)
+
     api_utils_mod = ModuleType("api.utils.api_utils")
-    api_utils_mod.apikey_required = lambda func: func
     api_utils_mod.get_request_json = lambda: _AwaitableValue({})
     api_utils_mod.get_json_result = lambda data=None, message="", code=0, **kwargs: {
         "code": code,

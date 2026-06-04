@@ -16,7 +16,7 @@
 """Regression tests for retrieval in api/apps/restful_apis/dify_retrieval_api.py.
 
 Issue #15027: cross-tenant knowledge-base access via POST /api/v1/dify/retrieval.
-The handler authenticated the caller via @apikey_required (resolving
+The handler authenticated the caller via @login_required (resolving
 tenant_id) but then fetched the requested knowledge_id with no tenant
 filter, allowing any valid API key to retrieve chunks from any other
 tenant's KB by id. The fix adds a KnowledgebaseService.accessible(...)
@@ -85,10 +85,16 @@ class _FakeKGRetriever:
 
 def _load_dify_retrieval(monkeypatch, *, kb, accessible, request_body, chunks=None):
     """Load dify_retrieval_api.py with minimum stubs to exercise the retrieval handler."""
+    repo_root = Path(__file__).resolve().parents[5]
+
+    common_pkg = ModuleType("common")
+    common_pkg.__path__ = [str(repo_root / "common")]
+    monkeypatch.setitem(sys.modules, "common", common_pkg)
+
+    _stub(monkeypatch, "api.apps", login_required=lambda func: func)
     _stub(
         monkeypatch,
         "api.utils.api_utils",
-        apikey_required=lambda func: func,
         build_error_result=lambda message="", code=0, data=False: {"code": code, "message": message, "data": data},
         get_request_json=lambda: _AwaitableValue(request_body),
         get_json_result=lambda code=0, message="", data=None: {"code": code, "message": message, "data": data},
@@ -156,7 +162,6 @@ def _load_dify_retrieval(monkeypatch, *, kb, accessible, request_body, chunks=No
     quart_stub.jsonify = lambda payload: payload
     monkeypatch.setitem(sys.modules, "quart", quart_stub)
 
-    repo_root = Path(__file__).resolve().parents[5]
     module_path = repo_root / "api" / "apps" / "restful_apis" / "dify_retrieval_api.py"
     spec = importlib.util.spec_from_file_location("test_dify_retrieval_module", module_path)
     module = importlib.util.module_from_spec(spec)
