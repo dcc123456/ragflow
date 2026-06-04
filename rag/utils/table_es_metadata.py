@@ -153,22 +153,44 @@ def _es_field_value_to_doc_metadata(val, *, from_tks_fallback: bool) -> str | No
     return _value_to_meta_string(val)
 
 
-def aggregate_table_manual_doc_metadata(chunks: list, task: dict) -> dict:
+def aggregate_table_doc_metadata(chunks: list, task: dict) -> dict:
     """
     Collect unique values per metadata/both column across chunks for document-level metadata.
-    Used when table_column_mode == manual (parallel to LLM gen_metadata, no schema required).
+    Works for both table_column_mode == manual and auto (where all columns default to "both").
     """
     logging.debug(
-        f"[TABLE_META_DEBUG] aggregate_table_manual_doc_metadata called with {len(chunks)} chunks"
+        f"[TABLE_META_DEBUG] aggregate_table_doc_metadata called with {len(chunks)} chunks"
     )
     eff = merge_table_parser_config_from_kb(task)
-    if eff.get("table_column_mode") != "manual":
+    mode = eff.get("table_column_mode") or "auto"
+    if mode not in ("manual", "auto"):
         logging.debug(
-            f"[TABLE_META_DEBUG] skip aggregate: table_column_mode={eff.get('table_column_mode')!r}"
+            f"[TABLE_META_DEBUG] skip aggregate: table_column_mode={mode!r}"
         )
         return {}
     roles = eff.get("table_column_roles") or {}
     table_column_names = eff.get("table_column_names") or []
+    # Reload table_column_names from KB if empty (chunk() writes them during parse,
+    # but the task snapshot may be stale)
+    if not table_column_names:
+        kb_id = task.get("kb_id")
+        if kb_id:
+            try:
+                KBS = _knowledgebase_service_cls()
+                ok, kb = KBS.get_by_id(kb_id)
+                if ok and kb:
+                    fresh_names = (kb.parser_config or {}).get("table_column_names") or []
+                    if fresh_names:
+                        table_column_names = fresh_names
+                        logging.debug(
+                            f"[TABLE_META_DEBUG] reloaded table_column_names from DB: {fresh_names}"
+                        )
+            except Exception as e:
+                logging.debug(
+                    "[TABLE_META_DEBUG] failed to reload table_column_names from DB: %s",
+                    e,
+                    exc_info=True,
+                )
     if table_column_names:
         meta_cols = [
             col

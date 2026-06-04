@@ -102,7 +102,7 @@ from common.billing_utils import init_stripe_api_key
 from rag.utils.rabbitmq_conn import RABBITMQ_CONN
 from common.constants import PAGERANK_FLD, TAG_FLD
 from rag.utils.table_es_metadata import (
-    aggregate_table_manual_doc_metadata,
+    aggregate_table_doc_metadata,
     merge_table_parser_config_from_kb,
     table_parser_strip_doc_metadata_keys,
 )
@@ -1741,42 +1741,41 @@ async def do_handle_task(task):
 
         DocumentService.increment_chunk_num(task_doc_id, task_dataset_id, token_count, chunk_count, 0)
 
-        # Table parser (manual): push metadata/both column values to document-level metadata for UI / chat filters
+        # Table parser: push metadata/both column values to document-level metadata for UI / chat filters
         if task.get("parser_id", "").lower() == "table":
             eff_pc = merge_table_parser_config_from_kb(task)
             logging.debug(
                 f"[TABLE_META_DEBUG] table post-index: table_column_mode={eff_pc.get('table_column_mode')!r}"
             )
-            if eff_pc.get("table_column_mode") == "manual":
+            try:
+                agg = aggregate_table_doc_metadata(chunks, task)
+                logging.debug(f"[TABLE_META_DEBUG] aggregated metadata: {agg}")
+                strip_keys = table_parser_strip_doc_metadata_keys(eff_pc)
+                existing = DocMetadataService.get_document_metadata(task_doc_id)
+                existing = existing if isinstance(existing, dict) else {}
+                preserved = {k: v for k, v in existing.items() if k not in strip_keys}
+                merged = update_metadata_to(dict(preserved), agg)
+                logging.debug(
+                    f"[TABLE_META_DEBUG] calling update_document_metadata for doc_id={task_doc_id}, "
+                    f"meta_fields keys={list(merged.keys())}, "
+                    f"table_strip_key_count={len(strip_keys)}, agg_keys={list(agg.keys())}"
+                )
                 try:
-                    agg = aggregate_table_manual_doc_metadata(chunks, task)
-                    logging.debug(f"[TABLE_META_DEBUG] aggregated metadata: {agg}")
-                    strip_keys = table_parser_strip_doc_metadata_keys(eff_pc)
-                    existing = DocMetadataService.get_document_metadata(task_doc_id)
-                    existing = existing if isinstance(existing, dict) else {}
-                    preserved = {k: v for k, v in existing.items() if k not in strip_keys}
-                    merged = update_metadata_to(dict(preserved), agg)
-                    logging.debug(
-                        f"[TABLE_META_DEBUG] calling update_document_metadata for doc_id={task_doc_id}, "
-                        f"meta_fields keys={list(merged.keys())}, "
-                        f"table_strip_key_count={len(strip_keys)}, agg_keys={list(agg.keys())}"
-                    )
-                    try:
-                        DocMetadataService.update_document_metadata(task_doc_id, merged)
-                        logging.debug("[TABLE_META_DEBUG] update_document_metadata succeeded")
-                    except Exception as ue:
-                        logging.error(
-                            "update_document_metadata failed (table parser, doc_id=%s): %s",
-                            task_doc_id,
-                            ue,
-                            exc_info=True,
-                        )
-                except Exception as e:
-                    logging.exception(
-                        "Table parser document metadata aggregation failed (doc_id=%s): %s",
+                    DocMetadataService.update_document_metadata(task_doc_id, merged)
+                    logging.debug("[TABLE_META_DEBUG] update_document_metadata succeeded")
+                except Exception as ue:
+                    logging.error(
+                        "update_document_metadata failed (table parser, doc_id=%s): %s",
                         task_doc_id,
-                        e,
+                        ue,
+                        exc_info=True,
                     )
+            except Exception as e:
+                logging.exception(
+                    "Table parser document metadata aggregation failed (doc_id=%s): %s",
+                    task_doc_id,
+                    e,
+                )
 
         progress_callback(msg="Indexing done ({:.2f}s).".format(timer() - start_ts))
 
