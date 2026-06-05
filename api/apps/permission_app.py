@@ -146,16 +146,6 @@ async def update_permission():
                 return get_data_error_result(message="Un-supported resource type.")
 
         has_manage_permission = has_permission_for_member(operator.id, tenant_id, resource_id, resource_type=resource_type, permission=PermissionValue.PERMISSION_MANAGE)[0]
-        if not has_manage_permission and resource_type == ResourceType.DOCUMENT and resource_id:
-            document_kb_id = DocumentService.get_knowledgebase_id(resource_id)
-            if document_kb_id:
-                has_manage_permission = has_permission_for_member(
-                    operator.id,
-                    tenant_id,
-                    document_kb_id,
-                    resource_type=ResourceType.KB,
-                    permission=PermissionValue.PERMISSION_MANAGE,
-                )[0]
         if not (operator.tenant_id == current_user.id or has_manage_permission):
             return get_data_error_result(message="Permission denied.")
 
@@ -525,10 +515,6 @@ async def update_permission_next():
 
         # ── operator manage-permission check ──────────────────────────────────
         has_manage = has_permission_for_member(operator.id, tenant_id, resource_id, resource_type=resource_type, permission=PermissionValue.PERMISSION_MANAGE)[0]
-        if not has_manage and resource_type == ResourceType.DOCUMENT and resource_id:
-            document_kb_id = DocumentService.get_knowledgebase_id(resource_id)
-            if document_kb_id:
-                has_manage = has_permission_for_member(operator.id, tenant_id, document_kb_id, resource_type=ResourceType.KB, permission=PermissionValue.PERMISSION_MANAGE)[0]
         if not (operator.tenant_id == current_user.id or has_manage):
             return get_data_error_result(message=f"Item {idx}: permission denied.")
 
@@ -641,7 +627,6 @@ async def list_permissions():
             document_tenant_id = DocumentService.get_tenant_id(document_id)
             if not document_tenant_id or document_tenant_id != tenant_id:
                 return get_data_error_result(message="Resource is not available.")
-            document_kb_id = DocumentService.get_knowledgebase_id(document_id)
             has_manage_permission = has_permission_for_member(
                 operator.id,
                 tenant_id,
@@ -649,14 +634,6 @@ async def list_permissions():
                 resource_type=resource_type,
                 permission=PermissionValue.PERMISSION_MANAGE,
             )[0]
-            if not has_manage_permission and document_kb_id:
-                has_manage_permission = has_permission_for_member(
-                    operator.id,
-                    tenant_id,
-                    document_kb_id,
-                    resource_type=ResourceType.KB,
-                    permission=PermissionValue.PERMISSION_MANAGE,
-                )[0]
             if not (operator.tenant_id == current_user.id or has_manage_permission):
                 return get_data_error_result(message="Permission denied.")
     elif resource_type == ResourceType.CANVAS:
