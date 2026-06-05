@@ -1558,6 +1558,7 @@ async def update_metadata(tenant_id, dataset_id):
 @add_tenant_id_to_kwargs
 async def ingest(tenant_id):
     req = await get_request_json()
+    logging.info("POST /api/v1/documents/ingest body=%s", json.dumps(req, ensure_ascii=False, separators=(",", ":")))
     try:
         user_id = tenant_id
 
