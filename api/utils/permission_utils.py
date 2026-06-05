@@ -20,6 +20,19 @@ def has_permission(user_permission: int, required_permission: PermissionValue) -
     return user_permission >= required_permission.value
 
 
+def _permission_scope_label(permission: PermissionValue) -> str:
+    return {
+        PermissionValue.PERMISSION_READ: "read",
+        PermissionValue.PERMISSION_WRITE: "write",
+        PermissionValue.PERMISSION_MANAGE: "management",
+        PermissionValue.PERMISSION_OWNER: "owner-level",
+    }.get(permission, "required")
+
+
+def _permission_denied_message(resource_name: str, permission: PermissionValue) -> str:
+    return f"Only {resource_name} owners or members with {_permission_scope_label(permission)} permissions can perform this action."
+
+
 def has_permission_for_member(operator_id, tenant_id, resource_id, resource_type, permission=PermissionValue.PERMISSION_MANAGE):
     from api.db.services.user_service import UserTenantService
     from api.db.services.team_service import DepartmentMemberService, DepartmentService, GroupMemberService
@@ -283,7 +296,11 @@ def check_kb_permission(permission):
                     code=RetCode.DATA_ERROR,
                 )
 
-            return get_json_result(data=False, message="Only knowledgebase owners or members with management or write permissions can perform this action.", code=RetCode.OPERATING_ERROR)
+            return get_json_result(
+                data=False,
+                message=_permission_denied_message("Knowledgebase", permission),
+                code=RetCode.PERMISSION_ERROR,
+            )
 
         return wrapper
 
@@ -367,7 +384,11 @@ def check_dialog_permission(permission):
                     code=RetCode.AUTHENTICATION_ERROR,
                 )
 
-            return get_json_result(data=[], message="Only Chat/Dialog owners or members with management or write permissions can perform this action", code=RetCode.OPERATING_ERROR)
+            return get_json_result(
+                data=[],
+                message=_permission_denied_message("Chat/Dialog", permission),
+                code=RetCode.OPERATING_ERROR,
+            )
 
         return wrapper
 
@@ -489,7 +510,7 @@ def check_doc_permission(permission, allow_missing_document=False):
 
             return get_json_result(
                 data=False,
-                message="Only document owners or members with management or write permissions can perform this action.",
+                message=_permission_denied_message("Document", permission),
                 code=RetCode.OPERATING_ERROR,
             )
 
