@@ -38,6 +38,7 @@ from api.apps import login_required, current_user
 from api.db.db_models import DB, EvaluationCase, EvaluationResult
 from api.db.services.evaluation_service import EvaluationService
 from api.db.services.task_service import TaskService
+from api.db.services.user_service import UserTenantService
 from api.utils.api_utils import (
     get_data_error_result,
     get_json_result,
@@ -49,6 +50,22 @@ from common.constants import RetCode
 from api.common.priority_provider import get_tenant_priority
 from deepdoc.parser.excel_parser import RAGFlowExcelParser
 from rag.utils.redis_conn import REDIS_CONN
+
+
+def _has_collection_access(collection_id: str) -> bool:
+    """Check if current user has access to an evaluation collection.
+
+    Access is granted if the user is the owner (tenant_id match) or a
+    team member of the tenant that owns the collection.
+    """
+    collections = EvaluationService.query(tenant_id=current_user.id, id=collection_id)
+    if collections:
+        return True
+    ok, collection = EvaluationService.get_by_id(collection_id)
+    if not ok or not collection:
+        return False
+    return bool(UserTenantService.filter_by_tenant_and_user_id(
+        collection.tenant_id, current_user.id))
 
 
 _XLSX_ILLEGAL_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
@@ -306,7 +323,7 @@ async def add_test_case(collection_id):
     }
     """
     try:
-        if not EvaluationService.query(tenant_id=current_user.id, id=collection_id):
+        if not _has_collection_access(collection_id):
             return get_json_result(
                 data=False, message="Permission denied",
                 code=RetCode.OPERATING_ERROR)
@@ -358,7 +375,7 @@ async def import_test_cases(collection_id):
     }
     """
     try:
-        if not EvaluationService.query(tenant_id=current_user.id, id=collection_id):
+        if not _has_collection_access(collection_id):
             return get_json_result(
                 data=False, message="Permission denied",
                 code=RetCode.OPERATING_ERROR)
@@ -393,7 +410,7 @@ async def export_test_cases(collection_id):
     - Columns: id, question, reference_answer, relevant_doc_ids, relevant_kb_ids, metadata, create_time
     """
     try:
-        if not EvaluationService.query(tenant_id=current_user.id, id=collection_id):
+        if not _has_collection_access(collection_id):
             return get_json_result(
                 data=False, message="Permission denied",
                 code=RetCode.OPERATING_ERROR)
@@ -443,7 +460,7 @@ async def export_test_cases(collection_id):
 async def get_test_cases(collection_id):
     """Get all test cases for a collection"""
     try:
-        if not EvaluationService.query(tenant_id=current_user.id, id=collection_id):
+        if not _has_collection_access(collection_id):
             return get_json_result(
                 data=False, message="Permission denied",
                 code=RetCode.OPERATING_ERROR)
@@ -477,7 +494,7 @@ async def delete_test_case(case_id):
         case = EvaluationCase.get_or_none(EvaluationCase.id == case_id)
         if not case:
             return get_data_error_result(message="Test case not found")
-        if not EvaluationService.query(tenant_id=current_user.id, id=case.collection_id):
+        if not _has_collection_access(case.collection_id):
             return get_json_result(
                 data=False, message="Permission denied",
                 code=RetCode.OPERATING_ERROR)
@@ -512,7 +529,7 @@ async def update_test_case(case_id):
         case = EvaluationCase.get_or_none(EvaluationCase.id == case_id)
         if not case:
             return get_data_error_result(message="Test case not found")
-        if not EvaluationService.query(tenant_id=current_user.id, id=case.collection_id):
+        if not _has_collection_access(case.collection_id):
             return get_json_result(
                 data=False, message="Permission denied",
                 code=RetCode.OPERATING_ERROR)
@@ -570,7 +587,7 @@ async def get_evaluation_run(run_id):
                 message="Evaluation run not found",
                 code=RetCode.DATA_ERROR
             )
-        if not EvaluationService.query(tenant_id=current_user.id, id=run["collection_id"]):
+        if not _has_collection_access(run["collection_id"]):
             return get_json_result(
                 data=False, message="Permission denied",
                 code=RetCode.OPERATING_ERROR)
@@ -617,7 +634,7 @@ async def get_run_results(run_id):
                 message="Evaluation run not found",
                 code=RetCode.DATA_ERROR
             )
-        if not EvaluationService.query(tenant_id=current_user.id, id=run["collection_id"]):
+        if not _has_collection_access(run["collection_id"]):
             return get_json_result(
                 data=False, message="Permission denied",
                 code=RetCode.OPERATING_ERROR)
@@ -673,7 +690,7 @@ async def delete_evaluation_run(run_id):
         run = EvaluationService.get_run(run_id)
         if not run:
             return get_data_error_result(message="Evaluation run not found")
-        if not EvaluationService.query(tenant_id=current_user.id, id=run["collection_id"]):
+        if not _has_collection_access(run["collection_id"]):
             return get_json_result(
                 data=False, message="Permission denied",
                 code=RetCode.OPERATING_ERROR)
@@ -701,7 +718,7 @@ async def update_evaluation_run(run_id):
         run = EvaluationService.get_run(run_id)
         if not run:
             return get_data_error_result(message="Evaluation run not found")
-        if not EvaluationService.query(tenant_id=current_user.id, id=run["collection_id"]):
+        if not _has_collection_access(run["collection_id"]):
             return get_json_result(
                 data=False, message="Permission denied",
                 code=RetCode.OPERATING_ERROR)
@@ -731,7 +748,7 @@ async def duplicate_evaluation_run(run_id):
         run = EvaluationService.get_run(run_id)
         if not run:
             return get_data_error_result(message="Evaluation run not found")
-        if not EvaluationService.query(tenant_id=current_user.id, id=run["collection_id"]):
+        if not _has_collection_access(run["collection_id"]):
             return get_json_result(
                 data=False, message="Permission denied",
                 code=RetCode.OPERATING_ERROR)
@@ -757,7 +774,7 @@ async def execute_run_case(run_id, case_id):
         run = EvaluationService.get_run(run_id)
         if not run:
             return get_data_error_result(message="Evaluation run not found")
-        if not EvaluationService.query(tenant_id=current_user.id, id=run["collection_id"]):
+        if not _has_collection_access(run["collection_id"]):
             return get_json_result(
                 data=False, message="Permission denied",
                 code=RetCode.OPERATING_ERROR)
@@ -778,7 +795,7 @@ async def run_metric_for_case(run_id, case_id):
         run = EvaluationService.get_run(run_id)
         if not run:
             return get_data_error_result(message="Evaluation run not found")
-        if not EvaluationService.query(tenant_id=current_user.id, id=run["collection_id"]):
+        if not _has_collection_access(run["collection_id"]):
             return get_json_result(
                 data=False, message="Permission denied",
                 code=RetCode.OPERATING_ERROR)
@@ -804,7 +821,7 @@ async def run_metrics_for_cases(run_id):
         run = EvaluationService.get_run(run_id)
         if not run:
             return get_data_error_result(message="Evaluation run not found")
-        if not EvaluationService.query(tenant_id=current_user.id, id=run["collection_id"]):
+        if not _has_collection_access(run["collection_id"]):
             return get_json_result(
                 data=False, message="Permission denied",
                 code=RetCode.OPERATING_ERROR)
@@ -834,7 +851,7 @@ async def run_metric_for_cases(run_id):
         run = EvaluationService.get_run(run_id)
         if not run:
             return get_data_error_result(message="Evaluation run not found")
-        if not EvaluationService.query(tenant_id=current_user.id, id=run["collection_id"]):
+        if not _has_collection_access(run["collection_id"]):
             return get_json_result(
                 data=False, message="Permission denied",
                 code=RetCode.OPERATING_ERROR)
@@ -863,7 +880,7 @@ async def run_metrics_for_case(run_id, case_id):
         run = EvaluationService.get_run(run_id)
         if not run:
             return get_data_error_result(message="Evaluation run not found")
-        if not EvaluationService.query(tenant_id=current_user.id, id=run["collection_id"]):
+        if not _has_collection_access(run["collection_id"]):
             return get_json_result(
                 data=False, message="Permission denied",
                 code=RetCode.OPERATING_ERROR)
@@ -885,7 +902,7 @@ async def clear_result(run_id, case_id):
         run = EvaluationService.get_run(run_id)
         if not run:
             return get_data_error_result(message="Evaluation run not found")
-        if not EvaluationService.query(tenant_id=current_user.id, id=run["collection_id"]):
+        if not _has_collection_access(run["collection_id"]):
             return get_json_result(
                 data=False, message="Permission denied",
                 code=RetCode.OPERATING_ERROR)
@@ -906,7 +923,7 @@ async def clear_result_metric(run_id, case_id):
         run = EvaluationService.get_run(run_id)
         if not run:
             return get_data_error_result(message="Evaluation run not found")
-        if not EvaluationService.query(tenant_id=current_user.id, id=run["collection_id"]):
+        if not _has_collection_access(run["collection_id"]):
             return get_json_result(
                 data=False, message="Permission denied",
                 code=RetCode.OPERATING_ERROR)
@@ -928,7 +945,7 @@ async def clear_result_generated_answer(run_id, case_id):
         run = EvaluationService.get_run(run_id)
         if not run:
             return get_data_error_result(message="Evaluation run not found")
-        if not EvaluationService.query(tenant_id=current_user.id, id=run["collection_id"]):
+        if not _has_collection_access(run["collection_id"]):
             return get_json_result(
                 data=False, message="Permission denied",
                 code=RetCode.OPERATING_ERROR)
@@ -989,7 +1006,7 @@ async def export_results(run_id):
                 message="Evaluation run not found",
                 code=RetCode.DATA_ERROR
             )
-        if not EvaluationService.query(tenant_id=current_user.id, id=run["collection_id"]):
+        if not _has_collection_access(run["collection_id"]):
             return get_json_result(
                 data=False, message="Permission denied",
                 code=RetCode.OPERATING_ERROR)
