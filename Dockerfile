@@ -12,7 +12,6 @@ RUN mkdir -p /ragflow/rag/res/deepdoc /root/.ragflow
 RUN --mount=type=bind,from=infiniflow/ragflow_deps:latest,source=/huggingface.co,target=/huggingface.co \
     tar --exclude='.*' -cf - \
     /huggingface.co/InfiniFlow/text_concat_xgb_v1.0 \
-    /huggingface.co/InfiniFlow/deepdoc \
     | tar -xf - --strip-components=3 -C /ragflow/rag/res/deepdoc
 
 # Copy Tika server, NLTK data, and tiktoken from ragflow_deps image

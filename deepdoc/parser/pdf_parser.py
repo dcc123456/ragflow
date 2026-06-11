@@ -31,6 +31,7 @@ import fitz
 import numpy as np
 import pdfplumber
 import xgboost as xgb
+from huggingface_hub import snapshot_download
 from PIL import Image
 from pypdf import PdfReader as pdf2_read
 from sklearn.cluster import KMeans
@@ -38,6 +39,7 @@ from sklearn.metrics import silhouette_score
 
 from common import settings
 from common.constants import MAXIMUM_PAGE_NUMBER
+from common.file_utils import get_project_base_directory
 from common.misc_utils import thread_pool_exec
 from deepdoc.parser.utils import extract_pdf_outlines
 from deepdoc.vision import AscendLayoutRecognizer, LayoutRecognizer, Recognizer, TableStructureRecognizer
@@ -83,6 +85,20 @@ class RAGFlowPdfParser:
         # xgboost model is very small; using CPU explicitly
         self.updown_cnt_mdl.set_param({"device": "cpu"})
         logging.info("updown_cnt_mdl initialized on CPU")
+        # Model lives at $PROJECT_BASE/rag/res/deepdoc/updown_concat_xgb.model.
+        # The Dockerfile unpacks the huggingface.co snapshot into that path;
+        # the snapshot_download fallback covers dev hosts that ran download_deps.py
+        # without going through the image build.
+        try:
+            model_dir = os.path.join(get_project_base_directory(), "rag/res/deepdoc")
+            self.updown_cnt_mdl.load_model(os.path.join(model_dir, "updown_concat_xgb.model"))
+        except Exception:
+            model_dir = snapshot_download(
+                repo_id="InfiniFlow/text_concat_xgb_v1.0",
+                local_dir=os.path.join(get_project_base_directory(), "rag/res/deepdoc"),
+                local_dir_use_symlinks=False)
+            self.updown_cnt_mdl.load_model(os.path.join(
+                model_dir, "updown_concat_xgb.model"))
 
         self.page_from = 0
         self.column_num = 1
