@@ -2,7 +2,7 @@ import message from '@/components/ui/message';
 import { useSetModalState } from '@/hooks/common-hooks';
 import { useSelectedIds } from '@/hooks/logic-hooks/use-row-selection';
 import { DocumentApiAction } from '@/hooks/use-document-request';
-import {
+import kbService, {
   getMetaDataService,
   kbUpdateMetaData,
   updateDocumentMetaDataConfig,
@@ -489,6 +489,8 @@ export const useManageMetaDataModal = (
       }
     },
     [
+      documentIds,
+      tableData,
       handleSaveManage,
       type,
       // handleSaveUpdateSingle,

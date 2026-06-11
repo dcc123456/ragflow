@@ -30,6 +30,7 @@ const {
   check_embedding,
   duplicate_kb,
   switchEmbeddingModel,
+  documentUpdateMetaData,
 } = api;
 
 const methods = {
@@ -103,10 +104,10 @@ const methods = {
     url: check_embedding,
     method: 'post',
   },
-  // documentUpdateMetaData: {
-  //   url: documentUpdateMetaData,
-  //   method: 'post',
-  // },
+  documentUpdateMetaData: {
+    url: documentUpdateMetaData,
+    method: 'post',
+  },
   // getMetaData: {
   //   url: getMetaData,
   //   method: 'get',
