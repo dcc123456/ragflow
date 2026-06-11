@@ -180,12 +180,9 @@ export const loginWithLdap = async ({
 }: LoginWithLdapInput) => {
   const sp = new URLSearchParams({ username, password });
 
-  const resp = await fetch(
-    `${api.login_channel(serverName)}?${sp.toString()}`,
-    {
-      method: 'GET',
-    },
-  );
+  const resp = await fetch(`${api.loginChannel(serverName)}?${sp.toString()}`, {
+    method: 'GET',
+  });
 
   if (resp.redirected) {
     const url = new URL(resp.url);
