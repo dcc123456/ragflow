@@ -2943,8 +2943,18 @@ resource "kubernetes_deployment_v1" "parser" {
     revision_history_limit = 1
 
     strategy {
-      type = "Recreate"
+      type = "RollingUpdate"
+      rolling_update {
+        max_surge       = "30%"
+        max_unavailable = 0
+      }
+
+      #type = "Recreate"
     }
+
+
+
+
 
     selector {
       match_labels = {
@@ -3410,7 +3420,7 @@ resource "kubernetes_secret_v1" "tls_secret" {
 # =============================================================================
 
 resource "kubernetes_manifest" "ohttps_sync_sa" {
-  count = 0
+  count = var.ohttps_enabled ? 1 : 0
 
   manifest = {
     apiVersion = "v1"
@@ -3426,7 +3436,7 @@ resource "kubernetes_manifest" "ohttps_sync_sa" {
 }
 
 resource "kubernetes_manifest" "ohttps_sync_role" {
-  count = 0
+  count = var.ohttps_enabled ? 1 : 0
 
   manifest = {
     apiVersion = "rbac.authorization.k8s.io/v1"
@@ -3446,7 +3456,7 @@ resource "kubernetes_manifest" "ohttps_sync_role" {
 }
 
 resource "kubernetes_manifest" "ohttps_sync_rolebinding" {
-  count = 0
+  count = var.ohttps_enabled ? 1 : 0
 
   manifest = {
     apiVersion = "rbac.authorization.k8s.io/v1"
@@ -3475,7 +3485,7 @@ resource "kubernetes_manifest" "ohttps_sync_rolebinding" {
 # =============================================================================
 
 resource "kubernetes_manifest" "ohttps_sync_cronjob" {
-  count = 0
+  count = var.ohttps_enabled ? 1 : 0
 
   manifest = {
     apiVersion = "batch/v1"
