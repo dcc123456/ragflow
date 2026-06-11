@@ -421,11 +421,10 @@ def get_role_permission(role_name: str):
 def grant_role_permission(role_name: str):
     try:
         data = request.get_json()
-        if not data or "actions" not in data or "resource" not in data:
+        if not data or "new_permissions" not in data:
             return error_response("Permission is required", 400)
-        actions: list = data["actions"]
-        resource: str = data["resource"]
-        res = RoleMgr.grant_role_permission(role_name, actions, resource)
+        new_permissions: dict = data["new_permissions"]
+        res = RoleMgr.grant_role_permission(role_name, new_permissions)
         return success_response(res)
     except Exception as e:
         return error_response(str(e), 500)
@@ -437,11 +436,10 @@ def grant_role_permission(role_name: str):
 def revoke_role_permission(role_name: str):
     try:
         data = request.get_json()
-        if not data or "actions" not in data or "resource" not in data:
+        if not data or "revoke_permissions" not in data:
             return error_response("Permission is required", 400)
-        actions: list = data["actions"]
-        resource: str = data["resource"]
-        res = RoleMgr.revoke_role_permission(role_name, actions, resource)
+        revoke_permissions: dict = data["revoke_permissions"]
+        res = RoleMgr.revoke_role_permission(role_name, revoke_permissions)
         return success_response(res)
     except Exception as e:
         return error_response(str(e), 500)
