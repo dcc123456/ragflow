@@ -90,17 +90,17 @@ def get_model_config_by_type_and_name(tenant_id: str, model_type: str, model_nam
             }
         elif model_type_val == LLMType.CHAT.value:
             # Retry as CHAT with pure_model_name first; then fall back to a multimodal model registered under IMAGE2TEXT.
-            model_config = TenantLLMService.get_api_key(tenant_id, pure_model_name, LLMType.CHAT.value)
+            model_config = TenantLLMService.get_api_key(lookup_tenant_id, pure_model_name, LLMType.CHAT.value)
             if not model_config:
-                model_config = TenantLLMService.get_api_key(tenant_id, pure_model_name, LLMType.IMAGE2TEXT.value)
+                model_config = TenantLLMService.get_api_key(lookup_tenant_id, pure_model_name, LLMType.IMAGE2TEXT.value)
             if not model_config:
                 raise LookupError(f"Tenant Model with name {model_name} and type {model_type_val} not found")
             config_dict = model_config.to_dict()
         elif model_type_val == LLMType.IMAGE2TEXT.value:
-            model_config = TenantLLMService.get_api_key(tenant_id, pure_model_name, LLMType.IMAGE2TEXT.value)
+            model_config = TenantLLMService.get_api_key(lookup_tenant_id, pure_model_name, LLMType.IMAGE2TEXT.value)
             if not model_config:
                 # Fall back to a chat model only if it has declared IMAGE2TEXT capability (tag check via llm table)
-                chat_config = TenantLLMService.get_api_key(tenant_id, pure_model_name, LLMType.CHAT.value)
+                chat_config = TenantLLMService.get_api_key(lookup_tenant_id, pure_model_name, LLMType.CHAT.value)
                 logger.debug("IMAGE2TEXT config not found for %s; chat_config found: %s", pure_model_name, chat_config is not None)
                 if chat_config:
                     llm_entry = LLMService.query(fid=chat_config.llm_factory, llm_name=chat_config.llm_name)
