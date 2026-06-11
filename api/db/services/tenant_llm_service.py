@@ -718,9 +718,15 @@ def user_register(user_id, user):
     from api.db.services import UserService
     from api.db.services.white_list_service import WhiteListService
     from api.db.services.llm_service import get_init_tenant_llm
-    from common.settings import ENABLE_WHITELIST
+    from api.db.services.system_settings_service import SystemSettingsService
+    from api.utils.system_settings_utils import load_value_from_string
 
-    if ENABLE_WHITELIST and user["email"] != "admin@ragflow.io":
+    white_list_enabled = False
+    record = SystemSettingsService.get_singleton_by_exact_name("enable_whitelist")
+    if record:
+        white_list_enabled = load_value_from_string(record.value, record.data_type)
+
+    if white_list_enabled and user["email"] != "admin@ragflow.io":
         user_email = user["email"]
         whitelist_row = WhiteListService.get_white_list_by_email(user_email)
         if not whitelist_row:

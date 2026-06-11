@@ -34,12 +34,12 @@ from api.db.services.api_service import APITokenService
 from api.db.db_models import APIToken
 from api.utils.crypt import decrypt
 from api.utils import health_utils
+from api.utils.system_settings_utils import load_value_from_string
 from common.time_utils import current_timestamp, timestamp_to_date
 
 from api.common.exceptions import AdminException, UserAlreadyExistsError, UserNotFoundError, RoleNotFoundError
 from api.utils.billing import BILLING_PLAN_TRIAL_NAME
 from config import SERVICE_CONFIGS
-from common.settings import ENABLE_WHITELIST
 
 
 class UserMgr:
@@ -148,7 +148,12 @@ class UserMgr:
         if not re.match(r"^[\w\._-]+@([\w_-]+\.)+[\w-]{2,}$", username):
             raise AdminException(f"Invalid email address: {username}!")
         # Check whitelist
-        if ENABLE_WHITELIST:
+        white_list_enabled = False
+        record = SystemSettingsService.get_singleton_by_exact_name("enable_whitelist")
+        if record:
+            white_list_enabled = load_value_from_string(record.value, record.data_type)
+
+        if white_list_enabled:
             whitelist_row = WhiteListService.get_white_list_by_email(username)
             if not whitelist_row:
                 raise AdminException(f"Email {username} isn't in whitelist.")

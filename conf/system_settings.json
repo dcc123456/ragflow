@@ -4,7 +4,7 @@
       "name": "enable_whitelist",
       "source": "variable",
       "data_type": "bool",
-      "value": "true"
+      "value": "false"
     },
     {
       "name": "default_role",
