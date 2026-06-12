@@ -16,6 +16,7 @@ import { formatDate } from '@/utils/date';
 import { ColumnDef } from '@tanstack/table-core';
 import { ArrowUpDown } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { useParams } from 'react-router';
 import { MetadataType } from '../components/metedata/constant';
 import { ShowManageMetadataModalProps } from '../components/metedata/interface';
 import { DatasetActionCell } from './dataset-action-cell';
@@ -27,7 +28,6 @@ type UseDatasetTableColumnsType = UseChangeDocumentParserShowType &
   UseRenameDocumentShowType & {
     showLog: (record: IDocumentInfo) => void;
     showManageMetadataModal: (config: ShowManageMetadataModalProps) => void;
-    datasetId?: string;
   };
 
 export function useDatasetTableColumns({
@@ -35,7 +35,6 @@ export function useDatasetTableColumns({
   showRenameModal,
   showManageMetadataModal,
   showLog,
-  datasetId,
 }: UseDatasetTableColumnsType) {
   const datasetEditButtonDisabled = useDatasetEditButtonDisabled();
   const { t } = useTranslation('translation', {
@@ -44,6 +43,7 @@ export function useDatasetTableColumns({
   // const { dataSourceInfo } = useDataSourceInfo();
   const { navigateToChunkParsedResult } = useNavigatePage();
   const { setDocumentStatus } = useSetDocumentStatus();
+  const { id: datasetId } = useParams();
 
   const columns: ColumnDef<IDocumentInfo>[] = [
     {
@@ -178,7 +178,11 @@ export function useDatasetTableColumns({
             disabled={datasetEditButtonDisabled}
             checked={row.getValue('status') === '1'}
             onCheckedChange={(e) => {
-              setDocumentStatus({ status: e, documentId: id, datasetId });
+              setDocumentStatus({
+                status: e,
+                documentId: id,
+                datasetId: datasetId!,
+              });
             }}
           />
         );

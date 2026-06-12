@@ -395,8 +395,10 @@ class TaskService(CommonService):
                         ((prog == -1) | (prog > cls.model.progress))))
                     ).execute()
 
-        process_duration = (datetime.now() - task.begin_at).total_seconds()
-        cls.model.update(process_duration=process_duration).where(cls.model.id == id).execute()
+        begin_at = task.begin_at
+        if begin_at is not None:
+            process_duration = (datetime.now() - begin_at).total_seconds()
+            cls.model.update(process_duration=process_duration).where(cls.model.id == id).execute()
 
     @classmethod
     @DB.connection_context()
@@ -491,6 +493,7 @@ def queue_tasks(doc: dict, bucket: str, name: str, priority: int):
     else:
         parse_task_array.append(new_task())
 
+    # Determine suffix based on parser_id (consistent with SAAS version line 444)
     suffix = "common" if doc["parser_id"] != "resume" else "resume"
 
     chunking_config = DocumentService.get_chunking_config(doc["id"])

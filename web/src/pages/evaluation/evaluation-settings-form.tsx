@@ -1,12 +1,11 @@
 'use client';
 
 import { Collapse } from '@/components/collapse';
+import { ModelTreeSelectFormField } from '@/components/model-tree-select';
 import { SelectWithSearch } from '@/components/originui/select-with-search';
 import { RAGFlowFormItem } from '@/components/ragflow-form';
 import { SwitchFormField } from '@/components/switch-fom-field';
-import { LlmModelType } from '@/constants/knowledge';
 import { useFetchAllEvaluationCollection } from '@/hooks/use-evaluation-request';
-import { useSelectLlmOptionsByModelType } from '@/hooks/use-llm-request';
 import { prefixName } from '@/utils/form';
 import { useTranslation } from 'react-i18next';
 
@@ -15,16 +14,15 @@ type LLmSelectFormItemProps = {
 };
 
 function LLmSelectFormItem({ name }: LLmSelectFormItemProps) {
-  const allOptions = useSelectLlmOptionsByModelType();
   const { t } = useTranslation();
 
   return (
-    <RAGFlowFormItem name={name} label={t('chat.model')}>
-      <SelectWithSearch
-        placeholder={t('evaluation.defaultModel')}
-        options={allOptions[LlmModelType.Chat]}
-      />
-    </RAGFlowFormItem>
+    <ModelTreeSelectFormField
+      name={name}
+      modelTypes={['chat']}
+      label={t('chat.model')}
+      placeholder={t('evaluation.defaultModel')}
+    />
   );
 }
 

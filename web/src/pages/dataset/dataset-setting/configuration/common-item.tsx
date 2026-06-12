@@ -1,14 +1,10 @@
-import { Trans, useTranslation } from 'react-i18next';
-
 import {
   FormFieldConfig,
   FormFieldType,
   RenderField,
 } from '@/components/dynamic-form';
-import {
-  SelectWithSearch,
-  SelectWithSearchFlagOptionType,
-} from '@/components/originui/select-with-search';
+import { ModelTreeSelect, ModelTypeMap } from '@/components/model-tree-select';
+import { SelectWithSearch } from '@/components/originui/select-with-search';
 import { SliderInputFormField } from '@/components/slider-input-form-field';
 import { Button } from '@/components/ui/button';
 import {
@@ -28,14 +24,21 @@ import {
 } from '@/components/ui/form';
 import { Progress } from '@/components/ui/progress';
 import { Radio } from '@/components/ui/radio';
+import { Spin } from '@/components/ui/spin';
 import { Switch } from '@/components/ui/switch';
-import { LlmModelType, ParseType } from '@/constants/knowledge';
+import { ParseType } from '@/constants/knowledge';
 import { useSetModalState, useTranslate } from '@/hooks/common-hooks';
-import { useComposeLlmOptionsByModelTypes } from '@/hooks/use-llm-request';
 import { cn } from '@/lib/utils';
 import { history } from '@/utils/simple-history-util';
 import { Settings } from 'lucide-react';
-import { useCallback, useContext, useEffect, useMemo, useRef } from 'react';
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   useFormContext,
   type ControllerRenderProps,
@@ -50,6 +53,7 @@ import {
 } from '../../components/metedata/hooks/use-manage-modal';
 
 import { RAGFlowAvatar } from '@/components/ragflow-avatar';
+import { Trans, useTranslation } from 'react-i18next';
 import {
   IBuiltInMetadataItem,
   IMetaDataReturnJSONSettings,
@@ -57,11 +61,10 @@ import {
 import { ManageMetadataModal } from '../../components/metedata/manage-modal';
 import { useKnowledgeBaseContext } from '../../contexts/knowledge-base-context';
 import {
-  // useHandleKbEmbedding,
+  useHandleKbEmbedding,
   useHasParsedDocument,
   useKbSwitchEmbeddingModel,
   useSelectChunkMethodList,
-  useSelectEmbeddingModelOptions,
   useTraceEmbedding,
 } from '../hooks';
 
@@ -118,12 +121,13 @@ export const EmbeddingSelect = ({
   isEdit,
   field,
   name,
-  disabled: propDisabled = false,
+  disabled = false,
+  testId,
   onChange,
   children,
 }: {
   isEdit: boolean;
-  field: ControllerRenderProps<FieldValues, 'embd_id'>;
+  field: FieldValues;
   name?: string;
   disabled?: boolean;
   testId?: string;
@@ -131,37 +135,47 @@ export const EmbeddingSelect = ({
   children?: React.ReactNode;
 }) => {
   const { t } = useTranslate('knowledgeConfiguration');
+  const form = useFormContext();
+  const { handleChange } = useHandleKbEmbedding();
 
-  // const form = useFormContext();
-
-  const embeddingModelOptions = useSelectEmbeddingModelOptions();
-  // const { handleChange } = useHandleKbEmbedding();
-
-  // const oldValue: string = form.getValues(name || 'embd_id');
-
-  const disabled = (!isEdit && propDisabled) || field.disabled;
-
+  const oldValue = useMemo(() => {
+    const embdStr = form.getValues(name || 'embedding_model');
+    return embdStr || '';
+  }, [form, name]);
+  const [loading, setLoading] = useState(false);
   return (
-    <>
-      <div className="relative">
-        <SelectWithSearch
-          onChange={(value) => {
-            // Only pops modal when in dataset configuration page
-            if (onChange) {
-              onChange(value);
-            } else {
-              field.onChange(value);
+    <Spin
+      spinning={loading}
+      className={cn(' rounded-lg after:bg-bg-base', {
+        'opacity-20': loading,
+      })}
+    >
+      <ModelTreeSelect
+        modelTypes={ModelTypeMap.embd_id}
+        onChange={async (value) => {
+          if (onChange) {
+            onChange(value);
+          } else {
+            field.onChange(value);
+            if (isEdit && disabled) {
+              setLoading(true);
+              const res = await handleChange({
+                embed_id: value,
+              });
+              if (res.code !== 0) {
+                field.onChange(oldValue);
+              }
+              setLoading(false);
             }
-          }}
-          disabled={disabled}
-          value={field.value}
-          triggerClassName="flex"
-          options={embeddingModelOptions}
-          placeholder={t('embeddingModelPlaceholder')}
-        />
-        {children}
-      </div>
-    </>
+          }
+        }}
+        disabled={disabled && !isEdit}
+        value={field.value}
+        placeholder={t('embeddingModelPlaceholder')}
+        testId={testId}
+      />
+      {children}
+    </Spin>
   );
 };
 
@@ -640,18 +654,14 @@ export const LLMSelect = ({
   disabled?: boolean;
 }) => {
   const { t } = useTranslate('knowledgeConfiguration');
-  const modelOptions = useComposeLlmOptionsByModelTypes([
-    LlmModelType.Chat,
-    LlmModelType.Image2text,
-  ]);
   return (
-    <SelectWithSearch
-      onChange={async (value) => {
+    <ModelTreeSelect
+      modelTypes={ModelTypeMap.llm_id}
+      onChange={(value) => {
         field.onChange(value);
       }}
       disabled={disabled && !isEdit}
       value={field.value}
-      options={modelOptions as SelectWithSearchFlagOptionType[]}
       placeholder={t('embeddingModelPlaceholder')}
     />
   );

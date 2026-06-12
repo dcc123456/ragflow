@@ -17,6 +17,8 @@ import logging
 import json
 import os
 import re
+
+from api.db.joint_services.tenant_model_service import get_model_config_from_provider_instance
 from common.constants import PAGERANK_FLD
 from common import settings
 from api.db import PermissionValue
@@ -28,7 +30,6 @@ from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.connector_service import Connector2KbService
 from api.db.services.task_service import GRAPH_RAPTOR_FAKE_DOC_ID, TaskService
 from api.db.services.user_service import TenantService, UserService, UserTenantService
-from api.db.services.tenant_llm_service import TenantLLMService
 from common.constants import FileSource, StatusEnum
 from api.utils.api_utils import deep_merge, get_parser_config, remap_dictionary_keys, verify_embedding_availability
 
@@ -143,12 +144,23 @@ async def delete_datasets(tenant_id: str, ids: list = None, delete_all: bool = F
                 errors.append(f"Remove document '{doc.id}' error for dataset '{kb_id}'")
                 continue
             f2d = File2DocumentService.get_by_document_id(doc.id)
-            FileService.filter_delete(
-                [
-                    File.source_type == FileSource.KNOWLEDGEBASE,
-                    File.id == f2d[0].file_id,
-                ]
-            )
+            if f2d:
+                FileService.filter_delete(
+                    [
+                        File.source_type == FileSource.KNOWLEDGEBASE,
+                        File.id == f2d[0].file_id,
+                    ]
+                )
+            else:
+                # Normal uploads create a File2Document row via FileService.add_file_from_kb.
+                # A missing row usually means stale/partial data (e.g. link removed earlier,
+                # failed post-insert file linkage, or legacy rows). Deletion still proceeds.
+                logging.warning(
+                    "delete_datasets: document %s in dataset %s has no File2Document row; "
+                    "skipping linked file delete",
+                    doc.id,
+                    kb_id,
+                )
             File2DocumentService.delete_by_document_id(doc.id)
         FileService.filter_delete([File.source_type == FileSource.KNOWLEDGEBASE, File.type == "folder", File.name == kb.name])
 
@@ -930,11 +942,7 @@ async def search(dataset_id: str, tenant_id: str, req: dict):
     :param req: search request
     :return: (success, result) or (success, error_message)
     """
-    from api.db.joint_services.tenant_model_service import (
-        get_model_config_by_id,
-        get_model_config_by_type_and_name,
-        get_tenant_default_model_by_type,
-    )
+    from api.db.joint_services.tenant_model_service import get_tenant_default_model_by_type
     from api.db.services.doc_metadata_service import DocMetadataService
     from api.db.services.llm_service import LLMBundle
     from api.db.services.search_service import SearchService
@@ -1003,7 +1011,7 @@ async def search(dataset_id: str, tenant_id: str, req: dict):
         if meta_data_filter.get("method") in ["auto", "semi_auto"]:
             chat_id = search_config.get("chat_id", "")
             if chat_id:
-                chat_model_config = get_model_config_by_type_and_name(tenant_id, LLMType.CHAT, search_config["chat_id"])
+                chat_model_config = get_model_config_from_provider_instance(tenant_id, LLMType.CHAT, search_config["chat_id"])
             else:
                 chat_model_config = get_tenant_default_model_by_type(tenant_id, LLMType.CHAT)
             chat_mdl = LLMBundle(tenant_id, chat_model_config)
@@ -1036,28 +1044,17 @@ async def search(dataset_id: str, tenant_id: str, req: dict):
     _question = question
     if langs:
         _question = await cross_languages(kb.tenant_id, None, _question, langs)
-    if kb.tenant_embd_id:
-        embd_model_config = get_model_config_by_id(kb.tenant_embd_id)
-    elif kb.embd_id:
-        embd_model_config = get_model_config_by_type_and_name(kb.tenant_id, LLMType.EMBEDDING, kb.embd_id)
+    if kb.embd_id:
+        embd_model_config = get_model_config_from_provider_instance(kb.tenant_id, LLMType.EMBEDDING, kb.embd_id)
     else:
         embd_model_config = get_tenant_default_model_by_type(kb.tenant_id, LLMType.EMBEDDING)
     embd_mdl = LLMBundle(kb.tenant_id, embd_model_config)
 
     rerank_mdl = None
-    if req.get("tenant_rerank_id"):
-        allowed_rerank_tenant_ids = {tenant_id, kb.tenant_id}
-        rerank_model_config = get_model_config_by_id(
-            req["tenant_rerank_id"],
-            allowed_tenant_ids=allowed_rerank_tenant_ids,
-            requester_tenant_id=tenant_id,
-        )
+    rerank_id = search_config.get("rerank_id") or req.get("rerank_id")
+    if rerank_id:
+        rerank_model_config = get_model_config_from_provider_instance(kb.tenant_id, LLMType.RERANK.value, rerank_id)
         rerank_mdl = LLMBundle(kb.tenant_id, rerank_model_config)
-    else:
-        rerank_id = search_config.get("rerank_id") or req.get("rerank_id")
-        if rerank_id:
-            rerank_model_config = get_model_config_by_type_and_name(kb.tenant_id, LLMType.RERANK.value, rerank_id)
-            rerank_mdl = LLMBundle(kb.tenant_id, rerank_model_config)
 
     if search_config.get("keyword", req.get("keyword", False)):
         default_chat_model_config = get_tenant_default_model_by_type(kb.tenant_id, LLMType.CHAT)
@@ -1089,9 +1086,8 @@ async def search(dataset_id: str, tenant_id: str, req: dict):
                 ranks["chunks"].insert(0, ck)
         except Exception:
             logging.warning("search KG retrieval failed: dataset=%s tenant=%s", dataset_id, tenant_id, exc_info=True)
-    total = ranks.get("total", 0)
     ranks["chunks"] = settings.retriever.retrieval_by_children(ranks["chunks"], tenant_ids)
-    ranks["total"] = total
+    ranks["total"] = len(ranks["chunks"])
 
     for c in ranks["chunks"]:
         c.pop("vector", None)
@@ -1117,9 +1113,6 @@ def check_embedding(dataset_id: str, tenant_id: str, req: dict):
     from common.doc_store.doc_store_base import OrderByExpr
     from rag.nlp import search
 
-    from api.db.joint_services.tenant_model_service import (
-        get_model_config_by_type_and_name,
-    )
     from api.db.services.llm_service import LLMBundle
     from common.constants import LLMType
 
@@ -1232,7 +1225,7 @@ def check_embedding(dataset_id: str, tenant_id: str, req: dict):
     if not ok:
         return False, err
 
-    embd_model_config = get_model_config_by_type_and_name(kb.tenant_id, LLMType.EMBEDDING, embd_id)
+    embd_model_config = get_model_config_from_provider_instance(kb.tenant_id, LLMType.EMBEDDING, embd_id)
     emb_mdl = LLMBundle(kb.tenant_id, embd_model_config)
 
     n = int(req.get("check_num", 5))
@@ -1311,11 +1304,7 @@ async def search_datasets(tenant_id: str, req: dict):
     :param req: search request containing dataset_ids and other params
     :return: (success, result) or (success, error_message)
     """
-    from api.db.joint_services.tenant_model_service import (
-        get_model_config_by_id,
-        get_model_config_by_type_and_name,
-        get_tenant_default_model_by_type,
-    )
+    from api.db.joint_services.tenant_model_service import get_tenant_default_model_by_type, split_model_name
     from api.db.services.doc_metadata_service import DocMetadataService
     from api.db.services.llm_service import LLMBundle
     from api.db.services.search_service import SearchService
@@ -1355,7 +1344,7 @@ async def search_datasets(tenant_id: str, req: dict):
         return False, "Datasets not found!"
 
     # All datasets must use the same embedding model
-    embd_nms = list(set([TenantLLMService.split_model_name_and_factory(kb.embd_id)[0] for kb in kbs]))
+    embd_nms = list(set([split_model_name(kb.embd_id)[0] for kb in kbs]))
     if len(embd_nms) != 1:
         return False, "Datasets use different embedding models."
 
@@ -1396,7 +1385,7 @@ async def search_datasets(tenant_id: str, req: dict):
         if meta_data_filter.get("method") in ["auto", "semi_auto"]:
             chat_id = search_config.get("chat_id", "")
             if chat_id:
-                chat_model_config = get_model_config_by_type_and_name(tenant_id, LLMType.CHAT, search_config["chat_id"])
+                chat_model_config = get_model_config_from_provider_instance(tenant_id, LLMType.CHAT, search_config["chat_id"])
             else:
                 chat_model_config = get_tenant_default_model_by_type(tenant_id, LLMType.CHAT)
             chat_mdl = LLMBundle(tenant_id, chat_model_config)
@@ -1431,28 +1420,17 @@ async def search_datasets(tenant_id: str, req: dict):
     _question = question
     if langs:
         _question = await cross_languages(kb.tenant_id, None, _question, langs)
-    if kb.tenant_embd_id:
-        embd_model_config = get_model_config_by_id(kb.tenant_embd_id)
-    elif kb.embd_id:
-        embd_model_config = get_model_config_by_type_and_name(kb.tenant_id, LLMType.EMBEDDING, kb.embd_id)
+    if kb.embd_id:
+        embd_model_config = get_model_config_from_provider_instance(kb.tenant_id, LLMType.EMBEDDING, kb.embd_id)
     else:
         embd_model_config = get_tenant_default_model_by_type(kb.tenant_id, LLMType.EMBEDDING)
     embd_mdl = LLMBundle(kb.tenant_id, embd_model_config)
 
     rerank_mdl = None
-    if req.get("tenant_rerank_id"):
-        allowed_rerank_tenant_ids = {tenant_id, *[dataset.tenant_id for dataset in kbs]}
-        rerank_model_config = get_model_config_by_id(
-            req["tenant_rerank_id"],
-            allowed_tenant_ids=allowed_rerank_tenant_ids,
-            requester_tenant_id=tenant_id,
-        )
+    rerank_id = search_config.get("rerank_id") or req.get("rerank_id")
+    if rerank_id:
+        rerank_model_config = get_model_config_from_provider_instance(kb.tenant_id, LLMType.RERANK.value, rerank_id)
         rerank_mdl = LLMBundle(kb.tenant_id, rerank_model_config)
-    else:
-        rerank_id = search_config.get("rerank_id") or req.get("rerank_id")
-        if rerank_id:
-            rerank_model_config = get_model_config_by_type_and_name(kb.tenant_id, LLMType.RERANK.value, rerank_id)
-            rerank_mdl = LLMBundle(kb.tenant_id, rerank_model_config)
 
     if search_config.get("keyword", req.get("keyword", False)):
         default_chat_model_config = get_tenant_default_model_by_type(kb.tenant_id, LLMType.CHAT)
@@ -1484,9 +1462,8 @@ async def search_datasets(tenant_id: str, req: dict):
                 ranks["chunks"].insert(0, ck)
         except Exception:
             logging.warning("search_datasets KG retrieval failed: datasets=%s tenant=%s", kb_ids, tenant_id, exc_info=True)
-    total = ranks.get("total", 0)
     ranks["chunks"] = settings.retriever.retrieval_by_children(ranks["chunks"], tenant_ids)
-    ranks["total"] = total
+    ranks["total"] = len(ranks["chunks"])
 
     for c in ranks["chunks"]:
         c.pop("vector", None)

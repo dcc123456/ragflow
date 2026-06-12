@@ -79,51 +79,10 @@ def _load_dify_retrieval_module(monkeypatch):
     common_pkg.__path__ = [str(repo_root / "common")]
     monkeypatch.setitem(sys.modules, "common", common_pkg)
 
-    metadata_utils_mod = ModuleType("common.metadata_utils")
-    metadata_utils_mod.meta_filter = lambda *_args, **_kwargs: []
-    metadata_utils_mod.convert_conditions = lambda condition: condition
-    monkeypatch.setitem(sys.modules, "common.metadata_utils", metadata_utils_mod)
-    common_pkg.metadata_utils = metadata_utils_mod
-
-    settings_mod = ModuleType("common.settings")
-    settings_mod.retriever = _DummyRetriever()
-    settings_mod.kg_retriever = SimpleNamespace(retrieval=lambda *_args, **_kwargs: None)
-    monkeypatch.setitem(sys.modules, "common.settings", settings_mod)
-    common_pkg.settings = settings_mod
-
     api_apps_mod = ModuleType("api.apps")
+    api_apps_mod.current_user = SimpleNamespace(id="tenant-1")
     api_apps_mod.login_required = lambda func: func
     monkeypatch.setitem(sys.modules, "api.apps", api_apps_mod)
-
-    api_utils_mod = ModuleType("api.utils.api_utils")
-    api_utils_mod.get_request_json = lambda: _AwaitableValue({})
-    api_utils_mod.get_json_result = lambda data=None, message="", code=0, **kwargs: {
-        "code": code,
-        "data": data,
-        "message": message,
-        **kwargs,
-    }
-    api_utils_mod.build_error_result = lambda message="", code=500, data=None, **kwargs: {
-        "code": code,
-        "data": data,
-        "message": message,
-        **kwargs,
-    }
-    monkeypatch.setitem(sys.modules, "api.utils.api_utils", api_utils_mod)
-
-    rag_pkg = ModuleType("rag")
-    rag_pkg.__path__ = [str(repo_root / "rag")]
-    monkeypatch.setitem(sys.modules, "rag", rag_pkg)
-
-    rag_app_pkg = ModuleType("rag.app")
-    rag_app_pkg.__path__ = []
-    monkeypatch.setitem(sys.modules, "rag.app", rag_app_pkg)
-    rag_pkg.app = rag_app_pkg
-
-    rag_app_tag_mod = ModuleType("rag.app.tag")
-    rag_app_tag_mod.label_question = lambda *_args, **_kwargs: []
-    monkeypatch.setitem(sys.modules, "rag.app.tag", rag_app_tag_mod)
-    rag_app_pkg.tag = rag_app_tag_mod
 
     deepdoc_pkg = ModuleType("deepdoc")
     deepdoc_parser_pkg = ModuleType("deepdoc.parser")
@@ -301,22 +260,7 @@ def _load_dify_retrieval_module(monkeypatch):
                 "id": self.id
             }
     
-    def _get_model_config_by_id(
-        tenant_model_id: int,
-        allowed_tenant_ids=None,
-        requester_tenant_id=None,
-    ) -> dict:
-        mock_tenant_id = "tenant-1"
-        if allowed_tenant_ids is not None:
-            if isinstance(allowed_tenant_ids, str):
-                allowed_tenant_ids = {allowed_tenant_ids}
-            else:
-                allowed_tenant_ids = {str(tenant_id) for tenant_id in allowed_tenant_ids if tenant_id}
-            if mock_tenant_id not in allowed_tenant_ids and str(requester_tenant_id) != mock_tenant_id:
-                raise LookupError(f"Tenant Model with id {tenant_model_id} not authorized")
-        return _MockModelConfig2(mock_tenant_id, "model-1").to_dict()
-    
-    def _get_model_config_by_type_and_name(tenant_id: str, model_type: str, model_name: str):
+    def _get_model_config_from_provider_instance(tenant_id: str, model_type: str, model_name: str):
         if not model_name:
             raise Exception("Model Name is required")
         return _MockModelConfig2(tenant_id, model_name).to_dict()
@@ -324,9 +268,8 @@ def _load_dify_retrieval_module(monkeypatch):
     def _get_tenant_default_model_by_type(tenant_id: str, model_type):
         # Return mock tenant with default model configurations
         return _MockModelConfig2(tenant_id, "chat-model").to_dict()
-    
-    tenant_model_service_mod.get_model_config_by_id = _get_model_config_by_id
-    tenant_model_service_mod.get_model_config_by_type_and_name = _get_model_config_by_type_and_name
+
+    tenant_model_service_mod.get_model_config_from_provider_instance = _get_model_config_from_provider_instance
     tenant_model_service_mod.get_tenant_default_model_by_type = _get_tenant_default_model_by_type
     monkeypatch.setitem(sys.modules, "api.db.joint_services.tenant_model_service", tenant_model_service_mod)
 
@@ -366,6 +309,7 @@ def test_retrieval_success_with_metadata_and_kg(monkeypatch):
     monkeypatch.setattr(module, "jsonify", lambda payload: payload)
     monkeypatch.setattr(module.DocMetadataService, "get_flatted_meta_by_kbs", lambda _kbs: [{"doc_id": "doc-1"}])
     monkeypatch.setattr(module.KnowledgebaseService, "get_by_id", lambda _kb_id: (True, _DummyKB()))
+    monkeypatch.setattr(module.KnowledgebaseService, "accessible", lambda _kb_id, _tenant_id: True)
     monkeypatch.setattr(module, "convert_conditions", lambda cond: cond.get("conditions", []))
     monkeypatch.setattr(module, "meta_filter", lambda *_args, **_kwargs: ["doc-1"])
     monkeypatch.setattr(
@@ -390,7 +334,7 @@ def test_retrieval_success_with_metadata_and_kg(monkeypatch):
     monkeypatch.setattr(
         module.DocumentService,
         "get_by_ids",
-        lambda doc_ids: [SimpleNamespace(id=doc_id, meta_fields={"origin": f"meta-{doc_id}"}) for doc_id in doc_ids],
+        lambda doc_ids, cols=None: [SimpleNamespace(id=doc_id, meta_fields={"origin": f"meta-{doc_id}"}) for doc_id in doc_ids],
     )
     monkeypatch.setattr(module, "label_question", lambda *_args, **_kwargs: [])
 
@@ -421,6 +365,7 @@ def test_retrieval_not_found_exception_mapping(monkeypatch):
     _set_request_json(monkeypatch, module, {"knowledge_id": "kb-1", "query": "hello"})
     monkeypatch.setattr(module.DocMetadataService, "get_flatted_meta_by_kbs", lambda _kbs: [])
     monkeypatch.setattr(module.KnowledgebaseService, "get_by_id", lambda _kb_id: (True, _DummyKB()))
+    monkeypatch.setattr(module.KnowledgebaseService, "accessible", lambda _kb_id, _tenant_id: True)
     monkeypatch.setattr(module, "label_question", lambda *_args, **_kwargs: [])
     monkeypatch.setattr(
         module,
@@ -445,6 +390,7 @@ def test_retrieval_generic_exception_mapping(monkeypatch):
     _set_request_json(monkeypatch, module, {"knowledge_id": "kb-1", "query": "hello"})
     monkeypatch.setattr(module.DocMetadataService, "get_flatted_meta_by_kbs", lambda _kbs: [])
     monkeypatch.setattr(module.KnowledgebaseService, "get_by_id", lambda _kb_id: (True, _DummyKB()))
+    monkeypatch.setattr(module.KnowledgebaseService, "accessible", lambda _kb_id, _tenant_id: True)
     monkeypatch.setattr(module, "label_question", lambda *_args, **_kwargs: [])
     monkeypatch.setattr(
         module,

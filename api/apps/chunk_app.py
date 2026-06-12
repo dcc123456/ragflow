@@ -29,7 +29,7 @@ from api.db.services.llm_service import LLMBundle
 from common.metadata_utils import apply_meta_data_filter
 from api.db.services.search_service import SearchService
 from api.db.services.user_service import UserTenantService
-from api.db.joint_services.tenant_model_service import get_model_config_by_id, get_tenant_default_model_by_type, get_model_config_by_type_and_name
+from api.db.joint_services.tenant_model_service import get_tenant_default_model_by_type, get_model_config_from_provider_instance
 from api.utils.api_utils import (
     get_data_error_result,
     get_json_result,
@@ -177,15 +177,11 @@ async def set():
             if not e:
                 return get_data_error_result(message="Document not found!")
 
-            tenant_embd_id = DocumentService.get_tenant_embd_id(req["doc_id"])
-            if tenant_embd_id:
-                embd_model_config = get_model_config_by_id(tenant_embd_id)
+            embd_id = DocumentService.get_embd_id(req["doc_id"])
+            if embd_id:
+                embd_model_config = get_model_config_from_provider_instance(tenant_id, LLMType.EMBEDDING, embd_id)
             else:
-                embd_id = DocumentService.get_embd_id(req["doc_id"])
-                if embd_id:
-                    embd_model_config = get_model_config_by_type_and_name(tenant_id, LLMType.EMBEDDING, embd_id)
-                else:
-                    embd_model_config = get_tenant_default_model_by_type(tenant_id, LLMType.EMBEDDING)
+                embd_model_config = get_tenant_default_model_by_type(tenant_id, LLMType.EMBEDDING)
             embd_mdl = LLMBundle(tenant_id, embd_model_config)
 
             _d = d
@@ -369,15 +365,11 @@ async def create():
             if kb.pagerank:
                 d[PAGERANK_FLD] = kb.pagerank
 
-            tenant_embd_id = DocumentService.get_tenant_embd_id(req["doc_id"])
-            if tenant_embd_id:
-                embd_model_config = get_model_config_by_id(tenant_embd_id)
+            embd_id = DocumentService.get_embd_id(req["doc_id"])
+            if embd_id:
+                embd_model_config = get_model_config_from_provider_instance(tenant_id, LLMType.EMBEDDING, embd_id)
             else:
-                embd_id = DocumentService.get_embd_id(req["doc_id"])
-                if embd_id:
-                    embd_model_config = get_model_config_by_type_and_name(tenant_id, LLMType.EMBEDDING, embd_id)
-                else:
-                    embd_model_config = get_tenant_default_model_by_type(tenant_id, LLMType.EMBEDDING)
+                embd_model_config = get_tenant_default_model_by_type(tenant_id, LLMType.EMBEDDING)
             embd_mdl = LLMBundle(tenant_id, embd_model_config)
 
             if image_base64:
@@ -437,7 +429,7 @@ async def retrieval_test():
             if meta_data_filter.get("method") in ["auto", "semi_auto"]:
                 chat_id = search_config.get("chat_id", "")
                 if chat_id:
-                    chat_model_config = get_model_config_by_type_and_name(user_id, LLMType.CHAT, search_config["chat_id"])
+                    chat_model_config = get_model_config_from_provider_instance(user_id, LLMType.CHAT, search_config["chat_id"])
                 else:
                     chat_model_config = get_tenant_default_model_by_type(user_id, LLMType.CHAT)
                 chat_mdl = LLMBundle(user_id, chat_model_config)
@@ -471,20 +463,17 @@ async def retrieval_test():
         _question = question
         if langs:
             _question = await cross_languages(kb.tenant_id, None, _question, langs)
-        if kb.tenant_embd_id:
-            embd_model_config = get_model_config_by_id(kb.tenant_embd_id)
-        elif kb.embd_id:
-            embd_model_config = get_model_config_by_type_and_name(kb.tenant_id, LLMType.EMBEDDING, kb.embd_id)
+        if kb.embd_id:
+            embd_model_config = get_model_config_from_provider_instance(kb.tenant_id, LLMType.EMBEDDING, kb.embd_id)
         else:
             embd_model_config = get_tenant_default_model_by_type(kb.tenant_id, LLMType.EMBEDDING)
         embd_mdl = LLMBundle(kb.tenant_id, embd_model_config)
 
         rerank_mdl = None
         if req.get("tenant_rerank_id"):
-            rerank_model_config = get_model_config_by_id(req["tenant_rerank_id"])
-            rerank_mdl = LLMBundle(kb.tenant_id, rerank_model_config)
-        elif req.get("rerank_id"):
-            rerank_model_config = get_model_config_by_type_and_name(kb.tenant_id, LLMType.RERANK.value, req["rerank_id"])
+            return get_data_error_result(message="`tenant_rerank_id` is no longer supported; use `rerank_id` provider model name instead.")
+        if req.get("rerank_id"):
+            rerank_model_config = get_model_config_from_provider_instance(kb.tenant_id, LLMType.RERANK.value, req["rerank_id"])
             rerank_mdl = LLMBundle(kb.tenant_id, rerank_model_config)
 
         if req.get("keyword", False):

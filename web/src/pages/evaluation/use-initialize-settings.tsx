@@ -1,13 +1,13 @@
-import { useFetchModelId } from '@/hooks/logic-hooks';
 import { useFetchChat } from '@/hooks/use-chat-request';
 import { useFetchEvaluationRun } from '@/hooks/use-evaluation-request';
 import { useEvaluationUrl } from '@/hooks/use-evaluation-url';
+import { useFetchDefaultModelDictionary } from '@/hooks/use-llm-request';
 import { isEmpty } from 'lodash';
 import { useEffect, useMemo } from 'react';
 import { UseFormReturn } from 'react-hook-form';
 
 export function useInitializeMetrics() {
-  const llmId = useFetchModelId();
+  const { llm_id: llmId } = useFetchDefaultModelDictionary();
 
   const defaultValues = {
     enable: true,

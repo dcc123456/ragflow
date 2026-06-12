@@ -12,15 +12,6 @@ const {
   setting,
   userInfo,
   tenantInfo,
-  factoriesList,
-  llmList,
-  myLlm,
-  setApiKey,
-  setTenantInfo,
-  addLlm,
-  deleteLlm,
-  enableLlm,
-  deleteFactory,
   getSystemVersion,
   getSystemTokenList,
   removeSystemToken,
@@ -91,45 +82,9 @@ const methods = {
     url: tenantInfo,
     method: 'get',
   },
-  setTenantInfo: {
-    url: setTenantInfo,
-    method: 'patch',
-  },
-  factoriesList: {
-    url: factoriesList,
-    method: 'get',
-  },
-  llmList: {
-    url: llmList,
-    method: 'get',
-  },
-  myLlm: {
-    url: myLlm,
-    method: 'get',
-  },
-  setApiKey: {
-    url: setApiKey,
-    method: 'post',
-  },
-  addLlm: {
-    url: addLlm,
-    method: 'post',
-  },
-  deleteLlm: {
-    url: deleteLlm,
-    method: 'post',
-  },
-  enableLlm: {
-    url: enableLlm,
-    method: 'post',
-  },
   getSystemVersion: {
     url: getSystemVersion,
     method: 'get',
-  },
-  deleteFactory: {
-    url: deleteFactory,
-    method: 'post',
   },
   listToken: {
     url: getSystemTokenList,

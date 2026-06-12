@@ -43,7 +43,8 @@ RUN --mount=type=cache,id=ragflow_apt,target=/var/cache/apt,sharing=locked \
     chmod 1777 /tmp && \
     apt update && \
     apt install -y \
-    build-essential libglib2.0-0 libglx-mesa0 libgl1 pkg-config libicu-dev libgdiplus default-jdk libatk-bridge2.0-0 libpython3-dev libgtk-4-1 libnss3 xdg-utils libgbm-dev libjemalloc-dev gnupg unzip curl wget git vim less ghostscript pandoc texlive texlive-latex-extra texlive-xetex texlive-lang-chinese fonts-freefont-ttf fonts-noto-cjk postgresql-client rsync
+    build-essential libglib2.0-0 libglx-mesa0 libgl1 pkg-config libicu-dev libgdiplus default-jdk libatk-bridge2.0-0 libpython3-dev libgtk-4-1 libnss3 xdg-utils libgbm-dev libjemalloc-dev gnupg unzip curl wget git vim less ghostscript pandoc texlive texlive-latex-extra texlive-xetex texlive-lang-chinese fonts-freefont-ttf fonts-noto-cjk postgresql-client rsync && \
+    rm -rf /var/lib/apt/lists/*
 
 # Download resource from GitHub to /usr/share/infinity
 RUN mkdir -p /usr/share/infinity/resource && \
@@ -65,7 +66,8 @@ RUN --mount=type=cache,id=ragflow_apt,target=/var/cache/apt,sharing=locked \
     && apt -o Acquire::Retries=5 install -y openresty openresty-openssl3 \
     && ln -sf /usr/local/openresty/nginx/sbin/nginx /usr/sbin/nginx \
     && echo "/usr/local/openresty/openssl3/lib" > /etc/ld.so.conf.d/openresty-openssl3.conf \
-    && ldconfig
+    && ldconfig \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install uv from ragflow_deps image
 RUN --mount=type=bind,from=infiniflow/ragflow_deps:latest,source=/,target=/deps \
@@ -97,7 +99,8 @@ RUN --mount=type=cache,id=ragflow_apt,target=/var/cache/apt,sharing=locked \
     apt purge -y nodejs npm && \
     apt autoremove -y && \
     apt update && \
-    apt install -y nodejs
+    apt install -y nodejs && \
+    rm -rf /var/lib/apt/lists/*
 
 RUN corepack enable
 
@@ -113,9 +116,10 @@ RUN --mount=type=cache,id=ragflow_apt,target=/var/cache/apt,sharing=locked \
     # ARM64 (macOS/Apple Silicon or Linux aarch64) \
     ACCEPT_EULA=Y apt install -y unixodbc-dev msodbcsql18; \
     else \
-    # x86_64 or others \
-    ACCEPT_EULA=Y apt install -y unixodbc-dev msodbcsql17; \
-    fi || \
+        # x86_64 or others \
+        ACCEPT_EULA=Y apt install -y unixodbc-dev msodbcsql17; \
+    fi && \
+    rm -rf /var/lib/apt/lists/* || \
     { echo "Failed to install ODBC driver"; exit 1; }
 
 # Install Chrome and ChromeDriver for selenium (from ragflow_deps image)
@@ -151,6 +155,14 @@ USER root
 WORKDIR /ragflow
 
 # Install Python dependencies from pyproject.toml and uv.lock
+# Install build-only dependencies for compiling Python C extensions.
+# These are not inherited from base to keep the production image smaller.
+RUN --mount=type=cache,id=ragflow_apt,target=/var/cache/apt,sharing=locked \
+    apt update && \
+    apt install -y build-essential libpython3-dev libicu-dev libgbm-dev && \
+    rm -rf /var/lib/apt/lists/*
+
+# install dependencies from uv.lock file
 COPY pyproject.toml uv.lock ./
 
 # https://github.com/astral-sh/uv/issues/10462
@@ -159,19 +171,24 @@ RUN --mount=type=cache,id=ragflow_uv,target=/root/.cache/uv,sharing=locked \
     if [ "$NEED_MIRROR" == "1" ]; then \
     sed -i 's|pypi.org|mirrors.aliyun.com/pypi|g' uv.lock; \
     else \
-    sed -i 's|mirrors.aliyun.com/pypi|pypi.org|g' uv.lock; \
+        sed -i 's|mirrors.aliyun.com/pypi|pypi.org|g' uv.lock; \
+        sed -i 's|gitee.com|github.com|g' uv.lock; \
     fi; \
     uv sync --python 3.13 --frozen && \
     # Ensure pip is available in the venv for runtime package installation (fixes #12651)
     .venv/bin/python3 -m ensurepip --upgrade
 
-# Build frontend
+# Install frontend dependencies — depends only on package manifests so
+# web source / docs changes don't invalidate this layer.
+COPY web/package.json web/package-lock.json web/.npmrc ./web/
+RUN --mount=type=cache,id=ragflow_npm,target=/root/.npm,sharing=locked \
+    cd web && NODE_OPTIONS="--max-old-space-size=8192" npm install
+
+# Copy full web source and docs for the frontend build.
 COPY web web
 COPY docs docs
 RUN --mount=type=cache,id=ragflow_npm,target=/root/.npm,sharing=locked \
-    --mount=type=cache,id=ragflow_vite,target=/ragflow/web/.vite-cache,sharing=locked \
-    cd web && NODE_OPTIONS="--max-old-space-size=8192" npm install && \
-    NODE_OPTIONS="--max-old-space-size=8192" VITE_BUILD_SOURCEMAP=false npm run build
+    cd web && NODE_OPTIONS="--max-old-space-size=8192" VITE_BUILD_SOURCEMAP=false VITE_MINIFY=esbuild npm run build
 
 # Get version from git (mount .git directory to compute version dynamically)
 RUN --mount=type=bind,source=.git,target=/ragflow/.git \
@@ -208,7 +225,6 @@ RUN mv /etc/nginx/ragflow.conf.golang /etc/nginx/conf.d/ragflow.conf.golang && \
     rm -f /etc/nginx/sites-enabled/default
 
 # Copy application code (these change more frequently)
-COPY web web
 COPY admin admin
 COPY api api
 COPY conf conf
@@ -230,6 +246,7 @@ COPY mcp mcp
 COPY common common
 COPY memory memory
 COPY bin bin
+COPY tools/scripts tools/scripts
 
 # Copy compiled web pages
 COPY --from=builder /ragflow/web/dist /ragflow/web/dist

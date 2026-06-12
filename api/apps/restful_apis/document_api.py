@@ -60,7 +60,7 @@ from api.utils.api_utils import (
     get_resource_insufficient_result,
 )
 from api.utils.billing import InsufficientResourceError
-from api.utils.permission_utils import check_doc_permission, check_kb_permission, filter_accessible_doc_ids_for_user
+from api.utils.pagination_utils import validate_rest_api_page_size
 from api.utils.validation_utils import (
     UpdateDocumentReq,
     format_validation_error_message,
@@ -75,6 +75,8 @@ from api.utils.file_utils import filename_type, thumbnail
 from api.utils.web_utils import CONTENT_TYPE_MAP, html2pdf, is_valid_url, apply_safe_file_response_headers
 from common.ssrf_guard import assert_url_is_safe
 from rag.nlp import search
+
+from api.utils.permission_utils import check_doc_permission, check_kb_permission, filter_accessible_doc_ids_for_user
 
 
 def _grant_document_manage_permission_if_needed(doc_id: str, kb) -> None:
@@ -927,7 +929,7 @@ def _get_docs_with_request(req, dataset_id: str):
     q = req.args
 
     page = int(q.get("page", 1))
-    page_size = int(q.get("page_size", 30))
+    page_size = validate_rest_api_page_size(int(q.get("page_size", 30)))
 
     orderby = q.get("orderby", "create_time")
     desc = str(q.get("desc", "true")).strip().lower() != "false"
@@ -1834,7 +1836,17 @@ async def stop_parse_documents(tenant_id, dataset_id):
                     continue
 
                 cancel_all_task_of(doc_id)
-                DocumentService.update_by_id(doc_id, {"run": str(TaskStatus.CANCEL.value)})
+                DocumentService.update_by_id(
+                    doc_id,
+                    {
+                        "run": str(TaskStatus.CANCEL.value),
+                        "progress": 0,
+                        "chunk_num": 0,
+                    },
+                )
+                index_name = search.index_name(tenant_id)
+                if settings.docStoreConn.index_exist(index_name, doc.kb_id):
+                    settings.docStoreConn.delete({"doc_id": doc.id}, index_name, doc.kb_id)
                 success_count += 1
 
             result = {"success_count": success_count}
@@ -1851,6 +1863,54 @@ async def stop_parse_documents(tenant_id, dataset_id):
         return get_error_data_result(message="Internal server error")
 
 
+def _parse_document_image_id(image_id: str) -> tuple[str, str] | None:
+    """Split a composite document image ID into storage bucket and object key.
+
+    Thumbnail URLs use ``{dataset_id}-{thumbnail}``. Only the first hyphen
+    separates the dataset/kb id (bucket) from the object key, which may
+    contain additional hyphens (e.g. ``page-1.png``).
+
+    Args:
+        image_id: Path segment from ``GET /documents/images/<image_id>``.
+
+    Returns:
+        ``(bucket, object_key)`` when valid, otherwise ``None``.
+    """
+    parts = image_id.split("-", 1)
+    if len(parts) != 2 or not parts[0] or not parts[1]:
+        return None
+    bucket, object_name = parts
+    if not re.fullmatch(r"[0-9a-fA-F]{32}", bucket):
+        return None
+    return bucket, object_name
+
+
+def _detect_image_content_type_from_bytes(data):
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if data[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if data[:6] in (b"GIF87a", b"GIF89a"):
+        return "image/gif"
+    if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    if data[:2] == b"BM":
+        return "image/bmp"
+    return None
+
+
+def _content_type_for_document_image(object_name, data):
+    ext_match = re.search(r"\.([^.]+)$", object_name.lower())
+    if ext_match:
+        content_type = CONTENT_TYPE_MAP.get(ext_match.group(1))
+        if content_type and content_type.startswith("image/"):
+            return content_type
+    detected = _detect_image_content_type_from_bytes(data)
+    if detected:
+        return detected
+    return "application/octet-stream"
+
+
 @manager.route("/documents/images/<image_id>", methods=["GET"])  # noqa: F821
 @login_required(auth_types=[AUTH_JWT, AUTH_API, AUTH_BETA])
 async def get_document_image(image_id):
@@ -1865,7 +1925,7 @@ async def get_document_image(image_id):
         required: true
         schema:
           type: string
-        description: The image ID (format: bucket-name-image-name)
+        description: Composite ID ``{dataset_id}-{thumbnail_object_key}`` (split on first hyphen only)
     responses:
       200:
         description: Image file
@@ -1876,13 +1936,16 @@ async def get_document_image(image_id):
               format: binary
     """
     try:
-        arr = image_id.split("-")
-        if len(arr) != 2:
+        parsed = _parse_document_image_id(image_id)
+        if not parsed:
             return get_data_error_result(message="Image not found.")
-        bkt, nm = image_id.split("-")
-        data = await thread_pool_exec(settings.STORAGE_IMPL.get, bkt, nm, current_user.id)
+        bkt, nm = parsed
+        data = await thread_pool_exec(settings.STORAGE_IMPL.get, bkt, nm)
+        if not data:
+            return get_data_error_result(message="Image not found.")
+        content_type = _content_type_for_document_image(nm, data)
         response = await make_response(data)
-        response.headers.set("Content-Type", "image/JPEG")
+        response.headers.set("Content-Type", content_type)
         return response
     except Exception as e:
         return server_error_response(e)
@@ -2093,6 +2156,9 @@ async def get(doc_id):
     enumeration.
     """
     try:
+        if not DocumentService.accessible(doc_id, current_user.id):
+            return get_data_error_result(message="Document not found!")
+
         e, doc = DocumentService.get_by_id(doc_id)
         if not e:
             return get_data_error_result(message="Document not found!")
@@ -2100,6 +2166,8 @@ async def get(doc_id):
         b, n = File2DocumentService.get_storage_address(doc_id=doc_id)
         tenant_id = DocumentService.get_tenant_id(doc_id)
         data = await thread_pool_exec(settings.STORAGE_IMPL.get, b, n, tenant_id)
+        if not data:
+            return get_data_error_result(message="This file is empty.")
         response = await make_response(data)
 
         ext = re.search(r"\.([^.]+)$", doc.name.lower())
@@ -2112,6 +2180,15 @@ async def get(doc_id):
         return response
     except Exception as e:
         return server_error_response(e)
+
+
+def _mimetype_for_document(doc) -> str:
+    match = re.search(r"\.([^.]+)$", (doc.name or "").lower())
+    if not match:
+        return "application/octet-stream"
+    ext = match.group(1)
+    fallback_prefix = "image" if doc.type == FileType.VISUAL.value else "application"
+    return CONTENT_TYPE_MAP.get(ext, f"{fallback_prefix}/{ext}")
 
 
 @manager.route("/datasets/<dataset_id>/documents/<document_id>", methods=["GET"])  # noqa: F821
@@ -2170,7 +2247,7 @@ async def download(dataset_id, document_id):
         file,
         as_attachment=True,
         attachment_filename=doc[0].name,
-        mimetype="application/octet-stream",  # Set a default MIME type
+        mimetype=_mimetype_for_document(doc[0]),
     )
 
 
@@ -2230,5 +2307,5 @@ async def download_document(tenant_id=None, document_id=None):
         file,
         as_attachment=True,
         attachment_filename=doc[0].name,
-        mimetype="application/octet-stream",  # Set a default MIME type
+        mimetype=_mimetype_for_document(doc[0]),
     )

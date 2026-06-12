@@ -9,10 +9,11 @@ import { RAGFlowPagination } from '@/components/ui/ragflow-pagination';
 import { useFetchChatList } from '@/hooks/use-chat-request';
 import { pick } from 'lodash';
 import { Plus } from 'lucide-react';
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router';
 import { ChatCard } from './chat-card';
+import { useCreateChatDialog } from './hooks/use-create-chat';
 import { useRenameChat } from './hooks/use-rename-chat';
 import { useShowPrivilegeDialog } from './use-show-privilege-dialog';
 
@@ -28,6 +29,13 @@ export default function ChatList() {
     onChatRenameOk,
     chatRenameLoading,
   } = useRenameChat();
+  const {
+    createChatVisible,
+    showCreateChatModal,
+    hideCreateChatModal,
+    onCreateChatOk,
+    createChatLoading,
+  } = useCreateChatDialog();
 
   const handlePageChange = useCallback(
     (page: number, pageSize?: number) => {
@@ -37,8 +45,8 @@ export default function ChatList() {
   );
 
   const handleShowCreateModal = useCallback(() => {
-    showChatRenameModal();
-  }, [showChatRenameModal]);
+    showCreateChatModal();
+  }, [showCreateChatModal]);
 
   const [searchParams, setSearchParams] = useSearchParams();
   const isCreate = searchParams.get('isCreate') === 'true';
@@ -56,6 +64,39 @@ export default function ChatList() {
     hidePrivilegeModal,
     privilegeModalVisible,
   } = useShowPrivilegeDialog();
+
+  const renameDialogProps = useMemo(() => {
+    if (chatRenameVisible) {
+      return {
+        hideModal: hideChatRenameModal,
+        onOk: onChatRenameOk,
+        initialName: initialChatName,
+        loading: chatRenameLoading,
+        title: initialChatName,
+      };
+    }
+    if (createChatVisible) {
+      return {
+        hideModal: hideCreateChatModal,
+        onOk: onCreateChatOk,
+        initialName: '',
+        loading: createChatLoading,
+        title: t('chat.createChat'),
+      };
+    }
+    return null;
+  }, [
+    chatRenameVisible,
+    createChatVisible,
+    hideChatRenameModal,
+    onChatRenameOk,
+    initialChatName,
+    chatRenameLoading,
+    hideCreateChatModal,
+    onCreateChatOk,
+    createChatLoading,
+    t,
+  ]);
 
   return (
     <>
@@ -125,14 +166,8 @@ export default function ChatList() {
         </article>
       )}
 
-      {chatRenameVisible && (
-        <RenameDialog
-          hideModal={hideChatRenameModal}
-          onOk={onChatRenameOk}
-          initialName={initialChatName}
-          loading={chatRenameLoading}
-          title={initialChatName || t('chat.createChat')}
-        ></RenameDialog>
+      {renameDialogProps && (
+        <RenameDialog {...renameDialogProps}></RenameDialog>
       )}
       {privilegeModalVisible && (
         <PrivilegeManagementDialog

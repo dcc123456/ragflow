@@ -14,7 +14,7 @@ import notification from '@/utils/notification';
 import { redirectToLogin } from '@/utils/private-util';
 import { RequestMethod, extend } from 'umi-request';
 import api from './api';
-import { convertTheKeysOfTheObjectToSnake } from './common-util';
+import { convertTheKeysOfTheObjectToSnake, isFormData } from './common-util';
 import { setCachedLlmList } from './llm-cache';
 import { addTenantParams } from './llm-util';
 
@@ -136,7 +136,9 @@ request.interceptors.request.use((url: string, options: any) => {
 
   // showStarModal(url, options.method, request);
   // Add tenant parameters to data
-  const dataWithTenantParams = addTenantParams(data, url);
+  const dataWithTenantParams = isFormData(data)
+    ? data
+    : addTenantParams(data, url);
 
   return {
     url,

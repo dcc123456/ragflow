@@ -41,7 +41,7 @@ import { visitParents } from 'unist-util-visit-parents';
 import styles from './floating-chat-widget-markdown.module.less';
 import { useIsDarkTheme } from './theme-provider';
 import { Button } from './ui/button';
-import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
+import { HoverCard, HoverCardContent, HoverCardTrigger } from './ui/hover-card';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 
 const getChunkIndex = (match: string) =>
@@ -172,7 +172,7 @@ const FloatingChatWidgetMarkdown = ({
           className="flex gap-2 widget-citation-content"
         >
           {imageId && (
-            <Popover>
+            <Tooltip>
               <TooltipTrigger asChild>
                 <Image
                   id={imageId}
@@ -185,7 +185,7 @@ const FloatingChatWidgetMarkdown = ({
                   className="max-w-[80vw] max-h-[60vh] rounded"
                 />
               </TooltipContent>
-            </Popover>
+            </Tooltip>
           )}
           <div className="space-y-2 flex-1 min-w-0">
             <div
@@ -277,12 +277,12 @@ const FloatingChatWidgetMarkdown = ({
         }
 
         return (
-          <Popover key={`popover-${i}`}>
-            <PopoverTrigger asChild>
+          <HoverCard key={`hovercard-${i}`}>
+            <HoverCardTrigger asChild>
               <InfoCircleOutlined className={styles.referenceIcon} />
-            </PopoverTrigger>
-            <PopoverContent>{getPopoverContent(chunkIndex)}</PopoverContent>
-          </Popover>
+            </HoverCardTrigger>
+            <HoverCardContent>{getPopoverContent(chunkIndex)}</HoverCardContent>
+          </HoverCard>
         );
       });
     },

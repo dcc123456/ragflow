@@ -18,6 +18,7 @@ import importlib
 import os
 import sys
 import types
+from typing import Any
 
 
 def _make_stub_getattr(module_name):
@@ -100,6 +101,9 @@ K8S_CI_USE_SILICONFLOW = os.getenv("K8S_CI_USE_SILICONFLOW", "0").lower() in {"1
 SILICONFLOW_API_KEY = os.getenv("SILICONFLOW_API_KEY")
 SILICONFLOW_BASE_URL = os.getenv("SILICONFLOW_BASE_URL", "https://api.siliconflow.cn/v1")
 SILICONFLOW_EMBEDDING_MODEL = os.getenv("SILICONFLOW_EMBEDDING_MODEL", "BAAI/bge-m3")
+ADMIN_HOST_ADDRESS = os.getenv("ADMIN_HOST_ADDRESS", "http://127.0.0.1:9381")
+# password is "admin"
+ENCRYPTED_ADMIN_PASSWORD = """WBPsJbL/W+1HN+hchm5pgu1YC3yMEb/9MFtsanZrpKEE9kAj4u09EIIVDtIDZhJOdTjz5pp5QW9TwqXBfQ2qzDqVJiwK7HGcNsoPi4wQPCmnLo0fs62QklMlg7l1Q7fjGRgV+KWtvNUce2PFzgrcAGDqRIuA/slSclKUEISEiK4z62rdDgvHT8LyuACuF1lPUY5wV0m/MbmGijRJlgvglAF8BX0BP8rQr8wZeaJdcnAy/keuODCjltMZDL06tYluN7HoiU+qlhBB+ltqG411oO/+vVhBgWsuVVOHd8uMjJEL320GUWUicprDUZvjlLaSSqVyyOiRMHpqAE9eHEecWg=="""
 
 MARKER_EXPRESSIONS = {
     "p1": "p1 or billing",
@@ -134,14 +138,76 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     )
 
 
+def _json_response(response: requests.Response, context: str) -> dict[str, Any]:
+    try:
+        return response.json()
+    except ValueError as exc:
+        raise Exception(f"{context} returned non-JSON status={response.status_code}: {response.text[:500]}") from exc
+
+
+def _is_registration_whitelist_error(message: str | None) -> bool:
+    return "isn't in whitelist" in (message or "")
+
+
+def _add_test_email_to_whitelist():
+    session = requests.Session()
+    login_url = ADMIN_HOST_ADDRESS + f"/api/{VERSION}/admin/login"
+    login_response = session.post(
+        url=login_url,
+        json={"email": "admin@ragflow.io", "password": ENCRYPTED_ADMIN_PASSWORD},
+        timeout=30,
+    )
+    login_payload = _json_response(login_response, "admin login")
+    if login_payload.get("code") != 0:
+        raise Exception(
+            f"admin login failed at {login_url}: code={login_payload.get('code')} message={login_payload.get('message')}"
+        )
+
+    auth_header = login_response.headers.get("Authorization", "")
+    if auth_header:
+        session.headers.update({"Authorization": auth_header})
+
+    whitelist_url = ADMIN_HOST_ADDRESS + f"/api/{VERSION}/admin/whitelist/add"
+    whitelist_response = session.post(whitelist_url, json={"email": EMAIL}, timeout=30)
+    whitelist_payload = _json_response(whitelist_response, "admin whitelist add")
+    if whitelist_payload.get("code") != 0:
+        raise Exception(
+            f"admin whitelist add failed at {whitelist_url}: "
+            f"code={whitelist_payload.get('code')} message={whitelist_payload.get('message')}"
+        )
+
+    data = whitelist_payload.get("data") or {}
+    if data.get("success") is False:
+        raise Exception(f"admin whitelist add returned unsuccessful payload: {whitelist_payload}")
+
+
 def register():
     url = HOST_ADDRESS + f"/api/{VERSION}/users"
     name = "qa"
     register_data = {"email": EMAIL, "nickname": name, "password": PASSWORD}
-    res = requests.post(url=url, json=register_data)
-    res = res.json()
-    if res.get("code") != 0 and "has already registered" not in res.get("message"):
-        raise Exception(res.get("message"))
+    response = requests.post(url=url, json=register_data)
+    res = _json_response(response, "register")
+    message = res.get("message")
+    if res.get("code") != 0 and "has already registered" not in (message or ""):
+        raise Exception(message)
+
+
+def _register_with_whitelist_retry():
+    try:
+        register()
+    except Exception as e:
+        message = str(e)
+        if not _is_registration_whitelist_error(message):
+            raise
+        try:
+            _add_test_email_to_whitelist()
+            register()
+        except Exception as bootstrap_error:
+            raise Exception(
+                "REST API test user registration is blocked by whitelist and automatic admin whitelist bootstrap failed. "
+                f"HOST_ADDRESS={HOST_ADDRESS}, ADMIN_HOST_ADDRESS={ADMIN_HOST_ADDRESS}, email={EMAIL}, "
+                f"registration_error={message}, bootstrap_error={bootstrap_error}"
+            ) from bootstrap_error
 
 
 def login():
@@ -169,10 +235,7 @@ def _request_json_with_auth_retry(method, url, auth, *, json_payload=None):
 
 @pytest.fixture(scope="session")
 def auth():
-    try:
-        register()
-    except Exception as e:
-        print(e)
+    _register_with_whitelist_retry()
     auth = login()
     return auth
 
@@ -195,6 +258,7 @@ def tenant_id(auth):
 
 
 def get_my_llms(auth, name):
+    # todo deprecated
     url = HOST_ADDRESS + f"/{VERSION}/llm/my_llms"
     response, _ = _request_json_with_auth_retry("GET", url, auth)
     res = response.json()
@@ -202,6 +266,41 @@ def get_my_llms(auth, name):
         raise Exception(res.get("message"))
     if name in res.get("data"):
         return True
+    return False
+
+
+def get_added_models(auth, factory_name):
+    url = HOST_ADDRESS + f"/api/v1/providers/{factory_name}/instances/CI"
+    authorization = {"Authorization": auth}
+    response = requests.get(url=url, headers=authorization)
+    res = response.json()
+    return res.get("code") == 0
+
+
+def get_tenant_llm_added(auth, factory_name, model_name, model_type="rerank"):
+    """
+    Check whether a specific (factory, model_name, model_type) tenant_llm row exists.
+
+    Legacy /v1/llm/my_llms response shape:
+        {
+            "ZHIPU-AI":     {"tags": ..., "llm": [{"name": ..., "type": ...}, ...]},
+            "SILICONFLOW":  {"tags": ..., "llm": [{"name": ..., "type": ...}, ...]},
+        }
+    so we navigate by factory key first, then look through its llm list.
+    """
+    url = HOST_ADDRESS + f"/{VERSION}/llm/my_llms"
+    authorization = {"Authorization": auth}
+    response = requests.get(url=url, headers=authorization)
+    res = response.json()
+    if res.get("code") != 0:
+        return False
+    data = res.get("data") or {}
+    factory_data = data.get(factory_name) or {}
+    for m in factory_data.get("llm", []) or []:
+        if m.get("name") != model_name:
+            continue
+        if model_type is None or m.get("type") == model_type:
+            return True
     return False
 
 
@@ -254,7 +353,94 @@ def add_models(auth):
                 pytest.exit(f"Critical error in add_models: {message}")
 
 
+def add_model_instance(auth):
+    add_provider_api = HOST_ADDRESS + "/api/v1/providers"
+    authorization = {"Authorization": auth}
+
+    providers = [("ZHIPU-AI", ZHIPU_AI_API_KEY)]
+    if K8S_CI_USE_SILICONFLOW:
+        if not SILICONFLOW_API_KEY:
+            pytest.exit("Error: Environment variable SILICONFLOW_API_KEY must be set when K8S_CI_USE_SILICONFLOW=1")
+        providers.append(("SILICONFLOW", SILICONFLOW_API_KEY))
+
+    for provider_name, api_key in providers:
+        if not get_added_models(auth, provider_name):
+            add_provider_response = requests.put(url=add_provider_api, headers=authorization, json={"provider_name": provider_name})
+            add_provider_res = add_provider_response.json()
+            if add_provider_res.get("code") != 0 and "already exists" not in add_provider_res.get("message", "").lower():
+                pytest.exit(f"Critical error in add model provider: {add_provider_res.get('message')}")
+
+        # Register both "CI" (used by glm-4-flash@CI@ZHIPU-AI in configs.py
+        # and BAAI/bge-reranker-v2-m3@CI@SILICONFLOW) and "default".
+        for instance_name in ("CI", "default"):
+            add_instance_api = HOST_ADDRESS + f"/api/v1/providers/{provider_name}/instances"
+            add_instance_response = requests.post(url=add_instance_api, headers=authorization, json={
+                "instance_name": instance_name,
+                "api_key": api_key,
+                "region": "default",
+                "base_url": ""
+            })
+            add_instance_res = add_instance_response.json()
+            if add_instance_res.get("code") != 0:
+                msg = add_instance_res.get("message", "")
+                # Instance may already exist with a different API key from a
+                # prior test run; that's fine — skip instead of failing.
+                if "Already exist instance" in msg or "already exist" in msg.lower():
+                    print(f"Note: {provider_name}/{instance_name} already exists, skipping")
+                    continue
+                # Python API blocks creating instances named "default".
+                # The test_retrieval_parity test handles this by inserting
+                # "default" directly into the DB for SILICONFLOW.
+                if "cannot be 'default'" in msg:
+                    print(f"Note: {provider_name}/{instance_name} blocked by API (name reserved), skipping")
+                    continue
+                pytest.exit(
+                    f"Critical error in add model instance {provider_name}/{instance_name}: "
+                    f"{msg}"
+                )
+
+        add_success = get_added_models(auth, provider_name)
+        if not add_success:
+            pytest.exit(f"Critical error in check added model: {provider_name} add model failed")
+
+
+def add_siliconflow_rerank_llm(auth):
+    """
+    Register the BAAI/bge-reranker-v2-m3 rerank model under factory=SILICONFLOW / instance=CI.
+
+    This is the model referenced as `BAAI/bge-reranker-v2-m3@CI@SILICONFLOW` in
+    test_retrieval_parity.py. The /v1/llm/add_llm endpoint validates the key by
+    issuing a real rerank request, so the call requires network access to SiliconFlow
+    and a valid SILICONFLOW_API_KEY.
+    """
+    factory = "SILICONFLOW"
+    model_name = "BAAI/bge-reranker-v2-m3"
+    if get_tenant_llm_added(auth, factory, model_name, "rerank"):
+        return
+
+    url = HOST_ADDRESS + f"/{VERSION}/llm/add_llm"
+    authorization = {"Authorization": auth}
+    payload = {
+        "llm_factory": factory,
+        "llm_name": model_name,
+        "model_type": "rerank",
+        "api_key": SILICONFLOW_API_KEY,
+        "api_base": "",
+    }
+    response = requests.post(url=url, headers=authorization, json=payload)
+    res = response.json()
+    if res.get("code") != 0:
+        pytest.exit(
+            f"Critical error adding {factory} rerank model {model_name}: "
+            f"code={res.get('code')} message={res.get('message')} data={res.get('data')}"
+        )
+
+    if not get_tenant_llm_added(auth, factory, model_name, "rerank"):
+        pytest.exit(f"Failed to confirm {factory}/{model_name} rerank row was added")
+
+
 def get_tenant_info(auth):
+    # todo deprecated
     url = HOST_ADDRESS + f"/api/{VERSION}/users/me/models"
     response, auth = _request_json_with_auth_retry("GET", url, auth)
     res = response.json()
@@ -265,27 +451,63 @@ def get_tenant_info(auth):
 
 @pytest.fixture(scope="session", autouse=True)
 def set_tenant_info(auth):
-    tenant_id = None
+    required_providers = ["ZHIPU-AI"]
+    if K8S_CI_USE_SILICONFLOW:
+        required_providers.append("SILICONFLOW")
+    if any(not get_added_models(auth, provider) for provider in required_providers):
+        try:
+            add_model_instance(auth)
+        except Exception as e:
+            pytest.exit(f"Error in set_tenant_info: {str(e)}")
+    url = HOST_ADDRESS + "/api/v1/models/default"
+    authorization = {"Authorization": auth}
+    # set chat model
+    set_default_llm_response = requests.patch(
+        url=url,
+        headers=authorization,
+        json={
+            "model_provider": "ZHIPU-AI",
+            "model_instance": "CI",
+            "model_type": "chat",
+            "model_name": "glm-4-flash"
+        })
+    llm_res = set_default_llm_response.json()
+    if llm_res.get("code") != 0:
+        raise Exception(llm_res.get("message"))
+    # set embedding model
+    set_default_embedding_response = requests.patch(
+        url=url,
+        headers=authorization,
+        json={
+            "model_provider": "Builtin",
+            "model_instance": "Local",
+            "model_type": "embedding",
+            "model_name": "BAAI/bge-small-en-v1.5"
+        })
+    embd_res = set_default_embedding_response.json()
+    if embd_res.get("code") != 0:
+        raise Exception(embd_res.get("message"))
+
+
+@pytest.fixture(scope="session", autouse=True)
+def set_tenant_siliconflow_rerank(auth):
+    """
+    Ensure the SiliconFlow BAAI/bge-reranker-v2-m3 rerank model is registered
+    for the test tenant. Used by test_retrieval_parity.py as
+    `BAAI/bge-reranker-v2-m3@CI@SILICONFLOW`.
+
+    Runs after `set_tenant_info` so the SILICONFLOW provider+CI instance
+    already exist when the /add_llm call is made.
+
+    If /add_llm is blocked (e.g. factory not in allowed list), the rerank
+    model config is resolved from FACTORY_LLM_INFOS at search time, so the
+    test can still proceed.
+    """
+    if not K8S_CI_USE_SILICONFLOW:
+        return
+
     try:
-        add_models(auth)
-        tenant_id, auth = get_tenant_info(auth)
+        add_siliconflow_rerank_llm(auth)
     except Exception as e:
-        pytest.exit(f"Error in set_tenant_info: {str(e)}")
-    url = HOST_ADDRESS + f"/api/{VERSION}/users/me/models"
-    embd_id = (
-        f"{SILICONFLOW_EMBEDDING_MODEL}@SILICONFLOW"
-        if K8S_CI_USE_SILICONFLOW
-        else "BAAI/bge-small-en-v1.5___OpenAI-API@OpenAI-API-Compatible"
-    )
-    tenant_info = {
-        "tenant_id": tenant_id,
-        "llm_id": "glm-4-flash@ZHIPU-AI",
-        "embd_id": embd_id,
-        "img2txt_id": "",
-        "asr_id": "",
-        "tts_id": None,
-    }
-    response, _ = _request_json_with_auth_retry("PATCH", url, auth, json_payload=tenant_info)
-    res = response.json()
-    if res.get("code") != 0:
-        raise Exception(res.get("message"))
+        print(f"Note: Could not register SILICONFLOW rerank model via /add_llm: {e}")
+        print("The model config will be resolved from FACTORY_LLM_INFOS at runtime.")

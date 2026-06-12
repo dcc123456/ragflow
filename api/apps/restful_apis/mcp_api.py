@@ -23,13 +23,14 @@ from api.db.services.mcp_server_service import MCPServerService
 from api.db.services.permission_service import PermissionService
 from api.db.services.user_service import TenantService
 from api.utils.api_utils import get_data_error_result, get_json_result, get_mcp_tools, get_request_json, server_error_response, validate_request
-from api.utils.permission_utils import has_permission_for_member
+from api.utils.pagination_utils import validate_rest_api_page_size
 from api.utils.web_utils import get_float, safe_json_parse
 from common.constants import VALID_MCP_SERVER_TYPES
 from common.mcp_tool_call_conn import MCPToolCallSession, close_multiple_mcp_toolcall_sessions
 from common.misc_utils import get_uuid, thread_pool_exec
 from common.ssrf_guard import assert_url_is_safe, pin_dns_global
 
+from api.utils.permission_utils import has_permission_for_member
 
 def _get_mcp_ids_from_args() -> list[str]:
     mcp_ids = request.args.getlist("mcp_ids")
@@ -74,7 +75,7 @@ def _assert_mcp_url_is_safe(url, invalid_message: str = "Invalid url.") -> tuple
 async def list_mcp() -> Response:
     keywords = request.args.get("keywords", "")
     page_number = int(request.args.get("page", 0))
-    items_per_page = int(request.args.get("page_size", 0))
+    items_per_page = validate_rest_api_page_size(int(request.args.get("page_size", 0)))
     orderby = request.args.get("orderby", "create_time")
     if request.args.get("desc", "true").lower() == "false":
         desc = False

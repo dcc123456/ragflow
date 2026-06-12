@@ -213,7 +213,7 @@ def test_async_ask_final_event_carries_decorated_answer(monkeypatch):
         dialog_service.KnowledgebaseService, "get_by_ids", lambda _ids: [_KB]
     )
     monkeypatch.setattr(
-        dialog_service, "get_model_config_by_type_and_name",
+        dialog_service, "get_model_config_from_provider_instance",
         lambda _tid, _type, _name: _LLM_CONFIG,
     )
     monkeypatch.setattr(dialog_service, "LLMBundle", lambda _tid, _cfg: chat_mdl)
@@ -267,7 +267,7 @@ def test_async_ask_delta_events_carry_incremental_text_only(monkeypatch):
         dialog_service.KnowledgebaseService, "get_by_ids", lambda _ids: [_KB]
     )
     monkeypatch.setattr(
-        dialog_service, "get_model_config_by_type_and_name",
+        dialog_service, "get_model_config_from_provider_instance",
         lambda _tid, _type, _name: _LLM_CONFIG,
     )
     monkeypatch.setattr(dialog_service, "LLMBundle", lambda _tid, _cfg: chat_mdl)
@@ -300,6 +300,53 @@ def test_async_ask_delta_events_carry_incremental_text_only(monkeypatch):
     assert "chunks" in final_events[0]["reference"], (
         "Final event reference must contain chunk data from decorate_answer()"
     )
+
+
+@pytest.mark.p2
+def test_async_ask_empty_kb_ids_yields_error_final_event(monkeypatch):
+    """
+    When kb_ids is empty, async_ask() must not crash with IndexError on kbs[0].
+    """
+    monkeypatch.setattr(
+        dialog_service.KnowledgebaseService, "get_by_ids", lambda _ids: []
+    )
+
+    events = _collect(
+        dialog_service.async_ask(
+            question="What is RAGFlow?",
+            kb_ids=[],
+            tenant_id="tenant-1",
+        )
+    )
+
+    assert len(events) == 1
+    final = events[0]
+    assert final.get("final") is True
+    assert "No KB selected" in final["answer"]
+    assert final["reference"] == {}
+
+
+@pytest.mark.p2
+def test_async_ask_stale_kb_ids_yields_error_final_event(monkeypatch):
+    """Provided kb_ids that do not resolve to any KB should report invalid selection."""
+    monkeypatch.setattr(
+        dialog_service.KnowledgebaseService,
+        "get_by_ids",
+        lambda ids: [] if ids == ["deleted-kb"] else [_KB],
+    )
+
+    events = _collect(
+        dialog_service.async_ask(
+            question="What is RAGFlow?",
+            kb_ids=["deleted-kb"],
+            tenant_id="tenant-1",
+        )
+    )
+
+    assert len(events) == 1
+    assert events[0].get("final") is True
+    assert "not valid" in events[0]["answer"]
+    assert events[0]["reference"] == {}
 
 
 # ---------------------------------------------------------------------------
@@ -355,10 +402,11 @@ def test_async_chat_final_event_carries_decorated_answer(monkeypatch):
 
     # Stub out the heavy service/model calls
     monkeypatch.setattr(
-        dialog_service.TenantLLMService, "llm_id2llm_type", lambda _llm_id: "chat"
+        dialog_service, "get_model_type_by_name",
+        lambda _tid, _llm_id: ["chat"]
     )
     monkeypatch.setattr(
-        dialog_service.TenantLLMService, "get_model_config",
+        dialog_service, "get_model_config_from_provider_instance",
         lambda _tid, _type, _llm_id: _LLM_CONFIG,
     )
     monkeypatch.setattr(
@@ -416,10 +464,11 @@ def test_async_chat_langfuse_uses_start_observation(monkeypatch):
     retriever = _StubRetriever()
 
     monkeypatch.setattr(
-        dialog_service.TenantLLMService, "llm_id2llm_type", lambda _llm_id: "chat"
+        dialog_service, "get_model_type_by_name",
+        lambda _tid, _llm_id: ["chat"]
     )
     monkeypatch.setattr(
-        dialog_service.TenantLLMService, "get_model_config",
+        dialog_service, "get_model_config_from_provider_instance",
         lambda _tid, _type, _llm_id: _LLM_CONFIG,
     )
     monkeypatch.setattr(
@@ -485,10 +534,11 @@ def test_async_chat_continues_when_langfuse_observation_start_fails(monkeypatch)
     retriever = _StubRetriever()
 
     monkeypatch.setattr(
-        dialog_service.TenantLLMService, "llm_id2llm_type", lambda _llm_id: "chat"
+        dialog_service, "get_model_type_by_name",
+        lambda _tid, _llm_id: ["chat"]
     )
     monkeypatch.setattr(
-        dialog_service.TenantLLMService, "get_model_config",
+        dialog_service, "get_model_config_from_provider_instance",
         lambda _tid, _type, _llm_id: _LLM_CONFIG,
     )
     monkeypatch.setattr(

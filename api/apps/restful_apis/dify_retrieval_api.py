@@ -28,10 +28,10 @@ from api.db.services.document_service import DocumentService
 from api.db.services.doc_metadata_service import DocMetadataService
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.llm_service import LLMBundle
-from api.db.joint_services.tenant_model_service import get_model_config_by_id, get_model_config_by_type_and_name, get_tenant_default_model_by_type
+from api.db.joint_services.tenant_model_service import get_tenant_default_model_by_type, get_model_config_from_provider_instance
 from common.metadata_utils import meta_filter, convert_conditions
 from api.apps import login_required
-from api.utils.api_utils import build_error_result, get_request_json, get_json_result
+from api.utils.api_utils import add_tenant_id_to_kwargs, build_error_result, get_request_json, get_json_result
 from rag.app.tag import label_question
 from common.constants import RetCode, LLMType
 from common import settings
@@ -111,6 +111,7 @@ def _parse_retrieval_options(retrieval_setting):
 
 @manager.route('/dify/retrieval', methods=['POST', 'GET'])  # noqa: F821
 @login_required
+@add_tenant_id_to_kwargs
 async def retrieval(tenant_id):
     """
     Dify-compatible retrieval API
@@ -262,10 +263,7 @@ async def retrieval(tenant_id):
                 kb_id,
             )
             return build_error_result(message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
-        if kb.tenant_embd_id:
-            model_config = get_model_config_by_id(kb.tenant_embd_id)
-        else:
-            model_config = get_model_config_by_type_and_name(kb.tenant_id, LLMType.EMBEDDING, kb.embd_id)
+        model_config = get_model_config_from_provider_instance(kb.tenant_id, LLMType.EMBEDDING, kb.embd_id)
         embd_mdl = LLMBundle(kb.tenant_id, model_config)
         if metadata_condition:
             doc_ids.extend(meta_filter(metas, convert_conditions(metadata_condition), metadata_condition.get("logic", "and")))
@@ -337,7 +335,7 @@ async def retrieval(tenant_id):
         return build_error_result(message=str(e), code=RetCode.SERVER_ERROR)
    
   
-@manager.route('/dify/retrieval', methods=['GET'])  # noqa: F821
+@manager.route('/dify/retrieval/health', methods=['GET'])  # noqa: F821
 async def retrieval_health_check():
     """Health check endpoint for Dify external knowledge base connectivity verification."""
     return get_json_result(data=True)

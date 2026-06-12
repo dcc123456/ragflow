@@ -15,7 +15,7 @@
 #
 
 import pytest
-from common import make_chat_assistant_name
+from common import make_chat_assistant_name, valid_chat_llm_id
 from configs import CHAT_ASSISTANT_NAME_LIMIT
 from utils import encode_avatar
 from utils.file_utils import create_image_file
@@ -117,7 +117,7 @@ class TestChatAssistantUpdate:
     @pytest.mark.parametrize(
         "llm_setting, expected_message",
         [
-            ({"model_name": "glm-4"}, ""),
+            ({"model_name": valid_chat_llm_id}, ""),
             ({"model_name": "unknown"}, "`llm_id` unknown doesn't exist"),
             ({"temperature": 0}, ""),
             ({"temperature": 1}, ""),
@@ -150,8 +150,11 @@ class TestChatAssistantUpdate:
     def test_llm_setting(self, client, add_chat_assistants_func, llm_setting, expected_message):
         dataset, _, chat_assistants = add_chat_assistants_func
         chat_assistant = chat_assistants[0]
+        llm_setting = dict(llm_setting)
         llm_id = llm_setting.pop("model_name", None)
-        payload = {"name": make_chat_assistant_name("llm_test"), "dataset_ids": [dataset.id], "llm_setting": llm_setting}
+        if callable(llm_id):
+            llm_id = llm_id(client)
+        payload = {"name": "llm_test", "dataset_ids": [dataset.id], "llm_setting": llm_setting}
         if llm_id is not None:
             payload["llm_id"] = llm_id
 
