@@ -293,6 +293,7 @@ async def login():
         response_data = user.to_json()
         user.access_token = get_uuid()
         login_user(user)
+        user.last_login_time = get_format_time()
         user.update_time = current_timestamp()
         user.update_date = datetime_format(datetime.now())
         user.save()
