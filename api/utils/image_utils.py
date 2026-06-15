@@ -21,9 +21,9 @@ from PIL import Image
 from common import settings
 
 
-def store_chunk_image(bucket, name, image_binary):
-    if settings.STORAGE_IMPL.obj_exist(bucket, name):
-        old_binary = settings.STORAGE_IMPL.get(bucket, name)
+def store_chunk_image(bucket, name, image_binary, tenant_id):
+    if settings.STORAGE_IMPL.obj_exist(bucket, name, tenant_id):
+        old_binary = settings.STORAGE_IMPL.get(bucket, name, tenant_id)
         old_img = Image.open(BytesIO(old_binary))
         new_img = Image.open(BytesIO(image_binary))
         old_img = old_img.convert("RGB")
@@ -35,6 +35,6 @@ def store_chunk_image(bucket, name, image_binary):
         combined.paste(new_img, (0, old_img.height))
         buf = BytesIO()
         combined.save(buf, format="JPEG")
-        settings.STORAGE_IMPL.put(bucket, name, buf.getvalue())
+        settings.STORAGE_IMPL.put(bucket, name, buf.getvalue(), tenant_id)
     else:
-        settings.STORAGE_IMPL.put(bucket, name, image_binary)
+        settings.STORAGE_IMPL.put(bucket, name, image_binary, tenant_id)

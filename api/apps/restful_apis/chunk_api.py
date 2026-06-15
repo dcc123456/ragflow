@@ -81,14 +81,15 @@ def _decode_chunk_image_base64(image_base64):
     return image_binary, None
 
 
-def _store_chunk_image_or_error(dataset_id, chunk_id, image_binary):
+def _store_chunk_image_or_error(dataset_id, chunk_id, image_binary, tenant_id):
     try:
-        store_chunk_image(dataset_id, chunk_id, image_binary)
+        store_chunk_image(dataset_id, chunk_id, image_binary, tenant_id)
     except Exception:
         logging.exception(
-            "Failed to store chunk image. dataset_id=%s chunk_id=%s",
+            "Failed to store chunk image. dataset_id=%s chunk_id=%s tenant_id=%s",
             dataset_id,
             chunk_id,
+            tenant_id,
         )
         return "Failed to store chunk image"
     return None
@@ -563,7 +564,7 @@ async def add_chunk(tenant_id, dataset_id, document_id):
         image_binary, image_err = _decode_chunk_image_base64(req.get("image_base64"))
         if image_err:
             return get_error_data_result(message=image_err)
-        store_err = _store_chunk_image_or_error(dataset_id, chunk_id, image_binary)
+        store_err = _store_chunk_image_or_error(dataset_id, chunk_id, image_binary, dataset_tenant_id)
         if store_err:
             return get_error_data_result(message=store_err)
         d["img_id"] = f"{dataset_id}-{chunk_id}"
@@ -707,7 +708,7 @@ async def update_chunk(tenant_id, dataset_id, document_id, chunk_id):
         image_binary, image_err = _decode_chunk_image_base64(req.get("image_base64"))
         if image_err:
             return get_error_data_result(message=image_err)
-        store_err = _store_chunk_image_or_error(dataset_id, chunk_id, image_binary)
+        store_err = _store_chunk_image_or_error(dataset_id, chunk_id, image_binary, dataset_tenant_id)
         if store_err:
             return get_error_data_result(message=store_err)
         d["img_id"] = f"{dataset_id}-{chunk_id}"

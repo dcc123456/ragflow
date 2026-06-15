@@ -382,7 +382,7 @@ async def create():
             settings.docStoreConn.insert([d], search.index_name(tenant_id), doc.kb_id)
 
             if image_base64:
-                store_chunk_image(doc.kb_id, chunck_id, base64.b64decode(image_base64))
+                store_chunk_image(doc.kb_id, chunck_id, base64.b64decode(image_base64), tenant_id)
 
             DocumentService.increment_chunk_num(
                 doc.id, doc.kb_id, c, 1, 0)
