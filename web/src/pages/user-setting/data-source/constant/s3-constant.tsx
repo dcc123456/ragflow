@@ -16,7 +16,7 @@ export const S3Constant = (t: TFunction) => [
   {
     label: 'Region',
     name: 'config.credentials.region',
-    type: FormFieldType.Select,
+    type: FormFieldType.InputSelect,
     required: false,
     options: awsRegionOptions,
     allowCustomValue: true,

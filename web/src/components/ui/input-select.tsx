@@ -27,12 +27,43 @@ const getNodeText = (node: React.ReactNode): string => {
   return '';
 };
 
+/**
+ * Recursively look up an option by its value, descending into grouped options.
+ * Used for label lookup so grouped structures resolve correctly.
+ */
+const findOptionByValue = (
+  opts: InputSelectOption[],
+  val: string | number | Date,
+  t: 'text' | 'number' | 'date' | 'datetime',
+): InputSelectOption | undefined => {
+  for (const o of opts) {
+    const matches =
+      t === 'number'
+        ? Number(o.value) === Number(val)
+        : t === 'date' || t === 'datetime'
+          ? new Date(o.value).getTime() === new Date(val as any).getTime()
+          : String(o.value) === String(val);
+    if (matches) return o;
+    if (Array.isArray(o.options)) {
+      const inner = findOptionByValue(o.options, val, t);
+      if (inner) return inner;
+    }
+  }
+  return undefined;
+};
+
 /** Interface for tag select options */
 export interface InputSelectOption {
   /** Value of the option */
   value: string;
   /** Display label of the option */
   label: string | React.ReactNode;
+  /** Optional keywords matched case-insensitively when filtering. */
+  keywords?: string[];
+  /** If present, this option is a group header; nested options render under it. */
+  options?: InputSelectOption[];
+  /** If true, the option renders but is not selectable. */
+  disabled?: boolean;
 }
 
 /** Properties for the InputSelect component */
@@ -47,14 +78,24 @@ export interface InputSelectProps {
   ) => void;
   /** Placeholder text */
   placeholder?: string;
-  /** Additional class names */
+  /** Additional class names (applied to the trigger). */
   className?: string;
+  /** Alias of className — used when className is not provided. */
+  triggerClassName?: string;
   /** Style object */
   style?: React.CSSProperties;
   /** Whether to allow multiple selections */
   multi?: boolean;
   /** Type of input: text, number, date, or datetime */
   type?: 'text' | 'number' | 'date' | 'datetime';
+  /** Disable the trigger entirely. */
+  disabled?: boolean;
+  /** Show clear (X) button in single-select mode. Default true (preserves current behavior). */
+  allowClear?: boolean;
+  /** Custom empty-state node. Default t('common.noResults'). */
+  emptyData?: React.ReactNode;
+  /** When true, allow committing input as a custom value. Default true (preserves current behavior). */
+  allowCustomValue?: boolean;
 }
 
 /** Internal display for single-select selected value. Click label to re-edit (string labels only). */
@@ -62,16 +103,12 @@ const SingleSelectDisplay: React.FC<{
   value: string | number | Date;
   options: InputSelectOption[];
   type: 'text' | 'number' | 'date' | 'datetime';
+  disabled?: boolean;
+  allowClear?: boolean;
   onEdit: (editText: string) => void;
   onRemove: () => void;
-}> = ({ value, options, type, onEdit, onRemove }) => {
-  const selectedOption = options.find((opt) =>
-    type === 'number'
-      ? Number(opt.value) === Number(value)
-      : type === 'date' || type === 'datetime'
-        ? new Date(opt.value).getTime() === new Date(value as any).getTime()
-        : String(opt.value) === String(value),
-  );
+}> = ({ value, options, type, disabled, allowClear, onEdit, onRemove }) => {
+  const selectedOption = findOptionByValue(options, value, type);
 
   const label =
     selectedOption?.label ??
@@ -81,7 +118,7 @@ const SingleSelectDisplay: React.FC<{
         ? new Date(value as any).toLocaleString()
         : String(value));
 
-  const canEdit = typeof label === 'string';
+  const canEdit = typeof label === 'string' && !disabled;
 
   return (
     <div className={cn('flex items-center max-w-full')}>
@@ -98,16 +135,18 @@ const SingleSelectDisplay: React.FC<{
       >
         {label}
       </div>
-      <button
-        type="button"
-        className="ml-2 flex-[0_0_24px] text-text-secondary hover:text-text-primary focus:outline-none"
-        onClick={(e) => {
-          e.stopPropagation();
-          onRemove();
-        }}
-      >
-        <X className="h-3 w-3" />
-      </button>
+      {allowClear && (
+        <button
+          type="button"
+          className="ml-2 flex-[0_0_24px] text-text-secondary hover:text-text-primary focus:outline-none"
+          onClick={(e) => {
+            e.stopPropagation();
+            onRemove();
+          }}
+        >
+          <X className="h-3 w-3" />
+        </button>
+      )}
     </div>
   );
 };
@@ -119,10 +158,16 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
     onChange,
     placeholder = 'Select tags...',
     className,
+    triggerClassName,
     style,
     multi = false,
     type = 'text',
+    disabled = false,
+    allowClear = true,
+    emptyData,
+    allowCustomValue = true,
   }) => {
+    const resolvedClassName = className ?? triggerClassName;
     const [inputValue, setInputValue] = React.useState('');
     const [open, setOpen] = React.useState(false);
     const [isFocused, setIsFocused] = React.useState(false);
@@ -245,14 +290,23 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
 
     /**
      * Commits the current inputValue to the selected values, matching by label first,
-     * then falling back to the typed value. No-op when inputValue is empty/whitespace.
+     * then falling back to the typed value. No-op when inputValue is empty/whitespace,
+     * or when custom values are disabled.
      * Used by Enter key handler and blur handler.
      */
     const commitInputValue = () => {
       if (inputValue.trim() === '') return;
 
-      // Match by label text first
-      const matchedOption = options.find(
+      // Match by label text first (searches grouped and flat options)
+      const flatForLabelMatch: InputSelectOption[] = [];
+      const collect = (opts: InputSelectOption[]) => {
+        for (const o of opts) {
+          if (Array.isArray(o.options)) collect(o.options);
+          else flatForLabelMatch.push(o);
+        }
+      };
+      collect(options);
+      const matchedOption = flatForLabelMatch.find(
         (opt) =>
           getNodeText(opt.label).toLowerCase() === inputValue.toLowerCase(),
       );
@@ -260,6 +314,8 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
         handleAddTag(matchedOption.value);
         return;
       }
+
+      if (!allowCustomValue) return;
 
       // Otherwise, validate by type and add as a new value
       let valueToAdd: any;
@@ -288,6 +344,7 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
       }
     };
     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (disabled) return;
       if (
         e.key === 'Backspace' &&
         inputValue === '' &&
@@ -324,12 +381,14 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
     };
 
     const handleContainerClick = () => {
+      if (disabled) return;
       inputRef.current?.focus();
       setOpen(true);
       setIsFocused(true);
     };
 
     const handleInputFocus = () => {
+      if (disabled) return;
       setOpen(true);
       setIsFocused(true);
     };
@@ -337,6 +396,7 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
     const handleInputBlur = () => {
       // Delay closing to allow click on options to register
       setTimeout(() => {
+        if (disabled) return;
         commitInputValue();
         setOpen(false);
         setIsFocused(false);
@@ -358,17 +418,19 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
         )
       : options;
 
-    const filteredOptions = availableOptions.filter(
-      (option) =>
-        !inputValue ||
-        getNodeText(option.label)
-          .toLowerCase()
-          .includes(inputValue.toString().toLowerCase()),
-    );
+    const filteredOptions = availableOptions.filter((option) => {
+      if (!inputValue) return true;
+      const needle = inputValue.toString().toLowerCase();
+      if (getNodeText(option.label).toLowerCase().includes(needle)) return true;
+      if (option.keywords?.some((k) => k.toLowerCase().includes(needle)))
+        return true;
+      return false;
+    });
 
     // If there are no matching options but there is an input value, create a new option with the input value
     const showInputAsOption = React.useMemo(() => {
       if (!inputValue) return false;
+      if (!allowCustomValue) return false;
 
       const hasLabelMatch = options.some(
         (option) =>
@@ -396,32 +458,27 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
         !isAlreadySelected &&
         inputValue.toString().trim() !== ''
       );
-    }, [inputValue, options, normalizedValue, type]);
+    }, [inputValue, options, normalizedValue, type, allowCustomValue]);
 
     const triggerElement = (
       <div
         className={cn(
-          'flex items-center gap-1 w-full rounded-md border-0.5 border-border-button bg-bg-input px-3 py-1 min-h-8 cursor-text',
+          'flex items-center gap-1 w-full rounded-md border-0.5 border-border-button bg-bg-input px-3 py-1 min-h-8',
+          disabled ? 'cursor-not-allowed opacity-60' : 'cursor-text',
           'outline-none transition-colors',
           'focus-within:outline-none focus-within:ring-1 focus-within:ring-accent-primary',
-          className,
+          resolvedClassName,
         )}
         style={style}
         onClick={handleContainerClick}
+        aria-disabled={disabled || undefined}
       >
         {/* Wrapper for tags and input - this part wraps */}
         <div className="flex flex-wrap items-center gap-1 flex-1 min-w-0">
           {/* Render selected tags - only show tags if multi is true or if single select has a value */}
           {multi &&
             normalizedValue.map((tagValue, index) => {
-              const option = options.find((opt) =>
-                type === 'number'
-                  ? Number(opt.value) === Number(tagValue)
-                  : type === 'date' || type === 'datetime'
-                    ? new Date(opt.value).getTime() ===
-                      new Date(tagValue).getTime()
-                    : String(opt.value) === String(tagValue),
-              ) || {
+              const option = findOptionByValue(options, tagValue, type) ?? {
                 value: String(tagValue),
                 label: String(tagValue),
               };
@@ -434,7 +491,8 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
                   <div className="flex-1  truncate">{option.label}</div>
                   <button
                     type="button"
-                    className="ml-1 text-text-secondary hover:text-text-primary focus:outline-none"
+                    className="ml-1 text-text-secondary hover:text-text-primary focus:outline-none disabled:cursor-not-allowed"
+                    disabled={disabled}
                     onClick={(e) => {
                       e.stopPropagation();
                       handleRemoveTag(tagValue);
@@ -452,6 +510,8 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
               value={normalizedValue[0]}
               options={options}
               type={type}
+              disabled={disabled}
+              allowClear={allowClear}
               onEdit={(editText) => {
                 handleRemoveTag(normalizedValue[0]);
                 setInputValue(editText);
@@ -500,10 +560,11 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
                   ? placeholder
                   : ''
               }
-              className="flex-grow min-w-[50px] border-none px-1 py-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 h-auto "
+              className="flex-grow min-w-[50px] border-none px-1 py-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 h-auto disabled:cursor-not-allowed"
               onClick={(e) => e.stopPropagation()}
               onFocus={handleInputFocus}
               onBlur={handleInputBlur}
+              disabled={disabled}
             />
           )}
         </div>
@@ -528,27 +589,88 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
         >
           <div className="max-h-60 overflow-auto">
             {filteredOptions.length > 0 &&
-              filteredOptions.map((option) => (
-                <div
-                  key={option.value}
-                  className="px-4 py-2 hover:bg-border-button cursor-pointer text-text-secondary w-full truncate"
-                  onClick={() => {
-                    let optionValue: any;
-                    if (type === 'number') {
-                      optionValue = Number(option.value);
-                      if (isNaN(optionValue)) return; // Skip invalid numbers
-                    } else if (type === 'date' || type === 'datetime') {
-                      optionValue = new Date(option.value);
-                      if (isNaN(optionValue.getTime())) return; // Skip invalid dates
-                    } else {
-                      optionValue = option.value;
-                    }
-                    handleAddTag(optionValue);
-                  }}
-                >
-                  {option.label}
-                </div>
-              ))}
+              filteredOptions.map((option, idx) => {
+                // Group header: render nested items under it.
+                if (
+                  Array.isArray(option.options) &&
+                  option.options.length > 0
+                ) {
+                  const needle = inputValue.toString().toLowerCase();
+                  const nestedFiltered = option.options.filter((nested) => {
+                    if (!inputValue) return true;
+                    if (
+                      getNodeText(nested.label).toLowerCase().includes(needle)
+                    )
+                      return true;
+                    if (
+                      nested.keywords?.some((k) =>
+                        k.toLowerCase().includes(needle),
+                      )
+                    )
+                      return true;
+                    return false;
+                  });
+                  if (nestedFiltered.length === 0) return null;
+                  return (
+                    <div key={option.value || `group-${idx}`} className="py-1">
+                      <div className="px-4 py-1 text-xs font-medium text-text-disabled uppercase tracking-wide">
+                        {option.label}
+                      </div>
+                      {nestedFiltered.map((nested, nIdx) => (
+                        <div
+                          key={nested.value || `group-${idx}-item-${nIdx}`}
+                          className={cn(
+                            'px-4 py-2 hover:bg-border-button cursor-pointer text-text-secondary w-full truncate',
+                            nested.disabled && 'pointer-events-none opacity-50',
+                          )}
+                          onClick={() => {
+                            if (nested.disabled) return;
+                            let optionValue: any;
+                            if (type === 'number') {
+                              optionValue = Number(nested.value);
+                              if (isNaN(optionValue)) return;
+                            } else if (type === 'date' || type === 'datetime') {
+                              optionValue = new Date(nested.value);
+                              if (isNaN(optionValue.getTime())) return;
+                            } else {
+                              optionValue = nested.value;
+                            }
+                            handleAddTag(optionValue);
+                          }}
+                        >
+                          {nested.label}
+                        </div>
+                      ))}
+                    </div>
+                  );
+                }
+                // Flat option.
+                return (
+                  <div
+                    key={option.value || `option-${idx}`}
+                    className={cn(
+                      'px-4 py-2 hover:bg-border-button cursor-pointer text-text-secondary w-full truncate',
+                      option.disabled && 'pointer-events-none opacity-50',
+                    )}
+                    onClick={() => {
+                      if (option.disabled) return;
+                      let optionValue: any;
+                      if (type === 'number') {
+                        optionValue = Number(option.value);
+                        if (isNaN(optionValue)) return; // Skip invalid numbers
+                      } else if (type === 'date' || type === 'datetime') {
+                        optionValue = new Date(option.value);
+                        if (isNaN(optionValue.getTime())) return; // Skip invalid dates
+                      } else {
+                        optionValue = option.value;
+                      }
+                      handleAddTag(optionValue);
+                    }}
+                  >
+                    {option.label}
+                  </div>
+                );
+              })}
             {showInputAsOption && (
               <div
                 key={inputValue}
@@ -568,7 +690,7 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
             )}
             {filteredOptions.length === 0 && !showInputAsOption && (
               <div className="px-4 py-2 text-text-secondary w-full truncate">
-                {t('common.noResults')}
+                {emptyData ?? t('common.noResults')}
               </div>
             )}
           </div>

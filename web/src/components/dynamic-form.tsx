@@ -1,10 +1,13 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
+  createContext,
   forwardRef,
   useCallback,
+  useContext,
   useEffect,
   useImperativeHandle,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import {
@@ -15,6 +18,7 @@ import {
   UseFormTrigger,
   useForm,
   useFormContext,
+  useWatch,
 } from 'react-hook-form';
 import { ZodSchema, z } from 'zod';
 
@@ -28,6 +32,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import { t } from 'i18next';
 import { Loader } from 'lucide-react';
+import { InputSelect, InputSelectOption } from './ui/input-select';
 import { MultiSelect, MultiSelectOptionType } from './ui/multi-select';
 import { Segmented } from './ui/segmented';
 import { Switch } from './ui/switch';
@@ -36,6 +41,23 @@ const getNestedValue = (obj: any, path: string) => {
   return path.split('.').reduce((current, key) => {
     return current && current[key] !== undefined ? current[key] : undefined;
   }, obj);
+};
+
+const setNestedValue = (
+  obj: Record<string, any>,
+  path: string,
+  value: any,
+): void => {
+  const keys = path.split('.');
+  let current = obj;
+  for (let i = 0; i < keys.length - 1; i++) {
+    const key = keys[i];
+    if (!current[key] || typeof current[key] !== 'object') {
+      current[key] = {};
+    }
+    current = current[key];
+  }
+  current[keys[keys.length - 1]] = value;
 };
 
 /**
@@ -56,6 +78,7 @@ export enum FormFieldType {
   Switch = 'switch',
   Tag = 'tag',
   Segmented = 'segmented',
+  InputSelect = 'input-select',
   Custom = 'custom',
 }
 
@@ -102,10 +125,6 @@ interface DynamicFormProps<T extends FieldValues> {
   className?: string;
   children?: React.ReactNode;
   defaultValues?: DefaultValues<T>;
-  // onFieldUpdate?: (
-  //   fieldName: string,
-  //   updatedField: Partial<FormFieldConfig>,
-  // ) => void;
   labelClassName?: string;
 }
 
@@ -123,17 +142,28 @@ export interface DynamicFormRef {
     fieldName: string,
     newFieldProperties: Partial<FormFieldConfig>,
   ) => void;
+  filterActiveValues: (values: any) => any;
 }
+
+// Internal context used to expose filterActiveValues to SavingButton without
+// relying on attaching ad-hoc properties to the react-hook-form instance.
+const DynamicFormContext = createContext<{
+  filterActiveValues?: (values: any) => any;
+} | null>(null);
 
 // Generate Zod validation schema based on field configurations
 export const generateSchema = (fields: FormFieldConfig[]): ZodSchema<any> => {
   const schema: Record<string, ZodSchema> = {};
-  const nestedSchemas: Record<string, Record<string, ZodSchema>> = {};
+  const nestedSchemas: Record<
+    string,
+    Record<string, ZodSchema | Record<string, any>>
+  > = {};
+
+  const isZodSchema = (v: unknown): v is ZodSchema => v instanceof z.ZodType;
 
   fields.forEach((field) => {
     let fieldSchema: ZodSchema;
 
-    // Create base validation schema based on field type
     if (field.schema) {
       fieldSchema = field.schema;
     } else {
@@ -143,38 +173,63 @@ export const generateSchema = (fields: FormFieldConfig[]): ZodSchema<any> => {
           break;
         case FormFieldType.MultiSelect:
           fieldSchema = z.array(z.string()).optional();
-          if (field.required) {
-            fieldSchema = z.array(z.string()).min(1, {
-              message: `${field.label} is required`,
-            });
-          }
           break;
         case FormFieldType.Segmented:
           fieldSchema = z.string();
           break;
-        case FormFieldType.Number:
-          fieldSchema = z.coerce.number();
+        case FormFieldType.Number: {
+          // Use preprocess to convert empty strings to undefined so that
+          // z.coerce.number().optional() does not silently coerce "" -> 0.
+          let numberSchema: z.ZodTypeAny = z.preprocess(
+            (val) => {
+              if (val === '' || val === null || val === undefined) {
+                return undefined;
+              }
+              const num = Number(val);
+              return Number.isNaN(num) ? val : num;
+            },
+            z
+              .number({
+                invalid_type_error:
+                  field.validation?.message || 'Must be a number',
+              })
+              .optional(),
+          );
+
           if (field.validation?.min !== undefined) {
-            fieldSchema = (fieldSchema as z.ZodNumber).min(
-              field.validation.min,
-              field.validation.message ||
-                `Value cannot be less than ${field.validation.min}`,
+            numberSchema = numberSchema.refine(
+              (val) =>
+                val === undefined ||
+                (val as number) >= (field.validation!.min as number),
+              {
+                message:
+                  field.validation.message ||
+                  `Value cannot be less than ${field.validation.min}`,
+              },
             );
           }
           if (field.validation?.max !== undefined) {
-            fieldSchema = (fieldSchema as z.ZodNumber).max(
-              field.validation.max,
-              field.validation.message ||
-                `Value cannot be greater than ${field.validation.max}`,
+            numberSchema = numberSchema.refine(
+              (val) =>
+                val === undefined ||
+                (val as number) <= (field.validation!.max as number),
+              {
+                message:
+                  field.validation.message ||
+                  `Value cannot be greater than ${field.validation.max}`,
+              },
             );
           }
+
+          fieldSchema = numberSchema;
           break;
+        }
         case FormFieldType.Checkbox:
         case FormFieldType.Switch:
           fieldSchema = z.boolean();
           break;
         case FormFieldType.Tag:
-          fieldSchema = z.array(z.string());
+          fieldSchema = z.array(z.string()).optional();
           break;
         default:
           fieldSchema = z.string();
@@ -190,12 +245,15 @@ export const generateSchema = (fields: FormFieldConfig[]): ZodSchema<any> => {
       if (field.type === FormFieldType.Checkbox) {
         fieldSchema = (fieldSchema as z.ZodBoolean).refine(
           (val) => val === true,
-          {
-            message: requiredMessage,
-          },
+          { message: requiredMessage },
         );
-      } else if (field.type === FormFieldType.Tag) {
-        fieldSchema = (fieldSchema as z.ZodArray<z.ZodString>).min(1, {
+      } else if (
+        field.type === FormFieldType.Tag ||
+        field.type === FormFieldType.MultiSelect
+      ) {
+        fieldSchema = z.array(z.string()).min(1, { message: requiredMessage });
+      } else if (field.type === FormFieldType.Number) {
+        fieldSchema = fieldSchema.refine((val) => val !== undefined, {
           message: requiredMessage,
         });
       } else {
@@ -205,18 +263,24 @@ export const generateSchema = (fields: FormFieldConfig[]): ZodSchema<any> => {
       }
     }
 
-    if (!field.required) {
+    if (
+      !field.required &&
+      field.type !== FormFieldType.Number &&
+      field.type !== FormFieldType.Tag &&
+      field.type !== FormFieldType.MultiSelect
+    ) {
       fieldSchema = fieldSchema.optional();
     }
 
-    // Handle other validation rules
+    // Handle other validation rules for string-like fields only
     if (
+      field.required &&
       field.type !== FormFieldType.Number &&
       field.type !== FormFieldType.Checkbox &&
       field.type !== FormFieldType.Switch &&
       field.type !== FormFieldType.Custom &&
       field.type !== FormFieldType.Tag &&
-      field.required
+      field.type !== FormFieldType.MultiSelect
     ) {
       fieldSchema = fieldSchema as z.ZodString;
 
@@ -249,16 +313,26 @@ export const generateSchema = (fields: FormFieldConfig[]): ZodSchema<any> => {
       const firstKey = keys[0];
 
       if (!nestedSchemas[firstKey]) {
-        nestedSchemas[firstKey] = {};
+        nestedSchemas[firstKey] = {} as Record<
+          string,
+          ZodSchema | Record<string, any>
+        >;
       }
 
-      let currentSchema = nestedSchemas[firstKey];
+      let currentSchema: Record<string, ZodSchema | Record<string, any>> =
+        nestedSchemas[firstKey];
       for (let i = 1; i < keys.length - 1; i++) {
         const key = keys[i];
-        if (!currentSchema[key]) {
-          currentSchema[key] = {};
+        if (!currentSchema[key] || isZodSchema(currentSchema[key])) {
+          currentSchema[key] = {} as Record<
+            string,
+            ZodSchema | Record<string, any>
+          >;
         }
-        currentSchema = currentSchema[key];
+        currentSchema = currentSchema[key] as Record<
+          string,
+          ZodSchema | Record<string, any>
+        >;
       }
 
       const lastKey = keys[keys.length - 1];
@@ -269,16 +343,18 @@ export const generateSchema = (fields: FormFieldConfig[]): ZodSchema<any> => {
   });
 
   Object.keys(nestedSchemas).forEach((key) => {
-    const buildNestedSchema = (obj: Record<string, any>): ZodSchema => {
+    const buildNestedSchema = (
+      obj: Record<string, ZodSchema | Record<string, any>>,
+    ): ZodSchema => {
       const nestedSchema: Record<string, ZodSchema> = {};
       Object.keys(obj).forEach((subKey) => {
-        if (
-          typeof obj[subKey] === 'object' &&
-          !(obj[subKey] instanceof z.ZodType)
-        ) {
-          nestedSchema[subKey] = buildNestedSchema(obj[subKey]);
+        const value = obj[subKey];
+        if (!isZodSchema(value)) {
+          nestedSchema[subKey] = buildNestedSchema(
+            value as Record<string, ZodSchema | Record<string, any>>,
+          );
         } else {
-          nestedSchema[subKey] = obj[subKey];
+          nestedSchema[subKey] = value;
         }
       });
       return z.object(nestedSchema);
@@ -296,52 +372,183 @@ const generateDefaultValues = <T extends FieldValues>(
   const defaultValues: Record<string, any> = {};
 
   fields.forEach((field) => {
-    if (field.name.includes('.')) {
-      const keys = field.name.split('.');
-      let current = defaultValues;
-
-      for (let i = 0; i < keys.length - 1; i++) {
-        const key = keys[i];
-        if (!current[key]) {
-          current[key] = {};
-        }
-        current = current[key];
-      }
-
-      const lastKey = keys[keys.length - 1];
-      if (field.defaultValue !== undefined) {
-        current[lastKey] = field.defaultValue;
-      } else if (
-        field.type === FormFieldType.Checkbox ||
-        field.type === FormFieldType.Switch
-      ) {
-        current[lastKey] = false;
-      } else if (field.type === FormFieldType.Tag) {
-        current[lastKey] = [];
-      } else {
-        current[lastKey] = '';
-      }
+    let value: any;
+    if (field.defaultValue !== undefined) {
+      value = field.defaultValue;
+    } else if (
+      field.type === FormFieldType.Checkbox ||
+      field.type === FormFieldType.Switch
+    ) {
+      value = false;
+    } else if (
+      field.type === FormFieldType.Tag ||
+      field.type === FormFieldType.MultiSelect
+    ) {
+      value = [];
     } else {
-      if (field.defaultValue !== undefined) {
-        defaultValues[field.name] = field.defaultValue;
-      } else if (
-        field.type === FormFieldType.Checkbox ||
-        field.type === FormFieldType.Switch
-      ) {
-        defaultValues[field.name] = false;
-      } else if (
-        field.type === FormFieldType.Tag ||
-        field.type === FormFieldType.MultiSelect
-      ) {
-        defaultValues[field.name] = [];
-      } else {
-        defaultValues[field.name] = '';
-      }
+      value = '';
+    }
+
+    if (field.name.includes('.')) {
+      setNestedValue(defaultValues, field.name, value);
+    } else {
+      defaultValues[field.name] = value;
     }
   });
 
   return defaultValues as DefaultValues<T>;
 };
+
+// Extract the raw "value" from a Controller field onChange event so that
+// `field.onChange` always receives a normalized value (string/number/etc.)
+// regardless of whether the underlying component fires a DOM event or a value.
+const extractFieldValue = (eventOrValue: any): any => {
+  if (eventOrValue === null || eventOrValue === undefined) return eventOrValue;
+  if (
+    typeof eventOrValue === 'object' &&
+    eventOrValue.target &&
+    'value' in eventOrValue.target
+  ) {
+    return eventOrValue.target.value;
+  }
+  return eventOrValue;
+};
+
+// Wraps the fieldProps so that `field.onChange` (if provided) is invoked
+// with the normalized value in addition to the standard react-hook-form
+// update. Returns the props unchanged when no custom onChange is supplied.
+const wrapOnChange = (
+  field: FormFieldConfig,
+  fieldProps: ControllerRenderProps,
+): ControllerRenderProps => {
+  if (!field.onChange) return fieldProps;
+  return {
+    ...fieldProps,
+    onChange: (eventOrValue: any) => {
+      fieldProps.onChange?.(eventOrValue);
+      field.onChange?.(extractFieldValue(eventOrValue));
+    },
+  };
+};
+
+// MultiSelect uses onValueChange instead of onChange. The wrapper is always
+// applied (regardless of whether field.onChange is supplied) because the
+// underlying component requires onValueChange unconditionally.
+const wrapOnValueChange = (
+  field: FormFieldConfig,
+  fieldProps: ControllerRenderProps,
+): ControllerRenderProps & { onValueChange: (value: string[]) => void } => ({
+  ...fieldProps,
+  onValueChange: (value: string[]) => {
+    fieldProps.onChange?.(value);
+    field.onChange?.(value);
+  },
+});
+
+// Registry of field-type -> inner control renderer. Each entry is responsible
+// for rendering the inner control only; the surrounding <RAGFlowFormItem>
+// wrapper is added uniformly by RenderField. To add a new field type, add a
+// single entry to this map — no switch to keep in sync.
+type FieldControlRenderer = (
+  field: FormFieldConfig,
+  fieldProps: ControllerRenderProps,
+) => React.ReactNode;
+
+const renderInputField: FieldControlRenderer = (field, fieldProps) => (
+  <div className="w-full">
+    <Input
+      {...wrapOnChange(field, fieldProps)}
+      type={field.type}
+      placeholder={field.placeholder}
+      disabled={field.disabled}
+    />
+  </div>
+);
+
+const fieldControlRenderers: Record<FormFieldType, FieldControlRenderer> = {
+  [FormFieldType.Text]: renderInputField,
+  [FormFieldType.Email]: renderInputField,
+  [FormFieldType.Password]: renderInputField,
+  [FormFieldType.Number]: renderInputField,
+  [FormFieldType.Textarea]: (field, fieldProps) => (
+    <Textarea
+      {...wrapOnChange(field, fieldProps)}
+      placeholder={field.placeholder}
+      disabled={field.disabled}
+    />
+  ),
+  [FormFieldType.Select]: (field, fieldProps) => (
+    <SelectWithSearch
+      triggerClassName="!shrink"
+      {...wrapOnChange(field, fieldProps)}
+      options={field.options}
+      allowCustomValue={field.allowCustomValue}
+      disabled={field.disabled}
+    />
+  ),
+  [FormFieldType.InputSelect]: (field, fieldProps) => (
+    <InputSelect
+      triggerClassName="!shrink"
+      {...wrapOnChange(field, fieldProps)}
+      options={field.options as InputSelectOption[] | undefined}
+      allowCustomValue={field.allowCustomValue || false}
+      allowClear={false}
+      disabled={field.disabled}
+    />
+  ),
+  [FormFieldType.MultiSelect]: (field, fieldProps) => {
+    const wrapped = wrapOnValueChange(field, fieldProps);
+    return (
+      <MultiSelect
+        variant="inverted"
+        maxCount={100}
+        options={field.options as MultiSelectOptionType[]}
+        disabled={field.disabled}
+        value={(fieldProps.value as string[] | undefined) ?? []}
+        onValueChange={wrapped.onValueChange}
+      />
+    );
+  },
+  [FormFieldType.Checkbox]: (field, fieldProps) => (
+    <div
+      className={cn('flex items-center', {
+        'h-8': !field.horizontal,
+        'w-full': field.horizontal,
+      })}
+    >
+      <Checkbox
+        checked={Boolean(fieldProps.value)}
+        onCheckedChange={(checked) => fieldProps.onChange?.(Boolean(checked))}
+        disabled={field.disabled}
+      />
+    </div>
+  ),
+  [FormFieldType.Switch]: (field, fieldProps) => (
+    <Switch
+      checked={fieldProps.value as boolean}
+      onCheckedChange={(checked) => fieldProps.onChange?.(checked)}
+      disabled={field.disabled}
+    />
+  ),
+  [FormFieldType.Tag]: (field, fieldProps) => (
+    <div className="w-full">
+      <EditTag {...fieldProps} disabled={field.disabled} />
+    </div>
+  ),
+  [FormFieldType.Segmented]: (field, fieldProps) => (
+    <Segmented
+      {...wrapOnChange(field, fieldProps)}
+      options={field.options || []}
+      className="w-full"
+      itemClassName="flex-1 justify-center"
+      disabled={field.disabled}
+    />
+  ),
+  // Custom without an explicit `field.render` falls back to a plain input,
+  // matching the original switch's default-branch behavior.
+  [FormFieldType.Custom]: renderInputField,
+};
+
 // Render form fields
 export const RenderField = ({
   field,
@@ -350,574 +557,314 @@ export const RenderField = ({
   field: FormFieldConfig;
   labelClassName?: string;
 }) => {
+  const itemLabelClassName = labelClassName || field.labelClassName;
+
+  // Custom render path: bypasses the registry entirely.
   if (field.render) {
     if (field.type === FormFieldType.Custom && field.hideLabel) {
-      return <div className="w-full">{field.render({})}</div>;
+      return (
+        <div className="w-full">
+          {field.render({} as ControllerRenderProps)}
+        </div>
+      );
     }
     return (
-      <RAGFlowFormItem
-        {...field}
-        labelClassName={labelClassName || field.labelClassName}
-      >
-        {(fieldProps) => {
-          const finalFieldProps = field.onChange
-            ? {
-                ...fieldProps,
-                onChange: (e: any) => {
-                  fieldProps.onChange(e);
-                  field.onChange?.(e.target?.value ?? e);
-                },
-              }
-            : fieldProps;
-          return (
-            <div className="w-full">{field.render?.(finalFieldProps)}</div>
-          );
-        }}
+      <RAGFlowFormItem {...field} labelClassName={itemLabelClassName}>
+        {(fieldProps) => (
+          <div className="w-full">
+            {field.render?.(wrapOnChange(field, fieldProps))}
+          </div>
+        )}
       </RAGFlowFormItem>
     );
   }
-  switch (field.type) {
-    case FormFieldType.Segmented:
-      return (
-        <RAGFlowFormItem
-          {...field}
-          labelClassName={labelClassName || field.labelClassName}
-        >
-          {(fieldProps) => {
-            const finalFieldProps = field.onChange
-              ? {
-                  ...fieldProps,
-                  onChange: (value: any) => {
-                    fieldProps.onChange(value);
-                    field.onChange?.(value);
-                  },
-                }
-              : fieldProps;
-            return (
-              <Segmented
-                {...finalFieldProps}
-                options={field.options || []}
-                className="w-full"
-                itemClassName="flex-1 justify-center"
-                disabled={field.disabled}
-              />
-            );
-          }}
-        </RAGFlowFormItem>
-      );
-    case FormFieldType.Textarea:
-      return (
-        <RAGFlowFormItem
-          {...field}
-          labelClassName={labelClassName || field.labelClassName}
-        >
-          {(fieldProps) => {
-            const finalFieldProps = field.onChange
-              ? {
-                  ...fieldProps,
-                  onChange: (e: any) => {
-                    fieldProps.onChange(e);
-                    field.onChange?.(e.target.value);
-                  },
-                }
-              : fieldProps;
-            return (
-              <Textarea
-                {...finalFieldProps}
-                placeholder={field.placeholder}
-                disabled={field.disabled}
-                // className="resize-none"
-              />
-            );
-          }}
-        </RAGFlowFormItem>
-      );
 
-    case FormFieldType.Select:
-      return (
-        <RAGFlowFormItem
-          {...field}
-          labelClassName={labelClassName || field.labelClassName}
-        >
-          {(fieldProps) => {
-            const finalFieldProps = field.onChange
-              ? {
-                  ...fieldProps,
-                  onChange: (value: string) => {
-                    console.log('select value', value);
-                    if (fieldProps.onChange) {
-                      fieldProps.onChange(value);
-                    }
-                    field.onChange?.(value);
-                  },
-                }
-              : fieldProps;
-            return (
-              <SelectWithSearch
-                triggerClassName="!shrink"
-                {...finalFieldProps}
-                options={field.options}
-                allowCustomValue={field.allowCustomValue}
-                disabled={field.disabled}
-              />
-            );
-          }}
-        </RAGFlowFormItem>
-      );
+  const renderControl = fieldControlRenderers[field.type];
 
-    case FormFieldType.MultiSelect:
-      return (
-        <RAGFlowFormItem
-          {...field}
-          labelClassName={labelClassName || field.labelClassName}
-        >
-          {(fieldProps) => {
-            console.log('multi select value', fieldProps);
-            const finalFieldProps = {
-              ...fieldProps,
-              onValueChange: (value: string[]) => {
-                if (fieldProps.onChange) {
-                  fieldProps.onChange(value);
-                }
-                field.onChange?.(value);
-              },
-            };
-            return (
-              <MultiSelect
-                variant="inverted"
-                maxCount={100}
-                {...finalFieldProps}
-                // onValueChange={(data) => {
-                //   console.log(data);
-                //   field.onChange?.(data);
-                // }}
-                options={field.options as MultiSelectOptionType[]}
-                disabled={field.disabled}
-              />
-            );
-          }}
-        </RAGFlowFormItem>
-      );
-
-    case FormFieldType.Checkbox:
-      return (
-        <RAGFlowFormItem
-          {...field}
-          labelClassName={labelClassName || field.labelClassName}
-        >
-          {(fieldProps) => {
-            const finalFieldProps = field.onChange
-              ? {
-                  ...fieldProps,
-                  onChange: (checked: boolean) => {
-                    fieldProps.onChange(checked);
-                    field.onChange?.(checked);
-                  },
-                }
-              : fieldProps;
-            return (
-              <div
-                className={cn('flex items-center', {
-                  'h-8': !field.horizontal,
-                  'w-full': field.horizontal,
-                })}
-              >
-                <Checkbox
-                  checked={Boolean(finalFieldProps.value)}
-                  onCheckedChange={(checked) =>
-                    finalFieldProps.onChange(Boolean(checked))
-                  }
-                  disabled={field.disabled}
-                />
-              </div>
-            );
-          }}
-        </RAGFlowFormItem>
-      );
-    case FormFieldType.Switch:
-      return (
-        <RAGFlowFormItem
-          {...field}
-          labelClassName={labelClassName || field.labelClassName}
-        >
-          {(fieldProps) => {
-            const finalFieldProps = field.onChange
-              ? {
-                  ...fieldProps,
-                  onChange: (checked: boolean) => {
-                    fieldProps.onChange(checked);
-                    field.onChange?.(checked);
-                  },
-                }
-              : fieldProps;
-            return (
-              <Switch
-                checked={finalFieldProps.value as boolean}
-                onCheckedChange={(checked) => finalFieldProps.onChange(checked)}
-                disabled={field.disabled}
-              />
-            );
-          }}
-        </RAGFlowFormItem>
-      );
-
-    case FormFieldType.Tag:
-      return (
-        <RAGFlowFormItem
-          {...field}
-          labelClassName={labelClassName || field.labelClassName}
-        >
-          {(fieldProps) => {
-            const finalFieldProps = field.onChange
-              ? {
-                  ...fieldProps,
-                  onChange: (value: string[]) => {
-                    fieldProps.onChange(value);
-                    field.onChange?.(value);
-                  },
-                }
-              : fieldProps;
-            return (
-              //   <TagInput {...fieldProps} placeholder={field.placeholder} />
-              <div className="w-full">
-                <EditTag
-                  {...finalFieldProps}
-                  disabled={field.disabled}
-                ></EditTag>
-              </div>
-            );
-          }}
-        </RAGFlowFormItem>
-      );
-
-    default:
-      return (
-        <RAGFlowFormItem
-          {...field}
-          labelClassName={labelClassName || field.labelClassName}
-        >
-          {(fieldProps) => {
-            const finalFieldProps = field.onChange
-              ? {
-                  ...fieldProps,
-                  onChange: (e: any) => {
-                    fieldProps.onChange(e);
-                    field.onChange?.(e.target.value);
-                  },
-                }
-              : fieldProps;
-            return (
-              <div className="w-full">
-                <Input
-                  {...finalFieldProps}
-                  type={field.type}
-                  placeholder={field.placeholder}
-                  disabled={field.disabled}
-                />
-              </div>
-            );
-          }}
-        </RAGFlowFormItem>
-      );
-  }
+  return (
+    <RAGFlowFormItem {...field} labelClassName={itemLabelClassName}>
+      {(fieldProps) => renderControl(field, fieldProps)}
+    </RAGFlowFormItem>
+  );
 };
 
 // Dynamic form component
-const DynamicForm = {
-  Root: forwardRef(
-    <T extends FieldValues>(
-      {
-        fields: originFields,
-        onSubmit,
-        className = '',
-        children,
-        defaultValues: formDefaultValues = {} as DefaultValues<T>,
-        // onFieldUpdate,
-        labelClassName,
-      }: DynamicFormProps<T>,
-      ref: React.Ref<any>,
-    ) => {
-      // Generate validation schema and default values
-      const [fields, setFields] = useState(originFields);
-      useMemo(() => {
-        setFields(originFields);
-      }, [originFields]);
+// eslint-disable-next-line react/display-name
+const DynamicFormRoot = forwardRef(
+  <T extends FieldValues>(
+    {
+      fields: originFields,
+      onSubmit,
+      className = '',
+      children,
+      defaultValues: formDefaultValues = {} as DefaultValues<T>,
+      labelClassName,
+    }: DynamicFormProps<T>,
+    ref: React.Ref<any>,
+  ) => {
+    // Local state is required so that onFieldType / onFieldUpdate (ref API)
+    // can mutate fields at runtime. We sync with originFields via useEffect.
+    const [fields, setFields] = useState<FormFieldConfig[]>(originFields);
 
-      const defaultValues = useMemo(() => {
-        const value = {
-          ...generateDefaultValues(fields),
-          ...formDefaultValues,
-        };
-        return value;
-      }, [fields, formDefaultValues]);
+    useEffect(() => {
+      setFields(originFields);
+    }, [originFields]);
 
-      // Initialize form
-      const form = useForm<T>({
-        resolver: async (data, context, options) => {
-          // Filter out fields that should not render
-          const activeFields = fields.filter(
-            (field) => !field.shouldRender || field.shouldRender(data),
-          );
+    const fieldDefaults = useMemo(
+      () => generateDefaultValues(fields),
+      [fields],
+    );
 
-          const activeSchema = generateSchema(activeFields);
-          const zodResult = await zodResolver(activeSchema)(
-            data,
-            context,
-            options,
-          );
+    const mergedDefaults = useMemo<DefaultValues<T>>(
+      () => ({ ...fieldDefaults, ...formDefaultValues }),
+      [fieldDefaults, formDefaultValues],
+    );
 
-          let combinedErrors = { ...zodResult.errors };
-
-          const fieldErrors: Record<string, { type: string; message: string }> =
-            {};
-          for (const field of fields) {
-            if (
-              field.customValidate &&
-              getNestedValue(data, field.name) !== undefined &&
-              (!field.shouldRender || field.shouldRender(data))
-            ) {
-              try {
-                const result = await field.customValidate(
-                  getNestedValue(data, field.name),
-                  data,
-                );
-                if (typeof result === 'string') {
-                  fieldErrors[field.name] = {
-                    type: 'custom',
-                    message: result,
-                  };
-                } else if (result === false) {
-                  fieldErrors[field.name] = {
-                    type: 'custom',
-                    message:
-                      field.validation?.message || `${field.label} is invalid`,
-                  };
-                }
-              } catch (error) {
-                fieldErrors[field.name] = {
-                  type: 'custom',
-                  message:
-                    error instanceof Error
-                      ? error.message
-                      : 'Validation failed',
-                };
-              }
-            }
-          }
-
-          combinedErrors = {
-            ...combinedErrors,
-            ...fieldErrors,
-          } as any;
-
-          for (const key in combinedErrors) {
-            if (Array.isArray(combinedErrors[key])) {
-              combinedErrors[key] = combinedErrors[key][0];
-            }
-          }
-          console.log('combinedErrors', combinedErrors);
-          return {
-            values: Object.keys(combinedErrors).length ? {} : data,
-            errors: combinedErrors,
-          } as any;
-        },
-        defaultValues,
-      });
-
-      useEffect(() => {
-        const dependencyMap: Record<string, string[]> = {};
+    const filterActiveValues = useCallback(
+      (allValues: any) => {
+        const filteredValues: any = {};
 
         fields.forEach((field) => {
-          if (field.dependencies && field.dependencies.length > 0) {
-            field.dependencies.forEach((dep) => {
-              if (!dependencyMap[dep]) {
-                dependencyMap[dep] = [];
-              }
-              dependencyMap[dep].push(field.name);
-            });
+          if (
+            !field.shouldRender ||
+            (field.shouldRender(allValues) &&
+              field.name?.indexOf(FilterFormField) < 0)
+          ) {
+            const value = getNestedValue(allValues, field.name);
+            if (value !== undefined) {
+              setNestedValue(filteredValues, field.name, value);
+            }
           }
         });
 
-        const subscriptions = Object.keys(dependencyMap).map((depField) => {
-          return form.watch((values: any, { name }) => {
-            if (name === depField && dependencyMap[depField]) {
-              dependencyMap[depField].forEach((dependentField) => {
-                form.trigger(dependentField as any);
-              });
-            }
-          });
-        });
+        return filteredValues;
+      },
+      [fields],
+    );
 
-        return () => {
-          subscriptions.forEach((sub) => {
-            if (sub.unsubscribe) {
-              sub.unsubscribe();
-            }
-          });
-        };
-      }, [fields, form]);
+    // Initialize form. The resolver closes over `fields` via the ref to the
+    // latest value; react-hook-form stores resolvers in a ref and uses the
+    // most recent one on each validation pass.
+    const fieldsRef = useRef(fields);
+    fieldsRef.current = fields;
 
-      const filterActiveValues = useCallback(
-        (allValues: any) => {
-          const filteredValues: any = {};
+    const form = useForm<T>({
+      resolver: async (data, context, options) => {
+        const currentFields = fieldsRef.current;
+        const activeFields = currentFields.filter(
+          (field) => !field.shouldRender || field.shouldRender(data),
+        );
+        const activeSchema = generateSchema(activeFields);
+        const zodResult = await zodResolver(activeSchema)(
+          data,
+          context,
+          options,
+        );
 
-          fields.forEach((field) => {
-            if (
-              !field.shouldRender ||
-              (field.shouldRender(allValues) &&
-                field.name?.indexOf(FilterFormField) < 0)
-            ) {
-              const keys = field.name.split('.');
-              let current = allValues;
-              let exists = true;
+        const combinedErrors: Record<string, any> = { ...zodResult.errors };
 
-              for (const key of keys) {
-                if (current && current[key] !== undefined) {
-                  current = current[key];
-                } else {
-                  exists = false;
-                  break;
-                }
+        for (const field of currentFields) {
+          if (
+            field.customValidate &&
+            (!field.shouldRender || field.shouldRender(data))
+          ) {
+            const value = getNestedValue(data, field.name);
+            const isEmpty =
+              value === undefined ||
+              value === '' ||
+              (Array.isArray(value) && value.length === 0);
+            // Skip custom validation on empty optional fields to avoid
+            // running async checks against uninitialized values.
+            if (isEmpty && !field.required) continue;
+
+            try {
+              const result = await field.customValidate(value, data);
+              if (typeof result === 'string') {
+                combinedErrors[field.name] = {
+                  type: 'custom',
+                  message: result,
+                };
+              } else if (result === false) {
+                combinedErrors[field.name] = {
+                  type: 'custom',
+                  message:
+                    field.validation?.message || `${field.label} is invalid`,
+                };
               }
-
-              if (exists) {
-                let target = filteredValues;
-                for (let i = 0; i < keys.length - 1; i++) {
-                  const key = keys[i];
-                  if (!target[key]) {
-                    target[key] = {};
-                  }
-                  target = target[key];
-                }
-                target[keys[keys.length - 1]] = getNestedValue(
-                  allValues,
-                  field.name,
-                );
-              }
+            } catch (error) {
+              combinedErrors[field.name] = {
+                type: 'custom',
+                message:
+                  error instanceof Error ? error.message : 'Validation failed',
+              };
             }
-          });
+          }
+        }
 
-          return filteredValues;
-        },
-        [fields],
-      );
+        for (const key in combinedErrors) {
+          if (Array.isArray(combinedErrors[key])) {
+            combinedErrors[key] = combinedErrors[key][0];
+          }
+        }
 
-      // Expose form methods via ref
-      useImperativeHandle(
-        ref,
-        () => ({
-          form: form,
-          submit: () => {
-            form.handleSubmit((values) => {
-              const filteredValues = filterActiveValues(values);
-              onSubmit(filteredValues);
-            })();
-          },
-          isDirty: () => form.formState.isDirty,
-          getValues: form.getValues,
-          reset: (values?: T) => {
-            if (values) {
-              form.reset(values);
-            } else {
-              form.reset();
+        return {
+          values: Object.keys(combinedErrors).length ? {} : data,
+          errors: combinedErrors,
+        } as any;
+      },
+      defaultValues: mergedDefaults,
+    });
+
+    // Watch field dependencies to re-validate downstream fields
+    useEffect(() => {
+      const dependencyMap: Record<string, string[]> = {};
+      fields.forEach((field) => {
+        if (field.dependencies && field.dependencies.length > 0) {
+          field.dependencies.forEach((dep) => {
+            if (!dependencyMap[dep]) {
+              dependencyMap[dep] = [];
             }
-          },
-          setError: form.setError,
-          clearErrors: form.clearErrors,
-          trigger: form.trigger,
-          watch: (field: string, callback: (value: any) => void) => {
-            const { unsubscribe } = form.watch((values: any) => {
-              if (values && values[field] !== undefined) {
-                callback(values[field]);
-              }
-            });
-            return unsubscribe;
-          },
-          watchDirty: (callback: (isDirty: boolean, values: any) => void) => {
-            const { unsubscribe } = form.watch((values: any) => {
-              callback(form.formState.isDirty, values);
-            });
-            return unsubscribe;
-          },
-
-          onFieldUpdate: (
-            fieldName: string,
-            updatedField: Partial<FormFieldConfig>,
-          ) => {
-            setFields((prevFields: any) =>
-              prevFields.map((field: any) =>
-                field.name === fieldName
-                  ? { ...field, ...updatedField }
-                  : field,
-              ),
-            );
-            // setTimeout(() => {
-            //   if (onFieldUpdate) {
-            //     onFieldUpdate(fieldName, updatedField);
-            //   } else {
-            //     console.warn(
-            //       'onFieldUpdate prop is not provided. Cannot update field type.',
-            //     );
-            //   }
-            // }, 0);
-          },
-        }),
-        [form, onSubmit, filterActiveValues],
-      );
-      (form as any).filterActiveValues = filterActiveValues;
-      useEffect(() => {
-        if (formDefaultValues && Object.keys(formDefaultValues).length > 0) {
-          form.reset({
-            ...generateDefaultValues(fields),
-            ...formDefaultValues,
+            dependencyMap[dep].push(field.name);
           });
         }
-      }, [form, formDefaultValues, fields]);
+      });
 
-      // Submit handler
-      //   const handleSubmit = form.handleSubmit(onSubmit);
+      const subscriptions = Object.keys(dependencyMap).map((depField) =>
+        form.watch((_values: any, { name }) => {
+          if (name === depField && dependencyMap[depField]) {
+            dependencyMap[depField].forEach((dependentField) => {
+              form.trigger(dependentField as any);
+            });
+          }
+        }),
+      );
 
-      // Watch all form values to re-render when they change (for shouldRender checks)
-      const formValues = form.watch();
+      return () => {
+        subscriptions.forEach((sub) => sub.unsubscribe?.());
+      };
+    }, [fields, form]);
 
-      return (
-        <Form {...form}>
+    // Reset the form when formDefaultValues reference changes.
+    // Using a ref to track the previous reference prevents re-running the
+    // reset when `fields` toggles reference (which happens whenever the
+    // parent re-renders without memoizing the array).
+    const prevFormDefaultValuesRef = useRef<DefaultValues<T> | null>(null);
+    useEffect(() => {
+      if (
+        formDefaultValues &&
+        Object.keys(formDefaultValues).length > 0 &&
+        prevFormDefaultValuesRef.current !== formDefaultValues
+      ) {
+        form.reset({ ...fieldDefaults, ...formDefaultValues });
+        prevFormDefaultValuesRef.current = formDefaultValues;
+      }
+    }, [form, formDefaultValues, fieldDefaults]);
+
+    useImperativeHandle(
+      ref,
+      () => ({
+        form,
+        submit: () => {
+          form.handleSubmit((values) => {
+            onSubmit(filterActiveValues(values) as T);
+          })();
+        },
+        isDirty: () => form.formState.isDirty,
+        getValues: form.getValues,
+        reset: (values?: T) => {
+          if (values) {
+            form.reset(values);
+          } else {
+            form.reset();
+          }
+        },
+        setError: form.setError,
+        clearErrors: form.clearErrors,
+        trigger: form.trigger,
+        filterActiveValues,
+        watch: (field: string, callback: (value: any) => void) => {
+          const { unsubscribe } = form.watch((values: any) => {
+            if (values && values[field] !== undefined) {
+              callback(values[field]);
+            }
+          });
+          return unsubscribe;
+        },
+        watchDirty: (callback: (isDirty: boolean, values: any) => void) => {
+          const { unsubscribe } = form.watch((values: any) => {
+            callback(form.formState.isDirty, values);
+          });
+          return unsubscribe;
+        },
+        onFieldUpdate: (
+          fieldName: string,
+          updatedField: Partial<FormFieldConfig>,
+        ) => {
+          setFields((prev) =>
+            prev.map((field) =>
+              field.name === fieldName ? { ...field, ...updatedField } : field,
+            ),
+          );
+        },
+        updateFieldType: (fieldName: string, newType: FormFieldType) => {
+          setFields((prev) =>
+            prev.map((field) =>
+              field.name === fieldName ? { ...field, type: newType } : field,
+            ),
+          );
+        },
+      }),
+      [form, onSubmit, filterActiveValues],
+    );
+
+    // Subscribe to form values via useWatch so that shouldRender checks
+    // re-evaluate only when the watched values actually change.
+    const formValues = useWatch({ control: form.control }) as any;
+
+    const ctxValue = useMemo(
+      () => ({ filterActiveValues }),
+      [filterActiveValues],
+    );
+
+    return (
+      <Form {...form}>
+        <DynamicFormContext.Provider value={ctxValue}>
           <form
             className={`space-y-6 ${className}`}
             onSubmit={(e) => {
               e.preventDefault();
               form.handleSubmit((values) => {
-                const filteredValues = filterActiveValues(values);
-                onSubmit(filteredValues);
+                onSubmit(filterActiveValues(values) as T);
               })(e);
             }}
           >
-            <>
-              {fields.map((field) => {
-                const shouldShow = field.shouldRender
-                  ? field.shouldRender(formValues)
-                  : true;
-                return (
-                  <div
-                    key={field.name}
-                    className={cn({ hidden: field.hidden || !shouldShow })}
-                  >
-                    <RenderField
-                      field={field}
-                      labelClassName={labelClassName}
-                    />
-                  </div>
-                );
-              })}
-              {children}
-            </>
+            {fields.map((field) => {
+              const shouldShow = field.shouldRender
+                ? field.shouldRender(formValues)
+                : true;
+              return (
+                <div
+                  key={field.name}
+                  className={cn({ hidden: field.hidden || !shouldShow })}
+                >
+                  <RenderField field={field} labelClassName={labelClassName} />
+                </div>
+              );
+            })}
+            {children}
           </form>
-        </Form>
-      );
-    },
-  ) as <T extends FieldValues>(
-    props: DynamicFormProps<T> & { ref?: React.Ref<DynamicFormRef> },
-  ) => React.ReactElement,
+        </DynamicFormContext.Provider>
+      </Form>
+    );
+  },
+) as <T extends FieldValues>(
+  props: DynamicFormProps<T> & { ref?: React.Ref<DynamicFormRef> },
+) => React.ReactElement;
+
+(DynamicFormRoot as any).displayName = 'DynamicFormRoot';
+
+const DynamicForm = {
+  Root: DynamicFormRoot,
   SavingButton: ({
     submitLoading,
     buttonText,
@@ -928,41 +875,32 @@ const DynamicForm = {
     submitFunc?: (values: FieldValues) => void;
   }) => {
     const form = useFormContext();
+    const ctx = useContext(DynamicFormContext);
+
+    const handleClick = async () => {
+      try {
+        const beValid = await form.trigger();
+        if (beValid && submitFunc) {
+          form.handleSubmit(async (values) => {
+            const filtered = ctx?.filterActiveValues
+              ? ctx.filterActiveValues(values)
+              : values;
+            submitFunc(filtered);
+          })();
+        }
+      } catch (e) {
+        // Surface to the console without leaking through a stray log in
+        // production paths; callers handle submit errors via submitFunc.
+        // eslint-disable-next-line no-console
+        console.error(e);
+      }
+    };
+
     return (
       <button
         type="button"
         disabled={submitLoading}
-        onClick={() => {
-          (async () => {
-            try {
-              const beValid = await form.trigger();
-              console.log('form valid', beValid, form);
-              // if (beValid) {
-              //   form.handleSubmit(async (values) => {
-              //     console.log('form values', values);
-              //     submitFunc?.(values);
-              //   })();
-              // }
-
-              if (beValid && submitFunc) {
-                form.handleSubmit(async (values) => {
-                  const filteredValues = (form as any).filterActiveValues
-                    ? (form as any).filterActiveValues(values)
-                    : values;
-                  console.log(
-                    'filtered form values in saving button',
-                    filteredValues,
-                  );
-                  submitFunc(filteredValues);
-                })();
-              }
-            } catch (e) {
-              console.error(e);
-            } finally {
-              console.log('form submit3');
-            }
-          })();
-        }}
+        onClick={handleClick}
         className={cn(
           'px-2 py-1 bg-primary text-primary-foreground rounded-md hover:bg-primary/90',
         )}
@@ -985,7 +923,7 @@ const DynamicForm = {
     return (
       <button
         type="button"
-        onClick={() => handleCancel()}
+        onClick={handleCancel}
         className="px-2 py-1 border border-border-button rounded-md text-text-secondary hover:bg-bg-card hover:text-primary"
       >
         {cancelText ?? t('modal.cancelText')}
@@ -994,6 +932,7 @@ const DynamicForm = {
   },
 };
 
-DynamicForm.Root.displayName = 'DynamicFormRoot';
+(DynamicForm.Root as unknown as { displayName?: string }).displayName =
+  'DynamicFormRoot';
 
 export { DynamicForm };
