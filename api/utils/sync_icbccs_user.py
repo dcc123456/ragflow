@@ -6,7 +6,6 @@ import requests
 from common import settings
 from api.db import TeamRole, UserTenantRole, FileType
 from api.db.services.file_service import FileService
-from api.db.services.llm_service import TenantLLMService
 from api.db.services.team_service import DepartmentMemberService, DepartmentService
 from api.db.services.user_service import UserService, TenantService, UserTenantService
 from common.time_utils import get_format_time
@@ -45,33 +44,11 @@ def icbccs_user_register(user_id, user):
         "size": 0,
         "location": "",
     }
-    tenant_llm = [
-        {
-            "tenant_id": user_id,
-            "llm_factory": "OpenAI-API-Compatible",
-            "llm_name": "FundGPT-EMB-1.0___OpenAI-API",
-            "model_type": "embedding",
-            "api_key": "ailab_xxxx",
-            "api_base": settings.EMBD_BASE_URL,#"http://10.29.40.143:9652/v1",
-            "max_tokens": 4096,
-        },
-        {
-            "tenant_id": user_id,
-            "llm_factory": "OpenAI-API-Compatible",
-            "llm_name": "FundGPT-large___OpenAI-API",
-            "model_type": "chat",
-            "api_key": "ailab_xxxx",
-            "api_base": settings.LLM_BASE_URL,#"http://10.29.40.143:9655/v1",
-            "max_tokens": 64000,
-        },
-    ]
-
     if not UserService.save(**user):
         raise Exception("Fail to save.")
 
     TenantService.insert(**tenant)
     UserTenantService.insert(**usr_tenant)
-    TenantLLMService.insert_many(tenant_llm)
     FileService.insert(file)
     return UserService.query(email=user["email"])
 

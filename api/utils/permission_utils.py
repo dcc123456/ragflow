@@ -363,7 +363,7 @@ def check_dialog_permission(permission):
             user_tenants = UserTenantService.get_user_tenants_with_owner(current_user.id)
 
             for user_tenant in user_tenants:
-                dialog_record = DialogService.query(tenant_id=user_tenant.tenant_id, id=dialog_id)
+                dialog_record = DialogService.query(tenant_id=user_tenant.tenant_id, id=dialog_id, status=StatusEnum.VALID.value)
                 if dialog_record:
                     permission_info = has_permission_for_member(
                         operator_id=user_tenant.id, tenant_id=user_tenant.tenant_id, resource_id=dialog_id, resource_type=ResourceType.DIALOG, permission=permission

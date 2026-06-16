@@ -434,7 +434,7 @@ export const getSandboxConfig = () =>
   );
 
 export const setSandboxConfig = (params: AdminService.SetSandboxConfigInput) =>
-  request.put<ResponseData<never>>(API.adminSetSandboxConfig, params);
+  request.post<ResponseData<never>>(API.adminSetSandboxConfig, params);
 
 export const getSandboxProviderSchema = (providerId: string) =>
   request.get<ResponseData<AdminService.SandboxProviderSchema>>(

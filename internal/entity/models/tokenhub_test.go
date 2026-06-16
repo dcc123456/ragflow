@@ -45,6 +45,17 @@ func newTokenHubServer(t *testing.T, expectedMethod, expectedPath string, handle
 			handler(t, body, w)
 			return
 		}
+		raw, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read body: %v", err)
+			http.Error(w, "read error", http.StatusBadRequest)
+			return
+		}
+		if len(raw) != 0 {
+			t.Errorf("expected no request body for %s, got %q", r.Method, string(raw))
+			http.Error(w, "unexpected body", http.StatusBadRequest)
+			return
+		}
 		handler(t, nil, w)
 	}))
 }
@@ -128,6 +139,14 @@ func TestTokenHubChatRequiresAPIKey(t *testing.T) {
 	}
 }
 
+func TestTokenHubChatRequiresModelName(t *testing.T) {
+	apiKey := "test-key"
+	_, err := newTokenHubForTest("http://unused").ChatWithMessages(" ", []Message{{Role: "user", Content: "x"}}, &APIConfig{ApiKey: &apiKey}, nil)
+	if err == nil || !strings.Contains(err.Error(), "model name is required") {
+		t.Fatalf("expected model-name error, got %v", err)
+	}
+}
+
 func TestTokenHubStreamHappyPath(t *testing.T) {
 	srv := newTokenHubSSEServer(t, "/chat/completions", strings.Join([]string{
 		`data: {"choices":[{"delta":{"reasoning_content":"thinking"}}]}`,
@@ -208,6 +227,20 @@ func TestTokenHubStreamRequiresAPIKey(t *testing.T) {
 	}
 }
 
+func TestTokenHubStreamRequiresModelName(t *testing.T) {
+	apiKey := "test-key"
+	err := newTokenHubForTest("http://unused").ChatStreamlyWithSender(
+		" ",
+		[]Message{{Role: "user", Content: "ping"}},
+		&APIConfig{ApiKey: &apiKey},
+		nil,
+		func(*string, *string) error { return nil },
+	)
+	if err == nil || !strings.Contains(err.Error(), "model name is required") {
+		t.Fatalf("expected model-name error, got %v", err)
+	}
+}
+
 func TestTokenHubEmbedHappyPath(t *testing.T) {
 	srv := newTokenHubServer(t, http.MethodPost, "/embeddings", func(t *testing.T, body map[string]interface{}, w http.ResponseWriter) {
 		if body["model"] != "text-embedding-3-small" {
@@ -215,7 +248,9 @@ func TestTokenHubEmbedHappyPath(t *testing.T) {
 		}
 		inputs, ok := body["input"].([]interface{})
 		if !ok || len(inputs) != 2 {
-			t.Fatalf("input=%#v", body["input"])
+			t.Errorf("input=%#v", body["input"])
+			http.Error(w, "invalid input", http.StatusBadRequest)
+			return
 		}
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"data": []map[string]interface{}{
@@ -239,7 +274,7 @@ func TestTokenHubEmbedHappyPath(t *testing.T) {
 
 func TestTokenHubEmbedValidatesInputs(t *testing.T) {
 	apiKey := "test-key"
-	if embeddings, err := newTokenHubForTest("http://unused").Embed(nil, nil, nil, nil); err != nil || len(embeddings) != 0 {
+	if embeddings, err := newTokenHubForTest("http://unused").Embed(nil, nil, &APIConfig{ApiKey: &apiKey}, nil); err != nil || len(embeddings) != 0 {
 		t.Fatalf("empty input should return empty embeddings, got %#v err=%v", embeddings, err)
 	}
 	if _, err := newTokenHubForTest("http://unused").Embed(nil, []string{"x"}, &APIConfig{ApiKey: &apiKey}, nil); err == nil || !strings.Contains(err.Error(), "model name is required") {
@@ -270,7 +305,7 @@ func TestTokenHubListModelsHappyPathSkipsMalformedItems(t *testing.T) {
 		t.Fatalf("ListModels: %v", err)
 	}
 	want := []string{"gpt-4o-mini", "gpt-4o"}
-	if strings.Join(models, ",") != strings.Join(want, ",") {
+	if joinModelNames(models, ",") != strings.Join(want, ",") {
 		t.Fatalf("models=%v, want %v", models, want)
 	}
 }

@@ -32,6 +32,23 @@ def _expected_default_embedding_model() -> str:
     return "BAAI/bge-small-en-v1.5___OpenAI-API@OpenAI-API-Compatible"
 
 
+def _is_infinity_doc_engine(rest_client: RestClient) -> bool:
+    env_engine = (os.getenv("DOC_ENGINE") or "").strip().lower()
+    if env_engine:
+        return env_engine == "infinity"
+    try:
+        res = rest_client.get("/system/status")
+        if res.status_code != 200:
+            return False
+        payload = res.json()
+        if payload.get("code") != 0:
+            return False
+        engine = str(payload.get("data", {}).get("doc_engine", {}).get("type", "")).strip().lower()
+        return engine == "infinity"
+    except Exception:
+        return False
+
+
 @pytest.mark.p1
 class TestDatasetsAuthorization:
     def test_create_requires_auth(self, rest_client_noauth):
@@ -448,7 +465,7 @@ def test_dataset_update_embedding_model_with_existing_chunks_contract(rest_clien
     assert dataset_payload["code"] == 0, dataset_payload
     current_embedding = dataset_payload["data"]["embedding_model"]
 
-    candidates = ["embedding-3@ZHIPU-AI", "BAAI/bge-small-en-v1.5@Builtin"]
+    candidates = ["embedding-3@CI@ZHIPU-AI", "BAAI/bge-small-en-v1.5@Local@Builtin"]
     last_payload = None
     for candidate in candidates:
         if candidate == current_embedding:
@@ -493,10 +510,11 @@ def test_dataset_update_permission_contract(rest_client, clear_datasets, permiss
     assert update_payload["data"]["permission"] == permission.lower().strip(), update_payload
 
 
-@pytest.mark.skipif(os.getenv("DOC_ENGINE") == "infinity", reason="#8208")
 @pytest.mark.p2
 @pytest.mark.parametrize("pagerank", [0, 50, 100], ids=["min", "mid", "max"])
 def test_dataset_update_pagerank_contract(rest_client, clear_datasets, pagerank):
+    if _is_infinity_doc_engine(rest_client):
+        pytest.skip("#8208")
     create_res = rest_client.post("/datasets", json={"name": f"dataset_update_pagerank_{pagerank}"})
     assert create_res.status_code == 200
     create_payload = create_res.json()
@@ -518,9 +536,10 @@ def test_dataset_update_pagerank_contract(rest_client, clear_datasets, pagerank)
     assert list_payload["data"][0]["pagerank"] == pagerank, list_payload
 
 
-@pytest.mark.skipif(os.getenv("DOC_ENGINE") == "infinity", reason="#8208")
 @pytest.mark.p2
 def test_dataset_update_pagerank_set_to_zero_contract(rest_client, clear_datasets):
+    if _is_infinity_doc_engine(rest_client):
+        pytest.skip("#8208")
     create_res = rest_client.post("/datasets", json={"name": "dataset_update_pagerank_set_to_zero"})
     assert create_res.status_code == 200
     create_payload = create_res.json()
@@ -550,9 +569,10 @@ def test_dataset_update_pagerank_set_to_zero_contract(rest_client, clear_dataset
     assert list_payload["data"][0]["pagerank"] == 0, list_payload
 
 
-@pytest.mark.skipif(os.getenv("DOC_ENGINE") != "infinity", reason="#8208")
 @pytest.mark.p2
 def test_dataset_update_pagerank_infinity_contract(rest_client, clear_datasets):
+    if not _is_infinity_doc_engine(rest_client):
+        pytest.skip("#8208")
     create_res = rest_client.post("/datasets", json={"name": "dataset_update_pagerank_infinity"})
     assert create_res.status_code == 200
     create_payload = create_res.json()
@@ -796,10 +816,10 @@ def test_dataset_update_embedding_model_invalid_and_none_contract(rest_client, c
     dataset_id = create_payload["data"]["id"]
 
     invalid_cases = [
-        ("unknown@ZHIPU-AI", "Unsupported model: <unknown@ZHIPU-AI>"),
-        ("embedding-3@unknown", "Unsupported model: <embedding-3@unknown>"),
-        ("text-embedding-v3@Tongyi-Qianwen", "Unauthorized model: <text-embedding-v3@Tongyi-Qianwen>"),
-        ("text-embedding-3-small@OpenAI", "Unauthorized model: <text-embedding-3-small@OpenAI>"),
+        ("unknown@ZHIPU-AI", "Instance default not found for model unknown@ZHIPU-AI."),
+        ("embedding-3@unknown", "Provider unknown not found for model embedding-3@unknown."),
+        ("text-embedding-v3@Tongyi-Qianwen", "Provider Tongyi-Qianwen not found for model text-embedding-v3@Tongyi-Qianwen."),
+        ("text-embedding-3-small@OpenAI", "Provider OpenAI not found for model text-embedding-3-small@OpenAI."),
     ]
     for embedding_model, expected_message in invalid_cases:
         res = rest_client.put(
@@ -820,7 +840,7 @@ def test_dataset_update_embedding_model_invalid_and_none_contract(rest_client, c
     assert list_res.status_code == 200
     list_payload = list_res.json()
     assert list_payload["code"] == 0, list_payload
-    assert list_payload["data"][0]["embedding_model"] == _expected_default_embedding_model(), list_payload
+    assert list_payload["data"][0]["embedding_model"] == "BAAI/bge-small-en-v1.5@Local@Builtin", list_payload
 
 
 @pytest.mark.p2
@@ -1150,21 +1170,21 @@ def test_dataset_create_permission_contract(rest_client, clear_datasets, name, p
 @pytest.mark.parametrize(
     "name, embedding_model, expected_code, expected_embedding_model, expected_message, unauthorized_is_xfail",
     [
-        ("builtin_baai", "BAAI/bge-small-en-v1.5@Builtin", 0, "BAAI/bge-small-en-v1.5@Builtin", None, False),
-        ("tenant_zhipu", "embedding-3@ZHIPU-AI", 0, "embedding-3@ZHIPU-AI", None, True),
-        ("embedding_model_unset", "__UNSET__", 0, _expected_default_embedding_model(), None, False),
-        ("embedding_model_none", None, 0, _expected_default_embedding_model(), None, False),
-        ("unknown_llm_name", "unknown@ZHIPU-AI", 102, None, "Unsupported model: <unknown@ZHIPU-AI>", False),
-        ("unknown_llm_factory", "embedding-3@unknown", 102, None, "Unsupported model: <embedding-3@unknown>", False),
+        ("builtin_baai", "BAAI/bge-small-en-v1.5@Local@Builtin", 0, "BAAI/bge-small-en-v1.5@Local@Builtin", None, False),
+        ("tenant_zhipu", "embedding-3@CI@ZHIPU-AI", 0, "embedding-3@CI@ZHIPU-AI", None, True),
+        ("embedding_model_unset", "__UNSET__", 0, "BAAI/bge-small-en-v1.5@Local@Builtin", None, False),
+        ("embedding_model_none", None, 0, "BAAI/bge-small-en-v1.5@Local@Builtin", None, False),
+        ("unknown_llm_name", "unknown@ZHIPU-AI", 102, None, "Instance default not found for model unknown@ZHIPU-AI.", False),
+        ("unknown_llm_factory", "embedding-3@unknown", 102, None, "Provider unknown not found for model embedding-3@unknown.", False),
         (
             "tenant_no_auth_default_tenant_llm",
             "text-embedding-v3@Tongyi-Qianwen",
             102,
             None,
-            "Unauthorized model: <text-embedding-v3@Tongyi-Qianwen>",
+            "Provider Tongyi-Qianwen not found for model text-embedding-v3@Tongyi-Qianwen.",
             False,
         ),
-        ("tenant_no_auth", "text-embedding-3-small@OpenAI", 102, None, "Unauthorized model: <text-embedding-3-small@OpenAI>", False),
+        ("tenant_no_auth", "text-embedding-3-small@OpenAI", 102, None, "Provider OpenAI not found for model text-embedding-3-small@OpenAI.", False),
     ],
     ids=[
         "builtin_baai",
@@ -1829,11 +1849,13 @@ def test_dataset_delete_contract_matrix(rest_client, clear_datasets):
     assert id_not_uuid1_payload["code"] == 101, id_not_uuid1_payload
     assert "Invalid UUID1 format" in id_not_uuid1_payload["message"], id_not_uuid1_payload
 
-    id_wrong_uuid_res = rest_client.delete("/datasets", json={"ids": ["d94a8dc02c9711f0930f7fbc369eab6d"]})
+    denied_dataset_id = "d94a8dc02c9711f0930f7fbc369eab6d"
+    id_wrong_uuid_res = rest_client.delete("/datasets", json={"ids": [denied_dataset_id]})
     assert id_wrong_uuid_res.status_code == 200
     id_wrong_uuid_payload = id_wrong_uuid_res.json()
     assert id_wrong_uuid_payload["code"] == 102, id_wrong_uuid_payload
-    assert "lacks permission for dataset" in id_wrong_uuid_payload["message"], id_wrong_uuid_payload
+    assert "No authorization for dataset(s):" in id_wrong_uuid_payload["message"], id_wrong_uuid_payload
+    assert denied_dataset_id in id_wrong_uuid_payload["message"], id_wrong_uuid_payload
 
     list_res = rest_client.get("/datasets")
     assert list_res.status_code == 200
@@ -1850,7 +1872,8 @@ def test_dataset_delete_contract_matrix(rest_client, clear_datasets):
         assert partial_invalid_res.status_code == 200
         partial_invalid_payload = partial_invalid_res.json()
         assert partial_invalid_payload["code"] == 102, partial_invalid_payload
-        assert "lacks permission for dataset" in partial_invalid_payload["message"], partial_invalid_payload
+        assert "No authorization for dataset(s):" in partial_invalid_payload["message"], partial_invalid_payload
+        assert denied_dataset_id in partial_invalid_payload["message"], partial_invalid_payload
 
     duplicate_ids_res = rest_client.delete("/datasets", json={"ids": remaining_ids + remaining_ids})
     assert duplicate_ids_res.status_code == 200
@@ -1868,7 +1891,9 @@ def test_dataset_delete_contract_matrix(rest_client, clear_datasets):
     assert second_delete_res.status_code == 200
     second_delete_payload = second_delete_res.json()
     assert second_delete_payload["code"] == 102, second_delete_payload
-    assert "lacks permission for dataset" in second_delete_payload["message"], second_delete_payload
+    assert "No authorization for dataset(s):" in second_delete_payload["message"], second_delete_payload
+    for deleted_id in remaining_ids:
+        assert deleted_id in second_delete_payload["message"], second_delete_payload
 
     unsupported_field_res = rest_client.delete("/datasets", json={"unknown_field": "unknown_field"})
     assert unsupported_field_res.status_code == 200
@@ -2197,6 +2222,83 @@ def test_dataset_get_contract(rest_client, create_dataset):
 
 
 @pytest.mark.p2
+def test_dataset_metadata_config_get_and_update_contract(rest_client, create_dataset):
+    dataset_id = create_dataset("dataset_metadata_config_contract")
+
+    success_res = rest_client.get(f"/datasets/{dataset_id}/metadata/config")
+    assert success_res.status_code == 200
+    success_payload = success_res.json()
+    assert success_payload["code"] == 0, success_payload
+    assert success_payload["data"] == {"metadata": [], "built_in_metadata": []}, success_payload
+
+    for scenario_name, client in (("missing token", RestClient(token=None)), ("invalid token", RestClient(token=INVALID_API_TOKEN))):
+        get_res = client.get(f"/datasets/{dataset_id}/metadata/config")
+        assert get_res.status_code == 401, (scenario_name, get_res.text)
+        get_payload = get_res.json()
+        assert get_payload["code"] == 401, (scenario_name, get_payload)
+        assert get_payload["message"] == "<Unauthorized '401: Unauthorized'>", (scenario_name, get_payload)
+
+        put_res = client.put(
+            f"/datasets/{dataset_id}/metadata/config",
+            json={"metadata": [], "built_in_metadata": []},
+        )
+        assert put_res.status_code == 401, (scenario_name, put_res.text)
+        put_payload = put_res.json()
+        assert put_payload["code"] == 401, (scenario_name, put_payload)
+        assert put_payload["message"] == "<Unauthorized '401: Unauthorized'>", (scenario_name, put_payload)
+
+    invalid_dataset_res = rest_client.get("/datasets/invalid_dataset_id/metadata/config")
+    assert invalid_dataset_res.status_code == 200
+    invalid_dataset_payload = invalid_dataset_res.json()
+    assert invalid_dataset_payload["code"] == 101, invalid_dataset_payload
+    assert invalid_dataset_payload["message"] == "dataset_id: Invalid UUID1 format", invalid_dataset_payload
+
+    update_payload = {
+        "metadata": [
+            {"key": "author", "type": "string", "description": "Author name"},
+            {"key": "tags", "type": "list", "description": "Tag list", "enum": ["foo", "bar"]},
+        ],
+        "built_in_metadata": [
+            {"key": "size", "type": "number", "description": "File size"},
+        ],
+    }
+    normalized_update_payload = {
+        "metadata": [
+            {"key": "author", "type": "string", "description": "Author name", "enum": None},
+            {"key": "tags", "type": "list", "description": "Tag list", "enum": ["foo", "bar"]},
+        ],
+        "built_in_metadata": [
+            {"key": "size", "type": "number", "description": "File size", "enum": None},
+        ],
+    }
+    update_res = rest_client.put(f"/datasets/{dataset_id}/metadata/config", json=update_payload)
+    assert update_res.status_code == 200
+    update_body = update_res.json()
+    assert update_body["code"] == 0, update_body
+    assert update_body["data"] == normalized_update_payload, update_body
+
+    refetch_res = rest_client.get(f"/datasets/{dataset_id}/metadata/config")
+    assert refetch_res.status_code == 200
+    refetch_payload = refetch_res.json()
+    assert refetch_payload["code"] == 0, refetch_payload
+    assert refetch_payload["data"] == normalized_update_payload, refetch_payload
+
+    missing_payload_res = rest_client.put(f"/datasets/{dataset_id}/metadata/config", json={})
+    assert missing_payload_res.status_code == 200
+    missing_payload = missing_payload_res.json()
+    assert missing_payload["code"] == 0, missing_payload
+    assert missing_payload["data"] == {"metadata": [], "built_in_metadata": []}, missing_payload
+
+    invalid_update_dataset_res = rest_client.put(
+        "/datasets/invalid_dataset_id/metadata/config",
+        json={"metadata": [], "built_in_metadata": []},
+    )
+    assert invalid_update_dataset_res.status_code == 200
+    invalid_update_dataset_payload = invalid_update_dataset_res.json()
+    assert invalid_update_dataset_payload["code"] == 101, invalid_update_dataset_payload
+    assert invalid_update_dataset_payload["message"] == "dataset_id: Invalid UUID1 format", invalid_update_dataset_payload
+
+
 def test_dataset_metadata_summary_contract(rest_client, create_dataset, tmp_path):
     dataset_id = create_dataset("dataset_metadata_summary")
     document_ids = []
@@ -2270,6 +2372,28 @@ def test_dataset_search_endpoint(rest_client, ensure_parsed_document):
 
 
 @pytest.mark.p2
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"question": "test TXT file", "page": 1, "size": 2},
+        {"question": "test TXT file", "similarity_threshold": 0.5},
+        {"question": "test TXT file", "vector_similarity_weight": 0.7},
+        {"question": "test TXT file", "top_k": 10},
+    ],
+    ids=["page_size", "similarity_threshold", "vector_similarity_weight", "top_k"],
+)
+def test_dataset_search_params_and_doc_ids_contract(rest_client, ensure_parsed_document, payload):
+    dataset_id, document_id = ensure_parsed_document()
+    search_payload = dict(payload)
+    search_payload["doc_ids"] = [document_id]
+    res = rest_client.post(f"/datasets/{dataset_id}/search", json=search_payload)
+    assert res.status_code == 200
+    body = res.json()
+    assert body["code"] == 0, body
+    assert "chunks" in body["data"], body
+
+
+@pytest.mark.p2
 def test_dataset_search_requires_question(rest_client, create_dataset):
     dataset_id = create_dataset("dataset_search_missing_question")
     res = rest_client.post(f"/datasets/{dataset_id}/search", json={})
@@ -2290,6 +2414,13 @@ def test_dataset_tags_and_aggregation(rest_client, create_dataset):
     # Known env/runtime behavior: this route can return 102 when retriever tag
     # backend is unavailable for an empty dataset. Keep route-contract coverage.
     assert list_tags_payload["code"] in (0, 102), list_tags_payload
+    if list_tags_payload["code"] == 0:
+        assert isinstance(list_tags_payload["data"], list), list_tags_payload
+
+    invalid_list_tags_res = rest_client.get("/datasets/invalid_id/tags")
+    assert invalid_list_tags_res.status_code == 200
+    invalid_list_tags_payload = invalid_list_tags_res.json()
+    assert invalid_list_tags_payload["code"] != 0, invalid_list_tags_payload
 
     aggregate_res = rest_client.get(
         "/datasets/tags/aggregation",
@@ -2318,6 +2449,11 @@ def test_dataset_tags_delete_and_rename_validation(rest_client, create_dataset):
     assert delete_invalid_tags_type.status_code == 200
     delete_invalid_tags_type_payload = delete_invalid_tags_type.json()
     assert delete_invalid_tags_type_payload["code"] != 0, delete_invalid_tags_type_payload
+
+    delete_invalid_dataset_tags = rest_client.delete("/datasets/invalid_id/tags", json={"tags": ["tag1"]})
+    assert delete_invalid_dataset_tags.status_code == 200
+    delete_invalid_dataset_tags_payload = delete_invalid_dataset_tags.json()
+    assert delete_invalid_dataset_tags_payload["code"] != 0, delete_invalid_dataset_tags_payload
 
     rename_empty = rest_client.put(
         f"/datasets/{dataset_id}/tags",
@@ -2386,6 +2522,19 @@ def test_dataset_ingestion_summary_and_logs(rest_client, create_dataset):
     assert "total" in logs_payload["data"], logs_payload
     assert "logs" in logs_payload["data"], logs_payload
 
+    abnormal_date_filter_res = rest_client.get(
+        f"/datasets/{dataset_id}/ingestions",
+        params={
+            "desc": "false",
+            "create_date_from": "2025-02-01",
+            "create_date_to": "2025-01-01",
+        },
+    )
+    assert abnormal_date_filter_res.status_code == 200
+    abnormal_date_filter_payload = abnormal_date_filter_res.json()
+    assert abnormal_date_filter_payload["code"] == 0, abnormal_date_filter_payload
+    assert abnormal_date_filter_payload["data"]["logs"] == [], abnormal_date_filter_payload
+
     not_found_log_res = rest_client.get(f"/datasets/{dataset_id}/ingestions/nonexistent_log")
     assert not_found_log_res.status_code == 200
     not_found_log_payload = not_found_log_res.json()
@@ -2430,6 +2579,14 @@ def test_dataset_index_endpoints(rest_client, create_dataset):
     run_no_docs_payload = run_no_docs.json()
     assert run_no_docs_payload["code"] == 102, run_no_docs_payload
 
+    run_no_docs_raptor = rest_client.post(
+        f"/datasets/{dataset_id}/index",
+        params={"type": "raptor"},
+    )
+    assert run_no_docs_raptor.status_code == 200
+    run_no_docs_raptor_payload = run_no_docs_raptor.json()
+    assert run_no_docs_raptor_payload["code"] == 102, run_no_docs_raptor_payload
+
     trace_no_task = rest_client.get(
         f"/datasets/{dataset_id}/index",
         params={"type": "graph"},
@@ -2438,6 +2595,14 @@ def test_dataset_index_endpoints(rest_client, create_dataset):
     trace_no_task_payload = trace_no_task.json()
     assert trace_no_task_payload["code"] == 0, trace_no_task_payload
     assert trace_no_task_payload["data"] == {}, trace_no_task_payload
+
+    trace_invalid_type = rest_client.get(
+        f"/datasets/{dataset_id}/index",
+        params={"type": "invalid_type"},
+    )
+    assert trace_invalid_type.status_code == 200
+    trace_invalid_type_payload = trace_invalid_type.json()
+    assert trace_invalid_type_payload["code"] != 0, trace_invalid_type_payload
 
     delete_graph = rest_client.delete(f"/datasets/{dataset_id}/graph")
     assert delete_graph.status_code == 200
@@ -2448,6 +2613,49 @@ def test_dataset_index_endpoints(rest_client, create_dataset):
     assert delete_invalid_type.status_code == 200
     delete_invalid_type_payload = delete_invalid_type.json()
     assert delete_invalid_type_payload["code"] != 0, delete_invalid_type_payload
+
+
+@pytest.mark.p2
+def test_dataset_graph_endpoint_contract(rest_client, create_dataset):
+    dataset_id = create_dataset("dataset_graph_contract")
+
+    get_graph_res = rest_client.get(f"/datasets/{dataset_id}/graph")
+    assert get_graph_res.status_code == 200
+    get_graph_payload = get_graph_res.json()
+    assert get_graph_payload["code"] == 0, get_graph_payload
+    assert "graph" in get_graph_payload["data"], get_graph_payload
+    assert "mind_map" in get_graph_payload["data"], get_graph_payload
+    assert isinstance(get_graph_payload["data"]["graph"], dict), get_graph_payload
+    assert isinstance(get_graph_payload["data"]["mind_map"], dict), get_graph_payload
+
+
+@pytest.mark.p2
+@pytest.mark.parametrize("index_type", ["graph", "raptor", "mindmap"])
+def test_dataset_index_trace_and_delete_type_contract(rest_client, create_document, index_type):
+    dataset_id, _ = create_document(f"dataset_index_trace_{index_type}.txt")
+
+    run_index_res = rest_client.post(
+        f"/datasets/{dataset_id}/index",
+        params={"type": index_type},
+    )
+    assert run_index_res.status_code == 200
+    run_index_payload = run_index_res.json()
+    assert run_index_payload["code"] == 0, run_index_payload
+    assert run_index_payload["data"].get("task_id"), run_index_payload
+
+    trace_index_res = rest_client.get(
+        f"/datasets/{dataset_id}/index",
+        params={"type": index_type},
+    )
+    assert trace_index_res.status_code == 200
+    trace_index_payload = trace_index_res.json()
+    assert trace_index_payload["code"] == 0, trace_index_payload
+    assert isinstance(trace_index_payload["data"], dict), trace_index_payload
+
+    delete_index_res = rest_client.delete(f"/datasets/{dataset_id}/{index_type}")
+    assert delete_index_res.status_code == 200
+    delete_index_payload = delete_index_res.json()
+    assert delete_index_payload["code"] == 0, delete_index_payload
 
 
 @pytest.mark.p2

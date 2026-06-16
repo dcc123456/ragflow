@@ -80,7 +80,7 @@ from api.db.services.llm_service import LLMBundle
 from api.db.services.evaluation_service import EvaluationService
 from api.db.services.task_service import TaskService, has_canceled, CANVAS_DEBUG_DOC_ID, GRAPH_RAPTOR_FAKE_DOC_ID
 from api.db.services.file2document_service import File2DocumentService
-from api.db.joint_services.tenant_model_service import get_model_config_by_type_and_name, get_tenant_default_model_by_type
+from api.db.joint_services.tenant_model_service import get_tenant_default_model_by_type, get_model_config_from_provider_instance
 from common.versions import get_ragflow_version
 from api.db.db_models import EvaluationRun, close_connection
 from common.evaluation_metrics import EvaluationRunStatus
@@ -371,7 +371,7 @@ async def build_chunks(task, progress_callback):
     if task["parser_config"].get("auto_keywords", 0):
         st = timer()
         progress_callback(msg="Start to generate keywords for every chunk ...")
-        chat_model_config = get_model_config_by_type_and_name(task["tenant_id"], LLMType.CHAT, task["llm_id"])
+        chat_model_config = get_model_config_from_provider_instance(task["tenant_id"], LLMType.CHAT, task["llm_id"])
         chat_mdl = LLMBundle(task["tenant_id"], chat_model_config, lang=task["language"])
 
         async def doc_keyword_extraction(chat_mdl, d, topn):
@@ -405,7 +405,7 @@ async def build_chunks(task, progress_callback):
     if task["parser_config"].get("auto_questions", 0):
         st = timer()
         progress_callback(msg="Start to generate questions for every chunk ...")
-        chat_model_config = get_model_config_by_type_and_name(task["tenant_id"], LLMType.CHAT, task["llm_id"])
+        chat_model_config = get_model_config_from_provider_instance(task["tenant_id"], LLMType.CHAT, task["llm_id"])
         chat_mdl = LLMBundle(task["tenant_id"], chat_model_config, lang=task["language"])
 
         async def doc_question_proposal(chat_mdl, d, topn):
@@ -438,7 +438,7 @@ async def build_chunks(task, progress_callback):
     if task["parser_config"].get("enable_metadata", False) and (task["parser_config"].get("metadata") or task["parser_config"].get("built_in_metadata")):
         st = timer()
         progress_callback(msg="Start to generate meta-data for every chunk ...")
-        chat_model_config = get_model_config_by_type_and_name(task["tenant_id"], LLMType.CHAT, task["llm_id"])
+        chat_model_config = get_model_config_from_provider_instance(task["tenant_id"], LLMType.CHAT, task["llm_id"])
         chat_mdl = LLMBundle(task["tenant_id"], chat_model_config, lang=task["language"])
 
         async def gen_metadata_task(chat_mdl, d):
@@ -529,7 +529,7 @@ async def build_chunks(task, progress_callback):
                 logging.warning("No tags found for tag KBs %s while tagging task %s.", kb_ids, task["id"])
         else:
             all_tags = json.loads(all_tags)
-        chat_model_config = get_model_config_by_type_and_name(tenant_id, LLMType.CHAT, task["llm_id"])
+        chat_model_config = get_model_config_from_provider_instance(tenant_id, LLMType.CHAT, task["llm_id"])
         chat_mdl = LLMBundle(task["tenant_id"], chat_model_config, lang=task["language"])
 
         docs_to_tag = []
@@ -627,7 +627,7 @@ async def build_toc(task, chunks, progress_callback):
     start_ts = timer()
     progress_callback(msg="Start to generate table of content ...")
     logging.info("build_toc loading chat model: doc_id=%s task_id=%s chunks=%s", task["doc_id"], task["id"], len(chunks))
-    chat_model_config = get_model_config_by_type_and_name(task["tenant_id"], LLMType.CHAT, task["llm_id"])
+    chat_model_config = get_model_config_from_provider_instance(task["tenant_id"], LLMType.CHAT, task["llm_id"])
     chat_mdl = LLMBundle(task["tenant_id"], chat_model_config, lang=task["language"])
     progress_callback(msg="Loaded chat model for table of content.")
     # Preserve old behavior: TOC generation depends on document-order chunks, not page-task order.
@@ -849,7 +849,7 @@ async def run_dataflow(task: dict):
             set_progress(task_id, prog=0.82, msg="\n-------------------------------------\nStart to embedding...")
             e, kb = KnowledgebaseService.get_by_id(task["kb_id"])
             embedding_id = kb.embd_id
-            embd_model_config = get_model_config_by_type_and_name(task["tenant_id"], LLMType.EMBEDDING, embedding_id)
+            embd_model_config = get_model_config_from_provider_instance(task["tenant_id"], LLMType.EMBEDDING, embedding_id)
             embedding_model = LLMBundle(task["tenant_id"], embd_model_config)
 
             @timeout(60)
@@ -1451,7 +1451,7 @@ async def do_handle_task(task):
     try:
         # bind embedding model
         if task_embedding_id:
-            embd_model_config = get_model_config_by_type_and_name(task_tenant_id, LLMType.EMBEDDING, task_embedding_id)
+            embd_model_config = get_model_config_from_provider_instance(task_tenant_id, LLMType.EMBEDDING, task_embedding_id)
         else:
             embd_model_config = get_tenant_default_model_by_type(task_tenant_id, LLMType.EMBEDDING)
         embedding_model = LLMBundle(task_tenant_id, embd_model_config, lang=task_language)
@@ -1498,7 +1498,7 @@ async def do_handle_task(task):
                 return
 
         # bind LLM for raptor
-        chat_model_config = get_model_config_by_type_and_name(task_tenant_id, LLMType.CHAT, kb_task_llm_id)
+        chat_model_config = get_model_config_from_provider_instance(task_tenant_id, LLMType.CHAT, kb_task_llm_id)
         chat_model = LLMBundle(task_tenant_id, chat_model_config, lang=task_language)
         # run RAPTOR
         async with kg_limiter:
@@ -1553,7 +1553,7 @@ async def do_handle_task(task):
 
         graphrag_conf = kb_parser_config.get("graphrag", {})
         start_ts = timer()
-        chat_model_config = get_model_config_by_type_and_name(task_tenant_id, LLMType.CHAT, kb_task_llm_id)
+        chat_model_config = get_model_config_from_provider_instance(task_tenant_id, LLMType.CHAT, kb_task_llm_id)
         chat_model = LLMBundle(task_tenant_id, chat_model_config, lang=task_language)
         with_resolution = graphrag_conf.get("resolution", False)
         with_community = graphrag_conf.get("community", False)
@@ -1584,7 +1584,7 @@ async def do_handle_task(task):
     elif task_type == "reembedding":
         start_ts = timer()
         target_embedding_id = task["target_embed_id"]
-        target_embedding_config = get_model_config_by_type_and_name(task_tenant_id, LLMType.EMBEDDING, target_embedding_id)
+        target_embedding_config = get_model_config_from_provider_instance(task_tenant_id, LLMType.EMBEDDING, target_embedding_id)
         target_embedding_model = LLMBundle(task_tenant_id, target_embedding_config, lang=task_language)
         await is_strong_enough(None, target_embedding_model)
         index_name = search.index_name(task_tenant_id)
@@ -1963,6 +1963,12 @@ def rabbitmq_callback(ch, method, properties, body):
             task["tenant_id"] = msg["tenant_id"]
             task["dataflow_id"] = msg["dataflow_id"]
             task["kb_id"] = msg.get("kb_id", "")
+        if task_type[:6] == "memory":
+            task["memory_id"] = msg["memory_id"]
+            if msg.get("tenant_id"):
+                task["tenant_id"] = msg["tenant_id"]
+            task["source_id"] = msg["source_id"]
+            task["message_dict"] = msg["message_dict"]
 
         pipeline_task_type = TASK_TYPE_TO_PIPELINE_TASK_TYPE.get(task_type, PipelineTaskType.PARSE) or PipelineTaskType.PARSE
 

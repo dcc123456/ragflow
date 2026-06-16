@@ -16,7 +16,6 @@
 
 import sys
 import types
-import importlib
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -54,9 +53,13 @@ class _FakeCanvas:
         self._refs = refs or {}
 
     def is_reff(self, token):
-        return token in self._refs
+        key = token.strip("{} ")
+        return key in self._refs or token in self._refs
 
     def get_variable_value(self, token):
+        key = token.strip("{} ")
+        if key in self._refs:
+            return self._refs[key]
         return self._refs[token]
 
     def get_tenant_id(self):
@@ -70,63 +73,17 @@ def _build_component():
     return component
 
 
-def test_importing_browser_does_not_eagerly_import_unrelated_components(monkeypatch):
-    for name in list(sys.modules):
-        if name == "agent.component" or name.startswith("agent.component."):
-            sys.modules.pop(name, None)
+def test_prepare_input_values_records_variable_inputs():
+    component = browser_use_module.Browser.__new__(browser_use_module.Browser)
+    component._canvas = _FakeCanvas(refs={"sys.query": "open example.com"})
+    component._param = browser_use_module.BrowserParam()
+    component._param.prompts = "{sys.query}"
+    component._param.inputs = {}
 
-    _install_cv2_stub_if_unavailable()
+    component._prepare_input_values()
 
-    component_pkg = importlib.import_module("agent.component")
-    namespace = {}
-    exec("from agent.component import browser as browser_module", namespace)
-    browser_module = namespace["browser_module"]
-
-    assert browser_module.Browser.__module__ == "agent.component.browser"
-    assert "agent.component.browser" in sys.modules
-    assert "agent.component.agent_with_tools" not in sys.modules
-    assert "agent.component.categorize" not in sys.modules
-    assert "agent.component.message" not in sys.modules
-    assert getattr(component_pkg, "_loaded_modules", None) is not None
-
-
-def test_importing_known_class_does_not_scan_unrelated_components(monkeypatch):
-    for name in list(sys.modules):
-        if name == "agent.component" or name.startswith("agent.component."):
-            sys.modules.pop(name, None)
-
-    _install_cv2_stub_if_unavailable()
-
-    importlib.import_module("agent.component")
-    namespace = {}
-    exec("from agent.component import LLM as llm_class", namespace)
-    llm_class = namespace["llm_class"]
-
-    assert llm_class.__module__ == "agent.component.llm"
-    assert "agent.component.llm" in sys.modules
-    assert "agent.component.message" not in sys.modules
-    assert "agent.component.loop" not in sys.modules
-
-
-def test_unknown_component_attribute_does_not_scan_all_components(monkeypatch):
-    for name in list(sys.modules):
-        if name == "agent.component" or name.startswith("agent.component."):
-            sys.modules.pop(name, None)
-
-    _install_cv2_stub_if_unavailable()
-
-    component_pkg = importlib.import_module("agent.component")
-
-    try:
-        getattr(component_pkg, "NoSuchComponent")
-    except AttributeError:
-        pass
-    else:  # pragma: no cover - defensive assertion
-        raise AssertionError("expected missing component to raise AttributeError")
-
-    assert "agent.component.message" not in sys.modules
-    assert "agent.component.loop" not in sys.modules
-    assert "agent.component.browser" not in sys.modules
+    assert component.get_input_value("sys.query") == "open example.com"
+    assert component.get_input_values()["sys.query"] == "open example.com"
 
 
 def test_extract_ids_supports_mixed_literals_and_variables():

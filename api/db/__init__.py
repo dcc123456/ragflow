@@ -17,6 +17,8 @@
 from enum import IntEnum, Enum
 from enum import StrEnum
 
+from common.constants import PipelineTaskType
+
 
 class PermissionOperationEnum(StrEnum):
     GRANT = 'grant'
@@ -138,14 +140,6 @@ class InputType(StrEnum):
 class CanvasCategory(StrEnum):
     Agent = "agent_canvas"
     DataFlow = "dataflow_canvas"
-
-
-class PipelineTaskType(StrEnum):
-    PARSE = "Parse"
-    DOWNLOAD = "Download"
-    RAPTOR = "RAPTOR"
-    GRAPH_RAG = "GraphRAG"
-    MINDMAP = "Mindmap"
 
 
 VALID_PIPELINE_TASK_TYPES = {PipelineTaskType.PARSE, PipelineTaskType.DOWNLOAD, PipelineTaskType.RAPTOR, PipelineTaskType.GRAPH_RAG, PipelineTaskType.MINDMAP}

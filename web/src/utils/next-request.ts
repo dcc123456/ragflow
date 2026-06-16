@@ -7,7 +7,7 @@ import authorizationUtil, {
 } from '@/utils/authorization-util';
 import notification from '@/utils/notification';
 import axios from 'axios';
-import { convertTheKeysOfTheObjectToSnake } from './common-util';
+import { convertTheKeysOfTheObjectToSnake, isFormData } from './common-util';
 import { setCachedLlmList } from './llm-cache';
 import { addTenantParams } from './llm-util';
 
@@ -101,7 +101,9 @@ request.interceptors.request.use(
     // showStarDialog(request, config.url, config.method);
 
     // Add tenant parameters to data
-    const dataWithTenantParams = addTenantParams(data, config.url);
+    const dataWithTenantParams = isFormData(data)
+      ? data
+      : addTenantParams(data, config.url);
 
     const newConfig = { ...config, data: dataWithTenantParams, params };
 
@@ -161,8 +163,6 @@ request.interceptors.response.use(
     return response;
   },
   function (error) {
-    console.log('🚀 ~ error:', error);
-
     // Handle HTTP 401 (token expired / invalid)
     const status = error?.response?.status;
     if (status === 401) {

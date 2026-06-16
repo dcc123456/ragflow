@@ -39,10 +39,11 @@ def _stub_module(name, **attrs):
 sys.modules.setdefault("xgboost", types.ModuleType("xgboost"))
 _stub_module(
     "api.db.joint_services.memory_message_service",
+    handle_save_to_memory_task=lambda *args, **kwargs: None,
     init_message_id_sequence=lambda: None,
     init_memory_size_cache=lambda: None,
 )
-_stub_module("api.db.services.canvas_service", CanvasTemplateService=object)
+_stub_module("api.db.services.canvas_service", CanvasTemplateService=object, UserCanvasService=object)
 _stub_module(
     "api.db.services.llm_service",
     LLMService=object,
@@ -77,6 +78,7 @@ _stub_module(
 _stub_module("api.db.services.dialog_service", DialogService=object)
 _stub_module(
     "api.db.joint_services.tenant_model_service",
+    get_model_config_from_provider_instance=lambda *args, **kwargs: None,
     get_tenant_default_model_by_type=lambda *args, **kwargs: None,
 )
 

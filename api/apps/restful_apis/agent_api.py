@@ -62,6 +62,7 @@ from api.utils.api_utils import (
     validate_request,
 )
 from api.utils.billing import check_dynamic_resources, get_dynamic_resource_error_result
+from api.utils.pagination_utils import validate_rest_api_page_size
 from common import settings
 from common.ssrf_guard import assert_host_is_safe
 from common.constants import RetCode
@@ -184,11 +185,11 @@ def _normalize_agent_session(conv):
     else:
         conv["reference"] = []
 
-        if conv["reference"]:
-            messages = [message for i, message in enumerate(conv["message"]) if i != 0 and message["role"] != "user"]
-            for message, reference in zip(messages, conv["reference"]):
-                chunks = reference.get("chunks", [])
-                message["reference"] = [_normalize_agent_reference_chunk(chunk) for chunk in chunks]
+    if conv["reference"]:
+        messages = [message for i, message in enumerate(conv["message"]) if i != 0 and message["role"] != "user"]
+        for message, reference in zip(messages, conv["reference"]):
+            chunks = reference.get("chunks", [])
+            message["reference"] = [_normalize_agent_reference_chunk(chunk) for chunk in chunks]
     del conv["reference"]
     return conv
 
@@ -373,7 +374,7 @@ def list_agent_sessions(agent_id, tenant_id):
     session_id = request.args.get("id")
     user_id = request.args.get("user_id")
     page_number = int(request.args.get("page", 1))
-    items_per_page = int(request.args.get("page_size", 30))
+    items_per_page = validate_rest_api_page_size(int(request.args.get("page_size", 30)))
     keywords = request.args.get("keywords")
     from_date = request.args.get("from_date")
     to_date = request.args.get("to_date")
@@ -504,13 +505,16 @@ async def delete_agent_session(tenant_id, agent_id):
 
     if errors:
         if success_count > 0:
-            return get_result(data={"success_count": success_count, "errors": errors}, message=f"Partially deleted {success_count} sessions with {len(errors)} errors")
+            return get_result(data={"success_count": success_count, "errors": errors},
+                              message=f"Partially deleted {success_count} sessions with {len(errors)} errors")
         else:
             return get_error_data_result(message="; ".join(errors))
 
     if duplicate_messages:
         if success_count > 0:
-            return get_result(message=f"Partially deleted {success_count} sessions with {len(duplicate_messages)} errors", data={"success_count": success_count, "errors": duplicate_messages})
+            return get_result(
+                message=f"Partially deleted {success_count} sessions with {len(duplicate_messages)} errors",
+                data={"success_count": success_count, "errors": duplicate_messages})
         else:
             return get_error_data_result(message=";".join(duplicate_messages))
 
@@ -594,7 +598,7 @@ def list_agents(tenant_id):
     tags = [item for item in request.args.get("tags", "").strip().split(",") if item]
 
     page_number = int(request.args.get("page", 0))
-    items_per_page = int(request.args.get("page_size", 0))
+    items_per_page = validate_rest_api_page_size(int(request.args.get("page_size", 0)))
     order_by = request.args.get("orderby", "create_time")
     desc = str(request.args.get("desc", "true")).lower() != "false"
     tenants = TenantService.get_joined_tenants_by_user_id(tenant_id)
@@ -1462,8 +1466,8 @@ async def agent_chat_completion(tenant_id, agent_id=None):
 
         try:
             from agent.canvas import Canvas
-
             canvas = Canvas(dsl_str, str(canvas_tenant_id), canvas_id=agent_id, custom_header=custom_header)
+            canvas.clear_history()
         except Exception as exc:
             return server_error_response(exc)
         turn_id = get_uuid()
@@ -1472,7 +1476,7 @@ async def agent_chat_completion(tenant_id, agent_id=None):
             "dialog_id": cvs.id,
             "user_id": user_id,
             "exp_user_id": user_id,
-            "name": req.get("name", ""),
+            "name": req.get("name") or (query[:250] if query else "") or "",
             "message": [
                 {
                     "role": "user",

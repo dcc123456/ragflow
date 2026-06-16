@@ -2,7 +2,7 @@ import { UploadFormSchemaType } from '@/components/file-upload-dialog';
 import { useSetModalState } from '@/hooks/common-hooks';
 import {
   useRunDocument,
-  useUploadNextDocument,
+  useUploadDocument,
 } from '@/hooks/use-document-request';
 import { showPriceModal } from '@/pages/price/global/hook';
 import { getUnSupportedFilesCount } from '@/utils/document-util';
@@ -14,7 +14,7 @@ export const useHandleUploadDocument = () => {
     hideModal: hideDocumentUploadModal,
     showModal: showDocumentUploadModal,
   } = useSetModalState();
-  const { uploadDocument, loading } = useUploadNextDocument();
+  const { uploadDocument, loading } = useUploadDocument();
   const { runDocumentByIds } = useRunDocument();
 
   const onDocumentUploadOk = useCallback(
@@ -69,7 +69,6 @@ export const useHandleUploadDocument = () => {
           runDocumentByIds({
             documentIds: ret.data.map((x: any) => x.id),
             run: 1,
-            shouldDelete: false,
           });
         }
 

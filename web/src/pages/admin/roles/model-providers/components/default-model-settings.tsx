@@ -15,7 +15,7 @@ import {
   FormLabel,
 } from '@/components/ui/form';
 
-import { SelectWithSearch } from '@/components/originui/select-with-search';
+import { ModelTreeSelect, ModelTypeMap } from '@/components/model-tree-select';
 
 import {
   Tooltip,
@@ -25,15 +25,11 @@ import {
 
 import message from '@/components/ui/message';
 
-import { LlmModelType } from '@/constants/knowledge';
 import { useTranslate } from '@/hooks/common-hooks';
 
-import { LlmIcon } from '@/components/svg-icon';
-import {
-  useDefaultModelOptions,
-  useRoleDefaultModels,
-} from '@/pages/admin/hooks/useLlm';
-import { getLLMIconName, getRealModelName } from '@/utils/llm-util';
+import { useRoleDefaultModels } from '@/pages/admin/hooks/useLlm';
+import { getCachedLlmList } from '@/utils/llm-cache';
+import { getTenantModelId, parseModelValue } from '@/utils/llm-util';
 
 const schema = z.object({
   llm_id: z.string().nonempty(),
@@ -67,8 +63,6 @@ export default function DefaultModelsSettings() {
     },
   });
 
-  const { modelOptions } = useDefaultModelOptions();
-
   const llmList = useMemo(() => {
     return [
       {
@@ -76,46 +70,40 @@ export default function DefaultModelsSettings() {
         type: 'llm',
         label: t('chatModel'),
         required: true,
-        options: modelOptions[LlmModelType.Chat],
         tooltip: t('chatModelTip'),
       },
       {
         id: 'embd_id',
         type: 'embedding',
         label: t('embeddingModel'),
-        options: modelOptions[LlmModelType.Embedding],
         tooltip: t('embeddingModelTip'),
       },
       {
         id: 'img2txt_id',
         type: 'vlm',
         label: t('img2txtModel'),
-        options: modelOptions[LlmModelType.Image2text],
         tooltip: t('img2txtModelTip'),
       },
       {
         id: 'asr_id',
         type: 'asr',
         label: t('sequence2txtModel'),
-        options: modelOptions[LlmModelType.Speech2text],
         tooltip: t('sequence2txtModelTip'),
       },
       {
         id: 'rerank_id',
         type: 'rerank',
         label: t('rerankModel'),
-        options: modelOptions[LlmModelType.Rerank],
         tooltip: t('rerankModelTip'),
       },
       {
         id: 'tts_id',
         type: 'tts',
         label: t('ttsModel'),
-        options: modelOptions[LlmModelType.TTS],
         tooltip: t('ttsModelTip'),
       },
     ] as const;
-  }, [modelOptions, t]);
+  }, [t]);
 
   return (
     <div className="grid grid-cols-[minmax(max-content,1fr)_3fr] items-center gap-6">
@@ -144,30 +132,32 @@ export default function DefaultModelsSettings() {
                 </FormLabel>
 
                 <FormControl>
-                  <SelectWithSearch
-                    triggerClassName="w-full flex items-center h-10"
-                    allowClear={item.id !== 'llm_id'}
+                  <ModelTreeSelect
+                    modelTypes={
+                      ModelTypeMap[item.id as keyof typeof ModelTypeMap] ?? [
+                        'chat',
+                      ]
+                    }
                     value={field.value}
-                    options={item.options}
                     onChange={async (value) => {
-                      if (value !== field.value) {
-                        await setDefaultModel({
-                          model_type: item.type,
-                          model_id: value,
-                        });
-                        field.onChange(value);
-                        message.success(tMsg('modified'));
-                      }
+                      if (value === field.value) return;
+                      const parsed = parseModelValue(value);
+                      const model_id = parsed
+                        ? getTenantModelId(
+                            getCachedLlmList() ?? {},
+                            parsed.model_name,
+                            parsed.model_provider,
+                          ) || value
+                        : '';
+                      await setDefaultModel({
+                        model_type: item.type,
+                        model_id,
+                      });
+                      field.onChange(value);
+                      message.success(tMsg('modified'));
                     }}
                     placeholder={t('selectModelPlaceholder')}
-                    emptyData={t('modelEmptyTip')}
-                    // @ts-ignore
-                    renderOption={({ fid, llm_name }) => (
-                      <div className="flex items-center gap-2">
-                        <LlmIcon name={getLLMIconName(fid, llm_name)} />
-                        <span>{getRealModelName(llm_name)}</span>
-                      </div>
-                    )}
+                    allowClear={item.id !== 'llm_id'}
                   />
                 </FormControl>
               </FormItem>

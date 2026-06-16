@@ -17,13 +17,11 @@ import logging
 
 from peewee import OperationalError
 from quart import request
-
-from api.apps import current_user, login_required
+from common.constants import RetCode
+from api.apps import login_required, current_user
 from api.apps.services import dataset_api_service
-from api.db import PermissionValue, ResourceType
-from api.utils.api_utils import add_tenant_id_to_kwargs, get_error_argument_result, get_error_data_result, get_result, get_json_result
-from api.utils.billing import check_dynamic_resources, get_dynamic_resource_error_result
-from api.utils.permission_utils import check_kb_permission, has_permission_for_member
+from api.utils.api_utils import get_error_argument_result, get_error_data_result, get_json_result, get_result, add_tenant_id_to_kwargs
+from api.utils.pagination_utils import validate_rest_api_page_size
 from api.utils.validation_utils import (
     CreateDatasetReq,
     DeleteDatasetReq,
@@ -34,12 +32,14 @@ from api.utils.validation_utils import (
     validate_and_parse_json_request,
     validate_and_parse_request_args,
 )
-from common.constants import RetCode
 from common.constants import StatusEnum
 from common.role_util import check_role_access, KB_API_ACTION_MAP, KB_ROLE_RESOURCE_TYPE
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.user_service import UserTenantService
-from api.utils.permission_utils import filter_accessible_doc_ids_for_user
+
+from api.utils.billing import check_dynamic_resources, get_dynamic_resource_error_result
+from api.db import PermissionValue, ResourceType
+from api.utils.permission_utils import check_kb_permission, has_permission_for_member, filter_accessible_doc_ids_for_user
 
 kb_role_guard = check_role_access(KB_API_ACTION_MAP, KB_ROLE_RESOURCE_TYPE)
 
@@ -225,6 +225,8 @@ async def create(tenant_id: str = None):
             return get_result(data=result)
         else:
             return get_error_data_result(message=result)
+    except LookupError as e:
+        return get_error_argument_result(str(e))
     except ValueError as e:
         return get_error_argument_result(str(e))
     except Exception as e:
@@ -808,7 +810,7 @@ async def check_embedding(tenant_id, dataset_id):
 def list_ingestion_logs(tenant_id, dataset_id):
     try:
         page = int(request.args.get("page", 0))
-        page_size = int(request.args.get("page_size", 0))
+        page_size = validate_rest_api_page_size(int(request.args.get("page_size", 0)))
         orderby = request.args.get("orderby", "create_time")
         desc = request.args.get("desc", "true").lower() != "false"
         operation_status = request.args.getlist("operation_status")

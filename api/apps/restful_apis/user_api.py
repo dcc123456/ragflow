@@ -32,8 +32,7 @@ from quart import make_response, redirect, request, session
 from ldap3 import Server, Connection, ALL, SUBTREE
 
 from api.apps.auth import get_auth_client
-from api.db.db_models import TenantLLM
-from api.utils.sync_icbccs_user import icbccs_user_register
+from api.db.services.user_service import TenantService, UserService, UserTenantService
 from common.time_utils import current_timestamp, datetime_format, get_format_time
 from common.misc_utils import download_img, get_uuid
 from common.constants import RetCode
@@ -46,7 +45,6 @@ from api.utils.api_utils import (
     validate_request,
 )
 from api.utils.crypt import decrypt
-from api.utils.tenant_utils import ensure_tenant_model_id_for_params
 from api.utils.web_utils import (
     OTP_LENGTH,
     OTP_TTL_SECONDS,
@@ -63,7 +61,6 @@ from api.utils.web_utils import (
 from common.billing_utils import milliseconds_to_timestamp_seconds, to_utc_isoformat
 from common import settings
 from common.file_utils import get_project_base_directory
-from api.db.services.user_service import UserService, TenantService, UserTenantService
 from api.db.services.tenant_llm_service import is_tei_enabled
 from api.db.services.system_settings_service import SystemSettingsService
 from api.db.services.role_service import RoleService
@@ -71,6 +68,8 @@ from api.utils.system_settings_utils import load_value_from_string
 from api.db.joint_services.mail_service import send_email_html
 from rag.utils.redis_conn import REDIS_CONN
 from common.http_client import async_request
+
+from api.utils.sync_icbccs_user import icbccs_user_register
 
 
 def _is_email_verification_enabled() -> bool:
@@ -696,9 +695,13 @@ async def log_out():
         schema:
           type: object
     """
-    user_id = current_user.id
-    current_user.access_token = f"INVALID_{secrets.token_hex(16)}"
-    current_user.save()
+    user = current_user._get_current_object() if hasattr(current_user, "_get_current_object") else current_user
+    user_id = user.id
+    user.access_token = f"INVALID_{secrets.token_hex(16)}"
+    saved = user.save()
+    if saved == 0:
+        logging.error("Logout failed to persist access token update: user_id=%s", user_id)
+        return get_json_result(code=RetCode.SERVER_ERROR, data=False, message="Failed to update access token")
     logout_user()
     logging.info("Logout: user_id=%s, access_token invalidated", user_id)
     return get_json_result(data=True)
@@ -831,10 +834,6 @@ def rollback_user_registration(user_id):
             UserTenantService.delete_by_id(u[0].id)
     except Exception:
         pass
-    try:
-        TenantLLM.delete().where(TenantLLM.tenant_id == user_id).execute()
-    except Exception:
-        pass
 
 
 @manager.route("/auth/register/captcha", methods=["POST"])  # noqa: F821
@@ -846,7 +845,6 @@ async def register_get_captcha():
     """
     if not _is_email_verification_enabled():
         return get_json_result(data=False, code=RetCode.OPERATING_ERROR, message="Email verification is not enabled")
-
     request_body = await get_request_json()
     email = (request_body.get("email") or "") if request_body else "".strip()
     if not email:
@@ -1200,8 +1198,7 @@ async def set_tenant_info():
     req = await get_request_json()
     try:
         tid = req.pop("tenant_id")
-        update_dict = ensure_tenant_model_id_for_params(tid, req)
-        TenantService.update_by_id(tid, update_dict)
+        TenantService.update_by_id(tid, req)
         return get_json_result(data=True)
     except LookupError as e:
         return get_data_error_result(message=str(e))

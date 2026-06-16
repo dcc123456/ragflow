@@ -16,6 +16,7 @@ function usage() {
     echo "  --disable-datasync              Disables synchronization of datasource workers."
     echo "  --enable-mcpserver              Enables the MCP server."
     echo "  --enable-adminserver            Enables the Admin server."
+    echo "  --init-model-provider-tables  Run model provider table migrations and exit."
     echo "  --init-superuser                Initializes the superuser."
     echo "  --consumer-no-beg=<num>         Start range for consumers (if using range-based)."
     echo "  --consumer-no-end=<num>         End range for consumers (if using range-based)."
@@ -38,6 +39,7 @@ ENABLE_DATASYNC=1
 ENABLE_MCP_SERVER=0
 ENABLE_ADMIN_SERVER=0 # Default close admin server
 INIT_SUPERUSER_ARGS="" # Default to not initialize superuser
+INIT_MODEL_PROVIDER_TABLES=0
 CONSUMER_NO_BEG=0
 CONSUMER_NO_END=0
 WORKERS=1
@@ -87,6 +89,10 @@ for arg in "$@"; do
       ;;
     --enable-adminserver)
       ENABLE_ADMIN_SERVER=1
+      shift
+      ;;
+    --init-model-provider-tables)
+      INIT_MODEL_PROVIDER_TABLES=1
       shift
       ;;
     --init-superuser)
@@ -241,6 +247,23 @@ export LD_PRELOAD="$(pkg-config --variable=libdir jemalloc)/libjemalloc.so"
 export MALLOC_CONF="dirty_decay_ms:2000,muzzy_decay_ms:2000"
 export PYTHONMALLOC=malloc
 
+# -----------------------------------------------------------------------------
+# Function(s)
+# -----------------------------------------------------------------------------
+
+function task_exe() {
+    local consumer_id="$1"
+    local host_id="$2"
+
+    JEMALLOC_PATH="$(pkg-config --variable=libdir jemalloc)/libjemalloc.so"
+    while true; do
+        LD_PRELOAD="$JEMALLOC_PATH" \
+        "$PY" rag/svr/task_executor.py -i "${host_id}_${consumer_id}" -t "common" &
+        wait;
+        sleep 1;
+    done
+}
+
 function start_mcp_server() {
     echo "Starting MCP Server on ${MCP_HOST}:${MCP_PORT} with base URL ${MCP_BASE_URL}..."
     "$PY" "${MCP_SCRIPT_PATH}" \
@@ -306,6 +329,17 @@ run_with_restart() {
   done
 }
 
+if [[ "${INIT_MODEL_PROVIDER_TABLES}" -eq 1 ]]; then
+    echo "Running model provider table migrations..."
+    "$PY" tools/scripts/mysql_migration.py \
+        --stages tenant_model_provider,tenant_model_instance,tenant_model,model_id_config \
+        --config conf/service_conf.yaml \
+        --execute \
+        --database-version "v0.26.0" \
+        --mark-database-version-on-success
+    echo "Model provider table migrations completed."
+fi
+
 if [[ "${ENABLE_WEBSERVER}" -eq 1 ]]; then
     echo "Starting nginx..."
     /usr/sbin/nginx -c /etc/nginx/nginx.conf
@@ -315,7 +349,7 @@ if [[ "${ENABLE_WEBSERVER}" -eq 1 ]]; then
     if [[ "${API_PROXY_SCHEME}" == "hybrid" ]]; then
         while true; do
             echo "Attempt to start RAGFlow go server..."
-            wait_for_server "http://127.0.0.1:9380/healthz" "ragflow_server"
+            wait_for_server "http://127.0.0.1:9380/api/v1/system/healthz" "ragflow_server"
             echo "Starting RAGFlow go server..."
       set +e
       bin/server_main

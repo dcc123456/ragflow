@@ -437,8 +437,16 @@ def _load_chat_module(monkeypatch):
     monkeypatch.setitem(sys.modules, "api.db.services.search_service", search_service_mod)
 
     tenant_model_service_mod = ModuleType("api.db.joint_services.tenant_model_service")
-    tenant_model_service_mod.get_model_config_by_type_and_name = lambda *_args, **_kwargs: {}
+    def _get_model_config_from_provider_instance(tenant_id, model_type, model_name):
+        llm_name, llm_factory, model_tenant_id = _StubTenantLLMService.split_model_name_and_factory(model_name)
+        if _StubTenantLLMService.query(tenant_id=model_tenant_id or tenant_id, llm_name=llm_name, llm_factory=llm_factory, model_type=model_type) or _StubTenantLLMService.get_api_key(tenant_id, model_name):
+            return {}
+        raise LookupError(model_name)
+
+    tenant_model_service_mod.get_api_key = lambda *args, **kwargs: _StubTenantLLMService.get_api_key(*args, **kwargs)
+    tenant_model_service_mod.get_model_config_from_provider_instance = _get_model_config_from_provider_instance
     tenant_model_service_mod.get_tenant_default_model_by_type = lambda *_args, **_kwargs: {}
+    tenant_model_service_mod.split_model_name = lambda model_name: (_StubTenantLLMService.split_model_name_and_factory(model_name)[0], "", "")
     monkeypatch.setitem(sys.modules, "api.db.joint_services.tenant_model_service", tenant_model_service_mod)
 
     user_service_mod = ModuleType("api.db.services.user_service")
@@ -447,10 +455,6 @@ def _load_chat_module(monkeypatch):
         @staticmethod
         def get_by_id(_tenant_id):
             return True, SimpleNamespace(llm_id="glm-4")
-
-        @staticmethod
-        def get_joined_tenants_by_user_id(_user_id):
-            return [{"tenant_id": "tenant-1"}]
 
     class _StubUserTenantService:
         @staticmethod
@@ -544,6 +548,7 @@ def _load_chat_module(monkeypatch):
     module.manager = _DummyManager()
     monkeypatch.setitem(sys.modules, module_name, module)
     spec.loader.exec_module(module)
+    module.TenantLLMService = _StubTenantLLMService
     return module
 
 
@@ -1026,248 +1031,6 @@ def test_list_chats_keeps_zero_pagination_semantics(monkeypatch):
     assert res["code"] == 0
     assert calls[-1] == (0, 2)
     assert len(res["data"]["chats"]) == 1
-
-
-@pytest.mark.p2
-def test_list_chats_passes_real_pagination_to_service(monkeypatch):
-    module = _load_chat_module(monkeypatch)
-    calls = []
-
-    _set_request_args_context(
-        module,
-        {
-            "keywords": "",
-            "page": 1,
-            "page_size": 2,
-            "orderby": "create_time",
-            "desc": "true",
-        },
-    )
-
-    def _get_by_tenant_ids(_tenant_ids, _user_id, page_number, items_per_page, *_args, **_kwargs):
-        calls.append((page_number, items_per_page))
-        return ([_DummyDialogRecord().to_dict()], 1)
-
-    monkeypatch.setattr(module.DialogService, "get_by_tenant_ids", _get_by_tenant_ids)
-    monkeypatch.setattr(module.KnowledgebaseService, "get_by_id", lambda _id: (True, _DummyKB()))
-
-    res = _run(module.list_chats())
-
-    assert res["code"] == 0
-    assert calls[-1] == (1, 2)
-    assert res["data"]["total"] == 1
-    assert len(res["data"]["chats"]) == 1
-
-
-@pytest.mark.p2
-def test_list_chats_includes_current_owner_tenant_when_not_joined(monkeypatch):
-    module = _load_chat_module(monkeypatch)
-    tenant_calls = []
-
-    _set_request_args_context(
-        module,
-        {
-            "keywords": "",
-            "page": 1,
-            "page_size": 20,
-            "orderby": "create_time",
-            "desc": "true",
-        },
-    )
-    monkeypatch.setattr(module.TenantService, "get_joined_tenants_by_user_id", lambda _user_id: [])
-
-    def _get_by_tenant_ids(tenant_ids, *_args, **_kwargs):
-        tenant_calls.append(list(tenant_ids))
-        return ([_DummyDialogRecord().to_dict()], 1)
-
-    monkeypatch.setattr(module.DialogService, "get_by_tenant_ids", _get_by_tenant_ids)
-    monkeypatch.setattr(module.KnowledgebaseService, "get_by_id", lambda _id: (True, _DummyKB()))
-
-    res = _run(module.list_chats())
-
-    assert res["code"] == 0
-    assert set(tenant_calls[-1]) == {"tenant-1"}
-    assert res["data"]["total"] == 1
-    assert len(res["data"]["chats"]) == 1
-
-
-@pytest.mark.p2
-def test_list_chats_total_only_counts_visible_chats(monkeypatch):
-    module = _load_chat_module(monkeypatch)
-
-    _set_request_args_context(
-        module,
-        {
-            "keywords": "",
-            "page": 1,
-            "page_size": 20,
-            "orderby": "create_time",
-            "desc": "true",
-        },
-    )
-    monkeypatch.setattr(
-        module.DialogService,
-        "get_by_tenant_ids",
-        lambda *_args, **_kwargs: ([_DummyDialogRecord().to_dict()], 1),
-    )
-    monkeypatch.setattr(module.KnowledgebaseService, "get_by_id", lambda _id: (True, _DummyKB()))
-
-    res = _run(module.list_chats())
-
-    assert res["code"] == 0
-    assert len(res["data"]["chats"]) == 1
-    assert res["data"]["chats"][0]["id"] == "chat-1"
-    assert res["data"]["total"] == 1
-
-
-@pytest.mark.p2
-def test_list_chats_keeps_service_total_after_paging(monkeypatch):
-    module = _load_chat_module(monkeypatch)
-    query_calls = []
-
-    _set_request_args_context(
-        module,
-        {
-            "keywords": "",
-            "page": 1,
-            "page_size": 1,
-            "orderby": "create_time",
-            "desc": "true",
-        },
-    )
-    def _get_by_tenant_ids(_tenant_ids, _user_id, page_number, items_per_page, *_args, **_kwargs):
-        query_calls.append((page_number, items_per_page))
-        return (
-            [
-                {
-                    **_DummyDialogRecord().to_dict(),
-                    "id": "chat-2",
-                }
-            ],
-            2,
-        )
-
-    monkeypatch.setattr(module.DialogService, "get_by_tenant_ids", _get_by_tenant_ids)
-    monkeypatch.setattr(module.KnowledgebaseService, "get_by_id", lambda _id: (True, _DummyKB()))
-
-    res = _run(module.list_chats())
-
-    assert res["code"] == 0
-    assert query_calls[-1] == (1, 1)
-    assert len(res["data"]["chats"]) == 1
-    assert res["data"]["chats"][0]["id"] == "chat-2"
-    assert res["data"]["total"] == 2
-
-
-@pytest.mark.p2
-def test_list_chats_keeps_service_visible_cross_tenant_chat(monkeypatch):
-    module = _load_chat_module(monkeypatch)
-
-    _set_request_args_context(
-        module,
-        {
-            "keywords": "",
-            "page": 1,
-            "page_size": 20,
-            "orderby": "create_time",
-            "desc": "true",
-        },
-    )
-    monkeypatch.setattr(
-        module.DialogService,
-        "get_by_tenant_ids",
-        lambda *_args, **_kwargs: (
-            [
-                {
-                    **_DummyDialogRecord().to_dict(),
-                    "id": "chat-2",
-                    "tenant_id": "tenant-2",
-                    "kb_ids": ["kb-1"],
-                    "operator_permission": module.PermissionValue.PERMISSION_READ.value,
-                }
-            ],
-            1,
-        ),
-    )
-    monkeypatch.setattr(module.KnowledgebaseService, "get_by_id", lambda _id: (True, _DummyKB()))
-    monkeypatch.setattr(
-        module.UserTenantService,
-        "filter_by_tenant_and_user_id",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("route should not check membership")),
-    )
-
-    res = _run(module.list_chats())
-
-    assert res["code"] == 0
-    assert res["data"]["total"] == 1
-    assert [chat["id"] for chat in res["data"]["chats"]] == ["chat-2"]
-
-
-@pytest.mark.p2
-def test_get_chat_includes_operator_permission_for_model_record(monkeypatch):
-    module = _load_chat_module(monkeypatch)
-    monkeypatch.setattr(
-        module.UserTenantService,
-        "query",
-        lambda **_kwargs: [SimpleNamespace(id="member-1", tenant_id="tenant-1")],
-    )
-    monkeypatch.setattr(
-        module.DialogService,
-        "query",
-        lambda **_kwargs: [SimpleNamespace(id="chat-1", tenant_id="tenant-1")],
-    )
-    monkeypatch.setattr(
-        module.DialogService,
-        "get_by_id",
-        lambda _id: (True, _DummyDialogRecord()),
-    )
-    monkeypatch.setattr(module.KnowledgebaseService, "get_by_id", lambda _id: (True, _DummyKB()))
-
-    res = _run(module.get_chat(chat_id="chat-1"))
-
-    assert res["code"] == 0
-    assert res["data"]["operator_permission"] == module.PermissionValue.PERMISSION_OWNER.value
-
-
-@pytest.mark.p2
-def test_list_chats_owner_ids_keeps_global_total_after_paging(monkeypatch):
-    module = _load_chat_module(monkeypatch)
-    calls = []
-
-    _set_request_args_context(
-        module,
-        {
-            "keywords": "",
-            "page": 2,
-            "page_size": 1,
-            "orderby": "create_time",
-            "desc": "true",
-            "owner_ids": ["tenant-1"],
-        },
-    )
-    def _get_by_tenant_ids(tenant_ids, _user_id, page_number, items_per_page, *_args, **_kwargs):
-        calls.append((list(tenant_ids), page_number, items_per_page))
-        return (
-            [
-                {
-                    **_DummyDialogRecord().to_dict(),
-                    "id": "chat-2",
-                    "tenant_id": "tenant-1",
-                }
-            ],
-            2,
-        )
-
-    monkeypatch.setattr(module.DialogService, "get_by_tenant_ids", _get_by_tenant_ids)
-    monkeypatch.setattr(module.KnowledgebaseService, "get_by_id", lambda _id: (True, _DummyKB()))
-
-    res = _run(module.list_chats())
-
-    assert res["code"] == 0
-    assert res["data"]["total"] == 2
-    assert len(res["data"]["chats"]) == 1
-    assert res["data"]["chats"][0]["id"] == "chat-2"
-    assert calls[-1] == (["tenant-1"], 2, 1)
 
 
 @pytest.mark.p2
@@ -2003,7 +1766,7 @@ def test_update_chat_uses_chat_tenant_for_duplicate_name_checks(monkeypatch):
 
 
 @pytest.mark.p2
-def test_patch_chat_uses_chat_tenant_for_tenant_model_resolution(monkeypatch):
+def test_patch_chat_uses_operator_tenant_for_model_resolution(monkeypatch):
     module = _load_chat_module(monkeypatch)
     module.current_user.id = "operator-1"
     module.g.req_data = {"llm_id": "shared-model@factory"}
@@ -2014,7 +1777,7 @@ def test_patch_chat_uses_chat_tenant_for_tenant_model_resolution(monkeypatch):
             "tenant_id": "tenant-2",
         }
     ).to_dict()
-    ensure_calls = []
+    model_config_calls = []
     updated = {}
 
     monkeypatch.setattr(module.TenantService, "get_by_id", lambda _tid: (True, SimpleNamespace(llm_id="glm-4")))
@@ -2024,16 +1787,10 @@ def test_patch_chat_uses_chat_tenant_for_tenant_model_resolution(monkeypatch):
         lambda _id: (True, _DummyDialogRecord(existing)),
     )
     monkeypatch.setattr(module.DialogService, "query", lambda **_kwargs: [])
-    monkeypatch.setattr(module.TenantLLMService, "query", lambda **_kwargs: [SimpleNamespace(id="llm-1")])
-    monkeypatch.setattr(
-        module.TenantLLMService,
-        "split_model_name_and_factory",
-        lambda model: ("shared-model", "factory", None),
-    )
     monkeypatch.setattr(
         module,
-        "ensure_tenant_model_id_for_params",
-        lambda tenant_id, req: ensure_calls.append((tenant_id, deepcopy(req))) or req,
+        "get_model_config_from_provider_instance",
+        lambda **kwargs: model_config_calls.append(kwargs) or {},
     )
     monkeypatch.setattr(
         module.DialogService,
@@ -2044,8 +1801,8 @@ def test_patch_chat_uses_chat_tenant_for_tenant_model_resolution(monkeypatch):
     res = _run(inspect.unwrap(module.patch_chat)(chat_id="chat-1"))
 
     assert res["code"] == 0
-    assert ensure_calls
-    assert ensure_calls[0][0] == "tenant-2"
+    assert model_config_calls
+    assert model_config_calls[0]["tenant_id"] == "operator-1"
     assert updated["llm_id"] == "shared-model@factory"
 
 

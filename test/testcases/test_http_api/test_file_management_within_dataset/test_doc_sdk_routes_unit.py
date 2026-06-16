@@ -169,7 +169,7 @@ def _patch_apps_auth(apps_mod):
     apps_mod.login_required = _identity_decorator
 
 
-def _load_doc_module(monkeypatch):
+def _load_doc_module(monkeypatch, module_basename="chunk_api"):
     repo_root = Path(__file__).resolve().parents[4]
     api_apps_mod = ModuleType("api.apps")
     api_apps_mod.__path__ = [str(repo_root / "api" / "apps")]
@@ -348,7 +348,7 @@ def _load_doc_module(monkeypatch):
     monkeypatch.setitem(sys.modules, "api.db.services.knowledgebase_service", knowledgebase_service_mod)
 
     task_service_mod = ModuleType("api.db.services.task_service")
-    task_service_mod.TaskService = SimpleNamespace(filter_delete=lambda *_args, **_kwargs: None)
+    task_service_mod.TaskService = SimpleNamespace(filter_delete=lambda *_args, **_kwargs: None, query=lambda **_kwargs: [])
     task_service_mod.cancel_all_task_of = lambda *_args, **_kwargs: None
     task_service_mod.queue_tasks = lambda *_args, **_kwargs: None
     monkeypatch.setitem(sys.modules, "api.db.services.task_service", task_service_mod)
@@ -382,24 +382,6 @@ def _load_doc_module(monkeypatch):
     }
     api_utils_mod.get_resource_insufficient_result = lambda *_args, **_kwargs: {"code": 103, "message": "Insufficient resources"}
     api_utils_mod.server_error_response = lambda e: {"code": 500, "message": str(e)}
-    def _token_required(func):
-        @wraps(func)
-        async def wrapper(*args, **kwargs):
-            return await func(*args, **kwargs)
-
-        return wrapper
-
-    api_utils_mod.token_required = _token_required
-
-    def _add_tenant_id_to_kwargs(func):
-        @wraps(func)
-        async def wrapper(**kwargs):
-            kwargs["tenant_id"] = "tenant-1"
-            return await func(**kwargs)
-
-        return wrapper
-
-    api_utils_mod.add_tenant_id_to_kwargs = _add_tenant_id_to_kwargs
     monkeypatch.setitem(sys.modules, "api.utils.api_utils", api_utils_mod)
 
     permission_utils_mod = ModuleType("api.utils.permission_utils")
@@ -712,23 +694,8 @@ def _load_doc_module(monkeypatch):
                 "status": self.status,
                 "id": self.id
             }
-    
-    def _get_model_config_by_id(
-        tenant_model_id: int,
-        allowed_tenant_ids=None,
-        requester_tenant_id=None,
-    ) -> dict:
-        mock_tenant_id = "tenant-1"
-        if allowed_tenant_ids is not None:
-            if isinstance(allowed_tenant_ids, str):
-                allowed_tenant_ids = {allowed_tenant_ids}
-            else:
-                allowed_tenant_ids = {str(tenant_id) for tenant_id in allowed_tenant_ids if tenant_id}
-            if mock_tenant_id not in allowed_tenant_ids and str(requester_tenant_id) != mock_tenant_id:
-                raise LookupError(f"Tenant Model with id {tenant_model_id} not authorized")
-        return _MockModelConfig2(mock_tenant_id, "model-1").to_dict()
-    
-    def _get_model_config_by_type_and_name(tenant_id: str, model_type: str, model_name: str):
+
+    def _get_model_config_from_provider_instance(tenant_id: str, model_type: str, model_name: str):
         if not model_name:
             raise Exception("Model Name is required")
         return _MockModelConfig2(tenant_id, model_name).to_dict()
@@ -736,13 +703,31 @@ def _load_doc_module(monkeypatch):
     def _get_tenant_default_model_by_type(tenant_id: str, model_type):
         # Return mock tenant with default model configurations
         return _MockModelConfig2(tenant_id, "chat-model").to_dict()
-    
-    tenant_model_service_mod.get_model_config_by_id = _get_model_config_by_id
-    tenant_model_service_mod.get_model_config_by_type_and_name = _get_model_config_by_type_and_name
+
+    tenant_model_service_mod.get_model_config_from_provider_instance = _get_model_config_from_provider_instance
     tenant_model_service_mod.get_tenant_default_model_by_type = _get_tenant_default_model_by_type
+    tenant_model_service_mod.split_model_name = lambda model_name: (model_name.split("@", 1)[0], "", "")
     monkeypatch.setitem(sys.modules, "api.db.joint_services.tenant_model_service", tenant_model_service_mod)
 
-    module_path = repo_root / "api" / "apps" / "restful_apis" / "document_api.py"
+    if module_basename == "document_api":
+        stub_apps_services = ModuleType("api.apps.services")
+        stub_apps_services.__path__ = [str(repo_root / "api" / "apps" / "services")]
+        monkeypatch.setitem(sys.modules, "api.apps.services", stub_apps_services)
+
+        document_api_service_mod = ModuleType("api.apps.services.document_api_service")
+        document_api_service_mod.validate_document_update_fields = lambda *_args, **_kwargs: (None, None)
+        document_api_service_mod.map_doc_keys = lambda doc: doc.to_dict() if hasattr(doc, "to_dict") else doc
+        document_api_service_mod.map_doc_keys_with_run_status = lambda doc, run_status="0": {
+            **(doc if isinstance(doc, dict) else doc.to_dict()),
+            "run": run_status,
+        }
+        document_api_service_mod.update_document_name_only = lambda *_args, **_kwargs: None
+        document_api_service_mod.update_chunk_method = lambda *_args, **_kwargs: None
+        document_api_service_mod.update_document_status_only = lambda *_args, **_kwargs: None
+        document_api_service_mod.reset_document_for_reparse = lambda *_args, **_kwargs: None
+        monkeypatch.setitem(sys.modules, "api.apps.services.document_api_service", document_api_service_mod)
+
+    module_path = repo_root / "api" / "apps" / "restful_apis" / f"{module_basename}.py"
     spec = importlib.util.spec_from_file_location("test_doc_sdk_routes_unit", module_path)
     module = importlib.util.module_from_spec(spec)
     module.manager = _DummyManager()
@@ -847,7 +832,11 @@ def _route_core(func):
 
 def _patch_send_file(monkeypatch, module):
     async def _fake_send_file(file_obj, **kwargs):
-        return {"file": file_obj, "filename": kwargs.get("attachment_filename")}
+        return {
+            "file": file_obj,
+            "filename": kwargs.get("attachment_filename"),
+            "mimetype": kwargs.get("mimetype"),
+        }
 
     monkeypatch.setattr(module, "send_file", _fake_send_file)
 
@@ -878,7 +867,7 @@ class TestDocRoutesUnit:
         assert "length of 5" in str(exc_info.value)
 
     def test_download_and_download_doc_errors(self, monkeypatch):
-        module = _load_doc_module(monkeypatch)
+        module = _load_doc_module(monkeypatch, module_basename="document_api")
         _patch_send_file(monkeypatch, module)
         _patch_storage(monkeypatch, module, file_stream=b"")
         res = _run(module.download("ds-1", ""))
@@ -914,6 +903,16 @@ class TestDocRoutesUnit:
         _patch_storage(monkeypatch, module, file_stream=b"abc")
         res = _run(module.download_document(tenant_id="tenant-1", document_id="doc-1"))
         assert res["filename"] == "doc.txt"
+
+    def test_download_mimetype_from_filename(self, monkeypatch):
+        module = _load_doc_module(monkeypatch, module_basename="document_api")
+        _patch_send_file(monkeypatch, module)
+        _patch_storage(monkeypatch, module, file_stream=b"pdf-bytes")
+        monkeypatch.setattr(module.DocumentService, "query", lambda **_kwargs: [_DummyDoc(name="report.pdf", doc_type=FileType.PDF)])
+        monkeypatch.setattr(module.File2DocumentService, "get_storage_address", lambda **_kwargs: ("b", "n"))
+        res = _run(module.download.__wrapped__("ds-1", "doc-1"))
+        assert res["filename"] == "report.pdf"
+        assert res["mimetype"] == "application/pdf"
 
 
     def test_parse_branches(self, monkeypatch):
@@ -1009,6 +1008,57 @@ class TestDocRoutesUnit:
         monkeypatch.setattr(module.DocumentService, "query", lambda **_kwargs: [_DummyDoc(run=module.TaskStatus.RUNNING.value)])
         res = _run(module.stop_parsing("tenant-1", "ds-1"))
         assert res["code"] == 0
+
+    def test_stop_parse_documents_cleans_partial_chunks(self, monkeypatch):
+        module = _load_doc_module(monkeypatch, module_basename="document_api")
+        updated = []
+        deleted = []
+
+        monkeypatch.setattr(module.KnowledgebaseService, "accessible", lambda **_kwargs: True)
+        monkeypatch.setattr(module, "_check_document_batch_permission", lambda *_args, **_kwargs: True)
+        monkeypatch.setattr(module, "get_request_json", lambda: _AwaitableValue({"document_ids": ["doc-1"]}))
+        monkeypatch.setattr(module, "check_duplicate_ids", lambda ids, _kind: (ids, []))
+        monkeypatch.setattr(module.DocumentService, "query", lambda **_kwargs: [object()])
+        monkeypatch.setattr(
+            module.DocumentService,
+            "get_by_id",
+            lambda _id: (True, _DummyDoc(doc_id="doc-1", run=module.TaskStatus.RUNNING.value)),
+        )
+        monkeypatch.setattr(module.TaskService, "query", lambda **_kwargs: [SimpleNamespace(progress=0.5)])
+        monkeypatch.setattr(module, "cancel_all_task_of", lambda *_args, **_kwargs: None)
+        monkeypatch.setattr(
+            module.DocumentService,
+            "update_by_id",
+            lambda doc_id, info: updated.append((doc_id, info)) or True,
+        )
+        _patch_docstore(
+            monkeypatch,
+            module,
+            index_exist=lambda *_args, **_kwargs: True,
+            delete=lambda condition, index, kb_id: deleted.append((condition, index, kb_id)),
+        )
+
+        res = _run(module.stop_parse_documents.__wrapped__("tenant-1", "ds-1"))
+
+        assert res["code"] == 0
+        assert res["data"]["success_count"] == 1
+        assert updated == [
+            (
+                "doc-1",
+                {
+                    "run": module.TaskStatus.CANCEL.value,
+                    "progress": 0,
+                    "chunk_num": 0,
+                },
+            )
+        ]
+        assert deleted == [({"doc_id": "doc-1"}, module.search.index_name("tenant-1"), "kb-1")]
+
+        deleted.clear()
+        _patch_docstore(monkeypatch, module, index_exist=lambda *_args, **_kwargs: False)
+        res = _run(module.stop_parse_documents.__wrapped__("tenant-1", "ds-1"))
+        assert res["code"] == 0
+        assert deleted == []
 
     def test_list_chunks_branches(self, monkeypatch):
         module = _load_restful_chunk_module(monkeypatch)

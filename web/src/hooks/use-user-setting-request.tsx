@@ -12,7 +12,6 @@ import {
 } from '@/interfaces/database/user-setting';
 import { ISetLangfuseConfigRequestBody } from '@/interfaces/request/system';
 import { DEFAULT_LANGUAGE_CODE, supportedLanguages } from '@/locales/config';
-import { Routes } from '@/routes';
 import userService, {
   addTenantUser,
   agreeTenant,
@@ -31,6 +30,7 @@ import {
   useFetchEnableAdmin,
   useFetchIsAdmin,
 } from './use-private-llm-request';
+import { useWarnEmptyModel } from './use-warn-empty-model';
 
 export const enum UserSettingApiAction {
   UserInfo = 'userInfo',
@@ -161,6 +161,8 @@ export const useFetchTenantInfo = (
   useEffect(() => {
     run();
   }, [run]);
+
+  useWarnEmptyModel(showEmptyModelWarn, data?.embd_id, data?.llm_id, loading);
 
   return { data, loading };
 };

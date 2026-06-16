@@ -17,6 +17,10 @@ import { FilesInstanceType } from '.';
 import EnterpriseFeature from '../admin/components/enterprise-feature';
 import { CreateFolderDialog } from './create-folder-dialog';
 import { FilesTable } from './files-table';
+import {
+  useHandleConnectToKnowledge,
+  UseHandleConnectToKnowledgeReturnType,
+} from './hooks';
 import { MoveDialog } from './move-dialog';
 import { SyncFileDialog } from './sync-file-dialog';
 import { useBulkOperateFile } from './use-bulk-operate-file';
@@ -41,7 +45,8 @@ export const FilesManager = {
       fileUploadLoading,
       onFileUploadOk,
     } = useHandleUploadFile();
-
+    const connectKnowledgeModal: UseHandleConnectToKnowledgeReturnType =
+      useHandleConnectToKnowledge();
     const {
       folderCreateModalVisible,
       showFolderCreateModal,
@@ -89,6 +94,8 @@ export const FilesManager = {
       rowSelection,
       showMoveFileModal,
       setRowSelection,
+      showConnectToKnowledgeModal:
+        connectKnowledgeModal.showConnectToKnowledgeModal,
     });
 
     useEffect(() => {
@@ -105,6 +112,7 @@ export const FilesManager = {
       showSyncFileModal,
       showFolderCreateModal,
       handleInputChange,
+      setFileInstance,
     ]);
 
     return (
@@ -121,7 +129,8 @@ export const FilesManager = {
           rowSelection={rowSelection}
           setRowSelection={setRowSelection}
           showMoveFileModal={showMoveFileModal}
-        ></FilesTable>
+          connectKnowledgeModal={connectKnowledgeModal}
+        />
 
         {fileUploadVisible && (
           <FileUploadDialog
