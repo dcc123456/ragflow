@@ -53,10 +53,7 @@ export function ChatPromptEngine({ prefix = '' }: ChatPromptEngineProps) {
       <SimilaritySliderFormField
         isTooltipShown
         similarityName={prefixName(prefix, 'similarity_threshold')}
-        vectorSimilarityWeightName={prefixName(
-          prefix,
-          'vector_similarity_weight',
-        )}
+        similarityWeightName={prefixName(prefix, 'vector_similarity_weight')}
       ></SimilaritySliderFormField>
       <TopNFormField name={prefixName(prefix, 'top_n')}></TopNFormField>
       <SwitchFormField

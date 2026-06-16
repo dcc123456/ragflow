@@ -36,11 +36,17 @@ export default function ChatBasicSetting({
 }: ChatBasicSettingProps) {
   const { t } = useTranslate('chat');
   const form = useFormContext();
-  const emptyResponseValue = form.watch('prompt_config.empty_response');
-  const prologueValue = form.watch('prompt_config.prologue');
+  const emptyResponseValue = useWatch({
+    control: form.control,
+    name: prefixName(prefix, 'prompt_config.empty_response'),
+  });
+  const prologueValue = useWatch({
+    control: form.control,
+    name: prefixName(prefix, 'prompt_config.prologue'),
+  });
   const rawDatasetIds = useWatch({
     control: form.control,
-    name: 'dataset_ids',
+    name: prefixName(prefix, 'dataset_ids'),
   });
   const kbIds = useMemo(
     () => (rawDatasetIds || []) as string[],
@@ -48,7 +54,7 @@ export default function ChatBasicSetting({
   );
   const metadataInclude = useWatch({
     control: form.control,
-    name: 'prompt_config.reference_metadata.include',
+    name: prefixName(prefix, 'prompt_config.reference_metadata.include'),
   });
   const { data: metadataKeys, loading: metadataKeysLoading } =
     useFetchKnowledgeMetadataKeys(kbIds);
@@ -61,7 +67,7 @@ export default function ChatBasicSetting({
 
   useEffect(() => {
     const currentFields = form.getValues(
-      'prompt_config.reference_metadata.fields',
+      prefixName(prefix, 'prompt_config.reference_metadata.fields'),
     );
     if (
       metadataInclude &&
@@ -73,19 +79,29 @@ export default function ChatBasicSetting({
         metadataKeys.includes(field),
       );
       if (validFields.length !== currentFields.length) {
-        form.setValue('prompt_config.reference_metadata.fields', validFields);
+        form.setValue(
+          prefixName(prefix, 'prompt_config.reference_metadata.fields'),
+          validFields,
+        );
       }
     } else if (!metadataInclude) {
-      form.setValue('prompt_config.reference_metadata.fields', undefined);
+      form.setValue(
+        prefixName(prefix, 'prompt_config.reference_metadata.fields'),
+        undefined,
+      );
     }
-  }, [kbIds, metadataKeys, metadataKeysLoading, metadataInclude, form]);
+  }, [kbIds, metadataKeys, metadataKeysLoading, metadataInclude, form, prefix]);
 
   return (
     <div className="space-y-8">
-      <AvatarNameDescription />
+      <AvatarNameDescription
+        avatarField={prefixName(prefix, 'icon')}
+        nameField={prefixName(prefix, 'name')}
+        descriptionField={prefixName(prefix, 'description')}
+      />
       <FormField
         control={form.control}
-        name={'prompt_config.empty_response'}
+        name={prefixName(prefix, 'prompt_config.empty_response')}
         render={({ field }) => (
           <FormItem>
             <FormLabel tooltip={t('emptyResponseTip')}>
@@ -148,7 +164,7 @@ export default function ChatBasicSetting({
       <MetadataFilter prefix={prefix}></MetadataFilter>
       <FormField
         control={form.control}
-        name={'prompt_config.reference_metadata.include'}
+        name={prefixName(prefix, 'prompt_config.reference_metadata.include')}
         render={({ field }) => (
           <FormItem className="flex flex-row items-start space-x-3 space-y-0">
             <FormControl>
@@ -158,7 +174,10 @@ export default function ChatBasicSetting({
                   field.onChange(value);
                   if (!value) {
                     form.setValue(
-                      'prompt_config.reference_metadata.fields',
+                      prefixName(
+                        prefix,
+                        'prompt_config.reference_metadata.fields',
+                      ),
                       undefined,
                     );
                   }
@@ -174,7 +193,7 @@ export default function ChatBasicSetting({
       {metadataInclude && (
         <FormField
           control={form.control}
-          name={'prompt_config.reference_metadata.fields'}
+          name={prefixName(prefix, 'prompt_config.reference_metadata.fields')}
           render={({ field }) => (
             <FormItem>
               <FormLabel tooltip="Select which metadata fields to display with each chunk">
