@@ -164,6 +164,10 @@ CONF_DIR="/ragflow/conf"
 TEMPLATE_FILE="${CONF_DIR}/service_conf.yaml.template"
 CONF_FILE="${CONF_DIR}/service_conf.yaml"
 
+# Export conf dir so that Go binaries can locate mapping/config files
+# at runtime regardless of compile-time source paths embedded in the binary.
+export RAGFLOW_CONF_DIR="/ragflow"
+
 rm -f "${CONF_FILE}"
 while IFS= read -r line || [[ -n "$line" ]]; do
     eval "echo \"$line\"" >> "${CONF_FILE}"
