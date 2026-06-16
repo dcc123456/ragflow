@@ -16,8 +16,26 @@
 import inspect
 import logging
 from functools import wraps
+from enum import Enum
 
-from api.db import ActionEnum, ResourceTypeEnum
+try:
+    from api.db import ActionEnum, ResourceTypeEnum
+except ImportError:
+    class ActionEnum(Enum):
+        ENABLE = 0b0001
+        READ = 0b0010
+        WRITE = 0b0100
+        SHARE = 0b1000
+
+    class ResourceTypeEnum(Enum):
+        DATASET = 1
+        CHAT = 2
+        AGENT = 3
+        SEARCH = 4
+        FILE = 5
+        TEAM = 6
+        MEMORY = 7
+        MODEL_PROVIDER = 8
 from api.db.services.role_service import RoleResourceService
 from api.utils.api_utils import get_json_result
 from common.constants import RetCode
@@ -29,6 +47,49 @@ async def _invoke_view(func, *args, **kwargs):
     return func(*args, **kwargs)
 
 
+def _check_role_permission(func, action_map, resource_type, *args, **kwargs):
+    original_name = getattr(inspect.unwrap(func), "__name__", func.__name__)
+    from api.apps import QuartAuthUnauthorized, current_user
+
+    required_action = action_map.get(original_name)
+    if required_action is None:
+        logging.warning(f"Role action not configured for {original_name}")
+        return get_json_result(data=False, message="Role permission not configured.", code=RetCode.SERVER_ERROR)
+    if not isinstance(required_action, ActionEnum):
+        logging.warning(f"Role action misconfigured for {original_name}: {required_action}")
+        return get_json_result(data=False, message="Role permission misconfigured.", code=RetCode.SERVER_ERROR)
+
+    if not current_user:
+        raise QuartAuthUnauthorized()
+
+    if getattr(current_user, "is_superuser", False):
+        print(f"[role-guard] superuser bypass fn={original_name}", flush=True)
+        return None
+
+    role_id = getattr(current_user, "role_id", None)
+    if role_id is None:
+        return get_json_result(data=False, message="User role not found.", code=RetCode.AUTHENTICATION_ERROR)
+
+    role_permissions = RoleResourceService.get_by_role_id(role_id) or []
+    action_value = 0
+    for role_permission in role_permissions:
+        if role_permission.get("resource_type") == resource_type:
+            action_value = role_permission.get("action", 0)
+            break
+
+    print(f"[role-guard] fn={original_name} role_id={role_id} resource={resource_type} action_value={action_value}", flush=True)
+    if not (action_value & ActionEnum.ENABLE.value):
+        print(f"[role-guard] feature disabled fn={original_name}", flush=True)
+        return get_json_result(data=False, message="Feature is not enabled for this role.", code=RetCode.FEATURE_NOT_ENABLED)
+
+    if not action_value or not (action_value & required_action.value):
+        print(f"[role-guard] deny fn={original_name} need={required_action.name}", flush=True)
+        return get_json_result(data=False, message="Role has no permission for this operation.", code=RetCode.AUTHENTICATION_ERROR)
+
+    print(f"[role-guard] allow fn={original_name} need={required_action.name}", flush=True)
+    return None
+
+
 def check_role_access(action_map, resource_type):
     """
     A generic role-based access decorator based on RoleResource action bits.
@@ -36,50 +97,24 @@ def check_role_access(action_map, resource_type):
     """
 
     def decorator(func):
-        original_name = getattr(inspect.unwrap(func), "__name__", func.__name__)
-        from api.apps import QuartAuthUnauthorized, current_user
-
-        @wraps(func)
-        async def wrapper(*args, **kwargs):
-            required_action = action_map.get(original_name)
-            if required_action is None:
-                logging.warning(f"Role action not configured for {original_name}")
-                return get_json_result(data=False, message="Role permission not configured.", code=RetCode.SERVER_ERROR)
-            if not isinstance(required_action, ActionEnum):
-                logging.warning(f"Role action misconfigured for {original_name}: {required_action}")
-                return get_json_result(data=False, message="Role permission misconfigured.", code=RetCode.SERVER_ERROR)
-
-            if not current_user:
-                raise QuartAuthUnauthorized()
-
-            if getattr(current_user, "is_superuser", False):
-                print(f"[role-guard] superuser bypass fn={original_name}", flush=True)
+        if inspect.iscoroutinefunction(func):
+            @wraps(func)
+            async def async_wrapper(*args, **kwargs):
+                permission_result = _check_role_permission(func, action_map, resource_type, *args, **kwargs)
+                if permission_result is not None:
+                    return permission_result
                 return await _invoke_view(func, *args, **kwargs)
 
-            role_id = getattr(current_user, "role_id", None)
-            if role_id is None:
-                return get_json_result(data=False, message="User role not found.", code=RetCode.AUTHENTICATION_ERROR)
+            return async_wrapper
 
-            role_permissions = RoleResourceService.get_by_role_id(role_id) or []
-            action_value = 0
-            for role_permission in role_permissions:
-                if role_permission.get("resource_type") == resource_type:
-                    action_value = role_permission.get("action", 0)
-                    break
+        @wraps(func)
+        def sync_wrapper(*args, **kwargs):
+            permission_result = _check_role_permission(func, action_map, resource_type, *args, **kwargs)
+            if permission_result is not None:
+                return permission_result
+            return func(*args, **kwargs)
 
-            print(f"[role-guard] fn={original_name} role_id={role_id} resource={resource_type} action_value={action_value}", flush=True)
-            if not (action_value & ActionEnum.ENABLE.value):
-                print(f"[role-guard] feature disabled fn={original_name}", flush=True)
-                return get_json_result(data=False, message="Feature is not enabled for this role.", code=RetCode.FEATURE_NOT_ENABLED)
-
-            if not action_value or not (action_value & required_action.value):
-                print(f"[role-guard] deny fn={original_name} need={required_action.name}", flush=True)
-                return get_json_result(data=False, message="Role has no permission for this operation.", code=RetCode.AUTHENTICATION_ERROR)
-
-            print(f"[role-guard] allow fn={original_name} need={required_action.name}", flush=True)
-            return await _invoke_view(func, *args, **kwargs)
-
-        return wrapper
+        return sync_wrapper
 
     return decorator
 
@@ -178,6 +213,32 @@ CANVAS_API_ACTION_MAP = {
     "sessions": ActionEnum.READ,
     "prompts": ActionEnum.READ,
     "download": ActionEnum.READ,
+    "list_agent_sessions": ActionEnum.READ,
+    "create_agent_session": ActionEnum.READ,
+    "get_agent_session": ActionEnum.READ,
+    "delete_agent_session_item": ActionEnum.WRITE,
+    "delete_agent_session": ActionEnum.WRITE,
+    "download_agent_file": ActionEnum.READ,
+    "list_agent_template": ActionEnum.READ,
+    "list_agents": ActionEnum.ENABLE,
+    "list_agent_tags": ActionEnum.READ,
+    "update_agent_tags": ActionEnum.WRITE,
+    "create_agent": ActionEnum.WRITE,
+    "upload_agent_file": ActionEnum.WRITE,
+    "get_agent_component_input_form": ActionEnum.READ,
+    "debug_agent_component": ActionEnum.WRITE,
+    "get_agent": ActionEnum.READ,
+    "list_agent_versions": ActionEnum.READ,
+    "get_agent_version": ActionEnum.READ,
+    "get_agent_logs": ActionEnum.READ,
+    "delete_agent": ActionEnum.WRITE,
+    "update_agent": ActionEnum.WRITE,
+    "reset_agent": ActionEnum.WRITE,
+    "rerun_agent": ActionEnum.WRITE,
+    "test_db_connection": ActionEnum.READ,
+    "agent_chat_completion": ActionEnum.WRITE,
+    "webhook_trace": ActionEnum.READ,
+    "download_attachment": ActionEnum.READ,
 }
 
 SEARCH_ROLE_RESOURCE_TYPE = ResourceTypeEnum.SEARCH.value
@@ -202,4 +263,51 @@ FILE_API_ACTION_MAP = {
     "get": ActionEnum.READ,
     "move": ActionEnum.WRITE,
     "link": ActionEnum.WRITE,
+    "create_or_upload": ActionEnum.WRITE,
+    "convert": ActionEnum.WRITE,
+    "delete": ActionEnum.WRITE,
+    "download": ActionEnum.READ,
+    "parent_folder": ActionEnum.READ,
+    "ancestors": ActionEnum.READ,
+}
+
+MEMORY_ROLE_RESOURCE_TYPE = ResourceTypeEnum.MEMORY.value
+MEMORY_API_ACTION_MAP = {
+    "create_memory": ActionEnum.WRITE,
+    "update_memory": ActionEnum.WRITE,
+    "delete_memory": ActionEnum.WRITE,
+    "list_memory": ActionEnum.ENABLE,
+    "get_memory_config": ActionEnum.READ,
+    "get_memory_messages": ActionEnum.READ,
+    "add_message": ActionEnum.WRITE,
+    "forget_message": ActionEnum.WRITE,
+    "update_message": ActionEnum.WRITE,
+    "search_message": ActionEnum.READ,
+    "get_messages": ActionEnum.READ,
+    "get_message_content": ActionEnum.READ,
+}
+
+TEAM_ROLE_RESOURCE_TYPE = ResourceTypeEnum.TEAM.value
+TEAM_API_ACTION_MAP = {
+    "group_list": ActionEnum.ENABLE,
+    "create_group": ActionEnum.WRITE,
+    "delete_group": ActionEnum.WRITE,
+    "group_change_owner": ActionEnum.WRITE,
+    "update_group": ActionEnum.WRITE,
+    "list_group_member": ActionEnum.READ,
+    "add_group_member": ActionEnum.WRITE,
+    "remove_group_member": ActionEnum.WRITE,
+    "department_list": ActionEnum.ENABLE,
+    "create_department": ActionEnum.WRITE,
+    "delete_department": ActionEnum.WRITE,
+    "move_department": ActionEnum.WRITE,
+    "update_department": ActionEnum.WRITE,
+    "list_department_member": ActionEnum.READ,
+    "add_department_member": ActionEnum.WRITE,
+    "remove_department_member": ActionEnum.WRITE,
+    "user_list": ActionEnum.READ,
+    "create": ActionEnum.WRITE,
+    "rm": ActionEnum.WRITE,
+    "tenant_list": ActionEnum.ENABLE,
+    "agree": ActionEnum.WRITE,
 }

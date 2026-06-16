@@ -41,11 +41,15 @@ from api.utils.validation_utils import (
 from api.utils.web_utils import CONTENT_TYPE_MAP, apply_safe_file_response_headers
 from common import settings
 from common.misc_utils import thread_pool_exec
+from common.role_util import FILE_API_ACTION_MAP, FILE_ROLE_RESOURCE_TYPE, check_role_access
 from api.apps.services import file_api_service
+
+file_role_guard = check_role_access(FILE_API_ACTION_MAP, FILE_ROLE_RESOURCE_TYPE)
 
 
 @manager.route("/files", methods=["POST"])  # noqa: F821
 @login_required
+@file_role_guard
 @add_tenant_id_to_kwargs
 async def create_or_upload(tenant_id: str = None):
     """
@@ -118,6 +122,7 @@ async def create_or_upload(tenant_id: str = None):
 
 @manager.route("/files", methods=["GET"])  # noqa: F821
 @login_required
+@file_role_guard
 @add_tenant_id_to_kwargs
 async def list_files(tenant_id: str = None):
     """
@@ -173,6 +178,7 @@ async def list_files(tenant_id: str = None):
 
 @manager.route("/files", methods=["DELETE"])  # noqa: F821
 @login_required
+@file_role_guard
 @add_tenant_id_to_kwargs
 async def delete(tenant_id: str = None):
     """
@@ -227,6 +233,7 @@ async def delete(tenant_id: str = None):
 
 @manager.route("/files/move", methods=["POST"])  # noqa: F821
 @login_required
+@file_role_guard
 @add_tenant_id_to_kwargs
 async def move(tenant_id: str = None):
     """
@@ -281,6 +288,7 @@ async def move(tenant_id: str = None):
 
 @manager.route("/files/<file_id>", methods=["GET"])  # noqa: F821
 @login_required
+@file_role_guard
 @add_tenant_id_to_kwargs
 async def download(tenant_id: str = None, file_id: str = None):
     """
@@ -336,6 +344,7 @@ async def download(tenant_id: str = None, file_id: str = None):
 
 @manager.route("/files/<file_id>/parent", methods=["GET"])  # noqa: F821
 @login_required
+@file_role_guard
 @add_tenant_id_to_kwargs
 async def parent_folder(tenant_id: str = None, file_id: str = None):
     """
@@ -367,6 +376,7 @@ async def parent_folder(tenant_id: str = None, file_id: str = None):
 
 @manager.route("/files/<file_id>/ancestors", methods=["GET"])  # noqa: F821
 @login_required
+@file_role_guard
 @add_tenant_id_to_kwargs
 async def ancestors(tenant_id: str = None, file_id: str = None):
     """

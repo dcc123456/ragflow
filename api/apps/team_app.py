@@ -8,14 +8,18 @@ from api.utils.api_utils import get_data_error_result, get_error_data_result, ge
 from common.time_utils import delta_seconds
 from common.misc_utils import get_uuid
 from common.constants import StatusEnum, RetCode
+from common.role_util import TEAM_API_ACTION_MAP, TEAM_ROLE_RESOURCE_TYPE, check_role_access
 from quart import request
 from api.apps import login_required, current_user
+
+team_role_guard = check_role_access(TEAM_API_ACTION_MAP, TEAM_ROLE_RESOURCE_TYPE)
 
 # =========================================== GROUP ============================
 
 
 @manager.route("<tenant_id>/groups", methods=["GET"])  # noqa: F821
 @login_required
+@team_role_guard
 def group_list(tenant_id):
     """
     Retrieve the list of user team groups.
@@ -53,6 +57,7 @@ def group_list(tenant_id):
 
 @manager.route("/group/create", methods=["POST"])  # noqa: F821
 @login_required
+@team_role_guard
 @validate_request("name")  # noqa: F821
 async def create_group():
     """
@@ -107,6 +112,7 @@ async def create_group():
 
 @manager.route("<tenant_id>/group/delete/<group_id>", methods=["DELETE"])  # noqa: F821
 @login_required
+@team_role_guard
 def delete_group(tenant_id, group_id):
     """
     Delete a specific team group.
@@ -147,6 +153,7 @@ def delete_group(tenant_id, group_id):
 
 @manager.route("<tenant_id>/group/owner", methods=["PUT"])  # noqa: F821
 @login_required
+@team_role_guard
 @validate_request("group_id", "new_owner_id", "remain_admin")  # noqa: F821
 async def group_change_owner(tenant_id):
     req = await request.get_json()
@@ -201,6 +208,7 @@ async def group_change_owner(tenant_id):
 
 @manager.route("/<tenant_id>/group/update", methods=["PUT"])  # noqa: F821
 @login_required
+@team_role_guard
 @validate_request("group_id")  # noqa: F821
 async def update_group(tenant_id):
     """
@@ -314,6 +322,7 @@ async def update_group(tenant_id):
 
 @manager.route("<tenant_id>/group/members/<group_id>", methods=["GET"])  # noqa: F821
 @login_required
+@team_role_guard
 def list_group_member(tenant_id, group_id):
     """
     List members of specific group
@@ -341,6 +350,7 @@ def list_group_member(tenant_id, group_id):
 
 @manager.route("<tenant_id>/group/member/create", methods=["POST"])  # noqa: F821
 @login_required
+@team_role_guard
 @validate_request("group_id", "member_list")  # noqa: F821
 async def add_group_member(tenant_id):
     """
@@ -423,6 +433,7 @@ async def add_group_member(tenant_id):
 
 @manager.route("/<tenant_id>/group/member/delete", methods=["DELETE"])  # noqa: F821
 @login_required
+@team_role_guard
 @validate_request("group_id", "member_list")  # noqa: F821
 async def remove_group_member(tenant_id):
     """
@@ -507,6 +518,7 @@ async def remove_group_member(tenant_id):
 
 @manager.route("<tenant_id>/departments", methods=["GET"])  # noqa: F821
 @login_required
+@team_role_guard
 def department_list(tenant_id):
     """
     Retrieve the list of user team departments.
@@ -564,6 +576,7 @@ def department_list(tenant_id):
 
 @manager.route("/department/create", methods=["POST"])  # noqa: F821
 @login_required
+@team_role_guard
 @validate_request("name")  # noqa: F821
 async def create_department():
     """
@@ -635,6 +648,7 @@ async def create_department():
 
 @manager.route("/department/delete/<department_id>", methods=["DELETE"])  # noqa: F821
 @login_required
+@team_role_guard
 def delete_department(department_id):
     """
     Delete a specific team department.
@@ -691,6 +705,7 @@ def delete_department(department_id):
 
 @manager.route("/department/move", methods=["PUT"])  # noqa: F821
 @login_required
+@team_role_guard
 @validate_request("department_id", "parent_id")  # noqa: F821
 async def move_department():
     req = await request.get_json()
@@ -732,6 +747,7 @@ async def move_department():
 
 @manager.route("<tenant_id>/department/update", methods=["PUT"])  # noqa: F821
 @login_required
+@team_role_guard
 @validate_request("department_id")  # noqa: F821
 async def update_department(tenant_id):
     """
@@ -846,6 +862,7 @@ async def update_department(tenant_id):
 
 @manager.route("<tenant_id>/department/members/<department_id>", methods=["GET"])  # noqa: F821
 @login_required
+@team_role_guard
 def list_department_member(tenant_id, department_id):
     """
     List members of specific department
@@ -873,6 +890,7 @@ def list_department_member(tenant_id, department_id):
 
 @manager.route("<tenant_id>/department/member/create", methods=["POST"])  # noqa: F821
 @login_required
+@team_role_guard
 @validate_request("department_id", "member_list")  # noqa: F821
 async def add_department_member(tenant_id):
     """
@@ -956,6 +974,7 @@ async def add_department_member(tenant_id):
 
 @manager.route("<tenant_id>/department/member/delete", methods=["DELETE"])  # noqa: F821
 @login_required
+@team_role_guard
 @validate_request("department_id", "member_list")  # noqa: F821
 async def remove_department_member(tenant_id):
     """

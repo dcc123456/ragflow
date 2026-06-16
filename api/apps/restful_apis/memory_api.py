@@ -24,11 +24,14 @@ from api.apps import login_required, current_user
 from api.utils.api_utils import validate_request, get_request_json, get_error_argument_result, get_json_result
 from api.apps.services import memory_api_service
 from api.utils.pagination_utils import validate_rest_api_page_size
-
 from api.utils.billing import check_resources
+from common.role_util import MEMORY_API_ACTION_MAP, MEMORY_ROLE_RESOURCE_TYPE, check_role_access
+
+memory_role_guard = check_role_access(MEMORY_API_ACTION_MAP, MEMORY_ROLE_RESOURCE_TYPE)
 
 @manager.route("/memories", methods=["POST"])  # noqa: F821
 @login_required
+@memory_role_guard
 @validate_request("name", "memory_type", "embd_id", "llm_id")
 @check_resources(apps=1)
 async def create_memory():
@@ -84,6 +87,7 @@ async def create_memory():
 
 @manager.route("/memories/<memory_id>", methods=["PUT"])  # noqa: F821
 @login_required
+@memory_role_guard
 async def update_memory(memory_id):
     req = await get_request_json()
     new_settings = {k: req[k] for k in [
@@ -109,6 +113,7 @@ async def update_memory(memory_id):
 
 @manager.route("/memories/<memory_id>", methods=["DELETE"])  # noqa: F821
 @login_required
+@memory_role_guard
 async def delete_memory(memory_id):
     try:
         await memory_api_service.delete_memory(memory_id)
@@ -123,6 +128,7 @@ async def delete_memory(memory_id):
 
 @manager.route("/memories", methods=["GET"])  # noqa: F821
 @login_required
+@memory_role_guard
 async def list_memory():
     filter_params = {
         k: request.args.get(k) for k in ["memory_type", "tenant_id", "owner_ids", "storage_type"] if k in request.args
@@ -140,6 +146,7 @@ async def list_memory():
 
 @manager.route("/memories/<memory_id>/config", methods=["GET"])  # noqa: F821
 @login_required
+@memory_role_guard
 async def get_memory_config(memory_id):
     try:
         res = await memory_api_service.get_memory_config(memory_id)
@@ -154,6 +161,7 @@ async def get_memory_config(memory_id):
 
 @manager.route("/memories/<memory_id>", methods=["GET"])  # noqa: F821
 @login_required
+@memory_role_guard
 async def get_memory_messages(memory_id):
     args = request.args
     agent_ids = args.getlist("agent_id")
@@ -178,6 +186,7 @@ async def get_memory_messages(memory_id):
 
 @manager.route("/messages", methods=["POST"]) # noqa: F821
 @login_required
+@memory_role_guard
 @validate_request("memory_id", "agent_id", "session_id", "user_input", "agent_response")
 async def add_message():
     req = await get_request_json()
@@ -210,6 +219,7 @@ async def add_message():
 
 @manager.route("/messages/<memory_id>:<message_id>", methods=["DELETE"]) # noqa: F821
 @login_required
+@memory_role_guard
 async def forget_message(memory_id: str, message_id: int):
     try:
         res = await memory_api_service.forget_message(memory_id, message_id)
@@ -224,6 +234,7 @@ async def forget_message(memory_id: str, message_id: int):
 
 @manager.route("/messages/<memory_id>:<message_id>", methods=["PUT"]) # noqa: F821
 @login_required
+@memory_role_guard
 @validate_request("status")
 async def update_message(memory_id: str, message_id: int):
     req = await get_request_json()
@@ -247,6 +258,7 @@ async def update_message(memory_id: str, message_id: int):
 
 @manager.route("/messages/search", methods=["GET"]) # noqa: F821
 @login_required
+@memory_role_guard
 async def search_message():
     args = request.args
     memory_ids = args.getlist("memory_id")
@@ -277,6 +289,7 @@ async def search_message():
 
 @manager.route("/messages", methods=["GET"]) # noqa: F821
 @login_required
+@memory_role_guard
 async def get_messages():
     args = request.args
     memory_ids = args.getlist("memory_id")
@@ -297,6 +310,7 @@ async def get_messages():
 
 @manager.route("/messages/<memory_id>:<message_id>/content", methods=["GET"]) # noqa: F821
 @login_required
+@memory_role_guard
 async def get_message_content(memory_id: str, message_id: int):
     try:
         res = await memory_api_service.get_message_content(memory_id, message_id)

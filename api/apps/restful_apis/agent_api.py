@@ -67,10 +67,13 @@ from common import settings
 from common.ssrf_guard import assert_host_is_safe
 from common.constants import RetCode
 from common.misc_utils import get_uuid, thread_pool_exec
+from common.role_util import CANVAS_API_ACTION_MAP, CANVAS_ROLE_RESOURCE_TYPE, check_role_access
 from peewee import MySQLDatabase, PostgresqlDatabase
 
 # Keeps strong references to fire-and-forget tasks so they are not GC'd before completion.
 _background_tasks: Set[asyncio.Task] = set()
+
+agent_role_guard = check_role_access(CANVAS_API_ACTION_MAP, CANVAS_ROLE_RESOURCE_TYPE)
 
 
 def _require_canvas_access_sync(func):
@@ -368,6 +371,7 @@ async def _run_workflow_session(
 
 @manager.route("/agents/<agent_id>/sessions", methods=["GET"])  # noqa: F821
 @login_required
+@agent_role_guard
 @add_tenant_id_to_kwargs
 @_require_canvas_access_sync
 def list_agent_sessions(agent_id, tenant_id):
@@ -408,6 +412,7 @@ def list_agent_sessions(agent_id, tenant_id):
 
 @manager.route("/agents/<agent_id>/sessions", methods=["POST"])  # noqa: F821
 @login_required
+@agent_role_guard
 @add_tenant_id_to_kwargs
 @_require_canvas_access_async
 async def create_agent_session(agent_id, tenant_id):
@@ -449,6 +454,7 @@ async def create_agent_session(agent_id, tenant_id):
 
 @manager.route("/agents/<agent_id>/sessions/<session_id>", methods=["GET"])  # noqa: F821
 @login_required
+@agent_role_guard
 @add_tenant_id_to_kwargs
 @_require_canvas_access_sync
 def get_agent_session(agent_id, session_id, tenant_id):
@@ -460,6 +466,7 @@ def get_agent_session(agent_id, session_id, tenant_id):
 
 @manager.route("/agents/<agent_id>/sessions/<session_id>", methods=["DELETE"])  # noqa: F821
 @login_required
+@agent_role_guard
 @add_tenant_id_to_kwargs
 @_require_canvas_access_sync
 def delete_agent_session_item(agent_id, session_id, tenant_id):
@@ -468,6 +475,7 @@ def delete_agent_session_item(agent_id, session_id, tenant_id):
 
 @manager.route("/agents/<agent_id>/sessions", methods=["DELETE"])  # noqa: F821
 @login_required
+@agent_role_guard
 @add_tenant_id_to_kwargs
 @_require_canvas_access_async
 async def delete_agent_session(tenant_id, agent_id):
@@ -523,6 +531,7 @@ async def delete_agent_session(tenant_id, agent_id):
 
 @manager.route("/agents/download", methods=["GET"])  # noqa: F821
 @login_required
+@agent_role_guard
 @add_tenant_id_to_kwargs
 async def download_agent_file(tenant_id):
     id = request.args.get("id")
@@ -563,12 +572,14 @@ async def _iter_session_completion_events(tenant_id, agent_id, req, return_trace
 
 @manager.route("/agents/templates", methods=["GET"])  # noqa: F821
 @login_required
+@agent_role_guard
 def list_agent_template():
     return get_json_result(data=[item.to_dict() for item in CanvasTemplateService.get_all()])
 
 
 @manager.route("/agents/prompts", methods=["GET"])  # noqa: F821
 @login_required
+@agent_role_guard
 def prompts():
     from rag.prompts.generator import (
         ANALYZE_TASK_SYSTEM,
@@ -590,6 +601,7 @@ def prompts():
 
 @manager.route("/agents", methods=["GET"])  # noqa: F821
 @login_required
+@agent_role_guard
 @add_tenant_id_to_kwargs
 def list_agents(tenant_id):
     keywords = request.args.get("keywords", "")
@@ -651,6 +663,7 @@ def list_agents(tenant_id):
 
 @manager.route("/agents/tags", methods=["GET"])  # noqa: F821
 @login_required
+@agent_role_guard
 @add_tenant_id_to_kwargs
 def list_agent_tags(tenant_id):
     """Aggregate tag usage counts across agents visible to the caller."""
@@ -669,6 +682,7 @@ def list_agent_tags(tenant_id):
 
 @manager.route("/agents/<canvas_id>/tags", methods=["PUT"])  # noqa: F821
 @login_required
+@agent_role_guard
 @add_tenant_id_to_kwargs
 async def update_agent_tags(tenant_id, canvas_id):
     if not UserCanvasService.accessible(canvas_id, tenant_id):
@@ -710,6 +724,7 @@ async def update_agent_tags(tenant_id, canvas_id):
 
 @manager.route("/agents", methods=["POST"])  # noqa: F821
 @login_required
+@agent_role_guard
 @add_tenant_id_to_kwargs
 async def create_agent(tenant_id):
     req = {k: v for k, v in (await get_request_json()).items() if v is not None}
@@ -783,6 +798,7 @@ async def create_agent(tenant_id):
 
 @manager.route("/agents/<agent_id>/upload", methods=["POST"])  # noqa: F821
 @login_required
+@agent_role_guard
 @add_tenant_id_to_kwargs
 @_require_canvas_access_async
 async def upload_agent_file(agent_id, tenant_id):
@@ -811,6 +827,7 @@ async def upload_agent_file(agent_id, tenant_id):
 
 @manager.route("/agents/<agent_id>/components/<component_id>/input-form", methods=["GET"])  # noqa: F821
 @login_required
+@agent_role_guard
 @add_tenant_id_to_kwargs
 @_require_canvas_access_sync
 def get_agent_component_input_form(agent_id, component_id, tenant_id):
@@ -830,6 +847,7 @@ def get_agent_component_input_form(agent_id, component_id, tenant_id):
 @manager.route("/agents/<agent_id>/components/<component_id>/debug", methods=["POST"])  # noqa: F821
 @validate_request("params")
 @login_required
+@agent_role_guard
 @add_tenant_id_to_kwargs
 @_require_canvas_access_async
 async def debug_agent_component(agent_id, component_id, tenant_id):
@@ -868,6 +886,7 @@ async def debug_agent_component(agent_id, component_id, tenant_id):
 
 @manager.route("/agents/<agent_id>", methods=["GET"])  # noqa: F821
 @login_required
+@agent_role_guard
 @add_tenant_id_to_kwargs
 def get_agent(agent_id, tenant_id):
     if not UserCanvasService.accessible(agent_id, tenant_id):
@@ -912,6 +931,7 @@ def get_agent(agent_id, tenant_id):
 
 @manager.route("/agents/<agent_id>/versions", methods=["GET"])  # noqa: F821
 @login_required
+@agent_role_guard
 @add_tenant_id_to_kwargs
 @_require_canvas_access_sync
 def list_agent_versions(agent_id, tenant_id):
@@ -927,6 +947,7 @@ def list_agent_versions(agent_id, tenant_id):
 
 @manager.route("/agents/<agent_id>/versions/<version_id>", methods=["GET"])  # noqa: F821
 @login_required
+@agent_role_guard
 @add_tenant_id_to_kwargs
 @_require_canvas_access_sync
 def get_agent_version(agent_id, version_id, tenant_id):
@@ -941,6 +962,7 @@ def get_agent_version(agent_id, version_id, tenant_id):
 
 @manager.route("/agents/<agent_id>/logs/<message_id>", methods=["GET"])  # noqa: F821
 @login_required
+@agent_role_guard
 @add_tenant_id_to_kwargs
 @_require_canvas_access_async
 async def get_agent_logs(agent_id, message_id, tenant_id):
@@ -960,6 +982,7 @@ async def get_agent_logs(agent_id, message_id, tenant_id):
 
 @manager.route("/agents/<agent_id>", methods=["DELETE"])  # noqa: F821
 @login_required
+@agent_role_guard
 @add_tenant_id_to_kwargs
 @_require_canvas_owner_sync
 def delete_agent(agent_id, tenant_id):
@@ -969,6 +992,7 @@ def delete_agent(agent_id, tenant_id):
 
 @manager.route("/agents/<agent_id>", methods=["PUT"])  # noqa: F821
 @login_required
+@agent_role_guard
 @add_tenant_id_to_kwargs
 @_require_canvas_access_async
 async def update_agent(agent_id, tenant_id):
@@ -1019,6 +1043,7 @@ async def update_agent(agent_id, tenant_id):
 
 @manager.route("/agents/<agent_id>/reset", methods=["POST"])  # noqa: F821
 @login_required
+@agent_role_guard
 @add_tenant_id_to_kwargs
 @_require_canvas_access_async
 async def reset_agent(agent_id, tenant_id):
@@ -1052,6 +1077,7 @@ async def reset_agent(agent_id, tenant_id):
 @manager.route("/agents/rerun", methods=["POST"])  # noqa: F821
 @validate_request("id", "dsl", "component_id")
 @login_required
+@agent_role_guard
 @add_tenant_id_to_kwargs
 async def rerun_agent(tenant_id):
     from rag.nlp import search
@@ -1090,6 +1116,7 @@ async def rerun_agent(tenant_id):
 @manager.route("/agents/test_db_connection", methods=["POST"])  # noqa: F821
 @validate_request("db_type", "database", "username", "host", "port", "password")
 @login_required
+@agent_role_guard
 async def test_db_connection():
     req = await get_request_json()
     try:
@@ -1219,6 +1246,7 @@ async def test_db_connection():
 @manager.route("/agents/chat/completion", methods=["POST"])  # noqa: F821
 @manager.route("/agents/chat/completions", methods=["POST"])  # noqa: F821
 @login_required
+@agent_role_guard
 @add_tenant_id_to_kwargs
 async def agent_chat_completion(tenant_id, agent_id=None):
     # This endpoint serves two execution modes:
@@ -2230,6 +2258,7 @@ async def webhook(agent_id: str):
 
 @manager.route("/agents/<agent_id>/webhook/logs", methods=["GET"])  # noqa: F821
 @login_required
+@agent_role_guard
 async def webhook_trace(agent_id: str):
     exists, cvs = UserCanvasService.get_by_id(agent_id)
     if not exists or str(cvs.user_id) != str(current_user.id):
@@ -2344,6 +2373,7 @@ async def webhook_trace(agent_id: str):
 
 @manager.route("/agents/attachments/<attachment_id>/download", methods=["GET"])  # noqa: F821
 @login_required
+@agent_role_guard
 @add_tenant_id_to_kwargs
 async def download_attachment(tenant_id=None, attachment_id=None):
     """Stream a document's underlying file to the requesting user.

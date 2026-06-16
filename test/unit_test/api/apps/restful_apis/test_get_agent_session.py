@@ -47,7 +47,13 @@ def _load_agent_api(monkeypatch, get_by_id_result):
     `get_by_id_result` is the `(exists, conv)` tuple the stub
     `API4ConversationService.get_by_id` will return for any session_id.
     """
-    _stub(monkeypatch, "api.apps", current_user=SimpleNamespace(id="tenant-1"), login_required=lambda func: func)
+    _stub(
+        monkeypatch,
+        "api.apps",
+        current_user=SimpleNamespace(id="tenant-1", role_id=1),
+        login_required=lambda func: func,
+        QuartAuthUnauthorized=type("QuartAuthUnauthorized", (Exception,), {}),
+    )
     _stub(monkeypatch, "api.apps.services.canvas_replica_service", CanvasReplicaService=SimpleNamespace())
     quart_stub = ModuleType("quart")
     quart_stub.Response = SimpleNamespace
@@ -68,6 +74,18 @@ def _load_agent_api(monkeypatch, get_by_id_result):
         monkeypatch,
         "api.db.services.api_service",
         API4ConversationService=SimpleNamespace(get_by_id=lambda _session_id: get_by_id_result, save=lambda **_kwargs: True, delete_by_id=lambda *_args, **_kwargs: True, query=lambda **_kwargs: []),
+    )
+    _stub(
+        monkeypatch,
+        "api.db.services.role_service",
+        RoleResourceService=SimpleNamespace(
+            get_by_role_id=lambda _role_id: [
+                {
+                    "resource_type": 3,
+                    "action": 3,
+                }
+            ]
+        ),
     )
     _stub(
         monkeypatch,

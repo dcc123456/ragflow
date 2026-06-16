@@ -26,10 +26,13 @@ from api.apps import login_required, current_user
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.utils.api_utils import get_data_error_result, get_json_result, get_request_json, server_error_response, validate_request
 from common.misc_utils import get_uuid
+from common.role_util import FILE_API_ACTION_MAP, FILE_ROLE_RESOURCE_TYPE, check_role_access
 from api.db import FileType
 from api.db.services.document_service import DocumentService
 
 logger = logging.getLogger(__name__)
+
+file_role_guard = check_role_access(FILE_API_ACTION_MAP, FILE_ROLE_RESOURCE_TYPE)
 
 
 def _convert_files(file_ids, kb_ids, user_id):
@@ -78,6 +81,7 @@ def _convert_files(file_ids, kb_ids, user_id):
 
 @manager.route('/files/link-to-datasets', methods=['POST'])  # noqa: F821
 @login_required
+@file_role_guard
 @validate_request("file_ids", "kb_ids")
 async def convert():
     req = await get_request_json()

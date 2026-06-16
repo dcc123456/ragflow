@@ -35,14 +35,18 @@ from common import settings
 from common.constants import RetCode, StatusEnum
 from common.misc_utils import get_uuid
 from common.time_utils import delta_seconds
+from common.role_util import TEAM_API_ACTION_MAP, TEAM_ROLE_RESOURCE_TYPE, check_role_access
 from api.apps import login_required, current_user
 
 # Keeps strong references to fire-and-forget tasks so they are not GC'd before completion.
 _background_tasks: Set[asyncio.Task] = set()
 
+team_role_guard = check_role_access(TEAM_API_ACTION_MAP, TEAM_ROLE_RESOURCE_TYPE)
+
 
 @manager.route("/tenants/<tenant_id>/users", methods=["GET"])  # noqa: F821
 @login_required
+@team_role_guard
 def user_list(tenant_id):
     if current_user.id != tenant_id:
         if not UserTenantService.filter_by_tenant_and_user_id(tenant_id, current_user.id):
@@ -61,6 +65,7 @@ def user_list(tenant_id):
 
 @manager.route("/tenants/<tenant_id>/users", methods=["POST"])  # noqa: F821
 @login_required
+@team_role_guard
 @validate_request("email")
 async def create(tenant_id):
     if current_user.id != tenant_id:
@@ -138,6 +143,7 @@ async def create(tenant_id):
 
 @manager.route("/tenants/<tenant_id>/users", methods=["DELETE"])  # noqa: F821
 @login_required
+@team_role_guard
 @validate_request("user_id")
 async def rm(tenant_id):
     req = await get_request_json()
@@ -158,6 +164,7 @@ async def rm(tenant_id):
 
 @manager.route("/tenants", methods=["GET"])  # noqa: F821
 @login_required
+@team_role_guard
 def tenant_list():
     current_user_id = current_user.id
     try:
@@ -171,6 +178,7 @@ def tenant_list():
 
 @manager.route("/tenants/<tenant_id>", methods=["PATCH"])  # noqa: F821
 @login_required
+@team_role_guard
 @check_resources(seats=1)
 def agree(tenant_id):
     try:
