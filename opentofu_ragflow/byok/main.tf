@@ -3413,6 +3413,11 @@ resource "kubernetes_secret_v1" "tls_secret" {
     "tls.crt" = file("${path.module}/ragflow-tls.crt")
     "tls.key" = file("${path.module}/ragflow-tls.key")
   } : {}
+
+  lifecycle {
+    ignore_changes = [data]
+  }
+
 }
 
 # =============================================================================
