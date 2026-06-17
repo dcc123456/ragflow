@@ -17,13 +17,18 @@
 import uuid
 
 import pytest
+from test.testcases.conftest import embedding_model_id
+
+
+def _memory_embedding_id() -> str:
+    return embedding_model_id(include_instance=False)
 
 
 def _memory_payload(name: str) -> dict:
     return {
         "name": name,
         "memory_type": ["raw"],
-        "embd_id": "BAAI/bge-small-en-v1.5@Builtin",
+        "embd_id": _memory_embedding_id(),
         "llm_id": "glm-4-flash@ZHIPU-AI",
     }
 
@@ -108,7 +113,6 @@ def test_memory_update_invalid_name(rest_client, memory_resource):
 
 
 @pytest.mark.p2
-@pytest.mark.skip(reason="Flaky: embedding backend unavailable in CI environment")
 def test_messages_list_and_search_validation_contracts(rest_client, memory_resource):
     memory_id = memory_resource["id"]
 
@@ -138,7 +142,6 @@ def test_messages_list_and_search_validation_contracts(rest_client, memory_resou
 
 
 @pytest.mark.p2
-@pytest.mark.skip(reason="Flaky: internal server error in CI environment")
 def test_message_update_forget_and_content_error_contracts(rest_client, memory_resource):
     memory_id = memory_resource["id"]
 

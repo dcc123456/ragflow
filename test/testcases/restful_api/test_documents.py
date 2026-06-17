@@ -24,6 +24,7 @@ from openpyxl import Workbook
 import pytest
 import requests
 from requests_toolbelt import MultipartEncoder
+from test.testcases.conftest import using_siliconflow_byok
 from test.testcases.configs import DEFAULT_PARSER_CONFIG, DOCUMENT_NAME_LIMIT, HOST_ADDRESS, INVALID_API_TOKEN, INVALID_ID_32, VERSION
 from test.testcases.restful_api.helpers.client import RestClient
 from test.testcases.utils import compare_by_hash
@@ -75,26 +76,35 @@ def _upload_files(rest_client, dataset_id, file_paths, timeout=None):
 
 def _seed_documents(rest_client, create_dataset, tmp_path, count=5, timeout=None):
     dataset_id = create_dataset("dataset_list_contract")
-    file_paths = [create_txt_file(tmp_path / f"ragflow_test_upload_{i}.txt") for i in range(count)]
-    res = _upload_files(rest_client, dataset_id, file_paths, timeout=timeout)
-    assert res.status_code == 200
-    payload = res.json()
-    assert payload["code"] == 0, payload
-    assert len(payload["data"]) == count, payload
-    return dataset_id, payload["data"]
+    unique_suffix = uuid.uuid4().hex[:8]
+    file_paths = [create_txt_file(tmp_path / f"ragflow_test_upload_{unique_suffix}_{i}.txt") for i in range(count)]
+    uploaded_docs = []
+    for fp in file_paths:
+        res = _upload_files(rest_client, dataset_id, [fp], timeout=timeout)
+        assert res.status_code == 200
+        payload = res.json()
+        assert payload["code"] == 0, payload
+        assert len(payload["data"]) == 1, payload
+        uploaded_docs.extend(payload["data"])
+    return dataset_id, uploaded_docs
 
 
 def _seed_documents_for_update(rest_client, create_dataset, tmp_path):
     dataset_id = create_dataset("dataset_update_contract")
+    unique_suffix = uuid.uuid4().hex[:8]
     file_paths = [
-        create_txt_file(tmp_path / "ragflow_test_upload_0.txt"),
-        create_txt_file(tmp_path / "ragflow_test_upload_1.txt"),
+        create_txt_file(tmp_path / f"ragflow_test_upload_{unique_suffix}_0.txt"),
+        create_txt_file(tmp_path / f"ragflow_test_upload_{unique_suffix}_1.txt"),
     ]
-    res = _upload_files(rest_client, dataset_id, file_paths)
-    assert res.status_code == 200
-    payload = res.json()
-    assert payload["code"] == 0, payload
-    return dataset_id, payload["data"]
+    uploaded_docs = []
+    for fp in file_paths:
+        res = _upload_files(rest_client, dataset_id, [fp])
+        assert res.status_code == 200
+        payload = res.json()
+        assert payload["code"] == 0, payload
+        assert len(payload["data"]) == 1, payload
+        uploaded_docs.extend(payload["data"])
+    return dataset_id, uploaded_docs
 
 
 def _assert_docs_sorted(docs, key, reverse):
@@ -169,6 +179,7 @@ def test_documents_list_default_concurrent_and_filters_contract(rest_client, cre
     dataset_id, uploaded_docs = _seed_documents(rest_client, create_dataset, tmp_path)
     first_id = uploaded_docs[0]["id"]
     first_name = uploaded_docs[0]["name"]
+    second_name = uploaded_docs[1]["name"]
 
     default_res = rest_client.get(f"/datasets/{dataset_id}/documents")
     assert default_res.status_code == 200
@@ -189,7 +200,7 @@ def test_documents_list_default_concurrent_and_filters_contract(rest_client, cre
         ({"create_time_from": "0", "create_time_to": "9999999999000"}, 0, 5, 5),
         ({"keywords": None}, 0, 5, 5),
         ({"keywords": ""}, 0, 5, 5),
-        ({"keywords": "0"}, 0, 1, 1),
+        ({"keywords": first_name}, 0, 1, 1),
         ({"keywords": "ragflow_test_upload"}, 0, 5, 5),
         ({"keywords": "unknown"}, 0, 0, 0),
         ({"name": None}, 0, 5, 5),
@@ -199,7 +210,7 @@ def test_documents_list_default_concurrent_and_filters_contract(rest_client, cre
         ({"id": ""}, 0, 5, 5),
         ({"id": first_id}, 0, 1, 1),
         ({"id": first_id, "name": first_name}, 0, 1, 1),
-        ({"id": first_id, "name": "ragflow_test_upload_1.txt"}, 0, 0, 0),
+        ({"id": first_id, "name": second_name}, 0, 0, 0),
         ({"run": ["UNSTART"]}, 0, 5, 5),
     ):
         res = rest_client.get(f"/datasets/{dataset_id}/documents", params=params)
@@ -545,6 +556,7 @@ def test_documents_update_requires_auth(create_document):
 def test_documents_update_name_contract(rest_client, create_dataset, tmp_path):
     dataset_id, uploaded_docs = _seed_documents_for_update(rest_client, create_dataset, tmp_path)
     first_document_id = uploaded_docs[0]["id"]
+    second_document_name = uploaded_docs[1]["name"]
 
     long_name = f"{'a' * (DOCUMENT_NAME_LIMIT - 4)}.txt"
     name_cases = [
@@ -554,7 +566,7 @@ def test_documents_update_name_contract(rest_client, create_dataset, tmp_path):
         (None, 100, "AttributeError('NoneType' object has no attribute 'encode')"),
         ("", 101, "The extension of file can't be changed"),
         ("ragflow_test_upload_0", 101, "The extension of file can't be changed"),
-        ("ragflow_test_upload_1.txt", 102, "Duplicated document name in the same dataset."),
+        (second_document_name, 102, "Duplicated document name in the same dataset."),
         ("RAGFLOW_TEST_UPLOAD_1.TXT", 0, ""),
     ]
     for name, expected_code, expected_message in name_cases:
@@ -1336,7 +1348,8 @@ def test_documents_parse_chunks_and_scaled_bulk_contract(rest_client, create_dat
     assert chunk_payload["data"]["doc"]["chunk_count"] > 0, chunk_payload
     assert len(chunk_payload["data"]["chunks"]) > 0, chunk_payload
 
-    parse_bulk_dataset, parse_bulk_docs = _seed_documents(rest_client, create_dataset, tmp_path, count=20)
+    parse_bulk_count = 10 if using_siliconflow_byok() else 20
+    parse_bulk_dataset, parse_bulk_docs = _seed_documents(rest_client, create_dataset, tmp_path, count=parse_bulk_count)
     parse_bulk_ids = [doc["id"] for doc in parse_bulk_docs]
     parse_bulk_res = rest_client.post(
         f"/datasets/{parse_bulk_dataset}/documents/parse",
@@ -1348,9 +1361,11 @@ def test_documents_parse_chunks_and_scaled_bulk_contract(rest_client, create_dat
     assert parse_bulk_payload["code"] == 0, parse_bulk_payload
     _wait_document_runs(rest_client, parse_bulk_dataset, parse_bulk_ids, expected_run="DONE")
 
-    concurrent_dataset, concurrent_docs = _seed_documents(rest_client, create_dataset, tmp_path, count=20)
+    concurrent_count = 10 if using_siliconflow_byok() else 20
+    concurrent_workers = 4 if using_siliconflow_byok() else 8
+    concurrent_dataset, concurrent_docs = _seed_documents(rest_client, create_dataset, tmp_path, count=concurrent_count)
     concurrent_ids = [doc["id"] for doc in concurrent_docs]
-    with ThreadPoolExecutor(max_workers=8) as executor:
+    with ThreadPoolExecutor(max_workers=concurrent_workers) as executor:
         futures = [
             executor.submit(
                 rest_client.post,

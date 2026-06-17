@@ -1618,8 +1618,8 @@ resource "kubernetes_config_map_v1" "shared_elasticsearch_role_payload" {
       indices = [
         for pattern in(
           local.es_index_prefix_effective != ""
-          ? ["ragflow_${local.es_index_prefix_effective}_*", "ragflow_doc_meta_${local.es_index_prefix_effective}_*"]
-          : ["ragflow_*", "ragflow_doc_meta_*"]
+          ? ["ragflow_${local.es_index_prefix_effective}_*", "ragflow_doc_meta_${local.es_index_prefix_effective}_*", "memory_${local.es_index_prefix_effective}_*"]
+          : ["ragflow_*", "ragflow_doc_meta_*", "memory_*"]
           ) : {
           names      = [pattern]
           privileges = ["read", "write", "create_index", "view_index_metadata", "manage"]
@@ -1646,15 +1646,23 @@ resource "kubernetes_config_map_v1" "shared_elasticsearch_user_payload" {
 resource "kubernetes_job_v1" "shared_elasticsearch_user_bootstrap" {
   count = local.use_shared_es_autoprovision ? 1 : 0
   metadata {
-    name      = "shared-es-user-bootstrap"
+    name      = "shared-es-user-bootstrap-${substr(sha256(join(":", [kubernetes_config_map_v1.shared_elasticsearch_role_payload[0].data["role.json"], kubernetes_config_map_v1.shared_elasticsearch_user_payload[0].data["user.json"]])), 0, 8)}"
     namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
+    annotations = {
+      "checksum/role" = sha256(kubernetes_config_map_v1.shared_elasticsearch_role_payload[0].data["role.json"])
+      "checksum/user" = sha256(kubernetes_config_map_v1.shared_elasticsearch_user_payload[0].data["user.json"])
+    }
   }
 
   spec {
     ttl_seconds_after_finished = var.shared_service_job_ttl_seconds
     template {
       metadata {
-        name = "shared-es-user-bootstrap"
+        name = "shared-es-user-bootstrap-${substr(sha256(join(":", [kubernetes_config_map_v1.shared_elasticsearch_role_payload[0].data["role.json"], kubernetes_config_map_v1.shared_elasticsearch_user_payload[0].data["user.json"]])), 0, 8)}"
+        annotations = {
+          "checksum/role" = sha256(kubernetes_config_map_v1.shared_elasticsearch_role_payload[0].data["role.json"])
+          "checksum/user" = sha256(kubernetes_config_map_v1.shared_elasticsearch_user_payload[0].data["user.json"])
+        }
       }
       spec {
         restart_policy = "OnFailure"

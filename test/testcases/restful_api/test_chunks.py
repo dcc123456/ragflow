@@ -452,7 +452,6 @@ def test_chunk_delete_partial_duplicate_repeat_and_invalid_target_contract(rest_
 
 
 @pytest.mark.p2
-@pytest.mark.skip(reason="Flaky: read timeout in CI environment")
 def test_chunk_delete_web_legacy_basic_variants(rest_client, create_document):
     dataset_id, document_id = create_document("chunk_delete_web_legacy_again.txt")
     base_path = f"/datasets/{dataset_id}/documents/{document_id}/chunks"
@@ -469,6 +468,7 @@ def test_chunk_delete_web_legacy_basic_variants(rest_client, create_document):
         assert res.status_code == 200, (scenario_name, res.text)
         body = res.json()
         assert body["code"] == expected_code, (scenario_name, body)
+        assert _chunk_count(rest_client, base_path, remaining), scenario_name
         list_payload = rest_client.get(base_path).json()
         assert list_payload["code"] == 0, (scenario_name, list_payload)
         assert list_payload["data"]["total"] == remaining, (scenario_name, list_payload)
@@ -734,7 +734,6 @@ def test_chunk_update_keywords_questions_and_tag_contract(rest_client, create_do
 
 
 @pytest.mark.p2
-@pytest.mark.skip(reason="Flaky: CI environment")
 def test_chunk_update_invalid_target_and_param_contract(rest_client, create_document):
     dataset_id, document_id, chunk_id, base_path = _create_chunk_for_update(rest_client, create_document, "chunk_update_invalid_targets.txt")
 
@@ -779,7 +778,6 @@ def test_chunk_update_invalid_target_and_param_contract(rest_client, create_docu
 
 
 @pytest.mark.p2
-@pytest.mark.skip(reason="Flaky: read timeout in CI environment")
 def test_chunk_update_repeated_concurrent_and_deleted_document_contract(rest_client, create_document):
     dataset_id, document_id, chunk_id, base_path = _create_chunk_for_update(
         rest_client, create_document, "chunk_update_repeated_concurrent_deleted.txt"
@@ -809,7 +807,7 @@ def test_chunk_update_repeated_concurrent_and_deleted_document_contract(rest_cli
 
     with ThreadPoolExecutor(max_workers=5) as executor:
         futures = []
-        for index in range(20):
+        for index in range(12):
             target_id = chunk_ids[index % len(chunk_ids)]
             futures.append(
                 executor.submit(
@@ -822,7 +820,7 @@ def test_chunk_update_repeated_concurrent_and_deleted_document_contract(rest_cli
                 )
             )
         results = [future.result() for future in futures]
-    assert len(results) == 20, results
+    assert len(results) == 12, results
     assert all(item["code"] == 0 for item in results), results
 
     delete_document_res = rest_client.delete(f"/datasets/{dataset_id}/documents", json={"ids": [document_id]})

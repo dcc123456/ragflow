@@ -185,7 +185,7 @@ async def embed_and_save(memory, message_list: list[dict], task_id: str=None):
         vector_dimension = len(vector_list[0])
         if not MessageService.has_index(memory.tenant_id, memory.id):
             created = MessageService.create_index(memory.tenant_id, memory.id, vector_size=vector_dimension)
-            if not created:
+            if not created and not MessageService.has_index(memory.tenant_id, memory.id):
                 error_msg = "Failed to create message index."
                 if task_id:
                     TaskService.update_progress(task_id, {"progress": -1, "progress_msg": timestamp_to_date(current_timestamp())+ " " + error_msg})

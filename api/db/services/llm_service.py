@@ -87,8 +87,10 @@ class LLMBundle(LLM4Tenant):
         super().__init__(tenant_id, model_config, lang, **kwargs)
 
     def close(self):
-        """Release resources held by this LLMBundle instance."""
-        super().close()
+        """Release resources held by the underlying model instance when supported."""
+        close = getattr(self.mdl, "close", None)
+        if callable(close):
+            close()
 
     def __enter__(self):
         """Enter context manager."""

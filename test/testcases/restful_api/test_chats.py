@@ -589,7 +589,7 @@ def _load_chat_routes_unit_module(monkeypatch):
     module_path = repo_root / "api" / "apps" / "restful_apis" / "chat_api.py"
 
     quart_mod = ModuleType("quart")
-    quart_mod.g = SimpleNamespace()
+    quart_mod.g = SimpleNamespace(tenant_id="tenant-1", req_data={}, operator_permission=None)
     quart_mod.request = SimpleNamespace(method="GET", headers={}, is_json=False, args=_DummyArgs())
     quart_mod.Response = _StubResponse
     quart_mod.current_app = SimpleNamespace()
@@ -911,8 +911,13 @@ def _load_chat_routes_unit_module(monkeypatch):
     monkeypatch.setitem(sys.modules, "api.utils.tenant_utils", tenant_utils_mod)
 
     billing_mod = ModuleType("api.utils.billing")
-    billing_mod.check_dynamic_resources = lambda *_args, **_kwargs: (lambda func: func)
+    billing_mod.check_dynamic_resources = lambda *_args, **_kwargs: (True, {})
     billing_mod.check_resources = lambda *_args, **_kwargs: (lambda func: func)
+    billing_mod.get_dynamic_resource_error_result = lambda check_info, tenant_id: {
+        "code": 429,
+        "data": None,
+        "message": "Insufficient resources available.",
+    }
     monkeypatch.setitem(sys.modules, "api.utils.billing", billing_mod)
 
     rag_pkg = ModuleType("rag")
@@ -940,18 +945,24 @@ def _load_chat_routes_unit_module(monkeypatch):
 
 
 def _set_route_unit_request_json(monkeypatch, module, payload):
+    request_payload = deepcopy(payload)
+    module.g.req_data = request_payload
     monkeypatch.setattr(module, "get_request_json", lambda: _AwaitableValue(deepcopy(payload)))
+    module.request.method = "POST"
+    module.request.headers = {"Content-Type": "application/json"}
+    module.request.is_json = True
+    module.request.args = _DummyArgs()
+    module.request.get_json = lambda silent=True: _AwaitableValue(deepcopy(request_payload))
 
 
 @pytest.mark.p2
-@pytest.mark.skip(reason="quart ImportError: cannot import name 'g'")
 def test_chat_session_create_and_update_guard_matrix_unit(monkeypatch):
     module = _load_chat_routes_unit_module(monkeypatch)
 
     _set_route_unit_request_json(monkeypatch, module, {"name": "session"})
-    monkeypatch.setattr(module.DialogService, "query", lambda **_kwargs: [])
+    monkeypatch.setattr(module.DialogService, "get_by_id", lambda _id: (False, None))
     res = _run(module.create_session.__wrapped__("chat-1"))
-    assert res["message"] == "No authorization."
+    assert res["message"] == "Chat not found!"
 
     dia = SimpleNamespace(prompt_config={"prologue": "hello"})
     monkeypatch.setattr(module.DialogService, "query", lambda **_kwargs: [dia])
@@ -962,16 +973,15 @@ def test_chat_session_create_and_update_guard_matrix_unit(monkeypatch):
     assert "Fail to create a session" in res["message"]
 
     _set_route_unit_request_json(monkeypatch, module, {})
-    monkeypatch.setattr(module.ConversationService, "query", lambda **_kwargs: [])
+    monkeypatch.setattr(module.ConversationService, "get_by_id", lambda _id: (False, None))
     res = _run(module.update_session.__wrapped__("chat-1", "session-1"))
     assert res["message"] == "Session not found!"
 
-    monkeypatch.setattr(module.ConversationService, "query", lambda **_kwargs: [SimpleNamespace(id="session-1")])
-    monkeypatch.setattr(module.DialogService, "query", lambda **_kwargs: [])
+    monkeypatch.setattr(module.ConversationService, "get_by_id", lambda _id: (True, SimpleNamespace(id="session-1", dialog_id="other-chat", user_id="tenant-1")))
     res = _run(module.update_session.__wrapped__("chat-1", "session-1"))
-    assert res["message"] == "No authorization."
+    assert res["message"] == "Session not found!"
 
-    monkeypatch.setattr(module.DialogService, "query", lambda **_kwargs: [SimpleNamespace(id="chat-1")])
+    monkeypatch.setattr(module.ConversationService, "get_by_id", lambda _id: (True, SimpleNamespace(id="session-1", dialog_id="chat-1", user_id="tenant-1")))
     _set_route_unit_request_json(monkeypatch, module, {"message": []})
     res = _run(module.update_session.__wrapped__("chat-1", "session-1"))
     assert "`messages` cannot be changed." in res["message"]
@@ -991,7 +1001,6 @@ def test_chat_session_create_and_update_guard_matrix_unit(monkeypatch):
 
 
 @pytest.mark.p2
-@pytest.mark.skip(reason="quart ImportError: cannot import name 'g'")
 def test_chat_session_list_projection_unit(monkeypatch):
     module = _load_chat_routes_unit_module(monkeypatch)
     monkeypatch.setattr(
@@ -1051,7 +1060,6 @@ def test_chat_session_list_projection_unit(monkeypatch):
 
 
 @pytest.mark.p2
-@pytest.mark.skip(reason="quart ImportError: cannot import name 'g'")
 def test_chat_session_delete_routes_partial_duplicate_unit(monkeypatch):
     module = _load_chat_routes_unit_module(monkeypatch)
     monkeypatch.setattr(module.DialogService, "query", lambda **_kwargs: [SimpleNamespace(id="chat-1")])
@@ -1061,14 +1069,15 @@ def test_chat_session_delete_routes_partial_duplicate_unit(monkeypatch):
 
     monkeypatch.setattr(module.ConversationService, "delete_by_id", lambda *_args, **_kwargs: True)
 
-    def _conversation_query(**kwargs):
-        if "dialog_id" in kwargs and "id" not in kwargs:
-            return [SimpleNamespace(id="seed")]
-        if kwargs.get("id") == "ok":
-            return [SimpleNamespace(id="ok")]
-        return []
+    def _conversation_get_by_id(session_id):
+        if session_id == "ok":
+            return True, SimpleNamespace(id="ok", dialog_id="chat-1", user_id="tenant-1")
+        if session_id == "seed":
+            return True, SimpleNamespace(id="seed", dialog_id="chat-1", user_id="tenant-1")
+        return False, None
 
-    monkeypatch.setattr(module.ConversationService, "query", _conversation_query)
+    monkeypatch.setattr(module.ConversationService, "get_by_id", _conversation_get_by_id)
+    monkeypatch.setattr(module.ConversationService, "query", lambda **kwargs: [SimpleNamespace(id="seed", dialog_id="chat-1", user_id="tenant-1")] if kwargs.get("dialog_id") == "chat-1" else [])
     _set_route_unit_request_json(monkeypatch, module, {"ids": ["ok", "bad"]})
     monkeypatch.setattr(module, "check_duplicate_ids", lambda ids, _kind: (ids, []))
     res = _run(module.delete_sessions.__wrapped__("chat-1"))
@@ -1090,7 +1099,6 @@ def test_chat_session_delete_routes_partial_duplicate_unit(monkeypatch):
 
 
 @pytest.mark.p2
-@pytest.mark.skip(reason="quart ImportError: cannot import name 'g'")
 def test_chat_audio_transcription_routes_unit(monkeypatch):
     module = _load_chat_routes_unit_module(monkeypatch)
     monkeypatch.setattr(module, "Response", _StubResponse)
@@ -1173,7 +1181,6 @@ def test_chat_audio_transcription_routes_unit(monkeypatch):
 
 
 @pytest.mark.p2
-@pytest.mark.skip(reason="quart ImportError: cannot import name 'g'")
 def test_chat_audio_speech_routes_unit(monkeypatch):
     module = _load_chat_routes_unit_module(monkeypatch)
     monkeypatch.setattr(module, "Response", _StubResponse)
@@ -1223,7 +1230,6 @@ def test_chat_audio_speech_routes_unit(monkeypatch):
 
 
 @pytest.mark.p1
-@pytest.mark.skip(reason="quart ImportError: cannot import name 'g'")
 def test_chat_create_accepts_provider_scoped_rerank_id_unit(monkeypatch):
     module = _load_chat_routes_unit_module(monkeypatch)
     saved = {}
@@ -1286,7 +1292,6 @@ def test_chat_create_accepts_provider_scoped_rerank_id_unit(monkeypatch):
 
 
 @pytest.mark.p1
-@pytest.mark.skip(reason="quart ImportError: cannot import name 'g'")
 def test_chat_create_allows_default_knowledge_placeholder_without_sources_unit(monkeypatch):
     module = _load_chat_routes_unit_module(monkeypatch)
     saved = {}
@@ -1310,7 +1315,6 @@ def test_chat_create_allows_default_knowledge_placeholder_without_sources_unit(m
 
 
 @pytest.mark.p2
-@pytest.mark.skip(reason="quart ImportError: cannot import name 'g'")
 def test_chat_create_uses_direct_chat_fields_unit(monkeypatch):
     module = _load_chat_routes_unit_module(monkeypatch)
     saved = {}
@@ -1360,7 +1364,6 @@ def test_chat_create_uses_direct_chat_fields_unit(monkeypatch):
 
 
 @pytest.mark.p2
-@pytest.mark.skip(reason="quart ImportError: cannot import name 'g'")
 def test_list_chats_defaults_to_authorized_owner_ids_when_omitted_unit(monkeypatch):
     module = _load_chat_routes_unit_module(monkeypatch)
     captured = {}
@@ -1394,7 +1397,6 @@ def test_list_chats_defaults_to_authorized_owner_ids_when_omitted_unit(monkeypat
 
 
 @pytest.mark.p2
-@pytest.mark.skip(reason="quart ImportError: cannot import name 'g'")
 def test_list_chats_rejects_unauthorized_owner_ids_unit(monkeypatch):
     module = _load_chat_routes_unit_module(monkeypatch)
     captured = {}
@@ -1419,8 +1421,8 @@ def test_list_chats_rejects_unauthorized_owner_ids_unit(monkeypatch):
 
     def _get_by_tenant_ids(owner_ids, *_args, **_kwargs):
         captured["owner_ids"] = owner_ids
-        team_chat = _DummyDialogRecord({"id": "team-chat", "tenant_id": "team-tenant-2", "name": "team"}).to_dict()
-        own_chat = _DummyDialogRecord({"id": "own-chat", "tenant_id": "tenant-1", "name": "own"}).to_dict()
+        team_chat = _DummyDialogRecord({"id": "team-chat", "tenant_id": "team-tenant-2", "name": "team", "kb_ids": []}).to_dict()
+        own_chat = _DummyDialogRecord({"id": "own-chat", "tenant_id": "tenant-1", "name": "own", "kb_ids": []}).to_dict()
         return ([team_chat, own_chat], 2)
 
     monkeypatch.setattr(module.DialogService, "get_by_tenant_ids", _get_by_tenant_ids)
@@ -1432,7 +1434,6 @@ def test_list_chats_rejects_unauthorized_owner_ids_unit(monkeypatch):
 
 
 @pytest.mark.p2
-@pytest.mark.skip(reason="quart ImportError: cannot import name 'g'")
 def test_list_chats_returns_old_business_fields_unit(monkeypatch):
     module = _load_chat_routes_unit_module(monkeypatch)
     monkeypatch.setattr(
@@ -1468,7 +1469,6 @@ def test_list_chats_returns_old_business_fields_unit(monkeypatch):
 
 
 @pytest.mark.p2
-@pytest.mark.skip(reason="quart ImportError: cannot import name 'g'")
 def test_patch_chat_drops_response_only_fields_before_update_unit(monkeypatch):
     module = _load_chat_routes_unit_module(monkeypatch)
     updated = {}
@@ -1510,7 +1510,6 @@ def test_patch_chat_drops_response_only_fields_before_update_unit(monkeypatch):
 
 
 @pytest.mark.p2
-@pytest.mark.skip(reason="quart ImportError: cannot import name 'g'")
 def test_patch_chat_merges_prompt_and_llm_settings_unit(monkeypatch):
     module = _load_chat_routes_unit_module(monkeypatch)
     updated = {}
@@ -1537,7 +1536,6 @@ def test_patch_chat_merges_prompt_and_llm_settings_unit(monkeypatch):
 
 
 @pytest.mark.p2
-@pytest.mark.skip(reason="quart ImportError: cannot import name 'g'")
 def test_update_chat_allows_knowledge_placeholder_without_sources_unit(monkeypatch):
     module = _load_chat_routes_unit_module(monkeypatch)
     existing = _DummyDialogRecord().to_dict()

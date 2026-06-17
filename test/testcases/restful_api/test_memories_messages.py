@@ -18,6 +18,15 @@ import time
 import uuid
 
 import pytest
+from test.testcases.conftest import embedding_model_id, using_siliconflow_byok
+
+
+def _memory_embedding_id() -> str:
+    return embedding_model_id(include_instance=False)
+
+
+def _memory_message_wait_timeout() -> float:
+    return 60 if using_siliconflow_byok() else 10
 
 
 @pytest.fixture
@@ -46,7 +55,7 @@ def create_memory_resource(rest_client, memory_cleanup):
         payload = {
             "name": f"{name_prefix}_{uuid.uuid4().hex[:8]}",
             "memory_type": ["raw"],
-            "embd_id": "BAAI/bge-small-en-v1.5@Builtin",
+            "embd_id": _memory_embedding_id(),
             "llm_id": "glm-4-flash@ZHIPU-AI",
         }
         res = rest_client.post("/memories", json=payload)
@@ -77,7 +86,9 @@ def _add_message(rest_client, memory_id: str, user_input: str, agent_response: s
     assert add_payload["code"] == 0, add_payload
 
 
-def _wait_for_memory_messages(rest_client, memory_id: str, timeout: float = 10, interval: float = 0.2) -> list[dict]:
+def _wait_for_memory_messages(rest_client, memory_id: str, timeout: float | None = None, interval: float = 0.2) -> list[dict]:
+    if timeout is None:
+        timeout = _memory_message_wait_timeout()
     deadline = time.time() + timeout
     last_payload = None
     while time.time() < deadline:
@@ -132,7 +143,6 @@ def test_memory_create_missing_required_fields(rest_client):
 
 
 @pytest.mark.p1
-@pytest.mark.skip(reason="Flaky: embedding backend unavailable in CI environment")
 def test_messages_add_list_recent_content_update_forget(rest_client, create_memory_resource):
     memory_id = create_memory_resource("restful_message_memory")
     _add_message(
@@ -170,7 +180,6 @@ def test_messages_add_list_recent_content_update_forget(rest_client, create_memo
 
 
 @pytest.mark.p2
-@pytest.mark.skip(reason="Flaky: embedding backend unavailable in CI environment")
 def test_message_status_validation_requires_boolean(rest_client, create_memory_resource):
     memory_id = create_memory_resource("restful_message_status_validation")
     _add_message(rest_client, memory_id, user_input="hello", agent_response="hello")
@@ -194,7 +203,6 @@ def test_messages_recent_requires_memory_ids(rest_client):
 
 
 @pytest.mark.p2
-@pytest.mark.skip(reason="Flaky: embedding backend unavailable in CI environment")
 def test_message_search_route_contract(rest_client, create_memory_resource):
     memory_id = create_memory_resource("restful_message_search")
     _add_message(

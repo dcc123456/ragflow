@@ -39,6 +39,7 @@ import requests
 import tempfile
 import time
 import uuid
+from test.testcases.conftest import embedding_model_id, siliconflow_rerank_model_id, using_siliconflow_byok
 
 # Logging setup
 # Default is silent. Set LOG_LEVEL=INFO locally to see logger.info() messages.
@@ -342,7 +343,7 @@ def all_datasets(rest_client):
     # -----------------------------------------------------------------------
     create_res = rest_client.post("/datasets", json={
         "name": "consistency_chinese",
-        "embedding_model": "BAAI/bge-small-en-v1.5@Builtin",
+        "embedding_model": embedding_model_id(include_instance=False),
         "parser_config": {"chunk_token_num": 1, "delimiter": "`\n\n`"},
     })
     assert create_res.status_code == 200, create_res.text
@@ -368,7 +369,7 @@ def all_datasets(rest_client):
     # -----------------------------------------------------------------------
     create_res = rest_client.post("/datasets", json={
         "name": "consistency_three_kingdoms",
-        "embedding_model": "BAAI/bge-small-en-v1.5@Builtin",
+        "embedding_model": embedding_model_id(include_instance=False),
         "parser_config": {"chunk_token_num": 1, "delimiter": "`\n\n`"},
     })
     assert create_res.status_code == 200, create_res.text
@@ -390,7 +391,7 @@ def all_datasets(rest_client):
     # -----------------------------------------------------------------------
     create_res = rest_client.post("/datasets", json={
         "name": "consistency_english",
-        "embedding_model": "BAAI/bge-small-en-v1.5@Builtin",
+        "embedding_model": embedding_model_id(include_instance=False),
         "parser_config": {"chunk_token_num": 1, "delimiter": "`\n\n`"},
     })
     assert create_res.status_code == 200, create_res.text
@@ -458,8 +459,8 @@ def test_search_datasets_consistency_basic(require_go_server, rest_client, all_d
         {"question": "曹操", "doc_ids": [doc2]},
         {"question": "曹操", "doc_ids": []},
     ]
-    if os.getenv("K8S_CI_USE_SILICONFLOW", "0").lower() in {"1", "true", "yes"}:
-        search_configs.append({"question": "曹操", "top_k": 3, "rerank_id": "BAAI/bge-reranker-v2-m3@CI@SILICONFLOW"})
+    if using_siliconflow_byok():
+        search_configs.append({"question": "曹操", "top_k": 3, "rerank_id": siliconflow_rerank_model_id()})
 
     for cfg in search_configs:
         cfg_str = ", ".join(f"{k}={v}" for k, v in cfg.items())

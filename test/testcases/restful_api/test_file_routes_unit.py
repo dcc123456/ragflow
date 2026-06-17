@@ -109,6 +109,12 @@ def _load_file_api_module(monkeypatch):
     monkeypatch.setitem(sys.modules, "api.apps", apps_pkg)
     api_pkg.apps = apps_pkg
 
+    role_util_mod = ModuleType("common.role_util")
+    role_util_mod.FILE_API_ACTION_MAP = {}
+    role_util_mod.FILE_ROLE_RESOURCE_TYPE = 5
+    role_util_mod.check_role_access = lambda *_args, **_kwargs: (lambda func: func)
+    monkeypatch.setitem(sys.modules, "common.role_util", role_util_mod)
+
     services_pkg = ModuleType("api.apps.services")
     services_pkg.__path__ = [str(repo_root / "api" / "apps" / "services")]
     monkeypatch.setitem(sys.modules, "api.apps.services", services_pkg)
@@ -199,6 +205,7 @@ def _load_file_api_module(monkeypatch):
         return func(*args, **kwargs)
 
     misc_utils_mod.thread_pool_exec = thread_pool_exec
+    misc_utils_mod.get_uuid = lambda: "uuid"
     monkeypatch.setitem(sys.modules, "common.misc_utils", misc_utils_mod)
 
     module_path = repo_root / "api" / "apps" / "restful_apis" / "file_api.py"
@@ -425,6 +432,12 @@ def _load_file2document_module(monkeypatch):
     apps_mod.login_required = lambda func: func
     monkeypatch.setitem(sys.modules, "api.apps", apps_mod)
     api_pkg.apps = apps_mod
+
+    role_util_mod = ModuleType("common.role_util")
+    role_util_mod.FILE_API_ACTION_MAP = {}
+    role_util_mod.FILE_ROLE_RESOURCE_TYPE = 5
+    role_util_mod.check_role_access = lambda *_args, **_kwargs: (lambda func: func)
+    monkeypatch.setitem(sys.modules, "common.role_util", role_util_mod)
 
     db_pkg = ModuleType("api.db")
     db_pkg.__path__ = []

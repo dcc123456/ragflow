@@ -243,7 +243,6 @@ def _set_request_json(monkeypatch, module, payload):
 
 
 @pytest.mark.p2
-@pytest.mark.skip(reason="returns empty records due to mock setup issue")
 def test_retrieval_success_with_metadata_and_kg(monkeypatch):
     module = _load_dify_retrieval_module(monkeypatch)
     _set_request_json(
@@ -263,7 +262,8 @@ def test_retrieval_success_with_metadata_and_kg(monkeypatch):
     monkeypatch.setattr(module.KnowledgebaseService, "get_by_id", lambda _kb_id: (True, _DummyKB()))
     monkeypatch.setattr(module.KnowledgebaseService, "accessible", lambda _kb_id, _tenant_id: True)
     monkeypatch.setattr(module, "convert_conditions", lambda cond: cond.get("conditions", []))
-    monkeypatch.setattr(module, "meta_filter", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(module, "meta_filter", lambda *_args, **_kwargs: ["doc-1"])
+    monkeypatch.setattr(module, "filter_accessible_doc_ids_for_user", lambda _tenant_id, _kb_ids, doc_ids=None: (doc_ids or ["doc-1"], None, None))
 
     retriever = _DummyRetriever()
     monkeypatch.setattr(module.settings, "retriever", retriever)
@@ -307,7 +307,6 @@ def test_retrieval_kb_not_found(monkeypatch):
 
 
 @pytest.mark.p2
-@pytest.mark.skip(reason="MySQL connection not available in CI environment")
 def test_retrieval_not_found_exception_mapping(monkeypatch):
     module = _load_dify_retrieval_module(monkeypatch)
     _set_request_json(monkeypatch, module, {"knowledge_id": "kb-1", "query": "hello"})
@@ -315,6 +314,7 @@ def test_retrieval_not_found_exception_mapping(monkeypatch):
     monkeypatch.setattr(module.KnowledgebaseService, "get_by_id", lambda _kb_id: (True, _DummyKB()))
     monkeypatch.setattr(module.KnowledgebaseService, "accessible", lambda _kb_id, _tenant_id: True)
     monkeypatch.setattr(module, "label_question", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(module, "filter_accessible_doc_ids_for_user", lambda _tenant_id, _kb_ids, doc_ids=None: (doc_ids or ["doc-1"], None, None))
 
     class _BrokenRetriever:
         async def retrieval(self, *_args, **_kwargs):
@@ -328,7 +328,6 @@ def test_retrieval_not_found_exception_mapping(monkeypatch):
 
 
 @pytest.mark.p2
-@pytest.mark.skip(reason="MySQL connection not available in CI environment")
 def test_retrieval_generic_exception_mapping(monkeypatch):
     module = _load_dify_retrieval_module(monkeypatch)
     _set_request_json(monkeypatch, module, {"knowledge_id": "kb-1", "query": "hello"})
@@ -336,6 +335,7 @@ def test_retrieval_generic_exception_mapping(monkeypatch):
     monkeypatch.setattr(module.KnowledgebaseService, "get_by_id", lambda _kb_id: (True, _DummyKB()))
     monkeypatch.setattr(module.KnowledgebaseService, "accessible", lambda _kb_id, _tenant_id: True)
     monkeypatch.setattr(module, "label_question", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(module, "filter_accessible_doc_ids_for_user", lambda _tenant_id, _kb_ids, doc_ids=None: (doc_ids or ["doc-1"], None, None))
 
     class _BrokenRetriever:
         async def retrieval(self, *_args, **_kwargs):

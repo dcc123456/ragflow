@@ -14,9 +14,11 @@
 #  limitations under the License.
 #
 
+
 import pytest
 
 from libs.auth import RAGFlowHttpApiAuth
+from test.testcases.conftest import using_siliconflow_byok
 from test.testcases.restful_api.helpers.client import RestClient
 from utils.file_utils import create_txt_file
 from utils import wait_for
@@ -132,7 +134,7 @@ def create_document(rest_client, create_dataset, tmp_path):
         assert payload["code"] in (0, 102), payload
 
 
-@wait_for(60, 1, "Document parsing timeout in RESTful batch2 tests")
+@wait_for(200 if using_siliconflow_byok() else 60, 1, "Document parsing timeout in RESTful batch2 tests")
 def _parsed(rest_client: RestClient, dataset_id: str, document_id: str):
     res = rest_client.get(f"/datasets/{dataset_id}/documents", params={"id": document_id})
     if res.status_code != 200:

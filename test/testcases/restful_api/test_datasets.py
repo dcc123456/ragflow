@@ -20,16 +20,11 @@ import uuid
 
 import pytest
 from configs import DATASET_NAME_LIMIT, DEFAULT_PARSER_CONFIG
+from test.testcases.conftest import embedding_model_id
 from test.testcases.configs import INVALID_API_TOKEN
 from test.testcases.restful_api.helpers.client import RestClient
 from test.testcases.utils import encode_avatar
 from test.testcases.utils.file_utils import create_image_file, create_txt_file
-
-
-def _expected_default_embedding_model() -> str:
-    if os.getenv("K8S_CI_USE_SILICONFLOW", "0").lower() in {"1", "true", "yes"}:
-        return f"{os.getenv('SILICONFLOW_EMBEDDING_MODEL', 'BAAI/bge-m3')}@SILICONFLOW"
-    return "BAAI/bge-small-en-v1.5___OpenAI-API@OpenAI-API-Compatible"
 
 
 def _is_infinity_doc_engine(rest_client: RestClient) -> bool:
@@ -393,7 +388,7 @@ def test_dataset_update_parser_config_with_chunk_method_change_contract(rest_cli
 @pytest.mark.parametrize(
     "embedding_model, unauthorized_is_xfail",
     [
-        ("BAAI/bge-small-en-v1.5@Builtin", False),
+        (embedding_model_id(include_instance=False), False),
         ("embedding-3@ZHIPU-AI", True),
     ],
     ids=["builtin_baai", "tenant_zhipu"],
@@ -465,7 +460,7 @@ def test_dataset_update_embedding_model_with_existing_chunks_contract(rest_clien
     assert dataset_payload["code"] == 0, dataset_payload
     current_embedding = dataset_payload["data"]["embedding_model"]
 
-    candidates = ["embedding-3@CI@ZHIPU-AI", "BAAI/bge-small-en-v1.5@Local@Builtin"]
+    candidates = ["embedding-3@CI@ZHIPU-AI", embedding_model_id()]
     last_payload = None
     for candidate in candidates:
         if candidate == current_embedding:
@@ -840,7 +835,7 @@ def test_dataset_update_embedding_model_invalid_and_none_contract(rest_client, c
     assert list_res.status_code == 200
     list_payload = list_res.json()
     assert list_payload["code"] == 0, list_payload
-    assert list_payload["data"][0]["embedding_model"] == "BAAI/bge-small-en-v1.5@Local@Builtin", list_payload
+    assert list_payload["data"][0]["embedding_model"] == embedding_model_id(), list_payload
 
 
 @pytest.mark.p2
@@ -1170,10 +1165,10 @@ def test_dataset_create_permission_contract(rest_client, clear_datasets, name, p
 @pytest.mark.parametrize(
     "name, embedding_model, expected_code, expected_embedding_model, expected_message, unauthorized_is_xfail",
     [
-        ("builtin_baai", "BAAI/bge-small-en-v1.5@Local@Builtin", 0, "BAAI/bge-small-en-v1.5@Local@Builtin", None, False),
+        ("builtin_baai", embedding_model_id(), 0, embedding_model_id(), None, False),
         ("tenant_zhipu", "embedding-3@CI@ZHIPU-AI", 0, "embedding-3@CI@ZHIPU-AI", None, True),
-        ("embedding_model_unset", "__UNSET__", 0, "BAAI/bge-small-en-v1.5@Local@Builtin", None, False),
-        ("embedding_model_none", None, 0, "BAAI/bge-small-en-v1.5@Local@Builtin", None, False),
+        ("embedding_model_unset", "__UNSET__", 0, embedding_model_id(), None, False),
+        ("embedding_model_none", None, 0, embedding_model_id(), None, False),
         ("unknown_llm_name", "unknown@ZHIPU-AI", 102, None, "Instance default not found for model unknown@ZHIPU-AI.", False),
         ("unknown_llm_factory", "embedding-3@unknown", 102, None, "Provider unknown not found for model embedding-3@unknown.", False),
         (

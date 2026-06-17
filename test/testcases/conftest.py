@@ -97,10 +97,53 @@ import pytest
 import requests
 from configs import EMAIL, HOST_ADDRESS, PASSWORD, VERSION, ZHIPU_AI_API_KEY
 
-K8S_CI_USE_SILICONFLOW = os.getenv("K8S_CI_USE_SILICONFLOW", "0").lower() in {"1", "true", "yes"}
+BUILTIN_EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
+BUILTIN_EMBEDDING_PROVIDER = "Builtin"
+BUILTIN_EMBEDDING_INSTANCE = "Local"
+SILICONFLOW_EMBEDDING_PROVIDER = "SILICONFLOW"
+SILICONFLOW_EMBEDDING_INSTANCE = "CI"
+
+
+def using_siliconflow_byok() -> bool:
+    return os.getenv("K8S_CI_USE_SILICONFLOW", "0").lower() in {"1", "true", "yes"}
+
+
+def siliconflow_embedding_model_name() -> str:
+    return os.getenv("SILICONFLOW_EMBEDDING_MODEL", "BAAI/bge-m3")
+
+
+def embedding_model_id(*, include_instance: bool = True) -> str:
+    if using_siliconflow_byok():
+        return f"{siliconflow_embedding_model_name()}@{SILICONFLOW_EMBEDDING_INSTANCE}@{SILICONFLOW_EMBEDDING_PROVIDER}"
+    if include_instance:
+        return f"{BUILTIN_EMBEDDING_MODEL}@{BUILTIN_EMBEDDING_INSTANCE}@{BUILTIN_EMBEDDING_PROVIDER}"
+    return f"{BUILTIN_EMBEDDING_MODEL}@{BUILTIN_EMBEDDING_PROVIDER}"
+
+
+def default_embedding_model_payload() -> dict[str, str]:
+    if using_siliconflow_byok():
+        return {
+            "model_provider": SILICONFLOW_EMBEDDING_PROVIDER,
+            "model_instance": SILICONFLOW_EMBEDDING_INSTANCE,
+            "model_type": "embedding",
+            "model_name": siliconflow_embedding_model_name(),
+        }
+    return {
+        "model_provider": BUILTIN_EMBEDDING_PROVIDER,
+        "model_instance": BUILTIN_EMBEDDING_INSTANCE,
+        "model_type": "embedding",
+        "model_name": BUILTIN_EMBEDDING_MODEL,
+    }
+
+
+def siliconflow_rerank_model_id() -> str:
+    return f"BAAI/bge-reranker-v2-m3@{SILICONFLOW_EMBEDDING_INSTANCE}@{SILICONFLOW_EMBEDDING_PROVIDER}"
+
+
+K8S_CI_USE_SILICONFLOW = using_siliconflow_byok()
 SILICONFLOW_API_KEY = os.getenv("SILICONFLOW_API_KEY")
 SILICONFLOW_BASE_URL = os.getenv("SILICONFLOW_BASE_URL", "https://api.siliconflow.cn/v1")
-SILICONFLOW_EMBEDDING_MODEL = os.getenv("SILICONFLOW_EMBEDDING_MODEL", "BAAI/bge-m3")
+SILICONFLOW_EMBEDDING_MODEL = siliconflow_embedding_model_name()
 ADMIN_HOST_ADDRESS = os.getenv("ADMIN_HOST_ADDRESS", "http://127.0.0.1:9381")
 # password is "admin"
 ENCRYPTED_ADMIN_PASSWORD = """WBPsJbL/W+1HN+hchm5pgu1YC3yMEb/9MFtsanZrpKEE9kAj4u09EIIVDtIDZhJOdTjz5pp5QW9TwqXBfQ2qzDqVJiwK7HGcNsoPi4wQPCmnLo0fs62QklMlg7l1Q7fjGRgV+KWtvNUce2PFzgrcAGDqRIuA/slSclKUEISEiK4z62rdDgvHT8LyuACuF1lPUY5wV0m/MbmGijRJlgvglAF8BX0BP8rQr8wZeaJdcnAy/keuODCjltMZDL06tYluN7HoiU+qlhBB+ltqG411oO/+vVhBgWsuVVOHd8uMjJEL320GUWUicprDUZvjlLaSSqVyyOiRMHpqAE9eHEecWg=="""
@@ -328,7 +371,7 @@ def add_models(auth):
             "OpenAI-API-Compatible":{
                 "llm_factory":"OpenAI-API-Compatible",
                 "api_base":"http://tei:80",
-                "llm_name":"BAAI/bge-small-en-v1.5",
+                "llm_name": BUILTIN_EMBEDDING_MODEL,
                 "max_tokens":8192,
                 "model_type":"embedding"
             }
@@ -426,6 +469,7 @@ def add_siliconflow_rerank_llm(auth):
         "model_type": "rerank",
         "api_key": SILICONFLOW_API_KEY,
         "api_base": "",
+        "max_tokens": 8192,
     }
     response = requests.post(url=url, headers=authorization, json=payload)
     res = response.json()
@@ -478,12 +522,7 @@ def set_tenant_info(auth):
     set_default_embedding_response = requests.patch(
         url=url,
         headers=authorization,
-        json={
-            "model_provider": "Builtin",
-            "model_instance": "Local",
-            "model_type": "embedding",
-            "model_name": "BAAI/bge-small-en-v1.5"
-        })
+        json=default_embedding_model_payload())
     embd_res = set_default_embedding_response.json()
     if embd_res.get("code") != 0:
         raise Exception(embd_res.get("message"))

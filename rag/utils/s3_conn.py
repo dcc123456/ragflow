@@ -229,10 +229,11 @@ class RAGFlowS3:
             if self.conn[0].head_object(Bucket=bucket, Key=fnm):
                 return True
         except ClientError as e:
-            if e.response['Error']['Code'] == '404':
+            error_code = str(e.response.get("Error", {}).get("Code", ""))
+            if error_code in {"404", "NoSuchBucket", "NoSuchKey", "NotFound"}:
                 return False
-            else:
-                raise
+            logging.warning("S3 obj_exist failed for %s/%s with %s", bucket, fnm, error_code)
+            raise
 
     def copy(self, src_bucket, src_path, dest_bucket, dest_path, *args, **kwargs):
         self._ensure_connection()

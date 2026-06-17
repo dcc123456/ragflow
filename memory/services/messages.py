@@ -276,6 +276,8 @@ class MessageService:
     @classmethod
     def get_by_message_id(cls, memory_id: str, message_id: int, uid: str):
         index = index_name(uid)
+        if not settings.msgStoreConn.index_exist(index, memory_id):
+            return None
         doc_id = f'{memory_id}_{message_id}'
         return settings.msgStoreConn.get(doc_id, index, [memory_id])
 

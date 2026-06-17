@@ -99,6 +99,12 @@ def _load_tenant_module(monkeypatch):
     apps_mod.login_required = lambda fn: fn
     monkeypatch.setitem(sys.modules, "api.apps", apps_mod)
 
+    role_util_mod = ModuleType("common.role_util")
+    role_util_mod.TEAM_API_ACTION_MAP = {}
+    role_util_mod.TEAM_ROLE_RESOURCE_TYPE = 6
+    role_util_mod.check_role_access = lambda *_args, **_kwargs: (lambda func: func)
+    monkeypatch.setitem(sys.modules, "common.role_util", role_util_mod)
+
     db_mod = ModuleType("api.db")
     db_mod.UserTenantRole = SimpleNamespace(NORMAL="normal", OWNER="owner", INVITE="invite")
     monkeypatch.setitem(sys.modules, "api.db", db_mod)
