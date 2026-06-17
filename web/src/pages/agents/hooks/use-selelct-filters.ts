@@ -20,7 +20,7 @@ export function useSelectFilters() {
 
   const tagList = useMemo(
     () =>
-      (tagCounts ?? []).map((t) => ({
+      (tagCounts && tagCounts?.length > 0 ? tagCounts : []).map((t) => ({
         id: t.tag,
         label: t.tag,
         count: t.count,

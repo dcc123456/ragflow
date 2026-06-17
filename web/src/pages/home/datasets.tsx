@@ -80,7 +80,7 @@ export function Datasets() {
                 }
               </CardSineLineContainer>
             )}
-            {kbs?.length <= 0 && (
+            {!(kbs && kbs?.length > 0) && (
               <EmptyAppCard
                 type={EmptyCardType.Dataset}
                 onClick={() => navigateToDatasetList({ isCreate: true })}

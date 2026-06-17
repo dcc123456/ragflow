@@ -15,16 +15,9 @@ import {
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { listRoles } from '@/services/admin-service';
 
+import { SelectWithSearch } from '@/components/originui/select-with-search';
 import EnterpriseFeature from '../components/enterprise-feature';
 import { IS_ENTERPRISE } from '../utils';
 
@@ -142,25 +135,15 @@ export const CreateUserForm = ({
                     {t('admin.role')}
                   </FormLabel>
                   <FormControl>
-                    <Select {...field}>
-                      <SelectTrigger className="w-full h-10">
-                        <SelectValue />
-                      </SelectTrigger>
-
-                      <SelectContent className="bg-bg-base">
-                        <SelectGroup>
-                          {roleList?.map((role) => (
-                            <SelectItem key={role.id} value={role.role_name}>
-                              {role.role_name}
-                            </SelectItem>
-                          )) ?? (
-                            <div className="text-text-secondary px-2 py-6 text-sm text-center">
-                              {t('common.noData')}
-                            </div>
-                          )}
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
+                    <SelectWithSearch
+                      {...field}
+                      options={
+                        roleList?.map((role) => ({
+                          label: role.role_name,
+                          value: role.role_name,
+                        })) ?? []
+                      }
+                    />
                   </FormControl>
                 </FormItem>
               )}

@@ -29,6 +29,7 @@ import {
   LucideUserPlus,
 } from 'lucide-react';
 
+import { isBillingEnabled } from '@/services/billingStatus';
 import { rsaPsw } from '@/utils';
 
 import Spotlight from '@/components/spotlight';
@@ -434,10 +435,14 @@ function AdminUserManagement() {
         },
       }),
 
-      columnHelper.accessor('plan', {
-        header: t('admin.plan'),
-        cell: ({ cell }) => cell.getValue() || '-',
-      }),
+      ...(isBillingEnabled()
+        ? [
+            columnHelper.accessor('plan', {
+              header: t('admin.plan'),
+              cell: ({ cell }) => cell.getValue() || '-',
+            }),
+          ]
+        : []),
 
       columnHelper.accessor('last_login_time', {
         header: ({ column }) => (

@@ -43,25 +43,27 @@ export function ChatList({
 
   return (
     <>
-      {data.chats.slice(0, 10).map((x) => (
-        <HomeCard
-          key={x.id}
-          data={{
-            avatar: x.icon,
-            ...x,
-          }}
-          onClick={navigateToChat(x.id)}
-          moreDropdown={
-            <ChatDropdown
-              chat={x}
-              showChatRenameModal={showChatRenameModal}
-              showPrivilegeModal={handleShowPrivilegeModal(x)}
-            >
-              <MoreButton></MoreButton>
-            </ChatDropdown>
-          }
-        ></HomeCard>
-      ))}
+      {data.chats &&
+        data.chats.length > 0 &&
+        data.chats.slice(0, 10).map((x) => (
+          <HomeCard
+            key={x.id}
+            data={{
+              avatar: x.icon,
+              ...x,
+            }}
+            onClick={navigateToChat(x.id)}
+            moreDropdown={
+              <ChatDropdown
+                chat={x}
+                showChatRenameModal={showChatRenameModal}
+                showPrivilegeModal={handleShowPrivilegeModal(x)}
+              >
+                <MoreButton></MoreButton>
+              </ChatDropdown>
+            }
+          ></HomeCard>
+        ))}
       {chatRenameVisible && (
         <RenameDialog
           hideModal={hideChatRenameModal}

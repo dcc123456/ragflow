@@ -45,7 +45,10 @@ export function Header({
 
   const { data: tenantData } = useListTenant();
   const hasNotification = useMemo(
-    () => tenantData?.some((x) => x.role === TenantRole.Invite),
+    () =>
+      tenantData &&
+      tenantData.length > 0 &&
+      tenantData.some((x) => x.role === TenantRole.Invite),
     [tenantData],
   );
 
