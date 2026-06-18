@@ -336,6 +336,26 @@ services:
       timeout: 10s
       retries: 120
 
+  nats:
+    profiles:
+      - ragflow-go
+    image: nats:2.14.2
+    ports:
+      - ${NATS_PORT}:4222
+      - "8222:8222"
+    volumes:
+      - nats_data:/data
+    command: -js -sd /data
+    env_file: .env
+    networks:
+      - ragflow
+    restart: on-failure
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "${NATS_PORT}"]
+      interval: 10s
+      timeout: 10s
+      retries: 120
+
   tei-cpu:
     profiles:
       - tei-cpu
@@ -347,7 +367,8 @@ services:
     networks:
       - ragflow
     command: ["--model-id", "/data/${TEI_MODEL}", "--auto-truncate"]
-    restart: on-failure
+    restart: unless-stopped
+
 
   tei-gpu:
     profiles:
@@ -393,6 +414,8 @@ volumes:
   components_exporter_data:
     driver: local
   prometheus_data:
+    driver: local
+  nats_data:
     driver: local
 
 networks:

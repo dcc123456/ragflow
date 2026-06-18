@@ -11,7 +11,6 @@ import { useCallback } from 'react';
 import { UseFormReturn, useWatch } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import ChatBasicSetting from '../next-chats/chat/app-settings/chat-basic-settings';
-import { ChatModelSettings } from '../next-chats/chat/app-settings/chat-model-settings';
 import { ChatPromptEngine } from '../next-chats/chat/app-settings/chat-prompt-engine';
 import { EvaluationType } from './constants';
 import { EvaluationSettingsFormType } from './evaluation-schemas';
@@ -115,10 +114,6 @@ function ChatEvaluationConfig({
       <Separator />
       <ChatPromptEngine prefix={ChatPrefix}></ChatPromptEngine>
       <Separator />
-      <ChatModelSettings
-        prefix={ChatPrefix + 'llm_setting'}
-        llmId={ChatPrefix + 'llm_id'}
-      ></ChatModelSettings>
     </>
   );
 }
