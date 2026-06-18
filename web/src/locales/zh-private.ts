@@ -207,6 +207,7 @@ export default {
       view: '查看',
       selectTimeRange: '选择时间范围',
       export: '导出',
+      registrationWhitelistNotEnabled: '未开启注册白名单',
       modelUsage: {
         modelUsageStatistics: '模型使用统计',
         rank: '排名',

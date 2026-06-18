@@ -243,6 +243,7 @@ export default {
       view: 'View',
       selectTimeRange: 'Select time range',
       export: 'Export',
+      registrationWhitelistNotEnabled: 'Registration whitelist is not enabled',
       modelUsage: {
         team: 'Team',
         modelUsageStatistics: 'Model Usage',

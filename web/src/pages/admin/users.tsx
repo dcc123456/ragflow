@@ -7,6 +7,7 @@ import {
   flexRender,
   getCoreRowModel,
   getSortedRowModel,
+  RowData,
   SortingState,
   useReactTable,
 } from '@tanstack/react-table';
@@ -113,6 +114,14 @@ import {
 import { useDebounce } from 'ahooks';
 import EnterpriseFeature from './components/enterprise-feature';
 import { CurrentUserInfoContext } from './layouts/root-layout';
+
+declare module '@tanstack/react-table' {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  interface ColumnMeta<TData extends RowData, TValue> {
+    colWidth?: string;
+    colClassName?: string;
+  }
+}
 
 const columnHelper = createColumnHelper<AdminService.ListUsersItem>();
 const globalFilterFn = createFuzzySearchFn<AdminService.ListUsersItem>([
@@ -282,15 +291,34 @@ function AdminUserManagement() {
     () => [
       columnHelper.accessor('email', {
         header: t('admin.email'),
+        meta: { colClassName: 'w-[300px]' },
+        cell: ({ cell }) => {
+          const value = cell.getValue() as string;
+          return (
+            <div className="truncate" title={value}>
+              {value}
+            </div>
+          );
+        },
       }),
       columnHelper.accessor('nickname', {
         header: t('admin.nickname'),
+        meta: { colClassName: 'w-[200px]' },
+        cell: ({ cell }) => {
+          const value = cell.getValue() as string;
+          return (
+            <div className="truncate" title={value}>
+              {value}
+            </div>
+          );
+        },
       }),
 
       ...(USE_LDAP
         ? [
             columnHelper.accessor('ldap_server', {
               header: t('admin.ldapServer'),
+              meta: { colWidth: '*' },
             }),
           ]
         : []),
@@ -299,6 +327,7 @@ function AdminUserManagement() {
         ? [
             columnHelper.accessor('role', {
               header: t('admin.role'),
+              meta: { colClassName: 'w-24' },
               cell: ({ row, cell }) => (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -336,6 +365,7 @@ function AdminUserManagement() {
 
       columnHelper.accessor('status', {
         header: t('admin.status'),
+        meta: { colClassName: 'w-40' },
         cell: ({ cell, row }) => {
           const isMe = row.original.email === userInfo?.email;
 
@@ -399,6 +429,7 @@ function AdminUserManagement() {
 
       columnHelper.accessor('is_superuser', {
         header: t('admin.userType'),
+        meta: { colClassName: 'w-40' },
         cell: ({ cell, row }) => {
           const isMe = row.original.email === userInfo?.email;
 
@@ -439,12 +470,14 @@ function AdminUserManagement() {
         ? [
             columnHelper.accessor('plan', {
               header: t('admin.plan'),
+              meta: { colClassName: 'w-40' },
               cell: ({ cell }) => cell.getValue() || '-',
             }),
           ]
         : []),
 
       columnHelper.accessor('last_login_time', {
+        meta: { colClassName: 'w-[20%]' },
         header: ({ column }) => (
           <Button
             variant={'ghost'}
@@ -463,6 +496,7 @@ function AdminUserManagement() {
       columnHelper.display({
         id: 'actions',
         header: t('admin.actions'),
+        meta: { colClassName: 'w-52' },
         cell: ({ row }) => {
           const isMe = row.original.email === userInfo?.email;
 
@@ -683,22 +717,19 @@ function AdminUserManagement() {
           </CardHeader>
 
           <CardContent>
-            <Table>
+            <Table className="table-fixed">
               <colgroup>
-                <col width="*" />
-                <col className="w-[20%]" />
-
-                {USE_LDAP && <col width="*" />}
-
-                <EnterpriseFeature>
-                  {() => <col className="w-24" />}
-                </EnterpriseFeature>
-
-                <col className="w-40" />
-                <col className="w-40" />
-                <col className="w-40" />
-                <col className="w-[20%]" />
-                <col className="w-52" />
+                {table.getVisibleLeafColumns().map((column) => {
+                  const { colWidth, colClassName } =
+                    column.columnDef.meta ?? {};
+                  return (
+                    <col
+                      key={column.id}
+                      width={colWidth}
+                      className={colClassName}
+                    />
+                  );
+                })}
               </colgroup>
 
               <TableHeader>
