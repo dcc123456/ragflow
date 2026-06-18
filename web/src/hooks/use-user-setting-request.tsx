@@ -454,7 +454,7 @@ export const useListTenant = () => {
     queryFn: async () => {
       const { data } = await listTenant();
 
-      return data?.data ?? [];
+      return Array.isArray(data?.data) ? data.data : [];
     },
   });
 
