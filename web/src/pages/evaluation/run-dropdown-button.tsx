@@ -16,7 +16,7 @@ import { buildOptions } from '@/utils/form';
 import { CirclePause, Play } from 'lucide-react';
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { RunningStatus, RunType } from './constants';
+import { NewEvaluationRunId, RunningStatus, RunType } from './constants';
 
 const RunList = [
   RunType.All,
@@ -55,7 +55,7 @@ export function RunDropdownButton({ rowSelection }: RunDropdownButtonProps) {
     cancelEvaluationRun();
   }, [cancelEvaluationRun]);
 
-  const disabled = !runId;
+  const disabled = !runId || runId === NewEvaluationRunId;
 
   if (isRunning) {
     return (

@@ -19,7 +19,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { ArrowBigLeft, ListCheck, PanelRightClose, Upload } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { useParams } from 'react-router';
-import { EvaluationType } from './constants';
+import { EvaluationType, NewEvaluationRunId } from './constants';
 import { EvaluationConfigPanel } from './evaluation-config-panel';
 import { EvaluationList } from './evaluation-list';
 import {
@@ -42,6 +42,7 @@ export default function Evaluation() {
   const { data } = useFetchEvaluationRun();
 
   const { exportEvaluationRun } = useExportEvaluationRun();
+  const isSavedRun = !!runId && runId !== NewEvaluationRunId;
 
   const evaluationSchema = useEvaluationSchema();
 
@@ -87,7 +88,7 @@ export default function Evaluation() {
                 <TooltipTrigger>
                   <Button
                     variant={'outline'}
-                    disabled={!runId}
+                    disabled={!isSavedRun}
                     onClick={handleApplyConfig}
                   >
                     <ListCheck />
@@ -102,7 +103,7 @@ export default function Evaluation() {
               <Button
                 variant={'ghost'}
                 onClick={handleExport}
-                disabled={!runId}
+                disabled={!isSavedRun}
               >
                 <Upload /> Export
               </Button>

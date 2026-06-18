@@ -9,6 +9,8 @@ export enum EvaluationSearchParams {
   Page = 'page',
 }
 
+export const NewEvaluationRunId = 'new';
+
 export enum RunningStatus {
   RUNNING = 'RUNNING',
   COMPLETED = 'COMPLETED',

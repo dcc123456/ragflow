@@ -15,7 +15,7 @@ import { get } from 'lodash';
 import { PanelRightClose, Plus } from 'lucide-react';
 import React, { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { EvaluationType } from './constants';
+import { EvaluationType, NewEvaluationRunId } from './constants';
 import { EvaluationRunDropdown } from './evaluation-run-dropdown';
 import { useRenameEvaluationRun } from './hooks/use-rename-evaluation-run';
 
@@ -28,7 +28,6 @@ export function EvaluationList({ selectedRunId, type }: EvaluationListProps) {
   const { t } = useTranslation();
   const { visible, switchVisible } = useSetModalState(true);
   const [searchString, setSearchString] = React.useState('');
-  const [isCreating, setIsCreating] = React.useState(false);
   const { setRunId, setPage } = useEvaluationUrl();
   const {
     renameLoading,
@@ -60,10 +59,10 @@ export function EvaluationList({ selectedRunId, type }: EvaluationListProps) {
       }) ?? [];
 
     // Add a placeholder item at the top when creating new evaluation
-    if (isCreating) {
+    if (selectedRunId === NewEvaluationRunId) {
       return [
         {
-          id: 'new',
+          id: NewEvaluationRunId,
           name: t('evaluation.newEvaluation'),
         } as (typeof runs)[0],
         ...runs,
@@ -71,7 +70,7 @@ export function EvaluationList({ selectedRunId, type }: EvaluationListProps) {
     }
 
     return runs;
-  }, [runList?.runs, debouncedSearchString, isCreating, t]);
+  }, [runList?.runs, debouncedSearchString, selectedRunId, t]);
 
   const handleCardClick = useCallback(
     (runId: string) => () => {
@@ -82,8 +81,7 @@ export function EvaluationList({ selectedRunId, type }: EvaluationListProps) {
   );
 
   const handleAddClick = useCallback(() => {
-    setIsCreating(true);
-    setRunId('new');
+    setRunId(NewEvaluationRunId);
   }, [setRunId]);
 
   if (!visible) {
@@ -137,7 +135,7 @@ export function EvaluationList({ selectedRunId, type }: EvaluationListProps) {
           >
             <CardContent className="px-3 py-2 flex justify-between items-center group gap-1">
               <div className="truncate flex-1">{x.name}</div>
-              {x.id !== 'new' && (
+              {x.id !== NewEvaluationRunId && (
                 <EvaluationRunDropdown run={x} onRename={showRenameModal}>
                   <MoreButton />
                 </EvaluationRunDropdown>

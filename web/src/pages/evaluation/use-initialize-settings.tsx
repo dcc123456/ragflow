@@ -5,21 +5,25 @@ import { useFetchDefaultModelDictionary } from '@/hooks/use-llm-request';
 import { isEmpty } from 'lodash';
 import { useEffect, useMemo } from 'react';
 import { UseFormReturn } from 'react-hook-form';
+import { NewEvaluationRunId } from './constants';
 
 export function useInitializeMetrics() {
   const { llm_id: llmId } = useFetchDefaultModelDictionary();
 
-  const defaultValues = {
-    enable: true,
-    llm_id: llmId,
-  };
-
-  return {
-    metrics: {
+  const metrics = useMemo(() => {
+    const defaultValues = {
+      enable: true,
+      llm_id: llmId,
+    };
+    return {
       context_relevance: defaultValues,
       faithfulness: defaultValues,
       semantic_similarity: defaultValues,
-    },
+    };
+  }, [llmId]);
+
+  return {
+    metrics,
     llmId,
   };
 }
@@ -33,12 +37,16 @@ export function useInitializeSettingsOnMount(form: UseFormReturn<any>) {
   const { metrics, llmId } = useInitializeMetrics();
 
   const nextData = useMemo(() => {
-    if (!isEmpty(runId)) {
+    if (!isEmpty(runId) && runId !== NewEvaluationRunId) {
       return data;
     }
 
     const values = form.getValues();
-    if (isEmpty(values.config_snapshot.metrics) && llmId) {
+    if (
+      (runId === NewEvaluationRunId ||
+        isEmpty(values.config_snapshot.metrics)) &&
+      llmId
+    ) {
       return {
         config_snapshot: {
           metrics: metrics,

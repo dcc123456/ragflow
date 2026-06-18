@@ -1,6 +1,6 @@
 import { UploadFormSchemaType } from '@/components/file-upload-dialog';
 import message from '@/components/ui/message';
-import { RunningStatus } from '@/constants/evaluation';
+import { NewEvaluationRunId, RunningStatus } from '@/constants/evaluation';
 import {
   EvaluationDetailList,
   IEvaluationCase,
@@ -651,6 +651,7 @@ export const useFetchEvaluationRunList = () => {
 
 export const useFetchEvaluationRun = () => {
   const { runId } = useEvaluationUrl();
+  const isSavedRun = !!runId && runId !== NewEvaluationRunId;
   const {
     data,
     isFetching: loading,
@@ -659,7 +660,7 @@ export const useFetchEvaluationRun = () => {
     queryKey: [EvaluationApiAction.GetRun, runId],
     gcTime: 0,
     initialData: {} as IEvaluationRun,
-    enabled: !!runId,
+    enabled: isSavedRun,
     refetchOnWindowFocus: false,
     queryFn: async () => {
       const { data } = await evaluationService.getRun(runId);
@@ -673,6 +674,7 @@ export const useFetchEvaluationRun = () => {
 
 export const useFetchEvaluationRunResults = () => {
   const { runId } = useEvaluationUrl();
+  const isSavedRun = !!runId && runId !== NewEvaluationRunId;
   const { pagination, setPagination } = useGetPaginationWithRouter();
   const { t } = useTranslation();
 
@@ -684,7 +686,7 @@ export const useFetchEvaluationRunResults = () => {
     queryKey: [EvaluationApiAction.GetRunResults, runId, pagination],
     gcTime: 0,
     initialData: {} as IEvaluationRunResultData,
-    enabled: !!runId,
+    enabled: isSavedRun,
     refetchOnWindowFocus: false,
     refetchInterval: (query) => {
       // Continue polling when status is RUNNING, otherwise stop polling

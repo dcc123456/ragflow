@@ -4,6 +4,7 @@ import {
 } from '@/hooks/use-evaluation-request';
 import { useEvaluationUrl } from '@/hooks/use-evaluation-url';
 import { useCallback } from 'react';
+import { NewEvaluationRunId } from './constants';
 import { EvaluationSettingsFormType } from './evaluation-schemas';
 
 export function useSubmitSettings() {
@@ -14,7 +15,7 @@ export function useSubmitSettings() {
 
   const handleSubmit = useCallback(
     async (data: EvaluationSettingsFormType) => {
-      if (runId) {
+      if (runId && runId !== NewEvaluationRunId) {
         updateEvaluationRun({
           runId,
           collection_id: data.collection_id,

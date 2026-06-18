@@ -1,6 +1,7 @@
 export {
   EvaluationSearchParams,
   EvaluationType,
+  NewEvaluationRunId,
   RunningStatus,
 } from '@/constants/evaluation';
 
