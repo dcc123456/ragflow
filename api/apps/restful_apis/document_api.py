@@ -71,12 +71,16 @@ from common import settings
 from common.constants import ParserType, RetCode, TaskStatus, SANDBOX_ARTIFACT_BUCKET
 from common.metadata_utils import convert_conditions, meta_filter, turn2jsonschema
 from common.misc_utils import get_uuid, thread_pool_exec
+from common.role_util import check_role_access, KB_API_ACTION_MAP, KB_ROLE_RESOURCE_TYPE
 from api.utils.file_utils import filename_type, thumbnail
 from api.utils.web_utils import CONTENT_TYPE_MAP, html2pdf, is_valid_url, apply_safe_file_response_headers
 from common.ssrf_guard import assert_url_is_safe
 from rag.nlp import search
 
 from api.utils.permission_utils import check_doc_permission, check_kb_permission, filter_accessible_doc_ids_for_user
+
+
+kb_role_guard = check_role_access(KB_API_ACTION_MAP, KB_ROLE_RESOURCE_TYPE)
 
 
 def _grant_document_manage_permission_if_needed(doc_id: str, kb) -> None:
@@ -138,6 +142,7 @@ def _grant_document_manage_permission_if_needed(doc_id: str, kb) -> None:
 
 @manager.route("/documents/upload", methods=["POST"])  # noqa: F821
 @login_required
+@kb_role_guard
 @add_tenant_id_to_kwargs
 async def upload_info(tenant_id: str):
     """
@@ -201,6 +206,7 @@ async def upload_info(tenant_id: str):
 
 @manager.route("/datasets/<dataset_id>/documents/<document_id>", methods=["PATCH"])  # noqa: F821
 @login_required
+@kb_role_guard
 @add_tenant_id_to_kwargs
 @check_doc_permission(permission=PermissionValue.PERMISSION_MANAGE)
 async def update_document(tenant_id, dataset_id, document_id):
@@ -326,6 +332,7 @@ async def update_document(tenant_id, dataset_id, document_id):
 
 @manager.route("/datasets/<dataset_id>/metadata/summary", methods=["GET"])  # noqa: F821
 @login_required
+@kb_role_guard
 @add_tenant_id_to_kwargs
 async def metadata_summary(dataset_id, tenant_id):
     """
@@ -365,6 +372,7 @@ async def metadata_summary(dataset_id, tenant_id):
 
 @manager.route("/datasets/<dataset_id>/metadata/update", methods=["POST"])  # noqa: F821
 @login_required
+@kb_role_guard
 @add_tenant_id_to_kwargs
 async def metadata_batch_update(dataset_id, tenant_id):
     """
@@ -451,6 +459,7 @@ async def metadata_batch_update(dataset_id, tenant_id):
 
 @manager.route("/datasets/<dataset_id>/documents", methods=["POST"])  # noqa: F821
 @login_required
+@kb_role_guard
 @add_tenant_id_to_kwargs
 @check_kb_permission(permission=PermissionValue.PERMISSION_WRITE)
 async def upload_document(dataset_id, tenant_id):
@@ -760,6 +769,7 @@ async def _upload_local_documents(kb, tenant_id):
 
 @manager.route("/datasets/<dataset_id>/documents", methods=["GET"])  # noqa: F821
 @login_required
+@kb_role_guard
 @add_tenant_id_to_kwargs
 @check_kb_permission(permission=PermissionValue.PERMISSION_READ)
 def list_docs(dataset_id, tenant_id):
@@ -1219,6 +1229,7 @@ def _check_document_batch_permission(doc_ids, required_permission: PermissionVal
 
 @manager.route("/datasets/<dataset_id>/documents", methods=["DELETE"])  # noqa: F821
 @login_required
+@kb_role_guard
 @add_tenant_id_to_kwargs
 @check_kb_permission(permission=PermissionValue.PERMISSION_WRITE)
 async def delete_documents(tenant_id, dataset_id):
@@ -1313,6 +1324,7 @@ async def delete_documents(tenant_id, dataset_id):
 
 @manager.route("/datasets/<dataset_id>/documents/<document_id>/metadata/config", methods=["PUT"])  # noqa: F821
 @login_required
+@kb_role_guard
 @add_tenant_id_to_kwargs
 @check_doc_permission(permission=PermissionValue.PERMISSION_MANAGE)
 async def update_metadata_config(tenant_id, dataset_id, document_id):
@@ -1392,6 +1404,7 @@ async def update_metadata_config(tenant_id, dataset_id, document_id):
 
 @manager.route("/thumbnails", methods=["GET"])  # noqa: F821
 @login_required(auth_types=[AUTH_JWT, AUTH_API, AUTH_BETA])
+@kb_role_guard
 def list_thumbnails():
     """
     Get thumbnails for documents.
@@ -1431,6 +1444,7 @@ def list_thumbnails():
 
 @manager.route("/datasets/<dataset_id>/documents/metadatas", methods=["PATCH"])  # noqa: F821
 @login_required
+@kb_role_guard
 @add_tenant_id_to_kwargs
 async def update_metadata(tenant_id, dataset_id):
     """
@@ -1557,6 +1571,7 @@ async def update_metadata(tenant_id, dataset_id):
 
 @manager.route("/documents/ingest", methods=["POST"])  # noqa: F821
 @login_required
+@kb_role_guard
 @add_tenant_id_to_kwargs
 async def ingest(tenant_id):
     req = await get_request_json()
@@ -1631,6 +1646,7 @@ def _run_sync(user_id: str, req):
 
 @manager.route("/datasets/<dataset_id>/documents/parse", methods=["POST"])  # noqa: F821
 @login_required
+@kb_role_guard
 @add_tenant_id_to_kwargs
 @check_kb_permission(permission=PermissionValue.PERMISSION_WRITE)
 async def parse_documents(tenant_id, dataset_id):
@@ -1748,6 +1764,7 @@ async def parse_documents(tenant_id, dataset_id):
 
 @manager.route("/datasets/<dataset_id>/documents/stop", methods=["POST"])  # noqa: F821
 @login_required
+@kb_role_guard
 @add_tenant_id_to_kwargs
 @check_kb_permission(permission=PermissionValue.PERMISSION_WRITE)
 async def stop_parse_documents(tenant_id, dataset_id):
@@ -1913,6 +1930,7 @@ def _content_type_for_document_image(object_name, data):
 
 @manager.route("/documents/images/<image_id>", methods=["GET"])  # noqa: F821
 @login_required(auth_types=[AUTH_JWT, AUTH_API, AUTH_BETA])
+@kb_role_guard
 async def get_document_image(image_id):
     """
     Get a document image by ID.
@@ -1965,6 +1983,7 @@ ARTIFACT_CONTENT_TYPES = {
 
 @manager.route("/documents/artifact/<filename>", methods=["GET"])  # noqa: F821
 @login_required
+@kb_role_guard
 async def get_artifact(filename):
     """
     Get an artifact file.
@@ -2015,6 +2034,7 @@ async def get_artifact(filename):
 
 @manager.route("/datasets/<dataset_id>/documents/batch-update-status", methods=["POST"])  # noqa: F821
 @login_required
+@kb_role_guard
 @add_tenant_id_to_kwargs
 async def batch_update_document_status(tenant_id, dataset_id):
     """
@@ -2147,6 +2167,7 @@ async def batch_update_document_status(tenant_id, dataset_id):
 
 @manager.route("/documents/<doc_id>/preview", methods=["GET"])  # noqa: F821
 @login_required(auth_types=[AUTH_JWT, AUTH_API, AUTH_BETA])
+@kb_role_guard
 @check_doc_permission(permission=PermissionValue.PERMISSION_READ)
 async def get(doc_id):
     """Return the raw file bytes for a document the requesting user is authorized to read.
@@ -2193,6 +2214,7 @@ def _mimetype_for_document(doc) -> str:
 
 @manager.route("/datasets/<dataset_id>/documents/<document_id>", methods=["GET"])  # noqa: F821
 @login_required
+@kb_role_guard
 @check_doc_permission(permission=PermissionValue.PERMISSION_READ)
 async def download(dataset_id, document_id):
     """
@@ -2253,6 +2275,7 @@ async def download(dataset_id, document_id):
 
 @manager.route("/documents/<document_id>", methods=["GET"])  # noqa: F821
 @login_required
+@kb_role_guard
 @add_tenant_id_to_kwargs
 @check_doc_permission(permission=PermissionValue.PERMISSION_READ)
 async def download_document(tenant_id=None, document_id=None):
