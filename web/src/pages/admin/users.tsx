@@ -291,7 +291,7 @@ function AdminUserManagement() {
     () => [
       columnHelper.accessor('email', {
         header: t('admin.email'),
-        meta: { colClassName: 'w-[300px]' },
+        meta: { colClassName: 'w-[30%]' },
         cell: ({ cell }) => {
           const value = cell.getValue() as string;
           return (
@@ -303,7 +303,7 @@ function AdminUserManagement() {
       }),
       columnHelper.accessor('nickname', {
         header: t('admin.nickname'),
-        meta: { colClassName: 'w-[200px]' },
+        meta: { colClassName: 'w-[20%]' },
         cell: ({ cell }) => {
           const value = cell.getValue() as string;
           return (
