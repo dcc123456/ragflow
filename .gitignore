@@ -143,6 +143,9 @@ web_modules/
 # Output of 'npm pack'
 *.tgz
 
+# Claude Code plans / state — local-only artifacts
+.claude/
+
 # Yarn Integrity file
 .yarn-integrity
 
@@ -246,3 +249,9 @@ bin/*
 .omc/
 
 .claude/
+.claude/settings.local.json
+
+.run/
+# Local agent tooling state (per-developer; not for commit)
+.omc/
+.marscode/

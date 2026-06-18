@@ -57,11 +57,13 @@ redis:
   username: '${REDIS_USERNAME:-}'
   password: '${REDIS_PASSWORD:-infini_rag_flow}'
   host: '${REDIS_HOST:-redis}:6379'
+
 # local_embd:
 #   bge-large-en-v1.5: http://10.142.0.6:4566/predict
 #   bge-large-zh-v1.5: http://10.142.0.6:4567/predict
 #   bce-embedding-base_v1: http://10.142.0.6:4568/predict
 #   bge-m3: http://10.142.0.6:4569/predict
+
 billing:
   stripe_api_key: '${BILLING_STRIPE_API_KEY:-sk_test_51TOCFU2XhWscgPRmTT7EcKsPc7g8CTiGtC6MY6IAUYWBF9P1y8bXjmpQiX7ecn1SUlu3qiwkz3hIpBM9lmSdXdPb00sKLS0WWt}'
   stripe_publishable_key: '${BILLING_STRIPE_PUBLISHABLE_KEY:-pk_test_51TOCFU2XhWscgPRmvl64yFyx6ZpCPDtUYFidcrefpjoJk4pDWuzZFycwSFXSMbNgiN6iRzovJdxUiP6nymVSI6ds004OM8okoV}'
@@ -119,6 +121,7 @@ billing:
       price_ids: '${BILLING_PRICE_ID_PRO:-price_1TOCIi2XhWscgPRmpUCmNPE7}'
       product_type: "subscription"
       priority: 3
+
 rabbitmq:
   user: "${RABBITMQ_DEFAULT_USER:-rag_flow}"
   password: '${RABBITMQ_DEFAULT_PASS:-infini_rag_flow}'
@@ -130,6 +133,9 @@ rabbitmq:
 task_executor:
   message_queue_type: 'rabbitmq'
 
+nats:
+  host: ${NATS_HOST:-0.0.0.0}
+  port: ${NATS_PORT:-4222}
 user_default_llm:
   default_models:
     embedding_model:

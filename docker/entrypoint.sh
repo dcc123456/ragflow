@@ -339,7 +339,7 @@ if [[ "${INIT_MODEL_PROVIDER_TABLES}" -eq 1 ]]; then
         --stages tenant_model_provider,tenant_model_instance,tenant_model,model_id_config \
         --config conf/service_conf.yaml \
         --execute \
-        --database-version "v0.26.0" \
+        --database-version "v0.26.1" \
         --mark-database-version-on-success
     echo "Model provider table migrations completed."
 fi
@@ -350,16 +350,12 @@ if [[ "${ENABLE_WEBSERVER}" -eq 1 ]]; then
 
     run_with_restart "RAGFlow server" "$PY" api/ragflow_server.py ${INIT_SUPERUSER_ARGS} &
 
-    if [[ "${API_PROXY_SCHEME}" == "hybrid" ]]; then
+    if [[ "${API_PROXY_SCHEME}" == "hybrid" ]] || [[ "${API_PROXY_SCHEME}" == "go" ]]; then
         while true; do
             echo "Attempt to start RAGFlow go server..."
             wait_for_server "http://127.0.0.1:9380/api/v1/system/healthz" "ragflow_server"
             echo "Starting RAGFlow go server..."
-      set +e
-      bin/server_main
-      exit_code=$?
-      set -e
-      echo "RAGFlow go server exited with code ${exit_code}. Restarting in 1 second..."
+            bin/ragflow_server
             sleep 1;
         done &
     fi
@@ -369,16 +365,12 @@ fi
 if [[ "${ENABLE_ADMIN_SERVER}" -eq 1 ]]; then
     run_with_restart "Admin python server" "$PY" admin/server/admin_server.py &
 
-    if [[ "${API_PROXY_SCHEME}" == "hybrid" ]]; then
+    if [[ "${API_PROXY_SCHEME}" == "hybrid" ]] || [[ "${API_PROXY_SCHEME}" == "go" ]]; then
         while true; do
             echo "Attempt to starting Admin go server..."
             wait_for_server "http://127.0.0.1:9381/api/v1/admin/ping" "admin_server"
             echo "Starting Admin go server..."
-      set +e
-      bin/admin_server
-      exit_code=$?
-      set -e
-      echo "Admin go server exited with code ${exit_code}. Restarting in 1 second..."
+            bin/admin_server
             sleep 1;
         done &
     fi

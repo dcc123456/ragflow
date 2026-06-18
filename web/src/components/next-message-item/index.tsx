@@ -83,6 +83,7 @@ function MessageItem({
   isShare,
   hideTitle = false,
   className,
+  nickname,
 }: IProps) {
   const { theme } = useTheme();
   const isAssistant = item.role === MessageType.Assistant;
@@ -190,7 +191,11 @@ function MessageItem({
         >
           {visibleAvatar &&
             (item.role === MessageType.User ? (
-              <RAGFlowAvatar avatar={avatar ?? '/logo.svg'} />
+              <RAGFlowAvatar
+                avatar={avatar ?? '/logo.svg'}
+                name={nickname}
+                isPerson
+              />
             ) : avatarDialog || agentName ? (
               <RAGFlowAvatar
                 avatar={avatarDialog as string}

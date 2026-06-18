@@ -35,7 +35,7 @@ server {
                 rate_limit.check()
             end
         }
-        proxy_pass http://127.0.0.1:9382;
+        proxy_pass http://127.0.0.1:9384;
         include proxy.conf;
     }
 

@@ -104,6 +104,10 @@ rabbitmq:
   exchange: "test1"
 task_executor:
   message_queue_type: 'rabbitmq'
+  host: 'localhost:6379'
+nats:
+  host: "0.0.0.0"
+  port: 4222
 user_default_llm:
   default_models:
     embedding_model:

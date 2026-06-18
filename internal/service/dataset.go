@@ -529,7 +529,6 @@ func (s *DatasetService) SearchDatasets(req *SearchDatasetsRequest, userID strin
 	}, nil
 }
 
-
 // AutoMetadataField mirrors the REST dataset auto metadata field schema.
 type AutoMetadataField struct {
 	Name           string      `json:"name"`
@@ -857,10 +856,7 @@ func (s *DatasetService) CreateDataset(req *CreateDatasetRequest, tenantID strin
 		embdID = embeddingModel
 	}
 
-	kbID, err := utility.GenerateUUID1()
-	if err != nil {
-		return nil, common.CodeServerError, errors.New("Internal server error")
-	}
+	kbID := utility.GenerateToken()
 
 	status := string(entity.StatusValid)
 	// Deduplicate name within tenant
@@ -1176,8 +1172,12 @@ func (s *DatasetService) ListIngestionLogs(datasetID, userID string, page, pageS
 	}, common.CodeSuccess, nil
 }
 
-// GetIngestionLog returns a single dataset-level ingestion log, mirroring
-// dataset_api_service.get_ingestion_log.
+// GetIngestionLog returns a single ingestion log, mirroring
+// dataset_api_service.get_ingestion_log. It returns the full record (including
+// the `dsl`, `document_id`, `parser_id`, etc.) so that the front-end
+// dataflow-result page can render the pipeline timeline and chunks. The
+// file-level converter is a superset of the dataset-level fields, so it is
+// correct for both dataset-level (graph/raptor/mindmap) and per-file logs.
 func (s *DatasetService) GetIngestionLog(datasetID, userID, logID string) (map[string]interface{}, common.ErrorCode, error) {
 	datasetID = strings.TrimSpace(datasetID)
 	if datasetID == "" {
@@ -1196,7 +1196,7 @@ func (s *DatasetService) GetIngestionLog(datasetID, userID, logID string) (map[s
 		return nil, common.CodeServerError, errors.New("Database operation failed")
 	}
 
-	return datasetIngestionLogToMap(log), common.CodeSuccess, nil
+	return fileIngestionLogToMap(log), common.CodeSuccess, nil
 }
 
 func datasetIngestionLogToMap(log *entity.PipelineOperationLog) map[string]interface{} {

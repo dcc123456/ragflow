@@ -187,7 +187,7 @@ func (h *KnowledgebaseHandler) GetDetail(c *gin.Context) {
 		return
 	}
 
-		jsonResponse(c, common.CodeSuccess, result, "success")
+	jsonResponse(c, common.CodeSuccess, result, "success")
 }
 
 // ListTags handles the list tags request for a knowledge base
@@ -433,4 +433,3 @@ func (h *KnowledgebaseHandler) GetBasicInfo(c *gin.Context) {
 
 	jsonResponse(c, common.CodeSuccess, map[string]interface{}{}, "success")
 }
-

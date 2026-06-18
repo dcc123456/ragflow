@@ -158,13 +158,29 @@ if __name__ == '__main__':
         logging.info("Downgrade guard threads started")
         send_startup_test_email()
 
+    def start_chat_channels():
+        try:
+            from api.channels.bootstrap import start_channel_server
+            logging.info("Starting chat channel server thread")
+            t = threading.Thread(
+                target=start_channel_server,
+                args=(stop_event,),
+                daemon=True,
+                name="chat-channels",
+            )
+            t.start()
+        except Exception:
+            logging.exception("Failed to start chat channel server")
+
     if RuntimeConfig.DEBUG:
         if os.environ.get("WERKZEUG_RUN_MAIN") == "true":
             threading.Timer(1.0, delayed_start_update_progress).start()
             threading.Timer(1.0, delayed_start_downgrade_guard).start()
+            start_chat_channels()
     else:
         threading.Timer(1.0, delayed_start_update_progress).start()
         threading.Timer(1.0, delayed_start_downgrade_guard).start()
+        start_chat_channels()
 
     # start http server
     try:

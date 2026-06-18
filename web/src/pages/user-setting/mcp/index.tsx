@@ -44,14 +44,19 @@ export default function McpServer() {
     handleSelectAll,
   } = useBulkOperateMCP(data.mcp_servers);
   const { t } = useTranslation();
-  const { importVisible, showImportModal, hideImportModal, onImportOk } =
-    useImportMcp();
   const {
     privilegeModal,
     hidePrivilegeModal,
     handShowPrivilegeModal,
     recordWithSourceType,
   } = useShowPrivilegeDialog();
+  const {
+    importVisible,
+    showImportModal,
+    hideImportModal,
+    onImportOk,
+    loading: importLoading,
+  } = useImportMcp();
 
   const [isSelectionMode, setSelectionMode] = useState(false);
 
@@ -195,6 +200,7 @@ export default function McpServer() {
         <ImportMcpDialog
           hideModal={hideImportModal}
           onOk={onImportOk}
+          loading={importLoading}
         ></ImportMcpDialog>
       )}
       {privilegeModal && (

@@ -44,6 +44,7 @@ from api.utils.api_utils import (
     server_error_response,
     validate_request,
 )
+from api.utils.nickname_validation import validate_nickname
 from api.utils.crypt import decrypt
 from api.utils.web_utils import (
     OTP_LENGTH,
@@ -770,6 +771,12 @@ async def setting_user():
             continue
         update_dict[k] = request_data[k]
 
+    if "nickname" in update_dict:
+        error_message, error_code = validate_nickname(update_dict["nickname"])
+        if error_message:
+            return get_json_result(data=False, message=error_message, code=error_code)
+        update_dict["nickname"] = update_dict["nickname"].strip()
+
     try:
         UserService.update_by_id(current_user.id, update_dict)
         return get_json_result(data=True)
@@ -1080,6 +1087,11 @@ async def user_add():
             message=f"Role: {role_name} not exist!",
             code=RetCode.OPERATING_ERROR,
         )
+    error_message, error_code = validate_nickname(nickname)
+    if error_message:
+        return get_json_result(data=False, message=error_message, code=error_code)
+    nickname = nickname.strip()
+
     user_dict = {
         "access_token": get_uuid(),
         "email": email_address,
