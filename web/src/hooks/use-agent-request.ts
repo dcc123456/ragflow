@@ -298,7 +298,7 @@ export const useFetchAgentTags = (canvasCategory?: string) => {
         },
         true,
       );
-      return data?.data ?? [];
+      return Array.isArray(data?.data) ? data.data : [];
     },
   });
   return { data, loading };
