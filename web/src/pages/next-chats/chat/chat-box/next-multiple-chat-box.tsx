@@ -149,7 +149,6 @@ const ChatCard = forwardRef(function ChatCard(
     patchChat({
       chatId: dialogId!,
       params: {
-        ...currentDialog,
         llm_id: llmId,
         llm_setting: {
           ...omit(values, 'llm_id'),
@@ -157,7 +156,7 @@ const ChatCard = forwardRef(function ChatCard(
         },
       },
     });
-  }, [currentDialog, dialogId, form, patchChat, findLlmByUuid]);
+  }, [dialogId, findLlmByUuid, form, patchChat]);
 
   useImperativeHandle(
     ref,
