@@ -328,6 +328,11 @@ export const useSendAgentMessage = ({
         if (userId) {
           params.user_id = userId;
         }
+
+        // When starting a new session, use the first message as the session name
+        if (!params.session_id) {
+          params.name = message.content;
+        }
       }
 
       try {

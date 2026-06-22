@@ -384,7 +384,7 @@ async def completion(tenant_id, agent_id, session_id=None, **kwargs):
         canvas.reset()
         # Get the version title based on release_mode
         version_title = await thread_pool_exec(UserCanvasVersionService.get_latest_version_title, cvs.id, release_mode=release_mode == "true")
-        conv = {"id": session_id, "dialog_id": cvs.id, "user_id": user_id, "message": [], "source": "agent", "dsl": dsl, "reference": [], "version_title": version_title}
+        conv = {"id": session_id, "dialog_id": cvs.id, "user_id": user_id, "name": query[:255] if query else "", "message": [], "source": "agent", "dsl": dsl, "reference": [], "version_title": version_title}
         await thread_pool_exec(API4ConversationService.save, **conv)
         conv = API4Conversation(**conv)
 
