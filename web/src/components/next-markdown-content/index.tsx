@@ -234,13 +234,13 @@ function MarkdownContent({
 
       const documentList = Object.values(reference?.doc_aggs ?? {});
       const document = documentList.find(
-        (x) => x?.doc_id === chunkItem?.document_id,
+        (x) => x?.doc_id === (chunkItem?.document_id || chunkItem?.doc_id),
       );
       const documentId = document?.doc_id;
       const documentUrl = document?.url;
       const fileThumbnail = documentId ? fileThumbnails[documentId] : '';
       const fileExtension = documentId ? getExtension(document?.doc_name) : '';
-      const imageId = chunkItem?.image_id;
+      const imageId = chunkItem?.image_id || chunkItem?.img_id;
 
       return {
         documentUrl,
@@ -268,7 +268,7 @@ function MarkdownContent({
       } = getReferenceInfo(chunkIndex);
 
       return (
-        <div key={chunkItem?.id} className="flex gap-2">
+        <div key={chunkItem?.id || chunkItem?.chunk_id} className="flex gap-2">
           {imageId && (
             <HoverCard>
               <HoverCardTrigger>
@@ -288,7 +288,9 @@ function MarkdownContent({
           <div className={'space-y-2 max-w-[40vw] w-full'}>
             <div
               dangerouslySetInnerHTML={{
-                __html: DOMPurify.sanitize(chunkItem?.content ?? ''),
+                __html: DOMPurify.sanitize(
+                  chunkItem?.content ?? chunkItem?.content_with_weight ?? '',
+                ),
               }}
               className={classNames(styles.chunkContentText, 'w-full')}
               dir="auto"

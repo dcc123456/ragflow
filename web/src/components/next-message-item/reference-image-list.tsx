@@ -104,15 +104,22 @@ export function ReferenceImageList({
   const images = useMemo(() => {
     if (Array.isArray(referenceChunks)) {
       return referenceChunks
-        .map((chunk, idx) => ({ id: chunk.image_id, index: idx }))
-        .filter((item, idx) => allChunkIndexes.includes(idx) && item.id);
+        .map((chunk, idx) => ({
+          id: chunk.image_id || chunk.img_id,
+          index: idx,
+        }))
+        .filter(
+          (item): item is ImageItem =>
+            allChunkIndexes.includes(item.index) && Boolean(item.id),
+        );
     }
 
     if (isPlainObject(referenceChunks)) {
       return Object.entries(referenceChunks || {}).reduce<ImageItem[]>(
         (pre, [idx, chunk]) => {
-          if (allChunkIndexes.includes(Number(idx)) && chunk.image_id) {
-            return pre.concat({ id: chunk.image_id, index: Number(idx) });
+          const imageId = chunk.image_id || chunk.img_id;
+          if (allChunkIndexes.includes(Number(idx)) && imageId) {
+            return pre.concat({ id: imageId, index: Number(idx) });
           }
           return pre;
         },

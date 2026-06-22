@@ -122,11 +122,17 @@ export interface Message {
 
 export interface IReferenceChunk {
   id: string;
+  chunk_id?: string;
   content: null;
+  content_with_weight?: string;
   document_id: string;
+  doc_id?: string;
   document_name: string;
+  docnm_kwd?: string;
   dataset_id: string;
+  kb_id?: string;
   image_id: string;
+  img_id?: string;
   similarity: number;
   vector_similarity: number;
   term_similarity: number;
