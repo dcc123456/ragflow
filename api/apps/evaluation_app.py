@@ -605,10 +605,12 @@ async def get_evaluation_run(run_id):
 @login_required
 @validate_request("collection_id", "target_type", "target_id", "name")
 async def new_run():
-    req = await get_request_json() 
+    req = await get_request_json()
+    if not req.get("collection_id"):
+        return get_data_error_result(message="Evaluation data (the collection_id field) is required")
     try:
         _, run_id = EvaluationService.create_run_config(
-            collection_id=req["collection_id"], 
+            collection_id=req["collection_id"],
             target_type=req["target_type"], 
             target_id=req["target_id"],
             user_id=current_user.id, 
