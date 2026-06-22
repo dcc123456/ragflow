@@ -230,7 +230,7 @@ async def get_collection(collection_id):
         if not EvaluationService.query(
                 tenant_id=current_user.id, id=collection_id):
             return get_json_result(
-                data=False, message='Permission denied',
+                data=False, message='Collection not configured or access denied',
                 code=RetCode.OPERATING_ERROR)
         success, collection = EvaluationService.get_by_id(collection_id)
         if not success:
@@ -260,7 +260,7 @@ async def update_collection(collection_id):
         if not EvaluationService.query(
                 tenant_id=current_user.id, id=collection_id):
             return get_json_result(
-                data=False, message='Permission denied',
+                data=False, message='Collection not configured or access denied',
                 code=RetCode.OPERATING_ERROR)
         req = await get_request_json()
         req = {
@@ -325,7 +325,7 @@ async def add_test_case(collection_id):
     try:
         if not _has_collection_access(collection_id):
             return get_json_result(
-                data=False, message="Permission denied",
+                data=False, message="Collection not configured or access denied",
                 code=RetCode.OPERATING_ERROR)
         req = await get_request_json()
         question = req.get("question", "").strip()
@@ -377,7 +377,7 @@ async def import_test_cases(collection_id):
     try:
         if not _has_collection_access(collection_id):
             return get_json_result(
-                data=False, message="Permission denied",
+                data=False, message="Collection not configured or access denied",
                 code=RetCode.OPERATING_ERROR)
         req = await get_request_json()
         cases = req.get("cases", [])
@@ -412,7 +412,7 @@ async def export_test_cases(collection_id):
     try:
         if not _has_collection_access(collection_id):
             return get_json_result(
-                data=False, message="Permission denied",
+                data=False, message="Collection not configured or access denied",
                 code=RetCode.OPERATING_ERROR)
 
         ok, collection = EvaluationService.get_by_id(collection_id)
@@ -462,7 +462,7 @@ async def get_test_cases(collection_id):
     try:
         if not _has_collection_access(collection_id):
             return get_json_result(
-                data=False, message="Permission denied",
+                data=False, message="Collection not configured or access denied",
                 code=RetCode.OPERATING_ERROR)
         page = int(request.args.get("page", 1))
         page_size = int(request.args.get("page_size", 20))
@@ -496,7 +496,7 @@ async def delete_test_case(case_id):
             return get_data_error_result(message="Test case not found")
         if not _has_collection_access(case.collection_id):
             return get_json_result(
-                data=False, message="Permission denied",
+                data=False, message="Collection not configured or access denied",
                 code=RetCode.OPERATING_ERROR)
         success = EvaluationService.delete_test_case(case_id)
 
@@ -531,7 +531,7 @@ async def update_test_case(case_id):
             return get_data_error_result(message="Test case not found")
         if not _has_collection_access(case.collection_id):
             return get_json_result(
-                data=False, message="Permission denied",
+                data=False, message="Collection not configured or access denied",
                 code=RetCode.OPERATING_ERROR)
 
         req = await get_request_json()
@@ -589,7 +589,7 @@ async def get_evaluation_run(run_id):
             )
         if not _has_collection_access(run["collection_id"]):
             return get_json_result(
-                data=False, message="Permission denied",
+                data=False, message="Collection not configured or access denied",
                 code=RetCode.OPERATING_ERROR)
 
         ok, task = TaskService.get_by_id(run_id)
@@ -636,7 +636,7 @@ async def get_run_results(run_id):
             )
         if not _has_collection_access(run["collection_id"]):
             return get_json_result(
-                data=False, message="Permission denied",
+                data=False, message="Collection not configured or access denied",
                 code=RetCode.OPERATING_ERROR)
         result = EvaluationService.get_run_results(run_id, page, page_size)
 
@@ -692,7 +692,7 @@ async def delete_evaluation_run(run_id):
             return get_data_error_result(message="Evaluation run not found")
         if not _has_collection_access(run["collection_id"]):
             return get_json_result(
-                data=False, message="Permission denied",
+                data=False, message="Collection not configured or access denied",
                 code=RetCode.OPERATING_ERROR)
         success = EvaluationService.delete_run(run_id)
         if not success:
@@ -720,7 +720,7 @@ async def update_evaluation_run(run_id):
             return get_data_error_result(message="Evaluation run not found")
         if not _has_collection_access(run["collection_id"]):
             return get_json_result(
-                data=False, message="Permission denied",
+                data=False, message="Collection not configured or access denied",
                 code=RetCode.OPERATING_ERROR)
 
         req = await get_request_json()
@@ -750,7 +750,7 @@ async def duplicate_evaluation_run(run_id):
             return get_data_error_result(message="Evaluation run not found")
         if not _has_collection_access(run["collection_id"]):
             return get_json_result(
-                data=False, message="Permission denied",
+                data=False, message="Collection not configured or access denied",
                 code=RetCode.OPERATING_ERROR)
         req = await get_request_json()
         name = req.get("name")
@@ -776,7 +776,7 @@ async def execute_run_case(run_id, case_id):
             return get_data_error_result(message="Evaluation run not found")
         if not _has_collection_access(run["collection_id"]):
             return get_json_result(
-                data=False, message="Permission denied",
+                data=False, message="Collection not configured or access denied",
                 code=RetCode.OPERATING_ERROR)
         success = EvaluationService.execute_run_case(run_id, case_id, current_user.id)
         if not success:
@@ -797,7 +797,7 @@ async def run_metric_for_case(run_id, case_id):
             return get_data_error_result(message="Evaluation run not found")
         if not _has_collection_access(run["collection_id"]):
             return get_json_result(
-                data=False, message="Permission denied",
+                data=False, message="Collection not configured or access denied",
                 code=RetCode.OPERATING_ERROR)
         req = await get_request_json()
         metric_name = req.get("metric_name")
@@ -823,7 +823,7 @@ async def run_metrics_for_cases(run_id):
             return get_data_error_result(message="Evaluation run not found")
         if not _has_collection_access(run["collection_id"]):
             return get_json_result(
-                data=False, message="Permission denied",
+                data=False, message="Collection not configured or access denied",
                 code=RetCode.OPERATING_ERROR)
         success_count, failure_count = EvaluationService.run_metrics_for_cases(
             run_id, current_user.id
@@ -853,7 +853,7 @@ async def run_metric_for_cases(run_id):
             return get_data_error_result(message="Evaluation run not found")
         if not _has_collection_access(run["collection_id"]):
             return get_json_result(
-                data=False, message="Permission denied",
+                data=False, message="Collection not configured or access denied",
                 code=RetCode.OPERATING_ERROR)
         req = await get_request_json()
         metric_name = req.get("metric_name")
@@ -882,7 +882,7 @@ async def run_metrics_for_case(run_id, case_id):
             return get_data_error_result(message="Evaluation run not found")
         if not _has_collection_access(run["collection_id"]):
             return get_json_result(
-                data=False, message="Permission denied",
+                data=False, message="Collection not configured or access denied",
                 code=RetCode.OPERATING_ERROR)
         success = EvaluationService.run_metrics_for_case(
             run_id, case_id, current_user.id
@@ -904,7 +904,7 @@ async def clear_result(run_id, case_id):
             return get_data_error_result(message="Evaluation run not found")
         if not _has_collection_access(run["collection_id"]):
             return get_json_result(
-                data=False, message="Permission denied",
+                data=False, message="Collection not configured or access denied",
                 code=RetCode.OPERATING_ERROR)
         success = EvaluationService.clear_result(run_id, case_id)
         if not success:
@@ -925,7 +925,7 @@ async def clear_result_metric(run_id, case_id):
             return get_data_error_result(message="Evaluation run not found")
         if not _has_collection_access(run["collection_id"]):
             return get_json_result(
-                data=False, message="Permission denied",
+                data=False, message="Collection not configured or access denied",
                 code=RetCode.OPERATING_ERROR)
         req = await get_request_json()
         metric_name = req.get("metric_name")
@@ -947,7 +947,7 @@ async def clear_result_generated_answer(run_id, case_id):
             return get_data_error_result(message="Evaluation run not found")
         if not _has_collection_access(run["collection_id"]):
             return get_json_result(
-                data=False, message="Permission denied",
+                data=False, message="Collection not configured or access denied",
                 code=RetCode.OPERATING_ERROR)
         success = EvaluationService.clear_result_generated_answer(run_id, case_id)
         if not success:
@@ -1008,7 +1008,7 @@ async def export_results(run_id):
             )
         if not _has_collection_access(run["collection_id"]):
             return get_json_result(
-                data=False, message="Permission denied",
+                data=False, message="Collection not configured or access denied",
                 code=RetCode.OPERATING_ERROR)
 
         dumps = json.dumps
