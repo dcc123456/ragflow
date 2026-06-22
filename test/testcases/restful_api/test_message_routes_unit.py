@@ -15,6 +15,7 @@
 #
 
 import asyncio
+import importlib
 import importlib.util
 import inspect
 import sys
@@ -82,6 +83,9 @@ def _load_memory_routes_module(monkeypatch):
     services_mod = ModuleType("api.apps.services")
     services_mod.memory_api_service = _DummyMemoryApiService()
     monkeypatch.setitem(sys.modules, "api.apps.services", services_mod)
+
+    billing_mod = importlib.import_module("api.utils.billing")
+    monkeypatch.setattr(billing_mod, "check_resources", lambda **_kwargs: (lambda fn: fn))
 
     module_name = "test_message_routes_unit_module"
     module_path = repo_root / "api" / "apps" / "restful_apis" / "memory_api.py"

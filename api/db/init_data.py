@@ -19,21 +19,22 @@ import json
 import os
 import time
 import threading
-import warnings
-from copy import deepcopy
 from decimal import getcontext, ROUND_HALF_UP
 from urllib.parse import urlparse
-import uuid
 from api.common.base64 import encode_to_base64
-from api.db.db_models import init_database_tables as init_web_db, LLM
 from api.db.joint_services.memory_message_service import init_message_id_sequence, init_memory_size_cache
-from api.db.services.canvas_service import CanvasTemplateService
-from api.db.services.llm_service import LLMService, LLMBundle, get_init_tenant_llm
-from api.db.services.tenant_llm_service import LLMFactoriesService, TenantLLMService
 from api.db.services.billing_service import PricePointService, ProductService
+import uuid
+
 from peewee import IntegrityError
+
 from api.db import UserTenantRole
+from api.db.db_models import init_database_tables as init_web_db
 from api.db.services import UserService
+from api.db.services.canvas_service import CanvasTemplateService
+from api.db.services.document_service import DocumentService
+from api.db.services.knowledgebase_service import KnowledgebaseService
+from api.db.services.llm_service import LLMBundle
 from api.db.services.user_service import TenantService, UserTenantService
 from api.db.services.system_settings_service import SystemSettingsService
 from api.db.template_utils import normalize_canvas_template_categories
@@ -85,7 +86,6 @@ def init_superuser(nickname=DEFAULT_SUPERUSER_NICKNAME, email=DEFAULT_SUPERUSER_
         "invited_by": user_info["id"],
         "role": role
     }
-    tenant_llm = get_init_tenant_llm(user_info["id"])
 
     try:
         if not UserService.save(**user_info):
@@ -96,7 +96,6 @@ def init_superuser(nickname=DEFAULT_SUPERUSER_NICKNAME, email=DEFAULT_SUPERUSER_
         return
     TenantService.insert(**tenant)
     UserTenantService.insert(**usr_tenant)
-    TenantLLMService.insert_many(tenant_llm)
     logging.info(
         f"Super user initialized. email: {email},A default password has been set; changing the password after login is strongly recommended.")
 
@@ -139,26 +138,11 @@ def init_default_roles():
             RoleResourceService.upsert_role_action_by_id(role_id, {resource_type.value: action for resource_type in ResourceTypeEnum})
 
 
-def init_llm_factory():
-    warnings.warn("init_llm_factory() is deprecated", DeprecationWarning, stacklevel=2)
-    LLMFactoriesService.filter_delete([1 == 1])
-    factory_llm_infos = settings.FACTORY_LLM_INFOS
-    for factory_llm_info in factory_llm_infos:
-        info = deepcopy(factory_llm_info)
-        llm_infos = info.pop("llm")
-        try:
-            LLMFactoriesService.save(**info)
-        except Exception:
-            pass
-        LLMService.filter_delete([LLM.fid == factory_llm_info["name"]])
-        for llm_info in llm_infos:
-            llm_info["fid"] = factory_llm_info["name"]
-            try:
-                LLMService.save(**llm_info)
-            except Exception:
-                pass
-    #TenantService.filter_update([1 == 1], {
-    #    "parser_ids": "naive:General,qa:Q&A,resume:Resume,manual:Manual,table:Table,paper:Paper,book:Book,laws:Laws,presentation:Presentation,picture:Picture,one:One,audio:Audio,email:Email,tag:Tag"})
+def update_document_number_in_init():
+    doc_count = DocumentService.get_all_kb_doc_count()
+    for kb_id in KnowledgebaseService.get_all_ids():
+        KnowledgebaseService.update_document_number_in_init(kb_id=kb_id, doc_num=doc_count.get(kb_id, 0))
+
 
 
 def add_graph_templates():
@@ -300,7 +284,6 @@ def init_web_data():
 
     init_table()
 
-    init_llm_factory()
     if settings.ENABLE_ADMIN:
         init_superuser()
 

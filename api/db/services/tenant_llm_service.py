@@ -727,7 +727,6 @@ def user_register(user_id, user):
     from api.db import FileType
     from api.db.services import UserService
     from api.db.services.white_list_service import WhiteListService
-    from api.db.services.llm_service import get_init_tenant_llm
     from api.db.services.system_settings_service import SystemSettingsService
     from api.utils.system_settings_utils import load_value_from_string
 
@@ -777,10 +776,8 @@ def user_register(user_id, user):
         "size": 0,
         "location": "",
     }
-    tenant_llm = get_init_tenant_llm(user_id)
     TenantService.insert(**tenant)
     UserTenantService.insert(**usr_tenant)
-    TenantLLMService.insert_many(tenant_llm)
     FileService.insert(file)
     billing_set_customer_id(user_id)
     time.sleep(3)
