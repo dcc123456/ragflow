@@ -620,7 +620,15 @@ async def rag_judge_metrics(
     if metric_names is None:
         metric_names = allowed
     else:
-        metric_names = [m for m in metric_names if m in allowed]
+        normalized_metric_names = []
+        for m in metric_names:
+            try:
+                met = EvaluationMetric(m)
+            except ValueError:
+                continue
+            if met in allowed:
+                normalized_metric_names.append(met)
+        metric_names = normalized_metric_names
     if not metric_names:
         return {}
     metric_names = set(metric_names)

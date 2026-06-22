@@ -50,7 +50,7 @@ from common.misc_utils import get_uuid
 from common.string_utils import remove_redundant_spaces
 from common.time_utils import current_timestamp
 from common.constants import StatusEnum, LLMType
-from common.evaluation_metrics import EvaluationRunStatus, DEFAULT_EVALUATION_METRICS
+from common.evaluation_metrics import EvaluationMetric, EvaluationRunStatus, DEFAULT_EVALUATION_METRICS
 
 
 class EvaluationService(CommonService):
@@ -441,14 +441,18 @@ class EvaluationService(CommonService):
                     config_snapshot["target"] = dialog.to_dict()
                     if not name:
                         target_name = dialog.name
+            success, ten = TenantService.get_by_id(user_id)
             config_snapshot["metrics"] = config_snapshot.get("metrics")
             if not config_snapshot["metrics"]:
-                success, ten = TenantService.get_by_id(user_id)
                 config_snapshot["metrics"] = {
                 "context_relevance": {"enable": True, "llm_id": ten.llm_id}, 
                 "faithfulness": {"enable": True, "llm_id": ten.llm_id},
                 "semantic_similarity":{"enable": True, "llm_id": ten.llm_id}
                 }
+            else:
+                for metric_config in config_snapshot["metrics"].values():
+                    if isinstance(metric_config, dict) and not metric_config.get("llm_id"):
+                        metric_config["llm_id"] = ten.llm_id
 
             if not name:
                 target_name = dialog.name if dialog else "target"
@@ -733,8 +737,20 @@ class EvaluationService(CommonService):
         if isinstance(value, str):
             candidates = [v.strip() for v in value.split(",")]
         else:
-            candidates = [str(v).strip() for v in value]
-        normalized = [v for v in candidates if v]
+            candidates = []
+            for v in value:
+                if isinstance(v, EvaluationMetric):
+                    candidates.append(v.value)
+                else:
+                    candidates.append(str(v).strip())
+        normalized = []
+        for v in candidates:
+            if not v:
+                continue
+            try:
+                normalized.append(EvaluationMetric(v).value)
+            except ValueError:
+                logging.warning("Ignoring unknown evaluation metric: %s", v)
         return normalized or None
 
     @classmethod
@@ -825,12 +841,13 @@ class EvaluationService(CommonService):
                             messages = [{"role": "user", "content": question}]
                             answer, retrieved_chunks, execution_time = cls._execute_target(dialog2, messages)
                             cls._save_execution_result(run_id, ca["id"], answer, retrieved_chunks, execution_time)
-                            cls.run_metrics_for_case(
+                            if not cls.run_metrics_for_case(
                                 run_id,
                                 ca["id"],
                                 dialog2.tenant_id,
                                 normalized_metrics,
-                            )
+                            ):
+                                raise RuntimeError(f"Failed to compute metrics for case {ca['id']}.")
 
                     await asyncio.to_thread(work)
 
@@ -872,8 +889,9 @@ class EvaluationService(CommonService):
     @DB.connection_context()
     def run_metrics_for_case(cls, run_id: str, case_id: str, user_id: str, metric_names: list|None=None) -> bool:
         """Compute all metrics for a case"""        
+        metric_names = cls._normalize_metrics(metric_names)
         if not metric_names:
-            metric_names = DEFAULT_EVALUATION_METRICS
+            metric_names = [m.value for m in DEFAULT_EVALUATION_METRICS]
         try:
             run = EvaluationRun.get_by_id(run_id)
             if not run:
@@ -897,7 +915,8 @@ class EvaluationService(CommonService):
             computed_any = False
             variable = case.variable or {}
             for met in metric_names:
-                if met not in run.config_snapshot.get("metrics", {}):
+                metric_config = run.config_snapshot.get("metrics", {}).get(met)
+                if not metric_config or not metric_config.get("enable", True):
                     continue
                 _metrics = cls._compute_metrics(
                     question=variable.get("question", ""),
@@ -905,7 +924,7 @@ class EvaluationService(CommonService):
                     reference_answer=variable.get("reference_answer"),
                     retrieved_chunks=result.retrieved_chunks or {},
                     relevant_doc_ids=case.relevant_doc_ids,
-                    llm_id=run.config_snapshot["metrics"][met]["llm_id"],
+                    llm_id=metric_config["llm_id"],
                     user_id=user_id,
                     metrics_type=met
                 )
@@ -928,9 +947,9 @@ class EvaluationService(CommonService):
                               user_id: str, 
                               metrics: list|None= None) -> Tuple[int, int]:
         """Compute all metrics for all cases in a run"""
-        metric_names = metrics
+        metric_names = cls._normalize_metrics(metrics)
         if not metric_names:
-            metric_names = DEFAULT_EVALUATION_METRICS
+            metric_names = [m.value for m in DEFAULT_EVALUATION_METRICS]
         success_count = 0
         failure_count = 0
         run = EvaluationRun.get_by_id(run_id)
@@ -1139,7 +1158,7 @@ class EvaluationService(CommonService):
                         relevant_doc_ids: Optional[List[str]],
                         llm_id: str,
                         user_id: str,
-                        metrics_type:str) -> Dict[str, float]:
+                        metrics_type: str) -> Dict[str, float]:
         """
         Compute evaluation metrics for a single test case.
 
@@ -1189,10 +1208,11 @@ class EvaluationService(CommonService):
         reference = reference_answer or ""
 
         llm_type = cls._llm_type_from_llm_id(llm_id)
-        llm = LLMBundle(user_id, llm_type, llm_id)
         try:
             from rag.prompts.generator import rag_judge_metrics
 
+            model_config = TenantLLMService.get_model_config(user_id, llm_type.value, llm_id or None)
+            llm = LLMBundle(user_id, model_config)
             judge_result = llm._run_coroutine_sync(
                 rag_judge_metrics(
                     llm,
@@ -1214,6 +1234,7 @@ class EvaluationService(CommonService):
         if not isinstance(result, dict):
             return {}
         key, val = list(result.items())[0]
+        key = key.value if isinstance(key, EvaluationMetric) else str(key)
         def _get_score(value: Any) -> Optional[float]:
             try:
                 score_f = float(value)
@@ -1224,7 +1245,7 @@ class EvaluationService(CommonService):
             elif score_f > 1.0:
                 score_f = 1.0
             return score_f
-        return {key: _get_score(val.get("score")), f"{key.value}_reason": val.get("reason", "")}
+        return {key: _get_score(val.get("score")), f"{key}_reason": val.get("reason", "")}
 
     @staticmethod
     def _llm_type_from_llm_id(llm_id: str) -> LLMType:
@@ -1440,4 +1461,3 @@ class EvaluationService(CommonService):
         except Exception as e:
             logging.error(f"Error getting run results {run_id}: {e}")
             return {}
-
