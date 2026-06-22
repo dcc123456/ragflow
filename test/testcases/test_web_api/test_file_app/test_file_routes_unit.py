@@ -105,6 +105,12 @@ def _load_file_api_module(monkeypatch):
     monkeypatch.setitem(sys.modules, "api.apps", apps_pkg)
     api_pkg.apps = apps_pkg
 
+    role_util_mod = ModuleType("common.role_util")
+    role_util_mod.FILE_API_ACTION_MAP = {}
+    role_util_mod.FILE_ROLE_RESOURCE_TYPE = 5
+    role_util_mod.check_role_access = lambda *_args, **_kwargs: (lambda func: func)
+    monkeypatch.setitem(sys.modules, "common.role_util", role_util_mod)
+
     services_pkg = ModuleType("api.apps.services")
     services_pkg.__path__ = [str(repo_root / "api" / "apps" / "services")]
     monkeypatch.setitem(sys.modules, "api.apps.services", services_pkg)
@@ -159,6 +165,7 @@ def _load_file_api_module(monkeypatch):
     api_utils_mod.get_error_data_result = lambda message: {"code": 500, "data": None, "message": message}
     api_utils_mod.get_result = lambda data=None: {"code": 0, "data": data, "message": ""}
     api_utils_mod.get_json_result = lambda code=0, message="success", data=None: {"code": code, "data": data, "message": message}
+    api_utils_mod.get_resource_insufficient_result = lambda code, message, detail=None: {"code": code, "data": None, "message": message, "detail": detail or {}}
     monkeypatch.setitem(sys.modules, "api.utils.api_utils", api_utils_mod)
 
     validation_mod = ModuleType("api.utils.validation_utils")
@@ -314,14 +321,14 @@ def test_download_falls_back_to_document_storage(monkeypatch):
     module = _load_file_api_module(monkeypatch)
     storage_calls = []
 
-    def _get(bucket, location):
-        storage_calls.append((bucket, location))
+    def _get(bucket, location, tenant_id):
+        storage_calls.append((bucket, location, tenant_id))
         return b"" if len(storage_calls) == 1 else b"fallback-blob"
 
     monkeypatch.setattr(module.settings, "STORAGE_IMPL", SimpleNamespace(get=_get))
     res = _run(module.download("tenant1", "file1"))
 
-    assert storage_calls == [("bucket1", "path1"), ("bucket2", "path2")]
+    assert storage_calls == [("bucket1", "path1", "tenant1"), ("bucket2", "path2", "tenant1")]
     assert res.data == b"fallback-blob"
     assert res.headers["content_type"] == "text/plain"
     assert res.headers["ext"] == "txt"
@@ -354,4 +361,3 @@ def test_parent_and_ancestors_use_new_routes(monkeypatch):
     assert parent_res["data"]["parent_folder"]["id"] == "parent1"
     assert ancestors_res["code"] == 0
     assert ancestors_res["data"]["parent_folders"][0]["id"] == "root"
-

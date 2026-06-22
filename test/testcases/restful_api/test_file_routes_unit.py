@@ -326,14 +326,14 @@ def test_download_falls_back_to_document_storage(monkeypatch):
     module = _load_file_api_module(monkeypatch)
     storage_calls = []
 
-    def _get(bucket, location):
-        storage_calls.append((bucket, location))
+    def _get(bucket, location, tenant_id):
+        storage_calls.append((bucket, location, tenant_id))
         return b"" if len(storage_calls) == 1 else b"fallback-blob"
 
     monkeypatch.setattr(module.settings, "STORAGE_IMPL", SimpleNamespace(get=_get))
     res = _run(module.download("tenant1", "file1"))
 
-    assert storage_calls == [("bucket1", "path1"), ("bucket2", "path2")]
+    assert storage_calls == [("bucket1", "path1", "tenant1"), ("bucket2", "path2", "tenant1")]
     assert res.data == b"fallback-blob"
     assert res.headers["content_type"] == "text/plain"
     assert res.headers["ext"] == "txt"
