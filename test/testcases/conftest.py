@@ -441,34 +441,34 @@ def add_model_instance(auth):
                 else:
                     pytest.exit(f"Critical error in add model provider: {msg}")
 
-        # Register both "CI" (used by glm-4-flash@CI@ZHIPU-AI in configs.py
-        # and BAAI/bge-reranker-v2-m3@CI@SILICONFLOW) and "default".
-        for instance_name in ("CI", "default"):
-            add_instance_api = HOST_ADDRESS + f"/api/v1/providers/{provider_name}/instances"
-            add_instance_response = requests.post(url=add_instance_api, headers=authorization, json={
-                "instance_name": instance_name,
-                "api_key": api_key,
-                "region": "default",
-                "base_url": ""
-            })
-            add_instance_res = add_instance_response.json()
-            if add_instance_res.get("code") != 0:
-                msg = add_instance_res.get("message", "")
-                # Instance may already exist with a different API key from a
-                # prior test run; that's fine — skip instead of failing.
-                if "Already exist instance" in msg or "already exist" in msg.lower():
-                    print(f"Note: {provider_name}/{instance_name} already exists, skipping")
-                    continue
-                # Python API blocks creating instances named "default".
-                # The test_retrieval_parity test handles this by inserting
-                # "default" directly into the DB for SILICONFLOW.
-                if "cannot be 'default'" in msg:
-                    print(f"Note: {provider_name}/{instance_name} blocked by API (name reserved), skipping")
-                    continue
-                pytest.exit(
-                    f"Critical error in add model instance {provider_name}/{instance_name}: "
-                    f"{msg}"
-                )
+        # Register "CI" (used by glm-4-flash@CI@ZHIPU-AI in configs.py
+        # and BAAI/bge-reranker-v2-m3@CI@SILICONFLOW).
+        instance_name = "CI"
+        add_instance_api = HOST_ADDRESS + f"/api/v1/providers/{provider_name}/instances"
+        add_instance_response = requests.post(url=add_instance_api, headers=authorization, json={
+            "instance_name": instance_name,
+            "api_key": api_key,
+            "region": "default",
+            "base_url": ""
+        })
+        add_instance_res = add_instance_response.json()
+        if add_instance_res.get("code") != 0:
+            msg = add_instance_res.get("message", "")
+            # Instance may already exist with a different API key from a
+            # prior test run; that's fine — skip instead of failing.
+            if "Already exist instance" in msg or "already exist" in msg.lower():
+                print(f"Note: {provider_name}/{instance_name} already exists, skipping")
+                continue
+            # Python API blocks creating instances named "default".
+            # The test_retrieval_parity test handles this by inserting
+            # "default" directly into the DB for SILICONFLOW.
+            if "cannot be 'default'" in msg:
+                print(f"Note: {provider_name}/{instance_name} blocked by API (name reserved), skipping")
+                continue
+            pytest.exit(
+                f"Critical error in add model instance {provider_name}/{instance_name}: "
+                f"{msg}"
+            )
 
         add_success = get_added_models(auth, provider_name)
         if not add_success:
