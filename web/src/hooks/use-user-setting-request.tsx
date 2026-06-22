@@ -1,5 +1,4 @@
 import message from '@/components/ui/message';
-import { Modal } from '@/components/ui/modal/modal';
 import { TenantRole } from '@/constants/team';
 import { ResponseGetType } from '@/interfaces/database/base';
 import { IToken } from '@/interfaces/database/chat';
@@ -20,16 +19,8 @@ import userService, {
   listTenantUser,
 } from '@/services/user-service';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import DOMPurify from 'dompurify';
-import { isEmpty } from 'lodash';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router';
-import { toast } from 'sonner';
-import {
-  useFetchEnableAdmin,
-  useFetchIsAdmin,
-} from './use-private-llm-request';
 import { useWarnEmptyModel } from './use-warn-empty-model';
 
 export const enum UserSettingApiAction {
@@ -103,64 +94,7 @@ export const useFetchTenantData = (
 export const useFetchTenantInfo = (
   showEmptyModelWarn = false,
 ): ResponseGetType<ITenantInfo> => {
-  const { t } = useTranslation();
-  const navigate = useNavigate();
-  const { data: isAdmin, loading: isAdminLoading } = useFetchIsAdmin();
-  const { data: enableAdmin, loading: enableAdminLoading } =
-    useFetchEnableAdmin();
-
   const { data, loading } = useFetchTenantData(showEmptyModelWarn);
-
-  const run = useCallback(() => {
-    if (
-      !isAdminLoading &&
-      !enableAdminLoading &&
-      !loading &&
-      data &&
-      (isEmpty(data.embd_id) || isEmpty(data.llm_id)) &&
-      showEmptyModelWarn
-    ) {
-      if (enableAdmin && !isAdmin) {
-        toast.warning(t('setting.requestAdminAddModel'), {
-          position: 'top-center',
-          closeButton: false,
-          duration: 5000,
-          id: 'model-providers-warn', // Add a unique ID to prevent duplicate toasts
-        });
-      } else {
-        Modal.warning({
-          title: t('common.warn'),
-          content: (
-            <div
-              dangerouslySetInnerHTML={{
-                __html: DOMPurify.sanitize(t('setting.modelProvidersWarn')),
-              }}
-            ></div>
-          ),
-          closable: false,
-          showCancel: false,
-          onOk() {
-            // window.open('/user-setting/model', '_self');
-            navigate(`${Routes.UserSetting}${Routes.Model}`);
-          },
-        });
-      }
-    }
-  }, [
-    navigate,
-    data,
-    enableAdmin,
-    enableAdminLoading,
-    isAdmin,
-    isAdminLoading,
-    loading,
-    showEmptyModelWarn,
-    t,
-  ]);
-
-  useEffect(() => {
-    run();
-  }, [run]);
 
   useWarnEmptyModel(showEmptyModelWarn, data?.embd_id, data?.llm_id, loading);
 
