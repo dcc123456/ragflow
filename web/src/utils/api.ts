@@ -176,7 +176,6 @@ export default {
     `${restAPIv1}/datasets/${datasetId}/metadata/config`,
   documentUpdateMetaDataConfig: (datasetId: string, documentId: string) =>
     `${restAPIv1}/datasets/${datasetId}/documents/${documentId}/metadata/config`,
-  documentUpdateMetaData: `${restAPIv1}/document/update_metadata_setting`,
 
   // tags
   listTag: (knowledgeId: string) => `${restAPIv1}/datasets/${knowledgeId}/tags`,

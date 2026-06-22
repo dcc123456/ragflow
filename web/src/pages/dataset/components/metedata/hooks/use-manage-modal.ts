@@ -2,7 +2,7 @@ import message from '@/components/ui/message';
 import { useSetModalState } from '@/hooks/common-hooks';
 import { useSelectedIds } from '@/hooks/logic-hooks/use-row-selection';
 import { DocumentApiAction } from '@/hooks/use-document-request';
-import kbService, {
+import {
   getMetaDataService,
   kbUpdateMetaData,
   updateDocumentMetaDataConfig,
@@ -468,10 +468,13 @@ export const useManageMetaDataModal = (
           // handleSaveUpdateSingle(callback);
           handleSaveManage(callback);
           if (builtInMetadata && documentIds?.length) {
-            await kbService.documentUpdateMetaData({
+            await updateDocumentMetaDataConfig({
+              kb_id: id || '',
               doc_id: documentIds[0],
-              metadata: util.tableDataToMetaDataSettingJSON(tableData),
-              builtInMetadata,
+              data: {
+                metadata: util.tableDataToMetaDataSettingJSON(tableData),
+                builtInMetadata,
+              },
             });
           }
           break;
@@ -491,6 +494,7 @@ export const useManageMetaDataModal = (
     [
       documentIds,
       tableData,
+      id,
       handleSaveManage,
       type,
       // handleSaveUpdateSingle,
