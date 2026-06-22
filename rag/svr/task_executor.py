@@ -24,6 +24,11 @@ os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")  # no internet, sa
 
 from common.misc_utils import thread_pool_exec
 
+from rag.svr.task_executor_refactor.task_manager import TaskManager
+from rag.svr.task_executor_refactor.recording_context import (
+    set_recording_context, NullRecordingContext
+)
+
 import asyncio
 import socket
 import argparse
@@ -1983,7 +1988,20 @@ def rabbitmq_callback(ch, method, properties, body):
             created_loop = True
             asyncio.set_event_loop(event_loop)
 
-        event_loop.run_until_complete(do_handle_task_with_timeout(task, partial(set_progress, task_id)))
+        run_mode = os.environ.get("TE_RUN_MODE", "0")
+        logging.info(f"TE_RUN_MODE is {run_mode}")
+
+        if run_mode == "0":  # use refactor-ed version
+            logging.info(f"-----run refactor-ed task executor:{task_id}, {task.get('name', '')}, doc id:{task.get('doc_id', '')}")
+            set_recording_context(NullRecordingContext())
+            event_loop.run_until_complete(
+                TaskManager.run_refactored_task(task,
+                    chat_limiter, minio_limiter, chunk_limiter, embed_limiter, kg_limiter,
+                    partial(set_progress, task_id), has_canceled))
+        else:  # original version
+            logging.info(f"-----run original task executor:{task_id}, {task.get('name', '')}, doc id:{task.get('doc_id', '')}")
+            set_recording_context(NullRecordingContext())
+            event_loop.run_until_complete(do_handle_task_with_timeout(task, partial(set_progress, task_id)))
 
         logging.info(f"handle_task done for task {json.dumps(task)}")
     except KeyboardInterrupt:
