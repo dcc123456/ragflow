@@ -1354,11 +1354,7 @@ async def search_datasets(tenant_id: str, req: dict):
 
     if doc_ids is not None and not isinstance(doc_ids, list):
         return False, "`doc_ids` should be a list"
-    local_doc_ids, _, err_msg = filter_accessible_doc_ids_for_user(tenant_id, kb_ids, doc_ids if doc_ids else None)
-    if err_msg:
-        return False, err_msg
-    if not local_doc_ids:
-        return True, {"chunks": [], "total": 0, "labels": []}
+    local_doc_ids = list(doc_ids) if doc_ids else []
 
     meta_data_filter = {}
     search_id = req.get("search_id", "")
@@ -1401,15 +1397,24 @@ async def search_datasets(tenant_id: str, req: dict):
 
     if meta_data_filter:
         logging.debug(f"Metadata filter: {meta_data_filter}, question: {question}, chat_mdl={'None' if chat_mdl is None else chat_mdl.llm_name}")
-        local_doc_ids = await apply_meta_data_filter(
+        filtered_doc_ids = await apply_meta_data_filter(
             meta_data_filter,
             None,
             question,
             chat_mdl,
-            local_doc_ids,
+            None,
             kb_ids=kb_ids,
             metas_loader=lambda: DocMetadataService.get_flatted_meta_by_kbs(kb_ids),
         )
+        local_doc_ids = [doc_id for doc_id in filtered_doc_ids or [] if not doc_ids or doc_id in doc_ids]
+        if not local_doc_ids:
+            return True, {"chunks": [], "total": 0, "labels": []}
+
+    local_doc_ids, _, err_msg = filter_accessible_doc_ids_for_user(tenant_id, kb_ids, local_doc_ids if local_doc_ids else None)
+    if err_msg:
+        return False, err_msg
+    if not local_doc_ids:
+        return True, {"chunks": [], "total": 0, "labels": []}
 
     tenant_ids = []
     tenants = UserTenantService.query(user_id=tenant_id)
