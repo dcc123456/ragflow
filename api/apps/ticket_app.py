@@ -274,8 +274,18 @@ async def reply_ticket(ticket_id: int):
     try:
         req = await request.get_json() or {}
         body = (req.get("body") or "").strip()
-        if not body:
+        attachments = req.get("attachments")
+
+        # body is required unless attachments are present (Zammad allows
+        # an article with only attachments).
+        if not body and not attachments:
             return server_error_response(ValueError("body is required"))
+
+        # Zammad API requires a non-empty body even for attachment-only
+        # articles (whitespace-only strings are rejected). Use an empty
+        # HTML line break so the article appears blank to users while
+        # satisfying the API constraint.
+        body = body or "<br>"
 
         client = _get_zammad_client()
 
