@@ -636,6 +636,12 @@ class EvaluationService(CommonService):
         doc = DocumentService.one()
         if not doc:
             return False, None
+        run = EvaluationRun.get_by_id(run_id)
+        if not run:
+            return False, "Evaluation run not found"
+        collection = EvaluationCollection.get_by_id(run.collection_id)
+        if not collection:
+            return False, "Evaluation collection not found"
         normalized_case_ids = cls._normalize_case_ids(case_ids)
         normalized_metrics = cls._normalize_metrics(metrics_name)
         task_id = queue_reembedding_dup_tasks(
@@ -645,6 +651,7 @@ class EvaluationService(CommonService):
             eva_run_id=run_id,
             case_ids=normalized_case_ids,
             metrics_name=normalized_metrics,
+            tenant_id=collection.tenant_id,
         )
         EvaluationRun.update(
                 task_id=task_id,
