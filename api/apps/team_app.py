@@ -134,7 +134,7 @@ def delete_group(tenant_id, group_id):
     if not operator:
         return get_data_error_result(message="Unrecognized identification.")
 
-    if not (is_team_owner or group_owner_id != operator.id):
+    if not (is_team_owner or group_owner_id == operator.id):
         return get_json_result(data=False, message="Permission denied", code=RetCode.PERMISSION_ERROR)
 
     member_model_list = GroupMemberService.get_by_group_id(group_id)
@@ -171,8 +171,8 @@ async def group_change_owner(tenant_id):
     group_owner_id = group.owner_id
 
     operator = UserTenantService.filter_by_tenant_and_user_id(tenant_id=tenant_id, user_id=current_user.id)
-    if not (tenant_id == current_user.id or (operator and operator.id != group_owner_id)):
-        return get_data_error_result(message="Permission denied")
+    if not (tenant_id == current_user.id or (operator and operator.id == group_owner_id)):
+        return get_json_result(data=False, message="Permission denied", code=RetCode.PERMISSION_ERROR)
 
     new_owner = GroupMemberService.filter_by_group_and_member_id_ignore_validity(group_id=group.id, member_id=new_owner_id)
     if not new_owner:

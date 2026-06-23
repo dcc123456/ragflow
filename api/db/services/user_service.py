@@ -309,7 +309,7 @@ class UserTenantService(CommonService):
         ]
         return list(
             cls.model.select(*fields)
-            .join(User, on=((cls.model.user_id == User.id) & (cls.model.status == StatusEnum.VALID.value) & (cls.model.role != UserTenantRole.OWNER)))
+            .join(User, on=((cls.model.user_id == User.id) & (cls.model.status == StatusEnum.VALID.value)))
             .where(cls.model.tenant_id == tenant_id)
             .dicts()
         )

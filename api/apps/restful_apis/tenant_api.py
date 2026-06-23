@@ -154,7 +154,12 @@ async def rm(tenant_id):
             message="No authorization.",
             code=RetCode.AUTHENTICATION_ERROR,
         )
-
+    if user_id == tenant_id:
+        return get_json_result(
+            data=False,
+            message="The team owner cannot be removed from the team.",
+            code=RetCode.DATA_ERROR,
+        )
     try:
         UserTenantService.filter_delete([UserTenant.tenant_id == tenant_id, UserTenant.user_id == user_id])
         return get_json_result(data=True)
