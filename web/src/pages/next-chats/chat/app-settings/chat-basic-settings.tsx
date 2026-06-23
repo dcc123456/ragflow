@@ -19,24 +19,26 @@ import { useFormContext, useWatch } from 'react-hook-form';
 interface ChatBasicSettingProps {
   prefix?: string;
   option?: Record<string, any>;
-  hideName?: boolean;
 }
 
 export default function ChatBasicSetting({
   prefix = '',
-  // hideName = false,
 }: ChatBasicSettingProps) {
   const { t } = useTranslate('chat');
   const form = useFormContext();
 
   const prologueValue = useWatch({
     control: form.control,
-    name: 'prompt_config.prologue',
+    name: prefixName(prefix, 'prompt_config.prologue'),
   });
 
   return (
     <div className="space-y-8">
-      <AvatarNameDescription />
+      <AvatarNameDescription
+        avatarField={prefixName(prefix, 'icon')}
+        nameField={prefixName(prefix, 'name')}
+        descriptionField={prefixName(prefix, 'description')}
+      />
       <LlmSettingFieldItems
         prefix="llm_setting"
         llmId="llm_id"
@@ -61,8 +63,9 @@ export default function ChatBasicSetting({
           </FormItem>
         )}
       />
-
-      <KnowledgeBaseFormField></KnowledgeBaseFormField>
+      <KnowledgeBaseFormField
+        name={prefixName(prefix, 'dataset_ids')}
+      ></KnowledgeBaseFormField>
     </div>
   );
 }

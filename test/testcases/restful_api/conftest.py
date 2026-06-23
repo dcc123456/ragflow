@@ -79,7 +79,7 @@ def create_dataset(rest_client, clear_datasets):
     yield _create
 
     if created_ids:
-        res = rest_client.delete("/datasets", json={"ids": created_ids})
+        res = rest_client.delete("/datasets", json={"ids": created_ids}, timeout=180)
         assert res.status_code == 200
         payload = res.json()
         # Dataset may already be removed by test logic/cleanup.
