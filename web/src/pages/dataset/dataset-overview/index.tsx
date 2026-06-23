@@ -185,7 +185,7 @@ const FileLogsPage: FC = () => {
       {
         field: 'operation_status',
         label: t('knowledgeDetails.status'),
-        list: Object.values(RunningStatusOld).map((value) => {
+        list: [RunningStatusOld.DONE, RunningStatusOld.FAIL].map((value) => {
           // const value = key as RunningStatus;
           return {
             id: value,

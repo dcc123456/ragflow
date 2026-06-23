@@ -169,7 +169,7 @@ export function TicketChatInput({
             loading={sending}
             data-testid="ticket-chat-send"
           >
-            <ArrowUp className="size-3.5" />
+            {!sending && <ArrowUp className="size-3.5" />}
             <span className="sr-only">Send reply</span>
           </Button>
         </div>

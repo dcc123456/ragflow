@@ -62,7 +62,7 @@ export const useFetchKnowledgeConfigurationOnMount = (
       ...pick({ ...knowledgeDetails, parser_config: parser_config }, [
         'description',
         'name',
-        'permission',
+        // 'permission',
         'language',
         'parser_config',
         'connectors',
@@ -71,7 +71,7 @@ export const useFetchKnowledgeConfigurationOnMount = (
       ]),
       embedding_model: knowledgeDetails.embedding_model,
       chunk_method: knowledgeDetails.chunk_method,
-    } as z.infer<typeof formSchema>;
+    } as unknown as z.infer<typeof formSchema>;
     form.reset(formValues);
   }, [form, knowledgeDetails]);
 

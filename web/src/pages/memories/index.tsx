@@ -35,7 +35,7 @@ export default function MemoryList() {
     openCreateModal,
     showMemoryRenameModal,
     hideMemoryModal,
-    searchRenameLoading,
+    memoryRenameLoading,
     onMemoryRenameOk,
     initialMemory,
   } = useRenameMemory();
@@ -153,7 +153,7 @@ export default function MemoryList() {
           initialMemory={initialMemory}
           isCreate={addOrEditType === 'add'}
           open={openCreateModal}
-          loading={searchRenameLoading}
+          loading={memoryRenameLoading}
           onClose={hideMemoryModal}
           onSubmit={onMemoryConfirm}
         />

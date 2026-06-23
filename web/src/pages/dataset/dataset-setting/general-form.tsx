@@ -16,7 +16,6 @@ import { useFormContext } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { TagItems } from './components/tag-item';
 import { EmbeddingModelItem } from './configuration/common-item';
-import { PermissionFormField } from './permission-form-field';
 
 export function GeneralForm() {
   const form = useFormContext();
@@ -123,7 +122,7 @@ export function GeneralForm() {
           );
         }}
       />
-      <PermissionFormField></PermissionFormField>
+      {/* <PermissionFormField></PermissionFormField> */}
       <EmbeddingModelItem isEdit={true}></EmbeddingModelItem>
       <PageRankFormField></PageRankFormField>
 
