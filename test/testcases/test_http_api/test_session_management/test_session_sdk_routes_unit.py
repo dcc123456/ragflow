@@ -497,10 +497,10 @@ def _load_session_module(monkeypatch):
     def _split_model_name(model_name: str):
         parts = model_name.split("@")
         if len(parts) == 1:
-            return parts[0], "", ""
+            return parts[0], "", "", ""
         if len(parts) == 2:
-            return parts[0], "default", parts[1]
-        return parts[0], parts[1], parts[2]
+            return parts[0], "default", parts[1], ""
+        return parts[0], parts[1], parts[2], ""
 
     def _get_tenant_default_model_by_type(tenant_id: str, model_type):
         # Check if tenant exists
@@ -2343,7 +2343,7 @@ def _load_chat_api_module(monkeypatch):
     tenant_model_svc.get_tenant_default_model_by_type = lambda *_a, **_k: {}
     tenant_model_svc.get_model_config_from_provider_instance = lambda **_k: {}
     tenant_model_svc.get_api_key = lambda **_k: "fake-api-key"
-    tenant_model_svc.split_model_name = lambda model_name: (model_name, "", "")
+    tenant_model_svc.split_model_name = lambda model_name: (model_name, "", "", "")
     monkeypatch.setitem(sys.modules, "api.db.joint_services.tenant_model_service", tenant_model_svc)
 
     chunk_feedback_mod = ModuleType("api.db.services.chunk_feedback_service")

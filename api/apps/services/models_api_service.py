@@ -62,13 +62,19 @@ def _factory_model_types(llm: dict) -> list[str]:
 
 def _get_model_info(tenant_id: str, default_model: str, model_type: str):
     """
-    Parse a composite model string (modelName@instanceName@providerName or modelName@providerName)
-    and validate that the provider, instance, and model exist.
+    Parse a composite model string (modelName@instanceName@providerName or modelName@providerName
+    or with #tenant_id suffix) and validate that the provider, instance, and model exist.
 
     Returns a dict with model info or None on error.
     """
     if not default_model:
         return None
+
+    # Extract tenant_id suffix if present (e.g. modelName@instanceName@providerName#tenant_id)
+    if "#" in default_model:
+        default_model, model_tenant_id = default_model.rsplit("#", 1)
+        if model_tenant_id:
+            tenant_id = model_tenant_id
 
     parts = default_model.split("@")
     if len(parts) == 3:

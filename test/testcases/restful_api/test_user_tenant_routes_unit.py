@@ -1608,11 +1608,11 @@ def _load_chat_routes_unit_module(monkeypatch):
     def _split_model_name(model_name):
         parts = model_name.split("@")
         if len(parts) == 1:
-            return parts[0], "", ""
+            return parts[0], "", "", ""
         elif len(parts) == 2:
-            return parts[0], "default", parts[1]
+            return parts[0], "default", parts[1], ""
         else:
-            return parts[0], parts[1], parts[2]
+            return parts[0], parts[1], parts[2], ""
     tenant_model_provider_mod.split_model_name = staticmethod(_split_model_name)
     tenant_model_provider_mod.get_api_key = lambda *_args, **_kwargs: SimpleNamespace(id=1)
     monkeypatch.setitem(sys.modules, "api.db.joint_services.tenant_model_service", tenant_model_provider_mod)
