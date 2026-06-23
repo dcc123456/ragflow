@@ -85,7 +85,7 @@ export function SyncFileForm({
   onOk = noop,
 }: IModalProps<any> & { id?: string }) {
   const { t } = useTranslation();
-  const { categorizedList: _catList, isFetching: isFetchingDataSourceList } =
+  const { categorizedList, isFetching: isFetchingDataSourceList } =
     useListDataSource();
 
   const currentFolderId = useGetFolderId();
@@ -102,16 +102,16 @@ export function SyncFileForm({
     initialData: [],
   });
 
-  const categorizedList = useMemo(
-    // Currently only support Lark and Confluence
-    () =>
-      _catList.filter(
-        (item) =>
-          item.id === DataSourceKey.LARK ||
-          item.id === DataSourceKey.CONFLUENCE,
-      ),
-    [_catList],
-  );
+  // const categorizedList = useMemo(
+  //   // Currently only support Lark and Confluence
+  //   () =>
+  //     _catList.filter(
+  //       (item) =>
+  //         item.id === DataSourceKey.LARK ||
+  //         item.id === DataSourceKey.CONFLUENCE,
+  //     ),
+  //   [_catList],
+  // );
 
   const dataSourceInfo = useMemo(() => generateDataSourceInfo(t), [t]);
 
