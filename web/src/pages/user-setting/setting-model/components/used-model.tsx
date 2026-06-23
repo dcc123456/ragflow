@@ -1,4 +1,6 @@
 import { ConfirmDeleteDialog } from '@/components/confirm-delete-dialog';
+import { IPrivilegeManagementInitialValues } from '@/components/privilege-management/interface';
+import { PrivilegeManagementDialog } from '@/components/privilege-management/privilege-management-dialog';
 import { LlmIcon } from '@/components/svg-icon';
 import { Button } from '@/components/ui/button';
 import {
@@ -9,6 +11,8 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { RAGFlowTooltip } from '@/components/ui/tooltip';
 import { ModelStatus } from '@/constants/llm';
+import { PermissionResourceType } from '@/constants/team';
+import { useSetModalState } from '@/hooks/common-hooks';
 import {
   LlmItem,
   useDeleteProviderInstance,
@@ -19,6 +23,8 @@ import {
   useFetchProviderInstances,
   useUpdateModelStatus,
 } from '@/hooks/use-llm-request';
+import { useFetchTenantInfo } from '@/hooks/use-user-setting-request';
+import { ITenantInfo } from '@/interfaces/database/dataset';
 import {
   IAvailableProvider,
   IInstanceModel,
@@ -29,6 +35,7 @@ import { cn } from '@/lib/utils';
 import {
   ChevronsDown,
   ChevronsUp,
+  KeyRound,
   Pencil,
   Settings,
   Trash2,
@@ -53,28 +60,28 @@ export function UsedModel({
 }) {
   // const { myLlmList: llmList } = useSelectLlmList();
 
-  // const { data: tenantInfo = {} } = useFetchTenantInfo();
+  const { data: tenantInfo = {} as ITenantInfo } = useFetchTenantInfo();
 
-  // const {
-  //   visible: privilegeModal,
-  //   hideModal: hidePrivilegeModal,
-  //   showModal: showPrivilegeModal,
-  // } = useSetModalState();
+  const {
+    visible: privilegeModal,
+    hideModal: hidePrivilegeModal,
+    showModal: showPrivilegeModal,
+  } = useSetModalState();
 
-  // const [record, setRecord] = useState<IPrivilegeManagementInitialValues>(
-  //   {} as IPrivilegeManagementInitialValues,
-  // );
-  // const handShowPrivilegeModal = useCallback(
-  //   (item: Omit<IPrivilegeManagementInitialValues, 'tenant_id'>) => {
-  //     setRecord({
-  //       ...item,
-  //       tenant_id: tenantInfo.tenant_id,
-  //       resourceType: PermissionResourceType.LLM,
-  //     });
-  //     showPrivilegeModal();
-  //   },
-  //   [showPrivilegeModal, tenantInfo.tenant_id],
-  // );
+  const [record, setRecord] = useState<IPrivilegeManagementInitialValues>(
+    {} as IPrivilegeManagementInitialValues,
+  );
+  const handShowPrivilegeModal = useCallback(
+    (item: Omit<IPrivilegeManagementInitialValues, 'tenant_id'>) => {
+      setRecord({
+        ...item,
+        tenant_id: tenantInfo.tenant_id,
+        resourceType: PermissionResourceType.LLM,
+      });
+      showPrivilegeModal();
+    },
+    [showPrivilegeModal, tenantInfo.tenant_id],
+  );
 
   const { t } = useTranslation();
   const { data: providerList } = useFetchAddedProviders();
@@ -87,30 +94,20 @@ export function UsedModel({
       <div className="text-text-primary text-2xl font-medium mb-2 mt-4">
         {t('setting.addedModels')}
       </div>
-      {/* {llmList.map((llm) => {
-        return (
-          <ModelProviderCard
-            key={llm.name}
-            item={llm}
-            clickApiKey={handleAddModel}
-            handleEditModel={handleEditModel}
-            showPrivilegeModal={handShowPrivilegeModal}
-          />
-        );
-      })}
 
       {privilegeModal && (
         <PrivilegeManagementDialog
           hideModal={hidePrivilegeModal}
           initialValues={record}
         ></PrivilegeManagementDialog>
-      )} */}
+      )}
       {providerList.map((provider) => (
         <ProviderCard
           key={provider.name}
           provider={provider}
           handleAddModel={handleAddModel}
           onEditInstance={onEditInstance}
+          showPrivilegeModal={handShowPrivilegeModal}
         />
       ))}
     </div>
@@ -121,6 +118,7 @@ function ProviderCard({
   provider,
   handleAddModel,
   onEditInstance,
+  showPrivilegeModal,
 }: {
   provider: IAvailableProvider;
   handleAddModel: (factory: string) => void;
@@ -129,12 +127,18 @@ function ProviderCard({
     instance: IProviderInstance,
     models: IInstanceModel[],
   ) => void;
+  showPrivilegeModal: ({ id, name }: { id: string; name: string }) => void;
 }) {
   const { data: instances } = useFetchProviderInstances(provider.name);
+  const handleShowPrivilegeModal = useCallback(() => {
+    showPrivilegeModal({
+      id: provider.name,
+      name: provider.name,
+    });
+  }, [provider.name, showPrivilegeModal]);
   if (!instances || instances.length <= 0) {
     return null;
   }
-
   return (
     <div
       className="w-full rounded-lg border border-border-button"
@@ -142,13 +146,23 @@ function ProviderCard({
       data-provider={provider.name}
     >
       {/* Provider header */}
-      <div className="flex h-16 items-center p-4 text-text-secondary">
+      <div className="flex justify-between h-16 items-center p-4 text-text-secondary">
         <div className="flex items-center space-x-3">
           <LlmIcon name={provider.name} width={32} />
           <div className="font-medium text-xl text-text-primary">
             {provider.name}
           </div>
         </div>
+        <Button
+          variant={'ghost'}
+          onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+            e.stopPropagation();
+            handleShowPrivilegeModal();
+          }}
+          className="px-2 py-1 text-sm bg-bg-input hover:bg-bg-input text-text-primary  rounded-md transition-colors flex items-center space-x-1"
+        >
+          <KeyRound />
+        </Button>
       </div>
       {/* Instances */}
       {instances.length > 0 && (

@@ -75,9 +75,11 @@ export function DatasetDropdown({
     <DropdownMenu>
       <DropdownMenuTrigger asChild>{children}</DropdownMenuTrigger>
       <DropdownMenuContent>
-        <DropdownMenuItem onClick={handleShowDatasetRenameModal}>
-          {t('common.rename')} <PenLine />
-        </DropdownMenuItem>
+        {hasManagePermissionPermission(dataset.operator_permission) && (
+          <DropdownMenuItem onClick={handleShowDatasetRenameModal}>
+            {t('common.rename')} <PenLine />
+          </DropdownMenuItem>
+        )}
 
         {/* {hasManagePermissionPermission(dataset.operator_permission) && (
           <DropdownMenuItem
