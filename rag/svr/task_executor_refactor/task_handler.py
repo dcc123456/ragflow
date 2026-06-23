@@ -417,7 +417,7 @@ class TaskHandler:
 
         # Get storage binary
         bucket, name = File2DocumentService.get_storage_address(doc_id=ctx.doc_id)
-        binary = await self._get_storage_binary(bucket, name)
+        binary = await self._get_storage_binary(bucket, name, ctx.tenant_id)
         if binary is None:
             raise FileNotFoundError(
                 f"Can not find file <{ctx.name}> from minio. Could you try it again."
@@ -525,10 +525,10 @@ class TaskHandler:
                 toc_thread.cancel()
 
     @classmethod
-    async def _get_storage_binary(cls, bucket: str, name: str) -> bytes:
+    async def _get_storage_binary(cls, bucket: str, name: str, tenant_id: str) -> bytes:
         from common import settings
         """Get binary from storage."""
-        return await thread_pool_exec(settings.STORAGE_IMPL.get, bucket, name)
+        return await thread_pool_exec(settings.STORAGE_IMPL.get, bucket, name, tenant_id)
 
     @classmethod
     def _build_toc(cls, ctx: TaskContext, docs: List[Dict], progress_cb: Callable) -> Optional[Dict]:

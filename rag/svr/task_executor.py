@@ -1997,7 +1997,7 @@ def rabbitmq_callback(ch, method, properties, body):
             event_loop.run_until_complete(
                 TaskManager.run_refactored_task(task,
                     chat_limiter, minio_limiter, chunk_limiter, embed_limiter, kg_limiter,
-                    partial(set_progress, task_id), has_canceled))
+                    set_progress, has_canceled))
         else:  # original version
             logging.info(f"-----run original task executor:{task_id}, {task.get('name', '')}, doc id:{task.get('doc_id', '')}")
             set_recording_context(NullRecordingContext())
