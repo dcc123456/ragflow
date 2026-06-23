@@ -13,7 +13,7 @@ from api.db.services.mcp_server_service import MCPServerService
 from api.db.services.permission_service import PermissionChangeLogService, PermissionService
 from api.db.services.role_service import RoleResourceService
 from api.db.services.team_service import DepartmentMemberService, DepartmentService, GroupMemberService, GroupService
-from api.db.services.tenant_llm_service import TenantLLMService
+from api.db.services.tenant_model_provider_service import TenantModelProviderService
 from api.db.services.user_service import UserTenantService
 from api.utils.api_utils import get_data_error_result, get_json_result, get_request_json, server_error_response, validate_request
 from api.utils.permission_utils import build_permission_records_for_target, has_permission_for_member, is_valid_permission, wrap_permission_info
@@ -86,8 +86,8 @@ async def update_permission():
 
     llm_factories = set()
     if resource_type == ResourceType.LLM:
-        llms = TenantLLMService.get_my_llms_group_by_factory(tenant_id=tenant_id)
-        llm_factories = {llm.get("llm_factory") for llm in llms}
+        providers = TenantModelProviderService.get_by_tenant_id(tenant_id)
+        llm_factories = {provider.provider_name for provider in providers}
 
     role_resource_map = {
         ResourceType.KB: ResourceTypeEnum.DATASET.value,
@@ -468,8 +468,8 @@ async def update_permission_next():
                 return get_data_error_result(message=f"Item {idx}: Resource KB {resource_id} is not available.")
         elif resource_type == ResourceType.LLM:
             if llm_factories is None:
-                llms = TenantLLMService.get_my_llms_group_by_factory(tenant_id=tenant_id)
-                llm_factories = {llm.get("llm_factory") for llm in llms}
+                providers = TenantModelProviderService.get_by_tenant_id(tenant_id)
+                llm_factories = {provider.provider_name for provider in providers}
             if resource_id and resource_id not in llm_factories:
                 return get_data_error_result(message=f"Item {idx}: Resource LLM {resource_id} is not available.")
         elif resource_type == ResourceType.DIALOG:
@@ -613,8 +613,8 @@ async def list_permissions():
             if not (operator.tenant_id == current_user.id or has_permission_for_member(operator.id, tenant_id, kb_id, resource_type=resource_type, permission=PermissionValue.PERMISSION_MANAGE)[0]):
                 return get_data_error_result(message="Permission denied.")
     elif resource_type == ResourceType.LLM:
-        llms = TenantLLMService.get_my_llms_group_by_factory(tenant_id=tenant_id)
-        llm_factories = {llm.get("llm_factory") for llm in llms}
+        providers = TenantModelProviderService.get_by_tenant_id(tenant_id)
+        llm_factories = {provider.provider_name for provider in providers}
         for llm_factory in resource_ids:
             if llm_factory not in llm_factories:
                 return get_data_error_result(message="Resource is not available.")
