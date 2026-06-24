@@ -130,12 +130,7 @@ function ProviderCard({
   showPrivilegeModal: ({ id, name }: { id: string; name: string }) => void;
 }) {
   const { data: instances } = useFetchProviderInstances(provider.name);
-  const handleShowPrivilegeModal = useCallback(() => {
-    showPrivilegeModal({
-      id: provider.name,
-      name: provider.name,
-    });
-  }, [provider.name, showPrivilegeModal]);
+
   if (!instances || instances.length <= 0) {
     return null;
   }
@@ -153,16 +148,6 @@ function ProviderCard({
             {provider.name}
           </div>
         </div>
-        <Button
-          variant={'ghost'}
-          onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
-            e.stopPropagation();
-            handleShowPrivilegeModal();
-          }}
-          className="px-2 py-1 text-sm bg-bg-input hover:bg-bg-input text-text-primary  rounded-md transition-colors flex items-center space-x-1"
-        >
-          <KeyRound />
-        </Button>
       </div>
       {/* Instances */}
       {instances.length > 0 && (
@@ -174,6 +159,7 @@ function ProviderCard({
               providerName={provider.name}
               handleAddModel={handleAddModel}
               onEditInstance={onEditInstance}
+              showPrivilegeModal={showPrivilegeModal}
             />
           ))}
         </div>
@@ -187,6 +173,7 @@ function InstanceRow({
   providerName,
   // handleAddModel,
   onEditInstance,
+  showPrivilegeModal,
 }: {
   instance: IProviderInstance;
   providerName: string;
@@ -196,10 +183,25 @@ function InstanceRow({
     instance: IProviderInstance,
     models: IInstanceModel[],
   ) => void;
+  showPrivilegeModal: ({
+    id,
+    name,
+  }: {
+    id: string;
+    name: string;
+    providerName: string;
+  }) => void;
 }) {
   const { t } = useTranslation();
   const [visible, setVisible] = useState(false);
   const { deleteProviderInstance } = useDeleteProviderInstance();
+  const handleShowPrivilegeModal = useCallback(() => {
+    showPrivilegeModal({
+      providerName: providerName,
+      id: instance.id,
+      name: instance.instance_name,
+    });
+  }, [providerName, showPrivilegeModal]);
 
   const handleDelete = async () => {
     await deleteProviderInstance({
@@ -221,6 +223,18 @@ function InstanceRow({
             {instance.instance_name}
           </span>
           <div className="flex items-center space-x-2">
+            {false && (
+              <Button
+                variant={'ghost'}
+                onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+                  e.stopPropagation();
+                  handleShowPrivilegeModal();
+                }}
+                className="px-2 py-1 text-sm bg-bg-input hover:bg-bg-input text-text-primary  rounded-md transition-colors flex items-center space-x-1"
+              >
+                <KeyRound />
+              </Button>
+            )}
             {/* <Button variant="outline" size="sm" onClick={handleApiKeyClick}>
               {t('setting.apiKey')}
             </Button> */}
