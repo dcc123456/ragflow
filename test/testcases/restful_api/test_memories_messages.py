@@ -22,7 +22,7 @@ from test.testcases.conftest import embedding_model_id, using_siliconflow_byok
 
 
 def _memory_embedding_id() -> str:
-    return embedding_model_id(include_instance=False)
+    return embedding_model_id()
 
 
 def _memory_message_wait_timeout() -> float:

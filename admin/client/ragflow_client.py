@@ -1923,7 +1923,7 @@ class RAGFlowClient:
     def _list_documents(self, dataset_name: str, dataset_id: str):
         all_docs = []
         page = 1
-        page_size = 1000
+        page_size = 100
         while True:
             response = self.http_client.request(
                 "GET",

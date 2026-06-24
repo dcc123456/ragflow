@@ -1614,7 +1614,7 @@ async def do_handle_task(task):
             target_vector_size = -1
             for t in range(retry):
                 try:
-                    token_count, target_vector_size = await asyncio.wait_for(embedding(docs, target_embedding_model, task_parser_config, progress_callback), timeout=len(docs)*3)
+                    token_count, target_vector_size = await asyncio.wait_for(embedding(docs, target_embedding_model, task_parser_config, progress_callback), timeout=max(60, len(docs)*3))
                 except Exception as e:
                     error_message = "Generate embedding error:{}".format(str(e))
                     if t + 1 < retry:
@@ -1697,7 +1697,7 @@ async def do_handle_task(task):
         progress_callback(msg="Generate {} chunks".format(len(chunks)))
         start_ts = timer()
         try:
-            token_count, vector_size = await asyncio.wait_for(embedding(chunks, embedding_model, task_parser_config, progress_callback), timeout=len(chunks)*3)
+            token_count, vector_size = await asyncio.wait_for(embedding(chunks, embedding_model, task_parser_config, progress_callback), timeout=max(60, len(chunks)*3))
         except Exception as e:
             error_message = "Generate embedding error:{}".format(str(e))
             progress_callback(-1, error_message)
