@@ -28,12 +28,11 @@ import { useFormContext, useWatch } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { DynamicVariableForm } from './dynamic-variable';
 
-export interface ChatPromptEngineProps {
+interface ChatPromptEngineProps {
   prefix?: string;
 }
 
 export function ChatPromptEngine({ prefix = '' }: ChatPromptEngineProps) {
-  console.info(prefix);
   const { t } = useTranslation();
   const form = useFormContext();
   const systemPromptValue = form.watch(
@@ -131,7 +130,9 @@ export function ChatPromptEngine({ prefix = '' }: ChatPromptEngineProps) {
         <TOCEnhanceFormField
           name={prefixName(prefix, 'prompt_config.toc_enhance')}
         ></TOCEnhanceFormField>
-        <TavilyFormField></TavilyFormField>
+        <TavilyFormField
+          name={prefixName(prefix, 'prompt_config.tavily_api_key')}
+        ></TavilyFormField>
         <MetadataFilter></MetadataFilter>
         <FormField
           control={form.control}
