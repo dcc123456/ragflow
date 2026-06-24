@@ -417,7 +417,7 @@ class TaskHandler:
 
         # Get storage binary
         bucket, name = File2DocumentService.get_storage_address(doc_id=ctx.doc_id)
-        binary = await self._get_storage_binary(bucket, name, ctx.tenant_id)
+        binary = await self._get_storage_binary(bucket, name, task_tenant_id)
         if binary is None:
             raise FileNotFoundError(
                 f"Can not find file <{ctx.name}> from minio. Could you try it again."

@@ -77,6 +77,8 @@ class RAGFlowMinio:
 
     def user_gateway(self, tenant_id):
         """Get connection index for tenant using hash-based distribution"""
+        if not tenant_id:
+            return 0
         hash_obj = hashlib.sha256(tenant_id.encode("utf-8"))
         config_len = len(self.minio_config)
         return (int(hash_obj.hexdigest(), 16) % config_len) if config_len > 0 else 0
