@@ -21,7 +21,7 @@ from test.testcases.conftest import embedding_model_id
 
 
 def _memory_embedding_id() -> str:
-    return embedding_model_id(include_instance=False)
+    return embedding_model_id()
 
 
 def _memory_payload(name: str) -> dict:

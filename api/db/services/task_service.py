@@ -448,7 +448,7 @@ def queue_tasks(doc: dict, bucket: str, name: str, priority: int):
     billing_hold_id = None
 
     if doc["type"] == FileType.PDF.value:
-        file_bin = settings.STORAGE_IMPL.get(bucket, name)
+        file_bin = settings.STORAGE_IMPL.get(bucket, name, doc["tenant_id"])
         pages = PdfParser.total_page_number(doc["name"], file_bin)
         if pages is None:
             pages = 0

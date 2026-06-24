@@ -388,7 +388,7 @@ def test_dataset_update_parser_config_with_chunk_method_change_contract(rest_cli
 @pytest.mark.parametrize(
     "embedding_model, unauthorized_is_xfail",
     [
-        (embedding_model_id(include_instance=False), False),
+        (embedding_model_id(), False),
         ("embedding-3@ZHIPU-AI", True),
     ],
     ids=["builtin_baai", "tenant_zhipu"],
