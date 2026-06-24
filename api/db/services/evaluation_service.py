@@ -44,8 +44,8 @@ from api.db.services import duplicate_name
 from api.db.services.dialog_service import DialogService
 from api.db.services.document_service import DocumentService, queue_reembedding_dup_tasks
 from api.db.services.llm_service import LLMBundle
-from api.db.services.tenant_llm_service import TenantLLMService
 from api.db.services.user_service import TenantService
+from api.db.joint_services.tenant_model_service import get_model_config_from_provider_instance, get_model_type_by_name
 from common.misc_utils import get_uuid
 from common.string_utils import remove_redundant_spaces
 from common.time_utils import current_timestamp
@@ -1214,11 +1214,11 @@ class EvaluationService(CommonService):
         context = cls._build_context(retrieved_chunks)
         reference = reference_answer or ""
 
-        llm_type = cls._llm_type_from_llm_id(llm_id)
+        llm_type = cls._llm_type_from_llm_id(user_id, llm_id)
         try:
             from rag.prompts.generator import rag_judge_metrics
 
-            model_config = TenantLLMService.get_model_config(user_id, llm_type.value, llm_id or None)
+            model_config = get_model_config_from_provider_instance(user_id, llm_type, llm_id or None)
             llm = LLMBundle(user_id, model_config)
             judge_result = llm._run_coroutine_sync(
                 rag_judge_metrics(
@@ -1255,10 +1255,10 @@ class EvaluationService(CommonService):
         return {key: _get_score(val.get("score")), f"{key}_reason": val.get("reason", "")}
 
     @staticmethod
-    def _llm_type_from_llm_id(llm_id: str) -> LLMType:
+    def _llm_type_from_llm_id(tenant_id, llm_id: str) -> LLMType:
         try:
-            llm_type = TenantLLMService.llm_id2llm_type(llm_id)
-            if llm_type == "image2text":
+            llm_type = get_model_type_by_name(tenant_id, llm_id)
+            if "image2text" in llm_type:
                 return LLMType.IMAGE2TEXT
         except Exception:
             pass

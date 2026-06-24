@@ -1214,7 +1214,6 @@ class TestDocRoutesUnit:
             def encode(self, _texts):
                 return [np.array([0.2, 0.8]), np.array([0.3, 0.7])], 1
 
-        monkeypatch.setattr(module.TenantLLMService, "model_instance", lambda *_args, **_kwargs: _EmbedModel())
         _patch_docstore(monkeypatch, module, get=lambda *_args, **_kwargs: {"doc_id": "doc-1", "content_with_weight": "x"}, update=lambda *_args, **_kwargs: None)
         monkeypatch.setattr(module, "get_request_json", lambda: _AwaitableValue({"positions": "bad"}))
         res = _run(_route_core(module.update_chunk)("tenant-1", "ds-1", "doc-1", "chunk-1"))
@@ -1249,7 +1248,6 @@ class TestDocRoutesUnit:
 
         monkeypatch.setattr(module.KnowledgebaseService, "accessible", lambda **_kwargs: True)
         monkeypatch.setattr(module.KnowledgebaseService, "get_by_ids", lambda _ids: [SimpleNamespace(embd_id="m1"), SimpleNamespace(embd_id="m2")])
-        monkeypatch.setattr(module.TenantLLMService, "split_model_name_and_factory", lambda embd_id: (embd_id, "f"))
         res = _run(module.retrieval_test("tenant-1"))
         assert "different embedding models" in res["message"]
 

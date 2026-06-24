@@ -760,137 +760,6 @@ class RAGFlowClient:
             print("This command is only allowed in USER mode")
         print("show current user")
 
-    def create_model_provider(self, command):
-        if self.server_type != "user":
-            print("This command is only allowed in USER mode")
-            return
-        provider_name: str = command["provider_name"]
-        api_key: str = command["provider_key"]
-
-        # Step 1: Add provider
-        provider_payload = {"provider_name": provider_name}
-        provider_response = self.http_client.request("PUT", "/providers", json_body=provider_payload,
-                                                     use_api_base=True, auth_kind="web")
-        provider_res = provider_response.json()
-        if provider_response.status_code == 200 and provider_res.get("code") == 0:
-            print(f"Success to add provider {provider_name}")
-        else:
-            msg = provider_res.get("message", "")
-            if "duplicated" in msg.lower() or "already exist" in msg.lower():
-                print(f"Note: provider {provider_name} already exists, continuing to add instance")
-            else:
-                print(f"Fail to add provider {provider_name}, code: {provider_res.get('code')}, message: {msg}")
-                return
-
-        # Step 2: Add instance
-        instance_payload = {
-            "instance_name": "default",
-            "api_key": api_key,
-            "region": "default",
-            "base_url": ""
-        }
-        instance_response = self.http_client.request("POST", f"/providers/{provider_name}/instances",
-                                                      json_body=instance_payload, use_api_base=True,
-                                                      auth_kind="web")
-        instance_res = instance_response.json()
-        if instance_response.status_code == 200 and instance_res.get("code") == 0:
-            print(f"Success to add instance for provider {provider_name}")
-        else:
-            msg = instance_res.get("message", "")
-            if "already exist" in msg.lower():
-                print(f"Note: instance for provider {provider_name} already exists, skipping")
-            else:
-                print(f"Fail to add instance for provider {provider_name}, code: {instance_res.get('code')}, message: {msg}")
-
-    def drop_model_provider(self, command):
-        if self.server_type != "user":
-            print("This command is only allowed in USER mode")
-            return
-        provider_name: str = command["provider_name"]
-        response = self.http_client.request("DELETE", f"/providers/{provider_name}", use_api_base=True,
-                                            auth_kind="web")
-        res_json = response.json()
-        if response.status_code == 200 and res_json.get("code") == 0:
-            print(f"Success to drop model provider {provider_name}")
-        else:
-            print(f"Fail to drop model provider {provider_name}, code: {res_json.get('code')}, message: {res_json.get('message')}")
-
-    # Mapping from legacy model_type keys to API model_type values
-    _MODEL_TYPE_MAP = {
-        "llm_id": "chat",
-        "embd_id": "embedding",
-        "img2txt_id": "vision",
-        "reranker_id": "rerank",
-        "asr_id": "asr",
-        "tts_id": "tts",
-    }
-
-    def set_default_model(self, command):
-        if self.server_type != "user":
-            print("This command is only allowed in USER mode")
-            return
-
-        model_type_key: str = command["model_type"]
-        model_id: str = command["model_id"]
-
-        model_type = self._MODEL_TYPE_MAP.get(model_type_key)
-        if model_type is None:
-            print(f"Unknown model type: {model_type_key}")
-            return
-
-        model_name, model_instance, model_provider = self._parse_model_id(model_id)
-
-        payload = {
-            "model_provider": model_provider,
-            "model_instance": model_instance,
-            "model_type": model_type,
-            "model_name": model_name,
-        }
-        response = self.http_client.request("PATCH", "/models/default", json_body=payload, use_api_base=True,
-                                            auth_kind="web")
-        res_json = response.json()
-        if response.status_code == 200 and res_json.get("code") == 0:
-            print(f"Success to set default {model_type} to {model_id}")
-        else:
-            print(f"Fail to set default {model_type}, code: {res_json.get('code')}, message: {res_json.get('message')}")
-
-    def reset_default_model(self, command):
-        if self.server_type != "user":
-            print("This command is only allowed in USER mode")
-            return
-
-        model_type_key: str = command["model_type"]
-        model_type = self._MODEL_TYPE_MAP.get(model_type_key)
-        if model_type is None:
-            print(f"Unknown model type: {model_type_key}")
-            return
-
-        payload = {"model_type": model_type}
-        response = self.http_client.request("PATCH", "/models/default", json_body=payload, use_api_base=True,
-                                            auth_kind="web")
-        res_json = response.json()
-        if response.status_code == 200 and res_json.get("code") == 0:
-            print(f"Success to reset default {model_type}")
-        else:
-            print(f"Fail to reset default {model_type}, code: {res_json.get('code')}, message: {res_json.get('message')}")
-
-    @staticmethod
-    def _parse_model_id(model_id: str):
-        """Parse model_id into (model_name, model_instance, model_provider).
-
-        Accepted formats:
-          - model_name@instance@provider  -> (model_name, instance, provider)
-          - model_name@provider            -> (model_name, "default", provider)
-          - model_name                     -> (model_name, "default", "")
-        """
-        parts = model_id.split("@")
-        if len(parts) >= 3:
-            return parts[0], parts[1], parts[-1]
-        elif len(parts) == 2:
-            return parts[0], "default", parts[1]
-        else:
-            return model_id, "default", ""
-
     def list_user_datasets(self, command):
         if self.server_type != "user":
             print("This command is only allowed in USER mode")
@@ -1379,46 +1248,6 @@ class RAGFlowClient:
             except json.JSONDecodeError:
                 continue
         print()  # Final newline
-
-    def list_user_model_providers(self, command):
-        if self.server_type != "user":
-            print("This command is only allowed in USER mode")
-
-        response = self.http_client.request("GET", "/llm/my_llms", use_api_base=False, auth_kind="web")
-        res_json = response.json()
-        if response.status_code == 200:
-            new_input = []
-            for key, value in res_json["data"].items():
-                new_input.append({"model provider": key, "models": value})
-            self._print_table_simple(new_input)
-        else:
-            print(f"Fail to list model provider, code: {res_json['code']}, message: {res_json['message']}")
-
-    def list_user_default_models(self, command):
-        if self.server_type != "user":
-            print("This command is only allowed in USER mode")
-
-        res_json = self._get_default_models()
-        if res_json is None:
-            return
-        else:
-            new_input = []
-            for key, value in res_json.items():
-                if key == "asr_id" and value != "":
-                    new_input.append({"model_category": "ASR", "model_name": value})
-                elif key == "embd_id" and value != "":
-                    new_input.append({"model_category": "Embedding", "model_name": value})
-                elif key == "llm_id" and value != "":
-                    new_input.append({"model_category": "LLM", "model_name": value})
-                elif key == "rerank_id" and value != "":
-                    new_input.append({"model_category": "Reranker", "model_name": value})
-                elif key == "tts_id" and value != "":
-                    new_input.append({"model_category": "TTS", "model_name": value})
-                elif key == "img2txt_id" and value != "":
-                    new_input.append({"model_category": "VLM", "model_name": value})
-                else:
-                    continue
-            self._print_table_simple(new_input)
 
     def parse_dataset_docs(self, command_dict):
         if self.server_type != "user":
@@ -1999,6 +1828,19 @@ class RAGFlowClient:
                 print(f"Fail to list chats, code: {res_json['code']}, message: {res_json['message']}")
                 return None
 
+    def _get_default_models(self):
+        response = self.http_client.request("GET", "/user/tenant_info", use_api_base=False, auth_kind="web")
+        res_json = response.json()
+        if response.status_code == 200:
+            if res_json["code"] == 0:
+                return res_json["data"]
+            else:
+                print(f"Fail to list user default models, code: {res_json['code']}, message: {res_json['message']}")
+                return None
+        else:
+            print(f"Fail to list user default models, HTTP code: {response.status_code}, message: {res_json}")
+            return None
+
     def _format_service_detail_table(self, data):
         if isinstance(data, list):
             return data
@@ -2172,16 +2014,8 @@ def run_command(client: RAGFlowClient, command_dict: dict):
             client.check_license(command_dict)
         case "list_server_configs":
             client.list_server_configs(command_dict)
-        case "create_model_provider":
-            client.create_model_provider(command_dict)
-        case "drop_model_provider":
-            client.drop_model_provider(command_dict)
         case "show_current_user":
             client.show_current_user(command_dict)
-        case "set_default_model":
-            client.set_default_model(command_dict)
-        case "reset_default_model":
-            client.reset_default_model(command_dict)
         case "list_user_datasets":
             return client.list_user_datasets(command_dict)
         case "create_user_dataset":
@@ -2220,10 +2054,6 @@ def run_command(client: RAGFlowClient, command_dict: dict):
             return client.list_chat_sessions(command_dict)
         case "chat_on_session":
             client.chat_on_session(command_dict)
-        case "list_user_model_providers":
-            client.list_user_model_providers(command_dict)
-        case "list_user_default_models":
-            client.list_user_default_models(command_dict)
         case "parse_dataset_docs":
             client.parse_dataset_docs(command_dict)
         case "parse_dataset":
