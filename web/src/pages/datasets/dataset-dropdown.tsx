@@ -15,7 +15,6 @@ import { IDataset } from '@/interfaces/database/dataset';
 import {
   hasManagePermissionPermission,
   hasOwnerPermission,
-  showEditButton,
 } from '@/utils/permission-util';
 import { PenLine, Trash2 } from 'lucide-react';
 import { MouseEventHandler, PropsWithChildren, useCallback } from 'react';
@@ -67,7 +66,7 @@ export function DatasetDropdown({
       [showPrivilegeModal],
     );
 
-  if (!showEditButton(dataset.operator_permission)) {
+  if (!hasManagePermissionPermission(dataset.operator_permission)) {
     return null;
   }
 

@@ -60,11 +60,9 @@ export default function MemoryMessage() {
       user_prompt: data?.user_prompt || '',
       forgetting_policy: data?.forgetting_policy || 'FIFO',
       storage_type: data?.storage_type || 'Table',
-      permissions: data?.permissions || 'me',
     });
   }, [data, form]);
   const onSubmit = (data: IMemory) => {
-    console.log('data', data);
     onMemoryRenameOk(data);
   };
   return (
