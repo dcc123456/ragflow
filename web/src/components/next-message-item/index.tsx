@@ -15,6 +15,7 @@ import {
   useMemo,
   useState,
 } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { IRegenerateMessage, IRemoveMessageById } from '@/hooks/logic-hooks';
 import { INodeEvent, MessageEventType } from '@/hooks/use-send-message';
@@ -85,6 +86,7 @@ function MessageItem({
   className,
   nickname,
 }: IProps) {
+  const { t } = useTranslation();
   const { theme } = useTheme();
   const isAssistant = item.role === MessageType.Assistant;
   const isUser = item.role === MessageType.User;
@@ -147,7 +149,7 @@ function MessageItem({
         {item.data ? (
           children
         ) : sendLoading && isEmpty(messageContent) ? (
-          <>{!isShare && 'running...'}</>
+          <>{!isShare && t('common.running')}</>
         ) : (
           <MarkdownContent
             loading={loading}
@@ -168,6 +170,7 @@ function MessageItem({
     messageContent,
     reference,
     sendLoading,
+    t,
     theme,
   ]);
 
