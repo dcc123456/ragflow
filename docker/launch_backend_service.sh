@@ -203,8 +203,8 @@ ensure_db_init() {
 
 run_mysql_migrations() {
     echo "Running model provider table migrations..."
-    "$PY" tools/scripts/mysql_migration.py \
-        --stages tenant_model_provider,tenant_model_instance,tenant_model,model_id_config \
+    "$PY" tools/scripts/mysql_migration_enterprise.py \
+        --stages tenant_model_provider,tenant_model_instance,tenant_model,model_id_config,model_id_config_swap \
         --config conf/service_conf.yaml \
         --execute \
         --database-version "v0.26.1" \
