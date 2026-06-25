@@ -859,15 +859,15 @@ class TenantModelStage(MigrationStage):
         # We cannot JOIN tenant_model_instance on api_key directly because the instance
         # stage deduped api_keys (stripping is_tools), so a plain SQL equality won't
         # match records whose api_key was merged. Count at the provider level instead.
-        extra_where = f" AND tl.create_time > %s" if self.create_time else ""
+        extra_where = " AND tl.create_time > %s" if self.create_time else ""
         params = [self.create_time] if self.create_time else []
         cursor = self.db.execute_sql(
-            f"SELECT COUNT(*) FROM ("
-            f"  SELECT tl.id "
-            f"  FROM tenant_llm tl "
-            f"  INNER JOIN tenant_model_provider tmp ON tmp.tenant_id = tl.tenant_id AND tmp.provider_name = tl.llm_factory "
+            "SELECT COUNT(*) FROM ("
+            "  SELECT tl.id "
+            "  FROM tenant_llm tl "
+            "  INNER JOIN tenant_model_provider tmp ON tmp.tenant_id = tl.tenant_id AND tmp.provider_name = tl.llm_factory "
             f"  WHERE {status_condition}{extra_where} "
-            f") AS source_records",
+            ") AS source_records",
             params
         )
         count = cursor.fetchone()[0]
@@ -922,19 +922,19 @@ class TenantModelStage(MigrationStage):
         # Get records from tenant_llm with provider_id lookup (no instance JOIN)
         # Migrate status='0' records, plus status='1' for empty-llm factories
         # Use fetchmany() to avoid loading all records into memory at once
-        extra_where = f" AND tl.create_time > %s" if self.create_time else ""
+        extra_where = " AND tl.create_time > %s" if self.create_time else ""
         params = [self.create_time] if self.create_time else []
         cursor = self.db.execute_sql(
-            f"SELECT tl.id, tl.llm_name, tmp.id as provider_id, "
-            f"       tl.model_type, tl.status, tl.api_key "
-            f"FROM tenant_llm tl "
-            f"INNER JOIN tenant_model_provider tmp ON tmp.tenant_id = tl.tenant_id AND tmp.provider_name = tl.llm_factory "
+            "SELECT tl.id, tl.llm_name, tmp.id as provider_id, "
+            "       tl.model_type, tl.status, tl.api_key "
+            "FROM tenant_llm tl "
+            "INNER JOIN tenant_model_provider tmp ON tmp.tenant_id = tl.tenant_id AND tmp.provider_name = tl.llm_factory "
             f"WHERE {status_condition}{extra_where} "
-            f"AND NOT EXISTS ("
-            f"  SELECT 1 FROM tenant_model tm "
-            f"  WHERE tm.provider_id = tmp.id AND tm.model_name = tl.llm_name"
-            f") "
-            f"ORDER BY tl.create_time ASC",
+            "AND NOT EXISTS ("
+            "  SELECT 1 FROM tenant_model tm "
+            "  WHERE tm.provider_id = tmp.id AND tm.model_name = tl.llm_name"
+            ") "
+            "ORDER BY tl.create_time ASC",
             params
         )
 
