@@ -1101,7 +1101,7 @@ class ModelIdConfigStage(MigrationStage):
     """Normalize stored model IDs from model@provider to model@default@provider."""
 
     name = "model_id_config"
-    description = "Normalize stored model IDs in config columns to model@default@provider"
+    description = "Normalize stored model IDs in backup tables to model@default@provider"
     source_tables = [
         "tenant",
         "knowledgebase",
@@ -1117,7 +1117,22 @@ class ModelIdConfigStage(MigrationStage):
         "connector",
         "evaluation_runs",
     ]
-    target_tables = source_tables
+    backup_suffix = "_bak"
+    target_tables = [
+        "tenant_bak",
+        "knowledgebase_bak",
+        "document_bak",
+        "dialog_bak",
+        "memory_bak",
+        "search_bak",
+        "user_canvas_bak",
+        "canvas_template_bak",
+        "user_canvas_version_bak",
+        "api_4_conversation_bak",
+        "pipeline_operation_log_bak",
+        "connector_bak",
+        "evaluation_runs_bak",
+    ]
 
     model_id_fields = {
         "llm_id",
@@ -1149,6 +1164,106 @@ class ModelIdConfigStage(MigrationStage):
         "connector": ("config",),
         "evaluation_runs": ("config_snapshot",),
     }
+
+    def __init__(self, db: MigrationDatabase, dry_run: bool = True, create_table_only: bool = False, create_time: int = 0):
+        super().__init__(db, dry_run=dry_run, create_table_only=create_table_only)
+        self.create_time = create_time
+
+    def _backup_table_name(self, table_name: str) -> str:
+        return f"{table_name}{self.backup_suffix}"
+
+    def _working_table_name(self, table_name: str) -> str:
+        backup_table_name = self._backup_table_name(table_name)
+        if self.db.table_exists(backup_table_name):
+            return backup_table_name
+        return table_name
+
+    def _ensure_backup_tables(self) -> set[str]:
+        created_tables = set()
+        for table_name in self.source_tables:
+            if not self.db.table_exists(table_name):
+                logger.info("Table '%s' does not exist, skipping backup", table_name)
+                continue
+
+            backup_table_name = self._backup_table_name(table_name)
+            if not self.db.table_exists(backup_table_name):
+                self.db.execute_sql(f"CREATE TABLE `{backup_table_name}` LIKE `{table_name}`")
+                self.db.execute_sql(f"INSERT INTO `{backup_table_name}` SELECT * FROM `{table_name}`")
+                logger.info("Created backup table '%s' from '%s'", backup_table_name, table_name)
+                created_tables.add(table_name)
+                continue
+
+            cursor = self.db.execute_sql(f"SELECT 1 FROM `{backup_table_name}` LIMIT 1")
+            if cursor.fetchone() is None:
+                self.db.execute_sql(f"INSERT INTO `{backup_table_name}` SELECT * FROM `{table_name}`")
+                logger.info("Populated empty backup table '%s' from '%s'", backup_table_name, table_name)
+                created_tables.add(table_name)
+            else:
+                logger.info("Reusing existing backup table '%s'", backup_table_name)
+        return created_tables
+
+    def _sync_source_to_backup_tables(self, created_tables: set[str]):
+        if not self.create_time:
+            return
+
+        for table_name in self.source_tables:
+            if table_name in created_tables:
+                continue
+            if not self.db.table_exists(table_name):
+                continue
+
+            backup_table_name = self._backup_table_name(table_name)
+            if not self.db.table_exists(backup_table_name):
+                continue
+
+            self.db.execute_sql(
+                f"""
+                REPLACE INTO `{backup_table_name}`
+                SELECT *
+                FROM `{table_name}`
+                WHERE COALESCE(`create_time`, 0) > %s
+                """,
+                (self.create_time,),
+            )
+
+            columns_cursor = self.db.execute_sql(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = %s
+                  AND table_name = %s
+                  AND column_name <> 'id'
+                ORDER BY ordinal_position
+                """,
+                (self.db.config.database, backup_table_name),
+            )
+            columns = [row[0] for row in columns_cursor.fetchall()]
+            if columns:
+                set_clause = ", ".join(f"`b`.`{column}` = `s`.`{column}`" for column in columns)
+                self.db.execute_sql(
+                    f"""
+                    UPDATE `{backup_table_name}` b
+                    JOIN `{table_name}` s ON b.id = s.id
+                    SET {set_clause}
+                    WHERE COALESCE(s.`update_time`, 0) > %s
+                      AND COALESCE(s.`create_time`, 0) <= %s
+                    """,
+                    (self.create_time, self.create_time),
+                )
+            logger.info(
+                "Synced rows from '%s' to backup table '%s' after create_time=%s",
+                table_name,
+                backup_table_name,
+                self.create_time,
+            )
+
+    def _time_filter_clause(self) -> tuple[str, tuple]:
+        if not self.create_time:
+            return "", ()
+        return " AND (COALESCE(`create_time`, 0) > %s OR COALESCE(`update_time`, 0) > %s)", (
+            self.create_time,
+            self.create_time,
+        )
 
     def normalize_model_id(self, value):
         if not isinstance(value, str) or not value:
@@ -1196,14 +1311,15 @@ class ModelIdConfigStage(MigrationStage):
 
     def existing_columns(self, table_columns):
         for table_name, columns in table_columns.items():
-            if not self.db.table_exists(table_name):
-                logger.info("Table '%s' does not exist, skipping", table_name)
+            working_table_name = self._working_table_name(table_name)
+            if not self.db.table_exists(working_table_name):
+                logger.info("Table '%s' does not exist, skipping", working_table_name)
                 continue
             for column_name in columns:
-                if not self.db.column_exists(table_name, column_name):
-                    logger.info("Column '%s.%s' does not exist, skipping", table_name, column_name)
+                if not self.db.column_exists(working_table_name, column_name):
+                    logger.info("Column '%s.%s' does not exist, skipping", working_table_name, column_name)
                     continue
-                yield table_name, column_name
+                yield working_table_name, column_name
 
     def load_json_value(self, raw_value, table_name, column_name, row_id):
         if raw_value in (None, ""):
@@ -1223,10 +1339,12 @@ class ModelIdConfigStage(MigrationStage):
 
     def iter_string_changes(self):
         for table_name, column_name in self.existing_columns(self.string_columns):
+            time_clause, time_params = self._time_filter_clause()
             cursor = self.db.execute_sql(
                 f"SELECT id, `{column_name}` FROM `{table_name}` "
-                f"WHERE `{column_name}` IS NOT NULL AND `{column_name}` != '' AND `{column_name}` LIKE %s",
-                ("%@%",),
+                f"WHERE `{column_name}` IS NOT NULL AND `{column_name}` != '' AND `{column_name}` LIKE %s"
+                f"{time_clause}",
+                ("%@%",) + time_params,
             )
             while True:
                 rows = cursor.fetchmany(self.scan_batch_size)
@@ -1239,10 +1357,12 @@ class ModelIdConfigStage(MigrationStage):
 
     def iter_json_changes(self):
         for table_name, column_name in self.existing_columns(self.json_columns):
+            time_clause, time_params = self._time_filter_clause()
             cursor = self.db.execute_sql(
                 f"SELECT id, `{column_name}` FROM `{table_name}` "
-                f"WHERE `{column_name}` IS NOT NULL AND `{column_name}` != '' AND `{column_name}` LIKE %s",
-                ("%@%",),
+                f"WHERE `{column_name}` IS NOT NULL AND `{column_name}` != '' AND `{column_name}` LIKE %s"
+                f"{time_clause}",
+                ("%@%",) + time_params,
             )
             while True:
                 rows = cursor.fetchmany(self.scan_batch_size)
@@ -1289,6 +1409,10 @@ class ModelIdConfigStage(MigrationStage):
         if self.create_table_only:
             logger.info("[CREATE TABLE ONLY] No tables are created for this data migration")
             return 0, []
+
+        if not self.dry_run:
+            created_tables = self._ensure_backup_tables()
+            self._sync_source_to_backup_tables(created_tables)
 
         rows_updated = 0
         tables_operated = set()
@@ -1339,12 +1463,71 @@ class ModelIdConfigStage(MigrationStage):
         return rows_updated, sorted(tables_operated)
 
 
+class ModelIdConfigSwapStage(ModelIdConfigStage):
+    """Swap original tables with their backup copies after normalization."""
+
+    name = "model_id_config_swap"
+    description = "Swap original tables with backup tables after model ID normalization"
+    target_tables = ModelIdConfigStage.source_tables
+
+    def check(self) -> bool:
+        swap_pairs = []
+        for table_name in self.source_tables:
+            backup_table_name = self._backup_table_name(table_name)
+            if self.db.table_exists(table_name) and self.db.table_exists(backup_table_name):
+                swap_pairs.append((table_name, backup_table_name))
+
+        if not swap_pairs:
+            self.mark_noop_completes_migration()
+            logger.info("No table pairs found for model ID table swap")
+            return False
+
+        logger.info(
+            "Found %s table pairs to swap: %s",
+            len(swap_pairs),
+            ", ".join(f"{src}<->{bak}" for src, bak in swap_pairs),
+        )
+        return True
+
+    def execute(self) -> tuple[int, list]:
+        if self.create_table_only:
+            logger.info("[CREATE TABLE ONLY] No tables are swapped for this stage")
+            return 0, []
+
+        swap_pairs = []
+        for index, table_name in enumerate(self.source_tables):
+            backup_table_name = self._backup_table_name(table_name)
+            if not self.db.table_exists(table_name) or not self.db.table_exists(backup_table_name):
+                continue
+            temp_table_name = f"__swap_tmp_{index}"
+            if self.db.table_exists(temp_table_name):
+                raise RuntimeError(f"Temporary swap table '{temp_table_name}' already exists")
+            swap_pairs.append((table_name, backup_table_name, temp_table_name))
+
+        if not swap_pairs:
+            logger.info("No tables to swap")
+            return 0, []
+
+        rename_parts = []
+        for table_name, backup_table_name, temp_table_name in swap_pairs:
+            rename_parts.extend([
+                f"`{table_name}` TO `{temp_table_name}`",
+                f"`{backup_table_name}` TO `{table_name}`",
+                f"`{temp_table_name}` TO `{backup_table_name}`",
+            ])
+
+        self.db.execute_sql(f"RENAME TABLE {', '.join(rename_parts)}")
+        logger.info("Swapped %s table pairs between original and backup tables", len(swap_pairs))
+        return len(swap_pairs), [item for pair in swap_pairs for item in pair[:2]]
+
+
 # Registry of available migration stages
 MIGRATION_STAGES = {
     'tenant_model_provider': TenantModelProviderStage,
     'tenant_model_instance': TenantModelInstanceStage,
     'tenant_model': TenantModelStage,
     'model_id_config': ModelIdConfigStage,
+    'model_id_config_swap': ModelIdConfigSwapStage,
 }
 
 
@@ -1365,6 +1548,7 @@ def run_migration(
     database_version: str | None = None,
     mark_database_version_on_success: bool = False,
     create_time: int = 0,
+    script_start_time_ms: int | None = None,
 ):
     """Run migration with specified stages"""
     stats = MigrationStats()
@@ -1413,7 +1597,7 @@ def run_migration(
             
             stage_cls = MIGRATION_STAGES[stage_name]
             stage_kwargs = {"db": db, "dry_run": dry_run, "create_table_only": create_table_only}
-            if stage_name in ("tenant_model_provider", "tenant_model_instance", "tenant_model"):
+            if stage_name in ("tenant_model_provider", "model_id_config"):
                 stage_kwargs["create_time"] = create_time
             stage = stage_cls(**stage_kwargs)
             
@@ -1452,6 +1636,8 @@ def run_migration(
         db.close()
         stats.end()
         stats.print_summary()
+        if script_start_time_ms is not None:
+            logger.info("Next incremental create_time cutoff: \033[32m%s\033[0m", script_start_time_ms)
 
 
 def check_database_version(config: MigrationConfig, target_version: str) -> int:
@@ -1494,6 +1680,7 @@ def mark_database_version(config: MigrationConfig, version: str) -> None:
 
 
 def main():
+    script_start_time_ms = int(time.time() * 1000)
     parser = argparse.ArgumentParser(
         description='MySQL Data Migration Tool',
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -1526,8 +1713,11 @@ Examples:
   # Execute migration and mark the database version when all stages succeed
   python mysql_migration.py --stages tenant_model_provider,tenant_model_instance,tenant_model,model_id_config --config /path/to/config.yaml --execute --database-version v0.26.1 --mark-database-version-on-success
   
-  # Normalize legacy model IDs in stored configs
+  # Normalize legacy model IDs in backup tables
   python mysql_migration.py --stages model_id_config --config /path/to/config.yaml --execute
+
+  # Swap original tables with backup tables after normalization
+  python mysql_migration.py --stages model_id_config_swap --config /path/to/config.yaml --execute
 
   # Run multiple stages
   python mysql_migration.py --stages stage1,stage2,stage3 --config /path/to/config.yaml --execute
@@ -1565,7 +1755,7 @@ Examples:
     parser.add_argument('--create-table-only', action='store_true', default=False,
                        help='Only create target tables, skip data migration')
     parser.add_argument('--create-time', type=int, default=0, metavar='TIMESTAMP',
-                       help='For tenant_model_provider stage, only migrate tenant_llm rows with create_time greater than this value (Unix timestamp in milliseconds)')
+                       help='For tenant_model_provider and model_id_config stages, only process rows with create_time or update_time greater than this value (Unix timestamp in milliseconds)')
     
     args = parser.parse_args()
     
@@ -1654,6 +1844,7 @@ Examples:
         database_version=args.database_version,
         mark_database_version_on_success=args.mark_database_version_on_success,
         create_time=args.create_time,
+        script_start_time_ms=script_start_time_ms,
     )
 
 
