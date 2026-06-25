@@ -2588,7 +2588,7 @@ resource "kubernetes_deployment_v1" "ragflow" {
           image             = local.ragflow_image_platform_full
           image_pull_policy = "Always"
 
-          args = ["--disable-taskexecutor", "--init-model-provider-tables"]
+          args = ["--disable-taskexecutor"]
 
           # Frontend port (nginx)
           port {
