@@ -1013,6 +1013,12 @@ async def export_results(run_id):
                 data=False, message="Collection not configured or access denied",
                 code=RetCode.OPERATING_ERROR)
 
+        req = await get_request_json() if request.method == "POST" else {}
+        case_ids = req.get("case_ids") or []
+        if case_ids and not isinstance(case_ids, list):
+            return get_data_error_result(message="case_ids must be a list")
+        case_ids = [str(case_id) for case_id in case_ids if case_id]
+
         dumps = json.dumps
         safe_text = _xlsx_safe_text
         metrics_summary = run.get("metrics_summary")
@@ -1036,12 +1042,6 @@ async def export_results(run_id):
 
         wb = Workbook(write_only=True)
 
-        ws_run = wb.create_sheet("run")
-        ws_run_append = ws_run.append
-        ws_run_append(["key", "value"])
-        for k, v in (run or {}).items():
-            ws_run_append([safe_text(k), _to_cell(v)])
-
         ws = wb.create_sheet("results")
         ws_append = ws.append
         ws_append([
@@ -1051,6 +1051,7 @@ async def export_results(run_id):
             "execution_time",
             "token_usage",
             "retrieved_chunk_count",
+            "retrieved_doc_ids",
             *metric_keys,
         ])
 
@@ -1067,9 +1068,10 @@ async def export_results(run_id):
                 )
                 .join(EvaluationCase, on=(EvaluationResult.case_id == EvaluationCase.id))
                 .where(EvaluationResult.run_id == run_id)
-                .order_by(EvaluationResult.id)
-                .dicts()
             )
+            if case_ids:
+                query = query.where(EvaluationResult.case_id.in_(case_ids))
+            query = query.order_by(EvaluationResult.id).dicts()
 
             to_cell = _to_cell
             for row in query.iterator():

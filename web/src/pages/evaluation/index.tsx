@@ -37,7 +37,7 @@ export default function Evaluation() {
   const { type, runId } = useEvaluationUrl();
   const { visible: configVisible, switchVisible: switchConfigVisible } =
     useSetModalState(true);
-  const [rowSelection, setRowSelection] = useState({});
+  const [rowSelection, setRowSelection] = useState<Record<string, boolean>>({});
 
   const { data } = useFetchEvaluationRun();
 
@@ -67,8 +67,9 @@ export default function Evaluation() {
   }, [type, navigateToAgent, id, navigateToChat]);
 
   const handleExport = useCallback(() => {
-    exportEvaluationRun();
-  }, [exportEvaluationRun]);
+    const caseIds = Object.keys(rowSelection).filter((id) => rowSelection[id]);
+    exportEvaluationRun(caseIds);
+  }, [exportEvaluationRun, rowSelection]);
 
   return (
     <section className="h-full flex flex-col">
@@ -85,7 +86,7 @@ export default function Evaluation() {
             <div className="flex items-center gap-2">
               <span> {data?.name}</span>
               <Tooltip>
-                <TooltipTrigger>
+                <TooltipTrigger asChild>
                   <Button
                     variant={'outline'}
                     disabled={!isSavedRun}

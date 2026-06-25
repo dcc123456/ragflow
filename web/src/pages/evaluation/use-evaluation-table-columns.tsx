@@ -151,7 +151,9 @@ export const useEvaluationTableColumns = (
 
         return (
           <div className="text-left">
-            <div>{relevancy !== undefined ? relevancy.toFixed(2) : '-'}</div>
+            <div>
+              {typeof relevancy === 'number' ? relevancy.toFixed(2) : '-'}
+            </div>
           </div>
         );
       },
@@ -173,7 +175,9 @@ export const useEvaluationTableColumns = (
 
         return (
           <div className="text-left">
-            <div>{factuality !== undefined ? factuality.toFixed(2) : '-'}</div>
+            <div>
+              {typeof factuality === 'number' ? factuality.toFixed(2) : '-'}
+            </div>
           </div>
         );
       },

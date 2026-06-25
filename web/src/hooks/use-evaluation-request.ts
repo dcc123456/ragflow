@@ -1260,11 +1260,11 @@ export const useExportEvaluationRun = () => {
     mutateAsync,
   } = useMutation({
     mutationKey: [EvaluationApiAction.ExportRun],
-    mutationFn: async () => {
+    mutationFn: async (caseIds?: string[]) => {
       const { data } = await evaluationService.exportRun(
         {
           url: api.evaluationExportRun(runId),
-          data: {},
+          data: { case_ids: caseIds },
           responseType: 'blob',
         },
         true,
