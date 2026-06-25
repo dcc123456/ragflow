@@ -279,7 +279,32 @@ class DocStoreConnection(ABC):
             index_names: str | list[str],
             knowledgebase_ids: list[str]
     ):
-        raise NotImplementedError("Not implemented")
+        """Iterate over all matching documents in batches, yielding search results.
+
+        This default implementation uses offset-based pagination via
+        :meth:`search`. Backends that provide a native scroll API (e.g.
+        Elasticsearch) may override this method for better efficiency.
+        """
+        if limit <= 0:
+            return
+        current_offset = offset
+        while True:
+            # Use positional arguments because concrete ``search`` implementations
+            # use inconsistent keyword names for the KB-IDs parameter
+            # (``dataset_ids`` vs ``knowledgebase_ids``).
+            res = self.search(
+                select_fields, [], condition, match_expressions,
+                OrderByExpr(), current_offset, limit,
+                index_names, knowledgebase_ids,
+            )
+            total = self.get_total(res)
+            doc_ids = self.get_doc_ids(res)
+            if not doc_ids:
+                break
+            yield res
+            current_offset += limit
+            if current_offset >= total or len(doc_ids) < limit:
+                break
 
     def clone_doc(self, id:str, indice:str):
         raise NotImplementedError()

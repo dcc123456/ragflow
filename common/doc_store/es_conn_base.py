@@ -410,16 +410,6 @@ class ESConnectionBase(DocStoreConnection):
         self.logger.error(f"ESConnection.sql timeout for {ATTEMPT_TIME} times!")
         return None
 
-    def scroll(
-            self, select_fields: list[str],
-            condition: dict,
-            match_expressions: list[MatchExpr],
-            offset: int,
-            limit: int,
-            index_names: str | list[str],
-            knowledgebase_ids: list[str]
-    ):
-        raise NotImplementedError("Not implemented")
-
     def clone_doc(self, id:str, indice:str):
         raise NotImplementedError()
+
