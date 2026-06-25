@@ -141,8 +141,9 @@ def make_test_email(prefix: str) -> str:
 def resolve_service_config_path() -> Path:
     """Resolve the service configuration file path on the current filesystem."""
     candidates = [
-        Path("/ragflow/conf/service_conf.yaml"),
         Path(env("RAGFLOW_SERVICE_CONF", "")) if env("RAGFLOW_SERVICE_CONF", "") else None,
+        Path("conf/service_conf.yaml"),
+        Path("/ragflow/conf/service_conf.yaml"),
     ]
     for candidate in candidates:
         if candidate and candidate.exists():
@@ -168,7 +169,11 @@ def load_service_config() -> dict[str, Any]:
 
 def _load_service_config_from_container() -> dict[str, Any]:
     """Read service config from a running ragflow container."""
-    container_name = env("RAGFLOW_SERVICE_CONTAINER", "docker-ragflow-1")
+    container_name = (
+        env("RAGFLOW_CONTAINER")
+        or env("RAGFLOW_SERVICE_CONTAINER")
+        or "docker-ragflow-1"
+    )
     try:
         result = subprocess.run(
             [

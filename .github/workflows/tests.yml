@@ -859,20 +859,85 @@ jobs:
           fi
           export SILICONFLOW_BASE_URL="${SILICONFLOW_BASE_URL:-https://api.siliconflow.cn/v1}"
           export SILICONFLOW_EMBEDDING_MODEL="${SILICONFLOW_EMBEDDING_MODEL:-BAAI/bge-m3}"
+          export HEALTHZ_URL="${HOST_ADDRESS}/healthz"
+          export PING_URL="${HOST_ADDRESS}/api/v1/system/ping"
+          export API_SMOKE_URL="${HOST_ADDRESS}/api/v1/chats"
           MAX_RETRIES=180
           COUNT=0
-          until curl -sf --connect-timeout 5 "${HOST_ADDRESS}/api/v1/system/ping" > /dev/null; do
-            echo "Waiting for service at ${HOST_ADDRESS} to be available... (Attempt: $COUNT/$MAX_RETRIES)"
-            if [ $COUNT -ge $MAX_RETRIES ]; then
-              echo "Error: Service did not become available within 5 minutes."
+          STABLE_HEALTHZ_TARGET=3
+          STABLE_HEALTHZ_COUNT=0
+          until [[ ${STABLE_HEALTHZ_COUNT} -ge ${STABLE_HEALTHZ_TARGET} ]]; do
+            PING_CODE="$(curl -sS -o /tmp/k8s_ping.out -w '%{http_code}' --connect-timeout 5 --max-time 10 "${PING_URL}" || true)"
+            HEALTHZ_CODE="$(curl -sS -o /tmp/k8s_healthz.out -w '%{http_code}' --connect-timeout 5 --max-time 15 "${HEALTHZ_URL}" || true)"
+            API_SMOKE_CODE="$(curl -sS -o /tmp/k8s_api_smoke.out -w '%{http_code}' --connect-timeout 5 --max-time 15 "${API_SMOKE_URL}" || true)"
+
+            if [[ "${PING_CODE}" == "200" && "${HEALTHZ_CODE}" == "200" && ( "${API_SMOKE_CODE}" == "200" || "${API_SMOKE_CODE}" == "401" ) ]]; then
+              STABLE_HEALTHZ_COUNT=$((STABLE_HEALTHZ_COUNT + 1))
+              echo "Readiness check ${STABLE_HEALTHZ_COUNT}/${STABLE_HEALTHZ_TARGET} passed (ping=${PING_CODE}, healthz=${HEALTHZ_CODE}, api_smoke=${API_SMOKE_CODE})."
+            else
+              STABLE_HEALTHZ_COUNT=0
+              echo "Waiting for stable service readiness at ${HOST_ADDRESS} (attempt ${COUNT}/${MAX_RETRIES}, ping=${PING_CODE}, healthz=${HEALTHZ_CODE}, api_smoke=${API_SMOKE_CODE})."
+            fi
+
+            if [ ${COUNT} -ge ${MAX_RETRIES} ]; then
+              echo "Error: Service did not reach stable readiness within 15 minutes."
+              echo "--- /api/v1/system/ping ---"
+              cat /tmp/k8s_ping.out || true
+              echo
+              echo "--- /healthz ---"
+              cat /tmp/k8s_healthz.out || true
+              echo
+              echo "--- /api/v1/chats ---"
+              cat /tmp/k8s_api_smoke.out || true
               exit 1
             fi
 
             COUNT=$((COUNT + 1))
-            sleep 5
+            if [[ ${STABLE_HEALTHZ_COUNT} -lt ${STABLE_HEALTHZ_TARGET} ]]; then
+              sleep 5
+            fi
           done
           source .venv/bin/activate && set -o pipefail; pytest -s --tb=short --level=${HTTP_API_TEST_LEVEL} \
             test/testcases/restful_api 2>&1 | tee k8s_restful_api_test.log
+
+      - name: Collect BYOK ragflow k8s diagnostics
+        if: failure()
+        run: |
+          if [[ -z "${BYOK_NAMESPACE:-}" ]]; then
+            echo "BYOK_NAMESPACE is empty; skipping k8s diagnostics."
+            exit 0
+          fi
+
+          echo "=== Pods ==="
+          kubectl get pods -n "${BYOK_NAMESPACE}" -l app=ragflow -o wide || true
+          echo
+          echo "=== Services ==="
+          kubectl get svc -n "${BYOK_NAMESPACE}" || true
+          echo
+          echo "=== Gateway ==="
+          kubectl get gateway ragflow -n "${BYOK_NAMESPACE}" -o yaml || true
+          echo
+          echo "=== API HTTPRoute ==="
+          kubectl get httproute ragflow-http-route-api -n "${BYOK_NAMESPACE}" -o yaml || true
+
+          mapfile -t RAGFLOW_PODS < <(kubectl get pods -n "${BYOK_NAMESPACE}" -l app=ragflow -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null)
+          for POD_NAME in "${RAGFLOW_PODS[@]}"; do
+            [[ -z "${POD_NAME}" ]] && continue
+            echo
+            echo "=== Describe pod ${POD_NAME} ==="
+            kubectl describe pod -n "${BYOK_NAMESPACE}" "${POD_NAME}" || true
+            echo
+            echo "=== Logs from pod ${POD_NAME} ==="
+            kubectl logs -n "${BYOK_NAMESPACE}" "${POD_NAME}" -c ragflow --tail=1000 || true
+          done
+
+          echo
+          echo "=== Failure-time endpoint probe ==="
+          for URL in "${HOST_ADDRESS}/api/v1/system/ping" "${HOST_ADDRESS}/healthz" "${HOST_ADDRESS}/api/v1/chats"; do
+            echo "--- ${URL} ---"
+            curl -i -sS --connect-timeout 5 --max-time 20 "${URL}" || true
+            echo
+          done
 
       - name: Tail BYOK ragflow pod logs
         if: always()
@@ -882,18 +947,17 @@ jobs:
             exit 0
           fi
 
-          POD_NAME="$(kubectl get pods -n "${BYOK_NAMESPACE}" -l app=ragflow --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)"
-          if [[ -z "${POD_NAME}" ]]; then
-            POD_NAME="$(kubectl get pods -n "${BYOK_NAMESPACE}" -l app=ragflow -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)"
-          fi
-
-          if [[ -z "${POD_NAME}" ]]; then
+          mapfile -t RAGFLOW_PODS < <(kubectl get pods -n "${BYOK_NAMESPACE}" -l app=ragflow -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null)
+          if [[ ${#RAGFLOW_PODS[@]} -eq 0 ]]; then
             echo "No BYOK ragflow pod found in namespace ${BYOK_NAMESPACE}; skipping pod log tail."
             exit 0
           fi
 
-          echo "Tailing last 1000 lines from pod ${POD_NAME} (namespace: ${BYOK_NAMESPACE}, container: ragflow)"
-          kubectl logs -n "${BYOK_NAMESPACE}" "${POD_NAME}" -c ragflow --tail=1000 || true
+          for POD_NAME in "${RAGFLOW_PODS[@]}"; do
+            [[ -z "${POD_NAME}" ]] && continue
+            echo "Tailing last 1000 lines from pod ${POD_NAME} (namespace: ${BYOK_NAMESPACE}, container: ragflow)"
+            kubectl logs -n "${BYOK_NAMESPACE}" "${POD_NAME}" -c ragflow --tail=1000 || true
+          done
 
       - name: Destroy BYOK instance
         if: always()
@@ -922,6 +986,7 @@ jobs:
             -var "ragflow_image=${BYOK_RAGFLOW_IMAGE_VAR}" \
             -var "ragflow_image_platform=${BYOK_RAGFLOW_IMAGE_VAR}" \
             -var "ragflow_image_admin=${BYOK_RAGFLOW_IMAGE_VAR}" \
+            -var "ragflow_replicas=2" \
             -var "rate_limit_disabled=true"
 
       - name: Delete Harbor artifact
