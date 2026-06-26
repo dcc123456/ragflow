@@ -14,7 +14,7 @@ import {
 import { useEvaluationUrl } from '@/hooks/use-evaluation-url';
 import { buildOptions } from '@/utils/form';
 import { CirclePause, Play } from 'lucide-react';
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { NewEvaluationRunId, RunningStatus, RunType } from './constants';
 
@@ -30,7 +30,6 @@ type RunDropdownButtonProps = {
 };
 export function RunDropdownButton({ rowSelection }: RunDropdownButtonProps) {
   const { t } = useTranslation();
-  const options = buildOptions(RunList, t, 'evaluation', true);
   const { runId } = useEvaluationUrl();
 
   const { startEvaluationRun } = useStartEvaluationRun();
@@ -42,6 +41,16 @@ export function RunDropdownButton({ rowSelection }: RunDropdownButtonProps) {
   const isRunning =
     (result.run?.status === RunningStatus.PENDING && !!result.run.task_id) ||
     result.run?.status === RunningStatus.RUNNING;
+  const enabledRunList = useMemo(() => {
+    const metrics = result.run?.config_snapshot?.metrics as
+      | Record<string, { enable?: boolean }>
+      | undefined;
+    const enabledMetrics = RunList.filter(
+      (type) => type !== RunType.All && metrics?.[type]?.enable,
+    );
+    return enabledMetrics.length > 0 ? [RunType.All, ...enabledMetrics] : [];
+  }, [result.run?.config_snapshot?.metrics]);
+  const options = buildOptions(enabledRunList, t, 'evaluation', true);
 
   const run = (type: RunType) => () => {
     const caseIds = Object.keys(rowSelection).filter((id) => rowSelection[id]);
@@ -57,7 +66,8 @@ export function RunDropdownButton({ rowSelection }: RunDropdownButtonProps) {
     cancelEvaluationRun();
   }, [cancelEvaluationRun]);
 
-  const disabled = !runId || runId === NewEvaluationRunId;
+  const disabled =
+    !runId || runId === NewEvaluationRunId || options.length === 0;
 
   if (isRunning) {
     return (

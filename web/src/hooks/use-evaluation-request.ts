@@ -827,6 +827,9 @@ export const useUpdateEvaluationRun = () => {
         queryClient.invalidateQueries({
           queryKey: [EvaluationApiAction.GetRun, runId],
         });
+        queryClient.invalidateQueries({
+          queryKey: [EvaluationApiAction.GetRunResults, runId],
+        });
         message.success(t('message.modified'));
       } else {
         message.error(data.message);
