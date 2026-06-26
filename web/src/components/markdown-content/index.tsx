@@ -264,7 +264,7 @@ const MarkdownContent = ({
   return (
     <div dir={dir} className={styles.markdownContentWrapper}>
       <Markdown
-        rehypePlugins={[rehypeWrapReference, rehypeKatex, rehypeRaw]}
+        rehypePlugins={[rehypeRaw, rehypeWrapReference, rehypeKatex]}
         remarkPlugins={MarkdownRemarkPlugins}
         components={
           {

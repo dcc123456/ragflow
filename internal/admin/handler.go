@@ -984,7 +984,7 @@ func (h *Handler) HandleNoRoute(c *gin.Context) {
 // GetLogLevel returns the current log level
 func (h *Handler) GetLogLevel(c *gin.Context) {
 	level := common.GetLevel()
-	success(c, gin.H{"level": level}, "")
+	success(c, gin.H{"level": level}, "SUCCESS")
 }
 
 // SetLogLevelRequest set log level request
@@ -1005,7 +1005,7 @@ func (h *Handler) SetLogLevel(c *gin.Context) {
 		return
 	}
 
-	success(c, gin.H{"level": req.Level}, "Log level updated successfully")
+	success(c, gin.H{"level": req.Level}, "SUCCESS")
 }
 
 func (h *Handler) ListMessagesFromQueue(c *gin.Context) {
