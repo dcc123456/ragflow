@@ -12,6 +12,7 @@ export enum EvaluationSearchParams {
 export const NewEvaluationRunId = 'new';
 
 export enum RunningStatus {
+  PENDING = 'PENDING',
   RUNNING = 'RUNNING',
   COMPLETED = 'COMPLETED',
   FAILED = 'FAILED',

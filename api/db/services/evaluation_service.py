@@ -1085,8 +1085,16 @@ class EvaluationService(CommonService):
                     finally:
                         result_queue.put(StopIteration)
 
-                loop.run_until_complete(consume())
-                loop.close()
+                try:
+                    loop.run_until_complete(consume())
+                finally:
+                    pending = asyncio.all_tasks(loop)
+                    for task in pending:
+                        task.cancel()
+                    if pending:
+                        loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+                    loop.close()
+                    asyncio.set_event_loop(None)
 
             threading.Thread(target=runner, daemon=True).start()
 

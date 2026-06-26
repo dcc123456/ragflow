@@ -108,6 +108,7 @@ export interface IEvaluationRun {
   status: string;
   target_id: string;
   target_type: string;
+  task_id?: string;
   update_date: string;
   update_time: number;
 }

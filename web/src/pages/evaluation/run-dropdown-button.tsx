@@ -39,7 +39,9 @@ export function RunDropdownButton({ rowSelection }: RunDropdownButtonProps) {
   const { data: result } = useFetchEvaluationRunResults();
   // const { data } = useFetchEvaluationRun();
 
-  const isRunning = result.run?.status === RunningStatus.RUNNING;
+  const isRunning =
+    (result.run?.status === RunningStatus.PENDING && !!result.run.task_id) ||
+    result.run?.status === RunningStatus.RUNNING;
 
   const run = (type: RunType) => () => {
     const caseIds = Object.keys(rowSelection).filter((id) => rowSelection[id]);

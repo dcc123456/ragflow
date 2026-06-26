@@ -689,9 +689,13 @@ export const useFetchEvaluationRunResults = () => {
     enabled: isSavedRun,
     refetchOnWindowFocus: false,
     refetchInterval: (query) => {
-      // Continue polling when status is RUNNING, otherwise stop polling
+      // Continue polling when the run has actually been queued or started.
       const data = query.state.data;
-      return data?.run?.status === RunningStatus.RUNNING ? 5000 : false;
+      return (data?.run?.status === RunningStatus.PENDING &&
+        !!data.run.task_id) ||
+        data?.run?.status === RunningStatus.RUNNING
+        ? 5000
+        : false;
     },
     queryFn: async () => {
       const { data } = await evaluationService.getRunResults(
