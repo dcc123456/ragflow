@@ -86,8 +86,10 @@ export function ChunkMethodItem(props: IProps) {
       control={form.control}
       name={name}
       render={({ field }) => (
-        <FormItem className=" items-center space-y-1">
-          <div className={line === 1 ? 'flex items-center' : ''}>
+        <FormItem className="items-center gap-1">
+          <div
+            className={line === 1 ? 'flex items-center' : 'flex flex-col gap-1'}
+          >
             <FormLabel
               required
               tooltip={t('chunkMethodTip')}
@@ -97,7 +99,7 @@ export function ChunkMethodItem(props: IProps) {
             >
               {t('builtIn')}
             </FormLabel>
-            <div className={line === 1 ? 'w-3/4 ' : 'w-full'}>
+            <div className={line === 1 ? 'w-3/4' : 'w-full'}>
               <FormControl>
                 <SelectWithSearch
                   {...field}
@@ -146,7 +148,7 @@ export const EmbeddingSelect = ({
   return (
     <Spin
       spinning={loading}
-      className={cn(' rounded-lg after:bg-bg-base', {
+      className={cn('rounded-lg after:bg-bg-base', {
         'opacity-20': loading,
       })}
     >
@@ -200,7 +202,7 @@ export function EmbeddingModelItem({ line = 1, isEdit }: IProps) {
         control={form.control}
         name={'embedding_model'}
         render={({ field }) => (
-          <FormItem className={cn(' items-center space-y-0 ')}>
+          <FormItem className={cn('items-center space-y-0')}>
             <div
               className={cn('flex', {
                 'items-center': line === 1,
@@ -210,7 +212,7 @@ export function EmbeddingModelItem({ line = 1, isEdit }: IProps) {
               <FormLabel
                 required
                 tooltip={t('embeddingModelTip')}
-                className={cn('text-sm  whitespace-wrap ', {
+                className={cn('text-sm whitespace-wrap', {
                   'w-1/4': line === 1,
                 })}
               >
@@ -328,10 +330,10 @@ export function ParseTypeItem({
       control={form.control}
       name={name}
       render={({ field }) => (
-        <FormItem className=" items-center space-y-0 ">
+        <FormItem className="items-center space-y-0">
           <div
             className={cn('flex', {
-              ' items-center': line === 1,
+              'items-center': line === 1,
               'flex-col gap-1': line === 2,
             })}
           >
@@ -380,7 +382,7 @@ export function EnableAutoGenerateItem() {
       control={form.control}
       name={'enableAutoGenerate'}
       render={({ field }) => (
-        <FormItem className=" items-center space-y-0 ">
+        <FormItem className="items-center space-y-0">
           <div className="flex items-center">
             <FormLabel
               tooltip={t('enableAutoGenerateTip')}
@@ -416,7 +418,7 @@ export function EnableTocToggle() {
       control={form.control}
       name={'parser_config.toc_extraction'}
       render={({ field }) => (
-        <FormItem className=" items-center space-y-0 ">
+        <FormItem className="items-center space-y-0">
           <div className="flex items-center">
             <FormLabel
               tooltip={t('tocExtractionTip')}
@@ -677,10 +679,10 @@ export function LLMModelItem({ line = 1, isEdit, label, name }: IProps) {
         control={form.control}
         name={name ?? 'llm_id'}
         render={({ field }) => (
-          <FormItem className={cn(' items-center space-y-0 ')}>
+          <FormItem className={cn('items-center space-y-0')}>
             <div
               className={cn('flex', {
-                ' items-center': line === 1,
+                'items-center': line === 1,
                 'flex-col gap-1': line === 2,
               })}
             >
