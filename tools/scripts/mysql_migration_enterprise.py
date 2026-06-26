@@ -474,7 +474,7 @@ class TenantModelProviderStage(MigrationStage):
             INDEX idx_provider_name (provider_name),
             INDEX idx_tenant_id (tenant_id),
             UNIQUE INDEX idx_tenant_provider_unique (tenant_id, provider_name)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
         """
         self.db.execute_sql(create_sql)
         logger.info("Created tenant_model_provider table")
@@ -768,7 +768,7 @@ class TenantModelInstanceStage(MigrationStage):
             update_time BIGINT,
             update_date DATETIME,
             INDEX idx_provider_id (provider_id)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
         """
         self.db.execute_sql(create_sql)
         logger.info("Created tenant_model_instance table")
@@ -1091,7 +1091,7 @@ class TenantModelStage(MigrationStage):
             update_time BIGINT,
             update_date DATETIME,
             INDEX idx_instance_id (instance_id)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
         """
         self.db.execute_sql(create_sql)
         logger.info("Created tenant_model table")
