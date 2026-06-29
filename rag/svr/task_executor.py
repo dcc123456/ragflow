@@ -1991,17 +1991,17 @@ def rabbitmq_callback(ch, method, properties, body):
         run_mode = os.environ.get("TE_RUN_MODE", "0")
         logging.info(f"TE_RUN_MODE is {run_mode}")
 
-        if run_mode == "0":  # original version
-            logging.info(f"-----run original task executor:{task_id}, {task.get('name', '')}, doc id:{task.get('doc_id', '')}")
-            set_recording_context(NullRecordingContext())
-            event_loop.run_until_complete(do_handle_task_with_timeout(task, partial(set_progress, task_id)))
-        else:  # use refactor-ed version
+        if run_mode == "0":  # use refactor-ed version
             logging.info(f"-----run refactor-ed task executor:{task_id}, {task.get('name', '')}, doc id:{task.get('doc_id', '')}")
             set_recording_context(NullRecordingContext())
             event_loop.run_until_complete(
                 TaskManager.run_refactored_task(task,
                                                 chat_limiter, minio_limiter, chunk_limiter, embed_limiter, kg_limiter,
                                                 set_progress, has_canceled))
+        else:  # original version
+            logging.info(f"-----run original task executor:{task_id}, {task.get('name', '')}, doc id:{task.get('doc_id', '')}")
+            set_recording_context(NullRecordingContext())
+            event_loop.run_until_complete(do_handle_task_with_timeout(task, partial(set_progress, task_id)))
 
         logging.info(f"handle_task done for task {json.dumps(task)}")
     except KeyboardInterrupt:
