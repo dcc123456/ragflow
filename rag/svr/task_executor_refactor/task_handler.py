@@ -23,6 +23,7 @@ for handling document processing tasks with refactored, testable methods.
 import asyncio
 import logging
 import json
+import re
 import xxhash
 
 from timeit import default_timer as timer
@@ -55,6 +56,12 @@ from rag.graphrag.general.index import run_graphrag_for_kb
 from api.db.services.file2document_service import File2DocumentService
 from rag.prompts.generator import run_toc_from_text
 from common import settings
+from api.db.services.evaluation_service import EvaluationService
+from api.db.db_models import EvaluationRun
+from common.evaluation_metrics import EvaluationRunStatus
+from common.time_utils import current_timestamp
+from api.utils.api_utils import is_strong_enough
+from api.db.services.doc_metadata_service import DocMetadataService
 
 
 class TaskHandler:
@@ -134,6 +141,11 @@ class TaskHandler:
             ctx.progress_cb(-1, msg="Task has been canceled.")
             return
 
+        # Handle evaluation tasks (before embedding model binding — evaluation doesn't need embedding)
+        if task_type == "evaluation":
+            await self._run_evaluation()
+            return
+
         # Language defaults to "Chinese" via TaskContext._DEFAULTS — safe to bind model directly.
         # Bind embedding model (matching original do_handle_task order: bind + init_kb before routing)
         result = await self._bind_embedding_model()
@@ -160,10 +172,8 @@ class TaskHandler:
                 await self._run_graphrag(embedding_model)
             elif task_type == "mindmap":
                 ctx.progress_cb(1, "place holder")
-            elif task_type == "evaluation":
-                await self._run_evaluation()
             elif task_type == "reembedding":
-                await self._run_reembedding()
+                await self._run_reembedding(vector_size)
             elif task_type == "clone":
                 await self._run_clone()
             else:
@@ -187,19 +197,174 @@ class TaskHandler:
         await dataflow_service.run_dataflow()
 
     async def _run_evaluation(self) -> None:
-        """Run evaluation task."""
-        ctx = self._task_context
-        ctx.progress_cb(1, "Evaluation task placeholder")
+        """Run evaluation task.
 
-    async def _run_reembedding(self) -> None:
-        """Run reembedding task."""
+        Executes all test cases for an evaluation run with a configurable timeout.
+        On failure, marks the EvaluationRun as FAILED in the database.
+        """
         ctx = self._task_context
-        ctx.progress_cb(1, "Reembedding task placeholder")
+        run_id = ctx.get("eva_run_id")
+        case_ids = ctx.get("case_ids", [])
+        metrics_name = ctx.get("metrics_name")
+        cases_total = EvaluationService.get_test_cases_count(run_id)
+        try:
+            await asyncio.wait_for(
+                EvaluationService.execute_run_all_cases(
+                    run_id,
+                    ctx.progress_cb,
+                    case_ids=case_ids,
+                    metrics_name=metrics_name,
+                ),
+                timeout=((len(case_ids) if case_ids else cases_total) + 1) * (len(metrics_name) if metrics_name else 3) * 60
+            )
+        except Exception:
+            EvaluationRun.update(
+                status=EvaluationRunStatus.FAILED,
+                complete_time=current_timestamp()
+            ).where(EvaluationRun.id == run_id).execute()
+            raise
+
+    async def _run_reembedding(self, original_vector_size: int) -> None:
+        """Run reembedding task.
+
+        Re-embeds all chunks in the knowledge base with a new (target) embedding model.
+        Scrolls through existing chunks, encodes them with the target model, and
+        updates the document store with the new vectors.
+        """
+        ctx = self._task_context
+        task_tenant_id = ctx.tenant_id
+        task_dataset_id = ctx.kb_id
+        task_language = ctx.language
+        task_parser_config = ctx.parser_config
+        task_id = ctx.id
+        start_ts = timer()
+
+        # Bind target embedding model
+        target_embedding_id = ctx.get("target_embed_id")
+        target_embedding_config = get_model_config_from_provider_instance(
+            task_tenant_id, LLMType.EMBEDDING, target_embedding_id
+        )
+        target_embedding_model = LLMBundle(task_tenant_id, target_embedding_config, lang=task_language)
+        await is_strong_enough(None, target_embedding_model)
+
+        # Get total chunks count
+        index_name = search.index_name(task_tenant_id)
+        flds = ["question_kwd", "content_with_weight", "docnm_kwd"]
+        es_res = settings.docStoreConn.search([], [], {"kb_id": task_dataset_id}, [], None, 0, 1, index_name, [task_dataset_id])
+        total = settings.docStoreConn.get_total(es_res)
+        if total == 0:
+            ctx.progress_cb(prog=1.0, msg="Embedding switching done ({:.2f}s)".format(timer() - start_ts))
+            return
+
+        B = 16
+        i = 0
+        for cks in settings.docStoreConn.scroll(flds, {"kb_id": task_dataset_id}, [], 0, B, index_name, [task_dataset_id]):
+            if ctx.has_canceled_func(task_id):
+                ctx.progress_cb(-1, msg="Task has been canceled.")
+                return
+
+            docs = []
+            for id, d in settings.docStoreConn.get_fields(cks, flds).items():
+                d["id"] = id
+                docs.append(d)
+
+            # Re-embed with target model (up to 3 retries)
+            retry = 3
+            target_vector_size = -1
+            for t in range(retry):
+                try:
+                    embedding_service = EmbeddingService(ctx=ctx)
+                    token_count, target_vector_size = await asyncio.wait_for(
+                        embedding_service.embed_chunks(docs, target_embedding_model, task_parser_config),
+                        timeout=len(docs) * 3
+                    )
+                except Exception as e:
+                    error_message = "Generate embedding error:{}".format(str(e))
+                    if t + 1 < retry:
+                        await asyncio.sleep(10)
+                        continue
+                    ctx.progress_cb(-1, error_message)
+                    logging.exception(error_message)
+                    raise
+
+            # Update ES docs with new vectors
+            async def update_es(d):
+                keys = list([k for k in d.keys() if k != "id" and not re.match("q_[0-9]+_vec", k)])
+                for k in keys:
+                    d.pop(k)
+                if original_vector_size != target_vector_size:
+                    d["remove"] = "q_%d_vec" % original_vector_size
+                return settings.docStoreConn.update({"id": d["id"]}, d, index_name, task_dataset_id)
+
+            tool_tasks = []
+            for d in docs:
+                tool_tasks.append(asyncio.create_task(update_es(d)))
+            if tool_tasks:
+                await asyncio.gather(*tool_tasks)
+
+            progress_message = "Embedding chunks ({:.2f}s)".format(timer() - start_ts)
+            logging.info(progress_message)
+            i += len(docs)
+            ctx.progress_cb(i / total, msg=progress_message)
+
+        ctx.progress_cb(prog=1.0, msg="Embedding switching done ({:.2f}s)".format(timer() - start_ts))
 
     async def _run_clone(self) -> None:
-        """Run clone task."""
+        """Run clone task.
+
+        Clones documents and their chunks from the source knowledge base to a target
+        knowledge base. First clones document records and metadata at the DB layer,
+        then clones individual chunks in the document store.
+        """
         ctx = self._task_context
-        ctx.progress_cb(1, "Clone task placeholder")
+        task_tenant_id = ctx.tenant_id
+        task_dataset_id = ctx.kb_id
+        task_id = ctx.id
+        start_ts = timer()
+
+        index_name = search.index_name(task_tenant_id)
+        target_kb_id = ctx.get("target_kb_id")
+
+        # Clone document records and metadata at DB layer
+        docid_map = DocumentService.clone_kb(task_dataset_id, target_kb_id, task_tenant_id)
+        DocMetadataService.clone_document_metadata(task_dataset_id, target_kb_id, docid_map, task_tenant_id)
+
+        # Clone chunks in document store
+        flds = ["docnm_kwd"]
+        es_res = settings.docStoreConn.search([], [], {"kb_id": task_dataset_id}, [], None, 0, 1, index_name, [task_dataset_id])
+        total = settings.docStoreConn.get_total(es_res)
+        if total == 0:
+            ctx.progress_cb(prog=1.0, msg="Chunks cloning done ({:.2f}s)".format(timer() - start_ts))
+            return
+
+        B = 16
+        i = 0
+        for cks in settings.docStoreConn.scroll(flds, {"kb_id": task_dataset_id}, [], 0, B, index_name, [task_dataset_id]):
+            if ctx.has_canceled_func(task_id):
+                ctx.progress_cb(-1, msg="Task has been canceled.")
+                return
+
+            for id, d in settings.docStoreConn.get_fields(cks, flds).items():
+                i += 1
+                retry = 3
+                for t in range(retry):
+                    try:
+                        if settings.docStoreConn.clone_doc(id, index_name, target_kb_id=target_kb_id, docid_map=docid_map):
+                            break
+                    except Exception as e:
+                        error_message = "Clone chunk error:{}".format(str(e))
+                        if t + 1 < retry:
+                            await asyncio.sleep(10)
+                            continue
+                        ctx.progress_cb(-1, error_message)
+                        logging.exception(error_message)
+                        raise
+
+            progress_message = "Cloning chunks ({:.2f}s)".format(timer() - start_ts)
+            logging.info(progress_message)
+            ctx.progress_cb(i / total, msg=progress_message)
+
+        ctx.progress_cb(prog=1.0, msg="Chunks cloning done ({:.2f}s)".format(timer() - start_ts))
 
     async def _bind_embedding_model(self) -> Optional[tuple]:
         """Bind embedding model to task.

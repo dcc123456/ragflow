@@ -38,6 +38,21 @@ _mock_parametric_umap = MagicMock()
 sys.modules.setdefault("umap.parametric_umap", _mock_parametric_umap)
 sys.modules.setdefault("umap", MagicMock())
 
+# =============================================================================
+# Beartype Claw Import Hook Workaround (Python 3.13)
+# =============================================================================
+# deepdoc/__init__.py calls beartype.claw.beartype_this_package() which registers
+# a global import hook on sys.meta_path. That hook calls compile() on every
+# subsequently imported module, and Python 3.13 raises SyntaxError for invalid
+# escape sequences (\i, \s, \S) in graspologic's LaTeX math docstrings.
+#
+# Remove the beartype claw hook from sys.meta_path before any test modules are
+# imported. This only affects the pytest process — production code is unaffected.
+for _i, _hook in enumerate(sys.meta_path):
+    if type(_hook).__module__.startswith("beartype"):
+        sys.meta_path.pop(_i)
+        break
+
 import asyncio
 import uuid
 from typing import Any, Dict, List
