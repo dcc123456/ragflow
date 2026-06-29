@@ -886,7 +886,7 @@ def test_move_files_handles_dest_and_storage_move(monkeypatch):
         obj_exist=lambda *_args, **_kwargs: False,
         put=lambda *_args, **_kwargs: None,
         rm=lambda *_args, **_kwargs: None,
-        move=lambda old_bucket, old_loc, new_bucket, new_loc, _tenant_id=None: moved.append((old_bucket, old_loc, new_bucket, new_loc)),
+        move=lambda old_bucket, old_loc, new_bucket, new_loc, _tenant_id=None: moved.append((old_bucket, old_loc, new_bucket, new_loc)) or True,
     ))
     monkeypatch.setattr(module.FileService, "update_by_id", lambda file_id, data: updated.append((file_id, data)) or True)
 
