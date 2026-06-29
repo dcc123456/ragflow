@@ -16,13 +16,16 @@
 import os
 import logging
 
+from api.apps import current_user
 from api.db.joint_services.tenant_model_service import ensure_mineru_from_env, ensure_paddleocr_from_env, ensure_opendataloader_from_env
 from common.constants import ActiveStatusEnum, LLMType
 from common.settings import FACTORY_LLM_INFOS
+from api.db import ResourceType, PermissionValue
 from api.db.services.tenant_model_provider_service import TenantModelProviderService
 from api.db.services.tenant_model_instance_service import TenantModelInstanceService
 from api.db.services.tenant_model_service import TenantModelService
-from api.db.services.user_service import TenantService
+from api.db.services.user_service import TenantService, UserTenantService
+from api.utils.permission_utils import has_permission_for_member
 
 # Mapping from model_type string to Tenant model field name
 MODEL_TYPE_TO_FIELD = {
@@ -323,6 +326,23 @@ def list_tenant_added_models(tenant_id: str, model_type_filter: str=None):
         model_type_filter = model_type_filter.lower()
 
     providers = TenantModelProviderService.get_by_tenant_id(tenant_id)
+    tenants = UserTenantService.get_tenants_by_user_id(user_id=tenant_id)
+
+    for _tenant in tenants:
+        _tenant_id = _tenant["tenant_id"]
+        from_other = _tenant_id != current_user.id
+        _tenant_name = _tenant["nickname"]
+        member_id = UserTenantService.filter_by_tenant_and_user_id(tenant_id=_tenant_id, user_id=current_user.id)
+        _providers = TenantModelProviderService.get_by_tenant_id(_tenant_id)
+        if from_other:
+            for _provider in _providers:
+                # check permission
+                p = has_permission_for_member(operator_id=member_id, tenant_id=_tenant_id, resource_id=_provider.provider_name, resource_type=ResourceType.LLM, permission=PermissionValue.PERMISSION_READ)
+                if p and p[0]:
+                    providers.append(_provider)
+        else:
+            providers.extend(_providers)
+
     if not providers:
         return True, []
 
@@ -381,7 +401,8 @@ def list_tenant_added_models(tenant_id: str, model_type_filter: str=None):
                     "provider_id": factory_instance.provider_id,
                     "provider_name": provider_info_map[factory_instance.provider_id].provider_name if provider_info_map.get(factory_instance.provider_id) else "",
                     "instance_id": factory_instance.id,
-                    "instance_name": factory_instance.instance_name
+                    "instance_name": factory_instance.instance_name,
+                    "tenant_id": provider_info_map[factory_instance.provider_id].tenant_id if provider_info_map.get(factory_instance.provider_id) else "",
                 })
 
     manual_added_model_record_keys = list(set(model_record_map.keys()) - set(model_key_in_factory))
@@ -402,7 +423,8 @@ def list_tenant_added_models(tenant_id: str, model_type_filter: str=None):
                 "provider_id": provider_id,
                 "provider_name": provider_info_map[provider_id].provider_name if provider_info_map.get(provider_id) else "",
                 "instance_id": instance_id,
-                "instance_name": instance_info_map[instance_id].instance_name if instance_info_map.get(instance_id) else ""
+                "instance_name": instance_info_map[instance_id].instance_name if instance_info_map.get(instance_id) else "",
+                "tenant_id": provider_info_map[provider_id].tenant_id if provider_info_map.get(provider_id) else "",
             })
 
     # Add TEI Builtin embedding model if configured
@@ -422,7 +444,16 @@ def list_tenant_added_models(tenant_id: str, model_type_filter: str=None):
                     "provider_name": "Builtin",
                     "instance_id": "",
                     "instance_name": "default",
+                    "tenant_id": tenant_id,
                 })
+
+    tenants = TenantService.get_by_ids([added_model["tenant_id"] for added_model in added_models])
+    tenant_info_map = {tenant.id: tenant for tenant in tenants}
+    for added_model in added_models:
+        if tenant_info_map.get(added_model["tenant_id"]):
+            added_model["tenant_name"] = tenant_info_map[added_model["tenant_id"]].name
+        else:
+            added_model["tenant_name"] = ""
 
     added_models.sort(key=lambda x: (factory_rank_mapping.get(x["provider_name"]), x["provider_name"], x["instance_name"]))
 
