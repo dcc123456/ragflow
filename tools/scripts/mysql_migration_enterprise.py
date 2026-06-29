@@ -1145,7 +1145,7 @@ class ModelIdConfigStage(MigrationStage):
         "ocr_id",
     }
     search_config_model_id_fields = {"chat_id"}
-    scan_batch_size = 500
+    scan_batch_size = 50
     string_columns = {
         "tenant": ("llm_id", "embd_id", "asr_id", "img2txt_id", "rerank_id", "tts_id", "ocr_id"),
         "knowledgebase": ("embd_id",),
@@ -1169,6 +1169,21 @@ class ModelIdConfigStage(MigrationStage):
         super().__init__(db, dry_run=dry_run, create_table_only=create_table_only)
         self.create_time = create_time
 
+    @staticmethod
+    def _preview_value(value, max_length: int = 120) -> str:
+        rendered = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+        if len(rendered) <= max_length:
+            return rendered
+        return f"{rendered[:max_length]}...(len={len(rendered)})"
+
+    @staticmethod
+    def _should_log_scan_progress(batch_index: int, scanned_rows: int, batch_size: int) -> bool:
+        if batch_index == 1:
+            return True
+        if scanned_rows % max(batch_size * 100, 5000) == 0:
+            return True
+        return False
+
     def _backup_table_name(self, table_name: str) -> str:
         return f"{table_name}{self.backup_suffix}"
 
@@ -1180,43 +1195,77 @@ class ModelIdConfigStage(MigrationStage):
 
     def _ensure_backup_tables(self) -> set[str]:
         created_tables = set()
+        logger.info(
+            "ModelIdConfigStage backup preparation started: %s source tables, dry_run=%s, create_time=%s",
+            len(self.source_tables),
+            self.dry_run,
+            self.create_time,
+        )
         for table_name in self.source_tables:
+            backup_table_name = self._backup_table_name(table_name)
+            logger.info("Preparing backup table for source '%s' -> target '%s'", table_name, backup_table_name)
             if not self.db.table_exists(table_name):
                 logger.info("Table '%s' does not exist, skipping backup", table_name)
                 continue
 
-            backup_table_name = self._backup_table_name(table_name)
             if not self.db.table_exists(backup_table_name):
+                logger.info("Backup table '%s' does not exist, creating from '%s'", backup_table_name, table_name)
                 self.db.execute_sql(f"CREATE TABLE `{backup_table_name}` LIKE `{table_name}`")
+                logger.info("Created table structure '%s' LIKE '%s'", backup_table_name, table_name)
                 self.db.execute_sql(f"INSERT INTO `{backup_table_name}` SELECT * FROM `{table_name}`")
-                logger.info("Created backup table '%s' from '%s'", backup_table_name, table_name)
+                logger.info(
+                    "Created backup table '%s' from '%s' with full copy via INSERT ... SELECT",
+                    backup_table_name,
+                    table_name,
+                )
                 created_tables.add(table_name)
                 continue
 
             cursor = self.db.execute_sql(f"SELECT 1 FROM `{backup_table_name}` LIMIT 1")
             if cursor.fetchone() is None:
+                logger.info("Backup table '%s' exists but is empty, running full copy from '%s'", backup_table_name, table_name)
                 self.db.execute_sql(f"INSERT INTO `{backup_table_name}` SELECT * FROM `{table_name}`")
                 logger.info("Populated empty backup table '%s' from '%s'", backup_table_name, table_name)
                 created_tables.add(table_name)
             else:
                 logger.info("Reusing existing backup table '%s'", backup_table_name)
+        logger.info(
+            "ModelIdConfigStage backup preparation completed: %s tables newly copied, tables=%s",
+            len(created_tables),
+            ", ".join(sorted(created_tables)) if created_tables else "(none)",
+        )
         return created_tables
 
     def _sync_source_to_backup_tables(self, created_tables: set[str]):
         if not self.create_time:
+            logger.info("Incremental sync skipped because create_time is not set")
             return
 
+        logger.info(
+            "Starting incremental source -> backup sync with create_time cutoff=%s; skipping freshly created backups=%s",
+            self.create_time,
+            ", ".join(sorted(created_tables)) if created_tables else "(none)",
+        )
         for table_name in self.source_tables:
             if table_name in created_tables:
+                logger.info("Skipping incremental sync for '%s' because the backup was fully rebuilt in this run", table_name)
                 continue
             if not self.db.table_exists(table_name):
+                logger.info("Skipping incremental sync for '%s' because source table does not exist", table_name)
                 continue
 
             backup_table_name = self._backup_table_name(table_name)
             if not self.db.table_exists(backup_table_name):
+                logger.info("Skipping incremental sync for '%s' because backup table '%s' does not exist", table_name, backup_table_name)
                 continue
 
-            self.db.execute_sql(
+            logger.info(
+                "Running incremental insert sync for '%s' -> '%s' with create_time > %s",
+                table_name,
+                backup_table_name,
+                self.create_time,
+            )
+            insert_cursor = self.db.execute_sql(
                 f"""
                 REPLACE INTO `{backup_table_name}`
                 SELECT *
@@ -1224,6 +1273,11 @@ class ModelIdConfigStage(MigrationStage):
                 WHERE COALESCE(`create_time`, 0) > %s
                 """,
                 (self.create_time,),
+            )
+            logger.info(
+                "Incremental insert sync finished for '%s': affected_rows=%s",
+                table_name,
+                insert_cursor.rowcount,
             )
 
             columns_cursor = self.db.execute_sql(
@@ -1238,9 +1292,22 @@ class ModelIdConfigStage(MigrationStage):
                 (self.db.config.database, backup_table_name),
             )
             columns = [row[0] for row in columns_cursor.fetchall()]
+            logger.info(
+                "Loaded %s non-id columns for incremental update sync on '%s': %s",
+                len(columns),
+                backup_table_name,
+                ", ".join(columns) if columns else "(none)",
+            )
             if columns:
                 set_clause = ", ".join(f"`b`.`{column}` = `s`.`{column}`" for column in columns)
-                self.db.execute_sql(
+                logger.info(
+                    "Running incremental update sync for '%s' -> '%s' with update_time > %s and create_time <= %s",
+                    table_name,
+                    backup_table_name,
+                    self.create_time,
+                    self.create_time,
+                )
+                update_cursor = self.db.execute_sql(
                     f"""
                     UPDATE `{backup_table_name}` b
                     JOIN `{table_name}` s ON b.id = s.id
@@ -1249,6 +1316,11 @@ class ModelIdConfigStage(MigrationStage):
                       AND COALESCE(s.`create_time`, 0) <= %s
                     """,
                     (self.create_time, self.create_time),
+                )
+                logger.info(
+                    "Incremental update sync finished for '%s': affected_rows=%s",
+                    table_name,
+                    update_cursor.rowcount,
                 )
             logger.info(
                 "Synced rows from '%s' to backup table '%s' after create_time=%s",
@@ -1312,6 +1384,12 @@ class ModelIdConfigStage(MigrationStage):
     def existing_columns(self, table_columns):
         for table_name, columns in table_columns.items():
             working_table_name = self._working_table_name(table_name)
+            logger.info(
+                "Resolving columns for logical table '%s' using working table '%s': %s",
+                table_name,
+                working_table_name,
+                ", ".join(columns),
+            )
             if not self.db.table_exists(working_table_name):
                 logger.info("Table '%s' does not exist, skipping", working_table_name)
                 continue
@@ -1319,6 +1397,7 @@ class ModelIdConfigStage(MigrationStage):
                 if not self.db.column_exists(working_table_name, column_name):
                     logger.info("Column '%s.%s' does not exist, skipping", working_table_name, column_name)
                     continue
+                logger.info("Column '%s.%s' is available for normalization scan", working_table_name, column_name)
                 yield working_table_name, column_name
 
     def load_json_value(self, raw_value, table_name, column_name, row_id):
@@ -1337,72 +1416,220 @@ class ModelIdConfigStage(MigrationStage):
             )
             return None, False
 
-    def iter_string_changes(self):
+    def _get_table_scan_config(self, logical_table_name: str):
+        working_table_name = self._working_table_name(logical_table_name)
+        string_columns = list(self.string_columns.get(logical_table_name, ()))
+        json_columns = list(self.json_columns.get(logical_table_name, ()))
+        logger.info(
+            "Resolving scan config for logical table '%s' using working table '%s'",
+            logical_table_name,
+            working_table_name,
+        )
+        if not self.db.table_exists(working_table_name):
+            logger.info("Table '%s' does not exist, skipping", working_table_name)
+            return None, [], []
+
+        existing_string_columns = []
+        for column_name in string_columns:
+            if not self.db.column_exists(working_table_name, column_name):
+                logger.info("Column '%s.%s' does not exist, skipping", working_table_name, column_name)
+                continue
+            logger.info("Column '%s.%s' is available for string normalization scan", working_table_name, column_name)
+            existing_string_columns.append(column_name)
+
+        existing_json_columns = []
+        for column_name in json_columns:
+            if not self.db.column_exists(working_table_name, column_name):
+                logger.info("Column '%s.%s' does not exist, skipping", working_table_name, column_name)
+                continue
+            logger.info("Column '%s.%s' is available for JSON normalization scan", working_table_name, column_name)
+            existing_json_columns.append(column_name)
+
+        return working_table_name, existing_string_columns, existing_json_columns
+
+    def _apply_row_updates(self, table_name: str, batch_row_updates: dict[str, dict[str, str]]) -> int:
+        if not self.dry_run:
+            for row_id, column_updates in batch_row_updates.items():
+                set_clause = ", ".join(f"`{column_name}` = %s" for column_name in column_updates)
+                params = tuple(column_updates.values()) + (row_id,)
+                self.db.execute_sql(
+                    f"UPDATE `{table_name}` SET {set_clause} WHERE id = %s",
+                    params,
+                )
+        return len(batch_row_updates)
+
+    def iter_string_change_batches(self):
         for table_name, column_name in self.existing_columns(self.string_columns):
             time_clause, time_params = self._time_filter_clause()
+            logger.info(
+                "Scanning string column '%s.%s' for legacy model IDs; batch_size=%s cutoff=%s",
+                table_name,
+                column_name,
+                self.scan_batch_size,
+                self.create_time or "(full scan)",
+            )
             cursor = self.db.execute_sql(
                 f"SELECT id, `{column_name}` FROM `{table_name}` "
                 f"WHERE `{column_name}` IS NOT NULL AND `{column_name}` != '' AND `{column_name}` LIKE %s"
                 f"{time_clause}",
                 ("%@%",) + time_params,
             )
+            batch_index = 0
+            scanned_rows = 0
+            matched_rows = 0
             while True:
                 rows = cursor.fetchmany(self.scan_batch_size)
                 if not rows:
                     break
+                batch_index += 1
+                scanned_rows += len(rows)
+                if self._should_log_scan_progress(batch_index, scanned_rows, self.scan_batch_size):
+                    logger.info(
+                        "String scan progress for '%s.%s': batches=%s cumulative_rows=%s",
+                        table_name,
+                        column_name,
+                        batch_index,
+                        scanned_rows,
+                    )
+                batch_updates = []
                 for row_id, value in rows:
                     normalized, changed = self.normalize_model_id(value)
                     if changed:
-                        yield table_name, column_name, row_id, normalized
+                        matched_rows += 1
+                        if matched_rows <= 5:
+                            logger.info(
+                                "Matched string normalization candidate %s.%s id=%s old=%s new=%s",
+                                table_name,
+                                column_name,
+                                row_id,
+                                self._preview_value(value),
+                                self._preview_value(normalized),
+                            )
+                        batch_updates.append((row_id, normalized))
+                if batch_updates:
+                    yield table_name, column_name, batch_updates
+            logger.info(
+                "Completed string scan for '%s.%s': scanned_rows=%s matched_rows=%s batches=%s",
+                table_name,
+                column_name,
+                scanned_rows,
+                matched_rows,
+                batch_index,
+            )
 
-    def iter_json_changes(self):
+    def iter_string_changes(self):
+        for table_name, column_name, batch_updates in self.iter_string_change_batches():
+            for row_id, normalized in batch_updates:
+                yield table_name, column_name, row_id, normalized
+
+    def iter_json_change_batches(self):
         for table_name, column_name in self.existing_columns(self.json_columns):
             time_clause, time_params = self._time_filter_clause()
+            logger.info(
+                "Scanning JSON column '%s.%s' for legacy model IDs; batch_size=%s cutoff=%s",
+                table_name,
+                column_name,
+                self.scan_batch_size,
+                self.create_time or "(full scan)",
+            )
             cursor = self.db.execute_sql(
                 f"SELECT id, `{column_name}` FROM `{table_name}` "
                 f"WHERE `{column_name}` IS NOT NULL AND `{column_name}` != '' AND `{column_name}` LIKE %s"
                 f"{time_clause}",
                 ("%@%",) + time_params,
             )
+            batch_index = 0
+            scanned_rows = 0
+            matched_rows = 0
             while True:
                 rows = cursor.fetchmany(self.scan_batch_size)
                 if not rows:
                     break
+                batch_index += 1
+                scanned_rows += len(rows)
+                if self._should_log_scan_progress(batch_index, scanned_rows, self.scan_batch_size):
+                    logger.info(
+                        "JSON scan progress for '%s.%s': batches=%s cumulative_rows=%s",
+                        table_name,
+                        column_name,
+                        batch_index,
+                        scanned_rows,
+                    )
+                batch_updates = []
                 for row_id, raw_value in rows:
                     config, loaded = self.load_json_value(raw_value, table_name, column_name, row_id)
                     if not loaded:
                         continue
                     normalized, changed = self.normalize_config(config, (column_name,))
                     if changed:
+                        matched_rows += 1
                         normalized_json = json.dumps(
                             normalized,
                             ensure_ascii=False,
                             separators=(",", ":"),
                         )
-                        yield table_name, column_name, row_id, normalized_json
+                        if matched_rows <= 5:
+                            logger.info(
+                                "Matched JSON normalization candidate %s.%s id=%s old=%s new=%s",
+                                table_name,
+                                column_name,
+                                row_id,
+                                self._preview_value(raw_value),
+                                self._preview_value(normalized_json),
+                            )
+                        batch_updates.append((row_id, normalized_json))
+                if batch_updates:
+                    yield table_name, column_name, batch_updates
+            logger.info(
+                "Completed JSON scan for '%s.%s': scanned_rows=%s matched_rows=%s batches=%s",
+                table_name,
+                column_name,
+                scanned_rows,
+                matched_rows,
+                batch_index,
+            )
+
+    def iter_json_changes(self):
+        for table_name, column_name, batch_updates in self.iter_json_change_batches():
+            for row_id, normalized_json in batch_updates:
+                yield table_name, column_name, row_id, normalized_json
+
+    def _flush_batch_updates(self, table_name: str, column_name: str, batch_updates: list[tuple[str, str]]) -> int:
+        pending_updates = {}
+        for row_id, normalized_value in batch_updates:
+            row_key = (table_name, row_id)
+            row_update = pending_updates.setdefault(row_key, {})
+            row_update[column_name] = normalized_value
+
+        if not self.dry_run:
+            for (_, row_id), column_updates in pending_updates.items():
+                set_clause = ", ".join(f"`{name}` = %s" for name in column_updates)
+                params = tuple(column_updates.values()) + (row_id,)
+                self.db.execute_sql(
+                    f"UPDATE `{table_name}` SET {set_clause} WHERE id = %s",
+                    params,
+                )
+        return len(pending_updates)
 
     def count_changes(self) -> tuple[int, set]:
         rows = 0
         tables = set()
+        logger.info("Counting pending model ID normalizations before execution")
         for table_name, _, _, _ in self.iter_string_changes():
             rows += 1
             tables.add(table_name)
         for table_name, _, _, _ in self.iter_json_changes():
             rows += 1
             tables.add(table_name)
+        logger.info(
+            "Counted pending model ID normalizations: rows=%s tables=%s",
+            rows,
+            ", ".join(sorted(tables)) if tables else "(none)",
+        )
         return rows, tables
 
     def check(self) -> bool:
-        rows, tables = self.count_changes()
-        if rows == 0:
-            self.mark_noop_completes_migration()
-            logger.info("No stored model IDs need normalization")
-            return False
-        logger.info(
-            "Found %s rows to normalize across tables: %s",
-            rows,
-            ", ".join(sorted(tables)),
-        )
+        logger.info("Skipping ModelIdConfigStage check() and returning True directly")
         return True
 
     def execute(self) -> tuple[int, list]:
@@ -1410,51 +1637,163 @@ class ModelIdConfigStage(MigrationStage):
             logger.info("[CREATE TABLE ONLY] No tables are created for this data migration")
             return 0, []
 
+        logger.info(
+            "Executing ModelIdConfigStage: dry_run=%s create_time=%s target_tables=%s",
+            self.dry_run,
+            self.create_time,
+            ", ".join(self.target_tables),
+        )
         if not self.dry_run:
             created_tables = self._ensure_backup_tables()
             self._sync_source_to_backup_tables(created_tables)
+        else:
+            logger.info("Skipping backup creation and incremental sync because dry_run=True")
 
-        rows_updated = 0
         tables_operated = set()
+        string_updates = 0
+        json_updates = 0
+        rows_updated = 0
+        progress_log_interval = 5000
+        next_progress_log = progress_log_interval
+        logical_table_order = []
+        seen_tables = set()
+        for table_name in self.source_tables:
+            if table_name in self.string_columns or table_name in self.json_columns:
+                logical_table_order.append(table_name)
+                seen_tables.add(table_name)
+        for table_name in list(self.string_columns) + list(self.json_columns):
+            if table_name not in seen_tables:
+                logical_table_order.append(table_name)
+                seen_tables.add(table_name)
 
-        for table_name, column_name, row_id, normalized in self.iter_string_changes():
-            tables_operated.add(table_name)
-            rows_updated += 1
-            if rows_updated <= 10:
-                logger.info(
-                    "%s %s.%s id=%s -> %s",
-                    "[DRY RUN] Would update" if self.dry_run else "Updating",
-                    table_name,
-                    column_name,
-                    row_id,
-                    normalized,
-                )
-            if not self.dry_run:
-                self.db.execute_sql(
-                    f"UPDATE `{table_name}` SET `{column_name}` = %s WHERE id = %s",
-                    (normalized, row_id),
-                )
+        for logical_table_name in logical_table_order:
+            working_table_name, string_columns, json_columns = self._get_table_scan_config(logical_table_name)
+            if not working_table_name or (not string_columns and not json_columns):
+                continue
 
-        for table_name, column_name, row_id, normalized_json in self.iter_json_changes():
-            tables_operated.add(table_name)
-            rows_updated += 1
-            if rows_updated <= 10:
-                logger.info(
-                    "%s %s.%s id=%s",
-                    "[DRY RUN] Would update" if self.dry_run else "Updating",
-                    table_name,
-                    column_name,
-                    row_id,
-                )
-            if not self.dry_run:
-                self.db.execute_sql(
-                    f"UPDATE `{table_name}` SET `{column_name}` = %s WHERE id = %s",
-                    (normalized_json, row_id),
-                )
+            tables_operated.add(working_table_name)
+            selected_columns = string_columns + json_columns
+            like_filters = [
+                f"(`{column_name}` IS NOT NULL AND `{column_name}` != '' AND `{column_name}` LIKE %s)"
+                for column_name in selected_columns
+            ]
+            time_clause, time_params = self._time_filter_clause()
+            logger.info(
+                "Scanning table '%s' with columns=%s batch_size=%s cutoff=%s",
+                working_table_name,
+                ", ".join(selected_columns),
+                self.scan_batch_size,
+                self.create_time or "(full scan)",
+            )
+            cursor = self.db.execute_sql(
+                f"SELECT id, {', '.join(f'`{column_name}`' for column_name in selected_columns)} "
+                f"FROM `{working_table_name}` "
+                f"WHERE ({' OR '.join(like_filters)})"
+                f"{time_clause}",
+                tuple("%@%" for _ in selected_columns) + time_params,
+            )
+            batch_index = 0
+            scanned_rows = 0
+            matched_row_updates = 0
+            matched_field_updates = 0
+            string_column_set = set(string_columns)
+            json_column_set = set(json_columns)
 
-        if rows_updated > 10:
-            logger.info("... and %s more row updates", rows_updated - 10)
+            while True:
+                rows = cursor.fetchmany(self.scan_batch_size)
+                if not rows:
+                    break
+                batch_index += 1
+                scanned_rows += len(rows)
+                if self._should_log_scan_progress(batch_index, scanned_rows, self.scan_batch_size):
+                    logger.info(
+                        "Table scan progress for '%s': batches=%s cumulative_rows=%s",
+                        working_table_name,
+                        batch_index,
+                        scanned_rows,
+                    )
 
+                batch_row_updates = {}
+                for row in rows:
+                    row_id = row[0]
+                    row_update = {}
+                    for column_name, raw_value in zip(selected_columns, row[1:]):
+                        if raw_value in (None, ""):
+                            continue
+                        if isinstance(raw_value, str) and "@" not in raw_value:
+                            continue
+
+                        if column_name in string_column_set:
+                            normalized, changed = self.normalize_model_id(raw_value)
+                            if changed:
+                                if matched_field_updates < 5:
+                                    logger.info(
+                                        "Matched string normalization candidate %s.%s id=%s old=%s new=%s",
+                                        working_table_name,
+                                        column_name,
+                                        row_id,
+                                        self._preview_value(raw_value),
+                                        self._preview_value(normalized),
+                                    )
+                                row_update[column_name] = normalized
+                                string_updates += 1
+                                matched_field_updates += 1
+                        elif column_name in json_column_set:
+                            config, loaded = self.load_json_value(raw_value, working_table_name, column_name, row_id)
+                            if not loaded:
+                                continue
+                            normalized, changed = self.normalize_config(config, (column_name,))
+                            if changed:
+                                normalized_json = json.dumps(
+                                    normalized,
+                                    ensure_ascii=False,
+                                    separators=(",", ":"),
+                                )
+                                if matched_field_updates < 5:
+                                    logger.info(
+                                        "Matched JSON normalization candidate %s.%s id=%s old=%s new=%s",
+                                        working_table_name,
+                                        column_name,
+                                        row_id,
+                                        self._preview_value(raw_value),
+                                        self._preview_value(normalized_json),
+                                    )
+                                row_update[column_name] = normalized_json
+                                json_updates += 1
+                                matched_field_updates += 1
+
+                    if row_update:
+                        batch_row_updates[row_id] = row_update
+
+                if batch_row_updates:
+                    rows_updated += self._apply_row_updates(working_table_name, batch_row_updates)
+                    matched_row_updates += len(batch_row_updates)
+                    if rows_updated >= next_progress_log:
+                        logger.info(
+                            "%s write progress: row_updates=%s string_field_updates=%s json_field_updates=%s",
+                            "[DRY RUN] ModelIdConfigStage" if self.dry_run else "ModelIdConfigStage",
+                            rows_updated,
+                            string_updates,
+                            json_updates,
+                        )
+                        next_progress_log += progress_log_interval
+
+            logger.info(
+                "Completed table scan for '%s': scanned_rows=%s matched_row_updates=%s matched_field_updates=%s batches=%s",
+                working_table_name,
+                scanned_rows,
+                matched_row_updates,
+                matched_field_updates,
+                batch_index,
+            )
+
+        logger.info(
+            "ModelIdConfigStage execution summary before final status: string_updates=%s json_updates=%s row_updates=%s tables=%s",
+            string_updates,
+            json_updates,
+            rows_updated,
+            ", ".join(sorted(tables_operated)) if tables_operated else "(none)",
+        )
         if self.dry_run:
             logger.info("[DRY RUN] Would update %s rows", rows_updated)
         else:
