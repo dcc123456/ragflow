@@ -1,3 +1,4 @@
+import { IThirdOAIModel } from '@/interfaces/database/llm';
 import { getCachedLlmList } from './llm-cache';
 
 // The names of the large models returned by the interface are similar to "deepseek-r1___OpenAI-API"
@@ -50,16 +51,20 @@ export function buildModelValue(model: {
   return `${model.model_name}@${model.model_instance}@${model.model_provider}`;
 }
 
-/** Parse "modelName@instanceName@providerName" */
+/** Parse "modelName@instanceName@providerName[#tenantId]" */
 export function parseModelValue(val: string) {
   if (!val) return null;
-  const firstAt = val.indexOf('@');
-  const lastAt = val.lastIndexOf('@');
+  const hashIndex = val.indexOf('#');
+  const core = hashIndex === -1 ? val : val.substring(0, hashIndex);
+  const tenantId = hashIndex === -1 ? undefined : val.substring(hashIndex + 1);
+  const firstAt = core.indexOf('@');
+  const lastAt = core.lastIndexOf('@');
   if (firstAt === -1 || firstAt === lastAt) return null;
   return {
-    model_name: val.substring(0, firstAt),
-    model_instance: val.substring(firstAt + 1, lastAt),
-    model_provider: val.substring(lastAt + 1),
+    model_name: core.substring(0, firstAt),
+    model_instance: core.substring(firstAt + 1, lastAt),
+    model_provider: core.substring(lastAt + 1),
+    tenant_id: tenantId,
   };
 }
 

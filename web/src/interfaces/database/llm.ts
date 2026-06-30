@@ -68,6 +68,8 @@ export interface IAddedModel {
   provider_name: string;
   instance_id: string;
   instance_name: string;
+  tenant_id?: string;
+  tenant_name?: string;
 }
 
 export interface IInstanceModel {

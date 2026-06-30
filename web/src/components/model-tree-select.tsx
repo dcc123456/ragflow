@@ -8,8 +8,8 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { useFetchAllAddedModels } from '@/hooks/use-llm-request';
+import { useFetchTenantInfo } from '@/hooks/use-user-setting-request';
 import { IAddedModel } from '@/interfaces/database/llm';
-import { getRealModelName } from '@/utils/llm-util';
 import { useCallback, useMemo } from 'react';
 import { useFormContext } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
@@ -28,6 +28,7 @@ export const ModelTypeMap: Record<string, string[]> = {
 export function buildModelTree(
   allModels: IAddedModel[],
   modelTypes: string[],
+  tenantId?: string,
   renderLeafLabel?: (
     node: TreeSelectNode,
     model: IAddedModel,
@@ -39,7 +40,6 @@ export function buildModelTree(
 
   const seenLeafIds = new Set<string>();
   const providerMap = new Map<string, Map<string, IAddedModel[]>>();
-
   for (const model of filtered) {
     let instances = providerMap.get(model.provider_name);
     if (!instances) {
@@ -61,8 +61,11 @@ export function buildModelTree(
       id: `${provider}||${instance}`,
       title: instance,
       children: models.reduce<TreeSelectNode[]>((acc, m) => {
-        const modelName = getRealModelName(m.name);
-        const id = `${modelName}@${m.instance_name}@${m.provider_name}`;
+        const modelName = m.name;
+        const mTenantId = m.tenant_id;
+        const id = mTenantId
+          ? `${modelName}@${m.instance_name}@${m.provider_name}#${mTenantId}`
+          : `${modelName}@${m.instance_name}@${m.provider_name}`;
         if (seenLeafIds.has(id)) return acc;
         seenLeafIds.add(id);
         const leafNode: TreeSelectNode = {
@@ -77,12 +80,19 @@ export function buildModelTree(
                 imgClass="size-[22px] flex-shrink-0"
               />
               <span className="truncate">{modelName}</span>
+              {m.tenant_name && mTenantId !== tenantId && (
+                <span className="text-text-secondary bg-bg-card rounded-sm px-1 truncate flex-shrink-0">
+                  {m.tenant_name}
+                </span>
+              )}
             </span>
           ),
           data: {
             provider_name: m.provider_name,
             instance_name: m.instance_name,
             model_name: modelName,
+            tenant_id: m.tenant_id,
+            tenant_name: m.tenant_name,
           },
         };
         if (renderLeafLabel) {
@@ -121,11 +131,12 @@ export function ModelTreeSelect({
   testId,
 }: ModelTreeSelectProps) {
   const { data: allAddedModels } = useFetchAllAddedModels();
-
-  const treeData = useMemo(
-    () => buildModelTree(allAddedModels, modelTypes),
-    [allAddedModels, modelTypes],
-  );
+  const { data: tenantInfo } = useFetchTenantInfo();
+  const tenantId = tenantInfo.tenant_id;
+  const treeData = useMemo(() => {
+    const res = buildModelTree(allAddedModels, modelTypes, tenantId);
+    return res;
+  }, [allAddedModels, modelTypes, tenantId]);
 
   const defaultRenderSelected = useCallback(
     (node: TreeSelectNode | undefined) => {
