@@ -101,6 +101,7 @@ def _get_model_info(tenant_id: str, default_model: str, model_type: str):
             "model_instance": instance_name,
             "model_name": model_name,
             "model_type": model_type,
+            "tenant_id": tenant_id,
             "enable": True,
         }
 
@@ -117,6 +118,7 @@ def _get_model_info(tenant_id: str, default_model: str, model_type: str):
             "model_instance": "default",
             "model_name": model_name,
             "model_type": model_type,
+            "tenant_id": tenant_id,
             "enable": True,
         }
 
@@ -143,12 +145,13 @@ def _get_model_info(tenant_id: str, default_model: str, model_type: str):
 
     if model_entity:
         return {
-        "model_provider": provider_name,
-        "model_instance": instance_name,
-        "model_name": model_name,
-        "model_type": model_type,
-        "enable": enable,
-    }
+            "model_provider": provider_name,
+            "model_instance": instance_name,
+            "model_name": model_name,
+            "model_type": model_type,
+            "tenant_id": tenant_id,
+            "enable": enable,
+        }
 
     # Check if model is in the LLM factory info
     factory_info = [f for f in (FACTORY_LLM_INFOS or []) if f["name"] == provider_name]
@@ -172,6 +175,7 @@ def _get_model_info(tenant_id: str, default_model: str, model_type: str):
         "model_instance": instance_name,
         "model_name": model_name,
         "model_type": model_type,
+        "tenant_id": tenant_id,
         "enable": enable,
     }
 
@@ -295,11 +299,16 @@ def set_tenant_default_models(tenant_id: str, model_provider: str, model_instanc
         # Clear the default model
         default_model = ""
     elif model_provider and model_instance and model_name:
+        target_tenant_id = model_tenant_id or tenant_id
         # Validate and set the default model
-        success, msg = _check_model_available(model_tenant_id or tenant_id, model_provider, model_instance, model_name, model_type)
+        success, msg = _check_model_available(
+            target_tenant_id, model_provider, model_instance, model_name, model_type
+        )
         if not success:
             return False, msg
-        default_model = f"{model_name}@{model_instance}@{model_provider}#{model_tenant_id or tenant}"
+        default_model = f"{model_name}@{model_instance}@{model_provider}"
+        if target_tenant_id:
+            default_model = f"{default_model}#{target_tenant_id}"
     else:
         return False, "model_provider, model_instance and model_name must be specified together"
 

@@ -78,6 +78,7 @@ export interface ISetDefaultModelRequestBody {
   model_instance: string;
   model_type: string;
   model_name: string;
+  tenant_id?: string;
 }
 
 /**

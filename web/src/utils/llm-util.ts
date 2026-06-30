@@ -47,8 +47,10 @@ export function buildModelValue(model: {
   model_name: string;
   model_instance: string;
   model_provider: string;
+  tenant_id?: string;
 }) {
-  return `${model.model_name}@${model.model_instance}@${model.model_provider}`;
+  const value = `${model.model_name}@${model.model_instance}@${model.model_provider}`;
+  return model.tenant_id ? `${value}#${model.tenant_id}` : value;
 }
 
 /** Parse "modelName@instanceName@providerName[#tenantId]" */
