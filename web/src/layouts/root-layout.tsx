@@ -23,7 +23,7 @@ export function RootLayoutContainer({ children }: React.PropsWithChildren) {
       </div>
 
       {pathname !== '/price' && <Header className="px-5 py-4" />}
-      <main className="size-full overflow-hidden">{children}</main>
+      <main className="size-full min-w-0 overflow-hidden">{children}</main>
     </div>
   );
 }
