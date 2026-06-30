@@ -22,7 +22,7 @@ export function hidePermissionDropdownButton(
 export function hideEditPermissionDropdownItem(
   resourceType?: PermissionResourceType,
 ) {
-  return resourceType === PermissionResourceType.Dialog;
+  return resourceType === PermissionResourceType.MCP;
 }
 
 export function mapCollaboratorId(list: CollaboratorItem[]) {

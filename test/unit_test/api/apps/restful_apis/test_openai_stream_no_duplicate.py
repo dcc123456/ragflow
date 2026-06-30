@@ -79,8 +79,14 @@ def _load_openai_api(monkeypatch):
         monkeypatch,
         "api.utils.api_utils",
         get_error_data_result=lambda *a, **k: {"code": 102},
+        get_json_result=lambda *a, **k: {"code": 0},
         get_request_json=lambda: {},
         validate_request=lambda *_a, **_k: (lambda func: func),
+    )
+    _stub(
+        monkeypatch,
+        "api.utils.permission_utils",
+        check_dialog_permission=lambda *_a, **_k: (lambda func: func),
     )
     _stub(monkeypatch, "common.constants", RetCode=SimpleNamespace(ARGUMENT_ERROR=102), StatusEnum=SimpleNamespace(VALID=SimpleNamespace(value="1")))
     _stub(monkeypatch, "common.metadata_utils", convert_conditions=lambda *_a, **_k: None, meta_filter=lambda *_a, **_k: [])

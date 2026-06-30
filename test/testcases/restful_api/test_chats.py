@@ -1391,9 +1391,18 @@ def test_list_chats_defaults_to_authorized_owner_ids_when_omitted_unit(monkeypat
         return ([], 0)
 
     monkeypatch.setattr(module.DialogService, "get_by_tenant_ids", _get_by_tenant_ids)
+    monkeypatch.setattr(
+        module,
+        "_get_user_tenants_for_chat_access",
+        lambda: [
+            SimpleNamespace(tenant_id="tenant-1"),
+            SimpleNamespace(tenant_id="team-tenant-2"),
+            SimpleNamespace(tenant_id="tenant-1"),
+        ],
+    )
     res = _run(module.list_chats.__wrapped__())
     assert res["code"] == 0
-    assert captured["owner_ids"] == []
+    assert captured["owner_ids"] == ["tenant-1", "team-tenant-2"]
 
 
 @pytest.mark.p2

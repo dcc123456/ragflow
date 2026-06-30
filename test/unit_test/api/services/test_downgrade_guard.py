@@ -8,7 +8,7 @@ import sys
 import types
 import warnings
 from contextlib import nullcontext
-from datetime import datetime, timezone, timedelta
+from datetime import timezone, timedelta
 from unittest.mock import MagicMock
 
 
@@ -36,7 +36,7 @@ def _sub(**overrides):
         "target_plan_name": "Trial",
         "addon_storage_bytes": 40 * 1000**3,
         "target_storage_bytes": None,
-        "end_time": datetime(2026, 6, 30, tzinfo=BEIJING_TZ),
+        "end_time": _beijing_now() + timedelta(days=1),
         "subscription_id": "sub_123",
     }
     d.update(overrides)

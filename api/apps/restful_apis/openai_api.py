@@ -16,15 +16,25 @@
 
 import json
 import time
+from types import SimpleNamespace
 
 from quart import Response, jsonify
 
+try:
+    from quart import g
+except ImportError:
+    # Unit tests may stub `quart` without request globals; runtime still uses
+    # Quart's real `g`.
+    g = SimpleNamespace()
+
 from api.apps import current_user, login_required
 from api.apps.restful_apis._generation_params import extract_generation_config, merge_generation_config
+from api.db import PermissionValue
 from api.db.services.dialog_service import DialogService, async_chat
 from api.db.services.doc_metadata_service import DocMetadataService
 from api.db.joint_services.tenant_model_service import get_model_config_from_provider_instance, get_api_key
 from api.utils.api_utils import get_error_data_result, get_request_json, validate_request
+from api.utils.permission_utils import check_dialog_permission
 from common.constants import RetCode, StatusEnum
 from common.metadata_utils import convert_conditions, meta_filter
 from common.token_utils import num_tokens_from_string
@@ -234,6 +244,7 @@ def _normalize_openai_messages(messages):
 
 @manager.route("/openai/<chat_id>/chat/completions", methods=["POST"])  # noqa: F821
 @login_required
+@check_dialog_permission(PermissionValue.PERMISSION_READ)
 @validate_request("model", "messages")
 async def openai_chat_completions(chat_id):
     req = await get_request_json()
@@ -265,9 +276,9 @@ async def openai_chat_completions(chat_id):
     requested_model = req.get("model", "") or ""
     completion_id = f"chatcmpl-{chat_id}"
 
-    dia = DialogService.query(tenant_id=current_user.id, id=chat_id, status=StatusEnum.VALID.value)
+    dia = DialogService.query(tenant_id=g.tenant_id, id=chat_id, status=StatusEnum.VALID.value)
     if not dia:
-        return get_error_data_result(f"You don't own the chat {chat_id}")
+        return get_error_data_result(f"You don't have access to the chat {chat_id}")
     dia = dia[0]
 
     using_placeholder_model = requested_model == "model"

@@ -20,11 +20,11 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Label } from '@/components/ui/label';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import {
   Table,
   TableBody,
@@ -156,46 +156,44 @@ export function ManagePrivilegeTable({
                   <SquarePen />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <RadioGroup
+              <DropdownMenuContent align="end" className="min-w-48 p-1.5">
+                <DropdownMenuRadioGroup
                   value={row.original.permissions?.toString()}
                   onValueChange={onUpdatePermission}
                 >
                   {hidePermissionDropdownButton(resourceType) || (
                     <>
-                      <DropdownMenuItem>
-                        <div className="flex items-center space-x-2">
-                          <RadioGroupItem value="1" id="1" />
-                          <Label htmlFor="1">
-                            {t('permission.readPermission')}
-                          </Label>
-                        </div>
-                      </DropdownMenuItem>
+                      <DropdownMenuRadioItem
+                        value="1"
+                        className="rounded-md py-2 pl-8 pr-3 text-sm"
+                      >
+                        {t('permission.readPermission')}
+                      </DropdownMenuRadioItem>
                       {hideEditPermissionDropdownItem(resourceType) || (
-                        <DropdownMenuItem>
-                          <div className="flex items-center space-x-2">
-                            <RadioGroupItem value="2" id="2" />
-                            <Label htmlFor="2">
-                              {t('permission.writePermission')}
-                            </Label>
-                          </div>
-                        </DropdownMenuItem>
+                        <DropdownMenuRadioItem
+                          value="2"
+                          className="rounded-md py-2 pl-8 pr-3 text-sm"
+                        >
+                          {t('permission.writePermission')}
+                        </DropdownMenuRadioItem>
                       )}
-                      <DropdownMenuItem>
-                        <div className="flex items-center space-x-2">
-                          <RadioGroupItem value="4" id="4" />
-                          <Label htmlFor="4">
-                            {t('permission.managePermission')}
-                          </Label>
-                        </div>
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
+                      <DropdownMenuRadioItem
+                        value="4"
+                        className="rounded-md py-2 pl-8 pr-3 text-sm"
+                      >
+                        {t('permission.managePermission')}
+                      </DropdownMenuRadioItem>
+                      <DropdownMenuSeparator className="my-1.5" />
                     </>
                   )}
-                  <DropdownMenuItem onClick={handleDelete(row.original)}>
+                  <DropdownMenuItem
+                    onClick={handleDelete(row.original)}
+                    justifyBetween={false}
+                    className="rounded-md py-2 text-sm text-state-error focus:text-state-error"
+                  >
                     <Trash2 /> {t('common.delete')}
                   </DropdownMenuItem>
-                </RadioGroup>
+                </DropdownMenuRadioGroup>
               </DropdownMenuContent>
             </DropdownMenu>
           );

@@ -23,8 +23,6 @@ export const PermissionList = [
   Permission.Manage,
 ];
 
-export const DialogPermissionList = [Permission.Read, Permission.Manage];
-
 export const McpPermissionList = [Permission.Read, Permission.Manage];
 
 export const LabelMap = {

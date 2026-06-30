@@ -1220,7 +1220,7 @@ def test_update_session_rejects_session_owned_by_another_user(monkeypatch):
     res = _run(module.update_session(chat_id="chat-1", session_id="session-1"))
 
     assert res["code"] != 0
-    assert "Only owner of session" in res["message"]
+    assert "Only session owner or chat manager" in res["message"]
     assert not updates
 
 
@@ -1327,6 +1327,7 @@ def test_delete_session_message_rejects_session_owned_by_another_user(monkeypatc
     module = _load_chat_module(monkeypatch)
     _set_request_args_context(module, {})
     module.g.tenant_id = "tenant-1"
+    module.g.operator_permission = module.PermissionValue.PERMISSION_WRITE.value
     updates = []
     monkeypatch.setattr(
         module.UserTenantService,
@@ -1372,8 +1373,66 @@ def test_delete_session_message_rejects_session_owned_by_another_user(monkeypatc
     )
 
     assert res["code"] != 0
-    assert "Only owner of session" in res["message"]
+    assert "Only session owner or chat manager" in res["message"]
     assert not updates
+
+
+@pytest.mark.p2
+def test_delete_session_message_manage_permission_can_delete_other_users_message(monkeypatch):
+    module = _load_chat_module(monkeypatch)
+    _set_request_args_context(module, {})
+    module.g.tenant_id = "tenant-1"
+    module.g.operator_permission = module.PermissionValue.PERMISSION_MANAGE.value
+    updates = []
+    monkeypatch.setattr(
+        module.UserTenantService,
+        "query",
+        lambda **_kwargs: [SimpleNamespace(id="member-1", tenant_id="tenant-1")],
+    )
+    monkeypatch.setattr(
+        module.DialogService,
+        "query",
+        lambda **_kwargs: [SimpleNamespace(id="chat-1", tenant_id="tenant-1")],
+    )
+    monkeypatch.setattr(
+        module.ConversationService,
+        "get_by_id",
+        lambda _id: (
+            True,
+            SimpleNamespace(
+                id="session-1",
+                dialog_id="chat-1",
+                user_id="another-user",
+                message=[
+                    {"id": "msg-1", "role": "user", "content": "q"},
+                    {"id": "msg-2", "role": "assistant", "content": "a"},
+                ],
+                to_dict=lambda: {
+                    "id": "session-1",
+                    "dialog_id": "chat-1",
+                    "user_id": "another-user",
+                    "message": [],
+                    "reference": [],
+                },
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        module.ConversationService,
+        "update_by_id",
+        lambda session_id, payload: updates.append((session_id, payload)) or True,
+    )
+
+    res = _run(
+        module.delete_session_message(
+            chat_id="chat-1",
+            session_id="session-1",
+            msg_id="msg-1",
+        )
+    )
+
+    assert res["code"] == 0
+    assert updates
 
 
 @pytest.mark.p2
@@ -1381,6 +1440,7 @@ def test_update_message_feedback_rejects_session_owned_by_another_user(monkeypat
     module = _load_chat_module(monkeypatch)
     _set_json_request_context(module, {"thumbup": True}, method="PUT")
     module.g.tenant_id = "tenant-1"
+    module.g.operator_permission = module.PermissionValue.PERMISSION_READ.value
     updates = []
     monkeypatch.setattr(
         module.UserTenantService,
@@ -1426,8 +1486,69 @@ def test_update_message_feedback_rejects_session_owned_by_another_user(monkeypat
     )
 
     assert res["code"] != 0
-    assert "Only owner of session" in res["message"]
+    assert "Only session owner or chat manager" in res["message"]
     assert not updates
+
+
+@pytest.mark.p2
+def test_update_message_feedback_write_permission_can_update_other_users_session(monkeypatch):
+    module = _load_chat_module(monkeypatch)
+    _set_json_request_context(module, {"thumbup": True}, method="PUT")
+    module.g.tenant_id = "tenant-1"
+    module.g.operator_permission = module.PermissionValue.PERMISSION_WRITE.value
+    updates = []
+    monkeypatch.setattr(
+        module.UserTenantService,
+        "query",
+        lambda **_kwargs: [SimpleNamespace(id="member-1", tenant_id="tenant-1")],
+    )
+    monkeypatch.setattr(
+        module.DialogService,
+        "query",
+        lambda **_kwargs: [SimpleNamespace(id="chat-1", tenant_id="tenant-1")],
+    )
+    monkeypatch.setattr(
+        module.ConversationService,
+        "get_by_id",
+        lambda _id: (
+            True,
+            SimpleNamespace(
+                id="session-1",
+                dialog_id="chat-1",
+                user_id="another-user",
+                to_dict=lambda: {
+                    "id": "session-1",
+                    "dialog_id": "chat-1",
+                    "user_id": "another-user",
+                    "message": [
+                        {"id": "msg-1", "role": "assistant", "content": "answer"},
+                    ],
+                    "reference": [],
+                },
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        module.ConversationService,
+        "update_by_id",
+        lambda session_id, payload: updates.append((session_id, payload)) or True,
+    )
+    monkeypatch.setattr(
+        module.ChunkFeedbackService,
+        "apply_feedback",
+        lambda **_kwargs: {"success_count": 0, "fail_count": 0},
+    )
+
+    res = _run(
+        module.update_message_feedback(
+            chat_id="chat-1",
+            session_id="session-1",
+            msg_id="msg-1",
+        )
+    )
+
+    assert res["code"] == 0
+    assert updates
 
 
 @pytest.mark.p2
@@ -1651,6 +1772,7 @@ def test_list_sessions_treats_blank_user_id_as_legacy_visible(monkeypatch):
     module = _load_chat_module(monkeypatch)
     _set_request_args_context(module, {"page": "1", "page_size": "30"})
     module.g.tenant_id = "tenant-1"
+    module.g.operator_permission = module.PermissionValue.PERMISSION_READ.value
     monkeypatch.setattr(
         module.UserTenantService,
         "query",
@@ -1686,10 +1808,118 @@ def test_list_sessions_treats_blank_user_id_as_legacy_visible(monkeypatch):
 
 
 @pytest.mark.p2
+def test_list_sessions_read_only_returns_current_user_or_legacy_sessions(monkeypatch):
+    module = _load_chat_module(monkeypatch)
+    _set_request_args_context(module, {"page": "1", "page_size": "30"})
+    module.g.tenant_id = "tenant-1"
+    module.g.operator_permission = module.PermissionValue.PERMISSION_READ.value
+    monkeypatch.setattr(
+        module.UserTenantService,
+        "query",
+        lambda **_kwargs: [SimpleNamespace(id="member-1", tenant_id="tenant-1")],
+    )
+    monkeypatch.setattr(
+        module.UserTenantService,
+        "filter_by_tenant_and_user_id",
+        lambda *_args, **_kwargs: SimpleNamespace(id="member-1", tenant_id="tenant-1"),
+    )
+    monkeypatch.setattr(
+        module.DialogService,
+        "query",
+        lambda **_kwargs: [SimpleNamespace(id="chat-1", tenant_id="tenant-1")],
+    )
+    monkeypatch.setattr(
+        module.ConversationService,
+        "get_list",
+        lambda *_args, **_kwargs: [
+            {
+                "id": "session-own",
+                "dialog_id": "chat-1",
+                "user_id": "user-1",
+                "message": [],
+                "reference": [],
+            },
+            {
+                "id": "session-legacy",
+                "dialog_id": "chat-1",
+                "user_id": "",
+                "message": [],
+                "reference": [],
+            },
+            {
+                "id": "session-other",
+                "dialog_id": "chat-1",
+                "user_id": "user-2",
+                "message": [],
+                "reference": [],
+            },
+        ],
+    )
+
+    res = _run(module.list_sessions(chat_id="chat-1"))
+
+    assert [session["id"] for session in res["data"]] == [
+        "session-own",
+        "session-legacy",
+    ]
+
+
+@pytest.mark.p2
+def test_list_sessions_write_permission_returns_all_sessions(monkeypatch):
+    module = _load_chat_module(monkeypatch)
+    _set_request_args_context(module, {"page": "1", "page_size": "30"})
+    module.g.tenant_id = "tenant-1"
+    module.g.operator_permission = module.PermissionValue.PERMISSION_WRITE.value
+    monkeypatch.setattr(
+        module.UserTenantService,
+        "query",
+        lambda **_kwargs: [SimpleNamespace(id="member-1", tenant_id="tenant-1")],
+    )
+    monkeypatch.setattr(
+        module.UserTenantService,
+        "filter_by_tenant_and_user_id",
+        lambda *_args, **_kwargs: SimpleNamespace(id="member-1", tenant_id="tenant-1"),
+    )
+    monkeypatch.setattr(
+        module.DialogService,
+        "query",
+        lambda **_kwargs: [SimpleNamespace(id="chat-1", tenant_id="tenant-1")],
+    )
+    monkeypatch.setattr(
+        module.ConversationService,
+        "get_list",
+        lambda *_args, **_kwargs: [
+            {
+                "id": "session-own",
+                "dialog_id": "chat-1",
+                "user_id": "user-1",
+                "message": [],
+                "reference": [],
+            },
+            {
+                "id": "session-other",
+                "dialog_id": "chat-1",
+                "user_id": "user-2",
+                "message": [],
+                "reference": [],
+            },
+        ],
+    )
+
+    res = _run(module.list_sessions(chat_id="chat-1"))
+
+    assert [session["id"] for session in res["data"]] == [
+        "session-own",
+        "session-other",
+    ]
+
+
+@pytest.mark.p2
 def test_get_session_rejects_session_owned_by_another_user(monkeypatch):
     module = _load_chat_module(monkeypatch)
     _set_request_args_context(module, {})
     module.g.tenant_id = "tenant-1"
+    module.g.operator_permission = module.PermissionValue.PERMISSION_READ.value
     monkeypatch.setattr(
         module.UserTenantService,
         "query",
@@ -1724,7 +1954,51 @@ def test_get_session_rejects_session_owned_by_another_user(monkeypatch):
     res = _run(module.get_session(chat_id="chat-1", session_id="session-1"))
 
     assert res["code"] != 0
-    assert "Only owner of session" in res["message"]
+    assert "Only session owner or chat manager" in res["message"]
+
+
+@pytest.mark.p2
+def test_get_session_write_permission_can_access_other_users_session(monkeypatch):
+    module = _load_chat_module(monkeypatch)
+    _set_request_args_context(module, {})
+    module.g.tenant_id = "tenant-1"
+    module.g.operator_permission = module.PermissionValue.PERMISSION_WRITE.value
+    monkeypatch.setattr(
+        module.UserTenantService,
+        "query",
+        lambda **_kwargs: [SimpleNamespace(id="member-1", tenant_id="tenant-1")],
+    )
+    monkeypatch.setattr(
+        module.DialogService,
+        "query",
+        lambda **_kwargs: [SimpleNamespace(id="chat-1", tenant_id="tenant-1", icon="icon.png")],
+    )
+    monkeypatch.setattr(
+        module.ConversationService,
+        "get_by_id",
+        lambda _id: (
+            True,
+            SimpleNamespace(
+                id="session-1",
+                dialog_id="chat-1",
+                user_id="another-user",
+                reference=[],
+                to_dict=lambda: {
+                    "id": "session-1",
+                    "dialog_id": "chat-1",
+                    "user_id": "another-user",
+                    "message": [],
+                    "reference": [],
+                },
+            ),
+        ),
+    )
+
+    res = _run(module.get_session(chat_id="chat-1", session_id="session-1"))
+
+    assert res["code"] == 0
+    assert res["data"]["id"] == "session-1"
+    assert res["data"]["chat_id"] == "chat-1"
 
 
 @pytest.mark.p2
@@ -1916,6 +2190,7 @@ def test_delete_sessions_only_deletes_owned_or_legacy_sessions(monkeypatch):
 
     _set_json_request_context(module, {"ids": ["mine", "legacy", "foreign"]}, method="DELETE")
     module.g.tenant_id = "tenant-1"
+    module.g.operator_permission = module.PermissionValue.PERMISSION_WRITE.value
     monkeypatch.setattr(
         module.UserTenantService,
         "query",
@@ -1949,7 +2224,49 @@ def test_delete_sessions_only_deletes_owned_or_legacy_sessions(monkeypatch):
     assert res["code"] == 0
     assert res["data"]["success_count"] == 2
     assert deleted_ids == ["mine", "legacy"]
-    assert res["data"]["errors"] == ["Only owner of session can delete foreign"]
+    assert res["data"]["errors"] == ["Only session owner or chat manager can delete foreign"]
+
+
+@pytest.mark.p2
+def test_delete_sessions_manage_permission_can_delete_all_sessions(monkeypatch):
+    module = _load_chat_module(monkeypatch)
+    deleted_ids = []
+
+    _set_json_request_context(module, {"ids": ["mine", "foreign"]}, method="DELETE")
+    module.g.tenant_id = "tenant-1"
+    module.g.operator_permission = module.PermissionValue.PERMISSION_MANAGE.value
+    monkeypatch.setattr(
+        module.UserTenantService,
+        "query",
+        lambda **_kwargs: [SimpleNamespace(id="member-1", tenant_id="tenant-1")],
+    )
+    monkeypatch.setattr(
+        module.DialogService,
+        "query",
+        lambda **_kwargs: [SimpleNamespace(id="chat-1", tenant_id="tenant-1")],
+    )
+    monkeypatch.setattr(module, "check_duplicate_ids", lambda ids, _kind: (ids, []))
+
+    def _get_session(session_id):
+        mapping = {
+            "mine": SimpleNamespace(id="mine", dialog_id="chat-1", user_id=module.current_user.id),
+            "foreign": SimpleNamespace(id="foreign", dialog_id="chat-1", user_id="another-user"),
+        }
+        conv = mapping.get(session_id)
+        return (bool(conv), conv)
+
+    monkeypatch.setattr(module.ConversationService, "get_by_id", _get_session)
+    monkeypatch.setattr(
+        module.ConversationService,
+        "delete_by_id",
+        lambda session_id: deleted_ids.append(session_id) or True,
+    )
+
+    res = _run(module.delete_sessions(chat_id="chat-1"))
+
+    assert res["code"] == 0
+    assert res["data"] is True
+    assert deleted_ids == ["mine", "foreign"]
 
 
 @pytest.mark.p2

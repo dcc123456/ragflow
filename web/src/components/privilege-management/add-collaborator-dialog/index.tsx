@@ -8,8 +8,8 @@ import {
 } from '@/components/ui/dialog';
 import { RAGFlowSelect } from '@/components/ui/select';
 import {
-  DialogPermissionList,
   LabelMap,
+  McpPermissionList,
   Permission,
   PermissionList,
   PermissionResourceType,
@@ -105,9 +105,8 @@ export function AddCollaboratorDialog({
   );
 
   const options = (
-    resourceType === PermissionResourceType.Dialog ||
     resourceType === PermissionResourceType.MCP
-      ? DialogPermissionList
+      ? McpPermissionList
       : PermissionList
   ).map((x) => ({
     label: t(`permission.${LabelMap[x]}Permission`),

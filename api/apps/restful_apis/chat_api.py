@@ -200,7 +200,7 @@ def _ensure_session_owned_by_current_user(conv):
 def _session_owner_error():
     return get_json_result(
         data=False,
-        message="Only owner of session authorized for this operation.",
+        message="Only session owner or chat manager authorized for this operation.",
         code=RetCode.OPERATING_ERROR,
     )
 
@@ -636,6 +636,12 @@ async def list_chats():
     try:
         page_number = int(request.args.get("page", 0))
         items_per_page = validate_rest_api_page_size(int(request.args.get("page_size", 0)))
+        tenant_ids = list(
+            dict.fromkeys(
+                user_tenant.tenant_id
+                for user_tenant in _get_user_tenants_for_chat_access()
+            )
+        )
 
         if owner_ids:
             chats, total = await thread_pool_exec(
@@ -650,7 +656,7 @@ async def list_chats():
         else:
             chats, total = await thread_pool_exec(
                 DialogService.get_by_tenant_ids,
-                [], current_user.id, page_number, items_per_page, orderby, desc, keywords, **exact_filters,
+                tenant_ids, current_user.id, page_number, items_per_page, orderby, desc, keywords, **exact_filters,
             )
 
         for chat in chats:
@@ -1030,15 +1036,19 @@ def list_sessions(chat_id):
         if items_per_page == 0:
             convs = []
         normalized_convs = []
+        can_view_all_sessions = g.operator_permission in {
+            PermissionValue.PERMISSION_WRITE.value,
+            PermissionValue.PERMISSION_MANAGE.value,
+            PermissionValue.PERMISSION_OWNER.value,
+        }
         for conv in convs:
             conv_user_id = conv.get("user_id") if isinstance(conv, dict) else getattr(conv, "user_id", None)
             if isinstance(conv_user_id, str) and not conv_user_id.strip():
                 conv_user_id = None
-            if conv_user_id not in {None, current_user.id}:
+            if not can_view_all_sessions and conv_user_id not in {None, current_user.id}:
                 continue
             normalized_convs.append(conv.to_dict() if hasattr(conv, "to_dict") else dict(conv))
-        convs = normalized_convs
-        return get_json_result(data=[_build_session_response(c) for c in convs])
+        return get_json_result(data=[_build_session_response(c) for c in normalized_convs])
     except Exception as ex:
         return server_error_response(ex)
 
@@ -1054,7 +1064,12 @@ async def get_session(chat_id, session_id):
             return get_data_error_result(message="Session not found!")
         if conv.dialog_id != chat_id:
             return get_data_error_result(message="Session does not belong to this chat!")
-        if not _ensure_session_owned_by_current_user(conv):
+        can_view_all_sessions = g.operator_permission in {
+            PermissionValue.PERMISSION_WRITE.value,
+            PermissionValue.PERMISSION_MANAGE.value,
+            PermissionValue.PERMISSION_OWNER.value,
+        }
+        if not can_view_all_sessions and not _ensure_session_owned_by_current_user(conv):
             return _session_owner_error()
         dialog_rows = DialogService.query(tenant_id=g.tenant_id, id=chat_id, status=StatusEnum.VALID.value)
         avatar = dialog_rows[0].icon if dialog_rows else ""
@@ -1072,7 +1087,7 @@ async def get_session(chat_id, session_id):
 @manager.route("/chats/<chat_id>/sessions/<session_id>", methods=["PATCH"])  # noqa: F821
 @login_required
 @dialog_role_guard
-@check_dialog_permission(PermissionValue.PERMISSION_READ)
+@check_dialog_permission(PermissionValue.PERMISSION_WRITE)
 async def update_session(chat_id, session_id):
     try:
         req = dict(g.req_data or {})
@@ -1104,19 +1119,23 @@ async def update_session(chat_id, session_id):
 @manager.route("/chats/<chat_id>/sessions", methods=["DELETE"])  # noqa: F821
 @login_required
 @dialog_role_guard
-@check_dialog_permission(PermissionValue.PERMISSION_READ)
+@check_dialog_permission(PermissionValue.PERMISSION_WRITE)
 async def delete_sessions(chat_id):
     try:
         req = await get_request_json()
         if not req:
             return get_json_result(data={})
+        can_delete_all_sessions = g.operator_permission in {
+            PermissionValue.PERMISSION_MANAGE.value,
+            PermissionValue.PERMISSION_OWNER.value,
+        }
 
         session_ids = req.get("ids")
         if not session_ids:
             if req.get("delete_all") is True:
                 session_ids = []
                 for conv in ConversationService.query(dialog_id=chat_id):
-                    if _ensure_session_owned_by_current_user(conv):
+                    if can_delete_all_sessions or _ensure_session_owned_by_current_user(conv):
                         session_ids.append(conv.id)
                 if not session_ids:
                     return get_json_result(data={})
@@ -1130,8 +1149,8 @@ async def delete_sessions(chat_id):
             if not ok or conv.dialog_id != chat_id:
                 errors.append(f"The chat doesn't own the session {sid}")
                 continue
-            if not _ensure_session_owned_by_current_user(conv):
-                errors.append(f"Only owner of session can delete {sid}")
+            if not can_delete_all_sessions and not _ensure_session_owned_by_current_user(conv):
+                errors.append(f"Only session owner or chat manager can delete {sid}")
                 continue
             ConversationService.delete_by_id(sid)
             success_count += 1
@@ -1151,13 +1170,17 @@ async def delete_sessions(chat_id):
 @manager.route("/chats/<chat_id>/sessions/<session_id>/messages/<msg_id>", methods=["DELETE"])  # noqa: F821
 @login_required
 @dialog_role_guard
-@check_dialog_permission(PermissionValue.PERMISSION_READ)
+@check_dialog_permission(PermissionValue.PERMISSION_WRITE)
 async def delete_session_message(chat_id, session_id, msg_id):
     try:
         ok, conv = ConversationService.get_by_id(session_id)
         if not ok or conv.dialog_id != chat_id:
             return get_data_error_result(message="Session not found!")
-        if not _ensure_session_owned_by_current_user(conv):
+        can_delete_all_sessions = g.operator_permission in {
+            PermissionValue.PERMISSION_MANAGE.value,
+            PermissionValue.PERMISSION_OWNER.value,
+        }
+        if not can_delete_all_sessions and not _ensure_session_owned_by_current_user(conv):
             return _session_owner_error()
         conv = conv.to_dict()
         for i, msg in enumerate(conv["message"]):
@@ -1185,7 +1208,12 @@ async def update_message_feedback(chat_id, session_id, msg_id):
         ok, conv = ConversationService.get_by_id(session_id)
         if not ok or conv.dialog_id != chat_id:
             return get_data_error_result(message="Session not found!")
-        if not _ensure_session_owned_by_current_user(conv):
+        can_feedback_all_sessions = g.operator_permission in {
+            PermissionValue.PERMISSION_WRITE.value,
+            PermissionValue.PERMISSION_MANAGE.value,
+            PermissionValue.PERMISSION_OWNER.value,
+        }
+        if not can_feedback_all_sessions and not _ensure_session_owned_by_current_user(conv):
             return _session_owner_error()
         thumb_raw = req.get("thumbup")
         if not isinstance(thumb_raw, bool):

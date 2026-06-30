@@ -5,7 +5,7 @@ export function PrivilegeDropdown() {
   const { t } = useTranslation();
 
   return (
-    <div className="flex items-center justify-between w-full">
+    <div className="flex items-center justify-between w-full gap-2">
       {t('permission.permissionManagement')}
       <KeyRound className="size-3" />
     </div>
