@@ -613,7 +613,7 @@ class TestTocAsyncFlowIntegration:
             mock_doc_service.get_document_metadata.return_value = {}
             mock_doc_service.update_document_metadata = MagicMock()
             mock_chunk_service_cls.return_value = mock_chunk_service
-            mock_run_toc.return_value = [{"title": "Test TOC", "level": 1}]
+            mock_run_toc.return_value = [{"title": "Test TOC", "level": 1, "chunk_id": 0}]
             mock_post_doc_service.increment_chunk_num = MagicMock()
 
             mock_thread_exec.side_effect = mock_thread_return_binary

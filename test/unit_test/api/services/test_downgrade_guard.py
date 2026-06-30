@@ -323,7 +323,7 @@ class TestHighFreqCheck:
     def test_cancels_when_exceeded(self, monkeypatch):
         cancel_calls = []
         email_calls = []
-        sub = _sub()
+        sub = _sub(end_time=_beijing_now() + timedelta(days=1))
 
         monkeypatch.setattr(
             "api.services.downgrade_guard._get_subscription_downgrade_info",

@@ -16,13 +16,19 @@ import {
 import { cn } from '@/lib/utils';
 import { TenantRole } from '@/pages/user-setting/constants';
 import { Routes } from '@/routes';
-import { LucideChevronDown, LucideCircleHelp } from 'lucide-react';
+import {
+  LucideChevronDown,
+  LucideCircleHelp,
+  LucideLanguages,
+} from 'lucide-react';
 import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { BellButton } from './bell-button';
-import GlobalNavbar from './global-navbar';
+import { DesktopNavbar, MobileNavbar } from './global-navbar';
+import { MobileMenuFooter } from './mobile-menu-footer';
 import ThemeButton from './theme-button';
+import { useHeaderNavLayout } from './use-header-nav-layout';
 
 import { supportedLanguages } from '@/locales/config';
 import { PriceName } from '@/pages/price/constant';
@@ -62,137 +68,235 @@ export function Header({
     navigate(PrivateRoutes.Price);
   };
 
-  // const langItems = LanguageList.map((x) => ({
-  //   key: x,
-  //   label: <span>{LanguageMap[x as keyof typeof LanguageMap]}</span>,
-  // }));
+  const {
+    headerRef,
+    logoRef,
+    expandedRightMeasureRef,
+    navMeasureRef,
+    isCompact,
+  } = useHeaderNavLayout(`${hasNotification}-${language}`);
 
   return (
-    <header
-      key="app-navbar"
-      className={cn(
-        'w-full grid grid-cols-[1fr_auto_1fr] grid-rows-1 items-center gap-8',
-        className,
-      )}
-      {...props}
-    >
-      <div className="inline-flex items-center gap-3">
-        <Link
-          to={Routes.Root}
-          aria-current={pathname === Routes.Root ? 'page' : undefined}
-        >
-          <img src={'/logo.svg'} alt="RAGFlow logo" className="size-10" />
-        </Link>
-        {isBillingEnabled() && (
-          <div
-            className="bg-gradient-to-r from-[#00BEB4] to-[#43FFA4] rounded-full px-2 py-1 text-sm  font-normal text-black cursor-pointer"
-            onClick={handleClick}
-          >
-            {t('price.upgrade')}
+    <>
+      <header
+        ref={headerRef}
+        key="app-navbar"
+        className={cn(
+          'w-full min-w-0 flex items-center gap-2 sm:gap-4',
+          className,
+        )}
+        {...props}
+      >
+        <div className="inline-flex shrink-0 items-center gap-2">
+          {isCompact && (
+            <MobileNavbar
+              renderFooter={(close) => <MobileMenuFooter onClose={close} />}
+            />
+          )}
+          <div ref={logoRef} className="inline-flex shrink-0 items-center">
+            <Link
+              to={Routes.Root}
+              aria-current={pathname === Routes.Root ? 'page' : undefined}
+              className="flex size-10 shrink-0 items-center justify-center"
+            >
+              <img src={'/logo.svg'} alt="RAGFlow logo" className="size-10" />
+            </Link>
+            {isBillingEnabled() && (
+              <div
+                className="bg-gradient-to-r from-[#00BEB4] to-[#43FFA4] rounded-full px-2 py-1 text-sm  font-normal text-black cursor-pointer"
+                onClick={handleClick}
+              >
+                {t('price.upgrade')}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {!isCompact && (
+          <div className="flex min-w-0 flex-1 justify-center overflow-hidden">
+            <DesktopNavbar />
           </div>
         )}
-      </div>
 
-      <GlobalNavbar />
+        {isCompact && <div className="flex-1" aria-hidden />}
+
+        <div
+          className={cn(
+            'flex shrink-0 items-center justify-end text-text-badge',
+            isCompact ? 'gap-0.5' : 'gap-4',
+          )}
+          data-testid="auth-status"
+        >
+          {!isCompact && (
+            <>
+              <a
+                className="inline-flex p-2 text-text-secondary hover:text-text-primary focus-visible:text-text-primary"
+                target="_blank"
+                href="https://discord.com/invite/NjYzJD3GM3"
+                rel="noreferrer noopener"
+              >
+                <IconFontFill name="a-DiscordIconSVGVectorIcon" />
+              </a>
+
+              <a
+                className="inline-flex p-2 text-text-secondary hover:text-text-primary focus-visible:text-text-primary"
+                target="_blank"
+                href="https://github.com/infiniflow/ragflow"
+                rel="noreferrer noopener"
+              >
+                <IconFontFill name="GitHub" />
+              </a>
+            </>
+          )}
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                className={cn(
+                  'size-10 shrink-0 px-0',
+                  !isCompact && 'size-auto gap-1 px-4',
+                )}
+                aria-label={currentLanguage?.displayName}
+              >
+                {isCompact && <LucideLanguages className="size-5" />}
+                {!isCompact && (
+                  <>
+                    {currentLanguage?.displayName}
+                    <LucideChevronDown className="size-[1em]" />
+                  </>
+                )}
+              </Button>
+            </DropdownMenuTrigger>
+
+            <DropdownMenuContent align="end">
+              {supportedLanguages.map((x) => (
+                <DropdownMenuItem
+                  key={x.code}
+                  onClick={() => changeLanguage(x.code)}
+                >
+                  {x.displayName}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {!isCompact && (
+            <>
+              <Button
+                asLink
+                variant="ghost"
+                size="icon"
+                className="size-8"
+                to="https://ragflow.io/docs/dev/category/user-guides"
+                target="_blank"
+                rel="noreferrer noopener"
+              >
+                <LucideCircleHelp className="size-[1em]" />
+              </Button>
+
+              {hasNotification && <BellButton className="!size-8" />}
+            </>
+          )}
+
+          <ThemeButton className={cn(!isCompact && '!size-8')} />
+
+          <Link
+            to={Routes.UserSetting}
+            className={cn(
+              'relative flex size-10 shrink-0 items-center justify-center',
+              !isCompact && 'ms-3',
+            )}
+            data-testid="settings-entrypoint"
+          >
+            <RAGFlowAvatar
+              name={nickname}
+              avatar={avatar}
+              isPerson
+              className="size-8"
+            />
+          </Link>
+        </div>
+      </header>
 
       <div
-        className="flex items-center justify-end gap-4 text-text-badge"
-        data-testid="auth-status"
+        className="pointer-events-none invisible fixed -left-[9999px] top-0"
+        aria-hidden
       >
-        <a
-          className="p-2 text-text-secondary hover:text-text-primary focus-visible:text-text-primary"
-          target="_blank"
-          href="https://discord.com/invite/NjYzJD3GM3"
-          rel="noreferrer noopener"
+        <div ref={navMeasureRef}>
+          <DesktopNavbar />
+        </div>
+        <div
+          ref={expandedRightMeasureRef}
+          className="inline-flex shrink-0 items-center justify-end gap-4 text-text-badge"
         >
-          <IconFontFill name="a-DiscordIconSVGVectorIcon" />
-        </a>
-
-        <a
-          className="p-2 text-text-secondary hover:text-text-primary focus-visible:text-text-primary"
-          target="_blank"
-          href="https://github.com/infiniflow/ragflow"
-          rel="noreferrer noopener"
-        >
-          <IconFontFill name="GitHub" />
-        </a>
-
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button className="flex items-center gap-1" variant="ghost">
-              {currentLanguage?.displayName}
-              <LucideChevronDown className="size-[1em]" />
-            </Button>
-          </DropdownMenuTrigger>
-
-          <DropdownMenuContent>
-            {supportedLanguages.map((x) => (
-              <DropdownMenuItem
-                key={x.code}
-                onClick={() => changeLanguage(x.code)}
-              >
-                {x.displayName}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        <RAGFlowTooltip tooltip={t('header.tickets')}>
-          <Link
-            className="p-2 text-text-secondary hover:text-text-primary focus-visible:text-text-primary"
-            to={Routes.Tickets}
-          >
-            <IconFontFill
-              name={`kefu`}
-              className="text-text-primary"
-            ></IconFontFill>
-          </Link>
-          {/* <Tickets className="size-5" /> */}
-        </RAGFlowTooltip>
-
-        <Button
-          asLink
-          variant="ghost"
-          size="icon"
-          to="https://ragflow.io/docs/dev/category/user-guides"
-          target="_blank"
-          rel="noreferrer noopener"
-        >
-          <LucideCircleHelp className="size-[1em]" />
-        </Button>
-
-        <ThemeButton />
-
-        {hasNotification && <BellButton />}
-
-        <Link
-          to={Routes.UserSetting}
-          className="relative ms-3 flex items-start "
-          data-testid="settings-entrypoint"
-        >
-          <RAGFlowAvatar
-            name={nickname}
-            avatar={avatar}
-            isPerson
-            className="size-8"
-          />
-
-          {(currentPlan?.plan_name === PriceName.Starter ||
-            currentPlan?.plan_name === PriceName.Pro) && (
-            <div
-              className={cn(
-                '-mt-1 z-20 bg-gradient-to-r from-[#00BEB4] to-[#43FFA4] rounded-full px-1 py-0.5 text-xs font-normal text-black cursor-pointer',
-                currentPlan?.plan_name === 'Starter'
-                  ? 'scale-90 -ml-1.5 '
-                  : '-ml-1',
-              )}
-              onClick={handleClick}
+          <RAGFlowTooltip tooltip={t('header.tickets')}>
+            <Link
+              className="p-2 text-text-secondary hover:text-text-primary focus-visible:text-text-primary"
+              to={Routes.Tickets}
             >
-              <span className={cn()}>{currentPlan?.plan_name}</span>
-            </div>
-          )}
-        </Link>
+              <IconFontFill
+                name={`kefu`}
+                className="text-text-primary"
+              ></IconFontFill>
+            </Link>
+            {/* <Tickets className="size-5" /> */}
+          </RAGFlowTooltip>
+
+          {hasNotification && <BellButton />}
+
+          <Link
+            to={Routes.UserSetting}
+            className="relative ms-3 flex items-start "
+            data-testid="settings-entrypoint"
+          >
+            <RAGFlowAvatar
+              name={nickname}
+              avatar={avatar}
+              isPerson
+              className="size-8"
+            />
+
+            {(currentPlan?.plan_name === PriceName.Starter ||
+              currentPlan?.plan_name === PriceName.Pro) && (
+              <div
+                className={cn(
+                  '-mt-1 z-20 bg-gradient-to-r from-[#00BEB4] to-[#43FFA4] rounded-full px-1 py-0.5 text-xs font-normal text-black cursor-pointer',
+                  currentPlan?.plan_name === 'Starter'
+                    ? 'scale-90 -ml-1.5 '
+                    : '-ml-1',
+                )}
+                onClick={handleClick}
+              >
+                <span className={cn()}>{currentPlan?.plan_name}</span>
+              </div>
+            )}
+          </Link>
+          <a className="inline-flex p-2">
+            <IconFontFill name="a-DiscordIconSVGVectorIcon" />
+          </a>
+          <a className="inline-flex p-2">
+            <IconFontFill name="GitHub" />
+          </a>
+          <Button variant="ghost" className="size-auto gap-1 px-4">
+            {currentLanguage?.displayName}
+            <LucideChevronDown className="size-[1em]" />
+          </Button>
+          <Button variant="ghost" size="icon" className="size-8">
+            <LucideCircleHelp className="size-[1em]" />
+          </Button>
+          <ThemeButton className="!size-8" />
+          {hasNotification && <BellButton className="!size-8" />}
+          <div className="relative ms-3 flex size-10 shrink-0 items-center justify-center">
+            <RAGFlowAvatar
+              name={nickname}
+              avatar={avatar}
+              isPerson
+              className="size-8"
+            />
+          </div>
+        </div>
       </div>
-    </header>
+    </>
   );
 }

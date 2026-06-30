@@ -136,6 +136,8 @@ function MessageItem({
       return null;
     }
 
+    const hasCustomChildren = item.data && !!children;
+
     return (
       <div
         className={cn({
@@ -146,7 +148,7 @@ function MessageItem({
         })}
         dir={getDirAttribute(messageContent.replace(citationMarkerReg, ''))}
       >
-        {item.data ? (
+        {hasCustomChildren ? (
           children
         ) : sendLoading && isEmpty(messageContent) ? (
           <>{!isShare && t('common.running')}</>

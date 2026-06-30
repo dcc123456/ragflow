@@ -26,16 +26,11 @@ from pydantic import ValidationError
 
 from api.apps import AUTH_JWT, AUTH_API, AUTH_BETA, current_user, login_required
 from api.constants import FILE_NAME_LEN_LIMIT, IMG_BASE64_PREFIX
-from api.apps.services.document_api_service import (
-    validate_document_update_fields,
-    map_doc_keys,
-    map_doc_keys_with_run_status,
-    update_document_name_only,
-    update_chunk_method,
-    update_document_status_only,
-    reset_document_for_reparse,
-)
+from api.apps.services.document_api_service import validate_document_update_fields, map_doc_keys, \
+    map_doc_keys_with_run_status, update_document_name_only, update_chunk_method, update_document_status_only, \
+    reset_document_for_reparse
 from api.db import VALID_FILE_TYPES, FileType, PermissionActionType, PermissionTargetType, PermissionValue, ResourceType
+from api.db.db_models import API4Conversation, DB
 from api.db.services import duplicate_name
 from api.db.services.doc_metadata_service import DocMetadataService
 from api.db.db_models import Task
@@ -44,6 +39,7 @@ from api.db.services.file2document_service import File2DocumentService
 from api.db.services.file_service import FileService
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.permission_service import PermissionChangeLogService, PermissionService
+from api.db.services.canvas_service import UserCanvasService
 from api.db.services.task_service import TaskService, cancel_all_task_of
 from api.db.services.user_service import UserTenantService
 from api.utils.api_utils import (
@@ -746,6 +742,11 @@ async def _upload_local_documents(kb, tenant_id):
                     resource_code = RetCode.BILLING_POINTS_INSUFFICIENT
                 return get_resource_insufficient_result(code=resource_code, message=e_str, detail=detail)
 
+
+    # Handle partial success: some files uploaded successfully, some had errors
+    is_partial_success = err and files
+
+    if err and not is_partial_success:
         msg = "\n".join(err)
         logging.error(msg)
         return get_error_data_result(message=msg, code=RetCode.SERVER_ERROR)
@@ -761,10 +762,17 @@ async def _upload_local_documents(kb, tenant_id):
     return_raw_files = request.args.get("return_raw_files", "false").lower() == "true"
 
     if return_raw_files:
-        return get_result(data=files)
+        doc_data = files
+    else:
+        doc_data = [map_doc_keys_with_run_status(doc, run_status="0") for doc in files]
 
-    renamed_doc_list = [map_doc_keys_with_run_status(doc, run_status="0") for doc in files]
-    return get_result(data=renamed_doc_list)
+    # For partial success, include error message along with successful uploads
+    if is_partial_success:
+        msg = "\n".join(err)
+        logging.warning(f"Partial upload success: {len(files)} succeeded, {len(err)} failed - {msg}")
+        return construct_json_result(code=RetCode.SERVER_ERROR, message=msg, data=doc_data)
+
+    return get_result(data=doc_data)
 
 
 @manager.route("/datasets/<dataset_id>/documents", methods=["GET"])  # noqa: F821
@@ -1981,6 +1989,31 @@ ARTIFACT_CONTENT_TYPES = {
 }
 
 
+@DB.connection_context()
+def _sandbox_artifact_dialog_ids_for_user(filename: str, user_id: str) -> list[str]:
+    """Return agent dialog IDs for sessions owned by *user_id* that reference *filename*."""
+    if not filename:
+        return []
+    artifact_ref = f"documents/artifact/{filename}"
+    rows = (
+        API4Conversation.select(API4Conversation.dialog_id)
+        .where(
+            ((API4Conversation.user_id == user_id) | (API4Conversation.exp_user_id == user_id)),
+            (API4Conversation.message.contains(filename) | API4Conversation.message.contains(artifact_ref)),
+        )
+        .distinct()
+    )
+    return [row.dialog_id for row in rows if row.dialog_id]
+
+
+def _sandbox_artifact_accessible(filename: str, user_id: str) -> bool:
+    """True when a CodeExec sandbox artifact belongs to an agent session the user may access."""
+    for dialog_id in _sandbox_artifact_dialog_ids_for_user(filename, user_id):
+        if UserCanvasService.accessible(dialog_id, user_id):
+            return True
+    return False
+
+
 @manager.route("/documents/artifact/<filename>", methods=["GET"])  # noqa: F821
 @login_required
 @kb_role_guard
@@ -2018,6 +2051,8 @@ async def get_artifact(filename):
         ext = os.path.splitext(basename)[1].lower()
         if ext not in ARTIFACT_CONTENT_TYPES:
             return get_data_error_result(message="Invalid file type.")
+        if not await thread_pool_exec(_sandbox_artifact_accessible, basename, current_user.id):
+            return get_data_error_result(message="Artifact not found.")
         data = await thread_pool_exec(settings.STORAGE_IMPL.get, bucket, basename, current_user.id)
         if not data:
             return get_data_error_result(message="Artifact not found.")
@@ -2254,6 +2289,10 @@ async def download(dataset_id, document_id):
     """
     if not document_id:
         return get_error_data_result(message="Specify document_id please.")
+    if not KnowledgebaseService.accessible(kb_id=dataset_id, user_id=current_user.id):
+        return get_data_error_result(message="Document not found!")
+    if not DocumentService.accessible(document_id, current_user.id):
+        return get_data_error_result(message="Document not found!")
     doc = DocumentService.query(kb_id=dataset_id, id=document_id)
     if not doc:
         return get_error_data_result(message=f"The dataset not own the document {document_id}.")
@@ -2316,6 +2355,8 @@ async def download_document(tenant_id=None, document_id=None):
     """
     if not document_id:
         return get_error_data_result(message="Specify document_id please.")
+    if not DocumentService.accessible(document_id, current_user.id):
+        return get_data_error_result(message="Document not found!")
     doc = DocumentService.query(id=document_id)
     if not doc:
         return get_error_data_result(message=f"The dataset not own the document {document_id}.")

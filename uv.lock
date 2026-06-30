@@ -13,7 +13,10 @@ constraints = [
     { name = "trio", specifier = ">=0.26.0", index = "https://pypi.org/simple" },
 ]
 overrides = [{ name = "attrs", specifier = ">=23.2.0" }]
-excludes = ["unclecode-litellm"]
+excludes = [
+    "agentrun-mem0ai",
+    "unclecode-litellm",
+]
 
 [[package]]
 name = "aenum"
@@ -25,31 +28,10 @@ wheels = [
 ]
 
 [[package]]
-name = "agentrun-mem0ai"
-version = "0.0.11"
-source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
-dependencies = [
-    { name = "mysql-connector-python" },
-    { name = "openai" },
-    { name = "posthog" },
-    { name = "protobuf" },
-    { name = "pydantic" },
-    { name = "pytz" },
-    { name = "qdrant-client" },
-    { name = "sqlalchemy" },
-    { name = "tablestore-for-agent-memory" },
-]
-sdist = { url = "https://mirrors.aliyun.com/pypi/packages/55/f5/9ee66bc1f039278d669977298cad657e70c80607956f3a191111980c4c7b/agentrun_mem0ai-0.0.11.tar.gz", hash = "sha256:63231b14a9ba47eba0af2fe3f864066a1ad78602ec0bc09882279dfced86482d" }
-wheels = [
-    { url = "https://mirrors.aliyun.com/pypi/packages/10/75/c8190a99538273cf92541959897bb7bc61ea3fc42f6277c88548bea96c6e/agentrun_mem0ai-0.0.11-py3-none-any.whl", hash = "sha256:1523f3665f081aaf8b8455dc30033f6406a28b66d09150b59ccaa1f7c7d14a7b" },
-]
-
-[[package]]
 name = "agentrun-sdk"
-version = "0.0.35"
+version = "0.0.51"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
 dependencies = [
-    { name = "agentrun-mem0ai" },
     { name = "alibabacloud-agentrun20250910" },
     { name = "alibabacloud-bailian20231229" },
     { name = "alibabacloud-devs20230714" },
@@ -64,9 +46,9 @@ dependencies = [
     { name = "tablestore-agent-storage" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://mirrors.aliyun.com/pypi/packages/c8/f9/2be8be302a4411574aee2b036d69403c6c132020c662060c16d2063d5f49/agentrun_sdk-0.0.35.tar.gz", hash = "sha256:9b71629eefefc74f16c402e0b3d1febe1ef6796b9809b24ad149b23eaaec644a" }
+sdist = { url = "https://mirrors.aliyun.com/pypi/packages/55/56/7caca0780cee6098c39f2739ed9867746afb01e22d5a8bf22d353d8920b2/agentrun_sdk-0.0.51.tar.gz", hash = "sha256:48ec49fd925bb204d1565488f832fc0a53cd8304938274f0ab528d5a57cdb1d6" }
 wheels = [
-    { url = "https://mirrors.aliyun.com/pypi/packages/09/1d/61e9bdaf939cd33719618a5b33470d87ce0901ea71967013c273687ccc5a/agentrun_sdk-0.0.35-py3-none-any.whl", hash = "sha256:1cada914c060c7a0bc7f79d207974b5f47cca92c26e0275f46d7bb22fd9fd060" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/78/fe/a06e34120e03d09f38485098b9d2704d4d217d7acfdeedd1731bcd8856a9/agentrun_sdk-0.0.51-py3-none-any.whl", hash = "sha256:b33c4b5ff7cb1a2987dca34e53b2fa959f103ea0e6256c83017a0f82b744382e" },
 ]
 
 [[package]]
@@ -1438,7 +1420,7 @@ wheels = [
 
 [[package]]
 name = "crawl4ai"
-version = "0.8.6"
+version = "0.9.0"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
 dependencies = [
     { name = "aiofiles" },
@@ -1474,9 +1456,9 @@ dependencies = [
     { name = "snowballstemmer" },
     { name = "xxhash" },
 ]
-sdist = { url = "https://mirrors.aliyun.com/pypi/packages/07/96/7525bd2e1f8f2f2924f350b0432481d673c3fb43e4d60f7d151e4137b8a6/crawl4ai-0.8.6.tar.gz", hash = "sha256:2a2afab05ae021435fe025cfc5732f5dcebcefd7ff9a529e41050642ee954316" }
+sdist = { url = "https://mirrors.aliyun.com/pypi/packages/52/37/9b288598bb0049b918eeb00f029592c748465c8a3e819461e95d8b5f9dab/crawl4ai-0.9.0.tar.gz", hash = "sha256:00c1c3516d9ca24a9b5004523ae67974ace8a5baadc6e92e295afca73f077153" }
 wheels = [
-    { url = "https://mirrors.aliyun.com/pypi/packages/76/e2/aa851e2f0248f0b19c63b0fe11f6bdc2ca64900924d399af368dc28f2a20/crawl4ai-0.8.6-py3-none-any.whl", hash = "sha256:57e127e8113640d8358705b231111d3cd9cc4ab05d44705e724cebc4a383e09c" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/c9/19/2d634f26d9ad1281874c503c1043174042fef9af631dc10798f4f22c1544/crawl4ai-0.9.0-py3-none-any.whl", hash = "sha256:1296072d9cd92e79144c6823ed6f27ab3966f16ce44e79fcbe86943b3435c366" },
 ]
 
 [[package]]
@@ -2278,6 +2260,12 @@ wheels = [
     { url = "https://mirrors.aliyun.com/pypi/packages/03/15/e56f351cf6ef1cfea58e6ac226a7318ed1deb2218c4b3cc9bd9e4b786c5a/google_api_core-2.30.3-py3-none-any.whl", hash = "sha256:a85761ba72c444dad5d611c2220633480b2b6be2521eca69cca2dbb3ffd6bfe8" },
 ]
 
+[package.optional-dependencies]
+grpc = [
+    { name = "grpcio" },
+    { name = "grpcio-status" },
+]
+
 [[package]]
 name = "google-api-python-client"
 version = "2.196.0"
@@ -2308,6 +2296,9 @@ wheels = [
 ]
 
 [package.optional-dependencies]
+pyopenssl = [
+    { name = "pyopenssl" },
+]
 requests = [
     { name = "requests" },
 ]
@@ -2336,6 +2327,24 @@ dependencies = [
 sdist = { url = "https://mirrors.aliyun.com/pypi/packages/70/18/90c7fac516e63cf2058166fce0c88c353647c677b51cc036c09c49bb5cbb/google_auth_oauthlib-1.4.0.tar.gz", hash = "sha256:18b5e28880eb8eba9065c436becdc0ee8e4b59117a73a510679c82f70cd363d2" }
 wheels = [
     { url = "https://mirrors.aliyun.com/pypi/packages/37/d3/d7dff0d58a9e9244b48044bfb6a898bfcc8ecc42e0031d1bebc695344725/google_auth_oauthlib-1.4.0-py3-none-any.whl", hash = "sha256:251314f213a9ee46a5ae73988e84fd7cca8bb68e7ecf4bfd45940f9e7f51d070" },
+]
+
+[[package]]
+name = "google-cloud-bigquery"
+version = "3.42.1"
+source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
+dependencies = [
+    { name = "google-api-core", extra = ["grpc"] },
+    { name = "google-auth", extra = ["pyopenssl"] },
+    { name = "google-cloud-core" },
+    { name = "google-resumable-media" },
+    { name = "packaging" },
+    { name = "python-dateutil" },
+    { name = "requests" },
+]
+sdist = { url = "https://mirrors.aliyun.com/pypi/packages/15/a2/be1cffbb1a9894ecf394ab0096b113ae9e4f73686595d906a9f3082b07c2/google_cloud_bigquery-3.42.1.tar.gz", hash = "sha256:3c6878f424fc2b21f0bb414ca7262abd008465575a7b7c44c552105278a18914" }
+wheels = [
+    { url = "https://mirrors.aliyun.com/pypi/packages/7a/1e/8b098aeb69ef87de5195d076ce6d82002c3ebf1920373d386ca7b6e63cfa/google_cloud_bigquery-3.42.1-py3-none-any.whl", hash = "sha256:159143c1b7248858f35549c09efea5d031c2883145623419ea7c505a50c0899a" },
 ]
 
 [[package]]
@@ -2551,29 +2560,6 @@ dependencies = [
 sdist = { url = "https://mirrors.aliyun.com/pypi/packages/be/c7/fe0e79a80ac6346e0c6c0a24e9e3cbc3ae1c2a009acffb59eab484a6f69b/grpcio_status-1.67.1.tar.gz", hash = "sha256:2bf38395e028ceeecfd8866b081f61628114b384da7d51ae064ddc8d766a5d11" }
 wheels = [
     { url = "https://mirrors.aliyun.com/pypi/packages/05/18/56999a1da3577d8ccc8698a575d6638e15fe25650cc88b2ce0a087f180b9/grpcio_status-1.67.1-py3-none-any.whl", hash = "sha256:16e6c085950bdacac97c779e6a502ea671232385e6e37f258884d6883392c2bd" },
-]
-
-[[package]]
-name = "grpcio-tools"
-version = "1.71.2"
-source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
-dependencies = [
-    { name = "grpcio" },
-    { name = "protobuf" },
-    { name = "setuptools" },
-]
-sdist = { url = "https://mirrors.aliyun.com/pypi/packages/ad/9a/edfefb47f11ef6b0f39eea4d8f022c5bb05ac1d14fcc7058e84a51305b73/grpcio_tools-1.71.2.tar.gz", hash = "sha256:b5304d65c7569b21270b568e404a5a843cf027c66552a6a0978b23f137679c09" }
-wheels = [
-    { url = "https://mirrors.aliyun.com/pypi/packages/60/9c/bdf9c5055a1ad0a09123402d73ecad3629f75b9cf97828d547173b328891/grpcio_tools-1.71.2-cp313-cp313-linux_armv7l.whl", hash = "sha256:b0f0a8611614949c906e25c225e3360551b488d10a366c96d89856bcef09f729" },
-    { url = "https://mirrors.aliyun.com/pypi/packages/49/d0/6aaee4940a8fb8269c13719f56d69c8d39569bee272924086aef81616d4a/grpcio_tools-1.71.2-cp313-cp313-macosx_10_14_universal2.whl", hash = "sha256:7931783ea7ac42ac57f94c5047d00a504f72fbd96118bf7df911bb0e0435fc0f" },
-    { url = "https://mirrors.aliyun.com/pypi/packages/d9/11/50a471dcf301b89c0ed5ab92c533baced5bd8f796abfd133bbfadf6b60e5/grpcio_tools-1.71.2-cp313-cp313-manylinux_2_17_aarch64.whl", hash = "sha256:d188dc28e069aa96bb48cb11b1338e47ebdf2e2306afa58a8162cc210172d7a8" },
-    { url = "https://mirrors.aliyun.com/pypi/packages/bb/66/e3dc58362a9c4c2fbe98a7ceb7e252385777ebb2bbc7f42d5ab138d07ace/grpcio_tools-1.71.2-cp313-cp313-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:f36c4b3cc42ad6ef67430639174aaf4a862d236c03c4552c4521501422bfaa26" },
-    { url = "https://mirrors.aliyun.com/pypi/packages/b7/1e/1e07a07ed8651a2aa9f56095411198385a04a628beba796f36d98a5a03ec/grpcio_tools-1.71.2-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:4bd9ed12ce93b310f0cef304176049d0bc3b9f825e9c8c6a23e35867fed6affd" },
-    { url = "https://mirrors.aliyun.com/pypi/packages/d3/f9/3b7b32e4acb419f3a0b4d381bc114fe6cd48e3b778e81273fc9e4748caad/grpcio_tools-1.71.2-cp313-cp313-musllinux_1_1_aarch64.whl", hash = "sha256:7ce27e76dd61011182d39abca38bae55d8a277e9b7fe30f6d5466255baccb579" },
-    { url = "https://mirrors.aliyun.com/pypi/packages/1e/99/cd9e1acd84315ce05ad1fcdfabf73b7df43807cf00c3b781db372d92b899/grpcio_tools-1.71.2-cp313-cp313-musllinux_1_1_i686.whl", hash = "sha256:dcc17bf59b85c3676818f2219deacac0156492f32ca165e048427d2d3e6e1157" },
-    { url = "https://mirrors.aliyun.com/pypi/packages/9f/c0/66eab57b14550c5b22404dbf60635c9e33efa003bd747211981a9859b94b/grpcio_tools-1.71.2-cp313-cp313-musllinux_1_1_x86_64.whl", hash = "sha256:706360c71bdd722682927a1fb517c276ccb816f1e30cb71f33553e5817dc4031" },
-    { url = "https://mirrors.aliyun.com/pypi/packages/05/9b/7c90af8f937d77005625d705ab1160bc42a7e7b021ee5c788192763bccd6/grpcio_tools-1.71.2-cp313-cp313-win32.whl", hash = "sha256:bcf751d5a81c918c26adb2d6abcef71035c77d6eb9dd16afaf176ee096e22c1d" },
-    { url = "https://mirrors.aliyun.com/pypi/packages/5f/80/6db6247f767c94fe551761772f89ceea355ff295fd4574cb8efc8b2d1199/grpcio_tools-1.71.2-cp313-cp313-win_amd64.whl", hash = "sha256:b1581a1133552aba96a730178bc44f6f1a071f0eb81c5b6bc4c0f89f5314e2b8" },
 ]
 
 [[package]]
@@ -7835,24 +7821,6 @@ wheels = [
 ]
 
 [[package]]
-name = "qdrant-client"
-version = "1.12.1"
-source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
-dependencies = [
-    { name = "grpcio" },
-    { name = "grpcio-tools" },
-    { name = "httpx", extra = ["http2"] },
-    { name = "numpy" },
-    { name = "portalocker" },
-    { name = "pydantic" },
-    { name = "urllib3" },
-]
-sdist = { url = "https://mirrors.aliyun.com/pypi/packages/15/5e/ec560881e086f893947c8798949c72de5cfae9453fd05c2250f8dfeaa571/qdrant_client-1.12.1.tar.gz", hash = "sha256:35e8e646f75b7b883b3d2d0ee4c69c5301000bba41c82aa546e985db0f1aeb72" }
-wheels = [
-    { url = "https://mirrors.aliyun.com/pypi/packages/68/c0/eef4fe9dad6d41333f7dc6567fa8144ffc1837c8a0edfc2317d50715335f/qdrant_client-1.12.1-py3-none-any.whl", hash = "sha256:b2d17ce18e9e767471368380dd3bbc4a0e3a0e2061fedc9af3542084b48451e0" },
-]
-
-[[package]]
 name = "qianfan"
 version = "0.4.6"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
@@ -7982,6 +7950,7 @@ dependencies = [
     { name = "flask-session" },
     { name = "google-api-python-client" },
     { name = "google-auth-oauthlib" },
+    { name = "google-cloud-bigquery" },
     { name = "google-cloud-storage" },
     { name = "google-genai" },
     { name = "google-search-results" },
@@ -8105,7 +8074,7 @@ test = [
 
 [package.metadata]
 requires-dist = [
-    { name = "agentrun-sdk", specifier = ">=0.0.16,<1.0.0" },
+    { name = "agentrun-sdk", specifier = ">=0.0.51,<1.0.0" },
     { name = "aiohttp", specifier = ">=3.14.1" },
     { name = "aiosmtplib", specifier = ">=5.0.0" },
     { name = "akshare", specifier = ">=1.15.78,<2.0.0" },
@@ -8126,7 +8095,7 @@ requires-dist = [
     { name = "chardet", specifier = ">=5.2.0,<6.0.0" },
     { name = "cn2an", specifier = "==0.5.22" },
     { name = "cohere", specifier = "==5.6.2" },
-    { name = "crawl4ai", specifier = ">=0.8.0" },
+    { name = "crawl4ai", specifier = ">=0.9.0,<0.9.1" },
     { name = "dashscope", specifier = "==1.25.11" },
     { name = "debugpy", specifier = ">=1.8.13" },
     { name = "deepl", specifier = "==1.18.0" },
@@ -8150,6 +8119,7 @@ requires-dist = [
     { name = "google-api-python-client", specifier = ">=2.0.0" },
     { name = "google-api-python-client", specifier = ">=2.190.0,<3.0.0" },
     { name = "google-auth-oauthlib", specifier = ">=1.2.0,<2.0.0" },
+    { name = "google-cloud-bigquery", specifier = ">=3.25.0,<4.0.0" },
     { name = "google-cloud-storage", specifier = ">=2.19.0,<3.0.0" },
     { name = "google-genai", specifier = ">=1.41.0,<2.0.0" },
     { name = "google-search-results", specifier = "==2.4.2" },
@@ -9252,19 +9222,6 @@ dependencies = [
 sdist = { url = "https://mirrors.aliyun.com/pypi/packages/cc/b6/4929f7e257497c502b367ca27f0bd01e1a377791eda986b5c6152195ecd8/tablestore_agent_storage-1.0.5.tar.gz", hash = "sha256:aef312dc59a0d3cb467747b834406f3c7ab6880957f23090c79b0189460e2898" }
 wheels = [
     { url = "https://mirrors.aliyun.com/pypi/packages/c5/33/d4e191857e1673614a7fdbbbeda1677e83e6f54974bdabd451ba971f2d15/tablestore_agent_storage-1.0.5-py3-none-any.whl", hash = "sha256:849d43bf03cff31c897093574381112858b42278ffe3e2536f0eca2267df9a65" },
-]
-
-[[package]]
-name = "tablestore-for-agent-memory"
-version = "1.1.3"
-source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
-dependencies = [
-    { name = "pydantic" },
-    { name = "tablestore" },
-]
-sdist = { url = "https://mirrors.aliyun.com/pypi/packages/c4/7d/a92ba26d87fb2be64c26847bb34a9ff207d42b7546c05d5a7af79455fe62/tablestore_for_agent_memory-1.1.3.tar.gz", hash = "sha256:522841fed7fdd655f122c516220950fa65ce469e9bf80c05db68d04d2021dcf6" }
-wheels = [
-    { url = "https://mirrors.aliyun.com/pypi/packages/f3/40/ea6ec162dc91ac55b3fd8ef7bcd2e1f04a039c8bbfcfa3dd8f6c6cbf7ef8/tablestore_for_agent_memory-1.1.3-py3-none-any.whl", hash = "sha256:0384ba823f09a47786ea050be35bb2d0f8b7c6d95dba0b31c04fbbac6e30622f" },
 ]
 
 [[package]]
