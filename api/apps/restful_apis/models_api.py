@@ -172,6 +172,9 @@ async def set_default_models(tenant_id: str):
             model_type:
               type: string
               description: "Model type: chat, embedding, rerank, asr, vision, tts, ocr"
+            tenant_id:
+              type: string
+              description: "Tenant ID of model owner"
     responses:
       200:
         description: Default model updated.
@@ -186,10 +189,11 @@ async def set_default_models(tenant_id: str):
     model_instance = data.get("model_instance", "")
     model_name = data.get("model_name", "")
     model_type = data["model_type"]
+    model_tenant_id = data.get("tenant_id")
 
     try:
         success, msg = models_api_service.set_tenant_default_models(
-            tenant_id, model_provider, model_instance, model_name, model_type
+            tenant_id, model_provider, model_instance, model_name, model_type, model_tenant_id
         )
         if success:
             logging.info(f"success: {success}, msg: {msg}")

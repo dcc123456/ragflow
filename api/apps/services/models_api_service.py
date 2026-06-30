@@ -267,7 +267,7 @@ def list_tenant_default_models(tenant_id: str):
     return True, {"models": models}
 
 
-def set_tenant_default_models(tenant_id: str, model_provider: str, model_instance: str, model_name: str, model_type: str):
+def set_tenant_default_models(tenant_id: str, model_provider: str, model_instance: str, model_name: str, model_type: str, model_tenant_id: str=None):
     """
     Set or clear a tenant default model.
 
@@ -280,6 +280,7 @@ def set_tenant_default_models(tenant_id: str, model_provider: str, model_instanc
     :param model_instance: instance name
     :param model_name: model name
     :param model_type: model type (chat, embedding, rerank, asr, vision, tts, ocr)
+    :param model_tenant_id: tenant_id of model owner
     :return: (success, result_or_error_message)
     """
     field_name = MODEL_TYPE_TO_FIELD.get(model_type)
@@ -295,10 +296,10 @@ def set_tenant_default_models(tenant_id: str, model_provider: str, model_instanc
         default_model = ""
     elif model_provider and model_instance and model_name:
         # Validate and set the default model
-        success, msg = _check_model_available(tenant_id, model_provider, model_instance, model_name, model_type)
+        success, msg = _check_model_available(model_tenant_id or tenant_id, model_provider, model_instance, model_name, model_type)
         if not success:
             return False, msg
-        default_model = f"{model_name}@{model_instance}@{model_provider}"
+        default_model = f"{model_name}@{model_instance}@{model_provider}#{model_tenant_id or tenant}"
     else:
         return False, "model_provider, model_instance and model_name must be specified together"
 
