@@ -19,7 +19,6 @@ import {
   useEditInstanceModel,
   useFetchAddedProviders,
   useFetchInstanceModels,
-  useFetchProviderInstance,
   useFetchProviderInstances,
   useUpdateModelStatus,
 } from '@/hooks/use-llm-request';
@@ -37,7 +36,6 @@ import {
   ChevronsUp,
   KeyRound,
   Pencil,
-  Settings,
   Trash2,
 } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
@@ -277,41 +275,41 @@ function InstanceRow({
 function InstanceModelList({
   providerName,
   instanceName,
-  instance,
-  onEditInstance,
+  // instance,
+  // onEditInstance,
 }: {
   providerName: string;
   instanceName: string;
-  instance: IProviderInstance;
-  onEditInstance?: (
-    providerName: string,
-    instance: IProviderInstance,
-    models: IInstanceModel[],
-  ) => void;
+  // instance: IProviderInstance;
+  // onEditInstance?: (
+  //   providerName: string,
+  //   instance: IProviderInstance,
+  //   models: IInstanceModel[],
+  // ) => void;
 }) {
   const { data: models } = useFetchInstanceModels(providerName, instanceName);
   // Lazily fetches the full instance details (incl. baseUrl) only when
   // the user opens the settings dialog — keeps the collapsed section
   // cheap and avoids the extra request for users who never click it.
-  const { refetch: fetchInstanceDetails } = useFetchProviderInstance(
-    providerName,
-    instanceName,
-  );
+  // const { refetch: fetchInstanceDetails } = useFetchProviderInstance(
+  //   providerName,
+  //   instanceName,
+  // );
 
-  const handleSettingsClick = useCallback(async () => {
-    let details: IProviderInstance = instance;
-    try {
-      const ret = await fetchInstanceDetails();
-      if (ret.data) {
-        details = { ...instance, ...(ret.data as IProviderInstance) };
-      }
-    } catch {
-      // Fall back to the list-level instance data if the show request
-      // fails (e.g. network error) — the modal still gets a usable
-      // baseline.
-    }
-    onEditInstance?.(providerName, details, models);
-  }, [fetchInstanceDetails, instance, models, onEditInstance, providerName]);
+  // const handleSettingsClick = useCallback(async () => {
+  //   let details: IProviderInstance = instance;
+  //   try {
+  //     const ret = await fetchInstanceDetails();
+  //     if (ret.data) {
+  //       details = { ...instance, ...(ret.data as IProviderInstance) };
+  //     }
+  //   } catch {
+  //     // Fall back to the list-level instance data if the show request
+  //     // fails (e.g. network error) — the modal still gets a usable
+  //     // baseline.
+  //   }
+  //   onEditInstance?.(providerName, details, models);
+  // }, [fetchInstanceDetails, instance, models, onEditInstance, providerName]);
 
   const modelTypes = useMemo(() => {
     const types = new Set<string>();
@@ -338,9 +336,9 @@ function InstanceModelList({
               </span>
             ))}
           </div>
-          <Button size="icon" variant="ghost" onClick={handleSettingsClick}>
+          {/* <Button size="icon" variant="ghost" onClick={handleSettingsClick}>
             <Settings size={12} />
-          </Button>
+          </Button> */}
         </div>
       )}
 
