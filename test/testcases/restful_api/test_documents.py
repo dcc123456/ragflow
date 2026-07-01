@@ -15,6 +15,7 @@
 #
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from copy import deepcopy
 import string
 from contextlib import ExitStack
 from pathlib import Path
@@ -41,6 +42,12 @@ from test.testcases.utils.file_utils import (
 )
 from utils import wait_for
 from utils.file_utils import create_txt_file
+
+
+def _default_parser_config_for_tenant(tenant_id: str) -> dict:
+    parser_config = deepcopy(DEFAULT_PARSER_CONFIG)
+    parser_config["llm_id"] = f'{parser_config["llm_id"]}#{tenant_id}'
+    return parser_config
 
 
 @pytest.mark.p1
@@ -757,7 +764,7 @@ def test_documents_update_invalid_field_and_guard_contract(rest_client, create_d
 
 
 @pytest.mark.p2
-def test_documents_update_parser_config_contract(rest_client, create_dataset, tmp_path):
+def test_documents_update_parser_config_contract(rest_client, create_dataset, tmp_path, tenant_id):
     dataset_id, uploaded_docs = _seed_documents_for_update(rest_client, create_dataset, tmp_path)
     first_document_id = uploaded_docs[0]["id"]
     default_parser_config_for_test = {
@@ -836,7 +843,7 @@ def test_documents_update_parser_config_contract(rest_client, create_dataset, tm
             assert list_body["code"] == 0, (parser_config, list_body)
             doc_parser_config = list_body["data"]["docs"][0]["parser_config"]
             if parser_config == {}:
-                assert doc_parser_config == DEFAULT_PARSER_CONFIG, (parser_config, list_body)
+                assert doc_parser_config == _default_parser_config_for_tenant(tenant_id), (parser_config, list_body)
             else:
                 for key, value in parser_config.items():
                     if isinstance(value, dict):

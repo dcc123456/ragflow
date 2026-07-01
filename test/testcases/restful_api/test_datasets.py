@@ -15,6 +15,7 @@
 #
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from copy import deepcopy
 import os
 import uuid
 
@@ -25,6 +26,16 @@ from test.testcases.configs import INVALID_API_TOKEN
 from test.testcases.restful_api.helpers.client import RestClient
 from test.testcases.utils import encode_avatar
 from test.testcases.utils.file_utils import create_image_file, create_txt_file
+
+
+def _tenant_scoped_model_id(model_id: str, tenant_id: str) -> str:
+    return f"{model_id}#{tenant_id}"
+
+
+def _default_parser_config_for_tenant(tenant_id: str) -> dict:
+    parser_config = deepcopy(DEFAULT_PARSER_CONFIG)
+    parser_config["llm_id"] = _tenant_scoped_model_id(parser_config["llm_id"], tenant_id)
+    return parser_config
 
 
 def _is_infinity_doc_engine(rest_client: RestClient) -> bool:
@@ -674,13 +685,13 @@ def test_dataset_update_identifier_validation_contract(rest_client):
     assert not_uuid_res.status_code == 200
     not_uuid_payload = not_uuid_res.json()
     assert not_uuid_payload["code"] == 101, not_uuid_payload
-    assert "Invalid UUID format" in not_uuid_payload["message"], not_uuid_payload
+    assert not_uuid_payload["message"] == "dataset_id: Invalid UUID1 format", not_uuid_payload
 
     not_uuid1_res = rest_client.put(f"/datasets/{uuid.uuid4().hex}", json=payload)
     assert not_uuid1_res.status_code == 200
     not_uuid1_payload = not_uuid1_res.json()
-    assert not_uuid1_payload["code"] == 102, not_uuid1_payload
-    assert "lacks permission for dataset" in not_uuid1_payload["message"], not_uuid1_payload
+    assert not_uuid1_payload["code"] == 101, not_uuid1_payload
+    assert not_uuid1_payload["message"] == "dataset_id: Invalid UUID1 format", not_uuid1_payload
 
     wrong_uuid_res = rest_client.put("/datasets/d94a8dc02c9711f0930f7fbc369eab6d", json=payload)
     assert wrong_uuid_res.status_code == 200
@@ -803,7 +814,7 @@ def test_dataset_update_name_invalid_and_duplicate_contract(rest_client, clear_d
 
 
 @pytest.mark.p2
-def test_dataset_update_embedding_model_invalid_and_none_contract(rest_client, clear_datasets):
+def test_dataset_update_embedding_model_invalid_and_none_contract(rest_client, clear_datasets, tenant_id):
     create_res = rest_client.post("/datasets", json={"name": "dataset_update_embedding_invalid_contract"})
     assert create_res.status_code == 200
     create_payload = create_res.json()
@@ -835,7 +846,7 @@ def test_dataset_update_embedding_model_invalid_and_none_contract(rest_client, c
     assert list_res.status_code == 200
     list_payload = list_res.json()
     assert list_payload["code"] == 0, list_payload
-    assert list_payload["data"][0]["embedding_model"] == embedding_model_id(), list_payload
+    assert list_payload["data"][0]["embedding_model"] == _tenant_scoped_model_id(embedding_model_id(), tenant_id), list_payload
 
 
 @pytest.mark.p2
@@ -910,7 +921,7 @@ def test_dataset_update_pagerank_invalid_and_none_contract(rest_client, clear_da
 
 
 @pytest.mark.p2
-def test_dataset_update_parser_config_defaults_contract(rest_client, clear_datasets):
+def test_dataset_update_parser_config_defaults_contract(rest_client, clear_datasets, tenant_id):
     create_res = rest_client.post("/datasets", json={"name": "dataset_update_parser_defaults_contract"})
     assert create_res.status_code == 200
     create_payload = create_res.json()
@@ -931,7 +942,7 @@ def test_dataset_update_parser_config_defaults_contract(rest_client, clear_datas
     assert list_res.status_code == 200
     list_payload = list_res.json()
     assert list_payload["code"] == 0, list_payload
-    assert list_payload["data"][0]["parser_config"] == DEFAULT_PARSER_CONFIG, list_payload
+    assert list_payload["data"][0]["parser_config"] == _default_parser_config_for_tenant(tenant_id), list_payload
 
 
 @pytest.mark.p2
@@ -1193,7 +1204,7 @@ def test_dataset_create_permission_contract(rest_client, clear_datasets, name, p
     ],
 )
 def test_dataset_create_embedding_model_contract(
-    rest_client, clear_datasets, name, embedding_model, expected_code, expected_embedding_model, expected_message, unauthorized_is_xfail
+    rest_client, clear_datasets, tenant_id, name, embedding_model, expected_code, expected_embedding_model, expected_message, unauthorized_is_xfail
 ):
     req = {"name": name}
     if embedding_model != "__UNSET__":
@@ -1205,6 +1216,8 @@ def test_dataset_create_embedding_model_contract(
         pytest.xfail(f"Environment has no authorized tenant model for {embedding_model}: {payload}")
     assert payload["code"] == expected_code, payload
     if expected_embedding_model is not None:
+        if name in {"embedding_model_unset", "embedding_model_none"}:
+            expected_embedding_model = _tenant_scoped_model_id(expected_embedding_model, tenant_id)
         assert payload["data"]["embedding_model"] == expected_embedding_model, payload
     if expected_message is not None:
         assert payload["message"] == expected_message, payload
@@ -1838,11 +1851,13 @@ def test_dataset_delete_contract_matrix(rest_client, clear_datasets):
     assert id_not_uuid_payload["code"] == 101, id_not_uuid_payload
     assert "Invalid UUID format" in id_not_uuid_payload["message"], id_not_uuid_payload
 
-    id_not_uuid1_res = rest_client.delete("/datasets", json={"ids": [uuid.uuid4().hex]})
+    inaccessible_dataset_id = uuid.uuid4().hex
+    id_not_uuid1_res = rest_client.delete("/datasets", json={"ids": [inaccessible_dataset_id]})
     assert id_not_uuid1_res.status_code == 200
     id_not_uuid1_payload = id_not_uuid1_res.json()
     assert id_not_uuid1_payload["code"] == 102, id_not_uuid1_payload
-    assert "lacks permission for dataset" in id_not_uuid1_payload["message"], id_not_uuid1_payload
+    assert "No authorization for dataset(s):" in id_not_uuid1_payload["message"], id_not_uuid1_payload
+    assert inaccessible_dataset_id in id_not_uuid1_payload["message"], id_not_uuid1_payload
 
     denied_dataset_id = "d94a8dc02c9711f0930f7fbc369eab6d"
     id_wrong_uuid_res = rest_client.delete("/datasets", json={"ids": [denied_dataset_id]})
