@@ -18,7 +18,7 @@ import {
 import { IModalProps } from '@/interfaces/common';
 import { IUpdatePermission } from '@/interfaces/request/team';
 import { uniqBy } from 'lodash';
-import { UserPlus } from 'lucide-react';
+import { Eye, ShieldCheck, SquarePen, UserPlus } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -37,6 +37,19 @@ import {
   useOperateGroup,
   useOperateMember,
 } from './use-select-collaborator';
+
+function getPermissionIcon(permission: Permission) {
+  if (permission === Permission.Read) {
+    return <Eye className="size-4" />;
+  }
+  if (permission === Permission.Write) {
+    return <SquarePen className="size-4" />;
+  }
+  if (permission === Permission.Manage) {
+    return <ShieldCheck className="size-4" />;
+  }
+  return null;
+}
 
 export function AddCollaboratorDialog({
   hideModal,
@@ -109,7 +122,12 @@ export function AddCollaboratorDialog({
       ? McpPermissionList
       : PermissionList
   ).map((x) => ({
-    label: t(`permission.${LabelMap[x]}Permission`),
+    label: (
+      <div className="flex items-center gap-2">
+        <span className="shrink-0">{getPermissionIcon(x)}</span>
+        <span>{t(`permission.${LabelMap[x]}Permission`)}</span>
+      </div>
+    ),
     value: x.toString(),
   }));
 

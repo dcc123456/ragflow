@@ -1,7 +1,9 @@
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Permission } from '@/constants/team';
 import { TeamApiAction } from '@/hooks/use-team';
 import { IPermission } from '@/interfaces/database/team';
+import { cn } from '@/lib/utils';
 import { useQueryClient } from '@tanstack/react-query';
 import { ChevronRight } from 'lucide-react';
 import {
@@ -20,6 +22,7 @@ import {
 import { CollaboratorItem as ICollaboratorItem } from '../interface';
 import { PrivilegeAvatar } from '../privilege-avatar';
 import { PrivilegeLabel } from '../privilege-label';
+import { getPermission } from '../utils';
 import { useSwitchBreadcrumb } from './use-select-collaborator';
 
 type LeftCollaboratorItemProps = {
@@ -34,22 +37,22 @@ type CollaboratorItemProps = Pick<
   'item' | 'showCheckbox' | 'avatar'
 >;
 
-function LeftPrivilegeLabel({ item }: { item: ICollaboratorItem }) {
+function usePermissionItem(itemId: string) {
   const queryClient = useQueryClient();
   const data = queryClient.getQueriesData<IPermission[]>({
     queryKey: [TeamApiAction.ListPermission],
   });
-  const permissionItems = data.at(0)?.at(1);
+  const permissionItems = data.at(0)?.at(1) as IPermission[] | undefined;
 
-  const permissionItem = permissionItems?.find(
-    (x) => (x as IPermission)?.id === item.id,
-  );
+  return permissionItems?.find((x) => x.id === itemId);
+}
+
+function LeftPrivilegeLabel({ item }: { item: ICollaboratorItem }) {
+  const permissionItem = usePermissionItem(item.id);
 
   if (permissionItem) {
     return (
-      <PrivilegeLabel
-        permissions={(permissionItem as IPermission)?.permissions}
-      ></PrivilegeLabel>
+      <PrivilegeLabel permissions={permissionItem.permissions}></PrivilegeLabel>
     );
   }
   return null;
@@ -60,11 +63,24 @@ export function CollaboratorItem({
   showCheckbox,
   avatar,
 }: CollaboratorItemProps) {
+  const permissionItem = usePermissionItem(item.id);
+  const isOwner =
+    getPermission(permissionItem?.permissions) === Permission.Owner;
+
   return (
     <div className="flex gap-2 items-center">
-      {showCheckbox && <Checkbox id={item.id} checked={item.checked} />}
+      {showCheckbox &&
+        (isOwner ? (
+          <span className="inline-block h-4 w-4 shrink-0" />
+        ) : (
+          <Checkbox id={item.id} checked={item.checked} />
+        ))}
       {avatar || <PrivilegeAvatar avatar={item.avatar}></PrivilegeAvatar>}
-      <span className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+      <span
+        className={cn(
+          'text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70',
+        )}
+      >
         {item.label}
       </span>
     </div>
@@ -92,9 +108,16 @@ export function LeftCollaboratorItem({
   showCheckbox = true,
   avatar,
 }: LeftCollaboratorItemProps) {
+  const permissionItem = usePermissionItem(item.id);
+  const isOwner =
+    getPermission(permissionItem?.permissions) === Permission.Owner;
+
   const handleClick = useCallback(() => {
+    if (isOwner) {
+      return;
+    }
     click(item.id);
-  }, [click, item]);
+  }, [click, isOwner, item.id]);
 
   return (
     <ItemWrapper key={item.id} onClick={handleClick}>
@@ -118,6 +141,9 @@ export function LeftMemberItem({
   showCheckbox = true,
 }: LeftCollaboratorItemProps) {
   const { handleClick: click } = useContext(MemberContext);
+  const permissionItem = usePermissionItem(item.id);
+  const isOwner =
+    getPermission(permissionItem?.permissions) === Permission.Owner;
 
   const checkedListMap = useContext(CheckedListContext);
   const checkedList = checkedListMap.memberCheckedList;
@@ -136,8 +162,11 @@ export function LeftMemberItem({
   }, [checked, item]);
 
   const handleClick = useCallback(() => {
+    if (isOwner) {
+      return;
+    }
     click(item.id, !checked);
-  }, [checked, click, item.id]);
+  }, [checked, click, isOwner, item.id]);
 
   return (
     <ItemWrapper key={item.id} onClick={handleClick}>
@@ -162,6 +191,9 @@ export function LeftDepartmentItem({
   clickCollaborator,
 }: LeftDepartmentItemProps) {
   const { handleClick: click } = useContext(DepartmentContext);
+  const permissionItem = usePermissionItem(item.id);
+  const isOwner =
+    getPermission(permissionItem?.permissions) === Permission.Owner;
 
   const checkedListMap = useContext(CheckedListContext);
   const checkedList = checkedListMap.departmentCheckedList;
@@ -180,8 +212,11 @@ export function LeftDepartmentItem({
   }, [checked, item]);
 
   const handleClick = useCallback(() => {
+    if (isOwner) {
+      return;
+    }
     click(item.id, !checked);
-  }, [checked, click, item.id]);
+  }, [checked, click, isOwner, item.id]);
 
   const handleArrowClick: MouseEventHandler<HTMLButtonElement> = useCallback(
     (e) => {

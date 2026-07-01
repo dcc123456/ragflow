@@ -12,7 +12,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useDatasetEditButtonDisabled } from '@/hooks/logic-hooks/use-permission';
@@ -193,7 +192,6 @@ export default function Dataset() {
               <DropdownMenuItem onClick={showDocumentUploadModal}>
                 {t('fileManager.uploadFile')}
               </DropdownMenuItem>
-              <DropdownMenuSeparator />
               <DropdownMenuItem onClick={showCreateModal}>
                 {t('knowledgeDetails.emptyFiles')}
               </DropdownMenuItem>

@@ -70,7 +70,6 @@ export function ChatDropdown({
             <DropdownMenuItem onClick={handleShowChatRenameModal}>
               {t('common.rename')} <PenLine />
             </DropdownMenuItem>
-            <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handlesShowPrivilegeModal}>
               <PrivilegeDropdown></PrivilegeDropdown>
             </DropdownMenuItem>

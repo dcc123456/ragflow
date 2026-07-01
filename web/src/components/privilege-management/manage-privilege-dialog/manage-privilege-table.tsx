@@ -11,7 +11,7 @@ import {
   getSortedRowModel,
   useReactTable,
 } from '@tanstack/react-table';
-import { SquarePen, Trash2 } from 'lucide-react';
+import { Eye, ShieldCheck, SquarePen, Trash2 } from 'lucide-react';
 import * as React from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -20,9 +20,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
@@ -36,6 +33,7 @@ import {
 import { Permission, PermissionResourceType } from '@/constants/team';
 import { UseRowSelectionType } from '@/hooks/logic-hooks/use-row-selection';
 import { IPermission } from '@/interfaces/database/team';
+import { cn } from '@/lib/utils';
 import { useTranslation } from 'react-i18next';
 import { IPrivilegeManagementInitialValues } from '../interface';
 import { PrivilegeAvatar } from '../privilege-avatar';
@@ -85,24 +83,28 @@ export function ManagePrivilegeTable({
       {
         id: 'select',
         header: ({ table }) => (
-          <Checkbox
-            checked={
-              table.getIsAllPageRowsSelected() ||
-              (table.getIsSomePageRowsSelected() && 'indeterminate')
-            }
-            onCheckedChange={(value) =>
-              table.toggleAllPageRowsSelected(!!value)
-            }
-            aria-label="Select all"
-          />
+          <div className="flex items-center justify-center">
+            <Checkbox
+              checked={
+                table.getIsAllPageRowsSelected() ||
+                (table.getIsSomePageRowsSelected() && 'indeterminate')
+              }
+              onCheckedChange={(value) =>
+                table.toggleAllPageRowsSelected(!!value)
+              }
+              aria-label="Select all"
+            />
+          </div>
         ),
         cell: ({ row }) =>
           checkOwner(row.original.permissions) ? null : (
-            <Checkbox
-              checked={row.getIsSelected()}
-              onCheckedChange={(value) => row.toggleSelected(!!value)}
-              aria-label="Select row"
-            />
+            <div className="flex items-center justify-center">
+              <Checkbox
+                checked={row.getIsSelected()}
+                onCheckedChange={(value) => row.toggleSelected(!!value)}
+                aria-label="Select row"
+              />
+            </div>
           ),
         enableSorting: false,
         enableHiding: false,
@@ -111,8 +113,13 @@ export function ManagePrivilegeTable({
         accessorKey: 'name',
         header: t('common.name'),
         cell: ({ row }) => (
-          <div className="flex gap-2 items-center">
-            <PrivilegeAvatar></PrivilegeAvatar> {row.getValue('name')}
+          <div className="flex items-center justify-center gap-3">
+            <PrivilegeAvatar className="size-8 ring-1 ring-black/5" />
+            <div className="min-w-0 text-center">
+              <div className="truncate text-sm font-medium text-text-primary">
+                {row.getValue('name')}
+              </div>
+            </div>
           </div>
         ),
       },
@@ -149,53 +156,78 @@ export function ManagePrivilegeTable({
             handleSwitchPermission(value, row.original);
           };
           return (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="h-8 w-8 p-0">
-                  <span className="sr-only">Open menu</span>
-                  <SquarePen />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="min-w-48 p-1.5">
-                <DropdownMenuRadioGroup
-                  value={row.original.permissions?.toString()}
-                  onValueChange={onUpdatePermission}
-                >
+            <div className="flex items-center justify-center gap-1">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" className="h-8 w-8 p-0">
+                    <span className="sr-only">Open menu</span>
+                    <SquarePen />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="min-w-48 p-1.5">
                   {hidePermissionDropdownButton(resourceType) || (
                     <>
-                      <DropdownMenuRadioItem
-                        value="1"
-                        className="rounded-md py-2 pl-8 pr-3 text-sm"
+                      <DropdownMenuItem
+                        className={cn(
+                          'rounded-md py-2 text-sm',
+                          Number(row.original.permissions) ===
+                            Permission.Read && 'bg-bg-card text-text-primary',
+                        )}
+                        onClick={() =>
+                          onUpdatePermission(String(Permission.Read))
+                        }
                       >
-                        {t('permission.readPermission')}
-                      </DropdownMenuRadioItem>
+                        <div className="flex items-center gap-2">
+                          <Eye className="mr-2 size-4" />
+                          {t('permission.readPermission')}
+                        </div>
+                      </DropdownMenuItem>
                       {hideEditPermissionDropdownItem(resourceType) || (
-                        <DropdownMenuRadioItem
-                          value="2"
-                          className="rounded-md py-2 pl-8 pr-3 text-sm"
+                        <DropdownMenuItem
+                          className={cn(
+                            'rounded-md py-2 text-sm',
+                            Number(row.original.permissions) ===
+                              Permission.Write &&
+                              'bg-bg-card text-text-primary',
+                          )}
+                          onClick={() =>
+                            onUpdatePermission(String(Permission.Write))
+                          }
                         >
-                          {t('permission.writePermission')}
-                        </DropdownMenuRadioItem>
+                          <div className="flex items-center gap-2">
+                            <SquarePen className="mr-2 size-4" />
+                            {t('permission.writePermission')}
+                          </div>
+                        </DropdownMenuItem>
                       )}
-                      <DropdownMenuRadioItem
-                        value="4"
-                        className="rounded-md py-2 pl-8 pr-3 text-sm"
+                      <DropdownMenuItem
+                        className={cn(
+                          'rounded-md py-2 text-sm',
+                          Number(row.original.permissions) ===
+                            Permission.Manage && 'bg-bg-card text-text-primary',
+                        )}
+                        onClick={() =>
+                          onUpdatePermission(String(Permission.Manage))
+                        }
                       >
-                        {t('permission.managePermission')}
-                      </DropdownMenuRadioItem>
-                      <DropdownMenuSeparator className="my-1.5" />
+                        <div className="flex items-center gap-2">
+                          <ShieldCheck className="mr-2 size-4" />
+                          {t('permission.managePermission')}
+                        </div>
+                      </DropdownMenuItem>
                     </>
                   )}
-                  <DropdownMenuItem
-                    onClick={handleDelete(row.original)}
-                    justifyBetween={false}
-                    className="rounded-md py-2 text-sm text-state-error focus:text-state-error"
-                  >
-                    <Trash2 /> {t('common.delete')}
-                  </DropdownMenuItem>
-                </DropdownMenuRadioGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <Button
+                variant="ghost"
+                className="h-8 w-8 p-0 text-state-error hover:text-state-error"
+                onClick={handleDelete(row.original)}
+              >
+                <span className="sr-only">{t('common.delete')}</span>
+                <Trash2 />
+              </Button>
+            </div>
           );
         },
       },
@@ -228,14 +260,17 @@ export function ManagePrivilegeTable({
 
   return (
     <div className="w-full">
-      <div className="rounded-md border">
+      <div className="overflow-hidden rounded-xl border bg-background shadow-sm">
         <Table rootClassName="max-h-[60vh]">
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id}>
                 {headerGroup.headers.map((header) => {
                   return (
-                    <TableHead key={header.id}>
+                    <TableHead
+                      key={header.id}
+                      className="h-11 bg-bg-card/70 text-center text-sm font-medium text-text-secondary"
+                    >
                       {header.isPlaceholder
                         ? null
                         : flexRender(
@@ -254,9 +289,13 @@ export function ManagePrivilegeTable({
                 <TableRow
                   key={row.id}
                   data-state={row.getIsSelected() && 'selected'}
+                  className="border-b border-border/70 transition-colors hover:bg-bg-card/40 data-[state=selected]:bg-accent-primary/5"
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
+                    <TableCell
+                      key={cell.id}
+                      className="text-center align-middle"
+                    >
                       {flexRender(
                         cell.column.columnDef.cell,
                         cell.getContext(),
@@ -269,7 +308,7 @@ export function ManagePrivilegeTable({
               <TableRow>
                 <TableCell
                   colSpan={columns.length}
-                  className="h-24 text-center"
+                  className="h-24 text-center text-text-secondary"
                 >
                   No results.
                 </TableCell>

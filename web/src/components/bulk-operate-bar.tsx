@@ -1,6 +1,5 @@
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { BrushCleaning } from 'lucide-react';
 import { ReactNode, useId } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -45,7 +44,6 @@ export function BulkOperateBar({
           className="text-sm text-text-secondary flex items-center gap-2"
         >
           {t('common.selected')}: {count} {unit ?? t('knowledgeDetails.files')}
-          <BrushCleaning className="size-[1em]" />
         </p>
 
         <Separator orientation={'vertical'} className="h-[1em]"></Separator>

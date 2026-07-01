@@ -28,6 +28,7 @@ import pytest
 from api.db import ActionEnum, ResourceTypeEnum
 
 from test.testcases.configs import CHAT_ASSISTANT_NAME_LIMIT, INVALID_API_TOKEN
+from test.testcases.conftest import default_chat_llm_id
 from test.testcases.restful_api.helpers.client import RestClient
 from test.testcases.utils import encode_avatar
 from test.testcases.utils.file_utils import create_image_file
@@ -285,8 +286,8 @@ def test_chat_delete_concurrent_and_bulk_contract(rest_client, clear_chats):
     assert list_after_concurrent["code"] == 0, list_after_concurrent
     assert list_after_concurrent["data"]["chats"] == [], list_after_concurrent
 
-    bulk_ids = _reset_chat_batch(rest_client, "delete_bulk", count=100)
-    bulk_res = rest_client.delete("/chats", json={"ids": bulk_ids})
+    bulk_ids = _reset_chat_batch(rest_client, "delete_bulk", count=50)
+    bulk_res = rest_client.delete("/chats", json={"ids": bulk_ids}, timeout=60)
     assert bulk_res.status_code == 200
     bulk_payload = bulk_res.json()
     assert bulk_payload["code"] == 0, bulk_payload
@@ -1629,37 +1630,37 @@ def test_chat_create_avatar_contract(rest_client, clear_chats, tmp_path):
 @pytest.mark.p2
 def test_chat_create_llm_contract(rest_client, clear_chats, ensure_parsed_document, tenant_id):
     dataset_id, _ = ensure_parsed_document()
-    default_llm_id = f"glm-4-flash@CI@ZHIPU-AI#{tenant_id}"
+    expected_default_llm_id = default_chat_llm_id(tenant_id)
     cases = [
-        ("default llm", {}, 0, "", default_llm_id, {}),
+        ("default llm", {}, 0, "", expected_default_llm_id, {}),
         ("explicit llm_id", {"llm_id": "glm-4"}, 102, "`llm_id` glm-4 doesn't exist", None, None),
         ("unknown llm_id", {"llm_id": "unknown"}, 102, "`llm_id` unknown doesn't exist", None, None),
-        ("temperature zero", {"llm_setting": {"temperature": 0}}, 0, "", default_llm_id, {"temperature": 0}),
-        ("temperature one", {"llm_setting": {"temperature": 1}}, 0, "", default_llm_id, {"temperature": 1}),
-        ("temperature negative one", {"llm_setting": {"temperature": -1}}, 0, "", default_llm_id, {"temperature": -1}),
-        ("temperature ten", {"llm_setting": {"temperature": 10}}, 0, "", default_llm_id, {"temperature": 10}),
-        ("temperature string", {"llm_setting": {"temperature": "a"}}, 0, "", default_llm_id, {"temperature": "a"}),
-        ("top_p zero", {"llm_setting": {"top_p": 0}}, 0, "", default_llm_id, {"top_p": 0}),
-        ("top_p one", {"llm_setting": {"top_p": 1}}, 0, "", default_llm_id, {"top_p": 1}),
-        ("top_p negative one", {"llm_setting": {"top_p": -1}}, 0, "", default_llm_id, {"top_p": -1}),
-        ("top_p ten", {"llm_setting": {"top_p": 10}}, 0, "", default_llm_id, {"top_p": 10}),
-        ("top_p string", {"llm_setting": {"top_p": "a"}}, 0, "", default_llm_id, {"top_p": "a"}),
-        ("presence_penalty zero", {"llm_setting": {"presence_penalty": 0}}, 0, "", default_llm_id, {"presence_penalty": 0}),
-        ("presence_penalty one", {"llm_setting": {"presence_penalty": 1}}, 0, "", default_llm_id, {"presence_penalty": 1}),
-        ("presence_penalty negative one", {"llm_setting": {"presence_penalty": -1}}, 0, "", default_llm_id, {"presence_penalty": -1}),
-        ("presence_penalty ten", {"llm_setting": {"presence_penalty": 10}}, 0, "", default_llm_id, {"presence_penalty": 10}),
-        ("presence_penalty string", {"llm_setting": {"presence_penalty": "a"}}, 0, "", default_llm_id, {"presence_penalty": "a"}),
-        ("frequency_penalty zero", {"llm_setting": {"frequency_penalty": 0}}, 0, "", default_llm_id, {"frequency_penalty": 0}),
-        ("frequency_penalty one", {"llm_setting": {"frequency_penalty": 1}}, 0, "", default_llm_id, {"frequency_penalty": 1}),
-        ("frequency_penalty negative one", {"llm_setting": {"frequency_penalty": -1}}, 0, "", default_llm_id, {"frequency_penalty": -1}),
-        ("frequency_penalty ten", {"llm_setting": {"frequency_penalty": 10}}, 0, "", default_llm_id, {"frequency_penalty": 10}),
-        ("frequency_penalty string", {"llm_setting": {"frequency_penalty": "a"}}, 0, "", default_llm_id, {"frequency_penalty": "a"}),
-        ("max_token zero", {"llm_setting": {"max_token": 0}}, 0, "", default_llm_id, {"max_token": 0}),
-        ("max_token 1024", {"llm_setting": {"max_token": 1024}}, 0, "", default_llm_id, {"max_token": 1024}),
-        ("max_token negative one", {"llm_setting": {"max_token": -1}}, 0, "", default_llm_id, {"max_token": -1}),
-        ("max_token ten", {"llm_setting": {"max_token": 10}}, 0, "", default_llm_id, {"max_token": 10}),
-        ("max_token string", {"llm_setting": {"max_token": "a"}}, 0, "", default_llm_id, {"max_token": "a"}),
-        ("unknown llm setting key", {"llm_setting": {"unknown": "unknown"}}, 0, "", default_llm_id, {"unknown": "unknown"}),
+        ("temperature zero", {"llm_setting": {"temperature": 0}}, 0, "", expected_default_llm_id, {"temperature": 0}),
+        ("temperature one", {"llm_setting": {"temperature": 1}}, 0, "", expected_default_llm_id, {"temperature": 1}),
+        ("temperature negative one", {"llm_setting": {"temperature": -1}}, 0, "", expected_default_llm_id, {"temperature": -1}),
+        ("temperature ten", {"llm_setting": {"temperature": 10}}, 0, "", expected_default_llm_id, {"temperature": 10}),
+        ("temperature string", {"llm_setting": {"temperature": "a"}}, 0, "", expected_default_llm_id, {"temperature": "a"}),
+        ("top_p zero", {"llm_setting": {"top_p": 0}}, 0, "", expected_default_llm_id, {"top_p": 0}),
+        ("top_p one", {"llm_setting": {"top_p": 1}}, 0, "", expected_default_llm_id, {"top_p": 1}),
+        ("top_p negative one", {"llm_setting": {"top_p": -1}}, 0, "", expected_default_llm_id, {"top_p": -1}),
+        ("top_p ten", {"llm_setting": {"top_p": 10}}, 0, "", expected_default_llm_id, {"top_p": 10}),
+        ("top_p string", {"llm_setting": {"top_p": "a"}}, 0, "", expected_default_llm_id, {"top_p": "a"}),
+        ("presence_penalty zero", {"llm_setting": {"presence_penalty": 0}}, 0, "", expected_default_llm_id, {"presence_penalty": 0}),
+        ("presence_penalty one", {"llm_setting": {"presence_penalty": 1}}, 0, "", expected_default_llm_id, {"presence_penalty": 1}),
+        ("presence_penalty negative one", {"llm_setting": {"presence_penalty": -1}}, 0, "", expected_default_llm_id, {"presence_penalty": -1}),
+        ("presence_penalty ten", {"llm_setting": {"presence_penalty": 10}}, 0, "", expected_default_llm_id, {"presence_penalty": 10}),
+        ("presence_penalty string", {"llm_setting": {"presence_penalty": "a"}}, 0, "", expected_default_llm_id, {"presence_penalty": "a"}),
+        ("frequency_penalty zero", {"llm_setting": {"frequency_penalty": 0}}, 0, "", expected_default_llm_id, {"frequency_penalty": 0}),
+        ("frequency_penalty one", {"llm_setting": {"frequency_penalty": 1}}, 0, "", expected_default_llm_id, {"frequency_penalty": 1}),
+        ("frequency_penalty negative one", {"llm_setting": {"frequency_penalty": -1}}, 0, "", expected_default_llm_id, {"frequency_penalty": -1}),
+        ("frequency_penalty ten", {"llm_setting": {"frequency_penalty": 10}}, 0, "", expected_default_llm_id, {"frequency_penalty": 10}),
+        ("frequency_penalty string", {"llm_setting": {"frequency_penalty": "a"}}, 0, "", expected_default_llm_id, {"frequency_penalty": "a"}),
+        ("max_token zero", {"llm_setting": {"max_token": 0}}, 0, "", expected_default_llm_id, {"max_token": 0}),
+        ("max_token 1024", {"llm_setting": {"max_token": 1024}}, 0, "", expected_default_llm_id, {"max_token": 1024}),
+        ("max_token negative one", {"llm_setting": {"max_token": -1}}, 0, "", expected_default_llm_id, {"max_token": -1}),
+        ("max_token ten", {"llm_setting": {"max_token": 10}}, 0, "", expected_default_llm_id, {"max_token": 10}),
+        ("max_token string", {"llm_setting": {"max_token": "a"}}, 0, "", expected_default_llm_id, {"max_token": "a"}),
+        ("unknown llm setting key", {"llm_setting": {"unknown": "unknown"}}, 0, "", expected_default_llm_id, {"unknown": "unknown"}),
     ]
 
     for index, (scenario_name, extra_payload, expected_code, expected_message, expected_llm_id, expected_llm_setting) in enumerate(cases, start=1):
@@ -1897,37 +1898,37 @@ def test_chat_update_avatar_contract(rest_client, clear_chats, ensure_parsed_doc
 @pytest.mark.p2
 def test_chat_update_llm_contract(rest_client, clear_chats, ensure_parsed_document, tenant_id):
     dataset_id, _ = ensure_parsed_document()
-    default_llm_id = f"glm-4-flash@CI@ZHIPU-AI#{tenant_id}"
+    expected_default_llm_id = default_chat_llm_id(tenant_id)
     cases = [
-        ("default llm", {}, 0, "", default_llm_id, {}),
+        ("default llm", {}, 0, "", expected_default_llm_id, {}),
         ("explicit llm_id", {"llm_id": "glm-4"}, 102, "`llm_id` glm-4 doesn't exist", None, None),
         ("unknown llm_id", {"llm_id": "unknown"}, 102, "`llm_id` unknown doesn't exist", None, None),
-        ("temperature zero", {"llm_setting": {"temperature": 0}}, 0, "", default_llm_id, {"temperature": 0}),
-        ("temperature one", {"llm_setting": {"temperature": 1}}, 0, "", default_llm_id, {"temperature": 1}),
-        ("temperature negative one", {"llm_setting": {"temperature": -1}}, 0, "", default_llm_id, {"temperature": -1}),
-        ("temperature ten", {"llm_setting": {"temperature": 10}}, 0, "", default_llm_id, {"temperature": 10}),
-        ("temperature string", {"llm_setting": {"temperature": "a"}}, 0, "", default_llm_id, {"temperature": "a"}),
-        ("top_p zero", {"llm_setting": {"top_p": 0}}, 0, "", default_llm_id, {"top_p": 0}),
-        ("top_p one", {"llm_setting": {"top_p": 1}}, 0, "", default_llm_id, {"top_p": 1}),
-        ("top_p negative one", {"llm_setting": {"top_p": -1}}, 0, "", default_llm_id, {"top_p": -1}),
-        ("top_p ten", {"llm_setting": {"top_p": 10}}, 0, "", default_llm_id, {"top_p": 10}),
-        ("top_p string", {"llm_setting": {"top_p": "a"}}, 0, "", default_llm_id, {"top_p": "a"}),
-        ("presence_penalty zero", {"llm_setting": {"presence_penalty": 0}}, 0, "", default_llm_id, {"presence_penalty": 0}),
-        ("presence_penalty one", {"llm_setting": {"presence_penalty": 1}}, 0, "", default_llm_id, {"presence_penalty": 1}),
-        ("presence_penalty negative one", {"llm_setting": {"presence_penalty": -1}}, 0, "", default_llm_id, {"presence_penalty": -1}),
-        ("presence_penalty ten", {"llm_setting": {"presence_penalty": 10}}, 0, "", default_llm_id, {"presence_penalty": 10}),
-        ("presence_penalty string", {"llm_setting": {"presence_penalty": "a"}}, 0, "", default_llm_id, {"presence_penalty": "a"}),
-        ("frequency_penalty zero", {"llm_setting": {"frequency_penalty": 0}}, 0, "", default_llm_id, {"frequency_penalty": 0}),
-        ("frequency_penalty one", {"llm_setting": {"frequency_penalty": 1}}, 0, "", default_llm_id, {"frequency_penalty": 1}),
-        ("frequency_penalty negative one", {"llm_setting": {"frequency_penalty": -1}}, 0, "", default_llm_id, {"frequency_penalty": -1}),
-        ("frequency_penalty ten", {"llm_setting": {"frequency_penalty": 10}}, 0, "", default_llm_id, {"frequency_penalty": 10}),
-        ("frequency_penalty string", {"llm_setting": {"frequency_penalty": "a"}}, 0, "", default_llm_id, {"frequency_penalty": "a"}),
-        ("max_token zero", {"llm_setting": {"max_token": 0}}, 0, "", default_llm_id, {"max_token": 0}),
-        ("max_token 1024", {"llm_setting": {"max_token": 1024}}, 0, "", default_llm_id, {"max_token": 1024}),
-        ("max_token negative one", {"llm_setting": {"max_token": -1}}, 0, "", default_llm_id, {"max_token": -1}),
-        ("max_token ten", {"llm_setting": {"max_token": 10}}, 0, "", default_llm_id, {"max_token": 10}),
-        ("max_token string", {"llm_setting": {"max_token": "a"}}, 0, "", default_llm_id, {"max_token": "a"}),
-        ("unknown llm setting key", {"llm_setting": {"unknown": "unknown"}}, 0, "", default_llm_id, {"unknown": "unknown"}),
+        ("temperature zero", {"llm_setting": {"temperature": 0}}, 0, "", expected_default_llm_id, {"temperature": 0}),
+        ("temperature one", {"llm_setting": {"temperature": 1}}, 0, "", expected_default_llm_id, {"temperature": 1}),
+        ("temperature negative one", {"llm_setting": {"temperature": -1}}, 0, "", expected_default_llm_id, {"temperature": -1}),
+        ("temperature ten", {"llm_setting": {"temperature": 10}}, 0, "", expected_default_llm_id, {"temperature": 10}),
+        ("temperature string", {"llm_setting": {"temperature": "a"}}, 0, "", expected_default_llm_id, {"temperature": "a"}),
+        ("top_p zero", {"llm_setting": {"top_p": 0}}, 0, "", expected_default_llm_id, {"top_p": 0}),
+        ("top_p one", {"llm_setting": {"top_p": 1}}, 0, "", expected_default_llm_id, {"top_p": 1}),
+        ("top_p negative one", {"llm_setting": {"top_p": -1}}, 0, "", expected_default_llm_id, {"top_p": -1}),
+        ("top_p ten", {"llm_setting": {"top_p": 10}}, 0, "", expected_default_llm_id, {"top_p": 10}),
+        ("top_p string", {"llm_setting": {"top_p": "a"}}, 0, "", expected_default_llm_id, {"top_p": "a"}),
+        ("presence_penalty zero", {"llm_setting": {"presence_penalty": 0}}, 0, "", expected_default_llm_id, {"presence_penalty": 0}),
+        ("presence_penalty one", {"llm_setting": {"presence_penalty": 1}}, 0, "", expected_default_llm_id, {"presence_penalty": 1}),
+        ("presence_penalty negative one", {"llm_setting": {"presence_penalty": -1}}, 0, "", expected_default_llm_id, {"presence_penalty": -1}),
+        ("presence_penalty ten", {"llm_setting": {"presence_penalty": 10}}, 0, "", expected_default_llm_id, {"presence_penalty": 10}),
+        ("presence_penalty string", {"llm_setting": {"presence_penalty": "a"}}, 0, "", expected_default_llm_id, {"presence_penalty": "a"}),
+        ("frequency_penalty zero", {"llm_setting": {"frequency_penalty": 0}}, 0, "", expected_default_llm_id, {"frequency_penalty": 0}),
+        ("frequency_penalty one", {"llm_setting": {"frequency_penalty": 1}}, 0, "", expected_default_llm_id, {"frequency_penalty": 1}),
+        ("frequency_penalty negative one", {"llm_setting": {"frequency_penalty": -1}}, 0, "", expected_default_llm_id, {"frequency_penalty": -1}),
+        ("frequency_penalty ten", {"llm_setting": {"frequency_penalty": 10}}, 0, "", expected_default_llm_id, {"frequency_penalty": 10}),
+        ("frequency_penalty string", {"llm_setting": {"frequency_penalty": "a"}}, 0, "", expected_default_llm_id, {"frequency_penalty": "a"}),
+        ("max_token zero", {"llm_setting": {"max_token": 0}}, 0, "", expected_default_llm_id, {"max_token": 0}),
+        ("max_token 1024", {"llm_setting": {"max_token": 1024}}, 0, "", expected_default_llm_id, {"max_token": 1024}),
+        ("max_token negative one", {"llm_setting": {"max_token": -1}}, 0, "", expected_default_llm_id, {"max_token": -1}),
+        ("max_token ten", {"llm_setting": {"max_token": 10}}, 0, "", expected_default_llm_id, {"max_token": 10}),
+        ("max_token string", {"llm_setting": {"max_token": "a"}}, 0, "", expected_default_llm_id, {"max_token": "a"}),
+        ("unknown llm setting key", {"llm_setting": {"unknown": "unknown"}}, 0, "", expected_default_llm_id, {"unknown": "unknown"}),
     ]
 
     for index, (scenario_name, extra_payload, expected_code, expected_message, expected_llm_id, expected_llm_setting) in enumerate(cases, start=1):

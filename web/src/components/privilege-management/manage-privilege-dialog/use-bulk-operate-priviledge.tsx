@@ -1,7 +1,7 @@
 import { UseRowSelectionType } from '@/hooks/logic-hooks/use-row-selection';
 import { IPermission } from '@/interfaces/database/team';
 import { RowSelectionState } from '@tanstack/react-table';
-import { Ban, CircleX, Play, Trash2 } from 'lucide-react';
+import { Eye, ShieldCheck, SquarePen, Trash2 } from 'lucide-react';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { IPrivilegeManagementInitialValues } from '../interface';
@@ -44,7 +44,7 @@ export function useBulkOperatePrivilege({
     {
       id: 'read',
       label: t('permission.readPermission'),
-      icon: <Ban />,
+      icon: <Eye />,
       onClick: () => {
         handleSwitchPermission('1', selectedRows);
       },
@@ -52,7 +52,7 @@ export function useBulkOperatePrivilege({
     {
       id: 'write',
       label: t('permission.writePermission'),
-      icon: <Play />,
+      icon: <SquarePen />,
       onClick: () => {
         handleSwitchPermission('2', selectedRows);
       },
@@ -60,7 +60,7 @@ export function useBulkOperatePrivilege({
     {
       id: 'manage',
       label: t('permission.managePermission'),
-      icon: <CircleX />,
+      icon: <ShieldCheck />,
       onClick: () => {
         handleSwitchPermission('4', selectedRows);
       },

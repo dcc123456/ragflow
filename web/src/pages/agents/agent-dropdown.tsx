@@ -81,7 +81,6 @@ export function AgentDropdown({
           <DropdownMenuItem onClick={handleShowAgentRenameModal}>
             {t('common.rename')} <PenLine />
           </DropdownMenuItem>
-          <DropdownMenuSeparator />
           <DropdownMenuItem onClick={handleEditTags}>
             {t('flow.editTags')} <Tag />
           </DropdownMenuItem>
@@ -90,34 +89,36 @@ export function AgentDropdown({
               <DropdownMenuItem onClick={handlesShowPrivilegeModal}>
                 <PrivilegeDropdown />
               </DropdownMenuItem>
-              <DropdownMenuSeparator />
             </>
           )}
           {hasOwnerPermission(agent.operator_permission) && (
-            <ConfirmDeleteDialog
-              onOk={handleDelete}
-              title={t('deleteModal.delAgent')}
-              content={{
-                node: (
-                  <ConfirmDeleteDialogNode
-                    avatar={{ avatar: agent.avatar, name: agent.title }}
-                    name={agent.title}
-                  />
-                ),
-              }}
-            >
-              <DropdownMenuItem
-                className="text-state-error"
-                onSelect={(e) => {
-                  e.preventDefault();
-                }}
-                onClick={(e) => {
-                  e.stopPropagation();
+            <>
+              <DropdownMenuSeparator />
+              <ConfirmDeleteDialog
+                onOk={handleDelete}
+                title={t('deleteModal.delAgent')}
+                content={{
+                  node: (
+                    <ConfirmDeleteDialogNode
+                      avatar={{ avatar: agent.avatar, name: agent.title }}
+                      name={agent.title}
+                    />
+                  ),
                 }}
               >
-                {t('common.delete')} <Trash2 />
-              </DropdownMenuItem>
-            </ConfirmDeleteDialog>
+                <DropdownMenuItem
+                  className="text-state-error"
+                  onSelect={(e) => {
+                    e.preventDefault();
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                  }}
+                >
+                  {t('common.delete')} <Trash2 />
+                </DropdownMenuItem>
+              </ConfirmDeleteDialog>
+            </>
           )}
         </DropdownMenuContent>
       </DropdownMenu>

@@ -79,61 +79,67 @@ from api.utils.permission_utils import check_doc_permission, check_kb_permission
 kb_role_guard = check_role_access(KB_API_ACTION_MAP, KB_ROLE_RESOURCE_TYPE)
 
 
-def _grant_document_manage_permission_if_needed(doc_id: str, kb) -> None:
-    """Grant document manage permission to the uploader when they are not the KB owner."""
-    if kb.created_by == current_user.id:
+def _grant_document_owner_permissions_if_needed(doc_id: str, kb) -> None:
+    """Ensure both uploader and dataset owner have document owner permissions."""
+    actor = UserTenantService.filter_by_tenant_and_user_id(kb.tenant_id, current_user.id)
+    if not actor:
         return
 
-    operator = UserTenantService.filter_by_tenant_and_user_id(kb.tenant_id, current_user.id)
-    if not operator:
-        return
+    target_user_ids = {current_user.id}
+    if kb.created_by:
+        target_user_ids.add(kb.created_by)
 
-    permission = PermissionService.filter_by_member_and_tenant_id_with_resource_id(
-        operator.id,
-        kb.tenant_id,
-        resource_id=doc_id,
-        resource_type=ResourceType.DOCUMENT,
-    )
-    if permission:
-        if permission.permission >= PermissionValue.PERMISSION_MANAGE:
-            return
-        old_permission = permission.permission
-        permission.permission = PermissionValue.PERMISSION_MANAGE.value
-        PermissionService.update_many([permission])
+    for target_user_id in target_user_ids:
+        target_member = UserTenantService.filter_by_tenant_and_user_id(kb.tenant_id, target_user_id)
+        if not target_member:
+            continue
+
+        permission = PermissionService.filter_by_member_and_tenant_id_with_resource_id(
+            target_member.id,
+            kb.tenant_id,
+            resource_id=doc_id,
+            resource_type=ResourceType.DOCUMENT,
+        )
+        if permission:
+            if permission.permission >= PermissionValue.PERMISSION_OWNER.value:
+                continue
+            old_permission = permission.permission
+            permission.permission = PermissionValue.PERMISSION_OWNER.value
+            PermissionService.update_many([permission])
+            PermissionChangeLogService.save(
+                id=get_uuid(),
+                tenant_id=kb.tenant_id,
+                operator_id=actor.id,
+                target_type=PermissionTargetType.TARGET_MEMBER,
+                target_id=target_member.id,
+                resource_type=ResourceType.DOCUMENT,
+                resource_id=doc_id,
+                old_permission=old_permission,
+                new_permission=PermissionValue.PERMISSION_OWNER.value,
+                action_type=PermissionActionType.ACTION_UPDATE,
+            )
+            continue
+
+        PermissionService.save(
+            id=get_uuid(),
+            member_id=target_member.id,
+            tenant_id=kb.tenant_id,
+            resource_type=ResourceType.DOCUMENT,
+            resource_id=doc_id,
+            permission=PermissionValue.PERMISSION_OWNER.value,
+        )
         PermissionChangeLogService.save(
             id=get_uuid(),
             tenant_id=kb.tenant_id,
-            operator_id=operator.id,
+            operator_id=actor.id,
             target_type=PermissionTargetType.TARGET_MEMBER,
-            target_id=operator.id,
+            target_id=target_member.id,
             resource_type=ResourceType.DOCUMENT,
             resource_id=doc_id,
-            old_permission=old_permission,
-            new_permission=PermissionValue.PERMISSION_MANAGE.value,
-            action_type=PermissionActionType.ACTION_UPDATE,
+            old_permission=PermissionValue.PERMISSION_NULL.value,
+            new_permission=PermissionValue.PERMISSION_OWNER.value,
+            action_type=PermissionActionType.ACTION_ADD,
         )
-        return
-
-    PermissionService.save(
-        id=get_uuid(),
-        member_id=operator.id,
-        tenant_id=kb.tenant_id,
-        resource_type=ResourceType.DOCUMENT,
-        resource_id=doc_id,
-        permission=PermissionValue.PERMISSION_MANAGE.value,
-    )
-    PermissionChangeLogService.save(
-        id=get_uuid(),
-        tenant_id=kb.tenant_id,
-        operator_id=operator.id,
-        target_type=PermissionTargetType.TARGET_MEMBER,
-        target_id=operator.id,
-        resource_type=ResourceType.DOCUMENT,
-        resource_id=doc_id,
-        old_permission=PermissionValue.PERMISSION_NULL.value,
-        new_permission=PermissionValue.PERMISSION_MANAGE.value,
-        action_type=PermissionActionType.ACTION_ADD,
-    )
 
 
 @manager.route("/documents/upload", methods=["POST"])  # noqa: F821
@@ -607,7 +613,7 @@ async def _upload_web_document(dataset_id, kb, tenant_id):
 
         DocumentService.insert(doc)
         FileService.add_file_from_kb(doc, kb_folder["id"], kb.tenant_id)
-        _grant_document_manage_permission_if_needed(doc["id"], kb)
+        _grant_document_owner_permissions_if_needed(doc["id"], kb)
         return get_result(data=map_doc_keys_with_run_status(doc, run_status="0"))
     except Exception as e:
         return server_error_response(e)
@@ -651,7 +657,7 @@ async def _upload_empty_document(dataset_id, kb, tenant_id):
             }
         )
         FileService.add_file_from_kb(doc.to_dict(), kb_folder["id"], kb.tenant_id)
-        _grant_document_manage_permission_if_needed(doc.id, kb)
+        _grant_document_owner_permissions_if_needed(doc.id, kb)
         return get_result(data=map_doc_keys(doc))
     except Exception as e:
         return server_error_response(e)
@@ -758,7 +764,7 @@ async def _upload_local_documents(kb, tenant_id):
 
     files = [f[0] for f in files]  # remove the blob
     for doc in files:
-        _grant_document_manage_permission_if_needed(doc["id"], kb)
+        _grant_document_owner_permissions_if_needed(doc["id"], kb)
     return_raw_files = request.args.get("return_raw_files", "false").lower() == "true"
 
     if return_raw_files:

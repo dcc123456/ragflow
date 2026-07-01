@@ -21,8 +21,9 @@ import re
 from api.db.joint_services.tenant_model_service import get_model_config_from_provider_instance
 from common.constants import PAGERANK_FLD
 from common import settings
-from api.db import PermissionValue
+from api.db import PermissionActionType, PermissionTargetType, PermissionValue, ResourceType
 from api.db.db_models import File
+from api.db.services.permission_service import PermissionChangeLogService, PermissionService
 from api.db.services.document_service import DocumentService, queue_raptor_o_graphrag_tasks
 from api.db.services.file2document_service import File2DocumentService
 from api.db.services.file_service import FileService
@@ -31,6 +32,7 @@ from api.db.services.connector_service import Connector2KbService
 from api.db.services.task_service import GRAPH_RAPTOR_FAKE_DOC_ID, TaskService
 from api.db.services.user_service import TenantService, UserService, UserTenantService
 from common.constants import FileSource, StatusEnum
+from common.misc_utils import get_uuid
 from api.utils.api_utils import deep_merge, get_parser_config, remap_dictionary_keys, verify_embedding_availability
 
 _VALID_INDEX_TYPES = {"graph", "raptor", "mindmap"}
@@ -101,8 +103,38 @@ async def create_dataset(tenant_id: str, req: dict):
         if not ok:
             return False, err
 
-    if not KnowledgebaseService.save(**create_dict):
-        return False, "Failed to save dataset"
+    operator = UserTenantService.filter_by_tenant_and_user_id(tenant_id, tenant_id)
+    if not operator:
+        return False, "Tenant operator not found"
+
+    from api.db.db_models import DB
+
+    with DB.atomic():
+        if not KnowledgebaseService.save(**create_dict):
+            return False, "Failed to save dataset"
+        if not PermissionService.save(
+            id=get_uuid(),
+            member_id=operator.id,
+            tenant_id=tenant_id,
+            resource_type=ResourceType.KB,
+            resource_id=create_dict["id"],
+            permission=PermissionValue.PERMISSION_OWNER.value,
+        ):
+            raise ValueError("Permission creation failed")
+        if not PermissionChangeLogService.save(
+            id=get_uuid(),
+            tenant_id=tenant_id,
+            operator_id=operator.id,
+            target_type=PermissionTargetType.TARGET_MEMBER,
+            target_id=operator.id,
+            resource_type=ResourceType.KB,
+            resource_id=create_dict["id"],
+            old_permission=PermissionValue.PERMISSION_NULL.value,
+            new_permission=PermissionValue.PERMISSION_OWNER.value,
+            action_type=PermissionActionType.ACTION_ADD,
+        ):
+            raise ValueError("Permission change log creation failed")
+
     ok, k = KnowledgebaseService.get_by_id(create_dict["id"])
     if not ok:
         return False, "Dataset created failed"

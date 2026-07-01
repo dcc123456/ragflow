@@ -15,27 +15,16 @@
 #
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from copy import deepcopy
 import os
 import uuid
 
 import pytest
 from configs import DATASET_NAME_LIMIT, DEFAULT_PARSER_CONFIG
-from test.testcases.conftest import embedding_model_id
+from test.testcases.conftest import default_parser_config, embedding_model_id
 from test.testcases.configs import INVALID_API_TOKEN
 from test.testcases.restful_api.helpers.client import RestClient
 from test.testcases.utils import encode_avatar
 from test.testcases.utils.file_utils import create_image_file, create_txt_file
-
-
-def _tenant_scoped_model_id(model_id: str, tenant_id: str) -> str:
-    return f"{model_id}#{tenant_id}"
-
-
-def _default_parser_config_for_tenant(tenant_id: str) -> dict:
-    parser_config = deepcopy(DEFAULT_PARSER_CONFIG)
-    parser_config["llm_id"] = _tenant_scoped_model_id(parser_config["llm_id"], tenant_id)
-    return parser_config
 
 
 def _is_infinity_doc_engine(rest_client: RestClient) -> bool:
@@ -846,7 +835,7 @@ def test_dataset_update_embedding_model_invalid_and_none_contract(rest_client, c
     assert list_res.status_code == 200
     list_payload = list_res.json()
     assert list_payload["code"] == 0, list_payload
-    assert list_payload["data"][0]["embedding_model"] == _tenant_scoped_model_id(embedding_model_id(), tenant_id), list_payload
+    assert list_payload["data"][0]["embedding_model"] == embedding_model_id(tenant_id=tenant_id), list_payload
 
 
 @pytest.mark.p2
@@ -942,7 +931,7 @@ def test_dataset_update_parser_config_defaults_contract(rest_client, clear_datas
     assert list_res.status_code == 200
     list_payload = list_res.json()
     assert list_payload["code"] == 0, list_payload
-    assert list_payload["data"][0]["parser_config"] == _default_parser_config_for_tenant(tenant_id), list_payload
+    assert list_payload["data"][0]["parser_config"] == default_parser_config(tenant_id), list_payload
 
 
 @pytest.mark.p2
@@ -1216,9 +1205,10 @@ def test_dataset_create_embedding_model_contract(
         pytest.xfail(f"Environment has no authorized tenant model for {embedding_model}: {payload}")
     assert payload["code"] == expected_code, payload
     if expected_embedding_model is not None:
-        if name in {"embedding_model_unset", "embedding_model_none"}:
-            expected_embedding_model = _tenant_scoped_model_id(expected_embedding_model, tenant_id)
-        assert payload["data"]["embedding_model"] == expected_embedding_model, payload
+        expected_value = expected_embedding_model
+        if expected_value == embedding_model_id() and embedding_model in {"__UNSET__", None}:
+            expected_value = embedding_model_id(tenant_id=tenant_id)
+        assert payload["data"]["embedding_model"] == expected_value, payload
     if expected_message is not None:
         assert payload["message"] == expected_message, payload
 

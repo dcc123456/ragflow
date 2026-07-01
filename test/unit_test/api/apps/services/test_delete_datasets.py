@@ -17,6 +17,7 @@
 
 import importlib.util
 import sys
+from contextlib import nullcontext
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from unittest.mock import MagicMock
@@ -95,6 +96,12 @@ def _load_delete_datasets_module(monkeypatch, *, f2d_rows, file_filter_delete):
     )
     _stub(
         monkeypatch,
+        "api.db.services.permission_service",
+        PermissionChangeLogService=SimpleNamespace(save=MagicMock()),
+        PermissionService=SimpleNamespace(save=MagicMock()),
+    )
+    _stub(
+        monkeypatch,
         "api.db.services.tenant_llm_service",
         TenantLLMService=SimpleNamespace(),
     )
@@ -119,7 +126,16 @@ def _load_delete_datasets_module(monkeypatch, *, f2d_rows, file_filter_delete):
     _stub(
         monkeypatch,
         "api.db.db_models",
+        DB=SimpleNamespace(atomic=lambda: nullcontext()),
         File=SimpleNamespace(source_type="source_type", id="id", type="type", name="name"),
+    )
+    _stub(
+        monkeypatch,
+        "api.db",
+        PermissionActionType=SimpleNamespace(ACTION_ADD="add"),
+        PermissionTargetType=SimpleNamespace(TARGET_MEMBER="member"),
+        PermissionValue=SimpleNamespace(PERMISSION_NULL=SimpleNamespace(value=0), PERMISSION_OWNER=SimpleNamespace(value=7)),
+        ResourceType=SimpleNamespace(KB="kb"),
     )
     _stub(
         monkeypatch,
@@ -129,6 +145,11 @@ def _load_delete_datasets_module(monkeypatch, *, f2d_rows, file_filter_delete):
         FileSource=SimpleNamespace(KNOWLEDGEBASE="knowledgebase"),
         StatusEnum=SimpleNamespace(),
         LLMType=SimpleNamespace(),
+    )
+    _stub(
+        monkeypatch,
+        "common.misc_utils",
+        get_uuid=MagicMock(return_value="uuid-1"),
     )
     _stub(
         monkeypatch,

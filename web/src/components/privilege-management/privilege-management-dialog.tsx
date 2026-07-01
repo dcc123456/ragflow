@@ -110,7 +110,11 @@ export function PrivilegeManagementDialog({
         </section>
 
         {rowSelectionIsEmpty || (
-          <BulkOperateBar list={list} count={selectedCount}></BulkOperateBar>
+          <BulkOperateBar
+            list={list}
+            count={selectedCount}
+            unit={t('permission.collaborator')}
+          ></BulkOperateBar>
         )}
         <ManagePrivilegeTable
           initialValues={initialValues}

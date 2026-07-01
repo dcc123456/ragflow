@@ -15,6 +15,7 @@
 #
 
 import importlib
+from copy import deepcopy
 import os
 import sys
 import types
@@ -95,7 +96,7 @@ _install_scholarly_stub()
 
 import pytest
 import requests
-from configs import EMAIL, HOST_ADDRESS, PASSWORD, VERSION, ZHIPU_AI_API_KEY
+from configs import DEFAULT_PARSER_CONFIG, EMAIL, HOST_ADDRESS, PASSWORD, VERSION, ZHIPU_AI_API_KEY
 
 BUILTIN_EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
 BUILTIN_EMBEDDING_PROVIDER = "Builtin"
@@ -112,11 +113,29 @@ def siliconflow_embedding_model_name() -> str:
     return os.getenv("SILICONFLOW_EMBEDDING_MODEL", "BAAI/bge-m3")
 
 
-def embedding_model_id(*, include_instance: bool = True) -> str:
+def append_tenant_suffix(model_id: str, tenant_id: str | None = None) -> str:
+    if not tenant_id or "#" in model_id:
+        return model_id
+    return f"{model_id}#{tenant_id}"
+
+
+def default_chat_llm_id(tenant_id: str | None = None) -> str:
+    return append_tenant_suffix("glm-4-flash@CI@ZHIPU-AI", tenant_id)
+
+
+def default_parser_config(tenant_id: str | None = None) -> dict:
+    parser_config = deepcopy(DEFAULT_PARSER_CONFIG)
+    parser_config["llm_id"] = default_chat_llm_id(tenant_id)
+    return parser_config
+
+
+def embedding_model_id(*, include_instance: bool = True, tenant_id: str | None = None) -> str:
     if using_siliconflow_byok():
-        return f"{siliconflow_embedding_model_name()}@{SILICONFLOW_EMBEDDING_INSTANCE}@{SILICONFLOW_EMBEDDING_PROVIDER}"
+        model_id = f"{siliconflow_embedding_model_name()}@{SILICONFLOW_EMBEDDING_INSTANCE}@{SILICONFLOW_EMBEDDING_PROVIDER}"
+        return append_tenant_suffix(model_id, tenant_id)
     if include_instance:
-        return f"{BUILTIN_EMBEDDING_MODEL}@{BUILTIN_EMBEDDING_INSTANCE}@{BUILTIN_EMBEDDING_PROVIDER}"
+        model_id = f"{BUILTIN_EMBEDDING_MODEL}@{BUILTIN_EMBEDDING_INSTANCE}@{BUILTIN_EMBEDDING_PROVIDER}"
+        return append_tenant_suffix(model_id, tenant_id)
     return f"{BUILTIN_EMBEDDING_MODEL}@{BUILTIN_EMBEDDING_PROVIDER}"
 
 

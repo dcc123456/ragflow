@@ -90,20 +90,17 @@ export function DatasetDropdown({
             {t('common.duplicate')} <LucideCopy />
           </DropdownMenuItem>
         )} */}
-
-        <DropdownMenuSeparator />
-
         {hasManagePermissionPermission(dataset.operator_permission) && (
           <>
             <DropdownMenuItem onClick={handlesShowPrivilegeModal}>
               <PrivilegeDropdown></PrivilegeDropdown>
             </DropdownMenuItem>
-            <DropdownMenuSeparator />
           </>
         )}
 
         {hasOwnerPermission(dataset.operator_permission) && (
           <>
+            <DropdownMenuSeparator />
             <ConfirmDeleteDialog
               onOk={handleDelete}
               content={{
