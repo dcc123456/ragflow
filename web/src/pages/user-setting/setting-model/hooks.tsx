@@ -1,3 +1,4 @@
+import { LLMFactory } from '@/constants/llm';
 import { useSetModalState } from '@/hooks/common-hooks';
 import {
   useAddInstanceModel,
@@ -127,8 +128,8 @@ export const useVerifyConnection = () => {
   );
 };
 
-// ============ Hooks for the 4 retained special modals ============
-// Bedrock / MinerU / PaddleOCR / OpenDataLoader are not yet merged into ProviderModal
+// ============ Hooks for retained special modals ============
+// Bedrock and SoMark still use custom modal components.
 
 export const useSubmitBedrock = () => {
   const [saveLoading, setSaveLoading] = useState(false);
@@ -185,239 +186,82 @@ export const useSubmitBedrock = () => {
   };
 };
 
-export const useSubmitAzure = () => {
+export const useSubmitSoMark = () => {
   const [saveLoading, setSaveLoading] = useState(false);
-  const { addLlm } = useAddLlm();
+  const submitProviderInstance = useSubmitProviderInstance();
   const {
-    visible: AzureAddingVisible,
-    hideModal: hideAzureAddingModal,
-    showModal: showAzureAddingModal,
+    visible: somarkVisible,
+    hideModal: hideSoMarkModal,
+    showModal: showSoMarkModal,
   } = useSetModalState();
 
-  const onAzureAddingOk = useCallback(
-    async (payload: IAddLlmRequestBody, isVerify = false) => {
-      if (!isVerify) {
-        setSaveLoading(true);
-      }
-      const ret = await addLlm({ ...payload, verify: isVerify });
-      if (!isVerify) {
-        setSaveLoading(false);
-        if (ret.code === 0) {
-          hideAzureAddingModal();
-        }
-      }
-      if (isVerify) {
-        let res = {} as VerifyResult;
-        if (ret.data?.success) {
-          res = {
-            isValid: true,
-            logs: ret.data?.message,
-          };
-        } else {
-          res = {
-            isValid: false,
-            logs: ret.data?.message,
-          };
-        }
-        return res;
-      }
-    },
-    [hideAzureAddingModal, addLlm, setSaveLoading],
-  );
-
-  return {
-    AzureAddingLoading: saveLoading,
-    onAzureAddingOk,
-    AzureAddingVisible,
-    hideAzureAddingModal,
-    showAzureAddingModal,
-  };
-};
-
-export const useHandleEnableLlm = (llmFactory: string) => {
-  const { enableLlm } = useEnableLlm();
-
-  const handleEnableLlm = (name: string, enable: boolean) => {
-    enableLlm({ llm_factory: llmFactory, llm_name: name, enable });
-  };
-
-  return { handleEnableLlm };
-};
-
-export const useSubmitMinerU = () => {
-  const [saveLoading, setSaveLoading] = useState(false);
-  const { addLlm } = useAddLlm();
-  const {
-    visible: mineruVisible,
-    hideModal: hideMineruModal,
-    showModal: showMineruModal,
-  } = useSetModalState();
-
-  const onMineruOk = useCallback(
-    async (payload: MinerUFormValues, isVerify = false) => {
-      if (!isVerify) {
-        setSaveLoading(true);
-      }
-      const cfg: any = {
-        ...payload,
-        mineru_delete_output:
-          (payload.mineru_delete_output ?? true) ? '1' : '0',
-      };
-      if (payload.mineru_backend !== 'vlm-http-client') {
-        delete cfg.mineru_server_url;
-      }
-      const req: IAddLlmRequestBody = {
-        llm_factory: LLMFactory.MinerU,
-        llm_name: payload.llm_name,
-        model_type: 'ocr',
-        api_key: cfg,
-        api_base: '',
-        max_tokens: 0,
-      };
-      const ret = await addLlm({ ...req, verify: isVerify });
-      if (!isVerify) {
-        setSaveLoading(false);
-        if (ret.code === 0) {
-          hideMineruModal();
-        }
-      }
-      if (isVerify) {
-        let res = {} as VerifyResult;
-        if (ret.data?.success) {
-          res = {
-            isValid: true,
-            logs: ret.data?.message,
-          };
-        } else {
-          res = {
-            isValid: false,
-            logs: ret.data?.message,
-          };
-        }
-        return res;
-      }
-    },
-    [addLlm, hideMineruModal, setSaveLoading],
-  );
-
-  return {
-    mineruVisible,
-    hideMineruModal,
-    showMineruModal,
-    onMineruOk,
-    mineruLoading: saveLoading,
-  };
-};
-
-export const useSubmitPaddleOCR = () => {
-  const [saveLoading, setSaveLoading] = useState(false);
-  const { addLlm } = useAddLlm();
-  const {
-    visible: paddleocrVisible,
-    hideModal: hidePaddleOCRModal,
-    showModal: showPaddleOCRModal,
-  } = useSetModalState();
-
-  const onPaddleOCROk = useCallback(
+  const onSoMarkOk = useCallback(
     async (payload: any, isVerify = false) => {
       if (!isVerify) {
         setSaveLoading(true);
       }
-      const cfg: any = {
-        ...payload,
-      };
-      const req: IAddLlmRequestBody = {
-        llm_factory: LLMFactory.PaddleOCR,
-        llm_name: payload.llm_name,
-        model_type: 'ocr',
-        api_key: cfg,
-        api_base: '',
+      const req = {
+        instance_name: payload.instance_name,
+        llm_factory: LLMFactory.SoMark,
+        api_key: payload.somark_api_key || '',
+        api_base: payload.somark_base_url,
         max_tokens: 0,
+        model_info: [
+          {
+            model_name: payload.llm_name,
+            model_type: ['ocr'],
+            max_tokens: 0,
+            extra: {
+              somark_image_format: payload.somark_image_format,
+              somark_formula_format: payload.somark_formula_format,
+              somark_table_format: payload.somark_table_format,
+              somark_cs_format: payload.somark_cs_format,
+              somark_enable_text_cross_page:
+                payload.somark_enable_text_cross_page,
+              somark_enable_table_cross_page:
+                payload.somark_enable_table_cross_page,
+              somark_enable_title_level_recognition:
+                payload.somark_enable_title_level_recognition,
+              somark_enable_inline_image: payload.somark_enable_inline_image,
+              somark_enable_table_image: payload.somark_enable_table_image,
+              somark_enable_image_understanding:
+                payload.somark_enable_image_understanding,
+              somark_keep_header_footer: payload.somark_keep_header_footer,
+            },
+          },
+        ],
       };
-      const ret = await addLlm({ ...req, verify: isVerify });
-      if (!isVerify) {
-        setSaveLoading(false);
+      try {
+        const ret = await submitProviderInstance(
+          req as IAddProviderInstanceRequestBody,
+          isVerify,
+        );
+        if (isVerify) {
+          return {
+            isValid: !!ret.data?.success,
+            logs: ret.data?.message,
+          } as VerifyResult;
+        }
         if (ret.code === 0) {
-          hidePaddleOCRModal();
+          hideSoMarkModal();
           return true;
         }
-      }
-      if (isVerify) {
-        let res = {} as VerifyResult;
-        if (ret.data?.success) {
-          res = {
-            isValid: true,
-            logs: ret.data?.message,
-          };
-        } else {
-          res = {
-            isValid: false,
-            logs: ret.data?.message,
-          };
+        return false;
+      } finally {
+        if (!isVerify) {
+          setSaveLoading(false);
         }
-        return res;
       }
-      return false;
     },
-    [addLlm, hidePaddleOCRModal, setSaveLoading],
+    [submitProviderInstance, hideSoMarkModal, setSaveLoading],
   );
 
   return {
-    paddleocrVisible,
-    hidePaddleOCRModal,
-    showPaddleOCRModal,
-    onPaddleOCROk,
-    paddleocrLoading: saveLoading,
-  };
-};
-
-export const useSubmitOpenDataLoader = () => {
-  const [saveLoading, setSaveLoading] = useState(false);
-  const { addLlm } = useAddLlm();
-  const {
-    visible: opendataloaderVisible,
-    hideModal: hideOpenDataLoaderModal,
-    showModal: showOpenDataLoaderModal,
-  } = useSetModalState();
-
-  const onOpenDataLoaderOk = useCallback(
-    async (payload: any, isVerify = false) => {
-      if (!isVerify) {
-        setSaveLoading(true);
-      }
-      const req: IAddLlmRequestBody = {
-        llm_factory: LLMFactory.OpenDataLoader,
-        llm_name: payload.llm_name,
-        model_type: 'ocr',
-        api_key: { ...payload },
-        api_base: '',
-        max_tokens: 0,
-      };
-      const ret = await addLlm({ ...req, verify: isVerify });
-      if (!isVerify) {
-        setSaveLoading(false);
-        if (ret.code === 0) {
-          hideOpenDataLoaderModal();
-          return true;
-        }
-      }
-      if (isVerify) {
-        return {
-          isValid: !!ret.data?.success,
-          logs: ret.data?.message,
-        } as VerifyResult;
-      }
-      return false;
-    },
-    [addLlm, hideOpenDataLoaderModal, setSaveLoading],
-  );
-
-  return {
-    opendataloaderVisible,
-    hideOpenDataLoaderModal,
-    showOpenDataLoaderModal,
-    onOpenDataLoaderOk,
-    opendataloaderLoading: saveLoading,
+    somarkVisible,
+    hideSoMarkModal,
+    showSoMarkModal,
+    onSoMarkOk,
+    somarkLoading: saveLoading,
   };
 };
 
@@ -441,32 +285,32 @@ export const useVerifySettings = ({
   };
 };
 
-export const useHandleDeleteLlm = (llmFactory: string) => {
-  const { deleteLlm } = useDeleteLlm();
-  const showDeleteConfirm = useShowDeleteConfirm();
+// export const useHandleDeleteLlm = (llmFactory: string) => {
+//   const { deleteLlm } = useDeleteLlm();
+//   const showDeleteConfirm = useShowDeleteConfirm();
 
-  const handleDeleteLlm = (name: string) => {
-    showDeleteConfirm({
-      onOk: async () => {
-        deleteLlm({ llm_factory: llmFactory, llm_name: name });
-      },
-    });
-  };
+//   const handleDeleteLlm = (name: string) => {
+//     showDeleteConfirm({
+//       onOk: async () => {
+//         deleteLlm({ llm_factory: llmFactory, llm_name: name });
+//       },
+//     });
+//   };
 
-  return { handleDeleteLlm };
-};
+//   return { handleDeleteLlm };
+// };
 
-export const useHandleDeleteFactory = (llmFactory: string) => {
-  const { deleteFactory } = useDeleteFactory();
-  const showDeleteConfirm = useShowDeleteConfirm();
+// export const useHandleDeleteFactory = (llmFactory: string) => {
+//   const { deleteFactory } = useDeleteFactory();
+//   const showDeleteConfirm = useShowDeleteConfirm();
 
-  const handleDeleteFactory = () => {
-    showDeleteConfirm({
-      onOk: async () => {
-        deleteFactory({ llm_factory: llmFactory });
-      },
-    });
-  };
+//   const handleDeleteFactory = () => {
+//     showDeleteConfirm({
+//       onOk: async () => {
+//         deleteFactory({ llm_factory: llmFactory });
+//       },
+//     });
+//   };
 
-  return { handleDeleteFactory, deleteFactory };
-};
+//   return { handleDeleteFactory, deleteFactory };
+// };
