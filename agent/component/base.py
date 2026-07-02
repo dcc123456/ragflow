@@ -513,29 +513,22 @@ class ComponentBase(ABC):
             self._id, self.component_name, list(input_elements.keys()),
         )
         for var, o in input_elements.items():
-            # If o["value"] is available (from get_input_elements_from_text), use it directly
-            # o["value"] is already the resolved value, while var is the reference expression
-            if isinstance(o, dict) and "value" in o and o["value"] is not None:
-                v = o["value"]
-                self.set_input_value(var, v)
+            v = self.get_param(var)
+            if v is None:
+                _logger.debug("[Base]   var '%s': param is None, skipping", var)
+                continue
+            if isinstance(v, str) and self._canvas.is_reff(v):
+                resolved = self._canvas.get_variable_value(v)
+                self.set_input_value(var, resolved)
+                _logger.debug("[Base]   var '%s': resolved ref '%s' -> %s", var, v, json.dumps(resolved, ensure_ascii=False, default=str)[:200])
+            elif isinstance(v, str) and re.search(self.variable_ref_patt, v):
+                elements = self.get_input_elements_from_text(v)
+                kv = {k: e.get('value', '') for k, e in elements.items()}
+                self.set_input_value(var, self.string_format(v, kv))
+                _logger.debug("[Base]   var '%s': resolved text refs '%s' -> %s", var, v, json.dumps(kv, ensure_ascii=False, default=str)[:200])
             else:
-                # Fall back to get_param for base get_input_elements() implementation
-                v = self.get_param(var)
-                if v is None:
-                    _logger.debug("[Base]   var '%s': param is None, skipping", var)
-                    continue
-                if isinstance(v, str) and self._canvas.is_reff(v):
-                    resolved = self._canvas.get_variable_value(v)
-                    self.set_input_value(var, resolved)
-                    _logger.debug("[Base]   var '%s': resolved ref '%s' -> %s", var, v, json.dumps(resolved, ensure_ascii=False, default=str)[:200])
-                elif isinstance(v, str) and re.search(self.variable_ref_patt, v):
-                    elements = self.get_input_elements_from_text(v)
-                    kv = {k: e.get('value', '') for k, e in elements.items()}
-                    self.set_input_value(var, self.string_format(v, kv))
-                    _logger.debug("[Base]   var '%s': resolved text refs '%s' -> %s", var, v, json.dumps(kv, ensure_ascii=False, default=str)[:200])
-                else:
-                    self.set_input_value(var, v)
-                    _logger.debug("[Base]   var '%s': literal value -> %s", var, json.dumps(v, ensure_ascii=False, default=str)[:200])
+                self.set_input_value(var, v)
+                _logger.debug("[Base]   var '%s': literal value -> %s", var, json.dumps(v, ensure_ascii=False, default=str)[:200])
             res[var] = self.get_input_value(var)
         return res
 
