@@ -1,12 +1,14 @@
 import { CardSineLineContainer } from '@/components/card-singleline-container';
 import { EmptyCardType } from '@/components/empty/constant';
 import { EmptyAppCard } from '@/components/empty/empty';
+import { PrivilegeManagementDialog } from '@/components/privilege-management/privilege-management-dialog';
 import { HomeIcon } from '@/components/svg-icon';
 import { Segmented, SegmentedValue } from '@/components/ui/segmented';
 import { Routes } from '@/routes';
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
+import { useShowPrivilegeDialog as useAgentShowPrivilegeDialog } from '../agents/use-show-privilege-dialog';
 import { Agents } from './agent-list';
 import { SeeAllAppCard } from './application-card';
 import { ChatList } from './chat-list';
@@ -33,6 +35,12 @@ export function Applications() {
   const navigate = useNavigate();
   const [listLength, setListLength] = useState(0);
   const [loading, setLoading] = useState(false);
+  const {
+    privilegeModalVisible,
+    hidePrivilegeModal,
+    handShowPrivilegeModal,
+    recordWithSourceType,
+  } = useAgentShowPrivilegeDialog();
 
   const handleNavigate = useCallback(
     ({ isCreate }: { isCreate?: boolean }) => {
@@ -89,6 +97,7 @@ export function Applications() {
           <Agents
             setListLength={(length: number) => setListLength(length)}
             setLoading={(loading: boolean) => setLoading(loading)}
+            showPrivilegeModal={handShowPrivilegeModal}
           />
         )}
         {val === Routes.Chats && (
@@ -118,6 +127,12 @@ export function Applications() {
         <EmptyAppCard
           type={EmptyTypeMap[val as keyof typeof EmptyTypeMap]}
           onClick={() => handleNavigate({ isCreate: true })}
+        />
+      )}
+      {privilegeModalVisible && (
+        <PrivilegeManagementDialog
+          hideModal={hidePrivilegeModal}
+          initialValues={recordWithSourceType}
         />
       )}
       {/* </div> */}

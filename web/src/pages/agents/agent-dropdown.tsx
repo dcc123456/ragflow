@@ -41,6 +41,10 @@ export function AgentDropdown({
   const { t } = useTranslation();
   const { deleteAgent } = useDeleteAgent();
   const [tagEditorOpen, setTagEditorOpen] = useState(false);
+  const canManageAgent = hasManagePermissionPermission(
+    agent.operator_permission,
+  );
+  const canDeleteAgent = hasOwnerPermission(agent.operator_permission);
 
   const handleShowAgentRenameModal: MouseEventHandler<HTMLDivElement> =
     useCallback(
@@ -73,25 +77,29 @@ export function AgentDropdown({
     return null;
   }
 
+  if (!canManageAgent && !canDeleteAgent) {
+    return null;
+  }
+
   return (
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>{children}</DropdownMenuTrigger>
         <DropdownMenuContent>
-          <DropdownMenuItem onClick={handleShowAgentRenameModal}>
-            {t('common.rename')} <PenLine />
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={handleEditTags}>
-            {t('flow.editTags')} <Tag />
-          </DropdownMenuItem>
-          {hasManagePermissionPermission(agent.operator_permission) && (
+          {canManageAgent && (
             <>
+              <DropdownMenuItem onClick={handleShowAgentRenameModal}>
+                {t('common.rename')} <PenLine />
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleEditTags}>
+                {t('flow.editTags')} <Tag />
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={handlesShowPrivilegeModal}>
                 <PrivilegeDropdown />
               </DropdownMenuItem>
             </>
           )}
-          {hasOwnerPermission(agent.operator_permission) && (
+          {canDeleteAgent && (
             <>
               <DropdownMenuSeparator />
               <ConfirmDeleteDialog

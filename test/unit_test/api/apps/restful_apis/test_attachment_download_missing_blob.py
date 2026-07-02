@@ -69,8 +69,22 @@ def _load_agent_api(monkeypatch, *, storage_get):
         login_required=lambda func: func,
     )
     _stub(monkeypatch, "api.apps.services.canvas_replica_service", CanvasReplicaService=SimpleNamespace())
-    _stub(monkeypatch, "api.db", CanvasCategory=SimpleNamespace())
-    _stub(monkeypatch, "api.db.db_models", Task=SimpleNamespace())
+    _stub(
+        monkeypatch,
+        "api.db",
+        CanvasCategory=SimpleNamespace(),
+        PermissionActionType=SimpleNamespace(),
+        PermissionTargetType=SimpleNamespace(),
+        PermissionValue=SimpleNamespace(
+            PERMISSION_READ="read",
+            PERMISSION_WRITE="write",
+            PERMISSION_MANAGE="manage",
+            PERMISSION_OWNER="owner",
+            PERMISSION_NULL=SimpleNamespace(value=0),
+        ),
+        ResourceType=SimpleNamespace(),
+    )
+    _stub(monkeypatch, "api.db.db_models", DB=SimpleNamespace(), Task=SimpleNamespace())
     _stub(
         monkeypatch, "api.db.services.api_service",
         API4ConversationService=SimpleNamespace(
@@ -90,7 +104,12 @@ def _load_agent_api(monkeypatch, *, storage_get):
     _stub(monkeypatch, "api.db.services.document_service", DocumentService=SimpleNamespace())
     _stub(monkeypatch, "api.db.services.file_service", FileService=SimpleNamespace())
     _stub(monkeypatch, "api.db.services.knowledgebase_service", KnowledgebaseService=SimpleNamespace())
-    _stub(monkeypatch, "api.db.services.permission_service", PermissionService=SimpleNamespace())
+    _stub(
+        monkeypatch,
+        "api.db.services.permission_service",
+        PermissionChangeLogService=SimpleNamespace(),
+        PermissionService=SimpleNamespace(),
+    )
     _stub(monkeypatch, "api.db.services.pipeline_operation_log_service", PipelineOperationLogService=SimpleNamespace())
     _stub(
         monkeypatch, "api.db.services.task_service",
@@ -98,9 +117,12 @@ def _load_agent_api(monkeypatch, *, storage_get):
     )
     _stub(
         monkeypatch, "api.db.services.user_service",
-        TenantService=SimpleNamespace(), UserService=SimpleNamespace(get_by_id=lambda *_a, **_k: (False, None)),
+        TenantService=SimpleNamespace(),
+        UserService=SimpleNamespace(get_by_id=lambda *_a, **_k: (False, None)),
+        UserTenantService=SimpleNamespace(),
     )
     _stub(monkeypatch, "api.db.services.user_canvas_version", UserCanvasVersionService=SimpleNamespace())
+    _stub(monkeypatch, "api.utils.permission_utils", check_canvas_permission=lambda *_a, **_k: (lambda func: func))
 
     _stub(
         monkeypatch, "api.utils.api_utils",
@@ -156,6 +178,7 @@ def _load_agent_api(monkeypatch, *, storage_get):
     # quart; only request and make_response are on the download path, the rest
     # resolve to placeholders so the import line can't break the test.
     quart_stub = _LenientModule("quart")
+    quart_stub.g = SimpleNamespace()
     quart_stub.request = SimpleNamespace(method="GET", args={"ext": "markdown"})
     quart_stub.make_response = _make_response
     monkeypatch.setitem(sys.modules, "quart", quart_stub)

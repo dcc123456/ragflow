@@ -106,7 +106,7 @@ def test_openai_compatible_invalid_chat(rest_client):
     assert res.status_code == 200
     payload = res.json()
     assert payload["code"] != 0, payload
-    assert payload["message"] == "No authorization.", payload
+    assert "Only Chat/Dialog owners or members with read permissions" in payload["message"], payload
 
 
 @pytest.mark.p2

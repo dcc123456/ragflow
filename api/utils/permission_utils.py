@@ -289,12 +289,6 @@ def check_kb_permission(permission):
                             return await foo(*args, **kwargs)
                         return foo(*args, **kwargs)
 
-            if "dataset_id" in kwargs:
-                return get_json_result(
-                    data=False,
-                    message=f"User '{current_user.id}' lacks permission for dataset '{kb_id}'",
-                    code=RetCode.DATA_ERROR,
-                )
 
             return get_json_result(
                 data=False,
@@ -359,7 +353,6 @@ def check_dialog_permission(permission):
                     return await foo(*args, **kwargs)
                 return foo(*args, **kwargs)
 
-            queried_user_tenants = list(UserTenantService.query(user_id=current_user.id) or [])
             user_tenants = UserTenantService.get_user_tenants_with_owner(current_user.id)
 
             for user_tenant in user_tenants:
@@ -377,17 +370,11 @@ def check_dialog_permission(permission):
                             return await foo(*args, **kwargs)
                         return foo(*args, **kwargs)
 
-            if queried_user_tenants:
-                return get_json_result(
-                    data=False,
-                    message="No authorization.",
-                    code=RetCode.AUTHENTICATION_ERROR,
-                )
 
             return get_json_result(
                 data=[],
                 message=_permission_denied_message("Chat/Dialog", permission),
-                code=RetCode.OPERATING_ERROR,
+                code=RetCode.PERMISSION_ERROR,
             )
 
         return wrapper
@@ -511,7 +498,7 @@ def check_doc_permission(permission, allow_missing_document=False):
             return get_json_result(
                 data=False,
                 message=_permission_denied_message("Document", permission),
-                code=RetCode.OPERATING_ERROR,
+                code=RetCode.PERMISSION_ERROR,
             )
 
         return wrapper
@@ -674,7 +661,13 @@ def check_canvas_permission(permission):
             else:  # GET, DELETE
                 req_data = request.args or {}
 
-            canvas_id = req_data.get("id") or req_data.get("canvas_id") or kwargs.get("canvas_id")
+            canvas_id = (
+                kwargs.get("canvas_id")
+                or kwargs.get("agent_id")
+                or req_data.get("id")
+                or req_data.get("canvas_id")
+                or req_data.get("agent_id")
+            )
 
             g.req_data = req_data
             g.canvas_id = canvas_id
@@ -718,7 +711,11 @@ def check_canvas_permission(permission):
                         return await foo(*args, **kwargs)
                     return foo(*args, **kwargs)
 
-            return get_json_result(data=False, message="Only canvas owners or members with sufficient permissions can perform this action.", code=RetCode.OPERATING_ERROR)
+            return get_json_result(
+                data=False,
+                message=_permission_denied_message("Canvas", permission),
+                code=RetCode.PERMISSION_ERROR,
+            )
 
         return wrapper
 
@@ -809,7 +806,11 @@ def check_mcp_permission(permission):
                         return await foo(*args, **kwargs)
                     return foo(*args, **kwargs)
 
-            return get_json_result(data=False, message="Only MCP server owners or members with sufficient permissions can perform this action.", code=RetCode.OPERATING_ERROR)
+            return get_json_result(
+                data=False,
+                message=_permission_denied_message("MCP server", permission),
+                code=RetCode.PERMISSION_ERROR,
+            )
 
         return wrapper
 

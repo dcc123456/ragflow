@@ -53,6 +53,7 @@ def _load_agent_api(monkeypatch, get_by_id_result, delete_calls=None):
     _stub(monkeypatch, "api.apps.services.canvas_replica_service", CanvasReplicaService=SimpleNamespace())
     quart_stub = ModuleType("quart")
     quart_stub.Response = SimpleNamespace
+    quart_stub.g = SimpleNamespace()
     quart_stub.jsonify = lambda payload: payload
     quart_stub.request = SimpleNamespace(args={}, method="GET")
     quart_stub.make_response = lambda payload, *_args, **_kwargs: payload
@@ -62,10 +63,18 @@ def _load_agent_api(monkeypatch, get_by_id_result, delete_calls=None):
         monkeypatch,
         "api.db",
         CanvasCategory=SimpleNamespace(),
-        PermissionValue=SimpleNamespace(),
+        PermissionActionType=SimpleNamespace(),
+        PermissionTargetType=SimpleNamespace(),
+        PermissionValue=SimpleNamespace(
+            PERMISSION_READ="read",
+            PERMISSION_WRITE="write",
+            PERMISSION_MANAGE="manage",
+            PERMISSION_OWNER="owner",
+            PERMISSION_NULL=SimpleNamespace(value=0),
+        ),
         ResourceType=SimpleNamespace(),
     )
-    _stub(monkeypatch, "api.db.db_models", Task=SimpleNamespace())
+    _stub(monkeypatch, "api.db.db_models", DB=SimpleNamespace(), Task=SimpleNamespace())
     _stub(
         monkeypatch,
         "api.db.services.api_service",
@@ -100,10 +109,22 @@ def _load_agent_api(monkeypatch, get_by_id_result, delete_calls=None):
     _stub(monkeypatch, "api.db.services.file_service", FileService=SimpleNamespace())
     _stub(monkeypatch, "api.db.services.knowledgebase_service", KnowledgebaseService=SimpleNamespace())
     _stub(monkeypatch, "api.db.services.pipeline_operation_log_service", PipelineOperationLogService=SimpleNamespace())
-    _stub(monkeypatch, "api.db.services.permission_service", PermissionService=SimpleNamespace())
+    _stub(
+        monkeypatch,
+        "api.db.services.permission_service",
+        PermissionChangeLogService=SimpleNamespace(),
+        PermissionService=SimpleNamespace(),
+    )
     _stub(monkeypatch, "api.db.services.task_service", CANVAS_DEBUG_DOC_ID="", TaskService=SimpleNamespace(), queue_dataflow=lambda *_a, **_k: None)
-    _stub(monkeypatch, "api.db.services.user_service", TenantService=SimpleNamespace(), UserService=SimpleNamespace(get_by_id=lambda *_a, **_k: (False, None)))
+    _stub(
+        monkeypatch,
+        "api.db.services.user_service",
+        TenantService=SimpleNamespace(),
+        UserService=SimpleNamespace(get_by_id=lambda *_a, **_k: (False, None)),
+        UserTenantService=SimpleNamespace(),
+    )
     _stub(monkeypatch, "api.db.services.user_canvas_version", UserCanvasVersionService=SimpleNamespace())
+    _stub(monkeypatch, "api.utils.permission_utils", check_canvas_permission=lambda *_a, **_k: (lambda func: func))
     _stub(
         monkeypatch,
         "api.utils.api_utils",
@@ -124,9 +145,20 @@ def _load_agent_api(monkeypatch, get_by_id_result, delete_calls=None):
         CONTENT_TYPE_MAP={},
         apply_safe_file_response_headers=lambda response, *_a, **_k: response,
     )
+    _stub(monkeypatch, "api.utils.pagination_utils", validate_rest_api_page_size=lambda *_a, **_k: None)
     _stub(monkeypatch, "api.utils.billing", check_dynamic_resources=lambda *_a, **_k: None, get_dynamic_resource_error_result=lambda *_a, **_k: None)
     _stub(monkeypatch, "common.settings", retriever=SimpleNamespace(), kg_retriever=SimpleNamespace())
+    _stub(
+        monkeypatch,
+        "common.role_util",
+        CANVAS_API_ACTION_MAP={},
+        CANVAS_ROLE_RESOURCE_TYPE=SimpleNamespace(),
+        check_role_access=lambda *_a, **_k: (lambda func: func),
+    )
+    _stub(monkeypatch, "common.constants", RetCode=SimpleNamespace())
+    _stub(monkeypatch, "common.misc_utils", get_uuid=lambda: "uuid", thread_pool_exec=lambda *_a, **_k: None)
     _stub(monkeypatch, "common.ssrf_guard", assert_host_is_safe=lambda *_a, **_k: None)
+    _stub(monkeypatch, "peewee", MySQLDatabase=type("MySQLDatabase", (), {}), PostgresqlDatabase=type("PostgresqlDatabase", (), {}))
 
     repo_root = Path(__file__).resolve().parents[5]
     module_path = repo_root / "api" / "apps" / "restful_apis" / "agent_api.py"
@@ -156,8 +188,9 @@ class TestGetAgentSession:
 
     @pytest.mark.p1
     def test_returns_session_dict_when_found(self, monkeypatch):
+        """When the session exists, the route returns its `to_dict()` payload."""
         conv = SimpleNamespace(dialog_id="agent-1", to_dict=lambda: {"id": "sess-1", "messages": []})
-        module, _ = _load_agent_api(monkeypatch, get_by_id_result=(True, conv))
+        module = _load_agent_api(monkeypatch, get_by_id_result=(True, conv))
 
         result = module.get_agent_session(agent_id="agent-1", session_id="sess-1", tenant_id="tenant-1")
 

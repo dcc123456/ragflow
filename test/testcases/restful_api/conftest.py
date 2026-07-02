@@ -45,7 +45,7 @@ def clear_datasets(rest_client):
         res = rest_client.delete("/datasets", json={"ids": None, "delete_all": True})
         assert res.status_code == 200, res.text
         payload = res.json()
-        assert payload["code"] in (0, 102), payload
+        assert payload["code"] in (0, 102, 108), payload
 
     yield
     _cleanup()
@@ -131,7 +131,7 @@ def create_document(rest_client, create_dataset, tmp_path):
         res = rest_client.delete(f"/datasets/{dataset_id}/documents", json={"ids": [document_id]})
         assert res.status_code == 200, res.text
         payload = res.json()
-        assert payload["code"] in (0, 102), payload
+        assert payload["code"] in (0, 102, 108), payload
 
 
 @wait_for(200 if using_siliconflow_byok() else 60, 1, "Document parsing timeout in RESTful batch2 tests")

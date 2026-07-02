@@ -312,3 +312,103 @@ def test_check_dialog_permission_falls_back_to_owner_tenant(monkeypatch):
         "tenant-owner",
         PermissionValue.PERMISSION_OWNER.value,
     )
+
+
+def test_check_canvas_permission_prefers_path_agent_id(monkeypatch):
+    fake_quart = ModuleType("quart")
+    fake_quart.g = SimpleNamespace()
+
+    async def _get_json(silent=True):
+        return {"agent_id": "body-agent-id"}
+
+    fake_quart.request = SimpleNamespace(
+        method="PUT",
+        headers={"Content-Type": "application/json"},
+        is_json=True,
+        args={},
+        get_json=_get_json,
+    )
+    monkeypatch.setitem(sys.modules, "quart", fake_quart)
+
+    api_apps_mod = ModuleType("api.apps")
+    api_apps_mod.current_user = SimpleNamespace(id="tenant-owner")
+    monkeypatch.setitem(sys.modules, "api.apps", api_apps_mod)
+
+    api_utils_mod = ModuleType("api.utils.api_utils")
+    api_utils_mod.get_json_result = lambda data=None, message="", code=0: {
+        "code": code,
+        "data": data,
+        "message": message,
+    }
+    monkeypatch.setitem(sys.modules, "api.utils.api_utils", api_utils_mod)
+
+    canvas_service_mod = ModuleType("api.db.services.canvas_service")
+    canvas_service_mod.UserCanvasService = SimpleNamespace(
+        get_by_canvas_id=lambda canvas_id: (
+            canvas_id == "path-agent-id",
+            {"user_id": "tenant-owner"},
+        )
+    )
+    monkeypatch.setitem(sys.modules, "api.db.services.canvas_service", canvas_service_mod)
+
+    user_service_mod = ModuleType("api.db.services.user_service")
+    user_service_mod.UserTenantService = SimpleNamespace(query=lambda **_kwargs: [])
+    monkeypatch.setitem(sys.modules, "api.db.services.user_service", user_service_mod)
+
+    permission_mod = importlib.reload(importlib.import_module("api.utils.permission_utils"))
+
+    @permission_mod.check_canvas_permission(PermissionValue.PERMISSION_READ)
+    async def _handler(agent_id):
+        return fake_quart.g.canvas_id, agent_id
+
+    assert asyncio.run(_handler(agent_id="path-agent-id")) == ("path-agent-id", "path-agent-id")
+
+
+def test_check_canvas_permission_falls_back_to_body_agent_id(monkeypatch):
+    fake_quart = ModuleType("quart")
+    fake_quart.g = SimpleNamespace()
+
+    async def _get_json(silent=True):
+        return {"agent_id": "body-agent-id"}
+
+    fake_quart.request = SimpleNamespace(
+        method="POST",
+        headers={"Content-Type": "application/json"},
+        is_json=True,
+        args={},
+        get_json=_get_json,
+    )
+    monkeypatch.setitem(sys.modules, "quart", fake_quart)
+
+    api_apps_mod = ModuleType("api.apps")
+    api_apps_mod.current_user = SimpleNamespace(id="tenant-owner")
+    monkeypatch.setitem(sys.modules, "api.apps", api_apps_mod)
+
+    api_utils_mod = ModuleType("api.utils.api_utils")
+    api_utils_mod.get_json_result = lambda data=None, message="", code=0: {
+        "code": code,
+        "data": data,
+        "message": message,
+    }
+    monkeypatch.setitem(sys.modules, "api.utils.api_utils", api_utils_mod)
+
+    canvas_service_mod = ModuleType("api.db.services.canvas_service")
+    canvas_service_mod.UserCanvasService = SimpleNamespace(
+        get_by_canvas_id=lambda canvas_id: (
+            canvas_id == "body-agent-id",
+            {"user_id": "tenant-owner"},
+        )
+    )
+    monkeypatch.setitem(sys.modules, "api.db.services.canvas_service", canvas_service_mod)
+
+    user_service_mod = ModuleType("api.db.services.user_service")
+    user_service_mod.UserTenantService = SimpleNamespace(query=lambda **_kwargs: [])
+    monkeypatch.setitem(sys.modules, "api.db.services.user_service", user_service_mod)
+
+    permission_mod = importlib.reload(importlib.import_module("api.utils.permission_utils"))
+
+    @permission_mod.check_canvas_permission(PermissionValue.PERMISSION_READ)
+    async def _handler():
+        return fake_quart.g.canvas_id
+
+    assert asyncio.run(_handler()) == "body-agent-id"
