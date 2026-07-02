@@ -9,10 +9,8 @@ import {
 import { RAGFlowSelect } from '@/components/ui/select';
 import {
   LabelMap,
-  McpPermissionList,
   Permission,
   PermissionList,
-  PermissionResourceType,
   TeamRole,
 } from '@/constants/team';
 import { IModalProps } from '@/interfaces/common';
@@ -27,7 +25,7 @@ import {
   GroupContext,
   MemberContext,
 } from '../context';
-import { hidePermissionDropdownButton, mapCollaboratorId } from '../utils';
+import { mapCollaboratorId } from '../utils';
 import { LeftPanel } from './left-panel';
 import { RightPanel } from './right-panel';
 import {
@@ -55,10 +53,8 @@ export function AddCollaboratorDialog({
   hideModal,
   onOk,
   loading,
-  resourceType,
   tenantId,
 }: IModalProps<Partial<IUpdatePermission>> & {
-  resourceType?: PermissionResourceType;
   tenantId: string;
 }) {
   const { t } = useTranslation();
@@ -117,11 +113,7 @@ export function AddCollaboratorDialog({
     ],
   );
 
-  const options = (
-    resourceType === PermissionResourceType.MCP
-      ? McpPermissionList
-      : PermissionList
-  ).map((x) => ({
+  const options = PermissionList.map((x) => ({
     label: (
       <div className="flex items-center gap-2">
         <span className="shrink-0">{getPermissionIcon(x)}</span>
@@ -232,13 +224,11 @@ export function AddCollaboratorDialog({
           </div>
         </section>
         <DialogFooter>
-          {hidePermissionDropdownButton(resourceType) || (
-            <RAGFlowSelect
-              options={options}
-              onChange={setValue}
-              value={value}
-            ></RAGFlowSelect>
-          )}
+          <RAGFlowSelect
+            options={options}
+            onChange={setValue}
+            value={value}
+          ></RAGFlowSelect>
           <ButtonLoading
             type="submit"
             onClick={handleOk}

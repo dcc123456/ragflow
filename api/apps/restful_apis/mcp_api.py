@@ -13,24 +13,26 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 #
+import logging
+from datetime import datetime
 
 from quart import Response, request
 
 from api.apps import current_user, login_required
-from api.db import PermissionValue, ResourceType
+from api.db import PermissionActionType, PermissionTargetType, PermissionValue, ResourceType
 from api.db.db_models import MCPServer, DB
 from api.db.services.mcp_server_service import MCPServerService
-from api.db.services.permission_service import PermissionService
-from api.db.services.user_service import TenantService
+from api.db.services.permission_service import PermissionChangeLogService, PermissionService
+from api.db.services.user_service import TenantService, UserTenantService
 from api.utils.api_utils import get_data_error_result, get_json_result, get_mcp_tools, get_request_json, server_error_response, validate_request
 from api.utils.pagination_utils import validate_rest_api_page_size
+from api.utils.permission_utils import _permission_denied_message, has_permission_for_member
 from api.utils.web_utils import get_float, safe_json_parse
-from common.constants import VALID_MCP_SERVER_TYPES
+from common.constants import RetCode, VALID_MCP_SERVER_TYPES
 from common.mcp_tool_call_conn import MCPToolCallSession, close_multiple_mcp_toolcall_sessions
 from common.misc_utils import get_uuid, thread_pool_exec
+from common.time_utils import current_timestamp, datetime_format
 from common.ssrf_guard import assert_url_is_safe, pin_dns_global
-
-from api.utils.permission_utils import has_permission_for_member
 
 def _get_mcp_ids_from_args() -> list[str]:
     mcp_ids = request.args.getlist("mcp_ids")
@@ -68,6 +70,53 @@ def _assert_mcp_url_is_safe(url, invalid_message: str = "Invalid url.") -> tuple
     except ValueError as exc:
         return "", "", str(exc)
     return hostname, resolved_ip, None
+
+
+def _fill_mcp_timestamps(data: dict) -> dict:
+    timestamp = current_timestamp()
+    cur_datetime = datetime_format(datetime.now())
+    data["create_time"] = timestamp
+    data["create_date"] = cur_datetime
+    data["update_time"] = timestamp
+    data["update_date"] = cur_datetime
+    return data
+
+
+def _insert_mcp_server(data: dict) -> None:
+    model_insert = getattr(MCPServer, "insert", None)
+    if callable(model_insert):
+        model_insert(**data).execute()
+        return
+    if not MCPServerService.insert(**data):
+        raise ValueError("Failed to create MCP server.")
+
+
+def _grant_mcp_owner_permission(mcp_id: str, operator) -> None:
+    if not PermissionService.save(
+        id=get_uuid(),
+        member_id=operator.id,
+        tenant_id=operator.tenant_id,
+        resource_type=ResourceType.MCP,
+        resource_id=mcp_id,
+        permission=PermissionValue.PERMISSION_OWNER.value,
+    ):
+        raise ValueError("Permission creation failed")
+    try:
+        if not PermissionChangeLogService.save(
+            id=get_uuid(),
+            tenant_id=operator.tenant_id,
+            operator_id=operator.id,
+            target_type=PermissionTargetType.TARGET_MEMBER,
+            target_id=operator.id,
+            resource_type=ResourceType.MCP,
+            resource_id=mcp_id,
+            old_permission=PermissionValue.PERMISSION_NULL.value,
+            new_permission=PermissionValue.PERMISSION_OWNER.value,
+            action_type=PermissionActionType.ACTION_ADD,
+        ):
+            logging.warning("Failed to create MCP permission change log for resource_id=%s", mcp_id)
+    except Exception as exc:
+        logging.warning("Failed to create MCP permission change log for resource_id=%s: %s", mcp_id, exc)
 
 
 @manager.route("/mcp/servers", methods=["GET"])  # noqa: F821
@@ -133,10 +182,15 @@ def detail(mcp_id: str) -> Response:
                 return get_data_error_result(message=f"Cannot find MCP server {mcp_id} for user {current_user.id}")
             return get_json_result(data=exported_servers)
 
-        mcp_server = MCPServerService.get_or_none(id=mcp_id, tenant_id=current_user.id)
-
+        mcp_server = MCPServerService.get_or_none(id=mcp_id)
         if mcp_server is None:
             return get_data_error_result(message=f"Cannot find MCP server {mcp_id} for user {current_user.id}")
+        if not MCPServerService.is_accessible(mcp_id, current_user.id, PermissionValue.PERMISSION_READ):
+            return get_json_result(
+                data=False,
+                message=_permission_denied_message("MCP server", PermissionValue.PERMISSION_READ),
+                code=RetCode.PERMISSION_ERROR,
+            )
 
         return get_json_result(data=mcp_server.to_dict())
     except Exception as e:
@@ -180,6 +234,9 @@ async def create() -> Response:
         e, _ = TenantService.get_by_id(current_user.id)
         if not e:
             return get_data_error_result(message="Tenant not found.")
+        operator = UserTenantService.filter_by_tenant_and_user_id(current_user.id, current_user.id)
+        if not operator:
+            return get_data_error_result(message="Tenant not found.")
 
         mcp_server = MCPServer(id=server_name, name=server_name, url=url, server_type=server_type, variables=variables, headers=headers)
         with pin_dns_global(hostname, resolved_ip):
@@ -191,9 +248,14 @@ async def create() -> Response:
         tools = {tool["name"]: tool for tool in tools if isinstance(tool, dict) and "name" in tool}
         variables["tools"] = tools
         req["variables"] = variables
+        _fill_mcp_timestamps(req)
 
-        if not MCPServerService.insert(**req):
-            return get_data_error_result(message="Failed to create MCP server.")
+        try:
+            with DB.atomic():
+                _insert_mcp_server(req)
+                _grant_mcp_owner_permission(req["id"], operator)
+        except ValueError as exc:
+            return get_data_error_result(message=str(exc))
 
         return get_json_result(data=req)
     except Exception as e:
@@ -208,8 +270,8 @@ async def update(mcp_id: str) -> Response:
     e, mcp_server = MCPServerService.get_by_id(mcp_id)
     if not e:
         return get_data_error_result(message=f"Cannot find MCP server {mcp_id} for user {current_user.email}.")
-    if not MCPServerService.is_accessible(mcp_id, current_user.id, PermissionValue.PERMISSION_MANAGE):
-        return get_data_error_result(message=f"Cannot access MCP server {mcp_server.name} for user {current_user.email} with manage permission.")
+    if not MCPServerService.is_accessible(mcp_id, current_user.id, PermissionValue.PERMISSION_WRITE):
+        return get_data_error_result(message=f"Cannot access MCP server {mcp_server.name} for user {current_user.email} with write permission.")
 
     server_type = req.get("server_type", mcp_server.server_type)
     if server_type and server_type not in VALID_MCP_SERVER_TYPES:
@@ -264,8 +326,8 @@ async def rm(mcp_id: str) -> Response:
         e, mcp_server = MCPServerService.get_by_id(mcp_id)
         if not e:
             return get_data_error_result(message=f"Cannot find MCP server {mcp_id} for user {current_user.id}")
-        if not MCPServerService.is_accessible(mcp_id, current_user.id, PermissionValue.PERMISSION_MANAGE):
-            return get_data_error_result(message=f"Cannot access MCP server {mcp_server.name} for user {current_user.email} with manage permission.")
+        if not MCPServerService.is_accessible(mcp_id, current_user.id, PermissionValue.PERMISSION_OWNER):
+            return get_data_error_result(message=f"Cannot access MCP server {mcp_server.name} for user {current_user.email} with owner permission.")
 
         # enterprise edition
         with DB.atomic():
@@ -295,6 +357,9 @@ async def import_multiple() -> Response:
 
     results = []
     try:
+        operator = UserTenantService.filter_by_tenant_and_user_id(current_user.id, current_user.id)
+        if not operator:
+            return get_data_error_result(message="Tenant not found.")
         for server_name, config in servers.items():
             if not all(key in config for key in {"type", "url"}):
                 results.append({"server": server_name, "success": False, "message": "Missing required fields (type or url)"})
@@ -343,13 +408,18 @@ async def import_multiple() -> Response:
             tools = server_tools[new_name]
             tools = {tool["name"]: tool for tool in tools if isinstance(tool, dict) and "name" in tool}
             create_data["variables"]["tools"] = tools
+            _fill_mcp_timestamps(create_data)
 
-            if MCPServerService.insert(**create_data):
+            try:
+                with DB.atomic():
+                    _insert_mcp_server(create_data)
+                    _grant_mcp_owner_permission(create_data["id"], operator)
                 result = {"server": server_name, "success": True, "action": "created", "id": create_data["id"], "new_name": new_name}
                 if new_name != base_name:
                     result["message"] = f"Renamed from '{base_name}' to '{new_name}' avoid duplication"
                 results.append(result)
-            else:
+            except Exception:
+                logging.exception("Failed to create MCP server %s", server_name)
                 results.append({"server": server_name, "success": False, "message": "Failed to create MCP server."})
 
         return get_json_result(data={"results": results})

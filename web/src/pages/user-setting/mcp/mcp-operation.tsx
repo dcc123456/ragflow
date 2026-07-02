@@ -61,41 +61,40 @@ export function McpOperation({
         <Ellipsis className="size-5 cursor-pointer p-1 rounded-sm hover:text-text-primary hover:bg-bg-card" />
       </DropdownMenuTrigger>
       <DropdownMenuContent>
-        <DropdownMenuItem onClick={handleExportMcpJson([mcp.id])}>
-          {t('mcp.export')} <Upload className="size-4" />
-        </DropdownMenuItem>
         <DropdownMenuItem onClick={showEditModal(mcp.id)}>
           {t('common.edit')} <PenLine className="size-4" />
         </DropdownMenuItem>
-        <DropdownMenuSeparator />
         {hasManagePermissionPermission(mcp.operator_permission) && (
-          <>
-            <DropdownMenuItem onClick={handlesShowPrivilegeModal}>
-              <PrivilegeDropdown />
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-          </>
+          <DropdownMenuItem onClick={handlesShowPrivilegeModal}>
+            <PrivilegeDropdown />
+          </DropdownMenuItem>
         )}
         {hasOwnerPermission(mcp.operator_permission) && (
-          <ConfirmDeleteDialog
-            onOk={handleDelete}
-            title={t('common.delete') + ' ' + t('mcp.mcpServer')}
-            content={{
-              node: <ConfirmDeleteDialogNode name={mcp.name} />,
-            }}
-          >
-            <DropdownMenuItem
-              className="text-state-error"
-              onSelect={(e) => {
-                e.preventDefault();
-              }}
-              onClick={(e) => {
-                e.stopPropagation();
+          <>
+            <DropdownMenuItem onClick={handleExportMcpJson([mcp.id])}>
+              {t('mcp.export')} <Upload className="size-4" />
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <ConfirmDeleteDialog
+              onOk={handleDelete}
+              title={t('common.delete') + ' ' + t('mcp.mcpServer')}
+              content={{
+                node: <ConfirmDeleteDialogNode name={mcp.name} />,
               }}
             >
-              {t('common.delete')} <Trash2 className="size-4" />
-            </DropdownMenuItem>
-          </ConfirmDeleteDialog>
+              <DropdownMenuItem
+                className="text-state-error"
+                onSelect={(e) => {
+                  e.preventDefault();
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                }}
+              >
+                {t('common.delete')} <Trash2 className="size-4" />
+              </DropdownMenuItem>
+            </ConfirmDeleteDialog>
+          </>
         )}
       </DropdownMenuContent>
     </DropdownMenu>

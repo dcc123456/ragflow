@@ -134,7 +134,6 @@ export function PrivilegeManagementDialog({
           hideModal={hideAddCollaboratorDialog}
           onOk={onOk}
           loading={loading}
-          resourceType={initialValues.resourceType}
           tenantId={initialValues.tenant_id}
         ></AddCollaboratorDialog>
       )}

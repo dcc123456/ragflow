@@ -121,6 +121,10 @@ class _DummyUserTenantService:
     def query(*_args, **_kwargs):
         return [SimpleNamespace(id="member_1", tenant_id="tenant_1")]
 
+    @staticmethod
+    def filter_by_tenant_and_user_id(tenant_id, user_id):
+        return SimpleNamespace(id="member_1", tenant_id=tenant_id, user_id=user_id)
+
 
 class _DummyTool:
     def __init__(self, name):
@@ -279,9 +283,11 @@ def _load_mcp_api(monkeypatch):
 
     permission_service_mod = ModuleType("api.db.services.permission_service")
     permission_service_mod.PermissionService = SimpleNamespace(
+        save=lambda **_kwargs: True,
         get_permissions_by_tenant_and_resource_id=lambda **kwargs: [],
         delete=lambda _list: None,
     )
+    permission_service_mod.PermissionChangeLogService = SimpleNamespace(save=lambda **_kwargs: True)
     monkeypatch.setitem(sys.modules, "api.db.services.permission_service", permission_service_mod)
 
     mcp_conn_mod = ModuleType("common.mcp_tool_call_conn")
@@ -495,11 +501,17 @@ def test_create_service_paths(monkeypatch):
 
     _set_request_json(monkeypatch, module, dict(base_payload))
     monkeypatch.setattr(module.MCPServerService, "insert", lambda **_kwargs: True)
+    permission_calls = []
+    changelog_calls = []
+    monkeypatch.setattr(module.PermissionService, "save", lambda **kwargs: permission_calls.append(kwargs) or True)
+    monkeypatch.setattr(module.PermissionChangeLogService, "save", lambda **kwargs: changelog_calls.append(kwargs) or True)
     res = _run(module.create.__wrapped__())
     assert res["code"] == 0
     assert res["data"]["id"] == "uuid-create"
     assert res["data"]["tenant_id"] == "tenant_1"
     assert res["data"]["variables"]["tools"] == {"tool_a": {"name": "tool_a"}}
+    assert permission_calls and permission_calls[0]["permission"] == 7
+    assert changelog_calls and changelog_calls[0]["new_permission"] == 7
 
     _set_request_json(monkeypatch, module, dict(base_payload))
 
