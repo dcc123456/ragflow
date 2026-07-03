@@ -21,8 +21,8 @@ from common.constants import PipelineTaskType
 
 
 class PermissionOperationEnum(StrEnum):
-    GRANT = 'grant'
-    REVOKE = 'revoke'
+    GRANT = "grant"
+    REVOKE = "revoke"
 
 
 class ResourceTypeEnum(Enum):
@@ -39,9 +39,9 @@ class ResourceTypeEnum(Enum):
 
 class ActionEnum(Enum):
     ENABLE = 0b0001  # 1 << 0 = 1 (0b00000001)
-    READ = 0b0010    # 1 << 1 = 2 (0b00000010)
-    WRITE = 0b0100   # 1 << 2 = 4 (0b00000100)
-    SHARE = 0b1000   # 1 << 3 = 8 (0b00001000)
+    READ = 0b0010  # 1 << 1 = 2 (0b00000010)
+    WRITE = 0b0100  # 1 << 2 = 4 (0b00000100)
+    SHARE = 0b1000  # 1 << 3 = 8 (0b00001000)
 
 
 class RoleDefaultModelSetUpStatusEnum(StrEnum):
@@ -142,7 +142,15 @@ class CanvasCategory(StrEnum):
     DataFlow = "dataflow_canvas"
 
 
-VALID_PIPELINE_TASK_TYPES = {PipelineTaskType.PARSE, PipelineTaskType.DOWNLOAD, PipelineTaskType.RAPTOR, PipelineTaskType.GRAPH_RAG, PipelineTaskType.MINDMAP}
+VALID_PIPELINE_TASK_TYPES = {
+    PipelineTaskType.PARSE,
+    PipelineTaskType.DOWNLOAD,
+    PipelineTaskType.RAPTOR,
+    PipelineTaskType.GRAPH_RAG,
+    PipelineTaskType.MINDMAP,
+    PipelineTaskType.ARTIFACT,
+    PipelineTaskType.SKILL,
+}
 
 
 ################# billing
@@ -259,8 +267,22 @@ class PaygStatus(StrEnum):
 
 ####################
 
+
 PIPELINE_SPECIAL_PROGRESS_FREEZE_TASK_TYPES = {PipelineTaskType.RAPTOR.lower(), PipelineTaskType.GRAPH_RAG.lower(), PipelineTaskType.MINDMAP.lower()}
+# KB-level fan-out task types: their Task row uses GRAPH_RAPTOR_FAKE_DOC_ID as a
+# sentinel doc_id, and ``task_executor.collect_task`` substitutes the first real
+# doc_id from ``msg["doc_ids"]`` before re-running ``TaskService.get_task`` so
+# the join through Document → Knowledgebase → Tenant resolves and tenant_id /
+# kb_id / language are hydrated onto the task dict. Add new fan-out task types
+# here or TaskContext will raise "Task must contain 'tenant_id'".
+PIPELINE_SPECIAL_PROGRESS_FREEZE_TASK_TYPES = {
+    PipelineTaskType.RAPTOR.lower(),
+    PipelineTaskType.GRAPH_RAG.lower(),
+    PipelineTaskType.MINDMAP.lower(),
+    PipelineTaskType.ARTIFACT.lower(),
+    PipelineTaskType.SKILL.lower(),
+}
 
 
-KNOWLEDGEBASE_FOLDER_NAME=".knowledgebase"
-SKILLS_FOLDER_NAME="skills"
+KNOWLEDGEBASE_FOLDER_NAME = ".knowledgebase"
+SKILLS_FOLDER_NAME = "skills"

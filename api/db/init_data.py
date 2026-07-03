@@ -27,11 +27,11 @@ from api.db.services.billing_service import PricePointService, ProductService
 import uuid
 
 from peewee import IntegrityError
-
 from api.db import UserTenantRole
 from api.db.db_models import init_database_tables as init_web_db
 from api.db.services import UserService
 from api.db.services.canvas_service import CanvasTemplateService
+from api.db.services.compilation_template_service import CompilationTemplateService
 from api.db.services.document_service import DocumentService
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.llm_service import LLMBundle
@@ -55,6 +55,7 @@ def _describe_webhook_secret(secret: str | None) -> str:
         return "missing"
     suffix = secret[-6:] if len(secret) > 6 else secret
     return f"present(len={len(secret)}, suffix={suffix})"
+
 
 def init_superuser(nickname=DEFAULT_SUPERUSER_NICKNAME, email=DEFAULT_SUPERUSER_EMAIL, password=DEFAULT_SUPERUSER_PASSWORD, role=UserTenantRole.OWNER):
     if UserService.query(email=email):
@@ -80,12 +81,7 @@ def init_superuser(nickname=DEFAULT_SUPERUSER_NICKNAME, email=DEFAULT_SUPERUSER_
         "img2txt_id": settings.IMAGE2TEXT_MDL,
         "rerank_id": settings.RERANK_MDL,
     }
-    usr_tenant = {
-        "tenant_id": user_info["id"],
-        "user_id": user_info["id"],
-        "invited_by": user_info["id"],
-        "role": role
-    }
+    usr_tenant = {"tenant_id": user_info["id"], "user_id": user_info["id"], "invited_by": user_info["id"], "role": role}
 
     try:
         if not UserService.save(**user_info):
@@ -96,15 +92,14 @@ def init_superuser(nickname=DEFAULT_SUPERUSER_NICKNAME, email=DEFAULT_SUPERUSER_
         return
     TenantService.insert(**tenant)
     UserTenantService.insert(**usr_tenant)
-    logging.info(
-        f"Super user initialized. email: {email},A default password has been set; changing the password after login is strongly recommended.")
+    logging.info(f"Super user initialized. email: {email},A default password has been set; changing the password after login is strongly recommended.")
 
     if tenant["llm_id"]:
         chat_model_config = get_tenant_default_model_by_type(tenant["id"], LLMType.CHAT)
         chat_mdl = LLMBundle(tenant["id"], chat_model_config)
         msg = asyncio.run(chat_mdl.async_chat(system="", history=[{"role": "user", "content": "Hello!"}], gen_conf={}))
         if msg.find("ERROR: ") == 0:
-            logging.error("'{}' doesn't work. {}".format( tenant["llm_id"], msg))
+            logging.error("'{}' doesn't work. {}".format(tenant["llm_id"], msg))
 
     if tenant["embd_id"]:
         embd_model_config = get_tenant_default_model_by_type(tenant["id"], LLMType.EMBEDDING)
@@ -148,7 +143,6 @@ def update_document_number_in_init():
         KnowledgebaseService.update_document_number_in_init(kb_id=kb_id, doc_num=doc_count.get(kb_id, 0))
 
 
-
 def add_graph_templates():
     dir = os.path.join(get_project_base_directory(), "agent", "templates")
     CanvasTemplateService.filter_delete([1 == 1])
@@ -180,10 +174,10 @@ def register_webhook():
     https://docs.stripe.com/api/webhook_endpoints/object
     https://dashboard.stripe.com/test/workbench/webhooks
     """
-    stripe.api_key = settings.BILLING['stripe_api_key']
-    webhook_url = settings.BILLING['webhook_url']
-    if urlparse(webhook_url).hostname in ['localhost', '127.0.0.1']:
-        logging.warning(f'webhook_url {webhook_url} is invalid since it is unreachable')
+    stripe.api_key = settings.BILLING["stripe_api_key"]
+    webhook_url = settings.BILLING["webhook_url"]
+    if urlparse(webhook_url).hostname in ["localhost", "127.0.0.1"]:
+        logging.warning(f"webhook_url {webhook_url} is invalid since it is unreachable")
         return
 
     # Load stored webhook state from SystemSettingsService
@@ -209,9 +203,9 @@ def register_webhook():
                 verified_endpoint = endpoint
                 verified_endpoint_matches = endpoint.url == webhook_url and set(verified_endpoint.enabled_events) == set(FOCUSED_STRIPE_WEBHOOK)
         except stripe.error.InvalidRequestError:
-            logging.info(f'webhook_id {webhook_id} not found in Stripe, will re-register')
+            logging.info(f"webhook_id {webhook_id} not found in Stripe, will re-register")
         except Exception as e:
-            logging.warning(f'webhook_id {webhook_id} verification failed: {e}, will re-register')
+            logging.warning(f"webhook_id {webhook_id} verification failed: {e}, will re-register")
 
     # Reconcile duplicate endpoints (same URL, different id)
     webhook_endpoints = stripe.WebhookEndpoint.list()
@@ -252,7 +246,7 @@ def register_webhook():
     # Persist webhook_id and webhook_secret
     _upsert_system_setting("billing_webhook_id", new_webhook_id)
     _upsert_system_setting("billing_webhook_secret", new_webhook_secret)
-    logging.info(f'webhook registered with id={new_webhook_id} url={webhook_url} enabled_events={FOCUSED_STRIPE_WEBHOOK} and secret saved')
+    logging.info(f"webhook registered with id={new_webhook_id} url={webhook_url} enabled_events={FOCUSED_STRIPE_WEBHOOK} and secret saved")
 
 
 def _upsert_system_setting(name, value):
@@ -260,12 +254,7 @@ def _upsert_system_setting(name, value):
     if existing:
         SystemSettingsService.update_by_name(name, {"value": value})
     else:
-        SystemSettingsService.insert(
-            name=name,
-            source="billing",
-            data_type="string",
-            value=value
-        )
+        SystemSettingsService.insert(name=name, source="billing", data_type="string", value=value)
 
 
 def handle_undelivered_events():
@@ -276,11 +265,14 @@ def handle_undelivered_events():
     return _handle_undelivered_events()
 
 
-
 def configure_decimal():
     ctx = getcontext()
     ctx.prec = 28
     ctx.rounding = ROUND_HALF_UP
+
+
+def add_compilation_templates():
+    CompilationTemplateService.seed_builtins_from_files()
 
 
 def init_web_data():
@@ -301,9 +293,11 @@ def init_web_data():
         configure_decimal()
 
     add_graph_templates()
+    add_compilation_templates()
     init_message_id_sequence()
     init_memory_size_cache()
     logging.info("init web data success:{}".format(time.time() - start_time))
+
 
 def init_table():
     # init default roles and permissions
@@ -334,6 +328,6 @@ def init_table():
             raise e
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     init_web_db()
     init_web_data()

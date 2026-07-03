@@ -44,7 +44,7 @@ from api.utils.permission_utils import filter_accessible_doc_ids_for_user
 from api.db.joint_services.tenant_model_service import get_tenant_default_model_by_type, get_model_config_from_provider_instance, get_model_type_by_name
 from common.time_utils import current_timestamp, datetime_format
 from common.text_utils import normalize_arabic_digits
-from rag.graphrag.general.mind_map_extractor import MindMapExtractor
+from rag.advanced_rag.knowlege_compile.mind_map_extractor import MindMapExtractor
 from rag.advanced_rag import DeepResearcher
 from rag.app.tag import label_question
 from rag.nlp.search import index_name
@@ -207,9 +207,7 @@ class DialogService(CommonService):
     @classmethod
     @DB.connection_context()
     def count_by_tenant_id(cls, tenant_id) -> int:
-        return cls.model.select().where(
-            (cls.model.tenant_id == tenant_id) & (cls.model.status == StatusEnum.VALID.value)
-        ).count()
+        return cls.model.select().where((cls.model.tenant_id == tenant_id) & (cls.model.status == StatusEnum.VALID.value)).count()
 
     @classmethod
     @DB.connection_context()
@@ -234,15 +232,12 @@ class DialogService(CommonService):
         shared_permission_sq = None
         # Owned dialogs are visible via tenant_id == user_id; permission scans are only for shared tenants.
         if shared_tenant_ids:
-            shared_permission_sq = (
-                PermissionService.build_user_resource_permission_subquery(
-                    user_id,
-                    shared_tenant_ids,
-                    ResourceType.DIALOG,
-                    PermissionValue.PERMISSION_READ,
-                )
-                .alias("shared_permission_sq")
-            )
+            shared_permission_sq = PermissionService.build_user_resource_permission_subquery(
+                user_id,
+                shared_tenant_ids,
+                ResourceType.DIALOG,
+                PermissionValue.PERMISSION_READ,
+            ).alias("shared_permission_sq")
 
         fields = [
             cls.model.id,
@@ -275,10 +270,7 @@ class DialogService(CommonService):
             dialogs = dialogs.switch(cls.model).join(
                 shared_permission_sq,
                 JOIN.LEFT_OUTER,
-                on=(
-                    (shared_permission_sq.c.resource_id == cls.model.id)
-                    & (shared_permission_sq.c.tenant_id == cls.model.tenant_id)
-                ),
+                on=((shared_permission_sq.c.resource_id == cls.model.id) & (shared_permission_sq.c.tenant_id == cls.model.tenant_id)),
             )
 
         visible_condition = None
@@ -440,6 +432,7 @@ def get_models(dialog, trace_context=None, langfuse_session_id=None):
 
 def split_file_attachments(files: list[dict] | None, raw: bool = False) -> tuple[list[str], list[str] | list[dict]]:
     from api.db.services.file_service import FileService
+
     if not files:
         return [], []
 
@@ -609,7 +602,7 @@ def repair_bad_citation_formats(answer: str, kbinfos: dict, idx: set):
     return answer, idx
 
 
-async def async_chat(dialog, messages, stream=True, *, user_id: str|None=None, **kwargs):
+async def async_chat(dialog, messages, stream=True, *, user_id: str | None = None, **kwargs):
     assert messages[-1]["role"] == "user", "The last content of this conversation is not from user."
     session_id = kwargs.get("session_id")
     use_web_search = _should_use_web_search(dialog.prompt_config, kwargs.get("internet"))
@@ -720,13 +713,7 @@ async def async_chat(dialog, messages, stream=True, *, user_id: str|None=None, *
 
     if dialog.meta_data_filter:
         attachments = await apply_meta_data_filter(
-            dialog.meta_data_filter,
-            None,
-            questions[-1],
-            chat_mdl,
-            attachments,
-            kb_ids=dialog.kb_ids,
-            metas_loader=lambda: DocMetadataService.get_flatted_meta_by_kbs(dialog.kb_ids)
+            dialog.meta_data_filter, None, questions[-1], chat_mdl, attachments, kb_ids=dialog.kb_ids, metas_loader=lambda: DocMetadataService.get_flatted_meta_by_kbs(dialog.kb_ids)
         )
 
     if attachments is None:
@@ -851,6 +838,7 @@ async def async_chat(dialog, messages, stream=True, *, user_id: str|None=None, *
     retrieval_ts = timer()
     if not knowledges and prompt_config.get("empty_response"):
         empty_res = prompt_config["empty_response"]
+        yield {"answer": empty_res, "reference": {}, "prompt": "", "audio_binary": None, "final": False}
         yield {"answer": empty_res, "reference": kbinfos, "prompt": "\n\n### Query:\n%s" % " ".join(questions), "audio_binary": tts(tts_mdl, empty_res), "final": True}
         return
 
@@ -1776,7 +1764,7 @@ async def async_ask(question, kb_ids, tenant_id, chat_llm_name=None, search_conf
     if not doc_ids:
         yield {"answer": "", "reference": {"total": 0, "chunks": [], "doc_aggs": []}}
         return
-    
+
     vector_similarity_weight = search_config.get("vector_similarity_weight", 0.3)
     try:
         full_text_weight = 1 - vector_similarity_weight
@@ -1880,15 +1868,7 @@ async def gen_mindmap(question, kb_ids, tenant_id, search_config={}, *, user_id)
         rerank_mdl = LLMBundle(tenant_id, rerank_model_config)
 
     if meta_data_filter:
-        doc_ids = await apply_meta_data_filter(
-            meta_data_filter,
-            None,
-            question,
-            chat_mdl,
-            doc_ids,
-            kb_ids=kb_ids,
-            metas_loader=lambda: DocMetadataService.get_flatted_meta_by_kbs(kb_ids)
-        )
+        doc_ids = await apply_meta_data_filter(meta_data_filter, None, question, chat_mdl, doc_ids, kb_ids=kb_ids, metas_loader=lambda: DocMetadataService.get_flatted_meta_by_kbs(kb_ids))
 
     doc_ids, _, err_msg = filter_accessible_doc_ids_for_user(
         user_id,

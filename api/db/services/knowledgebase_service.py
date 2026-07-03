@@ -80,6 +80,19 @@ class KnowledgebaseService(CommonService):
             return None
 
     @classmethod
+    def _visibility_and_status_filter(cls, joined_tenant_ids, user_id):
+        """
+        Build a Peewee filter expression representing knowledgebase visibility
+        for a given user, combined with a valid-status constraint.
+
+        Visibility rules:
+        - Team KBs (`permission == TenantPermission.TEAM`) owned by any tenant in `joined_tenant_ids`
+        - KBs owned by the current user (`tenant_id == user_id`)
+        Always constrained to `StatusEnum.VALID`.
+        """
+        return ((cls.model.tenant_id.in_(joined_tenant_ids) & (cls.model.permission == TenantPermission.TEAM.value)) | (cls.model.tenant_id == user_id)) & (cls.model.status == StatusEnum.VALID.value)
+
+    @classmethod
     @DB.connection_context()
     def accessible4deletion(cls, kb_id, user_id):
         """Check if a dataset can be deleted by a specific user.
@@ -196,9 +209,8 @@ class KnowledgebaseService(CommonService):
                 cls.model.select(*fields)
                 .join(User, on=(cls.model.tenant_id == User.id))
                 .where(
-                    ((cls.model.tenant_id.in_(joined_tenant_ids) & (cls.model.permission == TenantPermission.TEAM.value)) | (cls.model.tenant_id == user_id))
-                    & (cls.model.status == StatusEnum.VALID.value),
-                    (fn.LOWER(cls.model.name).contains(keywords.lower())),
+                    cls._visibility_and_status_filter(joined_tenant_ids, user_id),
+                    fn.LOWER(cls.model.name).contains(keywords.lower()),
                 )
             )
         else:
@@ -206,8 +218,7 @@ class KnowledgebaseService(CommonService):
                 cls.model.select(*fields)
                 .join(User, on=(cls.model.tenant_id == User.id))
                 .where(
-                    ((cls.model.tenant_id.in_(joined_tenant_ids) & (cls.model.permission == TenantPermission.TEAM.value)) | (cls.model.tenant_id == user_id))
-                    & (cls.model.status == StatusEnum.VALID.value)
+                    cls._visibility_and_status_filter(joined_tenant_ids, user_id),
                 )
             )
         if parser_id:
@@ -421,14 +432,14 @@ class KnowledgebaseService(CommonService):
             cls.model.raptor_task_finish_at,
             cls.model.mindmap_task_id,
             cls.model.mindmap_task_finish_at,
-            cls.model.clone_task_id,
-            cls.model.mindmap_task_finish_at,
-            cls.model.mindmap_task_id,
-            cls.model.mindmap_task_finish_at,
             cls.model.embed_task_id,
             cls.model.embed_task_finish_at,
             cls.model.clone_task_id,
             cls.model.clone_task_finish_at,
+            cls.model.artifact_task_id,
+            cls.model.artifact_task_finish_at,
+            cls.model.skill_task_id,
+            cls.model.skill_task_finish_at,
             cls.model.create_time,
             cls.model.update_time,
         ]
@@ -574,8 +585,7 @@ class KnowledgebaseService(CommonService):
 
     @classmethod
     @DB.connection_context()
-    def get_list(cls, joined_tenant_ids, user_id,
-                 page_number, items_per_page, orderby, desc, id, name, keywords, parser_id=None):
+    def get_list(cls, joined_tenant_ids, user_id, page_number, items_per_page, orderby, desc, id, name, keywords, parser_id=None):
         # Get list of knowledge bases with filtering and pagination
         # Args:
         #     joined_tenant_ids: List of tenant IDs
@@ -726,8 +736,7 @@ class KnowledgebaseService(CommonService):
                 .distinct()
                 .join(User, on=(cls.model.tenant_id == User.id))
                 .where(
-                    ((cls.model.tenant_id.in_(tenant_ids) & (cls.model.permission == TenantPermission.TEAM.value)) | (cls.model.tenant_id == user_id))
-                    & (cls.model.status == StatusEnum.VALID.value),
+                    ((cls.model.tenant_id.in_(tenant_ids) & (cls.model.permission == TenantPermission.TEAM.value)) | (cls.model.tenant_id == user_id)) & (cls.model.status == StatusEnum.VALID.value),
                     (fn.LOWER(cls.model.name).contains(keywords.lower())),
                 )
             )
@@ -737,8 +746,7 @@ class KnowledgebaseService(CommonService):
                 .distinct()
                 .join(User, on=(cls.model.tenant_id == User.id))
                 .where(
-                    ((cls.model.tenant_id.in_(tenant_ids) & (cls.model.permission == TenantPermission.TEAM.value)) | (cls.model.tenant_id == user_id))
-                    & (cls.model.status == StatusEnum.VALID.value)
+                    ((cls.model.tenant_id.in_(tenant_ids) & (cls.model.permission == TenantPermission.TEAM.value)) | (cls.model.tenant_id == user_id)) & (cls.model.status == StatusEnum.VALID.value)
                 )
             )
 
