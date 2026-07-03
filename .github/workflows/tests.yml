@@ -128,12 +128,27 @@ jobs:
           echo "ARTIFACTS_DIR=${ARTIFACTS_DIR}" >> ${GITHUB_ENV}
           rm -rf ${ARTIFACTS_DIR} && mkdir -p ${ARTIFACTS_DIR}
 
-      # https://github.com/astral-sh/ruff-action
-      - name: Static check with Ruff
-        uses: astral-sh/ruff-action@v3
-        with:
-          version: ">=0.11.x"
-          args: "check"
+      - name: Run Lefthook on changed files
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" || "${GITHUB_EVENT_NAME}" == "pull_request_target" ]]; then
+            changed_files=$(mktemp)
+            trap 'rm -f "$changed_files"' EXIT
+            git diff --name-only ${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }} \
+              | while read -r file; do
+                  [[ -f "$file" ]] && printf '%s\0' "$file"
+                done > "$changed_files"
+            echo "Changed files to run lefthook on:"
+            if [[ -s "$changed_files" ]]; then
+              tr '\0' '\n' < "$changed_files" | sed 's/^/  /'
+            else
+              echo "  (none — lefthook will be a no-op)"
+            fi
+            # LEFTHOOK_CHECK_ONLY=1 makes the pre-commit jobs verify without
+            # applying --fix or `git add`, so CI only checks and reports
+            # failures instead of rewriting the working tree.
+            LEFTHOOK_CHECK_ONLY=1 lefthook run pre-commit --files-from-stdin --no-auto-install < "$changed_files"
+          fi
 
 
 #      - name: Check comments of changed Python files
@@ -643,11 +658,27 @@ jobs:
           echo "PRIVATE_RAGFLOW_IMAGE=${PRIVATE_RAGFLOW_IMAGE}" >> "${GITHUB_ENV}"
           echo "BYOK_RAGFLOW_IMAGE_VAR=${BYOK_RAGFLOW_IMAGE_VAR}" >> "${GITHUB_ENV}"
 
-      - name: Static check with Ruff
-        uses: astral-sh/ruff-action@v3
-        with:
-          version: ">=0.11.x"
-          args: "check"
+      - name: Run Lefthook on changed files
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" || "${GITHUB_EVENT_NAME}" == "pull_request_target" ]]; then
+            changed_files=$(mktemp)
+            trap 'rm -f "$changed_files"' EXIT
+            git diff --name-only ${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }} \
+              | while read -r file; do
+                  [[ -f "$file" ]] && printf '%s\0' "$file"
+                done > "$changed_files"
+            echo "Changed files to run lefthook on:"
+            if [[ -s "$changed_files" ]]; then
+              tr '\0' '\n' < "$changed_files" | sed 's/^/  /'
+            else
+              echo "  (none — lefthook will be a no-op)"
+            fi
+            # LEFTHOOK_CHECK_ONLY=1 makes the pre-commit jobs verify without
+            # applying --fix or `git add`, so CI only checks and reports
+            # failures instead of rewriting the working tree.
+            LEFTHOOK_CHECK_ONLY=1 lefthook run pre-commit --files-from-stdin --no-auto-install < "$changed_files"
+          fi
 
 
 #      - name: Check comments of changed Python files
@@ -783,7 +814,7 @@ jobs:
         working-directory: opentofu_ragflow/byok
         run: |
           tofu init
-  
+
           mapfile -t USED_DBS < <(
             kubectl get secrets -A -o json |
               jq -r '
@@ -794,7 +825,7 @@ jobs:
               ' |
               sort -nu
           )
-  
+
           BYOK_REDIS_DB=""
           for db in $(seq 0 15); do
             [[ "${db}" == "1" ]] && continue
@@ -803,13 +834,13 @@ jobs:
               break
             fi
           done
-  
+
           if [[ -z "${BYOK_REDIS_DB}" ]]; then
             echo "Error: no free Redis DB available in 0..15 (excluding 1)."
             exit 1
           fi
           echo "BYOK_REDIS_DB=${BYOK_REDIS_DB}" >> "${GITHUB_ENV}"
-  
+
           ns_secret_json="$(kubectl get secret ragflow-env -n "${BYOK_NAMESPACE}" -o json --ignore-not-found)"
           if [[ -n "${ns_secret_json}" ]]; then
             ns_redis_db="$(jq -r '(.data.REDIS_DB // "") | @base64d' <<<"${ns_secret_json}")"
@@ -820,15 +851,15 @@ jobs:
             echo "Error: namespace ${BYOK_NAMESPACE} already has ragflow-env secret."
             exit 1
           fi
-  
+
           tofu plan -var-file=terraform.tfvars.dev_smk \
             -var "namespace=${BYOK_NAMESPACE}" \
             -var "redis_db=${BYOK_REDIS_DB}" \
             -var "ragflow_image=${BYOK_RAGFLOW_IMAGE_VAR}" \
             -var "ragflow_image_platform=${BYOK_RAGFLOW_IMAGE_VAR}" \
             -var "ragflow_image_admin=${BYOK_RAGFLOW_IMAGE_VAR}" \
-            -var "rate_limit_disabled=true" 
-  
+            -var "rate_limit_disabled=true"
+
           tofu apply -auto-approve -var-file=terraform.tfvars.dev_smk \
             -var "namespace=${BYOK_NAMESPACE}" \
             -var "redis_db=${BYOK_REDIS_DB}" \
@@ -836,7 +867,7 @@ jobs:
             -var "ragflow_image_platform=${BYOK_RAGFLOW_IMAGE_VAR}" \
             -var "ragflow_image_admin=${BYOK_RAGFLOW_IMAGE_VAR}" \
             -var "rate_limit_disabled=true"
-  
+
           GATEWAY_ADDRESS="$(kubectl get gateway ragflow -n "${BYOK_NAMESPACE}" -o jsonpath='{.status.addresses[0].value}' 2>/dev/null | tr -d '[:space:]')"
           if [[ -z "${GATEWAY_ADDRESS}" ]]; then
             echo "Error: gateway_address output is empty."
@@ -966,7 +997,7 @@ jobs:
         working-directory: opentofu_ragflow/byok
         run: |
           tofu init
-  
+
           if [[ -z "${BYOK_REDIS_DB:-}" ]]; then
             ns_secret_json="$(kubectl get secret ragflow-env -n "${BYOK_NAMESPACE}" -o json --ignore-not-found)"
             if [[ -n "${ns_secret_json}" ]]; then
@@ -976,12 +1007,12 @@ jobs:
               fi
             fi
           fi
-  
+
           if [[ -z "${BYOK_REDIS_DB:-}" ]]; then
             echo "Skip destroy because BYOK_REDIS_DB could not be determined."
             exit 0
           fi
-  
+
           tofu destroy -auto-approve -var-file=terraform.tfvars.dev_smk \
             -var "namespace=${BYOK_NAMESPACE}" \
             -var "redis_db=${BYOK_REDIS_DB}" \
