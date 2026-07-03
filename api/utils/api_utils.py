@@ -51,6 +51,7 @@ from common.misc_utils import thread_pool_exec
 
 requests.models.complexjson.dumps = functools.partial(json.dumps, cls=CustomJSONEncoder)
 
+
 def _safe_jsonify(payload: dict):
     if has_app_context():
         return jsonify(payload)
@@ -59,7 +60,7 @@ def _safe_jsonify(payload: dict):
 
 def _extract_auth_token(auth_header: str):
     parts = auth_header.split()
-    if parts[0].lower() == "bearer" and (len(parts) !=2 or not parts[1]):
+    if parts[0].lower() == "bearer" and (len(parts) != 2 or not parts[1]):
         return None
     if len(parts) != 2 or parts[0].lower() != "bearer" or not parts[1]:
         return parts[0]
@@ -96,8 +97,10 @@ async def _coerce_request_data() -> dict:
     request._cached_payload = payload
     return payload
 
+
 async def get_request_json():
     return await _coerce_request_data()
+
 
 def serialize_for_json(obj):
     """
@@ -139,7 +142,7 @@ def get_data_error_result(code=RetCode.DATA_ERROR, message="Sorry! Data missing!
     return _safe_jsonify(response)
 
 
-def get_resource_insufficient_result(code=RetCode.BILLING_RESOURCE_INSUFFICIENT, message="Insufficient resources available. Contact the owner for further assistance.", detail:dict={}):
+def get_resource_insufficient_result(code=RetCode.BILLING_RESOURCE_INSUFFICIENT, message="Insufficient resources available. Contact the owner for further assistance.", detail: dict = {}):
     logging.exception(Exception(message))
     result_dict = {"code": code, "message": message, "detail": detail}
     response = {}
@@ -232,6 +235,7 @@ def not_allowed_parameters(*params):
             if inspect.iscoroutinefunction(func):
                 return await func(*args, **kwargs)
             return func(*args, **kwargs)
+
         return wrapper
 
     return decorator
@@ -259,16 +263,19 @@ def add_tenant_id_to_kwargs(func):
     @wraps(func)
     async def wrapper(**kwargs):
         from api.apps import current_user
+
         kwargs["tenant_id"] = current_user.id
         if inspect.iscoroutinefunction(func):
             return await func(**kwargs)
         return func(**kwargs)
+
     return wrapper
 
 
 def get_json_result(code: RetCode = RetCode.SUCCESS, message="success", data=None):
     response = {"code": code, "message": message, "data": data}
     return _safe_jsonify(response)
+
 
 API_KEY_INVALID = "Authentication error: API key is invalid!"
 API_KEY_PLAN_UPGRADE_MESSAGE = "You need to upgrade to a Starter or Pro plan to use an API key."
@@ -279,6 +286,7 @@ def is_api_key_plan_allowed(tenant_id: str) -> bool:
         return True
     try:
         from common.billing_rate_limit_sync import is_api_auth_plan_allowed
+
         return is_api_auth_plan_allowed(tenant_id)
     except Exception as e:
         logging.warning(f"Failed to check API key plan for tenant {tenant_id}: {e}")
@@ -697,11 +705,12 @@ def get_mcp_tools(mcp_servers: list, timeout: float | int = 10) -> tuple[dict, s
                 tool_dict["enabled"] = cached_tool.get("enabled", True)
                 results[server_key].append(tool_dict)
 
-        # PERF: blocking call to close sessions — consider moving to background thread or task queue
-        close_multiple_mcp_toolcall_sessions(tool_call_sessions)
         return results, ""
     except Exception as e:
         return {}, str(e)
+    finally:
+        # PERF: blocking call to close sessions — consider moving to background thread or task queue
+        close_multiple_mcp_toolcall_sessions(tool_call_sessions)
 
 
 async def is_strong_enough(chat_model, embedding_model):
@@ -715,24 +724,15 @@ async def is_strong_enough(chat_model, embedding_model):
     async def _is_strong_enough():
         nonlocal chat_model, embedding_model
         if embedding_model:
-            await asyncio.wait_for(
-                thread_pool_exec(embedding_model.encode, ["Are you strong enough!?"]),
-                timeout=10
-            )
+            await asyncio.wait_for(thread_pool_exec(embedding_model.encode, ["Are you strong enough!?"]), timeout=10)
 
         if chat_model:
-            res = await asyncio.wait_for(
-                chat_model.async_chat("Nothing special.", [{"role": "user", "content": "Are you strong enough!?"}]),
-                timeout=30
-            )
+            res = await asyncio.wait_for(chat_model.async_chat("Nothing special.", [{"role": "user", "content": "Are you strong enough!?"}]), timeout=30)
             if "**ERROR**" in res:
                 raise Exception(res)
 
     # Pressure test for GraphRAG task
-    tasks = [
-        asyncio.create_task(_is_strong_enough())
-        for _ in range(count)
-    ]
+    tasks = [asyncio.create_task(_is_strong_enough()) for _ in range(count)]
     try:
         await asyncio.gather(*tasks, return_exceptions=False)
     except Exception as e:

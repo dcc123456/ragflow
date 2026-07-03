@@ -94,7 +94,7 @@ async def ldap_login(channel_name: str, username: str, user_password: str):
         )
 
     url = ldap_conf.get("url")
-    dn =  ldap_conf.get("dn")
+    dn = ldap_conf.get("dn")
     password = ldap_conf.get("password")
     timeout = int(ldap_conf.get("timeout", 10))
     search_base = ldap_conf.get("search_base")
@@ -169,6 +169,7 @@ async def ldap_login(channel_name: str, username: str, user_password: str):
         )
 
     try:
+
         def _ldap_bind_user():
             server = Server(host, port=port, get_info=ALL, use_ssl=use_ssl, connect_timeout=timeout)
             user_conn = Connection(server, user=result[0].entry_dn, password=login_password, auto_bind=False, receive_timeout=timeout)
@@ -228,6 +229,7 @@ async def ldap_login(channel_name: str, username: str, user_password: str):
     login_user(user)
     return redirect("/?auth=%s" % user.get_id())
 
+
 @manager.route("/auth/login", methods=["POST"])  # noqa: F821
 async def login():
     """
@@ -283,7 +285,7 @@ async def login():
 
     user = UserService.query_user(email, password)
 
-    if user and hasattr(user, 'is_active') and user.is_active == "0":
+    if user and hasattr(user, "is_active") and user.is_active == "0":
         logging.warning("Login failed: disabled account for user_id=%s", user.id)
         return get_json_result(
             data=False,
@@ -307,9 +309,8 @@ async def login():
         try:
             from common.billing_rate_limit_sync import sync_jwt_to_redis
             from api.db.db_models import UserTenant
-            ut = UserTenant.select(UserTenant.tenant_id).where(
-                UserTenant.user_id == user.id, UserTenant.status == "1"
-            ).dicts().first()
+
+            ut = UserTenant.select(UserTenant.tenant_id).where(UserTenant.user_id == user.id, UserTenant.status == "1").dicts().first()
             if ut:
                 sync_jwt_to_redis(jwt_token, ut["tenant_id"])
         except Exception:
@@ -451,7 +452,7 @@ async def oauth_callback(channel):
         # User exists, try to log in
         user = users[0]
         user.access_token = get_uuid()
-        if user and hasattr(user, 'is_active') and user.is_active == "0":
+        if user and hasattr(user, "is_active") and user.is_active == "0":
             return redirect("/?error=user_inactive")
 
         login_user(user)
@@ -544,7 +545,7 @@ async def github_callback():
     # User has already registered, try to log in
     user = users[0]
     user.access_token = get_uuid()
-    if user and hasattr(user, 'is_active') and user.is_active == "0":
+    if user and hasattr(user, "is_active") and user.is_active == "0":
         return redirect("/?error=user_inactive")
     login_user(user)
     user.save()
@@ -648,7 +649,7 @@ async def feishu_callback():
 
     # User has already registered, try to log in
     user = users[0]
-    if user and hasattr(user, 'is_active') and user.is_active == "0":
+    if user and hasattr(user, "is_active") and user.is_active == "0":
         return redirect("/?error=user_inactive")
     user.access_token = get_uuid()
     login_user(user)
@@ -741,11 +742,10 @@ async def setting_user():
     """
     update_dict = {}
     request_data = await get_request_json()
+    password_changed = False
     if request_data.get("password"):
         new_password = request_data.get("new_password")
-        if not check_password_hash(
-                current_user.password, decrypt(request_data["password"])
-        ):
+        if not check_password_hash(current_user.password, decrypt(request_data["password"])):
             return get_json_result(
                 data=False,
                 code=RetCode.AUTHENTICATION_ERROR,
@@ -754,6 +754,8 @@ async def setting_user():
 
         if new_password:
             update_dict["password"] = generate_password_hash(decrypt(new_password))
+            update_dict["access_token"] = f"INVALID_{secrets.token_hex(16)}"
+            password_changed = True
 
     for k in request_data.keys():
         if k in [
@@ -779,6 +781,8 @@ async def setting_user():
 
     try:
         UserService.update_by_id(current_user.id, update_dict)
+        if password_changed:
+            logout_user()
         return get_json_result(data=True)
     except Exception as e:
         logging.exception(e)
@@ -868,6 +872,7 @@ async def register_get_captcha():
     REDIS_CONN.set(register_captcha_key(email), captcha_text, 60)  # Valid for 60 seconds
 
     from captcha.image import ImageCaptcha
+
     image = ImageCaptcha(width=300, height=120, font_sizes=(50, 60, 70))
     img_bytes = image.generate(captcha_text).read()
     response = await make_response(img_bytes)
@@ -1100,7 +1105,7 @@ async def user_add():
         "login_channel": "password",
         "last_login_time": get_format_time(),
         "is_superuser": False,
-        "role_id": roles[0]["id"]
+        "role_id": roles[0]["id"],
     }
 
     user_id = get_uuid()
@@ -1238,10 +1243,11 @@ async def forget_get_captcha():
     # Generate captcha text
     allowed = string.ascii_uppercase + string.digits
     captcha_text = "".join(secrets.choice(allowed) for _ in range(OTP_LENGTH))
-    REDIS_CONN.set(captcha_key(email), captcha_text, 60) # Valid for 60 seconds
+    REDIS_CONN.set(captcha_key(email), captcha_text, 60)  # Valid for 60 seconds
 
     from captcha.image import ImageCaptcha
-    image = ImageCaptcha(width=300, height=120, font_sizes=(50, 60, 70))
+
+    image = ImageCaptcha(width=300, height=120, font_sizes=[50, 60, 70])
     img_bytes = image.generate(captcha_text).read()
     response = await make_response(img_bytes)
     response.headers.set("Content-Type", "image/jpeg")
@@ -1403,8 +1409,8 @@ async def forget_reset_password():
         return get_json_result(data=False, code=RetCode.AUTHENTICATION_ERROR, message="email not verified")
 
     new_pwd_base64 = decrypt(new_pwd)
-    new_pwd_string = base64.b64decode(new_pwd_base64).decode('utf-8')
-    new_pwd2_string = base64.b64decode(decrypt(new_pwd2)).decode('utf-8')
+    new_pwd_string = base64.b64decode(new_pwd_base64).decode("utf-8")
+    new_pwd2_string = base64.b64decode(decrypt(new_pwd2)).decode("utf-8")
 
     if new_pwd_string != new_pwd2_string:
         return get_json_result(data=False, code=RetCode.ARGUMENT_ERROR, message="passwords do not match")
@@ -1431,16 +1437,13 @@ async def forget_reset_password():
     try:
         from common.billing_rate_limit_sync import sync_jwt_to_redis
         from api.db.db_models import UserTenant
-        ut = UserTenant.select(UserTenant.tenant_id).where(
-            UserTenant.user_id == user.id, UserTenant.status == "1"
-        ).dicts().first()
+
+        ut = UserTenant.select(UserTenant.tenant_id).where(UserTenant.user_id == user.id, UserTenant.status == "1").dicts().first()
         if ut:
             sync_jwt_to_redis(jwt_token, ut["tenant_id"])
     except Exception:
         logging.exception("Failed to sync JWT to Redis after password reset")
     return await construct_response(data=user.to_json(), auth=jwt_token, message=msg)
-
-
 
 
 @manager.route("/is_admin", methods=["GET"])  # noqa: F821
@@ -1460,11 +1463,10 @@ async def enable_admin():
 async def has_starred_repo():
     from api.sync_github_star import get_user_stared
     import random
+
     user = UserService.query(id=current_user.id)
     if not user:
-        return get_json_result(
-            code=RetCode.UNAUTHORIZED, message="<Unauthorized '401: Unauthorized'>"
-        )
+        return get_json_result(code=RetCode.UNAUTHORIZED, message="<Unauthorized '401: Unauthorized'>")
     user = user[0].to_dict()
     if user["login_channel"] == "github":
         if REDIS_CONN.get(user["nickname"]):
@@ -1473,7 +1475,7 @@ async def has_starred_repo():
             return get_json_result(data={"star": True})
         else:
             if get_user_stared(user["nickname"]):
-                REDIS_CONN.set(user["nickname"], 1, exp=3600*24)
+                REDIS_CONN.set(user["nickname"], 1, exp=3600 * 24)
                 return get_json_result(data={"star": True})
 
             return get_json_result(data={"star": False})
@@ -1484,22 +1486,18 @@ async def has_starred_repo():
 @manager.route("/oauth_callback", methods=["GET"])  # noqa: F821
 def casdoor_callback():
     import requests
+
     base_url = "http://10.142.0.2:8181"
     res = requests.post(
         f"{base_url}/api/login/oauth/access_token",
-        data={
-            "grant_type": "authorization_code",
-            "client_id": "87fe30c13277b95d37b5",
-            "client_secret": "2171fdf1fa28f8f29f1eb9aff9af3e0a968ccee6",
-            "code": request.args.get("code")
-        },
+        data={"grant_type": "authorization_code", "client_id": "87fe30c13277b95d37b5", "client_secret": "2171fdf1fa28f8f29f1eb9aff9af3e0a968ccee6", "code": request.args.get("code")},
         headers={"Accept": "application/json"},
     )
     res = res.json()
     if "error" in res:
         return redirect("/?error=%s" % res["error_description"])
 
-    access_token = res['access_token']
+    access_token = res["access_token"]
     res = requests.get(
         f"{base_url}/api/userinfo?accessToken={access_token}",
         headers={"Accept": "application/json"},
@@ -1513,6 +1511,7 @@ def casdoor_callback():
     email_address = user_info["email"]
     users = UserService.query(email=email_address)
     user_id = get_uuid()
+
     def is_github():
         nonlocal user_info
         return (str(user_info["properties"]) + user_info["avatar"]).lower().find("GitHub") > 0
@@ -1563,7 +1562,8 @@ def casdoor_callback():
 @manager.route("/icbccs_callback", methods=["GET"])  # noqa: F821
 def icbccs_callback():
     import requests
-    headers = {'Content-Type': 'application/x-www-form-urlencoded'}
+
+    headers = {"Content-Type": "application/x-www-form-urlencoded"}
     github_oauth = SystemSettingsService.get_channel_oauth_config("github")
     res = requests.post(
         github_oauth.get("url", "https://github.com/login/oauth/access_token"),
@@ -1572,7 +1572,7 @@ def icbccs_callback():
             "client_secret": github_oauth.get("secret_key"),
             "code": request.args.get("code"),
             "grant_type": "authorization_code",
-            "redirect_uri": github_oauth.get("my_callback_url")
+            "redirect_uri": github_oauth.get("my_callback_url"),
         },
         headers=headers,
     )
@@ -1583,25 +1583,25 @@ def icbccs_callback():
     session["access_token"] = res["access_token"]
     session["access_token_from"] = "icbccs"
 
-    user_info = requests.post(github_oauth.get("usr_url", "https://api.github.com/user"),
-                        headers=headers,
-                        data={"token": res["access_token"]}
-                        ).json()
+    user_info = requests.post(github_oauth.get("usr_url", "https://api.github.com/user"), headers=headers, data={"token": res["access_token"]}).json()
     email_address = user_info["email"]
     users = UserService.query(email=email_address)
     user_id = get_uuid()
     if not users:
         # User isn't try to register
         try:
-            users = icbccs_user_register(user_info["userId"], {
+            users = icbccs_user_register(
+                user_info["userId"],
+                {
                     "access_token": get_uuid(),
                     "email": user_info["email"],
                     "nickname": user_info["realName"],
                     "login_channel": "icbccs",
                     "last_login_time": get_format_time(),
                     "is_superuser": False,
-                    "language": "Chinese"
-                })
+                    "language": "Chinese",
+                },
+            )
             if not users:
                 raise Exception(f"Fail to register {email_address}.")
             if len(users) > 1:
@@ -1627,31 +1627,32 @@ def icbccs_callback():
 def init_saml_auth(req):
     from onelogin.saml2.auth import OneLogin_Saml2_Auth
     import os
-    auth = OneLogin_Saml2_Auth(req, custom_base_path=os.path.join(get_project_base_directory(), 'saml'))
+
+    auth = OneLogin_Saml2_Auth(req, custom_base_path=os.path.join(get_project_base_directory(), "saml"))
     return auth
 
 
 def prepare_flask_request(request):
     return {
-        'https': 'on' if request.scheme == 'https' else 'off',
+        "https": "on" if request.scheme == "https" else "off",
         #'http_host': request.host,
-        'http_host': "kb.innomotics.net",#request.url,
-        'server_port': 443,#request.environ.get('SERVER_PORT'),
-        'script_name': request.path,
-        'get_data': request.args.copy(),
-        'post_data': request.form.copy(),
-        'query_string': request.query_string.decode('utf-8')
+        "http_host": "kb.innomotics.net",  # request.url,
+        "server_port": 443,  # request.environ.get('SERVER_PORT'),
+        "script_name": request.path,
+        "get_data": request.args.copy(),
+        "post_data": request.form.copy(),
+        "query_string": request.query_string.decode("utf-8"),
     }
 
 
-@manager.route('/azure_login') # noqa: F821
+@manager.route("/azure_login")  # noqa: F821
 def azure_login():
     req = prepare_flask_request(request)
     auth = init_saml_auth(req)
     return redirect(auth.login())
 
 
-@manager.route('/metadata') # noqa: F821
+@manager.route("/metadata")  # noqa: F821
 def metadata():
     req = prepare_flask_request(request)
     auth = init_saml_auth(req)
@@ -1660,7 +1661,7 @@ def metadata():
     errors = settings.validate_metadata(metadata)
 
     if not errors:
-        return metadata, 200, {'Content-Type': 'text/xml'}
+        return metadata, 200, {"Content-Type": "text/xml"}
     else:
         return "Metadata error", 500
 
@@ -1671,18 +1672,18 @@ def azure_callback():
     auth = init_saml_auth(req)
     auth.process_response()
     errors = auth.get_errors()
-    print(auth.get_last_error_reason(), auth.is_authenticated(), auth.get_attributes(),  auth.get_nameid(), auth.get_session_index(), "flushssssssssssssssssss", flush=True)
+    print(auth.get_last_error_reason(), auth.is_authenticated(), auth.get_attributes(), auth.get_nameid(), auth.get_session_index(), "flushssssssssssssssssss", flush=True)
 
     if errors:
         return auth.get_last_error_reason()
 
     attr = auth.get_attributes()
     email_address = auth.get_nameid()
-    users = UserService.query(email=email_address, status='1')
+    users = UserService.query(email=email_address, status="1")
     user_id = get_uuid()
 
     if not users:
-        #return redirect("/?error=Unauthorized. Contact administrator please.")
+        # return redirect("/?error=Unauthorized. Contact administrator please.")
         # User isn't try to register
         try:
             users = user_register(

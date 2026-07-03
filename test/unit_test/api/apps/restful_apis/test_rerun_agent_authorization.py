@@ -50,11 +50,20 @@ def _load_agent_api_for_rerun(monkeypatch, *, documents_info, accessible):
 
     _stub(monkeypatch, "api.apps", QuartAuthUnauthorized=Exception, current_user=SimpleNamespace(id="user-owner", is_superuser=True), login_required=lambda func: func)
     _stub(monkeypatch, "api.apps.services.canvas_replica_service", CanvasReplicaService=SimpleNamespace())
-    _stub(monkeypatch, "api.db", CanvasCategory=SimpleNamespace(), PermissionValue=SimpleNamespace(), ResourceType=SimpleNamespace())
+    permission_value = SimpleNamespace(PERMISSION_READ="read", PERMISSION_WRITE="write", PERMISSION_MANAGE="manage", PERMISSION_OWNER="owner", PERMISSION_NULL=SimpleNamespace(value=0))
+    _stub(
+        monkeypatch,
+        "api.db",
+        CanvasCategory=SimpleNamespace(),
+        PermissionActionType=SimpleNamespace(),
+        PermissionTargetType=SimpleNamespace(),
+        PermissionValue=permission_value,
+        ResourceType=SimpleNamespace(),
+    )
 
     task_model = SimpleNamespace()
     task_model.doc_id = "doc_id_field"
-    _stub(monkeypatch, "api.db.db_models", Task=task_model)
+    _stub(monkeypatch, "api.db.db_models", DB=SimpleNamespace(), Task=task_model)
 
     _stub(
         monkeypatch,
@@ -85,7 +94,7 @@ def _load_agent_api_for_rerun(monkeypatch, *, documents_info, accessible):
     )
     _stub(monkeypatch, "api.db.services.file_service", FileService=SimpleNamespace())
     _stub(monkeypatch, "api.db.services.knowledgebase_service", KnowledgebaseService=SimpleNamespace())
-    _stub(monkeypatch, "api.db.services.permission_service", PermissionService=SimpleNamespace())
+    _stub(monkeypatch, "api.db.services.permission_service", PermissionChangeLogService=SimpleNamespace(), PermissionService=SimpleNamespace())
 
     def _update_log(*_a, **_k):
         destructive_calls["update_log"] = True
@@ -111,7 +120,7 @@ def _load_agent_api_for_rerun(monkeypatch, *, documents_info, accessible):
         TaskService=_TaskService,
         queue_dataflow=lambda *_a, **_k: destructive_calls.__setitem__("queue", destructive_calls["queue"] + 1),
     )
-    _stub(monkeypatch, "api.db.services.user_service", TenantService=SimpleNamespace(), UserService=SimpleNamespace(get_by_id=lambda *_a, **_k: (False, None)))
+    _stub(monkeypatch, "api.db.services.user_service", TenantService=SimpleNamespace(), UserService=SimpleNamespace(get_by_id=lambda *_a, **_k: (False, None)), UserTenantService=SimpleNamespace())
     _stub(monkeypatch, "api.db.services.user_canvas_version", UserCanvasVersionService=SimpleNamespace())
 
     request_body = {"id": "log-victim", "component_id": "Parser:0", "dsl": {"path": [], "components": {}}}
@@ -129,7 +138,10 @@ def _load_agent_api_for_rerun(monkeypatch, *, documents_info, accessible):
         server_error_response=lambda exc: {"code": 500, "message": str(exc)},
         validate_request=lambda *_a, **_k: lambda func: func,
     )
+    _stub(monkeypatch, "api.utils.web_utils", CONTENT_TYPE_MAP={}, apply_safe_file_response_headers=lambda response, *_a, **_k: response)
     _stub(monkeypatch, "api.utils.billing", check_dynamic_resources=lambda *_a, **_k: None, get_dynamic_resource_error_result=lambda *_a, **_k: None)
+    _stub(monkeypatch, "api.utils.pagination_utils", validate_rest_api_page_size=lambda *_a, **_k: None)
+    _stub(monkeypatch, "api.utils.permission_utils", check_canvas_permission=lambda *_a, **_k: lambda func: func)
 
     doc_store = SimpleNamespace(
         index_exist=lambda *_a, **_k: True,
@@ -151,6 +163,8 @@ def _load_agent_api_for_rerun(monkeypatch, *, documents_info, accessible):
         get_uuid=lambda: "task-uuid",
         thread_pool_exec=lambda fn, *a, **k: fn(*a, **k),
     )
+    _stub(monkeypatch, "common.role_util", CANVAS_API_ACTION_MAP={}, CANVAS_ROLE_RESOURCE_TYPE=SimpleNamespace(), check_role_access=lambda *_a, **_k: lambda func: func)
+    _stub(monkeypatch, "peewee", MySQLDatabase=type("MySQLDatabase", (), {}), PostgresqlDatabase=type("PostgresqlDatabase", (), {}))
 
     rag_nlp_mod = ModuleType("rag.nlp")
     rag_nlp_mod.search = SimpleNamespace(index_name=lambda _tenant_id: "idx")
