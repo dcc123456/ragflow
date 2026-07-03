@@ -108,6 +108,9 @@ task_executor:
 nats:
   host: "0.0.0.0"
   port: 4222
+file_syncer:
+  max_concurrent_syncs: 4
+  sync_interval: 3
 user_default_llm:
   default_models:
     embedding_model:

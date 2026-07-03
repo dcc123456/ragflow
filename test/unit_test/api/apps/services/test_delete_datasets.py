@@ -40,6 +40,10 @@ def _stub(monkeypatch, name, **attrs):
     return mod
 
 
+async def _thread_pool_exec(func, *args, **kwargs):
+    return func(*args, **kwargs)
+
+
 def _load_delete_datasets_module(monkeypatch, *, f2d_rows, file_filter_delete):
     f2d_delete = MagicMock()
     kb = SimpleNamespace(id="kb-1", tenant_id="tenant-1", name="test-kb")
@@ -150,11 +154,17 @@ def _load_delete_datasets_module(monkeypatch, *, f2d_rows, file_filter_delete):
         monkeypatch,
         "common.misc_utils",
         get_uuid=MagicMock(return_value="uuid-1"),
+        thread_pool_exec=_thread_pool_exec,
     )
-    _stub(
+    search_mod = _stub(
         monkeypatch,
         "rag.nlp.search",
         index_name=lambda tenant_id: f"idx-{tenant_id}",
+    )
+    _stub(
+        monkeypatch,
+        "rag.nlp",
+        search=search_mod,
     )
 
     repo_root = Path(__file__).resolve().parents[5]

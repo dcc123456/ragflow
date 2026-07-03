@@ -65,13 +65,7 @@ class ESConnection(ESConnectionBase):
     """
 
     def _es_search_once(self, index_names: list[str], query: dict, track_total_hits: bool, scroll: str | None = None):
-        return self.es.search(
-            index=index_names,
-            body=query,
-            timeout="600s",
-            track_total_hits=track_total_hits,
-            scroll=scroll
-        )
+        return self.es.search(index=index_names, body=query, timeout="600s", track_total_hits=track_total_hits, scroll=scroll)
 
     def _search_with_search_after(self, index_names: list[str], query: dict, offset: int, limit: int):
         q_base = copy.deepcopy(query)
@@ -140,18 +134,19 @@ class ESConnection(ESConnectionBase):
         return template_res
 
     def search(
-            self, select_fields: list[str],
-            highlight_fields: list[str],
-            condition: dict,
-            match_expressions: list[MatchExpr],
-            order_by: OrderByExpr,
-            offset: int,
-            limit: int,
-            index_names: str | list[str],
-            knowledgebase_ids: list[str],
-            agg_fields: list[str] | None = None,
-            rank_feature: dict | None = None,
-            scroll: str | None = None
+        self,
+        select_fields: list[str],
+        highlight_fields: list[str],
+        condition: dict,
+        match_expressions: list[MatchExpr],
+        order_by: OrderByExpr,
+        offset: int,
+        limit: int,
+        index_names: str | list[str],
+        knowledgebase_ids: list[str],
+        agg_fields: list[str] | None = None,
+        rank_feature: dict | None = None,
+        scroll: str | None = None,
     ):
         """
         Refers to https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl.html
@@ -168,19 +163,22 @@ class ESConnection(ESConnectionBase):
                 if v == 0:
                     bool_query.filter.append(Q("range", available_int={"lt": 1}))
                 else:
-                    bool_query.filter.append(
-                        Q("bool", must_not=Q("range", available_int={"lt": 1})))
+                    bool_query.filter.append(Q("bool", must_not=Q("range", available_int={"lt": 1})))
                 continue
             if k == "id":
                 if not v:
                     continue
                 if isinstance(v, list):
-                    bool_query.filter.append(
-                        Q("bool", should=[Q("terms", id=v), Q("terms", _id=v)], minimum_should_match=1))
+                    bool_query.filter.append(Q("bool", should=[Q("terms", id=v), Q("terms", _id=v)], minimum_should_match=1))
                 elif isinstance(v, str) or isinstance(v, int):
-                    bool_query.filter.append(
-                        Q("bool", should=[Q("term", id=v), Q("term", _id=v)], minimum_should_match=1))
+                    bool_query.filter.append(Q("bool", should=[Q("term", id=v), Q("term", _id=v)], minimum_should_match=1))
                 continue
+            if k == "must_not":
+                if isinstance(v, dict):
+                    for kk, vv in v.items():
+                        if kk == "exists":
+                            bool_query.must_not.append(Q("exists", field=vv))
+                    continue
             if not v:
                 continue
             if isinstance(v, list):
@@ -188,17 +186,18 @@ class ESConnection(ESConnectionBase):
             elif isinstance(v, str) or isinstance(v, int):
                 bool_query.filter.append(Q("term", **{k: v}))
             else:
-                raise Exception(
-                    f"Condition `{str(k)}={str(v)}` value type is {str(type(v))}, expected to be int, str or list.")
+                raise Exception(f"Condition `{str(k)}={str(v)}` value type is {str(type(v))}, expected to be int, str or list.")
 
         s = Search()
         vector_similarity_weight = 0.5
         for m in match_expressions:
             if isinstance(m, FusionExpr) and m.method == "weighted_sum" and "weights" in m.fusion_params:
-                assert len(match_expressions) == 3 and isinstance(match_expressions[0], MatchTextExpr) and isinstance(
-                    match_expressions[1],
-                    MatchDenseExpr) and isinstance(
-                    match_expressions[2], FusionExpr)
+                assert (
+                    len(match_expressions) == 3
+                    and isinstance(match_expressions[0], MatchTextExpr)
+                    and isinstance(match_expressions[1], MatchDenseExpr)
+                    and isinstance(match_expressions[2], FusionExpr)
+                )
                 weights = m.fusion_params["weights"]
                 vector_similarity_weight = get_float(weights.split(",")[1])
         for m in match_expressions:
@@ -206,24 +205,22 @@ class ESConnection(ESConnectionBase):
                 minimum_should_match = m.extra_options.get("minimum_should_match", 0.0)
                 if isinstance(minimum_should_match, float):
                     minimum_should_match = str(int(minimum_should_match * 100)) + "%"
-                bool_query.must.append(Q("query_string", fields=m.fields,
-                                         type="best_fields", query=m.matching_text,
-                                         minimum_should_match=minimum_should_match,
-                                         boost=1))
+                bool_query.must.append(Q("query_string", fields=m.fields, type="best_fields", query=m.matching_text, minimum_should_match=minimum_should_match, boost=1))
                 bool_query.boost = 1.0 - vector_similarity_weight
 
             elif isinstance(m, MatchDenseExpr):
-                assert (bool_query is not None)
+                assert bool_query is not None
                 similarity = 0.0
                 if "similarity" in m.extra_options:
                     similarity = m.extra_options["similarity"]
-                s = s.knn(m.vector_column_name,
-                          m.topn,
-                          m.topn * 2,
-                          query_vector=list(m.embedding_data),
-                          filter=bool_query.to_dict(),
-                          similarity=similarity,
-                          )
+                s = s.knn(
+                    m.vector_column_name,
+                    m.topn,
+                    m.topn * 2,
+                    query_vector=list(m.embedding_data),
+                    filter=bool_query.to_dict(),
+                    similarity=similarity,
+                )
 
         if bool_query and rank_feature:
             for fld, sc in rank_feature.items():
@@ -242,12 +239,11 @@ class ESConnection(ESConnectionBase):
                 order = "asc" if order == 0 else "desc"
                 order_field = field
                 if field in ["page_num_int", "top_int"]:
-                    order_info = {"order": order, "unmapped_type": "float",
-                                  "mode": "avg", "numeric_type": "double"}
+                    order_info = {"order": order, "unmapped_type": "float", "mode": "avg", "numeric_type": "double"}
                 elif field.endswith("_int") or field.endswith("_flt"):
                     order_info = {"order": order, "unmapped_type": "float"}
                 elif field == "id":
-                    continue # id as "text", not a "keyword", order by it will cause error
+                    continue  # id as "text", not a "keyword", order by it will cause error
                 elif field.endswith("_kwd"):
                     order_field = f"{field}.keyword"
                     order_info = {"order": order, "unmapped_type": "keyword"}
@@ -257,19 +253,14 @@ class ESConnection(ESConnectionBase):
             s = s.sort(*orders)
         if agg_fields:
             for fld in agg_fields:
-                s.aggs.bucket(f'aggs_{fld}', 'terms', field=fld, size=1000000)
+                s.aggs.bucket(f"aggs_{fld}", "terms", field=fld, size=1000000)
 
         has_dense = any(isinstance(m, MatchDenseExpr) for m in match_expressions)
         has_explicit_sort = bool(order_by and order_by.fields)
-        use_search_after = (
-            limit > 0
-            and (offset + limit > MAX_RESULT_WINDOW)
-            and has_explicit_sort
-            and not has_dense
-        )
+        use_search_after = limit > 0 and (offset + limit > MAX_RESULT_WINDOW) and has_explicit_sort and not has_dense
 
         if limit > 0 and not use_search_after:
-            s = s[offset:offset + limit]
+            s = s[offset : offset + limit]
         # Filter _source to only requested fields for efficiency, and add vector
         # fields to "fields" param so they appear in hit.fields when ES 9.x
         # exclude_source_vectors is enabled (dense_vector not in _source).
@@ -313,7 +304,7 @@ class ESConnection(ESConnectionBase):
                 continue
             except Exception as e:
                 # Only log debug for NotFoundError(accepted when metadata index doesn't exist)
-                if 'NotFound' in str(e):
+                if "NotFound" in str(e):
                     self.logger.debug(f"ESConnection.search {str(index_names)} query: " + str(q) + " - " + str(e))
                 else:
                     self.logger.exception(f"ESConnection.search {str(index_names)} query: " + str(q) + str(e))
@@ -332,16 +323,14 @@ class ESConnection(ESConnectionBase):
             d_copy["kb_id"] = knowledgebase_id
             # Use id as _id for uniqueness, also keep "id" as a regular field for sorting
             meta_id = d_copy.get("id", "")
-            operations.append(
-                {"index": {"_index": index_name, "_id": meta_id}})
+            operations.append({"index": {"_index": index_name, "_id": meta_id}})
             operations.append(d_copy)
 
         res = []
         for _ in range(ATTEMPT_TIME):
             try:
                 res = []
-                r = self.es.bulk(index=index_name, operations=operations,
-                                 refresh="wait_for", timeout="60s")
+                r = self.es.bulk(index=index_name, operations=operations, refresh="wait_for", timeout="60s")
                 if re.search(r"False", str(r["errors"]), re.IGNORECASE):
                     return res
 
@@ -377,10 +366,9 @@ class ESConnection(ESConnectionBase):
                     if "feas" != k.split("_")[-1]:
                         continue
                     try:
-                        self.es.update(index=index_name, id=chunk_id, script=f"ctx._source.remove(\"{k}\");")
+                        self.es.update(index=index_name, id=chunk_id, script=f'ctx._source.remove("{k}");')
                     except Exception:
-                        self.logger.exception(
-                            f"ESConnection.update(index={index_name}, id={chunk_id}, doc={json.dumps(condition, ensure_ascii=False)}) got exception")
+                        self.logger.exception(f"ESConnection.update(index={index_name}, id={chunk_id}, doc={json.dumps(condition, ensure_ascii=False)}) got exception")
                 try:
                     if remove_field is not None:
                         self.es.update(
@@ -393,9 +381,7 @@ class ESConnection(ESConnectionBase):
                         params = {}
                         for kk, vv in remove_dict.items():
                             scripts.append(
-                                f"if (ctx._source.containsKey('{kk}') && ctx._source.{kk} != null) "
-                                f"{{ int i = ctx._source.{kk}.indexOf(params.p_{kk}); "
-                                f"if (i >= 0) {{ ctx._source.{kk}.remove(i); }} }}"
+                                f"if (ctx._source.containsKey('{kk}') && ctx._source.{kk} != null) {{ int i = ctx._source.{kk}.indexOf(params.p_{kk}); if (i >= 0) {{ ctx._source.{kk}.remove(i); }} }}"
                             )
                             params[f"p_{kk}"] = vv
                         if scripts:
@@ -409,9 +395,7 @@ class ESConnection(ESConnectionBase):
                     if remove_field is not None or remove_dict is not None or doc_part:
                         return True
                 except Exception as e:
-                    self.logger.exception(
-                        f"ESConnection.update(index={index_name}, id={chunk_id}, doc={json.dumps(condition, ensure_ascii=False)}) got exception: " + str(
-                            e))
+                    self.logger.exception(f"ESConnection.update(index={index_name}, id={chunk_id}, doc={json.dumps(condition, ensure_ascii=False)}) got exception: " + str(e))
                     break
             return False
 
@@ -423,13 +407,18 @@ class ESConnection(ESConnectionBase):
             if k == "exists":
                 bool_query.filter.append(Q("exists", field=v))
                 continue
+            if k == "must_not":
+                if isinstance(v, dict):
+                    for kk, vv in v.items():
+                        if kk == "exists":
+                            bool_query.must_not.append(Q("exists", field=vv))
+                    continue
             if isinstance(v, list):
                 bool_query.filter.append(Q("terms", **{k: v}))
             elif isinstance(v, str) or isinstance(v, int):
                 bool_query.filter.append(Q("term", **{k: v}))
             else:
-                raise Exception(
-                    f"Condition `{str(k)}={str(v)}` value type is {str(type(v))}, expected to be int, str or list.")
+                raise Exception(f"Condition `{str(k)}={str(v)}` value type is {str(type(v))}, expected to be int, str or list.")
         scripts = []
         params = {}
         for k, v in new_value.items():
@@ -459,11 +448,8 @@ class ESConnection(ESConnectionBase):
                 scripts.append(f"ctx._source.{k}=params.pp_{k};")
                 params[f"pp_{k}"] = json.dumps(v, ensure_ascii=False)
             else:
-                raise Exception(
-                    f"newValue `{str(k)}={str(v)}` value type is {str(type(v))}, expected to be int, str.")
-        ubq = UpdateByQuery(
-            index=index_name).using(
-            self.es).query(bool_query)
+                raise Exception(f"newValue `{str(k)}={str(v)}` value type is {str(type(v))}, expected to be int, str.")
+        ubq = UpdateByQuery(index=index_name).using(self.es).query(bool_query)
         ubq = ubq.script(source="".join(scripts), params=params)
         ubq = ubq.params(refresh=True)
         ubq = ubq.params(slices=5)
@@ -581,10 +567,7 @@ class ESConnection(ESConnectionBase):
         self.logger.debug("ESConnection.delete query: " + json.dumps(qry.to_dict()))
         for _ in range(ATTEMPT_TIME):
             try:
-                res = self.es.delete_by_query(
-                    index=index_name,
-                    body=Search().query(qry).to_dict(),
-                    refresh=True)
+                res = self.es.delete_by_query(index=index_name, body=Search().query(qry).to_dict(), refresh=True)
                 return res["deleted"]
             except ConnectionTimeout:
                 self.logger.exception("ES request timeout")
@@ -639,26 +622,19 @@ class ESConnection(ESConnectionBase):
                 res_fields[doc_id] = m
         return res_fields
 
-    def scroll(
-            self, select_fields: list[str],
-            condition: dict,
-            match_expressions: list[MatchExpr],
-            offset: int,
-            limit: int,
-            index_names: str | list[str],
-            knowledgebase_ids: list[str]
-    ):
-        es_res = self.search(select_fields=select_fields,
-                             highlight_fields=[],
-                             condition=condition,
-                             match_expressions=match_expressions,
-                             offset=offset,
-                             limit=limit,
-                             order_by=OrderByExpr(),
-                             index_names=index_names,
-                             knowledgebase_ids=knowledgebase_ids,
-                             scroll="15m"
-                             )
+    def scroll(self, select_fields: list[str], condition: dict, match_expressions: list[MatchExpr], offset: int, limit: int, index_names: str | list[str], knowledgebase_ids: list[str]):
+        es_res = self.search(
+            select_fields=select_fields,
+            highlight_fields=[],
+            condition=condition,
+            match_expressions=match_expressions,
+            offset=offset,
+            limit=limit,
+            order_by=OrderByExpr(),
+            index_names=index_names,
+            knowledgebase_ids=knowledgebase_ids,
+            scroll="15m",
+        )
         yield es_res
         sid = es_res.get("_scroll_id")
         if not sid:
@@ -667,14 +643,14 @@ class ESConnection(ESConnectionBase):
             es_res = self.es.scroll(scroll_id=sid)
             if not es_res["hits"]["hits"]:
                 break
-            yield  es_res
+            yield es_res
 
-    def clone_doc(self, id:str, indice:str, target_kb_id=None, docid_map=None):
+    def clone_doc(self, id: str, indice: str, target_kb_id=None, docid_map=None):
         source_doc = self.es.get(index=indice, id=id)
-        new_document_body = source_doc['_source']
+        new_document_body = source_doc["_source"]
         if target_kb_id:
             new_document_body["kb_id"] = target_kb_id
         if docid_map:
             new_document_body["doc_id"] = docid_map.get(new_document_body["doc_id"], "")
         res = self.es.index(index=indice, document=new_document_body)
-        return res['_id']
+        return res["_id"]
