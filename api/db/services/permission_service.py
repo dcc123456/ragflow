@@ -75,21 +75,15 @@ class PermissionService(CommonService):
     ):
         tenant_conditions = cls._build_user_target_conditions(user_id, tenant_ids)
         if not tenant_conditions:
-            return (
-                cls.model.select(
-                    cls.model.resource_id.alias("resource_id"),
-                    cls.model.permission.alias("operator_permission"),
-                )
-                .where(cls.model.id == "__ragflow_no_permission__")
-            )
+            return cls.model.select(
+                cls.model.resource_id.alias("resource_id"),
+                cls.model.permission.alias("operator_permission"),
+            ).where(cls.model.id == "__ragflow_no_permission__")
 
         required_permission = permission.value if isinstance(permission, PermissionValue) else permission
 
         permission_conditions = (
-            (cls.model.status == StatusEnum.VALID.value)
-            & (cls.model.resource_type == resource_type)
-            & (cls.model.permission >= required_permission)
-            & reduce(operator.or_, tenant_conditions)
+            (cls.model.status == StatusEnum.VALID.value) & (cls.model.resource_type == resource_type) & (cls.model.permission >= required_permission) & reduce(operator.or_, tenant_conditions)
         )
 
         return (

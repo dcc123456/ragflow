@@ -24,10 +24,7 @@ class WhiteListMgr:
     @staticmethod
     def get_all_white_list() -> Dict[str, Any]:
         white_list = WhiteListService.get_all_white_lists()
-        return {
-            "white_list": white_list,
-            "total": len(white_list)
-        }
+        return {"white_list": white_list, "total": len(white_list)}
 
     @staticmethod
     def update_white_list_row(row_id, email):
@@ -87,10 +84,7 @@ class WhiteListMgr:
             }
         try:
             WhiteListService.delete_by_id(exist_email.id)
-            return {
-                "success": True,
-                "message": f"Successfully deleted email {email} from whitelist."
-            }
+            return {"success": True, "message": f"Successfully deleted email {email} from whitelist."}
         except Exception as e:
             return {
                 "success": False,
@@ -109,12 +103,12 @@ class WhiteListMgr:
             raise AdminException(f"Invalid email address: {', '.join(error_addr)}")
         try:
             insert_cnt = WhiteListService.batch_create_white_list_row(emails)
-            email_noun = 'email' if insert_cnt == 1 else 'emails'
+            email_noun = "email" if insert_cnt == 1 else "emails"
             already_exist_email_cnt = len(emails) - insert_cnt
-            already_exist_email_noun = 'email' if already_exist_email_cnt == 1 else 'emails'
+            already_exist_email_noun = "email" if already_exist_email_cnt == 1 else "emails"
             return {
                 "success": True,
-                "message": f"Upload Successfully! Batch added {insert_cnt} {email_noun}, {already_exist_email_cnt} {already_exist_email_noun} already in whitelist. " ,
+                "message": f"Upload Successfully! Batch added {insert_cnt} {email_noun}, {already_exist_email_cnt} {already_exist_email_noun} already in whitelist. ",
             }
         except Exception as e:
             return {

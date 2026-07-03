@@ -22,6 +22,7 @@ Usage:
     # Disable DLA and TSR (enable OCR only)
     python deepdoc_svr.py --gpu --disable-dla --disable-tsr
 """
+
 import argparse
 import logging
 import os
@@ -30,21 +31,18 @@ import multiprocessing
 # IMPORTANT: Force 'fork' multiprocessing context to avoid spawn issues with PaddleOCR
 # This must be done before importing litserve
 try:
-    multiprocessing.set_start_method('fork', force=True)
+    multiprocessing.set_start_method("fork", force=True)
 except RuntimeError:
     pass  # Method already set
 
-os.environ['PYTHONHASHSEED'] = '0'
+os.environ["PYTHONHASHSEED"] = "0"
 
 import litserve as ls
 from dla import DLAEndpoint
 from ocr import OCREndpoint
 from tsr import TSREndpoint
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -57,54 +55,17 @@ Examples:
   python deepdoc_svr.py --gpu                              # Enable all endpoints
   python deepdoc_svr.py --gpu --disable-tsr                # Disable TSR (OCR + DLA only)
   python deepdoc_svr.py --gpu --disable-dla --disable-tsr  # Enable OCR only
-        """
+        """,
     )
-    parser.add_argument(
-        '--gpu',
-        action='store_true',
-        help='Use GPU inference (TensorRT models for DLA/TSR, PaddlePaddle GPU for OCR)'
-    )
-    parser.add_argument(
-        '--port',
-        type=int,
-        default=8000,
-        help='Serving port (default: 8000)'
-    )
-    parser.add_argument(
-        '--workers',
-        type=int,
-        default=1,
-        help='Workers per device (default: 1)'
-    )
-    parser.add_argument(
-        '--timeout',
-        type=int,
-        default=100,
-        help='Request timeout in seconds (default: 100)'
-    )
+    parser.add_argument("--gpu", action="store_true", help="Use GPU inference (TensorRT models for DLA/TSR, PaddlePaddle GPU for OCR)")
+    parser.add_argument("--port", type=int, default=8000, help="Serving port (default: 8000)")
+    parser.add_argument("--workers", type=int, default=1, help="Workers per device (default: 1)")
+    parser.add_argument("--timeout", type=int, default=100, help="Request timeout in seconds (default: 100)")
 
     # Endpoint disable flags (all enabled by default)
-    parser.add_argument(
-        '--disable-ocr',
-        action='store_true',
-        dest='disable_ocr',
-        default=False,
-        help='Disable OCR endpoint (Text Detection & Recognition)'
-    )
-    parser.add_argument(
-        '--disable-dla',
-        action='store_true',
-        dest='disable_dla',
-        default=False,
-        help='Disable DLA endpoint (Document Layout Analysis)'
-    )
-    parser.add_argument(
-        '--disable-tsr',
-        action='store_true',
-        dest='disable_tsr',
-        default=False,
-        help='Disable TSR endpoint (Table Structure Recognition)'
-    )
+    parser.add_argument("--disable-ocr", action="store_true", dest="disable_ocr", default=False, help="Disable OCR endpoint (Text Detection & Recognition)")
+    parser.add_argument("--disable-dla", action="store_true", dest="disable_dla", default=False, help="Disable DLA endpoint (Document Layout Analysis)")
+    parser.add_argument("--disable-tsr", action="store_true", dest="disable_tsr", default=False, help="Disable TSR endpoint (Table Structure Recognition)")
 
     return parser.parse_args()
 
@@ -121,14 +82,14 @@ def main():
     use_gpu = args.gpu
 
     if use_gpu:
-        dla_engine = '/app/dla/dla.trt'
-        tsr_engine = '/app/tsr/tsr.trt'
-        accelerator = 'gpu'
+        dla_engine = "/app/dla/dla.trt"
+        tsr_engine = "/app/tsr/tsr.trt"
+        accelerator = "gpu"
         logger.info("Using GPU inference (TensorRT models)")
     else:
-        dla_engine = '/app/dla/layout.onnx'
-        tsr_engine = '/app/tsr/tsr.pt'  # Use PyTorch .pt file for CPU
-        accelerator = 'cpu'
+        dla_engine = "/app/dla/layout.onnx"
+        tsr_engine = "/app/tsr/tsr.pt"  # Use PyTorch .pt file for CPU
+        accelerator = "cpu"
         logger.info("Using CPU inference (DLA: ONNX, TSR: PyTorch, OCR: PaddleOCR)")
 
     logger.info("Initializing Unified DeepDoc Server...")
@@ -170,10 +131,10 @@ def main():
     # max_batch_size is set on each API object (OCREndpoint, DLAEndpoint, TSREndpoint)
     # following the new LitServe 0.3.x pattern
 
-    if accelerator == 'cpu':
+    if accelerator == "cpu":
         server = ls.LitServer(
             lit_api=apis,
-            accelerator='cpu',
+            accelerator="cpu",
             workers_per_device=1,
             timeout=args.timeout,
             track_requests=True,

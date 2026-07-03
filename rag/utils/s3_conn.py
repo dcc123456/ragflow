@@ -39,39 +39,39 @@ class RAGFlowS3:
 
     @property
     def access_key(self):
-        return self.s3_config.get('access_key', None)
+        return self.s3_config.get("access_key", None)
 
     @property
     def secret_key(self):
-        return self.s3_config.get('secret_key', None)
+        return self.s3_config.get("secret_key", None)
 
     @property
     def session_token(self):
-        return self.s3_config.get('session_token', None)
+        return self.s3_config.get("session_token", None)
 
     @property
     def region_name(self):
-        return self.s3_config.get('region_name', None)
+        return self.s3_config.get("region_name", None)
 
     @property
     def endpoint_url(self):
-        return self.s3_config.get('endpoint_url', None)
+        return self.s3_config.get("endpoint_url", None)
 
     @property
     def signature_version(self):
-        return self.s3_config.get('signature_version', None)
+        return self.s3_config.get("signature_version", None)
 
     @property
     def addressing_style(self):
-        return self.s3_config.get('addressing_style', None)
+        return self.s3_config.get("addressing_style", None)
 
     @property
     def bucket(self):
-        return self.s3_config.get('bucket', None)
+        return self.s3_config.get("bucket", None)
 
     @property
     def prefix_path(self):
-        return self.s3_config.get('prefix_path', None)
+        return self.s3_config.get("prefix_path", None)
 
     def _ensure_connection(self):
         """Lazy connection initialization - only create when first needed"""
@@ -117,25 +117,25 @@ class RAGFlowS3:
             # see doc: https://boto3.amazonaws.com/v1/documentation/api/latest/guide/credentials.html#configuring-credentials
             if self.access_key and self.secret_key:
                 s3_params = {
-                    'aws_access_key_id': self.access_key,
-                    'aws_secret_access_key': self.secret_key,
-                    'aws_session_token': self.session_token,
+                    "aws_access_key_id": self.access_key,
+                    "aws_secret_access_key": self.secret_key,
+                    "aws_session_token": self.session_token,
                 }
             if self.region_name:
-                s3_params['region_name'] = self.region_name
+                s3_params["region_name"] = self.region_name
             if self.endpoint_url:
-                s3_params['endpoint_url'] = self.endpoint_url
+                s3_params["endpoint_url"] = self.endpoint_url
 
             # Configure signature_version and addressing_style through Config object
             if self.signature_version:
-                config_kwargs['signature_version'] = self.signature_version
+                config_kwargs["signature_version"] = self.signature_version
             if self.addressing_style:
-                config_kwargs['s3'] = {'addressing_style': self.addressing_style}
+                config_kwargs["s3"] = {"addressing_style": self.addressing_style}
 
             if config_kwargs:
-                s3_params['config'] = Config(**config_kwargs)
+                s3_params["config"] = Config(**config_kwargs)
 
-            self.conn = [boto3.client('s3', **s3_params)]
+            self.conn = [boto3.client("s3", **s3_params)]
         except Exception:
             logging.exception(f"Fail to connect at region {self.region_name} or endpoint {self.endpoint_url}")
 
@@ -213,7 +213,7 @@ class RAGFlowS3:
         for _ in range(1):
             try:
                 r = self.conn[0].get_object(Bucket=bucket, Key=fnm)
-                object_data = r['Body'].read()
+                object_data = r["Body"].read()
                 return object_data
             except Exception:
                 logging.exception(f"fail get {bucket}/{fnm}")
@@ -295,10 +295,7 @@ class RAGFlowS3:
         self._ensure_connection()
         for _ in range(10):
             try:
-                r = self.conn[0].generate_presigned_url('get_object',
-                                                        Params={'Bucket': bucket,
-                                                                'Key': fnm},
-                                                        ExpiresIn=expires)
+                r = self.conn[0].generate_presigned_url("get_object", Params={"Bucket": bucket, "Key": fnm}, ExpiresIn=expires)
 
                 return r
             except Exception:

@@ -15,6 +15,7 @@
 #
 
 from beartype.claw import beartype_this_package
+
 beartype_this_package()
 
 import importlib.metadata
@@ -33,13 +34,4 @@ try:
 except importlib.metadata.PackageNotFoundError:
     __version__ = "0.0.0"
 
-__all__ = [
-    "RAGFlow",
-    "DataSet",
-    "Chat",
-    "Session",
-    "Document",
-    "Chunk",
-    "Agent",
-    "Memory"
-]
+__all__ = ["RAGFlow", "DataSet", "Chat", "Session", "Document", "Chunk", "Agent", "Memory"]

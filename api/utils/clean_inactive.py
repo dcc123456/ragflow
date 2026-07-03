@@ -43,7 +43,7 @@ def delete_chunk(date_str, n, m):
             except Exception as e:
                 print(e)
 
-            #Knowledgebase.delete_by_id(kid)
+            # Knowledgebase.delete_by_id(kid)
 
         try:
             for file in FileService.query(tenant_id=uid):
@@ -58,5 +58,5 @@ def delete_chunk(date_str, n, m):
             print(e)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     delete_chunk("2024-08-10", 0, 4)

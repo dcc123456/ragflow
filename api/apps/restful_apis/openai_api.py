@@ -64,6 +64,7 @@ def _validate_llm_id(llm_id, tenant_id, llm_setting=None):
 import logging
 from api.utils.reference_metadata_utils import enrich_chunks_with_document_metadata
 
+
 def _build_reference_chunks(reference, include_metadata=False, metadata_fields=None):
     chunks = chunks_format(reference)
     if not include_metadata:
@@ -204,6 +205,7 @@ async def _stream_chat_completion_sse(
         response["choices"][0]["delta"]["final_content"] = final_answer if final_answer is not None else full_content
     yield f"data:{json.dumps(response, ensure_ascii=False)}\n\n"
     yield "data:[DONE]\n\n"
+
 
 def _normalize_message_content(content):
     """Convert OpenAI message content to a string for the dialog layer.

@@ -37,8 +37,8 @@ from test.testcases.utils.file_utils import create_image_file
 DEFAULT_CHAT_EMPTY_RESPONSE = "Sorry! No relevant content was found in the knowledge base!"
 DEFAULT_CHAT_PROLOGUE = "Hi! I'm your assistant. What can I do for you?"
 DEFAULT_CHAT_SYSTEM_PROMPT = (
-    'You are an intelligent assistant. Please summarize the content of the dataset to answer the question. '
-    'Please list the data in the dataset and answer in detail. When all dataset content is irrelevant to the '
+    "You are an intelligent assistant. Please summarize the content of the dataset to answer the question. "
+    "Please list the data in the dataset and answer in detail. When all dataset content is irrelevant to the "
     'question, your answer must include the sentence "The answer you are looking for is not found in the dataset!" '
     "Answers need to consider chat history.\n"
     "      Here is the knowledge base:\n"
@@ -72,7 +72,6 @@ def _reset_chat_batch(rest_client, prefix, count=5):
         assert payload["code"] == 0, (prefix, index, payload)
         ids.append(payload["data"]["id"])
     return ids
-
 
 
 @pytest.mark.p1
@@ -642,6 +641,7 @@ def _load_chat_routes_unit_module(monkeypatch):
     common_constants_mod.RetCode = _StubRetCode
     common_constants_mod.StatusEnum = _StubStatusEnum
     from common.constants import MAXIMUM_PAGE_NUMBER as _MPN, MAXIMUM_TASK_PAGE_NUMBER as _MTPN
+
     common_constants_mod.MAXIMUM_PAGE_NUMBER = _MPN
     common_constants_mod.MAXIMUM_TASK_PAGE_NUMBER = _MTPN
     monkeypatch.setitem(sys.modules, "common.constants", common_constants_mod)
@@ -762,16 +762,12 @@ def _load_chat_routes_unit_module(monkeypatch):
     monkeypatch.setitem(sys.modules, "api.db.services.permission_service", permission_service_mod)
 
     team_service_mod = ModuleType("api.db.services.team_service")
-    team_service_mod.DepartmentMemberService = SimpleNamespace(
-        get_all_departments_by_member_id=lambda *_args, **_kwargs: []
-    )
+    team_service_mod.DepartmentMemberService = SimpleNamespace(get_all_departments_by_member_id=lambda *_args, **_kwargs: [])
     team_service_mod.DepartmentService = SimpleNamespace(
         get_department_hierarchy=lambda *_args, **_kwargs: [],
         filter_by_id=lambda *_args, **_kwargs: None,
     )
-    team_service_mod.GroupMemberService = SimpleNamespace(
-        get_groups_by_member_id=lambda *_args, **_kwargs: []
-    )
+    team_service_mod.GroupMemberService = SimpleNamespace(get_groups_by_member_id=lambda *_args, **_kwargs: [])
     team_service_mod.GroupService = SimpleNamespace(filter_by_id=lambda *_args, **_kwargs: None)
     monkeypatch.setitem(sys.modules, "api.db.services.team_service", team_service_mod)
 
@@ -833,7 +829,7 @@ def _load_chat_routes_unit_module(monkeypatch):
     tenant_model_service_mod.get_model_config_from_provider_instance = lambda *_args, **_kwargs: {}
     tenant_model_service_mod.get_tenant_default_model_by_type = lambda *_args, **_kwargs: {}
     tenant_model_service_mod.get_api_key = lambda *_args, **_kwargs: SimpleNamespace(id=1)
-    tenant_model_service_mod.split_model_name = lambda model: (model.split("@")[0],"default", "factory", "")
+    tenant_model_service_mod.split_model_name = lambda model: (model.split("@")[0], "default", "factory", "")
     monkeypatch.setitem(sys.modules, "api.db.joint_services.tenant_model_service", tenant_model_service_mod)
 
     user_service_mod = ModuleType("api.db.services.user_service")
@@ -904,7 +900,7 @@ def _load_chat_routes_unit_module(monkeypatch):
     api_utils_mod.get_request_json = lambda: _AwaitableValue({})
     api_utils_mod.get_resource_insufficient_result = lambda code=429, message="Insufficient resources available.", detail=None: {"code": code, "message": message, "detail": detail or {}}
     api_utils_mod.server_error_response = lambda ex: {"code": 500, "data": None, "message": str(ex)}
-    api_utils_mod.validate_request = lambda *_args, **_kwargs: (lambda func: func)
+    api_utils_mod.validate_request = lambda *_args, **_kwargs: lambda func: func
     monkeypatch.setitem(sys.modules, "api.utils.api_utils", api_utils_mod)
 
     tenant_utils_mod = ModuleType("api.utils.tenant_utils")
@@ -913,7 +909,7 @@ def _load_chat_routes_unit_module(monkeypatch):
 
     billing_mod = ModuleType("api.utils.billing")
     billing_mod.check_dynamic_resources = lambda *_args, **_kwargs: (True, {})
-    billing_mod.check_resources = lambda *_args, **_kwargs: (lambda func: func)
+    billing_mod.check_resources = lambda *_args, **_kwargs: lambda func: func
     billing_mod.get_dynamic_resource_error_result = lambda check_info, tenant_id: {
         "code": 429,
         "data": None,
@@ -1264,7 +1260,7 @@ def test_chat_create_accepts_provider_scoped_rerank_id_unit(monkeypatch):
         return {
             "glm-4@ZHIPU-AI": ("glm-4", "default", "ZHIPU-AI", ""),
             "glm-4@CI@ZHIPU-AI": ("glm-4", "CI", "ZHIPU-AI", ""),
-            "custom-reranker@OpenAI": ("custom-reranker", "default", "OpenAI", "")
+            "custom-reranker@OpenAI": ("custom-reranker", "default", "OpenAI", ""),
         }.get(model_name, (model_name, None, None, ""))
 
     monkeypatch.setattr(module, "split_model_name", _split_model_name_and_factory)
@@ -1341,7 +1337,7 @@ def test_chat_create_uses_direct_chat_fields_unit(monkeypatch):
     monkeypatch.setattr(module.KnowledgebaseService, "accessible", lambda **_kwargs: [SimpleNamespace(id="kb-1")])
     monkeypatch.setattr(module.KnowledgebaseService, "query", lambda **_kwargs: [_DummyKB()])
     monkeypatch.setattr(module.KnowledgebaseService, "get_by_id", lambda _id: (True, _DummyKB()))
-    monkeypatch.setattr(module, "split_model_name", lambda model: (model.split("@")[0],"default", "factory", ""))
+    monkeypatch.setattr(module, "split_model_name", lambda model: (model.split("@")[0], "default", "factory", ""))
 
     def _save(**kwargs):
         saved.update(kwargs)
@@ -1505,7 +1501,7 @@ def test_patch_chat_drops_response_only_fields_before_update_unit(monkeypatch):
     monkeypatch.setattr(module.TenantService, "get_by_id", lambda _tid: (True, SimpleNamespace(llm_id="glm-4")))
     monkeypatch.setattr(module.KnowledgebaseService, "accessible", lambda **_kwargs: [SimpleNamespace(id="kb-1")])
     monkeypatch.setattr(module.KnowledgebaseService, "query", lambda **_kwargs: [_DummyKB()])
-    monkeypatch.setattr(module, "split_model_name", lambda model: (model.split("@")[0],"default", "factory", ""))
+    monkeypatch.setattr(module, "split_model_name", lambda model: (model.split("@")[0], "default", "factory", ""))
     monkeypatch.setattr(module, "get_api_key", lambda *args, **kwargs: SimpleNamespace(id=1))
 
     def _update(_chat_id, req):

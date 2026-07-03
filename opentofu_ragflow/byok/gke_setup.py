@@ -151,6 +151,7 @@ GCR_PROJECT_PREFIX = "gcr.io"
 #
 # =============================================================================
 
+
 def run_cmd(cmd, check=True, capture_output=True, timeout=60):
     """Run a shell command and return the result.
 
@@ -858,10 +859,7 @@ def create_gcs_bucket(project, cluster_id, region, gke_namespace="ragflow"):
 
     # Add iam.serviceAccountTokenCreator to allow K8s SA to impersonate GCP SA
     result = run_cmd(
-        f"gcloud iam service-accounts add-iam-policy-binding {gcp_sa_email} "
-        f"--project={project} "
-        f'--member="{k8s_sa_member}" '
-        f'--role="roles/iam.serviceAccountTokenCreator"',
+        f'gcloud iam service-accounts add-iam-policy-binding {gcp_sa_email} --project={project} --member="{k8s_sa_member}" --role="roles/iam.serviceAccountTokenCreator"',
         check=False,
     )
     if result.returncode == 0:
@@ -873,10 +871,7 @@ def create_gcs_bucket(project, cluster_id, region, gke_namespace="ragflow"):
 
     # Add iam.workloadIdentityUser to allow pods to use the GCP SA identity
     result = run_cmd(
-        f"gcloud iam service-accounts add-iam-policy-binding {gcp_sa_email} "
-        f"--project={project} "
-        f'--member="{k8s_sa_member}" '
-        f'--role="roles/iam.workloadIdentityUser"',
+        f'gcloud iam service-accounts add-iam-policy-binding {gcp_sa_email} --project={project} --member="{k8s_sa_member}" --role="roles/iam.workloadIdentityUser"',
         check=False,
     )
     if result.returncode == 0:
@@ -920,9 +915,7 @@ def add_node_sa_gcs_permissions(project):
     # Grant storage.objectViewer (read) role
     print("\nGranting storage.objectViewer role...")
     result = run_cmd(
-        f"gcloud projects add-iam-policy-binding {project} "
-        f'--member="serviceAccount:{node_sa_email}" '
-        f'--role="roles/storage.objectViewer"',
+        f'gcloud projects add-iam-policy-binding {project} --member="serviceAccount:{node_sa_email}" --role="roles/storage.objectViewer"',
         check=False,
     )
     if result.returncode == 0:
@@ -935,9 +928,7 @@ def add_node_sa_gcs_permissions(project):
     # Grant storage.objectCreator (write) role
     print("\nGranting storage.objectCreator role...")
     result = run_cmd(
-        f"gcloud projects add-iam-policy-binding {project} "
-        f'--member="serviceAccount:{node_sa_email}" '
-        f'--role="roles/storage.objectCreator"',
+        f'gcloud projects add-iam-policy-binding {project} --member="serviceAccount:{node_sa_email}" --role="roles/storage.objectCreator"',
         check=False,
     )
     if result.returncode == 0:
@@ -985,10 +976,7 @@ def create_image_pull_secret(project, namespace="ragflow"):
     # Step 1: Create service account for image pulling
     print(f"\nCreating service account '{image_sa_email}' for image pulling...")
     result = run_cmd(
-        f"gcloud iam service-accounts create ragflow-image-pull "
-        f'--display-name="RAGFlow Image Pull" '
-        f'--description="Service account for pulling images from GCR" '
-        f"--project={project}",
+        f'gcloud iam service-accounts create ragflow-image-pull --display-name="RAGFlow Image Pull" --description="Service account for pulling images from GCR" --project={project}',
         check=False,
     )
     if result.returncode == 0:
@@ -1001,14 +989,13 @@ def create_image_pull_secret(project, namespace="ragflow"):
     # Wait for SA to propagate
     print("\nWaiting for service account to propagate...")
     import time
+
     time.sleep(5)
 
     # Step 2: Grant artifactregistry.reader role
     print(f"\nGranting artifactregistry.reader role to {image_sa_email}...")
     result = run_cmd(
-        f"gcloud projects add-iam-policy-binding {project} "
-        f'--member="serviceAccount:{image_sa_email}" '
-        f'--role="roles/artifactregistry.reader"',
+        f'gcloud projects add-iam-policy-binding {project} --member="serviceAccount:{image_sa_email}" --role="roles/artifactregistry.reader"',
         check=False,
     )
     if result.returncode == 0:
@@ -1022,8 +1009,7 @@ def create_image_pull_secret(project, namespace="ragflow"):
     print("\nCreating service account key...")
     key_file = "/tmp/image-pull-key.json"
     result = run_cmd(
-        f"gcloud iam service-accounts keys create {key_file} "
-        f"--iam-account={image_sa_email}",
+        f"gcloud iam service-accounts keys create {key_file} --iam-account={image_sa_email}",
         check=False,
     )
     if result.returncode != 0:
@@ -1036,14 +1022,7 @@ def create_image_pull_secret(project, namespace="ragflow"):
         key_content = f.read()
 
     # Use kubectl to create the secret
-    cmd = (
-        f'kubectl create secret docker-registry {secret_name} '
-        f'--docker-server=gcr.io '
-        f'--docker-username=_json_key '
-        f'--docker-password=\'{key_content}\' '
-        f'--docker-email={image_sa_email} '
-        f"-n {namespace}"
-    )
+    cmd = f"kubectl create secret docker-registry {secret_name} --docker-server=gcr.io --docker-username=_json_key --docker-password='{key_content}' --docker-email={image_sa_email} -n {namespace}"
     result = run_cmd(cmd, check=False)
 
     # Clean up key file
@@ -1106,11 +1085,7 @@ def create_notification_channel(project, email_address):
     # Create the channel
     print(f"  Creating email notification channel for {email_address}...")
     result = run_cmd(
-        f'gcloud alpha monitoring channels create '
-        f'--display-name="{channel_name}" '
-        f'--type=email '
-        f'--channel-labels=email_address={email_address} '
-        f'--project={project}',
+        f'gcloud alpha monitoring channels create --display-name="{channel_name}" --type=email --channel-labels=email_address={email_address} --project={project}',
         check=False,
     )
 
@@ -1184,7 +1159,6 @@ def setup_monitoring_alerts(project, cluster_name, region, zone=None):
             channel_ids.append(channel_id)
 
     return create_gmp_alert_policy(project, channel_ids, cluster_name, region, zone)
-
 
 
 def create_gmp_alert_policy(project, channel_ids, cluster_name, region, zone=None):

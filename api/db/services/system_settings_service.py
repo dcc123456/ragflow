@@ -35,9 +35,9 @@ class SystemSettingsService(CommonService):
     def get_by_name_prefix(cls, name_prefix):
         objs = cls.model.select().where(cls.model.name.startswith(name_prefix)).order_by(cls.model.name.asc())
         return objs
-    
+
     @classmethod
-    @DB.connection_context()    
+    @DB.connection_context()
     def get_first_by_name(cls, name):
         return cls.model.select().where(cls.model.name.startswith(name)).first()
 
@@ -49,11 +49,7 @@ class SystemSettingsService(CommonService):
     @classmethod
     @DB.connection_context()
     def get_singleton_by_exact_name(cls, name: str):
-        rows = list(
-            cls.model.select()
-            .where(cls.model.name == name)
-            .order_by(cls.model.update_time.desc(), cls.model.create_time.desc())
-        )
+        rows = list(cls.model.select().where(cls.model.name == name).order_by(cls.model.update_time.desc(), cls.model.create_time.desc()))
         if not rows:
             return None
         keeper = rows[0]
@@ -83,6 +79,7 @@ class SystemSettingsService(CommonService):
             Model instance: The newly created record object.
         """
         import logging
+
         logging.info(f"about to insert {kwargs=}")
         timestamp = current_timestamp()
         cur_datetime = datetime_format(datetime.now())
@@ -156,22 +153,19 @@ class SystemSettingsService(CommonService):
         oauth_config = {}
         github_sso_config = cls.get_by_source("github|sso")
         if github_sso_config:
-            setting_dict = {var.name.split(".")[-1]: load_value_from_string(var.value, var.data_type) for var in
-                            github_sso_config}
+            setting_dict = {var.name.split(".")[-1]: load_value_from_string(var.value, var.data_type) for var in github_sso_config}
             setting_dict.update({"type": "github"})
             if setting_dict.get("enabled"):
                 oauth_config.update({"github": setting_dict})
         feishu_sso_config = cls.get_by_source("feishu|sso")
         if feishu_sso_config:
-            setting_dict = {var.name.split(".")[-1]: load_value_from_string(var.value, var.data_type) for var in
-                            feishu_sso_config}
+            setting_dict = {var.name.split(".")[-1]: load_value_from_string(var.value, var.data_type) for var in feishu_sso_config}
             setting_dict.update({"type": "feishu"})
             if setting_dict.get("enabled"):
                 oauth_config.update({"feishu": setting_dict})
         google_sso_config = cls.get_by_source("google|sso")
         if google_sso_config:
-            setting_dict = {var.name.split(".")[-1]: load_value_from_string(var.value, var.data_type) for var in
-                            google_sso_config}
+            setting_dict = {var.name.split(".")[-1]: load_value_from_string(var.value, var.data_type) for var in google_sso_config}
             setting_dict.update({"type": "google"})
             if setting_dict.get("enabled"):
                 oauth_config.update({"google": setting_dict})
@@ -181,11 +175,9 @@ class SystemSettingsService(CommonService):
             for config in ldap_configs:
                 channel_name = "ldap" if config.source == "ldap|default" else config.source
                 if ldap_config_mapping.get(channel_name):
-                    ldap_config_mapping[channel_name].update(
-                        {config.name.split(".")[-1]: load_value_from_string(config.value, config.data_type)})
+                    ldap_config_mapping[channel_name].update({config.name.split(".")[-1]: load_value_from_string(config.value, config.data_type)})
                 else:
-                    ldap_config_mapping[channel_name] = {
-                        config.name.split(".")[-1]: load_value_from_string(config.value, config.data_type)}
+                    ldap_config_mapping[channel_name] = {config.name.split(".")[-1]: load_value_from_string(config.value, config.data_type)}
             enabled_ldap_config = {k: v for k, v in ldap_config_mapping.items() if v.get("enabled")}
             for v in enabled_ldap_config.values():
                 v.update({"type": "ldap"})
@@ -200,9 +192,7 @@ class SystemSettingsService(CommonService):
             source = f"{channel}|sso"
         channel_oauth_configs = cls.get_by_source(source)
         if channel_oauth_configs:
-            setting_dict = {
-                var.name.split(".")[-1]: load_value_from_string(var.value, var.data_type) for var in channel_oauth_configs
-            }
+            setting_dict = {var.name.split(".")[-1]: load_value_from_string(var.value, var.data_type) for var in channel_oauth_configs}
             oauth_type = "ldap" if channel.startswith("ldap") else channel
             setting_dict.update({"type": oauth_type})
             return setting_dict
@@ -213,7 +203,5 @@ class SystemSettingsService(CommonService):
         mail_config_rows = cls.get_by_name_prefix("mail")
         if not mail_config_rows:
             return {}
-        mail_config = {
-            f'mail_{row.name.split(".")[-1]}': load_value_from_string(row.value, row.data_type) for row in mail_config_rows
-        }
+        mail_config = {f"mail_{row.name.split('.')[-1]}": load_value_from_string(row.value, row.data_type) for row in mail_config_rows}
         return mail_config

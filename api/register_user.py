@@ -26,7 +26,7 @@ def create(email):
             "last_login_time": get_format_time(),
             "update_time": current_timestamp(),
             "language": "Chinese",
-        }
+        },
     )
 
 
@@ -39,10 +39,7 @@ def disable(email):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        prog='User control',
-        description='Create/disable a user'
-    )
+    parser = argparse.ArgumentParser(prog="User control", description="Create/disable a user")
     parser.add_argument("-e", "--email", type=str, required=True)
     parser.add_argument("-o", "--operation", type=str, default="create", help="[create, disable]")
     args = parser.parse_args()

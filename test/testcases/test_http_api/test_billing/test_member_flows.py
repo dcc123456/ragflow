@@ -51,6 +51,7 @@ logger = logging.getLogger(__name__)
 # Helper: create member client with test clock
 # -----------------------------------------------------------------------------
 
+
 def _create_member_client(billing_client, billing_email_factory):
     """Create a MemberClient with the same test clock as billing_client."""
     billing_email_factory("member-test")  # call to ensure unique state
@@ -91,6 +92,7 @@ def _accept_invitation_as(client, member_email, member_password, target_tenant_i
 # -----------------------------------------------------------------------------
 # MEMBER-01: Basic Member Quota Enforcement Test
 # -----------------------------------------------------------------------------
+
 
 @pytest.mark.billing
 def test_member_01_trial_quota(billing_client, billing_email_factory):
@@ -299,9 +301,7 @@ def test_member_01_pro_quota(billing_client, billing_email_factory):
     logger.info("Assert: Extra sampled member accepted within Pro quota")
 
     members = client.list_members()
-    assert len(members) == invite_count + 1, (
-        f"Expected {invite_count + 1} members after extra sampled invite, got {len(members)}"
-    )
+    assert len(members) == invite_count + 1, f"Expected {invite_count + 1} members after extra sampled invite, got {len(members)}"
     logger.info(
         "Assert: Total sampled members after extra acceptance: %s/%s (including owner)",
         len(members) + 1,
@@ -314,6 +314,7 @@ def test_member_01_pro_quota(billing_client, billing_email_factory):
 # -----------------------------------------------------------------------------
 # MEMBER-02: Trial Member Quota Rejection and Starter Acceptance Test
 # -----------------------------------------------------------------------------
+
 
 @pytest.mark.billing
 def test_member_02_trial_rejection_starter_acceptance(billing_client, billing_email_factory):
@@ -415,6 +416,7 @@ def test_member_02_trial_rejection_starter_acceptance(billing_client, billing_em
 # -----------------------------------------------------------------------------
 # MEMBER-03: Remove Member to Enable New Member Acceptance Test
 # -----------------------------------------------------------------------------
+
 
 @pytest.mark.billing
 def test_member_03_remove_to_enable_acceptance(billing_client, billing_email_factory):
@@ -538,6 +540,7 @@ def test_member_03_remove_to_enable_acceptance(billing_client, billing_email_fac
 # MEMBER-04: Pro Plan Downgrade Enforcement Test
 # -----------------------------------------------------------------------------
 
+
 @pytest.mark.billing
 def test_member_04_pro_downgrade_enforcement(billing_client, billing_email_factory):
     """MEMBER-04: Verify member quota enforcement when downgrading from Pro to Starter.
@@ -649,6 +652,7 @@ def test_member_04_pro_downgrade_enforcement(billing_client, billing_email_facto
 # -----------------------------------------------------------------------------
 # MEMBER-05: Member Quota Persistence Through Upgrade/Downgrade Test
 # -----------------------------------------------------------------------------
+
 
 @pytest.mark.billing
 def test_member_05_persistence_upgrade_downgrade(billing_client, billing_email_factory):

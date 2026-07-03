@@ -86,9 +86,7 @@ def main() -> None:
         state_path = str(Path.cwd() / "terraform.tfstate.d" / workspace / "terraform.tfstate")
 
     state_owns_eck = state_tracks_resource(state_path, "helm_release", "eck_operator")
-    state_owns_compute_class = cloud_provider == "gcp" and state_tracks_resource(
-        state_path, "kubernetes_manifest", "elasticsearch_compute_class"
-    )
+    state_owns_compute_class = cloud_provider == "gcp" and state_tracks_resource(state_path, "kubernetes_manifest", "elasticsearch_compute_class")
     state_owns_cluster_scoped_resources = state_owns_eck or state_owns_compute_class
 
     if state_owns_cluster_scoped_resources:

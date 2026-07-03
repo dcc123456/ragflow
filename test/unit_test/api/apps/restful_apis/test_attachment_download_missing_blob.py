@@ -64,7 +64,8 @@ def _load_agent_api(monkeypatch, *, storage_get):
         return SimpleNamespace(payload=payload, headers={})
 
     _stub(
-        monkeypatch, "api.apps",
+        monkeypatch,
+        "api.apps",
         current_user=SimpleNamespace(id="tenant-1"),
         login_required=lambda func: func,
     )
@@ -86,7 +87,8 @@ def _load_agent_api(monkeypatch, *, storage_get):
     )
     _stub(monkeypatch, "api.db.db_models", DB=SimpleNamespace(), Task=SimpleNamespace())
     _stub(
-        monkeypatch, "api.db.services.api_service",
+        monkeypatch,
+        "api.db.services.api_service",
         API4ConversationService=SimpleNamespace(
             get_by_id=lambda _id: (False, None),
             save=lambda **_k: True,
@@ -95,7 +97,8 @@ def _load_agent_api(monkeypatch, *, storage_get):
         ),
     )
     _stub(
-        monkeypatch, "api.db.services.canvas_service",
+        monkeypatch,
+        "api.db.services.canvas_service",
         CanvasTemplateService=SimpleNamespace(),
         UserCanvasService=SimpleNamespace(accessible=lambda *_a, **_k: True, query=lambda **_k: []),
         completion=lambda *_a, **_k: None,
@@ -112,20 +115,25 @@ def _load_agent_api(monkeypatch, *, storage_get):
     )
     _stub(monkeypatch, "api.db.services.pipeline_operation_log_service", PipelineOperationLogService=SimpleNamespace())
     _stub(
-        monkeypatch, "api.db.services.task_service",
-        CANVAS_DEBUG_DOC_ID="", TaskService=SimpleNamespace(), queue_dataflow=lambda *_a, **_k: None,
+        monkeypatch,
+        "api.db.services.task_service",
+        CANVAS_DEBUG_DOC_ID="",
+        TaskService=SimpleNamespace(),
+        queue_dataflow=lambda *_a, **_k: None,
     )
     _stub(
-        monkeypatch, "api.db.services.user_service",
+        monkeypatch,
+        "api.db.services.user_service",
         TenantService=SimpleNamespace(),
         UserService=SimpleNamespace(get_by_id=lambda *_a, **_k: (False, None)),
         UserTenantService=SimpleNamespace(),
     )
     _stub(monkeypatch, "api.db.services.user_canvas_version", UserCanvasVersionService=SimpleNamespace())
-    _stub(monkeypatch, "api.utils.permission_utils", check_canvas_permission=lambda *_a, **_k: (lambda func: func))
+    _stub(monkeypatch, "api.utils.permission_utils", check_canvas_permission=lambda *_a, **_k: lambda func: func)
 
     _stub(
-        monkeypatch, "api.utils.api_utils",
+        monkeypatch,
+        "api.utils.api_utils",
         construct_json_result=lambda **kw: {"kind": "json", **kw},
         get_data_error_result=lambda message="", code=0, data=False: {"kind": "data_error", "message": message},
         get_error_data_result=lambda *_a, **_k: {"kind": "error"},
@@ -137,25 +145,29 @@ def _load_agent_api(monkeypatch, *, storage_get):
         # Used as `@validate_request(...)` decorator factory at module level, so it
         # must return an identity decorator (the lenient fallback would return None
         # and `@None` raises TypeError during import).
-        validate_request=lambda *_a, **_k: (lambda func: func),
+        validate_request=lambda *_a, **_k: lambda func: func,
     )
     _stub(
-        monkeypatch, "api.utils.billing",
+        monkeypatch,
+        "api.utils.billing",
         check_dynamic_resources=lambda *_a, **_k: (True, None),
         get_dynamic_resource_error_result=lambda *_a, **_k: {"kind": "billing_error"},
     )
     _stub(
-        monkeypatch, "common.settings",
-        retriever=SimpleNamespace(), kg_retriever=SimpleNamespace(),
+        monkeypatch,
+        "common.settings",
+        retriever=SimpleNamespace(),
+        kg_retriever=SimpleNamespace(),
         # download_attachment reads settings.STORAGE_IMPL.get after
         # `from common import settings` rebinds the module's `settings` name.
         STORAGE_IMPL=SimpleNamespace(get=storage_get),
     )
     _stub(
-        monkeypatch, "common.role_util",
+        monkeypatch,
+        "common.role_util",
         CANVAS_API_ACTION_MAP={},
         CANVAS_ROLE_RESOURCE_TYPE=SimpleNamespace(),
-        check_role_access=lambda *_a, **_k: (lambda func: func),
+        check_role_access=lambda *_a, **_k: lambda func: func,
     )
     _stub(monkeypatch, "common.ssrf_guard", assert_host_is_safe=lambda *_a, **_k: None)
     _stub(monkeypatch, "common.constants", RetCode=SimpleNamespace())
@@ -169,7 +181,8 @@ def _load_agent_api(monkeypatch, *, storage_get):
 
     _stub(monkeypatch, "common.misc_utils", get_uuid=lambda: "uuid", thread_pool_exec=_thread_pool_exec)
     _stub(
-        monkeypatch, "api.utils.web_utils",
+        monkeypatch,
+        "api.utils.web_utils",
         CONTENT_TYPE_MAP={"markdown": "text/markdown"},
         apply_safe_file_response_headers=lambda *_a, **_k: None,
     )

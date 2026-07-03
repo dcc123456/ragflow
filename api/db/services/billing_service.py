@@ -297,10 +297,7 @@ class SubscriptionService(CommonService):
         tenant_plan_info = (
             cls.model.select(*fields)
             .join(Product, on=(cls.model.plan_name == Product.name))
-            .where(
-                (cls.model.tenant_id == tenant_id)
-                & ((cls.model.plan_name == "Trial") | (cls.model.subscription_status.in_(ENTITLED_MAIN_SUBSCRIPTION_STATUSES)))
-            )
+            .where((cls.model.tenant_id == tenant_id) & ((cls.model.plan_name == "Trial") | (cls.model.subscription_status.in_(ENTITLED_MAIN_SUBSCRIPTION_STATUSES))))
             .order_by(
                 Product.version.desc(),
                 cls.model.create_time.desc(),

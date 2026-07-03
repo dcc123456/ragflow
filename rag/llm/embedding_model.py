@@ -230,9 +230,7 @@ class BuiltinEmbed(Base):
         logging.info(f"Initialize BuiltinEmbed according to settings.EMBEDDING_CFG: {settings.EMBEDDING_CFG}")
         embedding_cfg = settings.EMBEDDING_CFG
         tei_enabled = os.getenv("TEI_ENABLED")
-        is_tei_enabled = (tei_enabled is not None and tei_enabled.lower() in ("1", "true", "yes")) or (
-            tei_enabled is None and "tei-" in os.getenv("COMPOSE_PROFILES", "")
-        )
+        is_tei_enabled = (tei_enabled is not None and tei_enabled.lower() in ("1", "true", "yes")) or (tei_enabled is None and "tei-" in os.getenv("COMPOSE_PROFILES", ""))
         if not BuiltinEmbed._model and is_tei_enabled:
             with BuiltinEmbed._model_lock:
                 BuiltinEmbed._model_name = settings.EMBEDDING_MDL
@@ -244,10 +242,7 @@ class BuiltinEmbed(Base):
 
     def _require_model(self):
         if self._model is None:
-            raise RuntimeError(
-                "Builtin embedding backend is unavailable. "
-                "Enable a tei-* compose profile or configure a reachable embedding provider."
-            )
+            raise RuntimeError("Builtin embedding backend is unavailable. Enable a tei-* compose profile or configure a reachable embedding provider.")
         return self._model
 
     def encode(self, texts: list):
@@ -321,9 +316,7 @@ def _resolve_azure_credentials(key):
         key_obj = json.loads(key)
         if isinstance(key_obj, dict):
             return key_obj.get("api_key", ""), key_obj.get("api_version", "2024-02-01")
-        logging.warning(
-            "Azure credential payload parsed as JSON but is not an object; using raw api_key string"
-        )
+        logging.warning("Azure credential payload parsed as JSON but is not an object; using raw api_key string")
     except (json.JSONDecodeError, TypeError):
         logging.warning("Azure credential payload is not valid JSON; using raw api_key string")
     return key, "2024-02-01"
@@ -1200,13 +1193,11 @@ class LitServeEmbed(Base):
             raise ValueError(f"LitServeEmbed.post got empty response.content {resp.content}")
         resp_obj = json.loads(resp.content.decode("utf-8"))
         embeddings_b64 = resp_obj.get("embeddings", [])
-        if not isinstance(embeddings_b64, list) or len(embeddings_b64)!= len(texts):
+        if not isinstance(embeddings_b64, list) or len(embeddings_b64) != len(texts):
             raise ValueError(f"LitServeEmbed.post got invalid response.content {resp.content}, expect a list of embeddings with length {len(texts)}")
         embeddings = []
         for embedding_b64 in embeddings_b64:
-            embedding =  np.frombuffer(
-                base64.b64decode(embedding_b64.encode("utf-8")), dtype=np.float32
-            )
+            embedding = np.frombuffer(base64.b64decode(embedding_b64.encode("utf-8")), dtype=np.float32)
             embeddings.append(embedding)
         embeddings = np.vstack(embeddings)
         return embeddings

@@ -21,6 +21,7 @@ DEFAULT_MATCH_VECTOR_TOPN = 10
 DEFAULT_MATCH_SPARSE_TOPN = 10
 VEC = list | np.ndarray
 
+
 @dataclass
 class SparseVector:
     indices: list[int]
@@ -52,6 +53,7 @@ class SparseVector:
 
     def __repr__(self):
         return str(self)
+
 
 class MatchTextExpr:
     def __init__(
@@ -130,12 +132,15 @@ MatchExpr = MatchTextExpr | MatchDenseExpr | MatchSparseExpr | MatchTensorExpr |
 class OrderByExpr:
     def __init__(self):
         self.fields = list()
+
     def asc(self, field: str):
         self.fields.append((field, 0))
         return self
+
     def desc(self, field: str):
         self.fields.append((field, 1))
         return self
+
     def fields(self):
         return self.fields
 
@@ -190,18 +195,19 @@ class DocStoreConnection(ABC):
 
     @abstractmethod
     def search(
-        self, select_fields: list[str],
-            highlight_fields: list[str],
-            condition: dict,
-            match_expressions: list[MatchExpr],
-            order_by: OrderByExpr,
-            offset: int,
-            limit: int,
-            index_names: str|list[str],
-            dataset_ids: list[str],
-            agg_fields: list[str] | None = None,
-            rank_feature: dict | None = None,
-            scroll: str | None = None
+        self,
+        select_fields: list[str],
+        highlight_fields: list[str],
+        condition: dict,
+        match_expressions: list[MatchExpr],
+        order_by: OrderByExpr,
+        offset: int,
+        limit: int,
+        index_names: str | list[str],
+        dataset_ids: list[str],
+        agg_fields: list[str] | None = None,
+        rank_feature: dict | None = None,
+        scroll: str | None = None,
     ):
         """
         Search with given conjunctive equivalent filtering condition and return all fields of matched documents
@@ -263,6 +269,7 @@ class DocStoreConnection(ABC):
     """
     SQL
     """
+
     @abstractmethod
     def sql(self, sql: str, fetch_size: int, format: str):
         """
@@ -270,15 +277,7 @@ class DocStoreConnection(ABC):
         """
         raise NotImplementedError("Not implemented")
 
-    def scroll(
-            self, select_fields: list[str],
-            condition: dict,
-            match_expressions: list[MatchExpr],
-            offset: int,
-            limit: int,
-            index_names: str | list[str],
-            knowledgebase_ids: list[str]
-    ):
+    def scroll(self, select_fields: list[str], condition: dict, match_expressions: list[MatchExpr], offset: int, limit: int, index_names: str | list[str], knowledgebase_ids: list[str]):
         """Iterate over all matching documents in batches, yielding search results.
 
         This default implementation uses offset-based pagination via
@@ -293,9 +292,15 @@ class DocStoreConnection(ABC):
             # use inconsistent keyword names for the KB-IDs parameter
             # (``dataset_ids`` vs ``knowledgebase_ids``).
             res = self.search(
-                select_fields, [], condition, match_expressions,
-                OrderByExpr(), current_offset, limit,
-                index_names, knowledgebase_ids,
+                select_fields,
+                [],
+                condition,
+                match_expressions,
+                OrderByExpr(),
+                current_offset,
+                limit,
+                index_names,
+                knowledgebase_ids,
             )
             total = self.get_total(res)
             doc_ids = self.get_doc_ids(res)
@@ -306,5 +311,5 @@ class DocStoreConnection(ABC):
             if current_offset >= total or len(doc_ids) < limit:
                 break
 
-    def clone_doc(self, id:str, indice:str):
+    def clone_doc(self, id: str, indice: str):
         raise NotImplementedError()

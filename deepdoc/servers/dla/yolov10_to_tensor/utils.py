@@ -5,6 +5,7 @@ from matplotlib import pyplot as plt
 
 def check_cuda_err(err):
     from cuda import cuda, cudart
+
     if isinstance(err, cuda.CUresult):
         if err != cuda.CUresult.CUDA_SUCCESS:
             raise RuntimeError("Cuda Error: {}".format(err))
@@ -26,6 +27,7 @@ def cuda_call(call):
 # Wrapper for cudaMemcpy which infers copy size and does error checking
 def memcpy_host_to_device(device_ptr: int, host_arr: np.ndarray):
     from cuda import cudart
+
     nbytes = host_arr.size * host_arr.itemsize
     cuda_call(cudart.cudaMemcpy(device_ptr, host_arr, nbytes, cudart.cudaMemcpyKind.cudaMemcpyHostToDevice))
 
@@ -33,6 +35,7 @@ def memcpy_host_to_device(device_ptr: int, host_arr: np.ndarray):
 # Wrapper for cudaMemcpy which infers copy size and does error checking
 def memcpy_device_to_host(host_arr: np.ndarray, device_ptr: int):
     from cuda import cudart
+
     nbytes = host_arr.size * host_arr.itemsize
     cuda_call(cudart.cudaMemcpy(host_arr, device_ptr, nbytes, cudart.cudaMemcpyKind.cudaMemcpyDeviceToHost))
 
@@ -65,11 +68,11 @@ def preproc(image, input_size, mean, std, swap=(2, 0, 1)):
 
 
 def rainbow_fill(size=50):  # simpler way to generate rainbow color
-    cmap = plt.get_cmap('jet')
+    cmap = plt.get_cmap("jet")
     color_list = []
 
     for n in range(size):
-        color = cmap(n/size)
+        color = cmap(n / size)
         color_list.append(color[:3])  # might need rounding? (round(x, 3) for x in color)[:3]
 
     return np.array(color_list)
@@ -91,7 +94,7 @@ def vis(img, boxes, scores, cls_ids, conf=0.5, class_names=None):
         y1 = int(box[3])
 
         color = (_COLORS[cls_id] * 255).astype(np.uint8).tolist()
-        text = '{}:{:.1f}%'.format(class_names[cls_id], score * 100)
+        text = "{}:{:.1f}%".format(class_names[cls_id], score * 100)
         txt_color = (0, 0, 0) if np.mean(_COLORS[cls_id]) > 0.5 else (255, 255, 255)
         font = cv2.FONT_HERSHEY_SIMPLEX
 
@@ -99,22 +102,13 @@ def vis(img, boxes, scores, cls_ids, conf=0.5, class_names=None):
         cv2.rectangle(img, (x0, y0), (x1, y1), color, 2)
 
         txt_bk_color = (_COLORS[cls_id] * 255 * 0.7).astype(np.uint8).tolist()
-        cv2.rectangle(
-            img,
-            (x0, y0 + 1),
-            (x0 + txt_size[0] + 1, y0 + int(1.5 * txt_size[1])),
-            txt_bk_color,
-            -1
-        )
+        cv2.rectangle(img, (x0, y0 + 1), (x0 + txt_size[0] + 1, y0 + int(1.5 * txt_size[1])), txt_bk_color, -1)
         cv2.putText(img, text, (x0, y0 + txt_size[1]), font, 0.4, txt_color, thickness=1)
 
     return img
 
 
-def  letterbox(im,
-              new_shape = (1024, 1024),
-              color = (114, 114, 114),
-              swap=(2, 0, 1)):
+def letterbox(im, new_shape=(1024, 1024), color=(114, 114, 114), swap=(2, 0, 1)):
     shape = im.shape[:2]  # current shape [height, width]
     if isinstance(new_shape, int):
         new_shape = (new_shape, new_shape)
@@ -124,8 +118,7 @@ def  letterbox(im,
     r = min(new_shape[0] / shape[1], new_shape[1] / shape[0])
     # Compute padding [width, height]
     new_unpad = int(round(shape[1] * r)), int(round(shape[0] * r))
-    dw, dh = new_shape[0] - new_unpad[0], new_shape[1] - new_unpad[
-        1]  # wh padding
+    dw, dh = new_shape[0] - new_unpad[0], new_shape[1] - new_unpad[1]  # wh padding
 
     dw /= 2  # divide padding into 2 sides
     dh /= 2
@@ -134,16 +127,10 @@ def  letterbox(im,
         im = cv2.resize(im, new_unpad, interpolation=cv2.INTER_LINEAR)
     top, bottom = int(round(dh - 0.1)), int(round(dh + 0.1))
     left, right = int(round(dw - 0.1)), int(round(dw + 0.1))
-    im = cv2.copyMakeBorder(im,
-                            top,
-                            bottom,
-                            left,
-                            right,
-                            cv2.BORDER_CONSTANT,
-                            value=color)  # add border
+    im = cv2.copyMakeBorder(im, top, bottom, left, right, cv2.BORDER_CONSTANT, value=color)  # add border
     im = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
     im = im.transpose(swap)
-    im = np.ascontiguousarray(im, dtype=np.float32) / 255.
+    im = np.ascontiguousarray(im, dtype=np.float32) / 255.0
     return im, r, (dw, dh)
 
 
@@ -192,9 +179,7 @@ def multiclass_nms(boxes, scores, nms_thr, score_thr):
             keep = nms(valid_boxes, valid_scores, nms_thr)
             if len(keep) > 0:
                 cls_inds = np.ones((len(keep), 1)) * cls_ind
-                dets = np.concatenate(
-                    [valid_boxes[keep], valid_scores[keep, None], cls_inds], 1
-                )
+                dets = np.concatenate([valid_boxes[keep], valid_scores[keep, None], cls_inds], 1)
                 final_dets.append(dets)
     if len(final_dets) == 0:
         return None

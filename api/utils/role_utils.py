@@ -16,8 +16,7 @@
 
 from api.db import ActionEnum
 
+
 def get_permissions_from_action(action: int) -> dict:
     # for example: action 7 -> {'enable': true, 'read': true, 'write': true, 'share': false}
-    return {
-        action_enum.name.lower(): action & action_enum.value for action_enum in ActionEnum
-    }
+    return {action_enum.name.lower(): action & action_enum.value for action_enum in ActionEnum}

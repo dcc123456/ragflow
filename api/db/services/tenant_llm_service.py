@@ -60,10 +60,7 @@ class LLMFactoriesService(CommonService):
         query = (
             cls.model.select(cls.model.name, Permission.tenant_id)
             .join(Permission, JOIN.LEFT_OUTER, on=((Permission.resource_id == cls.model.name) & (Permission.member_id.endswith(peewee.fn.CONCAT(r"\_", user_id))) & (permission_conditions)))
-            .where(
-                (cls.model.status == 1)
-                & (Permission.id.is_null(False))
-            )
+            .where((cls.model.status == 1) & (Permission.id.is_null(False)))
         )
         return list(query.dicts())
 
@@ -138,10 +135,8 @@ class TenantLLMService(CommonService):
     @classmethod
     @DB.connection_context()
     def get_my_llms(cls, tenant_id):
-        fields = [cls.model.id, cls.model.llm_factory, LLMFactories.logo, LLMFactories.tags, cls.model.model_type, cls.model.llm_name,
-                  cls.model.used_tokens, cls.model.status]
-        query = cls.model.select(*fields).join(LLMFactories, on=(cls.model.llm_factory == LLMFactories.name)).where(
-            cls.model.tenant_id == tenant_id, ~cls.model.api_key.is_null())
+        fields = [cls.model.id, cls.model.llm_factory, LLMFactories.logo, LLMFactories.tags, cls.model.model_type, cls.model.llm_name, cls.model.used_tokens, cls.model.status]
+        query = cls.model.select(*fields).join(LLMFactories, on=(cls.model.llm_factory == LLMFactories.name)).where(cls.model.tenant_id == tenant_id, ~cls.model.api_key.is_null())
 
         # Builtin embedding models are backed by TEI. Hide them when TEI is disabled.
         tei_model = get_enabled_tei_model()
@@ -149,9 +144,7 @@ class TenantLLMService(CommonService):
             query = query.where(cls.model.llm_factory != "Builtin")
         if tei_model:
             # Filter out other Builtin models that don't match TEI_MODEL
-            query = query.where(
-                ~((cls.model.llm_factory == "Builtin") & (cls.model.llm_name != tei_model))
-            )
+            query = query.where(~((cls.model.llm_factory == "Builtin") & (cls.model.llm_name != tei_model)))
 
         objs = query.dicts()
         return list(objs)
@@ -256,12 +249,7 @@ class TenantLLMService(CommonService):
             if is_tools is not None:
                 model_config["is_tools"] = is_tools
 
-        elif (
-            llm_type == LLMType.EMBEDDING
-            and fid == "Builtin"
-            and is_tei_enabled()
-            and mdlnm == get_enabled_tei_model()
-        ):
+        elif llm_type == LLMType.EMBEDDING and fid == "Builtin" and is_tei_enabled() and mdlnm == get_enabled_tei_model():
             embedding_cfg = settings.EMBEDDING_CFG
             model_config = {
                 "llm_factory": "Builtin",
@@ -272,9 +260,7 @@ class TenantLLMService(CommonService):
 
         else:
             if llm_type in [LLMType.EMBEDDING, LLMType.RERANK]:
-                llm = LLMService.query(llm_name=mdlnm) if not fid else LLMService.query(
-                    llm_name=mdlnm, fid=fid
-                )
+                llm = LLMService.query(llm_name=mdlnm) if not fid else LLMService.query(llm_name=mdlnm, fid=fid)
                 if llm and llm[0].fid in ["Youdao", "FastEmbed", "BAAI"]:
                     model_config = {
                         "llm_factory": llm[0].fid,
@@ -296,9 +282,7 @@ class TenantLLMService(CommonService):
                         raise LookupError(f"Type of {llm_type} model is not set.")
                     raise LookupError(f"Model({mdlnm}@{fid}) not authorized")
 
-        llm = LLMService.query(llm_name=mdlnm) if not fid else LLMService.query(
-            llm_name=mdlnm, fid=fid
-        )
+        llm = LLMService.query(llm_name=mdlnm) if not fid else LLMService.query(llm_name=mdlnm, fid=fid)
         if not llm and fid:
             llm = LLMService.query(llm_name=mdlnm)
         if "is_tools" not in model_config and llm:
@@ -634,27 +618,15 @@ class TenantLLMService(CommonService):
     @classmethod
     @DB.connection_context()
     def all_llm(cls):
-        fields = [
-            cls.model.llm_name,
-            cls.model.model_type,
-            cls.model.llm_factory.alias("fid")
-        ]
+        fields = [cls.model.llm_name, cls.model.model_type, cls.model.llm_factory.alias("fid")]
         objs = cls.model.select(*fields).distinct().dicts()
         return list(objs)
 
     @classmethod
     @DB.connection_context()
     def reset_all_default_model(cls, llm):
-        cls.model.update(
-            llm_factory=llm.llm_factory,
-            llm_name=llm.llm_name,
-            model_type=llm.model_type,
-            api_key=llm.api_key,
-            api_base=llm.api_base,
-            max_tokens=llm.max_tokens
-        ).where(
-            cls.model.llm_factory == llm.llm_factory,
-            cls.model.llm_name == llm.llm_name
+        cls.model.update(llm_factory=llm.llm_factory, llm_name=llm.llm_name, model_type=llm.model_type, api_key=llm.api_key, api_base=llm.api_base, max_tokens=llm.max_tokens).where(
+            cls.model.llm_factory == llm.llm_factory, cls.model.llm_name == llm.llm_name
         ).execute()
         _llm = llm.to_dict()
         llm_type = llm.model_type
@@ -682,12 +654,8 @@ class TenantLLMService(CommonService):
             for k in _info.keys():
                 _info[k] += "#" + t.id
             TenantService.update_by_id(t.id, _info)
-            
-            if cls.model.select().where(
-                cls.model.tenant_id == t.id,
-                cls.model.llm_factory == llm.llm_factory,
-                cls.model.llm_name == llm.llm_name
-            ).count() > 0:
+
+            if cls.model.select().where(cls.model.tenant_id == t.id, cls.model.llm_factory == llm.llm_factory, cls.model.llm_name == llm.llm_name).count() > 0:
                 continue
             _llm["tenant_id"] = t.id
             _llm.pop("id", None)

@@ -36,6 +36,7 @@ def _add_baseline_chunk(auth, dataset_id, document_id):
     if res.get("code") != 0:
         raise RuntimeError(f"add_chunk failed: {res}")
 
+
 @pytest.fixture(scope="class")
 def add_chunks(HttpApiAuth, add_document):
     dataset_id, document_id = add_document

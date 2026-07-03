@@ -34,7 +34,7 @@ for repo_id in all_repo_ids:
     model_name = repo_id.split("/")[-1]
     model_dir = os.path.join(hugging_dir, model_name)
     os.mkdir(model_dir)
-    extra_files = [item for item in pathlib.Path(snapshot_dir).iterdir() if item.is_file() and 'onnx' not in item.name]
+    extra_files = [item for item in pathlib.Path(snapshot_dir).iterdir() if item.is_file() and "onnx" not in item.name]
     for extra_file in extra_files:
         shutil.copy(str(extra_file), os.path.join(model_dir, extra_file.name))
     extra_dirs = [item for item in pathlib.Path(snapshot_dir).iterdir() if item.is_dir() and item.name != "onnx"]

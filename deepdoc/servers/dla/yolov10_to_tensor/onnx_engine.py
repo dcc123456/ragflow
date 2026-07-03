@@ -1,4 +1,5 @@
 """ONNX Runtime engine wrapper for CPU inference"""
+
 import numpy as np
 import onnxruntime as ort
 
@@ -13,11 +14,7 @@ class ONNXEngine:
         self.model_path = model_path
 
         # Create ONNX Runtime session with CPU provider
-        self.session = ort.InferenceSession(
-            model_path,
-            providers=['CPUExecutionProvider'],
-            sess_options=self._create_session_options()
-        )
+        self.session = ort.InferenceSession(model_path, providers=["CPUExecutionProvider"], sess_options=self._create_session_options())
 
         # Get model info
         self.input_name = self.session.get_inputs()[0].name

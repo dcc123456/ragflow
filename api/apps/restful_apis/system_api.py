@@ -42,9 +42,11 @@ def _is_email_verification_enabled() -> bool:
         return load_value_from_string(record.value, record.data_type)
     return False
 
+
 @manager.route("/system/ping", methods=["GET"])  # noqa: F821
 async def ping():
     return "pong", 200
+
 
 @manager.route("/system/version", methods=["GET"])  # noqa: F821
 def version():
@@ -204,13 +206,7 @@ def oceanbase_status():
         status_info = get_oceanbase_status()
         return get_json_result(data=status_info)
     except Exception as e:
-        return get_json_result(
-            data={
-                "status": "error",
-                "message": f"Failed to get OceanBase status: {str(e)}"
-            },
-            code=500
-        )
+        return get_json_result(data={"status": "error", "message": f"Failed to get OceanBase status: {str(e)}"}, code=500)
 
 
 @manager.route("/system/config", methods=["GET"])  # noqa: F821
@@ -230,16 +226,20 @@ def get_config():
                         type: integer 0 means disabled, 1 means enabled
                         description: Whether user registration is enabled
     """
-    return get_json_result(data={
-        "registerEnabled": settings.REGISTER_ENABLED,
-        "disablePasswordLogin": settings.DISABLE_PASSWORD_LOGIN,
-        "emailVerificationEnabled": _is_email_verification_enabled(),
-    })
+    return get_json_result(
+        data={
+            "registerEnabled": settings.REGISTER_ENABLED,
+            "disablePasswordLogin": settings.DISABLE_PASSWORD_LOGIN,
+            "emailVerificationEnabled": _is_email_verification_enabled(),
+        }
+    )
+
 
 @manager.route("/system/healthz", methods=["GET"])  # noqa: F821
 def healthz():
     result, all_ok = run_health_checks()
     return jsonify(result), (200 if all_ok else 500)
+
 
 @manager.route("/system/tokens", methods=["GET"])  # noqa: F821
 @login_required
@@ -337,6 +337,7 @@ def new_token():
         # Sync new API token to Redis for Nginx Lua rate limiter
         try:
             from common.billing_rate_limit_sync import sync_api_token
+
             sync_api_token(obj["token"], tenant_id)
         except Exception:
             pass
@@ -383,6 +384,7 @@ def rm(token):
         # Remove API token from Redis rate limiter cache
         try:
             from common.billing_rate_limit_sync import remove_api_token
+
             remove_api_token(token)
         except Exception:
             pass
@@ -433,6 +435,7 @@ async def set_logger_level():
             description: Log level updated successfully
     """
     from quart import request
+
     data = await request.get_json()
     if not data or "pkg_name" not in data or "level" not in data:
         return get_data_error_result(message="pkg_name and level are required")

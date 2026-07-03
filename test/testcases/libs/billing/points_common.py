@@ -62,6 +62,7 @@ def load_points_runtime_config() -> dict[str, Any]:
         "points_per_unit": points_per_unit,
     }
 
+
 def cal_available_points(points_balance: dict[str, Any]) -> dict[str, Any]:
     """
     Add available_points field to points_balance dict.
@@ -107,6 +108,7 @@ def cal_available_points(points_balance: dict[str, Any]) -> dict[str, Any]:
     points_balance["available_points"] = available_points
     return points_balance
 
+
 class PointsClient(BillingClient):
     """HTTP client for RAGFlow billing APIs used by points flows."""
 
@@ -119,9 +121,7 @@ class PointsClient(BillingClient):
         try:
             payload = response.json()
         except ValueError as exc:
-            raise FlowError(
-                f"GET /billing/points/balance returned non-JSON status={response.status_code}: {response.text[:500]}"
-            ) from exc
+            raise FlowError(f"GET /billing/points/balance returned non-JSON status={response.status_code}: {response.text[:500]}") from exc
         if response.status_code >= 400 or payload.get("code") not in (0, None):
             raise FlowError(f"GET /billing/points/balance failed status={response.status_code}: {payload}")
         points = payload["data"]
@@ -136,9 +136,7 @@ class PointsClient(BillingClient):
         try:
             payload = response.json()
         except ValueError as exc:
-            raise FlowError(
-                f"GET /billing/points/ledger returned non-JSON status={response.status_code}: {response.text[:500]}"
-            ) from exc
+            raise FlowError(f"GET /billing/points/ledger returned non-JSON status={response.status_code}: {response.text[:500]}") from exc
         if response.status_code >= 400 or payload.get("code") not in (0, None):
             raise FlowError(f"GET /billing/points/ledger failed status={response.status_code}: {payload}")
         return payload["data"]
@@ -158,9 +156,7 @@ class PointsClient(BillingClient):
         try:
             payload = response.json()
         except ValueError as exc:
-            raise FlowError(
-                f"POST /billing/points/checkout returned non-JSON status={response.status_code}: {response.text[:500]}"
-            ) from exc
+            raise FlowError(f"POST /billing/points/checkout returned non-JSON status={response.status_code}: {response.text[:500]}") from exc
         if response.status_code >= 400 or payload.get("code") not in (0, None):
             raise FlowError(f"POST /billing/points/checkout failed status={response.status_code}: {payload}")
         return payload["data"]
@@ -180,9 +176,7 @@ class PointsClient(BillingClient):
         try:
             payload = response.json()
         except ValueError as exc:
-            raise FlowError(
-                f"POST /billing/points/checkout returned non-JSON status={response.status_code}: {response.text[:500]}"
-            ) from exc
+            raise FlowError(f"POST /billing/points/checkout returned non-JSON status={response.status_code}: {response.text[:500]}") from exc
         return {"status_code": response.status_code, "payload": payload}
 
     def create_points_checkout_session(self, unit_amount: int, points_per_unit: int) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -194,13 +188,12 @@ class PointsClient(BillingClient):
         session = select_points_checkout_session(sessions, tenant_id=self.tenant_id, unit_amount=unit_amount, points_per_unit=points_per_unit)
         return checkout, session
 
-
     def complete_points_purchase_via_synthetic_webhook(
-            self,
-            points_to_buy: int,
-            points_per_unit: int,
-            event_id: str | None = None,
-            payment_intent_id: str | None = None,
+        self,
+        points_to_buy: int,
+        points_per_unit: int,
+        event_id: str | None = None,
+        payment_intent_id: str | None = None,
     ) -> dict[str, Any]:
         unit_amount = int(points_to_buy / points_per_unit)
         _, session = self.create_points_checkout_session(unit_amount, points_per_unit)
@@ -215,11 +208,11 @@ class PointsClient(BillingClient):
         return session
 
     def complete_points_purchase(
-            self,
-            points_to_buy: int,
-            points_per_unit: int,
-            event_id: str | None = None,
-            payment_intent_id: str | None = None,
+        self,
+        points_to_buy: int,
+        points_per_unit: int,
+        event_id: str | None = None,
+        payment_intent_id: str | None = None,
     ) -> dict[str, Any]:
         """
         Legacy compatibility wrapper.

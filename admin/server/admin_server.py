@@ -44,15 +44,15 @@ from admin.server.admin_metrics import admin_metrics_worker
 
 stop_event = threading.Event()
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     faulthandler.enable()
     init_root_logger("admin_service")
     logging.info(r"""
-        ____  ___   ______________                 ___       __          _     
-       / __ \/   | / ____/ ____/ /___ _      __   /   | ____/ /___ ___  (_)___ 
+        ____  ___   ______________                 ___       __          _
+       / __ \/   | / ____/ ____/ /___ _      __   /   | ____/ /___ ___  (_)___
       / /_/ / /| |/ / __/ /_  / / __ \ | /| / /  / /| |/ __  / __ `__ \/ / __ \
      / _, _/ ___ / /_/ / __/ / / /_/ / |/ |/ /  / ___ / /_/ / / / / / / / / / /
-    /_/ |_/_/  |_\____/_/   /_/\____/|__/|__/  /_/  |_\__,_/_/ /_/ /_/_/_/ /_/ 
+    /_/ |_/_/  |_\____/_/   /_/\____/|__/|__/  /_/  |_\__,_/_/ /_/ /_/_/_/ /_/
     """)
 
     app = Flask(__name__)
@@ -81,7 +81,6 @@ if __name__ == '__main__':
         """
         return "", 200
 
-
     # Readiness probe: comprehensive health check including all dependencies
     @app.route("/healthz", methods=["GET"])
     def healthz():
@@ -90,6 +89,7 @@ if __name__ == '__main__':
         Returns health status of all dependencies (DB, Redis, storage, etc.)
         """
         from api.db.db_models import DB
+
         with DB.connection_context():
             result, all_ok = run_health_checks()
         if all_ok:
@@ -98,38 +98,31 @@ if __name__ == '__main__':
             logging.warn(f"healthz result: {result}, all_ok: {all_ok}")
         return jsonify(result), (200 if all_ok else 500)
 
-
     @app.get("/metrics")
     def metrics():
         data = generate_latest()
-        return Response(
-            response=data,
-            status=200,
-            content_type=CONTENT_TYPE_LATEST
-        )
-
+        return Response(response=data, status=200, content_type=CONTENT_TYPE_LATEST)
 
     app.register_blueprint(admin_bp)
     app.config["SESSION_PERMANENT"] = False
     app.config["SESSION_TYPE"] = "filesystem"
-    app.config["MAX_CONTENT_LENGTH"] = int(
-        os.environ.get("MAX_CONTENT_LENGTH", 1024 * 1024 * 1024)
-    )
+    app.config["MAX_CONTENT_LENGTH"] = int(os.environ.get("MAX_CONTENT_LENGTH", 1024 * 1024 * 1024))
     # Initialize settings to get SECRET_KEY before Session is configured
     settings.init_settings()
     app.secret_key = settings.get_secret_key()
     Session(app)
-    logging.info(f'RAGFlow admin version: {get_ragflow_version()}')
+    logging.info(f"RAGFlow admin version: {get_ragflow_version()}")
     show_configs()
     login_manager = LoginManager()
     login_manager.init_app(app)
     # Ensure SECRET_KEY is properly set for auth module
     from common import settings as _settings
     from admin.server import auth as _auth
+
     _auth.settings = _settings
     setup_auth(login_manager)
     init_default_admin()
-    #init_user_role()
+    # init_user_role()
     SERVICE_CONFIGS.configs = load_configurations(SERVICE_CONF)
 
     admin_metrics_thread = threading.Thread(target=admin_metrics_worker, args=(60,), daemon=True)

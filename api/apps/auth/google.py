@@ -53,9 +53,7 @@ class GoogleOAuthClient(OAuthClient):
         """
         headers = {"Authorization": f"Bearer {access_token}"}
         try:
-            response = sync_request(
-                "GET", self.userinfo_url, headers=headers, timeout=self.http_request_timeout
-            )
+            response = sync_request("GET", self.userinfo_url, headers=headers, timeout=self.http_request_timeout)
             response.raise_for_status()
             return self.normalize_user_info(response.json())
         except Exception as e:

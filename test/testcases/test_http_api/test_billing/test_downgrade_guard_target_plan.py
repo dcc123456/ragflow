@@ -23,13 +23,15 @@ logger = logging.getLogger(__name__)
 # helpers
 # ---------------------------------------------------------------------------
 
+
 def _advance_to_hours_before_period_end(client, hours_before: int):
     """Advance test clock to `hours_before` hours before current period end."""
     plan = client.current_plan()
     end_ts = parse_plan_end(plan)
     target_ts = end_ts - (hours_before * 3600)
     stripe.test_helpers.TestClock.advance(
-        client.clock_id, frozen_time=target_ts,
+        client.clock_id,
+        frozen_time=target_ts,
     )
     deadline = time.time() + 60
     while time.time() < deadline:
@@ -44,7 +46,8 @@ def _advance_past_period_end(client, offset_seconds: int = 3600):
     plan = client.current_plan()
     end_ts = parse_plan_end(plan)
     stripe.test_helpers.TestClock.advance(
-        client.clock_id, frozen_time=end_ts + offset_seconds,
+        client.clock_id,
+        frozen_time=end_ts + offset_seconds,
     )
     deadline = time.time() + 60
     while time.time() < deadline:
@@ -57,6 +60,7 @@ def _advance_past_period_end(client, offset_seconds: int = 3600):
 # ---------------------------------------------------------------------------
 # tests
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.billing
 class TestTargetPlanNamePlanDowngrade:
@@ -75,10 +79,8 @@ class TestTargetPlanNamePlanDowngrade:
 
         # Verify: target_plan_name written, plan still Starter
         plan = client.current_plan()
-        assert plan.get("target_plan_name") == "Trial", \
-            f"target_plan_name should be Trial, got {plan.get('target_plan_name')}"
-        assert plan.get("plan_name") == "Starter", \
-            f"plan_name should still be Starter, got {plan.get('plan_name')}"
+        assert plan.get("target_plan_name") == "Trial", f"target_plan_name should be Trial, got {plan.get('target_plan_name')}"
+        assert plan.get("plan_name") == "Starter", f"plan_name should still be Starter, got {plan.get('plan_name')}"
         logger.info("PASS: target_plan_name=Trial, plan_name=Starter")
 
     def test_cleared_after_downgrade_effective(self, billing_client):
@@ -93,10 +95,12 @@ class TestTargetPlanNamePlanDowngrade:
         assert client.current_plan().get("target_plan_name") == "Trial"
 
         # ── Advance clock past period end ──
-        _advance_past_period_end(client,offset_seconds=3600)
+        _advance_past_period_end(client, offset_seconds=3600)
         sid = client.current_plan().get("subscription_id", "")
         client.sync_webhooks(
-            subscription_ids={sid}, created_gte=int(time.time()) - 120, wait_seconds=12,
+            subscription_ids={sid},
+            created_gte=int(time.time()) - 120,
+            wait_seconds=12,
         )
 
         # ── Wait for plan to become Trial ──
@@ -104,10 +108,8 @@ class TestTargetPlanNamePlanDowngrade:
 
         # Verify: cleared
         plan = client.current_plan()
-        assert plan.get("plan_name") == "Trial", \
-            f"plan should be Trial, got {plan.get('plan_name')}"
-        assert plan.get("target_plan_name") is None, \
-            f"target_plan_name should be None, got {plan.get('target_plan_name')}"
+        assert plan.get("plan_name") == "Trial", f"plan should be Trial, got {plan.get('plan_name')}"
+        assert plan.get("target_plan_name") is None, f"target_plan_name should be None, got {plan.get('target_plan_name')}"
         logger.info("PASS: target_plan_name cleared after downgrade effective")
 
 
@@ -130,19 +132,15 @@ class TestTargetPlanNameStorageDowngrade:
 
         # ── Schedule storage downgrade 40GB → 20GB ──
         resp = client.storage_set_target(20 * 1000**3)
-        assert resp.get("scheduled_change"), \
-            f"Expected scheduled_change in response, got {resp}"
+        assert resp.get("scheduled_change"), f"Expected scheduled_change in response, got {resp}"
 
         # Verify via API: downgrade target is set (less than current addon)
         storage = client.storage_current()
         target = storage.get("target_storage_bytes") or 0
-        assert target < addon_bytes, \
-            f"target_storage_bytes should be < 40GB, got {target}"
-        assert storage.get("addon_storage_bytes") == addon_bytes, \
-            "addon_storage_bytes should still be 40GB"
+        assert target < addon_bytes, f"target_storage_bytes should be < 40GB, got {target}"
+        assert storage.get("addon_storage_bytes") == addon_bytes, "addon_storage_bytes should still be 40GB"
         plan = client.current_plan()
-        assert plan.get("target_plan_name") is None, \
-            "target_plan_name should be None (plan not downgraded)"
+        assert plan.get("target_plan_name") is None, "target_plan_name should be None (plan not downgraded)"
         logger.info("PASS: target_storage_bytes=%d < addon=%d, target_plan_name=None", target, addon_bytes)
 
     def test_storage_downgrade_20gb_to_0gb(self, billing_client):
@@ -157,13 +155,11 @@ class TestTargetPlanNameStorageDowngrade:
 
         # ── Schedule storage downgrade 20GB → 0GB ──
         resp = client.storage_set_target(0)
-        assert resp.get("scheduled_change"), \
-            f"Expected scheduled_change, got {resp}"
+        assert resp.get("scheduled_change"), f"Expected scheduled_change, got {resp}"
 
         storage = client.storage_current()
         target = storage.get("target_storage_bytes") or 0
-        assert target < storage.get("addon_storage_bytes", 0), \
-            f"target_storage_bytes should be < addon, got target={target} addon={storage.get('addon_storage_bytes')}"
+        assert target < storage.get("addon_storage_bytes", 0), f"target_storage_bytes should be < addon, got target={target} addon={storage.get('addon_storage_bytes')}"
         logger.info("PASS: target_storage_bytes < addon (downgrade scheduled)")
 
     def test_storage_target_cleared_after_effective(self, billing_client):
@@ -175,18 +171,21 @@ class TestTargetPlanNameStorageDowngrade:
             storage_quantity_gb=40,
             subscription_ids={client.current_plan().get("subscription_id", "")},
         )
-        addon_before = (client.storage_current().get("addon_storage_bytes") or 0)
+        addon_before = client.storage_current().get("addon_storage_bytes") or 0
         client.storage_set_target(20 * 1000**3)
 
         # ── Advance past period end ──
         _advance_past_period_end(client, offset_seconds=3600)
         sid = client.current_plan().get("subscription_id", "")
         client.sync_webhooks(
-            subscription_ids={sid}, created_gte=int(time.time()) - 120, wait_seconds=12,
+            subscription_ids={sid},
+            created_gte=int(time.time()) - 120,
+            wait_seconds=12,
         )
 
         # Verify: addon reduced
         import time as _t
+
         deadline = _t.time() + 180
         storage = {}
         while _t.time() < deadline:
@@ -194,8 +193,7 @@ class TestTargetPlanNameStorageDowngrade:
             if (storage.get("addon_storage_bytes") or 0) < addon_before:
                 break
             _t.sleep(3)
-        assert (storage.get("addon_storage_bytes") or 0) < addon_before, \
-            f"addon should have decreased from {addon_before}, got {storage.get('addon_storage_bytes')}"
+        assert (storage.get("addon_storage_bytes") or 0) < addon_before, f"addon should have decreased from {addon_before}, got {storage.get('addon_storage_bytes')}"
         logger.info("PASS: storage downgrade effective, target cleared")
 
 
@@ -221,12 +219,10 @@ class TestTargetPlanNameCombined:
         # Verify both fields via API
         plan = client.current_plan()
         storage = client.storage_current()
-        assert plan.get("target_plan_name") == "Trial", \
-            f"target_plan_name should be Trial, got {plan.get('target_plan_name')}"
+        assert plan.get("target_plan_name") == "Trial", f"target_plan_name should be Trial, got {plan.get('target_plan_name')}"
         addon = storage.get("addon_storage_bytes") or 0
         target = storage.get("target_storage_bytes") or 0
-        assert target < addon, \
-            f"target_storage_bytes should be < addon, got target={target} addon={addon}"
+        assert target < addon, f"target_storage_bytes should be < addon, got target={target} addon={addon}"
         logger.info("PASS: combined downgrade: target_plan_name=Trial, target_storage_bytes < addon")
 
 
@@ -243,6 +239,7 @@ class TestWebhookDefenseStorageExceeded:
         """
         import uuid as _uuid
         from libs.billing.billing_common import prepare_backend_imports
+
         prepare_backend_imports()
         from api.db.db_models import DB, File as FileModel
         from api.db.services.file_service import FileService
@@ -260,16 +257,18 @@ class TestWebhookDefenseStorageExceeded:
 
         # ── Inject a fake file (30 GB) to exceed 5GB base + 20GB addon ──
         fid = _uuid.uuid4().hex
-        FileService.insert({
-            "id": fid,
-            "tenant_id": tid,
-            "parent_id": tid,
-            "created_by": _uuid.uuid4().hex,
-            "name": f"dg-test-{_uuid.uuid4().hex[:8]}.bin",
-            "location": "",
-            "size": 30 * 1000**3,
-            "type": "bin",
-        })
+        FileService.insert(
+            {
+                "id": fid,
+                "tenant_id": tid,
+                "parent_id": tid,
+                "created_by": _uuid.uuid4().hex,
+                "name": f"dg-test-{_uuid.uuid4().hex[:8]}.bin",
+                "location": "",
+                "size": 30 * 1000**3,
+                "type": "bin",
+            }
+        )
 
         # ── Read metric before ──
         status = client.request_json("GET", "/billing/downgrade-guard/health")
@@ -279,14 +278,15 @@ class TestWebhookDefenseStorageExceeded:
         _advance_past_period_end(client, offset_seconds=3600)
         sid = client.current_plan().get("subscription_id", "")
         client.sync_webhooks(
-            subscription_ids={sid}, created_gte=int(time.time()) - 120, wait_seconds=12,
+            subscription_ids={sid},
+            created_gte=int(time.time()) - 120,
+            wait_seconds=12,
         )
 
         # ── Verify webhook defense fired ──
         status_after = client.request_json("GET", "/billing/downgrade-guard/health")
         violations_after = status_after.get("metrics", {}).get("webhook_violations_total", 0)
-        assert violations_after > violations_before, \
-            f"webhook_violations_total must increment: {violations_before} → {violations_after}"
+        assert violations_after > violations_before, f"webhook_violations_total must increment: {violations_before} → {violations_after}"
         logger.info("PASS: defense detected exceeded: %d→%d", violations_before, violations_after)
 
         # ── Cleanup: remove injected file ──

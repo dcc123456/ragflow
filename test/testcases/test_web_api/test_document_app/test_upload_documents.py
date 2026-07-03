@@ -24,6 +24,7 @@ from utils.file_utils import create_txt_file
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+
 @pytest.mark.p1
 @pytest.mark.usefixtures("clear_datasets")
 class TestAuthorization:

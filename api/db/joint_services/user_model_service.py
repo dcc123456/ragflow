@@ -19,14 +19,7 @@ from api.db.services.role_model_service import RoleDefaultModelService
 
 
 def get_user_default_model(user_id: str, model_type: str):
-    tenant_attr_name_map: dict = {
-        ModelType.LLM: "llm_id",
-        ModelType.EMBEDDING: "embd_id",
-        ModelType.VLM: "img2txt_id",
-        ModelType.ASR: "asr_id",
-        ModelType.RERANK: "rerank_id",
-        ModelType.TTS: "tts_id"
-    }
+    tenant_attr_name_map: dict = {ModelType.LLM: "llm_id", ModelType.EMBEDDING: "embd_id", ModelType.VLM: "img2txt_id", ModelType.ASR: "asr_id", ModelType.RERANK: "rerank_id", ModelType.TTS: "tts_id"}
     tenant_info_list = TenantService.get_info_by(user_id)
     if tenant_info_list:
         tenant_info = tenant_info_list[0]

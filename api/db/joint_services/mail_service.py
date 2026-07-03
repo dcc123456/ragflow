@@ -20,6 +20,7 @@ from quart import render_template_string
 from api.utils.email_templates import EMAIL_TEMPLATES
 from api.db.services.system_settings_service import SystemSettingsService
 
+
 async def send_email_html(to_email: str, subject: str, template_key: str, **context):
 
     body = await render_template_string(EMAIL_TEMPLATES.get(template_key), **context)
@@ -28,7 +29,7 @@ async def send_email_html(to_email: str, subject: str, template_key: str, **cont
     mail_config = SystemSettingsService.get_smtp_config()
     if not mail_config or not mail_config.get("mail_server"):
         raise Exception("SMTP config is not set")
-    msg["From"] = mail_config['mail_default_sender']
+    msg["From"] = mail_config["mail_default_sender"]
     msg["To"] = to_email
 
     smtp = aiosmtplib.SMTP(

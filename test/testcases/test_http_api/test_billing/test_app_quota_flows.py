@@ -46,6 +46,7 @@ logger = logging.getLogger(__name__)
 # AppClient fixture
 # -----------------------------------------------------------------------------
 
+
 @pytest.fixture
 def app_client(
     billing_runtime_config,
@@ -90,6 +91,7 @@ def app_client(
 
     # Bootstrap: register and login
     from libs.billing.storage_common import attach_default_test_card
+
     user_id, tenant_id = client.register_and_login(email, "Test1234!")
     client.customer_id = str(client.customer_id or "")
 
@@ -111,6 +113,7 @@ def app_client(
     # Cleanup
     try:
         from libs.billing.billing_common import delete_clock
+
         delete_clock(clock_id)
     except Exception as exc:
         logger.warning("Failed to delete app test clock %s: %s", clock_id, exc)
@@ -121,6 +124,7 @@ def app_client(
 # -----------------------------------------------------------------------------
 # APP-01: Basic App Quota Enforcement Test
 # -----------------------------------------------------------------------------
+
 
 @pytest.mark.billing
 def test_app_01_basic_quota_enforcement(app_client):
@@ -149,12 +153,10 @@ def test_app_01_basic_quota_enforcement(app_client):
     # Verify Trial plan quota
     apps_quota = client.get_apps_quota_overview()
     assert apps_quota.get("limit") == trial_quota_apps, f"Expected Trial apps quota {trial_quota_apps}, got {apps_quota.get('limit')}"
-    logger.info("Assert: Apps quota from overview (Trial): %s/%s", apps_quota.get('used'), apps_quota.get('limit'))
+    logger.info("Assert: Apps quota from overview (Trial): %s/%s", apps_quota.get("used"), apps_quota.get("limit"))
 
     assert trial_quota_apps >= 1, f"Trial apps quota must be >= 1, got {trial_quota_apps}"
-    assert starter_quota_apps > trial_quota_apps, (
-        f"Starter apps quota must be greater than Trial for APP-01, got Trial={trial_quota_apps}, Starter={starter_quota_apps}"
-    )
+    assert starter_quota_apps > trial_quota_apps, f"Starter apps quota must be greater than Trial for APP-01, got Trial={trial_quota_apps}, Starter={starter_quota_apps}"
 
     trial_dataset_count = max(trial_quota_apps - 1, 0)
 
@@ -211,7 +213,7 @@ def test_app_01_basic_quota_enforcement(app_client):
     # Verify Starter plan quota
     apps_quota_starter = client.get_apps_quota_overview()
     assert apps_quota_starter.get("limit") == starter_quota_apps, f"Expected Starter apps quota {starter_quota_apps}, got {apps_quota_starter.get('limit')}"
-    logger.info("Assert: Apps quota from overview (Starter): %s", apps_quota_starter.get('limit'))
+    logger.info("Assert: Apps quota from overview (Starter): %s", apps_quota_starter.get("limit"))
 
     # Step 5: Create additional app resources until Starter quota is full
     starter_remaining = starter_quota_apps - trial_quota_apps
@@ -232,9 +234,7 @@ def test_app_01_basic_quota_enforcement(app_client):
         created_after_upgrade += 1
         logger.info("Assert: %s created successfully after upgrade", name)
 
-    assert created_after_upgrade == starter_remaining, (
-        f"Expected to consume {starter_remaining} Starter slots, created {created_after_upgrade}"
-    )
+    assert created_after_upgrade == starter_remaining, f"Expected to consume {starter_remaining} Starter slots, created {created_after_upgrade}"
 
     # Step 6: One more app beyond Starter quota should fail
     logger.info("Assert: Attempting to exceed Starter quota with one more chat")
@@ -248,7 +248,7 @@ def test_app_01_basic_quota_enforcement(app_client):
 
     # Final verification
     apps_quota_final = client.get_apps_quota_overview()
-    logger.info("Assert: Final apps quota: used=%s, limit=%s", apps_quota_final.get('used'), apps_quota_final.get('limit'))
+    logger.info("Assert: Final apps quota: used=%s, limit=%s", apps_quota_final.get("used"), apps_quota_final.get("limit"))
 
     logger.info("APP-01 PASSED")
 
@@ -256,6 +256,7 @@ def test_app_01_basic_quota_enforcement(app_client):
 # -----------------------------------------------------------------------------
 # APP-02: Downgrade Blocked by Resource Usage Test
 # -----------------------------------------------------------------------------
+
 
 @pytest.mark.billing
 def test_app_02_downgrade_blocked_by_resource_usage(app_client):
@@ -283,9 +284,7 @@ def test_app_02_downgrade_blocked_by_resource_usage(app_client):
     logger.info("Assert: Tenant ID: %s", client.tenant_id)
     logger.info("Assert: Customer ID: %s", client.customer_id)
 
-    assert starter_quota_apps > trial_quota_apps, (
-        f"Starter apps quota must be greater than Trial for APP-02, got Trial={trial_quota_apps}, Starter={starter_quota_apps}"
-    )
+    assert starter_quota_apps > trial_quota_apps, f"Starter apps quota must be greater than Trial for APP-02, got Trial={trial_quota_apps}, Starter={starter_quota_apps}"
 
     # Upgrade to Starter
     starter_subscription_id: str = client.upgrade_trial_to_starter()["subscription_id"]
@@ -294,7 +293,7 @@ def test_app_02_downgrade_blocked_by_resource_usage(app_client):
     # Verify Starter plan quota
     apps_quota = client.get_apps_quota_overview()
     assert apps_quota.get("limit") == starter_quota_apps, f"Expected Starter apps quota {starter_quota_apps}, got {apps_quota.get('limit')}"
-    logger.info("Assert: Apps quota from overview (Starter): %s/%s", apps_quota.get('used'), apps_quota.get('limit'))
+    logger.info("Assert: Apps quota from overview (Starter): %s/%s", apps_quota.get("used"), apps_quota.get("limit"))
 
     target_apps = trial_quota_apps + 1
     dataset_target = max(target_apps - 1, 0)
@@ -386,6 +385,6 @@ def test_app_02_downgrade_blocked_by_resource_usage(app_client):
     # Verify Trial plan quota
     apps_quota_final = client.get_apps_quota_overview()
     assert apps_quota_final.get("limit") == trial_quota_apps, f"Expected Trial apps quota {trial_quota_apps}, got {apps_quota_final.get('limit')}"
-    logger.info("Assert: Apps quota after downgrade (Trial): %s/%s", apps_quota_final.get('used'), apps_quota_final.get('limit'))
+    logger.info("Assert: Apps quota after downgrade (Trial): %s/%s", apps_quota_final.get("used"), apps_quota_final.get("limit"))
 
     logger.info("APP-02 PASSED")

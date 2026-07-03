@@ -22,6 +22,7 @@ from common.settings import print_rag_settings
 
 import sys
 import time
+
 # Initialize logging first
 init_root_logger("ragflow_server")
 from plugin import GlobalPluginManager
@@ -42,7 +43,7 @@ from rag.utils.redis_conn import RedisDistributedLock
 stop_event = threading.Event()
 background_executor = None
 
-RAGFLOW_DEBUGPY_LISTEN = int(os.environ.get('RAGFLOW_DEBUGPY_LISTEN', "0"))
+RAGFLOW_DEBUGPY_LISTEN = int(os.environ.get("RAGFLOW_DEBUGPY_LISTEN", "0"))
 
 
 def update_progress():
@@ -82,9 +83,7 @@ def initialize_ragflow():
     /_/ |_|/_/  |_|\____//_/    /_/ \____/ |__/|__/
 
     """)
-    logging.info(
-        f'project base: {get_project_base_directory()}'
-    )
+    logging.info(f"project base: {get_project_base_directory()}")
     show_configs()
     settings.init_settings()
     print_rag_settings()
@@ -92,6 +91,7 @@ def initialize_ragflow():
     if RAGFLOW_DEBUGPY_LISTEN > 0:
         logging.info(f"debugpy listen on {RAGFLOW_DEBUGPY_LISTEN}")
         import debugpy
+
         debugpy.listen(("0.0.0.0", RAGFLOW_DEBUGPY_LISTEN))
 
     # init db
@@ -116,6 +116,7 @@ def initialize_ragflow():
             logging.info("Downgrade guard disabled via DOWNGRADE_GUARD_ENABLED=false")
             return
         from api.services.downgrade_guard import DowngradeGuard, send_startup_test_email
+
         guard = DowngradeGuard()
         threading.Thread(target=guard.run_daily_scan, daemon=True, name="downgrade-daily").start()
         threading.Thread(target=guard.run_high_freq_check, daemon=True, name="downgrade-hf").start()

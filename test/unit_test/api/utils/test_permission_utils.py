@@ -72,12 +72,7 @@ class _FakeQuery:
         self.reject_status_filter = reject_status_filter
 
     def where(self, expr):
-        if self.reject_status_filter and expr.contains(
-            lambda node: node.op == "eq"
-            and len(node.parts) == 2
-            and node.parts[0] == "status"
-            and node.parts[1] == StatusEnum.VALID.value
-        ):
+        if self.reject_status_filter and expr.contains(lambda node: node.op == "eq" and len(node.parts) == 2 and node.parts[0] == "status" and node.parts[1] == StatusEnum.VALID.value):
             raise AssertionError("Document status filter should not be applied when resolving visible documents.")
         allowed_ids = expr.find_in_values("id")
         if allowed_ids is not None:
@@ -177,9 +172,7 @@ def test_check_dialog_permission_accepts_path_chat_id(monkeypatch):
     monkeypatch.setitem(sys.modules, "api.utils.api_utils", api_utils_mod)
 
     dialog_service_mod = ModuleType("api.db.services.dialog_service")
-    dialog_service_mod.DialogService = SimpleNamespace(
-        query=lambda **_kwargs: [SimpleNamespace(tenant_id="tenant-1")]
-    )
+    dialog_service_mod.DialogService = SimpleNamespace(query=lambda **_kwargs: [SimpleNamespace(tenant_id="tenant-1")])
     monkeypatch.setitem(sys.modules, "api.db.services.dialog_service", dialog_service_mod)
 
     user_service_mod = ModuleType("api.db.services.user_service")
@@ -234,9 +227,7 @@ def test_check_dialog_permission_accepts_json_dialog_id(monkeypatch):
     monkeypatch.setitem(sys.modules, "api.utils.api_utils", api_utils_mod)
 
     dialog_service_mod = ModuleType("api.db.services.dialog_service")
-    dialog_service_mod.DialogService = SimpleNamespace(
-        query=lambda **_kwargs: [SimpleNamespace(tenant_id="tenant-1")]
-    )
+    dialog_service_mod.DialogService = SimpleNamespace(query=lambda **_kwargs: [SimpleNamespace(tenant_id="tenant-1")])
     monkeypatch.setitem(sys.modules, "api.db.services.dialog_service", dialog_service_mod)
 
     user_service_mod = ModuleType("api.db.services.user_service")
@@ -280,9 +271,7 @@ def test_check_dialog_permission_falls_back_to_owner_tenant(monkeypatch):
     monkeypatch.setitem(sys.modules, "api.utils.api_utils", api_utils_mod)
 
     dialog_service_mod = ModuleType("api.db.services.dialog_service")
-    dialog_service_mod.DialogService = SimpleNamespace(
-        query=lambda **kwargs: [SimpleNamespace(tenant_id="tenant-owner")] if kwargs["tenant_id"] == "tenant-owner" else []
-    )
+    dialog_service_mod.DialogService = SimpleNamespace(query=lambda **kwargs: [SimpleNamespace(tenant_id="tenant-owner")] if kwargs["tenant_id"] == "tenant-owner" else [])
     monkeypatch.setitem(sys.modules, "api.db.services.dialog_service", dialog_service_mod)
 
     user_service_mod = ModuleType("api.db.services.user_service")

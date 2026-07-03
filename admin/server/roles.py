@@ -38,33 +38,17 @@ class RoleMgr:
         # Check if the role name is already exist
         if RoleService.get_by_role_name(role_name):
             raise RoleAlreadyExistsError(role_name)
-        role_info = {
-            "role_name": role_name,
-            "description": description
-        }
+        role_info = {"role_name": role_name, "description": description}
         try:
             if RoleService.create_role(role_info):
                 inserted_roles = RoleService.get_by_role_name(role_name)
                 inserted_role = inserted_roles[0]
-                return {
-                    "success": True,
-                    "role_info": {
-                        "id": inserted_role["id"],
-                        "role_name": inserted_role["role_name"],
-                        "description": inserted_role["description"]
-                    }
-                }
+                return {"success": True, "role_info": {"id": inserted_role["id"], "role_name": inserted_role["role_name"], "description": inserted_role["description"]}}
             else:
-                return {
-                    "success": False,
-                    "message": "Create role failed."
-                }
+                return {"success": False, "message": "Create role failed."}
         except Exception as e:
             logging.error(e)
-            return {
-                "success": False,
-                "message": str(e)
-            }
+            return {"success": False, "message": str(e)}
 
     @staticmethod
     def update_role_description(role_name: str, description: str) -> Dict[str, Any]:
@@ -78,15 +62,9 @@ class RoleMgr:
             raise AdminException(f"More than one role {role_name} found!")
         role = roles[0]
         if description == role["description"]:
-            return {
-                "success": True,
-                "message": "Same description, no need to update!"
-            }
+            return {"success": True, "message": "Same description, no need to update!"}
         RoleService.update_role_description(role["id"], description)
-        return {
-            "success": True,
-            "message": "Description updated successfully!"
-        }
+        return {"success": True, "message": "Description updated successfully!"}
 
     @staticmethod
     def delete_role(role_name: str) -> Dict[str, Any]:
@@ -98,7 +76,7 @@ class RoleMgr:
         role = roles[0]
         user_in_use = UserService.query(role_id=role["id"])
         if user_in_use:
-            user_noun = 'user' if len(user_in_use) == 1 else 'users'
+            user_noun = "user" if len(user_in_use) == 1 else "users"
             raise AdminException(f"Role {role_name} is in use, {len(user_in_use)} {user_noun} are {role_name}, cannot delete it!")
         return delete_role_by_id(role["id"])
 
@@ -106,29 +84,26 @@ class RoleMgr:
     def list_roles() -> Dict[str, Any]:
         roles = RoleService.get_all_roles()
         return {
-            "roles": [{
-                "id": role["id"],
-                "role_name": role["role_name"],
-                "description": role["description"],
-                "create_date": role["create_date"],
-                "update_date": role["update_date"]
-            } for role in roles],
-            "total": len(roles)
+            "roles": [{"id": role["id"], "role_name": role["role_name"], "description": role["description"], "create_date": role["create_date"], "update_date": role["update_date"]} for role in roles],
+            "total": len(roles),
         }
 
     @staticmethod
     def list_roles_with_permission() -> Dict[str, Any]:
         roles = RoleService.get_all_roles()
         return {
-            "roles": [{
-                "id": role["id"],
-                "role_name": role["role_name"],
-                "description": role["description"],
-                "create_date": role["create_date"],
-                "update_date": role["update_date"],
-                "permissions": get_role_permissions_by_role_id(role["id"])
-            } for role in roles],
-            "total": len(roles)
+            "roles": [
+                {
+                    "id": role["id"],
+                    "role_name": role["role_name"],
+                    "description": role["description"],
+                    "create_date": role["create_date"],
+                    "update_date": role["update_date"],
+                    "permissions": get_role_permissions_by_role_id(role["id"]),
+                }
+                for role in roles
+            ],
+            "total": len(roles),
         }
 
     @staticmethod
@@ -146,7 +121,7 @@ class RoleMgr:
                 "role_name": role["role_name"],
                 "description": role["description"],
             },
-            "permissions": permissions
+            "permissions": permissions,
         }
 
     @staticmethod
@@ -224,22 +199,13 @@ class RoleMgr:
             raise AdminException(f"More than one role {role_name} found!")
         role = roles[0]
         if user.role_id == role["id"]:
-            return {
-                "success": True,
-                "message": f"User {user_name} has already updated to role {role_name}."
-            }
+            return {"success": True, "message": f"User {user_name} has already updated to role {role_name}."}
 
         try:
             UserService.update_user(user.id, {"role_id": role["id"]})
-            return {
-                "success": True,
-                "message": "User updated successfully!"
-            }
+            return {"success": True, "message": "User updated successfully!"}
         except Exception as e:
-            return {
-                "success": False,
-                "message": str(e)
-            }
+            return {"success": False, "message": str(e)}
 
     @staticmethod
     def get_user_permission(user_name: str) -> Dict[str, Any]:
@@ -261,12 +227,11 @@ class RoleMgr:
                 "role": role.role_name,
                 "description": role.description,
             },
-            "role_permissions": permissions
+            "role_permissions": permissions,
         }
 
 
 class RoleModelMgr:
-
     @staticmethod
     def get_role_default_models(role_name: str) -> dict:
         roles = RoleService.get_by_role_name(role_name)
@@ -277,23 +242,12 @@ class RoleModelMgr:
         role = roles[0]
         role_default_models = RoleDefaultModelService.get_by_role_id(role["id"])
         if not role_default_models:
-            return {
-                "model_list": [],
-                "setup_status": RoleDefaultModelSetUpStatusEnum.NOT_SET
-            }
+            return {"model_list": [], "setup_status": RoleDefaultModelSetUpStatusEnum.NOT_SET}
 
         setup_model_types = {m.model_type for m in role_default_models if m.model_id}
         not_setup_types = {mt.value for mt in ModelType} - setup_model_types
         setup_status = RoleDefaultModelSetUpStatusEnum.COMPLETE if not not_setup_types else RoleDefaultModelSetUpStatusEnum.PARTIAL
-        return {
-            "model_list": [{
-                "role_id": m.role_id,
-                "model_type": m.model_type,
-                "model_id": m.model_id,
-                "tenant_id": m.tenant_id
-            } for m in role_default_models],
-            "setup_status": setup_status
-        }
+        return {"model_list": [{"role_id": m.role_id, "model_type": m.model_type, "model_id": m.model_id, "tenant_id": m.tenant_id} for m in role_default_models], "setup_status": setup_status}
 
     @staticmethod
     def set_role_default_model(role_name: str, model_type: str, model_id: str, tenant_id: str):

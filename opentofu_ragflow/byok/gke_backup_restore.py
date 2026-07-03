@@ -39,13 +39,7 @@ from typing import Optional, Tuple
 
 def run_cmd(cmd: list, check: bool = True, capture_output: bool = True) -> subprocess.CompletedProcess:
     """Run a shell command and return the result."""
-    result = subprocess.run(
-        cmd,
-        capture_output=capture_output,
-        text=True,
-        check=False,
-        shell=isinstance(cmd, str)
-    )
+    result = subprocess.run(cmd, capture_output=capture_output, text=True, check=False, shell=isinstance(cmd, str))
     if check and result.returncode != 0:
         print(f"Error running command: {' '.join(cmd)}")
         print(f"stderr: {result.stderr}")
@@ -115,10 +109,7 @@ def check_prerequisites(projects: list) -> bool:
 def enable_api(project: str, api: str = "gkebackup.googleapis.com") -> bool:
     """Enable an API in the specified project."""
     print(f"Enabling {api} in project {project}...")
-    result = run_cmd(
-        ["gcloud", "services", "enable", api, "--project", project],
-        check=False
-    )
+    result = run_cmd(["gcloud", "services", "enable", api, "--project", project], check=False)
     if result.returncode == 0:
         print(f"  [OK] {api} enabled")
         return True
@@ -136,10 +127,7 @@ def get_cluster_info(project: str, cluster_name: str) -> Optional[Tuple[str, str
     Returns:
         Tuple of (location, cluster_path) or None if not found.
     """
-    result = run_cmd(
-        ["gcloud", "container", "clusters", "list", "--project", project, "--format", "json"],
-        check=False
-    )
+    result = run_cmd(["gcloud", "container", "clusters", "list", "--project", project, "--format", "json"], check=False)
 
     if result.returncode != 0:
         return None
@@ -160,10 +148,7 @@ def get_cluster_info(project: str, cluster_name: str) -> Optional[Tuple[str, str
 
 def list_clusters(project: str) -> list:
     """List all GKE clusters in the project."""
-    result = run_cmd(
-        ["gcloud", "container", "clusters", "list", "--project", project, "--format", "json"],
-        check=False
-    )
+    result = run_cmd(["gcloud", "container", "clusters", "list", "--project", project, "--format", "json"], check=False)
 
     if result.returncode != 0:
         print(f"  [FAIL] Failed to list clusters: {result.stderr}")
@@ -183,24 +168,14 @@ def create_service_account(project: str, name: str = "restore-sa") -> str:
     print(f"\nCreating service account {sa_email}...")
 
     # Check if SA already exists
-    result = run_cmd(
-        ["gcloud", "iam", "service-accounts", "describe", sa_email, "--project", project],
-        check=False
-    )
+    result = run_cmd(["gcloud", "iam", "service-accounts", "describe", sa_email, "--project", project], check=False)
 
     if result.returncode == 0:
         print("  [OK] Service account already exists")
         return sa_email
 
     # Create SA
-    result = run_cmd(
-        [
-            "gcloud", "iam", "service-accounts", "create", name,
-            "--display-name", "GKE Backup Restore SA",
-            "--project", project
-        ],
-        check=False
-    )
+    result = run_cmd(["gcloud", "iam", "service-accounts", "create", name, "--display-name", "GKE Backup Restore SA", "--project", project], check=False)
 
     if result.returncode == 0:
         print("  [OK] Service account created")
@@ -214,14 +189,7 @@ def grant_iam_role(project: str, member: str, role: str) -> bool:
     """Grant an IAM role to a member."""
     print(f"  Granting {role} to {member}...")
 
-    result = run_cmd(
-        [
-            "gcloud", "projects", "add-iam-policy-binding", project,
-            "--member", f"serviceAccount:{member}",
-            "--role", role
-        ],
-        check=False
-    )
+    result = run_cmd(["gcloud", "projects", "add-iam-policy-binding", project, "--member", f"serviceAccount:{member}", "--role", role], check=False)
 
     if result.returncode == 0:
         print("    [OK] Role granted")
@@ -234,23 +202,11 @@ def grant_iam_role(project: str, member: str, role: str) -> bool:
         return False
 
 
-def create_restore_channel(
-    source_project: str,
-    location: str,
-    destination_project: str,
-    channel_name: str = "restore-channel"
-) -> Tuple[bool, str]:
+def create_restore_channel(source_project: str, location: str, destination_project: str, channel_name: str = "restore-channel") -> Tuple[bool, str]:
     """Create a restore channel in the source project."""
 
     # Check if channel already exists
-    result = run_cmd(
-        [
-            "gcloud", "beta", "container", "backup-restore", "restore-channels", "list",
-            "--project", source_project,
-            "--format", "json"
-        ],
-        check=False
-    )
+    result = run_cmd(["gcloud", "beta", "container", "backup-restore", "restore-channels", "list", "--project", source_project, "--format", "json"], check=False)
 
     if result.returncode == 0:
         try:
@@ -259,7 +215,7 @@ def create_restore_channel(
                 if channel_name in ch.get("name", ""):
                     print(f"\nRestore channel '{channel_name}' already exists")
                     print(f"  [OK] Reusing existing channel: {ch['name']}")
-                    return True, ch['name']
+                    return True, ch["name"]
         except json.JSONDecodeError:
             pass
 
@@ -267,14 +223,23 @@ def create_restore_channel(
 
     result = run_cmd(
         [
-            "gcloud", "beta", "container", "backup-restore", "restore-channels", "create",
+            "gcloud",
+            "beta",
+            "container",
+            "backup-restore",
+            "restore-channels",
+            "create",
             channel_name,
-            "--project", source_project,
-            "--location", location,
-            "--destination-project", f"projects/{destination_project}",
-            "--description", f"Restore channel to {destination_project}"
+            "--project",
+            source_project,
+            "--location",
+            location,
+            "--destination-project",
+            f"projects/{destination_project}",
+            "--description",
+            f"Restore channel to {destination_project}",
         ],
-        check=False
+        check=False,
     )
 
     if result.returncode == 0:
@@ -289,14 +254,7 @@ def create_restore_channel(
 def get_restore_plan_config(destination_project: str, location: str, restore_plan_name: str) -> Optional[dict]:
     """Get restore plan configuration."""
     result = run_cmd(
-        [
-            "gcloud", "beta", "container", "backup-restore", "restore-plans", "describe",
-            restore_plan_name,
-            "--project", destination_project,
-            "--location", location,
-            "--format", "json"
-        ],
-        check=False
+        ["gcloud", "beta", "container", "backup-restore", "restore-plans", "describe", restore_plan_name, "--project", destination_project, "--location", location, "--format", "json"], check=False
     )
 
     if result.returncode == 0:
@@ -309,16 +267,7 @@ def get_restore_plan_config(destination_project: str, location: str, restore_pla
 
 def get_backup_plan_by_name(project: str, location: str, backup_plan_name: str) -> Optional[dict]:
     """Get backup plan info by name."""
-    result = run_cmd(
-        [
-            "gcloud", "beta", "container", "backup-restore", "backup-plans", "describe",
-            backup_plan_name,
-            "--project", project,
-            "--location", location,
-            "--format", "json"
-        ],
-        check=False
-    )
+    result = run_cmd(["gcloud", "beta", "container", "backup-restore", "backup-plans", "describe", backup_plan_name, "--project", project, "--location", location, "--format", "json"], check=False)
 
     if result.returncode == 0:
         try:
@@ -330,14 +279,7 @@ def get_backup_plan_by_name(project: str, location: str, backup_plan_name: str) 
 
 def list_backup_plans(project: str) -> list:
     """List all backup plans in project."""
-    result = run_cmd(
-        [
-            "gcloud", "beta", "container", "backup-restore", "backup-plans", "list",
-            "--project", project,
-            "--format", "json"
-        ],
-        check=False
-    )
+    result = run_cmd(["gcloud", "beta", "container", "backup-restore", "backup-plans", "list", "--project", project, "--format", "json"], check=False)
 
     if result.returncode == 0:
         try:
@@ -350,14 +292,7 @@ def list_backup_plans(project: str) -> list:
 def list_backups(project: str, location: str, backup_plan_name: str) -> list:
     """List all backups under a backup plan."""
     result = run_cmd(
-        [
-            "gcloud", "beta", "container", "backup-restore", "backups", "list",
-            "--project", project,
-            "--location", location,
-            "--backup-plan", backup_plan_name,
-            "--format", "json"
-        ],
-        check=False
+        ["gcloud", "beta", "container", "backup-restore", "backups", "list", "--project", project, "--location", location, "--backup-plan", backup_plan_name, "--format", "json"], check=False
     )
 
     if result.returncode == 0:
@@ -370,14 +305,7 @@ def list_backups(project: str, location: str, backup_plan_name: str) -> list:
 
 def list_restore_plans(project: str) -> list:
     """List all restore plans in project."""
-    result = run_cmd(
-        [
-            "gcloud", "beta", "container", "backup-restore", "restore-plans", "list",
-            "--project", project,
-            "--format", "json"
-        ],
-        check=False
-    )
+    result = run_cmd(["gcloud", "beta", "container", "backup-restore", "restore-plans", "list", "--project", project, "--format", "json"], check=False)
 
     if result.returncode == 0:
         try:
@@ -597,7 +525,7 @@ def build_exclusion_filter_template() -> str:
 
     for app_name in EXCLUDE_APP_LABELS:
         lines.append("- groupKind:")
-        lines.append("    resourceGroup: \"\"")
+        lines.append('    resourceGroup: ""')
         lines.append("    resourceKind: Pod")
         lines.append("  labels:")
         lines.append(f"    app: {app_name}")
@@ -641,13 +569,7 @@ EXCLUSION_FILTER_TEMPLATE = build_exclusion_filter_template()
 #
 # NOTE: Secrets (v1/Secret) are NOT included by default. The backup plan must be
 # created with --include-secrets to include them. ConfigMaps are included by default.
-def create_or_update_backup_plan(
-    source_project: str,
-    location: str,
-    source_cluster: str,
-    backup_plan_name: str,
-    description: str
-) -> Tuple[bool, str]:
+def create_or_update_backup_plan(source_project: str, location: str, source_cluster: str, backup_plan_name: str, description: str) -> Tuple[bool, str]:
     """Create or update a backup plan idempotently."""
     cluster_path = f"projects/{source_project}/locations/{location}/clusters/{source_cluster}"
 
@@ -682,37 +604,29 @@ def create_or_update_backup_plan(
             backup_id = backup.get("name", "").rsplit("/", 1)[-1]
             print(f"    Deleting backup {backup_id}...")
             run_cmd(
-                [
-                    "gcloud", "beta", "container", "backup-restore", "backups", "delete",
-                    backup_id,
-                    "--project", source_project,
-                    "--location", location,
-                    "--backup-plan", backup_plan_name,
-                    "--quiet"
-                ],
-                check=False
+                ["gcloud", "beta", "container", "backup-restore", "backups", "delete", backup_id, "--project", source_project, "--location", location, "--backup-plan", backup_plan_name, "--quiet"],
+                check=False,
             )
 
         print("  Deleting backup plan...")
-        run_cmd(
-            [
-                "gcloud", "beta", "container", "backup-restore", "backup-plans", "delete",
-                backup_plan_name,
-                "--project", source_project,
-                "--location", location,
-                "--quiet"
-            ],
-            check=False
-        )
+        run_cmd(["gcloud", "beta", "container", "backup-restore", "backup-plans", "delete", backup_plan_name, "--project", source_project, "--location", location, "--quiet"], check=False)
 
     print(f"\nCreating backup plan '{backup_plan_name}' in {source_project}...")
 
     cmd = [
-        "gcloud", "beta", "container", "backup-restore", "backup-plans", "create",
+        "gcloud",
+        "beta",
+        "container",
+        "backup-restore",
+        "backup-plans",
+        "create",
         backup_plan_name,
-        "--project", source_project,
-        "--location", location,
-        "--cluster", cluster_path,
+        "--project",
+        source_project,
+        "--location",
+        location,
+        "--cluster",
+        cluster_path,
         "--all-namespaces",
         "--include-secrets",
         "--include-volume-data",
@@ -731,14 +645,7 @@ def create_or_update_backup_plan(
         return False, ""
 
 
-def create_or_update_restore_plan(
-    destination_project: str,
-    location: str,
-    destination_cluster: str,
-    backup_plan: str,
-    restore_plan_name: str,
-    description: str
-) -> Tuple[bool, str]:
+def create_or_update_restore_plan(destination_project: str, location: str, destination_cluster: str, backup_plan: str, restore_plan_name: str, description: str) -> Tuple[bool, str]:
     """Create or update a restore plan idempotently."""
     cluster_path = f"projects/{destination_project}/locations/{location}/clusters/{destination_cluster}"
 
@@ -772,44 +679,52 @@ def create_or_update_restore_plan(
         # Delete and recreate
         print("  Restore plan exists but differs, deleting for recreation...")
         run_cmd(
-            [
-                "gcloud", "beta", "container", "backup-restore", "restore-plans", "delete",
-                restore_plan_name,
-                "--project", destination_project,
-                "--location", location,
-                "--force",
-                "--quiet"
-            ],
-            check=False
+            ["gcloud", "beta", "container", "backup-restore", "restore-plans", "delete", restore_plan_name, "--project", destination_project, "--location", location, "--force", "--quiet"], check=False
         )
 
     print(f"\nCreating restore plan '{restore_plan_name}' in {destination_project}...")
 
     # Write restore order template to a temp file to enforce Secret before Workload
     import tempfile
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
         f.write(RESTORE_ORDER_TEMPLATE)
         restore_order_file = f.name
 
     cmd = [
-        "gcloud", "beta", "container", "backup-restore", "restore-plans", "create",
+        "gcloud",
+        "beta",
+        "container",
+        "backup-restore",
+        "restore-plans",
+        "create",
         restore_plan_name,
-        "--project", destination_project,
-        "--location", location,
-        "--cluster", cluster_path,
-        "--backup-plan", backup_plan,
+        "--project",
+        destination_project,
+        "--location",
+        location,
+        "--cluster",
+        cluster_path,
+        "--backup-plan",
+        backup_plan,
         "--all-namespaces",
         "--cluster-resource-scope-all-group-kinds",
-        "--cluster-resource-conflict-policy", "use-backup-version",
-        "--namespaced-resource-restore-mode", "merge-replace-on-conflict",
-        "--volume-data-restore-policy", "restore-volume-data-from-backup",
-        "--description", description,
-        "--restore-order-file", restore_order_file,
+        "--cluster-resource-conflict-policy",
+        "use-backup-version",
+        "--namespaced-resource-restore-mode",
+        "merge-replace-on-conflict",
+        "--volume-data-restore-policy",
+        "restore-volume-data-from-backup",
+        "--description",
+        description,
+        "--restore-order-file",
+        restore_order_file,
     ]
 
     result = run_cmd(cmd, check=False)
 
     import os
+
     os.unlink(restore_order_file)
 
     if result.returncode == 0:
@@ -824,11 +739,7 @@ def create_or_update_restore_plan(
         return False, ""
 
 
-def select_backup(
-    source_project: str,
-    location: str,
-    backup_plan_name: str
-) -> Optional[str]:
+def select_backup(source_project: str, location: str, backup_plan_name: str) -> Optional[str]:
     """List existing backups and prompt user to select one or create new.
 
     Returns:
@@ -862,23 +773,26 @@ def select_backup(
     return None
 
 
-def trigger_backup(
-    source_project: str,
-    location: str,
-    backup_plan_name: str,
-    source_cluster: str
-) -> Tuple[bool, str]:
+def trigger_backup(source_project: str, location: str, backup_plan_name: str, source_cluster: str) -> Tuple[bool, str]:
     """Trigger a backup for the source cluster."""
     backup_name = f"backup-{source_cluster}-{int(time.time())}"
 
     print(f"\nTriggering backup '{backup_name}' on source cluster...")
 
     cmd = [
-        "gcloud", "beta", "container", "backup-restore", "backups", "create",
+        "gcloud",
+        "beta",
+        "container",
+        "backup-restore",
+        "backups",
+        "create",
         backup_name,
-        "--project", source_project,
-        "--location", location,
-        "--backup-plan", backup_plan_name,
+        "--project",
+        source_project,
+        "--location",
+        location,
+        "--backup-plan",
+        backup_plan_name,
     ]
 
     result = run_cmd(cmd, check=False)
@@ -891,13 +805,7 @@ def trigger_backup(
         return False, ""
 
 
-def wait_for_backup(
-    source_project: str,
-    location: str,
-    backup_plan_name: str,
-    backup_name: str,
-    timeout_minutes: int = 30
-) -> Tuple[bool, dict]:
+def wait_for_backup(source_project: str, location: str, backup_plan_name: str, backup_name: str, timeout_minutes: int = 30) -> Tuple[bool, dict]:
     """Wait for a backup to complete."""
     print(f"  Waiting for backup '{backup_name}' to complete (timeout: {timeout_minutes}min)...")
 
@@ -907,14 +815,23 @@ def wait_for_backup(
     while time.time() < deadline:
         result = run_cmd(
             [
-                "gcloud", "beta", "container", "backup-restore", "backups", "describe",
+                "gcloud",
+                "beta",
+                "container",
+                "backup-restore",
+                "backups",
+                "describe",
                 backup_name,
-                "--project", source_project,
-                "--location", location,
-                "--backup-plan", backup_plan_name,
-                "--format", "json"
+                "--project",
+                source_project,
+                "--location",
+                location,
+                "--backup-plan",
+                backup_plan_name,
+                "--format",
+                "json",
             ],
-            check=False
+            check=False,
         )
 
         if result.returncode == 0:
@@ -938,15 +855,7 @@ def wait_for_backup(
     return False, {}
 
 
-def trigger_restore(
-    destination_project: str,
-    location: str,
-    restore_plan_name: str,
-    backup_name: str,
-    source_project: str,
-    backup_plan_name: str,
-    filter_file_path: str = None
-) -> Tuple[bool, str]:
+def trigger_restore(destination_project: str, location: str, restore_plan_name: str, backup_name: str, source_project: str, backup_plan_name: str, filter_file_path: str = None) -> Tuple[bool, str]:
     """Trigger a restore for the destination cluster."""
     restore_name = f"restore-{int(time.time())}"
 
@@ -955,12 +864,21 @@ def trigger_restore(
     backup_path = f"projects/{source_project}/locations/{location}/backupPlans/{backup_plan_name}/backups/{backup_name}"
 
     cmd = [
-        "gcloud", "alpha", "container", "backup-restore", "restores", "create",
+        "gcloud",
+        "alpha",
+        "container",
+        "backup-restore",
+        "restores",
+        "create",
         restore_name,
-        "--project", destination_project,
-        "--location", location,
-        "--restore-plan", restore_plan_name,
-        "--backup", backup_path,
+        "--project",
+        destination_project,
+        "--location",
+        location,
+        "--restore-plan",
+        restore_plan_name,
+        "--backup",
+        backup_path,
     ]
 
     if filter_file_path:
@@ -976,13 +894,7 @@ def trigger_restore(
         return False, ""
 
 
-def wait_for_restore(
-    destination_project: str,
-    location: str,
-    restore_plan_name: str,
-    restore_name: str,
-    timeout_minutes: int = 30
-) -> Tuple[bool, dict]:
+def wait_for_restore(destination_project: str, location: str, restore_plan_name: str, restore_name: str, timeout_minutes: int = 30) -> Tuple[bool, dict]:
     """Wait for a restore to complete."""
     print(f"  Waiting for restore '{restore_name}' to complete (timeout: {timeout_minutes}min)...")
 
@@ -992,14 +904,23 @@ def wait_for_restore(
     while time.time() < deadline:
         result = run_cmd(
             [
-                "gcloud", "beta", "container", "backup-restore", "restores", "describe",
+                "gcloud",
+                "beta",
+                "container",
+                "backup-restore",
+                "restores",
+                "describe",
                 restore_name,
-                "--project", destination_project,
-                "--location", location,
-                "--restore-plan", restore_plan_name,
-                "--format", "json"
+                "--project",
+                destination_project,
+                "--location",
+                location,
+                "--restore-plan",
+                restore_plan_name,
+                "--format",
+                "json",
             ],
-            check=False
+            check=False,
         )
 
         if result.returncode == 0:
@@ -1030,9 +951,7 @@ def parse_source_dest(value: str) -> Tuple[str, str]:
         Tuple of (project, cluster)
     """
     if "." not in value:
-        raise argparse.ArgumentTypeError(
-            f"Invalid format '{value}'. Expected 'project.cluster'"
-        )
+        raise argparse.ArgumentTypeError(f"Invalid format '{value}'. Expected 'project.cluster'")
     parts = value.rsplit(".", 1)
     return parts[0], parts[1]
 
@@ -1067,8 +986,7 @@ def fix_k8s_sa_annotation_after_cross_project_restore(project: str, gke_namespac
 
     # Get current annotation from K8s ServiceAccount
     result = run_cmd(
-        f"kubectl get serviceaccount default -n {gke_namespace} "
-        f"-o jsonpath='{{.metadata.annotations.iam.gke.io/gcp-service-account}}'",
+        f"kubectl get serviceaccount default -n {gke_namespace} -o jsonpath='{{.metadata.annotations.iam.gke.io/gcp-service-account}}'",
         check=False,
     )
     if result.returncode != 0:
@@ -1080,8 +998,7 @@ def fix_k8s_sa_annotation_after_cross_project_restore(project: str, gke_namespac
     if not current_annotation:
         print("  Warning: K8s ServiceAccount has no iam.gke.io/gcp-service-account annotation")
         print("  This may cause Workload Identity to not work.")
-        print(f"  Run: kubectl annotate serviceaccount default -n {gke_namespace} "
-              f"iam.gke.io/gcp-service-account={expected_gcp_sa} --overwrite")
+        print(f"  Run: kubectl annotate serviceaccount default -n {gke_namespace} iam.gke.io/gcp-service-account={expected_gcp_sa} --overwrite")
         return False
 
     if current_annotation == expected_gcp_sa:
@@ -1096,8 +1013,7 @@ def fix_k8s_sa_annotation_after_cross_project_restore(project: str, gke_namespac
     # Update the annotation
     print(f"\n  Updating annotation to {expected_gcp_sa}...")
     result = run_cmd(
-        f"kubectl annotate serviceaccount default -n {gke_namespace} "
-        f"iam.gke.io/gcp-service-account={expected_gcp_sa} --overwrite",
+        f"kubectl annotate serviceaccount default -n {gke_namespace} iam.gke.io/gcp-service-account={expected_gcp_sa} --overwrite",
         check=False,
     )
     if result.returncode == 0:
@@ -1198,7 +1114,7 @@ def cmd_plan(source_project: str, source_cluster: str, dest_project: str, dest_c
         print("  Deployments/ReplicaSets/Pods (by app label):")
         for app in EXCLUDE_APP_LABELS:
             print(f"    - app={app}")
-        print("  (Deployment, ReplicaSet, Pod each with resourceGroup apps/apps/\"\" respectively)")
+        print('  (Deployment, ReplicaSet, Pod each with resourceGroup apps/apps/"" respectively)')
 
     print("\n" + "=" * 70)
 
@@ -1285,18 +1201,10 @@ def cmd_apply(source_project: str, source_cluster: str, dest_project: str, dest_
         sa_email = create_service_account(dest_project)
 
         # Grant restoreAdmin in destination project
-        grant_iam_role(
-            dest_project,
-            sa_email,
-            "roles/gkebackup.restoreAdmin"
-        )
+        grant_iam_role(dest_project, sa_email, "roles/gkebackup.restoreAdmin")
 
         # Grant backupAdmin in source project
-        grant_iam_role(
-            source_project,
-            sa_email,
-            "roles/gkebackup.backupAdmin"
-        )
+        grant_iam_role(source_project, sa_email, "roles/gkebackup.backupAdmin")
 
     # Step 5: Create or update backup plan (idempotent)
     print("\n" + "=" * 70)
@@ -1305,13 +1213,7 @@ def cmd_apply(source_project: str, source_cluster: str, dest_project: str, dest_
 
     backup_plan_full = f"projects/{source_project}/locations/{location}/backupPlans/{backup_plan_name}"
 
-    bp_success, bp_path = create_or_update_backup_plan(
-        source_project,
-        location,
-        source_cluster,
-        backup_plan_name,
-        backup_description
-    )
+    bp_success, bp_path = create_or_update_backup_plan(source_project, location, source_cluster, backup_plan_name, backup_description)
 
     if not bp_success:
         print("\n[FAIL] Failed to create backup plan")
@@ -1325,12 +1227,7 @@ def cmd_apply(source_project: str, source_cluster: str, dest_project: str, dest_
         print("=" * 70)
 
         channel_name = f"restore-to-{dest_project}"
-        channel_success, channel_path = create_restore_channel(
-            source_project,
-            location,
-            dest_project,
-            channel_name
-        )
+        channel_success, channel_path = create_restore_channel(source_project, location, dest_project, channel_name)
 
         if not channel_success:
             print("\n[FAIL] Failed to create restore channel")
@@ -1341,14 +1238,7 @@ def cmd_apply(source_project: str, source_cluster: str, dest_project: str, dest_
     print("Step 7: Creating Restore Plan (idempotent)")
     print("=" * 70)
 
-    plan_success, plan_path = create_or_update_restore_plan(
-        dest_project,
-        location,
-        dest_cluster,
-        backup_plan_full,
-        restore_plan_name,
-        restore_description
-    )
+    plan_success, plan_path = create_or_update_restore_plan(dest_project, location, dest_cluster, backup_plan_full, restore_plan_name, restore_description)
 
     if not plan_success:
         print("\n[FAIL] Failed to create restore plan")
@@ -1377,12 +1267,7 @@ def cmd_apply(source_project: str, source_cluster: str, dest_project: str, dest_
     else:
         # Create new backup
         print("\n  Creating new backup...")
-        bp_success, backup_name = trigger_backup(
-            source_project,
-            location,
-            backup_plan_name,
-            source_cluster
-        )
+        bp_success, backup_name = trigger_backup(source_project, location, backup_plan_name, source_cluster)
 
         if not bp_success:
             print("\n[FAIL] Failed to trigger backup")
@@ -1393,12 +1278,7 @@ def cmd_apply(source_project: str, source_cluster: str, dest_project: str, dest_
         print("Step 9: Waiting for Backup to Complete")
         print("=" * 70)
 
-        bp_success, backup_result = wait_for_backup(
-            source_project,
-            location,
-            backup_plan_name,
-            backup_name
-        )
+        bp_success, backup_result = wait_for_backup(source_project, location, backup_plan_name, backup_name)
 
         if not bp_success:
             print("\n[FAIL] Backup failed or timed out")
@@ -1419,21 +1299,14 @@ def cmd_apply(source_project: str, source_cluster: str, dest_project: str, dest_
     # - Same-project: excludes CiliumIdentity/CiliumNode which already exist on cluster
     #   and would conflict on restore.
     import tempfile
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
         f.write(EXCLUSION_FILTER_TEMPLATE)
         filter_file_path = f.name
     print(f"  Exclusion filter: {filter_file_path}")
 
     try:
-        restore_success, restore_name = trigger_restore(
-            dest_project,
-            location,
-            restore_plan_name,
-            backup_name,
-            source_project,
-            backup_plan_name,
-            filter_file_path
-        )
+        restore_success, restore_name = trigger_restore(dest_project, location, restore_plan_name, backup_name, source_project, backup_plan_name, filter_file_path)
 
         if not restore_success:
             print("\n[FAIL] Failed to trigger restore")
@@ -1441,6 +1314,7 @@ def cmd_apply(source_project: str, source_cluster: str, dest_project: str, dest_
     finally:
         if filter_file_path:
             import os
+
             os.unlink(filter_file_path)
 
     # Step 11: Wait for restore to complete
@@ -1448,17 +1322,11 @@ def cmd_apply(source_project: str, source_cluster: str, dest_project: str, dest_
     print("Step 11: Waiting for Restore to Complete")
     print("=" * 70)
 
-    restore_success, restore_result = wait_for_restore(
-        dest_project,
-        location,
-        restore_plan_name,
-        restore_name
-    )
+    restore_success, restore_result = wait_for_restore(dest_project, location, restore_plan_name, restore_name)
 
     if not restore_success:
         print("\n[FAIL] Restore failed or timed out")
         sys.exit(1)
-
 
     # Step 12: Fix K8s SA annotation after cross-project restore
     if is_cross_project:
@@ -1484,24 +1352,12 @@ Examples:
 
   # Execute backup and restore
   python3 gke_backup_restore.py apply prod-project.prod-cluster-1 stage-project.stage-cluster-1
-        """
+        """,
     )
 
-    parser.add_argument(
-        "command",
-        choices=["plan", "apply"],
-        help="Subcommand: plan (list status) or apply (execute backup/restore)"
-    )
-    parser.add_argument(
-        "source",
-        type=parse_source_dest,
-        help="Source GKE in format: project.cluster"
-    )
-    parser.add_argument(
-        "destination",
-        type=parse_source_dest,
-        help="Destination GKE in format: project.cluster"
-    )
+    parser.add_argument("command", choices=["plan", "apply"], help="Subcommand: plan (list status) or apply (execute backup/restore)")
+    parser.add_argument("source", type=parse_source_dest, help="Source GKE in format: project.cluster")
+    parser.add_argument("destination", type=parse_source_dest, help="Destination GKE in format: project.cluster")
 
     args = parser.parse_args()
 

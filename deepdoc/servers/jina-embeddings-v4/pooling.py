@@ -9,8 +9,7 @@ from scipy.cluster.hierarchy import fcluster, linkage
 
 
 class Dsu:
-    """Disjoint Set Union (Union-Find) implementation for cluster label merging.
-    """
+    """Disjoint Set Union (Union-Find) implementation for cluster label merging."""
 
     def __init__(self):
         self.parent = dict()
@@ -49,7 +48,7 @@ def hierarchical_pooling(documents_embeddings: np.ndarray, pool_factor: int) -> 
             continue
 
         protected_embeddings = document_embeddings[0:1]  # [1, embedding_dim], usually the first token (e.g., [CLS])
-        embeddings_to_pool = document_embeddings[1:]     # [n_tokens-1, embedding_dim], tokens to be pooled
+        embeddings_to_pool = document_embeddings[1:]  # [n_tokens-1, embedding_dim], tokens to be pooled
         num_embeddings_to_pool = embeddings_to_pool.shape[0]
 
         if num_embeddings_to_pool <= 1:
@@ -113,6 +112,7 @@ def test_hierarchical_pooling():
     assert pooled_doc.shape[0] == 1 + expected_clusters or pooled_doc.shape[0] == batch.shape[1]
     assert pooled_doc.shape[1] == 4
     print("Unit test passed.")
+
 
 if __name__ == "__main__":
     main()

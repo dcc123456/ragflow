@@ -112,12 +112,7 @@ def get_planned_resources():
             if k8s_name:
                 metadata_names[address] = k8s_name
             # Store full manifest info for dynamic import ID generation
-            manifest_info[address] = {
-                "api_version": manifest.get("apiVersion"),
-                "kind": manifest.get("kind"),
-                "name": k8s_name,
-                "namespace": manifest.get("metadata", {}).get("namespace", "default")
-            }
+            manifest_info[address] = {"api_version": manifest.get("apiVersion"), "kind": manifest.get("kind"), "name": k8s_name, "namespace": manifest.get("metadata", {}).get("namespace", "default")}
 
     return planned, metadata_names, plan_summary, manifest_info, data
 
@@ -179,9 +174,7 @@ def discover_cluster_resources():
     # Cluster-scoped
     resources["namespace"] = kubectl_get("namespace")
     # Namespaced resources
-    for kind in ["pvc", "statefulset", "secret", "configmap", "service",
-                 "deployment", "serviceaccount", "role", "rolebinding", "job", "cronjob",
-                 "podmonitoring"]:
+    for kind in ["pvc", "statefulset", "secret", "configmap", "service", "deployment", "serviceaccount", "role", "rolebinding", "job", "cronjob", "podmonitoring"]:
         resources[kind] = kubectl_get(kind)
     # Gateway API (cluster-scoped but queried with -A)
     resources["gateway"] = kubectl_get("gateway")
@@ -388,7 +381,7 @@ def find_random_password_dependencies(plan_data):
     for k8s_addr, rp_refs in k8s_secret_deps.items():
         # Get data keys from kubectl
         k8s_data_keys = set()
-        for key in [k8s_addr, re.sub(r'\[\d+\]$', '', k8s_addr)]:
+        for key in [k8s_addr, re.sub(r"\[\d+\]$", "", k8s_addr)]:
             if key in k8s_passwords:
                 k8s_data_keys = set(k8s_passwords[key].keys())
                 break
@@ -397,10 +390,7 @@ def find_random_password_dependencies(plan_data):
             # Single dependency - use the first/only data key
             if k8s_data_keys:
                 data_key = list(k8s_data_keys)[0]
-                dependencies[rp_refs[0]] = {
-                    "k8s_secret_addr": k8s_addr,
-                    "password_field": data_key
-                }
+                dependencies[rp_refs[0]] = {"k8s_secret_addr": k8s_addr, "password_field": data_key}
         else:
             # Multiple dependencies - use regex to match rp name to data keys
             rp_name_pattern = re.compile(r"random_password\.(\w+)")
@@ -415,17 +405,11 @@ def find_random_password_dependencies(plan_data):
                     continue
                 rp_name = match.group(1)
 
-                key_pattern = re.compile(
-                    rf"^(.*_)?{re.escape(rp_name.upper())}(_.*)?_(PASSWORD|PASS|SECRET|KEY)$",
-                    re.IGNORECASE
-                )
+                key_pattern = re.compile(rf"^(.*_)?{re.escape(rp_name.upper())}(_.*)?_(PASSWORD|PASS|SECRET|KEY)$", re.IGNORECASE)
 
                 for data_key in k8s_data_keys:
                     if key_pattern.match(data_key):
-                        dependencies[rp_addr] = {
-                            "k8s_secret_addr": k8s_addr,
-                            "password_field": data_key
-                        }
+                        dependencies[rp_addr] = {"k8s_secret_addr": k8s_addr, "password_field": data_key}
                         break
 
     return dependencies
@@ -469,7 +453,7 @@ def get_k8s_secret_passwords(plan_data):
         if secret_name:
             addr_to_secret[addr] = (secret_name, namespace)
             # Also store base addr (without index) for indexed resources
-            addr_base = re.sub(r'\[\d+\]$', '', addr)
+            addr_base = re.sub(r"\[\d+\]$", "", addr)
             if addr_base != addr:
                 addr_to_secret[addr_base] = (secret_name, namespace)
 
@@ -484,7 +468,7 @@ def get_k8s_secret_passwords(plan_data):
                 decoded = {}
                 for k, v in secret_data.items():
                     try:
-                        decoded[k] = base64.b64decode(v).decode('utf-8')
+                        decoded[k] = base64.b64decode(v).decode("utf-8")
                     except Exception as exc:
                         raise ValueError(f"Failed to base64-decode secret '{addr}' key '{k}', value: {v!r}") from exc
                 passwords[addr] = decoded
@@ -548,10 +532,7 @@ def restore_random_password_state(state_file, plan_data, state_resources):
             if k8s_addr in k8s_passwords:
                 password = k8s_passwords[k8s_addr].get(password_key)
                 if password:
-                    missing_rps[rp_addr] = {
-                        "password": password,
-                        "attrs": rp_attrs.get(rp_addr, {})
-                    }
+                    missing_rps[rp_addr] = {"password": password, "attrs": rp_attrs.get(rp_addr, {})}
 
     if not missing_rps:
         print("  All random_password resources already in state")
@@ -568,31 +549,30 @@ def restore_random_password_state(state_file, plan_data, state_resources):
         "mode": "managed",
         "type": "random_password",
         "name": "__NAME__",  # Placeholder, will be replaced
-        "provider": "provider[\"registry.opentofu.org/hashicorp/random\"]",
-        "instances": [{
-            "schema_version": 3,
-            "attributes": {
-                "bcrypt_hash": None,
-                "id": "none",
-                "keepers": None,
-                "length": 16,
-                "lower": True,
-                "min_lower": 0,
-                "min_numeric": 0,
-                "min_special": 0,
-                "min_upper": 0,
-                "number": True,
-                "numeric": True,
-                "override_special": None,
-                "result": "__RESULT__",  # Placeholder, will be replaced
-                "special": False,
-                "upper": True,
-            },
-            "sensitive_attributes": [
-                [{"type": "get_attr", "value": "bcrypt_hash"}],
-                [{"type": "get_attr", "value": "result"}]
-            ],
-        }]
+        "provider": 'provider["registry.opentofu.org/hashicorp/random"]',
+        "instances": [
+            {
+                "schema_version": 3,
+                "attributes": {
+                    "bcrypt_hash": None,
+                    "id": "none",
+                    "keepers": None,
+                    "length": 16,
+                    "lower": True,
+                    "min_lower": 0,
+                    "min_numeric": 0,
+                    "min_special": 0,
+                    "min_upper": 0,
+                    "number": True,
+                    "numeric": True,
+                    "override_special": None,
+                    "result": "__RESULT__",  # Placeholder, will be replaced
+                    "special": False,
+                    "upper": True,
+                },
+                "sensitive_attributes": [[{"type": "get_attr", "value": "bcrypt_hash"}], [{"type": "get_attr", "value": "result"}]],
+            }
+        ],
     }
 
     for rp_addr, info in missing_rps.items():

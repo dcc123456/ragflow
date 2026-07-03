@@ -36,11 +36,11 @@ class RAGFlowAzureSasBlob:
 
     @property
     def container_url(self):
-        return self.azure_config.get('container_url', None)
+        return self.azure_config.get("container_url", None)
 
     @property
     def sas_token(self):
-        return self.azure_config.get('sas_token', None)
+        return self.azure_config.get("sas_token", None)
 
     def _ensure_connection(self):
         """Lazy connection initialization - only create when first needed"""

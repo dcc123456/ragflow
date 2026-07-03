@@ -61,8 +61,8 @@ class LoadBalancer(object):
             tmp_alive_instances = []
             for i in range(len(self.instances)):
                 try:
-                    requests.post(self.instances[i], json={"sentences":["Healthy?"]})
-                    #if response.status_code == 200:
+                    requests.post(self.instances[i], json={"sentences": ["Healthy?"]})
+                    # if response.status_code == 200:
                     tmp_alive_instances.append(self.instances[i])
                 except Exception as e:
                     logging.warning(f"Instance {self.instances[i]} is not alive, exception {str(e)}.")

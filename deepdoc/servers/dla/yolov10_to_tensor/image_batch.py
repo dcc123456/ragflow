@@ -85,7 +85,7 @@ class ImageBatcher:
         if self.num_images < 1:
             print("Not enough images to create batches")
             sys.exit(1)
-        self.images = self.images[0:self.num_images]
+        self.images = self.images[0 : self.num_images]
 
         # Subdivide the list of images into batches
         self.num_batches = 1 + int((self.num_images - 1) / self.batch_size)
@@ -141,9 +141,9 @@ class ImageBatcher:
 
         scale = None
         image = Image.open(image_path)
-        image = image.convert(mode='RGB')
+        image = image.convert(mode="RGB")
         if self.preprocessor == "fixed_shape_resizer" or self.preprocessor == "keep_aspect_ratio_resizer":
-            #Resize & Pad with ImageNet mean values and keep as [0,255] Normalization
+            # Resize & Pad with ImageNet mean values and keep as [0,255] Normalization
             image, scale = resize_pad(image, (124, 116, 104))
             image = np.asarray(image, dtype=self.dtype)
         else:
@@ -151,7 +151,7 @@ class ImageBatcher:
             sys.exit(1)
         if self.format == "NCHW":
             image = np.transpose(image, (2, 0, 1))
-        return image/255., scale
+        return image / 255.0, scale
 
     def get_batch(self):
         """

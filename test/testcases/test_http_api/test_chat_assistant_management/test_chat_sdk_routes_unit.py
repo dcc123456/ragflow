@@ -228,6 +228,7 @@ def _load_chat_module(monkeypatch):
     common_constants_mod.StatusEnum = _StubStatusEnum
     # Import pure-Python constants from the real module (no heavy deps)
     from common.constants import MAXIMUM_PAGE_NUMBER as _MPN, MAXIMUM_TASK_PAGE_NUMBER as _MTPN
+
     common_constants_mod.MAXIMUM_PAGE_NUMBER = _MPN
     common_constants_mod.MAXIMUM_TASK_PAGE_NUMBER = _MTPN
     monkeypatch.setitem(sys.modules, "common.constants", common_constants_mod)
@@ -348,16 +349,12 @@ def _load_chat_module(monkeypatch):
     monkeypatch.setitem(sys.modules, "api.db.services.permission_service", permission_service_mod)
 
     team_service_mod = ModuleType("api.db.services.team_service")
-    team_service_mod.DepartmentMemberService = SimpleNamespace(
-        get_all_departments_by_member_id=lambda *_args, **_kwargs: []
-    )
+    team_service_mod.DepartmentMemberService = SimpleNamespace(get_all_departments_by_member_id=lambda *_args, **_kwargs: [])
     team_service_mod.DepartmentService = SimpleNamespace(
         get_department_hierarchy=lambda *_args, **_kwargs: [],
         filter_by_id=lambda *_args, **_kwargs: None,
     )
-    team_service_mod.GroupMemberService = SimpleNamespace(
-        get_groups_by_member_id=lambda *_args, **_kwargs: []
-    )
+    team_service_mod.GroupMemberService = SimpleNamespace(get_groups_by_member_id=lambda *_args, **_kwargs: [])
     team_service_mod.GroupService = SimpleNamespace(filter_by_id=lambda *_args, **_kwargs: None)
     monkeypatch.setitem(sys.modules, "api.db.services.team_service", team_service_mod)
 
@@ -437,9 +434,12 @@ def _load_chat_module(monkeypatch):
     monkeypatch.setitem(sys.modules, "api.db.services.search_service", search_service_mod)
 
     tenant_model_service_mod = ModuleType("api.db.joint_services.tenant_model_service")
+
     def _get_model_config_from_provider_instance(tenant_id, model_type, model_name):
         llm_name, llm_factory, model_tenant_id = _StubTenantLLMService.split_model_name_and_factory(model_name)
-        if _StubTenantLLMService.query(tenant_id=model_tenant_id or tenant_id, llm_name=llm_name, llm_factory=llm_factory, model_type=model_type) or _StubTenantLLMService.get_api_key(tenant_id, model_name):
+        if _StubTenantLLMService.query(tenant_id=model_tenant_id or tenant_id, llm_name=llm_name, llm_factory=llm_factory, model_type=model_type) or _StubTenantLLMService.get_api_key(
+            tenant_id, model_name
+        ):
             return {}
         raise LookupError(model_name)
 
@@ -512,7 +512,7 @@ def _load_chat_module(monkeypatch):
     api_utils_mod.get_json_result = lambda data=None, message="", code=0: {"code": code, "data": data, "message": message}
     api_utils_mod.get_request_json = lambda: _AwaitableValue({})
     api_utils_mod.server_error_response = lambda ex: {"code": 500, "data": None, "message": str(ex)}
-    api_utils_mod.validate_request = lambda *_args, **_kwargs: (lambda func: func)
+    api_utils_mod.validate_request = lambda *_args, **_kwargs: lambda func: func
     api_utils_mod.get_resource_insufficient_result = lambda **kwargs: {"code": 403, "data": None, "message": "Insufficient resources"}
     monkeypatch.setitem(sys.modules, "api.utils.api_utils", api_utils_mod)
 
@@ -522,7 +522,7 @@ def _load_chat_module(monkeypatch):
 
     billing_mod = ModuleType("api.utils.billing")
     billing_mod.check_dynamic_resources = lambda *_args, **_kwargs: (True, {"details": {}, "error": ""})
-    billing_mod.check_resources = lambda **_: (lambda f: f)
+    billing_mod.check_resources = lambda **_: lambda f: f
     billing_mod.get_dynamic_resource_error_result = lambda *_a, **_k: {"code": 0, "data": None, "message": ""}
     billing_mod.InsufficientResourceError = type("InsufficientResourceError", (Exception,), {})
     monkeypatch.setitem(sys.modules, "api.utils.billing", billing_mod)
@@ -1276,9 +1276,7 @@ def test_session_ownership_logs_rejected_foreign_session(monkeypatch):
     logs = []
     monkeypatch.setattr(module.logging, "warning", lambda msg, *args: logs.append(msg % args if args else msg))
 
-    allowed = module._ensure_session_owned_by_current_user(
-        SimpleNamespace(id="session-1", dialog_id="chat-1", user_id="another-user")
-    )
+    allowed = module._ensure_session_owned_by_current_user(SimpleNamespace(id="session-1", dialog_id="chat-1", user_id="another-user"))
 
     assert allowed is False
     assert any("owned by another user" in entry for entry in logs)
@@ -1561,10 +1559,10 @@ def test_session_completion_requires_chat_read_permission(monkeypatch):
     )
     monkeypatch.setattr(module.UserTenantService, "query", lambda **_kwargs: [])
 
-    #res = _run(module.session_completion(chat_id="chat-1", session_id="session-1"))
+    # res = _run(module.session_completion(chat_id="chat-1", session_id="session-1"))
 
-    #assert res["code"] != 0
-    #assert "Only Chat/Dialog owners" in res["message"]
+    # assert res["code"] != 0
+    # assert "Only Chat/Dialog owners" in res["message"]
 
 
 @pytest.mark.p2
@@ -1608,10 +1606,10 @@ def test_session_completion_rejects_session_owned_by_another_user(monkeypatch):
         ),
     )
 
-    #res = _run(module.session_completion(chat_id="chat-1", session_id="session-1"))
+    # res = _run(module.session_completion(chat_id="chat-1", session_id="session-1"))
 
-    #assert res["code"] != 0
-    #assert "Only owner of session" in res["message"]
+    # assert res["code"] != 0
+    # assert "Only owner of session" in res["message"]
 
 
 @pytest.mark.p2
@@ -1669,11 +1667,11 @@ def test_session_completion_keeps_legacy_session_unclaimed_for_backward_compatib
 
     monkeypatch.setattr(module, "async_chat", _async_chat)
 
-    #_run(module.session_completion(chat_id="chat-1", session_id="session-1"))
+    # _run(module.session_completion(chat_id="chat-1", session_id="session-1"))
 
-    #assert conv.user_id is None
-    #assert updates
-    #assert updates[0][1]["user_id"] is None
+    # assert conv.user_id is None
+    # assert updates
+    # assert updates[0][1]["user_id"] is None
 
 
 @pytest.mark.p2
@@ -1691,10 +1689,10 @@ def test_session_completion_validates_messages_from_g_req_data(monkeypatch):
         lambda **_kwargs: [SimpleNamespace(id="chat-1", tenant_id="tenant-1")],
     )
 
-    #res = _run(module.session_completion(chat_id="chat-1", session_id="session-1"))
+    # res = _run(module.session_completion(chat_id="chat-1", session_id="session-1"))
 
-    #assert res["code"] != 0
-    #assert "messages" in res["message"]
+    # assert res["code"] != 0
+    # assert "messages" in res["message"]
 
 
 @pytest.mark.p2
@@ -2156,11 +2154,13 @@ def test_chat_session_delete_routes_partial_duplicate_unit(monkeypatch):
         module.ConversationService,
         "get_by_id",
         lambda session_id: (
-            True,
-            SimpleNamespace(id=session_id, dialog_id="chat-1", user_id=module.current_user.id),
-        )
-        if session_id == "ok"
-        else (False, None),
+            (
+                True,
+                SimpleNamespace(id=session_id, dialog_id="chat-1", user_id=module.current_user.id),
+            )
+            if session_id == "ok"
+            else (False, None)
+        ),
     )
 
     _set_json_request_context(module, {"ids": ["ok", "bad"]}, method="DELETE")
@@ -2284,9 +2284,7 @@ def test_delete_chat_uses_dialog_service_invalidate(monkeypatch):
     monkeypatch.setattr(
         module.DialogService,
         "update_by_id",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(
-            AssertionError("delete_chat should use DialogService.invalidate_by_id inside DB.atomic()")
-        ),
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("delete_chat should use DialogService.invalidate_by_id inside DB.atomic()")),
     )
     monkeypatch.setattr(
         module.DialogService,
@@ -2320,9 +2318,7 @@ def test_bulk_delete_chats_reads_delete_json_body(monkeypatch):
     monkeypatch.setattr(
         module.DialogService,
         "update_by_id",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(
-            AssertionError("bulk_delete_chats should use DialogService.invalidate_by_id inside DB.atomic()")
-        ),
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("bulk_delete_chats should use DialogService.invalidate_by_id inside DB.atomic()")),
     )
     monkeypatch.setattr(module.DialogService, "invalidate_by_id", lambda *_args, **_kwargs: True, raising=False)
     monkeypatch.setattr(module.ConversationService, "remove_by", lambda *_args, **_kwargs: True)
@@ -2369,9 +2365,7 @@ def test_bulk_delete_chats_allows_collaborator_owner_scope(monkeypatch):
     monkeypatch.setattr(
         module.DialogService,
         "query",
-        lambda **kwargs: [SimpleNamespace(id="shared-chat", tenant_id="tenant-2")]
-        if kwargs.get("tenant_id") == "tenant-2" and kwargs.get("id") == "shared-chat"
-        else [],
+        lambda **kwargs: [SimpleNamespace(id="shared-chat", tenant_id="tenant-2")] if kwargs.get("tenant_id") == "tenant-2" and kwargs.get("id") == "shared-chat" else [],
     )
     monkeypatch.setattr(
         module,
@@ -2414,9 +2408,7 @@ def test_bulk_delete_chats_skips_empty_permission_cleanup(monkeypatch):
     monkeypatch.setattr(
         module.DialogService,
         "query",
-        lambda **kwargs: [SimpleNamespace(id="chat-1", tenant_id="tenant-1")]
-        if kwargs.get("tenant_id") == "tenant-1" and kwargs.get("id") == "chat-1"
-        else [],
+        lambda **kwargs: [SimpleNamespace(id="chat-1", tenant_id="tenant-1")] if kwargs.get("tenant_id") == "tenant-1" and kwargs.get("id") == "chat-1" else [],
     )
     monkeypatch.setattr(module.DialogService, "invalidate_by_id", lambda chat_id, *_args, **_kwargs: deleted_ids.append(chat_id) or True, raising=False)
     monkeypatch.setattr(module.ConversationService, "remove_by", lambda *_args, **_kwargs: True)
@@ -2428,9 +2420,7 @@ def test_bulk_delete_chats_skips_empty_permission_cleanup(monkeypatch):
     monkeypatch.setattr(
         module.PermissionService,
         "delete",
-        lambda permission_model_list: (_ for _ in ()).throw(AssertionError("empty permission cleanup should be skipped"))
-        if not permission_model_list
-        else True,
+        lambda permission_model_list: (_ for _ in ()).throw(AssertionError("empty permission cleanup should be skipped")) if not permission_model_list else True,
     )
     monkeypatch.setattr(module.PermissionChangeLogService, "save", lambda **_kwargs: True)
 
@@ -2463,11 +2453,7 @@ def test_bulk_delete_chats_delete_all_includes_collaborator_owner_scope(monkeypa
     monkeypatch.setattr(
         module.DialogService,
         "query",
-        lambda **kwargs: (
-            [SimpleNamespace(id="shared-chat", tenant_id="tenant-2")]
-            if kwargs.get("tenant_id") == "tenant-2"
-            else []
-        ),
+        lambda **kwargs: [SimpleNamespace(id="shared-chat", tenant_id="tenant-2")] if kwargs.get("tenant_id") == "tenant-2" else [],
     )
     monkeypatch.setattr(
         module,

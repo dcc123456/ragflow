@@ -18,13 +18,14 @@ PROMETHEUS_MULTIPROC_DIR = os.environ.get("PROMETHEUS_MULTIPROC_DIR")
 if PROMETHEUS_MULTIPROC_DIR is None:
     # Create a temp directory for multiprocess metrics
     import tempfile
+
     PROMETHEUS_MULTIPROC_DIR = tempfile.mkdtemp(prefix="prometheus_multiproc_")
     os.environ["PROMETHEUS_MULTIPROC_DIR"] = PROMETHEUS_MULTIPROC_DIR
     print(f"Created PROMETHEUS_MULTIPROC_DIR: {PROMETHEUS_MULTIPROC_DIR}")
 
 # Prometheus metrics - these will work across processes
 REQUESTS_TOTAL = Counter("jina_embed_requests_total", "Total number of embedding requests", ["task", "status"])
-REQUESTS_ACTIVE = Gauge("jina_embed_requests_active", "Number of active embedding requests", multiprocess_mode='livesum')
+REQUESTS_ACTIVE = Gauge("jina_embed_requests_active", "Number of active embedding requests", multiprocess_mode="livesum")
 REQUEST_DURATION = Histogram("jina_embed_request_duration_seconds", "Request duration in seconds", ["task"], buckets=[0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0])
 ITEMS_PROCESSED = Counter("jina_embed_items_processed_total", "Total number of items (texts/images) processed", ["type"])
 

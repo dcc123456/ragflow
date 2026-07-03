@@ -78,9 +78,7 @@ async def image2id(d: dict, storage_put_func: partial, objname: str, bucket: str
         return
 
     async with minio_limiter:
-        await thread_pool_exec(
-            lambda: storage_put_func(bucket=bucket, fnm=objname, binary=jpeg_binary)
-        )
+        await thread_pool_exec(lambda: storage_put_func(bucket=bucket, fnm=objname, binary=jpeg_binary))
 
     d["img_id"] = f"{bucket}-{objname}"
 

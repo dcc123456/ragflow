@@ -45,8 +45,8 @@ def ping():
     return success_response(message="pong")
 
 
-@admin_bp.route('/', methods=['GET'])  # noqa: F821
-@admin_bp.route('/healthz', methods=['GET'])  # noqa: F821
+@admin_bp.route("/", methods=["GET"])  # noqa: F821
+@admin_bp.route("/healthz", methods=["GET"])  # noqa: F821
 def healthz():
     result, all_ok = run_health_checks()
     if all_ok:
@@ -134,10 +134,10 @@ def create_user():
         if not data or "username" not in data or "password" not in data:
             return error_response("Username and password are required", 400)
 
-        username = data['username']
-        password = data['password']
-        resource_role = data.get('resource_role', 'owner')
-        system_role = data.get('system_role', 'user')
+        username = data["username"]
+        password = data["password"]
+        resource_role = data.get("resource_role", "owner")
+        system_role = data.get("system_role", "user")
 
         res = UserMgr.create_user(username, password, resource_role, system_role)
         if res["success"]:
@@ -197,7 +197,7 @@ def alter_user_activate_status(username):
         data = request.get_json()
         if current_user.email == username:
             return error_response(f"can't alter current user status: {username}", 409)
-        if not data or 'activate_status' not in data:
+        if not data or "activate_status" not in data:
             return error_response("Activation status is required", 400)
         activate_status = data["activate_status"]
         msg = UserMgr.update_user_activate_status(username, activate_status)
@@ -391,7 +391,7 @@ def list_roles():
         return error_response(str(e), 500)
 
 
-@admin_bp.route('/roles_with_permission', methods=['GET'])
+@admin_bp.route("/roles_with_permission", methods=["GET"])
 @login_required
 @check_admin_auth
 def list_roles_with_permission():
@@ -443,7 +443,7 @@ def revoke_role_permission(role_name: str):
         return error_response(str(e), 500)
 
 
-@admin_bp.route('/roles/resource', methods=['GET'])
+@admin_bp.route("/roles/resource", methods=["GET"])
 @login_required
 @check_admin_auth
 def list_roles_resource():
@@ -451,7 +451,7 @@ def list_roles_resource():
     return success_response({"resource_types": data})
 
 
-@admin_bp.route('/roles/<role_name>/default_models', methods=['GET'])
+@admin_bp.route("/roles/<role_name>/default_models", methods=["GET"])
 @login_required
 @check_admin_auth
 def get_role_default_models(role_name: str):
@@ -462,7 +462,7 @@ def get_role_default_models(role_name: str):
         return error_response(str(e), 500)
 
 
-@admin_bp.route('/roles/<role_name>/default_models', methods=['PUT'])
+@admin_bp.route("/roles/<role_name>/default_models", methods=["PUT"])
 @login_required
 @check_admin_auth
 def set_role_default_models(role_name: str):
@@ -470,8 +470,8 @@ def set_role_default_models(role_name: str):
         data = request.get_json()
         if not data or "model_type" not in data or "model_id" not in data:
             return error_response("Model type and id are required", 400)
-        model_type: str = data['model_type']
-        model_id: str = data['model_id']
+        model_type: str = data["model_type"]
+        model_id: str = data["model_id"]
         res = RoleModelMgr.set_role_default_model(role_name, model_type, model_id, current_user.id)
         return success_response(res)
     except Exception as e:
@@ -515,10 +515,10 @@ def set_variable():
 
         if "var_value" not in data:
             return error_response("Var value is required", 400)
-        var_name: str = data['var_name']
-        var_value: str = data['var_value']
+        var_name: str = data["var_name"]
+        var_value: str = data["var_value"]
         # Allow upsert for LDAP and SSO configurations (github|sso, google|sso, feishu|sso, etc.)
-        if re.match(r'^(ldap\|.+|.+|sso)\.(enabled|name|url|dn|password|search_filter|attribute_list|client_id|client_secret|app_id|app_secret|redirect_uri)$', var_name):
+        if re.match(r"^(ldap\|.+|.+|sso)\.(enabled|name|url|dn|password|search_filter|attribute_list|client_id|client_secret|app_id|app_secret|redirect_uri)$", var_name):
             SettingsMgr.update_by_name(var_name, var_value, allow_upsert=True)
         else:
             SettingsMgr.update_by_name(var_name, var_value)
@@ -551,16 +551,17 @@ def get_variable():
     except Exception as e:
         return error_response(str(e), 500)
 
-@admin_bp.route('/variables', methods=['DELETE'])
+
+@admin_bp.route("/variables", methods=["DELETE"])
 @login_required
 @check_admin_auth
 def delete_variable():
     try:
         data = request.get_json()
-        if not data or ('var_name' not in data and 'source' not in data):
+        if not data or ("var_name" not in data and "source" not in data):
             return error_response("Var name or source is required", 400)
-        var_name: str = data.get('var_name')
-        source: str = data.get('source')
+        var_name: str = data.get("var_name")
+        source: str = data.get("source")
         if var_name and source:
             res = SettingsMgr.delete_setting_by_source_and_name(source, var_name)
             return success_response(res)
@@ -577,12 +578,14 @@ def delete_variable():
         return error_response(str(e), 500)
 
 
-@admin_bp.route('/validate_mail', methods=['POST'])
+@admin_bp.route("/validate_mail", methods=["POST"])
 @login_required
 @check_admin_auth
 def validate_mail():
     data = request.get_json()
-    res = asyncio.run(AsyncSMTPValidator.validate_async(data["host"], data["port"], data["username"], data["password"], data.get("use_tls", False), data.get("use_ssl", False), data.get("timeout", 30)))
+    res = asyncio.run(
+        AsyncSMTPValidator.validate_async(data["host"], data["port"], data["username"], data["password"], data.get("use_tls", False), data.get("use_ssl", False), data.get("timeout", 30))
+    )
     if res["success"]:
         return success_response(data=True)
     else:
@@ -687,7 +690,7 @@ def show_version():
         return error_response(str(e), 500)
 
 
-@admin_bp.route('/whitelist', methods=['GET'])
+@admin_bp.route("/whitelist", methods=["GET"])
 @login_required
 @check_admin_auth
 def list_whitelist():
@@ -710,37 +713,37 @@ def list_sandbox_providers():
         return error_response(str(e), 400)
 
 
-@admin_bp.route('/whitelist/add', methods=['POST'])
+@admin_bp.route("/whitelist/add", methods=["POST"])
 @login_required
 @check_admin_auth
 def create_white_list_row():
     try:
         data = request.get_json()
-        if not data or 'email' not in data:
+        if not data or "email" not in data:
             return error_response("Email is required", 400)
-        email: str = data['email']
+        email: str = data["email"]
         res = WhiteListMgr.create_white_list_row(email)
         return success_response(res)
     except Exception as e:
         return error_response(str(e), 500)
 
 
-@admin_bp.route('/whitelist/<id>', methods=['PUT'])
+@admin_bp.route("/whitelist/<id>", methods=["PUT"])
 @login_required
 @check_admin_auth
 def update_whitelist_row(id: int):
     try:
         data = request.get_json()
-        if not data or 'email' not in data:
+        if not data or "email" not in data:
             return error_response("New email is required", 400)
-        email: str = data['email']
+        email: str = data["email"]
         res = WhiteListMgr.update_white_list_row(id, email)
         return success_response(res)
     except Exception as e:
         return error_response(str(e), 500)
 
 
-@admin_bp.route('/whitelist/<email>', methods=['DELETE'])
+@admin_bp.route("/whitelist/<email>", methods=["DELETE"])
 @login_required
 @check_admin_auth
 def delete_whitelist_row(email: str):
@@ -751,19 +754,19 @@ def delete_whitelist_row(email: str):
         return error_response(str(e), 500)
 
 
-@admin_bp.route('/whitelist/batch', methods=['POST'])
+@admin_bp.route("/whitelist/batch", methods=["POST"])
 @login_required
 @check_admin_auth
 def batch_create_whitelist_rows():
-    if 'file' not in request.files:
+    if "file" not in request.files:
         return error_response("No file provided", 400)
-    file_obj = request.files.get('file')
+    file_obj = request.files.get("file")
 
     blob = file_obj.read()
     df = pd.read_excel(blob)
 
-    data_list = df.to_dict('records')
-    emails = [data['email'] for data in data_list]
+    data_list = df.to_dict("records")
+    emails = [data["email"] for data in data_list]
     try:
         res = WhiteListMgr.batch_create_white_list_rows(emails)
         return success_response(res)

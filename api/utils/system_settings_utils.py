@@ -14,6 +14,7 @@
 #  limitations under the License.
 #
 
+
 def load_value_from_string(value: str, data_type: str):
     match data_type:
         case "string":
@@ -27,6 +28,6 @@ def load_value_from_string(value: str, data_type: str):
                 return 0.0
             return float(value)
         case "bool":
-            return value.lower()  in ["true", "True"]
+            return value.lower() in ["true", "True"]
         case _:
             raise ValueError(f"Unsupported data type: {data_type}")

@@ -19,6 +19,7 @@ import pynvml
 
 SUPPORTED_MODELS = ["bge-m3", "bge-large-en-v1.5", "bge-large-zh-v1.5", "bce-embedding-base_v1"]
 
+
 class EmbedAPI(ls.LitAPI):
     """
     Handler for BAAI embedding models: [bge-m3](https://huggingface.co/BAAI/bge-m3), [bge-large-en-v1.5](https://huggingface.co/BAAI/bge-large-en-v1.5), [bge-large-zh-v1.5](https://huggingface.co/BAAI/bge-large-zh-v1.5) and [bce-embedding-base_v1](https://huggingface.co/maidalun1020/bce-embedding-base_v1).
@@ -34,7 +35,9 @@ class EmbedAPI(ls.LitAPI):
 
     I have to truncate manually before predication.
     """
+
     MAX_TOKENS = {"bge-m3": 8000, "bge-large-en-v1.5": 500, "bge-large-zh-v1.5": 500}
+
     def __init__(self, model_name):
         super().__init__()
         self.max_tokens = self.MAX_TOKENS.get(model_name, 500)
@@ -44,7 +47,7 @@ class EmbedAPI(ls.LitAPI):
 
     def setup(self, device):
         print(f"setup device {device}")
-        gpu_id = device.split(':')[-1] if device.startswith('cuda') else None
+        gpu_id = device.split(":")[-1] if device.startswith("cuda") else None
         if gpu_id is not None:
             # This env shall be populated BEFORE CUDA initailization(importing torch or vllm does)
             os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
@@ -56,10 +59,12 @@ class EmbedAPI(ls.LitAPI):
             print(f"GPU {gpu_id}: {gpu_name} ({gpu_uuid})")
             pynvml.nvmlShutdown()
             import torch
+
             assert torch.cuda.is_available()
-            assert torch.cuda.device_count()==1
-            assert torch.cuda.get_device_name(0)==gpu_name
+            assert torch.cuda.device_count() == 1
+            assert torch.cuda.get_device_name(0) == gpu_name
         import vllm
+
         self.llm = vllm.LLM(self.model_dir)
         self.tokenizer = self.llm.get_tokenizer()
 
@@ -69,9 +74,9 @@ class EmbedAPI(ls.LitAPI):
         for i in range(len(sentences)):
             ids = self.tokenizer.encode(sentences[i])
             if len(ids) > self.max_tokens:
-                print(f'before truncation({len(ids)} tokens): {sentences[i]}')
-                sentences[i] = self.tokenizer.decode(ids[:self.max_tokens], skip_special_tokens=True)
-                print(f'after truncation({self.max_tokens} tokens): {sentences[i]}')
+                print(f"before truncation({len(ids)} tokens): {sentences[i]}")
+                sentences[i] = self.tokenizer.decode(ids[: self.max_tokens], skip_special_tokens=True)
+                print(f"after truncation({self.max_tokens} tokens): {sentences[i]}")
         return sentences
 
     def predict(self, x):
@@ -80,19 +85,20 @@ class EmbedAPI(ls.LitAPI):
         batch_sentences = [sentence for sentences in x for sentence in sentences]
         batch_outputs = []
         for i in range(0, len(batch_sentences), 8):
-            batch_outputs.extend(self.llm.encode(batch_sentences[i:i+8]))
+            batch_outputs.extend(self.llm.encode(batch_sentences[i : i + 8]))
         embeddings = [output.outputs.data.numpy() for output in batch_outputs]
         batch_responses = []
         for i in range(len(batch_shape)):
-            batch_responses.append(embeddings[:batch_shape[i]])
-            embeddings = embeddings[batch_shape[i]:]
+            batch_responses.append(embeddings[: batch_shape[i]])
+            embeddings = embeddings[batch_shape[i] :]
         return batch_responses
 
     def encode_response(self, output):
         # Convert the model output to a response payload.
         assert isinstance(output, list)
         resp = [base64.b64encode(embedding.tobytes()).decode("utf-8") for embedding in output]
-        return {"embeddings": resp} 
+        return {"embeddings": resp}
+
 
 if __name__ == "__main__":
     args = sys.argv

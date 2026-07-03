@@ -57,21 +57,13 @@ def check_prerequisites():
     # Check if huggingface.co is accessible
     try:
         import socket
+
         socket.setdefaulttimeout(10)
         with urllib.request.urlopen("https://huggingface.co", timeout=10) as response:
             if response.status != 200:
-                errors.append(
-                    f"huggingface.co is not accessible (status: {response.status})!\n"
-                    "Please set up proxy/VPN and try again.\n"
-                    "Example: export https_proxy=http://127.0.0.1:7890"
-                )
+                errors.append(f"huggingface.co is not accessible (status: {response.status})!\nPlease set up proxy/VPN and try again.\nExample: export https_proxy=http://127.0.0.1:7890")
     except Exception as e:
-        errors.append(
-            f"huggingface.co is not accessible!\n"
-            f"Error: {e}\n"
-            "Please set up proxy/VPN and try again.\n"
-            "Example: export https_proxy=http://127.0.0.1:7890"
-        )
+        errors.append(f"huggingface.co is not accessible!\nError: {e}\nPlease set up proxy/VPN and try again.\nExample: export https_proxy=http://127.0.0.1:7890")
 
     if errors:
         print("=" * 60, file=sys.stderr)
@@ -86,6 +78,7 @@ def check_prerequisites():
     print(f"  - Current directory: {current_dir}")
     print("  - huggingface.co: accessible")
     print()
+
 
 # UV package manager
 UV_URL = "https://github.com/astral-sh/uv/releases/download/0.9.18/uv-x86_64-unknown-linux-gnu.tar.gz"
@@ -202,13 +195,16 @@ def download_paddleocr_models() -> None:
     # Check and install PaddleOCR 2.10.0
     try:
         import paddleocr
+
         ocr_version = paddleocr.__version__
         print(f"✓ PaddleOCR {ocr_version} already installed")
     except ImportError:
         print("✗ PaddleOCR not installed. Installing PaddleOCR 2.10.0...")
         import subprocess
+
         subprocess.check_call([sys.executable, "-m", "pip", "install", "paddleocr==2.10.0"])
         import paddleocr
+
         print(f"✓ PaddleOCR {paddleocr.__version__} installed")
 
     # Create paddleocr directory structure
@@ -264,7 +260,7 @@ def download_paddleocr_models() -> None:
             target_dir.mkdir(parents=True, exist_ok=True)
 
             # Extract tar file to target directory
-            with tarfile.open(filename, 'r') as tar:
+            with tarfile.open(filename, "r") as tar:
                 tar.extractall(target_dir)
 
             # Clean up tar file
@@ -287,14 +283,12 @@ def download_paddleocr_models() -> None:
     print("  Ready for offline deployment in Docker")
 
 
-
-
 def main():
     """Main download function."""
     import sys
 
     # Check if we should skip prerequisites (for PaddleOCR-only download)
-    skip_prereqs = '--skip-prereqs' in sys.argv
+    skip_prereqs = "--skip-prereqs" in sys.argv
 
     if not skip_prereqs:
         # Check prerequisites first

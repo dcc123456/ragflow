@@ -22,7 +22,6 @@ from common.time_utils import current_timestamp, datetime_format
 
 
 class RoleService(CommonService):
-
     model = Role
 
     @classmethod
@@ -33,7 +32,7 @@ class RoleService(CommonService):
             "create_time": current_timestamp(),
             "create_date": datetime_format(datetime.now()),
             "update_time": current_timestamp(),
-            "update_date": datetime_format(datetime.now())
+            "update_date": datetime_format(datetime.now()),
         }
         obj = cls.model(**role_dict).save(force_insert=True)
         return obj, role_dict
@@ -46,11 +45,7 @@ class RoleService(CommonService):
     @classmethod
     @DB.connection_context()
     def update_role_description(cls, role_id: int, description: str):
-        update_dict = {
-            "description": description,
-            "update_time": current_timestamp(),
-            "update_date": datetime_format(datetime.now())
-        }
+        update_dict = {"description": description, "update_time": current_timestamp(), "update_date": datetime_format(datetime.now())}
         return cls.model.update(update_dict).where(cls.model.id == role_id).execute()
 
     @classmethod
@@ -61,7 +56,6 @@ class RoleService(CommonService):
 
 
 class RoleResourceService(CommonService):
-
     model = RoleResource
 
     @classmethod
@@ -86,25 +80,25 @@ class RoleResourceService(CommonService):
         """
         with DB.atomic():
             db_row = cls.model.select().where(cls.model.role_id == role_id).execute()
-            exist_resource_map = {
-                row.resource_type: row.action for row in db_row
-            }
-            insert_dicts = [{
-                "role_id": role_id,
-                "resource_type": k,
-                "action": v,
-                "create_time": current_timestamp(),
-                "create_date": datetime_format(datetime.now()),
-                "update_time": current_timestamp(),
-                "update_date": datetime_format(datetime.now())
-            } for k, v in new_resource_action_map.items() if k not in exist_resource_map.keys()]
+            exist_resource_map = {row.resource_type: row.action for row in db_row}
+            insert_dicts = [
+                {
+                    "role_id": role_id,
+                    "resource_type": k,
+                    "action": v,
+                    "create_time": current_timestamp(),
+                    "create_date": datetime_format(datetime.now()),
+                    "update_time": current_timestamp(),
+                    "update_date": datetime_format(datetime.now()),
+                }
+                for k, v in new_resource_action_map.items()
+                if k not in exist_resource_map.keys()
+            ]
 
             update_dicts = {
-                k: {
-                    "action": v,
-                    "update_time": current_timestamp(),
-                    "update_date": datetime_format(datetime.now())
-                } for k, v in new_resource_action_map.items() if k in exist_resource_map.keys() and exist_resource_map[k] != v
+                k: {"action": v, "update_time": current_timestamp(), "update_date": datetime_format(datetime.now())}
+                for k, v in new_resource_action_map.items()
+                if k in exist_resource_map.keys() and exist_resource_map[k] != v
             }
             # insert & update db
             upsert_cnt = 0

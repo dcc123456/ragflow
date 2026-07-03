@@ -14,6 +14,7 @@ logging.basicConfig(level=logging.INFO)
 logging.getLogger("EngineBuilder").setLevel(logging.INFO)
 log = logging.getLogger("EngineBuilder")
 
+
 class EngineCalibrator(trt.IInt8EntropyCalibrator2):
     """
     Implements the INT8 Entropy Calibrator 2.
@@ -91,10 +92,12 @@ class EngineCalibrator(trt.IInt8EntropyCalibrator2):
             log.info("Writing calibration cache data to: {}".format(self.cache_file))
             f.write(cache)
 
+
 class EngineBuilder:
     """
     Parses an ONNX graph and builds a TensorRT engine from it.
     """
+
     def __init__(self, verbose=False, workspace=8):
         """
         :param verbose: If enabled, a higher verbosity level will be set on the TensorRT logger.
@@ -108,7 +111,7 @@ class EngineBuilder:
 
         self.builder = trt.Builder(self.trt_logger)
         self.config = self.builder.create_builder_config()
-        self.config.set_memory_pool_limit(trt.MemoryPoolType.WORKSPACE, workspace * (2 ** 30))
+        self.config.set_memory_pool_limit(trt.MemoryPoolType.WORKSPACE, workspace * (2**30))
         # self.config.max_workspace_size = workspace * (2 ** 30)  # Deprecation
 
         self.batch_size = None
@@ -120,10 +123,10 @@ class EngineBuilder:
         Parse the ONNX graph and create the corresponding TensorRT network definition.
         :param onnx_path: The path to the ONNX graph to load.
         """
-        v8 = kwargs['v8']
-        v10 = kwargs['v10']
-        network_flags = (1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH))
-        class_agnostic = not kwargs['no_class_agnostic']
+        v8 = kwargs["v8"]
+        v10 = kwargs["v10"]
+        network_flags = 1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH)
+        class_agnostic = not kwargs["no_class_agnostic"]
 
         self.network = self.builder.create_network(network_flags)
         self.parser = trt.OnnxParser(self.network, self.trt_logger)
@@ -155,8 +158,8 @@ class EngineBuilder:
                 self.network.unmark_output(previous_output)
             # output [1, 300, 6]
             # 添加 TopK 层，在第二个维度上找到前 100 个最大值 [1, 100, 6]
-            strides = trt.Dims([1,1,1])
-            starts = trt.Dims([0,0,0])
+            strides = trt.Dims([1, 1, 1])
+            starts = trt.Dims([0, 0, 0])
             bs, num_boxes, temp = previous_output.shape
             shapes = trt.Dims([bs, num_boxes, 4])
             boxes = self.network.add_slice(previous_output, starts, shapes, strides)
@@ -169,10 +172,11 @@ class EngineBuilder:
             cls = self.network.add_slice(previous_output, starts, shapes, strides)
             outputs = [self.network.get_output(i) for i in range(self.network.num_outputs)]
             print("YOLOv10 Modify")
+
             def squeeze(previous_output):
                 reshape_dims = (bs, 300)
                 previous_output = self.network.add_shuffle(previous_output.get_output(0))
-                previous_output.reshape_dims    = reshape_dims
+                previous_output.reshape_dims = reshape_dims
                 return previous_output
 
             # 定义常量值和形状
@@ -184,7 +188,7 @@ class EngineBuilder:
             self.network.mark_output(num.get_output(0))
             boxes.get_output(0).name = "boxes"
             self.network.mark_output(boxes.get_output(0))
-            obj_score= squeeze(obj_score)
+            obj_score = squeeze(obj_score)
             obj_score.get_output(0).name = "scores"
             self.network.mark_output(obj_score.get_output(0))
             cls = squeeze(cls)
@@ -201,18 +205,18 @@ class EngineBuilder:
             except Exception:
                 previous_output = self.network.get_output(0)
                 self.network.unmark_output(previous_output)
-            if  v8:
-               # output [1, 84, 8400]
-                strides = trt.Dims([1,1,1])
-                starts = trt.Dims([0,0,0])
+            if v8:
+                # output [1, 84, 8400]
+                strides = trt.Dims([1, 1, 1])
+                starts = trt.Dims([0, 0, 0])
                 previous_output = self.network.add_shuffle(previous_output)
-                previous_output.second_transpose    = (0, 2, 1)
+                previous_output.second_transpose = (0, 2, 1)
                 # output [1, 8400, 84]
                 bs, num_boxes, temp = previous_output.get_output(0).shape
                 shapes = trt.Dims([bs, num_boxes, 4])
                 # [0, 0, 0] [1, 8400, 4] [1, 1, 1]
                 boxes = self.network.add_slice(previous_output.get_output(0), starts, shapes, strides)
-                num_classes = temp -4
+                num_classes = temp - 4
                 starts[2] = 4
                 shapes[2] = num_classes
                 # [0, 0, 4] [1, 8400, 80] [1, 1, 1]
@@ -221,13 +225,13 @@ class EngineBuilder:
             else:
                 # output [1, 8400, 85]
                 # slice boxes, obj_score, class_scores
-                strides = trt.Dims([1,1,1])
-                starts = trt.Dims([0,0,0])
+                strides = trt.Dims([1, 1, 1])
+                starts = trt.Dims([0, 0, 0])
                 bs, num_boxes, temp = previous_output.shape
                 shapes = trt.Dims([bs, num_boxes, 4])
                 # [0, 0, 0] [1, 8400, 4] [1, 1, 1]
                 boxes = self.network.add_slice(previous_output, starts, shapes, strides)
-                num_classes = temp -5
+                num_classes = temp - 5
                 starts[2] = 4
                 shapes[2] = 1
                 # [0, 0, 4] [1, 8400, 1] [1, 1, 1]
@@ -238,7 +242,7 @@ class EngineBuilder:
                 scores = self.network.add_slice(previous_output, starts, shapes, strides)
                 # scores = obj_score * class_scores => [bs, num_boxes, nc]
                 scores = self.network.add_elementwise(obj_score.get_output(0), scores.get_output(0), trt.ElementWiseOperation.PROD)
-            '''
+            """
             "plugin_version": "1",
             "background_class": -1,  # no background class
             "max_output_boxes": detections_per_img,
@@ -246,11 +250,11 @@ class EngineBuilder:
             "iou_threshold": nms_thresh,
             "score_activation": False,
             "box_coding": 1,
-            '''
+            """
             registry = trt.get_plugin_registry()
-            assert(registry)
+            assert registry
             creator = registry.get_plugin_creator("EfficientNMS_TRT", "1")
-            assert(creator)
+            assert creator
             fc = []
             fc.append(trt.PluginField("background_class", np.array([-1], dtype=np.int32), trt.PluginFieldType.INT32))
             fc.append(trt.PluginField("max_output_boxes", np.array([max_det], dtype=np.int32), trt.PluginFieldType.INT32))
@@ -271,9 +275,7 @@ class EngineBuilder:
             for i in range(4):
                 self.network.mark_output(layer.get_output(i))
 
-
-    def create_engine(self, engine_path, precision, calib_input=None, calib_cache=None, calib_num_images=5000,
-                      calib_batch_size=8):
+    def create_engine(self, engine_path, precision, calib_input=None, calib_cache=None, calib_num_images=5000, calib_batch_size=8):
         """
         Build the TensorRT engine and serialize it to disk.
         :param engine_path: The path where to serialize the engine to.
@@ -309,51 +311,38 @@ class EngineBuilder:
                 if not os.path.exists(calib_cache):
                     calib_shape = [calib_batch_size] + list(inputs[0].shape[1:])
                     calib_dtype = trt.nptype(inputs[0].dtype)
-                    self.config.int8_calibrator.set_image_batcher(
-                        ImageBatcher(calib_input, calib_shape, calib_dtype, max_num_images=calib_num_images,
-                                     exact_batches=True))
+                    self.config.int8_calibrator.set_image_batcher(ImageBatcher(calib_input, calib_shape, calib_dtype, max_num_images=calib_num_images, exact_batches=True))
 
         # with self.builder.build_engine(self.network, self.config) as engine, open(engine_path, "wb") as f:
         with self.builder.build_serialized_network(self.network, self.config) as engine, open(engine_path, "wb") as f:
             print("Serializing engine to file: {:}".format(engine_path))
             f.write(engine)  # .serialize()
 
+
 def main(args):
     builder = EngineBuilder(args.verbose, args.workspace)
     builder.create_network(args.onnx, args.end2end, args.conf_thres, args.iou_thres, args.max_det, v8=args.v8, v10=args.v10, no_class_agnostic=args.no_class_agnostic)
-    builder.create_engine(args.engine, args.precision, args.calib_input, args.calib_cache, args.calib_num_images,
-                          args.calib_batch_size)
+    builder.create_engine(args.engine, args.precision, args.calib_input, args.calib_cache, args.calib_num_images, args.calib_batch_size)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-o", "--onnx", help="The input ONNX model file to load")
     parser.add_argument("-e", "--engine", help="The output path for the TRT engine")
-    parser.add_argument("-p", "--precision", default="fp16", choices=["fp32", "fp16", "int8"],
-                        help="The precision mode to build in, either 'fp32', 'fp16' or 'int8', default: 'fp16'")
+    parser.add_argument("-p", "--precision", default="fp16", choices=["fp32", "fp16", "int8"], help="The precision mode to build in, either 'fp32', 'fp16' or 'int8', default: 'fp16'")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable more verbose log output")
-    parser.add_argument("-w", "--workspace", default=1, type=int, help="The max memory workspace size to allow in Gb, "
-                                                                       "default: 1")
+    parser.add_argument("-w", "--workspace", default=1, type=int, help="The max memory workspace size to allow in Gb, default: 1")
     parser.add_argument("--calib_input", help="The directory holding images to use for calibration")
-    parser.add_argument("--calib_cache", default="./calibration.cache",
-                        help="The file path for INT8 calibration cache to use, default: ./calibration.cache")
-    parser.add_argument("--calib_num_images", default=5000, type=int,
-                        help="The maximum number of images to use for calibration, default: 5000")
-    parser.add_argument("--calib_batch_size", default=8, type=int,
-                        help="The batch size for the calibration process, default: 8")
-    parser.add_argument("--end2end", default=False, action="store_true",
-                        help="export the engine include nms plugin, default: False")
-    parser.add_argument("--conf_thres", default=0.4, type=float,
-                        help="The conf threshold for the nms, default: 0.4")
-    parser.add_argument("--iou_thres", default=0.5, type=float,
-                        help="The iou threshold for the nms, default: 0.5")
-    parser.add_argument("--max_det", default=100, type=int,
-                        help="The total num for results, default: 100")
-    parser.add_argument("--v8", default=False, action="store_true",
-                        help="use yolov8/9 model, default: False")
-    parser.add_argument("--v10", default=False, action="store_true",
-                        help="use yolov10 model, default: False")
-    parser.add_argument("--no-class_agnostic", default=False, action="store_true",
-                        help="Disable class-agnostic NMS (default: enabled)")
+    parser.add_argument("--calib_cache", default="./calibration.cache", help="The file path for INT8 calibration cache to use, default: ./calibration.cache")
+    parser.add_argument("--calib_num_images", default=5000, type=int, help="The maximum number of images to use for calibration, default: 5000")
+    parser.add_argument("--calib_batch_size", default=8, type=int, help="The batch size for the calibration process, default: 8")
+    parser.add_argument("--end2end", default=False, action="store_true", help="export the engine include nms plugin, default: False")
+    parser.add_argument("--conf_thres", default=0.4, type=float, help="The conf threshold for the nms, default: 0.4")
+    parser.add_argument("--iou_thres", default=0.5, type=float, help="The iou threshold for the nms, default: 0.5")
+    parser.add_argument("--max_det", default=100, type=int, help="The total num for results, default: 100")
+    parser.add_argument("--v8", default=False, action="store_true", help="use yolov8/9 model, default: False")
+    parser.add_argument("--v10", default=False, action="store_true", help="use yolov10 model, default: False")
+    parser.add_argument("--no-class_agnostic", default=False, action="store_true", help="Disable class-agnostic NMS (default: enabled)")
     args = parser.parse_args()
     print(args)
     if not all([args.onnx, args.engine]):

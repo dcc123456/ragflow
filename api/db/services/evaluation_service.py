@@ -63,16 +63,13 @@ class EvaluationService(CommonService):
         prefix = f"{base_name}_v"
         max_version = 0
         runs = EvaluationRun.select(EvaluationRun.name).where(
-            (EvaluationRun.collection_id == collection_id) &
-            (EvaluationRun.target_type == target_type) &
-            (EvaluationRun.target_id == target_id) &
-            (EvaluationRun.name.startswith(prefix))
+            (EvaluationRun.collection_id == collection_id) & (EvaluationRun.target_type == target_type) & (EvaluationRun.target_id == target_id) & (EvaluationRun.name.startswith(prefix))
         )
         for run in runs:
             name = run.name or ""
             if not name.startswith(prefix):
                 continue
-            version_str = name[len(prefix):]
+            version_str = name[len(prefix) :]
             if version_str.isdigit():
                 max_version = max(max_version, int(version_str))
         return max_version + 1
@@ -81,8 +78,7 @@ class EvaluationService(CommonService):
 
     @classmethod
     @DB.connection_context()
-    def create_collection(cls, name: str, description: str,
-                      tenant_id: str, user_id: str, target_type: str = "chat") -> Tuple[bool, str]:
+    def create_collection(cls, name: str, description: str, tenant_id: str, user_id: str, target_type: str = "chat") -> Tuple[bool, str]:
         """
         Create a new evaluation collection.
 
@@ -125,7 +121,7 @@ class EvaluationService(CommonService):
                 "created_by": user_id,
                 "create_time": timestamp,
                 "update_time": timestamp,
-                "status": StatusEnum.VALID.value
+                "status": StatusEnum.VALID.value,
             }
 
             if not cls.model.create(**collection):
@@ -138,14 +134,10 @@ class EvaluationService(CommonService):
 
     @classmethod
     @DB.connection_context()
-    def list_collections(cls, tenant_id: str, user_id: str,
-                     page: int = 1, page_size: int = 20, keywords: str = "") -> Dict[str, Any]:
+    def list_collections(cls, tenant_id: str, user_id: str, page: int = 1, page_size: int = 20, keywords: str = "") -> Dict[str, Any]:
         """List collections for a tenant"""
         try:
-            query = cls.model.select().where(
-                (cls.model.tenant_id == tenant_id) &
-                (cls.model.status == StatusEnum.VALID.value)
-            ).order_by(cls.model.create_time.desc())
+            query = cls.model.select().where((cls.model.tenant_id == tenant_id) & (cls.model.status == StatusEnum.VALID.value)).order_by(cls.model.create_time.desc())
 
             keywords = (keywords or "").strip()
             if keywords:
@@ -154,10 +146,7 @@ class EvaluationService(CommonService):
             total = query.count()
             collections = query.paginate(page, page_size)
 
-            return {
-                "total": total,
-                "collections": [c.to_dict() for c in collections]
-            }
+            return {"total": total, "collections": [c.to_dict() for c in collections]}
         except Exception as e:
             logging.error(f"Error listing collections: {e}")
             return {"total": 0, "collections": []}
@@ -196,21 +185,11 @@ class EvaluationService(CommonService):
         """Delete collection"""
         try:
             with DB.atomic():
-                run_ids = [
-                    r.id for r in EvaluationRun.select(EvaluationRun.id).where(
-                        EvaluationRun.collection_id == collection_id
-                    )
-                ]
+                run_ids = [r.id for r in EvaluationRun.select(EvaluationRun.id).where(EvaluationRun.collection_id == collection_id)]
                 if run_ids:
-                    EvaluationResult.delete().where(
-                        EvaluationResult.run_id.in_(run_ids)
-                    ).execute()
-                    EvaluationRun.delete().where(
-                        EvaluationRun.id.in_(run_ids)
-                    ).execute()
-                EvaluationCase.delete().where(
-                    EvaluationCase.collection_id == collection_id
-                ).execute()
+                    EvaluationResult.delete().where(EvaluationResult.run_id.in_(run_ids)).execute()
+                    EvaluationRun.delete().where(EvaluationRun.id.in_(run_ids)).execute()
+                EvaluationCase.delete().where(EvaluationCase.collection_id == collection_id).execute()
                 return cls.model.delete().where(cls.model.id == collection_id).execute() > 0
         except Exception as e:
             logging.error(f"Error deleting collection {collection_id}: {e}")
@@ -220,10 +199,9 @@ class EvaluationService(CommonService):
 
     @classmethod
     @DB.connection_context()
-    def add_test_case(cls, collection_id: str, variable: Dict[str, Any],
-                     relevant_doc_ids: Optional[List[str]] = None,
-                     relevant_kb_ids: Optional[List[str]] = None,
-                     metadata: Optional[Dict[str, Any]] = None) -> Tuple[bool, str]:
+    def add_test_case(
+        cls, collection_id: str, variable: Dict[str, Any], relevant_doc_ids: Optional[List[str]] = None, relevant_kb_ids: Optional[List[str]] = None, metadata: Optional[Dict[str, Any]] = None
+    ) -> Tuple[bool, str]:
         """
         Add a test case to a collection.
 
@@ -247,7 +225,7 @@ class EvaluationService(CommonService):
                 "relevant_doc_ids": relevant_doc_ids,
                 "relevant_kb_ids": relevant_kb_ids,
                 "metadata": metadata,
-                "create_time": current_timestamp()
+                "create_time": current_timestamp(),
             }
 
             if not EvaluationCase.create(**case):
@@ -267,11 +245,7 @@ class EvaluationService(CommonService):
             run = EvaluationRun.get_or_none(EvaluationRun.id == run_id)
             if not run:
                 return 0
-            cnt = (
-                EvaluationCase.select(fn.COUNT(EvaluationCase.id))
-                .where(EvaluationCase.collection_id == run.collection_id)
-                .scalar()
-            )
+            cnt = EvaluationCase.select(fn.COUNT(EvaluationCase.id)).where(EvaluationCase.collection_id == run.collection_id).scalar()
             return int(cnt or 0)
         except Exception as e:
             logging.error(f"Error getting test cases count for run {run_id}: {e}")
@@ -282,9 +256,7 @@ class EvaluationService(CommonService):
     def get_test_cases(cls, collection_id: str) -> List[Dict[str, Any]]:
         """Get all test cases for a collection"""
         try:
-            cases = EvaluationCase.select().where(
-                EvaluationCase.collection_id == collection_id
-            ).order_by(EvaluationCase.create_time)
+            cases = EvaluationCase.select().where(EvaluationCase.collection_id == collection_id).order_by(EvaluationCase.create_time)
 
             return [c.to_dict() for c in cases]
         except Exception as e:
@@ -293,14 +265,10 @@ class EvaluationService(CommonService):
 
     @classmethod
     @DB.connection_context()
-    def list_test_cases(
-        cls, collection_id: str, page: int = 1, page_size: int = 20
-    ) -> Dict[str, Any]:
+    def list_test_cases(cls, collection_id: str, page: int = 1, page_size: int = 20) -> Dict[str, Any]:
         """List test cases for a collection with pagination."""
         try:
-            query = EvaluationCase.select().where(
-                EvaluationCase.collection_id == collection_id
-            ).order_by(EvaluationCase.create_time)
+            query = EvaluationCase.select().where(EvaluationCase.collection_id == collection_id).order_by(EvaluationCase.create_time)
 
             total = query.count()
             cases = query.paginate(page, page_size)
@@ -315,12 +283,8 @@ class EvaluationService(CommonService):
         """Delete a test case"""
         try:
             with DB.atomic():
-                EvaluationResult.delete().where(
-                    EvaluationResult.case_id == case_id
-                ).execute()
-                return EvaluationCase.delete().where(
-                    EvaluationCase.id == case_id
-                ).execute() > 0
+                EvaluationResult.delete().where(EvaluationResult.case_id == case_id).execute()
+                return EvaluationCase.delete().where(EvaluationCase.id == case_id).execute() > 0
         except Exception as e:
             logging.error(f"Error deleting test case {case_id}: {e}")
             return False
@@ -335,14 +299,10 @@ class EvaluationService(CommonService):
             if not data:
                 return False
             with DB.atomic():
-                updated = EvaluationCase.update(**data).where(
-                    EvaluationCase.id == case_id
-                ).execute() > 0
+                updated = EvaluationCase.update(**data).where(EvaluationCase.id == case_id).execute() > 0
                 if not updated:
                     return False
-                EvaluationResult.delete().where(
-                    EvaluationResult.case_id == case_id
-                ).execute()
+                EvaluationResult.delete().where(EvaluationResult.case_id == case_id).execute()
                 return True
         except Exception as e:
             logging.error(f"Error updating test case {case_id}: {e}")
@@ -372,13 +332,10 @@ class EvaluationService(CommonService):
 
         try:
             for case_data in cases:
-                variable = case_data.get("variable",None)
+                variable = case_data.get("variable", None)
                 if not isinstance(variable, dict) or not variable:
                     if case_data.get("question", ""):
-                        variable = {
-                            "question": case_data.get("question", "").strip(),
-                            "reference_answer": case_data.get("reference_answer", "").strip()
-                        }
+                        variable = {"question": case_data.get("question", "").strip(), "reference_answer": case_data.get("reference_answer", "").strip()}
                     else:
                         failure_count += 1
                         continue
@@ -390,7 +347,7 @@ class EvaluationService(CommonService):
                     "relevant_doc_ids": case_data.get("relevant_doc_ids"),
                     "relevant_kb_ids": case_data.get("relevant_kb_ids"),
                     "metadata": case_data.get("metadata"),
-                    "create_time": cur_timestamp
+                    "create_time": cur_timestamp,
                 }
 
                 case_instances.append(case_info)
@@ -413,11 +370,9 @@ class EvaluationService(CommonService):
 
     @classmethod
     @DB.connection_context()
-    def create_run_config(cls, collection_id: str, target_type: str, target_id: str,
-                          user_id: str, name: Optional[str] = None,
-                          config_snapshot: Optional[Dict[str, Any]] = {},
-                          run_id: str = None
-                          ) -> Tuple[bool, str]:
+    def create_run_config(
+        cls, collection_id: str, target_type: str, target_id: str, user_id: str, name: Optional[str] = None, config_snapshot: Optional[Dict[str, Any]] = {}, run_id: str = None
+    ) -> Tuple[bool, str]:
         """
         Create an evaluation run config without execution.
 
@@ -445,9 +400,9 @@ class EvaluationService(CommonService):
             config_snapshot["metrics"] = config_snapshot.get("metrics")
             if not config_snapshot["metrics"]:
                 config_snapshot["metrics"] = {
-                "context_relevance": {"enable": True, "llm_id": ten.llm_id}, 
-                "faithfulness": {"enable": True, "llm_id": ten.llm_id},
-                "semantic_similarity":{"enable": True, "llm_id": ten.llm_id}
+                    "context_relevance": {"enable": True, "llm_id": ten.llm_id},
+                    "faithfulness": {"enable": True, "llm_id": ten.llm_id},
+                    "semantic_similarity": {"enable": True, "llm_id": ten.llm_id},
                 }
             else:
                 for metric_config in config_snapshot["metrics"].values():
@@ -478,7 +433,7 @@ class EvaluationService(CommonService):
                 "status": EvaluationRunStatus.PENDING,
                 "created_by": user_id,
                 "create_time": current_timestamp(),
-                "complete_time": None
+                "complete_time": None,
             }
 
             if run_id:
@@ -507,8 +462,7 @@ class EvaluationService(CommonService):
 
     @classmethod
     @DB.connection_context()
-    def list_runs(cls, target_id: str, page: int, page_size: int, 
-                  keywords: Optional[str] = None) -> List[Dict[str, Any]]:
+    def list_runs(cls, target_id: str, page: int, page_size: int, keywords: Optional[str] = None) -> List[Dict[str, Any]]:
         """List runs with optional filters (no pagination)"""
         try:
             query = EvaluationRun.select().where(EvaluationRun.target_id == target_id)
@@ -517,7 +471,7 @@ class EvaluationService(CommonService):
 
             total = query.count()
             query = query.order_by(EvaluationRun.create_time.desc()).paginate(page, page_size)
-            return { "total": total, "runs": [r.to_dict() for r in query] }
+            return {"total": total, "runs": [r.to_dict() for r in query]}
         except Exception as e:
             logging.error(f"Error listing runs: {e}")
         return {}
@@ -550,17 +504,14 @@ class EvaluationService(CommonService):
             if not update_data:
                 return False
 
-            return EvaluationRun.update(**update_data).where(
-                EvaluationRun.id == run_id
-            ).execute() > 0
+            return EvaluationRun.update(**update_data).where(EvaluationRun.id == run_id).execute() > 0
         except Exception as e:
             logging.error(f"Error updating run {run_id}: {e}")
             return False
 
     @classmethod
     @DB.connection_context()
-    def duplicate_run(cls, run_id: str, user_id: str,
-                      name: Optional[str] = None) -> Tuple[bool, str]:
+    def duplicate_run(cls, run_id: str, user_id: str, name: Optional[str] = None) -> Tuple[bool, str]:
         """Duplicate a run config"""
         try:
             run = EvaluationRun.get_by_id(run_id)
@@ -597,7 +548,7 @@ class EvaluationService(CommonService):
                 "status": EvaluationRunStatus.PENDING,
                 "created_by": user_id,
                 "create_time": current_timestamp(),
-                "complete_time": None
+                "complete_time": None,
             }
 
             if not EvaluationRun.create(**new_run):
@@ -614,12 +565,8 @@ class EvaluationService(CommonService):
         """Delete a run and its results"""
         try:
             with DB.atomic():
-                EvaluationResult.delete().where(
-                    EvaluationResult.run_id == run_id
-                ).execute()
-                return EvaluationRun.delete().where(
-                    EvaluationRun.id == run_id
-                ).execute() > 0
+                EvaluationResult.delete().where(EvaluationResult.run_id == run_id).execute()
+                return EvaluationRun.delete().where(EvaluationRun.id == run_id).execute() > 0
         except Exception as e:
             logging.error(f"Error deleting run {run_id}: {e}")
             return False
@@ -653,18 +600,13 @@ class EvaluationService(CommonService):
             metrics_name=normalized_metrics,
             tenant_id=collection.tenant_id,
         )
-        EvaluationRun.update(
-                task_id=task_id,
-                status=EvaluationRunStatus.PENDING
-            ).where(EvaluationRun.id == run_id).execute()
+        EvaluationRun.update(task_id=task_id, status=EvaluationRunStatus.PENDING).where(EvaluationRun.id == run_id).execute()
         return True, task_id
-    
+
     @classmethod
     @DB.connection_context()
     def cancel_run_task(cls, run_id) -> Tuple[bool, str]:
-        EvaluationRun.update(
-                status=EvaluationRunStatus.CANCEL
-            ).where(EvaluationRun.id == run_id).execute()
+        EvaluationRun.update(status=EvaluationRunStatus.CANCEL).where(EvaluationRun.id == run_id).execute()
 
     # ==================== Evaluation Execution ====================
 
@@ -682,10 +624,7 @@ class EvaluationService(CommonService):
             if not ok:
                 return False
 
-            case = EvaluationCase.get_or_none(
-                (EvaluationCase.id == case_id) &
-                (EvaluationCase.collection_id == run.collection_id)
-            )
+            case = EvaluationCase.get_or_none((EvaluationCase.id == case_id) & (EvaluationCase.collection_id == run.collection_id))
             if not case:
                 return False
 
@@ -698,16 +637,13 @@ class EvaluationService(CommonService):
             if not result:
                 return False
 
-            EvaluationRun.update(
-                status=EvaluationRunStatus.COMPLETED,
-                complete_time=current_timestamp()
-            ).where(EvaluationRun.id == run_id).execute()
+            EvaluationRun.update(status=EvaluationRunStatus.COMPLETED, complete_time=current_timestamp()).where(EvaluationRun.id == run_id).execute()
 
             return True
         except Exception as e:
             logging.error(f"Error executing run case {run_id}/{case_id}: {e}")
             return False
-        
+
     @classmethod
     @DB.connection_context()
     def _check_run(cls, run_id: str):
@@ -723,7 +659,7 @@ class EvaluationService(CommonService):
         test_cases = cls.get_test_cases(run.collection_id)
         if not test_cases:
             raise LookupError("The test case is missing.")
-        
+
         return dialog, test_cases
 
     @staticmethod
@@ -832,13 +768,14 @@ class EvaluationService(CommonService):
                 nonlocal done_count
 
                 async with sem:
+
                     def work():
                         with DB.connection_context():
                             ok2, dialog2 = DialogService.get_by_id(target_id)
                             if not ok2:
                                 raise LookupError("The chat is missing.")
                             try:
-                                for k,v in run.config_snapshot.get("target", {}).items():
+                                for k, v in run.config_snapshot.get("target", {}).items():
                                     if hasattr(Dialog, k):
                                         setattr(dialog2, k, v)
                             except Exception as e:
@@ -874,28 +811,22 @@ class EvaluationService(CommonService):
 
             cls.recompute_metrics_summary(run_id)
             with DB.connection_context():
-                EvaluationRun.update(
-                    status=EvaluationRunStatus.COMPLETED,
-                    complete_time=current_timestamp()
-                ).where(EvaluationRun.id == run_id).execute()
+                EvaluationRun.update(status=EvaluationRunStatus.COMPLETED, complete_time=current_timestamp()).where(EvaluationRun.id == run_id).execute()
             if callback:
                 callback(prog=1, msg="Done")
             return True
         except Exception as e:
             logging.error(f"Error executing run {run_id}: {e}")
             with DB.connection_context():
-                EvaluationRun.update(
-                    status=EvaluationRunStatus.FAILED,
-                    complete_time=current_timestamp()
-                ).where(EvaluationRun.id == run_id).execute()
+                EvaluationRun.update(status=EvaluationRunStatus.FAILED, complete_time=current_timestamp()).where(EvaluationRun.id == run_id).execute()
             if callback:
                 callback(prog=-1, msg=str(e))
             return False
 
     @classmethod
     @DB.connection_context()
-    def run_metrics_for_case(cls, run_id: str, case_id: str, user_id: str, metric_names: list|None=None) -> bool:
-        """Compute all metrics for a case"""        
+    def run_metrics_for_case(cls, run_id: str, case_id: str, user_id: str, metric_names: list | None = None) -> bool:
+        """Compute all metrics for a case"""
         metric_names = cls._normalize_metrics(metric_names)
         if not metric_names:
             metric_names = [m.value for m in DEFAULT_EVALUATION_METRICS]
@@ -903,18 +834,12 @@ class EvaluationService(CommonService):
             run = EvaluationRun.get_by_id(run_id)
             if not run:
                 raise LookupError("The evaluation run is missing.")
-            
-            case = EvaluationCase.get_or_none(
-                (EvaluationCase.id == case_id) &
-                (EvaluationCase.collection_id == run.collection_id)
-            )
+
+            case = EvaluationCase.get_or_none((EvaluationCase.id == case_id) & (EvaluationCase.collection_id == run.collection_id))
             if not case:
                 raise LookupError("The test case is missing.")
-            
-            result = EvaluationResult.get_or_none(
-                (EvaluationResult.run_id == run_id) &
-                (EvaluationResult.case_id == case_id)
-            )
+
+            result = EvaluationResult.get_or_none((EvaluationResult.run_id == run_id) & (EvaluationResult.case_id == case_id))
             if not result:
                 raise LookupError("The test case result is missing.")
 
@@ -933,16 +858,14 @@ class EvaluationService(CommonService):
                     relevant_doc_ids=case.relevant_doc_ids,
                     llm_id=metric_config["llm_id"],
                     user_id=user_id,
-                    metrics_type=met
+                    metrics_type=met,
                 )
                 if _metrics:
                     computed_any = True
                 metrics.update(_metrics)
             if not computed_any:
                 return False
-            updated = EvaluationResult.update(metrics=metrics).where(
-                EvaluationResult.id == result.id
-            ).execute() > 0
+            updated = EvaluationResult.update(metrics=metrics).where(EvaluationResult.id == result.id).execute() > 0
             return updated
         except Exception as e:
             logging.error(f"Error computing metrics for {run_id}/{case_id}: {e}")
@@ -950,9 +873,7 @@ class EvaluationService(CommonService):
 
     @classmethod
     @DB.connection_context()
-    def run_metrics_for_cases(cls, run_id: str,
-                              user_id: str, 
-                              metrics: list|None= None) -> Tuple[int, int]:
+    def run_metrics_for_cases(cls, run_id: str, user_id: str, metrics: list | None = None) -> Tuple[int, int]:
         """Compute all metrics for all cases in a run"""
         metric_names = cls._normalize_metrics(metrics)
         if not metric_names:
@@ -985,13 +906,9 @@ class EvaluationService(CommonService):
     def recompute_metrics_summary(cls, run_id: str) -> bool:
         """Recompute summary metrics for a run"""
         try:
-            results = EvaluationResult.select().where(
-                EvaluationResult.run_id == run_id
-            )
+            results = EvaluationResult.select().where(EvaluationResult.run_id == run_id)
             metrics_summary = cls._compute_summary_metrics([r.to_dict() for r in results])
-            return EvaluationRun.update(
-                metrics_summary=metrics_summary
-            ).where(EvaluationRun.id == run_id).execute() > 0
+            return EvaluationRun.update(metrics_summary=metrics_summary).where(EvaluationRun.id == run_id).execute() > 0
         except Exception as e:
             logging.error(f"Error recomputing metrics summary for {run_id}: {e}")
             return False
@@ -1001,19 +918,21 @@ class EvaluationService(CommonService):
     def clear_result(cls, run_id: str, case_id: str) -> bool:
         """Clear result content without deleting the record"""
         try:
-            result = EvaluationResult.get_or_none(
-                (EvaluationResult.run_id == run_id) &
-                (EvaluationResult.case_id == case_id)
-            )
+            result = EvaluationResult.get_or_none((EvaluationResult.run_id == run_id) & (EvaluationResult.case_id == case_id))
             if not result:
                 return False
-            return EvaluationResult.update(
-                generated_answer="",
-                retrieved_chunks={"chunks": [], "doc_aggs":[]},
-                metrics={},
-                execution_time=0.0,
-                token_usage=None,
-            ).where(EvaluationResult.id == result.id).execute() > 0
+            return (
+                EvaluationResult.update(
+                    generated_answer="",
+                    retrieved_chunks={"chunks": [], "doc_aggs": []},
+                    metrics={},
+                    execution_time=0.0,
+                    token_usage=None,
+                )
+                .where(EvaluationResult.id == result.id)
+                .execute()
+                > 0
+            )
         except Exception as e:
             logging.error(f"Error clearing result for {run_id}/{case_id}: {e}")
             return False
@@ -1023,19 +942,14 @@ class EvaluationService(CommonService):
     def clear_result_metric(cls, run_id: str, case_id: str, metric_name: str) -> bool:
         """Remove a single metric from result metrics"""
         try:
-            result = EvaluationResult.get_or_none(
-                (EvaluationResult.run_id == run_id) &
-                (EvaluationResult.case_id == case_id)
-            )
+            result = EvaluationResult.get_or_none((EvaluationResult.run_id == run_id) & (EvaluationResult.case_id == case_id))
             if not result:
                 return False
             metrics = result.metrics or {}
             if metric_name not in metrics:
                 return False
             metrics.pop(metric_name, None)
-            updated = EvaluationResult.update(metrics=metrics).where(
-                EvaluationResult.id == result.id
-            ).execute() > 0
+            updated = EvaluationResult.update(metrics=metrics).where(EvaluationResult.id == result.id).execute() > 0
             if updated:
                 cls.recompute_metrics_summary(run_id)
             return updated
@@ -1048,15 +962,10 @@ class EvaluationService(CommonService):
     def clear_result_generated_answer(cls, run_id: str, case_id: str) -> bool:
         """Clear generated answer content"""
         try:
-            result = EvaluationResult.get_or_none(
-                (EvaluationResult.run_id == run_id) &
-                (EvaluationResult.case_id == case_id)
-            )
+            result = EvaluationResult.get_or_none((EvaluationResult.run_id == run_id) & (EvaluationResult.case_id == case_id))
             if not result:
                 return False
-            return EvaluationResult.update(
-                generated_answer=""
-            ).where(EvaluationResult.id == result.id).execute() > 0
+            return EvaluationResult.update(generated_answer="").where(EvaluationResult.id == result.id).execute() > 0
         except Exception as e:
             logging.error(f"Error clearing generated answer for {run_id}/{case_id}: {e}")
             return False
@@ -1121,13 +1030,8 @@ class EvaluationService(CommonService):
 
     @classmethod
     @DB.connection_context()
-    def _save_execution_result(cls, run_id: str, case_id: str, answer: str,
-                               retrieved_chunks: Dict[str, Any],
-                               execution_time: float) -> Dict[str, Any]:
-        existing = EvaluationResult.get_or_none(
-            (EvaluationResult.run_id == run_id) &
-            (EvaluationResult.case_id == case_id)
-        )
+    def _save_execution_result(cls, run_id: str, case_id: str, answer: str, retrieved_chunks: Dict[str, Any], execution_time: float) -> Dict[str, Any]:
+        existing = EvaluationResult.get_or_none((EvaluationResult.run_id == run_id) & (EvaluationResult.case_id == case_id))
         if existing:
             update_data = {
                 "generated_answer": answer,
@@ -1136,9 +1040,7 @@ class EvaluationService(CommonService):
                 "execution_time": execution_time,
                 "token_usage": None,
             }
-            EvaluationResult.update(**update_data).where(
-                EvaluationResult.id == existing.id
-            ).execute()
+            EvaluationResult.update(**update_data).where(EvaluationResult.id == existing.id).execute()
             return {
                 "id": existing.id,
                 "run_id": run_id,
@@ -1160,20 +1062,24 @@ class EvaluationService(CommonService):
             "metrics": {},
             "execution_time": execution_time,
             "token_usage": None,  # TODO: Track token usage
-            "create_time": current_timestamp()
+            "create_time": current_timestamp(),
         }
 
         EvaluationResult.create(**result)
         return result
 
     @classmethod
-    def _compute_metrics(cls, question: str, generated_answer: str,
-                        reference_answer: Optional[str],
-                        retrieved_chunks: Dict[str, Any],
-                        relevant_doc_ids: Optional[List[str]],
-                        llm_id: str,
-                        user_id: str,
-                        metrics_type: str) -> Dict[str, float]:
+    def _compute_metrics(
+        cls,
+        question: str,
+        generated_answer: str,
+        reference_answer: Optional[str],
+        retrieved_chunks: Dict[str, Any],
+        relevant_doc_ids: Optional[List[str]],
+        llm_id: str,
+        user_id: str,
+        metrics_type: str,
+    ) -> Dict[str, float]:
         """
         Compute evaluation metrics for a single test case.
 
@@ -1210,12 +1116,9 @@ class EvaluationService(CommonService):
         return metrics
 
     @classmethod
-    def _compute_llm_metrics(cls, question: str, generated_answer: str,
-                             reference_answer: Optional[str],
-                             retrieved_chunks: Dict[str, Any],
-                             llm_id: str, 
-                             user_id: str,
-                             metrics_type: str) -> Dict[str, float]:
+    def _compute_llm_metrics(
+        cls, question: str, generated_answer: str, reference_answer: Optional[str], retrieved_chunks: Dict[str, Any], llm_id: str, user_id: str, metrics_type: str
+    ) -> Dict[str, float]:
         if not question or not generated_answer:
             return {}
 
@@ -1250,6 +1153,7 @@ class EvaluationService(CommonService):
             return {}
         key, val = list(result.items())[0]
         key = key.value if isinstance(key, EvaluationMetric) else str(key)
+
         def _get_score(value: Any) -> Optional[float]:
             try:
                 score_f = float(value)
@@ -1260,6 +1164,7 @@ class EvaluationService(CommonService):
             elif score_f > 1.0:
                 score_f = 1.0
             return score_f
+
         return {key: _get_score(val.get("score")), f"{key}_reason": val.get("reason", "")}
 
     @staticmethod
@@ -1319,20 +1224,14 @@ class EvaluationService(CommonService):
         return bp * precision
 
     @classmethod
-    def _build_context(cls, retrieved_chunks: Dict[str, Any],
-                       max_chars: int = 8192, max_chunks: int = 6) -> str:
+    def _build_context(cls, retrieved_chunks: Dict[str, Any], max_chars: int = 8192, max_chunks: int = 6) -> str:
         retrieved_chunks = retrieved_chunks.get("chunks", [])
         if not retrieved_chunks:
             return ""
         parts = []
         total = 0
         for chunk in retrieved_chunks[:max_chunks]:
-            content = (
-                chunk.get("content")
-                or chunk.get("content_with_weight")
-                or remove_redundant_spaces(chunk.get("content_ltks"))
-                or ""
-            )
+            content = chunk.get("content") or chunk.get("content_with_weight") or remove_redundant_spaces(chunk.get("content_ltks")) or ""
             if not content:
                 continue
             content = str(content).strip()
@@ -1351,8 +1250,7 @@ class EvaluationService(CommonService):
         return "\n\n".join(parts)
 
     @classmethod
-    def _compute_retrieval_metrics(cls, retrieved_ids: List[str],
-                                   relevant_ids: List[str]) -> Dict[str, float]:
+    def _compute_retrieval_metrics(cls, retrieved_ids: List[str], relevant_ids: List[str]) -> Dict[str, float]:
         """
         Compute retrieval metrics.
 
@@ -1388,13 +1286,7 @@ class EvaluationService(CommonService):
                 mrr = 1.0 / i
                 break
 
-        return {
-            "precision": precision,
-            "recall": recall,
-            "f1_score": f1,
-            "hit_rate": hit_rate,
-            "mrr": mrr
-        }
+        return {"precision": precision, "recall": recall, "f1_score": f1, "hit_rate": hit_rate, "mrr": mrr}
 
     @classmethod
     def _compute_summary_metrics(cls, results: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -1432,11 +1324,7 @@ class EvaluationService(CommonService):
         for key, total in metric_sums.items():
             count = metric_counts.get(key, 0)
             if count:
-                summary[key] = {
-                    "type": "",
-                    "config": "",
-                    "summary": total / count
-                }
+                summary[key] = {"type": "", "config": "", "summary": total / count}
 
         return summary
 
@@ -1461,18 +1349,11 @@ class EvaluationService(CommonService):
                 EvaluationResult.retrieved_chunks,
                 EvaluationResult.metrics,
             ]
-            results = EvaluationResult.select(*fields)\
-                .join(EvaluationCase, on=(EvaluationResult.case_id == EvaluationCase.id)).where(
-                EvaluationResult.run_id == run_id
-            ).order_by(EvaluationResult.id)
+            results = EvaluationResult.select(*fields).join(EvaluationCase, on=(EvaluationResult.case_id == EvaluationCase.id)).where(EvaluationResult.run_id == run_id).order_by(EvaluationResult.id)
             total = results.count()
             results = results.paginate(page, page_size).dicts()
 
-            return {
-                "run": run.to_dict(),
-                "results": list(results),
-                "total": total
-            }
+            return {"run": run.to_dict(), "results": list(results), "total": total}
         except Exception as e:
             logging.error(f"Error getting run results {run_id}: {e}")
             return {}

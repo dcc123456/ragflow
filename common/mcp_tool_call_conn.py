@@ -49,7 +49,7 @@ class MCPToolBinding:
 class MCPToolCallSession(ToolCallSession):
     _ALL_INSTANCES: weakref.WeakSet["MCPToolCallSession"] = weakref.WeakSet()
 
-    def __init__(self, mcp_server: Any, server_variables: dict[str, Any] | None = None, custom_header = None) -> None:
+    def __init__(self, mcp_server: Any, server_variables: dict[str, Any] | None = None, custom_header=None) -> None:
         self.__class__._ALL_INSTANCES.add(self)
 
         self._custom_header = custom_header
@@ -148,8 +148,7 @@ class MCPToolCallSession(ToolCallSession):
                 await self._process_mcp_tasks(None, msg)
 
         else:
-            await self._process_mcp_tasks(None,
-                                          f"Unsupported MCP server type: {self._mcp_server.server_type}, id: {self._mcp_server.id}")
+            await self._process_mcp_tasks(None, f"Unsupported MCP server type: {self._mcp_server.server_type}, id: {self._mcp_server.id}")
 
     async def _process_mcp_tasks(self, client_session: ClientSession | None, error_message: str | None = None) -> None:
         while not self._close:
@@ -207,8 +206,7 @@ class MCPToolCallSession(ToolCallSession):
             raise
 
     async def _call_mcp_tool(self, name: str, arguments: dict[str, Any], request_timeout: float | int = 10) -> str:
-        result: CallToolResult = await self._call_mcp_server("tool_call", name=name, arguments=arguments,
-                                                             request_timeout=request_timeout)
+        result: CallToolResult = await self._call_mcp_server("tool_call", name=name, arguments=arguments, request_timeout=request_timeout)
 
         if result.isError:
             return f"MCP server error: {result.content}"
@@ -305,9 +303,7 @@ class MCPToolCallSession(ToolCallSession):
         with self._close_lock:
             if not self._close and not self._event_loop.is_closed():
                 try:
-                    await asyncio.wrap_future(
-                        asyncio.run_coroutine_threadsafe(self._mark_closing(), self._event_loop)
-                    )
+                    await asyncio.wrap_future(asyncio.run_coroutine_threadsafe(self._mark_closing(), self._event_loop))
                 except RuntimeError:
                     self._close = True
                 except Exception:
@@ -357,8 +353,7 @@ def close_multiple_mcp_toolcall_sessions(sessions: list[MCPToolCallSession]) -> 
     except Exception:
         logging.exception("Exception during MCP session cleanup")
 
-    logging.info(
-        f"{len(sessions)} MCP sessions has been cleaned up. {len(list(MCPToolCallSession._ALL_INSTANCES))} in global context.")
+    logging.info(f"{len(sessions)} MCP sessions has been cleaned up. {len(list(MCPToolCallSession._ALL_INSTANCES))} in global context.")
 
 
 def shutdown_all_mcp_sessions():

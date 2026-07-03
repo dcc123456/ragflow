@@ -108,7 +108,6 @@ def _normalize_subscription_status(status: str | None) -> str:
     return (status or "").strip().lower()
 
 
-
 def _load_webhook_checkpoint() -> dict[str, str | int]:
     record = SystemSettingsService.get_singleton_by_exact_name(WEBHOOK_CHECKPOINT_SETTING_NAME)
     if record and record.value:
@@ -279,6 +278,7 @@ def _sync_api_auth_plan_for_subscription(
 ) -> None:
     try:
         from common.billing_rate_limit_sync import sync_api_auth_plan
+
         sync_api_auth_plan(tenant_id, plan_name, subscription_status)
     except Exception:
         logging.exception("Failed to sync API auth plan cache for tenant %s", tenant_id)
@@ -520,6 +520,7 @@ async def _handle_main_subscription_invoice_not_paid(event: dict, description: s
         },
     )
 
+
 def _prepare_webhook_event_processing(
     event_id,
     event_type,
@@ -586,10 +587,7 @@ def _update_webhook_event_checkpoint(event_timestamp, event_id: str = ""):
             "created": event_timestamp_int,
             "id": event_id or existing_event_id,
         }
-        if (
-            event_timestamp_int == existing_timestamp_int
-            and next_payload["id"] == existing_event_id
-        ):
+        if event_timestamp_int == existing_timestamp_int and next_payload["id"] == existing_event_id:
             return
 
         SystemSettingsService.upsert_singleton_by_exact_name(
@@ -814,8 +812,7 @@ async def _handle_payment_intent_succeeded(event: dict):
                 prev_expiry = to_utc_datetime(purchased_overview.get("expiry_time"))
                 if not prev_expiry or expiry_dt > prev_expiry:
                     PurchasedProductOverviewService.model.update(expiry_time=expiry_dt).where(
-                        (PurchasedProductOverviewService.model.product_name == product_name)
-                        & (PurchasedProductOverviewService.model.tenant_id == tenant_id)
+                        (PurchasedProductOverviewService.model.product_name == product_name) & (PurchasedProductOverviewService.model.tenant_id == tenant_id)
                     ).execute()
 
 
@@ -1127,9 +1124,7 @@ def _should_apply_subscription_event(
         # Never let an older snapshot roll back a newer local one.
         if existing_end and current_end and current_end < existing_end:
             return False
-        if existing_start and current_start and current_start < existing_start and (
-            not current_end or (existing_end and current_end <= existing_end)
-        ):
+        if existing_start and current_start and current_start < existing_start and (not current_end or (existing_end and current_end <= existing_end)):
             return False
         return True
 
@@ -1154,14 +1149,7 @@ def _is_same_billing_period(existing_main_subscription: dict | None, event_perio
     existing_end = to_utc_datetime(existing_main_subscription.get("end_time"))
     current_start = to_utc_datetime(event_period_start)
     current_end = to_utc_datetime(event_period_end)
-    return bool(
-        existing_start
-        and existing_end
-        and current_start
-        and current_end
-        and existing_start == current_start
-        and existing_end == current_end
-    )
+    return bool(existing_start and existing_end and current_start and current_end and existing_start == current_start and existing_end == current_end)
 
 
 async def _handle_storage_subscription_updated(subscription_updated: SubscriptionUpdated):
@@ -1265,12 +1253,13 @@ async def _handle_customer_subscription_updated(event: dict):
         from api.services.downgrade_guard import check_downgrade_effective_exceeded, _inc_metric
 
         exceed_info = check_downgrade_effective_exceeded(
-            tenant_id, existing_main_subscription, plan_changed=plan_changed,
+            tenant_id,
+            existing_main_subscription,
+            plan_changed=plan_changed,
         )
         if exceed_info:
             logging.critical(
-                "DOWNGRADE EFFECTIVE BUT QUOTA EXCEEDED: tenant=%s old_plan=%s "
-                "target_plan=%s storage=%d limit=%d members=%d apps=%d",
+                "DOWNGRADE EFFECTIVE BUT QUOTA EXCEEDED: tenant=%s old_plan=%s target_plan=%s storage=%d limit=%d members=%d apps=%d",
                 tenant_id,
                 (existing_main_subscription.get("plan_name") or "").strip(),
                 (existing_main_subscription.get("target_plan_name") or ""),
@@ -1283,7 +1272,10 @@ async def _handle_customer_subscription_updated(event: dict):
             target_plan = (existing_main_subscription.get("target_plan_name") or "") if existing_main_subscription else ""
             old_plan = (existing_main_subscription.get("plan_name") or "").strip() if existing_main_subscription else ""
             await _send_downgrade_effective_exceeded_email(
-                tenant_id, old_plan, target_plan, exceed_info,
+                tenant_id,
+                old_plan,
+                target_plan,
+                exceed_info,
             )
     except Exception:
         logging.exception("Webhook final defense check failed for tenant %s", tenant_id)
@@ -1321,7 +1313,10 @@ async def _handle_customer_subscription_updated(event: dict):
 
 
 async def _send_downgrade_effective_exceeded_email(
-    tenant_id: str, old_plan: str, target_plan: str | None, exceed_info: dict,
+    tenant_id: str,
+    old_plan: str,
+    target_plan: str | None,
+    exceed_info: dict,
 ) -> None:
     from api.services.downgrade_guard import _send_guard_email
 
@@ -1362,11 +1357,7 @@ async def _handle_customer_subscription_deleted(event: dict):
                     current_subscription_id,
                 )
                 return
-            trial_subscription = SubscriptionService._build_trial_subscription(
-                tenant_id,
-                customer_id or existing.get("customer_id", ""),
-                existing.get("original_subscription_id", "") or ""
-            )
+            trial_subscription = SubscriptionService._build_trial_subscription(tenant_id, customer_id or existing.get("customer_id", ""), existing.get("original_subscription_id", "") or "")
             SubscriptionService.upsert_subscription(tenant_id, trial_subscription)
             PointAccountService.reset_plan_consumed_points_at_cycle_start(tenant_id)
             _sync_tenant_rate_limit_for_subscription(

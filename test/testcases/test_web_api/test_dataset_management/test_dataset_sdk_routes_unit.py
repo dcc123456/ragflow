@@ -154,7 +154,7 @@ def _load_dataset_module(monkeypatch):
     api_pkg.utils = utils_pkg
 
     billing_mod = ModuleType("api.utils.billing")
-    billing_mod.check_dynamic_resources = lambda *_args, **_kwargs: (lambda func: func)
+    billing_mod.check_dynamic_resources = lambda *_args, **_kwargs: lambda func: func
     monkeypatch.setitem(sys.modules, "api.utils.billing", billing_mod)
     utils_pkg.billing = billing_mod
 
@@ -415,9 +415,7 @@ def _load_dataset_module(monkeypatch):
     def _parse_args(*_args, **_kwargs):
         return {"name": "", "page": 1, "page_size": 30, "orderby": "create_time", "desc": True}, None
 
-    validation_spec = importlib.util.spec_from_file_location(
-        "api.utils.validation_utils", repo_root / "api" / "utils" / "validation_utils.py"
-    )
+    validation_spec = importlib.util.spec_from_file_location("api.utils.validation_utils", repo_root / "api" / "utils" / "validation_utils.py")
     validation_mod = importlib.util.module_from_spec(validation_spec)
     monkeypatch.setitem(sys.modules, "api.utils.validation_utils", validation_mod)
     validation_spec.loader.exec_module(validation_mod)

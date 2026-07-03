@@ -1,4 +1,3 @@
-
 import os
 import logging
 from typing import Union, List
@@ -29,16 +28,16 @@ class Dealer:
 
         tks = txt if isinstance(txt, list) else rag_tokenizer.tokenize(txt).split(" ")
         for j in range(1, 6):
-            s = set(["".join([tks[i+ii] for ii in range(j)]) for i in range(len(tks) - j+1)]) | set([" ".join([tks[i+ii] for ii in range(j)]) for i in range(len(tks) - j+1)])
+            s = set(["".join([tks[i + ii] for ii in range(j)]) for i in range(len(tks) - j + 1)]) | set([" ".join([tks[i + ii] for ii in range(j)]) for i in range(len(tks) - j + 1)])
             comm = set(s) & self.dictionary
             if comm:
                 return list(comm)
 
-            if len(tks) < j+1:
+            if len(tks) < j + 1:
                 return []
         return []
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     dl = Dealer()
     print(dl.dictionary)

@@ -2,10 +2,7 @@ from api.db.services.system_settings_service import SystemSettingsService
 from api.utils.api_utils import get_json_result
 from api.utils.system_settings_utils import load_value_from_string
 
-NOTIFICATION_FIELDS = {
-    "notification.content": "content",
-    "notification.enabled": "enabled"
-}
+NOTIFICATION_FIELDS = {"notification.content": "content", "notification.enabled": "enabled"}
 
 
 @manager.route("/notification", methods=["GET"])  # noqa: F821
