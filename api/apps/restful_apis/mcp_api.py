@@ -26,9 +26,9 @@ from api.db.services.permission_service import PermissionChangeLogService, Permi
 from api.db.services.user_service import TenantService, UserTenantService
 from api.utils.api_utils import get_data_error_result, get_json_result, get_mcp_tools, get_request_json, server_error_response, validate_request
 from api.utils.pagination_utils import validate_rest_api_page_size
-from api.utils.permission_utils import _permission_denied_message, has_permission_for_member
+from api.utils.permission_utils import check_mcp_permission, has_permission_for_member
 from api.utils.web_utils import get_float, safe_json_parse
-from common.constants import RetCode, VALID_MCP_SERVER_TYPES
+from common.constants import VALID_MCP_SERVER_TYPES
 from common.mcp_tool_call_conn import MCPToolCallSession, close_multiple_mcp_toolcall_sessions
 from common.misc_utils import get_uuid, thread_pool_exec
 from common.time_utils import current_timestamp, datetime_format
@@ -175,6 +175,7 @@ async def list_mcp() -> Response:
 
 @manager.route("/mcp/servers/<mcp_id>", methods=["GET"])  # noqa: F821
 @login_required
+@check_mcp_permission(PermissionValue.PERMISSION_READ)
 def detail(mcp_id: str) -> Response:
     try:
         if request.args.get("mode") == "download":
@@ -186,12 +187,6 @@ def detail(mcp_id: str) -> Response:
         mcp_server = MCPServerService.get_or_none(id=mcp_id)
         if mcp_server is None:
             return get_data_error_result(message=f"Cannot find MCP server {mcp_id} for user {current_user.id}")
-        if not MCPServerService.is_accessible(mcp_id, current_user.id, PermissionValue.PERMISSION_READ):
-            return get_json_result(
-                data=False,
-                message=_permission_denied_message("MCP server", PermissionValue.PERMISSION_READ),
-                code=RetCode.PERMISSION_ERROR,
-            )
 
         return get_json_result(data=mcp_server.to_dict())
     except Exception as e:
@@ -265,14 +260,13 @@ async def create() -> Response:
 
 @manager.route("/mcp/servers/<mcp_id>", methods=["PUT"])  # noqa: F821
 @login_required
+@check_mcp_permission(PermissionValue.PERMISSION_WRITE)
 async def update(mcp_id: str) -> Response:
     req = await get_request_json()
 
     e, mcp_server = MCPServerService.get_by_id(mcp_id)
     if not e:
         return get_data_error_result(message=f"Cannot find MCP server {mcp_id} for user {current_user.email}.")
-    if not MCPServerService.is_accessible(mcp_id, current_user.id, PermissionValue.PERMISSION_WRITE):
-        return get_data_error_result(message=f"Cannot access MCP server {mcp_server.name} for user {current_user.email} with write permission.")
 
     server_type = req.get("server_type", mcp_server.server_type)
     if server_type and server_type not in VALID_MCP_SERVER_TYPES:
@@ -322,13 +316,12 @@ async def update(mcp_id: str) -> Response:
 
 @manager.route("/mcp/servers/<mcp_id>", methods=["DELETE"])  # noqa: F821
 @login_required
+@check_mcp_permission(PermissionValue.PERMISSION_OWNER)
 async def rm(mcp_id: str) -> Response:
     try:
         e, mcp_server = MCPServerService.get_by_id(mcp_id)
         if not e:
             return get_data_error_result(message=f"Cannot find MCP server {mcp_id} for user {current_user.id}")
-        if not MCPServerService.is_accessible(mcp_id, current_user.id, PermissionValue.PERMISSION_OWNER):
-            return get_data_error_result(message=f"Cannot access MCP server {mcp_server.name} for user {current_user.email} with owner permission.")
 
         # enterprise edition
         with DB.atomic():
@@ -429,6 +422,7 @@ async def import_multiple() -> Response:
 
 @manager.route("/mcp/servers/<mcp_id>/test", methods=["POST"])  # noqa: F821
 @login_required
+@check_mcp_permission(PermissionValue.PERMISSION_READ)
 @validate_request("url", "server_type")
 async def test_mcp(mcp_id: str) -> Response:
     req = await get_request_json()
