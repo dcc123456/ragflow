@@ -10,6 +10,7 @@ from api.db.services.dialog_service import DialogService
 from api.db.services.document_service import DocumentService
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.mcp_server_service import MCPServerService
+from api.db.services.memory_service import MemoryService
 from api.db.services.permission_service import PermissionChangeLogService, PermissionService
 from api.db.services.role_service import RoleResourceService
 from api.db.services.team_service import DepartmentMemberService, DepartmentService, GroupMemberService, GroupService
@@ -142,6 +143,10 @@ async def update_permission():
                 e, mcp_server = MCPServerService.get_by_id(resource_id)
                 if not e:
                     return get_data_error_result(message=f"Resource MCP server {resource_id} is not available.")
+            elif resource_type == ResourceType.MEMORY:
+                memory = MemoryService.get_by_memory_id(resource_id)
+                if not memory or memory.tenant_id != tenant_id:
+                    return get_data_error_result(message=f"Resource Memory {resource_id} is not available.")
             else:
                 return get_data_error_result(message="Un-supported resource type.")
 
@@ -497,6 +502,12 @@ async def update_permission_next():
             e, _ = MCPServerService.get_by_id(resource_id)
             if not e:
                 return get_data_error_result(message=f"Item {idx}: Resource MCP server {resource_id} is not available.")
+        elif resource_type == ResourceType.MEMORY:
+            if not resource_id:
+                return get_data_error_result(message=f"Item {idx}: missing `resource_id` for Memory.")
+            memory = MemoryService.get_by_memory_id(resource_id)
+            if not memory or memory.tenant_id != tenant_id:
+                return get_data_error_result(message=f"Item {idx}: Resource Memory {resource_id} is not available.")
         elif resource_type == ResourceType.TEAM:
             if not resource_id:
                 return get_data_error_result(message=f"Item {idx}: missing `resource_id` for Team.")
@@ -652,6 +663,15 @@ async def list_permissions():
                 return get_data_error_result(message="Resource is not available.")
             if not (
                 mcp_server.tenant_id == current_user.id or has_permission_for_member(operator.id, tenant_id, mcp_id, resource_type=ResourceType.MCP, permission=PermissionValue.PERMISSION_MANAGE)[0]
+            ):
+                return get_data_error_result(message="Permission denied.")
+    elif resource_type == ResourceType.MEMORY:
+        for memory_id in resource_ids:
+            memory = MemoryService.get_by_memory_id(memory_id)
+            if not memory or memory.tenant_id != tenant_id:
+                return get_data_error_result(message="Resource is not available.")
+            if not (
+                memory.tenant_id == current_user.id or has_permission_for_member(operator.id, tenant_id, memory_id, resource_type=ResourceType.MEMORY, permission=PermissionValue.PERMISSION_MANAGE)[0]
             ):
                 return get_data_error_result(message="Permission denied.")
 

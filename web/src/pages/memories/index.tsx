@@ -2,6 +2,7 @@ import { CardContainer } from '@/components/card-container';
 import { EmptyCardType } from '@/components/empty/constant';
 import { EmptyAppCard } from '@/components/empty/empty';
 import ListFilterBar from '@/components/list-filter-bar';
+import { PrivilegeManagementDialog } from '@/components/privilege-management/privilege-management-dialog';
 import { Button } from '@/components/ui/button';
 import { RAGFlowPagination } from '@/components/ui/ragflow-pagination';
 import { useTranslate } from '@/hooks/common-hooks';
@@ -14,6 +15,7 @@ import { defaultMemoryFields } from './constants';
 import { useFetchMemoryList, useRenameMemory, useSelectFilters } from './hooks';
 import { ICreateMemoryProps, IMemory } from './interface';
 import { MemoryCard } from './memory-card';
+import { useShowPrivilegeDialog } from './use-show-privilege-dialog';
 
 export default function MemoryList() {
   // const { data } = useFetchFlowList();
@@ -39,6 +41,12 @@ export default function MemoryList() {
     onMemoryRenameOk,
     initialMemory,
   } = useRenameMemory();
+  const {
+    privilegeModalVisible,
+    hidePrivilegeModal,
+    handShowPrivilegeModal,
+    recordWithSourceType,
+  } = useShowPrivilegeDialog();
 
   const onMemoryConfirm = (data: ICreateMemoryProps) => {
     onMemoryRenameOk(data, () => {
@@ -103,6 +111,7 @@ export default function MemoryList() {
                       setAddOrEditType('edit');
                       showMemoryRenameModal(x);
                     }}
+                    showPrivilegeModal={handShowPrivilegeModal(x)}
                   />
                 ))}
               </CardContainer>
@@ -157,6 +166,12 @@ export default function MemoryList() {
           loading={memoryRenameLoading}
           onClose={hideMemoryModal}
           onSubmit={onMemoryConfirm}
+        />
+      )}
+      {privilegeModalVisible && (
+        <PrivilegeManagementDialog
+          hideModal={hidePrivilegeModal}
+          initialValues={recordWithSourceType}
         />
       )}
     </>

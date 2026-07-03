@@ -58,7 +58,7 @@ class MemoryService(CommonService):
             cls.model.name,
             cls.model.avatar,
             cls.model.tenant_id,
-            User.nickname.alias("owner_name"),
+            User.nickname.alias("nickname"),
             cls.model.memory_type,
             cls.model.storage_type,
             cls.model.embd_id,
@@ -84,7 +84,7 @@ class MemoryService(CommonService):
             cls.model.name,
             cls.model.avatar,
             cls.model.tenant_id,
-            User.nickname.alias("owner_name"),
+            User.nickname.alias("nickname"),
             cls.model.memory_type,
             cls.model.storage_type,
             cls.model.embd_id,
@@ -95,10 +95,15 @@ class MemoryService(CommonService):
             cls.model.create_date,
         ]
         memories = cls.model.select(*fields).join(User, on=(cls.model.tenant_id == User.id))
+        accessible_user_id = filter_dict.get("accessible_user_id")
+        permission_resource_ids = filter_dict.get("permission_resource_ids") or []
         if filter_dict.get("tenant_id"):
             memories = memories.where(cls.model.tenant_id.in_(filter_dict["tenant_id"]))
-        if filter_dict.get("accessible_user_id"):
-            memories = memories.where((cls.model.tenant_id == filter_dict["accessible_user_id"]) | (cls.model.permissions == "team"))
+        if accessible_user_id:
+            access_expr = cls.model.tenant_id == accessible_user_id
+            if permission_resource_ids:
+                access_expr |= cls.model.id.in_(permission_resource_ids)
+            memories = memories.where(access_expr)
         if filter_dict.get("memory_type"):
             memory_type_int = calculate_memory_type(filter_dict["memory_type"])
             memories = memories.where(cls.model.memory_type.bin_and(memory_type_int) > 0)

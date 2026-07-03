@@ -162,9 +162,9 @@ def test_message_update_forget_and_content_error_contracts(rest_client, memory_r
     invalid_memory_forget = rest_client.delete("/messages/missing_memory_id:1")
     assert invalid_memory_forget.status_code == 200
     invalid_memory_forget_payload = invalid_memory_forget.json()
-    assert invalid_memory_forget_payload["code"] == 404, invalid_memory_forget_payload
+    assert invalid_memory_forget_payload["code"] == 103, invalid_memory_forget_payload
 
     invalid_memory_update = rest_client.put("/messages/missing_memory_id:1", json={"status": False})
     assert invalid_memory_update.status_code == 200
     invalid_memory_update_payload = invalid_memory_update.json()
-    assert invalid_memory_update_payload["code"] == 404, invalid_memory_update_payload
+    assert invalid_memory_update_payload["code"] == 103, invalid_memory_update_payload

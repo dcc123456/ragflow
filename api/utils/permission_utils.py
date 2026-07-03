@@ -817,6 +817,99 @@ def check_mcp_permission(permission):
     return decorator
 
 
+def check_memory_permission(permission):
+    from api.db.services.memory_service import MemoryService
+    from api.db.services.user_service import UserTenantService
+    from api.utils.api_utils import get_json_result
+
+    """
+    ! IMPORTANT:
+    The request data is parsed in this decorator.
+    In view functions, use `g.req_data` instead of `request.get_json()` or `request.form`.
+
+    Supports:
+    - JSON body
+    - Form-data / urlencoded
+    - URL query parameters
+    - URL path parameters (kwargs)
+    """
+
+    def decorator(foo):
+        from quart import g, request
+
+        @wraps(foo)
+        async def wrapper(*args, **kwargs):
+            from api.apps import current_user
+
+            content_type = request.headers.get("Content-Type") or ""
+
+            if request.method in ["POST", "PUT", "PATCH"]:
+                if "application/json" in content_type:
+                    if not getattr(request, "is_json", False):
+                        return get_json_result(data=False, message="Content-Type must be application/json", code=RetCode.ARGUMENT_ERROR)
+                    req_data = (await request.get_json(silent=True)) or {}
+
+                elif "multipart/form-data" in content_type or "application/x-www-form-urlencoded" in content_type:
+                    req_data = (await request.form) or {}
+
+                else:
+                    req_data = request.args or {}
+
+            else:  # GET, DELETE
+                req_data = request.args or {}
+
+            memory_id = req_data.get("memory_id") or kwargs.get("memory_id")
+
+            g.req_data = req_data
+            g.memory_id = memory_id
+
+            if not memory_id:
+                if inspect.iscoroutinefunction(foo):
+                    return await foo(*args, **kwargs)
+                return foo(*args, **kwargs)
+
+            memory = MemoryService.get_by_memory_id(memory_id)
+            if not memory:
+                return get_json_result(data=False, message="Memory not found.", code=RetCode.OPERATING_ERROR)
+
+            if memory.tenant_id == current_user.id:
+                g.tenant_id = current_user.id
+                g.operator_permission = PermissionValue.PERMISSION_OWNER.value
+                g.member_id = None
+                if inspect.iscoroutinefunction(foo):
+                    return await foo(*args, **kwargs)
+                return foo(*args, **kwargs)
+
+            user_tenants = UserTenantService.query(user_id=current_user.id) or []
+            for user_tenant in user_tenants:
+                if user_tenant.tenant_id != memory.tenant_id:
+                    continue
+                permission_info = has_permission_for_member(
+                    operator_id=user_tenant.id,
+                    tenant_id=user_tenant.tenant_id,
+                    resource_id=memory_id,
+                    resource_type=ResourceType.MEMORY,
+                    permission=permission,
+                )
+                if permission_info[0]:
+                    g.tenant_id = user_tenant.tenant_id
+                    g.operator_permission = permission_info[2]
+                    g.member_id = user_tenant.id
+                    if inspect.iscoroutinefunction(foo):
+                        return await foo(*args, **kwargs)
+                    return foo(*args, **kwargs)
+
+            return get_json_result(
+                data=False,
+                message=_permission_denied_message("Memory", permission),
+                code=RetCode.PERMISSION_ERROR,
+            )
+
+        return wrapper
+
+    return decorator
+
+
 def build_permission_records_for_target(
     operator_id,
     operator_tenant_id,
