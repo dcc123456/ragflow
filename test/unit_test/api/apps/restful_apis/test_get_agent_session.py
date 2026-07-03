@@ -124,7 +124,7 @@ def _load_agent_api(monkeypatch, get_by_id_result, delete_calls=None):
         UserTenantService=SimpleNamespace(),
     )
     _stub(monkeypatch, "api.db.services.user_canvas_version", UserCanvasVersionService=SimpleNamespace())
-    _stub(monkeypatch, "api.utils.permission_utils", check_canvas_permission=lambda *_a, **_k: (lambda func: func))
+    _stub(monkeypatch, "api.utils.permission_utils", check_canvas_permission=lambda *_a, **_k: lambda func: func)
     _stub(
         monkeypatch,
         "api.utils.api_utils",
@@ -153,7 +153,7 @@ def _load_agent_api(monkeypatch, get_by_id_result, delete_calls=None):
         "common.role_util",
         CANVAS_API_ACTION_MAP={},
         CANVAS_ROLE_RESOURCE_TYPE=SimpleNamespace(),
-        check_role_access=lambda *_a, **_k: (lambda func: func),
+        check_role_access=lambda *_a, **_k: lambda func: func,
     )
     _stub(monkeypatch, "common.constants", RetCode=SimpleNamespace())
     _stub(monkeypatch, "common.misc_utils", get_uuid=lambda: "uuid", thread_pool_exec=lambda *_a, **_k: None)
@@ -190,7 +190,7 @@ class TestGetAgentSession:
     def test_returns_session_dict_when_found(self, monkeypatch):
         """When the session exists, the route returns its `to_dict()` payload."""
         conv = SimpleNamespace(dialog_id="agent-1", to_dict=lambda: {"id": "sess-1", "messages": []})
-        module = _load_agent_api(monkeypatch, get_by_id_result=(True, conv))
+        module, _ = _load_agent_api(monkeypatch, get_by_id_result=(True, conv))
 
         result = module.get_agent_session(agent_id="agent-1", session_id="sess-1", tenant_id="tenant-1")
 
