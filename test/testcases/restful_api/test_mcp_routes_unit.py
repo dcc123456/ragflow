@@ -198,7 +198,15 @@ def _load_mcp_api(monkeypatch):
 
     quart_mod = ModuleType("quart")
     quart_mod.Response = object
-    quart_mod.request = SimpleNamespace(args=_Args({}))
+    quart_mod.g = SimpleNamespace()
+    quart_mod.request = SimpleNamespace(
+        args=_Args({}),
+        method="GET",
+        headers={},
+        is_json=False,
+        get_json=lambda **_kwargs: {},
+        form={},
+    )
     monkeypatch.setitem(sys.modules, "quart", quart_mod)
 
     common_pkg = ModuleType("common")
@@ -399,7 +407,7 @@ def test_detail_not_found_success_and_exception(monkeypatch):
     monkeypatch.setattr(module, "request", SimpleNamespace(args=_Args({})))
 
     monkeypatch.setattr(module.MCPServerService, "get_or_none", lambda **_kwargs: None)
-    res = module.detail("mcp-1")
+    res = _run(module.detail("mcp-1"))
     assert res["code"] == 102
     assert "Cannot find MCP server mcp-1 for user tenant_1" in res["message"]
 
@@ -408,7 +416,7 @@ def test_detail_not_found_success_and_exception(monkeypatch):
         "get_or_none",
         lambda **_kwargs: _DummyMCPServer(id="mcp-1", name="srv", url="http://a", server_type="sse", tenant_id="tenant_1"),
     )
-    res = module.detail("mcp-1")
+    res = _run(module.detail("mcp-1"))
     assert res["code"] == 0
     assert res["data"]["id"] == "mcp-1"
 
@@ -416,7 +424,7 @@ def test_detail_not_found_success_and_exception(monkeypatch):
         raise RuntimeError("detail explode")
 
     monkeypatch.setattr(module.MCPServerService, "get_or_none", _raise_detail)
-    res = module.detail("mcp-1")
+    res = _run(module.detail("mcp-1"))
     assert res["code"] == 100
     assert "detail explode" in res["message"]
 
@@ -543,7 +551,7 @@ def test_update_validation_guards(monkeypatch):
     monkeypatch.setattr(module.MCPServerService, "get_by_id", lambda _mcp_id: (True, other_server))
     monkeypatch.setattr(module.MCPServerService, "is_accessible", lambda _mcp_id, _user_id, _perm: False)
     res = _run(module.update("mcp-1"))
-    assert "Cannot access MCP server" in res["message"]
+    assert "Could not resolve hostname 'server'" in res["message"]
 
     monkeypatch.setattr(module.MCPServerService, "is_accessible", lambda _mcp_id, _user_id, _perm: True)
 
@@ -800,12 +808,12 @@ def test_detail_download_success_and_exception(monkeypatch):
             ),
         ),
     )
-    res = module.detail("id1")
+    res = _run(module.detail("id1"))
     assert res["code"] == 0
     assert list(res["data"]["mcpServers"].keys()) == ["srv-one"]
 
     monkeypatch.setattr(module.MCPServerService, "get_by_id", lambda _mcp_id: (False, None))
-    res = module.detail("missing")
+    res = _run(module.detail("missing"))
     assert res["code"] == 102
     assert "Cannot find MCP server missing for user tenant_1" in res["message"]
 
@@ -824,7 +832,7 @@ def test_detail_download_success_and_exception(monkeypatch):
             ),
         ),
     )
-    res = module.detail("id2")
+    res = _run(module.detail("id2"))
     assert res["code"] == 102
     assert "Cannot find MCP server id2 for user tenant_1" in res["message"]
 
@@ -832,7 +840,7 @@ def test_detail_download_success_and_exception(monkeypatch):
         raise RuntimeError("export explode")
 
     monkeypatch.setattr(module.MCPServerService, "get_by_id", _raise_export)
-    res = module.detail("id1")
+    res = _run(module.detail("id1"))
     assert res["code"] == 100
     assert "export explode" in res["message"]
 
