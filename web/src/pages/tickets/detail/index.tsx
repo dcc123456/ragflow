@@ -295,7 +295,7 @@ export default function TicketDetailPage() {
                     isPerson
                   />
                 )}
-                <div className={`max-w-[70%] rounded-lg p-4 bg-bg-card`}>
+                <div className={`max-w-[70%] min-w-0 rounded-lg p-4 bg-bg-card`}>
                   <div className="flex items-center justify-between gap-4 mb-2">
                     <span className="text-sm font-medium text-accent-primary">
                       {article.created_at
@@ -306,7 +306,7 @@ export default function TicketDetailPage() {
                       {getSenderName(article)}
                     </span>
                   </div>
-                  <div className="text-sm whitespace-pre-wrap">
+                  <div className="text-sm whitespace-pre-wrap break-words">
                     {stripHtml(article.body)}
                   </div>
                   <AttachmentList
