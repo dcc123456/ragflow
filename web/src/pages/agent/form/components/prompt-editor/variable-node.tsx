@@ -13,6 +13,8 @@ export type SerializedVariableNode = Spread<
     version: 1;
     value: string;
     label: string;
+    parentLabel?: string | ReactNode;
+    icon?: ReactNode;
   },
   SerializedLexicalNode
 >;
@@ -43,6 +45,8 @@ export class VariableNode extends DecoratorNode<ReactNode> {
       serializedNode.value,
       serializedNode.label,
       undefined,
+      serializedNode.parentLabel,
+      serializedNode.icon,
     );
   }
 
@@ -105,6 +109,8 @@ export class VariableNode extends DecoratorNode<ReactNode> {
       version: 1,
       value: this.__value,
       label: this.__label,
+      parentLabel: this.__parentLabel,
+      icon: this.__icon,
     };
   }
 }
