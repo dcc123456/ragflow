@@ -196,6 +196,18 @@ export function Header({
               </Button>
 
               {hasNotification && <BellButton className="!size-8" />}
+              <RAGFlowTooltip tooltip={t('header.tickets')}>
+                <Link
+                  className="p-2 text-text-secondary hover:text-text-primary focus-visible:text-text-primary"
+                  to={Routes.Tickets}
+                >
+                  <IconFontFill
+                    name={`kefu`}
+                    className="text-text-primary"
+                  ></IconFontFill>
+                </Link>
+                {/* <Tickets className="size-5" /> */}
+              </RAGFlowTooltip>
             </>
           )}
 
@@ -215,6 +227,20 @@ export function Header({
               isPerson
               className="size-8"
             />
+            {(currentPlan?.plan_name === PriceName.Starter ||
+              currentPlan?.plan_name === PriceName.Pro) && (
+              <div
+                className={cn(
+                  '-mt-1 z-20 bg-gradient-to-r from-[#00BEB4] to-[#43FFA4] rounded-full px-1 py-0.5 text-xs font-normal text-black cursor-pointer',
+                  currentPlan?.plan_name === 'Starter'
+                    ? 'scale-90 -ml-1.5 '
+                    : '-ml-1',
+                )}
+                onClick={handleClick}
+              >
+                <span className={cn()}>{currentPlan?.plan_name}</span>
+              </div>
+            )}
           </Link>
         </div>
       </header>
@@ -256,7 +282,6 @@ export function Header({
               isPerson
               className="size-8"
             />
-
             {(currentPlan?.plan_name === PriceName.Starter ||
               currentPlan?.plan_name === PriceName.Pro) && (
               <div
