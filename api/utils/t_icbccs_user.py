@@ -13,7 +13,6 @@ from api.utils.sync_icbccs_user import icbccs_user_register
 settings.init_settings()
 
 
-
 def get_all_user():
     users = [{"userId": f"{i}", "userName": f"t{i}", "email": f"t{i}@t{i}.com", "oaDeptList": [{"deptId": "0", "deptFullName": "dep_01"}]} for i in range(10)]
     for i in range(10, 20):
@@ -87,12 +86,11 @@ def sync():
                     "last_login_time": get_format_time(),
                     "is_superuser": False,
                     "language": "Chinese",
-                    "password": "scrypt:32768:8:1$khHmgSrz6rxySu8M$32a48a3dfa73d356ced5ab54c3381203aecf58eb487bf568ab238909dc54598562b3360463acfbf7c12a92b2e6c04eab5adaba463f41639da156586c31a6c726"
+                    "password": "scrypt:32768:8:1$khHmgSrz6rxySu8M$32a48a3dfa73d356ced5ab54c3381203aecf58eb487bf568ab238909dc54598562b3360463acfbf7c12a92b2e6c04eab5adaba463f41639da156586c31a6c726",
                 },
             )
         except Exception as e:
             print(e)
-
 
     u = UserService.query(email=sys.argv[1])
     if not u:
@@ -100,6 +98,7 @@ def sync():
 
     fetch_departments(users, u[0].id)
     assign_user2depts(users, u[0].id)
+
 
 if __name__ == "__main__":
     sync()

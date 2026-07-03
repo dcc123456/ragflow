@@ -21,6 +21,7 @@ from enum import Enum
 try:
     from api.db import ActionEnum, ResourceTypeEnum
 except ImportError:
+
     class ActionEnum(Enum):
         ENABLE = 0b0001
         READ = 0b0010
@@ -36,6 +37,8 @@ except ImportError:
         TEAM = 6
         MEMORY = 7
         MODEL_PROVIDER = 8
+
+
 from api.db.services.role_service import RoleResourceService
 from api.utils.api_utils import get_json_result
 from common.constants import RetCode
@@ -98,6 +101,7 @@ def check_role_access(action_map, resource_type):
 
     def decorator(func):
         if inspect.iscoroutinefunction(func):
+
             @wraps(func)
             async def async_wrapper(*args, **kwargs):
                 permission_result = _check_role_permission(func, action_map, resource_type, *args, **kwargs)

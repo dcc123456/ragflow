@@ -1,4 +1,3 @@
-
 from api.db import MANAGEMENT_TEAM_ROLES, VALID_TEAM_ROLES, TeamRole
 from api.db.db_models import DB
 from api.db.services.permission_service import PermissionService

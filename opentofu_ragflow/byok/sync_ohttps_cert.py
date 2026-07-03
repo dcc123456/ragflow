@@ -100,7 +100,7 @@ def generate_signature(api_id: str, api_key: str, timestamp: str, cert_id: str) 
     string_for_sign = "&".join(params)
 
     # Calculate MD5 (32 lowercase)
-    signature = hashlib.md5(string_for_sign.encode('utf-8')).hexdigest()
+    signature = hashlib.md5(string_for_sign.encode("utf-8")).hexdigest()
 
     return signature
 
@@ -169,9 +169,9 @@ def create_or_update_tls_secret(
     # Prepare new secret data (must be base64 encoded)
     # TLS secrets require tls.crt and tls.key, plus tls.expired_time for tracking
     new_secret_data = {
-        "tls.crt": base64.b64encode(cert_data["fullChainCerts"].encode('utf-8')).decode('utf-8'),
-        "tls.key": base64.b64encode(cert_data["certKey"].encode('utf-8')).decode('utf-8'),
-        "tls.expired": base64.b64encode(cert_data["expiredTime"].encode('utf-8')).decode('utf-8'),
+        "tls.crt": base64.b64encode(cert_data["fullChainCerts"].encode("utf-8")).decode("utf-8"),
+        "tls.key": base64.b64encode(cert_data["certKey"].encode("utf-8")).decode("utf-8"),
+        "tls.expired": base64.b64encode(cert_data["expiredTime"].encode("utf-8")).decode("utf-8"),
     }
 
     # Check if secret content is the same (skip update if unchanged)
@@ -184,18 +184,8 @@ def create_or_update_tls_secret(
         if e.status == 404:
             # Secret doesn't exist - create it
             print(f"[{datetime.now().isoformat()}] Secret '{secret_name}' not found, creating it...")
-            metadata = kubernetes.client.V1ObjectMeta(
-                name=secret_name,
-                namespace=namespace,
-                labels={"app": "ragflow"}
-            )
-            secret = kubernetes.client.V1Secret(
-                api_version="v1",
-                kind="Secret",
-                metadata=metadata,
-                type="kubernetes.io/tls",
-                data=new_secret_data
-            )
+            metadata = kubernetes.client.V1ObjectMeta(name=secret_name, namespace=namespace, labels={"app": "ragflow"})
+            secret = kubernetes.client.V1Secret(api_version="v1", kind="Secret", metadata=metadata, type="kubernetes.io/tls", data=new_secret_data)
             v1.create_namespaced_secret(namespace=namespace, body=secret)
             print(f"[{datetime.now().isoformat()}] Secret '{secret_name}' created successfully")
             return
@@ -215,27 +205,13 @@ def create_or_update_tls_secret(
     # Metadata - preserve existing labels
     labels = dict(existing_labels)
 
-    metadata = kubernetes.client.V1ObjectMeta(
-        name=secret_name,
-        namespace=namespace,
-        labels=labels
-    )
+    metadata = kubernetes.client.V1ObjectMeta(name=secret_name, namespace=namespace, labels=labels)
 
     # Secret body
-    secret = kubernetes.client.V1Secret(
-        api_version="v1",
-        kind="Secret",
-        metadata=metadata,
-        type="kubernetes.io/tls",
-        data=new_secret_data
-    )
+    secret = kubernetes.client.V1Secret(api_version="v1", kind="Secret", metadata=metadata, type="kubernetes.io/tls", data=new_secret_data)
 
     # Update existing secret
-    v1.replace_namespaced_secret(
-        name=secret_name,
-        namespace=namespace,
-        body=secret
-    )
+    v1.replace_namespaced_secret(name=secret_name, namespace=namespace, body=secret)
     print(f"[{datetime.now().isoformat()}] Secret '{secret_name}' updated successfully")
 
 

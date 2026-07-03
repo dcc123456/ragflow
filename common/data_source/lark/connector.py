@@ -32,14 +32,7 @@ from common.data_source.models import Document, SecondsSinceUnixEpoch
 from common.data_source.config import DocumentSource
 from common.data_source.utils import get_file_ext, sanitize_filename
 
-EXPORT_EXTENSIONS = {
-    "doc": "docx",
-    "docx": "docx",
-    "sheet": "csv",
-    "bitable": "csv",
-    "file": "",
-    "folder": ""
-}
+EXPORT_EXTENSIONS = {"doc": "docx", "docx": "docx", "sheet": "csv", "bitable": "csv", "file": "", "folder": ""}
 
 
 class LarkConnector(LoadConnector, PollConnector):
@@ -62,7 +55,7 @@ class LarkConnector(LoadConnector, PollConnector):
     _ASYNC_NODE_CONCURRENCY = 5
     _DOWNLOAD_TIMEOUT_SECS = 10 * 60
 
-    def __init__(self, token_type, folder_token, log_level = lark.LogLevel.ERROR) -> None:
+    def __init__(self, token_type, folder_token, log_level=lark.LogLevel.ERROR) -> None:
         self.client: lark.Client | None = None
         self.app_id: str | None = None
         self.app_secret: str | None = None
@@ -74,7 +67,6 @@ class LarkConnector(LoadConnector, PollConnector):
     # Credentials
     # -------------------------
 
-
     def load_credentials(self, credentials: dict[str, Any]) -> dict[str, Any] | None:
         self.app_id = credentials.get("app_id")
         self.app_secret = credentials.get("app_secret")
@@ -83,15 +75,8 @@ class LarkConnector(LoadConnector, PollConnector):
         if not self.app_id or not self.app_secret:
             raise ConnectorValidationError("Missing Lark app_id or app_secret")
 
-        self.client = (
-            lark.Client.builder()
-            .app_id(self.app_id)
-            .app_secret(self.app_secret)
-            .log_level(log_level)
-            .build()
-        )
+        self.client = lark.Client.builder().app_id(self.app_id).app_secret(self.app_secret).log_level(log_level).build()
         return None
-
 
     def validate_connector_settings(self) -> None:
         if not self.app_id or not self.app_secret:
@@ -119,7 +104,6 @@ class LarkConnector(LoadConnector, PollConnector):
             file_handle.write(content)
         response.file = io.BytesIO(content)
 
-
     async def _list_files_async(self, folder_token, page_size: int | None = None) -> list[Any]:
         if not folder_token:
             logging.info("No folder_token provided")
@@ -129,12 +113,7 @@ class LarkConnector(LoadConnector, PollConnector):
         page_token: str | None = None
 
         while True:
-            b = (
-                ListFileRequest.builder()
-                .folder_token(folder_token)
-                .order_by("EditedTime")
-                .direction("DESC")
-            )
+            b = ListFileRequest.builder().folder_token(folder_token).order_by("EditedTime").direction("DESC")
             if page_size is not None:
                 b = b.page_size(page_size)
             if page_token:
@@ -148,12 +127,7 @@ class LarkConnector(LoadConnector, PollConnector):
             )
 
             if not response.success():
-                lark.logger.error(
-                    f"client.drive.v1.file.list failed, "
-                    f"code: {response.code}, "
-                    f"msg: {response.msg}, "
-                    f"log_id: {response.get_log_id()}, "
-                )
+                lark.logger.error(f"client.drive.v1.file.list failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}, ")
                 return []
 
             data = response.data
@@ -167,7 +141,6 @@ class LarkConnector(LoadConnector, PollConnector):
 
         return files
 
-
     def _build_document(
         self,
         fname,
@@ -178,7 +151,7 @@ class LarkConnector(LoadConnector, PollConnector):
         folder_path,
         response,
     ) -> Document:
-        
+
         file_name = sanitize_filename(fname)
 
         title = f"{folder_path} / {file_name}" if folder_path else file_name
@@ -198,25 +171,10 @@ class LarkConnector(LoadConnector, PollConnector):
         )
 
     def _adapt_drive_node(self, file, children=[]) -> _NormalizedNode:
-        return self._NormalizedNode(
-            edit_time=file.modified_time,
-            ftype=file.type,
-            ftoken=file.token,
-            fname=file.name,
-            created_time=file.created_time,
-            children=children
-        )
+        return self._NormalizedNode(edit_time=file.modified_time, ftype=file.type, ftoken=file.token, fname=file.name, created_time=file.created_time, children=children)
 
     def _adapt_wiki_node(self, file, children=[]) -> _NormalizedNode:
-        return self._NormalizedNode(
-            edit_time=file.obj_edit_time,
-            ftype=file.obj_type,
-            ftoken=file.obj_token,
-            fname=file.title,
-            created_time=file.obj_create_time,
-            children=children
-        )
-
+        return self._NormalizedNode(edit_time=file.obj_edit_time, ftype=file.obj_type, ftoken=file.obj_token, fname=file.title, created_time=file.obj_create_time, children=children)
 
     async def _download_file_async(
         self,
@@ -227,11 +185,7 @@ class LarkConnector(LoadConnector, PollConnector):
         fcreated_time,
         folder_path,
     ):
-        request: DownloadFileRequest = (
-            DownloadFileRequest.builder()
-            .file_token(ftoken)
-            .build()
-        )
+        request: DownloadFileRequest = DownloadFileRequest.builder().file_token(ftoken).build()
         try:
             response: DownloadFileResponse = await asyncio.wait_for(
                 asyncio.to_thread(
@@ -247,8 +201,7 @@ class LarkConnector(LoadConnector, PollConnector):
             )
             return None
         if not response.success():
-            lark.logger.error(
-                f"client.drive.v1.file.download failed, code: {response.code}")
+            lark.logger.error(f"client.drive.v1.file.download failed, code: {response.code}")
             return None
 
         return self._build_document(
@@ -268,43 +221,22 @@ class LarkConnector(LoadConnector, PollConnector):
         sub_id: str = None,
         file_extension: str = "csv",
     ):
-        body = (
-            ExportTask.builder()
-            .file_extension(file_extension)
-            .token(file_token)
-            .type(file_type)
-        )
+        body = ExportTask.builder().file_extension(file_extension).token(file_token).type(file_type)
         if sub_id:
             body = body.sub_id(sub_id)
 
-        request: CreateExportTaskRequest = (
-            CreateExportTaskRequest.builder()
-            .request_body(body.build())
-            .build()
-        )
+        request: CreateExportTaskRequest = CreateExportTaskRequest.builder().request_body(body.build()).build()
 
-        response: CreateExportTaskResponse = self.client.drive.v1.export_task.create(
-            request
-        )
+        response: CreateExportTaskResponse = self.client.drive.v1.export_task.create(request)
 
         if not response.success():
-            lark.logger.error(
-                f"client.drive.v1.export_task.create failed, "
-                f"code: {response.code}, "
-                f"msg: {response.msg}, "
-                f"log_id: {response.get_log_id()}, "
-            )
+            lark.logger.error(f"client.drive.v1.export_task.create failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}, ")
             return None
 
         return response.data.ticket
 
-
     async def _download_ticket_async(self, new_file):
-        request: DownloadExportTaskRequest = (
-            DownloadExportTaskRequest.builder()
-            .file_token(new_file.result.file_token)
-            .build()
-        )
+        request: DownloadExportTaskRequest = DownloadExportTaskRequest.builder().file_token(new_file.result.file_token).build()
 
         try:
             response: DownloadExportTaskResponse = await asyncio.wait_for(
@@ -322,16 +254,10 @@ class LarkConnector(LoadConnector, PollConnector):
             return None
 
         if not response.success():
-            lark.logger.error(
-                f"client.drive.v1.export_task.download failed, "
-                f"code: {response.code}, "
-                f"msg: {response.msg}, "
-                f"log_id: {response.get_log_id()}, "
-            )
+            lark.logger.error(f"client.drive.v1.export_task.download failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}, ")
             return None
 
         return response
-
 
     def _get_export_task_ticket(
         self,
@@ -342,23 +268,11 @@ class LarkConnector(LoadConnector, PollConnector):
     ):
         start_time = time.monotonic()
         while True:
-            request: GetExportTaskRequest = (
-                GetExportTaskRequest.builder()
-                .ticket(ticket)
-                .token(file_token)
-                .build()
-            )
-            response: GetExportTaskResponse = self.client.drive.v1.export_task.get(
-                request
-            )
+            request: GetExportTaskRequest = GetExportTaskRequest.builder().ticket(ticket).token(file_token).build()
+            response: GetExportTaskResponse = self.client.drive.v1.export_task.get(request)
 
             if not response.success():
-                lark.logger.error(
-                    f"client.drive.v1.export_task.get failed, "
-                    f"code: {response.code}, "
-                    f"msg: {response.msg}, "
-                    f"log_id: {response.get_log_id()}, "
-                )
+                lark.logger.error(f"client.drive.v1.export_task.get failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}, ")
                 return None
 
             data = response.data
@@ -386,13 +300,8 @@ class LarkConnector(LoadConnector, PollConnector):
             )
             return None
 
-    
     async def _get_sheet_sub_id_async(self, spreadsheet_token: str) -> str | None:
-        request: QuerySpreadsheetSheetRequest = (
-            QuerySpreadsheetSheetRequest.builder()
-            .spreadsheet_token(spreadsheet_token)
-            .build()
-        )
+        request: QuerySpreadsheetSheetRequest = QuerySpreadsheetSheetRequest.builder().spreadsheet_token(spreadsheet_token).build()
 
         response = await asyncio.to_thread(
             self.client.sheets.v3.spreadsheet_sheet.query,
@@ -400,20 +309,12 @@ class LarkConnector(LoadConnector, PollConnector):
         )
 
         if not response.success():
-            lark.logger.error(
-                "client.sheets.v3.spreadsheet_sheet.query failed, "
-                f"code: {response.code}, "
-                f"msg: {response.msg}, "
-                f"log_id: {response.get_log_id()}, "
-            )
+            lark.logger.error(f"client.sheets.v3.spreadsheet_sheet.query failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}, ")
             return None
 
         return response.data
 
-
-    async def _get_bitable_sub_id_async(
-        self, app_token: str, page_size: int | None = None, page_token: str | None = None
-    ) -> str | None:
+    async def _get_bitable_sub_id_async(self, app_token: str, page_size: int | None = None, page_token: str | None = None) -> str | None:
         body = ListAppTableRequest.builder().app_token(app_token)
 
         if page_size is not None:
@@ -429,38 +330,21 @@ class LarkConnector(LoadConnector, PollConnector):
         )
 
         if not response.success():
-            lark.logger.error(
-                "client.bitable.v1.app_table.list failed, "
-                f"code: {response.code}, "
-                f"msg: {response.msg}, "
-                f"log_id: {response.get_log_id()}, "
-            )
+            lark.logger.error(f"client.bitable.v1.app_table.list failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}, ")
             return None
 
         return response.data
 
-
     def _get_wiki_space_id(self, token: str) -> str | None:
-        request: GetNodeSpaceRequest = (
-            GetNodeSpaceRequest.builder()
-            .token(token)
-            .obj_type("wiki")
-            .build()
-        )
+        request: GetNodeSpaceRequest = GetNodeSpaceRequest.builder().token(token).obj_type("wiki").build()
 
         response: GetNodeSpaceResponse = self.client.wiki.v2.space.get_node(request)
 
         if not response.success():
-            lark.logger.error(
-                "client.wiki.v2.space.get_node failed, "
-                f"code: {response.code}, "
-                f"msg: {response.msg}, "
-                f"log_id: {response.get_log_id()}, "
-            )
+            lark.logger.error(f"client.wiki.v2.space.get_node failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}, ")
             return None
 
         return response.data
-
 
     async def _list_wiki_space_nodes_async(
         self,
@@ -491,12 +375,7 @@ class LarkConnector(LoadConnector, PollConnector):
             )
 
             if not response.success():
-                lark.logger.error(
-                    "client.wiki.v2.space_node.list failed, "
-                    f"code: {response.code}, "
-                    f"msg: {response.msg}, "
-                    f"log_id: {response.get_log_id()}, "
-                )
+                lark.logger.error(f"client.wiki.v2.space_node.list failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}, ")
                 return []
 
             data = response.data
@@ -510,15 +389,7 @@ class LarkConnector(LoadConnector, PollConnector):
 
         return nodes
 
-
-    async def _export_and_download_async(
-        self,
-        token,
-        *,
-        src_type: str,
-        file_extension: str,
-        sub_id: str | None = None
-    ) -> tuple[DownloadExportTaskResponse | None, Any | None]:
+    async def _export_and_download_async(self, token, *, src_type: str, file_extension: str, sub_id: str | None = None) -> tuple[DownloadExportTaskResponse | None, Any | None]:
         ticket = self._create_export_task(
             token,
             src_type,
@@ -553,7 +424,6 @@ class LarkConnector(LoadConnector, PollConnector):
         if time_range_end is not None and ts > time_range_end:
             return False
         return True
-
 
     async def _walk_nodes_async(
         self,
@@ -609,11 +479,7 @@ class LarkConnector(LoadConnector, PollConnector):
                 if not response or not new_file:
                     continue
 
-                fname = (
-                    new_file.result.file_name
-                    + "."
-                    + new_file.result.file_extension
-                )
+                fname = new_file.result.file_name + "." + new_file.result.file_extension
 
                 doc = self._build_document(
                     fname,
@@ -644,11 +510,7 @@ class LarkConnector(LoadConnector, PollConnector):
                     if not response or not new_file:
                         continue
 
-                    fname = (
-                        new_file.result.file_name
-                        + "."
-                        + new_file.result.file_extension
-                    )
+                    fname = new_file.result.file_name + "." + new_file.result.file_extension
 
                     doc = self._build_document(
                         fname,
@@ -676,12 +538,7 @@ class LarkConnector(LoadConnector, PollConnector):
                         if not response or not new_file:
                             continue
 
-                        fname = (
-                            new_file.result.file_name
-                            + "-" + item.name
-                            + "."
-                            + new_file.result.file_extension
-                        )
+                        fname = new_file.result.file_name + "-" + item.name + "." + new_file.result.file_extension
 
                         doc = self._build_document(
                             fname,
@@ -724,7 +581,6 @@ class LarkConnector(LoadConnector, PollConnector):
         batch = [doc for doc in batch if doc]
         if batch:
             yield batch
-
 
     async def _yield_file_recursive_async(
         self,
@@ -799,7 +655,7 @@ class LarkConnector(LoadConnector, PollConnector):
                 "name_with_path": parent_path,
                 "edit_time": node.edit_time,
                 "created_time": node.created_time,
-                "children": [], 
+                "children": [],
             }
 
             if node.ftype == "folder":
@@ -812,7 +668,6 @@ class LarkConnector(LoadConnector, PollConnector):
 
         return batch
 
-
     async def load_from_state(self) -> AsyncGenerator[list[Document], None]:
         if not self.client:
             raise ConnectorMissingCredentialError("lark")
@@ -822,10 +677,7 @@ class LarkConnector(LoadConnector, PollConnector):
         ):
             yield batch
 
-
-    async def poll_source(
-        self, time_range_start: SecondsSinceUnixEpoch, time_range_end: SecondsSinceUnixEpoch
-    ) -> AsyncGenerator[list[Document], None]:
+    async def poll_source(self, time_range_start: SecondsSinceUnixEpoch, time_range_end: SecondsSinceUnixEpoch) -> AsyncGenerator[list[Document], None]:
         if not self.client:
             raise ConnectorMissingCredentialError("lark")
 
@@ -835,7 +687,6 @@ class LarkConnector(LoadConnector, PollConnector):
             time_range_end=time_range_end,
         ):
             yield batch
-
 
     async def _handle_json_node_async(self, node) -> list[Document]:
         fedit_time = node["edit_time"]
@@ -865,11 +716,7 @@ class LarkConnector(LoadConnector, PollConnector):
             if not response or not new_file:
                 return []
 
-            fname = (
-                new_file.result.file_name
-                + "."
-                + new_file.result.file_extension
-            )
+            fname = new_file.result.file_name + "." + new_file.result.file_extension
 
             doc = self._build_document(
                 fname,
@@ -899,11 +746,7 @@ class LarkConnector(LoadConnector, PollConnector):
                 if not response or not new_file:
                     continue
 
-                fname = (
-                    new_file.result.file_name
-                    + "."
-                    + new_file.result.file_extension
-                )
+                fname = new_file.result.file_name + "." + new_file.result.file_extension
 
                 doc = self._build_document(
                     fname,
@@ -932,12 +775,7 @@ class LarkConnector(LoadConnector, PollConnector):
                     if not response or not new_file:
                         continue
 
-                    fname = (
-                        new_file.result.file_name
-                        + "-" + item.name
-                        + "."
-                        + new_file.result.file_extension
-                    )
+                    fname = new_file.result.file_name + "-" + item.name + "." + new_file.result.file_extension
 
                     doc = self._build_document(
                         fname,
@@ -963,12 +801,14 @@ class LarkConnector(LoadConnector, PollConnector):
     async def load_from_list(self, token_lst: str):
         sem = asyncio.Semaphore(self._ASYNC_NODE_CONCURRENCY)
         logging.info("inside")
+
         async def run_node(node):
             async with sem:
                 return await self._handle_json_node_async(node)
 
         results = await asyncio.gather(*(run_node(node) for node in token_lst))
         return [doc for docs in results for doc in docs]
+
 
 if __name__ == "__main__":
     # folder token: RBGPfNX9Ol7qyIdQFIjco9f8neh
@@ -991,7 +831,6 @@ if __name__ == "__main__":
         tree = await connector.build_tree(connector.folder_token, "")
         connector.pprint_tree(tree)
 
-        
     asyncio.run(run_demo())
 
     elapsed = time.perf_counter() - start

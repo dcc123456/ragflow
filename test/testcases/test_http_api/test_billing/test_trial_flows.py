@@ -85,9 +85,10 @@ def test_trial_01a_no_invoice_on_billing_cycle(
 
     # Print parser_config for review
     docs = billing_client.list_documents(dataset_id)
-    for doc in (docs.get("data", {}).get("docs") or []):
+    for doc in docs.get("data", {}).get("docs") or []:
         print("\n=== Document parser_config ===")
         import json
+
         print(json.dumps(doc.get("parser_config", {}), indent=2))
 
     # Parse documents — this triggers PointHold → consumes plan_points
@@ -97,10 +98,7 @@ def test_trial_01a_no_invoice_on_billing_cycle(
     # Poll until parsing is done
     for _ in range(120):
         docs = billing_client.list_documents(dataset_id)
-        all_done = all(
-            doc.get("run") == "DONE"
-            for doc in (docs.get("data", {}).get("docs") or [])
-        )
+        all_done = all(doc.get("run") == "DONE" for doc in (docs.get("data", {}).get("docs") or []))
         if all_done:
             break
         time_module.sleep(2)
@@ -112,10 +110,7 @@ def test_trial_01a_no_invoice_on_billing_cycle(
     plan_used_after_parse = int(balance_after_parse.get("plan_points", {}).get("used", 0) or 0)
 
     # consumed_plan_points should have increased (was 0, now > 0)
-    assert plan_used_after_parse > plan_used_before, (
-        f"Expected plan_points.used to increase after parsing, "
-        f"before={plan_used_before}, after={plan_used_after_parse}"
-    )
+    assert plan_used_after_parse > plan_used_before, f"Expected plan_points.used to increase after parsing, before={plan_used_before}, after={plan_used_after_parse}"
 
     # 4. Advance clock by 35 days (one "billing cycle")
     clock_id = billing_client.clock_id
@@ -125,21 +120,13 @@ def test_trial_01a_no_invoice_on_billing_cycle(
     # 5. Assert no Stripe invoice for this tenant
     customer_id = billing_client.customer_id
     invoices = stripe.Invoice.list(customer=customer_id, limit=10)
-    tenant_invoices = [
-        inv for inv in (invoices.data or [])
-        if (inv.metadata or {}).get("tenant_id") == billing_client.tenant_id
-    ]
-    assert len(tenant_invoices) == 0, (
-        f"Trial tenant should have 0 Stripe invoices, found {len(tenant_invoices)}: {tenant_invoices}"
-    )
+    tenant_invoices = [inv for inv in (invoices.data or []) if (inv.metadata or {}).get("tenant_id") == billing_client.tenant_id]
+    assert len(tenant_invoices) == 0, f"Trial tenant should have 0 Stripe invoices, found {len(tenant_invoices)}: {tenant_invoices}"
 
     # 6. Assert plan_points.used was NOT reset (still equals post-parse value)
     balance_after = billing_client.points_balance()
     plan_used_after = int(balance_after.get("plan_points", {}).get("used", 0) or 0)
-    assert plan_used_after == plan_used_after_parse, (
-        f"Trial plan_points.used must not change after billing cycle: "
-        f"before_clock={plan_used_after_parse}, after_clock={plan_used_after}"
-    )
+    assert plan_used_after == plan_used_after_parse, f"Trial plan_points.used must not change after billing cycle: before_clock={plan_used_after_parse}, after_clock={plan_used_after}"
 
 
 @pytest.mark.billing
@@ -182,20 +169,12 @@ def test_trial_01b_no_invoice_after_starter_cycle(billing_client: AppClient):
     # 4. Assert no Stripe invoice for Trial period
     customer_id = billing_client.customer_id
     invoices = stripe.Invoice.list(customer=customer_id, limit=10)
-    tenant_invoices = [
-        inv for inv in (invoices.data or [])
-        if (inv.metadata or {}).get("tenant_id") == billing_client.tenant_id
-    ]
-    assert len(tenant_invoices) == 0, (
-        f"Trial tenant should have 0 Stripe invoices after downgrade, "
-        f"found {len(tenant_invoices)}: {tenant_invoices}"
-    )
+    tenant_invoices = [inv for inv in (invoices.data or []) if (inv.metadata or {}).get("tenant_id") == billing_client.tenant_id]
+    assert len(tenant_invoices) == 0, f"Trial tenant should have 0 Stripe invoices after downgrade, found {len(tenant_invoices)}: {tenant_invoices}"
 
     # 5. Verify plan is still Trial
     plan_after = billing_client.current_plan()
-    assert plan_after["plan_name"].lower() == "trial", (
-        f"Expected Trial, got {plan_after['plan_name']}"
-    )
+    assert plan_after["plan_name"].lower() == "trial", f"Expected Trial, got {plan_after['plan_name']}"
 
 
 @pytest.mark.billing
@@ -257,7 +236,5 @@ def test_trial_02_first_upgrade_via_setup_intent_flow(billing_client: AppClient)
     billing_client.wait_for_plan("Starter", timeout_seconds=30)
     final_plan = billing_client.current_plan()
     assert final_plan["plan_name"].lower() == "starter", f"Expected Starter, got {final_plan['plan_name']}"
-    assert final_plan.get("subscription_id") == subscription_id, (
-        f"subscription_id mismatch: expected {subscription_id}, got {final_plan.get('subscription_id')}"
-    )
+    assert final_plan.get("subscription_id") == subscription_id, f"subscription_id mismatch: expected {subscription_id}, got {final_plan.get('subscription_id')}"
     print("  ✅ Trial → Starter upgrade via SetupIntent flow succeeded")

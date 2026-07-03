@@ -29,7 +29,7 @@ class FeishuOAuthClient(OAuthClient):
             "client_id": config["app_id"],
             "client_secret": config["app_secret"],
             "redirect_uri": "",
-            "scope": "user_info"
+            "scope": "user_info",
         }
         super().__init__(conf)
 

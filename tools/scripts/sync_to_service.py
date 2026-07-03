@@ -33,9 +33,11 @@ from typing import Optional
 # Deployment target abstraction
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class DeploymentTarget:
     """Abstract deployment target (k8s pod or Docker container)."""
+
     name: str
     kind: str  # "k8s" or "docker"
     namespace: str = "ragflow"
@@ -78,10 +80,7 @@ class K8sTarget(DeploymentTarget):
         return result
 
     def file_exists(self, path: str) -> bool:
-        result = subprocess.run(
-            ["kubectl", "exec", self.name, "-n", self.namespace, "--", "test", "-e", path],
-            capture_output=True
-        )
+        result = subprocess.run(["kubectl", "exec", self.name, "-n", self.namespace, "--", "test", "-e", path], capture_output=True)
         return result.returncode == 0
 
 
@@ -110,10 +109,7 @@ class DockerTarget(DeploymentTarget):
         return result
 
     def file_exists(self, path: str) -> bool:
-        result = subprocess.run(
-            ["docker", "exec", self.name, "test", "-e", path],
-            capture_output=True
-        )
+        result = subprocess.run(["docker", "exec", self.name, "test", "-e", path], capture_output=True)
         return result.returncode == 0
 
 
@@ -121,13 +117,10 @@ class DockerTarget(DeploymentTarget):
 # Target discovery
 # ---------------------------------------------------------------------------
 
+
 def find_k8s_pods(namespace: str = "ragflow") -> list[K8sTarget]:
     """Return list of K8sTarget for ragflow pods."""
-    result = subprocess.run(
-        ["kubectl", "get", "pods", "-n", namespace, "-l", "app=ragflow",
-         "-o", "jsonpath={.items[*].metadata.name}"],
-        capture_output=True, text=True
-    )
+    result = subprocess.run(["kubectl", "get", "pods", "-n", namespace, "-l", "app=ragflow", "-o", "jsonpath={.items[*].metadata.name}"], capture_output=True, text=True)
     names = result.stdout.strip().split()
     if not names:
         return []
@@ -136,10 +129,7 @@ def find_k8s_pods(namespace: str = "ragflow") -> list[K8sTarget]:
 
 def find_docker_containers() -> list[DockerTarget]:
     """Return list of DockerTarget for docker-ragflow-* containers."""
-    result = subprocess.run(
-        ["docker", "ps", "--format", "{{.Names}}"],
-        capture_output=True, text=True
-    )
+    result = subprocess.run(["docker", "ps", "--format", "{{.Names}}"], capture_output=True, text=True)
     if result.returncode != 0:
         return []
     names = [n.strip() for n in result.stdout.strip().split("\n") if n.strip()]
@@ -150,10 +140,7 @@ def find_docker_containers() -> list[DockerTarget]:
 def detect_environment() -> str:
     """Detect whether we're in k8s or docker mode."""
     # Check kubectl
-    result = subprocess.run(
-        ["kubectl", "cluster-info"],
-        capture_output=True, text=True, timeout=5
-    )
+    result = subprocess.run(["kubectl", "cluster-info"], capture_output=True, text=True, timeout=5)
     if result.returncode == 0:
         # Check if there are any ragflow pods
         if find_k8s_pods():
@@ -176,18 +163,11 @@ def pick_target(targets: list[DeploymentTarget], kind: str) -> DeploymentTarget:
     for i, t in enumerate(targets, 1):
         if kind == "k8s":
             # Get pod status
-            phase = subprocess.run(
-                ["kubectl", "get", "pod", t.name, "-n", t.namespace,
-                 "-o", "jsonpath={.status.phase}"],
-                capture_output=True, text=True
-            ).stdout.strip()
+            phase = subprocess.run(["kubectl", "get", "pod", t.name, "-n", t.namespace, "-o", "jsonpath={.status.phase}"], capture_output=True, text=True).stdout.strip()
             marker = " (Running)" if phase == "Running" else f" ({phase})"
         else:
             # Get container status
-            status = subprocess.run(
-                ["docker", "ps", "--filter", f"name={t.name}", "--format", "{{.Status}}"],
-                capture_output=True, text=True
-            ).stdout.strip()
+            status = subprocess.run(["docker", "ps", "--filter", f"name={t.name}", "--format", "{{.Status}}"], capture_output=True, text=True).stdout.strip()
             marker = f" ({status})"
         print(f"  {i}. {t.name}{marker}")
     print()
@@ -241,9 +221,9 @@ def start_rsync_daemon(target: DeploymentTarget, remote_port: int = RSYNC_PORT):
         time.sleep(0.5)
 
         last_start = target.exec(
-            "sh", "-c",
-            f"nohup rsync --daemon --no-detach --port={remote_port} --config=/etc/rsyncd.conf "
-            f"> /tmp/rsyncd.log 2>&1 &",
+            "sh",
+            "-c",
+            f"nohup rsync --daemon --no-detach --port={remote_port} --config=/etc/rsyncd.conf > /tmp/rsyncd.log 2>&1 &",
             check=False,
         )
         last_check = wait_for_rsync_module(target, remote_port)
@@ -276,16 +256,10 @@ def start_k8s_port_forward(target: K8sTarget, local_port: int = RSYNC_PORT, remo
     global _k8s_pf_proc
 
     # Kill any old port-forward on that port
-    subprocess.run(["pkill", "-f",
-                    f"kubectl.*port-forward.*{local_port}:{remote_port}"],
-                   capture_output=True)
+    subprocess.run(["pkill", "-f", f"kubectl.*port-forward.*{local_port}:{remote_port}"], capture_output=True)
     time.sleep(0.5)
 
-    pf_proc = subprocess.Popen(
-        ["kubectl", "port-forward", "-n", target.namespace, target.name,
-         f"{local_port}:{remote_port}"],
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-    )
+    pf_proc = subprocess.Popen(["kubectl", "port-forward", "-n", target.namespace, target.name, f"{local_port}:{remote_port}"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     _k8s_pf_proc = pf_proc
     time.sleep(3)
 
@@ -298,12 +272,7 @@ def start_k8s_port_forward(target: K8sTarget, local_port: int = RSYNC_PORT, remo
 
 def get_docker_container_ip(target: DockerTarget) -> str:
     """Get the internal IP address of a Docker container."""
-    result = subprocess.run(
-        ["docker", "inspect", "-f",
-         "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}",
-         target.name],
-        capture_output=True, text=True
-    )
+    result = subprocess.run(["docker", "inspect", "-f", "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}", target.name], capture_output=True, text=True)
     container_ip = result.stdout.strip()
     if not container_ip:
         raise RuntimeError(f"Could not get IP address for container {target.name}")
@@ -314,7 +283,8 @@ def get_docker_rootfs(target: DockerTarget) -> Path:
     """Return Docker's merged rootfs path for a local container."""
     result = subprocess.run(
         ["docker", "inspect", "-f", "{{.GraphDriver.Data.MergedDir}}", target.name],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     if result.returncode != 0:
         raise RuntimeError(f"Could not inspect Docker rootfs for {target.name}: {result.stderr}")
@@ -346,8 +316,7 @@ def stop_port_forward():
         _k8s_pf_proc = None
     # Clean up docker port forward containers
     for local_port in list(_docker_port_map.keys()):
-        subprocess.run(["docker", "rm", "-f", f"_sync_port_forward_{local_port}"],
-                       capture_output=True)
+        subprocess.run(["docker", "rm", "-f", f"_sync_port_forward_{local_port}"], capture_output=True)
     _docker_port_map.clear()
 
 
@@ -392,20 +361,14 @@ _SYNC_LOG_DIR = _REPO_ROOT / ".sync_logs"
 # Build and sync
 # ---------------------------------------------------------------------------
 
+
 def _write_command_log(step_name: str, result: subprocess.CompletedProcess) -> Path:
     _SYNC_LOG_DIR.mkdir(parents=True, exist_ok=True)
     safe_step_name = re.sub(r"[^a-zA-Z0-9_.-]+", "_", step_name).strip("_") or "command"
     log_path = _SYNC_LOG_DIR / f"{int(time.time())}_{safe_step_name}.log"
     stdout = result.stdout or ""
     stderr = result.stderr or ""
-    content = (
-        f"step: {step_name}\n"
-        f"returncode: {result.returncode}\n"
-        f"{'-' * 80}\n"
-        f"[stdout]\n{stdout}\n"
-        f"{'-' * 80}\n"
-        f"[stderr]\n{stderr}\n"
-    )
+    content = f"step: {step_name}\nreturncode: {result.returncode}\n{'-' * 80}\n[stdout]\n{stdout}\n{'-' * 80}\n[stderr]\n{stderr}\n"
     log_path.write_text(content)
     return log_path
 
@@ -556,7 +519,9 @@ def sync_python_files(target: DeploymentTarget, local_port: int = RSYNC_PORT):
 
     print("  Syncing Python files to target ...")
     cmd = [
-        "rsync", "-avz", "--progress",
+        "rsync",
+        "-avz",
+        "--progress",
         *RSYNC_EXCLUDES,
         "--include=*/",
         "--include=**/*.py",
@@ -580,7 +545,11 @@ def sync_python_files_direct(rootfs: Path):
     dest = rootfs / "ragflow"
     print(f"  Syncing Python files directly to {dest} ...")
     cmd = [
-        "sudo", "-n", "rsync", "-avz", "--progress",
+        "sudo",
+        "-n",
+        "rsync",
+        "-avz",
+        "--progress",
         *RSYNC_EXCLUDES,
         "--include=*/",
         "--include=**/*.py",
@@ -615,7 +584,9 @@ def sync_dist_files(target: DeploymentTarget, local_port: int = RSYNC_PORT):
     print("  Syncing web/dist/ to target ...")
 
     cmd = [
-        "rsync", "-avz", "--progress",
+        "rsync",
+        "-avz",
+        "--progress",
         str(dist_dir) + "/",
         dest + "/",
     ]
@@ -641,7 +612,11 @@ def sync_dist_files_direct(rootfs: Path):
     dest = rootfs / "ragflow" / "web" / "dist"
     print(f"  Syncing web/dist/ directly to {dest} ...")
     cmd = [
-        "sudo", "-n", "rsync", "-avz", "--progress",
+        "sudo",
+        "-n",
+        "rsync",
+        "-avz",
+        "--progress",
         str(dist_dir) + "/",
         str(dest) + "/",
     ]
@@ -698,11 +673,9 @@ def kill_ragflow_processes(target: DeploymentTarget):
         if not pid:
             continue
         if target.kind == "k8s":
-            describe_command = ["kubectl", "exec", target.name, "-n", target.namespace, "--",
-                                "bash", "-lc", f"ps -p {shlex.quote(pid)} -o args="]
+            describe_command = ["kubectl", "exec", target.name, "-n", target.namespace, "--", "bash", "-lc", f"ps -p {shlex.quote(pid)} -o args="]
         else:
-            describe_command = ["docker", "exec", target.name, "bash", "-lc",
-                                f"ps -p {shlex.quote(pid)} -o args="]
+            describe_command = ["docker", "exec", target.name, "bash", "-lc", f"ps -p {shlex.quote(pid)} -o args="]
         describe_result = subprocess.run(describe_command, capture_output=True, text=True)
         command = describe_result.stdout.strip() if describe_result.returncode == 0 else ""
         processes.append((pid, command))
@@ -729,11 +702,9 @@ def kill_ragflow_processes(target: DeploymentTarget):
 def reload_nginx(target: DeploymentTarget):
     """Send SIGHUP to nginx master to reload static assets after dist sync."""
     if target.kind == "k8s":
-        cmd = ["kubectl", "exec", target.name, "-n", target.namespace, "--",
-               "sh", "-c", "pkill -HUP -f 'nginx: master' || true"]
+        cmd = ["kubectl", "exec", target.name, "-n", target.namespace, "--", "sh", "-c", "pkill -HUP -f 'nginx: master' || true"]
     else:
-        cmd = ["docker", "exec", target.name, "sh", "-c",
-               "pkill -HUP -f 'nginx: master' || true"]
+        cmd = ["docker", "exec", target.name, "sh", "-c", "pkill -HUP -f 'nginx: master' || true"]
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode in (0, 129, 143, 137):
         print("  nginx reloaded (SIGHUP sent)")
@@ -744,8 +715,7 @@ def reload_nginx(target: DeploymentTarget):
 def restart_container(target: DockerTarget):
     """Restart a Docker container."""
     print(f"  Restarting container {target.name} ...")
-    result = subprocess.run(["docker", "restart", target.name],
-                            capture_output=True, text=True)
+    result = subprocess.run(["docker", "restart", target.name], capture_output=True, text=True)
     if result.returncode != 0:
         raise RuntimeError(f"Failed to restart container: {result.stderr}")
     print(f"  Container {target.name} restarted")
@@ -755,30 +725,19 @@ def restart_container(target: DockerTarget):
 # Main
 # ---------------------------------------------------------------------------
 
+
 def main():
-    parser = argparse.ArgumentParser(
-        description="Sync code changes to a running RagFlow service (k8s or Docker)."
-    )
-    parser.add_argument("-n", "--namespace", default="ragflow",
-                        help="K8s namespace (default: ragflow)")
-    parser.add_argument("-p", "--pod", dest="pod_name",
-                        help="Specific k8s pod name (skips selection prompt)")
-    parser.add_argument("-c", "--container", dest="container_name",
-                        help="Specific Docker container name (skips selection prompt)")
-    parser.add_argument("--python-only", action="store_true",
-                        help="Only sync Python files, skip npm build and dist")
-    parser.add_argument("--dist-only", action="store_true",
-                        help="Only sync web/dist (assumes build already done)")
-    parser.add_argument("--build", action="store_true", default=True,
-                        help="Run npm build before syncing (default: True)")
-    parser.add_argument("--no-build", dest="build", action="store_false",
-                        help="Skip npm build")
-    parser.add_argument("--direct-docker-rootfs", action="store_true",
-                        help="Docker only: rsync directly into Docker's local merged rootfs using sudo")
-    parser.add_argument("-l", "--local-port", type=int, default=RSYNC_PORT,
-                        help=f"Local rsync port (default: {RSYNC_PORT})")
-    parser.add_argument("-r", "--remote-port", type=int, default=RSYNC_PORT,
-                        help=f"Remote rsync port (default: {RSYNC_PORT})")
+    parser = argparse.ArgumentParser(description="Sync code changes to a running RagFlow service (k8s or Docker).")
+    parser.add_argument("-n", "--namespace", default="ragflow", help="K8s namespace (default: ragflow)")
+    parser.add_argument("-p", "--pod", dest="pod_name", help="Specific k8s pod name (skips selection prompt)")
+    parser.add_argument("-c", "--container", dest="container_name", help="Specific Docker container name (skips selection prompt)")
+    parser.add_argument("--python-only", action="store_true", help="Only sync Python files, skip npm build and dist")
+    parser.add_argument("--dist-only", action="store_true", help="Only sync web/dist (assumes build already done)")
+    parser.add_argument("--build", action="store_true", default=True, help="Run npm build before syncing (default: True)")
+    parser.add_argument("--no-build", dest="build", action="store_false", help="Skip npm build")
+    parser.add_argument("--direct-docker-rootfs", action="store_true", help="Docker only: rsync directly into Docker's local merged rootfs using sudo")
+    parser.add_argument("-l", "--local-port", type=int, default=RSYNC_PORT, help=f"Local rsync port (default: {RSYNC_PORT})")
+    parser.add_argument("-r", "--remote-port", type=int, default=RSYNC_PORT, help=f"Remote rsync port (default: {RSYNC_PORT})")
     args = parser.parse_args()
 
     namespace = args.namespace

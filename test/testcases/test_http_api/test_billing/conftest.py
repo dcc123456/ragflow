@@ -54,17 +54,17 @@ T = TypeVar("T")
 # Runtime config
 # -----------------------------------------------------------------------------
 
+
 @pytest.fixture(scope="session")
 def billing_runtime_config() -> dict[str, Any]:
     """Load Stripe runtime config for billing test automation."""
-    return load_stripe_test_runtime_config(
-        require_test_mode_message="Billing P3 tests require a Stripe test-mode secret key"
-    )
+    return load_stripe_test_runtime_config(require_test_mode_message="Billing P3 tests require a Stripe test-mode secret key")
 
 
 # -----------------------------------------------------------------------------
 # Billing enabled check
 # -----------------------------------------------------------------------------
+
 
 @pytest.fixture(scope="session")
 def billing_enabled_or_skip(billing_runtime_config: dict[str, Any]) -> None:
@@ -90,17 +90,21 @@ def set_tenant_info() -> None:
 # Email factory
 # -----------------------------------------------------------------------------
 
+
 @pytest.fixture
 def billing_email_factory():
     """Generate unique test email addresses for billing flows."""
+
     def _make_email(prefix: str = "billing-p3") -> str:
         return f"{prefix}-{uuid.uuid4().hex[:12]}@example.test"
+
     return _make_email
 
 
 # -----------------------------------------------------------------------------
 # Test clock management
 # -----------------------------------------------------------------------------
+
 
 @pytest.fixture
 def billing_test_args(billing_runtime_config: dict[str, Any]) -> Any:
@@ -142,6 +146,7 @@ def _create_test_clock() -> str:
 # -----------------------------------------------------------------------------
 # BillingClient fixture
 # -----------------------------------------------------------------------------
+
 
 class BillingClientWithClock:
     """Wrapper that manages BillingClient lifecycle with test clock cleanup."""
@@ -186,6 +191,7 @@ def billing_client(
 
     # Bootstrap: register and login
     from libs.billing.storage_common import attach_default_test_card
+
     _user_id, tenant_id = client.register_and_login(email, "Test1234!")
     client.customer_id = str(client.customer_id or "")
 
@@ -209,6 +215,7 @@ def billing_client(
 # PointsClient fixture
 # -----------------------------------------------------------------------------
 
+
 @pytest.fixture
 def points_client(
     billing_runtime_config: dict[str, Any],
@@ -230,6 +237,7 @@ def points_client(
 
     # Bootstrap
     from libs.billing.storage_common import attach_default_test_card
+
     _user_id, tenant_id = client.register_and_login(email, "Test1234!")
     client.customer_id = str(client.customer_id or "")
 

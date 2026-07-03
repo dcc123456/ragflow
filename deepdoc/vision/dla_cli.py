@@ -47,12 +47,22 @@ class DLAClient:
                     response = response.json()
                     if "bboxes" not in response:
                         raise Exception(str(response))
-                    res.append([{
-                        "type": DLA_CLASSES[int(ty)].lower(),
-                        "type_idx": ty,
-                        "bbox": [left, t, r, b,],
-                        "score": s
-                    } for left, t, r, b, s, ty in response["bboxes"]])
+                    res.append(
+                        [
+                            {
+                                "type": DLA_CLASSES[int(ty)].lower(),
+                                "type_idx": ty,
+                                "bbox": [
+                                    left,
+                                    t,
+                                    r,
+                                    b,
+                                ],
+                                "score": s,
+                            }
+                            for left, t, r, b, s, ty in response["bboxes"]
+                        ]
+                    )
                     success = True
                     break
                 except requests.RequestException as e:
@@ -210,9 +220,9 @@ AscendLayoutRecognizer = LayoutRecognizer
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument('--ip', type=str, help="Server's IP")
-    parser.add_argument('--port', type=int, default=11234, help="Server's port")
-    parser.add_argument('--image', type=str, help='Input image file')
+    parser.add_argument("--ip", type=str, help="Server's IP")
+    parser.add_argument("--port", type=int, default=11234, help="Server's port")
+    parser.add_argument("--image", type=str, help="Input image file")
     args = parser.parse_args()
     return args
 
@@ -220,16 +230,16 @@ def parse_args() -> argparse.Namespace:
 if __name__ == "__main__":
     import cv2
     from deepdoc.servers.dla.yolov10_to_tensor.utils import vis
+
     args = parse_args()
     cli = DLAClient(f"http://{args.ip}:{args.port}")
-    img = PILImage.open(args.image, mode='r')
+    img = PILImage.open(args.image, mode="r")
     draw = cv2.imread(args.image)
     preds = cli.predict([img.convert("RGB")])
     final_boxes = [p["bbox"] for p in preds[0]]
     final_scores = [p["score"] for p in preds[0]]
     final_cls_inds = [p["type_idx"] for p in preds[0]]
 
-    origin_img = vis(draw, final_boxes, final_scores, final_cls_inds,
-                     conf=0.1, class_names=DLA_CLASSES)
+    origin_img = vis(draw, final_boxes, final_scores, final_cls_inds, conf=0.1, class_names=DLA_CLASSES)
 
     cv2.imwrite(args.image + ".o.jpg", draw)

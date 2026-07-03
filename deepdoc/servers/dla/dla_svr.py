@@ -13,6 +13,7 @@ from .yolov10_to_tensor.utils import letterbox
 # Conditional import for GPU (TensorRT) vs CPU (ONNX)
 try:
     from .yolov10_to_tensor.engine import BaseEngine
+
     HAS_TENSORRT = True
 except ImportError:
     HAS_TENSORRT = False
@@ -48,7 +49,7 @@ class Predictor:
             engine_path: Path to model file (.trt for TensorRT, .onnx for ONNX)
             use_gpu: Use GPU inference (TensorRT). Default False uses CPU (ONNX)
         """
-        self.use_gpu = use_gpu and HAS_TENSORRT and not engine_path.endswith('.onnx')
+        self.use_gpu = use_gpu and HAS_TENSORRT and not engine_path.endswith(".onnx")
 
         if self.use_gpu:
             self.engine = BaseEngine(engine_path)
@@ -172,16 +173,13 @@ class DLAEndpoint(ls.LitAPI):
                 num_dets = int(num[0])
 
             # Combine results
-            dets = np.concatenate([
-                np.array(final_boxes)[:num_dets],
-                np.array(final_scores)[:num_dets],
-                np.array(final_cls_inds)[:num_dets]
-            ], axis=-1)
+            dets = np.concatenate([np.array(final_boxes)[:num_dets], np.array(final_scores)[:num_dets], np.array(final_cls_inds)[:num_dets]], axis=-1)
             res.append(dets.tolist())
         return res
 
     def encode_response(self, output):
         import sys
+
         print(f"DLA encode_response called: output type={type(output)}, len={len(output) if isinstance(output, list) else 'N/A'}", file=sys.stderr, flush=True)
         print(f"DLA encode_response: output={output}", file=sys.stderr, flush=True)
 
@@ -220,24 +218,15 @@ ImageClassifierAPI = DLAEndpoint
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument('--engine', type=str, help='Engine file')
-    parser.add_argument('--port', type=int, default=11234, help='serving port')
-    parser.add_argument('--workers',
-                        type=int,
-                        default=2,
-                        help='Workers for every device')
+    parser.add_argument("--engine", type=str, help="Engine file")
+    parser.add_argument("--port", type=int, default=11234, help="serving port")
+    parser.add_argument("--workers", type=int, default=2, help="Workers for every device")
     args = parser.parse_args()
     return args
+
 
 if __name__ == "__main__":
     ARGS = parse_args()
     api = ImageClassifierAPI(ARGS.engine)
-    server = ls.LitServer(
-        api,
-        timeout=100,
-        workers_per_device=ARGS.workers,
-        max_batch_size=4,
-        track_requests=True
-    )
+    server = ls.LitServer(api, timeout=100, workers_per_device=ARGS.workers, max_batch_size=4, track_requests=True)
     server.run(port=ARGS.port, log_level="warning")
-

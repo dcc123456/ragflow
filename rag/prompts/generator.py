@@ -630,30 +630,18 @@ async def rag_judge_metrics(
 
     if EvaluationMetric.FAITHFULNESS in metric_names:
         system_prompt = PROMPT_JINJA_ENV.from_string(RAG_JUDGE_FAITHFULNESS_SYSTEM).render()
-        user_prompt = PROMPT_JINJA_ENV.from_string(RAG_JUDGE_FAITHFULNESS_USER).render(
-            question=question, answer=answer, context=context
-        )
-        results[EvaluationMetric.FAITHFULNESS] = _normalize_metric_result(
-            await gen_json(system_prompt, user_prompt, chat_mdl, gen_conf=gen_conf)
-        )
+        user_prompt = PROMPT_JINJA_ENV.from_string(RAG_JUDGE_FAITHFULNESS_USER).render(question=question, answer=answer, context=context)
+        results[EvaluationMetric.FAITHFULNESS] = _normalize_metric_result(await gen_json(system_prompt, user_prompt, chat_mdl, gen_conf=gen_conf))
 
     if EvaluationMetric.CONTEXT_RELEVANCE in metric_names:
         system_prompt = PROMPT_JINJA_ENV.from_string(RAG_JUDGE_CONTEXT_RELEVANCE_SYSTEM).render()
-        user_prompt = PROMPT_JINJA_ENV.from_string(RAG_JUDGE_CONTEXT_RELEVANCE_USER).render(
-            question=question, context=context
-        )
-        results[EvaluationMetric.CONTEXT_RELEVANCE] = _normalize_metric_result(
-            await gen_json(system_prompt, user_prompt, chat_mdl, gen_conf=gen_conf)
-        )
+        user_prompt = PROMPT_JINJA_ENV.from_string(RAG_JUDGE_CONTEXT_RELEVANCE_USER).render(question=question, context=context)
+        results[EvaluationMetric.CONTEXT_RELEVANCE] = _normalize_metric_result(await gen_json(system_prompt, user_prompt, chat_mdl, gen_conf=gen_conf))
 
     if EvaluationMetric.SEMANTIC_SIMILARITY in metric_names:
         system_prompt = PROMPT_JINJA_ENV.from_string(RAG_JUDGE_SEMANTIC_SIMILARITY_SYSTEM).render()
-        user_prompt = PROMPT_JINJA_ENV.from_string(RAG_JUDGE_SEMANTIC_SIMILARITY_USER).render(
-            answer=answer, reference_answer=reference_answer
-        )
-        results[EvaluationMetric.SEMANTIC_SIMILARITY] = _normalize_metric_result(
-            await gen_json(system_prompt, user_prompt, chat_mdl, gen_conf=gen_conf)
-        )
+        user_prompt = PROMPT_JINJA_ENV.from_string(RAG_JUDGE_SEMANTIC_SIMILARITY_USER).render(answer=answer, reference_answer=reference_answer)
+        results[EvaluationMetric.SEMANTIC_SIMILARITY] = _normalize_metric_result(await gen_json(system_prompt, user_prompt, chat_mdl, gen_conf=gen_conf))
 
     return results
 

@@ -27,7 +27,7 @@ _loaded_modules: set[str] = set()
 
 
 def _iter_module_names():
-    for filename in os.listdir(_package_path): # noqa: F821
+    for filename in os.listdir(_package_path):  # noqa: F821
         if filename.startswith("__") or not filename.endswith(".py") or filename.startswith("base"):
             continue
         yield filename[:-3]
@@ -74,10 +74,10 @@ def _get_class_modules() -> dict[str, list[str]]:
 
 def _extract_classes_from_module(module: ModuleType) -> None:
     for name, obj in inspect.getmembers(module):
-        if (inspect.isclass(obj) and
-                obj.__module__ == module.__name__ and not name.startswith("_")):
+        if inspect.isclass(obj) and obj.__module__ == module.__name__ and not name.startswith("_"):
             __all_classes[name] = obj
             globals()[name] = obj
+
 
 __all__ = list(_get_class_modules()) + ["__all_classes", "component_class"]
 

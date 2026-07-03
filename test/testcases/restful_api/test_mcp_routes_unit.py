@@ -260,9 +260,14 @@ def _load_mcp_api(monkeypatch):
 
     db_models_mod = ModuleType("api.db.db_models")
     db_models_mod.MCPServer = _DummyMCPServer
+
     class _DummyAtomic:
-        def __enter__(self): return self
-        def __exit__(self, *args): pass
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
     db_models_mod.DB = SimpleNamespace(atomic=lambda: _DummyAtomic())
     monkeypatch.setitem(sys.modules, "api.db.db_models", db_models_mod)
 
@@ -536,10 +541,7 @@ def test_update_validation_guards(monkeypatch):
     assert "Cannot find MCP server" in res["message"]
 
     _set_request_json(monkeypatch, module, {"mcp_id": "mcp-1"})
-    other_server = _DummyMCPServer(
-        id="mcp-1", name="srv", url="http://server",
-        server_type="sse", tenant_id="other", variables={}, headers={}
-    )
+    other_server = _DummyMCPServer(id="mcp-1", name="srv", url="http://server", server_type="sse", tenant_id="other", variables={}, headers={})
     monkeypatch.setattr(module.MCPServerService, "get_by_id", lambda _mcp_id: (True, other_server))
     monkeypatch.setattr(module.MCPServerService, "is_accessible", lambda _mcp_id, _user_id, _perm: False)
     res = _run(module.update("mcp-1"))

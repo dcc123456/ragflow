@@ -20,7 +20,6 @@ class UserCanvasVersionService(CommonService):
         stamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(ts)) if ts is not None else time.strftime("%Y-%m-%d %H:%M:%S")
         return "{0}_{1}_{2}".format(tenant, title, stamp)
 
-
     # Normalize DSL before comparing or writing version content.
     @staticmethod
     def _normalize_dsl(dsl):
@@ -44,21 +43,13 @@ class UserCanvasVersionService(CommonService):
     def list_by_canvas_id(cls, user_canvas_id):
         try:
             user_canvas_version = cls.model.select(
-                *[cls.model.id,
-                  cls.model.create_time,
-                  cls.model.title,
-                  cls.model.create_date,
-                  cls.model.update_date,
-                  cls.model.user_canvas_id,
-                  cls.model.update_time,
-                  cls.model.release]
+                *[cls.model.id, cls.model.create_time, cls.model.title, cls.model.create_date, cls.model.update_date, cls.model.user_canvas_id, cls.model.update_time, cls.model.release]
             ).where(cls.model.user_canvas_id == user_canvas_id)
             return user_canvas_version
         except DoesNotExist:
             return None
         except Exception:
             return None
-
 
     @classmethod
     @DB.connection_context()
@@ -76,7 +67,6 @@ class UserCanvasVersionService(CommonService):
             res.extend(_temp)
             offset += limit
             return res
-
 
     @classmethod
     @DB.connection_context()
@@ -142,12 +132,7 @@ class UserCanvasVersionService(CommonService):
         """
         try:
             normalized_dsl = cls._normalize_dsl(dsl)
-            latest = (
-                cls.model.select()
-                .where(cls.model.user_canvas_id == user_canvas_id)
-                .order_by(cls.model.create_time.desc())
-                .first()
-            )
+            latest = cls.model.select().where(cls.model.user_canvas_id == user_canvas_id).order_by(cls.model.create_time.desc()).first()
 
             # Repeated saves with the same DSL only refresh the latest snapshot.
             if latest and cls._normalize_dsl(latest.dsl) == normalized_dsl:

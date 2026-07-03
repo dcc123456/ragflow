@@ -34,10 +34,7 @@ with open(image_path, "rb") as image_file:
 
 base64_encoded = base64.b64encode(image_bytes).decode("utf-8")
 
-payload = {
-    "image": base64_encoded,
-    "operation": operation
-}
+payload = {"image": base64_encoded, "operation": operation}
 
 url = "http://localhost:8000/predict"
 try:

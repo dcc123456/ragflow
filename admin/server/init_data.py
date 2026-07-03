@@ -21,14 +21,14 @@ from api.db.services.role_service import RoleService
 
 
 def init_user_role():
-    empty_role_user = UserService.query(role_id='')
+    empty_role_user = UserService.query(role_id="")
     if not empty_role_user:
         return
 
     roles = RoleService.get_by_role_name(DEFAULT_ROLE)
     if not roles:
-        raise AdminException(f'Default role {DEFAULT_ROLE} not found!')
+        raise AdminException(f"Default role {DEFAULT_ROLE} not found!")
 
     role = roles[0]
-    cnt = UserService.filter_update([User.role_id==0], {'role_id': role["id"]})
+    cnt = UserService.filter_update([User.role_id == 0], {"role_id": role["id"]})
     print(f"User role initialized! {cnt} rows updated.")

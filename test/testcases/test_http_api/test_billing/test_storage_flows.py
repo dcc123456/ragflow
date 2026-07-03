@@ -65,10 +65,15 @@ def test_storage_01_first_addon_purchase_with_proration(billing_client: BillingC
 
     # Step 5: Add 20GB storage addon
     storage_gb = 20
-    storage_added_at = stripe_dict(stripe.test_helpers.TestClock.create(
-        frozen_time=int(time.time()),
-        name=f"storage01-{uuid.uuid4().hex[:8]}",
-    )).get("frozen_time") or int(time.time()) - 5
+    storage_added_at = (
+        stripe_dict(
+            stripe.test_helpers.TestClock.create(
+                frozen_time=int(time.time()),
+                name=f"storage01-{uuid.uuid4().hex[:8]}",
+            )
+        ).get("frozen_time")
+        or int(time.time()) - 5
+    )
 
     billing_client.add_storage_to_subscription_with_webhook(
         storage_quantity_gb=storage_gb,
@@ -80,9 +85,7 @@ def test_storage_01_first_addon_purchase_with_proration(billing_client: BillingC
     # Verify subscription has 2 items (plan + storage)
     updated_sub = stripe.Subscription.retrieve(starter_subscription_id)
     updated_items = updated_sub.get("items", {}).get("data", [])
-    assert len(updated_items) == 2, (
-        f"Expected 2 subscription items (plan + storage), got {len(updated_items)}"
-    )
+    assert len(updated_items) == 2, f"Expected 2 subscription items (plan + storage), got {len(updated_items)}"
 
     # Verify invoice for initial addon purchase
     latest_invoice = updated_sub.get("latest_invoice")
@@ -100,15 +103,10 @@ def test_storage_01_first_addon_purchase_with_proration(billing_client: BillingC
     storage = billing_client.storage_current()
     addon_storage_bytes = int(storage.get("addon_storage_bytes") or 0)
     expected_storage_bytes = gb_to_bytes(storage_gb)
-    assert addon_storage_bytes == expected_storage_bytes, (
-        f"Expected addon_storage_bytes={expected_storage_bytes}, got {addon_storage_bytes}"
-    )
+    assert addon_storage_bytes == expected_storage_bytes, f"Expected addon_storage_bytes={expected_storage_bytes}, got {addon_storage_bytes}"
 
     storage_subscription_id = storage.get("subscription_id", "")
-    assert storage_subscription_id == starter_subscription_id, (
-        f"Expected storage to be on main subscription {starter_subscription_id}, "
-        f"got {storage_subscription_id}"
-    )
+    assert storage_subscription_id == starter_subscription_id, f"Expected storage to be on main subscription {starter_subscription_id}, got {storage_subscription_id}"
 
     # Step 7: Advance to period end and upgrade storage mid-cycle
     billing_client.advance_clock_to_plan_end()
@@ -145,17 +143,17 @@ def test_storage_01_first_addon_purchase_with_proration(billing_client: BillingC
             tolerance = expected_proration_cents * 0.2
             if abs(proration_invoice_amount - expected_proration_cents) > tolerance:
                 logger.warning(
-                    "Invoice proration %s cents differs from expected %s cents (tolerance %s) - "
-                    "may indicate backend proration calculation change",
-                    proration_invoice_amount, expected_proration_cents, tolerance,
+                    "Invoice proration %s cents differs from expected %s cents (tolerance %s) - may indicate backend proration calculation change",
+                    proration_invoice_amount,
+                    expected_proration_cents,
+                    tolerance,
                 )
 
     after_mid_storage = billing_client.storage_current()
     after_mid_addon_bytes = int(after_mid_storage.get("addon_storage_bytes") or 0)
     expected_increase = gb_to_bytes(10)
     assert after_mid_addon_bytes == before_mid_addon_bytes + expected_increase, (
-        f"addon_storage_bytes should increase by {expected_increase}, "
-        f"before={before_mid_addon_bytes}, after={after_mid_addon_bytes}"
+        f"addon_storage_bytes should increase by {expected_increase}, before={before_mid_addon_bytes}, after={after_mid_addon_bytes}"
     )
 
     logger.info("STORAGE-01: Billing history count: %s", len(billing_client.spend_history()))
@@ -189,9 +187,7 @@ def test_storage_02_lifecycle_with_plan_downgrade(billing_client: BillingClient)
 
     storage = billing_client.storage_current()
     addon_bytes = int(storage.get("addon_storage_bytes") or 0)
-    assert addon_bytes == target_storage_bytes, (
-        f"expected addon_storage_bytes={target_storage_bytes}, got {addon_bytes}"
-    )
+    assert addon_bytes == target_storage_bytes, f"expected addon_storage_bytes={target_storage_bytes}, got {addon_bytes}"
 
     sub = stripe.Subscription.retrieve(starter_subscription_id)
     items = sub.get("items", {}).get("data", [])
@@ -206,10 +202,7 @@ def test_storage_02_lifecycle_with_plan_downgrade(billing_client: BillingClient)
 
     storage_after_cancel = billing_client.storage_current()
     addon_bytes_after_cancel = int(storage_after_cancel.get("addon_storage_bytes") or 0)
-    assert addon_bytes_after_cancel == target_storage_bytes, (
-        f"addon_storage_bytes should still be {target_storage_bytes} after cancellation "
-        f"(not yet effective), got {addon_bytes_after_cancel}"
-    )
+    assert addon_bytes_after_cancel == target_storage_bytes, f"addon_storage_bytes should still be {target_storage_bytes} after cancellation (not yet effective), got {addon_bytes_after_cancel}"
 
     storage_cancel_at = int(time.time()) - 5
     billing_client.advance_clock_to_plan_end()
@@ -222,9 +215,7 @@ def test_storage_02_lifecycle_with_plan_downgrade(billing_client: BillingClient)
 
     storage_after_period_end = billing_client.storage_current()
     addon_bytes_after_period_end = int(storage_after_period_end.get("addon_storage_bytes") or 0)
-    assert addon_bytes_after_period_end == 0, (
-        f"addon_storage_bytes should be 0 after period end, got {addon_bytes_after_period_end}"
-    )
+    assert addon_bytes_after_period_end == 0, f"addon_storage_bytes should be 0 after period end, got {addon_bytes_after_period_end}"
 
     sub = stripe.Subscription.retrieve(starter_subscription_id)
     items = sub.get("items", {}).get("data", [])
@@ -242,23 +233,16 @@ def test_storage_02_lifecycle_with_plan_downgrade(billing_client: BillingClient)
 
     storage_after_readd = billing_client.storage_current()
     addon_bytes_after_readd = int(storage_after_readd.get("addon_storage_bytes") or 0)
-    assert addon_bytes_after_readd == target_storage_bytes_2, (
-        f"expected addon_storage_bytes={target_storage_bytes_2}, got {addon_bytes_after_readd}"
-    )
+    assert addon_bytes_after_readd == target_storage_bytes_2, f"expected addon_storage_bytes={target_storage_bytes_2}, got {addon_bytes_after_readd}"
 
     # Step 9: Downgrade Starter -> Trial (auto-cancel storage)
     before_downgrade_plan = billing_client.current_plan()
     before_downgrade_plan_name = before_downgrade_plan.get("plan_name", "")
-    assert before_downgrade_plan_name == "Starter", (
-        f"plan should be Starter before downgrade, got {before_downgrade_plan_name}"
-    )
+    assert before_downgrade_plan_name == "Starter", f"plan should be Starter before downgrade, got {before_downgrade_plan_name}"
 
     before_downgrade_storage = billing_client.storage_current()
     before_downgrade_addon_bytes = int(before_downgrade_storage.get("addon_storage_bytes") or 0)
-    assert before_downgrade_addon_bytes == target_storage_bytes_2, (
-        f"addon_storage_bytes should remain {target_storage_bytes_2} before downgrade, "
-        f"got {before_downgrade_addon_bytes}"
-    )
+    assert before_downgrade_addon_bytes == target_storage_bytes_2, f"addon_storage_bytes should remain {target_storage_bytes_2} before downgrade, got {before_downgrade_addon_bytes}"
 
     created_gte = int(time.time()) - 5
     billing_client.downgrade_to_trial(starter_subscription_id)
@@ -274,9 +258,7 @@ def test_storage_02_lifecycle_with_plan_downgrade(billing_client: BillingClient)
 
     after_trial_storage = billing_client.storage_current()
     after_trial_addon_bytes = int(after_trial_storage.get("addon_storage_bytes") or 0)
-    assert after_trial_addon_bytes == 0, (
-        f"addon_storage_bytes should be 0 after downgrade to Trial, got {after_trial_addon_bytes}"
-    )
+    assert after_trial_addon_bytes == 0, f"addon_storage_bytes should be 0 after downgrade to Trial, got {after_trial_addon_bytes}"
 
     # Step 10: Attempt to add storage on Trial plan (should be rejected)
     with pytest.raises(Exception):
@@ -316,9 +298,7 @@ def test_storage_03_upgrade_immediate_effect(billing_client: BillingClient) -> N
 
     storage = billing_client.storage_current()
     addon_bytes_initial = int(storage.get("addon_storage_bytes") or 0)
-    assert addon_bytes_initial == initial_target_bytes, (
-        f"expected addon_storage_bytes={initial_target_bytes}, got {addon_bytes_initial}"
-    )
+    assert addon_bytes_initial == initial_target_bytes, f"expected addon_storage_bytes={initial_target_bytes}, got {addon_bytes_initial}"
 
     sub = stripe.Subscription.retrieve(starter_subscription_id)
     items = sub.get("items", {}).get("data", [])
@@ -337,14 +317,8 @@ def test_storage_03_upgrade_immediate_effect(billing_client: BillingClient) -> N
     storage_after_upgrade = billing_client.storage_current()
     addon_bytes_upgraded = int(storage_after_upgrade.get("addon_storage_bytes") or 0)
 
-    assert addon_bytes_upgraded == upgraded_target_bytes, (
-        f"expected addon_storage_bytes={upgraded_target_bytes} after upgrade, "
-        f"got {addon_bytes_upgraded}"
-    )
-    assert addon_bytes_upgraded > addon_bytes_initial, (
-        f"addon_storage_bytes should increase after upgrade, "
-        f"before={addon_bytes_initial}, after={addon_bytes_upgraded}"
-    )
+    assert addon_bytes_upgraded == upgraded_target_bytes, f"expected addon_storage_bytes={upgraded_target_bytes} after upgrade, got {addon_bytes_upgraded}"
+    assert addon_bytes_upgraded > addon_bytes_initial, f"addon_storage_bytes should increase after upgrade, before={addon_bytes_initial}, after={addon_bytes_upgraded}"
 
     logger.info("STORAGE-03: Billing history count: %s", len(billing_client.spend_history()))
 
@@ -377,9 +351,7 @@ def test_storage_04_downgrade_at_period_end(billing_client: BillingClient) -> No
 
     storage = billing_client.storage_current()
     after_addon_bytes = int(storage.get("addon_storage_bytes") or 0)
-    assert after_addon_bytes == initial_target_bytes, (
-        f"expected addon_storage_bytes={initial_target_bytes}, got {after_addon_bytes}"
-    )
+    assert after_addon_bytes == initial_target_bytes, f"expected addon_storage_bytes={initial_target_bytes}, got {after_addon_bytes}"
 
     sub = stripe.Subscription.retrieve(starter_subscription_id)
     items = sub.get("items", {}).get("data", [])
@@ -392,21 +364,16 @@ def test_storage_04_downgrade_at_period_end(billing_client: BillingClient) -> No
 
     downgrade_result = billing_client.storage_set_target(downgrade_target_bytes)
     scheduled_change = downgrade_result.get("scheduled_change")
-    assert scheduled_change, (
-        f"scheduled_change should be set after downgrade request, got: {downgrade_result}"
-    )
+    assert scheduled_change, f"scheduled_change should be set after downgrade request, got: {downgrade_result}"
 
     assert downgrade_result.get("addon_storage_bytes", 0) == initial_target_bytes, (
-        f"addon_storage_bytes should remain {initial_target_bytes} immediately after "
-        f"downgrade, got {downgrade_result.get('addon_storage_bytes')}"
+        f"addon_storage_bytes should remain {initial_target_bytes} immediately after downgrade, got {downgrade_result.get('addon_storage_bytes')}"
     )
 
     # Also verify via storage_current()
     storage_after_schedule = billing_client.storage_current()
     after_downgrade_addon_bytes = int(storage_after_schedule.get("addon_storage_bytes") or 0)
-    assert after_downgrade_addon_bytes == initial_target_bytes, (
-        f"API shows addon_storage_bytes changed prematurely to {after_downgrade_addon_bytes}"
-    )
+    assert after_downgrade_addon_bytes == initial_target_bytes, f"API shows addon_storage_bytes changed prematurely to {after_downgrade_addon_bytes}"
 
     # Step 8: Advance clock past period end and verify quota decreases
     billing_client.advance_clock_to_plan_end()
@@ -419,10 +386,7 @@ def test_storage_04_downgrade_at_period_end(billing_client: BillingClient) -> No
 
     storage_after_period = billing_client.storage_current()
     after_period_addon_bytes = int(storage_after_period.get("addon_storage_bytes") or 0)
-    assert after_period_addon_bytes == downgrade_target_bytes, (
-        f"addon_storage_bytes should be {downgrade_target_bytes} after period end, "
-        f"got {after_period_addon_bytes}"
-    )
+    assert after_period_addon_bytes == downgrade_target_bytes, f"addon_storage_bytes should be {downgrade_target_bytes} after period end, got {after_period_addon_bytes}"
 
 
 # =============================================================================
@@ -456,10 +420,7 @@ def test_storage_05_plan_change_with_existing_addon(billing_client: BillingClien
 
     after_addon_storage = billing_client.storage_current()
     after_addon_addon_bytes = int(after_addon_storage.get("addon_storage_bytes") or 0)
-    assert after_addon_addon_bytes == target_storage_bytes, (
-        f"addon_storage_bytes should be {target_storage_bytes} after purchase, "
-        f"got {after_addon_addon_bytes}"
-    )
+    assert after_addon_addon_bytes == target_storage_bytes, f"addon_storage_bytes should be {target_storage_bytes} after purchase, got {after_addon_addon_bytes}"
 
     sub = stripe.Subscription.retrieve(starter_subscription_id)
     items = sub.get("items", {}).get("data", [])
@@ -472,16 +433,11 @@ def test_storage_05_plan_change_with_existing_addon(billing_client: BillingClien
 
     after_upgrade_plan = upgrade_result.get("current_plan", {})
     after_upgrade_plan_name = after_upgrade_plan.get("plan_name", "")
-    assert after_upgrade_plan_name == "Pro", (
-        f"plan should be Pro after upgrade, got {after_upgrade_plan_name}"
-    )
+    assert after_upgrade_plan_name == "Pro", f"plan should be Pro after upgrade, got {after_upgrade_plan_name}"
 
     after_upgrade_storage = billing_client.storage_current()
     after_upgrade_addon_bytes = int(after_upgrade_storage.get("addon_storage_bytes") or 0)
-    assert after_upgrade_addon_bytes == target_storage_bytes, (
-        f"addon_storage_bytes should remain {target_storage_bytes} after plan upgrade, "
-        f"got {after_upgrade_addon_bytes}"
-    )
+    assert after_upgrade_addon_bytes == target_storage_bytes, f"addon_storage_bytes should remain {target_storage_bytes} after plan upgrade, got {after_upgrade_addon_bytes}"
 
     # Step 8: Downgrade Pro -> Starter
     downgrade_created_gte = int(time.time()) - 5
@@ -498,25 +454,17 @@ def test_storage_05_plan_change_with_existing_addon(billing_client: BillingClien
 
     after_downgrade_plan = billing_client.wait_for_plan("Starter")
     after_downgrade_plan_name = after_downgrade_plan.get("plan_name", "")
-    assert after_downgrade_plan_name == "Starter", (
-        f"plan should be Starter after downgrade, got {after_downgrade_plan_name}"
-    )
+    assert after_downgrade_plan_name == "Starter", f"plan should be Starter after downgrade, got {after_downgrade_plan_name}"
 
     after_downgrade_storage = billing_client.storage_current()
     after_downgrade_addon_bytes = int(after_downgrade_storage.get("addon_storage_bytes") or 0)
-    assert after_downgrade_addon_bytes == target_storage_bytes, (
-        f"addon_storage_bytes should remain {target_storage_bytes} after plan downgrade, "
-        f"got {after_downgrade_addon_bytes}"
-    )
+    assert after_downgrade_addon_bytes == target_storage_bytes, f"addon_storage_bytes should remain {target_storage_bytes} after plan downgrade, got {after_downgrade_addon_bytes}"
 
     # Step 9: Verify quota after downgrade takes effect
     after_downgrade_effective_storage = billing_client.storage_current()
-    after_downgrade_effective_addon_bytes = int(
-        after_downgrade_effective_storage.get("addon_storage_bytes") or 0
-    )
+    after_downgrade_effective_addon_bytes = int(after_downgrade_effective_storage.get("addon_storage_bytes") or 0)
     assert after_downgrade_effective_addon_bytes == target_storage_bytes, (
-        f"addon_storage_bytes should remain {target_storage_bytes} after downgrade takes effect, "
-        f"got {after_downgrade_effective_addon_bytes}"
+        f"addon_storage_bytes should remain {target_storage_bytes} after downgrade takes effect, got {after_downgrade_effective_addon_bytes}"
     )
 
     final_plan_overview = billing_client.plan_overview()
@@ -526,10 +474,7 @@ def test_storage_05_plan_change_with_existing_addon(billing_client: BillingClien
 
     total_storage_after_downgrade = final_plan_storage_limit + final_addon_storage_limit
     expected_total = final_plan_storage_limit + target_storage_bytes
-    assert total_storage_after_downgrade == expected_total, (
-        f"total storage should be {expected_total} bytes (plan + addon), "
-        f"got {total_storage_after_downgrade} bytes"
-    )
+    assert total_storage_after_downgrade == expected_total, f"total storage should be {expected_total} bytes (plan + addon), got {total_storage_after_downgrade} bytes"
 
     # Step 10: Downgrade Starter -> Trial (addon should be invalidated)
     history_before_trial_downgrade = billing_client.spend_history()
@@ -547,23 +492,14 @@ def test_storage_05_plan_change_with_existing_addon(billing_client: BillingClien
 
     after_trial_plan = billing_client.wait_for_plan("Trial")
     after_trial_plan_name = after_trial_plan.get("plan_name", "")
-    assert after_trial_plan_name == "Trial", (
-        f"plan should be Trial after period end, got {after_trial_plan_name}"
-    )
+    assert after_trial_plan_name == "Trial", f"plan should be Trial after period end, got {after_trial_plan_name}"
 
     after_trial_storage = billing_client.storage_current()
     after_trial_addon_bytes = int(after_trial_storage.get("addon_storage_bytes") or 0)
-    assert after_trial_addon_bytes == 0, (
-        f"addon_storage_bytes should be 0 after Trial downgrade, got {after_trial_addon_bytes}"
-    )
+    assert after_trial_addon_bytes == 0, f"addon_storage_bytes should be 0 after Trial downgrade, got {after_trial_addon_bytes}"
 
     history_after_trial_downgrade = billing_client.spend_history()
     new_rows = len(history_after_trial_downgrade) - len(history_before_trial_downgrade)
     if new_rows > 0:
-        new_paid_rows = [
-            row for row in history_after_trial_downgrade
-            if float(row.get("amount", 0) or 0) > 0 and row not in history_before_trial_downgrade
-        ]
-        assert not new_paid_rows, (
-            f"Trial period should not create paid charges, got: {new_paid_rows}"
-        )
+        new_paid_rows = [row for row in history_after_trial_downgrade if float(row.get("amount", 0) or 0) > 0 and row not in history_before_trial_downgrade]
+        assert not new_paid_rows, f"Trial period should not create paid charges, got: {new_paid_rows}"

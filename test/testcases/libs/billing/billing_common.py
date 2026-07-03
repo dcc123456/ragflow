@@ -100,6 +100,7 @@ def wait_for_clock(clock_id: str) -> dict[str, Any]:
 
 class FlowError(RuntimeError):
     """Custom exception for billing flow errors."""
+
     pass
 
 
@@ -148,10 +149,7 @@ def resolve_service_config_path() -> Path:
     for candidate in candidates:
         if candidate and candidate.exists():
             return candidate
-    raise FlowError(
-        "service config not found on local filesystem; tried "
-        "/ragflow/conf/service_conf.yaml and RAGFLOW_SERVICE_CONF"
-    )
+    raise FlowError("service config not found on local filesystem; tried /ragflow/conf/service_conf.yaml and RAGFLOW_SERVICE_CONF")
 
 
 def load_service_config() -> dict[str, Any]:
@@ -169,11 +167,7 @@ def load_service_config() -> dict[str, Any]:
 
 def _load_service_config_from_container() -> dict[str, Any]:
     """Read service config from a running ragflow container."""
-    container_name = (
-        env("RAGFLOW_CONTAINER")
-        or env("RAGFLOW_SERVICE_CONTAINER")
-        or "docker-ragflow-1"
-    )
+    container_name = env("RAGFLOW_CONTAINER") or env("RAGFLOW_SERVICE_CONTAINER") or "docker-ragflow-1"
     try:
         result = subprocess.run(
             [
@@ -188,16 +182,11 @@ def _load_service_config_from_container() -> dict[str, Any]:
             text=True,
         )
     except Exception as exc:
-        raise FlowError(
-            "service config not found locally and failed to read "
-            f"/ragflow/conf/service_conf.yaml from container {container_name}: {exc}"
-        ) from exc
+        raise FlowError(f"service config not found locally and failed to read /ragflow/conf/service_conf.yaml from container {container_name}: {exc}") from exc
 
     config = yaml.safe_load(result.stdout) or {}
     if not isinstance(config, dict):
-        raise FlowError(
-            f"service config loaded from container {container_name} is not a map"
-        )
+        raise FlowError(f"service config loaded from container {container_name} is not a map")
     return config
 
 
@@ -372,9 +361,7 @@ def load_stripe_test_runtime_config(*, require_test_mode_message: str) -> dict[s
     stripe_api_version = str(billing_config.get("stripe_api_version") or "2026-04-22.dahlia")
     stripe_api_version_override = env("STRIPE_API_VERSION")
     if stripe_api_version_override and stripe_api_version_override != stripe_api_version:
-        raise FlowError(
-            f"STRIPE_API_VERSION={stripe_api_version_override} does not match service_conf.yaml={stripe_api_version}"
-        )
+        raise FlowError(f"STRIPE_API_VERSION={stripe_api_version_override} does not match service_conf.yaml={stripe_api_version}")
     if not stripe_api_key:
         raise FlowError("billing.stripe_api_key is required in conf/service_conf.yaml")
     if not stripe_api_key.startswith("sk_test_"):
@@ -425,9 +412,7 @@ def bootstrap_client(client: Any, email: str, password: str = DEFAULT_TEST_PASSW
 def create_test_clock_client(args: Any, email: str, client_type: type[T]) -> T:
     """Create a billing test client with Stripe runtime configured and a test clock."""
     logger.info("Setup: Validate environment and load configuration")
-    runtime = load_stripe_test_runtime_config(
-        require_test_mode_message="Billing automation requires a Stripe test-mode secret key"
-    )
+    runtime = load_stripe_test_runtime_config(require_test_mode_message="Billing automation requires a Stripe test-mode secret key")
     logger.info("Assert: Stripe API key is set")
     configure_stripe_runtime(runtime)
     logger.info("Assert: Runtime config loaded successfully")
@@ -462,7 +447,7 @@ def replace_subscription_price(subscription_id: str, price_id: str, **kwargs):
         Updated Stripe subscription object
     """
     subscription = stripe_dict(stripe.Subscription.retrieve(subscription_id))
-    items = ((subscription.get("items") or {}).get("data") or [])
+    items = (subscription.get("items") or {}).get("data") or []
     if not items:
         raise FlowError(f"subscription {subscription_id} has no items")
     item_id = items[0].get("id")
@@ -549,7 +534,6 @@ def _event_matches_customer(event: dict[str, Any], customer_id: str, subscriptio
     return False
 
 
-
 class BillingClient:
     """HTTP client for RAGFlow billing APIs used by storage flows."""
 
@@ -607,14 +591,11 @@ class BillingClient:
             if status == expected:
                 return last_plan
             time.sleep(1)
-        raise FlowError(
-            f"timed out waiting for subscription status {expected_status}, last plan: {last_plan}"
-        )
-
+        raise FlowError(f"timed out waiting for subscription status {expected_status}, last plan: {last_plan}")
 
     def wait_for_storage_status(
-            self,
-            expected_status: str,
+        self,
+        expected_status: str,
     ) -> dict[str, Any]:
         """Wait for storage subscription to reach the specified status."""
         deadline = time.time() + DEFAULT_WEBHOOK_TIMEOUT_SECONDS
@@ -639,7 +620,7 @@ class BillingClient:
             time.sleep(3)
         raise FlowError(f"timed out waiting for {label} billing history row, last count: {len(last_history)}")
 
-    def url(self, path: str, need_api_path:bool=False) -> str:
+    def url(self, path: str, need_api_path: bool = False) -> str:
         if need_api_path:
             return f"{self.base_url}/api/{self.version}/{path.lstrip('/')}"
         else:
@@ -656,14 +637,12 @@ class BillingClient:
             headers["Authorization"] = self.auth_header
         return headers
 
-    def request_json(self, method: str, path: str, need_api_path:bool=False, auth: bool = True, **kwargs) -> dict[str, Any]:
+    def request_json(self, method: str, path: str, need_api_path: bool = False, auth: bool = True, **kwargs) -> dict[str, Any]:
         response = self.session.request(method, self.url(path, need_api_path), headers=self.headers(auth=auth), timeout=60, **kwargs)
         try:
             payload = response.json()
         except ValueError as exc:
-            raise FlowError(
-                f"{method} {path} returned non-JSON status={response.status_code}: {response.text[:500]}"
-            ) from exc
+            raise FlowError(f"{method} {path} returned non-JSON status={response.status_code}: {response.text[:500]}") from exc
         if response.status_code >= 400 or payload.get("code") not in (0, None):
             raise FlowError(f"{method} {path} failed status={response.status_code}: {payload}")
         return payload
@@ -685,10 +664,7 @@ class BillingClient:
 
     def register_and_login(self, email: str, password: str) -> tuple[str, str]:
         if password != DEFAULT_TEST_PASSWORD:
-            raise FlowError(
-                "billing test helper only supports the shared default password; "
-                "update the fixed encrypted password mapping before using a new value"
-            )
+            raise FlowError("billing test helper only supports the shared default password; update the fixed encrypted password mapping before using a new value")
         encrypted_password = DEFAULT_TEST_PASSWORD_ENCRYPTED
         register_payload = {
             "email": email,
@@ -704,9 +680,7 @@ class BillingClient:
         try:
             register_data = register_response.json()
         except ValueError as exc:
-            raise FlowError(
-                f"register returned non-JSON status={register_response.status_code}: {register_response.text[:500]}"
-            ) from exc
+            raise FlowError(f"register returned non-JSON status={register_response.status_code}: {register_response.text[:500]}") from exc
         if register_data.get("code") != 0 and "has already registered" not in (register_data.get("message") or ""):
             raise FlowError(f"register failed: {register_data}")
 
@@ -719,9 +693,7 @@ class BillingClient:
         try:
             login_data = login_response.json()
         except ValueError as exc:
-            raise FlowError(
-                f"login returned non-JSON status={login_response.status_code}: {login_response.text[:500]}"
-            ) from exc
+            raise FlowError(f"login returned non-JSON status={login_response.status_code}: {login_response.text[:500]}") from exc
         if login_data.get("code") != 0:
             raise FlowError(f"login failed: {login_data}")
         self.auth_header = login_response.headers.get("Authorization", "")
@@ -741,9 +713,7 @@ class BillingClient:
         try:
             payload = response.json()
         except ValueError as exc:
-            raise FlowError(
-                f"GET /billing/subscription returned non-JSON status={response.status_code}: {response.text[:500]}"
-            ) from exc
+            raise FlowError(f"GET /billing/subscription returned non-JSON status={response.status_code}: {response.text[:500]}") from exc
         if response.status_code >= 400 or payload.get("code") not in (0, None):
             raise FlowError(f"GET /billing/subscription failed status={response.status_code}: {payload}")
         return payload["data"]
@@ -753,9 +723,7 @@ class BillingClient:
         try:
             payload = response.json()
         except ValueError as exc:
-            raise FlowError(
-                f"GET /billing/subscription/overview returned non-JSON status={response.status_code}: {response.text[:500]}"
-            ) from exc
+            raise FlowError(f"GET /billing/subscription/overview returned non-JSON status={response.status_code}: {response.text[:500]}") from exc
         if response.status_code >= 400 or payload.get("code") not in (0, None):
             raise FlowError(f"GET /billing/subscription/overview failed status={response.status_code}: {payload}")
         return payload["data"]
@@ -769,9 +737,7 @@ class BillingClient:
         try:
             payload = response.json()
         except ValueError as exc:
-            raise FlowError(
-                f"GET /billing/storage returned non-JSON status={response.status_code}: {response.text[:500]}"
-            ) from exc
+            raise FlowError(f"GET /billing/storage returned non-JSON status={response.status_code}: {response.text[:500]}") from exc
         if response.status_code >= 400 or payload.get("code") not in (0, None):
             raise FlowError(f"GET /billing/storage failed status={response.status_code}: {payload}")
         return payload["data"]
@@ -786,9 +752,7 @@ class BillingClient:
         try:
             payload = response.json()
         except ValueError as exc:
-            raise FlowError(
-                f"POST /billing/subscription/preview returned non-JSON status={response.status_code}: {response.text[:500]}"
-            ) from exc
+            raise FlowError(f"POST /billing/subscription/preview returned non-JSON status={response.status_code}: {response.text[:500]}") from exc
         if response.status_code >= 400 or payload.get("code") not in (0, None):
             raise FlowError(f"POST /billing/subscription/preview failed status={response.status_code}: {payload}")
         return payload["data"]
@@ -803,9 +767,7 @@ class BillingClient:
         try:
             payload = response.json()
         except ValueError as exc:
-            raise FlowError(
-                f"POST /billing/subscription/preview returned non-JSON status={response.status_code}: {response.text[:500]}"
-            ) from exc
+            raise FlowError(f"POST /billing/subscription/preview returned non-JSON status={response.status_code}: {response.text[:500]}") from exc
         if response.status_code >= 400 or payload.get("code") not in (0, None):
             raise FlowError(f"POST /billing/subscription/preview failed status={response.status_code}: {payload}")
         return payload["data"]
@@ -828,19 +790,17 @@ class BillingClient:
         try:
             result = response.json()
         except ValueError as exc:
-            raise FlowError(
-                f"PATCH /billing/storage returned non-JSON status={response.status_code}: {response.text[:500]}"
-            ) from exc
+            raise FlowError(f"PATCH /billing/storage returned non-JSON status={response.status_code}: {response.text[:500]}") from exc
         if response.status_code >= 400 or result.get("code") not in (0, None):
             raise FlowError(f"PATCH /billing/storage failed status={response.status_code}: {result}")
         return result["data"]
 
     def create_setup_intent(
-            self,
-            *,
-            setup_type: str,
-            price_id: str = "",
-            target_storage_bytes: int | None = None,
+        self,
+        *,
+        setup_type: str,
+        price_id: str = "",
+        target_storage_bytes: int | None = None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "tenant_id": self.tenant_id,
@@ -859,9 +819,7 @@ class BillingClient:
         try:
             result = response.json()
         except ValueError as exc:
-            raise FlowError(
-                f"POST /billing/setup-intents returned non-JSON status={response.status_code}: {response.text[:500]}"
-            ) from exc
+            raise FlowError(f"POST /billing/setup-intents returned non-JSON status={response.status_code}: {response.text[:500]}") from exc
         if response.status_code >= 400 or result.get("code") not in (0, None):
             raise FlowError(f"POST /billing/setup-intents failed status={response.status_code}: {result}")
         return result["data"]
@@ -880,9 +838,7 @@ class BillingClient:
         try:
             payload = response.json()
         except ValueError as exc:
-            raise FlowError(
-                f"GET /billing/spend_overview returned non-JSON status={response.status_code}: {response.text[:500]}"
-            ) from exc
+            raise FlowError(f"GET /billing/spend_overview returned non-JSON status={response.status_code}: {response.text[:500]}") from exc
         if response.status_code >= 400 or payload.get("code") not in (0, None):
             raise FlowError(f"GET /billing/spend_overview failed status={response.status_code}: {payload}")
         return payload["data"].get("items", [])
@@ -904,9 +860,7 @@ class BillingClient:
         try:
             payload = response.json()
         except ValueError as exc:
-            raise FlowError(
-                f"GET /billing/points/balance returned non-JSON status={response.status_code}: {response.text[:500]}"
-            ) from exc
+            raise FlowError(f"GET /billing/points/balance returned non-JSON status={response.status_code}: {response.text[:500]}") from exc
         if response.status_code >= 400 or payload.get("code") not in (0, None):
             raise FlowError(f"GET /billing/points/balance failed status={response.status_code}: {payload}")
         return payload["data"]
@@ -932,9 +886,7 @@ class BillingClient:
         try:
             result = response.json()
         except ValueError as exc:
-            raise FlowError(
-                f"POST /billing/subscription returned non-JSON status={response.status_code}: {response.text[:500]}"
-            ) from exc
+            raise FlowError(f"POST /billing/subscription returned non-JSON status={response.status_code}: {response.text[:500]}") from exc
         if response.status_code >= 400 or result.get("code") not in (0, None):
             raise FlowError(f"POST /billing/subscription failed status={response.status_code}: {result}")
         return result["data"]
@@ -967,7 +919,6 @@ class BillingClient:
         self.succeed_setup_intent(setup_intent_id)
         return setup_intent_id
 
-
     def post_signed_webhook(self, event: dict[str, Any]) -> None:
         payload = json_dumps_compact(event)
         timestamp = str(int(time.time()))
@@ -980,7 +931,7 @@ class BillingClient:
         response = self.session.post(self.billing_url("/webhooks/stripe"), data=payload, headers=headers, timeout=60)
         ensure_webhook_delivery_success(response, str(event.get("type") or "unknown"))
 
-    def post_invoice_paid_event(self, invoice_id:str):
+    def post_invoice_paid_event(self, invoice_id: str):
         latest_invoice = stripe.Invoice.retrieve(invoice_id, expand=["payment_intent"])
         invoice_dict = stripe_dict(latest_invoice)
         invoice_paid_event = {
@@ -996,20 +947,22 @@ class BillingClient:
 
         self.post_signed_webhook(invoice_paid_event)
 
-    def sync_webhooks(self,
-                      subscription_ids: set[str],
-                      created_gte: int,
-                      wait_seconds: int = DEFAULT_WEBHOOK_WAIT_SECONDS,
-                      ) -> int:
+    def sync_webhooks(
+        self,
+        subscription_ids: set[str],
+        created_gte: int,
+        wait_seconds: int = DEFAULT_WEBHOOK_WAIT_SECONDS,
+    ) -> int:
         logger.debug("sleeping %d seconds before webhook sync", wait_seconds)
         time.sleep(wait_seconds)
         logger.debug("waiting for forwarded webhooks")
         return 0
 
-    def _replay_stripe_events(self,
-                              subscription_ids: set[str],
-                              created_gte: int,
-                              ) -> int:
+    def _replay_stripe_events(
+        self,
+        subscription_ids: set[str],
+        created_gte: int,
+    ) -> int:
         """Fetch and replay matching Stripe events from test clock (without sleep)."""
         replayed = 0
         events = stripe.Event.list(limit=100, created={"gte": created_gte})
@@ -1029,10 +982,9 @@ class BillingClient:
             replayed += 1
         return replayed
 
-
     def advance_clock_to_plan_end(
-            self,
-            offset_seconds: int = 86400,
+        self,
+        offset_seconds: int = 86400,
     ) -> int:
         """Advance Stripe test clock to after the current plan's period end.
 
@@ -1068,7 +1020,6 @@ class BillingClient:
 
         return plan_end_ts + offset_seconds
 
-
     def ensure_invoice_finalized(self, subscription_id: str) -> dict[str, Any] | None:
         """Ensure the latest subscription invoice is finalized (not draft). Returns invoice dict or None."""
         for attempt in range(3):
@@ -1102,9 +1053,9 @@ class BillingClient:
         return None
 
     def replace_storage_subscription_quantity(
-            self,
-            new_quantity_gb: int,
-            subscription_ids: set[str] | None = None,
+        self,
+        new_quantity_gb: int,
+        subscription_ids: set[str] | None = None,
     ) -> dict[str, Any]:
         """
         Replace/update storage subscription quantity via the backend API.
@@ -1158,9 +1109,7 @@ class BillingClient:
 
         expected_bytes = new_quantity_gb * BYTES_PER_GB
         if new_quantity_gb > 0 and actual_addon_bytes < expected_bytes:
-            raise FlowError(
-                f"Storage verification failed: expected at least {expected_bytes} bytes, got {actual_addon_bytes} bytes"
-            )
+            raise FlowError(f"Storage verification failed: expected at least {expected_bytes} bytes, got {actual_addon_bytes} bytes")
 
         logger.info("Storage update verified: %d bytes (%dGB)", actual_addon_bytes, actual_addon_bytes // BYTES_PER_GB)
 
@@ -1173,8 +1122,8 @@ class BillingClient:
         }
 
     def downgrade_to_trial(
-            self,
-            subscription_id: str,
+        self,
+        subscription_id: str,
     ) -> dict[str, Any]:
         """
         Downgrade a user's paid subscription to the Trial plan via server API.
@@ -1245,8 +1194,8 @@ class BillingClient:
         }
 
     def downgrade_pro_to_starter(
-            self,
-            subscription_id: str,
+        self,
+        subscription_id: str,
     ) -> dict[str, Any]:
         """
         Downgrade a user's Pro subscription to the Starter plan via server API.
@@ -1317,10 +1266,10 @@ class BillingClient:
         }
 
     def add_storage_to_subscription_with_webhook(
-            self,
-            storage_quantity_gb: int,
-            subscription_ids: set[str] | None = None,
-            created_gte: int = 0,
+        self,
+        storage_quantity_gb: int,
+        subscription_ids: set[str] | None = None,
+        created_gte: int = 0,
     ) -> dict[str, Any]:
         """
         Add storage addon to an existing subscription via the backend API with webhook synchronization.
@@ -1380,9 +1329,7 @@ class BillingClient:
         actual_addon_bytes = storage_info.get("addon_storage_bytes", 0)
 
         if actual_addon_bytes < target_storage_bytes:
-            raise FlowError(
-                f"Storage verification failed: expected at least {target_storage_bytes} bytes, got {actual_addon_bytes} bytes"
-            )
+            raise FlowError(f"Storage verification failed: expected at least {target_storage_bytes} bytes, got {actual_addon_bytes} bytes")
 
         logger.info("Storage addon verified: %d bytes (%dGB)", actual_addon_bytes, actual_addon_bytes // BYTES_PER_GB)
 
@@ -1393,7 +1340,6 @@ class BillingClient:
             "addon_storage_bytes": addon_storage_bytes,
             "redirect_to": result.get("redirect_to", ""),
         }
-
 
     def upgrade_trial_to_starter(self) -> dict[str, Any]:
         # Upgrade from Trial to Starter plan
@@ -1425,7 +1371,7 @@ class BillingClient:
         self.wait_for_history_count(
             len(history_before_upgrade) + 1,
             "Trial→Starter upgrade payment",
-            )
+        )
         history_after_upgrade = self.spend_history()
         invoice_count_after_upgrade = len(history_after_upgrade)
         new_invoice_count = invoice_count_after_upgrade - invoice_count_before_upgrade
@@ -1442,10 +1388,9 @@ class BillingClient:
 
         return {"subscription_id": starter_subscription_id}
 
-
     def upgrade_starter_to_pro(
-            self,
-            starter_subscription_id: str,
+        self,
+        starter_subscription_id: str,
     ) -> dict[str, Any]:
         """
         Upgrade a user's Starter subscription to the Pro plan via server API,
@@ -1471,10 +1416,7 @@ class BillingClient:
         subscription_id = checkout_result.get("subscription_id") or starter_subscription_id
         plan_name = checkout_result.get("plan_name", "")
         if plan_name != "Pro":
-            raise FlowError(
-                f"Upgrade to Pro failed: expected plan_name='Pro', got plan_name='{plan_name}'. "
-                f"Full response: {checkout_result}"
-            )
+            raise FlowError(f"Upgrade to Pro failed: expected plan_name='Pro', got plan_name='{plan_name}'. Full response: {checkout_result}")
         if not subscription_id:
             raise FlowError(f"Upgrade response missing subscription_id: {checkout_result}")
         logger.info("Upgrade submitted, plan_name=%s, subscription_id=%s", plan_name, subscription_id)
@@ -1504,9 +1446,7 @@ class BillingClient:
         apps_limit_pro = overview_pro.get("resources", {}).get("apps", {}).get("limit", 0)
         expected_pro_apps = get_pro_quota_apps()
         if apps_limit_pro != expected_pro_apps:
-            raise FlowError(
-                f"after Pro upgrade, expected Pro apps quota {expected_pro_apps}, got {apps_limit_pro}"
-            )
+            raise FlowError(f"after Pro upgrade, expected Pro apps quota {expected_pro_apps}, got {apps_limit_pro}")
         logger.info("Pro apps quota verified: %d", apps_limit_pro)
         logger.info("Upgrade from Starter to Pro completed successfully")
 
@@ -1520,15 +1460,10 @@ class BillingClient:
             "current_plan": current_plan,
         }
 
-
-
-
     def _cancel_scheduled_change_api(self, tenant_id: str) -> dict[str, Any]:
         """Internal method to call the cancel scheduled change API."""
         _ = tenant_id
         raise FlowError("cancel scheduled subscription change callback was removed; use portal or subscription APIs instead")
-
-
 
     def wait_for_pending_downgrade(self, expected_target: str) -> dict[str, Any]:
         """Wait for pending_subscription_change to appear with target plan."""
@@ -1557,9 +1492,9 @@ class BillingClient:
         raise FlowError(f"timed out waiting for pending downgrade to be canceled, last plan: {last_plan}")
 
     def wait_for_payment_order_status(
-            self,
-            order_id: str,
-            expected_status: str,
+        self,
+        order_id: str,
+        expected_status: str,
     ) -> dict[str, Any]:
         """Wait for a billing payment order to reach the expected status via billing API polling."""
         status_map = {
@@ -1584,10 +1519,7 @@ class BillingClient:
                     return last_payment_order
                 break
             time.sleep(2)
-        raise FlowError(
-            f"timed out waiting for billing payment order {order_id} to reach {expected_status}, "
-            f"last={last_payment_order}"
-        )
+        raise FlowError(f"timed out waiting for billing payment order {order_id} to reach {expected_status}, last={last_payment_order}")
 
 
 __all__ = [

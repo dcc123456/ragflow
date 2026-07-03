@@ -24,13 +24,9 @@ def get_role_permissions_by_role_id(role_id: int):
     role_actions = RoleResourceService.get_by_role_id(role_id)
     if not role_actions:
         return {}
-    resource_name_map = {
-        resource_enum.value: resource_enum.name.lower() for resource_enum in ResourceTypeEnum
-    }
+    resource_name_map = {resource_enum.value: resource_enum.name.lower() for resource_enum in ResourceTypeEnum}
 
-    return {
-        resource_name_map[role_action["resource_type"]]: get_permissions_from_action(role_action["action"]) for role_action in role_actions
-    }
+    return {resource_name_map[role_action["resource_type"]]: get_permissions_from_action(role_action["action"]) for role_action in role_actions}
 
 
 def upsert_role_actions(role_name: str, new_permissions: dict, operation_type: str):
@@ -90,8 +86,7 @@ def upsert_role_actions(role_name: str, new_permissions: dict, operation_type: s
     upsert_dict = {}
     for resource_name, permission_dict in new_permissions.items():
         resource_type = resource_name_type_map[resource_name]
-        base_action = role_resource_action_map[
-            resource_type] if resource_type in role_resource_action_map.keys() else 0b0000
+        base_action = role_resource_action_map[resource_type] if resource_type in role_resource_action_map.keys() else 0b0000
         new_action = base_action
         for action_name, enable_status in permission_dict.items():
             if operation_type == PermissionOperationEnum.GRANT.value:
@@ -105,49 +100,28 @@ def upsert_role_actions(role_name: str, new_permissions: dict, operation_type: s
         if new_action == base_action:
             continue
         if resource_type == ResourceTypeEnum.MODEL_PROVIDER.value and new_action > ActionEnum.ENABLE.value | ActionEnum.READ.value:
-            return {
-                "success":  False,
-                "message": "Model Provider resource only support 'enable' and 'read' permissions."
-            }
+            return {"success": False, "message": "Model Provider resource only support 'enable' and 'read' permissions."}
         upsert_dict.update({resource_type: new_action})
     if not upsert_dict:
         vt = {
-            PermissionOperationEnum.GRANT.value: 'granted',
-            PermissionOperationEnum.REVOKE.value: 'revoked',
+            PermissionOperationEnum.GRANT.value: "granted",
+            PermissionOperationEnum.REVOKE.value: "revoked",
         }.get(operation_type)
-        return {
-            "success": True,
-            "message": f"Role has already {vt} these permissions."
-        }
+        return {"success": True, "message": f"Role has already {vt} these permissions."}
     try:
         upsert_cnt = RoleResourceService.upsert_role_action_by_id(role["id"], upsert_dict)
-        return {
-            "success": True,
-            "message": f"Role {role_name} updated successfully. {upsert_cnt} rows affected."
-        }
+        return {"success": True, "message": f"Role {role_name} updated successfully. {upsert_cnt} rows affected."}
     except Exception as e:
-        return {
-            "success": False,
-            "message": str(e)
-        }
+        return {"success": False, "message": str(e)}
 
 
 def delete_role_by_id(role_id):
     _, role = RoleService.get_by_id(role_id)
     if not role:
-        return {
-            "success": True,
-            "message": f"Role {role_id} is already deleted."
-        }
+        return {"success": True, "message": f"Role {role_id} is already deleted."}
     try:
         permission_deleted_cnt = RoleResourceService.delete_by_role_id(role.id)
         role_deleted_cnt = RoleService.delete_by_id(role.id)
-        return {
-            "success": True,
-            "message": f"Role deleted successfully. {permission_deleted_cnt} role permissions and {role_deleted_cnt} role record deleted."
-        }
+        return {"success": True, "message": f"Role deleted successfully. {permission_deleted_cnt} role permissions and {role_deleted_cnt} role record deleted."}
     except Exception as e:
-        return {
-            "success": False,
-            "message": str(e)
-        }
+        return {"success": False, "message": str(e)}

@@ -18,6 +18,7 @@ Suppress unrelated ResourceWarning/DeprecationWarnings from heavy transitive
 imports (xgboost, rag.nlp.synonym, etc.) so tests focused on billing behavior
 are not blocked by environment noise.
 """
+
 import warnings
 
 

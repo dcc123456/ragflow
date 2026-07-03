@@ -23,7 +23,6 @@ from api.db.services.common_service import CommonService
 
 
 class WhiteListService(CommonService):
-
     model = WhiteList
 
     @classmethod
@@ -53,11 +52,7 @@ class WhiteListService(CommonService):
     @classmethod
     @DB.connection_context()
     def update_white_list_row_by_id(cls, row_id, email):
-        update_dict = {
-            "email": email,
-            "update_time": current_timestamp(),
-            "update_date": datetime_format(datetime.now())
-        }
+        update_dict = {"email": email, "update_time": current_timestamp(), "update_date": datetime_format(datetime.now())}
         return cls.model.update(update_dict).where(cls.model.id == row_id).execute()
 
     @classmethod
@@ -66,13 +61,17 @@ class WhiteListService(CommonService):
         emails = list(set(email_list))
         exist_email_rows = cls.model.select().where(cls.model.email in emails).execute()
         exist_emails = [row.email for row in exist_email_rows]
-        row_list = [{
-            "email": email,
-            "create_time": current_timestamp(),
-            "create_date": datetime_format(datetime.now()),
-            "update_time": current_timestamp(),
-            "update_date": datetime_format(datetime.now()),
-        } for email in emails if email not in exist_emails]
+        row_list = [
+            {
+                "email": email,
+                "create_time": current_timestamp(),
+                "create_date": datetime_format(datetime.now()),
+                "update_time": current_timestamp(),
+                "update_date": datetime_format(datetime.now()),
+            }
+            for email in emails
+            if email not in exist_emails
+        ]
         insert_cnt = 0
         for row in row_list:
             insert_cnt += cls.model(**row).save()

@@ -34,6 +34,7 @@ from common.misc_utils import get_uuid, thread_pool_exec
 from common.time_utils import current_timestamp, datetime_format
 from common.ssrf_guard import assert_url_is_safe, pin_dns_global
 
+
 def _get_mcp_ids_from_args() -> list[str]:
     mcp_ids = request.args.getlist("mcp_ids")
     if mcp_ids:
@@ -331,8 +332,7 @@ async def rm(mcp_id: str) -> Response:
 
         # enterprise edition
         with DB.atomic():
-            permission_model_list = PermissionService.get_permissions_by_tenant_and_resource_id(
-                tenant_id=mcp_server.tenant_id, resource_id=mcp_id, resource_type=ResourceType.MCP)
+            permission_model_list = PermissionService.get_permissions_by_tenant_and_resource_id(tenant_id=mcp_server.tenant_id, resource_id=mcp_id, resource_type=ResourceType.MCP)
             if permission_model_list:
                 PermissionService.delete(permission_model_list)
 

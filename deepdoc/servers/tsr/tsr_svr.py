@@ -13,6 +13,7 @@ from .yolov8_to_tensorrt.utils import letterbox, blob, det_postprocess
 # Conditional import for GPU (TensorRT) vs CPU (PyTorch)
 try:
     from .yolov8_to_tensorrt.engine import TRTModule
+
     HAS_TENSORRT = True
 except ImportError:
     HAS_TENSORRT = False
@@ -41,7 +42,7 @@ class TSREndpoint(ls.LitAPI):
             use_gpu: Use GPU inference (TensorRT). Default False uses CPU (ONNX)
         """
         self.engine_path = engine_path
-        self.use_gpu = use_gpu and HAS_TENSORRT and not engine_path.endswith('.onnx')
+        self.use_gpu = use_gpu and HAS_TENSORRT and not engine_path.endswith(".onnx")
         super().__init__()
         self.api_path = "/predict/tsr"
         # Set max_batch_size on the API object (new LitServe usage)
@@ -58,8 +59,9 @@ class TSREndpoint(ls.LitAPI):
             # Use PyTorch for CPU inference
             # Load YOLOv8 model using ultralytics
             from ultralytics import YOLO
+
             self.model = YOLO(self.engine_path)
-            self.model.to('cpu')
+            self.model.to("cpu")
             # Get model input size from first layer
             self.H, self.W = 640, 640  # YOLOv8 default input size
 
@@ -107,8 +109,8 @@ class TSREndpoint(ls.LitAPI):
                 boxes_data = results[0].boxes.data
                 if len(boxes_data) > 0:
                     bboxes = boxes_data[:, :4]  # (N, 4)
-                    scores = boxes_data[:, 4]   # (N,)
-                    labels = boxes_data[:, 5]   # (N,)
+                    scores = boxes_data[:, 4]  # (N,)
+                    labels = boxes_data[:, 5]  # (N,)
 
                     # Convert to torch tensors for compatibility with rest of code
                     bboxes = torch.tensor(bboxes)
@@ -151,24 +153,15 @@ ImageClassifierAPI = TSREndpoint
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument('--engine', type=str, help='Engine file')
-    parser.add_argument('--port', type=int, default=11234, help='serving port')
-    parser.add_argument('--workers',
-                        type=int,
-                        default=2,
-                        help='Workers for every device')
+    parser.add_argument("--engine", type=str, help="Engine file")
+    parser.add_argument("--port", type=int, default=11234, help="serving port")
+    parser.add_argument("--workers", type=int, default=2, help="Workers for every device")
     args = parser.parse_args()
     return args
+
 
 if __name__ == "__main__":
     ARGS = parse_args()
     api = ImageClassifierAPI(ARGS.engine)
-    server = ls.LitServer(
-        api,
-        timeout=100,
-        workers_per_device=ARGS.workers,
-        max_batch_size=4,
-        track_requests=True
-    )
+    server = ls.LitServer(api, timeout=100, workers_per_device=ARGS.workers, max_batch_size=4, track_requests=True)
     server.run(port=ARGS.port, log_level="warning")
-

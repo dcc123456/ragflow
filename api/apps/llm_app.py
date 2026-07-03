@@ -56,6 +56,7 @@ def _resolve_my_llm_is_tools(o_dict: dict) -> bool:
     except Exception:
         return False
 
+
 def _filter_builtin_tei_models(llms):
     if not is_tei_enabled():
         return [m for m in llms if m.get("fid") != "Builtin"]
@@ -64,6 +65,7 @@ def _filter_builtin_tei_models(llms):
         logger.info(f"TEI_MODEL={tei_model}, filtering Builtin models")
         return [m for m in llms if not (m.get("fid") == "Builtin" and m.get("llm_name") != tei_model)]
     return llms
+
 
 @manager.route("/factories", methods=["GET"])  # noqa: F821
 @login_required
@@ -77,7 +79,7 @@ async def factories():
         for m in llms:
             if m.status != StatusEnum.VALID.value:
                 continue
-            if m.fid == 'Builtin':
+            if m.fid == "Builtin":
                 builtin_models.append(m.llm_name)
             if m.fid not in mdl_types:
                 mdl_types[m.fid] = set([])
@@ -136,6 +138,7 @@ async def set_api_key():
             assert factory in ChatModel, f"Chat model from {factory} is not supported yet."
             mdl = ChatModel[factory](req["api_key"], llm.llm_name, base_url=base_url, **extra)
             try:
+
                 async def check_streamly():
                     async for chunk in mdl.async_chat_streamly(
                         None,
@@ -174,7 +177,7 @@ async def set_api_key():
             break
 
     if req.get("verify", False):
-        return get_json_result(data={"message": msg, "success": len(msg.strip())==0})
+        return get_json_result(data={"message": msg, "success": len(msg.strip()) == 0})
 
     if msg:
         return get_data_error_result(message=msg)
@@ -232,7 +235,10 @@ async def add_llm():
         saved_llm_name = llm_name + _LLM_NAME_SUFFIX.get(factory, "")
         logging.debug(
             "add_llm: attempting api_key recovery factory=%s llm_name=%s saved_llm_name=%s tenant_id=%s",
-            factory, llm_name, saved_llm_name, current_user.id,
+            factory,
+            llm_name,
+            saved_llm_name,
+            current_user.id,
         )
         existing_llms = TenantLLMService.query(
             tenant_id=current_user.id,
@@ -241,21 +247,25 @@ async def add_llm():
         )
         logging.debug(
             "add_llm: api_key recovery query matched=%d factory=%s saved_llm_name=%s",
-            len(existing_llms) if existing_llms else 0, factory, saved_llm_name,
+            len(existing_llms) if existing_llms else 0,
+            factory,
+            saved_llm_name,
         )
         if existing_llms:
-            existing_api_key, _, _ = TenantLLMService._decode_api_key_config(
-                existing_llms[0].api_key
-            )
+            existing_api_key, _, _ = TenantLLMService._decode_api_key_config(existing_llms[0].api_key)
             logging.debug(
                 "add_llm: api_key recovery decoded=%s factory=%s saved_llm_name=%s",
-                "present" if existing_api_key else "absent", factory, saved_llm_name,
+                "present" if existing_api_key else "absent",
+                factory,
+                saved_llm_name,
             )
             if existing_api_key:
                 req["api_key"] = existing_api_key
                 logging.info(
                     "add_llm: recovered saved api_key from existing record factory=%s saved_llm_name=%s tenant_id=%s",
-                    factory, saved_llm_name, current_user.id,
+                    factory,
+                    saved_llm_name,
+                    current_user.id,
                 )
 
     api_key = req.get("api_key", "x")
@@ -360,6 +370,7 @@ async def add_llm():
                 **extra,
             )
             try:
+
                 async def check_streamly():
                     async for chunk in mdl.async_chat_streamly(
                         None,
@@ -412,6 +423,7 @@ async def add_llm():
             assert factory in TTSModel, f"TTS model from {factory} is not supported yet."
             mdl = TTSModel[factory](key=model_api_key, model_name=mdl_nm, base_url=model_base_url)
             try:
+
                 def drain_tts():
                     for _ in mdl.tts("Hello~ RAGFlower!"):
                         pass
@@ -536,6 +548,7 @@ async def delete_llm():
     except Exception as e:
         return server_error_response(e)
 
+
 @manager.route("/enable_llm", methods=["POST"])  # noqa: F821
 @login_required
 @validate_request("llm_factory", "llm_name")
@@ -597,6 +610,7 @@ async def delete_factory():
 @login_required
 def my_llms():
     import logging
+
     logger = logging.getLogger()
     try:
         TenantLLMService.ensure_mineru_from_env(current_user.id)
@@ -725,12 +739,13 @@ def list_app():
     return get_json_result(data=res)
 
 
-@manager.route('/set_default_llm', methods=['POST'])  # noqa: F821
+@manager.route("/set_default_llm", methods=["POST"])  # noqa: F821
 @login_required
 @validate_request("llm_factory", "llm_name")
 async def set_default_llm():
     from common import settings
     from api.db.services import UserService
+
     if not settings.ENABLE_ADMIN or not UserService.is_admin(current_user.id):
         return get_data_error_result(message="Not authorized.")
 

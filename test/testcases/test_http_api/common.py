@@ -271,6 +271,7 @@ def make_chat_assistant_name(base_name):
 def get_billing_apps_limit(auth):
     """Get the apps limit from billing plan overview. Returns None if billing disabled or error."""
     import os
+
     if not os.environ.get("BILLING_ENABLED"):
         return None
     url = f"{HOST_ADDRESS}/api/v1/billing/subscription/overview"
@@ -557,4 +558,3 @@ def search_dataset(auth, dataset_id, payload=None, *, headers=HEADERS):
     url = f"{HOST_ADDRESS}{DATASETS_API_URL}/{dataset_id}/search"
     res = requests.post(url=url, headers=headers, auth=auth, json=payload)
     return res.json()
-

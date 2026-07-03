@@ -562,10 +562,7 @@ async def move_files(uid: str, src_file_ids: list, dest_file_id: str = None, new
             while settings.STORAGE_IMPL.obj_exist(dest_folder_entry.id, new_location, source_file_entry.tenant_id):
                 new_location += "_"
             try:
-                moved = settings.STORAGE_IMPL.move(
-                    source_file_entry.parent_id, source_file_entry.location,
-                    dest_folder_entry.id, new_location, source_file_entry.tenant_id
-                )
+                moved = settings.STORAGE_IMPL.move(source_file_entry.parent_id, source_file_entry.location, dest_folder_entry.id, new_location, source_file_entry.tenant_id)
             except Exception as storage_err:
                 raise RuntimeError(f"Move file failed at storage layer: {str(storage_err)}")
             if moved is False:

@@ -247,12 +247,7 @@ def check_kb_permission(permission):
             else:  # GET、DELETE
                 req_data = request.args or {}
 
-            kb_id = (
-                req_data.get("kb_id")
-                or kwargs.get("kb_id")
-                or req_data.get("dataset_id")
-                or kwargs.get("dataset_id")
-            )
+            kb_id = req_data.get("kb_id") or kwargs.get("kb_id") or req_data.get("dataset_id") or kwargs.get("dataset_id")
             if not kb_id:
                 return get_json_result(data=False, message="Missing required parameter `kb_id`.", code=RetCode.ARGUMENT_ERROR)
 
@@ -288,7 +283,6 @@ def check_kb_permission(permission):
                         if inspect.iscoroutinefunction(foo):
                             return await foo(*args, **kwargs)
                         return foo(*args, **kwargs)
-
 
             return get_json_result(
                 data=False,
@@ -370,7 +364,6 @@ def check_dialog_permission(permission):
                             return await foo(*args, **kwargs)
                         return foo(*args, **kwargs)
 
-
             return get_json_result(
                 data=[],
                 message=_permission_denied_message("Chat/Dialog", permission),
@@ -425,14 +418,7 @@ def check_doc_permission(permission, allow_missing_document=False):
             else:  # GET、DELETE
                 req_data = request.args or {}
 
-            doc_id = (
-                req_data.get("doc_id")
-                or kwargs.get("doc_id")
-                or req_data.get("document_id")
-                or kwargs.get("document_id")
-                or req_data.get("attachment_id")
-                or kwargs.get("attachment_id")
-            )
+            doc_id = req_data.get("doc_id") or kwargs.get("doc_id") or req_data.get("document_id") or kwargs.get("document_id") or req_data.get("attachment_id") or kwargs.get("attachment_id")
             if not doc_id:
                 return get_json_result(data=False, message="Missing required parameter `doc_id`.", code=RetCode.ARGUMENT_ERROR)
 
@@ -561,9 +547,7 @@ def _filter_accessible_document_ids(tenant_id, operator_id, kb_ids, doc_ids=None
     if not allowed_doc_ids:
         return []
 
-    allowed_doc_ids = set(
-        [d["id"] for d in Document.select(Document.id).where((Document.id.in_(list(allowed_doc_ids))) & (Document.kb_id.in_(kb_ids))).dicts()]
-    )
+    allowed_doc_ids = set([d["id"] for d in Document.select(Document.id).where((Document.id.in_(list(allowed_doc_ids))) & (Document.kb_id.in_(kb_ids))).dicts()])
 
     if doc_ids:
         return list(allowed_doc_ids.intersection(set(doc_ids)))
@@ -661,13 +645,7 @@ def check_canvas_permission(permission):
             else:  # GET, DELETE
                 req_data = request.args or {}
 
-            canvas_id = (
-                kwargs.get("canvas_id")
-                or kwargs.get("agent_id")
-                or req_data.get("id")
-                or req_data.get("canvas_id")
-                or req_data.get("agent_id")
-            )
+            canvas_id = kwargs.get("canvas_id") or kwargs.get("agent_id") or req_data.get("id") or req_data.get("canvas_id") or req_data.get("agent_id")
 
             g.req_data = req_data
             g.canvas_id = canvas_id

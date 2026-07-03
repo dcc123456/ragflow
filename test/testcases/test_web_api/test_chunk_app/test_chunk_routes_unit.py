@@ -308,7 +308,7 @@ def _load_chunk_module(monkeypatch):
     api_utils_mod.get_result = lambda data=None, message="", code=0: {"code": code, "message": message, "data": data}
     api_utils_mod.get_error_data_result = lambda message="": {"code": _DummyRetCode.DATA_ERROR, "message": message, "data": False}
     api_utils_mod.server_error_response = lambda exc: {"code": _DummyRetCode.EXCEPTION_ERROR, "message": repr(exc), "data": False}
-    api_utils_mod.validate_request = lambda *_args, **_kwargs: (lambda fn: fn)
+    api_utils_mod.validate_request = lambda *_args, **_kwargs: lambda fn: fn
     api_utils_mod.add_tenant_id_to_kwargs = lambda func: func
     api_utils_mod.check_duplicate_ids = lambda ids, _kind: (list(dict.fromkeys(ids)), [] if len(ids) == len(set(ids)) else [f"Duplicate {_kind} ids"])
     api_utils_mod.construct_json_result = lambda data=None, message="", code=0: {"code": code, "message": message, "data": data}
@@ -345,24 +345,15 @@ def _load_chunk_module(monkeypatch):
                 chunk[output_field] = meta
 
     reference_metadata_utils_mod.enrich_chunks_with_document_metadata = _enrich_chunks_with_document_metadata
-    reference_metadata_utils_mod.resolve_reference_metadata_preferences = (
-        lambda req, _search_config=None: (
-            bool((req or {}).get("reference_metadata", {}).get("include", False) or (req or {}).get("include_metadata", False)),
-            None
-            if (
-                (req or {}).get("metadata_fields") is None
-                and (req or {}).get("reference_metadata", {}).get("fields") is None
-            )
-            else {
-                field
-                for field in (
-                    (req or {}).get("metadata_fields")
-                    if (req or {}).get("metadata_fields") is not None
-                    else (req or {}).get("reference_metadata", {}).get("fields", [])
-                )
-                if isinstance(field, str)
-            },
-        )
+    reference_metadata_utils_mod.resolve_reference_metadata_preferences = lambda req, _search_config=None: (
+        bool((req or {}).get("reference_metadata", {}).get("include", False) or (req or {}).get("include_metadata", False)),
+        None
+        if ((req or {}).get("metadata_fields") is None and (req or {}).get("reference_metadata", {}).get("fields") is None)
+        else {
+            field
+            for field in ((req or {}).get("metadata_fields") if (req or {}).get("metadata_fields") is not None else (req or {}).get("reference_metadata", {}).get("fields", []))
+            if isinstance(field, str)
+        },
     )
     monkeypatch.setitem(sys.modules, "api.utils.reference_metadata_utils", reference_metadata_utils_mod)
 
@@ -463,9 +454,7 @@ def _load_chunk_module(monkeypatch):
     services_pkg.document_service = document_service_mod
 
     file2document_service_mod = ModuleType("api.db.services.file2document_service")
-    file2document_service_mod.File2DocumentService = SimpleNamespace(
-        get_storage_address=lambda **_kwargs: ("bucket", "name")
-    )
+    file2document_service_mod.File2DocumentService = SimpleNamespace(get_storage_address=lambda **_kwargs: ("bucket", "name"))
     monkeypatch.setitem(sys.modules, "api.db.services.file2document_service", file2document_service_mod)
     services_pkg.file2document_service = file2document_service_mod
 
@@ -511,12 +500,7 @@ def _load_chunk_module(monkeypatch):
     class _DummyLLMService:
         @staticmethod
         def query(**_kwargs):
-            return [SimpleNamespace(
-                llm_name="gpt-3.5-turbo",
-                model_type="chat",
-                max_tokens=8192,
-                is_tools=True
-            )]
+            return [SimpleNamespace(llm_name="gpt-3.5-turbo", model_type="chat", max_tokens=8192, is_tools=True)]
 
     llm_service_mod = ModuleType("api.db.services.llm_service")
     llm_service_mod.LLMService = _DummyLLMService
@@ -552,22 +536,13 @@ def _load_chunk_module(monkeypatch):
                 api_base="https://api.example.com",
                 max_tokens=8192,
                 used_tokens=0,
-                status=1
+                status=1,
             )
 
         @staticmethod
         def get_api_key(tenant_id, model_name):
             return _MockTableObject(
-                id=1,
-                tenant_id=tenant_id,
-                llm_factory="",
-                model_type="chat",
-                llm_name=model_name,
-                api_key="fake-api-key",
-                api_base="https://api.example.com",
-                max_tokens=8192,
-                used_tokens=0,
-                status=1
+                id=1, tenant_id=tenant_id, llm_factory="", model_type="chat", llm_name=model_name, api_key="fake-api-key", api_base="https://api.example.com", max_tokens=8192, used_tokens=0, status=1
             )
 
         @staticmethod
@@ -596,7 +571,7 @@ def _load_chunk_module(monkeypatch):
                 asr_id="whisper-1",
                 img2txt_id="gpt-4-vision-preview",
                 rerank_id="bge-reranker",
-                tts_id="tts-1"
+                tts_id="tts-1",
             )
 
     tenant_llm_service_mod.TenantLLMService = _TenantLLMService

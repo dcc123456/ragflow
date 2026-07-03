@@ -160,7 +160,7 @@ def _load_file_api_service(monkeypatch):
             put=lambda *_args, **_kwargs: None,
             rm=lambda *_args, **_kwargs: None,
             move=lambda *_args, **_kwargs: None,
-        )
+        ),
     )
     monkeypatch.setitem(sys.modules, "common", common_root_mod)
 
@@ -224,12 +224,16 @@ def test_upload_file_success_uses_new_service_layer(monkeypatch):
         "create_folder",
         lambda _file, parent_id, _names, _len_id, *_args: SimpleNamespace(id=parent_id),
     )
-    monkeypatch.setattr(module.settings, "STORAGE_IMPL", SimpleNamespace(
-        obj_exist=lambda *_args, **_kwargs: False,
-        put=lambda bucket, location, blob, _tenant_id: storage_puts.append((bucket, location, blob)),
-        rm=lambda *_args, **_kwargs: None,
-        move=lambda *_args, **_kwargs: None,
-    ))
+    monkeypatch.setattr(
+        module.settings,
+        "STORAGE_IMPL",
+        SimpleNamespace(
+            obj_exist=lambda *_args, **_kwargs: False,
+            put=lambda bucket, location, blob, _tenant_id: storage_puts.append((bucket, location, blob)),
+            rm=lambda *_args, **_kwargs: None,
+            move=lambda *_args, **_kwargs: None,
+        ),
+    )
 
     ok, data = _run(module.upload_file("tenant1", "pf1", [_DummyUploadFile("a.txt", b"hello")]))
     assert ok is True
@@ -292,12 +296,16 @@ def test_move_files_handles_dest_and_storage_move(monkeypatch):
         "get_by_ids",
         lambda _ids: [_DummyFile("file1", module.FileType.DOC.value, parent_id="src", location="old", name="a.txt")],
     )
-    monkeypatch.setattr(module.settings, "STORAGE_IMPL", SimpleNamespace(
-        obj_exist=lambda *_args, **_kwargs: False,
-        put=lambda *_args, **_kwargs: None,
-        rm=lambda *_args, **_kwargs: None,
-        move=lambda old_bucket, old_loc, new_bucket, new_loc, _tenant_id: moved.append((old_bucket, old_loc, new_bucket, new_loc)),
-    ))
+    monkeypatch.setattr(
+        module.settings,
+        "STORAGE_IMPL",
+        SimpleNamespace(
+            obj_exist=lambda *_args, **_kwargs: False,
+            put=lambda *_args, **_kwargs: None,
+            rm=lambda *_args, **_kwargs: None,
+            move=lambda old_bucket, old_loc, new_bucket, new_loc, _tenant_id: moved.append((old_bucket, old_loc, new_bucket, new_loc)),
+        ),
+    )
     monkeypatch.setattr(module.FileService, "update_by_id", lambda file_id, data: updated.append((file_id, data)) or True)
 
     ok, message = _run(module.move_files("tenant1", ["file1"], "missing"))
@@ -351,9 +359,7 @@ def test_move_files_folder_to_same_parent_is_noop(monkeypatch):
     monkeypatch.setattr(
         module.FileService,
         "get_by_id",
-        lambda file_id: (True, _DummyFile(file_id, module.FileType.FOLDER.value, tenant_id="tenant1", parent_id="root", name="folder-b"))
-        if file_id == "folder2"
-        else (False, None),
+        lambda file_id: (True, _DummyFile(file_id, module.FileType.FOLDER.value, tenant_id="tenant1", parent_id="root", name="folder-b")) if file_id == "folder2" else (False, None),
     )
     monkeypatch.setattr(
         module.FileService,

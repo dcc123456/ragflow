@@ -73,9 +73,7 @@ class AppClient(BillingClient):
         try:
             payload = response.json()
         except ValueError as exc:
-            raise FlowError(
-                f"{method} {path} returned non-JSON status={response.status_code}: {response.text[:500]}"
-            ) from exc
+            raise FlowError(f"{method} {path} returned non-JSON status={response.status_code}: {response.text[:500]}") from exc
         if response.status_code >= 400 or payload.get("code") not in (0, None):
             raise FlowError(f"{method} {path} failed status={response.status_code}: {payload}")
         return payload
@@ -157,9 +155,7 @@ class AppClient(BillingClient):
         try:
             result = response.json()
         except ValueError as exc:
-            raise FlowError(
-                f"POST canvas/set returned non-JSON status={response.status_code}: {response.text[:500]}"
-            ) from exc
+            raise FlowError(f"POST canvas/set returned non-JSON status={response.status_code}: {response.text[:500]}") from exc
         if response.status_code >= 400 or result.get("code") not in (0, None):
             raise FlowError(f"POST canvas/set failed status={response.status_code}: {result}")
         return result
@@ -174,6 +170,7 @@ class AppClient(BillingClient):
         """Upload a document to a dataset via the RESTful API using SDK Bearer auth."""
         from pathlib import Path
         from requests_toolbelt import MultipartEncoder  # noqa: E402
+
         p = Path(file_path)
         m = MultipartEncoder(fields=[("file", (p.name, p.open("rb")))])
         try:
@@ -216,6 +213,7 @@ class AppClient(BillingClient):
     def points_balance(self) -> dict:
         """Get points balance for this tenant."""
         from libs.billing.points_common import cal_available_points
+
         response = self.session.get(
             self.billing_url(f"/points/balance?tenant_id={self.tenant_id}"),
             headers=self.headers(auth=True),
@@ -224,9 +222,7 @@ class AppClient(BillingClient):
         try:
             payload = response.json()
         except ValueError as exc:
-            raise FlowError(
-                f"GET /billing/points/balance returned non-JSON status={response.status_code}: {response.text[:500]}"
-            ) from exc
+            raise FlowError(f"GET /billing/points/balance returned non-JSON status={response.status_code}: {response.text[:500]}") from exc
         if response.status_code >= 400 or payload.get("code") not in (0, None):
             raise FlowError(f"GET /billing/points/balance failed status={response.status_code}: {payload}")
         points = payload["data"]
@@ -272,7 +268,7 @@ def setup_app_test(
     expected_limit = trial_quota_apps if initial_plan == "Trial" else starter_quota_apps
     if apps_quota.get("limit") != expected_limit:
         raise FlowError(f"Expected {initial_plan} apps quota {expected_limit}, got {apps_quota.get('limit')}")
-    logger.info("Assert: Apps quota from overview (%s): %s/%s", initial_plan, apps_quota.get('used'), apps_quota.get('limit'))
+    logger.info("Assert: Apps quota from overview (%s): %s/%s", initial_plan, apps_quota.get("used"), apps_quota.get("limit"))
 
     return client, email, trial_quota_apps, starter_quota_apps
 

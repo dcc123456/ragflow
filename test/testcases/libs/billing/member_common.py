@@ -19,6 +19,7 @@ Member client utilities for billing test flows.
 
 Provides MemberClient class extending RAGFlowClient with member/tenant management APIs.
 """
+
 from __future__ import annotations
 
 import json
@@ -82,7 +83,6 @@ class MemberClient(BillingClient):
             need_api_path=True,
         )["data"]
         return [m for m in members_may_include_owner if m["role"] != UserTenantRole.OWNER]
-
 
     def invite_member(self, email: str) -> dict[str, Any]:
         """Invite a new member to the tenant.
@@ -167,15 +167,9 @@ class MemberClient(BillingClient):
         elif password == "Test1234!":
             pass
         else:
-            raise FlowError(
-                "member billing test helper only supports the fixed default test passwords"
-            )
+            raise FlowError("member billing test helper only supports the fixed default test passwords")
 
-        container_name = (
-            env("RAGFLOW_CONTAINER")
-            or env("RAGFLOW_SERVICE_CONTAINER")
-            or "docker-ragflow-1"
-        )
+        container_name = env("RAGFLOW_CONTAINER") or env("RAGFLOW_SERVICE_CONTAINER") or "docker-ragflow-1"
         script = f"""
 import base64, json, sys
 from common import settings
@@ -191,7 +185,7 @@ existing_users = UserService.query(email=email)
 if existing_users:
     existing = existing_users[0]
     print(json.dumps({
-        "code": 0,
+            "code": 0,
         "data": {"id": existing.id, "email": existing.email, "nickname": existing.nickname},
         "message": "already registered",
     }))
@@ -203,7 +197,7 @@ if not roles:
     raise RuntimeError("Role not found for lightweight member registration: " + role_name)
 
 user_dict = {
-    "access_token": get_uuid(),
+            "access_token": get_uuid(),
     "email": email,
     "nickname": email.split("@", 1)[0],
     "password": base64.b64encode(password.encode("utf-8")).decode("utf-8"),
@@ -218,7 +212,7 @@ if not users:
     raise RuntimeError(f"lightweight register returned no user for {email}")
 created = users[0]
 print(json.dumps({
-    "code": 0,
+            "code": 0,
     "data": {"id": created.id, "email": created.email, "nickname": created.nickname},
     "message": "registered",
 }))
@@ -230,10 +224,7 @@ print(json.dumps({
             check=False,
         )
         if result.returncode != 0:
-            raise FlowError(
-                f"lightweight register failed for {email}: "
-                f"returncode={result.returncode}, stdout={result.stdout.strip()}, stderr={result.stderr.strip()}"
-            )
+            raise FlowError(f"lightweight register failed for {email}: returncode={result.returncode}, stdout={result.stdout.strip()}, stderr={result.stderr.strip()}")
         stdout = result.stdout.strip()
         if not stdout:
             raise FlowError(f"lightweight register for {email} returned empty stdout")
@@ -267,9 +258,7 @@ print(json.dumps({
         elif password == "Test1234!":
             encrypted_password = DEFAULT_TEST_PASSWORD_ENCRYPTED
         else:
-            raise FlowError(
-                "member billing test helper only supports the fixed default test passwords"
-            )
+            raise FlowError("member billing test helper only supports the fixed default test passwords")
         login_response = self.session.post(
             self.url("/auth/login", True),
             headers=self.headers(auth=False),
@@ -279,9 +268,7 @@ print(json.dumps({
         try:
             login_data = login_response.json()
         except ValueError as exc:
-            raise FlowError(
-                f"login returned non-JSON status={login_response.status_code}: {login_response.text[:500]}"
-            ) from exc
+            raise FlowError(f"login returned non-JSON status={login_response.status_code}: {login_response.text[:500]}") from exc
         if login_data.get("code") != 0:
             raise FlowError(f"login failed for {email}: {login_data}")
         auth_header = login_response.headers.get("Authorization", "")
@@ -350,9 +337,7 @@ print(json.dumps({
         try:
             payload = response.json()
         except ValueError as exc:
-            raise FlowError(
-                f"GET /billing/subscription/overview returned non-JSON status={response.status_code}: {response.text[:500]}"
-            ) from exc
+            raise FlowError(f"GET /billing/subscription/overview returned non-JSON status={response.status_code}: {response.text[:500]}") from exc
         if response.status_code >= 400 or payload.get("code") not in (0, None):
             raise FlowError(f"GET /billing/subscription/overview failed status={response.status_code}: {payload}")
         return payload["data"]["resources"]["members"]

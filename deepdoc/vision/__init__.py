@@ -69,8 +69,7 @@ def init_in_out(args):
             mat = fitz.Matrix(zoomin, zoomin)
             for i, page in enumerate(pdf):
                 pix = page.get_pixmap(matrix=mat)
-                img = Image.frombytes("RGB", [pix.width, pix.height],
-                                    pix.samples)
+                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
                 images.append(img)
                 outputs.append(os.path.split(fnm)[-1] + f"_{i}.jpg")
             pdf.close()

@@ -113,11 +113,13 @@ def usage_based_status_from_payment_status(status: str) -> str:
 def billing_enabled_guard(default):
     def decorator(func):
         if inspect.iscoroutinefunction(func):
+
             @wraps(func)
             async def async_wrapper(*args, **kwargs):
                 if not settings.BILLING_ENABLED:
                     return default() if callable(default) else default
                 return await func(*args, **kwargs)
+
             return async_wrapper
 
         @wraps(func)
@@ -125,6 +127,7 @@ def billing_enabled_guard(default):
             if not settings.BILLING_ENABLED:
                 return default() if callable(default) else default
             return func(*args, **kwargs)
+
         return sync_wrapper
 
     return decorator

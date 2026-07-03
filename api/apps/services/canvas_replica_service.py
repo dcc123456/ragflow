@@ -72,7 +72,6 @@ class CanvasReplicaService:
     def _replica_key(cls, canvas_id: str, tenant_id: str, runtime_user_id: str) -> str:
         return f"{cls.REPLICA_KEY_PREFIX}:{canvas_id}:{tenant_id}:{runtime_user_id}"
 
-
     @classmethod
     def _lock_key(cls, canvas_id: str, tenant_id: str, runtime_user_id: str) -> str:
         return f"{cls.LOCK_KEY_PREFIX}:{canvas_id}:{tenant_id}:{runtime_user_id}"
@@ -82,21 +81,17 @@ class CanvasReplicaService:
     def _presence_session_key(cls, presence_session_id: str) -> str:
         return f"{cls.PRESENCE_SESSION_KEY_PREFIX}:{presence_session_id}"
 
-
     @classmethod
     def _presence_user_sessions_key(cls, canvas_id: str, tenant_id: str, runtime_user_id: str) -> str:
         return f"{cls.PRESENCE_USER_KEY_PREFIX}:{canvas_id}:{tenant_id}:{runtime_user_id}:sessions"
-
 
     @classmethod
     def _presence_canvas_users_key(cls, canvas_id: str) -> str:
         return f"{cls.PRESENCE_CANVAS_KEY_PREFIX}:{canvas_id}:users"
 
-
     @classmethod
     def _presence_canvas_user_ref(cls, tenant_id: str, runtime_user_id: str) -> str:
         return f"{tenant_id}:{runtime_user_id}"
-
 
     @classmethod
     def _parse_presence_canvas_user_ref(cls, user_ref: str) -> tuple[str | None, str | None]:
@@ -104,7 +99,6 @@ class CanvasReplicaService:
         if not sep or not tenant_id or not runtime_user_id:
             return None, None
         return tenant_id, runtime_user_id
-
 
     # Presence payload helpers keep Redis session data small and uniform.
     @classmethod
@@ -121,7 +115,6 @@ class CanvasReplicaService:
             return None
         return payload
 
-
     @classmethod
     def _write_presence_payload(cls, payload: dict):
         presence_session_id = str(payload.get("presence_session_id", ""))
@@ -132,7 +125,6 @@ class CanvasReplicaService:
             payload,
             cls.PRESENCE_TTL_SECS,
         )
-
 
     @classmethod
     def _build_presence_payload(
@@ -156,7 +148,6 @@ class CanvasReplicaService:
             "last_seen_at": ts,
         }
 
-
     @classmethod
     def _cleanup_user_presence_sessions(cls, canvas_id: str, tenant_id: str, runtime_user_id: str):
         user_sessions_key = cls._presence_user_sessions_key(canvas_id, tenant_id, runtime_user_id)
@@ -171,11 +162,7 @@ class CanvasReplicaService:
                 REDIS_CONN.srem(user_sessions_key, presence_session_id)
                 continue
 
-            if (
-                str(payload.get("canvas_id")) != str(canvas_id)
-                or str(payload.get("tenant_id")) != str(tenant_id)
-                or str(payload.get("runtime_user_id")) != str(runtime_user_id)
-            ):
+            if str(payload.get("canvas_id")) != str(canvas_id) or str(payload.get("tenant_id")) != str(tenant_id) or str(payload.get("runtime_user_id")) != str(runtime_user_id):
                 REDIS_CONN.srem(user_sessions_key, presence_session_id)
                 continue
 
@@ -188,7 +175,6 @@ class CanvasReplicaService:
             REDIS_CONN.delete(user_sessions_key)
 
         return active_sessions
-
 
     # Presence responses show both readable names and effective canvas permissions.
     @classmethod
@@ -204,7 +190,6 @@ class CanvasReplicaService:
             logging.exception("Failed to load user nicknames for canvas presence.")
 
         return display_names
-
 
     @classmethod
     def _get_presence_permissions(cls, canvas_id: str, tenant_id: str, user_ids: list[str]) -> dict[str, int]:
@@ -239,7 +224,6 @@ class CanvasReplicaService:
 
         return permissions
 
-
     # Runtime replica payload helpers.
     @classmethod
     def _read_payload(cls, replica_key: str):
@@ -257,13 +241,11 @@ class CanvasReplicaService:
             logging.warning("Failed to parse canvas replica %s: %s", replica_key, e)
             return None
 
-
     @classmethod
     def _write_payload(cls, replica_key: str, payload: dict):
         """Write payload and refresh TTL."""
         payload["updated_at"] = int(time.time())
         REDIS_CONN.set_obj(replica_key, payload, cls.TTL_SECS)
-
 
     @classmethod
     def _build_payload(
@@ -285,7 +267,6 @@ class CanvasReplicaService:
             "updated_at": int(time.time()),
         }
 
-
     # Runtime replica lifecycle used by get(), run() and save().
     @classmethod
     def create_if_absent(
@@ -305,7 +286,6 @@ class CanvasReplicaService:
         payload = cls._build_payload(canvas_id, str(tenant_id), str(runtime_user_id), dsl, canvas_category, title)
         cls._write_payload(replica_key, payload)
         return payload
-
 
     @classmethod
     def bootstrap(
@@ -327,13 +307,11 @@ class CanvasReplicaService:
             title=title,
         )
 
-
     @classmethod
     def load_for_run(cls, canvas_id: str, tenant_id: str, runtime_user_id: str):
         """Load current runtime replica used by /completions."""
         replica_key = cls._replica_key(canvas_id, str(tenant_id), str(runtime_user_id))
         return cls._read_payload(replica_key)
-
 
     @classmethod
     def replace_for_set(
@@ -373,7 +351,6 @@ class CanvasReplicaService:
             except Exception:
                 logging.exception("Failed to release canvas replica lock: %s", lock_key)
 
-
     @classmethod
     def _acquire_lock_with_retry(cls, lock_key: str):
         """Acquire distributed lock with bounded retries; return lock object or None."""
@@ -388,7 +365,6 @@ class CanvasReplicaService:
             if idx < cls.LOCK_RETRY_ATTEMPTS - 1:
                 time.sleep(cls.LOCK_RETRY_SLEEP_SECS + random.uniform(0, 0.1))
         return None
-
 
     @classmethod
     def commit_after_run(
@@ -428,7 +404,6 @@ class CanvasReplicaService:
             logging.exception("Failed to commit canvas runtime replica.")
             return False
 
-
     # Presence lifecycle used by the canvas collaboration UI.
     @classmethod
     def join_presence(
@@ -457,7 +432,6 @@ class CanvasReplicaService:
         )
         cls._write_presence_payload(payload)
         return {"ok": True}
-
 
     @classmethod
     def heartbeat_presence(
@@ -493,7 +467,6 @@ class CanvasReplicaService:
         )
         return {"ok": True}
 
-
     @classmethod
     def leave_presence(
         cls,
@@ -518,7 +491,6 @@ class CanvasReplicaService:
             )
         cls._cleanup_user_presence_sessions(canvas_id, tenant_id, runtime_user_id)
         return {"ok": True}
-
 
     @classmethod
     def list_presence(
@@ -570,10 +542,6 @@ class CanvasReplicaService:
         return {
             "canvas_id": str(canvas_id),
             "online_user_count": len(users),
-            "operator_permission": (
-                operator_permission
-                if operator_permission is not None
-                else permissions.get(str(tenant_id), PermissionValue.PERMISSION_NULL.value)
-            ),
+            "operator_permission": (operator_permission if operator_permission is not None else permissions.get(str(tenant_id), PermissionValue.PERMISSION_NULL.value)),
             "users": users,
         }

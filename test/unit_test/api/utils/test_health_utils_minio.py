@@ -14,6 +14,7 @@
 #  limitations under the License.
 #
 """Unit tests for MinIO health check (check_minio_alive)."""
+
 from unittest.mock import patch, Mock
 
 
@@ -28,6 +29,7 @@ class TestCheckMinioAlive:
         mock_response.status_code = 200
         mock_get.return_value = mock_response
         from api.utils.health_utils import check_minio_alive
+
         result = check_minio_alive()
         assert result["status"] == "alive"
         assert "elapsed" in result["message"]
@@ -41,6 +43,7 @@ class TestCheckMinioAlive:
         mock_response.status_code = 503
         mock_get.return_value = mock_response
         from api.utils.health_utils import check_minio_alive
+
         result = check_minio_alive()
         assert result["status"] == "timeout"
 
@@ -50,6 +53,7 @@ class TestCheckMinioAlive:
         mock_settings.MINIO = [{"host": "minio:9000"}]
         mock_get.side_effect = ConnectionError("Connection refused")
         from api.utils.health_utils import check_minio_alive
+
         result = check_minio_alive()
         assert result["status"] == "timeout"
         assert "error" in result["message"]
@@ -65,5 +69,6 @@ class TestCheckMinioAlive:
         mock_response.status_code = 200
         mock_get.return_value = mock_response
         from api.utils.health_utils import check_minio_alive
+
         check_minio_alive()
         mock_get.assert_called_once_with("http://minio-a:9000/minio/health/live")

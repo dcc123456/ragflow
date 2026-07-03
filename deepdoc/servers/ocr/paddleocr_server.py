@@ -14,6 +14,7 @@ import litserve as ls
 import numpy as np
 # Import PaddleOCR lazily to avoid initialization issues at import time
 
+
 class OCREndpoint(ls.LitAPI):
     """OCR Endpoint for Unified DeepDoc Server"""
 
@@ -28,19 +29,21 @@ class OCREndpoint(ls.LitAPI):
     def setup(self, device):
         # need to run only once to load model into memory
         from paddleocr import PaddleOCR  # Lazy import to avoid hang at module level
-        self.ocr = PaddleOCR(use_angle_cls=True, lang='ch', use_gpu=self.use_gpu)
+
+        self.ocr = PaddleOCR(use_angle_cls=True, lang="ch", use_gpu=self.use_gpu)
 
     def decode_request(self, request):
         import sys
+
         print("OCR decode_request called", file=sys.stderr, flush=True)
         opt = request.get("operator", "det")
         print(f"OCR decode_request: operator={opt}", file=sys.stderr, flush=True)
         file_obj = request.get("request")
         print(f"OCR decode_request: file_obj type={type(file_obj)}", file=sys.stderr, flush=True)
 
-        if hasattr(file_obj, 'file'):
+        if hasattr(file_obj, "file"):
             img_bytes = file_obj.file.read()
-        elif hasattr(file_obj, 'read'):
+        elif hasattr(file_obj, "read"):
             img_bytes = file_obj.read()
         else:
             raise ValueError(f"Cannot read file from {type(file_obj)}")
@@ -68,13 +71,14 @@ class OCREndpoint(ls.LitAPI):
 
     def predict(self, x):
         import sys
+
         print(f"OCR predict called: x type={type(x)}, shape={x.shape if hasattr(x, 'shape') else 'N/A'}", file=sys.stderr, flush=True)
 
         # LitServe with max_batch_size=1 passes a single image: (H, W, C)
         # LitServe with max_batch_size>1 passes batched: (N, H, W, C)
         # However, when using the API in a multi-API setup, LitServe may add batch dimension
         # So we need to handle: (H, W, C), (N, H, W, C), or list of images
-        opt = getattr(self, '_last_operator', 'det')
+        opt = getattr(self, "_last_operator", "det")
         print(f"OCR predict: operator={opt}", file=sys.stderr, flush=True)
 
         if isinstance(x, np.ndarray):
@@ -108,6 +112,7 @@ class OCREndpoint(ls.LitAPI):
 
     def encode_response(self, output):
         import sys
+
         print(f"OCR encode_response called: output type={type(output)}, len={len(output) if isinstance(output, list) else 'N/A'}", file=sys.stderr, flush=True)
 
         # In multi-API mode ([api1, api2, api3]), each API is independent
@@ -121,7 +126,7 @@ class OCREndpoint(ls.LitAPI):
 
 
 # Backward compatibility alias
-OcrAPI = OCREndpoint 
+OcrAPI = OCREndpoint
 
 if __name__ == "__main__":
     # scale with advanced features (batching, GPUs, etc...)

@@ -233,11 +233,15 @@ def test_update_webhook_event_checkpoint_is_monotonic(monkeypatch):
     def delete_by_exact_name(name):
         writes.pop(name, None)
 
-    mock_ss_class = type("MockSystemSettingsService", (), {
-        "get_singleton_by_exact_name": get_singleton_by_exact_name,
-        "upsert_singleton_by_exact_name": upsert_singleton_by_exact_name,
-        "delete_by_exact_name": delete_by_exact_name,
-    })
+    mock_ss_class = type(
+        "MockSystemSettingsService",
+        (),
+        {
+            "get_singleton_by_exact_name": get_singleton_by_exact_name,
+            "upsert_singleton_by_exact_name": upsert_singleton_by_exact_name,
+            "delete_by_exact_name": delete_by_exact_name,
+        },
+    )
     monkeypatch.setattr(billing_webhook_service, "SystemSettingsService", mock_ss_class)
 
     billing_webhook_service._update_webhook_event_checkpoint(200, event_id="evt_new")

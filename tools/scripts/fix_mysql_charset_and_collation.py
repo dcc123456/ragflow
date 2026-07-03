@@ -26,15 +26,9 @@ if __name__ == "__main__":
 
             for table_name, current_collation in cursor.fetchall():
                 table_name = table_name.strip()
-                print(
-                    f"Fixing: {table_name}, current_collation: {current_collation}, "
-                    f"target_collation: utf8mb4_general_ci"
-                )
+                print(f"Fixing: {table_name}, current_collation: {current_collation}, target_collation: utf8mb4_general_ci")
                 try:
-                    sql = (
-                        f"ALTER TABLE {table_name} CONVERT TO CHARACTER SET utf8mb4 "
-                        "COLLATE utf8mb4_general_ci"
-                    )
+                    sql = f"ALTER TABLE {table_name} CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci"
                     cursor.execute(sql)
                     conn.commit()
                     print("  ✅ Done\n")

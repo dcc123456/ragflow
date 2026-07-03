@@ -248,6 +248,7 @@ def _load_session_module(monkeypatch):
     common_constants_mod.TAG_FLD = "tag_feas"
     # Import pure-Python constants from the real module (no heavy deps)
     from common.constants import MAXIMUM_PAGE_NUMBER as _MPN, MAXIMUM_TASK_PAGE_NUMBER as _MTPN
+
     common_constants_mod.MAXIMUM_PAGE_NUMBER = _MPN
     common_constants_mod.MAXIMUM_TASK_PAGE_NUMBER = _MTPN
     monkeypatch.setitem(sys.modules, "common.constants", common_constants_mod)
@@ -269,32 +270,22 @@ def _load_session_module(monkeypatch):
     api_utils_mod.get_data_error_result = lambda message="Sorry! Data missing!", code=_StubRetCode.DATA_ERROR: {"code": code, "message": message}
     api_utils_mod.get_error_data_result = lambda message="Sorry! Data missing!", code=_StubRetCode.DATA_ERROR: {"code": code, "message": message}
     api_utils_mod.get_json_result = lambda code=_StubRetCode.SUCCESS, message="success", data=None: {"code": code, "message": message, "data": data}
-    api_utils_mod.get_resource_insufficient_result = (
-        lambda message="", code=_StubRetCode.BILLING_RESOURCE_INSUFFICIENT, data=None, **_kwargs: {
-            "code": code,
-            "message": message,
-            "data": data,
-        }
-    )
+    api_utils_mod.get_resource_insufficient_result = lambda message="", code=_StubRetCode.BILLING_RESOURCE_INSUFFICIENT, data=None, **_kwargs: {
+        "code": code,
+        "message": message,
+        "data": data,
+    }
     api_utils_mod.get_result = lambda code=_StubRetCode.SUCCESS, message="", data=None, total=None: {
-        key: value
-        for key, value in {"code": code, "message": message, "data": data, "total": total}.items()
-        if value is not None
+        key: value for key, value in {"code": code, "message": message, "data": data, "total": total}.items() if value is not None
     }
     api_utils_mod.get_request_json = lambda: _AwaitableValue({})
     api_utils_mod.server_error_response = lambda e: {"code": _StubRetCode.SERVER_ERROR, "message": str(e)}
-    api_utils_mod.validate_request = lambda *_args, **_kwargs: (lambda func: func)
-    api_utils_mod._extract_auth_token = (
-        lambda auth_header: auth_header.split(" ", 1)[1]
-        if isinstance(auth_header, str) and auth_header.startswith("Bearer ")
-        else ""
-    )
+    api_utils_mod.validate_request = lambda *_args, **_kwargs: lambda func: func
+    api_utils_mod._extract_auth_token = lambda auth_header: auth_header.split(" ", 1)[1] if isinstance(auth_header, str) and auth_header.startswith("Bearer ") else ""
     monkeypatch.setitem(sys.modules, "api.utils.api_utils", api_utils_mod)
 
     permission_utils_mod = ModuleType("api.utils.permission_utils")
-    permission_utils_mod.filter_accessible_doc_ids_for_user = (
-        lambda *_args, **_kwargs: ([], [], "")
-    )
+    permission_utils_mod.filter_accessible_doc_ids_for_user = lambda *_args, **_kwargs: ([], [], "")
     monkeypatch.setitem(sys.modules, "api.utils.permission_utils", permission_utils_mod)
 
     rag_app_tag_mod = ModuleType("rag.app.tag")
@@ -388,22 +379,14 @@ def _load_session_module(monkeypatch):
                 "max_tokens": self.max_tokens,
                 "used_tokens": self.used_tokens,
                 "status": self.status,
-                "id": self.id
+                "id": self.id,
             }
 
     class _StubTenantService:
         @staticmethod
         def get_by_id(tenant_id):
             # Return a mock tenant with default model configurations
-            return True, SimpleNamespace(
-                id=tenant_id,
-                llm_id="chat-model",
-                embd_id="embd-model",
-                asr_id="asr-model",
-                img2txt_id="img2txt-model",
-                rerank_id="rerank-model",
-                tts_id="tts-model"
-            )
+            return True, SimpleNamespace(id=tenant_id, llm_id="chat-model", embd_id="embd-model", asr_id="asr-model", img2txt_id="img2txt-model", rerank_id="rerank-model", tts_id="tts-model")
 
     class _StubTenantLLMService:
         @staticmethod
@@ -435,9 +418,7 @@ def _load_session_module(monkeypatch):
             self.llm_name = llm_name
             self.is_tools = False
 
-    llm_service_mod.LLMService = SimpleNamespace(
-        query=lambda llm_name: [_StubLLM(llm_name)] if llm_name else []
-    )
+    llm_service_mod.LLMService = SimpleNamespace(query=lambda llm_name: [_StubLLM(llm_name)] if llm_name else [])
 
     class _StubLLMBundle:
         def __init__(self, tenant_id: str, model_config: dict, lang="Chinese", **kwargs):
@@ -481,7 +462,7 @@ def _load_session_module(monkeypatch):
                 "max_tokens": self.max_tokens,
                 "used_tokens": self.used_tokens,
                 "status": self.status,
-                "id": self.id
+                "id": self.id,
             }
 
     def _get_model_config_from_provider_instance(tenant_id: str, model_type: str, model_name: str):
@@ -505,6 +486,7 @@ def _load_session_module(monkeypatch):
     def _get_tenant_default_model_by_type(tenant_id: str, model_type):
         # Check if tenant exists
         from api.db.services.tenant_llm_service import TenantService
+
         exist, tenant = TenantService.get_by_id(tenant_id)
         if not exist:
             raise LookupError("Tenant not found!")
@@ -527,15 +509,7 @@ def _load_session_module(monkeypatch):
             raise Exception("OCR model name is required")
         if not model_name:
             # Use friendly model type names
-            friendly_names = {
-                "embedding": "Embedding",
-                "speech2text": "ASR",
-                "image2text": "Image2Text",
-                "chat": "Chat",
-                "rerank": "Rerank",
-                "tts": "TTS",
-                "ocr": "OCR"
-            }
+            friendly_names = {"embedding": "Embedding", "speech2text": "ASR", "image2text": "Image2Text", "chat": "Chat", "rerank": "Rerank", "tts": "TTS", "ocr": "OCR"}
             friendly_name = friendly_names.get(model_type_val, model_type_val)
             raise Exception(f"No default {friendly_name} model is set")
         return _MockModelConfig2(tenant_id, model_name, model_type_val).to_dict()
@@ -737,15 +711,7 @@ def _load_session_module(monkeypatch):
         @staticmethod
         def get_by_id(tenant_id):
             # Return mock tenant by id
-            return True, SimpleNamespace(
-                id=tenant_id,
-                llm_id="chat-model",
-                embd_id="embd-model",
-                asr_id="asr-model",
-                img2txt_id="img2txt-model",
-                rerank_id="rerank-model",
-                tts_id="tts-model"
-            )
+            return True, SimpleNamespace(id=tenant_id, llm_id="chat-model", embd_id="embd-model", asr_id="asr-model", img2txt_id="img2txt-model", rerank_id="rerank-model", tts_id="tts-model")
 
     module.TenantService = _StubTenantServiceForTest
 
@@ -2256,6 +2222,7 @@ def test_build_reference_chunks_metadata_matrix_unit(monkeypatch):
 # chat_api unit tests — session user-id spoofing fix
 # ---------------------------------------------------------------------------
 
+
 def _load_chat_api_module(monkeypatch):
     """Load api/apps/restful_apis/chat_api.py with all heavy dependencies mocked."""
     repo_root = Path(__file__).resolve().parents[4]
@@ -2383,13 +2350,16 @@ def _load_chat_api_module(monkeypatch):
     dialog_svc_mod.DialogService = SimpleNamespace(
         model=SimpleNamespace(_meta=SimpleNamespace(fields=[])),
         query=lambda **_k: [SimpleNamespace(id="chat-1", icon="")],
-        get_by_id=lambda _id: (True, SimpleNamespace(
-            prompt_config={"prologue": ""},
-            tenant_id="tenant-1",
-            llm_id="model",
-            kb_ids=[],
-            id=_id,
-        )),
+        get_by_id=lambda _id: (
+            True,
+            SimpleNamespace(
+                prompt_config={"prologue": ""},
+                tenant_id="tenant-1",
+                llm_id="model",
+                kb_ids=[],
+                id=_id,
+            ),
+        ),
     )
     dialog_svc_mod.async_chat = lambda *_a, **_k: None
     dialog_svc_mod.gen_mindmap = lambda *_a, **_k: None
@@ -2435,18 +2405,18 @@ def _load_chat_api_module(monkeypatch):
     api_utils_mod.get_request_json = lambda: _AwaitableValue({})
     api_utils_mod.get_resource_insufficient_result = lambda *_a, **_k: {"code": _RetCode.OPERATING_ERROR, "message": "Insufficient resources"}
     api_utils_mod.server_error_response = lambda e: {"code": _RetCode.SERVER_ERROR, "message": str(e)}
-    api_utils_mod.validate_request = lambda *_a, **_k: (lambda func: func)
+    api_utils_mod.validate_request = lambda *_a, **_k: lambda func: func
     monkeypatch.setitem(sys.modules, "api.utils.api_utils", api_utils_mod)
 
     billing_mod = ModuleType("api.utils.billing")
-    billing_mod.check_resources = lambda *_a, **_k: (lambda func: func)
-    billing_mod.check_dynamic_resources = lambda *_a, **_k: (lambda func: func)
+    billing_mod.check_resources = lambda *_a, **_k: lambda func: func
+    billing_mod.check_dynamic_resources = lambda *_a, **_k: lambda func: func
     billing_mod.get_dynamic_resource_error_result = lambda *_a, **_k: {"code": 0, "data": None, "message": ""}
     billing_mod.InsufficientResourceError = type("InsufficientResourceError", (Exception,), {})
     monkeypatch.setitem(sys.modules, "api.utils.billing", billing_mod)
 
     permission_utils_mod = ModuleType("api.utils.permission_utils")
-    permission_utils_mod.check_dialog_permission = lambda *_a, **_k: (lambda func: func)
+    permission_utils_mod.check_dialog_permission = lambda *_a, **_k: lambda func: func
     permission_utils_mod.has_permission_for_member = lambda *_a, **_k: True
     monkeypatch.setitem(sys.modules, "api.utils.permission_utils", permission_utils_mod)
 
@@ -2457,7 +2427,7 @@ def _load_chat_api_module(monkeypatch):
     role_util_mod = ModuleType("common.role_util")
     role_util_mod.DIALOG_API_ACTION_MAP = {}
     role_util_mod.DIALOG_ROLE_RESOURCE_TYPE = "dialog"
-    role_util_mod.check_role_access = lambda *_a, **_k: (lambda func: func)
+    role_util_mod.check_role_access = lambda *_a, **_k: lambda func: func
     monkeypatch.setitem(sys.modules, "common.role_util", role_util_mod)
 
     rag_gen_mod = ModuleType("rag.prompts.generator")
@@ -2515,12 +2485,14 @@ def test_session_completion_user_id_not_spoofable(monkeypatch):
     monkeypatch.setattr(
         module,
         "get_request_json",
-        lambda: _AwaitableValue({
-            "messages": [{"role": "user", "content": "hello"}],
-            "chat_id": "chat-1",
-            "user_id": "attacker-id",
-            "stream": False,
-        }),
+        lambda: _AwaitableValue(
+            {
+                "messages": [{"role": "user", "content": "hello"}],
+                "chat_id": "chat-1",
+                "user_id": "attacker-id",
+                "stream": False,
+            }
+        ),
     )
 
     _run(inspect.unwrap(module.session_completion)())
@@ -2566,16 +2538,18 @@ def test_session_completion_uses_server_history_by_default(monkeypatch):
     monkeypatch.setattr(
         module,
         "get_request_json",
-        lambda: _AwaitableValue({
-            "chat_id": "chat-1",
-            "session_id": "session-1",
-            "stream": False,
-            "messages": [
-                {"role": "user", "content": "client old question", "id": "client-old"},
-                {"role": "assistant", "content": "client old answer", "id": "client-old"},
-                {"role": "user", "content": "latest question", "id": "latest"},
-            ],
-        }),
+        lambda: _AwaitableValue(
+            {
+                "chat_id": "chat-1",
+                "session_id": "session-1",
+                "stream": False,
+                "messages": [
+                    {"role": "user", "content": "client old question", "id": "client-old"},
+                    {"role": "assistant", "content": "client old answer", "id": "client-old"},
+                    {"role": "user", "content": "latest question", "id": "latest"},
+                ],
+            }
+        ),
     )
 
     res = _run(inspect.unwrap(module.session_completion)())
@@ -2610,15 +2584,17 @@ def test_session_completion_preserves_zero_generation_params(monkeypatch):
     monkeypatch.setattr(
         module,
         "get_request_json",
-        lambda: _AwaitableValue({
-            "stream": False,
-            "messages": [{"role": "user", "content": "latest question"}],
-            "temperature": 0,
-            "top_p": 0,
-            "frequency_penalty": 0,
-            "presence_penalty": 0,
-            "max_tokens": 0,
-        }),
+        lambda: _AwaitableValue(
+            {
+                "stream": False,
+                "messages": [{"role": "user", "content": "latest question"}],
+                "temperature": 0,
+                "top_p": 0,
+                "frequency_penalty": 0,
+                "presence_penalty": 0,
+                "max_tokens": 0,
+            }
+        ),
     )
 
     res = _run(inspect.unwrap(module.session_completion)())
@@ -2683,14 +2659,16 @@ def test_session_completion_merges_generation_params_for_existing_chat(monkeypat
     monkeypatch.setattr(
         module,
         "get_request_json",
-        lambda: _AwaitableValue({
-            "chat_id": "chat-1",
-            "session_id": "session-1",
-            "stream": False,
-            "messages": [{"role": "user", "content": "latest question"}],
-            "temperature": 0,
-            "presence_penalty": 0,
-        }),
+        lambda: _AwaitableValue(
+            {
+                "chat_id": "chat-1",
+                "session_id": "session-1",
+                "stream": False,
+                "messages": [{"role": "user", "content": "latest question"}],
+                "temperature": 0,
+                "presence_penalty": 0,
+            }
+        ),
     )
 
     res = _run(inspect.unwrap(module.session_completion)())
@@ -2742,17 +2720,19 @@ def test_session_completion_can_use_submitted_full_history(monkeypatch):
     monkeypatch.setattr(
         module,
         "get_request_json",
-        lambda: _AwaitableValue({
-            "chat_id": "chat-1",
-            "session_id": "session-1",
-            "stream": False,
-            "pass_all_history_messages": True,
-            "messages": [
-                {"role": "user", "content": "client old question", "id": "client-old"},
-                {"role": "assistant", "content": "client old answer", "id": "client-old"},
-                {"role": "user", "content": "latest question", "id": "latest"},
-            ],
-        }),
+        lambda: _AwaitableValue(
+            {
+                "chat_id": "chat-1",
+                "session_id": "session-1",
+                "stream": False,
+                "pass_all_history_messages": True,
+                "messages": [
+                    {"role": "user", "content": "client old question", "id": "client-old"},
+                    {"role": "assistant", "content": "client old answer", "id": "client-old"},
+                    {"role": "user", "content": "latest question", "id": "latest"},
+                ],
+            }
+        ),
     )
 
     res = _run(inspect.unwrap(module.session_completion)())
@@ -2804,12 +2784,14 @@ def test_session_completion_accepts_question_payload(monkeypatch):
     monkeypatch.setattr(
         module,
         "get_request_json",
-        lambda: _AwaitableValue({
-            "chat_id": "chat-1",
-            "session_id": "session-1",
-            "stream": False,
-            "question": "latest question",
-        }),
+        lambda: _AwaitableValue(
+            {
+                "chat_id": "chat-1",
+                "session_id": "session-1",
+                "stream": False,
+                "question": "latest question",
+            }
+        ),
     )
 
     res = _run(inspect.unwrap(module.session_completion)())

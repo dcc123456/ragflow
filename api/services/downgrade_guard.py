@@ -83,10 +83,10 @@ def _plan_display_name(name: str) -> str:
 def _format_storage(num_bytes: int) -> str:
     if num_bytes <= 0:
         return "0 GB"
-    gb = num_bytes / (1000 ** 3)
+    gb = num_bytes / (1000**3)
     if gb >= 1:
         return f"{gb:.2f} GB"
-    mb = num_bytes / (1000 ** 2)
+    mb = num_bytes / (1000**2)
     return f"{mb:.2f} MB"
 
 
@@ -160,7 +160,8 @@ class DowngradeGuard:
             REDIS_CONN.sadd(REDIS_POOL_KEY, tenant_id)
             logger.info(
                 "Daily scan: added tenant %s to high-freq pool (%.1f h until end)",
-                tenant_id, seconds_until_end / 3600,
+                tenant_id,
+                seconds_until_end / 3600,
             )
             return
 
@@ -233,6 +234,7 @@ class DowngradeGuard:
 # startup test email
 # ======================================================================
 
+
 async def _send_smtp_test_email() -> None:
     """Send a test email on daemon startup to verify SMTP connectivity."""
     to = DOWNGRADE_GUARD_TEST_EMAIL.strip()
@@ -240,6 +242,7 @@ async def _send_smtp_test_email() -> None:
         return
     from api.apps import app
     from api.db.joint_services.mail_service import send_email_html
+
     try:
         async with app.app_context():
             await send_email_html(
@@ -264,6 +267,7 @@ def send_startup_test_email() -> None:
 # module-level helpers
 # ======================================================================
 
+
 def _query_scheduled_downgrades():
     """Yield dict rows for every subscription that has a pending downgrade."""
     return SubscriptionService.get_scheduled_downgrades()
@@ -271,11 +275,7 @@ def _query_scheduled_downgrades():
 
 def _compute_target_addon(sub: dict) -> int:
     """Pure: return the post-downgrade storage addon in bytes."""
-    if (
-        sub.get("target_storage_bytes") is not None
-        and sub.get("addon_storage_bytes") is not None
-        and sub["target_storage_bytes"] < sub["addon_storage_bytes"]
-    ):
+    if sub.get("target_storage_bytes") is not None and sub.get("addon_storage_bytes") is not None and sub["target_storage_bytes"] < sub["addon_storage_bytes"]:
         return sub["target_storage_bytes"]
     return sub.get("addon_storage_bytes") or 0
 
@@ -324,8 +324,12 @@ def _load_tenant_data(tenant_id: str, sub: dict) -> tuple[dict | None, dict | No
 
 
 async def _send_guard_email(
-    tenant_id: str, sub: dict, exceed_info: dict, *,
-    template_key: str, subject: str,
+    tenant_id: str,
+    sub: dict,
+    exceed_info: dict,
+    *,
+    template_key: str,
+    subject: str,
     rate_limit_sec: int = 0,
     **extra_context,
 ) -> bool:
@@ -344,9 +348,10 @@ async def _send_guard_email(
         return False
 
     logger.debug(
-        "Sending guard email: to=%s subject=%s template=%s "
-        "plan=%s target_plan=%s storage=%s/%s members=%d/%d apps=%d/%d",
-        owner["email"], subject, template_key,
+        "Sending guard email: to=%s subject=%s template=%s plan=%s target_plan=%s storage=%s/%s members=%d/%d apps=%d/%d",
+        owner["email"],
+        subject,
+        template_key,
         _plan_display_name(sub.get("plan_name", "")),
         _plan_display_name(sub.get("target_plan_name") or sub.get("plan_name", "")),
         _format_storage(exceed_info.get("storage_used", 0) or 0),
@@ -364,9 +369,7 @@ async def _send_guard_email(
             template_key=template_key,
             nickname=owner.get("nickname", ""),
             current_plan=_plan_display_name(sub.get("plan_name", "")),
-            target_plan=_plan_display_name(
-                sub.get("target_plan_name") or sub.get("plan_name", "")
-            ),
+            target_plan=_plan_display_name(sub.get("target_plan_name") or sub.get("plan_name", "")),
             current_storage=_format_storage(exceed_info.get("storage_used", 0) or 0),
             target_storage=_format_storage(exceed_info.get("storage_limit", 0) or 0),
             current_members=exceed_info.get("members_used", 0) or 0,
@@ -380,14 +383,14 @@ async def _send_guard_email(
     return True
 
 
-async def _send_warning_email(
-    tenant_id: str, sub: dict, exceed_info: dict, end_ts: float
-) -> None:
+async def _send_warning_email(tenant_id: str, sub: dict, exceed_info: dict, end_ts: float) -> None:
     """Send a daily warning email with 7-day rate limiting."""
     remaining_days = max(1, int((end_ts - _beijing_now().timestamp()) / 86400))
     downgrade_date = datetime.fromtimestamp(end_ts, tz=BEIJING_TZ).strftime("%Y-%m-%d")
     sent = await _send_guard_email(
-        tenant_id, sub, exceed_info,
+        tenant_id,
+        sub,
+        exceed_info,
         template_key="downgrade_warning",
         subject="Downgrade Warning — Resource Usage Exceeds Target Quota",
         rate_limit_sec=WARN_RATE_LIMIT_SEC,
@@ -409,10 +412,7 @@ def _get_tenant_owner(tenant_id: str) -> dict | None:
         row = (
             ut_model.select(User.email, User.nickname)
             .join(User, on=(ut_model.user_id == User.id))
-            .where(
-                (ut_model.tenant_id == tenant_id)
-                & (ut_model.role == UserTenantRole.OWNER)
-            )
+            .where((ut_model.tenant_id == tenant_id) & (ut_model.role == UserTenantRole.OWNER))
             .order_by(ut_model.create_time.asc())
             .limit(1)
             .dicts()
@@ -436,7 +436,9 @@ async def _check_and_cancel_if_needed(tenant_id: str) -> None:
         REDIS_CONN.srem(REDIS_POOL_KEY, tenant_id)
         logger.warning(
             "Removed tenant %s from pool: unable to load data (usage=%s, product=%s)",
-            tenant_id, usage is not None, product is not None,
+            tenant_id,
+            usage is not None,
+            product is not None,
         )
         return
 
@@ -465,8 +467,8 @@ async def _cancel_downgrade(tenant_id: str, sub: dict, exceed_info: dict) -> Non
             await cancel_scheduled_subscription_change_async(stripe_sub_id)
         except Exception:
             logger.exception(
-                "Failed to release Stripe schedule for tenant %s; "
-                "continuing with DB cleanup", tenant_id,
+                "Failed to release Stripe schedule for tenant %s; continuing with DB cleanup",
+                tenant_id,
             )
 
     # 2. Clear DB downgrade markers
@@ -508,15 +510,12 @@ def _clear_downgrade_markers(tenant_id: str, sub: dict) -> None:
     updates = {}
     if sub.get("target_plan_name") and sub["target_plan_name"] != sub.get("plan_name"):
         updates["target_plan_name"] = None
-    if (
-        sub.get("target_storage_bytes") is not None
-        and sub.get("addon_storage_bytes") is not None
-        and sub["target_storage_bytes"] < sub["addon_storage_bytes"]
-    ):
+    if sub.get("target_storage_bytes") is not None and sub.get("addon_storage_bytes") is not None and sub["target_storage_bytes"] < sub["addon_storage_bytes"]:
         updates["target_storage_bytes"] = sub["addon_storage_bytes"]
 
     if updates:
         from api.db.db_models import DB
+
         with DB.atomic():
             SubscriptionService.update_subscription(tenant_id, updates)
         logger.info("Cleared downgrade markers for tenant %s: %s", tenant_id, list(updates.keys()))
@@ -533,21 +532,12 @@ def _get_subscription_downgrade_info(tenant_id: str) -> dict | None:
     if row is None:
         return None
 
-    has_plan = (
-        row.get("target_plan_name")
-        and row["target_plan_name"] != row.get("plan_name")
-    )
-    has_storage = (
-        row.get("target_storage_bytes") is not None
-        and row.get("addon_storage_bytes") is not None
-        and row["target_storage_bytes"] < row["addon_storage_bytes"]
-    )
+    has_plan = row.get("target_plan_name") and row["target_plan_name"] != row.get("plan_name")
+    has_storage = row.get("target_storage_bytes") is not None and row.get("addon_storage_bytes") is not None and row["target_storage_bytes"] < row["addon_storage_bytes"]
     return row if (has_plan or has_storage) else None
 
 
-async def _send_cancelled_email(
-    tenant_id: str, sub: dict, exceed_info: dict
-) -> None:
+async def _send_cancelled_email(tenant_id: str, sub: dict, exceed_info: dict) -> None:
     """Notify the tenant owner that their downgrade has been cancelled.
 
     The email tells the user the deadline (period_end_date) to resubmit
@@ -565,7 +555,9 @@ async def _send_cancelled_email(
 
     try:
         await _send_guard_email(
-            tenant_id, sub, exceed_info,
+            tenant_id,
+            sub,
+            exceed_info,
             template_key="downgrade_cancelled",
             subject="Your Scheduled Downgrade Has Been Cancelled",
             period_end_date=period_end_str,
@@ -573,7 +565,8 @@ async def _send_cancelled_email(
         logger.info("Sent cancellation email to tenant %s", tenant_id)
     except Exception:
         logger.exception(
-            "Failed to send cancellation email to tenant %s", tenant_id,
+            "Failed to send cancellation email to tenant %s",
+            tenant_id,
         )
 
 
@@ -608,21 +601,12 @@ def check_downgrade_effective_exceeded(
 
     # Plan downgrade effective: Stripe price actually changed AND the
     # post-sync plan_name matches the scheduled target_plan_name.
-    is_plan_downgrade = (
-        plan_changed
-        and bool(pre_sync_target_plan)
-        and old_plan
-        and old_plan != pre_sync_target_plan
-    )
+    is_plan_downgrade = plan_changed and bool(pre_sync_target_plan) and old_plan and old_plan != pre_sync_target_plan
 
     # Pure storage downgrade: target additive is lower than current addon.
     # Does NOT require plan_changed because a pure storage downgrade (e.g.
     # 40 GB add-on → 20 GB add-on) keeps the same base plan price_id.
-    is_storage_downgrade = (
-        pre_sync_target_storage is not None
-        and old_addon > 0
-        and pre_sync_target_storage < old_addon
-    )
+    is_storage_downgrade = pre_sync_target_storage is not None and old_addon > 0 and pre_sync_target_storage < old_addon
 
     if not is_plan_downgrade and not is_storage_downgrade:
         return None

@@ -48,9 +48,9 @@ class TSRClient:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument('--ip', type=str, help="Server's IP")
-    parser.add_argument('--port', type=int, default=11234, help="Server's port")
-    parser.add_argument('--image', type=str, help='Input image file')
+    parser.add_argument("--ip", type=str, help="Server's IP")
+    parser.add_argument("--port", type=int, default=11234, help="Server's port")
+    parser.add_argument("--image", type=str, help="Input image file")
     args = parser.parse_args()
     return args
 
@@ -58,9 +58,10 @@ def parse_args() -> argparse.Namespace:
 if __name__ == "__main__":
     import random
     import cv2
+
     args = parse_args()
     cli = TSRClient(f"http://{args.ip}:{args.port}")
-    img = PILImage.open(args.image, mode='r')
+    img = PILImage.open(args.image, mode="r")
     draw = cv2.imread(args.image)
     preds = cli.predict([img.convert("RGB")])
     bboxs = [(left, top, right, bottom) for left, top, right, bottom, sc, _ in preds[0].boxes.data.tolist()]

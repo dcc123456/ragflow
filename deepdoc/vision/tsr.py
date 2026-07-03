@@ -19,19 +19,20 @@ import cv2
 import numpy as np
 from PIL import ImageDraw
 from PIL import Image
+
 # torch is imported lazily to support client-only mode (without GPU dependencies)
 from common.file_utils import traversal_files, get_project_base_directory
 from deepdoc.vision import Recognizer
 
 
-DEBUG=True
+DEBUG = True
 
 
 class TableStructureRecognizer(Recognizer):
-
     def __init__(self):
         if os.environ.get("DEEPDOC_URL"):
             from deepdoc.vision.tsr_cli import TSRClient
+
             self.model = TSRClient(os.environ["DEEPDOC_URL"])
         else:
             raise RuntimeError("DEEPDOC_URL environment variable is required for TSR")
@@ -52,16 +53,15 @@ class TableStructureRecognizer(Recognizer):
         else:
             BS = 1
             for bs in range(0, len(images), BS):
-                preds = self.model.predict(images[bs:bs + BS], imgsz=640, conf=0.4, stream=False)
-                for pred, img in zip(preds, images[bs:bs + BS]):
+                preds = self.model.predict(images[bs : bs + BS], imgsz=640, conf=0.4, stream=False)
+                for pred, img in zip(preds, images[bs : bs + BS]):
                     w, h = img.size
-                    bboxs =  pred.boxes.data.tolist()
+                    bboxs = pred.boxes.data.tolist()
                     cell_bbx_list.append([(left, top, right, bottom, sc) for left, top, right, bottom, sc, _ in bboxs])
 
         res = []
         for n, cells in enumerate(cell_bbx_list):
-            cells = [{"x0": x0, "top": y0, "x1": x1, "bottom": y1, "width": x1 - x0, "height": y1 - y0, "score": sc} for
-                     x0, y0, x1, y1, sc in cells if x1 > x0 and y1 > y0]
+            cells = [{"x0": x0, "top": y0, "x1": x1, "bottom": y1, "width": x1 - x0, "height": y1 - y0, "score": sc} for x0, y0, x1, y1, sc in cells if x1 > x0 and y1 > y0]
             if not cells:
                 continue
             min_height = max(3, np.min([c["height"] for c in cells]))
@@ -83,21 +83,21 @@ class TableStructureRecognizer(Recognizer):
                         i += 1
                         continue
 
-                    if False and ov > 0.9: # one include the other
+                    if False and ov > 0.9:  # one include the other
                         w1, h1 = cells[i]["width"], cells[i]["height"]
-                        w2, h2 = cells[i+1]["width"], cells[i+1]["height"]
-                        if (ov1 < ov2 and cells[i]["score"] < cells[i+1]["score"]) or (ov1 > ov2 and cells[i]["score"] > cells[i+1]["score"]):
-                            big,small = cells[i], cells[i+1]
+                        w2, h2 = cells[i + 1]["width"], cells[i + 1]["height"]
+                        if (ov1 < ov2 and cells[i]["score"] < cells[i + 1]["score"]) or (ov1 > ov2 and cells[i]["score"] > cells[i + 1]["score"]):
+                            big, small = cells[i], cells[i + 1]
                             if ov1 > ov2:
-                                big,small = cells[i+1], cells[i]
-                            if abs(w1-w2)/max(w1, w2) > abs(h1-h2)/max(h1, h2):# slice vertically
-                                if abs(big["x0"]-small["x0"]) > abs(big["x1"]-small["x1"]):
+                                big, small = cells[i + 1], cells[i]
+                            if abs(w1 - w2) / max(w1, w2) > abs(h1 - h2) / max(h1, h2):  # slice vertically
+                                if abs(big["x0"] - small["x0"]) > abs(big["x1"] - small["x1"]):
                                     big["x1"] = small["x0"]
                                 else:
                                     big["x0"] = small["x1"]
                                 big["width"] = big["x1"] - big["x0"]
-                            else:# slice horizontally
-                                if abs(big["top"]-small["top"]) > abs(big["bottom"]-small["bottom"]):
+                            else:  # slice horizontally
+                                if abs(big["top"] - small["top"]) > abs(big["bottom"] - small["bottom"]):
                                     big["bottom"] = small["top"]
                                 else:
                                     big["top"] = small["bottom"]
@@ -108,7 +108,7 @@ class TableStructureRecognizer(Recognizer):
                     cells[i]["x1"] = max(cells[i + 1]["x1"], cells[i]["x1"])
                     cells[i]["top"] = min(cells[i + 1]["top"], cells[i]["top"])
                     cells[i]["bottom"] = max(cells[i + 1]["bottom"], cells[i]["bottom"])
-                    cells[i]["score"] = max(cells[i]["score"], cells[i+1]["score"] )
+                    cells[i]["score"] = max(cells[i]["score"], cells[i + 1]["score"])
                     cells[i]["width"] = cells[i]["x1"] - cells[i]["x0"]
                     cells[i]["height"] = cells[i]["bottom"] - cells[i]["top"]
                     cells.pop(i + 1)
@@ -157,12 +157,16 @@ class TableStructureRecognizer(Recognizer):
             virtual_cells = []
             for i in range(len(row_lines) - 1):
                 for j in range(len(col_lines) - 1):
-                    virtual_cells.append({
-                        "x0": col_lines[j][0], "x1": col_lines[j + 1][0],
-                        "top": row_lines[i][0], "bottom": row_lines[i + 1][0],
-                        "width": col_lines[j + 1][0] - col_lines[j][0],
-                        "height": row_lines[i + 1][0] - row_lines[i][0]
-                    })
+                    virtual_cells.append(
+                        {
+                            "x0": col_lines[j][0],
+                            "x1": col_lines[j + 1][0],
+                            "top": row_lines[i][0],
+                            "bottom": row_lines[i + 1][0],
+                            "width": col_lines[j + 1][0] - col_lines[j][0],
+                            "height": row_lines[i + 1][0] - row_lines[i][0],
+                        }
+                    )
             for v in virtual_cells:
                 for c in cells:
                     if Recognizer.overlapped_area(v, c, True) >= 0.3:
@@ -184,10 +188,10 @@ class TableStructureRecognizer(Recognizer):
 
             cells = Recognizer.sort_Y_firstly(cells, min_height * 0.75)
             for c in cells:
-                span = cross_boders(c["x0"], c["x1"], col_lines, min_width*.8)
+                span = cross_boders(c["x0"], c["x1"], col_lines, min_width * 0.8)
                 if span > 0:
                     c["colspan"] = span + 1
-                span = cross_boders(c["top"], c["bottom"], row_lines, min_height*.8)
+                span = cross_boders(c["top"], c["bottom"], row_lines, min_height * 0.8)
                 if span > 0:
                     c["rowspan"] = span + 1
 
@@ -198,11 +202,8 @@ class TableStructureRecognizer(Recognizer):
 
     @staticmethod
     def is_caption(bx):
-        patt = [
-            r"[图表]+[ 0-9:：]{2,}"
-        ]
-        if any([re.match(p, bx["text"].strip()) for p in patt]) \
-                or bx["layout_type"].find("caption") >= 0:
+        patt = [r"[图表]+[ 0-9:：]{2,}"]
+        if any([re.match(p, bx["text"].strip()) for p in patt]) or bx["layout_type"].find("caption") >= 0:
             return True
         return False
 
@@ -248,7 +249,7 @@ class TableStructureRecognizer(Recognizer):
                 if not (b[0][0] <= b[1][0] and b[0][1] <= b[-1][1]):
                     continue
                 lft, r, t, bo = b[0][0], b[1][0], b[0][1], b[-1][1]
-                if lft >= r  or t >= bo:
+                if lft >= r or t >= bo:
                     continue
                 if re.search(r"[a-zA-Z,:;'!.]{2,}$", txt):
                     txt += " "
@@ -293,10 +294,10 @@ class TableStructureRecognizer(Recognizer):
         html = "<table>"
         if cap:
             html += f"<caption>{cap}</caption>"
-        for i, (img, cells) in enumerate(img_cells_pairs[st: max(ed, st+1)]):
+        for i, (img, cells) in enumerate(img_cells_pairs[st : max(ed, st + 1)]):
             html += "<tr>"
             for j, c in enumerate(cells):
-                if j > 0 and (cells[j]["top"] >= cells[j - 1]["bottom"]-2 or cells[j]["x1"] - 2 <= cells[j - 1]["x0"]):
+                if j > 0 and (cells[j]["top"] >= cells[j - 1]["bottom"] - 2 or cells[j]["x1"] - 2 <= cells[j - 1]["x0"]):
                     html += "</tr><tr>"
                 html += "<td "
                 if "colspan" in c:
@@ -315,7 +316,6 @@ class TableStructureRecognizer(Recognizer):
             return html
         else:
             return img, html
-
 
     def _run_ascend_tsr(self, image_list, thr=0.2, batch_size=16):
         from ais_bench.infer.interface import InferSession
@@ -343,12 +343,12 @@ class TableStructureRecognizer(Recognizer):
             for img in image_list:
                 h, w = img.shape[:2]
                 img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-                img = cv2.resize(np.array(img).astype('float32'), (ww, hh))
+                img = cv2.resize(np.array(img).astype("float32"), (ww, hh))
                 # Scale input pixel values to 0 to 1
                 img /= 255.0
                 img = img.transpose(2, 0, 1)
                 img = img[np.newaxis, :, :, :].astype(np.float32)
-                inputs.append({"image": img, "scale_factor": [w/ww, h/hh]})
+                inputs.append({"image": img, "scale_factor": [w / ww, h / hh]})
             return inputs
 
         def postprocess(boxes, inputs, thr):
@@ -434,11 +434,7 @@ class TableStructureRecognizer(Recognizer):
                 "table spanning cell",
             ]
 
-            return [{
-                "type": labels[class_ids[i]].lower(),
-                "bbox": [float(t) for t in boxes[i].tolist()],
-                "score": float(scores[i])
-            } for i in indices]
+            return [{"type": labels[class_ids[i]].lower(), "bbox": [float(t) for t in boxes[i].tolist()], "score": float(scores[i])} for i in indices]
 
         batch_loop_cnt = math.ceil(float(len(images)) / batch_size)
         for bi in range(batch_loop_cnt):
@@ -460,16 +456,12 @@ def draw_box(im, bboxes):
     draw_thickness = min(im.size) // 320
     draw = ImageDraw.Draw(im)
 
-    for (xmin, ymin, xmax, ymax) in bboxes:
+    for xmin, ymin, xmax, ymax in bboxes:
         xmin += 1
         ymin += 1
         xmax -= 1
         ymax -= 1
-        draw.line(
-            [(xmin, ymin), (xmin, ymax), (xmax, ymax), (xmax, ymin),
-             (xmin, ymin)],
-            width=draw_thickness,
-            fill=(random.randint(0, 256), random.randint(0, 256), random.randint(0, 256)))
+        draw.line([(xmin, ymin), (xmin, ymax), (xmax, ymax), (xmax, ymin), (xmin, ymin)], width=draw_thickness, fill=(random.randint(0, 256), random.randint(0, 256), random.randint(0, 256)))
     return im
 
 
@@ -485,10 +477,9 @@ def main(args):
     else:
         fnms.append(args.inputs)
 
-
     images = []
     for fnm in fnms:
-        images.append(Image.open(fnm).convert('RGB'))
+        images.append(Image.open(fnm).convert("RGB"))
         print(fnm)
     cells = tsr(images)
 
@@ -499,14 +490,9 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--inputs',
-                        help="Directory where to store images or PDFs, or a file path to a single image or PDF",
-                        required=True)
-    parser.add_argument('--model',
-                        help="The path of model.",
-                        required=True)
-    parser.add_argument('--output_dir', help="Directory where to store the output images. Default: './layouts_outputs'",
-                        default="./tables_outputs")
+    parser.add_argument("--inputs", help="Directory where to store images or PDFs, or a file path to a single image or PDF", required=True)
+    parser.add_argument("--model", help="The path of model.", required=True)
+    parser.add_argument("--output_dir", help="Directory where to store the output images. Default: './layouts_outputs'", default="./tables_outputs")
 
     args = parser.parse_args()
     main(args)

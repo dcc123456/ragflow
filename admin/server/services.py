@@ -46,7 +46,7 @@ class UserMgr:
     @staticmethod
     def get_users(name="", status=None, role=None, plan=None, sort="", order="", page=0, page_size=0):
         roles = RoleService.get_all_roles()
-        role_map = {role['id']: role['role_name'] for role in roles}
+        role_map = {role["id"]: role["role_name"] for role in roles}
         role_id = UserMgr._get_role_id(role, roles)
         sort, order = UserMgr._get_sort_values(sort, order)
         users, total = UserService.list_users(
@@ -171,7 +171,7 @@ class UserMgr:
             "password": decrypt(password),
             "login_channel": "password",
             "is_superuser": system_role == "admin",
-            "role_id": role["id"]
+            "role_id": role["id"],
         }
         return create_new_user(user_info_dict)
 
@@ -478,16 +478,18 @@ class SettingsMgr:
             raise AdminException(f"Can't get setting: {source}")
         result = []
         for setting in settings:
-            result.append({
-                'name': setting.name,
-                'source': setting.source,
-                'data_type': setting.data_type,
-                'value': setting.value,
-            })
+            result.append(
+                {
+                    "name": setting.name,
+                    "source": setting.source,
+                    "data_type": setting.data_type,
+                    "value": setting.value,
+                }
+            )
         return result
 
     @staticmethod
-    def update_by_name(name: str, value: str, allow_upsert:bool=False):
+    def update_by_name(name: str, value: str, allow_upsert: bool = False):
         settings = SystemSettingsService.get_by_name(name)
         if len(settings) == 1:
             setting = settings[0]
@@ -526,7 +528,6 @@ class SettingsMgr:
                 "data_type": data_type,
             }
             SystemSettingsService.save(**new_setting)
-
 
     @staticmethod
     def delete_settings_by_source(source: str):
@@ -618,10 +619,7 @@ class SandboxMgr:
         """List all available sandbox providers."""
         result = []
         for provider_id, metadata in SandboxMgr.PROVIDER_REGISTRY.items():
-            result.append({
-                "id": provider_id,
-                **metadata
-            })
+            result.append({"id": provider_id, **metadata})
         return result
 
     @staticmethod
@@ -764,6 +762,7 @@ class SandboxMgr:
             config_json = json.dumps(config)
             SettingsMgr.update_by_name(f"sandbox.{provider_type}", config_json)
             from agent.sandbox.client import reload_provider
+
             reload_provider()
 
             return {"provider_type": provider_type, "config": config}
@@ -856,11 +855,7 @@ def main() -> dict:
             # Build detailed result message
             success = execution_result.exit_code == 0 and "TEST_PASSED" in execution_result.stdout
 
-            message_parts = [
-                f"Test {success and 'PASSED' or 'FAILED'}",
-                f"Exit code: {execution_result.exit_code}",
-                f"Execution time: {execution_result.execution_time:.2f}s"
-            ]
+            message_parts = [f"Test {success and 'PASSED' or 'FAILED'}", f"Exit code: {execution_result.exit_code}", f"Execution time: {execution_result.execution_time:.2f}s"]
 
             if execution_result.stdout.strip():
                 stdout_preview = execution_result.stdout.strip()[:200]
@@ -880,12 +875,13 @@ def main() -> dict:
                     "execution_time": execution_result.execution_time,
                     "stdout": execution_result.stdout,
                     "stderr": execution_result.stderr,
-                }
+                },
             }
 
         except AdminException:
             raise
         except Exception as e:
             import traceback
+
             error_details = traceback.format_exc()
             raise AdminException(f"Connection test failed: {str(e)}\\n\\nStack trace:\\n{error_details}")

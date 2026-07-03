@@ -92,8 +92,8 @@ GITHUB_OAUTH = None
 FEISHU_OAUTH = None
 OAUTH_CONFIG = None
 DOC_ENGINE = os.getenv("DOC_ENGINE", "elasticsearch")
-DOC_ENGINE_INFINITY = (DOC_ENGINE.lower() == "infinity")
-DOC_ENGINE_OCEANBASE = (DOC_ENGINE.lower() == "oceanbase")
+DOC_ENGINE_INFINITY = DOC_ENGINE.lower() == "infinity"
+DOC_ENGINE_OCEANBASE = DOC_ENGINE.lower() == "oceanbase"
 
 
 docStoreConn = None
@@ -146,18 +146,19 @@ PARALLEL_DEVICES: int = 0
 STORAGE_IMPL_TYPE = os.getenv("STORAGE_IMPL", "MINIO")
 STORAGE_IMPL = None
 
+
 def get_svr_queue_name(priority: int, suffix: str = "common") -> str:
     """
     Generate queue name with two dimensions: priority and suffix.
-    
+
     Args:
         priority: Task priority (0=low, 1=high)
         suffix: Task type suffix (common/resume/graphrag/raptor/mindmap)
                Currently only "common" is used, other suffixes are reserved.
-    
+
     Returns:
         Queue name string
-    
+
     Examples:
         get_svr_queue_name(0, "common") -> "te.0.common"
         get_svr_queue_name(1, "common") -> "te.1.common"
@@ -167,9 +168,10 @@ def get_svr_queue_name(priority: int, suffix: str = "common") -> str:
     return f"{SVR_QUEUE_NAME}.{priority}.common"
 
 
-def get_svr_queue_names(suffix:str):
+def get_svr_queue_names(suffix: str):
     """Return queue names sorted by priority (high to low)."""
     return [get_svr_queue_name(priority, suffix) for priority in [1, 0]]
+
 
 def init_secret_key():
     secret_key = os.environ.get("RAGFLOW_SECRET_KEY")
@@ -188,6 +190,7 @@ def get_secret_key():
     if SECRET_KEY is None:
         return _get_or_create_secret_key()
     return SECRET_KEY
+
 
 def _get_or_create_secret_key():
     # secret_key = os.environ.get("RAGFLOW_SECRET_KEY")
@@ -208,6 +211,7 @@ def _get_or_create_secret_key():
     if generated_key == secret_key:
         logging.warning("SECURITY WARNING: Using auto-generated SECRET_KEY.")
     return secret_key
+
 
 class StorageFactory:
     storage_mapping = {
@@ -293,9 +297,7 @@ def init_settings():
     EMBEDDING_MDL = EMBEDDING_CFG.get("model", "") or ""
     tei_enabled = os.getenv("TEI_ENABLED")
     compose_profiles = os.getenv("COMPOSE_PROFILES", "")
-    if (tei_enabled is not None and tei_enabled.lower() in ("1", "true", "yes")) or (
-        tei_enabled is None and "tei-" in compose_profiles
-    ):
+    if (tei_enabled is not None and tei_enabled.lower() in ("1", "true", "yes")) or (tei_enabled is None and "tei-" in compose_profiles):
         EMBEDDING_MDL = os.getenv("TEI_MODEL", EMBEDDING_MDL or "BAAI/bge-small-en-v1.5")
     RERANK_MDL = RERANK_CFG.get("model", "") or ""
     ASR_MDL = ASR_CFG.get("model", "") or ""
@@ -308,7 +310,6 @@ def init_settings():
     global SECRET_KEY
     SECRET_KEY = init_secret_key()
 
-
     # authentication
     authentication_conf = get_base_config("authentication", {})
 
@@ -318,29 +319,29 @@ def init_settings():
     HTTP_APP_KEY = authentication_conf.get("client", {}).get("http_app_key")
 
     global DOC_ENGINE, DOC_ENGINE_INFINITY, DOC_ENGINE_OCEANBASE, docStoreConn, ES, OB, OS, INFINITY
-    
+
     # Whitelist of supported doc engines
     SUPPORTED_DOC_ENGINES = {"elasticsearch", "infinity", "opensearch", "oceanbase", "seekdb"}
-    
+
     doc_engine_raw = os.environ.get("DOC_ENGINE", "elasticsearch").strip()
-    
+
     # Parse multiple doc engines (comma-separated: "elasticsearch,infinity")
     # First engine is primary, rest are shadow databases
     doc_engines = [e.strip().lower() for e in doc_engine_raw.split(",") if e.strip()]
-    
+
     # Validate all engines against whitelist
     for engine in doc_engines:
         if engine not in SUPPORTED_DOC_ENGINES:
             raise ValueError(f"Invalid doc engine '{engine}'. Supported engines: {', '.join(sorted(SUPPORTED_DOC_ENGINES))}")
-    
+
     primary_doc_engine = doc_engines[0]
     shadow_doc_engines = doc_engines[1:]
-    
+
     # Set DOC_ENGINE to primary engine only for backward compatibility
     DOC_ENGINE = primary_doc_engine
-    DOC_ENGINE_INFINITY = (primary_doc_engine == "infinity")
-    DOC_ENGINE_OCEANBASE = (primary_doc_engine == "oceanbase")
-    
+    DOC_ENGINE_INFINITY = primary_doc_engine == "infinity"
+    DOC_ENGINE_OCEANBASE = primary_doc_engine == "oceanbase"
+
     def _create_doc_store_connection(engine_name: str):
         """Create a document store connection for the given engine name."""
         if engine_name == "elasticsearch":
@@ -355,7 +356,7 @@ def init_settings():
             return rag.utils.ob_conn.OBConnection()
         else:
             raise Exception(f"Not supported doc engine: {engine_name}")
-    
+
     # Create primary connection
     if primary_doc_engine == "elasticsearch":
         ES = get_base_config("es", {})
@@ -367,18 +368,14 @@ def init_settings():
                 # If not valid JSON, treat it as hosts string
                 ES = {"hosts": ES}
     elif primary_doc_engine == "infinity":
-        INFINITY = get_base_config("infinity", {
-            "uri": "infinity:23817",
-            "postgres_port": 5432,
-            "db_name": "default_db"
-        })
+        INFINITY = get_base_config("infinity", {"uri": "infinity:23817", "postgres_port": 5432, "db_name": "default_db"})
     elif primary_doc_engine == "opensearch":
         OS = get_base_config("os", {})
     elif primary_doc_engine in ["oceanbase", "seekdb"]:
         OB = get_base_config(primary_doc_engine, {})
-    
+
     primary_conn = _create_doc_store_connection(primary_doc_engine)
-    
+
     # Create shadow connections if any
     shadow_conns = []
     for shadow_engine in shadow_doc_engines:
@@ -392,25 +389,22 @@ def init_settings():
                     except json.JSONDecodeError:
                         ES = {"hosts": ES}
             elif shadow_engine == "infinity":
-                INFINITY = get_base_config("infinity", {
-                    "uri": "infinity:23817",
-                    "postgres_port": 5432,
-                    "db_name": "default_db"
-                })
+                INFINITY = get_base_config("infinity", {"uri": "infinity:23817", "postgres_port": 5432, "db_name": "default_db"})
             elif shadow_engine == "opensearch":
                 OS = get_base_config("os", {})
             elif shadow_engine in ["oceanbase", "seekdb"]:
                 OB = get_base_config(shadow_engine, {})
-            
+
             shadow_conn = _create_doc_store_connection(shadow_engine)
             shadow_conns.append(shadow_conn)
             logging.info(f"Added shadow doc engine: {shadow_engine}")
         except Exception as e:
             logging.warning(f"Failed to create shadow connection for {shadow_engine}: {e}")
-    
+
     # Wrap with ShadowWriteProxy if we have shadow connections
     if shadow_conns:
         from common.doc_store.shadow_write_proxy import ShadowWriteProxy
+
         docStoreConn = ShadowWriteProxy(primary_conn, shadow_conns)
         logging.info(f"ShadowWriteProxy enabled with {len(shadow_conns)} shadow(s)")
     else:
@@ -515,7 +509,7 @@ def init_settings():
         price_ids = plan.get("price_ids", "").split()
         api_request_limit_per_minute = plan.get("api_request_limit_per_minute")
         for price_id in price_ids:
-           BILLING_PRICEID_TO_PRODUCT[price_id] = plan_name
+            BILLING_PRICEID_TO_PRODUCT[price_id] = plan_name
 
         task_priority = plan.get("task_priority", "low")
         priority_value = plan.get("priority")
@@ -530,6 +524,7 @@ def init_settings():
         quota_storage = plan.get("quota_storage", 0)
         if isinstance(quota_storage, str) and quota_storage:
             from api.utils.billing import parse_storage_size
+
             quota_storage = parse_storage_size(quota_storage)
         BILLING_PLAN_TO_INFO[plan_name] = {
             "priority": priority_int,
@@ -586,6 +581,7 @@ def _resolve_per_model_config(entry_dict, backup_factory, backup_api_key, backup
         "api_key": m_api_key,
         "base_url": m_base_url,
     }
+
 
 def print_rag_settings():
     logging.info(f"MAX_CONTENT_LENGTH: {DOC_MAXIMUM_SIZE}")

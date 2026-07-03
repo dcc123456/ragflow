@@ -80,9 +80,7 @@ class SearchService(CommonService):
     @classmethod
     @DB.connection_context()
     def count_by_tenant_id(cls, tenant_id) -> int:
-        return cls.model.select().where(
-            (cls.model.tenant_id == tenant_id) & (cls.model.status == StatusEnum.VALID.value)
-        ).count()
+        return cls.model.select().where((cls.model.tenant_id == tenant_id) & (cls.model.status == StatusEnum.VALID.value)).count()
 
     @classmethod
     @DB.connection_context()
@@ -103,8 +101,7 @@ class SearchService(CommonService):
         query = (
             cls.model.select(*fields)
             .join(User, on=(cls.model.tenant_id == User.id))
-            .where(((cls.model.tenant_id.in_(joined_tenant_ids)) | (cls.model.tenant_id == user_id)) & (
-                        cls.model.status == StatusEnum.VALID.value))
+            .where(((cls.model.tenant_id.in_(joined_tenant_ids)) | (cls.model.tenant_id == user_id)) & (cls.model.status == StatusEnum.VALID.value))
         )
 
         if keywords:

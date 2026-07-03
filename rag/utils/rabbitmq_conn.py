@@ -1,4 +1,3 @@
-
 import logging
 import json
 import signal
@@ -15,7 +14,6 @@ from common.config_utils import get_base_config
 
 @singleton
 class RabbitQueue:
-
     def __init__(self):
         self._channel = None
         self._conn = None
@@ -27,11 +25,11 @@ class RabbitQueue:
         credentials = pika.PlainCredentials(self.config["user"], self.config["password"])
         return pika.ConnectionParameters(
             host=self.config["host"],
-            port=int(self.config["port"]), # Default AMQP port
+            port=int(self.config["port"]),  # Default AMQP port
             credentials=credentials,
             socket_timeout=10,
             heartbeat=0,  # Disabled - using manual heartbeat in queue_consumer
-            blocked_connection_timeout=60*60*2
+            blocked_connection_timeout=60 * 60 * 2,
         )
 
     def __open__(self):
@@ -123,7 +121,7 @@ class RabbitQueue:
         password = settings.RABBIT_CONF["password"]
         host = settings.RABBIT_CONF["host"]
         port = settings.RABBIT_CONF["api_port"]
-        url = f'http://{host}:{port}/api/aliveness-test/%2F'
+        url = f"http://{host}:{port}/api/aliveness-test/%2F"
         try:
             response = requests.get(url, auth=(username, password))
             if response.status_code == 200:
@@ -143,17 +141,17 @@ class RabbitQueue:
         if depth > 10:
             return 100
         if isinstance(obj, dict):
-            return sum(2 + len(str(k)) + self._estimate_size(v, depth+1) for k, v in obj.items())
+            return sum(2 + len(str(k)) + self._estimate_size(v, depth + 1) for k, v in obj.items())
         elif isinstance(obj, list):
-            return 2 + sum(self._estimate_size(item, depth+1) for item in obj)
+            return 2 + sum(self._estimate_size(item, depth + 1) for item in obj)
         elif isinstance(obj, str):
             return len(obj)
         elif isinstance(obj, (int, float, bool)):
             return 20
         else:
-            return str(obj).__len__() if hasattr(obj, '__len__') else 50
+            return str(obj).__len__() if hasattr(obj, "__len__") else 50
 
-    def queue_product(self, routing_key:str, message:dict) -> bool:
+    def queue_product(self, routing_key: str, message: dict) -> bool:
         # Estimate size before serialization to catch large messages early
         estimated_size = self._estimate_size(message)
         if estimated_size > 10 * 1000:
@@ -166,16 +164,15 @@ class RabbitQueue:
                     logging.warning(f"Large message for {routing_key}: {len(body)} bytes")
                 # Ensure the queue exists and is bound to the exchange
                 channel = self._get_publisher_channel()
-                channel.queue_declare(routing_key, durable=True) # routing_key == queue_name
+                channel.queue_declare(routing_key, durable=True)  # routing_key == queue_name
                 channel.queue_bind(queue=routing_key, exchange=self.config["exchange"], routing_key=routing_key)
                 channel.basic_publish(exchange=self.config["exchange"], routing_key=routing_key, body=body)
                 return True
             except Exception as e:
-                logging.exception(
-                    "RabbitMQ.queue_product " + str(routing_key) + " got exception: " + str(e)
-                )
+                logging.exception("RabbitMQ.queue_product " + str(routing_key) + " got exception: " + str(e))
                 self._close_publisher_connection()
                 import time
+
                 time.sleep(0.5 * (i + 1))  # Exponential backoff
         return False
 
@@ -413,10 +410,7 @@ class RabbitQueue:
 
             except Exception as e:
                 consecutive_failures += 1
-                logging.warning(
-                    f"priority_queue_consumer exception: {e} "
-                    f"(failure {consecutive_failures}/{max_consecutive_failures})"
-                )
+                logging.warning(f"priority_queue_consumer exception: {e} (failure {consecutive_failures}/{max_consecutive_failures})")
                 self._close_connection()
 
                 if consecutive_failures >= max_consecutive_failures:
@@ -433,7 +427,7 @@ class RabbitQueue:
                 port = self.config["api_port"]
                 user = self.config["user"]
                 password = self.config["password"]
-                url_vhost = requests.utils.quote(vhost, safe='')
+                url_vhost = requests.utils.quote(vhost, safe="")
                 url = f"http://{host}:{port}/api/queues/{url_vhost}/{queue_name}"
 
                 response = requests.get(url, auth=HTTPBasicAuth(user, password), timeout=5)
@@ -449,7 +443,7 @@ class RabbitQueue:
                 self._ensure_connection()
         return 110
 
-    
+
 RABBITMQ_CONN = RabbitQueue()
 
 
@@ -466,19 +460,19 @@ async def async_get_queue_status(queue_name):
             # 使用 Basic Auth
             auth = (username, password)
             queue_name_encoded = httpx.URL(queue_name).path
-            url = f'http://{host}:{port}/api/queues/%2F/{queue_name_encoded}'
+            url = f"http://{host}:{port}/api/queues/%2F/{queue_name_encoded}"
 
             response = await client.get(url, auth=auth)
 
             if response.status_code == 200:
                 data = response.json()
                 return {
-                    "messages_ready": data.get('messages_ready', 0),
-                    "messages_unacknowledged": data.get('messages_unacknowledged', 0),
-                    "messages_total": data.get('messages', 0),
-                    "consumer_count": data.get('consumers', 0),
-                    "state": data.get('state', 'unknown'),
-                    "memory": data.get('memory', 0)
+                    "messages_ready": data.get("messages_ready", 0),
+                    "messages_unacknowledged": data.get("messages_unacknowledged", 0),
+                    "messages_total": data.get("messages", 0),
+                    "consumer_count": data.get("consumers", 0),
+                    "state": data.get("state", "unknown"),
+                    "memory": data.get("memory", 0),
                 }
             elif response.status_code == 404:
                 logging.warning(f"Queue {queue_name} not found")

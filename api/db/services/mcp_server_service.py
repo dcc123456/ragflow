@@ -35,8 +35,7 @@ class MCPServerService(CommonService):
 
     @classmethod
     @DB.connection_context()
-    def get_servers(cls, tenant_id: str, id_list: list[str] | None, page_number, items_per_page, orderby, desc,
-                    keywords):
+    def get_servers(cls, tenant_id: str, id_list: list[str] | None, page_number, items_per_page, orderby, desc, keywords):
         """Retrieve all MCP servers associated with a tenant, including shared ones.
 
         This method fetches all MCP servers for a given tenant (owned or shared via Permission table),
@@ -51,6 +50,7 @@ class MCPServerService(CommonService):
                        Returns None if no MCP servers are found.
         """
         from api.db.services.user_service import UserTenantService
+
         fields = [
             cls.model.id,
             cls.model.tenant_id,
@@ -115,6 +115,7 @@ class MCPServerService(CommonService):
             bool: True if the user has access, False otherwise.
         """
         from api.db.services.user_service import UserTenantService
+
         e, mcp_server = cls.get_by_id(mcp_id)
         if not e:
             return False

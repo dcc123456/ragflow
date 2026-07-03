@@ -76,9 +76,7 @@ def test_point_03_invalid_inputs_rejected(points_client: PointsClient):
         message = str(payload.get("message") or "")
         expected_message_parts = case["expected_message_parts"]
         if not any(part in message for part in expected_message_parts):
-            pytest.fail(
-                f"invalid points value {case['points']} should mention one of {expected_message_parts!r}, got {payload}"
-            )
+            pytest.fail(f"invalid points value {case['points']} should mention one of {expected_message_parts!r}, got {payload}")
         results.append({"points": case["points"], "message": message, "code": payload.get("code")})
 
     # -------------------------------------------------------------------------
@@ -87,36 +85,24 @@ def test_point_03_invalid_inputs_rejected(points_client: PointsClient):
     after_balance = points_client.points_balance()
     after_ledger = points_client.points_ledger()
     after_history = points_client.spend_history()
-    after_sessions = [
-        session
-        for session in list_recent_points_checkout_sessions(started_at)
-        if (session.get("metadata") or {}).get("tenant_id") == points_client.tenant_id
-    ]
+    after_sessions = [session for session in list_recent_points_checkout_sessions(started_at) if (session.get("metadata") or {}).get("tenant_id") == points_client.tenant_id]
 
     available_after = int(after_balance.get("available_points") or 0)
     held_after = int(after_balance.get("held_points") or 0)
     ledger_after_count = int(after_ledger.get("total") or 0)
     history_after_count = len(after_history)
 
-    assert available_after == available_before, (
-        f"invalid points requests should not change balance: before={available_before}, after={available_after}"
-    )
-    assert held_after == held_before, (
-        f"invalid points requests should not change held points: before={held_before}, after={held_after}"
-    )
-    assert ledger_after_count == ledger_before_count, (
-        f"invalid points requests should not change ledger count: before={ledger_before_count}, after={ledger_after_count}"
-    )
-    assert history_after_count == history_before_count, (
-        f"invalid points requests should not change billing history count: "
-        f"before={history_before_count}, after={history_after_count}"
-    )
+    assert available_after == available_before, f"invalid points requests should not change balance: before={available_before}, after={available_after}"
+    assert held_after == held_before, f"invalid points requests should not change held points: before={held_before}, after={held_after}"
+    assert ledger_after_count == ledger_before_count, f"invalid points requests should not change ledger count: before={ledger_before_count}, after={ledger_after_count}"
+    assert history_after_count == history_before_count, f"invalid points requests should not change billing history count: before={history_before_count}, after={history_after_count}"
     assert not after_sessions, f"invalid points requests should not create Stripe checkout sessions, got {after_sessions}"
 
 
 # -----------------------------------------------------------------------------
 # POINT-04: canceled checkout does not create credits or recovery state
 # -----------------------------------------------------------------------------
+
 
 @pytest.mark.billing
 def test_point_04_canceled_checkout_no_state_mutation(points_client: PointsClient):
@@ -161,31 +147,19 @@ def test_point_04_canceled_checkout_no_state_mutation(points_client: PointsClien
     history_after_count = len(after_history)
     payment_required_after = after_overview.get("payment_required", False)
 
-    assert available_after == available_before, (
-        f"canceled checkout should not change balance: before={available_before}, after={available_after}"
-    )
-    assert held_after == held_before, (
-        f"canceled checkout should not change held points: before={held_before}, after={held_after}"
-    )
-    assert ledger_after_count == ledger_before_count, (
-        f"canceled checkout should not change ledger count: before={ledger_before_count}, after={ledger_after_count}"
-    )
-    assert history_after_count == history_before_count, (
-        f"canceled checkout should not change billing history count: "
-        f"before={history_before_count}, after={history_after_count}"
-    )
-    assert not any(row.get("invoice_id") == session["id"] for row in after_history), (
-        f"canceled checkout should not create a spend history row for session {session['id']}"
-    )
+    assert available_after == available_before, f"canceled checkout should not change balance: before={available_before}, after={available_after}"
+    assert held_after == held_before, f"canceled checkout should not change held points: before={held_before}, after={held_after}"
+    assert ledger_after_count == ledger_before_count, f"canceled checkout should not change ledger count: before={ledger_before_count}, after={ledger_after_count}"
+    assert history_after_count == history_before_count, f"canceled checkout should not change billing history count: before={history_before_count}, after={history_after_count}"
+    assert not any(row.get("invoice_id") == session["id"] for row in after_history), f"canceled checkout should not create a spend history row for session {session['id']}"
     assert not payment_required_before, f"fresh tenant should not start with payment_required=true: {before_overview}"
-    assert not payment_required_after, (
-        f"canceled checkout should not trigger payment recovery banner state: {after_overview}"
-    )
+    assert not payment_required_after, f"canceled checkout should not trigger payment recovery banner state: {after_overview}"
 
 
 # -----------------------------------------------------------------------------
 # POINT-05: webhook replay is idempotent
 # -----------------------------------------------------------------------------
+
 
 @pytest.mark.billing
 def test_point_05_webhook_replay_is_idempotent(points_client: PointsClient):
@@ -235,18 +209,9 @@ def test_point_05_webhook_replay_is_idempotent(points_client: PointsClient):
     ledger_after_first_count = int(after_first_ledger.get("total") or 0)
     history_after_first_count = len(after_first_history)
 
-    assert available_after_first == available_before + points_per_unit, (
-        f"first webhook should credit {points_per_unit} points, "
-        f"before={available_before}, after_first={available_after_first}"
-    )
-    assert ledger_after_first_count == ledger_before_count + 1, (
-        f"first webhook should add one ledger row, "
-        f"before={ledger_before_count}, after_first={ledger_after_first_count}"
-    )
-    assert history_after_first_count == history_before_count + 1, (
-        f"first webhook should add one history row, "
-        f"before={history_before_count}, after_first={history_after_first_count}"
-    )
+    assert available_after_first == available_before + points_per_unit, f"first webhook should credit {points_per_unit} points, before={available_before}, after_first={available_after_first}"
+    assert ledger_after_first_count == ledger_before_count + 1, f"first webhook should add one ledger row, before={ledger_before_count}, after_first={ledger_after_first_count}"
+    assert history_after_first_count == history_before_count + 1, f"first webhook should add one history row, before={history_before_count}, after_first={history_after_first_count}"
 
     # Replay the exact same webhook event
     points_client.post_signed_webhook(event)
@@ -260,29 +225,16 @@ def test_point_05_webhook_replay_is_idempotent(points_client: PointsClient):
     ledger_after_replay_count = int(after_replay_ledger.get("total") or 0)
     history_after_replay_count = len(after_replay_history)
 
-    assert available_after_replay == available_after_first, (
-        f"replayed webhook should not credit again, "
-        f"after_first={available_after_first}, after_replay={available_after_replay}"
-    )
+    assert available_after_replay == available_after_first, f"replayed webhook should not credit again, after_first={available_after_first}, after_replay={available_after_replay}"
     assert ledger_after_replay_count == ledger_after_first_count, (
-        f"replayed webhook should not add another ledger row, "
-        f"after_first={ledger_after_first_count}, after_replay={ledger_after_replay_count}"
+        f"replayed webhook should not add another ledger row, after_first={ledger_after_first_count}, after_replay={ledger_after_replay_count}"
     )
     assert history_after_replay_count == history_after_first_count, (
-        f"replayed webhook should not add another history row, "
-        f"after_first={history_after_first_count}, after_replay={history_after_replay_count}"
+        f"replayed webhook should not add another history row, after_first={history_after_first_count}, after_replay={history_after_replay_count}"
     )
 
     # Verify only one ledger/history row for this session
-    replay_ledger_rows = [
-        row
-        for row in (after_replay_ledger.get("items") or [])
-        if (row.get("metadata") or {}).get("session_id") == session["id"]
-    ]
-    assert len(replay_ledger_rows) == 1, (
-        f"expected exactly one ledger row for replayed session {session['id']}, got {replay_ledger_rows}"
-    )
+    replay_ledger_rows = [row for row in (after_replay_ledger.get("items") or []) if (row.get("metadata") or {}).get("session_id") == session["id"]]
+    assert len(replay_ledger_rows) == 1, f"expected exactly one ledger row for replayed session {session['id']}, got {replay_ledger_rows}"
     replay_history_rows = [row for row in after_replay_history if row.get("invoice_id") == session["id"]]
-    assert len(replay_history_rows) == 1, (
-        f"expected exactly one history row for replayed session {session['id']}, got {replay_history_rows}"
-    )
+    assert len(replay_history_rows) == 1, f"expected exactly one history row for replayed session {session['id']}, got {replay_history_rows}"

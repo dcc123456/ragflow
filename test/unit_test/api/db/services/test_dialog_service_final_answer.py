@@ -48,6 +48,7 @@ warnings.filterwarnings(
 def _install_cv2_stub_if_unavailable():
     try:
         import cv2  # noqa: F401
+
         return
     except Exception:
         pass
@@ -91,6 +92,7 @@ def _stub_doc_permission_filter(monkeypatch):
         "filter_accessible_doc_ids_for_user",
         lambda _user_id, _kb_ids, doc_ids: (doc_ids if doc_ids else ["doc-1"], ["tenant-1"], ""),
     )
+
 
 _KBINFOS = {
     "chunks": [
@@ -207,12 +209,14 @@ class _FakeLangfuseClient:
 def _collect(async_gen):
     async def _run():
         return [ev async for ev in async_gen]
+
     return asyncio.run(_run())
 
 
 # ---------------------------------------------------------------------------
 # Tests for async_ask  (production code path)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.p2
 def test_async_ask_final_event_carries_decorated_answer(monkeypatch):
@@ -228,23 +232,21 @@ def test_async_ask_final_event_carries_decorated_answer(monkeypatch):
     chat_mdl = _StreamingChatModel(llm_answer)
     retriever = _StubRetriever()
 
+    monkeypatch.setattr(dialog_service.KnowledgebaseService, "get_by_ids", lambda _ids: [_KB])
     monkeypatch.setattr(
-        dialog_service.KnowledgebaseService, "get_by_ids", lambda _ids: [_KB]
-    )
-    monkeypatch.setattr(
-        dialog_service, "get_model_config_from_provider_instance",
+        dialog_service,
+        "get_model_config_from_provider_instance",
         lambda _tid, _type, _name: _LLM_CONFIG,
     )
     monkeypatch.setattr(dialog_service, "LLMBundle", lambda _tid, _cfg: chat_mdl)
     monkeypatch.setattr(dialog_service.settings, "retriever", retriever, raising=False)
     monkeypatch.setattr(dialog_service.settings, "kg_retriever", retriever, raising=False)
-    monkeypatch.setattr(
-        dialog_service.DocMetadataService, "get_flatted_meta_by_kbs", lambda _ids: {}
-    )
+    monkeypatch.setattr(dialog_service.DocMetadataService, "get_flatted_meta_by_kbs", lambda _ids: {})
     monkeypatch.setattr(dialog_service, "label_question", lambda _q, _kbs: "")
     # kb_prompt calls DocumentService.get_by_ids which needs a live DB; stub it out.
     monkeypatch.setattr(
-        dialog_service, "kb_prompt",
+        dialog_service,
+        "kb_prompt",
         lambda _kbinfos, _max_tokens, **_kw: ["RAGFlow is a RAG engine."],
     )
 
@@ -259,9 +261,7 @@ def test_async_ask_final_event_carries_decorated_answer(monkeypatch):
     assert events, "async_ask must yield at least one event"
 
     final_events = [e for e in events if e.get("final") is True]
-    assert len(final_events) == 1, (
-        f"Expected exactly one final event, got {len(final_events)}: {final_events}"
-    )
+    assert len(final_events) == 1, f"Expected exactly one final event, got {len(final_events)}: {final_events}"
     final = final_events[0]
 
     assert "answer" in final
@@ -277,22 +277,20 @@ def test_async_ask_delta_events_carry_incremental_text_only(monkeypatch):
     chat_mdl = _StreamingChatModel("Incremental text for delta test.")
     retriever = _StubRetriever()
 
+    monkeypatch.setattr(dialog_service.KnowledgebaseService, "get_by_ids", lambda _ids: [_KB])
     monkeypatch.setattr(
-        dialog_service.KnowledgebaseService, "get_by_ids", lambda _ids: [_KB]
-    )
-    monkeypatch.setattr(
-        dialog_service, "get_model_config_from_provider_instance",
+        dialog_service,
+        "get_model_config_from_provider_instance",
         lambda _tid, _type, _name: _LLM_CONFIG,
     )
     monkeypatch.setattr(dialog_service, "LLMBundle", lambda _tid, _cfg: chat_mdl)
     monkeypatch.setattr(dialog_service.settings, "retriever", retriever, raising=False)
     monkeypatch.setattr(dialog_service.settings, "kg_retriever", retriever, raising=False)
-    monkeypatch.setattr(
-        dialog_service.DocMetadataService, "get_flatted_meta_by_kbs", lambda _ids: {}
-    )
+    monkeypatch.setattr(dialog_service.DocMetadataService, "get_flatted_meta_by_kbs", lambda _ids: {})
     monkeypatch.setattr(dialog_service, "label_question", lambda _q, _kbs: "")
     monkeypatch.setattr(
-        dialog_service, "kb_prompt",
+        dialog_service,
+        "kb_prompt",
         lambda _kbinfos, _max_tokens, **_kw: ["RAGFlow is a RAG engine."],
     )
 
@@ -305,15 +303,13 @@ def test_async_ask_delta_events_carry_incremental_text_only(monkeypatch):
     )
 
     delta_events = [e for e in events if not e.get("final")]
-    final_events  = [e for e in events if e.get("final") is True]
+    final_events = [e for e in events if e.get("final") is True]
 
     assert len(final_events) == 1, f"Expected exactly one final event, got {len(final_events)}"
     for ev in delta_events:
         assert ev["reference"] == {}, f"Delta event must have empty reference, got: {ev['reference']}"
 
-    assert "chunks" in final_events[0]["reference"], (
-        "Final event reference must contain chunk data from decorate_answer()"
-    )
+    assert "chunks" in final_events[0]["reference"], "Final event reference must contain chunk data from decorate_answer()"
 
 
 @pytest.mark.p2
@@ -321,9 +317,7 @@ def test_async_ask_empty_kb_ids_yields_error_final_event(monkeypatch):
     """
     When kb_ids is empty, async_ask() must not crash with IndexError on kbs[0].
     """
-    monkeypatch.setattr(
-        dialog_service.KnowledgebaseService, "get_by_ids", lambda _ids: []
-    )
+    monkeypatch.setattr(dialog_service.KnowledgebaseService, "get_by_ids", lambda _ids: [])
 
     events = _collect(
         dialog_service.async_ask(
@@ -366,6 +360,7 @@ def test_async_ask_stale_kb_ids_yields_error_final_event(monkeypatch):
 # ---------------------------------------------------------------------------
 # Tests for async_chat  (production code path)
 # ---------------------------------------------------------------------------
+
 
 def _make_dialog(chat_mdl_stub):
     """Build a minimal dialog SimpleNamespace for async_chat()."""
@@ -415,33 +410,30 @@ def test_async_chat_final_event_carries_decorated_answer(monkeypatch):
     retriever = _StubRetriever()
 
     # Stub out the heavy service/model calls
+    monkeypatch.setattr(dialog_service, "get_model_type_by_name", lambda _tid, _llm_id: ["chat"])
     monkeypatch.setattr(
-        dialog_service, "get_model_type_by_name",
-        lambda _tid, _llm_id: ["chat"]
-    )
-    monkeypatch.setattr(
-        dialog_service, "get_model_config_from_provider_instance",
+        dialog_service,
+        "get_model_config_from_provider_instance",
         lambda _tid, _type, _llm_id: _LLM_CONFIG,
     )
     monkeypatch.setattr(
-        dialog_service.TenantLangfuseService, "filter_by_tenant",
+        dialog_service.TenantLangfuseService,
+        "filter_by_tenant",
         lambda tenant_id: None,
     )
     # get_models returns (kbs, embd_mdl, rerank_mdl, chat_mdl, tts_mdl)
     monkeypatch.setattr(
-        dialog_service, "get_models",
+        dialog_service,
+        "get_models",
         lambda _dialog, **_kwargs: ([_KB], chat_mdl, None, chat_mdl, None),
     )
-    monkeypatch.setattr(
-        dialog_service.KnowledgebaseService, "get_field_map", lambda _kb_ids: {}
-    )
-    monkeypatch.setattr(
-        dialog_service.KnowledgebaseService, "get_by_ids", lambda _ids: [_KB]
-    )
+    monkeypatch.setattr(dialog_service.KnowledgebaseService, "get_field_map", lambda _kb_ids: {})
+    monkeypatch.setattr(dialog_service.KnowledgebaseService, "get_by_ids", lambda _ids: [_KB])
     monkeypatch.setattr(dialog_service.settings, "retriever", retriever, raising=False)
     monkeypatch.setattr(dialog_service, "label_question", lambda _q, _kbs: "")
     monkeypatch.setattr(
-        dialog_service, "kb_prompt",
+        dialog_service,
+        "kb_prompt",
         lambda _kbinfos, _max_tokens, **_kw: ["RAGFlow is a RAG engine."],
     )
 
@@ -451,9 +443,7 @@ def test_async_chat_final_event_carries_decorated_answer(monkeypatch):
     events = _collect(dialog_service.async_chat(dialog, messages, stream=True, quote=True))
 
     final_events = [e for e in events if e.get("final") is True]
-    assert len(final_events) == 1, (
-        f"Expected exactly one final event, got {len(final_events)}: {final_events}"
-    )
+    assert len(final_events) == 1, f"Expected exactly one final event, got {len(final_events)}: {final_events}"
     final = final_events[0]
 
     assert "answer" in final
@@ -472,16 +462,15 @@ def test_async_chat_langfuse_uses_start_observation(monkeypatch):
     chat_mdl = _StreamingChatModel(llm_answer)
     retriever = _StubRetriever()
 
+    monkeypatch.setattr(dialog_service, "get_model_type_by_name", lambda _tid, _llm_id: ["chat"])
     monkeypatch.setattr(
-        dialog_service, "get_model_type_by_name",
-        lambda _tid, _llm_id: ["chat"]
-    )
-    monkeypatch.setattr(
-        dialog_service, "get_model_config_from_provider_instance",
+        dialog_service,
+        "get_model_config_from_provider_instance",
         lambda _tid, _type, _llm_id: _LLM_CONFIG,
     )
     monkeypatch.setattr(
-        dialog_service.TenantLangfuseService, "filter_by_tenant",
+        dialog_service.TenantLangfuseService,
+        "filter_by_tenant",
         lambda tenant_id: SimpleNamespace(
             public_key="public",
             secret_key="secret",
@@ -496,12 +485,8 @@ def test_async_chat_langfuse_uses_start_observation(monkeypatch):
         "get_models",
         lambda _dialog, **_kwargs: ([_KB], chat_mdl, None, chat_mdl, None),
     )
-    monkeypatch.setattr(
-        dialog_service.KnowledgebaseService, "get_field_map", lambda _kb_ids: {}
-    )
-    monkeypatch.setattr(
-        dialog_service.KnowledgebaseService, "get_by_ids", lambda _ids: [_KB]
-    )
+    monkeypatch.setattr(dialog_service.KnowledgebaseService, "get_field_map", lambda _kb_ids: {})
+    monkeypatch.setattr(dialog_service.KnowledgebaseService, "get_by_ids", lambda _ids: [_KB])
     monkeypatch.setattr(dialog_service.settings, "retriever", retriever, raising=False)
     monkeypatch.setattr(dialog_service, "label_question", lambda _q, _kbs: "")
     monkeypatch.setattr(
@@ -540,17 +525,15 @@ def test_async_chat_langfuse_observation_includes_session_id(monkeypatch):
     chat_mdl = _StreamingChatModel("Session traces should be grouped.")
     retriever = _StubRetriever()
 
-    monkeypatch.setattr(
-        dialog_service, "get_model_type_by_name",
-        lambda _tid, _llm_id: ["chat"]
-    )
+    monkeypatch.setattr(dialog_service, "get_model_type_by_name", lambda _tid, _llm_id: ["chat"])
     monkeypatch.setattr(
         dialog_service,
         "get_model_config_from_provider_instance",
         lambda _tid, _type, _llm_id: _LLM_CONFIG,
     )
     monkeypatch.setattr(
-        dialog_service.TenantLangfuseService, "filter_by_tenant",
+        dialog_service.TenantLangfuseService,
+        "filter_by_tenant",
         lambda tenant_id: SimpleNamespace(
             public_key="public",
             secret_key="secret",
@@ -564,12 +547,8 @@ def test_async_chat_langfuse_observation_includes_session_id(monkeypatch):
         "get_models",
         lambda _dialog, **_kwargs: ([_KB], chat_mdl, None, chat_mdl, None),
     )
-    monkeypatch.setattr(
-        dialog_service.KnowledgebaseService, "get_field_map", lambda _kb_ids: {}
-    )
-    monkeypatch.setattr(
-        dialog_service.KnowledgebaseService, "get_by_ids", lambda _ids: [_KB]
-    )
+    monkeypatch.setattr(dialog_service.KnowledgebaseService, "get_field_map", lambda _kb_ids: {})
+    monkeypatch.setattr(dialog_service.KnowledgebaseService, "get_by_ids", lambda _ids: [_KB])
     monkeypatch.setattr(dialog_service.settings, "retriever", retriever, raising=False)
     monkeypatch.setattr(dialog_service, "label_question", lambda _q, _kbs: "")
     monkeypatch.setattr(
@@ -645,16 +624,15 @@ def test_async_chat_continues_when_langfuse_observation_start_fails(monkeypatch)
     chat_mdl = _StreamingChatModel(llm_answer)
     retriever = _StubRetriever()
 
+    monkeypatch.setattr(dialog_service, "get_model_type_by_name", lambda _tid, _llm_id: ["chat"])
     monkeypatch.setattr(
-        dialog_service, "get_model_type_by_name",
-        lambda _tid, _llm_id: ["chat"]
-    )
-    monkeypatch.setattr(
-        dialog_service, "get_model_config_from_provider_instance",
+        dialog_service,
+        "get_model_config_from_provider_instance",
         lambda _tid, _type, _llm_id: _LLM_CONFIG,
     )
     monkeypatch.setattr(
-        dialog_service.TenantLangfuseService, "filter_by_tenant",
+        dialog_service.TenantLangfuseService,
+        "filter_by_tenant",
         lambda tenant_id: SimpleNamespace(
             public_key="public",
             secret_key="secret",
@@ -669,12 +647,8 @@ def test_async_chat_continues_when_langfuse_observation_start_fails(monkeypatch)
         "get_models",
         lambda _dialog, **_kwargs: ([_KB], chat_mdl, None, chat_mdl, None),
     )
-    monkeypatch.setattr(
-        dialog_service.KnowledgebaseService, "get_field_map", lambda _kb_ids: {}
-    )
-    monkeypatch.setattr(
-        dialog_service.KnowledgebaseService, "get_by_ids", lambda _ids: [_KB]
-    )
+    monkeypatch.setattr(dialog_service.KnowledgebaseService, "get_field_map", lambda _kb_ids: {})
+    monkeypatch.setattr(dialog_service.KnowledgebaseService, "get_by_ids", lambda _ids: [_KB])
     monkeypatch.setattr(dialog_service.settings, "retriever", retriever, raising=False)
     monkeypatch.setattr(dialog_service, "label_question", lambda _q, _kbs: "")
     monkeypatch.setattr(

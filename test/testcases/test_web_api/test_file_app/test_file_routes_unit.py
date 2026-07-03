@@ -108,7 +108,7 @@ def _load_file_api_module(monkeypatch):
     role_util_mod = ModuleType("common.role_util")
     role_util_mod.FILE_API_ACTION_MAP = {}
     role_util_mod.FILE_ROLE_RESOURCE_TYPE = 5
-    role_util_mod.check_role_access = lambda *_args, **_kwargs: (lambda func: func)
+    role_util_mod.check_role_access = lambda *_args, **_kwargs: lambda func: func
     monkeypatch.setitem(sys.modules, "common.role_util", role_util_mod)
 
     services_pkg = ModuleType("api.apps.services")

@@ -17,6 +17,7 @@
 print("Start RAGFlow server...")
 
 import time
+
 start_ts = time.time()
 
 import os
@@ -49,7 +50,8 @@ from rag.utils.redis_conn import RedisDistributedLock
 
 stop_event = threading.Event()
 
-RAGFLOW_DEBUGPY_LISTEN = int(os.environ.get('RAGFLOW_DEBUGPY_LISTEN', "0"))
+RAGFLOW_DEBUGPY_LISTEN = int(os.environ.get("RAGFLOW_DEBUGPY_LISTEN", "0"))
+
 
 def update_progress():
     lock_value = str(uuid.uuid4())
@@ -69,6 +71,7 @@ def update_progress():
                 logging.exception("update_progress exception")
             stop_event.wait(6)
 
+
 def signal_handler(sig, frame):
     logging.info("Received interrupt signal, shutting down...")
     shutdown_all_mcp_sessions()
@@ -77,7 +80,7 @@ def signal_handler(sig, frame):
     sys.exit(0)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     faulthandler.enable()
     init_root_logger("ragflow_server")
     logging.info(r"""
@@ -88,12 +91,8 @@ if __name__ == '__main__':
     /_/ |_|/_/  |_|\____//_/    /_/ \____/ |__/|__/
 
     """)
-    logging.info(
-        f'RAGFlow version: {get_ragflow_version()}'
-    )
-    logging.info(
-        f'project base: {get_project_base_directory()}'
-    )
+    logging.info(f"RAGFlow version: {get_ragflow_version()}")
+    logging.info(f"project base: {get_project_base_directory()}")
     show_configs()
     settings.init_settings()
     settings.print_rag_settings()
@@ -101,6 +100,7 @@ if __name__ == '__main__':
     if RAGFLOW_DEBUGPY_LISTEN > 0:
         logging.info(f"debugpy listen on {RAGFLOW_DEBUGPY_LISTEN}")
         import debugpy
+
         debugpy.listen(("0.0.0.0", RAGFLOW_DEBUGPY_LISTEN))
 
     # init db
@@ -108,20 +108,15 @@ if __name__ == '__main__':
     init_web_data()
     # Start billing rate-limit sync AFTER DB + product data are ready
     from api.apps import start_billing_rate_limit_sync
+
     start_billing_rate_limit_sync()
     # init runtime config
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--version", default=False, help="RAGFlow version", action="store_true"
-    )
-    parser.add_argument(
-        "--debug", default=False, help="debug mode", action="store_true"
-    )
-    parser.add_argument(
-        "--init-superuser", default=False, help="init superuser", action="store_true"
-    )
+    parser.add_argument("--version", default=False, help="RAGFlow version", action="store_true")
+    parser.add_argument("--debug", default=False, help="debug mode", action="store_true")
+    parser.add_argument("--init-superuser", default=False, help="init superuser", action="store_true")
     args = parser.parse_args()
     if args.version:
         print(get_ragflow_version())
@@ -151,6 +146,7 @@ if __name__ == '__main__':
             logging.info("Downgrade guard disabled via DOWNGRADE_GUARD_ENABLED=false")
             return
         from api.services.downgrade_guard import DowngradeGuard, send_startup_test_email
+
         guard = DowngradeGuard()
         threading.Thread(target=guard.run_daily_scan, daemon=True, name="downgrade-daily").start()
         threading.Thread(target=guard.run_high_freq_check, daemon=True, name="downgrade-hf").start()
@@ -161,6 +157,7 @@ if __name__ == '__main__':
     def start_chat_channels():
         try:
             from api.channels.bootstrap import start_channel_server
+
             logging.info("Starting chat channel server thread")
             t = threading.Thread(
                 target=start_channel_server,

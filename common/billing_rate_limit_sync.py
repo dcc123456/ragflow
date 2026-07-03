@@ -89,8 +89,11 @@ def _get_redis():
         port = int(os.environ.get("REDIS_PORT", "6379"))
         password = os.environ.get("REDIS_PASSWORD") or None
         _cached_billing_redis = _redis.StrictRedis(
-            host=host, port=port, db=target_db,
-            password=password, decode_responses=True,
+            host=host,
+            port=port,
+            db=target_db,
+            password=password,
+            decode_responses=True,
         )
         _cached_billing_redis.ping()
         logging.info(f"billing_rate_limit_sync: connected to Redis db={target_db}")
@@ -132,6 +135,7 @@ def _resolve_rate_limits_from_db(plan_name: str | None) -> int:
     else:
         # MySQL has no data at all — fall back to in-memory config
         from common import settings
+
         info = settings.BILLING_PLAN_TO_INFO.get(name) or settings.BILLING_PLAN_TO_INFO.get("Trial") or {}
         rpm = info.get("api_request_limit_per_minute", 500)
 
@@ -205,7 +209,7 @@ def sync_api_token(token: str, tenant_id: str) -> bool:
 
 
 def _is_api_auth_plan_allowed(plan_name: str | None, subscription_status: str | None = None) -> bool:
-    return (plan_name or "").strip().lower() in _API_AUTH_ALLOWED_PLANS and(subscription_status or "").strip().lower() in {"active"}
+    return (plan_name or "").strip().lower() in _API_AUTH_ALLOWED_PLANS and (subscription_status or "").strip().lower() in {"active"}
 
 
 def sync_api_auth_plan(tenant_id: str, plan_name: str | None, subscription_status: str | None = None) -> bool:
@@ -365,6 +369,7 @@ def sync_session_token(access_token: str, tenant_id: str) -> bool:
         # which imports `from itsdangerous.url_safe import URLSafeTimedSerializer as Serializer`
         from itsdangerous.url_safe import URLSafeTimedSerializer
         from common import settings as _settings
+
         jwt_serializer = URLSafeTimedSerializer(secret_key=_settings.get_secret_key())
         jwt_token = jwt_serializer.dumps(str(access_token))
         if isinstance(jwt_token, bytes):
@@ -473,6 +478,7 @@ def sync_all_rate_limits() -> int:
         # The frontend sends JWT-encoded access_token in the Authorization header.
         # Lua receives the JWT string, so we store both raw UUID and JWT-encoded form.
         from api.db.db_models import User, UserTenant
+
         # NOTE: Must use URLSafeTimedSerializer to match User.get_id()
         from itsdangerous.url_safe import URLSafeTimedSerializer
         from common import settings as _settings
@@ -488,10 +494,7 @@ def sync_all_rate_limits() -> int:
                 session_skip_no_token += 1
                 continue
             # Look up the user's default tenant_id via UserTenant
-            ut = UserTenant.select(UserTenant.tenant_id).where(
-                UserTenant.user_id == u["id"],
-                UserTenant.status == "1"
-            ).dicts().first()
+            ut = UserTenant.select(UserTenant.tenant_id).where(UserTenant.user_id == u["id"], UserTenant.status == "1").dicts().first()
             if not ut:
                 session_skip_no_tenant += 1
                 continue
@@ -511,16 +514,13 @@ def sync_all_rate_limits() -> int:
 
         if session_token_count % 500 != 0:
             pipe.execute()
-        logging.info(
-            f"sync_all_rate_limits: synced {session_token_count} session token mappings "
-            f"(skipped: {session_skip_no_token} no_token, {session_skip_no_tenant} no_tenant)"
-        )
+        logging.info(f"sync_all_rate_limits: synced {session_token_count} session token mappings (skipped: {session_skip_no_token} no_token, {session_skip_no_tenant} no_tenant)")
 
         # Sync rate limits for ALL tenants with active/trialing subscriptions
         from api.db.db_models import Subscription
+
         subscriptions = (
-            Subscription
-            .select(Subscription.tenant_id, Subscription.plan_name, Subscription.subscription_status, Subscription.end_time)
+            Subscription.select(Subscription.tenant_id, Subscription.plan_name, Subscription.subscription_status, Subscription.end_time)
             .where(Subscription.subscription_status.in_(["active", "trialing"]))
             .dicts()
         )
@@ -546,9 +546,7 @@ def sync_all_rate_limits() -> int:
                 sync_tenant_rate_limit(tid, None)
                 count += 1
 
-        logging.info(
-            f"sync_all_rate_limits: synced {count} tenant rate limit configs"
-        )
+        logging.info(f"sync_all_rate_limits: synced {count} tenant rate limit configs")
 
     except Exception as e:
         logging.exception(f"sync_all_rate_limits failed: {e}")

@@ -49,14 +49,9 @@ class RAGFlowMinio:
 
         for m in self.minio_config:
             try:
-                self.conn.append(Minio(m["host"],
-                                  access_key=m["user"],
-                                  secret_key=m["password"],
-                                  secure=False
-                                  ))
+                self.conn.append(Minio(m["host"], access_key=m["user"], secret_key=m["password"], secure=False))
             except Exception as e:
-                logging.error(
-                    "Fail to connect %s " % m["host"] + str(e))
+                logging.error("Fail to connect %s " % m["host"] + str(e))
 
     def __close__(self):
         if self.conn:
@@ -69,10 +64,7 @@ class RAGFlowMinio:
         bucket, fnm, binary = "txtxtxtxt1", "txtxtxtxt1", b"_t@@@1"
         if not self.conn[0].bucket_exists(bucket):
             self.conn[0].make_bucket(bucket)
-        r = self.conn[0].put_object(bucket, fnm,
-                                 BytesIO(binary),
-                                 len(binary)
-                                 )
+        r = self.conn[0].put_object(bucket, fnm, BytesIO(binary), len(binary))
         return r
 
     def user_gateway(self, tenant_id):
@@ -91,10 +83,7 @@ class RAGFlowMinio:
                 if not self.conn[i].bucket_exists(bucket):
                     self.conn[i].make_bucket(bucket)
 
-                r = self.conn[i].put_object(bucket, fnm,
-                                         BytesIO(binary),
-                                         len(binary)
-                                         )
+                r = self.conn[i].put_object(bucket, fnm, BytesIO(binary), len(binary))
                 return r
             except Exception as e:
                 logging.error(f"Fail put {bucket}/{fnm}: " + str(e))
