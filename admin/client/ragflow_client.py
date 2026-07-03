@@ -714,6 +714,126 @@ class RAGFlowClient:
             print("This command is only allowed in USER mode")
         print("show current user")
 
+    def create_model_provider(self, command):
+        if self.server_type != "user":
+            print("This command is only allowed in USER mode")
+            return
+        provider_name: str = command["provider_name"]
+        api_key: str = command["provider_key"]
+
+        # Step 1: Add provider
+        provider_payload = {"provider_name": provider_name}
+        provider_response = self.http_client.request("PUT", "/providers", json_body=provider_payload, use_api_base=True, auth_kind="web")
+        provider_res = provider_response.json()
+        if provider_response.status_code == 200 and provider_res.get("code") == 0:
+            print(f"Success to add provider {provider_name}")
+        else:
+            msg = provider_res.get("message", "")
+            if "duplicated" in msg.lower() or "already exist" in msg.lower():
+                print(f"Note: provider {provider_name} already exists, continuing to add instance")
+            else:
+                print(f"Fail to add provider {provider_name}, code: {provider_res.get('code')}, message: {msg}")
+                return
+
+        # Step 2: Add instance
+        instance_payload = {"instance_name": "default", "api_key": api_key, "region": "default", "base_url": ""}
+        instance_response = self.http_client.request("POST", f"/providers/{provider_name}/instances", json_body=instance_payload, use_api_base=True, auth_kind="web")
+        instance_res = instance_response.json()
+        if instance_response.status_code == 200 and instance_res.get("code") == 0:
+            print(f"Success to add instance for provider {provider_name}")
+        else:
+            msg = instance_res.get("message", "")
+            if "already exist" in msg.lower():
+                print(f"Note: instance for provider {provider_name} already exists, skipping")
+            else:
+                print(f"Fail to add instance for provider {provider_name}, code: {instance_res.get('code')}, message: {msg}")
+
+    def drop_model_provider(self, command):
+        if self.server_type != "user":
+            print("This command is only allowed in USER mode")
+            return
+        provider_name: str = command["provider_name"]
+        response = self.http_client.request("DELETE", f"/providers/{provider_name}", use_api_base=True, auth_kind="web")
+        res_json = response.json()
+        if response.status_code == 200 and res_json.get("code") == 0:
+            print(f"Success to drop model provider {provider_name}")
+        else:
+            print(f"Fail to drop model provider {provider_name}, code: {res_json.get('code')}, message: {res_json.get('message')}")
+
+    # Mapping from legacy model_type keys to API model_type values
+    _MODEL_TYPE_MAP = {
+        "llm_id": "chat",
+        "embd_id": "embedding",
+        "img2txt_id": "vision",
+        "reranker_id": "rerank",
+        "asr_id": "asr",
+        "tts_id": "tts",
+    }
+
+    def set_default_model(self, command):
+        if self.server_type != "user":
+            print("This command is only allowed in USER mode")
+            return
+
+        model_type_key: str = command["model_type"]
+        model_id: str = command["model_id"]
+
+        model_type = self._MODEL_TYPE_MAP.get(model_type_key)
+        if model_type is None:
+            print(f"Unknown model type: {model_type_key}")
+            return
+
+        model_name, model_instance, model_provider = self._parse_model_id(model_id)
+
+        payload = {
+            "model_provider": model_provider,
+            "model_instance": model_instance,
+            "model_type": model_type,
+            "model_name": model_name,
+        }
+        response = self.http_client.request("PATCH", "/models/default", json_body=payload, use_api_base=True, auth_kind="web")
+        res_json = response.json()
+        if response.status_code == 200 and res_json.get("code") == 0:
+            print(f"Success to set default {model_type} to {model_id}")
+        else:
+            print(f"Fail to set default {model_type}, code: {res_json.get('code')}, message: {res_json.get('message')}")
+
+    def reset_default_model(self, command):
+        if self.server_type != "user":
+            print("This command is only allowed in USER mode")
+            return
+
+        model_type_key: str = command["model_type"]
+        model_type = self._MODEL_TYPE_MAP.get(model_type_key)
+        if model_type is None:
+            print(f"Unknown model type: {model_type_key}")
+            return
+
+        payload = {"model_type": model_type}
+        response = self.http_client.request("PATCH", "/models/default", json_body=payload, use_api_base=True, auth_kind="web")
+        res_json = response.json()
+        if response.status_code == 200 and res_json.get("code") == 0:
+            print(f"Success to reset default {model_type}")
+        else:
+            print(f"Fail to reset default {model_type}, code: {res_json.get('code')}, message: {res_json.get('message')}")
+
+    @staticmethod
+    def _parse_model_id(model_id: str):
+        """Parse model_id into (model_name, model_instance, model_provider).
+
+        Accepted formats:
+          - model_name@instance@provider  -> (model_name, instance, provider)
+          - model_name@provider            -> (model_name, "default", provider)
+          - model_name                     -> (model_name, "default", "")
+        """
+        parts = model_id.split("@")
+        if len(parts) >= 3:
+            return parts[0], parts[1], parts[-1]
+        elif len(parts) == 2:
+            return parts[0], "default", parts[1]
+        else:
+            return model_id, "default", ""
+
     def list_user_datasets(self, command):
         if self.server_type != "user":
             print("This command is only allowed in USER mode")
@@ -864,10 +984,10 @@ class RAGFlowClient:
         if kb_id is None:
             return
 
-        path = f"/datasets/{kb_id}/metadata/summary"
+        payload = {"kb_id": kb_id}
         if doc_ids:
-            path = f"{path}?doc_ids={','.join(doc_ids)}"
-        response = self.http_client.request("GET", path, use_api_base=True, auth_kind="web")
+            payload["doc_ids"] = doc_ids
+        response = self.http_client.request("POST", "/document/metadata/summary", json_body=payload, use_api_base=False, auth_kind="web")
         res_json = response.json()
         if response.status_code == 200:
             summary = res_json.get("data", {}).get("summary", {})
@@ -1204,19 +1324,13 @@ class RAGFlowClient:
         if len(document_names) != 0:
             print(f"Documents {document_names} not found in {dataset_name}")
 
-        payload = {"document_ids": document_ids}
-        response = self.http_client.request(
-            "POST",
-            f"/datasets/{dataset_id}/chunks",
-            json_body=payload,
-            use_api_base=True,
-            auth_kind="api",
-        )
+        payload = {"doc_ids": document_ids, "run": 1}
+        response = self.http_client.request("POST", "/documents/ingest", json_body=payload, use_api_base=True, auth_kind="web")
         res_json = response.json()
         if response.status_code == 200 and res_json["code"] == 0:
             print(f"Success to parse {to_parse_doc_names} of {dataset_name}")
         else:
-            print(f"Fail to parse documents, code: {res_json.get('code')}, message: {res_json.get('message')}")
+            print(f"Fail to parse documents {res_json['data']['docs']}, code: {res_json['code']}, message: {res_json['message']}")
 
     def parse_dataset(self, command_dict):
         if self.server_type != "user":
@@ -1234,18 +1348,8 @@ class RAGFlowClient:
         for doc in res_json:
             document_ids.append(doc["id"])
 
-        if not document_ids:
-            print(f"No documents found in dataset {dataset_name}")
-            return
-
-        payload = {"document_ids": document_ids}
-        response = self.http_client.request(
-            "POST",
-            f"/datasets/{dataset_id}/chunks",
-            json_body=payload,
-            use_api_base=True,
-            auth_kind="api",
-        )
+        payload = {"doc_ids": document_ids, "run": 1}
+        response = self.http_client.request("POST", "/documents/ingest", json_body=payload, use_api_base=True, auth_kind="web")
         res_json = response.json()
         if response.status_code == 200 and res_json["code"] == 0:
             pass
@@ -1442,7 +1546,8 @@ class RAGFlowClient:
             print(f"Fail to update chunk, HTTP {response.status_code}")
 
     def _get_documents_by_ids(self, ids: list[str]):
-        response = self.http_client.request("GET", "/datasets", use_api_base=True, auth_kind="web")
+        response = self.http_client.request("POST", "/document/infos", json_body={"doc_ids": ids}, use_api_base=False, auth_kind="web")
+
         if response.status_code != 200:
             return f"Fail to list datasets, HTTP {response.status_code}", None
         res_json = response.json()
@@ -1639,8 +1744,7 @@ class RAGFlowClient:
                 return False
             all_done = True
             for doc in docs:
-                run_status = str(doc.get("run", "")).upper()
-                if run_status not in {"3", "DONE"}:
+                if doc.get("run") != "DONE":
                     print(f"Document {doc['name']} is not done, status: {doc.get('run')}")
                     all_done = False
                     break
@@ -1651,39 +1755,13 @@ class RAGFlowClient:
             time.sleep(0.5)
 
     def _list_documents(self, dataset_name: str, dataset_id: str):
-        all_docs = []
-        page = 1
-        page_size = 100
-        while True:
-            response = self.http_client.request(
-                "GET",
-                f"/datasets/{dataset_id}/documents?page={page}&page_size={page_size}",
-                use_api_base=True,
-                auth_kind="api",
-            )
-            res_json = response.json()
-            if response.status_code != 200 or not isinstance(res_json, dict):
-                print(
-                    f"Fail to list files from dataset {dataset_name}, code: {res_json.get('code') if isinstance(res_json, dict) else response.status_code}, message: {res_json.get('message') if isinstance(res_json, dict) else 'invalid response'}"
-                )
-                return None
-            if res_json.get("code") != 0:
-                print(f"Fail to list files from dataset {dataset_name}, code: {res_json.get('code')}, message: {res_json.get('message')}")
-                return None
-            data = res_json.get("data")
-            if not isinstance(data, dict):
-                print(f"Fail to list files from dataset {dataset_name}, message: Unexpected response shape: data is not an object")
-                return None
-            docs = data.get("docs")
-            if not isinstance(docs, list):
-                print(f"Fail to list files from dataset {dataset_name}, message: Unexpected response shape: data.docs is not a list")
-                return None
-            all_docs.extend(docs)
-            total = data.get("total")
-            if len(docs) < page_size or (isinstance(total, int) and len(all_docs) >= total):
-                break
-            page += 1
-        return all_docs
+        # Use the new RESTful API: GET /api/v1/datasets/<dataset_id>/documents
+        response = self.http_client.request("GET", f"/datasets/{dataset_id}/documents", use_api_base=True, auth_kind="web")
+        res_json = response.json()
+        if response.status_code != 200:
+            print(f"Fail to list files from dataset {dataset_name}, code: {res_json['code']}, message: {res_json['message']}")
+            return None
+        return res_json["data"]["docs"]
 
     def _get_dataset_id(self, dataset_name: str):
         response = self.http_client.request("GET", "/datasets", use_api_base=True, auth_kind="web")

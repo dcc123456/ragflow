@@ -363,7 +363,6 @@ async def _validate_llm_id(llm_id, tenant_id, llm_setting=None):
 async def _validate_rerank_id(rerank_id, tenant_id):
     if not rerank_id:
         return None
-
     parts = rerank_id.split("@")
     llm_name = parts[0]
     if llm_name in _DEFAULT_RERANK_MODELS:
