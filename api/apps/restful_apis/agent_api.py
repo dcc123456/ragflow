@@ -90,6 +90,7 @@ def _canvas_json_default(obj):
         return None
     raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
 
+
 def _resolve_canvas_owner_tenant(agent_id):
     exists, canvas = UserCanvasService.get_by_canvas_id(agent_id)
     if not exists or not canvas:
@@ -99,7 +100,6 @@ def _resolve_canvas_owner_tenant(agent_id):
 
 def _resolve_runtime_replica_tenant(agent_id, tenant_id):
     return _resolve_canvas_owner_tenant(agent_id) or tenant_id
-
 
 
 def _is_truthy(value):
@@ -116,6 +116,7 @@ def _allow_anonymous_webhook(security_cfg: dict) -> bool:
     if not isinstance(security_cfg, dict):
         return False
     return _is_truthy(security_cfg.get("allow_anonymous"))
+
 
 def _get_user_nickname(user_id: str) -> str:
     exists, user = UserService.get_by_id(user_id)
@@ -329,13 +330,11 @@ async def _run_workflow_session(
                     # bare [DONE] (fixes #15169).
                     logging.info(
                         "empty agent output - returning session_id (agent_id=%s session_id=%s stream=%s)",
-                        agent_id, session_id, True,
+                        agent_id,
+                        session_id,
+                        True,
                     )
-                    yield (
-                        "data:"
-                        + json.dumps({"session_id": session_id, "data": {}}, ensure_ascii=False)
-                        + "\n\n"
-                    )
+                    yield ("data:" + json.dumps({"session_id": session_id, "data": {}}, ensure_ascii=False) + "\n\n")
                 await persist_workflow_session()
             except Exception as exc:
                 logging.exception(exc)
@@ -381,7 +380,9 @@ async def _run_workflow_session(
         # (fixes #15169).
         logging.info(
             "empty agent output - returning session_id (agent_id=%s session_id=%s stream=%s)",
-            agent_id, session_id, False,
+            agent_id,
+            session_id,
+            False,
         )
         await commit_runtime_replica()
         return get_result(data={"session_id": session_id})
@@ -543,16 +544,13 @@ async def delete_agent_session(tenant_id, agent_id):
 
     if errors:
         if success_count > 0:
-            return get_result(data={"success_count": success_count, "errors": errors},
-                              message=f"Partially deleted {success_count} sessions with {len(errors)} errors")
+            return get_result(data={"success_count": success_count, "errors": errors}, message=f"Partially deleted {success_count} sessions with {len(errors)} errors")
         else:
             return get_error_data_result(message="; ".join(errors))
 
     if duplicate_messages:
         if success_count > 0:
-            return get_result(
-                message=f"Partially deleted {success_count} sessions with {len(duplicate_messages)} errors",
-                data={"success_count": success_count, "errors": duplicate_messages})
+            return get_result(message=f"Partially deleted {success_count} sessions with {len(duplicate_messages)} errors", data={"success_count": success_count, "errors": duplicate_messages})
         else:
             return get_error_data_result(message=";".join(duplicate_messages))
 
@@ -596,8 +594,8 @@ async def _iter_session_completion_events(tenant_id, agent_id, req, return_trace
             yield ans
             continue
 
-        if event in ["message", "message_end", "user_inputs", "workflow_finished"]:
-            if event in ["user_inputs", "workflow_finished"]:
+        if event in ["message", "message_end", "user_inputs"]:
+            if event == "user_inputs":
                 logging.debug(
                     "Forwarding session completion event: tenant_id=%s agent_id=%s event=%s",
                     tenant_id,
@@ -605,6 +603,22 @@ async def _iter_session_completion_events(tenant_id, agent_id, req, return_trace
                     event,
                 )
             yield ans
+            continue
+
+        if event == "workflow_finished":
+            # Forward only the run-level aggregated token usage, not the whole terminal
+            # payload (inputs/outputs), so the session completion stream surface stays
+            # limited to what the usage contract needs.
+            logging.debug(
+                "Forwarding session completion event: tenant_id=%s agent_id=%s event=%s",
+                tenant_id,
+                agent_id,
+                event,
+            )
+            usage = ans.get("data", {}).get("usage")
+            if usage is not None:
+                yield {**ans, "data": {"usage": usage}}
+            continue
 
 
 @manager.route("/agents/templates", methods=["GET"])  # noqa: F821
@@ -1439,7 +1453,7 @@ async def agent_chat_completion(tenant_id, agent_id=None):
                 dsl_str = workflow_dsl
             else:
                 dsl_str = json.dumps(workflow_dsl, ensure_ascii=False)
-            canvas = Canvas(dsl_str, str(canvas_tenant_id), canvas_id=agent_id, custom_header=custom_header)
+            canvas = Canvas(dsl_str, str(canvas_tenant_id), task_id=session_id, canvas_id=agent_id, custom_header=custom_header)
         except Exception as exc:
             return server_error_response(exc)
 
@@ -1552,7 +1566,8 @@ async def agent_chat_completion(tenant_id, agent_id=None):
 
         try:
             from agent.canvas import Canvas
-            canvas = Canvas(dsl_str, str(canvas_tenant_id), canvas_id=agent_id, custom_header=custom_header)
+
+            canvas = Canvas(dsl_str, str(canvas_tenant_id), task_id=session_id, canvas_id=agent_id, custom_header=custom_header)
             canvas.clear_history()
         except Exception as exc:
             return server_error_response(exc)
@@ -1616,13 +1631,11 @@ async def agent_chat_completion(tenant_id, agent_id=None):
                 # seeing only a bare [DONE] (fixes #15169).
                 logging.info(
                     "empty agent output - returning session_id (agent_id=%s session_id=%s stream=%s)",
-                    agent_id, session_id, True,
+                    agent_id,
+                    session_id,
+                    True,
                 )
-                yield (
-                    "data:"
-                    + json.dumps({"session_id": session_id, "data": {}}, ensure_ascii=False)
-                    + "\n\n"
-                )
+                yield ("data:" + json.dumps({"session_id": session_id, "data": {}}, ensure_ascii=False) + "\n\n")
             yield "data:[DONE]\n\n"
 
         return _build_sse_response(generate())
@@ -1632,6 +1645,7 @@ async def agent_chat_completion(tenant_id, agent_id=None):
     final_ans = {}
     trace_items = []
     structured_output = {}
+    run_usage = None
     async for ans in _iter_session_completion_events(tenant_id, agent_id, req, return_trace):
         try:
             if ans["event"] == "message":
@@ -1651,6 +1665,11 @@ async def agent_chat_completion(tenant_id, agent_id=None):
                             "trace": [copy.deepcopy(data)],
                         }
                     )
+            if ans.get("event") == "workflow_finished":
+                # Capture the run-level usage but keep message_end/user_inputs as
+                # final_ans so the non-stream response shape stays unchanged.
+                run_usage = ans.get("data", {}).get("usage")
+                continue
             if ans.get("event") == "message_end":
                 final_ans = ans
             elif ans.get("event") == "user_inputs" and not final_ans:
@@ -1665,7 +1684,9 @@ async def agent_chat_completion(tenant_id, agent_id=None):
         # (fixes #15169).
         logging.info(
             "empty agent output - returning session_id (agent_id=%s session_id=%s stream=%s)",
-            agent_id, session_id, False,
+            agent_id,
+            session_id,
+            False,
         )
         return get_result(data={"session_id": session_id})
 
@@ -1673,6 +1694,8 @@ async def agent_chat_completion(tenant_id, agent_id=None):
         final_ans["data"] = {}
     final_ans["data"]["content"] = full_content
     final_ans["data"]["reference"] = reference
+    if run_usage:
+        final_ans["data"]["usage"] = run_usage
     if structured_output:
         final_ans["data"]["structured"] = structured_output
     if return_trace and final_ans:

@@ -26,9 +26,15 @@ from pydantic import ValidationError
 
 from api.apps import AUTH_JWT, AUTH_API, AUTH_BETA, current_user, login_required
 from api.constants import FILE_NAME_LEN_LIMIT, IMG_BASE64_PREFIX
-from api.apps.services.document_api_service import validate_document_update_fields, map_doc_keys, \
-    map_doc_keys_with_run_status, update_document_name_only, update_chunk_method, update_document_status_only, \
-    reset_document_for_reparse
+from api.apps.services.document_api_service import (
+    validate_document_update_fields,
+    map_doc_keys,
+    map_doc_keys_with_run_status,
+    update_document_name_only,
+    update_chunk_method,
+    update_document_status_only,
+    reset_document_for_reparse,
+)
 from api.db import VALID_FILE_TYPES, FileType, PermissionActionType, PermissionTargetType, PermissionValue, ResourceType
 from api.db.db_models import API4Conversation, DB
 from api.db.services import duplicate_name
@@ -747,7 +753,6 @@ async def _upload_local_documents(kb, tenant_id):
                 elif "quota_points" in e_str:
                     resource_code = RetCode.BILLING_POINTS_INSUFFICIENT
                 return get_resource_insufficient_result(code=resource_code, message=e_str, detail=detail)
-
 
     # Handle partial success: some files uploaded successfully, some had errors
     is_partial_success = err and files
@@ -2020,6 +2025,18 @@ def _sandbox_artifact_accessible(filename: str, user_id: str) -> bool:
     return False
 
 
+@DB.connection_context()
+def _sandbox_artifact_session_accessible(session_id: str, user_id: str) -> bool:
+    if not session_id:
+        return False
+    conv = API4Conversation.get_or_none(API4Conversation.id == session_id)
+    if not conv:
+        return False
+    if str(conv.user_id) != str(user_id) and str(conv.exp_user_id or "") != str(user_id):
+        return False
+    return UserCanvasService.accessible(conv.dialog_id, user_id)
+
+
 @manager.route("/documents/artifact/<filename>", methods=["GET"])  # noqa: F821
 @login_required
 @kb_role_guard
@@ -2057,7 +2074,8 @@ async def get_artifact(filename):
         ext = os.path.splitext(basename)[1].lower()
         if ext not in ARTIFACT_CONTENT_TYPES:
             return get_data_error_result(message="Invalid file type.")
-        if not await thread_pool_exec(_sandbox_artifact_accessible, basename, current_user.id):
+        session_id = request.args.get("session_id", "")
+        if not await thread_pool_exec(_sandbox_artifact_accessible, basename, current_user.id) and not await thread_pool_exec(_sandbox_artifact_session_accessible, session_id, current_user.id):
             return get_data_error_result(message="Artifact not found.")
         data = await thread_pool_exec(settings.STORAGE_IMPL.get, bucket, basename, current_user.id)
         if not data:

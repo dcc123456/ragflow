@@ -99,6 +99,7 @@ def healthz():
     """
     from api.utils.health_utils import run_health_checks
     from quart import jsonify
+
     result, all_ok = run_health_checks()
     if all_ok:
         logging.info(f"healthz result: {result}, all_ok: {all_ok}")
@@ -133,9 +134,7 @@ swagger = Swagger(
             "description": "",
             "version": "1.0.0",
         },
-        "securityDefinitions": {
-            "ApiKeyAuth": {"type": "apiKey", "name": "Authorization", "in": "header"}
-        },
+        "securityDefinitions": {"ApiKeyAuth": {"type": "apiKey", "name": "Authorization", "in": "header"}},
     },
 )
 # openapi supported
@@ -155,10 +154,8 @@ app.config["BODY_TIMEOUT"] = int(os.environ.get("QUART_BODY_TIMEOUT", 600))
 app.config["SESSION_PERMANENT"] = False
 app.config["SESSION_TYPE"] = "redis"
 app.config["SESSION_REDIS"] = settings.decrypt_database_config(name="redis")
-app.config["MAX_CONTENT_LENGTH"] = int(
-    os.environ.get("MAX_CONTENT_LENGTH", 1000 * 1000 * 1000)
-)
-app.config['SECRET_KEY'] = settings.get_secret_key()
+app.config["MAX_CONTENT_LENGTH"] = int(os.environ.get("MAX_CONTENT_LENGTH", 1024 * 1024 * 1024))
+app.config["SECRET_KEY"] = settings.get_secret_key()
 app.secret_key = settings.get_secret_key()
 commands.register_commands(app)
 
@@ -225,7 +222,7 @@ def _load_user(auth_types=None):
     auth_types = _normalize_auth_types(auth_types)
     if getattr(g, "user", None) and (not explicit_auth_types or getattr(g, "auth_type", None) in auth_types):
         return g.user
-    
+
     # No Authorization header, try to load user from session cookie if JWT auth is allowed
     authorization = request.headers.get("Authorization")
     if not authorization:
@@ -236,7 +233,7 @@ def _load_user(auth_types=None):
         parts = authorization.split(maxsplit=1)
         if len(parts) < 2:
             logging.warning("Authorization header has invalid bearer format")
-            return _load_user_from_session() if AUTH_JWT in auth_types else None
+            return None
         auth_token = parts[1]
     else:
         auth_token = authorization
@@ -272,21 +269,21 @@ def _load_user(auth_types=None):
 
             if not access_token or not access_token.strip():
                 logging.warning("Authentication attempt with empty access token")
-                return _load_user_from_session()
+                return None
 
             if len(access_token.strip()) < 32:
                 logging.warning(f"Authentication attempt with invalid token format: {len(access_token)} chars")
-                return _load_user_from_session()
+                return None
 
             user = UserService.query(access_token=access_token, status=StatusEnum.VALID.value)
             if user:
                 if not user[0].access_token or not user[0].access_token.strip():
                     logging.warning(f"User {user[0].email} has empty access_token in database")
-                    return _load_user_from_session()
+                    return None
                 g.auth_type = AUTH_JWT
                 g.user = user[0]
                 return user[0]
-            return _load_user_from_session()
+            return None
         except Exception as e_jwt:
             logging.warning(f"load_user from jwt got exception {e_jwt}")
 
@@ -313,7 +310,7 @@ def _load_user(auth_types=None):
         except Exception as e_api_token:
             logging.warning(f"load_user from api token got exception {e_api_token}")
 
-    return _load_user_from_session() if AUTH_JWT in auth_types else None
+    return None
 
 
 current_user = LocalProxy(_load_user)
@@ -408,10 +405,9 @@ def login_user(user, remember=False, duration=None, force=False, fresh=True):
     try:
         from common.billing_rate_limit_sync import sync_tenant_rate_limit
         from api.db.db_models import UserTenant
+
         if hasattr(user, "access_token") and user.access_token:
-            ut = UserTenant.select(UserTenant.tenant_id).where(
-                UserTenant.user_id == user.id, UserTenant.status == "1"
-            ).dicts().first()
+            ut = UserTenant.select(UserTenant.tenant_id).where(UserTenant.user_id == user.id, UserTenant.status == "1").dicts().first()
             if ut:
                 sync_tenant_rate_limit(ut["tenant_id"], None)
     except Exception:
@@ -506,16 +502,19 @@ def start_billing_rate_limit_sync():
     try:
         from common.billing_rate_limit_sync import sync_all_rate_limits, start_periodic_sync
         import threading
+
         def _bg_sync():
             try:
                 sync_all_rate_limits()
                 start_periodic_sync(interval=3600)  # hourly refresh
             except Exception as e:
                 logging.warning(f"Background billing rate limit sync failed: {e}")
+
         threading.Thread(target=_bg_sync, daemon=True).start()
         logging.info("Billing rate limit sync scheduled in background")
     except Exception as e:
         logging.warning(f"Could not start billing rate limit sync: {e}")
+
 
 @app.errorhandler(404)
 async def not_found(error):
@@ -563,11 +562,9 @@ def _db_close(exception):
 
 from quart import Response
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+
+
 @app.get("/metrics")
 def metrics():
     data = generate_latest()
-    return Response(
-        response=data,
-        status=200,
-        content_type=CONTENT_TYPE_LATEST
-    )
+    return Response(response=data, status=200, content_type=CONTENT_TYPE_LATEST)

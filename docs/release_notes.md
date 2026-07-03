@@ -9,6 +9,28 @@ sidebar_custom_props: {
 
 Key features, improvements and bug fixes in the latest releases.
 
+## v0.26.3
+
+Released on July 2, 2026.
+
+### New features
+
+- Data source connector: Introduces Google BigQuery as a data source connector for document ingestion and incremental syncing. [#15871](https://github.com/infiniflow/ragflow/pull/15871)
+- MCP: Adds two MCP tools `ragflow_list_datasets` and `ragflow_list_chats` to the RAGFlow MCP server. [#15384](https://github.com/infiniflow/ragflow/pull/15384)
+- File ingestion
+  - Integrates the layout-aware SoMark OCR parser into the system for extracting and indexing complex document elements like tables and figures. [#16482](https://github.com/infiniflow/ragflow/pull/16482)
+  - API: Exposes the [Ingest documents](./references/http_api_reference.md#ingest-documents) endpoint for processing documents using a customized pipeline. [#16395](https://github.com/infiniflow/ragflow/pull/16395)
+
+### Improvements
+
+- Backend: Introduces partial success handling for batch document uploads, ensuring that a single failed file no longer causes the entire batch to be discarded. [#16438](https://github.com/infiniflow/ragflow/pull/16438)
+- UI/UX: Refactors the global header to dynamically switch between a full desktop navigation bar and a mobile-friendly side drawer based on available screen space, resolving overlapping issues and significantly improving the mobile user experience. [#15984](https://github.com/infiniflow/ragflow/pull/15984)
+
+### Bug fixes
+
+- After setting up the Ollama provider, the system returned the error: 'Failed to access model(name) using this api key'. [#16519](https://github.com/infiniflow/ragflow/pull/16519)
+- Deleting a user/assistant chat message pair mistakenly removed the previous conversation turn's reference due to an index misalignment. [#16436](https://github.com/infiniflow/ragflow/pull/16436)
+
 ## v0.26.2
 
 Released on June 29, 2026.
@@ -381,7 +403,7 @@ Released on December 31, 2025.
 
 ### Fixed issues
 
-- Memory: 
+- Memory:
   - The RAGFlow server failed to start if an empty memory object existed.
   - Unable to delete a newly created empty Memory.
 - RAG: MDX file parsing was not supported.
@@ -617,7 +639,7 @@ Ecommerce Customer Service Workflow: A template designed to handle enquiries abo
 
 ### Fixed issues
 
-- Dataset:  
+- Dataset:
   - Unable to share resources with the team.
   - Inappropriate restrictions on the number and size of uploaded files.
 - Chat:
@@ -633,13 +655,13 @@ Released on August 20, 2025.
 
 ### Improvements
 
-- Revamps the user interface for the **Datasets**, **Chat**, and **Search** pages.  
+- Revamps the user interface for the **Datasets**, **Chat**, and **Search** pages.
 - Search and Chat: Introduces document-level metadata filtering, allowing automatic or manual filtering during chats or searches.
 - Search: Supports creating search apps tailored to various business scenarios
 - Chat: Supports comparing answer performance of up to three chat model settings on a single **Chat** page.
-- Agent:  
-  - Implements a toggle in the **Agent** component to enable or disable citation.  
-  - Introduces a drag-and-drop method for creating components.  
+- Agent:
+  - Implements a toggle in the **Agent** component to enable or disable citation.
+  - Introduces a drag-and-drop method for creating components.
 - Documentation: Corrects inaccuracies in the API reference.
 
 ### New Agent templates
@@ -649,8 +671,8 @@ Released on August 20, 2025.
 ### Fixed issues
 
 - The timeout mechanism introduced in v0.20.0 caused tasks like GraphRAG to halt.
-- Predefined opening greeting in the **Agent** component was missing during conversations.  
-- An automatic line break issue in the prompt editor.  
+- Predefined opening greeting in the **Agent** component was missing during conversations.
+- An automatic line break issue in the prompt editor.
 - A memory leak issue caused by PyPDF. [#9469](https://github.com/infiniflow/ragflow/pull/9469)
 
 ### API changes
@@ -734,7 +756,7 @@ Released on June 23, 2025.
 
 ### Newly supported models
 
-- Qwen 3 Embedding. [#8184](https://github.com/infiniflow/ragflow/pull/8184) 
+- Qwen 3 Embedding. [#8184](https://github.com/infiniflow/ragflow/pull/8184)
 - Voyage Multimodal 3. [#7987](https://github.com/infiniflow/ragflow/pull/7987)
 
 ## v0.19.0
