@@ -36,6 +36,7 @@ export enum PermissionResourceType {
   Dialog = 'dialog',
   Document = 'document',
   Canvas = 'canvas',
+  Memory = 'memory',
   MCP = 'mcp',
 }
 

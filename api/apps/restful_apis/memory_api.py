@@ -21,13 +21,52 @@ from quart import request, g
 from common.constants import RetCode
 from common.exceptions import ArgumentException, NotFoundException
 from api.apps import login_required, current_user
+from api.db import PermissionActionType, PermissionTargetType, PermissionValue, ResourceType
+from api.db.services.permission_service import PermissionChangeLogService, PermissionService
+from api.db.services.user_service import UserTenantService
 from api.utils.api_utils import validate_request, get_request_json, get_error_argument_result, get_json_result
 from api.apps.services import memory_api_service
 from api.utils.pagination_utils import validate_rest_api_page_size
 from api.utils.billing import check_resources
+from api.utils.permission_utils import check_memory_permission
+from common.misc_utils import get_uuid
 from common.role_util import MEMORY_API_ACTION_MAP, MEMORY_ROLE_RESOURCE_TYPE, check_role_access
 
 memory_role_guard = check_role_access(MEMORY_API_ACTION_MAP, MEMORY_ROLE_RESOURCE_TYPE)
+
+
+def _grant_memory_owner_permission(memory_id: str) -> None:
+    operator = UserTenantService.filter_by_tenant_and_user_id(current_user.id, current_user.id)
+    if not operator:
+        logging.warning("Failed to resolve memory owner operator for memory_id=%s", memory_id)
+        return
+
+    if not PermissionService.save(
+        id=get_uuid(),
+        member_id=operator.id,
+        tenant_id=operator.tenant_id,
+        resource_type=ResourceType.MEMORY,
+        resource_id=memory_id,
+        permission=PermissionValue.PERMISSION_OWNER.value,
+    ):
+        logging.warning("Failed to create memory owner permission for memory_id=%s", memory_id)
+        return
+
+    try:
+        PermissionChangeLogService.save(
+            id=get_uuid(),
+            tenant_id=operator.tenant_id,
+            operator_id=operator.id,
+            target_type=PermissionTargetType.TARGET_MEMBER,
+            target_id=operator.id,
+            resource_type=ResourceType.MEMORY,
+            resource_id=memory_id,
+            old_permission=PermissionValue.PERMISSION_NULL.value,
+            new_permission=PermissionValue.PERMISSION_OWNER.value,
+            action_type=PermissionActionType.ACTION_ADD,
+        )
+    except Exception as exc:
+        logging.warning("Failed to create memory permission change log for resource_id=%s: %s", memory_id, exc)
 
 
 @manager.route("/memories", methods=["POST"])  # noqa: F821
@@ -52,6 +91,7 @@ async def create_memory():
                 request.path,
             )
         if success:
+            _grant_memory_owner_permission(res["id"])
             return get_json_result(message=True, data=res)
         else:
             return get_json_result(message=res, code=RetCode.SERVER_ERROR)
@@ -84,6 +124,7 @@ async def create_memory():
 @manager.route("/memories/<memory_id>", methods=["PUT"])  # noqa: F821
 @login_required
 @memory_role_guard
+@check_memory_permission(PermissionValue.PERMISSION_MANAGE)
 async def update_memory(memory_id):
     req = await get_request_json()
     new_settings = {
@@ -126,6 +167,7 @@ async def update_memory(memory_id):
 @manager.route("/memories/<memory_id>", methods=["DELETE"])  # noqa: F821
 @login_required
 @memory_role_guard
+@check_memory_permission(PermissionValue.PERMISSION_OWNER)
 async def delete_memory(memory_id):
     try:
         await memory_api_service.delete_memory(memory_id)
@@ -157,6 +199,7 @@ async def list_memory():
 @manager.route("/memories/<memory_id>/config", methods=["GET"])  # noqa: F821
 @login_required
 @memory_role_guard
+@check_memory_permission(PermissionValue.PERMISSION_READ)
 async def get_memory_config(memory_id):
     try:
         res = await memory_api_service.get_memory_config(memory_id)
@@ -172,6 +215,7 @@ async def get_memory_config(memory_id):
 @manager.route("/memories/<memory_id>", methods=["GET"])  # noqa: F821
 @login_required
 @memory_role_guard
+@check_memory_permission(PermissionValue.PERMISSION_READ)
 async def get_memory_messages(memory_id):
     args = request.args
     agent_ids = args.getlist("agent_id")
@@ -228,6 +272,7 @@ async def add_message():
 @manager.route("/messages/<memory_id>:<message_id>", methods=["DELETE"])  # noqa: F821
 @login_required
 @memory_role_guard
+@check_memory_permission(PermissionValue.PERMISSION_WRITE)
 async def forget_message(memory_id: str, message_id: int):
     try:
         res = await memory_api_service.forget_message(memory_id, message_id)
@@ -243,6 +288,7 @@ async def forget_message(memory_id: str, message_id: int):
 @manager.route("/messages/<memory_id>:<message_id>", methods=["PUT"])  # noqa: F821
 @login_required
 @memory_role_guard
+@check_memory_permission(PermissionValue.PERMISSION_WRITE)
 @validate_request("status")
 async def update_message(memory_id: str, message_id: int):
     req = await get_request_json()
@@ -310,6 +356,7 @@ async def get_messages():
 @manager.route("/messages/<memory_id>:<message_id>/content", methods=["GET"])  # noqa: F821
 @login_required
 @memory_role_guard
+@check_memory_permission(PermissionValue.PERMISSION_READ)
 async def get_message_content(memory_id: str, message_id: int):
     try:
         res = await memory_api_service.get_message_content(memory_id, message_id)

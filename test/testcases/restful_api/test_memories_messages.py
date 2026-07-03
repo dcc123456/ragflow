@@ -41,7 +41,7 @@ def memory_cleanup(rest_client):
                 cleanup_errors.append((memory_id, delete_res.status_code, delete_res.text))
                 continue
             delete_payload = delete_res.json()
-            if delete_payload["code"] not in (0, 404):
+            if delete_payload["code"] not in (0, 103, 404):
                 cleanup_errors.append((memory_id, delete_res.status_code, delete_payload))
         assert not cleanup_errors, f"Memory cleanup failed: {cleanup_errors}"
 

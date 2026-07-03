@@ -14,8 +14,9 @@
 #  limitations under the License.
 #
 from api.apps import current_user
-from api.db import TenantPermission
+from api.db import PermissionValue, ResourceType, TenantPermission
 from api.db.services.memory_service import MemoryService
+from api.db.services.permission_service import PermissionService
 from api.db.services.user_service import UserTenantService
 from api.db.services.canvas_service import UserCanvasService
 from api.db.services.task_service import TaskService
@@ -50,26 +51,38 @@ def _joined_tenant_ids(user_id: str) -> set[str]:
     return {user_id, *[tenant["tenant_id"] for tenant in user_tenants]}
 
 
-def _memory_accessible(memory) -> bool:
+def _memory_permission_map(user_id: str, permission: PermissionValue) -> dict[str, int]:
+    tenant_ids = list(_joined_tenant_ids(user_id))
+    return PermissionService.get_user_resource_permission_map(
+        user_id=user_id,
+        tenant_ids=tenant_ids,
+        resource_type=ResourceType.MEMORY,
+        permission=permission,
+    )
+
+
+def _memory_accessible(memory, permission_map: dict[str, int] | None = None, required_permission: PermissionValue = PermissionValue.PERMISSION_READ) -> bool:
     if memory.tenant_id == current_user.id:
         return True
-    if memory.permissions != TenantPermission.TEAM.value:
-        return False
-    return memory.tenant_id in _joined_tenant_ids(current_user.id)
+    if permission_map and permission_map.get(memory.id, 0) >= required_permission.value:
+        return True
+    return False
 
 
-def _require_memory_access(memory_id: str):
+def _require_memory_access(memory_id: str, required_permission: PermissionValue = PermissionValue.PERMISSION_READ):
     memory = MemoryService.get_by_memory_id(memory_id)
-    if not memory or not _memory_accessible(memory):
+    permission_map = _memory_permission_map(current_user.id, required_permission)
+    if not memory or not _memory_accessible(memory, permission_map, required_permission):
         raise NotFoundException(f"Memory '{memory_id}' not found.")
     return memory
 
 
-def _filter_accessible_memories(memory_ids: list[str]):
+def _filter_accessible_memories(memory_ids: list[str], required_permission: PermissionValue = PermissionValue.PERMISSION_READ):
     memory_ids = _split_filter_values(memory_ids)
     if not memory_ids:
         return []
-    return [memory for memory in MemoryService.get_by_ids(memory_ids) if _memory_accessible(memory)]
+    permission_map = _memory_permission_map(current_user.id, required_permission)
+    return [memory for memory in MemoryService.get_by_ids(memory_ids) if _memory_accessible(memory, permission_map, required_permission)]
 
 
 async def create_memory(memory_info: dict):
@@ -123,7 +136,7 @@ async def update_memory(memory_id: str, new_memory_setting: dict):
         "user_prompt": str
     }
     """
-    current_memory = _require_memory_access(memory_id)
+    current_memory = _require_memory_access(memory_id, PermissionValue.PERMISSION_MANAGE)
 
     def _normalize_memory_type(value):
         if value is None:
@@ -230,7 +243,7 @@ async def update_memory(memory_id: str, new_memory_setting: dict):
 
 
 async def delete_memory(memory_id):
-    memory = _require_memory_access(memory_id)
+    memory = _require_memory_access(memory_id, PermissionValue.PERMISSION_OWNER)
     MemoryService.delete_memory(memory_id)
     if MessageService.has_index(memory.tenant_id, memory_id):
         MessageService.delete_message({"memory_id": memory_id}, memory.tenant_id, memory_id)
@@ -259,21 +272,29 @@ async def list_memory(filter_params: dict, keywords: str, page: int = 1, page_si
         filter_dict["tenant_id"] = list(allowed_tenant_ids)
     memory_types = _split_filter_values(filter_params.get("memory_type"))
     filter_dict["memory_type"] = memory_types
+    permission_map = _memory_permission_map(current_user.id, PermissionValue.PERMISSION_READ)
+    filter_dict["permission_resource_ids"] = list(permission_map.keys())
 
     memory_list, count = MemoryService.get_by_filter(filter_dict, keywords, page, page_size)
+    for memory in memory_list:
+        if memory["tenant_id"] == current_user.id:
+            memory["operator_permission"] = PermissionValue.PERMISSION_OWNER.value
+        else:
+            memory["operator_permission"] = permission_map.get(memory["id"], PermissionValue.PERMISSION_NULL.value)
     [memory.update({"memory_type": get_memory_type_human(memory["memory_type"])}) for memory in memory_list]
     return {"memory_list": memory_list, "total_count": count}
 
 
 async def get_memory_config(memory_id):
     memory = MemoryService.get_with_owner_name_by_id(memory_id)
-    if not memory or not _memory_accessible(memory):
+    permission_map = _memory_permission_map(current_user.id, PermissionValue.PERMISSION_READ)
+    if not memory or not _memory_accessible(memory, permission_map, PermissionValue.PERMISSION_READ):
         raise NotFoundException(f"Memory '{memory_id}' not found.")
     return format_ret_data_from_memory(memory)
 
 
 async def get_memory_messages(memory_id, agent_ids: list[str], keywords: str, page: int = 1, page_size: int = 50):
-    memory = _require_memory_access(memory_id)
+    memory = _require_memory_access(memory_id, PermissionValue.PERMISSION_READ)
     messages = MessageService.list_message(memory.tenant_id, memory_id, agent_ids, keywords, page, page_size)
     agent_name_mapping = {}
     extract_task_mapping = {}
@@ -305,14 +326,14 @@ async def add_message(memory_ids: list[str], message_dict: dict):
         "message_type": str
     }
     """
-    accessible_memory_ids = [memory.id for memory in _filter_accessible_memories(memory_ids)]
+    accessible_memory_ids = [memory.id for memory in _filter_accessible_memories(memory_ids, PermissionValue.PERMISSION_WRITE)]
     if not accessible_memory_ids:
         return False, "Memory not found."
     return await queue_save_to_memory_task(accessible_memory_ids, message_dict)
 
 
 async def forget_message(memory_id: str, message_id: int):
-    memory = _require_memory_access(memory_id)
+    memory = _require_memory_access(memory_id, PermissionValue.PERMISSION_WRITE)
 
     forget_time = timestamp_to_date(current_timestamp())
     update_succeed = MessageService.update_message({"memory_id": memory_id, "message_id": int(message_id)}, {"forget_at": forget_time}, memory.tenant_id, memory_id)
@@ -322,7 +343,7 @@ async def forget_message(memory_id: str, message_id: int):
 
 
 async def update_message_status(memory_id: str, message_id: int, status: bool):
-    memory = _require_memory_access(memory_id)
+    memory = _require_memory_access(memory_id, PermissionValue.PERMISSION_WRITE)
 
     update_succeed = MessageService.update_message({"memory_id": memory_id, "message_id": int(message_id)}, {"status": status}, memory.tenant_id, memory_id)
     if update_succeed:
@@ -346,7 +367,7 @@ async def search_message(filter_dict: dict, params: dict):
     }
     """
     memory_ids = _split_filter_values(filter_dict.get("memory_id"))
-    accessible_memory_ids = [memory.id for memory in _filter_accessible_memories(memory_ids)]
+    accessible_memory_ids = [memory.id for memory in _filter_accessible_memories(memory_ids, PermissionValue.PERMISSION_READ)]
     if not accessible_memory_ids:
         return []
     filter_dict = {**filter_dict, "memory_id": accessible_memory_ids}
@@ -363,7 +384,7 @@ async def get_messages(memory_ids: list[str], agent_id: str = "", session_id: st
     :param limit: maximum number of messages to return
     :return: list of recent messages
     """
-    memory_list = _filter_accessible_memories(memory_ids)
+    memory_list = _filter_accessible_memories(memory_ids, PermissionValue.PERMISSION_READ)
     if not memory_list:
         return []
     uids = [memory.tenant_id for memory in memory_list]
@@ -381,7 +402,7 @@ async def get_message_content(memory_id: str, message_id: int):
     :return: message content
     :raises NotFoundException: if memory or message not found
     """
-    memory = _require_memory_access(memory_id)
+    memory = _require_memory_access(memory_id, PermissionValue.PERMISSION_READ)
 
     res = MessageService.get_by_message_id(memory_id, message_id, memory.tenant_id)
     if res:

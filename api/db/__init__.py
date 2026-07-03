@@ -80,9 +80,10 @@ class ResourceType(StrEnum):
     DOCUMENT = "document"
     CANVAS = "canvas"
     MCP = "mcp"
+    MEMORY = "memory"
 
 
-VALID_RESOURCE_TYPES = ["kb", "llm", "team", "dialog", "document", "canvas", "mcp"]
+VALID_RESOURCE_TYPES = ["kb", "llm", "team", "dialog", "document", "canvas", "mcp", "memory"]
 
 
 class PermissionActionType(StrEnum):
