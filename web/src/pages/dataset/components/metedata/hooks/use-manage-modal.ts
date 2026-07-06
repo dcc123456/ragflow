@@ -1,6 +1,7 @@
 import message from '@/components/ui/message';
 import { useSetModalState } from '@/hooks/common-hooks';
 import { useSelectedIds } from '@/hooks/logic-hooks/use-row-selection';
+import { useFetchKnowledgeBaseConfiguration } from '@/hooks/use-knowledge-request';
 import { DocumentApiAction } from '@/hooks/use-document-request';
 import {
   getMetaDataService,
@@ -8,6 +9,7 @@ import {
   updateDocumentMetaDataConfig,
   updateDocumentsMetadata,
 } from '@/services/knowledge-service';
+import { hasManagePermissionPermission } from '@/utils/permission-util';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { RowSelectionState } from '@tanstack/react-table';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -293,6 +295,10 @@ export const useManageMetaDataModal = (
   const { id } = useParams();
   const { t } = useTranslation();
   const { data, loading } = useFetchMetaDataManageData(type, documentIds);
+  const { data: knowledgeDetails } = useFetchKnowledgeBaseConfiguration();
+  const canManageDocument = hasManagePermissionPermission(
+    knowledgeDetails.operator_permission,
+  );
 
   const [tableData, setTableData] = useState<IMetaDataTableData[]>(metaData);
   const queryClient = useQueryClient();
@@ -467,7 +473,7 @@ export const useManageMetaDataModal = (
         case MetadataType.UpdateSingle:
           // handleSaveUpdateSingle(callback);
           handleSaveManage(callback);
-          if (builtInMetadata && documentIds?.length) {
+          if (builtInMetadata && documentIds?.length && canManageDocument) {
             await updateDocumentMetaDataConfig({
               kb_id: id || '',
               doc_id: documentIds[0],
@@ -497,6 +503,7 @@ export const useManageMetaDataModal = (
       id,
       handleSaveManage,
       type,
+      canManageDocument,
       // handleSaveUpdateSingle,
       handleSaveSettings,
       handleSaveSingleFileSettings,
