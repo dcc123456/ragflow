@@ -11,6 +11,7 @@ from api.db.services.document_service import DocumentService
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.mcp_server_service import MCPServerService
 from api.db.services.memory_service import MemoryService
+from api.db.services.search_service import SearchService
 from api.db.services.permission_service import PermissionChangeLogService, PermissionService
 from api.db.services.role_service import RoleResourceService
 from api.db.services.team_service import DepartmentMemberService, DepartmentService, GroupMemberService, GroupService
@@ -95,6 +96,8 @@ async def update_permission():
         ResourceType.DIALOG: ResourceTypeEnum.CHAT.value,
         ResourceType.DOCUMENT: ResourceTypeEnum.DATASET.value,
         ResourceType.CANVAS: ResourceTypeEnum.AGENT.value,
+        ResourceType.MEMORY: ResourceTypeEnum.MEMORY.value,
+        ResourceType.SEARCH: ResourceTypeEnum.SEARCH.value,
     }
     role_id = getattr(current_user, "role_id", None)
     target_resource_value = role_resource_map.get(resource_type)
@@ -147,6 +150,10 @@ async def update_permission():
                 memory = MemoryService.get_by_memory_id(resource_id)
                 if not memory or memory.tenant_id != tenant_id:
                     return get_data_error_result(message=f"Resource Memory {resource_id} is not available.")
+            elif resource_type == ResourceType.SEARCH:
+                e, search = SearchService.get_by_id(resource_id)
+                if not e or search.tenant_id != tenant_id:
+                    return get_data_error_result(message=f"Resource Search {resource_id} is not available.")
             else:
                 return get_data_error_result(message="Un-supported resource type.")
 
@@ -429,6 +436,8 @@ async def update_permission_next():
         ResourceType.DIALOG: ResourceTypeEnum.CHAT.value,
         ResourceType.DOCUMENT: ResourceTypeEnum.DATASET.value,
         ResourceType.CANVAS: ResourceTypeEnum.AGENT.value,
+        ResourceType.MEMORY: ResourceTypeEnum.MEMORY.value,
+        ResourceType.SEARCH: ResourceTypeEnum.SEARCH.value,
     }
 
     valid_target_types = {t.value for t in PermissionTargetType}
@@ -508,6 +517,12 @@ async def update_permission_next():
             memory = MemoryService.get_by_memory_id(resource_id)
             if not memory or memory.tenant_id != tenant_id:
                 return get_data_error_result(message=f"Item {idx}: Resource Memory {resource_id} is not available.")
+        elif resource_type == ResourceType.SEARCH:
+            if not resource_id:
+                return get_data_error_result(message=f"Item {idx}: missing `resource_id` for Search.")
+            e, search = SearchService.get_by_id(resource_id)
+            if not e or search.tenant_id != tenant_id:
+                return get_data_error_result(message=f"Item {idx}: Resource Search {resource_id} is not available.")
         elif resource_type == ResourceType.TEAM:
             if not resource_id:
                 return get_data_error_result(message=f"Item {idx}: missing `resource_id` for Team.")
@@ -672,6 +687,15 @@ async def list_permissions():
                 return get_data_error_result(message="Resource is not available.")
             if not (
                 memory.tenant_id == current_user.id or has_permission_for_member(operator.id, tenant_id, memory_id, resource_type=ResourceType.MEMORY, permission=PermissionValue.PERMISSION_MANAGE)[0]
+            ):
+                return get_data_error_result(message="Permission denied.")
+    elif resource_type == ResourceType.SEARCH:
+        for search_id in resource_ids:
+            e, search = SearchService.get_by_id(search_id)
+            if not e or search.tenant_id != tenant_id:
+                return get_data_error_result(message="Resource is not available.")
+            if not (
+                search.tenant_id == current_user.id or has_permission_for_member(operator.id, tenant_id, search_id, resource_type=ResourceType.SEARCH, permission=PermissionValue.PERMISSION_MANAGE)[0]
             ):
                 return get_data_error_result(message="Permission denied.")
 

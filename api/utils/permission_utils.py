@@ -120,6 +120,129 @@ def resolve_kb_with_permission(user_id, kb_id, required_permission=PermissionVal
     return None, f"User '{user_id}' lacks permission for dataset '{kb_id}'"
 
 
+def resolve_search_with_permission(user_id, search_id, required_permission=PermissionValue.PERMISSION_READ):
+    """Resolve a search app for an entrypoint after checking the caller's permission."""
+    from api.db.services.search_service import SearchService
+    from api.db.services.user_service import UserTenantService
+
+    ok, search = SearchService.get_by_id(search_id)
+    if not ok or search.status != StatusEnum.VALID.value:
+        return None, f"User '{user_id}' lacks permission for search app '{search_id}'"
+
+    if search.created_by == user_id:
+        return search, None
+
+    user_tenants = UserTenantService.query(user_id=user_id) or []
+    for ut in user_tenants:
+        if ut.tenant_id != search.tenant_id:
+            continue
+        granted, _, _ = has_permission_for_member(
+            operator_id=ut.id,
+            tenant_id=ut.tenant_id,
+            resource_id=search_id,
+            resource_type=ResourceType.SEARCH,
+            permission=required_permission,
+        )
+        if granted:
+            return search, None
+
+    return None, f"User '{user_id}' lacks permission for search app '{search_id}'"
+
+
+def check_search_permission(permission):
+    from api.db.services.search_service import SearchService
+    from api.db.services.user_service import UserTenantService
+    from api.utils.api_utils import get_json_result
+
+    """
+    ! IMPORTANT:
+    The request data is parsed in this decorator.
+    In view functions, use `g.req_data` instead of `request.get_json()` or `request.form`.
+
+    Supports:
+    - JSON body
+    - Form-data / urlencoded
+    - URL query parameters
+    - URL path parameters (kwargs)
+    """
+
+    def decorator(foo):
+        from quart import g, request
+
+        @wraps(foo)
+        async def wrapper(*args, **kwargs):
+            from api.apps import current_user
+
+            content_type = request.headers.get("Content-Type") or ""
+
+            if request.method in ["POST", "PUT", "PATCH"]:
+                if "application/json" in content_type:
+                    if not request.is_json:
+                        return get_json_result(data=False, message="Content-Type must be application/json", code=RetCode.ARGUMENT_ERROR)
+                    req_data = (await request.get_json(silent=True)) or {}
+
+                elif "multipart/form-data" in content_type or "application/x-www-form-urlencoded" in content_type:
+                    req_data = (await request.form) or {}
+
+                else:
+                    req_data = request.args or {}
+
+            else:  # GET, DELETE
+                req_data = request.args or {}
+
+            search_id = req_data.get("search_id") or kwargs.get("search_id")
+
+            g.req_data = req_data
+            g.search_id = search_id
+
+            if not search_id:
+                if inspect.iscoroutinefunction(foo):
+                    return await foo(*args, **kwargs)
+                return foo(*args, **kwargs)
+
+            _, search = SearchService.get_by_id(search_id)
+            if not search:
+                return get_json_result(data=False, message="Search not found.", code=RetCode.OPERATING_ERROR)
+
+            if search.created_by == current_user.id:
+                g.tenant_id = search.tenant_id
+                g.operator_permission = PermissionValue.PERMISSION_OWNER.value
+                g.member_id = None
+                if inspect.iscoroutinefunction(foo):
+                    return await foo(*args, **kwargs)
+                return foo(*args, **kwargs)
+
+            user_tenants = UserTenantService.query(user_id=current_user.id) or []
+            for user_tenant in user_tenants:
+                if user_tenant.tenant_id != search.tenant_id:
+                    continue
+
+                permission_info = has_permission_for_member(
+                    operator_id=user_tenant.id,
+                    tenant_id=user_tenant.tenant_id,
+                    resource_id=search_id,
+                    resource_type=ResourceType.SEARCH,
+                    permission=permission,
+                )
+                if permission_info[0]:
+                    g.tenant_id = user_tenant.tenant_id
+                    g.operator_permission = permission_info[2]
+                    g.member_id = user_tenant.id
+                    if inspect.iscoroutinefunction(foo):
+                        return await foo(*args, **kwargs)
+                    return foo(*args, **kwargs)
+
+            return get_json_result(
+                data=False,
+                message=_permission_denied_message("Search", permission),
+                code=RetCode.PERMISSION_ERROR,
+            )
+
+        return wrapper
+
+    return decorator
+
+
 def wrap_permission_info(permission_info):
     """
     Return format:
@@ -247,12 +370,7 @@ def check_kb_permission(permission):
             else:  # GET、DELETE
                 req_data = request.args or {}
 
-            kb_id = (
-                req_data.get("kb_id")
-                or kwargs.get("kb_id")
-                or req_data.get("dataset_id")
-                or kwargs.get("dataset_id")
-            )
+            kb_id = req_data.get("kb_id") or kwargs.get("kb_id") or req_data.get("dataset_id") or kwargs.get("dataset_id")
             if not kb_id:
                 return get_json_result(data=False, message="Missing required parameter `kb_id`.", code=RetCode.ARGUMENT_ERROR)
 
@@ -288,7 +406,6 @@ def check_kb_permission(permission):
                         if inspect.iscoroutinefunction(foo):
                             return await foo(*args, **kwargs)
                         return foo(*args, **kwargs)
-
 
             return get_json_result(
                 data=False,
@@ -370,7 +487,6 @@ def check_dialog_permission(permission):
                             return await foo(*args, **kwargs)
                         return foo(*args, **kwargs)
 
-
             return get_json_result(
                 data=[],
                 message=_permission_denied_message("Chat/Dialog", permission),
@@ -425,14 +541,7 @@ def check_doc_permission(permission, allow_missing_document=False):
             else:  # GET、DELETE
                 req_data = request.args or {}
 
-            doc_id = (
-                req_data.get("doc_id")
-                or kwargs.get("doc_id")
-                or req_data.get("document_id")
-                or kwargs.get("document_id")
-                or req_data.get("attachment_id")
-                or kwargs.get("attachment_id")
-            )
+            doc_id = req_data.get("doc_id") or kwargs.get("doc_id") or req_data.get("document_id") or kwargs.get("document_id") or req_data.get("attachment_id") or kwargs.get("attachment_id")
             if not doc_id:
                 return get_json_result(data=False, message="Missing required parameter `doc_id`.", code=RetCode.ARGUMENT_ERROR)
 
@@ -561,9 +670,7 @@ def _filter_accessible_document_ids(tenant_id, operator_id, kb_ids, doc_ids=None
     if not allowed_doc_ids:
         return []
 
-    allowed_doc_ids = set(
-        [d["id"] for d in Document.select(Document.id).where((Document.id.in_(list(allowed_doc_ids))) & (Document.kb_id.in_(kb_ids))).dicts()]
-    )
+    allowed_doc_ids = set([d["id"] for d in Document.select(Document.id).where((Document.id.in_(list(allowed_doc_ids))) & (Document.kb_id.in_(kb_ids))).dicts()])
 
     if doc_ids:
         return list(allowed_doc_ids.intersection(set(doc_ids)))
@@ -661,13 +768,7 @@ def check_canvas_permission(permission):
             else:  # GET, DELETE
                 req_data = request.args or {}
 
-            canvas_id = (
-                kwargs.get("canvas_id")
-                or kwargs.get("agent_id")
-                or req_data.get("id")
-                or req_data.get("canvas_id")
-                or req_data.get("agent_id")
-            )
+            canvas_id = kwargs.get("canvas_id") or kwargs.get("agent_id") or req_data.get("id") or req_data.get("canvas_id") or req_data.get("agent_id")
 
             g.req_data = req_data
             g.canvas_id = canvas_id

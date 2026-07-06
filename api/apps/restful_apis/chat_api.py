@@ -29,9 +29,7 @@ from api.apps import current_user, login_required
 from api.db import PermissionActionType, PermissionTargetType, PermissionValue, ResourceType
 from api.db.db_models import DB
 from api.apps.restful_apis._generation_params import merge_generation_config, pop_generation_config
-from api.db.joint_services.tenant_model_service import (
-    get_tenant_default_model_by_type, get_model_config_from_provider_instance, get_api_key, split_model_name
-)
+from api.db.joint_services.tenant_model_service import get_tenant_default_model_by_type, get_model_config_from_provider_instance, get_api_key, split_model_name
 from api.db.services.chunk_feedback_service import ChunkFeedbackService
 from api.db.services.conversation_service import ConversationService, structure_answer
 from api.db.services.dialog_service import DialogService, async_chat, gen_mindmap
@@ -49,7 +47,7 @@ from api.utils.api_utils import (
     validate_request,
 )
 from api.utils.billing import check_resources, check_dynamic_resources, get_dynamic_resource_error_result
-from api.utils.permission_utils import check_dialog_permission, has_permission_for_member
+from api.utils.permission_utils import check_dialog_permission, check_search_permission, has_permission_for_member
 from api.utils.pagination_utils import validate_rest_api_page_size
 from common.constants import LLMType, RetCode, StatusEnum
 from common.misc_utils import get_uuid, thread_pool_exec
@@ -58,6 +56,7 @@ from rag.prompts.generator import chunks_format
 from rag.prompts.template import load_prompt
 
 dialog_role_guard = check_role_access(DIALOG_API_ACTION_MAP, DIALOG_ROLE_RESOURCE_TYPE)
+
 
 def _sanitize_json_floats(obj):
     """Replace NaN/Infinity floats with None so the result is RFC 8259 JSON.
@@ -360,11 +359,12 @@ async def _validate_llm_id(llm_id, tenant_id, llm_setting=None):
 
     return None
 
+
 async def _validate_rerank_id(rerank_id, tenant_id):
     if not rerank_id:
         return None
 
-    parts = rerank_id.split('@')
+    parts = rerank_id.split("@")
     llm_name = parts[0]
     if llm_name in _DEFAULT_RERANK_MODELS:
         return None
@@ -636,17 +636,19 @@ async def list_chats():
     try:
         page_number = int(request.args.get("page", 0))
         items_per_page = validate_rest_api_page_size(int(request.args.get("page_size", 0)))
-        tenant_ids = list(
-            dict.fromkeys(
-                user_tenant.tenant_id
-                for user_tenant in _get_user_tenants_for_chat_access()
-            )
-        )
+        tenant_ids = list(dict.fromkeys(user_tenant.tenant_id for user_tenant in _get_user_tenants_for_chat_access()))
 
         if owner_ids:
             chats, total = await thread_pool_exec(
                 DialogService.get_by_tenant_ids,
-                owner_ids, current_user.id, 0, 0, orderby, desc, keywords, **exact_filters,
+                owner_ids,
+                current_user.id,
+                0,
+                0,
+                orderby,
+                desc,
+                keywords,
+                **exact_filters,
             )
             chats = [chat for chat in chats if chat["tenant_id"] in owner_ids]
             total = len(chats)
@@ -656,7 +658,14 @@ async def list_chats():
         else:
             chats, total = await thread_pool_exec(
                 DialogService.get_by_tenant_ids,
-                tenant_ids, current_user.id, page_number, items_per_page, orderby, desc, keywords, **exact_filters,
+                tenant_ids,
+                current_user.id,
+                page_number,
+                items_per_page,
+                orderby,
+                desc,
+                keywords,
+                **exact_filters,
             )
 
         for chat in chats:
@@ -1363,6 +1372,7 @@ async def transcription():
 
 @manager.route("/chat/mindmap", methods=["POST"])  # noqa: F821
 @login_required
+@check_search_permission(PermissionValue.PERMISSION_WRITE)
 @validate_request("question", "kb_ids")
 async def mindmap():
     req = await get_request_json()
@@ -1387,6 +1397,7 @@ async def mindmap():
 
 @manager.route("/chat/recommendation", methods=["POST"])  # noqa: F821
 @login_required
+@check_search_permission(PermissionValue.PERMISSION_WRITE)
 @validate_request("question")
 async def recommendation():
     req = await get_request_json()

@@ -79,7 +79,7 @@ from api.utils.web_utils import CONTENT_TYPE_MAP, html2pdf, is_valid_url, apply_
 from common.ssrf_guard import assert_url_is_safe
 from rag.nlp import search
 
-from api.utils.permission_utils import check_doc_permission, check_kb_permission, filter_accessible_doc_ids_for_user
+from api.utils.permission_utils import _permission_denied_message, check_doc_permission, check_kb_permission, filter_accessible_doc_ids_for_user
 
 
 kb_role_guard = check_role_access(KB_API_ACTION_MAP, KB_ROLE_RESOURCE_TYPE)
@@ -1327,7 +1327,7 @@ async def delete_documents(tenant_id, dataset_id):
             doc_ids = unique_doc_ids
 
         if not _check_document_batch_permission(doc_ids, PermissionValue.PERMISSION_MANAGE):
-            return get_error_data_result(message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
+            return get_error_data_result(message=_permission_denied_message("Document", PermissionValue.PERMISSION_MANAGE), code=RetCode.PERMISSION_ERROR)
 
         # Delete documents using existing FileService.delete_docs
         errors = await thread_pool_exec(FileService.delete_docs, doc_ids, tenant_id)
@@ -1583,7 +1583,7 @@ async def update_metadata(tenant_id, dataset_id):
     # Convert to list and perform update
     target_doc_ids = list(target_doc_ids)
     if target_doc_ids and not _check_document_batch_permission(target_doc_ids, PermissionValue.PERMISSION_WRITE):
-        return get_error_data_result(message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
+        return get_error_data_result(message=_permission_denied_message("Document", PermissionValue.PERMISSION_WRITE), code=RetCode.PERMISSION_ERROR)
     updated = DocMetadataService.batch_update_metadata(dataset_id, target_doc_ids, updates, deletes)
     return get_result(data={"updated": updated, "matched_docs": len(target_doc_ids)})
 
@@ -1613,7 +1613,7 @@ async def ingest(tenant_id):
 def _run_sync(user_id: str, req):
     for doc_id in req["doc_ids"]:
         if not _check_document_batch_permission([doc_id], PermissionValue.PERMISSION_WRITE, user_id=user_id):
-            return RetCode.AUTHENTICATION_ERROR, "No authorization."
+            return RetCode.PERMISSION_ERROR, _permission_denied_message("Document", PermissionValue.PERMISSION_WRITE)
 
     kb_table_num_map = {}
     for doc_id in req["doc_ids"]:
@@ -1737,7 +1737,7 @@ async def parse_documents(tenant_id, dataset_id):
             return get_error_data_result(message=f"Documents not found: {not_found_ids}")
 
     if valid_doc_ids and not _check_document_batch_permission(valid_doc_ids, PermissionValue.PERMISSION_WRITE):
-        return get_error_data_result(message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
+        return get_error_data_result(message=_permission_denied_message("Document", PermissionValue.PERMISSION_WRITE), code=RetCode.PERMISSION_ERROR)
 
     try:
 
@@ -1852,7 +1852,7 @@ async def stop_parse_documents(tenant_id, dataset_id):
         return get_error_data_result(message=f"Documents not found: {not_found_ids}")
 
     if valid_doc_ids and not _check_document_batch_permission(valid_doc_ids, PermissionValue.PERMISSION_WRITE):
-        return get_error_data_result(message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
+        return get_error_data_result(message=_permission_denied_message("Document", PermissionValue.PERMISSION_WRITE), code=RetCode.PERMISSION_ERROR)
 
     try:
 
@@ -2173,7 +2173,7 @@ async def batch_update_document_status(tenant_id, dataset_id):
             has_error = True
 
     if valid_doc_ids and not _check_document_batch_permission(valid_doc_ids, PermissionValue.PERMISSION_WRITE):
-        return get_error_data_result(message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
+        return get_error_data_result(message=_permission_denied_message("Document", PermissionValue.PERMISSION_WRITE), code=RetCode.PERMISSION_ERROR)
 
     for doc_id in valid_doc_ids:
         try:

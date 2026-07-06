@@ -21,8 +21,8 @@ from common.constants import PipelineTaskType
 
 
 class PermissionOperationEnum(StrEnum):
-    GRANT = 'grant'
-    REVOKE = 'revoke'
+    GRANT = "grant"
+    REVOKE = "revoke"
 
 
 class ResourceTypeEnum(Enum):
@@ -39,9 +39,9 @@ class ResourceTypeEnum(Enum):
 
 class ActionEnum(Enum):
     ENABLE = 0b0001  # 1 << 0 = 1 (0b00000001)
-    READ = 0b0010    # 1 << 1 = 2 (0b00000010)
-    WRITE = 0b0100   # 1 << 2 = 4 (0b00000100)
-    SHARE = 0b1000   # 1 << 3 = 8 (0b00001000)
+    READ = 0b0010  # 1 << 1 = 2 (0b00000010)
+    WRITE = 0b0100  # 1 << 2 = 4 (0b00000100)
+    SHARE = 0b1000  # 1 << 3 = 8 (0b00001000)
 
 
 class RoleDefaultModelSetUpStatusEnum(StrEnum):
@@ -75,6 +75,7 @@ MANAGEMENT_TEAM_ROLES = ["owner", "admin"]
 class ResourceType(StrEnum):
     KB = "kb"
     LLM = "llm"
+    SEARCH = "search"
     TEAM = "team"
     DIALOG = "dialog"
     DOCUMENT = "document"
@@ -83,7 +84,7 @@ class ResourceType(StrEnum):
     MEMORY = "memory"
 
 
-VALID_RESOURCE_TYPES = ["kb", "llm", "team", "dialog", "document", "canvas", "mcp", "memory"]
+VALID_RESOURCE_TYPES = ["kb", "llm", "search", "team", "dialog", "document", "canvas", "mcp", "memory"]
 
 
 class PermissionActionType(StrEnum):
@@ -263,5 +264,5 @@ class PaygStatus(StrEnum):
 PIPELINE_SPECIAL_PROGRESS_FREEZE_TASK_TYPES = {PipelineTaskType.RAPTOR.lower(), PipelineTaskType.GRAPH_RAG.lower(), PipelineTaskType.MINDMAP.lower()}
 
 
-KNOWLEDGEBASE_FOLDER_NAME=".knowledgebase"
-SKILLS_FOLDER_NAME="skills"
+KNOWLEDGEBASE_FOLDER_NAME = ".knowledgebase"
+SKILLS_FOLDER_NAME = "skills"
