@@ -20,7 +20,9 @@ import { z } from 'zod';
 import { useTranslate } from '@/hooks/common-hooks';
 import { useRegister } from '@/hooks/use-login-request';
 import { useSystemConfig } from '@/hooks/use-system-request';
+import { NICKNAME_PATTERN } from '@/pages/user-setting/profile/constants';
 import { rsaPsw } from '@/utils';
+import { useTranslation } from 'react-i18next';
 import {
   useCountdown,
   useRegisterCaptcha,
@@ -67,9 +69,29 @@ export default function BasicRegister() {
     getCaptcha,
   } = useRegisterCaptcha();
   const { verifyEmail } = useRegisterVerifyCode();
+  const { t: tSetting } = useTranslation('translation', {
+    keyPrefix: 'setting',
+  });
+  const schema = registerSchema.superRefine((data, ctx) => {
+    if (!data.nickname) {
+      ctx.addIssue({
+        path: ['nickname'],
+        message: 'nicknamePlaceholder',
+        code: z.ZodIssueCode.custom,
+      });
+      return;
+    }
+    if (!NICKNAME_PATTERN.test(data.nickname)) {
+      ctx.addIssue({
+        path: ['nickname'],
+        message: tSetting('usernameInvalidCharacters'),
+        code: z.ZodIssueCode.custom,
+      });
+    }
+  });
 
   const registerForm = useForm<RegisterSchemaType>({
-    resolver: zodResolver(registerSchema),
+    resolver: zodResolver(schema),
     defaultValues: {
       nickname: '',
       email: '',
