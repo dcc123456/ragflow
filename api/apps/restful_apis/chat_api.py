@@ -200,7 +200,7 @@ def _session_owner_error():
     return get_json_result(
         data=False,
         message="Only session owner or chat manager authorized for this operation.",
-        code=RetCode.OPERATING_ERROR,
+        code=RetCode.PERMISSION_ERROR,
     )
 
 
@@ -1474,6 +1474,13 @@ async def session_completion(chat_id_in_arg=""):
             else:
                 conv = await _create_session_for_completion(chat_id, dia, current_user.id)
                 session_id = conv.id
+
+            can_access_all_sessions = g.operator_permission in {
+                PermissionValue.PERMISSION_MANAGE.value,
+                PermissionValue.PERMISSION_OWNER.value,
+            }
+            if not can_access_all_sessions and not _ensure_session_owned_by_current_user(conv):
+                return _session_owner_error()
 
             if pass_all_history_messages:
                 conv.message = deepcopy(request_messages)
