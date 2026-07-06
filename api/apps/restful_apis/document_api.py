@@ -75,6 +75,7 @@ from common.metadata_utils import convert_conditions, meta_filter, turn2jsonsche
 from common.misc_utils import get_uuid, thread_pool_exec
 from common.role_util import check_role_access, KB_API_ACTION_MAP, KB_ROLE_RESOURCE_TYPE
 from api.utils.file_utils import filename_type, thumbnail
+from api.utils.file_response import apply_preview_file_response_headers
 from api.utils.web_utils import CONTENT_TYPE_MAP, html2pdf, is_valid_url, apply_safe_file_response_headers
 from common.ssrf_guard import assert_url_is_safe
 from rag.nlp import search
@@ -2321,7 +2322,7 @@ async def get(doc_id):
         if ext:
             fallback_prefix = "image" if doc.type == FileType.VISUAL.value else "application"
             content_type = CONTENT_TYPE_MAP.get(ext, f"{fallback_prefix}/{ext}")
-        apply_safe_file_response_headers(response, content_type, ext)
+        apply_preview_file_response_headers(response, content_type, ext, doc.name)
         return response
     except Exception as e:
         return server_error_response(e)

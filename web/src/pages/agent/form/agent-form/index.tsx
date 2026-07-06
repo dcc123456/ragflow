@@ -167,7 +167,7 @@ function AgentForm({ node }: INextOperatorForm) {
           ) && (
             <QueryVariable
               name="visual_files_var"
-              label="Visual Input File"
+              label={t('flow.visualInputFile')}
               types={[VariableType.File]}
             ></QueryVariable>
           )}
