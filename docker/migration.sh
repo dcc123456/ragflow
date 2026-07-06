@@ -12,8 +12,8 @@ set -e  # Exit on any error
 # Default values
 DEFAULT_BACKUP_FOLDER="backup"
 DEFAULT_PROJECT_NAME="docker"
-VOLUME_BASES=("mysql_data" "minio_data" "redis_data" "esdata01")
-BACKUP_FILES=("mysql_backup.tar.gz" "minio_backup.tar.gz" "redis_backup.tar.gz" "es_backup.tar.gz")
+VOLUME_BASES=("mysql_data" "minio_data" "valkey_data" "esdata01")
+BACKUP_FILES=("mysql_backup.tar.gz" "minio_backup.tar.gz" "valkey_backup.tar.gz" "es_backup.tar.gz")
 
 # Build volume names from project name and base names
 build_volume_names() {
