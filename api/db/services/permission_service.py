@@ -20,7 +20,7 @@ from functools import reduce
 import peewee
 
 from api.db import VALID_RESOURCE_TYPES, PermissionTargetType, PermissionValue, ResourceType
-from api.db.db_models import DB, Dialog, Knowledgebase, MCPServer, Memory, Permission, PermissionChangeLog, UserCanvas
+from api.db.db_models import DB, Dialog, Knowledgebase, MCPServer, Memory, Permission, PermissionChangeLog, Search, UserCanvas
 from api.db.services.common_service import CommonService
 from common.constants import StatusEnum
 from common.misc_utils import get_uuid
@@ -300,6 +300,10 @@ class PermissionService(CommonService):
             for r in rows:
                 resource_info[r.id] = {"name": r.name or "", "avatar": r.avatar or ""}
 
+        if ResourceType.SEARCH in ids_by_type:
+            rows = list(Search.select(Search.id, Search.name, Search.avatar).where(Search.id.in_(ids_by_type[ResourceType.SEARCH])))
+            for r in rows:
+                resource_info[r.id] = {"name": r.name or "", "avatar": r.avatar or ""}
         # LLM: the resource_id IS the factory name – no extra lookup needed
         for factory_name in ids_by_type.get(ResourceType.LLM, []):
             resource_info[factory_name] = {"name": factory_name, "avatar": ""}
@@ -311,6 +315,7 @@ class PermissionService(CommonService):
             ResourceType.DIALOG: "Chat",
             ResourceType.MCP: "MCP",
             ResourceType.MEMORY: "Memory",
+            ResourceType.SEARCH: "Search",
             ResourceType.LLM: "Model",
         }
 

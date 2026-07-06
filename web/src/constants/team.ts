@@ -33,6 +33,7 @@ export const LabelMap = {
 export enum PermissionResourceType {
   KnowledgeBase = 'kb',
   LLM = 'llm',
+  Search = 'search',
   Dialog = 'dialog',
   Document = 'document',
   Canvas = 'canvas',

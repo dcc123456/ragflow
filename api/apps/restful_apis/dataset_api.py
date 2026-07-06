@@ -39,7 +39,7 @@ from api.db.services.user_service import UserTenantService
 
 from api.utils.billing import check_dynamic_resources, get_dynamic_resource_error_result
 from api.db import PermissionValue, ResourceType
-from api.utils.permission_utils import check_kb_permission, has_permission_for_member, filter_accessible_doc_ids_for_user
+from api.utils.permission_utils import check_kb_permission, check_search_permission, has_permission_for_member, filter_accessible_doc_ids_for_user
 
 kb_role_guard = check_role_access(KB_API_ACTION_MAP, KB_ROLE_RESOURCE_TYPE)
 
@@ -586,6 +586,7 @@ async def rename_tag(tenant_id, dataset_id):
 @manager.route("/datasets/search", methods=["POST"])  # noqa: F821
 @login_required
 @add_tenant_id_to_kwargs
+@check_search_permission(PermissionValue.PERMISSION_WRITE)
 async def search_datasets(tenant_id):
     """Search (retrieval test) across multiple datasets.
 

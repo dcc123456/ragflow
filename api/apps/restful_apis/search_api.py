@@ -25,23 +25,27 @@ from api.apps import current_user, login_required
 from api.constants import DATASET_NAME_LIMIT
 from api.db.db_models import DB
 from api.db.services import duplicate_name
+from api.db import PermissionActionType, PermissionTargetType, PermissionValue, ResourceType
+from api.db.services.permission_service import PermissionChangeLogService, PermissionService
 from api.db.services.search_service import SearchService
 from api.db.services.user_service import TenantService, UserTenantService
 from common.misc_utils import get_uuid
-from common.constants import RetCode, StatusEnum
-from common.role_util import check_role_access, SEARCH_API_ACTION_MAP, SEARCH_ROLE_RESOURCE_TYPE
-
-search_role_guard = check_role_access(SEARCH_API_ACTION_MAP, SEARCH_ROLE_RESOURCE_TYPE)
+from common.constants import StatusEnum
 from api.utils.api_utils import get_data_error_result, get_json_result, get_request_json, server_error_response, validate_request
 from api.utils.pagination_utils import validate_rest_api_page_size
 
 from api.utils.billing import check_resources
+from api.utils.permission_utils import check_search_permission
+from common.role_util import SEARCH_API_ACTION_MAP, SEARCH_ROLE_RESOURCE_TYPE, check_role_access
 
 
 def _full_text_weight(vector_similarity_weight):
     if isinstance(vector_similarity_weight, Real):
         return 1 - vector_similarity_weight
     return None
+
+
+search_role_guard = check_role_access(SEARCH_API_ACTION_MAP, SEARCH_ROLE_RESOURCE_TYPE)
 
 
 @manager.route("/searches", methods=["POST"])  # noqa: F821
@@ -71,10 +75,35 @@ async def create():
     req["description"] = description
     req["tenant_id"] = current_user.id
     req["created_by"] = current_user.id
+    operator = UserTenantService.filter_by_tenant_and_user_id(current_user.id, current_user.id)
+    if not operator:
+        return get_data_error_result(message="Unrecognized identification.")
     with DB.atomic():
         try:
             if not SearchService.save(**req):
                 return get_data_error_result()
+            if not PermissionService.save(
+                id=get_uuid(),
+                member_id=operator.id,
+                tenant_id=current_user.id,
+                resource_type=ResourceType.SEARCH,
+                resource_id=req["id"],
+                permission=PermissionValue.PERMISSION_OWNER.value,
+            ):
+                raise ValueError("Permission creation failed")
+            if not PermissionChangeLogService.save(
+                id=get_uuid(),
+                tenant_id=current_user.id,
+                operator_id=operator.id,
+                target_type=PermissionTargetType.TARGET_MEMBER,
+                target_id=operator.id,
+                resource_type=ResourceType.SEARCH,
+                resource_id=req["id"],
+                old_permission=PermissionValue.PERMISSION_NULL.value,
+                new_permission=PermissionValue.PERMISSION_OWNER.value,
+                action_type=PermissionActionType.ACTION_ADD,
+            ):
+                raise ValueError("Permission change log creation failed")
             return get_json_result(data={"search_id": req["id"]})
         except Exception as e:
             return server_error_response(e)
@@ -92,11 +121,39 @@ def list_searches():
     owner_ids = request.args.getlist("owner_ids")
 
     try:
+        user_tenants = UserTenantService.query(user_id=current_user.id) or []
+        joined_tenant_ids = owner_ids or [tenant.tenant_id for tenant in user_tenants]
+        permission_map = PermissionService.get_user_resource_permission_map(
+            current_user.id,
+            joined_tenant_ids,
+            ResourceType.SEARCH,
+            PermissionValue.PERMISSION_READ,
+        )
+        accessible_ids = list(permission_map.keys())
         if not owner_ids:
-            tenants = []
-            search_apps, total = SearchService.get_by_tenant_ids(tenants, current_user.id, page_number, items_per_page, orderby, desc, keywords)
+            search_apps, total = SearchService.get_by_tenant_ids(
+                joined_tenant_ids,
+                current_user.id,
+                page_number,
+                items_per_page,
+                orderby,
+                desc,
+                keywords,
+                accessible_ids=accessible_ids,
+                permission_map=permission_map,
+            )
         else:
-            search_apps, total = SearchService.get_by_tenant_ids(owner_ids, current_user.id, 0, 0, orderby, desc, keywords)
+            search_apps, total = SearchService.get_by_tenant_ids(
+                owner_ids,
+                current_user.id,
+                0,
+                0,
+                orderby,
+                desc,
+                keywords,
+                accessible_ids=accessible_ids,
+                permission_map=permission_map,
+            )
             search_apps = [s for s in search_apps if s["tenant_id"] in owner_ids]
             total = len(search_apps)
             if page_number and items_per_page:
@@ -109,15 +166,9 @@ def list_searches():
 @manager.route("/searches/<search_id>", methods=["GET"])  # noqa: F821
 @login_required
 @search_role_guard
+@check_search_permission(PermissionValue.PERMISSION_READ)
 def detail(search_id):
     try:
-        tenants = UserTenantService.query(user_id=current_user.id)
-        for tenant in tenants:
-            if SearchService.query(tenant_id=tenant.tenant_id, id=search_id):
-                break
-        else:
-            return get_json_result(data=False, message="Has no permission for this operation.", code=RetCode.OPERATING_ERROR)
-
         search = SearchService.get_detail(search_id)
         if not search:
             return get_data_error_result(message="Can't find this Search App!")
@@ -129,6 +180,7 @@ def detail(search_id):
 @manager.route("/searches/<search_id>", methods=["PUT"])  # noqa: F821
 @login_required
 @search_role_guard
+@check_search_permission(PermissionValue.PERMISSION_MANAGE)
 @validate_request("name", "search_config")
 async def update(search_id):
     req = await get_request_json()
@@ -144,18 +196,15 @@ async def update(search_id):
     if not e:
         return get_data_error_result(message="Authorized identity.")
 
-    if not SearchService.accessible4deletion(search_id, current_user.id):
-        return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
-
     try:
-        search_app = SearchService.query(tenant_id=current_user.id, id=search_id)[0]
+        search_app = SearchService.get_detail(search_id)
         if not search_app:
-            return get_json_result(data=False, message=f"Cannot find search {search_id}", code=RetCode.DATA_ERROR)
+            return get_data_error_result(message="Can't find this Search App!")
 
-        if req["name"].lower() != search_app.name.lower() and len(SearchService.query(name=req["name"], tenant_id=current_user.id, status=StatusEnum.VALID.value)) >= 1:
+        if req["name"].lower() != search_app["name"].lower() and len(SearchService.query(name=req["name"], tenant_id=search_app["tenant_id"], status=StatusEnum.VALID.value)) >= 1:
             return get_data_error_result(message="Duplicated search name.")
 
-        current_config = search_app.search_config or {}
+        current_config = search_app.get("search_config") or {}
         new_config = req["search_config"]
         if not isinstance(new_config, dict):
             return get_data_error_result(message="search_config must be a JSON object")
@@ -189,10 +238,8 @@ async def update(search_id):
 @manager.route("/searches/<search_id>", methods=["DELETE"])  # noqa: F821
 @login_required
 @search_role_guard
+@check_search_permission(PermissionValue.PERMISSION_OWNER)
 def delete_search(search_id):
-    if not SearchService.accessible4deletion(search_id, current_user.id):
-        return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
-
     try:
         if not SearchService.delete_by_id(search_id):
             return get_data_error_result(message=f"Failed to delete search App {search_id}")
@@ -204,15 +251,10 @@ def delete_search(search_id):
 @manager.route("/searches/<search_id>/completion", methods=["POST"])  # noqa: F821
 @manager.route("/searches/<search_id>/completions", methods=["POST"])  # noqa: F821
 @login_required
+@search_role_guard
+@check_search_permission(PermissionValue.PERMISSION_WRITE)
 @validate_request("question")
 async def completion(search_id):
-    if not SearchService.accessible4deletion(search_id, current_user.id):
-        return get_json_result(
-            data=False,
-            message="No authorization.",
-            code=RetCode.AUTHENTICATION_ERROR,
-        )
-
     req = await get_request_json()
     uid = current_user.id
     search_app = SearchService.get_detail(search_id)

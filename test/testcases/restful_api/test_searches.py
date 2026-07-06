@@ -99,8 +99,8 @@ def test_search_update_invalid_search_id(rest_client):
     )
     assert res.status_code == 200
     payload = res.json()
-    assert payload["code"] == 109, payload
-    assert payload["message"] == "No authorization.", payload
+    assert payload["code"] == 103, payload
+    assert payload["message"] == "Search not found.", payload
 
 
 @pytest.mark.p2

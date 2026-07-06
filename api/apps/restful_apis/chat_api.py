@@ -47,7 +47,7 @@ from api.utils.api_utils import (
     validate_request,
 )
 from api.utils.billing import check_resources, check_dynamic_resources, get_dynamic_resource_error_result
-from api.utils.permission_utils import check_dialog_permission, has_permission_for_member
+from api.utils.permission_utils import check_dialog_permission, check_search_permission, has_permission_for_member
 from api.utils.pagination_utils import validate_rest_api_page_size
 from common.constants import LLMType, RetCode, StatusEnum
 from common.misc_utils import get_uuid, thread_pool_exec
@@ -1371,6 +1371,7 @@ async def transcription():
 
 @manager.route("/chat/mindmap", methods=["POST"])  # noqa: F821
 @login_required
+@check_search_permission(PermissionValue.PERMISSION_WRITE)
 @validate_request("question", "kb_ids")
 async def mindmap():
     req = await get_request_json()
@@ -1395,6 +1396,7 @@ async def mindmap():
 
 @manager.route("/chat/recommendation", methods=["POST"])  # noqa: F821
 @login_required
+@check_search_permission(PermissionValue.PERMISSION_WRITE)
 @validate_request("question")
 async def recommendation():
     req = await get_request_json()

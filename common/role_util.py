@@ -271,6 +271,7 @@ SEARCH_API_ACTION_MAP = {
     "detail": ActionEnum.READ,
     "list_searches": ActionEnum.ENABLE,
     "delete_search": ActionEnum.WRITE,
+    "completion": ActionEnum.READ,
 }
 
 FILE_ROLE_RESOURCE_TYPE = ResourceTypeEnum.FILE.value

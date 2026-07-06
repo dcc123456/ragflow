@@ -75,6 +75,7 @@ MANAGEMENT_TEAM_ROLES = ["owner", "admin"]
 class ResourceType(StrEnum):
     KB = "kb"
     LLM = "llm"
+    SEARCH = "search"
     TEAM = "team"
     DIALOG = "dialog"
     DOCUMENT = "document"
@@ -83,7 +84,7 @@ class ResourceType(StrEnum):
     MEMORY = "memory"
 
 
-VALID_RESOURCE_TYPES = ["kb", "llm", "team", "dialog", "document", "canvas", "mcp", "memory"]
+VALID_RESOURCE_TYPES = ["kb", "llm", "search", "team", "dialog", "document", "canvas", "mcp", "memory"]
 
 
 class PermissionActionType(StrEnum):
