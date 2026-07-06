@@ -124,10 +124,12 @@ export function Applications() {
       </CardSineLineContainer>
 
       {listLength <= 0 && !loading && (
-        <EmptyAppCard
-          type={EmptyTypeMap[val as keyof typeof EmptyTypeMap]}
-          onClick={() => handleNavigate({ isCreate: true })}
-        />
+        <div className="w-40">
+          <EmptyAppCard
+            type={EmptyTypeMap[val as keyof typeof EmptyTypeMap]}
+            onClick={() => handleNavigate({ isCreate: true })}
+          />
+        </div>
       )}
       {privilegeModalVisible && (
         <PrivilegeManagementDialog
