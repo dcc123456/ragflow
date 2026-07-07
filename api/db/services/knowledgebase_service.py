@@ -198,7 +198,9 @@ class KnowledgebaseService(CommonService):
             cls.model.doc_num,
             cls.model.token_num,
             cls.model.chunk_num,
+            cls.model.pagerank,
             cls.model.parser_id,
+            cls.model.parser_config,
             cls.model.embd_id,
             User.nickname,
             User.avatar.alias("tenant_avatar"),
@@ -601,10 +603,62 @@ class KnowledgebaseService(CommonService):
         # Returns:
         #     List of knowledge bases
 
-        permission_map = PermissionService.get_user_resource_permission_map(user_id, joined_tenant_ids, ResourceType.KB)
-        accessible_kb_ids = list(permission_map)
+        joined_tenant_ids = list(dict.fromkeys(joined_tenant_ids or []))
+        owner_scope_ids = set(joined_tenant_ids)
+        include_owned_kbs = user_id in owner_scope_ids
+        shared_tenant_ids = [tenant_id for tenant_id in joined_tenant_ids if tenant_id != user_id]
 
-        kbs = cls.model.select(cls.model)
+        shared_permission_sq = None
+        if shared_tenant_ids:
+            shared_permission_sq = PermissionService.build_user_resource_permission_subquery(
+                user_id,
+                shared_tenant_ids,
+                ResourceType.KB,
+                PermissionValue.PERMISSION_READ,
+            ).alias("shared_permission_sq")
+
+        fields = [
+            cls.model.id,
+            cls.model.avatar,
+            cls.model.name,
+            cls.model.language,
+            cls.model.description,
+            cls.model.tenant_id,
+            cls.model.permission,
+            cls.model.doc_num,
+            cls.model.token_num,
+            cls.model.chunk_num,
+            cls.model.pagerank,
+            cls.model.parser_id,
+            cls.model.parser_config,
+            cls.model.embd_id,
+            User.nickname,
+            User.avatar.alias("tenant_avatar"),
+            cls.model.update_time,
+        ]
+        if shared_permission_sq is not None:
+            fields.append(shared_permission_sq.c.operator_permission.alias("shared_operator_permission"))
+
+        kbs = cls.model.select(*fields).join(User, on=(cls.model.tenant_id == User.id))
+        if shared_permission_sq is not None:
+            kbs = kbs.switch(cls.model).join(
+                shared_permission_sq,
+                JOIN.LEFT_OUTER,
+                on=((shared_permission_sq.c.resource_id == cls.model.id) & (shared_permission_sq.c.tenant_id == cls.model.tenant_id)),
+            )
+
+        visible_condition = None
+        if include_owned_kbs:
+            visible_condition = cls.model.tenant_id == user_id
+        if shared_permission_sq is not None:
+            shared_condition = shared_permission_sq.c.resource_id.is_null(False)
+            visible_condition = shared_condition if visible_condition is None else visible_condition | shared_condition
+
+        if visible_condition is None:
+            kbs = kbs.where(cls.model.id == "__ragflow_no_visible_kb__")
+        else:
+            kbs = kbs.where(visible_condition)
+
         if id:
             kbs = kbs.where(cls.model.id == id)
         if name:
@@ -613,11 +667,7 @@ class KnowledgebaseService(CommonService):
             kbs = kbs.where(fn.LOWER(cls.model.name).contains(keywords.lower()))
         if parser_id:
             kbs = kbs.where(cls.model.parser_id == parser_id)
-        visible_condition = cls.model.tenant_id == user_id
-        if accessible_kb_ids:
-            visible_condition = visible_condition | (cls.model.id.in_(accessible_kb_ids))
-
-        kbs = kbs.distinct().join(User, on=(cls.model.tenant_id == User.id)).where(visible_condition & (cls.model.status == StatusEnum.VALID.value))
+        kbs = kbs.distinct().where(cls.model.status == StatusEnum.VALID.value)
 
         if desc:
             kbs = kbs.order_by(cls.model.getter_by(orderby).desc())
@@ -631,7 +681,11 @@ class KnowledgebaseService(CommonService):
             if kb["tenant_id"] == user_id:
                 kb["operator_permission"] = PermissionValue.PERMISSION_OWNER.value
             else:
-                kb["operator_permission"] = permission_map.get(kb["id"], PermissionValue.PERMISSION_NULL.value)
+                kb["operator_permission"] = kb.get(
+                    "shared_operator_permission",
+                    PermissionValue.PERMISSION_NULL.value,
+                )
+            kb.pop("shared_operator_permission", None)
 
         return kbs, total
 
@@ -764,7 +818,18 @@ class KnowledgebaseService(CommonService):
         if page_number and items_per_page:
             kbs = kbs.paginate(page_number, items_per_page)
 
-        return list(kbs.dicts()), count
+        kbs = list(kbs.dicts())
+        for kb in kbs:
+            if kb["tenant_id"] == user_id:
+                kb["operator_permission"] = PermissionValue.PERMISSION_OWNER.value
+            else:
+                kb["operator_permission"] = kb.get(
+                    "shared_operator_permission",
+                    PermissionValue.PERMISSION_NULL.value,
+                )
+            kb.pop("shared_operator_permission", None)
+
+        return kbs, count
 
     @classmethod
     @DB.connection_context()

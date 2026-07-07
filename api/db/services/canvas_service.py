@@ -21,15 +21,16 @@ from operator import or_
 from uuid import uuid4
 from agent.canvas import Canvas
 from api.db import CanvasCategory, ResourceType, TenantPermission
-from api.db.db_models import DB, CanvasTemplate, Permission, User, UserCanvas, API4Conversation, UserCanvasVersion
+from api.db.db_models import DB, CanvasTemplate, User, UserCanvas, API4Conversation, UserCanvasVersion
 from api.db.services.api_service import API4ConversationService
 from api.db.services.common_service import CommonService
+from api.db.services.permission_service import PermissionService
 from api.db.services.user_canvas_version import UserCanvasVersionService
 from api.db.services.user_service import UserTenantService
 from common.misc_utils import get_uuid, thread_pool_exec
 from api.utils.api_utils import get_data_openai
 import tiktoken
-from peewee import fn
+from peewee import JOIN, fn
 from common.constants import StatusEnum
 from api.db import PermissionValue
 
@@ -142,6 +143,20 @@ class UserCanvasService(CommonService):
         tags=None,
         canvas_type=None,
     ):
+        joined_tenant_ids = list(dict.fromkeys(joined_tenant_ids or []))
+        owner_scope_ids = set(joined_tenant_ids)
+        include_owned_agents = not owner_scope_ids or user_id in owner_scope_ids
+        shared_tenant_ids = [tenant_id for tenant_id in joined_tenant_ids if tenant_id != user_id]
+
+        shared_permission_sq = None
+        if shared_tenant_ids:
+            shared_permission_sq = PermissionService.build_user_resource_permission_subquery(
+                user_id,
+                shared_tenant_ids,
+                ResourceType.CANVAS,
+                PermissionValue.PERMISSION_READ,
+            ).alias("shared_permission_sq")
+
         fields = [
             cls.model.id,
             cls.model.avatar,
@@ -156,31 +171,31 @@ class UserCanvasService(CommonService):
             cls.model.canvas_category,
             cls.model.tags,
         ]
+        if shared_permission_sq is not None:
+            fields.append(shared_permission_sq.c.operator_permission.alias("shared_operator_permission"))
 
-        # Find canvas IDs shared with the user via Permission table
-        user_tenant_ids = [ut.id for ut in (UserTenantService.query(user_id=user_id) or [])]
-        shared_canvas_ids = []
-        if user_tenant_ids:
-            shared_canvas_ids = [
-                row["resource_id"]
-                for row in Permission.select(Permission.resource_id)
-                .where(
-                    (Permission.member_id.in_(user_tenant_ids))
-                    & (Permission.resource_type == ResourceType.CANVAS)
-                    & (Permission.permission >= PermissionValue.PERMISSION_READ.value)
-                    & (Permission.status == StatusEnum.VALID.value)
-                )
-                .dicts()
-            ]
+        agents = cls.model.select(*fields).join(User, on=(cls.model.user_id == User.id))
+        if shared_permission_sq is not None:
+            agents = agents.switch(cls.model).join(
+                shared_permission_sq,
+                JOIN.LEFT_OUTER,
+                on=((shared_permission_sq.c.resource_id == cls.model.id) & (shared_permission_sq.c.tenant_id == cls.model.user_id)),
+            )
 
-        base_condition = ((cls.model.user_id.in_(joined_tenant_ids)) & (cls.model.permission == TenantPermission.TEAM.value)) | (cls.model.user_id == user_id)
-        if shared_canvas_ids:
-            base_condition = base_condition | cls.model.id.in_(shared_canvas_ids)
+        visible_condition = None
+        if include_owned_agents:
+            visible_condition = cls.model.user_id == user_id
+        if shared_permission_sq is not None:
+            shared_condition = shared_permission_sq.c.resource_id.is_null(False)
+            visible_condition = shared_condition if visible_condition is None else visible_condition | shared_condition
+
+        if visible_condition is None:
+            agents = agents.where(cls.model.id == "__ragflow_no_visible_canvas__")
+        else:
+            agents = agents.where(visible_condition)
 
         if keywords:
-            agents = cls.model.select(*fields).join(User, on=(cls.model.user_id == User.id)).where(base_condition, (fn.LOWER(cls.model.title).contains(keywords.lower())))
-        else:
-            agents = cls.model.select(*fields).join(User, on=(cls.model.user_id == User.id)).where(base_condition)
+            agents = agents.where(fn.LOWER(cls.model.title).contains(keywords.lower()))
         if canvas_category:
             agents = agents.where(cls.model.canvas_category == canvas_category)
         if canvas_type:
@@ -202,6 +217,15 @@ class UserCanvasService(CommonService):
             agents = agents.paginate(page_number, items_per_page)
 
         agents_list = list(agents.dicts())
+        for agent in agents_list:
+            if agent["tenant_id"] == user_id:
+                agent["operator_permission"] = PermissionValue.PERMISSION_OWNER.value
+            else:
+                agent["operator_permission"] = agent.get(
+                    "shared_operator_permission",
+                    PermissionValue.PERMISSION_NULL.value,
+                )
+            agent.pop("shared_operator_permission", None)
 
         # Get latest release time for each canvas
         if agents_list:
@@ -282,7 +306,6 @@ class UserCanvasService(CommonService):
     @classmethod
     @DB.connection_context()
     def accessible(cls, canvas_id, tenant_id):
-        from api.db.services.user_service import UserTenantService
         from api.db.services.permission_service import PermissionService
 
         e, c = UserCanvasService.get_by_canvas_id(canvas_id)

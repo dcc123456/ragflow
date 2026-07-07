@@ -432,14 +432,12 @@ def list_datasets(tenant_id: str, args: dict):
         tenant_ids = ext_fields["owner_ids"]
     else:
         tenants = TenantService.get_joined_tenants_by_user_id(tenant_id)
-        tenant_ids = [m["tenant_id"] for m in tenants]
+        tenant_ids = [m["tenant_id"] for m in tenants] + [tenant_id]
     kbs, total = KnowledgebaseService.get_list(tenant_ids, tenant_id, page, page_size, orderby, desc, kb_id, name, keywords, parser_id)
     users = UserService.get_by_ids([m["tenant_id"] for m in kbs])
     user_map = {m.id: m.to_dict() for m in users}
     response_data_list = []
     for kb in kbs:
-        if kb.get("tenant_id") == tenant_id:
-            kb["operator_permission"] = PermissionValue.PERMISSION_OWNER.value
         user_dict = user_map.get(kb["tenant_id"], {})
         kb.update({"nickname": user_dict.get("nickname", ""), "tenant_avatar": user_dict.get("avatar", "")})
         response_data_list.append(remap_dictionary_keys(kb))

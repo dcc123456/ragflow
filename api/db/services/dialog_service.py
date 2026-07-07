@@ -56,6 +56,10 @@ from common.string_utils import remove_redundant_spaces
 from common import settings
 
 
+def _green_log(message: str) -> str:
+    return f"\033[32m{message}\033[0m"
+
+
 def _chunk_kb_id_for_doc(row_dict, kb_ids, doc_id):
     if len(kb_ids or []) == 1:
         return kb_ids[0]
@@ -665,6 +669,18 @@ async def async_chat(dialog, messages, stream=True, *, user_id: str | None = Non
         else:
             text_attachments, image_files = split_file_attachments(messages[-1]["files"], raw=True)
         attachments_ = "\n\n".join(text_attachments)
+    logger.info(
+        _green_log(
+            "[chat.async_chat] enter user_id=%s dialog_tenant_id=%s session_id=%s kb_ids=%s req_doc_ids=%s msg_doc_ids=%s attachments=%s",
+        ),
+        user_id,
+        dialog.tenant_id,
+        session_id,
+        dialog.kb_ids,
+        kwargs.get("doc_ids"),
+        messages[-1].get("doc_ids"),
+        attachments,
+    )
 
     prompt_config = dialog.prompt_config
     include_reference_metadata, metadata_fields = _resolve_reference_metadata(prompt_config, request_payload=kwargs)
@@ -715,27 +731,34 @@ async def async_chat(dialog, messages, stream=True, *, user_id: str | None = Non
         attachments = await apply_meta_data_filter(
             dialog.meta_data_filter, None, questions[-1], chat_mdl, attachments, kb_ids=dialog.kb_ids, metas_loader=lambda: DocMetadataService.get_flatted_meta_by_kbs(dialog.kb_ids)
         )
+    logger.info(
+        _green_log(
+            "[chat.async_chat] before_permission_filter user_id=%s dialog_tenant_id=%s kb_ids=%s attachments=%s",
+        ),
+        user_id,
+        dialog.tenant_id,
+        dialog.kb_ids,
+        attachments,
+    )
 
     if attachments is None:
         attachments = []
     elif isinstance(attachments, str):
         attachments = [d for d in attachments.split(",") if d]
-    attachments, _, err_msg = filter_accessible_doc_ids_for_user(
+    attachments, permission_tenant_ids, err_msg = filter_accessible_doc_ids_for_user(
         user_id if user_id else dialog.tenant_id,
         dialog.kb_ids,
         attachments if attachments else None,
     )
-    if err_msg:
-        raise Exception(err_msg)
-
-    if attachments is None:
-        attachments = []
-    elif isinstance(attachments, str):
-        attachments = [d for d in attachments.split(",") if d]
-    attachments, _, err_msg = filter_accessible_doc_ids_for_user(
-        user_id if user_id else dialog.tenant_id,
-        dialog.kb_ids,
-        attachments if attachments else None,
+    logger.info(
+        _green_log(
+            "[chat.async_chat] after_permission_filter user_id=%s dialog_tenant_id=%s permission_tenant_ids=%s filtered_attachments=%s err_msg=%r",
+        ),
+        user_id,
+        dialog.tenant_id,
+        permission_tenant_ids,
+        attachments,
+        err_msg,
     )
     if err_msg:
         raise Exception(err_msg)
@@ -751,6 +774,16 @@ async def async_chat(dialog, messages, stream=True, *, user_id: str | None = Non
     if "knowledge" in param_keys:
         logging.debug("Proceeding with retrieval")
         tenant_ids = list(set([kb.tenant_id for kb in kbs]))
+        logger.info(
+            _green_log(
+                "[chat.async_chat] retrieval_start user_id=%s dialog_tenant_id=%s tenant_ids=%s kb_ids=%s attachments=%s",
+            ),
+            user_id,
+            dialog.tenant_id,
+            tenant_ids,
+            dialog.kb_ids,
+            attachments,
+        )
         knowledges = []
         if prompt_config.get("reasoning", False) or kwargs.get("reasoning"):
             reasoner = DeepResearcher(
@@ -823,6 +856,23 @@ async def async_chat(dialog, messages, stream=True, *, user_id: str | None = Non
                 )
                 if ck["content_with_weight"]:
                     kbinfos["chunks"].insert(0, ck)
+        logger.info(
+            _green_log(
+                "[chat.async_chat] retrieval_result user_id=%s dialog_tenant_id=%s chunk_count=%s sample=%s",
+            ),
+            user_id,
+            dialog.tenant_id,
+            len(kbinfos.get("chunks", [])),
+            [
+                {
+                    "doc_id": ck.get("doc_id"),
+                    "kb_id": ck.get("kb_id"),
+                    "dataset_id": ck.get("dataset_id"),
+                    "score": ck.get("score"),
+                }
+                for ck in kbinfos.get("chunks", [])[:5]
+            ],
+        )
 
     if include_reference_metadata:
         logging.debug(

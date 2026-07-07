@@ -324,7 +324,7 @@ async def openai_chat_completions(chat_id):
     stream_mode = bool(req.get("stream", False))
 
     if stream_mode:
-        chat_kwargs = {"toolcall_session": toolcall_session, "tools": tools, "quote": need_reference}
+        chat_kwargs = {"toolcall_session": toolcall_session, "tools": tools, "quote": need_reference, "user_id": current_user.id}
         if doc_ids_str:
             chat_kwargs["doc_ids"] = doc_ids_str
         ans_iter = async_chat(dia, msg, True, **chat_kwargs)
@@ -341,7 +341,7 @@ async def openai_chat_completions(chat_id):
         )
 
     answer = None
-    chat_kwargs = {"toolcall_session": toolcall_session, "tools": tools, "quote": need_reference}
+    chat_kwargs = {"toolcall_session": toolcall_session, "tools": tools, "quote": need_reference, "user_id": current_user.id}
     if doc_ids_str:
         chat_kwargs["doc_ids"] = doc_ids_str
     async for ans in async_chat(dia, msg, False, **chat_kwargs):

@@ -1582,7 +1582,7 @@ async def session_completion(chat_id_in_arg=""):
                         payload = _sanitize_json_floats({"code": 0, "message": "", "data": final_chunk})
                         yield "data:" + json.dumps(payload, ensure_ascii=False) + "\n\n"
                 else:
-                    async for ans in async_chat(dia, msg, True, session_id=session_id, **req):
+                    async for ans in async_chat(dia, msg, True, user_id=operator_user_id, session_id=session_id, **req):
                         ans = _format_answer(ans)
                         payload = _sanitize_json_floats({"code": 0, "message": "", "data": ans})
                         yield "data:" + json.dumps(payload, ensure_ascii=False) + "\n\n"

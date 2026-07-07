@@ -752,22 +752,6 @@ def list_agents(tenant_id):
         canvas_type,
     )
 
-    permission_map = PermissionService.get_user_resource_permission_map(
-        tenant_id,
-        effective_owner_ids,
-        ResourceType.CANVAS,
-        PermissionValue.PERMISSION_READ,
-    )
-
-    for item in canvas:
-        if item["tenant_id"] == tenant_id:
-            item["operator_permission"] = PermissionValue.PERMISSION_OWNER.value
-        else:
-            item["operator_permission"] = permission_map.get(
-                item["id"],
-                PermissionValue.PERMISSION_NULL.value,
-            )
-
     return get_json_result(data={"canvas": canvas, "total": total})
 
 
