@@ -351,6 +351,6 @@ def test_async_chat_uses_all_docs_when_no_doc_ids_selected(monkeypatch):
     result = asyncio.run(_collect())
 
     assert len(retriever.calls) == 1
-    assert retriever.calls[0]["kwargs"]["doc_ids"] is None
+    assert retriever.calls[0]["kwargs"]["doc_ids"] == ["-999"]
     assert "Chunk text from dataset." in chat_model.calls[0]["system_prompt"]
     assert result[0]["answer"] == "stub answer"

@@ -833,7 +833,7 @@ async def async_chat(dialog, messages, stream=True, *, user_id: str | None = Non
                     dialog.top_n,
                     dialog.similarity_threshold,
                     dialog.vector_similarity_weight,
-                    doc_ids=attachments,
+                    doc_ids=attachments if attachments else ["-999"],
                     top=dialog.top_k,
                     aggs=True,
                     rerank_mdl=rerank_mdl,

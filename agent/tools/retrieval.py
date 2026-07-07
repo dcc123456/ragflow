@@ -21,12 +21,15 @@ import re
 from abc import ABC
 from agent.tools.base import ToolParamBase, ToolBase, ToolMeta
 from common.constants import LLMType
+from api.db import PermissionValue, ResourceType
 from api.db.services.doc_metadata_service import DocMetadataService
 from common.metadata_utils import apply_meta_data_filter
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.llm_service import LLMBundle
 from api.db.services.memory_service import MemoryService
+from api.db.services.permission_service import PermissionService
 from api.db.joint_services import memory_message_service
+from api.db.services.user_service import UserTenantService
 from api.utils.permission_utils import filter_accessible_doc_ids_for_user
 from api.db.joint_services.tenant_model_service import get_tenant_default_model_by_type, get_model_config_from_provider_instance
 from common import settings
@@ -87,6 +90,42 @@ class Retrieval(ToolBase, ABC):
     def _dataset_ids(self):
         """Get dataset IDs with backward compatibility for kb_ids."""
         return self._param.dataset_ids or getattr(self._param, "kb_ids", None) or []
+
+    def _resolve_runtime_user_id(self):
+        user_id = self._canvas.get_variable_value("sys.user_id")
+        if not user_id and hasattr(self._param, "user_id"):
+            user_id = self._param.user_id
+            if user_id and re.match(r"^{.*}$", user_id):
+                user_id = self._canvas.get_variable_value(user_id)
+        if not user_id:
+            user_id = self._canvas.get_tenant_id()
+        return user_id
+
+    def _joined_tenant_ids(self, user_id: str) -> list[str]:
+        tenant_ids = {user_id}
+        for relation in UserTenantService.get_user_tenant_relation_by_user_id(user_id) or []:
+            tenant_id = relation.get("tenant_id")
+            if tenant_id:
+                tenant_ids.add(tenant_id)
+        return list(tenant_ids)
+
+    def _memory_permission_map(self, user_id: str, permission: PermissionValue) -> dict[str, int]:
+        return PermissionService.get_user_resource_permission_map(
+            user_id=user_id,
+            tenant_ids=self._joined_tenant_ids(user_id),
+            resource_type=ResourceType.MEMORY,
+            permission=permission,
+        )
+
+    def _accessible_memory_ids(self, memory_ids: list[str], user_id: str, permission: PermissionValue) -> list[str]:
+        if not memory_ids:
+            return []
+        permission_map = self._memory_permission_map(user_id, permission)
+        accessible_memory_ids = []
+        for memory in MemoryService.get_by_ids(memory_ids):
+            if memory.tenant_id == user_id or permission_map.get(memory.id, 0) >= permission.value:
+                accessible_memory_ids.append(memory.id)
+        return accessible_memory_ids
 
     async def _retrieve_kb(self, query_text: str):
         kb_ids: list[str] = []
@@ -190,7 +229,7 @@ class Retrieval(ToolBase, ABC):
             )
 
         doc_ids, _, err_msg = filter_accessible_doc_ids_for_user(
-            self._canvas.get_tenant_id(),
+            self._resolve_runtime_user_id(),
             filtered_kb_ids,
             doc_ids if doc_ids else None,
         )
@@ -278,10 +317,16 @@ class Retrieval(ToolBase, ABC):
 
     async def _retrieve_memory(self, query_text: str):
         memory_ids: list[str] = [memory_id for memory_id in self._param.memory_ids]
-        user_id: str = self._param.user_id if hasattr(self._param, "user_id") else None
-        memory_list = MemoryService.get_by_ids(memory_ids)
+        user_id: str = self._resolve_runtime_user_id()
+        accessible_memory_ids = self._accessible_memory_ids(memory_ids, user_id, PermissionValue.PERMISSION_READ)
+        if not accessible_memory_ids:
+            self.set_output("formalized_content", self._param.empty_response)
+            return self._param.empty_response
+
+        memory_list = MemoryService.get_by_ids(accessible_memory_ids)
         if not memory_list:
-            raise Exception("No memory is selected.")
+            self.set_output("formalized_content", self._param.empty_response)
+            return self._param.empty_response
 
         embd_names = list({memory.embd_id for memory in memory_list})
         assert len(embd_names) == 1, "Memory use different embedding models."
@@ -290,7 +335,7 @@ class Retrieval(ToolBase, ABC):
         vars = {k: o["value"] for k, o in vars.items()}
         query = self.string_format(query_text, vars)
         # query message
-        filter_dict: dict = {"memory_id": memory_ids}
+        filter_dict: dict = {"memory_id": accessible_memory_ids}
         if user_id:
             import re
 
