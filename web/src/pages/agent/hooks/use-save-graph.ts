@@ -1,5 +1,6 @@
 import {
   useFetchAgent,
+  useFetchCanvasPresence,
   useResetAgent,
   useSetAgent,
 } from '@/hooks/use-agent-request';
@@ -8,6 +9,7 @@ import {
   RAGFlowNodeType,
 } from '@/interfaces/database/agent';
 import { formatDate } from '@/utils/date';
+import { disableEditButton } from '@/utils/permission-util';
 import { useDebounceEffect } from 'ahooks';
 import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'react-router';
@@ -74,6 +76,7 @@ export const useWatchAgentChange = (chatDrawerVisible: boolean) => {
   const edges = useGraphStore((state) => state.edges);
   const { saveGraph } = useSaveGraph(false);
   const { data: flowDetail } = useFetchAgent();
+  const { data: presence } = useFetchCanvasPresence();
 
   const setSaveTime = useCallback((updateTime: number) => {
     setTime(formatDate(updateTime));
@@ -84,11 +87,15 @@ export const useWatchAgentChange = (chatDrawerVisible: boolean) => {
   }, [flowDetail, setSaveTime]);
 
   const saveAgent = useCallback(async () => {
-    if (!chatDrawerVisible) {
-      const ret = await saveGraph();
-      setSaveTime(ret.data.update_time);
+    if (
+      chatDrawerVisible ||
+      disableEditButton(presence.operator_permission ?? 0)
+    ) {
+      return;
     }
-  }, [chatDrawerVisible, saveGraph, setSaveTime]);
+    const ret = await saveGraph();
+    setSaveTime(ret.data.update_time);
+  }, [chatDrawerVisible, presence, saveGraph, setSaveTime]);
 
   useDebounceEffect(
     () => {
