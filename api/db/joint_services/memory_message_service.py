@@ -17,6 +17,7 @@ import logging
 from datetime import datetime
 from typing import List
 
+from api.db import PermissionValue, ResourceType
 from common import settings
 from api.common.priority_provider import get_tenant_priority
 from common.time_utils import current_timestamp, timestamp_to_date, format_iso_8601_to_ymd_hms
@@ -28,8 +29,11 @@ from api.db.db_models import Task
 from api.db.services.task_service import TaskService
 from api.db.services.memory_service import MemoryService
 from api.db.services.llm_service import LLMBundle
+from api.db.services.permission_service import PermissionService
+from api.db.services.user_service import UserTenantService
 from api.db.joint_services.tenant_model_service import get_model_config_from_provider_instance
 from api.utils.memory_utils import get_memory_type_human
+from api.utils.permission_utils import _permission_denied_message
 from memory.services.messages import MessageService
 from memory.services.query import MsgTextQuery, get_vector
 from memory.utils.prompt_util import PromptAssembler
@@ -370,14 +374,41 @@ async def queue_save_to_memory_task(memory_ids: list[str], message_dict: dict):
     def new_task(_memory_id: str, _source_id: int):
         return {"id": get_uuid(), "doc_id": _memory_id, "task_type": "memory", "progress": 0.0, "begin_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "digest": str(_source_id)}
 
+    operator_id = message_dict.get("user_id", "")
+    if not operator_id:
+        return False, "No authorization."
+
+    user_tenants = UserTenantService.get_user_tenant_relation_by_user_id(operator_id)
+    tenant_ids = [operator_id, *[tenant["tenant_id"] for tenant in user_tenants]]
+    permission_map = PermissionService.get_user_resource_permission_map(
+        user_id=operator_id,
+        tenant_ids=tenant_ids,
+        resource_type=ResourceType.MEMORY,
+        permission=PermissionValue.PERMISSION_WRITE,
+    )
+
     not_found_memory = []
-    failed_memory = []
+    unauthorized_memory = []
+    memory_list = []
     for memory_id in memory_ids:
         memory = MemoryService.get_by_memory_id(memory_id)
         if not memory:
             not_found_memory.append(memory_id)
             continue
+        if memory.tenant_id != operator_id and permission_map.get(memory.id, 0) < PermissionValue.PERMISSION_WRITE.value:
+            unauthorized_memory.append(memory_id)
+            continue
+        memory_list.append(memory)
 
+    if unauthorized_memory:
+        return False, _permission_denied_message("Memory", PermissionValue.PERMISSION_WRITE)
+
+    if not_found_memory:
+        return False, f"Memory {not_found_memory} not found."
+
+    failed_memory = []
+    for memory in memory_list:
+        memory_id = memory.id
         raw_message_id = REDIS_CONN.generate_auto_increment_id(namespace="memory")
         raw_message = {
             "message_id": raw_message_id,

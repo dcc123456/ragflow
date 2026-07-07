@@ -548,6 +548,8 @@ class Message(ComponentBase):
             # is variable
             if re.match(r"^{.*}$", user_id):
                 user_id = self._canvas.get_variable_value(user_id)
+        if not user_id:
+            user_id = self._canvas.globals.get("sys.user_id", "")
 
         message_dict = {"user_id": user_id, "agent_id": self._canvas._id, "session_id": self._canvas.task_id, "user_input": self._canvas.get_sys_query(), "agent_response": content}
         return await queue_save_to_memory_task(self._param.memory_ids, message_dict)

@@ -266,6 +266,9 @@ async def add_message():
     if res:
         return get_json_result(message=msg)
 
+    if "Only Memory owners or members with write permissions" in msg or msg == "No authorization.":
+        return get_json_result(message=msg, code=RetCode.PERMISSION_ERROR)
+
     return get_json_result(message="Some messages failed to add. Detail:" + msg, code=RetCode.SERVER_ERROR)
 
 
