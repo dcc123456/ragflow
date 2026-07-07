@@ -50,7 +50,13 @@ def _load_agent_api_for_rerun(monkeypatch, *, documents_info, accessible):
 
     _stub(monkeypatch, "api.apps", QuartAuthUnauthorized=Exception, current_user=SimpleNamespace(id="user-owner", is_superuser=True), login_required=lambda func: func)
     _stub(monkeypatch, "api.apps.services.canvas_replica_service", CanvasReplicaService=SimpleNamespace())
-    permission_value = SimpleNamespace(PERMISSION_READ="read", PERMISSION_WRITE="write", PERMISSION_MANAGE="manage", PERMISSION_OWNER="owner", PERMISSION_NULL=SimpleNamespace(value=0))
+    permission_value = SimpleNamespace(
+        PERMISSION_READ=SimpleNamespace(value=1),
+        PERMISSION_WRITE=SimpleNamespace(value=2),
+        PERMISSION_MANAGE=SimpleNamespace(value=4),
+        PERMISSION_OWNER=SimpleNamespace(value=7),
+        PERMISSION_NULL=SimpleNamespace(value=0),
+    )
     _stub(
         monkeypatch,
         "api.db",
@@ -141,7 +147,12 @@ def _load_agent_api_for_rerun(monkeypatch, *, documents_info, accessible):
     _stub(monkeypatch, "api.utils.web_utils", CONTENT_TYPE_MAP={}, apply_safe_file_response_headers=lambda response, *_a, **_k: response)
     _stub(monkeypatch, "api.utils.billing", check_dynamic_resources=lambda *_a, **_k: None, get_dynamic_resource_error_result=lambda *_a, **_k: None)
     _stub(monkeypatch, "api.utils.pagination_utils", validate_rest_api_page_size=lambda *_a, **_k: None)
-    _stub(monkeypatch, "api.utils.permission_utils", check_canvas_permission=lambda *_a, **_k: lambda func: func)
+    _stub(
+        monkeypatch,
+        "api.utils.permission_utils",
+        check_canvas_permission=lambda *_a, **_k: lambda func: func,
+        _permission_denied_message=lambda resource_name, permission: f"Only {resource_name} owners or members with {permission} permissions can perform this action.",
+    )
 
     doc_store = SimpleNamespace(
         index_exist=lambda *_a, **_k: True,

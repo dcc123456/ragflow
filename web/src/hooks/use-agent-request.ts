@@ -2,6 +2,7 @@ import { FileUploadProps } from '@/components/file-upload';
 import { useHandleFilterSubmit } from '@/components/list-filter-bar/use-handle-filter-submit';
 import message from '@/components/ui/message';
 import { AgentCategory, AgentGlobals } from '@/constants/agent';
+import { Permission } from '@/constants/team';
 import { useFetchTenantInfo } from '@/hooks/use-user-setting-request';
 import {
   IAgentLogResponse,
@@ -778,21 +779,29 @@ export const useFetchAgentLog = (searchParams: IAgentLogsRequest) => {
 export const useFetchSessionsByCanvasId = () => {
   const { id: canvasId } = useParams();
   const { data: tenantInfo } = useFetchTenantInfo();
+  const { data: agentDetail } = useFetchAgent();
+  const operatorPermission = agentDetail?.operator_permission;
 
   const { data, isFetching: loading } = useQuery<IAgentLogsResponse>({
-    queryKey: [AgentApiAction.FetchSessionsByCanvasId, canvasId],
+    queryKey: [
+      AgentApiAction.FetchSessionsByCanvasId,
+      canvasId,
+      operatorPermission,
+    ],
     initialData: { total: 0, sessions: [] } as IAgentLogsResponse,
     gcTime: 0,
-    enabled: !!canvasId && !isEmpty(tenantInfo),
+    enabled:
+      !!canvasId && !isEmpty(tenantInfo) && operatorPermission !== undefined,
     queryFn: async () => {
       if (!canvasId) {
         return { total: 0, sessions: [] };
       }
 
+      const shouldListAllSessions = operatorPermission !== Permission.Read;
       const { data } = await fetchAgentLogsByCanvasId(canvasId, {
         page: 1,
         page_size: 100,
-        exp_user_id: tenantInfo.tenant_id,
+        ...(shouldListAllSessions ? {} : { exp_user_id: tenantInfo.tenant_id }),
       });
 
       return { total: data?.total ?? 0, sessions: data?.data ?? [] };

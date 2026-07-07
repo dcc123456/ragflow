@@ -68,6 +68,7 @@ from api.utils.api_utils import (
 from api.utils.billing import check_dynamic_resources, get_dynamic_resource_error_result
 from api.utils.pagination_utils import validate_rest_api_page_size
 from api.utils.permission_utils import check_canvas_permission
+from api.utils.permission_utils import _permission_denied_message
 from common import settings
 from common.ssrf_guard import assert_host_is_safe
 from common.constants import RetCode
@@ -208,6 +209,17 @@ def _normalize_agent_session(conv):
                 message["reference"] = []
     del conv["reference"]
     return conv
+
+
+def _ensure_agent_session_owned_by_current_user(conv, tenant_id):
+    conv_user_id = conv.get("user_id") if isinstance(conv, dict) else getattr(conv, "user_id", None)
+    conv_exp_user_id = conv.get("exp_user_id") if isinstance(conv, dict) else getattr(conv, "exp_user_id", None)
+    if isinstance(conv_user_id, str) and not conv_user_id.strip():
+        conv_user_id = None
+    if isinstance(conv_exp_user_id, str) and not conv_exp_user_id.strip():
+        conv_exp_user_id = None
+
+    return conv_user_id == tenant_id or conv_exp_user_id == tenant_id
 
 
 def _agent_session_list_result(data, total):
@@ -426,8 +438,14 @@ def list_agent_sessions(agent_id, tenant_id):
     from_date = request.args.get("from_date")
     to_date = request.args.get("to_date")
     orderby = request.args.get("orderby", "update_time")
-    exp_user_id = request.args.get("exp_user_id")
     desc = request.args.get("desc") not in {"False", "false"}
+    exp_user_id = request.args.get("exp_user_id")
+
+    # Read-only members should only see their own sessions. Higher permissions
+    # can view the full agent session list and must not be constrained by a
+    # caller-provided exp_user_id.
+    if g.operator_permission == PermissionValue.PERMISSION_READ.value:
+        exp_user_id = tenant_id
 
     if exp_user_id:
         sessions = API4ConversationService.get_names(agent_id, exp_user_id)
@@ -504,6 +522,12 @@ def get_agent_session(agent_id, session_id, tenant_id):
     exists, conv = API4ConversationService.get_by_id(session_id)
     if not exists or str(conv.dialog_id) != str(agent_id):
         return get_data_error_result(message="Session not found!")
+    if g.operator_permission == PermissionValue.PERMISSION_READ.value and not _ensure_agent_session_owned_by_current_user(conv, tenant_id):
+        return get_json_result(
+            data=False,
+            message=_permission_denied_message("Agent session", PermissionValue.PERMISSION_READ),
+            code=RetCode.PERMISSION_ERROR,
+        )
     return get_json_result(data=conv.to_dict())
 
 
@@ -516,6 +540,12 @@ def delete_agent_session_item(agent_id, session_id, tenant_id):
     exists, conv = API4ConversationService.get_by_id(session_id)
     if not exists or str(conv.dialog_id) != str(agent_id):
         return get_data_error_result(message="Session not found!")
+    if g.operator_permission == PermissionValue.PERMISSION_WRITE.value and not _ensure_agent_session_owned_by_current_user(conv, tenant_id):
+        return get_json_result(
+            data=False,
+            message=_permission_denied_message("Agent session", PermissionValue.PERMISSION_WRITE),
+            code=RetCode.PERMISSION_ERROR,
+        )
     return get_json_result(data=API4ConversationService.delete_by_id(session_id))
 
 
@@ -528,6 +558,10 @@ async def delete_agent_session(tenant_id, agent_id):
     errors = []
     success_count = 0
     req = await get_request_json()
+    can_delete_all_sessions = g.operator_permission in {
+        PermissionValue.PERMISSION_MANAGE.value,
+        PermissionValue.PERMISSION_OWNER.value,
+    }
 
     if not req:
         return get_result()
@@ -535,7 +569,9 @@ async def delete_agent_session(tenant_id, agent_id):
     ids = req.get("ids")
     if not ids:
         if req.get("delete_all") is True:
-            ids = [conv.id for conv in await thread_pool_exec(API4ConversationService.query, dialog_id=agent_id)]
+            ids = [
+                conv.id for conv in await thread_pool_exec(API4ConversationService.query, dialog_id=agent_id) if can_delete_all_sessions or _ensure_agent_session_owned_by_current_user(conv, tenant_id)
+            ]
             if not ids:
                 return get_result()
         else:
@@ -547,9 +583,12 @@ async def delete_agent_session(tenant_id, agent_id):
     conv_list = unique_conv_ids
 
     for session_id in conv_list:
-        conv = await thread_pool_exec(API4ConversationService.query, id=session_id, dialog_id=agent_id)
-        if not conv:
+        conv = await thread_pool_exec(API4ConversationService.get_by_id, session_id)
+        if not conv or str(conv[1].dialog_id) != str(agent_id):
             errors.append(f"The agent doesn't own the session {session_id}")
+            continue
+        if not can_delete_all_sessions and not _ensure_agent_session_owned_by_current_user(conv[1], tenant_id):
+            errors.append(f"Only session owner or agent manager can delete {session_id}")
             continue
         await thread_pool_exec(API4ConversationService.delete_by_id, session_id)
         success_count += 1
@@ -558,6 +597,12 @@ async def delete_agent_session(tenant_id, agent_id):
         if success_count > 0:
             return get_result(data={"success_count": success_count, "errors": errors}, message=f"Partially deleted {success_count} sessions with {len(errors)} errors")
         else:
+            if all(err.startswith("Only session owner or agent manager") for err in errors):
+                return get_json_result(
+                    data=False,
+                    message=_permission_denied_message("Agent session", PermissionValue.PERMISSION_WRITE),
+                    code=RetCode.PERMISSION_ERROR,
+                )
             return get_error_data_result(message="; ".join(errors))
 
     if duplicate_messages:

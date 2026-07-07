@@ -53,7 +53,7 @@ def _load_agent_api(monkeypatch, get_by_id_result, delete_calls=None):
     _stub(monkeypatch, "api.apps.services.canvas_replica_service", CanvasReplicaService=SimpleNamespace())
     quart_stub = ModuleType("quart")
     quart_stub.Response = SimpleNamespace
-    quart_stub.g = SimpleNamespace()
+    quart_stub.g = SimpleNamespace(operator_permission=7)
     quart_stub.jsonify = lambda payload: payload
     quart_stub.request = SimpleNamespace(args={}, method="GET")
     quart_stub.make_response = lambda payload, *_args, **_kwargs: payload
@@ -66,10 +66,10 @@ def _load_agent_api(monkeypatch, get_by_id_result, delete_calls=None):
         PermissionActionType=SimpleNamespace(),
         PermissionTargetType=SimpleNamespace(),
         PermissionValue=SimpleNamespace(
-            PERMISSION_READ="read",
-            PERMISSION_WRITE="write",
-            PERMISSION_MANAGE="manage",
-            PERMISSION_OWNER="owner",
+            PERMISSION_READ=SimpleNamespace(value=1),
+            PERMISSION_WRITE=SimpleNamespace(value=2),
+            PERMISSION_MANAGE=SimpleNamespace(value=4),
+            PERMISSION_OWNER=SimpleNamespace(value=7),
             PERMISSION_NULL=SimpleNamespace(value=0),
         ),
         ResourceType=SimpleNamespace(),
@@ -124,7 +124,12 @@ def _load_agent_api(monkeypatch, get_by_id_result, delete_calls=None):
         UserTenantService=SimpleNamespace(),
     )
     _stub(monkeypatch, "api.db.services.user_canvas_version", UserCanvasVersionService=SimpleNamespace())
-    _stub(monkeypatch, "api.utils.permission_utils", check_canvas_permission=lambda *_a, **_k: lambda func: func)
+    _stub(
+        monkeypatch,
+        "api.utils.permission_utils",
+        check_canvas_permission=lambda *_a, **_k: lambda func: func,
+        _permission_denied_message=lambda resource_name, permission: f"Only {resource_name} owners or members with {permission} permissions can perform this action.",
+    )
     _stub(
         monkeypatch,
         "api.utils.api_utils",
