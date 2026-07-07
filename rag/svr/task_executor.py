@@ -436,6 +436,8 @@ async def build_chunks(task, progress_callback):
     el = timer() - st
     logging.info("MINIO PUT({}) cost {:.3f} s".format(task["name"], el))
 
+    rag_tokenizer.tokenizer.set_language(task["language"])
+
     if task["parser_config"].get("auto_keywords", 0):
         st = timer()
         progress_callback(msg="Start to generate keywords for every chunk ...")
@@ -864,6 +866,7 @@ async def run_dataflow(task: dict):
             dsl = pipeline_log.dsl
             dataflow_id = pipeline_log.pipeline_id
         pipeline = Pipeline(dsl, tenant_id=task["tenant_id"], doc_id=doc_id, task_id=task_id, flow_id=dataflow_id)
+        rag_tokenizer.tokenizer.set_language(task.get("language", "English"))
         chunks = await pipeline.run(file=task["file"]) if task.get("file") else await pipeline.run()
         if is_debug_dataflow:
             if billing_hold_id:
@@ -1109,6 +1112,8 @@ async def delete_raptor_chunks(doc_id: str, tenant_id: str, kb_id: str, keep_met
 async def run_raptor_for_kb(row, kb_parser_config, chat_mdl, embd_mdl, vector_size, callback=None, doc_ids=[]):
     """Generate RAPTOR summaries for selected documents in a knowledge base."""
     fake_doc_id = GRAPH_RAPTOR_FAKE_DOC_ID
+
+    rag_tokenizer.tokenizer.set_language(row.get("language", "English"))
 
     raptor_config = kb_parser_config.get("raptor", {})
     raptor_ext_config = raptor_config.get("ext") or {}
@@ -1487,6 +1492,7 @@ async def do_handle_task(task):
     task_language = task.get("language") or "Chinese"
     if not task.get("language"):
         logging.warning("Task %s has no language set, falling back to Chinese", task_id)
+    rag_tokenizer.tokenizer.set_language(task_language)
     doc_task_llm_id = task["parser_config"].get("llm_id") or task["llm_id"]
     kb_task_llm_id = task["kb_parser_config"].get("llm_id") or task["llm_id"]
     task["llm_id"] = kb_task_llm_id

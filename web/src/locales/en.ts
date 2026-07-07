@@ -40,6 +40,7 @@ export default {
       bulgarian: 'Bulgarian',
       arabic: 'Arabic',
       turkish: 'Turkish',
+      dutch: 'Dutch',
       language: 'Language',
       languageMessage: 'Please input your language!',
       languagePlaceholder: 'select your language',
@@ -3160,6 +3161,7 @@ Important structured information may include: names, dates, locations, events, k
       bulgarian: 'Bulgarian',
       arabic: 'Arabic',
       turkish: 'Turkish',
+      dutch: 'Dutch',
     },
     pagination: {
       total: 'Total {{total}}',
