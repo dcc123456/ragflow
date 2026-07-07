@@ -16,9 +16,12 @@
 import logging
 
 from api.apps import current_user, login_required
+from api.db import PermissionValue, ResourceType
 from api.db.services.chat_channel_service import ChatChannelService
 from api.db.services.dialog_service import DialogService
+from api.db.services.user_service import UserTenantService
 from api.utils.api_utils import get_data_error_result, get_json_result, get_request_json, validate_request
+from api.utils.permission_utils import _permission_denied_message, has_permission_for_member
 from common.constants import RetCode
 from common.misc_utils import get_uuid
 
@@ -81,13 +84,30 @@ async def update_chat_channel(channel_id):
     if isinstance(req, dict) and isinstance(req.get("data"), dict):
         req = req["data"]
 
-    # Validate the connected dialog (if provided) belongs to the channel's tenant.
+    # Validate the connected dialog (if provided) is readable by the current user.
     if req.get("chat_id"):
         e, dia = DialogService.get_by_id(req["chat_id"])
         if not e:
             return get_data_error_result(message="Can't find this chat assistant!")
-        if dia.tenant_id != conn.tenant_id:
-            return _chat_channel_auth_error(channel_id, current_user.id)
+        can_access_dialog = False
+        for user_tenant in UserTenantService.query(user_id=current_user.id) or []:
+            if user_tenant.tenant_id != dia.tenant_id:
+                continue
+            if has_permission_for_member(
+                operator_id=user_tenant.id,
+                tenant_id=user_tenant.tenant_id,
+                resource_id=req["chat_id"],
+                resource_type=ResourceType.DIALOG,
+                permission=PermissionValue.PERMISSION_READ,
+            )[0]:
+                can_access_dialog = True
+                break
+        if not can_access_dialog:
+            return get_json_result(
+                data=False,
+                message=_permission_denied_message("Chat/Dialog", PermissionValue.PERMISSION_READ),
+                code=RetCode.PERMISSION_ERROR,
+            )
 
     update_fields = {fld: req[fld] for fld in ["name", "config", "chat_id"] if fld in req}
     if update_fields:
