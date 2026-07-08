@@ -36,6 +36,7 @@ export function MemoryDropdown({
     memory.operator_permission ?? 0,
   );
   const canDeleteMemory = hasOwnerPermission(memory.operator_permission ?? 0);
+
   const handleShowChatRenameModal: MouseEventHandler<HTMLDivElement> =
     useCallback(
       (e) => {
@@ -56,6 +57,10 @@ export function MemoryDropdown({
       },
       [showPrivilegeModal],
     );
+
+  if (!hasManagePermissionPermission(memory.operator_permission ?? 0)) {
+    return null;
+  }
 
   return (
     <DropdownMenu>
