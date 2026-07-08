@@ -10,4 +10,6 @@ export interface IMemory {
   permissions: string;
   storage_type: string;
   tenant_id: string;
+  embd_id: string;
+  llm_id: string;
 }

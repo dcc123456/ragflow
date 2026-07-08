@@ -35,6 +35,7 @@ from api.db.services.file_service import FileService
 from api.db.services.llm_service import LLMBundle
 from api.db.services.task_service import has_canceled
 from common.constants import LLMType
+from common.llm_request_context import set_llm_request_context, reset_llm_request_context
 from common.exceptions import TaskCanceledException
 from common.misc_utils import get_uuid, hash_str2int
 from common.token_utils import token_usage_sink, langfuse_run_attrs
@@ -439,6 +440,14 @@ class Canvas(Graph):
             _lf_attrs["session_id"] = str(_session_id)[:200]
         sink_token = token_usage_sink.set(self._run_token_usage)
         attrs_token = langfuse_run_attrs.set(_lf_attrs)
+        # Forward the originating session/user to upstream LLM providers (as the
+        # OpenAI `user` field) for the duration of this run, and reset afterwards so
+        # the value never leaks to later calls in the same task. Reuse the same
+        # session/user already derived above so both integrations stay consistent.
+        _req_ctx_token = set_llm_request_context(
+            session_id=_session_id,
+            user_id=_user_id,
+        )
         try:
             async for ev in self._run_impl(**kwargs):
                 yield ev
@@ -455,6 +464,7 @@ class Canvas(Graph):
             except ValueError:
                 logging.debug("Failed to reset Langfuse run attributes ContextVar", exc_info=True)
                 langfuse_run_attrs.set(None)
+            reset_llm_request_context(_req_ctx_token)
 
     async def _run_impl(self, **kwargs):
         self.globals["sys.date"] = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
@@ -558,11 +568,13 @@ class Canvas(Graph):
                     except Exception as e:
                         logging.error(f"[{self.task_id}] Component error: component_id={cpn_obj._id}, component_name={cpn_obj.component_name}, error={str(e)}")
                         raise
-                    # run_in_executor does not propagate context variables; copy the
-                    # current context so the token usage sink / Langfuse attributes set
-                    # by run() remain visible to LLMBundle calls inside sync components.
-                    ctx = contextvars.copy_context()
-                    await loop.run_in_executor(self._thread_pool, lambda: ctx.run(partial(sync_fn, **(call_kwargs or {}))))
+                    # run_in_executor does not carry context variables into the worker
+                    # thread; copy the current context so the LLM request context (the
+                    # `user` forwarding), token usage sink, and Langfuse attributes set
+                    # by run() remain visible to sync components.
+                    bound_call = partial(sync_fn, **(call_kwargs or {}))
+                    call_ctx = contextvars.copy_context()
+                    await loop.run_in_executor(self._thread_pool, partial(call_ctx.run, bound_call))
 
             i = f
             while i < t:
