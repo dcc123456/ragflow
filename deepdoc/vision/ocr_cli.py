@@ -38,7 +38,7 @@ class OCRClient:
         return boxes
 
     @timeout(2)
-    def detect(self, arr: np.ndarray, **kwargs):
+    def detect(self, arr: np.ndarray, device_id: int | None = None, **kwargs):
         img = Image.fromarray(arr, "RGB")
         img_byte_arr = io.BytesIO()
         img.save(img_byte_arr, format="jpeg")
