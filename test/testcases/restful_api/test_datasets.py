@@ -1162,8 +1162,8 @@ def test_dataset_create_permission_contract(rest_client, clear_datasets, name, p
     [
         ("builtin_baai", embedding_model_id(), 0, embedding_model_id(), None, False),
         ("tenant_zhipu", "embedding-3@CI@ZHIPU-AI", 0, "embedding-3@CI@ZHIPU-AI", None, True),
-        ("embedding_model_unset", "__UNSET__", 0, "BAAI/bge-small-en-v1.5@Local@Builtin", None, False),
-        ("embedding_model_none", None, 0, "BAAI/bge-small-en-v1.5@Local@Builtin", None, False),
+        ("embedding_model_unset", "__UNSET__", 0, embedding_model_id(), None, False),
+        ("embedding_model_none", None, 0, embedding_model_id(), None, False),
         ("unknown_llm_name", "unknown@ZHIPU-AI", 102, None, "Model unknown@ZHIPU-AI not found for model embedding", False),
         ("unknown_llm_factory", "embedding-3@unknown", 102, None, "Provider unknown not found for model embedding-3@unknown.", False),
         (

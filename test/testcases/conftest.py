@@ -370,6 +370,44 @@ def get_tenant_llm_added(auth, factory_name, model_name, model_type="rerank"):
     return False
 
 
+def ensure_siliconflow_embedding_model(auth):
+    if not K8S_CI_USE_SILICONFLOW:
+        return
+
+    model_name = siliconflow_embedding_model_name()
+    url = HOST_ADDRESS + f"/api/v1/providers/{SILICONFLOW_EMBEDDING_PROVIDER}/instances/{SILICONFLOW_EMBEDDING_INSTANCE}/models"
+
+    response, auth = _request_json_with_auth_retry("GET", url, auth)
+    res = response.json()
+    if res.get("code") != 0:
+        pytest.exit(f"Critical error listing {SILICONFLOW_EMBEDDING_PROVIDER} models: {res.get('message')}")
+
+    models = res.get("data") or []
+    if any((model.get("model_name") or model.get("name")) == model_name for model in models):
+        return
+
+    response, auth = _request_json_with_auth_retry(
+        "POST",
+        url,
+        auth,
+        json_payload={"model_name": model_name, "model_type": "embedding", "max_tokens": 8192},
+    )
+    res = response.json()
+    if res.get("code") != 0:
+        message = res.get("message", "")
+        if "already exist" not in message.lower():
+            pytest.exit(f"Critical error adding {SILICONFLOW_EMBEDDING_PROVIDER} embedding model {model_name}: {message}")
+
+    response, _ = _request_json_with_auth_retry("GET", url, auth)
+    res = response.json()
+    if res.get("code") != 0:
+        pytest.exit(f"Critical error confirming {SILICONFLOW_EMBEDDING_PROVIDER} models: {res.get('message')}")
+
+    models = res.get("data") or []
+    if not any((model.get("model_name") or model.get("name")) == model_name for model in models):
+        pytest.exit(f"Failed to confirm {SILICONFLOW_EMBEDDING_PROVIDER} embedding model {model_name} on CI instance")
+
+
 def add_models(auth):
     set_api_key_url = HOST_ADDRESS + f"/{VERSION}/llm/set_api_key"
     add_llm_url = HOST_ADDRESS + f"/{VERSION}/llm/add_llm"
@@ -535,6 +573,7 @@ def set_tenant_info(auth):
             add_model_instance(auth)
         except Exception as e:
             pytest.exit(f"Error in set_tenant_info: {str(e)}")
+    ensure_siliconflow_embedding_model(auth)
     url = HOST_ADDRESS + "/api/v1/models/default"
     authorization = {"Authorization": auth}
     # set chat model
