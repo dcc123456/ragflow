@@ -994,6 +994,10 @@ class DocumentService(CommonService):
                 special_task_running = False
                 priority = 0
                 task_type = "common"
+                # Count this document's own not-yet-started tasks per priority so
+                # they can be excluded from the "tasks ahead in the queue" figure
+                # for the matching priority queue.
+                own_queued_by_priority = {}
                 for t in tsks:
                     task_type = (t.task_type or task_type).lower()
                     if task_type in PIPELINE_SPECIAL_PROGRESS_FREEZE_TASK_TYPES:
@@ -1007,6 +1011,8 @@ class DocumentService(CommonService):
                         finished = False
                     if t.progress == -1:
                         bad += 1
+                    if (t.progress or 0) == 0:
+                        own_queued_by_priority[t.priority] = own_queued_by_priority.get(t.priority, 0) + 1
                     prg += t.progress if t.progress >= 0 else 0
                     if (t.progress_msg or "").strip():
                         msg.append(t.progress_msg)
@@ -1051,9 +1057,14 @@ class DocumentService(CommonService):
                 if msg:
                     info["progress_msg"] = msg
                     if msg.endswith("created task graphrag") or msg.endswith("created task raptor") or msg.endswith("created task mindmap"):
-                        info["progress_msg"] += "\n%d tasks are ahead in the queue..." % get_queue_length(priority, task_type)
+                        # Exclude this document's own queued tasks in the same
+                        # priority queue: they are not "ahead" of itself, they
+                        # ARE the work being waited on.
+                        queue_ahead = max(0, get_queue_length(priority, task_type) - own_queued_by_priority.get(priority, 0))
+                        info["progress_msg"] += "\n%d tasks are ahead in the queue..." % queue_ahead
                 else:
-                    info["progress_msg"] = "%d tasks are ahead in the queue..." % get_queue_length(priority, task_type)
+                    queue_ahead = max(0, get_queue_length(priority, task_type) - own_queued_by_priority.get(priority, 0))
+                    info["progress_msg"] = "%d tasks are ahead in the queue..." % queue_ahead
                 info["update_time"] = current_timestamp()
                 info["update_date"] = get_format_time()
                 (cls.model.update(info).where((cls.model.id == d["id"]) & ((cls.model.run.is_null(True)) | (cls.model.run != TaskStatus.CANCEL.value))).execute())

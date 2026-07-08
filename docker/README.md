@@ -7,9 +7,10 @@ gcloud init  --no-launch-browser
 
 ## create snapshots
 
-gcloud compute snapshots create google04 \
-    --source-disk ragflow04 \
-    --source-disk-zone us-west1-a
+- **docker-compose.yml**
+  Sets up environment for RAGFlow and its dependencies.
+- **docker-compose-base.yml**
+  Sets up environment for RAGFlow's dependencies: Elasticsearch/[Infinity](https://github.com/infiniflow/infinity), MySQL, MinIO, and Redis.
 
 ## create image
 
@@ -22,11 +23,12 @@ gcloud compute images add-iam-policy-binding image04 \
     --member='allAuthenticatedUsers' \
     --role='roles/compute.imageUser'
 
-## create VM via image
-
-gcloud compute instances create ragflow02 \
-    --image-project ragflow-01 \
-    --image  image02
+- `STACK_VERSION`
+  The version of Elasticsearch. Defaults to `8.11.3`
+- `ES_PORT`
+  The port used to expose the Elasticsearch service to the host machine, allowing **external** access to the service running inside the Docker container.  Defaults to `1200`.
+- `ELASTIC_PASSWORD`
+  The password for Elasticsearch.
 
 ### Kibana
 
@@ -74,7 +76,7 @@ gcloud compute instances create ragflow02 \
 - `SVR_HTTP_PORT`
   The port used to expose RAGFlow's HTTP API service to the host machine, allowing **external** access to the service running inside the Docker container. Defaults to `9380`.
 - `RAGFLOW_IMAGE`
-  The Docker image edition. Defaults to `infiniflow/ragflow:v0.26.3`. The RAGFlow Docker image does not include embedding models.
+  The Docker image edition. Defaults to `infiniflow/ragflow:v0.26.4`. The RAGFlow Docker image does not include embedding models.
 
 
 > [!TIP]
