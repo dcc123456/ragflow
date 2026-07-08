@@ -284,36 +284,41 @@ export default function Agent() {
         <div className="flex flex-wrap items-center justify-end gap-3">
           <OnlineUsers></OnlineUsers>
           {showEditButton(presence.operator_permission ?? 0) && (
-            <ButtonLoading
-              variant={'secondary'}
-              onClick={() => saveGraph()}
+            <>
+              <ButtonLoading
+                variant={'secondary'}
+                onClick={() => saveGraph()}
+                loading={loading}
+              >
+                <LaptopMinimalCheck /> {t('flow.save')}
+              </ButtonLoading>
+              <Button
+                variant={'secondary'}
+                onClick={handleButtonRunClick}
+                data-testid="agent-run"
+              >
+                <CirclePlay />
+                {t('flow.run')}
+              </Button>
+            </>
+          )}
+          {isConversationMode &&
+            showEditButton(presence.operator_permission ?? 0) && (
+              <Button
+                variant={'secondary'}
+                onClick={navigateToAgentExplore(id as string)}
+              >
+                <Compass />
+                {t('explore.title')}
+              </Button>
+            )}
+          {showEditButton(presence.operator_permission ?? 0) && (
+            <PublishConfirmDialog
+              agentDetail={agentDetail}
               loading={loading}
-            >
-              <LaptopMinimalCheck /> {t('flow.save')}
-            </ButtonLoading>
+              onPublish={() => saveGraph(undefined, undefined, true)}
+            />
           )}
-          <Button
-            variant={'secondary'}
-            onClick={handleButtonRunClick}
-            data-testid="agent-run"
-          >
-            <CirclePlay />
-            {t('flow.run')}
-          </Button>
-          {isConversationMode && (
-            <Button
-              variant={'secondary'}
-              onClick={navigateToAgentExplore(id as string)}
-            >
-              <Compass />
-              {t('explore.title')}
-            </Button>
-          )}
-          <PublishConfirmDialog
-            agentDetail={agentDetail}
-            loading={loading}
-            onPublish={() => saveGraph(undefined, undefined, true)}
-          />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant={'secondary'}>
@@ -321,11 +326,15 @@ export default function Agent() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent>
-              <AgentDropdownMenuItem onClick={() => showGlobalParamSheet()}>
-                <MessageSquareCode />
-                {t('flow.conversationVariable')}
-              </AgentDropdownMenuItem>
-              <DropdownMenuSeparator />
+              {showEditButton(presence.operator_permission ?? 0) && (
+                <>
+                  <AgentDropdownMenuItem onClick={() => showGlobalParamSheet()}>
+                    <MessageSquareCode />
+                    {t('flow.conversationVariable')}
+                  </AgentDropdownMenuItem>
+                  <DropdownMenuSeparator />
+                </>
+              )}
               <AgentDropdownMenuItem onClick={showVersionDialog}>
                 <History />
                 {t('flow.historyVersion')}
@@ -345,10 +354,12 @@ export default function Agent() {
                 {t('flow.export')}
               </AgentDropdownMenuItem>
               <DropdownMenuSeparator />
-              <AgentDropdownMenuItem onClick={showSettingDialog}>
-                <Settings />
-                {t('flow.setting')}
-              </AgentDropdownMenuItem>
+              {showEditButton(presence.operator_permission ?? 0) && (
+                <AgentDropdownMenuItem onClick={showSettingDialog}>
+                  <Settings />
+                  {t('flow.setting')}
+                </AgentDropdownMenuItem>
+              )}
               {isPipeline ||
                 (location.hostname !== 'cloud.ragflow.io' && (
                   <>
