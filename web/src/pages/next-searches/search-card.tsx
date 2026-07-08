@@ -1,5 +1,6 @@
 import { HomeCard } from '@/components/home-card';
 import { MoreButton } from '@/components/more-button';
+import { SharedBadge } from '@/components/shared-badge';
 import { useNavigatePage } from '@/hooks/logic-hooks/navigate-hooks';
 import { ISearchAppProps } from './hooks';
 import { SearchDropdown } from './search-dropdown';
@@ -28,6 +29,7 @@ export function SearchCard({
           <MoreButton></MoreButton>
         </SearchDropdown>
       }
+      sharedBadge={<SharedBadge>{data.nickname}</SharedBadge>}
       onClick={navigateToSearch(data?.id)}
     />
   );

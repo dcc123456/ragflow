@@ -316,7 +316,7 @@ export function useSelectFilters() {
   }, [data?.memory_list]);
 
   const filters: FilterCollection[] = [
-    buildOwnersFilter(data?.memory_list ?? [], 'owner_name', t('common.owner')),
+    buildOwnersFilter(data?.memory_list ?? [], undefined, t('common.owner')),
     {
       field: 'memoryType',
       list: memoryType,
