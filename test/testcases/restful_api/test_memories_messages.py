@@ -69,14 +69,21 @@ def create_memory_resource(rest_client, memory_cleanup):
     yield _create
 
 
-def _add_message(rest_client, memory_id: str, user_input: str, agent_response: str) -> None:
+def _message_user_id(authenticated_tenant_id: str | None = None) -> str:
+    if using_siliconflow_byok():
+        assert authenticated_tenant_id, "BYOK memory message tests require the authenticated tenant id"
+        return authenticated_tenant_id
+    return uuid.uuid4().hex
+
+
+def _add_message(rest_client, memory_id: str, user_input: str, agent_response: str, authenticated_tenant_id: str | None = None) -> None:
     add_res = rest_client.post(
         "/messages",
         json={
             "memory_id": [memory_id],
             "agent_id": uuid.uuid4().hex,
             "session_id": uuid.uuid4().hex,
-            "user_id": uuid.uuid4().hex,
+            "user_id": _message_user_id(authenticated_tenant_id),
             "user_input": user_input,
             "agent_response": agent_response,
         },
@@ -143,13 +150,14 @@ def test_memory_create_missing_required_fields(rest_client):
 
 
 @pytest.mark.p1
-def test_messages_add_list_recent_content_update_forget(rest_client, create_memory_resource):
+def test_messages_add_list_recent_content_update_forget(rest_client, create_memory_resource, tenant_id):
     memory_id = create_memory_resource("restful_message_memory")
     _add_message(
         rest_client,
         memory_id,
         user_input="what is coriander?",
         agent_response="coriander can refer to leaves or seeds",
+        authenticated_tenant_id=tenant_id,
     )
 
     message_list = _wait_for_memory_messages(rest_client, memory_id)
@@ -180,9 +188,9 @@ def test_messages_add_list_recent_content_update_forget(rest_client, create_memo
 
 
 @pytest.mark.p2
-def test_message_status_validation_requires_boolean(rest_client, create_memory_resource):
+def test_message_status_validation_requires_boolean(rest_client, create_memory_resource, tenant_id):
     memory_id = create_memory_resource("restful_message_status_validation")
-    _add_message(rest_client, memory_id, user_input="hello", agent_response="hello")
+    _add_message(rest_client, memory_id, user_input="hello", agent_response="hello", authenticated_tenant_id=tenant_id)
 
     message_id = _wait_for_memory_messages(rest_client, memory_id)[0]["message_id"]
 
@@ -203,13 +211,14 @@ def test_messages_recent_requires_memory_ids(rest_client):
 
 
 @pytest.mark.p2
-def test_message_search_route_contract(rest_client, create_memory_resource):
+def test_message_search_route_contract(rest_client, create_memory_resource, tenant_id):
     memory_id = create_memory_resource("restful_message_search")
     _add_message(
         rest_client,
         memory_id,
         user_input="what is pineapple?",
         agent_response="pineapple is a tropical fruit",
+        authenticated_tenant_id=tenant_id,
     )
 
     _wait_for_memory_messages(rest_client, memory_id)
