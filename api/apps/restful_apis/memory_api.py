@@ -37,23 +37,23 @@ memory_role_guard = check_role_access(MEMORY_API_ACTION_MAP, MEMORY_ROLE_RESOURC
 
 
 def _grant_memory_owner_permission(memory_id: str) -> None:
-    operator = UserTenantService.filter_by_tenant_and_user_id(current_user.id, current_user.id)
-    if not operator:
-        logging.warning("Failed to resolve memory owner operator for memory_id=%s", memory_id)
-        return
-
-    if not PermissionService.save(
-        id=get_uuid(),
-        member_id=operator.id,
-        tenant_id=operator.tenant_id,
-        resource_type=ResourceType.MEMORY,
-        resource_id=memory_id,
-        permission=PermissionValue.PERMISSION_OWNER.value,
-    ):
-        logging.warning("Failed to create memory owner permission for memory_id=%s", memory_id)
-        return
-
     try:
+        operator = UserTenantService.filter_by_tenant_and_user_id(current_user.id, current_user.id)
+        if not operator:
+            logging.warning("Failed to resolve memory owner operator for memory_id=%s", memory_id)
+            return
+
+        if not PermissionService.save(
+            id=get_uuid(),
+            member_id=operator.id,
+            tenant_id=operator.tenant_id,
+            resource_type=ResourceType.MEMORY,
+            resource_id=memory_id,
+            permission=PermissionValue.PERMISSION_OWNER.value,
+        ):
+            logging.warning("Failed to create memory owner permission for memory_id=%s", memory_id)
+            return
+
         PermissionChangeLogService.save(
             id=get_uuid(),
             tenant_id=operator.tenant_id,
@@ -67,7 +67,7 @@ def _grant_memory_owner_permission(memory_id: str) -> None:
             action_type=PermissionActionType.ACTION_ADD,
         )
     except Exception as exc:
-        logging.warning("Failed to create memory permission change log for resource_id=%s: %s", memory_id, exc)
+        logging.warning("Failed to grant memory owner permission for resource_id=%s: %s", memory_id, exc)
 
 
 @manager.route("/memories", methods=["POST"])  # noqa: F821
