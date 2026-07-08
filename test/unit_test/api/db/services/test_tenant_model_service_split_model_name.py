@@ -66,11 +66,7 @@ def _load_resolve_model_id_with_fakes():
     """Load resolve_model_id with enough fakes to exercise model-name parsing."""
     src_path = Path(__file__).resolve().parents[5] / "api" / "db" / "joint_services" / "tenant_model_service.py"
     tree = ast.parse(src_path.read_text(encoding="utf-8"))
-    fn_nodes = [
-        node
-        for node in tree.body
-        if isinstance(node, ast.FunctionDef) and node.name in {"split_model_name", "resolve_model_id"}
-    ]
+    fn_nodes = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name in {"split_model_name", "resolve_model_id"}]
     module = ast.Module(body=fn_nodes, type_ignores=[])
 
     class _TenantModelProviderService:
