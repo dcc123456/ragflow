@@ -246,7 +246,29 @@ class UserCanvasService(CommonService):
     @DB.connection_context()
     def list_tags(cls, joined_tenant_ids, user_id, canvas_category=None):
         """Return {tag: agent_count} aggregated across agents visible to the user."""
-        query = cls.model.select(cls.model.tags).where(((cls.model.user_id.in_(joined_tenant_ids)) & (cls.model.permission == TenantPermission.TEAM.value)) | (cls.model.user_id == user_id))
+        joined_tenant_ids = list(dict.fromkeys(joined_tenant_ids or []))
+        shared_tenant_ids = [tenant_id for tenant_id in joined_tenant_ids if tenant_id != user_id]
+        shared_permission_sq = None
+        if shared_tenant_ids:
+            shared_permission_sq = PermissionService.build_user_resource_permission_subquery(
+                user_id,
+                shared_tenant_ids,
+                ResourceType.CANVAS,
+                PermissionValue.PERMISSION_READ,
+            ).alias("shared_permission_sq")
+
+        query = cls.model.select(cls.model.tags)
+        if shared_permission_sq is not None:
+            query = query.join(
+                shared_permission_sq,
+                JOIN.LEFT_OUTER,
+                on=((shared_permission_sq.c.resource_id == cls.model.id) & (shared_permission_sq.c.tenant_id == cls.model.user_id)),
+            )
+
+        visible_condition = ((cls.model.user_id.in_(joined_tenant_ids)) & (cls.model.permission == TenantPermission.TEAM.value)) | (cls.model.user_id == user_id)
+        if shared_permission_sq is not None:
+            visible_condition = visible_condition | shared_permission_sq.c.resource_id.is_null(False)
+        query = query.where(visible_condition)
         if canvas_category:
             query = query.where(cls.model.canvas_category == canvas_category)
 
