@@ -140,10 +140,10 @@ export function ModelTreeSelect({
 
   const defaultRenderSelected = useCallback(
     (node: TreeSelectNode | undefined) => {
-      if (!node?.id) return null;
+      if (!node?.id) return <span className="truncate">{value}</span>;
       return <LLMLabel value={node.id} />;
     },
-    [],
+    [value],
   );
 
   return (
