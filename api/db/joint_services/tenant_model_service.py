@@ -366,7 +366,9 @@ def get_model_config_by_id(tenant_id: str, model_id: str):
 def resolve_model_id(tenant_id: str, model_type: str | enum.Enum, model_name: str) -> str | None:
     """Given a tenant_id, model_type and model_name (e.g. 'model@instance@provider'),
     look up the corresponding tenant_model.id. Returns None if not found."""
-    pure_model_name, instance_name, provider_name = split_model_name(model_name)
+    pure_model_name, instance_name, provider_name, model_tenant_id = split_model_name(model_name)
+    if model_tenant_id:
+        tenant_id = model_tenant_id
     model_type_val = model_type if isinstance(model_type, str) else model_type.value
 
     # Builtin TEI embedding — no tenant_model row exists
