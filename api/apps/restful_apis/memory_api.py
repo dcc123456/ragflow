@@ -26,6 +26,7 @@ from api.db.services.permission_service import PermissionChangeLogService, Permi
 from api.db.services.user_service import UserTenantService
 from api.utils.api_utils import validate_request, get_request_json, get_error_argument_result, get_json_result
 from api.apps.services import memory_api_service
+from api.db.joint_services.tenant_model_service import ensure_tenant_model_ids_for_params
 from api.utils.pagination_utils import validate_rest_api_page_size
 from api.utils.billing import check_resources
 from api.utils.permission_utils import check_memory_permission
@@ -80,7 +81,10 @@ async def create_memory():
     req = await get_request_json()
     t_parsed = time.perf_counter() if timing_enabled else None
     try:
+        # Resolve tenant_model IDs from model names
+        tenant_id = current_user.id
         memory_info = {"name": req["name"], "memory_type": req["memory_type"], "embd_id": req["embd_id"], "llm_id": req["llm_id"]}
+        ensure_tenant_model_ids_for_params(tenant_id, memory_info)
         success, res = await memory_api_service.create_memory(memory_info)
         if timing_enabled:
             logging.info(
@@ -127,6 +131,8 @@ async def create_memory():
 @check_memory_permission(PermissionValue.PERMISSION_MANAGE)
 async def update_memory(memory_id):
     req = await get_request_json()
+    # Resolve tenant_model IDs from model names when name is provided but id is not
+    ensure_tenant_model_ids_for_params(current_user.id, req)
     new_settings = {
         k: req[k]
         for k in [
