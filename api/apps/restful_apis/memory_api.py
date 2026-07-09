@@ -26,6 +26,7 @@ from api.db.services.permission_service import PermissionChangeLogService, Permi
 from api.db.services.user_service import UserTenantService
 from api.utils.api_utils import validate_request, get_request_json, get_error_argument_result, get_json_result
 from api.apps.services import memory_api_service
+from api.db.joint_services.tenant_model_service import ensure_tenant_model_ids_for_params
 from api.utils.pagination_utils import validate_rest_api_page_size
 from api.utils.billing import check_resources
 from api.utils.permission_utils import check_memory_permission
@@ -36,23 +37,23 @@ memory_role_guard = check_role_access(MEMORY_API_ACTION_MAP, MEMORY_ROLE_RESOURC
 
 
 def _grant_memory_owner_permission(memory_id: str) -> None:
-    operator = UserTenantService.filter_by_tenant_and_user_id(current_user.id, current_user.id)
-    if not operator:
-        logging.warning("Failed to resolve memory owner operator for memory_id=%s", memory_id)
-        return
-
-    if not PermissionService.save(
-        id=get_uuid(),
-        member_id=operator.id,
-        tenant_id=operator.tenant_id,
-        resource_type=ResourceType.MEMORY,
-        resource_id=memory_id,
-        permission=PermissionValue.PERMISSION_OWNER.value,
-    ):
-        logging.warning("Failed to create memory owner permission for memory_id=%s", memory_id)
-        return
-
     try:
+        operator = UserTenantService.filter_by_tenant_and_user_id(current_user.id, current_user.id)
+        if not operator:
+            logging.warning("Failed to resolve memory owner operator for memory_id=%s", memory_id)
+            return
+
+        if not PermissionService.save(
+            id=get_uuid(),
+            member_id=operator.id,
+            tenant_id=operator.tenant_id,
+            resource_type=ResourceType.MEMORY,
+            resource_id=memory_id,
+            permission=PermissionValue.PERMISSION_OWNER.value,
+        ):
+            logging.warning("Failed to create memory owner permission for memory_id=%s", memory_id)
+            return
+
         PermissionChangeLogService.save(
             id=get_uuid(),
             tenant_id=operator.tenant_id,
@@ -66,7 +67,7 @@ def _grant_memory_owner_permission(memory_id: str) -> None:
             action_type=PermissionActionType.ACTION_ADD,
         )
     except Exception as exc:
-        logging.warning("Failed to create memory permission change log for resource_id=%s: %s", memory_id, exc)
+        logging.warning("Failed to grant memory owner permission for resource_id=%s: %s", memory_id, exc)
 
 
 @manager.route("/memories", methods=["POST"])  # noqa: F821
@@ -80,7 +81,10 @@ async def create_memory():
     req = await get_request_json()
     t_parsed = time.perf_counter() if timing_enabled else None
     try:
+        # Resolve tenant_model IDs from model names
+        tenant_id = current_user.id
         memory_info = {"name": req["name"], "memory_type": req["memory_type"], "embd_id": req["embd_id"], "llm_id": req["llm_id"]}
+        ensure_tenant_model_ids_for_params(tenant_id, memory_info)
         success, res = await memory_api_service.create_memory(memory_info)
         if timing_enabled:
             logging.info(
@@ -127,6 +131,8 @@ async def create_memory():
 @check_memory_permission(PermissionValue.PERMISSION_MANAGE)
 async def update_memory(memory_id):
     req = await get_request_json()
+    # Resolve tenant_model IDs from model names when name is provided but id is not
+    ensure_tenant_model_ids_for_params(current_user.id, req)
     new_settings = {
         k: req[k]
         for k in [

@@ -208,6 +208,7 @@ def _build_default_completion_dialog():
     return SimpleNamespace(
         tenant_id=current_user.id,
         llm_id="",
+        tenant_llm_id=None,
         llm_setting={},
         prompt_config=deepcopy(_DEFAULT_DIRECT_CHAT_PROMPT_CONFIG),
         kb_ids=[],
@@ -240,6 +241,7 @@ def _build_default_completion_dialog():
     return SimpleNamespace(
         tenant_id=current_user.id,
         llm_id="",
+        tenant_llm_id=None,
         llm_setting={},
         prompt_config=deepcopy(_DEFAULT_DIRECT_CHAT_PROMPT_CONFIG),
         kb_ids=[],

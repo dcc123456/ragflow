@@ -22,8 +22,8 @@ import { PriceName } from '@/pages/price/constant';
 import { useFetchCurrentPlan } from '@/pages/price/hook/use-price-hooks';
 import {
   LucideBox,
-  LucideMessagesSquare,
   LucideLogOut,
+  LucideMessagesSquare,
   LucideServer,
   LucideUnplug,
   LucideUser,
@@ -155,7 +155,7 @@ export function SideBar() {
       </header>
 
       <nav className="flex-1 overflow-auto mt-4 py-1">
-          <ul className="px-2 md:px-6 flex flex-col gap-2 md:gap-5 items-center md:items-stretch">
+        <ul className="px-2 md:px-6 flex flex-col gap-2 md:gap-5 items-center md:items-stretch">
           {items.map((item) => {
             const { key, icon, label, ...rest } = item;
 

@@ -465,6 +465,21 @@ def _load_session_module(monkeypatch):
                 "id": self.id,
             }
 
+    def _get_model_config_by_id(
+        tenant_model_id: str,
+        allowed_tenant_ids=None,
+        requester_tenant_id=None,
+    ) -> dict:
+        mock_tenant_id = "tenant-1"
+        if allowed_tenant_ids is not None:
+            if isinstance(allowed_tenant_ids, str):
+                allowed_tenant_ids = {allowed_tenant_ids}
+            else:
+                allowed_tenant_ids = {str(tenant_id) for tenant_id in allowed_tenant_ids if tenant_id}
+            if mock_tenant_id not in allowed_tenant_ids and str(requester_tenant_id) != mock_tenant_id:
+                raise LookupError(f"Tenant Model with id {tenant_model_id} not authorized")
+        return _MockModelConfig2(mock_tenant_id, "model-1").to_dict()
+
     def _get_model_config_from_provider_instance(tenant_id: str, model_type: str, model_name: str):
         if not model_name:
             raise Exception("Model Name is required")

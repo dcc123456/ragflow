@@ -37,6 +37,9 @@ and can run in any minimal pytest environment.
 """
 
 import ast
+import enum
+import os
+from types import SimpleNamespace
 from pathlib import Path
 
 import pytest
@@ -59,7 +62,30 @@ def _load_split_model_name():
     return ns["split_model_name"]
 
 
+def _load_resolve_model_id_with_fakes():
+    """Load resolve_model_id with enough fakes to exercise model-name parsing."""
+    src_path = Path(__file__).resolve().parents[5] / "api" / "db" / "joint_services" / "tenant_model_service.py"
+    tree = ast.parse(src_path.read_text(encoding="utf-8"))
+    fn_nodes = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name in {"split_model_name", "resolve_model_id"}]
+    module = ast.Module(body=fn_nodes, type_ignores=[])
+
+    class _TenantModelProviderService:
+        @staticmethod
+        def get_by_tenant_id_and_provider_name(_tenant_id, _provider_name):
+            return None
+
+    ns = {
+        "enum": enum,
+        "os": os,
+        "LLMType": SimpleNamespace(EMBEDDING=SimpleNamespace(value="embedding")),
+        "TenantModelProviderService": _TenantModelProviderService,
+    }
+    exec(compile(module, str(src_path), "exec"), ns)
+    return ns["resolve_model_id"]
+
+
 split_model_name = _load_split_model_name()
+resolve_model_id = _load_resolve_model_id_with_fakes()
 
 
 @pytest.mark.p2
@@ -151,3 +177,10 @@ def test_split_model_name_returns_tuple_of_strings():
     assert isinstance(instance, str)
     assert isinstance(provider, str)
     assert isinstance(tenant_id, str)
+
+
+@pytest.mark.p2
+def test_resolve_model_id_accepts_four_value_split_result():
+    """resolve_model_id must consume split_model_name's four-value contract."""
+    with pytest.raises(LookupError, match="Provider ZHIPU-AI not found"):
+        resolve_model_id("tenant-1", "chat", "glm-4-flash@CI@ZHIPU-AI")
