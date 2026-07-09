@@ -145,6 +145,9 @@ def _apply_model_family_policies(
         target["extra_body"] = body
 
     thinking_type = _thinking_type()
+    # pop out none standard thinking, e.g. "default"
+    if thinking_type is None:
+        _pop_thinking_controls()
 
     # Qwen3 keeps RAGFlow's system default of disabling thinking unless explicitly overridden.
     if "qwen3" in model_name_lower:
