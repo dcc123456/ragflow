@@ -36,6 +36,7 @@ from common.constants import StatusEnum
 from common.role_util import check_role_access, KB_API_ACTION_MAP, KB_ROLE_RESOURCE_TYPE
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.user_service import UserTenantService
+from rag.nlp import compliance
 
 from api.utils.billing import check_dynamic_resources, get_dynamic_resource_error_result
 from api.db import PermissionValue, ResourceType
@@ -600,6 +601,10 @@ async def search_datasets(tenant_id):
     req, err = await validate_and_parse_json_request(request, SearchDatasetsReq)
     if err is not None:
         return get_error_argument_result(err)
+    sensitive_words = compliance.sensitive_question_words(req.get("question"))
+    if sensitive_words:
+        logging.info("[dataset.search_datasets] compliance rejected sensitive question: %s", sensitive_words)
+        return get_json_result(message=compliance.SENSITIVE_QUESTION_RESPONSE, data={"chunks": [], "total": 0, "labels": []})
 
     dataset_ids = _unique_ids(req.get("dataset_ids"))
     if not dataset_ids:
@@ -640,6 +645,10 @@ async def search(tenant_id, dataset_id):
     req, err = await validate_and_parse_json_request(request, SearchDatasetReq)
     if err is not None:
         return get_error_argument_result(err)
+    sensitive_words = compliance.sensitive_question_words(req.get("question"))
+    if sensitive_words:
+        logging.info("[dataset.search] compliance rejected sensitive question: %s", sensitive_words)
+        return get_json_result(message=compliance.SENSITIVE_QUESTION_RESPONSE, data={"chunks": [], "total": 0, "labels": []})
     req["dataset_ids"] = [dataset_id]
     try:
         success, result = await dataset_api_service.search_datasets(tenant_id, req)

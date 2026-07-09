@@ -225,6 +225,21 @@
       "source": "variable",
       "data_type": "bool",
       "value": "false"
+    },{
+      "name": "sensitive_word_filter.enabled",
+      "source": "variable",
+      "data_type": "bool",
+      "value": "false"
+    },{
+      "name": "sensitive_word_filter.response",
+      "source": "variable",
+      "data_type": "string",
+      "value": "Your request could not be processed because it contains restricted content. Please modify your input and try again."
+    },{
+      "name": "sensitive_word_filter.file_version",
+      "source": "variable",
+      "data_type": "string",
+      "value": ""
     }
   ]
 }

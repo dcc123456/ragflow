@@ -39,6 +39,7 @@ from common.llm_request_context import set_llm_request_context, reset_llm_reques
 from common.exceptions import TaskCanceledException
 from common.misc_utils import get_uuid, hash_str2int
 from common.token_utils import token_usage_sink, langfuse_run_attrs
+from rag.nlp import compliance
 from rag.prompts.generator import chunks_format
 from rag.utils.redis_conn import REDIS_CONN
 from rag.utils.tts_cache import synthesize_with_cache
@@ -472,6 +473,25 @@ class Canvas(Graph):
         self._loop = asyncio.get_running_loop()
         self.message_id = get_uuid()
         created_at = int(time.time())
+        sensitive_words = compliance.sensitive_question_words(kwargs.get("query"))
+        if sensitive_words:
+            logging.info("[%s] compliance rejected sensitive agent query: %s", self.task_id, sensitive_words)
+            event_base = {"message_id": self.message_id, "created_at": created_at, "task_id": self.task_id}
+            yield {"event": "message", **event_base, "data": {"content": compliance.SENSITIVE_QUESTION_RESPONSE}}
+            yield {"event": "message_end", **event_base, "data": {}}
+            yield {
+                "event": "workflow_finished",
+                **event_base,
+                "data": {
+                    "inputs": kwargs.get("inputs"),
+                    "outputs": {"content": compliance.SENSITIVE_QUESTION_RESPONSE},
+                    "elapsed_time": time.perf_counter() - st,
+                    "created_at": st,
+                    "usage": self._run_usage_payload(),
+                },
+            }
+            return
+
         self.add_user_input(kwargs.get("query"))
         path_set = set(self.path)
         for k, cpn in self.components.items():

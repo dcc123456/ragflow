@@ -33,6 +33,7 @@ from common.metadata_utils import meta_filter, convert_conditions
 from api.apps import login_required
 from api.utils.api_utils import add_tenant_id_to_kwargs, build_error_result, get_request_json, get_json_result
 from rag.app.tag import label_question
+from rag.nlp import compliance
 from common.constants import RetCode, LLMType
 from common import settings
 
@@ -238,6 +239,10 @@ async def retrieval(tenant_id):
             code=RetCode.ARGUMENT_ERROR,
         )
     question = req["query"]
+    sensitive_words = compliance.sensitive_question_words(question)
+    if sensitive_words:
+        logger.info("[dify.retrieval] compliance rejected sensitive question: %s", sensitive_words)
+        return jsonify({"records": [], "message": compliance.SENSITIVE_QUESTION_RESPONSE})
     kb_id = req["knowledge_id"]
     use_kg = req.get("use_kg", False)
     try:

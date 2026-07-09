@@ -3497,6 +3497,30 @@ Important structured information may include: names, dates, locations, events, k
             enableModule: 'Enable',
           },
         },
+        sensitiveWordFilter: {
+          title: 'Sensitive Word Filtering',
+          description:
+            'Block questions containing configured sensitive words across chat, search, and agent chat.',
+          fields: {
+            enableModule: 'Enable',
+            response: 'Response',
+            file: 'Sensitive words file',
+          },
+          placeholder: {
+            response:
+              'Your request could not be processed because it contains restricted content. Please modify your input and try again.',
+          },
+          fileTip:
+            'Upload one .txt file up to 30 MiB. Use one sensitive word or phrase per line.',
+          download: 'Download current file',
+          downloadFailed: 'Sensitive words file is not available',
+          uploaded: 'Sensitive words file uploaded',
+          messages: {
+            response: 'Please enter the response',
+            fileType: 'Only .txt files are allowed',
+            fileSize: 'The file must be 30 MiB or smaller',
+          },
+        },
         exposeModelProvider: {
           title: 'Expose Model Provider',
           description: 'Display the model provider page to non-admin users.',

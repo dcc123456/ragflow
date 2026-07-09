@@ -2859,6 +2859,32 @@ Tokenizer 会根据所选方式将内容存储为对应的数据结构。`,
       addNow: '立即添加',
     },
 
+    admin: {
+      settingsForm: {
+        sensitiveWordFilter: {
+          title: '敏感词过滤',
+          description: '在聊天、搜索和智能对话中拦截包含已配置敏感词的问题。',
+          fields: {
+            enableModule: '启用',
+            response: '拦截提示',
+            file: '敏感词文件',
+          },
+          placeholder: {
+            response: '您的请求因包含限制内容而无法处理，请修改输入后重试。',
+          },
+          fileTip: '上传一个 .txt 文件，最大 30 MiB。每行一个敏感词或短语。',
+          download: '下载当前文件',
+          downloadFailed: '敏感词文件不可用',
+          uploaded: '敏感词文件已上传',
+          messages: {
+            response: '请输入拦截提示',
+            fileType: '仅支持 .txt 文件',
+            fileSize: '文件大小不能超过 30 MiB',
+          },
+        },
+      },
+    },
+
     license: {
       title: '许可证',
       description: '管理您的许可证，确保持续运行。',

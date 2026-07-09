@@ -47,6 +47,7 @@ from common.text_utils import normalize_arabic_digits
 from rag.advanced_rag.knowlege_compile.mind_map_extractor import MindMapExtractor
 from rag.advanced_rag import DeepResearcher
 from rag.app.tag import label_question
+from rag.nlp import compliance
 from rag.nlp.search import index_name
 from rag.prompts.generator import chunks_format, citation_prompt, cross_languages, full_question, kb_prompt, keyword_extraction, message_fit_in, PROMPT_JINJA_ENV, ASK_SUMMARY
 from common.token_utils import num_tokens_from_string
@@ -634,6 +635,13 @@ def repair_bad_citation_formats(answer: str, kbinfos: dict, idx: set):
 
 async def async_chat(dialog, messages, stream=True, *, user_id: str | None = None, **kwargs):
     assert messages[-1]["role"] == "user", "The last content of this conversation is not from user."
+    sensitive_words = compliance.sensitive_question_words(messages[-1]["content"])
+    if sensitive_words:
+        logging.info("[chat.async_chat] compliance rejected sensitive question: %s", sensitive_words)
+        yield {"answer": compliance.SENSITIVE_QUESTION_RESPONSE, "reference": {}, "audio_binary": None, "final": False}
+        yield {"answer": "", "reference": {}, "prompt": "", "audio_binary": None, "final": True}
+        return
+
     session_id = kwargs.get("session_id")
     use_web_search = _should_use_web_search(dialog.prompt_config, kwargs.get("internet"))
     logging.debug("web_search kb=%s tavily=%s internet=%r enabled=%s", bool(dialog.kb_ids), bool(dialog.prompt_config.get("tavily_api_key")), kwargs.get("internet"), use_web_search)
@@ -1788,6 +1796,13 @@ async def _stream_with_think_delta(stream_iter, min_tokens: int = 16):
 
 
 async def async_ask(question, kb_ids, tenant_id, chat_llm_name=None, search_config={}, search_id=None, *, user_id=None):
+    sensitive_words = compliance.sensitive_question_words(question)
+    if sensitive_words:
+        logging.info("[search.async_ask] compliance rejected sensitive question: %s", sensitive_words)
+        yield {"answer": compliance.SENSITIVE_QUESTION_RESPONSE, "reference": {}, "final": False}
+        yield {"answer": "", "reference": {}, "final": True}
+        return
+
     doc_ids = search_config.get("doc_ids", [])
     rerank_mdl = None
     kb_ids = search_config.get("kb_ids", kb_ids)

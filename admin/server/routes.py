@@ -25,9 +25,11 @@ from admin.server.white_list import WhiteListMgr
 from auth import login_verify, login_admin, check_admin_auth
 from responses import success_response, error_response
 from api.utils.health_utils import run_health_checks
+from api.db.services.system_settings_service import SystemSettingsService
 from services import UserMgr, ServiceMgr, UserServiceMgr, SettingsMgr, ConfigMgr, EnvironmentsMgr, SandboxMgr
 from roles import RoleMgr, RoleModelMgr
 from mail_validator import AsyncSMTPValidator
+from rag.nlp import compliance
 
 from typing import Any
 from common.time_utils import current_timestamp, datetime_format
@@ -38,6 +40,7 @@ from api.utils.api_utils import generate_confirmation_token
 from common.log_utils import get_log_levels, set_log_level
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/api/v1/admin")
+SENSITIVE_WORD_FILTER_MAX_FILE_SIZE = 30 * 1024 * 1024
 
 
 @admin_bp.route("/ping", methods=["GET"])
@@ -574,6 +577,49 @@ def delete_variable():
 
     except AdminException as e:
         return error_response(str(e), 400)
+    except Exception as e:
+        return error_response(str(e), 500)
+
+
+@admin_bp.route("/sensitive_word_filter/upload", methods=["POST"])
+@login_required
+@check_admin_auth
+def upload_sensitive_word_filter():
+    try:
+        if "file" not in request.files:
+            return error_response("File is required.", 400)
+        file = request.files["file"]
+        filename = file.filename or ""
+        if not filename.lower().endswith(".txt"):
+            return error_response("Only .txt files are allowed.", 400)
+        content = file.read()
+        if len(content) > SENSITIVE_WORD_FILTER_MAX_FILE_SIZE:
+            return error_response("Only a txt file up to 30 MiB is allowed.", 400)
+        try:
+            words = content.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            return error_response("Only UTF-8 txt files are allowed.", 400)
+        compliance.put_sensitive_word_file(content)
+        SystemSettingsService.upsert_singleton_by_exact_name(
+            name=compliance.SENSITIVE_WORD_FILTER_FILE_VERSION_SETTING,
+            source="variable",
+            data_type="string",
+            value=f"{current_timestamp()}-{secrets.token_hex(4)}",
+        )
+        return success_response({"size": len(content), "word_count": len([line for line in words.splitlines() if line.strip()])}, "Sensitive word file uploaded")
+    except Exception as e:
+        return error_response(str(e), 500)
+
+
+@admin_bp.route("/sensitive_word_filter/download", methods=["GET"])
+@login_required
+@check_admin_auth
+def download_sensitive_word_filter():
+    try:
+        if not compliance.sensitive_word_file_exists():
+            return error_response("Sensitive words file is not uploaded.", 404)
+        content = compliance.get_sensitive_word_file()
+        return Response(content, mimetype="text/plain; charset=utf-8", headers={"Content-Disposition": 'attachment; filename="compliance.txt"'})
     except Exception as e:
         return error_response(str(e), 500)
 

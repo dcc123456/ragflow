@@ -44,6 +44,7 @@ from api.utils.api_utils import (
     check_duplicate_ids,
     construct_json_result,
     get_error_data_result,
+    get_json_result,
     get_request_json,
     get_result,
     server_error_response,
@@ -63,7 +64,7 @@ from common.misc_utils import thread_pool_exec
 from common.string_utils import is_content_empty, remove_redundant_spaces
 from common.tag_feature_utils import validate_tag_features
 from rag.app.tag import label_question
-from rag.nlp import search
+from rag.nlp import compliance, search
 from rag.prompts.generator import cross_languages, keyword_extraction
 
 
@@ -335,6 +336,10 @@ async def retrieval_test(tenant_id):
     question = req["question"].strip() if isinstance(req["question"], str) else req["question"]
     if not question:
         return get_result(data={"total": 0, "chunks": [], "doc_aggs": {}})
+    sensitive_words = compliance.sensitive_question_words(question)
+    if sensitive_words:
+        logging.info("[chunk.retrieval] compliance rejected sensitive question: %s", sensitive_words)
+        return get_json_result(message=compliance.SENSITIVE_QUESTION_RESPONSE, data={"total": 0, "chunks": [], "doc_aggs": {}})
     doc_ids = req.get("document_ids", [])
     use_kg = req.get("use_kg", False)
     toc_enhance = req.get("toc_enhance", False)

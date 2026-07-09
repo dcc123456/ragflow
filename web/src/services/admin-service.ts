@@ -365,6 +365,21 @@ export const setVariable = (name: string, value: any) =>
     var_value: value,
   });
 
+export const uploadSensitiveWordFilter = (file: File) => {
+  const fd = new FormData();
+  fd.append('file', file);
+  return request.post<ResponseData<{ size: number; word_count: number }>>(
+    API.adminUploadSensitiveWordFilter,
+    fd,
+  );
+};
+
+export const downloadSensitiveWordFilter = () => {
+  return request.get<Blob>(API.adminDownloadSensitiveWordFilter, {
+    responseType: 'blob',
+  });
+};
+
 export const deleteLdapServer = (serverId: string) => {
   return request.delete<ResponseData<never>>(API.adminVariables, {
     data: {

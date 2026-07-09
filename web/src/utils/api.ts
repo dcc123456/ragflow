@@ -484,6 +484,8 @@ export default {
   adminGetSystemVersion: `${restAPIv1}/admin/version`,
 
   adminVariables: `${restAPIv1}/admin/variables`,
+  adminUploadSensitiveWordFilter: `${restAPIv1}/admin/sensitive_word_filter/upload`,
+  adminDownloadSensitiveWordFilter: `${restAPIv1}/admin/sensitive_word_filter/download`,
   adminTestSMTPConnection: `${restAPIv1}/admin/validate_mail`,
 
   // evaluation

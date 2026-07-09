@@ -263,6 +263,12 @@ declare namespace AdminService {
       'email_verification.enabled': 'bool';
     }>;
 
+    type SensitiveWordFilter = Utilities.DefineVariables<{
+      'sensitive_word_filter.enabled': 'bool';
+      'sensitive_word_filter.response': 'string';
+      'sensitive_word_filter.file_version': 'string';
+    }>;
+
     type Mail = Utilities.DefineVariables<
       {
         server: 'string';
@@ -336,6 +342,7 @@ declare namespace AdminService {
     SystemVariables.notification &
     SystemVariables.ExposeModelProvider &
     SystemVariables.EmailVerification &
+    SystemVariables.SensitiveWordFilter &
     PrefixKeys<SystemVariables.Mail, 'mail'> &
     PrefixKeys<SystemVariables.SSO.IDP.Google, 'google|sso'> &
     PrefixKeys<SystemVariables.SSO.IDP.GitHub, 'github|sso'> &

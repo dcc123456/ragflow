@@ -5,6 +5,7 @@ import z from 'zod';
 import { useId, useMemo } from 'react';
 import { ResolverResult, useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -22,6 +23,7 @@ import Spotlight from '@/components/spotlight';
 import EmailVerificationFormGroup from './form-group/email-verification';
 import ExposeModelProviderFormGroup from './form-group/expose-model-provider';
 import NotificationSettingsFormGroup from './form-group/notification';
+import SensitiveWordFilterFormGroup from './form-group/sensitive-word-filter';
 import SMTPSettingsForm from './form-group/smtp';
 import WhitelistSettingsFormGroup from './form-group/whitelist';
 
@@ -32,6 +34,7 @@ const schema = z.object({
   smtp: SMTPSettingsForm.schema,
   whitelist: WhitelistSettingsFormGroup.schema,
   notification: NotificationSettingsFormGroup.schema,
+  sensitiveWordFilter: SensitiveWordFilterFormGroup.schema,
   exposeModelProvider: ExposeModelProviderFormGroup.schema,
   emailVerification: EmailVerificationFormGroup.schema,
 });
@@ -49,6 +52,8 @@ function AdminSettings() {
       smtp: SMTPSettingsForm.mapValuesFromData(variables),
       whitelist: WhitelistSettingsFormGroup.mapValuesFromData(variables),
       notification: NotificationSettingsFormGroup.mapValuesFromData(variables),
+      sensitiveWordFilter:
+        SensitiveWordFilterFormGroup.mapValuesFromData(variables),
       exposeModelProvider:
         ExposeModelProviderFormGroup.mapValuesFromData(variables),
       emailVerification:
@@ -105,6 +110,9 @@ function AdminSettings() {
                         ...NotificationSettingsFormGroup.mapValuesToData(
                           data.notification,
                         ),
+                        ...SensitiveWordFilterFormGroup.mapValuesToData(
+                          data.sensitiveWordFilter,
+                        ),
                         ...ExposeModelProviderFormGroup.mapValuesToData(
                           data.exposeModelProvider,
                         ),
@@ -112,6 +120,17 @@ function AdminSettings() {
                           data.emailVerification,
                         ),
                       });
+                      if (data.sensitiveWordFilter.file) {
+                        await SensitiveWordFilterFormGroup.uploadFile(
+                          data.sensitiveWordFilter.file,
+                        );
+                        toast.success(
+                          t('admin.settingsForm.sensitiveWordFilter.uploaded'),
+                          {
+                            position: 'top-center',
+                          },
+                        );
+                      }
                     })}
                   >
                     <SMTPSettingsForm />
@@ -119,6 +138,8 @@ function AdminSettings() {
                     <WhitelistSettingsFormGroup />
                     <hr className="border-border-button" />
                     <NotificationSettingsFormGroup />
+                    <hr className="border-border-button" />
+                    <SensitiveWordFilterFormGroup />
                     <hr className="border-border-button" />
                     <ExposeModelProviderFormGroup />
                     <hr className="border-border-button" />
