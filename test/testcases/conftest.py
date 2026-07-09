@@ -408,6 +408,46 @@ def ensure_siliconflow_embedding_model(auth):
         pytest.exit(f"Failed to confirm {SILICONFLOW_EMBEDDING_PROVIDER} embedding model {model_name} on CI instance")
 
 
+def ensure_zhipu_ci_models(auth):
+    """Seed the CI provider-instance model rows used by REST contract tests.
+
+    K8s test environments can preserve the ZHIPU-AI/CI instance while losing
+    the per-instance model rows. The newer REST routes resolve
+    `glm-4-flash@CI@ZHIPU-AI` and `embedding-3@CI@ZHIPU-AI` from
+    tenant_model, so provider/instance existence alone is not enough.
+    """
+    url = HOST_ADDRESS + "/api/v1/providers/ZHIPU-AI/instances/CI/models"
+    required_models = {
+        "glm-4-flash": {"model_name": "glm-4-flash", "model_type": "chat", "max_tokens": 128000},
+        "embedding-3": {"model_name": "embedding-3", "model_type": "embedding", "max_tokens": 8192},
+    }
+
+    response, auth = _request_json_with_auth_retry("GET", url, auth)
+    res = response.json()
+    if res.get("code") != 0:
+        pytest.exit(f"Critical error listing ZHIPU-AI CI models: {res.get('message')}")
+
+    existing_models = {model.get("name") or model.get("model_name") for model in (res.get("data") or [])}
+    for model_name, payload in required_models.items():
+        if model_name in existing_models:
+            continue
+        response, auth = _request_json_with_auth_retry("POST", url, auth, json_payload=payload)
+        res = response.json()
+        if res.get("code") != 0:
+            message = res.get("message", "")
+            if "already exist" not in message.lower():
+                pytest.exit(f"Critical error adding ZHIPU-AI CI model {model_name}: {message}")
+
+    response, _ = _request_json_with_auth_retry("GET", url, auth)
+    res = response.json()
+    if res.get("code") != 0:
+        pytest.exit(f"Critical error confirming ZHIPU-AI CI models: {res.get('message')}")
+    existing_models = {model.get("name") or model.get("model_name") for model in (res.get("data") or [])}
+    missing_models = sorted(set(required_models) - existing_models)
+    if missing_models:
+        pytest.exit(f"Failed to confirm ZHIPU-AI CI models: {missing_models}")
+
+
 def add_models(auth):
     set_api_key_url = HOST_ADDRESS + f"/{VERSION}/llm/set_api_key"
     add_llm_url = HOST_ADDRESS + f"/{VERSION}/llm/add_llm"
@@ -573,6 +613,7 @@ def set_tenant_info(auth):
             add_model_instance(auth)
         except Exception as e:
             pytest.exit(f"Error in set_tenant_info: {str(e)}")
+    ensure_zhipu_ci_models(auth)
     ensure_siliconflow_embedding_model(auth)
     url = HOST_ADDRESS + "/api/v1/models/default"
     authorization = {"Authorization": auth}

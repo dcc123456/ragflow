@@ -81,7 +81,7 @@ export function Datasets() {
               </CardSineLineContainer>
             )}
             {!(kbs && kbs?.length > 0) && (
-              <div className="w-40">
+              <div className="w-[210px]">
                 <EmptyAppCard
                   type={EmptyCardType.Dataset}
                   onClick={() => navigateToDatasetList({ isCreate: true })}

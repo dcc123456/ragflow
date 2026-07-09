@@ -853,7 +853,6 @@ async def run_dataflow(task: dict):
     task_id = task["id"]
     task_dataset_id = task["kb_id"]
     billing_hold_id = task.get("billing_hold_id")
-    is_debug_dataflow = doc_id == CANVAS_DEBUG_DOC_ID
 
     try:
         if task["task_type"] == "dataflow":
@@ -865,15 +864,20 @@ async def run_dataflow(task: dict):
             assert e, "Pipeline log not found."
             dsl = pipeline_log.dsl
             dataflow_id = pipeline_log.pipeline_id
-        pipeline = Pipeline(dsl, tenant_id=task["tenant_id"], doc_id=doc_id, task_id=task_id, flow_id=dataflow_id)
+        pipeline = Pipeline(
+            dsl,
+            tenant_id=task["tenant_id"],
+            doc_id=doc_id,
+            task_id=task_id,
+            flow_id=dataflow_id,
+            language=task.get("language"),
+        )
         rag_tokenizer.tokenizer.set_language(task.get("language", "English"))
         chunks = await pipeline.run(file=task["file"]) if task.get("file") else await pipeline.run()
-        if is_debug_dataflow:
-            if billing_hold_id:
-                ParseBillingService.finalize_hold(billing_hold_id, success=True)
-            return
+        if billing_hold_id:
+            ParseBillingService.finalize_hold(billing_hold_id, success=True)
     except Exception:
-        if is_debug_dataflow and billing_hold_id:
+        if billing_hold_id:
             ParseBillingService.finalize_hold(billing_hold_id, success=False)
         raise
 

@@ -420,7 +420,7 @@ export const useSendAgentMessage = ({
 
   const handlePressEnter = useCallback(
     ({ exploreSessionId }: { exploreSessionId?: string } = {}) => {
-      if (trim(value) === '') return;
+      if (trim(value) === '' || !done) return;
       const msgBody = buildRequestBody(value);
       if (done) {
         setValue('');
