@@ -197,6 +197,12 @@ class MigrationDatabase:
             ),
         )
 
+    def get_column_type(self, table_name: str, column_name: str) -> str | None:
+        """Get the DATA_TYPE of a column from information_schema, returns None if column does not exist"""
+        cursor = self.execute_sql("SELECT DATA_TYPE FROM information_schema.columns WHERE table_schema = %s AND table_name = %s AND column_name = %s", (self.config.database, table_name, column_name))
+        row = cursor.fetchone()
+        return row[0] if row else None
+
     def get_database_version(self) -> str | None:
         return self.get_system_setting_value(MIGRATION_DB_VERSION_MARKER)
 
@@ -1810,6 +1816,936 @@ class ModelIdConfigSwapStage(ModelIdConfigStage):
         return len(swap_pairs), [item for pair in swap_pairs for item in pair[:2]]
 
 
+class TenantModelSeedingStage(MigrationStage):
+    """Seed tenant_model table with models from conf/llm_factories.json (paginated + create_time filter)"""
+
+    name = "tenant_model_seeding"
+    description = "Seed tenant_model with models from conf/llm_factories.json for existing providers/instances (incremental)"
+    source_tables = ["tenant_model_provider", "tenant_model_instance", "tenant_model"]
+    target_tables = ["tenant_model"]
+
+    scan_batch_size = 100
+
+    def __init__(self, db: MigrationDatabase, dry_run: bool = True, create_table_only: bool = False, create_time: int = 0):
+        super().__init__(db, dry_run=dry_run, create_table_only=create_table_only)
+        self.create_time = create_time
+
+    def current_timestamp(self) -> int:
+        return int(time.time())
+
+    def generate_uuid(self) -> str:
+        """Generate 32-character UUID1"""
+        return uuid.uuid1().hex
+
+    def _load_llm_factories(self) -> list:
+        """Load factory_llm_infos from conf/llm_factories.json"""
+        conf_path = os.path.join(PROJECT_BASE, "conf", "llm_factories.json")
+        with open(conf_path, "r") as f:
+            data = json.load(f)
+        return data.get("factory_llm_infos", [])
+
+    def check(self) -> bool:
+        """Check if migration is needed"""
+        if not self.db.table_exists("tenant_model_provider"):
+            logger.warning("Dependency table 'tenant_model_provider' does not exist")
+            return False
+
+        if not self.db.table_exists("tenant_model_instance"):
+            logger.warning("Dependency table 'tenant_model_instance' does not exist")
+            return False
+
+        if not self.db.table_exists("tenant_model"):
+            if self.dry_run:
+                logger.info("[DRY RUN] Target table 'tenant_model' does not exist")
+                return False
+            return True
+
+        # If model_type is already INT, the merge stage has been executed — seeding is not applicable
+        model_type_dtype = self.db.get_column_type("tenant_model", "model_type")
+        if model_type_dtype and model_type_dtype.lower() == "int":
+            self.mark_noop_completes_migration()
+            logger.info("tenant_model.model_type is already INT, seeding stage is not applicable (merge already done)")
+            return False
+
+        # Check if there are any models to seed
+        factories = self._load_llm_factories()
+        total_missing = 0
+        for factory in factories:
+            llm_list = factory.get("llm", [])
+            if not llm_list:
+                continue
+            factory_name = factory["name"]
+            provider_name_filter, instance_extra_include, instance_extra_exclude = self._factory_filter_params(factory_name)
+
+            provider_time_clause = " AND COALESCE(create_time, 0) > %s" if self.create_time else ""
+            provider_params = [provider_name_filter] + ([self.create_time] if self.create_time else [])
+            cursor = self.db.execute_sql(
+                f"SELECT id FROM tenant_model_provider WHERE provider_name = %s{provider_time_clause}",
+                provider_params,
+            )
+            while True:
+                providers = cursor.fetchmany(self.scan_batch_size)
+                if not providers:
+                    break
+                for (provider_id,) in providers:
+                    instance_time_clause = " AND COALESCE(create_time, 0) > %s" if self.create_time else ""
+                    instances = self._query_instances(provider_id, instance_extra_include, instance_extra_exclude, instance_time_clause)
+                    while True:
+                        inst_batch = instances.fetchmany(self.scan_batch_size)
+                        if not inst_batch:
+                            break
+                        for (instance_id,) in inst_batch:
+                            for llm in llm_list:
+                                model_name = llm.get("llm_name", "")
+                                model_types = llm.get("model_type", "chat")
+                                if isinstance(model_types, str):
+                                    model_types = [model_types]
+                                for mt in model_types:
+                                    cursor2 = self.db.execute_sql(
+                                        "SELECT COUNT(*) FROM tenant_model WHERE provider_id = %s AND instance_id = %s AND model_name = %s AND model_type = %s",
+                                        (provider_id, instance_id, model_name, mt),
+                                    )
+                                    if cursor2.fetchone()[0] == 0:
+                                        total_missing += 1
+
+        if total_missing == 0:
+            self.mark_noop_completes_migration()
+            logger.info("No missing models to seed in tenant_model")
+            return False
+
+        logger.info(f"Found {total_missing} missing models to seed in tenant_model")
+        return True
+
+    def _factory_filter_params(self, factory_name: str) -> tuple[str, str | None, str | None]:
+        """Return (provider_name_filter, instance_extra_include, instance_extra_exclude) for a factory."""
+        if factory_name == "siliconflow_intl":
+            return "SILICONFLOW", '%"region": "intl"%', None
+        elif factory_name == "SILICONFLOW":
+            return "SILICONFLOW", None, '%"region": "intl"%'
+        else:
+            return factory_name, None, None
+
+    def _query_instances(self, provider_id: str, extra_include: str | None, extra_exclude: str | None, time_clause: str = "", time_params: tuple = ()):
+        """Query instances for a provider with optional extra and time filters."""
+        if extra_include and extra_exclude:
+            return self.db.execute_sql(
+                f"SELECT id FROM tenant_model_instance WHERE provider_id = %s AND extra LIKE %s AND extra NOT LIKE %s{time_clause}",
+                (provider_id, extra_include, extra_exclude) + time_params,
+            )
+        elif extra_include:
+            return self.db.execute_sql(
+                f"SELECT id FROM tenant_model_instance WHERE provider_id = %s AND extra LIKE %s{time_clause}",
+                (provider_id, extra_include) + time_params,
+            )
+        elif extra_exclude:
+            return self.db.execute_sql(
+                f"SELECT id FROM tenant_model_instance WHERE provider_id = %s AND extra NOT LIKE %s{time_clause}",
+                (provider_id, extra_exclude) + time_params,
+            )
+        else:
+            return self.db.execute_sql(
+                f"SELECT id FROM tenant_model_instance WHERE provider_id = %s{time_clause}",
+                (provider_id,) + time_params,
+            )
+
+    def execute(self) -> tuple[int, list]:
+        """Execute migration"""
+        current_ts = self.current_timestamp()
+        rows_inserted = 0
+
+        if not self.db.table_exists("tenant_model_provider"):
+            logger.error("Dependency table 'tenant_model_provider' does not exist")
+            return 0, []
+
+        if not self.db.table_exists("tenant_model_instance"):
+            logger.error("Dependency table 'tenant_model_instance' does not exist")
+            return 0, []
+
+        if not self.db.table_exists("tenant_model"):
+            if self.dry_run:
+                logger.info("[DRY RUN] Target table 'tenant_model' does not exist")
+                return 0, []
+            logger.info("Target table 'tenant_model' does not exist, will create")
+            self.create_target_table()
+
+        if self.create_table_only:
+            logger.info("[CREATE TABLE ONLY] Target table created/verified, skipping data seeding")
+            return 0, self.target_tables
+
+        # Pre-load existing extra values for model_names from tenant_model (paginated)
+        existing_extra_map = {}
+        cursor = self.db.execute_sql("SELECT model_name, extra FROM tenant_model WHERE extra != '{}' AND extra IS NOT NULL")
+        while True:
+            batch = cursor.fetchmany(self.scan_batch_size)
+            if not batch:
+                break
+            for model_name, extra in batch:
+                if model_name and extra and extra != "{}":
+                    existing_extra_map[model_name] = extra
+
+        # Pre-load existing status values for model_names from tenant_model (paginated)
+        existing_status_map = {}
+        cursor = self.db.execute_sql("SELECT model_name, status FROM tenant_model WHERE status != 'unsupported' AND status IS NOT NULL")
+        while True:
+            batch = cursor.fetchmany(self.scan_batch_size)
+            if not batch:
+                break
+            for model_name, status in batch:
+                if model_name and status:
+                    existing_status_map[model_name] = status
+
+        factories = self._load_llm_factories()
+        insert_queue = []
+
+        for factory in factories:
+            llm_list = factory.get("llm", [])
+            if not llm_list:
+                continue
+            factory_name = factory["name"]
+            provider_name_filter, instance_extra_include, instance_extra_exclude = self._factory_filter_params(factory_name)
+
+            # Paginated provider query with create_time filter
+            provider_time_clause = " AND COALESCE(create_time, 0) > %s" if self.create_time else ""
+            provider_params = [provider_name_filter] + ([self.create_time] if self.create_time else [])
+            cursor = self.db.execute_sql(
+                f"SELECT id FROM tenant_model_provider WHERE provider_name = %s{provider_time_clause}",
+                provider_params,
+            )
+
+            while True:
+                providers = cursor.fetchmany(self.scan_batch_size)
+                if not providers:
+                    break
+                for (provider_id,) in providers:
+                    instance_time_clause = " AND COALESCE(create_time, 0) > %s" if self.create_time else ""
+                    instance_time_params = (self.create_time,) if self.create_time else ()
+                    instances = self._query_instances(provider_id, instance_extra_include, instance_extra_exclude, instance_time_clause, instance_time_params)
+
+                    while True:
+                        inst_batch = instances.fetchmany(self.scan_batch_size)
+                        if not inst_batch:
+                            break
+                        for (instance_id,) in inst_batch:
+                            for llm in llm_list:
+                                model_name = llm.get("llm_name", "")
+                                if not model_name:
+                                    continue
+                                model_types = llm.get("model_type", "chat")
+                                if isinstance(model_types, str):
+                                    model_types = [model_types]
+
+                                # Determine extra: reuse existing non-default extra for same model_name
+                                if model_name in existing_extra_map:
+                                    extra = existing_extra_map[model_name]
+                                else:
+                                    extra_dict = {}
+                                    if llm.get("is_tools") is True:
+                                        extra_dict["is_tools"] = True
+                                    max_tokens = llm.get("max_tokens")
+                                    if max_tokens is not None:
+                                        extra_dict["max_tokens"] = max_tokens
+                                    extra = json.dumps(extra_dict) if extra_dict else "{}"
+
+                                # Determine status: reuse existing non-unsupported status for same model_name
+                                status = existing_status_map.get(model_name, "active")
+
+                                for mt in model_types:
+                                    # Check if record already exists
+                                    cursor2 = self.db.execute_sql(
+                                        "SELECT COUNT(*) FROM tenant_model WHERE provider_id = %s AND instance_id = %s AND model_name = %s AND model_type = %s",
+                                        (provider_id, instance_id, model_name, mt),
+                                    )
+                                    if cursor2.fetchone()[0] > 0:
+                                        continue
+                                    insert_queue.append((model_name, provider_id, instance_id, mt, status, extra))
+
+                                    # Flush batch when queue reaches batch_size
+                                    if len(insert_queue) >= self.scan_batch_size:
+                                        if not self.dry_run:
+                                            flushed = self._insert_seeding_batch(insert_queue, current_ts)
+                                            rows_inserted += flushed
+                                        insert_queue = []
+
+        # Flush remaining records
+        if insert_queue:
+            if not self.dry_run:
+                flushed = self._insert_seeding_batch(insert_queue, current_ts)
+                rows_inserted += flushed
+
+        total_records = rows_inserted if not self.dry_run else len(insert_queue) + rows_inserted
+
+        if total_records == 0:
+            logger.info("No missing models to seed")
+            return 0, []
+
+        if self.dry_run:
+            logger.info(f"[DRY RUN] Would insert {total_records} records")
+            return total_records, self.target_tables
+
+        logger.info(f"Seeded {rows_inserted} tenant_model records")
+        return rows_inserted, self.target_tables
+
+    def _insert_seeding_batch(self, batch: list, current_ts: int) -> int:
+        """Insert a batch of tenant_model seeding records using parameterized SQL."""
+        placeholders = []
+        params = []
+        for model_name, provider_id, instance_id, mt, status, extra in batch:
+            record_id = self.generate_uuid()
+            placeholders.append("(%s, %s, %s, %s, %s, %s, %s, %s, FROM_UNIXTIME(%s), %s, FROM_UNIXTIME(%s))")
+            params.extend(
+                [
+                    record_id,
+                    model_name,
+                    provider_id,
+                    instance_id,
+                    mt,
+                    status,
+                    extra,
+                    current_ts * 1000,
+                    current_ts,
+                    current_ts * 1000,
+                    current_ts,
+                ]
+            )
+        insert_sql = f"""
+            INSERT INTO tenant_model
+            (id, model_name, provider_id, instance_id, model_type, status, extra,
+             create_time, create_date, update_time, update_date)
+            VALUES {", ".join(placeholders)}
+        """
+        self.db.execute_sql(insert_sql, params)
+        logger.info(f"Inserted seeding batch: {len(batch)} records")
+        return len(batch)
+
+    def create_target_table(self):
+        """Create tenant_model table"""
+        create_sql = """
+        CREATE TABLE IF NOT EXISTS tenant_model (
+            id VARCHAR(32) NOT NULL PRIMARY KEY,
+            model_name VARCHAR(128),
+            provider_id VARCHAR(32) NOT NULL,
+            instance_id VARCHAR(32) NOT NULL,
+            model_type VARCHAR(32) NOT NULL,
+            status VARCHAR(32) DEFAULT 'active',
+            extra VARCHAR(1024) DEFAULT '{}',
+            create_time BIGINT,
+            create_date DATETIME,
+            update_time BIGINT,
+            update_date DATETIME,
+            INDEX idx_instance_id (instance_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+        """
+        self.db.execute_sql(create_sql)
+        logger.info("Created tenant_model table")
+
+
+class ModelTypeMergeStage(MigrationStage):
+    """Merge tenant_model rows by (provider_id, instance_id, model_name), converting model_type to binary integer (paginated + create_time)"""
+
+    name = "model_type_merge"
+    description = "Merge tenant_model rows by provider_id/instance_id/model_name, converting model_type to binary integer (incremental)"
+    source_tables = ["tenant_model"]
+    target_tables = ["tenant_model_merge_tmp"]
+
+    # Mapping from LLMType string values to ModelTypeBinary integer values
+    MODEL_TYPE_STR_TO_INT = {
+        "chat": 1,  # 0b0000001
+        "embedding": 2,  # 0b0000010
+        "speech2text": 4,  # 0b0000100
+        "image2text": 8,  # 0b0001000
+        "rerank": 16,  # 0b0010000
+        "tts": 32,  # 0b0100000
+        "ocr": 64,  # 0b1000000
+    }
+
+    scan_batch_size = 500
+
+    def __init__(self, db: MigrationDatabase, dry_run: bool = True, create_table_only: bool = False, create_time: int = 0):
+        super().__init__(db, dry_run=dry_run, create_table_only=create_table_only)
+        self.create_time = create_time
+
+    def current_timestamp(self) -> int:
+        return int(time.time())
+
+    def generate_uuid(self) -> str:
+        """Generate 32-character UUID1"""
+        return uuid.uuid1().hex
+
+    def check(self) -> bool:
+        """Check if migration is needed"""
+        if not self.db.table_exists("tenant_model"):
+            logger.warning("Source table 'tenant_model' does not exist")
+            return False
+
+        # If model_type is already INT, the merge has already been executed — check for incremental updates
+        model_type_dtype = self.db.get_column_type("tenant_model", "model_type")
+        if model_type_dtype and model_type_dtype.lower() == "int":
+            # For incremental mode (create_time > 0), check if there are new/updated records
+            if self.create_time:
+                time_clause = " AND COALESCE(create_time, 0) > %s"
+                cursor = self.db.execute_sql(
+                    f"SELECT COUNT(*) FROM tenant_model WHERE status = 'active'{time_clause}",
+                    (self.create_time,),
+                )
+                count = cursor.fetchone()[0]
+                if count > 0:
+                    logger.info(f"Found {count} records to incrementally merge in tenant_model (create_time > {self.create_time})")
+                    return True
+            self.mark_noop_completes_migration()
+            logger.info("tenant_model.model_type is already INT, merge stage is not applicable (already done)")
+            return False
+
+        # model_type is still VARCHAR — full merge needed
+        params = (self.create_time,) if self.create_time else ()
+        cursor = self.db.execute_sql(
+            f"SELECT COUNT(*) FROM tenant_model{(' WHERE COALESCE(create_time, 0) > %s' if self.create_time else '')}",
+            params,
+        )
+        count = cursor.fetchone()[0]
+        if count == 0:
+            self.mark_noop_completes_migration()
+            logger.info("No records to merge in tenant_model")
+            return False
+
+        logger.info(f"Found {count} records to merge in tenant_model")
+        return True
+
+    def execute(self) -> tuple[int, list]:
+        """Execute migration"""
+        current_ts = self.current_timestamp()
+
+        if not self.db.table_exists("tenant_model"):
+            logger.error("Source table 'tenant_model' does not exist")
+            return 0, []
+
+        model_type_dtype = self.db.get_column_type("tenant_model", "model_type")
+        is_incremental = model_type_dtype and model_type_dtype.lower() == "int"
+
+        if is_incremental:
+            # Incremental merge: model_type is already INT, update existing records
+            return self._execute_incremental_merge(current_ts)
+
+        # Full merge: model_type is still VARCHAR, need temp-table approach
+        return self._execute_full_merge(current_ts)
+
+    def _execute_incremental_merge(self, current_ts: int) -> tuple[int, list]:
+        """Incrementally merge new/updated records into an already-merged (INT model_type) table."""
+        rows_updated = 0
+        tables_operated = set()
+
+        if self.create_table_only:
+            logger.info("[CREATE TABLE ONLY] No tables are created for incremental merge")
+            return 0, []
+
+        time_clause = " AND COALESCE(create_time, 0) > %s" if self.create_time else ""
+        params = (self.create_time,) if self.create_time else ()
+
+        # Stream new/updated records from tenant_model
+        cursor = self.db.execute_sql(
+            f"SELECT id, model_name, provider_id, instance_id, model_type, status, extra, "
+            f"create_time, create_date, update_time, update_date "
+            f"FROM tenant_model WHERE status = 'active'{time_clause} "
+            f"ORDER BY create_time ASC",
+            params,
+        )
+
+        # Group records by (provider_id, instance_id, model_name) using streaming
+        from collections import defaultdict
+
+        groups = defaultdict(list)
+
+        while True:
+            batch = cursor.fetchmany(self.scan_batch_size)
+            if not batch:
+                break
+            for row in batch:
+                id_, model_name, provider_id, instance_id, model_type_val, status, extra, create_time, create_date, update_time, update_date = row
+                # model_type is INT — expand bits into string types for re-merge
+                if isinstance(model_type_val, int):
+                    type_strs = []
+                    for type_str, type_bit in self.MODEL_TYPE_STR_TO_INT.items():
+                        if model_type_val & type_bit:
+                            type_strs.append(type_str)
+                    # Store as multiple entries for grouping
+                    for ts in type_strs:
+                        groups[(provider_id, instance_id, model_name)].append((id_, model_name, provider_id, instance_id, ts, status, extra, create_time, create_date, update_time, update_date))
+                else:
+                    groups[(provider_id, instance_id, model_name)].append(row)
+
+        if not groups:
+            logger.info("No records to incrementally merge")
+            return 0, []
+
+        logger.info(f"Incrementally merging {len(groups)} groups...")
+
+        if self.dry_run:
+            logger.info(f"[DRY RUN] Would upsert {len(groups)} merged groups")
+            return len(groups), ["tenant_model"]
+
+        # Upsert each merged group
+        for (provider_id, instance_id, model_name), rows in groups.items():
+            supported_bits = 0
+            unsupported_bits = 0
+            first_non_unsupported_status = None
+            first_row = rows[0]
+
+            for row in rows:
+                _, _, _, _, model_type_str, status, _, _, _, _, _ = row
+                type_bit = self.MODEL_TYPE_STR_TO_INT.get(model_type_str, 0)
+                if status == "unsupported":
+                    unsupported_bits |= type_bit
+                else:
+                    supported_bits |= type_bit
+                    if first_non_unsupported_status is None:
+                        first_non_unsupported_status = status
+
+            merged_type = supported_bits & ~unsupported_bits
+            merged_status = first_non_unsupported_status or "active"
+
+            if merged_status != "active":
+                continue
+
+            id_, model_name, provider_id, instance_id, _, _, extra, create_time, create_date, update_time, update_date = first_row
+
+            # Upsert: if a record with same (provider_id, instance_id, model_name) exists, OR the model_type bits
+            # Use INSERT ... ON DUPLICATE KEY UPDATE with model_type = model_type | new_bits
+            self.db.execute_sql(
+                """INSERT INTO tenant_model
+                   (id, model_name, provider_id, instance_id, model_type, status, extra,
+                    create_time, create_date, update_time, update_date)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, FROM_UNIXTIME(%s), %s, FROM_UNIXTIME(%s))
+                   ON DUPLICATE KEY UPDATE
+                     model_type = model_type | %s,
+                     status = %s,
+                     update_time = %s,
+                     update_date = FROM_UNIXTIME(%s)
+                """,
+                (
+                    self.generate_uuid(),
+                    model_name,
+                    provider_id,
+                    instance_id,
+                    merged_type,
+                    merged_status,
+                    extra,
+                    create_time or current_ts * 1000,
+                    int((create_time or current_ts * 1000) / 1000),
+                    update_time or current_ts * 1000,
+                    int((update_time or current_ts * 1000) / 1000),
+                    merged_type,
+                    merged_status,
+                    current_ts * 1000,
+                    current_ts,
+                ),
+            )
+            rows_updated += 1
+            tables_operated.add("tenant_model")
+
+        logger.info(f"Incrementally merged {rows_updated} groups")
+        return rows_updated, sorted(tables_operated)
+
+    def _execute_full_merge(self, current_ts: int) -> tuple[int, list]:
+        """Full merge using temp-table approach with paginated reading."""
+        rows_inserted = 0
+
+        # Create temporary table with model_type as INTEGER
+        self.create_target_table()
+
+        if self.create_table_only:
+            logger.info("[CREATE TABLE ONLY] Temporary table created, skipping data merge")
+            return 0, self.target_tables
+
+        # Stream all records from tenant_model with optional create_time filter
+        time_clause = " AND COALESCE(create_time, 0) > %s" if self.create_time else ""
+        params = (self.create_time,) if self.create_time else ()
+        cursor = self.db.execute_sql(
+            f"SELECT id, model_name, provider_id, instance_id, model_type, status, extra, create_time, create_date, update_time, update_date FROM tenant_model{time_clause} ORDER BY id",
+            params,
+        )
+
+        # Group by (provider_id, instance_id, model_name) using streaming
+        from collections import defaultdict
+
+        groups = defaultdict(list)
+        total_rows = 0
+
+        while True:
+            batch = cursor.fetchmany(self.scan_batch_size)
+            if not batch:
+                break
+            total_rows += len(batch)
+            for row in batch:
+                id_, model_name, provider_id, instance_id, model_type_str, status, extra, create_time, create_date, update_time, update_date = row
+                groups[(provider_id, instance_id, model_name)].append(row)
+
+        # Merge each group into a single record
+        merged_records = []
+        for (provider_id, instance_id, model_name), rows in groups.items():
+            supported_bits = 0
+            unsupported_bits = 0
+            first_non_unsupported_status = None
+            first_row = rows[0]
+
+            for row in rows:
+                _, _, _, _, model_type_str, status, _, _, _, _, _ = row
+                type_bit = self.MODEL_TYPE_STR_TO_INT.get(model_type_str, 0)
+                if status == "unsupported":
+                    unsupported_bits |= type_bit
+                else:
+                    supported_bits |= type_bit
+                    if first_non_unsupported_status is None:
+                        first_non_unsupported_status = status
+
+            merged_type = supported_bits & ~unsupported_bits
+            merged_status = first_non_unsupported_status or "active"
+
+            if merged_status != "active":
+                continue
+
+            id_, model_name, provider_id, instance_id, _, _, extra, create_time, create_date, update_time, update_date = first_row
+            merged_records.append((self.generate_uuid(), model_name, provider_id, instance_id, merged_type, merged_status, extra, create_time, create_date, update_time, update_date))
+
+        if not merged_records:
+            logger.info("No records to merge")
+            return 0, []
+
+        logger.info(f"Merging {total_rows} rows into {len(merged_records)} rows...")
+
+        if self.dry_run:
+            logger.info(f"[DRY RUN] Would insert {len(merged_records)} merged rows, then rename tables")
+            return len(merged_records), self.target_tables
+
+        # Insert merged records into temporary table in batches using parameterized SQL
+        batch_size = self.scan_batch_size
+        for i in range(0, len(merged_records), batch_size):
+            batch = merged_records[i : i + batch_size]
+            placeholders = []
+            params = []
+            for rec in batch:
+                id_, model_name, provider_id, instance_id, merged_type, status, extra, create_time, create_date, update_time, update_date = rec
+                create_time_val = create_time if create_time is not None else current_ts * 1000
+                update_time_val = update_time if update_time is not None else current_ts * 1000
+                placeholders.append("(%s, %s, %s, %s, %s, %s, %s, %s, FROM_UNIXTIME(%s), %s, FROM_UNIXTIME(%s))")
+                params.extend(
+                    [
+                        id_,
+                        model_name,
+                        provider_id,
+                        instance_id,
+                        merged_type,
+                        status,
+                        extra,
+                        create_time_val,
+                        int(create_time_val / 1000),
+                        update_time_val,
+                        int(update_time_val / 1000),
+                    ]
+                )
+            insert_sql = f"""
+                INSERT INTO tenant_model_merge_tmp
+                (id, model_name, provider_id, instance_id, model_type, status, extra,
+                 create_time, create_date, update_time, update_date)
+                VALUES {", ".join(placeholders)}
+            """
+            self.db.execute_sql(insert_sql, params)
+            rows_inserted += len(batch)
+            logger.info(f"Inserted batch {i // batch_size + 1}: {len(batch)} merged rows")
+
+        # Rename tables
+        logger.info("Renaming tables: tenant_model -> tenant_model_backup, tenant_model_merge_tmp -> tenant_model")
+        self.db.execute_sql("DROP TABLE IF EXISTS tenant_model_backup")
+        self.db.execute_sql("ALTER TABLE tenant_model RENAME TO tenant_model_backup")
+        self.db.execute_sql("ALTER TABLE tenant_model_merge_tmp RENAME TO tenant_model")
+        logger.info("Table rename completed successfully")
+
+        return rows_inserted, ["tenant_model_merge_tmp", "tenant_model", "tenant_model_backup"]
+
+    def create_target_table(self):
+        """Create temporary table tenant_model_merge_tmp with model_type as INTEGER"""
+        create_sql = """
+        CREATE TABLE IF NOT EXISTS tenant_model_merge_tmp (
+            id VARCHAR(32) NOT NULL PRIMARY KEY,
+            model_name VARCHAR(128),
+            provider_id VARCHAR(32) NOT NULL,
+            instance_id VARCHAR(32) NOT NULL,
+            model_type INT NOT NULL,
+            status VARCHAR(32) DEFAULT 'active',
+            extra VARCHAR(1024) DEFAULT '{}',
+            create_time BIGINT,
+            create_date DATETIME,
+            update_time BIGINT,
+            update_date DATETIME,
+            INDEX idx_instance_id (instance_id),
+            UNIQUE INDEX idx_provider_instance_model (provider_id, instance_id, model_name)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+        """
+        self.db.execute_sql(create_sql)
+        logger.info("Created tenant_model_merge_tmp table")
+
+
+class TenantModelIdMigrationStage(MigrationStage):
+    """Populate tenant_*_id columns in tenant, knowledgebase, dialog, memory with tenant_model.id values (paginated + create_time)."""
+
+    name = "tenant_model_id_migration"
+    description = "Populate tenant_*_id columns with tenant_model.id, converting from IntegerField to CharField (VARCHAR(32)) (incremental)"
+    source_tables = ["tenant_model", "tenant_model_provider", "tenant_model_instance", "tenant", "knowledgebase", "dialog", "memory"]
+    target_tables = ["tenant", "knowledgebase", "dialog", "memory"]
+
+    # Maps table -> list of (tenant_*_id column, legacy *_id column, model_type for lookup)
+    TENANT_ID_FIELDS = {
+        "tenant": [
+            ("tenant_llm_id", "llm_id", "chat"),
+            ("tenant_embd_id", "embd_id", "embedding"),
+            ("tenant_asr_id", "asr_id", "speech2text"),
+            ("tenant_img2txt_id", "img2txt_id", "image2text"),
+            ("tenant_rerank_id", "rerank_id", "rerank"),
+            ("tenant_tts_id", "tts_id", "tts"),
+            ("tenant_ocr_id", "ocr_id", "ocr"),
+        ],
+        "knowledgebase": [
+            ("tenant_embd_id", "embd_id", "embedding"),
+        ],
+        "dialog": [
+            ("tenant_llm_id", "llm_id", "chat"),
+            ("tenant_rerank_id", "rerank_id", "rerank"),
+        ],
+        "memory": [
+            ("tenant_embd_id", "embd_id", "embedding"),
+            ("tenant_llm_id", "llm_id", "chat"),
+        ],
+    }
+
+    # model_type string -> binary integer mapping
+    MODEL_TYPE_TO_INT = {
+        "chat": 1,
+        "embedding": 2,
+        "speech2text": 4,
+        "image2text": 8,
+        "rerank": 16,
+        "tts": 32,
+        "ocr": 64,
+    }
+
+    scan_batch_size = 500
+
+    def __init__(self, db: MigrationDatabase, dry_run: bool = True, create_table_only: bool = False, create_time: int = 0):
+        super().__init__(db, dry_run=dry_run, create_table_only=create_table_only)
+        self.create_time = create_time
+
+    def check(self) -> bool:
+        """Check if migration is needed - any tenant_*_id column is still INT or empty."""
+        if not self.db.table_exists("tenant_model"):
+            logger.warning("Dependency table 'tenant_model' does not exist")
+            return False
+
+        if not self.db.table_exists("tenant_model_provider"):
+            logger.warning("Dependency table 'tenant_model_provider' does not exist")
+            return False
+
+        if not self.db.table_exists("tenant_model_instance"):
+            logger.warning("Dependency table 'tenant_model_instance' does not exist")
+            return False
+
+        has_work = False
+        for table_name, fields in self.TENANT_ID_FIELDS.items():
+            if not self.db.table_exists(table_name):
+                continue
+            for tenant_id_col, _, _ in fields:
+                if not self.db.column_exists(table_name, tenant_id_col):
+                    has_work = True
+                    break
+                col_type = self.db.get_column_type(table_name, tenant_id_col)
+                if col_type and col_type.lower() in ("int", "bigint", "integer"):
+                    has_work = True
+                    break
+                # Check if there are NULL values that should be populated (with create_time filter)
+                time_clause = " AND COALESCE(create_time, 0) > %s" if self.create_time else ""
+                params = (self.create_time,) if self.create_time else ()
+                cursor = self.db.execute_sql(
+                    f"SELECT COUNT(*) FROM `{table_name}` WHERE (`{tenant_id_col}` IS NULL OR `{tenant_id_col}` = ''){time_clause}",
+                    params,
+                )
+                null_count = cursor.fetchone()[0]
+                if null_count > 0:
+                    has_work = True
+                    break
+            if has_work:
+                break
+
+        if not has_work:
+            self.mark_noop_completes_migration()
+            logger.info("All tenant_*_id columns are already VARCHAR(32) and populated, no migration needed.")
+            return False
+
+        return True
+
+    def execute(self) -> tuple[int, list]:
+        """Execute migration: alter column types and populate tenant_*_id values."""
+        rows_updated = 0
+        tables_operated = set()
+
+        if self.create_table_only:
+            logger.info("[CREATE TABLE ONLY] No tables are created for this data migration")
+            return 0, []
+
+        # Step 1: Add missing columns as VARCHAR(32) or alter existing INT columns to VARCHAR(32)
+        for table_name, fields in self.TENANT_ID_FIELDS.items():
+            if not self.db.table_exists(table_name):
+                continue
+            for tenant_id_col, _, _ in fields:
+                if not self.db.column_exists(table_name, tenant_id_col):
+                    logger.info(f"Adding column {table_name}.{tenant_id_col} as VARCHAR(32) NULL")
+                    if not self.dry_run:
+                        self.db.execute_sql(f"ALTER TABLE `{table_name}` ADD COLUMN `{tenant_id_col}` VARCHAR(32) NULL")
+                    tables_operated.add(table_name)
+                    continue
+                col_type = self.db.get_column_type(table_name, tenant_id_col)
+                if col_type and col_type.lower() in ("int", "bigint", "integer"):
+                    logger.info(f"Converting {table_name}.{tenant_id_col} from {col_type} to VARCHAR(32) and clearing existing values")
+                    if not self.dry_run:
+                        self.db.execute_sql(f"ALTER TABLE `{table_name}` MODIFY COLUMN `{tenant_id_col}` VARCHAR(32) NULL")
+                        self.db.execute_sql(f"UPDATE `{table_name}` SET `{tenant_id_col}` = NULL WHERE `{tenant_id_col}` IS NOT NULL")
+                    tables_operated.add(table_name)
+
+        # Step 2: Build lookup cache from tenant_model joined with provider + instance (paginated)
+        model_lookup = self._build_model_lookup()
+        logger.info(f"Built model lookup with {len(model_lookup)} entries")
+
+        # Step 3: Populate tenant_*_id from model_name with create_time filter
+        time_clause = " AND COALESCE(create_time, 0) > %s" if self.create_time else ""
+        time_params = (self.create_time,) if self.create_time else ()
+
+        for table_name, fields in self.TENANT_ID_FIELDS.items():
+            if not self.db.table_exists(table_name):
+                continue
+            for tenant_id_col, legacy_col, model_type_str in fields:
+                if not self.db.column_exists(table_name, tenant_id_col):
+                    logger.info(f"Column {table_name}.{tenant_id_col} does not exist, skipping")
+                    continue
+                if not self.db.column_exists(table_name, legacy_col):
+                    logger.info(f"Column {table_name}.{legacy_col} does not exist, skipping")
+                    continue
+
+                if table_name == "tenant":
+                    cursor = self.db.execute_sql(
+                        f"SELECT id, `{legacy_col}` FROM `{table_name}` "
+                        f"WHERE (`{tenant_id_col}` IS NULL OR `{tenant_id_col}` = '') "
+                        f"AND `{legacy_col}` IS NOT NULL AND `{legacy_col}` != ''{time_clause}",
+                        time_params,
+                    )
+                    while True:
+                        rows = cursor.fetchmany(self.scan_batch_size)
+                        if not rows:
+                            break
+                        for row_id, model_name in rows:
+                            tenant_id = row_id  # For tenant table, id == tenant_id
+                            resolved_id = self._resolve_model_id(model_lookup, tenant_id, model_name, model_type_str)
+                            if not self.dry_run:
+                                if resolved_id:
+                                    self.db.execute_sql(
+                                        f"UPDATE `{table_name}` SET `{tenant_id_col}` = %s WHERE id = %s",
+                                        (resolved_id, row_id),
+                                    )
+                                else:
+                                    self.db.execute_sql(
+                                        f"UPDATE `{table_name}` SET `{tenant_id_col}` = '' WHERE id = %s",
+                                        (row_id,),
+                                    )
+                            rows_updated += 1
+                            tables_operated.add(table_name)
+                else:
+                    cursor = self.db.execute_sql(
+                        f"SELECT id, tenant_id, `{legacy_col}` FROM `{table_name}` "
+                        f"WHERE (`{tenant_id_col}` IS NULL OR `{tenant_id_col}` = '') "
+                        f"AND `{legacy_col}` IS NOT NULL AND `{legacy_col}` != ''{time_clause}",
+                        time_params,
+                    )
+                    while True:
+                        rows = cursor.fetchmany(self.scan_batch_size)
+                        if not rows:
+                            break
+                        for row_id, tenant_id, model_name in rows:
+                            resolved_id = self._resolve_model_id(model_lookup, tenant_id, model_name, model_type_str)
+                            if not self.dry_run:
+                                if resolved_id:
+                                    self.db.execute_sql(
+                                        f"UPDATE `{table_name}` SET `{tenant_id_col}` = %s WHERE id = %s",
+                                        (resolved_id, row_id),
+                                    )
+                                else:
+                                    self.db.execute_sql(
+                                        f"UPDATE `{table_name}` SET `{tenant_id_col}` = '' WHERE id = %s",
+                                        (row_id,),
+                                    )
+                            rows_updated += 1
+                            tables_operated.add(table_name)
+
+        if self.dry_run:
+            logger.info(f"[DRY RUN] Would update {rows_updated} rows")
+        else:
+            logger.info(f"Updated {rows_updated} rows with tenant_model.id values")
+
+        return rows_updated, sorted(tables_operated)
+
+    def _split_model_name(self, model_name: str) -> tuple[str, str, str]:
+        """Parse model_name: {model_name}@{factory_name} or {model_name}@{instance_name}@{factory_name}"""
+        if not model_name:
+            return "", "", ""
+        parts = model_name.split("@")
+        if len(parts) == 1:
+            return parts[0], "default", ""
+        elif len(parts) == 2:
+            return parts[0], "default", parts[1]
+        else:
+            return parts[0], parts[1], parts[2]
+
+    def _build_model_lookup(self) -> dict:
+        """Build a lookup dict: (tenant_id, model_name_pure, provider_name, model_type_str) -> tenant_model.id (paginated)"""
+        cursor = self.db.execute_sql(
+            "SELECT tm.id, tm.model_name, tm.model_type, tmp.tenant_id, tmp.provider_name "
+            "FROM tenant_model tm "
+            "INNER JOIN tenant_model_provider tmp ON tm.provider_id = tmp.id "
+            "WHERE tm.status = 'active'"
+        )
+        lookup = {}
+        while True:
+            batch = cursor.fetchmany(self.scan_batch_size)
+            if not batch:
+                break
+            for model_id, model_name, model_type, tenant_id, provider_name in batch:
+                # model_type is a binary integer; check each bit
+                for type_str, type_bit in self.MODEL_TYPE_TO_INT.items():
+                    if isinstance(model_type, int) and model_type & type_bit:
+                        key = (tenant_id, model_name, provider_name, type_str)
+                        lookup[key] = model_id
+                    elif isinstance(model_type, str) and model_type == type_str:
+                        key = (tenant_id, model_name, provider_name, type_str)
+                        lookup[key] = model_id
+        logger.info(f"Loaded {len(lookup)} model lookup entries")
+        return lookup
+
+    def _resolve_model_id(self, model_lookup: dict, tenant_id: str, model_name: str, model_type_str: str) -> str | None:
+        """Look up tenant_model.id from the model_lookup cache."""
+        pure_name, instance_name, provider_name = self._split_model_name(model_name)
+        if not pure_name or not provider_name:
+            logger.warning(f"Cannot resolve model id for {model_name}: missing model_name or provider")
+            return None
+
+        # Try exact lookup
+        key = (tenant_id, pure_name, provider_name, model_type_str)
+        result = model_lookup.get(key)
+        if result:
+            return result
+
+        # Try without specific provider
+        for (t_id, m_name, p_name, m_type), m_id in model_lookup.items():
+            if t_id == tenant_id and m_name == pure_name and m_type == model_type_str:
+                return m_id
+
+        logger.warning(f"No tenant_model.id found for tenant={tenant_id}, model={model_name}, type={model_type_str}")
+        return None
+
+
 # Registry of available migration stages
 MIGRATION_STAGES = {
     "tenant_model_provider": TenantModelProviderStage,
@@ -1817,6 +2753,9 @@ MIGRATION_STAGES = {
     "tenant_model": TenantModelStage,
     "model_id_config": ModelIdConfigStage,
     "model_id_config_swap": ModelIdConfigSwapStage,
+    "tenant_model_seeding": TenantModelSeedingStage,
+    "model_type_merge": ModelTypeMergeStage,
+    "tenant_model_id_migration": TenantModelIdMigrationStage,
 }
 
 
@@ -1886,7 +2825,7 @@ def run_migration(
 
             stage_cls = MIGRATION_STAGES[stage_name]
             stage_kwargs = {"db": db, "dry_run": dry_run, "create_table_only": create_table_only}
-            if stage_name in ("tenant_model_provider", "model_id_config"):
+            if stage_name in ("tenant_model_provider", "model_id_config", "tenant_model_seeding", "model_type_merge", "tenant_model_id_migration"):
                 stage_kwargs["create_time"] = create_time
             stage = stage_cls(**stage_kwargs)
 
@@ -2031,7 +2970,7 @@ Examples:
         type=int,
         default=0,
         metavar="TIMESTAMP",
-        help="For tenant_model_provider and model_id_config stages, only process rows with create_time or update_time greater than this value (Unix timestamp in milliseconds)",
+        help="For incremental stages (tenant_model_provider, model_id_config, tenant_model_seeding, model_type_merge, tenant_model_id_migration), only process rows with create_time or update_time greater than this value (Unix timestamp in milliseconds)",
     )
 
     args = parser.parse_args()

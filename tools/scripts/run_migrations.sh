@@ -20,7 +20,7 @@ CONFIG="${1:-conf/service_conf.yaml}"
 echo "Running model provider table migrations..."
 
 # Step 1: Create base model provider tables
-"$PY" tools/scripts/mysql_migration.py \
+"$PY" tools/scripts/mysql_migration_enterprise.py \
     --stages tenant_model_provider,tenant_model_instance,tenant_model,model_id_config \
     --config "$CONFIG" \
     --execute \
@@ -28,11 +28,11 @@ echo "Running model provider table migrations..."
     --mark-database-version-on-success
 
 # Step 2: Seed, merge model types, and migrate model IDs
-"$PY" tools/scripts/mysql_migration.py \
+"$PY" tools/scripts/mysql_migration_enterprise.py \
     --stages tenant_model_seeding,model_type_merge,tenant_model_id_migration \
     --config "$CONFIG" \
     --execute \
-    --database-version "v0.27.0.dev0" \
+    --database-version "v0.27.0.dev1" \
     --mark-database-version-on-success
 
 echo "Model provider table migrations completed."
