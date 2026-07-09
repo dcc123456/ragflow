@@ -214,7 +214,7 @@ async def list_provider_models(provider_id_or_name: str, api_key: str = None, ba
         remote_models = await ModelMeta[provider_name](api_key, model_base_url).get_model_list()
 
     if not static_llms and not remote_models:
-        return False, f"No models found for provider '{provider_id_or_name}'"
+        return True, []
 
     # Merge static and remote models, preferring remote_models on name conflicts
     merged = {m["name"]: m for m in static_llms}
@@ -892,9 +892,16 @@ def list_instance_models(tenant_id: str, provider_id_or_name: str, instance_id_o
         if not factory_info:
             return False, f"Provider '{provider_id_or_name}' not found"
         llms = factory_info[0].get("llm", [])
-        models = [{"name": llm["llm_name"]} for llm in llms]
-        models.sort(key=lambda x: x["name"])
+        models = [{"name": llm["llm_name"], "rank": _to_int(llm.get("rank", 500))} for llm in llms]
+        models.sort(key=lambda x: (-x["rank"], x["name"]))
         return True, models
+
+    # Build rank mapping from LLM dictionary for the provider
+    factory_info = [f for f in FACTORY_LLM_INFOS if f["name"] == provider_obj.provider_name]
+    model_rank_map = {}
+    if factory_info:
+        for llm in factory_info[0].get("llm", []):
+            model_rank_map[llm["llm_name"]] = _to_int(llm.get("rank", 500))
 
     # Get instance
     instance_obj = None
@@ -919,8 +926,10 @@ def list_instance_models(tenant_id: str, provider_id_or_name: str, instance_id_o
                 "status": model.status,
                 "verify": model_extra.get("verify", ModelVerifyStatusEnum.UNKNOWN.value),
                 "features": (["is_tools"] if model_extra.get("is_tools") else []) + (["thinking"] if model_extra.get("thinking") else []),
+                "rank": model_rank_map.get(model.model_name, 500),
             }
         )
+    model_list.sort(key=lambda x: (-x["rank"], x["name"]))
 
     return True, model_list
 

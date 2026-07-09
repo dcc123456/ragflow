@@ -7,6 +7,7 @@ import { RenameDialog } from '@/components/rename-dialog';
 import { Button } from '@/components/ui/button';
 import { RAGFlowPagination } from '@/components/ui/ragflow-pagination';
 import { useTranslate } from '@/hooks/common-hooks';
+import { buildOwnersFilter } from '@/utils/list-filter-util';
 import { pick } from 'lodash';
 import { Plus } from 'lucide-react';
 import { useCallback, useEffect } from 'react';
@@ -18,6 +19,7 @@ import { useShowPrivilegeDialog } from './use-show-privilege-dialog';
 export default function SearchList() {
   // const { data } = useFetchFlowList();
   const { t } = useTranslate('search');
+  const { t: tc } = useTranslate('common');
   // const [isEdit, setIsEdit] = useState(false);
   const {
     data: list,
@@ -26,8 +28,12 @@ export default function SearchList() {
     handleInputChange,
     setPagination,
     refetch: refetchList,
+    filterValue,
+    handleFilterSubmit,
   } = useFetchSearchList();
-
+  const owners = [
+    buildOwnersFilter(list?.data?.search_apps ?? [], undefined, tc('owner')),
+  ];
   const {
     openCreateModal,
     showSearchRenameModal,
@@ -83,9 +89,11 @@ export default function SearchList() {
             <ListFilterBar
               icon="searches"
               title={t('searchApps')}
-              showFilter={false}
               searchString={searchString}
               onSearchChange={handleInputChange}
+              value={filterValue}
+              onChange={handleFilterSubmit}
+              filters={owners}
             >
               <Button
                 data-testid="create-search"

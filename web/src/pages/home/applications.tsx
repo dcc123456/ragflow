@@ -124,7 +124,7 @@ export function Applications() {
       </CardSineLineContainer>
 
       {listLength <= 0 && !loading && (
-        <div className="w-40">
+        <div className="w-[210px]">
           <EmptyAppCard
             type={EmptyTypeMap[val as keyof typeof EmptyTypeMap]}
             onClick={() => handleNavigate({ isCreate: true })}
