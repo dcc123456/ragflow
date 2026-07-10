@@ -25,7 +25,11 @@ def normalize_layout_recognizer(layout_recognizer_raw: Any) -> tuple[Any, str | 
     layout_recognizer = layout_recognizer_raw
 
     if isinstance(layout_recognizer_raw, str):
-        lowered = layout_recognizer_raw.lower()
+        # Strip optional ``#tenant_id`` suffix before the ``@provider`` endswith
+        # check so that composite keys like ``model@instance@provider#tenant_id``
+        # are still recognised.  ``parser_model_name`` keeps the original raw value
+        # unchanged — ``split_model_name`` downstream handles the ``#`` suffix.
+        lowered = layout_recognizer_raw.lower().split("#", 1)[0]
         if lowered.endswith("@mineru"):
             parser_model_name = layout_recognizer_raw
             layout_recognizer = "MinerU"
