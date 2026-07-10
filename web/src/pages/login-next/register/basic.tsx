@@ -125,7 +125,9 @@ export default function BasicRegister() {
               nickname: data.nickname,
             });
             if (code === 0) {
-              navigate('/login');
+              navigate('/login', {
+                state: { email: trimmedEmail, password: data.password },
+              });
             }
           } catch (error) {
             console.error('Register failed:', error);
@@ -162,7 +164,12 @@ export default function BasicRegister() {
             nickname: formData.nickname,
           });
           if (code === 0) {
-            navigate('/login');
+            navigate('/login', {
+              state: {
+                email: formData.email.trim(),
+                password: formData.password,
+              },
+            });
           }
         } catch (error) {
           console.error('Register failed:', error);
