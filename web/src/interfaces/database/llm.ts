@@ -78,6 +78,7 @@ export interface IProviderInstance {
   provider_order?: string;
 }
 export interface IAddedModel {
+  model_id: string;
   model_type: string[];
   name: string;
   provider_id: string;
@@ -110,6 +111,7 @@ export interface IInstanceModel {
 }
 
 export interface IDefaultModel {
+  model_id: string;
   enable: boolean;
   model_instance: string;
   model_name: string;

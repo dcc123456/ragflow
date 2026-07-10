@@ -1,6 +1,4 @@
 import { DataFlowSelect } from '@/components/data-pipeline-select';
-import GraphRagItems from '@/components/parse-configuration/graph-rag-form-fields';
-import RaptorFormFields from '@/components/parse-configuration/raptor-form-fields';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -21,10 +19,6 @@ import { createContext, useEffect, useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { z } from 'zod';
-import {
-  GenerateType,
-  IGenerateLogButtonProps,
-} from '../dataset/generate-button/generate';
 import { ChunkMethodForm } from './chunk-method-form';
 import ChunkMethodLearnMore from './chunk-method-learn-more';
 import LinkDataSource, {
@@ -110,6 +104,7 @@ export default function DatasetSettings() {
           additionalProperties: false,
         },
         built_in_metadata: [],
+        compilation_template_group_id: [],
         enable_metadata: false,
         llm_id: '',
       },
@@ -124,10 +119,6 @@ export default function DatasetSettings() {
     useFetchKnowledgeConfigurationOnMount(form);
   // const [pipelineData, setPipelineData] = useState<IDataPipelineNodeProps>();
   const [sourceData, setSourceData] = useState<IDataSourceNodeProps[]>();
-  const [graphRagGenerateData, setGraphRagGenerateData] =
-    useState<IGenerateLogButtonProps>();
-  const [raptorGenerateData, setRaptorGenerateData] =
-    useState<IGenerateLogButtonProps>();
 
   useEffect(() => {
     if (knowledgeDetails) {
@@ -152,14 +143,6 @@ export default function DatasetSettings() {
 
       setSourceData(source_data);
 
-      setGraphRagGenerateData({
-        finish_at: knowledgeDetails.graphrag_task_finish_at,
-        task_id: knowledgeDetails.graphrag_task_id,
-      } as IGenerateLogButtonProps);
-      setRaptorGenerateData({
-        finish_at: knowledgeDetails.raptor_task_finish_at,
-        task_id: knowledgeDetails.raptor_task_id,
-      } as IGenerateLogButtonProps);
       form.setValue(
         'parse_type',
         knowledgeDetails.pipeline_id ? ParseType.Pipeline : ParseType.BuiltIn,
@@ -202,20 +185,6 @@ export default function DatasetSettings() {
       form.setValue('connectors', connectors || []);
       // form.setValue('pipeline_name', data.name || '');
       // form.setValue('pipeline_avatar', data.avatar || '');
-    }
-  };
-
-  const handleDeletePipelineTask = (type: GenerateType) => {
-    if (type === GenerateType.KnowledgeGraph) {
-      setGraphRagGenerateData({
-        finish_at: '',
-        task_id: '',
-      } as IGenerateLogButtonProps);
-    } else if (type === GenerateType.Raptor) {
-      setRaptorGenerateData({
-        finish_at: '',
-        task_id: '',
-      } as IGenerateLogButtonProps);
     }
   };
 
@@ -326,7 +295,6 @@ export default function DatasetSettings() {
                       />
                     )}
 
-                    {/* <Divider /> */}
                     {parseType === ParseType.BuiltIn && <ChunkMethodForm />}
 
                     {/* <LinkDataPipeline
@@ -340,24 +308,6 @@ export default function DatasetSettings() {
                       unbindFunc={unbindFunc}
                       handleAutoParse={handleAutoParse}
                     />
-                    <Divider />
-                    <div className="text-base font-medium text-text-primary">
-                      {t('knowledgeConfiguration.globalIndex')}
-                    </div>
-                    <GraphRagItems
-                      className="border-none p-0"
-                      data={graphRagGenerateData as IGenerateLogButtonProps}
-                      onDelete={() =>
-                        handleDeletePipelineTask(GenerateType.KnowledgeGraph)
-                      }
-                    ></GraphRagItems>
-                    <Divider />
-                    <RaptorFormFields
-                      data={raptorGenerateData as IGenerateLogButtonProps}
-                      onDelete={() =>
-                        handleDeletePipelineTask(GenerateType.Raptor)
-                      }
-                    ></RaptorFormFields>
                   </MainContainer>
                 </div>
 

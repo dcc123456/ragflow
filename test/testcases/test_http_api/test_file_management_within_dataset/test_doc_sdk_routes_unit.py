@@ -712,6 +712,7 @@ def _load_doc_module(monkeypatch, module_basename="chunk_api"):
         return _MockModelConfig2(tenant_id, "chat-model").to_dict()
 
     tenant_model_service_mod.get_model_config_from_provider_instance = _get_model_config_from_provider_instance
+    tenant_model_service_mod.resolve_model_config = _get_model_config_from_provider_instance
     tenant_model_service_mod.get_tenant_default_model_by_type = _get_tenant_default_model_by_type
     tenant_model_service_mod.split_model_name = lambda model_name: (model_name.split("@", 1)[0], "", "")
     monkeypatch.setitem(sys.modules, "api.db.joint_services.tenant_model_service", tenant_model_service_mod)
