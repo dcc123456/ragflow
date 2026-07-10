@@ -139,7 +139,7 @@ export function HomeCard({
         </CardHeader>
 
         <CardContent className="p-0">
-          <div className="flex flex-col justify-between gap-1 flex-1 h-full w-[calc(100%-50px)]">
+          <div className="flex flex-col justify-between gap-1 flex-1 h-full w-full">
             <section className="flex justify-between"></section>
 
             <section className="flex flex-col gap-1 mt-1">
