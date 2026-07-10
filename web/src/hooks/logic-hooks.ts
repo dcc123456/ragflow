@@ -126,10 +126,10 @@ export const useHandleSearchChange = () => {
   return { handleInputChange, searchString, pagination, setPagination };
 };
 
-export const useGetPagination = () => {
+export const useGetPagination = (options?: { pageSize?: number }) => {
   const [pagination, setPagination] = useState({
     page: 1,
-    pageSize: 50,
+    pageSize: options?.pageSize ?? 10,
     total: 0,
   });
   const { t } = useTranslate('common');
@@ -171,6 +171,7 @@ export const useGetPagination = () => {
   return {
     pagination: currentPagination,
     changePagination,
+    setPagination,
   };
 };
 
