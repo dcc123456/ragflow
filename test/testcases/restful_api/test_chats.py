@@ -1330,6 +1330,7 @@ def test_chat_create_uses_direct_chat_fields_unit(monkeypatch):
     monkeypatch.setattr(module.KnowledgebaseService, "accessible", lambda **_kwargs: [SimpleNamespace(id="kb-1")])
     monkeypatch.setattr(module.KnowledgebaseService, "query", lambda **_kwargs: [_DummyKB()])
     monkeypatch.setattr(module.KnowledgebaseService, "get_by_id", lambda _id: (True, _DummyKB()))
+
     def _save(**kwargs):
         saved.update(kwargs)
         return True
