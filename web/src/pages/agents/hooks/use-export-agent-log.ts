@@ -25,6 +25,7 @@ export const useExportAgentLogToCSV = () => {
       t('flow.id'),
       t('flow.userId'),
       t('flow.logTitle'),
+      t('flow.message'),
       t('flow.state'),
       t('flow.number'),
       t('flow.latestDate'),
@@ -36,6 +37,9 @@ export const useExportAgentLogToCSV = () => {
       item.id,
       item.user_id,
       item.message?.length ? item.message[0]?.content : '',
+      item.message
+        ?.map(({ role, content }) => `${role}: ${content}`)
+        .join('\n') ?? '',
       item.errors ? t('flow.failed') : t('flow.success'),
       item.round,
       item.update_date,
