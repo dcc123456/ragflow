@@ -1859,17 +1859,6 @@ async def async_ask(question, kb_ids, tenant_id, chat_llm_name=None, search_conf
         yield {"answer": "", "reference": {"total": 0, "chunks": [], "doc_aggs": []}}
         return
 
-    doc_ids, _, err_msg = filter_accessible_doc_ids_for_user(
-        user_id,
-        kb_ids,
-        doc_ids if doc_ids else None,
-    )
-    if err_msg:
-        raise Exception(err_msg)
-    if not doc_ids:
-        yield {"answer": "", "reference": {"total": 0, "chunks": [], "doc_aggs": []}}
-        return
-
     vector_similarity_weight = search_config.get("vector_similarity_weight", 0.3)
     try:
         full_text_weight = 1 - vector_similarity_weight
@@ -1974,16 +1963,6 @@ async def gen_mindmap(question, kb_ids, tenant_id, search_config={}, *, user_id)
 
     if meta_data_filter:
         doc_ids = await apply_meta_data_filter(meta_data_filter, None, question, chat_mdl, doc_ids, kb_ids=kb_ids, metas_loader=lambda: DocMetadataService.get_flatted_meta_by_kbs(kb_ids))
-
-    doc_ids, _, err_msg = filter_accessible_doc_ids_for_user(
-        user_id,
-        kb_ids,
-        doc_ids if doc_ids else None,
-    )
-    if err_msg:
-        return {"error": err_msg}
-    if not doc_ids:
-        return {"id": "root", "children": []}
 
     doc_ids, _, err_msg = filter_accessible_doc_ids_for_user(
         user_id,

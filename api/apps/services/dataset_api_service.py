@@ -1074,7 +1074,7 @@ async def search(dataset_id: str, tenant_id: str, req: dict):
             chat_model_config = get_tenant_default_model_by_type(tenant_id, LLMType.CHAT)
             chat_mdl = LLMBundle(tenant_id, chat_model_config)
 
-    if meta_data_filter:
+    if meta_data_filter and meta_data_filter.get("method") in ["auto", "semi_auto", "manual"]:
         local_doc_ids = await apply_meta_data_filter(
             meta_data_filter,
             None,
@@ -1464,7 +1464,7 @@ async def search_datasets(tenant_id: str, req: dict):
             chat_model_config = get_tenant_default_model_by_type(tenant_id, LLMType.CHAT)
             chat_mdl = LLMBundle(tenant_id, chat_model_config)
 
-    if meta_data_filter:
+    if meta_data_filter and meta_data_filter.get("method") in ["auto", "semi_auto", "manual"]:
         logging.debug("Metadata filter applied: %s, question length: %d, chat_mdl=%s", meta_data_filter, len(question), "None" if chat_mdl is None else "configured")
         filtered_doc_ids = await apply_meta_data_filter(
             meta_data_filter,
