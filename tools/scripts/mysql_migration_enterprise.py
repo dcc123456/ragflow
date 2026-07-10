@@ -2584,28 +2584,28 @@ class TenantModelIdMigrationStage(MigrationStage):
         rows_updated = 0
         tables_operated = set()
 
-        if self.create_table_only:
-            logger.info("[CREATE TABLE ONLY] No tables are created for this data migration")
-            return 0, []
-
         # Step 1: Add missing columns as VARCHAR(32) or alter existing INT columns to VARCHAR(32)
         for table_name, fields in self.TENANT_ID_FIELDS.items():
             if not self.db.table_exists(table_name):
                 continue
             for tenant_id_col, _, _ in fields:
                 if not self.db.column_exists(table_name, tenant_id_col):
-                    logger.info(f"Adding column {table_name}.{tenant_id_col} as VARCHAR(32) NULL")
+                    logger.info(f"[CREATE TABLE ONLY] Adding column {table_name}.{tenant_id_col} as VARCHAR(32) NULL")
                     if not self.dry_run:
                         self.db.execute_sql(f"ALTER TABLE `{table_name}` ADD COLUMN `{tenant_id_col}` VARCHAR(32) NULL")
                     tables_operated.add(table_name)
                     continue
                 col_type = self.db.get_column_type(table_name, tenant_id_col)
                 if col_type and col_type.lower() in ("int", "bigint", "integer"):
-                    logger.info(f"Converting {table_name}.{tenant_id_col} from {col_type} to VARCHAR(32) and clearing existing values")
+                    logger.info(f"[CREATE TABLE ONLY] Converting {table_name}.{tenant_id_col} from {col_type} to VARCHAR(32) and clearing existing values")
                     if not self.dry_run:
                         self.db.execute_sql(f"ALTER TABLE `{table_name}` MODIFY COLUMN `{tenant_id_col}` VARCHAR(32) NULL")
                         self.db.execute_sql(f"UPDATE `{table_name}` SET `{tenant_id_col}` = NULL WHERE `{tenant_id_col}` IS NOT NULL")
                     tables_operated.add(table_name)
+
+        if self.create_table_only:
+            logger.info("[CREATE TABLE ONLY] Skipping data population for tenant_*_id columns")
+            return 0, sorted(tables_operated)
 
         # Step 2: Build lookup cache from tenant_model joined with provider + instance (paginated)
         model_lookup = self._build_model_lookup()
