@@ -14,6 +14,8 @@ import { useFieldArray, useFormContext } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { SelectWithSearch } from '../originui/select-with-search';
 
+const AUTO_OP_VALUE = 'auto';
+
 export function MetadataSemiAutoFields({
   kbIds,
   prefix = '',
@@ -37,7 +39,7 @@ export function MetadataSemiAutoFields({
 
   const switchOperatorOptions = useBuildSwitchOperatorOptions();
 
-  const autoOption = { label: t('chat.meta.auto'), value: '' };
+  const autoOption = { label: t('chat.meta.auto'), value: AUTO_OP_VALUE };
 
   const metadataOptions = useMemo(() => {
     return Object.keys(metadata.data || {}).map((key) => ({
@@ -45,7 +47,6 @@ export function MetadataSemiAutoFields({
       value: key,
     }));
   }, [metadata.data]);
-
   return (
     <section className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
@@ -96,8 +97,10 @@ export function MetadataSemiAutoFields({
                         {...field}
                         options={[autoOption, ...switchOperatorOptions]}
                         triggerClassName="bg-bg-input"
-                        value={field.value}
-                        onChange={field.onChange}
+                        value={field.value || AUTO_OP_VALUE}
+                        onChange={(val) =>
+                          field.onChange(val === AUTO_OP_VALUE ? '' : val)
+                        }
                       />
                     </FormControl>
                     <FormMessage />
