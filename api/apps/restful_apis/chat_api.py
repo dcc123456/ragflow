@@ -373,8 +373,8 @@ async def _validate_rerank_id(rerank_id, tenant_id):
         await thread_pool_exec(
             resolve_model_config,
             tenant_id=tenant_id,
-            model_name=rerank_id,
             model_type="rerank",
+            model_ref=rerank_id,
         )
     except Exception as e:
         logging.error(f"Fail to get model config for {rerank_id}: {e}")

@@ -1258,15 +1258,6 @@ def test_chat_create_accepts_provider_scoped_rerank_id_unit(monkeypatch):
     monkeypatch.setattr(module.KnowledgebaseService, "query", lambda **_kwargs: [_DummyKB()])
     monkeypatch.setattr(module.KnowledgebaseService, "get_by_id", lambda _id: (True, _DummyKB()))
 
-    def _split_model_name_and_factory(model_name):
-        return {
-            "glm-4@ZHIPU-AI": ("glm-4", "default", "ZHIPU-AI", ""),
-            "glm-4@CI@ZHIPU-AI": ("glm-4", "CI", "ZHIPU-AI", ""),
-            "custom-reranker@OpenAI": ("custom-reranker", "default", "OpenAI", ""),
-        }.get(model_name, (model_name, None, None, ""))
-
-    monkeypatch.setattr(module, "split_model_name", _split_model_name_and_factory)
-
     def _get_model_config_from_provider_instance(**kwargs):
         query_calls.append(kwargs)
         return {}
@@ -1285,7 +1276,7 @@ def test_chat_create_accepts_provider_scoped_rerank_id_unit(monkeypatch):
     assert saved["rerank_id"] == "custom-reranker@OpenAI"
     assert {
         "tenant_id": "tenant-1",
-        "model_name": "custom-reranker@OpenAI",
+        "model_ref": "custom-reranker@OpenAI",
         "model_type": "rerank",
     } in query_calls
 
@@ -1339,8 +1330,6 @@ def test_chat_create_uses_direct_chat_fields_unit(monkeypatch):
     monkeypatch.setattr(module.KnowledgebaseService, "accessible", lambda **_kwargs: [SimpleNamespace(id="kb-1")])
     monkeypatch.setattr(module.KnowledgebaseService, "query", lambda **_kwargs: [_DummyKB()])
     monkeypatch.setattr(module.KnowledgebaseService, "get_by_id", lambda _id: (True, _DummyKB()))
-    monkeypatch.setattr(module, "split_model_name", lambda model: (model.split("@")[0], "default", "factory", ""))
-
     def _save(**kwargs):
         saved.update(kwargs)
         return True
@@ -1503,7 +1492,6 @@ def test_patch_chat_drops_response_only_fields_before_update_unit(monkeypatch):
     monkeypatch.setattr(module.TenantService, "get_by_id", lambda _tid: (True, SimpleNamespace(llm_id="glm-4")))
     monkeypatch.setattr(module.KnowledgebaseService, "accessible", lambda **_kwargs: [SimpleNamespace(id="kb-1")])
     monkeypatch.setattr(module.KnowledgebaseService, "query", lambda **_kwargs: [_DummyKB()])
-    monkeypatch.setattr(module, "split_model_name", lambda model: (model.split("@")[0], "default", "factory", ""))
     monkeypatch.setattr(module, "get_api_key", lambda *args, **kwargs: SimpleNamespace(id=1))
 
     def _update(_chat_id, req):
@@ -1573,7 +1561,6 @@ def test_update_chat_allows_knowledge_placeholder_without_sources_unit(monkeypat
     monkeypatch.setattr(module.DialogService, "query", lambda **_kwargs: [SimpleNamespace(id="chat-1")])
     monkeypatch.setattr(module.DialogService, "get_by_id", lambda _id: (True, _DummyDialogRecord(existing)))
     monkeypatch.setattr(module.TenantService, "get_by_id", lambda _tid: (True, SimpleNamespace(llm_id="glm-4")))
-    monkeypatch.setattr(module, "split_model_name", lambda model: (model.split("@")[0], "default", "factory", ""))
     updated = {}
 
     def _update(_chat_id, payload):
