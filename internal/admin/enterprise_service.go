@@ -26,10 +26,48 @@ import (
 	"ragflow/internal/engine/elasticsearch"
 	"ragflow/internal/entity"
 	"ragflow/internal/server"
+	"ragflow/internal/utility"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
+
+// Global scheduled task for cleanup
+var (
+	globalUpdateRecordTask     *utility.ScheduledTask
+	globalUpdateRecordTaskOnce sync.Once
+	TimeRecordSaveInterval     int64 = 24 * 60 * 60 // 24 hours by default
+	TimeRecordTaskDuration     int64 = 60 * 60      // 1 hour by default
+)
+
+// StartUpdateRecordTask starts the global update record scheduled task
+func StartUpdateRecordTask() {
+	globalUpdateRecordTaskOnce.Do(func() {
+		//duration := 24 * time.Hour
+		taskDuration := time.Duration(TimeRecordTaskDuration) * time.Second
+		globalUpdateRecordTask = utility.NewScheduledTask("UpdateTimeRecord", taskDuration, func() {
+			// interval := 24* time.Hour
+			interval := time.Duration(TimeRecordSaveInterval) * time.Second
+			if err := StartTimeRecordService(interval); err != nil {
+				common.Warn(err.Error())
+				//logger.Warn("Failed to update time record", zap.Error(err))
+			}
+		})
+		globalUpdateRecordTask.Start()
+		common.Info("Time record task is scheduled task started")
+	})
+}
+
+// StopCleanupTask stops the global update record scheduled task
+func StopUpdateRecordTask() {
+	if globalUpdateRecordTask != nil {
+		globalUpdateRecordTask.Stop()
+		globalUpdateRecordTask = nil
+	}
+
+	globalUpdateRecordTaskOnce = sync.Once{}
+}
 
 // Role management methods
 
