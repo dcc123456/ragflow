@@ -1663,7 +1663,7 @@ def test_chat_create_llm_contract(rest_client, clear_chats, ensure_parsed_docume
         if expected_code == 0:
             actual_llm_id = body["data"]["llm_id"]
             tenant_llm_id = body["data"].get("tenant_llm_id")
-            if expected_llm_id == "glm-4-flash@CI@ZHIPU-AI":
+            if expected_llm_id.split("#", 1)[0] == "glm-4-flash@CI@ZHIPU-AI":
                 if tenant_llm_id:
                     assert actual_llm_id == tenant_llm_id, (scenario_name, body)
                 else:
@@ -1951,7 +1951,7 @@ def test_chat_update_llm_contract(rest_client, clear_chats, ensure_parsed_docume
             assert get_payload["data"]["name"] == updated_name, (scenario_name, get_payload)
             actual_llm_id = get_payload["data"]["llm_id"]
             tenant_llm_id = get_payload["data"].get("tenant_llm_id")
-            if expected_llm_id == "glm-4-flash@CI@ZHIPU-AI":
+            if expected_llm_id.split("#", 1)[0] == "glm-4-flash@CI@ZHIPU-AI":
                 if tenant_llm_id:
                     assert actual_llm_id == tenant_llm_id, (scenario_name, get_payload)
                 else:
