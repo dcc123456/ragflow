@@ -19,7 +19,7 @@ func TestCellTexts(t *testing.T) {
 }
 
 func TestConstructTable_Simple3x2(t *testing.T) {
-	// 3 columns × 2 rows — cells pre-filled (simulating extractTableBoxesFromImage).
+	// 3 columns × 2 rows — cells pre-filled (simulating enrichOnePageWithDeepDoc).
 	cells := []pdf.TSRCell{
 		{X0: 0, Y0: 0, X1: 100, Y1: 50, Text: "A", Label: "table row"},
 		{X0: 101, Y0: 0, X1: 200, Y1: 50, Text: "B", Label: "table row"},
@@ -105,7 +105,7 @@ func TestConstructTable_CellsTextFilledAfterCall(t *testing.T) {
 	// constructTable should populate cell text from boxes.
 	// Bug: fillCellTextFromBoxes modifies a local copy — original cells stay empty,
 	// causing generate_test.go to output empty rows.
-	// Cells pre-filled — constructTable no longer fills text (done in extractTableBoxesFromImage).
+	// Cells pre-filled — constructTable no longer fills text (done in enrichOnePageWithDeepDoc).
 	cells := []pdf.TSRCell{
 		{X0: 0, Y0: 0, X1: 100, Y1: 50, Text: "A1", Label: "table row"},
 		{X0: 101, Y0: 0, X1: 200, Y1: 50, Text: "B1", Label: "table row"},
@@ -160,7 +160,7 @@ func TestExtractTableAndReplace_CellTextFilled(t *testing.T) {
 	}
 
 	// TSR cells in crop pixel space (matching real TSR output).
-	// Cells pre-filled (extractTableBoxesFromImage already ran fillText + OCR).
+	// Cells pre-filled (enrichOnePageWithDeepDoc already ran fillText + OCR).
 	cells := []pdf.TSRCell{
 		{X0: 35, Y0: 441, X1: 456, Y1: 500, Text: "标职务", Label: "table row"},
 		{X0: 460, Y0: 441, X1: 630, Y1: 500, Text: "飞机", Label: "table row"},

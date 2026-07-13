@@ -37,9 +37,9 @@ class CompilationTemplateService(CommonService):
             from api.db.services.user_service import TenantService
 
             ok, tenant = TenantService.get_by_id(tenant_id)
-            if ok and getattr(tenant, "llm_id", None):
+            if ok and getattr(tenant, "tenant_llm_id", None):
                 config = dict(config)
-                config["llm_id"] = tenant.llm_id
+                config["llm_id"] = tenant.tenant_llm_id
         except Exception:
             logging.exception(
                 "compilation_template: llm_id default-fill lookup failed for tenant=%s",
@@ -91,9 +91,9 @@ class CompilationTemplateService(CommonService):
                     from api.db.services.user_service import TenantService
 
                     ok, tenant = TenantService.get_by_id(tenant_id)
-                    if ok and getattr(tenant, "llm_id", None):
+                    if ok and getattr(tenant, "tenant_llm_id", None):
                         config = dict(config)
-                        config["llm_id"] = tenant.llm_id
+                        config["llm_id"] = tenant.tenant_llm_id
                 except Exception:
                     logging.exception(
                         "compilation_template: llm_id lazy-fill lookup failed for tenant=%s",
