@@ -45,6 +45,12 @@ const storage = {
   getLanguage: (): string => {
     return localStorage.getItem('lng') as string;
   },
+  setTimezone: (tz: string) => {
+    localStorage.setItem('timezone', tz);
+  },
+  getTimezone: (): string | null => {
+    return localStorage.getItem('timezone');
+  },
 };
 
 export const getAuthorization = () => {

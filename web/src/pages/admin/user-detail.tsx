@@ -37,6 +37,7 @@ import {
   listUserAgents,
   listUserDatasets,
 } from '@/services/admin-service';
+import { formatDate } from '@/utils/date';
 
 import { TableEmpty } from '@/components/table-skeleton';
 import EnterpriseFeature from './components/enterprise-feature';
@@ -373,21 +374,21 @@ function AdminUserDetail() {
               <div className="text-sm text-text-secondary mb-2">
                 {t('admin.lastLoginTime')}
               </div>
-              <div>{detail?.last_login_time}</div>
+              <div>{formatDate(detail?.last_login_time)}</div>
             </div>
 
             <div>
               <div className="text-sm text-text-secondary mb-2">
                 {t('admin.createTime')}
               </div>
-              <div>{detail?.create_date}</div>
+              <div>{formatDate(detail?.create_date)}</div>
             </div>
 
             <div>
               <div className="text-sm text-text-secondary mb-2">
                 {t('admin.lastUpdateTime')}
               </div>
-              <div>{detail?.update_date}</div>
+              <div>{formatDate(detail?.update_date)}</div>
             </div>
 
             <div>

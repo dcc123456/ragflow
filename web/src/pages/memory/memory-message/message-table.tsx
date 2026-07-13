@@ -40,7 +40,6 @@ import {
   getSortedRowModel,
   useReactTable,
 } from '@tanstack/react-table';
-import dayjs from 'dayjs';
 import { t } from 'i18next';
 import { pick } from 'lodash';
 import {
@@ -53,6 +52,7 @@ import {
 import * as React from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { CopyToClipboard } from 'react-copy-to-clipboard';
+import { formatDate } from '@/utils/date';
 import { useMessageAction } from './hook';
 import { IMessageInfo } from './interface';
 
@@ -153,9 +153,7 @@ export function MemoryTable({
   const showLog = (row: Row<IMessageInfo>) => {
     const task = row.original.task;
     const logDetail = {
-      startTime: dayjs(task.create_time)
-        .locale(document.documentElement.lang)
-        .format('MM/DD/YYYY HH:mm:ss'),
+      startTime: formatDate(task.create_time, 'MM/DD/YYYY HH:mm:ss'),
       status: getTaskStatus(task.progress),
       details: task.progress_msg,
     } as unknown as ILogInfo;

@@ -10,6 +10,8 @@ import 'dayjs/locale/zh-cn';
 import advancedFormat from 'dayjs/plugin/advancedFormat';
 import customParseFormat from 'dayjs/plugin/customParseFormat';
 import localeData from 'dayjs/plugin/localeData';
+import timezone from 'dayjs/plugin/timezone';
+import utc from 'dayjs/plugin/utc';
 import weekOfYear from 'dayjs/plugin/weekOfYear';
 import weekYear from 'dayjs/plugin/weekYear';
 import weekday from 'dayjs/plugin/weekday';
@@ -20,6 +22,7 @@ import { TooltipProvider } from './components/ui/tooltip';
 import { ThemeEnum } from './constants/common';
 import { routers } from './routes';
 import storage from './utils/authorization-util';
+import { applyTimezone } from './utils/timezone';
 
 import 'react-photo-view/dist/react-photo-view.css';
 
@@ -33,6 +36,8 @@ configResponsive({
   '4xl': 1980,
 });
 
+dayjs.extend(utc);
+dayjs.extend(timezone);
 dayjs.extend(customParseFormat);
 dayjs.extend(advancedFormat);
 dayjs.extend(weekday);
@@ -80,6 +85,11 @@ const RootProvider = ({ children }: React.PropsWithChildren) => {
     const lng = storage.getLanguage();
     if (lng) {
       void changeLanguageAsync(lng);
+    }
+
+    const tz = storage.getTimezone();
+    if (tz) {
+      applyTimezone(tz);
     }
   }, []);
 

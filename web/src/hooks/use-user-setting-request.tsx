@@ -22,6 +22,8 @@ import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { useWarnEmptyModel } from './use-warn-empty-model';
+import storage from '@/utils/authorization-util';
+import { applyTimezone, parseTimezone } from '@/utils/timezone';
 
 export const enum UserSettingApiAction {
   UserInfo = 'userInfo',
@@ -53,6 +55,11 @@ export const useFetchUserInfo = (): ResponseGetType<IUserInfo> => {
         const targetLng =
           supportedLanguages.find((lang) => lang.code === data.data.language)
             ?.code ?? DEFAULT_LANGUAGE_CODE;
+
+        const parsedTz = parseTimezone(data.data.timezone);
+        if (parsedTz !== storage.getTimezone()) {
+          applyTimezone(data.data.timezone);
+        }
 
         return Object.assign({}, data.data, {
           language: targetLng,

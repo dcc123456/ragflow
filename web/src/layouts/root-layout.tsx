@@ -1,3 +1,4 @@
+import { useTimezoneVersion } from '@/hooks/use-timezone';
 import { Outlet } from 'react-router';
 import { Header } from './components/header';
 
@@ -12,9 +13,10 @@ export function RootLayoutContainer({ children }: React.PropsWithChildren) {
 }
 
 export default function RootLayout() {
+  const timezoneVersion = useTimezoneVersion();
   return (
     <RootLayoutContainer>
-      <Outlet />
+      <Outlet key={timezoneVersion} />
     </RootLayoutContainer>
   );
 }
