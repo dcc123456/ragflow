@@ -20,6 +20,7 @@ import logging
 import operator
 import os
 import sys
+import threading
 import time
 import typing
 from datetime import datetime, timezone
@@ -278,8 +279,8 @@ class _ContextVarConnectionState:
       - Connection leaks (coroutine A's conn silently shared with coroutine B)
       - Double returns (both coroutines think they own the connection and return it)
 
-    This class uses four independent contextvars.ContextVar instances (one per
-    field) instead of a single ContextVar holding a mutable dict.
+    This class uses independent contextvars.ContextVar instances (one per field)
+    instead of a single ContextVar holding a mutable dict.
 
     Key design invariant: every setter calls _cv_X.set(val) which creates an
     *isolated* binding in the *current* asyncio-task context (or thread context).
@@ -305,9 +306,15 @@ class _ContextVarConnectionState:
         object.__setattr__(self, "_cv_conn", contextvars.ContextVar("peewee_conn", default=None))
         object.__setattr__(self, "_cv_ctx", contextvars.ContextVar("peewee_ctx", default=None))
         object.__setattr__(self, "_cv_transactions", contextvars.ContextVar("peewee_transactions", default=None))
+        object.__setattr__(self, "_cv_thread_id", contextvars.ContextVar("peewee_thread_id", default=None))
+
+    def _ensure_current_thread(self):
+        if self._cv_thread_id.get() != threading.get_ident():
+            self.reset()
 
     def reset(self):
         """Restore closed/empty state in the current context."""
+        self._cv_thread_id.set(threading.get_ident())
         self._cv_closed.set(True)
         self._cv_conn.set(None)
         self._cv_ctx.set([])
@@ -315,6 +322,7 @@ class _ContextVarConnectionState:
 
     def set_connection(self, conn):
         """Called by peewee when a connection is checked out from the pool."""
+        self._cv_thread_id.set(threading.get_ident())
         self._cv_closed.set(False)
         self._cv_conn.set(conn)
         self._cv_ctx.set([])
@@ -325,12 +333,14 @@ class _ContextVarConnectionState:
     # ------------------------------------------------------------------ #
     @property
     def closed(self):
+        self._ensure_current_thread()
         return self._cv_closed.get()
 
     @closed.setter
     def closed(self, val):
         # set() creates/replaces the binding only in the current context —
         # sibling asyncio tasks that inherited the previous value are unaffected.
+        self._ensure_current_thread()
         self._cv_closed.set(val)
 
     # ------------------------------------------------------------------ #
@@ -338,10 +348,12 @@ class _ContextVarConnectionState:
     # ------------------------------------------------------------------ #
     @property
     def conn(self):
+        self._ensure_current_thread()
         return self._cv_conn.get()
 
     @conn.setter
     def conn(self, val):
+        self._ensure_current_thread()
         self._cv_conn.set(val)
 
     # ------------------------------------------------------------------ #
@@ -349,6 +361,7 @@ class _ContextVarConnectionState:
     # ------------------------------------------------------------------ #
     @property
     def ctx(self):
+        self._ensure_current_thread()
         v = self._cv_ctx.get()
         if v is None:
             # First access in this context: allocate a fresh list that belongs
@@ -359,6 +372,7 @@ class _ContextVarConnectionState:
 
     @ctx.setter
     def ctx(self, val):
+        self._ensure_current_thread()
         self._cv_ctx.set(val)
 
     # ------------------------------------------------------------------ #
@@ -366,6 +380,7 @@ class _ContextVarConnectionState:
     # ------------------------------------------------------------------ #
     @property
     def transactions(self):
+        self._ensure_current_thread()
         v = self._cv_transactions.get()
         if v is None:
             v = []
@@ -374,6 +389,7 @@ class _ContextVarConnectionState:
 
     @transactions.setter
     def transactions(self, val):
+        self._ensure_current_thread()
         self._cv_transactions.set(val)
 
 
@@ -404,7 +420,7 @@ class RetryingPooledMySQLDatabase(PooledMySQLDatabase):
         for attempt in range(self.max_retries + 1):
             try:
                 return super().execute_sql(sql, params, commit)
-            except (OperationalError, InterfaceError, OSError, AttributeError) as e:
+            except (OperationalError, InterfaceError, OSError, AttributeError, ValueError) as e:
                 # https://dev.mysql.com/doc/refman/8.0/en/server-error-reference.html#error_er_lock_deadlock
                 # 2013: Lost connection to MySQL server during query
                 # 2006: MySQL server has gone away
@@ -415,18 +431,20 @@ class RetryingPooledMySQLDatabase(PooledMySQLDatabase):
                 error_messages = ["", "Lost connection", "Deadlock found"]
                 socket_closed = isinstance(e, OSError) and getattr(e, "errno", None) == 9
                 socket_none = isinstance(e, AttributeError) and "settimeout" in str(e) and "NoneType" in str(e)
+                stream_closed = isinstance(e, ValueError) and str(e) == "read of closed file"
                 should_retry = (
                     (isinstance(e.args, tuple) and len(e.args) > 0 and e.args[0] in error_codes)
                     or (str(e) in error_messages)
                     or (hasattr(e, "__class__") and e.__class__.__name__ == "InterfaceError")
                     or socket_closed
                     or socket_none
+                    or stream_closed
                 )
 
                 if should_retry and attempt < self.max_retries:
                     logging.warning(f"Database connection/deadlock issue (attempt {attempt + 1}/{self.max_retries}): {e} {str(e)}")
                     # Reconnect for connection issues (2013, 2006) and InterfaceError (0)
-                    if socket_closed or socket_none or (hasattr(e, "args") and e.args and e.args[0] in error_codes):
+                    if socket_closed or socket_none or stream_closed or (hasattr(e, "args") and e.args and e.args[0] in error_codes):
                         self._handle_connection_loss()
                     time.sleep(self.retry_delay * (2**attempt))
                 else:
@@ -435,10 +453,8 @@ class RetryingPooledMySQLDatabase(PooledMySQLDatabase):
         return None
 
     def _handle_connection_loss(self):
-        # self.close_all()
-        # self.connect()
         try:
-            self.close()
+            self.manual_close()
         except Exception:
             pass
         try:

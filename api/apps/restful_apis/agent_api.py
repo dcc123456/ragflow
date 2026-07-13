@@ -998,14 +998,17 @@ async def debug_agent_component(agent_id, component_id, tenant_id):
 @agent_role_guard
 @add_tenant_id_to_kwargs
 @check_canvas_permission(PermissionValue.PERMISSION_READ)
-def get_agent(agent_id, tenant_id):
-    exists, canvas = UserCanvasService.get_by_canvas_id(agent_id)
+async def get_agent(agent_id, tenant_id):
+    started_at = time.perf_counter()
+    exists, canvas = await thread_pool_exec(UserCanvasService.get_by_canvas_id, agent_id)
     if not exists:
         return get_data_error_result(message="canvas not found.")
+    canvas_loaded_at = time.perf_counter()
     canvas_tenant_id = canvas.get("user_id") or tenant_id
 
     try:
-        CanvasReplicaService.bootstrap(
+        await thread_pool_exec(
+            CanvasReplicaService.bootstrap,
             canvas_id=agent_id,
             tenant_id=str(canvas_tenant_id),
             runtime_user_id=str(tenant_id),
@@ -1015,25 +1018,40 @@ def get_agent(agent_id, tenant_id):
         )
     except ValueError as exc:
         return get_data_error_result(message=str(exc))
+    replica_bootstrapped_at = time.perf_counter()
 
     last_publish_time = None
-    versions = UserCanvasVersionService.list_by_canvas_id(agent_id)
+    versions = await thread_pool_exec(UserCanvasVersionService.list_by_canvas_id, agent_id)
     if versions:
         released_versions = [version for version in versions if version.release]
         if released_versions:
             released_versions.sort(key=lambda version: version.update_time, reverse=True)
             last_publish_time = released_versions[0].update_time
+    versions_loaded_at = time.perf_counter()
 
     from agent.dsl_migration import normalize_chunker_dsl
 
-    canvas["dsl"] = normalize_chunker_dsl(canvas.get("dsl", {}))
+    canvas["dsl"] = await thread_pool_exec(normalize_chunker_dsl, canvas.get("dsl", {}))
+    dsl_normalized_at = time.perf_counter()
     canvas["last_publish_time"] = last_publish_time
     canvas["operator_permission"] = getattr(g, "operator_permission", PermissionValue.PERMISSION_NULL.value)
 
     if canvas.get("canvas_category") == CanvasCategory.DataFlow:
-        datasets = list(KnowledgebaseService.query(pipeline_id=agent_id))
+        datasets = await thread_pool_exec(KnowledgebaseService.query, pipeline_id=agent_id)
         canvas["datasets"] = [{"id": item.id, "name": item.name, "avatar": item.avatar} for item in datasets]
 
+    completed_at = time.perf_counter()
+    if completed_at - started_at >= 1:
+        logging.warning(
+            "Slow get_agent agent_id=%s canvas_ms=%.0f replica_ms=%.0f versions_ms=%.0f normalize_ms=%.0f datasets_ms=%.0f total_ms=%.0f",
+            agent_id,
+            (canvas_loaded_at - started_at) * 1000,
+            (replica_bootstrapped_at - canvas_loaded_at) * 1000,
+            (versions_loaded_at - replica_bootstrapped_at) * 1000,
+            (dsl_normalized_at - versions_loaded_at) * 1000,
+            (completed_at - dsl_normalized_at) * 1000,
+            (completed_at - started_at) * 1000,
+        )
     return get_json_result(data=canvas)
 
 

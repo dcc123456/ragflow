@@ -816,8 +816,9 @@ async def presence_leave():
 @login_required
 @canvas_role_guard
 @check_canvas_permission(PermissionValue.PERMISSION_READ)
-def presence_list(canvas_id):
-    data = CanvasReplicaService.list_presence(
+async def presence_list(canvas_id):
+    data = await thread_pool_exec(
+        CanvasReplicaService.list_presence,
         canvas_id=str(canvas_id),
         tenant_id=str(g.tenant_id),
         operator_permission=g.operator_permission,
