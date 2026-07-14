@@ -27,6 +27,7 @@ from api.db.db_models import DB
 from api.db.services import duplicate_name
 from api.db import PermissionActionType, PermissionTargetType, PermissionValue, ResourceType
 from api.db.services.permission_service import PermissionChangeLogService, PermissionService
+from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.search_service import SearchService
 from api.db.services.user_service import TenantService, UserTenantService
 from common.misc_utils import get_uuid
@@ -272,6 +273,11 @@ async def completion(search_id):
     kb_ids = search_config.get("kb_ids") or req.get("kb_ids") or []
     if not kb_ids:
         return get_data_error_result(message="`kb_ids` is required.")
+
+    # check if the kb_ids is accessible for this user
+    for kb_id in kb_ids:
+        if not KnowledgebaseService.accessible(kb_id=kb_id, user_id=uid):
+            return get_data_error_result(message=f"You don't own the dataset {kb_id}")
 
     async def stream():
         nonlocal req, uid, kb_ids, search_config

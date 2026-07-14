@@ -2053,7 +2053,7 @@ class TenantModel(DataBaseModel):
     model_name = CharField(max_length=128, null=True, index=False, help_text="Model name")
     provider_id = CharField(max_length=32, null=False, index=False)
     instance_id = CharField(max_length=32, null=False, index=True)
-    model_type = IntegerField(null=False, default=1, index=True, help_text="Bit flags (LSB->MSB): 1=chat, 2=embedding, 4=speech2text, 8=image2text, 16=rerank, 32=tts, 64=ocr")
+    model_type = IntegerField(null=False, default=1, index=True, help_text="Bit flags (LSB->MSB): 1=chat, 2=embedding, 4=asr, 8=vision, 16=rerank, 32=tts, 64=ocr")
     status = CharField(max_length=32, default="active", index=False)
     extra = CharField(max_length=1024, default="{}", index=False)
 
@@ -2163,6 +2163,43 @@ def alter_db_remove_column(migrator, table_name, column_name):
     except Exception as ex:
         logging.critical(f"Failed to drop {settings.DATABASE_TYPE.upper()}.{table_name} column {column_name}, error: {ex}")
         pass
+
+
+def ensure_model_indexes(migrator):
+    """Create indexes declared by the Peewee models when they are missing."""
+    members = inspect.getmembers(sys.modules[__name__], inspect.isclass)
+    for name, model in members:
+        if model == DataBaseModel or not issubclass(model, DataBaseModel):
+            continue
+
+        table_name = model._meta.table_name
+        expected = {}
+        for field in model._meta.fields.values():
+            if field.primary_key:
+                continue
+            if field.index or field.unique:
+                expected[(field.name,)] = bool(field.unique)
+
+        for columns, unique in model._meta.indexes:
+            expected[tuple(columns)] = bool(unique)
+
+        if not expected:
+            continue
+
+        try:
+            existing = {tuple(index.columns): bool(index.unique) for index in DB.get_indexes(table_name)}
+        except Exception as ex:
+            logging.error(f"Failed to inspect indexes on {table_name}: {ex}")
+            continue
+
+        for columns, unique in expected.items():
+            if columns in existing and (not unique or existing[columns]):
+                continue
+            try:
+                migrate(migrator.add_index(table_name, columns, unique=unique))
+                logging.info(f"Created {'unique ' if unique else ''}index on {table_name} ({', '.join(columns)})")
+            except Exception as ex:
+                logging.error(f"Failed to create {'unique ' if unique else ''}index on {table_name} ({', '.join(columns)}): {ex}")
 
 
 def migrate_add_unique_email(migrator):
@@ -2623,3 +2660,45 @@ def migrate_db():
     logging.disable(logging.NOTSET)
     # this is after re-enabling logging to allow logging changed user emails
     migrate_add_unique_email(migrator)
+    migrate_model_type_names()
+    ensure_model_indexes(migrator)
+
+
+def migrate_model_type_names():
+    """Rename legacy model_type string values to the canonical asr/vision names.
+
+    Previously the code used speech2text / image2text. LLMType now emits asr /
+    vision, and the backend compares model_type strings directly. This idempotent
+    data migration updates persisted rows in llm and tenant_llm before the new
+    enum values are used at runtime.
+    """
+    RENAME_MAP = {
+        "speech2text": "asr",
+        "image2text": "vision",
+    }
+    tables = ["llm", "tenant_llm"]
+    for table in tables:
+        if not DB.table_exists(table):
+            continue
+        for old_name, new_name in RENAME_MAP.items():
+            try:
+                cursor = DB.execute_sql(
+                    "UPDATE {} SET model_type = %s WHERE model_type = %s".format(table),
+                    (new_name, old_name),
+                )
+                if cursor.rowcount:
+                    logging.info(
+                        "Migrated %s rows in %s.model_type from %s to %s",
+                        cursor.rowcount,
+                        table,
+                        old_name,
+                        new_name,
+                    )
+            except Exception as ex:
+                logging.warning(
+                    "Failed to migrate model_type values in %s (from %s to %s): %s",
+                    table,
+                    old_name,
+                    new_name,
+                    ex,
+                )
