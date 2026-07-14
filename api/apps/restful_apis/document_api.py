@@ -1969,10 +1969,7 @@ def _parse_document_image_id(image_id: str) -> tuple[str, str] | None:
     parts = image_id.split("-", 1)
     if len(parts) != 2 or not parts[0] or not parts[1]:
         return None
-    bucket, object_name = parts
-    if not re.fullmatch(r"[0-9a-fA-F]{32}", bucket):
-        return None
-    return bucket, object_name
+    return parts[0], parts[1]
 
 
 def _detect_image_content_type_from_bytes(data):
