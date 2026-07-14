@@ -1926,10 +1926,6 @@ class SyncLogs(DataBaseModel):
 
 
 class EvaluationCollection(DataBaseModel):
-    """Ground truth collection for RAG evaluation"""
-
-
-class EvaluationDataset(DataBaseModel):
     """Ground truth dataset for RAG evaluation"""
 
     id = CharField(max_length=32, primary_key=True)
@@ -1942,6 +1938,9 @@ class EvaluationDataset(DataBaseModel):
 
     class Meta:
         db_table = "evaluation_collections"
+
+
+EvaluationDataset = EvaluationCollection
 
 
 class EvaluationCase(DataBaseModel):
