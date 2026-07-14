@@ -35,7 +35,7 @@ from api.utils.file_response import (
 import jwt
 from quart import Response, g, jsonify, make_response, request
 
-from api.apps import current_user, login_required
+from api.apps import AUTH_JWT, AUTH_API, AUTH_BETA, current_user, login_required
 from api.apps.services.canvas_replica_service import CanvasReplicaService
 from api.db import CanvasCategory, PermissionActionType, PermissionTargetType, PermissionValue, ResourceType
 from api.db.db_models import DB, Task
@@ -2596,7 +2596,7 @@ async def preview_attachment(tenant_id=None, attachment_id=None):
 
 
 @manager.route("/agents/attachments/<attachment_id>/download", methods=["GET"])  # noqa: F821
-@login_required
+@login_required(auth_types=[AUTH_JWT, AUTH_API, AUTH_BETA])
 @agent_role_guard
 @add_tenant_id_to_kwargs
 async def download_attachment(tenant_id=None, attachment_id=None):
