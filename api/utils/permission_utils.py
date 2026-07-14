@@ -6,7 +6,7 @@ from api.db import PermissionActionType, PermissionTargetType, PermissionValue, 
 from api.db.services.permission_service import PermissionService
 from common import settings
 from common.constants import RetCode, StatusEnum
-from common.misc_utils import get_uuid
+from common.misc_utils import get_uuid, thread_pool_exec
 
 
 def is_valid_permission(permission: int) -> bool:
@@ -200,7 +200,7 @@ def check_search_permission(permission):
                     return await foo(*args, **kwargs)
                 return foo(*args, **kwargs)
 
-            _, search = SearchService.get_by_id(search_id)
+            _, search = await thread_pool_exec(SearchService.get_by_id, search_id)
             if not search:
                 return get_json_result(data=False, message="Search not found.", code=RetCode.OPERATING_ERROR)
 
@@ -212,12 +212,13 @@ def check_search_permission(permission):
                     return await foo(*args, **kwargs)
                 return foo(*args, **kwargs)
 
-            user_tenants = UserTenantService.query(user_id=current_user.id) or []
+            user_tenants = await thread_pool_exec(UserTenantService.query, user_id=current_user.id) or []
             for user_tenant in user_tenants:
                 if user_tenant.tenant_id != search.tenant_id:
                     continue
 
-                permission_info = has_permission_for_member(
+                permission_info = await thread_pool_exec(
+                    has_permission_for_member,
                     operator_id=user_tenant.id,
                     tenant_id=user_tenant.tenant_id,
                     resource_id=search_id,
@@ -385,19 +386,26 @@ def check_kb_permission(permission):
             g.req_data = req_data
             g.kb_id = kb_id
 
-            if settings.ENABLE_ADMIN and UserService.is_admin(current_user.id) and permission == PermissionValue.PERMISSION_READ:
+            if settings.ENABLE_ADMIN and await thread_pool_exec(UserService.is_admin, current_user.id) and permission == PermissionValue.PERMISSION_READ:
                 g.tenant_id = current_user.id
                 if inspect.iscoroutinefunction(foo):
                     return await foo(*args, **kwargs)
                 return foo(*args, **kwargs)
 
-            user_tenants = UserTenantService.query(user_id=current_user.id) or []
+            user_tenants = await thread_pool_exec(UserTenantService.query, user_id=current_user.id) or []
 
             for user_tenant in user_tenants:
-                kb_record = KnowledgebaseService.filter_by_id_and_tenant_id(tenant_id=user_tenant.tenant_id, kb_id=kb_id)
+                kb_record = await thread_pool_exec(KnowledgebaseService.filter_by_id_and_tenant_id, tenant_id=user_tenant.tenant_id, kb_id=kb_id)
                 if kb_record:
-                    if (kb_record.created_by == current_user.id) or has_permission_for_member(
-                        operator_id=user_tenant.id, tenant_id=user_tenant.tenant_id, resource_id=kb_id, resource_type=ResourceType.KB, permission=permission
+                    if (kb_record.created_by == current_user.id) or (
+                        await thread_pool_exec(
+                            has_permission_for_member,
+                            operator_id=user_tenant.id,
+                            tenant_id=user_tenant.tenant_id,
+                            resource_id=kb_id,
+                            resource_type=ResourceType.KB,
+                            permission=permission,
+                        )
                     )[0]:
                         g.tenant_id = user_tenant.tenant_id
                         g.kb = kb_record
@@ -470,13 +478,18 @@ def check_dialog_permission(permission):
                     return await foo(*args, **kwargs)
                 return foo(*args, **kwargs)
 
-            user_tenants = UserTenantService.get_user_tenants_with_owner(current_user.id)
+            user_tenants = await thread_pool_exec(UserTenantService.get_user_tenants_with_owner, current_user.id)
 
             for user_tenant in user_tenants:
-                dialog_record = DialogService.query(tenant_id=user_tenant.tenant_id, id=dialog_id, status=StatusEnum.VALID.value)
+                dialog_record = await thread_pool_exec(DialogService.query, tenant_id=user_tenant.tenant_id, id=dialog_id, status=StatusEnum.VALID.value)
                 if dialog_record:
-                    permission_info = has_permission_for_member(
-                        operator_id=user_tenant.id, tenant_id=user_tenant.tenant_id, resource_id=dialog_id, resource_type=ResourceType.DIALOG, permission=permission
+                    permission_info = await thread_pool_exec(
+                        has_permission_for_member,
+                        operator_id=user_tenant.id,
+                        tenant_id=user_tenant.tenant_id,
+                        resource_id=dialog_id,
+                        resource_type=ResourceType.DIALOG,
+                        permission=permission,
                     )
                     is_team_owner = dialog_record[0].tenant_id == current_user.id
                     if is_team_owner or permission_info[0]:
@@ -548,13 +561,13 @@ def check_doc_permission(permission, allow_missing_document=False):
             g.req_data = req_data
             g.doc_id = doc_id
 
-            if settings.ENABLE_ADMIN and UserService.is_admin(current_user.id) and permission == PermissionValue.PERMISSION_READ:
+            if settings.ENABLE_ADMIN and await thread_pool_exec(UserService.is_admin, current_user.id) and permission == PermissionValue.PERMISSION_READ:
                 g.tenant_id = current_user.id
                 if inspect.iscoroutinefunction(foo):
                     return await foo(*args, **kwargs)
                 return foo(*args, **kwargs)
 
-            doc_tenant_id = DocumentService.get_tenant_id(doc_id)
+            doc_tenant_id = await thread_pool_exec(DocumentService.get_tenant_id, doc_id)
             if not doc_tenant_id:
                 if allow_missing_document:
                     if inspect.iscoroutinefunction(foo):
@@ -562,16 +575,16 @@ def check_doc_permission(permission, allow_missing_document=False):
                     return foo(*args, **kwargs)
                 return get_json_result(data=False, message="Document not found!", code=RetCode.DATA_ERROR)
 
-            user_tenants = UserTenantService.query(user_id=current_user.id) or []
+            user_tenants = await thread_pool_exec(UserTenantService.query, user_id=current_user.id) or []
             for user_tenant in user_tenants:
                 if user_tenant.tenant_id != doc_tenant_id:
                     continue
 
-                kb_id = DocumentService.get_knowledgebase_id(doc_id)
+                kb_id = await thread_pool_exec(DocumentService.get_knowledgebase_id, doc_id)
                 if not kb_id:
                     continue
 
-                kb_record = KnowledgebaseService.filter_by_id_and_tenant_id(tenant_id=user_tenant.tenant_id, kb_id=kb_id)
+                kb_record = await thread_pool_exec(KnowledgebaseService.filter_by_id_and_tenant_id, tenant_id=user_tenant.tenant_id, kb_id=kb_id)
                 if not kb_record:
                     continue
 
@@ -586,7 +599,8 @@ def check_doc_permission(permission, allow_missing_document=False):
                         return await foo(*args, **kwargs)
                     return foo(*args, **kwargs)
 
-                permission_info = has_permission_for_member(
+                permission_info = await thread_pool_exec(
+                    has_permission_for_member,
                     operator_id=user_tenant.id,
                     tenant_id=user_tenant.tenant_id,
                     resource_id=doc_id,
@@ -778,7 +792,7 @@ def check_canvas_permission(permission):
                     return await foo(*args, **kwargs)
                 return foo(*args, **kwargs)
 
-            e, canvas = UserCanvasService.get_by_canvas_id(canvas_id)
+            e, canvas = await thread_pool_exec(UserCanvasService.get_by_canvas_id, canvas_id)
             if not e:
                 return get_json_result(data=False, message="Canvas not found.", code=RetCode.OPERATING_ERROR)
 
@@ -792,12 +806,13 @@ def check_canvas_permission(permission):
                 return foo(*args, **kwargs)
 
             # Permission table check across all tenants the user belongs to
-            user_tenants = UserTenantService.query(user_id=current_user.id) or []
+            user_tenants = await thread_pool_exec(UserTenantService.query, user_id=current_user.id) or []
             for user_tenant in user_tenants:
                 # Only check tenants where the canvas owner is the tenant owner
                 if user_tenant.tenant_id != canvas["user_id"]:
                     continue
-                permission_info = has_permission_for_member(
+                permission_info = await thread_pool_exec(
+                    has_permission_for_member,
                     operator_id=user_tenant.id,
                     tenant_id=user_tenant.tenant_id,
                     resource_id=canvas_id,
@@ -874,7 +889,7 @@ def check_mcp_permission(permission):
                     return await foo(*args, **kwargs)
                 return foo(*args, **kwargs)
 
-            e, mcp_server = MCPServerService.get_by_id(mcp_id)
+            e, mcp_server = await thread_pool_exec(MCPServerService.get_by_id, mcp_id)
             if not e:
                 return get_json_result(data=False, message="MCP server not found.", code=RetCode.OPERATING_ERROR)
 
@@ -888,11 +903,12 @@ def check_mcp_permission(permission):
                 return foo(*args, **kwargs)
 
             # Permission table check across all tenants the user belongs to
-            user_tenants = UserTenantService.query(user_id=current_user.id) or []
+            user_tenants = await thread_pool_exec(UserTenantService.query, user_id=current_user.id) or []
             for user_tenant in user_tenants:
                 if user_tenant.tenant_id != mcp_server.tenant_id:
                     continue
-                permission_info = has_permission_for_member(
+                permission_info = await thread_pool_exec(
+                    has_permission_for_member,
                     operator_id=user_tenant.id,
                     tenant_id=user_tenant.tenant_id,
                     resource_id=mcp_id,
@@ -969,7 +985,7 @@ def check_memory_permission(permission):
                     return await foo(*args, **kwargs)
                 return foo(*args, **kwargs)
 
-            memory = MemoryService.get_by_memory_id(memory_id)
+            memory = await thread_pool_exec(MemoryService.get_by_memory_id, memory_id)
             if not memory:
                 return get_json_result(data=False, message="Memory not found.", code=RetCode.OPERATING_ERROR)
 
@@ -981,11 +997,12 @@ def check_memory_permission(permission):
                     return await foo(*args, **kwargs)
                 return foo(*args, **kwargs)
 
-            user_tenants = UserTenantService.query(user_id=current_user.id) or []
+            user_tenants = await thread_pool_exec(UserTenantService.query, user_id=current_user.id) or []
             for user_tenant in user_tenants:
                 if user_tenant.tenant_id != memory.tenant_id:
                     continue
-                permission_info = has_permission_for_member(
+                permission_info = await thread_pool_exec(
+                    has_permission_for_member,
                     operator_id=user_tenant.id,
                     tenant_id=user_tenant.tenant_id,
                     resource_id=memory_id,

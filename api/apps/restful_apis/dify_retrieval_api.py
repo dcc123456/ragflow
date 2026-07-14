@@ -16,6 +16,7 @@
 import logging
 
 from api.utils.permission_utils import filter_accessible_doc_ids_for_user
+from common.misc_utils import thread_pool_exec
 from quart import jsonify, request
 from werkzeug.exceptions import BadRequest as WerkzeugBadRequest
 
@@ -275,7 +276,8 @@ async def retrieval(tenant_id):
             doc_ids = ["-999"]
         if doc_ids == ["-999"]:
             return jsonify({"records": []})
-        doc_ids, _, _ = filter_accessible_doc_ids_for_user(
+        doc_ids, _, _ = await thread_pool_exec(
+            filter_accessible_doc_ids_for_user,
             tenant_id,
             [kb_id],
             doc_ids if doc_ids else None,

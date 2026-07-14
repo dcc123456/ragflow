@@ -42,6 +42,7 @@ except ImportError:
 from api.db.services.role_service import RoleResourceService
 from api.utils.api_utils import get_json_result
 from common.constants import RetCode
+from common.misc_utils import thread_pool_exec
 
 
 async def _invoke_view(func, *args, **kwargs):
@@ -104,7 +105,7 @@ def check_role_access(action_map, resource_type):
 
             @wraps(func)
             async def async_wrapper(*args, **kwargs):
-                permission_result = _check_role_permission(func, action_map, resource_type, *args, **kwargs)
+                permission_result = await thread_pool_exec(_check_role_permission, func, action_map, resource_type, *args, **kwargs)
                 if permission_result is not None:
                     return permission_result
                 return await _invoke_view(func, *args, **kwargs)

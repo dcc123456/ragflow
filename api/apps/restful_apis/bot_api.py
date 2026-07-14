@@ -414,7 +414,8 @@ async def retrieval_test_embedded(tenant_id=None):
                 metas_loader=lambda: DocMetadataService.get_flatted_meta_by_kbs(kb_ids),
             )
 
-        local_doc_ids, tenant_ids, err_msg = filter_accessible_doc_ids_for_user(
+        local_doc_ids, tenant_ids, err_msg = await thread_pool_exec(
+            filter_accessible_doc_ids_for_user,
             operator_user_id,
             kb_ids,
             local_doc_ids if local_doc_ids else None,

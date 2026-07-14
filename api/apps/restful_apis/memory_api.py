@@ -30,7 +30,7 @@ from api.db.joint_services.tenant_model_service import ensure_tenant_model_ids_f
 from api.utils.pagination_utils import validate_rest_api_page_size
 from api.utils.billing import check_resources
 from api.utils.permission_utils import check_memory_permission
-from common.misc_utils import get_uuid
+from common.misc_utils import get_uuid, thread_pool_exec
 from common.role_util import MEMORY_API_ACTION_MAP, MEMORY_ROLE_RESOURCE_TYPE, check_role_access
 
 memory_role_guard = check_role_access(MEMORY_API_ACTION_MAP, MEMORY_ROLE_RESOURCE_TYPE)
@@ -95,7 +95,7 @@ async def create_memory():
                 request.path,
             )
         if success:
-            _grant_memory_owner_permission(res["id"])
+            await thread_pool_exec(_grant_memory_owner_permission, res["id"])
             return get_json_result(message=True, data=res)
         else:
             return get_json_result(message=res, code=RetCode.SERVER_ERROR)

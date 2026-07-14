@@ -503,7 +503,9 @@ def test_create_service_paths(monkeypatch):
 
     _set_request_json(monkeypatch, module, dict(base_payload))
 
-    async def _thread_pool_ok(_func, servers, _timeout):
+    async def _thread_pool_ok(func, servers, _timeout):
+        if func is not module.get_mcp_tools:
+            return func(servers, _timeout)
         return {servers[0].name: [{"name": "tool_a"}, {"invalid": True}]}, None
 
     monkeypatch.setattr(module, "thread_pool_exec", _thread_pool_ok)
@@ -755,6 +757,8 @@ def test_import_multiple_mixed_results(monkeypatch):
     monkeypatch.setattr(module.MCPServerService, "get_by_name_and_tenant", _get_by_name_and_tenant)
 
     async def _thread_pool_exec(func, servers, _timeout):
+        if func is not module.get_mcp_tools:
+            return func(servers, _timeout)
         mcp_server = servers[0]
         if mcp_server.name == "tool_err":
             return None, "tool call failed"

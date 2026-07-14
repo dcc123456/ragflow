@@ -43,6 +43,17 @@ def _get_mcp_ids_from_args() -> list[str]:
     return [mcp_id for mcp_id in mcp_ids.split(",") if mcp_id]
 
 
+def _delete_mcp_permissions(tenant_id: str, mcp_id: str) -> None:
+    with DB.atomic():
+        permission_model_list = PermissionService.get_permissions_by_tenant_and_resource_id(
+            tenant_id=tenant_id,
+            resource_id=mcp_id,
+            resource_type=ResourceType.MCP,
+        )
+        if permission_model_list:
+            PermissionService.delete(permission_model_list)
+
+
 def _export_mcp_servers(mcp_ids: list[str]) -> dict | None:
     exported_servers = {}
     for mcp_id in mcp_ids:
@@ -120,6 +131,12 @@ def _grant_mcp_owner_permission(mcp_id: str, operator) -> None:
         logging.warning("Failed to create MCP permission change log for resource_id=%s: %s", mcp_id, exc)
 
 
+def _create_mcp_with_owner_permission(data: dict, operator) -> None:
+    with DB.atomic():
+        _insert_mcp_server(data)
+        _grant_mcp_owner_permission(data["id"], operator)
+
+
 @manager.route("/mcp/servers", methods=["GET"])  # noqa: F821
 @login_required
 async def list_mcp() -> Response:
@@ -134,12 +151,12 @@ async def list_mcp() -> Response:
 
     mcp_ids = _get_mcp_ids_from_args()
     try:
-        servers = MCPServerService.get_servers(current_user.id, mcp_ids, 0, 0, orderby, desc, keywords) or []
+        servers = await thread_pool_exec(MCPServerService.get_servers, current_user.id, mcp_ids, 0, 0, orderby, desc, keywords) or []
         total = len(servers)
 
         from api.db.services.user_service import UserTenantService
 
-        user_tenants = UserTenantService.query(user_id=current_user.id) or []
+        user_tenants = await thread_pool_exec(UserTenantService.query, user_id=current_user.id) or []
         for server in servers:
             tenant_id = server.get("tenant_id")
             if not tenant_id:
@@ -153,7 +170,8 @@ async def list_mcp() -> Response:
             for user_tenant in user_tenants:
                 if user_tenant.tenant_id != tenant_id:
                     continue
-                permission_info = has_permission_for_member(
+                permission_info = await thread_pool_exec(
+                    has_permission_for_member,
                     operator_id=user_tenant.id,
                     tenant_id=tenant_id,
                     resource_id=server["id"],
@@ -247,9 +265,7 @@ async def create() -> Response:
         _fill_mcp_timestamps(req)
 
         try:
-            with DB.atomic():
-                _insert_mcp_server(req)
-                _grant_mcp_owner_permission(req["id"], operator)
+            await thread_pool_exec(_create_mcp_with_owner_permission, req, operator)
         except ValueError as exc:
             return get_data_error_result(message=str(exc))
 
@@ -323,17 +339,14 @@ async def update(mcp_id: str) -> Response:
 @check_mcp_permission(PermissionValue.PERMISSION_OWNER)
 async def rm(mcp_id: str) -> Response:
     try:
-        e, mcp_server = MCPServerService.get_by_id(mcp_id)
+        e, mcp_server = await thread_pool_exec(MCPServerService.get_by_id, mcp_id)
         if not e:
             return get_data_error_result(message=f"Cannot find MCP server {mcp_id} for user {current_user.id}")
 
         # enterprise edition
-        with DB.atomic():
-            permission_model_list = PermissionService.get_permissions_by_tenant_and_resource_id(tenant_id=mcp_server.tenant_id, resource_id=mcp_id, resource_type=ResourceType.MCP)
-            if permission_model_list:
-                PermissionService.delete(permission_model_list)
+        await thread_pool_exec(_delete_mcp_permissions, mcp_server.tenant_id, mcp_id)
 
-        if not MCPServerService.delete_by_ids([mcp_id]):
+        if not await thread_pool_exec(MCPServerService.delete_by_ids, [mcp_id]):
             return get_data_error_result(message=f"Failed to delete MCP servers {[mcp_id]}")
 
         return get_json_result(data=True)
@@ -408,9 +421,7 @@ async def import_multiple() -> Response:
             _fill_mcp_timestamps(create_data)
 
             try:
-                with DB.atomic():
-                    _insert_mcp_server(create_data)
-                    _grant_mcp_owner_permission(create_data["id"], operator)
+                await thread_pool_exec(_create_mcp_with_owner_permission, create_data, operator)
                 result = {"server": server_name, "success": True, "action": "created", "id": create_data["id"], "new_name": new_name}
                 if new_name != base_name:
                     result["message"] = f"Renamed from '{base_name}' to '{new_name}' avoid duplication"
