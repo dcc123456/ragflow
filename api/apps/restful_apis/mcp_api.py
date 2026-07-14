@@ -426,7 +426,6 @@ async def import_multiple() -> Response:
 
 @manager.route("/mcp/servers/<mcp_id>/test", methods=["POST"])  # noqa: F821
 @login_required
-@check_mcp_permission(PermissionValue.PERMISSION_READ)
 @validate_request("url", "server_type")
 async def test_mcp(mcp_id: str) -> Response:
     req = await get_request_json()
