@@ -33,6 +33,7 @@ from api.utils.validation_utils import (
     validate_and_parse_request_args,
 )
 from common.constants import StatusEnum
+from common.misc_utils import thread_pool_exec
 from common.role_util import check_role_access, KB_API_ACTION_MAP, KB_ROLE_RESOURCE_TYPE
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.user_service import UserTenantService
@@ -405,7 +406,7 @@ async def update(dataset_id, tenant_id: str = None):
 @login_required
 @kb_role_guard
 @add_tenant_id_to_kwargs
-def list_datasets(tenant_id):
+async def list_datasets(tenant_id):
     """
     List datasets.
     ---
@@ -466,7 +467,7 @@ def list_datasets(tenant_id):
         return get_error_argument_result(err)
 
     try:
-        success, result = dataset_api_service.list_datasets(tenant_id, args)
+        success, result = await thread_pool_exec(dataset_api_service.list_datasets, tenant_id, args)
         if success:
             return get_result(data=result.get("data"), total=result.get("total"))
         else:
