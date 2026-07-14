@@ -55,6 +55,7 @@ export default {
   pointsOverview: `${webAPI}/billing/points/overview`,
   pointsLedger: `${webAPI}/billing/points/ledger`,
   pointsHolds: `${webAPI}/billing/points/holds`,
+  billingStatus: `${webAPI}/billing/status`,
   session: (sessionId: string) => `${webAPI}/billing/checkouts/${sessionId}`,
   billingSetupIntent: `${webAPI}/billing/setup-intents`,
 

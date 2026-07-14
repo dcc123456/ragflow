@@ -133,9 +133,6 @@ export default defineConfig(({ mode }) => {
     define: {
       // Expose to client code via import.meta.env
       'import.meta.env.API_PROXY_SCHEME': JSON.stringify(proxyScheme),
-      'import.meta.env.BILLING_ENABLED': JSON.stringify(
-        env.BILLING_ENABLED || '0',
-      ),
       // Keep backward compatibility
       __API_PROXY_SCHEME__: JSON.stringify(proxyScheme),
     },

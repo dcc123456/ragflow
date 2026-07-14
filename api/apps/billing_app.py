@@ -471,6 +471,12 @@ def _safe_payment_order_created_at(value, order_id: str = ""):
         return None
 
 
+@manager.route("/status", methods=["GET"])  # noqa: F821
+def billing_status():
+    """Return current billing enabled status - no auth required."""
+    return jsonify({"billing_enabled": settings.BILLING_ENABLED == 1})
+
+
 @manager.route("/downgrade-guard/health", methods=["GET"])  # noqa: F821
 def downgrade_guard_health():
     """Health check for the downgrade guard daemon."""
