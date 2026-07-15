@@ -28,6 +28,7 @@ import { useHandleFreedomChange } from './use-watch-change';
 
 interface LlmSettingFieldItemsProps {
   prefix?: string;
+  enabledPrefix?: string;
   modelTypes?: string[];
   llmId?: string;
   llmSelectTestId?: string;
@@ -74,6 +75,7 @@ export const LlmSettingSchema = {
 
 export function LlmSettingFieldItems({
   prefix,
+  enabledPrefix,
   modelTypes,
   llmSelectTestId,
   llmOptionTestIdPrefix,
@@ -106,7 +108,17 @@ export function LlmSettingFieldItems({
     [prefix],
   );
 
-  const handleChange = useHandleFreedomChange(getFieldWithPrefix);
+  const getCheckFieldWithPrefix = useCallback(
+    (name: string) => {
+      return `${enabledPrefix ?? ''}${name}`;
+    },
+    [enabledPrefix],
+  );
+
+  const handleChange = useHandleFreedomChange(
+    getFieldWithPrefix,
+    getCheckFieldWithPrefix,
+  );
 
   const parameterOptions = Object.values(ModelVariableType).map((x) => ({
     label: t(camelCase(x)),
@@ -193,7 +205,7 @@ export function LlmSettingFieldItems({
           {showFields.some((item) => item === 'temperature') && (
             <SliderInputSwitchFormField
               name={getFieldWithPrefix('temperature')}
-              checkName="temperatureEnabled"
+              checkName={getCheckFieldWithPrefix('temperatureEnabled')}
               label="temperature"
               max={1}
               step={0.01}
@@ -206,7 +218,7 @@ export function LlmSettingFieldItems({
           {showFields.some((item) => item === 'top_p') && (
             <SliderInputSwitchFormField
               name={getFieldWithPrefix('top_p')}
-              checkName="topPEnabled"
+              checkName={getCheckFieldWithPrefix('topPEnabled')}
               label="topP"
               max={1}
               step={0.01}
@@ -219,7 +231,7 @@ export function LlmSettingFieldItems({
           {showFields.some((item) => item === 'presence_penalty') && (
             <SliderInputSwitchFormField
               name={getFieldWithPrefix('presence_penalty')}
-              checkName="presencePenaltyEnabled"
+              checkName={getCheckFieldWithPrefix('presencePenaltyEnabled')}
               label="presencePenalty"
               max={1}
               step={0.01}
@@ -232,7 +244,7 @@ export function LlmSettingFieldItems({
           {showFields.some((item) => item === 'frequency_penalty') && (
             <SliderInputSwitchFormField
               name={getFieldWithPrefix('frequency_penalty')}
-              checkName="frequencyPenaltyEnabled"
+              checkName={getCheckFieldWithPrefix('frequencyPenaltyEnabled')}
               label="frequencyPenalty"
               max={1}
               step={0.01}
@@ -245,7 +257,7 @@ export function LlmSettingFieldItems({
           {showFields.some((item) => item === 'max_tokens') && (
             <SliderInputSwitchFormField
               name={getFieldWithPrefix('max_tokens')}
-              checkName="maxTokensEnabled"
+              checkName={getCheckFieldWithPrefix('maxTokensEnabled')}
               numberInputClassName="w-20"
               label="maxTokens"
               max={128000}
