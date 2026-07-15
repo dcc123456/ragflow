@@ -58,9 +58,9 @@ scrape_configs:
     static_configs:
       - targets: ['localhost:9104']
         labels:
-          instance: 'localhost:5455'
+          instance: 'localhost:3306'
           mysql_host: 'localhost'
-          mysql_port: '5455'
+          mysql_port: '3306'
     scrape_interval: 30s
     scrape_timeout: 10s
 
