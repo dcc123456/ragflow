@@ -611,21 +611,27 @@ class DocumentService(CommonService):
     @DB.connection_context()
     def get_unfinished_docs(cls):
         fields = [cls.model.id, cls.model.process_begin_at, cls.model.parser_config, cls.model.progress_msg, cls.model.run, cls.model.parser_id]
-        unfinished_task_query = Task.select(Task.doc_id).where((Task.progress >= 0) & (Task.progress < 1))
-        # DISTINCT is unnecessary inside an IN subquery and forces an avoidable
-        # temporary result while the document worker polls unfinished tasks.
-        docs_with_non_failed_tasks = Task.select(Task.doc_id).where(Task.progress >= 0)
+        base_document_condition = (
+            (cls.model.status == StatusEnum.VALID.value) & ~(cls.model.type == FileType.VIRTUAL.value) & (cls.model.run.is_null(True) | (cls.model.run != TaskStatus.CANCEL.value))
+        )
 
-        docs = cls.model.select(*fields).where(
-            cls.model.status == StatusEnum.VALID.value,
-            ~(cls.model.type == FileType.VIRTUAL.value),
-            ((cls.model.run.is_null(True)) | (cls.model.run != TaskStatus.CANCEL.value)),
-            (
-                ((cls.model.progress < 1) & (cls.model.progress > 0))
-                | (cls.model.id.in_(unfinished_task_query))
-                | ((cls.model.progress == -1) & (cls.model.run == TaskStatus.FAIL.value) & (cls.model.id.in_(docs_with_non_failed_tasks)))
-            ),
-        )  # including GraphRAG/RAPTOR/Mindmap; re-sync failed docs
+        # Find candidate document IDs through independent branches. This lets
+        # the document progress branch and task progress branch use their own
+        # indexes instead of forcing one large OR over document. The two task
+        # conditions share the same lower bound, so keep them in one branch to
+        # scan task only once.
+        progress_doc_ids = cls.model.select(cls.model.id.alias("id")).where(base_document_condition & (cls.model.progress < 1) & (cls.model.progress > 0))
+        task_doc_ids = (
+            cls.model.select(cls.model.id.alias("id"))
+            .join(Task, on=(Task.doc_id == cls.model.id))
+            .where(base_document_condition & (Task.progress >= 0) & ((Task.progress < 1) | ((cls.model.progress == -1) & (cls.model.run == TaskStatus.FAIL.value))))
+        )
+        candidate_doc_ids = progress_doc_ids.union(task_doc_ids).alias("candidate_doc_ids")
+
+        # The UNION operates on one ID column, so a document matching more
+        # than one branch is returned only once. Fetch the wide document
+        # fields only after the candidate IDs have been deduplicated.
+        docs = cls.model.select(*fields).join(candidate_doc_ids, on=(cls.model.id == candidate_doc_ids.c.id))
         return list(docs.dicts())
 
     @classmethod

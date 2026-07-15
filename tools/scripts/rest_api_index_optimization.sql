@@ -152,3 +152,10 @@ ALTER TABLE knowledgebase
 ALTER TABLE permission
   ADD INDEX idx_permission_user_resource
   (tenant_id, member_id, resource_type, status, resource_id, permission);
+
+ALTER TABLE task
+  ADD INDEX idx_task_progress_doc_id (progress, doc_id);
+
+ALTER TABLE document
+  ADD INDEX idx_document_status_progress_run_id
+  (status, progress, run, id);
