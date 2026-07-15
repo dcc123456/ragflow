@@ -2070,6 +2070,8 @@ def rabbitmq_callback(ch, method, properties, body):
         logging.info(f"handle_task done for task {json.dumps(task)}")
     except KeyboardInterrupt:
         return False  # Nack on interrupt
+    except TaskCanceledException as e:
+        logging.info(f"handle_task canceled for task {task_id}: {e}")
     except Exception as e:
         # Enhanced exception handling with detailed context
         try:
