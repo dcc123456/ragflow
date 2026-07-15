@@ -291,6 +291,7 @@ async def list_memory(filter_params: dict, keywords: str, page: int = 1, page_si
         else:
             memory["operator_permission"] = permission_map.get(memory["id"], PermissionValue.PERMISSION_NULL.value)
     [memory.update({"memory_type": get_memory_type_human(memory["memory_type"])}) for memory in memory_list]
+    memory_list.sort(key=lambda m: m["create_time"], reverse=True)
     return {"memory_list": memory_list, "total_count": count}
 
 
