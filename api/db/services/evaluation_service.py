@@ -74,6 +74,18 @@ class EvaluationService(CommonService):
                 max_version = max(max_version, int(version_str))
         return max_version + 1
 
+    @staticmethod
+    def _apply_target_config(dialog: Dialog, target_config: Dict[str, Any]) -> Dialog:
+        if not isinstance(target_config, dict):
+            return dialog
+        target_config = dict(target_config)
+        if "dataset_ids" in target_config:
+            target_config["kb_ids"] = target_config["dataset_ids"] or []
+        for k, v in target_config.items():
+            if hasattr(Dialog, k):
+                setattr(dialog, k, v)
+        return dialog
+
     # ==================== Collection Management ====================
 
     @classmethod
@@ -618,7 +630,7 @@ class EvaluationService(CommonService):
             run = EvaluationRun.get_by_id(run_id)
             if not run:
                 return False
-            if run.target_type != "dialog":
+            if run.target_type not in ["chat", "dialog"]:
                 return False
             ok, dialog = DialogService.get_by_id(run.target_id)
             if not ok:
@@ -632,6 +644,7 @@ class EvaluationService(CommonService):
             variable = case.variable or {}
             question = variable.get("question", "")
             messages = [{"role": "user", "content": question}]
+            dialog = cls._apply_target_config(dialog, run.config_snapshot.get("target", {}))
             answer, retrieved_chunks, execution_time = cls._execute_target(dialog, messages)
             result = cls._save_execution_result(run_id, case.id, answer, retrieved_chunks, execution_time)
             if not result:
@@ -775,9 +788,7 @@ class EvaluationService(CommonService):
                             if not ok2:
                                 raise LookupError("The chat is missing.")
                             try:
-                                for k, v in run.config_snapshot.get("target", {}).items():
-                                    if hasattr(Dialog, k):
-                                        setattr(dialog2, k, v)
+                                dialog2 = cls._apply_target_config(dialog2, run.config_snapshot.get("target", {}))
                             except Exception as e:
                                 logging.exception(e)
                             variable = ca.get("variable", {}) or {}
