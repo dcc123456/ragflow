@@ -111,12 +111,12 @@ class DocumentService(CommonService):
             docs = docs.where(cls.model.suffix.in_(suffix))
         if run:
             docs = docs.where(cls.model.run.in_(run))
+        count = docs.select(fn.COUNT(cls.model.id)).scalar()
+
         if desc:
             docs = docs.order_by(cls.model.getter_by(orderby).desc())
         else:
             docs = docs.order_by(cls.model.getter_by(orderby).asc())
-
-        count = docs.count()
         docs = docs.paginate(page_number, items_per_page)
 
         docs_list = list(docs.dicts())
@@ -177,7 +177,7 @@ class DocumentService(CommonService):
             if doc_ids_with_metadata:
                 docs = docs.where(cls.model.id.not_in(doc_ids_with_metadata))
 
-        count = docs.count()
+        count = docs.select(fn.COUNT(cls.model.id)).scalar()
         if desc:
             docs = docs.order_by(cls.model.getter_by(orderby).desc())
         else:
@@ -243,7 +243,7 @@ class DocumentService(CommonService):
             query = query.where(cls.model.suffix.in_(suffix))
 
         rows = query.select(cls.model.run, cls.model.suffix, cls.model.id)
-        total = rows.count()
+        total = query.select(fn.COUNT(cls.model.id)).scalar()
 
         suffix_counter = {}
         run_status_counter = {}
@@ -612,7 +612,9 @@ class DocumentService(CommonService):
     def get_unfinished_docs(cls):
         fields = [cls.model.id, cls.model.process_begin_at, cls.model.parser_config, cls.model.progress_msg, cls.model.run, cls.model.parser_id]
         unfinished_task_query = Task.select(Task.doc_id).where((Task.progress >= 0) & (Task.progress < 1))
-        docs_with_non_failed_tasks = Task.select(Task.doc_id).where(Task.progress >= 0).distinct()
+        # DISTINCT is unnecessary inside an IN subquery and forces an avoidable
+        # temporary result while the document worker polls unfinished tasks.
+        docs_with_non_failed_tasks = Task.select(Task.doc_id).where(Task.progress >= 0)
 
         docs = cls.model.select(*fields).where(
             cls.model.status == StatusEnum.VALID.value,

@@ -15,6 +15,8 @@
 #
 from typing import List
 
+from peewee import fn
+
 from api.db.db_models import DB, Memory, User
 from api.db.services import duplicate_name
 from api.db.services.common_service import CommonService
@@ -111,7 +113,7 @@ class MemoryService(CommonService):
             memories = memories.where(cls.model.storage_type == filter_dict["storage_type"])
         if keywords:
             memories = memories.where(cls.model.name.contains(keywords))
-        count = memories.count()
+        count = memories.select(fn.COUNT(cls.model.id)).scalar()
         memories = memories.order_by(cls.model.update_time.desc())
         memories = memories.paginate(page, page_size)
 

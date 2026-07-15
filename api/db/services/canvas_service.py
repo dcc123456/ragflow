@@ -30,7 +30,7 @@ from api.db.services.user_service import UserTenantService
 from common.misc_utils import get_uuid, thread_pool_exec
 from api.utils.api_utils import get_data_openai
 import tiktoken
-from peewee import JOIN, fn
+from peewee import JOIN, Value, fn
 from common.constants import StatusEnum
 from api.db import PermissionValue
 
@@ -148,14 +148,32 @@ class UserCanvasService(CommonService):
         include_owned_agents = not owner_scope_ids or user_id in owner_scope_ids
         shared_tenant_ids = [tenant_id for tenant_id in joined_tenant_ids if tenant_id != user_id]
 
+        shared_permission_query = None
         shared_permission_sq = None
         if shared_tenant_ids:
-            shared_permission_sq = PermissionService.build_user_resource_permission_subquery(
+            shared_permission_query = PermissionService.build_user_resource_permission_subquery(
                 user_id,
                 shared_tenant_ids,
                 ResourceType.CANVAS,
                 PermissionValue.PERMISSION_READ,
-            ).alias("shared_permission_sq")
+            )
+            shared_permission_sq = shared_permission_query.alias("shared_permission_sq")
+
+        # Keep owned and shared resources in separate UNION ALL branches so
+        # the outer canvas query does not need an owner/shared OR predicate.
+        visible_resource_sq = None
+        if include_owned_agents:
+            owned_resource_sq = cls.model.select(
+                cls.model.user_id.alias("tenant_id"),
+                cls.model.id.alias("resource_id"),
+                Value(PermissionValue.PERMISSION_OWNER.value).alias("operator_permission"),
+            ).where(cls.model.user_id == user_id)
+            if shared_permission_query is not None:
+                visible_resource_sq = owned_resource_sq.union_all(shared_permission_query).alias("visible_resource_sq")
+            else:
+                visible_resource_sq = owned_resource_sq.alias("visible_resource_sq")
+        elif shared_permission_sq is not None:
+            visible_resource_sq = shared_permission_sq
 
         fields = [
             cls.model.id,
@@ -171,28 +189,18 @@ class UserCanvasService(CommonService):
             cls.model.canvas_category,
             cls.model.tags,
         ]
-        if shared_permission_sq is not None:
-            fields.append(shared_permission_sq.c.operator_permission.alias("shared_operator_permission"))
+        if visible_resource_sq is not None:
+            fields.append(visible_resource_sq.c.operator_permission.alias("shared_operator_permission"))
 
         agents = cls.model.select(*fields).join(User, on=(cls.model.user_id == User.id))
-        if shared_permission_sq is not None:
+        if visible_resource_sq is not None:
             agents = agents.switch(cls.model).join(
-                shared_permission_sq,
-                JOIN.LEFT_OUTER,
-                on=((shared_permission_sq.c.resource_id == cls.model.id) & (shared_permission_sq.c.tenant_id == cls.model.user_id)),
+                visible_resource_sq,
+                on=((visible_resource_sq.c.resource_id == cls.model.id) & (visible_resource_sq.c.tenant_id == cls.model.user_id)),
             )
 
-        visible_condition = None
-        if include_owned_agents:
-            visible_condition = cls.model.user_id == user_id
-        if shared_permission_sq is not None:
-            shared_condition = shared_permission_sq.c.resource_id.is_null(False)
-            visible_condition = shared_condition if visible_condition is None else visible_condition | shared_condition
-
-        if visible_condition is None:
+        if visible_resource_sq is None:
             agents = agents.where(cls.model.id == "__ragflow_no_visible_canvas__")
-        else:
-            agents = agents.where(visible_condition)
 
         if keywords:
             agents = agents.where(fn.LOWER(cls.model.title).contains(keywords.lower()))
@@ -207,12 +215,12 @@ class UserCanvasService(CommonService):
                 wrapped = fn.CONCAT(",", cls.model.tags, ",")
                 clauses = [wrapped.contains(f",{t},") for t in tag_list]
                 agents = agents.where(reduce(or_, clauses))
+        count = agents.select(fn.COUNT(cls.model.id)).scalar()
+
         if desc:
             agents = agents.order_by(cls.model.getter_by(orderby).desc())
         else:
             agents = agents.order_by(cls.model.getter_by(orderby).asc())
-
-        count = agents.count()
         if page_number and items_per_page:
             agents = agents.paginate(page_number, items_per_page)
 

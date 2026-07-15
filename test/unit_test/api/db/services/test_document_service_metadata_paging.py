@@ -68,6 +68,9 @@ class _FakeQuery:
     def count(self):
         return len(self._all)
 
+    def select(self, *_args, **_kwargs):
+        return _FakeScalarQuery(len(self._all))
+
     def paginate(self, page, page_size):
         if page and page_size:
             start = (page - 1) * page_size
@@ -77,6 +80,14 @@ class _FakeQuery:
 
     def dicts(self):
         return list(self._current)
+
+
+class _FakeScalarQuery:
+    def __init__(self, value):
+        self._value = value
+
+    def scalar(self):
+        return self._value
 
 
 @pytest.fixture

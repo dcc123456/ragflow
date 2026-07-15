@@ -122,12 +122,12 @@ class SearchService(CommonService):
 
         if keywords:
             query = query.where(fn.LOWER(cls.model.name).contains(keywords.lower()))
+        count = query.select(fn.COUNT(cls.model.id)).scalar()
+
         if desc:
             query = query.order_by(cls.model.getter_by(orderby).desc())
         else:
             query = query.order_by(cls.model.getter_by(orderby).asc())
-
-        count = query.count()
 
         if page_number and items_per_page:
             query = query.paginate(page_number, items_per_page)
