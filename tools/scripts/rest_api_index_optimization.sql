@@ -144,3 +144,11 @@ ORDER BY table_name, index_name;
 -- ALTER TABLE billing_subscription
 --     ADD UNIQUE INDEX uq_billing_subscription_tenant (tenant_id),
 --     ALGORITHM=INPLACE, LOCK=NONE;
+
+ALTER TABLE knowledgebase
+  ADD INDEX idx_kb_tenant_status_update
+  (tenant_id, status, update_time);
+
+ALTER TABLE permission
+  ADD INDEX idx_permission_user_resource
+  (tenant_id, member_id, resource_type, status, resource_id, permission);

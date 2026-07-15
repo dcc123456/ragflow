@@ -25,7 +25,7 @@ from datetime import datetime
 from functools import partial
 from timeit import default_timer as timer
 from langfuse import Langfuse, propagate_attributes
-from peewee import JOIN, fn
+from peewee import Value, fn
 from api.db import PermissionValue, ResourceType
 from common.constants import LLMType, ParserType, StatusEnum
 from api.db.db_models import DB, Dialog
@@ -234,15 +234,34 @@ class DialogService(CommonService):
         owner_scope_ids = set(joined_tenant_ids)
         include_owned_dialogs = not joined_tenant_ids or user_id in owner_scope_ids
         shared_tenant_ids = [tenant_id for tenant_id in joined_tenant_ids if tenant_id != user_id]
+        shared_permission_query = None
         shared_permission_sq = None
         # Owned dialogs are visible via tenant_id == user_id; permission scans are only for shared tenants.
         if shared_tenant_ids:
-            shared_permission_sq = PermissionService.build_user_resource_permission_subquery(
+            shared_permission_query = PermissionService.build_user_resource_permission_subquery(
                 user_id,
                 shared_tenant_ids,
                 ResourceType.DIALOG,
                 PermissionValue.PERMISSION_READ,
-            ).alias("shared_permission_sq")
+            )
+            shared_permission_sq = shared_permission_query.alias("shared_permission_sq")
+
+        # Build the visible-resource relation as two disjoint branches. This
+        # keeps the owner lookup and shared-permission lookup indexable and
+        # avoids an outer-table OR condition.
+        visible_resource_sq = None
+        if include_owned_dialogs:
+            owned_resource_sq = cls.model.select(
+                cls.model.tenant_id.alias("tenant_id"),
+                cls.model.id.alias("resource_id"),
+                Value(PermissionValue.PERMISSION_OWNER.value).alias("operator_permission"),
+            ).where((cls.model.tenant_id == user_id) & (cls.model.status == StatusEnum.VALID.value))
+            if shared_permission_query is not None:
+                visible_resource_sq = owned_resource_sq.union_all(shared_permission_query).alias("visible_resource_sq")
+            else:
+                visible_resource_sq = owned_resource_sq.alias("visible_resource_sq")
+        elif shared_permission_sq is not None:
+            visible_resource_sq = shared_permission_sq
 
         fields = [
             cls.model.id,
@@ -268,27 +287,16 @@ class DialogService(CommonService):
             cls.model.update_time,
             cls.model.create_time,
         ]
-        if shared_permission_sq is not None:
-            fields.append(shared_permission_sq.c.operator_permission.alias("shared_operator_permission"))
+        if visible_resource_sq is not None:
+            fields.append(visible_resource_sq.c.operator_permission.alias("shared_operator_permission"))
         dialogs = cls.model.select(*fields).join(User, on=(cls.model.tenant_id == User.id))
-        if shared_permission_sq is not None:
-            dialogs = dialogs.switch(cls.model).join(
-                shared_permission_sq,
-                JOIN.LEFT_OUTER,
-                on=((shared_permission_sq.c.resource_id == cls.model.id) & (shared_permission_sq.c.tenant_id == cls.model.tenant_id)),
-            )
-
-        visible_condition = None
-        if include_owned_dialogs:
-            visible_condition = cls.model.tenant_id == user_id
-        if shared_permission_sq is not None:
-            shared_condition = shared_permission_sq.c.resource_id.is_null(False)
-            visible_condition = shared_condition if visible_condition is None else visible_condition | shared_condition
-
-        if visible_condition is None:
+        if visible_resource_sq is None:
             dialogs = dialogs.where(cls.model.id == "__ragflow_no_visible_dialog__")
         else:
-            dialogs = dialogs.where(visible_condition)
+            dialogs = dialogs.switch(cls.model).join(
+                visible_resource_sq,
+                on=((visible_resource_sq.c.resource_id == cls.model.id) & (visible_resource_sq.c.tenant_id == cls.model.tenant_id)),
+            )
         if id:
             dialogs = dialogs.where(cls.model.id == id)
         if name:
@@ -296,12 +304,13 @@ class DialogService(CommonService):
         if keywords:
             dialogs = dialogs.where(fn.LOWER(cls.model.name).contains(keywords.lower()))
         dialogs = dialogs.where(cls.model.status == StatusEnum.VALID.value)
+
+        count = dialogs.select(fn.COUNT(cls.model.id)).scalar()
+
         if desc:
             dialogs = dialogs.order_by(cls.model.getter_by(orderby).desc())
         else:
             dialogs = dialogs.order_by(cls.model.getter_by(orderby).asc())
-
-        count = dialogs.count()
 
         if page_number and items_per_page:
             dialogs = dialogs.paginate(page_number, items_per_page)

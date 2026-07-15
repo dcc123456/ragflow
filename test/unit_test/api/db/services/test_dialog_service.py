@@ -146,6 +146,10 @@ class _FakeFn:
     def LOWER(field):
         return _FakeLowerField(field.field_name)
 
+    @staticmethod
+    def COUNT(_field):
+        return object()
+
 
 class _FakeQuery:
     def __init__(self, rows):
@@ -157,6 +161,11 @@ class _FakeQuery:
         if "on" in kwargs:
             on_expr = getattr(kwargs["on"], "expr", None)
         self.join_calls.append({"args": args, "kwargs": kwargs, "on_expr": on_expr})
+        joined_relation = args[0] if args else None
+        resource_rows = getattr(joined_relation, "_resource_rows", None)
+        if resource_rows is not None:
+            resource_keys = {(row["tenant_id"], row["resource_id"]) for row in resource_rows}
+            self._current = [row for row in self._current if (row.get("tenant_id"), row.get("id")) in resource_keys]
         return self
 
     def switch(self, *_args, **_kwargs):
@@ -178,6 +187,31 @@ class _FakeQuery:
     def count(self):
         return len(self._current)
 
+    def select(self, *_args, **_kwargs):
+        return _FakeScalarQuery(len(self._current))
+
+    def union_all(self, other):
+        owned_rows = [
+            {
+                "tenant_id": row.get("tenant_id"),
+                "resource_id": row.get("id"),
+                "operator_permission": PermissionValue.PERMISSION_OWNER.value,
+            }
+            for row in self._current
+        ]
+        return _FakeResourceSubquery(owned_rows + list(getattr(other, "_resource_rows", [])))
+
+    def alias(self, *_args, **_kwargs):
+        resource_rows = [
+            {
+                "tenant_id": row.get("tenant_id"),
+                "resource_id": row.get("id"),
+                "operator_permission": PermissionValue.PERMISSION_OWNER.value,
+            }
+            for row in self._current
+        ]
+        return _FakeResourceSubquery(resource_rows)
+
     def paginate(self, page_number, items_per_page):
         if page_number and items_per_page:
             start = (page_number - 1) * items_per_page
@@ -187,6 +221,14 @@ class _FakeQuery:
 
     def dicts(self):
         return [dict(row) for row in self._current]
+
+
+class _FakeScalarQuery:
+    def __init__(self, value):
+        self._value = value
+
+    def scalar(self):
+        return self._value
 
 
 class _FakeDialogModel:
@@ -235,8 +277,15 @@ class _FakeSubqueryColumns:
 class _FakeSubquery:
     c = _FakeSubqueryColumns()
 
+    def __init__(self, resource_rows=None):
+        self._resource_rows = list(resource_rows or [])
+
     def alias(self, *_args, **_kwargs):
         return self
+
+
+class _FakeResourceSubquery(_FakeSubquery):
+    pass
 
 
 def _dialog_row(dialog_id, tenant_id, *, name=None, create_time=None):
@@ -316,7 +365,7 @@ def dialog_service_env(monkeypatch):
                     "permission": permission_arg,
                 }
             )
-            return _FakeSubquery()
+            return _FakeSubquery(shared_permission_rows)
 
         monkeypatch.setattr(
             dialog_service.PermissionService,

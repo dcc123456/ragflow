@@ -631,14 +631,33 @@ class KnowledgebaseService(CommonService):
         include_owned_kbs = user_id in owner_scope_ids
         shared_tenant_ids = [tenant_id for tenant_id in joined_tenant_ids if tenant_id != user_id]
 
+        shared_permission_query = None
         shared_permission_sq = None
         if shared_tenant_ids:
-            shared_permission_sq = PermissionService.build_user_resource_permission_subquery(
+            shared_permission_query = PermissionService.build_user_resource_permission_subquery(
                 user_id,
                 shared_tenant_ids,
                 ResourceType.KB,
                 PermissionValue.PERMISSION_READ,
-            ).alias("shared_permission_sq")
+            )
+            shared_permission_sq = shared_permission_query.alias("shared_permission_sq")
+
+        # Build the visible-resource relation as two disjoint branches. This
+        # keeps the owner lookup and shared-permission lookup indexable and
+        # avoids an outer-table OR condition.
+        visible_resource_sq = None
+        if include_owned_kbs:
+            owned_resource_sq = cls.model.select(
+                cls.model.tenant_id.alias("tenant_id"),
+                cls.model.id.alias("resource_id"),
+                peewee.Value(PermissionValue.PERMISSION_OWNER.value).alias("operator_permission"),
+            ).where((cls.model.tenant_id == user_id) & (cls.model.status == StatusEnum.VALID.value))
+            if shared_permission_query is not None:
+                visible_resource_sq = owned_resource_sq.union_all(shared_permission_query).alias("visible_resource_sq")
+            else:
+                visible_resource_sq = owned_resource_sq.alias("visible_resource_sq")
+        elif shared_permission_sq is not None:
+            visible_resource_sq = shared_permission_sq
 
         fields = [
             cls.model.id,
@@ -659,28 +678,17 @@ class KnowledgebaseService(CommonService):
             User.avatar.alias("tenant_avatar"),
             cls.model.update_time,
         ]
-        if shared_permission_sq is not None:
-            fields.append(shared_permission_sq.c.operator_permission.alias("shared_operator_permission"))
+        if visible_resource_sq is not None:
+            fields.append(visible_resource_sq.c.operator_permission.alias("shared_operator_permission"))
 
         kbs = cls.model.select(*fields).join(User, on=(cls.model.tenant_id == User.id))
-        if shared_permission_sq is not None:
-            kbs = kbs.switch(cls.model).join(
-                shared_permission_sq,
-                JOIN.LEFT_OUTER,
-                on=((shared_permission_sq.c.resource_id == cls.model.id) & (shared_permission_sq.c.tenant_id == cls.model.tenant_id)),
-            )
-
-        visible_condition = None
-        if include_owned_kbs:
-            visible_condition = cls.model.tenant_id == user_id
-        if shared_permission_sq is not None:
-            shared_condition = shared_permission_sq.c.resource_id.is_null(False)
-            visible_condition = shared_condition if visible_condition is None else visible_condition | shared_condition
-
-        if visible_condition is None:
+        if visible_resource_sq is None:
             kbs = kbs.where(cls.model.id == "__ragflow_no_visible_kb__")
         else:
-            kbs = kbs.where(visible_condition)
+            kbs = kbs.switch(cls.model).join(
+                visible_resource_sq,
+                on=((visible_resource_sq.c.resource_id == cls.model.id) & (visible_resource_sq.c.tenant_id == cls.model.tenant_id)),
+            )
 
         if id:
             kbs = kbs.where(cls.model.id == id)
@@ -690,14 +698,15 @@ class KnowledgebaseService(CommonService):
             kbs = kbs.where(fn.LOWER(cls.model.name).contains(keywords.lower()))
         if parser_id:
             kbs = kbs.where(cls.model.parser_id == parser_id)
-        kbs = kbs.distinct().where(cls.model.status == StatusEnum.VALID.value)
+
+        kbs = kbs.where(cls.model.status == StatusEnum.VALID.value)
+
+        total = kbs.select(fn.COUNT(cls.model.id)).scalar()
 
         if desc:
             kbs = kbs.order_by(cls.model.getter_by(orderby).desc())
         else:
             kbs = kbs.order_by(cls.model.getter_by(orderby).asc())
-
-        total = kbs.count()
         kbs = kbs.paginate(page_number, items_per_page)
         kbs = list(kbs.dicts())
         for kb in kbs:
