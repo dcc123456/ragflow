@@ -32,8 +32,6 @@ ENV DEBIAN_FRONTEND=noninteractive
 # selenium:      libatk-bridge2.0-0                       chrome-linux64-121-0-6167-85
 # Building C extensions: libpython3-dev libgtk-4-1 libnss3 xdg-utils libgbm-dev
 RUN --mount=type=cache,id=ragflow_apt,target=/var/cache/apt,sharing=locked \
-    apt update && \
-    apt --no-install-recommends install -y ca-certificates; \
     if [ "$NEED_MIRROR" == "1" ]; then \
         # CI runners may inject a proxy whose TLS certificate is not trusted inside
         # the fresh Ubuntu base image yet. Keep the Ubuntu mirror on HTTP here so
@@ -45,9 +43,12 @@ RUN --mount=type=cache,id=ragflow_apt,target=/var/cache/apt,sharing=locked \
     echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache && \
     chmod 1777 /tmp && \
     apt update && \
-    apt install -y \
-    build-essential libglib2.0-0 libglx-mesa0 libgl1 pkg-config libicu-dev libgdiplus default-jdk libatk-bridge2.0-0 libpython3-dev libgtk-4-1 libnss3 xdg-utils libgbm-dev libjemalloc-dev gnupg unzip curl wget git vim less ghostscript pandoc texlive texlive-latex-extra texlive-xetex texlive-lang-chinese fonts-freefont-ttf fonts-noto-cjk postgresql-client rsync && \
-    rm -rf /var/lib/apt/lists/*
+    apt --no-install-recommends install -y ca-certificates \
+    build-essential  libicu-dev libpython3-dev libgbm-dev rsync \
+    libglib2.0-0 libglx-mesa0 libgl1 pkg-config libgdiplus default-jdk libatk-bridge2.0-0 \
+    libgtk-4-1 libnss3 xdg-utils libjemalloc-dev gnupg unzip curl wget git vim less \
+    ghostscript pandoc texlive texlive-latex-extra texlive-xetex texlive-lang-chinese \
+    fonts-freefont-ttf fonts-noto-cjk postgresql-client
 
 # Download resource from GitHub to /usr/share/infinity
 RUN mkdir -p /usr/share/infinity/resource && \
@@ -69,8 +70,7 @@ RUN --mount=type=cache,id=ragflow_apt,target=/var/cache/apt,sharing=locked \
     && apt -o Acquire::Retries=5 install -y openresty openresty-openssl3 \
     && ln -sf /usr/local/openresty/nginx/sbin/nginx /usr/sbin/nginx \
     && echo "/usr/local/openresty/openssl3/lib" > /etc/ld.so.conf.d/openresty-openssl3.conf \
-    && ldconfig \
-    && rm -rf /var/lib/apt/lists/*
+    && ldconfig
 
 # Install uv from ragflow_deps image
 RUN --mount=type=bind,from=infiniflow/ragflow_deps:latest,source=/,target=/deps \
@@ -102,8 +102,7 @@ RUN --mount=type=cache,id=ragflow_apt,target=/var/cache/apt,sharing=locked \
     apt purge -y nodejs npm && \
     apt autoremove -y && \
     apt update && \
-    apt install -y nodejs && \
-    rm -rf /var/lib/apt/lists/*
+    apt install -y nodejs
 
 RUN corepack enable
 
@@ -164,8 +163,7 @@ RUN --mount=type=cache,id=ragflow_apt,target=/var/cache/apt,sharing=locked \
     else \
         # x86_64 or others \
         ACCEPT_EULA=Y apt install -y unixodbc-dev msodbcsql17; \
-    fi && \
-    rm -rf /var/lib/apt/lists/* || \
+    fi || \
     { echo "Failed to install ODBC driver"; exit 1; }
 
 # Install Chrome and ChromeDriver for selenium (from ragflow_deps image)
@@ -204,7 +202,6 @@ WORKDIR /ragflow
 # Install build-only dependencies for compiling Python C extensions.
 # These are not inherited from base to keep the production image smaller.
 RUN --mount=type=cache,id=ragflow_apt,target=/var/cache/apt,sharing=locked \
-    apt update && \
     apt install -y build-essential libpython3-dev libicu-dev libgbm-dev && \
     rm -rf /var/lib/apt/lists/*
 

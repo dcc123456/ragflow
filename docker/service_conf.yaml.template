@@ -136,6 +136,12 @@ task_executor:
 nats:
   host: ${NATS_HOST:-0.0.0.0}
   port: ${NATS_PORT:-4222}
+otel:
+  host: ${OTEL_HOST:-0.0.0.0}
+  port: ${OTEL_PORT:-4318}
+  secure: false
+  sample_ratio: 1.0
+  stdout: false
 file_syncer:
   max_concurrent_syncs: 4
   sync_interval: 3
