@@ -188,6 +188,8 @@ KB_API_ACTION_MAP = {
 
 DIALOG_ROLE_RESOURCE_TYPE = ResourceTypeEnum.CHAT.value
 DIALOG_API_ACTION_MAP = {
+    "chatbot_completions": ActionEnum.READ,
+    "chatbots_inputs": ActionEnum.READ,
     "set_dialog": ActionEnum.WRITE,
     "get": ActionEnum.READ,
     "list_dialogs": ActionEnum.ENABLE,
@@ -212,6 +214,9 @@ DIALOG_API_ACTION_MAP = {
 
 CANVAS_ROLE_RESOURCE_TYPE = ResourceTypeEnum.AGENT.value
 CANVAS_API_ACTION_MAP = {
+    "agent_bot_completions": ActionEnum.WRITE,
+    "begin_inputs": ActionEnum.READ,
+    "agent_bot_logs": ActionEnum.READ,
     "templates": ActionEnum.READ,
     "rm": ActionEnum.WRITE,
     "save": ActionEnum.WRITE,
@@ -267,6 +272,11 @@ CANVAS_API_ACTION_MAP = {
 
 SEARCH_ROLE_RESOURCE_TYPE = ResourceTypeEnum.SEARCH.value
 SEARCH_API_ACTION_MAP = {
+    "ask_about_embedded": ActionEnum.READ,
+    "retrieval_test_embedded": ActionEnum.READ,
+    "related_questions_embedded": ActionEnum.READ,
+    "detail_share_embedded": ActionEnum.READ,
+    "mindmap": ActionEnum.READ,
     "create": ActionEnum.WRITE,
     "update": ActionEnum.WRITE,
     "detail": ActionEnum.READ,

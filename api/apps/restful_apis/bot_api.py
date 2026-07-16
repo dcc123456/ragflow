@@ -19,10 +19,11 @@ import re
 
 import logging
 
-from quart import Response, request
+from quart import Response, g, request
 
 from agent.canvas import Canvas
 from api.apps import AUTH_BETA, login_required
+from api.db import PermissionValue
 from api.db.services.api_service import API4ConversationService
 from api.db.services.canvas_service import UserCanvasService
 from api.db.services.canvas_service import completion as agent_completion
@@ -34,11 +35,11 @@ from api.db.services.llm_service import LLMBundle
 from api.db.services.user_service import TenantService
 from common.metadata_utils import apply_meta_data_filter
 from api.db.services.search_service import SearchService
-from api.db.services.user_service import UserTenantService
 from api.db.joint_services.tenant_model_service import get_tenant_default_model_by_type, resolve_model_config
 from common.misc_utils import thread_pool_exec
 from api.utils.api_utils import get_error_data_result, get_json_result, add_tenant_id_to_kwargs, get_result, get_request_json, server_error_response, validate_request
-from api.utils.permission_utils import filter_accessible_doc_ids_for_user
+from api.utils.permission_utils import check_canvas_permission, check_dialog_permission, check_search_permission, filter_accessible_doc_ids_for_user, resolve_kb_with_permission
+from common.role_util import CANVAS_API_ACTION_MAP, CANVAS_ROLE_RESOURCE_TYPE, DIALOG_API_ACTION_MAP, DIALOG_ROLE_RESOURCE_TYPE, SEARCH_API_ACTION_MAP, SEARCH_ROLE_RESOURCE_TYPE, check_role_access
 from rag.app.tag import label_question
 from rag.prompts.template import load_prompt
 from rag.prompts.generator import cross_languages, keyword_extraction
@@ -51,15 +52,21 @@ from api.utils.reference_metadata_utils import (
 
 logger = logging.getLogger(__name__)
 
+dialog_role_guard = check_role_access(DIALOG_API_ACTION_MAP, DIALOG_ROLE_RESOURCE_TYPE)
+canvas_role_guard = check_role_access(CANVAS_API_ACTION_MAP, CANVAS_ROLE_RESOURCE_TYPE)
+search_role_guard = check_role_access(SEARCH_API_ACTION_MAP, SEARCH_ROLE_RESOURCE_TYPE)
+
 
 @manager.route("/chatbots/<dialog_id>/completions", methods=["POST"])  # noqa: F821
 @login_required(auth_types=AUTH_BETA)
+@dialog_role_guard
+@check_dialog_permission(PermissionValue.PERMISSION_READ)
 @add_tenant_id_to_kwargs
 async def chatbot_completions(dialog_id, tenant_id=None):
     req = await get_request_json()
 
     exists, dialog = DialogService.get_by_id(dialog_id)
-    if not exists or getattr(dialog, "tenant_id", None) != tenant_id or str(getattr(dialog, "status", "")) != StatusEnum.VALID.value:
+    if not exists or str(getattr(dialog, "status", "")) != StatusEnum.VALID.value:
         logger.warning(
             "Denied chatbot access: reason=%s tenant_id=%s dialog_id=%s user_id=%s session_id=%s",
             "no access to this chatbot",
@@ -136,10 +143,12 @@ async def chatbot_completions(dialog_id, tenant_id=None):
 
 @manager.route("/chatbots/<dialog_id>/info", methods=["GET"])  # noqa: F821
 @login_required(auth_types=AUTH_BETA)
+@dialog_role_guard
+@check_dialog_permission(PermissionValue.PERMISSION_READ)
 @add_tenant_id_to_kwargs
 async def chatbots_inputs(dialog_id, tenant_id=None):
     exists, dialog = await thread_pool_exec(DialogService.get_by_id, dialog_id)
-    if not exists or getattr(dialog, "tenant_id", None) != tenant_id or str(getattr(dialog, "status", "")) != StatusEnum.VALID.value:
+    if not exists or str(getattr(dialog, "status", "")) != StatusEnum.VALID.value:
         request_args = getattr(request, "args", {}) or {}
         request_user_id = request_args.get("user_id") if hasattr(request_args, "get") else None
         request_session_id = request_args.get("session_id") if hasattr(request_args, "get") else None
@@ -165,16 +174,14 @@ async def chatbots_inputs(dialog_id, tenant_id=None):
 
 @manager.route("/agentbots/<agent_id>/completions", methods=["POST"])  # noqa: F821
 @login_required(auth_types=AUTH_BETA)
+@canvas_role_guard
+@check_canvas_permission(PermissionValue.PERMISSION_WRITE)
 @add_tenant_id_to_kwargs
 async def agent_bot_completions(agent_id, tenant_id=None):
     req = await get_request_json()
 
+    tenant_id = getattr(g, "tenant_id", tenant_id)
     if not await thread_pool_exec(UserCanvasService.accessible, agent_id, tenant_id):
-        logger.warning(
-            "agent_bot_completions access denied tenant_id=%s agent_id=%s",
-            tenant_id,
-            agent_id,
-        )
         return get_error_data_result(message=f"Can't find agent by ID: {agent_id}")
 
     if req.get("stream", True):
@@ -260,14 +267,12 @@ async def agent_bot_completions(agent_id, tenant_id=None):
 
 @manager.route("/agentbots/<agent_id>/inputs", methods=["GET"])  # noqa: F821
 @login_required(auth_types=AUTH_BETA)
+@canvas_role_guard
+@check_canvas_permission(PermissionValue.PERMISSION_READ)
 @add_tenant_id_to_kwargs
 async def begin_inputs(agent_id, tenant_id=None):
+    tenant_id = getattr(g, "tenant_id", tenant_id)
     if not await thread_pool_exec(UserCanvasService.accessible, agent_id, tenant_id):
-        logger.warning(
-            "begin_inputs access denied tenant_id=%s agent_id=%s",
-            tenant_id,
-            agent_id,
-        )
         return get_error_data_result(f"Can't find agent by ID: {agent_id}")
 
     e, cvs = await thread_pool_exec(UserCanvasService.get_by_id, agent_id)
@@ -280,15 +285,14 @@ async def begin_inputs(agent_id, tenant_id=None):
 
 @manager.route("/agentbots/<shared_id>/logs/<message_id>", methods=["GET"])  # noqa: F821
 @login_required(auth_types=AUTH_BETA)
+@canvas_role_guard
+@check_canvas_permission(PermissionValue.PERMISSION_READ)
 @add_tenant_id_to_kwargs
 async def agent_bot_logs(shared_id, message_id, tenant_id=None):
+    tenant_id = getattr(g, "tenant_id", tenant_id)
     if not await thread_pool_exec(UserCanvasService.accessible, shared_id, tenant_id):
-        logger.warning(
-            "agent bot logs access denied tenant_id=%s agent_id=%s",
-            tenant_id,
-            shared_id,
-        )
         return get_error_data_result(f"Can't find agent by ID: {shared_id}")
+
     from rag.utils.redis_conn import REDIS_CONN
 
     try:
@@ -304,12 +308,18 @@ async def agent_bot_logs(shared_id, message_id, tenant_id=None):
 
 @manager.route("/searchbots/ask", methods=["POST"])  # noqa: F821
 @login_required(auth_types=AUTH_BETA)
+@search_role_guard
+@check_search_permission(PermissionValue.PERMISSION_READ)
 @add_tenant_id_to_kwargs
 @validate_request("question", "kb_ids")
 async def ask_about_embedded(tenant_id=None):
     req = await get_request_json()
     uid = tenant_id
     operator_user_id = req.pop("user_id", None) or uid
+
+    kb_error = await _check_kb_read_access(operator_user_id, req.get("kb_ids", []))
+    if kb_error:
+        return get_error_data_result(message=kb_error, code=RetCode.PERMISSION_ERROR)
 
     search_id = req.get("search_id", "")
     search_config = {}
@@ -341,6 +351,8 @@ async def ask_about_embedded(tenant_id=None):
 
 @manager.route("/searchbots/retrieval_test", methods=["POST"])  # noqa: F821
 @login_required(auth_types=AUTH_BETA)
+@search_role_guard
+@check_search_permission(PermissionValue.PERMISSION_READ)
 @add_tenant_id_to_kwargs
 @validate_request("kb_id", "question")
 async def retrieval_test_embedded(tenant_id=None):
@@ -353,6 +365,10 @@ async def retrieval_test_embedded(tenant_id=None):
         kb_ids = [kb_ids]
     if not kb_ids:
         return get_json_result(data=False, message="Please specify dataset firstly.", code=RetCode.DATA_ERROR)
+    operator_user_id = req.get("user_id") or tenant_id
+    kb_error = await _check_kb_read_access(operator_user_id, kb_ids)
+    if kb_error:
+        return get_error_data_result(message=kb_error, code=RetCode.PERMISSION_ERROR)
     doc_ids = req.get("doc_ids", [])
     similarity_threshold = float(req.get("similarity_threshold", 0.0))
     vector_similarity_weight = float(req.get("vector_similarity_weight", 0.3))
@@ -488,6 +504,8 @@ async def retrieval_test_embedded(tenant_id=None):
 
 @manager.route("/searchbots/related_questions", methods=["POST"])  # noqa: F821
 @login_required(auth_types=AUTH_BETA)
+@search_role_guard
+@check_search_permission(PermissionValue.PERMISSION_READ)
 @add_tenant_id_to_kwargs
 @validate_request("question")
 async def related_questions_embedded(tenant_id=None):
@@ -530,19 +548,14 @@ Related search terms:
 
 @manager.route("/searchbots/detail", methods=["GET"])  # noqa: F821
 @login_required(auth_types=AUTH_BETA)
+@search_role_guard
+@check_search_permission(PermissionValue.PERMISSION_READ)
 @add_tenant_id_to_kwargs
 async def detail_share_embedded(tenant_id=None):
     search_id = request.args["search_id"]
     if not tenant_id:
         return get_error_data_result(message="permission denined.")
     try:
-        tenants = await thread_pool_exec(UserTenantService.query, user_id=tenant_id)
-        for tenant in tenants:
-            if await thread_pool_exec(SearchService.query, tenant_id=tenant.tenant_id, id=search_id):
-                break
-        else:
-            return get_json_result(data=False, message="Has no permission for this operation.", code=RetCode.OPERATING_ERROR)
-
         search = await thread_pool_exec(SearchService.get_detail, search_id)
         if not search:
             return get_error_data_result(message="Can't find this Search App!")
@@ -553,11 +566,17 @@ async def detail_share_embedded(tenant_id=None):
 
 @manager.route("/searchbots/mindmap", methods=["POST"])  # noqa: F821
 @login_required(auth_types=AUTH_BETA)
+@search_role_guard
+@check_search_permission(PermissionValue.PERMISSION_READ)
 @add_tenant_id_to_kwargs
 @validate_request("question", "kb_ids")
 async def mindmap(tenant_id=None):
     req = await get_request_json()
     operator_user_id = req.pop("user_id", None) or tenant_id
+
+    kb_error = await _check_kb_read_access(operator_user_id, req.get("kb_ids", []))
+    if kb_error:
+        return get_error_data_result(message=kb_error, code=RetCode.PERMISSION_ERROR)
 
     search_id = req.get("search_id", "")
     search_app = await thread_pool_exec(SearchService.get_detail, search_id) if search_id else {}
@@ -576,3 +595,14 @@ async def mindmap(tenant_id=None):
 
 def _resolve_reference_metadata(req, search_config=None):
     return resolve_reference_metadata_preferences(req, search_config)
+
+
+async def _check_kb_read_access(user_id, kb_ids):
+    """Ensure every dataset used by a bot endpoint is readable by the caller."""
+    if isinstance(kb_ids, str):
+        kb_ids = [kb_ids]
+    for kb_id in kb_ids or []:
+        _, error = await thread_pool_exec(resolve_kb_with_permission, user_id, kb_id, PermissionValue.PERMISSION_READ)
+        if error:
+            return error
+    return None

@@ -70,7 +70,13 @@ def _load_bot_api(monkeypatch, *, accessible, calls):
 
         return _gen()
 
-    _stub(monkeypatch, "quart", Response=lambda *a, **k: SimpleNamespace(headers=SimpleNamespace(add_header=lambda *aa, **kk: None)), request=SimpleNamespace())
+    _stub(
+        monkeypatch,
+        "quart",
+        Response=lambda *a, **k: SimpleNamespace(headers=SimpleNamespace(add_header=lambda *aa, **kk: None)),
+        g=SimpleNamespace(tenant_id="caller-tenant"),
+        request=SimpleNamespace(),
+    )
     _stub(monkeypatch, "api.apps", AUTH_BETA="beta", login_required=lambda *_a, **_k: lambda func: func)
     _stub(monkeypatch, "agent.canvas", Canvas=lambda *a, **k: SimpleNamespace(get_component_input_form=lambda _n: {}, get_prologue=lambda: "", get_mode=lambda: "agent"))
     _stub(monkeypatch, "api.db.db_models", APIToken=SimpleNamespace(query=lambda **_k: [SimpleNamespace(tenant_id="attacker-tenant")]))
@@ -110,6 +116,26 @@ def _load_bot_api(monkeypatch, *, accessible, calls):
         server_error_response=lambda exc: {"code": 500, "message": str(exc)},
         token_required=lambda func: func,
         validate_request=lambda *_a, **_k: lambda func: func,
+    )
+    _stub(
+        monkeypatch,
+        "api.utils.permission_utils",
+        check_canvas_permission=lambda *_a, **_k: lambda func: func,
+        check_dialog_permission=lambda *_a, **_k: lambda func: func,
+        check_search_permission=lambda *_a, **_k: lambda func: func,
+        filter_accessible_doc_ids_for_user=lambda *_a, **_k: ([], [], ""),
+        resolve_kb_with_permission=lambda *_a, **_k: (None, None),
+    )
+    _stub(
+        monkeypatch,
+        "common.role_util",
+        CANVAS_API_ACTION_MAP={},
+        CANVAS_ROLE_RESOURCE_TYPE=3,
+        DIALOG_API_ACTION_MAP={},
+        DIALOG_ROLE_RESOURCE_TYPE=2,
+        SEARCH_API_ACTION_MAP={},
+        SEARCH_ROLE_RESOURCE_TYPE=4,
+        check_role_access=lambda *_a, **_k: lambda func: func,
     )
     _stub(monkeypatch, "rag.app.tag", label_question=lambda *_a, **_k: None)
     _stub(monkeypatch, "rag.prompts.template", load_prompt=lambda *_a, **_k: "")

@@ -782,7 +782,7 @@ def check_canvas_permission(permission):
             else:  # GET, DELETE
                 req_data = request.args or {}
 
-            canvas_id = kwargs.get("canvas_id") or kwargs.get("agent_id") or req_data.get("id") or req_data.get("canvas_id") or req_data.get("agent_id")
+            canvas_id = kwargs.get("canvas_id") or kwargs.get("agent_id") or kwargs.get("shared_id") or req_data.get("id") or req_data.get("canvas_id") or req_data.get("agent_id")
 
             g.req_data = req_data
             g.canvas_id = canvas_id
