@@ -1,4 +1,6 @@
 import message from '@/components/ui/message';
+import { isBillingEnabled } from '@/services/billingStatus';
+import exposeApiService from '@/services/expose-api-service';
 import exposeModelProviderService from '@/services/expose-model-provider-service';
 import privateLLMService from '@/services/private-llm-service';
 import { useMutation, useQuery } from '@tanstack/react-query';
@@ -8,6 +10,7 @@ export const enum PrivateLLMApiAction {
   FetchIsAdmin = 'fetchIsAdmin',
   SetDefaultLlm = 'setDefaultLlm',
   FetchExposeModelProvider = 'fetchExposeModelProvider',
+  FetchExposeApi = 'fetchExposeApi',
 }
 
 export async function fetchEnableAdminQueryFn() {
@@ -70,6 +73,25 @@ export function useFetchExposeModelProvider() {
     queryKey: [PrivateLLMApiAction.FetchExposeModelProvider],
     initialData: false,
     queryFn: fetchExposeModelProviderQueryFn,
+  });
+
+  return { data, loading };
+}
+
+export async function fetchExposeApiQueryFn() {
+  const { data } = await exposeApiService.getExposeApi();
+  const enabled = data?.data?.enabled;
+  if (enabled === undefined || enabled === null) {
+    return isBillingEnabled();
+  }
+  return enabled === true;
+}
+
+export function useFetchExposeApi() {
+  const { data, isFetching: loading } = useQuery<boolean>({
+    queryKey: [PrivateLLMApiAction.FetchExposeApi],
+    initialData: isBillingEnabled(),
+    queryFn: fetchExposeApiQueryFn,
   });
 
   return { data, loading };

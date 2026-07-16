@@ -259,6 +259,10 @@ declare namespace AdminService {
       'expose_model_provider.enabled': 'bool';
     }>;
 
+    type ExposeApi = Utilities.DefineVariables<{
+      'expose_api.enabled': 'bool';
+    }>;
+
     type EmailVerification = Utilities.DefineVariables<{
       'email_verification.enabled': 'bool';
     }>;
@@ -341,6 +345,7 @@ declare namespace AdminService {
   type SystemVariables = SystemVariables.Basic &
     SystemVariables.notification &
     SystemVariables.ExposeModelProvider &
+    SystemVariables.ExposeApi &
     SystemVariables.EmailVerification &
     SystemVariables.SensitiveWordFilter &
     PrefixKeys<SystemVariables.Mail, 'mail'> &

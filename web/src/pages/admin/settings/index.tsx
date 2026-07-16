@@ -21,6 +21,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import Spotlight from '@/components/spotlight';
 
 import EmailVerificationFormGroup from './form-group/email-verification';
+import ExposeApiFormGroup from './form-group/expose-api';
 import ExposeModelProviderFormGroup from './form-group/expose-model-provider';
 import NotificationSettingsFormGroup from './form-group/notification';
 import SensitiveWordFilterFormGroup from './form-group/sensitive-word-filter';
@@ -36,6 +37,7 @@ const schema = z.object({
   notification: NotificationSettingsFormGroup.schema,
   sensitiveWordFilter: SensitiveWordFilterFormGroup.schema,
   exposeModelProvider: ExposeModelProviderFormGroup.schema,
+  exposeApi: ExposeApiFormGroup.schema,
   emailVerification: EmailVerificationFormGroup.schema,
 });
 
@@ -56,6 +58,7 @@ function AdminSettings() {
         SensitiveWordFilterFormGroup.mapValuesFromData(variables),
       exposeModelProvider:
         ExposeModelProviderFormGroup.mapValuesFromData(variables),
+      exposeApi: ExposeApiFormGroup.mapValuesFromData(variables),
       emailVerification:
         EmailVerificationFormGroup.mapValuesFromData(variables),
     };
@@ -116,6 +119,7 @@ function AdminSettings() {
                         ...ExposeModelProviderFormGroup.mapValuesToData(
                           data.exposeModelProvider,
                         ),
+                        ...ExposeApiFormGroup.mapValuesToData(data.exposeApi),
                         ...EmailVerificationFormGroup.mapValuesToData(
                           data.emailVerification,
                         ),
@@ -142,6 +146,8 @@ function AdminSettings() {
                     <SensitiveWordFilterFormGroup />
                     <hr className="border-border-button" />
                     <ExposeModelProviderFormGroup />
+                    <hr className="border-border-button" />
+                    <ExposeApiFormGroup />
                     <hr className="border-border-button" />
                     <EmailVerificationFormGroup />
                   </form>

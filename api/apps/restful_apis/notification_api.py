@@ -23,3 +23,12 @@ def get_expose_model_provider():
     if record:
         enabled = load_value_from_string(record.value, record.data_type)
     return get_json_result(data={"enabled": enabled})
+
+
+@manager.route("/expose_api", methods=["GET"])  # noqa: F821
+def get_expose_api():
+    record = SystemSettingsService.get_singleton_by_exact_name("expose_api.enabled")
+    enabled = None
+    if record:
+        enabled = load_value_from_string(record.value, record.data_type)
+    return get_json_result(data={"enabled": enabled})

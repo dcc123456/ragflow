@@ -10,6 +10,9 @@ export default {
   // expose model provider
   exposeModelProvider: `${restAPIv1}/expose_model_provider`,
 
+  // expose api
+  exposeApi: `${restAPIv1}/expose_api`,
+
   // user
   loginGetCaptcha: `${restAPIv1}/auth/password/forgot/captcha`,
   loginSendVerifyCode: `${restAPIv1}/auth/password/forgot/otp`,

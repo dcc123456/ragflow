@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { useLogout } from '@/hooks/use-login-request';
 import {
   useFetchEnableAdmin,
+  useFetchExposeApi,
   useFetchExposeModelProvider,
   useFetchIsAdmin,
 } from '@/hooks/use-private-llm-request';
@@ -100,6 +101,7 @@ export function SideBar() {
   const { data: isAdmin } = useFetchIsAdmin();
   const { data: enableAdmin } = useFetchEnableAdmin();
   const { data: exposeModelProvider } = useFetchExposeModelProvider();
+  const { data: exposeApi } = useFetchExposeApi();
 
   useEffect(() => {
     fetchSystemVersion();
@@ -120,7 +122,7 @@ export function SideBar() {
     return menus.filter((x) => {
       if (x.key === Routes.Api) {
         if (
-          (enableAdmin && isAdmin) ||
+          exposeApi ||
           (currentPlan?.plan_name &&
             [PriceName.Starter, PriceName.Pro].includes(
               currentPlan.plan_name as PriceName,
@@ -142,7 +144,7 @@ export function SideBar() {
 
       return x;
     });
-  }, [enableAdmin, isAdmin, exposeModelProvider, t, currentPlan]);
+  }, [enableAdmin, isAdmin, exposeModelProvider, exposeApi, t, currentPlan]);
 
   return (
     <aside className="shrink-0 w-16 md:w-[303px] bg-bg-base flex flex-col overflow-hidden">

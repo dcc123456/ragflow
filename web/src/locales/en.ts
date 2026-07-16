@@ -3674,6 +3674,13 @@ Important structured information may include: names, dates, locations, events, k
             enableModule: 'Enable',
           },
         },
+        exposeApi: {
+          title: 'Expose API',
+          description: 'Display the API page to non-admin users.',
+          fields: {
+            enableModule: 'Enable',
+          },
+        },
         emailVerification: {
           title: 'Email Verification',
           description:

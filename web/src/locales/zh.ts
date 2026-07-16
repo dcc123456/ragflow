@@ -3024,6 +3024,13 @@ Tokenizer 会根据所选方式将内容存储为对应的数据结构。`,
             fileSize: '文件大小不能超过 30 MiB',
           },
         },
+        exposeApi: {
+          title: '开放 API',
+          description: '向非管理员用户显示 API 页面。',
+          fields: {
+            enableModule: '启用',
+          },
+        },
       },
     },
 
