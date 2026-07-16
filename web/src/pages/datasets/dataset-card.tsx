@@ -2,9 +2,7 @@ import { HomeCard } from '@/components/home-card';
 import { MoreButton } from '@/components/more-button';
 import { SharedBadge } from '@/components/shared-badge';
 import { Card, CardContent } from '@/components/ui/card';
-import { Progress } from '@/components/ui/progress';
 import { useNavigatePage } from '@/hooks/logic-hooks/navigate-hooks';
-import { useTraceDuplicate } from '@/hooks/use-knowledge-request';
 import { IDataset } from '@/interfaces/database/dataset';
 import { ChevronRight } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -30,8 +28,6 @@ export function DatasetCard({
 }: DatasetCardProps) {
   const { t } = useTranslation();
   const { navigateToDataset } = useNavigatePage();
-  const { hasProgress = false, progress } = useTraceDuplicate(dataset.id);
-  // const { handleUnbindTask } = useUnBindTask();
 
   return (
     <HomeCard
@@ -40,46 +36,18 @@ export function DatasetCard({
         description: `${dataset.document_count} ${t('knowledgeDetails.files')}`,
       }}
       moreDropdown={
-        !hasProgress ? (
-          <DatasetDropdown
-            showDatasetRenameModal={showDatasetRenameModal}
-            showDatasetDuplicateModal={showDatasetDuplicateModal}
-            showPrivilegeModal={showPrivilegeModal}
-            dataset={dataset}
-          >
-            <MoreButton></MoreButton>
-          </DatasetDropdown>
-        ) : null
+        <DatasetDropdown
+          showDatasetRenameModal={showDatasetRenameModal}
+          showDatasetDuplicateModal={showDatasetDuplicateModal}
+          showPrivilegeModal={showPrivilegeModal}
+          dataset={dataset}
+        >
+          <MoreButton></MoreButton>
+        </DatasetDropdown>
       }
       sharedBadge={<SharedBadge>{dataset.nickname}</SharedBadge>}
-      // Prevent navigate to dataset details if is duplicating
-      onClick={hasProgress ? undefined : navigateToDataset(dataset.id)}
-    >
-      {hasProgress && (
-        <>
-          <p className="text-text-secondary">
-            {t('knowledgeList.duplicatingTip')}
-          </p>
-
-          <div className="flex items-center gap-2 text-text-primary">
-            <Progress className="h-1" value={progress * 100} />
-            <span>{`${(progress * 100).toFixed(0)}%`}</span>
-
-            {/* <Button
-              variant="danger"
-              size="icon"
-              className="
-                !border-none !bg-transparent p-0 size-auto
-                hover:text-colors-text-functional-danger
-                focus-visible:text-colors-text-functional-danger"
-              onClick={() => handleUnbindTask({ type: ProcessingType.clone })}
-            >
-              <LucideCircleX />
-            </Button> */}
-          </div>
-        </>
-      )}
-    </HomeCard>
+      onClick={navigateToDataset(dataset.id)}
+    ></HomeCard>
   );
 }
 
