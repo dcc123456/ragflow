@@ -144,6 +144,7 @@ dependencies = [
     "stripe==14.4.0",
     "zammad-py>=3.2.1",
     "peewee>=3.17.1,<4.0.0",
+    "langgraph==1.2.0",
     #    following modules aren't necessary
     #    "nltk==3.9.1",
     #    "numpy>=1.26.0,<2.0.0",

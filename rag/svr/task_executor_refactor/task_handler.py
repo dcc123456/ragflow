@@ -887,6 +887,7 @@ class TaskHandler:
             "content_with_weight",
             "page_num_int",
             "top_int",
+            "compile_kwd",
         ]
         order_by = OrderByExpr()
         order_by.asc("page_num_int")
@@ -899,7 +900,15 @@ class TaskHandler:
                     settings.docStoreConn.search,
                     select_fields,
                     [],
-                    {"doc_id": [doc_id], "available_int": 1},
+                    {
+                        "doc_id": [doc_id],
+                        "available_int": 1,
+                        # Compilation writes its output back to the same
+                        # document index. Exclude those rows in the query so
+                        # they cannot change offset pagination while this
+                        # task is still streaming source chunks.
+                        "must_not": {"exists": "compile_kwd"},
+                    },
                     [],
                     order_by,
                     offset,

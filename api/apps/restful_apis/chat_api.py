@@ -32,7 +32,7 @@ from api.apps.restful_apis._generation_params import merge_generation_config, po
 from api.db.joint_services.tenant_model_service import get_api_key, get_tenant_default_model_by_type, resolve_model_config
 from api.db.services.chunk_feedback_service import ChunkFeedbackService
 from api.db.services.conversation_service import ConversationService, structure_answer
-from api.db.services.dialog_service import DialogService, async_chat, gen_mindmap
+from api.db.services.dialog_service import DialogService, async_chat, gen_mindmap, rag_agent
 from api.db.services.knowledgebase_service import KnowledgebaseService, validate_dataset_embedding_models
 from api.db.services.llm_service import LLMBundle
 from api.db.services.permission_service import PermissionChangeLogService, PermissionService
@@ -1547,7 +1547,7 @@ async def session_completion(chat_id_in_arg=""):
                     # start_to_think/end_to_think events.
                     legacy_answer = ""
                     final_answer = None
-                    async for ans in async_chat(dia, msg, True, user_id=operator_user_id, session_id=session_id, **req):
+                    async for ans in rag_agent(dia, msg, True, session_id=session_id, user_id=operator_user_id, **req):
                         ans = _format_answer(ans)
                         if ans.get("final"):
                             final_answer = ans
@@ -1584,7 +1584,7 @@ async def session_completion(chat_id_in_arg=""):
                         payload = _sanitize_json_floats({"code": 0, "message": "", "data": final_chunk})
                         yield "data:" + json.dumps(payload, ensure_ascii=False) + "\n\n"
                 else:
-                    async for ans in async_chat(dia, msg, True, user_id=operator_user_id, session_id=session_id, **req):
+                    async for ans in rag_agent(dia, msg, True, session_id=session_id, user_id=operator_user_id, **req):
                         ans = _format_answer(ans)
                         payload = _sanitize_json_floats({"code": 0, "message": "", "data": ans})
                         yield "data:" + json.dumps(payload, ensure_ascii=False) + "\n\n"
@@ -1604,7 +1604,7 @@ async def session_completion(chat_id_in_arg=""):
             return resp
 
         answer = None
-        async for ans in async_chat(dia, msg, False, user_id=operator_user_id, session_id=session_id, **req):
+        async for ans in async_chat(dia, msg, False, session_id=session_id, user_id=operator_user_id, **req):
             answer = _format_answer(ans)
             if conv is not None:
                 await thread_pool_exec(ConversationService.update_by_id, conv.id, conv.to_dict())
