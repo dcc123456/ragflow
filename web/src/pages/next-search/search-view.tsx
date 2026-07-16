@@ -5,13 +5,13 @@ import { FileIcon } from '@/components/icon-font';
 import { ImageWithPopover } from '@/components/image';
 import { Input } from '@/components/originui/input';
 import { SkeletonCard } from '@/components/skeleton-card';
+import { TopSelect } from '@/components/top-select';
 import { Button } from '@/components/ui/button';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { RAGFlowPagination } from '@/components/ui/ragflow-pagination';
 import { IReference } from '@/interfaces/database/chat';
 import { cn } from '@/lib/utils';
 import { isEmpty } from 'lodash';
@@ -28,6 +28,12 @@ import MindMapSheet from './mindmap-sheet';
 import { RAGFlowLogo } from './ragflow-logo';
 import RetrievalDocuments from './retrieval-documents';
 
+const formatMetadataValue = (value: unknown) => {
+  if (Array.isArray(value)) return value.join(', ');
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
+};
 export default function SearchingView({
   setIsSearching,
   searchData,
@@ -55,8 +61,8 @@ export default function SearchingView({
   chunks,
   total,
   handleSearch,
-  pagination,
-  onChange,
+  pageSize,
+  handleTopChange,
   showEmbedLogo,
 }: ISearchReturnProps & {
   setIsSearching?: Dispatch<SetStateAction<boolean>>;
@@ -177,8 +183,8 @@ export default function SearchingView({
             )}
             {/* retrieval documents */}
             {!isSearchStrEmpty && !sendingLoading && (
-              <>
-                <div className=" mt-3 w-44 ">
+              <section className="flex justify-start items-center gap-4">
+                <div className="w-44 ">
                   <RetrievalDocuments
                     selectedDocumentIds={selectedDocumentIds}
                     setSelectedDocumentIds={setSelectedDocumentIds}
@@ -188,8 +194,16 @@ export default function SearchingView({
                     }}
                   ></RetrievalDocuments>
                 </div>
-                {/* <div className="w-full border-b border-border-default/80 my-6"></div> */}
-              </>
+                <div className="w-44">
+                  <TopSelect
+                    value={pageSize}
+                    onChange={handleTopChange}
+                  ></TopSelect>
+                </div>
+                <span className="ml-auto text-sm text-text-secondary pr-2">
+                  {t('common.total')}: {total}
+                </span>
+              </section>
             )}
             <div className="mt-3 ">
               {chunks?.length > 0 && (
@@ -205,9 +219,29 @@ export default function SearchingView({
                               ></ImageWithPopover>
                             )}
                             <HighLightMarkdown>
-                              {chunk.highlight || chunk.content_with_weight}
+                              {chunk.content_with_weight}
                             </HighLightMarkdown>
                           </div>
+                          {chunk.document_metadata &&
+                            Object.keys(chunk.document_metadata).length > 0 && (
+                              <div className="flex flex-wrap gap-2 mt-2">
+                                {Object.entries(chunk.document_metadata).map(
+                                  ([key, value]) => (
+                                    <div
+                                      key={key}
+                                      className="text-xs border border-border-default rounded px-2 py-1"
+                                    >
+                                      <span className="text-text-secondary">
+                                        {key}:
+                                      </span>{' '}
+                                      <span className="text-text-primary">
+                                        {formatMetadataValue(value)}
+                                      </span>
+                                    </div>
+                                  ),
+                                )}
+                              </div>
+                            )}
                           <div
                             className="flex gap-2 items-center text-xs text-text-secondary border p-1 rounded-lg w-fit mt-3"
                             onClick={() =>
@@ -266,17 +300,6 @@ export default function SearchingView({
                 </div>
               )}
           </div>
-
-          {total > 0 && (
-            <div className="mt-8 px-8 pb-8 text-base">
-              <RAGFlowPagination
-                current={pagination.current}
-                pageSize={pagination.pageSize}
-                total={total}
-                onChange={onChange}
-              ></RAGFlowPagination>
-            </div>
-          )}
 
           {!mindMapVisible &&
             !isFirstRender &&

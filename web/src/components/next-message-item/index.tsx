@@ -26,6 +26,7 @@ import { getDirAttribute } from '@/utils/text-direction';
 import { isEmpty } from 'lodash';
 import { Atom, ChevronDown, ChevronUp } from 'lucide-react';
 import { DocumentDownloadButton } from '../document-download-button';
+import { LoadingDots } from '../loading-dots';
 import MarkdownContent from '../next-markdown-content';
 import { RAGFlowAvatar } from '../ragflow-avatar';
 import SvgIcon from '../svg-icon';
@@ -79,6 +80,7 @@ function MessageItem({
   children,
   showLog,
   isShare,
+  nickname,
 }: IProps) {
   const { theme } = useTheme();
   const isAssistant = item.role === MessageType.Assistant;
@@ -129,6 +131,8 @@ function MessageItem({
       return null;
     }
 
+    const hasCustomChildren = item.data && !!children;
+
     return (
       <div
         className={cn({
@@ -139,10 +143,10 @@ function MessageItem({
         })}
         dir={getDirAttribute(messageContent.replace(citationMarkerReg, ''))}
       >
-        {item.data ? (
+        {hasCustomChildren ? (
           children
         ) : sendLoading && isEmpty(messageContent) ? (
-          <>{!isShare && 'running...'}</>
+          <>{!isShare && <LoadingDots className="text-text-secondary" />}</>
         ) : (
           <MarkdownContent
             loading={loading}
@@ -186,7 +190,11 @@ function MessageItem({
         >
           {visibleAvatar &&
             (item.role === MessageType.User ? (
-              <RAGFlowAvatar avatar={avatar ?? '/logo.svg'} />
+              <RAGFlowAvatar
+                avatar={avatar ?? '/logo.svg'}
+                name={nickname}
+                isPerson
+              />
             ) : avatarDialog || agentName ? (
               <RAGFlowAvatar
                 avatar={avatarDialog as string}

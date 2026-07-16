@@ -39,12 +39,8 @@ class TestAuthorization:
     @pytest.mark.parametrize(
         "invalid_auth, expected_code, expected_message",
         [
-            (None, 0, "`Authorization` can't be empty"),
-            (
-                RAGFlowHttpApiAuth(INVALID_API_TOKEN),
-                109,
-                "Authentication error: API key is invalid!",
-            ),
+            (None, 401, "<Unauthorized '401: Unauthorized'>"),
+            (RAGFlowHttpApiAuth(INVALID_API_TOKEN), 401, "<Unauthorized '401: Unauthorized'>"),
         ],
     )
     def test_invalid_auth(self, invalid_auth, expected_code, expected_message):
@@ -111,9 +107,7 @@ class TestAddChunk:
             assert False, res
         chunks_count = res["data"]["doc"]["chunk_count"]
         res = add_chunk(HttpApiAuth, dataset_id, document_id, payload)
-        assert res["code"] == expected_code, (
-            f"Expected code: {expected_code}, got: {res['code']}, message: {res.get('message')}"
-        )
+        assert res["code"] == expected_code, f"Expected code: {expected_code}, got: {res['code']}, message: {res.get('message')}"
         if expected_code == 0:
             validate_chunk_details(dataset_id, document_id, payload, res)
             res = list_chunks(HttpApiAuth, dataset_id, document_id)

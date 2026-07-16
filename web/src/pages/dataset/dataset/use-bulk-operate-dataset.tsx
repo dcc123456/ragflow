@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useParams } from 'react-router';
 import { toast } from 'sonner';
 import { DocumentType, RunningStatus } from './constant';
 
@@ -34,6 +35,7 @@ export function useBulkOperateDataset({
     rowSelection,
     documents,
   );
+  const { id } = useParams();
 
   const { runDocumentByIds } = useRunDocument();
   const { setDocumentStatus } = useSetDocumentStatus();
@@ -85,9 +87,13 @@ export function useBulkOperateDataset({
 
   const onChangeStatus = useCallback(
     (enabled: boolean) => {
-      setDocumentStatus({ status: enabled, documentId: selectedRowKeys });
+      setDocumentStatus({
+        status: enabled,
+        documentId: selectedRowKeys,
+        datasetId: id!,
+      });
     },
-    [selectedRowKeys, setDocumentStatus],
+    [selectedRowKeys, setDocumentStatus, id],
   );
 
   const handleEnableClick = useCallback(() => {

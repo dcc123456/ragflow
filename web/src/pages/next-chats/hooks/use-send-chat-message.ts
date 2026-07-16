@@ -98,15 +98,18 @@ export const useSendMessage = (controller: AbortController) => {
     } & NextMessageInputOnPressEnterParameter) => {
       const sessionId = currentConversationId ?? conversationId;
       const res = await send(
-        api.completionUrl(chatId!, sessionId),
+        api.completionUrl,
         {
+          chat_id: chatId,
+          session_id: sessionId,
           messages: [
             ...(Array.isArray(messages) && messages?.length > 0
               ? messages
               : (derivedMessages ?? [])),
             message,
           ],
-          reasoning: enableThinking,
+          pass_all_history_messages: true,
+          reasoning: Number(enableThinking),
           internet: enableInternet,
         },
         controller,
@@ -144,7 +147,7 @@ export const useSendMessage = (controller: AbortController) => {
       enableThinking,
       enableInternet,
     }: NextMessageInputOnPressEnterParameter) => {
-      if (trim(value) === '') return;
+      if (trim(value) === '' || !done) return;
 
       const data = await createConversationBeforeSendMessage(value);
 
@@ -196,10 +199,10 @@ export const useSendMessage = (controller: AbortController) => {
     },
     [
       value,
+      done,
       createConversationBeforeSendMessage,
       addNewestQuestion,
       files,
-      done,
       clearFiles,
       setValue,
       sendMessage,

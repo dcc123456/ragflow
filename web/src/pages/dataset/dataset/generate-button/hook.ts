@@ -2,28 +2,27 @@ import message from '@/components/ui/message';
 import agentService from '@/services/agent-service';
 import {
   deletePipelineTask,
-  runGraphRag,
-  runRaptor,
-  traceGraphRag,
-  traceRaptor,
+  runIndex,
+  traceIndex,
 } from '@/services/knowledge-service';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { t } from 'i18next';
-import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router';
 import { ProcessingType } from '../../dataset-overview/dataset-common';
-import { GenerateType, GenerateTypeMap } from './generate';
-export const generateStatus = {
-  running: 'running',
-  completed: 'completed',
-  start: 'start',
-  failed: 'failed',
-};
+import { GenerateType, GenerateTypeMap, TraceType } from './constants';
 
 enum DatasetKey {
   generate = 'generate',
   pauseGenerate = 'pauseGenerate',
 }
+
+const PollIntervalMs = 5000;
+
+const DatasetGenerateKeys = {
+  trace: (type: GenerateType, id?: string, open?: boolean) =>
+    [type, id, open] as const,
+  traceById: (type: GenerateType, id?: string) => [type, id] as const,
+};
 
 export interface ITraceInfo {
   begin_at: string;
@@ -45,78 +44,87 @@ export interface ITraceInfo {
   update_time: number;
 }
 
+const useTraceQuery = (
+  type: GenerateType,
+  traceType: TraceType,
+  open: boolean,
+  id?: string,
+) => {
+  return useQuery<ITraceInfo>({
+    queryKey: DatasetGenerateKeys.trace(type, id, open),
+    gcTime: 0,
+    refetchInterval: (query) => {
+      const progress = query.state.data?.progress;
+      return progress != null && progress >= 0 && progress < 1
+        ? PollIntervalMs
+        : false;
+    },
+    retry: 3,
+    retryDelay: 1000,
+    enabled: open && !!id,
+    queryFn: async () => {
+      const { data } = await traceIndex(id!, traceType);
+      return data?.data ?? {};
+    },
+  });
+};
+
 export const useTraceGenerate = ({ open }: { open: boolean }) => {
   const { id } = useParams();
-  const [isLoopGraphRun, setLoopGraphRun] = useState(false);
-  const [isLoopRaptorRun, setLoopRaptorRun] = useState(false);
-  const { data: graphRunData, isFetching: graphRunloading } =
-    useQuery<ITraceInfo>({
-      queryKey: [GenerateType.KnowledgeGraph, id, open],
-      // initialData: {},
-      gcTime: 0,
-      refetchInterval: isLoopGraphRun ? 5000 : false,
-      retry: 3,
-      retryDelay: 1000,
-      enabled: open,
-      queryFn: async () => {
-        const { data } = await traceGraphRag(id);
-        return data?.data || {};
-      },
-    });
+  const { data: graphRunData, isFetching: graphRunLoading } = useTraceQuery(
+    GenerateType.KnowledgeGraph,
+    TraceType.Graph,
+    open,
+    id,
+  );
+  const { data: raptorRunData, isFetching: raptorRunLoading } = useTraceQuery(
+    GenerateType.Raptor,
+    TraceType.Raptor,
+    open,
+    id,
+  );
 
-  const { data: raptorRunData, isFetching: raptorRunloading } =
-    useQuery<ITraceInfo>({
-      queryKey: [GenerateType.Raptor, id, open],
-      // initialData: {},
-      gcTime: 0,
-      refetchInterval: isLoopRaptorRun ? 5000 : false,
-      retry: 3,
-      retryDelay: 1000,
-      enabled: open,
-      queryFn: async () => {
-        const { data } = await traceRaptor(id);
-        return data?.data || {};
-      },
-    });
+  const { data: artifactRunData, isFetching: artifactRunLoading } =
+    useTraceQuery(GenerateType.Artifact, TraceType.Artifact, open, id);
+  const { data: skillRunData, isFetching: skillRunLoading } = useTraceQuery(
+    GenerateType.ToSkills,
+    TraceType.Skill,
+    open,
+    id,
+  );
 
-  useEffect(() => {
-    setLoopGraphRun(
-      !!(
-        (graphRunData?.progress || graphRunData?.progress === 0) &&
-        graphRunData?.progress < 1 &&
-        graphRunData?.progress >= 0
-      ),
-    );
-  }, [graphRunData?.progress]);
-
-  useEffect(() => {
-    setLoopRaptorRun(
-      !!(
-        (raptorRunData?.progress || raptorRunData?.progress === 0) &&
-        raptorRunData?.progress < 1 &&
-        raptorRunData?.progress >= 0
-      ),
-    );
-  }, [raptorRunData?.progress]);
   return {
     graphRunData,
-    graphRunloading,
+    graphRunLoading,
     raptorRunData,
-    raptorRunloading,
+    raptorRunLoading,
+    artifactRunData,
+    artifactRunLoading,
+    skillRunData,
+    skillRunLoading,
   };
 };
 
 export const useUnBindTask = () => {
   const { id } = useParams();
+  const { t } = useTranslation();
+
   const { mutateAsync: handleUnbindTask } = useMutation({
     mutationKey: [DatasetKey.pauseGenerate],
-    mutationFn: async ({ type }: { type: ProcessingType }) => {
-      const { data } = await deletePipelineTask({ kb_id: id as string, type });
+    mutationFn: async ({
+      type,
+      wipe,
+    }: {
+      type: ProcessingType;
+      wipe?: boolean;
+    }) => {
+      const { data } = await deletePipelineTask({
+        kb_id: id as string,
+        type,
+        wipe,
+      });
       if (data.code === 0) {
         message.success(t('message.operated'));
-        // queryClient.invalidateQueries({
-        //   queryKey: [type],
-        // });
       }
       return data;
     },
@@ -127,6 +135,8 @@ export const useDatasetGenerate = () => {
   const queryClient = useQueryClient();
   const { id } = useParams();
   const { handleUnbindTask } = useUnBindTask();
+  const { t } = useTranslation();
+
   const {
     data,
     isPending: loading,
@@ -134,22 +144,25 @@ export const useDatasetGenerate = () => {
   } = useMutation({
     mutationKey: [DatasetKey.generate],
     mutationFn: async ({ type }: { type: GenerateType }) => {
-      const func =
-        type === GenerateType.KnowledgeGraph ? runGraphRag : runRaptor;
-      const { data } = await func(id);
+      const indexType =
+        type === GenerateType.KnowledgeGraph
+          ? TraceType.Graph
+          : type === GenerateType.Artifact
+            ? TraceType.Artifact
+            : type === GenerateType.ToSkills
+              ? TraceType.Skill
+              : TraceType.Raptor;
+      const { data } = await runIndex(id!, indexType);
       if (data.code === 0) {
         message.success(t('message.operated'));
         queryClient.invalidateQueries({
-          queryKey: [type],
+          queryKey: DatasetGenerateKeys.traceById(type, id),
         });
       }
       return data;
     },
   });
-  // const pauseGenerate = useCallback(() => {
-  //   // TODO: pause generate
-  //   console.log('pause generate');
-  // }, []);
+
   const { mutateAsync: pauseGenerate } = useMutation({
     mutationKey: [DatasetKey.pauseGenerate],
     mutationFn: async ({
@@ -161,13 +174,17 @@ export const useDatasetGenerate = () => {
     }) => {
       const { data } = await agentService.cancelDataflow(task_id);
 
+      // For GraphRAG, pause must preserve partial progress (subgraphs,
+      // entities, relations, community reports) so the next run_graphrag
+      // call can resume instead of redoing hours of LLM extraction. Raptor
+      // keeps the prior wipe-on-pause behaviour for now.
       const unbindData = await handleUnbindTask({
         type: GenerateTypeMap[type as GenerateType],
+        wipe: type === GenerateType.KnowledgeGraph ? false : undefined,
       });
       if (data.code === 0 && unbindData.code === 0) {
-        // message.success(t('message.operated'));
         queryClient.invalidateQueries({
-          queryKey: [type],
+          queryKey: DatasetGenerateKeys.traceById(type, id),
         });
       }
       return data;

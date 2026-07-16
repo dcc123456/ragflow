@@ -1,4 +1,5 @@
 import { FileUploadProps } from '@/components/file-upload';
+import { useHandleFilterSubmit } from '@/components/list-filter-bar/use-handle-filter-submit';
 import message from '@/components/ui/message';
 import { ChatSearchParams } from '@/constants/chat';
 import {
@@ -65,6 +66,7 @@ export const useFetchChatList = () => {
   const { searchString, handleInputChange } = useHandleSearchChange();
   const { pagination, setPagination } = useGetPaginationWithRouter();
   const debouncedSearchString = useDebounce(searchString, { wait: 500 });
+  const { filterValue, handleFilterSubmit } = useHandleFilterSubmit();
 
   const {
     data,
@@ -75,6 +77,7 @@ export const useFetchChatList = () => {
       ChatApiAction.FetchChatList,
       {
         debouncedSearchString,
+        filterValue,
         ...pagination,
       },
     ],
@@ -88,8 +91,10 @@ export const useFetchChatList = () => {
             keywords: debouncedSearchString,
             page_size: pagination.pageSize,
             page: pagination.current,
+            owner_ids: filterValue.owner,
           },
           data: {},
+          paramsSerializer: { indexes: null },
         },
         true,
       );
@@ -113,6 +118,8 @@ export const useFetchChatList = () => {
     handleInputChange: onInputChange,
     pagination: { ...pagination, total: data?.total },
     setPagination,
+    filterValue,
+    handleFilterSubmit,
   };
 };
 
@@ -492,9 +499,9 @@ export function useUploadAndParseFile() {
         formData.append('file', file);
         formData.append('conversation_id', conversationId || id);
 
-        const { data } = await chatService.uploadAndParse(
+        const { data } = await chatService.documentInfoUpload(
           {
-            url: api.uploadAndParse,
+            url: api.documentInfoUpload,
             signal: controller.current.signal,
             data: formData,
             onUploadProgress: ({ progress }) => {

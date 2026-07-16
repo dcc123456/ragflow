@@ -52,7 +52,14 @@ export const useNavigatePage = () => {
 
   const navigateToDataFile = useCallback(
     (id: string) => () => {
-      navigate(`${Routes.DatasetBase}${Routes.DatasetBase}/${id}`);
+      navigate(`${Routes.DatasetBase}${Routes.Files}/${id}`);
+    },
+    [navigate],
+  );
+
+  const navigateToCompilation = useCallback(
+    (id: string) => () => {
+      navigate(`${Routes.DatasetBase}${Routes.Compilation}/${id}`);
     },
     [navigate],
   );
@@ -197,6 +204,25 @@ export const useNavigatePage = () => {
     [navigate],
   );
 
+  const navigateToModelSetting = useCallback(() => {
+    navigate(`${Routes.UserSetting}${Routes.Model}`);
+  }, [navigate]);
+
+  const navigateToCompilationTemplates = useCallback(() => {
+    navigate(`${Routes.UserSetting}${Routes.CompilationTemplates}`);
+  }, [navigate]);
+
+  const navigateToCompilationTemplate = useCallback(
+    (id?: string) => () => {
+      if (id && id !== 'create') {
+        navigate(`${Routes.CompilationTemplatesCreateNext}/${id}`);
+      } else {
+        navigate(Routes.CompilationTemplatesCreateNext);
+      }
+    },
+    [navigate],
+  );
+
   return {
     navigateToDatasetList,
     navigateToDataset,
@@ -220,8 +246,12 @@ export const useNavigatePage = () => {
     navigateToOldProfile,
     navigateToDataflowResult,
     navigateToDataFile,
+    navigateToCompilation,
     navigateToDataSourceDetail,
     navigateToMemory,
     navigateToMemoryList,
+    navigateToModelSetting,
+    navigateToCompilationTemplates,
+    navigateToCompilationTemplate,
   };
 };

@@ -17,7 +17,7 @@ import { DocumentParserType, ParseType } from '@/constants/knowledge';
 import { useFetchKnowledgeBaseConfiguration } from '@/hooks/use-knowledge-request';
 import { IModalProps } from '@/interfaces/common';
 import { IParserConfig } from '@/interfaces/database/document';
-import { IChangeParserConfigRequestBody } from '@/interfaces/request/document';
+import { IChangeParserRequestBody } from '@/interfaces/request/document';
 import { MetadataType } from '@/pages/dataset/components/metedata/constant';
 import {
   AutoMetadata,
@@ -28,7 +28,6 @@ import {
 } from '@/pages/dataset/dataset-setting/configuration/common-item';
 import { zodResolver } from '@hookform/resolvers/zod';
 import omit from 'lodash/omit';
-import {} from 'module';
 import { useEffect, useMemo } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
@@ -38,6 +37,7 @@ import {
   AutoQuestionsFormField,
 } from '../auto-keywords-form-field';
 import { ChildrenDelimiterForm } from '../children-delimiter-form';
+import { CompilationTemplateFormField } from '../compilation-template-form-field';
 import { DataFlowSelect } from '../data-pipeline-select';
 import { DelimiterFormField } from '../delimiter-form-field';
 import { EntityTypesFormField } from '../entity-types-form-field';
@@ -56,10 +56,7 @@ import {
 
 const FormId = 'ChunkMethodDialogForm';
 
-interface IProps extends IModalProps<{
-  parserId: string;
-  parserConfig: IChangeParserConfigRequestBody;
-}> {
+interface IProps extends IModalProps<IChangeParserRequestBody> {
   loading: boolean;
   parserId: string;
   pipelineId?: string;
@@ -126,16 +123,19 @@ export function ChunkMethodDialog({
         mineru_formula_enable: z.boolean().optional(),
         mineru_table_enable: z.boolean().optional(),
         mineru_lang: z.string().optional(),
-        // raptor: z
-        //   .object({
-        //     use_raptor: z.boolean().optional(),
-        //     prompt: z.string().optional().optional(),
-        //     max_token: z.coerce.number().optional(),
-        //     threshold: z.coerce.number().optional(),
-        //     max_cluster: z.coerce.number().optional(),
-        //     random_seed: z.coerce.number().optional(),
-        //   })
-        //   .optional(),
+        raptor: z
+          .object({
+            use_raptor: z.boolean().optional(),
+            prompt: z.string().optional(),
+            max_token: z.coerce.number().optional(),
+            threshold: z.coerce.number().optional(),
+            max_cluster: z.coerce.number().optional(),
+            random_seed: z.coerce.number().optional(),
+            scope: z.string().optional(),
+            clustering_method: z.enum(['gmm', 'ahc']).optional(),
+            tree_builder: z.enum(['raptor', 'psi']).optional(),
+          })
+          .optional(),
         // graphrag: z.object({
         //   use_graphrag: z.boolean().optional(),
         // }),
@@ -153,6 +153,7 @@ export function ChunkMethodDialog({
           )
           .optional(),
         enable_metadata: z.boolean().optional(),
+        compilation_template_group_id: z.array(z.string()).optional(),
       }),
     })
     .superRefine((data, ctx) => {
@@ -248,7 +249,7 @@ export function ChunkMethodDialog({
         pipeline_id: pipelineId || '',
         parseType: pipelineId ? ParseType.Pipeline : ParseType.BuiltIn,
         parser_config: fillDefaultParserValue({
-          pages: pages.length > 0 ? pages : [{ from: 1, to: 1024 }],
+          pages: pages.length > 0 ? pages : [{ from: 1, to: 100000 }],
           ...omit(parserConfig, 'pages'),
           image_table_context_window:
             parserConfig?.image_table_context_window ??
@@ -300,6 +301,10 @@ export function ChunkMethodDialog({
             <div className="space-y-6">
               <ParseTypeItem />
               {parseType === ParseType.BuiltIn && <ChunkMethodItem />}
+
+              {parseType === ParseType.BuiltIn && (
+                <CompilationTemplateFormField></CompilationTemplateFormField>
+              )}
 
               {showPages && parseType === ParseType.BuiltIn && (
                 <DynamicPageRange />

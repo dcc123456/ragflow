@@ -33,7 +33,7 @@ export interface ISwitchForm {
 import { AgentCategory } from '@/constants/agent';
 import { Edge, Node } from '@xyflow/react';
 import { IReference, Message } from './chat';
-import { IKnowledge } from './knowledge';
+import { IDataset } from './dataset';
 
 export type DSLComponents = Record<string, IOperator>;
 
@@ -81,7 +81,8 @@ export declare interface IFlow {
   release?: boolean;
   release_time?: number;
   last_publish_time?: number;
-  datasets?: Pick<IKnowledge, 'id' | 'name' | 'avatar'>[];
+  datasets?: Pick<IDataset, 'id' | 'name' | 'avatar'>[];
+  tags?: string;
 }
 
 export interface IFlowTemplate {
@@ -265,7 +266,7 @@ export interface IAgentLogResponse {
   source: string;
   user_id: string;
   dsl: string;
-  reference: IReference;
+  reference: IReference[];
   name: string;
   version_title: string;
 }
@@ -297,6 +298,7 @@ export interface IPipeLineListRequest {
   orderby?: string;
   desc?: boolean;
   canvas_category?: AgentCategory;
+  ext?: string;
 }
 
 export interface GlobalVariableType {

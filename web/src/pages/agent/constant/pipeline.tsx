@@ -1,8 +1,6 @@
 import { ParseDocumentType } from '@/components/layout-recognize-form-field';
-import {
-  initialLlmBaseValues,
-  DataflowOperator as Operator,
-} from '@/constants/agent';
+import { initialLlmBaseValues, Operator } from '@/constants/agent';
+import { cloneDeep } from 'lodash';
 
 export enum FileType {
   PDF = 'pdf',
@@ -198,6 +196,7 @@ export const initialParserValues = {
       parse_method: ParseDocumentType.DeepDOC,
       preprocess: PreprocessValue.main_content,
       flatten_media_to_text: false,
+      remove_header_footer: false,
     },
     {
       fileFormat: FileType.Spreadsheet,
@@ -234,17 +233,21 @@ export const initialParserValues = {
       fileFormat: FileType.Html,
       output_format: TextJsonOutputFormat.Json,
       preprocess: PreprocessValue.main_content,
+      remove_header_footer: false,
     },
     {
       fileFormat: FileType.Doc,
       output_format: DocxOutputFormat.Json,
       preprocess: PreprocessValue.main_content,
+      flatten_media_to_text: false,
+      remove_header_footer: false,
     },
     {
       fileFormat: FileType.Docx,
       output_format: DocxOutputFormat.Json,
       preprocess: PreprocessValue.main_content,
       flatten_media_to_text: false,
+      remove_header_footer: false,
     },
     {
       fileFormat: FileType.PowerPoint,
@@ -273,7 +276,12 @@ export enum Hierarchy {
   H4 = '4',
   H5 = '5',
 }
-const rules = [
+
+export enum TitleChunkerMethod {
+  Hierarchy = 'hierarchy',
+  Group = 'group',
+}
+export const originalRules = [
   {
     // levels: [
     //   { expression: '^#[^#]' },
@@ -326,21 +334,18 @@ const rules = [
     ],
   },
 ];
+
 export const initialTitleChunkerValues = {
   outputs: {
     chunks: { type: 'Array<Object>', value: [] },
   },
-  method: 'hierarchy',
-  hierarchy: Hierarchy.H3,
+  method: TitleChunkerMethod.Hierarchy,
+  hierarchyHierarchy: Hierarchy.H3,
+  hierarchyGroup: '0',
   include_heading_content: false,
-  rules: rules,
-};
-
-export const initialGroupValues = {
-  method: 'group',
-  hierarchy: '0',
-  include_heading_content: false,
-  rules: rules,
+  root_chunk_as_heading: false,
+  hierarchyRules: cloneDeep(originalRules),
+  groupRules: cloneDeep(originalRules),
 };
 
 export const initialExtractorValues = {
@@ -351,7 +356,15 @@ export const initialExtractorValues = {
   },
 };
 
-export const NoDebugOperatorsList = [Operator.Begin];
+export const initialCompilationValues = {
+  ...initialLlmBaseValues,
+  compilation_template_group_ids: [],
+  outputs: {
+    chunks: { type: 'Array<Object>', value: [] },
+  },
+};
+
+export const NoDebugOperatorsList = [Operator.File];
 
 export const FileTypeSuffixMap = {
   [FileType.PDF]: ['pdf'],

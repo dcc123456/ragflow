@@ -1,5 +1,6 @@
-import Image from '@/components/image';
+import Image, { AuthenticatedImg } from '@/components/image';
 import SvgIcon from '@/components/svg-icon';
+import { MarkdownRemarkPlugins } from '@/constants/markdown-remark-plugins';
 import { IReference, IReferenceChunk } from '@/interfaces/database/chat';
 import { citationMarkerReg } from '@/utils/citation-utils';
 import { getExtension } from '@/utils/document-util';
@@ -10,8 +11,6 @@ import Markdown from 'react-markdown';
 import SyntaxHighlighter from 'react-syntax-highlighter';
 import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
-import remarkGfm from 'remark-gfm';
-import remarkMath from 'remark-math';
 import { visitParents } from 'unist-util-visit-parents';
 
 import { useTranslation } from 'react-i18next';
@@ -19,10 +18,12 @@ import { useTranslation } from 'react-i18next';
 import 'katex/dist/katex.min.css'; // `rehype-katex` does not import the CSS for you
 
 import { useFetchDocumentThumbnailsByIds } from '@/hooks/use-document-request';
+import { useLoadingPause } from '@/hooks/use-loading-pause';
 import {
   currentReg,
   parseCitationIndex,
   preprocessLaTeX,
+  replaceRetrievingToSection,
   replaceTextByOldReg,
   replaceThinkToSection,
 } from '@/utils/chat';
@@ -30,6 +31,7 @@ import classNames from 'classnames';
 import { omit } from 'lodash';
 import { pipe } from 'lodash/fp';
 import reactStringReplace from 'react-string-replace';
+import { LoadingDots } from '../loading-dots';
 import { Button } from '../ui/button';
 import {
   HoverCard,
@@ -40,11 +42,19 @@ import styles from './index.module.less';
 
 const getChunkIndex = (match: string) => parseCitationIndex(match);
 
+const formatMetadataValue = (value: unknown) => {
+  if (Array.isArray(value)) return value.join(', ');
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
+};
+
 // TODO: The display of the table is inconsistent with the display previously placed in the MessageItem.
 const MarkdownContent = ({
   reference,
   clickDocumentButton,
   content,
+  loading,
 }: {
   content: string;
   loading: boolean;
@@ -56,7 +66,7 @@ const MarkdownContent = ({
     useFetchDocumentThumbnailsByIds();
   const contentWithCursor = useMemo(() => {
     let text = DOMPurify.sanitize(content, {
-      ADD_TAGS: ['think', 'section'],
+      ADD_TAGS: ['think', 'section', 'details', 'summary', 'retrieving'],
       ADD_ATTR: ['class'],
     });
 
@@ -65,7 +75,11 @@ const MarkdownContent = ({
       text = t('chat.searching');
     }
     const nextText = replaceTextByOldReg(text);
-    return pipe(replaceThinkToSection, preprocessLaTeX)(nextText);
+    return pipe(
+      replaceThinkToSection,
+      replaceRetrievingToSection,
+      preprocessLaTeX,
+    )(nextText);
   }, [content, t]);
 
   useEffect(() => {
@@ -174,10 +188,25 @@ const MarkdownContent = ({
               className={classNames(styles.chunkContentText)}
               dir="auto"
             ></div>
+            {chunkItem?.document_metadata &&
+              Object.keys(chunkItem.document_metadata).length > 0 && (
+                <section className="space-y-1 border border-border-default rounded p-2">
+                  {Object.entries(chunkItem.document_metadata).map(
+                    ([key, value]) => (
+                      <div key={key} className="text-xs">
+                        <span className="text-text-secondary">{key}:</span>{' '}
+                        <span className="text-text-primary">
+                          {formatMetadataValue(value)}
+                        </span>
+                      </div>
+                    ),
+                  )}
+                </section>
+              )}
             {documentId && (
               <section className="flex gap-1">
                 {fileThumbnail ? (
-                  <img
+                  <AuthenticatedImg
                     src={fileThumbnail}
                     alt=""
                     className={styles.fileThumbnail}
@@ -234,12 +263,13 @@ const MarkdownContent = ({
   );
 
   const dir = getDirAttribute(content.replace(citationMarkerReg, ''));
+  const showLoadingDots = useLoadingPause(loading, content);
 
   return (
     <div dir={dir} className={styles.markdownContentWrapper}>
       <Markdown
-        rehypePlugins={[rehypeWrapReference, rehypeKatex, rehypeRaw]}
-        remarkPlugins={[remarkGfm, remarkMath]}
+        rehypePlugins={[rehypeRaw, rehypeWrapReference, rehypeKatex]}
+        remarkPlugins={MarkdownRemarkPlugins}
         components={
           {
             p: ({ children, ...props }: any) => <p {...props}>{children}</p>,
@@ -272,6 +302,9 @@ const MarkdownContent = ({
       >
         {contentWithCursor}
       </Markdown>
+      {showLoadingDots && (
+        <LoadingDots className="ml-1 inline-block text-text-secondary" />
+      )}
     </div>
   );
 };
