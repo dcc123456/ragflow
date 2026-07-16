@@ -29,6 +29,7 @@ import { useFindLlmByUuid } from '@/hooks/use-llm-request';
 import { useFetchUserInfo } from '@/hooks/use-user-setting-request';
 import { IClientConversation } from '@/interfaces/database/chat';
 import { buildMessageUuidWithRole } from '@/utils/chat';
+import { hasManagePermissionPermission } from '@/utils/permission-util';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { t } from 'i18next';
 import { isEmpty, omit, trim } from 'lodash';
@@ -133,6 +134,9 @@ const ChatCard = forwardRef(function ChatCard(
 
   const { data: userInfo } = useFetchUserInfo();
   const { data: currentDialog } = useFetchChat();
+  const canManageChat = hasManagePermissionPermission(
+    currentDialog.operator_permission ?? 0,
+  );
   const findLlmByUuid = useFindLlmByUuid();
 
   useSetDefaultModel(form);
@@ -253,8 +257,12 @@ const ChatCard = forwardRef(function ChatCard(
                   )}
                   // clickDocumentButton={clickDocumentButton}
                   index={i}
-                  removeMessageById={removeMessageById}
-                  regenerateMessage={regenerateMessage}
+                  removeMessageById={
+                    canManageChat ? removeMessageById : undefined
+                  }
+                  regenerateMessage={
+                    canManageChat ? regenerateMessage : undefined
+                  }
                   sendLoading={sendLoading}
                   clickDocumentButton={clickDocumentButton}
                 ></MessageItem>

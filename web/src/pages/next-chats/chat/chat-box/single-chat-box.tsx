@@ -7,6 +7,7 @@ import { useFetchChat, useGetChatSearchParams } from '@/hooks/use-chat-request';
 import { useFetchUserInfo } from '@/hooks/use-user-setting-request';
 import { IClientConversation } from '@/interfaces/database/chat';
 import { buildMessageUuidWithRole } from '@/utils/chat';
+import { hasManagePermissionPermission } from '@/utils/permission-util';
 import { useEffect } from 'react';
 import {
   useGetSendButtonDisabled,
@@ -45,6 +46,9 @@ export function SingleChatBox({
   } = useSendMessage(controller);
   const { data: userInfo } = useFetchUserInfo();
   const { data: currentDialog } = useFetchChat();
+  const canManageChat = hasManagePermissionPermission(
+    currentDialog.operator_permission ?? 0,
+  );
   const { createConversationBeforeUploadDocument } =
     useCreateConversationBeforeUploadDocument();
   const { conversationId } = useGetChatSearchParams();
@@ -113,8 +117,8 @@ export function SingleChatBox({
               )}
               clickDocumentButton={clickDocumentButton}
               index={i}
-              removeMessageById={removeMessageById}
-              regenerateMessage={regenerateMessage}
+              removeMessageById={canManageChat ? removeMessageById : undefined}
+              regenerateMessage={canManageChat ? regenerateMessage : undefined}
               sendLoading={sendLoading}
             />
           ))}
