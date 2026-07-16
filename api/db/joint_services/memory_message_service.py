@@ -33,7 +33,6 @@ from api.db.services.permission_service import PermissionService
 from api.db.services.user_service import UserTenantService
 from api.db.joint_services.tenant_model_service import resolve_model_config, get_model_config_by_id
 from api.utils.memory_utils import get_memory_type_human
-from api.utils.permission_utils import _permission_denied_message
 from memory.services.messages import MessageService
 from memory.services.query import MsgTextQuery, get_vector
 from memory.utils.prompt_util import PromptAssembler
@@ -412,11 +411,11 @@ async def queue_save_to_memory_task(memory_ids: list[str], message_dict: dict):
             continue
         memory_list.append(memory)
 
-    if unauthorized_memory:
-        return False, _permission_denied_message("Memory", PermissionValue.PERMISSION_WRITE)
-
     if not_found_memory:
         return False, f"Memory {not_found_memory} not found."
+
+    if not memory_list:
+        return True, "No writable memories; unauthorized memories were skipped."
 
     failed_memory = []
     for memory in memory_list:
@@ -463,6 +462,9 @@ async def queue_save_to_memory_task(memory_ids: list[str], message_dict: dict):
 
     if error_msg:
         return False, error_msg
+
+    if unauthorized_memory:
+        return True, f"All writable memories added; skipped unauthorized memories: {unauthorized_memory}."
 
     return True, "All add to task."
 

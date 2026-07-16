@@ -573,4 +573,15 @@ class Message(ComponentBase):
             user_id = self._canvas.globals.get("sys.user_id", "")
 
         message_dict = {"user_id": user_id, "agent_id": self._canvas._id, "session_id": self._canvas.task_id, "user_input": self._canvas.get_sys_query(), "agent_response": content}
-        return await queue_save_to_memory_task(self._param.memory_ids, message_dict)
+        try:
+            succeed, message = await queue_save_to_memory_task(self._param.memory_ids, message_dict)
+        except Exception as e:
+            self.set_output("_ERROR", str(e))
+            return False, str(e)
+
+        if message:
+            if not succeed:
+                self.set_output("_ERROR", str(message))
+            elif "unauthorized" in message.lower() or "no writable" in message.lower():
+                self.set_output("_WARNING", str(message))
+        return succeed, message

@@ -22,7 +22,6 @@ from api.db.services.canvas_service import UserCanvasService
 from api.db.services.task_service import TaskService
 from api.db.joint_services.memory_message_service import get_memory_size_cache, judge_system_prompt_is_default, queue_save_to_memory_task, query_message
 from api.utils.memory_utils import format_ret_data_from_memory, get_memory_type_human
-from api.utils.permission_utils import _permission_denied_message
 from api.constants import MEMORY_NAME_LIMIT, MEMORY_SIZE_LIMIT
 from memory.services.messages import MessageService
 from memory.utils.prompt_util import PromptAssembler
@@ -349,10 +348,11 @@ async def add_message(memory_ids: list[str], message_dict: dict):
         return False, "No authorization."
 
     permission_map = _memory_permission_map(message_user_id, PermissionValue.PERMISSION_WRITE)
-    if any(not _memory_accessible(memory, permission_map, PermissionValue.PERMISSION_WRITE) for memory in memory_list):
-        return False, _permission_denied_message("Memory", PermissionValue.PERMISSION_WRITE)
+    writable_memory_list = [memory for memory in memory_list if _memory_accessible(memory, permission_map, PermissionValue.PERMISSION_WRITE)]
+    if not writable_memory_list:
+        return True, "No writable memories; unauthorized memories were skipped."
 
-    return await queue_save_to_memory_task([memory.id for memory in memory_list], message_dict)
+    return await queue_save_to_memory_task([memory.id for memory in writable_memory_list], message_dict)
 
 
 async def forget_message(memory_id: str, message_id: int):
