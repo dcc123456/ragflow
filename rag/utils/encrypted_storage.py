@@ -185,7 +185,7 @@ class EncryptedStorageWrapper:
             return self.storage_impl.scan(bucket, fnm, tenant_id)
         return None
 
-    def copy(self, src_bucket, src_path, dest_bucket, dest_path):
+    def copy(self, src_bucket, src_path, dest_bucket, dest_path, tenant_id=None):
         """
         Copy object (if the original storage implementation has this method)
 
@@ -199,10 +199,10 @@ class EncryptedStorageWrapper:
             Copy result
         """
         if hasattr(self.storage_impl, "copy"):
-            return self.storage_impl.copy(src_bucket, src_path, dest_bucket, dest_path)
+            return self.storage_impl.copy(src_bucket, src_path, dest_bucket, dest_path, tenant_id)
         return False
 
-    def move(self, src_bucket, src_path, dest_bucket, dest_path):
+    def move(self, src_bucket, src_path, dest_bucket, dest_path, tenant_id=None):
         """
         Move object (if the original storage implementation has this method)
 
@@ -216,7 +216,7 @@ class EncryptedStorageWrapper:
             Move result
         """
         if hasattr(self.storage_impl, "move"):
-            return self.storage_impl.move(src_bucket, src_path, dest_bucket, dest_path)
+            return self.storage_impl.move(src_bucket, src_path, dest_bucket, dest_path, tenant_id)
         return False
 
     def remove_bucket(self, bucket):

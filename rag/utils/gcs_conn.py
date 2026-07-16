@@ -215,10 +215,10 @@ class RAGFlowGCS:
             logging.exception(f"Fail to copy {src_bucket}/{src_path} -> {dest_bucket}/{dest_path}")
             return False
 
-    def move(self, src_bucket, src_path, dest_bucket, dest_path):
+    def move(self, src_bucket, src_path, dest_bucket, dest_path, tenant_id=None):
         try:
-            if self.copy(src_bucket, src_path, dest_bucket, dest_path):
-                self.rm(src_bucket, src_path)
+            if self.copy(src_bucket, src_path, dest_bucket, dest_path, tenant_id):
+                self.rm(src_bucket, src_path, tenant_id)
                 return True
             else:
                 logging.error(f"Copy failed, move aborted: {src_bucket}/{src_path}")
