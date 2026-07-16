@@ -1740,7 +1740,7 @@ class CompilationTemplate(DataBaseModel):
 
     class Meta:
         db_table = "compilation_template"
-        indexes = ((("tenant_id", "name", "is_builtin", "status"), True),)
+        indexes = ((("tenant_id", "group_id", "name", "is_builtin", "status"), True),)
 
 
 class CompilationTemplateGroup(DataBaseModel):
@@ -2453,9 +2453,9 @@ def migrate_db():
     alter_db_add_column(migrator, "knowledgebase", "graphrag_task_id", CharField(max_length=32, null=True, help_text="Gragh RAG task ID", index=True))
     alter_db_add_column(migrator, "knowledgebase", "raptor_task_id", CharField(max_length=32, null=True, help_text="RAPTOR task ID", index=True))
     alter_db_add_column(migrator, "knowledgebase", "graphrag_task_finish_at", DateTimeField(null=True))
-    alter_db_add_column(migrator, "knowledgebase", "raptor_task_finish_at", CharField(null=True))
+    alter_db_add_column(migrator, "knowledgebase", "raptor_task_finish_at", DateTimeField(null=True))
     alter_db_add_column(migrator, "knowledgebase", "mindmap_task_id", CharField(max_length=32, null=True, help_text="Mindmap task ID", index=True))
-    alter_db_add_column(migrator, "knowledgebase", "mindmap_task_finish_at", CharField(null=True))
+    alter_db_add_column(migrator, "knowledgebase", "mindmap_task_finish_at", DateTimeField(null=True))
     alter_db_add_column(migrator, "knowledgebase", "artifact_task_id", CharField(max_length=32, null=True, help_text="Artifact compilation task ID", index=True))
     alter_db_add_column(migrator, "knowledgebase", "artifact_task_finish_at", DateTimeField(null=True))
     alter_db_add_column(migrator, "knowledgebase", "skill_task_id", CharField(max_length=32, null=True, help_text="Skill generation task ID", index=True))
