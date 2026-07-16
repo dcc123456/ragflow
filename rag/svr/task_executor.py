@@ -47,7 +47,6 @@ from api.utils.api_utils import is_strong_enough
 from common.connection_utils import timeout
 from common.settings import rout_key
 from common.metadata_utils import turn2jsonschema, update_metadata_to
-from common.time_utils import current_timestamp
 from rag.utils.base64_image import image2id
 from rag.utils.raptor_utils import (
     collect_raptor_chunk_ids,
@@ -86,8 +85,7 @@ from api.db.services.task_service import TaskService, has_canceled, CANVAS_DEBUG
 from api.db.services.file2document_service import File2DocumentService
 from api.db.joint_services.tenant_model_service import get_tenant_default_model_by_type, resolve_model_config, get_model_config_by_id, get_model_config_from_provider_instance
 from common.versions import get_ragflow_version
-from api.db.db_models import EvaluationRun, close_connection
-from common.evaluation_metrics import EvaluationRunStatus
+from api.db.db_models import close_connection
 from rag.app import laws, paper, presentation, manual, qa, table, book, resume, picture, naive, one, audio, email, tag
 from rag.nlp import search, rag_tokenizer, add_positions
 from rag.advanced_rag.knowlege_compile.raptor import (
@@ -1490,7 +1488,7 @@ async def do_handle_task(task):
                 timeout=((len(case_ids) if case_ids else cases_total) + 1) * (len(metrics_name) if metrics_name else 3) * 60,
             )
         except Exception:
-            EvaluationRun.update(status=EvaluationRunStatus.FAILED, complete_time=current_timestamp()).where(EvaluationRun.id == run_id).execute()
+            EvaluationService.fail_run_unless_canceled(run_id)
             raise
         return
 

@@ -68,9 +68,6 @@ from api.db.services.file2document_service import File2DocumentService
 from rag.prompts.generator import run_toc_from_text
 from common import settings
 from api.db.services.evaluation_service import EvaluationService
-from api.db.db_models import EvaluationRun
-from common.evaluation_metrics import EvaluationRunStatus
-from common.time_utils import current_timestamp
 from api.utils.api_utils import is_strong_enough
 from api.db.services.doc_metadata_service import DocMetadataService
 
@@ -327,7 +324,7 @@ class TaskHandler:
                 timeout=((len(case_ids) if case_ids else cases_total) + 1) * (len(metrics_name) if metrics_name else 3) * 60,
             )
         except Exception:
-            EvaluationRun.update(status=EvaluationRunStatus.FAILED, complete_time=current_timestamp()).where(EvaluationRun.id == run_id).execute()
+            EvaluationService.fail_run_unless_canceled(run_id)
             raise
 
     async def _run_reembedding(self, original_vector_size: int) -> None:

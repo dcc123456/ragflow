@@ -620,6 +620,22 @@ class EvaluationService(CommonService):
     def cancel_run_task(cls, run_id) -> Tuple[bool, str]:
         EvaluationRun.update(status=EvaluationRunStatus.CANCEL).where(EvaluationRun.id == run_id).execute()
 
+    @classmethod
+    @DB.connection_context()
+    def is_run_canceled(cls, run_id: str) -> bool:
+        run = EvaluationRun.get_or_none(EvaluationRun.id == run_id)
+        return bool(run and run.status == EvaluationRunStatus.CANCEL)
+
+    @classmethod
+    @DB.connection_context()
+    def fail_run_unless_canceled(cls, run_id: str) -> bool:
+        return (
+            EvaluationRun.update(status=EvaluationRunStatus.FAILED, complete_time=current_timestamp())
+            .where((EvaluationRun.id == run_id) & (EvaluationRun.status != EvaluationRunStatus.CANCEL))
+            .execute()
+            > 0
+        )
+
     # ==================== Evaluation Execution ====================
 
     @classmethod
@@ -755,7 +771,10 @@ class EvaluationService(CommonService):
                         raise LookupError("No matching test cases found for provided case_ids.")
                     test_cases = filtered
 
-                EvaluationRun.update(status=EvaluationRunStatus.RUNNING).where(EvaluationRun.id == run_id).execute()
+                if run.status == EvaluationRunStatus.CANCEL:
+                    return False
+                if EvaluationRun.update(status=EvaluationRunStatus.RUNNING).where((EvaluationRun.id == run_id) & (EvaluationRun.status != EvaluationRunStatus.CANCEL)).execute() <= 0:
+                    return False
                 total = len(test_cases)
                 if callback:
                     callback(prog=0.0, msg=f"Evaluation run started: {total} cases.")
@@ -784,6 +803,8 @@ class EvaluationService(CommonService):
 
                     def work():
                         with DB.connection_context():
+                            if cls.is_run_canceled(run_id):
+                                return
                             ok2, dialog2 = DialogService.get_by_id(target_id)
                             if not ok2:
                                 raise LookupError("The chat is missing.")
@@ -795,6 +816,8 @@ class EvaluationService(CommonService):
                             question = variable.get("question", "")
                             messages = [{"role": "user", "content": question}]
                             answer, retrieved_chunks, execution_time = cls._execute_target(dialog2, messages)
+                            if cls.is_run_canceled(run_id):
+                                return
                             cls._save_execution_result(run_id, ca["id"], answer, retrieved_chunks, execution_time)
                             if not cls.run_metrics_for_case(
                                 run_id,
@@ -807,6 +830,8 @@ class EvaluationService(CommonService):
                     await asyncio.to_thread(work)
 
                 async with done_lock:
+                    if cls.is_run_canceled(run_id):
+                        return
                     done_count += 1
                     if callback:
                         callback(prog=done_count / total)
@@ -822,14 +847,21 @@ class EvaluationService(CommonService):
 
             cls.recompute_metrics_summary(run_id)
             with DB.connection_context():
-                EvaluationRun.update(status=EvaluationRunStatus.COMPLETED, complete_time=current_timestamp()).where(EvaluationRun.id == run_id).execute()
+                if (
+                    EvaluationRun.update(status=EvaluationRunStatus.COMPLETED, complete_time=current_timestamp())
+                    .where((EvaluationRun.id == run_id) & (EvaluationRun.status != EvaluationRunStatus.CANCEL))
+                    .execute()
+                    <= 0
+                ):
+                    return False
             if callback:
                 callback(prog=1, msg="Done")
             return True
         except Exception as e:
             logging.error(f"Error executing run {run_id}: {e}")
-            with DB.connection_context():
-                EvaluationRun.update(status=EvaluationRunStatus.FAILED, complete_time=current_timestamp()).where(EvaluationRun.id == run_id).execute()
+            if cls.is_run_canceled(run_id):
+                return False
+            cls.fail_run_unless_canceled(run_id)
             if callback:
                 callback(prog=-1, msg=str(e))
             return False
