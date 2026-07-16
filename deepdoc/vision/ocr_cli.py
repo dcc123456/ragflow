@@ -104,8 +104,15 @@ class OCRClient:
             box = cls._normalize_box(item)
             if box:
                 result.append(box)
+        result = sorted(result, key=cls._box_sort_key)
         logging.info("_normalize_detect_output: produced %d boxes", len(result))
         return result
+
+    @classmethod
+    def _box_sort_key(cls, box):
+        ys = [p[1] for p in box]
+        xs = [p[0] for p in box]
+        return min(ys), min(xs)
 
     @classmethod
     def _normalize_box(cls, item):

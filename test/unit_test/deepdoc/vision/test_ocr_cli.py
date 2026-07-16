@@ -110,3 +110,24 @@ class TestOCRClientDetect:
                 ("", 0),
             )
         ]
+
+    def test_detect_sorts_boxes_top_to_bottom(self):
+        client = OCRClient("http://deepdoc")
+        client.session = mock.Mock()
+        client.session.post.return_value = _mock_response(
+            {
+                "output": [
+                    [
+                        [
+                            [[1.0, 80.0], [11.0, 80.0], [11.0, 88.0], [1.0, 88.0]],
+                            [[1.0, 10.0], [11.0, 10.0], [11.0, 18.0], [1.0, 18.0]],
+                            [[1.0, 40.0], [11.0, 40.0], [11.0, 48.0], [1.0, 48.0]],
+                        ]
+                    ]
+                ]
+            }
+        )
+
+        results = list(client.detect(np.zeros((100, 20, 3), dtype=np.uint8)))
+
+        assert [bbox[0][1] for bbox, _ in results] == [10.0, 40.0, 80.0]
