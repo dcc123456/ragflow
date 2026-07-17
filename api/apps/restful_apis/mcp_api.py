@@ -74,6 +74,12 @@ def _export_mcp_servers(mcp_ids: list[str]) -> dict | None:
     return {"mcpServers": exported_servers}
 
 
+def _mcp_detail_permission(req_data):
+    if req_data.get("mode") == "download":
+        return PermissionValue.PERMISSION_OWNER
+    return PermissionValue.PERMISSION_READ
+
+
 def _assert_mcp_url_is_safe(url, invalid_message: str = "Invalid url.") -> tuple[str, str, str | None]:
     if not isinstance(url, str) or not url:
         return "", "", invalid_message
@@ -193,7 +199,7 @@ async def list_mcp() -> Response:
 
 @manager.route("/mcp/servers/<mcp_id>", methods=["GET"])  # noqa: F821
 @login_required
-@check_mcp_permission(PermissionValue.PERMISSION_READ)
+@check_mcp_permission(_mcp_detail_permission)
 def detail(mcp_id: str) -> Response:
     try:
         if request.args.get("mode") == "download":

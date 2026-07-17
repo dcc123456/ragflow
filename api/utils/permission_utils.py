@@ -883,6 +883,7 @@ def check_mcp_permission(permission):
 
             g.req_data = req_data
             g.mcp_id = mcp_id
+            required_permission = permission(req_data) if callable(permission) else permission
 
             if not mcp_id:
                 if inspect.iscoroutinefunction(foo):
@@ -913,7 +914,7 @@ def check_mcp_permission(permission):
                     tenant_id=user_tenant.tenant_id,
                     resource_id=mcp_id,
                     resource_type=ResourceType.MCP,
-                    permission=permission,
+                    permission=required_permission,
                 )
                 if permission_info[0]:
                     g.tenant_id = user_tenant.tenant_id
@@ -925,7 +926,7 @@ def check_mcp_permission(permission):
 
             return get_json_result(
                 data=False,
-                message=_permission_denied_message("MCP server", permission),
+                message=_permission_denied_message("MCP server", required_permission),
                 code=RetCode.PERMISSION_ERROR,
             )
 
