@@ -16,7 +16,7 @@
 from peewee import fn
 
 from api.db import PermissionValue, ResourceType
-from api.db.db_models import DB, MCPServer, Permission
+from api.db.db_models import DB, MCPServer, Permission, User
 from api.db.services.common_service import CommonService
 from common.constants import StatusEnum
 
@@ -61,6 +61,7 @@ class MCPServerService(CommonService):
             cls.model.variables,
             cls.model.create_date,
             cls.model.update_date,
+            User.nickname,
         ]
 
         # Find MCP IDs shared with the user via Permission table
@@ -83,7 +84,7 @@ class MCPServerService(CommonService):
         if shared_mcp_ids:
             base_condition = base_condition | cls.model.id.in_(shared_mcp_ids)
 
-        query = cls.model.select(*fields).where(base_condition)
+        query = cls.model.select(*fields).join(User, on=((User.id == cls.model.tenant_id) & (User.status == StatusEnum.VALID.value))).where(base_condition)
 
         if id_list:
             query = query.where(cls.model.id.in_(id_list))
