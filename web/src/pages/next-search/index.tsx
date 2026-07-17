@@ -14,7 +14,11 @@ import SearchingPage from './searching';
 
 export default function SearchPage() {
   const [isSearching, setIsSearching] = useState(false);
-  const { data: SearchData } = useFetchSearchDetail();
+  const {
+    data: SearchData = {
+      search_config: { kb_ids: [] },
+    } as unknown as ISearchAppDetailProps,
+  } = useFetchSearchDetail();
 
   const [openSetting, setOpenSetting] = useState(false);
   const [searchText, setSearchText] = useState('');

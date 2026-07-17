@@ -129,7 +129,7 @@ export function useCanvasPresence() {
   // Compute sorted users
   const users = useMemo(() => {
     const presenceData = presence ?? emptyPresence;
-    return presenceData.users
+    return (presenceData.users ?? [])
       .map((user: ICanvasPresenceUser) => ({
         ...user,
         permission: Number(user.permission ?? 0),

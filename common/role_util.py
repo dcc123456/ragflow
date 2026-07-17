@@ -236,7 +236,7 @@ CANVAS_API_ACTION_MAP = {
     "setting": ActionEnum.WRITE,
     "trace": ActionEnum.READ,
     "presence_join": ActionEnum.WRITE,
-    "presence_heartbeat": ActionEnum.WRITE,
+    "presence_heartbeat": ActionEnum.READ,
     "presence_leave": ActionEnum.WRITE,
     "presence_list": ActionEnum.READ,
     "sessions": ActionEnum.READ,
