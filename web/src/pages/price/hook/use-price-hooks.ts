@@ -5,6 +5,10 @@ import {
   useFetchUserInfo,
 } from '@/hooks/use-user-setting-request';
 import { BillingQueryKey } from '@/pages/billing/constants/query-keys';
+import {
+  trackDirectPaymentAttempt,
+  useDirectPaymentStatus,
+} from '@/pages/billing/hook/use-direct-payment-status-request';
 import type { SessionData } from '@/pages/billing/hook/use-payment-status-request';
 import { isBillingEnabled } from '@/services/billingStatus';
 import billingService, {
@@ -22,6 +26,8 @@ import {
   IPlan,
   IPricePlanWithButton,
 } from '../interface';
+import { billingPaymentErrorTranslationKey } from '../payment-errors';
+import { openPaymentRedirectPreservingPage } from '../payment-redirect';
 import { showModal } from '../price-modal/show-modal';
 export type IChargePlan = {
   subscription_price_id?: string;
@@ -121,27 +127,6 @@ const publishDirectCheckoutResult = (res?: ICheckoutResult) => {
   );
 };
 
-const openPaymentRedirectPreservingPage = (redirectTo?: string) => {
-  if (!redirectTo) {
-    return;
-  }
-
-  const paymentWindow = window.open(redirectTo, '_blank');
-  try {
-    if (paymentWindow) {
-      paymentWindow.opener = null;
-    }
-  } catch {
-    // Ignore cross-origin opener hardening failures.
-  }
-  if (paymentWindow) {
-    window.close();
-    return;
-  }
-
-  window.location.href = redirectTo;
-};
-
 export const useCancelPlan = () => {
   const queryClient = useQueryClient();
   const {
@@ -174,7 +159,8 @@ export const useCancelPlan = () => {
     const result = await mutateAsync({ tenantId, targetPriceId });
     if (result?.code === 0) {
       if (result.data?.redirect_to) {
-        window.location.href = result.data.redirect_to;
+        openPaymentRedirectPreservingPage(result.data.redirect_to);
+        return result;
       }
       message.success(result.message);
       await queryClient.invalidateQueries({
@@ -189,7 +175,6 @@ export const useCancelPlan = () => {
 const useCharge = () => {
   const { data: tenantInfo } = useFetchTenantData();
   const { t } = useTranslation();
-  const queryClient = useQueryClient();
   const tenantId = tenantInfo?.tenant_id;
   const cachedCurrentPlan = storagePrivate.getPricePlan() as
     | ICurrentPlan
@@ -241,7 +226,8 @@ const useCharge = () => {
       if (data.code === 0) {
         return data.data as ICheckoutResult;
       }
-      throw new Error(data?.message || 'Modify subscription failed');
+      const errorType = data?.data?.error_type;
+      throw new Error(t(billingPaymentErrorTranslationKey(errorType)));
     },
   });
 
@@ -265,9 +251,7 @@ const useCharge = () => {
       message.error((error as Error)?.message || 'Modify subscription failed');
       return;
     }
-    if (chargeResult && chargeResult.redirect_to) {
-      window.location.href = chargeResult.redirect_to;
-    } else if (chargeResult && chargeResult.scheduled_change) {
+    if (chargeResult?.scheduled_change) {
       const effectiveAt = chargeResult?.scheduled_change?.effective_at;
       const modal = showModal({
         children: React.createElement(
@@ -304,36 +288,81 @@ const useCharge = () => {
         ),
       });
     } else if (chargeResult) {
-      publishDirectCheckoutResult(chargeResult);
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: [BillingQueryKey.CurrentPlan],
-        }),
-        queryClient.invalidateQueries({
-          queryKey: [BillingQueryKey.PlanOverview],
-        }),
-        queryClient.invalidateQueries({
-          queryKey: [BillingQueryKey.BaseOverview],
-        }),
-        queryClient.invalidateQueries({
-          queryKey: [BillingQueryKey.StorageCurrent],
-        }),
-        queryClient.invalidateQueries({
-          queryKey: [BillingQueryKey.PlanList],
-        }),
-      ]);
-      const amountText = formatCurrencyAmount(
-        chargeResult.amount_cents,
-        chargeResult.currency,
-      );
-      message.success(
-        amountText
-          ? `${t('price.paymentSuccessfulTip')} (${amountText})`
-          : t('price.paymentSuccessfulTip'),
-      );
+      trackDirectPaymentAttempt(chargeResult);
+      if (
+        chargeResult.payment_state === 'requires_action' &&
+        chargeResult.redirect_to
+      ) {
+        message.info(t('price.paymentVerificationRequired'));
+        openPaymentRedirectPreservingPage(chargeResult.redirect_to);
+      } else {
+        message.info(t('price.paymentProcessing'));
+      }
     }
   };
   return { data, loading, charge, checkout: mutateAsync };
+};
+
+export const useDirectPaymentConvergence = () => {
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const {
+    data: directPaymentData,
+    attempt: directPaymentAttempt,
+    clear: clearDirectPayment,
+  } = useDirectPaymentStatus();
+
+  useEffect(() => {
+    const payment = directPaymentData;
+    if (!payment) return;
+
+    if (payment.payment_state === 'failed') {
+      clearDirectPayment();
+      message.error(t('price.paymentFailedTip'));
+      return;
+    }
+    if (payment.payment_state !== 'paid' || !payment.entitlement_ready) {
+      return;
+    }
+
+    const result = {
+      ...directPaymentAttempt,
+      ...payment,
+      product_type: 'subscription' as const,
+    };
+    clearDirectPayment();
+    publishDirectCheckoutResult(result);
+    void Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: [BillingQueryKey.CurrentPlan],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: [BillingQueryKey.PlanOverview],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: [BillingQueryKey.BaseOverview],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: [BillingQueryKey.StorageCurrent],
+      }),
+      queryClient.invalidateQueries({ queryKey: [BillingQueryKey.PlanList] }),
+    ]);
+    const amountText = formatCurrencyAmount(
+      result.amount_cents,
+      result.currency,
+    );
+    message.success(
+      amountText
+        ? `${t('price.paymentSuccessfulTip')} (${amountText})`
+        : t('price.paymentSuccessfulTip'),
+    );
+  }, [
+    clearDirectPayment,
+    directPaymentAttempt,
+    directPaymentData,
+    queryClient,
+    t,
+  ]);
 };
 
 export const useHandleTrialUpgradeSetupRetry = (status: string | null) => {
@@ -395,25 +424,17 @@ export const useHandleTrialUpgradeSetupRetry = (status: string | null) => {
           quantity: planRetryPayload.quantity || '1',
           payment_type: planRetryPayload.payment_type,
         })
-          .then(async (res) => {
+          .then((res) => {
             localStorage.removeItem(TrialUpgradeSetupRetryKey);
 
-            if (res?.redirect_to) {
+            trackDirectPaymentAttempt(res);
+
+            if (res?.payment_state === 'requires_action' && res.redirect_to) {
+              message.info(t('price.paymentVerificationRequired'));
               openPaymentRedirectPreservingPage(res.redirect_to);
               return;
             }
-
-            await invalidateBillingQueries();
-            publishDirectCheckoutResult(res);
-            const amountText = formatCurrencyAmount(
-              res?.amount_cents,
-              res?.currency,
-            );
-            message.success(
-              amountText
-                ? `${t('price.paymentSuccessfulTip')} (${amountText})`
-                : t('price.paymentSuccessfulTip'),
-            );
+            message.info(t('price.paymentProcessing'));
           })
           .catch((error) => {
             localStorage.removeItem(TrialUpgradeSetupRetryKey);

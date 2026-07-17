@@ -102,6 +102,65 @@ def normalize_stripe_invoice_status(status: str) -> str:
     return "pending"
 
 
+PAYMENT_ACTION_REQUIRED_STATUSES = {
+    "requires_action",
+    "requires_confirmation",
+    "requires_payment_method",
+    "requires_source",
+    "requires_source_action",
+}
+PAYMENT_FAILED_INVOICE_STATUSES = {"uncollectible", "void"}
+PAYMENT_FAILED_INTENT_STATUSES = {"canceled"}
+PAYMENT_PENDING_INTENT_STATUSES = {"processing"}
+PAYMENT_FAILED_SUBSCRIPTION_STATUSES = {"canceled", "incomplete_expired", "paused"}
+PAYMENT_RECOVERABLE_SUBSCRIPTION_STATUSES = {"incomplete", "past_due", "unpaid"}
+PAYMENT_REQUIRED_SUBSCRIPTION_STATUSES = PAYMENT_RECOVERABLE_SUBSCRIPTION_STATUSES | PAYMENT_FAILED_SUBSCRIPTION_STATUSES
+
+
+def normalize_billing_payment_state(
+    *,
+    invoice_status: str = "",
+    payment_intent_status: str = "",
+    subscription_status: str = "",
+    amount_due: int | None = None,
+    scheduled: bool = False,
+) -> str:
+    """Return the canonical payment state from Stripe primitive fields."""
+    invoice_status = (invoice_status or "").strip().lower()
+    payment_intent_status = (payment_intent_status or "").strip().lower()
+    subscription_status = (subscription_status or "").strip().lower()
+
+    if scheduled:
+        return "scheduled"
+    if invoice_status in PAYMENT_FAILED_INVOICE_STATUSES or payment_intent_status in PAYMENT_FAILED_INTENT_STATUSES or subscription_status in PAYMENT_FAILED_SUBSCRIPTION_STATUSES:
+        return "failed"
+    if invoice_status == "paid" or payment_intent_status == "succeeded" or (amount_due is not None and amount_due <= 0):
+        return "paid"
+    if payment_intent_status in PAYMENT_ACTION_REQUIRED_STATUSES:
+        return "requires_action"
+    if payment_intent_status in PAYMENT_PENDING_INTENT_STATUSES:
+        return "pending"
+    if invoice_status == "open" and amount_due is not None and amount_due > 0:
+        return "requires_action"
+    if subscription_status in PAYMENT_RECOVERABLE_SUBSCRIPTION_STATUSES:
+        return "requires_action"
+    if subscription_status in {"active", "trialing"}:
+        return "paid"
+    return "pending"
+
+
+def subscription_payment_attention(subscription_status: str, invoice_url: str = "") -> dict[str, Any]:
+    """Adapt canonical state to the durable subscription recovery contract."""
+    status = (subscription_status or "").strip().lower()
+    recoverable = status in PAYMENT_RECOVERABLE_SUBSCRIPTION_STATUSES
+    return {
+        "payment_state": normalize_billing_payment_state(subscription_status=status),
+        "payment_required": status in PAYMENT_REQUIRED_SUBSCRIPTION_STATUSES,
+        "payment_recoverable": recoverable,
+        "payment_recovery_url": (invoice_url or "").strip() if recoverable else "",
+    }
+
+
 def usage_based_status_from_payment_status(status: str) -> str:
     if status == "success":
         return "active"

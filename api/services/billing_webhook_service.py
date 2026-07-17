@@ -193,6 +193,12 @@ def _sync_main_subscription_from_stripe(
     existing_price_id = (existing.get("price_id") or "").strip() if existing else ""
     plan_changed = bool(existing_price_id) and existing_price_id != (price_id or "").strip()
 
+    subscription_id = (get_attr_or_item(stripe_subscription, "id", "") or existing.get("subscription_id", "") or "").strip()
+    customer_id = (get_attr_or_item(stripe_subscription, "customer", "") or existing.get("customer_id", "") or "").strip()
+    stripe_status = _normalize_subscription_status(get_attr_or_item(stripe_subscription, "status", ""))
+    period_start, period_end = extract_subscription_period(stripe_subscription)
+    final_status = _normalize_subscription_status(subscription_status or stripe_status or existing.get("subscription_status"))
+    entitlement_status = final_status
     if preserve_existing_plan and existing.get("price_id") and existing.get("plan_name"):
         preserved_price_id = (existing.get("price_id") or "").strip()
         preserved_plan_name = (existing.get("plan_name") or "").strip()
@@ -207,12 +213,7 @@ def _sync_main_subscription_from_stripe(
             price_id = preserved_price_id
             plan_name = preserved_plan_name
             product_id = preserved_product_id
-
-    subscription_id = (get_attr_or_item(stripe_subscription, "id", "") or existing.get("subscription_id", "") or "").strip()
-    customer_id = (get_attr_or_item(stripe_subscription, "customer", "") or existing.get("customer_id", "") or "").strip()
-    stripe_status = _normalize_subscription_status(get_attr_or_item(stripe_subscription, "status", ""))
-    period_start, period_end = extract_subscription_period(stripe_subscription)
-    final_status = _normalize_subscription_status(subscription_status or stripe_status or existing.get("subscription_status"))
+            entitlement_status = _normalize_subscription_status(existing.get("subscription_status")) or final_status
 
     if not price_id:
         logging.warning("Main subscription sync skipped without price_id: tenant_id=%s subscription_id=%s", tenant_id, subscription_id)
@@ -241,11 +242,13 @@ def _sync_main_subscription_from_stripe(
         "product_id": product_id,
         "plan_name": plan_name,
         "order_id": existing.get("order_id", "") or subscription_id or invoice_id or f"stripe_sync_{tenant_id}",
+        # status follows Stripe for payment recovery; subscription_status is
+        # the locally entitled state and converges only after payment succeeds.
         "status": final_status,
         "customer_id": customer_id,
         "price_id": price_id,
         "subscription_id": subscription_id,
-        "subscription_status": final_status,
+        "subscription_status": entitlement_status,
         "invoice_id": invoice_id or existing.get("invoice_id", ""),
         "invoice_url": invoice_url or existing.get("invoice_url", ""),
         "invoice_pdf_url": invoice_pdf_url or existing.get("invoice_pdf_url", ""),
@@ -315,13 +318,19 @@ def _should_preserve_existing_plan_for_unpaid_upgrade(
 
     existing_subscription_id = (existing_main_subscription.get("subscription_id") or "").strip()
     incoming_subscription_id = (get_attr_or_item(stripe_subscription, "id", "") or "").strip()
-    if not existing_subscription_id or existing_subscription_id != incoming_subscription_id:
-        return False
 
     existing_price_id = (existing_main_subscription.get("price_id") or "").strip()
     _item_id, incoming_price_id, _quantity = extract_plan_subscription_item(stripe_subscription)
     incoming_price_id = (incoming_price_id or "").strip()
     if not existing_price_id or not incoming_price_id or existing_price_id == incoming_price_id:
+        return False
+
+    existing_plan_name = (existing_main_subscription.get("plan_name") or "").strip()
+    if is_trial_plan_name(existing_plan_name):
+        incoming_plan_name = settings.BILLING_PRICEID_TO_PRODUCT.get(incoming_price_id, "")
+        return bool(incoming_plan_name) and not is_trial_plan_name(incoming_plan_name)
+
+    if not existing_subscription_id or existing_subscription_id != incoming_subscription_id:
         return False
 
     # Downgrades should not be preserved at the higher old tier. For unpaid

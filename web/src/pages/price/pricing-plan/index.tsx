@@ -21,6 +21,7 @@ import { JSX } from 'react/jsx-runtime';
 import PricingCard from '../components/pricing-card';
 import { PriceName, PriceNameMapValue } from '../constant';
 import {
+  TrialUpgradeSetupRetryKey,
   useFetchCurrentPlan,
   useFetchPlanList,
   useHandleTrialUpgradeSetupRetry,
@@ -304,7 +305,10 @@ const PricingPlan = ({ isUpgrade = false }: { isUpgrade: boolean }) => {
   }, [currentPlan, planList, t, isUpgrade]);
 
   useEffect(() => {
-    if (status) {
+    const setupRetryPending =
+      status === 'success' &&
+      localStorage.getItem(TrialUpgradeSetupRetryKey) !== null;
+    if (status && !setupRetryPending) {
       openSuccessModal(status);
     }
   }, [status, openSuccessModal]);

@@ -43,5 +43,13 @@ export default {
       nextMonthlyCost: '下月費用',
       payNowIncremental: `立即支付 <strong class='text-text-primary'>{{amount}}</strong>  以增加存儲空間。您下月的存儲費用將為 <strong class='text-text-primary'>{{nextMonthlyCost}}</strong>。`,
     },
+    price: {
+      paymentVerificationRequired:
+        '付款需要額外驗證。請完成驗證以啟用您的方案。',
+      paymentProcessing: '付款正在處理中。確認付款後將自動啟用您的方案。',
+      paymentDeclined: '付款遭拒。請更換付款方式後重試。',
+      paymentServiceUnavailable: '付款服務暫時無法使用，請稍後再試。',
+      duplicateSubscription: '偵測到多個有效訂閱。請聯絡支援團隊後再重試付款。',
+    },
   },
 };

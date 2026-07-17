@@ -92,6 +92,16 @@ export default {
       paymentFailed: 'Payment failed',
       paymentFailedTip:
         'The transaction was not successful. Please verify your payment information or check your billing account. If this issue persists, contact us at support@ragflow.io with your order id for further assistance.',
+      paymentVerificationRequired:
+        'Payment requires additional verification. Complete verification to activate your plan.',
+      paymentProcessing:
+        'Payment is processing. Your plan will activate after payment is confirmed.',
+      paymentDeclined:
+        'Payment was declined. Use another payment method and try again.',
+      paymentServiceUnavailable:
+        'Payment service is temporarily unavailable. Please try again shortly.',
+      duplicateSubscription:
+        'Multiple active subscriptions were found. Please contact support before retrying payment.',
       cancelPlanTitle: 'Cancel {{plan}} Plan?',
       cancelPlanTip: 'You are canceling the {{plan}} Plan.',
       cancelPlanEffectiveTip:

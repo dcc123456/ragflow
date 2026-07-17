@@ -67,6 +67,7 @@ jobs:
               return 0
             fi
 
+            echo "::add-mask::${value}"
             lower_name="$(echo "${name}" | tr '[:upper:]' '[:lower:]')"
 
             {

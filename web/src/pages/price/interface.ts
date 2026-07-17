@@ -98,7 +98,13 @@ export interface ICheckoutResult {
   invoice_pdf_url?: string;
   invoice_status?: string;
   payment_intent_status?: string;
-  payment_state?: 'paid' | 'requires_action' | 'pending' | 'scheduled';
+  payment_state?:
+    | 'paid'
+    | 'requires_action'
+    | 'pending'
+    | 'scheduled'
+    | 'failed';
+  entitlement_ready?: boolean;
   product_type?: 'subscription' | 'storage' | 'points';
   amount_cents?: number;
   currency?: string;

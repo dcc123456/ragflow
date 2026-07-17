@@ -57,6 +57,8 @@ export default {
   pointsHolds: `${webAPI}/billing/points/holds`,
   billingStatus: `${webAPI}/billing/status`,
   session: (sessionId: string) => `${webAPI}/billing/checkouts/${sessionId}`,
+  directPaymentStatus: (subscriptionId: string) =>
+    `${webAPI}/billing/subscriptions/${subscriptionId}/payment-status`,
   billingSetupIntent: `${webAPI}/billing/setup-intents`,
 
   // premise

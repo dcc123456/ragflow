@@ -2,7 +2,10 @@ import { StripeProvider } from '@/contexts/stripe-context';
 import PaymentStatusModal from '@/pages/billing/component/payment-status-modal';
 import { isBillingEnabled } from '@/services/billingStatus';
 import { ReactNode, createContext, useContext, useState } from 'react';
-import { useFetchCurrentPlan } from '../hook/use-price-hooks';
+import {
+  useDirectPaymentConvergence,
+  useFetchCurrentPlan,
+} from '../hook/use-price-hooks';
 import { FreeUpgradeModal } from '../price-modal/free-upgrade-modal';
 import { ConfirmModal } from '../price-modal/price-confirm-modal';
 import { PriceModalComponent } from '../price-modal/price-modal';
@@ -40,6 +43,7 @@ export const UpgradeModalProvider: React.FC<UpgradeModalProviderProps> = ({
   children,
 }) => {
   useFetchCurrentPlan();
+  useDirectPaymentConvergence();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
 

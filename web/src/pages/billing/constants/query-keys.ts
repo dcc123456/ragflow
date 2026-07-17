@@ -1,5 +1,6 @@
 export enum BillingQueryKey {
   BillingSession = 'billingSession',
+  DirectPaymentStatus = 'directPaymentStatus',
   CurrentPlan = 'currentPlan',
   PlanOverview = 'getPlanOverview',
   BaseOverview = 'getBaseOverview',

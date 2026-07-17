@@ -66,6 +66,12 @@ export default {
       registerVerifyCodeTip: `我们已向 <span style='color: rgb(var(--accent-primary));font-style: italic;'>{{email}}</span> 发送了验证码，请输入验证码以验证您的邮箱地址。`,
     },
     price: {
+      paymentVerificationRequired:
+        '支付需要额外验证。请完成验证以激活您的套餐。',
+      paymentProcessing: '支付正在处理中。确认付款后将自动激活您的套餐。',
+      paymentDeclined: '支付被拒绝。请更换支付方式后重试。',
+      paymentServiceUnavailable: '支付服务暂时不可用，请稍后重试。',
+      duplicateSubscription: '检测到多个有效订阅。请联系支持团队后再重试支付。',
       cancelPlanTitle: '取消 {{plan}} Plan？',
       cancelPlanTip: '你正在取消 {{plan}} Plan。',
       cancelPlanEffectiveTip:

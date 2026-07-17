@@ -92,7 +92,9 @@ from common.billing_utils import (
     billing_enabled_guard,
     build_date_keys,
     decimal_amount,
+    normalize_billing_payment_state,
     parse_datetime_arg,
+    subscription_payment_attention,
     to_utc_date_str,
     to_utc_datetime,
     to_utc_isoformat,
@@ -451,16 +453,10 @@ def _should_preview_as_new_subscription(current_plan_name: str, target_plan_name
 
 
 def _main_subscription_payment_state(subscription: dict) -> dict:
-    status = _normalize_subscription_status(subscription.get("subscription_status"))
-    is_recoverable = _is_main_subscription_recoverable(status)
-    invoice_url = (subscription.get("invoice_url") or "") if is_recoverable else ""
-    return {
-        # payment_required is a broad indicator for billing attention in UI.
-        # payment_recoverable is the actionable subset that can be recovered by paying invoices.
-        "payment_required": _is_main_subscription_delinquent(status),
-        "payment_recoverable": is_recoverable,
-        "payment_recovery_url": invoice_url,
-    }
+    return subscription_payment_attention(
+        subscription.get("status") or subscription.get("subscription_status", ""),
+        subscription.get("invoice_url", ""),
+    )
 
 
 def _safe_payment_order_created_at(value, order_id: str = ""):
@@ -678,6 +674,7 @@ async def _schedule_storage_target_storage_bytes_at_period_end_async(tenant_id: 
 
     return True, {
         "scheduled_change": True,
+        "payment_state": normalize_billing_payment_state(scheduled=True),
         "cancel_at_period_end": target_quantity == 0,
         "effective_at": scheduled["effective_at"],
         "schedule_id": scheduled["schedule_id"],
@@ -865,7 +862,7 @@ async def _set_storage_target_storage_bytes_async(
                 proration_behavior="always_invoice",
                 payment_behavior="pending_if_incomplete",
                 billing_cycle_anchor="unchanged",
-                expand=["latest_invoice"],
+                expand=["latest_invoice.payment_intent"],
                 idempotency_key=f"billing:{tenant_id}:storage_change:{main_subscription_id}:{target_storage_bytes}",
             )
         else:
@@ -880,12 +877,12 @@ async def _set_storage_target_storage_bytes_async(
                 proration_behavior="always_invoice",
                 payment_behavior="pending_if_incomplete",
                 billing_cycle_anchor="unchanged",
-                expand=["latest_invoice"],
+                expand=["latest_invoice.payment_intent"],
                 idempotency_key=f"billing:{tenant_id}:storage_change:{main_subscription_id}:{target_storage_bytes}",
             )
     except stripe.InvalidRequestError as e:
         if "Item already exists" in str(e):
-            updated = await stripe.Subscription.retrieve_async(main_subscription_id, expand=["latest_invoice"])
+            updated = await stripe.Subscription.retrieve_async(main_subscription_id, expand=["latest_invoice.payment_intent"])
         else:
             return False, {"error": f"Failed to modify subscription: {e}"}
 
@@ -899,15 +896,14 @@ async def _set_storage_target_storage_bytes_async(
         amount_cents = get_attr_or_item(latest_invoice, "amount_paid", 0) or 0
     currency = (get_attr_or_item(latest_invoice, "currency", "") or "").upper()
 
-    # Determine payment_state based on invoice status and amount_due
-    # If amount_due is 0 or invoice is paid, treat as paid
-    amount_due = get_attr_or_item(latest_invoice, "amount_due", None) or 0
-    if invoice_status == "paid" or amount_due == 0:
-        payment_state = "paid"
-    elif invoice_status in ("open", "draft") and amount_due > 0:
-        payment_state = "requires_action"
-    else:
-        payment_state = "pending"
+    amount_due = get_attr_or_item(latest_invoice, "amount_due", None)
+    payment_intent = get_attr_or_item(latest_invoice, "payment_intent", None)
+    payment_intent_status = (get_attr_or_item(payment_intent, "status", "") or "").strip().lower()
+    payment_state = normalize_billing_payment_state(
+        invoice_status=invoice_status,
+        payment_intent_status=payment_intent_status,
+        amount_due=amount_due,
+    )
 
     _sync_storage_subscription_record(
         tenant_id,
@@ -2286,7 +2282,14 @@ async def _handle_active_subscription_checkout(
                 ).where(_Sub.tenant_id == tenant_id).execute()
 
         msg = f"Tenant {tenant_id} scheduled a plan downgrade at period end."
-        return get_json_result(data={"scheduled_change": scheduled}, message=msg, code=RetCode.SUCCESS)
+        return get_json_result(
+            data={
+                "scheduled_change": scheduled,
+                "payment_state": normalize_billing_payment_state(scheduled=True),
+            },
+            message=msg,
+            code=RetCode.SUCCESS,
+        )
 
     target_plan_name = settings.BILLING_PRICEID_TO_PRODUCT.get(subscription_price_id, "")
     is_trial_like_current = is_trial_plan_name(current_plan_name) or (subscription_status == "trialing")
@@ -2379,22 +2382,11 @@ async def _handle_active_subscription_checkout(
     payment_intent_status = modified_result.get("payment_intent_status", "")
     plan_name_after_upgrade = target_plan_name or settings.BILLING_PRICEID_TO_PRODUCT.get(subscription_price_id, "")
 
-    payment_action_statuses = {
-        "requires_action",
-        "requires_payment_method",
-        "requires_confirmation",
-        "requires_source_action",
-        "requires_source",
-        "processing",
-    }
-
-    # Determine payment_state based on invoice/payment status
-    if invoice_status == "paid" or payment_intent_status == "succeeded":
-        payment_state = "paid"
-    elif payment_intent_status in payment_action_statuses or invoice_status in payment_action_statuses:
-        payment_state = "requires_action"
-    else:
-        payment_state = "pending"
+    payment_state = normalize_billing_payment_state(
+        invoice_status=invoice_status,
+        payment_intent_status=payment_intent_status,
+        amount_due=modified_result.get("amount_cents"),
+    )
 
     accepted_data = {
         "customer_id": (tenant_plan.get("customer_id") or "").strip()
@@ -2411,7 +2403,7 @@ async def _handle_active_subscription_checkout(
         "payment_state": payment_state,
         "product_type": "subscription",
     }
-    if payment_intent_status in payment_action_statuses and invoice_url:
+    if payment_state == "requires_action" and invoice_url:
         accepted_data["redirect_to"] = invoice_url
 
     return get_json_result(
@@ -2433,9 +2425,209 @@ async def _handle_recoverable_subscription_checkout(
     invoice_url = (tenant_plan.get("invoice_url") or "").strip()
     logging.info(f"Tenant {tenant_id} has delinquent subscription {subscription_id} ({subscription_status}); redirecting to invoice {invoice_url} for payment.")
     return get_json_result(
-        data={"payment_required": True, "invoice_url": invoice_url},
+        data={
+            "subscription_id": subscription_id,
+            "price_id": subscription_price_id,
+            "payment_state": "requires_action",
+            "payment_required": True,
+            "invoice_url": invoice_url,
+            "redirect_to": invoice_url or None,
+            "product_type": "subscription",
+        },
         message="Your subscription has an outstanding invoice. Please pay it before changing your plan.",
         code=RetCode.SUCCESS,
+    )
+
+
+def _invoice_from_subscription(subscription):
+    return get_attr_or_item(subscription, "latest_invoice", None)
+
+
+def _stripe_resource_id(resource) -> str:
+    if isinstance(resource, str):
+        return resource.strip()
+    return (get_attr_or_item(resource, "id", "") or "").strip()
+
+
+def _invoice_id_from_subscription(subscription) -> str:
+    return _stripe_resource_id(_invoice_from_subscription(subscription))
+
+
+def _stripe_error_code(exc: stripe.StripeError) -> str:
+    code = (getattr(exc, "code", "") or "").strip()
+    if code:
+        return code
+    error = (getattr(exc, "json_body", None) or {}).get("error", {})
+    return (error.get("code") or "").strip() if isinstance(error, dict) else ""
+
+
+def _stripe_payment_error_result(exc: stripe.StripeError):
+    code = _stripe_error_code(exc).lower()
+    decline_code = (getattr(exc, "decline_code", "") or "").strip()
+    if not decline_code:
+        error = (getattr(exc, "json_body", None) or {}).get("error", {})
+        decline_code = (error.get("decline_code") or "").strip() if isinstance(error, dict) else ""
+
+    if "requires_action" in code:
+        error_type = "payment_action_required"
+        message = "Payment requires additional verification. Complete verification and try again."
+    elif isinstance(exc, (stripe.RateLimitError, stripe.APIConnectionError)):
+        error_type = "payment_service_unavailable"
+        message = "Payment service is temporarily unavailable. Please try again shortly."
+    elif isinstance(exc, stripe.CardError) or decline_code:
+        error_type = "payment_declined"
+        message = "Payment was declined. Use another payment method and try again."
+    else:
+        error_type = "payment_failed"
+        message = "We could not process the payment. Please try again or contact support."
+
+    logging.warning(
+        "Stripe payment request failed: error_type=%s exception_type=%s code=%s decline_code=%s request_id=%s",
+        error_type,
+        type(exc).__name__,
+        code,
+        decline_code,
+        getattr(exc, "request_id", "") or "",
+    )
+    return get_json_result(
+        code=RetCode.BILLING_PAYMENT_FAILED,
+        message=message,
+        data={"error_type": error_type},
+    )
+
+
+def _subscription_checkout_result(subscription, *, plan_name: str, price_id: str):
+    subscription_id = (get_attr_or_item(subscription, "id", "") or "").strip()
+    subscription_status = _normalize_subscription_status(get_attr_or_item(subscription, "status", ""))
+    invoice = _invoice_from_subscription(subscription)
+    invoice_id = _invoice_id_from_subscription(subscription)
+    invoice_url = (get_attr_or_item(invoice, "hosted_invoice_url", "") or "").strip()
+    invoice_pdf_url = (get_attr_or_item(invoice, "invoice_pdf", "") or "").strip()
+    invoice_status = (get_attr_or_item(invoice, "status", "") or "").strip().lower()
+    payment_intent = get_attr_or_item(invoice, "payment_intent", None)
+    payment_intent_status = (get_attr_or_item(payment_intent, "status", "") or "").strip().lower()
+    amount_due = get_attr_or_item(invoice, "amount_due", None)
+    amount_cents = amount_due
+    if amount_cents is None:
+        amount_cents = get_attr_or_item(invoice, "amount_paid", 0) or 0
+    currency = (get_attr_or_item(invoice, "currency", "") or "").upper()
+    payment_state = normalize_billing_payment_state(
+        invoice_status=invoice_status,
+        payment_intent_status=payment_intent_status,
+        subscription_status=subscription_status,
+        amount_due=amount_due,
+    )
+
+    data = {
+        "subscription_id": subscription_id,
+        "subscription_status": subscription_status,
+        "plan_name": plan_name,
+        "price_id": price_id,
+        "invoice_id": invoice_id,
+        "invoice_url": invoice_url,
+        "invoice_pdf_url": invoice_pdf_url,
+        "invoice_status": invoice_status,
+        "payment_intent_status": payment_intent_status,
+        "payment_state": payment_state,
+        "amount_cents": amount_cents,
+        "currency": currency,
+        "product_type": "subscription",
+    }
+    if payment_state == "requires_action" and invoice_url:
+        data["redirect_to"] = invoice_url
+
+    messages = {
+        "paid": "Payment completed.",
+        "requires_action": "Payment requires additional verification.",
+        "pending": "Payment is processing.",
+        "failed": "Payment failed.",
+    }
+    return get_json_result(
+        code=RetCode.SUCCESS,
+        message=messages.get(payment_state, "Subscription request accepted."),
+        data=data,
+    )
+
+
+def _subscription_matches_target(subscription, *, tenant_id: str, customer_id: str, target_price_id: str) -> bool:
+    if _stripe_resource_id(get_attr_or_item(subscription, "customer", "")) != customer_id:
+        return False
+    metadata = get_attr_or_item(subscription, "metadata", {}) or {}
+    if (get_attr_or_item(metadata, "tenant_id", "") or "").strip() != tenant_id:
+        return False
+    _item_id, price_id, _quantity = extract_plan_subscription_item(subscription)
+    return (price_id or "").strip() == target_price_id
+
+
+async def _find_existing_target_subscription_async(*, tenant_id: str, customer_id: str, target_price_id: str):
+    candidates: dict[str, object] = {}
+    local = SubscriptionService.get_raw_by_tenant_id(tenant_id) or {}
+    local_subscription_id = (local.get("subscription_id") or "").strip()
+    if local_subscription_id:
+        try:
+            local_subscription = await stripe.Subscription.retrieve_async(
+                local_subscription_id,
+                expand=["latest_invoice.payment_intent"],
+            )
+            if _subscription_matches_target(
+                local_subscription,
+                tenant_id=tenant_id,
+                customer_id=customer_id,
+                target_price_id=target_price_id,
+            ):
+                candidates[local_subscription_id] = local_subscription
+        except stripe.InvalidRequestError:
+            logging.info(
+                "Locally tracked Stripe subscription no longer exists: tenant_id=%s subscription_id=%s",
+                tenant_id,
+                local_subscription_id,
+            )
+
+    starting_after = ""
+    while True:
+        list_params = {"customer": customer_id, "status": "all", "limit": 100}
+        if starting_after:
+            list_params["starting_after"] = starting_after
+        subscriptions = await stripe.Subscription.list_async(**list_params)
+        page = extract_list_data(subscriptions)
+        for subscription in page:
+            subscription_id = (get_attr_or_item(subscription, "id", "") or "").strip()
+            status = _normalize_subscription_status(get_attr_or_item(subscription, "status", ""))
+            if (
+                not subscription_id
+                or status in {"canceled", "incomplete_expired"}
+                or not _subscription_matches_target(
+                    subscription,
+                    tenant_id=tenant_id,
+                    customer_id=customer_id,
+                    target_price_id=target_price_id,
+                )
+            ):
+                continue
+            candidates[subscription_id] = subscription
+
+        if not get_attr_or_item(subscriptions, "has_more", False):
+            break
+        next_cursor = (get_attr_or_item(page[-1], "id", "") or "").strip() if page else ""
+        if not next_cursor or next_cursor == starting_after:
+            logging.error(
+                "Stripe subscription pagination stopped without a usable cursor: customer_id=%s",
+                customer_id,
+            )
+            break
+        starting_after = next_cursor
+
+    non_terminal = [candidate for candidate in candidates.values() if _normalize_subscription_status(get_attr_or_item(candidate, "status", "")) not in {"canceled", "incomplete_expired"}]
+    if len(non_terminal) > 1:
+        raise ValueError("Multiple matching non-terminal subscriptions")
+    if not non_terminal:
+        return None
+
+    candidate = non_terminal[0]
+    candidate_id = (get_attr_or_item(candidate, "id", "") or "").strip()
+    return await stripe.Subscription.retrieve_async(
+        candidate_id,
+        expand=["latest_invoice.payment_intent"],
     )
 
 
@@ -2472,22 +2664,88 @@ async def _create_subscription_checkout(
         settings.BILLING_PRICEID_TO_PRODUCT.get(subscription_price_id, ""),
     )
 
-    # Apply SetupIntent payment method as customer's default before creating subscription
+    payment_method_id = ""
     if setup_intent_id:
-        await _apply_setup_intent_payment_method_if_present(
+        payment_method_id = await _apply_setup_intent_payment_method_if_present(
             customer_id=customer_id,
             setup_intent_id=setup_intent_id,
+        )
+
+    if not payment_method_id:
+        customer = await stripe.Customer.retrieve_async(customer_id)
+        invoice_settings = get_attr_or_item(customer, "invoice_settings", None)
+        default_payment_method = get_attr_or_item(invoice_settings, "default_payment_method", "")
+        payment_method_id = default_payment_method if isinstance(default_payment_method, str) else get_attr_or_item(default_payment_method, "id", "")
+
+    try:
+        existing_subscription = await _find_existing_target_subscription_async(
+            tenant_id=tenant_id,
+            customer_id=customer_id,
+            target_price_id=subscription_price_id,
+        )
+    except ValueError:
+        logging.exception(
+            "Multiple matching Stripe subscriptions found: tenant_id=%s customer_id=%s target_price_id=%s",
+            tenant_id,
+            customer_id,
+            subscription_price_id,
+        )
+        return get_json_result(
+            code=RetCode.BILLING_PAYMENT_FAILED,
+            message="Multiple active subscriptions were found. Please contact support before retrying payment.",
+            data={"error_type": "duplicate_subscription"},
+        )
+
+    if existing_subscription:
+        existing_status = _normalize_subscription_status(get_attr_or_item(existing_subscription, "status", ""))
+        existing_subscription_id = (get_attr_or_item(existing_subscription, "id", "") or "").strip()
+        if existing_status in MAIN_SUBSCRIPTION_RECOVERABLE_STATUSES and payment_method_id:
+            await stripe.Subscription.modify_async(
+                existing_subscription_id,
+                default_payment_method=payment_method_id,
+            )
+            invoice_id = _invoice_id_from_subscription(existing_subscription)
+            if invoice_id:
+                try:
+                    await stripe.Invoice.pay_async(invoice_id, payment_method=payment_method_id)
+                except stripe.StripeError as exc:
+                    if "requires_action" not in _stripe_error_code(exc).lower():
+                        raise
+            existing_subscription = await stripe.Subscription.retrieve_async(
+                existing_subscription_id,
+                expand=["latest_invoice.payment_intent"],
+            )
+        return _subscription_checkout_result(
+            existing_subscription,
+            plan_name=settings.BILLING_PRICEID_TO_PRODUCT.get(subscription_price_id, ""),
+            price_id=subscription_price_id,
         )
 
     subscription_params = {
         "customer": customer_id,
         "items": [{"price": subscription_price_id, "quantity": quantity}],
-        "payment_behavior": "error_if_incomplete",
+        "payment_behavior": "default_incomplete",
+        "expand": ["latest_invoice.payment_intent"],
+        "metadata": {
+            "tenant_id": tenant_id,
+            "target_price_id": subscription_price_id,
+            "price_type": PriceType.SUBSCRIPTION,
+        },
     }
+    if payment_method_id:
+        subscription_params["default_payment_method"] = payment_method_id
 
-    subscription = await stripe.Subscription.create_async(**subscription_params)
-    logging.info(f"created stripe subscription id {subscription.id}")
-    return get_json_result(data={"subscription_id": subscription.id})
+    attempt_id = setup_intent_id or payment_method_id or customer_id
+    subscription = await stripe.Subscription.create_async(
+        **subscription_params,
+        idempotency_key=f"billing:{tenant_id}:subscription_create:{subscription_price_id}:{attempt_id}",
+    )
+    logging.info("Created Stripe subscription: subscription_id=%s tenant_id=%s", get_attr_or_item(subscription, "id", ""), tenant_id)
+    return _subscription_checkout_result(
+        subscription,
+        plan_name=settings.BILLING_PRICEID_TO_PRODUCT.get(subscription_price_id, ""),
+        price_id=subscription_price_id,
+    )
 
 
 async def _handle_subscription_checkout(
@@ -2504,6 +2762,7 @@ async def _handle_subscription_checkout(
     """Dispatch subscription checkout to active/recoverable/new-subscription flows."""
     subscription_id = tenant_plan.get("subscription_id")
     subscription_status = _normalize_subscription_status(tenant_plan.get("subscription_status"))
+    stripe_subscription = None
 
     if subscription_id:
         try:
@@ -2586,6 +2845,17 @@ async def _handle_subscription_checkout(
             setup_intent_id=setup_intent_id,
         )
     elif subscription_status in MAIN_SUBSCRIPTION_RECOVERABLE_STATUSES:
+        metadata = get_attr_or_item(stripe_subscription, "metadata", {}) or {}
+        metadata_tenant_id = (get_attr_or_item(metadata, "tenant_id", "") or "").strip()
+        _item_id, current_stripe_price_id, _quantity = extract_plan_subscription_item(stripe_subscription)
+        if metadata_tenant_id == tenant_id and (current_stripe_price_id or "").strip() == subscription_price_id:
+            return await _create_subscription_checkout(
+                tenant_id=tenant_id,
+                customer_id=customer_id,
+                subscription_price_id=subscription_price_id,
+                quantity=quantity,
+                setup_intent_id=setup_intent_id,
+            )
         return await _handle_recoverable_subscription_checkout(
             tenant_id=tenant_id,
             tenant_plan=tenant_plan,
@@ -2695,16 +2965,19 @@ async def billing_checkout():
         customer_id = await billing_set_customer_id_async(tenant_id)
 
     if validated.payment_type == PriceType.SUBSCRIPTION:
-        return await _handle_subscription_checkout(
-            tenant_id=tenant_id,
-            tenant_plan=tenant_plan,
-            customer_id=customer_id,
-            subscription_price_id=validated.subscription_price_id,
-            quantity=validated.quantity,
-            setup_intent_id=validated.setup_intent_id,
-            session_success_url=validated.session_success_url,
-            session_cancel_url=validated.session_cancel_url,
-        )
+        try:
+            return await _handle_subscription_checkout(
+                tenant_id=tenant_id,
+                tenant_plan=tenant_plan,
+                customer_id=customer_id,
+                subscription_price_id=validated.subscription_price_id,
+                quantity=validated.quantity,
+                setup_intent_id=validated.setup_intent_id,
+                session_success_url=validated.session_success_url,
+                session_cancel_url=validated.session_cancel_url,
+            )
+        except stripe.StripeError as exc:
+            return _stripe_payment_error_result(exc)
 
     return await _handle_addon_checkout(
         tenant_id=tenant_id,
@@ -2715,6 +2988,83 @@ async def billing_checkout():
         session_success_url=validated.session_success_url,
         session_cancel_url=validated.session_cancel_url,
     )
+
+
+@manager.route("/subscriptions/<subscription_id>/payment-status", methods=["GET"])
+@login_required
+@billing_enabled_guard(_billing_disabled_response)
+async def billing_direct_subscription_payment_status(subscription_id: str):
+    """Return Stripe payment state and local Webhook entitlement convergence."""
+    tenant_id = current_user.id
+    tenant_plan = SubscriptionService.get_raw_by_tenant_id(tenant_id) or {}
+    expected_customer_id = (tenant_plan.get("customer_id") or "").strip()
+    if not expected_customer_id:
+        return get_json_result(code=RetCode.FORBIDDEN, message="Subscription is not available.", data=False)
+
+    try:
+        subscription = await stripe.Subscription.retrieve_async(
+            subscription_id,
+            expand=["latest_invoice.payment_intent"],
+        )
+        customer_id = _stripe_resource_id(get_attr_or_item(subscription, "customer", ""))
+        metadata = get_attr_or_item(subscription, "metadata", {}) or {}
+        metadata_tenant_id = (get_attr_or_item(metadata, "tenant_id", "") or "").strip()
+        if customer_id != expected_customer_id or (metadata_tenant_id and metadata_tenant_id != tenant_id):
+            return get_json_result(code=RetCode.FORBIDDEN, message="Subscription is not available.", data=False)
+
+        invoice = _invoice_from_subscription(subscription)
+        requested_invoice_id = (request.args.get("invoice_id") or "").strip()
+        if requested_invoice_id:
+            invoice = await stripe.Invoice.retrieve_async(
+                requested_invoice_id,
+                expand=["payment_intent"],
+            )
+            invoice_subscription_id = _stripe_resource_id(get_attr_or_item(invoice, "subscription", ""))
+            invoice_customer = _stripe_resource_id(get_attr_or_item(invoice, "customer", ""))
+            if invoice_subscription_id != subscription_id or invoice_customer != expected_customer_id:
+                return get_json_result(code=RetCode.FORBIDDEN, message="Invoice is not available.", data=False)
+
+        invoice_id = _stripe_resource_id(invoice)
+        if isinstance(invoice, str) and invoice:
+            invoice = await stripe.Invoice.retrieve_async(invoice, expand=["payment_intent"])
+
+        _item_id, price_id, _quantity = extract_plan_subscription_item(subscription)
+        price_id = (price_id or "").strip()
+        subscription_status = _normalize_subscription_status(get_attr_or_item(subscription, "status", ""))
+        invoice_status = (get_attr_or_item(invoice, "status", "") or "").strip().lower()
+        payment_intent = get_attr_or_item(invoice, "payment_intent", None)
+        payment_intent_status = (get_attr_or_item(payment_intent, "status", "") or "").strip().lower()
+        amount_due = get_attr_or_item(invoice, "amount_due", None)
+        payment_state = normalize_billing_payment_state(
+            invoice_status=invoice_status,
+            payment_intent_status=payment_intent_status,
+            subscription_status=subscription_status,
+            amount_due=amount_due,
+        )
+
+        local_status = _normalize_subscription_status(tenant_plan.get("subscription_status"))
+        entitlement_ready = bool(
+            payment_state == "paid"
+            and (tenant_plan.get("subscription_id") or "").strip() == subscription_id
+            and (tenant_plan.get("price_id") or "").strip() == price_id
+            and _is_main_subscription_entitled(local_status)
+        )
+        return get_json_result(
+            data={
+                "subscription_id": subscription_id,
+                "subscription_status": subscription_status,
+                "invoice_id": invoice_id,
+                "invoice_url": (get_attr_or_item(invoice, "hosted_invoice_url", "") or "").strip(),
+                "invoice_status": invoice_status,
+                "payment_intent_status": payment_intent_status,
+                "payment_state": payment_state,
+                "entitlement_ready": entitlement_ready,
+                "plan_name": settings.BILLING_PRICEID_TO_PRODUCT.get(price_id, ""),
+                "price_id": price_id,
+            }
+        )
+    except stripe.StripeError as exc:
+        return _stripe_payment_error_result(exc)
 
 
 @manager.route("/setup-intents", methods=["POST"])

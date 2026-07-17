@@ -69,7 +69,7 @@ export const billingCheckout = (
     setup_intent_id?: string;
   },
 ) => {
-  return request.post(api.billing_checkout, { data });
+  return request.post(api.billing_checkout, { data, noToast: true });
 };
 export const getCurrentPlan = () => {
   return request.get(api.current_plan);
@@ -167,6 +167,15 @@ export const getBillingPointsHolds = (params: {
 
 export const getBillingSession = (sessionId: string) =>
   request.get(api.session(sessionId));
+
+export const getDirectSubscriptionPaymentStatus = (
+  subscriptionId: string,
+  invoiceId?: string,
+) =>
+  request.get(api.directPaymentStatus(subscriptionId), {
+    params: invoiceId ? { invoice_id: invoiceId } : undefined,
+    noToast: true,
+  });
 
 export const postBillingSetupIntent = (data: {
   tenant_id?: string;
