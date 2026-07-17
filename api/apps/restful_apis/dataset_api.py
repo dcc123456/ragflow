@@ -58,13 +58,11 @@ def _check_dataset_permissions(user_id: str, dataset_ids: list[str], required_pe
     kbs = KnowledgebaseService.filter_by_ids(dataset_ids) or []
     kb_map = {kb.id: kb for kb in kbs}
     missing_ids = [dataset_id for dataset_id in dataset_ids if dataset_id not in kb_map]
-    if missing_ids:
-        return [], f"Datasets not found: {', '.join(missing_ids)}"
 
     user_tenants = UserTenantService.query(user_id=user_id) or []
     tenant_member_map = {tenant.tenant_id: tenant for tenant in user_tenants}
 
-    denied_ids = []
+    denied_ids = list(missing_ids)
     allowed_kbs = []
     for dataset_id in dataset_ids:
         kb = kb_map[dataset_id]
@@ -89,10 +87,16 @@ def _check_dataset_permissions(user_id: str, dataset_ids: list[str], required_pe
         else:
             denied_ids.append(dataset_id)
 
+    if allowed_kbs:
+        return allowed_kbs, ""
+
+    if missing_ids:
+        return [], f"Datasets not found: {', '.join(missing_ids)}"
+
     if denied_ids:
         return [], f"No authorization for dataset(s): {', '.join(denied_ids)}"
 
-    return allowed_kbs, ""
+    return [], ""
 
 
 @manager.route("/datasets/tags/aggregation", methods=["GET"])  # noqa: F821
