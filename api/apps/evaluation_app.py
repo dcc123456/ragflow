@@ -523,6 +523,7 @@ async def start_evaluation(run_id: str):
             priority=get_tenant_priority(current_user.id),
             case_ids=case_ids,
             metrics_name=metrics_name,
+            user_id=current_user.id,
         )
         if not success:
             raise LookupError("Document not found.")

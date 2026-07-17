@@ -591,6 +591,7 @@ class EvaluationService(CommonService):
         priority: int = 0,
         case_ids: Optional[str] = None,
         metrics_name: Optional[List[str]] = None,
+        user_id: str = None,
     ) -> Tuple[bool, str]:
         doc = DocumentService.one()
         if not doc:
@@ -611,6 +612,7 @@ class EvaluationService(CommonService):
             case_ids=normalized_case_ids,
             metrics_name=normalized_metrics,
             tenant_id=collection.tenant_id,
+            user_id=user_id,
         )
         EvaluationRun.update(task_id=task_id, status=EvaluationRunStatus.PENDING).where(EvaluationRun.id == run_id).execute()
         return True, task_id
@@ -661,7 +663,7 @@ class EvaluationService(CommonService):
             question = variable.get("question", "")
             messages = [{"role": "user", "content": question}]
             dialog = cls._apply_target_config(dialog, run.config_snapshot.get("target", {}))
-            answer, retrieved_chunks, execution_time = cls._execute_target(dialog, messages)
+            answer, retrieved_chunks, execution_time = cls._execute_target(dialog, messages, user_id=user_id)
             result = cls._save_execution_result(run_id, case.id, answer, retrieved_chunks, execution_time)
             if not result:
                 return False
@@ -733,6 +735,7 @@ class EvaluationService(CommonService):
         case_ids: Optional[Union[str, Sequence[str]]] = None,
         metrics_name: Optional[List[str]] = None,
         max_concurrency: Optional[int] = None,
+        user_id: str = None,
     ) -> bool:
         """Execute all (or filtered) cases within a run (async + parallel)."""
         normalized_metrics = cls._normalize_metrics(metrics_name)
@@ -815,7 +818,7 @@ class EvaluationService(CommonService):
                             variable = ca.get("variable", {}) or {}
                             question = variable.get("question", "")
                             messages = [{"role": "user", "content": question}]
-                            answer, retrieved_chunks, execution_time = cls._execute_target(dialog2, messages)
+                            answer, retrieved_chunks, execution_time = cls._execute_target(dialog2, messages, user_id=user_id)
                             if cls.is_run_canceled(run_id):
                                 return
                             cls._save_execution_result(run_id, ca["id"], answer, retrieved_chunks, execution_time)
@@ -1015,7 +1018,7 @@ class EvaluationService(CommonService):
 
     @staticmethod
     @DB.connection_context()
-    def _execute_target(dialog: Any, messages: List[Dict[str, Any]]) -> Tuple[str, List[Dict[str, Any]], float]:
+    def _execute_target(dialog: Any, messages: List[Dict[str, Any]], user_id: str | None = None) -> Tuple[str, List[Dict[str, Any]], float]:
         """Execute target dialog and return answer, retrieved chunks, and execution time."""
         start_time = timer()
         answer = ""
@@ -1061,7 +1064,7 @@ class EvaluationService(CommonService):
         def chat(dialog, messages, stream=True, **kwargs):
             from api.db.services.dialog_service import async_chat
 
-            return _sync_from_async_gen(async_chat(dialog, messages, stream=stream, **kwargs))
+            return _sync_from_async_gen(async_chat(dialog, messages, stream=stream, user_id=user_id, **kwargs))
 
         stru_ans = {}
         for ans in chat(dialog, messages, stream=False):

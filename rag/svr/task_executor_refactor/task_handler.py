@@ -312,6 +312,7 @@ class TaskHandler:
         run_id = ctx.get("eva_run_id")
         case_ids = ctx.get("case_ids", [])
         metrics_name = ctx.get("metrics_name")
+        user_id = ctx.get("user_id")
         cases_total = EvaluationService.get_test_cases_count(run_id)
         try:
             await asyncio.wait_for(
@@ -320,6 +321,7 @@ class TaskHandler:
                     ctx.progress_cb,
                     case_ids=case_ids,
                     metrics_name=metrics_name,
+                    user_id=user_id,
                 ),
                 timeout=((len(case_ids) if case_ids else cases_total) + 1) * (len(metrics_name) if metrics_name else 3) * 60,
             )

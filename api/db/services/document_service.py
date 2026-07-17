@@ -1398,6 +1398,7 @@ def queue_reembedding_dup_tasks(
     case_ids=None,
     metrics_name=None,
     tenant_id=None,
+    user_id=None,
 ):
     """
     You can provide a fake_doc_id to bypass the restriction of tasks at the knowledgebase level.
@@ -1435,6 +1436,8 @@ def queue_reembedding_dup_tasks(
         task["metrics_name"] = metrics_name
     if tenant_id:
         task["tenant_id"] = tenant_id
+    if user_id:
+        task["user_id"] = user_id
 
     assert RABBITMQ_CONN.queue_product(rout_key(priority, "common"), message=task), "Can't access RabbitMQ. Please check the RabbitMQ' status."
     return task["id"]
