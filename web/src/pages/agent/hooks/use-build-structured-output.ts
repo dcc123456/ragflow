@@ -148,12 +148,21 @@ export function useFindAgentStructuredOutputLabel() {
 
       // Handle Begin webhook fields
       if (operatorType === Operator.Begin && fields.at(1)) {
-        const fieldOption = options
-          .filter((x) => x.parentLabel === BeginId)
-          .find((x) => value.startsWith(x.value));
+        // When the value is already an exact option (e.g. a regular begin
+        // input variable like "begin@content"), fall through so the caller
+        // can resolve the display label and icon from the matching option,
+        // instead of overriding the label with the raw key.
+        if (options.some((x) => x.value === value)) {
+          return;
+        }
+
+        // Otherwise this is a path under a begin webhook field (e.g.
+        // "begin@body.address"). Resolve the root option to keep its
+        // icon/parentLabel and derive the label from the path suffix.
+        const rootOption = options.find((x) => value.startsWith(x.value));
 
         return {
-          ...fieldOption,
+          ...(rootOption ?? {}),
           label: fields.at(1),
           value: value,
         };
