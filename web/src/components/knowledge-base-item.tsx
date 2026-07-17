@@ -56,7 +56,10 @@ export function useDisableDifferenceEmbeddingDataset(name: string) {
   }, [datasetId, datasetListOrigin]);
 
   const selectedEmbedId = useMemo(() => {
-    const data = datasetList?.find((item) => item.id === datasetId?.[0]);
+    const selectedDatasetIds = Array.isArray(datasetId) ? datasetId : [];
+    const data = datasetList?.find((item) =>
+      selectedDatasetIds.includes(item.id),
+    );
     return data?.embedding_model ?? '';
   }, [datasetId, datasetList]);
 
