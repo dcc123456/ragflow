@@ -36,7 +36,7 @@ from api.utils.api_utils import get_data_error_result, get_json_result, get_requ
 from api.utils.pagination_utils import validate_rest_api_page_size
 
 from api.utils.billing import check_resources
-from api.utils.permission_utils import check_search_permission
+from api.utils.permission_utils import check_search_permission, filter_kb_read_access
 from common.role_util import SEARCH_API_ACTION_MAP, SEARCH_ROLE_RESOURCE_TYPE, check_role_access
 
 
@@ -273,6 +273,10 @@ async def completion(search_id):
     kb_ids = search_config.get("kb_ids") or req.get("kb_ids") or []
     if not kb_ids:
         return get_data_error_result(message="`kb_ids` is required.")
+    kb_ids, kb_error = await filter_kb_read_access(uid, kb_ids)
+    if kb_error and not kb_ids:
+        return get_data_error_result(message=kb_error)
+    search_config = {**search_config, "kb_ids": kb_ids}
 
     # check if the kb_ids is accessible for this user
     for kb_id in kb_ids:

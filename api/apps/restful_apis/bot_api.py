@@ -38,7 +38,7 @@ from api.db.services.search_service import SearchService
 from api.db.joint_services.tenant_model_service import get_tenant_default_model_by_type, resolve_model_config
 from common.misc_utils import thread_pool_exec
 from api.utils.api_utils import get_error_data_result, get_json_result, add_tenant_id_to_kwargs, get_result, get_request_json, server_error_response, validate_request
-from api.utils.permission_utils import check_canvas_permission, check_dialog_permission, check_search_permission, filter_accessible_doc_ids_for_user, resolve_kb_with_permission
+from api.utils.permission_utils import check_canvas_permission, check_dialog_permission, check_search_permission, filter_accessible_doc_ids_for_user, filter_kb_read_access
 from common.role_util import CANVAS_API_ACTION_MAP, CANVAS_ROLE_RESOURCE_TYPE, DIALOG_API_ACTION_MAP, DIALOG_ROLE_RESOURCE_TYPE, SEARCH_API_ACTION_MAP, SEARCH_ROLE_RESOURCE_TYPE, check_role_access
 from rag.app.tag import label_question
 from rag.prompts.template import load_prompt
@@ -309,7 +309,7 @@ async def agent_bot_logs(shared_id, message_id, tenant_id=None):
 @manager.route("/searchbots/ask", methods=["POST"])  # noqa: F821
 @login_required(auth_types=AUTH_BETA)
 @search_role_guard
-@check_search_permission(PermissionValue.PERMISSION_READ)
+@check_search_permission(PermissionValue.PERMISSION_WRITE)
 @add_tenant_id_to_kwargs
 @validate_request("question", "kb_ids")
 async def ask_about_embedded(tenant_id=None):
@@ -317,15 +317,17 @@ async def ask_about_embedded(tenant_id=None):
     uid = tenant_id
     operator_user_id = req.pop("user_id", None) or uid
 
-    kb_error = await _check_kb_read_access(operator_user_id, req.get("kb_ids", []))
+    accessible_kb_ids, kb_error = await filter_kb_read_access(operator_user_id, req.get("kb_ids", []))
     if kb_error:
         return get_error_data_result(message=kb_error, code=RetCode.PERMISSION_ERROR)
+    req["kb_ids"] = accessible_kb_ids
 
     search_id = req.get("search_id", "")
     search_config = {}
     if search_id:
         if search_app := await thread_pool_exec(SearchService.get_detail, search_id):
             search_config = search_app.get("search_config", {})
+    search_config = {**search_config, "kb_ids": req["kb_ids"]}
 
     chat_llm_name = ""
     if not search_config or not search_config.get("chat_id"):
@@ -352,7 +354,7 @@ async def ask_about_embedded(tenant_id=None):
 @manager.route("/searchbots/retrieval_test", methods=["POST"])  # noqa: F821
 @login_required(auth_types=AUTH_BETA)
 @search_role_guard
-@check_search_permission(PermissionValue.PERMISSION_READ)
+@check_search_permission(PermissionValue.PERMISSION_WRITE)
 @add_tenant_id_to_kwargs
 @validate_request("kb_id", "question")
 async def retrieval_test_embedded(tenant_id=None):
@@ -366,7 +368,7 @@ async def retrieval_test_embedded(tenant_id=None):
     if not kb_ids:
         return get_json_result(data=False, message="Please specify dataset firstly.", code=RetCode.DATA_ERROR)
     operator_user_id = req.get("user_id") or tenant_id
-    kb_error = await _check_kb_read_access(operator_user_id, kb_ids)
+    kb_ids, kb_error = await filter_kb_read_access(operator_user_id, kb_ids)
     if kb_error:
         return get_error_data_result(message=kb_error, code=RetCode.PERMISSION_ERROR)
     doc_ids = req.get("doc_ids", [])
@@ -505,7 +507,7 @@ async def retrieval_test_embedded(tenant_id=None):
 @manager.route("/searchbots/related_questions", methods=["POST"])  # noqa: F821
 @login_required(auth_types=AUTH_BETA)
 @search_role_guard
-@check_search_permission(PermissionValue.PERMISSION_READ)
+@check_search_permission(PermissionValue.PERMISSION_WRITE)
 @add_tenant_id_to_kwargs
 @validate_request("question")
 async def related_questions_embedded(tenant_id=None):
@@ -549,7 +551,7 @@ Related search terms:
 @manager.route("/searchbots/detail", methods=["GET"])  # noqa: F821
 @login_required(auth_types=AUTH_BETA)
 @search_role_guard
-@check_search_permission(PermissionValue.PERMISSION_READ)
+@check_search_permission(PermissionValue.PERMISSION_WRITE)
 @add_tenant_id_to_kwargs
 async def detail_share_embedded(tenant_id=None):
     search_id = request.args["search_id"]
@@ -567,16 +569,17 @@ async def detail_share_embedded(tenant_id=None):
 @manager.route("/searchbots/mindmap", methods=["POST"])  # noqa: F821
 @login_required(auth_types=AUTH_BETA)
 @search_role_guard
-@check_search_permission(PermissionValue.PERMISSION_READ)
+@check_search_permission(PermissionValue.PERMISSION_WRITE)
 @add_tenant_id_to_kwargs
 @validate_request("question", "kb_ids")
 async def mindmap(tenant_id=None):
     req = await get_request_json()
     operator_user_id = req.pop("user_id", None) or tenant_id
 
-    kb_error = await _check_kb_read_access(operator_user_id, req.get("kb_ids", []))
+    accessible_kb_ids, kb_error = await filter_kb_read_access(operator_user_id, req.get("kb_ids", []))
     if kb_error:
         return get_error_data_result(message=kb_error, code=RetCode.PERMISSION_ERROR)
+    req["kb_ids"] = accessible_kb_ids
 
     search_id = req.get("search_id", "")
     search_app = await thread_pool_exec(SearchService.get_detail, search_id) if search_id else {}
@@ -595,14 +598,3 @@ async def mindmap(tenant_id=None):
 
 def _resolve_reference_metadata(req, search_config=None):
     return resolve_reference_metadata_preferences(req, search_config)
-
-
-async def _check_kb_read_access(user_id, kb_ids):
-    """Ensure every dataset used by a bot endpoint is readable by the caller."""
-    if isinstance(kb_ids, str):
-        kb_ids = [kb_ids]
-    for kb_id in kb_ids or []:
-        _, error = await thread_pool_exec(resolve_kb_with_permission, user_id, kb_id, PermissionValue.PERMISSION_READ)
-        if error:
-            return error
-    return None

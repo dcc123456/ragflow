@@ -49,6 +49,10 @@ async def _passthrough_thread_pool_exec(fn, *args, **kwargs):
     return fn(*args, **kwargs)
 
 
+async def _filter_kb_read_access(*_args, **_kwargs):
+    return [], None
+
+
 def _load_bot_api(monkeypatch, *, accessible, calls):
     """Load bot_api.py with the minimum stubs required.
 
@@ -124,7 +128,7 @@ def _load_bot_api(monkeypatch, *, accessible, calls):
         check_dialog_permission=lambda *_a, **_k: lambda func: func,
         check_search_permission=lambda *_a, **_k: lambda func: func,
         filter_accessible_doc_ids_for_user=lambda *_a, **_k: ([], [], ""),
-        resolve_kb_with_permission=lambda *_a, **_k: (None, None),
+        filter_kb_read_access=_filter_kb_read_access,
     )
     _stub(
         monkeypatch,

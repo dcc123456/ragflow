@@ -120,6 +120,21 @@ def resolve_kb_with_permission(user_id, kb_id, required_permission=PermissionVal
     return None, f"User '{user_id}' lacks permission for dataset '{kb_id}'"
 
 
+async def filter_kb_read_access(user_id, kb_ids):
+    """Keep readable datasets and skip datasets the caller cannot access."""
+    if isinstance(kb_ids, str):
+        kb_ids = [kb_ids]
+    accessible_kb_ids = []
+    first_error = None
+    for kb_id in kb_ids or []:
+        kb, error = await thread_pool_exec(resolve_kb_with_permission, user_id, kb_id, PermissionValue.PERMISSION_READ)
+        if kb:
+            accessible_kb_ids.append(kb_id)
+        elif error:
+            first_error = first_error or error
+    return accessible_kb_ids, first_error
+
+
 def resolve_search_with_permission(user_id, search_id, required_permission=PermissionValue.PERMISSION_READ):
     """Resolve a search app for an entrypoint after checking the caller's permission."""
     from api.db.services.search_service import SearchService
