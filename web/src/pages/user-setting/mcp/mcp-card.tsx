@@ -3,6 +3,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { IMcpServer } from '@/interfaces/database/mcp';
 import { formatDate } from '@/utils/date';
+import { hasOwnerPermission } from '@/utils/permission-util';
 import { isPlainObject } from 'lodash';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -27,6 +28,7 @@ export function McpCard({
   isSelectionMode,
 }: DatasetCardProps) {
   const { t } = useTranslation();
+  const isOwner = hasOwnerPermission(data.operator_permission);
   const toolLength = useMemo(() => {
     const tools = data.variables?.tools;
     if (isPlainObject(tools)) {
@@ -49,13 +51,15 @@ export function McpCard({
           </h3>
           <div className="space-x-4">
             {isSelectionMode ? (
-              <Checkbox
-                checked={selectedList.includes(data.id)}
-                onCheckedChange={onCheckedChange}
-                onClick={(e) => {
-                  e.stopPropagation();
-                }}
-              />
+              isOwner ? (
+                <Checkbox
+                  checked={selectedList.includes(data.id)}
+                  onCheckedChange={onCheckedChange}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                  }}
+                />
+              ) : null
             ) : (
               <McpOperation
                 mcp={data}

@@ -11,6 +11,10 @@ import { SearchInput } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { RAGFlowPagination } from '@/components/ui/ragflow-pagination';
 import { useListMcpServer } from '@/hooks/use-mcp-request';
+import {
+  hasOwnerPermission,
+  hasPreviewPermission,
+} from '@/utils/permission-util';
 import { pick } from 'lodash';
 import {
   Download,
@@ -20,7 +24,7 @@ import {
   Trash2,
   Upload,
 } from 'lucide-react';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ProfileSettingWrapperCard } from '../components/user-setting-header';
 import { EditMcpDialog } from './edit-mcp-dialog';
@@ -42,6 +46,7 @@ export default function McpServer() {
     handleDelete,
     handleExportMcp,
     handleSelectAll,
+    selectAllChecked,
   } = useBulkOperateMCP(data.mcp_servers);
   const { t } = useTranslation();
   const {
@@ -59,6 +64,22 @@ export default function McpServer() {
   } = useImportMcp();
 
   const [isSelectionMode, setSelectionMode] = useState(false);
+
+  const hasAnyWritePermission =
+    data.mcp_servers?.length === 0 ||
+    data.mcp_servers?.some(
+      (item) => !hasPreviewPermission(item.operator_permission),
+    );
+
+  const hasAnyOwnerPermission = data.mcp_servers?.some((item) =>
+    hasOwnerPermission(item.operator_permission),
+  );
+
+  useEffect(() => {
+    if (!hasAnyOwnerPermission && isSelectionMode) {
+      setSelectionMode(false);
+    }
+  }, [hasAnyOwnerPermission, isSelectionMode]);
 
   const handlePageChange = useCallback(
     (page: number, pageSize?: number) => {
@@ -92,21 +113,29 @@ export default function McpServer() {
               onChange={handleInputChange}
               placeholder={t('common.search')}
             />
-            <Button variant="outline" onClick={switchSelectionMode}>
-              {isSelectionMode ? (
-                <ListChecks className="size-3.5" />
-              ) : (
-                <LayoutList className="size-3.5" />
-              )}
-              {t(`mcp.${isSelectionMode ? 'exitBulkManage' : 'bulkManage'}`)}
-            </Button>
-            <Button variant="outline" onClick={showImportModal}>
-              <Download className="size-3.5" />
-              {t('mcp.import')}
-            </Button>
-            <Button onClick={showEditModal('')}>
-              <Plus /> {t('mcp.addMCP')}
-            </Button>
+            {hasAnyWritePermission && (
+              <>
+                {hasAnyOwnerPermission && (
+                  <Button variant="outline" onClick={switchSelectionMode}>
+                    {isSelectionMode ? (
+                      <ListChecks className="size-3.5" />
+                    ) : (
+                      <LayoutList className="size-3.5" />
+                    )}
+                    {t(
+                      `mcp.${isSelectionMode ? 'exitBulkManage' : 'bulkManage'}`,
+                    )}
+                  </Button>
+                )}
+                <Button variant="outline" onClick={showImportModal}>
+                  <Download className="size-3.5" />
+                  {t('mcp.import')}
+                </Button>
+                <Button onClick={showEditModal('')}>
+                  <Plus /> {t('mcp.addMCP')}
+                </Button>
+              </>
+            )}
           </div>
         </header>
       }
@@ -114,9 +143,13 @@ export default function McpServer() {
       <div className="h-full p-5 overflow-x-hidden overflow-y-auto">
         {data.mcp_servers?.length ? (
           <>
-            {isSelectionMode && (
+            {isSelectionMode && hasAnyOwnerPermission && (
               <section className="pb-5 flex items-center">
-                <Checkbox id="all" onCheckedChange={handleSelectAll} />
+                <Checkbox
+                  id="all"
+                  checked={selectAllChecked}
+                  onCheckedChange={handleSelectAll}
+                />
                 <Label
                   className="pl-2 text-text-primary cursor-pointer"
                   htmlFor="all"
@@ -174,16 +207,22 @@ export default function McpServer() {
           </>
         ) : (
           <div
-            className="flex items-center justify-between border border-dashed border-border-button rounded-md p-10 cursor-pointer w-[590px]"
-            onClick={showEditModal('')}
+            className={
+              hasAnyWritePermission
+                ? 'flex items-center justify-between border border-dashed border-border-button rounded-md p-10 cursor-pointer w-[590px]'
+                : 'flex items-center justify-between border border-dashed border-border-button rounded-md p-10 w-[590px]'
+            }
+            onClick={hasAnyWritePermission ? showEditModal('') : undefined}
           >
             <div className="text-text-secondary text-sm">
               {t('empty.noMCP')}
             </div>
-            <Button variant="outline">
-              <Plus />
-              {t('empty.addNow')}
-            </Button>
+            {hasAnyWritePermission && (
+              <Button variant="outline">
+                <Plus />
+                {t('empty.addNow')}
+              </Button>
+            )}
           </div>
         )}
       </div>

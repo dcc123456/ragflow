@@ -1,5 +1,6 @@
 import { useDeleteMcpServer } from '@/hooks/use-mcp-request';
 import { IMcpServer } from '@/interfaces/database/mcp';
+import { hasOwnerPermission } from '@/utils/permission-util';
 import { Trash2, Upload } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -21,12 +22,25 @@ export function useBulkOperateMCP(mcpList: IMcpServer[]) {
     });
   }, []);
 
+  const ownerMcpList = mcpList.filter((item) =>
+    hasOwnerPermission(item.operator_permission),
+  );
+
   const handleSelectAll = useCallback(
     (checked: boolean) => {
-      setSelectedList(() => (checked ? mcpList.map((item) => item.id) : []));
+      setSelectedList(() =>
+        checked ? ownerMcpList.map((item) => item.id) : [],
+      );
     },
-    [mcpList],
+    [ownerMcpList],
   );
+
+  const selectAllChecked: boolean | 'indeterminate' =
+    selectedList.length === 0
+      ? false
+      : selectedList.length === ownerMcpList.length
+        ? true
+        : 'indeterminate';
 
   const list = [
     {
@@ -50,6 +64,7 @@ export function useBulkOperateMCP(mcpList: IMcpServer[]) {
     handleDelete,
     handleExportMcp: handleExportMcpJson(selectedList),
     handleSelectAll,
+    selectAllChecked,
   };
 }
 
