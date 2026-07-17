@@ -273,9 +273,7 @@ async def completion(search_id):
     kb_ids = search_config.get("kb_ids") or req.get("kb_ids") or []
     if not kb_ids:
         return get_data_error_result(message="`kb_ids` is required.")
-    kb_ids, kb_error = await filter_kb_read_access(uid, kb_ids)
-    if kb_error and not kb_ids:
-        return get_data_error_result(message=kb_error)
+    kb_ids, _ = await filter_kb_read_access(uid, kb_ids)
     search_config = {**search_config, "kb_ids": kb_ids}
 
     # check if the kb_ids is accessible for this user

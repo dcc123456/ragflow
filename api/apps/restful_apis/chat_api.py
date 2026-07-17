@@ -47,7 +47,7 @@ from api.utils.api_utils import (
     validate_request,
 )
 from api.utils.billing import check_resources, check_dynamic_resources, get_dynamic_resource_error_result
-from api.utils.permission_utils import check_dialog_permission, check_search_permission, has_permission_for_member
+from api.utils.permission_utils import check_dialog_permission, check_search_permission, has_permission_for_member, resolve_kb_with_permission
 from api.utils.pagination_utils import validate_rest_api_page_size
 from common.constants import LLMType, RetCode, StatusEnum
 from common.misc_utils import get_uuid, thread_pool_exec
@@ -400,14 +400,11 @@ async def _validate_dataset_ids(dataset_ids, tenant_id):
     normalized_ids = [dataset_id for dataset_id in dataset_ids if dataset_id]
     kbs = []
     for dataset_id in normalized_ids:
-        if not await thread_pool_exec(KnowledgebaseService.accessible, kb_id=dataset_id, user_id=tenant_id):
-            return f"You don't own the dataset {dataset_id}"
-        matches = await thread_pool_exec(KnowledgebaseService.query, id=dataset_id)
-        if not matches:
-            return f"You don't own the dataset {dataset_id}"
-        kb = matches[0]
+        kb, _ = await thread_pool_exec(resolve_kb_with_permission, tenant_id, dataset_id, PermissionValue.PERMISSION_READ)
+        if not kb:
+            return f"You don't have permission to access the dataset {dataset_id}"
         if kb.chunk_num == 0:
-            return f"The dataset {dataset_id} doesn't own parsed file"
+            return f"The dataset {dataset_id} has no parsed files"
         kbs.append(kb)
 
     err = validate_dataset_embedding_models(kbs)

@@ -941,6 +941,14 @@ def _load_chat_routes_unit_module(monkeypatch):
     module.manager = _DummyManager()
     monkeypatch.setitem(sys.modules, module_name, module)
     spec.loader.exec_module(module)
+
+    def _resolve_kb_with_permission(_user_id, kb_id, _permission):
+        matches = _StubKnowledgebaseService.query(id=kb_id)
+        if matches:
+            return matches[0], None
+        return None, f"User lacks permission for dataset {kb_id}"
+
+    monkeypatch.setattr(module, "resolve_kb_with_permission", _resolve_kb_with_permission)
     return module
 
 
@@ -1581,7 +1589,7 @@ def test_chat_create_dataset_ids_contract(rest_client, clear_chats, ensure_parse
     cases = [
         ("empty dataset_ids", [], 0, "", []),
         ("owned parsed dataset", [dataset_id], 0, "", [dataset_id]),
-        ("invalid dataset id", ["invalid_dataset_id"], 102, "You don't own the dataset invalid_dataset_id", None),
+        ("invalid dataset id", ["invalid_dataset_id"], 102, "You don't have permission to access the dataset invalid_dataset_id", None),
         ("dataset_ids wrong type", "invalid_dataset_id", 102, "`dataset_ids` should be a list.", None),
     ]
 
@@ -1780,7 +1788,7 @@ def test_chat_create_rejects_unparsed_document(rest_client, clear_chats, create_
     assert res.status_code == 200
     payload = res.json()
     assert payload["code"] == 102, payload
-    assert "doesn't own parsed file" in payload["message"], payload
+    assert "has no parsed files" in payload["message"], payload
 
 
 @pytest.mark.p2
@@ -1838,7 +1846,7 @@ def test_chat_update_dataset_ids_contract(rest_client, clear_chats, ensure_parse
     cases = [
         ("empty dataset_ids", [], 0, "", []),
         ("owned parsed dataset", [dataset_id], 0, "", [dataset_id]),
-        ("invalid dataset id", ["invalid_dataset_id"], 102, "You don't own the dataset invalid_dataset_id", None),
+        ("invalid dataset id", ["invalid_dataset_id"], 102, "You don't have permission to access the dataset invalid_dataset_id", None),
         ("dataset_ids wrong type", "invalid_dataset_id", 102, "`dataset_ids` should be a list.", None),
     ]
 
@@ -2144,4 +2152,4 @@ def test_chat_update_rejects_unparsed_document(rest_client, clear_chats, create_
     assert res.status_code == 200, res.text
     payload = res.json()
     assert payload["code"] == 102, payload
-    assert "doesn't own parsed file" in payload["message"], payload
+    assert "has no parsed files" in payload["message"], payload
