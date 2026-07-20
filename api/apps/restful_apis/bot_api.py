@@ -19,7 +19,7 @@ import re
 
 import logging
 
-from quart import Response, g, request
+from quart import Response, request
 
 from agent.canvas import Canvas
 from api.apps import AUTH_BETA, login_required
@@ -180,7 +180,6 @@ async def chatbots_inputs(dialog_id, tenant_id=None):
 async def agent_bot_completions(agent_id, tenant_id=None):
     req = await get_request_json()
 
-    tenant_id = getattr(g, "tenant_id", tenant_id)
     if not await thread_pool_exec(UserCanvasService.accessible, agent_id, tenant_id):
         return get_error_data_result(message=f"Can't find agent by ID: {agent_id}")
 
@@ -271,7 +270,6 @@ async def agent_bot_completions(agent_id, tenant_id=None):
 @check_canvas_permission(PermissionValue.PERMISSION_READ)
 @add_tenant_id_to_kwargs
 async def begin_inputs(agent_id, tenant_id=None):
-    tenant_id = getattr(g, "tenant_id", tenant_id)
     if not await thread_pool_exec(UserCanvasService.accessible, agent_id, tenant_id):
         return get_error_data_result(f"Can't find agent by ID: {agent_id}")
 
@@ -289,7 +287,6 @@ async def begin_inputs(agent_id, tenant_id=None):
 @check_canvas_permission(PermissionValue.PERMISSION_READ)
 @add_tenant_id_to_kwargs
 async def agent_bot_logs(shared_id, message_id, tenant_id=None):
-    tenant_id = getattr(g, "tenant_id", tenant_id)
     if not await thread_pool_exec(UserCanvasService.accessible, shared_id, tenant_id):
         return get_error_data_result(f"Can't find agent by ID: {shared_id}")
 
@@ -367,10 +364,10 @@ async def retrieval_test_embedded(tenant_id=None):
         kb_ids = [kb_ids]
     if not kb_ids:
         return get_json_result(data=False, message="Please specify dataset firstly.", code=RetCode.DATA_ERROR)
-    operator_user_id = req.get("user_id") or tenant_id
+    operator_user_id = req.pop("user_id", None) or tenant_id
     kb_ids, kb_error = await filter_kb_read_access(operator_user_id, kb_ids)
-    if kb_error:
-        return get_error_data_result(message=kb_error, code=RetCode.PERMISSION_ERROR)
+    if not kb_ids:
+        return get_error_data_result(message=kb_error or "No accessible dataset.", code=RetCode.PERMISSION_ERROR)
     doc_ids = req.get("doc_ids", [])
     similarity_threshold = float(req.get("similarity_threshold", 0.0))
     vector_similarity_weight = float(req.get("vector_similarity_weight", 0.3))
@@ -382,7 +379,6 @@ async def retrieval_test_embedded(tenant_id=None):
     rerank_id = req.get("rerank_id", "")
     if not tenant_id:
         return get_error_data_result(message="permission denined.")
-    operator_user_id = req.pop("user_id", None) or tenant_id
     search_config = {}
 
     async def _retrieval():

@@ -543,7 +543,7 @@ def delete_agent_session_item(agent_id, session_id, tenant_id):
     if g.operator_permission == PermissionValue.PERMISSION_WRITE.value and not _ensure_agent_session_owned_by_current_user(conv, tenant_id):
         return get_json_result(
             data=False,
-            message=_permission_denied_message("Agent session", PermissionValue.PERMISSION_WRITE),
+            message=_permission_denied_message("Agent session", PermissionValue.PERMISSION_MANAGE),
             code=RetCode.PERMISSION_ERROR,
         )
     return get_json_result(data=API4ConversationService.delete_by_id(session_id))
@@ -600,7 +600,7 @@ async def delete_agent_session(tenant_id, agent_id):
             if all(err.startswith("Only session owner or agent manager") for err in errors):
                 return get_json_result(
                     data=False,
-                    message=_permission_denied_message("Agent session", PermissionValue.PERMISSION_WRITE),
+                    message=_permission_denied_message("Agent session", PermissionValue.PERMISSION_MANAGE),
                     code=RetCode.PERMISSION_ERROR,
                 )
             return get_error_data_result(message="; ".join(errors))
