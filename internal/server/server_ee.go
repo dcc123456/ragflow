@@ -19,6 +19,8 @@ package server
 import (
 	"context"
 	"errors"
+	"ragflow/internal/engine/clickhouse"
+	"ragflow/internal/engine/otel"
 
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
@@ -42,6 +44,19 @@ func StartServer(ctx context.Context, cancel context.CancelFunc, serverName stri
 		return errors.New("server EE is nil")
 	}
 
+	config := GetConfig()
+
+	var err error
+	serverEE.tracerProvider, err = tracer.NewTracerProvider(ctx, serverName, config.OTel.Host, config.OTel.Port, config.OTel.Secure, config.OTel.Stdout, config.OTel.Enable, config.OTel.SampleRatio)
+	if err != nil {
+		return err
+	}
+
+	err = clickhouse.Init(ctx, cancel, config.Clickhouse.Host, config.Clickhouse.Port, config.Clickhouse.User, config.Clickhouse.Password, config.Clickhouse.Database)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -49,5 +64,8 @@ func ShutdownServer(ctx context.Context) error {
 	if serverEE == nil {
 		return errors.New("server EE is nil")
 	}
+
+	serverEE.tracerProvider.Shutdown(ctx)
+
 	return nil
 }
