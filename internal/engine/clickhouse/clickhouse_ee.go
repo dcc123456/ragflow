@@ -285,6 +285,115 @@ func (d *Driver) InitDB() error {
 	return nil
 }
 
+type UserStatsResult struct {
+	StatDate          time.Time `json:"stat_date"`
+	UserID            string    `json:"user_id"`
+	UserEmail         string    `json:"user_email"`
+	GroupID           string    `json:"group_id"`
+	GroupName         string    `json:"group_name"`
+	AppID             string    `json:"app_id"`
+	AppName           string    `json:"app_name"`
+	ProviderName      string    `json:"provider_name"`
+	ModelName         string    `json:"model_name"`
+	RequestCount      uint64    `json:"request_count"`
+	TotalInputTokens  uint64    `json:"total_input_tokens"`
+	TotalOutputTokens uint64    `json:"total_output_tokens"`
+	TotalTokens       uint64    `json:"total_tokens"`
+	AvgResponseTime   float64   `json:"avg_response_time_ms"`
+	ErrorCount        uint64    `json:"error_count"`
+	SuccessRate       float64   `json:"success_rate"`
+}
+
+func (d *Driver) UserStats(
+	userID string,
+	startDateStr, endDateStr string,
+	granularity string,
+) ([]UserStatsResult, error) {
+	startDate, err := time.Parse("2006-01-02", startDateStr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid start date: %w", err)
+	}
+	endDate, err := time.Parse("2006-01-02 15:04:05", endDateStr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid end date: %w", err)
+	}
+
+	var dateFormat string
+	switch granularity {
+	case "hour":
+		dateFormat = "toStartOfHour(start_at)"
+	case "month":
+		dateFormat = "toStartOfMonth(start_at)"
+	default: // day
+		dateFormat = "toDate(start_at)"
+	}
+
+	query := fmt.Sprintf(`
+        SELECT
+            %s as stat_date,
+            user_id,
+            any(user_email) as user_email,
+            any(group_id) as group_id,
+            any(group_name) as group_name,
+            any(app_id) as app_id,
+            any(app_name) as app_name,
+            provider_name,
+            model_name,
+            count() as request_count,
+            sum(input_tokens) as total_input_tokens,
+            sum(output_tokens) as total_output_tokens,
+            sum(total_tokens) as total_tokens,
+            avg(response_time_ms) as avg_response_time_ms,
+            countIf(error_message != '') as error_count,
+            (count() - countIf(error_message != '')) / count() as success_rate
+        FROM model_usage_fact
+        WHERE user_id = ?
+            AND event_date >= ?
+            AND event_date <= ?
+        GROUP BY
+            stat_date,
+            user_id,
+            provider_name,
+            model_name
+        ORDER BY stat_date DESC, total_tokens DESC
+    `, dateFormat)
+
+	rows, err := d.conn.Query(d.ctx, query, userID, startDate, endDate)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query user stats failed: %w", err)
+	}
+	defer rows.Close()
+
+	var results []UserStatsResult
+	for rows.Next() {
+		var r UserStatsResult
+		err = rows.Scan(
+			&r.StatDate,
+			&r.UserID,
+			&r.UserEmail,
+			&r.GroupID,
+			&r.GroupName,
+			&r.AppID,
+			&r.AppName,
+			&r.ProviderName,
+			&r.ModelName,
+			&r.RequestCount,
+			&r.TotalInputTokens,
+			&r.TotalOutputTokens,
+			&r.TotalTokens,
+			&r.AvgResponseTime,
+			&r.ErrorCount,
+			&r.SuccessRate,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan user stats result: %w", err)
+		}
+		results = append(results, r)
+	}
+
+	return results, nil
+}
+
 func (d *Driver) tableExists(tableName string) (bool, error) {
 	var count uint64
 	err := d.conn.QueryRow(d.ctx, `

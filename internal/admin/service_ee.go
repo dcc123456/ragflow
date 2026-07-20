@@ -23,6 +23,7 @@ import (
 	"os"
 	"ragflow/internal/common"
 	"ragflow/internal/dao"
+	"ragflow/internal/engine/clickhouse"
 	"ragflow/internal/engine/elasticsearch"
 	"ragflow/internal/entity"
 	"ragflow/internal/server"
@@ -2458,17 +2459,40 @@ func (s *Service) BatchDeleteWhiteList(ids []int) (map[string]interface{}, error
 
 // GetTokenStats returns API token statistics for the user.
 func (s *Service) GetTokenStats(userName, fromDate, toDate, granularity string) ([]map[string]interface{}, error) {
-	result := []map[string]interface{}{
-		{
-			"command":     "get_token_stats",
-			"user_name":   userName,
-			"from_date":   fromDate,
-			"to_date":     toDate,
-			"granularity": granularity,
-			"error":       "'Get API token stats' is not supported",
-		},
+	user, err := s.userDAO.GetByEmail(userName)
+	if err != nil {
+		return nil, err
 	}
-	return result, nil
+	clickhouseDriver := clickhouse.GetDriver()
+	tokenStats, err := clickhouseDriver.UserStats(user.ID, fromDate, toDate, granularity)
+	if err != nil {
+		return nil, err
+	}
+
+	maps := make([]map[string]interface{}, len(tokenStats))
+
+	for i, r := range tokenStats {
+		maps[i] = map[string]interface{}{
+			"stat_date":            r.StatDate,
+			"user_id":              r.UserID,
+			"user_email":           r.UserEmail,
+			"group_id":             r.GroupID,
+			"group_name":           r.GroupName,
+			"app_id":               r.AppID,
+			"app_name":             r.AppName,
+			"provider_name":        r.ProviderName,
+			"model_name":           r.ModelName,
+			"request_count":        r.RequestCount,
+			"total_input_tokens":   r.TotalInputTokens,
+			"total_output_tokens":  r.TotalOutputTokens,
+			"total_tokens":         r.TotalTokens,
+			"avg_response_time_ms": r.AvgResponseTime,
+			"error_count":          r.ErrorCount,
+			"success_rate":         r.SuccessRate,
+		}
+	}
+
+	return maps, nil
 }
 
 // GetTokenUsersStats returns API token statistics for all users.
