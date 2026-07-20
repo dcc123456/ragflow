@@ -23,6 +23,7 @@ export default {
       next: '下一步',
       create: '创建',
       edit: '编辑',
+      view: '查看',
       upload: '上传',
       english: '英文',
       portugueseBr: '葡萄牙语 (巴西)',

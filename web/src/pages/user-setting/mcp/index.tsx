@@ -38,8 +38,15 @@ import { useShowPrivilegeDialog } from './use-show-privilege-dialog';
 export default function McpServer() {
   const { data, setPagination, searchString, handleInputChange, pagination } =
     useListMcpServer();
-  const { editVisible, showEditModal, hideEditModal, handleOk, id, loading } =
-    useEditMcp();
+  const {
+    editVisible,
+    showEditModal,
+    hideEditModal,
+    handleOk,
+    id,
+    loading,
+    operatorPermission,
+  } = useEditMcp();
   const {
     selectedList,
     handleSelectChange,
@@ -233,6 +240,7 @@ export default function McpServer() {
           onOk={handleOk}
           id={id}
           loading={loading}
+          operatorPermission={operatorPermission}
         ></EditMcpDialog>
       )}
       {importVisible && (

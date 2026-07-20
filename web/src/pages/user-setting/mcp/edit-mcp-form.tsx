@@ -66,11 +66,14 @@ export function EditMcpForm({
   form,
   onOk,
   setFieldChanged,
+  readOnly = false,
 }: IModalProps<any> & {
   form: UseFormReturn<any>;
   setFieldChanged: Dispatch<SetStateAction<boolean>>;
+  readOnly?: boolean;
 }) {
   const { t } = useTranslation();
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const FormSchema = useBuildFormSchema();
 
   function onSubmit(data: z.infer<typeof FormSchema>) {
@@ -95,6 +98,7 @@ export function EditMcpForm({
                   placeholder={t('common.mcp.namePlaceholder')}
                   {...field}
                   autoComplete="off"
+                  disabled={readOnly}
                 />
               </FormControl>
               <FormMessage />
@@ -112,6 +116,7 @@ export function EditMcpForm({
                   placeholder={t('common.mcp.urlPlaceholder')}
                   {...field}
                   autoComplete="off"
+                  disabled={readOnly}
                   onChange={(e) => {
                     field.onChange(e.target.value.trim());
                     setFieldChanged(true);
@@ -133,6 +138,7 @@ export function EditMcpForm({
                   {...field}
                   autoComplete="off"
                   options={ServerTypeOptions}
+                  disabled={readOnly}
                   onChange={(value) => {
                     field.onChange(value);
                     setFieldChanged(true);
@@ -155,6 +161,7 @@ export function EditMcpForm({
                   {...field}
                   autoComplete="off"
                   type="password"
+                  disabled={readOnly}
                   onChange={(e) => {
                     field.onChange(e.target.value.trim());
                     setFieldChanged(true);

@@ -7,6 +7,7 @@ import { useGetMcpServer, useTestMcpServer } from '@/hooks/use-mcp-request';
 import { IModalProps } from '@/interfaces/common';
 import { IMCPTool, IMCPToolObject } from '@/interfaces/database/mcp';
 import { cn } from '@/lib/utils';
+import { hasPreviewPermission } from '@/utils/permission-util';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { isEmpty, omit, pick } from 'lodash';
 import { RefreshCw } from 'lucide-react';
@@ -46,7 +47,8 @@ export function EditMcpDialog({
   loading,
   onOk,
   id,
-}: IModalProps<any> & { id: string }) {
+  operatorPermission,
+}: IModalProps<any> & { id: string; operatorPermission?: number }) {
   const { t } = useTranslation();
   const {
     testMcpServer,
@@ -106,6 +108,9 @@ export function EditMcpDialog({
   }, [data.variables?.tools, tools]);
 
   const disabled = !tools?.length || testLoading || fieldChanged;
+  const isReadOnly = hasPreviewPermission(
+    operatorPermission ?? data.operator_permission,
+  );
 
   return (
     // <Dialog open onOpenChange={hideModal}>
@@ -169,7 +174,13 @@ export function EditMcpDialog({
     //   </DialogContent>
     // </Dialog>
     <Modal
-      title={id ? t('mcp.editMCP') : t('mcp.addMCP')}
+      title={
+        id
+          ? isReadOnly
+            ? t('common.view')
+            : t('mcp.editMCP')
+          : t('mcp.addMCP')
+      }
       open={true}
       onCancel={hideModal}
       cancelText={t('common.cancel')}
@@ -180,15 +191,17 @@ export function EditMcpDialog({
           <DialogClose asChild>
             <Button variant="outline">{t('common.cancel')}</Button>
           </DialogClose>
-          <ButtonLoading
-            type="submit"
-            form={FormId}
-            loading={loading}
-            onClick={handleSave}
-            disabled={disabled}
-          >
-            {t('common.save')}
-          </ButtonLoading>
+          {!isReadOnly && (
+            <ButtonLoading
+              type="submit"
+              form={FormId}
+              loading={loading}
+              onClick={handleSave}
+              disabled={disabled}
+            >
+              {t('common.save')}
+            </ButtonLoading>
+          )}
         </DialogFooter>
       }
     >
@@ -196,6 +209,7 @@ export function EditMcpDialog({
         onOk={handleOk}
         form={form}
         setFieldChanged={setFieldChanged}
+        readOnly={isReadOnly}
       ></EditMcpForm>
       <Card className="bg-transparent mt-4">
         <CardContent className="p-3">
@@ -208,19 +222,21 @@ export function EditMcpDialog({
             open={collapseOpen}
             onOpenChange={setCollapseOpen}
             rightContent={
-              <Button
-                variant={'transparent'}
-                form={FormId}
-                type="submit"
-                onClick={handleTest}
-                className="border-none p-0 text-text-secondary hover:bg-transparent hover:text-text-primary"
-              >
-                <RefreshCw
-                  className={cn({
-                    'animate-spin': testLoading,
-                  })}
-                />
-              </Button>
+              isReadOnly ? undefined : (
+                <Button
+                  variant={'transparent'}
+                  form={FormId}
+                  type="submit"
+                  onClick={handleTest}
+                  className="border-none p-0 text-text-secondary hover:bg-transparent hover:text-text-primary"
+                >
+                  <RefreshCw
+                    className={cn({
+                      'animate-spin': testLoading,
+                    })}
+                  />
+                </Button>
+              )
             }
           >
             <div className="overflow-auto max-h-80 divide-y-[0.5px] divide-border-button bg-bg-card rounded-md px-2.5 scrollbar-auto">

@@ -15,9 +15,9 @@ import { IMcpServer } from '@/interfaces/database/mcp';
 import {
   hasManagePermissionPermission,
   hasOwnerPermission,
-  showEditButton,
+  hasPreviewPermission,
 } from '@/utils/permission-util';
-import { Ellipsis, PenLine, Trash2, Upload } from 'lucide-react';
+import { Ellipsis, Eye, PenLine, Trash2, Upload } from 'lucide-react';
 import { MouseEventHandler, PropsWithChildren, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useEditMcp } from './use-edit-mcp';
@@ -51,9 +51,7 @@ export function McpOperation({
       [showPrivilegeModal],
     );
 
-  if (!showEditButton(mcp.operator_permission)) {
-    return null;
-  }
+  const isReadOnly = hasPreviewPermission(mcp.operator_permission);
 
   return (
     <DropdownMenu>
@@ -61,8 +59,18 @@ export function McpOperation({
         <Ellipsis className="size-5 cursor-pointer p-1 rounded-sm hover:text-text-primary hover:bg-bg-card" />
       </DropdownMenuTrigger>
       <DropdownMenuContent>
-        <DropdownMenuItem onClick={showEditModal(mcp.id)}>
-          {t('common.edit')} <PenLine className="size-4" />
+        <DropdownMenuItem
+          onClick={showEditModal(mcp.id, mcp.operator_permission)}
+        >
+          {isReadOnly ? (
+            <>
+              {t('common.view')} <Eye className="size-4" />
+            </>
+          ) : (
+            <>
+              {t('common.edit')} <PenLine className="size-4" />
+            </>
+          )}
         </DropdownMenuItem>
         {hasManagePermissionPermission(mcp.operator_permission) && (
           <DropdownMenuItem onClick={handlesShowPrivilegeModal}>

@@ -23,6 +23,7 @@ export default {
       next: 'Next',
       create: 'Create',
       edit: 'Edit',
+      view: 'View',
       upload: 'Upload',
       english: 'English',
       portugueseBr: 'Portuguese (Brazil)',

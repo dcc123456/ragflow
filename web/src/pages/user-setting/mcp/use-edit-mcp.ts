@@ -13,15 +13,19 @@ export const useEditMcp = () => {
   } = useSetModalState();
   const { createMcpServer, loading } = useCreateMcpServer();
   const [id, setId] = useState('');
+  const [operatorPermission, setOperatorPermission] = useState<
+    number | undefined
+  >();
 
   const { updateMcpServer, loading: updateLoading } = useUpdateMcpServer();
 
   const handleShowModal = useCallback(
-    (id: string) => () => {
+    (id: string, operatorPermission?: number) => () => {
       setId(id);
+      setOperatorPermission(operatorPermission);
       showEditModal();
     },
-    [setId, showEditModal],
+    [setId, setOperatorPermission, showEditModal],
   );
 
   const handleOk = useCallback(
@@ -47,6 +51,7 @@ export const useEditMcp = () => {
     createMcpServer,
     handleOk,
     id,
+    operatorPermission,
   };
 };
 
