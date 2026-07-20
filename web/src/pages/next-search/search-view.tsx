@@ -182,7 +182,7 @@ export default function SearchingView({
               </>
             )}
             {/* retrieval documents */}
-            {!isSearchStrEmpty && !sendingLoading && (
+            {!isSearchStrEmpty && !sendingLoading && total > 0 && (
               <section className="flex justify-start items-center gap-4">
                 <div className="w-44 ">
                   <RetrievalDocuments
