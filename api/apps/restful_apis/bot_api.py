@@ -315,8 +315,8 @@ async def ask_about_embedded(tenant_id=None):
     operator_user_id = req.pop("user_id", None) or uid
 
     accessible_kb_ids, kb_error = await filter_kb_read_access(operator_user_id, req.get("kb_ids", []))
-    if kb_error:
-        return get_error_data_result(message=kb_error, code=RetCode.PERMISSION_ERROR)
+    if not accessible_kb_ids:
+        return get_error_data_result(message=kb_error or "No accessible dataset.", code=RetCode.PERMISSION_ERROR)
     req["kb_ids"] = accessible_kb_ids
 
     search_id = req.get("search_id", "")
@@ -573,8 +573,8 @@ async def mindmap(tenant_id=None):
     operator_user_id = req.pop("user_id", None) or tenant_id
 
     accessible_kb_ids, kb_error = await filter_kb_read_access(operator_user_id, req.get("kb_ids", []))
-    if kb_error:
-        return get_error_data_result(message=kb_error, code=RetCode.PERMISSION_ERROR)
+    if not accessible_kb_ids:
+        return get_error_data_result(message=kb_error or "No accessible dataset.", code=RetCode.PERMISSION_ERROR)
     req["kb_ids"] = accessible_kb_ids
 
     search_id = req.get("search_id", "")
