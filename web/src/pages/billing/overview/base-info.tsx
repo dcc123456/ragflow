@@ -238,8 +238,8 @@ export const BaseInfo = () => {
           unit="pts"
           basicCapacity={currentPlan.docParse?.base}
           showValue={false}
-          // planPoints={planData?.resources?.plan_points}
-          // addonPoints={planData?.resources?.addon_points}
+          planPoints={planData?.resources?.plan_points}
+          addonPoints={planData?.resources?.addon_points}
         ></ResourceUsage>
         <ResourceUsage
           title="Apps"
