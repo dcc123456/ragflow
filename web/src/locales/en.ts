@@ -1847,7 +1847,8 @@ Example: Virtual Hosted Style`,
       showMoreModels: 'View models',
       hideModels: 'Hide models',
       baseUrl: 'Base URL',
-      baseUrlTip: 'If your API Key is from OpenAI, just ignore it. Any other intermediate providers will give this Base URL with the API Key.',
+      baseUrlTip:
+        'If your API Key is from OpenAI, just ignore it. Any other intermediate providers will give this Base URL with the API Key.',
       openRouterProviderOrderTip:
         'Comma-separated provider list, e.g. Groq,Fireworks',
       tongyiBaseUrlTip:
