@@ -31,6 +31,8 @@ const {
   heartbeatCanvasPresence,
   leaveCanvasPresence,
   fetchCanvasPresence,
+  listBuiltinPipelines,
+  getBuiltinPipeline,
 } = api;
 
 const methods = {
@@ -140,6 +142,14 @@ const methods = {
   },
   fetchCanvasPresence: {
     url: fetchCanvasPresence,
+    method: 'get',
+  },
+  listBuiltinPipelines: {
+    url: listBuiltinPipelines,
+    method: 'get',
+  },
+  getBuiltinPipeline: {
+    url: getBuiltinPipeline,
     method: 'get',
   },
 } as const;

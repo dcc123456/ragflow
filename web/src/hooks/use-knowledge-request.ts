@@ -68,6 +68,7 @@ export const enum KnowledgeApiAction {
   DuplicateKnowledge = 'duplicateKnowledge',
   SaveKnowledge = 'saveKnowledge',
   FetchKnowledgeDetail = 'fetchKnowledgeDetail',
+  FetchDatasetPipelineConfiguration = 'fetchDatasetPipelineConfiguration',
   FetchKnowledgeGraph = 'fetchKnowledgeGraph',
   FetchArtifactList = 'fetchArtifactList',
   FetchArtifactTopicList = 'fetchArtifactTopicList',
@@ -267,6 +268,15 @@ export const useDeleteKnowledge = () => {
   return { data, loading, deleteKnowledge: mutateAsync };
 };
 
+function isPipelineParserConfig(
+  parserConfig: Record<string, any> | undefined,
+): boolean {
+  if (!parserConfig || typeof parserConfig !== 'object') {
+    return false;
+  }
+  return Object.keys(parserConfig).some((key) => key.includes(':'));
+}
+
 export const useUpdateKnowledge = (shouldFetchList = false) => {
   const knowledgeBaseId = useKnowledgeBaseId();
   const queryClient = useQueryClient();
@@ -311,7 +321,9 @@ export const useUpdateKnowledge = (shouldFetchList = false) => {
         description,
         permission,
         pagerank,
-        parser_config: extractParserConfigExt(parser_config),
+        parser_config: isPipelineParserConfig(parser_config)
+          ? parser_config
+          : extractParserConfigExt(parser_config),
         ...omit(ext, ['kb_id']),
       };
 
@@ -418,6 +430,36 @@ export const useFetchKnowledgeBaseConfiguration = (props?: {
 
   const { data, isFetching: loading } = useQuery<IDataset>({
     queryKey: [KnowledgeApiAction.FetchKnowledgeDetail, knowledgeBaseId],
+    initialData: {} as IDataset,
+    gcTime: 0,
+    enabled: !!knowledgeBaseId && isEdit,
+    queryFn: async () => {
+      const { data } = await getKbDetail(knowledgeBaseId || '');
+      return data?.data ?? {};
+    },
+  });
+
+  return { data, loading };
+};
+
+export const DatasetPipelineConfigurationKeys = {
+  detail: (knowledgeBaseId: string | null | undefined) =>
+    [
+      KnowledgeApiAction.FetchDatasetPipelineConfiguration,
+      knowledgeBaseId,
+    ] as const,
+};
+
+export const useFetchDatasetPipelineConfiguration = (props?: {
+  isEdit?: boolean;
+}) => {
+  const { isEdit = true } = props || { isEdit: true };
+  const { id } = useParams();
+  const [searchParams] = useSearchParams();
+  const knowledgeBaseId = searchParams.get('id') || id;
+
+  const { data, isFetching: loading } = useQuery<IDataset>({
+    queryKey: DatasetPipelineConfigurationKeys.detail(knowledgeBaseId),
     initialData: {} as IDataset,
     gcTime: 0,
     enabled: !!knowledgeBaseId && isEdit,

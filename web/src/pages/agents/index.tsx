@@ -32,6 +32,7 @@ import { useShowPrivilegeDialog } from './use-show-privilege-dialog';
 export default function Agents() {
   const {
     data,
+    loading: listLoading,
     pagination,
     setPagination,
     searchString,
@@ -180,6 +181,8 @@ export default function Agents() {
             </div>
           )}
         </article>
+      ) : listLoading ? (
+        <article className="size-full" data-testid="agents-list"></article>
       ) : (
         <article
           className="size-full flex items-center justify-center"
