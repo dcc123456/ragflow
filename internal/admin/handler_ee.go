@@ -1992,5 +1992,74 @@ func (h *Handler) ListLogs(c *gin.Context) {
 	}
 
 	common.SuccessWithData(c, stats, "success")
+}
 
+// GetFingerprint handle get system fingerprint
+func (h *Handler) GetFingerprint(c *gin.Context) {
+	fingerprint, err := h.service.GetFingerprint()
+	if err != nil {
+		common.ErrorWithCode(c, 400, err.Error())
+		return
+	}
+	common.SuccessWithData(c, gin.H{"fingerprint": fingerprint}, "")
+}
+
+type SetLicenseHTTPRequest struct {
+	License string `json:"license" binding:"required"`
+}
+
+// SetLicense to set system license
+func (h *Handler) SetLicense(c *gin.Context) {
+	var req SetLicenseHTTPRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ErrorWithCode(c, 400, "Var license are required")
+		return
+	}
+
+	license, err := h.service.SetLicense(req.License)
+	if err != nil {
+		common.ErrorWithCode(c, 400, err.Error())
+		return
+	}
+	common.SuccessWithData(c, license, "")
+}
+
+type SetLicenseConfigHTTPRequest struct {
+	TimeRecordSaveInterval int64 `json:"value1" binding:"required"`
+	TimeRecordTaskDuration int64 `json:"value2" binding:"required"`
+}
+
+func (h *Handler) UpdateLicenseConfig(c *gin.Context) {
+	var req SetLicenseConfigHTTPRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ErrorWithCode(c, 400, "Var license are required")
+		return
+	}
+
+	err := h.service.SetLicenseConfig(req.TimeRecordSaveInterval, req.TimeRecordTaskDuration)
+	if err != nil {
+		common.ErrorWithCode(c, 400, err.Error())
+		return
+	}
+	common.SuccessNoData(c, "Successfully")
+}
+
+// ShowLicense to get system license
+func (h *Handler) ShowLicense(c *gin.Context) {
+	checkParam := c.Query("check")
+	if checkParam == "true" {
+		// GET /admin/license?check=true
+		err := h.service.CheckLicense()
+		common.SuccessWithData(c, err.Error(), "")
+		return
+	}
+
+	// GET /admin/license
+	license, err := h.service.ShowLicense()
+	if err != nil {
+		common.ErrorWithCode(c, 400, err.Error())
+		return
+	}
+
+	common.SuccessWithData(c, license, "")
 }
