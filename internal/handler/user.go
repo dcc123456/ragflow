@@ -127,7 +127,6 @@ func (h *UserHandler) Login(c *gin.Context) {
 		common.ResponseWithCodeData(c, common.CodeBadRequest, false, err.Error())
 		operationLog.ErrorCode = uint16(common.CodeBadRequest)
 		operationLog.Message = err.Error()
-		operationLog.DurationMS = time.Since(startAt).Milliseconds()
 		return
 	}
 	operationLog.ResourceName = req.Username
@@ -137,7 +136,6 @@ func (h *UserHandler) Login(c *gin.Context) {
 		common.ResponseWithCodeData(c, code, false, err.Error())
 		operationLog.ErrorCode = uint16(code)
 		operationLog.Message = err.Error()
-		operationLog.DurationMS = time.Since(startAt).Milliseconds()
 		return
 	}
 	operationLog.UserID = user.ID
@@ -149,7 +147,6 @@ func (h *UserHandler) Login(c *gin.Context) {
 		common.ResponseWithCodeData(c, common.CodeServerError, false, errMessage)
 		operationLog.ErrorCode = uint16(common.CodeServerError)
 		operationLog.Message = errMessage
-		operationLog.DurationMS = time.Since(startAt).Milliseconds()
 		return
 	}
 	authToken, err := utility.DumpAccessToken(*user.AccessToken, secretKey)
@@ -157,7 +154,6 @@ func (h *UserHandler) Login(c *gin.Context) {
 		common.ResponseWithCodeData(c, common.CodeServerError, false, "Failed to generate auth token")
 		operationLog.ErrorCode = uint16(common.CodeServerError)
 		operationLog.Message = "Failed to generate auth token"
-		operationLog.DurationMS = time.Since(startAt).Milliseconds()
 		return
 	}
 
@@ -207,7 +203,6 @@ func (h *UserHandler) LoginByEmail(c *gin.Context) {
 		common.ResponseWithCodeData(c, common.CodeBadRequest, false, err.Error())
 		operationLog.ErrorCode = uint16(common.CodeBadRequest)
 		operationLog.Message = err.Error()
-		operationLog.DurationMS = time.Since(startAt).Milliseconds()
 		return
 	}
 	operationLog.ResourceName = req.Email
@@ -217,7 +212,6 @@ func (h *UserHandler) LoginByEmail(c *gin.Context) {
 		common.ResponseWithCodeData(c, common.CodeAuthenticationError, "No", license.Reason)
 		operationLog.ErrorCode = uint16(common.CodeAuthenticationError)
 		operationLog.Message = license.Reason
-		operationLog.DurationMS = time.Since(startAt).Milliseconds()
 		return
 	}
 
@@ -226,7 +220,6 @@ func (h *UserHandler) LoginByEmail(c *gin.Context) {
 		common.ResponseWithCodeData(c, code, false, err.Error())
 		operationLog.ErrorCode = uint16(code)
 		operationLog.Message = err.Error()
-		operationLog.DurationMS = time.Since(startAt).Milliseconds()
 		return
 	}
 	operationLog.UserID = user.ID
@@ -237,7 +230,6 @@ func (h *UserHandler) LoginByEmail(c *gin.Context) {
 		common.ResponseWithCodeData(c, common.CodeServerError, false, errorMessage)
 		operationLog.ErrorCode = uint16(common.CodeServerError)
 		operationLog.Message = errorMessage
-		operationLog.DurationMS = time.Since(startAt).Milliseconds()
 		return
 	}
 	authToken, err := utility.DumpAccessToken(*user.AccessToken, secretKey)
@@ -245,7 +237,6 @@ func (h *UserHandler) LoginByEmail(c *gin.Context) {
 		common.ResponseWithCodeData(c, common.CodeServerError, false, "Failed to generate auth token")
 		operationLog.ErrorCode = uint16(common.CodeServerError)
 		operationLog.Message = "Failed to generate auth token"
-		operationLog.DurationMS = time.Since(startAt).Milliseconds()
 		return
 	}
 	setOAuthAuthCookie(c, authToken)
@@ -330,7 +321,6 @@ func (h *UserHandler) Logout(c *gin.Context) {
 		c.Abort()
 		operationLog.ErrorCode = uint16(common.CodeUnauthorized)
 		operationLog.Message = "Missing Authorization header"
-		operationLog.DurationMS = time.Since(startAt).Milliseconds()
 		return
 	}
 
@@ -341,7 +331,6 @@ func (h *UserHandler) Logout(c *gin.Context) {
 		c.Abort()
 		operationLog.ErrorCode = uint16(code)
 		operationLog.Message = "Invalid access token"
-		operationLog.DurationMS = time.Since(startAt).Milliseconds()
 		return
 	}
 	operationLog.UserID = user.ID
@@ -352,7 +341,6 @@ func (h *UserHandler) Logout(c *gin.Context) {
 		common.ResponseWithCodeData(c, code, false, err.Error())
 		operationLog.ErrorCode = uint16(code)
 		operationLog.Message = err.Error()
-		operationLog.DurationMS = time.Since(startAt).Milliseconds()
 		return
 	}
 
