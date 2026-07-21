@@ -172,6 +172,14 @@ func InitDB(migrateDB bool) error {
 		}
 		common.Info("Database schema migrated successfully")
 	}
+	if !migrateDB {
+		if err = autoMigrateSafely(DB, &entity.License{}); err != nil {
+			return fmt.Errorf("failed to migrate model %T: %w", &entity.License{}, err)
+		}
+		if err = autoMigrateSafely(DB, &entity.TimeRecord{}); err != nil {
+			return fmt.Errorf("failed to migrate model %T: %w", &entity.TimeRecord{}, err)
+		}
+	}
 	// Seed built-in agent templates so the Go backend can serve the
 	// "create agent from template" catalogue without relying on Python-side
 	// initialization.
