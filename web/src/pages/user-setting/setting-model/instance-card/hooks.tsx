@@ -542,7 +542,6 @@ export function useInstanceSaveState({
   }, [
     isDraft,
     providerName,
-    instanceName,
     instanceId,
     instanceDetails?.id,
     formRef,
@@ -610,7 +609,7 @@ export function useInstanceSaveState({
       // `IUpdateProviderInstanceRequestBody`).
       apiKind: isDraft ? 'add' : 'update',
     };
-  }, [buildPayload, isDraft, instanceName]);
+  }, [buildPayload, isDraft]);
 
   // After a successful save the parent calls `markSaved()` so the
   // baseline catches up to the just-persisted values. Without this,

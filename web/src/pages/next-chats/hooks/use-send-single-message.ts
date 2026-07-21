@@ -89,7 +89,6 @@ export function useSendSingleMessage({
       if (res && (res?.response.status !== 200 || res?.data?.code !== 0)) {
         // cancel loading
         setValue(message.content);
-        console.info('removeLatestMessage111');
         removeLatestMessage();
       }
     },

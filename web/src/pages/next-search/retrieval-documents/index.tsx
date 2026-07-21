@@ -90,7 +90,6 @@ const RetrievalDocuments = ({
   };
 
   const onValueChange = (value: string[]) => {
-    console.log(value);
     onTesting(value);
     setSelectedDocumentIds(value);
     // handleDatasetSelectChange(value, field.onChange);
