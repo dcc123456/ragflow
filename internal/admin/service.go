@@ -1649,32 +1649,7 @@ func (s *Service) HandleHeartbeat(message *common.BaseMessage) (common.ErrorCode
 		Timestamp:  message.Timestamp,
 		Ext:        message.Ext,
 	}
-	GlobalServerStatusStore.UpdateStatus(message.ServerName, status)
-
-	licenseStatus := GetLicenseStatus()
-	if licenseStatus.Code == common.CodeLicenseValid {
-		errorCode := CheckLicenseValidity(&licenseStatus)
-		if errorCode != common.CodeLicenseValid {
-			SetLicenseStatus(errorCode)
-			common.Warn(errorCode.Message())
-			StopUpdateRecordTask()
-			return errorCode, "Invalid license"
-		}
-
-		if licenseStatus.CurrentLicense.Type == "trial" || heartBeatCount > 50 {
-			// TRIAL license wouldn't check the license digest
-			// Suppose > 50 heartbeats, hardware info will be completely collected.
-			err := ValidateLicenseDigest(licenseStatus.CurrentLicense.Digest)
-			if err != nil {
-				common.Warn(fmt.Sprintf("Error validating license digest: %v", err))
-				return common.CodeLicenseDigestError, ""
-			}
-		}
-
-		common.Debug("License is loaded and valid")
-		return common.CodeLicenseValid, ""
-	}
-	return licenseStatus.Code, ""
+	return UpdateServer(message.ServerName, status)
 }
 
 // InitDefaultAdmin initialize default admin user
