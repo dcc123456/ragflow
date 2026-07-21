@@ -18,6 +18,7 @@ package clickhouse
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"ragflow/internal/common"
 	"strings"
@@ -37,7 +38,7 @@ var (
 type Driver struct {
 	conn      driver.Conn
 	config    *clickhouse.Options
-	channel   chan *common.ModelUsage
+	channel   chan interface{}
 	ctx       context.Context
 	cancel    context.CancelFunc
 	wg        sync.WaitGroup
@@ -70,7 +71,7 @@ func Init(ctx context.Context, cancel context.CancelFunc, host string, port int,
 			ctx:       ctx,
 			cancel:    cancel,
 			wg:        sync.WaitGroup{},
-			channel:   make(chan *common.ModelUsage, 128*1024),
+			channel:   make(chan interface{}, 128*1024),
 			batchSize: 128 * 1024,
 		}
 		globalDriver.config = &clickhouse.Options{
@@ -105,7 +106,14 @@ func Init(ctx context.Context, cancel context.CancelFunc, host string, port int,
 	return err
 }
 
-func (d *Driver) SaveOperationLog(operationLog *common.OperationLog) error { return nil }
+func (d *Driver) SaveOperationLog(operationLog *common.OperationLog) error {
+	select {
+	case d.channel <- operationLog:
+		return nil
+	default:
+		return fmt.Errorf("channel is full, current capacity: %d, backlog: %d", cap(d.channel), len(d.channel))
+	}
+}
 
 func (d *Driver) Status() (map[string]interface{}, error) {
 	stats := d.conn.Stats()
@@ -148,59 +156,81 @@ func (d *Driver) consumer() {
 }
 
 func (d *Driver) drainAndFlush() {
-	batch := d.drainChannel()
+	usageBatch, logBatch := d.drainChannel()
 
-	if len(batch) == 0 {
+	if len(usageBatch)+len(logBatch) == 0 {
 		return
 	}
 
-	d.flush(batch)
+	d.flushModelUsage(usageBatch)
+	d.flushOperationLog(logBatch)
 }
 
-func (d *Driver) drainChannel() []*common.ModelUsage {
-	var batch []*common.ModelUsage
+func (d *Driver) drainChannel() ([]*common.ModelUsage, []*common.OperationLog) {
+	var usageBatch []*common.ModelUsage
+	var logBatch []*common.OperationLog
 
 	for {
 		select {
-		case record, ok := <-d.channel:
+		case message, ok := <-d.channel:
 			if !ok {
 				// channel is closed
-				return batch
+				return usageBatch, logBatch
 			}
-			batch = append(batch, record)
+			switch record := message.(type) {
+			case *common.ModelUsage:
+				usageBatch = append(usageBatch, record)
+			case *common.OperationLog:
+				logBatch = append(logBatch, record)
+			default:
+				common.Error("Invalid record type", errors.New("invalid type"))
+			}
 
-			if len(batch) >= d.batchSize {
-				common.Info("Reach batch size limit, flush batch")
-				return batch
+			if len(usageBatch)+len(logBatch) >= d.batchSize {
+				common.Info(fmt.Sprintf("Reach batch size limit, flush batch, batchSize: %d", d.batchSize))
+				return usageBatch, logBatch
 			}
 
 		default:
 			// Drain channel, flush batch
-			if len(batch) > 0 {
-				common.Info("Drain channel, flush batch", zap.Int("batchSize", len(batch)))
+			if len(usageBatch)+len(logBatch) > 0 {
+				common.Info("Drain channel, flush batch", zap.Int("batchSize", len(usageBatch)+len(logBatch)))
 			}
-			return batch
+			return usageBatch, logBatch
 		}
 	}
 }
 
-func (d *Driver) flush(batch []*common.ModelUsage) {
+func (d *Driver) flushModelUsage(batch []*common.ModelUsage) {
 	if len(batch) == 0 {
 		return
 	}
 
 	batchInsert, err := d.conn.PrepareBatch(d.ctx, `
         INSERT INTO model_usage_fact (
-            start_at, event_date, event_hour,
-            user_id, user_email,
-            tenant_id, tenant_email,
-            group_id, group_name,
-            app_id, app_name,
+            start_at, 
+            event_date,
+            event_hour,
+            user_id,
+            user_email,
+            tenant_id,
+            tenant_email,
+            group_id, 
+            group_name,
+            app_id,
+            app_name,
             session_id,
-            provider_name, model_name,
-            instance_id, api_key,
-            request_id, type, response_time_ms, error_message,
-            input_tokens, output_tokens, total_tokens
+            provider_name,
+            model_name,
+            instance_id,
+            api_key,
+            request_id,
+            type,
+            response_time_ms,
+            error_message,
+            input_tokens,
+            output_tokens,
+            total_tokens
         )
     `)
 
@@ -240,6 +270,63 @@ func (d *Driver) flush(batch []*common.ModelUsage) {
 			record.InputTokens,
 			record.OutputTokens,
 			record.TotalTokens,
+		)
+		if err != nil {
+			common.Error("Append record to batch failed", err)
+		}
+	}
+
+	if err = batchInsert.Send(); err != nil {
+		common.Error("Batch insert failed", err)
+		return
+	}
+
+	common.Info("Batch insert success", zap.Int("records", len(batch)))
+}
+
+func (d *Driver) flushOperationLog(batch []*common.OperationLog) {
+	if len(batch) == 0 {
+		return
+	}
+
+	batchInsert, err := d.conn.PrepareBatch(d.ctx, `
+        INSERT INTO operation_audit_log (
+            event_time, 
+            user_id,
+            ip_address,
+            operation,
+            api_path,
+            http_method,
+            resource_type,
+            resource_id, 
+            resource_name,
+            request_params,
+            error_code,
+            message,
+            duration_ms
+        )
+    `)
+
+	if err != nil {
+		common.Error("Prepare batch insert failed", err)
+		return
+	}
+
+	for _, record := range batch {
+		err = batchInsert.Append(
+			record.EventTime,
+			record.UserID,
+			record.IPAddress,
+			record.Operation,
+			record.APIPath,
+			record.HTTPMethod,
+			record.ResourceType,
+			record.ResourceID,
+			record.ResourceName,
+			record.RequestParams,
+			record.ErrorCode,
+			record.Message,
+			record.DurationMS,
 		)
 		if err != nil {
 			common.Error("Append record to batch failed", err)
@@ -306,11 +393,7 @@ type UserStatsResult struct {
 	SuccessRate       float64   `json:"success_rate"`
 }
 
-func (d *Driver) UserStats(
-	userID string,
-	startDateStr, endDateStr string,
-	granularity string,
-) ([]UserStatsResult, error) {
+func (d *Driver) UserStats(userID string, startDateStr, endDateStr string, granularity string) ([]UserStatsResult, error) {
 	startDate, err := time.Parse("2006-01-02", startDateStr)
 	if err != nil {
 		return nil, fmt.Errorf("invalid start date: %w", err)
@@ -396,6 +479,82 @@ func (d *Driver) UserStats(
 	return results, nil
 }
 
+type OperationLogStats struct {
+	EventID       string    `json:"event_id"`
+	EventTime     time.Time `json:"event_time"`
+	UserID        string    `json:"user_id"`
+	IPAddress     string    `json:"ip_address"`
+	Operation     string    `json:"operation"`
+	APIPath       string    `json:"api_path"`
+	HTTPMethod    string    `json:"http_method"`
+	ResourceType  string    `json:"resource_type"`
+	ResourceID    string    `json:"resource_id"`
+	ResourceName  string    `json:"resource_name"`
+	RequestParams string    `json:"request_params"`
+	ErrorCode     uint16    `json:"error_code"`
+	Message       string    `json:"message"`
+	DurationMS    *uint64   `json:"duration_ms"`
+}
+
+func (d *Driver) OperationLogStats(userID string, startTime, endTime time.Time, limit, offset int64) ([]OperationLogStats, error) {
+	query := `
+    SELECT 
+        event_id,
+        event_time,
+        user_id,
+        ip_address,
+        operation,
+        api_path,
+        http_method,
+        resource_type,
+        resource_id,
+        resource_name,
+        request_params,
+        error_code,
+        message,
+        duration_ms,
+    FROM operation_audit_log
+    WHERE event_time >= ? AND event_time <= ? AND user_id = ?
+    ORDER BY event_time DESC
+    LIMIT ? OFFSET ?
+    `
+
+	args := []interface{}{startTime, endTime, userID, limit, offset}
+
+	rows, err := d.conn.Query(d.ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query operation log stats failed: %w", err)
+	}
+	defer rows.Close()
+
+	var results []OperationLogStats
+	for rows.Next() {
+		var log OperationLogStats
+		err = rows.Scan(
+			&log.EventID,
+			&log.EventTime,
+			&log.UserID,
+			&log.IPAddress,
+			&log.Operation,
+			&log.APIPath,
+			&log.HTTPMethod,
+			&log.ResourceType,
+			&log.ResourceID,
+			&log.ResourceName,
+			&log.RequestParams,
+			&log.ErrorCode,
+			&log.Message,
+			&log.DurationMS,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan user stats result: %w", err)
+		}
+		results = append(results, log)
+	}
+
+	return results, nil
+}
+
 func (d *Driver) tableExists(tableName string) (bool, error) {
 	var count uint64
 	err := d.conn.QueryRow(d.ctx, `
@@ -440,6 +599,9 @@ CREATE TABLE IF NOT EXISTS model_usage_fact
     input_tokens UInt64 CODEC(ZSTD(1)),
     output_tokens UInt64 CODEC(ZSTD(1)),
     total_tokens UInt64 CODEC(ZSTD(1)),
+
+    extra_metadata String,
+
     INDEX idx_user_id user_id TYPE bloom_filter(0.01) GRANULARITY 1,
     INDEX idx_tenant_id tenant_id TYPE bloom_filter(0.01) GRANULARITY 1,
     INDEX idx_group_id group_id TYPE bloom_filter(0.01) GRANULARITY 1
@@ -541,5 +703,35 @@ GROUP BY
     tenant_id,
     provider_name,
     model_name`,
+		`
+    CREATE TABLE IF NOT EXISTS operation_audit_log
+    (
+        event_id UUID MATERIALIZED generateUUIDv7(),
+        event_time DateTime64(3) DEFAULT now() CODEC(Delta(8), ZSTD(1)),
+        event_date Date DEFAULT toDate(event_time) CODEC(ZSTD(1)),
+
+        user_id LowCardinality(String) CODEC(ZSTD(1)),
+        ip_address String CODEC(ZSTD(1)),
+
+        operation LowCardinality(String) CODEC(ZSTD(1)),
+	    api_path LowCardinality(String) CODEC(ZSTD(1)),
+        http_method LowCardinality(String) CODEC(ZSTD(1)),
+
+        resource_type LowCardinality(String) CODEC(ZSTD(1)),
+        resource_id String CODEC(ZSTD(1)),
+        resource_name LowCardinality(String) CODEC(ZSTD(1)),
+
+        request_params String,
+        error_code UInt16 CODEC(ZSTD(1)),
+        message String,
+        duration_ms UInt64,
+
+        extra_metadata String,
+    )
+    ENGINE = MergeTree()
+    PARTITION BY event_date
+    ORDER BY (event_time, user_id, resource_type)
+    TTL event_date + INTERVAL 30 DAY DELETE
+    `,
 	}
 }

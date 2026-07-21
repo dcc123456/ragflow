@@ -2523,13 +2523,37 @@ func (s *Service) GetTokenStatsSummary(fromDate, toDate string) (map[string]inte
 
 // ListLogs lists operation logs for the user.
 func (s *Service) ListLogs(userName string, days int) ([]map[string]interface{}, error) {
-	result := []map[string]interface{}{
-		{
-			"command":   "list_logs",
-			"user_name": userName,
-			"days":      days,
-			"error":     "'List operation logs' is not supported",
-		},
+
+	user, err := s.userDAO.GetByEmail(userName)
+	if err != nil {
+		return nil, err
 	}
-	return result, nil
+	clickhouseDriver := clickhouse.GetDriver()
+	endTime := time.Now()
+	startAt := endTime.AddDate(0, 0, -days)
+	startAt = startAt.Truncate(24 * time.Hour)
+	operationLogs, err := clickhouseDriver.OperationLogStats(user.ID, startAt, endTime, 100, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	maps := make([]map[string]interface{}, len(operationLogs))
+	for i, r := range operationLogs {
+		maps[i] = map[string]interface{}{
+			"event_id":      r.EventID,
+			"event_time":    r.EventTime,
+			"user_email":    userName,
+			"ip":            r.IPAddress,
+			"operation":     r.Operation,
+			"method":        r.HTTPMethod,
+			"resource_type": r.ResourceType,
+			"resource_id":   r.ResourceID,
+			"resource_name": r.ResourceName,
+			"error_code":    r.ErrorCode,
+			"message":       r.Message,
+			"duration_ms":   r.DurationMS,
+		}
+	}
+
+	return maps, nil
 }

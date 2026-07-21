@@ -65,7 +65,14 @@ func ShutdownServer(ctx context.Context) error {
 		return errors.New("server EE is nil")
 	}
 
-	serverEE.tracerProvider.Shutdown(ctx)
+	err := serverEE.tracerProvider.Shutdown(ctx)
+	if err != nil {
+		return err
+	}
+	err = clickhouse.Close()
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
