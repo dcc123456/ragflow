@@ -105,6 +105,8 @@ func Init(ctx context.Context, cancel context.CancelFunc, host string, port int,
 	return err
 }
 
+func (d *Driver) SaveOperationLog(operationLog *common.OperationLog) error { return nil }
+
 func (d *Driver) Status() (map[string]interface{}, error) {
 	stats := d.conn.Stats()
 	version, err := d.conn.ServerVersion()
@@ -397,9 +399,9 @@ func (d *Driver) UserStats(
 func (d *Driver) tableExists(tableName string) (bool, error) {
 	var count uint64
 	err := d.conn.QueryRow(d.ctx, `
-        SELECT count() 
-        FROM system.tables 
-        WHERE database = currentDatabase() 
+        SELECT count()
+        FROM system.tables
+        WHERE database = currentDatabase()
           AND name = ?
     `, tableName).Scan(&count)
 
