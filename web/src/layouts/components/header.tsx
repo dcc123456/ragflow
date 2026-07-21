@@ -196,18 +196,20 @@ export function Header({
               </Button>
 
               {hasNotification && <BellButton className="!size-8" />}
-              <RAGFlowTooltip tooltip={t('header.tickets')}>
-                <Link
-                  className="p-2 text-text-secondary hover:text-text-primary focus-visible:text-text-primary"
-                  to={Routes.Tickets}
-                >
-                  <IconFontFill
-                    name={`kefu`}
-                    className="text-text-primary"
-                  ></IconFontFill>
-                </Link>
-                {/* <Tickets className="size-5" /> */}
-              </RAGFlowTooltip>
+              {isBillingEnabled() && (
+                <RAGFlowTooltip tooltip={t('header.tickets')}>
+                  <Link
+                    className="p-2 text-text-secondary hover:text-text-primary focus-visible:text-text-primary"
+                    to={Routes.Tickets}
+                  >
+                    <IconFontFill
+                      name={`kefu`}
+                      className="text-text-primary"
+                    ></IconFontFill>
+                  </Link>
+                  {/* <Tickets className="size-5" /> */}
+                </RAGFlowTooltip>
+              )}
             </>
           )}
 
@@ -256,18 +258,20 @@ export function Header({
           ref={expandedRightMeasureRef}
           className="inline-flex shrink-0 items-center justify-end gap-4 text-text-badge"
         >
-          <RAGFlowTooltip tooltip={t('header.tickets')}>
-            <Link
-              className="p-2 text-text-secondary hover:text-text-primary focus-visible:text-text-primary"
-              to={Routes.Tickets}
-            >
-              <IconFontFill
-                name={`kefu`}
-                className="text-text-primary"
-              ></IconFontFill>
-            </Link>
-            {/* <Tickets className="size-5" /> */}
-          </RAGFlowTooltip>
+          {isBillingEnabled() && (
+            <RAGFlowTooltip tooltip={t('header.tickets')}>
+              <Link
+                className="p-2 text-text-secondary hover:text-text-primary focus-visible:text-text-primary"
+                to={Routes.Tickets}
+              >
+                <IconFontFill
+                  name={`kefu`}
+                  className="text-text-primary"
+                ></IconFontFill>
+              </Link>
+              {/* <Tickets className="size-5" /> */}
+            </RAGFlowTooltip>
+          )}
 
           {hasNotification && <BellButton />}
 
