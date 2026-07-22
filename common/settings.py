@@ -84,6 +84,7 @@ DATABASE = decrypt_database_config(name=DATABASE_TYPE)
 
 # authentication
 AUTHENTICATION_CONF = None
+ACCESS_TOKEN_EXPIRE_SECONDS = int(os.environ.get("ACCESS_TOKEN_EXPIRE_SECONDS", "86400"))
 
 # client
 CLIENT_AUTHENTICATION = None

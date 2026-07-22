@@ -59,7 +59,7 @@ def setup_auth(login_manager):
 
                 # Decode JWT to get the UUID access_token
                 jwt = Serializer(secret_key=settings.get_secret_key())
-                access_token = str(jwt.loads(jwt_token))
+                access_token = str(jwt.loads(jwt_token, max_age=settings.ACCESS_TOKEN_EXPIRE_SECONDS))
 
                 if not access_token or not access_token.strip():
                     logging.warning("Authentication attempt with empty access token after JWT decode")

@@ -265,7 +265,7 @@ def _load_user(auth_types=None):
     if AUTH_JWT in auth_types:
         try:
             jwt = Serializer(secret_key=settings.get_secret_key())
-            access_token = str(jwt.loads(auth_token))
+            access_token = str(jwt.loads(auth_token, max_age=settings.ACCESS_TOKEN_EXPIRE_SECONDS))
 
             if not access_token or not access_token.strip():
                 logging.warning("Authentication attempt with empty access token")
