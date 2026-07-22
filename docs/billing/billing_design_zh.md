@@ -81,13 +81,15 @@ Trial -> Starter -> Pro
 
 ### 4.1 Trial 升级到付费套餐
 
-- 通过 Billing API 创建订阅或创建 checkout 流程
+- 当租户当前没有可修改的 Stripe 主订阅时，后端创建 Stripe Checkout Session，`mode=subscription`
+- 前端跳转到 `https://checkout.stripe.com/` 完成收款与订阅创建
 - 升级为 `Starter` 或 `Pro` 时立即生效
 - Stripe 会创建对应订阅并产生相关账单对象
 
 ### 4.2 付费套餐升级
 
 - `Starter -> Pro` 立即生效
+- 对已经存在的主订阅，后端继续使用 Stripe Subscription modify 流程，而不是重新创建一个 subscription checkout
 - 当前周期内按 Stripe 的 proration 规则处理补差价
 - Webhook 收到后，后端按 Stripe 权威订阅状态刷新本地套餐信息
 
@@ -128,6 +130,27 @@ Trial -> Starter -> Pro
 - 充值积分：通过一次性支付获得，不过期
 
 积分充值通过 Stripe Checkout 完成，到账以 webhook 处理结果为准。
+
+### 4.8 SetupIntent 与 Checkout 的使用决策
+
+该决策的核心原因是：`创建新订阅` 和 `修改既有订阅` 在 Stripe 中属于两类不同问题，最优入口也不同。
+
+- 对首购场景，目标只是“让用户完成首次付费并创建一个新的主订阅”
+- Stripe Checkout 的 `mode=subscription` 已经原生覆盖这条路径：收集支付方式、处理首单支付、创建 customer subscription、生成 invoice / payment intent
+- 因此首购若仍要求前端先跑 SetupIntent，再回后端创建 subscription，只会增加一次额外步骤和一次额外失败面，用户体验更差，状态机也更复杂
+- 换言之，首购场景并不需要“先拿到默认支付方式，再去 modify 一个既有 subscription”，因为此时本来就还没有需要被 modify 的主订阅
+
+- 对订阅修改场景，问题变成“在同一个既有 subscription 上调整 line items / quantity / price”
+- RAGFlow 的主套餐、存储附加等能力共享同一个 Stripe subscription，这意味着会出现多个 line items / 多个 price 的组合
+- 这类结构虽然可以通过后端 `subscription modify` 精确控制，但不适合完全依赖 Stripe Billing Portal 做细粒度编辑
+- 一旦走 `subscription modify`，后端就需要保证 Stripe 在本次 proration、补差价或续费扣款时有可复用的默认支付方式；否则 modify 之后的支付会落入 `requires_payment_method` 或其他不完整状态
+- 因而，“先确认默认支付方式；若缺失则先用 SetupIntent 或 setup-mode Checkout 补齐，再执行 modify” 是修改既有订阅时的必要前置条件，而不是首购时的必要前置条件
+
+- 创建新的付费主订阅时，优先使用 Stripe Checkout Session 的 `mode=subscription`
+- 该路径由 Stripe Checkout 负责收集支付方式、处理首单支付和创建 subscription，不要求前端预先执行 SetupIntent
+- 对同一个 subscription 内的复杂修改，尤其是主套餐与存储附加共享一个 subscription、存在多个 line items / 多个 price 的场景，继续使用后端 `subscription modify`
+- 这类复杂修改不适合完全交给 Stripe Billing Portal 做精细编辑，因此在执行 modify 前，后端必须确认 customer 或 subscription 上存在可复用的默认支付方式
+- 若不存在可复用默认支付方式，则前端先通过 SetupIntent 或 setup-mode Checkout 收集支付方式，再由后端把该支付方式设为默认支付方式后继续执行 modify
 
 ## 5. 资源兼容性检查
 
@@ -252,7 +275,13 @@ stripe listen --forward-to 127.0.0.1:9380/v1/billing/webhooks/stripe
 
 ## 9. 当前支付交互结果
 
-当前后端接口会根据不同支付类型返回对应的 checkout、portal、preview、status 或 payment 相关信息。前端是否先调用 preview、是否先创建 setup intent，取决于当前页面交互流程与支付方式状态，不属于后端状态机本身的保证。
+当前后端接口会根据不同支付类型返回对应的 checkout、portal、preview、status 或 payment 相关信息。
+
+- 新建付费主订阅：返回 Stripe Checkout Session URL，前端直接跳转
+- 已有主订阅的套餐升级或存储变更：先 preview；若缺少可复用支付方式，则先创建 SetupIntent 或 setup-mode Checkout，再执行 subscription modify
+- 积分充值：返回一次性支付 Checkout Session URL
+
+前端是否先调用 preview、是否需要先创建 setup intent，取决于当前操作是否属于“修改既有 subscription”以及当前支付方式状态，不属于后端状态机本身的保证。
 
 对套餐、存储和积分购买，最终权益发放都以后端 webhook 处理结果为准，而不是以前端跳转是否完成为准。
 

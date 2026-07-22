@@ -65,7 +65,7 @@ def _post_file(
     try:
         response = client.session.post(
             f"{client.base_url}/api/{client.version}/files",
-            headers={**client.sdk_headers(), "Content-Type": m.content_type},
+            headers={**client.headers(), "Content-Type": m.content_type},
             data=m,
             timeout=120,
         )
@@ -90,10 +90,9 @@ def test_file_upload_billing_01_happy_path_on_trial(billing_client: AppClient) -
     The new billing check (gated on BILLING_ENABLED) must not break the
     success path: code 0 with a populated data payload.
     """
-    # Trial plan + SDK auth are required for /files uploads
+    # Trial plan uploads must use the logged-in session, not tenant API keys.
     plan = billing_client.current_plan()
     assert plan["plan_name"].lower() == "trial", f"Test environment should start on Trial, got {plan['plan_name']}"
-    billing_client.init_sdk_token()
 
     pdf_path = os.path.join(os.path.dirname(__file__), "hou_chibi_fu.pdf")
     assert os.path.exists(pdf_path), f"Sample PDF not found: {pdf_path}"
@@ -129,8 +128,6 @@ def test_file_upload_billing_02_storage_quota_exceeded(billing_client: AppClient
     and the endpoint returns RetCode.BILLING_STORAGE_INSUFFICIENT (2003)
     with detail.current / detail.limit populated for the upgrade modal.
     """
-    billing_client.init_sdk_token()
-
     # 200 MB blob. The Trial default storage quota is well below this,
     # so the upload is rejected before the storage layer is touched.
     payload_size = 200 * 1024 * 1024
@@ -163,8 +160,6 @@ def test_file_upload_billing_03_response_format_matches_dataset_path(billing_cli
     response code and the field names must be byte-identical. This test
     verifies the structural shape on the storage-rejected path.
     """
-    billing_client.init_sdk_token()
-
     # Trigger the storage rejection path (cheapest to set up).
     blob = io.BytesIO(b"\0" * (150 * 1024 * 1024))  # 150 MB
     result = _post_file(
@@ -208,8 +203,6 @@ def test_file_upload_billing_04_response_format_matches_dataset_path(billing_cli
     response code and the field names must be byte-identical. This test
     verifies the structural shape on the storage-rejected path.
     """
-    billing_client.init_sdk_token()
-
     # Trigger the storage rejection path (cheapest to set up).
     blob = io.BytesIO(b"\0" * (150 * 1024 * 1024))  # 150 MB
     result = _post_file(

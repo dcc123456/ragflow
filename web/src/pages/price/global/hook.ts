@@ -17,6 +17,7 @@ export interface ConfirmPriceEventDetail {
   container?: HTMLElement;
   has_reusable_payment_method?: boolean;
   stripe_publishable_key?: string | null;
+  requires_payment_method_setup?: boolean;
 }
 
 export interface UpgradeTipsEventDetail {
@@ -279,6 +280,7 @@ export const useShowConfirmPriceModal = () => {
     container?: HTMLElement;
     has_reusable_payment_method?: boolean;
     stripe_publishable_key?: string | null;
+    requires_payment_method_setup?: boolean;
   }>({
     isOpen: false,
     plan: {
@@ -291,6 +293,7 @@ export const useShowConfirmPriceModal = () => {
     container: undefined,
     has_reusable_payment_method: true,
     stripe_publishable_key: null,
+    requires_payment_method_setup: true,
   });
 
   const showConfirmPrice = useCallback(
@@ -299,6 +302,7 @@ export const useShowConfirmPriceModal = () => {
       container?: HTMLElement;
       has_reusable_payment_method?: boolean;
       stripe_publishable_key?: string | null;
+      requires_payment_method_setup?: boolean;
     }) => {
       setConfirmPrice({
         isOpen: true,
@@ -306,6 +310,8 @@ export const useShowConfirmPriceModal = () => {
         container: options.container,
         has_reusable_payment_method: options.has_reusable_payment_method,
         stripe_publishable_key: options.stripe_publishable_key ?? null,
+        requires_payment_method_setup:
+          options.requires_payment_method_setup ?? true,
       });
     },
     [],
@@ -324,6 +330,7 @@ export const useShowConfirmPriceModal = () => {
       container: undefined,
       has_reusable_payment_method: true,
       stripe_publishable_key: null,
+      requires_payment_method_setup: true,
     });
   };
 

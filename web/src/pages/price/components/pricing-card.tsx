@@ -56,6 +56,9 @@ const PricingCard = (props: IPricePlanWithButton) => {
 
     const isUpgrade = shouldPreviewPlanUpgrade(currentPlan, currentPlanName);
     if (isUpgrade) {
+      const requiresPaymentMethodSetup =
+        !!currentPlan?.subscription_id &&
+        ['active', 'trialing'].includes(currentPlan?.subscription_status || '');
       setUpComingLoading(true);
       try {
         const { data: upcoming } = await billingService.getUpcoming({
@@ -72,6 +75,7 @@ const PricingCard = (props: IPricePlanWithButton) => {
             upcoming?.data?.has_reusable_payment_method ?? true,
           stripe_publishable_key:
             upcoming?.data?.stripe_publishable_key ?? null,
+          requires_payment_method_setup: requiresPaymentMethodSetup,
           container: nextLayoutRef.current || undefined,
         } as ConfirmPriceEventDetail);
       } finally {

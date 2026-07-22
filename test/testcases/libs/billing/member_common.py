@@ -170,7 +170,7 @@ class MemberClient(BillingClient):
             raise FlowError("member billing test helper only supports the fixed default test passwords")
 
         container_name = env("RAGFLOW_CONTAINER") or env("RAGFLOW_SERVICE_CONTAINER") or "docker-ragflow-1"
-        script = f"""
+        script = """
 import base64, json, sys
 from common import settings
 settings.init_settings()

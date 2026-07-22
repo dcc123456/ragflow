@@ -431,6 +431,35 @@ async def _create_billing_setup_checkout_session(
     )
 
 
+async def _create_billing_subscription_checkout_session(
+    *,
+    tenant_id: str,
+    customer_id: str,
+    subscription_price_id: str,
+    quantity: int,
+    session_success_url: str,
+    session_cancel_url: str,
+):
+    plan_name = settings.BILLING_PRICEID_TO_PRODUCT.get(subscription_price_id, "")
+    checkout_metadata = {
+        "tenant_id": tenant_id,
+        "price_type": PriceType.SUBSCRIPTION,
+        "product_type": "subscription",
+        "price_id": subscription_price_id,
+        "product_name": plan_name,
+    }
+    return await stripe.checkout.Session.create_async(
+        customer=customer_id,
+        client_reference_id=f"subscription_{uuid.uuid4()}",
+        mode="subscription",
+        success_url=_build_checkout_success_url(session_success_url),
+        cancel_url=session_cancel_url,
+        line_items=[{"price": subscription_price_id, "quantity": quantity}],
+        metadata=checkout_metadata,
+        subscription_data={"metadata": checkout_metadata},
+    )
+
+
 def _normalize_subscription_status(status: str | None) -> str:
     return (status or "").strip().lower()
 
@@ -2637,14 +2666,11 @@ async def _create_subscription_checkout(
     customer_id: str,
     subscription_price_id: str,
     quantity: int,
-    setup_intent_id: str = "",
+    session_success_url: str,
+    session_cancel_url: str,
 ):
     """
-    Create a subscription directly via Stripe Subscription API (no Checkout Session).
-
-    Args:
-        setup_intent_id: If provided, apply the SetupIntent's payment method as the
-            customer's default before creating the subscription.
+    Create a subscription Checkout Session for a fresh paid-plan purchase.
 
     Raises:
         ValueError: if subscription_price_id belongs to Trial plan (Trial must not
@@ -2658,24 +2684,11 @@ async def _create_subscription_checkout(
         raise ValueError(f"Trial plan price_id {subscription_price_id!r} must not be used with _create_subscription_checkout. Trial tenants do not create Stripe subscriptions.")
 
     logging.info(
-        "Create subscription (direct API): tenant_id=%s, price_id=%s, plan=%s",
+        "Create subscription Checkout Session: tenant_id=%s, price_id=%s, plan=%s",
         tenant_id,
         subscription_price_id,
         settings.BILLING_PRICEID_TO_PRODUCT.get(subscription_price_id, ""),
     )
-
-    payment_method_id = ""
-    if setup_intent_id:
-        payment_method_id = await _apply_setup_intent_payment_method_if_present(
-            customer_id=customer_id,
-            setup_intent_id=setup_intent_id,
-        )
-
-    if not payment_method_id:
-        customer = await stripe.Customer.retrieve_async(customer_id)
-        invoice_settings = get_attr_or_item(customer, "invoice_settings", None)
-        default_payment_method = get_attr_or_item(invoice_settings, "default_payment_method", "")
-        payment_method_id = default_payment_method if isinstance(default_payment_method, str) else get_attr_or_item(default_payment_method, "id", "")
 
     try:
         existing_subscription = await _find_existing_target_subscription_async(
@@ -2697,54 +2710,35 @@ async def _create_subscription_checkout(
         )
 
     if existing_subscription:
-        existing_status = _normalize_subscription_status(get_attr_or_item(existing_subscription, "status", ""))
-        existing_subscription_id = (get_attr_or_item(existing_subscription, "id", "") or "").strip()
-        if existing_status in MAIN_SUBSCRIPTION_RECOVERABLE_STATUSES and payment_method_id:
-            await stripe.Subscription.modify_async(
-                existing_subscription_id,
-                default_payment_method=payment_method_id,
-            )
-            invoice_id = _invoice_id_from_subscription(existing_subscription)
-            if invoice_id:
-                try:
-                    await stripe.Invoice.pay_async(invoice_id, payment_method=payment_method_id)
-                except stripe.StripeError as exc:
-                    if "requires_action" not in _stripe_error_code(exc).lower():
-                        raise
-            existing_subscription = await stripe.Subscription.retrieve_async(
-                existing_subscription_id,
-                expand=["latest_invoice.payment_intent"],
-            )
         return _subscription_checkout_result(
             existing_subscription,
             plan_name=settings.BILLING_PRICEID_TO_PRODUCT.get(subscription_price_id, ""),
             price_id=subscription_price_id,
         )
 
-    subscription_params = {
-        "customer": customer_id,
-        "items": [{"price": subscription_price_id, "quantity": quantity}],
-        "payment_behavior": "default_incomplete",
-        "expand": ["latest_invoice.payment_intent"],
-        "metadata": {
-            "tenant_id": tenant_id,
-            "target_price_id": subscription_price_id,
-            "price_type": PriceType.SUBSCRIPTION,
-        },
-    }
-    if payment_method_id:
-        subscription_params["default_payment_method"] = payment_method_id
-
-    attempt_id = setup_intent_id or payment_method_id or customer_id
-    subscription = await stripe.Subscription.create_async(
-        **subscription_params,
-        idempotency_key=f"billing:{tenant_id}:subscription_create:{subscription_price_id}:{attempt_id}",
+    session = await _create_billing_subscription_checkout_session(
+        tenant_id=tenant_id,
+        customer_id=customer_id,
+        subscription_price_id=subscription_price_id,
+        quantity=quantity,
+        session_success_url=session_success_url,
+        session_cancel_url=session_cancel_url,
     )
-    logging.info("Created Stripe subscription: subscription_id=%s tenant_id=%s", get_attr_or_item(subscription, "id", ""), tenant_id)
-    return _subscription_checkout_result(
-        subscription,
-        plan_name=settings.BILLING_PRICEID_TO_PRODUCT.get(subscription_price_id, ""),
-        price_id=subscription_price_id,
+    logging.info(
+        "Created Stripe subscription Checkout Session: session_id=%s tenant_id=%s",
+        get_attr_or_item(session, "id", ""),
+        tenant_id,
+    )
+    return get_json_result(
+        code=RetCode.SUCCESS,
+        message="Redirecting to Stripe Checkout.",
+        data={
+            "redirect_to": get_attr_or_item(session, "url", ""),
+            "session_id": get_attr_or_item(session, "id", ""),
+            "price_id": subscription_price_id,
+            "plan_name": settings.BILLING_PRICEID_TO_PRODUCT.get(subscription_price_id, ""),
+            "product_type": "subscription",
+        },
     )
 
 
@@ -2842,7 +2836,8 @@ async def _handle_subscription_checkout(
             customer_id=customer_id,
             subscription_price_id=subscription_price_id,
             quantity=quantity,
-            setup_intent_id=setup_intent_id,
+            session_success_url=session_success_url,
+            session_cancel_url=session_cancel_url,
         )
     elif subscription_status in MAIN_SUBSCRIPTION_RECOVERABLE_STATUSES:
         metadata = get_attr_or_item(stripe_subscription, "metadata", {}) or {}
@@ -2886,7 +2881,8 @@ async def _handle_subscription_checkout(
         customer_id=customer_id,
         subscription_price_id=subscription_price_id,
         quantity=quantity,
-        setup_intent_id=setup_intent_id,
+        session_success_url=session_success_url,
+        session_cancel_url=session_cancel_url,
     )
 
 
@@ -3269,6 +3265,15 @@ async def billing_session_status(session_id: str):
             invoice_url = get_attr_or_item(invoice_obj, "hosted_invoice_url", None)
             invoice_pdf_url = get_attr_or_item(invoice_obj, "invoice_pdf", None)
 
+    raw_subscription = get_attr_or_item(checkout_session, "subscription", None)
+    subscription_id = raw_subscription if isinstance(raw_subscription, str) else get_attr_or_item(raw_subscription, "id", None)
+    plan_name = None
+    price_id = None
+    metadata = dict(get_attr_or_item(checkout_session, "metadata", None) or {})
+    if metadata:
+        plan_name = metadata.get("product_name")
+        price_id = metadata.get("price_id")
+
     return get_json_result(
         data={
             "payment_status": get_attr_or_item(checkout_session, "payment_status", "unknown"),
@@ -3276,12 +3281,15 @@ async def billing_session_status(session_id: str):
             "amount_cents": get_attr_or_item(checkout_session, "amount_total", None),
             "currency": get_attr_or_item(checkout_session, "currency", None),
             "created": get_attr_or_item(checkout_session, "created", None),
-            "metadata": dict(get_attr_or_item(checkout_session, "metadata", None) or {}),
+            "metadata": metadata,
             "payment_intent_id": payment_intent_id,
             "receipt_url": receipt_url,
             "invoice_id": invoice_id,
             "invoice_url": invoice_url,
             "invoice_pdf_url": invoice_pdf_url,
+            "subscription_id": subscription_id,
+            "plan_name": plan_name,
+            "price_id": price_id,
         }
     )
 

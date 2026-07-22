@@ -360,6 +360,8 @@ def test_create_subscription_duplicate_candidates_use_payment_error_contract(bil
             customer_id="cus_1",
             subscription_price_id="price_starter",
             quantity=1,
+            session_success_url="https://example.com/success",
+            session_cancel_url="https://example.com/cancel",
         )
     )
 
@@ -379,29 +381,18 @@ def test_create_subscription_uses_default_incomplete_and_idempotency(billing_app
     )
     monkeypatch.setattr(billing_app.settings, "BILLING", {"billing_plans": []})
 
-    async def retrieve_customer(_customer_id):
-        return {"invoice_settings": {"default_payment_method": "pm_test"}}
-
     async def find_existing(**_kwargs):
         return None
 
-    async def create_subscription(**kwargs):
+    async def create_session(**kwargs):
         created.update(kwargs)
         return {
-            "id": "sub_new",
-            "status": "active",
-            "latest_invoice": {
-                "id": "in_new",
-                "status": "paid",
-                "amount_paid": 12900,
-                "currency": "usd",
-                "payment_intent": {"status": "succeeded"},
-            },
+            "id": "cs_new",
+            "url": "https://checkout.stripe.com/pay/cs_new",
         }
 
-    monkeypatch.setattr(billing_app.stripe.Customer, "retrieve_async", retrieve_customer)
     monkeypatch.setattr(billing_app, "_find_existing_target_subscription_async", find_existing)
-    monkeypatch.setattr(billing_app.stripe.Subscription, "create_async", create_subscription)
+    monkeypatch.setattr(billing_app.stripe.checkout.Session, "create_async", create_session)
 
     result = asyncio.run(
         billing_app._create_subscription_checkout(
@@ -409,15 +400,21 @@ def test_create_subscription_uses_default_incomplete_and_idempotency(billing_app
             customer_id="cus_1",
             subscription_price_id="price_starter",
             quantity=1,
+            session_success_url="https://example.com/success",
+            session_cancel_url="https://example.com/cancel",
         )
     )
 
-    assert created["payment_behavior"] == "default_incomplete"
-    assert created["expand"] == ["latest_invoice.payment_intent"]
+    assert created["mode"] == "subscription"
+    assert created["customer"] == "cus_1"
+    assert created["line_items"] == [{"price": "price_starter", "quantity": 1}]
     assert created["metadata"]["tenant_id"] == "tenant_1"
-    assert created["default_payment_method"] == "pm_test"
-    assert created["idempotency_key"].endswith(":pm_test")
-    assert result["data"]["payment_state"] == "paid"
+    assert created["subscription_data"]["metadata"]["price_id"] == "price_starter"
+    assert "session_id=" in created["success_url"]
+    assert created["cancel_url"] == "https://example.com/cancel"
+    assert result["data"]["redirect_to"] == "https://checkout.stripe.com/pay/cs_new"
+    assert result["data"]["session_id"] == "cs_new"
+    assert result["data"]["product_type"] == "subscription"
 
 
 @pytest.mark.p2
@@ -458,6 +455,8 @@ def test_create_subscription_reuses_existing_incomplete(billing_app, monkeypatch
             customer_id="cus_1",
             subscription_price_id="price_starter",
             quantity=1,
+            session_success_url="https://example.com/success",
+            session_cancel_url="https://example.com/cancel",
         )
     )
 
@@ -466,51 +465,25 @@ def test_create_subscription_reuses_existing_incomplete(billing_app, monkeypatch
 
 
 @pytest.mark.p2
-def test_create_subscription_recovers_any_requires_action_error(billing_app, monkeypatch):
+def test_create_subscription_reuses_existing_incomplete_without_new_session(billing_app, monkeypatch):
     existing = {
         "id": "sub_existing",
         "status": "incomplete",
         "latest_invoice": {"id": "in_existing"},
     }
-    recovered = {
-        **existing,
-        "latest_invoice": {
-            "id": "in_existing",
-            "status": "open",
-            "amount_due": 12900,
-            "currency": "usd",
-            "hosted_invoice_url": "https://invoice.stripe.com/existing",
-            "payment_intent": {"status": "requires_action"},
-        },
-    }
+    monkeypatch.setattr(billing_app, "get_trial_price_id", lambda _plans: "price_trial")
     monkeypatch.setattr(billing_app, "get_json_result", lambda **kwargs: kwargs)
     monkeypatch.setattr(billing_app.settings, "BILLING_PRICEID_TO_PRODUCT", {"price_starter": "Starter"})
     monkeypatch.setattr(billing_app.settings, "BILLING", {"billing_plans": []})
 
-    async def retrieve_customer(_customer_id):
-        return {"invoice_settings": {"default_payment_method": "pm_3ds"}}
-
     async def find_existing(**_kwargs):
         return existing
 
-    async def modify_subscription(*_args, **_kwargs):
-        return existing
+    async def fail_create_session(**_kwargs):
+        raise AssertionError("must not create a new checkout session when an existing subscription matches")
 
-    async def pay_invoice(*_args, **_kwargs):
-        raise billing_app.stripe.CardError(
-            message="authentication required",
-            param=None,
-            code="invoice_payment_requires_action",
-        )
-
-    async def retrieve_subscription(*_args, **_kwargs):
-        return recovered
-
-    monkeypatch.setattr(billing_app.stripe.Customer, "retrieve_async", retrieve_customer)
     monkeypatch.setattr(billing_app, "_find_existing_target_subscription_async", find_existing)
-    monkeypatch.setattr(billing_app.stripe.Subscription, "modify_async", modify_subscription)
-    monkeypatch.setattr(billing_app.stripe.Invoice, "pay_async", pay_invoice)
-    monkeypatch.setattr(billing_app.stripe.Subscription, "retrieve_async", retrieve_subscription)
+    monkeypatch.setattr(billing_app.stripe.checkout.Session, "create_async", fail_create_session)
 
     result = asyncio.run(
         billing_app._create_subscription_checkout(
@@ -518,11 +491,14 @@ def test_create_subscription_recovers_any_requires_action_error(billing_app, mon
             customer_id="cus_1",
             subscription_price_id="price_starter",
             quantity=1,
+            session_success_url="https://example.com/success",
+            session_cancel_url="https://example.com/cancel",
         )
     )
 
-    assert result["data"]["payment_state"] == "requires_action"
-    assert result["data"]["redirect_to"] == "https://invoice.stripe.com/existing"
+    assert result["data"]["subscription_id"] == "sub_existing"
+    assert result["data"]["price_id"] == "price_starter"
+    assert result["data"]["product_type"] == "subscription"
 
 
 @pytest.mark.p2

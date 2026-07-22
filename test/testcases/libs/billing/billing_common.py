@@ -64,6 +64,7 @@ DEFAULT_TEST_PASSWORD_ENCRYPTED = (
     "BjN5M0Qd/udQnfgtwyZMHybu/L6I5IbmkUVqeGvDi1HJH8ivKmbgp3SNZjsvcelxeFdC6/wu/GG8EOIQtNZSFde4z8BDFj+2Zpwn3fb2jTXtn7jJB4r0"
     "7jQJM4vdpNf9q1HtKw5g6jlHKlrzcvSdZn7m0bdoh39RvXA5y7sIiStPNCEzbbjRC8o4/tAP627SW+bQpmS/bnnH7VzqRwvfEBnaLnveh96SWg=="
 )
+DEFAULT_ADMIN_PASSWORD_ENCRYPTED = "WBPsJbL/W+1HN+hchm5pgu1YC3yMEb/9MFtsanZrpKEE9kAj4u09EIIVDtIDZhJOdTjz5pp5QW9TwqXBfQ2qzDqVJiwK7HGcNsoPi4wQPCmnLo0fs62QklMlg7l1Q7fjGRgV+KWtvNUce2PFzgrcAGDqRIuA/slSclKUEISEiK4z62rdDgvHT8LyuACuF1lPUY5wV0m/MbmGijRJlgvglAF8BX0BP8rQr8wZeaJdcnAy/keuODCjltMZDL06tYluN7HoiU+qlhBB+ltqG411oO/+vVhBgWsuVVOHd8uMjJEL320GUWUicprDUZvjlLaSSqVyyOiRMHpqAE9eHEecWg=="
 DEFAULT_WEBHOOK_WAIT_SECONDS = 8
 DEFAULT_WEBHOOK_TIMEOUT_SECONDS = 180
 T = TypeVar("T")
@@ -77,6 +78,20 @@ FOCUSED_STRIPE_WEBHOOKS = {
     "checkout.session.completed",
     "payment_intent.succeeded",
 }
+
+
+def _default_admin_base_url(base_url: str) -> str:
+    configured = env("ADMIN_HOST_ADDRESS", "").strip()
+    if configured:
+        return configured.rstrip("/")
+    parsed = urlparse(base_url)
+    scheme = parsed.scheme or "http"
+    hostname = parsed.hostname or "127.0.0.1"
+    return f"{scheme}://{hostname}:9381"
+
+
+def _is_registration_whitelist_error(message: str | None) -> bool:
+    return "isn't in whitelist" in (message or "")
 
 
 def advance_clock(clock_id: str, frozen_time: int) -> dict[str, Any]:
@@ -461,6 +476,48 @@ def replace_subscription_price(subscription_id: str, price_id: str, **kwargs):
     )
 
 
+def build_subscription_checkout_completed_event(
+    *,
+    event_id: str,
+    session: dict[str, Any],
+    subscription: dict[str, Any],
+) -> dict[str, Any]:
+    created = int(session.get("created") or time.time())
+    expires_at = int(session.get("expires_at") or (created + 86400))
+    invoice = subscription.get("latest_invoice") or {}
+    if isinstance(invoice, str):
+        invoice = stripe_dict(stripe.Invoice.retrieve(invoice))
+    payment_intent = invoice.get("payment_intent") or {}
+    if isinstance(payment_intent, str):
+        payment_intent = stripe_dict(stripe.PaymentIntent.retrieve(payment_intent))
+    return {
+        "id": event_id,
+        "object": "event",
+        "type": "checkout.session.completed",
+        "created": created,
+        "data": {
+            "object": {
+                "id": str(session.get("id") or ""),
+                "object": "checkout.session",
+                "customer": session.get("customer"),
+                "customer_email": (session.get("customer_details") or {}).get("email") or session.get("customer_email"),
+                "payment_intent": payment_intent.get("id") or "",
+                "subscription": subscription.get("id") or "",
+                "payment_status": "paid",
+                "status": "complete",
+                "mode": "subscription",
+                "currency": str(session.get("currency") or "usd"),
+                "amount_subtotal": int(session.get("amount_subtotal") or session.get("amount_total") or 0),
+                "amount_total": int(session.get("amount_total") or 0),
+                "invoice": invoice.get("id") or "",
+                "metadata": dict(session.get("metadata") or {}),
+                "created": created,
+                "expires_at": expires_at,
+            }
+        },
+    }
+
+
 def parse_plan_end(plan: dict[str, Any]) -> int:
     """Extract period end timestamp from plan response, handling multiple formats."""
     value = plan.get("end_time") or plan.get("billing_cycle", {}).get("end")
@@ -637,6 +694,43 @@ class BillingClient:
             headers["Authorization"] = self.auth_header
         return headers
 
+    def _ensure_email_whitelisted(self, email: str) -> None:
+        admin_base_url = _default_admin_base_url(self.base_url)
+        session = requests.Session()
+        session.trust_env = False
+
+        login_response = session.post(
+            f"{admin_base_url}/api/{self.version}/admin/login",
+            json={"email": "admin@ragflow.io", "password": DEFAULT_ADMIN_PASSWORD_ENCRYPTED},
+            timeout=30,
+        )
+        try:
+            login_payload = login_response.json()
+        except ValueError as exc:
+            raise FlowError(f"admin login returned non-JSON status={login_response.status_code}: {login_response.text[:500]}") from exc
+        if login_payload.get("code") != 0:
+            raise FlowError(f"admin login failed status={login_response.status_code}: {login_payload}")
+
+        auth_header = login_response.headers.get("Authorization", "")
+        if auth_header:
+            session.headers.update({"Authorization": auth_header})
+
+        whitelist_response = session.post(
+            f"{admin_base_url}/api/{self.version}/admin/whitelist/add",
+            json={"email": email},
+            timeout=30,
+        )
+        try:
+            whitelist_payload = whitelist_response.json()
+        except ValueError as exc:
+            raise FlowError(f"admin whitelist add returned non-JSON status={whitelist_response.status_code}: {whitelist_response.text[:500]}") from exc
+        if whitelist_payload.get("code") != 0:
+            raise FlowError(f"admin whitelist add failed status={whitelist_response.status_code}: {whitelist_payload}")
+
+        data = whitelist_payload.get("data") or {}
+        if data.get("success") is False:
+            raise FlowError(f"admin whitelist add returned unsuccessful payload: {whitelist_payload}")
+
     def request_json(self, method: str, path: str, need_api_path: bool = False, auth: bool = True, **kwargs) -> dict[str, Any]:
         response = self.session.request(method, self.url(path, need_api_path), headers=self.headers(auth=auth), timeout=60, **kwargs)
         try:
@@ -682,7 +776,22 @@ class BillingClient:
         except ValueError as exc:
             raise FlowError(f"register returned non-JSON status={register_response.status_code}: {register_response.text[:500]}") from exc
         if register_data.get("code") != 0 and "has already registered" not in (register_data.get("message") or ""):
-            raise FlowError(f"register failed: {register_data}")
+            message = register_data.get("message") or ""
+            if not _is_registration_whitelist_error(message):
+                raise FlowError(f"register failed: {register_data}")
+            self._ensure_email_whitelisted(email)
+            register_response = self.session.post(
+                self.url("/users", True),
+                headers=self.headers(auth=False),
+                json=register_payload,
+                timeout=60,
+            )
+            try:
+                register_data = register_response.json()
+            except ValueError as exc:
+                raise FlowError(f"register retry returned non-JSON status={register_response.status_code}: {register_response.text[:500]}") from exc
+            if register_data.get("code") != 0 and "has already registered" not in (register_data.get("message") or ""):
+                raise FlowError(f"register failed after whitelist retry: {register_data}")
 
         login_response = self.session.post(
             self.url("/auth/login", True),
@@ -865,6 +974,17 @@ class BillingClient:
             raise FlowError(f"GET /billing/points/balance failed status={response.status_code}: {payload}")
         return payload["data"]
 
+    def ensure_current_customer_payment_method(self) -> str:
+        from libs.billing.storage_common import attach_default_test_card
+
+        current_plan = self.current_plan()
+        customer_id = str(current_plan.get("customer_id") or self.customer_id or "").strip()
+        if not customer_id:
+            raise FlowError(f"current plan missing customer_id: {current_plan}")
+        self.customer_id = customer_id
+        attach_default_test_card(customer_id)
+        return customer_id
+
     def schedule_plan_change(self, price_id: str, *, setup_intent_id: str = "") -> dict[str, Any]:
         """Initiate a subscription change via checkout (upgrade/downgrade)."""
         payload = {
@@ -956,7 +1076,54 @@ class BillingClient:
         logger.debug("sleeping %d seconds before webhook sync", wait_seconds)
         time.sleep(wait_seconds)
         logger.debug("waiting for forwarded webhooks")
-        return 0
+        replayed = self._replay_stripe_events(subscription_ids, created_gte)
+        logger.debug("replayed %d Stripe events after wait", replayed)
+        return replayed
+
+    def complete_subscription_checkout_via_proxy(
+        self,
+        checkout_result: dict[str, Any],
+        *,
+        target_price_id: str,
+        created_gte: int,
+    ) -> dict[str, Any]:
+        subscription_id = str(checkout_result.get("subscription_id") or "")
+        if subscription_id:
+            return checkout_result
+
+        session_id = str(checkout_result.get("session_id") or "")
+        if not session_id:
+            raise FlowError(f"subscription checkout response missing both subscription_id and session_id: {checkout_result}")
+
+        session = stripe_dict(stripe.checkout.Session.retrieve(session_id))
+        if session.get("mode") != "subscription":
+            raise FlowError(f"expected subscription checkout session, got: {session}")
+
+        subscription = stripe.Subscription.create(
+            customer=self.customer_id,
+            items=[{"price": target_price_id, "quantity": 1}],
+            metadata={"tenant_id": self.tenant_id},
+            expand=["latest_invoice.payment_intent"],
+        )
+        subscription_dict = stripe_dict(subscription)
+        subscription_id = str(subscription_dict.get("id") or "")
+        if not subscription_id:
+            raise FlowError(f"automation proxy failed to create subscription: {subscription_dict}")
+
+        completed_event = build_subscription_checkout_completed_event(
+            event_id=f"evt_manual_checkout_{uuid.uuid4().hex[:20]}",
+            session=session,
+            subscription=subscription_dict,
+        )
+        self.post_signed_webhook(completed_event)
+        replayed = self._replay_stripe_events({subscription_id}, created_gte)
+        logger.info("Assert: Automation proxy completed subscription checkout, subscription_id=%s replayed=%s", subscription_id, replayed)
+
+        return {
+            **checkout_result,
+            "subscription_id": subscription_id,
+            "plan_name": str(checkout_result.get("plan_name") or ""),
+        }
 
     def _replay_stripe_events(
         self,
@@ -1348,12 +1515,18 @@ class BillingClient:
         starter_price_id = first_plan_price_id(billing_config, "Starter")
         starter_checkout_started_at = int(time.time()) - 10
         setup_intent_id = self.ensure_setup_intent_for_plan_change(starter_price_id)
+        self.ensure_current_customer_payment_method()
 
         # Record invoice count before upgrade
         history_before_upgrade = self.spend_history()
         invoice_count_before_upgrade = len(history_before_upgrade)
 
         checkout_result = self.schedule_plan_change(starter_price_id, setup_intent_id=setup_intent_id)
+        checkout_result = self.complete_subscription_checkout_via_proxy(
+            checkout_result,
+            target_price_id=starter_price_id,
+            created_gte=starter_checkout_started_at,
+        )
         subscription_id_from_result = checkout_result.get("subscription_id", "")
 
         starter_subscription_id = subscription_id_from_result

@@ -106,6 +106,9 @@ export const UpgradeModalProvider: React.FC<UpgradeModalProviderProps> = ({
             has_reusable_payment_method={
               confirmPrice.has_reusable_payment_method
             }
+            requires_payment_method_setup={
+              confirmPrice.requires_payment_method_setup
+            }
           />
         </StripeProvider>
       )}

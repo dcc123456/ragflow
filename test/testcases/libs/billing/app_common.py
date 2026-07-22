@@ -78,29 +78,40 @@ class AppClient(BillingClient):
             raise FlowError(f"{method} {path} failed status={response.status_code}: {payload}")
         return payload
 
+    def session_api_request_json(self, method: str, path: str, **kwargs) -> dict:
+        """Call RESTful app APIs with the logged-in web session instead of API key auth.
+
+        Trial tenants cannot use tenant API keys, but many billing flows still need
+        dataset/document setup to exercise points and quota behavior. Those setup
+        operations should therefore use the existing session auth unless a test is
+        explicitly validating API key enforcement.
+        """
+        return self.request_json(method, path, need_api_path=True, **kwargs)
+
     def create_dataset(self, name: str, description: str = "") -> dict:
-        """Create a dataset via the RESTful API using SDK Bearer auth."""
+        """Create a dataset via the RESTful API using session auth."""
         payload = {
             "name": name,
             "description": description,
         }
-        return self.sdk_request_json("POST", "datasets", json=payload)
+        return self.session_api_request_json("POST", "datasets", json=payload)
 
     def delete_dataset(self, dataset_id: str) -> dict:
-        """Delete a dataset via the RESTful API using SDK Bearer auth."""
-        return self.sdk_request_json("DELETE", "datasets", json={"ids": [dataset_id]})
+        """Delete a dataset via the RESTful API using session auth."""
+        return self.session_api_request_json("DELETE", "datasets", json={"ids": [dataset_id]})
 
-    def create_chat(self, name: str, dataset_ids: list | None = None) -> dict:
-        """Create a chat via the SDK API."""
+    def create_chat(self, name: str, dataset_ids: list | None = None, *, use_api_key: bool = False) -> dict:
+        """Create a chat, defaulting to session auth for Trial-compatible flows."""
         payload = {
             "name": name,
             "description": "Test chat",
             "dataset_ids": dataset_ids or [],
         }
-        return self.sdk_request_json("POST", "chats", json=payload)
+        request_fn = self.sdk_request_json if use_api_key else self.session_api_request_json
+        return request_fn("POST", "chats", json=payload)
 
-    def create_agent(self, title: str, dsl: dict | None = None) -> dict:
-        """Create an agent via the SDK API."""
+    def create_agent(self, title: str, dsl: dict | None = None, *, use_api_key: bool = False) -> dict:
+        """Create an agent, defaulting to session auth for Trial-compatible flows."""
         if dsl is None:
             dsl = {
                 "components": {
@@ -121,10 +132,11 @@ class AppClient(BillingClient):
             "dsl": dsl,
             "canvas_category": "agent",
         }
-        return self.sdk_request_json("POST", "agents", json=payload)
+        request_fn = self.sdk_request_json if use_api_key else self.session_api_request_json
+        return request_fn("POST", "agents", json=payload)
 
-    def create_canvas(self, title: str, dsl: dict | None = None) -> dict:
-        """Create a canvas via the web canvas API using SDK Bearer auth."""
+    def create_canvas(self, title: str, dsl: dict | None = None, *, use_api_key: bool = False) -> dict:
+        """Create a canvas via the web canvas API, defaulting to session auth."""
         if dsl is None:
             dsl = {
                 "components": {
@@ -145,10 +157,11 @@ class AppClient(BillingClient):
             "dsl": dsl,
             "canvas_category": "agent",
         }
+        headers = self.sdk_headers() if use_api_key else self.headers()
         response = self.session.request(
             "POST",
             self.url("canvas/set"),
-            headers=self.sdk_headers(),
+            headers=headers,
             timeout=60,
             json=payload,
         )
@@ -167,7 +180,7 @@ class AppClient(BillingClient):
         return resources.get("apps", {})
 
     def upload_document(self, dataset_id: str, file_path: str) -> dict:
-        """Upload a document to a dataset via the RESTful API using SDK Bearer auth."""
+        """Upload a document to a dataset via the RESTful API using session auth."""
         from pathlib import Path
         from requests_toolbelt import MultipartEncoder  # noqa: E402
 
@@ -176,7 +189,7 @@ class AppClient(BillingClient):
         try:
             response = self.session.post(
                 f"{self.base_url}/api/{self.version}/datasets/{dataset_id}/documents",
-                headers={**self.sdk_headers(), "Content-Type": m.content_type},
+                headers={**self.headers(), "Content-Type": m.content_type},
                 data=m,
                 timeout=60,
             )
@@ -191,10 +204,10 @@ class AppClient(BillingClient):
             m.fields[0][1][1].close()
 
     def parse_documents(self, dataset_id: str, document_ids: list[str]) -> dict:
-        """Trigger parsing for documents in a dataset via the RESTful API."""
+        """Trigger parsing for documents in a dataset via the RESTful API using session auth."""
         response = self.session.post(
             f"{self.base_url}/api/{self.version}/datasets/{dataset_id}/chunks",
-            headers=self.sdk_headers(),
+            headers=self.headers(),
             json={"document_ids": document_ids},
             timeout=60,
         )
@@ -207,8 +220,12 @@ class AppClient(BillingClient):
         return result
 
     def list_documents(self, dataset_id: str) -> dict:
-        """List documents in a dataset."""
-        return self.sdk_request_json("GET", f"datasets/{dataset_id}/documents")
+        """List documents in a dataset using session auth."""
+        return self.session_api_request_json("GET", f"datasets/{dataset_id}/documents")
+
+    def update_document(self, dataset_id: str, document_id: str, payload: dict) -> dict:
+        """Update a document via the RESTful API using session auth."""
+        return self.session_api_request_json("PATCH", f"datasets/{dataset_id}/documents/{document_id}", json=payload)
 
     def points_balance(self) -> dict:
         """Get points balance for this tenant."""

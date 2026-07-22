@@ -131,10 +131,17 @@ interface ConfirmModalProps {
   isOpen: boolean;
   onClose: () => void;
   has_reusable_payment_method?: boolean;
+  requires_payment_method_setup?: boolean;
 }
 
 export const ConfirmModal: React.FC<ConfirmModalProps> = memo(
-  ({ plan, isOpen = true, onClose, has_reusable_payment_method = true }) => {
+  ({
+    plan,
+    isOpen = true,
+    onClose,
+    has_reusable_payment_method = true,
+    requires_payment_method_setup = true,
+  }) => {
     const priceDifference = plan.priceDifference;
     const date = getNextMonth.getDayFormatted(getNextMonth.get31Day());
     const price = plan.price;
@@ -166,7 +173,13 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = memo(
     }, [plan.id, isOpen]);
 
     useEffect(() => {
-      if (!isOpen || has_reusable_payment_method || clientSecret || loading) {
+      if (
+        !isOpen ||
+        !requires_payment_method_setup ||
+        has_reusable_payment_method ||
+        clientSecret ||
+        loading
+      ) {
         return;
       }
 
@@ -178,6 +191,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = memo(
       isOpen,
       loading,
       plan.id,
+      requires_payment_method_setup,
     ]);
 
     const handleConfirmWithNewPaymentMethod = async () => {
@@ -223,13 +237,17 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = memo(
         return;
       }
 
-      if (!has_reusable_payment_method && !showPaymentForm) {
+      if (
+        requires_payment_method_setup &&
+        !has_reusable_payment_method &&
+        !showPaymentForm
+      ) {
         // Need to collect payment method first
         await handleCreateSetupIntent();
         return;
       }
 
-      if (showPaymentForm && clientSecret) {
+      if (requires_payment_method_setup && showPaymentForm && clientSecret) {
         // Payment form shown, user needs to complete payment first
         await handleConfirmWithNewPaymentMethod();
         return;
@@ -293,12 +311,14 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = memo(
             />
           )}
 
-          {!has_reusable_payment_method && !showPaymentForm && (
-            <div className="text-sm text-text-secondary mb-4 p-3 bg-accent-primary-5 rounded-md">
-              No payment method on file. Initializing secure payment details
-              form for this upgrade.
-            </div>
-          )}
+          {requires_payment_method_setup &&
+            !has_reusable_payment_method &&
+            !showPaymentForm && (
+              <div className="text-sm text-text-secondary mb-4 p-3 bg-accent-primary-5 rounded-md">
+                No payment method on file. Initializing secure payment details
+                form for this upgrade.
+              </div>
+            )}
         </Space>
       </Modal>
     );

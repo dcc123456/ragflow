@@ -36,6 +36,9 @@ interface RawSessionResponse {
   invoice_pdf_url?: string;
   receipt_url?: string;
   payment_intent_id?: string;
+  subscription_id?: string;
+  plan_name?: string;
+  price_id?: string;
 }
 
 const PollingInterval = 3000;
@@ -65,6 +68,9 @@ export const useFetchPaymentSession = (
           invoice_url: raw.invoice_url,
           invoice_pdf_url: raw.invoice_pdf_url,
           receipt_url: raw.receipt_url,
+          subscription_id: raw.subscription_id,
+          plan_name: raw.plan_name,
+          price_id: raw.price_id,
           product_type: raw.metadata
             ?.product_type as SessionData['product_type'],
         };

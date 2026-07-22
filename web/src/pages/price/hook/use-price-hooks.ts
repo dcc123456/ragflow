@@ -289,11 +289,10 @@ const useCharge = () => {
       });
     } else if (chargeResult) {
       trackDirectPaymentAttempt(chargeResult);
-      if (
-        chargeResult.payment_state === 'requires_action' &&
-        chargeResult.redirect_to
-      ) {
-        message.info(t('price.paymentVerificationRequired'));
+      if (chargeResult.redirect_to) {
+        if (chargeResult.payment_state === 'requires_action') {
+          message.info(t('price.paymentVerificationRequired'));
+        }
         openPaymentRedirectPreservingPage(chargeResult.redirect_to);
       } else {
         message.info(t('price.paymentProcessing'));

@@ -26,6 +26,7 @@ Provides:
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 import uuid
@@ -40,6 +41,7 @@ from libs.billing.billing_common import (
     FlowError,
     delete_clock,
     load_stripe_test_runtime_config,
+    prepare_backend_imports,
     stripe_dict,
 )
 from libs.billing.app_common import AppClient
@@ -48,6 +50,116 @@ from libs.billing.points_common import PointsClient
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
+
+DEFAULT_EMBEDDING_MODEL_ID = "BAAI/bge-small-en-v1.5@Builtin"
+
+
+def _request_api_json(client: BillingClient, method: str, path: str, **kwargs) -> dict[str, Any]:
+    response = client.session.request(
+        method,
+        client.url(path, need_api_path=True),
+        headers=client.headers(),
+        timeout=60,
+        **kwargs,
+    )
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise FlowError(f"{method} {path} returned non-JSON status={response.status_code}: {response.text[:500]}") from exc
+    return payload
+
+
+def _ignore_duplicate_error(payload: dict[str, Any]) -> bool:
+    message = str(payload.get("message") or "").lower()
+    return "already exist" in message or "duplicated" in message
+
+
+def _ensure_provider(client: BillingClient, provider_name: str) -> None:
+    payload = _request_api_json(client, "PUT", "providers", json={"provider_name": provider_name})
+    if payload.get("code") in (0, None) or _ignore_duplicate_error(payload):
+        return
+    raise FlowError(f"failed to add provider {provider_name}: {payload}")
+
+
+def _ensure_instance(
+    client: BillingClient,
+    provider_name: str,
+    instance_name: str,
+    *,
+    api_key: str,
+    base_url: str = "",
+    region: str = "default",
+) -> None:
+    payload = _request_api_json(
+        client,
+        "POST",
+        f"providers/{provider_name}/instances",
+        json={
+            "instance_name": instance_name,
+            "api_key": api_key,
+            "base_url": base_url,
+            "region": region,
+        },
+    )
+    if payload.get("code") in (0, None) or _ignore_duplicate_error(payload):
+        return
+    raise FlowError(f"failed to add provider instance {provider_name}/{instance_name}: {payload}")
+
+
+def _ensure_hidden_provider_instance(
+    client: BillingClient,
+    *,
+    provider_name: str,
+    instance_name: str,
+    api_key: str,
+    base_url: str,
+    region: str = "default",
+) -> None:
+    prepare_backend_imports()
+    from api.db.services.tenant_model_instance_service import TenantModelInstanceService
+    from api.db.services.tenant_model_provider_service import TenantModelProviderService
+
+    provider = TenantModelProviderService.get_by_tenant_id_and_provider_name(client.tenant_id, provider_name)
+    if not provider:
+        TenantModelProviderService.insert(tenant_id=client.tenant_id, provider_name=provider_name)
+        provider = TenantModelProviderService.get_by_tenant_id_and_provider_name(client.tenant_id, provider_name)
+    if not provider:
+        raise FlowError(f"failed to create hidden provider {provider_name} for tenant {client.tenant_id}")
+
+    instance = TenantModelInstanceService.get_by_provider_id_and_instance_name(provider.id, instance_name)
+    if instance:
+        return
+
+    extra = json.dumps({"base_url": base_url, "region": region})
+    TenantModelInstanceService.create_instance(
+        provider_id=provider.id,
+        instance_name=instance_name,
+        api_key=api_key,
+        extra=extra,
+    )
+
+
+def _set_tenant_model_ids_direct(client: BillingClient, *, llm_id: str, embd_id: str) -> None:
+    prepare_backend_imports()
+    from api.db.services.user_service import TenantService
+
+    updated = TenantService.update_by_id(
+        client.tenant_id,
+        {
+            "llm_id": llm_id,
+            "embd_id": embd_id,
+        },
+    )
+    if updated != 1:
+        raise FlowError(f"failed to update tenant default model ids for tenant {client.tenant_id}")
+
+
+def _bootstrap_tenant_models(client: BillingClient) -> None:
+    _set_tenant_model_ids_direct(
+        client,
+        llm_id="",
+        embd_id=DEFAULT_EMBEDDING_MODEL_ID,
+    )
 
 
 # -----------------------------------------------------------------------------
@@ -82,6 +194,16 @@ def set_tenant_info() -> None:
     Billing P3 cases provision their own tenants and Stripe customers, so they
     must not inherit the shared qa@infiniflow.org bootstrap from the parent
     test tree.
+    """
+    return None
+
+
+@pytest.fixture(scope="session", autouse=True)
+def set_tenant_siliconflow_rerank() -> None:
+    """Disable parent tenant model bootstrap for billing tests.
+
+    Billing integration cases provision isolated tenants and should not inherit
+    the parent test tree's session-auth bootstrap.
     """
     return None
 
@@ -194,6 +316,7 @@ def billing_client(
 
     _user_id, tenant_id = client.register_and_login(email, "Test1234!")
     client.customer_id = str(client.customer_id or "")
+    _bootstrap_tenant_models(client)
 
     # Attach default test card
     initial_plan = client.current_plan()
@@ -240,6 +363,7 @@ def points_client(
 
     _user_id, tenant_id = client.register_and_login(email, "Test1234!")
     client.customer_id = str(client.customer_id or "")
+    _bootstrap_tenant_models(client)
 
     initial_plan = client.current_plan()
     if not client.customer_id:

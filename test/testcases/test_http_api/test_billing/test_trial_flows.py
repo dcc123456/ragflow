@@ -83,6 +83,21 @@ def test_trial_01a_no_invoice_on_billing_cycle(
     document_ids = [doc["id"] for doc in (upload_res.get("data") or [])]
     assert document_ids, f"No document IDs returned after upload: {upload_res}"
 
+    # This billing assertion only needs a successful page parse to consume points.
+    # Disable chat-dependent enrichments so the test is not coupled to external LLM credentials.
+    for document_id in document_ids:
+        update_res = billing_client.update_document(
+            dataset_id,
+            document_id,
+            {
+                "parser_config": {
+                    "raptor": {"use_raptor": False},
+                    "graphrag": {"use_graphrag": False},
+                }
+            },
+        )
+        assert update_res.get("code") == 0, f"Document parser_config update failed: {update_res}"
+
     # Print parser_config for review
     docs = billing_client.list_documents(dataset_id)
     for doc in docs.get("data", {}).get("docs") or []:
@@ -227,7 +242,13 @@ def test_trial_02_first_upgrade_via_setup_intent_flow(billing_client: AppClient)
         print("  Reusable payment method exists — skipping SetupIntent flow")
 
     # 5. Schedule plan change (checkout) with setup_intent_id
+    checkout_started_at = int(time_module.time()) - 5
     checkout_result = billing_client.schedule_plan_change(starter_price_id, setup_intent_id=setup_intent_id)
+    checkout_result = billing_client.complete_subscription_checkout_via_proxy(
+        checkout_result,
+        target_price_id=starter_price_id,
+        created_gte=checkout_started_at,
+    )
     subscription_id = str(checkout_result.get("subscription_id") or "")
     print(f"  Checkout result — subscription_id: {subscription_id}")
     assert subscription_id, f"Expected subscription_id in checkout result: {checkout_result}"
