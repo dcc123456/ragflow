@@ -340,7 +340,7 @@ if [[ "${ENABLE_WEBSERVER}" -eq 1 ]]; then
         run_with_restart "RAGFlow python server" "$PY" api/ragflow_server.py ${INIT_SUPERUSER_ARGS} &
     fi
 
-    if [[ "${API_PROXY_SCHEME}" == "go" ]]; then
+    if [[ "${API_PROXY_SCHEME}" == "hybrid" ]] || [[ "${API_PROXY_SCHEME}" == "go" ]]; then
         echo "Starting RAGFlow go server..."
         run_with_restart "RAGFlow go server" bin/ragflow_server --api &
     fi
