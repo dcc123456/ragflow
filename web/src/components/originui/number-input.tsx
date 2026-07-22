@@ -85,23 +85,25 @@ const NumberInput = forwardRef<
     }
 
     if (!isNaN(newValue)) {
+      setValue(newValue);
       if (newValue > max || newValue < min) {
         return;
       }
-      setValue(newValue);
       onChange?.(newValue);
     }
   };
 
   const handleBlur: FocusEventHandler<HTMLInputElement> = useCallback(() => {
     if (isNumber(value)) {
-      onChange?.(value);
+      const newValue = Math.min(max, Math.max(min, value));
+      setValue(newValue);
+      onChange?.(newValue);
     } else {
       const previousValue = valueRef.current ?? min;
       setValue(previousValue);
       onChange?.(previousValue);
     }
-  }, [min, onChange, value]);
+  }, [max, min, onChange, value]);
 
   const style = useMemo(
     () => ({
