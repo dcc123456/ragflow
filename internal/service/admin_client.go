@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/http"
 	"ragflow/internal/common"
 	"ragflow/internal/server"
 	"ragflow/internal/utility"
@@ -132,21 +133,24 @@ func (h *AdminClient) SendHeartbeat() error {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != 200 {
-		// extract the Code and Message field of the response
-		var responseBody map[string]interface{}
-		err = json.NewDecoder(resp.Body).Decode(&responseBody)
-		if err != nil {
-			return err
-		}
-		code, ok := responseBody["code"].(float64)
-		if !ok {
-			return fmt.Errorf("unexpected heartbeat response (status %d): missing or non-numeric \"code\" field", resp.StatusCode)
-		}
-		responseCode := common.ErrorCode(code)
-		if responseCode != common.CodeLicenseValid {
-			return errors.New(responseCode.Message())
-		}
+	// extract the Code and Message field of the response
+	var responseBody map[string]interface{}
+	err = json.NewDecoder(resp.Body).Decode(&responseBody)
+	if err != nil {
+		return err
+	}
+	code, ok := responseBody["code"].(float64)
+	if !ok {
+		return fmt.Errorf("unexpected heartbeat response (status %d): missing or non-numeric \"code\" field", resp.StatusCode)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("error HTTP status code: %d", resp.StatusCode)
+	}
+
+	responseCode := common.ErrorCode(code)
+	if responseCode != common.CodeLicenseValid {
+		return errors.New(responseCode.Message())
 	}
 
 	h.logger.Debug("Heartbeat sent successfully",
