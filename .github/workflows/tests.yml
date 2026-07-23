@@ -208,6 +208,7 @@ jobs:
             -v "${PWD}/internal/cpp/resource:/usr/share/infinity/resource" \
             infiniflow/infinity_builder:ubuntu22_clang20
           sudo docker exec "${BUILDER_CONTAINER}" bash -c 'git config --global safe.directory "*" && cd /ragflow && ./build.sh --cpp'
+          git config --global url."https://oauth2:796df937ae36d0014a35aa8ab2b02609@gitee.com/".insteadOf "https://gitee.com/"
           uv sync --python 3.13 --group test --frozen
           ./build.sh --go
 
