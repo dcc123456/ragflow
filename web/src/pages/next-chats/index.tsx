@@ -6,6 +6,7 @@ import { PrivilegeManagementDialog } from '@/components/privilege-management/pri
 import { RenameDialog } from '@/components/rename-dialog';
 import { Button } from '@/components/ui/button';
 import { RAGFlowPagination } from '@/components/ui/ragflow-pagination';
+import { Spin } from '@/components/ui/spin';
 import { useFetchChatList } from '@/hooks/use-chat-request';
 import { buildOwnersFilter } from '@/utils/list-filter-util';
 import { pick } from 'lodash';
@@ -27,6 +28,7 @@ export default function ChatList() {
     searchString,
     filterValue,
     handleFilterSubmit,
+    loading,
   } = useFetchChatList();
   const { t } = useTranslation();
   const { t: tc } = useTranslation('common');
@@ -110,7 +112,14 @@ export default function ChatList() {
 
   return (
     <>
-      {data.chats?.length || searchString ? (
+      {loading && !data.chats?.length ? (
+        <article
+          className="size-full flex items-center justify-center"
+          data-testid="chats-list"
+        >
+          <Spin size="large" />
+        </article>
+      ) : data.chats?.length || searchString ? (
         <article
           className="size-full min-w-0 flex flex-col"
           data-testid="chats-list"

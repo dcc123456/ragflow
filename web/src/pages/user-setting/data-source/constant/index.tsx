@@ -1,7 +1,7 @@
-import { FormFieldConfig, FormFieldType } from '@/components/dynamic-form';
+import { FormFieldType } from '@/components/dynamic-form';
 import { IconFontFill } from '@/components/icon-font';
 import SvgIcon from '@/components/svg-icon';
-import { t, TFunction } from 'i18next';
+import { TFunction } from 'i18next';
 import { Mail, Rss } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -406,7 +406,7 @@ export const mergeDataSourceFormValues = (
     return next;
   }, {});
 
-export const DataSourceFormBaseFields = [
+export const getDataSourceFormBaseFields = (t: TFunction) => [
   {
     id: 'Id',
     name: 'id',
@@ -415,14 +415,14 @@ export const DataSourceFormBaseFields = [
     hidden: true,
   },
   {
-    label: 'Name',
+    label: t('setting.dataSourceFieldName'),
     name: 'name',
     type: FormFieldType.Text,
     required: true,
     tooltip: t('setting.connectorNameTip'),
   },
   {
-    label: 'Source',
+    label: t('setting.dataSourceFieldSource'),
     name: 'source',
     type: FormFieldType.Select,
     required: true,
@@ -434,9 +434,7 @@ export const DataSourceFormBaseFields = [
   },
 ];
 
-export const getCommonExtraFields = (
-  source?: DataSourceKey,
-): FormFieldConfig[] => [
+export const getCommonExtraFields = (t: TFunction, source?: DataSourceKey) => [
   {
     label: t('setting.syncDeletedFiles'),
     name: 'config.sync_deleted_files',
@@ -453,10 +451,10 @@ export const getCommonExtraDefaultValues = () => ({
   },
 });
 
-export const DataSourceFormFields = {
+const generateDataSourceFormFields = (t: TFunction) => ({
   [DataSourceKey.ONEDRIVE]: [
     {
-      label: 'Tenant ID',
+      label: t('setting.dataSourceFieldTenantId'),
       name: 'config.credentials.tenant_id',
       type: FormFieldType.Text,
       required: true,
@@ -464,7 +462,7 @@ export const DataSourceFormFields = {
       tooltip: t('setting.onedriveTenantIdTip'),
     },
     {
-      label: 'Client ID',
+      label: t('setting.dataSourceFieldClientId'),
       name: 'config.credentials.client_id',
       type: FormFieldType.Text,
       required: true,
@@ -472,14 +470,14 @@ export const DataSourceFormFields = {
       tooltip: t('setting.onedriveClientIdTip'),
     },
     {
-      label: 'Client Secret',
+      label: t('setting.dataSourceFieldClientSecret'),
       name: 'config.credentials.client_secret',
       type: FormFieldType.Password,
       required: true,
       tooltip: t('setting.onedriveClientSecretTip'),
     },
     {
-      label: 'Folder Path (optional)',
+      label: t('setting.dataSourceFieldFolderPathOptional'),
       name: 'config.folder_path',
       type: FormFieldType.Text,
       required: false,
@@ -487,19 +485,21 @@ export const DataSourceFormFields = {
       tooltip: t('setting.onedriveFolderPathTip'),
     },
     {
-      label: 'Batch Size',
+      label: t('setting.dataSourceFieldBatchSize'),
       name: 'config.batch_size',
       type: FormFieldType.Number,
       required: false,
       validation: {
         min: 1,
-        message: 'Batch Size must be at least 1',
+        message: t('setting.dataSourceValidationMinOne', {
+          label: t('setting.dataSourceFieldBatchSize'),
+        }),
       },
     },
   ],
   [DataSourceKey.OUTLOOK]: [
     {
-      label: 'Tenant ID',
+      label: t('setting.dataSourceFieldTenantId'),
       name: 'config.credentials.tenant_id',
       type: FormFieldType.Text,
       required: true,
@@ -507,7 +507,7 @@ export const DataSourceFormFields = {
       tooltip: t('setting.outlookTenantIdTip'),
     },
     {
-      label: 'Client ID',
+      label: t('setting.dataSourceFieldClientId'),
       name: 'config.credentials.client_id',
       type: FormFieldType.Text,
       required: true,
@@ -515,14 +515,14 @@ export const DataSourceFormFields = {
       tooltip: t('setting.outlookClientIdTip'),
     },
     {
-      label: 'Client Secret',
+      label: t('setting.dataSourceFieldClientSecret'),
       name: 'config.credentials.client_secret',
       type: FormFieldType.Password,
       required: true,
       tooltip: t('setting.outlookClientSecretTip'),
     },
     {
-      label: 'Mail Folder',
+      label: t('setting.dataSourceFieldMailFolder'),
       name: 'config.folder',
       type: FormFieldType.Text,
       required: false,
@@ -530,7 +530,7 @@ export const DataSourceFormFields = {
       tooltip: t('setting.outlookFolderTip'),
     },
     {
-      label: 'Mailbox User IDs (optional)',
+      label: t('setting.dataSourceFieldMailboxUserIds'),
       name: 'config.user_ids',
       type: FormFieldType.Text,
       required: false,
@@ -538,19 +538,21 @@ export const DataSourceFormFields = {
       tooltip: t('setting.outlookUserIdsTip'),
     },
     {
-      label: 'Batch Size',
+      label: t('setting.dataSourceFieldBatchSize'),
       name: 'config.batch_size',
       type: FormFieldType.Number,
       required: false,
       validation: {
         min: 1,
-        message: 'Batch Size must be at least 1',
+        message: t('setting.dataSourceValidationMinOne', {
+          label: t('setting.dataSourceFieldBatchSize'),
+        }),
       },
     },
   ],
   [DataSourceKey.SALESFORCE]: [
     {
-      label: 'Instance URL',
+      label: t('setting.dataSourceFieldInstanceUrl'),
       name: 'config.credentials.instance_url',
       type: FormFieldType.Text,
       required: true,
@@ -558,26 +560,25 @@ export const DataSourceFormFields = {
       tooltip: t('setting.salesforceInstanceUrlTip'),
       validation: {
         pattern: /^https:\/\/[a-zA-Z0-9.-]+\.salesforce\.com$/,
-        message:
-          'Must be a valid Salesforce domain (https://...salesforce.com)',
+        message: t('setting.dataSourceSalesforceInstanceUrlInvalid'),
       },
     },
     {
-      label: 'Client ID',
+      label: t('setting.dataSourceFieldClientId'),
       name: 'config.credentials.client_id',
       type: FormFieldType.Text,
       required: true,
       tooltip: t('setting.salesforceClientIdTip'),
     },
     {
-      label: 'Client Secret',
+      label: t('setting.dataSourceFieldClientSecret'),
       name: 'config.credentials.client_secret',
       type: FormFieldType.Password,
       required: true,
       tooltip: t('setting.salesforceClientSecretTip'),
     },
     {
-      label: 'Objects',
+      label: t('setting.dataSourceFieldObjects'),
       name: 'config.objects',
       type: FormFieldType.Text,
       required: false,
@@ -585,7 +586,7 @@ export const DataSourceFormFields = {
       tooltip: t('setting.salesforceObjectsTip'),
     },
     {
-      label: 'API Version',
+      label: t('setting.dataSourceFieldApiVersion'),
       name: 'config.api_version',
       type: FormFieldType.Text,
       required: false,
@@ -593,35 +594,43 @@ export const DataSourceFormFields = {
       tooltip: t('setting.salesforceApiVersionTip'),
       validation: {
         pattern: /^v\d+\.\d+$/,
-        message: 'API version must match format like v59.0',
+        message: t('setting.dataSourceSalesforceApiVersionInvalid'),
       },
     },
     {
-      label: 'Batch Size',
+      label: t('setting.dataSourceFieldBatchSize'),
       name: 'config.batch_size',
       type: FormFieldType.Number,
       required: false,
       validation: {
         min: 1,
-        message: 'Batch Size must be at least 1',
+        message: t('setting.dataSourceValidationMinOne', {
+          label: t('setting.dataSourceFieldBatchSize'),
+        }),
       },
     },
   ],
   [DataSourceKey.AZURE_BLOB]: [
     {
-      label: 'Auth Mode',
+      label: t('setting.dataSourceFieldAuthMode'),
       name: 'config.auth_mode',
       type: FormFieldType.Select,
       required: true,
       options: [
-        { label: 'Account Key', value: 'account_key' },
-        { label: 'Connection String', value: 'connection_string' },
-        { label: 'SAS Token', value: 'sas_token' },
+        {
+          label: t('setting.dataSourceOptionAccountKey'),
+          value: 'account_key',
+        },
+        {
+          label: t('setting.dataSourceOptionConnectionString'),
+          value: 'connection_string',
+        },
+        { label: t('setting.dataSourceOptionSasToken'), value: 'sas_token' },
       ],
       tooltip: t('setting.azureBlobAuthModeTip'),
     },
     {
-      label: 'Account Name',
+      label: t('setting.dataSourceFieldAccountName'),
       name: 'config.credentials.account_name',
       type: FormFieldType.Text,
       required: false,
@@ -631,11 +640,11 @@ export const DataSourceFormFields = {
         values?.config?.auth_mode === 'account_key',
       customValidate: (val: string, values: any) =>
         values?.config?.auth_mode === 'account_key' && !(val ?? '').trim()
-          ? 'Account name is required for account key auth'
+          ? t('setting.dataSourceAzureAccountNameRequired')
           : true,
     },
     {
-      label: 'Account Key',
+      label: t('setting.dataSourceFieldAccountKey'),
       name: 'config.credentials.account_key',
       type: FormFieldType.Password,
       required: false,
@@ -644,11 +653,11 @@ export const DataSourceFormFields = {
         values?.config?.auth_mode === 'account_key',
       customValidate: (val: string, values: any) =>
         values?.config?.auth_mode === 'account_key' && !val
-          ? 'Account key is required for account key auth'
+          ? t('setting.dataSourceAzureAccountKeyRequired')
           : true,
     },
     {
-      label: 'Connection String',
+      label: t('setting.dataSourceFieldConnectionString'),
       name: 'config.credentials.connection_string',
       type: FormFieldType.Password,
       required: false,
@@ -657,11 +666,11 @@ export const DataSourceFormFields = {
         values?.config?.auth_mode === 'connection_string',
       customValidate: (val: string, values: any) =>
         values?.config?.auth_mode === 'connection_string' && !val
-          ? 'Connection string is required for connection string auth'
+          ? t('setting.dataSourceAzureConnectionStringRequired')
           : true,
     },
     {
-      label: 'Container URL',
+      label: t('setting.dataSourceFieldContainerUrl'),
       name: 'config.credentials.container_url',
       type: FormFieldType.Text,
       required: false,
@@ -670,11 +679,11 @@ export const DataSourceFormFields = {
       shouldRender: (values: any) => values?.config?.auth_mode === 'sas_token',
       customValidate: (val: string, values: any) =>
         values?.config?.auth_mode === 'sas_token' && !(val ?? '').trim()
-          ? 'Container URL is required for SAS token auth'
+          ? t('setting.dataSourceAzureContainerUrlRequired')
           : true,
     },
     {
-      label: 'SAS Token',
+      label: t('setting.dataSourceFieldSasToken'),
       name: 'config.credentials.sas_token',
       type: FormFieldType.Password,
       required: false,
@@ -682,11 +691,11 @@ export const DataSourceFormFields = {
       shouldRender: (values: any) => values?.config?.auth_mode === 'sas_token',
       customValidate: (val: string, values: any) =>
         values?.config?.auth_mode === 'sas_token' && !val
-          ? 'SAS token is required for SAS token auth'
+          ? t('setting.dataSourceAzureSasTokenRequired')
           : true,
     },
     {
-      label: 'Container Name',
+      label: t('setting.dataSourceFieldContainerName'),
       name: 'config.credentials.container_name',
       type: FormFieldType.Text,
       required: false,
@@ -701,13 +710,13 @@ export const DataSourceFormFields = {
           (mode === 'account_key' || mode === 'connection_string') &&
           !(val ?? '').trim()
         ) {
-          return 'Container name is required for this auth mode';
+          return t('setting.dataSourceAzureContainerNameRequired');
         }
         return true;
       },
     },
     {
-      label: 'Prefix (optional)',
+      label: t('setting.dataSourceFieldPrefixOptional'),
       name: 'config.prefix',
       type: FormFieldType.Text,
       required: false,
@@ -715,50 +724,54 @@ export const DataSourceFormFields = {
       tooltip: t('setting.azureBlobPrefixTip'),
     },
     {
-      label: 'Batch Size',
+      label: t('setting.dataSourceFieldBatchSize'),
       name: 'config.batch_size',
       type: FormFieldType.Number,
       required: false,
       validation: {
         min: 1,
-        message: 'Batch Size must be at least 1',
+        message: t('setting.dataSourceValidationMinOne', {
+          label: t('setting.dataSourceFieldBatchSize'),
+        }),
       },
     },
   ],
   [DataSourceKey.RSS]: [
     {
-      label: 'Feed URL',
+      label: t('setting.dataSourceFieldFeedUrl'),
       name: 'config.feed_url',
       type: FormFieldType.Text,
       required: true,
       placeholder: 'https://example.com/feed.xml',
     },
     {
-      label: 'Batch Size',
+      label: t('setting.dataSourceFieldBatchSize'),
       name: 'config.batch_size',
       type: FormFieldType.Number,
       required: false,
       validation: {
         min: 1,
-        message: 'Batch Size must be at least 1',
+        message: t('setting.dataSourceValidationMinOne', {
+          label: t('setting.dataSourceFieldBatchSize'),
+        }),
       },
     },
   ],
   [DataSourceKey.GOOGLE_CLOUD_STORAGE]: [
     {
-      label: 'GCS Access Key ID',
+      label: t('setting.dataSourceFieldGcsAccessKeyId'),
       name: 'config.credentials.access_key_id',
       type: FormFieldType.Text,
       required: true,
     },
     {
-      label: 'GCS Secret Access Key',
+      label: t('setting.dataSourceFieldGcsSecretAccessKey'),
       name: 'config.credentials.secret_access_key',
       type: FormFieldType.Password,
       required: true,
     },
     {
-      label: 'Bucket Name',
+      label: t('setting.dataSourceFieldBucketName'),
       name: 'config.bucket_name',
       type: FormFieldType.Text,
       required: true,
@@ -766,31 +779,31 @@ export const DataSourceFormFields = {
   ],
   [DataSourceKey.OCI_STORAGE]: [
     {
-      label: 'OCI Namespace',
+      label: t('setting.dataSourceFieldOciNamespace'),
       name: 'config.credentials.namespace',
       type: FormFieldType.Text,
       required: true,
     },
     {
-      label: 'OCI Region',
+      label: t('setting.dataSourceFieldOciRegion'),
       name: 'config.credentials.region',
       type: FormFieldType.Text,
       required: true,
     },
     {
-      label: 'OCI Access Key ID',
+      label: t('setting.dataSourceFieldOciAccessKeyId'),
       name: 'config.credentials.access_key_id',
       type: FormFieldType.Text,
       required: true,
     },
     {
-      label: 'OCI Secret Access Key',
+      label: t('setting.dataSourceFieldOciSecretAccessKey'),
       name: 'config.credentials.secret_access_key',
       type: FormFieldType.Password,
       required: true,
     },
     {
-      label: 'Bucket Name',
+      label: t('setting.dataSourceFieldBucketName'),
       name: 'config.bucket_name',
       type: FormFieldType.Text,
       required: true,
@@ -798,25 +811,25 @@ export const DataSourceFormFields = {
   ],
   [DataSourceKey.R2]: [
     {
-      label: 'R2 Account ID',
+      label: t('setting.dataSourceFieldR2AccountId'),
       name: 'config.credentials.account_id',
       type: FormFieldType.Text,
       required: true,
     },
     {
-      label: 'R2 Access Key ID',
+      label: t('setting.dataSourceFieldR2AccessKeyId'),
       name: 'config.credentials.r2_access_key_id',
       type: FormFieldType.Text,
       required: true,
     },
     {
-      label: 'R2 Secret Access Key',
+      label: t('setting.dataSourceFieldR2SecretAccessKey'),
       name: 'config.credentials.r2_secret_access_key',
       type: FormFieldType.Password,
       required: true,
     },
     {
-      label: 'Bucket Name',
+      label: t('setting.dataSourceFieldBucketName'),
       name: 'config.bucket_name',
       type: FormFieldType.Text,
       required: true,
@@ -825,13 +838,13 @@ export const DataSourceFormFields = {
   [DataSourceKey.S3]: S3Constant(t),
   [DataSourceKey.NOTION]: [
     {
-      label: 'Notion Integration Token',
+      label: t('setting.dataSourceFieldNotionIntegrationToken'),
       name: 'config.credentials.notion_integration_token',
       type: FormFieldType.Password,
       required: true,
     },
     {
-      label: 'Root Page Id',
+      label: t('setting.dataSourceFieldRootPageId'),
       name: 'config.root_page_id',
       type: FormFieldType.Text,
       required: false,
@@ -839,19 +852,19 @@ export const DataSourceFormFields = {
   ],
   [DataSourceKey.DISCORD]: [
     {
-      label: 'Discord Bot Token',
+      label: t('setting.dataSourceFieldDiscordBotToken'),
       name: 'config.credentials.discord_bot_token',
       type: FormFieldType.Password,
       required: true,
     },
     {
-      label: 'Server IDs',
+      label: t('setting.dataSourceFieldServerIds'),
       name: 'config.server_ids',
       type: FormFieldType.Tag,
       required: false,
     },
     {
-      label: 'Channels',
+      label: t('setting.dataSourceFieldChannels'),
       name: 'config.channels',
       type: FormFieldType.Tag,
       required: false,
@@ -861,7 +874,7 @@ export const DataSourceFormFields = {
   [DataSourceKey.CONFLUENCE]: confluenceConstant(t),
   [DataSourceKey.GOOGLE_DRIVE]: [
     {
-      label: 'Primary Admin Email',
+      label: t('setting.dataSourceFieldPrimaryAdminEmail'),
       name: 'config.credentials.google_primary_admin',
       type: FormFieldType.Text,
       required: true,
@@ -869,7 +882,7 @@ export const DataSourceFormFields = {
       tooltip: t('setting.google_drivePrimaryAdminTip'),
     },
     {
-      label: 'OAuth Token JSON',
+      label: t('setting.dataSourceFieldOauthTokenJson'),
       name: 'config.credentials.google_tokens',
       type: FormFieldType.Textarea,
       required: true,
@@ -882,7 +895,7 @@ export const DataSourceFormFields = {
       tooltip: t('setting.google_driveTokenTip'),
     },
     {
-      label: 'My Drive Emails',
+      label: t('setting.dataSourceFieldMyDriveEmails'),
       name: 'config.my_drive_emails',
       type: FormFieldType.Text,
       required: true,
@@ -890,7 +903,7 @@ export const DataSourceFormFields = {
       tooltip: t('setting.google_driveMyDriveEmailsTip'),
     },
     {
-      label: 'Shared Folder URLs',
+      label: t('setting.dataSourceFieldSharedFolderUrls'),
       name: 'config.shared_folder_urls',
       type: FormFieldType.Textarea,
       required: true,
@@ -955,7 +968,7 @@ export const DataSourceFormFields = {
   ],
   [DataSourceKey.GMAIL]: [
     {
-      label: 'Primary Admin Email',
+      label: t('setting.dataSourceFieldPrimaryAdminEmail'),
       name: 'config.credentials.google_primary_admin',
       type: FormFieldType.Text,
       required: true,
@@ -963,7 +976,7 @@ export const DataSourceFormFields = {
       tooltip: t('setting.gmailPrimaryAdminTip'),
     },
     {
-      label: 'OAuth Token JSON',
+      label: t('setting.dataSourceFieldOauthTokenJson'),
       name: 'config.credentials.google_tokens',
       type: FormFieldType.Textarea,
       required: true,
@@ -986,14 +999,14 @@ export const DataSourceFormFields = {
   ],
   [DataSourceKey.MOODLE]: [
     {
-      label: 'Moodle URL',
+      label: t('setting.dataSourceFieldMoodleUrl'),
       name: 'config.moodle_url',
       type: FormFieldType.Text,
       required: true,
       placeholder: 'https://moodle.example.com',
     },
     {
-      label: 'API Token',
+      label: t('setting.dataSourceFieldApiToken'),
       name: 'config.credentials.moodle_token',
       type: FormFieldType.Password,
       required: true,
@@ -1001,20 +1014,20 @@ export const DataSourceFormFields = {
   ],
   [DataSourceKey.TEAMS]: [
     {
-      label: 'Tenant ID',
+      label: t('setting.dataSourceFieldTenantId'),
       name: 'config.credentials.tenant_id',
       type: FormFieldType.Text,
       required: true,
       tooltip: t('setting.teamsTenantIdTip'),
     },
     {
-      label: 'Client ID',
+      label: t('setting.dataSourceFieldClientId'),
       name: 'config.credentials.client_id',
       type: FormFieldType.Text,
       required: true,
     },
     {
-      label: 'Client Secret',
+      label: t('setting.dataSourceFieldClientSecret'),
       name: 'config.credentials.client_secret',
       type: FormFieldType.Password,
       required: true,
@@ -1022,14 +1035,14 @@ export const DataSourceFormFields = {
   ],
   [DataSourceKey.SLACK]: [
     {
-      label: 'Slack Bot Token',
+      label: t('setting.dataSourceFieldSlackBotToken'),
       name: 'config.credentials.slack_bot_token',
       type: FormFieldType.Password,
       required: true,
       tooltip: t('setting.slackBotTokenTip'),
     },
     {
-      label: 'Channels',
+      label: t('setting.dataSourceFieldChannels'),
       name: 'config.channels',
       type: FormFieldType.Tag,
       required: false,
@@ -1038,7 +1051,7 @@ export const DataSourceFormFields = {
   ],
   [DataSourceKey.SHAREPOINT]: [
     {
-      label: 'Site URL',
+      label: t('setting.dataSourceFieldSiteUrl'),
       name: 'config.credentials.site_url',
       type: FormFieldType.Text,
       required: true,
@@ -1046,19 +1059,19 @@ export const DataSourceFormFields = {
       tooltip: t('setting.sharepointSiteUrlTip'),
     },
     {
-      label: 'Tenant ID',
+      label: t('setting.dataSourceFieldTenantId'),
       name: 'config.credentials.tenant_id',
       type: FormFieldType.Text,
       required: true,
     },
     {
-      label: 'Client ID',
+      label: t('setting.dataSourceFieldClientId'),
       name: 'config.credentials.client_id',
       type: FormFieldType.Text,
       required: true,
     },
     {
-      label: 'Client Secret',
+      label: t('setting.dataSourceFieldClientSecret'),
       name: 'config.credentials.client_secret',
       type: FormFieldType.Password,
       required: true,
@@ -1067,26 +1080,26 @@ export const DataSourceFormFields = {
   [DataSourceKey.JIRA]: jiraConstant(t),
   [DataSourceKey.WEBDAV]: [
     {
-      label: 'WebDAV Server URL',
+      label: t('setting.dataSourceFieldWebdavServerUrl'),
       name: 'config.base_url',
       type: FormFieldType.Text,
       required: true,
       placeholder: 'https://webdav.example.com',
     },
     {
-      label: 'Username',
+      label: t('setting.dataSourceFieldUsername'),
       name: 'config.credentials.username',
       type: FormFieldType.Text,
       required: true,
     },
     {
-      label: 'Password',
+      label: t('setting.dataSourceFieldPassword'),
       name: 'config.credentials.password',
       type: FormFieldType.Password,
       required: true,
     },
     {
-      label: 'Remote Path',
+      label: t('setting.dataSourceFieldRemotePath'),
       name: 'config.remote_path',
       type: FormFieldType.Text,
       required: false,
@@ -1096,14 +1109,14 @@ export const DataSourceFormFields = {
   ],
   [DataSourceKey.DROPBOX]: [
     {
-      label: 'Access Token',
+      label: t('setting.dataSourceFieldAccessToken'),
       name: 'config.credentials.dropbox_access_token',
       type: FormFieldType.Password,
       required: true,
       tooltip: t('setting.dropboxAccessTokenTip'),
     },
     {
-      label: 'Batch Size',
+      label: t('setting.dataSourceFieldBatchSize'),
       name: 'config.batch_size',
       type: FormFieldType.Number,
       required: false,
@@ -1112,7 +1125,7 @@ export const DataSourceFormFields = {
   ],
   [DataSourceKey.BOX]: [
     {
-      label: 'Box OAuth Configuration',
+      label: t('setting.dataSourceFieldBoxOauthConfiguration'),
       name: 'config.credentials.box_tokens',
       type: FormFieldType.Textarea,
       required: true,
@@ -1125,7 +1138,7 @@ export const DataSourceFormFields = {
       ),
     },
     {
-      label: 'Folder ID',
+      label: t('setting.dataSourceFieldFolderId'),
       name: 'config.folder_id',
       type: FormFieldType.Text,
       required: false,
@@ -1134,19 +1147,19 @@ export const DataSourceFormFields = {
   ],
   [DataSourceKey.AIRTABLE]: [
     {
-      label: 'Access Token',
+      label: t('setting.dataSourceFieldAccessToken'),
       name: 'config.credentials.airtable_access_token',
       type: FormFieldType.Password,
       required: true,
     },
     {
-      label: 'Base ID',
+      label: t('setting.dataSourceFieldBaseId'),
       name: 'config.base_id',
       type: FormFieldType.Text,
       required: true,
     },
     {
-      label: 'Table Name OR ID',
+      label: t('setting.dataSourceFieldTableNameOrId'),
       name: 'config.table_name_or_id',
       type: FormFieldType.Text,
       required: true,
@@ -1154,19 +1167,19 @@ export const DataSourceFormFields = {
   ],
   [DataSourceKey.DINGTALK_AI_TABLE]: [
     {
-      label: 'Access Token',
+      label: t('setting.dataSourceFieldAccessToken'),
       name: 'config.credentials.access_token',
       type: FormFieldType.Password,
       required: true,
     },
     {
-      label: 'Base ID',
+      label: t('setting.dataSourceFieldBaseId'),
       name: 'config.table_id',
       type: FormFieldType.Text,
       required: true,
     },
     {
-      label: 'Operator ID',
+      label: t('setting.dataSourceFieldOperatorId'),
       name: 'config.operator_id',
       type: FormFieldType.Text,
       required: true,
@@ -1174,46 +1187,46 @@ export const DataSourceFormFields = {
   ],
   [DataSourceKey.GITLAB]: [
     {
-      label: 'Project Owner',
+      label: t('setting.dataSourceFieldProjectOwner'),
       name: 'config.project_owner',
       type: FormFieldType.Text,
       required: true,
     },
     {
-      label: 'Project Name',
+      label: t('setting.dataSourceFieldProjectName'),
       name: 'config.project_name',
       type: FormFieldType.Text,
       required: true,
     },
     {
-      label: 'GitLab Personal Access Token',
+      label: t('setting.dataSourceFieldGitlabPersonalAccessToken'),
       name: 'config.credentials.gitlab_access_token',
       type: FormFieldType.Password,
       required: true,
     },
     {
-      label: 'GitLab URL',
+      label: t('setting.dataSourceFieldGitlabUrl'),
       name: 'config.gitlab_url',
       type: FormFieldType.Text,
       required: true,
       placeholder: 'https://gitlab.com',
     },
     {
-      label: 'include Merge Requests',
+      label: t('setting.dataSourceIncludeMergeRequests'),
       name: 'config.include_mrs',
       type: FormFieldType.Checkbox,
       required: false,
       defaultValue: true,
     },
     {
-      label: 'include Issues',
+      label: t('setting.dataSourceIncludeIssues'),
       name: 'config.include_issues',
       type: FormFieldType.Checkbox,
       required: false,
       defaultValue: true,
     },
     {
-      label: 'include Code Files',
+      label: t('setting.dataSourceIncludeCodeFiles'),
       name: 'config.include_code_files',
       type: FormFieldType.Checkbox,
       required: false,
@@ -1222,25 +1235,25 @@ export const DataSourceFormFields = {
   ],
   [DataSourceKey.ASANA]: [
     {
-      label: 'API Token',
+      label: t('setting.dataSourceFieldApiToken'),
       name: 'config.credentials.asana_api_token_secret',
       type: FormFieldType.Password,
       required: true,
     },
     {
-      label: 'Workspace ID',
+      label: t('setting.dataSourceFieldWorkspaceId'),
       name: 'config.asana_workspace_id',
       type: FormFieldType.Text,
       required: true,
     },
     {
-      label: 'Project IDs',
+      label: t('setting.dataSourceFieldProjectIds'),
       name: 'config.asana_project_ids',
       type: FormFieldType.Text,
       required: false,
     },
     {
-      label: 'Team ID',
+      label: t('setting.dataSourceFieldTeamId'),
       name: 'config.asana_team_id',
       type: FormFieldType.Text,
       required: false,
@@ -1248,32 +1261,32 @@ export const DataSourceFormFields = {
   ],
   [DataSourceKey.GITHUB]: [
     {
-      label: 'Repository Owner',
+      label: t('setting.dataSourceFieldRepositoryOwner'),
       name: 'config.repository_owner',
       type: FormFieldType.Text,
       required: true,
     },
     {
-      label: 'Repository Name',
+      label: t('setting.dataSourceFieldRepositoryName'),
       name: 'config.repository_name',
       type: FormFieldType.Text,
       required: true,
     },
     {
-      label: 'GitHub Access Token',
+      label: t('setting.dataSourceFieldGithubAccessToken'),
       name: 'config.credentials.github_access_token',
       type: FormFieldType.Password,
       required: true,
     },
     {
-      label: 'Include Pull Requests',
+      label: t('setting.dataSourceIncludePullRequests'),
       name: 'config.include_pull_requests',
       type: FormFieldType.Checkbox,
       required: false,
       defaultValue: true,
     },
     {
-      label: 'Include Issues',
+      label: t('setting.dataSourceFieldIncludeIssues'),
       name: 'config.include_issues',
       type: FormFieldType.Checkbox,
       required: false,
@@ -1282,37 +1295,37 @@ export const DataSourceFormFields = {
   ],
   [DataSourceKey.IMAP]: [
     {
-      label: 'Username',
+      label: t('setting.dataSourceFieldUsername'),
       name: 'config.credentials.imap_username',
       type: FormFieldType.Text,
       required: true,
     },
     {
-      label: 'Password',
+      label: t('setting.dataSourceFieldPassword'),
       name: 'config.credentials.imap_password',
       type: FormFieldType.Password,
       required: true,
     },
     {
-      label: 'Host',
+      label: t('setting.dataSourceFieldHost'),
       name: 'config.imap_host',
       type: FormFieldType.Text,
       required: true,
     },
     {
-      label: 'Port',
+      label: t('setting.dataSourceFieldPort'),
       name: 'config.imap_port',
       type: FormFieldType.Number,
       required: true,
     },
     {
-      label: 'Mailboxes',
+      label: t('setting.dataSourceFieldMailboxes'),
       name: 'config.imap_mailbox',
       type: FormFieldType.Tag,
       required: false,
     },
     {
-      label: 'Poll Range',
+      label: t('setting.dataSourceFieldPollRange'),
       name: 'config.poll_range',
       type: FormFieldType.Number,
       required: false,
@@ -1321,31 +1334,31 @@ export const DataSourceFormFields = {
   [DataSourceKey.BITBUCKET]: bitbucketConstant(t),
   [DataSourceKey.ZENDESK]: [
     {
-      label: 'Zendesk Domain',
+      label: t('setting.dataSourceFieldZendeskDomain'),
       name: 'config.credentials.zendesk_subdomain',
       type: FormFieldType.Text,
       required: true,
     },
     {
-      label: 'Zendesk Email',
+      label: t('setting.dataSourceFieldZendeskEmail'),
       name: 'config.credentials.zendesk_email',
       type: FormFieldType.Text,
       required: true,
     },
     {
-      label: 'Zendesk Token',
+      label: t('setting.dataSourceFieldZendeskToken'),
       name: 'config.credentials.zendesk_token',
       type: FormFieldType.Password,
       required: true,
     },
     {
-      label: 'Content',
+      label: t('setting.dataSourceFieldContent'),
       name: 'config.zendesk_content_type',
       type: FormFieldType.Segmented,
       required: true,
       options: [
-        { label: 'Articles', value: 'articles' },
-        { label: 'Tickets', value: 'tickets' },
+        { label: t('setting.dataSourceOptionArticles'), value: 'articles' },
+        { label: t('setting.dataSourceOptionTickets'), value: 'tickets' },
       ],
     },
   ],
@@ -1358,33 +1371,33 @@ export const DataSourceFormFields = {
   [DataSourceKey.SEAFILE]: seafileConstant(t),
   [DataSourceKey.MYSQL]: [
     {
-      label: 'Host',
+      label: t('setting.dataSourceFieldHost'),
       name: 'config.host',
       type: FormFieldType.Text,
       required: true,
       placeholder: 'localhost',
     },
     {
-      label: 'Port',
+      label: t('setting.dataSourceFieldPort'),
       name: 'config.port',
       type: FormFieldType.Number,
       required: true,
       placeholder: '3306',
     },
     {
-      label: 'Database',
+      label: t('setting.dataSourceFieldDatabase'),
       name: 'config.database',
       type: FormFieldType.Text,
       required: true,
     },
     {
-      label: 'Username',
+      label: t('setting.dataSourceFieldUsername'),
       name: 'config.credentials.username',
       type: FormFieldType.Text,
       required: true,
     },
     {
-      label: 'Password',
+      label: t('setting.dataSourceFieldPassword'),
       name: 'config.credentials.password',
       type: FormFieldType.Password,
       required: true,
@@ -1406,7 +1419,8 @@ export const DataSourceFormFields = {
       required: false,
     },
     {
-      label: 'SQL Query',
+      // label: 'SQL Query',
+      label: t('setting.dataSourceFieldSqlQuery'),
       name: 'config.query',
       type: FormFieldType.Textarea,
       required: false,
@@ -1414,7 +1428,7 @@ export const DataSourceFormFields = {
       tooltip: t('setting.mysqlQueryTip'),
     },
     {
-      label: 'Content Columns',
+      label: t('setting.dataSourceFieldContentColumns'),
       name: 'config.content_columns',
       type: FormFieldType.Text,
       required: false,
@@ -1422,7 +1436,7 @@ export const DataSourceFormFields = {
       tooltip: t('setting.mysqlContentColumnsTip'),
     },
     {
-      label: 'Metadata Columns',
+      label: t('setting.dataSourceFieldMetadataColumns'),
       name: 'config.metadata_columns',
       type: FormFieldType.Text,
       required: false,
@@ -1430,7 +1444,7 @@ export const DataSourceFormFields = {
       tooltip: t('setting.mysqlMetadataColumnsTip'),
     },
     {
-      label: 'ID Column',
+      label: t('setting.dataSourceFieldIdColumn'),
       name: 'config.id_column',
       type: FormFieldType.Text,
       required: false,
@@ -1438,7 +1452,7 @@ export const DataSourceFormFields = {
       tooltip: t('setting.mysqlIdColumnTip'),
     },
     {
-      label: 'Timestamp Column',
+      label: t('setting.dataSourceFieldTimestampColumn'),
       name: 'config.timestamp_column',
       type: FormFieldType.Text,
       required: false,
@@ -1448,39 +1462,39 @@ export const DataSourceFormFields = {
   ],
   [DataSourceKey.POSTGRESQL]: [
     {
-      label: 'Host',
+      label: t('setting.dataSourceFieldHost'),
       name: 'config.host',
       type: FormFieldType.Text,
       required: true,
       placeholder: 'localhost',
     },
     {
-      label: 'Port',
+      label: t('setting.dataSourceFieldPort'),
       name: 'config.port',
       type: FormFieldType.Number,
       required: true,
       placeholder: '5432',
     },
     {
-      label: 'Database',
+      label: t('setting.dataSourceFieldDatabase'),
       name: 'config.database',
       type: FormFieldType.Text,
       required: true,
     },
     {
-      label: 'Username',
+      label: t('setting.dataSourceFieldUsername'),
       name: 'config.credentials.username',
       type: FormFieldType.Text,
       required: true,
     },
     {
-      label: 'Password',
+      label: t('setting.dataSourceFieldPassword'),
       name: 'config.credentials.password',
       type: FormFieldType.Password,
       required: true,
     },
     {
-      label: 'SQL Query',
+      label: t('setting.dataSourceFieldSqlQuery'),
       name: 'config.query',
       type: FormFieldType.Textarea,
       required: false,
@@ -1488,7 +1502,7 @@ export const DataSourceFormFields = {
       tooltip: t('setting.postgresqlQueryTip'),
     },
     {
-      label: 'Content Columns',
+      label: t('setting.dataSourceFieldContentColumns'),
       name: 'config.content_columns',
       type: FormFieldType.Text,
       required: false,
@@ -1496,7 +1510,7 @@ export const DataSourceFormFields = {
       tooltip: t('setting.postgresqlContentColumnsTip'),
     },
     {
-      label: 'Metadata Columns',
+      label: t('setting.dataSourceFieldMetadataColumns'),
       name: 'config.metadata_columns',
       type: FormFieldType.Text,
       required: false,
@@ -1504,7 +1518,7 @@ export const DataSourceFormFields = {
       tooltip: t('setting.postgresqlMetadataColumnsTip'),
     },
     {
-      label: 'ID Column',
+      label: t('setting.dataSourceFieldIdColumn'),
       name: 'config.id_column',
       type: FormFieldType.Text,
       required: false,
@@ -1512,7 +1526,7 @@ export const DataSourceFormFields = {
       tooltip: t('setting.postgresqlIdColumnTip'),
     },
     {
-      label: 'Timestamp Column',
+      label: t('setting.dataSourceFieldTimestampColumn'),
       name: 'config.timestamp_column',
       type: FormFieldType.Text,
       required: false,
@@ -1522,7 +1536,7 @@ export const DataSourceFormFields = {
   ],
   [DataSourceKey.BIGQUERY]: [
     {
-      label: 'Project ID',
+      label: t('setting.dataSourceFieldProjectId'),
       name: 'config.project_id',
       type: FormFieldType.Text,
       required: true,
@@ -1530,7 +1544,7 @@ export const DataSourceFormFields = {
       tooltip: t('setting.bigqueryProjectIdTip'),
     },
     {
-      label: 'Location',
+      label: t('setting.dataSourceFieldLocation'),
       name: 'config.location',
       type: FormFieldType.Text,
       required: false,
@@ -1538,7 +1552,7 @@ export const DataSourceFormFields = {
       tooltip: t('setting.bigqueryLocationTip'),
     },
     {
-      label: 'Service Account JSON',
+      label: t('setting.dataSourceFieldServiceAccountJson'),
       name: 'config.credentials.service_account_json',
       type: FormFieldType.Password,
       required: true,
@@ -1546,7 +1560,7 @@ export const DataSourceFormFields = {
       tooltip: t('setting.bigqueryServiceAccountJsonTip'),
     },
     {
-      label: 'Dataset ID',
+      label: t('setting.dataSourceFieldDatasetId'),
       name: 'config.dataset_id',
       type: FormFieldType.Text,
       required: false,
@@ -1556,13 +1570,13 @@ export const DataSourceFormFields = {
         const hasQuery = !!(values?.config?.query ?? '').trim();
         const hasTable = !!(values?.config?.table_id ?? '').trim();
         if (!hasQuery && !((val ?? '').trim() && hasTable)) {
-          return 'Dataset ID is required when not using a custom SQL Query';
+          return t('setting.dataSourceBigqueryDatasetIdRequired');
         }
         return true;
       },
     },
     {
-      label: 'Table ID',
+      label: t('setting.dataSourceFieldTableId'),
       name: 'config.table_id',
       type: FormFieldType.Text,
       required: false,
@@ -1572,13 +1586,13 @@ export const DataSourceFormFields = {
         const hasQuery = !!(values?.config?.query ?? '').trim();
         const hasDataset = !!(values?.config?.dataset_id ?? '').trim();
         if (!hasQuery && !(hasDataset && (val ?? '').trim())) {
-          return 'Table ID is required when not using a custom SQL Query';
+          return t('setting.dataSourceBigqueryTableIdRequired');
         }
         return true;
       },
     },
     {
-      label: 'SQL Query',
+      label: t('setting.dataSourceFieldSqlQuery'),
       name: 'config.query',
       type: FormFieldType.Textarea,
       required: false,
@@ -1589,13 +1603,13 @@ export const DataSourceFormFields = {
         const hasDataset = !!(values?.config?.dataset_id ?? '').trim();
         const hasTable = !!(values?.config?.table_id ?? '').trim();
         if (!hasQuery && !(hasDataset && hasTable)) {
-          return 'Provide a SQL Query, or both Dataset ID and Table ID';
+          return t('setting.dataSourceBigqueryQueryRequired');
         }
         return true;
       },
     },
     {
-      label: 'Content Columns',
+      label: t('setting.dataSourceFieldContentColumns'),
       name: 'config.content_columns',
       type: FormFieldType.Text,
       required: true,
@@ -1603,7 +1617,7 @@ export const DataSourceFormFields = {
       tooltip: t('setting.bigqueryContentColumnsTip'),
     },
     {
-      label: 'Metadata Columns',
+      label: t('setting.dataSourceFieldMetadataColumns'),
       name: 'config.metadata_columns',
       type: FormFieldType.Text,
       required: false,
@@ -1611,7 +1625,7 @@ export const DataSourceFormFields = {
       tooltip: t('setting.bigqueryMetadataColumnsTip'),
     },
     {
-      label: 'ID Column',
+      label: t('setting.dataSourceFieldIdColumn'),
       name: 'config.id_column',
       type: FormFieldType.Text,
       required: false,
@@ -1619,7 +1633,7 @@ export const DataSourceFormFields = {
       tooltip: t('setting.bigqueryIdColumnTip'),
     },
     {
-      label: 'Timestamp Column',
+      label: t('setting.dataSourceFieldTimestampColumn'),
       name: 'config.timestamp_column',
       type: FormFieldType.Text,
       required: false,
@@ -1627,7 +1641,7 @@ export const DataSourceFormFields = {
       tooltip: t('setting.bigqueryTimestampColumnTip'),
     },
     {
-      label: 'Max Bytes Billed',
+      label: t('setting.dataSourceFieldMaxBytesBilled'),
       name: 'config.maximum_bytes_billed',
       type: FormFieldType.Number,
       required: false,
@@ -1635,11 +1649,13 @@ export const DataSourceFormFields = {
       tooltip: t('setting.bigqueryMaximumBytesBilledTip'),
       validation: {
         min: 1,
-        message: 'Max Bytes Billed must be at least 1',
+        message: t('setting.dataSourceValidationMinOne', {
+          label: t('setting.dataSourceFieldMaxBytesBilled'),
+        }),
       },
     },
     {
-      label: 'Job Timeout (ms)',
+      label: t('setting.dataSourceFieldJobTimeout'),
       name: 'config.job_timeout_ms',
       type: FormFieldType.Number,
       required: false,
@@ -1647,33 +1663,39 @@ export const DataSourceFormFields = {
       tooltip: t('setting.bigqueryJobTimeoutMsTip'),
       validation: {
         min: 1,
-        message: 'Job Timeout must be at least 1',
+        message: t('setting.dataSourceValidationMinOne', {
+          label: t('setting.dataSourceFieldJobTimeout'),
+        }),
       },
     },
     {
-      label: 'Page Size',
+      label: t('setting.dataSourceFieldPageSize'),
       name: 'config.page_size',
       type: FormFieldType.Number,
       required: false,
       placeholder: '1000',
       validation: {
         min: 1,
-        message: 'Page Size must be at least 1',
+        message: t('setting.dataSourceValidationMinOne', {
+          label: t('setting.dataSourceFieldPageSize'),
+        }),
       },
     },
     {
-      label: 'Batch Size',
+      label: t('setting.dataSourceFieldBatchSize'),
       name: 'config.batch_size',
       type: FormFieldType.Number,
       required: false,
       placeholder: '100',
       validation: {
         min: 1,
-        message: 'Batch Size must be at least 1',
+        message: t('setting.dataSourceValidationMinOne', {
+          label: t('setting.dataSourceFieldBatchSize'),
+        }),
       },
     },
     {
-      label: 'Use Query Cache',
+      label: t('setting.dataSourceFieldUseQueryCache'),
       name: 'config.use_query_cache',
       type: FormFieldType.Checkbox,
       required: false,
@@ -1683,14 +1705,14 @@ export const DataSourceFormFields = {
   [DataSourceKey.REST_API]: [
     // ── Essential fields ──────────────────────────────────────────────
     {
-      label: 'Base URL',
+      label: t('setting.dataSourceFieldBaseUrl'),
       name: 'config.url',
       type: FormFieldType.Text,
       required: true,
       placeholder: 'https://api.example.com/v1/resources',
     },
     {
-      label: 'HTTP Method',
+      label: t('setting.dataSourceFieldHttpMethod'),
       name: 'config.method',
       type: FormFieldType.Select,
       required: true,
@@ -1701,7 +1723,7 @@ export const DataSourceFormFields = {
       defaultValue: 'GET',
     },
     {
-      label: 'Query Parameters',
+      label: t('setting.dataSourceFieldQueryParameters'),
       name: 'config.query_params',
       type: FormFieldType.Textarea,
       required: false,
@@ -1709,7 +1731,7 @@ export const DataSourceFormFields = {
       tooltip: t('setting.restApiQueryParamsTip'),
     },
     {
-      label: 'Items Path',
+      label: t('setting.dataSourceFieldItemsPath'),
       name: 'config.items_path',
       type: FormFieldType.Text,
       required: false,
@@ -1717,7 +1739,7 @@ export const DataSourceFormFields = {
       tooltip: t('setting.restApiItemsPathTip'),
     },
     {
-      label: 'ID Field',
+      label: t('setting.dataSourceFieldIdField'),
       name: 'config.id_field',
       type: FormFieldType.Text,
       required: false,
@@ -1725,20 +1747,23 @@ export const DataSourceFormFields = {
       tooltip: t('setting.restApiIdFieldTip'),
     },
     {
-      label: 'Auth Type',
+      label: t('setting.dataSourceFieldAuthType'),
       name: 'config.auth_type',
       type: FormFieldType.Select,
       required: true,
       options: [
-        { label: 'None', value: 'none' },
-        { label: 'API Key (Header)', value: 'api_key_header' },
-        { label: 'Bearer Token', value: 'bearer' },
-        { label: 'Basic Auth', value: 'basic' },
+        { label: t('setting.dataSourceOptionNone'), value: 'none' },
+        {
+          label: t('setting.dataSourceOptionApiKeyHeader'),
+          value: 'api_key_header',
+        },
+        { label: t('setting.dataSourceOptionBearerToken'), value: 'bearer' },
+        { label: t('setting.dataSourceOptionBasicAuth'), value: 'basic' },
       ],
       defaultValue: 'none',
     },
     {
-      label: 'API Key Header Name',
+      label: t('setting.dataSourceFieldApiKeyHeaderName'),
       name: 'config.auth_config.header_name',
       type: FormFieldType.Text,
       required: false,
@@ -1756,7 +1781,7 @@ export const DataSourceFormFields = {
       },
     },
     {
-      label: 'API Key Value',
+      label: t('setting.dataSourceFieldApiKeyValue'),
       name: 'config.credentials.api_key',
       type: FormFieldType.Password,
       required: false,
@@ -1770,7 +1795,7 @@ export const DataSourceFormFields = {
       },
     },
     {
-      label: 'Bearer Token',
+      label: t('setting.dataSourceFieldBearerToken'),
       name: 'config.credentials.token',
       type: FormFieldType.Password,
       required: false,
@@ -1783,7 +1808,7 @@ export const DataSourceFormFields = {
       },
     },
     {
-      label: 'Username',
+      label: t('setting.dataSourceFieldUsername'),
       name: 'config.credentials.username',
       type: FormFieldType.Text,
       required: false,
@@ -1799,7 +1824,7 @@ export const DataSourceFormFields = {
       },
     },
     {
-      label: 'Password',
+      label: t('setting.dataSourceFieldPassword'),
       name: 'config.credentials.password',
       type: FormFieldType.Password,
       required: false,
@@ -1812,7 +1837,7 @@ export const DataSourceFormFields = {
       },
     },
     {
-      label: 'Content Fields',
+      label: t('setting.dataSourceFieldContentFields'),
       name: 'config.content_fields',
       type: FormFieldType.Text,
       required: true,
@@ -1820,7 +1845,7 @@ export const DataSourceFormFields = {
       tooltip: t('setting.restApiContentFieldsTip'),
     },
     {
-      label: 'Metadata Fields',
+      label: t('setting.dataSourceFieldMetadataFields'),
       name: 'config.metadata_fields',
       type: FormFieldType.Text,
       required: false,
@@ -1828,20 +1853,20 @@ export const DataSourceFormFields = {
       tooltip: t('setting.restApiMetadataFieldsTip'),
     },
     {
-      label: 'Pagination Type',
+      label: t('setting.dataSourceFieldPaginationType'),
       name: 'config.pagination_type',
       type: FormFieldType.Select,
       required: true,
       options: [
-        { label: 'None', value: 'none' },
-        { label: 'Page', value: 'page' },
-        { label: 'Offset', value: 'offset' },
-        { label: 'Cursor', value: 'cursor' },
+        { label: t('setting.dataSourceOptionNone'), value: 'none' },
+        { label: t('setting.dataSourceOptionPage'), value: 'page' },
+        { label: t('setting.dataSourceOptionOffset'), value: 'offset' },
+        { label: t('setting.dataSourceOptionCursor'), value: 'cursor' },
       ],
       defaultValue: 'none',
     },
     {
-      label: 'Start Page',
+      label: t('setting.dataSourceFieldStartPage'),
       name: 'config.pagination_config.start_page',
       type: FormFieldType.Number,
       required: false,
@@ -1849,7 +1874,7 @@ export const DataSourceFormFields = {
       shouldRender: (values: any) => values?.config?.pagination_type === 'page',
     },
     {
-      label: 'Offset Param',
+      label: t('setting.dataSourceFieldOffsetParam'),
       name: 'config.pagination_config.offset_param',
       type: FormFieldType.Text,
       required: false,
@@ -1858,7 +1883,7 @@ export const DataSourceFormFields = {
         values?.config?.pagination_type === 'offset',
     },
     {
-      label: 'Start Offset',
+      label: t('setting.dataSourceFieldStartOffset'),
       name: 'config.pagination_config.start_offset',
       type: FormFieldType.Number,
       required: false,
@@ -1867,7 +1892,7 @@ export const DataSourceFormFields = {
         values?.config?.pagination_type === 'offset',
     },
     {
-      label: 'Cursor Param',
+      label: t('setting.dataSourceFieldCursorParam'),
       name: 'config.pagination_config.cursor_param',
       type: FormFieldType.Text,
       required: false,
@@ -1876,7 +1901,7 @@ export const DataSourceFormFields = {
         values?.config?.pagination_type === 'cursor',
     },
     {
-      label: 'Next Cursor JSONPath',
+      label: t('setting.dataSourceFieldNextCursorJsonpath'),
       name: 'config.pagination_config.next_cursor_path',
       type: FormFieldType.Text,
       required: false,
@@ -1887,7 +1912,7 @@ export const DataSourceFormFields = {
     },
     // ── Advanced settings toggle ──────────────────────────────────────
     {
-      label: 'Advanced Settings',
+      label: t('setting.dataSourceFieldAdvancedSettings'),
       name: 'config.show_advanced',
       type: FormFieldType.Switch,
       required: false,
@@ -1895,7 +1920,7 @@ export const DataSourceFormFields = {
     },
     // ── Advanced fields (hidden until toggled) ────────────────────────
     {
-      label: 'Custom Headers (JSON)',
+      label: t('setting.dataSourceFieldCustomHeaders'),
       name: 'config.headers',
       type: FormFieldType.Textarea,
       required: false,
@@ -1904,7 +1929,7 @@ export const DataSourceFormFields = {
       shouldRender: (values: any) => !!values?.config?.show_advanced,
     },
     {
-      label: 'Limit Param',
+      label: t('setting.dataSourceFieldLimitParam'),
       name: 'config.pagination_config.limit_param',
       type: FormFieldType.Text,
       required: false,
@@ -1914,7 +1939,7 @@ export const DataSourceFormFields = {
         values?.config?.pagination_type === 'offset',
     },
     {
-      label: 'Initial Cursor',
+      label: t('setting.dataSourceFieldInitialCursor'),
       name: 'config.pagination_config.initial_cursor',
       type: FormFieldType.Text,
       required: false,
@@ -1923,7 +1948,7 @@ export const DataSourceFormFields = {
         values?.config?.pagination_type === 'cursor',
     },
     {
-      label: 'Max Pages',
+      label: t('setting.dataSourceFieldMaxPages'),
       name: 'config.max_pages',
       type: FormFieldType.Number,
       required: false,
@@ -1931,7 +1956,7 @@ export const DataSourceFormFields = {
       shouldRender: (values: any) => !!values?.config?.show_advanced,
     },
     {
-      label: 'Request Delay (seconds)',
+      label: t('setting.dataSourceFieldRequestDelay'),
       name: 'config.request_delay',
       type: FormFieldType.Number,
       required: false,
@@ -1941,7 +1966,7 @@ export const DataSourceFormFields = {
       shouldRender: (values: any) => !!values?.config?.show_advanced,
     },
     {
-      label: 'Poll Timestamp Field',
+      label: t('setting.dataSourceFieldPollTimestampField'),
       name: 'config.poll_timestamp_field',
       type: FormFieldType.Text,
       required: false,
@@ -1950,7 +1975,7 @@ export const DataSourceFormFields = {
       shouldRender: (values: any) => !!values?.config?.show_advanced,
     },
     {
-      label: 'Request Body (POST) JSON',
+      label: t('setting.dataSourceFieldRequestBody'),
       name: 'config.request_body',
       type: FormFieldType.Textarea,
       required: false,
@@ -1960,7 +1985,7 @@ export const DataSourceFormFields = {
         !!values?.config?.show_advanced && values?.config?.method === 'POST',
     },
   ],
-};
+});
 
 export const DataSourceFormDefaultValues = {
   [DataSourceKey.RSS]: {
@@ -2472,15 +2497,16 @@ export const DataSourceFormDefaultValues = {
 };
 
 export const getDataSourceFieldsWithExtras = (
+  t: TFunction,
   source?: DataSourceKey,
-): FormFieldConfig[] => {
+) => {
   if (!source) {
     return [];
   }
 
-  const sourceFields =
-    DataSourceFormFields[source as keyof typeof DataSourceFormFields] || [];
-  const extraFields = getCommonExtraFields(source);
+  const formFields = generateDataSourceFormFields(t);
+  const sourceFields = formFields[source] || [];
+  const extraFields = getCommonExtraFields(t, source);
 
   if (source !== DataSourceKey.JIRA) {
     return [...sourceFields, ...extraFields];
