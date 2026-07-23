@@ -31,7 +31,6 @@ require (
 	github.com/gomarkdown/markdown v0.0.0-20260614204949-e08cff860f76
 	github.com/google/uuid v1.6.0
 	github.com/infiniflow/infinity-go-sdk v0.0.0-00010101000000-000000000000
-	github.com/iromli/go-itsdangerous v0.0.0-20220223194502-9c8bef8dac6a
 	github.com/json-iterator/go v1.1.12
 	github.com/kaptinlin/jsonrepair v0.4.8
 	github.com/ledongthuc/pdf v0.0.0-20250511090121-5959a4027728
