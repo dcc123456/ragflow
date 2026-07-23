@@ -30,6 +30,7 @@ import (
 	"go.uber.org/zap"
 )
 
+var licenseStatusCode common.ErrorCode
 var AdminServiceClient *AdminClient
 
 // AdminClient is responsible for sending heartbeat reports to the admin server
@@ -48,6 +49,7 @@ type AdminClient struct {
 
 // NewAdminClient creates a new heartbeat service instance
 func NewAdminClient(logger *zap.Logger, serverType common.ServerType, serverName, host string, port int) *AdminClient {
+	licenseStatusCode = common.CodeSuccess
 	return &AdminClient{
 		logger:       logger,
 		serverType:   serverType,
@@ -150,8 +152,14 @@ func (h *AdminClient) SendHeartbeat() error {
 
 	responseCode := common.ErrorCode(code)
 	if responseCode != common.CodeLicenseValid {
+		if responseCode != licenseStatusCode {
+			licenseStatusCode = responseCode
+			h.logger.Warn(fmt.Sprintf("Heartbeat response error: %s, code: %d", responseCode.Message(), responseCode))
+		}
+
 		return errors.New(responseCode.Message())
 	}
+	licenseStatusCode = responseCode
 
 	h.logger.Debug("Heartbeat sent successfully",
 		zap.String("server_id", h.serverName),

@@ -1696,11 +1696,11 @@ func (s *Service) InitDefaultAdmin() error {
 			IsSuperuser:     &isSuperuser,
 		}
 
-		if err := dao.DB.Create(user).Error; err != nil {
+		if err = dao.DB.Create(user).Error; err != nil {
 			return fmt.Errorf("can't init admin: %w", err)
 		}
 
-		if err := s.addTenantForAdmin(userID, defaultNickname); err != nil {
+		if err = s.addTenantForAdmin(userID, defaultNickname); err != nil {
 			return fmt.Errorf("failed to add tenant for admin: %w", err)
 		}
 

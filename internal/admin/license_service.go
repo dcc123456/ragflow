@@ -146,6 +146,10 @@ func generateTrialLicense(duration time.Duration, clusterInfo *utility.ClusterIn
 func (s *Service) GetFingerprint() (string, error) {
 	// Generate fingerprint
 	clusterInfo := GlobalServerStatusStore.GetClusterInfo()
+	if len(clusterInfo.SystemInfos) == 0 {
+		return "", fmt.Errorf("fail to get cluster info, cluster isn't started fully")
+	}
+
 	encrypted, err := utility.EncryptHardwareInfo(&clusterInfo, utility.FingerprintPublicKey)
 	if err != nil {
 		common.Fatal("Failed to encrypt: ", zap.Error(err))
@@ -182,7 +186,7 @@ func (s *Service) SetLicense(licenseStr string) (map[string]interface{}, error) 
 
 	err = ValidateLicenseDigest(license.Digest)
 	if err != nil {
-		common.Error("Error validating license digest: ", err)
+		common.Error("Fail to validate license digest: ", err)
 		return nil, err
 	}
 
@@ -230,50 +234,50 @@ func (s *Service) ShowLicense() (map[string]interface{}, error) {
 	return result, nil
 }
 
-func (s *Service) CheckLicense() error {
+func (s *Service) CheckLicense() (common.ErrorCode, error) {
 	licenseStatus := GetLicenseStatus()
 	var licenseCheckResult string
 	if licenseStatus.CurrentLicense == nil {
 		if licenseStatus.Code != common.CodeLicenseValid {
-			return errors.New(licenseStatus.Code.Message())
+			return licenseStatus.Code, errors.New(licenseStatus.Code.Message())
 		}
 
 		licenseCheckResult = "License is not ready"
-		return fmt.Errorf(licenseCheckResult)
+		return licenseStatus.Code, fmt.Errorf(licenseCheckResult)
 	}
 
 	currentLicense := licenseStatus.CurrentLicense
 	lastRecord, err := GetLastTimeRecord()
 	if err != nil {
 		common.Warn(fmt.Sprintf("Fail to get last time record: %v", err))
-		return err
+		return common.CodeLicenseUnexpectedError, err
 	}
 
 	if lastRecord.Nonce != currentLicense.Digest {
-		return fmt.Errorf("Time record digest is mismatched")
+		return common.CodeLicenseDigestError, fmt.Errorf("Time record digest is mismatched")
 	}
 
 	nowTS := time.Now().Unix()
 	now := time.Now()
 	if currentLicense.ValidFrom.After(now) {
 		licenseCheckResult = fmt.Sprintf("License not valid yet")
-		return fmt.Errorf(licenseCheckResult)
+		return common.CodeLicenseNotValidYet, fmt.Errorf(licenseCheckResult)
 	}
 
 	if currentLicense.ValidUntil.Before(now) {
 		licenseCheckResult = fmt.Sprintf("License expired")
-		return fmt.Errorf(licenseCheckResult)
+		return common.CodeLicenseExpiredError, fmt.Errorf(licenseCheckResult)
 	}
 	// 2. check time rollback
 	lastTimestamp := lastRecord.Timestamp
 	if nowTS < lastTimestamp {
 		// convert following timestamp to time.Time
-		return fmt.Errorf("Time rollback detected")
+		return common.CodeLicenseTimeRollback, fmt.Errorf("Time rollback detected")
 	}
 
 	licenseCheckResult = "License valid"
 
-	return fmt.Errorf(licenseCheckResult)
+	return common.CodeLicenseValid, fmt.Errorf(licenseCheckResult)
 }
 
 func extractLicense(licenseStr string) (*utility.License, map[string]interface{}, error) {
@@ -341,16 +345,19 @@ func ValidateLicenseDigest(licenseDigest string) error {
 			MachineID:   selected.MachineID,
 		})
 	}
+	if len(machineInfo) == 0 {
+		return errors.New("no system info found, check if all RAGFlow components are fully started")
+	}
 	machineInfoJson, _ := json.Marshal(machineInfo)
 	hash := md5.Sum(machineInfoJson)
 	systemDigest := hex.EncodeToString(hash[:])
 	if licenseDigest != systemDigest {
-		return errors.New("License digest mismatch")
+		return errors.New("license digest mismatch")
 	}
 	return nil
 }
 
-// LicenseStatus related function
+// SetMemLicense LicenseStatus related function
 func SetMemLicense(license *utility.License) utility.LicenseStatus {
 	licenseStatus := utility.LicenseStatus{
 		CurrentLicense: license,

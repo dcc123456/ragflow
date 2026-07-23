@@ -2046,11 +2046,12 @@ func (h *Handler) UpdateLicenseConfig(c *gin.Context) {
 
 // ShowLicense to get system license
 func (h *Handler) ShowLicense(c *gin.Context) {
+
 	checkParam := c.Query("check")
 	if checkParam == "true" {
 		// GET /admin/license?check=true
-		err := h.service.CheckLicense()
-		common.SuccessWithData(c, err.Error(), "")
+		errorCode, err := h.service.CheckLicense()
+		common.ResponseWithCodeData(c, errorCode, err.Error(), "")
 		return
 	}
 

@@ -1156,11 +1156,6 @@ func (h *Handler) Reports(c *gin.Context) {
 
 	// Handle the heartbeat
 	errCode, message := h.service.HandleHeartbeat(&req)
-	if errCode != common.CodeLicenseValid {
-		common.ErrorWithCode(c, errCode, message)
-		return
-	}
-
 	common.ErrorWithCode(c, errCode, message)
 }
 
