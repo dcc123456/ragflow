@@ -64,7 +64,6 @@ from api.utils.billing import (
 )
 from api.utils.billing_schema import CheckoutSessionCompleted, IntentSucceed, InvoicePaid, SubscriptionUpdated
 from common import settings
-from common.billing_rate_limit_sync import sync_tenant_rate_limit
 from common.billing_utils import normalize_stripe_payment_intent_status
 from common.misc_utils import get_uuid
 
@@ -261,51 +260,25 @@ def _sync_main_subscription_from_stripe(
 
     with DB.atomic():
         SubscriptionService.upsert_subscription(tenant_id, subscription_dict)
-    _sync_tenant_rate_limit_for_subscription(
-        tenant_id=tenant_id,
-        plan_name=subscription_dict.get("plan_name"),
-        subscription_status=subscription_dict.get("subscription_status"),
-    )
-    _sync_api_auth_plan_for_subscription(
+
+    _sync_api_token_rate_limit_for_subscription(
         tenant_id=tenant_id,
         plan_name=subscription_dict.get("plan_name"),
         subscription_status=subscription_dict.get("subscription_status"),
     )
 
 
-def _sync_api_auth_plan_for_subscription(
-    *,
+def _sync_api_token_rate_limit_for_subscription(
     tenant_id: str,
     plan_name: str | None,
     subscription_status: str | None,
 ) -> None:
     try:
-        from common.billing_rate_limit_sync import sync_api_auth_plan
+        from common.billing_rate_limit_sync import sync_api_token_rate_limit_for_subscription
 
-        sync_api_auth_plan(tenant_id, plan_name, subscription_status)
+        sync_api_token_rate_limit_for_subscription(tenant_id, plan_name, subscription_status)
     except Exception:
-        logging.exception("Failed to sync API auth plan cache for tenant %s", tenant_id)
-
-
-def _sync_tenant_rate_limit_for_subscription(
-    *,
-    tenant_id: str,
-    plan_name: str | None,
-    subscription_status: str | None,
-) -> None:
-    if not tenant_id:
-        return
-    normalized_status = _normalize_subscription_status(subscription_status)
-    rate_limit_plan_name = plan_name if normalized_status == SubscriptionStatus.ACTIVE else "Trial"
-    try:
-        sync_tenant_rate_limit(tenant_id, rate_limit_plan_name)
-    except Exception:
-        logging.exception(
-            "Failed to sync tenant rate limit after subscription update: tenant_id=%s plan_name=%s subscription_status=%s",
-            tenant_id,
-            rate_limit_plan_name,
-            normalized_status,
-        )
+        logging.exception("Failed to sync API token rate limit for tenant %s", tenant_id)
 
 
 def _should_preserve_existing_plan_for_unpaid_upgrade(
@@ -1369,12 +1342,7 @@ async def _handle_customer_subscription_deleted(event: dict):
             trial_subscription = SubscriptionService._build_trial_subscription(tenant_id, customer_id or existing.get("customer_id", ""), existing.get("original_subscription_id", "") or "")
             SubscriptionService.upsert_subscription(tenant_id, trial_subscription)
             PointAccountService.reset_plan_consumed_points_at_cycle_start(tenant_id)
-            _sync_tenant_rate_limit_for_subscription(
-                tenant_id=tenant_id,
-                plan_name=trial_subscription.get("plan_name"),
-                subscription_status=trial_subscription.get("subscription_status"),
-            )
-            _sync_api_auth_plan_for_subscription(
+            _sync_api_token_rate_limit_for_subscription(
                 tenant_id=tenant_id,
                 plan_name=trial_subscription.get("plan_name"),
                 subscription_status=trial_subscription.get("subscription_status"),

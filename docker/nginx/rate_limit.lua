@@ -3,25 +3,21 @@
 
   Three-tier rate limiting (T1 → T2 → T3):
 
-    T1 — Per-tenant (user-id) rate limiting via Redis token bucket
+    T1 — Per-token rate limiting via Redis token bucket
       1. Extract Bearer token from Authorization header
-      2. Look up tenant_id from Redis (billing:token:<token>)
-         — with ngx.shared.dict LRU cache to reduce Redis lookups
-      3. Look up rate limits from Redis (billing:ratelimit:<tenant_id>)
-         — with ngx.shared.dict LRU cache
+      2. Normalize JWT/session tokens to their first segment
+      3. Look up RPM from Redis (billing:ratelimit:token:<token>)
       4. Enforce per-minute token bucket via Redis Lua EVALSHA
 
     T2 — Per-IP rate limiting via Redis (cross-pod accurate)
-      Applied when tenant cannot be identified (no token, session token,
-      unknown token), or when T1 encounters an error.
+      Applied when no token is present, or when T1 encounters an error.
 
     T3 — Per-IP rate limiting via ngx.shared.dict (per-pod, last resort)
       Applied only when Redis is completely unavailable.
 
   Redis keys used:
-    billing:token:<token>                -> tenant_id  (string, set by Python sync)
-    billing:ratelimit:<tenant_id>        -> JSON {rpm}  (set by Python sync)
-    billing:tb:min:<tenant_id>           -> {tokens, timestamp}  (per-minute bucket)
+    billing:ratelimit:token:<token>      -> rpm  (set by Python sync)
+    billing:tb:min:<token>               -> {tokens, timestamp}  (per-minute bucket)
     billing:fb:sec:<ip>                  -> counter  (per-second IP fallback via Redis)
     billing:fb:min:<ip>                  -> counter  (per-minute IP fallback via Redis)
 ]]
@@ -40,10 +36,11 @@ local CACHE_TTL_OK        = 60 -- cache positive lookups for 60s
 local CACHE_TTL_MISS      = 5 -- cache misses for only 5s (quick retry)
 local POOL_IDLE           = 10000 -- keepalive idle timeout ms
 local POOL_SIZE           = 64 -- max connections in pool
+local DEFAULT_RPM         = 10 -- trial/free default when token has no cached limit
 
--- Fallback per-IP rate limits (applied when tenant is unknown)
-local FALLBACK_RPM        = 120 -- 120 requests per minute per IP
-local FALLBACK_RPS        = 30 -- 30 requests per second per IP
+-- Fallback per-IP rate limits (applied when no token is present or T1 errors)
+local FALLBACK_RPM        = 10 -- fallback to 10 per minute per IP
+local FALLBACK_RPS        = 2 -- fall back to 2 per seconds per IP
 
 ---------------------------------------------------------------------------
 -- Pre-resolved Redis config (populated once in init_worker)
@@ -88,7 +85,7 @@ function _M.init_worker()
         host     = host,
         port     = tonumber(_read_env("RATELIMIT_REDIS_PORT") or _read_env("REDIS_PORT")) or 6379,
         password = _read_env("RATELIMIT_REDIS_PASSWORD") or _read_env("REDIS_PASSWORD") or "",
-        db       = tonumber(_read_env("REDIS_DB") or _read_env("RATELIMIT_REDIS_DB")) or 1,
+        db       = tonumber(_read_env("RATELIMIT_REDIS_DB") or _read_env("REDIS_DB")) or 1,
     }
     ngx.log(ngx.NOTICE,
         "rate_limit init_worker: host=", _redis_config.host,
@@ -401,12 +398,12 @@ local function extract_bearer_token()
     local auth = ngx.req.get_headers()["Authorization"]
     if not auth then return nil end
 
-    -- "Bearer <token>" or just "<token>"
+    -- "Bearer <token>" (case-insensitive) or just "<token>"
     local parts = {}
     for w in auth:gmatch("%S+") do
         parts[#parts + 1] = w
     end
-    if #parts >= 2 then
+    if #parts >= 2 and parts[1]:lower() == "bearer" then
         return parts[2]
     elseif #parts == 1 and #parts[1] >= 32 then
         return parts[1]
@@ -584,61 +581,20 @@ local function _t2_redis_ip_rate_limit(red)
 end
 
 ---------------------------------------------------------------------------
--- T1 — Per-tenant (user-id) rate limiting via Redis token bucket
+-- T1 — Per-token rate limiting via Redis token bucket
 -- Falls back to T2 (Redis IP) on any error, which in turn falls back to T3.
 --
 -- Diagnostic: sets X-RateLimit-Tier header on every request to indicate
 -- which tier handled it and why T1 was skipped:
---   "T1"          — per-tenant token bucket applied
---   "T2 (ip)"     — per-IP via Redis (no token / token not found / limits not found)
+--   "T1"          — per-token bucket applied
+--   "T2 (ip)"     — per-IP via Redis (no token)
 --   "T2 (err)"    — per-IP via Redis (T1 error, e.g. Redis failure)
 --   "T3 (local)"  — per-IP via ngx.shared.dict (Redis completely unavailable)
 ---------------------------------------------------------------------------
 
---- Resolve tenant_id from token via cache → Redis → miss cache.
---- Returns tenant_id, red (open connection), or nil, nil on failure.
---- Caller is responsible for releasing `red` when tenant_id is returned.
-local function _resolve_tenant(token)
-    local cache_key_token = "t:" .. token
-    local cached_tenant = cache_get(cache_key_token)
-
-    -- Cached miss — no tenant for this token
-    if cached_tenant == "__miss__" then
-        return nil, nil
-    end
-
-    -- Cached hit — tenant_id found in shared dict
-    if cached_tenant then
-        return cached_tenant, nil -- no Redis connection needed for cache hit
-    end
-
-    -- No cache entry — look up from Redis
-    local red, err = _get_redis()
-    if not red then
-        ngx.log(ngx.WARN, "rate_limit: redis unavailable for tenant lookup: ", err)
-        return nil, nil
-    end
-
-    -- Step 1: Direct lookup by the full token string
-    local token_key = "billing:token:" .. token
-    local tid, terr = red:get(token_key)
-    if terr then
-        ngx.log(ngx.WARN, "rate_limit: redis get tenant failed: ", terr)
-        _release_redis(red)
-        return nil, nil
-    end
-
-    if tid and tid ~= ngx.null then
-        -- Found tenant by exact JWT match
-        cache_set(cache_key_token, tid, CACHE_TTL_OK)
-        return tid, red
-    end
-
-    -- Step 2: JWT not found directly. The frontend sends URLSafeTimedSerializer
-    -- tokens (base64 payload + timestamp + signature) which change on every call.
-    -- Try to extract the raw access_token from the base64 payload and look that up.
-    -- Format: <base64_payload>.<timestamp>.<signature>  (3 dot-separated parts)
-    -- or     <base64_payload>.<signature>                 (2 dot-separated parts)
+--- Normalize auth token. JWT/session tokens use the first encoded segment,
+--- which Python stores directly as the rate-limit token key.
+local function _normalize_token(token)
     local dot_count = 0
     local first_dot = 0
     for i = 1, #token do
@@ -649,122 +605,60 @@ local function _resolve_tenant(token)
     end
 
     if first_dot > 1 and dot_count >= 2 then
-        -- Extract base64 payload (before the first dot)
-        local b64_payload = token:sub(1, first_dot - 1)
-        -- Decode base64: URLSafeTimedSerializer uses URL-safe base64 (no padding).
-        -- Convert URL-safe chars back and add padding for ngx.decode_base64.
-        local b64_fixed = b64_payload:gsub("-", "+"):gsub("_", "/")
-        local pad = #b64_fixed % 4
-        if pad == 2 then
-            b64_fixed = b64_fixed .. "=="
-        elseif pad == 3 then
-            b64_fixed = b64_fixed .. "="
-        end
-        local raw_payload = ngx.decode_base64(b64_fixed)
-        if raw_payload then
-            -- Payload is JSON-quoted string, e.g. '"uuid"'
-            -- Strip surrounding quotes
-            local raw_token = raw_payload:match('^"(.+)"$') or raw_payload
-            if #raw_token >= 32 then
-                local raw_key = "billing:token:" .. raw_token
-                local raw_tid = red:get(raw_key)
-                if raw_tid and raw_tid ~= ngx.null then
-                    -- Found tenant via raw access_token fallback
-                    -- Cache using the original JWT as key
-                    cache_set(cache_key_token, raw_tid, CACHE_TTL_OK)
-                    return raw_tid, red
-                end
-            end
-        end
+        return token:sub(1, first_dot - 1)
     end
-
-    -- Token not found — cache the miss briefly
-    cache_set(cache_key_token, "__miss__", CACHE_TTL_MISS)
-    _release_redis(red)
-    return nil, nil
+    return token
 end
 
---- Look up rate limits for a tenant from cache → Redis.
---- Returns limits table, red (open connection or nil if cached).
---- Caller is responsible for releasing `red` when non-nil.
-local function _resolve_limits(tenant_id, red)
-    local cache_key_limits = "l:" .. tenant_id
-    local cached_limits_json = cache_get(cache_key_limits)
+--- Look up RPM for a normalized token from cache → Redis.
+--- Missing token-specific Redis entries use DEFAULT_RPM.
+local function _resolve_token_rpm(token_key, red)
+    local cache_key_limits = "rpm:" .. token_key
+    local cached_rpm = cache_get(cache_key_limits)
 
-    if cached_limits_json then
-        local cjson = require "cjson.safe"
-        local limits = cjson.decode(cached_limits_json)
-        if limits then
-            return limits, nil -- cache hit, no Redis needed
-        end
+    if cached_rpm then
+        return tonumber(cached_rpm) or DEFAULT_RPM, nil
     end
 
-    -- Need to fetch from Redis
     if not red then
         local err
         red, err = _get_redis()
         if not red then
-            ngx.log(ngx.WARN, "rate_limit: redis unavailable for limits lookup: ", err)
+            ngx.log(ngx.WARN, "rate_limit: redis unavailable for token RPM lookup: ", err)
             return nil, nil
         end
     end
 
-    local ratelimit_key = "billing:ratelimit:" .. tenant_id
-    local lj, lerr = red:get(ratelimit_key)
-    if lerr then
-        ngx.log(ngx.WARN, "rate_limit: redis get limits failed: ", lerr)
+    local ratelimit_key = "billing:ratelimit:token:" .. token_key
+    local rpm, rerr = red:get(ratelimit_key)
+    if rerr then
+        ngx.log(ngx.WARN, "rate_limit: redis get token RPM failed: ", rerr)
         _release_redis(red)
         return nil, nil
     end
 
-    if not lj or lj == ngx.null then
-        ngx.log(ngx.WARN, "rate_limit: no limits configured for tenant ", tenant_id)
-        _release_redis(red)
-        return nil, nil
+    if not rpm or rpm == ngx.null then
+        rpm = DEFAULT_RPM
     end
 
-    cache_set(cache_key_limits, lj, CACHE_TTL_OK)
-
-    local cjson = require "cjson.safe"
-    local limits = cjson.decode(lj)
-    if not limits then
-        ngx.log(ngx.WARN, "rate_limit: failed to decode limits JSON: ", lj)
-        _release_redis(red)
-        return nil, nil
-    end
-
-    return limits, red
+    rpm = tonumber(rpm) or DEFAULT_RPM
+    cache_set(cache_key_limits, tostring(rpm), rpm == DEFAULT_RPM and CACHE_TTL_MISS or CACHE_TTL_OK)
+    return rpm, red
 end
 
---- T1: enforce per-tenant rate limits using Redis token bucket.
+--- T1: enforce per-token rate limits using Redis token bucket.
 --- Returns:
----   "ok"            — tenant resolved and request allowed (no need for T2)
+---   "ok"            — token rate limit applied and request allowed (no need for T2)
 ---   true            — request rejected (429 already sent)
----   false, reason   — tenant could not be resolved or error occurred (fall through to T2)
----                      reason is a string like "no_token", "tenant_not_found",
----                      "limits_not_found", "redis_err", "tb_err"
-local function _t1_tenant_rate_limit(token)
-    -- Step 1: Resolve tenant_id from token
-    local tenant_id, red = _resolve_tenant(token)
-    if not tenant_id then
-        -- Cannot identify tenant — fall through to T2
-        return false, "tenant_not_found"
+---   false, reason   — error occurred (fall through to T2)
+local function _t1_token_rate_limit(token)
+    local token_key = _normalize_token(token)
+    local rpm, red = _resolve_token_rpm(token_key, nil)
+    if not rpm then
+        return false, "redis_err"
     end
-
-    -- Step 2: Resolve rate limits for this tenant
-    local limits, limits_red = _resolve_limits(tenant_id, red)
-    if not limits then
-        -- No limits configured or error — clean up and fall through to T2
-        if red then _release_redis(red) end
-        ngx.log(ngx.WARN, "rate_limit: T1 no limits configured for tenant ", tenant_id)
-        return false, "limits_not_found"
-    end
-
-    -- Use the Redis connection from limits lookup (may be the same as tenant lookup)
-    red = limits_red or red
 
     if not red then
-        -- All info was cached — still need Redis for token bucket
         local err
         red, err = _get_redis()
         if not red then
@@ -772,10 +666,6 @@ local function _t1_tenant_rate_limit(token)
             return false, "redis_err"
         end
     end
-
-    -- Unpack limits:
-    -- rpm = requests per minute (capacity for per-minute bucket)
-    local rpm = tonumber(limits.rpm) or 500
 
     -- Guard: treat 0 rpm as "block all"
     if rpm <= 0 then
@@ -789,7 +679,7 @@ local function _t1_tenant_rate_limit(token)
 
     -- Step 3: Enforce per-minute rate limit using token bucket
     local now_sec = ngx.now()
-    local min_key = "billing:tb:min:" .. tenant_id
+    local min_key = "billing:tb:min:" .. token_key
     -- rate = rpm/60 tokens per second, capacity = rpm, cost = 1
     local min_rate = rpm / 60.0
 
@@ -821,11 +711,8 @@ local function _t1_tenant_rate_limit(token)
     end
     ngx.header["X-RateLimit-Tier"] = "T1"
 
-    -- Set tenant_id header for downstream use
-    ngx.req.set_header("X-Billing-Tenant-Id", tenant_id)
-
     _release_redis(red)
-    return "ok" -- tenant resolved and request allowed
+    return "ok" -- token rate limit applied and request allowed
 end
 
 ---------------------------------------------------------------------------
@@ -845,12 +732,12 @@ function _M.check()
 
     local token = extract_bearer_token()
 
-    -- T1: Per-tenant rate limiting (only if token is present)
+    -- T1: Per-token rate limiting (only if token is present)
     if token then
-        local result, reason = _t1_tenant_rate_limit(token)
+        local result, reason = _t1_token_rate_limit(token)
         if result == true then return end -- 429 already sent
-        if result == "ok" then return end -- tenant resolved, request allowed
-        -- result == false: tenant not resolved or error — fall through to T2
+        if result == "ok" then return end -- token rate limit applied, request allowed
+        -- result == false: T1 error — fall through to T2
         -- Add diagnostic header showing why T1 was skipped
         ngx.header["X-RateLimit-T1-Skip"] = reason or "unknown"
     else

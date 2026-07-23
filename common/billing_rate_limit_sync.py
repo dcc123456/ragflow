@@ -17,41 +17,62 @@
 """
 Billing Rate Limit Sync — keeps Redis cache up-to-date for Nginx Lua rate limiter.
 
-This module:
-  1. Syncs billing rate limits per tenant to Redis (billing:ratelimit:<tenant_id>)
-  2. Syncs API token -> tenant_id mappings to Redis (billing:token:<token>)
-  3. Provides periodic full-sync via start_periodic_sync()
+Rules:
+    1. API Key and BETA key are allowed only for Starter and Pro User
+    2. Trial 10 RPM; Starter: 100 RPM; Pro: 1000 RPM
 
-The Nginx Lua rate limiter reads these Redis keys to enforce limits at the gateway layer,
-before requests reach the Python/Go application.
+How:
+    1. During APP start, Sync all Starter/Pro API Key and BETA key rate limit to Redis, TTL as forever.
+    2. During login, Sync Starter/Pro encoded "access_token" to Redis, TTL as 1 day
+    3. During billing changed/API token update, update starter/Pro API Key and BETA key, TTL as forever.
 
-Usage:
-  from common.billing_rate_limit_sync import sync_all_rate_limits, start_periodic_sync
-  sync_all_rate_limits()           # Call on startup
-  start_periodic_sync(interval=3600)  # Start hourly background refresh
+NGINX lua script:
+    if Authorization token has '.' in it, it is a jwt token
+        get rid of possible prefix case-insenstive 'Bearer ' get the jwt token
+        then split the rest with '.', get the first part, it is encoded "access_token"
+            the encoded access_token has been stored previously with login with TTL as 1 day format as: 'billing:ratelimit:token:<encoded_access_token>'
+        go to redis check if in cache:
+            if yes, use the rate limit from the key
+            if no, fallback default 10 rpm for Free user
+    else, it is a API token or BETA token
+        get rid of possible prefix case-insenstive 'Bearer ', get the api_or_beta_token
+            the 'api_or_beta_token' has been stored previously during APP start as: 'billing:ratelimit:token:<api_or_beta_token>'
+        go to redis check if in cache:
+            if yes, use the rate limit from the key
+            if no, fallback to default 10 rpm for Free user
+
+Token as below:
+    (Note: JWT token first part is Base64 encoded "access_token" without trailing padding)
+    access_token: "b078caee85a411f1bd01d962482a88eb"
+    Authorization: "Bearer ImIwNzhjYWVlODVhNDExZjFiZDAxZDk2MjQ4MmE4OGViIg.amB6xA.JwROU9lUz_rWx5c13sxpN2ejsI4"
+        API Token: "ragflow-0vpQVikOOyLSwUbpA_B6NeYN_8tr2_6HWPzx_z44iYk"
+    Beta Token: "I4NDRfxVZJMbNBdckeGfeu7qKYWmJahO"
 """
 
+import base64
 import json
 import logging
-import threading
-from datetime import datetime, timezone
-from typing import Optional
-
+import time
+from api.db.services.api_service import APITokenService
 from rag.utils.redis_conn import REDIS_CONN
 
 
 # Redis key patterns
-_TOKEN_KEY_PREFIX = "billing:token:"
-_RATELIMIT_KEY_PREFIX = "billing:ratelimit:"
 _API_AUTH_PLAN_KEY_PREFIX = "billing:api_auth_plan:"
 _API_AUTH_ALLOWED_PLANS = {"starter", "pro"}
-# Set a TTL on rate limit keys so stale entries auto-expire
-_RATELIMIT_KEY_TTL = 86400
 _API_AUTH_PLAN_KEY_TTL = 86400
 
-# Periodic sync state
-_sync_thread: Optional[threading.Thread] = None
-_sync_stop_event = threading.Event()
+_RATE_LIMIT_TOKEN_KEY_PREFIX = "billing:ratelimit:token:"
+_RATE_LIMIT_TOKEN_KEY_TTL = 86400
+
+_RATE_LIMIT_API_TOKEN_PLANS = ["starter", "pro"]
+
+_DEFAULT_RPM = 10
+_PLANS = ["trial", "starter", "pro"]
+_DEFAULT_PLAN = "trial"
+_cached_plans_rate_limits = None
+_cached_plans_rate_limits_ts = 0
+_CACHED_PLANS_RATE_LIMITS_TTL = 3600
 
 
 _cached_billing_redis = None
@@ -103,109 +124,199 @@ def _get_redis():
         return None
 
 
-def _to_unix_ts(dt_val) -> float | None:
-    """Convert a datetime (naive or aware) to a Unix timestamp (float)."""
-    if dt_val is None:
-        return None
-    if isinstance(dt_val, (int, float)):
-        return float(dt_val)
-    if isinstance(dt_val, datetime):
-        if dt_val.tzinfo is None:
-            # Assume UTC for naive datetimes
-            dt_val = dt_val.replace(tzinfo=timezone.utc)
-        return dt_val.timestamp()
-    return None
-
-
-def _resolve_rate_limits_from_db(plan_name: str | None) -> int:
+def _get_plan_rate_limit(plan_name: str | None) -> int:
     """
-    Look up rate limits from MySQL billing_product table (durable source of truth).
-    Falls back to Trial plan if plan_name is None or not found.
-    Returns rpm (requests per minute).
+    Get the cached rate limits for "Trial", "Starter", "Pro"
     """
+    global _cached_plans_rate_limits
+    global _cached_plans_rate_limits_ts
+    if _cached_plans_rate_limits is not None:
+        if time.time() - _cached_plans_rate_limits_ts < _CACHED_PLANS_RATE_LIMITS_TTL:
+            return _cached_plans_rate_limits.get((plan_name or "").lower(), _DEFAULT_RPM)
+        _cached_plans_rate_limits = None
+
     from api.db.services.billing_service import ProductService
 
-    name = (plan_name or "Trial").strip()
-    plan = ProductService.get_by_name(name)
-    if not plan:
-        plan = ProductService.get_by_name("Trial")
+    _cached_plans_rate_limits = {}
+    for name in _PLANS:
+        plan = ProductService.get_by_name(name)
+        if not plan:
+            plan = ProductService.get_by_name("Trial")
 
-    if plan:
-        rpm = plan.get("api_request_limit_per_minute") or 500
+        if plan:
+            rpm = plan.get("api_request_limit_per_minute") or _DEFAULT_RPM
+        else:
+            # MySQL has no data at all — fall back to in-memory config
+            from common import settings
+
+            info = settings.BILLING_PLAN_TO_INFO.get(name) or settings.BILLING_PLAN_TO_INFO.get("Trial") or {}
+            rpm = info.get("api_request_limit_per_minute", _DEFAULT_RPM)
+
+        try:
+            rpm = int(rpm)
+        except (TypeError, ValueError):
+            rpm = _DEFAULT_RPM
+
+        _cached_plans_rate_limits[name] = rpm
+
+    _cached_plans_rate_limits_ts = time.time()
+    return _cached_plans_rate_limits.get((plan_name or "").lower(), _DEFAULT_RPM)
+
+
+def _get_tenant_plan(tenant_id: str) -> str:
+    try:
+        from api.db.db_models import DB, Subscription
+
+        with DB.connection_context():
+            subscription = (
+                Subscription.select(
+                    Subscription.plan_name,
+                    Subscription.subscription_status,
+                )
+                .where(Subscription.tenant_id == tenant_id)
+                .order_by(Subscription.getter_by("create_time").desc())
+                .dicts()
+                .first()
+            )
+        if subscription:
+            if (subscription.get("subscription_status") or "").lower() != "active":
+                return _DEFAULT_PLAN
+            return subscription.get("plan_name") or _DEFAULT_PLAN
+    except Exception as e:
+        logging.warning(f"_get_tenant_plan SQL lookup failed for {tenant_id}: {e}")
+    return _DEFAULT_PLAN
+
+
+def _encode_access_token(access_token: str) -> str:
+    return base64.urlsafe_b64encode(json.dumps(str(access_token)).encode("utf-8")).decode("utf-8").rstrip("=")
+
+
+def sync_token_rate_limit(tenant_id: str, access_token: str) -> None:
+    """
+    Writes billing:ratelimit:token:<token> -> rpm where the rpm = requests per minute to Redis, with TTL default 1 day
+    """
+    from common import settings
+
+    if not settings.BILLING_ENABLED:
+        return
+
+    redis = _get_redis()
+    if not redis:
+        return
+
+    key = f"{_RATE_LIMIT_TOKEN_KEY_PREFIX}{_encode_access_token(access_token)}"
+    plan_name = _get_tenant_plan(tenant_id=tenant_id)
+    value = _get_plan_rate_limit(plan_name=plan_name)
+
+    try:
+        redis.set(key, value, ex=_RATE_LIMIT_TOKEN_KEY_TTL)
+        logging.debug(f"sync_token_rate_limit: {key} -> {value}")
+    except Exception as e:
+        logging.warning(f"sync_token_rate_limit failed for {tenant_id}: {e}")
+
+
+def sync_api_token_rate_limit(tenant_id: str, api_token: str | None, beta_token: str | None) -> None:
+    """
+    Writes billing:ratelimit:token:<token> -> rpm where the rpm = requests per minute to Redis, with TTL for ever
+    """
+    from common import settings
+
+    if not settings.BILLING_ENABLED:
+        return
+
+    redis = _get_redis()
+    if not redis:
+        return
+
+    if not api_token and not beta_token:
+        return
+
+    keys = [f"{_RATE_LIMIT_TOKEN_KEY_PREFIX}{token}" for token in (api_token, beta_token) if token]
+    plan_name = _get_tenant_plan(tenant_id=tenant_id)
+    value = _get_plan_rate_limit(plan_name=plan_name)
+
+    try:
+        # Token No TTL for API key
+        for key in keys:
+            redis.set(key, value)
+            logging.info(f"sync_api_token_rate_limit: {tenant_id} -> {key[:16]} -> {value}")
+    except Exception as e:
+        logging.warning(f"sync_api_token failed for tenant {tenant_id}: {e}")
+
+
+def delete_api_token_rate_limit(tenant_id: str, api_token: str | None, beta_token: str | None = None) -> None:
+    from common import settings
+
+    if not settings.BILLING_ENABLED:
+        return
+
+    redis = _get_redis()
+    if not redis:
+        return
+
+    keys = [f"{_RATE_LIMIT_TOKEN_KEY_PREFIX}{token}" for token in (api_token, beta_token) if token]
+    try:
+        if keys:
+            redis.delete(*keys)
+            logging.debug(f"delete_api_token_rate_limit: {tenant_id} -> {len(keys)} token(s)")
+    except Exception as e:
+        logging.warning(f"delete_api_token_rate_limit failed for {tenant_id}: {e}")
+
+
+def sync_all_api_token_rate_limit() -> None:
+    from common import settings
+
+    if not settings.BILLING_ENABLED:
+        return
+
+    try:
+        import peewee
+        from api.db.db_models import APIToken, DB, Subscription
+
+        with DB.connection_context():
+            tokens = (
+                APIToken.select(
+                    APIToken.tenant_id,
+                    APIToken.token,
+                    APIToken.beta,
+                )
+                .join(Subscription, on=(APIToken.tenant_id == Subscription.tenant_id))
+                .where((peewee.fn.LOWER(Subscription.plan_name).in_(_RATE_LIMIT_API_TOKEN_PLANS)) & (Subscription.subscription_status == "active"))
+                .dicts()
+            )
+
+            count = 0
+            for token in tokens:
+                sync_api_token_rate_limit(
+                    tenant_id=token.get("tenant_id"),
+                    api_token=token.get("token"),
+                    beta_token=token.get("beta"),
+                )
+                count += 1
+        logging.info(f"sync_all_api_token_rate_limit synced {count} API token rows")
+    except Exception as e:
+        logging.warning(f"sync_all_api_token_rate_limit failed: {e}")
+
+
+def sync_api_token_rate_limit_for_subscription(tenant_id, plan_name, subscription_status) -> None:
+    tokens = APITokenService.query(tenant_id=tenant_id)
+    tokens = [t.to_dict() for t in tokens]
+    if (plan_name or "").lower() in _RATE_LIMIT_API_TOKEN_PLANS and (subscription_status or "").lower() == "active":
+        sync_api_auth_plan(tenant_id, plan_name, subscription_status)
+        for token in tokens:
+            sync_api_token_rate_limit(
+                tenant_id=token.get("tenant_id"),
+                api_token=token.get("token"),
+                beta_token=token.get("beta"),
+            )
     else:
-        # MySQL has no data at all — fall back to in-memory config
-        from common import settings
-
-        info = settings.BILLING_PLAN_TO_INFO.get(name) or settings.BILLING_PLAN_TO_INFO.get("Trial") or {}
-        rpm = info.get("api_request_limit_per_minute", 500)
-
-    return rpm
-
-
-def sync_tenant_rate_limit(tenant_id: str, plan_name: str | None, period_end: float | None = None) -> bool:
-    """
-    Sync a single tenant's rate limit configuration to Redis.
-
-    Writes billing:ratelimit:<tenant_id> -> {"rpm": <int>}
-    where rpm = requests per minute.
-
-    Rate limit values are read from MySQL billing_product (durable). If MySQL
-    has no data, falls back to in-memory YAML config.
-
-    Args:
-        tenant_id: The tenant identifier
-        plan_name: Billing plan name (e.g., "Trial", "Starter", "Pro")
-
-    Returns True on success.
-    """
-    redis = _get_redis()
-    if not redis:
-        return False
-
-    rpm = _resolve_rate_limits_from_db(plan_name)
-
-    # Cap at reasonable values (2147483647 means "unlimited" in config)
-    UNLIMITED = 2147483647
-    if rpm and int(rpm) >= UNLIMITED:
-        rpm = 100000  # Effective unlimited for the Lua layer
-
-    try:
-        rpm = int(rpm)
-    except (TypeError, ValueError):
-        rpm = 500
-
-    key = f"{_RATELIMIT_KEY_PREFIX}{tenant_id}"
-    value = json.dumps({"rpm": rpm})
-
-    try:
-        redis.set(key, value, ex=_RATELIMIT_KEY_TTL)
-        logging.debug(f"sync_tenant_rate_limit: {key} -> {value}")
-        return True
-    except Exception as e:
-        logging.warning(f"sync_tenant_rate_limit failed for {tenant_id}: {e}")
-        return False
-
-
-def sync_api_token(token: str, tenant_id: str) -> bool:
-    """
-    Sync an API token -> tenant_id mapping to Redis.
-
-    Writes billing:token:<token> -> <tenant_id>
-    The Lua rate limiter uses this to identify the tenant from the Authorization header.
-    """
-    redis = _get_redis()
-    if not redis:
-        return False
-
-    key = f"{_TOKEN_KEY_PREFIX}{token}"
-    try:
-        # Token mapping TTL = 31 days (refreshed on sync)
-        redis.set(key, tenant_id, ex=_RATELIMIT_KEY_TTL)
-        logging.debug(f"sync_api_token: {key[:30]}... -> {tenant_id}")
-        return True
-    except Exception as e:
-        logging.warning(f"sync_api_token failed: {e}")
-        return False
+        sync_api_auth_plan(tenant_id, plan_name, subscription_status)
+        for token in tokens:
+            delete_api_token_rate_limit(
+                tenant_id=token.get("tenant_id"),
+                api_token=token.get("token"),
+                beta_token=token.get("beta"),
+            )
 
 
 def _is_api_auth_plan_allowed(plan_name: str | None, subscription_status: str | None = None) -> bool:
@@ -233,38 +344,6 @@ def sync_api_auth_plan(tenant_id: str, plan_name: str | None, subscription_statu
     except Exception as e:
         logging.warning(f"sync_api_auth_plan failed for {tenant_id}: {e}")
         return False
-
-
-def sync_api_auth_plan_from_db(tenant_id: str) -> bool:
-    """Refresh a tenant's API/Beta-key entitlement cache from MySQL."""
-    if not tenant_id:
-        return False
-
-    try:
-        from api.db.db_models import DB, Subscription
-
-        with DB.connection_context():
-            subscription = (
-                Subscription.select(
-                    Subscription.plan_name,
-                    Subscription.subscription_status,
-                )
-                .where(Subscription.tenant_id == tenant_id)
-                .order_by(Subscription.getter_by("create_time").desc())
-                .dicts()
-                .first()
-            )
-    except Exception as e:
-        logging.warning(f"sync_api_auth_plan_from_db failed for {tenant_id}: {e}")
-        return False
-
-    if not subscription:
-        return sync_api_auth_plan(tenant_id, None)
-    return sync_api_auth_plan(
-        tenant_id,
-        subscription.get("plan_name"),
-        subscription.get("subscription_status"),
-    )
 
 
 def is_api_auth_plan_allowed(tenant_id: str) -> bool:
@@ -324,267 +403,3 @@ def is_api_auth_plan_allowed(tenant_id: str) -> bool:
         except Exception:
             pass
     return allowed
-
-
-def delete_api_token(token: str) -> bool:
-    """
-    Remove an API token -> tenant_id mapping from Redis.
-    """
-    redis = _get_redis()
-    if not redis:
-        return False
-
-    key = f"{_TOKEN_KEY_PREFIX}{token}"
-    try:
-        redis.delete(key)
-        logging.debug(f"delete_api_token: {key[:30]}...")
-        return True
-    except Exception as e:
-        logging.warning(f"delete_api_token failed: {e}")
-        return False
-
-
-def sync_session_token(access_token: str, tenant_id: str) -> bool:
-    """
-    Sync a session (User) token -> tenant_id mapping to Redis.
-
-    Stores both the raw access_token and its JWT-encoded form so that
-    the Lua rate limiter can resolve the tenant from the Authorization
-    header regardless of token encoding.
-
-    Args:
-        access_token: The raw access_token UUID from the User table.
-        tenant_id: The tenant_id to associate with this token.
-    """
-    redis = _get_redis()
-    if not redis:
-        return False
-
-    try:
-        # Store raw access_token -> tenant_id
-        redis.set(f"{_TOKEN_KEY_PREFIX}{access_token}", tenant_id, ex=_RATELIMIT_KEY_TTL)
-
-        # Store JWT-encoded access_token -> tenant_id
-        # NOTE: Must use URLSafeTimedSerializer to match User.get_id()
-        # which imports `from itsdangerous.url_safe import URLSafeTimedSerializer as Serializer`
-        from itsdangerous.url_safe import URLSafeTimedSerializer
-        from common import settings as _settings
-
-        jwt_serializer = URLSafeTimedSerializer(secret_key=_settings.get_secret_key())
-        jwt_token = jwt_serializer.dumps(str(access_token))
-        if isinstance(jwt_token, bytes):
-            jwt_token = jwt_token.decode("utf-8")
-        redis.set(f"{_TOKEN_KEY_PREFIX}{jwt_token}", tenant_id, ex=_RATELIMIT_KEY_TTL)
-
-        return True
-    except Exception as e:
-        logging.warning(f"sync_session_token failed: {e}")
-        return False
-
-
-def sync_jwt_to_redis(jwt_token: str, tenant_id: str) -> bool:
-    """
-    Sync the exact JWT token (as returned by User.get_id()) to Redis.
-
-    This must be called AFTER get_id() because URLSafeTimedSerializer.dumps()
-    includes a timestamp and produces a unique token each call.  We store the
-    exact JWT string that will be sent to the frontend so the Lua rate limiter
-    can look it up directly.
-
-    Args:
-        jwt_token: The JWT string from User.get_id() (sent in Authorization header).
-        tenant_id: The tenant_id to associate with this token.
-    """
-    redis = _get_redis()
-    if not redis:
-        return False
-
-    try:
-        redis.set(f"{_TOKEN_KEY_PREFIX}{jwt_token}", tenant_id, ex=_RATELIMIT_KEY_TTL)
-        logging.debug(f"sync_jwt_to_redis: stored JWT -> {tenant_id}")
-        return True
-    except Exception as e:
-        logging.warning(f"sync_jwt_to_redis failed: {e}")
-        return False
-
-
-def remove_api_token(token: str) -> bool:
-    """Remove an API token mapping from Redis."""
-    redis = _get_redis()
-    if not redis:
-        return False
-
-    key = f"{_TOKEN_KEY_PREFIX}{token}"
-    try:
-        redis.delete(key)
-        return True
-    except Exception as e:
-        logging.warning(f"remove_api_token failed: {e}")
-        return False
-
-
-def remove_tenant_rate_limit(tenant_id: str) -> bool:
-    """Remove a tenant's rate limit config and all bucket state from Redis."""
-    redis = _get_redis()
-    if not redis:
-        return False
-
-    key = f"{_RATELIMIT_KEY_PREFIX}{tenant_id}"
-    try:
-        redis.delete(key)
-        # Clean up per-minute bucket
-        redis.delete(f"billing:tb:min:{tenant_id}")
-        return True
-    except Exception as e:
-        logging.warning(f"remove_tenant_rate_limit failed: {e}")
-        return False
-
-
-def sync_all_rate_limits() -> int:
-    """
-    Full sync: load all tenants and their API tokens into Redis.
-
-    Call this on application startup and periodically (e.g., every hour).
-
-    Returns the number of tenants synced.
-    """
-    from api.db.db_models import APIToken, Tenant
-
-    redis = _get_redis()
-    if not redis:
-        logging.warning("sync_all_rate_limits: Redis not available, skipping")
-        return 0
-
-    count = 0
-
-    try:
-        # Sync all API tokens -> tenant_id mappings
-        tokens = APIToken.select(APIToken.token, APIToken.tenant_id).dicts()
-        pipe = redis.pipeline()
-        token_count = 0
-        for row in tokens:
-            key = f"{_TOKEN_KEY_PREFIX}{row['token']}"
-            pipe.set(key, row["tenant_id"], ex=_RATELIMIT_KEY_TTL)
-            token_count += 1
-            if token_count % 500 == 0:
-                pipe.execute()
-                pipe = redis.pipeline()
-
-        if token_count % 500 != 0:
-            pipe.execute()
-        logging.info(f"sync_all_rate_limits: synced {token_count} API token mappings")
-
-        # Sync all User session tokens (access_token) -> tenant_id mappings.
-        # The frontend sends JWT-encoded access_token in the Authorization header.
-        # Lua receives the JWT string, so we store both raw UUID and JWT-encoded form.
-        from api.db.db_models import User, UserTenant
-
-        # NOTE: Must use URLSafeTimedSerializer to match User.get_id()
-        from itsdangerous.url_safe import URLSafeTimedSerializer
-        from common import settings as _settings
-
-        jwt_serializer = URLSafeTimedSerializer(secret_key=_settings.get_secret_key())
-        session_token_count = 0
-        session_skip_no_token = 0
-        session_skip_no_tenant = 0
-        users = User.select(User.id, User.access_token).where(User.status == "1").dicts()
-        pipe = redis.pipeline()
-        for u in users:
-            if not u["access_token"] or not u["access_token"].strip():
-                session_skip_no_token += 1
-                continue
-            # Look up the user's default tenant_id via UserTenant
-            ut = UserTenant.select(UserTenant.tenant_id).where(UserTenant.user_id == u["id"], UserTenant.status == "1").dicts().first()
-            if not ut:
-                session_skip_no_tenant += 1
-                continue
-            # Store raw access_token -> tenant_id (for API-token style matching)
-            key_raw = f"{_TOKEN_KEY_PREFIX}{u['access_token']}"
-            pipe.set(key_raw, ut["tenant_id"], ex=_RATELIMIT_KEY_TTL)
-            # Store JWT-encoded access_token -> tenant_id (for session token matching)
-            jwt_token = jwt_serializer.dumps(str(u["access_token"]))
-            if isinstance(jwt_token, bytes):
-                jwt_token = jwt_token.decode("utf-8")
-            key_jwt = f"{_TOKEN_KEY_PREFIX}{jwt_token}"
-            pipe.set(key_jwt, ut["tenant_id"], ex=_RATELIMIT_KEY_TTL)
-            session_token_count += 1
-            if session_token_count % 500 == 0:
-                pipe.execute()
-                pipe = redis.pipeline()
-
-        if session_token_count % 500 != 0:
-            pipe.execute()
-        logging.info(f"sync_all_rate_limits: synced {session_token_count} session token mappings (skipped: {session_skip_no_token} no_token, {session_skip_no_tenant} no_tenant)")
-
-        # Sync rate limits for ALL tenants with active/trialing subscriptions
-        from api.db.db_models import Subscription
-
-        subscriptions = (
-            Subscription.select(Subscription.tenant_id, Subscription.plan_name, Subscription.subscription_status, Subscription.end_time)
-            .where(Subscription.subscription_status.in_(["active", "trialing"]))
-            .dicts()
-        )
-
-        tenant_ids_seen = set()
-        for sub in subscriptions:
-            tid = sub["tenant_id"]
-            if tid in tenant_ids_seen:
-                continue
-            tenant_ids_seen.add(tid)
-            period_end = _to_unix_ts(sub.get("end_time"))
-            sync_tenant_rate_limit(tid, sub["plan_name"], period_end=period_end)
-            sync_api_auth_plan(tid, sub["plan_name"], sub["subscription_status"])
-            count += 1
-
-        # Also sync tenants that have no subscription — apply default (Trial) limits
-        # so that Lua-layer rate limiting covers all API users, not just subscribers.
-        all_tenants = Tenant.select(Tenant.id).dicts()
-        for t in all_tenants:
-            tid = t["id"]
-            if tid not in tenant_ids_seen:
-                tenant_ids_seen.add(tid)
-                sync_tenant_rate_limit(tid, None)
-                count += 1
-
-        logging.info(f"sync_all_rate_limits: synced {count} tenant rate limit configs")
-
-    except Exception as e:
-        logging.exception(f"sync_all_rate_limits failed: {e}")
-
-    return count
-
-
-def start_periodic_sync(interval: int = 3600) -> None:
-    """
-    Start a background daemon thread that periodically calls sync_all_rate_limits().
-
-    This ensures rate-limit configs stay fresh even if plan configs change
-    or new tenants are added outside of webhook events.
-
-    Args:
-        interval: seconds between full syncs (default 3600 = 1 hour)
-    """
-    global _sync_thread
-    if _sync_thread is not None and _sync_thread.is_alive():
-        logging.info("billing_rate_limit_sync: periodic sync already running")
-        return
-
-    def _loop():
-        while not _sync_stop_event.is_set():
-            _sync_stop_event.wait(timeout=interval)
-            if _sync_stop_event.is_set():
-                break
-            try:
-                logging.info("billing_rate_limit_sync: running periodic full sync")
-                sync_all_rate_limits()
-            except Exception as e:
-                logging.warning(f"billing_rate_limit_sync: periodic sync failed: {e}")
-
-    _sync_thread = threading.Thread(target=_loop, daemon=True, name="billing-rl-sync")
-    _sync_thread.start()
-    logging.info(f"billing_rate_limit_sync: periodic sync started (interval={interval}s)")
-
-
-def stop_periodic_sync() -> None:
-    """Stop the periodic sync thread."""
-    _sync_stop_event.set()

@@ -140,8 +140,7 @@ def test_unpaid_upgrade_tracks_payment_state_without_revoking_entitlement(monkey
         {"price_pro": "Pro"},
     )
     monkeypatch.setattr(billing_webhook_service, "get_product_id_by_name", lambda name: f"prod_{name.lower()}")
-    monkeypatch.setattr(billing_webhook_service, "_sync_tenant_rate_limit_for_subscription", lambda **_kwargs: None)
-    monkeypatch.setattr(billing_webhook_service, "_sync_api_auth_plan_for_subscription", lambda **_kwargs: None)
+    monkeypatch.setattr(billing_webhook_service, "_sync_api_token_rate_limit_for_subscription", lambda **_kwargs: None)
 
     billing_webhook_service._sync_main_subscription_from_stripe(
         tenant_id="tenant_1",

@@ -398,18 +398,14 @@ def login_user(user, remember=False, duration=None, force=False, fresh=True):
     session["_fresh"] = fresh
     session["_id"] = get_uuid()
 
-    # Sync rate limit to Redis so the Nginx Lua rate limiter (T1) can enforce limits.
-    # NOTE: JWT token sync happens in sync_jwt_to_redis() after get_id() is called,
-    # because URLSafeTimedSerializer.dumps() includes a timestamp and produces a
-    # different token each time — we must sync the exact JWT sent to the frontend.
+    # Sync access_token rate limit to Redis
     try:
-        from common.billing_rate_limit_sync import sync_tenant_rate_limit
+        from common.billing_rate_limit_sync import sync_token_rate_limit
         from api.db.db_models import UserTenant
 
-        if hasattr(user, "access_token") and user.access_token:
-            ut = UserTenant.select(UserTenant.tenant_id).where(UserTenant.user_id == user.id, UserTenant.status == "1").dicts().first()
-            if ut:
-                sync_tenant_rate_limit(ut["tenant_id"], None)
+        tenant = UserTenant.select(UserTenant.tenant_id).where(UserTenant.user_id == user.id, UserTenant.status == "1").dicts().first()
+        if tenant and user.access_token:
+            sync_token_rate_limit(tenant["tenant_id"], user.access_token)
     except Exception:
         logging.exception("Failed to sync rate limit to Redis in login_user")
 
@@ -482,38 +478,6 @@ client_urls_prefix = [register_page(path) for directory in pages_dir for path in
 from api.apps.backward_compat import register_backward_compat_routes
 
 register_backward_compat_routes(app)
-
-
-# Billing rate limit sync is deferred until after DB init (see ragflow_server.py).
-# Do NOT start sync here — settings and billing_product data are not ready yet.
-_billing_sync_started = False
-
-
-def start_billing_rate_limit_sync():
-    """Start the background rate-limit sync thread.
-
-    Must be called AFTER ``init_web_db()`` + ``init_web_data()`` so that
-    MySQL tables and billing product rows are available.
-    """
-    global _billing_sync_started
-    if _billing_sync_started:
-        return
-    _billing_sync_started = True
-    try:
-        from common.billing_rate_limit_sync import sync_all_rate_limits, start_periodic_sync
-        import threading
-
-        def _bg_sync():
-            try:
-                sync_all_rate_limits()
-                start_periodic_sync(interval=3600)  # hourly refresh
-            except Exception as e:
-                logging.warning(f"Background billing rate limit sync failed: {e}")
-
-        threading.Thread(target=_bg_sync, daemon=True).start()
-        logging.info("Billing rate limit sync scheduled in background")
-    except Exception as e:
-        logging.warning(f"Could not start billing rate limit sync: {e}")
 
 
 @app.errorhandler(404)

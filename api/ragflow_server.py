@@ -107,9 +107,15 @@ if __name__ == "__main__":
     init_web_db()
     init_web_data()
 
-    # Start billing rate-limit sync AFTER DB + product data are ready
-    #from api.apps import start_billing_rate_limit_sync
-    #start_billing_rate_limit_sync()
+    # Sync all Starter/Pro user API/Beta token to Redis
+    import threading
+
+    def _bg_sync():
+        from common.billing_rate_limit_sync import sync_all_api_token_rate_limit
+
+        sync_all_api_token_rate_limit()
+
+    threading.Thread(target=_bg_sync, daemon=True).start()
 
     # init runtime config
     import argparse

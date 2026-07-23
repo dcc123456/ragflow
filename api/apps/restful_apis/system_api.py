@@ -343,9 +343,9 @@ def new_token():
 
         # Sync new API token to Redis for Nginx Lua rate limiter
         try:
-            from common.billing_rate_limit_sync import sync_api_token
+            from common.billing_rate_limit_sync import sync_api_token_rate_limit
 
-            sync_api_token(obj["token"], tenant_id)
+            sync_api_token_rate_limit(tenant_id=tenant_id, api_token=obj["token"], beta_token=obj["beta"])
         except Exception:
             pass
 
@@ -390,9 +390,9 @@ def rm(token):
 
         # Remove API token from Redis rate limiter cache
         try:
-            from common.billing_rate_limit_sync import remove_api_token
+            from common.billing_rate_limit_sync import delete_api_token_rate_limit
 
-            remove_api_token(token)
+            delete_api_token_rate_limit(tenant_id=tenant_id, api_token=token)
         except Exception:
             pass
 
