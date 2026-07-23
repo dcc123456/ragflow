@@ -54,7 +54,7 @@ def create_memory_resource(rest_client, memory_cleanup):
             "name": f"{name_prefix}_{uuid.uuid4().hex[:8]}",
             "memory_type": ["raw"],
             "embd_id": _memory_embedding_id(),
-            "llm_id": "glm-4-flash@ZHIPU-AI",
+            "llm_id": "glm-4-flash@CI@ZHIPU-AI",
         }
         res = rest_client.post("/memories", json=payload)
         assert res.status_code == 200

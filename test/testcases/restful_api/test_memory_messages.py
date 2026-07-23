@@ -29,7 +29,7 @@ def _memory_payload(name: str) -> dict:
         "name": name,
         "memory_type": ["raw"],
         "embd_id": _memory_embedding_id(),
-        "llm_id": "glm-4-flash@ZHIPU-AI",
+        "llm_id": "glm-4-flash@CI@ZHIPU-AI",
     }
 
 
