@@ -3263,7 +3263,8 @@ Tokenizer 会根据所选方式将内容存储为对应的数据结构。`,
           fileTip: '上传一个 .txt 文件，最大 30 MiB。每行一个敏感词或短语。',
           download: '下载当前文件',
           downloadFailed: '敏感词文件不可用',
-          uploaded: '敏感词文件已上传',
+          uploaded:
+            '敏感词文件“{{filename}}”已上传，已加载 {{count}} 个敏感词。',
           messages: {
             response: '请输入拦截提示',
             fileType: '仅支持 .txt 文件',

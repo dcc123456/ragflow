@@ -10,6 +10,7 @@ SENSITIVE_WORD_FILTER_FILE_BUCKET = "ragflow-system"
 SENSITIVE_WORD_FILTER_FILE_NAME = "sensitive_word_filter/compliance.txt"
 SENSITIVE_WORD_FILTER_FILE_TENANT_ID = None
 SENSITIVE_WORD_FILTER_FILE_VERSION_SETTING = "sensitive_word_filter.file_version"
+SENSITIVE_WORD_FILTER_FILE_NAME_SETTING = "sensitive_word_filter.file_name"
 SENSITIVE_WORD_FILTER_ENABLED_SETTING = "sensitive_word_filter.enabled"
 SENSITIVE_WORD_FILTER_RESPONSE_SETTING = "sensitive_word_filter.response"
 DEFAULT_SENSITIVE_QUESTION_RESPONSE = "Your request could not be processed because it contains restricted content. Please modify your input and try again."

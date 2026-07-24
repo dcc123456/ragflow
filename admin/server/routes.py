@@ -17,6 +17,7 @@ import asyncio
 import secrets
 import re
 import logging
+from urllib.parse import quote
 from flask import Blueprint, request, jsonify, Response
 from flask_login import current_user, logout_user, login_required
 import pandas as pd
@@ -606,7 +607,13 @@ def upload_sensitive_word_filter():
             data_type="string",
             value=f"{current_timestamp()}-{secrets.token_hex(4)}",
         )
-        return success_response({"size": len(content), "word_count": len([line for line in words.splitlines() if line.strip()])}, "Sensitive word file uploaded")
+        SystemSettingsService.upsert_singleton_by_exact_name(
+            name=compliance.SENSITIVE_WORD_FILTER_FILE_NAME_SETTING,
+            source="variable",
+            data_type="string",
+            value=filename,
+        )
+        return success_response({"size": len(content), "word_count": len([line for line in words.splitlines() if line.strip()]), "filename": filename}, "Sensitive word file uploaded")
     except Exception as e:
         return error_response(str(e), 500)
 
@@ -619,7 +626,10 @@ def download_sensitive_word_filter():
         if not compliance.sensitive_word_file_exists():
             return error_response("Sensitive words file is not uploaded.", 404)
         content = compliance.get_sensitive_word_file()
-        return Response(content, mimetype="text/plain; charset=utf-8", headers={"Content-Disposition": 'attachment; filename="compliance.txt"'})
+        record = SystemSettingsService.get_singleton_by_exact_name(compliance.SENSITIVE_WORD_FILTER_FILE_NAME_SETTING)
+        filename = record.value if record and record.value else "compliance.txt"
+        ascii_filename = re.sub(r"[^A-Za-z0-9_.-]", "_", filename.split("/")[-1].split("\\")[-1]) or "compliance.txt"
+        return Response(content, mimetype="text/plain; charset=utf-8", headers={"Content-Disposition": f"attachment; filename=\"{ascii_filename}\"; filename*=UTF-8''{quote(filename, safe='')}"})
     except Exception as e:
         return error_response(str(e), 500)
 

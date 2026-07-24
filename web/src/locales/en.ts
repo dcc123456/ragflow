@@ -3912,7 +3912,8 @@ Important structured information may include: names, dates, locations, events, k
             'Upload one .txt file up to 30 MiB. Use one sensitive word or phrase per line.',
           download: 'Download current file',
           downloadFailed: 'Sensitive words file is not available',
-          uploaded: 'Sensitive words file uploaded',
+          uploaded:
+            'Sensitive words file "{{filename}}" uploaded. {{count}} words loaded.',
           messages: {
             response: 'Please enter the response',
             fileType: 'Only .txt files are allowed',

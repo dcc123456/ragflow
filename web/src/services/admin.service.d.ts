@@ -271,6 +271,7 @@ declare namespace AdminService {
       'sensitive_word_filter.enabled': 'bool';
       'sensitive_word_filter.response': 'string';
       'sensitive_word_filter.file_version': 'string';
+      'sensitive_word_filter.file_name': 'string';
     }>;
 
     type Mail = Utilities.DefineVariables<

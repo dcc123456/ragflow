@@ -32,6 +32,9 @@ function SensitiveWordFilterFormGroup() {
     sensitiveWordFilter: SensitiveWordFilterFormGroup.SchemaType;
   }>();
   const [isDownloading, setIsDownloading] = useState(false);
+  const uploadedFileName =
+    form.watch('sensitiveWordFilter.fileName') || 'compliance.txt';
+  const hasUploadedFile = !!form.watch('sensitiveWordFilter.hasFile');
 
   return (
     <FormGroup title={tf('title')} description={tf('description')}>
@@ -70,43 +73,47 @@ function SensitiveWordFilterFormGroup() {
             </FormLabel>
 
             <div className="space-y-3">
-              <FormControl>
-                <input
-                  ref={field.ref}
-                  name={field.name}
-                  type="file"
-                  accept=".txt,text/plain"
-                  className="flex h-8 w-full rounded-md border-0.5 border-border-button bg-bg-input px-3 py-1.5 outline-none text-sm text-text-primary file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent-primary disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
-                  onBlur={field.onBlur}
-                  onChange={(e) => field.onChange(e.target.files?.[0])}
-                  disabled={field.disabled}
-                />
-              </FormControl>
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-xs text-text-secondary">{tf('fileTip')}</p>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-8 shrink-0 px-3"
-                  loading={isDownloading}
-                  onClick={async () => {
-                    setIsDownloading(true);
-                    try {
-                      const res = await downloadSensitiveWordFilter();
-                      downloadFileFromBlob(res.data, 'compliance.txt');
-                    } catch {
-                      toast.error(tf('downloadFailed'), {
-                        position: 'top-center',
-                      });
-                    } finally {
-                      setIsDownloading(false);
-                    }
-                  }}
-                >
-                  <Download className="mr-2 size-4" />
-                  {tf('download')}
-                </Button>
+              <div className="flex items-center gap-3">
+                {hasUploadedFile && (
+                  <Button
+                    type="button"
+                    variant="link"
+                    size="auto"
+                    className="max-w-[16rem] shrink-0 justify-start overflow-hidden text-accent-primary"
+                    loading={isDownloading}
+                    title={uploadedFileName}
+                    onClick={async () => {
+                      setIsDownloading(true);
+                      try {
+                        const res = await downloadSensitiveWordFilter();
+                        downloadFileFromBlob(res.data, uploadedFileName);
+                      } catch {
+                        toast.error(tf('downloadFailed'), {
+                          position: 'top-center',
+                        });
+                      } finally {
+                        setIsDownloading(false);
+                      }
+                    }}
+                  >
+                    <Download className="size-4" />
+                    <span className="truncate">{uploadedFileName}</span>
+                  </Button>
+                )}
+                <FormControl>
+                  <input
+                    ref={field.ref}
+                    name={field.name}
+                    type="file"
+                    accept=".txt,text/plain"
+                    className="flex h-8 min-w-0 flex-1 rounded-md border-0.5 border-border-button bg-bg-input px-3 py-1.5 outline-none text-sm text-text-primary file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent-primary disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
+                    onBlur={field.onBlur}
+                    onChange={(e) => field.onChange(e.target.files?.[0])}
+                    disabled={field.disabled}
+                  />
+                </FormControl>
               </div>
+              <p className="text-xs text-text-secondary">{tf('fileTip')}</p>
               <FormMessage />
             </div>
           </FormItem>
@@ -154,10 +161,13 @@ SensitiveWordFilterFormGroup.mapValuesFromData = (
   data: AdminService.SystemVariables,
 ): SensitiveWordFilterFormGroup.SchemaType => {
   const response = data['sensitive_word_filter.response']?.value;
+  const fileName = data['sensitive_word_filter.file_name']?.value;
   return {
     enabled: !!data['sensitive_word_filter.enabled']?.value,
     response:
       typeof response === 'string' && response ? response : DEFAULT_RESPONSE,
+    fileName: typeof fileName === 'string' && fileName ? fileName : undefined,
+    hasFile: !!data['sensitive_word_filter.file_version']?.value,
   };
 };
 
@@ -168,6 +178,8 @@ SensitiveWordFilterFormGroup.uploadFile = (file: File) => {
 SensitiveWordFilterFormGroup.schema = z.object({
   enabled: z.boolean().optional(),
   response: z.string().min(1),
+  fileName: z.string().optional(),
+  hasFile: z.boolean().optional(),
   file: z
     .any()
     .optional()
@@ -186,6 +198,7 @@ SensitiveWordFilterFormGroup.schema = z.object({
 SensitiveWordFilterFormGroup.defaultValues = Object.freeze({
   enabled: false,
   response: DEFAULT_RESPONSE,
+  hasFile: false,
 });
 
 // eslint-disable-next-line

@@ -368,10 +368,9 @@ export const setVariable = (name: string, value: any) =>
 export const uploadSensitiveWordFilter = (file: File) => {
   const fd = new FormData();
   fd.append('file', file);
-  return request.post<ResponseData<{ size: number; word_count: number }>>(
-    API.adminUploadSensitiveWordFilter,
-    fd,
-  );
+  return request.post<
+    ResponseData<{ size: number; word_count: number; filename: string }>
+  >(API.adminUploadSensitiveWordFilter, fd);
 };
 
 export const downloadSensitiveWordFilter = () => {

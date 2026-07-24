@@ -46,7 +46,7 @@ export type AdminSettingsFormValues = z.infer<typeof schema>;
 function AdminSettings() {
   const { t } = useTranslation();
 
-  const { variables, setVariables, isUpdating, isFetching } =
+  const { variables, setVariables, refetch, isUpdating, isFetching } =
     useAdminVariables();
 
   const values = useMemo(() => {
@@ -125,15 +125,20 @@ function AdminSettings() {
                         ),
                       });
                       if (data.sensitiveWordFilter.file) {
-                        await SensitiveWordFilterFormGroup.uploadFile(
-                          data.sensitiveWordFilter.file,
-                        );
+                        const uploadResponse =
+                          await SensitiveWordFilterFormGroup.uploadFile(
+                            data.sensitiveWordFilter.file,
+                          );
                         toast.success(
-                          t('admin.settingsForm.sensitiveWordFilter.uploaded'),
+                          t('admin.settingsForm.sensitiveWordFilter.uploaded', {
+                            count: uploadResponse.data.data.word_count,
+                            filename: uploadResponse.data.data.filename,
+                          }),
                           {
                             position: 'top-center',
                           },
                         );
+                        refetch();
                       }
                     })}
                   >
