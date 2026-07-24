@@ -20,12 +20,26 @@ export const useExportAgentLogToCSV = () => {
   const { id: canvasId } = useParams();
   const { exportLogs, loading } = useExportAgentLog();
 
+  const formatConversation = (item: IAgentLogResponse): string => {
+    if (!item.message?.length) {
+      return '';
+    }
+
+    const lines = item.message.map((msg) => {
+      const role =
+        msg.role === 'assistant' ? t('flow.assistant') : t('flow.user');
+      return `${role}: ${msg.content ?? ''}`;
+    });
+
+    return lines.join('\n');
+  };
+
   const convertToCSV = (data: IAgentLogResponse[]) => {
     const headers = [
       t('flow.id'),
       t('flow.userId'),
       t('flow.logTitle'),
-      t('flow.message'),
+      t('flow.conversationDetail'),
       t('flow.state'),
       t('flow.number'),
       t('flow.latestDate'),
@@ -37,9 +51,7 @@ export const useExportAgentLogToCSV = () => {
       item.id,
       item.user_id,
       item.message?.length ? item.message[0]?.content : '',
-      item.message
-        ?.map(({ role, content }) => `${role}: ${content}`)
-        .join('\n') ?? '',
+      formatConversation(item),
       item.errors ? t('flow.failed') : t('flow.success'),
       item.round,
       item.update_date,
