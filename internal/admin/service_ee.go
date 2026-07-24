@@ -1252,11 +1252,6 @@ func (s *Service) listUsersInactiveByPlan(days int) ([]map[string]interface{}, e
 }
 
 func (s *Service) ListUsersEE(pageIndex, pageSize int, name string, status, role, sort, orderBy, plan string, top, days int, quota *int) ([]map[string]interface{}, error) {
-	quotaInt := 0
-	if quota != nil {
-		quotaInt = *quota
-	}
-
 	if status != "" && strings.EqualFold(status, "inactive") {
 		daysVal := 90
 		if days > 0 {
@@ -1289,7 +1284,7 @@ func (s *Service) ListUsersEE(pageIndex, pageSize int, name string, status, role
 		return s.listUsersIndexRows(topVal)
 	}
 
-	if plan != "" && quotaInt != 0 {
+	if plan != "" && quota != nil {
 		topVal := 30
 		if top > 0 {
 			topVal = top
@@ -1298,15 +1293,15 @@ func (s *Service) ListUsersEE(pageIndex, pageSize int, name string, status, role
 		if days > 0 {
 			daysVal = days
 		}
-		return s.listUsersPlanQuotaRows(topVal, plan, quotaInt, daysVal)
+		return s.listUsersPlanQuotaRows(topVal, plan, *quota, daysVal)
 	}
 
-	if quotaInt != 0 {
+	if quota != nil {
 		topVal := 10
 		if top > 0 {
 			topVal = top
 		}
-		return s.listUsersQuotaRows(topVal, quotaInt)
+		return s.listUsersQuotaRows(topVal, *quota)
 	}
 
 	if plan != "" {
@@ -1321,22 +1316,9 @@ func (s *Service) ListUsersEE(pageIndex, pageSize int, name string, status, role
 		return s.listUsersPlanRows(topVal, plan, daysVal)
 	}
 
-	item := map[string]interface{}{}
-	item["pageIndex"] = pageIndex
-	item["pageSize"] = pageSize
-	item["name"] = name
-	item["status"] = status
-	item["role"] = role
-	item["sort"] = sort
-	item["order_by"] = orderBy
-	item["plan"] = plan
-	item["top"] = top
-	item["days"] = days
-	item["quota"] = quotaInt
-
-	var result []map[string]interface{}
-	result = append(result, item)
-	return result, nil
+	// No special filter matched: fall back to the standard paginated user list
+	// (same behavior as the open-source version for plain "LIST USERS").
+	return s.ListUsers(pageIndex, pageSize, name, status, sort, orderBy)
 }
 
 // ListUsersReports list users reports for enterprise edition

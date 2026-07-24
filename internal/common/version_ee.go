@@ -19,5 +19,5 @@ var OpenSourceVersion = "open source"
 var EnterpriseEdition = "enterprise edition"
 
 func GetRAGFlowType() string {
-	return OpenSourceVersion
+	return EnterpriseEdition
 }
