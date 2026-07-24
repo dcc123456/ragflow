@@ -156,6 +156,13 @@ def _load_dify_retrieval(monkeypatch, *, kb, accessible, request_body, tenant_id
     )
 
     _stub(monkeypatch, "rag.app.tag", label_question=lambda *_a, **_k: {})
+    compliance_mod = _stub(
+        monkeypatch,
+        "rag.nlp.compliance",
+        sensitive_question_words=lambda _question: [],
+        SENSITIVE_QUESTION_RESPONSE="",
+    )
+    _stub(monkeypatch, "rag.nlp", compliance=compliance_mod)
 
     fake_retriever = _FakeRetriever(chunks=chunks)
     _stub(
