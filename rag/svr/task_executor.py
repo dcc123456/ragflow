@@ -143,9 +143,36 @@ TASK_TYPE_TO_PIPELINE_TASK_TYPE = {
     "memory": PipelineTaskType.MEMORY,
     "artifact": PipelineTaskType.ARTIFACT,
     "skill": PipelineTaskType.SKILL,
+    "structure_graph": PipelineTaskType.STRUCTURE_GRAPH,
+    "structure_mindmap": PipelineTaskType.STRUCTURE_MINDMAP,
+    "timeline": PipelineTaskType.TIMELINE,
+    "session_graph": PipelineTaskType.SESSION_GRAPH,
+    "session_essence": PipelineTaskType.SESSION_ESSENCE,
+    "structure": PipelineTaskType.STRUCTURE,
 }
 
 CONSUMER_NAME = "te.{}.{}.{}".format(PRIORITY, TASK_TYPE, TE_IDX)
+# KB-wide fan-out task types: their task row's ``doc_id`` is a fake sentinel and
+# the participating documents live in ``task["doc_ids"]``.
+_KB_FANOUT_TASK_TYPES = [
+    "graphrag",
+    "raptor",
+    "mindmap",
+    "artifact",
+    "skill",
+    "structure_graph",
+    "structure_mindmap",
+    "timeline",
+    "session_graph",
+    "session_essence",
+    "structure",
+]
+
+UNACKED_ITERATOR = None
+# Task type and executor index (consistent with SAAS version)
+TASK_TYPE = "common"
+TE_IDX = "0"
+
 BOOT_AT = datetime.now().astimezone().isoformat(timespec="milliseconds")
 PENDING_TASKS = 0
 LAG_TASKS = 0
@@ -2107,8 +2134,11 @@ def rabbitmq_callback(ch, method, properties, body):
             if not task.get("dataflow_id", ""):
                 try:
                     referred_document_id = None
-                    if task_type in ["graphrag", "raptor", "mindmap", "artifact", "skill"]:
-                        referred_document_id = task["doc_ids"][0]
+                    if task_type in _KB_FANOUT_TASK_TYPES:
+                        # KB-level fan-out tasks store the participating doc list in
+                        # task["doc_ids"]; the first entry is used as a referent so
+                        # the pipeline operation log has something to anchor to.
+                        referred_document_id = (task.get("doc_ids") or [None])[0]
                     PipelineOperationLogService.record_pipeline_operation(
                         document_id=task["doc_id"], pipeline_id="", task_type=pipeline_task_type, task_id=task_id, referred_document_id=referred_document_id
                     )

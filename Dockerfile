@@ -51,7 +51,8 @@ RUN --mount=type=cache,id=ragflow_apt,target=/var/cache/apt,sharing=locked \
     fonts-freefont-ttf fonts-noto-cjk postgresql-client
 
 # Download resource from GitHub to /usr/share/infinity
-RUN mkdir -p /usr/share/infinity/resource && \
+RUN --mount=type=secret,id=gitee_token \
+    mkdir -p /usr/share/infinity/resource && \
     if [ "$NEED_MIRROR" == "1" ]; then \
     git clone --depth 1 --single-branch https://oauth2:796df937ae36d0014a35aa8ab2b02609@gitee.com/infiniflow/resource /tmp/resource; \
     else \
