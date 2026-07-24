@@ -4,11 +4,11 @@ go 1.26.4
 
 require (
 	cloud.google.com/go/storage v1.63.0
-	github.com/ClickHouse/clickhouse-go/v2 v2.44.0
 	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/alibabacloud-go/agentrun-20250910/v5 v5.8.4
 	github.com/alibabacloud-go/darabonba-openapi/v2 v2.2.1
 	github.com/alicebob/miniredis/v2 v2.38.0
+	github.com/apache/thrift v0.23.0
 	github.com/aws/aws-sdk-go-v2 v1.41.3
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.6
 	github.com/aws/aws-sdk-go-v2/config v1.32.11
@@ -19,6 +19,7 @@ require (
 	github.com/browserbase/stagehand-go/v3 v3.21.0
 	github.com/cenkalti/backoff/v5 v5.0.3
 	github.com/cespare/xxhash/v2 v2.3.0
+	github.com/ClickHouse/clickhouse-go/v2 v2.44.0
 	github.com/cloudwego/eino v0.9.12
 	github.com/denisenkom/go-mssqldb v0.12.3
 	github.com/elastic/go-elasticsearch/v8 v8.19.1
@@ -36,6 +37,7 @@ require (
 	github.com/ledongthuc/pdf v0.0.0-20250511090121-5959a4027728
 	github.com/lib/pq v1.10.9
 	github.com/minio/minio-go/v7 v7.0.99
+	github.com/mitchellh/mapstructure v1.5.0
 	github.com/nats-io/nats-server/v2 v2.14.3
 	github.com/nats-io/nats.go v1.52.0
 	github.com/nikolalohinski/gonja v1.5.3
@@ -46,7 +48,7 @@ require (
 	github.com/siongui/gojianfan v0.0.0-20210926212422-2f175ac615de
 	github.com/spf13/viper v1.18.2
 	github.com/xuri/excelize/v2 v2.11.0
-	github.com/yfedoseev/office_oxide/go v0.1.2
+	github.com/yfedoseev/office_oxide/go v0.1.8
 	github.com/yfedoseev/pdf_oxide/go v0.3.67
 	github.com/zeebo/xxh3 v1.0.2
 	go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin v0.68.0
@@ -91,7 +93,6 @@ require (
 	github.com/aliyun/credentials-go v1.4.5 // indirect
 	github.com/andybalholm/brotli v1.2.0 // indirect
 	github.com/antithesishq/antithesis-sdk-go v0.7.0-default-no-op // indirect
-	github.com/apache/thrift v0.23.0 // indirect
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.19 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.19 // indirect
@@ -161,7 +162,6 @@ require (
 	github.com/minio/crc64nvme v1.1.1 // indirect
 	github.com/minio/highwayhash v1.0.4 // indirect
 	github.com/minio/md5-simd v1.1.2 // indirect
-	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/nats-io/jwt/v2 v2.8.2 // indirect
@@ -234,4 +234,4 @@ require (
 	modernc.org/sqlite v1.23.1 // indirect
 )
 
-replace github.com/infiniflow/infinity-go-sdk => github.com/infiniflow/infinity/go v0.0.0-20260424025959-72028e662929
+replace github.com/infiniflow/infinity-go-sdk => github.com/infiniflow/infinity/go v0.0.0-20260723093510-ceb4bc518010

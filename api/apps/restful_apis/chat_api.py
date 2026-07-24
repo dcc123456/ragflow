@@ -148,15 +148,15 @@ def _has_knowledge_placeholder(prompt_config):
 def _validate_name(name, *, required=True):
     if name is None:
         if required:
-            return None, "`name` is required."
+            return None, "`name` is required"
         return None, None
     if not isinstance(name, str):
-        return None, "Chat name must be a string."
+        return None, "chat name must be a string"
     name = name.strip()
     if not name:
-        return None, "`name` is required." if required else "`name` cannot be empty."
+        return None, "`name` is required" if required else "`name` cannot be empty"
     if len(name.encode("utf-8")) > 255:
-        return None, f"Chat name length is {len(name.encode('utf-8'))} which is larger than 255."
+        return None, f"chat name length is {len(name.encode('utf-8'))} which is larger than 255"
     return name, None
 
 
@@ -440,7 +440,7 @@ async def create():
 
         # Validate tenant_id should not be provided
         if req.get("tenant_id"):
-            return get_data_error_result(message="`tenant_id` must not be provided.")
+            return get_data_error_result(message="`tenant_id` must not be provided")
 
         # Validate name
         name, err = _validate_name(req.get("name"), required=True)
@@ -505,7 +505,7 @@ async def create():
             tenant_id=tenant_id,
             status=StatusEnum.VALID.value,
         ):
-            return get_data_error_result(message="Duplicated chat name in creating chat.")
+            return get_data_error_result(message="duplicated chat name in creating chat")
 
         req["id"] = get_uuid()
         req["tenant_id"] = tenant_id
@@ -708,7 +708,7 @@ async def update_chat(chat_id):
         operation_tenant_id = _get_chat_operation_tenant_id(current_chat)
 
         if req.get("tenant_id"):
-            return get_data_error_result(message="`tenant_id` must not be provided.")
+            return get_data_error_result(message="`tenant_id` must not be provided")
 
         if "name" in req:
             name, err = _validate_name(req.get("name"), required=True)
@@ -759,7 +759,7 @@ async def update_chat(chat_id):
                 status=StatusEnum.VALID.value,
             )
         ):
-            return get_data_error_result(message="Duplicated chat name.")
+            return get_data_error_result(message="duplicated chat name")
 
         if not DialogService.update_by_id(chat_id, req):
             return get_data_error_result(message="Chat not found!")
@@ -850,7 +850,7 @@ async def patch_chat(chat_id):
                 status=StatusEnum.VALID.value,
             )
         ):
-            return get_data_error_result(message="Duplicated chat name.")
+            return get_data_error_result(message="duplicated chat name")
 
         if not DialogService.update_by_id(chat_id, req):
             return get_data_error_result(message="Failed to update chat.")
