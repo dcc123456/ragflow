@@ -994,12 +994,12 @@ class FileService(CommonService):
                 e, file = await asyncio.to_thread(cls.get_by_id, file_id_list[len_id_list - 1])
                 if not e:
                     raise LookupError("Folder not found!")
-                last_folder = await asyncio.to_thread(cls.create_folder, file, file_id_list[len_id_list - 1], file_obj_names, len_id_list)
+                last_folder = await asyncio.to_thread(cls.create_folder, file, file_id_list[len_id_list - 1], file_obj_names, len_id_list, tenant_id, tenant_id)
             else:
                 e, file = await asyncio.to_thread(cls.get_by_id, file_id_list[len_id_list - 2])
                 if not e:
                     raise LookupError("Folder not found!")
-                last_folder = await asyncio.to_thread(cls.create_folder, file, file_id_list[len_id_list - 2], file_obj_names, len_id_list)
+                last_folder = await asyncio.to_thread(cls.create_folder, file, file_id_list[len_id_list - 2], file_obj_names, len_id_list, tenant_id, tenant_id)
 
             # file type
             filetype = filename_type(file_obj_names[file_len - 1])

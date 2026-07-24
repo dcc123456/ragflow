@@ -122,8 +122,10 @@ export default {
     `${restAPIv1}/providers/${provider_name}/instances/${instance_name}/models`,
 
   // data source
-  dataSourceListFiles: (id: string) => `${webAPI}/connector/${id}/list_files`,
-  dataSourceSyncFiles: (id: string) => `${webAPI}/connector/${id}/downloads`,
+  dataSourceListFiles: (id: string) =>
+    `${restAPIv1}/connectors/${id}/list-files`,
+  dataSourceSyncFiles: (id: string) =>
+    `${restAPIv1}/connectors/${id}/sync-to-folder`,
   dataSourceUpdate: (id: string) => `${restAPIv1}/connectors/${id}`,
   dataSourceSet: `${restAPIv1}/connectors`,
   dataSourceList: `${restAPIv1}/connectors`,

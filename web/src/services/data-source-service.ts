@@ -1,3 +1,4 @@
+import { ResponseType } from '@/interfaces/database/base';
 import api from '@/utils/api';
 import registerServer from '@/utils/register-server';
 import request from '@/utils/request';
@@ -74,9 +75,17 @@ export type DataSourceFileItem = {
 };
 
 export const listDataSourceFiles = (id: string) =>
-  request.post<{ data: DataSourceFileItem[] }>(api.dataSourceListFiles(id), {
-    noToast: true,
-  });
+  request
+    .get<{ data: ResponseType<DataSourceFileItem[]> }>(
+      api.dataSourceListFiles(id),
+      {
+        noToast: true,
+      },
+    )
+    .then((res) => {
+      const payload = res.data;
+      return payload.code === 0 ? { data: payload.data } : { data: payload };
+    });
 
 export const syncDataSourceFiles = (
   id: string,

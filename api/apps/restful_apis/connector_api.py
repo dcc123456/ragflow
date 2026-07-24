@@ -26,8 +26,9 @@ from google_auth_oauthlib.flow import Flow
 from api.db import InputType
 from api.db.services.connector_service import ConnectorService, SyncLogsService
 from api.utils.api_utils import get_data_error_result, get_json_result, get_request_json, validate_request
+from api.utils.common import hash128
 from api.utils.pagination_utils import validate_rest_api_page_size
-from common.constants import RetCode, TaskStatus
+from common.constants import FileSource, RetCode, TaskStatus
 from common.data_source.config import GOOGLE_DRIVE_WEB_OAUTH_REDIRECT_URI, GMAIL_WEB_OAUTH_REDIRECT_URI, BOX_WEB_OAUTH_REDIRECT_URI, DocumentSource
 from common.data_source.google_util.constant import WEB_OAUTH_POPUP_TEMPLATE, GOOGLE_SCOPES
 from common.misc_utils import get_uuid
@@ -43,6 +44,117 @@ def _connector_auth_error(connector_id: str, user_id: str):
     """Return the connector authorization failure response and log the denial."""
     LOGGER.warning("connector access denied: connector_id=%s user_id=%s", connector_id, user_id)
     return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
+
+
+def _doc_to_file_obj(connector_id: str, folder_id: str, doc):
+    class FileObj:
+        def __init__(self):
+            self.id = hash128(f"{folder_id}:{connector_id}:{doc.id}")
+            self.filename = doc.semantic_identifier + (f"{doc.extension}" if doc.semantic_identifier[::-1].find(doc.extension[::-1]) < 0 else "")
+
+        def read(self):
+            return doc.blob
+
+    return FileObj()
+
+
+def _unsupported_file_picker(conn):
+    return get_json_result(
+        data=False,
+        code=RetCode.DATA_ERROR,
+        message=f"{conn.source} connector does not support manual file selection.",
+    )
+
+
+def _build_file_picker_connector(conn):
+    conf = conn.config or {}
+    if conn.source == FileSource.CONFLUENCE:
+        from common.data_source.confluence_connector import ConfluenceConnector
+        from common.data_source.interfaces import StaticCredentialsProvider
+
+        connector = ConfluenceConnector(
+            wiki_base=conf["wiki_base"],
+            is_cloud=conf.get("is_cloud", True),
+            space=conf.get("space", ""),
+            page_id=conf.get("page_id", ""),
+            index_recursively=conf.get("index_recursively", False),
+        )
+        credentials_provider = StaticCredentialsProvider(tenant_id=conn.tenant_id, connector_name=DocumentSource.CONFLUENCE, credential_json=conf["credentials"])
+        connector.set_credentials_provider(credentials_provider)
+        return connector
+    if conn.source == FileSource.LARK:
+        from common.data_source.lark.connector import LarkConnector
+
+        connector = LarkConnector(conf.get("token_type"), conf.get("token"))
+        connector.load_credentials(conf.get("credentials"))
+        connector.validate_connector_settings()
+        return connector
+    return None
+
+
+@manager.route("/connectors/<connector_id>/list-files", methods=["GET"])  # noqa: F821
+@login_required
+async def list_connector_files(connector_id):
+    """List selectable files for connectors that support manual file sync."""
+    if not ConnectorService.accessible(connector_id, current_user.id):
+        return _connector_auth_error(connector_id, current_user.id)
+
+    e, conn = ConnectorService.get_by_id(connector_id)
+    if not e:
+        return get_data_error_result(message="Can't find this Connector!")
+
+    connector = _build_file_picker_connector(conn)
+    if connector is None or not hasattr(connector, "build_tree"):
+        return _unsupported_file_picker(conn)
+
+    try:
+        if conn.source == FileSource.LARK:
+            data = await connector.build_tree((conn.config or {}).get("token"), "")
+        else:
+            data = await connector.build_tree()
+        return get_json_result(data=data)
+    except Exception as e:
+        LOGGER.exception("Failed to list connector files: connector_id=%s", connector_id)
+        return get_json_result(data=False, code=RetCode.DATA_ERROR, message=str(e))
+
+
+@manager.route("/connectors/<connector_id>/sync-to-folder", methods=["POST"])  # noqa: F821
+@login_required
+async def sync_connector_files_to_folder(connector_id):
+    """Sync selected connector files into a File Manager folder."""
+    if not ConnectorService.accessible(connector_id, current_user.id):
+        return _connector_auth_error(connector_id, current_user.id)
+
+    e, conn = ConnectorService.get_by_id(connector_id)
+    if not e:
+        return get_data_error_result(message="Can't find this Connector!")
+
+    req = await get_request_json()
+    if isinstance(req, dict) and isinstance(req.get("data"), dict):
+        req = req["data"]
+    req = req or {}
+    folder_id = req.get("folder_id")
+    token_lst = req.get("token_lst", [])
+    if not folder_id:
+        return get_json_result(code=RetCode.ARGUMENT_ERROR, message="required argument is missing: folder_id")
+
+    connector = _build_file_picker_connector(conn)
+    if connector is None or not hasattr(connector, "load_from_list"):
+        return _unsupported_file_picker(conn)
+
+    try:
+        from api.db.services.file_service import FileService
+
+        documents = await connector.load_from_list(token_lst)
+        if not documents:
+            return get_json_result(data=False, code=RetCode.DATA_ERROR, message="No files were downloaded.")
+        errs, files = await FileService.upload_files(folder_id, [_doc_to_file_obj(connector_id, folder_id, doc) for doc in documents], current_user.id)
+        if errs:
+            return get_json_result(data={"files": files, "errors": errs}, code=RetCode.DATA_ERROR, message="\n".join(errs))
+        return get_json_result(data=files)
+    except Exception as e:
+        LOGGER.exception("Failed to download connector files: connector_id=%s", connector_id)
+        return get_json_result(data=False, code=RetCode.DATA_ERROR, message=str(e))
 
 
 @manager.route("/connectors/<connector_id>", methods=["PATCH"])  # noqa: F821

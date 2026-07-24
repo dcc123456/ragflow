@@ -102,16 +102,15 @@ export function SyncFileForm({
     initialData: [],
   });
 
-  // const categorizedList = useMemo(
-  //   // Currently only support Lark and Confluence
-  //   () =>
-  //     _catList.filter(
-  //       (item) =>
-  //         item.id === DataSourceKey.LARK ||
-  //         item.id === DataSourceKey.CONFLUENCE,
-  //     ),
-  //   [_catList],
-  // );
+  const supportedCategorizedList = useMemo(
+    () =>
+      categorizedList.filter(
+        (item) =>
+          item.id === DataSourceKey.LARK ||
+          item.id === DataSourceKey.CONFLUENCE,
+      ),
+    [categorizedList],
+  );
 
   const dataSourceInfo = useMemo(() => generateDataSourceInfo(t), [t]);
 
@@ -203,8 +202,8 @@ export function SyncFileForm({
                     </SelectTrigger>
 
                     <SelectContent>
-                      {categorizedList.length ? (
-                        categorizedList.map((cat) => {
+                      {supportedCategorizedList.length ? (
+                        supportedCategorizedList.map((cat) => {
                           const dataSource =
                             dataSourceInfo[cat.id as DataSourceKey];
 

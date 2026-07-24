@@ -42,6 +42,8 @@ Deprecated APIs and their replacements:
 - GET /v1/document/download/{attachment_id} -> GET /api/v1/agents/attachments/{attachment_id}/download
 - GET /v1/system/healthz -> GET /api/v1/system/healthz
 - POST /api/v1/sessions/related_questions -> POST /api/v1/chat/recommandation
+- POST /v1/connector/{connector_id}/list_files -> GET /api/v1/connectors/{connector_id}/list-files
+- POST /v1/connector/{connector_id}/downloads -> POST /api/v1/connectors/{connector_id}/sync-to-folder
 - PUT (chunk update) -> PATCH (chunk update)
 """
 
@@ -50,7 +52,7 @@ import logging
 from quart import Blueprint, jsonify, request
 
 from api.apps import login_required
-from api.apps.restful_apis import agent_api, chat_api, chunk_api, dataset_api, document_api, file2document_api, file_api, openai_api
+from api.apps.restful_apis import agent_api, chat_api, chunk_api, connector_api, dataset_api, document_api, file2document_api, file_api, openai_api
 from api.apps.restful_apis.system_api import run_health_checks
 from api.apps.services import dataset_api_service, file_api_service
 from api.utils.api_utils import add_tenant_id_to_kwargs, get_data_error_result, get_json_result, get_request_json
@@ -63,6 +65,33 @@ def _index_result(success, result):
     if success:
         return get_json_result(data=result)
     return get_data_error_result(message=result)
+
+
+# =============================================================================
+# Connector File Picker APIs (Old /v1/connector/* -> New /api/v1/connectors/*)
+# =============================================================================
+
+
+@legacy_v1_manager.route("/connector/<connector_id>/list_files", methods=["POST"])
+@login_required
+async def deprecated_connector_list_files(connector_id):
+    logging.warning(
+        "API endpoint /v1/connector/%s/list_files is deprecated. Please use GET /api/v1/connectors/%s/list-files instead.",
+        connector_id,
+        connector_id,
+    )
+    return await connector_api.list_connector_files(connector_id)
+
+
+@legacy_v1_manager.route("/connector/<connector_id>/downloads", methods=["POST"])
+@login_required
+async def deprecated_connector_downloads(connector_id):
+    logging.warning(
+        "API endpoint /v1/connector/%s/downloads is deprecated. Please use /api/v1/connectors/%s/sync-to-folder instead.",
+        connector_id,
+        connector_id,
+    )
+    return await connector_api.sync_connector_files_to_folder(connector_id)
 
 
 # =============================================================================
