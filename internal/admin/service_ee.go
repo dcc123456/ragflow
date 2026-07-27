@@ -17,6 +17,7 @@
 package admin
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"mime/multipart"
@@ -498,7 +499,7 @@ func (s *Service) ShowUserDatasetSummary(email, dataset string) (map[string]inte
 		return nil, common.ErrUserNotFound
 	}
 
-	kbs, err := s.kbDAO.GetKBByNameAndUserID(dataset, user.ID)
+	kbs, err := s.kbDAO.GetKBByNameAndUserID(context.Background(), dao.DB, dataset, user.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query dataset: %w", err)
 	}
