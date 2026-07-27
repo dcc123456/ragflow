@@ -867,7 +867,8 @@ func (h *Handler) ShowUserDatasetSummary(c *gin.Context) {
 		return
 	}
 
-	userDatasetSummary, err := h.service.ShowUserDatasetSummary(username, req.Dataset)
+	ctx := c.Request.Context()
+	userDatasetSummary, err := h.service.ShowUserDatasetSummary(ctx, username, req.Dataset)
 	if err != nil {
 		if errors.Is(err, common.ErrUserNotFound) {
 			common.ErrorWithCode(c, common.CodeNotFound, "User not found")

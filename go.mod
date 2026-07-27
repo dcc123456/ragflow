@@ -4,6 +4,7 @@ go 1.26.4
 
 require (
 	cloud.google.com/go/storage v1.63.0
+	github.com/ClickHouse/clickhouse-go/v2 v2.44.0
 	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/alibabacloud-go/agentrun-20250910/v5 v5.8.4
 	github.com/alibabacloud-go/darabonba-openapi/v2 v2.2.1
@@ -19,7 +20,6 @@ require (
 	github.com/browserbase/stagehand-go/v3 v3.21.0
 	github.com/cenkalti/backoff/v5 v5.0.3
 	github.com/cespare/xxhash/v2 v2.3.0
-	github.com/ClickHouse/clickhouse-go/v2 v2.44.0
 	github.com/cloudwego/eino v0.9.12
 	github.com/denisenkom/go-mssqldb v0.12.3
 	github.com/elastic/go-elasticsearch/v8 v8.19.1

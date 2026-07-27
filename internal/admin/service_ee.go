@@ -491,7 +491,7 @@ func (s *Service) ShowUserActivity(email string, days int) (map[string]interface
 }
 
 // ShowUserDatasetSummary show user dataset summary for enterprise edition
-func (s *Service) ShowUserDatasetSummary(email, dataset string) (map[string]interface{}, error) {
+func (s *Service) ShowUserDatasetSummary(ctx context.Context, email, dataset string) (map[string]interface{}, error) {
 	// Query user by email
 	var user entity.User
 	err := dao.DB.Where("email = ?", email).First(&user).Error
@@ -499,7 +499,7 @@ func (s *Service) ShowUserDatasetSummary(email, dataset string) (map[string]inte
 		return nil, common.ErrUserNotFound
 	}
 
-	kbs, err := s.kbDAO.GetKBByNameAndUserID(context.Background(), dao.DB, dataset, user.ID)
+	kbs, err := s.kbDAO.GetKBByNameAndUserID(ctx, dao.DB, dataset, user.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query dataset: %w", err)
 	}
