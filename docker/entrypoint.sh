@@ -9,11 +9,12 @@ cat /ragflow/VERSION
 # Usage and command-line argument parsing
 # -----------------------------------------------------------------------------
 function usage() {
-    echo "Usage: $0 [--disable-webserver] [--disable-taskexecutor] [--disable-datasync] [--consumer-no-beg=<num>] [--consumer-no-end=<num>] [--workers=<num>] [--host-id=<string>]"
+    echo "Usage: $0 [--disable-webserver] [--disable-taskexecutor] [--disable-datasync] [--nginx-only] [--consumer-no-beg=<num>] [--consumer-no-end=<num>] [--workers=<num>] [--host-id=<string>]"
     echo
     echo "  --disable-webserver             Disables the web server (nginx + ragflow_server)."
     echo "  --disable-taskexecutor          Disables task executor workers."
     echo "  --disable-datasync              Disables synchronization of datasource workers."
+    echo "  --nginx-only                    Only starts nginx, no other services."
     echo "  --enable-mcpserver              Enables the MCP server."
     echo "  --enable-adminserver            Enables the Admin server."
     echo "  --init-model-provider-tables  Run model provider table migrations and exit."
@@ -30,6 +31,7 @@ function usage() {
     echo "  $0 --enable-mcpserver"
     echo "  $0 --enable-adminserver"
     echo "  $0 --init-superuser"
+    echo "  $0 --nginx-only"
     exit 1
 }
 
@@ -38,6 +40,7 @@ ENABLE_TASKEXECUTOR=1  # Default to enable task executor
 ENABLE_DATASYNC=1
 ENABLE_MCP_SERVER=0
 ENABLE_ADMIN_SERVER=0 # Default close admin server
+NGINX_ONLY=0 # Default not only nginx
 INIT_SUPERUSER_ARGS="" # Default to not initialize superuser
 INIT_MODEL_PROVIDER_TABLES=0
 CONSUMER_NO_BEG=0
@@ -81,6 +84,10 @@ for arg in "$@"; do
       ;;
     --disable-datasync)
       ENABLE_DATASYNC=0
+      shift
+      ;;
+    --nginx-only)
+      NGINX_ONLY=1
       shift
       ;;
     --enable-mcpserver)
@@ -163,11 +170,9 @@ done
 CONF_DIR="/ragflow/conf"
 TEMPLATE_FILE="${CONF_DIR}/service_conf.yaml.template"
 CONF_FILE="${CONF_DIR}/service_conf.yaml"
-
 # Export conf dir so that Go binaries can locate mapping/config files
 # at runtime regardless of compile-time source paths embedded in the binary.
 export RAGFLOW_CONF_DIR="/ragflow"
-
 rm -f "${CONF_FILE}"
 while IFS= read -r line || [[ -n "$line" ]]; do
     eval "echo \"$line\"" >> "${CONF_FILE}"
@@ -250,7 +255,6 @@ PY=python3
 export LD_PRELOAD="$(pkg-config --variable=libdir jemalloc)/libjemalloc.so"
 export MALLOC_CONF="dirty_decay_ms:2000,muzzy_decay_ms:2000"
 export PYTHONMALLOC=malloc
-
 # -----------------------------------------------------------------------------
 # Function(s)
 # -----------------------------------------------------------------------------
@@ -267,7 +271,6 @@ function task_exe() {
         sleep 1;
     done
 }
-
 function start_mcp_server() {
     echo "Starting MCP Server on ${MCP_HOST}:${MCP_PORT} with base URL ${MCP_BASE_URL}..."
     "$PY" "${MCP_SCRIPT_PATH}" \
@@ -297,8 +300,6 @@ function ensure_db_init() {
 # -----------------------------------------------------------------------------
 # Start components based on flags
 # -----------------------------------------------------------------------------
-ensure_docling
-ensure_db_init
 
 run_with_restart() {
   local process_name="$1"
@@ -315,11 +316,20 @@ run_with_restart() {
   done
 }
 
+# If nginx-only mode, just start nginx and wait
+if [[ "${NGINX_ONLY}" -eq 1 ]]; then
+    echo "Starting nginx (nginx-only mode)..."
+    /usr/sbin/nginx -c /etc/nginx/nginx.conf -g "daemon off;"
+    wait
+    exit 0
+fi
+
 if [[ "${INIT_MODEL_PROVIDER_TABLES}" -eq 1 ]]; then
     tools/scripts/run_migrations.sh
 fi
 
 if [[ "${ENABLE_ADMIN_SERVER}" -eq 1 ]]; then
+
     if [[ "${API_PROXY_SCHEME}" == "hybrid" ]] || [[ "${API_PROXY_SCHEME}" == "python" ]]; then
         echo "Attempt to start Admin python server..."
         run_with_restart "Admin python server" "$PY" admin/server/admin_server.py &
@@ -332,8 +342,8 @@ if [[ "${ENABLE_ADMIN_SERVER}" -eq 1 ]]; then
 fi
 
 if [[ "${ENABLE_WEBSERVER}" -eq 1 ]]; then
-    echo "Starting nginx..."
-    /usr/sbin/nginx -c /etc/nginx/nginx.conf
+    ensure_docling
+    ensure_db_init
 
     if [[ "${API_PROXY_SCHEME}" == "hybrid" ]] || [[ "${API_PROXY_SCHEME}" == "python" ]]; then
         echo "Attempt to start RAGFlow python server..."

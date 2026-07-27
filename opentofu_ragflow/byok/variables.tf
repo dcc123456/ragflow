@@ -602,6 +602,18 @@ variable "ragflow_image_admin" {
   default     = "ragflow:v0.24.0-5-mt"
 }
 
+variable "data_sync_image" {
+  description = "Data sync worker image (including tag, will be prefixed with private_registry)"
+  type        = string
+  default     = "ragflow:v0.24.0-5-mt"
+}
+
+variable "nginx_image" {
+  description = "Nginx image (including tag, will be prefixed with private_registry)"
+  type        = string
+  default     = "ragflow:v0.24.0-5-mt"
+}
+
 
 variable "deploy_app_stack" {
   description = "Whether to deploy application-layer resources (ragflow, admin, parser, gateway, and HTTP routes) in this namespace."
@@ -639,6 +651,37 @@ variable "ragflow_memory_limit" {
   default     = "8Gi"
 }
 
+variable "data_sync_replicas" {
+  description = "Number of data sync worker replicas"
+  type        = number
+  default     = 1
+}
+
+variable "data_sync_cpu_request" {
+  description = "Data sync worker CPU request (cores)"
+  type        = string
+  default     = "100m"
+}
+
+variable "data_sync_cpu_limit" {
+  description = "Data sync worker CPU limit (cores)"
+  type        = string
+  default     = "2"
+}
+
+variable "data_sync_memory_request" {
+  description = "Data sync worker memory request"
+  type        = string
+  default     = "512Mi"
+}
+
+variable "data_sync_memory_limit" {
+  description = "Data sync worker memory limit"
+  type        = string
+  default     = "2Gi"
+}
+
+
 variable "admin_cpu_request" {
   description = "Admin CPU request"
   type        = string
@@ -662,6 +705,37 @@ variable "admin_memory_limit" {
   type        = string
   default     = "2Gi"
 }
+
+variable "nginx_replicas" {
+  description = "Number of Nginx replicas"
+  type        = number
+  default     = 1
+}
+
+variable "nginx_cpu_request" {
+  description = "Nginx CPU request (cores)"
+  type        = string
+  default     = "200m"
+}
+
+variable "nginx_cpu_limit" {
+  description = "Nginx CPU limit (cores)"
+  type        = string
+  default     = "500m"
+}
+
+variable "nginx_memory_request" {
+  description = "Nginx memory request"
+  type        = string
+  default     = "256Mi"
+}
+
+variable "nginx_memory_limit" {
+  description = "Nginx memory limit"
+  type        = string
+  default     = "512Mi"
+}
+
 
 # =============================================================================
 # Parser Configuration

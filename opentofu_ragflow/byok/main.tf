@@ -120,7 +120,8 @@ locals {
   ragflow_image_full          = "${var.private_registry}/${var.ragflow_image}"
   ragflow_image_platform_full = "${var.private_registry}/${var.ragflow_image_platform}"
   ragflow_image_admin_full    = "${var.private_registry}/${var.ragflow_image_admin}"
-
+  data_sync_image_full = "${var.private_registry}/${var.data_sync_image}"
+  nginx_image_full = "${var.private_registry}/${var.nginx_image}"
 
 
   # Deepdoc image selection based on deepdoc_use_gpu
@@ -1658,7 +1659,7 @@ resource "kubernetes_job_v1" "shared_elasticsearch_user_bootstrap" {
     ttl_seconds_after_finished = var.shared_service_job_ttl_seconds
     template {
       metadata {
-        name = "shared-es-user-bootstrap-${substr(sha256(join(":", [kubernetes_config_map_v1.shared_elasticsearch_role_payload[0].data["role.json"], kubernetes_config_map_v1.shared_elasticsearch_user_payload[0].data["user.json"]])), 0, 8)}"
+       name = "shared-es-user-bootstrap-${substr(sha256(join(":", [kubernetes_config_map_v1.shared_elasticsearch_role_payload[0].data["role.json"], kubernetes_config_map_v1.shared_elasticsearch_user_payload[0].data["user.json"]])), 0, 8)}"
         annotations = {
           "checksum/role" = sha256(kubernetes_config_map_v1.shared_elasticsearch_role_payload[0].data["role.json"])
           "checksum/user" = sha256(kubernetes_config_map_v1.shared_elasticsearch_user_payload[0].data["user.json"])
@@ -2310,6 +2311,7 @@ resource "kubernetes_service_v1" "ragflow_frontend" {
 # Service 2: API Server - serves REST API at /v1/*
 # Routes through pod's nginx (port 80) so that rate_limit.lua executes
 # before proxying to the Python backend (127.0.0.1:9380) inside the pod.
+# Python backend listens on port 9380 directly (nginx moved to separate pod)
 resource "kubernetes_service_v1" "ragflow_api" {
   count = var.deploy_app_stack ? 1 : 0
   metadata {
@@ -2332,8 +2334,8 @@ resource "kubernetes_service_v1" "ragflow_api" {
     }
 
     port {
-      port        = 80
-      target_port = 80
+      port        = 9380
+      target_port = 9380
       name        = "api"
     }
 
@@ -2590,9 +2592,9 @@ resource "kubernetes_deployment_v1" "ragflow" {
         container {
           name              = "ragflow"
           image             = local.ragflow_image_platform_full
-          image_pull_policy = "Always"
+          image_pull_policy = "IfNotPresent"
 
-          args = ["--disable-taskexecutor"]
+          args = ["--disable-taskexecutor", "--disable-datasync"]
 
           # Frontend port (nginx)
           port {
@@ -2729,6 +2731,191 @@ resource "kubernetes_deployment_v1" "ragflow" {
     delete = "10m"
   }
 }
+
+# =============================================================================
+# Data Sync Worker Deployment
+# =============================================================================
+
+resource "kubernetes_deployment_v1" "ragflow_data_sync" {
+  count = var.deploy_app_stack ? 1 : 0
+  depends_on = [
+    kubernetes_secret_v1.ragflow_env[0],
+  ]
+
+  metadata {
+    name      = "ragflow-data-sync"
+    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
+
+    labels = {
+      app     = "ragflow-data-sync"
+      project = "ragflow"
+    }
+  }
+
+  spec {
+    replicas = var.data_sync_replicas
+
+    revision_history_limit = 1
+    progress_deadline_seconds = 600
+
+    strategy {
+      type = "RollingUpdate"
+      rolling_update {
+        max_surge       = "100%"
+        max_unavailable = 0
+      }
+    }
+
+    selector {
+      match_labels = {
+        app = "ragflow-data-sync"
+      }
+    }
+
+    template {
+      metadata {
+        labels = {
+          app     = "ragflow-data-sync"
+          project = "ragflow"
+        }
+        annotations = {
+          "checksum/config" = sha256(jsonencode(kubernetes_secret_v1.ragflow_env[0].data))
+        }
+      }
+
+      spec {
+        service_account_name = "default"
+
+        dynamic "image_pull_secrets" {
+          for_each = var.cloud_provider == "gcp" ? [1] : []
+          content {
+            name = "gcr-image-pull"
+          }
+        }
+
+        # Init container to create S3 bucket if needed
+        dynamic "init_container" {
+          for_each = var.s3_endpoint != "" ? [1] : []
+          content {
+            name    = "init-s3-bucket"
+            image   = local.minio_mc_image
+            command = ["sh", "-c", "mc alias set myminio ${var.s3_endpoint} ${var.s3_access_key} ${var.s3_secret_key} && mc mb myminio/${local.s3_bucket_name} || exit 0"]
+          }
+        }
+
+        # Init container to wait for Elasticsearch to be ready
+        dynamic "init_container" {
+          for_each = local.es_host_effective != "" ? [1] : []
+          content {
+            name  = "wait-for-elasticsearch"
+            image = local.curl_image
+
+            # Inherit environment from ragflow_env secret
+            env_from {
+              secret_ref {
+                name = kubernetes_secret_v1.ragflow_env[0].metadata[0].name
+              }
+            }
+
+            command = ["sh", "-c", <<-EOT
+              until curl -s -k -u "$${ES_USER}:$${ELASTIC_PASSWORD}" "$${ES_PROTOCOL}://$${ES_HOST}:$${ES_PORT}/_cluster/health" | grep -q '"status":"green"\|"status":"yellow"'; do
+                echo "Waiting for Elasticsearch at $${ES_HOST}..."
+                sleep 5
+              done
+              echo "Elasticsearch is ready."
+              EOT
+            ]
+          }
+        }
+
+        # ES CA certificate volume
+        dynamic "volume" {
+          for_each = var.mount_elasticsearch_ca_secret ? [1] : []
+          content {
+            name = "elasticsearch-ca"
+
+            secret {
+              secret_name = var.elasticsearch_ca_secret_name
+            }
+          }
+        }
+
+        container {
+          name              = "data-sync"
+          image             = local.data_sync_image_full
+          image_pull_policy = "IfNotPresent"
+
+          args = ["--disable-webserver", "--disable-taskexecutor"]
+
+          env_from {
+            secret_ref {
+              name = kubernetes_secret_v1.ragflow_env[0].metadata[0].name
+            }
+          }
+
+          #env {
+          #  name  = "MAX_CONCURRENT_TASKS"
+          #  value = "5"
+          #}
+
+          liveness_probe {
+            exec {
+              command = ["sh", "-c", "ps aux | grep -v grep | grep sync_data_source.py"]
+            }
+            initial_delay_seconds = 60
+            period_seconds        = 30
+            timeout_seconds       = 5
+            failure_threshold     = 5
+          }
+
+          readiness_probe {
+            exec {
+              command = ["sh", "-c", "ps aux | grep -v grep | grep sync_data_source.py"]
+            }
+            initial_delay_seconds = 0
+            period_seconds        = 10
+            timeout_seconds       = 5
+            failure_threshold     = 2
+          }
+
+          resources {
+            requests = {
+              cpu    = var.data_sync_cpu_request
+              memory = var.data_sync_memory_request
+            }
+            limits = {
+              cpu    = var.data_sync_cpu_limit
+              memory = var.data_sync_memory_limit
+            }
+          }
+
+          # Mount ES CA certificate for HTTPS verification
+          dynamic "volume_mount" {
+            for_each = var.mount_elasticsearch_ca_secret ? [1] : []
+            content {
+              name       = "elasticsearch-ca"
+              mount_path = "/etc/elasticsearch/certs"
+              read_only  = true
+            }
+          }
+
+          security_context {
+            capabilities {
+              add = ["SYS_PTRACE"]
+            }
+          }
+        }
+      }
+    }
+  }
+
+  timeouts {
+    create = "10m"
+    update = "10m"
+    delete = "5m"
+  }
+}
+
 
 # =============================================================================
 # Admin Deployment
@@ -2914,6 +3101,163 @@ resource "kubernetes_deployment_v1" "admin" {
   }
 }
 
+
+
+# =============================================================================
+# Nginx Deployment - standalone nginx for frontend and API proxy
+# =============================================================================
+
+resource "kubernetes_deployment_v1" "nginx" {
+  count = var.deploy_app_stack ? 1 : 0
+  depends_on = [
+    kubernetes_secret_v1.ragflow_env[0],
+  ]
+
+  metadata {
+    name      = "nginx"
+    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
+
+    labels = {
+      app     = "nginx"
+      project = "ragflow"
+    }
+  }
+
+  spec {
+    replicas = var.nginx_replicas
+
+    revision_history_limit = 1
+    progress_deadline_seconds = 600
+
+    strategy {
+      type = "RollingUpdate"
+      rolling_update {
+        max_surge       = "100%"
+        max_unavailable = 0
+      }
+    }
+
+    selector {
+      match_labels = {
+        app = "nginx"
+      }
+    }
+
+    template {
+      metadata {
+        labels = {
+          app     = "nginx"
+          project = "ragflow"
+        }
+        annotations = {
+          "checksum/config" = sha256(jsonencode(kubernetes_secret_v1.ragflow_env[0].data))
+        }
+      }
+
+      spec {
+        service_account_name = "default"
+
+        dynamic "image_pull_secrets" {
+          for_each = var.cloud_provider == "gcp" ? [1] : []
+          content {
+            name = "gcr-image-pull"
+          }
+        }
+
+        container {
+          name              = "nginx"
+          image             = local.nginx_image_full
+          image_pull_policy = "Always"
+
+          args = ["--nginx-only"]
+
+          port {
+            container_port = 80
+            name           = "http"
+          }
+
+          liveness_probe {
+            http_get {
+              path = "/"
+              port = 80
+            }
+            initial_delay_seconds = 10
+            period_seconds        = 30
+            timeout_seconds       = 5
+            failure_threshold     = 3
+          }
+
+          readiness_probe {
+            http_get {
+              path = "/"
+              port = 80
+            }
+            initial_delay_seconds = 0
+            period_seconds        = 10
+            timeout_seconds       = 5
+            failure_threshold     = 2
+          }
+
+          env_from {
+            secret_ref {
+              name = kubernetes_secret_v1.ragflow_env[0].metadata[0].name
+            }
+          }
+
+          resources {
+            requests = {
+              cpu    = var.nginx_cpu_request
+              memory = var.nginx_memory_request
+            }
+            limits = {
+              cpu    = var.nginx_cpu_limit
+              memory = var.nginx_memory_limit
+            }
+          }
+        }
+      }
+    }
+  }
+
+  timeouts {
+    create = "10m"
+    update = "10m"
+    delete = "5m"
+  }
+}
+
+# =============================================================================
+# Nginx Service
+# =============================================================================
+
+resource "kubernetes_service_v1" "nginx" {
+  count = var.deploy_app_stack ? 1 : 0
+  metadata {
+    name      = "nginx"
+    namespace = kubernetes_namespace_v1.ragflow.metadata[0].name
+
+    labels = {
+      app = "nginx"
+    }
+  }
+
+  spec {
+    selector = {
+      app = "nginx"
+    }
+
+    port {
+      port        = 80
+      target_port = 80
+      name        = "http"
+    }
+
+    type = "ClusterIP"
+  }
+}
+
+
+
 # =============================================================================
 # Parser Deployments — one per task type (common, graphrag, raptor, resume)
 # Each pod runs a single task_executor consumer that monitors both priority
@@ -2963,11 +3307,6 @@ resource "kubernetes_deployment_v1" "parser" {
 
       #type = "Recreate"
     }
-
-
-
-
-
     selector {
       match_labels = {
         app       = "parser-${each.key}"
@@ -3425,11 +3764,9 @@ resource "kubernetes_secret_v1" "tls_secret" {
     "tls.crt" = file("${path.module}/ragflow-tls.crt")
     "tls.key" = file("${path.module}/ragflow-tls.key")
   } : {}
-
-  lifecycle {
+    lifecycle {
     ignore_changes = [data]
   }
-
 }
 
 # =============================================================================
@@ -3617,7 +3954,7 @@ resource "kubernetes_manifest" "http_route_api" {
           ]
           backendRefs = [
             {
-              name = kubernetes_service_v1.ragflow_api[0].metadata[0].name
+              name = kubernetes_service_v1.nginx[0].metadata[0].name
               port = 80
             }
           ]
@@ -3640,7 +3977,7 @@ resource "kubernetes_manifest" "http_route_api" {
           ]
           backendRefs = [
             {
-              name = kubernetes_service_v1.ragflow_api[0].metadata[0].name
+              name = kubernetes_service_v1.nginx[0].metadata[0].name
               port = 80
             }
           ]
@@ -3712,13 +4049,13 @@ resource "kubernetes_manifest" "gcp_backend_policy_api" {
       targetRef = {
         group = ""
         kind  = "Service"
-        name  = kubernetes_service_v1.ragflow_api[0].metadata[0].name
+        name  = kubernetes_service_v1.nginx[0].metadata[0].name
       }
     }
   }
 }
 
-# HTTPRoute 2: /api/v1/admin -> port 9381 (admin service)
+#HTTPRoute 2: /api/v1/admin -> port 80 (nginx will route to admin service)
 resource "kubernetes_manifest" "http_route_admin" {
   count = var.deploy_app_stack ? 1 : 0
   field_manager {
@@ -3755,8 +4092,8 @@ resource "kubernetes_manifest" "http_route_admin" {
           ]
           backendRefs = [
             {
-              name = kubernetes_service_v1.admin[0].metadata[0].name
-              port = 9381
+              name = kubernetes_service_v1.nginx[0].metadata[0].name
+              port = 80
             }
           ]
         }
@@ -3804,7 +4141,7 @@ resource "kubernetes_manifest" "http_route_frontend" {
             ]
             backendRefs = [
               {
-                name = kubernetes_service_v1.ragflow_frontend[0].metadata[0].name
+                name = kubernetes_service_v1.nginx[0].metadata[0].name
                 port = 80
               }
             ]
