@@ -3503,6 +3503,9 @@ Important structured information may include: names, dates, locations, events, k
       success: 'Success',
       failed: 'Failed',
       logTitle: 'Title',
+      conversationDetail: 'Conversation detail',
+      user: 'User',
+      assistant: 'Assistant',
     },
     llmTools: {
       bad_calculator: {

@@ -992,7 +992,7 @@ export const useFetchAllKnowledgeList = (
   const { list, loading, hasNextPage, fetchNextPage } = useFetchKnowledgeList(
     shouldFilterListWithoutDocument,
     keywords,
-    200,
+    100,
   );
 
   useEffect(() => {

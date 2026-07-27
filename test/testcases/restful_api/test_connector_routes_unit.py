@@ -257,6 +257,10 @@ def _load_connector_app(monkeypatch):
         SCHEDULE="schedule",
         CANCEL="cancel",
     )
+    constants_mod.FileSource = SimpleNamespace(
+        CONFLUENCE="confluence",
+        LARK="lark",
+    )
     monkeypatch.setitem(sys.modules, "common.constants", constants_mod)
 
     config_mod = ModuleType("common.data_source.config")

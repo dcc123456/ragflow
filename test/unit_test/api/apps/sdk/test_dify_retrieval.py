@@ -154,8 +154,21 @@ def _load_dify_retrieval(monkeypatch, *, kb, accessible, request_body, tenant_id
         meta_filter=lambda *_a, **_k: [],
         convert_conditions=lambda c: c,
     )
+    _stub(
+        monkeypatch,
+        "common.constants",
+        RetCode=SimpleNamespace(ARGUMENT_ERROR=101, NOT_FOUND=404, AUTHENTICATION_ERROR=109, SERVER_ERROR=500),
+        LLMType=SimpleNamespace(EMBEDDING="embedding", CHAT="chat"),
+    )
 
     _stub(monkeypatch, "rag.app.tag", label_question=lambda *_a, **_k: {})
+    compliance_mod = _stub(
+        monkeypatch,
+        "rag.nlp.compliance",
+        sensitive_question_words=lambda _question: [],
+        SENSITIVE_QUESTION_RESPONSE="",
+    )
+    _stub(monkeypatch, "rag.nlp", compliance=compliance_mod)
 
     fake_retriever = _FakeRetriever(chunks=chunks)
     _stub(

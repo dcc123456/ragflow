@@ -183,6 +183,7 @@ def _load_agent_api_for_rerun(monkeypatch, *, documents_info, accessible):
         get_uuid=lambda: "task-uuid",
         thread_pool_exec=lambda fn, *a, **k: fn(*a, **k),
     )
+    _stub(monkeypatch, "rag.advanced_rag.knowlege_compile.dataset_nav", remove_dataset_nav_doc_sync=lambda *_a, **_k: None)
     _stub(monkeypatch, "common.role_util", CANVAS_API_ACTION_MAP={}, CANVAS_ROLE_RESOURCE_TYPE=SimpleNamespace(), check_role_access=lambda *_a, **_k: lambda func: func)
     _stub(monkeypatch, "peewee", MySQLDatabase=type("MySQLDatabase", (), {}), PostgresqlDatabase=type("PostgresqlDatabase", (), {}))
 
