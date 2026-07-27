@@ -198,7 +198,7 @@ func (fakeChatDocEngine) GetType() string {
 	return "fake"
 }
 func (fakeChatDocEngine) SupportsPageRank() bool { return false }
-func (fakeChatDocEngine) FilterDocIdsByMetaPushdown(context.Context, []string, []map[string]interface{}, string) []string {
+func (fakeChatDocEngine) FilterDocIdsByMetaPushdown(context.Context, *gorm.DB, []string, []map[string]interface{}, string) []string {
 	return nil
 }
 
@@ -609,7 +609,7 @@ func TestDeleteDocumentFull_Basic(t *testing.T) {
 	}
 
 	// Verify KB counters decremented
-	kb, err := dao.NewKnowledgebaseDAO().GetByID("kb-1")
+	kb, err := dao.NewKnowledgebaseDAO().GetByID(ctx, db, "kb-1")
 	if err != nil {
 		t.Fatalf("kb not found: %v", err)
 	}
@@ -658,13 +658,13 @@ func TestDeleteDocumentFull_CleansUpFile2Document(t *testing.T) {
 
 	// Verify f2d mapping deleted
 	f2dDAO := dao.NewFile2DocumentDAO()
-	mappings, _ := f2dDAO.GetByDocumentID("doc-1")
+	mappings, _ := f2dDAO.GetByDocumentID(ctx, db, "doc-1")
 	if len(mappings) != 0 {
 		t.Fatalf("expected 0 f2d mappings, got %d", len(mappings))
 	}
 
 	// Verify file record deleted (hard delete)
-	files, _ := dao.NewFileDAO().GetByIDs([]string{"file-1"})
+	files, _ := dao.NewFileDAO().GetByIDs(ctx, db, []string{"file-1"})
 	if len(files) != 0 {
 		t.Fatalf("expected 0 files, got %d", len(files))
 	}
@@ -696,19 +696,19 @@ func TestDeleteDocumentFull_SharedFilePreserved(t *testing.T) {
 
 	// f2d mapping for doc-1 should be gone
 	f2dDAO := dao.NewFile2DocumentDAO()
-	mappings, _ := f2dDAO.GetByDocumentID("doc-1")
+	mappings, _ := f2dDAO.GetByDocumentID(ctx, db, "doc-1")
 	if len(mappings) != 0 {
 		t.Fatalf("expected 0 f2d mappings for doc-1, got %d", len(mappings))
 	}
 
 	// file record should still exist (doc-2 still references it)
-	files, _ := dao.NewFileDAO().GetByIDs([]string{"file-shared"})
+	files, _ := dao.NewFileDAO().GetByIDs(ctx, db, []string{"file-shared"})
 	if len(files) != 1 {
 		t.Fatalf("expected 1 file record to survive, got %d", len(files))
 	}
 
 	// f2d mapping for doc-2 should still exist
-	mappings, _ = f2dDAO.GetByDocumentID("doc-2")
+	mappings, _ = f2dDAO.GetByDocumentID(ctx, db, "doc-2")
 	if len(mappings) != 1 {
 		t.Fatalf("expected 1 f2d mapping for doc-2, got %d", len(mappings))
 	}
@@ -917,7 +917,7 @@ func TestDeleteDocuments_DeleteAll(t *testing.T) {
 	}
 
 	// KB counters: doc_num 3→0, token_num 100→0, chunk_num 50→0
-	kb, _ := dao.NewKnowledgebaseDAO().GetByID("kb-1")
+	kb, _ := dao.NewKnowledgebaseDAO().GetByID(ctx, db, "kb-1")
 	if kb.DocNum != 0 {
 		t.Fatalf("doc_num: expected 0, got %d", kb.DocNum)
 	}
@@ -1077,7 +1077,7 @@ func TestStartParseDocuments_EnqueuesIngestionTask(t *testing.T) {
 	svc.ingestionTaskSvc.SetTaskPublisher(publisher)
 	ctx := t.Context()
 
-	kb, err := svc.kbDAO.GetByID("kb-1")
+	kb, err := svc.kbDAO.GetByID(ctx, db, "kb-1")
 	if err != nil {
 		t.Fatalf("load kb: %v", err)
 	}
@@ -1105,7 +1105,7 @@ func TestStartParseDocuments_EnqueuesIngestionTask(t *testing.T) {
 		t.Fatal("expected non-empty task id")
 	}
 
-	ingestionTask, err := svc.ingestionTaskDAO.GetByID(msg.TaskID)
+	ingestionTask, err := svc.ingestionTaskDAO.GetByID(ctx, db, msg.TaskID)
 	if err != nil {
 		t.Fatalf("load ingestion task: %v", err)
 	}
@@ -1407,7 +1407,7 @@ func TestDeleteDocRecordWithCounters_Success(t *testing.T) {
 	}
 
 	// Counters decremented
-	kb, _ := dao.NewKnowledgebaseDAO().GetByID("kb-1")
+	kb, _ := dao.NewKnowledgebaseDAO().GetByID(ctx, db, "kb-1")
 	if kb.DocNum != 2 {
 		t.Fatalf("doc_num: expected 2, got %d", kb.DocNum)
 	}
@@ -1441,7 +1441,7 @@ func TestDeleteDocRecordWithCounters_DocAlreadyDeleted(t *testing.T) {
 	}
 
 	// KB counters should be decremented exactly once: 1→0 for doc_num
-	kb, _ := dao.NewKnowledgebaseDAO().GetByID("kb-1")
+	kb, _ := dao.NewKnowledgebaseDAO().GetByID(ctx, db, "kb-1")
 	if kb.DocNum != 0 {
 		t.Fatalf("doc_num: expected 0 (decremented once), got %d", kb.DocNum)
 	}
@@ -1478,7 +1478,8 @@ func TestCleanupFileReferences_NoMappings(t *testing.T) {
 
 	svc := testDocumentService(t)
 	// Should not panic with no f2d mappings
-	svc.cleanupFileReferences("no-mappings")
+	ctx := t.Context()
+	svc.cleanupFileReferences(ctx, "no-mappings")
 }
 
 func TestCleanupFileReferences_SingleFileDeleted(t *testing.T) {
@@ -1490,15 +1491,16 @@ func TestCleanupFileReferences_SingleFileDeleted(t *testing.T) {
 	insertTestFile2Document(t, "f2d-1", "file-1", "doc-1")
 
 	svc := testDocumentService(t)
-	svc.cleanupFileReferences("doc-1")
+	ctx := t.Context()
+	svc.cleanupFileReferences(ctx, "doc-1")
 
 	// f2d gone
-	mappings, _ := dao.NewFile2DocumentDAO().GetByDocumentID("doc-1")
+	mappings, _ := dao.NewFile2DocumentDAO().GetByDocumentID(ctx, db, "doc-1")
 	if len(mappings) != 0 {
 		t.Fatalf("expected 0 f2d after cleanup, got %d", len(mappings))
 	}
 	// file record gone
-	files, _ := dao.NewFileDAO().GetByIDs([]string{"file-1"})
+	files, _ := dao.NewFileDAO().GetByIDs(ctx, db, []string{"file-1"})
 	if len(files) != 0 {
 		t.Fatalf("expected 0 files after cleanup, got %d", len(files))
 	}
@@ -1514,20 +1516,21 @@ func TestCleanupFileReferences_SharedFileSurvives(t *testing.T) {
 	insertTestFile2Document(t, "f2d-2", "file-shared", "doc-2")
 
 	svc := testDocumentService(t)
-	svc.cleanupFileReferences("doc-1")
+	ctx := t.Context()
+	svc.cleanupFileReferences(ctx, "doc-1")
 
 	// f2d for doc-1 gone
-	mappings, _ := dao.NewFile2DocumentDAO().GetByDocumentID("doc-1")
+	mappings, _ := dao.NewFile2DocumentDAO().GetByDocumentID(ctx, db, "doc-1")
 	if len(mappings) != 0 {
 		t.Fatalf("expected 0 f2d for doc-1, got %d", len(mappings))
 	}
 	// file record survives
-	files, _ := dao.NewFileDAO().GetByIDs([]string{"file-shared"})
+	files, _ := dao.NewFileDAO().GetByIDs(ctx, db, []string{"file-shared"})
 	if len(files) != 1 {
 		t.Fatalf("expected 1 file record, got %d", len(files))
 	}
 	// f2d for doc-2 survives
-	mappings, _ = dao.NewFile2DocumentDAO().GetByDocumentID("doc-2")
+	mappings, _ = dao.NewFile2DocumentDAO().GetByDocumentID(ctx, db, "doc-2")
 	if len(mappings) != 1 {
 		t.Fatalf("expected 1 f2d for doc-2, got %d", len(mappings))
 	}
@@ -1715,7 +1718,7 @@ func TestUpdateDatasetDocumentRenameUpdatesDocumentAndFile(t *testing.T) {
 	if doc.Name == nil || *doc.Name != newName {
 		t.Fatalf("document name = %v, want %q", doc.Name, newName)
 	}
-	file, _ := dao.NewFileDAO().GetByID("file-1")
+	file, _ := dao.NewFileDAO().GetByID(ctx, db, "file-1")
 	if file.Name != newName {
 		t.Fatalf("file name = %q, want %q", file.Name, newName)
 	}
@@ -1749,7 +1752,7 @@ func TestUpdateDatasetDocumentParserIDResetsForReparse(t *testing.T) {
 	if doc.TokenNum != 0 || doc.ChunkNum != 0 || doc.Progress != 0 {
 		t.Fatalf("doc counters/progress = token:%d chunk:%d progress:%f, want zero", doc.TokenNum, doc.ChunkNum, doc.Progress)
 	}
-	kb, _ := dao.NewKnowledgebaseDAO().GetByID("kb-1")
+	kb, _ := dao.NewKnowledgebaseDAO().GetByID(ctx, db, "kb-1")
 	if kb.TokenNum != 0 || kb.ChunkNum != 0 {
 		t.Fatalf("kb counters = token:%d chunk:%d, want zero", kb.TokenNum, kb.ChunkNum)
 	}
@@ -1780,7 +1783,7 @@ func TestResetDocumentForReparseSkipsSecondCounterDecrement(t *testing.T) {
 	if doc.TokenNum != 0 || doc.ChunkNum != 0 {
 		t.Fatalf("doc counters = token:%d chunk:%d, want zero", doc.TokenNum, doc.ChunkNum)
 	}
-	kb, _ := dao.NewKnowledgebaseDAO().GetByID("kb-1")
+	kb, _ := dao.NewKnowledgebaseDAO().GetByID(ctx, db, "kb-1")
 	if kb.TokenNum != 0 || kb.ChunkNum != 0 {
 		t.Fatalf("kb counters = token:%d chunk:%d, want zero after duplicate reset", kb.TokenNum, kb.ChunkNum)
 	}
@@ -1803,7 +1806,7 @@ func TestClearDocumentParseResultsClearsCountersTasksAndChunks(t *testing.T) {
 	svc := testDocumentService(t)
 	svc.docEngine = engine
 
-	if err = svc.clearDocumentParseResults(doc, "tenant-1"); err != nil {
+	if err = svc.clearDocumentParseResults(ctx, doc, "tenant-1"); err != nil {
 		t.Fatalf("clearDocumentParseResults failed: %v", err)
 	}
 
@@ -1811,12 +1814,12 @@ func TestClearDocumentParseResultsClearsCountersTasksAndChunks(t *testing.T) {
 	if updatedDoc.TokenNum != 0 || updatedDoc.ChunkNum != 0 {
 		t.Fatalf("doc counters = token:%d chunk:%d, want zero", updatedDoc.TokenNum, updatedDoc.ChunkNum)
 	}
-	kb, _ := dao.NewKnowledgebaseDAO().GetByID("kb-1")
+	kb, _ := dao.NewKnowledgebaseDAO().GetByID(ctx, db, "kb-1")
 	if kb.TokenNum != 0 || kb.ChunkNum != 0 {
 		t.Fatalf("kb counters = token:%d chunk:%d, want zero", kb.TokenNum, kb.ChunkNum)
 	}
 	// The completed ingestion task must be deleted so the new run can proceed.
-	remainingTask, _ := svc.ingestionTaskDAO.GetByDocumentID("doc-1")
+	remainingTask, _ := svc.ingestionTaskDAO.GetByDocumentID(ctx, db, "doc-1")
 	if remainingTask != nil {
 		t.Fatalf("ingestion task should be deleted, status was %q", remainingTask.Status)
 	}
@@ -1841,10 +1844,10 @@ func TestClearDocumentParseResultsIsIdempotentForStaleDocSnapshot(t *testing.T) 
 	}
 
 	svc := testDocumentService(t)
-	if err := svc.clearDocumentParseResults(staleDoc, "tenant-1"); err != nil {
+	if err = svc.clearDocumentParseResults(ctx, staleDoc, "tenant-1"); err != nil {
 		t.Fatalf("first clearDocumentParseResults failed: %v", err)
 	}
-	if err := svc.clearDocumentParseResults(staleDoc, "tenant-1"); err != nil {
+	if err = svc.clearDocumentParseResults(ctx, staleDoc, "tenant-1"); err != nil {
 		t.Fatalf("second clearDocumentParseResults failed: %v", err)
 	}
 
@@ -1852,14 +1855,14 @@ func TestClearDocumentParseResultsIsIdempotentForStaleDocSnapshot(t *testing.T) 
 	if doc.TokenNum != 0 || doc.ChunkNum != 0 {
 		t.Fatalf("doc counters = token:%d chunk:%d, want zero", doc.TokenNum, doc.ChunkNum)
 	}
-	kb, _ := dao.NewKnowledgebaseDAO().GetByID("kb-1")
+	kb, _ := dao.NewKnowledgebaseDAO().GetByID(ctx, db, "kb-1")
 	if kb.TokenNum != 0 || kb.ChunkNum != 0 {
 		t.Fatalf("kb counters = token:%d chunk:%d, want zero after duplicate prepare", kb.TokenNum, kb.ChunkNum)
 	}
 }
 
 // TestClearDocumentParseResults_RejectsNonTerminalIngestionTask verifies
-// that re-parsing is refused while a document's ingestion task is still
+// that reparsing is refused while a document's ingestion task is still
 // RUNNING or STOPPING. Deleting a non-terminal task would let the in-flight
 // worker keep writing chunks and corrupt the new run's results.
 func TestClearDocumentParseResults_RejectsNonTerminalIngestionTask(t *testing.T) {
@@ -1877,11 +1880,11 @@ func TestClearDocumentParseResults_RejectsNonTerminalIngestionTask(t *testing.T)
 			}
 			svc := testDocumentService(t)
 
-			if err := svc.clearDocumentParseResults(doc, "tenant-1"); err == nil {
+			if err = svc.clearDocumentParseResults(ctx, doc, "tenant-1"); err == nil {
 				t.Fatalf("expected error for %s ingestion task, got nil", status)
 			}
 			// The non-terminal task must NOT be deleted.
-			task, _ := svc.ingestionTaskDAO.GetByDocumentID("doc-1")
+			task, _ := svc.ingestionTaskDAO.GetByDocumentID(ctx, db, "doc-1")
 			if task == nil {
 				t.Fatalf("%s ingestion task must not be deleted", status)
 			}
@@ -1907,10 +1910,10 @@ func TestClearDocumentParseResults_DeletesTerminalIngestionTask(t *testing.T) {
 			}
 			svc := testDocumentService(t)
 
-			if err := svc.clearDocumentParseResults(doc, "tenant-1"); err != nil {
+			if err = svc.clearDocumentParseResults(ctx, doc, "tenant-1"); err != nil {
 				t.Fatalf("clearDocumentParseResults for %s task: %v", status, err)
 			}
-			task, _ := svc.ingestionTaskDAO.GetByDocumentID("doc-1")
+			task, _ := svc.ingestionTaskDAO.GetByDocumentID(ctx, db, "doc-1")
 			if task != nil {
 				t.Fatalf("%s ingestion task should be deleted, still present", status)
 			}
@@ -1927,8 +1930,9 @@ func TestAssertIngestionTasksTerminal_RejectsNonTerminal(t *testing.T) {
 	insertTestIngestionTaskWithStatus(t, "task-1", "user-1", "doc-1", "kb-1", common.COMPLETED)
 	insertTestIngestionTaskWithStatus(t, "task-2", "user-1", "doc-2", "kb-1", common.RUNNING)
 
+	ctx := t.Context()
 	svc := testDocumentService(t)
-	if err := svc.AssertIngestionTasksTerminal([]string{"doc-1", "doc-2"}); err == nil {
+	if err := svc.AssertIngestionTasksTerminal(ctx, []string{"doc-1", "doc-2"}); err == nil {
 		t.Fatal("expected error for RUNNING task, got nil")
 	}
 }
@@ -1942,8 +1946,9 @@ func TestAssertIngestionTasksTerminal_AcceptsAllTerminal(t *testing.T) {
 	insertTestIngestionTaskWithStatus(t, "task-1", "user-1", "doc-1", "kb-1", common.COMPLETED)
 	insertTestIngestionTaskWithStatus(t, "task-2", "user-1", "doc-2", "kb-1", common.STOPPED)
 
+	ctx := t.Context()
 	svc := testDocumentService(t)
-	if err := svc.AssertIngestionTasksTerminal([]string{"doc-1", "doc-2"}); err != nil {
+	if err := svc.AssertIngestionTasksTerminal(ctx, []string{"doc-1", "doc-2"}); err != nil {
 		t.Fatalf("expected nil for all-terminal batch, got %v", err)
 	}
 }
@@ -1973,7 +1978,7 @@ func TestIngest_RerunWithDelete_RejectsBatchWithRunningTask(t *testing.T) {
 		t.Fatal("expected error for batch with RUNNING task, got nil")
 	}
 	// doc-1 (terminal) task must NOT be deleted - the whole batch was rejected.
-	task1, _ := svc.ingestionTaskDAO.GetByDocumentID("doc-1")
+	task1, _ := svc.ingestionTaskDAO.GetByDocumentID(ctx, db, "doc-1")
 	if task1 == nil {
 		t.Fatal("doc-1 terminal task should not be deleted when batch is rejected")
 	}
@@ -2781,13 +2786,13 @@ func TestStartParseDocuments_FailsBeforeClearing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get doc: %v", err)
 	}
-	kb, err := dao.NewKnowledgebaseDAO().GetByID("kb-1")
+	kb, err := dao.NewKnowledgebaseDAO().GetByID(ctx, db, "kb-1")
 	if err != nil {
 		t.Fatalf("get kb: %v", err)
 	}
 
 	// Force GetDocumentStorageAddress to fail by clearing the document location.
-	if err := dao.DB.Model(&entity.Document{}).Where("id = ?", "doc-1").Update("location", "").Error; err != nil {
+	if err = dao.DB.Model(&entity.Document{}).Where("id = ?", "doc-1").Update("location", "").Error; err != nil {
 		t.Fatalf("clear location: %v", err)
 	}
 
@@ -2798,7 +2803,7 @@ func TestStartParseDocuments_FailsBeforeClearing(t *testing.T) {
 	}
 
 	// The old ingestion task must still exist — we failed before clearing.
-	remaining, _ := svc.ingestionTaskDAO.GetByDocumentID("doc-1")
+	remaining, _ := svc.ingestionTaskDAO.GetByDocumentID(ctx, db, "doc-1")
 	if remaining == nil {
 		t.Fatal("ingestion task should NOT be deleted when storage validation fails")
 	}
@@ -2828,7 +2833,7 @@ func TestIngest_CancelDoesNotDeleteIngestionTask(t *testing.T) {
 	}
 
 	// The ingestion task must NOT be deleted — cancel only stops it.
-	remaining, _ := svc.ingestionTaskDAO.GetByDocumentID("doc-1")
+	remaining, _ := svc.ingestionTaskDAO.GetByDocumentID(ctx, db, "doc-1")
 	if remaining == nil {
 		t.Fatal("ingestion task must NOT be deleted by cancel")
 	}
@@ -2887,7 +2892,7 @@ func TestFileDeleteRemovesLinkedDocument(t *testing.T) {
 
 	docSvc := testDocumentService(t)
 	fileSvc := file.NewFileService(
-		func(_ *dao.FileDAO, _ *entity.File, _ string) bool { return true },
+		func(_ context.Context, _ *dao.FileDAO, _ *entity.File, _ string) bool { return true },
 		docSvc,
 	)
 

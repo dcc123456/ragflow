@@ -20,7 +20,7 @@ import (
 )
 
 func (s *DocumentService) BatchUpdateDocumentStatus(ctx context.Context, userID, datasetID, status string, documentIDs []string) (map[string]interface{}, common.ErrorCode, error) {
-	kb, err := s.kbDAO.GetByIDAndTenantID(datasetID, userID)
+	kb, err := s.kbDAO.GetByIDAndTenantID(ctx, dao.DB, datasetID, userID)
 	if err != nil {
 		return nil, common.CodeDataError, fmt.Errorf("You don't own the dataset.")
 	}
@@ -110,7 +110,7 @@ func (s *DocumentService) BatchUpdateDocumentStatus(ctx context.Context, userID,
 
 func (s *DocumentService) UpdateDatasetDocument(ctx context.Context, userID, datasetID, documentID string, req *UpdateDatasetDocumentRequest, present map[string]bool) (*UpdateDatasetDocumentResponse, common.ErrorCode, error) {
 	tenantID := userID
-	kb, err := s.kbDAO.GetByIDAndTenantID(datasetID, tenantID)
+	kb, err := s.kbDAO.GetByIDAndTenantID(ctx, dao.DB, datasetID, tenantID)
 	if err != nil {
 		if dao.IsNotFoundErr(err) {
 			return nil, common.CodeDataError, errors.New("You don't own the dataset.")
@@ -347,9 +347,12 @@ func (s *DocumentService) updateDocumentNameOnly(ctx context.Context, doc *entit
 		return errors.New("database error (Document rename)")
 	}
 
-	mappings, err := s.file2DocumentDAO.GetByDocumentID(doc.ID)
+	mappings, err := s.file2DocumentDAO.GetByDocumentID(ctx, dao.DB, doc.ID)
 	if err == nil && len(mappings) > 0 && mappings[0].FileID != nil && s.fileDAO != nil {
-		_ = s.fileDAO.UpdateByID(*mappings[0].FileID, map[string]interface{}{"name": newName})
+		err = s.fileDAO.UpdateByID(ctx, dao.DB, *mappings[0].FileID, map[string]interface{}{"name": newName})
+		if err != nil {
+			return fmt.Errorf("file rename failed after document rename: %w", err)
+		}
 	}
 
 	if s.docEngine == nil {
