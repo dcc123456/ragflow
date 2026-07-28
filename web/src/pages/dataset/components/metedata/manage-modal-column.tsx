@@ -343,19 +343,20 @@ export const useMetadataColumns = ({
                   </div>
                 </Button>
               )}
-              {hasMore && isRowExpanded && (
-                // <div className="self-end mt-1">
-                <Button
-                  variant={'ghost'}
-                  className="bg-transparent px-2 py-1"
-                  onClick={handleToggleExpand}
-                >
-                  <div className="text-text-secondary">
-                    <ListChevronsDownUp size={14} />
-                  </div>
-                </Button>
-                // </div>
-              )}
+              {hasMore &&
+                isRowExpanded && (
+                  // <div className="self-end mt-1">
+                  <Button
+                    variant={'ghost'}
+                    className="bg-transparent px-2 py-1"
+                    onClick={handleToggleExpand}
+                  >
+                    <div className="text-text-secondary">
+                      <ListChevronsDownUp size={14} />
+                    </div>
+                  </Button>
+                  // </div>
+                )}
             </div>
           );
         },

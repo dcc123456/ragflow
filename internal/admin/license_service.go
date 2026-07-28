@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"context"
 	"crypto/md5"
 	"crypto/rand"
 	"crypto/rsa"
@@ -23,12 +24,12 @@ import (
 	"gorm.io/gorm"
 )
 
-func InitLicense() error {
+func InitLicense(ctx context.Context) error {
 
 	var license *utility.License = nil
 	// Check if license can be read from database
 	licenseDAO := dao.NewLicenseDAO()
-	licenseRecord, err := licenseDAO.GetLatest()
+	licenseRecord, err := licenseDAO.GetLatest(ctx, dao.DB)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			collector := utility.NewFingerprintCollector(true)
@@ -69,7 +70,7 @@ func InitLicense() error {
 				return err2
 			}
 
-			err2 = licenseDAO.Create(license.LicenseID, encryptedData)
+			err2 = licenseDAO.Create(ctx, dao.DB, license.LicenseID, encryptedData)
 			if err2 != nil {
 				common.Fatal(fmt.Sprintf("Error storing license: %v", err))
 				return err2
@@ -87,7 +88,7 @@ func InitLicense() error {
 
 	// Set to global status
 	SetMemLicense(license)
-	err = InitFirstTimeRecord()
+	err = InitFirstTimeRecord(ctx)
 	if err != nil {
 		common.Fatal("Error initializing first time record: %v", zap.Error(err))
 	}
@@ -176,7 +177,7 @@ func (s *Service) SetLicenseConfig(timeRecordSaveInterval int64, timeRecordTaskD
 }
 
 // SetLicense to set system license
-func (s *Service) SetLicense(licenseStr string) (map[string]interface{}, error) {
+func (s *Service) SetLicense(ctx context.Context, licenseStr string) (map[string]interface{}, error) {
 	// Verify license
 	license, result, err := extractLicense(licenseStr)
 	if err != nil {
@@ -191,20 +192,20 @@ func (s *Service) SetLicense(licenseStr string) (map[string]interface{}, error) 
 	}
 
 	// Store license to database
-	err = s.licenseDAO.Create(license.LicenseID, licenseStr)
+	err = s.licenseDAO.Create(ctx, dao.DB, license.LicenseID, licenseStr)
 	if err != nil {
 		common.Warn("Error storing license: ", zap.Error(err))
 		return nil, err
 	}
 
-	err = s.timeRecordDAO.DeleteAll()
+	err = s.timeRecordDAO.DeleteAll(ctx, dao.DB)
 	if err != nil {
 		common.Warn("Error deleting time records: ", zap.Error(err))
 		return nil, err
 	}
 
 	SetMemLicense(license)
-	err = InitFirstTimeRecord()
+	err = InitFirstTimeRecord(ctx)
 	if err != nil {
 		common.Fatal("Error initializing first time record: %v", zap.Error(err))
 	}
@@ -213,13 +214,13 @@ func (s *Service) SetLicense(licenseStr string) (map[string]interface{}, error) 
 	return result, nil
 }
 
-func (s *Service) ShowLicense() (map[string]interface{}, error) {
+func (s *Service) ShowLicense(ctx context.Context) (map[string]interface{}, error) {
 	licenseStatus := GetLicenseStatus()
 	if licenseStatus.CurrentLicense == nil {
 		return nil, fmt.Errorf("License is not ready")
 	}
 	// read license from database
-	license, err := s.licenseDAO.GetLatest()
+	license, err := s.licenseDAO.GetLatest(ctx, dao.DB)
 	if err != nil {
 		common.Warn("Error reading license: ", zap.Error(err))
 		return nil, err
@@ -234,7 +235,7 @@ func (s *Service) ShowLicense() (map[string]interface{}, error) {
 	return result, nil
 }
 
-func (s *Service) CheckLicense() (common.ErrorCode, error) {
+func (s *Service) CheckLicense(ctx context.Context) (common.ErrorCode, error) {
 	licenseStatus := GetLicenseStatus()
 	var licenseCheckResult string
 	if licenseStatus.CurrentLicense == nil {
@@ -247,7 +248,7 @@ func (s *Service) CheckLicense() (common.ErrorCode, error) {
 	}
 
 	currentLicense := licenseStatus.CurrentLicense
-	lastRecord, err := GetLastTimeRecord()
+	lastRecord, err := GetLastTimeRecord(ctx)
 	if err != nil {
 		common.Warn(fmt.Sprintf("Fail to get last time record: %v", err))
 		return common.CodeLicenseUnexpectedError, err
@@ -408,7 +409,7 @@ type TimeRecord struct {
 	CheckCount int    `json:"c"`
 }
 
-func SaveTimeRecord(lastData *TimeRecord) error {
+func SaveTimeRecord(ctx context.Context, lastData *TimeRecord) error {
 	var lastCheckCount int = 0
 
 	if lastData != nil {
@@ -435,7 +436,7 @@ func SaveTimeRecord(lastData *TimeRecord) error {
 	// 5. insert new record
 	var timeRecordDao *dao.TimeRecordDAO
 	timeRecordDao = dao.NewTimeRecordDAO()
-	err = timeRecordDao.Create(&entity.TimeRecord{
+	err = timeRecordDao.Create(ctx, dao.DB, &entity.TimeRecord{
 		Data:      encrypted,
 		CreatedAt: time.Now(),
 	})
@@ -446,10 +447,10 @@ func SaveTimeRecord(lastData *TimeRecord) error {
 }
 
 // GetLastTime get last time record
-func GetLastTimeRecord() (*TimeRecord, error) {
+func GetLastTimeRecord(ctx context.Context) (*TimeRecord, error) {
 	var timeRecordDao *dao.TimeRecordDAO
 	timeRecordDao = dao.NewTimeRecordDAO()
-	timeRecords, err := timeRecordDao.GetRecent(1)
+	timeRecords, err := timeRecordDao.GetRecent(ctx, dao.DB, 1)
 	if err != nil {
 		return nil, err
 	}
@@ -464,10 +465,10 @@ func GetLastTimeRecord() (*TimeRecord, error) {
 }
 
 // GetAllTimes Get all time records
-func GetAllTimeRecords() ([]*TimeRecord, error) {
+func GetAllTimeRecords(ctx context.Context) ([]*TimeRecord, error) {
 	var timeRecordDao *dao.TimeRecordDAO
 	timeRecordDao = dao.NewTimeRecordDAO()
-	timeRecords, err := timeRecordDao.GetAll()
+	timeRecords, err := timeRecordDao.GetAll(ctx, dao.DB)
 	if err != nil {
 		return nil, err
 	}
@@ -524,20 +525,20 @@ func DecryptTimeRecord(encrypted string) (*TimeRecord, error) {
 }
 
 // CleanOldRecords time records one year ago
-func CleanOldRecords() error {
+func CleanOldRecords(ctx context.Context) error {
 	var timeRecordDao *dao.TimeRecordDAO
 	timeRecordDao = dao.NewTimeRecordDAO()
-	err := timeRecordDao.DeleteOldest(365 * 24)
+	err := timeRecordDao.DeleteOldest(ctx, dao.DB, 365*24)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func InitFirstTimeRecord() error {
-	_, err := GetLastTimeRecord()
+func InitFirstTimeRecord(ctx context.Context) error {
+	_, err := GetLastTimeRecord(ctx)
 	if errors.Is(err, sql.ErrNoRows) {
-		err = SaveTimeRecord(nil)
+		err = SaveTimeRecord(ctx, nil)
 		if err != nil {
 			return err
 		}
@@ -548,7 +549,8 @@ func InitFirstTimeRecord() error {
 func StartTimeRecordService(interval time.Duration) error {
 	common.Debug("Try to update time record")
 	// Get last time
-	lastData, err := GetLastTimeRecord()
+	ctx := context.Background()
+	lastData, err := GetLastTimeRecord(ctx)
 	if err != nil {
 		common.Fatal(fmt.Sprintf("Fail to get last time record: %v", err))
 		return err
@@ -585,6 +587,6 @@ func StartTimeRecordService(interval time.Duration) error {
 		return nil
 	}
 
-	err = SaveTimeRecord(lastData)
+	err = SaveTimeRecord(ctx, lastData)
 	return err
 }

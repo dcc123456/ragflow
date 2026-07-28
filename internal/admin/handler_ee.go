@@ -2017,7 +2017,7 @@ func (h *Handler) SetLicense(c *gin.Context) {
 		return
 	}
 
-	license, err := h.service.SetLicense(req.License)
+	license, err := h.service.SetLicense(c.Request.Context(), req.License)
 	if err != nil {
 		common.ErrorWithCode(c, 400, err.Error())
 		return
@@ -2051,13 +2051,13 @@ func (h *Handler) ShowLicense(c *gin.Context) {
 	checkParam := c.Query("check")
 	if checkParam == "true" {
 		// GET /admin/license?check=true
-		errorCode, err := h.service.CheckLicense()
+		errorCode, err := h.service.CheckLicense(c.Request.Context())
 		common.ResponseWithCodeData(c, errorCode, err.Error(), "")
 		return
 	}
 
 	// GET /admin/license
-	license, err := h.service.ShowLicense()
+	license, err := h.service.ShowLicense(c.Request.Context())
 	if err != nil {
 		common.ErrorWithCode(c, 400, err.Error())
 		return

@@ -70,7 +70,7 @@ export default function MemoryMessage() {
     <section className="h-full flex flex-col">
       <TopTitle
         title={t('knowledgeDetails.configuration')}
-        description={t('knowledgeConfiguration.titleDescription')}
+        description={t('memory.config.titleDescription')}
       ></TopTitle>
       <div className="flex gap-14 flex-1 min-h-0">
         <MemorySettingProvider data={data}>
