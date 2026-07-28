@@ -17,6 +17,7 @@
 package service
 
 import (
+	"context"
 	"ragflow/internal/dao"
 	"ragflow/internal/entity"
 )
@@ -39,18 +40,18 @@ func NewLicenseService() *LicenseService {
 }
 
 // InsertWithCleanup inserts data and automatically deletes old records if count exceeds MaxTimeRecords
-func (s *LicenseService) InsertWithCleanup(encryptedData string) (*entity.TimeRecord, error) {
+func (s *LicenseService) InsertWithCleanup(ctx context.Context, encryptedData string) (*entity.TimeRecord, error) {
 	record := &entity.TimeRecord{
 		Data: encryptedData,
 	}
 
 	// Insert new record
-	if err := s.timeRecordDAO.Create(record); err != nil {
+	if err := s.timeRecordDAO.Create(ctx, dao.DB, record); err != nil {
 		return nil, err
 	}
 
 	// Cleanup old records if exceeds limit
-	if err := s.CleanupOldRecords(); err != nil {
+	if err := s.CleanupOldRecords(ctx); err != nil {
 		// Log the error but don't fail the insert
 		// The record is already inserted, cleanup can be retried later
 		return record, err
@@ -60,9 +61,9 @@ func (s *LicenseService) InsertWithCleanup(encryptedData string) (*entity.TimeRe
 }
 
 // CleanupOldRecords removes old records, keeping only the latest MaxTimeRecords rows
-func (s *LicenseService) CleanupOldRecords() error {
+func (s *LicenseService) CleanupOldRecords(ctx context.Context) error {
 	// Get current total count
-	count, err := s.timeRecordDAO.GetCount()
+	count, err := s.timeRecordDAO.GetCount(ctx, dao.DB)
 	if err != nil {
 		return err
 	}
@@ -71,23 +72,23 @@ func (s *LicenseService) CleanupOldRecords() error {
 	if count > MaxTimeRecords {
 		// Calculate how many records to delete
 		toDelete := count - MaxTimeRecords
-		return s.timeRecordDAO.DeleteOldest(toDelete)
+		return s.timeRecordDAO.DeleteOldest(ctx, dao.DB, toDelete)
 	}
 
 	return nil
 }
 
 // GetRecent retrieves the most recently inserted records
-func (s *LicenseService) GetRecent(limit int) ([]*entity.TimeRecord, error) {
-	return s.timeRecordDAO.GetRecent(limit)
+func (s *LicenseService) GetRecent(ctx context.Context, limit int) ([]*entity.TimeRecord, error) {
+	return s.timeRecordDAO.GetRecent(ctx, dao.DB, limit)
 }
 
 // GetCount returns the total number of records
-func (s *LicenseService) GetCount() (int64, error) {
-	return s.timeRecordDAO.GetCount()
+func (s *LicenseService) GetCount(ctx context.Context) (int64, error) {
+	return s.timeRecordDAO.GetCount(ctx, dao.DB)
 }
 
 // GetByID retrieves a single record by its ID
-func (s *LicenseService) GetByID(id int64) (*entity.TimeRecord, error) {
-	return s.timeRecordDAO.GetByID(id)
+func (s *LicenseService) GetByID(ctx context.Context, id int64) (*entity.TimeRecord, error) {
+	return s.timeRecordDAO.GetByID(ctx, dao.DB, id)
 }
