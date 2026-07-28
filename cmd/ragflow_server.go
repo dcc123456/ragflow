@@ -391,7 +391,7 @@ func main() {
 			os.Exit(1)
 		}
 	case "admin":
-		if err = runAdmin(arguments); err != nil {
+		if err = runAdmin(ctx, arguments); err != nil {
 			fmt.Printf("Failed to start ADMIN server: %v\n", err)
 			os.Exit(1)
 		}
@@ -411,7 +411,7 @@ func main() {
 	}
 }
 
-func runAdmin(args *serverArgs) error {
+func runAdmin(ctx context.Context, args *serverArgs) error {
 
 	// Create HTTP server
 	config := server.GetConfig()
@@ -426,7 +426,7 @@ func runAdmin(args *serverArgs) error {
 	adminService := admin.NewService()
 	adminHandler := admin.NewHandler(adminService)
 
-	if err := admin.InitLicense(); err != nil {
+	if err := admin.InitLicense(ctx); err != nil {
 		common.Warn("Failed to initialize license", zap.Error(err))
 	}
 

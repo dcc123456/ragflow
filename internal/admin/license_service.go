@@ -24,9 +24,8 @@ import (
 	"gorm.io/gorm"
 )
 
-func InitLicense() error {
+func InitLicense(ctx context.Context) error {
 
-	ctx := context.Background()
 	var license *utility.License = nil
 	// Check if license can be read from database
 	licenseDAO := dao.NewLicenseDAO()
