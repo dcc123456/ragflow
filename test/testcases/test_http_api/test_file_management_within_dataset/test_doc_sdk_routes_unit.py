@@ -1418,7 +1418,7 @@ class TestDocRoutesUnit:
         )
         monkeypatch.setattr(module.KnowledgebaseService, "get_by_id", lambda _id: (False, None))
         res = _run(module.retrieval_test("tenant-1"))
-        assert "Dataset not found!" in res["message"]
+        assert "dataset not found!" in res["message"]
 
         feature_calls = {"cross": None, "keyword": None, "retrieval_question": None}
 

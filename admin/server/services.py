@@ -618,6 +618,11 @@ class SandboxMgr:
             "description": "E2B Cloud - Code Execution Sandboxes",
             "tags": ["saas", "fast", "global"],
         },
+        "tenki": {
+            "name": "Tenki",
+            "description": "Tenki - Disposable microVM code sandboxes",
+            "tags": ["saas", "cloud", "microvm", "isolated"],
+        },
     }
 
     @staticmethod
@@ -637,6 +642,7 @@ class SandboxMgr:
             SSHProvider,
             AliyunCodeInterpreterProvider,
             E2BProvider,
+            TenkiProvider,
         )
 
         schemas = {
@@ -645,6 +651,7 @@ class SandboxMgr:
             "ssh": SSHProvider.get_config_schema(),
             "aliyun_codeinterpreter": AliyunCodeInterpreterProvider.get_config_schema(),
             "e2b": E2BProvider.get_config_schema(),
+            "tenki": TenkiProvider.get_config_schema(),
         }
 
         if provider_id not in schemas:
@@ -710,6 +717,7 @@ class SandboxMgr:
             SSHProvider,
             AliyunCodeInterpreterProvider,
             E2BProvider,
+            TenkiProvider,
         )
 
         try:
@@ -754,6 +762,7 @@ class SandboxMgr:
                 "ssh": SSHProvider,
                 "aliyun_codeinterpreter": AliyunCodeInterpreterProvider,
                 "e2b": E2BProvider,
+                "tenki": TenkiProvider,
             }
             provider = provider_classes[provider_type]()
             is_valid, error_msg = provider.validate_config(config)
@@ -801,6 +810,7 @@ class SandboxMgr:
                 SSHProvider,
                 AliyunCodeInterpreterProvider,
                 E2BProvider,
+                TenkiProvider,
             )
 
             # Instantiate provider based on type
@@ -810,6 +820,7 @@ class SandboxMgr:
                 "ssh": SSHProvider,
                 "aliyun_codeinterpreter": AliyunCodeInterpreterProvider,
                 "e2b": E2BProvider,
+                "tenki": TenkiProvider,
             }
 
             if provider_type not in provider_classes:

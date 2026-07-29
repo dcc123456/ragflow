@@ -379,7 +379,7 @@ async def retrieval_test(tenant_id):
         tenant_ids = list(set([kb.tenant_id for kb in kbs]))
         e, kb = KnowledgebaseService.get_by_id(kb_ids[0])
         if not e:
-            return get_error_data_result(message="Dataset not found!")
+            return get_error_data_result(message="dataset not found!")
         embd_model_config = resolve_model_config(kb.tenant_id, LLMType.EMBEDDING, kb.embd_id)
         embd_mdl = LLMBundle(kb.tenant_id, embd_model_config)
 

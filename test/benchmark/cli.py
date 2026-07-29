@@ -336,7 +336,7 @@ def _maybe_upload_and_parse(
 def _ensure_dataset_has_chunks(client: HttpClient, dataset_id: str) -> None:
     datasets = list_datasets(client, dataset_id=dataset_id)
     if not datasets:
-        raise DatasetError("Dataset not found")
+        raise DatasetError("dataset not found")
     if not dataset_has_chunks(datasets[0]):
         raise DatasetError("Dataset has no parsed chunks; upload and parse documents first.")
 

@@ -948,7 +948,7 @@ def test_get_chat_returns_auth_error_for_missing_chat_when_user_has_tenants(monk
     res = _run(module.get_chat(chat_id="missing-chat"))
 
     assert res["code"] == module.RetCode.AUTHENTICATION_ERROR
-    assert res["message"] == "No authorization."
+    assert res["message"] == "no authorization"
 
 
 @pytest.mark.p2
@@ -1117,7 +1117,7 @@ def test_chat_session_create_and_update_guard_matrix_unit(monkeypatch):
 
     _set_json_request_context(module, {"name": ""}, method="PUT")
     res = _run(module.update_session("chat-1", "session-1"))
-    assert "`name` can not be empty." in res["message"]
+    assert "`name` can not be empty" in res["message"]
 
     _set_json_request_context(module, {"name": "renamed"}, method="PUT")
     monkeypatch.setattr(module.ConversationService, "update_by_id", lambda *_args, **_kwargs: False)

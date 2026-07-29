@@ -12,7 +12,7 @@ import { AgentCategory } from '@/constants/agent';
 import { useNavigatePage } from '@/hooks/logic-hooks/navigate-hooks';
 import { useRef, useState } from 'react';
 import { AgentListItemType, IFlow } from '@/interfaces/database/agent';
-import { LucideIcon, Network, Route, Shapes } from 'lucide-react';
+import { CanvasCategoryToFlowType, FlowType, FlowTypeConfig } from './constant';
 import { AgentDropdown } from './agent-dropdown';
 import { useRenameAgent } from './use-rename-agent';
 
@@ -22,24 +22,23 @@ export type DatasetCardProps = {
     showPrivilegeModal(): void;
   };
 
-const CanvasCategoryIconMap: Record<string, LucideIcon> = {
-  [AgentCategory.AgentCanvas]: Network,
-  [AgentCategory.DataflowCanvas]: Route,
-};
-
 function AgentTypeIcon({
   data,
 }: {
   data: IFlow & { type?: AgentListItemType };
 }) {
-  const Icon =
+  const flowType =
     data.type === AgentListItemType.CompilationTemplateGroup
-      ? Shapes
-      : CanvasCategoryIconMap[data.canvas_category];
+      ? FlowType.Compiler
+      : CanvasCategoryToFlowType[data.canvas_category ?? ''];
 
-  if (!Icon) {
+  const icon = flowType ? FlowTypeConfig[flowType].icon : null;
+
+  if (!icon) {
     return null;
   }
+
+  const Icon = icon;
 
   return (
     <Button variant={'ghost'} size={'sm'}>

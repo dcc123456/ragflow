@@ -1000,7 +1000,7 @@ def test_chat_session_create_and_update_guard_matrix_unit(monkeypatch):
 
     _set_route_unit_request_json(monkeypatch, module, {"name": ""})
     res = _run(module.update_session.__wrapped__("chat-1", "session-1"))
-    assert "`name` can not be empty." in res["message"]
+    assert "`name` can not be empty" in res["message"]
 
     _set_route_unit_request_json(monkeypatch, module, {"name": "renamed"})
     monkeypatch.setattr(module.ConversationService, "update_by_id", lambda *_args, **_kwargs: False)

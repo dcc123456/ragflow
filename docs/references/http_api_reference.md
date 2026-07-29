@@ -3314,7 +3314,7 @@ Failure:
 ```json
 {
     "code": 102,
-    "message": "No authorization."
+    "message": "no authorization"
 }
 ```
 
@@ -3371,7 +3371,7 @@ Failure:
 ```json
 {
     "code": 102,
-    "message": "No authorization."
+    "message": "no authorization"
 }
 ```
 
@@ -3419,7 +3419,7 @@ Failure:
 ```json
 {
     "code": 102,
-    "message": "No authorization."
+    "message": "no authorization"
 }
 ```
 
@@ -3681,7 +3681,7 @@ Failure:
 ```json
 {
     "code": 102,
-    "message": "`name` can not be empty."
+    "message": "`name` can not be empty"
 }
 ```
 
@@ -3760,7 +3760,7 @@ Failure:
 ```json
 {
     "code": 102,
-    "message": "`name` can not be empty."
+    "message": "`name` can not be empty"
 }
 ```
 
@@ -8517,7 +8517,7 @@ Failure:
 ```json
 {
     "code": 109,
-    "message": "No authorization."
+    "message": "no authorization"
 }
 ```
 
@@ -8565,7 +8565,7 @@ Failure:
 ```json
 {
     "code": 109,
-    "message": "No authorization."
+    "message": "no authorization"
 }
 ```
 
@@ -8624,6 +8624,6 @@ Failure:
 ```json
 {
     "code": 109,
-    "message": "No authorization."
+    "message": "no authorization"
 }
 ```

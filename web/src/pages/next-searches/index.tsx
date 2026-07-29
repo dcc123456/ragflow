@@ -7,6 +7,7 @@ import { RenameDialog } from '@/components/rename-dialog';
 import { Button } from '@/components/ui/button';
 import { RAGFlowPagination } from '@/components/ui/ragflow-pagination';
 import { useTranslate } from '@/hooks/common-hooks';
+import { useGoToPreviousPageOnEmpty } from '@/hooks/logic-hooks';
 import { buildOwnersFilter } from '@/utils/list-filter-util';
 import { pick } from 'lodash';
 import { Plus } from 'lucide-react';
@@ -23,6 +24,7 @@ export default function SearchList() {
   // const [isEdit, setIsEdit] = useState(false);
   const {
     data: list,
+    isLoading,
     pagination,
     searchString,
     handleInputChange,
@@ -67,6 +69,7 @@ export default function SearchList() {
     },
     [setPagination],
   );
+  useGoToPreviousPageOnEmpty(list?.data?.search_apps?.length, isLoading);
 
   const [searchUrl, setSearchUrl] = useSearchParams();
   const isCreate = searchUrl.get('isCreate') === 'true';

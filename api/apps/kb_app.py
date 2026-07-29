@@ -122,7 +122,7 @@ async def update():
     if not isinstance(update_dict["name"], str):
         return get_data_error_result(message="Dataset name must be string.")
     if update_dict["name"].strip() == "":
-        return get_data_error_result(message="Dataset name can't be empty.")
+        return get_data_error_result(message="dataset name can't be empty")
     if len(update_dict["name"].encode("utf-8")) > DATASET_NAME_LIMIT:
         return get_data_error_result(
             message=f"Dataset name length is {len(update_dict['name'])} which is large than {DATASET_NAME_LIMIT}")
@@ -147,7 +147,7 @@ async def update():
     if not KnowledgebaseService.accessible4deletion(update_dict["kb_id"], current_user.id):
         return get_json_result(
             data=False,
-            message='No authorization.',
+            message='no authorization',
             code=RetCode.AUTHENTICATION_ERROR
         )
     try:
@@ -367,7 +367,7 @@ async def rm():
     if not KnowledgebaseService.accessible4deletion(req["kb_id"], uid):
         return get_json_result(
             data=False,
-            message='No authorization.',
+            message='no authorization',
             code=RetCode.AUTHENTICATION_ERROR
         )
     operator = UserTenantService.filter_by_tenant_and_user_id(current_user.id, current_user.id)
@@ -428,7 +428,7 @@ async def rm():
 @check_kb_permission(permission=PermissionValue.PERMISSION_READ)
 def list_tags(kb_id):
     if not KnowledgebaseService.accessible(kb_id, current_user.id):
-        return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
+        return get_json_result(data=False, message="no authorization", code=RetCode.AUTHENTICATION_ERROR)
 
     tenants = UserTenantService.get_tenants_by_user_id(current_user.id)
     tags = []
@@ -467,7 +467,7 @@ def list_tags_from_kbs():
 async def rm_tags(kb_id):
     req = await get_request_json()
     if not KnowledgebaseService.accessible(kb_id, current_user.id):
-        return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
+        return get_json_result(data=False, message="no authorization", code=RetCode.AUTHENTICATION_ERROR)
     e, kb = KnowledgebaseService.get_by_id(kb_id)
 
     for t in req["tags"]:
@@ -499,7 +499,7 @@ async def knowledge_graph(kb_id):
     if not KnowledgebaseService.accessible(kb_id, current_user.id):
         return get_json_result(
             data=False,
-            message='No authorization.',
+            message='no authorization',
             code=RetCode.AUTHENTICATION_ERROR
         )
     _, kb = KnowledgebaseService.get_by_id(kb_id)
@@ -537,7 +537,7 @@ def delete_knowledge_graph(kb_id):
     if not KnowledgebaseService.accessible(kb_id, current_user.id):
         return get_json_result(
             data=False,
-            message='No authorization.',
+            message='no authorization',
             code=RetCode.AUTHENTICATION_ERROR
         )
     _, kb = KnowledgebaseService.get_by_id(kb_id)
@@ -554,7 +554,7 @@ def get_meta():
     kb_ids = request.args.get("kb_ids", "").split(",")
     for kb_id in kb_ids:
         if not KnowledgebaseService.accessible(kb_id, current_user.id):
-            return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
+            return get_json_result(data=False, message="no authorization", code=RetCode.AUTHENTICATION_ERROR)
     return get_json_result(data=DocMetadataService.get_flatted_meta_by_kbs(kb_ids))
 
 
@@ -564,7 +564,7 @@ def get_meta():
 def get_basic_info():
     kb_id = request.args.get("kb_id", "")
     if not KnowledgebaseService.accessible(kb_id, current_user.id):
-        return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
+        return get_json_result(data=False, message="no authorization", code=RetCode.AUTHENTICATION_ERROR)
 
     basic_info = DocumentService.knowledgebase_basic_info(kb_id)
 

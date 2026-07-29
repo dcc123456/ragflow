@@ -528,7 +528,7 @@ func (s *Service) ShowUserDatasetSummary(ctx context.Context, email, dataset str
 }
 
 // ShowUserSummary show user summary for enterprise edition
-func (s *Service) ShowUserSummary(email string) (map[string]interface{}, error) {
+func (s *Service) ShowUserSummary(ctx context.Context, email string) (map[string]interface{}, error) {
 	// Query user by email
 	var user entity.User
 	err := dao.DB.Where("email = ?", email).First(&user).Error
@@ -536,7 +536,7 @@ func (s *Service) ShowUserSummary(email string) (map[string]interface{}, error) 
 		return nil, common.ErrUserNotFound
 	}
 
-	tenantIDs, err := s.userTenantDAO.GetTenantIDsByUserID(user.ID)
+	tenantIDs, err := s.userTenantDAO.GetTenantIDsByUserID(ctx, dao.DB, user.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get tenant IDs: %w", err)
 	}
@@ -689,14 +689,14 @@ func (s *Service) ShowUserStorage(email string) (map[string]interface{}, error) 
 }
 
 // ShowUserQuota show user quota for enterprise edition
-func (s *Service) ShowUserQuota(email string) (map[string]interface{}, error) {
+func (s *Service) ShowUserQuota(ctx context.Context, email string) (map[string]interface{}, error) {
 	// Query user by email
 	var user entity.User
 	err := dao.DB.Where("email = ?", email).First(&user).Error
 	if err != nil {
 		return nil, common.ErrUserNotFound
 	}
-	tenantIDs, err := s.userTenantDAO.GetTenantIDsByUserID(user.ID)
+	tenantIDs, err := s.userTenantDAO.GetTenantIDsByUserID(ctx, dao.DB, user.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get tenant IDs: %w", err)
 	}
@@ -1252,7 +1252,7 @@ func (s *Service) listUsersInactiveByPlan(days int) ([]map[string]interface{}, e
 	return result, nil
 }
 
-func (s *Service) ListUsersEE(pageIndex, pageSize int, name string, status, role, sort, orderBy, plan string, top, days int, quota *int) ([]map[string]interface{}, error) {
+func (s *Service) ListUsersEE(ctx context.Context, pageIndex, pageSize int, name string, status, role, sort, orderBy, plan string, top, days int, quota *int) ([]map[string]interface{}, error) {
 	if status != "" && strings.EqualFold(status, "inactive") {
 		daysVal := 90
 		if days > 0 {
@@ -1319,7 +1319,7 @@ func (s *Service) ListUsersEE(pageIndex, pageSize int, name string, status, role
 
 	// No special filter matched: fall back to the standard paginated user list
 	// (same behavior as the open-source version for plain "LIST USERS").
-	return s.ListUsers(pageIndex, pageSize, name, status, sort, orderBy)
+	return s.ListUsers(ctx, pageIndex, pageSize, name, status, sort, orderBy)
 }
 
 // ListUsersReports list users reports for enterprise edition
@@ -2171,9 +2171,9 @@ func (s *Service) PurgeUsersData(preview bool, days int, userPlan *string, userA
 }
 
 // GenerateUserAPIKey create tenant API key for tenant
-func (s *Service) GenerateUserAPIKey(username string) (map[string]interface{}, error) {
+func (s *Service) GenerateUserAPIKey(ctx context.Context, username string) (map[string]interface{}, error) {
 
-	user, err := s.userDAO.GetByEmail(username)
+	user, err := s.userDAO.GetByEmail(ctx, dao.DB, username)
 	if err != nil {
 		return nil, fmt.Errorf("user not found: %w", err)
 	}
@@ -2189,9 +2189,9 @@ func (s *Service) GenerateUserAPIKey(username string) (map[string]interface{}, e
 }
 
 // DeleteUserAPIKey delete user API key
-func (s *Service) DeleteUserAPIKey(username, key string) (map[string]interface{}, error) {
+func (s *Service) DeleteUserAPIKey(ctx context.Context, username, key string) (map[string]interface{}, error) {
 
-	user, err := s.userDAO.GetByEmail(username)
+	user, err := s.userDAO.GetByEmail(ctx, dao.DB, username)
 	if err != nil {
 		return nil, fmt.Errorf("user not found: %w", err)
 	}
@@ -2208,9 +2208,9 @@ func (s *Service) DeleteUserAPIKey(username, key string) (map[string]interface{}
 }
 
 // ListUserAPIKeys list user API keys
-func (s *Service) ListUserAPIKeys(username string) ([]map[string]interface{}, error) {
+func (s *Service) ListUserAPIKeys(ctx context.Context, username string) ([]map[string]interface{}, error) {
 
-	user, err := s.userDAO.GetByEmail(username)
+	user, err := s.userDAO.GetByEmail(ctx, dao.DB, username)
 	if err != nil {
 		return nil, fmt.Errorf("user not found: %w", err)
 	}
@@ -2257,17 +2257,17 @@ func statusToProgressCondition(status string) string {
 	}
 }
 
-func (s *Service) ListIngestionTasksByCondition(email, status *string) ([]map[string]interface{}, error) {
+func (s *Service) ListIngestionTasksByCondition(ctx context.Context, email, status *string) ([]map[string]interface{}, error) {
 	if email == nil {
 		return nil, fmt.Errorf("email is required")
 	}
 
-	user, err := s.userDAO.GetByEmail(*email)
+	user, err := s.userDAO.GetByEmail(ctx, dao.DB, *email)
 	if err != nil {
 		return nil, common.ErrUserNotFound
 	}
 
-	tenantIDs, err := s.userTenantDAO.GetTenantIDsByUserID(user.ID)
+	tenantIDs, err := s.userTenantDAO.GetTenantIDsByUserID(ctx, dao.DB, user.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get tenant IDs: %w", err)
 	}
@@ -2475,8 +2475,8 @@ func (s *Service) BatchDeleteWhiteList(ids []int) (map[string]interface{}, error
 }
 
 // GetTokenStats returns API token statistics for the user.
-func (s *Service) GetTokenStats(userName, fromDate, toDate, granularity string) ([]map[string]interface{}, error) {
-	user, err := s.userDAO.GetByEmail(userName)
+func (s *Service) GetTokenStats(ctx context.Context, userName, fromDate, toDate, granularity string) ([]map[string]interface{}, error) {
+	user, err := s.userDAO.GetByEmail(ctx, dao.DB, userName)
 	if err != nil {
 		return nil, err
 	}
@@ -2539,9 +2539,9 @@ func (s *Service) GetTokenStatsSummary(fromDate, toDate string) (map[string]inte
 }
 
 // ListLogs lists operation logs for the user.
-func (s *Service) ListLogs(userName string, days int) ([]map[string]interface{}, error) {
+func (s *Service) ListLogs(ctx context.Context, userName string, days int) ([]map[string]interface{}, error) {
 
-	user, err := s.userDAO.GetByEmail(userName)
+	user, err := s.userDAO.GetByEmail(ctx, dao.DB, userName)
 	if err != nil {
 		return nil, err
 	}

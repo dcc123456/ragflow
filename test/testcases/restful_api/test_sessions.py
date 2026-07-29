@@ -98,7 +98,7 @@ def test_session_create_name_validation(rest_client, create_chat):
     assert res.status_code == 200
     payload = res.json()
     assert payload["code"] == 102, payload
-    assert "`name` can not be empty." in payload["message"], payload
+    assert "`name` can not be empty" in payload["message"], payload
 
 
 @pytest.mark.p2
@@ -163,7 +163,7 @@ def test_session_create_validation_and_deleted_chat_contract(rest_client, create
             assert body["data"]["chat_id"] == chat_id, (scenario_name, body)
         else:
             assert body["code"] == 102, (scenario_name, body)
-            assert body["message"] == "`name` can not be empty.", (scenario_name, body)
+            assert body["message"] == "`name` can not be empty", (scenario_name, body)
 
     duplicate_first = rest_client.post(f"/chats/{chat_id}/sessions", json={"name": "duplicated_name"}).json()
     duplicate_second = rest_client.post(f"/chats/{chat_id}/sessions", json={"name": "duplicated_name"}).json()
@@ -520,8 +520,8 @@ def test_session_update_name_and_param_contract(rest_client, create_chat):
 
     for scenario_name, payload, expected_code, expected_name_or_message in (
         ("valid", {"name": "valid_name"}, 0, "valid_name"),
-        ("empty", {"name": ""}, 102, "`name` can not be empty."),
-        ("numeric", {"name": 1}, 102, "`name` can not be empty."),
+        ("empty", {"name": ""}, 102, "`name` can not be empty"),
+        ("numeric", {"name": 1}, 102, "`name` can not be empty"),
         ("duplicate", {"name": "duplicated_name"}, 0, "duplicated_name"),
         ("case insensitive upper", {"name": "CASE INSENSITIVE UPDATE"}, 0, "CASE INSENSITIVE UPDATE"),
         ("case insensitive lower", {"name": "case insensitive update"}, 0, "case insensitive update"),
