@@ -102,6 +102,7 @@ func UpdateServer(serverName string, status *common.BaseMessage) (common.ErrorCo
 }
 
 // Role management methods
+
 // ListRoles list all roles
 func (s *Service) ListRoles() ([]map[string]interface{}, error) {
 	result := []map[string]interface{}{
@@ -531,7 +532,7 @@ func (s *Service) ShowUserDatasetSummary(ctx context.Context, email, dataset str
 func (s *Service) ShowUserSummary(ctx context.Context, email string) (map[string]interface{}, error) {
 	// Query user by email
 	var user entity.User
-	err := dao.DB.Where("email = ?", email).First(&user).Error
+	err := dao.DB.WithContext(ctx).Where("email = ?", email).First(&user).Error
 	if err != nil {
 		return nil, common.ErrUserNotFound
 	}
@@ -692,7 +693,7 @@ func (s *Service) ShowUserStorage(email string) (map[string]interface{}, error) 
 func (s *Service) ShowUserQuota(ctx context.Context, email string) (map[string]interface{}, error) {
 	// Query user by email
 	var user entity.User
-	err := dao.DB.Where("email = ?", email).First(&user).Error
+	err := dao.DB.WithContext(ctx).Where("email = ?", email).First(&user).Error
 	if err != nil {
 		return nil, common.ErrUserNotFound
 	}
@@ -2540,7 +2541,6 @@ func (s *Service) GetTokenStatsSummary(fromDate, toDate string) (map[string]inte
 
 // ListLogs lists operation logs for the user.
 func (s *Service) ListLogs(ctx context.Context, userName string, days int) ([]map[string]interface{}, error) {
-
 	user, err := s.userDAO.GetByEmail(ctx, dao.DB, userName)
 	if err != nil {
 		return nil, err

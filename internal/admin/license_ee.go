@@ -1,3 +1,19 @@
+//
+//  Copyright 2026 The InfiniFlow Authors. All Rights Reserved.
+//
+//  Licensed under the Apache License, Version 2.0 (the "License");
+//  you may not use this file except in compliance with the License.
+//  You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+//  Unless required by applicable law or agreed to in writing, software
+//  distributed under the License is distributed on an "AS IS" BASIS,
+//  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//  See the License for the specific language governing permissions and
+//  limitations under the License.
+//
+
 package admin
 
 import (
@@ -53,7 +69,7 @@ func InitLicense(ctx context.Context) error {
 
 			if trialLicenseLimitInt <= 0 || trialLicenseLimitInt > 30*24*60 {
 				common.Fatal("Invalid trial license limit")
-				return errors.New("Invalid trial license limit")
+				return errors.New("invalid trial license limit")
 			}
 
 			duration := time.Duration(trialLicenseLimitInt) * time.Minute
@@ -106,7 +122,7 @@ func generateTrialLicenseID() string {
 func generateTrialLicense(duration time.Duration, clusterInfo *utility.ClusterInfo) (*utility.License, error) {
 	// if duration is not between 1 minute to 30 days, return error
 	if duration < time.Minute || duration > time.Duration(30)*24*time.Hour {
-		return nil, errors.New("Duration must be between 1 minute to 30 days")
+		return nil, errors.New("duration must be between 1 minute to 30 days")
 	}
 
 	now := time.Now()
@@ -161,13 +177,13 @@ func (s *Service) GetFingerprint() (string, error) {
 	return string(jsonData), nil
 }
 
-// SetLicense to set system license config
+// SetLicenseConfig set system license config
 func (s *Service) SetLicenseConfig(timeRecordSaveInterval int64, timeRecordTaskDuration int64) error {
 	if !(timeRecordSaveInterval >= 3 && timeRecordSaveInterval <= 86400) {
 		return errors.New("Value1 value range:  [3, 86400]")
 	}
 	if !(timeRecordTaskDuration > 0 && timeRecordTaskDuration <= 3600) {
-		return errors.New("Value2 value range: (0, 3600]")
+		return errors.New("value2 value range: (0, 3600]")
 	}
 	TimeRecordSaveInterval = timeRecordSaveInterval
 	TimeRecordTaskDuration = timeRecordTaskDuration
@@ -217,7 +233,7 @@ func (s *Service) SetLicense(ctx context.Context, licenseStr string) (map[string
 func (s *Service) ShowLicense(ctx context.Context) (map[string]interface{}, error) {
 	licenseStatus := GetLicenseStatus()
 	if licenseStatus.CurrentLicense == nil {
-		return nil, fmt.Errorf("License is not ready")
+		return nil, fmt.Errorf("license is not ready")
 	}
 	// read license from database
 	license, err := s.licenseDAO.GetLatest(ctx, dao.DB)
@@ -255,7 +271,7 @@ func (s *Service) CheckLicense(ctx context.Context) (common.ErrorCode, error) {
 	}
 
 	if lastRecord.Nonce != currentLicense.Digest {
-		return common.CodeLicenseDigestError, fmt.Errorf("Time record digest is mismatched")
+		return common.CodeLicenseDigestError, fmt.Errorf("time record digest is mismatched")
 	}
 
 	nowTS := time.Now().Unix()
@@ -273,7 +289,7 @@ func (s *Service) CheckLicense(ctx context.Context) (common.ErrorCode, error) {
 	lastTimestamp := lastRecord.Timestamp
 	if nowTS < lastTimestamp {
 		// convert following timestamp to time.Time
-		return common.CodeLicenseTimeRollback, fmt.Errorf("Time rollback detected")
+		return common.CodeLicenseTimeRollback, fmt.Errorf("time rollback detected")
 	}
 
 	licenseCheckResult = "License valid"
@@ -430,7 +446,7 @@ func SaveTimeRecord(ctx context.Context, lastData *TimeRecord) error {
 	// 4. encryption
 	encrypted, err := EncryptTimeRecord(&newData)
 	if err != nil {
-		return fmt.Errorf("Fail to encrypt: %v", err)
+		return fmt.Errorf("fail to encrypt: %v", err)
 	}
 
 	// 5. insert new record
@@ -446,7 +462,7 @@ func SaveTimeRecord(ctx context.Context, lastData *TimeRecord) error {
 	return err
 }
 
-// GetLastTime get last time record
+// GetLastTimeRecord get last time record
 func GetLastTimeRecord(ctx context.Context) (*TimeRecord, error) {
 	var timeRecordDao *dao.TimeRecordDAO
 	timeRecordDao = dao.NewTimeRecordDAO()
@@ -464,7 +480,7 @@ func GetLastTimeRecord(ctx context.Context) (*TimeRecord, error) {
 	return DecryptTimeRecord(timeRecord.Data)
 }
 
-// GetAllTimes Get all time records
+// GetAllTimeRecords get all records
 func GetAllTimeRecords(ctx context.Context) ([]*TimeRecord, error) {
 	var timeRecordDao *dao.TimeRecordDAO
 	timeRecordDao = dao.NewTimeRecordDAO()
@@ -477,7 +493,7 @@ func GetAllTimeRecords(ctx context.Context) ([]*TimeRecord, error) {
 	for _, timeRecord := range timeRecords {
 		data, err := DecryptTimeRecord(timeRecord.Data)
 		if err != nil {
-			common.Warn(fmt.Sprintf("Error decrypting time record: ", err))
+			common.Warn(fmt.Sprintf("error decrypting time record: %v", err))
 			continue // skip error
 		}
 		results = append(results, data)
@@ -560,17 +576,17 @@ func StartTimeRecordService(interval time.Duration) error {
 	if lastData.Nonce != currentLicense.Digest {
 		SetLicenseStatus(common.CodeLicenseExpiredError)
 		//common.Warn("Digest error: license expired")
-		return errors.New("Digest error: license expired")
+		return errors.New("digest error: license expired")
 	}
 
 	nowTS := time.Now().Unix()
 	now := time.Now()
 	if currentLicense.ValidFrom.After(now) {
-		return errors.New("License not valid yet")
+		return errors.New("license not valid yet")
 	}
 
 	if currentLicense.ValidUntil.Before(now) {
-		return errors.New("License expired")
+		return errors.New("license expired")
 	}
 	// 2. check time rollback
 	lastTimestamp := lastData.Timestamp
