@@ -888,7 +888,8 @@ func (h *Handler) ShowUserSummary(c *gin.Context) {
 		return
 	}
 
-	userSummary, err := h.service.ShowUserSummary(username)
+	ctx := c.Request.Context()
+	userSummary, err := h.service.ShowUserSummary(ctx, username)
 	if err != nil {
 		if errors.Is(err, common.ErrUserNotFound) {
 			common.ErrorWithCode(c, common.CodeNotFound, "User not found")
@@ -928,7 +929,8 @@ func (h *Handler) ShowUserQuota(c *gin.Context) {
 		return
 	}
 
-	userQuota, err := h.service.ShowUserQuota(username)
+	ctx := c.Request.Context()
+	userQuota, err := h.service.ShowUserQuota(ctx, username)
 	if err != nil {
 		if errors.Is(err, common.ErrUserNotFound) {
 			common.ErrorWithCode(c, common.CodeNotFound, "User not found")
@@ -1924,7 +1926,8 @@ func (h *Handler) GetTokenStats(c *gin.Context) {
 	}
 	granularity = strings.ToLower(granularity)
 
-	stats, err := h.service.GetTokenStats(userName, fromDate, toDate, granularity)
+	ctx := c.Request.Context()
+	stats, err := h.service.GetTokenStats(ctx, userName, fromDate, toDate, granularity)
 	if err != nil {
 		common.ErrorWithCode(c, common.CodeDataError, err.Error())
 		return
@@ -1992,7 +1995,8 @@ func (h *Handler) ListLogs(c *gin.Context) {
 		return
 	}
 
-	stats, err := h.service.ListLogs(userName, daysInt)
+	ctx := c.Request.Context()
+	stats, err := h.service.ListLogs(ctx, userName, daysInt)
 	if err != nil {
 		common.ErrorWithCode(c, common.CodeDataError, err.Error())
 		return

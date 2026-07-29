@@ -228,7 +228,8 @@ func (h *Handler) ListUsers(c *gin.Context) {
 		common.SuccessWithData(c, users, "List users")
 		return
 	case common.EnterpriseEdition:
-		users, err = h.service.ListUsersEE(pageInt, pageSizeInt, name, status, role, sort, orderBy, plan, topInt, daysInt, quotaPtr)
+		ctx := c.Request.Context()
+		users, err = h.service.ListUsersEE(ctx, pageInt, pageSizeInt, name, status, role, sort, orderBy, plan, topInt, daysInt, quotaPtr)
 		if err != nil {
 			common.ErrorWithCode(c, common.CodeServerError, err.Error())
 			return
@@ -1099,7 +1100,8 @@ func (h *Handler) ListIngestionTasks(c *gin.Context) {
 		ctx := c.Request.Context()
 		tasks, err = h.service.ListIngestionTasks(ctx)
 	} else {
-		tasks, err = h.service.ListIngestionTasksByCondition(req.Email, req.Status)
+		ctx := c.Request.Context()
+		tasks, err = h.service.ListIngestionTasksByCondition(ctx, req.Email, req.Status)
 	}
 
 	if err != nil {
