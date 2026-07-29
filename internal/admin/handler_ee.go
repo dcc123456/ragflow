@@ -1994,7 +1994,6 @@ func (h *Handler) ListLogs(c *gin.Context) {
 		common.ErrorWithCode(c, common.CodeBadRequest, "Invalid days")
 		return
 	}
-
 	ctx := c.Request.Context()
 	stats, err := h.service.ListLogs(ctx, userName, daysInt)
 	if err != nil {

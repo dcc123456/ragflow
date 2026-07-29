@@ -40,6 +40,7 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useRef,
   useState,
 } from 'react';
@@ -61,7 +62,6 @@ import { useUploadFile } from '../../hooks/use-upload-file';
 import { buildMessageItemReference } from '../../utils';
 import { useAddChatBox } from '../use-add-box';
 import { useShowInternet } from '../use-show-internet';
-import { useSetDefaultModel } from './use-set-default-model';
 
 type MultipleChatBoxProps = {
   controller: AbortController;
@@ -157,7 +157,9 @@ const ChatCard = forwardRef(function ChatCard(
   );
   const findLlmByUuid = useFindLlmByUuid();
 
-  useSetDefaultModel(form);
+  useLayoutEffect(() => {
+    form.setValue('llm_id', currentDialog?.llm_id || '');
+  }, [currentDialog?.llm_id, form]);
 
   const isLatestChat = idx === chatBoxIds.length - 1;
 
@@ -227,7 +229,7 @@ const ChatCard = forwardRef(function ChatCard(
                 <p>{t('chat.applyModelConfigs')}</p>
               </TooltipContent>
             </Tooltip>
-            {!isLatestChat || chatBoxIds.length === 3 ? (
+            {chatBoxIds.length > 1 && (
               <Button
                 variant="ghost"
                 size="icon-sm"
@@ -237,7 +239,8 @@ const ChatCard = forwardRef(function ChatCard(
               >
                 <Trash2 />
               </Button>
-            ) : (
+            )}
+            {isLatestChat && idx < 2 && (
               <Button
                 variant="ghost"
                 size="icon-sm"
