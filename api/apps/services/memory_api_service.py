@@ -345,7 +345,7 @@ async def add_message(memory_ids: list[str], message_dict: dict):
 
     message_user_id = message_dict.get("user_id", "")
     if not message_user_id:
-        return False, "No authorization."
+        return False, "no authorization"
 
     permission_map = _memory_permission_map(message_user_id, PermissionValue.PERMISSION_WRITE)
     writable_memory_list = [memory for memory in memory_list if _memory_accessible(memory, permission_map, PermissionValue.PERMISSION_WRITE)]

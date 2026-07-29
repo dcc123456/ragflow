@@ -37,7 +37,7 @@ from common.misc_utils import thread_pool_exec
 async def get(doc_id):
     try:
         if not DocumentService.accessible(doc_id, current_user.id):
-            return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
+            return get_json_result(data=False, message="no authorization", code=RetCode.AUTHENTICATION_ERROR)
 
         e, doc = DocumentService.get_by_id(doc_id)
         if not e:

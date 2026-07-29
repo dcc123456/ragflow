@@ -387,7 +387,7 @@ async def queue_save_to_memory_task(memory_ids: list[str], message_dict: dict):
 
     operator_id = message_dict.get("user_id", "")
     if not operator_id:
-        return False, "No authorization."
+        return False, "no authorization"
 
     user_tenants = UserTenantService.get_user_tenant_relation_by_user_id(operator_id)
     tenant_ids = [operator_id, *[tenant["tenant_id"] for tenant in user_tenants]]

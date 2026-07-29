@@ -50,7 +50,7 @@ team_role_guard = check_role_access(TEAM_API_ACTION_MAP, TEAM_ROLE_RESOURCE_TYPE
 def user_list(tenant_id):
     if current_user.id != tenant_id:
         if not UserTenantService.filter_by_tenant_and_user_id(tenant_id, current_user.id):
-            return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
+            return get_json_result(data=False, message="no authorization", code=RetCode.AUTHENTICATION_ERROR)
 
     try:
         users = UserTenantService.get_by_tenant_id(tenant_id)
@@ -71,7 +71,7 @@ async def create(tenant_id):
     if current_user.id != tenant_id:
         return get_json_result(
             data=False,
-            message="No authorization.",
+            message="no authorization",
             code=RetCode.AUTHENTICATION_ERROR,
         )
 
@@ -149,7 +149,7 @@ async def rm(tenant_id):
     if current_user.id != tenant_id and current_user.id != user_id:
         return get_json_result(
             data=False,
-            message="No authorization.",
+            message="no authorization",
             code=RetCode.AUTHENTICATION_ERROR,
         )
     if user_id == tenant_id:

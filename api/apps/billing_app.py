@@ -1034,7 +1034,7 @@ async def billing_storage_current():
     if current_user.id != tenant_id:
         return get_json_result(
             data=False,
-            message="No authorization.",
+            message="no authorization",
             code=RetCode.AUTHENTICATION_ERROR,
         )
 
@@ -1126,7 +1126,7 @@ async def billing_storage_set_target():
     if current_user.id != tenant_id:
         return get_json_result(
             data=False,
-            message="No authorization.",
+            message="no authorization",
             code=RetCode.AUTHENTICATION_ERROR,
         )
 
@@ -1364,7 +1364,7 @@ async def billing_points_checkout():
 
     tenant_id = validated.tenant_id or current_user.id
     if current_user.id != tenant_id:
-        return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
+        return get_json_result(data=False, message="no authorization", code=RetCode.AUTHENTICATION_ERROR)
 
     quantity = validated.quantity
     recharge_config = settings.BILLING.get("points_recharge") or {}
@@ -1429,7 +1429,7 @@ async def billing_deepdoc_usage():
     """Return DeepDoc usage summary derived from the point ledger."""
     tenant_id = request.args.get("tenant_id", current_user.id)
     if current_user.id != tenant_id:
-        return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
+        return get_json_result(data=False, message="no authorization", code=RetCode.AUTHENTICATION_ERROR)
 
     price_point = PricePointService.get_by_name("deepdoc") or {}
     consuming_point_amount = price_point.get("consuming_point_amount") or 1
@@ -1485,7 +1485,7 @@ async def billing_points_balance():
     """Return normalized point usage for the authenticated tenant."""
     tenant_id = request.args.get("tenant_id", current_user.id)
     if current_user.id != tenant_id:
-        return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
+        return get_json_result(data=False, message="no authorization", code=RetCode.AUTHENTICATION_ERROR)
 
     tenant_plan = SubscriptionService.get_by_tenant_id(tenant_id)
     plan_name = tenant_plan.get("plan_name", BILLING_PLAN_TRIAL_NAME) if tenant_plan else BILLING_PLAN_TRIAL_NAME
@@ -1530,7 +1530,7 @@ async def billing_points_ledger():
 
     tenant_id = request.args.get("tenant_id", current_user.id)
     if current_user.id != tenant_id:
-        return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
+        return get_json_result(data=False, message="no authorization", code=RetCode.AUTHENTICATION_ERROR)
     page = max(1, int(request.args.get("page", 1)))
     page_size = max(1, min(100, int(request.args.get("page_size", 20))))
     event_type = request.args.get("event_type", "")
@@ -1563,7 +1563,7 @@ async def billing_points_holds():
 
     tenant_id = request.args.get("tenant_id", current_user.id)
     if current_user.id != tenant_id:
-        return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
+        return get_json_result(data=False, message="no authorization", code=RetCode.AUTHENTICATION_ERROR)
     page = max(1, int(request.args.get("page", 1)))
     page_size = max(1, min(100, int(request.args.get("page_size", 20))))
     status_filter = request.args.get("status", "")
@@ -2952,7 +2952,7 @@ async def billing_checkout():
     # Authorization check (kept separate from Pydantic validation)
     tenant_id = validated.tenant_id or current_user.id
     if current_user.id != tenant_id:
-        return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
+        return get_json_result(data=False, message="no authorization", code=RetCode.AUTHENTICATION_ERROR)
 
     tenant_plan = SubscriptionService.get_by_tenant_id(tenant_id)
     customer_id = tenant_plan.get("customer_id")
@@ -3133,7 +3133,7 @@ async def customer_portal():
     if current_user.id != tenant_id:
         return get_json_result(
             data=False,
-            message="No authorization.",
+            message="no authorization",
             code=RetCode.AUTHENTICATION_ERROR,
         )
 

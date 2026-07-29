@@ -3681,7 +3681,7 @@ Failure:
 ```json
 {
     "code": 102,
-    "message": "`name` can not be empty."
+    "message": "`name` can not be empty"
 }
 ```
 
@@ -3760,7 +3760,7 @@ Failure:
 ```json
 {
     "code": 102,
-    "message": "`name` can not be empty."
+    "message": "`name` can not be empty"
 }
 ```
 

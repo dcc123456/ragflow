@@ -283,20 +283,20 @@ class TestDocumentsUploadUnit:
         file_obj = _DummyFile("ragflow_test.txt")
         files = _DummyFiles({"file": [file_obj]})
         monkeypatch.setattr(module, "request", _DummyRequest(form={"kb_id": "missing"}, files=files))
-        monkeypatch.setattr(module, "resolve_kb_with_permission", lambda *_args, **_kwargs: (None, "Dataset not found"))
+        monkeypatch.setattr(module, "resolve_kb_with_permission", lambda *_args, **_kwargs: (None, "dataset not found"))
         res = _run(module.upload.__wrapped__())
         assert res["code"] == 109
-        assert res["message"] == "No authorization."
+        assert res["message"] == "no authorization"
 
     def test_no_permission(self, document_app_module, monkeypatch):
         module = document_app_module
-        monkeypatch.setattr(module, "resolve_kb_with_permission", lambda *_args, **_kwargs: (None, "No authorization."))
+        monkeypatch.setattr(module, "resolve_kb_with_permission", lambda *_args, **_kwargs: (None, "no authorization"))
         file_obj = _DummyFile("ragflow_test.txt")
         files = _DummyFiles({"file": [file_obj]})
         monkeypatch.setattr(module, "request", _DummyRequest(form={"kb_id": "kb1"}, files=files))
         res = _run(module.upload.__wrapped__())
         assert res["code"] == 109
-        assert res["message"] == "No authorization."
+        assert res["message"] == "no authorization"
 
     def test_permission_granted_user_can_upload_to_shared_dataset(self, document_app_module, monkeypatch):
         module = document_app_module
