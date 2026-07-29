@@ -8,6 +8,7 @@ import { RenameDialog } from '@/components/rename-dialog';
 import { Button } from '@/components/ui/button';
 import { RAGFlowPagination } from '@/components/ui/ragflow-pagination';
 import { Spin } from '@/components/ui/spin';
+import { useGoToPreviousPageOnEmpty } from '@/hooks/logic-hooks';
 import { useFetchNextKnowledgeListByPage } from '@/hooks/use-knowledge-request';
 import { useQueryClient } from '@tanstack/react-query';
 import { pick } from 'lodash';
@@ -71,6 +72,7 @@ export default function Datasets() {
     },
     [setPagination],
   );
+  useGoToPreviousPageOnEmpty(kbs?.length, loading);
   const [searchUrl, setSearchUrl] = useSearchParams();
   const isCreate = searchUrl.get('isCreate') === 'true';
   const queryClient = useQueryClient();

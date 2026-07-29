@@ -1636,7 +1636,9 @@ func (h *Handler) GenerateUserAPIKey(c *gin.Context) {
 		return
 	}
 
-	apiKey, err := h.service.GenerateUserAPIKey(username)
+	ctx := c.Request.Context()
+
+	apiKey, err := h.service.GenerateUserAPIKey(ctx, username)
 	if err != nil {
 		common.ErrorWithCode(c, common.CodeServerError, err.Error())
 		return
@@ -1659,7 +1661,9 @@ func (h *Handler) DeleteUserAPIKey(c *gin.Context) {
 		return
 	}
 
-	result, err := h.service.DeleteUserAPIKey(username, key)
+	ctx := c.Request.Context()
+
+	result, err := h.service.DeleteUserAPIKey(ctx, username, key)
 	if err != nil {
 		common.ErrorWithCode(c, common.CodeServerError, err.Error())
 		return
@@ -1675,7 +1679,9 @@ func (h *Handler) ListUserAPIKeys(c *gin.Context) {
 		return
 	}
 
-	result, err := h.service.ListUserAPIKeys(username)
+	ctx := c.Request.Context()
+
+	result, err := h.service.ListUserAPIKeys(ctx, username)
 	if err != nil {
 		common.ErrorWithCode(c, common.CodeServerError, err.Error())
 		return

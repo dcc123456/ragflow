@@ -154,7 +154,7 @@ function UploadForm({
       setColumnRoles(roles);
       form.setValue('tableColumnRoles', roles);
     }
-  }, [extractedColumns, columnMode]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [extractedColumns, columnMode]); // oxlint-disable-line react/exhaustive-deps
 
   const showColumnConfig = isTableParser && extractedColumns.length > 0;
 

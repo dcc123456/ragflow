@@ -5,6 +5,7 @@ import { AgentCategory, AgentGlobals } from '@/constants/agent';
 import { Permission } from '@/constants/team';
 import { useFetchTenantInfo } from '@/hooks/use-user-setting-request';
 import {
+  AgentListItem,
   IAgentLogResponse,
   IAgentLogsRequest,
   IAgentLogsResponse,
@@ -162,7 +163,7 @@ export const useFetchAgentListByPage = () => {
   });
 
   const { data, isFetching: loading } = useQuery<{
-    canvas: IFlow[];
+    canvas: AgentListItem[];
     total: number;
   }>({
     queryKey: [
@@ -213,7 +214,7 @@ export const useFetchAgentListByPage = () => {
 };
 
 export function useFetchAllAgentList() {
-  const { data, isFetching: loading } = useQuery<IFlow[]>({
+  const { data, isFetching: loading } = useQuery<AgentListItem[]>({
     queryKey: [AgentApiAction.FetchAllAgentList],
     queryFn: async () => {
       const { data } = await agentService.listAgents(
@@ -869,7 +870,7 @@ export const useFetchAgentList = ({
   canvas_category,
 }: IPipeLineListRequest) => {
   const { data, isFetching: loading } = useQuery<{
-    canvas: IFlow[];
+    canvas: AgentListItem[];
     total: number;
   }>({
     queryKey: [AgentApiAction.FetchAgentList],
