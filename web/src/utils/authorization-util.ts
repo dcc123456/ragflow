@@ -1,4 +1,9 @@
-import { Authorization, Token, UserInfo } from '@/constants/authorization';
+import {
+  Authorization,
+  ThinkingLevel,
+  Token,
+  UserInfo,
+} from '@/constants/authorization';
 import { getSearchValue } from './common-util';
 const KeySet = [Authorization, Token, UserInfo];
 const DISMISSED_NOTIFICATION_KEY = 'dismissed_notification_id';
@@ -57,6 +62,13 @@ const storage = {
 
   removeDismissedNotificationId: (): void => {
     localStorage.removeItem(DISMISSED_NOTIFICATION_KEY);
+  },
+
+  setThinkingLevel: (level: string) => {
+    localStorage.setItem(ThinkingLevel, level);
+  },
+  getThinkingLevel: (): string => {
+    return localStorage.getItem(ThinkingLevel) || '1';
   },
 };
 

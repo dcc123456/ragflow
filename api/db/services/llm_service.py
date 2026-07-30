@@ -88,6 +88,18 @@ class LLMBundle(LLM4Tenant):
         if callable(close):
             close()
 
+    def clone(self):
+        kwargs = {
+            "trace_context": dict(self.trace_context or {}),
+            "langfuse_session_id": self.langfuse_session_id,
+            "verbose_tool_use": self.verbose_tool_use,
+        }
+        for attr, key in (("max_retries", "max_retries"), ("base_delay", "retry_interval"), ("max_rounds", "max_rounds")):
+            value = getattr(self.mdl, attr, None)
+            if value is not None:
+                kwargs[key] = value
+        return LLMBundle(self.tenant_id, dict(self.model_config), lang=getattr(self, "lang", "Chinese"), **kwargs)
+
     def __enter__(self):
         """Enter context manager."""
         return self
