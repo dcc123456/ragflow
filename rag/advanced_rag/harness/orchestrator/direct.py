@@ -13,7 +13,7 @@ async def direct_search(state: dict, tools) -> dict:
     keywords = state.get("keywords", "")
     _LOG.info('[Direct search] Looking up the knowledge base for: "%s" (keywords: %s)', question, keywords)
 
-    result = await hybrid_search(tools, query=question, keywords=keywords)
+    result = await hybrid_search(tools, query=question, keywords=keywords, use_compiled=True)
     _merge_kbinfos(tools, result)
 
     if not _has_chunks(tools):

@@ -206,7 +206,9 @@ class PipelineTaskType(StrEnum):
     MINDMAP = "Mindmap"
     MEMORY = "Memory"
     CLONE = "Clone"
-    ARTIFACT = "Artifact"
+    # Member name kept as ARTIFACT for back-compat; value is "Wiki" so the
+    # runtime task_type (``.lower()`` == "wiki") matches the wiki index/task type.
+    ARTIFACT = "Wiki"
     SKILL = "Skill"
     # KB-wide structure-graph merge tasks (rebuild_dataset_structure_graph_json).
     STRUCTURE_GRAPH = "StructureGraph"
