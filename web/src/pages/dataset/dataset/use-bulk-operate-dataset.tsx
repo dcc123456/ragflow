@@ -115,7 +115,9 @@ export function useBulkOperateDataset({
           .some((y) => y.id === x),
     );
     if (deletedKeys.length === 0) {
-      toast.error(t('theDocumentBeingParsedCannotBeDeleted'));
+      toast.error(
+        t('knowledgeConfiguration.theDocumentBeingParsedCannotBeDeleted'),
+      );
       return;
     }
 

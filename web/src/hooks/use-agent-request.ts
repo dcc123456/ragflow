@@ -452,7 +452,10 @@ export const useResetAgent = () => {
   return { data, loading, resetAgent: mutateAsync };
 };
 
-export const useSetAgent = (showMessage: boolean = true) => {
+export const useSetAgent = (
+  showMessage: boolean = true,
+  skipInvalidation: boolean = false,
+) => {
   const { id } = useParams();
   const queryClient = useQueryClient();
   const {
@@ -491,7 +494,7 @@ export const useSetAgent = (showMessage: boolean = true) => {
         queryClient.invalidateQueries({
           queryKey: [AgentApiAction.FetchAgentListByPage],
         });
-        if (agentId) {
+        if (agentId && !skipInvalidation) {
           queryClient.invalidateQueries({
             queryKey: [AgentApiAction.FetchAgentDetail, agentId],
           });

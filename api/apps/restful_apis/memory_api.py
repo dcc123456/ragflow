@@ -27,7 +27,7 @@ from api.db.services.user_service import UserTenantService
 from api.utils.api_utils import validate_request, get_request_json, get_error_argument_result, get_json_result
 from api.apps.services import memory_api_service
 from api.db.joint_services.tenant_model_service import ensure_tenant_model_ids_for_params
-from api.utils.pagination_utils import validate_rest_api_page_size
+from api.utils.pagination_utils import DEFAULT_PAGE, DEFAULT_PAGE_SIZE, validate_rest_api_page, validate_rest_api_page_size
 from api.utils.billing import check_resources
 from api.utils.permission_utils import check_memory_permission
 from common.misc_utils import get_uuid, thread_pool_exec
@@ -192,8 +192,8 @@ async def delete_memory(memory_id):
 async def list_memory():
     filter_params = {k: request.args.get(k) for k in ["memory_type", "tenant_id", "owner_ids", "storage_type"] if k in request.args}
     keywords = request.args.get("keywords")
-    page = int(request.args.get("page", 1))
-    page_size = validate_rest_api_page_size(int(request.args.get("page_size", 50)))
+    page = validate_rest_api_page(request.args.get("page", DEFAULT_PAGE))
+    page_size = validate_rest_api_page_size(request.args.get("page_size", DEFAULT_PAGE_SIZE))
     try:
         res = await memory_api_service.list_memory(filter_params, keywords, page, page_size)
         return get_json_result(message=True, data=res)
@@ -229,8 +229,8 @@ async def get_memory_messages(memory_id):
         agent_ids = agent_ids[0].split(",")
     keywords = args.get("keywords", "")
     keywords = keywords.strip()
-    page = int(args.get("page", 1))
-    page_size = validate_rest_api_page_size(int(args.get("page_size", 50)))
+    page = validate_rest_api_page(args.get("page", 1))
+    page_size = validate_rest_api_page_size(args.get("page_size", 50))
     try:
         res = await memory_api_service.get_memory_messages(memory_id, agent_ids, keywords, page, page_size)
         return get_json_result(message=True, data=res)

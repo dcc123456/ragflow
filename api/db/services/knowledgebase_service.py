@@ -622,7 +622,7 @@ class KnowledgebaseService(CommonService):
 
     @classmethod
     @DB.connection_context()
-    def get_list(cls, joined_tenant_ids, user_id, page_number, items_per_page, orderby, desc, id, name, keywords, parser_id=None):
+    def get_list(cls, joined_tenant_ids, user_id, page_number, items_per_page, orderby, desc, id, name, keywords, parser_id=None, ids=None):
         # Get list of knowledge bases with filtering and pagination
         # Args:
         #     joined_tenant_ids: List of tenant IDs
@@ -704,6 +704,8 @@ class KnowledgebaseService(CommonService):
 
         if id:
             kbs = kbs.where(cls.model.id == id)
+        if ids:
+            kbs = kbs.where(cls.model.id.in_(ids))
         if name:
             kbs = kbs.where(cls.model.name == name)
         if keywords:
@@ -732,6 +734,12 @@ class KnowledgebaseService(CommonService):
             kb.pop("shared_operator_permission", None)
 
         return kbs, total
+
+    @classmethod
+    @DB.connection_context()
+    def get_accessible_ids(cls, joined_tenant_ids, user_id, ids):
+        kbs = cls.model.select(cls.model.id).where(cls.model.id.in_(ids), cls._visibility_and_status_filter(joined_tenant_ids, user_id))
+        return {kb.id for kb in kbs}
 
     @classmethod
     @DB.connection_context()

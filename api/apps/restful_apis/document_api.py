@@ -63,7 +63,7 @@ from api.utils.api_utils import (
     get_resource_insufficient_result,
 )
 from api.utils.billing import InsufficientResourceError
-from api.utils.pagination_utils import validate_rest_api_page_size
+from api.utils.pagination_utils import DEFAULT_PAGE, DEFAULT_PAGE_SIZE, validate_rest_api_page, validate_rest_api_page_size
 from api.utils.validation_utils import (
     UpdateDocumentReq,
     format_validation_error_message,
@@ -990,19 +990,8 @@ def _get_docs_with_request(req, dataset_id: str):
 
     # Invalid or negative pagination values fall back to defaults
     # instead of leaking internal conversion/SQL errors.
-    try:
-        page = int(q.get("page", 1))
-    except (TypeError, ValueError):
-        page = 1
-    if page < 1:
-        page = 1
-    try:
-        parsed_page_size = int(q.get("page_size", 30))
-    except (TypeError, ValueError):
-        parsed_page_size = 30
-    if parsed_page_size < 0:
-        parsed_page_size = 30
-    page_size = validate_rest_api_page_size(parsed_page_size)
+    page = validate_rest_api_page(q.get("page", DEFAULT_PAGE))
+    page_size = validate_rest_api_page_size(q.get("page_size", DEFAULT_PAGE_SIZE))
 
     orderby = q.get("orderby", "create_time")
     if orderby not in ("create_time", "update_time", "name"):

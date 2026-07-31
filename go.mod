@@ -36,6 +36,7 @@ require (
 	github.com/infiniflow/infinity-go-sdk v0.0.0-00010101000000-000000000000
 	github.com/json-iterator/go v1.1.12
 	github.com/kaptinlin/jsonrepair v0.4.8
+	github.com/larksuite/oapi-sdk-go/v3 v3.9.9
 	github.com/ledongthuc/pdf v0.0.0-20250511090121-5959a4027728
 	github.com/lib/pq v1.10.9
 	github.com/minio/minio-go/v7 v7.0.99
@@ -43,6 +44,7 @@ require (
 	github.com/nats-io/nats-server/v2 v2.14.3
 	github.com/nats-io/nats.go v1.52.0
 	github.com/nikolalohinski/gonja v1.5.3
+	github.com/open-dingtalk/dingtalk-stream-sdk-go v0.0.5
 	github.com/peterh/liner v1.2.2
 	github.com/pkg/errors v0.9.1
 	github.com/pkoukk/tiktoken-go v0.1.8
@@ -143,6 +145,7 @@ require (
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-playground/validator/v10 v10.30.2 // indirect
 	github.com/goccy/go-yaml v1.19.2 // indirect
+	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang-sql/civil v0.0.0-20190719163853-cb61b32ac6fe // indirect
 	github.com/golang-sql/sqlexp v0.1.0 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
