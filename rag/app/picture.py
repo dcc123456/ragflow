@@ -32,14 +32,16 @@ from common.string_utils import clean_markdown_block
 from deepdoc.vision import OCR
 from rag.nlp import attach_media_context, rag_tokenizer, tokenize
 
-ocr = None
+_ocr = None
 
 
-def get_ocr():
-    global ocr
-    if ocr is None:
-        ocr = OCR()
-    return ocr
+def _get_ocr():
+    """Lazy-init OCR to avoid downloading models at import time (breaks CI
+    collection when the network is unavailable)."""
+    global _ocr
+    if _ocr is None:
+        _ocr = OCR()
+    return _ocr
 
 
 # Gemini supported MIME types
@@ -86,7 +88,7 @@ def chunk(filename, binary, tenant_id, lang, callback=None, **kwargs):
 
         if not txt:
             # Fallback to local deepdoc OCR
-            bxs = get_ocr()(np.array(img))
+            bxs = _get_ocr()(np.array(img))
             txt = "\n".join([t[0] for _, t in bxs if t[0]])
 
         callback(0.4, "Finish OCR: (%s ...)" % txt[:12])

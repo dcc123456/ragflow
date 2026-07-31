@@ -24,6 +24,7 @@ from copy import deepcopy
 from types import SimpleNamespace
 
 from quart import Response, request, g
+from werkzeug.exceptions import BadRequest
 
 from api.apps import current_user, login_required
 from api.db import PermissionActionType, PermissionTargetType, PermissionValue, ResourceType
@@ -633,9 +634,21 @@ async def list_chats():
     if chat_id or name:
         keywords = ""
 
+    if orderby not in ("create_time", "update_time", "name"):
+        return get_json_result(code=RetCode.ARGUMENT_ERROR, message=f"invalid orderby field: {orderby}")
+
     try:
-        page_number = int(request.args.get("page", 0))
-        items_per_page = validate_rest_api_page_size(int(request.args.get("page_size", 0)))
+        # Invalid or negative pagination values fall back to defaults
+        # instead of leaking internal conversion/SQL errors.
+        try:
+            page_number = max(int(request.args.get("page", 0)), 0)
+        except (TypeError, ValueError):
+            page_number = 0
+        try:
+            parsed_page_size = int(request.args.get("page_size", 0))
+        except (TypeError, ValueError):
+            parsed_page_size = 0
+        items_per_page = validate_rest_api_page_size(parsed_page_size)
         tenant_ids = list(dict.fromkeys(user_tenant.tenant_id for user_tenant in _get_user_tenants_for_chat_access()))
 
         if owner_ids:
@@ -1034,9 +1047,22 @@ def list_sessions(chat_id):
             return get_data_error_result(message="No authorized.", code=RetCode.OPERATING_ERROR)
         if not DialogService.query(tenant_id=tenant_id, id=chat_id):
             return get_json_result(data=False, message="No authorized.", code=RetCode.OPERATING_ERROR)
-        page_number = int(request.args.get("page", 1))
-        items_per_page = validate_rest_api_page_size(int(request.args.get("page_size", 30)))
+        # Invalid or negative pagination values fall back to defaults
+        # instead of leaking internal conversion/SQL errors.
+        try:
+            page_number = int(request.args.get("page", 1))
+        except (TypeError, ValueError):
+            page_number = 1
+        if page_number < 1:
+            page_number = 1
+        try:
+            parsed_page_size = int(request.args.get("page_size", 30))
+        except (TypeError, ValueError):
+            parsed_page_size = 30
+        items_per_page = validate_rest_api_page_size(parsed_page_size)
         orderby = request.args.get("orderby", "create_time")
+        if orderby not in ("create_time", "update_time", "name"):
+            return get_json_result(code=RetCode.ARGUMENT_ERROR, message=f"invalid orderby field: {orderby}")
         desc = request.args.get("desc", "true").lower() != "false"
         session_id = request.args.get("id")
         name = request.args.get("name")
@@ -1131,7 +1157,10 @@ async def update_session(chat_id, session_id):
 @check_dialog_permission(PermissionValue.PERMISSION_WRITE)
 async def delete_sessions(chat_id):
     try:
-        req = await get_request_json()
+        try:
+            req = await get_request_json()
+        except BadRequest:
+            return get_json_result(code=RetCode.ARGUMENT_ERROR, message="Malformed JSON syntax: Missing commas/brackets or invalid encoding")
         if not req:
             return get_json_result(data={})
         can_delete_all_sessions = g.operator_permission in {
@@ -1446,6 +1475,9 @@ async def session_completion(chat_id_in_arg=""):
         return error
     request_messages, request_msg = normalized
     pass_all_history_messages = _get_bool_request_flag(req, "pass_all_history_messages", "pass_all_history", default=False)
+    store_history_messages = _get_bool_request_flag(req, "store_history_messages", "store_history", default=True)
+    if not store_history_messages and not pass_all_history_messages:
+        return get_data_error_result(message="`pass_all_history_messages` must be true when `store_history_messages` is false.")
     msg = request_msg
     message_id = request_msg[-1].get("id")
     chat_id = req.pop("chat_id", "") or ""
@@ -1587,7 +1619,7 @@ async def session_completion(chat_id_in_arg=""):
                         ans = _format_answer(ans)
                         payload = _sanitize_json_floats({"code": 0, "message": "", "data": ans})
                         yield "data:" + json.dumps(payload, ensure_ascii=False) + "\n\n"
-                if conv is not None:
+                if conv is not None and store_history_messages:
                     await thread_pool_exec(ConversationService.update_by_id, conv.id, conv.to_dict())
             except Exception as ex:
                 logging.exception(ex)
@@ -1605,7 +1637,7 @@ async def session_completion(chat_id_in_arg=""):
         answer = None
         async for ans in rag_agent(dia, msg, False, session_id=session_id, user_id=operator_user_id, **req):
             answer = _format_answer(ans)
-            if conv is not None:
+            if conv is not None and store_history_messages:
                 await thread_pool_exec(ConversationService.update_by_id, conv.id, conv.to_dict())
             break
         return get_json_result(data=_sanitize_json_floats(answer))

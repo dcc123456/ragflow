@@ -1323,7 +1323,7 @@ def queue_raptor_o_graphrag_tasks(sample_doc, ty, priority, fake_doc_id="", doc_
         "graphrag",
         "raptor",
         "mindmap",
-        "artifact",
+        "wiki",
         "skill",
         # KB-wide structure-graph merge task types (rebuild dataset_graph rows).
         "structure_graph",
