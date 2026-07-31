@@ -102,8 +102,22 @@ def _load_list_datasets_module(monkeypatch, *, kbs, parsing_status_by_kb):
     )
     _stub(
         monkeypatch,
+        "api.db",
+        PermissionActionType=SimpleNamespace(),
+        PermissionTargetType=SimpleNamespace(),
+        PermissionValue=SimpleNamespace(),
+        ResourceType=SimpleNamespace(),
+    )
+    _stub(
+        monkeypatch,
         "api.db.db_models",
         File=SimpleNamespace(),
+    )
+    _stub(
+        monkeypatch,
+        "api.db.services.permission_service",
+        PermissionChangeLogService=SimpleNamespace(),
+        PermissionService=SimpleNamespace(),
     )
     _stub(
         monkeypatch,
@@ -285,7 +299,7 @@ def test_list_datasets_with_ids_filters_query_once(monkeypatch):
     assert ok is True
     assert payload["total"] == 2
     module.KnowledgebaseService.get_accessible_ids.assert_called_once_with(["tenant-1"], "tenant-1", ["kb-a", "kb-b"])
-    get_list_mock.assert_called_once_with(["tenant-1"], "tenant-1", 1, 30, "create_time", True, None, None, "", None, ["kb-a", "kb-b"])
+    get_list_mock.assert_called_once_with(["tenant-1", "tenant-1"], "tenant-1", 1, 30, "create_time", True, None, None, "", None, ["kb-a", "kb-b"])
 
 
 def test_list_datasets_with_include_parsing_status_false_skips_helper(monkeypatch):
