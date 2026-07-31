@@ -159,7 +159,14 @@ def _load_agent_api(monkeypatch, get_by_id_result, delete_calls=None):
         CONTENT_TYPE_MAP={},
         apply_safe_file_response_headers=lambda response, *_a, **_k: response,
     )
-    _stub(monkeypatch, "api.utils.pagination_utils", validate_rest_api_page_size=lambda *_a, **_k: None)
+    _stub(
+        monkeypatch,
+        "api.utils.pagination_utils",
+        DEFAULT_PAGE=1,
+        DEFAULT_PAGE_SIZE=30,
+        validate_rest_api_page=lambda page: int(page),
+        validate_rest_api_page_size=lambda page_size: int(page_size),
+    )
     _stub(monkeypatch, "api.utils.billing", check_dynamic_resources=lambda *_a, **_k: None, get_dynamic_resource_error_result=lambda *_a, **_k: None)
     _stub(monkeypatch, "common.settings", retriever=SimpleNamespace(), kg_retriever=SimpleNamespace())
     _stub(

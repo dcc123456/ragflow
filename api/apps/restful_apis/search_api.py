@@ -32,7 +32,7 @@ from api.db.services.user_service import TenantService, UserTenantService
 from common.misc_utils import get_uuid
 from common.constants import StatusEnum
 from api.utils.api_utils import get_data_error_result, get_json_result, get_request_json, server_error_response, validate_request
-from api.utils.pagination_utils import validate_rest_api_page_size
+from api.utils.pagination_utils import DEFAULT_PAGE, DEFAULT_PAGE_SIZE, validate_rest_api_page, validate_rest_api_page_size
 
 from api.utils.billing import check_resources
 from api.utils.permission_utils import check_search_permission, filter_kb_read_access
@@ -114,8 +114,8 @@ async def create():
 @search_role_guard
 def list_searches():
     keywords = request.args.get("keywords", "")
-    page_number = int(request.args.get("page", 0))
-    items_per_page = validate_rest_api_page_size(int(request.args.get("page_size", 0)))
+    page_number = validate_rest_api_page(request.args.get("page", DEFAULT_PAGE))
+    items_per_page = validate_rest_api_page_size(request.args.get("page_size", DEFAULT_PAGE_SIZE))
     orderby = request.args.get("orderby", "create_time")
     desc = request.args.get("desc", "true").lower() != "false"
     owner_ids = request.args.getlist("owner_ids")

@@ -25,7 +25,7 @@ from api.db.services.mcp_server_service import MCPServerService
 from api.db.services.permission_service import PermissionChangeLogService, PermissionService
 from api.db.services.user_service import TenantService, UserTenantService
 from api.utils.api_utils import get_data_error_result, get_json_result, get_mcp_tools, get_request_json, server_error_response, validate_request
-from api.utils.pagination_utils import validate_rest_api_page_size
+from api.utils.pagination_utils import DEFAULT_PAGE, DEFAULT_PAGE_SIZE, validate_rest_api_page, validate_rest_api_page_size
 from api.utils.permission_utils import check_mcp_permission, has_permission_for_member
 from api.utils.web_utils import get_float, safe_json_parse
 from common.constants import VALID_MCP_SERVER_TYPES
@@ -147,8 +147,8 @@ def _create_mcp_with_owner_permission(data: dict, operator) -> None:
 @login_required
 async def list_mcp() -> Response:
     keywords = request.args.get("keywords", "")
-    page_number = int(request.args.get("page", 0))
-    items_per_page = validate_rest_api_page_size(int(request.args.get("page_size", 0)))
+    page_number = validate_rest_api_page(request.args.get("page", DEFAULT_PAGE))
+    items_per_page = validate_rest_api_page_size(request.args.get("page_size", DEFAULT_PAGE_SIZE))
     orderby = request.args.get("orderby", "create_time")
     if request.args.get("desc", "true").lower() == "false":
         desc = False
