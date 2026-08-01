@@ -17,13 +17,56 @@
 package handler
 
 import (
+	"errors"
+	"fmt"
+	"net/http"
 	"ragflow/internal/common"
+	"ragflow/internal/engine/redis"
+	"ragflow/internal/server"
+	"ragflow/internal/service"
+	"ragflow/internal/utility"
 
 	"github.com/gin-gonic/gin"
 )
 
+// GetLoginChannels get all supported authentication channels
+// @Summary Get Login Channels
+// @Description Get all supported OAuth authentication channels
+// @Tags users
+// @Success 200 {object} map[string]interface{}
+// @Router /v1/user/login/channels [get]
+func (h *UserHandler) GetLoginChannels(c *gin.Context) {
+	channels, code, err := h.userService.GetLoginChannels()
+	if err != nil {
+		common.ResponseWithCodeData(c, code, []interface{}{}, "Load channels failure, error: "+err.Error())
+		return
+	}
+
+	common.SuccessWithData(c, channels, "success")
+}
+
 func (h *UserHandler) OAuthCallback(c *gin.Context) {
-	common.ErrorWithCode(c, common.CodeNotImplemented, "OAuthCallback not implemented")
+	channel := c.Param("channel")
+	if channel == "" {
+		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeArgumentError, nil, "channel is required")
+		return
+	}
+
+	init, code, err := h.userService.OAuthLoginInitiate(channel, redis.Get())
+	if err != nil {
+		// Mirror Python's oauth_login: the raised ValueError propagates to
+		// server_error_response, which replies HTTP 200 with code 100 and
+		// the exception's repr() as the message (no short error code).
+		if errors.Is(err, service.ErrOAuthInvalidChannel) {
+			common.ResponseWithCodeData(c, common.CodeExceptionError, nil, fmt.Sprintf("ValueError('Invalid channel name: %s')", channel))
+			return
+		}
+		common.ResponseWithHttpCodeData(c, http.StatusInternalServerError, code, nil, err.Error())
+		return
+	}
+
+	setOAuthStateCookie(c, init.State, int(init.CookieMaxAge.Seconds()))
+	c.Redirect(http.StatusFound, init.AuthURL)
 }
 
 func (h *UserHandler) GitHubAuthCallback(c *gin.Context) {
@@ -71,9 +114,48 @@ func (h *UserHandler) OAuthLogin(c *gin.Context) {
 }
 
 func (h *UserHandler) OAuthChannelCallback(c *gin.Context) {
-	common.ErrorWithCode(c, common.CodeNotImplemented, "OAuthChannelCallback not implemented")
+	channel := c.Param("channel")
+	// An empty channel segment (/auth/oauth//callback) is a malformed path,
+	// not a real channel. Python's router never matches it and returns 404;
+	// match that here instead of flowing into the callback and emitting a
+	// bogus "Invalid channel name:" redirect.
+	if channel == "" {
+		HandleNoRoute(c)
+		return
+	}
+	queryCode := c.Query("code")
+	queryState := c.Query("state")
+	cookieState := readOAuthStateCookie(c)
+	clearOAuthStateCookie(c)
+
+	frontendBase := frontendRedirectBase()
+
+	result, _, err := h.userService.OAuthCallback(c.Request.Context(), channel, queryCode, queryState, cookieState, redis.Get())
+	if err != nil {
+		c.Redirect(http.StatusFound, frontendBase+"?error="+callbackError(channel, err))
+		return
+	}
+
+	secretKey, kerr := server.GetSecretKey(redis.Get())
+	if kerr != nil {
+		c.Redirect(http.StatusFound, frontendBase+"?error=server_error")
+		return
+	}
+	authToken, terr := utility.DumpAccessToken(*result.User.AccessToken, secretKey)
+	if terr != nil {
+		c.Redirect(http.StatusFound, frontendBase+"?error=server_error")
+		return
+	}
+
+	setOAuthAuthCookie(c, authToken)
+	c.Header("Authorization", authToken)
+	c.Header("Access-Control-Expose-Headers", "Authorization")
+	c.Redirect(http.StatusFound, frontendBase+"?auth="+result.User.ID)
 }
 
-func (h *UserHandler) GetLoginChannels(c *gin.Context) {
-	common.SuccessWithData(c, []interface{}{}, "success")
+// LoginChannel represents a login channel response
+type LoginChannel struct {
+	Channel     string `json:"channel"`
+	DisplayName string `json:"display_name"`
+	Icon        string `json:"icon"`
 }

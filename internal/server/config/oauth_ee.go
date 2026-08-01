@@ -19,8 +19,36 @@ package config
 import "github.com/spf13/viper"
 
 type OAuthConfig struct {
+	Channels map[string]OAuthChannel `mapstructure:"oauth"`
+}
+
+// OAuthChannel OAuth configuration for a channel.
+type OAuthChannel struct {
+	DisplayName      string `mapstructure:"display_name"`
+	Icon             string `mapstructure:"icon"`
+	Type             string `mapstructure:"type"`
+	ClientID         string `mapstructure:"client_id"`
+	ClientSecret     string `mapstructure:"client_secret"`
+	AuthorizationURL string `mapstructure:"authorization_url"`
+	TokenURL         string `mapstructure:"token_url"`
+	UserinfoURL      string `mapstructure:"userinfo_url"`
+	RedirectURI      string `mapstructure:"redirect_uri"`
+	Scope            string `mapstructure:"scope"`
+	Issuer           string `mapstructure:"issuer"`
 }
 
 func (c *Config) ParseOAuthConfig(v *viper.Viper) error {
+	if !v.IsSet("oauth") {
+		return nil
+	}
+	sub := v.Sub("oauth")
+	if sub == nil {
+		return nil
+	}
+	c.oAuth.Channels = make(map[string]OAuthChannel)
+	err := sub.Unmarshal(&c.oAuth.Channels)
+	if err != nil {
+		return err
+	}
 	return nil
 }
