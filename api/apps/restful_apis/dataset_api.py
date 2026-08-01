@@ -16,7 +16,7 @@
 import logging
 
 from peewee import OperationalError
-from quart import request
+from quart import request, make_response
 from common.constants import RetCode
 from api.apps import login_required, current_user
 from api.apps.services import dataset_api_service
@@ -731,22 +731,19 @@ def delete_knowledge_graph(tenant_id, dataset_id):
         return get_error_data_result(message="Internal server error")
 
 
-@manager.route("/datasets/<dataset_id>/any_artifact", methods=["GET"])  # noqa: F821
+@manager.route("/datasets/<dataset_id>/artifacts", methods=["HEAD"])  # noqa: F821
 @login_required
 @add_tenant_id_to_kwargs
 async def has_any_wiki(tenant_id, dataset_id):
     """Probe whether this dataset has any compiled artifact pages.
 
-    GET /api/v1/datasets/<dataset_id>/any_artifact
-    Success: {"code": 0, "data": {"has": bool}}
     The frontend uses this to decide whether to surface the Artifact tab
     in the dataset sidebar.
     """
     try:
         success, result = await dataset_api_service.has_any_wiki(dataset_id, tenant_id)
-        if success:
-            return get_result(data=result)
-        return get_result(data=False, message=result, code=RetCode.AUTHENTICATION_ERROR)
+        response = await make_response("", 200 if success and result["has"] else 404)
+        return response
     except Exception as e:
         logging.exception(e)
         return get_error_data_result(message="Internal server error")
@@ -786,13 +783,13 @@ async def list_wiki_pages(tenant_id, dataset_id):
         return get_error_data_result(message="Internal server error")
 
 
-@manager.route("/datasets/<dataset_id>/artifacts_topics", methods=["GET"])  # noqa: F821
+@manager.route("/datasets/<dataset_id>/artifacts/topics", methods=["GET"])  # noqa: F821
 @login_required
 @add_tenant_id_to_kwargs
 async def list_wiki_topics(tenant_id, dataset_id):
     """List wiki topics for the dataset Artifact tab.
 
-    GET /api/v1/datasets/<dataset_id>/artifacts_topics?page=1&page_size=200
+    GET /api/v1/datasets/<dataset_id>/artifacts/topics?page=1&page_size=200
     Success: {"code": 0, "data": {"total": int, "items": [{topic, title, slug}]}}
     """
     try:
@@ -861,13 +858,13 @@ async def get_wiki_graph(tenant_id, dataset_id):
         return get_error_data_result(message="Internal server error")
 
 
-@manager.route("/datasets/<dataset_id>/artifacts_structure", methods=["GET"])  # noqa: F821
+@manager.route("/datasets/<dataset_id>/artifacts/structure", methods=["GET"])  # noqa: F821
 @login_required
 @add_tenant_id_to_kwargs
 async def get_dataset_structure(tenant_id, dataset_id):
     """Return the dataset-scope (KB-wide) structure graph for one kind.
 
-    GET /api/v1/datasets/<dataset_id>/artifacts_structure?kind=<kind>
+    GET /api/v1/datasets/<dataset_id>/artifacts/structure?kind=<kind>
     where ``kind`` is one of:
       graph | mindmap | timeline | session_essence | session_graph
 
@@ -908,13 +905,13 @@ async def get_dataset_structure(tenant_id, dataset_id):
         return get_error_data_result(message="Internal server error")
 
 
-@manager.route("/datasets/<dataset_id>/artifacts_structure", methods=["DELETE"])  # noqa: F821
+@manager.route("/datasets/<dataset_id>/artifacts/structure", methods=["DELETE"])  # noqa: F821
 @login_required
 @add_tenant_id_to_kwargs
 def delete_dataset_structure(tenant_id, dataset_id):
     """Delete the dataset-scope (KB-wide) structure graph for one kind.
 
-    DELETE /api/v1/datasets/<dataset_id>/artifacts_structure?kind=<kind>
+    DELETE /api/v1/datasets/<dataset_id>/artifacts/structure?kind=<kind>
     Optional query param: wipe=false cancels the task without deleting stored rows.
     """
     kind = request.args.get("kind", "")
@@ -1027,20 +1024,15 @@ async def get_wiki_page(tenant_id, dataset_id, page_type, slug):
         return get_error_data_result(message="Internal server error")
 
 
-@manager.route("/datasets/<dataset_id>/any_skill", methods=["GET"])  # noqa: F821
+@manager.route("/datasets/<dataset_id>/skills", methods=["HEAD"])  # noqa: F821
 @login_required
 @add_tenant_id_to_kwargs
 async def has_any_skill(tenant_id, dataset_id):
-    """Probe whether this dataset has a compiled Corpus2Skill tree.
-
-    GET /api/v1/datasets/<dataset_id>/any_skill
-    Success: {"code": 0, "data": {"has": bool}}
-    """
+    """Probe whether this dataset has a compiled Corpus2Skill tree."""
     try:
         success, result = await dataset_api_service.has_any_skill(dataset_id, tenant_id)
-        if success:
-            return get_result(data=result)
-        return get_result(data=False, message=result, code=RetCode.AUTHENTICATION_ERROR)
+        response = await make_response("", 200 if success and result["has"] else 404)
+        return response
     except Exception as e:
         logging.exception(e)
         return get_error_data_result(message="Internal server error")
@@ -1113,13 +1105,13 @@ async def get_skill_page(tenant_id, dataset_id, skill_kwd):
         return get_error_data_result(message="Internal server error")
 
 
-@manager.route("/datasets/<dataset_id>/nav", methods=["GET"])  # noqa: F821
+@manager.route("/datasets/<dataset_id>/navigation", methods=["GET"])  # noqa: F821
 @login_required
 @add_tenant_id_to_kwargs
 async def list_dataset_nav(tenant_id, dataset_id):
     """First level of the dataset navigation tree — the top-level clusters.
 
-    GET /api/v1/datasets/<dataset_id>/nav
+    GET /api/v1/datasets/<dataset_id>/navigation
     Success: {"code": 0, "data": {"total": <n>, "items": [{name, description, doc_count, type, has_children}, ...]}}
     """
     try:
@@ -1135,13 +1127,13 @@ async def list_dataset_nav(tenant_id, dataset_id):
         return get_error_data_result(message="Internal server error")
 
 
-@manager.route("/datasets/<dataset_id>/nav/<path:name>/children", methods=["GET"])  # noqa: F821
+@manager.route("/datasets/<dataset_id>/navigation/<path:name>/children", methods=["GET"])  # noqa: F821
 @login_required
 @add_tenant_id_to_kwargs
 async def list_dataset_nav_children(tenant_id, dataset_id, name):
     """Direct children of a navigation node (hierarchical, one level per call).
 
-    GET /api/v1/datasets/<dataset_id>/nav/<name>/children
+    GET /api/v1/datasets/<dataset_id>/navigation/<name>/children
     Success: {"code": 0, "data": {"total": <n>, "items": [{name, description, doc_count, type, doc_id, has_children}, ...]}}
     """
     try:
@@ -1158,13 +1150,13 @@ async def list_dataset_nav_children(tenant_id, dataset_id, name):
         return get_error_data_result(message="Internal server error")
 
 
-@manager.route("/datasets/<dataset_id>/nav", methods=["DELETE"])  # noqa: F821
+@manager.route("/datasets/<dataset_id>/navigation", methods=["DELETE"])  # noqa: F821
 @login_required
 @add_tenant_id_to_kwargs
 async def delete_dataset_nav(tenant_id, dataset_id):
     """Delete the entire dataset navigation tree.
 
-    DELETE /api/v1/datasets/<dataset_id>/nav
+    DELETE /api/v1/datasets/<dataset_id>/navigation
     Success: {"code": 0, "data": {"deleted": <n>}}
     """
     try:
@@ -1180,13 +1172,13 @@ async def delete_dataset_nav(tenant_id, dataset_id):
         return get_error_data_result(message="Internal server error")
 
 
-@manager.route("/datasets/<dataset_id>/nav/<path:name>", methods=["DELETE"])  # noqa: F821
+@manager.route("/datasets/<dataset_id>/navigation/<path:name>", methods=["DELETE"])  # noqa: F821
 @login_required
 @add_tenant_id_to_kwargs
 async def delete_dataset_nav_node(tenant_id, dataset_id, name):
     """Delete one navigation node and its whole subtree.
 
-    DELETE /api/v1/datasets/<dataset_id>/nav/<name>
+    DELETE /api/v1/datasets/<dataset_id>/navigation/<name>
     Success: {"code": 0, "data": {"deleted": <n>}}
     """
     try:

@@ -46,13 +46,17 @@ func StartServer(ctx context.Context, cancel context.CancelFunc, serverName stri
 
 	config := GetConfig()
 
+	oTel := config.GetOpenTelemetryConfig()
+
 	var err error
-	serverEE.tracerProvider, err = tracer.NewTracerProvider(ctx, serverName, config.OTel.Host, config.OTel.Port, config.OTel.Secure, config.OTel.Stdout, config.OTel.Enable, config.OTel.SampleRatio)
+	serverEE.tracerProvider, err = tracer.NewTracerProvider(ctx, serverName, oTel.Host, oTel.Port, oTel.Secure, oTel.Stdout, oTel.Enable, oTel.SampleRatio)
 	if err != nil {
 		return err
 	}
 
-	err = clickhouse.Init(ctx, cancel, config.Clickhouse.Host, config.Clickhouse.Port, config.Clickhouse.User, config.Clickhouse.Password, config.Clickhouse.Database)
+	ckConfig := config.GetClickhouseConfig()
+
+	err = clickhouse.Init(ctx, cancel, ckConfig.Host, ckConfig.Port, ckConfig.User, ckConfig.Password, ckConfig.Database)
 	if err != nil {
 		return err
 	}

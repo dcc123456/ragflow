@@ -21,7 +21,6 @@ import (
 	"errors"
 	"fmt"
 	"mime/multipart"
-	"os"
 	"ragflow/internal/common"
 	"ragflow/internal/dao"
 	"ragflow/internal/engine/clickhouse"
@@ -831,10 +830,8 @@ func (s *Service) ShowUserIndex(email string) (map[string]interface{}, error) {
 		return nil, common.ErrUserNotFound
 	}
 
-	docEngine := os.Getenv("DOC_ENGINE")
-	if docEngine == "" {
-		docEngine = "elasticsearch"
-	}
+	cfg := server.GetConfig()
+	docEngine := cfg.DocEngineType()
 	if docEngine != "elasticsearch" {
 		return map[string]interface{}{
 			"Email":   user.Email,
@@ -842,15 +839,16 @@ func (s *Service) ShowUserIndex(email string) (map[string]interface{}, error) {
 		}, nil
 	}
 
-	cfg := server.GetConfig()
-	if cfg == nil || cfg.DocEngine.ES == nil {
+	if !cfg.IsElasticConfigured() {
 		return map[string]interface{}{
 			"Email":   user.Email,
 			"Message": "Elasticsearch configuration not found",
 		}, nil
 	}
 
-	esEngine, err := elasticsearch.NewEngine(cfg.DocEngine.ES)
+	esConfig := cfg.GetElasticsearchConfig()
+
+	esEngine, err := elasticsearch.NewEngine(esConfig)
 	if err != nil {
 		return map[string]interface{}{
 			"Email":   user.Email,
@@ -1412,20 +1410,20 @@ func (s *Service) listUsersDocumentsRows(top int) ([]map[string]interface{}, err
 }
 
 func (s *Service) listUsersIndexRows(top int) ([]map[string]interface{}, error) {
-	docEngine := os.Getenv("DOC_ENGINE")
-	if docEngine == "" {
-		docEngine = "elasticsearch"
-	}
+
+	cfg := server.GetConfig()
+	docEngine := cfg.DocEngineType()
 	if docEngine != "elasticsearch" {
 		return nil, fmt.Errorf("elasticsearch is not in use, current doc engine: %s", docEngine)
 	}
 
-	cfg := server.GetConfig()
-	if cfg == nil || cfg.DocEngine.ES == nil {
+	if !cfg.IsElasticConfigured() {
 		return nil, fmt.Errorf("elasticsearch configuration not found")
 	}
 
-	esEngine, err := elasticsearch.NewEngine(cfg.DocEngine.ES)
+	esConfig := cfg.GetElasticsearchConfig()
+
+	esEngine, err := elasticsearch.NewEngine(esConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to elasticsearch: %w", err)
 	}
@@ -1849,27 +1847,35 @@ func (s *Service) ShowDataSummary() (map[string]interface{}, error) {
 		"Failed_progress_-1":      common.FormatNumber(taskRow.Failed),
 	}
 
-	docEngine := os.Getenv("DOC_ENGINE")
-	if docEngine == "" {
-		docEngine = "elasticsearch"
+	cfg := server.GetConfig()
+	docEngine := cfg.DocEngineType()
+	if docEngine != "elasticsearch" {
+		return nil, fmt.Errorf("elasticsearch is not in use, current doc engine: %s", docEngine)
 	}
-	if docEngine == "elasticsearch" {
-		cfg := server.GetConfig()
-		if cfg != nil && cfg.DocEngine.ES != nil {
-			esEngine, err := elasticsearch.NewEngine(cfg.DocEngine.ES)
-			if err == nil {
-				defer esEngine.Close()
-				clusterStats, err := esEngine.GetClusterStats()
-				if err == nil {
-					if v, ok := clusterStats["store_size"]; ok {
-						result["ES_Store_Size"] = v
-					}
-					if v, ok := clusterStats["total_dataset_size"]; ok {
-						result["ES_Vector_Dataset_Size"] = v
-					}
-				}
-			}
-		}
+
+	if !cfg.IsElasticConfigured() {
+		return nil, fmt.Errorf("elasticsearch configuration not found")
+	}
+
+	esConfig := cfg.GetElasticsearchConfig()
+
+	esEngine, err := elasticsearch.NewEngine(esConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect elasticsearch: %w", err)
+	}
+	defer esEngine.Close()
+
+	var clusterStats map[string]interface{}
+	clusterStats, err = esEngine.GetClusterStats()
+	if err != nil {
+		return nil, fmt.Errorf("failed to query elasticsearch cluster stats: %w", err)
+	}
+
+	if v, ok := clusterStats["store_size"]; ok {
+		result["ES_Store_Size"] = v
+	}
+	if v, ok := clusterStats["total_dataset_size"]; ok {
+		result["ES_Vector_Dataset_Size"] = v
 	}
 
 	return result, nil
@@ -1903,57 +1909,8 @@ func (s *Service) ShowDataOrphan() (map[string]interface{}, error) {
 	}
 
 	esOrphanCount := int64(0)
-	esErrorMsg := ""
-	docEngine := os.Getenv("DOC_ENGINE")
-	if docEngine == "" {
-		docEngine = "elasticsearch"
-	}
-	if docEngine != "elasticsearch" {
-		esErrorMsg = "ES not in use (" + docEngine + ")"
-	} else {
-		cfg := server.GetConfig()
-		if cfg == nil || cfg.DocEngine.ES == nil {
-			esErrorMsg = "ES config not found"
-		} else {
-			esEngine, err := elasticsearch.NewEngine(cfg.DocEngine.ES)
-			if err != nil {
-				esErrorMsg = fmt.Sprintf("ES connect failed: %s", err.Error())
-			} else {
-				defer esEngine.Close()
-				allIndexStats, err := esEngine.GetIndexStats([]string{"ragflow*"})
-				if err != nil {
-					esErrorMsg = fmt.Sprintf("ES query failed: %s", err.Error())
-				} else {
-					var validTenantIDs []string
-					dao.DB.Table("tenant").Select("id").Scan(&validTenantIDs)
-					validSet := make(map[string]bool, len(validTenantIDs))
-					for _, id := range validTenantIDs {
-						validSet[id] = true
-					}
-					for _, stat := range allIndexStats {
-						indexName, _ := stat["index"].(string)
-						if indexName == "" {
-							continue
-						}
-						var tenantID string
-						if strings.HasPrefix(indexName, "ragflow_doc_meta_") {
-							tenantID = strings.TrimPrefix(indexName, "ragflow_doc_meta_")
-						} else if strings.HasPrefix(indexName, "ragflow_") && !strings.Contains(strings.TrimPrefix(indexName, "ragflow_"), "_") {
-							tenantID = strings.TrimPrefix(indexName, "ragflow_")
-						} else {
-							continue
-						}
-						if tenantID != "" && !validSet[tenantID] {
-							esOrphanCount++
-						}
-					}
-				}
-			}
-		}
-	}
 
 	result := map[string]interface{}{
-
 		"KB_No_Tenant":  common.FormatNumber(kbRow.KbNoTenant),
 		"KB_No_Creator": common.FormatNumber(kbRow.KbNoUser),
 
@@ -1968,12 +1925,58 @@ func (s *Service) ShowDataOrphan() (map[string]interface{}, error) {
 
 		"UserTenant_No_User":   common.FormatNumber(utRow.UTNoUser),
 		"UserTenant_No_Tenant": common.FormatNumber(utRow.UTNoTenantRecord),
-
-		"ES_Index_No_Tenant": common.FormatNumber(esOrphanCount),
+		"ES_Index_No_Tenant":   common.FormatNumber(esOrphanCount),
 	}
 
-	if esErrorMsg != "" {
-		result["ES Error"] = esErrorMsg
+	cfg := server.GetConfig()
+	docEngine := cfg.DocEngineType()
+	if docEngine != "elasticsearch" {
+		result["ES Error"] = fmt.Sprintf("elasticsearch is not in use, current doc engine: %s", docEngine)
+		return result, nil
+	}
+
+	if !cfg.IsElasticConfigured() {
+		result["ES Error"] = "elasticsearch configuration not found"
+		return result, nil
+	}
+
+	esConfig := cfg.GetElasticsearchConfig()
+	esEngine, err := elasticsearch.NewEngine(esConfig)
+	if err != nil {
+		result["ES Error"] = fmt.Sprintf("failed to connect elasticsearch: %w", err)
+		return result, nil
+	}
+
+	defer esEngine.Close()
+
+	allIndexStats, err := esEngine.GetIndexStats([]string{"ragflow*"})
+	if err != nil {
+		result["ES Error"] = fmt.Sprintf("ES query failed: %s", err.Error())
+		return result, nil
+	}
+
+	var validTenantIDs []string
+	dao.DB.Table("tenant").Select("id").Scan(&validTenantIDs)
+	validSet := make(map[string]bool, len(validTenantIDs))
+	for _, id := range validTenantIDs {
+		validSet[id] = true
+	}
+	for _, stat := range allIndexStats {
+		indexName, _ := stat["index"].(string)
+		if indexName == "" {
+			continue
+		}
+		var tenantID string
+		if strings.HasPrefix(indexName, "ragflow_doc_meta_") {
+			tenantID = strings.TrimPrefix(indexName, "ragflow_doc_meta_")
+		} else if strings.HasPrefix(indexName, "ragflow_") && !strings.Contains(strings.TrimPrefix(indexName, "ragflow_"), "_") {
+			tenantID = strings.TrimPrefix(indexName, "ragflow_")
+		} else {
+			continue
+		}
+		if tenantID != "" && !validSet[tenantID] {
+			esOrphanCount++
+		}
 	}
 
 	return result, nil
@@ -2060,22 +2063,21 @@ func (s *Service) ShowDataStorage() (map[string]interface{}, error) {
 
 // ShowDataIndex show data index for enterprise edition
 func (s *Service) ShowDataIndex() (map[string]interface{}, error) {
-	docEngine := os.Getenv("DOC_ENGINE")
-	if docEngine == "" {
-		docEngine = "elasticsearch"
-	}
+	cfg := server.GetConfig()
+	docEngine := cfg.DocEngineType()
 	if docEngine != "elasticsearch" {
 		return nil, fmt.Errorf("elasticsearch is not in use, current doc engine: %s", docEngine)
 	}
 
-	cfg := server.GetConfig()
-	if cfg == nil || cfg.DocEngine.ES == nil {
+	if !cfg.IsElasticConfigured() {
 		return nil, fmt.Errorf("elasticsearch configuration not found")
 	}
 
-	esEngine, err := elasticsearch.NewEngine(cfg.DocEngine.ES)
+	esConfig := cfg.GetElasticsearchConfig()
+
+	esEngine, err := elasticsearch.NewEngine(esConfig)
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect to elasticsearch: %w", err)
+		return nil, fmt.Errorf("failed to connect elasticsearch: %w", err)
 	}
 	defer esEngine.Close()
 
@@ -2573,4 +2575,8 @@ func (s *Service) ListLogs(ctx context.Context, userName string, days int) ([]ma
 	}
 
 	return maps, nil
+}
+
+func (s *Service) GetEEServicesStatus() []ServiceStatus {
+	return []ServiceStatus{}
 }
