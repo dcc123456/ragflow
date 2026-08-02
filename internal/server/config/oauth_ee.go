@@ -52,3 +52,7 @@ func (c *Config) ParseOAuthConfig(v *viper.Viper) error {
 	}
 	return nil
 }
+
+func (c *Config) GetOAuthChannels() map[string]OAuthChannel {
+	return c.oAuth.Channels
+}

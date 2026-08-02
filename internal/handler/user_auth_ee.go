@@ -110,7 +110,27 @@ func (h *UserHandler) GetMeta(c *gin.Context) {
 }
 
 func (h *UserHandler) OAuthLogin(c *gin.Context) {
-	common.ErrorWithCode(c, common.CodeNotImplemented, "OAuthLogin not implemented")
+	channel := c.Param("channel")
+	if channel == "" {
+		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeArgumentError, nil, "channel is required")
+		return
+	}
+
+	init, code, err := h.userService.OAuthLoginInitiate(channel, redis.Get())
+	if err != nil {
+		// Mirror Python's oauth_login: the raised ValueError propagates to
+		// server_error_response, which replies HTTP 200 with code 100 and
+		// the exception's repr() as the message (no short error code).
+		if errors.Is(err, service.ErrOAuthInvalidChannel) {
+			common.ResponseWithCodeData(c, common.CodeExceptionError, nil, fmt.Sprintf("ValueError('Invalid channel name: %s')", channel))
+			return
+		}
+		common.ResponseWithHttpCodeData(c, http.StatusInternalServerError, code, nil, err.Error())
+		return
+	}
+
+	setOAuthStateCookie(c, init.State, int(init.CookieMaxAge.Seconds()))
+	c.Redirect(http.StatusFound, init.AuthURL)
 }
 
 func (h *UserHandler) OAuthChannelCallback(c *gin.Context) {
@@ -158,4 +178,77 @@ type LoginChannel struct {
 	Channel     string `json:"channel"`
 	DisplayName string `json:"display_name"`
 	Icon        string `json:"icon"`
+}
+
+// oauthStateCookie is the HttpOnly cookie name that ties the in-flight
+// state token to the browser that initiated the flow. The handler reads
+// it back from the callback request to defend against CSRF in addition to
+// the Redis-side verification.
+const oauthStateCookie = "ragflow_oauth_state"
+
+// callbackError maps the OAuth callback errors to the `?error=` strings
+// Python's oauth_callback emits. Python redirects with `?error={str(e)}`,
+// so an invalid channel surfaces the full "Invalid channel name: <channel>"
+// message (str of the ValueError), while the other failures use the short
+// tokens Python hard-codes. The value is intentionally not URL-encoded to
+// match Python's raw f-string redirect.
+func callbackError(channel string, err error) string {
+	switch {
+	case errors.Is(err, service.ErrOAuthInvalidChannel):
+		return "Invalid channel name: " + channel
+	case errors.Is(err, service.ErrOAuthInvalidState):
+		return "invalid_state"
+	case errors.Is(err, service.ErrOAuthMissingCode):
+		return "missing_code"
+	case errors.Is(err, service.ErrOAuthTokenFailed):
+		return "token_failed"
+	case errors.Is(err, service.ErrOAuthEmailMissing):
+		return "email_missing"
+	case errors.Is(err, service.ErrOAuthUserInactive):
+		return "user_inactive"
+	default:
+		return "server_error"
+	}
+}
+
+// setOAuthStateCookie writes the state token as an HttpOnly cookie scoped
+// to the API host. SameSite=Lax keeps the cookie attached on the top-level
+// navigation that brings the user back to the callback.
+func setOAuthStateCookie(c *gin.Context, state string, maxAgeSec int) {
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     oauthStateCookie,
+		Value:    state,
+		Path:     "/",
+		MaxAge:   maxAgeSec,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   c.Request.TLS != nil,
+	})
+}
+
+func readOAuthStateCookie(c *gin.Context) string {
+	if cookie, err := c.Request.Cookie(oauthStateCookie); err == nil {
+		return cookie.Value
+	}
+	return ""
+}
+
+func clearOAuthStateCookie(c *gin.Context) {
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     oauthStateCookie,
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   c.Request.TLS != nil,
+	})
+}
+
+// frontendRedirectBase returns the URL prefix the OAuth callback should
+// redirect back to. Mirrors Python's oauth_callback, which always issues
+// relative "/?auth=..." / "/?error=..." redirects so the browser stays on
+// the same origin that served the SPA.
+func frontendRedirectBase() string {
+	return "/"
 }
