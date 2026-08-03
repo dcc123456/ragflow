@@ -81,7 +81,7 @@ type OAuthLoginInit struct {
 // OAuthLoginInitiate generates a state, persists it in Redis with a TTL,
 // and returns the authorization URL the browser should be redirected to.
 // Mirrors the body of Python's oauth_login.
-func (s *UserService) OAuthLoginInitiate(channel string, redis *redis.Client) (*OAuthLoginInit, common.ErrorCode, error) {
+func (s *UserService) OAuthLoginInitiate(ctx context.Context, channel string, redis *redis.Client) (*OAuthLoginInit, common.ErrorCode, error) {
 	cfg, ok := lookupOAuthConfig(channel)
 	if !ok {
 		return nil, common.CodeDataError, fmt.Errorf("%w: %s", ErrOAuthInvalidChannel, channel)
@@ -96,7 +96,7 @@ func (s *UserService) OAuthLoginInitiate(channel string, redis *redis.Client) (*
 		return nil, common.CodeServerError, fmt.Errorf("generate oauth state: %w", err)
 	}
 	if redis != nil {
-		if ok := redis.Set(oauthStateKey+state, channel, oauthStateTTL); !ok {
+		if ok := redis.Set(ctx, oauthStateKey+state, channel, oauthStateTTL); !ok {
 			return nil, common.CodeServerError, errors.New("failed to persist oauth state")
 		}
 	}
@@ -138,10 +138,10 @@ func (s *UserService) OAuthCallback(ctx context.Context, channel, code, callback
 		return nil, common.CodeDataError, ErrOAuthInvalidState
 	}
 	if redis != nil {
-		stored, _ := redis.Get(oauthStateKey + callbackState)
+		stored, _ := redis.Get(ctx, oauthStateKey+callbackState)
 		// Delete unconditionally so a leaked state cannot be reused even
 		// when the Redis lookup fails open above.
-		redis.Delete(oauthStateKey + callbackState)
+		redis.Delete(ctx, oauthStateKey+callbackState)
 		if stored == "" || stored != channel {
 			return nil, common.CodeDataError, ErrOAuthInvalidState
 		}
