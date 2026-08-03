@@ -17,7 +17,6 @@
 package admin
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -113,7 +112,7 @@ func (h *Handler) Login(c *gin.Context) {
 		return
 	}
 
-	secretKey, err := server.GetSecretKey(redis.Get())
+	secretKey, err := server.GetSecretKey(ctx, redis.Get())
 	if err != nil {
 		common.ErrorWithCode(c, common.CodeServerError, fmt.Sprintf("Failed to get secret key: %s", err.Error()))
 		return
@@ -1227,7 +1226,8 @@ func (h *Handler) PingStore(c *gin.Context) {
 		return
 	}
 
-	if storageImpl.Health() {
+	ctx := c.Request.Context()
+	if storageImpl.Health(ctx) {
 		common.SuccessNoMessage(c, "SUCCESS")
 	} else {
 		common.ErrorWithCode(c, common.CodeServerError, "storage health check failed")
@@ -1235,8 +1235,9 @@ func (h *Handler) PingStore(c *gin.Context) {
 }
 
 func (h *Handler) PingCache(c *gin.Context) {
+	ctx := c.Request.Context()
 	redisClient := redis.Get()
-	if redisClient.Health() {
+	if redisClient.Health(ctx) {
 		common.SuccessNoMessage(c, "SUCCESS")
 	} else {
 		common.ErrorWithCode(c, common.CodeServerError, "cache health check failed")
@@ -1245,7 +1246,7 @@ func (h *Handler) PingCache(c *gin.Context) {
 
 func (h *Handler) PingEngine(c *gin.Context) {
 	docEngine := engine.Get()
-	ctx := context.Background()
+	ctx := c.Request.Context()
 	if err := docEngine.Ping(ctx); err != nil {
 		var coded interface {
 			Code() common.ErrorCode

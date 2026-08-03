@@ -251,7 +251,7 @@ services:
         "--maxmemory",
         "128mb",
         "--maxmemory-policy",
-        "allkeys-lru",
+        "volatile-lru",
       ]
     env_file: .env
     ports:
