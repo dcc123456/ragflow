@@ -52,7 +52,7 @@ func (h *UserHandler) OAuthCallback(c *gin.Context) {
 		return
 	}
 
-	init, code, err := h.userService.OAuthLoginInitiate(channel, redis.Get())
+	init, code, err := h.userService.OAuthLoginInitiate(c.Request.Context(), channel, redis.Get())
 	if err != nil {
 		// Mirror Python's oauth_login: the raised ValueError propagates to
 		// server_error_response, which replies HTTP 200 with code 100 and
@@ -116,7 +116,7 @@ func (h *UserHandler) OAuthLogin(c *gin.Context) {
 		return
 	}
 
-	init, code, err := h.userService.OAuthLoginInitiate(channel, redis.Get())
+	init, code, err := h.userService.OAuthLoginInitiate(c.Request.Context(), channel, redis.Get())
 	if err != nil {
 		// Mirror Python's oauth_login: the raised ValueError propagates to
 		// server_error_response, which replies HTTP 200 with code 100 and
@@ -156,7 +156,7 @@ func (h *UserHandler) OAuthChannelCallback(c *gin.Context) {
 		return
 	}
 
-	secretKey, kerr := server.GetSecretKey(redis.Get())
+	secretKey, kerr := server.GetSecretKey(c.Request.Context(), redis.Get())
 	if kerr != nil {
 		c.Redirect(http.StatusFound, frontendBase+"?error=server_error")
 		return
