@@ -22,15 +22,16 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"ragflow/internal/engine/redis"
-	"time"
-
 	"ragflow/internal/common"
 	"ragflow/internal/dao"
+	"ragflow/internal/engine/redis"
 	"ragflow/internal/entity"
 	"ragflow/internal/server"
+	"ragflow/internal/server/config"
+	"ragflow/internal/service/oauth"
 	"ragflow/internal/utility"
-	"ragflow/internal/utility/oauth"
+	"strings"
+	"time"
 
 	"gorm.io/gorm"
 )
@@ -164,7 +165,7 @@ func (s *UserService) OAuthCallback(ctx context.Context, channel, code, callback
 
 	info, err := client.FetchUserInfo(ctx, token.AccessToken, token.IDToken)
 	if err != nil {
-		return nil, common.CodeServerError, fmt.Errorf("Failed to fetch user info: %v", err)
+		return nil, common.CodeServerError, fmt.Errorf("failed to fetch user info: %v", err)
 	}
 	if info.Email == "" {
 		return nil, common.CodeDataError, ErrOAuthEmailMissing
@@ -186,9 +187,9 @@ func (s *UserService) OAuthCallback(ctx context.Context, channel, code, callback
 	}
 
 	// New user — register a fresh account bound to this channel.
-	created, ecode, cerr := s.registerOAuthUser(ctx, channel, info)
-	if cerr != nil {
-		return nil, ecode, cerr
+	created, ecode, err := s.registerOAuthUser(ctx, channel, info)
+	if err != nil {
+		return nil, ecode, err
 	}
 	return &OAuthCallbackResult{User: created, IsNewUser: true}, common.CodeSuccess, nil
 }
@@ -285,27 +286,28 @@ func (s *UserService) registerOAuthUser(ctx context.Context, channel string, inf
 
 // lookupOAuthConfig returns the configured OAuth channel by name. The lookup
 // is case-insensitive against the keys server.GetConfig() materialises from
-// the yaml config file.
-func lookupOAuthConfig(channel string) (server.OAuthConfig, bool) {
-	//cfg := server.GetConfig()
-	//if cfg == nil {
-	//	return server.OAuthConfig{}, false
-	//}
-	//if found, ok := cfg.OAuth[channel]; ok {
-	//	return found, true
-	//}
-	//want := strings.ToLower(channel)
-	//for k, v := range cfg.OAuth {
-	//	if strings.ToLower(k) == want {
-	//		return v, true
-	//	}
-	//}
-	return server.OAuthConfig{}, false
+// the YAML config file.
+func lookupOAuthConfig(channel string) (config.OAuthChannel, bool) {
+	cfg := server.GetConfig()
+	if cfg == nil {
+		return config.OAuthChannel{}, false
+	}
+	oAuthChannels := cfg.GetOAuthChannels()
+	if found, ok := oAuthChannels[channel]; ok {
+		return found, true
+	}
+	want := strings.ToLower(channel)
+	for k, v := range oAuthChannels {
+		if strings.ToLower(k) == want {
+			return v, true
+		}
+	}
+	return config.OAuthChannel{}, false
 }
 
 // toOAuthClientConfig narrows server.OAuthConfig (which carries display-only
 // fields like Icon) into the oauth.Config the client package consumes.
-func toOAuthClientConfig(cfg server.OAuthConfig) oauth.Config {
+func toOAuthClientConfig(cfg config.OAuthChannel) oauth.Config {
 	return oauth.Config{
 		Type:             cfg.Type,
 		ClientID:         cfg.ClientID,
