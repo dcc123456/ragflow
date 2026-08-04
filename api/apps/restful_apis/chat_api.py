@@ -29,7 +29,7 @@ from werkzeug.exceptions import BadRequest
 from api.apps import current_user, login_required
 from api.db import PermissionActionType, PermissionTargetType, PermissionValue, ResourceType
 from api.db.db_models import DB
-from api.apps.restful_apis._generation_params import merge_generation_config, pop_generation_config
+from api.apps.restful_apis._generation_params import merge_generation_config, pop_generation_config, resolve_llm_setting
 from api.db.joint_services.tenant_model_service import (
     get_api_key,
     get_composite_model_name_by_id,
@@ -1459,7 +1459,7 @@ async def recommendation():
         chat_model_config = get_tenant_default_model_by_type(current_user.id, LLMType.CHAT)
     chat_mdl = LLMBundle(current_user.id, chat_model_config)
 
-    gen_conf = search_config.get("llm_setting", {"temperature": 0.9})
+    gen_conf = resolve_llm_setting(search_config.get("llm_setting"))
     if "parameter" in gen_conf:
         del gen_conf["parameter"]
     prompt = load_prompt("related_question")
