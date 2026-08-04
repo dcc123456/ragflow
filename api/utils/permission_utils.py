@@ -588,7 +588,7 @@ def check_doc_permission(permission, allow_missing_document=False):
                     if inspect.iscoroutinefunction(foo):
                         return await foo(*args, **kwargs)
                     return foo(*args, **kwargs)
-                return get_json_result(data=False, message="Document not found!", code=RetCode.DATA_ERROR)
+                return get_json_result(data=False, message="document not found", code=RetCode.DATA_ERROR)
 
             user_tenants = await thread_pool_exec(UserTenantService.query, user_id=current_user.id) or []
             for user_tenant in user_tenants:

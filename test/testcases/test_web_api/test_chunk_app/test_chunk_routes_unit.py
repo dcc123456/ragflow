@@ -679,7 +679,7 @@ def test_list_chunk_exception_branches_unit(monkeypatch):
     monkeypatch.setattr(module.DocumentService, "get_by_id", lambda _doc_id: (False, None))
     _set_request_json(monkeypatch, module, {"doc_id": "doc-1"})
     res = _run(module.list_chunk())
-    assert res["message"] == "Document not found!", res
+    assert res["message"] == "document not found", res
 
     async def _raise_not_found(*_args, **_kwargs):
         raise Exception("x not_found y")
