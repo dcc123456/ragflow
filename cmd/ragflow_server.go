@@ -243,21 +243,21 @@ func main() {
 	}
 
 	// Temporary logger initialization
-	var logFile string
+	var logFileName string
 	var serverName string
 	if arguments.name != nil {
 		serverName = *arguments.name
 	} else {
 		serverName = fmt.Sprintf("%s_server", *arguments.mode)
 	}
-	logFile = fmt.Sprintf("%s.log", serverName)
+	logFileName = fmt.Sprintf("%s.log", serverName)
 
 	logLevel := "info"
 	if arguments.debugLog {
 		logLevel = "debug"
 	}
 
-	if err = common.InitLogger(logLevel, common.FileOutput{Path: logFile}, serverName); err != nil {
+	if err = common.InitLogger(logLevel, common.FileOutput{Filename: logFileName, Path: "logs"}, serverName); err != nil {
 		panic("failed to initialize logger: " + err.Error())
 	}
 
@@ -314,7 +314,9 @@ func main() {
 
 	// set server name and log file path
 	server.SetServerName(serverName)
-	logFile = fmt.Sprintf("%s.log", serverName)
+
+	// rename log filename
+	logFileName = fmt.Sprintf("%s.log", serverName)
 
 	logConfig := globalConfig.GetLogConfig()
 
@@ -331,14 +333,12 @@ func main() {
 	globalConfig.SetLogLevel(logLevel)
 
 	fileOut := common.FileOutput{
-		Path:       logFile,
+		Filename:   logFileName,
+		Path:       logConfig.Path,
 		MaxSize:    logConfig.MaxSize,
 		MaxBackups: logConfig.MaxBackups,
 		MaxAge:     logConfig.MaxAge,
 		Compress:   logConfig.Compress,
-	}
-	if logConfig.Path != "" {
-		fileOut.Path = logConfig.Path
 	}
 
 	common.SyncLog()
@@ -559,6 +559,10 @@ func runIngestor(ctx context.Context, cancel context.CancelFunc, args *serverArg
 		globalConfig.GetDefaultChatModel().Name,
 		globalConfig.GetDefaultEmbeddingModel().Name,
 	)
+	// Memory extraction runs on the Ingestor's shared NATS consumer + worker
+	// pool (task_type="memory" dispatched by processMessage -> executeMemoryTask),
+	// so there is no longer a dedicated Redis memory consumer to start.
+	ingestor.SetMemoryMessageService(service.NewMemoryMessageService(service.NewMemoryService()))
 
 	// Start returns immediately (it launches the owned consume/compile
 	// goroutines and joins them via Stop); a provisioning failure here is
@@ -566,13 +570,6 @@ func runIngestor(ctx context.Context, cancel context.CancelFunc, args *serverArg
 	if err := ingestor.Start(); err != nil {
 		common.Error("Failed to initialize ingestor", err)
 	}
-
-	// Memory extraction consumer: drains task_type="memory" messages
-	// from the te.0.common Redis stream and runs LLM extraction.
-	memoryConsumerCtx, stopMemoryConsumer := context.WithCancel(ctx)
-	defer stopMemoryConsumer()
-	memoryMessageSvc := service.NewMemoryMessageService(service.NewMemoryService())
-	go memoryMessageSvc.StartTaskConsumer(memoryConsumerCtx)
 
 	common.Info("\n    ____                      __  _\n" +
 		"   /  _/___  ____ ____  _____/ /_(_)___  ____     ________  ______   _____  _____\n" +
