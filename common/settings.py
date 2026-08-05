@@ -95,6 +95,7 @@ OAUTH_CONFIG = None
 DOC_ENGINE = os.getenv("DOC_ENGINE", "elasticsearch")
 DOC_ENGINE_INFINITY = DOC_ENGINE.lower() == "infinity"
 DOC_ENGINE_OCEANBASE = DOC_ENGINE.lower() == "oceanbase"
+DOC_ENGINE_SERENEDB = DOC_ENGINE.lower() == "serenedb"
 
 
 docStoreConn = None
@@ -137,6 +138,7 @@ OB = {}
 OSS = {}
 OS = {}
 GCS = {}
+SERENEDB = {}
 
 DOC_MAXIMUM_SIZE: int = 128 * 1024 * 1024
 DOC_BULK_SIZE: int = 32
@@ -320,10 +322,10 @@ def init_settings():
     CLIENT_AUTHENTICATION = authentication_conf.get("client", {}).get("switch", False)
     HTTP_APP_KEY = authentication_conf.get("client", {}).get("http_app_key")
 
-    global DOC_ENGINE, DOC_ENGINE_INFINITY, DOC_ENGINE_OCEANBASE, docStoreConn, ES, OB, OS, INFINITY
+    global DOC_ENGINE, DOC_ENGINE_INFINITY, DOC_ENGINE_OCEANBASE, DOC_ENGINE_SERENEDB, docStoreConn, ES, OB, OS, INFINITY, SERENEDB
 
     # Whitelist of supported doc engines
-    SUPPORTED_DOC_ENGINES = {"elasticsearch", "infinity", "opensearch", "oceanbase", "seekdb"}
+    SUPPORTED_DOC_ENGINES = {"elasticsearch", "infinity", "opensearch", "oceanbase", "seekdb", "serenedb"}
 
     doc_engine_raw = os.environ.get("DOC_ENGINE", "elasticsearch").strip()
 
@@ -343,6 +345,7 @@ def init_settings():
     DOC_ENGINE = primary_doc_engine
     DOC_ENGINE_INFINITY = primary_doc_engine == "infinity"
     DOC_ENGINE_OCEANBASE = primary_doc_engine == "oceanbase"
+    DOC_ENGINE_SERENEDB = primary_doc_engine == "serenedb"
 
     def _create_doc_store_connection(engine_name: str):
         """Create a document store connection for the given engine name."""
@@ -356,6 +359,8 @@ def init_settings():
             return rag.utils.ob_conn.OBConnection()
         elif engine_name == "seekdb":
             return rag.utils.ob_conn.OBConnection()
+        elif engine_name == "serenedb":
+            return rag.utils.serenedb_conn.SereneDBConnection()
         else:
             raise Exception(f"Not supported doc engine: {engine_name}")
 
@@ -375,6 +380,8 @@ def init_settings():
         OS = get_base_config("os", {})
     elif primary_doc_engine in ["oceanbase", "seekdb"]:
         OB = get_base_config(primary_doc_engine, {})
+    elif primary_doc_engine == "serenedb":
+        SERENEDB = get_base_config("serenedb", {})
 
     primary_conn = _create_doc_store_connection(primary_doc_engine)
 

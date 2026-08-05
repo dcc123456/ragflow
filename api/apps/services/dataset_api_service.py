@@ -35,7 +35,7 @@ from api.db.services.user_service import TenantService, UserService, UserTenantS
 from common.constants import FileSource, StatusEnum
 from common.misc_utils import get_uuid
 from api.utils.api_utils import deep_merge, get_parser_config, remap_dictionary_keys, verify_embedding_availability
-from common.misc_utils import thread_pool_exec
+from common.misc_utils import thread_pool_exec, thread_pool_exec_long_time
 from rag.advanced_rag.knowlege_compile.wiki import WIKI_PAGE_COMPILE_KWD
 
 # KB-wide structure-graph merge index types. Each (re)builds the ``dataset_graph``
@@ -176,7 +176,7 @@ async def create_dataset(tenant_id: str, req: dict):
     return True, response_data
 
 
-async def delete_datasets(tenant_id: str, ids: list = None, delete_all: bool = False):
+def _delete_datasets_sync(tenant_id: str, ids: list = None, delete_all: bool = False):
     """
     Delete datasets.
 
@@ -253,6 +253,10 @@ async def delete_datasets(tenant_id: str, ids: list = None, delete_all: bool = F
     return True, {"success_count": success_count, "errors": errors[:5]}
 
 
+async def delete_datasets(tenant_id: str, ids: list = None, delete_all: bool = False):
+    return await thread_pool_exec_long_time(_delete_datasets_sync, tenant_id, ids, delete_all)
+
+
 def get_dataset(dataset_id: str, tenant_id: str):
     """
     Get a single dataset.
@@ -319,6 +323,10 @@ async def update_dataset(tenant_id: str, dataset_id: str, req: dict):
     ok, kb = KnowledgebaseService.get_by_id(dataset_id)
     if not ok or kb is None:
         return False, "dataset not found"
+
+    kb = KnowledgebaseService.get_or_none(id=dataset_id)
+    if kb is None:
+        return False, "Invalid Dataset ID"
 
     # Extract ext field for additional parameters
     ext_fields = req.pop("ext", {})

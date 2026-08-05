@@ -122,6 +122,11 @@ def _load_delete_datasets_module(monkeypatch, *, f2d_rows, file_filter_delete):
     )
     _stub(
         monkeypatch,
+        "api.db.services.tenant_model_service",
+        TenantModelService=SimpleNamespace(),
+    )
+    _stub(
+        monkeypatch,
         "api.db.joint_services.tenant_model_service",
         get_model_config_from_provider_instance=MagicMock(),
         resolve_model_config=MagicMock(),
@@ -179,6 +184,12 @@ def _load_delete_datasets_module(monkeypatch, *, f2d_rows, file_filter_delete):
         "common.misc_utils",
         get_uuid=MagicMock(return_value="uuid-1"),
         thread_pool_exec=_thread_pool_exec,
+        thread_pool_exec_long_time=_thread_pool_exec,
+    )
+    _stub(
+        monkeypatch,
+        "rag.advanced_rag.knowlege_compile.wiki",
+        WIKI_PAGE_COMPILE_KWD="wiki",
     )
     search_mod = _stub(
         monkeypatch,

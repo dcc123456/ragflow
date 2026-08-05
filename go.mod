@@ -40,7 +40,6 @@ require (
 	github.com/ledongthuc/pdf v0.0.0-20250511090121-5959a4027728
 	github.com/lib/pq v1.10.9
 	github.com/minio/minio-go/v7 v7.0.99
-	github.com/mitchellh/mapstructure v1.5.0
 	github.com/nats-io/nats-server/v2 v2.14.3
 	github.com/nats-io/nats.go v1.52.0
 	github.com/nikolalohinski/gonja v1.5.3
@@ -170,6 +169,7 @@ require (
 	github.com/minio/crc64nvme v1.1.1 // indirect
 	github.com/minio/highwayhash v1.0.4 // indirect
 	github.com/minio/md5-simd v1.1.2 // indirect
+	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/nats-io/jwt/v2 v2.8.2 // indirect

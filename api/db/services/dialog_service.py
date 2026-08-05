@@ -53,7 +53,7 @@ from rag.nlp import compliance
 from rag.nlp.search import index_name
 from rag.prompts.generator import chunks_format, citation_prompt, cross_languages, full_question, kb_prompt, keyword_extraction, message_fit_in, PROMPT_JINJA_ENV, ASK_SUMMARY
 from common.token_utils import num_tokens_from_string
-from rag.utils.tavily_conn import Tavily
+from rag.utils.web_search_conn import create_web_search_provider, has_web_search_provider
 from rag.utils.tts_cache import synthesize_with_cache
 from common.string_utils import remove_redundant_spaces
 from common import settings
@@ -78,7 +78,7 @@ async def _hydrate_chunk_vectors(retriever, chunks, tenant_ids, kb_ids):
     search results) keep whatever placeholder they were given. Other
     backends still carry vectors in the chunk, so we skip the round-trip.
     """
-    if settings.DOC_ENGINE_INFINITY or settings.DOC_ENGINE_OCEANBASE:
+    if settings.DOC_ENGINE_INFINITY or settings.DOC_ENGINE_OCEANBASE or settings.DOC_ENGINE_SERENEDB:
         return
     if not chunks:
         return
@@ -131,7 +131,7 @@ def _normalize_internet_flag(value):
 
 
 def _should_use_web_search(prompt_config, internet=None):
-    if not prompt_config.get("tavily_api_key"):
+    if not has_web_search_provider(prompt_config):
         return False
     normalized = _normalize_internet_flag(internet)
     return normalized is True
@@ -657,7 +657,7 @@ async def async_chat(dialog, messages, stream=True, *, user_id: str | None = Non
 
     session_id = kwargs.get("session_id")
     use_web_search = _should_use_web_search(dialog.prompt_config, kwargs.get("internet"))
-    logging.debug("web_search kb=%s tavily=%s internet=%r enabled=%s", bool(dialog.kb_ids), bool(dialog.prompt_config.get("tavily_api_key")), kwargs.get("internet"), use_web_search)
+    logging.debug("web_search kb=%s configured=%s internet=%r enabled=%s", bool(dialog.kb_ids), has_web_search_provider(dialog.prompt_config), kwargs.get("internet"), use_web_search)
     if not dialog.kb_ids and not use_web_search:
         async for ans in async_chat_solo(dialog, messages, stream, session_id=session_id):
             yield ans
@@ -744,13 +744,55 @@ async def async_chat(dialog, messages, stream=True, *, user_id: str | None = Non
     )
 
     prompt_config = dialog.prompt_config
+    if dialog.meta_data_filter:
+        attachments = await apply_meta_data_filter(
+            dialog.meta_data_filter,
+            None,
+            questions[-1],
+            chat_mdl,
+            attachments,
+            kb_ids=dialog.kb_ids,
+            metas_loader=lambda: DocMetadataService.get_flatted_meta_by_kbs(dialog.kb_ids),
+        )
+    logger.info(
+        _green_log(
+            "[chat.async_chat] before_permission_filter user_id=%s dialog_tenant_id=%s kb_ids=%s attachments=%s",
+        ),
+        user_id,
+        dialog.tenant_id,
+        dialog.kb_ids,
+        attachments,
+    )
+
+    if attachments is None:
+        attachments = []
+    elif isinstance(attachments, str):
+        attachments = [d for d in attachments.split(",") if d]
+    attachments, permission_tenant_ids, err_msg = filter_accessible_doc_ids_for_user(
+        user_id if user_id else dialog.tenant_id,
+        dialog.kb_ids,
+        attachments if attachments else None,
+    )
+    logger.info(
+        _green_log(
+            "[chat.async_chat] after_permission_filter user_id=%s dialog_tenant_id=%s permission_tenant_ids=%s filtered_attachments=%s err_msg=%r",
+        ),
+        user_id,
+        dialog.tenant_id,
+        permission_tenant_ids,
+        attachments,
+        err_msg,
+    )
+    if err_msg:
+        raise Exception(err_msg)
+
     include_reference_metadata, metadata_fields = _resolve_reference_metadata(prompt_config, request_payload=kwargs)
     field_map = KnowledgebaseService.get_field_map(dialog.kb_ids)
     logging.debug(f"field_map retrieved: {field_map}")
     # try to use sql if field mapping is good to go
     if field_map:
         logging.debug("Use SQL to retrieval:{}".format(questions[-1]))
-        ans = await use_sql(questions[-1], field_map, dialog.tenant_id, chat_mdl, prompt_config.get("quote", True), dialog.kb_ids)
+        ans = await use_sql(questions[-1], field_map, dialog.tenant_id, chat_mdl, prompt_config.get("quote", True), dialog.kb_ids, doc_ids=attachments)
         # For aggregate queries (COUNT, SUM, etc.), chunks may be empty but answer is still valid
         if ans and (ans.get("reference", {}).get("chunks") or ans.get("answer")):
             if include_reference_metadata and ans.get("reference", {}).get("chunks"):
@@ -789,42 +831,6 @@ async def async_chat(dialog, messages, stream=True, *, user_id: str | None = Non
 
     if prompt_config.get("cross_languages"):
         questions = [await cross_languages(dialog.tenant_id, dialog.llm_id, questions[0], prompt_config["cross_languages"])]
-
-    if dialog.meta_data_filter:
-        attachments = await apply_meta_data_filter(
-            dialog.meta_data_filter, None, questions[-1], chat_mdl, attachments, kb_ids=dialog.kb_ids, metas_loader=lambda: DocMetadataService.get_flatted_meta_by_kbs(dialog.kb_ids)
-        )
-    logger.info(
-        _green_log(
-            "[chat.async_chat] before_permission_filter user_id=%s dialog_tenant_id=%s kb_ids=%s attachments=%s",
-        ),
-        user_id,
-        dialog.tenant_id,
-        dialog.kb_ids,
-        attachments,
-    )
-
-    if attachments is None:
-        attachments = []
-    elif isinstance(attachments, str):
-        attachments = [d for d in attachments.split(",") if d]
-    attachments, permission_tenant_ids, err_msg = filter_accessible_doc_ids_for_user(
-        user_id if user_id else dialog.tenant_id,
-        dialog.kb_ids,
-        attachments if attachments else None,
-    )
-    logger.info(
-        _green_log(
-            "[chat.async_chat] after_permission_filter user_id=%s dialog_tenant_id=%s permission_tenant_ids=%s filtered_attachments=%s err_msg=%r",
-        ),
-        user_id,
-        dialog.tenant_id,
-        permission_tenant_ids,
-        attachments,
-        err_msg,
-    )
-    if err_msg:
-        raise Exception(err_msg)
 
     if prompt_config.get("keyword", False):
         questions[-1] = questions[-1] + "," + await keyword_extraction(chat_mdl, questions[-1])
@@ -909,10 +915,10 @@ async def async_chat(dialog, messages, stream=True, *, user_id: str | None = Non
                         kbinfos["chunks"] = cks
                 kbinfos["chunks"] = retriever.retrieval_by_children(kbinfos["chunks"], tenant_ids)
             if use_web_search:
-                tav = Tavily(prompt_config["tavily_api_key"])
-                tav_res = tav.retrieve_chunks(" ".join(questions))
-                kbinfos["chunks"].extend(tav_res["chunks"])
-                kbinfos["doc_aggs"].extend(tav_res["doc_aggs"])
+                web_search = create_web_search_provider(prompt_config)
+                web_res = web_search.retrieve_chunks(" ".join(questions))
+                kbinfos["chunks"].extend(web_res["chunks"])
+                kbinfos["doc_aggs"].extend(web_res["doc_aggs"])
             if prompt_config.get("use_kg"):
                 default_chat_model = get_tenant_default_model_by_type(dialog.tenant_id, LLMType.CHAT)
                 ck = await settings.kg_retriever.retrieval(
@@ -1133,7 +1139,7 @@ async def async_chat(dialog, messages, stream=True, *, user_id: str | None = Non
     return
 
 
-async def use_sql(question, field_map, tenant_id, chat_mdl, quota=True, kb_ids=None):
+async def use_sql(question, field_map, tenant_id, chat_mdl, quota=True, kb_ids=None, doc_ids=None):
     """Answer a natural-language question by generating and executing SQL against the document index.
 
     Detects the active document engine (Infinity, OceanBase, or Elasticsearch), asks the
@@ -1147,6 +1153,7 @@ async def use_sql(question, field_map, tenant_id, chat_mdl, quota=True, kb_ids=N
         chat_mdl: LLM bundle used to generate SQL from the question.
         quota: Whether to enforce token-quota checks (default True).
         kb_ids: Optional list of knowledge-base UUIDs to restrict the query scope.
+        doc_ids: Optional list of document UUIDs to restrict the query scope.
 
     Returns:
         A dict with keys ``answer`` (formatted response string), ``reference``
@@ -1164,11 +1171,18 @@ async def use_sql(question, field_map, tenant_id, chat_mdl, quota=True, kb_ids=N
         doc_engine = "es"
 
     def _assert_valid_uuid(value: str, label: str = "id") -> None:
+        if label == "doc_id" and str(value) == "-999":
+            return
         try:
             uuid.UUID(str(value))
         except (ValueError, AttributeError, TypeError):
             logger.warning("SQL injection guard rejected invalid %s value (length=%d)", label, len(str(value)))
             raise ValueError(f"Invalid {label} format: {value!r}")
+
+    if isinstance(doc_ids, str):
+        doc_ids = [doc_id for doc_id in doc_ids.split(",") if doc_id]
+    else:
+        doc_ids = [doc_id for doc_id in doc_ids or [] if doc_id]
 
     # Construct the full table name
     # For Elasticsearch: ragflow_{tenant_id} (kb_id is in WHERE clause)
@@ -1212,34 +1226,38 @@ async def use_sql(question, field_map, tenant_id, chat_mdl, quota=True, kb_ids=N
         return sql.rstrip().rstrip(";").strip()
 
     def add_kb_filter(sql):
-        """Inject a validated kb_id WHERE filter into *sql* for ES/OceanBase engines.
+        """Inject validated scope filters into *sql*.
 
-        Infinity encodes the knowledge-base scope in the table name, so this
-        function is a no-op for that engine.  All kb_id values are validated as
-        canonical UUIDs before interpolation to prevent SQL injection.
+        Infinity encodes single-KB scope in the table name, so only document
+        scope is injected there. All ids are validated before interpolation.
         """
-        # Add kb_id filter for ES/OS only (Infinity already has it in table name)
-        if doc_engine == "infinity" or not kb_ids:
+        scope_filters = []
+        sql_lower = sql.lower()
+        if doc_engine != "infinity" and kb_ids and "kb_id =" not in sql_lower and "kb_id=" not in sql_lower:
+            for kid in kb_ids:
+                _assert_valid_uuid(kid, "kb_id")
+            if len(kb_ids) == 1:
+                scope_filters.append(f"kb_id = '{kb_ids[0]}'")
+            else:
+                scope_filters.append("(" + " OR ".join([f"kb_id = '{kid}'" for kid in kb_ids]) + ")")
+        if doc_ids:
+            for doc_id in doc_ids:
+                _assert_valid_uuid(doc_id, "doc_id")
+            if len(doc_ids) == 1:
+                scope_filters.append(f"doc_id = '{doc_ids[0]}'")
+            else:
+                scope_filters.append("(" + " OR ".join([f"doc_id = '{doc_id}'" for doc_id in doc_ids]) + ")")
+        if not scope_filters:
             return sql
 
-        # Validate all kb_ids are UUIDs before interpolating into SQL
-        for kid in kb_ids:
-            _assert_valid_uuid(kid, "kb_id")
+        scope_filter = " and ".join(scope_filters)
+        trailing_clause = re.search(r"\b(group\s+by|having|order\s+by|limit|offset)\b", sql, flags=re.IGNORECASE)
+        insert_pos = trailing_clause.start() if trailing_clause else len(sql)
 
-        # Build kb_filter: single KB or multiple KBs with OR
-        if len(kb_ids) == 1:
-            kb_filter = f"kb_id = '{kb_ids[0]}'"
+        if not re.search(r"\bwhere\b", sql, flags=re.IGNORECASE):
+            sql = sql[:insert_pos].rstrip() + f" WHERE {scope_filter}" + (" " + sql[insert_pos:] if trailing_clause else "")
         else:
-            kb_filter = "(" + " OR ".join([f"kb_id = '{kid}'" for kid in kb_ids]) + ")"
-
-        if "where " not in sql.lower():
-            o = sql.lower().split("order by")
-            if len(o) > 1:
-                sql = o[0] + f" WHERE {kb_filter}  order by " + o[1]
-            else:
-                sql += f" WHERE {kb_filter}"
-        elif "kb_id =" not in sql.lower() and "kb_id=" not in sql.lower():
-            sql = re.sub(r"\bwhere\b ", f"where {kb_filter} and ", sql, flags=re.IGNORECASE)
+            sql = sql[:insert_pos].rstrip() + f" and {scope_filter}" + (" " + sql[insert_pos:] if trailing_clause else "")
         return sql
 
     def is_row_count_question(q: str) -> bool:
@@ -2041,7 +2059,7 @@ async def rag_agent(dialog, messages, stream=True, **kwargs):
         return
     kbs, embd_mdl, rerank_mdl, chat_mdl, tts_mdl = get_models(dialog)
     use_web_search = _should_use_web_search(prompt_config, kwargs.get("internet"))
-    logging.debug("web_search kb=%s tavily=%s internet=%r enabled=%s", bool(dialog.kb_ids), bool(prompt_config.get("tavily_api_key")), kwargs.get("internet"), use_web_search)
+    logging.debug("web_search kb=%s configured=%s internet=%r enabled=%s", bool(dialog.kb_ids), has_web_search_provider(prompt_config), kwargs.get("internet"), use_web_search)
     tenant_ids = list(set([kb.tenant_id for kb in kbs]))
     # "reasoning" arrives as "1".."4" mapping to the ordered THINKING_MODES
     # (low, medium, high, ultra); fall back to "medium" on anything else.
@@ -2055,12 +2073,33 @@ async def rag_agent(dialog, messages, stream=True, **kwargs):
         thinking_mode = "medium"
 
     gen_conf = dialog.llm_setting or {}
+    doc_scope = None
+    if "doc_ids" in kwargs:
+        if isinstance(kwargs["doc_ids"], str):
+            doc_scope = [doc_id for doc_id in kwargs["doc_ids"].split(",") if doc_id]
+        elif isinstance(kwargs["doc_ids"], list):
+            doc_scope = [doc_id for doc_id in kwargs["doc_ids"] if doc_id]
+    if "doc_ids" in messages[-1]:
+        doc_scope = [doc_id for doc_id in messages[-1]["doc_ids"] if doc_id]
+    if dialog.meta_data_filter:
+        doc_scope = await apply_meta_data_filter(
+            dialog.meta_data_filter,
+            None,
+            messages[-1].get("content", ""),
+            chat_mdl,
+            doc_scope,
+            kb_ids=dialog.kb_ids,
+            metas_loader=lambda: DocMetadataService.get_flatted_meta_by_kbs(dialog.kb_ids),
+        )
+
     rag_tools = RAGTools(
         tenant_ids,
         chat_mdl,
         embed_mdl=embd_mdl,
         kb_ids=dialog.kb_ids,
-        tav=Tavily(prompt_config.get("tavily_api_key")) if use_web_search else None,
+        web_search=create_web_search_provider(prompt_config) if use_web_search else None,
+        meta_data_filter=dialog.meta_data_filter,
+        doc_scope=doc_scope,
         do_refer=False,
         thinking_mode=thinking_mode,
     )
