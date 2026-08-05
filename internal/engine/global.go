@@ -109,9 +109,9 @@ func InitMessageQueue() error {
 			return err
 		}
 	case "":
-		return nil
+		return fmt.Errorf("message queue type is empty")
 	default:
-		return nil
+		return fmt.Errorf("unsupported message queue type: %s", messageQueueType)
 	}
 	return nil
 }
