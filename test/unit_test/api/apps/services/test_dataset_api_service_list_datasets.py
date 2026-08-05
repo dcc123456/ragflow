@@ -184,6 +184,7 @@ def _load_list_datasets_module(monkeypatch, *, kbs, parsing_status_by_kb):
         "common.misc_utils",
         get_uuid=lambda: "00000000000000000000000000000000",
         thread_pool_exec=MagicMock(),
+        thread_pool_exec_long_time=MagicMock(),
     )
     _stub(
         monkeypatch,
