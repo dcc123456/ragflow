@@ -15,3 +15,29 @@
 //
 
 package dao
+
+import (
+	"context"
+
+	"ragflow/internal/entity"
+
+	"gorm.io/gorm"
+)
+
+// CountAllAgentCanvas counts all agent canvases.
+func (dao *UserCanvasDAO) CountAllAgentCanvas(ctx context.Context, db *gorm.DB) (int64, error) {
+	var total int64
+	err := db.WithContext(ctx).Model(&entity.UserCanvas{}).
+		Where("canvas_category = ?", "agent_canvas").
+		Count(&total).Error
+	return total, err
+}
+
+// CountAgentCanvasByTenantIDs counts agent canvases for the given tenants.
+func (dao *UserCanvasDAO) CountAgentCanvasByTenantIDs(ctx context.Context, db *gorm.DB, tenantIDs []string) (int64, error) {
+	var total int64
+	err := db.WithContext(ctx).Model(&entity.UserCanvas{}).
+		Where("user_id IN ? AND canvas_category = ?", tenantIDs, "agent_canvas").
+		Count(&total).Error
+	return total, err
+}

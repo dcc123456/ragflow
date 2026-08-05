@@ -15,3 +15,20 @@
 //
 
 package dao
+
+import (
+	"context"
+
+	"ragflow/internal/entity"
+
+	"gorm.io/gorm"
+)
+
+// CountSearchByTenantIDs counts searches for the given tenants.
+func (dao *SearchDAO) CountSearchByTenantIDs(ctx context.Context, db *gorm.DB, tenantIDs []string) (int64, error) {
+	var total int64
+	err := db.WithContext(ctx).Model(&entity.Search{}).
+		Where("tenant_id IN ? AND status = ?", tenantIDs, "1").
+		Count(&total).Error
+	return total, err
+}

@@ -16,8 +16,46 @@
 
 package dao
 
+import (
+	"context"
+
+	"ragflow/internal/entity"
+
+	"gorm.io/gorm"
+)
+
 type BillingProductDAO struct{}
 
 func NewBillingProductDAO() *BillingProductDAO {
 	return &BillingProductDAO{}
+}
+
+type ProductRow struct {
+	Name                     string `gorm:"column:name"`
+	QuotaStorage             int64  `gorm:"column:quota_storage"`
+	QuotaApps                int    `gorm:"column:quota_apps"`
+	APIRequestLimitPerMinute *int64 `gorm:"column:api_request_limit_per_minute"`
+}
+
+func (dao *BillingProductDAO) ListBillingProducts(ctx context.Context, db *gorm.DB) ([]ProductRow, error) {
+	var products []ProductRow
+	err := db.WithContext(ctx).Table("billing_product").
+		Select("name, quota_storage, quota_apps, api_request_limit_per_minute").
+		Order("priority ASC, version DESC").
+		Scan(&products).Error
+	return products, err
+}
+
+// GetFreeQuotaStorage returns the storage quota of the latest "Free" billing product.
+func (dao *BillingProductDAO) GetFreeQuotaStorage(ctx context.Context, db *gorm.DB) int64 {
+	var freeQuotaStorage int64
+	if err := db.WithContext(ctx).Model(&entity.BillingProduct{}).
+		Select("quota_storage").
+		Where("name = ?", "Free").
+		Order("version DESC").
+		Limit(1).
+		Scan(&freeQuotaStorage).Error; err != nil {
+		freeQuotaStorage = 0
+	}
+	return freeQuotaStorage
 }

@@ -15,3 +15,18 @@
 //
 
 package dao
+
+import (
+	"context"
+
+	"ragflow/internal/entity"
+
+	"gorm.io/gorm"
+)
+
+// CountAllTenants counts all tenants.
+func (dao *TenantDAO) CountAllTenants(ctx context.Context, db *gorm.DB) (int64, error) {
+	var total int64
+	err := db.WithContext(ctx).Model(&entity.Tenant{}).Count(&total).Error
+	return total, err
+}

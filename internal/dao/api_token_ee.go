@@ -15,3 +15,27 @@
 //
 
 package dao
+
+import (
+	"context"
+
+	"ragflow/internal/entity"
+
+	"gorm.io/gorm"
+)
+
+// CountAllAPIToken counts all API tokens.
+func (dao *APITokenDAO) CountAllAPIToken(ctx context.Context, db *gorm.DB) (int64, error) {
+	var total int64
+	err := db.WithContext(ctx).Model(&entity.APIToken{}).Count(&total).Error
+	return total, err
+}
+
+// CountAPITokenByTenantIDs counts API tokens for the given tenants.
+func (dao *APITokenDAO) CountAPITokenByTenantIDs(ctx context.Context, db *gorm.DB, tenantIDs []string) (int64, error) {
+	var total int64
+	err := db.WithContext(ctx).Model(&entity.APIToken{}).
+		Where("tenant_id IN ?", tenantIDs).
+		Count(&total).Error
+	return total, err
+}

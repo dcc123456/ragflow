@@ -15,3 +15,29 @@
 //
 
 package dao
+
+import (
+	"context"
+
+	"ragflow/internal/entity"
+
+	"gorm.io/gorm"
+)
+
+// CountAllChat counts all active chats.
+func (dao *ChatDAO) CountAllChat(ctx context.Context, db *gorm.DB) (int64, error) {
+	var total int64
+	err := db.WithContext(ctx).Model(&entity.Chat{}).
+		Where("status = ?", "1").
+		Count(&total).Error
+	return total, err
+}
+
+// CountChatByTenantIDs counts chats for the given tenants.
+func (dao *ChatDAO) CountChatByTenantIDs(ctx context.Context, db *gorm.DB, tenantIDs []string) (int64, error) {
+	var total int64
+	err := db.WithContext(ctx).Model(&entity.Chat{}).
+		Where("tenant_id IN ? AND status = ?", tenantIDs, "1").
+		Count(&total).Error
+	return total, err
+}

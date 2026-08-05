@@ -15,3 +15,20 @@
 //
 
 package dao
+
+import (
+	"context"
+
+	"ragflow/internal/entity"
+
+	"gorm.io/gorm"
+)
+
+// CountMemoryByTenantIDs counts memories for the given tenants.
+func (dao *MemoryDAO) CountMemoryByTenantIDs(ctx context.Context, db *gorm.DB, tenantIDs []string) (int64, error) {
+	var total int64
+	err := db.WithContext(ctx).Model(&entity.Memory{}).
+		Where("tenant_id IN ?", tenantIDs).
+		Count(&total).Error
+	return total, err
+}

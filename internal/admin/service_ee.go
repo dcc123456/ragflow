@@ -507,7 +507,7 @@ func (s *Service) ShowUserActivity(email string, days int) (map[string]interface
 	return result, nil
 }
 
-// ShowUserDatasetSummary show user dataset summary for enterprise edition
+// ShowUserDatasetSummary show user dataset summary for  edition
 func (s *Service) ShowUserDatasetSummary(ctx context.Context, email, dataset string) (map[string]interface{}, error) {
 	// Query user by email
 	var user entity.User
@@ -516,21 +516,31 @@ func (s *Service) ShowUserDatasetSummary(ctx context.Context, email, dataset str
 		return nil, common.ErrUserNotFound
 	}
 
-	kbs, err := s.kbDAO.GetKBByNameAndUserID(ctx, dao.DB, dataset, user.ID)
+	tenantIDs, err := s.userTenantDAO.GetTenantIDsByUserID(ctx, dao.DB, user.ID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query dataset: %w", err)
+		return nil, fmt.Errorf("failed to get tenant IDs: %w", err)
 	}
-	if len(kbs) == 0 {
+
+	var kb *entity.Knowledgebase
+	for _, tenantID := range tenantIDs {
+		found, ferr := s.kbDAO.GetByName(ctx, dao.DB, dataset, tenantID)
+		if ferr != nil {
+			if dao.IsNotFoundErr(ferr) {
+				continue
+			}
+			return nil, fmt.Errorf("failed to query dataset: %w", ferr)
+		}
+		kb = found
+		break
+	}
+	if kb == nil {
 		return nil, fmt.Errorf("dataset '%s' not found for user '%s'", dataset, email)
 	}
 
-	kb := kbs[0]
-
-	var totalDocSize int64
-	dao.DB.Model(&entity.Document{}).
-		Select("COALESCE(SUM(size), 0)").
-		Where("kb_id = ?", kb.ID).
-		Scan(&totalDocSize)
+	totalDocSize, err := s.documentDAO.SumDocSizeByKBID(ctx, dao.DB, kb.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query dataset doc size: %w", err)
+	}
 
 	result := map[string]interface{}{
 		"Email":        user.Email,
@@ -544,7 +554,7 @@ func (s *Service) ShowUserDatasetSummary(ctx context.Context, email, dataset str
 	return result, nil
 }
 
-// ShowUserSummary show user summary for enterprise edition
+// ShowUserSummary show user summary for  edition
 func (s *Service) ShowUserSummary(ctx context.Context, email string) (map[string]interface{}, error) {
 	// Query user by email
 	var user entity.User
@@ -577,46 +587,24 @@ func (s *Service) ShowUserSummary(ctx context.Context, email string) (map[string
 	var totalDocSize, totalChunkNum, totalTokenNum int64
 
 	if len(tenantIDs) > 0 {
-		dao.DB.Model(&entity.Knowledgebase{}).
-			Where("tenant_id IN ? AND status = ?", tenantIDs, string(entity.StatusValid)).
-			Count(&totalKB)
-
-		var kbAgg struct {
-			TotalChunkNum int64
-			TotalTokenNum int64
+		if totalKB, err = s.kbDAO.CountKBByTenantIDs(ctx, dao.DB, tenantIDs); err != nil {
+			return nil, fmt.Errorf("failed to count knowledgebases: %w", err)
 		}
-		dao.DB.Model(&entity.Knowledgebase{}).
-			Select("COALESCE(SUM(chunk_num), 0) as total_chunk_num, COALESCE(SUM(token_num), 0) as total_token_num").
-			Where("tenant_id IN ? AND status = ?", tenantIDs, string(entity.StatusValid)).
-			Scan(&kbAgg)
-		totalChunkNum = kbAgg.TotalChunkNum
-		totalTokenNum = kbAgg.TotalTokenNum
-
-		var docAgg struct {
-			TotalCount int64
-			TotalSize  int64
+		if totalChunkNum, totalTokenNum, err = s.kbDAO.SumKBChunkTokenByTenantIDs(ctx, dao.DB, tenantIDs); err != nil {
+			return nil, fmt.Errorf("failed to sum knowledgebase stats: %w", err)
 		}
-		kbSubQuery := dao.DB.Model(&entity.Knowledgebase{}).
-			Select("id").
-			Where("tenant_id IN ? AND status = ?", tenantIDs, string(entity.StatusValid))
-		dao.DB.Model(&entity.Document{}).
-			Select("COUNT(*) as total_count, COALESCE(SUM(size), 0) as total_size").
-			Where("kb_id IN (?)", kbSubQuery).
-			Scan(&docAgg)
-		totalDoc = docAgg.TotalCount
-		totalDocSize = docAgg.TotalSize
-
-		dao.DB.Model(&entity.Chat{}).
-			Where("tenant_id IN ? AND status = ?", tenantIDs, "1").
-			Count(&totalChat)
-
-		dao.DB.Model(&entity.UserCanvas{}).
-			Where("user_id IN ? AND canvas_category = ?", tenantIDs, "agent_canvas").
-			Count(&totalAgent)
-
-		dao.DB.Model(&entity.APIToken{}).
-			Where("tenant_id IN ?", tenantIDs).
-			Count(&totalAPIToken)
+		if totalDoc, totalDocSize, err = s.documentDAO.DocCountAndSizeByTenantIDs(ctx, dao.DB, tenantIDs); err != nil {
+			return nil, fmt.Errorf("failed to count documents: %w", err)
+		}
+		if totalChat, err = s.chatDAO.CountChatByTenantIDs(ctx, dao.DB, tenantIDs); err != nil {
+			return nil, fmt.Errorf("failed to count chats: %w", err)
+		}
+		if totalAgent, err = s.canvasDAO.CountAgentCanvasByTenantIDs(ctx, dao.DB, tenantIDs); err != nil {
+			return nil, fmt.Errorf("failed to count agents: %w", err)
+		}
+		if totalAPIToken, err = s.apiTokenDAO.CountAPITokenByTenantIDs(ctx, dao.DB, tenantIDs); err != nil {
+			return nil, fmt.Errorf("failed to count api tokens: %w", err)
+		}
 	}
 
 	lastLogin := "N/A"
@@ -652,7 +640,7 @@ func (s *Service) ShowUserSummary(ctx context.Context, email string) (map[string
 	return result, nil
 }
 
-// ShowUserStorage show user storage for enterprise edition
+// ShowUserStorage show user storage for  edition
 func (s *Service) ShowUserStorage(email string) (map[string]interface{}, error) {
 	// Query user by email
 	var user entity.User
@@ -662,29 +650,15 @@ func (s *Service) ShowUserStorage(email string) (map[string]interface{}, error) 
 	}
 	tenantID := user.ID
 
-	kbSubQuery := dao.DB.Model(&entity.Knowledgebase{}).
-		Select("id").
-		Where("tenant_id = ? AND status = '1'", tenantID)
-
-	var docAgg struct {
-		TotalCount int64
-		TotalSize  int64
+	docCount, docSize, err := s.documentDAO.DocCountAndSizeByTenantIDs(context.Background(), dao.DB, []string{tenantID})
+	if err != nil {
+		return nil, fmt.Errorf("failed to query user storage: %w", err)
 	}
-	dao.DB.Model(&entity.Document{}).
-		Select("COUNT(*) as total_count, COALESCE(SUM(size), 0) as total_size").
-		Where("kb_id IN (?)", kbSubQuery).
-		Scan(&docAgg)
 
-	var topFiles []struct {
-		Name string `gorm:"column:name"`
-		Size int64  `gorm:"column:size"`
+	topFiles, err := s.documentDAO.ListTopDocumentsByTenantIDs(context.Background(), dao.DB, []string{tenantID}, 10)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query user top documents: %w", err)
 	}
-	dao.DB.Model(&entity.Document{}).
-		Select("name, size").
-		Where("kb_id IN (?) AND status = '1'", kbSubQuery).
-		Order("size DESC").
-		Limit(10).
-		Find(&topFiles)
 
 	fileList := make([]map[string]interface{}, 0, len(topFiles))
 	for _, f := range topFiles {
@@ -697,15 +671,15 @@ func (s *Service) ShowUserStorage(email string) (map[string]interface{}, error) 
 	result := map[string]interface{}{
 		"Email":      user.Email,
 		"Tenant_ID":  tenantID,
-		"File_Count": common.FormatNumber(docAgg.TotalCount),
-		"Total_Size": common.FormatBytes(docAgg.TotalSize),
+		"File_Count": common.FormatNumber(docCount),
+		"Total_Size": common.FormatBytes(docSize),
 		"files":      fileList,
 	}
 
 	return result, nil
 }
 
-// ShowUserQuota show user quota for enterprise edition
+// ShowUserQuota show user quota for  edition
 func (s *Service) ShowUserQuota(ctx context.Context, email string) (map[string]interface{}, error) {
 	// Query user by email
 	var user entity.User
@@ -754,41 +728,38 @@ func (s *Service) ShowUserQuota(ctx context.Context, email string) (map[string]i
 
 	if len(tenantIDs) > 0 {
 		var chatCount, searchCount, agentCount, memoryCount int64
-		dao.DB.Model(&entity.Chat{}).Where("tenant_id IN ? AND status = ?", tenantIDs, "1").Count(&chatCount)
-		dao.DB.Model(&entity.Search{}).Where("tenant_id IN ? AND status = ?", tenantIDs, "1").Count(&searchCount)
-		dao.DB.Model(&entity.UserCanvas{}).Where("user_id IN ? AND canvas_category = ?", tenantIDs, "agent_canvas").Count(&agentCount)
-		dao.DB.Model(&entity.Memory{}).Where("tenant_id IN ?", tenantIDs).Count(&memoryCount)
+		if chatCount, err = s.chatDAO.CountChatByTenantIDs(ctx, dao.DB, tenantIDs); err != nil {
+			return nil, fmt.Errorf("failed to count chats: %w", err)
+		}
+		if searchCount, err = s.SearchDAO.CountSearchByTenantIDs(ctx, dao.DB, tenantIDs); err != nil {
+			return nil, fmt.Errorf("failed to count searches: %w", err)
+		}
+		if agentCount, err = s.canvasDAO.CountAgentCanvasByTenantIDs(ctx, dao.DB, tenantIDs); err != nil {
+			return nil, fmt.Errorf("failed to count agents: %w", err)
+		}
+		if memoryCount, err = s.MemoryDAO.CountMemoryByTenantIDs(ctx, dao.DB, tenantIDs); err != nil {
+			return nil, fmt.Errorf("failed to count memories: %w", err)
+		}
 		numApps = chatCount + searchCount + agentCount + memoryCount
 
-		dao.DB.Model(&entity.UserTenant{}).Where("tenant_id IN ?", tenantIDs).Count(&numMembers)
-		dao.DB.Model(&entity.APIToken{}).Where("tenant_id IN ?", tenantIDs).Count(&numAPITokens)
-
-		dao.DB.Model(&entity.Knowledgebase{}).Where("tenant_id IN ? AND status = ?", tenantIDs, string(entity.StatusValid)).Count(&numKB)
-
-		var kbAgg struct {
-			TotalChunkNum int64
-			TotalTokenNum int64
+		if numMembers, err = s.userTenantDAO.CountUserTenantByTenantIDs(ctx, dao.DB, tenantIDs); err != nil {
+			return nil, fmt.Errorf("failed to count members: %w", err)
 		}
-		dao.DB.Model(&entity.Knowledgebase{}).
-			Select("COALESCE(SUM(chunk_num), 0) as total_chunk_num, COALESCE(SUM(token_num), 0) as total_token_num").
-			Where("tenant_id IN ? AND status = ?", tenantIDs, string(entity.StatusValid)).
-			Scan(&kbAgg)
-		numChunk = kbAgg.TotalChunkNum
-		numToken = kbAgg.TotalTokenNum
-
-		kbSubQuery := dao.DB.Model(&entity.Knowledgebase{}).
-			Select("id").
-			Where("tenant_id IN ? AND status = ?", tenantIDs, string(entity.StatusValid))
-		var docAgg struct {
-			TotalCount int64
-			TotalSize  int64
+		if numAPITokens, err = s.apiTokenDAO.CountAPITokenByTenantIDs(ctx, dao.DB, tenantIDs); err != nil {
+			return nil, fmt.Errorf("failed to count api tokens: %w", err)
 		}
-		dao.DB.Model(&entity.Document{}).
-			Select("COUNT(*) as total_count, COALESCE(SUM(size), 0) as total_size").
-			Where("kb_id IN (?)", kbSubQuery).
-			Scan(&docAgg)
-		numDoc = docAgg.TotalCount
-		numStorageBytes = docAgg.TotalSize
+
+		if numKB, err = s.kbDAO.CountKBByTenantIDs(ctx, dao.DB, tenantIDs); err != nil {
+			return nil, fmt.Errorf("failed to count knowledgebases: %w", err)
+		}
+
+		if numChunk, numToken, err = s.kbDAO.SumKBChunkTokenByTenantIDs(ctx, dao.DB, tenantIDs); err != nil {
+			return nil, fmt.Errorf("failed to sum knowledgebase stats: %w", err)
+		}
+
+		if numDoc, numStorageBytes, err = s.documentDAO.DocCountAndSizeByTenantIDs(ctx, dao.DB, tenantIDs); err != nil {
+			return nil, fmt.Errorf("failed to count documents: %w", err)
+		}
 	}
 
 	quotaPointsUsed := "-"
@@ -838,7 +809,7 @@ func (s *Service) ShowUserQuota(ctx context.Context, email string) (map[string]i
 	return result, nil
 }
 
-// ShowUserIndex show user index for enterprise edition
+// ShowUserIndex show user index for  edition
 func (s *Service) ShowUserIndex(email string) (map[string]interface{}, error) {
 	// Query user by email
 	var user entity.User
@@ -888,33 +859,20 @@ func (s *Service) ShowUserIndex(email string) (map[string]interface{}, error) {
 		}, nil
 	}
 
-	var kbCount int64
-	dao.DB.Model(&entity.Knowledgebase{}).Where("tenant_id = ? AND status = '1'", tenantID).Count(&kbCount)
-
-	var totalDocs int64
-	var totalDocSize int64
-	kbSubQuery := dao.DB.Model(&entity.Knowledgebase{}).
-		Select("id").
-		Where("tenant_id = ? AND status = '1'", tenantID)
-	var docAgg struct {
-		TotalCount int64
-		TotalSize  int64
+	kbCount, err := s.kbDAO.CountKBByTenantIDs(context.Background(), dao.DB, []string{tenantID})
+	if err != nil {
+		return nil, fmt.Errorf("failed to count knowledgebases: %w", err)
 	}
-	dao.DB.Model(&entity.Document{}).
-		Select("COUNT(*) as total_count, COALESCE(SUM(size), 0) as total_size").
-		Where("kb_id IN (?)", kbSubQuery).
-		Scan(&docAgg)
-	totalDocs = docAgg.TotalCount
-	totalDocSize = docAgg.TotalSize
 
-	var kbAgg struct {
-		TotalChunkNum int64
-		TotalTokenNum int64
+	var totalDocs, totalDocSize int64
+	if totalDocs, totalDocSize, err = s.documentDAO.DocCountAndSizeByTenantIDs(context.Background(), dao.DB, []string{tenantID}); err != nil {
+		return nil, fmt.Errorf("failed to count documents: %w", err)
 	}
-	dao.DB.Model(&entity.Knowledgebase{}).
-		Select("COALESCE(SUM(chunk_num), 0) as total_chunk_num, COALESCE(SUM(token_num), 0) as total_token_num").
-		Where("tenant_id = ? AND status = '1'", tenantID).
-		Scan(&kbAgg)
+
+	var kbChunkNum, kbTokenNum int64
+	if kbChunkNum, kbTokenNum, err = s.kbDAO.SumKBChunkTokenByTenantIDs(context.Background(), dao.DB, []string{tenantID}); err != nil {
+		return nil, fmt.Errorf("failed to sum knowledgebase stats: %w", err)
+	}
 
 	var totalIndexSize int64
 	for _, stat := range indexStats {
@@ -933,8 +891,8 @@ func (s *Service) ShowUserIndex(email string) (map[string]interface{}, error) {
 		"Dataset_Count": kbCount,
 		"Doc_Count":     common.FormatNumber(totalDocs),
 		"Doc_Size":      common.FormatBytes(totalDocSize),
-		"Chunk_Count":   common.FormatNumber(kbAgg.TotalChunkNum),
-		"Token_Count":   common.FormatNumber(kbAgg.TotalTokenNum),
+		"Chunk_Count":   common.FormatNumber(kbChunkNum),
+		"Token_Count":   common.FormatNumber(kbTokenNum),
 		"Index_Count":   len(indexStats),
 		"Index_Size":    common.FormatBytes(totalIndexSize),
 		"indices":       indexStats,
@@ -963,7 +921,7 @@ func (s *Service) UpdateUserRole(email, roleName string) (map[string]interface{}
 	return result, nil
 }
 
-// ShowUserPermission show user permissions for enterprise edition
+// ShowUserPermission show user permissions for  edition
 func (s *Service) ShowUserPermission(email string) (map[string]interface{}, error) {
 	// Query user by email
 	var user entity.User
@@ -982,7 +940,7 @@ func (s *Service) ShowUserPermission(email string) (map[string]interface{}, erro
 	return result, nil
 }
 
-// ListUserDatasets show user datasets for enterprise edition
+// ListUserDatasets show user datasets for  edition
 func (s *Service) ListUserDatasets(email string) ([]map[string]interface{}, error) {
 	// Query user by email
 	var user entity.User
@@ -1003,7 +961,7 @@ func (s *Service) ListUserDatasets(email string) ([]map[string]interface{}, erro
 	return result, nil
 }
 
-// ListUserAgents show user agents for enterprise edition
+// ListUserAgents show user agents for  edition
 func (s *Service) ListUserAgents(email string) ([]map[string]interface{}, error) {
 	// Query user by email
 	var user entity.User
@@ -1024,7 +982,7 @@ func (s *Service) ListUserAgents(email string) ([]map[string]interface{}, error)
 	return result, nil
 }
 
-// ListUserChats show user chats for enterprise edition
+// ListUserChats show user chats for  edition
 func (s *Service) ListUserChats(email string) ([]map[string]interface{}, error) {
 	// Query user by email
 	var user entity.User
@@ -1045,7 +1003,7 @@ func (s *Service) ListUserChats(email string) ([]map[string]interface{}, error) 
 	return result, nil
 }
 
-// ListUserSearches show user searches for enterprise edition
+// ListUserSearches show user searches for  edition
 func (s *Service) ListUserSearches(email string) ([]map[string]interface{}, error) {
 	// Query user by email
 	var user entity.User
@@ -1066,7 +1024,7 @@ func (s *Service) ListUserSearches(email string) ([]map[string]interface{}, erro
 	return result, nil
 }
 
-// ListUserModels show user models for enterprise edition
+// ListUserModels show user models for  edition
 func (s *Service) ListUserModels(email string) ([]map[string]interface{}, error) {
 	// Query user by email
 	var user entity.User
@@ -1087,7 +1045,7 @@ func (s *Service) ListUserModels(email string) ([]map[string]interface{}, error)
 	return result, nil
 }
 
-// ListUserFiles show user files for enterprise edition
+// ListUserFiles show user files for  edition
 func (s *Service) ListUserFiles(email string) ([]map[string]interface{}, error) {
 	// Query user by email
 	var user entity.User
@@ -1108,7 +1066,7 @@ func (s *Service) ListUserFiles(email string) ([]map[string]interface{}, error) 
 	return result, nil
 }
 
-// ListUserProviders show user providers for enterprise edition
+// ListUserProviders show user providers for  edition
 func (s *Service) ListUserProviders(email string) ([]map[string]interface{}, error) {
 	// Query user by email
 	var user entity.User
@@ -1129,7 +1087,7 @@ func (s *Service) ListUserProviders(email string) ([]map[string]interface{}, err
 	return result, nil
 }
 
-// ListUserProviderInstances show user provider instances for enterprise edition
+// ListUserProviderInstances show user provider instances for  edition
 func (s *Service) ListUserProviderInstances(email, providerName string) ([]map[string]interface{}, error) {
 	// Query user by email
 	var user entity.User
@@ -1151,7 +1109,7 @@ func (s *Service) ListUserProviderInstances(email, providerName string) ([]map[s
 	return result, nil
 }
 
-// ListUserProviderInstanceModels show user provider instance models for enterprise edition
+// ListUserProviderInstanceModels show user provider instance models for  edition
 func (s *Service) ListUserProviderInstanceModels(email, providerName, instanceName string) ([]map[string]interface{}, error) {
 	// Query user by email
 	var user entity.User
@@ -1174,7 +1132,7 @@ func (s *Service) ListUserProviderInstanceModels(email, providerName, instanceNa
 	return result, nil
 }
 
-// ListUserDefaultModels show user default models for enterprise edition
+// ListUserDefaultModels show user default models for  edition
 func (s *Service) ListUserDefaultModels(email string) ([]map[string]interface{}, error) {
 	// Query user by email
 	var user entity.User
@@ -1197,31 +1155,21 @@ func (s *Service) ListUserDefaultModels(email string) ([]map[string]interface{},
 
 // ShowUsersSummary show users summary
 func (s *Service) ShowUsersSummary() (map[string]interface{}, error) {
-	thirtyDaysAgo := time.Now().AddDate(0, 0, -30)
-
-	var totalUsers int64
-	dao.DB.Model(&entity.User{}).Where("is_anonymous = ?", "0").Count(&totalUsers)
-
-	var activeUsers int64
-	dao.DB.Model(&entity.User{}).
-		Where("is_anonymous = ? AND last_login_time >= ?", "0", thirtyDaysAgo).
-		Count(&activeUsers)
-
-	var newUsers int64
-	dao.DB.Model(&entity.User{}).
-		Where("is_anonymous = ? AND create_time >= ?", "0", thirtyDaysAgo).
-		Count(&newUsers)
+	row, err := s.userDAO.UserCountTotalActiveNew(context.Background(), dao.DB, 30)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query users summary: %w", err)
+	}
 
 	result := map[string]interface{}{
-		"Total_Users":      common.FormatNumber(totalUsers),
-		"Active_Users_30d": common.FormatNumber(activeUsers),
-		"New_Users_30d":    common.FormatNumber(newUsers),
+		"Total_Users":      common.FormatNumber(row.TotalUsers),
+		"Active_Users_30d": common.FormatNumber(row.ActiveUsers30d),
+		"New_Users_30d":    common.FormatNumber(row.NewUsers30d),
 	}
 
 	return result, nil
 }
 
-// ShowUsersActivity show users activity for enterprise edition
+// ShowUsersActivity show users activity for  edition
 func (s *Service) ShowUsersActivity(days, windows *int) (map[string]interface{}, error) {
 	daysInt := 0
 	if days != nil {
@@ -1242,7 +1190,7 @@ func (s *Service) ShowUsersActivity(days, windows *int) (map[string]interface{},
 }
 
 func (s *Service) listUsersInactiveByPlan(days int) ([]map[string]interface{}, error) {
-	rows, err := dao.NewEnterpriseUserDAO().ListInactiveByPlan(days)
+	rows, err := s.userDAO.ListInactiveByPlan(context.Background(), dao.DB, days)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query inactive users: %w", err)
 	}
@@ -1338,7 +1286,7 @@ func (s *Service) ListUsersEE(ctx context.Context, pageIndex, pageSize int, name
 	return s.ListUsers(ctx, pageIndex, pageSize, name, status, sort, orderBy)
 }
 
-// ListUsersReports list users reports for enterprise edition
+// ListUsersReports list users reports for  edition
 func (s *Service) ListUsersReports(pageIndex, pageSize int, status, plan *string, days *int) (map[string]interface{}, error) {
 
 	statusStr := "all"
@@ -1367,7 +1315,7 @@ func (s *Service) ListUsersReports(pageIndex, pageSize int, status, plan *string
 	return result, nil
 }
 
-// ListUsersStorage list users storage for enterprise edition
+// ListUsersStorage list users storage for  edition
 func (s *Service) ListUsersStorage(pageIndex, pageSize, top int) (map[string]interface{}, error) {
 	if top <= 0 {
 		top = 10
@@ -1388,19 +1336,29 @@ func (s *Service) ListUsersStorage(pageIndex, pageSize, top int) (map[string]int
 }
 
 func (s *Service) listUsersStorageRows(top int) ([]map[string]interface{}, error) {
-	rows, err := dao.NewEnterpriseUserDAO().ListStorageRows(top)
+	rows, err := s.userDAO.ListStorageRows(context.Background(), dao.DB, top)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query users storage: %w", err)
 	}
 
 	result := make([]map[string]interface{}, 0, len(rows))
 	for i, row := range rows {
+		limitDisplay := "-"
+		if row.StorageLimit > 0 {
+			limitDisplay = common.FormatBytes(row.StorageLimit)
+		}
+		lastLogin := "-"
+		if row.LastLoginTime != nil {
+			lastLogin = row.LastLoginTime.Format("2006-01-02 15:04:05")
+		}
 		result = append(result, map[string]interface{}{
-			"rank":      i + 1,
-			"email":     row.Email,
-			"nickname":  row.Nickname,
-			"doc_count": common.FormatNumber(row.DocCount),
-			"doc_size":  common.FormatBytes(row.TotalSize),
+			"rank":       i + 1,
+			"user":       row.Email,
+			"plan":       row.PlanName,
+			"doc_count":  common.FormatNumber(row.DocCount),
+			"doc_size":   common.FormatBytes(row.TotalSize),
+			"limit":      limitDisplay,
+			"last_login": lastLogin,
 		})
 	}
 
@@ -1408,18 +1366,23 @@ func (s *Service) listUsersStorageRows(top int) ([]map[string]interface{}, error
 }
 
 func (s *Service) listUsersDocumentsRows(top int) ([]map[string]interface{}, error) {
-	rows, err := dao.NewEnterpriseUserDAO().ListDocumentsRows(top)
+	rows, err := s.userDAO.ListDocumentsRows(context.Background(), dao.DB, top)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query users documents: %w", err)
 	}
 
 	result := make([]map[string]interface{}, 0, len(rows))
 	for i, row := range rows {
+		lastLogin := "-"
+		if row.LastLoginTime != nil {
+			lastLogin = row.LastLoginTime.Format("2006-01-02 15:04:05")
+		}
 		result = append(result, map[string]interface{}{
-			"rank":      i + 1,
-			"email":     row.Email,
-			"nickname":  row.Nickname,
-			"doc_count": common.FormatNumber(row.DocCount),
+			"rank":       i + 1,
+			"user":       row.Email,
+			"plan":       row.PlanName,
+			"doc_count":  common.FormatNumber(row.DocCount),
+			"last_login": lastLogin,
 		})
 	}
 
@@ -1512,17 +1475,12 @@ func (s *Service) listUsersIndexRows(top int) ([]map[string]interface{}, error) 
 		}
 	}
 
-	type userInfo struct {
-		ID       string `gorm:"column:id"`
-		Email    string `gorm:"column:email"`
-		Nickname string `gorm:"column:nickname"`
-	}
-	var users []userInfo
-	if len(tenantIDs) > 0 {
-		dao.DB.Raw(`SELECT id, email, nickname FROM user WHERE id IN (?) AND status != '0'`, tenantIDs).Scan(&users)
+	users, err := s.userDAO.ListUsersWithPlan(context.Background(), dao.DB, tenantIDs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query users with plan: %w", err)
 	}
 
-	userMap := make(map[string]userInfo, len(users))
+	userMap := make(map[string]dao.UserWithPlanRow, len(users))
 	for _, u := range users {
 		userMap[u.ID] = u
 	}
@@ -1531,18 +1489,25 @@ func (s *Service) listUsersIndexRows(top int) ([]map[string]interface{}, error) 
 	for i, r := range rows {
 		user, ok := userMap[r.TenantID]
 		tenant := r.TenantID
+		plan := "-"
+		lastLogin := "-"
 		if ok {
 			tenant = user.Email
+			plan = user.PlanName
+			if user.LastLoginTime != nil {
+				lastLogin = user.LastLoginTime.Format("2006-01-02 15:04:05")
+			}
 		}
 
 		result = append(result, map[string]interface{}{
 			"rank":       i + 1,
 			"tenant":     tenant,
-			"tenant_id":  r.TenantID,
+			"plan":       plan,
 			"index_name": r.IndexName,
 			"health":     r.Health,
 			"docs.count": r.DocsCount,
 			"store.size": r.StoreSize,
+			"last_login": lastLogin,
 		})
 	}
 
@@ -1550,7 +1515,7 @@ func (s *Service) listUsersIndexRows(top int) ([]map[string]interface{}, error) 
 }
 
 func (s *Service) listUsersQuotaRows(top, quotaThreshold int) ([]map[string]interface{}, error) {
-	rows, err := dao.NewEnterpriseUserDAO().ListQuotaRows(top, quotaThreshold)
+	rows, err := s.userDAO.ListQuotaRows(context.Background(), dao.DB, top, quotaThreshold)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query users quota: %w", err)
 	}
@@ -1561,13 +1526,18 @@ func (s *Service) listUsersQuotaRows(top, quotaThreshold int) ([]map[string]inte
 		if r.StorageLimit > 0 {
 			limitDisplay = common.FormatBytes(r.StorageLimit)
 		}
+		lastLogin := "-"
+		if r.LastLoginTime != nil {
+			lastLogin = r.LastLoginTime.Format("2006-01-02 15:04:05")
+		}
 
 		result = append(result, map[string]interface{}{
-			"rank":  i + 1,
-			"user":  r.Email,
-			"plan":  r.PlanName,
-			"used":  common.FormatBytes(r.StorageUsed),
-			"limit": limitDisplay,
+			"rank":       i + 1,
+			"user":       r.Email,
+			"plan":       r.PlanName,
+			"used":       common.FormatBytes(r.StorageUsed),
+			"limit":      limitDisplay,
+			"last_login": lastLogin,
 		})
 	}
 
@@ -1578,7 +1548,7 @@ func (s *Service) listUsersQuotaRows(top, quotaThreshold int) ([]map[string]inte
 // Active users are defined by last_login_time >= now - days.
 // Results are sorted by last_login_time descending, limited to top N.
 func (s *Service) listUsersPlanRows(top int, planName string, days int) ([]map[string]interface{}, error) {
-	rows, err := dao.NewEnterpriseUserDAO().ListPlanRows(top, planName, days)
+	rows, err := s.userDAO.ListPlanRows(context.Background(), dao.DB, top, planName, days)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query users by plan: %w", err)
 	}
@@ -1606,7 +1576,7 @@ func (s *Service) listUsersPlanRows(top int, planName string, days int) ([]map[s
 // Active users are defined by last_login_time >= now - days.
 // Results are sorted by storage_used descending, limited to top N.
 func (s *Service) listUsersPlanQuotaRows(top int, planName string, quotaThreshold, days int) ([]map[string]interface{}, error) {
-	rows, err := dao.NewEnterpriseUserDAO().ListPlanQuotaRows(top, planName, quotaThreshold, days)
+	rows, err := s.userDAO.ListPlanQuotaRows(context.Background(), dao.DB, top, planName, quotaThreshold, days)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query users plan quota: %w", err)
 	}
@@ -1635,7 +1605,7 @@ func (s *Service) listUsersPlanQuotaRows(top int, planName string, quotaThreshol
 	return result, nil
 }
 
-// ListUsersDocuments list users documents for enterprise edition
+// ListUsersDocuments list users documents for  edition
 func (s *Service) ListUsersDocuments(pageIndex, pageSize, top int) (map[string]interface{}, error) {
 
 	result := map[string]interface{}{
@@ -1649,7 +1619,7 @@ func (s *Service) ListUsersDocuments(pageIndex, pageSize, top int) (map[string]i
 	return result, nil
 }
 
-// ListUsersIndex list users index for enterprise edition
+// ListUsersIndex list users index for  edition
 func (s *Service) ListUsersIndex(pageIndex, pageSize, top int) (map[string]interface{}, error) {
 
 	result := map[string]interface{}{
@@ -1663,7 +1633,7 @@ func (s *Service) ListUsersIndex(pageIndex, pageSize, top int) (map[string]inter
 	return result, nil
 }
 
-// ListUsersQuota list users quota for enterprise edition
+// ListUsersQuota list users quota for  edition
 func (s *Service) ListUsersQuota(pageIndex, pageSize, top int, quotaThreshold *int, plan *string, days *int) (map[string]interface{}, error) {
 
 	quotaThresholdInt := 0
@@ -1693,7 +1663,7 @@ func (s *Service) ListUsersQuota(pageIndex, pageSize, top int, quotaThreshold *i
 	return result, nil
 }
 
-// ShowUsersPlanSummary show users plan summary for enterprise edition
+// ShowUsersPlanSummary show users plan summary for  edition
 func (s *Service) ShowUsersPlanSummary() (map[string]interface{}, error) {
 
 	result := map[string]interface{}{
@@ -1704,21 +1674,37 @@ func (s *Service) ShowUsersPlanSummary() (map[string]interface{}, error) {
 	return result, nil
 }
 
-// ShowUsersPlanQuota show users plan quota for enterprise edition
+// ShowUsersPlanQuota show users plan quota hit rate for  edition
 func (s *Service) ShowUsersPlanQuota(quota int) (map[string]interface{}, error) {
+	if quota <= 0 {
+		quota = 50
+	}
+
+	rows, err := s.userDAO.GetPlanQuotaHitRate(context.Background(), dao.DB, quota)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query plan quota hit rate: %w", err)
+	}
 
 	result := map[string]interface{}{
-		"quota":   quota,
-		"command": "show_users_plan_quota",
-		"error":   "'Show users plan quota' is not supported",
+		"quota": quota,
+	}
+
+	for _, r := range rows {
+		hitRate := "0.0%"
+		if r.TotalUsers > 0 {
+			hitRate = fmt.Sprintf("%.1f%%", float64(r.HitUsers)*100.0/float64(r.TotalUsers))
+		}
+		result[fmt.Sprintf("Total_Users_%s", r.PlanName)] = common.FormatNumber(r.TotalUsers)
+		result[fmt.Sprintf("Quota_Hit_%d%%_%s", quota, r.PlanName)] = common.FormatNumber(r.HitUsers)
+		result[fmt.Sprintf("Hit_Rate_%s", r.PlanName)] = hitRate
 	}
 
 	return result, nil
 }
 
-// ShowUsersQuotaSummary show users quota summary for enterprise edition
+// ShowUsersQuotaSummary show users quota summary for  edition
 func (s *Service) ShowUsersQuotaSummary() (map[string]interface{}, error) {
-	products, err := dao.NewEnterpriseUserDAO().ListBillingProducts()
+	products, err := s.BillingProductDAO.ListBillingProducts(context.Background(), dao.DB)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query billing products: %w", err)
 	}
@@ -1732,7 +1718,7 @@ func (s *Service) ShowUsersQuotaSummary() (map[string]interface{}, error) {
 		}
 	}
 
-	usageRows, err := dao.NewEnterpriseUserDAO().ListQuotaUsage()
+	usageRows, err := s.BillingSubscriptionDAO.ListQuotaUsage(context.Background(), dao.DB)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query quota usage: %w", err)
 	}
@@ -1804,7 +1790,7 @@ func (s *Service) ShowUsersQuotaSummary() (map[string]interface{}, error) {
 
 // ShowIngestionTasksSummary show ingestion tasks summary
 func (s *Service) ShowIngestionTasksSummary() (map[string]interface{}, error) {
-	agg, err := dao.NewEnterpriseTaskDAO().GetTaskAggSummary()
+	agg, err := s.taskDAO.TaskAggByStatus(context.Background(), dao.DB)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query task summary: %w", err)
 	}
@@ -1822,15 +1808,19 @@ func (s *Service) ShowIngestionTasksSummary() (map[string]interface{}, error) {
 		"Abandoned_retry_ge_3":    common.FormatNumber(agg.Abandoned),
 	}
 
-	typeRows, err := dao.NewEnterpriseTaskDAO().GetTaskTypeCounts()
+	typeRows, err := s.taskDAO.GetTaskTypeCounts(context.Background(), dao.DB)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query task type counts: %w", err)
 	}
 
+	taskTypeLabels := map[string]string{
+		"":          "Parse",
+		"build_toc": "PageIndex",
+	}
 	for _, r := range typeRows {
-		label := r.TaskType
-		if label == "" {
-			label = "Parse"
+		label, ok := taskTypeLabels[r.TaskType]
+		if !ok {
+			label = r.TaskType
 		}
 		result[label] = common.FormatNumber(r.Count)
 	}
@@ -1838,14 +1828,14 @@ func (s *Service) ShowIngestionTasksSummary() (map[string]interface{}, error) {
 	return result, nil
 }
 
-// ShowDataSummary show data summary for enterprise edition
+// ShowDataSummary show data summary for  edition
 func (s *Service) ShowDataSummary() (map[string]interface{}, error) {
-	storageRow, err := dao.NewEnterpriseDataDAO().GetStorageSummary()
+	storageRow, err := s.fileDAO.StorageFileSizeDocSize(context.Background(), dao.DB)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query storage summary: %w", err)
 	}
 
-	taskRow, err := dao.NewEnterpriseDataDAO().GetTaskSummary()
+	taskRow, err := s.taskDAO.TaskCountByStatus(context.Background(), dao.DB)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query task summary: %w", err)
 	}
@@ -1898,29 +1888,29 @@ func (s *Service) ShowDataSummary() (map[string]interface{}, error) {
 	return result, nil
 }
 
-// ShowDataOrphan show data orphan for enterprise edition
+// ShowDataOrphan show data orphan for  edition
 func (s *Service) ShowDataOrphan() (map[string]interface{}, error) {
-	kbRow, err := dao.NewEnterpriseDataDAO().GetKBOrphans()
+	kbRow, err := s.kbDAO.GetKBOrphans(context.Background(), dao.DB)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query knowledgebase orphans: %w", err)
 	}
 
-	docRow, err := dao.NewEnterpriseDataDAO().GetDocOrphans()
+	docRow, err := s.documentDAO.GetDocOrphans(context.Background(), dao.DB)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query document orphans: %w", err)
 	}
 
-	taskNoDoc, err := dao.NewEnterpriseDataDAO().GetTaskOrphans()
+	taskNoDoc, err := s.taskDAO.GetTaskOrphans(context.Background(), dao.DB)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query task orphans: %w", err)
 	}
 
-	fileRow, err := dao.NewEnterpriseDataDAO().GetFileOrphans()
+	fileRow, err := s.fileDAO.GetFileOrphans(context.Background(), dao.DB)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query file orphans: %w", err)
 	}
 
-	utRow, err := dao.NewEnterpriseDataDAO().GetUserTenantOrphans()
+	utRow, err := s.userTenantDAO.GetUserTenantOrphans(context.Background(), dao.DB)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query user_tenant orphans: %w", err)
 	}
@@ -1960,7 +1950,7 @@ func (s *Service) ShowDataOrphan() (map[string]interface{}, error) {
 	esConfig := cfg.GetElasticsearchConfig()
 	esEngine, err := elasticsearch.NewEngine(esConfig)
 	if err != nil {
-		result["ES Error"] = fmt.Sprintf("failed to connect elasticsearch: %w", err)
+		result["ES Error"] = fmt.Sprintf("failed to connect elasticsearch: %v", err)
 		return result, nil
 	}
 
@@ -1999,71 +1989,68 @@ func (s *Service) ShowDataOrphan() (map[string]interface{}, error) {
 	return result, nil
 }
 
-// ShowDataStorage show data storage for enterprise edition
+// ShowDataStorage show data storage for  edition
 func (s *Service) ShowDataStorage() (map[string]interface{}, error) {
-
-	var fileAgg struct {
-		TotalFiles    int64
-		TotalFileSize int64
+	fileCount, fileSize, err := s.fileDAO.FileCountAndSize(context.Background(), dao.DB)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query file stats: %w", err)
 	}
-	dao.DB.Model(&entity.File{}).Select(
-		"COUNT(*) AS total_files, COALESCE(SUM(size), 0) AS total_file_size",
-	).Scan(&fileAgg)
 
-	var docAgg struct {
-		TotalDocs    int64
-		TotalDocSize int64
-		TotalChunks  int64
-		TotalTokens  int64
+	docStat, err := s.documentDAO.DocCountSizeChunkToken(context.Background(), dao.DB)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query document stats: %w", err)
 	}
-	dao.DB.Model(&entity.Document{}).Select(
-		"COUNT(*) AS total_docs, COALESCE(SUM(size), 0) AS total_doc_size, COALESCE(SUM(chunk_num), 0) AS total_chunks, COALESCE(SUM(token_num), 0) AS total_tokens",
-	).Scan(&docAgg)
 
-	var totalKB int64
-	dao.DB.Model(&entity.Knowledgebase{}).Where("status = ?", string(entity.StatusValid)).Count(&totalKB)
+	totalKB, err := s.kbDAO.CountAllValidKB(context.Background(), dao.DB)
+	if err != nil {
+		return nil, fmt.Errorf("failed to count knowledgebases: %w", err)
+	}
 
-	var totalTenants int64
-	dao.DB.Model(&entity.Tenant{}).Count(&totalTenants)
+	totalTenants, err := s.tenantDAO.CountAllTenants(context.Background(), dao.DB)
+	if err != nil {
+		return nil, fmt.Errorf("failed to count tenants: %w", err)
+	}
 
-	var totalChat int64
-	dao.DB.Model(&entity.Chat{}).Where("status = ?", "1").Count(&totalChat)
+	totalChat, err := s.chatDAO.CountAllChat(context.Background(), dao.DB)
+	if err != nil {
+		return nil, fmt.Errorf("failed to count chats: %w", err)
+	}
 
-	var totalAgent int64
-	dao.DB.Model(&entity.UserCanvas{}).Where("canvas_category = ?", "agent_canvas").Count(&totalAgent)
+	totalAgent, err := s.canvasDAO.CountAllAgentCanvas(context.Background(), dao.DB)
+	if err != nil {
+		return nil, fmt.Errorf("failed to count agents: %w", err)
+	}
 
-	var totalAPIToken int64
-	dao.DB.Model(&entity.APIToken{}).Count(&totalAPIToken)
+	totalAPIToken, err := s.apiTokenDAO.CountAllAPIToken(context.Background(), dao.DB)
+	if err != nil {
+		return nil, fmt.Errorf("failed to count api tokens: %w", err)
+	}
 
-	var activeSubs int64
-	dao.DB.Model(&entity.BillingSubscription{}).Where("subscription_status = ?", "active").Count(&activeSubs)
+	activeSubs, err := s.BillingSubscriptionDAO.CountActiveSubscriptions(context.Background(), dao.DB)
+	if err != nil {
+		return nil, fmt.Errorf("failed to count subscriptions: %w", err)
+	}
 
 	totalApps := totalChat + totalAgent
 
 	result := map[string]interface{}{
-		"Total_Files":                  common.FormatNumber(fileAgg.TotalFiles),
-		"Total_File_Size":              common.FormatBytes(fileAgg.TotalFileSize),
-		"Total_Documents":              common.FormatNumber(docAgg.TotalDocs),
-		"Total_Document_Size":          common.FormatBytes(docAgg.TotalDocSize),
+		"Total_Files":                  common.FormatNumber(fileCount),
+		"Total_File_Size":              common.FormatBytes(fileSize),
+		"Total_Documents":              common.FormatNumber(docStat.TotalDocs),
+		"Total_Document_Size":          common.FormatBytes(docStat.TotalDocSize),
 		"Total_Knowledgebases":         common.FormatNumber(totalKB),
-		"Total_Chunks":                 common.FormatNumber(docAgg.TotalChunks),
-		"Total_Tokens_LLM_used":        common.FormatNumber(docAgg.TotalTokens),
+		"Total_Chunks":                 common.FormatNumber(docStat.TotalChunks),
+		"Total_Tokens_LLM_used":        common.FormatNumber(docStat.TotalTokens),
 		"Total_Tenants":                common.FormatNumber(totalTenants),
 		"Total_Apps_Chat_Search_Agent": common.FormatNumber(totalApps),
 		"Total_API_Tokens":             common.FormatNumber(totalAPIToken),
 		"Active_Subscriptions":         common.FormatNumber(activeSubs),
 	}
 
-	var fileTypeRows []struct {
-		Type  string `gorm:"column:type"`
-		Count int64  `gorm:"column:count"`
-		Size  int64  `gorm:"column:size"`
+	fileTypeRows, err := s.fileDAO.ListFileTypeStats(context.Background(), dao.DB)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query file type stats: %w", err)
 	}
-	dao.DB.Model(&entity.File{}).
-		Select("type, COUNT(*) AS count, COALESCE(SUM(size), 0) AS size").
-		Group("type").
-		Order("count DESC").
-		Find(&fileTypeRows)
 
 	if len(fileTypeRows) > 0 {
 		for _, r := range fileTypeRows {
@@ -2078,7 +2065,7 @@ func (s *Service) ShowDataStorage() (map[string]interface{}, error) {
 	return result, nil
 }
 
-// ShowDataIndex show data index for enterprise edition
+// ShowDataIndex show data index for  edition
 func (s *Service) ShowDataIndex() (map[string]interface{}, error) {
 	cfg := server.GetConfig()
 	docEngine := cfg.DocEngineType()
@@ -2135,7 +2122,7 @@ func (s *Service) ShowDataIndex() (map[string]interface{}, error) {
 	return result, nil
 }
 
-// PurgeOrphanData purge orphan data for enterprise edition
+// PurgeOrphanData purge orphan data for  edition
 func (s *Service) PurgeOrphanData(preview bool) (map[string]interface{}, error) {
 
 	result := map[string]interface{}{
@@ -2147,7 +2134,7 @@ func (s *Service) PurgeOrphanData(preview bool) (map[string]interface{}, error) 
 	return result, nil
 }
 
-// PurgeUserData purge user data for enterprise edition
+// PurgeUserData purge user data for  edition
 func (s *Service) PurgeUserData(email string, preview bool) (map[string]interface{}, error) {
 	// Query user by email
 	var user entity.User
@@ -2166,7 +2153,7 @@ func (s *Service) PurgeUserData(email string, preview bool) (map[string]interfac
 	return result, nil
 }
 
-// PurgeUsersData purge users data for enterprise edition
+// PurgeUsersData purge users data for  edition
 func (s *Service) PurgeUsersData(preview bool, days int, userPlan *string, userActivity *string) (map[string]interface{}, error) {
 
 	plan := "all"
@@ -2303,7 +2290,7 @@ func (s *Service) ListIngestionTasksByCondition(ctx context.Context, email, stat
 		}
 	}
 
-	rows, err := dao.NewEnterpriseTaskDAO().ListTasksByTenantIDs(tenantIDs, condition)
+	rows, err := s.taskDAO.ListTasksByTenantIDs(ctx, dao.DB, tenantIDs, condition)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query tasks: %w", err)
 	}
