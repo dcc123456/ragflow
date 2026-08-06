@@ -15,6 +15,7 @@ import { AgentListItemType, IFlow } from '@/interfaces/database/agent';
 import { CanvasCategoryToFlowType, FlowType, FlowTypeConfig } from './constant';
 import { AgentDropdown } from './agent-dropdown';
 import { useRenameAgent } from './use-rename-agent';
+import { Tag } from 'lucide-react';
 
 export type DatasetCardProps = {
   data: IFlow;
@@ -69,14 +70,16 @@ function AgentTags({ tags }: { tags?: string }) {
   return (
     <Tooltip open={open} onOpenChange={handleOpenChange}>
       <TooltipTrigger asChild>
-        <div ref={containerRef} className="line-clamp-2 mt-1">
+        <div ref={containerRef} className="line-clamp-2 leading-6 mt-1">
           {list.map((tag) => (
             <Badge
               key={tag}
               variant="secondary"
-              className="text-xs font-normal me-1 mb-1"
+
+              className="text-xs font-normal mr-1 space-x-1"
             >
-              {tag}
+              <Tag className="size-3" />
+              <span>{tag}</span>
             </Badge>
           ))}
         </div>
@@ -87,9 +90,10 @@ function AgentTags({ tags }: { tags?: string }) {
             <Badge
               key={tag}
               variant="secondary"
-              className="text-xs font-normal"
+              className="text-xs font-normal space-x-1"
             >
-              {tag}
+              <Tag className="size-3" />
+              <span>{tag}</span>
             </Badge>
           ))}
         </div>

@@ -139,7 +139,7 @@ class UserCanvasService(CommonService):
         orderby,
         desc,
         keywords,
-        canvas_category=None,
+        canvas_category_list=None,
         tags=None,
         canvas_type=None,
     ):
@@ -204,8 +204,8 @@ class UserCanvasService(CommonService):
 
         if keywords:
             agents = agents.where(fn.LOWER(cls.model.title).contains(keywords.lower()))
-        if canvas_category:
-            agents = agents.where(cls.model.canvas_category == canvas_category)
+        if canvas_category_list:
+            agents = agents.where(cls.model.canvas_category.in_(canvas_category_list))
         if canvas_type:
             agents = agents.where(cls.model.canvas_type == canvas_type)
         if tags:

@@ -46,16 +46,6 @@ type SystemInfo struct {
 	Network     NetworkInfo `json:"networks"`
 }
 
-// ClusterInfo contains all collected hardware information
-type ClusterInfo struct {
-	SystemInfos []*SystemInfo `json:"system_infos"`
-
-	// K8s environment detection
-	InK8s    bool   `json:"in_k8s"`
-	NodeName string `json:"node_name,omitempty"`
-	PodName  string `json:"pod_name,omitempty"`
-}
-
 // SelectedSystemInfo contains the primary identifiers used for fingerprinting
 type SelectedSystemInfo struct {
 	MachineID   string `json:"machine_id"`
