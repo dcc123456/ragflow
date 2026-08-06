@@ -3231,7 +3231,7 @@ async def update_wiki_page(
     content_before = ""
     try:
         res = settings.docStoreConn.search(
-            select_fields=["id", "content_with_weight"],
+            select_fields=["id", "md_with_weight", "content_with_weight"],
             highlight_fields=[],
             condition={
                 "compile_kwd": [WIKI_PAGE_COMPILE_KWD],
@@ -3247,11 +3247,11 @@ async def update_wiki_page(
         )
         field_map = settings.docStoreConn.get_fields(
             res,
-            ["id", "content_with_weight"],
+            ["id", "md_with_weight", "content_with_weight"],
         )
         if field_map:
             row_id, row = next(iter(field_map.items()))
-            content_before = row.get("content_with_weight") or ""
+            content_before = row.get("md_with_weight") or row.get("content_with_weight") or ""
     except Exception:
         logging.exception(
             "update_wiki_page: lookup failed for kb=%s slug=%s",
@@ -3272,6 +3272,7 @@ async def update_wiki_page(
         ok = settings.docStoreConn.update(
             {"id": row_id},
             {
+                "md_with_weight": rendered,
                 "content_with_weight": rendered,
                 "summary_with_weight": summary,
                 "outlinks_kwd": list(outlinks),
@@ -3289,6 +3290,17 @@ async def update_wiki_page(
 
     if not ok:
         return True, None
+
+    refresh_idx = getattr(settings.docStoreConn, "refresh_idx", None)
+    if callable(refresh_idx):
+        try:
+            await thread_pool_exec(refresh_idx, index_nm)
+        except Exception:
+            logging.exception(
+                "update_wiki_page: index refresh failed for kb=%s slug=%s",
+                dataset_id,
+                full_slug,
+            )
 
     # Record a file_commit row on every real change. ``record_page_edit``
     # returns None for empty-diff saves, which we silently swallow.
@@ -3880,5 +3892,19 @@ async def clear_wiki(dataset_id: str, tenant_id: str):
                 dataset_id,
             )
             deleted[kwd] = False
+
+    from api.db.services.file_commit_service import FileCommitService
+
+    if all(result is not False for result in deleted.values()):
+        try:
+            deleted["file_commit_history"] = FileCommitService.delete_all_page_history(dataset_id)
+        except Exception:
+            logging.exception(
+                "clear_wiki: failed to delete page version history for kb=%s",
+                dataset_id,
+            )
+            deleted["file_commit_history"] = False
+    else:
+        deleted["file_commit_history"] = False
 
     return True, {"deleted": deleted}
