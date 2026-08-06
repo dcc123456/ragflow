@@ -9,6 +9,7 @@ resolution-markers = [
 
 [manifest]
 constraints = [
+    { name = "cbor2", specifier = ">=5.9.0" },
     { name = "httplib2", specifier = ">=0.32.0" },
     { name = "inscriptis", specifier = ">=2.7.3" },
     { name = "lxml", specifier = ">=6.1.1" },

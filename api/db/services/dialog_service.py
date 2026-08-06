@@ -363,9 +363,6 @@ class DialogService(CommonService):
 
 
 async def async_chat_solo(dialog, messages, stream=True, session_id=None):
-    attachments = ""
-    image_attachments = []
-    image_files = []
     if dialog.llm_id:
         if dialog.tenant_llm_id:
             try:
@@ -391,12 +388,8 @@ async def async_chat_solo(dialog, messages, stream=True, session_id=None):
 
     chat_mdl = LLMBundle(dialog.tenant_id, model_config, langfuse_session_id=session_id)
     factory = model_config.get("llm_factory", "") if model_config else ""
-    if "files" in messages[-1]:
-        if model_config["model_type"] == "chat":
-            text_attachments, image_attachments = split_file_attachments(messages[-1]["files"])
-        else:
-            text_attachments, image_files = split_file_attachments(messages[-1]["files"], raw=True)
-        attachments = "\n\n".join(text_attachments)
+
+    text_attachments_content, image_attachments, image_files = get_files_content(messages[-1], model_config["model_type"])
 
     prompt_config = dialog.prompt_config
     tts_mdl = None
@@ -404,8 +397,8 @@ async def async_chat_solo(dialog, messages, stream=True, session_id=None):
         default_tts_model = get_tenant_default_model_by_type(dialog.tenant_id, LLMType.TTS)
         tts_mdl = LLMBundle(dialog.tenant_id, default_tts_model, trace_context=chat_mdl.trace_context, langfuse_session_id=session_id)
     msg = [{"role": m["role"], "content": re.sub(r"##\d+\$\$", "", m["content"])} for m in messages if m["role"] != "system"]
-    if attachments and msg:
-        msg[-1]["content"] += attachments
+    if text_attachments_content and msg:
+        msg[-1]["content"] += text_attachments_content
     if model_config["model_type"] == "chat" and image_attachments:
         convert_last_user_msg_to_multimodal(msg, image_attachments, factory)
     sys_date = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
@@ -472,6 +465,19 @@ def get_models(dialog, trace_context=None, langfuse_session_id=None):
         default_tts_model_config = get_tenant_default_model_by_type(dialog.tenant_id, LLMType.TTS)
         tts_mdl = LLMBundle(dialog.tenant_id, default_tts_model_config, trace_context=trace_context, langfuse_session_id=langfuse_session_id)
     return kbs, embd_mdl, rerank_mdl, chat_mdl, tts_mdl
+
+
+def get_files_content(last_message, model_type):
+    text_attachments_content = ""
+    image_attachments = []
+    image_files = []
+    if "files" in last_message:
+        if model_type == "chat":
+            text_attachments, image_attachments = split_file_attachments(last_message["files"])
+        else:
+            text_attachments, image_files = split_file_attachments(last_message["files"], raw=True)
+        text_attachments_content = "\n\n".join(text_attachments)
+    return text_attachments_content, image_attachments, image_files
 
 
 def split_file_attachments(files: list[dict] | None, raw: bool = False) -> tuple[list[str], list[str] | list[dict]]:
@@ -716,83 +722,66 @@ async def async_chat(dialog, messages, stream=True, *, user_id: str | None = Non
 
     retriever = settings.retriever
     questions = [m["content"] for m in messages if m["role"] == "user"][-3:]
-    attachments = None
-    if "doc_ids" in kwargs:
-        attachments = [doc_id for doc_id in kwargs["doc_ids"].split(",") if doc_id]
-    attachments_ = ""
-    image_attachments = []
-    image_files = []
-    if "doc_ids" in messages[-1]:
-        attachments = [doc_id for doc_id in messages[-1]["doc_ids"] if doc_id]
-    if "files" in messages[-1]:
-        if llm_model_config["model_type"] == "chat":
-            text_attachments, image_attachments = split_file_attachments(messages[-1]["files"])
-        else:
-            text_attachments, image_files = split_file_attachments(messages[-1]["files"], raw=True)
-        attachments_ = "\n\n".join(text_attachments)
-    logger.info(
-        _green_log(
-            "[chat.async_chat] enter user_id=%s dialog_tenant_id=%s session_id=%s kb_ids=%s req_doc_ids=%s msg_doc_ids=%s attachments=%s",
-        ),
-        user_id,
-        dialog.tenant_id,
-        session_id,
-        dialog.kb_ids,
-        kwargs.get("doc_ids"),
-        messages[-1].get("doc_ids"),
-        attachments,
-    )
 
-    prompt_config = dialog.prompt_config
+    # Get scoped_doc_ids
+    scoped_doc_ids = None
+    if "doc_ids" in kwargs:
+        scoped_doc_ids = [doc_id for doc_id in kwargs["doc_ids"].split(",") if doc_id]
+    if "doc_ids" in messages[-1]:
+        scoped_doc_ids = [doc_id for doc_id in messages[-1]["doc_ids"] if doc_id]
     if dialog.meta_data_filter:
-        attachments = await apply_meta_data_filter(
+        scoped_doc_ids = await apply_meta_data_filter(
             dialog.meta_data_filter,
             None,
             questions[-1],
             chat_mdl,
-            attachments,
+            scoped_doc_ids,
             kb_ids=dialog.kb_ids,
             metas_loader=lambda: DocMetadataService.get_flatted_meta_by_kbs(dialog.kb_ids),
         )
     logger.info(
         _green_log(
-            "[chat.async_chat] before_permission_filter user_id=%s dialog_tenant_id=%s kb_ids=%s attachments=%s",
+            "[chat.async_chat] before_permission_filter user_id=%s dialog_tenant_id=%s kb_ids=%s scoped_doc_ids=%s",
         ),
         user_id,
         dialog.tenant_id,
         dialog.kb_ids,
-        attachments,
+        scoped_doc_ids,
     )
 
-    if attachments is None:
-        attachments = []
-    elif isinstance(attachments, str):
-        attachments = [d for d in attachments.split(",") if d]
-    attachments, permission_tenant_ids, err_msg = filter_accessible_doc_ids_for_user(
+    if scoped_doc_ids is None:
+        scoped_doc_ids = []
+    elif isinstance(scoped_doc_ids, str):
+        scoped_doc_ids = [d for d in scoped_doc_ids.split(",") if d]
+    scoped_doc_ids, permission_tenant_ids, err_msg = filter_accessible_doc_ids_for_user(
         user_id if user_id else dialog.tenant_id,
         dialog.kb_ids,
-        attachments if attachments else None,
+        scoped_doc_ids if scoped_doc_ids else None,
     )
     logger.info(
         _green_log(
-            "[chat.async_chat] after_permission_filter user_id=%s dialog_tenant_id=%s permission_tenant_ids=%s filtered_attachments=%s err_msg=%r",
+            "[chat.async_chat] after_permission_filter user_id=%s dialog_tenant_id=%s permission_tenant_ids=%s filtered_scoped_doc_ids=%s err_msg=%r",
         ),
         user_id,
         dialog.tenant_id,
         permission_tenant_ids,
-        attachments,
+        scoped_doc_ids,
         err_msg,
     )
     if err_msg:
         raise Exception(err_msg)
 
+    # Get chat attachments
+    text_attachments_content, image_attachments, image_files = get_files_content(messages[-1], llm_model_config["model_type"])
+
+    prompt_config = dialog.prompt_config
     include_reference_metadata, metadata_fields = _resolve_reference_metadata(prompt_config, request_payload=kwargs)
     field_map = KnowledgebaseService.get_field_map(dialog.kb_ids)
     logging.debug(f"field_map retrieved: {field_map}")
     # try to use sql if field mapping is good to go
     if field_map:
         logging.debug("Use SQL to retrieval:{}".format(questions[-1]))
-        ans = await use_sql(questions[-1], field_map, dialog.tenant_id, chat_mdl, prompt_config.get("quote", True), dialog.kb_ids, doc_ids=attachments)
+        ans = await use_sql(questions[-1], field_map, dialog.tenant_id, chat_mdl, prompt_config.get("quote", True), dialog.kb_ids, doc_ids=scoped_doc_ids)
         # For aggregate queries (COUNT, SUM, etc.), chunks may be empty but answer is still valid
         if ans and (ans.get("reference", {}).get("chunks") or ans.get("answer")):
             if include_reference_metadata and ans.get("reference", {}).get("chunks"):
@@ -812,7 +801,7 @@ async def async_chat(dialog, messages, stream=True, *, user_id: str | None = Non
         logging.warning("prompt_config['parameters'] is missing 'knowledge' entry despite kb_ids being set; auto-fixing.")
         prompt_config.setdefault("parameters", []).append({"key": "knowledge", "optional": False})
         param_keys.append("knowledge")
-    logging.debug(f"attachments={attachments}, param_keys={param_keys}, embd_mdl={embd_mdl}")
+    logging.debug(f"scoped_doc_ids={scoped_doc_ids}, param_keys={param_keys}, embd_mdl={embd_mdl}")
 
     sys_date = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     kwargs["date"] = sys_date
@@ -851,7 +840,7 @@ async def async_chat(dialog, messages, stream=True, *, user_id: str | None = Non
             dialog.tenant_id,
             tenant_ids,
             dialog.kb_ids,
-            attachments,
+            scoped_doc_ids,
         )
         knowledges = []
         # replaced by extension of reasoning: 0, 1, 2
@@ -868,7 +857,7 @@ async def async_chat(dialog, messages, stream=True, *, user_id: str | None = Non
                     page_size=dialog.top_n,
                     similarity_threshold=0.2,
                     vector_similarity_weight=0.3,
-                    doc_ids=attachments if attachments else ["-999"],
+                    doc_ids=scoped_doc_ids if scoped_doc_ids else ["-999"],
                 ),
                 internet_enabled=use_web_search,
             )
@@ -903,7 +892,7 @@ async def async_chat(dialog, messages, stream=True, *, user_id: str | None = Non
                     dialog.top_n,
                     dialog.similarity_threshold,
                     dialog.vector_similarity_weight,
-                    doc_ids=attachments if attachments else ["-999"],
+                    doc_ids=scoped_doc_ids if scoped_doc_ids else ["-999"],
                     top=dialog.top_k,
                     aggs=True,
                     rerank_mdl=rerank_mdl,
@@ -978,7 +967,7 @@ async def async_chat(dialog, messages, stream=True, *, user_id: str | None = Non
         kwargs.setdefault("knowledge", "")
     gen_conf = dialog.llm_setting
 
-    system_content = prompt_config["system"].format(**kwargs) + attachments_
+    system_content = prompt_config["system"].format(**kwargs) + text_attachments_content
     # If knowledge was retrieved but the template has no {knowledge}
     # placeholder, auto-append it so the LLM still sees the context.
     if knowledges and "{knowledge}" not in prompt_config.get("system", ""):
@@ -2058,6 +2047,12 @@ async def rag_agent(dialog, messages, stream=True, **kwargs):
             yield ans
         return
     kbs, embd_mdl, rerank_mdl, chat_mdl, tts_mdl = get_models(dialog)
+    model_type = chat_mdl.model_config["model_type"]
+    factory = chat_mdl.model_config.get("llm_factory", "") if chat_mdl.model_config else ""
+    text_attachments_content, image_attachments, image_files = get_files_content(messages[-1], model_type)
+    agent_messages = deepcopy(messages)
+    if model_type == "chat" and image_attachments:
+        convert_last_user_msg_to_multimodal(agent_messages, image_attachments, factory)
     use_web_search = _should_use_web_search(prompt_config, kwargs.get("internet"))
     logging.debug("web_search kb=%s configured=%s internet=%r enabled=%s", bool(dialog.kb_ids), has_web_search_provider(prompt_config), kwargs.get("internet"), use_web_search)
     tenant_ids = list(set([kb.tenant_id for kb in kbs]))
@@ -2103,6 +2098,7 @@ async def rag_agent(dialog, messages, stream=True, **kwargs):
         empty_response=prompt_config.get("empty_response", ""),
         do_refer=False,
         thinking_mode=thinking_mode,
+        text_attachments_content=text_attachments_content,
     )
 
     async def decorate_answer(answer):
@@ -2191,7 +2187,10 @@ async def rag_agent(dialog, messages, stream=True, **kwargs):
 
         async def _drive_stream():
             try:
-                stream_iter = chat_mdl.async_chat_streamly_delta(rag_tools.sys_prompt(), messages, gen_conf)
+                if model_type == "chat":
+                    stream_iter = chat_mdl.async_chat_streamly_delta(rag_tools.sys_prompt(), agent_messages, gen_conf)
+                else:
+                    stream_iter = chat_mdl.async_chat_streamly_delta(rag_tools.sys_prompt(), agent_messages, gen_conf, images=image_files)
                 async for kind, value, state in _stream_with_think_delta(stream_iter):
                     event_queue.put_nowait(("stream", kind, value, state))
             except Exception:
@@ -2291,8 +2290,11 @@ async def rag_agent(dialog, messages, stream=True, **kwargs):
         final["audio_binary"] = None
         yield final
     else:
-        answer = await chat_mdl.async_chat(rag_tools.sys_prompt(), messages, gen_conf)
-        user_content = messages[-1].get("content", "[content not available]")
+        if model_type == "chat":
+            answer = await chat_mdl.async_chat(rag_tools.sys_prompt(), agent_messages, gen_conf)
+        else:
+            answer = await chat_mdl.async_chat(rag_tools.sys_prompt(), agent_messages, gen_conf, images=image_files)
+        user_content = agent_messages[-1].get("content", "[content not available]")
         logging.debug("User: {}|Assistant: {}".format(user_content, answer))
         res = await decorate_answer(answer)
         res["audio_binary"] = tts(tts_mdl, answer)
