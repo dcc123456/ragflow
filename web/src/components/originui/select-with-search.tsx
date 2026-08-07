@@ -56,7 +56,8 @@ export type SelectWithSearchFlagProps = {
   emptyData?: string;
   renderOption?: (option: SelectWithSearchFlagOptionType) => ReactNode;
   allowCustomValue?: boolean;
-  onNoMatchEnter?(searchValue: string): void;
+  // Return false to veto selecting the custom value on Enter
+  onNoMatchEnter?(searchValue: string): boolean | void;
   disableAutoSelectOnEnter?: boolean;
   testId?: string;
   optionTestIdPrefix?: string;
@@ -227,7 +228,10 @@ export const SelectWithSearch = forwardRef<
             setSearchValue('');
             setOpen(false);
           } else if (!hasMatchingOptions(options, keywords)) {
-            onNoMatchEnter?.(keywords);
+            if (onNoMatchEnter?.(keywords) === false) {
+              // Vetoed: prevent cmdk from selecting the custom value item
+              e.preventDefault();
+            }
           }
         }
       },
