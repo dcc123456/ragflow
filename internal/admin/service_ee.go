@@ -103,7 +103,7 @@ func UpdateServer(serverName string, status *common.BaseMessage) (common.ErrorCo
 // Role management methods
 
 // ListRoles list all roles
-func (s *Service) ListRoles() ([]map[string]interface{}, error) {
+func (s *Service) ListRoles(ctx context.Context) ([]map[string]interface{}, error) {
 	result := []map[string]interface{}{
 		{
 			"command": "list_roles",
@@ -115,7 +115,7 @@ func (s *Service) ListRoles() ([]map[string]interface{}, error) {
 }
 
 // CreateRole create a new role
-func (s *Service) CreateRole(roleName, description string) (map[string]interface{}, error) {
+func (s *Service) CreateRole(ctx context.Context, roleName, description string) (map[string]interface{}, error) {
 	result := map[string]interface{}{
 		"command":     "create_role",
 		"role_name":   roleName,
@@ -127,7 +127,7 @@ func (s *Service) CreateRole(roleName, description string) (map[string]interface
 }
 
 // ShowRole show role details
-func (s *Service) ShowRole(roleName string) (map[string]interface{}, error) {
+func (s *Service) ShowRole(ctx context.Context, roleName string) (map[string]interface{}, error) {
 	result := map[string]interface{}{
 		"command":   "show_role",
 		"role_name": roleName,
@@ -139,7 +139,7 @@ func (s *Service) ShowRole(roleName string) (map[string]interface{}, error) {
 }
 
 // UpdateRole update role
-func (s *Service) UpdateRole(roleName, description string) (map[string]interface{}, error) {
+func (s *Service) UpdateRole(ctx context.Context, roleName, description string) (map[string]interface{}, error) {
 	result := map[string]interface{}{
 		"command":     "update_role",
 		"role_name":   roleName,
@@ -151,7 +151,7 @@ func (s *Service) UpdateRole(roleName, description string) (map[string]interface
 }
 
 // DropRole drop role
-func (s *Service) DropRole(roleName string) (map[string]interface{}, error) {
+func (s *Service) DropRole(ctx context.Context, roleName string) (map[string]interface{}, error) {
 	result := map[string]interface{}{
 		"command":   "drop_role",
 		"role_name": roleName,
@@ -162,7 +162,7 @@ func (s *Service) DropRole(roleName string) (map[string]interface{}, error) {
 }
 
 // ShowRolePermission get role permissions
-func (s *Service) ShowRolePermission(roleName string) (map[string]interface{}, error) {
+func (s *Service) ShowRolePermission(ctx context.Context, roleName string) (map[string]interface{}, error) {
 	result := map[string]interface{}{
 		"command":   "show_role_permission",
 		"role_name": roleName,
@@ -173,7 +173,7 @@ func (s *Service) ShowRolePermission(roleName string) (map[string]interface{}, e
 }
 
 // GrantRolePermission grant permission to role
-func (s *Service) GrantRolePermission(roleName string, actions []string, resource string) (map[string]interface{}, error) {
+func (s *Service) GrantRolePermission(ctx context.Context, roleName string, actions []string, resource string) (map[string]interface{}, error) {
 	result := map[string]interface{}{
 		"command":   "grant_role_permission",
 		"role_name": roleName,
@@ -186,7 +186,7 @@ func (s *Service) GrantRolePermission(roleName string, actions []string, resourc
 }
 
 // RevokeRolePermission revoke permission from role
-func (s *Service) RevokeRolePermission(roleName string, actions []string, resource string) (map[string]interface{}, error) {
+func (s *Service) RevokeRolePermission(ctx context.Context, roleName string, actions []string, resource string) (map[string]interface{}, error) {
 	result := map[string]interface{}{
 		"command":   "revoke_role_permission",
 		"role_name": roleName,
@@ -199,7 +199,7 @@ func (s *Service) RevokeRolePermission(roleName string, actions []string, resour
 }
 
 // ListResources list role resources
-func (s *Service) ListResources() (map[string]interface{}, error) {
+func (s *Service) ListResources(ctx context.Context) (map[string]interface{}, error) {
 	result := map[string]interface{}{
 		"command": "list_resources",
 		"error":   "'list resources for role' is not supported",
@@ -209,7 +209,7 @@ func (s *Service) ListResources() (map[string]interface{}, error) {
 }
 
 // ListRolesWithPermission list roles with permission
-func (s *Service) ListRolesWithPermission() ([]map[string]interface{}, error) {
+func (s *Service) ListRolesWithPermission(ctx context.Context) ([]map[string]interface{}, error) {
 	return []map[string]interface{}{
 		{
 			"command": "list_roles_with_permission",
@@ -218,7 +218,7 @@ func (s *Service) ListRolesWithPermission() ([]map[string]interface{}, error) {
 	}, nil
 }
 
-func (s *Service) ShowRoleDefaultModels(roleName string) ([]map[string]interface{}, error) {
+func (s *Service) ShowRoleDefaultModels(ctx context.Context, roleName string) ([]map[string]interface{}, error) {
 	return []map[string]interface{}{
 		{
 			"command":   "show_role_default_models",
@@ -229,7 +229,7 @@ func (s *Service) ShowRoleDefaultModels(roleName string) ([]map[string]interface
 }
 
 // SetRoleDefaultModel set role default model
-func (s *Service) SetRoleDefaultModel(roleName, modelID, modelType string) (map[string]interface{}, error) {
+func (s *Service) SetRoleDefaultModel(ctx context.Context, roleName, modelID, modelType string) (map[string]interface{}, error) {
 	return map[string]interface{}{
 		"command":    "set_role_default_model",
 		"role_name":  roleName,
@@ -240,7 +240,7 @@ func (s *Service) SetRoleDefaultModel(roleName, modelID, modelType string) (map[
 }
 
 // ResetRoleDefaultModel reset role default model
-func (s *Service) ResetRoleDefaultModel(roleName, modelType string) (map[string]interface{}, error) {
+func (s *Service) ResetRoleDefaultModel(ctx context.Context, roleName, modelType string) (map[string]interface{}, error) {
 	return map[string]interface{}{
 		"command":    "reset_role_default_model",
 		"role_name":  roleName,
@@ -250,7 +250,7 @@ func (s *Service) ResetRoleDefaultModel(roleName, modelType string) (map[string]
 }
 
 // ListModelProviders list model providers
-func (s *Service) ListModelProviders() ([]map[string]interface{}, error) {
+func (s *Service) ListModelProviders(ctx context.Context) ([]map[string]interface{}, error) {
 	return []map[string]interface{}{
 		{
 			"command": "list_model_providers",
@@ -260,7 +260,7 @@ func (s *Service) ListModelProviders() ([]map[string]interface{}, error) {
 }
 
 // AddModelProvider Add model provider
-func (s *Service) AddModelProvider(userID, providerName string) (map[string]interface{}, error) {
+func (s *Service) AddModelProvider(ctx context.Context, userID, providerName string) (map[string]interface{}, error) {
 
 	return map[string]interface{}{
 		"command":     "add_model_provider",
@@ -271,7 +271,7 @@ func (s *Service) AddModelProvider(userID, providerName string) (map[string]inte
 }
 
 // DeleteModelProviders delete model providers
-func (s *Service) DeleteModelProviders(userID string, providerNames []string) (map[string]interface{}, error) {
+func (s *Service) DeleteModelProviders(ctx context.Context, userID string, providerNames []string) (map[string]interface{}, error) {
 	return map[string]interface{}{
 		"command":        "delete_model_providers",
 		"user_id":        userID,
@@ -281,7 +281,7 @@ func (s *Service) DeleteModelProviders(userID string, providerNames []string) (m
 }
 
 // ListModelInstances list model instances
-func (s *Service) ListModelInstances(userID, providerName string) ([]map[string]interface{}, error) {
+func (s *Service) ListModelInstances(ctx context.Context, userID, providerName string) ([]map[string]interface{}, error) {
 
 	return []map[string]interface{}{
 		{
@@ -294,7 +294,7 @@ func (s *Service) ListModelInstances(userID, providerName string) ([]map[string]
 }
 
 // ShowProviderInstance show provider instance
-func (s *Service) ShowProviderInstance(userID, providerName, instanceName string) (map[string]interface{}, error) {
+func (s *Service) ShowProviderInstance(ctx context.Context, userID, providerName, instanceName string) (map[string]interface{}, error) {
 
 	return map[string]interface{}{
 		"command":       "show_provider_instance",
@@ -306,7 +306,7 @@ func (s *Service) ShowProviderInstance(userID, providerName, instanceName string
 }
 
 // ShowProviderInstanceBalance show provider instance balance
-func (s *Service) ShowProviderInstanceBalance(userID, providerName, instanceName string) (map[string]interface{}, error) {
+func (s *Service) ShowProviderInstanceBalance(ctx context.Context, userID, providerName, instanceName string) (map[string]interface{}, error) {
 	return map[string]interface{}{
 		"command":       "show_provider_instance_balance",
 		"user_id":       userID,
@@ -317,7 +317,7 @@ func (s *Service) ShowProviderInstanceBalance(userID, providerName, instanceName
 }
 
 // CheckInstanceConnection check instance connection
-func (s *Service) CheckInstanceConnection(userID, providerName, instanceName string) (map[string]interface{}, error) {
+func (s *Service) CheckInstanceConnection(ctx context.Context, userID, providerName, instanceName string) (map[string]interface{}, error) {
 	return map[string]interface{}{
 		"command":       "check_instance_connection",
 		"user_id":       userID,
@@ -328,7 +328,7 @@ func (s *Service) CheckInstanceConnection(userID, providerName, instanceName str
 }
 
 // CheckProviderConnection check provider connection
-func (s *Service) CheckProviderConnection(userID, providerName, region, apiKey, baseURL string) (map[string]interface{}, error) {
+func (s *Service) CheckProviderConnection(ctx context.Context, userID, providerName, region, apiKey, baseURL string) (map[string]interface{}, error) {
 	return map[string]interface{}{
 		"command":     "check_provider_connection",
 		"user_id":     userID,
@@ -340,7 +340,7 @@ func (s *Service) CheckProviderConnection(userID, providerName, region, apiKey, 
 }
 
 // AlterProviderInstance alter provider instance
-func (s *Service) AlterProviderInstance(userID, providerName, instanceName, newInstanceName, newAPIKey string) (map[string]interface{}, error) {
+func (s *Service) AlterProviderInstance(ctx context.Context, userID, providerName, instanceName, newInstanceName, newAPIKey string) (map[string]interface{}, error) {
 	return map[string]interface{}{
 		"command":           "alter_provider_instance",
 		"user_id":           userID,
@@ -353,7 +353,7 @@ func (s *Service) AlterProviderInstance(userID, providerName, instanceName, newI
 }
 
 // AddModelInstance Add model instance
-func (s *Service) AddModelInstance(userID, providerName, instanceName string) (map[string]interface{}, error) {
+func (s *Service) AddModelInstance(ctx context.Context, userID, providerName, instanceName string) (map[string]interface{}, error) {
 
 	return map[string]interface{}{
 		"command":       "add_model_instance",
@@ -365,7 +365,7 @@ func (s *Service) AddModelInstance(userID, providerName, instanceName string) (m
 }
 
 // DeleteModelInstances delete model instances
-func (s *Service) DeleteModelInstances(userID, providerName string, instances []string) (map[string]interface{}, error) {
+func (s *Service) DeleteModelInstances(ctx context.Context, userID, providerName string, instances []string) (map[string]interface{}, error) {
 	return map[string]interface{}{
 		"command":     "delete_model_instances",
 		"user_id":     userID,
@@ -376,7 +376,7 @@ func (s *Service) DeleteModelInstances(userID, providerName string, instances []
 }
 
 // ListInstanceModels list models for instance
-func (s *Service) ListInstanceModels(userID, providerName, instanceName string) ([]map[string]interface{}, error) {
+func (s *Service) ListInstanceModels(ctx context.Context, userID, providerName, instanceName string) ([]map[string]interface{}, error) {
 	return []map[string]interface{}{
 		{
 			"command":       "list_instance_models",
@@ -388,7 +388,7 @@ func (s *Service) ListInstanceModels(userID, providerName, instanceName string) 
 	}, nil
 }
 
-func (s *Service) EnableOrDisableModel(userID, providerName, instanceName, modelName, modelID, status string) (map[string]interface{}, error) {
+func (s *Service) EnableOrDisableModel(ctx context.Context, userID, providerName, instanceName, modelName, modelID, status string) (map[string]interface{}, error) {
 
 	return map[string]interface{}{
 		"command":       "enable_or_disable_model",
@@ -405,7 +405,7 @@ func (s *Service) EnableOrDisableModel(userID, providerName, instanceName, model
 // AddModel Add model
 
 // AddModels Add models
-func (s *Service) AddModels(userID, providerName, instanceName string, modelNames []string) (map[string]interface{}, error) {
+func (s *Service) AddModels(ctx context.Context, userID, providerName, instanceName string, modelNames []string) (map[string]interface{}, error) {
 
 	return map[string]interface{}{
 		"command":       "add_model",
@@ -418,7 +418,7 @@ func (s *Service) AddModels(userID, providerName, instanceName string, modelName
 }
 
 // DeleteModels delete models
-func (s *Service) DeleteModels(userID, providerName, instanceName string, models []string) (map[string]interface{}, error) {
+func (s *Service) DeleteModels(ctx context.Context, userID, providerName, instanceName string, models []string) (map[string]interface{}, error) {
 	return map[string]interface{}{
 		"command":       "delete_models",
 		"user_id":       userID,
@@ -429,7 +429,7 @@ func (s *Service) DeleteModels(userID, providerName, instanceName string, models
 	}, nil
 }
 
-func (s *Service) GetSystemFingerprint() (map[string]interface{}, error) {
+func (s *Service) GetSystemFingerprint(ctx context.Context) (map[string]interface{}, error) {
 	result := map[string]interface{}{
 		"command": "get_system_fingerprint",
 		"error":   "'get system fingerprint' is not supported",
@@ -438,11 +438,11 @@ func (s *Service) GetSystemFingerprint() (map[string]interface{}, error) {
 	return result, nil
 }
 
-func (s *Service) SetSystemLicense(license string) error {
+func (s *Service) SetSystemLicense(ctx context.Context, license string) error {
 	return errors.New("'set system license' is not supported")
 }
 
-func (s *Service) ShowSystemLicense(check bool) (map[string]interface{}, error) {
+func (s *Service) ShowSystemLicense(ctx context.Context, check bool) (map[string]interface{}, error) {
 	var result map[string]interface{}
 	if check {
 		result = map[string]interface{}{
@@ -460,7 +460,7 @@ func (s *Service) ShowSystemLicense(check bool) (map[string]interface{}, error) 
 	return result, nil
 }
 
-func (s *Service) UpdateSystemLicenseConfig(timeRecordSaveInterval, timeRecordTaskDuration int64) (map[string]interface{}, error) {
+func (s *Service) UpdateSystemLicenseConfig(ctx context.Context, timeRecordSaveInterval, timeRecordTaskDuration int64) (map[string]interface{}, error) {
 	result := map[string]interface{}{
 		"command":                   "update_system_license_config",
 		"time_record_save_interval": timeRecordSaveInterval,
@@ -471,11 +471,11 @@ func (s *Service) UpdateSystemLicenseConfig(timeRecordSaveInterval, timeRecordTa
 	return result, nil
 }
 
-func (s *Service) SetSoftFingerprint(softFingerprint string) error {
+func (s *Service) SetSoftFingerprint(ctx context.Context, softFingerprint string) error {
 	return errors.New("set soft fingerprint is not supported")
 }
 
-func (s *Service) GetSoftFingerprint() (map[string]interface{}, error) {
+func (s *Service) GetSoftFingerprint(ctx context.Context) (map[string]interface{}, error) {
 	result := map[string]interface{}{
 		"command": "show_soft_fingerprint",
 		"error":   "'show soft fingerprint' is not supported",
@@ -484,12 +484,12 @@ func (s *Service) GetSoftFingerprint() (map[string]interface{}, error) {
 	return result, nil
 }
 
-func (s *Service) DeleteSoftFingerprint() error {
+func (s *Service) DeleteSoftFingerprint(ctx context.Context) error {
 	return errors.New("delete soft fingerprint is not supported")
 }
 
 // ShowUserActivity show user activity for enterprise edition
-func (s *Service) ShowUserActivity(email string, days int) (map[string]interface{}, error) {
+func (s *Service) ShowUserActivity(ctx context.Context, email string, days int) (map[string]interface{}, error) {
 	// Query user by email
 	var user entity.User
 	err := dao.DB.Where("email = ?", email).First(&user).Error
@@ -507,7 +507,7 @@ func (s *Service) ShowUserActivity(email string, days int) (map[string]interface
 	return result, nil
 }
 
-// ShowUserDatasetSummary show user dataset summary for  edition
+// ShowUserDatasetSummary show user dataset summary for enterprise edition
 func (s *Service) ShowUserDatasetSummary(ctx context.Context, email, dataset string) (map[string]interface{}, error) {
 	// Query user by email
 	var user entity.User
@@ -640,8 +640,8 @@ func (s *Service) ShowUserSummary(ctx context.Context, email string) (map[string
 	return result, nil
 }
 
-// ShowUserStorage show user storage for  edition
-func (s *Service) ShowUserStorage(email string) (map[string]interface{}, error) {
+// ShowUserStorage show user storage for enterprise edition
+func (s *Service) ShowUserStorage(ctx context.Context, email string) (map[string]interface{}, error) {
 	// Query user by email
 	var user entity.User
 	err := dao.DB.Where("email = ?", email).First(&user).Error
@@ -809,8 +809,8 @@ func (s *Service) ShowUserQuota(ctx context.Context, email string) (map[string]i
 	return result, nil
 }
 
-// ShowUserIndex show user index for  edition
-func (s *Service) ShowUserIndex(email string) (map[string]interface{}, error) {
+// ShowUserIndex show user index for enterprise edition
+func (s *Service) ShowUserIndex(ctx context.Context, email string) (map[string]interface{}, error) {
 	// Query user by email
 	var user entity.User
 	err := dao.DB.Where("email = ?", email).First(&user).Error
@@ -836,7 +836,7 @@ func (s *Service) ShowUserIndex(email string) (map[string]interface{}, error) {
 
 	esConfig := cfg.GetElasticsearchConfig()
 
-	esEngine, err := elasticsearch.NewEngine(esConfig)
+	esEngine, err := elasticsearch.NewEngine(ctx, esConfig)
 	if err != nil {
 		return map[string]interface{}{
 			"Email":   user.Email,
@@ -851,7 +851,7 @@ func (s *Service) ShowUserIndex(email string) (map[string]interface{}, error) {
 		fmt.Sprintf("ragflow_doc_meta_%s", tenantID),
 	}
 
-	indexStats, err := esEngine.GetIndexStats(indices)
+	indexStats, err := esEngine.GetIndexStats(ctx, indices)
 	if err != nil {
 		return map[string]interface{}{
 			"Email":   user.Email,
@@ -902,7 +902,7 @@ func (s *Service) ShowUserIndex(email string) (map[string]interface{}, error) {
 }
 
 // UpdateUserRole update user role
-func (s *Service) UpdateUserRole(email, roleName string) (map[string]interface{}, error) {
+func (s *Service) UpdateUserRole(ctx context.Context, email, roleName string) (map[string]interface{}, error) {
 	// Query user by email
 	var user entity.User
 	err := dao.DB.Where("email = ?", email).First(&user).Error
@@ -921,8 +921,8 @@ func (s *Service) UpdateUserRole(email, roleName string) (map[string]interface{}
 	return result, nil
 }
 
-// ShowUserPermission show user permissions for  edition
-func (s *Service) ShowUserPermission(email string) (map[string]interface{}, error) {
+// ShowUserPermission show user permissions for enterprise edition
+func (s *Service) ShowUserPermission(ctx context.Context, email string) (map[string]interface{}, error) {
 	// Query user by email
 	var user entity.User
 	err := dao.DB.Where("email = ?", email).First(&user).Error
@@ -940,8 +940,8 @@ func (s *Service) ShowUserPermission(email string) (map[string]interface{}, erro
 	return result, nil
 }
 
-// ListUserDatasets show user datasets for  edition
-func (s *Service) ListUserDatasets(email string) ([]map[string]interface{}, error) {
+// ListUserDatasets show user datasets for enterprise edition
+func (s *Service) ListUserDatasets(ctx context.Context, email string) ([]map[string]interface{}, error) {
 	// Query user by email
 	var user entity.User
 	err := dao.DB.Where("email = ?", email).First(&user).Error
@@ -961,8 +961,8 @@ func (s *Service) ListUserDatasets(email string) ([]map[string]interface{}, erro
 	return result, nil
 }
 
-// ListUserAgents show user agents for  edition
-func (s *Service) ListUserAgents(email string) ([]map[string]interface{}, error) {
+// ListUserAgents show user agents for enterprise edition
+func (s *Service) ListUserAgents(ctx context.Context, email string) ([]map[string]interface{}, error) {
 	// Query user by email
 	var user entity.User
 	err := dao.DB.Where("email = ?", email).First(&user).Error
@@ -982,8 +982,8 @@ func (s *Service) ListUserAgents(email string) ([]map[string]interface{}, error)
 	return result, nil
 }
 
-// ListUserChats show user chats for  edition
-func (s *Service) ListUserChats(email string) ([]map[string]interface{}, error) {
+// ListUserChats show user chats for enterprise edition
+func (s *Service) ListUserChats(ctx context.Context, email string) ([]map[string]interface{}, error) {
 	// Query user by email
 	var user entity.User
 	err := dao.DB.Where("email = ?", email).First(&user).Error
@@ -1003,8 +1003,8 @@ func (s *Service) ListUserChats(email string) ([]map[string]interface{}, error) 
 	return result, nil
 }
 
-// ListUserSearches show user searches for  edition
-func (s *Service) ListUserSearches(email string) ([]map[string]interface{}, error) {
+// ListUserSearches show user searches for enterprise edition
+func (s *Service) ListUserSearches(ctx context.Context, email string) ([]map[string]interface{}, error) {
 	// Query user by email
 	var user entity.User
 	err := dao.DB.Where("email = ?", email).First(&user).Error
@@ -1024,8 +1024,8 @@ func (s *Service) ListUserSearches(email string) ([]map[string]interface{}, erro
 	return result, nil
 }
 
-// ListUserModels show user models for  edition
-func (s *Service) ListUserModels(email string) ([]map[string]interface{}, error) {
+// ListUserModels show user models for enterprise edition
+func (s *Service) ListUserModels(ctx context.Context, email string) ([]map[string]interface{}, error) {
 	// Query user by email
 	var user entity.User
 	err := dao.DB.Where("email = ?", email).First(&user).Error
@@ -1045,8 +1045,8 @@ func (s *Service) ListUserModels(email string) ([]map[string]interface{}, error)
 	return result, nil
 }
 
-// ListUserFiles show user files for  edition
-func (s *Service) ListUserFiles(email string) ([]map[string]interface{}, error) {
+// ListUserFiles show user files for enterprise edition
+func (s *Service) ListUserFiles(ctx context.Context, email string) ([]map[string]interface{}, error) {
 	// Query user by email
 	var user entity.User
 	err := dao.DB.Where("email = ?", email).First(&user).Error
@@ -1066,8 +1066,8 @@ func (s *Service) ListUserFiles(email string) ([]map[string]interface{}, error) 
 	return result, nil
 }
 
-// ListUserProviders show user providers for  edition
-func (s *Service) ListUserProviders(email string) ([]map[string]interface{}, error) {
+// ListUserProviders show user providers for enterprise edition
+func (s *Service) ListUserProviders(ctx context.Context, email string) ([]map[string]interface{}, error) {
 	// Query user by email
 	var user entity.User
 	err := dao.DB.Where("email = ?", email).First(&user).Error
@@ -1087,8 +1087,8 @@ func (s *Service) ListUserProviders(email string) ([]map[string]interface{}, err
 	return result, nil
 }
 
-// ListUserProviderInstances show user provider instances for  edition
-func (s *Service) ListUserProviderInstances(email, providerName string) ([]map[string]interface{}, error) {
+// ListUserProviderInstances show user provider instances for enterprise edition
+func (s *Service) ListUserProviderInstances(ctx context.Context, email, providerName string) ([]map[string]interface{}, error) {
 	// Query user by email
 	var user entity.User
 	err := dao.DB.Where("email = ?", email).First(&user).Error
@@ -1109,8 +1109,8 @@ func (s *Service) ListUserProviderInstances(email, providerName string) ([]map[s
 	return result, nil
 }
 
-// ListUserProviderInstanceModels show user provider instance models for  edition
-func (s *Service) ListUserProviderInstanceModels(email, providerName, instanceName string) ([]map[string]interface{}, error) {
+// ListUserProviderInstanceModels show user provider instance models for enterprise edition
+func (s *Service) ListUserProviderInstanceModels(ctx context.Context, email, providerName, instanceName string) ([]map[string]interface{}, error) {
 	// Query user by email
 	var user entity.User
 	err := dao.DB.Where("email = ?", email).First(&user).Error
@@ -1132,8 +1132,8 @@ func (s *Service) ListUserProviderInstanceModels(email, providerName, instanceNa
 	return result, nil
 }
 
-// ListUserDefaultModels show user default models for  edition
-func (s *Service) ListUserDefaultModels(email string) ([]map[string]interface{}, error) {
+// ListUserDefaultModels show user default models for enterprise edition
+func (s *Service) ListUserDefaultModels(ctx context.Context, email string) ([]map[string]interface{}, error) {
 	// Query user by email
 	var user entity.User
 	err := dao.DB.Where("email = ?", email).First(&user).Error
@@ -1153,8 +1153,8 @@ func (s *Service) ListUserDefaultModels(email string) ([]map[string]interface{},
 	return result, nil
 }
 
-// ShowUsersSummary show users summary
-func (s *Service) ShowUsersSummary() (map[string]interface{}, error) {
+// ShowUsersSummary show users summary for enterprise edition
+func (s *Service) ShowUsersSummary(ctx context.Context) (map[string]interface{}, error) {
 	row, err := s.userDAO.UserCountTotalActiveNew(context.Background(), dao.DB, 30)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query users summary: %w", err)
@@ -1169,8 +1169,8 @@ func (s *Service) ShowUsersSummary() (map[string]interface{}, error) {
 	return result, nil
 }
 
-// ShowUsersActivity show users activity for  edition
-func (s *Service) ShowUsersActivity(days, windows *int) (map[string]interface{}, error) {
+// ShowUsersActivity show users activity for enterprise edition
+func (s *Service) ShowUsersActivity(ctx context.Context, days, windows *int) (map[string]interface{}, error) {
 	daysInt := 0
 	if days != nil {
 		daysInt = *days
@@ -1189,8 +1189,8 @@ func (s *Service) ShowUsersActivity(days, windows *int) (map[string]interface{},
 	return result, nil
 }
 
-func (s *Service) listUsersInactiveByPlan(days int) ([]map[string]interface{}, error) {
-	rows, err := s.userDAO.ListInactiveByPlan(context.Background(), dao.DB, days)
+func (s *Service) listUsersInactiveByPlan(ctx context.Context, days int) ([]map[string]interface{}, error) {
+	rows, err := s.userDAO.ListInactiveByPlan(ctx, dao.DB, days)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query inactive users: %w", err)
 	}
@@ -1222,7 +1222,7 @@ func (s *Service) ListUsersEE(ctx context.Context, pageIndex, pageSize int, name
 		if days > 0 {
 			daysVal = days
 		}
-		return s.listUsersInactiveByPlan(daysVal)
+		return s.listUsersInactiveByPlan(ctx, daysVal)
 	}
 
 	if orderBy != "" && strings.EqualFold(orderBy, "storage") {
@@ -1230,7 +1230,7 @@ func (s *Service) ListUsersEE(ctx context.Context, pageIndex, pageSize int, name
 		if top > 0 {
 			topVal = top
 		}
-		return s.listUsersStorageRows(topVal)
+		return s.listUsersStorageRows(ctx, topVal)
 	}
 
 	if orderBy != "" && strings.EqualFold(orderBy, "documents") {
@@ -1238,7 +1238,7 @@ func (s *Service) ListUsersEE(ctx context.Context, pageIndex, pageSize int, name
 		if top > 0 {
 			topVal = top
 		}
-		return s.listUsersDocumentsRows(topVal)
+		return s.listUsersDocumentsRows(ctx, topVal)
 	}
 
 	if orderBy != "" && strings.EqualFold(orderBy, "index") {
@@ -1246,7 +1246,7 @@ func (s *Service) ListUsersEE(ctx context.Context, pageIndex, pageSize int, name
 		if top > 0 {
 			topVal = top
 		}
-		return s.listUsersIndexRows(topVal)
+		return s.listUsersIndexRows(ctx, topVal)
 	}
 
 	if plan != "" && quota != nil {
@@ -1258,7 +1258,7 @@ func (s *Service) ListUsersEE(ctx context.Context, pageIndex, pageSize int, name
 		if days > 0 {
 			daysVal = days
 		}
-		return s.listUsersPlanQuotaRows(topVal, plan, *quota, daysVal)
+		return s.listUsersPlanQuotaRows(ctx, topVal, plan, *quota, daysVal)
 	}
 
 	if quota != nil {
@@ -1266,7 +1266,7 @@ func (s *Service) ListUsersEE(ctx context.Context, pageIndex, pageSize int, name
 		if top > 0 {
 			topVal = top
 		}
-		return s.listUsersQuotaRows(topVal, *quota)
+		return s.listUsersQuotaRows(ctx, topVal, *quota)
 	}
 
 	if plan != "" {
@@ -1278,7 +1278,7 @@ func (s *Service) ListUsersEE(ctx context.Context, pageIndex, pageSize int, name
 		if days > 0 {
 			daysVal = days
 		}
-		return s.listUsersPlanRows(topVal, plan, daysVal)
+		return s.listUsersPlanRows(ctx, topVal, plan, daysVal)
 	}
 
 	// No special filter matched: fall back to the standard paginated user list
@@ -1286,8 +1286,8 @@ func (s *Service) ListUsersEE(ctx context.Context, pageIndex, pageSize int, name
 	return s.ListUsers(ctx, pageIndex, pageSize, name, status, sort, orderBy)
 }
 
-// ListUsersReports list users reports for  edition
-func (s *Service) ListUsersReports(pageIndex, pageSize int, status, plan *string, days *int) (map[string]interface{}, error) {
+// ListUsersReports list users reports for enterprise edition
+func (s *Service) ListUsersReports(ctx context.Context, pageIndex, pageSize int, status, plan *string, days *int) (map[string]interface{}, error) {
 
 	statusStr := "all"
 	if status != nil {
@@ -1315,13 +1315,13 @@ func (s *Service) ListUsersReports(pageIndex, pageSize int, status, plan *string
 	return result, nil
 }
 
-// ListUsersStorage list users storage for  edition
-func (s *Service) ListUsersStorage(pageIndex, pageSize, top int) (map[string]interface{}, error) {
+// ListUsersStorage list users storage for enterprise edition
+func (s *Service) ListUsersStorage(ctx context.Context, pageIndex, pageSize, top int) (map[string]interface{}, error) {
 	if top <= 0 {
 		top = 10
 	}
 
-	users, err := s.listUsersStorageRows(top)
+	users, err := s.listUsersStorageRows(ctx, top)
 	if err != nil {
 		return nil, err
 	}
@@ -1335,8 +1335,8 @@ func (s *Service) ListUsersStorage(pageIndex, pageSize, top int) (map[string]int
 	return result, nil
 }
 
-func (s *Service) listUsersStorageRows(top int) ([]map[string]interface{}, error) {
-	rows, err := s.userDAO.ListStorageRows(context.Background(), dao.DB, top)
+func (s *Service) listUsersStorageRows(ctx context.Context, top int) ([]map[string]interface{}, error) {
+	rows, err := s.userDAO.ListStorageRows(ctx, dao.DB, top)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query users storage: %w", err)
 	}
@@ -1365,8 +1365,8 @@ func (s *Service) listUsersStorageRows(top int) ([]map[string]interface{}, error
 	return result, nil
 }
 
-func (s *Service) listUsersDocumentsRows(top int) ([]map[string]interface{}, error) {
-	rows, err := s.userDAO.ListDocumentsRows(context.Background(), dao.DB, top)
+func (s *Service) listUsersDocumentsRows(ctx context.Context, top int) ([]map[string]interface{}, error) {
+	rows, err := s.userDAO.ListDocumentsRows(ctx, dao.DB, top)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query users documents: %w", err)
 	}
@@ -1389,7 +1389,7 @@ func (s *Service) listUsersDocumentsRows(top int) ([]map[string]interface{}, err
 	return result, nil
 }
 
-func (s *Service) listUsersIndexRows(top int) ([]map[string]interface{}, error) {
+func (s *Service) listUsersIndexRows(ctx context.Context, top int) ([]map[string]interface{}, error) {
 
 	cfg := server.GetConfig()
 	docEngine := cfg.DocEngineType()
@@ -1403,13 +1403,13 @@ func (s *Service) listUsersIndexRows(top int) ([]map[string]interface{}, error) 
 
 	esConfig := cfg.GetElasticsearchConfig()
 
-	esEngine, err := elasticsearch.NewEngine(esConfig)
+	esEngine, err := elasticsearch.NewEngine(ctx, esConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to elasticsearch: %w", err)
 	}
 	defer esEngine.Close()
 
-	allIndexStats, err := esEngine.GetIndexStats([]string{"ragflow*"})
+	allIndexStats, err := esEngine.GetIndexStats(ctx, []string{"ragflow*"})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get index stats: %w", err)
 	}
@@ -1514,8 +1514,8 @@ func (s *Service) listUsersIndexRows(top int) ([]map[string]interface{}, error) 
 	return result, nil
 }
 
-func (s *Service) listUsersQuotaRows(top, quotaThreshold int) ([]map[string]interface{}, error) {
-	rows, err := s.userDAO.ListQuotaRows(context.Background(), dao.DB, top, quotaThreshold)
+func (s *Service) listUsersQuotaRows(ctx context.Context, top, quotaThreshold int) ([]map[string]interface{}, error) {
+	rows, err := s.userDAO.ListQuotaRows(ctx, dao.DB, top, quotaThreshold)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query users quota: %w", err)
 	}
@@ -1547,8 +1547,8 @@ func (s *Service) listUsersQuotaRows(top, quotaThreshold int) ([]map[string]inte
 // listUsersPlanRows returns active users filtered by plan name within the last N days.
 // Active users are defined by last_login_time >= now - days.
 // Results are sorted by last_login_time descending, limited to top N.
-func (s *Service) listUsersPlanRows(top int, planName string, days int) ([]map[string]interface{}, error) {
-	rows, err := s.userDAO.ListPlanRows(context.Background(), dao.DB, top, planName, days)
+func (s *Service) listUsersPlanRows(ctx context.Context, top int, planName string, days int) ([]map[string]interface{}, error) {
+	rows, err := s.userDAO.ListPlanRows(ctx, dao.DB, top, planName, days)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query users by plan: %w", err)
 	}
@@ -1575,8 +1575,8 @@ func (s *Service) listUsersPlanRows(top int, planName string, days int) ([]map[s
 // percentage meets or exceeds the quota threshold within the last N days.
 // Active users are defined by last_login_time >= now - days.
 // Results are sorted by storage_used descending, limited to top N.
-func (s *Service) listUsersPlanQuotaRows(top int, planName string, quotaThreshold, days int) ([]map[string]interface{}, error) {
-	rows, err := s.userDAO.ListPlanQuotaRows(context.Background(), dao.DB, top, planName, quotaThreshold, days)
+func (s *Service) listUsersPlanQuotaRows(ctx context.Context, top int, planName string, quotaThreshold, days int) ([]map[string]interface{}, error) {
+	rows, err := s.userDAO.ListPlanQuotaRows(ctx, dao.DB, top, planName, quotaThreshold, days)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query users plan quota: %w", err)
 	}
@@ -1605,8 +1605,8 @@ func (s *Service) listUsersPlanQuotaRows(top int, planName string, quotaThreshol
 	return result, nil
 }
 
-// ListUsersDocuments list users documents for  edition
-func (s *Service) ListUsersDocuments(pageIndex, pageSize, top int) (map[string]interface{}, error) {
+// ListUsersDocuments list users documents for enterprise edition
+func (s *Service) ListUsersDocuments(ctx context.Context, pageIndex, pageSize, top int) (map[string]interface{}, error) {
 
 	result := map[string]interface{}{
 		"page_index": pageIndex,
@@ -1619,8 +1619,8 @@ func (s *Service) ListUsersDocuments(pageIndex, pageSize, top int) (map[string]i
 	return result, nil
 }
 
-// ListUsersIndex list users index for  edition
-func (s *Service) ListUsersIndex(pageIndex, pageSize, top int) (map[string]interface{}, error) {
+// ListUsersIndex list users index for enterprise edition
+func (s *Service) ListUsersIndex(ctx context.Context, pageIndex, pageSize, top int) (map[string]interface{}, error) {
 
 	result := map[string]interface{}{
 		"page_index": pageIndex,
@@ -1633,8 +1633,8 @@ func (s *Service) ListUsersIndex(pageIndex, pageSize, top int) (map[string]inter
 	return result, nil
 }
 
-// ListUsersQuota list users quota for  edition
-func (s *Service) ListUsersQuota(pageIndex, pageSize, top int, quotaThreshold *int, plan *string, days *int) (map[string]interface{}, error) {
+// ListUsersQuota list users quota for enterprise edition
+func (s *Service) ListUsersQuota(ctx context.Context, pageIndex, pageSize, top int, quotaThreshold *int, plan *string, days *int) (map[string]interface{}, error) {
 
 	quotaThresholdInt := 0
 	if quotaThreshold != nil {
@@ -1663,8 +1663,8 @@ func (s *Service) ListUsersQuota(pageIndex, pageSize, top int, quotaThreshold *i
 	return result, nil
 }
 
-// ShowUsersPlanSummary show users plan summary for  edition
-func (s *Service) ShowUsersPlanSummary() (map[string]interface{}, error) {
+// ShowUsersPlanSummary show users plan summary for enterprise edition
+func (s *Service) ShowUsersPlanSummary(ctx context.Context) (map[string]interface{}, error) {
 
 	result := map[string]interface{}{
 		"command": "show_users_plan_summary",
@@ -1674,8 +1674,8 @@ func (s *Service) ShowUsersPlanSummary() (map[string]interface{}, error) {
 	return result, nil
 }
 
-// ShowUsersPlanQuota show users plan quota hit rate for  edition
-func (s *Service) ShowUsersPlanQuota(quota int) (map[string]interface{}, error) {
+// ShowUsersPlanQuota show users plan quota for enterprise edition
+func (s *Service) ShowUsersPlanQuota(ctx context.Context, quota int) (map[string]interface{}, error) {
 	if quota <= 0 {
 		quota = 50
 	}
@@ -1702,8 +1702,8 @@ func (s *Service) ShowUsersPlanQuota(quota int) (map[string]interface{}, error) 
 	return result, nil
 }
 
-// ShowUsersQuotaSummary show users quota summary for  edition
-func (s *Service) ShowUsersQuotaSummary() (map[string]interface{}, error) {
+// ShowUsersQuotaSummary show users quota summary for enterprise edition
+func (s *Service) ShowUsersQuotaSummary(ctx context.Context) (map[string]interface{}, error) {
 	products, err := s.BillingProductDAO.ListBillingProducts(context.Background(), dao.DB)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query billing products: %w", err)
@@ -1788,8 +1788,8 @@ func (s *Service) ShowUsersQuotaSummary() (map[string]interface{}, error) {
 	return result, nil
 }
 
-// ShowIngestionTasksSummary show ingestion tasks summary
-func (s *Service) ShowIngestionTasksSummary() (map[string]interface{}, error) {
+// ShowIngestionTasksSummary show ingestion tasks summary for enterprise edition
+func (s *Service) ShowIngestionTasksSummary(ctx context.Context) (map[string]interface{}, error) {
 	agg, err := s.taskDAO.TaskAggByStatus(context.Background(), dao.DB)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query task summary: %w", err)
@@ -1828,8 +1828,8 @@ func (s *Service) ShowIngestionTasksSummary() (map[string]interface{}, error) {
 	return result, nil
 }
 
-// ShowDataSummary show data summary for  edition
-func (s *Service) ShowDataSummary() (map[string]interface{}, error) {
+// ShowDataSummary show data summary for enterprise edition
+func (s *Service) ShowDataSummary(ctx context.Context) (map[string]interface{}, error) {
 	storageRow, err := s.fileDAO.StorageFileSizeDocSize(context.Background(), dao.DB)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query storage summary: %w", err)
@@ -1866,14 +1866,14 @@ func (s *Service) ShowDataSummary() (map[string]interface{}, error) {
 
 	esConfig := cfg.GetElasticsearchConfig()
 
-	esEngine, err := elasticsearch.NewEngine(esConfig)
+	esEngine, err := elasticsearch.NewEngine(ctx, esConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect elasticsearch: %w", err)
 	}
 	defer esEngine.Close()
 
 	var clusterStats map[string]interface{}
-	clusterStats, err = esEngine.GetClusterStats()
+	clusterStats, err = esEngine.GetClusterStats(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query elasticsearch cluster stats: %w", err)
 	}
@@ -1888,8 +1888,8 @@ func (s *Service) ShowDataSummary() (map[string]interface{}, error) {
 	return result, nil
 }
 
-// ShowDataOrphan show data orphan for  edition
-func (s *Service) ShowDataOrphan() (map[string]interface{}, error) {
+// ShowDataOrphan show data orphan for enterprise edition
+func (s *Service) ShowDataOrphan(ctx context.Context) (map[string]interface{}, error) {
 	kbRow, err := s.kbDAO.GetKBOrphans(context.Background(), dao.DB)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query knowledgebase orphans: %w", err)
@@ -1948,7 +1948,7 @@ func (s *Service) ShowDataOrphan() (map[string]interface{}, error) {
 	}
 
 	esConfig := cfg.GetElasticsearchConfig()
-	esEngine, err := elasticsearch.NewEngine(esConfig)
+	esEngine, err := elasticsearch.NewEngine(ctx, esConfig)
 	if err != nil {
 		result["ES Error"] = fmt.Sprintf("failed to connect elasticsearch: %v", err)
 		return result, nil
@@ -1956,7 +1956,7 @@ func (s *Service) ShowDataOrphan() (map[string]interface{}, error) {
 
 	defer esEngine.Close()
 
-	allIndexStats, err := esEngine.GetIndexStats([]string{"ragflow*"})
+	allIndexStats, err := esEngine.GetIndexStats(ctx, []string{"ragflow*"})
 	if err != nil {
 		result["ES Error"] = fmt.Sprintf("ES query failed: %s", err.Error())
 		return result, nil
@@ -1989,8 +1989,8 @@ func (s *Service) ShowDataOrphan() (map[string]interface{}, error) {
 	return result, nil
 }
 
-// ShowDataStorage show data storage for  edition
-func (s *Service) ShowDataStorage() (map[string]interface{}, error) {
+// ShowDataStorage show data storage for enterprise edition
+func (s *Service) ShowDataStorage(ctx context.Context) (map[string]interface{}, error) {
 	fileCount, fileSize, err := s.fileDAO.FileCountAndSize(context.Background(), dao.DB)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query file stats: %w", err)
@@ -2065,8 +2065,8 @@ func (s *Service) ShowDataStorage() (map[string]interface{}, error) {
 	return result, nil
 }
 
-// ShowDataIndex show data index for  edition
-func (s *Service) ShowDataIndex() (map[string]interface{}, error) {
+// ShowDataIndex show data index for enterprise edition
+func (s *Service) ShowDataIndex(ctx context.Context) (map[string]interface{}, error) {
 	cfg := server.GetConfig()
 	docEngine := cfg.DocEngineType()
 	if docEngine != "elasticsearch" {
@@ -2079,13 +2079,13 @@ func (s *Service) ShowDataIndex() (map[string]interface{}, error) {
 
 	esConfig := cfg.GetElasticsearchConfig()
 
-	esEngine, err := elasticsearch.NewEngine(esConfig)
+	esEngine, err := elasticsearch.NewEngine(ctx, esConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect elasticsearch: %w", err)
 	}
 	defer esEngine.Close()
 
-	clusterStats, err := esEngine.GetClusterStats()
+	clusterStats, err := esEngine.GetClusterStats(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get cluster stats: %w", err)
 	}
@@ -2122,8 +2122,8 @@ func (s *Service) ShowDataIndex() (map[string]interface{}, error) {
 	return result, nil
 }
 
-// PurgeOrphanData purge orphan data for  edition
-func (s *Service) PurgeOrphanData(preview bool) (map[string]interface{}, error) {
+// PurgeOrphanData purge orphan data for enterprise edition
+func (s *Service) PurgeOrphanData(ctx context.Context, preview bool) (map[string]interface{}, error) {
 
 	result := map[string]interface{}{
 		"command": "purge_orphan_data",
@@ -2134,8 +2134,8 @@ func (s *Service) PurgeOrphanData(preview bool) (map[string]interface{}, error) 
 	return result, nil
 }
 
-// PurgeUserData purge user data for  edition
-func (s *Service) PurgeUserData(email string, preview bool) (map[string]interface{}, error) {
+// PurgeUserData purge user data for enterprise edition
+func (s *Service) PurgeUserData(ctx context.Context, email string, preview bool) (map[string]interface{}, error) {
 	// Query user by email
 	var user entity.User
 	err := dao.DB.Where("email = ?", email).First(&user).Error
@@ -2153,8 +2153,8 @@ func (s *Service) PurgeUserData(email string, preview bool) (map[string]interfac
 	return result, nil
 }
 
-// PurgeUsersData purge users data for  edition
-func (s *Service) PurgeUsersData(preview bool, days int, userPlan *string, userActivity *string) (map[string]interface{}, error) {
+// PurgeUsersData purge users data for enterprise edition
+func (s *Service) PurgeUsersData(ctx context.Context, preview bool, days int, userPlan *string, userActivity *string) (map[string]interface{}, error) {
 
 	plan := "all"
 	activity := "all"
@@ -2323,7 +2323,7 @@ func (s *Service) ListIngestionTasksByCondition(ctx context.Context, email, stat
 	return showTasks, nil
 }
 
-func (s *Service) StopIngestionTasksByCondition(tasks []string, email, status *string) ([]map[string]interface{}, error) {
+func (s *Service) StopIngestionTasksByCondition(ctx context.Context, tasks []string, email, status *string) ([]map[string]interface{}, error) {
 
 	if email == nil && status == nil {
 		return nil, fmt.Errorf("email or status are required")
@@ -2345,7 +2345,7 @@ func (s *Service) StopIngestionTasksByCondition(tasks []string, email, status *s
 	return []map[string]interface{}{element}, nil
 }
 
-func (s *Service) RemoveIngestionTasksByCondition(tasks []string, email, status *string) ([]map[string]interface{}, error) {
+func (s *Service) RemoveIngestionTasksByCondition(ctx context.Context, tasks []string, email, status *string) ([]map[string]interface{}, error) {
 
 	if email == nil && status == nil {
 		return nil, fmt.Errorf("email or status are required")
@@ -2372,7 +2372,7 @@ func CheckLicense() (common.ErrorCode, string) {
 }
 
 // DownloadSensitiveWords download sensitive words
-func (s *Service) DownloadSensitiveWords() ([]map[string]interface{}, error) {
+func (s *Service) DownloadSensitiveWords(ctx context.Context) ([]map[string]interface{}, error) {
 	result := []map[string]interface{}{
 		{
 			"command": "download_sensitive_words",
@@ -2383,7 +2383,7 @@ func (s *Service) DownloadSensitiveWords() ([]map[string]interface{}, error) {
 }
 
 // UploadSensitiveWords upload sensitive words
-func (s *Service) UploadSensitiveWords(file *multipart.FileHeader) ([]map[string]interface{}, error) {
+func (s *Service) UploadSensitiveWords(ctx context.Context, file *multipart.FileHeader) ([]map[string]interface{}, error) {
 	result := []map[string]interface{}{
 		{
 			"command":  "upload_sensitive_words",
@@ -2395,7 +2395,7 @@ func (s *Service) UploadSensitiveWords(file *multipart.FileHeader) ([]map[string
 }
 
 // BindVerificationEmail bind verification email
-func (s *Service) BindVerificationEmail(email, host string, port int, username, password string, useTLS, useSSL bool) (map[string]interface{}, error) {
+func (s *Service) BindVerificationEmail(ctx context.Context, email, host string, port int, username, password string, useTLS, useSSL bool) (map[string]interface{}, error) {
 	result := map[string]interface{}{
 		"command":  "bind_verification_email",
 		"email":    email,
@@ -2411,7 +2411,7 @@ func (s *Service) BindVerificationEmail(email, host string, port int, username, 
 }
 
 // ShowVerificationEmail show verification email
-func (s *Service) ShowVerificationEmail() (map[string]interface{}, error) {
+func (s *Service) ShowVerificationEmail(ctx context.Context) (map[string]interface{}, error) {
 	result := map[string]interface{}{
 		"command": "show_verification_email",
 		"error":   "'Show verification email' is not supported",
@@ -2420,7 +2420,7 @@ func (s *Service) ShowVerificationEmail() (map[string]interface{}, error) {
 }
 
 // ShowWhiteList show white list
-func (s *Service) ShowWhiteList() ([]map[string]interface{}, error) {
+func (s *Service) ShowWhiteList(ctx context.Context) ([]map[string]interface{}, error) {
 	result := []map[string]interface{}{
 		{
 			"command": "show_white_list",
@@ -2431,7 +2431,7 @@ func (s *Service) ShowWhiteList() ([]map[string]interface{}, error) {
 }
 
 // AddWhiteList add white list
-func (s *Service) AddWhiteList(email string) (map[string]interface{}, error) {
+func (s *Service) AddWhiteList(ctx context.Context, email string) (map[string]interface{}, error) {
 	result := map[string]interface{}{
 		"command": "add_white_list",
 		"email":   email,
@@ -2441,7 +2441,7 @@ func (s *Service) AddWhiteList(email string) (map[string]interface{}, error) {
 }
 
 // BatchAddWhiteList batch add white list
-func (s *Service) BatchAddWhiteList(file *multipart.FileHeader) (map[string]interface{}, error) {
+func (s *Service) BatchAddWhiteList(ctx context.Context, file *multipart.FileHeader) (map[string]interface{}, error) {
 	result := map[string]interface{}{
 		"command":  "batch_add_white_list",
 		"filename": file.Filename,
@@ -2451,7 +2451,7 @@ func (s *Service) BatchAddWhiteList(file *multipart.FileHeader) (map[string]inte
 }
 
 // UpdateWhiteList update white list
-func (s *Service) UpdateWhiteList(id, email string) (map[string]interface{}, error) {
+func (s *Service) UpdateWhiteList(ctx context.Context, id, email string) (map[string]interface{}, error) {
 	result := map[string]interface{}{
 		"command": "update_white_list",
 		"id":      id,
@@ -2462,7 +2462,7 @@ func (s *Service) UpdateWhiteList(id, email string) (map[string]interface{}, err
 }
 
 // DeleteWhiteList delete white list
-func (s *Service) DeleteWhiteList(id int) (map[string]interface{}, error) {
+func (s *Service) DeleteWhiteList(ctx context.Context, id int) (map[string]interface{}, error) {
 	result := map[string]interface{}{
 		"command": "delete_white_list",
 		"id":      id,
@@ -2472,7 +2472,7 @@ func (s *Service) DeleteWhiteList(id int) (map[string]interface{}, error) {
 }
 
 // BatchDeleteWhiteList batch delete white list
-func (s *Service) BatchDeleteWhiteList(ids []int) (map[string]interface{}, error) {
+func (s *Service) BatchDeleteWhiteList(ctx context.Context, ids []int) (map[string]interface{}, error) {
 	result := map[string]interface{}{
 		"command": "batch_delete_white_list",
 		"ids":     ids,
@@ -2520,7 +2520,7 @@ func (s *Service) GetTokenStats(ctx context.Context, userName, fromDate, toDate,
 }
 
 // GetTokenUsersStats returns API token statistics for all users.
-func (s *Service) GetTokenUsersStats(fromDate, toDate string, top int) ([]map[string]interface{}, error) {
+func (s *Service) GetTokenUsersStats(ctx context.Context, fromDate, toDate string, top int) ([]map[string]interface{}, error) {
 	result := []map[string]interface{}{
 		{
 			"command":   "get_token_users_stats",
@@ -2534,7 +2534,7 @@ func (s *Service) GetTokenUsersStats(fromDate, toDate string, top int) ([]map[st
 }
 
 // GetTokenStatsSummary returns API token statistics summary for all users.
-func (s *Service) GetTokenStatsSummary(fromDate, toDate string) (map[string]interface{}, error) {
+func (s *Service) GetTokenStatsSummary(ctx context.Context, fromDate, toDate string) (map[string]interface{}, error) {
 	result := map[string]interface{}{
 		"command":   "get_token_stats_summary",
 		"from_date": fromDate,
@@ -2581,6 +2581,6 @@ func (s *Service) ListLogs(ctx context.Context, userName string, days int) ([]ma
 	return maps, nil
 }
 
-func (s *Service) GetEEServicesStatus() []ServiceStatus {
+func (s *Service) GetEEServicesStatus(ctx context.Context) []ServiceStatus {
 	return []ServiceStatus{}
 }
