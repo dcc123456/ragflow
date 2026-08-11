@@ -10,6 +10,8 @@ import {
   useFetchIsAdmin,
 } from './use-private-llm-request';
 
+let isWarningVisible = false;
+
 export const useWarnEmptyModel = (
   showEmptyModelWarn: boolean,
   embdId?: string,

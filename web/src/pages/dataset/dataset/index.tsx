@@ -210,6 +210,7 @@ export default function Dataset() {
             setRowSelection={setRowSelection}
             showManageMetadataModal={showManageMetadataModal}
             loading={loading}
+            bulkOperateBarVisible={!rowSelectionIsEmpty}
           ></DatasetTable>
         </ShowPrivilegeModalContext.Provider>
 

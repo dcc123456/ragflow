@@ -1,6 +1,5 @@
 import { Toaster as Sonner } from '@/components/ui/sonner';
 import { Toaster } from '@/components/ui/toaster';
-import { changeLanguageAsync } from '@/locales/config';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { configResponsive } from 'ahooks';
 import dayjs from 'dayjs';
@@ -14,14 +13,13 @@ import utc from 'dayjs/plugin/utc';
 import weekOfYear from 'dayjs/plugin/weekOfYear';
 import weekYear from 'dayjs/plugin/weekYear';
 import weekday from 'dayjs/plugin/weekday';
-import React, { useEffect } from 'react';
+import React from 'react';
 import { RouterProvider } from 'react-router';
 import StarModal from './components/star-modal';
 import { ThemeProvider } from './components/theme-provider';
 import { TooltipProvider } from './components/ui/tooltip';
 import { ThemeEnum } from './constants/common';
 // import { getRouter } from './routes';
-import storage from './utils/authorization-util';
 
 import 'react-photo-view/dist/react-photo-view.css';
 import { routers } from './merge-routes';
@@ -81,13 +79,6 @@ function Root({ children }: React.PropsWithChildren) {
 }
 
 const RootProvider = ({ children }: React.PropsWithChildren) => {
-  useEffect(() => {
-    const lng = storage.getLanguage();
-    if (lng) {
-      void changeLanguageAsync(lng);
-    }
-  }, []);
-
   return (
     <TooltipProvider>
       <QueryClientProvider client={queryClient}>

@@ -190,7 +190,7 @@ async def delete_memory(memory_id):
 @login_required
 @memory_role_guard
 async def list_memory():
-    filter_params = {k: request.args.get(k) for k in ["memory_type", "tenant_id", "owner_ids", "storage_type"] if k in request.args}
+    filter_params = {k: request.args.get(k) for k in ["memory_type", "tenant_id", "owner_ids", "ids", "storage_type"] if k in request.args}
     keywords = request.args.get("keywords")
     page = validate_rest_api_page(request.args.get("page", DEFAULT_PAGE))
     page_size = validate_rest_api_page_size(request.args.get("page_size", DEFAULT_PAGE_SIZE))
