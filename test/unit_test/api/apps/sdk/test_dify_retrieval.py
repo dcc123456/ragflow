@@ -523,9 +523,10 @@ class TestDifyRetrievalRetrievalBehavior:
             tenant_id="tenant-owner",
         )
 
-        asyncio.run(module.retrieval())
+        result = asyncio.run(module.retrieval())
 
-        assert module._fake_retriever.last_kwargs["doc_ids"] == ["-999"]
+        assert result == {"records": []}
+        assert module._fake_retriever.retrieval_calls == []
 
     @pytest.mark.p1
     def test_metadata_condition_matching_docs_are_forwarded(self, monkeypatch):
