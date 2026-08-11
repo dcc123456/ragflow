@@ -43,6 +43,7 @@ export function SingleChatBox({
     handleUploadFile,
     removeFile,
     setDerivedMessages,
+    activeStreamsRef,
   } = useSendMessage(controller);
   const { data: userInfo } = useFetchUserInfo();
   const { data: currentDialog } = useFetchChat();
@@ -60,6 +61,12 @@ export function SingleChatBox({
   const showInternet = useShowInternet();
 
   useEffect(() => {
+    // Don't let backend data overwrite local streaming state while SSE is
+    // in-flight for this conversation. The server hasn't persisted the latest
+    // answer yet, and applying conversation.messages would discard the
+    // in-progress answer.
+    if (activeStreamsRef.current.has(conversationId)) return;
+
     const messages = conversation?.messages;
     if (Array.isArray(messages)) {
       setDerivedMessages((prevMessages) => {
@@ -80,7 +87,12 @@ export function SingleChatBox({
         }));
       });
     }
-  }, [conversation?.messages, setDerivedMessages]);
+  }, [
+    conversation?.messages,
+    conversationId,
+    setDerivedMessages,
+    activeStreamsRef,
+  ]);
 
   useEffect(() => {
     // Clear the message list after deleting the conversation.
