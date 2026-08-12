@@ -27,14 +27,10 @@ import { transformGroupDetailToForm } from '../utils';
 
 type UseCompilationTemplateGroupFormOptions = {
   detail?: ICompilationTemplateGroup;
-  defaultLlmId?: string;
-  isCreate: boolean;
 };
 
 export const useCompilationTemplateGroupForm = ({
   detail,
-  defaultLlmId,
-  isCreate,
 }: UseCompilationTemplateGroupFormOptions) => {
   const { t } = useTranslation();
 
@@ -47,14 +43,8 @@ export const useCompilationTemplateGroupForm = ({
   useEffect(() => {
     if (detail) {
       form.reset(transformGroupDetailToForm(detail));
-    } else if (
-      isCreate &&
-      defaultLlmId &&
-      !form.getValues('templates.0.llm_id')
-    ) {
-      form.setValue('templates.0.llm_id', defaultLlmId);
     }
-  }, [defaultLlmId, detail, form, isCreate]);
+  }, [detail, form]);
 
   return { form };
 };

@@ -66,7 +66,7 @@ from api.utils.api_utils import (
     validate_request,
 )
 from api.utils.billing import check_dynamic_resources, get_dynamic_resource_error_result
-from api.utils.pagination_utils import DEFAULT_PAGE, DEFAULT_PAGE_SIZE, validate_rest_api_page, validate_rest_api_page_size
+from api.utils.pagination_utils import DEFAULT_PAGE, DEFAULT_PAGE_SIZE, validate_rest_api_ids, validate_rest_api_page, validate_rest_api_page_size
 from api.utils.permission_utils import check_canvas_permission
 from api.utils.permission_utils import _permission_denied_message
 from common import settings
@@ -735,6 +735,10 @@ def list_agents(tenant_id):
     canvas_type = request.args.get("canvas_type")
     owner_ids = [item for item in request.args.get("owner_ids", "").strip().split(",") if item]
     tags = [item for item in request.args.get("tags", "").strip().split(",") if item]
+    try:
+        validate_rest_api_ids(owner_ids, "owner_ids")
+    except ValueError as e:
+        return get_result(code=RetCode.ARGUMENT_ERROR, message=str(e))
 
     page_number = validate_rest_api_page(request.args.get("page", DEFAULT_PAGE))
     items_per_page = validate_rest_api_page_size(request.args.get("page_size", DEFAULT_PAGE_SIZE))
