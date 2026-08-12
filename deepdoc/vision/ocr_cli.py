@@ -94,9 +94,9 @@ class OCRClient:
             if first_box is not None and isinstance(first_box, (list, tuple)) and len(first_box) > 0:
                 if isinstance(first_box[0], (list, tuple)) and len(first_box[0]) >= 2 and not isinstance(first_box[0][0], (list, tuple)):
                     raw = raw[0]
-                    logging.info("_normalize_detect_output: unwrapped 4D->3D, new len=%d", len(raw))
+                    logging.debug("_normalize_detect_output: unwrapped 4D->3D, new len=%d", len(raw))
 
-        logging.info("_normalize_detect_output: processing %d items, first_item_type=%s", len(raw), type(raw[0]) if raw else "empty")
+        logging.debug("_normalize_detect_output: processing %d items, first_item_type=%s", len(raw), type(raw[0]) if raw else "empty")
         result = []
         for i, item in enumerate(raw):
             if not isinstance(item, (list, tuple)):
@@ -105,7 +105,7 @@ class OCRClient:
             if box:
                 result.append(box)
         result = sorted(result, key=cls._box_sort_key)
-        logging.info("_normalize_detect_output: produced %d boxes", len(result))
+        logging.debug("_normalize_detect_output: produced %d boxes", len(result))
         return result
 
     @classmethod
@@ -121,14 +121,14 @@ class OCRClient:
             logging.warning("_normalize_box: item is None or empty, type=%s", type(item))
             return None
 
-        logging.info("_normalize_box: item type=%s, len=%d, item=%s", type(item), len(item) if hasattr(item, "__len__") else "N/A", item)
+        logging.debug("_normalize_box: item type=%s, len=%d, item=%s", type(item), len(item) if hasattr(item, "__len__") else "N/A", item)
         if len(item) == 4 and all(isinstance(p, (list, tuple)) and len(p) >= 2 for p in item):
-            logging.info("_normalize_box: matched 4-coordinate-pairs format")
+            logging.debug("_normalize_box: matched 4-coordinate-pairs format")
             return [[float(p[0]), float(p[1])] for p in item]
 
         # Flat format: [x0,y0,x1,y1,x2,y2,x3,y3] or similar
         if len(item) >= 8:
-            logging.info("_normalize_box: matched flat-format (len=%d)", len(item))
+            logging.debug("_normalize_box: matched flat-format (len=%d)", len(item))
             coords = []
             for i in range(0, 8, 2):
                 coords.append([float(item[i]), float(item[i + 1])])
@@ -136,7 +136,7 @@ class OCRClient:
 
         # Center-size-angle format: [cx, cy, w, h, angle] or [cx,cy,w,h,angle,score]
         if len(item) >= 5:
-            logging.info("_normalize_box: matched center-size format (len=%d)", len(item))
+            logging.debug("_normalize_box: matched center-size format (len=%d)", len(item))
             cx, cy, w, h = item[0], item[1], item[2], item[3]
             x0, y0 = cx - w / 2, cy - h / 2
             x1, y1 = cx + w / 2, cy - h / 2
@@ -146,7 +146,7 @@ class OCRClient:
 
         # Detection format: [x,y,score] or [x,y]
         if len(item) >= 2:
-            logging.info("_normalize_box: matched detection format (len=%d)", len(item))
+            logging.debug("_normalize_box: matched detection format (len=%d)", len(item))
             x, y = item[0], item[1]
             size = 10
             return [[x - size, y - size], [x + size, y - size], [x + size, y + size], [x - size, y + size]]
