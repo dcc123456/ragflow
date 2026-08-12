@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-import { IThirdOAIModel } from '@/interfaces/database/llm';
+import { IThirdOAIModel, IAddedModel } from '@/interfaces/database/llm';
 import { getCachedLlmList } from './llm-cache';
 
 // The names of the large models returned by the interface are similar to "deepseek-r1___OpenAI-API"
@@ -67,6 +67,30 @@ export function buildModelValue(model: {
 }) {
   const value = `${model.model_name}@${model.model_instance}@${model.model_provider}`;
   return model.tenant_id ? `${value}#${model.tenant_id}` : value;
+}
+
+/**
+ * Collects every id under which an added model can be referenced — both the
+ * model_id form and the legacy "modelName@instanceName@providerName" form —
+ * so a persisted form value can be checked against the models that still
+ * exist. Mirrors the leaf ids produced by `buildModelTree`.
+ */
+export function buildValidModelIds(
+  allModels: IAddedModel[],
+  modelTypes: string[],
+): Set<string> {
+  const ids = new Set<string>();
+  for (const m of allModels) {
+    if (!m.model_type?.some((t) => modelTypes.includes(t))) continue;
+    const legacyId = buildModelValue({
+      model_name: getRealModelName(m.name),
+      model_instance: m.instance_name,
+      model_provider: m.provider_name,
+    });
+    ids.add(m.model_id || legacyId);
+    ids.add(legacyId);
+  }
+  return ids;
 }
 
 /**

@@ -164,6 +164,7 @@ def _load_agent_api(monkeypatch, get_by_id_result, delete_calls=None):
         "api.utils.pagination_utils",
         DEFAULT_PAGE=1,
         DEFAULT_PAGE_SIZE=30,
+        validate_rest_api_ids=lambda ids, _field_name="ids": ids,
         validate_rest_api_page=lambda page: int(page),
         validate_rest_api_page_size=lambda page_size: int(page_size),
     )

@@ -56,7 +56,7 @@ from api.utils.api_utils import (
 )
 from api.utils.billing import check_resources, check_dynamic_resources, get_dynamic_resource_error_result
 from api.utils.permission_utils import check_dialog_permission, check_search_permission, has_permission_for_member, resolve_kb_with_permission
-from api.utils.pagination_utils import validate_rest_api_page, validate_rest_api_page_size, DEFAULT_PAGE, DEFAULT_PAGE_SIZE
+from api.utils.pagination_utils import validate_rest_api_ids, validate_rest_api_page, validate_rest_api_page_size, DEFAULT_PAGE, DEFAULT_PAGE_SIZE
 from common.constants import LLMType, RetCode, StatusEnum
 from common.misc_utils import get_uuid, thread_pool_exec
 from common.role_util import DIALOG_API_ACTION_MAP, DIALOG_ROLE_RESOURCE_TYPE, check_role_access
@@ -688,6 +688,11 @@ async def list_chats():
 
     if orderby not in ("create_time", "update_time", "name"):
         return get_json_result(code=RetCode.ARGUMENT_ERROR, message=f"invalid orderby field: {orderby}")
+
+    try:
+        validate_rest_api_ids(owner_ids, "owner_ids")
+    except ValueError as ex:
+        return get_json_result(code=RetCode.ARGUMENT_ERROR, message=str(ex))
 
     try:
         # Invalid or negative pagination values fall back to defaults
