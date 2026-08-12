@@ -125,9 +125,8 @@ if __name__ == "__main__":
     # init_user_role()
     SERVICE_CONFIGS.configs = load_configurations(SERVICE_CONF)
 
-    if settings.BILLING_ENABLED:
-        admin_metrics_thread = threading.Thread(target=admin_metrics_worker, args=(60,), daemon=True)
-        admin_metrics_thread.start()
+    admin_metrics_thread = threading.Thread(target=admin_metrics_worker, args=(60,), daemon=True)
+    admin_metrics_thread.start()
 
     try:
         logging.info(f"RAGFlow admin is ready after {time.time() - start_ts}s initialization.")
