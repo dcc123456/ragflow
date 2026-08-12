@@ -11,8 +11,6 @@ import { useTranslate } from '@/hooks/common-hooks';
 import { cn } from '@/lib/utils';
 import { Routes } from '@/routes';
 
-import AddedModels from './components/added-models';
-import AvailableFactoryList from './components/available-factory-list';
 import DefaultModelsSettings from './components/default-model-settings';
 
 export default function AdminRoleConfigModelProviders() {
@@ -59,7 +57,7 @@ export default function AdminRoleConfigModelProviders() {
                 </CardContent>
               </Card>
 
-              <Card className="bg-transparent border-0 size-full">
+              {/* <Card className="bg-transparent border-0 size-full">
                 <CardHeader className="p-0 pb-6">
                   <CardTitle>{t('addedModels')}</CardTitle>
                 </CardHeader>
@@ -67,11 +65,11 @@ export default function AdminRoleConfigModelProviders() {
                 <CardContent className="p-0">
                   <AddedModels />
                 </CardContent>
-              </Card>
+              </Card> */}
             </CardContent>
           </ScrollArea>
 
-          <aside
+          {/* <aside
             className={cn(
               '[grid-area:aside]',
               'flex flex-col size-full min-w-80',
@@ -79,7 +77,7 @@ export default function AdminRoleConfigModelProviders() {
             )}
           >
             <AvailableFactoryList />
-          </aside>
+          </aside> */}
         </div>
       </Card>
     </section>
