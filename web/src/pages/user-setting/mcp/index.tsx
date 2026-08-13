@@ -70,6 +70,7 @@ export default function McpServer() {
     handleExportMcp,
     handleSelectAll,
     selectAllChecked,
+    resetSelection,
   } = useBulkOperateMCP(data.mcp_servers);
   const { t } = useTranslation();
   const {
@@ -113,7 +114,8 @@ export default function McpServer() {
 
   const switchSelectionMode = useCallback(() => {
     setSelectionMode((prev) => !prev);
-  }, []);
+    resetSelection();
+  }, [resetSelection]);
 
   return (
     <ProfileSettingWrapperCard

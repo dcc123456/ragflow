@@ -1215,7 +1215,7 @@ NER：使用 spaCy NER 和基于规则的关键词提取来抽取实体和关系
       cancel: '取消',
       chatSetting: '聊天设置',
       avatarHidden: '隐藏头像',
-      locale: '地区',
+      locale: '语言',
       tocEnhance: 'PageIndex',
       tocEnhanceTip: `解析文档时生成了目录信息（见General方法的'启用目录抽取'），让大模型返回和用户问题相关的目录项，从而利用目录项拿到相关chunk，对这些chunk在排序中进行加权。这种方法来源于模仿人类查询书本中知识的行为逻辑`,
       batchDeleteSessions: '批量删除',
@@ -2280,6 +2280,15 @@ NER：使用 spaCy NER 和基于规则的关键词提取来抽取实体和关系
       queritLanguageInclude: '包含的语言',
       queritLanguageIncludeTip: '返回使用指定语言的结果。',
       queritListPlaceholder: '请输入内容',
+      queritContentsUrls: '网页地址',
+      queritContentsUrlsTip:
+        '请输入 1 到 10 个完整的 HTTP 或 HTTPS 地址，并使用英文逗号分隔。',
+      queritContentsTimeout: '抓取超时',
+      queritContentsTimeoutTip:
+        '设置每个页面的抓取超时时间，范围为 1 到 60 秒。',
+      queritContentsMetadata: '包含页面元数据',
+      queritContentsMetadataTip:
+        '在可用时返回页面标题、发布时间、站点名称和站点图标。',
       days: '天数',
       comma: '逗号',
       semicolon: '分号',
@@ -2900,6 +2909,8 @@ NER：使用 spaCy NER 和基于规则的关键词提取来抽取实体和关系
       queritSearch: 'Querit 搜索',
       queritSearchDescription:
         '使用 Querit 搜索网络，并为智能体返回带来源的搜索结果。',
+      queritContents: 'Querit 网页内容',
+      queritContentsDescription: '使用 Querit 抓取网页并返回页面内容。',
       tavilyExtract: 'Tavily 提取',
       tavilyExtractDescription: 'Tavily 提取',
       log: '日志',
@@ -2921,6 +2932,7 @@ NER：使用 spaCy NER 和基于规则的关键词提取来抽取实体和关系
         textProcessing: '整理文字',
         tavilySearch: '正在网上搜索',
         queritSearch: '正在使用 Querit 搜索网络',
+        queritContents: '正在使用 Querit 读取网页',
         tavilyExtract: '读取网页内容',
         exeSQL: '查询数据库',
         google: '正在网上搜索',

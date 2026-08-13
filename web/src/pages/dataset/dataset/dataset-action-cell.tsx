@@ -6,6 +6,7 @@ import {
   HoverCardTrigger,
 } from '@/components/ui/hover-card';
 import { DocumentType } from '@/constants/knowledge';
+import { UseRowSelectionType } from '@/hooks/logic-hooks/use-row-selection';
 import { useRemoveDocument } from '@/hooks/use-document-request';
 import { IDocumentInfo } from '@/interfaces/database/document';
 import { downloadDatasetDocument } from '@/services/file-manager-service';
@@ -14,6 +15,7 @@ import { formatDate } from '@/utils/date';
 import { downloadFileFromBlob } from '@/utils/file-util';
 import { Download, Eye, Key, PenLine, Trash2 } from 'lucide-react';
 import { useCallback, useContext } from 'react';
+import { omit } from 'lodash';
 import { UseRenameDocumentShowType } from './use-rename-document';
 import { ShowPrivilegeModalContext } from './use-show-privilege-dialog';
 import { isParserRunning } from './utils';
@@ -29,11 +31,13 @@ const FunctionMap = {
 export function DatasetActionCell({
   record,
   showRenameModal,
+  setRowSelection,
   datasetEditButtonDisabled,
 }: {
   record: IDocumentInfo;
   datasetEditButtonDisabled: boolean;
-} & UseRenameDocumentShowType) {
+} & UseRenameDocumentShowType &
+  Pick<UseRowSelectionType, 'setRowSelection'>) {
   const { id, run, type } = record;
   const isRunning = isParserRunning(run);
   const isVirtualDocument = type === DocumentType.Virtual;
@@ -57,9 +61,12 @@ export function DatasetActionCell({
     }
   }, [id, record.dataset_id, record.name]);
 
-  const handleRemove = useCallback(() => {
-    removeDocument(id);
-  }, [id, removeDocument]);
+  const handleRemove = useCallback(async () => {
+    const code = await removeDocument(id);
+    if (code === 0) {
+      setRowSelection((prev) => omit(prev, [id]));
+    }
+  }, [id, removeDocument, setRowSelection]);
 
   const handleRename = useCallback(() => {
     showRenameModal(record);

@@ -967,7 +967,10 @@ export const useFetchAgentFilters = () => {
     },
   });
 
-  return { data: data.filter, loading };
+  return {
+    data: data?.filter ?? { owner: [], canvas_category: [] },
+    loading,
+  };
 };
 
 export const BuiltinPipelineKeys = {
