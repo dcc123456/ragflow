@@ -42,7 +42,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useMemo, useState, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useWarnEmptyModel } from './use-warn-empty-model';
+import { useFetchDefaultModelDictionary } from './use-llm-request';
 
 export const enum UserSettingApiAction {
   UserInfo = 'userInfo',
@@ -88,23 +88,15 @@ export const useFetchUserInfo = (): ResponseGetType<IUserInfo> => {
   return { data, loading };
 };
 
-export const useFetchTenantData = (
-  showEmptyModelWarn = false,
-): ResponseGetType<ITenantInfo> => {
+export const useFetchTenantData = (): ResponseGetType<ITenantInfo> => {
   const { data, isFetching: loading } = useQuery({
-    queryKey: [UserSettingApiAction.TenantInfo, showEmptyModelWarn],
+    queryKey: [UserSettingApiAction.TenantInfo],
     initialData: {},
     gcTime: 0,
     queryFn: async () => {
       const { data: res } = await userService.getTenantInfo();
       if (res.code === 0) {
-        // llm_id is chat_id
-        // asr_id is speech2txt
-        const { data } = res;
-        data.chat_id = data.llm_id;
-        data.speech2text_id = data.asr_id;
-
-        return data ?? {};
+        return res.data ?? {};
       }
 
       return res ?? {};
@@ -113,21 +105,13 @@ export const useFetchTenantData = (
   return { data, loading };
 };
 
-export const useFetchTenantInfo = (
-  showEmptyModelWarn = false,
-): ResponseGetType<ITenantInfo> => {
-  const { data, loading } = useFetchTenantData(showEmptyModelWarn);
-
-  useWarnEmptyModel(showEmptyModelWarn, data?.embd_id, data?.llm_id, loading);
-
-  return { data, loading };
-};
+export const useFetchTenantInfo = useFetchTenantData;
 
 export const useSelectParserList = (): Array<{
   value: string;
   label: string;
 }> => {
-  const { data: tenantInfo } = useFetchTenantInfo(true);
+  const { data: tenantInfo } = useFetchTenantInfo();
   const { t } = useTranslation();
 
   // Detect backend runtime language (Go vs Python) so we can choose
@@ -150,6 +134,7 @@ export const useSelectParserList = (): Array<{
     staleTime: Infinity,
     enabled: backendLang === 'go',
   });
+  useFetchDefaultModelDictionary(true);
 
   const defaultParsers = useMemo(
     () => [
