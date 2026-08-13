@@ -21,6 +21,7 @@ import {
 } from '@/hooks/use-knowledge-request';
 import { IDataset } from '@/interfaces/database/dataset';
 import { useBuildQueryVariableOptions } from '@/pages/agent/hooks/use-get-begin-query';
+import { getEmbeddingBaseName } from '@/utils/llm-util';
 import { useDebounce } from 'ahooks';
 import { toLower } from 'lodash';
 import { type ReactNode, useCallback, useMemo, useRef, useState } from 'react';
@@ -94,12 +95,19 @@ export function useDisableDifferenceEmbeddingDataset(name: string) {
     );
   }, [datasetListOrigin, selectedDatasetIds, missingDatasets]);
 
-  const selectedEmbedId = useMemo(() => {
-    const selectedDatasetIds = Array.isArray(datasetId) ? datasetId : [];
-    const data = datasetList?.find((item) =>
-      selectedDatasetIds.includes(item.id),
-    );
-    return data?.embedding_model ?? '';
+  // const selectedEmbedId = useMemo(() => {
+  //   const selectedDatasetIds = Array.isArray(datasetId) ? datasetId : [];
+  //   const data = datasetList?.find((item) =>
+  //     selectedDatasetIds.includes(item.id),
+  //   );
+  //   return data?.embedding_model ?? '';
+
+  // Datasets are mutually selectable when their embedding models resolve to
+  // the same base model name, even if they use different provider instances
+  // (e.g. "BAAI/bge-m3@renew@SILICONFLOW" vs "BAAI/bge-m3@COPY@SILICONFLOW").
+  const selectedEmbedBaseName = useMemo(() => {
+    const data = datasetList?.find((item) => item.id === datasetId?.[0]);
+    return getEmbeddingBaseName(data?.embedding_model);
   }, [datasetId, datasetList]);
 
   const nextOptions = useMemo(() => {
@@ -129,12 +137,14 @@ export function useDisableDifferenceEmbeddingDataset(name: string) {
         disabled:
           item.chunk_count <= 0 ||
           item.chunk_method === DocumentParserType.Tag ||
-          (item.embedding_model !== selectedEmbedId && selectedEmbedId !== ''),
+          (selectedEmbedBaseName !== '' &&
+            getEmbeddingBaseName(item.embedding_model) !==
+              selectedEmbedBaseName),
       };
     });
 
     return datasetListMap;
-  }, [datasetList, selectedEmbedId]);
+  }, [datasetList, selectedEmbedBaseName]);
 
   const handleSearchChange = useCallback((value: string) => {
     setSearchString(value);

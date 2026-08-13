@@ -21,6 +21,7 @@ from peewee import JOIN, fn
 from api.constants import DATASET_NAME_LIMIT
 from api.db import PermissionValue, ResourceType, TenantPermission
 from api.db.db_models import DB, Document, Knowledgebase, Permission, User, UserCanvas, UserTenant
+from api.db.joint_services.tenant_model_service import get_composite_model_name_by_ids
 from api.db.services import duplicate_name
 from api.db.services.common_service import CommonService
 from api.db.services.permission_service import PermissionService
@@ -37,8 +38,36 @@ def _base_model_name(embd_id: str) -> str:
     return parts[0]
 
 
+def _kb_embedding_base_name(kb, resolved_names) -> str:
+    """Resolve a dataset's embedding reference to its base model name.
+
+    ``tenant_embd_id`` — or ``embd_id`` itself when it stores a raw
+    tenant_model id — is resolved through ``resolved_names`` (id to
+    ``model@instance@provider``). An id that no longer resolves falls back to
+    the composite base name when ``embd_id`` holds one, otherwise to the id
+    itself so only exact matches group together.
+    """
+    embd_id = (kb.embd_id or "").strip()
+    ref = (getattr(kb, "tenant_embd_id", None) or "").strip()
+    if not ref and "@" not in embd_id:
+        ref = embd_id
+    if not ref:
+        return _base_model_name(embd_id)
+    composite = resolved_names.get(ref)
+    if composite:
+        return _base_model_name(composite)
+    if embd_id and embd_id != ref:
+        return _base_model_name(embd_id)
+    return ref
+
+
 def validate_dataset_embedding_models(kbs):
     """Validate that all given datasets use the same embedding model (or all use none).
+
+    Embedding references are resolved through tenant_model first, so datasets
+    storing a raw tenant_model id and datasets storing a legacy
+    ``model@instance@provider`` composite compare equal when they point at the
+    same model.
 
     Returns an error message string on failure, or ``None`` on success.
     """
@@ -48,7 +77,20 @@ def validate_dataset_embedding_models(kbs):
     if has_embd and len(embd_ids) != len(kbs):
         return "Cannot search across datasets where some have embedding models and others do not."
     if has_embd:
-        embd_nms = list({_base_model_name(eid) for eid in embd_ids})
+        candidates = []
+        for kb in kbs:
+            if not kb.embd_id:
+                continue
+            ref = (getattr(kb, "tenant_embd_id", None) or "").strip()
+            if not ref and "@" not in kb.embd_id:
+                ref = kb.embd_id.strip()
+            if ref:
+                candidates.append(ref)
+        try:
+            resolved_names = get_composite_model_name_by_ids(candidates)
+        except Exception:  # noqa: BLE001 - resolution is best-effort; unresolvable ids keep their raw value
+            resolved_names = {}
+        embd_nms = {_kb_embedding_base_name(kb, resolved_names) for kb in kbs if kb.embd_id}
         if len(embd_nms) > 1:
             return f"Datasets use different embedding models: {[kb.embd_id for kb in kbs]}"
     return None
