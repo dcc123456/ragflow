@@ -20,7 +20,7 @@ from io import BytesIO
 import json
 import logging
 import random
-from datetime import datetime
+from datetime import datetime, timedelta
 import re
 
 import xxhash
@@ -765,17 +765,25 @@ class DocumentService(CommonService):
         base_document_condition = (
             (cls.model.status == StatusEnum.VALID.value) & ~(cls.model.type == FileType.VIRTUAL.value) & (cls.model.run.is_null(True) | (cls.model.run != TaskStatus.CANCEL.value))
         )
+        unfinished_after = datetime.now() - timedelta(days=7)
 
         # Find candidate document IDs through independent branches. This lets
         # the document progress branch and task progress branch use their own
         # indexes instead of forcing one large OR over document. The two task
         # conditions share the same lower bound, so keep them in one branch to
         # scan task only once.
-        progress_doc_ids = cls.model.select(cls.model.id.alias("id")).where(base_document_condition & (cls.model.progress < 1) & (cls.model.progress > 0))
+        progress_doc_ids = cls.model.select(cls.model.id.alias("id")).where(
+            base_document_condition & (cls.model.progress < 1) & (cls.model.progress > 0) & (cls.model.process_begin_at >= unfinished_after)
+        )
         task_doc_ids = (
             cls.model.select(cls.model.id.alias("id"))
             .join(Task, on=(Task.doc_id == cls.model.id))
-            .where(base_document_condition & (Task.progress >= 0) & ((Task.progress < 1) | ((cls.model.progress == -1) & (cls.model.run == TaskStatus.FAIL.value))))
+            .where(
+                base_document_condition
+                & (Task.progress >= 0)
+                & (Task.update_date >= unfinished_after)
+                & ((Task.progress < 1) | ((cls.model.progress == -1) & (cls.model.run == TaskStatus.FAIL.value)))
+            )
         )
         candidate_doc_ids = progress_doc_ids.union(task_doc_ids).alias("candidate_doc_ids")
 

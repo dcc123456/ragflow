@@ -840,6 +840,7 @@ def _load_chat_routes_unit_module(monkeypatch):
     tenant_model_service_mod.get_composite_model_name_by_id = lambda model_id: model_id
     tenant_model_service_mod.resolve_model_config = lambda *_args, **_kwargs: {}
     tenant_model_service_mod.get_tenant_default_model_by_type = lambda *_args, **_kwargs: {}
+    tenant_model_service_mod.get_default_model_name = lambda *_args, **_kwargs: None
     tenant_model_service_mod.get_api_key = lambda *_args, **_kwargs: SimpleNamespace(id=1)
     tenant_model_service_mod.split_model_name = lambda model: (model.split("@")[0], "default", "factory", "")
     monkeypatch.setitem(sys.modules, "api.db.joint_services.tenant_model_service", tenant_model_service_mod)
