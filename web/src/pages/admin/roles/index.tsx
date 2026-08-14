@@ -231,7 +231,7 @@ function RoleCard({ role }: { role: AdminService.ListRoleItemWithPermission }) {
                       </Button>
                     </Link>
 
-                    <Switch
+                    {/* <Switch
                       disabled={isUpdatingPermission}
                       checked={!!role.permissions.model_provider?.enable}
                       onCheckedChange={(value) => {
@@ -241,7 +241,7 @@ function RoleCard({ role }: { role: AdminService.ListRoleItemWithPermission }) {
                           value,
                         });
                       }}
-                    />
+                    /> */}
                   </div>
                 </CardContent>
               </Card>
