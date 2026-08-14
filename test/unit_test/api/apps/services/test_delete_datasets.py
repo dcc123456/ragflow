@@ -187,6 +187,7 @@ def _load_delete_datasets_module(monkeypatch, *, f2d_rows, file_filter_delete):
         monkeypatch,
         "rag.advanced_rag.knowlege_compile.wiki",
         WIKI_PAGE_COMPILE_KWD="wiki",
+        _chunk_hash=lambda content: "stub-hash",
     )
     _stub(
         monkeypatch,
@@ -194,11 +195,6 @@ def _load_delete_datasets_module(monkeypatch, *, f2d_rows, file_filter_delete):
         get_uuid=MagicMock(return_value="uuid-1"),
         thread_pool_exec=_thread_pool_exec,
         thread_pool_exec_long_time=_thread_pool_exec,
-    )
-    _stub(
-        monkeypatch,
-        "rag.advanced_rag.knowlege_compile.wiki",
-        WIKI_PAGE_COMPILE_KWD="wiki",
     )
     search_mod = _stub(
         monkeypatch,
