@@ -3438,10 +3438,12 @@ resource "kubernetes_deployment_v1" "parser" {
             requests = {
               cpu    = var.parser_cpu_request
               memory = var.parser_memory_request
+              ephemeral-storage = var.parser_ephemeral_storage_request
             }
             limits = {
               cpu    = var.parser_cpu_limit
               memory = var.parser_memory_limit
+              ephemeral-storage = var.parser_ephemeral_storage_limit
             }
           }
         }

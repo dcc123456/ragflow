@@ -776,6 +776,19 @@ variable "parser_memory_limit" {
   default     = "8Gi"
 }
 
+variable "parser_ephemeral_storage_request" {
+  description = "Ephemeral storage request for Parser container"
+  type        = string
+  default     = "3Gi"
+}
+
+variable "parser_ephemeral_storage_limit" {
+  description = "Ephemeral storage limit for Parser container"
+  type        = string
+  default     = "3Gi"
+}
+
+
 variable "parser_ws_workers" {
   description = "WS_WORKERS value for parser task executors"
   type        = string
