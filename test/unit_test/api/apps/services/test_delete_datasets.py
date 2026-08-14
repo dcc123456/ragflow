@@ -196,11 +196,6 @@ def _load_delete_datasets_module(monkeypatch, *, f2d_rows, file_filter_delete):
         thread_pool_exec=_thread_pool_exec,
         thread_pool_exec_long_time=_thread_pool_exec,
     )
-    _stub(
-        monkeypatch,
-        "rag.advanced_rag.knowlege_compile.wiki",
-        WIKI_PAGE_COMPILE_KWD="wiki",
-    )
     search_mod = _stub(
         monkeypatch,
         "rag.nlp.search",
