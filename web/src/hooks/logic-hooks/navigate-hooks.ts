@@ -251,32 +251,6 @@ export const useNavigatePage = () => {
     navigate(`${Routes.UserSetting}${Routes.Model}`);
   }, [navigate]);
 
-  const navigateToCompilationTemplates = useCallback(() => {
-    navigate(`${Routes.UserSetting}${Routes.CompilationTemplates}`);
-  }, [navigate]);
-
-  const navigateToCompilationTemplate = useCallback(
-    (id?: string) => () => {
-      if (id && id !== 'create') {
-        navigate(`${Routes.CompilationTemplatesCreateNext}/${id}`);
-      } else {
-        navigate(Routes.CompilationTemplatesCreateNext);
-      }
-    },
-    [navigate],
-  );
-
-  const navigateToCompilationTemplateEditNext = useCallback(
-    (id?: string) => () => {
-      if (id && id !== 'create') {
-        navigate(`${Routes.CompilationTemplatesEditNext}/${id}`);
-      } else {
-        navigate(Routes.CompilationTemplatesEditNext);
-      }
-    },
-    [navigate],
-  );
-
   return {
     navigateToDatasetList,
     navigateToDataset,
@@ -308,8 +282,5 @@ export const useNavigatePage = () => {
     navigateToFileManagerEvaluation,
     navigateToFileManagerEvaluationDetail,
     navigateToModelSetting,
-    navigateToCompilationTemplates,
-    navigateToCompilationTemplate,
-    navigateToCompilationTemplateEditNext,
   };
 };
