@@ -313,6 +313,7 @@ const ChatCard = forwardRef(function ChatCard(
                   regenerateMessage={
                     canManageChat ? regenerateMessage : undefined
                   }
+                  isLast={i === derivedMessages.length - 1}
                   sendLoading={sendLoading}
                   clickDocumentButton={clickDocumentButton}
                   showLikeButton={false}
