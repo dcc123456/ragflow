@@ -1217,6 +1217,8 @@ class RAGFlowPdfParser:
             )
             if not isinstance(html, str):
                 img, html = html
+                if not html:
+                    continue
                 img = copy_shared_image(img)
             if not html:
                 continue
