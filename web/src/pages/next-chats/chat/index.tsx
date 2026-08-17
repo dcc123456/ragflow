@@ -10,14 +10,13 @@ import {
 import { IClientConversation } from '@/interfaces/database/chat';
 import { RootLayoutContainer } from '@/layouts/root-layout';
 import { cn } from '@/lib/utils';
-import { useMount } from 'ahooks';
 import { isEmpty } from 'lodash';
 import {
   ChartColumn,
   LucideArrowBigLeft,
   LucideArrowUpRight,
 } from 'lucide-react';
-import { useCallback, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router';
 import { useHandleClickConversationCard } from '../hooks/use-click-card';
@@ -57,32 +56,26 @@ export default function Chat() {
     );
   }, [conversationId, dialogList, t]);
 
-  const fetchConversation: typeof handleConversationCardClick = useCallback(
-    async (conversationId, isNew) => {
-      if (conversationId && !isNew) {
-        const conversation = await fetchSessionManually(conversationId);
-        if (!isEmpty(conversation)) {
-          setCurrentConversation(conversation);
-        }
-      } else {
-        // New session: clear previous session's messages so they don't leak in.
-        setCurrentConversation({} as IClientConversation);
+  // The URL is the single source of truth for which conversation is open:
+  // card clicks, "+" and the temp→real id swap after the first send all land
+  // here. Clear first so the previous conversation's messages and references
+  // can never leak into the newly opened one while the fetch is in flight.
+  useEffect(() => {
+    setCurrentConversation((previous) =>
+      isEmpty(previous) ? previous : ({} as IClientConversation),
+    );
+    if (!conversationId || isNew === 'true') return;
+
+    let cancelled = false;
+    fetchSessionManually(conversationId).then((conversation) => {
+      if (!cancelled && !isEmpty(conversation)) {
+        setCurrentConversation(conversation);
       }
-    },
-    [fetchSessionManually],
-  );
-
-  const handleSessionClick: typeof handleConversationCardClick = useCallback(
-    (conversationId, isNew) => {
-      handleConversationCardClick(conversationId, isNew);
-      fetchConversation(conversationId, isNew);
-    },
-    [fetchConversation, handleConversationCardClick],
-  );
-
-  useMount(() => {
-    fetchConversation(conversationId, isNew === 'true');
-  });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [conversationId, isNew, fetchSessionManually]);
 
   if (isDebugMode) {
     return (
@@ -123,7 +116,9 @@ export default function Chat() {
     <RootLayoutContainer>
       <section className="h-full flex flex-col" data-testid="chat-detail">
         <article className="flex flex-1 min-h-0 pb-9">
-          <Sessions handleConversationCardClick={handleSessionClick}></Sessions>
+          <Sessions
+            handleConversationCardClick={handleConversationCardClick}
+          ></Sessions>
 
           <Card className="flex-1 min-w-0 bg-transparent border-none shadow-none h-full">
             <CardContent className="flex p-0 h-full">
