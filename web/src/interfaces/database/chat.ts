@@ -81,6 +81,7 @@ export interface IDialog {
   operator_permission: number;
   nickname: string;
   rerank_id?: string;
+  tenant_rerank_id?: string;
 }
 
 export interface MetaDataFilter {

@@ -27,7 +27,6 @@ import faulthandler
 from flask import Flask, jsonify, Response
 
 from api.utils.health_utils import run_health_checks
-from api.db.db_models import close_connection
 from flask_login import LoginManager
 from werkzeug.serving import run_simple
 from routes import admin_bp
@@ -41,6 +40,7 @@ from flask_session import Session
 from common.versions import get_ragflow_version
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 from admin.server.admin_metrics import admin_metrics_worker
+from api.db.db_models import close_connection
 
 stop_event = threading.Event()
 
@@ -60,7 +60,11 @@ if __name__ == "__main__":
     @app.teardown_request
     def _db_close(exception):
         if exception:
-            logging.exception(f"Request failed: {exception}")
+            logging.error(
+                "Admin request failed: %s",
+                exception,
+                exc_info=(type(exception), exception, exception.__traceback__),
+            )
         close_connection()
 
     # =============================================================================
@@ -120,6 +124,8 @@ if __name__ == "__main__":
     from admin.server import auth as _auth
 
     _auth.settings = _settings
+
+    settings.init_settings()
     setup_auth(login_manager)
     init_default_admin()
     # init_user_role()
