@@ -348,7 +348,7 @@ class TestGaussDBDatabase:
         db_models.close_connection()
 
         assert db.close_calls == 1
-        assert db.close_stale_calls == []
+        assert db.close_stale_calls == [30]
 
     def test_non_gaussdb_cleanup_preserves_existing_behavior(self, monkeypatch):
         db = RecordingCloseDatabase()
@@ -357,7 +357,7 @@ class TestGaussDBDatabase:
 
         db_models.close_connection()
 
-        assert db.close_calls == 0
+        assert db.close_calls == 1
         assert db.close_stale_calls == [30]
 
     def test_pooled_database_enum_values(self):

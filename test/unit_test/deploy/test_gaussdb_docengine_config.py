@@ -67,7 +67,7 @@ def test_tc_cfg_801_docker_template_defines_complete_gaussdb_config(tmp_path):
     template = (ROOT / "docker" / "service_conf.yaml.template").read_text(encoding="utf-8")
     gaussdb_block = template.split("gaussdb:", 1)[1].split("seekdb:", 1)[0]
 
-    assert 'DEF_ENV_VALUE_PATTERN="\\$\\{([^:]+):-([^}]+)\\}"' in entrypoint
+    assert 'eval "echo \\"$line\\"" >> "${CONF_FILE}"' in entrypoint
     assert 'done < "${TEMPLATE_FILE}"' in entrypoint
     assert "common.service_conf_renderer" not in entrypoint
     assert "host: '${GAUSSDB_HOST}'" in gaussdb_block

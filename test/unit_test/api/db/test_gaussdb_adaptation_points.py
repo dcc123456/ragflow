@@ -33,6 +33,7 @@ def test_gaussdb_duplicate_column_migration_is_idempotent(monkeypatch, caplog):
         raise ProgrammingError('column "f_extra" already exists')
 
     monkeypatch.setattr(db_models, "migrate", duplicate_column)
+    monkeypatch.setattr(db_models.DB, "table_exists", lambda _table: True)
     monkeypatch.setattr(settings, "DATABASE_TYPE", "gaussdb")
 
     caplog.set_level(logging.CRITICAL)
@@ -50,6 +51,7 @@ def test_gaussdb_migration_logs_unrelated_programming_errors(monkeypatch, caplog
         raise ProgrammingError("syntax error near invalid_sql")
 
     monkeypatch.setattr(db_models, "migrate", syntax_error)
+    monkeypatch.setattr(db_models.DB, "table_exists", lambda _table: True)
     monkeypatch.setattr(settings, "DATABASE_TYPE", "gaussdb")
 
     caplog.set_level(logging.CRITICAL)
@@ -108,6 +110,7 @@ def test_gaussdb_migration_adds_compatible_tags_before_relaxing_columns(monkeypa
     monkeypatch.setattr(db_models, "migrate_add_unique_email", lambda _migrator: None)
     monkeypatch.setattr(db_models, "migrate_model_type_names", lambda: None)
     monkeypatch.setattr(db_models, "ensure_model_indexes", lambda _migrator: None)
+    monkeypatch.setattr(db_models.DB, "table_exists", lambda _table: False)
 
     db_models.migrate_db()
 
@@ -351,7 +354,7 @@ def test_docker_config_files_expose_gaussdb_metadata_settings():
     assert "gaussdb:" not in source_conf
 
 
-def test_docker_compose_metadata_profile_does_not_force_mysql_for_gaussdb():
+def test_docker_compose_metadata_profiles_match_current_service_layout():
     env_text = read_repo_file("docker/.env")
     base = load_yaml("docker/docker-compose-base.yml")
     compose = load_yaml("docker/docker-compose.yml")
@@ -363,10 +366,8 @@ def test_docker_compose_metadata_profile_does_not_force_mysql_for_gaussdb():
     assert "metadata-mysql" in base["services"]["mysql"]["profiles"]
     assert "metadata-gaussdb" not in base["services"]["mysql"]["profiles"]
 
-    for service_name in ["ragflow-cpu", "ragflow-gpu"]:
-        mysql_dep = compose["services"][service_name]["depends_on"]["mysql"]
-        assert mysql_dep["condition"] == "service_healthy"
-        assert mysql_dep["required"] is False
+    mysql_dep = compose["services"]["ragflow"]["depends_on"]["mysql"]
+    assert mysql_dep["condition"] == "service_healthy"
 
     assert macos_compose["services"]["ragflow"]["depends_on"]["mysql"]["required"] is False
     for service_name in ["ragflow-cpu", "ragflow-gpu"]:

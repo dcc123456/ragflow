@@ -55,6 +55,10 @@ def _load_apps_module(monkeypatch):
     monkeypatch.setitem(sys.modules, "common.settings", settings_mod)
     common_pkg.settings = settings_mod
 
+    billing_utils_mod = ModuleType("common.billing_utils")
+    billing_utils_mod.init_stripe_api_key = lambda: None
+    monkeypatch.setitem(sys.modules, "common.billing_utils", billing_utils_mod)
+
     db_models_mod = ModuleType("api.db.db_models")
     db_models_mod.APIToken = _DummyAPIToken
     db_models_mod.close_connection = lambda: None
@@ -69,6 +73,9 @@ def _load_apps_module(monkeypatch):
     monkeypatch.setitem(sys.modules, "api.utils.commands", commands_mod)
 
     api_utils_mod = ModuleType("api.utils.api_utils")
+    api_utils_mod.API_KEY_INVALID = "Authentication error: API key is invalid!"
+    api_utils_mod.API_KEY_PLAN_UPGRADE_MESSAGE = "You need to upgrade to a Starter or Pro plan to use an API key."
+    api_utils_mod.is_api_key_plan_allowed = lambda _tenant_id: True
 
     def _get_json_result(code=0, message="success", data=None):
         return {"code": code, "message": message, "data": data}

@@ -201,7 +201,7 @@ def test_doc_engine_gaussdb_initializes_message_store_case_insensitive(monkeypat
 
     settings.init_settings()
 
-    assert settings.DOC_ENGINE == "GaussDB"
+    assert settings.DOC_ENGINE == "gaussdb"
     assert settings.DOC_ENGINE_GAUSSDB is True
     assert settings.docStoreConn.db_type() == "gaussdb"
     assert settings.msgStoreConn.db_type() == "gaussdb"
@@ -227,6 +227,7 @@ def test_tc_cfg_503_default_doc_engine_is_not_gaussdb(monkeypatch):
 
 def test_tc_cfg_504_unknown_doc_engine_is_rejected(monkeypatch):
     settings = _import_settings(monkeypatch)
+    original_doc_engine = settings.DOC_ENGINE
 
     monkeypatch.setenv("DOC_ENGINE", "unknown_db")
     monkeypatch.setattr(settings, "get_base_config", lambda _name, default=None: default or {})
@@ -235,8 +236,8 @@ def test_tc_cfg_504_unknown_doc_engine_is_rejected(monkeypatch):
     with pytest.raises(Exception) as exc_info:
         settings.init_settings()
 
-    assert str(exc_info.value) == "Not supported doc engine: unknown_db"
-    assert settings.DOC_ENGINE == "unknown_db"
+    assert str(exc_info.value) == "Invalid doc engine 'unknown_db'. Supported engines: elasticsearch, gaussdb, infinity, oceanbase, opensearch, seekdb, serenedb"
+    assert settings.DOC_ENGINE == original_doc_engine
     assert settings.DOC_ENGINE_GAUSSDB is False
     assert settings.docStoreConn is None
 

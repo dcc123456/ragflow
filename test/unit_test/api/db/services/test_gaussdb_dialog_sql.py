@@ -394,6 +394,7 @@ class ScriptedRetriever:
 def dialog_service(monkeypatch):
     _install_settings_import_stubs(monkeypatch)
     module = importlib.import_module("api.db.services.dialog_service")
+    monkeypatch.setattr(module, "filter_accessible_doc_ids_for_user", lambda _user_id, _kb_ids, doc_ids=None: (doc_ids or [], [], ""))
     try:
         yield module
     finally:
@@ -563,7 +564,7 @@ def test_tc_sql_001_async_chat_routes_table_field_map_to_gaussdb_use_sql(monkeyp
         chat,
         True,
         [kb_id],
-        doc_ids=None,
+        doc_ids=[],
     )
     retrieval.assert_not_awaited()
     assert results == [sql_result]
@@ -1676,7 +1677,7 @@ def test_tc_sql_1001_use_sql_none_falls_back_to_retrieval(
         chat,
         True,
         [kb_id],
-        doc_ids=None,
+        doc_ids=[],
     )
     retriever.retrieval.assert_awaited_once_with(
         question,
@@ -1687,7 +1688,7 @@ def test_tc_sql_1001_use_sql_none_falls_back_to_retrieval(
         8,
         0.2,
         0.3,
-        doc_ids=None,
+        doc_ids=["-999"],
         top=32,
         aggs=True,
         rerank_mdl=None,
@@ -1735,7 +1736,7 @@ def test_tc_sql_1002_validator_rejection_falls_back_to_retrieval(
         8,
         0.2,
         0.3,
-        doc_ids=None,
+        doc_ids=["-999"],
         top=32,
         aggs=True,
         rerank_mdl=None,
@@ -1785,7 +1786,7 @@ def test_tc_sql_1003_sql_timeout_falls_back_to_retrieval(
         8,
         0.2,
         0.3,
-        doc_ids=None,
+        doc_ids=["-999"],
         top=32,
         aggs=True,
         rerank_mdl=None,
@@ -1859,7 +1860,7 @@ def test_tc_sql_1005_nonempty_answer_with_empty_chunks_is_returned(
         chat,
         True,
         ["abcdefabcdefabcdefabcdefabcdefab"],
-        doc_ids=None,
+        doc_ids=[],
     )
     retriever.retrieval.assert_not_awaited()
     assert results == [sql_result]

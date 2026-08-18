@@ -16,6 +16,7 @@
 
 import asyncio
 import importlib.util
+import inspect
 import json
 import sys
 from pathlib import Path
@@ -126,6 +127,14 @@ def _load_system_module(monkeypatch, *, apps_module=None, manager=None):
     user_service_mod.UserTenantService = SimpleNamespace(query=lambda **_kwargs: [SimpleNamespace(role="owner", tenant_id="tenant-1")])
     monkeypatch.setitem(sys.modules, "api.db.services.user_service", user_service_mod)
 
+    system_settings_service_mod = ModuleType("api.db.services.system_settings_service")
+    system_settings_service_mod.SystemSettingsService = SimpleNamespace(get_singleton_by_exact_name=lambda _name: None)
+    monkeypatch.setitem(sys.modules, "api.db.services.system_settings_service", system_settings_service_mod)
+
+    system_settings_utils_mod = ModuleType("api.utils.system_settings_utils")
+    system_settings_utils_mod.load_value_from_string = lambda value, _data_type: value
+    monkeypatch.setitem(sys.modules, "api.utils.system_settings_utils", system_settings_utils_mod)
+
     db_models_mod = ModuleType("api.db.db_models")
     db_models_mod.APIToken = _DummyAPITokenModel
     monkeypatch.setitem(sys.modules, "api.db.db_models", db_models_mod)
@@ -152,9 +161,10 @@ def _load_system_module(monkeypatch, *, apps_module=None, manager=None):
     health_utils_mod.get_gaussdb_status = lambda: {"status": "alive"}
     monkeypatch.setitem(sys.modules, "api.utils.health_utils", health_utils_mod)
 
-    quart_mod = ModuleType("quart")
-    quart_mod.jsonify = lambda payload: payload
-    monkeypatch.setitem(sys.modules, "quart", quart_mod)
+    if apps_module is None:
+        quart_mod = ModuleType("quart")
+        quart_mod.jsonify = lambda payload: payload
+        monkeypatch.setitem(sys.modules, "quart", quart_mod)
 
     module_path = repo_root / "api" / "apps" / "restful_apis" / "system_api.py"
     spec = importlib.util.spec_from_file_location("test_gaussdb_system_routes_module", module_path)
@@ -169,13 +179,33 @@ def _load_system_http_app(monkeypatch):
     from test.testcases.test_web_api.test_system_app.test_apps_init_unit import _load_apps_module
 
     quart_app, apps_module = _load_apps_module(monkeypatch)
-    module = _load_system_module(monkeypatch, apps_module=apps_module, manager=quart_app)
+    quart_app.teardown_request_funcs.clear()
+
+    def route(*args, **kwargs):
+        def decorator(func):
+            async def async_func(*func_args, **func_kwargs):
+                result = func(*func_args, **func_kwargs)
+                return await result if inspect.isawaitable(result) else result
+
+            quart_app.route(*args, endpoint=f"test_system_{func.__name__}", **kwargs)(async_func)
+            return func
+
+        return decorator
+
+    module = _load_system_module(monkeypatch, apps_module=apps_module, manager=SimpleNamespace(route=route))
     return quart_app, module
 
 
 def _get_without_auth(quart_app, path):
     async def request():
-        response = await quart_app.test_client().get(path)
+        async with quart_app.test_request_context(path, method="GET"):
+            endpoint, values = quart_app.url_map.bind("").match(path, method="GET")
+            try:
+                result = quart_app.view_functions[endpoint](**values)
+                result = await result if inspect.isawaitable(result) else result
+            except Exception as error:
+                result = await quart_app.handle_user_exception(error)
+            response = await quart_app.make_response(result)
         return response.status_code, await response.get_json()
 
     return asyncio.run(request())
