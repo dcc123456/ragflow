@@ -540,7 +540,7 @@ class RAGFlowPdfParser:
             # clear the text so OCR recognition will be used as fallback.
             # Strategy 1: PUA / unmapped CID characters
             if total_count > 0 and garbled_count / total_count >= 0.5:
-                logging.info(
+                logging.debug(
                     "Page %d: detected garbled pdfplumber text (garbled=%d/%d), falling back to OCR for box at (%.1f, %.1f)",
                     pagenum,
                     garbled_count,
@@ -553,7 +553,7 @@ class RAGFlowPdfParser:
             # Strategy 2: font-encoding garbling — all chars are ASCII
             # punctuation from subset fonts (no CJK output)
             if total_count > 0 and self._is_garbled_by_font_encoding(box_chars, min_chars=5):
-                logging.info(
+                logging.debug(
                     "Page %d: detected font-encoding garbled text (%d chars), falling back to OCR for box at (%.1f, %.1f)",
                     pagenum,
                     total_count,

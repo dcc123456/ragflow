@@ -46,7 +46,7 @@ class OCRClient:
             try:
                 response = self.session.post(self.url, files={"request": img_byte_arr.getvalue()}, data={"operator": "det"})
                 response = response.json()
-                logging.info(
+                logging.debug(
                     "OCR detect response keys: %s, output_len=%s, output[0]_type=%s",
                     list(response.keys()) if isinstance(response, dict) else "not_dict",
                     len(response.get("output", [])) if isinstance(response.get("output"), list) else "not_list",
@@ -60,7 +60,7 @@ class OCRClient:
                 r = reprlib.Repr()
                 r.maxdepth = 4
                 r.maxlist = 10
-                logging.info("OCR detect: raw=%s", r.repr(raw))
+                logging.debug("OCR detect: raw=%s", r.repr(raw))
                 # Normalize to list of boxes: each box is [[x0,y0],[x1,y1],[x2,y2],[x3,y3]]
                 boxes = self._normalize_detect_output(raw)
                 return zip(boxes, [("", 0) for _ in range(len(boxes))])

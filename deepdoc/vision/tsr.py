@@ -25,7 +25,7 @@ from common.file_utils import traversal_files, get_project_base_directory
 from deepdoc.vision import Recognizer
 
 
-DEBUG = True
+DEBUG = False
 
 
 class TableStructureRecognizer(Recognizer):
