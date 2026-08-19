@@ -230,7 +230,7 @@ def set_progress(task_id, from_page=0, to_page=-1, prog=None, msg="Processing...
         if to_page > 0:
             if msg:
                 if from_page < to_page:
-                    msg = f"Page({from_page + 1}~{to_page + 1}): " + msg
+                    msg = f"Page({from_page + 1}~{to_page}): " + msg
         if msg:
             msg = datetime.now().strftime("%H:%M:%S") + " " + msg
         d = {"progress_msg": msg}
@@ -344,7 +344,7 @@ async def collect():
 
 
 @timeout(60 * 80, 1)
-async def build_chunks(task, progress_callback):
+async def build_chunks(task, progress_callback, on_chunking_start=None):
     if task["size"] > settings.DOC_MAXIMUM_SIZE:
         set_progress(task["id"], prog=-1, msg="File size exceeds( <= %dMb )" % (int(settings.DOC_MAXIMUM_SIZE / 1000 / 1000)))
         return []
@@ -380,7 +380,10 @@ async def build_chunks(task, progress_callback):
         )
 
     try:
+        chunking_wait_started_at = timer()
         async with chunk_limiter:
+            if on_chunking_start:
+                on_chunking_start(timer() - chunking_wait_started_at)
             task_language = task.get("language") or "Chinese"
             cks = await thread_pool_exec(
                 chunker.chunk,
@@ -1787,8 +1790,13 @@ async def do_handle_task(task):
     else:
         # Standard chunking methods
         task["llm_id"] = doc_task_llm_id
+
+        def on_chunking_start(wait_time):
+            nonlocal task_start_ts
+            task_start_ts += wait_time
+
         start_ts = timer()
-        chunks = await build_chunks(task, progress_callback)
+        chunks = await build_chunks(task, progress_callback, on_chunking_start)
         logging.info("Build document {}: {:.2f}s".format(task_document_name, timer() - start_ts))
         if not chunks:
             TaskService.if_all_sub_tasks_completed(task, task_id)

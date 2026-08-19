@@ -14,7 +14,6 @@ import {
 } from '../configuration-form-container';
 import {
   AutoMetadata,
-  EnableTocToggle,
   ImageContextWindow,
   OverlappedPercent,
 } from './common-item';
@@ -36,7 +35,6 @@ export function NaiveConfiguration() {
         ></MaxTokenNumberFormField>
         <DelimiterFormField></DelimiterFormField>
         <ChildrenDelimiterForm />
-        <EnableTocToggle />
         <ImageContextWindow />
         <AutoMetadata />
         <OverlappedPercent />
