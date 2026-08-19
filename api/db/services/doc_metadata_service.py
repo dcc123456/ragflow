@@ -25,16 +25,15 @@ import logging
 import os
 import re
 from copy import deepcopy
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from api.db.db_models import DB, Document
+from api.db.db_models import DB, Document, Knowledgebase
 from common import settings
-from common.metadata_utils import dedupe_list
-from api.db.db_models import Knowledgebase
 from common.doc_store.doc_store_base import OrderByExpr
+from common.metadata_utils import dedupe_list
 
 
-def _es_response_total(response: Any) -> Optional[int]:
+def _es_response_total(response: Any) -> int | None:
     """Extract the exact total hit count from an ES search response.
 
     Returns ``None`` when the field is missing or in an unexpected shape
@@ -84,7 +83,7 @@ class DocMetadataService:
         return f"ragflow_doc_meta_{tenant_id}"
 
     @staticmethod
-    def _extract_metadata(flat_meta: Dict) -> Dict:
+    def _extract_metadata(flat_meta: dict) -> dict:
         """
         Extract metadata from ES/Infinity document format.
 
@@ -117,7 +116,7 @@ class DocMetadataService:
         return {}
 
     @staticmethod
-    def _extract_doc_id(doc: Dict, hit: Dict = None) -> str:
+    def _extract_doc_id(doc: dict, hit: dict = None) -> str:
         """
         Extract document ID from various formats.
 
@@ -192,7 +191,7 @@ class DocMetadataService:
                     yield doc_id, doc
 
     @classmethod
-    def _search_metadata(cls, kb_id: str, condition: Dict = None):
+    def _search_metadata(cls, kb_id: str, condition: dict = None):
         """
         Common search logic for metadata queries.
         Uses pagination internally to retrieve data from the index.
@@ -306,7 +305,7 @@ class DocMetadataService:
         return all_results
 
     @classmethod
-    def _split_combined_values(cls, meta_fields: Dict) -> Dict:
+    def _split_combined_values(cls, meta_fields: dict) -> dict:
         """
         Post-process metadata to split combined values by common delimiters.
 
@@ -354,7 +353,7 @@ class DocMetadataService:
 
     @classmethod
     @DB.connection_context()
-    def insert_document_metadata(cls, doc_id: str, meta_fields: Dict) -> bool:
+    def insert_document_metadata(cls, doc_id: str, meta_fields: dict) -> bool:
         """
         Insert document metadata into ES/Infinity.
 
@@ -464,7 +463,7 @@ class DocMetadataService:
 
     @classmethod
     @DB.connection_context()
-    def update_document_metadata(cls, doc_id: str, meta_fields: Dict) -> bool:
+    def update_document_metadata(cls, doc_id: str, meta_fields: dict) -> bool:
         """
         Update document metadata in ES/Infinity.
 
@@ -734,7 +733,7 @@ class DocMetadataService:
 
     @classmethod
     @DB.connection_context()
-    def get_document_metadata(cls, doc_id: str) -> Dict:
+    def get_document_metadata(cls, doc_id: str) -> dict:
         """
         Get document metadata from ES/Infinity.
 
@@ -774,7 +773,7 @@ class DocMetadataService:
 
     @classmethod
     @DB.connection_context()
-    def get_flatted_meta_by_kbs(cls, kb_ids: List[str]) -> Dict:
+    def get_flatted_meta_by_kbs(cls, kb_ids: list[str]) -> dict:
         """
         Get flattened metadata for documents in knowledge bases.
 
@@ -871,11 +870,11 @@ class DocMetadataService:
     @classmethod
     def filter_doc_ids_by_meta_pushdown(
         cls,
-        kb_ids: List[str],
-        filters: List[Dict],
+        kb_ids: list[str],
+        filters: list[dict],
         logic: str = "and",
         limit: int = 10000,
-    ) -> Optional[List[str]]:
+    ) -> list[str] | None:
         """Run a metadata filter directly against ES or Infinity, returning matching doc IDs.
 
         Returns ``None`` to signal "push-down not viable, use the in-memory
@@ -918,11 +917,11 @@ class DocMetadataService:
     def _filter_doc_ids_by_metadata_es(
         cls,
         index_name: str,
-        kb_ids: List[str],
-        filters: List[Dict],
+        kb_ids: list[str],
+        filters: list[dict],
         logic: str,
         limit: int,
-    ) -> Optional[List[str]]:
+    ) -> list[str] | None:
         """ES push-down path for metadata filtering."""
         from common.metadata_es_filter import (
             UnsupportedMetaFilter,
@@ -962,7 +961,7 @@ class DocMetadataService:
 
         doc_ids = extract_doc_ids(response if isinstance(response, dict) else dict(response))
         seen: set[str] = set()
-        unique: List[str] = []
+        unique: list[str] = []
         for did in doc_ids:
             if did in seen:
                 continue
@@ -992,11 +991,11 @@ class DocMetadataService:
     def _filter_doc_ids_by_metadata_gaussdb(
         cls,
         index_name: str,
-        kb_ids: List[str],
-        filters: List[Dict],
+        kb_ids: list[str],
+        filters: list[dict],
         logic: str,
         limit: int,
-    ) -> Optional[List[str]]:
+    ) -> list[str] | None:
         """GaussDB push-down path for metadata filtering."""
         from common.metadata_gaussdb_filter import (
             UnsupportedGaussDBMetaFilter,
@@ -1022,7 +1021,7 @@ class DocMetadataService:
             return None
 
         seen: set[str] = set()
-        unique: List[str] = []
+        unique: list[str] = []
         for did in doc_ids:
             if did in seen:
                 continue
@@ -1040,10 +1039,10 @@ class DocMetadataService:
     def _filter_doc_ids_by_metadata_infinity(
         cls,
         index_name: str,
-        kb_ids: List[str],
-        filters: List[Dict],
+        kb_ids: list[str],
+        filters: list[dict],
         logic: str,
-    ) -> Optional[List[str]]:
+    ) -> list[str] | None:
         """Infinity push-down path for metadata filtering."""
         from common.metadata_infinity_filter import (
             build_infinity_filter,
@@ -1061,7 +1060,7 @@ class DocMetadataService:
             where_clause = f"{kb_filter} AND {sql_filter}"
             logging.debug(f"Infinity metadata filter: {where_clause}")
 
-            inf_conn = settings.docStoreConn.acquire_conn()
+            inf_conn = settings.docStoreConn.connPool.get_conn()
             try:
                 db_instance = inf_conn.get_database(settings.docStoreConn.dbName)
                 table_instance = db_instance.get_table(index_name)
@@ -1076,7 +1075,7 @@ class DocMetadataService:
             return None
 
     @classmethod
-    def get_metadata_keys_by_kbs(cls, kb_ids: List[str]) -> List[str]:
+    def get_metadata_keys_by_kbs(cls, kb_ids: list[str]) -> list[str]:
         """
         Get unique metadata field names across multiple knowledge bases.
 
@@ -1106,7 +1105,7 @@ class DocMetadataService:
             return []
 
     @classmethod
-    def get_metadata_for_documents(cls, doc_ids: Optional[List[str]], kb_id: str) -> Dict[str, Dict]:
+    def get_metadata_for_documents(cls, doc_ids: list[str] | None, kb_id: str) -> dict[str, dict]:
         """
         Get metadata fields for specific documents.
         Returns a mapping of doc_id -> meta_fields
@@ -1145,7 +1144,7 @@ class DocMetadataService:
 
     @classmethod
     @DB.connection_context()
-    def get_metadata_summary(cls, kb_id: str, doc_ids=None) -> Dict:
+    def get_metadata_summary(cls, kb_id: str, doc_ids=None) -> dict:
         """
         Get metadata summary for documents in a knowledge base.
 
@@ -1238,7 +1237,7 @@ class DocMetadataService:
 
     @classmethod
     @DB.connection_context()
-    def batch_update_metadata(cls, kb_id: str, doc_ids: List[str], updates=None, deletes=None) -> int:
+    def batch_update_metadata(cls, kb_id: str, doc_ids: list[str], updates=None, deletes=None) -> int:
         """
         Batch update metadata for documents in a knowledge base.
 

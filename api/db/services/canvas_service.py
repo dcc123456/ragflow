@@ -203,7 +203,7 @@ class UserCanvasService(CommonService):
             agents = agents.where(cls.model.id == "__ragflow_no_visible_canvas__")
 
         if keywords:
-            agents = agents.where(fn.LOWER(cls.model.title).contains(keywords.lower()))
+            agents = agents.where(fn.LOWER(cls.model.title).contains(keywords.lower()) | fn.LOWER(cls.model.tags).contains(keywords.lower()))
         if canvas_category_list:
             agents = agents.where(cls.model.canvas_category.in_(canvas_category_list))
         if canvas_type:

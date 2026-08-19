@@ -12,15 +12,17 @@ import { useDatasetEditButtonDisabled } from '@/hooks/logic-hooks/use-permission
 import { cn } from '@/lib/utils';
 import { ListFilter, Plus } from 'lucide-react';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ChunkTextMode } from '../../constant';
 interface ChunkResultBarProps {
-  changeChunkTextMode: React.Dispatch<React.SetStateAction<string | number>>;
+  className?: string;
+  changeChunkTextMode: (mode: ChunkTextMode) => void;
   available: number | undefined;
   selectAllChunk: (value: boolean) => void;
   handleSetAvailable: (value: number | undefined) => void;
   createChunk: () => void;
-  handleInputChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  searchString: string;
+  handleInputChange?: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  searchString?: string;
 }
 export default function ChunkResultBar({
   className,
@@ -33,8 +35,7 @@ export default function ChunkResultBar({
   searchString,
 }: ChunkResultBarProps) {
   const datasetEditButtonDisabled = useDatasetEditButtonDisabled();
-
-  const { t } = useTranslate('chunk');
+  const { t } = useTranslation('translation', { keyPrefix: 'chunk' });
   const [textSelectValue, setTextSelectValue] = useState<string | number>(
     ChunkTextMode.Full,
   );
@@ -61,7 +62,7 @@ export default function ChunkResultBar({
 
   const changeTextSelectValue = (value: string | number) => {
     setTextSelectValue(value);
-    changeChunkTextMode(value);
+    changeChunkTextMode(value as ChunkTextMode);
   };
   return (
     <div className={cn('flex justify-end gap-4', className)}>
@@ -77,7 +78,7 @@ export default function ChunkResultBar({
       <div className="h-8 flex items-center gap-5">
         <SearchInput
           // style={{ width: 200 }}
-          placeholder={t('search')}
+          placeholder={t('search', { keyPrefix: 'common' })}
           // icon={<SearchOutlined />}
           onChange={handleInputChange}
           value={searchString}
@@ -97,7 +98,8 @@ export default function ChunkResultBar({
           </PopoverContent>
         </Popover>
         <Button
-          variant={'ghost'}
+          variant={'outline'}
+          size="icon"
           onClick={() => createChunk()}
           disabled={datasetEditButtonDisabled}
           // className="bg-bg-card text-primary hover:bg-card"
