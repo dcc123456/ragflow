@@ -29,8 +29,13 @@ services:
       deepdoc:
         condition: service_healthy
     image: ${RAGFLOW_IMAGE}
-    environment:
-      - DEEPDOC_URL=http://deepdoc:8000
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+      nproc:
+        soft: 65535
+        hard: 65535
     # Example configuration to set up an MCP server:
     # command:
     #   - --enable-mcpserver
@@ -95,11 +100,33 @@ services:
       deepdoc:
         condition: service_healthy
     image: ${RAGFLOW_IMAGE}
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+      nproc:
+        soft: 65535
+        hard: 65535
+    # Example configuration to set up an MCP server:
+    # command:
+    #   - --enable-mcpserver
+    #   - --mcp-host=0.0.0.0
+    #   - --mcp-port=9382
+    #   - --mcp-base-url=http://127.0.0.1:9380
+    #   - --mcp-script-path=/ragflow/mcp/server/server.py
+    #   - --mcp-mode=self-host
+    #   - --mcp-host-api-key=ragflow-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+    # Optional transport flags for MCP (customize if needed).
+    # Host mode need to combined with --no-transport-streamable-http-enabled flag, namely, host+streamable-http is not supported yet.
+    # The following are enabled by default unless explicitly disabled with --no-<flag>.
+    #   - --no-transport-sse-enabled # Disable legacy SSE endpoints (/sse and /messages/)
+    #   - --no-transport-streamable-http-enabled #  Disable Streamable HTTP transport (/mcp endpoint)
+    #   - --no-json-response # Disable JSON response mode in Streamable HTTP transport (instead of SSE over HTTP)
+
+    # Example configuration to start Admin server:
     command:
       - --disable-webserver
       - --disable-taskexecutor
-    environment:
-      - DEEPDOC_URL=http://deepdoc:8000
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9380/api/v1/system/ping"]
       interval: 10s
@@ -164,8 +191,6 @@ services:
         condition: service_healthy
     image: ${RAGFLOW_IMAGE}
     entrypoint: /ragflow/entrypoint-parser.sh
-    environment:
-      - DEEPDOC_URL=http://deepdoc:8000
     volumes:
       - ./ragflow-logs:/ragflow/logs
       # - ./nginx/ragflow.conf:/etc/nginx/conf.d/ragflow.conf

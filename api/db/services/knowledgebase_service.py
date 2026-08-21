@@ -381,7 +381,7 @@ class KnowledgebaseService(CommonService):
         # find team kb and owned kb
         kbs = cls.model.select(*fields).where((cls.model.tenant_id.in_(tenant_ids) & (cls.model.permission == TenantPermission.TEAM.value)) | (cls.model.tenant_id == user_id))
         # sort by create_time asc
-        kbs.order_by(cls.model.create_time.asc())
+        kbs = kbs.order_by(cls.model.create_time.asc())
         # maybe cause slow query by deep paginate, optimize later.
         offset, limit = 0, 50
         res = []

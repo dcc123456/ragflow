@@ -7,6 +7,7 @@ require (
 	github.com/AkmalOt/gomsg v0.0.0-20260407083308-985c3a1a76b7
 	github.com/ClickHouse/clickhouse-go/v2 v2.44.0
 	github.com/DATA-DOG/go-sqlmock v1.5.2
+	github.com/JohannesKaufmann/html-to-markdown v1.6.0
 	github.com/LuxorLabs/tenki-sdk-go/sandbox v0.7.0
 	github.com/alibabacloud-go/agentrun-20250910/v5 v5.8.4
 	github.com/alibabacloud-go/darabonba-openapi/v2 v2.2.1
@@ -59,7 +60,7 @@ require (
 	github.com/xuri/excelize/v2 v2.11.0
 	github.com/yfedoseev/office_oxide/go v0.1.8
 	github.com/yfedoseev/pdf_oxide/go v0.3.67
-	github.com/yuin/goldmark v1.4.13
+	github.com/yuin/goldmark v1.7.1
 	github.com/zeebo/xxh3 v1.0.2
 	go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin v0.68.0
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.69.0
@@ -85,7 +86,11 @@ require (
 	gorm.io/gorm v1.25.7
 )
 
-require github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6 // indirect
+require (
+	github.com/PuerkitoBio/goquery v1.9.2 // indirect
+	github.com/andybalholm/cascadia v1.3.2 // indirect
+	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6 // indirect
+)
 
 require (
 	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.11-20260415201107-50325440f8f2.1 // indirect
