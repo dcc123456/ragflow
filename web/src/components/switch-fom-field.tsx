@@ -66,7 +66,9 @@ export function SwitchFormField({
           })}
           onClick={handleClick}
         >
-          <FormLabel tooltip={tooltip}>{label}</FormLabel>
+          <FormLabel className="w-fit" tooltip={tooltip}>
+            {label}
+          </FormLabel>
           <FormControl>
             <Switch
               checked={field.value}

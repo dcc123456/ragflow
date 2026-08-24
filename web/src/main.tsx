@@ -22,8 +22,9 @@ import App from './app';
 import './global.less';
 import { initLanguage } from './locales/config';
 import { fetchBillingStatus } from './services/billingStatus';
+import { fetchBackendLanguage } from './utils/backend-runtime';
 
-initLanguage().then(() => {
+Promise.all([initLanguage(), fetchBackendLanguage()]).then(() => {
   fetchBillingStatus().then(() => {
     ReactDOM.createRoot(document.getElementById('root')!).render(
       <React.StrictMode>

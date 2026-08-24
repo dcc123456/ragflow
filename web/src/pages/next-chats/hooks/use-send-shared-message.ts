@@ -70,14 +70,16 @@ export const useSendSharedMessage = () => {
       id?: string,
       enableThinking?: string,
       enableInternet?: boolean,
+      agentMode?: string,
     ) => {
       const res = await send(completionUrl, {
         conversation_id: id ?? conversationId,
         quote: true,
         question: message.content,
         session_id: get(derivedMessages, '0.session_id'),
-        reasoning: Number(enableThinking),
+        reasoning: agentMode ? 0 : Number(enableThinking),
         internet: enableInternet,
+        ...(agentMode ? { agent_mode: agentMode } : {}),
         ...(chatInfo?.llm_id ? { model_name: chatInfo.llm_id } : {}),
       });
 
@@ -103,8 +105,9 @@ export const useSendSharedMessage = () => {
       message: Message,
       enableThinking?: string,
       enableInternet?: boolean,
+      agentMode?: string,
     ) => {
-      sendMessage(message, undefined, enableThinking, enableInternet);
+      sendMessage(message, undefined, enableThinking, enableInternet, agentMode);
     },
     [sendMessage],
   );
@@ -136,6 +139,7 @@ export const useSendSharedMessage = () => {
     ({
       enableThinking,
       enableInternet,
+      agentMode,
     }: NextMessageInputOnPressEnterParameter) => {
       if (trim(value) === '' || !done) return;
       const id = uuid();
@@ -155,6 +159,7 @@ export const useSendSharedMessage = () => {
           },
           enableThinking,
           enableInternet,
+          agentMode,
         );
       }
     },

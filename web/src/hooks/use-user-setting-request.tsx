@@ -35,12 +35,9 @@ import userService, {
   listTenant,
   listTenantUser,
 } from '@/services/user-service';
-import {
-  getBackendLanguage,
-  subscribeBackendLanguage,
-} from '@/utils/backend-runtime';
+import { useIsGoBackend } from '@/utils/backend-variant';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useMemo, useState, useSyncExternalStore } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useFetchDefaultModelDictionary } from './use-llm-request';
 
@@ -116,13 +113,7 @@ export const useSelectParserList = (): Array<{
 
   // Detect backend runtime language (Go vs Python) so we can choose
   // the matching parser-list code path at runtime.
-  // fetchBackendLanguage / getBackendLanguage handle their own caching
-  // internally; no need for an extra useQuery layer.
-  const backendLang = useSyncExternalStore(
-    subscribeBackendLanguage,
-    getBackendLanguage,
-    getBackendLanguage,
-  );
+  const isGo = useIsGoBackend();
 
   // Go backend: fetch pipeline catalog dynamically.
   const { data: pipelineListData } = useQuery({
@@ -132,7 +123,7 @@ export const useSelectParserList = (): Array<{
       return data;
     },
     staleTime: Infinity,
-    enabled: backendLang === 'go',
+    enabled: isGo,
   });
   useFetchDefaultModelDictionary(true);
 
@@ -172,7 +163,7 @@ export const useSelectParserList = (): Array<{
     // Go backend: prefer the dynamic pipeline catalog from the API.
     // GET /api/v1/pipelines?type=builtin responds with
     // { code, data: { canvas: [{ id, title, description, filename }], total } }.
-    if (backendLang === 'go') {
+    if (isGo) {
       const pipelineList: Array<{
         id: string;
         title: string;
@@ -234,7 +225,7 @@ export const useSelectParserList = (): Array<{
       const arr = x.split(':');
       return { value: arr[0], label: arr[1] };
     });
-  }, [tenantInfo, defaultParsers, backendLang, pipelineListData, t]);
+  }, [tenantInfo, defaultParsers, isGo, pipelineListData, t]);
 
   return parserList;
 };
