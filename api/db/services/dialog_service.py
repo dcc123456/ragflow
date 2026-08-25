@@ -279,6 +279,7 @@ class DialogService(CommonService):
             cls.model.similarity_threshold,
             cls.model.vector_similarity_weight,
             cls.model.top_n,
+            cls.model.prefetch_size,
             cls.model.top_k,
             cls.model.do_refer,
             cls.model.rerank_id,
@@ -776,6 +777,7 @@ async def async_chat(dialog, messages, stream=True, *, user_id: str | None = Non
     text_attachments_content, image_attachments, image_files = get_files_content(messages[-1], llm_model_config["model_type"])
 
     prompt_config = dialog.prompt_config
+    prefetch_size = getattr(dialog, "prefetch_size", 64)
     include_reference_metadata, metadata_fields = _resolve_reference_metadata(prompt_config, request_payload=kwargs)
     field_map = KnowledgebaseService.get_field_map(dialog.kb_ids)
     logging.debug(f"field_map retrieved: {field_map}")
@@ -859,6 +861,7 @@ async def async_chat(dialog, messages, stream=True, *, user_id: str | None = Non
                     similarity_threshold=0.2,
                     vector_similarity_weight=0.3,
                     doc_ids=scoped_doc_ids if scoped_doc_ids else ["-999"],
+                    prefetch_size=prefetch_size,
                 ),
                 internet_enabled=use_web_search,
             )
@@ -898,6 +901,7 @@ async def async_chat(dialog, messages, stream=True, *, user_id: str | None = Non
                     aggs=True,
                     rerank_mdl=rerank_mdl,
                     rank_feature=label_question(" ".join(questions), kbs),
+                    prefetch_size=prefetch_size,
                 )
                 if prompt_config.get("toc_enhance"):
                     cks = await retriever.retrieval_by_toc(" ".join(questions), kbinfos["chunks"], tenant_ids, chat_mdl, dialog.top_n)
@@ -1983,6 +1987,7 @@ async def async_ask(question, kb_ids, tenant_id, chat_llm_name=None, search_conf
         rerank_mdl=rerank_mdl,
         rank_feature=label_question(question, kbs),
         trace_id=search_id,
+        prefetch_size=search_config.get("prefetch_size", 100),
     )
     if include_reference_metadata:
         logging.debug(
@@ -2086,6 +2091,7 @@ async def gen_mindmap(question, kb_ids, tenant_id, search_config={}, *, user_id)
         aggs=False,
         rerank_mdl=rerank_mdl,
         rank_feature=label_question(question, kbs),
+        prefetch_size=search_config.get("prefetch_size", 100),
     )
     mindmap = MindMapExtractor(chat_mdl)
     mind_map = await mindmap([c["content_with_weight"] for c in ranks["chunks"]])
