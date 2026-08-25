@@ -23,7 +23,15 @@ const useFetchOverviewTotal = () => {
       const { data: res = {} } = await getKnowledgeBasicInfo(
         knowledgeBaseId || '',
       );
-      return res.data || [];
+
+      const status = res.data?.status || {};
+      return {
+        cancelled: status.cancel_count ?? 0,
+        failed: status.fail_count ?? 0,
+        finished: status.done_count ?? 0,
+        processing: status.running_count ?? 0,
+        downloaded: status.unstart_count ?? 0,
+      };
     },
   });
   return { data };
