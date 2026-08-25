@@ -58,6 +58,7 @@ These tests pin four contracts:
 """
 
 import importlib.util
+import logging
 import re
 import sys
 from pathlib import Path
@@ -85,7 +86,84 @@ def base_module(monkeypatch):
     fake_pandas.DataFrame = type("DataFrame", (), {})
     monkeypatch.setitem(sys.modules, "pandas", fake_pandas)
 
+    fake_connection_utils = ModuleType("common.connection_utils")
+    fake_connection_utils.timeout = lambda _seconds: lambda function: function
+    monkeypatch.setitem(sys.modules, "common.connection_utils", fake_connection_utils)
+
+    fake_misc_utils = ModuleType("common.misc_utils")
+    fake_misc_utils.thread_pool_exec = lambda function, *args, **kwargs: function(*args, **kwargs)
+    monkeypatch.setitem(sys.modules, "common.misc_utils", fake_misc_utils)
+
     spec = importlib.util.spec_from_file_location("_base_for_regex_test", repo_root / "agent" / "component" / "base.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.fixture
+def retrieval_module(monkeypatch, base_module):
+    """Load the Retrieval class without its service-layer dependencies."""
+    repo_root = Path(__file__).resolve().parents[4]
+
+    def install_module(name, *, package=False, **attributes):
+        module = ModuleType(name)
+        if package:
+            module.__path__ = []
+        for key, value in attributes.items():
+            setattr(module, key, value)
+        monkeypatch.setitem(sys.modules, name, module)
+        if "." in name:
+            parent_name, child_name = name.rsplit(".", 1)
+            setattr(sys.modules[parent_name], child_name, module)
+        return module
+
+    install_module("agent", package=True)
+    install_module("agent.component", package=True)
+    monkeypatch.setitem(sys.modules, "agent.component.base", base_module)
+    sys.modules["agent.component"].base = base_module
+    install_module("agent.tools", package=True)
+
+    class ToolParamBase(base_module.ComponentParamBase):
+        pass
+
+    class ToolBase(base_module.ComponentBase):
+        pass
+
+    install_module("agent.tools.base", ToolParamBase=ToolParamBase, ToolBase=ToolBase, ToolMeta=dict)
+
+    install_module("api", package=True)
+    install_module("api.db", package=True)
+    install_module("api.db.services", package=True)
+    install_module("api.db.joint_services", package=True)
+    install_module("api.db.services.doc_metadata_service", DocMetadataService=type("DocMetadataService", (), {}))
+    install_module("api.db.services.knowledgebase_service", KnowledgebaseService=type("KnowledgebaseService", (), {}))
+    install_module("api.db.services.llm_service", LLMBundle=type("LLMBundle", (), {}))
+    install_module("api.db.services.memory_service", MemoryService=type("MemoryService", (), {}))
+    install_module("api.db.joint_services.memory_message_service")
+    install_module(
+        "api.db.joint_services.tenant_model_service",
+        get_tenant_default_model_by_type=lambda *_args, **_kwargs: None,
+        resolve_model_config=lambda *_args, **_kwargs: None,
+    )
+
+    install_module("common", package=True)
+    install_module("common.constants", LLMType=SimpleNamespace(EMBEDDING="embedding", RERANK="rerank", CHAT="chat"))
+    install_module("common.metadata_utils", apply_meta_data_filter=lambda *_args, **_kwargs: [])
+    install_module("common.settings")
+    install_module("common.connection_utils", timeout=lambda _seconds: lambda function: function)
+
+    install_module("rag", package=True)
+    install_module("rag.app", package=True)
+    install_module("rag.app.tag", label_question=lambda *_args, **_kwargs: None)
+    install_module("rag.prompts", package=True)
+    install_module(
+        "rag.prompts.generator",
+        cross_languages=lambda *_args, **_kwargs: None,
+        kb_prompt=lambda *_args, **_kwargs: [],
+        memory_prompt=lambda *_args, **_kwargs: [],
+    )
+
+    spec = importlib.util.spec_from_file_location("_retrieval_for_regex_test", repo_root / "agent" / "tools" / "retrieval.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -227,3 +305,107 @@ def test_variable_ref_patt_does_not_match_bare_var_name(base_module):
     patt = base_module.ComponentBase.variable_ref_patt_re
     matches = list(patt.finditer("{line}"))
     assert not matches, "Bare `{line}` should not match — only `cpn_id@var` / `sys.*` / `env.*` are valid template refs."
+
+
+@pytest.mark.p2
+@pytest.mark.parametrize("content", ["{ {A@x}", "{A@x} }"])
+def test_unbalanced_outer_braces_remain_literal(base_module, content):
+    cpn = base_module.ComponentBase.__new__(base_module.ComponentBase)
+    cpn._canvas = SimpleNamespace(
+        get_component_name=lambda _cid: "A",
+        get_variable_value=lambda exp: "VALUE" if exp == "A@x" else None,
+    )
+
+    assert base_module.ComponentBase.variable_ref_patt_re.fullmatch(content) is None
+    assert cpn.get_input_elements_from_text(content) == {}
+    assert cpn.string_format(content, {"A@x": "VALUE"}) == content
+
+
+@pytest.mark.p2
+@pytest.mark.parametrize("content", ["{ {A@x}", "{A@x} }"])
+def test_manual_metadata_filter_preserves_unbalanced_outer_braces(retrieval_module, content):
+    retrieval = retrieval_module.Retrieval.__new__(retrieval_module.Retrieval)
+    retrieval._canvas = SimpleNamespace(get_variable_value=lambda exp: "VALUE" if exp == "A@x" else None)
+    original = {"key": "author", "op": "=", "value": content}
+
+    assert retrieval._resolve_manual_filter(original) == original
+
+
+@pytest.mark.p2
+@pytest.mark.parametrize("content", ["{A@x}", "{{A@x}}", "{ {A@x} }"])
+def test_manual_metadata_filter_resolves_complete_references(retrieval_module, content):
+    retrieval = retrieval_module.Retrieval.__new__(retrieval_module.Retrieval)
+    retrieval._canvas = SimpleNamespace(get_variable_value=lambda exp: "VALUE" if exp == "A@x" else None)
+    original = {"key": "author", "op": "=", "value": f"before {content} after"}
+
+    assert retrieval._resolve_manual_filter(original)["value"] == "before VALUE after"
+    assert original["value"] == f"before {content} after"
+
+
+@pytest.mark.p2
+def test_rejected_incomplete_match_is_logged_without_template_value(base_module, caplog):
+    cpn = base_module.ComponentBase.__new__(base_module.ComponentBase)
+
+    with caplog.at_level(logging.DEBUG):
+        assert list(cpn._iter_template_matches(cpn.variable_ref_patt_re, "{ {SecretNode@token}")) == []
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert any("Ignored incomplete template reference candidate" in message for message in messages)
+    assert all("SecretNode@token" not in message for message in messages)
+
+
+@pytest.mark.p2
+@pytest.mark.parametrize(
+    ("pattern_name", "content", "values", "matched_text", "expected"),
+    [
+        (
+            "variable_ref_patt_re",
+            "Decision: {Agent:x@content} — done",
+            {"Agent:x@content": "VALUE"},
+            ["{Agent:x@content}"],
+            "Decision: VALUE — done",
+        ),
+        (
+            "variable_ref_patt_re",
+            "{A@x} {B@y}",
+            {"A@x": "ONE", "B@y": "TWO"},
+            ["{A@x}", "{B@y}"],
+            "ONE TWO",
+        ),
+        (
+            "variable_ref_patt_re",
+            "a {{X@y}} b",
+            {"X@y": "VALUE"},
+            ["{{X@y}}"],
+            "a VALUE b",
+        ),
+        (
+            "variable_ref_patt_re",
+            "a { {X@y} } b",
+            {"X@y": "VALUE"},
+            ["{ {X@y} }"],
+            "a VALUE b",
+        ),
+        (
+            "iteration_alias_patt_re",
+            "before {item} after",
+            {"item": "VALUE"},
+            ["{item}"],
+            "before VALUE after",
+        ),
+    ],
+)
+def test_reference_patterns_preserve_adjacent_literal_whitespace(base_module, pattern_name, content, values, matched_text, expected):
+    cpn = base_module.ComponentBase.__new__(base_module.ComponentBase)
+    pattern = getattr(base_module.ComponentBase, pattern_name)
+    matches = list(pattern.finditer(content))
+
+    assert [match.group(0) for match in matches] == matched_text
+    if pattern_name == "variable_ref_patt_re":
+        cpn._canvas = SimpleNamespace(
+            get_component_name=lambda cpn_id: cpn_id,
+            get_variable_value=lambda exp: values.get(exp),
+        )
+        elements = cpn.get_input_elements_from_text(content)
+        assert {key: meta["value"] for key, meta in elements.items()} == values
+    assert cpn.string_format(content, values) == expected

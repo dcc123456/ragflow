@@ -83,6 +83,7 @@ export interface IDialog {
   meta_data_filter?: MetaDataFilter;
   operator_permission: number;
   nickname: string;
+  prefetch_size: number;
   rerank_id?: string;
   tenant_rerank_id?: string;
 }

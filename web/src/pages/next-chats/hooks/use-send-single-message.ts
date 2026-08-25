@@ -60,7 +60,6 @@ export function useSendSingleMessage({
       messages,
       enableInternet,
       enableThinking,
-      agentMode,
       storeHistoryMessages,
       omitSessionId,
       ...params
@@ -81,9 +80,8 @@ export function useSendSingleMessage({
               : (derivedMessages ?? [])),
             message,
           ],
-          reasoning: agentMode ? 0 : Number(enableThinking),
+          reasoning: Number(enableThinking),
           internet: enableInternet,
-          ...(agentMode ? { agent_mode: agentMode } : {}),
           ...params,
           ...(storeHistoryMessages === undefined
             ? {}
@@ -114,7 +112,6 @@ export function useSendSingleMessage({
     async ({
       enableThinking,
       enableInternet,
-      agentMode,
       currentMessages,
       targetConversationId,
       ...params
@@ -145,7 +142,6 @@ export function useSendSingleMessage({
           },
           enableInternet,
           enableThinking,
-          agentMode,
           ...params,
         });
       }
