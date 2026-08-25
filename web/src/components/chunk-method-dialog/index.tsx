@@ -40,7 +40,7 @@ import {
   AutoMetadata,
   ChunkMethodItem,
   ImageContextWindow,
-} from '@/pages/dataset/dataset-setting/configuration/common-item';
+} from '@/pages/dataset/setting/python/configuration/common-item';
 import { zodResolver } from '@hookform/resolvers/zod';
 import omit from 'lodash/omit';
 import { useEffect, useMemo } from 'react';

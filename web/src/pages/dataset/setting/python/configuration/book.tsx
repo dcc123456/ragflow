@@ -3,7 +3,7 @@ import {
   AutoQuestionsFormField,
 } from '@/components/auto-keywords-form-field';
 import { LayoutRecognizeFormField } from '@/components/layout-recognize-form-field';
-import { useKnowledgeBaseContext } from '../../contexts/knowledge-base-context';
+import { useKnowledgeBaseContext } from '../../../contexts/knowledge-base-context';
 import {
   ConfigurationFormContainer,
   MainContainer,
@@ -11,7 +11,7 @@ import {
 import { AutoMetadata } from './common-item';
 import { FormLayout } from '@/constants/form';
 
-export function LawsConfiguration() {
+export function BookConfiguration() {
   const ownerTenantId = useKnowledgeBaseContext().knowledgeBase?.tenant_id;
   return (
     <MainContainer>
@@ -30,7 +30,6 @@ export function LawsConfiguration() {
           layout={FormLayout.Horizontal}
         ></AutoQuestionsFormField>
       </ConfigurationFormContainer>
-
       {/* <ConfigurationFormContainer>
         <TagItems></TagItems>
       </ConfigurationFormContainer> */}

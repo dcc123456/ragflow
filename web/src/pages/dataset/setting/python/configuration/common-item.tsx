@@ -45,19 +45,19 @@ import {
 import { Trans, useTranslation } from 'react-i18next';
 import { useLocation } from 'react-router';
 import { DataSetContext } from '..';
-import { MetadataType } from '../../components/metedata/constant';
+import { MetadataType } from '../../../components/metedata/constant';
 import {
   useManageMetadata,
   util,
-} from '../../components/metedata/hooks/use-manage-modal';
+} from '../../../components/metedata/hooks/use-manage-modal';
 
 import { RAGFlowAvatar } from '@/components/ragflow-avatar';
 import {
   IBuiltInMetadataItem,
   IMetaDataReturnJSONSettings,
-} from '../../components/metedata/interface';
-import { ManageMetadataModal } from '../../components/metedata/manage-modal';
-import { useKnowledgeBaseContext } from '../../contexts/knowledge-base-context';
+} from '../../../components/metedata/interface';
+import { ManageMetadataModal } from '../../../components/metedata/manage-modal';
+import { useKnowledgeBaseContext } from '../../../contexts/knowledge-base-context';
 import {
   useHandleKbEmbedding,
   useHasParsedDocument,

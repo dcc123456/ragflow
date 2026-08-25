@@ -36,7 +36,7 @@ from api.db.services.user_service import TenantService
 from common.metadata_utils import apply_meta_data_filter
 from api.db.services.search_service import SearchService
 from api.db.joint_services.tenant_model_service import get_tenant_default_model_by_type, resolve_model_config
-from api.apps.restful_apis._generation_params import resolve_llm_setting
+from api.db.services.llm_service import resolve_llm_setting
 from common.misc_utils import thread_pool_exec
 from api.utils.api_utils import get_error_data_result, get_json_result, add_tenant_id_to_kwargs, get_result, get_request_json, server_error_response, validate_request
 from api.utils.permission_utils import check_canvas_permission, check_dialog_permission, check_search_permission, filter_accessible_doc_ids_for_user, filter_kb_read_access
