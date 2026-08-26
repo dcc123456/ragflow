@@ -84,6 +84,7 @@ export interface IDialog {
   operator_permission: number;
   nickname: string;
   prefetch_size: number;
+  rerank_candidates_count: number;
   rerank_id?: string;
   tenant_rerank_id?: string;
 }

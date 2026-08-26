@@ -357,6 +357,7 @@ filterwarnings = [
     "error",  # Treat warnings as errors
     "ignore::DeprecationWarning",  # Ignore specific warnings
     "ignore:pkg_resources is deprecated as an API",  # xgboost compat uses deprecated pkg_resources
+    "ignore::ResourceWarning",  # Python 3.13 reports unclosed resources from optional dependency finalizers
 ]
 
 # Command line options

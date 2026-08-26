@@ -783,6 +783,7 @@ export default {
       larkDescription: '連接飛書同步指定文件夾中的文件。',
       larkFolderTip: '留空則不執行。',
       larkWikiTip: '留空則不執行。',
+      azure_devopsDescription: '連接 Azure DevOps 以同步儲存庫檔案和拉取請求。',
       bitbucketDescription: '連接 Bitbucket，同步 PR 內容。',
       zendeskDescription: '連接 Zendesk，同步工單、文章及其他內容。',
       bitbucketTopWorkspaceTip:
