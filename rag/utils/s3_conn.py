@@ -162,16 +162,15 @@ class RAGFlowS3:
         return exists
 
     def health(self):
-        self._ensure_connection()
-        bucket = self.bucket
-        fnm = "txtxtxtxt1"
-        fnm, binary = f"{self.prefix_path}/{fnm}" if self.prefix_path else fnm, b"_t@@@1"
-        if not self.bucket_exists(bucket):
-            self.conn[0].create_bucket(Bucket=bucket)
-            logging.debug(f"create bucket {bucket} ********")
-
-        self.conn[0].upload_fileobj(BytesIO(binary), bucket, fnm)
-        return True
+        try:
+            if self.bucket:
+                self.conn[0].head_bucket(Bucket=self.bucket)
+            else:
+                self.conn[0].list_buckets()
+            return True
+        except Exception as e:
+            logging.warning(f"S3 health check failed: {e}")
+            return False
 
     def get_properties(self, bucket, key):
         return {}

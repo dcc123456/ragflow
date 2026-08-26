@@ -185,6 +185,7 @@ class FileSource(StrEnum):
     GITLAB = "gitlab"
     IMAP = "imap"
     BITBUCKET = "bitbucket"
+    AZURE_DEVOPS = "azure_devops"
     ZENDESK = "zendesk"
     LARK = "lark"
     SEAFILE = "seafile"

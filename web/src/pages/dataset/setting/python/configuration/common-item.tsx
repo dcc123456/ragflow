@@ -57,7 +57,10 @@ import {
   IMetaDataReturnJSONSettings,
 } from '../../../components/metedata/interface';
 import { ManageMetadataModal } from '../../../components/metedata/manage-modal';
-import { useKnowledgeBaseContext } from '../../../contexts/knowledge-base-context';
+import {
+  useOwnerTenantId,
+  useKnowledgeBaseContext,
+} from '../../../contexts/knowledge-base-context';
 import {
   useHandleKbEmbedding,
   useHasParsedDocument,
@@ -635,5 +638,18 @@ export function LLMModelItem({
         )}
       />
     </>
+  );
+}
+
+export function GlobalIndexModelItem() {
+  const { t } = useTranslate('knowledgeConfiguration');
+  const ownerTenantId = useOwnerTenantId();
+  return (
+    <LLMModelItem
+      isEdit={true}
+      name="parser_config.llm_id"
+      label={t('globalIndexModel')}
+      ownerTenantId={ownerTenantId}
+    />
   );
 }

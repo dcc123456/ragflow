@@ -3,22 +3,23 @@ import {
   AutoQuestionsFormField,
 } from '@/components/auto-keywords-form-field';
 import { LayoutRecognizeFormField } from '@/components/layout-recognize-form-field';
-import { useKnowledgeBaseContext } from '../../../contexts/knowledge-base-context';
 import {
   ConfigurationFormContainer,
   MainContainer,
 } from '../configuration-form-container';
-import { AutoMetadata } from './common-item';
+import { useOwnerTenantId } from '../../../contexts/knowledge-base-context';
+import { AutoMetadata, GlobalIndexModelItem } from './common-item';
 import { FormLayout } from '@/constants/form';
 
 export function BookConfiguration() {
-  const ownerTenantId = useKnowledgeBaseContext().knowledgeBase?.tenant_id;
+  const ownerTenantId = useOwnerTenantId();
   return (
     <MainContainer>
       <ConfigurationFormContainer>
         <LayoutRecognizeFormField
           ownerTenantId={ownerTenantId}
         ></LayoutRecognizeFormField>
+        <GlobalIndexModelItem />
       </ConfigurationFormContainer>
 
       <ConfigurationFormContainer>
