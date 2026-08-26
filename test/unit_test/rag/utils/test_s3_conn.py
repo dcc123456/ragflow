@@ -32,11 +32,13 @@ def _new_storage(monkeypatch, config):
     client = Mock()
     monkeypatch.setattr(module.settings, "S3", config)
     monkeypatch.setattr(module.boto3, "client", Mock(return_value=client))
-    return module.RAGFlowS3(), client, module.boto3.client
+    storage = module.RAGFlowS3()
+    storage._ensure_connection()
+    return storage, client, module.boto3.client
 
 
 def test_s3_accepts_region_config_key(monkeypatch):
-    storage, _, client_factory = _new_storage(monkeypatch, {"region": "us-east-1", "bucket": "ragflow"})
+    storage, _, client_factory = _new_storage(monkeypatch, {"region_name": "us-east-1", "bucket": "ragflow"})
 
     assert storage.region_name == "us-east-1"
     client_factory.assert_called_once_with("s3", region_name="us-east-1")

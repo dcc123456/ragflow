@@ -25,6 +25,7 @@ somebody else.
 
 import importlib.util
 import sys
+from inspect import unwrap
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
@@ -104,7 +105,7 @@ async def _add(monkeypatch, auth_type, extra):
         **extra,
     }
     module = _load_memory_api(monkeypatch, auth_type, request_json, added)
-    response = await module.add_message()
+    response = await unwrap(module.add_message)()
     return response, added
 
 

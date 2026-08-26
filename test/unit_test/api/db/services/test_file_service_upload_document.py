@@ -89,7 +89,7 @@ class _DummyStorage:
         self.written = {}
         self.removed = []
 
-    def obj_exist(self, _bucket, _location):
+    def obj_exist(self, _bucket, _location, *_args):
         return False
 
     def put(self, bucket, location, blob, *_args):
