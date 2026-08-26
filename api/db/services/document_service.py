@@ -1227,11 +1227,11 @@ class DocumentService(CommonService):
                         # Exclude this document's own queued tasks in the same
                         # priority queue: they are not "ahead" of itself, they
                         # ARE the work being waited on.
-                        queue_ahead = max(0, get_queue_length(priority, task_type) - own_queued_by_priority.get(priority, 0))
-                        info["progress_msg"] += "\n%d tasks are ahead in the queue..." % queue_ahead
+                        queue_size = max(0, get_queue_length(priority, task_type))
+                        info["progress_msg"] += "\n%d tasks are in the queue (including %d tasks for this document) ..." % (queue_size, own_queued_by_priority.get(priority, 0))
                 else:
-                    queue_ahead = max(0, get_queue_length(priority, task_type) - own_queued_by_priority.get(priority, 0))
-                    info["progress_msg"] = "%d tasks are ahead in the queue..." % queue_ahead
+                    queue_size = max(0, get_queue_length(priority, task_type))
+                    info["progress_msg"] = "%d tasks are in the queue (including %d tasks for this document) ..." % (queue_size, own_queued_by_priority.get(priority, 0))
                 info["update_time"] = current_timestamp()
                 info["update_date"] = get_format_time()
                 (cls.model.update(info).where((cls.model.id == d["id"]) & ((cls.model.run.is_null(True)) | (cls.model.run != TaskStatus.CANCEL.value))).execute())

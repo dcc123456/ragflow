@@ -2030,11 +2030,17 @@ def rabbitmq_callback(ch, method, properties, body):
     task_id = msg["id"]
 
     try:
+        # Check if task has been cancelled.
+        canceled = has_canceled(task_id)
+        if canceled:
+            logging.warning(f"task {task_id} has been cancelled")
+            return True  # Ack - task cancelled
+
         for _ in range(3):
             if msg.get("doc_id", "") in [GRAPH_RAPTOR_FAKE_DOC_ID, CANVAS_DEBUG_DOC_ID]:
                 task = msg
                 if task["task_type"] in PIPELINE_SPECIAL_PROGRESS_FREEZE_TASK_TYPES and msg.get("doc_ids", []):
-                    time.sleep(5)
+                    time.sleep(0.5)
                     task = TaskService.get_task(msg["id"], msg["doc_ids"])
                     if not task:
                         logging.warning("Miss task info in DB({}): {}".format(routing_key, body))
@@ -2051,14 +2057,12 @@ def rabbitmq_callback(ch, method, properties, body):
             if task:
                 task.update(msg)
                 break
-            time.sleep(3)
+            time.sleep(0.3)
 
-        if task:
-            canceled = has_canceled(task["id"])
-        if not task or canceled:
-            state = "is unknown" if not task else "has been cancelled"
-            logging.warning(f"collect task {msg['id']} {state}")
-            return True  # Ack - task not found or cancelled
+        # Check if task has been deleted.
+        if not task:
+            logging.warning(f"task {task_id} not found.")
+            return True  # Ack - task not found
 
         task_type = task["task_type"] = msg.get("task_type", "")
         if task_type[:8] == "dataflow":
@@ -2133,7 +2137,7 @@ def rabbitmq_callback(ch, method, properties, body):
                     asyncio.set_event_loop(None)
 
         # Record pipeline operation if applicable
-        if task and task_type not in ["evaluation", "memory"]:
+        if task and task_type not in ["evaluation", "memory", None, ""]:  # PDF task has no type
             if not task.get("dataflow_id", ""):
                 try:
                     referred_document_id = None
