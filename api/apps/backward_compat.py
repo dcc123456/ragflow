@@ -41,7 +41,7 @@ Deprecated APIs and their replacements:
 - GET /api/v1/document/download/{doc_id} -> GET /api/v1/agents/attachments/{doc_id}/download
 - GET /v1/document/download/{attachment_id} -> GET /api/v1/agents/attachments/{attachment_id}/download
 - GET /v1/system/healthz -> GET /api/v1/system/healthz
-- POST /api/v1/sessions/related_questions -> POST /api/v1/chat/recommandation
+- POST /api/v1/sessions/related_questions -> POST /api/v1/chat/recommendation
 - POST /v1/connector/{connector_id}/list_files -> GET /api/v1/connectors/{connector_id}/list-files
 - POST /v1/connector/{connector_id}/downloads -> POST /api/v1/connectors/{connector_id}/sync-to-folder
 - PUT (chunk update) -> PATCH (chunk update)

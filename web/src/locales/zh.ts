@@ -1067,6 +1067,7 @@ NER：使用 spaCy NER 和基于规则的关键词提取来抽取 Entities 和 R
       maxTokensInvalidMessage: '请输入有效的最大令牌数。',
       maxTokensMinMessage: '最大令牌数不能小于 0。',
       thinking: '思考中...',
+      thinkingMode: '思考',
       thought: '思考完成',
       thinkingDefault: '系统默认',
       thinkingEnabled: '开启',
@@ -1104,6 +1105,9 @@ NER：使用 spaCy NER 和基于规则的关键词提取来抽取 Entities 和 R
       created: '创建于',
       action: '操作',
       embedModalTitle: '嵌入网站',
+      embedUserIdPlaceholder: '例如：user-001',
+      embedUserIdTooltip:
+        '用于标识嵌入页面终端用户的字符串，最长 255 个字符，会作为 userId 参数附加到嵌入链接中。',
       published: '已发布',
       publishedTooltip:
         '在嵌入中使用已发布的版本。启用后，生成的 URL 将包含 release=true。',
@@ -2090,6 +2094,8 @@ NER：使用 spaCy NER 和基于规则的关键词提取来抽取 Entities 和 R
       skillDeleteDescription: '确定要删除该 Skill 吗？',
       navTitle: 'PageIndex',
       navEmpty: '暂无导航节点',
+      navLoadFailed: '加载目录树失败',
+      navChildLoadFailed: '加载子节点失败',
       navLoading: '加载中...',
       navSelectNode: '选择子节点以查看详情',
       navNoDescription: '暂无描述',

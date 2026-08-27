@@ -397,8 +397,16 @@ if [[ "${ENABLE_TASKEXECUTOR}" -eq 1 ]]; then
         if [[ "${API_PROXY_SCHEME}" == "go" ]]; then
             while true; do
                 echo "Starting go ingestor..."
+                set +e
                 bin/ragflow_server --ingestor
-                sleep 1;
+                status=$?
+                set -e
+                if [ "$status" -eq 0 ]; then
+                    echo "Go ingestor exited cleanly, restarting in 1s..."
+                else
+                    echo "Go ingestor exited with status $status, restarting in 1s..."
+                fi
+                sleep 1
             done &
         fi
     else
@@ -415,8 +423,16 @@ if [[ "${ENABLE_TASKEXECUTOR}" -eq 1 ]]; then
           if [[ "${API_PROXY_SCHEME}" == "go" ]]; then
               while true; do
                   echo "Starting go ingestor..."
+                  set +e
                   bin/ragflow_server --ingestor
-                  sleep 1;
+                  status=$?
+                  set -e
+                  if [ "$status" -eq 0 ]; then
+                      echo "Go ingestor exited cleanly, restarting in 1s..."
+                  else
+                      echo "Go ingestor exited with status $status, restarting in 1s..."
+                  fi
+                  sleep 1
               done &
           fi
         done
