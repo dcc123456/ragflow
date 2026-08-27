@@ -62,6 +62,17 @@ def _load_nav_module(monkeypatch, *, accessible=True, index_pack=("idx-1", None)
 
     _stub(
         monkeypatch,
+        "api.db",
+        PermissionActionType=SimpleNamespace(ACTION_ADD="add"),
+        PermissionTargetType=SimpleNamespace(TARGET_MEMBER="member"),
+        PermissionValue=SimpleNamespace(
+            PERMISSION_NULL=SimpleNamespace(value="null"),
+            PERMISSION_OWNER=SimpleNamespace(value="owner"),
+        ),
+        ResourceType=SimpleNamespace(KB="kb"),
+    )
+    _stub(
+        monkeypatch,
         "api.db.joint_services.tenant_model_service",
         get_composite_model_name_by_ids=MagicMock(),
         resolve_model_config=MagicMock(),
@@ -109,6 +120,12 @@ def _load_nav_module(monkeypatch, *, accessible=True, index_pack=("idx-1", None)
     )
     _stub(
         monkeypatch,
+        "api.db.services.permission_service",
+        PermissionChangeLogService=SimpleNamespace(),
+        PermissionService=SimpleNamespace(),
+    )
+    _stub(
+        monkeypatch,
         "api.db.services.task_service",
         GRAPH_RAPTOR_FAKE_DOC_ID="fake-doc",
         TaskService=SimpleNamespace(),
@@ -132,6 +149,7 @@ def _load_nav_module(monkeypatch, *, accessible=True, index_pack=("idx-1", None)
     _stub(
         monkeypatch,
         "common.misc_utils",
+        get_uuid=MagicMock(),
         thread_pool_exec=AsyncMock(side_effect=lambda fn, *args, **kwargs: fn(*args, **kwargs)),
         thread_pool_exec_long_time=AsyncMock(side_effect=lambda fn, *args, **kwargs: fn(*args, **kwargs)),
     )

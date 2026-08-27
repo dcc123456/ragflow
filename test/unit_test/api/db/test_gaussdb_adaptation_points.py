@@ -21,6 +21,7 @@ def read_repo_file(path: str) -> str:
 
 def load_yaml(path: str):
     yaml = YAML(typ="safe", pure=True)
+    yaml.allow_duplicate_keys = True
     return yaml.load(read_repo_file(path))
 
 
