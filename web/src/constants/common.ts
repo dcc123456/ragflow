@@ -241,3 +241,4 @@ export enum EvaluationType {
   Agent = 'agent',
   Chat = 'chat',
 }
+export const DESCRIPTION_MAX_LENGTH = 512;
