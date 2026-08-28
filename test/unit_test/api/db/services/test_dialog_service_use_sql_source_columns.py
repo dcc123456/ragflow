@@ -417,6 +417,7 @@ def test_async_chat_sql_retrieval_uses_dataset_owner_tenant_not_dialog_tenant(mo
     )
     monkeypatch.setattr(dialog_service.KnowledgebaseService, "get_field_map", lambda _kb_ids: {"product": "Product Name"})
     monkeypatch.setattr(dialog_service, "use_sql", _fake_use_sql)
+    monkeypatch.setattr(dialog_service, "filter_accessible_doc_ids_for_user", lambda _user_id, _kb_ids, doc_ids: (doc_ids, None, None))
 
     async def _collect():
         items = []
@@ -489,6 +490,7 @@ def test_async_chat_sql_retrieval_ignores_empty_field_map_datasets(monkeypatch):
     )
     monkeypatch.setattr(dialog_service.KnowledgebaseService, "get_field_map", lambda _kb_ids: {"product": "Product Name"})
     monkeypatch.setattr(dialog_service, "use_sql", _fake_use_sql)
+    monkeypatch.setattr(dialog_service, "filter_accessible_doc_ids_for_user", lambda _user_id, _kb_ids, doc_ids: (doc_ids, None, None))
 
     async def _collect():
         items = []
@@ -578,6 +580,7 @@ def test_async_chat_skips_sql_retrieval_for_mixed_tenant_field_map_datasets(monk
     )
     monkeypatch.setattr(dialog_service.KnowledgebaseService, "get_field_map", lambda _kb_ids: {"product": "Product Name"})
     monkeypatch.setattr(dialog_service, "use_sql", _unexpected_use_sql)
+    monkeypatch.setattr(dialog_service, "filter_accessible_doc_ids_for_user", lambda _user_id, _kb_ids, doc_ids: (doc_ids, None, None))
     monkeypatch.setattr(dialog_service, "label_question", lambda _question, _kbs: None)
     monkeypatch.setattr(
         dialog_service,

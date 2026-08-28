@@ -144,19 +144,23 @@ def retrieval_module(monkeypatch, base_module):
     install_module("agent.tools.base", ToolParamBase=ToolParamBase, ToolBase=ToolBase, ToolMeta=dict)
 
     install_module("api", package=True)
-    install_module("api.db", package=True)
+    install_module("api.db", package=True, PermissionValue=SimpleNamespace(PERMISSION_READ="read"), ResourceType=SimpleNamespace(MEMORY="memory"))
     install_module("api.db.services", package=True)
     install_module("api.db.joint_services", package=True)
     install_module("api.db.services.doc_metadata_service", DocMetadataService=type("DocMetadataService", (), {}))
     install_module("api.db.services.knowledgebase_service", KnowledgebaseService=type("KnowledgebaseService", (), {}))
     install_module("api.db.services.llm_service", LLMBundle=type("LLMBundle", (), {}))
     install_module("api.db.services.memory_service", MemoryService=type("MemoryService", (), {}))
+    install_module("api.db.services.permission_service", PermissionService=type("PermissionService", (), {}))
+    install_module("api.db.services.user_service", UserTenantService=type("UserTenantService", (), {}))
     install_module("api.db.joint_services.memory_message_service")
     install_module(
         "api.db.joint_services.tenant_model_service",
         get_tenant_default_model_by_type=lambda *_args, **_kwargs: None,
         resolve_model_config=lambda *_args, **_kwargs: None,
     )
+    install_module("api.utils", package=True)
+    install_module("api.utils.permission_utils", filter_accessible_doc_ids_for_user=lambda *_args, **_kwargs: (None, None, None))
 
     install_module("common", package=True)
     install_module("common.constants", LLMType=SimpleNamespace(EMBEDDING="embedding", RERANK="rerank", CHAT="chat"))
