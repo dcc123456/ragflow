@@ -239,7 +239,7 @@ def _install_settings_import_stubs(monkeypatch):
         resolve_reference_metadata_preferences=lambda *_args, **_kwargs: {},
     )
     install_module("rag.graphrag.general.mind_map_extractor", MindMapExtractor=_Dummy)
-    advanced_rag = install_module("rag.advanced_rag", DeepResearcher=_Dummy)
+    advanced_rag = install_module("rag.advanced_rag")
     advanced_rag.__path__ = []
     install_module("rag.advanced_rag.agentic_rag", RAGTools=_Dummy)
     install_module("rag.advanced_rag.knowlege_compile")
@@ -1699,7 +1699,7 @@ def test_tc_sql_1001_use_sql_none_falls_back_to_retrieval(
         8,
         0.2,
         0.3,
-        doc_ids=["-999"],
+        doc_ids=[],
         knn_top_k=32,
         aggs=True,
         rerank_mdl=None,
@@ -1748,7 +1748,7 @@ def test_tc_sql_1002_validator_rejection_falls_back_to_retrieval(
         8,
         0.2,
         0.3,
-        doc_ids=["-999"],
+        doc_ids=[],
         knn_top_k=32,
         aggs=True,
         rerank_mdl=None,
@@ -1799,7 +1799,7 @@ def test_tc_sql_1003_sql_timeout_falls_back_to_retrieval(
         8,
         0.2,
         0.3,
-        doc_ids=["-999"],
+        doc_ids=[],
         knn_top_k=32,
         aggs=True,
         rerank_mdl=None,

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Rename provider name fields in conf/models/*.json to match llm_factories.json."""
 
-import os
 import json
+import os
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 MODELS_DIR = os.path.join(REPO_ROOT, "conf", "models")
