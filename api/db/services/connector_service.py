@@ -291,11 +291,8 @@ class SyncLogsService(CommonService):
             Connector2Kb.auto_parse,
             cls.model.from_beginning.alias("reindex"),
             cls.model.status,
+            cls.model.update_time,
         ]
-        if _is_gaussdb_compatible_metadata_db():
-            # GaussDB requires a DISTINCT query's ORDER BY expression in the
-            # select list.
-            fields.append(cls.model.update_time)
         if not connector_id:
             fields.append(Connector.config)
 
