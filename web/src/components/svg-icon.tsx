@@ -113,6 +113,7 @@ const svgIcons = [
   LLMFactory.FunASR,
   LLMFactory.AIMLAPI,
   LLMFactory.GreenPT,
+  LLMFactory.Synthorai,
   LLMFactory.MWS,
 ];
 

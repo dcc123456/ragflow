@@ -24,6 +24,21 @@ interface NumberInputProps {
   integer?: boolean;
   inputClassName?: string;
   step?: number;
+  precision?: number;
+}
+
+// Truncate on the decimal string instead of `Math.trunc(v * 10 ** decimals)`,
+// which loses precision on values such as 0.29 (0.29 * 100 === 28.999...).
+function limitDecimals(value: number, decimals: number) {
+  const [integerPart, fractionPart = ''] = String(value).split('.');
+  if (fractionPart.length <= decimals) {
+    return value;
+  }
+  return Number(
+    decimals === 0
+      ? integerPart
+      : `${integerPart}.${fractionPart.slice(0, decimals)}`,
+  );
 }
 
 // Keys that would introduce a fractional part or exponent notation in
@@ -46,6 +61,7 @@ const NumberInput = forwardRef<
     hideIcons = false,
     integer = false,
     inputClassName,
+    precision,
     ...props
   },
   ref,
@@ -102,6 +118,16 @@ const NumberInput = forwardRef<
     }
 
     if (!isNaN(newValue)) {
+      const limitedValue =
+        precision === undefined ? newValue : limitDecimals(newValue, precision);
+
+      // The state below may not change when extra decimals are dropped
+      // (0.12 -> 0.123 -> 0.12), so React would not re-render and the browser
+      // would keep showing the rejected digits. Write the DOM value directly.
+      if (limitedValue !== newValue) {
+        e.target.value = String(limitedValue);
+      }
+
       // Pasted decimals bypass the keydown guard; reject them in integer
       // mode instead of rounding silently.
       if (integer && !Number.isInteger(newValue)) {
@@ -111,9 +137,9 @@ const NumberInput = forwardRef<
       // (e.g. deleting "1024" → "102" when min=512), so the controlled input
       // never snaps back mid-edit. Out-of-range values are not propagated to
       // the form; handleBlur clamps them into range on focus loss.
-      setValue(newValue);
-      if (newValue >= min && newValue <= max) {
-        onChange?.(newValue);
+      setValue(limitedValue);
+      if (limitedValue >= min && limitedValue <= max) {
+        onChange?.(limitedValue);
       }
     }
   };

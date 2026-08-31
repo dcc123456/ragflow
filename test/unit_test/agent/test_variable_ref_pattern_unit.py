@@ -55,6 +55,18 @@ These tests pin four contracts:
    actually use that regex end-to-end.
 4. Bare `{line}` (no cpn_id prefix) remains unmatched by design so the
    literal text surfaces to the user until they wire it up.
+
+Whitespace contract (#18665 / #18720): after `_build_template_ref_pattern`
+(PR #18666, a1131167), whitespace is only consumed inside a balanced
+outer brace pair, so `a {X@y} b` keeps its spaces and wrapped forms
+`{{X@y}}` / `{ {X@y} }` / `{ {X@y}}` still match as a whole. The
+`test_reference_patterns_preserve_adjacent_literal_whitespace` cases
+assert the complete match (`group(0)`) so a regression that matches only
+the inner `{X@y}` cannot pass silently.
+
+This suite lives under `test/unit_test` (the normal unit-test preflight)
+and was consolidated here from `test/testcases/test_web_api/test_canvas_app`
+so the reference-pattern contracts have exactly one home.
 """
 
 import importlib.util
@@ -80,7 +92,7 @@ def base_module(monkeypatch):
     We also avoid importing the real `agent.canvas` (and its transitive
     deps) because only the regex + helper methods are exercised here.
     """
-    repo_root = Path(__file__).resolve().parents[4]
+    repo_root = Path(__file__).resolve().parents[3]
 
     fake_pandas = ModuleType("pandas")
     fake_pandas.DataFrame = type("DataFrame", (), {})
@@ -103,7 +115,7 @@ def base_module(monkeypatch):
 @pytest.fixture
 def retrieval_module(monkeypatch, base_module):
     """Load the Retrieval class without its service-layer dependencies."""
-    repo_root = Path(__file__).resolve().parents[4]
+    repo_root = Path(__file__).resolve().parents[3]
 
     def install_module(name, *, package=False, **attributes):
         module = ModuleType(name)
@@ -132,19 +144,23 @@ def retrieval_module(monkeypatch, base_module):
     install_module("agent.tools.base", ToolParamBase=ToolParamBase, ToolBase=ToolBase, ToolMeta=dict)
 
     install_module("api", package=True)
-    install_module("api.db", package=True)
+    install_module("api.db", package=True, PermissionValue=SimpleNamespace(PERMISSION_READ="read"), ResourceType=SimpleNamespace(MEMORY="memory"))
     install_module("api.db.services", package=True)
     install_module("api.db.joint_services", package=True)
     install_module("api.db.services.doc_metadata_service", DocMetadataService=type("DocMetadataService", (), {}))
     install_module("api.db.services.knowledgebase_service", KnowledgebaseService=type("KnowledgebaseService", (), {}))
     install_module("api.db.services.llm_service", LLMBundle=type("LLMBundle", (), {}))
     install_module("api.db.services.memory_service", MemoryService=type("MemoryService", (), {}))
+    install_module("api.db.services.permission_service", PermissionService=type("PermissionService", (), {}))
+    install_module("api.db.services.user_service", UserTenantService=type("UserTenantService", (), {}))
     install_module("api.db.joint_services.memory_message_service")
     install_module(
         "api.db.joint_services.tenant_model_service",
         get_tenant_default_model_by_type=lambda *_args, **_kwargs: None,
         resolve_model_config=lambda *_args, **_kwargs: None,
     )
+    install_module("api.utils", package=True)
+    install_module("api.utils.permission_utils", filter_accessible_doc_ids_for_user=lambda *_args, **_kwargs: (None, None, None))
 
     install_module("common", package=True)
     install_module("common.constants", LLMType=SimpleNamespace(EMBEDDING="embedding", RERANK="rerank", CHAT="chat"))
@@ -392,6 +408,27 @@ def test_rejected_incomplete_match_is_logged_without_template_value(base_module,
             {"item": "VALUE"},
             ["{item}"],
             "before VALUE after",
+        ),
+        (
+            "variable_ref_patt_re",
+            "a { {X@y}} b",
+            {"X@y": "VALUE"},
+            ["{ {X@y}}"],
+            "a VALUE b",
+        ),
+        (
+            "variable_ref_patt_re",
+            "a {sys.query} b",
+            {"sys.query": "X"},
+            ["{sys.query}"],
+            "a X b",
+        ),
+        (
+            "iteration_alias_patt_re",
+            "{ {result} }",
+            {"result": "VALUE"},
+            ["{ {result} }"],
+            "VALUE",
         ),
     ],
 )

@@ -376,7 +376,7 @@ fi
 
 if [[ "${ENABLE_DATASYNC}" -eq 1 ]]; then
     echo "Starting data sync..."
-    run_with_restart "data sync" "$PY" rag/svr/sync_data_source.py &
+    run_with_restart "Data sync" "$PY" rag/svr/sync_data_source.py &
 fi
 
 if [[ "${ENABLE_MCP_SERVER}" -eq 1 ]]; then
@@ -394,46 +394,24 @@ if [[ "${ENABLE_TASKEXECUTOR}" -eq 1 ]]; then
             done
         fi
 
-        if [[ "${API_PROXY_SCHEME}" == "go" ]]; then
-            while true; do
-                echo "Starting go ingestor..."
-                set +e
-                bin/ragflow_server --ingestor
-                status=$?
-                set -e
-                if [ "$status" -eq 0 ]; then
-                    echo "Go ingestor exited cleanly, restarting in 1s..."
-                else
-                    echo "Go ingestor exited with status $status, restarting in 1s..."
-                fi
-                sleep 1
-            done &
+        if [[ "${API_PROXY_SCHEME}" == "hybrid" ]] || [[ "${API_PROXY_SCHEME}" == "go" ]]; then
+            echo "Starting ingestor..."
+            run_with_restart "ingestor" bin/ragflow_server --ingestor &
         fi
     else
         # Otherwise, start a fixed number of workers
         echo "Starting ${WORKERS} task executor(s) on host '${HOST_ID}'..."
         for (( i=0; i<WORKERS; i++ ))
         do
-          if [[ "${API_PROXY_SCHEME}" == "hybrid" ]] || [[ "${API_PROXY_SCHEME}" == "python" ]]; then
-              echo "Starting python task executor..."
-              task_exe "${i}" "${HOST_ID}" &
-              sleep 1;
-          fi
+            if [[ "${API_PROXY_SCHEME}" == "hybrid" ]] || [[ "${API_PROXY_SCHEME}" == "python" ]]; then
+                echo "Starting python task executor..."
+                task_exe "${i}" "${HOST_ID}" &
+                sleep 1;
+            fi
 
-          if [[ "${API_PROXY_SCHEME}" == "go" ]]; then
-              while true; do
-                  echo "Starting go ingestor..."
-                  set +e
-                  bin/ragflow_server --ingestor
-                  status=$?
-                  set -e
-                  if [ "$status" -eq 0 ]; then
-                      echo "Go ingestor exited cleanly, restarting in 1s..."
-                  else
-                      echo "Go ingestor exited with status $status, restarting in 1s..."
-                  fi
-                  sleep 1
-              done &
+            if [[ "${API_PROXY_SCHEME}" == "hybrid" ]] || [[ "${API_PROXY_SCHEME}" == "go" ]]; then
+                echo "Starting ingestor..."
+                run_with_restart "ingestor" bin/ragflow_server --ingestor &
           fi
         done
     fi
