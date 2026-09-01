@@ -2457,7 +2457,7 @@ Example: Virtual Hosted Style`,
       graph: 'Graph',
       structureMindmap: 'Mind map',
       structureTimeline: 'Timeline',
-      noWikiPages: 'No wiki pages yet',
+      noWikiPages: 'No wiki yet',
       noSkills: 'No skills yet',
       noStructureGraph: 'No graph yet',
       noStructureMindmap: 'No mind map yet',
@@ -3465,6 +3465,8 @@ This process aggregates variables from multiple branches into a single variable 
       tokenizerRequired: 'Please add the Indexer node first',
       nodeFormInvalid:
         'Cannot save: "{{name}}" has invalid settings. Please fix them first',
+      agentModelMissing:
+        'Cannot save: "{{name}}" has no model selected. Please choose one first',
       tokenizerDescription:
         'Transforms text into the required data structure (e.g., vector embeddings for Embedding Search) depending on the chosen search method.',
       tokenChunker: 'Token Chunker',
