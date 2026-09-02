@@ -193,6 +193,8 @@ export function DatasetStructureView({ kind }: DatasetStructureViewProps) {
       <RepresentationRenderer
         template={template}
         highlightNodeId={selectedEntityName || null}
+        totalEntities={data?.total_entities}
+        returnedEntities={data?.returned_entities}
       />
       <UpdateLogSheet
         open={updateSheetOpen}
