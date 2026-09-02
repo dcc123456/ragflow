@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import time
+from concurrent.futures import Future
 from functools import partial
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -101,11 +102,19 @@ def _build_canvas(invoke_message):
     async def invoke_begin(_component, **_kwargs):
         return None
 
+    def submit(fn, *args):
+        future = Future()
+        try:
+            future.set_result(fn(*args))
+        except BaseException as e:
+            future.set_exception(e)
+        return future
+
     begin = _build_canvas_component("begin", "Begin", invoke_begin)
     message = _build_canvas_component("message", "Message", invoke_message)
     canvas = Canvas.__new__(Canvas)
     canvas.__dict__.update(
-        _thread_pool=SimpleNamespace(_max_workers=1),
+        _thread_pool=SimpleNamespace(_max_workers=1, submit=submit),
         _run_token_usage={"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "calls": 0},
         task_id="task",
         path=[],

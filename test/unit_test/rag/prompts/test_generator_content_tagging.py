@@ -96,11 +96,15 @@ class TestContentTagging:
 
     @pytest.mark.p2
     @pytest.mark.asyncio
-    async def test_a_real_parse_failure_still_propagates(self):
+    async def test_a_real_parse_failure_still_propagates(self, monkeypatch):
         """Guards against "fix" it by wrapping the whole parse in except Exception.
 
-        json_repair.loads does raise, as ValueError, once nesting passes the parser's
-        recursion limit. That is a genuine failure and must not be swallowed as no tags.
+        A genuine parser failure must not be swallowed as no tags.
         """
+
+        def raise_parse_failure(_reply):
+            raise ValueError("parse failed")
+
+        monkeypatch.setattr("rag.prompts.generator.json_repair.loads", raise_parse_failure)
         with pytest.raises(ValueError):
-            await content_tagging(_chat_model("[" * 400), "chunk", ["alpha", "beta"], _EXAMPLES)
+            await content_tagging(_chat_model("malformed"), "chunk", ["alpha", "beta"], _EXAMPLES)
