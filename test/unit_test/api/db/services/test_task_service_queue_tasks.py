@@ -31,11 +31,12 @@ def _queue_tasks(monkeypatch, parser_id, parser_config):
     monkeypatch.setattr(task_service, "bulk_insert_into_db", lambda _model, tasks, _replace: queued_tasks.extend(tasks))
     monkeypatch.setattr(task_service.DocumentService, "begin2parse", lambda *_args: None)
     monkeypatch.setattr(task_service, "seed_doc_chunking_counter", lambda *_args: True)
-    monkeypatch.setattr(task_service.REDIS_CONN, "queue_product", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(task_service.RABBITMQ_CONN, "queue_product", lambda *_args, **_kwargs: True)
 
     task_service.queue_tasks(
         {
             "id": "doc-id",
+            "tenant_id": "tenant-id",
             "name": "resume.pdf",
             "type": FileType.PDF.value,
             "parser_id": parser_id,
@@ -49,12 +50,10 @@ def _queue_tasks(monkeypatch, parser_id, parser_config):
 
 
 @pytest.mark.p2
-def test_queue_tasks_collapses_multiple_page_ranges_for_resume(monkeypatch):
+def test_queue_tasks_keeps_multiple_page_ranges_for_resume(monkeypatch):
     queued_tasks = _queue_tasks(monkeypatch, "resume", {"pages": [[1, 5], [10, 15]]})
 
-    assert len(queued_tasks) == 1
-    assert queued_tasks[0]["from_page"] == 0
-    assert queued_tasks[0]["to_page"] == 20
+    assert [(task["from_page"], task["to_page"]) for task in queued_tasks] == [(0, 4), (9, 14)]
 
 
 @pytest.mark.p2

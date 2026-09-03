@@ -60,19 +60,6 @@ canvas_role_guard = check_role_access(CANVAS_API_ACTION_MAP, CANVAS_ROLE_RESOURC
 search_role_guard = check_role_access(SEARCH_API_ACTION_MAP, SEARCH_ROLE_RESOURCE_TYPE)
 
 
-async def _accessible_kbs(kb_ids, tenant_id):
-    """Return whether every requested KB is accessible to the caller."""
-    if isinstance(kb_ids, str):
-        kb_ids = [kb_ids]
-    if not kb_ids:
-        return False
-    for kb_id in kb_ids:
-        if not await thread_pool_exec(KnowledgebaseService.accessible, kb_id, tenant_id):
-            logger.warning("Denied KB access: user_id=%s kb_id=%s", tenant_id, kb_id)
-            return False
-    return True
-
-
 @manager.route("/chatbots/<dialog_id>/completions", methods=["POST"])  # noqa: F821
 @login_required(auth_types=AUTH_BETA)
 @dialog_role_guard
@@ -344,10 +331,6 @@ async def ask_about_embedded(tenant_id=None):
             search_config = search_app.get("search_config", {})
     search_config = {**search_config, "kb_ids": req["kb_ids"]}
 
-    effective_kb_ids = search_config.get("kb_ids", req["kb_ids"])
-    if not await _accessible_kbs(effective_kb_ids, uid):
-        return get_error_data_result(message="You don't own the requested dataset")
-
     chat_llm_name = ""
     if not search_config or not search_config.get("chat_id"):
         _, tenant_info = TenantService.get_by_id(uid)
@@ -602,9 +585,6 @@ async def mindmap(tenant_id=None):
     if not accessible_kb_ids:
         return get_error_data_result(message=kb_error or "No accessible dataset.", code=RetCode.PERMISSION_ERROR)
     req["kb_ids"] = accessible_kb_ids
-
-    if not await _accessible_kbs(req["kb_ids"], tenant_id):
-        return get_error_data_result(message="You don't own the requested dataset")
 
     search_id = req.get("search_id", "")
     search_app = await thread_pool_exec(SearchService.get_detail, search_id) if search_id else {}
