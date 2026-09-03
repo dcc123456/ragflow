@@ -195,7 +195,7 @@ export interface IRetrievalForm {
   top_k?: number;
   rerank_id?: string;
   tenant_rerank_id?: string;
-  kb_ids: string[];
+  dataset_ids?: string[];
 }
 
 export interface ICodeForm {

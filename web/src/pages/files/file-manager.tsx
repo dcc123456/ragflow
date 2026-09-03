@@ -1,6 +1,7 @@
 import { BulkOperateBar } from '@/components/bulk-operate-bar';
 import { FileUploadDialog } from '@/components/file-upload-dialog';
 import { Button } from '@/components/ui/button';
+import { useClearSelectionOnPageChange } from '@/hooks/logic-hooks/use-clear-selection-on-page-change';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -80,6 +81,8 @@ export const FilesManager = {
       clearRowSelection,
       selectedCount,
     } = useRowSelection();
+
+    useClearSelectionOnPageChange(pagination, clearRowSelection);
 
     const {
       showMoveFileModal,

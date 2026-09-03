@@ -61,6 +61,7 @@ interface LlmSettingFieldItemsProps {
   collapseOpen?: boolean;
   onCollapseOpenChange?: (open: boolean) => void;
   ownerTenantId?: string;
+  llmRequired?: boolean;
 }
 
 export const LLMIdFormField = {
@@ -110,6 +111,7 @@ export function LlmSettingFieldItems({
   collapseOpen,
   onCollapseOpenChange,
   ownerTenantId,
+  llmRequired = false,
 }: LlmSettingFieldItemsProps) {
   const form = useFormContext();
   const { t } = useTranslate('chat');
@@ -317,6 +319,7 @@ export function LlmSettingFieldItems({
         testId={llmSelectTestId}
         optionTestIdPrefix={llmOptionTestIdPrefix}
         ownerTenantId={ownerTenantId}
+        required={llmRequired}
       ></LLMFormField>
       {showCollapse ? (
         <Collapse

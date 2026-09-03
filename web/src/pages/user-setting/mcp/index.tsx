@@ -27,6 +27,7 @@ import { SearchInput } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { RAGFlowPagination } from '@/components/ui/ragflow-pagination';
 import { useGoToPreviousPageOnEmpty } from '@/hooks/logic-hooks';
+import { useClearSelectionOnPageChange } from '@/hooks/logic-hooks/use-clear-selection-on-page-change';
 import { useListMcpServer } from '@/hooks/use-mcp-request';
 import {
   hasOwnerPermission,
@@ -81,6 +82,7 @@ export default function McpServer() {
     selectAllChecked,
     resetSelection,
   } = useBulkOperateMCP(data.mcp_servers);
+  useClearSelectionOnPageChange(pagination, resetSelection);
   const { t } = useTranslation();
   const {
     privilegeModal,
