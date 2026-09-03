@@ -100,24 +100,6 @@ export const useGetDocumentUrl = (isAgent: boolean) => {
   return url;
 };
 
-export const useCatchError = (api: string) => {
-  const [error, setError] = useState('');
-  const fetchDocument = useCallback(async () => {
-    const ret = await axios.get(api);
-    const { data } = ret;
-    if (!(data instanceof ArrayBuffer) && data.code !== 0) {
-      setError(data.message);
-    }
-    return ret;
-  }, [api]);
-
-  useEffect(() => {
-    fetchDocument();
-  }, [fetchDocument]);
-
-  return { fetchDocument, error };
-};
-
 export const useFetchDocument = () => {
   const fetchDocument = useCallback(async (api: string) => {
     const ret = await axios.get(api, {
@@ -217,10 +199,7 @@ type XsData = {
       cell: { style?: number; text?: string },
       type?: 'all' | 'text' | 'format',
     ) => void;
-    getCellOrNew: (
-      ri: number,
-      ci: number,
-    ) => { style?: number; text?: string };
+    getCellOrNew: (ri: number, ci: number) => { style?: number; text?: string };
     getHeight?: (ri: number) => number;
     len?: number;
   };
@@ -291,6 +270,9 @@ export function applyExcelSourceLocate(
     }
   }
 
+  // clickSwap2 must run even when the target sheet is already on screen: it is
+  // the library's only hook that redraws images embedded in the sheet, and the
+  // reRender/render/reload calls below each clear the canvas first.
   const tab = xs.bottombar?.items?.[sheetIdx];
   if (tab && typeof xs.bottombar?.clickSwap2 === 'function') {
     xs.bottombar.clickSwap2(tab);
@@ -298,29 +280,30 @@ export function applyExcelSourceLocate(
     xs.sheet.resetData(data);
   }
 
-  const rowHeight = data.rows.getHeight?.(0) || xs.sheet.data?.row?.height || 24;
+  const rowHeight =
+    data.rows.getHeight?.(0) || xs.sheet.data?.row?.height || 24;
   let y = 0;
   for (let r = 0; r < r1; r++) {
     y += data.rows.getHeight?.(r) ?? rowHeight;
   }
   data.scroll = { ...(data.scroll || { x: 0, y: 0 }), x: 0, y };
   if (xs.sheet.data && xs.sheet.data !== data) {
-    xs.sheet.data.scroll = { ...(xs.sheet.data.scroll || { x: 0, y: 0 }), x: 0, y };
+    xs.sheet.data.scroll = {
+      ...(xs.sheet.data.scroll || { x: 0, y: 0 }),
+      x: 0,
+      y,
+    };
   }
   xs.reRender?.();
   xs.sheet.table?.render?.();
   xs.sheet.reload?.();
 }
 
-export const useFetchExcel = (
-  filePath: string,
-  positions?: number[][],
-) => {
+export const useFetchExcel = (filePath: string, positions?: number[][]) => {
   const [status, setStatus] = useState(true);
   const { fetchDocument } = useFetchDocument();
   const [containerEl, setContainerEl] = useState<HTMLDivElement | null>(null);
   const size = useSize(containerEl);
-  const { error } = useCatchError(filePath);
 
   const previewerRef = useRef<ReturnType<typeof jsPreviewExcel.init> | null>(
     null,
@@ -458,7 +441,7 @@ export const useFetchExcel = (
     };
   }, []);
 
-  return { status, containerRef: setContainerEl, error };
+  return { status, containerRef: setContainerEl };
 };
 
 export const useCatchDocumentError = (url: string) => {

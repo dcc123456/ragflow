@@ -298,4 +298,6 @@ export interface IArtifactGraphRelation {
 export interface IArtifactGraph {
   entities: IArtifactGraphEntity[];
   relations: IArtifactGraphRelation[];
+  total_entities?: number;
+  returned_entities?: number;
 }
