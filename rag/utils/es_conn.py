@@ -688,7 +688,8 @@ class ESConnection(ESConnectionBase):
         if not sid:
             return
         while True:
-            es_res = self.es.scroll(scroll_id=sid)
+            es_res = self.es.scroll(scroll_id=sid, scroll="15m")
+            sid = es_res.get("_scroll_id", sid)
             if not es_res["hits"]["hits"]:
                 break
             yield es_res
