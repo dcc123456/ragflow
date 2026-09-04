@@ -59,7 +59,6 @@ EXPECTED_DELIMITER_DEFAULTS = {
     "rag/app/one.py": 1,
     "rag/app/manual.py": 1,
     "rag/app/paper.py": 1,
-    "rag/svr/task_executor.py": 1,
     "rag/svr/task_executor_refactor/chunk_service.py": 1,
     "api/db/services/file_service.py": 1,
     "rag/flow/parser/parser.py": 1,
