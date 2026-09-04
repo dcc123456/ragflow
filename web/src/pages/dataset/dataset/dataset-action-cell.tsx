@@ -18,7 +18,7 @@ import { useCallback, useContext } from 'react';
 import { omit } from 'lodash';
 import { UseRenameDocumentShowType } from './use-rename-document';
 import { ShowPrivilegeModalContext } from './use-show-privilege-dialog';
-import { isParserRunning } from './utils';
+import { isDocumentProcessing } from './utils';
 
 const Fields = ['name', 'size', 'type', 'create_time', 'update_time'];
 
@@ -38,8 +38,8 @@ export function DatasetActionCell({
   datasetEditButtonDisabled: boolean;
 } & UseRenameDocumentShowType &
   Pick<UseRowSelectionType, 'setRowSelection'>) {
-  const { id, run, type } = record;
-  const isRunning = isParserRunning(run);
+  const { id, type } = record;
+  const isRunning = isDocumentProcessing(record);
   const isVirtualDocument = type === DocumentType.Virtual;
 
   const { removeDocument } = useRemoveDocument();

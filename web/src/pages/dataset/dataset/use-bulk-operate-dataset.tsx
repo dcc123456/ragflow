@@ -24,6 +24,7 @@ import { useParams } from 'react-router';
 import { toast } from 'sonner';
 import { DocumentType, RunningStatus } from './constant';
 import { ShowPrivilegeModalReturnType } from './use-show-privilege-dialog';
+import { isDocumentProcessing } from './utils';
 
 export function useBulkOperateDataset({
   rowSelection,
@@ -109,10 +110,7 @@ export function useBulkOperateDataset({
 
   const handleDelete = useCallback(() => {
     const deletedKeys = selectedRowKeys.filter(
-      (x) =>
-        !documents
-          .filter((y) => y.run === RunningStatus.RUNNING)
-          .some((y) => y.id === x),
+      (x) => !documents.filter(isDocumentProcessing).some((y) => y.id === x),
     );
     if (deletedKeys.length === 0) {
       toast.error(
