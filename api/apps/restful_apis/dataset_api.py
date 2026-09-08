@@ -26,8 +26,6 @@ from api.utils.validation_utils import (
     CreateDatasetReq,
     DeleteDatasetReq,
     ListDatasetReq,
-    SearchDatasetReq,
-    SearchDatasetsReq,
     UpdateDatasetReq,
     validate_and_parse_json_request,
     validate_and_parse_request_args,
@@ -37,11 +35,10 @@ from common.misc_utils import thread_pool_exec
 from common.role_util import check_role_access, KB_API_ACTION_MAP, KB_ROLE_RESOURCE_TYPE
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.user_service import UserTenantService
-from rag.nlp import compliance
 
 from api.utils.billing import check_dynamic_resources, get_dynamic_resource_error_result
 from api.db import PermissionValue, ResourceType
-from api.utils.permission_utils import check_kb_permission, check_search_permission, has_permission_for_member, filter_accessible_doc_ids_for_user
+from api.utils.permission_utils import check_kb_permission, has_permission_for_member, filter_accessible_doc_ids_for_user
 
 
 kb_role_guard = check_role_access(KB_API_ACTION_MAP, KB_ROLE_RESOURCE_TYPE)
@@ -191,6 +188,10 @@ async def create(tenant_id: str = None):
             description:
               type: string
               description: Optional dataset description.
+            language:
+              type: string
+              maxLength: 32
+              description: Optional document language (e.g. "English", "Chinese"); if omitted, the server default is used.
             embedding_model:
               type: string
               description: Optional embedding model name; if omitted, the tenant's default embedding model is used.
@@ -611,89 +612,6 @@ async def rename_tag(tenant_id, dataset_id):
         return get_error_argument_result(str(e))
     except Exception as e:
         logging.exception(e)
-        return get_error_data_result(message="Internal server error")
-
-
-@manager.route("/datasets/search", methods=["POST"])  # noqa: F821
-@login_required
-@add_tenant_id_to_kwargs
-@check_search_permission(PermissionValue.PERMISSION_WRITE)
-async def search_datasets(tenant_id):
-    """Search (retrieval test) across multiple datasets.
-
-    POST /api/v1/datasets/search
-    JSON body: {"dataset_ids": list[str] (required), "question": str (required), "doc_ids": list[str], "knn_top_k": int (default 1024), "knn_num_candidates": int (default 2048), "page": int, "page_size": int, "size": int (fallback),
-               "similarity_threshold": float, "vector_similarity_weight": float, "use_kg": bool, "highlight": bool,
-               "cross_languages": list[str], "keyword": bool, "meta_data_filter": dict, "include_knowledge_compilation": bool (default true)}
-    The legacy "top_k" parameter is accepted as an alias for "knn_top_k".
-    "knn_num_candidates" currently applies only to Elasticsearch.
-    Success: {"code": 0, "data": {"chunks": [...], "total": int, "labels": [...]}}
-    Errors: ARGUMENT_ERROR (101) for invalid payload; DATA_ERROR (102) for access denied or internal errors.
-    """
-    req, err = await validate_and_parse_json_request(request, SearchDatasetsReq)
-    if err is not None:
-        return get_error_argument_result(err)
-    sensitive_words = compliance.sensitive_question_words(req.get("question"))
-    if sensitive_words:
-        logging.info("[dataset.search_datasets] compliance rejected sensitive question: %s", sensitive_words)
-        return get_json_result(message=compliance.SENSITIVE_QUESTION_RESPONSE, data={"chunks": [], "total": 0, "labels": []})
-
-    dataset_ids = _unique_ids(req.get("dataset_ids"))
-    if not dataset_ids:
-        return get_error_argument_result("`dataset_ids` is required")
-
-    allowed_kbs, err = _check_dataset_permissions(current_user.id, dataset_ids, PermissionValue.PERMISSION_READ)
-    if err:
-        return get_error_data_result(message=err)
-    req["dataset_ids"] = [kb.id for kb in allowed_kbs]
-
-    try:
-        success, result = await dataset_api_service.search_datasets(tenant_id, req)
-        if success:
-            return get_result(data=result)
-        else:
-            return get_error_data_result(message=result)
-    except Exception as e:
-        logging.exception(e)
-        if "not_found" in str(e):
-            return get_error_data_result(message="No chunk found! Check the chunk status please!")
-        return get_error_data_result(message="Internal server error")
-
-
-@manager.route("/datasets/<dataset_id>/search", methods=["POST"])  # noqa: F821
-@login_required
-@add_tenant_id_to_kwargs
-@check_kb_permission(permission=PermissionValue.PERMISSION_READ)
-async def search(tenant_id, dataset_id):
-    """Search (retrieval test) within a dataset.
-
-    POST /api/v1/datasets/<dataset_id>/search
-    JSON body: {"question": str (required), "doc_ids": list[str], "knn_top_k": int (default 1024), "knn_num_candidates": int (default 2048), "page": int, "page_size": int, "size": int (fallback),
-               "similarity_threshold": float, "vector_similarity_weight": float, "use_kg": bool,
-               "cross_languages": list[str], "keyword": bool, "meta_data_filter": dict, "include_knowledge_compilation": bool (default true)}
-    The legacy "top_k" parameter is accepted as an alias for "knn_top_k".
-    "knn_num_candidates" currently applies only to Elasticsearch.
-    Success: {"code": 0, "data": {"chunks": [...], "total": int, "labels": [...]}}
-    Errors: ARGUMENT_ERROR (101) for invalid payload; DATA_ERROR (102) for access denied or internal errors.
-    """
-    req, err = await validate_and_parse_json_request(request, SearchDatasetReq)
-    if err is not None:
-        return get_error_argument_result(err)
-    sensitive_words = compliance.sensitive_question_words(req.get("question"))
-    if sensitive_words:
-        logging.info("[dataset.search] compliance rejected sensitive question: %s", sensitive_words)
-        return get_json_result(message=compliance.SENSITIVE_QUESTION_RESPONSE, data={"chunks": [], "total": 0, "labels": []})
-    req["dataset_ids"] = [dataset_id]
-    try:
-        success, result = await dataset_api_service.search_datasets(tenant_id, req)
-        if success:
-            return get_result(data=result)
-        else:
-            return get_error_data_result(message=result)
-    except Exception as e:
-        logging.exception(e)
-        if "not_found" in str(e):
-            return get_error_data_result(message="No chunk found! Check the chunk status please!")
         return get_error_data_result(message="Internal server error")
 
 

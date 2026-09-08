@@ -270,9 +270,12 @@ const Login = () => {
     channelsLoading ||
     loginWithChannelLoading;
   const { config } = useSystemConfig();
-  const registerEnabled = config?.registerEnabled !== 0;
+  // const registerEnabled = config?.registerEnabled !== 0;
   const [isForgetPassword, setIsForgetPassword] = useState(false);
   const redirectTo = searchParams.get('redirect') || '/';
+  const registerEnabled =
+    config?.registerEnabled === 1 || config?.registerEnabled === true;
+
   const { isLogin } = useAuth();
   useEffect(() => {
     if (isLogin) {

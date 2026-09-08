@@ -8,6 +8,7 @@ import { RenameDialog } from '@/components/rename-dialog';
 import { Button } from '@/components/ui/button';
 import { RAGFlowPagination } from '@/components/ui/ragflow-pagination';
 import { Spin } from '@/components/ui/spin';
+import { ListDeletionKey } from '@/constants/list-deletion';
 import { useGoToPreviousPageOnEmpty } from '@/hooks/logic-hooks';
 import { useFetchNextKnowledgeListByPage } from '@/hooks/use-knowledge-request';
 import { useQueryClient } from '@tanstack/react-query';
@@ -41,7 +42,9 @@ export default function Datasets() {
     setPagination,
     handleInputChange,
     searchString,
+    setSearchString,
     filterValue,
+    setFilterValue,
     handleFilterSubmit,
     loading,
   } = useFetchNextKnowledgeListByPage();
@@ -72,7 +75,13 @@ export default function Datasets() {
     },
     [setPagination],
   );
-  useGoToPreviousPageOnEmpty(kbs?.length, loading);
+  useGoToPreviousPageOnEmpty(kbs?.length, loading, {
+    deletionKey: ListDeletionKey.KnowledgeList,
+    searchString,
+    setSearchString,
+    filterValue,
+    setFilterValue,
+  });
   const [searchUrl, setSearchUrl] = useSearchParams();
   const isCreate = searchUrl.get('isCreate') === 'true';
   const queryClient = useQueryClient();

@@ -52,7 +52,10 @@ def normalize_layout_recognizer(layout_recognizer_raw: Any) -> tuple[Any, str | 
         # are still recognised.  ``parser_model_name`` keeps the original raw value
         # unchanged — ``split_model_name`` downstream handles the ``#`` suffix.
         lowered = layout_recognizer_raw.lower().split("#", 1)[0]
-        if lowered.endswith("@mineru"):
+        if lowered.endswith("@monkeyocrv2"):
+            parser_model_name = layout_recognizer_raw
+            layout_recognizer = "MonkeyOCRv2"
+        elif lowered.endswith("@mineru"):
             parser_model_name = layout_recognizer_raw
             layout_recognizer = "MinerU"
         elif lowered.endswith("@paddleocr"):

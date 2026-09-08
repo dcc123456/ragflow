@@ -340,6 +340,10 @@ async def collect():
             task["tenant_id"] = msg["tenant_id"]
         task["source_id"] = msg["source_id"]
         task["message_dict"] = msg["message_dict"]
+    # Redis-only: Task rows have no user_id column. Copy it onto the in-memory
+    # task so handle_task can install LLM request context for embedding calls.
+    if msg.get("user_id"):
+        task["user_id"] = msg["user_id"]
     return redis_msg, task
 
 
