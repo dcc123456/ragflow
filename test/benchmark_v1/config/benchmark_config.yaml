@@ -1,0 +1,36 @@
+# RAGFlow Performance Benchmark Configuration
+# =============================================
+
+# RAGFlow Service Configuration
+ragflow:
+  base_url: "http://127.0.0.1:9380"  # RAGFlow service URL
+  api_key: "RAGFlowlow-API-KEY"      # API Key for authentication
+  timeout: 300                       # Request timeout in seconds
+
+# Knowledge Base Configuration
+knowledge_base:
+  kb_id: "auto"            # Knowledge Base ID
+
+# Test Data Paths
+test_data:
+  small_pdfs_dir: "./test_data/small"      # 5-10 pages, 1-2MB
+  medium_pdfs_dir: "./test_data/medium"    # ~24 pages, 3-5MB
+  large_pdfs_dir: "./test_data/large"      # ~48 pages, >5MB
+  warmup_files_dir: "./test_data/warmup"   # Small files for warmup
+  chunks_pdfs_dir: "./test_data/chunks"    # PDF files for retrieval test
+  query_file: "./test_data/chunks/queries.json"   # Query statements JSON file
+
+# Storage for test results
+results:
+  output_dir: "./results"
+
+# Resource Monitoring
+monitoring:
+  enabled: true
+  interval_seconds: 5
+  targets:
+    - "ragflow-server"
+    - "ragflow-redis"
+    - "ragflow-mysql"
+    - "ragflow-minio"
+    - "ragflow-es"
