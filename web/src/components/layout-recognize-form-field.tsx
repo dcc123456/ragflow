@@ -38,6 +38,7 @@ export const enum ParseDocumentType {
   Docling = 'Docling',
   OpenDataLoader = 'OpenDataLoader',
   TCADPParser = 'TCADP Parser',
+  MonkeyOCRv2 = 'MonkeyOCRv2',
 }
 
 const hiddenDefaultParserTypes = [
@@ -90,7 +91,14 @@ export function LayoutRecognizeFormField({
   const treeData = useMemo(() => {
     const list = optionsWithoutLLM
       ? optionsWithoutLLM
-      : [ParseDocumentType.DeepDOC, ParseDocumentType.PlainText].map((x) => ({
+      : [
+          ParseDocumentType.DeepDOC,
+          ParseDocumentType.PlainText,
+          ParseDocumentType.Docling,
+          ParseDocumentType.OpenDataLoader,
+          ParseDocumentType.TCADPParser,
+          ParseDocumentType.MonkeyOCRv2,
+        ].map((x) => ({
           label: x === ParseDocumentType.PlainText ? t(camelCase(x)) : x,
           value: x,
         }));

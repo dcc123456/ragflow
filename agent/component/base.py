@@ -398,7 +398,42 @@ class ComponentBase(ABC):
         self._canvas = canvas
         self._id = id
         self._param = param
+        self._unrunnable = ""
+        self._unrunnable_error = ""
         self._param.check()
+
+    def set_unrunnable(self, reason: str):
+        """Record that the graph leaves this component no way to run.
+
+        The scheduler decides this before the batch is dispatched. It is not an
+        exception raised by the component's own work, so the configured
+        exception default value does not stand in for it: there is no result to
+        default to, and the reason is what the caller needs to see.
+
+        It describes one dispatch, not the component, and `invoke` clears it
+        once it has been reported: a loop back-edge can put the same id in a
+        later batch, where its input may well be available.
+        """
+        self._unrunnable = reason
+
+    def _consume_unrunnable(self) -> bool:
+        """Report a scheduler refusal in place of running, once.
+
+        Returns True when this dispatch must not run. A refusal recorded for an
+        earlier batch is cleared here rather than carried into a dispatch that
+        does run, so a node the scheduler later reaches with its input available
+        does not finish reporting an error it no longer has.
+        """
+        if self._unrunnable:
+            self._unrunnable_error, self._unrunnable = self._unrunnable, ""
+            _logger.warning(self._unrunnable_error)
+            self.set_output("_ERROR", self._unrunnable_error)
+            self.set_output("_elapsed_time", time.perf_counter() - self.output("_created_time"))
+            return True
+        if self._unrunnable_error and self.error() == self._unrunnable_error:
+            self.set_output("_ERROR", None)
+        self._unrunnable_error = ""
+        return False
 
     def is_canceled(self) -> bool:
         return self._canvas.is_canceled()
@@ -422,6 +457,8 @@ class ComponentBase(ABC):
         )
         self.set_output("_created_time", time.perf_counter())
         logging.info(f"[Component] Entering invoke: {get_log_prefix()}")
+        if self._consume_unrunnable():
+            return self.output()
         try:
             self._invoke(**kwargs)
             logging.info(f"[Component] Exiting invoke: {get_log_prefix()}")
@@ -450,6 +487,8 @@ class ComponentBase(ABC):
         )
         self.set_output("_created_time", time.perf_counter())
         logging.info(f"[Component] Entering invoke_async: {get_log_prefix()}")
+        if self._consume_unrunnable():
+            return self.output()
         try:
             if self.check_if_canceled("Component processing"):
                 return
@@ -492,6 +531,8 @@ class ComponentBase(ABC):
         return self._param.outputs.get("_ERROR", {}).get("value")
 
     def reset(self, only_output=False):
+        self._unrunnable = ""
+        self._unrunnable_error = ""
         outputs: dict = self._param.outputs  # for better performance
         for k in outputs.keys():
             outputs[k]["value"] = None
@@ -592,6 +633,18 @@ class ComponentBase(ABC):
 
     def get_input_elements(self) -> dict[str, Any]:
         return self._param.inputs
+
+    def param_refs(self) -> list[str]:
+        # Variable references a component resolves from its own params instead
+        # of from `inputs`. Override where `_invoke` calls get_variable_value.
+        return []
+
+    def get_dependency_ids(self) -> list[str]:
+        ids = [ele["_cpn_id"] for ele in self.get_input_elements().values() if isinstance(ele, dict) and ele.get("_cpn_id")]
+        for ref in self.param_refs():
+            if isinstance(ref, str) and ref.find("@") > 0:
+                ids.append(ref.split("@", 1)[0])
+        return ids
 
     def get_input_form(self) -> dict[str, dict]:
         return self._param.get_input_form()

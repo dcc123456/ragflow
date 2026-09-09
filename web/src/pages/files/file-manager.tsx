@@ -29,6 +29,8 @@ import { useHandleCreateFolder } from './use-create-folder';
 import { useHandleMoveFile } from './use-move-file';
 import { useHandleSyncFile } from './use-sync-file';
 import { useHandleUploadFile } from './use-upload-file';
+import { useGoToPreviousPageOnEmpty } from '@/hooks/logic-hooks';
+import { ListDeletionKey } from '@/constants/list-deletion';
 export enum FileTabs {
   FILE = 'file',
   EVALUATION = 'evaluation',
@@ -46,8 +48,7 @@ export const FilesManager = {
       fileUploadLoading,
       onFileUploadOk,
     } = useHandleUploadFile();
-    const connectKnowledgeModal: UseHandleConnectToKnowledgeReturnType =
-      useHandleConnectToKnowledge();
+
     const {
       folderCreateModalVisible,
       showFolderCreateModal,
@@ -71,6 +72,7 @@ export const FilesManager = {
       loading,
       setPagination,
       searchString,
+    setSearchString,
       handleInputChange,
     } = useFetchFileList();
 
@@ -84,6 +86,12 @@ export const FilesManager = {
 
     useClearSelectionOnPageChange(pagination, clearRowSelection);
 
+  useGoToPreviousPageOnEmpty(files?.length, loading, {
+    deletionKey: ListDeletionKey.FileList,
+    searchString,
+    setSearchString,
+  });
+
     const {
       showMoveFileModal,
       moveFileVisible,
@@ -91,6 +99,9 @@ export const FilesManager = {
       hideMoveFileModal,
       moveFileLoading,
     } = useHandleMoveFile({ clearRowSelection });
+
+  const connectKnowledgeModal: UseHandleConnectToKnowledgeReturnType =
+    useHandleConnectToKnowledge();
 
     const { list } = useBulkOperateFile({
       files,
