@@ -79,7 +79,13 @@ def _load_memory_api(monkeypatch, query_string, calls):
         login_required=lambda func=None, **_kwargs: (lambda f: f) if func is None else func,
     )
     _stub(monkeypatch, "api.apps.services", memory_api_service=SimpleNamespace(list_memory=_list_memory))
+    _stub(monkeypatch, "api.db.services", __path__=[])
+    _stub(monkeypatch, "api.db.services.permission_service", PermissionChangeLogService=SimpleNamespace(), PermissionService=SimpleNamespace())
+    _stub(monkeypatch, "api.db.services.user_service", UserTenantService=SimpleNamespace())
     _stub(monkeypatch, "api.db.joint_services.tenant_model_service", ensure_tenant_model_ids_for_params=lambda *_a, **_k: {})
+    _stub(monkeypatch, "api.utils.billing", check_resources=lambda *_a, **_k: lambda func: func)
+    _stub(monkeypatch, "api.utils.permission_utils", check_memory_permission=lambda *_a, **_k: lambda func: func)
+    _stub(monkeypatch, "common.role_util", MEMORY_API_ACTION_MAP={}, MEMORY_ROLE_RESOURCE_TYPE=None, check_role_access=lambda *_a, **_k: lambda func: func)
     _stub(
         monkeypatch,
         "api.utils.api_utils",

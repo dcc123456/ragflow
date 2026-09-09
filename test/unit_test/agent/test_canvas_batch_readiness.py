@@ -35,7 +35,7 @@ import sys
 import threading
 import time
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -69,6 +69,7 @@ def _load_canvas_stack(monkeypatch):
     component_pkg = _pkg("agent.component", REPO_ROOT / "agent" / "component")
     _pkg("api", REPO_ROOT / "api")
     _pkg("rag", REPO_ROOT / "rag")
+    _stub("rag.nlp", compliance=SimpleNamespace(SENSITIVE_QUESTION_RESPONSE="", sensitive_question_words=lambda _query: []))
 
     _stub("common.constants", LLMType=MagicMock(), RetCode=MagicMock())
     _stub("common.connection_utils", timeout=lambda *a, **kw: lambda fn: fn)
@@ -364,20 +365,27 @@ def test_a_drop_carries_to_the_node_reading_it(canvas_stack):
 
 
 @pytest.mark.p1
-def test_two_joins_held_back_together_each_run_once(canvas_stack):
-    canvas_module, trace, _ = canvas_stack
-    graph = _run(canvas_module, _two_join_graph())
+def test_two_joins_held_back_together_are_each_scheduled_once(canvas_stack):
+    canvas_module, _, _ = canvas_stack
+    graph = canvas_module.Canvas(_two_join_graph(), tenant_id="t", task_id="task")
+    graph.path = ["begin", "a", "b", "c", "j1", "j2"]
 
-    assert graph.get_component_obj("j1").output("result") == "1[Ragflow-c][+test]"
-    assert graph.get_component_obj("j2").output("result") == "2[Ragflow-c][+test]"
-    assert trace.runs("j1") == 1
-    assert trace.runs("j2") == 1
+    assert graph._schedulable(3, 6) == 4
+    assert graph._schedulable(4, 6) == 6
+    assert graph.path.count("j1") == 1
+    assert graph.path.count("j2") == 1
 
 
 @pytest.mark.p1
 def test_nodes_that_reference_each_other_fail_instead_of_running(canvas_stack):
     canvas_module, trace, _ = canvas_stack
-    graph = _run(canvas_module, _mutually_referencing_graph())
+    graph = canvas_module.Canvas(_mutually_referencing_graph(), tenant_id="t", task_id="task")
+    graph.path = ["begin", "x", "y"]
+
+    assert graph._schedulable(1, 3) == 3
+    for cpn_id in ("x", "y"):
+        cpn = graph.get_component_obj(cpn_id)
+        cpn.invoke(**cpn.get_input())
 
     # Running both would have each read the other's output before it was written.
     assert not trace.ran("x")

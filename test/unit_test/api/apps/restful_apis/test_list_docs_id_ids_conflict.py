@@ -112,6 +112,8 @@ def _load_document_api(monkeypatch, *, args, owned_doc_ids):
     _stub(monkeypatch, "api.db.services.file2document_service", File2DocumentService=SimpleNamespace())
     _stub(monkeypatch, "api.db.services.file_service", FileService=SimpleNamespace())
     _stub(monkeypatch, "api.db.services.knowledgebase_service", KnowledgebaseService=SimpleNamespace(accessible=lambda *_a, **_k: True))
+    _stub(monkeypatch, "api.db.services.permission_service", PermissionChangeLogService=SimpleNamespace(), PermissionService=SimpleNamespace())
+    _stub(monkeypatch, "api.db.services.user_service", UserTenantService=SimpleNamespace())
     _stub(monkeypatch, "api.db.services.canvas_service", UserCanvasService=SimpleNamespace())
     _stub(monkeypatch, "api.common.check_team_permission", check_kb_team_permission=lambda *_a, **_k: True)
     _stub(monkeypatch, "api.db.services.task_service", TaskService=SimpleNamespace(), cancel_all_task_of=lambda *_a, **_k: None)
@@ -132,6 +134,7 @@ def _load_document_api(monkeypatch, *, args, owned_doc_ids):
         validate_request=lambda *_a, **_k: lambda func: func,
     )
     _stub(monkeypatch, "api.utils.validation_utils", validate_and_parse_json_request=lambda *_a, **_k: ({}, None))
+    _stub(monkeypatch, "api.utils.billing", InsufficientResourceError=type("InsufficientResourceError", (Exception,), {}))
     _stub(monkeypatch, "common.settings", retriever=SimpleNamespace(), docStoreConn=SimpleNamespace(), STORAGE_IMPL=SimpleNamespace())
     _stub(monkeypatch, "common.metadata_utils", turn2jsonschema=lambda meta: meta)
     _stub(monkeypatch, "common.misc_utils", get_uuid=lambda: "uuid")
@@ -139,6 +142,15 @@ def _load_document_api(monkeypatch, *, args, owned_doc_ids):
     _stub(monkeypatch, "api.utils.file_utils", filename_type=lambda *_a, **_k: None, thumbnail=lambda *_a, **_k: None)
     _stub(monkeypatch, "api.utils.file_response", apply_preview_file_response_headers=lambda *_a, **_k: None)
     _stub(monkeypatch, "api.utils.web_utils", CONTENT_TYPE_MAP={}, is_valid_url=lambda *_a, **_k: True)
+    _stub(monkeypatch, "common.role_util", check_role_access=lambda *_a, **_k: lambda func: func, KB_API_ACTION_MAP={}, KB_ROLE_RESOURCE_TYPE=None)
+    _stub(
+        monkeypatch,
+        "api.utils.permission_utils",
+        _permission_denied_message=lambda *_a, **_k: "",
+        check_doc_permission=lambda *_a, **_k: lambda func: func,
+        check_kb_permission=lambda *_a, **_k: lambda func: func,
+        filter_accessible_doc_ids_for_user=lambda *_a, **_k: ([], None, None),
+    )
 
     quart_stub = _LenientModule("quart")
     quart_stub.request = request_stub

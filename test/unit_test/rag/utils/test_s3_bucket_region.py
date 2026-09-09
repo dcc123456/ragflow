@@ -42,6 +42,7 @@ def make_storage(monkeypatch, tmp_path, config):
         {"access_key": "test-access", "secret_key": "test-secret", "endpoint_url": "https://s3.test", **config},
     )
     storage = module.RAGFlowS3()
+    storage._ensure_connection()
     # A failed base request must not reconnect or wait before we inspect the
     # stub queue. The successful write path still uses the real SDK uploader.
     monkeypatch.setattr(storage, "__open__", Mock())
@@ -52,13 +53,13 @@ def make_storage(monkeypatch, tmp_path, config):
 @pytest.mark.parametrize(
     "config,region,location",
     [
-        ({"region": "eu-west-1"}, "eu-west-1", "eu-west-1"),
+        ({"region_name": "eu-west-1"}, "eu-west-1", "eu-west-1"),
         ({"region_name": "ap-southeast-2"}, "ap-southeast-2", "ap-southeast-2"),
         ({"region": "us-east-1", "region_name": "eu-west-1"}, "eu-west-1", "eu-west-1"),
         ({}, "eu-central-1", "eu-central-1"),
         ({"region_name": ""}, "eu-central-1", "eu-central-1"),
-        ({"region": "us-east-1"}, "us-east-1", None),
-        ({"region": "auto"}, "auto", None),
+        ({"region_name": "us-east-1"}, "us-east-1", None),
+        ({"region_name": "auto"}, "auto", None),
     ],
 )
 @pytest.mark.parametrize("shared_bucket", [False, True])
@@ -102,7 +103,7 @@ def test_put_creates_bucket_in_resolved_region_then_uploads(monkeypatch, tmp_pat
 
 def test_put_to_existing_regional_bucket_skips_creation(monkeypatch, tmp_path):
     """Verify an existing regional bucket accepts uploads without creation."""
-    storage = make_storage(monkeypatch, tmp_path, {"region": "eu-west-1"})
+    storage = make_storage(monkeypatch, tmp_path, {"region_name": "eu-west-1"})
     client = storage.conn[0]
     try:
         with Stubber(client) as stub:

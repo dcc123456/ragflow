@@ -24,6 +24,7 @@ service must drop it. An explicitly supplied language must still be forwarded.
 
 import importlib.util
 import sys
+from contextlib import nullcontext
 from enum import IntEnum
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
@@ -85,7 +86,13 @@ def _load_create_dataset_module(monkeypatch):
         "api.db.services.user_service",
         TenantService=SimpleNamespace(get_by_id=MagicMock(return_value=(True, SimpleNamespace(embd_id="embd-model")))),
         UserService=SimpleNamespace(),
-        UserTenantService=SimpleNamespace(),
+        UserTenantService=SimpleNamespace(filter_by_tenant_and_user_id=MagicMock(return_value=SimpleNamespace(id="operator-1"))),
+    )
+    _stub(
+        monkeypatch,
+        "api.db.services.permission_service",
+        PermissionChangeLogService=SimpleNamespace(save=MagicMock(return_value=True)),
+        PermissionService=SimpleNamespace(save=MagicMock(return_value=True)),
     )
     _stub(
         monkeypatch,
@@ -149,7 +156,7 @@ def _load_create_dataset_module(monkeypatch):
     _stub(
         monkeypatch,
         "api.db.db_models",
-        DB=SimpleNamespace(connection_context=lambda: lambda func: func),
+        DB=SimpleNamespace(atomic=nullcontext, connection_context=lambda: lambda func: func),
         TenantModel=SimpleNamespace(),
         Connector2Kb=SimpleNamespace(kb_id="kb_id"),
         Document=SimpleNamespace(kb_id="kb_id"),
