@@ -37,7 +37,9 @@ def init_root_logger(logfile_basename: str, log_format: str = "%(asctime)-15s %(
     os.makedirs(os.path.dirname(log_path), exist_ok=True)
     formatter = logging.Formatter(log_format)
 
-    handler1 = RotatingFileHandler(log_path, maxBytes=10 * 1024 * 1024, backupCount=5)
+    log_file_max_size = int(os.environ.get("LOG_FILE_MAX_SIZE_MB", "10")) * 1024 * 1024
+    log_file_backup_count = int(os.environ.get("LOG_FILE_BACKUP_COUNT", "5"))
+    handler1 = RotatingFileHandler(log_path, maxBytes=log_file_max_size, backupCount=log_file_backup_count)
     handler1.setFormatter(formatter)
     logger.addHandler(handler1)
 
