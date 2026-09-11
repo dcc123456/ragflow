@@ -51,6 +51,7 @@ def storage(request, monkeypatch):
     cls = getattr(module, factory)
     adapter = cls.__new__(cls)
     adapter.conn = Mock(spec=client_type)
+    adapter._ensure_connection = Mock()
     return adapter, name
 
 

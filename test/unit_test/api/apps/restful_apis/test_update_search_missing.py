@@ -60,11 +60,26 @@ def _load_search_api(monkeypatch, query_result, accessible=True, request_json=No
 
     _stub(monkeypatch, "api.apps", current_user=SimpleNamespace(id="tenant-1"), login_required=lambda func: func)
     _stub(monkeypatch, "api.constants", DATASET_NAME_LIMIT=255)
-    _stub(monkeypatch, "api.db", DB=SimpleNamespace())
+    permission_value = SimpleNamespace(PERMISSION_READ=1, PERMISSION_WRITE=2, PERMISSION_MANAGE=4, PERMISSION_OWNER=7, PERMISSION_NULL=0)
+    _stub(
+        monkeypatch,
+        "api.db",
+        DB=SimpleNamespace(),
+        PermissionActionType=SimpleNamespace(ACTION_ADD="add"),
+        PermissionTargetType=SimpleNamespace(TARGET_MEMBER="member"),
+        PermissionValue=permission_value,
+        ResourceType=SimpleNamespace(SEARCH="search"),
+    )
     _stub(monkeypatch, "api.db.db_models", DB=SimpleNamespace())
     _stub(monkeypatch, "api.db.services", duplicate_name=lambda *_a, **_k: "renamed")
     _stub(monkeypatch, "api.db.services.dialog_service", async_ask=lambda *_a, **_k: None)
     _stub(monkeypatch, "api.db.services.knowledgebase_service", KnowledgebaseService=SimpleNamespace)
+    _stub(
+        monkeypatch,
+        "api.db.services.permission_service",
+        PermissionChangeLogService=SimpleNamespace,
+        PermissionService=SimpleNamespace,
+    )
     _stub(
         monkeypatch,
         "api.db.services.search_service",
@@ -107,6 +122,20 @@ def _load_search_api(monkeypatch, query_result, accessible=True, request_json=No
         validate_rest_api_page=lambda *_a, **_k: None,
         validate_rest_api_page_size=lambda *_a, **_k: None,
     )
+    _stub(monkeypatch, "api.utils.billing", check_resources=lambda **_kwargs: lambda func: func)
+    _stub(
+        monkeypatch,
+        "api.utils.permission_utils",
+        check_search_permission=lambda *_args, **_kwargs: lambda func: func,
+        filter_kb_read_access=lambda *_args, **_kwargs: None,
+    )
+    _stub(
+        monkeypatch,
+        "common.role_util",
+        SEARCH_API_ACTION_MAP={},
+        SEARCH_ROLE_RESOURCE_TYPE="search",
+        check_role_access=lambda *_args, **_kwargs: lambda func: func,
+    )
     _stub(monkeypatch, "quart", Response=SimpleNamespace, request=SimpleNamespace())
 
     repo_root = Path(__file__).resolve().parents[5]
@@ -139,7 +168,7 @@ class TestUpdateSearchMissing:
 
     def test_updates_when_search_found(self, monkeypatch):
         """A found search still flows past the guard to a successful update."""
-        search_app = SimpleNamespace(name="renamed", search_config={})
+        search_app = {"name": "renamed", "search_config": {}, "tenant_id": "tenant-1"}
         module = _load_search_api(monkeypatch, query_result=[search_app])
 
         result = asyncio.run(module.update(search_id="sess-1"))
