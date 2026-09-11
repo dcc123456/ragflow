@@ -283,7 +283,7 @@ services:
         "--requirepass",
         "${REDIS_PASSWORD}",
         "--maxmemory",
-        "128mb",
+        "${REDIS_MAX_MEMORY}",
         "--maxmemory-policy",
         "volatile-lru",
       ]
