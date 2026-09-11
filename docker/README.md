@@ -308,13 +308,15 @@ If you want your instance to be available under `https`, follow these steps:
          - /etc/letsencrypt/live/your-ragflow-domain.com/fullchain.pem:/etc/nginx/ssl/fullchain.pem:ro
          - /etc/letsencrypt/live/your-ragflow-domain.com/privkey.pem:/etc/nginx/ssl/privkey.pem:ro
          # Switch to HTTPS nginx configuration
-         - ./nginx/ragflow.https.conf:/etc/nginx/conf.d/ragflow.conf
+         - ./nginx/ragflow.https.conf:/etc/nginx/conf.d/ragflow.conf.python:ro
          # ...other existing volumes...
 
    ```
 
+   For hybrid deployment (`API_PROXY_SCHEME=hybrid`), use `./nginx/ragflow.https.conf.hybrid:/etc/nginx/conf.d/ragflow.conf.hybrid:ro` instead.
+
 4. **Update nginx configuration**
-   Edit `nginx/ragflow.https.conf` and replace `my_ragflow_domain.com` with your actual domain name.
+   Edit the selected HTTPS nginx configuration and replace `your-ragflow-domain.com` with your actual domain name.
 
 5. **Restart the services**
    ```bash
