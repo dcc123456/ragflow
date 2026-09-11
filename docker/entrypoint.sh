@@ -326,6 +326,12 @@ run_with_restart() {
   done
 }
 
+# Initialize the database schema before any of the services below start.
+# This used to run inside the web server block only, so hosts that ran e.g.
+# just the admin server, data sync, MCP server, or task executors never
+# initialized the schema.
+ensure_db_init
+
 # If nginx-only mode, just start nginx and wait
 if [[ "${NGINX_ONLY}" -eq 1 ]]; then
     echo "Starting nginx (nginx-only mode)..."
@@ -361,7 +367,6 @@ fi
 
 if [[ "${ENABLE_WEBSERVER}" -eq 1 ]]; then
     ensure_docling
-    ensure_db_init
 
     if [[ "${API_PROXY_SCHEME}" == "hybrid" ]] || [[ "${API_PROXY_SCHEME}" == "python" ]]; then
         echo "Attempt to start RAGFlow python server..."

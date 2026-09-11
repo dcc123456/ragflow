@@ -124,6 +124,7 @@ class TestRunner:
         self.markers = ""
         self.test_path = ""
         self.keyword = ""
+        self.durations = 100
 
         # Python interpreter path
         self.python = sys.executable
@@ -153,6 +154,7 @@ OPTIONS:
     -v, --verbose           Verbose output
     -t, --test FILE         Run specific test file or directory
     -m, --markers MARKERS   Run tests with specific markers (e.g., "unit", "integration")
+    -d, --durations N       Show the N slowest test durations (default: 100)
 
 EXAMPLES:
     # Run all tests
@@ -228,6 +230,9 @@ EXAMPLES:
             cmd.extend(["-W", "ignore::SyntaxWarning"])
             cmd.extend(["-W", "ignore::ImportWarning"])
 
+        # Add slow test durations report (top N slowest tests)
+        cmd.extend(["--durations", str(self.durations)])
+
         # Add default options from pyproject.toml if it exists
         pyproject_path = self.project_root / "pyproject.toml"
         if pyproject_path.exists():
@@ -257,6 +262,8 @@ EXAMPLES:
             self.print_info(f"Markers: {self.markers}")
         if self.keyword:
             self.print_info(f"Keyword: {self.keyword}")
+        if self.durations:
+            self.print_info(f"Durations: top {self.durations} slowest tests")
 
         print(f"\n{set_color(s='[EXECUTING]', color='blue')} {' '.join(cmd)}\n")
 
@@ -302,7 +309,8 @@ Examples:
   python run_tests.py --parallel         # Run in parallel
   python run_tests.py --test services/test_dialog_service.py  # Run specific test
   python run_tests.py --markers "unit"   # Run only unit tests
-  python run_tests.py --ignore           # Run with "-W ignore::SyntaxWarning" and "-W ignore::ImportWarning"
+  python run_tests.py --ignore           # Run with "-W ignore::SyntaxWarning" option
+  python run_tests.py --durations 50     # Show the 50 slowest tests
 """,
         )
 
@@ -320,6 +328,8 @@ Examples:
 
         parser.add_argument("-m", "--markers", type=str, default="", help="Run tests with specific markers (e.g., 'unit', 'integration')")
 
+        parser.add_argument("-d", "--durations", type=int, default=100, help="Show the N slowest test durations in the summary (0 to disable)")
+
         try:
             args = parser.parse_args()
 
@@ -331,6 +341,7 @@ Examples:
             self.ignore_warnings = args.ignore
             self.test_path = args.test
             self.keyword = args.keyword
+            self.durations = args.durations
 
             return True
 

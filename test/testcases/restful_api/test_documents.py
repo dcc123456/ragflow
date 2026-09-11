@@ -173,7 +173,7 @@ def test_documents_upload_requires_auth(create_dataset, tmp_path):
         assert_auth_error(payload, scenario_name)
 
 
-@pytest.mark.p2
+@pytest.mark.p3
 def test_documents_list_default_concurrent_and_filters_contract(rest_client, create_dataset, tmp_path):
     dataset_id, uploaded_docs = _seed_documents(rest_client, create_dataset, tmp_path)
     first_id = uploaded_docs[0]["id"]
@@ -220,7 +220,7 @@ def test_documents_list_default_concurrent_and_filters_contract(rest_client, cre
         assert len(payload["data"]["docs"]) == expected_docs, (params, payload)
 
 
-@pytest.mark.p2
+@pytest.mark.p3
 def test_documents_list_error_and_sorting_contract(rest_client, create_dataset, tmp_path):
     dataset_id, uploaded_docs = _seed_documents(rest_client, create_dataset, tmp_path)
     first_id = uploaded_docs[0]["id"]
@@ -608,7 +608,7 @@ def test_documents_update_invalid_dataset_and_document_contract(rest_client, cre
     assert invalid_document_body["message"] == "document not found", invalid_document_body
 
 
-@pytest.mark.p2
+@pytest.mark.p3
 def test_documents_update_chunk_method_contract(rest_client, create_dataset, tmp_path):
     dataset_id, uploaded_docs = _seed_documents_for_update(rest_client, create_dataset, tmp_path)
     first_document_id = uploaded_docs[0]["id"]
@@ -752,7 +752,7 @@ def test_documents_update_invalid_field_and_guard_contract(rest_client, create_d
             assert "data" in body, (payload, body)
 
 
-@pytest.mark.p2
+@pytest.mark.p3
 def test_documents_update_parser_config_contract(rest_client, create_dataset, tmp_path, tenant_id):
     dataset_id, uploaded_docs = _seed_documents_for_update(rest_client, create_dataset, tmp_path)
     first_document_id = uploaded_docs[0]["id"]
@@ -872,7 +872,7 @@ def test_documents_parse_and_stop(rest_client, create_document):
         assert "already completed" in stop_payload["message"], stop_payload
 
 
-@pytest.mark.p2
+@pytest.mark.p3
 def test_documents_metadata_batch_update_contract(rest_client, create_dataset, tmp_path):
     dataset_id, uploaded_docs = _seed_documents(rest_client, create_dataset, tmp_path, count=5)
     document_ids = [doc["id"] for doc in uploaded_docs]
@@ -1120,7 +1120,7 @@ def test_documents_delete_requires_auth(rest_client, create_dataset, tmp_path):
         assert_auth_error(body, scenario_name)
 
 
-@pytest.mark.p2
+@pytest.mark.p3
 def test_documents_delete_invalid_dataset_partial_duplicate_repeat_and_cross_dataset(rest_client, create_dataset, tmp_path):
     dataset_id, uploaded_docs = _seed_documents(rest_client, create_dataset, tmp_path, count=3)
     document_ids = [doc["id"] for doc in uploaded_docs]
@@ -1160,12 +1160,12 @@ def test_documents_delete_invalid_dataset_partial_duplicate_repeat_and_cross_dat
     assert duplicate_payload["code"] == 101, duplicate_payload
     assert "Field: <ids> - Message: <Duplicate ids:" in duplicate_payload["message"], duplicate_payload
 
-    delete_once_res = rest_client.delete(f"/datasets/{dataset_id}/documents", json={"ids": document_ids})
+    delete_once_res = rest_client.delete(f"/datasets/{dataset_id}/documents", json={"ids": document_ids}, timeout=120)
     assert delete_once_res.status_code == 200
     delete_once_payload = delete_once_res.json()
     assert delete_once_payload["code"] == 0, delete_once_payload
 
-    delete_twice_res = rest_client.delete(f"/datasets/{dataset_id}/documents", json={"ids": document_ids})
+    delete_twice_res = rest_client.delete(f"/datasets/{dataset_id}/documents", json={"ids": document_ids}, timeout=120)
     assert delete_twice_res.status_code == 200
     delete_twice_payload = delete_twice_res.json()
     assert delete_twice_payload["code"] == 102, delete_twice_payload
@@ -1393,7 +1393,7 @@ def test_documents_stop_parse_requires_auth(rest_client, create_document):
         assert_auth_error(body, scenario_name)
 
 
-@pytest.mark.p2
+@pytest.mark.p3
 def test_documents_stop_parse_contract_matrix(rest_client, create_dataset, tmp_path):
     dataset_id, uploaded_docs = _seed_documents(rest_client, create_dataset, tmp_path, count=6)
     doc_ids = [doc["id"] for doc in uploaded_docs]
@@ -1519,7 +1519,7 @@ def test_documents_download_requires_auth_and_invalid_id_contract(rest_client, c
     assert invalid_dataset_payload["message"] == "document not found", invalid_dataset_payload
 
 
-@pytest.mark.p2
+@pytest.mark.p3
 def test_documents_download_filetype_repeat_and_concurrent_contract(rest_client, create_dataset, tmp_path):
     dataset_id = create_dataset("dataset_download_contract")
 

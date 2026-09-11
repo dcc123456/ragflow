@@ -202,9 +202,10 @@ async def update(search_id):
         return get_data_error_result(message="Authorized identity.")
 
     try:
-        search_app = SearchService.get_detail(search_id)
-        if not search_app:
-            return get_data_error_result(message="Can't find this Search App!")
+        search_results = SearchService.query(tenant_id=current_user.id, id=search_id)
+        if not search_results:
+            return get_json_result(data=False, message=f"Cannot find search {search_id}", code=RetCode.DATA_ERROR)
+        search_app = search_results[0]
 
         if req["name"].lower() != search_app["name"].lower() and len(SearchService.query(name=req["name"], tenant_id=search_app["tenant_id"], status=StatusEnum.VALID.value)) >= 1:
             return get_data_error_result(message="Duplicated search name.")
