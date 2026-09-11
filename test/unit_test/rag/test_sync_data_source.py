@@ -119,6 +119,10 @@ def _make_task():
 
 
 def _patch_common_dependencies(monkeypatch):
+    def _iterate_sync_batches(generator):
+        yield from generator
+
+    monkeypatch.setattr(sync_data_source, "_iterate_document_batches", _iterate_sync_batches)
     monkeypatch.setattr(
         sync_data_source.DocumentService,
         "list_doc_headers_by_kb_and_source_type",

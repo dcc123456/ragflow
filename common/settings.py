@@ -535,7 +535,10 @@ def init_settings():
         MINIO = []
         for i in range(12):
             try:
-                MINIO.append(decrypt_database_config(name=f"minio_{i}"))
+                minio_config = decrypt_database_config(name=f"minio_{i}")
+                if not minio_config:
+                    break
+                MINIO.append(minio_config)
             except Exception:
                 break
         if not MINIO:

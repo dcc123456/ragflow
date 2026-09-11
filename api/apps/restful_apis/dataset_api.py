@@ -190,8 +190,9 @@ async def create(tenant_id: str = None):
               description: Optional dataset description.
             language:
               type: string
+              minLength: 1
               maxLength: 32
-              description: Optional document language (e.g. "English", "Chinese"); if omitted, the server default is used.
+              description: Optional document language (e.g. "English", "Chinese"); leading/trailing whitespace is stripped and the trimmed value must contain 1 to 32 characters. If omitted, the server/database default is used.
             embedding_model:
               type: string
               description: Optional embedding model name; if omitted, the tenant's default embedding model is used.
@@ -361,6 +362,11 @@ async def update(dataset_id, tenant_id: str = None):
             description:
               type: string
               description: Updated description of the dataset.
+            language:
+              type: string
+              minLength: 1
+              maxLength: 32
+              description: Optional document language (e.g. "English", "Chinese"); leading/trailing whitespace is stripped and the trimmed value must contain 1 to 32 characters. If omitted, the existing language is unchanged.
             embedding_model:
               type: string
               description: Updated embedding model Name.
