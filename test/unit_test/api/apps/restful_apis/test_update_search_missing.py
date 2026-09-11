@@ -168,7 +168,7 @@ class TestUpdateSearchMissing:
 
     def test_updates_when_search_found(self, monkeypatch):
         """A found search still flows past the guard to a successful update."""
-        search_app = {"name": "renamed", "search_config": {}, "tenant_id": "tenant-1"}
+        search_app = SimpleNamespace(name="renamed", search_config={}, tenant_id="tenant-1")
         module = _load_search_api(monkeypatch, query_result=[search_app])
 
         result = asyncio.run(module.update(search_id="sess-1"))
