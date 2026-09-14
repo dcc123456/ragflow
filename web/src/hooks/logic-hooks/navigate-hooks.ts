@@ -76,6 +76,13 @@ export const useNavigatePage = () => {
     [navigate],
   );
 
+  const navigateToDatasetSetting = useCallback(
+    (id: string) => {
+      navigate(`${Routes.DatasetBase}${Routes.DataSetSetting}/${id}`);
+    },
+    [navigate],
+  );
+
   const navigateToCompilation = useCallback(
     (id: string) => () => {
       navigate(`${Routes.DatasetBase}${Routes.Compilation}/${id}`);
@@ -274,6 +281,7 @@ export const useNavigatePage = () => {
     navigateToOldProfile,
     navigateToDataflowResult,
     navigateToDataFile,
+    navigateToDatasetSetting,
     navigateToCompilation,
     navigateToDataSourceDetail,
     navigateToMemory,

@@ -200,7 +200,6 @@ const NumberInput = forwardRef<
           className,
         )}
         style={style}
-        ref={ref}
       >
         {hideIcons || (
           <button
@@ -230,6 +229,7 @@ const NumberInput = forwardRef<
           style={style}
           min={min}
           step={step}
+          ref={ref}
           {...omit(props, ['prefix', 'suffix'])}
         />
         {hideIcons || (

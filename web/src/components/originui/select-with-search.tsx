@@ -54,7 +54,6 @@ export type SelectWithSearchFlagProps = {
   disabled?: boolean;
   placeholder?: string;
   emptyData?: string;
-  renderOption?: (option: SelectWithSearchFlagOptionType) => ReactNode;
   allowCustomValue?: boolean;
   // Return false to veto selecting the custom value on Enter
   onNoMatchEnter?(searchValue: string): boolean | void;
@@ -74,7 +73,7 @@ function findLabelWithoutOptions(
   options: SelectWithSearchFlagOptionType[],
   value: string,
 ) {
-  return options.find((opt) => opt.value === value);
+  return options.find((opt) => opt.value === value)?.label || '';
 }
 
 function findLabelWithOptions(
@@ -83,7 +82,7 @@ function findLabelWithOptions(
 ) {
   return options
     .map((group) => group?.options?.find((item) => item.value === value))
-    .filter(Boolean)[0];
+    .filter(Boolean)[0]?.label;
 }
 
 function hasMatchingOptions(
@@ -122,13 +121,12 @@ export const SelectWithSearch = forwardRef<
 >(
   (
     {
-      value: val,
+      value: val = '',
       onChange,
       options = [],
       triggerClassName,
       allowClear = false,
       disabled = false,
-      renderOption,
       placeholder,
       emptyData,
       allowCustomValue = false,
@@ -144,15 +142,10 @@ export const SelectWithSearch = forwardRef<
     const resolvedEmptyData = emptyData ?? t('common.noDataFound');
     const id = useId();
     const [open, setOpen] = useState<boolean>(false);
-    const [stateValue, setValue] = useState<string>('');
-    // const [value, setValue] = useState<string>('');
+    const [value, setValue] = useState<string>('');
     const [searchValue, setSearchValue] = useState<string>('');
 
-    // If string `props.value` is provided, turn into controlled mode
-    const isValueControlled = val != null;
-    const value = isValueControlled ? val : stateValue;
-
-    const selectedOption = useMemo(() => {
+    const selectLabel = useMemo(() => {
       if (options.every((x) => x.options === undefined)) {
         return findLabelWithoutOptions(options, value);
       } else if (options.every((x) => Array.isArray(x.options))) {
@@ -166,10 +159,11 @@ export const SelectWithSearch = forwardRef<
           (x) => x.options === undefined,
         );
 
-        return (
-          findLabelWithOptions(optionsWithOptions, value) ||
-          findLabelWithoutOptions(optionsWithoutOptions, value)
-        );
+        const label = findLabelWithOptions(optionsWithOptions, value);
+        if (label) {
+          return label;
+        }
+        return findLabelWithoutOptions(optionsWithoutOptions, value);
       }
     }, [options, value]);
 
@@ -242,7 +236,7 @@ export const SelectWithSearch = forwardRef<
     );
 
     useEffect(() => {
-      setValue(val ?? '');
+      setValue(val);
     }, [val]);
 
     return (
@@ -261,15 +255,9 @@ export const SelectWithSearch = forwardRef<
               triggerClassName,
             )}
           >
-            {value ? (
-              <span className="flex min-w-0 options-center gap-2">
-                <span className="leading-none truncate">
-                  {selectedOption && typeof renderOption === 'function'
-                    ? renderOption(
-                        selectedOption as SelectWithSearchFlagOptionType,
-                      )
-                    : (selectedOption?.label ?? '')}
-                </span>
+            {selectLabel || value ? (
+              <span className="flex min-w-0 options-center gap-2 truncate text-text-primary">
+                {selectLabel || value}
               </span>
             ) : (
               <span className="text-text-disabled">{resolvedPlaceholder}</span>
@@ -289,7 +277,7 @@ export const SelectWithSearch = forwardRef<
               )}
               <ChevronDownIcon
                 size={16}
-                className="text-text-disabled shrink-0 ml-1"
+                className="text-text-disabled shrink-0 ml-2"
                 aria-hidden="true"
               />
             </div>
@@ -307,7 +295,7 @@ export const SelectWithSearch = forwardRef<
                     ? t('common.searchOrEnterToAdd') + '...'
                     : t('common.search') + '...'
                 }
-                className=" placeholder:text-text-disabled"
+                className="placeholder:text-text-disabled"
                 value={searchValue}
                 onValueChange={setSearchValue}
                 onKeyDown={handleInputKeyDown}
@@ -356,7 +344,7 @@ export const SelectWithSearch = forwardRef<
                               : 'combobox-option'
                           }
                           className={cn(
-                            "relative flex flex-col min-h-10 data-[selected='true']:bg-card-soft",
+                            "relative flex flex-col min-h-10 pr-8 data-[selected='true']:bg-card-soft",
                             option.description
                               ? 'items-start gap-1'
                               : 'justify-center items-start',
@@ -396,7 +384,7 @@ export const SelectWithSearch = forwardRef<
                           : 'combobox-option'
                       }
                       className={cn(
-                        "relative flex flex-col min-h-10 mb-1 data-[selected='true']:bg-card-soft",
+                        "relative flex flex-col min-h-10 mb-1 pr-8 data-[selected='true']:bg-card-soft",
                         group.description
                           ? 'items-start gap-1'
                           : 'justify-center items-start',
