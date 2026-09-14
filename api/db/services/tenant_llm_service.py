@@ -14,6 +14,7 @@
 #  limitations under the License.
 #
 import logging
+import os
 import time
 
 import peewee
@@ -33,6 +34,11 @@ from api.db.services.user_service import UserTenantService
 from common.constants import StatusEnum
 from api.db.services.user_service import TenantService
 from common.misc_utils import get_uuid
+
+
+def is_tei_enabled():
+    """Return whether the built-in TEI embedding service is configured."""
+    return "tei-" in os.getenv("COMPOSE_PROFILES", "") and bool(os.getenv("TEI_MODEL", ""))
 
 
 class LLMFactoriesService(CommonService):
