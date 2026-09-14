@@ -292,8 +292,13 @@ def test_real_registries_and_models_reach_the_sync_owner():
 
 
 @pytest.fixture(autouse=True)
-def _reset_sync_log_service():
+def _reset_sync_log_service(monkeypatch):
     _SyncLogsService.reset()
+
+    def _iterate_sync_batches(generator):
+        yield from generator
+
+    monkeypatch.setattr(sync_data_source, "_iterate_document_batches", _iterate_sync_batches)
 
 
 @pytest.mark.asyncio
