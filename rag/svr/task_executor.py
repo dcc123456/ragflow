@@ -871,6 +871,19 @@ async def embedding(docs, mdl, parser_config=None, callback=None):
     return tk_count, vector_size
 
 
+def _normalize_dataflow_output(chunks):
+    """Normalize pipeline output into the chunk shape used by indexing."""
+    if "chunks" in chunks:
+        return copy.deepcopy(chunks["chunks"]), "chunks"
+    if "json" in chunks:
+        return copy.deepcopy(chunks["json"]), "json"
+    for output_type in ("markdown", "text", "html"):
+        if output_type in chunks:
+            payload = chunks[output_type]
+            return ([{"text": payload}] if payload else []), output_type
+    return [], "empty"
+
+
 async def run_dataflow(task: dict):
     from api.db.services.canvas_service import UserCanvasService
     from rag.flow.pipeline import Pipeline
@@ -916,18 +929,7 @@ async def run_dataflow(task: dict):
 
     embedding_token_consumption = chunks.get("embedding_token_consumption", 0)
     # The output key may exist with an empty payload; check presence, not truthiness.
-    if "chunks" in chunks:
-        chunks = copy.deepcopy(chunks["chunks"])
-    elif "json" in chunks:
-        chunks = copy.deepcopy(chunks["json"])
-    elif "markdown" in chunks:
-        chunks = [{"text": [chunks["markdown"]]}] if chunks["markdown"] else []
-    elif "text" in chunks:
-        chunks = [{"text": [chunks["text"]]}] if chunks["text"] else []
-    elif "html" in chunks:
-        chunks = [{"text": [chunks["html"]]}] if chunks["html"] else []
-    else:
-        chunks = []
+    chunks, _ = _normalize_dataflow_output(chunks)
 
     # An empty normalized payload means "nothing parsed", so stop before embedding/indexing.
     if not chunks:

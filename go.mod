@@ -12,6 +12,7 @@ require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/JohannesKaufmann/html-to-markdown v1.6.0
 	github.com/LuxorLabs/tenki-sdk-go/sandbox v0.7.0
+	github.com/RealAlexandreAI/json-repair v0.0.17
 	github.com/alibabacloud-go/agentrun-20250910/v5 v5.8.4
 	github.com/alibabacloud-go/darabonba-openapi/v2 v2.2.1
 	github.com/alicebob/miniredis/v2 v2.38.0
@@ -28,6 +29,7 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/cloudwego/eino v0.9.14
 	github.com/denisenkom/go-mssqldb v0.12.3
+	github.com/eino-contrib/jsonschema v1.0.3
 	github.com/elastic/go-elasticsearch/v8 v8.19.1
 	github.com/emersion/go-imap/v2 v2.0.0-beta.8
 	github.com/emersion/go-message v0.18.2
@@ -93,7 +95,6 @@ require (
 	github.com/PuerkitoBio/goquery v1.9.2 // indirect
 	github.com/andybalholm/cascadia v1.3.2 // indirect
 	github.com/apache/arrow/go/v15 v15.0.2 // indirect
-	github.com/eino-contrib/jsonschema v1.0.3 // indirect
 	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6 // indirect
 	github.com/goccy/go-json v0.10.6 // indirect
 	github.com/google/flatbuffers v23.5.26+incompatible // indirect

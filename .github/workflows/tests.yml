@@ -466,6 +466,7 @@ jobs:
       - name: Collect ragflow log Elasticsearch
         if: ${{ always() }}
         run: |
+          mkdir -p "${ARTIFACTS_DIR}"
           if [ -d docker/ragflow-logs ]; then
             cp -r docker/ragflow-logs ${ARTIFACTS_DIR}/ragflow-logs
             echo "ragflow log" && tail -n 200 docker/ragflow-logs/ragflow_server.log || true
@@ -529,6 +530,7 @@ jobs:
       - name: Collect ragflow log Elasticsearch
         if: ${{ always() }}
         run: |
+          mkdir -p "${ARTIFACTS_DIR}"
           if [ -d docker/ragflow-logs ]; then
             cp -r docker/ragflow-logs ${ARTIFACTS_DIR}/ragflow-logs-billing
             echo "ragflow log" && tail -n 200 docker/ragflow-logs/ragflow_server.log || true

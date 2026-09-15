@@ -371,6 +371,42 @@ services:
       timeout: 10s
       retries: 120
 
+  kvrocks:
+    # Apache Kvrocks: a RocksDB-backed, Redis-protocol-compatible store used
+    # ONLY by the Go services (ragflow-cpu / ragflow-gpu), which override
+    # REDIS_HOST=kvrocks in docker-compose-go.yml. The Python services keep
+    # using the `redis` (Valkey) service above, so this is a dual-backend setup.
+    # Pinned to 2.16.0+ on purpose (see docker/kvrocks-entrypoint.sh): older
+    # tags such as kvrocks/kvrocks:latest (== 2.0.6) carry a TTL contract bug
+    # that breaks the RunTracker CAS lease, and they reject the Redis-style
+    # maxmemory/maxmemory-policy settings.
+    image: apache/kvrocks:2.16.0
+    # Kvrocks' config file does not expand ${ENV} and its CLI rejects
+    # `--requirepass` as a flag, so the entrypoint renders the config (including
+    # the password from REDIS_PASSWORD) at startup. `user: "0"` lets it write the
+    # config and the RocksDB data dir regardless of the mounted volume ownership.
+    entrypoint: ["/bin/sh", "/etc/kvrocks/entrypoint.sh"]
+    user: "0:0"
+    env_file: .env
+    # No host port publish: the Go services reach Kvrocks over the internal
+    # docker network at `kvrocks:6379`. Gated to the Go stack profile so the
+    # Python-only stack does not spin up an unused container.
+    profiles:
+      - ragflow-go
+    volumes:
+      - kvrocks_data:/var/lib/kvrocks
+      - ./kvrocks-entrypoint.sh:/etc/kvrocks/entrypoint.sh:ro
+    networks:
+      - ragflow
+    restart: unless-stopped
+    healthcheck:
+      # The Kvrocks image ships redis-cli and requirepass is enforced, so ping
+      # with the password. (The image has no nc, so a raw-tcp probe is wrong.)
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 120
+
   jaeger:
     profiles:
       - jaeger
@@ -491,6 +527,10 @@ volumes:
   valkey_data:
     driver: local
   rabbitmq_data:
+    driver: local
+  kvrocks_data:
+    driver: local
+  tei_data:
     driver: local
   kibana_data:
     driver: local

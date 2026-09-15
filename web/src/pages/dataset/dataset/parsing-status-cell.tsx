@@ -128,14 +128,29 @@ export function ParsingStatusCell({
   const isStopping = record.ingestion_status === IngestionTaskStatus.STOPPING;
   const isZeroChunk = chunk_count === 0;
 
-  const handleOperationIconClick = (option: {
+  const handleOperationIconClick = (option?: {
     delete: boolean;
     apply_kb: boolean;
   }) => {
     if (datasetEditButtonDisabled) {
       return;
     }
-    handleRunDocumentByIds(record.id, isRunning, option);
+    handleRunDocumentByIds(record, isRunning, option);
+  };
+
+  // The confirmation only offers real choices when there are existing chunks to
+  // drop or auto-metadata to re-apply. Otherwise, and always when cancelling a
+  // run, the action fires straight away.
+  const needsParseConfirm =
+    !isRunning &&
+    (!isZeroChunk || Boolean(record?.parser_config?.enable_metadata));
+
+  const handleParseClick = () => {
+    if (needsParseConfirm) {
+      showReparseDialogModal();
+      return;
+    }
+    handleOperationIconClick();
   };
 
   const showParse = useMemo(() => {
@@ -186,7 +201,8 @@ export function ParsingStatusCell({
                 variant="ghost"
                 size="icon-xs"
                 disabled={isStopping}
-                onClick={() => showReparseDialogModal()}
+                onClick={handleParseClick}
+                data-testid="document-parse-toggle"
               >
                 <CircleX
                   color="rgba(var(--state-error))"
@@ -199,9 +215,8 @@ export function ParsingStatusCell({
               <Button
                 variant="ghost"
                 size="icon-xs"
-                onClick={() => {
-                  showReparseDialogModal();
-                }}
+                onClick={handleParseClick}
+                data-testid="document-parse-toggle"
               >
                 {operationIcon}
               </Button>
@@ -213,10 +228,6 @@ export function ParsingStatusCell({
       )}
       {reparseDialogVisible && (
         <ReparseDialog
-          hidden={
-            (isZeroChunk && !record?.parser_config?.enable_metadata) ||
-            isRunning
-          }
           enable_metadata={record?.parser_config?.enable_metadata}
           handleOperationIconClick={handleOperationIconClick}
           chunk_num={chunk_count}

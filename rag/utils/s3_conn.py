@@ -23,6 +23,8 @@ from io import BytesIO
 from common.decorator import singleton
 from common import settings
 
+MAX_ATTEMPTS = 3
+
 
 @singleton
 class RAGFlowS3:
@@ -108,7 +110,7 @@ class RAGFlowS3:
             if self.conn:
                 self.__close__()
         except Exception:
-            pass
+            self.conn = None
 
         try:
             s3_params = {}
@@ -136,8 +138,11 @@ class RAGFlowS3:
                 s3_params["config"] = Config(**config_kwargs)
 
             self.conn = [boto3.client("s3", **s3_params)]
+            return True
         except Exception:
+            self.conn = None
             logging.exception(f"Fail to connect at region {self.region_name} or endpoint {self.endpoint_url}")
+            return False
 
     def __close__(self):
         del self.conn[0]
@@ -188,7 +193,7 @@ class RAGFlowS3:
         """
         self._ensure_connection()
         logging.debug(f"bucket name {bucket}; filename :{fnm}:")
-        for _ in range(1):
+        for attempt in range(MAX_ATTEMPTS):
             try:
                 if not self.bucket_exists(bucket):
                     bucket_config = {"Bucket": bucket}
@@ -203,9 +208,12 @@ class RAGFlowS3:
 
                 return r
             except Exception:
-                logging.exception(f"Fail put {bucket}/{fnm}")
-                self.__open__()
-                time.sleep(1)
+                logging.exception(f"Fail put {bucket}/{fnm}, attempt {attempt + 1}/{MAX_ATTEMPTS}")
+                if attempt == MAX_ATTEMPTS - 1:
+                    raise
+                if not self.__open__():
+                    raise
+                time.sleep(2**attempt)
 
     @use_prefix_path
     @use_default_bucket
@@ -220,16 +228,30 @@ class RAGFlowS3:
     @use_default_bucket
     def get(self, bucket, fnm, *args, **kwargs):
         self._ensure_connection()
-        for _ in range(1):
+        for attempt in range(MAX_ATTEMPTS):
             try:
                 r = self.conn[0].get_object(Bucket=bucket, Key=fnm)
                 object_data = r["Body"].read()
                 return object_data
+            except ClientError as e:
+                response = e.response if isinstance(e.response, dict) else {}
+                error = response.get("Error", {})
+                code = error.get("Code") if isinstance(error, dict) else None
+                if code in ("404", "NoSuchKey", "NotFound"):
+                    return None
+                logging.exception(f"fail get {bucket}/{fnm}, attempt {attempt + 1}/{MAX_ATTEMPTS}")
+                if attempt == MAX_ATTEMPTS - 1:
+                    raise
+                if not self.__open__():
+                    raise
+                time.sleep(2**attempt)
             except Exception:
-                logging.exception(f"fail get {bucket}/{fnm}")
-                self.__open__()
-                time.sleep(1)
-        return None
+                logging.exception(f"fail get {bucket}/{fnm}, attempt {attempt + 1}/{MAX_ATTEMPTS}")
+                if attempt == MAX_ATTEMPTS - 1:
+                    raise
+                if not self.__open__():
+                    raise
+                time.sleep(2**attempt)
 
     @use_prefix_path
     @use_default_bucket

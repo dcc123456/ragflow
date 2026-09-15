@@ -258,7 +258,9 @@ export const TreeSelect = forwardRef<HTMLButtonElement, TreeSelectProps>(
               className,
             )}
           >
-            <span className={cn('truncate', !selectedNode && 'text-slate-400')}>
+            <span
+              className={cn('truncate', !selectedNode && 'text-text-secondary')}
+            >
               {missingValue ? (
                 renderMissingValue ? (
                   renderMissingValue(missingValue)
@@ -293,10 +295,10 @@ export const TreeSelect = forwardRef<HTMLButtonElement, TreeSelectProps>(
         >
           {showSearch && (
             <div className="flex items-center border-b px-3 py-2">
-              <Search className="h-4 w-4 text-slate-400 mr-2 flex-shrink-0" />
+              <Search className="h-4 w-4 mr-2 flex-shrink-0 text-text-disabled" />
               <input
                 type="text"
-                className="flex-1 bg-transparent text-sm outline-none placeholder:text-slate-400"
+                className="flex-1 bg-transparent text-sm outline-none placeholder:text-text-disabled"
                 placeholder={t('common.search')}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
