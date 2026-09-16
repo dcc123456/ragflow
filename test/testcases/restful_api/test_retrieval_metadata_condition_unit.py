@@ -93,7 +93,8 @@ def _load_module(monkeypatch, request_payload):
     _pkg("api.apps.services", repo_root / "api" / "apps" / "services")
     _stub("api.apps.services.structure_graph_common")
 
-    _pkg("api.db", repo_root / "api" / "db")
+    db_pkg = _pkg("api.db", repo_root / "api" / "db")
+    db_pkg.PermissionValue = SimpleNamespace(PERMISSION_READ=1, PERMISSION_WRITE=2)
     _stub("api.db.db_models", Document=SimpleNamespace, Task=SimpleNamespace)
     _pkg("api.db.joint_services", repo_root / "api" / "db" / "joint_services")
     _stub(
@@ -136,8 +137,11 @@ def _load_module(monkeypatch, request_payload):
     utils_mod.get_error_data_result = lambda message="", code=102: {"code": code, "message": message}
     utils_mod.get_request_json = lambda: _AwaitableValue(request_payload)
     utils_mod.get_result = get_result
+    utils_mod.get_json_result = get_result
     utils_mod.server_error_response = lambda e: {"code": 500, "message": str(e)}
     monkeypatch.setitem(sys.modules, "api.utils.api_utils", utils_mod)
+
+    _stub("api.utils.permission_utils", check_doc_permission=lambda **kwargs: lambda func: func)
 
     _stub(
         "api.utils.image_utils",
@@ -189,6 +193,7 @@ def _load_module(monkeypatch, request_payload):
     _stub("rag.app.tag", label_question=lambda *a, **k: {})
     nlp_pkg = _pkg("rag.nlp", repo_root / "rag" / "nlp")
     nlp_pkg.search = SimpleNamespace(index_name=lambda tid: f"idx-{tid}")
+    nlp_pkg.compliance = SimpleNamespace(sensitive_question_words=lambda question: [])
     _pkg("rag.prompts", repo_root / "rag" / "prompts")
     _stub("rag.prompts.generator", cross_languages=lambda *a, **k: None, keyword_extraction=lambda *a, **k: None)
     rag_pkg.nlp = nlp_pkg

@@ -25,8 +25,8 @@ def test_document_image_invalid_id_contract(rest_client):
     res = rest_client.get("/documents/images/not-a-valid-image-id")
     assert res.status_code == 200
     payload = res.json()
-    assert payload["code"] == 100, payload
-    assert payload["message"] == "Exception('File not found.')", payload
+    assert payload["code"] == 102, payload
+    assert payload["message"] == "Image not found.", payload
 
 
 @pytest.mark.p2
