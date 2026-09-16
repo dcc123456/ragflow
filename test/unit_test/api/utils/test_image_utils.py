@@ -35,16 +35,16 @@ class _FakeStorage:
         self.objects = dict(existing or {})
         self.removed = []
 
-    def obj_exist(self, bucket, name):
+    def obj_exist(self, bucket, name, tenant_id=None):
         return (bucket, name) in self.objects
 
-    def get(self, bucket, name):
+    def get(self, bucket, name, tenant_id=None):
         return self.objects[(bucket, name)]
 
-    def put(self, bucket, name, data):
+    def put(self, bucket, name, data, tenant_id=None):
         self.objects[(bucket, name)] = data
 
-    def rm(self, bucket, name):
+    def rm(self, bucket, name, tenant_id=None):
         self.removed.append((bucket, name))
         del self.objects[(bucket, name)]
 
@@ -60,7 +60,7 @@ def test_store_chunk_image_replace_overwrites_existing(fake_settings):
     fake_settings.put("kb-1", "chunk-1", _png_bytes(2, 2, "red"))
     replacement = _png_bytes(3, 4, "blue")
 
-    image_utils.store_chunk_image("kb-1", "chunk-1", replacement, mode="replace")
+    image_utils.store_chunk_image("kb-1", "chunk-1", replacement, "tenant-1", mode="replace")
 
     assert fake_settings.objects[("kb-1", "chunk-1")] == replacement
 
@@ -69,7 +69,7 @@ def test_store_chunk_image_append_merges_existing(fake_settings):
     fake_settings.put("kb-1", "chunk-1", _png_bytes(2, 2, "red"))
     appended = _png_bytes(1, 1, "blue")
 
-    image_utils.store_chunk_image("kb-1", "chunk-1", appended, mode="append")
+    image_utils.store_chunk_image("kb-1", "chunk-1", appended, "tenant-1", mode="append")
 
     merged = Image.open(BytesIO(fake_settings.objects[("kb-1", "chunk-1")]))
     assert merged.size == (2, 3)
@@ -78,7 +78,7 @@ def test_store_chunk_image_append_merges_existing(fake_settings):
 def test_store_chunk_image_append_creates_when_missing(fake_settings):
     new_image = _png_bytes(2, 2, "green")
 
-    image_utils.store_chunk_image("kb-1", "chunk-1", new_image, mode="append")
+    image_utils.store_chunk_image("kb-1", "chunk-1", new_image, "tenant-1", mode="append")
 
     assert fake_settings.objects[("kb-1", "chunk-1")] == new_image
 
@@ -86,13 +86,13 @@ def test_store_chunk_image_append_creates_when_missing(fake_settings):
 def test_remove_chunk_image_deletes_existing_object(fake_settings):
     fake_settings.put("kb-1", "chunk-1", b"image")
 
-    image_utils.remove_chunk_image("kb-1", "chunk-1")
+    image_utils.remove_chunk_image("kb-1", "chunk-1", "tenant-1")
 
     assert fake_settings.removed == [("kb-1", "chunk-1")]
     assert ("kb-1", "chunk-1") not in fake_settings.objects
 
 
 def test_remove_chunk_image_noop_when_missing(fake_settings):
-    image_utils.remove_chunk_image("kb-1", "chunk-1")
+    image_utils.remove_chunk_image("kb-1", "chunk-1", "tenant-1")
 
     assert fake_settings.removed == []

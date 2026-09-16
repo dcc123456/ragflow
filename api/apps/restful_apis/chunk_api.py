@@ -99,20 +99,6 @@ def _decode_chunk_image_base64(image_base64):
     return image_binary, None
 
 
-def _store_chunk_image_or_error(dataset_id, chunk_id, image_binary, tenant_id):
-    try:
-        store_chunk_image(dataset_id, chunk_id, image_binary, tenant_id)
-    except Exception:
-        logging.exception(
-            "Failed to store chunk image. dataset_id=%s chunk_id=%s tenant_id=%s",
-            dataset_id,
-            chunk_id,
-            tenant_id,
-        )
-        return "Failed to store chunk image"
-    return None
-
-
 def _parse_image_update_mode(req):
     if "image_update_mode" not in req:
         return "append", None
@@ -125,9 +111,9 @@ def _parse_image_update_mode(req):
     return mode, None
 
 
-def _store_chunk_image_or_error(dataset_id, chunk_id, image_binary, mode="append"):
+def _store_chunk_image_or_error(dataset_id, chunk_id, image_binary, tenant_id, mode="append"):
     try:
-        store_chunk_image(dataset_id, chunk_id, image_binary, mode=mode)
+        store_chunk_image(dataset_id, chunk_id, image_binary, tenant_id, mode=mode)
     except Exception:
         logging.exception(
             "Failed to store chunk image. dataset_id=%s chunk_id=%s mode=%s",
@@ -139,9 +125,9 @@ def _store_chunk_image_or_error(dataset_id, chunk_id, image_binary, mode="append
     return None
 
 
-def _remove_chunk_image_or_error(dataset_id, chunk_id):
+def _remove_chunk_image_or_error(dataset_id, chunk_id, tenant_id):
     try:
-        remove_chunk_image(dataset_id, chunk_id)
+        remove_chunk_image(dataset_id, chunk_id, tenant_id)
     except Exception:
         logging.exception("Failed to remove chunk image. dataset_id=%s chunk_id=%s", dataset_id, chunk_id)
         return "Failed to remove chunk image"
@@ -1442,7 +1428,7 @@ async def update_chunk(tenant_id, dataset_id, document_id, chunk_id):
             image_binary, image_err = _decode_chunk_image_base64(req.get("image_base64"))
             if image_err:
                 return get_error_data_result(message=image_err)
-            store_err = _store_chunk_image_or_error(dataset_id, chunk_id, image_binary, image_mode)
+            store_err = _store_chunk_image_or_error(dataset_id, chunk_id, image_binary, dataset_tenant_id, image_mode)
             if store_err:
                 return get_error_data_result(message=store_err)
             d["img_id"] = f"{dataset_id}-{chunk_id}"
@@ -1473,7 +1459,7 @@ async def update_chunk(tenant_id, dataset_id, document_id, chunk_id):
     if not settings.docStoreConn.update({"id": chunk_id}, d, search.index_name(dataset_tenant_id), dataset_id):
         return get_error_data_result(message="Index updating failure")
     if remove_image_after_update:
-        remove_err = _remove_chunk_image_or_error(dataset_id, chunk_id)
+        remove_err = _remove_chunk_image_or_error(dataset_id, chunk_id, dataset_tenant_id)
         if remove_err:
             return get_error_data_result(message=remove_err)
     return get_result()
