@@ -196,6 +196,9 @@ EMAIL_VERIFICATION_ENABLED = False
 LOCAL_EMBD = None
 RABBIT_CONF = None
 
+# Allow OAuth/OIDC just-in-time user provisioning (independent of local signup).
+OAUTH_AUTO_REGISTER = True
+
 # SSO-only mode: hide password login form
 DISABLE_PASSWORD_LOGIN = False
 
@@ -342,6 +345,10 @@ def init_settings():
         EMAIL_VERIFICATION_ENABLED = os.environ.get("EMAIL_VERIFICATION_ENABLED", "false").lower() in ("true", "1", "yes")
     except Exception:
         pass
+
+    global OAUTH_AUTO_REGISTER
+    env_val = os.environ.get("OAUTH_AUTO_REGISTER", "").lower()
+    OAUTH_AUTO_REGISTER = env_val not in ("0", "false", "no")
 
     global DISABLE_PASSWORD_LOGIN
     try:

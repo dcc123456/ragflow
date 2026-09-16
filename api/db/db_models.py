@@ -14,6 +14,7 @@
 #  limitations under the License.
 #
 import contextvars
+import heapq
 import hashlib
 import inspect
 import logging
@@ -480,6 +481,16 @@ class _ContextVarConnectionState:
         self._cv_transactions.set(val)
 
 
+def _is_mysql_connection_error(error):
+    args = getattr(error, "args", ())
+    if args and isinstance(args[0], int) and args[0] in {2006, 2013}:
+        return True
+    if error.__class__.__name__ == "InterfaceError":
+        return True
+    message = str(error).lower()
+    return any(text in message for text in ("lost connection", "gone away", "connection reset", "connection closed"))
+
+
 class RetryingPooledMySQLDatabase(PooledMySQLDatabase):
     def __init__(self, *args, **kwargs):
         self.max_retries = kwargs.pop("max_retries", 5)
@@ -495,6 +506,50 @@ class RetryingPooledMySQLDatabase(PooledMySQLDatabase):
         # This prevents cross-coroutine connection sharing / double-return bugs.
         self._state = _ContextVarConnectionState()
 
+    def _raise_if_connection_poisoned(self):
+        error = getattr(self._state, "connection_loss", None)
+        if error is not None:
+            raise error
+
+    def _evict_dead_connection(self):
+        conn = self._state.conn
+        if conn is None:
+            return
+        key = self.conn_key(conn)
+        with self._pool_lock:
+            self._in_use.pop(key, None)
+            self._connections = [entry for entry in self._connections if entry[2] is not conn]
+            heapq.heapify(self._connections)
+        try:
+            conn.close()
+        except Exception:
+            logging.debug("Failed to close dead database connection", exc_info=True)
+
+    def _abort_transaction_after_connection_loss(self, error):
+        self._evict_dead_connection()
+        self._state.connection_loss = error
+        self._state.closed = True
+        self._state.conn = None
+
+    def pop_transaction(self):
+        transaction = super().pop_transaction()
+        if not self._state.transactions and getattr(self._state, "connection_loss", None) is not None:
+            self._state.reset()
+            self._state.connection_loss = None
+        return transaction
+
+    def commit(self):
+        if getattr(self._state, "connection_loss", None) is not None:
+            logging.debug("Suppressing commit after database connection loss")
+            return
+        return super().commit()
+
+    def rollback(self):
+        if getattr(self._state, "connection_loss", None) is not None:
+            logging.debug("Suppressing rollback after database connection loss")
+            return
+        return super().rollback()
+
     def _is_closed(self, conn):
         # Enhanced pre-ping: try to detect closed connections more reliably
         try:
@@ -506,6 +561,7 @@ class RetryingPooledMySQLDatabase(PooledMySQLDatabase):
     def execute_sql(self, sql, params=None, commit=True):
         for attempt in range(self.max_retries + 1):
             try:
+                self._raise_if_connection_poisoned()
                 return super().execute_sql(sql, params, commit)
             except (OperationalError, InterfaceError, OSError, AttributeError, ValueError) as e:
                 # https://dev.mysql.com/doc/refman/8.0/en/server-error-reference.html#error_er_lock_deadlock
@@ -514,24 +570,21 @@ class RetryingPooledMySQLDatabase(PooledMySQLDatabase):
                 # 1213: Deadlock found when trying to get lock; try restarting transaction
                 # The issue you are seeing, pymysql.err.InterfaceError: (0, ''), is a known behavior in PyMySQL when the underlying network connection is closed unexpectedly or is in an invalid state, but the error code returned is generic (0).
                 # OSError(9): Bad file descriptor from socket-level failures in PyMySQL.
-                error_codes = [2013, 2006, 1213, 0]  # Added 1213 for deadlock, 0 for InterfaceError (0, '')
                 error_messages = ["", "Lost connection", "Deadlock found"]
                 socket_closed = isinstance(e, OSError) and getattr(e, "errno", None) == 9
                 socket_none = isinstance(e, AttributeError) and "settimeout" in str(e) and "NoneType" in str(e)
                 stream_closed = isinstance(e, ValueError) and str(e) == "read of closed file"
-                should_retry = (
-                    (isinstance(e.args, tuple) and len(e.args) > 0 and e.args[0] in error_codes)
-                    or (str(e) in error_messages)
-                    or (hasattr(e, "__class__") and e.__class__.__name__ == "InterfaceError")
-                    or socket_closed
-                    or socket_none
-                    or stream_closed
-                )
+                connection_error = _is_mysql_connection_error(e) or socket_closed or socket_none or stream_closed
+                should_retry = connection_error or (isinstance(e.args, tuple) and len(e.args) > 0 and e.args[0] in (1213, 0)) or str(e) in error_messages
+
+                if connection_error and self.in_transaction():
+                    self._abort_transaction_after_connection_loss(e)
+                    raise
 
                 if should_retry and attempt < self.max_retries:
                     logging.warning(f"Database connection/deadlock issue (attempt {attempt + 1}/{self.max_retries}): {e} {str(e)}")
                     # Reconnect for connection issues (2013, 2006) and InterfaceError (0)
-                    if socket_closed or socket_none or stream_closed or (hasattr(e, "args") and e.args and e.args[0] in error_codes):
+                    if socket_closed or socket_none or stream_closed or (hasattr(e, "args") and e.args and e.args[0] in (2006, 2013, 0)):
                         self._handle_connection_loss()
                     time.sleep(self.retry_delay * (2**attempt))
                 else:
@@ -558,6 +611,7 @@ class RetryingPooledMySQLDatabase(PooledMySQLDatabase):
     def begin(self):
         for attempt in range(self.max_retries + 1):
             try:
+                self._raise_if_connection_poisoned()
                 return super().begin()
             except (OperationalError, InterfaceError, OSError, AttributeError) as e:
                 error_codes = [2013, 2006, 1213]  # Added 1213 for deadlock

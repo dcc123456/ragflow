@@ -156,7 +156,7 @@ class RAGFlowOSS:
     def put(self, bucket, fnm, binary, tenant_id=None):
         self._ensure_connection()
         logging.debug(f"bucket name {bucket}; filename :{fnm}:")
-        for _ in range(1):
+        for attempt in range(3):
             try:
                 if not self.bucket_exists(bucket):
                     self.conn.create_bucket(Bucket=bucket)
@@ -166,8 +166,10 @@ class RAGFlowOSS:
                 return r
             except Exception:
                 logging.exception(f"Fail put {bucket}/{fnm}")
+                if attempt == 2:
+                    raise
                 self.__open__()
-                time.sleep(1)
+                time.sleep(2**attempt)
 
     @use_prefix_path
     @use_default_bucket
@@ -182,15 +184,17 @@ class RAGFlowOSS:
     @use_default_bucket
     def get(self, bucket, fnm, tenant_id=None):
         self._ensure_connection()
-        for _ in range(1):
+        for attempt in range(3):
             try:
                 r = self.conn.get_object(Bucket=bucket, Key=fnm)
                 object_data = r["Body"].read()
                 return object_data
             except Exception:
                 logging.exception(f"fail get {bucket}/{fnm}")
+                if attempt == 2:
+                    raise
                 self.__open__()
-                time.sleep(1)
+                time.sleep(2**attempt)
         return None
 
     @use_prefix_path
@@ -210,13 +214,15 @@ class RAGFlowOSS:
     @use_default_bucket
     def get_presigned_url(self, bucket, fnm, expires, tenant_id=None):
         self._ensure_connection()
-        for _ in range(10):
+        for attempt in range(3):
             try:
                 r = self.conn.generate_presigned_url("get_object", Params={"Bucket": bucket, "Key": fnm}, ExpiresIn=expires)
 
                 return r
             except Exception:
                 logging.exception(f"fail get url {bucket}/{fnm}")
+                if attempt == 2:
+                    raise
                 self.__open__()
-                time.sleep(1)
+                time.sleep(2**attempt)
         return None

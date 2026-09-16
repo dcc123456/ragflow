@@ -34,7 +34,7 @@ from common.aimlapi_utils import attribution_headers
 from common.exceptions import ModelException
 from common.llm_request_context import openai_user_kwargs
 from common.token_utils import num_tokens_from_string, truncate, total_token_count_from_response
-from rag.llm.key_utils import _normalize_replicate_key
+from rag.llm.key_utils import _normalize_replicate_key, _resolve_bedrock_credentials
 from rag.llm.mws_utils import mws_api_url, require_mws_token
 from rag.utils.url_utils import append_api_path, ensure_v1
 import logging
@@ -276,15 +276,18 @@ class OpenAIEmbed(Base):
         self.client = OpenAI(api_key=key, base_url=self.base_url)
         self.model_name = model_name
 
+    def _extra_body(self):
+        return None
+
     def _call(self, batch):
-        # extra_body is forwarded verbatim to the provider. `drop_params` is
-        # an OpenRouter-specific convention; Together AI (and any strict
-        # OpenAI-compatible provider) rejects it with HTTP 400
-        # "Unrecognized request arguments supplied: drop_params".
         # `user` is OpenAI-standard and is only sent when LLM request context
         # is active. Local servers that reject unknown fields (LocalAI,
         # LM Studio, Xinference) use their own embed classes and omit it.
-        res = self.client.embeddings.create(input=batch, model=self.model_name, encoding_format="float", **openai_user_kwargs())
+        kwargs = {"input": batch, "model": self.model_name, "encoding_format": "float", **openai_user_kwargs()}
+        extra_body = self._extra_body()
+        if extra_body is not None:
+            kwargs["extra_body"] = extra_body
+        res = self.client.embeddings.create(**kwargs)
         return [d.embedding for d in _sorted_by_index(res.data)], total_token_count_from_response(res)
 
     def encode(self, texts: list):
@@ -703,7 +706,7 @@ class BedrockEmbed(Base):
         #   - "iam_role": requires `aws_role_arn` and assumes role via STS.
         #   - "assume_role": uses the default AWS credential chain.
         #   - "bedrock_api_key": uses a request-scoped Bearer token.
-        key = json.loads(key)
+        key = _resolve_bedrock_credentials(key)
         mode = key.get("auth_mode")
         if not mode:
             logging.error("Bedrock auth_mode is not provided in the key")
@@ -940,6 +943,21 @@ class HubrisEmbed(OpenAIEmbed):
     _BASE_URL = "https://api.hubris.pw/v1"
 
     def __init__(self, key, model_name, base_url=None):
+        super().__init__(key, model_name, self._BASE_URL)
+
+
+class ApiRouteEmbed(OpenAIEmbed):
+    """API-Route embeddings.
+
+    The endpoint is fixed rather than configurable, matching ApiRouteChat.
+    """
+
+    _FACTORY_NAME = "API-Route"
+
+    _BASE_URL = "https://global.api-route.com/v1"
+
+    def __init__(self, key, model_name, base_url=None):
+        """Initialize the API-Route embedding model."""
         super().__init__(key, model_name, self._BASE_URL)
 
 
@@ -1443,7 +1461,7 @@ class RAGconEmbed(OpenAIEmbed):
     """
     RAGcon Embedding Provider - routes through LiteLLM proxy
 
-    Default Base URL: https://connect.ragcon.ai/v1
+    Default Base URL: https://connect.ragcon.com/v1
     """
 
     _FACTORY_NAME = "RAGcon"
@@ -1453,6 +1471,12 @@ class RAGconEmbed(OpenAIEmbed):
             base_url = "https://connect.ragcon.com/v1"
 
         super().__init__(key, model_name, base_url)
+
+    def _extra_body(self):
+        host = (urlparse(self.base_url).hostname or "").lower()
+        if host in {"connect.ragcon.com", "connect.ragcon.ai"} or host.endswith((".connect.ragcon.com", ".connect.ragcon.ai")):
+            return {"drop_params": True}
+        return None
 
 
 class PerplexityEmbed(Base):
@@ -1527,6 +1551,18 @@ class PerplexityEmbed(Base):
     def encode_queries(self, text):
         embds, cnt = self.encode([text])
         return np.array(embds[0]), cnt
+
+
+class DaoXEEmbed(OpenAIEmbed):
+    """DaoXE OpenAI-compatible embeddings."""
+
+    _FACTORY_NAME = "DaoXE"
+
+    def __init__(self, key, model_name, base_url):
+        if not base_url:
+            raise ValueError("url cannot be None")
+        self.client = OpenAI(api_key=key, base_url=base_url)
+        self.model_name = model_name.split("___")[0]
 
 
 class NewAPIEmbed(OpenAIEmbed):

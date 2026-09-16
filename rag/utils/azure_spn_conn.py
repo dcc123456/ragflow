@@ -69,16 +69,17 @@ class RAGFlowAzureSpnBlob:
 
     def put(self, bucket, fnm, binary, tenant_id=None):
         blob = f"{bucket}/{fnm}"
-        for _ in range(3):
+        for attempt in range(3):
             try:
                 f = self.conn.create_file(f"{blob}")
                 f.append_data(binary, offset=0, length=len(binary))
                 return f.flush_data(len(binary))
             except Exception:
                 logging.exception(f"Fail put {blob}")
+                if attempt == 2:
+                    raise
                 self.__open__()
-                time.sleep(1)
-                return None
+                time.sleep(2**attempt)
         return None
 
     def rm(self, bucket, fnm, tenant_id=None):
@@ -92,15 +93,17 @@ class RAGFlowAzureSpnBlob:
     def get(self, bucket, fnm, tenant_id=None):
         self._ensure_connection()
         blob = f"{bucket}/{fnm}"
-        for _ in range(1):
+        for attempt in range(3):
             try:
                 client = self.conn.get_file_client(f"{blob}")
                 r = client.download_file()
                 return r.read()
             except Exception:
                 logging.exception(f"fail get {blob}")
+                if attempt == 2:
+                    raise
                 self.__open__()
-                time.sleep(1)
+                time.sleep(2**attempt)
         return None
 
     def obj_exist(self, bucket, fnm, tenant_id=None):
@@ -116,11 +119,13 @@ class RAGFlowAzureSpnBlob:
     def get_presigned_url(self, bucket, fnm, expires):
         self._ensure_connection()
         f_path = f"{bucket}/{fnm}"
-        for _ in range(10):
+        for attempt in range(3):
             try:
                 return self.conn.get_presigned_url("GET", bucket, f_path, expires)
             except Exception:
                 logging.exception(f"fail get {bucket}/{fnm}")
+                if attempt == 2:
+                    raise
                 self.__open__()
-                time.sleep(1)
+                time.sleep(2**attempt)
         return None

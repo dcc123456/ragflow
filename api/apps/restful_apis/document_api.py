@@ -2006,7 +2006,7 @@ def _parse_document_image_id(image_id: str) -> tuple[str, str] | None:
         ``(bucket, object_key)`` when valid, otherwise ``None``.
     """
     parts = image_id.split("-", 1)
-    if len(parts) != 2 or not parts[0] or not parts[1]:
+    if len(parts) != 2 or not re.fullmatch(r"[0-9a-fA-F]{32}", parts[0]) or not parts[1]:
         return None
     return parts[0], parts[1]
 
@@ -2068,7 +2068,8 @@ async def get_document_image(image_id):
             return get_data_error_result(message="Image not found.")
         bkt, nm = parsed
         data = await thread_pool_exec(settings.STORAGE_IMPL.get, bkt, nm)
-        if not data:
+        if data is None:
+            logging.warning("get_document_image: storage miss image_id: %s, bucket: %s, key: %s", image_id, bkt, nm)
             return get_data_error_result(message="Image not found.")
         content_type = _content_type_for_document_image(nm, data)
         response = await make_response(data)

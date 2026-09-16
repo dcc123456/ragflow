@@ -94,9 +94,12 @@ def _install_scholarly_stub():
 _install_rag_llm_stubs()
 _install_scholarly_stub()
 
+import time
+
 import pytest
 import requests
 from configs import DEFAULT_PARSER_CONFIG, EMAIL, HOST_ADDRESS, PASSWORD, VERSION, ZHIPU_AI_API_KEY
+from test.testcases.configs import IS_GO_PROXY
 
 BUILTIN_EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
 BUILTIN_EMBEDDING_PROVIDER = "Builtin"
@@ -166,6 +169,7 @@ SILICONFLOW_EMBEDDING_MODEL = siliconflow_embedding_model_name()
 ADMIN_HOST_ADDRESS = os.getenv("ADMIN_HOST_ADDRESS", "http://127.0.0.1:9381")
 # password is "admin"
 ENCRYPTED_ADMIN_PASSWORD = """WBPsJbL/W+1HN+hchm5pgu1YC3yMEb/9MFtsanZrpKEE9kAj4u09EIIVDtIDZhJOdTjz5pp5QW9TwqXBfQ2qzDqVJiwK7HGcNsoPi4wQPCmnLo0fs62QklMlg7l1Q7fjGRgV+KWtvNUce2PFzgrcAGDqRIuA/slSclKUEISEiK4z62rdDgvHT8LyuACuF1lPUY5wV0m/MbmGijRJlgvglAF8BX0BP8rQr8wZeaJdcnAy/keuODCjltMZDL06tYluN7HoiU+qlhBB+ltqG411oO/+vVhBgWsuVVOHd8uMjJEL320GUWUicprDUZvjlLaSSqVyyOiRMHpqAE9eHEecWg=="""
+
 
 MARKER_EXPRESSIONS = {
     "p1": "p1 or billing",
@@ -290,11 +294,43 @@ def _request_json_with_auth_retry(method, url, auth, *, json_payload=None):
     return response, refreshed_auth
 
 
+_ADMIN_BOOTSTRAP_REASON = "admin server not connected"
+
+
+def _auth_with_admin_bootstrap_retry():
+    deadline = time.monotonic() + 120
+    last_error = None
+    while time.monotonic() < deadline:
+        try:
+            register()
+        except Exception as exc:
+            message = str(exc)
+            if _ADMIN_BOOTSTRAP_REASON in message:
+                last_error = exc
+                time.sleep(2)
+                continue
+            print(exc)
+        try:
+            return login()
+        except Exception as exc:
+            if _ADMIN_BOOTSTRAP_REASON in str(exc):
+                last_error = exc
+                time.sleep(2)
+                continue
+            raise
+    raise last_error or Exception("Timed out waiting for admin server during auth bootstrap")
+
+
 @pytest.fixture(scope="session")
 def auth():
     _register_with_whitelist_retry()
-    auth = login()
-    return auth
+    if IS_GO_PROXY:
+        return _auth_with_admin_bootstrap_retry()
+    try:
+        register()
+    except Exception as e:
+        print(e)
+    return login()
 
 
 @pytest.fixture(scope="session")
