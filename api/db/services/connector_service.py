@@ -549,12 +549,14 @@ class SyncLogsService(CommonService):
         cls.model.update(update_payload).where(cls.model.id == id).execute()
 
     @classmethod
-    def duplicate_and_parse(cls, kb, docs, tenant_id, src, auto_parse=True, folder_id=None):
+    def duplicate_and_parse(cls, kb, docs, tenant_id, src, auto_parse=True, folder_id=None, should_cancel=None):
         from api.db.services.file_service import FileService
         from api.db.services.billing_service import InsufficientPointsError
 
         if not docs:
             return None
+        if FileService._is_sync_cancelled(should_cancel):
+            return [], []
 
         class FileObj(BaseModel):
             id: str
@@ -574,7 +576,7 @@ class SyncLogsService(CommonService):
             return
 
         doc_ids = []
-        err, doc_blob_pairs = FileService.upload_document(kb, files, tenant_id, src)
+        err, doc_blob_pairs = FileService.upload_document(kb, files, tenant_id, src, should_cancel=should_cancel)
         errs.extend(err)
 
         # Create a mapping from filename to metadata for later use
@@ -585,20 +587,29 @@ class SyncLogsService(CommonService):
                 metadata_map[filename] = d["metadata"]
 
         kb_table_num_map = {}
-        for doc, _ in doc_blob_pairs:
-            doc_ids.append(doc["id"])
+        wrote_meta = False
+        try:
+            for doc, _ in doc_blob_pairs:
+                if FileService._is_sync_cancelled(should_cancel):
+                    break
+                doc_ids.append(doc["id"])
 
-            # Set metadata if available for this document
-            if doc["name"] in metadata_map:
-                DocMetadataService.update_document_metadata(doc["id"], metadata_map[doc["name"]])
+                # Set metadata if available for this document
+                if doc["name"] in metadata_map:
+                    DocMetadataService.update_document_metadata(doc["id"], metadata_map[doc["name"]], refresh_now=False)
+                    wrote_meta = True
 
-            if not auto_parse or auto_parse == "0":
-                continue
-            try:
-                DocumentService.run(tenant_id, doc, kb_table_num_map)
-            except InsufficientPointsError as exc:
-                errs.append(f"{doc['name']}: {exc}")
-                continue
+                if not auto_parse or auto_parse == "0":
+                    continue
+                try:
+                    DocumentService.run(tenant_id, doc, kb_table_num_map)
+                except InsufficientPointsError as exc:
+                    errs.append(f"{doc['name']}: {exc}")
+                    continue
+
+        finally:
+            if wrote_meta:
+                DocMetadataService.refresh_tenant_index(tenant_id)
 
         return errs, doc_ids
 
