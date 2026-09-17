@@ -50,10 +50,12 @@ def _queue_tasks(monkeypatch, parser_id, parser_config):
 
 
 @pytest.mark.p2
-def test_queue_tasks_keeps_multiple_page_ranges_for_resume(monkeypatch):
-    queued_tasks = _queue_tasks(monkeypatch, "resume", {"pages": [[1, 5], [10, 15]]})
+@pytest.mark.parametrize("pages", [None, [[1, 5]], [[1, 5], [10, 15]]])
+@pytest.mark.parametrize("task_page_size", [None, 2])
+def test_queue_tasks_creates_one_whole_file_task_for_resume(monkeypatch, pages, task_page_size):
+    queued_tasks = _queue_tasks(monkeypatch, "resume", {"pages": pages, "task_page_size": task_page_size})
 
-    assert [(task["from_page"], task["to_page"]) for task in queued_tasks] == [(0, 4), (9, 14)]
+    assert [(task["from_page"], task["to_page"]) for task in queued_tasks] == [(0, 20)]
 
 
 @pytest.mark.p2

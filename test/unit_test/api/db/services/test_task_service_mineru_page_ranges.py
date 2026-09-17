@@ -20,7 +20,7 @@ from api.db.services import task_service as ts
 
 class _Storage:
     @staticmethod
-    def get(_bucket, _name):
+    def get(_bucket, _name, _tenant_id):
         return b"%PDF-1.4"
 
 
@@ -32,6 +32,7 @@ def _queued_page_spans(monkeypatch, layout_model_name, pages, total_pages=30):
         parser_config["pages"] = pages
     doc = {
         "id": "doc1",
+        "tenant_id": "t",
         "name": "manual.pdf",
         "type": ts.FileType.PDF.value,
         "parser_id": "naive",
@@ -47,7 +48,7 @@ def _queued_page_spans(monkeypatch, layout_model_name, pages, total_pages=30):
     monkeypatch.setattr(ts.DocumentService, "begin2parse", staticmethod(lambda *_a, **_k: None))
     monkeypatch.setattr(ts, "bulk_insert_into_db", lambda _model, rows, _replace: captured.extend(rows))
     monkeypatch.setattr(ts, "seed_doc_chunking_counter", lambda *_a, **_k: True)
-    monkeypatch.setattr(ts.REDIS_CONN, "queue_product", lambda *_a, **_k: True)
+    monkeypatch.setattr(ts.RABBITMQ_CONN, "queue_product", lambda *_a, **_k: True)
 
     ts.queue_tasks(doc, "bucket", "manual.pdf", 0)
     return [(task["from_page"], task["to_page"]) for task in captured]
