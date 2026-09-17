@@ -75,3 +75,37 @@ class TestDocMetadataServiceConnectorGetCalls:
                 [],
             )
             assert result == {"author": "alice"}
+
+
+class TestDocMetadataServiceRefreshNow:
+    @pytest.mark.parametrize("refresh_now", [False, True])
+    def test_insert_respects_refresh_now(self, refresh_now):
+        mock_doc_store = MagicMock()
+        mock_doc_store.index_exist.return_value = True
+        mock_doc_store.insert.return_value = []
+        mock_doc_store.refresh_idx = MagicMock(return_value=True)
+
+        mock_doc = MagicMock()
+        mock_doc.id = "doc_789"
+        mock_doc.kb_id = "kb_123"
+        mock_doc.knowledgebase.tenant_id = "tenant_456"
+
+        with (
+            patch("api.db.services.doc_metadata_service.settings") as mock_settings,
+            patch("api.db.services.doc_metadata_service.Document") as mock_document_model,
+            patch("api.db.db_models.DB.connect"),
+            patch("api.db.db_models.DB.connection_context"),
+        ):
+            mock_settings.docStoreConn = mock_doc_store
+            mock_settings.DOC_ENGINE_INFINITY = False
+            mock_document_model.select.return_value.join.return_value.where.return_value.first.return_value = mock_doc
+
+            ok = DocMetadataService.insert_document_metadata("doc_789", {"k": "v"}, refresh_now=refresh_now)
+
+            assert ok is True
+            mock_doc_store.insert.assert_called_once()
+            assert mock_doc_store.insert.call_args.kwargs["refresh"] == ("wait_for" if refresh_now else False)
+            if refresh_now:
+                mock_doc_store.refresh_idx.assert_called_once_with("ragflow_doc_meta_tenant_456")
+            else:
+                mock_doc_store.refresh_idx.assert_not_called()

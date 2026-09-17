@@ -1090,6 +1090,10 @@ func (h *Handler) ListUserDatasets(c *gin.Context) {
 
 	datasets, err := h.service.ListUserDatasets(ctx, username)
 	if err != nil {
+		if errors.Is(err, common.ErrUserNotFound) {
+			common.ErrorWithCode(c, common.CodeNotFound, "User not found")
+			return
+		}
 		common.ErrorWithCode(c, common.CodeServerError, err.Error())
 		return
 	}
@@ -1107,6 +1111,10 @@ func (h *Handler) ListUserAgents(c *gin.Context) {
 
 	agents, err := h.service.ListUserAgents(ctx, username)
 	if err != nil {
+		if errors.Is(err, common.ErrUserNotFound) {
+			common.ErrorWithCode(c, common.CodeNotFound, "User not found")
+			return
+		}
 		common.ErrorWithCode(c, common.CodeServerError, err.Error())
 		return
 	}

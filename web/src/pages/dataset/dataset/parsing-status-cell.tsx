@@ -117,6 +117,7 @@ export function ParsingStatusCell({
   record,
   showLog,
   datasetEditButtonDisabled,
+  showChangeParserModal,
 }: {
   record: IDocumentInfo;
   showLog: (record: IDocumentInfo) => void;
@@ -135,7 +136,7 @@ export function ParsingStatusCell({
     visible: reparseDialogVisible,
     showModal: showReparseDialogModal,
     hideModal: hideReparseDialogModal,
-  } = useHandleRunDocumentByIds(id);
+  } = useHandleRunDocumentByIds(id, showChangeParserModal);
   const isGo = useIsGoBackend();
   const isRunning = isDocumentProcessing(record);
   const isQueued = effectiveRun === RunningStatus.QUEUED;
