@@ -957,7 +957,7 @@ def test_upload_file_uses_root_folder_when_parent_missing(monkeypatch):
         "STORAGE_IMPL",
         SimpleNamespace(
             obj_exist=lambda *_args, **_kwargs: False,
-            put=lambda bucket, location, blob: seen_ids.append((bucket, location, blob)),
+            put=lambda bucket, location, blob, tenant_id: seen_ids.append((bucket, location, blob, tenant_id)),
             rm=lambda *_args, **_kwargs: None,
             move=lambda *_args, **_kwargs: None,
         ),
@@ -967,7 +967,7 @@ def test_upload_file_uses_root_folder_when_parent_missing(monkeypatch):
     assert ok is True
     assert data[0]["name"] == "a.txt"
     assert data[0]["parent_id"] == "root"
-    assert seen_ids == [("root", "a.txt", b"hello")]
+    assert seen_ids == [("root", "a.txt", b"hello", "tenant1")]
 
 
 @pytest.mark.p2

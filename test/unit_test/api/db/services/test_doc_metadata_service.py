@@ -78,7 +78,8 @@ class TestDocMetadataServiceConnectorGetCalls:
 
 
 class TestDocMetadataServiceRefreshNow:
-    def test_insert_skips_wait_for_when_refresh_now_is_false(self):
+    @pytest.mark.parametrize("refresh_now", [False, True])
+    def test_insert_respects_refresh_now(self, refresh_now):
         mock_doc_store = MagicMock()
         mock_doc_store.index_exist.return_value = True
         mock_doc_store.insert.return_value = []
@@ -99,9 +100,12 @@ class TestDocMetadataServiceRefreshNow:
             mock_settings.DOC_ENGINE_INFINITY = False
             mock_document_model.select.return_value.join.return_value.where.return_value.first.return_value = mock_doc
 
-            ok = DocMetadataService.insert_document_metadata("doc_789", {"k": "v"}, refresh_now=False)
+            ok = DocMetadataService.insert_document_metadata("doc_789", {"k": "v"}, refresh_now=refresh_now)
 
             assert ok is True
             mock_doc_store.insert.assert_called_once()
-            assert mock_doc_store.insert.call_args.kwargs["refresh"] is False
-            mock_doc_store.refresh_idx.assert_not_called()
+            assert mock_doc_store.insert.call_args.kwargs["refresh"] == ("wait_for" if refresh_now else False)
+            if refresh_now:
+                mock_doc_store.refresh_idx.assert_called_once_with("ragflow_doc_meta_tenant_456")
+            else:
+                mock_doc_store.refresh_idx.assert_not_called()

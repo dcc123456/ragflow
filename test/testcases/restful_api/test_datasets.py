@@ -20,7 +20,7 @@ import uuid
 
 import pytest
 from configs import DATASET_NAME_LIMIT, DEFAULT_PARSER_CONFIG
-from test.testcases.conftest import embedding_model_id
+from test.testcases.conftest import default_parser_config, embedding_model_id
 from test.testcases.configs import INVALID_API_TOKEN, IS_GO_PROXY
 from test.testcases.restful_api.helpers.assertions import assert_auth_error
 from test.testcases.restful_api.helpers.client import RestClient
@@ -998,7 +998,7 @@ def test_dataset_update_parser_config_defaults_contract(rest_client, clear_datas
         assert "raptor" not in parser_config, list_payload
         assert "graphrag" not in parser_config, list_payload
     else:
-        assert parser_config == DEFAULT_PARSER_CONFIG, list_payload
+        assert parser_config == default_parser_config(tenant_id), list_payload
 
 
 @pytest.mark.p2

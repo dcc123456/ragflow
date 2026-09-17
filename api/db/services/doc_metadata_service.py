@@ -467,6 +467,7 @@ class DocMetadataService:
         if docs_to_insert:
             settings.docStoreConn.insert(docs_to_insert, index_name, target_kb_id)
 
+    @classmethod
     def refresh_tenant_index(cls, tenant_id: str) -> None:
         """Refresh the per-tenant metadata index when the backend needs it."""
         if settings.DOC_ENGINE_INFINITY:
