@@ -1,7 +1,7 @@
 import { ConfirmDeleteDialog } from '@/components/confirm-delete-dialog';
 import { RoleLabel } from '@/components/privilege-management/add-collaborator-dialog/right-panel';
 import { Button } from '@/components/ui/button';
-import { RAGFlowSelect } from '@/components/ui/select';
+import { SelectWithSearch } from '@/components/originui/select-with-search';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { TeamRole } from '@/constants/team';
 import { TenantIdContext } from '@/contexts/teant-context';
@@ -125,11 +125,11 @@ export function TeamManagement() {
       <div className="flex py-4 border-b justify-between mb-4">
         <div className="flex gap-4 items-center ">
           <Users /> {t('permission.teamManagement')}
-          <RAGFlowSelect
+          <SelectWithSearch
             options={joinedTeams}
             value={currentTeamId}
             onChange={setCurrentTeamId}
-          ></RAGFlowSelect>
+          ></SelectWithSearch>
         </div>
         <span>
           {userList.length} {t('permission.membersInTotal')}

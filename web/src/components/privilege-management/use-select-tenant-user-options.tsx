@@ -1,6 +1,6 @@
 import { useListTenantUser } from '@/hooks/use-user-setting-request';
 import { useMemo } from 'react';
-import { RAGFlowSelectOptionType } from '../ui/select';
+import { SelectWithSearchOptionType } from '../originui/select-with-search';
 import { PrivilegeAvatar } from './privilege-avatar';
 
 export function useSelectTenantUserOptions(
@@ -9,7 +9,7 @@ export function useSelectTenantUserOptions(
 ) {
   const { data: list } = useListTenantUser(tenantId, excludePendingInvitations);
 
-  const options: RAGFlowSelectOptionType[] = useMemo(() => {
+  const options: SelectWithSearchOptionType[] = useMemo(() => {
     return list.map((x) => ({
       label: (
         <div className="flex items-center gap-2">

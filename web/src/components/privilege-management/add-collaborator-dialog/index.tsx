@@ -6,7 +6,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { RAGFlowSelect } from '@/components/ui/select';
+import { SelectWithSearch } from '@/components/originui/select-with-search';
 import {
   LabelMap,
   Permission,
@@ -224,11 +224,11 @@ export function AddCollaboratorDialog({
           </div>
         </section>
         <DialogFooter>
-          <RAGFlowSelect
+          <SelectWithSearch
             options={options}
             onChange={setValue}
             value={value}
-          ></RAGFlowSelect>
+          ></SelectWithSearch>
           <ButtonLoading
             type="submit"
             onClick={handleOk}
