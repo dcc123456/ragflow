@@ -15,23 +15,21 @@
 #
 import hashlib
 import logging
-from datetime import datetime
 import os
-from typing import Optional, Tuple, List
+from datetime import datetime
 
 from anthropic import BaseModel
-from peewee import SQL, fn, JOIN
+from peewee import SQL, Case, fn, JOIN
 
 from api.db import InputType
-from api.db.db_models import DB, Connector, SyncLogs, Connector2Kb, Knowledgebase, File
+from api.db.db_models import DB, Connector, Connector2Kb, File, Knowledgebase, SyncLogs
 from api.db.services.common_service import CommonService
-from api.db.services.document_service import DocumentService
-from api.db.services.document_service import DocMetadataService
+from api.db.services.document_service import DocMetadataService, DocumentService
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.utils.common import hash128
 from common import settings
-from common.misc_utils import get_uuid
 from common.constants import ConnectorTaskType, TaskStatus
+from common.misc_utils import get_uuid
 from common.settings import TIMEZONE
 from common.time_utils import current_timestamp, timestamp_to_date
 
@@ -303,7 +301,7 @@ class SyncLogsService(CommonService):
     model = SyncLogs
 
     @classmethod
-    def list_sync_tasks(cls, connector_id=None, page_number=None, items_per_page=15) -> Tuple[List[dict], int]:
+    def list_sync_tasks(cls, connector_id=None, page_number=None, items_per_page=15) -> tuple[list[dict], int]:
         fields = [
             cls.model.id,
             cls.model.connector_id,
@@ -326,6 +324,14 @@ class SyncLogsService(CommonService):
             cls.model.from_beginning.alias("reindex"),
             cls.model.status,
             cls.model.update_time,
+            Case(
+                None,
+                [
+                    (cls.model.status == TaskStatus.SCHEDULE, 0),
+                    (cls.model.status == TaskStatus.RUNNING, 1),
+                ],
+                2,
+            ).alias("status_rank"),
         ]
         if not connector_id:
             fields.append(Connector.config)
@@ -351,22 +357,25 @@ class SyncLogsService(CommonService):
                     expr = SQL("NOW() - INTERVAL `t2`.`refresh_freq` MINUTE")
             query = query.where(Connector.input_type == InputType.POLL, Connector.status == TaskStatus.SCHEDULE, cls.model.status == TaskStatus.SCHEDULE, cls.model.update_date < expr)
 
-        query = query.distinct().order_by(cls.model.update_time.desc())
+        query = query.distinct().order_by(SQL("status_rank"), cls.model.update_time.desc())
         total = query.count()
         if page_number:
             query = query.paginate(page_number, items_per_page)
 
-        return list(query.dicts()), total
+        rows = list(query.dicts())
+        for row in rows:
+            row.pop("status_rank", None)
+        return rows, total
 
     @classmethod
-    def list_due_sync_tasks(cls) -> List[dict]:
+    def list_due_sync_tasks(cls) -> list[dict]:
         return cls._list_due_tasks_for_freq(
             ConnectorTaskType.SYNC,
             "refresh_freq",
         )
 
     @classmethod
-    def list_due_prune_tasks(cls) -> List[dict]:
+    def list_due_prune_tasks(cls) -> list[dict]:
         tasks = cls._list_due_tasks_for_freq(
             ConnectorTaskType.PRUNE,
             "prune_freq",
@@ -380,7 +389,7 @@ class SyncLogsService(CommonService):
         ]
 
     @classmethod
-    def _list_due_tasks_for_freq(cls, task_type: str, freq_field: str) -> List[dict]:
+    def _list_due_tasks_for_freq(cls, task_type: str, freq_field: str) -> list[dict]:
         fields = [
             cls.model.id,
             cls.model.connector_id,
@@ -483,17 +492,15 @@ class SyncLogsService(CommonService):
             task_id = get_uuid()
             ConnectorService.update_by_id(connector_id, {"status": TaskStatus.SCHEDULE})
             ret = cls.save(
-                **{
-                    "id": task_id,
-                    "kb_id": kb_id,
-                    "status": TaskStatus.SCHEDULE,
-                    "connector_id": connector_id,
-                    "task_type": task_type,
-                    "poll_range_start": poll_range_start,
-                    "from_beginning": reindex,
-                    "total_docs_indexed": total_docs_indexed,
-                    "time_started": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                }
+                id=task_id,
+                kb_id=kb_id,
+                status=TaskStatus.SCHEDULE,
+                connector_id=connector_id,
+                task_type=task_type,
+                poll_range_start=poll_range_start,
+                from_beginning=reindex,
+                total_docs_indexed=total_docs_indexed,
+                time_started=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             )
             if run_immediately:
                 DB.execute_sql(
@@ -562,7 +569,7 @@ class SyncLogsService(CommonService):
             id: str
             filename: str
             blob: bytes
-            fingerprint: Optional[str] = None
+            fingerprint: str | None = None
 
             def read(self) -> bytes:
                 return self.blob
@@ -636,7 +643,7 @@ class Connector2KbService(CommonService):
             if conn_id in old_conn_ids:
                 cls.filter_update([cls.model.connector_id == conn_id, cls.model.kb_id == kb_id], {"auto_parse": conn.get("auto_parse", "1")})
                 continue
-            cls.save(**{"id": get_uuid(), "connector_id": conn_id, "kb_id": kb_id, "auto_parse": conn.get("auto_parse", "1"), "is_kb": "0" if folder_id else "1"})
+            cls.save(id=get_uuid(), connector_id=conn_id, kb_id=kb_id, auto_parse=conn.get("auto_parse", "1"), is_kb="0" if folder_id else "1")
             SyncLogsService.schedule(conn_id, kb_id, reindex=True, task_type=ConnectorTaskType.SYNC, run_immediately=True)
             e, full_conn = ConnectorService.get_by_id(conn_id)
             if e and (full_conn.config or {}).get("sync_deleted_files"):
