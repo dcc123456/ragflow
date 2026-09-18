@@ -19,11 +19,11 @@ from datetime import UTC, datetime
 
 from peewee import SqliteDatabase
 
-from api.db.db_models import DB, Connector, Connector2Kb, Knowledgebase, SyncLogs
+from api.db.db_models import DB, Connector, Connector2Kb, File, Knowledgebase, SyncLogs
 from api.db.services.connector_service import SyncLogsService
 from common.constants import TaskStatus
 
-_MODELS = [SyncLogs, Connector, Connector2Kb, Knowledgebase]
+_MODELS = [SyncLogs, Connector, Connector2Kb, Knowledgebase, File]
 
 
 def test_list_sync_tasks_status_priority():
