@@ -12,7 +12,10 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
-import { RAGFlowSelect, RAGFlowSelectOptionType } from '@/components/ui/select';
+import {
+  SelectWithSearch,
+  SelectWithSearchOptionType,
+} from '@/components/originui/select-with-search';
 import { Switch } from '@/components/ui/switch';
 import { TagRenameId } from '@/constants/knowledge';
 import { TenantIdContext } from '@/contexts/teant-context';
@@ -29,7 +32,7 @@ export function TransferOwnerForm({
   const { t } = useTranslation();
 
   const tenantId = useContext(TenantIdContext);
-  const options: RAGFlowSelectOptionType[] = useSelectTenantUserOptions(
+  const options: SelectWithSearchOptionType[] = useSelectTenantUserOptions(
     tenantId,
     true,
   );
@@ -70,7 +73,7 @@ export function TransferOwnerForm({
             <FormItem>
               <FormLabel>{t('permission.transferTo')}</FormLabel>
               <FormControl>
-                <RAGFlowSelect {...field} options={options}></RAGFlowSelect>
+                <SelectWithSearch {...field} options={options}></SelectWithSearch>
               </FormControl>
               <FormMessage />
             </FormItem>
