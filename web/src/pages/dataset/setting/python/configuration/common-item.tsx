@@ -22,8 +22,6 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
-import { Progress } from '@/components/ui/progress';
-import { Spin } from '@/components/ui/spin';
 import { Switch } from '@/components/ui/switch';
 import { useSetModalState, useTranslate } from '@/hooks/common-hooks';
 import { cn } from '@/lib/utils';
@@ -35,7 +33,6 @@ import {
   useEffect,
   useMemo,
   useRef,
-  useState,
 } from 'react';
 import {
   useFormContext,
@@ -61,14 +58,8 @@ import {
   useOwnerTenantId,
   useKnowledgeBaseContext,
 } from '../../../contexts/knowledge-base-context';
-import {
-  useHandleKbEmbedding,
-  useHasParsedDocument,
-  useKbSwitchEmbeddingModel,
-  useSelectChunkMethodList,
-  useTraceEmbedding,
-} from '../hooks';
-
+import { EmbeddingSelect } from '../../embedding-select';
+import { useHasParsedDocument, useSelectChunkMethodList } from '../hooks';
 interface IProps {
   line?: 1 | 2;
   isEdit?: boolean;
@@ -118,71 +109,6 @@ export function ChunkMethodItem(props: IProps) {
     />
   );
 }
-
-export const EmbeddingSelect = ({
-  isEdit,
-  field,
-  name,
-  disabled = false,
-  testId,
-  onChange,
-  children,
-  ownerTenantId,
-}: {
-  isEdit: boolean;
-  field: FieldValues;
-  name?: string;
-  disabled?: boolean;
-  testId?: string;
-  onChange?: (value: string) => void;
-  children?: React.ReactNode;
-  ownerTenantId?: string;
-}) => {
-  const { t } = useTranslate('knowledgeConfiguration');
-  const form = useFormContext();
-  const { handleChange } = useHandleKbEmbedding();
-
-  const oldValue = useMemo(() => {
-    const embdStr = form.getValues(name || 'embedding_model');
-    return embdStr || '';
-  }, [form, name]);
-  const [loading, setLoading] = useState(false);
-  return (
-    <Spin
-      spinning={loading}
-      className={cn('rounded-lg after:bg-bg-base', {
-        'opacity-20': loading,
-      })}
-    >
-      <ModelTreeSelect
-        modelTypes={ModelTypeMap.embd_id}
-        onChange={async (value) => {
-          if (onChange) {
-            onChange(value);
-          } else {
-            field.onChange(value);
-            if (isEdit && disabled) {
-              setLoading(true);
-              const res = await handleChange({
-                embed_id: value,
-              });
-              if (res.code !== 0) {
-                field.onChange(oldValue);
-              }
-              setLoading(false);
-            }
-          }
-        }}
-        ownerTenantId={ownerTenantId}
-        disabled={disabled && !isEdit}
-        value={field.value}
-        placeholder={t('embeddingModelPlaceholder')}
-        testId={testId}
-      />
-      {children}
-    </Spin>
-  );
-};
 
 export function EmbeddingModelItem({
   line = 1,

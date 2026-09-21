@@ -255,6 +255,7 @@ export default function SearchingView({
                             {chunk.image_id && (
                               <ImageWithPopover
                                 id={chunk.image_id}
+                                documentId={chunk.document_id}
                               ></ImageWithPopover>
                             )}
                             <div
