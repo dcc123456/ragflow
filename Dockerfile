@@ -37,6 +37,29 @@ RUN --mount=type=cache,id=ragflow_uv,target=/root/.cache/uv,sharing=locked \
     # Ensure pip is available in the venv for runtime package installation (fixes #12651)
     .venv/bin/python3 -m ensurepip --upgrade
 
+# Embedding tokenizer assets (internal/tokenizer/embedding_token_limits.md). The Go
+# counters load them from ragflow_deps/huggingface.co/<repo>/<file>; an image without them
+# counts every tagged model with the calibrated cl100k estimate, which is the less precise
+# path these counters exist to replace (cl100k under-counts XLM-R on some content, and an
+# under-count is what makes a provider answer 400) - so a missing asset FAILS THE BUILD
+# instead of shipping a degraded counter nobody notices.
+# The tokenizer.json files that download_deps.py fetches as cross-check oracles are
+# test-only and deliberately not shipped here.
+RUN --mount=type=bind,from=infiniflow/ragflow_deps:latest,source=/huggingface.co,target=/huggingface.co \
+    for asset in \
+        BAAI/bge-m3/sentencepiece.bpe.model \
+        BAAI/bge-large-en-v1.5/vocab.txt \
+        Qwen/Qwen3-Embedding-0.6B/tokenizer.json \
+        intfloat/e5-mistral-7b-instruct/tokenizer.json ; do \
+        if [ -f "/huggingface.co/$asset" ]; then \
+            mkdir -p "/ragflow/ragflow_deps/huggingface.co/$(dirname "$asset")" && \
+            cp "/huggingface.co/$asset" "/ragflow/ragflow_deps/huggingface.co/$asset" ; \
+        else \
+            echo "ERROR: tokenizer asset $asset is missing from the infiniflow/ragflow_deps image; this image would count with the calibrated estimate instead of the model's own tokenizer" >&2 ; \
+            exit 1 ; \
+        fi ; \
+    done
+
 # Install frontend dependencies — depends only on package manifests so
 # web source / docs changes don't invalidate this layer.
 COPY web/package.json web/package-lock.json web/.npmrc ./web/

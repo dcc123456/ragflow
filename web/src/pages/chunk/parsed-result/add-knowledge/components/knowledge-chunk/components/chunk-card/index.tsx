@@ -104,6 +104,7 @@ const ChunkCard = ({
               <Image
                 t={imageCacheKey}
                 id={item.image_id}
+                documentId={item.doc_id}
                 className="mt-1 rounded !w-28 object-contain"
               />
             </TooltipTrigger>
@@ -118,6 +119,7 @@ const ChunkCard = ({
               <Image
                 t={imageCacheKey}
                 id={item.image_id}
+                documentId={item.doc_id}
                 className="size-full max-w-[50vw] max-h-[50vh] object-contain"
               />
             </TooltipContent>

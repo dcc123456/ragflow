@@ -42,9 +42,6 @@ def _billing_app_stub():
 @pytest.fixture
 def billing_app(monkeypatch):
     module_name = "api.apps.billing"
-    if module_name in sys.modules:
-        return sys.modules[module_name]
-
     project_root = Path(__file__).resolve().parents[4]
     apps_dir = project_root / "api" / "apps"
     billing_path = apps_dir / "billing_app.py"
@@ -54,7 +51,7 @@ def billing_app(monkeypatch):
     spec = importlib.util.spec_from_file_location(module_name, billing_path)
     module = importlib.util.module_from_spec(spec)
     module.manager = Blueprint("billing", module_name)
-    sys.modules[module_name] = module
+    monkeypatch.setitem(sys.modules, module_name, module)
     assert spec.loader is not None
     spec.loader.exec_module(module)
     return module
