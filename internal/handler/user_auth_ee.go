@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"net/http"
 	"ragflow/internal/common"
-	"ragflow/internal/engine/redis"
+	"ragflow/internal/engine/kvrocks"
 	"ragflow/internal/server"
 	"ragflow/internal/service"
 	"ragflow/internal/utility"
@@ -52,7 +52,7 @@ func (h *UserHandler) OAuthCallback(c *gin.Context) {
 		return
 	}
 
-	init, code, err := h.userService.OAuthLoginInitiate(c.Request.Context(), channel, redis.Get())
+	init, code, err := h.userService.OAuthLoginInitiate(c.Request.Context(), channel, kvrocks.Get())
 	if err != nil {
 		// Mirror Python's oauth_login: the raised ValueError propagates to
 		// server_error_response, which replies HTTP 200 with code 100 and
@@ -116,7 +116,7 @@ func (h *UserHandler) OAuthLogin(c *gin.Context) {
 		return
 	}
 
-	init, code, err := h.userService.OAuthLoginInitiate(c.Request.Context(), channel, redis.Get())
+	init, code, err := h.userService.OAuthLoginInitiate(c.Request.Context(), channel, kvrocks.Get())
 	if err != nil {
 		// Mirror Python's oauth_login: the raised ValueError propagates to
 		// server_error_response, which replies HTTP 200 with code 100 and
@@ -150,13 +150,13 @@ func (h *UserHandler) OAuthChannelCallback(c *gin.Context) {
 
 	frontendBase := frontendRedirectBase()
 
-	result, _, err := h.userService.OAuthCallback(c.Request.Context(), channel, queryCode, queryState, cookieState, redis.Get())
+	result, _, err := h.userService.OAuthCallback(c.Request.Context(), channel, queryCode, queryState, cookieState, kvrocks.Get())
 	if err != nil {
 		c.Redirect(http.StatusFound, frontendBase+"?error="+callbackError(channel, err))
 		return
 	}
 
-	secretKey, kerr := server.GetSecretKey(c.Request.Context(), redis.Get())
+	secretKey, kerr := server.GetSecretKey(c.Request.Context(), kvrocks.Get())
 	if kerr != nil {
 		c.Redirect(http.StatusFound, frontendBase+"?error=server_error")
 		return
