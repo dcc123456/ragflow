@@ -749,7 +749,9 @@ def test_import_custom_headers_survive_discovery_persistence_and_export(monkeypa
     discovered = []
     stored = []
 
-    async def discover(_func, servers, _timeout):
+    async def discover(func, servers, _timeout):
+        if func is not module.get_mcp_tools:
+            return func(servers, _timeout)
         discovered.append(servers[0].headers)
         return {servers[0].name: [{"name": "web_search"}]}, None
 
