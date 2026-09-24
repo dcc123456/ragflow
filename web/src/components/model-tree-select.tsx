@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-import LLMLabel from '@/components/llm-select/llm-label';
+import LLMLabel, { MissingModelLabel } from '@/components/llm-select/llm-label';
 import { LlmIcon } from '@/components/svg-icon';
 import {
   FormControl,
@@ -26,12 +26,7 @@ import {
 import { useFetchAllAddedModels } from '@/hooks/use-llm-request';
 import { useFetchTenantInfo } from '@/hooks/use-user-setting-request';
 import { IAddedModel } from '@/interfaces/database/llm';
-import {
-  buildModelValue,
-  getRealModelName,
-  parseModelValue,
-} from '@/utils/llm-util';
-import { TriangleAlert } from 'lucide-react';
+import { buildModelValue, getRealModelName } from '@/utils/llm-util';
 import { forwardRef, useCallback, useEffect, useMemo } from 'react';
 import { useFormContext, useWatch } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
@@ -236,16 +231,12 @@ export const ModelTreeSelect = forwardRef<
   // deleted from the provider) — keep it visible with a warning marker
   // instead of rendering a blank select. Prefer the readable model name over
   // the raw composite id.
-  const renderMissingModel = useCallback((missingValue: string) => {
-    return (
-      <span className="flex items-center gap-1.5 text-text-disabled">
-        <TriangleAlert className="size-4 flex-shrink-0" />
-        <span className="truncate">
-          {parseModelValue(missingValue)?.model_name ?? missingValue}
-        </span>
-      </span>
-    );
-  }, []);
+  const renderMissingModel = useCallback(
+    (missingValue: string) => (
+      <MissingModelLabel value={missingValue} ownerTenantId={ownerTenantId} />
+    ),
+    [ownerTenantId],
+  );
 
   return (
     <TreeSelect

@@ -418,6 +418,10 @@ func (s *ChatPipelineService) AsyncChat(
 		if promptConfigQuote, ok := promptConfig["quote"].(bool); ok {
 			quote = quote && promptConfigQuote
 		}
+		// The dialog's configured no-answer line ("空回复"). An answer that only
+		// reports it is decorated as if quoting were off, so it carries neither
+		// citation markers nor a document reference (decorateQuote).
+		emptyResponse, _ := promptConfig["empty_response"].(string)
 		fieldMap, fmErr := s.kbDAO.GetFieldMap(ctx, dao.DB, kbIDStrings(kbs))
 		if fmErr != nil {
 			common.Warn("get_field_map failed; proceeding without field_map", zap.Error(fmErr))
@@ -646,7 +650,7 @@ func (s *ChatPipelineService) AsyncChat(
 		if useKW, _ := chat.PromptConfig["keyword"].(bool); useKW && chatModel != nil && len(questions) > 0 {
 			if kw, err := KeywordExtraction(ctx, chatModel, questions[len(questions)-1], 3); err == nil && kw != "" {
 				original := questions[len(questions)-1]
-				questions[len(questions)-1] = questions[len(questions)-1] + "," + kw
+				questions[len(questions)-1] = AppendKeywords(original, kw)
 				common.Debug("keyword extraction applied",
 					zap.String("original_question", original),
 					zap.String("augmented_question", questions[len(questions)-1]))
@@ -858,7 +862,7 @@ func (s *ChatPipelineService) AsyncChat(
 					if harnessAnswer != "" {
 						common.Info("harness produced final cited answer; short-circuiting",
 							zap.Int("answer_chars", len(harnessAnswer)))
-						final := s.decorateHarnessAnswer(harnessAnswer, kbinfos, slotCites, citeChunkIDs, quote)
+						final := s.decorateHarnessAnswer(harnessAnswer, kbinfos, slotCites, citeChunkIDs, decorateQuote(quote, harnessAnswer, emptyResponse))
 						final.Final = true
 						out <- final
 						return
@@ -1474,7 +1478,7 @@ func (s *ChatPipelineService) AsyncChat(
 			visibleAnswer := s.extractVisibleAnswer(thinkState.fullText)
 
 			// Pass nil for ttsModel — audio was already produced per-delta.
-			final := s.decorateAnswer(ctx, visibleAnswer, kbinfos, prompt, questions, usedTokenCount, timer, embModel, chat.VectorSimilarityWeight, quote, nil, langfuseTraceID, llmModelConfig, chat.TenantID, kbTenantIDStrings(kbs), len(knowledges) > 0)
+			final := s.decorateAnswer(ctx, visibleAnswer, kbinfos, prompt, questions, usedTokenCount, timer, embModel, chat.VectorSimilarityWeight, decorateQuote(quote, visibleAnswer, emptyResponse), nil, langfuseTraceID, llmModelConfig, chat.TenantID, kbTenantIDStrings(kbs), len(knowledges) > 0)
 			final.Final = true
 			final.AudioBinary = nil
 			timer.Exit(common.PhaseGenerateAnswer)
@@ -1515,7 +1519,7 @@ func (s *ChatPipelineService) AsyncChat(
 			common.Debug("User: " + userContent + "|Assistant: " + answer)
 
 			// Synthesize TTS for the full answer (non-stream, one-shot).
-			final := s.decorateAnswer(ctx, answer, kbinfos, prompt, questions, usedTokenCount, timer, embModel, chat.VectorSimilarityWeight, quote, ttsModel, langfuseTraceID, llmModelConfig, chat.TenantID, kbTenantIDStrings(kbs), len(knowledges) > 0)
+			final := s.decorateAnswer(ctx, answer, kbinfos, prompt, questions, usedTokenCount, timer, embModel, chat.VectorSimilarityWeight, decorateQuote(quote, answer, emptyResponse), ttsModel, langfuseTraceID, llmModelConfig, chat.TenantID, kbTenantIDStrings(kbs), len(knowledges) > 0)
 			final.Final = true
 			timer.Exit(common.PhaseGenerateAnswer)
 			out <- final
@@ -1638,7 +1642,12 @@ func (s *ChatPipelineService) AsyncChatSolo(
 		}
 
 		// 4. Build the chat model wrapper.
-		target, err := s.ModelProviderSvc.ResolveChatModelTarget(ctx, chat.TenantID, chat.LLMID)
+		var target *ModelTarget
+		if strings.TrimSpace(chat.LLMID) == "" {
+			target, err = s.ModelProviderSvc.modelSolver().ResolveDefaultModelConfig(ctx, chat.TenantID, entity.ModelTypeChat)
+		} else {
+			target, err = s.ModelProviderSvc.modelSolver().ResolveModelConfig(ctx, chat.TenantID, entity.ModelTypeChat, chat.LLMID)
+		}
 		if err != nil {
 			out <- AsyncChatResult{
 				Answer: fmt.Sprintf("**ERROR**: %s", err.Error()),
@@ -2130,12 +2139,13 @@ func tokenizeText(text string) string {
 }
 
 // getLLMModelConfig resolves the LLM model configuration for the chat.
-// Mirrors Python's three-branch resolver at dialog_service.py:552-561,
-// extended so the tenant-default branch also probes vision capability:
+// Mirrors Python's three-branch resolver at dialog_service.py:552-561. Chat
+// model resolution always requires the enrolled Chat type; vision capability
+// is determined separately for attachment dispatch:
 //
 //	if chat.llm_id:
-//	    if "image2text" in get_model_type_by_name(...): → IMAGE2TEXT
-//	    else:                                            → CHAT
+//	    if "chat" and "image2text" in get_model_type_by_name(...): → IMAGE2TEXT
+//	    else:                                                       → CHAT
 //	else:                                                → tenant default
 //	    (IMAGE2TEXT when the default model is vision-capable, else CHAT)
 //
@@ -2166,15 +2176,14 @@ func (s *ChatPipelineService) getLLMModelConfig(ctx context.Context, chat *entit
 		return cfg, modelName, factoryName, baseURL, nil
 	}
 
-	// Branches 1/2: explicit LLM. Resolve the enrolled type first — IMAGE2TEXT
-	// when the LLM is registered as vision-capable, CHAT otherwise — and let the
-	// same resolution report the model's tool capability.
+	// Branches 1/2: explicit LLM. Resolve it as a Chat model first so an
+	// image2text-only enrollment is rejected. The enrolled type is resolved
+	// separately below only to decide whether image attachments are allowed.
 	//
 	// This mirrors Python, which resolves chat_mdl once in get_models() and then
 	// reads chat_mdl.is_tools off it (dialog_service.py rag_agent): one lookup, and
 	// the model that runs is by construction the model that was judged.
-	modelType := s.ModelProviderSvc.modelSolver().ResolveChatModelType(ctx, chat.TenantID, chat.LLMID)
-	target, err := s.ModelProviderSvc.modelSolver().ResolveModelConfig(ctx, chat.TenantID, modelType, chat.LLMID)
+	target, err := s.ModelProviderSvc.modelSolver().ResolveModelConfig(ctx, chat.TenantID, entity.ModelTypeChat, chat.LLMID)
 	if err != nil {
 		return nil, "", "", "", err
 	}
@@ -2184,7 +2193,7 @@ func (s *ChatPipelineService) getLLMModelConfig(ctx context.Context, chat *entit
 	if err != nil {
 		return nil, "", "", "", err
 	}
-	cfg["model_type"] = chatModelTypeName(modelType)
+	cfg["model_type"] = s.resolveChatModelType(ctx, chat.TenantID, chat.LLMID)
 	cfg["is_tools"] = target.SupportsTools
 	return cfg, modelName, factoryName, baseURL, nil
 }
@@ -2216,8 +2225,9 @@ func chatConfigSupportsTools(cfg map[string]interface{}) bool {
 	if cfg == nil {
 		return false
 	}
-	// Read the value the way the persisted flag is read (extraToolSupport): it is
-	// written as a JSON boolean but has historically also been spelled as a string.
+	// Read the resolved capability as a boolean. ModelSolver accepts the
+	// persisted JSON boolean and the historical string representation before it
+	// stores the result on ModelTarget.
 	switch v := cfg["is_tools"].(type) {
 	case bool:
 		return v
@@ -2330,7 +2340,13 @@ func (s *ChatPipelineService) getModels(ctx context.Context, chat *entity.Chat) 
 	}
 
 	// Chat model.
-	target, err := s.ModelProviderSvc.ResolveChatModelTarget(ctx, chat.TenantID, chat.LLMID)
+	var target *ModelTarget
+	var err error
+	if strings.TrimSpace(chat.LLMID) == "" {
+		target, err = s.ModelProviderSvc.modelSolver().ResolveDefaultModelConfig(ctx, chat.TenantID, entity.ModelTypeChat)
+	} else {
+		target, err = s.ModelProviderSvc.modelSolver().ResolveModelConfig(ctx, chat.TenantID, entity.ModelTypeChat, chat.LLMID)
+	}
 	var chatModel *modelModule.ChatModel
 	if err == nil {
 		chatModel = modelModule.NewChatModel(target.Driver, &target.ModelName, target.APIConfig)
@@ -2904,7 +2920,13 @@ func (s *ChatPipelineService) buildChatDriver(ctx context.Context, chat *entity.
 	if chatModel != nil {
 		return chatModel
 	}
-	target, err := s.ModelProviderSvc.ResolveChatModelTarget(ctx, chat.TenantID, chat.LLMID)
+	var target *ModelTarget
+	var err error
+	if strings.TrimSpace(chat.LLMID) == "" {
+		target, err = s.ModelProviderSvc.modelSolver().ResolveDefaultModelConfig(ctx, chat.TenantID, entity.ModelTypeChat)
+	} else {
+		target, err = s.ModelProviderSvc.modelSolver().ResolveModelConfig(ctx, chat.TenantID, entity.ModelTypeChat, chat.LLMID)
+	}
 	if err != nil {
 		return nil
 	}
@@ -3060,7 +3082,9 @@ type embeddingModelEmbedder struct {
 
 func (e *embeddingModelEmbedder) Encode(ctx context.Context, texts []string) ([][]float64, error) {
 	config := &modelModule.EmbeddingConfig{Dimension: 0}
-	embeds, err := e.embModel.ModelDriver.Embed(ctx, e.embModel.ModelName, modelModule.EmbedRequest{Texts: texts}, e.embModel.APIConfig, config, nil)
+	// Embed inside the model's window: the caller supplies arbitrary text and the
+	// provider rejects an over-window input with 400/20015 instead of truncating it.
+	embeds, err := e.embModel.EmbedWithinLimit(ctx, modelModule.EmbedRequest{Texts: texts}, config, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -4363,23 +4387,6 @@ func normalizeSQL(s string) string {
 // Python parity helpers (dialog_service.py:56-59, 1238-1309, 1321-1365)
 // -----------------------------------------------------------------------
 
-// Redundant-space cleanup regexes. Mirrors
-// common.string_utils.remove_redundant_spaces (string_utils.py:20-46).
-// Pass 1: drop spaces after a "left boundary" character (parens, <, >).
-// Pass 2: drop spaces before a "right boundary" character (parens, !).
-var (
-	redundantSpacePass1Re = regexp.MustCompile(`([^a-z0-9.,)>\x{ff08}]) +([^ ])`) // left boundary + space + non-space
-	redundantSpacePass2Re = regexp.MustCompile(`([^ ]) +([^a-z0-9.,(<])`)         // non-space + space + right boundary
-)
-
-// removeRedundantSpaces ports common.string_utils.remove_redundant_spaces.
-// Two-pass regex cleanup; both passes use case-insensitive matching.
-func removeRedundantSpaces(s string) string {
-	s = redundantSpacePass1Re.ReplaceAllString(s, "$1$2")
-	s = redundantSpacePass2Re.ReplaceAllString(s, "$1$2")
-	return s
-}
-
 // ISO timestamp stripping regex. Mirrors the cleanup at
 // dialog_service.py:1309. Matches `T13:24:55|` or `T13:24:55.123Z|`.
 var isoTimestampCellRe = regexp.MustCompile(`T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+Z)?\|`)
@@ -4468,7 +4475,7 @@ func chunkKBIDForDoc(rowDict map[string]interface{}, kbIDs []string, docID inter
 func cleanCellValue(v interface{}) string {
 	s := fmt.Sprintf("%v", v)
 	s = strings.ReplaceAll(s, "None", " ")
-	return removeRedundantSpaces(s)
+	return common.RemoveRedundantSpaces(s)
 }
 
 // extractSourceColumnIndexes returns, for a set of SQL result rows,
@@ -5170,12 +5177,11 @@ type HarnessResult struct {
 	CiteChunkIDs []string
 }
 
-// harnessRetriever is wired at server bootstrap (cmd/ragflow_server.go:889) to
-// the agentic-RAG entry point advanced_rag.Rag (:1022). The advanced_rag package
-// imports internal/service (e.g. harness/tool_exploration.go), so the service
-// layer cannot import it back without an import cycle; the function is injected
-// instead. When nil, retrieveViaHarness reports an error and the pipeline
-// continues with empty kbinfos.
+// harnessRetriever is installed at server bootstrap using
+// retrievalbridge.NewHarnessRetriever. The bridge imports internal/service,
+// so this package receives the callback instead of importing the bridge.
+// When nil, retrieveViaHarness reports an error and the pipeline continues
+// with empty kbinfos.
 var harnessRetriever func(ctx context.Context, req HarnessRequest) (HarnessResult, error)
 
 // SetHarnessRetriever injects the agentic-RAG harness driver. Call once at

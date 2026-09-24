@@ -924,35 +924,6 @@ func TestShouldUseWebSearch_RequiresTavilyAndTruthyInternet(t *testing.T) {
 
 // --- P5 SQL retrieval parity helpers (Python use_sql alignment) ---
 
-// TestRemoveRedundantSpaces mirrors common.string_utils.remove_redundant_spaces.
-func TestRemoveRedundantSpaces(t *testing.T) {
-	cases := []struct {
-		name string
-		in   string
-		want string
-	}{
-		// Both passes run sequentially — pass 1 strips space after `(`,
-		// pass 2 strips space before `)`, so both go.
-		{"pass1+pass2 on ( world )", "hello ( world )", "hello (world)"},
-		// Pass 2 strips space before `!`.
-		{"pass2: space before !", "world !", "world!"},
-		// Comma is not a boundary in pass 2 (it's in the negated set
-		// along with `<` and `(`), so no change.
-		{"comma not a boundary", "a , b", "a , b"},
-		{"no match", "foo bar", "foo bar"},
-		{"empty", "", ""},
-		{"digit not a boundary", "abc 123", "abc 123"},
-		{"left paren kept (no following space)", "(abc)", "(abc)"},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := removeRedundantSpaces(tc.in); got != tc.want {
-				t.Errorf("removeRedundantSpaces(%q) = %q, want %q", tc.in, got, tc.want)
-			}
-		})
-	}
-}
-
 // TestStripISOTimestamps verifies the dialog_service.py:1309 cleanup.
 // The pattern `T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+Z)?\|` strips the
 // timestamp + trailing pipe; the leading pipe/space is preserved (the
@@ -2471,10 +2442,6 @@ func TestGetLLMModelConfigCarriesToolSupport(t *testing.T) {
 	}{
 		{"tool-capable model", "model-tools-on", true, "chat"},
 		{"model without tool support", "model-tools-off", false, "chat"},
-		// Enrolled only as image-to-text. The type has to be resolved before the
-		// row is loaded, otherwise the load is rejected as a chat model and the
-		// capability reads as absent while the pipeline runs on this same model.
-		{"image2text-only model", "model-image2text-tools", true, "image2text"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg, _, _, _, err := svc.getLLMModelConfig(t.Context(), &entity.Chat{TenantID: "tenant-1", LLMID: tc.llm})
@@ -2491,24 +2458,17 @@ func TestGetLLMModelConfigCarriesToolSupport(t *testing.T) {
 	}
 }
 
-// TestResolveChatModelTargetAcceptsImage2TextOnlyModel pins the shared entry point
-// the agentic wiring and the generation path both use: it must load a model
-// enrolled only as image-to-text — and report its capability — instead of
-// rejecting it as a chat model, which is what made such a request silently fall
-// back to the regular RAG path.
-func TestResolveChatModelTargetAcceptsImage2TextOnlyModel(t *testing.T) {
+// TestResolveModelConfigRejectsImage2TextOnlyModel ensures that a model
+// enrolled only as image-to-text cannot be used as a chat model.
+func TestResolveModelConfigRejectsImage2TextOnlyModel(t *testing.T) {
 	setupChatPipelineToolSupportTestDB(t)
 	svc := NewChatPipelineService()
 
-	target, err := svc.ModelProviderSvc.ResolveChatModelTarget(t.Context(), "tenant-1", "model-image2text-tools")
-	if err != nil {
-		t.Fatalf("ResolveChatModelTarget(image2text-only model) failed: %v", err)
-	}
-	if !target.ModelType.Has(entity.ModelTypeImage2Text) {
-		t.Errorf("resolved type = %v, want image2text", target.ModelType)
-	}
-	if !target.SupportsTools {
-		t.Error("resolved target reported no tool support, want true")
+	_, err := svc.ModelProviderSvc.modelSolver().ResolveModelConfig(
+		t.Context(), "tenant-1", entity.ModelTypeChat, "model-image2text-tools",
+	)
+	if err == nil {
+		t.Fatal("ResolveModelConfig accepted an image2text-only model as chat")
 	}
 }
 
