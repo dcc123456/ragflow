@@ -102,7 +102,6 @@ function AgentForm({ node }: INextOperatorForm) {
 
   const defaultValues = useValues(node);
 
-  const ownerTenantId = useOwnerTenantId();
   const { formSchema, modelsFetched } = useUnavailableModelFormSchema(
     FormSchema,
     { ownerTenantId },
