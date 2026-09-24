@@ -42,6 +42,10 @@ class RAGFlowAzureSpnBlob:
         self.cloud = os.getenv("AZURE_CLOUD", settings.AZURE.get("cloud", "public")).lower()
         self.__open__()
 
+    def _ensure_connection(self):
+        if self.conn is None:
+            self.__open__()
+
     def __open__(self):
         try:
             if self.conn:
