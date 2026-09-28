@@ -4,7 +4,7 @@ import { Collapse } from '@/components/collapse';
 import { ModelTreeSelectFormField } from '@/components/model-tree-select';
 import { SelectWithSearch } from '@/components/originui/select-with-search';
 import { RAGFlowFormItem } from '@/components/ragflow-form';
-import { SwitchFormField } from '@/components/switch-fom-field';
+import { SwitchFormField } from '@/components/switch-form-field';
 import { useFetchAllEvaluationCollection } from '@/hooks/use-evaluation-request';
 import { prefixName } from '@/utils/form';
 import { useTranslation } from 'react-i18next';
