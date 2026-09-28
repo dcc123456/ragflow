@@ -42,6 +42,10 @@ class RAGFlowAzureSpnBlob:
         self.cloud = os.getenv("AZURE_CLOUD", settings.AZURE.get("cloud", "public")).lower()
         self.__open__()
 
+    def _ensure_connection(self):
+        if self.conn is None:
+            self.__open__()
+
     def __open__(self):
         try:
             if self.conn:
@@ -107,10 +111,11 @@ class RAGFlowAzureSpnBlob:
         return None
 
     def obj_exist(self, bucket, fnm, tenant_id=None):
+        """Check the bucket-prefixed file, logging lookup errors as False."""
         self._ensure_connection()
         blob = f"{bucket}/{fnm}"
         try:
-            client = self.conn.get_blob_client(f"{blob}")
+            client = self.conn.get_file_client(f"{blob}")
             return client.exists()
         except Exception:
             logging.exception(f"Fail obj_exist {blob}")

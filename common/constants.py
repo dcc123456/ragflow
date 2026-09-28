@@ -191,6 +191,7 @@ class FileSource(StrEnum):
     AZURE_DEVOPS = "azure_devops"
     ZENDESK = "zendesk"
     LARK = "lark"
+    ZOTERO = "zotero"
     SEAFILE = "seafile"
     MYSQL = "mysql"
     POSTGRESQL = "postgresql"

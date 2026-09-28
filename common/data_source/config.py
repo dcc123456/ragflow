@@ -73,6 +73,7 @@ class DocumentSource(str, Enum):
     BITBUCKET = "bitbucket"
     ZENDESK = "zendesk"
     LARK = "lark"
+    ZOTERO = "zotero"
     SEAFILE = "seafile"
     MYSQL = "mysql"
     POSTGRESQL = "postgresql"
