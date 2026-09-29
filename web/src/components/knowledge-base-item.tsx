@@ -156,11 +156,13 @@ export function useDisableDifferenceEmbeddingDataset(
 export function KnowledgeBaseFormField({
   showVariable = false,
   name = 'dataset_ids',
+  label,
   required = false,
   ownerTenantId,
 }: {
   showVariable?: boolean;
   name?: string;
+  label?: ReactNode;
   required?: boolean;
   ownerTenantId?: string;
 }) {
@@ -222,7 +224,7 @@ export function KnowledgeBaseFormField({
       name={name}
       tooltip={t('chat.knowledgeBasesTip')}
       required={required}
-      label={t('chat.knowledgeBases')}
+      label={label ?? t('chat.knowledgeBases')}
     >
       {(field) => (
         <MultiSelect

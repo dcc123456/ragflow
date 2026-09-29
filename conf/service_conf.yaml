@@ -39,7 +39,7 @@ mysql:
   name: 'rag_flow'
   user: 'root'
   password: 'infini_rag_flow'
-  host: 'mysql'
+  host: 'localhost'
   port: 3306
   max_connections: 900
   stale_timeout: 300
@@ -47,9 +47,11 @@ mysql:
 minio:
   user: 'rag_flow'
   password: 'infini_rag_flow'
-  host: 'minio:9000'
+  host: 'localhost:9000'
+  bucket: ''
+  prefix_path: ''
 es:
-  hosts: 'http://es01:1200'
+  hosts: 'http://localhost:1200'
   username: 'elastic'
   password: 'infini_rag_flow'
 os:
@@ -61,86 +63,17 @@ os:
   # hybrid_search_pipeline: 'ragflow_hybrid_pipeline'
   # hybrid_search_weights: [0.5, 0.5]   # [text/BM25 leg, vector/KNN leg]
 infinity:
-  uri: 'infinity:23817'
+  uri: 'localhost:23817'
   postgres_port: 5432
   db_name: 'default_db'
-redis:
-  db: 1
-  password: 'infini_rag_flow'
-  host: 'redis:6379'
-local_embd:
-  bge-large-en-v1.5: http://10.142.0.6:4566/predict
-  bge-large-zh-v1.5: http://10.142.0.6:4567/predict
-  bce-embedding-base_v1: http://10.142.0.6:4568/predict
-  bge-m3: http://10.142.0.6:4569/predict
-billing:
-  stripe_api_key: 'sk_test_51TOCFU2XhWscgPRmTT7EcKsPc7g8CTiGtC6MY6IAUYWBF9P1y8bXjmpQiX7ecn1SUlu3qiwkz3hIpBM9lmSdXdPb00sKLS0WWt'
-  stripe_publishable_key: 'pk_test_51TOCFU2XhWscgPRmvl64yFyx6ZpCPDtUYFidcrefpjoJk4pDWuzZFycwSFXSMbNgiN6iRzovJdxUiP6nymVSI6ds004OM8okoV'
-  stripe_api_version: '2026-04-22.dahlia'
-  # webhook_url: 'https://demo.ragflow.io/v1/billing/webhooks/stripe'
-  webhook_url: 'http://127.0.0.1:9380/v1/billing/webhooks/stripe'
-  price_point:
-    - product_name: "deepdoc"
-      price_type: "usage_based"
-      billing_frequency: "one_time"
-      unit: "page"
-      unit_quantity: 1
-      price_amount: 1
-      price_currency: "usd"
-      consuming_point_amount: 1  # points charged per page
-  points_recharge:
-    price_id: "price_1TPcBZ2XhWscgPRm3L4VEsJn"
-    points_per_unit: 100 # 1 quantity = 1 USD = 100 points (1 cent = 1 point)
-  billing_plans:
-    - name: "storage"
-      quota_apps: 0
-      quota_members: 0
-      quota_storage: 1G
-      quota_points: 0
-      task_priority: "low"
-      price_ids: "price_1TOCKc2XhWscgPRmJRyTuo5g"
-      product_type: "addon"
-      priority: 0
-    - name: "Trial"
-      quota_apps: 1
-      quota_members: 1
-      quota_storage: 100KB
-      quota_points: 10
-      api_request_limit_per_minute: 10
-      task_priority: "low"
-      price_ids: "price_trailtrailtrailtrailtrai"
-      product_type: "subscription"
-      priority: 1
-    - name: "Starter"
-      quota_apps: 3
-      quota_members: 3
-      quota_storage: 300KB
-      quota_points: 30
-      api_request_limit_per_minute: 100
-      task_priority: "high"
-      price_ids: "price_1TOCIQ2XhWscgPRmUhPHTvBD"
-      product_type: "subscription"
-      priority: 2
-    - name: "Pro"
-      quota_apps: 5
-      quota_members: 5
-      quota_storage: 500KB
-      quota_points: 50
-      api_request_limit_per_minute: 1000
-      task_priority: "high"
-      price_ids: "price_1TOCIi2XhWscgPRmpUCmNPE7"
-      product_type: "subscription"
-      priority: 3
-rabbitmq:
-  user: "rag_flow"
-  password: 'infini_rag_flow'
-  host: 'rabbitmq'
-  port: 1672
-  api_port: 1673
-  exchange: "test1"
-task_executor:
-  message_queue_type: 'rabbitmq'
-  host: 'localhost:6379'
+oceanbase:
+  scheme: 'oceanbase' # set 'mysql' to create connection using mysql config
+  config:
+    db_name: 'test'
+    user: 'root@ragflow'
+    password: 'infini_rag_flow'
+    host: 'localhost'
+    port: 2881
 kvrocks:
   db: 1
   username: ''
@@ -168,17 +101,17 @@ ingestor:
   compiler_pool_size: 0
 file_syncer:
   max_concurrent_syncs: 5
+user_default_llm:
+  default_models:
+    embedding_model:
+      name: 'bge-m3'
+      factory: 'xxxx'
+      api_key: 'xxx'
+      base_url: 'http://localhost:6380'
 gcs:
   bucket: '${GCS_BUCKET:-ragflow}'
   prefix_path: '${GCS_PREFIX_PATH:-}'
   endpoint_url: '${GCS_ENDPOINT:-}'
-#user_default_llm:
-#  default_models:
-#    embedding_model:
-#      name: 'bge-m3'
-#      factory: 'BAAI'
-#      api_key: 'xxx'
-#      base_url: 'http://localhost:6380'
 # postgres:
 #   name: 'rag_flow'
 #   user: 'rag_flow'
@@ -212,6 +145,12 @@ gcs:
 #   secret: 'secret'
 #   tenant_id: 'tenant_id'
 #   container_name: 'container_name'
+# The OSS object storage uses the MySQL configuration above by default. If you need to switch to another object storage service, please uncomment and configure the following parameters.
+# opendal:
+#   scheme: 'mysql'  # Storage type, such as s3, oss, azure, etc.
+#   config:
+#     oss_table: 'opendal_storage'
+# user_default_llm:
 #   factory: 'BAAI'
 #   api_key: 'backup'
 #   base_url: 'backup_base_url'
@@ -222,42 +161,35 @@ gcs:
 #       api_key: 'xxxx'
 #       base_url: 'https://api.xx.com'
 #     embedding_model:
-#       name: 'bge-m3'
+#       api_key: 'xxx'
+#       base_url: 'http://localhost:6380'
 #     rerank_model: 'bge-reranker-v2'
 #     asr_model:
 #       model: 'whisper-large-v3' # alias of name
 #     image2text_model: ''
 # oauth:
+#   oauth2:
+#     display_name: "OAuth2"
+#     client_id: "your_client_id"
+#     client_secret: "your_client_secret"
+#     authorization_url: "https://your-oauth-provider.com/oauth/authorize"
+#     token_url: "https://your-oauth-provider.com/oauth/token"
+#     userinfo_url: "https://your-oauth-provider.com/oauth/userinfo"
+#     redirect_uri: "https://your-app.com/api/v1/auth/oauth/oauth2/callback"
+#   oidc:
+#     display_name: "OIDC"
+#     client_id: "your_client_id"
+#     client_secret: "your_client_secret"
+#     issuer: "https://your-oauth-provider.com/oidc"
+#     scope: "openid email profile"
+#     redirect_uri: "https://your-app.com/api/v1/auth/oauth/oidc/callback"
 #   github:
-#     client_id: xxxxxxxxxxxxxxxxxxxxxxxxx
-#     secret_key: xxxxxxxxxxxxxxxxxxxxxxxxxxxx
-#     url: https://github.com/login/oauth/access_token
-#   feishu:
-#     app_id: cli_xxxxxxxxxxxxxxxxxxx
-#     app_secret: xxxxxxxxxxxxxxxxxxxxxxxxxxxx
-#     app_access_token_url: https://open.feishu.cn/open-apis/auth/v3/app_access_token/internal
-#     user_access_token_url: https://open.feishu.cn/open-apis/authen/v1/oidc/access_token
-#     grant_type: 'authorization_code'
-#   ldap:
-#     url: ldaps://ad01.mycompany.com:636
-#     dn: CN=svc_ldap_app, OU=Service Accounts, DC=mycompany, DC=com
-#     password: xxxxxxxxxxxxxxxxxxxxxxxxxxxx
-#     search_filter: (|(userPrincipalName={username})(mail={username}))
-#     attribute_list: cn,mail,uid,givenName,sn,jpegPhoto,sAMAccountName,userPrincipalName
-#     login_channel: AD # LDAP
-#    ##################
-#    # example
-#    ##################
-#    search_filter: (|(cn={username})(mail={username}))
-#    attribute_list: cn,mail # comma seperated
-#   google:
-#     type: google
-#     client_id: 936108576595-fie6xxxxxxxxxxxxxxxxxxxxxxx.apps.googleusercontent.com
-#     client_secret: GOCSPX-H6pNxxxxxxxxxxxxxxxxxHL6ZpW8PSL5FU3aL7s
-#     redirect_uri: http://<domain>/v1/user/oauth/callback/google
-#     display_name: Google
-#     icon: google
-#
+#     type: "github"
+#     icon: "github"
+#     display_name: "Github"
+#     client_id: "your_client_id"
+#     client_secret: "your_client_secret"
+#     redirect_uri: "https://your-app.com/api/v1/auth/oauth/github/callback"
 # authentication:
 #   client:
 #     switch: false
@@ -280,3 +212,7 @@ gcs:
 #     - "RAGFlow" # display name
 #     - "" # sender email address
 #   mail_frontend_url: "https://your-frontend.example.com"
+# tcadp_config:
+#  secret_id: 'tencent_secret_id'
+#  secret_key: 'tencent_secret_key'
+#  region: 'tencent_region'

@@ -15,7 +15,6 @@ services:
     environment:
       - node.name=es01
       - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
-      - ES_JAVA_OPTS=${ES_JAVA_OPTS:--Xms512m -Xmx512m}
       - bootstrap.memory_lock=false
       - discovery.type=single-node
       - xpack.security.enabled=true
@@ -24,14 +23,13 @@ services:
       - cluster.routing.allocation.disk.watermark.low=5gb
       - cluster.routing.allocation.disk.watermark.high=3gb
       - cluster.routing.allocation.disk.watermark.flood_stage=2gb
-      - TZ=${TZ}
-    mem_limit: ${ES_MEM_LIMIT:-${MEM_LIMIT}}
+    mem_limit: ${MEM_LIMIT}
     ulimits:
       memlock:
         soft: -1
         hard: -1
     healthcheck:
-      test: ["CMD-SHELL", "curl -u elastic:${ELASTIC_PASSWORD} http://localhost:9200"]
+      test: ["CMD-SHELL", "curl http://localhost:9200"]
       interval: 10s
       timeout: 10s
       retries: 120
@@ -52,7 +50,6 @@ services:
       - node.name=opensearch01
       - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
       - OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_PASSWORD}
-      - OPENSEARCH_JAVA_OPTS=${OPENSEARCH_JAVA_OPTS:--Xms512m -Xmx512m}
       - bootstrap.memory_lock=false
       - discovery.type=single-node
       - plugins.security.disabled=false
@@ -62,7 +59,7 @@ services:
       - cluster.routing.allocation.disk.watermark.high=3gb
       - cluster.routing.allocation.disk.watermark.flood_stage=2gb
       - http.port=9201
-    mem_limit: ${OS_MEM_LIMIT:-${MEM_LIMIT}}
+    mem_limit: ${MEM_LIMIT}
     ulimits:
       memlock:
         soft: -1
@@ -89,7 +86,7 @@ services:
       - ${INFINITY_HTTP_PORT}:23820
       - ${INFINITY_PSQL_PORT}:5432
     env_file: .env
-    mem_limit: ${INFINITY_MEM_LIMIT:-${MEM_LIMIT}}
+    mem_limit: ${MEM_LIMIT}
     ulimits:
       nofile:
         soft: 500000
@@ -213,7 +210,7 @@ services:
       interval: 10s
       timeout: 10s
       retries: 120
-    restart: on-failure
+    restart: unless-stopped
 
   mysql:
     profiles:
@@ -226,7 +223,6 @@ services:
     env_file: .env
     environment:
       - MYSQL_ROOT_PASSWORD=${MYSQL_PASSWORD}
-      - TZ=${TZ}
     # Ingestion throughput tuning, OPT-IN. The ingestion sink commits per progress
     # event, so MySQL's own defaults (innodb_flush_log_at_trx_commit=1 +
     # sync_binlog=1 on a 128MB buffer pool) spent 68ms of CPU and two fsyncs on
@@ -245,16 +241,11 @@ services:
     command:
       - --max_connections=1000
       - --character-set-server=utf8mb4
-      - --max_allowed_packet=64505856
       - --collation-server=utf8mb4_unicode_ci
       - --default-authentication-plugin=mysql_native_password
       - --tls_version=TLSv1.2,TLSv1.3
-      - --server-id=3
-      - --log-bin=mysql-bin
-      - --binlog-format=row
-      - --slave_skip_errors=all
-      - --binlog_expire_logs_seconds=86400
       - --init-file=/data/application/init.sql
+      - --binlog_expire_logs_seconds=604800
       - --innodb-flush-log-at-trx-commit=${MYSQL_FLUSH_LOG_AT_TRX_COMMIT:-1}
       - --sync-binlog=${MYSQL_SYNC_BINLOG:-1}
       # 1G, not 4G. The database is 3.6G but its hot working set is under 1G
@@ -270,18 +261,18 @@ services:
       - --innodb-io-capacity-max=4000
       - --innodb-redo-log-capacity=1G
     ports:
-      - ${MYSQL_PORT}:3306
+      - ${EXPOSE_MYSQL_PORT}:3306
     volumes:
       - mysql_data:/var/lib/mysql
       - ./init.sql:/data/application/init.sql
     networks:
       - ragflow
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-uroot", "-p${MYSQL_PASSWORD}"]
+      test: ["CMD", "mysqladmin" ,"ping", "-uroot", "-p${MYSQL_PASSWORD}"]
       interval: 10s
       timeout: 10s
       retries: 120
-    restart: on-failure
+    restart: unless-stopped
 
   minio:
     image: pgsty/silo:RELEASE.2026-08-06T00-00-00Z
@@ -293,110 +284,13 @@ services:
     environment:
       - MINIO_ROOT_USER=${MINIO_USER}
       - MINIO_ROOT_PASSWORD=${MINIO_PASSWORD}
-      - TZ=${TZ}
     volumes:
       - minio_data:/data
     networks:
       - ragflow
-    restart: on-failure
+    restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-      interval: 10s
-      timeout: 10s
-      retries: 120
-
-  valkey:
-    image: valkey/valkey:8
-    command:
-      [
-        "valkey-server",
-        "--requirepass",
-        "${REDIS_PASSWORD}",
-        "--maxmemory",
-        "${REDIS_MAX_MEMORY}",
-        "--maxmemory-policy",
-        "volatile-lru",
-      ]
-    env_file: .env
-    ports:
-      - ${REDIS_PORT}:6379
-    volumes:
-      - valkey_data:/data
-    networks:
-      - ragflow
-    restart: on-failure
-    healthcheck:
-      test: ["CMD", "valkey-cli", "-a", "${REDIS_PASSWORD}", "ping"]
-      interval: 10s
-      timeout: 10s
-      retries: 120
-
-  # prometheus:
-  #   image: prom/prometheus
-  #   hostname: ragflow-prometheus
-  #   container_name: ragflow-prometheus
-  #   volumes:
-  #     - ./prometheus:/etc/prometheus
-  #     - prometheus_data:/data
-  #   network_mode: "host"
-  #   restart: always
-
-  # components-exporter:
-  #   image: infiniflow/ragflow-components-exporter:latest
-  #   hostname: ragflow-components-exporter
-  #   container_name: ragflow-components-exporter
-  #   volumes:
-  #     - components_exporter_data:/data
-  #   network_mode: "host"
-  #   restart: always
-
-  # kibana:
-  #   depends_on:
-  #     es:
-  #       condition: service_healthy
-  #   image: docker.elastic.co/kibana/kibana:${STACK_VERSION}
-  #   container_name: kibana
-  #   volumes:
-  #     - /home/ubuntu/infiniflow-ai/docker/certs:/usr/share/kibana/config/certs
-  #     - kibana_data:/usr/share/kibana/data
-  #   ports:
-  #     - ${KIBANA_PORT}:5601
-  #   environment:
-  #     - SERVERNAME=kibana
-  #     - ELASTICSEARCH_HOSTS=https://10.142.0.2:9200
-  #     - ELASTICSEARCH_USERNAME=kibana_system
-  #     - ELASTICSEARCH_PASSWORD=${KIBANA_PASSWORD}
-  #     - ELASTICSEARCH_SSL_CERTIFICATEAUTHORITIES=config/certs/ca/ca.crt
-  #     - XPACK_SECURITY_ENCRYPTIONKEY=${ENCRYPTION_KEY}
-  #     - XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY=${ENCRYPTION_KEY}
-  #     - XPACK_REPORTING_ENCRYPTIONKEY=${ENCRYPTION_KEY}
-  #   healthcheck:
-  #     test:
-  #       [
-  #         "CMD-SHELL",
-  #         "curl -s -I http://localhost:5601 | grep -q 'HTTP/1.1 302 Found'",
-  #       ]
-  #     interval: 10s
-  #     timeout: 10s
-  #     retries: 120
-
-  rabbitmq:
-    image: rabbitmq:4-management
-    ports:
-      - ${RABBITMQ_AMQP_PORT}:5672
-      - ${RABBITMQ_MANAGEMENT_PORT}:15672
-      - ${RABBITMQ_PROMETHEUS_PORT}:15692
-    environment:
-      - RABBITMQ_DEFAULT_USER=${RABBITMQ_DEFAULT_USER}
-      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_DEFAULT_PASS}
-    volumes:
-      - ./rabbitmq-conf/definitions.json:/etc/rabbitmq/definitions.json:ro
-      - ./rabbitmq-conf/definitions.conf:/etc/rabbitmq/conf.d/10-definitions.conf:ro
-      - rabbitmq_data:/var/lib/rabbitmq/
-    networks:
-      - ragflow
-    healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 10s
       timeout: 10s
       retries: 120
@@ -473,7 +367,7 @@ services:
     env_file: .env
     networks:
       - ragflow
-    restart: on-failure
+    restart: unless-stopped
     healthcheck:
       test: ["CMD", "nats-server", "--health-check"]
       interval: 10s
@@ -512,7 +406,30 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
-    restart: on-failure
+    restart: unless-stopped
+
+
+  kibana:
+    profiles:
+      - kibana
+    image: kibana:${STACK_VERSION}
+    ports:
+      - ${KIBANA_PORT-5601}:5601
+    env_file: .env
+    volumes:
+      - kibana_data:/usr/share/kibana/data
+    depends_on:
+      es01:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5601/api/status"]
+      interval: 10s
+      timeout: 10s
+      retries: 120
+    networks:
+      - ragflow
+    restart: unless-stopped
+
 
   clickhouse:
     profiles:
@@ -562,19 +479,13 @@ volumes:
     driver: local
   minio_data:
     driver: local
-  valkey_data:
-    driver: local
-  rabbitmq_data:
+  redis_data:
     driver: local
   kvrocks_data:
     driver: local
   tei_data:
     driver: local
   kibana_data:
-    driver: local
-  components_exporter_data:
-    driver: local
-  prometheus_data:
     driver: local
   nats_data:
     driver: local

@@ -3,7 +3,6 @@ general:
 ragflow:
   host: ${RAGFLOW_HOST:-0.0.0.0}
   http_port: 9380
-  secret_key: '${RAGFLOW_SECRET_KEY:-DOnghtfiCeriTENdywhERlEtivOLicuL}'
   # Proxies whose X-Forwarded-For / X-Real-IP headers the Go API server trusts
   # when resolving the client address (agent webhook ip_whitelist, login audit).
   # Defaults to loopback, i.e. the nginx bundled in this image. An explicit list
@@ -33,18 +32,22 @@ mysql:
   user: '${MYSQL_USER:-root}'
   password: '${MYSQL_PASSWORD:-infini_rag_flow}'
   host: '${MYSQL_HOST:-mysql}'
-  port: 3306
+  port: ${MYSQL_PORT:-3306}
   max_connections: 900
   stale_timeout: 300
   max_allowed_packet: ${MYSQL_MAX_PACKET:-1073741824}
-minio_0:
+minio:
   user: '${MINIO_USER:-rag_flow}'
   password: '${MINIO_PASSWORD:-infini_rag_flow}'
   host: '${MINIO_HOST:-minio}:9000'
   bucket: '${MINIO_BUCKET:-}'
   prefix_path: '${MINIO_PREFIX_PATH:-}'
+  # optional: set to true for HTTPS (SSL/TLS). Used by MinIO client and health check.
+  # secure: ${MINIO_SECURE:-false}
+  # optional: set to false to allow self-signed certificates (e.g. in development).
+  # verify: ${MINIO_VERIFY:-true}
 es:
-  hosts: '${ES_PROTOCOL:-http}://${ES_HOST:-es01}:9200'
+  hosts: 'http://${ES_HOST:-es01}:9200'
   username: '${ES_USER:-elastic}'
   password: '${ELASTIC_PASSWORD:-infini_rag_flow}'
 os:
@@ -88,90 +91,6 @@ seekdb:
     password: '${SEEKDB_PASSWORD:-infini_rag_flow}'
     host: '${SEEKDB_HOST:-seekdb}'
     port: ${SEEKDB_PORT:-2881}
-redis:
-  db: 1
-  username: '${REDIS_USERNAME:-}'
-  password: '${REDIS_PASSWORD:-infini_rag_flow}'
-  host: '${REDIS_HOST:-redis}:6379'
-
-# local_embd:
-#   bge-large-en-v1.5: http://10.142.0.6:4566/predict
-#   bge-large-zh-v1.5: http://10.142.0.6:4567/predict
-#   bce-embedding-base_v1: http://10.142.0.6:4568/predict
-#   bge-m3: http://10.142.0.6:4569/predict
-
-billing:
-  stripe_api_key: '${BILLING_STRIPE_API_KEY:-sk_test_51TOCFU2XhWscgPRmTT7EcKsPc7g8CTiGtC6MY6IAUYWBF9P1y8bXjmpQiX7ecn1SUlu3qiwkz3hIpBM9lmSdXdPb00sKLS0WWt}'
-  stripe_publishable_key: '${BILLING_STRIPE_PUBLISHABLE_KEY:-pk_test_51TOCFU2XhWscgPRmvl64yFyx6ZpCPDtUYFidcrefpjoJk4pDWuzZFycwSFXSMbNgiN6iRzovJdxUiP6nymVSI6ds004OM8okoV}'
-  stripe_api_version: '${BILLING_STRIPE_API_VERSION:-2026-04-22.dahlia}'
-  webhook_url: '${BILLING_SERVICE_URL-http://127.0.0.1:9380}/v1/billing/webhooks/stripe'
-  price_point:
-    - product_name: "deepdoc"
-      price_type: "usage_based"
-      billing_frequency: "one_time"
-      unit: "page"
-      unit_quantity: 1
-      price_amount: 1
-      price_currency: "usd"
-      consuming_point_amount: 1  # points charged per page
-  points_recharge:
-    price_id: '${BILLING_PRICE_ID_POINTS:-price_1TPcBZ2XhWscgPRm3L4VEsJn}'
-    points_per_unit: 100 # 1 quantity = 1 USD = 100 points (1 cent = 1 point)
-  billing_plans:
-    - name: "storage"
-      quota_apps: 0
-      quota_members: 0
-      quota_storage: '${BILLING_QUOTA_STORAGE_ADDON_STORAGE:-1G}'
-      quota_points: 0
-      task_priority: "low"
-      price_ids: '${BILLING_PRICE_ID_STORAGE:-price_1TOCKc2XhWscgPRmJRyTuo5g}'
-      product_type: "addon"
-      priority: 0
-    - name: "Trial"
-      quota_apps: ${BILLING_QUOTA_TRIAL_APPS:-5}
-      quota_members: ${BILLING_QUOTA_TRIAL_MEMBERS:-1}
-      quota_storage: '${BILLING_QUOTA_TRIAL_STORAGE:-100MB}'
-      quota_points: ${BILLING_QUOTA_TRIAL_POINTS:-500}  # monthly quota (reset each billing cycle)
-      api_request_limit_per_minute: ${BILLING_QUOTA_TRIAL_RPM:-10}
-      task_priority: "low"
-      price_ids: 'price_trailtrailtrailtrailtrai'
-      product_type: "subscription"
-      priority: 1
-    - name: "Starter"
-      quota_apps: ${BILLING_QUOTA_STARTER_APPS:-50}
-      quota_members: ${BILLING_QUOTA_STARTER_MEMBERS:-5}
-      quota_storage: '${BILLING_QUOTA_STARTER_STORAGE:-5G}'
-      quota_points: ${BILLING_QUOTA_STARTER_POINTS:-5000}  # monthly quota (reset each billing cycle)
-      api_request_limit_per_minute: ${BILLING_QUOTA_STARTER_RPM:-100}
-      task_priority: "high"
-      price_ids: '${BILLING_PRICE_ID_STARTER:-price_1TOCIQ2XhWscgPRmUhPHTvBD}'
-      product_type: "subscription"
-      priority: 2
-    - name: "Pro"
-      quota_apps: ${BILLING_QUOTA_PRO_APPS:-100000}
-      quota_members: ${BILLING_QUOTA_PRO_MEMBERS:-20}
-      quota_storage: '${BILLING_QUOTA_PRO_STORAGE:-50G}'
-      quota_points: ${BILLING_QUOTA_PRO_POINTS:-20000}  # monthly quota (reset each billing cycle)
-      api_request_limit_per_minute: ${BILLING_QUOTA_PRO_RPM:-1000}
-      task_priority: "high"
-      price_ids: '${BILLING_PRICE_ID_PRO:-price_1TOCIi2XhWscgPRmpUCmNPE7}'
-      product_type: "subscription"
-      priority: 3
-
-rabbitmq:
-  user: "${RABBITMQ_DEFAULT_USER:-rag_flow}"
-  password: '${RABBITMQ_DEFAULT_PASS:-infini_rag_flow}'
-  host: '${RABBITMQ_HOST:-rabbitmq}'
-  port: 5672
-  api_port: 15672
-  exchange: "test1"
-
-task_executor:
-  message_queue_type: 'rabbitmq'
-
-# Kvrocks is the RocksDB-backed, Redis-protocol store used ONLY by the Go
-# services. It has no in-memory maxmemory cap, so it does not OOM the way
-# Valkey/Redis does. The Go services read this section; the Python services
 kvrocks:
   db: 1
   username: '${KVROCKS_USERNAME:-}'
@@ -202,7 +121,6 @@ file_syncer:
 user_default_llm:
   default_models:
     embedding_model:
-      factory: Builtin
       api_key: 'xxx'
       base_url: 'http://${TEI_HOST}:80'
 # postgres:
@@ -213,31 +131,26 @@ user_default_llm:
 #   port: 5432
 #   max_connections: 100
 #   stale_timeout: 30
-s3:
-  access_key: '${S3_ACCESS_KEY:-}'
-  secret_key: '${S3_SECRET_KEY:-}'
-  region: '${S3_REGION:-us-east-1}'
-  endpoint_url: '${S3_ENDPOINT:-}'
-  bucket: '${S3_BUCKET:-ragflow}'
-  prefix_path: ''
-  signature_version: 'v4'
-  addressing_style: 'path'
-oss:
-  access_key: '${S3_ACCESS_KEY:-}'
-  secret_key: '${S3_SECRET_KEY:-}'
-  endpoint_url: '${S3_ENDPOINT:-}'
-  region: '${S3_REGION:-us-east-1}'
-  bucket: '${S3_BUCKET:-ragflow}'
-  prefix_path: '${S3_PREFIX_PATH:-}'
-# GCS uses Workload Identity for authentication (GKE) or GOOGLE_APPLICATION_CREDENTIALS environment variable
-# No access_key/secret_key needed - authentication is handled via GCP IAM service account
-# For GKE: ensure the pod has Workload Identity configured with a service account that has Storage Object Admin role
-# Endpoint URL is optional - used for GCS emulator testing (e.g., http://localhost:9999)
-gcs:
-  bucket: '${S3_BUCKET:-ragflow}'
-  prefix_path: '${S3_PREFIX_PATH:-}'
-  endpoint_url: '${S3_ENDPOINT:-}'
-
+# GaussDB metadata DB is configured through GAUSSDB_METADATA_* environment
+# variables and is intentionally not rendered into service_conf.yaml.
+# s3:
+#   access_key: 'access_key'
+#   secret_key: 'secret_key'
+#   region: 'region'
+#   endpoint_url: 'endpoint_url'
+#   bucket: 'bucket'
+#   prefix_path: 'prefix_path'
+#   signature_version: 'v4'
+#   addressing_style: 'path'
+# oss:
+#   access_key: '${ACCESS_KEY}'
+#   secret_key: '${SECRET_KEY}'
+#   endpoint_url: '${ENDPOINT}'
+#   region: '${REGION}'
+#   bucket: '${BUCKET}'
+#   prefix_path: '${OSS_PREFIX_PATH}'
+#   signature_version: 's3'
+#   addressing_style: 'virtual'
 # azure:
 #   auth_type: 'sas'
 #   container_url: 'container_url'
@@ -275,6 +188,29 @@ gcs:
 #     asr_model:
 #       model: 'whisper-large-v3' # alias of name
 #     image2text_model: ''
+# oauth:
+#   oauth2:
+#     display_name: "OAuth2"
+#     client_id: "your_client_id"
+#     client_secret: "your_client_secret"
+#     authorization_url: "https://your-oauth-provider.com/oauth/authorize"
+#     token_url: "https://your-oauth-provider.com/oauth/token"
+#     userinfo_url: "https://your-oauth-provider.com/oauth/userinfo"
+#     redirect_uri: "https://your-app.com/api/v1/auth/oauth/oauth2/callback"
+#   oidc:
+#     display_name: "OIDC"
+#     client_id: "your_client_id"
+#     client_secret: "your_client_secret"
+#     issuer: "https://your-oauth-provider.com/oidc"
+#     scope: "openid email profile"
+#     redirect_uri: "https://your-app.com/api/v1/auth/oauth/oidc/callback"
+#   github:
+#     type: "github"
+#     icon: "github"
+#     display_name: "Github"
+#     client_id: "your_client_id"
+#     client_secret: "your_client_secret"
+#     redirect_uri: "https://your-app.com/api/v1/auth/oauth/github/callback"
 # authentication:
 #  client:
 #    switch: false
