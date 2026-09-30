@@ -182,7 +182,9 @@ function AgentForm({ node }: INextOperatorForm) {
       <Form {...form}>
         <FormWrapper>
           {isSubAgent && <DescriptionField></DescriptionField>}
-          <LargeModelFormField ownerTenantId={ownerTenantId}></LargeModelFormField>
+          <LargeModelFormField
+            ownerTenantId={ownerTenantId}
+          ></LargeModelFormField>
 
           {(mcpIds.length > 0 || hasSubAgentOrTool(edges, node?.id)) && (
             <FormField
