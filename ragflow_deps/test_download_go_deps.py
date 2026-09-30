@@ -10,10 +10,15 @@
 # the build.sh-expected onnxruntime-linux-x64-static_lib-{version}-glibc2_28 so
 # every consumer shares one name convention. These tests pin that rename.
 
+import io
 import os
+import tarfile
 import zipfile
 
 from download_go_deps import (
+    OFFICE_OXIDE_VERSION,
+    _extract_office_oxide,
+    _office_oxide_archive_matches,
     _ort_asset_name,
     _ort_extracted_dir,
     _ort_normalized_dir,
@@ -31,6 +36,45 @@ def make_ort_zip(path, version):
     with zipfile.ZipFile(path, "w") as zf:
         zf.writestr(member, b"!<arch>\nort-payload")
     return path
+
+
+def make_office_oxide_tar(path, version):
+    payload = b"\0" + version.encode() + b"\0"
+    with tarfile.open(path, "w:gz") as archive:
+        member = tarfile.TarInfo("lib/liboffice_oxide.a")
+        member.size = len(payload)
+        archive.addfile(member, io.BytesIO(payload))
+    return path
+
+
+def test_rejects_stale_office_oxide_archive(tmp_path):
+    archive = make_office_oxide_tar(tmp_path / "office.tar.gz", "0.1.12")
+
+    assert _office_oxide_archive_matches(archive) is False
+
+
+def test_replaces_stale_office_oxide_extraction(tmp_path):
+    target = tmp_path / "office_oxide"
+    library = target / "lib" / "liboffice_oxide.a"
+    library.parent.mkdir(parents=True)
+    library.write_bytes(b"\0 0.1.12 \0")
+    archive = make_office_oxide_tar(tmp_path / "office.tar.gz", OFFICE_OXIDE_VERSION)
+
+    _extract_office_oxide(archive, target)
+
+    assert library.read_bytes() == b"\0" + OFFICE_OXIDE_VERSION.encode() + b"\0"
+
+
+def test_keeps_matching_office_oxide_extraction(tmp_path):
+    target = tmp_path / "office_oxide"
+    library = target / "lib" / "liboffice_oxide.a"
+    library.parent.mkdir(parents=True)
+    library.write_bytes(b"\0" + OFFICE_OXIDE_VERSION.encode() + b"\0")
+    archive = make_office_oxide_tar(tmp_path / "office.tar.gz", "0.1.12")
+
+    _extract_office_oxide(archive, target)
+
+    assert library.read_bytes() == b"\0" + OFFICE_OXIDE_VERSION.encode() + b"\0"
 
 
 def test_extracts_on_first_run(tmp_path):

@@ -354,26 +354,28 @@ check_office_oxide_deps() {
     local lib_path="${OFFICE_OXIDE_PREFIX}/lib/${lib_file}"
     local header_path="${OFFICE_OXIDE_PREFIX}/include/office_oxide_c/office_oxide.h"
 
-    if [ ! -f "$lib_path" ] || [ ! -f "$header_path" ]; then
-        echo -e "${RED}Error: office_oxide native library not found${NC}"
-        echo "  Expected: ${lib_path}"
-        echo "  Run: uv run python3 ragflow_deps/download_go_deps.py"
-        echo "  Or manually download: https://github.com/yfedoseev/office_oxide/releases/download/v${OFFICE_OXIDE_VERSION}/native-linux-x86_64.tar.gz"
-        exit 1
-    fi
-
     # Verify the on-disk lib matches the pinned version. A stale older lib
     # (e.g. v0.1.7) silently reintroduces the PPT97 content-loss bug
     # (github.com/yfedoseev/office_oxide#85, fixed in v0.1.8): PlainText()
     # on a legacy .ppt returns stale metadata instead of slide text.
-    if ! strings "$lib_path" 2>/dev/null | grep -Fxq "$OFFICE_OXIDE_VERSION"; then
+    if [ -f "$lib_path" ] && [ -f "$header_path" ] && \
+        strings "$lib_path" 2>/dev/null | grep -Fxq "$OFFICE_OXIDE_VERSION"; then
+        echo "✓ office_oxide v${OFFICE_OXIDE_VERSION} native library found at ${OFFICE_OXIDE_PREFIX}"
+        return 0
+    fi
+
+    echo "  Cached office_oxide is missing or not v${OFFICE_OXIDE_VERSION}; refreshing the pinned release"
+    if ! (cd "$PROJECT_ROOT" && uv run python3 ragflow_deps/download_go_deps.py --office-oxide-only); then
+        echo -e "${RED}Error: could not refresh office_oxide v${OFFICE_OXIDE_VERSION}${NC}" >&2
+        exit 1
+    fi
+
+    if [ ! -f "$lib_path" ] || [ ! -f "$header_path" ] || \
+        ! strings "$lib_path" 2>/dev/null | grep -Fxq "$OFFICE_OXIDE_VERSION"; then
         local found_version
-        found_version=$(strings "$lib_path" 2>/dev/null | grep -E "^0\.[0-9]+\.[0-9]+$" | head -1)
+        found_version=$(strings "$lib_path" 2>/dev/null | grep -E "^0\.[0-9]+\.[0-9]+$" | head -1 || true)
         echo -e "${RED}Error: office_oxide native lib version mismatch${NC}"
         echo "  Required: v${OFFICE_OXIDE_VERSION}; found: ${found_version:-unknown}"
-        echo "  A stale lib silently loses PPT97 (.ppt) slide content. Refresh:"
-        echo "    rm -rf ~/ragflow-native-libs/office_oxide ragflow_deps/office_oxide-linux-x86_64.tar.gz"
-        echo "    uv run python3 ragflow_deps/download_go_deps.py"
         exit 1
     fi
 
