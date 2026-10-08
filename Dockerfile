@@ -216,7 +216,7 @@ RUN set -eux; \
     find "${HOME}/ragflow-native-libs/onnxruntime/static_lib" -name '*.a' | head -5
 
 RUN git config --global safe.directory "*" && \
-    cd /ragflow && ./build.sh --cpp
+    cd /ragflow && env -u CMAKE_TOOLCHAIN_FILE ./build.sh --cpp
 
 RUN --mount=type=cache,id=ragflow_gomod,target=/root/.cache/gomod \
     --mount=type=cache,id=ragflow_gobuild,target=/root/.cache/gobuild \
