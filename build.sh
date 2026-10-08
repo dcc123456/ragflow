@@ -365,7 +365,7 @@ check_office_oxide_deps() {
     fi
 
     echo "  Cached office_oxide is missing or not v${OFFICE_OXIDE_VERSION}; refreshing the pinned release"
-    if ! (cd "$PROJECT_ROOT" && uv run python3 ragflow_deps/download_go_deps.py --office-oxide-only); then
+    if ! (cd "$PROJECT_ROOT" && uv run --script ragflow_deps/download_go_deps.py --office-oxide-only); then
         echo -e "${RED}Error: could not refresh office_oxide v${OFFICE_OXIDE_VERSION}${NC}" >&2
         exit 1
     fi

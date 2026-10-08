@@ -80,6 +80,7 @@ ragflow_deps/*
 **/web/dist/
 **/web/.next/
 **/web/out/
+**/cmake-build-*/
 
 # Dependencies cache
 **/.cache/
