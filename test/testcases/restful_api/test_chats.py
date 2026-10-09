@@ -27,7 +27,7 @@ from types import ModuleType, SimpleNamespace
 
 import pytest
 
-from test.testcases.configs import CHAT_ASSISTANT_NAME_LIMIT, INVALID_API_TOKEN
+from test.testcases.configs import CHAT_ASSISTANT_NAME_LIMIT, INVALID_API_TOKEN, IS_GO_PROXY
 from test.testcases.conftest import default_chat_llm_id
 from test.testcases.restful_api.helpers.assertions import assert_auth_error
 from test.testcases.restful_api.helpers.client import RestClient
@@ -324,8 +324,12 @@ def test_chat_list_default_get_and_separate_lookup_contract(rest_client, clear_c
     invalid_get_res = rest_client.get("/chats/unknown")
     assert invalid_get_res.status_code == 200
     invalid_get_payload = invalid_get_res.json()
-    assert invalid_get_payload["code"] == 108, invalid_get_payload
-    assert "Only Chat/Dialog owners or members with read permissions" in invalid_get_payload["message"], invalid_get_payload
+    if IS_GO_PROXY:
+        assert invalid_get_payload["code"] == 109, invalid_get_payload
+        assert invalid_get_payload["message"] == "no authorization", invalid_get_payload
+    else:
+        assert invalid_get_payload["code"] == 108, invalid_get_payload
+        assert "Only Chat/Dialog owners or members with read permissions" in invalid_get_payload["message"], invalid_get_payload
 
     for chat_id, keywords, expected_count in ((ids[0], "list_default_0", 1), (ids[0], "list_default_1", 1), (ids[0], "unknown", 0)):
         get_res = rest_client.get(f"/chats/{chat_id}")
@@ -1175,7 +1179,8 @@ def test_chat_create_rejects_unparsed_document(rest_client, clear_chats, create_
     assert res.status_code == 200
     payload = res.json()
     assert payload["code"] == 102, payload
-    assert "has no parsed files" in payload["message"], payload
+    expected_message = "doesn't own parsed file" if IS_GO_PROXY else "has no parsed files"
+    assert expected_message in payload["message"], payload
 
 
 @pytest.mark.p2
@@ -1504,8 +1509,12 @@ def test_chat_update_mapping_and_validation_branches_p2(rest_client, clear_chats
     unauthorized = rest_client.patch("/chats/invalid-chat-id", json={"name": "anything"})
     assert unauthorized.status_code == 200
     unauthorized_payload = unauthorized.json()
-    assert unauthorized_payload["code"] == 108, unauthorized_payload
-    assert "Only Chat/Dialog owners or members with management permissions" in unauthorized_payload["message"], unauthorized_payload
+    if IS_GO_PROXY:
+        assert unauthorized_payload["code"] == 109, unauthorized_payload
+        assert unauthorized_payload["message"] == "no authorization", unauthorized_payload
+    else:
+        assert unauthorized_payload["code"] == 108, unauthorized_payload
+        assert "Only Chat/Dialog owners or members with management permissions" in unauthorized_payload["message"], unauthorized_payload
 
     quote_res = rest_client.patch(f"/chats/{chat_id}", json={"prompt_config": {"quote": False}})
     assert quote_res.status_code == 200
@@ -1575,4 +1584,5 @@ def test_chat_update_rejects_unparsed_document(rest_client, clear_chats, create_
     assert res.status_code == 200, res.text
     payload = res.json()
     assert payload["code"] == 102, payload
-    assert "has no parsed files" in payload["message"], payload
+    expected_message = "doesn't own parsed file" if IS_GO_PROXY else "has no parsed files"
+    assert expected_message in payload["message"], payload
