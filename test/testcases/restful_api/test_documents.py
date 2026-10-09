@@ -610,7 +610,8 @@ def test_documents_update_invalid_dataset_and_document_contract(rest_client, cre
     assert invalid_document_res.status_code == 200
     invalid_document_body = invalid_document_res.json()
     assert invalid_document_body["code"] == 102, invalid_document_body
-    assert invalid_document_body["message"] == "document not found", invalid_document_body
+    expected_document_message = "the dataset doesn't own the document" if IS_GO_PROXY else "document not found"
+    assert invalid_document_body["message"] == expected_document_message, invalid_document_body
 
 
 @pytest.mark.p3
@@ -1051,7 +1052,8 @@ def test_document_metadata_config_contract(rest_client, create_document):
     assert invalid_document_res.status_code == 200
     invalid_document_payload = invalid_document_res.json()
     assert invalid_document_payload["code"] == 102, invalid_document_payload
-    assert invalid_document_payload["message"] == "document not found", invalid_document_payload
+    expected_document_message = f"document {INVALID_ID_32} not found in dataset {dataset_id}" if IS_GO_PROXY else "document not found"
+    assert invalid_document_payload["message"] == expected_document_message, invalid_document_payload
 
     update_payload = {"metadata": {"author": "alice", "tags": ["one", "two"]}}
     update_res = rest_client.put(

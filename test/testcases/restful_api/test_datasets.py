@@ -735,8 +735,12 @@ def test_dataset_update_identifier_validation_contract(rest_client):
     wrong_uuid_res = rest_client.put("/datasets/d94a8dc02c9711f0930f7fbc369eab6d", json=payload)
     assert wrong_uuid_res.status_code == 200
     wrong_uuid_payload = wrong_uuid_res.json()
-    assert wrong_uuid_payload["code"] == 108, wrong_uuid_payload
-    assert "Only Knowledgebase owners or members with management permissions" in wrong_uuid_payload["message"], wrong_uuid_payload
+    if IS_GO_PROXY:
+        assert wrong_uuid_payload["code"] == 102, wrong_uuid_payload
+        assert "lacks permission for dataset 'd94a8dc02c9711f0930f7fbc369eab6d'" in wrong_uuid_payload["message"], wrong_uuid_payload
+    else:
+        assert wrong_uuid_payload["code"] == 108, wrong_uuid_payload
+        assert "Only Knowledgebase owners or members with management permissions" in wrong_uuid_payload["message"], wrong_uuid_payload
 
 
 @pytest.mark.p2
