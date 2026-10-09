@@ -120,16 +120,22 @@ RUN --mount=type=cache,id=ragflow_apt,target=/var/cache/apt,sharing=locked \
     apt-get autoremove -y && \
     rm -rf /var/lib/apt/lists/*
 
-ARG NGINX_VERSION=1.31.3-1~noble
+ARG OPENRESTY_VERSION=1.31.1.1-1~noble1
 RUN --mount=type=cache,id=ragflow_apt,target=/var/cache/apt,sharing=locked \
     apt -o Acquire::Retries=5 update && \
     apt -o Acquire::Retries=5 install -y --no-install-recommends gnupg && \
     mkdir -p /etc/apt/keyrings && \
-    curl --retry 5 --retry-delay 2 --retry-all-errors -fsSL https://nginx.org/keys/nginx_signing.key | gpg --dearmor -o /etc/apt/keyrings/nginx-archive-keyring.gpg && \
-    echo "deb [signed-by=/etc/apt/keyrings/nginx-archive-keyring.gpg] https://nginx.org/packages/mainline/ubuntu/ noble nginx" > /etc/apt/sources.list.d/nginx.list && \
+    curl --retry 5 --retry-delay 2 --retry-all-errors -fsSL https://openresty.org/package/pubkey.gpg | gpg --dearmor -o /etc/apt/keyrings/openresty.gpg && \
+    arch="$(dpkg --print-architecture)" && \
+    repo="https://openresty.org/package/ubuntu" && \
+    if [ "$arch" = "arm64" ]; then repo="https://openresty.org/package/arm64/ubuntu"; fi && \
+    echo "deb [arch=${arch} signed-by=/etc/apt/keyrings/openresty.gpg] ${repo} noble main" > /etc/apt/sources.list.d/openresty.list && \
     apt -o Acquire::Retries=5 update && \
-    apt -o Acquire::Retries=5 install -y --no-install-recommends nginx=${NGINX_VERSION} && \
-    apt-mark hold nginx && \
+    apt -o Acquire::Retries=5 install -y --no-install-recommends openresty=${OPENRESTY_VERSION} && \
+    apt-mark hold openresty && \
+    ln -s /usr/local/openresty/nginx/sbin/nginx /usr/sbin/nginx && \
+    mkdir -p /etc/nginx && \
+    cp /usr/local/openresty/nginx/conf/mime.types /etc/nginx/mime.types && \
     apt-get purge -y gnupg && \
     apt-get autoremove -y && \
     rm -rf /var/lib/apt/lists/*
@@ -243,9 +249,11 @@ COPY --chmod=755 docker/entrypoint*.sh ./
 RUN mkdir -p /etc/nginx/conf.d /var/log/nginx
 
 COPY docker/nginx/nginx.conf docker/nginx/proxy.conf /etc/nginx/
+COPY docker/nginx/rate_limit.lua /etc/nginx/
 COPY docker/nginx/*.conf /etc/nginx/conf.d/
 
 RUN rm -f /etc/nginx/sites-enabled/default
+RUN /usr/sbin/nginx -t -c /etc/nginx/nginx.conf
 
 
 COPY conf conf
