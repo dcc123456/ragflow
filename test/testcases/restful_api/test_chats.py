@@ -26,7 +26,6 @@ from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
 import pytest
-from api.db import ActionEnum, ResourceTypeEnum
 
 from test.testcases.configs import CHAT_ASSISTANT_NAME_LIMIT, INVALID_API_TOKEN
 from test.testcases.conftest import default_chat_llm_id
@@ -38,6 +37,8 @@ from test.testcases.utils.file_utils import create_image_file
 
 DEFAULT_CHAT_EMPTY_RESPONSE = "Sorry! No relevant content was found in the knowledge base!"
 DEFAULT_CHAT_PROLOGUE = "Hi! I'm your assistant. What can I do for you?"
+CHAT_RESOURCE_TYPE = 2
+CHAT_ROLE_ACTIONS = 0b0111
 DEFAULT_CHAT_SYSTEM_PROMPT = (
     "You are an intelligent assistant. Please summarize the content of the dataset to answer the question. "
     "Please list the data in the dataset and answer in detail. When all dataset content is irrelevant to the "
@@ -776,8 +777,8 @@ def _load_chat_routes_unit_module(monkeypatch):
     role_service_mod.RoleResourceService = SimpleNamespace(
         get_by_role_id=lambda _role_id: [
             {
-                "resource_type": ResourceTypeEnum.CHAT.value,
-                "action": ActionEnum.ENABLE.value | ActionEnum.READ.value | ActionEnum.WRITE.value,
+                "resource_type": CHAT_RESOURCE_TYPE,
+                "action": CHAT_ROLE_ACTIONS,
             }
         ]
     )
