@@ -208,7 +208,7 @@ fi
 
 if [[ "${ENABLE_WEBSERVER}" -eq 1 ]]; then
     echo "Starting nginx..."
-    /usr/sbin/nginx -c /etc/nginx/nginx.conf
+    env -u LD_LIBRARY_PATH /usr/sbin/nginx -c /etc/nginx/nginx.conf
 
     echo "Starting RAGFlow go server..."
     run_with_restart "RAGFlow go server" bin/ragflow_server --api &
