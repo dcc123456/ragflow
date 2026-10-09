@@ -15,6 +15,13 @@
 
 package service
 
+import "ragflow/internal/utility"
+
 func (h *AdminClient) InitHTTPClientEE() error {
+	clusterInfo, err := utility.NewFingerprintCollector(true).Collect()
+	if err != nil {
+		return err
+	}
+	h.clusterInfo = clusterInfo
 	return nil
 }
