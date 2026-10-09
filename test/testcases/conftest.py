@@ -369,7 +369,8 @@ def get_added_models(auth, factory_name):
     res = response.json()
     message = res.get("message", "")
     if res.get("code") != 0:
-        if "No provider found for provider" in message or "No instance found for provider" in message:
+        message_lower = message.lower()
+        if "no provider found for provider" in message_lower or "no instance found for provider" in message_lower:
             return False
         raise Exception(message)
 
