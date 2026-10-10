@@ -4,14 +4,24 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/gin-gonic/gin"
 
 	"ragflow/internal/common"
 	"ragflow/internal/handler"
+	"ragflow/internal/server"
 	"ragflow/internal/service"
 )
+
+func TestMain(m *testing.M) {
+	if err := server.InitLocalVariables(); err != nil {
+		panic(err)
+	}
+	server.SetServerName("test")
+	os.Exit(m.Run())
+}
 
 func TestConnectorRoutesDoNotConflictWithOAuthCallbacks(t *testing.T) {
 	gin.SetMode(gin.TestMode)

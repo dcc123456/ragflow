@@ -227,7 +227,7 @@ check_ort_version_consistency() {
     env_go="$(grep -m1 -E 'DeepDocORTVersion[[:space:]]*=[[:space:]]*"' "${PROJECT_ROOT}/internal/common/environments.go" | sed -E 's/.*"([^"]+)".*/\1/')"
     d1="$(grep -m1 -E '^ORT_VERSION[[:space:]]*=[[:space:]]*"' "${PROJECT_ROOT}/ragflow_deps/download_go_deps.py" | sed -E 's/.*"([^"]+)".*/\1/')"
     d2="$(grep -m1 -E '^ORT_VERSION[[:space:]]*=[[:space:]]*"' "${PROJECT_ROOT}/ragflow_deps/download_deps.py" | sed -E 's/.*"([^"]+)".*/\1/')"
-    dockerfile="$(grep -m1 -E 'ARG[[:space:]]+ORT_VERSION=' "${PROJECT_ROOT}/Dockerfile_go" | sed -E 's/.*ORT_VERSION=([0-9][^"[:space:]]*).*/\1/')"
+    dockerfile="$(grep -m1 -E 'ARG[[:space:]]+ORT_VERSION=' "${PROJECT_ROOT}/Dockerfile" | sed -E 's/.*ORT_VERSION=([0-9][^"[:space:]]*).*/\1/')"
 
     if [ -z "$env_go" ] || [ -z "$d1" ] || [ -z "$d2" ] || [ -z "$dockerfile" ]; then
         echo -e "${RED}Error: could not parse the ONNX Runtime version from one of the pinned locations${NC}" >&2
@@ -239,7 +239,7 @@ check_ort_version_consistency() {
         printf '  %-10s  %s\n' "$env_go" "internal/common/environments.go:DeepDocORTVersion"
         printf '  %-10s  %s\n' "$d1" "ragflow_deps/download_go_deps.py:ORT_VERSION"
         printf '  %-10s  %s\n' "$d2" "ragflow_deps/download_deps.py:ORT_VERSION"
-        printf '  %-10s  %s\n' "$dockerfile" "Dockerfile_go:ARG ORT_VERSION"
+        printf '  %-10s  %s\n' "$dockerfile" "dockerfile:ARG ORT_VERSION"
         exit 1
     fi
 
@@ -354,26 +354,28 @@ check_office_oxide_deps() {
     local lib_path="${OFFICE_OXIDE_PREFIX}/lib/${lib_file}"
     local header_path="${OFFICE_OXIDE_PREFIX}/include/office_oxide_c/office_oxide.h"
 
-    if [ ! -f "$lib_path" ] || [ ! -f "$header_path" ]; then
-        echo -e "${RED}Error: office_oxide native library not found${NC}"
-        echo "  Expected: ${lib_path}"
-        echo "  Run: uv run python3 ragflow_deps/download_go_deps.py"
-        echo "  Or manually download: https://github.com/yfedoseev/office_oxide/releases/download/v${OFFICE_OXIDE_VERSION}/native-linux-x86_64.tar.gz"
-        exit 1
-    fi
-
     # Verify the on-disk lib matches the pinned version. A stale older lib
     # (e.g. v0.1.7) silently reintroduces the PPT97 content-loss bug
     # (github.com/yfedoseev/office_oxide#85, fixed in v0.1.8): PlainText()
     # on a legacy .ppt returns stale metadata instead of slide text.
-    if ! strings "$lib_path" 2>/dev/null | grep -Fxq "$OFFICE_OXIDE_VERSION"; then
+    if [ -f "$lib_path" ] && [ -f "$header_path" ] && \
+        strings "$lib_path" 2>/dev/null | grep -Fxq "$OFFICE_OXIDE_VERSION"; then
+        echo "✓ office_oxide v${OFFICE_OXIDE_VERSION} native library found at ${OFFICE_OXIDE_PREFIX}"
+        return 0
+    fi
+
+    echo "  Cached office_oxide is missing or not v${OFFICE_OXIDE_VERSION}; refreshing the pinned release"
+    if ! (cd "$PROJECT_ROOT" && uv run --script ragflow_deps/download_go_deps.py --office-oxide-only); then
+        echo -e "${RED}Error: could not refresh office_oxide v${OFFICE_OXIDE_VERSION}${NC}" >&2
+        exit 1
+    fi
+
+    if [ ! -f "$lib_path" ] || [ ! -f "$header_path" ] || \
+        ! strings "$lib_path" 2>/dev/null | grep -Fxq "$OFFICE_OXIDE_VERSION"; then
         local found_version
-        found_version=$(strings "$lib_path" 2>/dev/null | grep -E "^0\.[0-9]+\.[0-9]+$" | head -1)
+        found_version=$(strings "$lib_path" 2>/dev/null | grep -E "^0\.[0-9]+\.[0-9]+$" | head -1 || true)
         echo -e "${RED}Error: office_oxide native lib version mismatch${NC}"
         echo "  Required: v${OFFICE_OXIDE_VERSION}; found: ${found_version:-unknown}"
-        echo "  A stale lib silently loses PPT97 (.ppt) slide content. Refresh:"
-        echo "    rm -rf ~/ragflow-native-libs/office_oxide ragflow_deps/office_oxide-linux-x86_64.tar.gz"
-        echo "    uv run python3 ragflow_deps/download_go_deps.py"
         exit 1
     fi
 
@@ -999,13 +1001,13 @@ run() {
     ADMIN_PID=$!
     # One trap for both background services: a second `trap ... EXIT INT TERM`
     # would replace this one rather than add to it, leaving admin_server holding
-    # port 9383 after the foreground server exits. INGESTOR_PID is cleared first
+    # port 9381 after the foreground server exits. INGESTOR_PID is cleared first
     # so a value inherited from the environment cannot be signalled during the
     # window before the ingestor starts.
     INGESTOR_PID=""
     trap 'kill "$ADMIN_PID" ${INGESTOR_PID:+"$INGESTOR_PID"} 2>/dev/null || true' EXIT INT TERM
 
-    # Give admin_server a moment to bind its listening port (9383) before
+    # Give admin_server a moment to bind its listening port (9381) before
     # ragflow_server starts sending heartbeats to it.
     sleep 1
 

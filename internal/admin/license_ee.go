@@ -260,7 +260,7 @@ func (s *Service) CheckLicense(ctx context.Context) (common.ErrorCode, error) {
 		}
 
 		licenseCheckResult = "License is not ready"
-		return licenseStatus.Code, fmt.Errorf(licenseCheckResult)
+		return licenseStatus.Code, errors.New(licenseCheckResult)
 	}
 
 	currentLicense := licenseStatus.CurrentLicense
@@ -277,13 +277,13 @@ func (s *Service) CheckLicense(ctx context.Context) (common.ErrorCode, error) {
 	nowTS := time.Now().Unix()
 	now := time.Now()
 	if currentLicense.ValidFrom.After(now) {
-		licenseCheckResult = fmt.Sprintf("License not valid yet")
-		return common.CodeLicenseNotValidYet, fmt.Errorf(licenseCheckResult)
+		licenseCheckResult = "License not valid yet"
+		return common.CodeLicenseNotValidYet, errors.New(licenseCheckResult)
 	}
 
 	if currentLicense.ValidUntil.Before(now) {
-		licenseCheckResult = fmt.Sprintf("License expired")
-		return common.CodeLicenseExpiredError, fmt.Errorf(licenseCheckResult)
+		licenseCheckResult = "License expired"
+		return common.CodeLicenseExpiredError, errors.New(licenseCheckResult)
 	}
 	// 2. check time rollback
 	lastTimestamp := lastRecord.Timestamp
@@ -294,7 +294,7 @@ func (s *Service) CheckLicense(ctx context.Context) (common.ErrorCode, error) {
 
 	licenseCheckResult = "License valid"
 
-	return common.CodeLicenseValid, fmt.Errorf(licenseCheckResult)
+	return common.CodeLicenseValid, errors.New(licenseCheckResult)
 }
 
 func extractLicense(licenseStr string) (*utility.License, map[string]interface{}, error) {
@@ -599,7 +599,7 @@ func StartTimeRecordService(interval time.Duration) error {
 
 	// if time gap is not larger than interval
 	if nowTS-lastTimestamp < int64(interval.Seconds()) {
-		common.Debug(fmt.Sprintf("Not reach the time limit %d hour", interval.Hours()))
+		common.Debug(fmt.Sprintf("Not reach the time limit %g hour", interval.Hours()))
 		return nil
 	}
 

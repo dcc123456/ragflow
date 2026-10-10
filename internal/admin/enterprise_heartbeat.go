@@ -43,6 +43,9 @@ func (s *ServerStatusStore) UpdateStatus(serverName string, status *common.BaseM
 	if err := json.Unmarshal(extData, &clusterInfo); err != nil {
 		return
 	}
+	if len(clusterInfo.SystemInfos) == 0 || clusterInfo.SystemInfos[0] == nil {
+		return
+	}
 
 	systemInfo := clusterInfo.SystemInfos[0]
 	var found = false

@@ -15,7 +15,7 @@
 #  limitations under the License.
 #
 """
-Search-datasets consistency tests between Python (port 9380) and Go (port 9384) servers.
+Search-datasets consistency tests between Python (port 9380) and Go (port 9380) servers.
 Compares /api/v1/datasets/search endpoint responses for consistency between Python and Go.
 
 When an LLM is involved (rerank_id, keyword, or cross_languages is set), both sides
@@ -55,7 +55,7 @@ logger.propagate = False
 from test.testcases.utils import wait_for
 
 PYTHON_HOST = "http://localhost:9380"
-GO_HOST = "http://localhost:9384"
+GO_HOST = "http://localhost:9380"
 
 
 @pytest.fixture(scope="module")

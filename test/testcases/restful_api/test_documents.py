@@ -471,8 +471,12 @@ def test_documents_upload_error_contract(rest_client, create_dataset, tmp_path):
     )
     assert invalid_dataset_res.status_code == 200
     invalid_dataset_payload = invalid_dataset_res.json()
-    assert invalid_dataset_payload["code"] == 101, invalid_dataset_payload
-    assert invalid_dataset_payload["message"] == "dataset_id: Invalid UUID1 format", invalid_dataset_payload
+    if IS_GO_PROXY:
+        assert invalid_dataset_payload["code"] == 102, invalid_dataset_payload
+        assert invalid_dataset_payload["message"] == "Can't find the dataset with ID invalid_dataset_id!", invalid_dataset_payload
+    else:
+        assert invalid_dataset_payload["code"] == 101, invalid_dataset_payload
+        assert invalid_dataset_payload["message"] == "dataset_id: Invalid UUID1 format", invalid_dataset_payload
 
     for file_type in ("exe", "unknown"):
         bad_file = tmp_path / f"ragflow_test.{file_type}"
@@ -596,7 +600,8 @@ def test_documents_update_invalid_dataset_and_document_contract(rest_client, cre
     assert invalid_dataset_res.status_code == 200
     invalid_dataset_body = invalid_dataset_res.json()
     assert invalid_dataset_body["code"] == 102, invalid_dataset_body
-    assert "You don't own the dataset." in invalid_dataset_body["message"], invalid_dataset_body
+    expected_dataset_permission_message = "you don't own the dataset" if IS_GO_PROXY else "You don't own the dataset."
+    assert expected_dataset_permission_message in invalid_dataset_body["message"], invalid_dataset_body
 
     invalid_document_res = rest_client.patch(
         f"/datasets/{dataset_id}/documents/{INVALID_ID_32}",
@@ -605,7 +610,8 @@ def test_documents_update_invalid_dataset_and_document_contract(rest_client, cre
     assert invalid_document_res.status_code == 200
     invalid_document_body = invalid_document_res.json()
     assert invalid_document_body["code"] == 102, invalid_document_body
-    assert invalid_document_body["message"] == "document not found", invalid_document_body
+    expected_document_message = "the dataset doesn't own the document" if IS_GO_PROXY else "document not found"
+    assert invalid_document_body["message"] == expected_document_message, invalid_document_body
 
 
 @pytest.mark.p3
@@ -1036,7 +1042,8 @@ def test_document_metadata_config_contract(rest_client, create_document):
     assert invalid_dataset_res.status_code == 200
     invalid_dataset_payload = invalid_dataset_res.json()
     assert invalid_dataset_payload["code"] == 102, invalid_dataset_payload
-    assert invalid_dataset_payload["message"] == "You don't own the dataset.", invalid_dataset_payload
+    expected_dataset_permission_message = "you don't own the dataset" if IS_GO_PROXY else "You don't own the dataset."
+    assert invalid_dataset_payload["message"] == expected_dataset_permission_message, invalid_dataset_payload
 
     invalid_document_res = rest_client.put(
         f"/datasets/{dataset_id}/documents/{INVALID_ID_32}/metadata/config",
@@ -1045,7 +1052,8 @@ def test_document_metadata_config_contract(rest_client, create_document):
     assert invalid_document_res.status_code == 200
     invalid_document_payload = invalid_document_res.json()
     assert invalid_document_payload["code"] == 102, invalid_document_payload
-    assert invalid_document_payload["message"] == "document not found", invalid_document_payload
+    expected_document_message = f"document {INVALID_ID_32} not found in dataset {dataset_id}" if IS_GO_PROXY else "document not found"
+    assert invalid_document_payload["message"] == expected_document_message, invalid_document_payload
 
     update_payload = {"metadata": {"author": "alice", "tags": ["one", "two"]}}
     update_res = rest_client.put(

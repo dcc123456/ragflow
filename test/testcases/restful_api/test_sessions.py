@@ -114,13 +114,15 @@ def test_session_update_blocks_messages_and_reference(rest_client, create_chat):
     assert msg_res.status_code == 200
     msg_payload = msg_res.json()
     assert msg_payload["code"] == 102, msg_payload
-    assert "`messages` cannot be changed." in msg_payload["message"], msg_payload
+    expected_messages_error = "`messages` cannot be changed" if IS_GO_PROXY else "`messages` cannot be changed."
+    assert expected_messages_error in msg_payload["message"], msg_payload
 
     ref_res = rest_client.patch(f"/chats/{chat_id}/sessions/{session_id}", json={"reference": []})
     assert ref_res.status_code == 200
     ref_payload = ref_res.json()
     assert ref_payload["code"] == 102, ref_payload
-    assert "`reference` cannot be changed." in ref_payload["message"], ref_payload
+    expected_reference_error = "`reference` cannot be changed" if IS_GO_PROXY else "`reference` cannot be changed."
+    assert expected_reference_error in ref_payload["message"], ref_payload
 
 
 @pytest.mark.p1
@@ -145,8 +147,12 @@ def test_session_create_validation_and_deleted_chat_contract(rest_client, create
     invalid_chat_res = rest_client.post("/chats/invalid_chat_assistant_id/sessions", json={"name": "valid_name"})
     assert invalid_chat_res.status_code == 200
     invalid_chat_payload = invalid_chat_res.json()
-    assert invalid_chat_payload["code"] == 108, invalid_chat_payload
-    assert "Only Chat/Dialog owners or members with read permissions" in invalid_chat_payload["message"], invalid_chat_payload
+    if IS_GO_PROXY:
+        assert invalid_chat_payload["code"] == 109, invalid_chat_payload
+        assert invalid_chat_payload["message"] == "no authorization", invalid_chat_payload
+    else:
+        assert invalid_chat_payload["code"] == 108, invalid_chat_payload
+        assert "Only Chat/Dialog owners or members with read permissions" in invalid_chat_payload["message"], invalid_chat_payload
 
     for scenario_name, payload in (
         ("valid", {"name": "valid_name"}),
@@ -193,8 +199,12 @@ def test_session_create_validation_and_deleted_chat_contract(rest_client, create
     create_after_delete = rest_client.post(f"/chats/{chat_id}/sessions", json={"name": "after_delete"})
     assert create_after_delete.status_code == 200
     create_after_delete_payload = create_after_delete.json()
-    assert create_after_delete_payload["code"] == 108, create_after_delete_payload
-    assert "Only Chat/Dialog owners or members with read permissions" in create_after_delete_payload["message"], create_after_delete_payload
+    if IS_GO_PROXY:
+        assert create_after_delete_payload["code"] == 109, create_after_delete_payload
+        assert create_after_delete_payload["message"] == "no authorization", create_after_delete_payload
+    else:
+        assert create_after_delete_payload["code"] == 108, create_after_delete_payload
+        assert "Only Chat/Dialog owners or members with read permissions" in create_after_delete_payload["message"], create_after_delete_payload
 
 
 @pytest.mark.p2
@@ -233,8 +243,12 @@ def test_session_delete_requires_auth_and_invalid_target_contract(rest_client, c
     invalid_chat_res = rest_client.delete("/chats/invalid_chat_assistant_id/sessions", json={"ids": [session_id]})
     assert invalid_chat_res.status_code == 200
     invalid_chat_payload = invalid_chat_res.json()
-    assert invalid_chat_payload["code"] == 108, invalid_chat_payload
-    assert "Only Chat/Dialog owners or members with write permissions" in invalid_chat_payload["message"], invalid_chat_payload
+    if IS_GO_PROXY:
+        assert invalid_chat_payload["code"] == 109, invalid_chat_payload
+        assert invalid_chat_payload["message"] == "no authorization", invalid_chat_payload
+    else:
+        assert invalid_chat_payload["code"] == 108, invalid_chat_payload
+        assert "Only Chat/Dialog owners or members with write permissions" in invalid_chat_payload["message"], invalid_chat_payload
 
 
 @pytest.mark.p3
@@ -393,8 +407,12 @@ def test_session_list_filter_and_deleted_chat_contract(rest_client, create_chat)
     invalid_chat_res = rest_client.get(f"/chats/{INVALID_ID_32}/sessions")
     assert invalid_chat_res.status_code == 200
     invalid_chat_payload = invalid_chat_res.json()
-    assert invalid_chat_payload["code"] == 108, invalid_chat_payload
-    assert "Only Chat/Dialog owners or members with read permissions" in invalid_chat_payload["message"], invalid_chat_payload
+    if IS_GO_PROXY:
+        assert invalid_chat_payload["code"] == 109, invalid_chat_payload
+        assert invalid_chat_payload["message"] == "no authorization", invalid_chat_payload
+    else:
+        assert invalid_chat_payload["code"] == 108, invalid_chat_payload
+        assert "Only Chat/Dialog owners or members with read permissions" in invalid_chat_payload["message"], invalid_chat_payload
 
     delete_chat_res = rest_client.delete("/chats", json={"ids": [chat_id]})
     assert delete_chat_res.status_code == 200
@@ -404,8 +422,12 @@ def test_session_list_filter_and_deleted_chat_contract(rest_client, create_chat)
     deleted_list_res = rest_client.get(f"/chats/{chat_id}/sessions", params={"page_size": 30})
     assert deleted_list_res.status_code == 200
     deleted_list_payload = deleted_list_res.json()
-    assert deleted_list_payload["code"] == 108, deleted_list_payload
-    assert "Only Chat/Dialog owners or members with read permissions" in deleted_list_payload["message"], deleted_list_payload
+    if IS_GO_PROXY:
+        assert deleted_list_payload["code"] == 109, deleted_list_payload
+        assert deleted_list_payload["message"] == "no authorization", deleted_list_payload
+    else:
+        assert deleted_list_payload["code"] == 108, deleted_list_payload
+        assert "Only Chat/Dialog owners or members with read permissions" in deleted_list_payload["message"], deleted_list_payload
 
 
 @pytest.mark.p2
@@ -497,8 +519,12 @@ def test_session_update_requires_auth_and_invalid_target_contract(rest_client, c
     invalid_chat_res = rest_client.patch(f"/chats/{INVALID_ID_32}/sessions/{session_id}", json={"name": "x"})
     assert invalid_chat_res.status_code == 200
     invalid_chat_payload = invalid_chat_res.json()
-    assert invalid_chat_payload["code"] == 108, invalid_chat_payload
-    assert "Only Chat/Dialog owners or members with write permissions" in invalid_chat_payload["message"], invalid_chat_payload
+    if IS_GO_PROXY:
+        assert invalid_chat_payload["code"] == 109, invalid_chat_payload
+        assert invalid_chat_payload["message"] == "no authorization", invalid_chat_payload
+    else:
+        assert invalid_chat_payload["code"] == 108, invalid_chat_payload
+        assert "Only Chat/Dialog owners or members with write permissions" in invalid_chat_payload["message"], invalid_chat_payload
 
     empty_session_res = rest_client.patch(f"/chats/{chat_id}/sessions/", json={"name": "x"})
     assert empty_session_res.status_code == 200
@@ -551,8 +577,12 @@ def test_session_update_name_and_param_contract(rest_client, create_chat):
     update_after_delete_res = rest_client.patch(f"/chats/{chat_id}/sessions/{session_id}", json={"name": "after_delete"})
     assert update_after_delete_res.status_code == 200
     update_after_delete_payload = update_after_delete_res.json()
-    assert update_after_delete_payload["code"] == 108, update_after_delete_payload
-    assert "Only Chat/Dialog owners or members with write permissions" in update_after_delete_payload["message"], update_after_delete_payload
+    if IS_GO_PROXY:
+        assert update_after_delete_payload["code"] == 109, update_after_delete_payload
+        assert update_after_delete_payload["message"] == "no authorization", update_after_delete_payload
+    else:
+        assert update_after_delete_payload["code"] == 108, update_after_delete_payload
+        assert "Only Chat/Dialog owners or members with write permissions" in update_after_delete_payload["message"], update_after_delete_payload
 
 
 @pytest.mark.p2
@@ -759,5 +789,9 @@ def test_chat_completion_validation_errors(rest_client, create_chat):
     )
     assert invalid_chat.status_code == 200
     invalid_chat_payload = invalid_chat.json()
-    assert invalid_chat_payload["code"] == 108, invalid_chat_payload
-    assert "Only Chat/Dialog owners or members with read permissions" in invalid_chat_payload["message"], invalid_chat_payload
+    if IS_GO_PROXY:
+        assert invalid_chat_payload["code"] == 109, invalid_chat_payload
+        assert invalid_chat_payload["message"] == "no authorization", invalid_chat_payload
+    else:
+        assert invalid_chat_payload["code"] == 108, invalid_chat_payload
+        assert "Only Chat/Dialog owners or members with read permissions" in invalid_chat_payload["message"], invalid_chat_payload

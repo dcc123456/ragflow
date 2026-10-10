@@ -61,15 +61,16 @@ pre-commit:
       glob: "*.go"
       stage_fixed: true
       run: |
+        gofmt_bin="$(go env GOROOT)/bin/gofmt"
         if [ "${LEFTHOOK_CHECK_ONLY:-}" = "1" ]; then
-          unformatted=$(gofmt -l {staged_files})
+          unformatted=$("$gofmt_bin" -l {staged_files})
           if [ -n "$unformatted" ]; then
             echo "The following Go files are not gofmt'd:"
             echo "$unformatted"
             exit 1
           fi
         else
-          gofmt -w {staged_files}
+          "$gofmt_bin" -w {staged_files}
         fi
     - name: check-yaml
       run: python3 tools/hooks/check_files.py yaml

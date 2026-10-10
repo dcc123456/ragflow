@@ -190,4 +190,3 @@ Retrieval parameters directly affect answer coverage, accuracy, and response tim
 | Similarity threshold | 0.2 | Loose recall | Questions with diverse expressions. |
 | Similarity threshold | 0.5 | General Q&A | Default starting value. |
 | Similarity threshold | 0.8 | Strict precise matching | Scenarios that require exact terminology matching. |
-

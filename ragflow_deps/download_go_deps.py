@@ -54,8 +54,10 @@
 import argparse
 import hashlib
 import os
+import re
 import shutil
 import sys
+import tarfile
 import zipfile
 
 import requests
@@ -78,6 +80,7 @@ import requests
 # sidecar and re-download/re-extract, so a stale local copy never silently
 # lingers.
 ORT_VERSION = "1.29.0"
+OFFICE_OXIDE_VERSION = "0.1.9"
 
 
 def _ort_asset_name(version):
@@ -102,6 +105,48 @@ def _sha256_of(path):
         for chunk in iter(lambda: f.read(1 << 20), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def _office_oxide_matches_version(data):
+    version = re.escape(OFFICE_OXIDE_VERSION.encode())
+    return re.search(rb"(?<![ -~])" + version + rb"(?![ -~])", data) is not None
+
+
+def _office_oxide_archive_matches(path):
+    try:
+        with tarfile.open(path) as archive:
+            for member in archive.getmembers():
+                if os.path.basename(member.name) == "liboffice_oxide.a":
+                    library = archive.extractfile(member)
+                    return library is not None and _office_oxide_matches_version(library.read())
+    except (OSError, tarfile.TarError):
+        return False
+    return False
+
+
+def _office_oxide_library_matches(path):
+    try:
+        with open(path, "rb") as library:
+            return _office_oxide_matches_version(library.read())
+    except OSError:
+        return False
+
+
+def _extract_office_oxide(archive_path, target):
+    if _office_oxide_library_matches(os.path.join(target, "lib", "liboffice_oxide.a")):
+        print(f"  ✓ office_oxide v{OFFICE_OXIDE_VERSION} already extracted to {target}")
+        return
+
+    if os.path.isdir(target):
+        print(f"  Removing stale office_oxide cache: {target}")
+        shutil.rmtree(target)
+    os.makedirs(target, exist_ok=True)
+    print(f"  Extracting {os.path.basename(archive_path)} → {target}")
+    with tarfile.open(archive_path) as archive:
+        archive.extractall(target)
+    if not _office_oxide_library_matches(os.path.join(target, "lib", "liboffice_oxide.a")):
+        shutil.rmtree(target)
+        raise ValueError(f"{archive_path} does not contain office_oxide v{OFFICE_OXIDE_VERSION}")
 
 
 # Mirrors internal/common.DeepDocModelFiles (Go in-process DeepDoc backend).
@@ -226,7 +271,7 @@ def get_urls(use_china_mirrors=False) -> list[str | list[str]]:
             # functions — pre-downloaded to avoid network access during CI.
             ["https://gh-proxy.com/https://github.com/kognitos/pdfium-static/releases/download/chromium%2F7809/pdfium-linux-x64-static.tgz", "pdfium-linux-x64-static.tgz"],
             ["https://gh-proxy.com/https://github.com/yfedoseev/pdf_oxide/releases/download/v0.3.73/pdf_oxide-go-ffi-linux-amd64.tar.gz", "pdf_oxide-go-ffi-linux-amd64.tar.gz"],
-            ["https://gh-proxy.com/https://github.com/yfedoseev/office_oxide/releases/download/v0.1.9/native-linux-x86_64.tar.gz", "office_oxide-linux-x86_64.tar.gz"],
+            [f"https://gh-proxy.com/https://github.com/yfedoseev/office_oxide/releases/download/v{OFFICE_OXIDE_VERSION}/native-linux-x86_64.tar.gz", "office_oxide-linux-x86_64.tar.gz"],
             [
                 f"https://gh-proxy.com/https://github.com/infiniflow/ragflow-build/releases/download/onnxruntime-v{ORT_VERSION}/{_ort_asset_name(ORT_VERSION)}",
                 _ort_asset_name(ORT_VERSION),
@@ -255,7 +300,7 @@ def get_urls(use_china_mirrors=False) -> list[str | list[str]]:
             # functions — pre-downloaded to avoid network access during CI.
             ["https://github.com/kognitos/pdfium-static/releases/download/chromium%2F7809/pdfium-linux-x64-static.tgz", "pdfium-linux-x64-static.tgz"],
             ["https://github.com/yfedoseev/pdf_oxide/releases/download/v0.3.73/pdf_oxide-go-ffi-linux-amd64.tar.gz", "pdf_oxide-go-ffi-linux-amd64.tar.gz"],
-            ["https://github.com/yfedoseev/office_oxide/releases/download/v0.1.9/native-linux-x86_64.tar.gz", "office_oxide-linux-x86_64.tar.gz"],
+            [f"https://github.com/yfedoseev/office_oxide/releases/download/v{OFFICE_OXIDE_VERSION}/native-linux-x86_64.tar.gz", "office_oxide-linux-x86_64.tar.gz"],
             [
                 f"https://github.com/infiniflow/ragflow-build/releases/download/onnxruntime-v{ORT_VERSION}/{_ort_asset_name(ORT_VERSION)}",
                 _ort_asset_name(ORT_VERSION),
@@ -409,9 +454,12 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Download dependencies with optional China mirror support")
     parser.add_argument("--china-mirrors", action="store_true", help="Use China-accessible mirrors for downloads")
+    parser.add_argument("--office-oxide-only", action="store_true", help="Refresh only the pinned office_oxide native library")
     args = parser.parse_args()
 
     urls = get_urls(args.china_mirrors)
+    if args.office_oxide_only:
+        urls = [url for url in urls if (url[1] if isinstance(url, list) else url.split("/")[-1]) == "office_oxide-linux-x86_64.tar.gz"]
 
     # Some mirrors (e.g. archive.ubuntu.com) reject the default urllib
     # User-Agent with HTTP 403, so install an opener with a browser-like UA.
@@ -432,6 +480,7 @@ if __name__ == "__main__":
         # is always re-downloaded and re-extracted. Every other archive keeps
         # the legacy existence-based skip.
         is_ort = filename == _ort_asset_name(ORT_VERSION)
+        is_office_oxide = filename == "office_oxide-linux-x86_64.tar.gz"
         expected_sha = None
         if is_ort:
             sidecar_url = download_url + ".sha256"
@@ -451,6 +500,8 @@ if __name__ == "__main__":
                     needs_download = False
                 else:
                     print(f"  {filename} checksum mismatch (local {actual} != released {expected_sha}); re-downloading")
+            elif is_office_oxide and not _office_oxide_archive_matches(filename):
+                print(f"  {filename} does not contain office_oxide v{OFFICE_OXIDE_VERSION}; re-downloading")
             else:
                 needs_download = False
 
@@ -462,6 +513,9 @@ if __name__ == "__main__":
                     print(f"  ERROR: {filename} checksum mismatch after download (got {actual}, expected {expected_sha})", file=sys.stderr)
                     sys.exit(1)
                 print(f"  ✓ {filename} checksum verified ({actual})")
+            if is_office_oxide and not _office_oxide_archive_matches(filename):
+                print(f"  ERROR: {filename} does not contain office_oxide v{OFFICE_OXIDE_VERSION}", file=sys.stderr)
+                sys.exit(1)
             # Force re-extract below: drop any previously extracted version dir
             # so the same-named re-issued archive actually refreshes the .a files.
             if is_ort:
@@ -474,13 +528,13 @@ if __name__ == "__main__":
     # Extract native static libraries to ~/ragflow-native-libs for Go build.
     # Ensures build.sh can find them without network access.
     native_deps_dir = os.path.expanduser("~/ragflow-native-libs")
-    import tarfile
-
     extractions = [
         ("pdfium-linux-x64-static.tgz", "pdfium-static"),
         ("pdf_oxide-go-ffi-linux-amd64.tar.gz", "pdf_oxide"),
         ("office_oxide-linux-x86_64.tar.gz", "office_oxide"),
     ]
+    if args.office_oxide_only:
+        extractions = [item for item in extractions if item[1] == "office_oxide"]
 
     for archive, subdir in extractions:
         archive_path = os.path.join(os.getcwd(), archive)
@@ -488,6 +542,13 @@ if __name__ == "__main__":
             print(f"  Skipping extraction: {archive} not found")
             continue
         target = os.path.join(native_deps_dir, subdir)
+        if subdir == "office_oxide":
+            try:
+                _extract_office_oxide(archive_path, target)
+            except (OSError, tarfile.TarError, ValueError) as exc:
+                print(f"  ERROR: could not provision office_oxide v{OFFICE_OXIDE_VERSION}: {exc}", file=sys.stderr)
+                sys.exit(1)
+            continue
         if os.path.isdir(target):
             print(f"  ✓ {subdir} already extracted to {target}")
             continue
@@ -495,6 +556,9 @@ if __name__ == "__main__":
         print(f"  Extracting {archive} → {target}")
         with tarfile.open(archive_path) as tf:
             tf.extractall(target)
+
+    if args.office_oxide_only:
+        sys.exit(0)
 
     if not extract_onnxruntime(
         os.path.join(native_deps_dir, "onnxruntime", "static_lib"),

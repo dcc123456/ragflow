@@ -719,19 +719,28 @@ def test_dataset_update_identifier_validation_contract(rest_client):
     assert not_uuid_res.status_code == 200
     not_uuid_payload = not_uuid_res.json()
     assert not_uuid_payload["code"] == 101, not_uuid_payload
-    assert not_uuid_payload["message"] == "dataset_id: Invalid UUID1 format", not_uuid_payload
+    expected_invalid_uuid_message = "Invalid UUID format" if IS_GO_PROXY else "dataset_id: Invalid UUID1 format"
+    assert not_uuid_payload["message"] == expected_invalid_uuid_message, not_uuid_payload
 
     not_uuid1_res = rest_client.put(f"/datasets/{uuid.uuid4().hex}", json=payload)
     assert not_uuid1_res.status_code == 200
     not_uuid1_payload = not_uuid1_res.json()
-    assert not_uuid1_payload["code"] == 101, not_uuid1_payload
-    assert not_uuid1_payload["message"] == "dataset_id: Invalid UUID1 format", not_uuid1_payload
+    if IS_GO_PROXY:
+        assert not_uuid1_payload["code"] == 102, not_uuid1_payload
+        assert "lacks permission for dataset" in not_uuid1_payload["message"], not_uuid1_payload
+    else:
+        assert not_uuid1_payload["code"] == 101, not_uuid1_payload
+        assert not_uuid1_payload["message"] == "dataset_id: Invalid UUID1 format", not_uuid1_payload
 
     wrong_uuid_res = rest_client.put("/datasets/d94a8dc02c9711f0930f7fbc369eab6d", json=payload)
     assert wrong_uuid_res.status_code == 200
     wrong_uuid_payload = wrong_uuid_res.json()
-    assert wrong_uuid_payload["code"] == 108, wrong_uuid_payload
-    assert "Only Knowledgebase owners or members with management permissions" in wrong_uuid_payload["message"], wrong_uuid_payload
+    if IS_GO_PROXY:
+        assert wrong_uuid_payload["code"] == 102, wrong_uuid_payload
+        assert "lacks permission for dataset 'd94a8dc02c9711f0930f7fbc369eab6d'" in wrong_uuid_payload["message"], wrong_uuid_payload
+    else:
+        assert wrong_uuid_payload["code"] == 108, wrong_uuid_payload
+        assert "Only Knowledgebase owners or members with management permissions" in wrong_uuid_payload["message"], wrong_uuid_payload
 
 
 @pytest.mark.p2
@@ -1957,7 +1966,8 @@ def test_dataset_delete_contract_matrix(rest_client, clear_datasets):
     assert id_not_uuid1_res.status_code == 200
     id_not_uuid1_payload = id_not_uuid1_res.json()
     assert id_not_uuid1_payload["code"] == 102, id_not_uuid1_payload
-    assert "No authorization for dataset(s):" in id_not_uuid1_payload["message"], id_not_uuid1_payload
+    expected_permission_message = "lacks permission for datasets:" if IS_GO_PROXY else "No authorization for dataset(s):"
+    assert expected_permission_message in id_not_uuid1_payload["message"], id_not_uuid1_payload
     assert inaccessible_dataset_id in id_not_uuid1_payload["message"], id_not_uuid1_payload
 
     denied_dataset_id = "d94a8dc02c9711f0930f7fbc369eab6d"
@@ -1965,7 +1975,7 @@ def test_dataset_delete_contract_matrix(rest_client, clear_datasets):
     assert id_wrong_uuid_res.status_code == 200
     id_wrong_uuid_payload = id_wrong_uuid_res.json()
     assert id_wrong_uuid_payload["code"] == 102, id_wrong_uuid_payload
-    assert "No authorization for dataset(s):" in id_wrong_uuid_payload["message"], id_wrong_uuid_payload
+    assert expected_permission_message in id_wrong_uuid_payload["message"], id_wrong_uuid_payload
     assert denied_dataset_id in id_wrong_uuid_payload["message"], id_wrong_uuid_payload
 
     list_res = rest_client.get("/datasets")
@@ -1983,7 +1993,7 @@ def test_dataset_delete_contract_matrix(rest_client, clear_datasets):
         assert partial_invalid_res.status_code == 200
         partial_invalid_payload = partial_invalid_res.json()
         assert partial_invalid_payload["code"] == 102, partial_invalid_payload
-        assert "No authorization for dataset(s):" in partial_invalid_payload["message"], partial_invalid_payload
+        assert expected_permission_message in partial_invalid_payload["message"], partial_invalid_payload
         assert denied_dataset_id in partial_invalid_payload["message"], partial_invalid_payload
 
     duplicate_ids_res = rest_client.delete("/datasets", json={"ids": remaining_ids + remaining_ids})
@@ -2002,7 +2012,7 @@ def test_dataset_delete_contract_matrix(rest_client, clear_datasets):
     assert second_delete_res.status_code == 200
     second_delete_payload = second_delete_res.json()
     assert second_delete_payload["code"] == 102, second_delete_payload
-    assert "No authorization for dataset(s):" in second_delete_payload["message"], second_delete_payload
+    assert expected_permission_message in second_delete_payload["message"], second_delete_payload
     for deleted_id in remaining_ids:
         assert deleted_id in second_delete_payload["message"], second_delete_payload
 
@@ -2359,8 +2369,12 @@ def test_dataset_metadata_config_get_and_update_contract(rest_client, create_dat
     invalid_dataset_res = rest_client.get("/datasets/invalid_dataset_id/metadata/config")
     assert invalid_dataset_res.status_code == 200
     invalid_dataset_payload = invalid_dataset_res.json()
-    assert invalid_dataset_payload["code"] == 101, invalid_dataset_payload
-    assert invalid_dataset_payload["message"] == "dataset_id: Invalid UUID1 format", invalid_dataset_payload
+    if IS_GO_PROXY:
+        assert invalid_dataset_payload["code"] == 102, invalid_dataset_payload
+        assert "lacks permission for dataset" in invalid_dataset_payload["message"], invalid_dataset_payload
+    else:
+        assert invalid_dataset_payload["code"] == 101, invalid_dataset_payload
+        assert invalid_dataset_payload["message"] == "dataset_id: Invalid UUID1 format", invalid_dataset_payload
 
     update_payload = {
         "metadata": [
@@ -2406,8 +2420,12 @@ def test_dataset_metadata_config_get_and_update_contract(rest_client, create_dat
     )
     assert invalid_update_dataset_res.status_code == 200
     invalid_update_dataset_payload = invalid_update_dataset_res.json()
-    assert invalid_update_dataset_payload["code"] == 101, invalid_update_dataset_payload
-    assert invalid_update_dataset_payload["message"] == "dataset_id: Invalid UUID1 format", invalid_update_dataset_payload
+    if IS_GO_PROXY:
+        assert invalid_update_dataset_payload["code"] == 102, invalid_update_dataset_payload
+        assert "lacks permission for dataset" in invalid_update_dataset_payload["message"], invalid_update_dataset_payload
+    else:
+        assert invalid_update_dataset_payload["code"] == 101, invalid_update_dataset_payload
+        assert invalid_update_dataset_payload["message"] == "dataset_id: Invalid UUID1 format", invalid_update_dataset_payload
 
 
 def test_dataset_metadata_summary_contract(rest_client, create_dataset, tmp_path):

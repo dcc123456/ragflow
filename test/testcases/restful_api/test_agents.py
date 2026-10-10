@@ -17,6 +17,7 @@
 import json
 
 import pytest
+from test.testcases.configs import IS_GO_PROXY
 
 MINIMAL_DSL = {
     "components": {
@@ -116,7 +117,8 @@ def test_agents_crud_validation_contract(rest_client, create_agent_resource):
     assert invalid_update.status_code == 200
     invalid_update_payload = invalid_update.json()
     assert invalid_update_payload["code"] == 103, invalid_update_payload
-    assert invalid_update_payload["message"] == "Canvas not found.", invalid_update_payload
+    expected_message = "Make sure you have permission to access the agent." if IS_GO_PROXY else "Canvas not found."
+    assert invalid_update_payload["message"] == expected_message, invalid_update_payload
 
     get_res = rest_client.get(f"/agents/{agent_id}")
     assert get_res.status_code == 200
@@ -139,7 +141,7 @@ def test_agents_crud_validation_contract(rest_client, create_agent_resource):
     assert invalid_delete.status_code == 200
     invalid_delete_payload = invalid_delete.json()
     assert invalid_delete_payload["code"] == 103, invalid_delete_payload
-    assert invalid_delete_payload["message"] == "Canvas not found.", invalid_delete_payload
+    assert invalid_delete_payload["message"] == expected_message, invalid_delete_payload
 
     delete_res = rest_client.delete(f"/agents/{agent_id}")
     assert delete_res.status_code == 200

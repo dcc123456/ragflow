@@ -1,50 +1,61 @@
-# builder stage
-FROM infiniflow/ragflow-base:v2.1 AS builder
+# base stage
+FROM ubuntu:24.04 AS base
 USER root
 SHELL ["/bin/bash", "-c"]
 
-ARG NEED_MIRROR=1
+ARG NEED_MIRROR=0
+
+#Optional parameter
+#If set NEED_MIRROR=1, and set GITEE_TOKEN="xxxxx" , donwload source from gitee.
+#If don't set GITEE_TOKEN , download from github
+ARG GITEE_TOKEN
 
 WORKDIR /ragflow
 
-# install dependencies from uv.lock file
-COPY pyproject.toml uv.lock ./
+# copy models downloaded via download_deps.py
+# layout.laws/manual/paper.onnx are byte-identical to layout.onnx, so we
+# exclude them from the tar extract and symlink them to layout.onnx instead,
+# saving ~219MB in the image.
+RUN mkdir -p /ragflow/rag/res/deepdoc /root/.ragflow
+RUN --mount=type=bind,from=infiniflow/ragflow_deps:latest,source=/huggingface.co,target=/huggingface.co \
+    tar --exclude='.*' \
+        --exclude='layout.laws.onnx' \
+        --exclude='layout.manual.onnx' \
+        --exclude='layout.paper.onnx' \
+        --exclude='layout.onnx' \
+        --exclude='det.onnx' \
+        --exclude='rec.onnx' \
+        --exclude='tsr.onnx' \
+        --exclude='layout.laws.ort' \
+        --exclude='layout.manual.ort' \
+        --exclude='layout.paper.ort' \
+        -cf - \
+        /huggingface.co/InfiniFlow/text_concat_xgb_v1.0 \
+        /huggingface.co/InfiniFlow/deepdoc \
+        | tar -xf - --strip-components=3 -C /ragflow/rag/res/deepdoc && \
+    #ln -s layout.onnx /ragflow/rag/res/deepdoc/layout.laws.onnx && \
+    #ln -s layout.onnx /ragflow/rag/res/deepdoc/layout.manual.onnx && \
+    #ln -s layout.onnx /ragflow/rag/res/deepdoc/layout.paper.onnx
+    ln -s layout.ort /ragflow/rag/res/deepdoc/layout.laws.ort && \
+    ln -s layout.ort /ragflow/rag/res/deepdoc/layout.manual.ort && \
+    ln -s layout.ort /ragflow/rag/res/deepdoc/layout.paper.ort
 
-# https://github.com/astral-sh/uv/issues/10462
-# uv records index url into uv.lock but doesn't failover among multiple indexes
-# Also rewrite pypi.tuna.tsinghua.edu.cn to mirrors.aliyun.com/pypi so locks
-# that were resolved against the Tsinghua mirror (e.g. when UV_INDEX pointed
-# there) get normalized to the Aliyun mirror in NEED_MIRROR=1 builds. Without
-# this, stale Tsinghua URLs slip through and `uv sync --frozen` 404s on
-# packages that the Tsinghua mirror no longer carries.
-RUN --mount=type=cache,id=ragflow_uv,target=/root/.cache/uv,sharing=locked \
-    if [ "$NEED_MIRROR" == "1" ]; then \
-        sed -i 's|pypi.org|mirrors.aliyun.com/pypi|g' uv.lock; \
-        sed -i 's|pypi.tuna.tsinghua.edu.cn|mirrors.aliyun.com/pypi|g' uv.lock; \
-    else \
-        sed -i 's|mirrors.aliyun.com/pypi|pypi.org|g' uv.lock; \
-        sed -i 's|pypi.tuna.tsinghua.edu.cn|pypi.org|g' uv.lock; \
-        sed -i 's|gitee.com|github.com|g' uv.lock; \
-    fi; \
-    # --refresh-package litellm forces a re-download of litellm from the
-    # (post-sed) URLs in uv.lock even if BuildKit's persistent uv cache mount
-    # holds a stale wheel from a previous build. litellm 1.88.x has had
-    # multiple internal ImportError issues (1.88.1 missing
-    # DEFAULT_HEALTH_CHECK_STALENESS_MULTIPLIER, 1.88.0 wheel pulled via
-    # some proxies missing RedisPipelineLpopOperation) — always re-fetching
-    # the locked version avoids serving a half-broken cached copy.
-    uv sync --python 3.13 --frozen --refresh-package litellm && \
-    # Ensure pip is available in the venv for runtime package installation (fixes #12651)
-    .venv/bin/python3 -m ensurepip --upgrade
+# Copy the cl100k_base BPE table used by the Go tokenizer (tiktoken-go
+# cl100k_base). The deps image ships it at its root; the Go image previously
+# mounted only /huggingface.co and omitted this file, so NumTokensFromString
+# silently returned 0. localBpeLoader resolves it from <workdir>/ragflow_deps/,
+# so dropping it here makes the table load offline at startup (see
+# InitCL100KEncoder fail-fast guard).
+RUN --mount=type=bind,from=infiniflow/ragflow_deps:latest,source=/cl100k_base.tiktoken,target=/tmp/cl100k_base.tiktoken \
+    mkdir -p /ragflow/ragflow_deps && \
+    cp /tmp/cl100k_base.tiktoken /ragflow/ragflow_deps/cl100k_base.tiktoken
 
-# Embedding tokenizer assets (internal/tokenizer/embedding_token_limits.md). The Go
-# counters load them from ragflow_deps/huggingface.co/<repo>/<file>; an image without them
-# counts every tagged model with the calibrated cl100k estimate, which is the less precise
-# path these counters exist to replace (cl100k under-counts XLM-R on some content, and an
-# under-count is what makes a provider answer 400) - so a missing asset FAILS THE BUILD
-# instead of shipping a degraded counter nobody notices.
-# The tokenizer.json files that download_deps.py fetches as cross-check oracles are
-# test-only and deliberately not shipped here.
+# Embedding tokenizer assets for the Go counters (internal/tokenizer). Same story as
+# the cl100k table above: the deps image carries them and the Go image has to put them
+# where the loaders search (<workdir>/ragflow_deps/huggingface.co/<repo>/<file>). A
+# missing asset FAILS THE BUILD here rather than shipping an image where every tagged
+# model silently counts with the calibrated cl100k estimate. The tokenizer.json files
+# that exist only as cross-check oracles are deliberately not shipped.
 RUN --mount=type=bind,from=infiniflow/ragflow_deps:latest,source=/huggingface.co,target=/huggingface.co \
     for asset in \
         BAAI/bge-m3/sentencepiece.bpe.model \
@@ -60,6 +71,84 @@ RUN --mount=type=bind,from=infiniflow/ragflow_deps:latest,source=/huggingface.co
         fi ; \
     done
 
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Setup apt
+RUN --mount=type=cache,id=ragflow_apt,target=/var/cache/apt,sharing=locked \
+    if [ "$NEED_MIRROR" == "1" ]; then \
+        # CI runners may inject a proxy whose TLS certificate is not trusted inside
+        # the fresh Ubuntu base image yet. Keep the Ubuntu mirror on HTTP here so
+        # the mirror switch remains usable before the full CA store is available.
+        sed -i 's|http://archive.ubuntu.com/ubuntu|http://mirrors.aliyun.com/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources; \
+        sed -i 's|http://security.ubuntu.com/ubuntu|http://mirrors.aliyun.com/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources; \
+    fi; \
+    rm -f /etc/apt/apt.conf.d/docker-clean && \
+    echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache && \
+    chmod 1777 /tmp && \
+    apt update && \
+    apt --no-install-recommends install -y ca-certificates curl vim unzip iproute2 fonts-dejavu fontconfig && \
+    mkdir -p /usr/local/share/fonts/truetype/noto && \
+    curl --retry 5 --retry-delay 2 --retry-all-errors -fsSL \
+        -o /usr/local/share/fonts/truetype/noto/NotoSansCJKsc-VF.ttf \
+        https://github.com/notofonts/noto-cjk/raw/main/Sans/Variable/TTF/NotoSansCJKsc-VF.ttf && \
+    fc-cache -f && \
+    rm -rf /var/lib/apt/lists/*
+
+# Download resource from GitHub to /usr/share/infinity
+# Ship only the directories required by the runtime tokenizer:
+#   rag     - base analyzer dictionaries (mandatory)
+#   opencc  - Traditional/Simplified Chinese conversion
+#   wordnet - WordNet resources
+RUN --mount=type=cache,id=ragflow_apt,target=/var/cache/apt,sharing=locked \
+    apt-get update && \
+    apt-get install -y --no-install-recommends git && \
+    mkdir -p /usr/share/infinity/resource && \
+    if [ "$NEED_MIRROR" == "1" ]; then \
+        if [ -n "$GITEE_TOKEN" ]; then \
+            git clone --depth 1 --single-branch "https://oauth2:${GITEE_TOKEN}@gitee.com/infiniflow/resource" /tmp/resource; \
+        else \
+            git clone --depth 1 --single-branch https://github.com/infiniflow/resource.git /tmp/resource; \
+        fi; \
+    else \
+        git clone --depth 1 --single-branch https://github.com/infiniflow/resource.git /tmp/resource; \
+    fi && \
+    for d in rag opencc wordnet; do \
+        cp -r "/tmp/resource/$d" /usr/share/infinity/resource/; \
+    done && \
+    rm -rf /tmp/resource && \
+    apt-get purge -y git && \
+    apt-get autoremove -y && \
+    rm -rf /var/lib/apt/lists/*
+
+ARG OPENRESTY_VERSION=1.31.1.1-1~noble1
+RUN --mount=type=cache,id=ragflow_apt,target=/var/cache/apt,sharing=locked \
+    apt -o Acquire::Retries=5 update && \
+    apt -o Acquire::Retries=5 install -y --no-install-recommends gnupg && \
+    mkdir -p /etc/apt/keyrings && \
+    curl --retry 5 --retry-delay 2 --retry-all-errors -fsSL https://openresty.org/package/pubkey.gpg | gpg --dearmor -o /etc/apt/keyrings/openresty.gpg && \
+    arch="$(dpkg --print-architecture)" && \
+    repo="https://openresty.org/package/ubuntu" && \
+    if [ "$arch" = "arm64" ]; then repo="https://openresty.org/package/arm64/ubuntu"; fi && \
+    echo "deb [arch=${arch} signed-by=/etc/apt/keyrings/openresty.gpg] ${repo} noble main" > /etc/apt/sources.list.d/openresty.list && \
+    apt -o Acquire::Retries=5 update && \
+    apt -o Acquire::Retries=5 install -y --no-install-recommends openresty=${OPENRESTY_VERSION} && \
+    apt-mark hold openresty && \
+    ln -s /usr/local/openresty/nginx/sbin/nginx /usr/sbin/nginx && \
+    mkdir -p /etc/nginx && \
+    cp /usr/local/openresty/nginx/conf/mime.types /etc/nginx/mime.types && \
+    apt-get purge -y gnupg && \
+    apt-get autoremove -y && \
+    rm -rf /var/lib/apt/lists/*
+
+
+# ── web-builder stage ──
+
+FROM infiniflow/github_action_runner:latest AS web-builder
+USER root
+
+WORKDIR /ragflow
+
+
 # Install frontend dependencies — depends only on package manifests so
 # web source / docs changes don't invalidate this layer.
 COPY web/package.json web/package-lock.json web/.npmrc ./web/
@@ -72,76 +161,117 @@ COPY docs docs
 RUN --mount=type=cache,id=ragflow_npm,target=/root/.npm,sharing=locked \
     cd web && NODE_OPTIONS="--max-old-space-size=8192" VITE_BUILD_SOURCEMAP=false VITE_MINIFY=esbuild npm run build
 
-# Get version from git (mount .git directory to compute version dynamically)
+# Stamp the build version into /ragflow/VERSION. Requires git, which must be
+# preinstalled in the github_action_runner base image (the former apt-get install
+# git step was removed), and the host .git tree bound in at build time.
 RUN --mount=type=bind,source=.git,target=/ragflow/.git \
-    version_info=$(git describe --tags --match=v* --first-parent --always); \
-    echo "RAGFlow version: $version_info"; \
+    version_info=$(git describe --tags --match=v* --first-parent --always) && \
     echo "$version_info" > /ragflow/VERSION
 
-# production stage
-FROM infiniflow/ragflow-base:v2.1 AS production
+
+
+# ── go-builder stage ──
+FROM infiniflow/github_action_runner:latest AS go-builder
+USER root
+SHELL ["/bin/bash", "-c"]
+WORKDIR /ragflow
+
+# Cache Go modules BEFORE copying source (mirrors the Dockerfile_ci fix):
+# copy only the manifests, download the full module graph into a persistent
+# BuildKit cache mount, then bring in source. GOMODCACHE/GOCACHE are pinned to the
+# mounted paths so `go mod download` and `build.sh --go` share the same cache and
+# dependencies are never re-fetched when only source changes.
+COPY go.mod go.sum ./
+RUN --mount=type=cache,id=ragflow_gomod,target=/root/.cache/gomod \
+    --mount=type=cache,id=ragflow_gobuild,target=/root/.cache/gobuild \
+    GOMODCACHE=/root/.cache/gomod GOCACHE=/root/.cache/gobuild \
+    GOPROXY=${GOPROXY:-https://goproxy.cn,https://proxy.golang.org,direct} \
+    go mod download
+
+COPY internal internal
+COPY cmd cmd
+COPY build.sh ./
+# build.sh's check_ort_version_consistency (run via `./build.sh --go`) greps the
+# ORT version pins from these files; without them the --go build fails with
+# "could not parse the ONNX Runtime version from one of the pinned locations".
+COPY ragflow_deps/download_go_deps.py ragflow_deps/download_deps.py ./ragflow_deps/
+COPY Dockerfile ./
+
+# ONNX Runtime static archives: build.sh's _seed_from_system looks for the ORT
+# static libs under ONNXRUNTIME_STATIC_PREFIX (default ~/ragflow-native-libs/onnxruntime).
+# The github_action_runner base image pre-bakes them at /opt/ragflow-native-libs,
+# so we copy them into the expected user-cache path before building. These .a files
+# are consumed at link time only; they do NOT enter the final image (only the
+# compiled /ragflow/bin is COPY --from=go-builder). Without this, ORT linking is
+# silently skipped and the binary fails at startup with
+# "no in-process DeepDoc backend serving" (dlopen(NULL)/dlsym can't find OrtGetApiBase).
+# ${HOME} (not hard-coded /root) keeps the path consistent with build.sh regardless of HOME.
+ARG ORT_VERSION=1.29.0
+RUN set -eux; \
+    mkdir -p "${HOME}/ragflow-native-libs/onnxruntime/static_lib"; \
+    _src="/opt/ragflow-native-libs/onnxruntime/static_lib"; \
+    _v="$(ls -d "${_src}"/onnxruntime-linux-x64-static_lib-"${ORT_VERSION}"-* 2>/dev/null | head -1)"; \
+    if [ -z "${_v}" ]; then \
+      _v="$(ls -d "${_src}"/onnxruntime-linux-x64-static_lib-* 2>/dev/null | head -1)"; \
+    fi; \
+    if [ -n "${_v}" ]; then \
+      cp -r "${_v}" "${HOME}/ragflow-native-libs/onnxruntime/static_lib/"; \
+    else \
+      echo "Warning: no pre-baked onnxruntime static_lib in runner image; build.sh will attempt download" >&2; \
+    fi; \
+    find "${HOME}/ragflow-native-libs/onnxruntime/static_lib" -name '*.a' | head -5
+
+RUN git config --global safe.directory "*" && \
+    cd /ragflow && env -u CMAKE_TOOLCHAIN_FILE ./build.sh --cpp
+
+RUN --mount=type=cache,id=ragflow_gomod,target=/root/.cache/gomod \
+    --mount=type=cache,id=ragflow_gobuild,target=/root/.cache/gobuild \
+    GOMODCACHE=/root/.cache/gomod GOCACHE=/root/.cache/gobuild \
+    git config --global safe.directory "*" && \
+    ./build.sh --go
+
+
+##### production stage
+FROM base AS production
 USER root
 
 WORKDIR /ragflow
 
-# Copy Python environment and packages from builder
-ENV VIRTUAL_ENV=/ragflow/.venv
-COPY --from=builder ${VIRTUAL_ENV} ${VIRTUAL_ENV}
-ENV PATH="${VIRTUAL_ENV}/bin:${PATH}"
+# Copy the compiled Go backend binaries (set exec bits at copy time to avoid a redundant chmod layer)
+COPY --from=go-builder --chmod=755 /ragflow/bin/ragflow_server /ragflow/bin/ragflow_server
 
 ENV PYTHONPATH=/ragflow/
 
-# Copy configuration files first (these change less frequently)
 COPY docker/service_conf.yaml.template ./conf/service_conf.yaml.template
-COPY docker/entrypoint*.sh ./
-RUN chmod +x ./entrypoint*.sh
+COPY --chmod=755 docker/entrypoint*.sh ./
 
-# Install OpenResty (nginx with Lua support for rate limiting)
-# openresty-openssl3 provides a compatible libssl.so.3 (OpenSSL 3.x) under /usr/local/openresty/openssl3/
-# so that the OpenResty nginx binary does not depend on the host OS libssl version.
-RUN --mount=type=cache,id=ragflow_apt,target=/var/cache/apt,sharing=locked \
-    curl -fsSL https://openresty.org/package/pubkey.gpg | gpg --dearmor -o /usr/share/keyrings/openresty.gpg \
-    && echo "deb [signed-by=/usr/share/keyrings/openresty.gpg] http://openresty.org/package/ubuntu noble main" > /etc/apt/sources.list.d/openresty.list \
-    && apt -o Acquire::Retries=5 update \
-    && apt -o Acquire::Retries=5 install -y openresty openresty-openssl3 \
-    && ln -sf /usr/local/openresty/nginx/sbin/nginx /usr/sbin/nginx \
-    && echo "/usr/local/openresty/openssl3/lib" > /etc/ld.so.conf.d/openresty-openssl3.conf \
-    && ldconfig
+# Copy nginx configuration for frontend serving
+RUN mkdir -p /etc/nginx/conf.d /var/log/nginx
+
+COPY docker/nginx/nginx.conf docker/nginx/proxy.conf /etc/nginx/
+COPY docker/nginx/rate_limit.lua /etc/nginx/
+COPY docker/nginx/*.conf /etc/nginx/conf.d/
+
+RUN rm -f /etc/nginx/sites-enabled/default
+RUN /usr/sbin/nginx -t -c /etc/nginx/nginx.conf
 
 
-# Copy nginx configuration for frontend serving (with Lua rate limiter)
-# OpenResty installs to /usr/local/openresty/nginx/; create /etc/nginx/ symlink tree
-RUN mkdir -p /etc/nginx/conf.d /var/log/nginx && \
-    ln -sf /usr/local/openresty/nginx/conf/mime.types /etc/nginx/mime.types
-
-
-COPY docker/nginx/ragflow.conf.golang docker/nginx/ragflow.conf.python docker/nginx/ragflow.conf.hybrid docker/nginx/nginx.conf docker/nginx/proxy.conf docker/nginx/rate_limit.lua /etc/nginx/
-RUN mv /etc/nginx/ragflow.conf.golang /etc/nginx/conf.d/ragflow.conf.golang && \
-    mv /etc/nginx/ragflow.conf.python /etc/nginx/conf.d/ragflow.conf.python && \
-    mv /etc/nginx/ragflow.conf.hybrid /etc/nginx/conf.d/ragflow.conf.hybrid && \
-    rm -f /etc/nginx/sites-enabled/default
-
-# Copy application code (these change more frequently)
-COPY admin admin
-COPY api api
 COPY conf conf
-COPY deepdoc deepdoc
-COPY rag rag
-COPY agent agent
-COPY pyproject.toml uv.lock ./
-COPY mcp mcp
-COPY common common
-COPY memory memory
-COPY bin bin
-COPY tools/scripts tools/scripts
+COPY agent/templates agent/templates
+COPY rag/prompts rag/prompts
+
+# Wiki page-structure presets read at runtime by the Go backend
+# (CompilationTemplateService.LoadWikiPresets).
+COPY api/db/init_data/compilation_templates ./api/db/init_data/compilation_templates
+
 
 # Copy compiled web pages
-COPY --from=builder /ragflow/web/dist /ragflow/web/dist
+COPY --from=web-builder /ragflow/web/dist /ragflow/web/dist
 
 # Copy version info
-COPY --from=builder /ragflow/VERSION /ragflow/VERSION
+COPY --from=web-builder /ragflow/VERSION /ragflow/VERSION
 
 # Set environment variables
 ENV HF_ENDPOINT=https://hf-mirror.com
 
-ENTRYPOINT ["./entrypoint.sh"]
+ENTRYPOINT ["./entrypoint-go.sh"]
