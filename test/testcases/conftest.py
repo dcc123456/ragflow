@@ -15,6 +15,7 @@
 #
 
 import importlib
+import os
 import sys
 import types
 
@@ -96,6 +97,45 @@ import time
 import pytest
 import requests
 from test.testcases.configs import EMAIL, HOST_ADDRESS, PASSWORD, SILICONFLOW_API_KEY, VERSION, ZHIPU_AI_API_KEY
+
+BUILTIN_EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
+BUILTIN_EMBEDDING_PROVIDER = "Builtin"
+BUILTIN_EMBEDDING_INSTANCE = "Local"
+SILICONFLOW_EMBEDDING_PROVIDER = "SILICONFLOW"
+SILICONFLOW_EMBEDDING_INSTANCE = "CI"
+
+
+def using_siliconflow_byok() -> bool:
+    return os.getenv("K8S_CI_USE_SILICONFLOW", "0").lower() in {"1", "true", "yes"}
+
+
+def siliconflow_embedding_model_name() -> str:
+    return os.getenv("SILICONFLOW_EMBEDDING_MODEL", "BAAI/bge-m3")
+
+
+def append_tenant_suffix(model_id: str, tenant_id: str | None = None) -> str:
+    if not tenant_id or "#" in model_id:
+        return model_id
+    return f"{model_id}#{tenant_id}"
+
+
+def default_chat_llm_id(tenant_id: str | None = None) -> str:
+    return append_tenant_suffix("glm-4-flash@CI@ZHIPU-AI", tenant_id)
+
+
+def embedding_model_id(*, include_instance: bool = True, tenant_id: str | None = None) -> str:
+    if using_siliconflow_byok():
+        model_id = f"{siliconflow_embedding_model_name()}@{SILICONFLOW_EMBEDDING_INSTANCE}@{SILICONFLOW_EMBEDDING_PROVIDER}"
+        return append_tenant_suffix(model_id, tenant_id)
+    if include_instance:
+        model_id = f"{BUILTIN_EMBEDDING_MODEL}@{BUILTIN_EMBEDDING_INSTANCE}@{BUILTIN_EMBEDDING_PROVIDER}"
+        return append_tenant_suffix(model_id, tenant_id)
+    return f"{BUILTIN_EMBEDDING_MODEL}@{BUILTIN_EMBEDDING_PROVIDER}"
+
+
+def siliconflow_rerank_model_id() -> str:
+    return f"BAAI/bge-reranker-v2-m3@{SILICONFLOW_EMBEDDING_INSTANCE}@{SILICONFLOW_EMBEDDING_PROVIDER}"
+
 
 MARKER_EXPRESSIONS = {
     "p1": "p1",
