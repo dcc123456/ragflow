@@ -1506,7 +1506,7 @@ const generateDataSourceFormFields = (t: TFunction) => ({
     {
       label: 'App id',
       name: 'config.credentials.app_id',
-          },
+    },
   ],
   [DataSourceKey.ZOTERO]: [
     {

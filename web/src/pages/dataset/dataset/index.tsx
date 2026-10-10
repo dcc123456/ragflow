@@ -104,9 +104,7 @@ export default function Dataset() {
     recordWithSourceType,
   } = useShowPrivilegeDialog();
 
-  const {
-    list
-  } = useBulkOperateDataset({
+  const { list } = useBulkOperateDataset({
     documents,
     rowSelection,
     setRowSelection,
