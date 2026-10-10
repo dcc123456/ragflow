@@ -108,6 +108,7 @@ export function SingleChatBox({ conversation }: IProps) {
               removeMessageById={canManageChat ? removeMessageById : undefined}
               regenerateMessage={canManageChat ? regenerateMessage : undefined}
               isLast={i === messages.length - 1}
+              deleteDisabled={message.awaitingServerId}
               sendLoading={sendLoading}
             />
           ))}

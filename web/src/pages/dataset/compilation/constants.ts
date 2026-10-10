@@ -1,7 +1,7 @@
 import { GenerateType, ProcessingType } from '@/constants/knowledge';
 import {
   BookOpenText,
-  CalendarDays,
+  CalendarRange,
   ListIndentDecrease,
   ListTree,
   Waypoints,
@@ -50,7 +50,7 @@ export const ViewModeIconMap: Partial<Record<ViewMode, LucideIcon>> = {
   [ViewMode.Tree]: ListTree,
   [ViewMode.Graph]: Waypoints,
   [ViewMode.MindMap]: ListIndentDecrease,
-  [ViewMode.Timeline]: CalendarDays,
+  [ViewMode.Timeline]: CalendarRange,
 };
 
 // Dataset-log task_type values that correspond to a compilation view.

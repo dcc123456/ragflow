@@ -30,7 +30,6 @@ import { useManageMetadata } from '../components/metedata/hooks/use-manage-modal
 import { ManageMetadataModal } from '../components/metedata/manage-modal';
 import { useKnowledgeBaseContext } from '../contexts/knowledge-base-context';
 import { DatasetTable } from './dataset-table';
-import { ReparseDialog } from './reparse-dialog';
 import { useBulkOperateDataset } from './use-bulk-operate-dataset';
 import { useCreateEmptyDocument } from './use-create-empty-document';
 import { useSelectDatasetFilters } from './use-select-filters';
@@ -106,11 +105,7 @@ export default function Dataset() {
   } = useShowPrivilegeDialog();
 
   const {
-    chunkNum,
-    list,
-    visible: reparseDialogVisible,
-    hideModal: hideReparseDialogModal,
-    handleRunClick: handleOperationIconClick,
+    list
   } = useBulkOperateDataset({
     documents,
     rowSelection,
@@ -273,15 +268,6 @@ export default function Dataset() {
             documentIds={metadataConfig.documentIds}
             otherData={metadataConfig.record}
           />
-        )}
-        {reparseDialogVisible && (
-          <ReparseDialog
-            enable_metadata={knowledgeBase?.parser_config?.enable_metadata}
-            handleOperationIconClick={handleOperationIconClick}
-            chunk_num={chunkNum}
-            visible={reparseDialogVisible}
-            hideModal={hideReparseDialogModal}
-          ></ReparseDialog>
         )}
       </CardContent>
       {/* </section> */}
