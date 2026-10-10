@@ -734,7 +734,7 @@ def test_dataset_update_chunk_method_invalid_contract(rest_client, clear_dataset
 
 
 @pytest.mark.p2
-def test_dataset_update_parser_config_defaults_contract(rest_client, clear_datasets, tenant_id):
+def test_dataset_update_parser_config_defaults_contract(rest_client, clear_datasets):
     create_res = rest_client.post("/datasets", json={"name": "dataset_update_parser_defaults_contract"})
     assert create_res.status_code == 200
     create_payload = create_res.json()
@@ -1001,7 +1001,7 @@ def test_dataset_create_permission_contract(rest_client, clear_datasets, name, p
         "tenant_no_auth",
     ],
 )
-def test_dataset_create_embedding_model_contract(rest_client, clear_datasets, tenant_id, name, embedding_model, expected_code, expected_embedding_model, expected_message, unauthorized_is_xfail):
+def test_dataset_create_embedding_model_contract(rest_client, clear_datasets, name, embedding_model, expected_code, expected_embedding_model, expected_message, unauthorized_is_xfail):
     req = {"name": name}
     if embedding_model != "__UNSET__":
         req["embedding_model"] = embedding_model

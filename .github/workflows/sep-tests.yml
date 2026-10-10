@@ -644,6 +644,8 @@ jobs:
                  # v1.0.0-rc1.dev1 database marker. Without the override the Go
                  # server refuses to boot against the marker it just wrote.
                  echo "RAGFLOW_DEV_MODE=true"
+                 # REST contract tests must reach handlers without burst throttling.
+                 echo "RATELIMIT_DISABLED=true"
                } >> .env
                RAGFLOW_HTTP_PORT=${SVR_WEB_HTTP_PORT}
                echo "RAGFLOW_HTTP_PORT=${RAGFLOW_HTTP_PORT}" >> ${GITHUB_ENV}
@@ -1171,6 +1173,8 @@ jobs:
                  # v1.0.0-rc1.dev1 database marker. Without the override the Go
                  # server refuses to boot against the marker it just wrote.
                  echo "RAGFLOW_DEV_MODE=true"
+                 # REST contract tests must reach handlers without burst throttling.
+                 echo "RATELIMIT_DISABLED=true"
                } >> .env
                RAGFLOW_HTTP_PORT=${SVR_WEB_HTTP_PORT}
                echo "RAGFLOW_HTTP_PORT=${RAGFLOW_HTTP_PORT}" >> ${GITHUB_ENV}

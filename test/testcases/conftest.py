@@ -223,6 +223,19 @@ def auth():
 
 
 @pytest.fixture(scope="session")
+def tenant_id(auth):
+    response = requests.get(
+        HOST_ADDRESS + f"/api/{VERSION}/users/me/models",
+        headers={"Authorization": auth},
+        timeout=60,
+    )
+    response.raise_for_status()
+    payload = response.json()
+    assert payload["code"] == 0, payload
+    return payload["data"]["tenant_id"]
+
+
+@pytest.fixture(scope="session")
 def token(auth):
     url = HOST_ADDRESS + f"/api/{VERSION}/system/tokens"
     auth = {"Authorization": auth}
