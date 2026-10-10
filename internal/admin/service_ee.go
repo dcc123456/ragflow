@@ -32,7 +32,6 @@ import (
 	"ragflow/internal/permission"
 	"ragflow/internal/server"
 	"ragflow/internal/utility"
-	"sort"
 	"sync"
 	"time"
 
@@ -76,7 +75,7 @@ func StopUpdateRecordTask() {
 }
 
 // UpdateServer update server status
-func UpdateServer(serverName string, status *common.BaseMessage) (common.ErrorCode, string) {
+func UpdateServer(serverName string, status *common.BaseMessage) (common.ErrorCode, map[string]interface{}, string) {
 	GlobalServerStatusStore.UpdateStatus(serverName, status)
 
 	licenseStatus := GetLicenseStatus()
@@ -86,7 +85,7 @@ func UpdateServer(serverName string, status *common.BaseMessage) (common.ErrorCo
 			SetLicenseStatus(errorCode)
 			common.Warn(errorCode.Message())
 			StopUpdateRecordTask()
-			return errorCode, "Invalid license"
+			return errorCode, nil, "Invalid license"
 		}
 
 		if licenseStatus.CurrentLicense.Type == "trial" || heartBeatCount > 50 {
@@ -95,14 +94,14 @@ func UpdateServer(serverName string, status *common.BaseMessage) (common.ErrorCo
 			err := ValidateLicenseDigest(licenseStatus.CurrentLicense.Digest)
 			if err != nil {
 				common.Warn(fmt.Sprintf("Error validating license digest: %v, heartbeat: %d", err, heartBeatCount))
-				return common.CodeLicenseDigestError, ""
+				return common.CodeLicenseDigestError, nil, ""
 			}
 		}
 
 		common.Debug("License is loaded and valid")
-		return common.CodeLicenseValid, ""
+		return common.CodeLicenseValid, nil, ""
 	}
-	return licenseStatus.Code, ""
+	return licenseStatus.Code, nil, ""
 }
 
 // Role management methods
@@ -2362,7 +2361,7 @@ func (s *Service) ListIngestionTasksByCondition(ctx context.Context, email, stat
 			beginAt = r.BeginAt.Format("2006-01-02 15:04:05")
 		}
 
-		createdTime := common.FormatTime(r.CreateTime)
+		createdTime := formatTime(r.CreateTime)
 
 		showTasks = append(showTasks, map[string]interface{}{
 			"id":         r.ID,

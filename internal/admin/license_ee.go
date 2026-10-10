@@ -307,17 +307,17 @@ func extractLicense(licenseStr string) (*utility.License, map[string]interface{}
 	common.Debug(fmt.Sprintf("License ID:     %s\n", license.LicenseID))
 	common.Debug(fmt.Sprintf("Version:     %s\n", license.Version))
 	common.Debug(fmt.Sprintf("License to:     %s\n", license.CustomerName))
-	common.Debug(fmt.Sprintf("Issued at:     %s\n", utility.FormatTime(license.IssuedAt)))
-	common.Debug(fmt.Sprintf("Valid from:     %s\n", utility.FormatTime(license.ValidFrom)))
-	common.Debug(fmt.Sprintf("Valid until:     %s\n", utility.FormatTime(license.ValidUntil)))
+	common.Debug(fmt.Sprintf("Issued at:     %s\n", formatLicenseTime(license.IssuedAt)))
+	common.Debug(fmt.Sprintf("Valid from:     %s\n", formatLicenseTime(license.ValidFrom)))
+	common.Debug(fmt.Sprintf("Valid until:     %s\n", formatLicenseTime(license.ValidUntil)))
 
 	result := map[string]interface{}{}
 	result["ID"] = license.LicenseID
 	result["Version"] = license.Version
 	result["CustomerName"] = license.CustomerName
-	result["IssuedAt"] = utility.FormatTime(license.IssuedAt)
-	result["ValidFrom"] = utility.FormatTime(license.ValidFrom)
-	result["ValidUntil"] = utility.FormatTime(license.ValidUntil)
+	result["IssuedAt"] = formatLicenseTime(license.IssuedAt)
+	result["ValidFrom"] = formatLicenseTime(license.ValidFrom)
+	result["ValidUntil"] = formatLicenseTime(license.ValidUntil)
 
 	return license, result, nil
 	//return license.LicenseID, result, license.Digest, nil
