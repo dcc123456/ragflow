@@ -18,8 +18,8 @@ import asyncio
 import importlib.util
 import re
 import sys
-from copy import deepcopy
 from concurrent.futures import ThreadPoolExecutor
+from copy import deepcopy
 from enum import Enum
 from functools import wraps
 from pathlib import Path
@@ -27,13 +27,12 @@ from types import ModuleType, SimpleNamespace
 
 import pytest
 
-from test.testcases.configs import CHAT_ASSISTANT_NAME_LIMIT, INVALID_API_TOKEN, IS_GO_PROXY
+from test.testcases.configs import CHAT_ASSISTANT_NAME_LIMIT, INVALID_API_TOKEN
 from test.testcases.conftest import default_chat_llm_id
 from test.testcases.restful_api.helpers.assertions import assert_auth_error
 from test.testcases.restful_api.helpers.client import RestClient
 from test.testcases.utils import encode_avatar
 from test.testcases.utils.file_utils import create_image_file
-
 
 DEFAULT_CHAT_EMPTY_RESPONSE = "Sorry! No relevant content was found in the knowledge base!"
 DEFAULT_CHAT_PROLOGUE = "Hi! I'm your assistant. What can I do for you?"
@@ -92,12 +91,28 @@ def test_chat_crud_cycle(rest_client, clear_chats):
     assert create_payload["code"] == 0, create_payload
     chat_id = create_payload["data"]["id"]
 
+    # A second chat in the same tenant, so the exact id lookup below only
+    # passes when the filter is applied.
+    other_res = rest_client.post("/chats", json={"name": "restful_chat_crud_other", "dataset_ids": []})
+    assert other_res.status_code == 200
+    other_payload = other_res.json()
+    assert other_payload["code"] == 0, other_payload
+    assert other_payload["data"]["id"] != chat_id, other_payload
+
     list_res = rest_client.get("/chats", params={"id": chat_id})
     assert list_res.status_code == 200
     list_payload = list_res.json()
     assert list_payload["code"] == 0, list_payload
     assert len(list_payload["data"]["chats"]) == 1, list_payload
     assert list_payload["data"]["chats"][0]["id"] == chat_id, list_payload
+
+    # Exact filters take precedence over keywords, so the id wins even when the keyword names the other chat.
+    precedence_res = rest_client.get("/chats", params={"id": chat_id, "keywords": "restful_chat_crud_other"})
+    assert precedence_res.status_code == 200
+    precedence_payload = precedence_res.json()
+    assert precedence_payload["code"] == 0, precedence_payload
+    assert len(precedence_payload["data"]["chats"]) == 1, precedence_payload
+    assert precedence_payload["data"]["chats"][0]["id"] == chat_id, precedence_payload
 
     get_res = rest_client.get(f"/chats/{chat_id}")
     assert get_res.status_code == 200
@@ -156,8 +171,8 @@ def test_chat_duplicate_name_validation(rest_client, clear_chats):
     second = rest_client.post("/chats", json={"name": "duplicate_chat_name", "dataset_ids": []})
     assert second.status_code == 200
     second_payload = second.json()
-    assert second_payload["code"] == 102, second_payload
-    assert "duplicated chat name" in second_payload["message"], second_payload
+    assert second_payload["code"] == 0, second_payload
+    assert second_payload["data"]["name"] == "duplicate_chat_name(1)", second_payload
 
 
 @pytest.mark.p2
@@ -324,12 +339,8 @@ def test_chat_list_default_get_and_separate_lookup_contract(rest_client, clear_c
     invalid_get_res = rest_client.get("/chats/unknown")
     assert invalid_get_res.status_code == 200
     invalid_get_payload = invalid_get_res.json()
-    if IS_GO_PROXY:
-        assert invalid_get_payload["code"] == 109, invalid_get_payload
-        assert invalid_get_payload["message"] == "no authorization", invalid_get_payload
-    else:
-        assert invalid_get_payload["code"] == 108, invalid_get_payload
-        assert "Only Chat/Dialog owners or members with read permissions" in invalid_get_payload["message"], invalid_get_payload
+    assert invalid_get_payload["code"] == 109, invalid_get_payload
+    assert invalid_get_payload["message"] == "no authorization", invalid_get_payload
 
     for chat_id, keywords, expected_count in ((ids[0], "list_default_0", 1), (ids[0], "list_default_1", 1), (ids[0], "unknown", 0)):
         get_res = rest_client.get(f"/chats/{chat_id}")
@@ -645,7 +656,8 @@ def _load_chat_routes_unit_module(monkeypatch):
     common_constants_mod.LLMType = _StubLLMType
     common_constants_mod.RetCode = _StubRetCode
     common_constants_mod.StatusEnum = _StubStatusEnum
-    from common.constants import MAXIMUM_PAGE_NUMBER as _MPN, MAXIMUM_TASK_PAGE_NUMBER as _MTPN
+    from common.constants import MAXIMUM_PAGE_NUMBER as _MPN
+    from common.constants import MAXIMUM_TASK_PAGE_NUMBER as _MTPN
 
     common_constants_mod.MAXIMUM_PAGE_NUMBER = _MPN
     common_constants_mod.MAXIMUM_TASK_PAGE_NUMBER = _MTPN
@@ -1179,8 +1191,7 @@ def test_chat_create_rejects_unparsed_document(rest_client, clear_chats, create_
     assert res.status_code == 200
     payload = res.json()
     assert payload["code"] == 102, payload
-    expected_message = "doesn't own parsed file" if IS_GO_PROXY else "has no parsed files"
-    assert expected_message in payload["message"], payload
+    assert "doesn't own parsed file" in payload["message"], payload
 
 
 @pytest.mark.p2
@@ -1509,12 +1520,8 @@ def test_chat_update_mapping_and_validation_branches_p2(rest_client, clear_chats
     unauthorized = rest_client.patch("/chats/invalid-chat-id", json={"name": "anything"})
     assert unauthorized.status_code == 200
     unauthorized_payload = unauthorized.json()
-    if IS_GO_PROXY:
-        assert unauthorized_payload["code"] == 109, unauthorized_payload
-        assert unauthorized_payload["message"] == "no authorization", unauthorized_payload
-    else:
-        assert unauthorized_payload["code"] == 108, unauthorized_payload
-        assert "Only Chat/Dialog owners or members with management permissions" in unauthorized_payload["message"], unauthorized_payload
+    assert unauthorized_payload["code"] == 109, unauthorized_payload
+    assert unauthorized_payload["message"] == "no authorization", unauthorized_payload
 
     quote_res = rest_client.patch(f"/chats/{chat_id}", json={"prompt_config": {"quote": False}})
     assert quote_res.status_code == 200
@@ -1584,5 +1591,4 @@ def test_chat_update_rejects_unparsed_document(rest_client, clear_chats, create_
     assert res.status_code == 200, res.text
     payload = res.json()
     assert payload["code"] == 102, payload
-    expected_message = "doesn't own parsed file" if IS_GO_PROXY else "has no parsed files"
-    assert expected_message in payload["message"], payload
+    assert "doesn't own parsed file" in payload["message"], payload

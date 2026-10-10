@@ -15,7 +15,6 @@
  */
 
 import { FormFieldType } from '@/components/dynamic-form';
-import { pickByBackend } from '@/utils/backend-variant';
 import { IconFontFill } from '@/components/icon-font';
 import SvgIcon from '@/components/svg-icon';
 import { TFunction } from 'i18next';
@@ -1507,7 +1506,7 @@ const generateDataSourceFormFields = (t: TFunction) => ({
     {
       label: 'App id',
       name: 'config.credentials.app_id',
-          },
+    },
   ],
   [DataSourceKey.ZOTERO]: [
     {
@@ -2688,7 +2687,7 @@ export const DataSourceFormDefaultValues = {
       metadata_columns: '',
       id_column: '',
       timestamp_column: '',
-      batch_size: pickByBackend({ go: 32, python: 2 }),
+      batch_size: 32,
       credentials: {
         username: '',
         password: '',
@@ -2707,7 +2706,7 @@ export const DataSourceFormDefaultValues = {
       metadata_columns: '',
       id_column: '',
       timestamp_column: '',
-      batch_size: pickByBackend({ go: 32, python: 2 }),
+      batch_size: 32,
       credentials: {
         username: '',
         password: '',

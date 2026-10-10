@@ -35,12 +35,13 @@ runs against the pre-built data. Cleanup happens automatically at module teardow
 import logging
 import os
 import sys
-import pytest
-import requests
 import tempfile
 import time
 import uuid
 from test.testcases.conftest import embedding_model_id, siliconflow_rerank_model_id, using_siliconflow_byok
+
+import pytest
+import requests
 
 # Logging setup
 # Default is silent. Set LOG_LEVEL=INFO locally to see logger.info() messages.

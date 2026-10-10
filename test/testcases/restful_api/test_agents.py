@@ -17,7 +17,6 @@
 import json
 
 import pytest
-from test.testcases.configs import IS_GO_PROXY
 
 MINIMAL_DSL = {
     "components": {
@@ -110,15 +109,18 @@ def test_agents_crud_validation_contract(rest_client, create_agent_resource):
     duplicate = rest_client.post("/agents", json={"title": "restful_agent_crud", "dsl": MINIMAL_DSL})
     assert duplicate.status_code == 200
     duplicate_payload = duplicate.json()
-    assert duplicate_payload["code"] == 102, duplicate_payload
-    assert "already exists" in duplicate_payload["message"], duplicate_payload
+    assert duplicate_payload["code"] == 0, duplicate_payload
+    assert duplicate_payload["data"]["title"] == "restful_agent_crud(1)", duplicate_payload
+    duplicate_id = duplicate_payload["data"]["id"]
+    cleanup_duplicate = rest_client.delete(f"/agents/{duplicate_id}")
+    assert cleanup_duplicate.status_code == 200
+    assert cleanup_duplicate.json()["code"] == 0, cleanup_duplicate.json()
 
     invalid_update = rest_client.put("/agents/invalid-agent-id", json={"title": "updated", "dsl": MINIMAL_DSL})
     assert invalid_update.status_code == 200
     invalid_update_payload = invalid_update.json()
     assert invalid_update_payload["code"] == 103, invalid_update_payload
-    expected_message = "Make sure you have permission to access the agent." if IS_GO_PROXY else "Canvas not found."
-    assert invalid_update_payload["message"] == expected_message, invalid_update_payload
+    assert invalid_update_payload["message"] == "Make sure you have permission to access the agent.", invalid_update_payload
 
     get_res = rest_client.get(f"/agents/{agent_id}")
     assert get_res.status_code == 200
@@ -141,7 +143,7 @@ def test_agents_crud_validation_contract(rest_client, create_agent_resource):
     assert invalid_delete.status_code == 200
     invalid_delete_payload = invalid_delete.json()
     assert invalid_delete_payload["code"] == 103, invalid_delete_payload
-    assert invalid_delete_payload["message"] == expected_message, invalid_delete_payload
+    assert invalid_delete_payload["message"] == "Make sure you have permission to access the agent.", invalid_delete_payload
 
     delete_res = rest_client.delete(f"/agents/{agent_id}")
     assert delete_res.status_code == 200

@@ -25,3 +25,5 @@ func (h *AdminClient) InitHTTPClientEE() error {
 	h.clusterInfo = clusterInfo
 	return nil
 }
+
+func (h *AdminClient) UpdateClient(clientInfo interface{}) error { return nil }

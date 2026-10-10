@@ -80,7 +80,9 @@ export function HomeCard({
       }}
       tabIndex={0}
       className={cn(
-        'px-2.5 py-4 flex gap-2 items-start group h-full w-full hover:shadow-md',
+        `px-2.5 py-4 flex gap-2 items-start group h-full w-full${
+          onClick ? ' hover:shadow-md cursor-pointer' : ''
+        }`,
         className,
       )}
     >
