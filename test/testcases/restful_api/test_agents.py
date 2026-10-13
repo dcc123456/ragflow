@@ -143,7 +143,7 @@ def test_agents_crud_validation_contract(rest_client, create_agent_resource):
     assert invalid_delete.status_code == 200
     invalid_delete_payload = invalid_delete.json()
     assert invalid_delete_payload["code"] == 103, invalid_delete_payload
-    assert invalid_delete_payload["message"] == "Make sure you have permission to access the agent.", invalid_delete_payload
+    assert invalid_delete_payload["message"] == "Only the owner of the agent is authorized for this operation.", invalid_delete_payload
 
     delete_res = rest_client.delete(f"/agents/{agent_id}")
     assert delete_res.status_code == 200
