@@ -128,6 +128,18 @@ export const useNavigatePage = () => {
     [navigate],
   );
 
+  // Built-in pipelines open on the dedicated read-only canvas, not on the
+  // editing canvas. The dataflow_canvas category query keeps the pipeline
+  // rendering semantics (handle topology, node forms) identical to editing.
+  const navigateToBuiltinPipeline = useCallback(
+    (id: string) => () => {
+      navigate(
+        `${Routes.Pipeline}/${id}?${AgentQuery.Category}=${AgentCategory.DataflowCanvas}`,
+      );
+    },
+    [navigate],
+  );
+
   const navigateToAgentExplore = useCallback(
     (id: string) => () => {
       navigate(`${Routes.Agent}/${id}/explore`);
@@ -274,6 +286,7 @@ export const useNavigatePage = () => {
     navigateToAgentExplore,
     navigateToAgentLogs,
     navigateToAgentTemplates,
+    navigateToBuiltinPipeline,
     navigateToSearchList,
     navigateToSearch,
     navigateToFiles,

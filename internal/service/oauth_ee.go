@@ -29,7 +29,6 @@ import (
 	"ragflow/internal/server"
 	"ragflow/internal/server/config"
 	"ragflow/internal/service/oauth"
-	"ragflow/internal/utility"
 	"strings"
 	"time"
 
@@ -176,7 +175,7 @@ func (s *UserService) OAuthCallback(ctx context.Context, channel, code, callback
 		if existing.IsActive == "0" {
 			return nil, common.CodeForbidden, ErrOAuthUserInactive
 		}
-		newToken := utility.GenerateToken()
+		newToken := common.GenerateToken()
 		existing.AccessToken = &newToken
 		now := time.Now().Truncate(time.Second)
 		existing.LastLoginTime = &now
@@ -199,8 +198,8 @@ func (s *UserService) OAuthCallback(ctx context.Context, channel, code, callback
 // rest of the app (kbs, files, llm config) sees a fully-shaped tenant.
 func (s *UserService) registerOAuthUser(ctx context.Context, channel string, info *oauth.UserInfo) (*entity.User, common.ErrorCode, error) {
 	cfg := server.GetConfig()
-	userID := utility.GenerateToken()
-	accessToken := utility.GenerateToken()
+	userID := common.GenerateToken()
+	accessToken := common.GenerateToken()
 	status := "1"
 	loginChannel := channel
 	isSuperuser := false
@@ -238,7 +237,7 @@ func (s *UserService) registerOAuthUser(ctx context.Context, channel string, inf
 		ParserIDs: "naive:General,qa:Q&A,resume:Resume,manual:Manual,table:Table,paper:Research Paper,book:Book,laws:Laws,presentation:Presentation,picture:Picture,one:One,audio:Audio,email:Email,tag:Tag",
 		Status:    &status,
 	}
-	userTenantID := utility.GenerateToken()
+	userTenantID := common.GenerateToken()
 	userTenant := &entity.UserTenant{
 		ID:        userTenantID,
 		UserID:    userID,
@@ -247,7 +246,7 @@ func (s *UserService) registerOAuthUser(ctx context.Context, channel string, inf
 		InvitedBy: userID,
 		Status:    &status,
 	}
-	fileID := utility.GenerateToken()
+	fileID := common.GenerateToken()
 	rootFile := &entity.File{
 		ID:        fileID,
 		ParentID:  fileID,
