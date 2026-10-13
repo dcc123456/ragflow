@@ -24,7 +24,6 @@ import (
 	"ragflow/internal/engine/kvrocks"
 	"ragflow/internal/server"
 	"ragflow/internal/service"
-	"ragflow/internal/utility"
 
 	"github.com/gin-gonic/gin"
 )
@@ -161,7 +160,7 @@ func (h *UserHandler) OAuthChannelCallback(c *gin.Context) {
 		c.Redirect(http.StatusFound, frontendBase+"?error=server_error")
 		return
 	}
-	authToken, terr := utility.DumpAccessToken(*result.User.AccessToken, secretKey)
+	authToken, terr := common.DumpAccessToken(*result.User.AccessToken, secretKey)
 	if terr != nil {
 		c.Redirect(http.StatusFound, frontendBase+"?error=server_error")
 		return
