@@ -221,10 +221,9 @@ export const deleteUser = (email: string) =>
   request.delete(API.adminDeleteUser(email));
 
 export const listServices = async () => {
-  const { data } =
-    await request.get<
-      ResponseData<AdminService.ListServicesItem[] | GoServiceStatus[]>
-    >(API.adminListServices);
+  const { data } = await request.get<
+    ResponseData<AdminService.ListServicesItem[] | GoServiceStatus[]>
+  >(API.adminListServices);
   return data.code === 0 ? adaptServiceList(data.data) : [];
 };
 export const showServiceDetails = async (serviceId: number | string) => {
@@ -467,9 +466,17 @@ export const listSandboxProviders = () =>
     API.adminListSandboxProviders,
   );
 
-export const getSandboxConfig = () =>
+// export const getSandboxConfig = () =>
+//   request.get<ResponseData<AdminService.SandboxConfig>>(
+//     API.adminGetSandboxConfig,
+//   );
+
+export const getSandboxConfig = (providerType?: string) =>
   request.get<ResponseData<AdminService.SandboxConfig>>(
     API.adminGetSandboxConfig,
+    {
+      params: { provider_type: providerType },
+    },
   );
 
 export const setSandboxConfig = (params: AdminService.SetSandboxConfigInput) =>
