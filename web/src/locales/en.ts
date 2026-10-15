@@ -47,6 +47,8 @@ export default {
       arabic: 'Arabic',
       turkish: 'Turkish',
       dutch: 'Dutch',
+      slovak: 'Slovak',
+      czech: 'Czech',
       language: 'Language',
       languageMessage: 'Please input your language!',
       languagePlaceholder: 'select your language',
@@ -3661,6 +3663,8 @@ This process aggregates variables from multiple branches into a single variable 
       tokenizer: 'Indexer',
       tokenizerRequired: 'Please add the Indexer node first',
       nodeFormInvalid: 'Invalid settings, please fix them first',
+      apiKeyRequired: 'Please enter the API Key',
+      apiKeyMissing: 'No API key configured, please enter one first',
       agentModelMissing: 'No model selected, please choose one first',
       extractorModelMissing: 'No model selected, please choose one first',
       extractorKeywordsTopNMissing:
@@ -4003,6 +4007,8 @@ Important structured information may include: names, dates, locations, events, k
       arabic: 'Arabic',
       turkish: 'Turkish',
       dutch: 'Dutch',
+      slovak: 'Slovak',
+      czech: 'Czech',
     },
     pagination: {
       total: 'Total {{total}}',
