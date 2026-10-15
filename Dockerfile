@@ -91,7 +91,7 @@ RUN --mount=type=cache,id=ragflow_apt,target=/var/cache/apt,sharing=locked \
         -o /usr/local/share/fonts/truetype/noto/NotoSansCJKsc-VF.ttf \
         https://github.com/notofonts/noto-cjk/raw/main/Sans/Variable/TTF/NotoSansCJKsc-VF.ttf && \
     fc-cache -f && \
-    rm -rf /var/lib/apt/lists/*
+    rm -rf /var/lib/apt/lists/* && apt-get clean
 
 # Download resource from GitHub to /usr/share/infinity
 # Ship only the directories required by the runtime tokenizer:
@@ -117,7 +117,7 @@ RUN --mount=type=cache,id=ragflow_apt,target=/var/cache/apt,sharing=locked \
     rm -rf /tmp/resource && \
     apt-get purge -y git && \
     apt-get autoremove -y && \
-    rm -rf /var/lib/apt/lists/*
+    rm -rf /var/lib/apt/lists/* && apt-get clean
 
 ARG OPENRESTY_VERSION=1.31.1.1-1~noble1
 RUN --mount=type=cache,id=ragflow_apt,target=/var/cache/apt,sharing=locked \
@@ -137,7 +137,7 @@ RUN --mount=type=cache,id=ragflow_apt,target=/var/cache/apt,sharing=locked \
     cp /usr/local/openresty/nginx/conf/mime.types /etc/nginx/mime.types && \
     apt-get purge -y gnupg && \
     apt-get autoremove -y && \
-    rm -rf /var/lib/apt/lists/*
+    rm -rf /var/lib/apt/lists/* && apt-get clean
 
 
 # ── web-builder stage ──
