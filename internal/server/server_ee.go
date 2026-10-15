@@ -19,6 +19,7 @@ package server
 import (
 	"context"
 	"errors"
+	"ragflow/internal/common"
 	"ragflow/internal/engine/clickhouse"
 	"ragflow/internal/engine/otel"
 
@@ -58,6 +59,7 @@ func StartServer(ctx context.Context, cancel context.CancelFunc, serverName stri
 
 	err = clickhouse.Init(ctx, cancel, ckConfig.Host, ckConfig.Port, ckConfig.User, ckConfig.Password, ckConfig.Database)
 	if err != nil {
+		common.Error("Fail to connect to clickhouse", err)
 		return err
 	}
 
