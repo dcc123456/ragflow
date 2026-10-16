@@ -192,7 +192,6 @@ export interface ITestingChunk {
   highlight: string;
   positions: number[][];
   doc_type_kwd: string;
-  document_metadata?: Record<string, any>;
 }
 
 export interface ITestingDocument {

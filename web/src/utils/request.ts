@@ -206,6 +206,13 @@ request.interceptors.response.use(async (response: any, options: any) => {
     return response;
   }
 
+  // Per-request opt-out for response codes that the caller handles itself
+  // (e.g. a vanished folder on a list request is a normal navigation case,
+  // not a user-facing error).
+  const skipErrorCodes = (options as any)?.skipErrorCodes as
+    | number[]
+    | undefined;
+
   const data: ResponseType = await response?.clone()?.json();
 
   // Update LLM list cache when fetching my_llm or llm_list
@@ -233,6 +240,12 @@ request.interceptors.response.use(async (response: any, options: any) => {
     }
     authorizationUtil.removeAll();
     redirectToLogin();
+  } else if (data?.code !== 0 && !skipErrorCodes?.includes(data?.code)) {
+    notification.error({
+      message: `${i18n.t('message.hint')} : ${data?.code}`,
+      description: data?.message,
+      duration: 3,
+    });
   } else if (data?.code !== 0) {
     if (!(await showBillingUpgradeModalIfNeeded(data))) {
       if (

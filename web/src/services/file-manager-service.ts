@@ -39,6 +39,9 @@ const methods = {
   listFile: {
     url: listFile,
     method: 'get',
+    // A 404 means the folder being listed no longer exists; the page handles
+    // it by redirecting to the root folder instead of showing a toast.
+    skipErrorCodes: [404],
   },
   listEvaluationFile: {
     url: listEvaluationFile,
@@ -64,6 +67,9 @@ const methods = {
   getAllParentFolder: {
     url: getAllParentFolder,
     method: 'get',
+    // Same vanished-folder case as listFile: the ancestors of a deleted
+    // folder must not surface a global error.
+    skipErrorCodes: [404],
   },
   createFolder: {
     url: createFolder,
