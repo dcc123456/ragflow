@@ -27,10 +27,11 @@ import { SyncFileDialog } from './sync-file-dialog';
 import { useBulkOperateFile } from './use-bulk-operate-file';
 import { useHandleCreateFolder } from './use-create-folder';
 import { useHandleMoveFile } from './use-move-file';
-import { useHandleSyncFile } from './use-sync-file';
+import { useNavigateToOtherFolder } from './use-navigate-to-folder';
 import { useHandleUploadFile } from './use-upload-file';
 import { useGoToPreviousPageOnEmpty } from '@/hooks/logic-hooks';
 import { ListDeletionKey } from '@/constants/list-deletion';
+import { useHandleSyncFile } from './use-sync-file';
 export enum FileTabs {
   FILE = 'file',
   EVALUATION = 'evaluation',
@@ -72,9 +73,21 @@ export const FilesManager = {
       loading,
       setPagination,
       searchString,
-    setSearchString,
+      setSearchString,
       handleInputChange,
+      folderNotFound,
     } = useFetchFileList();
+
+    const navigateToOtherFolder = useNavigateToOtherFolder();
+
+    // The folder currently open was removed (e.g. an ancestor was moved into
+    // another folder). Send the user back to the root instead of showing an
+    // error for a listing that no longer exists.
+    useEffect(() => {
+      if (folderNotFound) {
+        navigateToOtherFolder('');
+      }
+    }, [folderNotFound, navigateToOtherFolder]);
 
     const {
       rowSelection,
@@ -86,11 +99,11 @@ export const FilesManager = {
 
     useClearSelectionOnPageChange(pagination, clearRowSelection);
 
-  useGoToPreviousPageOnEmpty(files?.length, loading, {
-    deletionKey: ListDeletionKey.FileList,
-    searchString,
-    setSearchString,
-  });
+    useGoToPreviousPageOnEmpty(files?.length, loading, {
+      deletionKey: ListDeletionKey.FileList,
+      searchString,
+      setSearchString,
+    });
 
     const {
       showMoveFileModal,
@@ -100,8 +113,8 @@ export const FilesManager = {
       moveFileLoading,
     } = useHandleMoveFile({ clearRowSelection });
 
-  const connectKnowledgeModal: UseHandleConnectToKnowledgeReturnType =
-    useHandleConnectToKnowledge();
+    const connectKnowledgeModal: UseHandleConnectToKnowledgeReturnType =
+      useHandleConnectToKnowledge();
 
     const { list } = useBulkOperateFile({
       files,
