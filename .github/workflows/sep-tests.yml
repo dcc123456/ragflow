@@ -17,7 +17,7 @@ on:
   # We use pull_request_target so that GITEE_TOKEN (and other repo secrets) are available when building
   # ragflow:nightly from a fork PR, while still running the full test suite on PRs labeled with `ci`.
   pull_request:
-    types: [synchronize, labeled]
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
     paths-ignore:
       - 'docs/**'
       - '*.md'
@@ -27,7 +27,7 @@ on:
 
 # https://docs.github.com/en/actions/using-jobs/using-concurrency
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}${{ github.event.action == 'labeled' && github.event.label.name != 'ci' && format('-ignore-{0}', github.run_id) || '' }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}${{ (github.event.action == 'labeled' || github.event.action == 'unlabeled') && github.event.label.name != 'ci' && github.event.label.name != 'merge_oss' && format('-ignore-{0}', github.run_id) || '' }}
   cancel-in-progress: true
 
 # infiniflow/onnxruntime_go is a fresh org mirror that is not yet present in the
@@ -43,7 +43,7 @@ jobs:
     name: ragflow_preflight
     # https://docs.github.com/en/actions/using-jobs/using-conditions-to-control-job-execution
     # https://github.com/orgs/community/discussions/26261
-    if: ${{ github.event_name != 'pull_request' && github.event_name != 'pull_request_target' || (github.event.pull_request.draft == false && contains(github.event.pull_request.labels.*.name, 'ci') && (github.event.action != 'labeled' || github.event.label.name == 'ci')) }}
+    if: ${{ github.event_name != 'pull_request' && github.event_name != 'pull_request_target' || (github.event.pull_request.draft == false && contains(github.event.pull_request.labels.*.name, 'ci') && ((github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'ci' || github.event.label.name == 'merge_oss')) }}
     permissions:
       actions: write
       contents: read
@@ -66,6 +66,22 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
           allow-unsafe-pr-checkout: true
+
+      - name: Check enterprise Go file changes
+        if: ${{ github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'merge_oss') }}
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          # Disable rename detection so renaming a shared Go file to an EE file is also rejected.
+          if ! git diff --exit-code --name-only --no-renames --no-ext-diff --no-textconv "${BASE_SHA}...${HEAD_SHA}" -- \
+            ':(top,glob)**/*.go' \
+            ':(top,glob,exclude)**/*_ee.go' \
+            ':(top,glob,exclude)**/*_ee_test.go'; then
+            echo "::error::Only *_ee.go and *_ee_test.go Go files may be changed without the merge_oss label."
+            exit 1
+          fi
 
       - name: Check workflow duplication
         if: ${{ !cancelled() && !failure() }}
@@ -207,7 +223,7 @@ jobs:
   ragflow_tests_infinity:
     name: ragflow_tests_infinity
     needs: ragflow_preflight
-    if: ${{ github.event_name != 'pull_request' && github.event_name != 'pull_request_target' || (github.event.pull_request.draft == false && contains(github.event.pull_request.labels.*.name, 'ci') && (github.event.action != 'labeled' || github.event.label.name == 'ci')) }}
+    if: ${{ github.event_name != 'pull_request' && github.event_name != 'pull_request_target' || (github.event.pull_request.draft == false && contains(github.event.pull_request.labels.*.name, 'ci') && ((github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'ci' || github.event.label.name == 'merge_oss')) }}
     runs-on: [ "self-hosted", "ragflow-test" ]
     env:
       DOC_ENGINE: infinity
@@ -755,7 +771,7 @@ jobs:
   ragflow_tests_elasticsearch:
     name: ragflow_tests_elasticsearch
     needs: ragflow_preflight
-    if: ${{ github.event_name != 'pull_request' && github.event_name != 'pull_request_target' || (github.event.pull_request.draft == false && contains(github.event.pull_request.labels.*.name, 'ci') && (github.event.action != 'labeled' || github.event.label.name == 'ci')) }}
+    if: ${{ github.event_name != 'pull_request' && github.event_name != 'pull_request_target' || (github.event.pull_request.draft == false && contains(github.event.pull_request.labels.*.name, 'ci') && ((github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'ci' || github.event.label.name == 'merge_oss')) }}
     runs-on: [ "self-hosted", "ragflow-test" ]
     env:
       DOC_ENGINE: elasticsearch
@@ -1314,7 +1330,7 @@ jobs:
     # verdict produced by the go jobs.
     needs: [ragflow_tests_infinity, ragflow_tests_elasticsearch]
     # Skip unless DeepDoc native backend code/build/testdata actually changed.
-    if: ${{ (github.event_name != 'pull_request' && github.event_name != 'pull_request_target' || (github.event.pull_request.draft == false && contains(github.event.pull_request.labels.*.name, 'ci') && (github.event.action != 'labeled' || github.event.label.name == 'ci'))) && needs.ragflow_preflight.outputs.has_native_deepdoc_changes == 'true' }}
+    if: ${{ (github.event_name != 'pull_request' && github.event_name != 'pull_request_target' || (github.event.pull_request.draft == false && contains(github.event.pull_request.labels.*.name, 'ci') && ((github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'ci' || github.event.label.name == 'merge_oss'))) && needs.ragflow_preflight.outputs.has_native_deepdoc_changes == 'true' }}
     runs-on: [ "self-hosted", "ragflow-test" ]
     # Shared by the assert step and the test step below so the mount path is
     # declared once.
@@ -1416,7 +1432,7 @@ jobs:
     # The model-backed native DeepDoc tests are covered separately by
     # `ragflow_native_backend`, so this job stays free of that heavy dependency.
     needs: ragflow_preflight
-    if: ${{ (github.event_name != 'pull_request' && github.event_name != 'pull_request_target' || (github.event.pull_request.draft == false && contains(github.event.pull_request.labels.*.name, 'ci') && (github.event.action != 'labeled' || github.event.label.name == 'ci'))) && needs.ragflow_preflight.outputs.has_go_changes == 'true' }}
+    if: ${{ (github.event_name != 'pull_request' && github.event_name != 'pull_request_target' || (github.event.pull_request.draft == false && contains(github.event.pull_request.labels.*.name, 'ci') && ((github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'ci' || github.event.label.name == 'merge_oss'))) && needs.ragflow_preflight.outputs.has_go_changes == 'true' }}
     runs-on: [ "self-hosted", "ragflow-test" ]
     env:
       DOC_ENGINE: infinity
