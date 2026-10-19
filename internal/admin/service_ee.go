@@ -88,16 +88,6 @@ func UpdateServer(serverName string, status *common.BaseMessage) (common.ErrorCo
 			return errorCode, nil, "Invalid license"
 		}
 
-		if licenseStatus.CurrentLicense.Type == "trial" || heartBeatCount > 50 {
-			// TRIAL license wouldn't check the license digest
-			// Suppose > 50 heartbeats, hardware info will be completely collected.
-			err := ValidateLicenseDigest(licenseStatus.CurrentLicense.Digest)
-			if err != nil {
-				common.Warn(fmt.Sprintf("Error validating license digest: %v, heartbeat: %d", err, heartBeatCount))
-				return common.CodeLicenseDigestError, nil, ""
-			}
-		}
-
 		common.Debug("License is loaded and valid")
 		return common.CodeLicenseValid, nil, ""
 	}
