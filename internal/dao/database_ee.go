@@ -16,7 +16,15 @@
 
 package dao
 
+import "ragflow/internal/entity"
+
 // permissionDataModelsEE returns the entities included in the enterprise schema.
 func permissionDataModelsEE() []interface{} {
-	return nil
+	return []interface{}{
+		&entity.Role{},
+		&entity.RoleResource{},
+		&entity.GroupInfo{},
+		&entity.GroupMember{},
+		&entity.Permission{},
+	}
 }
