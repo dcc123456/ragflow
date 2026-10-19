@@ -15,15 +15,14 @@
 
 package service
 
-import "ragflow/internal/utility"
+import "ragflow/internal/common"
 
 func (h *AdminClient) InitHTTPClientEE() error {
-	clusterInfo, err := utility.NewFingerprintCollector(true).Collect()
-	if err != nil {
-		return err
-	}
-	h.clusterInfo = clusterInfo
 	return nil
+}
+
+func (h *AdminClient) EnrichMessage(message *common.BaseMessage) (*common.BaseMessage, error) {
+	return message, nil
 }
 
 func (h *AdminClient) UpdateClient(clientInfo interface{}) error { return nil }
