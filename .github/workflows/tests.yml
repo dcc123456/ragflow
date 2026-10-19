@@ -16,7 +16,7 @@ on:
   # — pull_request_target workflows use the workflow files from the default branch, and secrets are available.
   # — pull_request workflows use the workflow files from the pull request branch, and secrets are unavailable.
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review, labeled]
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
     paths-ignore:
       - 'docs/**'
       - '*.md'
@@ -49,6 +49,22 @@ jobs:
           ref: ${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && format('refs/pull/{0}/merge', github.event.pull_request.number) || github.sha }}
           fetch-depth: 0
           fetch-tags: true
+
+      - name: Check enterprise Go file changes
+        if: ${{ github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'merge_oss') }}
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          # Disable rename detection so renaming a shared Go file to an EE file is also rejected.
+          if ! git diff --exit-code --name-only --no-renames --no-ext-diff --no-textconv "${BASE_SHA}...${HEAD_SHA}" -- \
+            ':(top,glob)**/*.go' \
+            ':(top,glob,exclude)**/*_ee.go' \
+            ':(top,glob,exclude)**/*_ee_test.go'; then
+            echo "::error::Only *_ee.go and *_ee_test.go Go files may be changed without the merge_oss label."
+            exit 1
+          fi
 
       - name: Bridge runner CI environment into workflow env
         id: bridge_ci_env
