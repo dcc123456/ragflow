@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"ragflow/internal/common"
 	"ragflow/internal/engine/kvrocks"
+	"ragflow/internal/entity"
 	"ragflow/internal/server"
 	"ragflow/internal/service"
 
@@ -160,7 +161,7 @@ func (h *UserHandler) OAuthChannelCallback(c *gin.Context) {
 		c.Redirect(http.StatusFound, frontendBase+"?error=server_error")
 		return
 	}
-	authToken, terr := common.DumpAccessToken(*result.User.AccessToken, secretKey)
+	authToken, terr := issueUserAccessToken(result.User, secretKey)
 	if terr != nil {
 		c.Redirect(http.StatusFound, frontendBase+"?error=server_error")
 		return
@@ -170,6 +171,13 @@ func (h *UserHandler) OAuthChannelCallback(c *gin.Context) {
 	c.Header("Authorization", authToken)
 	c.Header("Access-Control-Expose-Headers", "Authorization")
 	c.Redirect(http.StatusFound, frontendBase+"?auth="+result.User.ID)
+}
+
+func issueUserAccessToken(user *entity.User, secretKey string) (string, error) {
+	if user == nil || user.AccessToken == nil {
+		return "", fmt.Errorf("user access token is missing")
+	}
+	return common.DumpAccessToken(*user.AccessToken, "", secretKey)
 }
 
 // LoginChannel represents a login channel response

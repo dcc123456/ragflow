@@ -119,6 +119,7 @@ const svgIcons = [
   LLMFactory.MWS,
   LLMFactory.CheaperInference,
   LLMFactory.Opper,
+  LLMFactory.TrustedRouter,
 ];
 
 export const LlmIcon = ({
