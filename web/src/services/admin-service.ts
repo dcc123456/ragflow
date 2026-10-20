@@ -237,10 +237,10 @@ export const createRole = (params: {
   roleName: string;
   description?: string;
 }) =>
-  request.post<ResponseData<AdminService.RoleDetail>>(
-    API.adminCreateRole,
-    params,
-  );
+  request.post<ResponseData<AdminService.RoleDetail>>(API.adminCreateRole, {
+    role_name: params.roleName,
+    description: params.description,
+  });
 
 export const updateRoleDescription = (role: string, description: string) =>
   request.put<ResponseData<AdminService.RoleDetail>>(
@@ -252,17 +252,12 @@ export const deleteRole = (role: string) =>
   request.delete<ResponseData<ResponseData<never>>>(API.adminDeleteRole(role));
 
 export const listRoles = () =>
-  request.get<
-    ResponseData<{ roles: AdminService.ListRoleItem[]; total: number }>
-  >(API.adminListRoles);
+  request.get<ResponseData<AdminService.ListRoleItem[]>>(API.adminListRoles);
 
 export const listRolesWithPermission = () =>
-  request.get<
-    ResponseData<{
-      roles: AdminService.ListRoleItemWithPermission[];
-      total: number;
-    }>
-  >(API.adminListRolesWithPermission);
+  request.get<ResponseData<AdminService.ListRoleItemWithPermission[]>>(
+    API.adminListRolesWithPermission,
+  );
 
 export const getRolePermissions = (role: string) =>
   request.get<ResponseData<AdminService.RoleDetailWithPermission>>(
@@ -272,18 +267,46 @@ export const getRolePermissions = (role: string) =>
 export const assignRolePermissions = (
   role: string,
   permissions: Partial<AdminService.AssignRolePermissionsInput>,
-) =>
-  request.post<ResponseData<never>>(API.adminAssignRolePermissions(role), {
-    new_permissions: permissions,
+) => {
+  const updates = Object.entries(permissions).flatMap(([resource, values]) => {
+    const actions = Object.entries(values ?? {})
+      .filter(([, enabled]) => enabled)
+      .map(([action]) => action);
+    return actions.length > 0 ? [{ resource, actions }] : [];
   });
+
+  return Promise.all(
+    updates.map(({ resource, actions }) =>
+      request.post<ResponseData<never>>(API.adminAssignRolePermissions(role), {
+        actions,
+        resource,
+      }),
+    ),
+  );
+};
 
 export const revokeRolePermissions = (
   role: string,
   permissions: Partial<AdminService.RevokeRolePermissionInput>,
-) =>
-  request.delete<ResponseData<never>>(API.adminRevokeRolePermissions(role), {
-    data: { revoke_permissions: permissions },
+) => {
+  const updates = Object.entries(permissions).flatMap(([resource, values]) => {
+    const actions = Object.entries(values ?? {})
+      .filter(([, enabled]) => enabled === false)
+      .map(([action]) => action);
+    return actions.length > 0 ? [{ resource, actions }] : [];
   });
+
+  return Promise.all(
+    updates.map(({ resource, actions }) =>
+      request.delete<ResponseData<never>>(
+        API.adminRevokeRolePermissions(role),
+        {
+          data: { actions, resource },
+        },
+      ),
+    ),
+  );
+};
 
 export const updateUserRole = (username: string, role: string) =>
   request.put<ResponseData<never>>(API.adminUpdateUserRole(username), {
@@ -428,7 +451,7 @@ export const setRoleDefaultModel = (
   role: string,
   input: AdminService.SetRoleDefaultModelInput,
 ) =>
-  request.put<ResponseData<boolean>>(API.adminRoleDefaultModels(role), input);
+  request.patch<ResponseData<boolean>>(API.adminRoleDefaultModels(role), input);
 
 export const listMyLlm = () =>
   request.get<ResponseData<Record<LLMFactory, IMyLlmValue>>>(

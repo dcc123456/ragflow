@@ -23,6 +23,7 @@ func permissionDataModelsEE() []interface{} {
 	return []interface{}{
 		&entity.Role{},
 		&entity.RoleResource{},
+		&entity.RoleDefaultModel{},
 		&entity.GroupInfo{},
 		&entity.GroupMember{},
 		&entity.Permission{},

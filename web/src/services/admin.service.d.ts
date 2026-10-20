@@ -149,11 +149,11 @@ declare namespace AdminService {
   };
 
   export type ListRoleItem = {
-    id: string;
+    id: number;
     role_name: string;
-    description: string;
-    create_date: string;
-    update_date: string;
+    description: string | null;
+    create_date: string | null;
+    update_date: string | null;
   };
 
   export type ListRoleItemWithPermission = ListRoleItem & {
@@ -162,19 +162,19 @@ declare namespace AdminService {
 
   export type RoleDetailWithPermission = {
     role: {
-      id: string;
-      name: string;
-      description: string;
+      id: number;
+      role_name: string;
+      description: string | null;
     };
     permissions: Record<RoleResourceName, PermissionData>;
   };
 
   export type RoleDetail = {
-    id: string;
-    name: string;
-    description: string;
-    create_date: string;
-    update_date: string;
+    id: number;
+    role_name: string;
+    description: string | null;
+    create_date: string | null;
+    update_date: string | null;
   };
 
   export type AssignRolePermissionsInput = Record<

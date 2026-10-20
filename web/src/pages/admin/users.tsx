@@ -165,7 +165,7 @@ function AdminUserManagement() {
 
   const { data: roleList } = useQuery({
     queryKey: ['admin/listRoles'],
-    queryFn: async () => (await listRoles()).data.data.roles,
+    queryFn: async () => (await listRoles()).data.data,
     enabled: IS_ENTERPRISE,
     retry: false,
     placeholderData: keepPreviousData,

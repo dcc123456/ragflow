@@ -177,7 +177,8 @@ func issueUserAccessToken(user *entity.User, secretKey string) (string, error) {
 	if user == nil || user.AccessToken == nil {
 		return "", fmt.Errorf("user access token is missing")
 	}
-	return common.DumpAccessToken(*user.AccessToken, "", secretKey)
+	// Users enter their own Tenant after login; the EE token keeps that context.
+	return common.DumpAccessToken(*user.AccessToken, user.ID, secretKey)
 }
 
 // LoginChannel represents a login channel response

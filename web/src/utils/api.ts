@@ -535,9 +535,9 @@ export default {
     `${restAPIv1}/admin/services/${serviceId}`,
 
   adminListRoles: `${restAPIv1}/admin/roles`,
-  adminListRolesWithPermission: `${restAPIv1}/admin/roles_with_permission`,
+  adminListRolesWithPermission: `${restAPIv1}/admin/roles/permission`,
   adminGetRolePermissions: (roleName: string) =>
-    `${restAPIv1}/admin/roles/${roleName}/permissions`,
+    `${restAPIv1}/admin/roles/${roleName}/permission`,
   adminAssignRolePermissions: (roleName: string) =>
     `${restAPIv1}/admin/roles/${roleName}/permission`,
   adminRevokeRolePermissions: (roleName: string) =>
@@ -547,7 +547,7 @@ export default {
   adminUpdateRoleDescription: (roleName: string) =>
     `${restAPIv1}/admin/roles/${roleName}`,
   adminRoleDefaultModels: (roleName: string) =>
-    `${restAPIv1}/admin/roles/${roleName}/default_models`,
+    `${restAPIv1}/admin/roles/${roleName}/default-models`,
 
   adminListMyLlm: `${restAPIv1}/admin/llm/my_llms`,
   adminListLlmFactories: `${restAPIv1}/admin/llm/factories`,

@@ -18,10 +18,24 @@ package service
 
 import (
 	"context"
+	"fmt"
 
+	"ragflow/internal/dao"
 	"ragflow/internal/entity"
 )
 
-func resolveUserAuthTenant(_ context.Context, _ *entity.User, _ string) (string, error) {
-	return "", nil
+func resolveUserAuthTenant(ctx context.Context, user *entity.User, tenantID string) (string, error) {
+	if user == nil {
+		return "", fmt.Errorf("user is required")
+	}
+	if user.IsSuperuser != nil && *user.IsSuperuser {
+		return "", nil
+	}
+	if tenantID == "" {
+		return "", fmt.Errorf("tenant context is required")
+	}
+	if _, err := dao.NewUserTenantDAO().FilterByUserIDAndTenantID(ctx, dao.DB, user.ID, tenantID); err != nil {
+		return "", fmt.Errorf("user is not an active member of tenant %q", tenantID)
+	}
+	return tenantID, nil
 }

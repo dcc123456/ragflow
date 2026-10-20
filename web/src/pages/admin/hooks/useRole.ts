@@ -17,7 +17,7 @@ export function useRoleList() {
     refetch,
   } = useQuery({
     queryKey: ['admin/listRolesWithPermission'],
-    queryFn: async () => (await listRolesWithPermission())?.data?.data?.roles,
+    queryFn: async () => (await listRolesWithPermission())?.data?.data,
     retry: false,
     initialData: [],
   });

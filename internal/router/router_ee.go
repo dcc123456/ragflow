@@ -44,4 +44,6 @@ func RegisterEENoAuthRouter(apiNoAuth *gin.RouterGroup, r *Router) {
 	apiNoAuth.POST("/auth/register/otp/verify", r.userHandler.VerifyOTP)
 }
 
-func RegisterEEProtectedRouter(_ *gin.RouterGroup, _ *Router) {}
+func RegisterEEProtectedRouter(authorized *gin.RouterGroup, r *Router) {
+	authorized.POST("/api/v1/tenants/:tenant_id/switch", r.tenantHandler.SwitchTenant)
+}

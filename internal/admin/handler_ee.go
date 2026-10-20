@@ -33,7 +33,7 @@ func (h *Handler) ListRoles(c *gin.Context) {
 	ctx := c.Request.Context()
 	roles, err := h.service.ListRoles(ctx)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		writeRoleError(c, err)
 		return
 	}
 
@@ -61,7 +61,7 @@ func (h *Handler) CreateRole(c *gin.Context) {
 	ctx := c.Request.Context()
 	role, err := h.service.CreateRole(ctx, req.RoleName, req.Description)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		writeRoleError(c, err)
 		return
 	}
 
@@ -79,7 +79,7 @@ func (h *Handler) ShowRole(c *gin.Context) {
 	ctx := c.Request.Context()
 	role, err := h.service.ShowRole(ctx, roleName)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		writeRoleError(c, err)
 		return
 	}
 
@@ -88,7 +88,7 @@ func (h *Handler) ShowRole(c *gin.Context) {
 
 // UpdateRoleHTTPRequest update role request
 type UpdateRoleHTTPRequest struct {
-	Description string `json:"description" binding:"required"`
+	Description string `json:"description"`
 }
 
 // UpdateRole handle update role
@@ -108,7 +108,7 @@ func (h *Handler) UpdateRole(c *gin.Context) {
 	ctx := c.Request.Context()
 	role, err := h.service.UpdateRole(ctx, roleName, req.Description)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		writeRoleError(c, err)
 		return
 	}
 
@@ -126,7 +126,7 @@ func (h *Handler) DropRole(c *gin.Context) {
 	ctx := c.Request.Context()
 	role, err := h.service.DropRole(ctx, roleName)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeNotFound, "Role not found")
+		writeRoleError(c, err)
 		return
 	}
 
@@ -144,7 +144,7 @@ func (h *Handler) ShowRolePermission(c *gin.Context) {
 	ctx := c.Request.Context()
 	permissions, err := h.service.ShowRolePermission(ctx, roleName)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		writeRoleError(c, err)
 		return
 	}
 
@@ -174,7 +174,7 @@ func (h *Handler) GrantRolePermission(c *gin.Context) {
 	ctx := c.Request.Context()
 	result, err := h.service.GrantRolePermission(ctx, roleName, req.Actions, req.Resource)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		writeRoleError(c, err)
 		return
 	}
 
@@ -204,7 +204,7 @@ func (h *Handler) RevokeRolePermission(c *gin.Context) {
 	ctx := c.Request.Context()
 	result, err := h.service.RevokeRolePermission(ctx, roleName, req.Actions, req.Resource)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		writeRoleError(c, err)
 		return
 	}
 
@@ -232,7 +232,7 @@ func (h *Handler) ListRolesWithPermission(c *gin.Context) {
 	ctx := c.Request.Context()
 	roles, err := h.service.ListRolesWithPermission(ctx)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		writeRoleError(c, err)
 		return
 	}
 
@@ -249,7 +249,7 @@ func (h *Handler) ShowRoleDefaultModels(c *gin.Context) {
 	ctx := c.Request.Context()
 	result, err := h.service.ShowRoleDefaultModels(ctx, roleName)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		writeRoleError(c, err)
 		return
 	}
 	common.SuccessWithData(c, result, "Role default model set successfully")
@@ -270,12 +270,13 @@ func (h *Handler) SetRoleDefaultModel(c *gin.Context) {
 	var request SetRoleDefaultModelRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
 		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Invalid request body: "+err.Error())
+		return
 	}
 
 	ctx := c.Request.Context()
 	result, err := h.service.SetRoleDefaultModel(ctx, roleName, request.ModelID, request.ModelType)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		writeRoleError(c, err)
 		return
 	}
 	common.SuccessWithData(c, result, "Role default model set successfully")
@@ -301,10 +302,19 @@ func (h *Handler) ResetRoleDefaultModel(c *gin.Context) {
 	ctx := c.Request.Context()
 	result, err := h.service.ResetRoleDefaultModel(ctx, roleName, request.ModelType)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		writeRoleError(c, err)
 		return
 	}
 	common.SuccessWithData(c, result, "Role default model set successfully")
+}
+
+func writeRoleError(c *gin.Context, err error) {
+	var coded *common.CodedError
+	if errors.As(err, &coded) {
+		common.ErrorWithCode(c, coded.Code, coded.Message)
+		return
+	}
+	common.ErrorWithCode(c, common.CodeServerError, err.Error())
 }
 
 func (h *Handler) ListModelProviders(c *gin.Context) {

@@ -35,3 +35,15 @@ type RoleResource struct {
 }
 
 func (RoleResource) TableName() string { return "role_resource" }
+
+// RoleDefaultModel stores default model selections for a role.
+type RoleDefaultModel struct {
+	ID        int32  `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
+	RoleID    int32  `gorm:"column:role_id;not null;index" json:"role_id"`
+	ModelType string `gorm:"column:model_type;size:128;not null;index" json:"model_type"`
+	ModelID   string `gorm:"column:model_id;size:128;not null;index" json:"model_id"`
+	TenantID  string `gorm:"column:tenant_id;size:32;not null;index" json:"tenant_id"`
+	BaseModel
+}
+
+func (RoleDefaultModel) TableName() string { return "role_default_model" }
