@@ -15,8 +15,10 @@
  */
 
 import { useTranslate } from '@/hooks/common-hooks';
+import { LLMFactory } from '@/constants/llm';
 import { useFetchAllAddedModels } from '@/hooks/use-llm-request';
 import { cn } from '@/lib/utils';
+import { parseModelValue } from '@/utils/llm-util';
 import { camelCase } from 'lodash';
 import { ReactNode, useEffect, useMemo } from 'react';
 import { useFormContext, useWatch } from 'react-hook-form';
@@ -46,6 +48,7 @@ const hiddenDefaultParserTypes = [
   ParseDocumentType.TCADPParser,
 ];
 
+/** Selects a parser model and scopes provider-specific options to its form path. */
 export function LayoutRecognizeFormField({
   name = 'parser_config.layout_recognize',
   horizontal = true,
@@ -131,6 +134,17 @@ export function LayoutRecognizeFormField({
       control={form.control}
       name={name}
       render={({ field }) => {
+        const provider =
+          allAddedModels.find((model) => model.model_id === field.value)
+            ?.provider_name ??
+          parseModelValue(field.value)?.model_provider ??
+          field.value;
+        const isMinerU =
+          typeof provider === 'string' &&
+          [LLMFactory.MinerU, LLMFactory.MinerUNet].some(
+            (factory) => factory.toLowerCase() === provider.toLowerCase(),
+          );
+        const namePrefix = name.split('.').slice(0, -1).join('.');
         return (
           <>
             <FormItem className={'items-center space-y-0 '}>
@@ -170,7 +184,9 @@ export function LayoutRecognizeFormField({
                 <FormMessage />
               </div>
             </FormItem>
-            {showMineruOptions && <MinerUOptionsFormField />}
+            {showMineruOptions && isMinerU && (
+              <MinerUOptionsFormField namePrefix={namePrefix} />
+            )}
             {showPaddleocrOptions && <PaddleOCROptionsFormField />}
           </>
         );
