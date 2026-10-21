@@ -25,9 +25,8 @@ export const useSaveGraph = (
   const { id } = useParams();
   const { buildDslData } = useBuildDslData();
 
-  // Saving is always allowed, even with unresolved canvas issues — those live
-  // in the canvas checklist (useCanvasChecklist) which gates the
-  // publish/run/embed/explore entry points instead.
+  // Saving is always allowed, even with unresolved canvas issues — those are
+  // only surfaced to the user by the canvas checklist (useCanvasChecklist).
   const saveGraph = useCallback(
     async (
       currentNodes?: RAGFlowNodeType[],
@@ -150,7 +149,7 @@ export const useWatchAgentChange = (chatDrawerVisible: boolean) => {
     nodes.length,
     saveGraph,
     setSaveTime,
-    presence.operator_permission
+    presence.operator_permission,
   ]);
 
   useDebounceEffect(
