@@ -12,7 +12,6 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
-	"io/ioutil"
 	"ragflow/internal/common"
 	"time"
 )
@@ -30,32 +29,11 @@ const (
 // LicenseBinding defines how the license is bound to hardware
 type LicenseBinding string
 
-const (
-	BindToMachine LicenseBinding = "machine"
-	NoBinding     LicenseBinding = "none"
-)
-
 type MachineInfo struct {
 	MachineID   string `json:"machine_id,omitempty"`
 	BoardSerial string `json:"board_serial,omitempty"`
 	DiskSerial  string `json:"disk_serial,omitempty"`
 	MACAddress  string `json:"mac_address,omitempty"`
-}
-
-// License represents a software license
-type License struct {
-	Version      string         `json:"version"`
-	LicenseID    string         `json:"license_id"`
-	Type         LicenseType    `json:"type"`
-	IssuedAt     time.Time      `json:"issued_at"`
-	ValidFrom    time.Time      `json:"valid_from"`
-	ValidUntil   time.Time      `json:"valid_until"`
-	Binding      LicenseBinding `json:"binding"`
-	Machines     []*MachineInfo `json:"machines"`
-	NodeName     string         `json:"node_name,omitempty"`
-	MaxNodes     int            `json:"max_nodes"`
-	CustomerName string         `json:"customer_name"`
-	Digest       string         `json:"digest"`
 }
 
 // LicensePackage represents the encrypted license package
@@ -68,140 +46,8 @@ type LicensePackage struct {
 }
 
 type LicenseStatus struct {
-	CurrentLicense *License
+	CurrentLicense *LicenseV2
 	Code           common.ErrorCode
-}
-
-// LoadMachineFingerprint Load machine fingerprint from JSON file
-func LoadMachineFingerprint(jsonFile string) (ClusterInfo, error) {
-	data, err := ioutil.ReadFile(jsonFile)
-	var info ClusterInfo
-	if err != nil {
-		return info, fmt.Errorf("failed to read fingerprint file: %v", err)
-	}
-
-	if err := json.Unmarshal(data, &info); err != nil {
-		return info, fmt.Errorf("failed to parse fingerprint JSON: %v", err)
-	}
-
-	return info, nil
-}
-
-// DecryptAESGCM decrypts data using AES-256-GCM
-func DecryptAESGCM(key, ciphertext, nonce []byte) ([]byte, error) {
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create AES cipher: %v", err)
-	}
-
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create GCM: %v", err)
-	}
-
-	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decrypt AES: %v", err)
-	}
-
-	return plaintext, nil
-}
-
-// decryptLicense decrypts the license using the private key
-func DecryptLicense(pkg *LicensePackage, privateKey *rsa.PrivateKey) (*License, error) {
-	// 1. Decode base64 fields
-	encryptedKey, err := base64.StdEncoding.DecodeString(pkg.K)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decode encrypted key: %v", err)
-	}
-
-	encryptedData, err := base64.StdEncoding.DecodeString(pkg.D)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decode encrypted data: %v", err)
-	}
-
-	// 2. Decrypt AES key with RSA (PKCS1v15)
-	aesKey, err := rsa.DecryptPKCS1v15(nil, privateKey, encryptedKey)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decrypt AES key: %v", err)
-	}
-
-	// 3. Extract IV (first 12 bytes) and ciphertext
-	if len(encryptedData) < 12 {
-		return nil, fmt.Errorf("encrypted data too short")
-	}
-	iv := encryptedData[:12]
-	ciphertext := encryptedData[12:]
-
-	// 4. Decrypt data with AES-GCM
-	jsonData, err := decryptAESGCM(aesKey, ciphertext, iv)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decrypt license data: %v", err)
-	}
-
-	// 5. Unmarshal JSON
-	var license License
-	if err := json.Unmarshal(jsonData, &license); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal license: %v", err)
-	}
-
-	return &license, nil
-}
-
-func GenerateSimpleStringLicense(license *License) (string, error) {
-	// 1. Convert license to JSON
-	licenseJSON, err := json.Marshal(license)
-	if err != nil {
-		return "", err
-	}
-
-	// 2. Generate AES key
-	aesKey, err := generateAESKey()
-	if err != nil {
-		return "", err
-	}
-
-	// 3. Generate random IV
-	iv := make([]byte, 12)
-	_, err = rand.Read(iv)
-	if err != nil {
-		return "", err
-	}
-
-	// 4. Encrypt with AES
-	block, _ := aes.NewCipher(aesKey)
-	gcm, _ := cipher.NewGCM(block)
-	encrypted := gcm.Seal(nil, iv, licenseJSON, nil)
-
-	// 5. Combine IV + encrypted data
-	combined := append(iv, encrypted...)
-
-	// 6. Encrypt the AES key with RSA (optional, if you want end-to-end encryption)
-	// For simplicity, we'll just include the AES key encrypted
-	encryptedKey, err := rsa.EncryptPKCS1v15(rand.Reader, LicensePublicKey, aesKey)
-	if err != nil {
-		return "", err
-	}
-
-	// 7. Create final package
-	packageData := map[string]interface{}{
-		"v":  "1",                                             // version
-		"k":  base64.StdEncoding.EncodeToString(encryptedKey), // encrypted AES key
-		"d":  base64.StdEncoding.EncodeToString(combined),     // IV + encrypted data
-		"ts": time.Now().Unix(),                               // timestamp
-	}
-
-	// 8. Sign the package
-	packageJSON, _ := json.Marshal(packageData)
-	hash := sha256.Sum256(packageJSON)
-	sig, _ := rsa.SignPKCS1v15(rand.Reader, LicensePrivateKey, crypto.SHA256, hash[:])
-	packageData["s"] = base64.StdEncoding.EncodeToString(sig)
-
-	// 9. Final JSON and base64
-	finalJSON, _ := json.Marshal(packageData)
-	licenseString := base64.StdEncoding.EncodeToString(finalJSON)
-
-	return licenseString, nil
 }
 
 var fingerprintPublicKeyBytes = []byte("-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEApvEySR0vYuAcc9jdhJJq\n71PONeo4RXuKM0TNaYiDkfjVOfxbvgVLZQjsvYZi2hViuUQUBfVFm4PWoDOIKJ4W\nOxmME2QFg5Rr1yVxgbGkYXzeA4BkUSNv9Xuxj0NbmOdC+M/RHA984r6kAGkaLHNr\n1PCfAL7hPkZhDA8dM/ocTRgFZueFYMAu/TyVIEmKCDsnsGwsZo0nkinDsH4/w177\nUy2Qr3EeYq5n8yQqMhuuHADMhYGZIgOlhTalB2/uiv4vy1FEC0JMMbj0wbBStTV0\nudh8lS2nQFYuILdBNyip6XrJS3M0q87W/t16+xYRJITncVj1Kg+jb9TpTZTzt36n\n2wIDAQAB\n-----END PUBLIC KEY-----\n")
@@ -294,4 +140,258 @@ func LoadPrivateKeyFromBytes(data []byte) (*rsa.PrivateKey, error) {
 	default:
 		return nil, fmt.Errorf("unsupported key type: %s", block.Type)
 	}
+}
+
+// LicenseV2 represents a software license
+type LicenseV2 struct {
+	Version         int             `json:"version"`
+	LicenseID       string          `json:"license_id"`
+	Type            LicenseType     `json:"type"`
+	IssuedAt        time.Time       `json:"issued_at"`
+	ValidFrom       time.Time       `json:"valid_from"`
+	Minutes         int             `json:"minutes"`
+	ValidUntil      time.Time       `json:"valid_until"`
+	CustomerName    string          `json:"customer_name"`
+	Digest          string          `json:"digest"`
+	Fingerprint     Fingerprint     `json:"fingerprint"`
+	APIQuota        APIQuota        `json:"api_quota"`
+	IngestorQuota   IngestorQuota   `json:"ingestor_quota"`
+	SyncerQuota     SyncerQuota     `json:"syncer_quota"`
+	DeepDocCPUQuota DeepDocCPUQuota `json:"deepdoc_cpu_quota"`
+	DeepDocGPUQuota DeepDocGPUQuota `json:"deepdoc_gpu_quota"`
+	DataQuota       DataQuota       `json:"data_quota"`
+	TenantQuota     TenantQuota     `json:"tenant_quota"`
+	Workflow        bool            `json:"workflow_enable"`
+	Chat            bool            `json:"chat_enable"`
+	File            bool            `json:"file_enable"`
+	Search          bool            `json:"search_enable"`
+	Model           bool            `json:"model_enable"`
+	UserInTenant    bool            `json:"user_in_tenant_enable"`
+	RBAC            bool            `json:"rbac_enable"`
+	Group           bool            `json:"group_enable"`
+	Evaluation      bool            `json:"evaluation_enable"`
+}
+
+type APIQuota struct {
+	Count          int `json:"count" yaml:"count"`
+	MaxConcurrency int `json:"max_concurrency" yaml:"max_concurrency"`
+	CPUNum         int `json:"cpu_num" yaml:"cpu_num"`
+}
+
+type IngestorQuota struct {
+	Count     int `json:"count" yaml:"count"`
+	CPUNum    int `json:"cpus"  yaml:"cpu_num"`
+	WorkerNum int `json:"worker_num" yaml:"worker_num"`
+}
+
+type SyncerQuota struct {
+	Count     int `json:"count" yaml:"count"`
+	CPUNum    int `json:"cpus"  yaml:"cpu_num"`
+	WorkerNum int `json:"worker_num" yaml:"worker_num"`
+}
+
+type DeepDocCPUQuota struct {
+	Count          int `json:"count" yaml:"count"`
+	CPUNum         int `json:"cpus"  yaml:"cpu_num"`
+	WorkerNum      int `json:"worker_num" yaml:"worker_num"`
+	MaxConcurrency int `json:"max_concurrency" yaml:"max_concurrency"`
+}
+
+type DeepDocGPUQuota struct {
+	Count          int `json:"count" yaml:"count"`
+	GPUNum         int `json:"gpu_num"  yaml:"gpu_num"`
+	CPUNum         int `json:"cpu_num"  yaml:"cpu_num"`
+	WorkerNum      int `json:"worker_num" yaml:"worker_num"`
+	MaxConcurrency int `json:"max_concurrency" yaml:"max_concurrency"`
+}
+
+type DataQuota struct {
+	TotalGB int `json:"total_gb" yaml:"total_gb"`
+}
+
+type TenantQuota struct {
+	Count int `json:"count" yaml:"count"`
+}
+
+func (v *LicenseV2) PrintAll() {
+	fmt.Printf("Version: %d\n", v.Version)
+	fmt.Printf("LicenseID: %s\n", v.LicenseID)
+	fmt.Printf("Type: %s\n", v.Type)
+	fmt.Printf("IssuedAt: %s\n", v.IssuedAt.Format(time.RFC3339))
+	fmt.Printf("ValidFrom: %s\n", v.ValidFrom.Format(time.RFC3339))
+	fmt.Printf("Minutes: %d\n", v.Minutes)
+	fmt.Printf("ValidUntil: %s\n", v.ValidUntil.Format(time.RFC3339))
+	fmt.Printf("CustomerName: %s\n", v.CustomerName)
+	fmt.Printf("Digest: %s\n", v.Digest)
+	fmt.Printf("FingerprintType: %s\n", v.Fingerprint.Type)
+	if v.Fingerprint.Type == "k8s" {
+		fmt.Printf("K8s UUID: %s\n", v.Fingerprint.K8s.Uuid)
+	} else {
+		fmt.Printf("CPU Count: %d, Model: %s\n", v.Fingerprint.BareMetal.CPUCount, v.Fingerprint.BareMetal.CPUInfo.ModelName)
+		fmt.Printf("Memory: %f GB\n", v.Fingerprint.BareMetal.MemoryInfo.TotalGB)
+		fmt.Printf("Disk path: %s, Serial: %s, Model: %s\n", v.Fingerprint.BareMetal.DiskInfo.Path, v.Fingerprint.BareMetal.DiskInfo.Serial, v.Fingerprint.BareMetal.DiskInfo.Model)
+		fmt.Printf("Network interface: %s, MAC: %s\n", v.Fingerprint.BareMetal.NetworkInfo.Name, v.Fingerprint.BareMetal.NetworkInfo.MAC)
+		fmt.Printf("Machine ID: %s\n", v.Fingerprint.BareMetal.MachineID)
+		fmt.Printf("Board Serial: %s\n", v.Fingerprint.BareMetal.BoardSerial)
+	}
+	fmt.Printf("APIQuota: %d, Concurrency: %d, CPUs: %d\n", v.APIQuota.Count, v.APIQuota.MaxConcurrency, v.APIQuota.CPUNum)
+	fmt.Printf("IngestorQuota: %d, CPUs: %d, Workers: %d\n", v.IngestorQuota.Count, v.IngestorQuota.CPUNum, v.IngestorQuota.WorkerNum)
+	fmt.Printf("SyncerQuota: %d, CPUs: %d, Workers: %d\n", v.SyncerQuota.Count, v.SyncerQuota.CPUNum, v.SyncerQuota.WorkerNum)
+	fmt.Printf("DeepDocCPUQuota: %d, CPUs: %d, Workers: %d, Concurrency: %d\n", v.DeepDocCPUQuota.Count, v.DeepDocCPUQuota.CPUNum, v.DeepDocCPUQuota.WorkerNum, v.DeepDocCPUQuota.MaxConcurrency)
+	fmt.Printf("DeepDocGPUQuota: %d, GPUs: %d, CPUs: %d, Workers: %d, Concurrency: %d\n", v.DeepDocGPUQuota.Count, v.DeepDocGPUQuota.GPUNum, v.DeepDocGPUQuota.CPUNum, v.DeepDocGPUQuota.WorkerNum, v.DeepDocGPUQuota.MaxConcurrency)
+	fmt.Printf("DataQuota: %d GB\n", v.DataQuota.TotalGB)
+	fmt.Printf("TenantQuota: %d\n", v.TenantQuota.Count)
+	fmt.Printf("Workflow: %v\n", v.Workflow)
+	fmt.Printf("Chat: %v\n", v.Chat)
+	fmt.Printf("File: %v\n", v.File)
+	fmt.Printf("Search: %v\n", v.Search)
+	fmt.Printf("Model: %v\n", v.Model)
+	fmt.Printf("UserInTenant: %v\n", v.UserInTenant)
+	fmt.Printf("RBAC: %v\n", v.RBAC)
+	fmt.Printf("Group: %v\n", v.Group)
+	fmt.Printf("Evaluation: %v\n", v.Evaluation)
+}
+
+func (v *LicenseV2) GetFeatures() []string {
+	var features []string
+	if v.Workflow {
+		features = append(features, "Workflow")
+	}
+	if v.Chat {
+		features = append(features, "Chat")
+	}
+	if v.File {
+		features = append(features, "File")
+	}
+	if v.Search {
+		features = append(features, "Search")
+	}
+	if v.Model {
+		features = append(features, "Model")
+	}
+	if v.UserInTenant {
+		features = append(features, "UserInTenant")
+	}
+	if v.RBAC {
+		features = append(features, "RBAC")
+	}
+	if v.Group {
+		features = append(features, "Group")
+	}
+	if v.Evaluation {
+		features = append(features, "Evaluation")
+	}
+	return features
+}
+
+// DecodeLicenseV2 decrypts the license using the private key
+func DecodeLicenseV2(licenseStr string) (*LicenseV2, error) {
+	// Decode base64
+	jsonData, err := base64.StdEncoding.DecodeString(licenseStr)
+	if err != nil {
+		common.Error("Error decoding base64: ", err)
+		return nil, err
+	}
+
+	// Parse JSON package
+	var pkg LicensePackage
+	err = json.Unmarshal(jsonData, &pkg)
+	if err != nil {
+		common.Error("Error parsing license JSON: ", err)
+		return nil, err
+	}
+
+	// 1. Decode base64 fields
+	encryptedKey, err := base64.StdEncoding.DecodeString(pkg.K)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode encrypted key: %v", err)
+	}
+
+	encryptedData, err := base64.StdEncoding.DecodeString(pkg.D)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode encrypted data: %v", err)
+	}
+
+	// 2. Decrypt AES key with RSA (PKCS1v15)
+	aesKey, err := rsa.DecryptPKCS1v15(nil, LicensePrivateKey, encryptedKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt AES key: %v", err)
+	}
+
+	// 3. Extract IV (first 12 bytes) and ciphertext
+	if len(encryptedData) < 12 {
+		return nil, fmt.Errorf("encrypted data too short")
+	}
+	iv := encryptedData[:12]
+	ciphertext := encryptedData[12:]
+
+	// 4. Decrypt data with AES-GCM
+	decodedJsonData, err := decryptAESGCM(aesKey, ciphertext, iv)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt license data: %v", err)
+	}
+
+	// 5. Unmarshal JSON
+	var license LicenseV2
+	if err = json.Unmarshal(decodedJsonData, &license); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal license: %v", err)
+	}
+
+	return &license, nil
+}
+
+func GenerateLicenseV2(license *LicenseV2) (string, error) {
+	// 1. Convert license to JSON
+	licenseJSON, err := json.Marshal(license)
+	if err != nil {
+		return "", err
+	}
+
+	// 2. Generate AES key
+	aesKey, err := generateAESKey()
+	if err != nil {
+		return "", err
+	}
+
+	// 3. Generate random IV
+	iv := make([]byte, 12)
+	_, err = rand.Read(iv)
+	if err != nil {
+		return "", err
+	}
+
+	// 4. Encrypt with AES
+	block, _ := aes.NewCipher(aesKey)
+	gcm, _ := cipher.NewGCM(block)
+	encrypted := gcm.Seal(nil, iv, licenseJSON, nil)
+
+	// 5. Combine IV + encrypted data
+	combined := append(iv, encrypted...)
+
+	// 6. Encrypt the AES key with RSA (optional, if you want end-to-end encryption)
+	// For simplicity, we'll just include the AES key encrypted
+	encryptedKey, err := rsa.EncryptPKCS1v15(rand.Reader, LicensePublicKey, aesKey)
+	if err != nil {
+		return "", err
+	}
+
+	// 7. Create final package
+	packageData := map[string]interface{}{
+		"v":  "1",                                             // version
+		"k":  base64.StdEncoding.EncodeToString(encryptedKey), // encrypted AES key
+		"d":  base64.StdEncoding.EncodeToString(combined),     // IV + encrypted data
+		"ts": time.Now().Unix(),                               // timestamp
+	}
+
+	// 8. Sign the package
+	packageJSON, _ := json.Marshal(packageData)
+	hash := sha256.Sum256(packageJSON)
+	sig, _ := rsa.SignPKCS1v15(rand.Reader, LicensePrivateKey, crypto.SHA256, hash[:])
+	packageData["s"] = base64.StdEncoding.EncodeToString(sig)
+
+	// 9. Final JSON and base64
+	finalJSON, _ := json.Marshal(packageData)
+	licenseString := base64.StdEncoding.EncodeToString(finalJSON)
+
+	return licenseString, nil
 }

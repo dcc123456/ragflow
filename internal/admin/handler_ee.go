@@ -379,7 +379,7 @@ func (h *Handler) AddModelProvider(c *gin.Context) {
 func (h *Handler) ShowProvider(c *gin.Context) {
 	providerName := c.Param("provider_name")
 	if providerName == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, 400, nil, "Provider name is required")
+		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
 		return
 	}
 
@@ -411,7 +411,7 @@ func (h *Handler) DeleteModelProvider(c *gin.Context) {
 func (h *Handler) ListModels(c *gin.Context) {
 	providerName := c.Param("provider_name")
 	if providerName == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, 400, nil, "Provider name is required")
+		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
 		return
 	}
 	models, err := dao.GetModelProviderManager().ListModels(providerName)
@@ -426,12 +426,12 @@ func (h *Handler) ListModels(c *gin.Context) {
 func (h *Handler) ShowProviderModel(c *gin.Context) {
 	providerName := c.Param("provider_name")
 	if providerName == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, 400, nil, "Provider name is required")
+		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
 		return
 	}
 	modelName := c.Param("model_name")
 	if modelName == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, 400, nil, "Model name is required")
+		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Model name is required")
 		return
 	}
 	model, err := dao.GetModelProviderManager().GetModelByName(providerName, modelName)
@@ -445,7 +445,7 @@ func (h *Handler) ShowProviderModel(c *gin.Context) {
 func (h *Handler) ListModelInstances(c *gin.Context) {
 	providerName := c.Param("provider_name")
 	if providerName == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, 400, nil, "Provider name is required")
+		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
 		return
 	}
 
@@ -462,12 +462,12 @@ func (h *Handler) ListModelInstances(c *gin.Context) {
 func (h *Handler) ShowProviderInstance(c *gin.Context) {
 	providerName := c.Param("provider_name")
 	if providerName == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, 400, nil, "Provider name is required")
+		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
 		return
 	}
 	instanceName := c.Param("instance_name")
 	if instanceName == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, 400, nil, "Instance name is required")
+		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Instance name is required")
 		return
 	}
 	ctx := c.Request.Context()
@@ -483,12 +483,12 @@ func (h *Handler) ShowProviderInstance(c *gin.Context) {
 func (h *Handler) ShowProviderInstanceBalance(c *gin.Context) {
 	providerName := c.Param("provider_name")
 	if providerName == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, 400, nil, "Provider name is required")
+		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
 		return
 	}
 	instanceName := c.Param("instance_name")
 	if instanceName == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, 400, nil, "Instance name is required")
+		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Instance name is required")
 		return
 	}
 	ctx := c.Request.Context()
@@ -504,12 +504,12 @@ func (h *Handler) ShowProviderInstanceBalance(c *gin.Context) {
 func (h *Handler) CheckInstanceConnection(c *gin.Context) {
 	providerName := c.Param("provider_name")
 	if providerName == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, 400, nil, "Provider name is required")
+		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
 		return
 	}
 	instanceName := c.Param("instance_name")
 	if instanceName == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, 400, nil, "Instance name is required")
+		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Instance name is required")
 		return
 	}
 	ctx := c.Request.Context()
@@ -531,13 +531,13 @@ type CheckConnectionRequest struct {
 func (h *Handler) CheckProviderConnection(c *gin.Context) {
 	providerName := c.Param("provider_name")
 	if providerName == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, 400, nil, "Provider name is required")
+		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
 		return
 	}
 
 	var req CheckConnectionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, 400, nil, err.Error())
+		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, err.Error())
 		return
 	}
 
@@ -561,13 +561,13 @@ type AlterProviderInstanceRequest struct {
 func (h *Handler) AlterProviderInstance(c *gin.Context) {
 	providerName := c.Param("provider_name")
 	if providerName == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, 400, nil, "Provider name is required")
+		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
 		return
 	}
 
 	instanceName := c.Param("instance_name")
 	if instanceName == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, 400, nil, "Instance name is required")
+		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Instance name is required")
 		return
 	}
 
@@ -600,7 +600,7 @@ func (h *Handler) AddModelInstance(c *gin.Context) {
 
 	providerName := c.Param("provider_name")
 	if providerName == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, 400, nil, "Provider name is required")
+		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
 		return
 	}
 
@@ -621,7 +621,7 @@ type DropModelInstanceRequest struct {
 func (h *Handler) DeleteModelInstance(c *gin.Context) {
 	providerName := c.Param("provider_name")
 	if providerName == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, 400, nil, "Provider name is required")
+		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
 		return
 	}
 
@@ -644,13 +644,13 @@ func (h *Handler) DeleteModelInstance(c *gin.Context) {
 func (h *Handler) ListInstanceModels(c *gin.Context) {
 	providerName := c.Param("provider_name")
 	if providerName == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, 400, nil, "Provider name is required")
+		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
 		return
 	}
 
 	instanceName := c.Param("instance_name")
 	if instanceName == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, 400, nil, "Instance name is required")
+		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Instance name is required")
 		return
 	}
 
@@ -672,13 +672,13 @@ type EnableOrDisableModelRequest struct {
 func (h *Handler) EnableOrDisableModel(c *gin.Context) {
 	providerName := c.Param("provider_name")
 	if providerName == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, 400, nil, "Provider name is required")
+		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
 		return
 	}
 
 	instanceName := c.Param("instance_name")
 	if instanceName == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, 400, nil, "Instance name is required")
+		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Instance name is required")
 		return
 	}
 
@@ -693,7 +693,7 @@ func (h *Handler) EnableOrDisableModel(c *gin.Context) {
 	modelName := strings.TrimPrefix(c.Param("model_name"), "/")
 	modelName = strings.TrimSpace(modelName)
 	if modelName == "" && modelID == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, 400, nil, "model_name or model_id is required")
+		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "model_name or model_id is required")
 		return
 	}
 
@@ -720,13 +720,13 @@ func (h *Handler) AddModels(c *gin.Context) {
 
 	providerName := c.Param("provider_name")
 	if providerName == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, 400, nil, "Provider name is required")
+		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
 		return
 	}
 
 	instanceName := c.Param("instance_name")
 	if instanceName == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, 400, nil, "Instance name is required")
+		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Instance name is required")
 		return
 	}
 
@@ -747,13 +747,13 @@ type DropModelsRequest struct {
 func (h *Handler) DeleteModels(c *gin.Context) {
 	providerName := c.Param("provider_name")
 	if providerName == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, 400, nil, "Provider name is required")
+		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Provider name is required")
 		return
 	}
 
 	instanceName := c.Param("instance_name")
 	if instanceName == "" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, 400, nil, "Instance name is required")
+		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "Instance name is required")
 		return
 	}
 
@@ -782,7 +782,7 @@ func (h *Handler) GetSystemFingerprint(c *gin.Context) {
 		return
 	}
 
-	common.SuccessWithData(c, fingerprint, "")
+	common.SuccessWithData(c, fingerprint, "success")
 }
 
 type SetSystemLicenseRequest struct {
@@ -830,19 +830,20 @@ func (h *Handler) ShowSystemLicense(c *gin.Context) {
 	} else {
 		var license string
 		license, ok = c.GetQuery("license")
-		if !ok {
+		if ok {
+			// Verify license
+			result, err = h.service.VerifyLicense(ctx, license)
+			if err != nil {
+				common.ErrorWithCode(c, common.CodeServerError, err.Error())
+				return
+			}
+		} else {
 			// Show license
 			result, err = h.service.ShowSystemLicense(ctx)
 			if err != nil {
 				common.ErrorWithCode(c, common.CodeServerError, err.Error())
 				return
 			}
-		}
-		// Verify license
-		result, err = h.service.VerifyLicense(ctx, license)
-		if err != nil {
-			common.ErrorWithCode(c, common.CodeServerError, err.Error())
-			return
 		}
 	}
 	common.SuccessWithData(c, result, "success")
@@ -861,12 +862,12 @@ func (h *Handler) UpdateSystemLicenseConfig(c *gin.Context) {
 		return
 	}
 	ctx := c.Request.Context()
-	result, err := h.service.UpdateSystemLicenseConfig(ctx, req.TimeRecordSaveInterval, req.TimeRecordTaskDuration)
+	err := h.service.UpdateSystemLicenseConfig(ctx, req.TimeRecordSaveInterval, req.TimeRecordTaskDuration)
 	if err != nil {
 		common.ErrorWithCode(c, common.CodeServerError, err.Error())
 		return
 	}
-	common.SuccessWithData(c, result, "System license config updated successfully")
+	common.SuccessNoData(c, "success")
 }
 
 type SetSoftFingerprintRequest struct {
@@ -2105,75 +2106,4 @@ func (h *Handler) ListLogs(c *gin.Context) {
 	}
 
 	common.SuccessWithData(c, stats, "success")
-}
-
-// GetFingerprint handle get system fingerprint
-func (h *Handler) GetFingerprint(c *gin.Context) {
-	fingerprint, err := h.service.GetFingerprint()
-	if err != nil {
-		common.ErrorWithCode(c, 400, err.Error())
-		return
-	}
-	common.SuccessWithData(c, gin.H{"fingerprint": fingerprint}, "")
-}
-
-type SetLicenseHTTPRequest struct {
-	License string `json:"license" binding:"required"`
-}
-
-// SetLicense to set system license
-func (h *Handler) SetLicense(c *gin.Context) {
-	var req SetLicenseHTTPRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		common.ErrorWithCode(c, 400, "Var license are required")
-		return
-	}
-
-	license, err := h.service.SetLicense(c.Request.Context(), req.License)
-	if err != nil {
-		common.ErrorWithCode(c, 400, err.Error())
-		return
-	}
-	common.SuccessWithData(c, license, "")
-}
-
-type SetLicenseConfigHTTPRequest struct {
-	TimeRecordSaveInterval int64 `json:"value1" binding:"required"`
-	TimeRecordTaskDuration int64 `json:"value2" binding:"required"`
-}
-
-func (h *Handler) UpdateLicenseConfig(c *gin.Context) {
-	var req SetLicenseConfigHTTPRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		common.ErrorWithCode(c, 400, "Var license are required")
-		return
-	}
-
-	err := h.service.SetLicenseConfig(req.TimeRecordSaveInterval, req.TimeRecordTaskDuration)
-	if err != nil {
-		common.ErrorWithCode(c, 400, err.Error())
-		return
-	}
-	common.SuccessNoData(c, "Successfully")
-}
-
-// ShowLicense to get system license
-func (h *Handler) ShowLicense(c *gin.Context) {
-
-	checkParam := c.Query("check")
-	if checkParam == "true" {
-		// GET /admin/license?check=true
-		errorCode, err := h.service.CheckLicense(c.Request.Context())
-		common.ResponseWithCodeData(c, errorCode, err.Error(), "")
-		return
-	}
-
-	// GET /admin/license
-	license, err := h.service.ShowLicense(c.Request.Context())
-	if err != nil {
-		common.ErrorWithCode(c, 400, err.Error())
-		return
-	}
-
-	common.SuccessWithData(c, license, "")
 }

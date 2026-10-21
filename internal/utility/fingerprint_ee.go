@@ -18,33 +18,31 @@ package utility
 
 import (
 	"bufio"
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
-	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
-	"encoding/pem"
 	"fmt"
 	"io/ioutil"
 	"net"
 	"os"
+	"ragflow/internal/common"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 )
 
-// ClusterInfo contains all collected hardware information
 type ClusterInfo struct {
-	SystemInfos []*SystemInfo `json:"system_infos"`
-
-	// K8s environment detection
-	InK8s    bool   `json:"in_k8s"`
-	NodeName string `json:"node_name,omitempty"`
-	PodName  string `json:"pod_name,omitempty"`
 }
 
 // EncryptedFingerprint contains the hybrid-encrypted hardware information
@@ -60,37 +58,6 @@ type EncryptedFingerprint struct {
 
 	// AES nonce/IV (needed for decryption)
 	Nonce string `json:"nonce"` // Base64 encoded
-}
-
-type SystemInfo struct {
-	Nodes       []string    `json:"nodes"`
-	MachineID   string      `json:"machine_id"`
-	BoardSerial string      `json:"board_serial"`
-	CPU         CPUInfo     `json:"cpu"`
-	Memory      MemoryInfo  `json:"memory"`
-	Disk        DiskInfo    `json:"disks"`
-	Network     NetworkInfo `json:"networks"`
-}
-
-// SelectedSystemInfo contains the primary identifiers used for fingerprinting
-type SelectedSystemInfo struct {
-	MachineID   string `json:"machine_id"`
-	BoardSerial string `json:"board_serial"`
-	DiskSerial  string `json:"disk_serial"`
-	MACAddress  string `json:"mac_address"`
-	NodeName    string `json:"node_name,omitempty"`
-}
-
-type SelectedClusterInfo struct {
-	Version     string    `json:"version"`
-	CollectedAt time.Time `json:"collected_at"`
-
-	SelectedSystemInfos []*SelectedSystemInfo `json:"selected_system_infos"`
-
-	// K8s environment detection
-	InK8s    bool   `json:"in_k8s"`
-	NodeName string `json:"node_name,omitempty"`
-	PodName  string `json:"pod_name,omitempty"`
 }
 
 // DiskInfo represents a physical disk's information
@@ -132,29 +99,8 @@ func NewFingerprintCollector(useStableOrder bool) *FingerprintCollector {
 	}
 }
 
-// Collect gathers all hardware information from the system
 func (fc *FingerprintCollector) Collect() (*ClusterInfo, error) {
-	clusterInfo := &ClusterInfo{}
-
-	systemInfo := &SystemInfo{}
-	// Collect all hardware information
-	systemInfo.MachineID = fc.getMachineID()
-	systemInfo.BoardSerial = fc.getBoardSerial()
-	systemInfo.CPU = fc.getCPUInfo()
-	systemInfo.Memory = fc.getMemoryInfo()
-	systemInfo.Disk = fc.getDiskInfo()
-	systemInfo.Network = fc.getNetworkInfo()
-
-	clusterInfo.SystemInfos = append(clusterInfo.SystemInfos, systemInfo)
-
-	// Detect K8s environment
-	clusterInfo.InK8s = fc.isInK8s()
-	if clusterInfo.InK8s {
-		clusterInfo.NodeName = os.Getenv("NODE_NAME")
-		clusterInfo.PodName = os.Getenv("POD_NAME")
-	}
-
-	return clusterInfo, nil
+	return nil, nil
 }
 
 // getMachineID reads the machine-id from standard Linux locations
@@ -417,59 +363,6 @@ func (fc *FingerprintCollector) isInK8s() bool {
 	return false
 }
 
-// SortSystemInfos sorts the SystemInfo array by MachineID, BoardSerial, CPU, Disk, MAC, and MemoryInfo
-func SortSystemInfos(systemInfos []*SystemInfo) {
-	sort.Slice(systemInfos, func(i, j int) bool {
-		// Compare MachineID
-		if systemInfos[i].MachineID != systemInfos[j].MachineID {
-			return systemInfos[i].MachineID < systemInfos[j].MachineID
-		}
-		// Compare BoardSerial
-		if systemInfos[i].BoardSerial != systemInfos[j].BoardSerial {
-			return systemInfos[i].BoardSerial < systemInfos[j].BoardSerial
-		}
-		// Compare CPU ModelName
-		if systemInfos[i].CPU.ModelName != systemInfos[j].CPU.ModelName {
-			return systemInfos[i].CPU.ModelName < systemInfos[j].CPU.ModelName
-		}
-		// Compare Disk Serial
-		if systemInfos[i].Disk.Serial != systemInfos[j].Disk.Serial {
-			return systemInfos[i].Disk.Serial < systemInfos[j].Disk.Serial
-		}
-		// Compare Network MAC
-		if systemInfos[i].Network.MAC != systemInfos[j].Network.MAC {
-			return systemInfos[i].Network.MAC < systemInfos[j].Network.MAC
-		}
-		// Compare Memory TotalGB
-		return systemInfos[i].Memory.TotalGB < systemInfos[j].Memory.TotalGB
-	})
-}
-
-// SelectPrimaryIdentifiers chooses the most stable identifiers for fingerprinting
-func (hi *SystemInfo) SelectPrimaryIdentifiers() *SelectedSystemInfo {
-	selected := &SelectedSystemInfo{
-		MachineID:   hi.MachineID,
-		BoardSerial: hi.BoardSerial,
-		DiskSerial:  hi.Disk.Serial,
-		MACAddress:  hi.Network.MAC,
-	}
-
-	return selected
-}
-
-// SelectClusterInfos chooses the most stable identifiers for fingerprinting
-func (hi *ClusterInfo) SelectClusterInfos() SelectedClusterInfo {
-	selected := SelectedClusterInfo{}
-
-	for _, system := range hi.SystemInfos {
-		selectedPrimaryIdentifier := system.SelectPrimaryIdentifiers()
-		selected.SelectedSystemInfos = append(selected.SelectedSystemInfos, selectedPrimaryIdentifier)
-	}
-	return selected
-}
-
-// ==================== Hybrid Encryption Functions ====================
-
 // generateAESKey creates a new random AES-256 key (32 bytes)
 func generateAESKey() ([]byte, error) {
 	key := make([]byte, 32) // AES-256
@@ -527,12 +420,74 @@ func decryptAESGCM(key, ciphertext, nonce []byte) ([]byte, error) {
 	return plaintext, nil
 }
 
-// EncryptHardwareInfo encrypts hardware info using hybrid encryption (AES + RSA)
-func EncryptHardwareInfo(info *ClusterInfo, pubKey *rsa.PublicKey) (*EncryptedFingerprint, error) {
-	// 1. Convert hardware info to JSON
+type Fingerprint struct {
+	Type      string    `json:"type"`
+	K8s       K8s       `json:"k8s"`
+	BareMetal BareMetal `json:"baremetal"`
+}
+
+type K8s struct {
+	Uuid string `json:"uuid"`
+}
+
+type BareMetal struct {
+	CPUCount    int         `json:"cpu_count"`
+	CPUInfo     CPUInfo     `json:"cpu0"`
+	MemoryInfo  MemoryInfo  `json:"memory"`
+	DiskInfo    DiskInfo    `json:"disk0"`
+	NetworkInfo NetworkInfo `json:"network0"`
+	MachineID   string      `json:"machine_id"`
+	BoardSerial string      `json:"board_serial"`
+}
+
+func (f *Fingerprint) PrintAll() {
+	fmt.Println("Type:", f.Type)
+	if f.Type == "k8s" {
+		fmt.Println("K8s UUID:", f.K8s.Uuid)
+	} else {
+		fmt.Println("BareMetal CPU Count:", f.BareMetal.CPUCount)
+		fmt.Println("BareMetal CPU Info:", f.BareMetal.CPUInfo)
+		fmt.Println("BareMetal Memory Info:", f.BareMetal.MemoryInfo)
+		fmt.Println("BareMetal Disk Info:", f.BareMetal.DiskInfo)
+		fmt.Println("BareMetal Network Info:", f.BareMetal.NetworkInfo)
+		fmt.Println("BareMetal Machine ID:", f.BareMetal.MachineID)
+		fmt.Println("BareMetal Board Serial:", f.BareMetal.BoardSerial)
+	}
+}
+
+// CollectV2 gathers all hardware information from the system
+func (fc *FingerprintCollector) CollectV2() (*Fingerprint, error) {
+	// Check if current info is K8S
+
+	fingerprint := Fingerprint{}
+	var err error
+
+	if fc.isInK8s() {
+		fingerprint.Type = "k8s"
+		fingerprint.K8s.Uuid, err = fc.getK8sUUID()
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		fingerprint.Type = "baremetal"
+		fingerprint.BareMetal.CPUCount = runtime.NumCPU()
+		fingerprint.BareMetal.CPUInfo = fc.getCPUInfo()
+		fingerprint.BareMetal.MemoryInfo = fc.getMemoryInfo()
+		fingerprint.BareMetal.DiskInfo = fc.getDiskInfo()
+		fingerprint.BareMetal.NetworkInfo = fc.getNetworkInfo()
+		fingerprint.BareMetal.MachineID = fc.getMachineID()
+		fingerprint.BareMetal.BoardSerial = fc.getBoardSerial()
+	}
+
+	return &fingerprint, nil
+}
+
+// EncryptFingerprint encrypts fingerprint using hybrid encryption (AES + RSA)
+func EncryptFingerprint(info *Fingerprint, pubKey *rsa.PublicKey) (*EncryptedFingerprint, error) {
+	// 1. Convert fingerprint to JSON
 	jsonData, err := json.Marshal(info)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal hardware info: %v", err)
+		return nil, fmt.Errorf("failed to marshal fingerprint: %v", err)
 	}
 
 	fmt.Printf("JSON data size: %d bytes\n", len(jsonData))
@@ -573,7 +528,7 @@ func EncryptHardwareInfo(info *ClusterInfo, pubKey *rsa.PublicKey) (*EncryptedFi
 }
 
 // DecryptFingerprint decrypts an encrypted fingerprint using hybrid decryption
-func DecryptFingerprint(ef *EncryptedFingerprint, privKey *rsa.PrivateKey) (*ClusterInfo, error) {
+func DecryptFingerprint(ef *EncryptedFingerprint, privateKey *rsa.PrivateKey) (*Fingerprint, error) {
 	// 1. Decode base64 fields
 	encryptedKey, err := base64.StdEncoding.DecodeString(ef.EncryptedKey)
 	if err != nil {
@@ -591,7 +546,7 @@ func DecryptFingerprint(ef *EncryptedFingerprint, privKey *rsa.PrivateKey) (*Clu
 	}
 
 	// 2. Decrypt the AES key with RSA
-	aesKey, err := rsa.DecryptOAEP(sha256.New(), rand.Reader, privKey, encryptedKey, nil)
+	aesKey, err := rsa.DecryptOAEP(sha256.New(), rand.Reader, privateKey, encryptedKey, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to RSA decrypt AES key: %v", err)
 	}
@@ -603,73 +558,159 @@ func DecryptFingerprint(ef *EncryptedFingerprint, privKey *rsa.PrivateKey) (*Clu
 	}
 
 	// 4. Unmarshal JSON
-	var info ClusterInfo
-	if err := json.Unmarshal(jsonData, &info); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal hardware info: %v", err)
+	var fingerprint Fingerprint
+	if err = json.Unmarshal(jsonData, &fingerprint); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal fingerprint: %v", err)
 	}
 
-	return &info, nil
+	return &fingerprint, nil
 }
 
-// ==================== Key Management ====================
-
-// LoadPublicKey loads an RSA public key from a PEM file
-func LoadPublicKey(filename string) (*rsa.PublicKey, error) {
-	data, err := ioutil.ReadFile(filename)
+func (fc *FingerprintCollector) getK8sUUID() (string, error) {
+	config, err := rest.InClusterConfig()
 	if err != nil {
-		return nil, fmt.Errorf("failed to read file: %v", err)
+		common.Fatal(fmt.Sprintf("can't create in-cluster config: %v", err))
+		return "", err
 	}
 
-	block, _ := pem.Decode(data)
-	if block == nil {
-		return nil, fmt.Errorf("failed to decode PEM block")
+	clientSet, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		common.Fatal(fmt.Sprintf("can't create client set: %v", err))
+		return "", err
 	}
 
-	pub, err := x509.ParsePKIXPublicKey(block.Bytes)
-	if err == nil {
-		rsaPub, ok := pub.(*rsa.PublicKey)
-		if !ok {
-			return nil, fmt.Errorf("key is not RSA public key")
-		}
-		return rsaPub, nil
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	kubeSystem, err := clientSet.CoreV1().Namespaces().Get(ctx, "kube-system", metav1.GetOptions{})
+	if err != nil {
+		common.Fatal(fmt.Sprintf("can't get kube-system namespace: %v", err))
+		return "", err
 	}
 
-	rsaPub, err := x509.ParsePKCS1PublicKey(block.Bytes)
-	if err == nil {
-		return rsaPub, nil
-	}
-
-	return nil, fmt.Errorf("failed to parse public key: %v", err)
+	clusterUID := string(kubeSystem.UID)
+	return clusterUID, nil
 }
 
-// LoadPrivateKey loads an RSA private key from a PEM file
-func LoadPrivateKey(path string) (*rsa.PrivateKey, error) {
-	data, err := ioutil.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read file: %v", err)
+type CPUServerStatus struct {
+	CPUModel string  `json:"cpu_model"`
+	CoreNum  int     `json:"core_num"`
+	Memory   float64 `json:"memory"`
+}
+
+func (c *CPUServerStatus) PrintAll() string {
+	return fmt.Sprintf("CPUModel: %s, CoreNum: %d, Memory: %.2f GB", c.CPUModel, c.CoreNum, c.Memory)
+}
+
+func (fc *FingerprintCollector) NewCPUServerStatus() (*CPUServerStatus, error) {
+	coreNum := runtime.NumCPU()
+	cpuInfo := fc.getCPUInfo()
+	memoryInfo := fc.getMemoryInfo()
+
+	return &CPUServerStatus{
+		CPUModel: cpuInfo.ModelName,
+		CoreNum:  coreNum,
+		Memory:   memoryInfo.TotalGB,
+	}, nil
+}
+
+type GPUServerStatus struct {
+	CPUModel string  `json:"cpu_model"`
+	CoreNum  int     `json:"core_num"`
+	GPUModel string  `json:"gpu_model"`
+	GPUNum   int     `json:"gpu_num"`
+	Memory   float64 `json:"memory"`
+}
+
+func (g *GPUServerStatus) PrintAll() string {
+	return fmt.Sprintf("CPUModel: %s, CoreNum: %d, GPUModel: %s, GPUNum: %d, Memory: %.2f GB", g.CPUModel, g.CoreNum, g.GPUModel, g.GPUNum, g.Memory)
+}
+
+func (fc *FingerprintCollector) NewGPUServerStatus() (*GPUServerStatus, error) {
+	coreNum := runtime.NumCPU()
+	cpuInfo := fc.getCPUInfo()
+	memoryInfo := fc.getMemoryInfo()
+
+	return &GPUServerStatus{
+		CPUModel: cpuInfo.ModelName,
+		CoreNum:  coreNum,
+		GPUModel: "unknown",
+		GPUNum:   0,
+		Memory:   memoryInfo.TotalGB,
+	}, nil
+}
+
+type APIServerHeartbeatResponse struct {
+	CPUNum         int      `json:"cpu_num"`
+	MaxConcurrency int      `json:"max_concurrency"`
+	Features       []string `json:"features"`
+}
+
+func (a *APIServerHeartbeatResponse) ToMap() map[string]interface{} {
+	return map[string]interface{}{
+		"cpu_num":         a.CPUNum,
+		"max_concurrency": a.MaxConcurrency,
+		"features":        a.Features,
 	}
+}
 
-	block, _ := pem.Decode(data)
-	if block == nil {
-		return nil, fmt.Errorf("failed to decode PEM block")
+type IngestorHeartbeatResponse struct {
+	CPUNum    int      `json:"cpu_num"`
+	WorkerNum int      `json:"worker_num"`
+	Features  []string `json:"features"`
+}
+
+func (i *IngestorHeartbeatResponse) ToMap() map[string]interface{} {
+	return map[string]interface{}{
+		"cpu_num":    i.CPUNum,
+		"worker_num": i.WorkerNum,
+		"features":   i.Features,
 	}
+}
 
-	switch block.Type {
-	case "RSA PRIVATE KEY":
-		return x509.ParsePKCS1PrivateKey(block.Bytes)
+type FileSyncerHeartbeatResponse struct {
+	CPUNum    int      `json:"cpu_num"`
+	WorkerNum int      `json:"worker_num"`
+	Features  []string `json:"features"`
+}
 
-	case "PRIVATE KEY":
-		key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse PKCS#8 private key: %v", err)
-		}
-		rsaKey, ok := key.(*rsa.PrivateKey)
-		if !ok {
-			return nil, fmt.Errorf("key is not RSA private key")
-		}
-		return rsaKey, nil
+func (f *FileSyncerHeartbeatResponse) ToMap() map[string]interface{} {
+	return map[string]interface{}{
+		"cpu_num":    f.CPUNum,
+		"worker_num": f.WorkerNum,
+		"features":   f.Features,
+	}
+}
 
-	default:
-		return nil, fmt.Errorf("unsupported key type: %s", block.Type)
+type DeepDocCPUHeartbeatResponse struct {
+	CPUNum         int      `json:"cpu_num"`
+	MaxConcurrency int      `json:"max_concurrency"`
+	WorkerNum      int      `json:"worker_num"`
+	Features       []string `json:"features"`
+}
+
+func (d *DeepDocCPUHeartbeatResponse) ToMap() map[string]interface{} {
+	return map[string]interface{}{
+		"cpu_num":         d.CPUNum,
+		"max_concurrency": d.MaxConcurrency,
+		"worker_num":      d.WorkerNum,
+		"features":        d.Features,
+	}
+}
+
+type DeepDocGPUHeartbeatResponse struct {
+	CPUNum         int      `json:"cpu_num"`
+	GPUNum         int      `json:"gpu_num"`
+	MaxConcurrency int      `json:"max_concurrency"`
+	WorkerNum      int      `json:"worker_num"`
+	Features       []string `json:"features"`
+}
+
+func (d *DeepDocGPUHeartbeatResponse) ToMap() map[string]interface{} {
+	return map[string]interface{}{
+		"cpu_num":         d.CPUNum,
+		"gpu_num":         d.GPUNum,
+		"max_concurrency": d.MaxConcurrency,
+		"worker_num":      d.WorkerNum,
 	}
 }

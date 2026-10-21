@@ -22,6 +22,7 @@ import (
 	"ragflow/internal/common"
 	"ragflow/internal/engine/clickhouse"
 	"ragflow/internal/engine/otel"
+	"ragflow/internal/utility"
 
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
@@ -62,6 +63,9 @@ func StartServer(ctx context.Context, cancel context.CancelFunc, serverName stri
 		common.Error("Fail to connect to clickhouse", err)
 		return err
 	}
+
+	// Init service quota instance
+	utility.InitServiceQuota(serverType)
 
 	return nil
 }

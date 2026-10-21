@@ -42,16 +42,16 @@ import (
 
 func InitLicense(ctx context.Context) error {
 
-	var license *utility.License = nil
+	var license *utility.LicenseV2 = nil
 	// Check if license can be read from database
 	licenseDAO := dao.NewLicenseDAO()
 	licenseRecord, err := licenseDAO.GetLatest(ctx, dao.DB)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			collector := utility.NewFingerprintCollector(true)
-			clusterInfo, err2 := collector.Collect()
+			fingerprint, err2 := collector.CollectV2()
 			if err2 != nil {
-				common.Fatal(fmt.Sprintf("Failed to collect hardware info: %v", err))
+				common.Fatal(fmt.Sprintf("Failed to collect hardware info: %v", err2))
 				return err2
 			}
 
@@ -72,38 +72,37 @@ func InitLicense(ctx context.Context) error {
 				return errors.New("invalid trial license limit")
 			}
 
-			duration := time.Duration(trialLicenseLimitInt) * time.Minute
-			license, err2 = generateTrialLicense(duration, clusterInfo)
-			if err2 != nil {
+			license, err = generateTrialLicenseV2(trialLicenseLimitInt, fingerprint)
+			if err != nil {
 				common.Fatal(fmt.Sprintf("Error generating trial license: %v", err))
-				return err2
+				return err
 			}
 
 			var encryptedData string
-			encryptedData, err2 = utility.GenerateSimpleStringLicense(license)
-			if err2 != nil {
-				common.Fatal(fmt.Sprintf("Error generating license: %v", err))
-				return err2
+			encryptedData, err = utility.GenerateLicenseV2(license)
+			if err != nil {
+				common.Fatal(fmt.Sprintf("Error generating license: %v", err2))
+				return err
 			}
 
-			err2 = licenseDAO.Create(ctx, dao.DB, license.LicenseID, encryptedData)
-			if err2 != nil {
-				common.Fatal(fmt.Sprintf("Error storing license: %v", err))
-				return err2
+			err = licenseDAO.Create(ctx, dao.DB, license.LicenseID, encryptedData)
+			if err != nil {
+				common.Fatal(fmt.Sprintf("Error storing license: %v", err2))
+				return err
 			}
 		} else {
 			return err
 		}
 	} else {
-		license, err = parseLicenseFromStr(licenseRecord.License)
+		license, err = utility.DecodeLicenseV2(licenseRecord.License)
 		if err != nil {
-			common.Fatal(fmt.Sprintf("Error parsing license: %v", err))
+			common.Fatal(fmt.Sprintf("Init license: error parsing license, %v", err))
 			return err
 		}
 	}
 
 	// Set to global status
-	SetMemLicense(license)
+	GlobalServerStatusStore.SetLicense(license)
 	err = InitFirstTimeRecord(ctx)
 	if err != nil {
 		common.Fatal("Error initializing first time record: %v", zap.Error(err))
@@ -114,160 +113,103 @@ func InitLicense(ctx context.Context) error {
 }
 
 func AppendServiceList(serviceInfos []*common.BaseMessage) []*common.BaseMessage {
+	serviceInfos = append(serviceInfos, GlobalServerStatusStore.GetAllStatuses()...)
 	return serviceInfos
 }
 
-// generateLicenseID creates a unique license ID
-func generateTrialLicenseID() string {
-	return fmt.Sprintf("TRIAL-%d", time.Now().Unix())
-}
-
-// GenerateTrialLicense creates a trial license
-func generateTrialLicense(duration time.Duration, clusterInfo *utility.ClusterInfo) (*utility.License, error) {
-	// if duration is not between 1 minute to 30 days, return error
-	if duration < time.Minute || duration > time.Duration(30)*24*time.Hour {
-		return nil, errors.New("duration must be between 1 minute to 30 days")
+func generateTrialLicenseV2(minutes int, fingerprint *utility.Fingerprint) (*utility.LicenseV2, error) {
+	fingerprintJson, err := json.Marshal(fingerprint)
+	if err != nil {
+		common.Fatal(fmt.Sprintf("Failed to marshal fingerprint: %v", err))
+		return nil, err
 	}
+	hash := md5.Sum(fingerprintJson)
+	digest := hex.EncodeToString(hash[:])
 
-	now := time.Now()
-
-	license := &utility.License{
-		Version:      "1.0",
-		LicenseID:    generateTrialLicenseID(),
+	licenseV2 := &utility.LicenseV2{
+		Version:      2,
+		IssuedAt:     time.Now(),
+		ValidFrom:    time.Now(),
+		Minutes:      minutes,
+		CustomerName: "trial-customer",
+		Digest:       digest,
+		Fingerprint:  *fingerprint,
+		APIQuota: utility.APIQuota{
+			Count:          0,
+			CPUNum:         0,
+			MaxConcurrency: 0,
+		},
+		IngestorQuota: utility.IngestorQuota{
+			Count:     0,
+			CPUNum:    0,
+			WorkerNum: 0,
+		},
+		SyncerQuota: utility.SyncerQuota{
+			Count:     0,
+			CPUNum:    0,
+			WorkerNum: 0,
+		},
+		DeepDocCPUQuota: utility.DeepDocCPUQuota{
+			Count:          0,
+			CPUNum:         0,
+			WorkerNum:      0,
+			MaxConcurrency: 0,
+		},
+		DeepDocGPUQuota: utility.DeepDocGPUQuota{
+			Count:          0,
+			GPUNum:         0,
+			CPUNum:         0,
+			WorkerNum:      0,
+			MaxConcurrency: 0,
+		},
+		DataQuota: utility.DataQuota{
+			TotalGB: 0,
+		},
+		TenantQuota: utility.TenantQuota{
+			Count: 0,
+		},
+		Workflow:     true,
+		Chat:         true,
+		File:         true,
+		Search:       true,
+		Model:        true,
+		UserInTenant: true,
+		RBAC:         true,
+		Group:        true,
+		Evaluation:   true,
 		Type:         utility.TRIAL,
-		IssuedAt:     now,
-		ValidFrom:    now,
-		ValidUntil:   now.Add(duration),
-		MaxNodes:     1,
-		CustomerName: "trial",
 	}
 
-	selectedInfos := clusterInfo.SelectClusterInfos()
-	for _, info := range selectedInfos.SelectedSystemInfos {
-		license.Machines = append(license.Machines, &utility.MachineInfo{
-			MachineID:   info.MachineID,
-			BoardSerial: info.BoardSerial,
-			DiskSerial:  info.DiskSerial,
-			MACAddress:  info.MACAddress,
-		})
-	}
+	licenseV2.ValidUntil = licenseV2.ValidFrom.Add(time.Duration(minutes) * time.Minute)
+	licenseV2.LicenseID = generateLicenseID(string(licenseV2.Type))
 
-	machineInfoJson, _ := json.Marshal(license.Machines)
-	hash := md5.Sum(machineInfoJson)
-	systemDigest := hex.EncodeToString(hash[:])
-
-	license.NodeName = selectedInfos.NodeName
-	license.MaxNodes = len(selectedInfos.SelectedSystemInfos)
-	license.Digest = systemDigest
-
-	return license, nil
+	return licenseV2, nil
 }
 
-// GetFingerprint to get fingerprint
-func (s *Service) GetFingerprint() (string, error) {
-	// Generate fingerprint
-	clusterInfo := GlobalServerStatusStore.GetClusterInfo()
-	if len(clusterInfo.SystemInfos) == 0 {
-		return "", fmt.Errorf("fail to get cluster info, cluster isn't started fully")
-	}
-
-	encrypted, err := utility.EncryptHardwareInfo(&clusterInfo, utility.FingerprintPublicKey)
+// generateLicenseID creates a unique license ID
+func generateLicenseID(prefix string) string {
+	b := make([]byte, 8)
+	_, err := rand.Read(b)
 	if err != nil {
-		common.Fatal("Failed to encrypt: ", zap.Error(err))
+		// If random fails, fallback to timestamp-based ID
+		return fmt.Sprintf("%s-%d-%d", prefix, time.Now().UnixNano(), time.Now().Unix())
 	}
-
-	jsonData, err := json.MarshalIndent(encrypted, "", "  ")
-
-	return string(jsonData), nil
-}
-
-// SetLicenseConfig set system license config
-func (s *Service) SetLicenseConfig(timeRecordSaveInterval int64, timeRecordTaskDuration int64) error {
-	if !(timeRecordSaveInterval >= 3 && timeRecordSaveInterval <= 86400) {
-		return errors.New("Value1 value range:  [3, 86400]")
-	}
-	if !(timeRecordTaskDuration > 0 && timeRecordTaskDuration <= 3600) {
-		return errors.New("value2 value range: (0, 3600]")
-	}
-	TimeRecordSaveInterval = timeRecordSaveInterval
-	TimeRecordTaskDuration = timeRecordTaskDuration
-	StopUpdateRecordTask()
-	StartUpdateRecordTask()
-	return nil
-}
-
-// SetLicense to set system license
-func (s *Service) SetLicense(ctx context.Context, licenseStr string) (map[string]interface{}, error) {
-	// Verify license
-	license, result, err := extractLicense(licenseStr)
-	if err != nil {
-		common.Error("Error parsing license: ", err)
-		return nil, err
-	}
-
-	err = ValidateLicenseDigest(license.Digest)
-	if err != nil {
-		common.Error("Fail to validate license digest: ", err)
-		return nil, err
-	}
-
-	// Store license to database
-	err = s.licenseDAO.Create(ctx, dao.DB, license.LicenseID, licenseStr)
-	if err != nil {
-		common.Warn("Error storing license: ", zap.Error(err))
-		return nil, err
-	}
-
-	err = s.timeRecordDAO.DeleteAll(ctx, dao.DB)
-	if err != nil {
-		common.Warn("Error deleting time records: ", zap.Error(err))
-		return nil, err
-	}
-
-	SetMemLicense(license)
-	err = InitFirstTimeRecord(ctx)
-	if err != nil {
-		common.Fatal("Error initializing first time record: %v", zap.Error(err))
-	}
-	common.Info("License is valid")
-	StartUpdateRecordTask()
-	return result, nil
-}
-
-func (s *Service) ShowLicense(ctx context.Context) (map[string]interface{}, error) {
-	licenseStatus := GetLicenseStatus()
-	if licenseStatus.CurrentLicense == nil {
-		return nil, fmt.Errorf("license is not ready")
-	}
-	// read license from database
-	license, err := s.licenseDAO.GetLatest(ctx, dao.DB)
-	if err != nil {
-		common.Warn("Error reading license: ", zap.Error(err))
-		return nil, err
-	}
-
-	_, result, err := extractLicense(license.License)
-	if err != nil {
-		common.Error("Error parsing license: ", err)
-		return nil, err
-	}
-
-	return result, nil
+	return fmt.Sprintf("%s-%x-%d", prefix, b, time.Now().Unix())
 }
 
 func (s *Service) CheckLicense(ctx context.Context) (common.ErrorCode, error) {
-	licenseStatus := GetLicenseStatus()
+	currentLicense := GlobalServerStatusStore.GetLicense()
 	var licenseCheckResult string
-	if licenseStatus.CurrentLicense == nil {
-		if licenseStatus.Code != common.CodeLicenseValid {
-			return licenseStatus.Code, errors.New(licenseStatus.Code.Message())
+	if currentLicense == nil {
+		licenseCode := GlobalServerStatusStore.GetLicenseCode()
+		if licenseCode != common.CodeLicenseValid {
+			return licenseCode, errors.New(licenseCode.Message())
 		}
 
 		licenseCheckResult = "License is not ready"
-		return licenseStatus.Code, errors.New(licenseCheckResult)
+		return licenseCode, errors.New(licenseCheckResult)
 	}
 
-	currentLicense := licenseStatus.CurrentLicense
 	lastRecord, err := GetLastTimeRecord(ctx)
 	if err != nil {
 		common.Warn(fmt.Sprintf("Fail to get last time record: %v", err))
@@ -296,127 +238,112 @@ func (s *Service) CheckLicense(ctx context.Context) (common.ErrorCode, error) {
 		return common.CodeLicenseTimeRollback, fmt.Errorf("time rollback detected")
 	}
 
-	licenseCheckResult = "License valid"
+	licenseCheckResult = "license valid"
 
 	return common.CodeLicenseValid, errors.New(licenseCheckResult)
 }
 
-func extractLicense(licenseStr string) (*utility.License, map[string]interface{}, error) {
-	license, err := parseLicenseFromStr(licenseStr)
+func extractLicenseV2(licenseStr string) (*utility.LicenseV2, map[string]interface{}, error) {
+
+	licenseV2, err := utility.DecodeLicenseV2(licenseStr)
 	if err != nil {
-		common.Error("Error parsing license: ", err)
+		common.Error("Extract license: error parsing license, ", err)
 		return nil, nil, err
 	}
 
-	common.Debug(fmt.Sprintf("License ID:     %s\n", license.LicenseID))
-	common.Debug(fmt.Sprintf("Version:     %s\n", license.Version))
-	common.Debug(fmt.Sprintf("License to:     %s\n", license.CustomerName))
-	common.Debug(fmt.Sprintf("Issued at:     %s\n", formatLicenseTime(license.IssuedAt)))
-	common.Debug(fmt.Sprintf("Valid from:     %s\n", formatLicenseTime(license.ValidFrom)))
-	common.Debug(fmt.Sprintf("Valid until:     %s\n", formatLicenseTime(license.ValidUntil)))
+	common.Debug(fmt.Sprintf("License ID:     %s\n", licenseV2.LicenseID))
+	common.Debug(fmt.Sprintf("Version:     %d\n", licenseV2.Version))
+	common.Debug(fmt.Sprintf("License to:     %s\n", licenseV2.CustomerName))
+	common.Debug(fmt.Sprintf("Issued at:     %s\n", formatLicenseTime(licenseV2.IssuedAt)))
+	common.Debug(fmt.Sprintf("Valid from:     %s\n", formatLicenseTime(licenseV2.ValidFrom)))
+	common.Debug(fmt.Sprintf("Valid until:     %s\n", formatLicenseTime(licenseV2.ValidUntil)))
 
 	result := map[string]interface{}{}
-	result["ID"] = license.LicenseID
-	result["Version"] = license.Version
-	result["CustomerName"] = license.CustomerName
-	result["IssuedAt"] = formatLicenseTime(license.IssuedAt)
-	result["ValidFrom"] = formatLicenseTime(license.ValidFrom)
-	result["ValidUntil"] = formatLicenseTime(license.ValidUntil)
-
-	return license, result, nil
-	//return license.LicenseID, result, license.Digest, nil
-}
-
-func parseLicenseFromStr(licenseStr string) (*utility.License, error) {
-	// Decode base64
-	jsonData, err := base64.StdEncoding.DecodeString(licenseStr)
-	if err != nil {
-		common.Error("Error decoding base64: ", err)
-		return nil, err
+	result["ID"] = licenseV2.LicenseID
+	result["Version"] = licenseV2.Version
+	result["CustomerName"] = licenseV2.CustomerName
+	result["IssuedAt"] = formatLicenseTime(licenseV2.IssuedAt)
+	result["ValidFrom"] = formatLicenseTime(licenseV2.ValidFrom)
+	result["ValidUntil"] = formatLicenseTime(licenseV2.ValidUntil)
+	if licenseV2.APIQuota.Count == 0 {
+		result["API Server count"] = "Unlimited"
+	} else {
+		result["API Server count"] = licenseV2.APIQuota.Count
 	}
 
-	// Parse JSON package
-	var pkg utility.LicensePackage
-	err = json.Unmarshal(jsonData, &pkg)
-	if err != nil {
-		common.Error("Error parsing license JSON: ", err)
-		return nil, err
+	if licenseV2.APIQuota.MaxConcurrency == 0 {
+		result["Concurrency per API Server "] = "Unlimited"
+	} else {
+		result["Concurrency per API Server "] = licenseV2.APIQuota.MaxConcurrency
 	}
 
-	var license *utility.License
-	license, err = utility.DecryptLicense(&pkg, utility.LicensePrivateKey)
-	if err != nil {
-		common.Error("\"Error decrypting license: ", err)
-		return nil, err
+	totalConcurrency := licenseV2.APIQuota.MaxConcurrency * licenseV2.APIQuota.Count
+	if totalConcurrency == 0 {
+		result["Total concurrency of API Server"] = "Unlimited"
+	} else {
+		result["Total concurrency of API Server"] = totalConcurrency
 	}
 
-	return license, nil
+	if licenseV2.IngestorQuota.Count == 0 {
+		result["Ingestor count"] = "Unlimited"
+	} else {
+		result["Ingestor count"] = licenseV2.IngestorQuota.Count
+	}
+
+	if licenseV2.SyncerQuota.Count == 0 {
+		result["Syncer count"] = "Unlimited"
+	} else {
+		result["Syncer count"] = licenseV2.SyncerQuota.Count
+	}
+
+	result["DeepDocGPU count"] = licenseV2.DeepDocGPUQuota.Count
+	result["DeepDocCPU count"] = licenseV2.DeepDocCPUQuota.Count
+
+	result["Features"] = licenseV2.GetFeatures()
+
+	return licenseV2, result, nil
 }
 
 func ValidateLicenseDigest(licenseDigest string) error {
-	// Get system info and generate digest
-	clusterInfo := GlobalServerStatusStore.GetClusterInfo()
-	selectedClusterInfo := clusterInfo.SelectClusterInfos()
-	machineInfo := []*utility.MachineInfo{}
-	for _, selected := range selectedClusterInfo.SelectedSystemInfos {
-		machineInfo = append(machineInfo, &utility.MachineInfo{
-			BoardSerial: selected.BoardSerial,
-			DiskSerial:  selected.DiskSerial,
-			MACAddress:  selected.MACAddress,
-			MachineID:   selected.MachineID,
-		})
+	// Get fingerprint and generate digest
+	collector := utility.NewFingerprintCollector(true)
+	fingerprint, err := collector.CollectV2()
+	if err != nil {
+		common.Fatal(fmt.Sprintf("Failed to collect hardware info: %v", err))
+		return err
 	}
-	if len(machineInfo) == 0 {
-		return errors.New("no system info found, check if all RAGFlow components are fully started")
+	fingerprintJson, err := json.Marshal(fingerprint)
+	if err != nil {
+		common.Fatal(fmt.Sprintf("Failed to marshal fingerprint: %v", err))
+		return err
 	}
-	machineInfoJson, _ := json.Marshal(machineInfo)
-	hash := md5.Sum(machineInfoJson)
-	systemDigest := hex.EncodeToString(hash[:])
-	if licenseDigest != systemDigest {
+
+	hash := md5.Sum(fingerprintJson)
+	digest := hex.EncodeToString(hash[:])
+
+	if licenseDigest != digest {
 		return errors.New("license digest mismatch")
 	}
 	return nil
 }
 
-// SetMemLicense LicenseStatus related function
-func SetMemLicense(license *utility.License) utility.LicenseStatus {
-	licenseStatus := utility.LicenseStatus{
-		CurrentLicense: license,
-		Code:           common.CodeLicenseValid,
-	}
-	GlobalServerStatusStore.SetLicenseStatus(licenseStatus)
-	return licenseStatus
-}
+func CheckLicenseValidity(currentLicense *utility.LicenseV2, licenseCode common.ErrorCode) common.ErrorCode {
 
-func GetLicenseStatus() utility.LicenseStatus {
-	return GlobalServerStatusStore.GetLicenseStatus()
-}
-
-func SetLicenseStatus(errorCode common.ErrorCode) {
-	licenseStatus := GetLicenseStatus()
-	GlobalServerStatusStore.SetLicenseStatus(utility.LicenseStatus{
-		CurrentLicense: licenseStatus.CurrentLicense,
-		Code:           errorCode,
-	})
-}
-
-func CheckLicenseValidity(licenseStatus *utility.LicenseStatus) common.ErrorCode {
-
-	if licenseStatus.Code != common.CodeLicenseValid {
-		return licenseStatus.Code
+	if licenseCode != common.CodeLicenseValid {
+		return licenseCode
 	}
 
-	if licenseStatus.CurrentLicense == nil {
+	if currentLicense == nil {
 		return common.CodeLicenseNotFound
 	}
 
 	now := time.Now()
 	// if current time is not in the valid time range, return error
-	if licenseStatus.CurrentLicense.ValidFrom.After(now) {
+	if currentLicense.ValidFrom.After(now) {
 		return common.CodeLicenseInactiveError
 	}
 
-	if licenseStatus.CurrentLicense.ValidUntil.Before(now) {
+	if currentLicense.ValidUntil.Before(now) {
 		return common.CodeLicenseExpiredError
 	}
 
@@ -430,13 +357,13 @@ type TimeRecord struct {
 }
 
 func SaveTimeRecord(ctx context.Context, lastData *TimeRecord) error {
-	var lastCheckCount int = 0
+	var lastCheckCount = 0
 
 	if lastData != nil {
 		lastCheckCount = lastData.CheckCount
 	}
 
-	digest := GlobalServerStatusStore.GetLicenseStatus().CurrentLicense.Digest
+	digest := GlobalServerStatusStore.GetLicense().Digest
 
 	now := time.Now().Unix()
 
@@ -572,24 +499,25 @@ func StartTimeRecordService(interval time.Duration) error {
 	ctx := context.Background()
 	lastData, err := GetLastTimeRecord(ctx)
 	if err != nil {
-		common.Fatal(fmt.Sprintf("Fail to get last time record: %v", err))
-		return err
+		GlobalServerStatusStore.SetLicenseStatusCode(common.CodeLicenseUnexpectedError)
+		return fmt.Errorf("fail to get last time record: %v", err)
 	}
 
-	currentLicense := GetLicenseStatus().CurrentLicense
+	currentLicense := GlobalServerStatusStore.GetLicense()
 	if lastData.Nonce != currentLicense.Digest {
-		SetLicenseStatus(common.CodeLicenseExpiredError)
-		//common.Warn("Digest error: license expired")
-		return errors.New("digest error: license expired")
+		GlobalServerStatusStore.SetLicenseStatusCode(common.CodeLicenseDigestError)
+		return errors.New("digest error")
 	}
 
 	nowTS := time.Now().Unix()
 	now := time.Now()
 	if currentLicense.ValidFrom.After(now) {
+		GlobalServerStatusStore.SetLicenseStatusCode(common.CodeLicenseNotValidYet)
 		return errors.New("license not valid yet")
 	}
 
 	if currentLicense.ValidUntil.Before(now) {
+		GlobalServerStatusStore.SetLicenseStatusCode(common.CodeLicenseExpiredError)
 		return errors.New("license expired")
 	}
 	// 2. check time rollback
@@ -598,12 +526,15 @@ func StartTimeRecordService(interval time.Duration) error {
 		// convert following timestamp to time.Time
 		lastTime := time.Unix(lastTimestamp, 0)
 		currentTime := time.Unix(nowTS, 0)
-		panic(fmt.Sprintf("Detected time recall: last time=%s, current=%s", lastTime.Format("2006-01-02 15:04:05"), currentTime.Format("2006-01-02 15:04:05")))
+		GlobalServerStatusStore.SetLicenseStatusCode(common.CodeLicenseTimeRollback)
+		return fmt.Errorf("detect time rollback: last time=%s, current=%s", lastTime.Format("2006-01-02 15:04:05"), currentTime.Format("2006-01-02 15:04:05"))
 	}
 
 	// if time gap is not larger than interval
-	if nowTS-lastTimestamp < int64(interval.Seconds()) {
-		common.Debug(fmt.Sprintf("Not reach the time limit %g hour", interval.Hours()))
+	timeGap := nowTS - lastTimestamp
+	if timeGap < int64(interval.Seconds()) {
+		// not error
+		common.Debug(fmt.Sprintf("Time gap: %d seconds, not reach the time limit %d seconds", timeGap, int64(interval.Seconds())))
 		return nil
 	}
 

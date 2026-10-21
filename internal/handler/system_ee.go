@@ -18,6 +18,7 @@ package handler
 
 import (
 	"ragflow/internal/common"
+	"ragflow/internal/utility"
 
 	"github.com/gin-gonic/gin"
 )
@@ -63,5 +64,9 @@ func (h *SystemHandler) SetConcurrency(c *gin.Context) {
 
 // GetQuota /api/v1/system/quota [GET]
 func (h *SystemHandler) GetQuota(c *gin.Context) {
-	common.ErrorWithCode(c, common.CodeNotImplemented, "Get quota not implemented")
+	quota := utility.GetAPIServiceQuota()
+	if quota == nil {
+		common.ErrorWithCode(c, common.CodeNotFound, "API Service quota is not set")
+	}
+	common.SuccessWithData(c, quota, "success")
 }

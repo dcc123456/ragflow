@@ -2,18 +2,22 @@ package admin
 
 import (
 	"encoding/json"
+	"fmt"
 	"ragflow/internal/common"
 	"ragflow/internal/utility"
 	"sync"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 // ServerStatusStore is a thread-safe global server status storage
 type ServerStatusStore struct {
-	mu            sync.RWMutex
-	servers       map[string]*common.BaseMessage // key: server_id
-	clusterInfo   utility.ClusterInfo
-	licenseStatus utility.LicenseStatus
+	mu      sync.RWMutex
+	servers map[string]*common.BaseMessage // key: server_id
+
+	CurrentLicense *utility.LicenseV2
+	LicenseCode    common.ErrorCode
 }
 
 // GlobalServerStatusStore is the global instance
@@ -21,67 +25,160 @@ var GlobalServerStatusStore = &ServerStatusStore{
 	servers: make(map[string]*common.BaseMessage),
 }
 
-// Get cluster info of the cluster
-func (s *ServerStatusStore) GetClusterInfo() utility.ClusterInfo {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.clusterInfo
-}
-
 // UpdateStatus updates or adds a server status
-func (s *ServerStatusStore) UpdateStatus(serverName string, status *common.BaseMessage) {
+func (s *ServerStatusStore) UpdateStatus(serverName string, status *common.BaseMessage) (map[string]interface{}, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.servers[serverName] = status
+
+	// Get server count
+	apiServerCount := 0
+	ingestorServerCount := 0
+	fileSyncerServerCount := 0
+	deepDocCPUServerCount := 0
+	deepDocGPUServerCount := 0
+
+	for _, server := range s.servers {
+		if server.Ext == nil {
+			continue
+		}
+		if server.ServerType == common.ServerTypeAPI {
+			apiServerCount++
+		} else if server.ServerType == common.ServerTypeIngestion {
+			ingestorServerCount++
+		} else if server.ServerType == common.ServerTypeFileSyncer {
+			fileSyncerServerCount++
+		} else if server.ServerType == common.ServerTypeDeepDocCPU {
+			deepDocCPUServerCount++
+		} else if server.ServerType == common.ServerTypeDeepDocGPU {
+			deepDocGPUServerCount++
+		}
+	}
 
 	extData, err := json.Marshal(status.Ext)
 	if err != nil {
-		return
+		return nil, err
 	}
 
-	var clusterInfo utility.ClusterInfo
-	if err := json.Unmarshal(extData, &clusterInfo); err != nil {
-		return
+	var serverStatusResponse map[string]interface{}
+
+	// Get cluster info from heartbeat
+	switch status.ServerType {
+	case common.ServerTypeAPI:
+		// API server
+		if s.CurrentLicense.APIQuota.Count > 0 {
+			if _, ok := s.servers[serverName]; !ok {
+				if apiServerCount+1 > s.CurrentLicense.APIQuota.Count {
+					return nil, fmt.Errorf("API server count exceeds quota")
+				}
+			}
+		}
+
+		var apiServerStatus utility.CPUServerStatus
+		if err = json.Unmarshal(extData, &apiServerStatus); err != nil {
+			return nil, err
+		}
+		common.Info("Update API server status", zap.String("status", apiServerStatus.PrintAll()))
+		apiServerResponse := utility.APIServerHeartbeatResponse{
+			CPUNum:         s.CurrentLicense.APIQuota.CPUNum,
+			MaxConcurrency: s.CurrentLicense.APIQuota.MaxConcurrency,
+			Features:       s.CurrentLicense.GetFeatures(),
+		}
+		serverStatusResponse = apiServerResponse.ToMap()
+
+	case common.ServerTypeIngestion:
+		// Ingestion server
+		if s.CurrentLicense.IngestorQuota.Count > 0 {
+			if _, ok := s.servers[serverName]; !ok {
+				if ingestorServerCount+1 > s.CurrentLicense.IngestorQuota.Count {
+					return nil, fmt.Errorf("ingestor server count exceeds quota")
+				}
+			}
+		}
+
+		var ingestorStatus utility.CPUServerStatus
+		if err = json.Unmarshal(extData, &ingestorStatus); err != nil {
+			return nil, err
+		}
+		common.Info("Update Ingestion server status", zap.String("status", ingestorStatus.PrintAll()))
+		ingestorResponse := utility.IngestorHeartbeatResponse{
+			CPUNum:    s.CurrentLicense.IngestorQuota.CPUNum,
+			WorkerNum: s.CurrentLicense.IngestorQuota.WorkerNum,
+			Features:  s.CurrentLicense.GetFeatures(),
+		}
+		serverStatusResponse = ingestorResponse.ToMap()
+	case common.ServerTypeFileSyncer:
+		// File syncer server
+		if s.CurrentLicense.SyncerQuota.Count > 0 {
+			if _, ok := s.servers[serverName]; !ok {
+				if fileSyncerServerCount+1 > s.CurrentLicense.SyncerQuota.Count {
+					return nil, fmt.Errorf("file syncer server count exceeds quota")
+				}
+			}
+		}
+
+		var fileSyncerStatus utility.CPUServerStatus
+		if err = json.Unmarshal(extData, &fileSyncerStatus); err != nil {
+			return nil, err
+		}
+		common.Info("Update File syncer server status", zap.String("status", fileSyncerStatus.PrintAll()))
+		fileSyncerResponse := utility.FileSyncerHeartbeatResponse{
+			CPUNum:    s.CurrentLicense.SyncerQuota.CPUNum,
+			WorkerNum: s.CurrentLicense.SyncerQuota.WorkerNum,
+			Features:  s.CurrentLicense.GetFeatures(),
+		}
+		serverStatusResponse = fileSyncerResponse.ToMap()
+	case common.ServerTypeDeepDocCPU:
+		// DeepDoc CPU server
+		if s.CurrentLicense.DeepDocCPUQuota.Count > 0 {
+			if _, ok := s.servers[serverName]; !ok {
+				if deepDocCPUServerCount+1 > s.CurrentLicense.DeepDocCPUQuota.Count {
+					return nil, fmt.Errorf("deepDocCPU server count exceeds quota")
+				}
+			}
+		}
+
+		var deepDocCPUStatus utility.CPUServerStatus
+		if err = json.Unmarshal(extData, &deepDocCPUStatus); err != nil {
+			return nil, err
+		}
+		common.Info("Update DeepDoc CPU server status", zap.String("status", deepDocCPUStatus.PrintAll()))
+		deepDocCPUResponse := utility.DeepDocCPUHeartbeatResponse{
+			CPUNum:         s.CurrentLicense.DeepDocCPUQuota.CPUNum,
+			MaxConcurrency: s.CurrentLicense.DeepDocCPUQuota.MaxConcurrency,
+			WorkerNum:      s.CurrentLicense.DeepDocCPUQuota.WorkerNum,
+			Features:       s.CurrentLicense.GetFeatures(),
+		}
+		serverStatusResponse = deepDocCPUResponse.ToMap()
+	case common.ServerTypeDeepDocGPU:
+		// DeepDoc GPU server
+		if s.CurrentLicense.DeepDocGPUQuota.Count > 0 {
+			if _, ok := s.servers[serverName]; !ok {
+				if deepDocGPUServerCount+1 > s.CurrentLicense.DeepDocGPUQuota.Count {
+					return nil, fmt.Errorf("deepDocGPU server count exceeds quota")
+				}
+			}
+		}
+
+		var deepDocGPUStatus utility.GPUServerStatus
+		if err = json.Unmarshal(extData, &deepDocGPUStatus); err != nil {
+			return nil, err
+		}
+		common.Info("Update DeepDoc GPU server status", zap.String("status", deepDocGPUStatus.PrintAll()))
+		deepDocGPUResponse := utility.DeepDocGPUHeartbeatResponse{
+			CPUNum:         s.CurrentLicense.DeepDocGPUQuota.CPUNum,
+			GPUNum:         s.CurrentLicense.DeepDocGPUQuota.GPUNum,
+			MaxConcurrency: s.CurrentLicense.DeepDocGPUQuota.MaxConcurrency,
+			WorkerNum:      s.CurrentLicense.DeepDocGPUQuota.WorkerNum,
+			Features:       s.CurrentLicense.GetFeatures(),
+		}
+		serverStatusResponse = deepDocGPUResponse.ToMap()
+	default:
+		common.Fatal("Unknown server type", zap.Any("serverType", status.ServerType))
+		return nil, err
 	}
-	if len(clusterInfo.SystemInfos) == 0 || clusterInfo.SystemInfos[0] == nil {
-		return
-	}
+	s.servers[serverName] = status
 
-	systemInfo := clusterInfo.SystemInfos[0]
-	var found = false
-	for _, info := range s.clusterInfo.SystemInfos {
-		if systemInfo.MachineID != info.MachineID {
-			continue
-		}
-		if systemInfo.BoardSerial != info.BoardSerial {
-			continue
-		}
-		if systemInfo.CPU != info.CPU {
-			continue
-		}
-
-		// Check if the disk info are same
-		if systemInfo.Disk != info.Disk {
-			continue
-		}
-
-		if systemInfo.Network != info.Network {
-			continue
-		}
-
-		if systemInfo.Memory != info.Memory {
-			continue
-		}
-
-		found = true
-		break
-	}
-
-	if !found {
-		s.clusterInfo.SystemInfos = append(s.clusterInfo.SystemInfos, systemInfo)
-		// Sort system infos, order by MachineID, BoardSerial, CPU, Disk, MAC of Network, and MemoryInfo
-		utility.SortSystemInfos(s.clusterInfo.SystemInfos)
-	}
+	return serverStatusResponse, nil
 }
 
 // GetStatus gets a single server status
@@ -135,14 +232,27 @@ func (s *ServerStatusStore) CleanupStaleStatuses(maxAge time.Duration) {
 	}
 }
 
-func (s *ServerStatusStore) SetLicenseStatus(status utility.LicenseStatus) {
+func (s *ServerStatusStore) SetLicense(license *utility.LicenseV2) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.licenseStatus = status
+	s.CurrentLicense = license
+	s.LicenseCode = common.CodeLicenseValid
 }
 
-func (s *ServerStatusStore) GetLicenseStatus() utility.LicenseStatus {
+func (s *ServerStatusStore) SetLicenseStatusCode(code common.ErrorCode) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.LicenseCode = code
+}
+
+func (s *ServerStatusStore) GetLicense() *utility.LicenseV2 {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.licenseStatus
+	return s.CurrentLicense
+}
+
+func (s *ServerStatusStore) GetLicenseCode() common.ErrorCode {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.LicenseCode
 }

@@ -18,6 +18,7 @@ package admin
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"mime/multipart"
@@ -33,6 +34,7 @@ import (
 	"sync"
 	"time"
 
+	"go.uber.org/zap"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -79,79 +81,202 @@ func CheckServicePeriodically() {
 
 	// By default, if no heartbeat is received for 10 times, then the server is considered as stale
 	GlobalServerStore.CleanupStaleStatuses(globalConfig.GetHeartbeatInterval() * 10)
+	GlobalServerStatusStore.CleanupStaleStatuses(globalConfig.GetHeartbeatInterval() * 10)
 }
 
 func UpdateServer(serverName string, status *common.BaseMessage) (common.ErrorCode, map[string]interface{}, string) {
-	GlobalServerStatusStore.UpdateStatus(serverName, status)
+	response, err := GlobalServerStatusStore.UpdateStatus(serverName, status)
+	if err != nil {
+		return 0, nil, err.Error()
+	}
 
-	licenseStatus := GetLicenseStatus()
-	if licenseStatus.Code == common.CodeLicenseValid {
-		errorCode := CheckLicenseValidity(&licenseStatus)
+	licenseCode := GlobalServerStatusStore.GetLicenseCode()
+	if licenseCode == common.CodeLicenseValid {
+		currentLicense := GlobalServerStatusStore.GetLicense()
+		errorCode := CheckLicenseValidity(currentLicense, licenseCode)
 		if errorCode != common.CodeLicenseValid {
-			SetLicenseStatus(errorCode)
+			GlobalServerStatusStore.SetLicenseStatusCode(errorCode)
 			common.Warn(errorCode.Message())
 			StopUpdateRecordTask()
 			return errorCode, nil, "Invalid license"
 		}
 
 		common.Debug("License is loaded and valid")
-		return common.CodeLicenseValid, nil, ""
+		return common.CodeLicenseValid, response, ""
 	}
-	return licenseStatus.Code, nil, ""
+	return licenseCode, nil, ""
 }
 
 func (s *Service) GetSystemFingerprint(ctx context.Context) (map[string]interface{}, error) {
-	result := map[string]interface{}{
-		"command": "get_system_fingerprint",
-		"error":   "'get system fingerprint' is not supported",
+	// Get fingerprint and generate digest
+	collector := utility.NewFingerprintCollector(true)
+	fingerprint, err := collector.CollectV2()
+	if err != nil {
+		common.Fatal(fmt.Sprintf("Failed to collect hardware info: %v", err))
+		return nil, err
 	}
 
-	return result, nil
+	encryptedFingerprint, err := utility.EncryptFingerprint(fingerprint, utility.FingerprintPublicKey)
+
+	data, err := json.Marshal(encryptedFingerprint)
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]interface{}{
+		"fingerprint": string(data),
+	}, nil
 }
 
 func (s *Service) SetSystemLicense(ctx context.Context, licenseStr string) (map[string]interface{}, error) {
-	return nil, errors.New("'set system license' is not supported")
+	// Verify license
+	license, result, err := extractLicenseV2(licenseStr)
+	if err != nil {
+		common.Error("Set license: error parsing license, ", err)
+		return nil, err
+	}
+
+	err = ValidateLicenseDigest(license.Digest)
+	if err != nil {
+		common.Error("Fail to validate license digest: ", err)
+		return nil, err
+	}
+
+	// Store license to database
+	err = s.licenseDAO.Create(ctx, dao.DB, license.LicenseID, licenseStr)
+	if err != nil {
+		common.Warn("Error storing license: ", zap.Error(err))
+		return nil, err
+	}
+
+	err = s.timeRecordDAO.DeleteAll(ctx, dao.DB)
+	if err != nil {
+		common.Warn("Error deleting time records: ", zap.Error(err))
+		return nil, err
+	}
+
+	GlobalServerStatusStore.SetLicense(license)
+	err = InitFirstTimeRecord(ctx)
+	if err != nil {
+		common.Fatal("Error initializing first time record: %v", zap.Error(err))
+	}
+	common.Info("License is valid")
+	StartUpdateRecordTask()
+	return result, nil
 }
 
 func (s *Service) ShowSystemLicense(ctx context.Context) (map[string]interface{}, error) {
-	var result map[string]interface{}
-	result = map[string]interface{}{
-		"command": "show_system_license",
-		"error":   "'show system license' is not supported",
+	licenseInMem := GlobalServerStatusStore.GetLicense()
+	if licenseInMem == nil {
+		return nil, fmt.Errorf("license is not ready")
+	}
+	// read license from database
+	license, err := s.licenseDAO.GetLatest(ctx, dao.DB)
+	if err != nil {
+		common.Warn("Error reading license: ", zap.Error(err))
+		return nil, err
+	}
+
+	_, result, err := extractLicenseV2(license.License)
+	if err != nil {
+		common.Error("Show license: error parsing license, ", err)
+		return nil, err
 	}
 
 	return result, nil
 }
 
 func (s *Service) VerifyLicense(ctx context.Context, licenseStr string) (map[string]interface{}, error) {
-	var result map[string]interface{}
-	result = map[string]interface{}{
-		"command": "verify_license",
-		"error":   "'verify license' is not supported",
+	// Verify license
+	license, result, err := extractLicenseV2(licenseStr)
+	if err != nil {
+		common.Error("Verify license: error parsing license, ", err)
+		return nil, err
+	}
+
+	err = ValidateLicenseDigest(license.Digest)
+	if err != nil {
+		common.Error("Fail to validate license digest: ", err)
+		return nil, err
 	}
 
 	return result, nil
 }
 
 func (s *Service) CheckSystemLicense(ctx context.Context) (map[string]interface{}, error) {
-	var result map[string]interface{}
-	result = map[string]interface{}{
-		"command": "check_system_license",
-		"error":   "'check system license' is not supported",
+	currentLicense := GlobalServerStatusStore.GetLicense()
+	var licenseCheckResult string
+	if currentLicense == nil {
+		licenseCode := GlobalServerStatusStore.GetLicenseCode()
+		if licenseCode != common.CodeLicenseValid {
+			return map[string]interface{}{
+				"result": licenseCode.Message(),
+			}, nil
+		}
+
+		licenseCheckResult = "license is not ready"
+		return map[string]interface{}{
+			"result": licenseCheckResult,
+		}, nil
 	}
 
-	return result, nil
+	lastRecord, err := GetLastTimeRecord(ctx)
+	if err != nil {
+		common.Warn(fmt.Sprintf("Fail to get last time record: %v", err))
+		return nil, err
+	}
+
+	if lastRecord.Nonce != currentLicense.Digest {
+		licenseCheckResult = "time record digest is mismatched"
+		return map[string]interface{}{
+			"result": licenseCheckResult,
+		}, nil
+	}
+
+	nowTS := time.Now().Unix()
+	now := time.Now()
+	if currentLicense.ValidFrom.After(now) {
+		licenseCheckResult = "license not valid yet"
+		return map[string]interface{}{
+			"result": licenseCheckResult,
+		}, nil
+	}
+
+	if currentLicense.ValidUntil.Before(now) {
+		licenseCheckResult = "license expired"
+		return map[string]interface{}{
+			"result": licenseCheckResult,
+		}, nil
+	}
+	// 2. check time rollback
+	lastTimestamp := lastRecord.Timestamp
+	if nowTS < lastTimestamp {
+		// convert following timestamp to time.Time
+		licenseCheckResult = "time rollback detected"
+		return map[string]interface{}{
+			"result": licenseCheckResult,
+		}, nil
+	}
+
+	licenseCheckResult = "license valid"
+
+	return map[string]interface{}{
+		"result": licenseCheckResult,
+	}, nil
 }
 
-func (s *Service) UpdateSystemLicenseConfig(ctx context.Context, timeRecordSaveInterval, timeRecordTaskDuration int64) (map[string]interface{}, error) {
-	result := map[string]interface{}{
-		"command":                   "update_system_license_config",
-		"time_record_save_interval": timeRecordSaveInterval,
-		"time_record_task_duration": timeRecordTaskDuration,
-		"error":                     "'update system license config' is not supported",
+func (s *Service) UpdateSystemLicenseConfig(ctx context.Context, timeRecordSaveInterval, timeRecordTaskDuration int64) error {
+	if !(timeRecordSaveInterval >= 3 && timeRecordSaveInterval <= 86400) {
+		return errors.New("Value1 value range:  [3, 86400]")
 	}
-
-	return result, nil
+	if !(timeRecordTaskDuration > 0 && timeRecordTaskDuration <= 3600) {
+		return errors.New("value2 value range: (0, 3600]")
+	}
+	TimeRecordSaveInterval = timeRecordSaveInterval
+	TimeRecordTaskDuration = timeRecordTaskDuration
+	StopUpdateRecordTask()
+	StartUpdateRecordTask()
+	return nil
 }
 
 func (s *Service) SetSoftFingerprint(ctx context.Context, softFingerprint string) error {
