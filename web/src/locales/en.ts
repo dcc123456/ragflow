@@ -488,6 +488,12 @@ Example: A 1 KB message with 1024-dim embedding uses ~9 KB. The 5 MB default lim
         '{{name}} ({{fileType}}): not supported by the current parser configuration; it will automatically switch to the built-in {{parser}} configuration',
       fileTypeUnsupportedManualSwitch:
         '{{name}} ({{fileType}}): not supported by the current parser configuration; switch its parsing method manually after upload',
+      fileTypeVideoUnsupported:
+        '{{name}} ({{fileType}}): video files cannot be parsed yet',
+      videoUnsupportedAfterUploadHint:
+        'You can continue uploading, but video files cannot be parsed yet and will not be processed.',
+      videoUnsupportedParseHint:
+        'Video files cannot be parsed yet. Delete this file or convert it to a supported format.',
       reselectParserAfterUploadHint:
         'Continue uploading, then system will automatically switch these files to a supported built-in parsing configuration.',
       manualSwitchAfterUploadHint:
@@ -557,6 +563,8 @@ Example: A 1 KB message with 1024-dim embedding uses ~9 KB. The 5 MB default lim
       applyAutoMetadataSettings: 'Apply global auto-metadata settings',
       parseFileTip: 'Are you sure to parse?',
       clearChunksReparseTip: 'Are you sure to clear chunks to re-parse?',
+      parserConfigReparseTip:
+        'Existing chunks were generated using the previous parser settings. Would you like to clear them and re-parse this document using the saved settings?',
       parseFile: 'Parse file',
       emptyMetadata: 'No metadata',
       metadataField: 'Metadata field',
@@ -1257,6 +1265,13 @@ This auto-tagging feature enhances retrieval by adding another layer of domain-s
       thinkingLevelNone: 'Naive',
       thinkingLevelAgentic: 'Agentic',
       thinkingLevelAgenticDescription: 'Self-directed corpus exploration',
+      naiveSettings: 'Naive settings',
+      agenticSettings: 'Agentic settings',
+      agenticTemplate: 'Agentic template',
+      agenticTemplateTip:
+        'The system template the agentic RAG agent runs with. Editing it overrides the shipped default for this chat; reset to restore it.',
+      agenticTemplateTooLong: 'Template must be at most 32768 characters',
+      resetToDefault: 'Reset to default',
       thinkingTip:
         'Only controls thinking mode for official Qwen, Kimi, and GLM model providers. System default disables Qwen thinking to avoid long-running tasks.',
       quote: 'Show citations',

@@ -113,6 +113,10 @@ func InitLicense(ctx context.Context) error {
 	return nil
 }
 
+func AppendServiceList(serviceInfos []*common.BaseMessage) []*common.BaseMessage {
+	return serviceInfos
+}
+
 // generateLicenseID creates a unique license ID
 func generateTrialLicenseID() string {
 	return fmt.Sprintf("TRIAL-%d", time.Now().Unix())

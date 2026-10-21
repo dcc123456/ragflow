@@ -428,6 +428,12 @@ export default {
         '{{name}}（{{fileType}}）：当前解析配置不支持该文件类型，将自动切换为内置 {{parser}} 配置',
       fileTypeUnsupportedManualSwitch:
         '{{name}}（{{fileType}}）：当前解析配置不支持该文件类型，上传后可手动切换解析配置',
+      fileTypeVideoUnsupported:
+        '{{name}}（{{fileType}}）：视频文件暂不支持解析',
+      videoUnsupportedAfterUploadHint:
+        '可继续上传，但视频文件暂不支持解析，上传后不会被处理。',
+      videoUnsupportedParseHint:
+        '视频文件暂不支持解析，请删除该文件或转换为受支持的格式。',
       reselectParserAfterUploadHint:
         '可继续上传，系统将自动切换至支持这些文件类型的内置解析配置。',
       manualSwitchAfterUploadHint:
@@ -488,6 +494,8 @@ export default {
       applyAutoMetadataSettings: '应用全局自动元数据设置',
       parseFileTip: '您确定要解析吗？',
       clearChunksReparseTip: '您确定要清空分块重新解析吗？',
+      parserConfigReparseTip:
+        '现有分块由之前的解析设置生成。是否清空现有分块，并使用已保存的设置重新解析此文档？',
       parseFile: '解析文件',
       emptyMetadata: '无元数据',
       localUpload: '本地上传',
@@ -1126,6 +1134,13 @@ NER：使用 spaCy NER 和基于规则的关键词提取来抽取 Entities 和 R
       thinkingLevelNone: 'Naive',
       thinkingLevelAgentic: 'Agentic',
       thinkingLevelAgenticDescription: '自主探索语料库',
+      naiveSettings: 'Naive 设置',
+      agenticSettings: 'Agentic 设置',
+      agenticTemplate: 'Agentic 模板',
+      agenticTemplateTip:
+        'Agentic RAG 运行时使用的系统模板。编辑后为当前助手覆盖默认模板，可一键重置恢复。',
+      agenticTemplateTooLong: '模板长度不能超过 32768 个字符',
+      resetToDefault: '重置为默认',
       thinkingTip:
         '仅控制官方模型提供商中的 Qwen、Kimi 和 GLM 模型思考模式。系统默认会关闭 Qwen 思考，以避免任务长时间运行。',
       quote: '显示引文',
