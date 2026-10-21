@@ -21,9 +21,6 @@ import (
 	"errors"
 	"fmt"
 	"mime/multipart"
-	"sort"
-	"strings"
-
 	"ragflow/internal/common"
 	"ragflow/internal/dao"
 	"ragflow/internal/engine/clickhouse"
@@ -31,6 +28,8 @@ import (
 	"ragflow/internal/entity"
 	"ragflow/internal/server"
 	"ragflow/internal/utility"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -75,6 +74,13 @@ func StopUpdateRecordTask() {
 }
 
 // UpdateServer update server status
+func CheckServicePeriodically() {
+	globalConfig := server.GetConfig()
+
+	// By default, if no heartbeat is received for 10 times, then the server is considered as stale
+	GlobalServerStore.CleanupStaleStatuses(globalConfig.GetHeartbeatInterval() * 10)
+}
+
 func UpdateServer(serverName string, status *common.BaseMessage) (common.ErrorCode, map[string]interface{}, string) {
 	GlobalServerStatusStore.UpdateStatus(serverName, status)
 
