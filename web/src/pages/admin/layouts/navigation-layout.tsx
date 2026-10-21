@@ -5,6 +5,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router';
 import { useMutation, useQuery } from '@tanstack/react-query';
 
 import {
+  LucideBox,
   LucideMonitor,
   LucideServerCrash,
   LucideSettings,
@@ -93,6 +94,11 @@ const AdminNavigationLayout = () => {
               path: Routes.AdminSSOProviders,
               name: t('admin.ssoProvider'),
               icon: <LucideCloudKey className="size-[1em]" />,
+            },
+            {
+              path: Routes.AdminModelProviders,
+              name: t('admin.modelProviders'),
+              icon: <LucideBox className="size-[1em]" />,
             },
           ]
         : []),

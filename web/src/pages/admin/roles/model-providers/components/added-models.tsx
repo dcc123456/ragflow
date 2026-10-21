@@ -34,47 +34,20 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 
 import {
-  LLM_MODEL_TAG_MAP,
   useAddFactory,
   useDeleteMyFactory,
   useMyLlmList,
 } from '@/pages/admin/hooks/useLlm';
+import {
+  mapModelKey,
+  sortModelTypes,
+} from '@/pages/user-setting/setting-model/instance-card/available-models';
 import { LocalLlmFactories } from '@/pages/user-setting/constants';
 
 import message from '@/components/ui/message';
 import { getRealModelName } from '@/utils/llm-util';
 import { useTranslation } from 'react-i18next';
 import ProviderModal from '../model-config/ProviderModal';
-
-type TagType =
-  | 'LLM'
-  | 'TEXT EMBEDDING'
-  | 'TEXT RE-RANK'
-  | 'TTS'
-  | 'SPEECH2TEXT'
-  | 'IMAGE2TEXT'
-  | 'MODERATION';
-
-const sortTags = (tags: string) => {
-  const orderMap: Record<TagType, number> = {
-    LLM: 1,
-    'TEXT EMBEDDING': 2,
-    'TEXT RE-RANK': 3,
-    TTS: 4,
-    SPEECH2TEXT: 5,
-    IMAGE2TEXT: 6,
-    MODERATION: 7,
-  };
-
-  return tags
-    .split(',')
-    .map((tag) => tag.trim())
-    .sort(
-      (a, b) =>
-        (orderMap[a as TagType] || Infinity) -
-        (orderMap[b as TagType] || Infinity),
-    );
-};
 
 export const ModelProviderCard = ({ item }: { item: LlmItem }) => {
   const { t } = useTranslation();
@@ -189,14 +162,14 @@ export const ModelProviderCard = ({ item }: { item: LlmItem }) => {
           <AccordionPrimitive.Content className="data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down overflow-hidden text-sm">
             <CardContent className="px-4 pb-4">
               <div className="flex flex-wrap gap-1">
-                {sortTags(item.tags).map((tag, index) => (
+                {sortModelTypes(
+                  item.tags.split(',').map((tag) => tag.trim()),
+                ).map((tag, index) => (
                   <span
                     key={index}
                     className="px-2 py-1 text-xs bg-bg-card text-text-secondary rounded-md"
                   >
-                    {LLM_MODEL_TAG_MAP[
-                      tag.trim() as keyof typeof LLM_MODEL_TAG_MAP
-                    ] || tag.trim()}
+                    {mapModelKey[tag as keyof typeof mapModelKey] || tag}
                   </span>
                 ))}
               </div>

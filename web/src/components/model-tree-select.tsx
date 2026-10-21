@@ -143,6 +143,7 @@ export interface ModelTreeSelectProps {
   renderSelected?: (node: TreeSelectNode | undefined) => React.ReactNode;
   testId?: string;
   ownerTenantId?: string;
+  skipTenantInfo?: boolean;
 }
 
 export const ModelTreeSelect = forwardRef<
@@ -161,10 +162,11 @@ export const ModelTreeSelect = forwardRef<
     renderSelected,
     testId,
     ownerTenantId,
+    skipTenantInfo = false,
   },
   ref,
 ) {
-  const { data: tenantInfo } = useFetchTenantInfo();
+  const { data: tenantInfo } = useFetchTenantInfo(!skipTenantInfo);
   const tenantId = tenantInfo.tenant_id;
   const {
     data: allAddedModels,

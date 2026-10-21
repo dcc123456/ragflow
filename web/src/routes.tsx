@@ -98,6 +98,7 @@ export enum Routes {
   AdminModelUsageStatistics = `${Admin}/model-usage-statistics`,
   AdminSettings = `${Admin}/settings`,
   AdminSSOProviders = `${Admin}/sso`,
+  AdminModelProviders = `${Admin}/model-providers`,
   Evaluation = '/evaluation',
   Tickets = '/support',
   TicketCreate = '/support/create',
@@ -512,6 +513,10 @@ const routeConfigOptions = [
                     {
                       path: Routes.AdminSSOProviders,
                       Component: () => import('@/pages/admin/sso-providers'),
+                    },
+                    {
+                      path: Routes.AdminModelProviders,
+                      Component: () => import('@/pages/admin/model-providers'),
                     },
                   ]
                 : []),

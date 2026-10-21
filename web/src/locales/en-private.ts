@@ -250,6 +250,7 @@ export default {
       },
     },
     admin: {
+      modelProviders: 'Model providers',
       view: 'View',
       selectTimeRange: 'Select time range',
       export: 'Export',

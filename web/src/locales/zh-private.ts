@@ -210,6 +210,7 @@ export default {
       },
     },
     admin: {
+      modelProviders: '模型供应商',
       view: '查看',
       selectTimeRange: '选择时间范围',
       export: '导出',
