@@ -66,3 +66,63 @@ func RegisterEEProtectedRouter(authorized *gin.RouterGroup, r *Router) {
 	tenant.GET("/me/permissions", r.tenantHandler.GetTenantMyPermissions)
 	tenant.GET("/permission-logs", r.tenantHandler.ListTenantPermissionLogs)
 }
+
+func ToggleWorkflow() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Next()
+	}
+}
+
+func ToggleChat() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Next()
+	}
+}
+
+func ToggleFile() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Next()
+	}
+}
+
+func ToggleSearch() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Next()
+	}
+}
+
+func ToggleModel() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Next()
+	}
+}
+
+func ToggleUserInTenant() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Next()
+	}
+}
+
+func ToggleGroup() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Next()
+	}
+}
+
+func ToggleEvaluation() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Next()
+	}
+}
+
+func ToggleDataset() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Next()
+	}
+}
+
+func ToggleMemory() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Next()
+	}
+}
