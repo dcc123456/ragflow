@@ -16,9 +16,16 @@
 
 package dao
 
-import "ragflow/internal/entity"
+import (
+	"context"
+	"ragflow/internal/entity"
+
+	"gorm.io/gorm"
+)
 
 // permissionDataModelsEE returns the entities included in the enterprise schema.
+
+// permissionDataModelsEE returns no additional entities in the community edition.
 func permissionDataModelsEE() []interface{} {
 	return []interface{}{
 		&entity.Role{},
@@ -28,4 +35,8 @@ func permissionDataModelsEE() []interface{} {
 		&entity.GroupMember{},
 		&entity.Permission{},
 	}
+}
+
+func initializeSystemSettingsEE(context.Context, *gorm.DB) error {
+	return nil
 }
