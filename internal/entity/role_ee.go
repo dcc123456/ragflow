@@ -16,6 +16,25 @@
 
 package entity
 
+const (
+	RoleResourceTypeDataset int64 = iota + 1
+	RoleResourceTypeChat
+	RoleResourceTypeAgent
+	RoleResourceTypeSearch
+	RoleResourceTypeFile
+	RoleResourceTypeTeam
+	RoleResourceTypeMemory
+	RoleResourceTypeModelProvider
+)
+
+const (
+	RoleActionEnable int32 = 1 << iota
+	RoleActionRead
+	RoleActionWrite
+	RoleActionShare
+	RoleActionAll = RoleActionEnable | RoleActionRead | RoleActionWrite | RoleActionShare
+)
+
 type Role struct {
 	ID          int32   `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
 	RoleName    string  `gorm:"column:role_name;size:64;not null;index" json:"role_name"`

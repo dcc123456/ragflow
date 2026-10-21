@@ -29,6 +29,13 @@ func SetupEERouter(engine *gin.Engine) {
 }
 
 func RegisterEERouter(protected *gin.RouterGroup, r *Router) {
+	// Tenant administration and global permission audit
+	protected.GET("/tenants", r.handler.ListTenants)
+	protected.PATCH("/tenants/:tenant_id", r.handler.UpdateTenantInviteSetting)
+	protected.GET("/permission-logs", r.handler.ListPermissionLogs)
+	protected.GET("/settings/default-invite-enabled", r.handler.ShowDefaultTenantInviteEnabled)
+	protected.PUT("/settings/default-invite-enabled", r.handler.UpdateDefaultTenantInviteEnabled)
+
 	// Role management
 	protected.GET("/roles", r.handler.ListRoles)
 	protected.POST("/roles", r.handler.CreateRole)
@@ -45,12 +52,13 @@ func RegisterEERouter(protected *gin.RouterGroup, r *Router) {
 	protected.DELETE("/roles/:role_name/default-models", r.handler.ResetRoleDefaultModel)
 
 	// Providers and models
+	protected.GET("/models", r.handler.ListSystemAddedModels)
 	provider := protected.Group("/providers")
 	{
-		provider.GET("/", r.handler.ListModelProviders)
-		provider.POST("/", r.handler.AddModelProvider)
+		provider.GET("", r.handler.ListModelProviders)
+		provider.PUT("", r.handler.AddModelProvider)
 		provider.GET("/:provider_name", r.handler.ShowProvider)
-		provider.DELETE("/", r.handler.DeleteModelProvider)
+		provider.DELETE("/:provider_name", r.handler.DeleteModelProvider)
 		provider.GET("/:provider_name/models", r.handler.ListModels)
 		provider.GET("/:provider_name/models/:model_name", r.handler.ShowProviderModel)
 

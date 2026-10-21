@@ -20,6 +20,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -92,8 +93,8 @@ func TestListRolesWithPermission(t *testing.T) {
 		t.Fatalf("create roles: %v", err)
 	}
 	roleResources := []entity.RoleResource{
-		{ID: 1, RoleID: 1, ResourceType: 1, Action: roleActionEnable | roleActionWrite},
-		{ID: 2, RoleID: 1, ResourceType: 2, Action: roleActionRead | roleActionShare},
+		{ID: 1, RoleID: 1, ResourceType: entity.RoleResourceTypeDataset, Action: entity.RoleActionEnable | entity.RoleActionWrite},
+		{ID: 2, RoleID: 1, ResourceType: entity.RoleResourceTypeChat, Action: entity.RoleActionRead | entity.RoleActionShare},
 	}
 	if err := db.Create(&roleResources).Error; err != nil {
 		t.Fatalf("create role resources: %v", err)
@@ -155,9 +156,9 @@ func TestSystemRoleDefaultModels(t *testing.T) {
 		t.Fatalf("create tenant role: %v", err)
 	}
 	if err := db.Create(&entity.TenantModelProvider{
-		ID: "provider-1", UserID: "model-owner", TenantID: "tenant-1", ProviderName: "OpenAI",
+		ID: "provider-1", ProviderName: "OpenAI",
 	}).Error; err != nil {
-		t.Fatalf("create model provider: %v", err)
+		t.Fatalf("create system model provider: %v", err)
 	}
 	if err := db.Create(&entity.TenantModelInstance{
 		ID: "instance-1", InstanceName: "default", ProviderID: "provider-1", APIKey: "key", Status: "active",
@@ -169,6 +170,22 @@ func TestSystemRoleDefaultModels(t *testing.T) {
 		ModelType: int(entity.ModelTypeChat), Status: "active",
 	}).Error; err != nil {
 		t.Fatalf("create chat model: %v", err)
+	}
+	if err := db.Create(&entity.TenantModelProvider{
+		ID: "provider-tenant", UserID: "model-owner", TenantID: "tenant-1", ProviderName: "OpenAI",
+	}).Error; err != nil {
+		t.Fatalf("create tenant model provider: %v", err)
+	}
+	if err := db.Create(&entity.TenantModelInstance{
+		ID: "instance-tenant", InstanceName: "tenant-default", ProviderID: "provider-tenant", APIKey: "key", Status: "active",
+	}).Error; err != nil {
+		t.Fatalf("create tenant model instance: %v", err)
+	}
+	if err := db.Create(&entity.TenantModel{
+		ID: "model-tenant", ModelName: "tenant-chat-model", ProviderID: "provider-tenant", InstanceID: "instance-tenant",
+		ModelType: int(entity.ModelTypeChat), Status: "active",
+	}).Error; err != nil {
+		t.Fatalf("create tenant chat model: %v", err)
 	}
 
 	service := NewService()
@@ -199,8 +216,13 @@ func TestSystemRoleDefaultModels(t *testing.T) {
 		t.Fatalf("ShowRoleDefaultModels() after set = %#v, want one partial configuration", result)
 	}
 	if items[0]["role_id"] != role.ID || items[0]["model_type"] != "llm" ||
-		items[0]["model_id"] != "model-1" || items[0]["tenant_id"] != "model-owner" {
-		t.Fatalf("default model item = %#v, want model owner and selected model", items[0])
+		items[0]["model_id"] != "model-1" || items[0]["tenant_id"] != "" {
+		t.Fatalf("default model item = %#v, want system model and empty legacy tenant_id", items[0])
+	}
+	if _, err := service.SetRoleDefaultModel(t.Context(), "public", "model-tenant", "llm"); err == nil {
+		t.Fatal("SetRoleDefaultModel() accepted a tenant-owned model for a system role")
+	} else {
+		assertRoleErrorCode(t, err, common.CodeConflict)
 	}
 
 	if _, err := service.SetRoleDefaultModel(t.Context(), "public", "model-1", "embedding"); err == nil {
@@ -226,7 +248,7 @@ func TestSystemRoleDefaultModels(t *testing.T) {
 	completeRows := make([]entity.RoleDefaultModel, 0, len(roleDefaultModelTypes))
 	for modelType := range roleDefaultModelTypes {
 		completeRows = append(completeRows, entity.RoleDefaultModel{
-			RoleID: role.ID, ModelType: modelType, ModelID: "model-" + modelType, TenantID: "model-owner",
+			RoleID: role.ID, ModelType: modelType, ModelID: "model-" + modelType,
 		})
 	}
 	if err := db.Create(&completeRows).Error; err != nil {
@@ -287,7 +309,7 @@ func TestListRolesWithPermissionRoute(t *testing.T) {
 }
 
 func TestSystemRoleCRUDAndPermissionChanges(t *testing.T) {
-	db := testutil.SetupTestDB(t, &entity.Role{}, &entity.RoleResource{}, &entity.Tenant{})
+	db := testutil.SetupTestDB(t, &entity.Role{}, &entity.RoleResource{}, &entity.Tenant{}, &entity.PermissionChangeLog{})
 	t.Cleanup(testutil.ReplaceDBForTest(t, db))
 
 	tenantID := "tenant-1"
@@ -319,16 +341,54 @@ func TestSystemRoleCRUDAndPermissionChanges(t *testing.T) {
 		t.Fatalf("updated description = %#v", updated["description"])
 	}
 
-	if _, err = adminService.GrantRolePermission(t.Context(), "reader", []string{"read", "share"}, "dataset"); err != nil {
+	if _, err = adminService.GrantRolePermission(t.Context(), "system-admin", "reader", []string{"read", "share"}, "dataset"); err != nil {
 		t.Fatalf("GrantRolePermission() error = %v", err)
 	}
-	if _, err = adminService.RevokeRolePermission(t.Context(), "reader", []string{"share"}, "dataset"); err != nil {
+	if _, err = adminService.GrantRolePermission(t.Context(), "system-admin", "reader", []string{"read"}, "dataset"); err != nil {
+		t.Fatalf("GrantRolePermission() for unchanged permission error = %v", err)
+	}
+	if _, err = adminService.RevokeRolePermission(t.Context(), "system-admin", "reader", []string{"share"}, "dataset"); err != nil {
 		t.Fatalf("RevokeRolePermission() error = %v", err)
 	}
-	if _, err = adminService.GrantRolePermission(t.Context(), "reader", []string{"write"}, "model_provider"); err == nil {
+	if _, err = adminService.GrantRolePermission(t.Context(), "system-admin", "reader", []string{"write"}, "model_provider"); err == nil {
 		t.Fatal("GrantRolePermission() accepted write on model_provider")
 	} else {
 		assertRoleErrorCode(t, err, common.CodeBadRequest)
+	}
+
+	var changeLogs []entity.PermissionChangeLog
+	if err = db.Order("create_time ASC").Find(&changeLogs).Error; err != nil {
+		t.Fatalf("load role permission audit logs: %v", err)
+	}
+	if len(changeLogs) != 2 {
+		t.Fatalf("got %d role permission audit logs, want 2 effective changes", len(changeLogs))
+	}
+	logsByAction := make(map[string]entity.PermissionChangeLog, len(changeLogs))
+	for _, changeLog := range changeLogs {
+		logsByAction[changeLog.ActionType] = changeLog
+	}
+	grantLog, hasGrantLog := logsByAction["grant"]
+	revokeLog, hasRevokeLog := logsByAction["revoke"]
+	if !hasGrantLog || !hasRevokeLog {
+		t.Fatalf("role permission audit actions = %#v, want grant and revoke", logsByAction)
+	}
+	roleIDString := strconv.FormatInt(int64(roleID), 10)
+	if grantLog.TargetType != "role" || grantLog.TargetID != roleIDString ||
+		grantLog.ResourceType != "role_permission" || grantLog.ResourceID != roleIDString ||
+		grantLog.OldPermission != 0 || grantLog.NewPermission != entity.RoleActionRead|entity.RoleActionShare ||
+		grantLog.EventType != "role.permission.granted" ||
+		grantLog.ScopeType != "system" || grantLog.ActorUserID == nil || *grantLog.ActorUserID != "system-admin" ||
+		grantLog.BeforeData == nil || !strings.Contains(*grantLog.BeforeData, `"resource":"dataset"`) ||
+		grantLog.AfterData == nil || !strings.Contains(*grantLog.AfterData, `"permission":10`) {
+		t.Fatalf("grant audit log = %#v, missing actor, scope, target, or before/after state", grantLog)
+	}
+	if revokeLog.TargetType != "role" || revokeLog.TargetID != roleIDString ||
+		revokeLog.OldPermission != entity.RoleActionRead|entity.RoleActionShare || revokeLog.NewPermission != entity.RoleActionRead ||
+		revokeLog.EventType != "role.permission.revoked" ||
+		revokeLog.ActorUserID == nil || *revokeLog.ActorUserID != "system-admin" ||
+		revokeLog.BeforeData == nil || !strings.Contains(*revokeLog.BeforeData, `"permission":10`) ||
+		revokeLog.AfterData == nil || !strings.Contains(*revokeLog.AfterData, `"permission":2`) {
+		t.Fatalf("revoke audit log = %#v, missing old/new permission state", revokeLog)
 	}
 
 	permissionsResult, err := adminService.ShowRolePermission(t.Context(), "reader")
@@ -352,15 +412,15 @@ func TestSystemRoleCRUDAndPermissionChanges(t *testing.T) {
 	}
 }
 
-func TestDropSystemRoleChecksTenantAssignment(t *testing.T) {
-	db := testutil.SetupTestDB(t, &entity.Role{}, &entity.RoleResource{}, &entity.RoleDefaultModel{}, &entity.Tenant{})
+func TestDropSystemRoleChecksAssignments(t *testing.T) {
+	db := testutil.SetupTestDB(t, &entity.Role{}, &entity.RoleResource{}, &entity.RoleDefaultModel{}, &entity.Tenant{}, &entity.User{})
 	t.Cleanup(testutil.ReplaceDBForTest(t, db))
 
 	role := entity.Role{RoleName: "tenant_default"}
 	if err := db.Create(&role).Error; err != nil {
 		t.Fatalf("create system role: %v", err)
 	}
-	if err := db.Create(&entity.RoleResource{RoleID: role.ID, ResourceType: 1, Action: roleActionRead}).Error; err != nil {
+	if err := db.Create(&entity.RoleResource{RoleID: role.ID, ResourceType: entity.RoleResourceTypeDataset, Action: entity.RoleActionRead}).Error; err != nil {
 		t.Fatalf("create role permission: %v", err)
 	}
 	if err := db.Create(&entity.RoleDefaultModel{
@@ -371,25 +431,29 @@ func TestDropSystemRoleChecksTenantAssignment(t *testing.T) {
 
 	assignedRoleID := role.ID
 	if err := db.Create(&entity.Tenant{
-		ID:        "tenant-1",
-		LLMID:     "builtin",
-		EmbdID:    "builtin",
-		ASRID:     "builtin",
-		RerankID:  "builtin",
-		ParserIDs: "{}",
-		RoleID:    &assignedRoleID,
+		ID: "tenant-1", LLMID: "builtin", EmbdID: "builtin", ASRID: "builtin", RerankID: "builtin",
+		ParserIDs: "{}", RoleID: &assignedRoleID,
 	}).Error; err != nil {
-		t.Fatalf("create tenant assignment: %v", err)
+		t.Fatalf("create tenant default role assignment: %v", err)
 	}
-
 	if _, err := NewService().DropRole(t.Context(), role.RoleName); err == nil {
-		t.Fatal("DropRole() deleted a system role assigned to a Tenant")
+		t.Fatal("DropRole() deleted a system role assigned as a Tenant default")
 	} else {
 		assertRoleErrorCode(t, err, common.CodeConflict)
 	}
-
 	if err := db.Model(&entity.Tenant{}).Where("id = ?", "tenant-1").Update("role_id", nil).Error; err != nil {
-		t.Fatalf("clear tenant role assignment: %v", err)
+		t.Fatalf("clear tenant default role assignment: %v", err)
+	}
+	if err := db.Create(&entity.User{ID: "user-1", Nickname: "Member", Email: "member@example.com", RoleID: &assignedRoleID}).Error; err != nil {
+		t.Fatalf("create user role assignment: %v", err)
+	}
+	if _, err := NewService().DropRole(t.Context(), role.RoleName); err == nil {
+		t.Fatal("DropRole() deleted a system role assigned to a user")
+	} else {
+		assertRoleErrorCode(t, err, common.CodeConflict)
+	}
+	if err := db.Model(&entity.User{}).Where("id = ?", "user-1").Update("role_id", nil).Error; err != nil {
+		t.Fatalf("clear user role assignment: %v", err)
 	}
 	if _, err := NewService().DropRole(t.Context(), role.RoleName); err != nil {
 		t.Fatalf("DropRole() error = %v", err)
@@ -408,6 +472,83 @@ func TestDropSystemRoleChecksTenantAssignment(t *testing.T) {
 	}
 	if remainingDefaultModels != 0 {
 		t.Fatalf("role default models remaining = %d, want 0", remainingDefaultModels)
+	}
+}
+
+func TestUpdateUserRoleRecordsAudit(t *testing.T) {
+	db := testutil.SetupTestDB(t, &entity.User{}, &entity.Role{}, &entity.PermissionChangeLog{})
+	t.Cleanup(testutil.ReplaceDBForTest(t, db))
+
+	user := entity.User{ID: "user-1", Nickname: "Member", Email: "member@example.com"}
+	if err := db.Create(&user).Error; err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+	roles := []entity.Role{{RoleName: "viewer"}, {RoleName: "editor"}}
+	if err := db.Create(&roles).Error; err != nil {
+		t.Fatalf("create system roles: %v", err)
+	}
+	tenantID := "tenant-1"
+	if err := db.Create(&entity.Role{RoleName: "tenant_reader", TenantID: &tenantID}).Error; err != nil {
+		t.Fatalf("create tenant role: %v", err)
+	}
+
+	service := NewService()
+	result, err := service.UpdateUserRole(t.Context(), "system-admin", user.Email, "viewer")
+	if err != nil {
+		t.Fatalf("UpdateUserRole() initial assignment error = %v", err)
+	}
+	if result["role_id"] != roles[0].ID || result["role_name"] != "viewer" {
+		t.Fatalf("UpdateUserRole() result = %#v, want viewer role", result)
+	}
+	if _, err = service.UpdateUserRole(t.Context(), "system-admin", user.Email, "viewer"); err != nil {
+		t.Fatalf("UpdateUserRole() unchanged role error = %v", err)
+	}
+	if _, err = service.UpdateUserRole(t.Context(), "system-admin", user.Email, "editor"); err != nil {
+		t.Fatalf("UpdateUserRole() reassignment error = %v", err)
+	}
+	if _, err = service.UpdateUserRole(t.Context(), "system-admin", user.Email, "tenant_reader"); err == nil {
+		t.Fatal("UpdateUserRole() accepted a tenant-specific role")
+	} else {
+		assertRoleErrorCode(t, err, common.CodeNotFound)
+	}
+
+	var updatedUser entity.User
+	if err = db.Where("id = ?", user.ID).Take(&updatedUser).Error; err != nil {
+		t.Fatalf("reload user: %v", err)
+	}
+	if updatedUser.RoleID == nil || *updatedUser.RoleID != roles[1].ID {
+		t.Fatalf("user role_id = %v, want %d", updatedUser.RoleID, roles[1].ID)
+	}
+
+	var changeLogs []entity.PermissionChangeLog
+	if err = db.Where("event_type = ?", "user.role.updated").Find(&changeLogs).Error; err != nil {
+		t.Fatalf("load user role audit logs: %v", err)
+	}
+	if len(changeLogs) != 2 {
+		t.Fatalf("got %d user role audit logs, want 2 actual changes", len(changeLogs))
+	}
+	var initialAssignment, reassignment *entity.PermissionChangeLog
+	for i := range changeLogs {
+		changeLog := &changeLogs[i]
+		if changeLog.TargetType != "user" || changeLog.TargetID != user.ID || changeLog.ResourceType != "role" ||
+			changeLog.ScopeType != "system" || changeLog.ActorUserID == nil || *changeLog.ActorUserID != "system-admin" ||
+			changeLog.BeforeData == nil || changeLog.AfterData == nil {
+			t.Fatalf("user role audit log = %#v, missing target, actor, scope, or snapshots", changeLog)
+		}
+		if strings.Contains(*changeLog.AfterData, `"role_name":"viewer"`) {
+			initialAssignment = changeLog
+		}
+		if strings.Contains(*changeLog.AfterData, `"role_name":"editor"`) {
+			reassignment = changeLog
+		}
+	}
+	if initialAssignment == nil || !strings.Contains(*initialAssignment.BeforeData, `"role_id":null`) ||
+		!strings.Contains(*initialAssignment.AfterData, `"role_id":1`) {
+		t.Fatalf("initial assignment audit log = %#v, want null to viewer role transition", initialAssignment)
+	}
+	if reassignment == nil || !strings.Contains(*reassignment.BeforeData, `"role_name":"viewer"`) ||
+		!strings.Contains(*reassignment.AfterData, `"role_name":"editor"`) {
+		t.Fatalf("reassignment audit log = %#v, want viewer to editor transition", reassignment)
 	}
 }
 

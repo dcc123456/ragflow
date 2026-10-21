@@ -164,6 +164,10 @@ func (h *Handler) GrantRolePermission(c *gin.Context) {
 		common.ErrorWithCode(c, common.CodeBadRequest, "Role name is required")
 		return
 	}
+	actorUserID, ok := requireAdminActorID(c)
+	if !ok {
+		return
+	}
 
 	var req GrantRolePermissionHTTPRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -172,7 +176,7 @@ func (h *Handler) GrantRolePermission(c *gin.Context) {
 	}
 
 	ctx := c.Request.Context()
-	result, err := h.service.GrantRolePermission(ctx, roleName, req.Actions, req.Resource)
+	result, err := h.service.GrantRolePermission(ctx, actorUserID, roleName, req.Actions, req.Resource)
 	if err != nil {
 		writeRoleError(c, err)
 		return
@@ -194,6 +198,10 @@ func (h *Handler) RevokeRolePermission(c *gin.Context) {
 		common.ErrorWithCode(c, common.CodeBadRequest, "Role name is required")
 		return
 	}
+	actorUserID, ok := requireAdminActorID(c)
+	if !ok {
+		return
+	}
 
 	var req RevokeRolePermissionHTTPRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -202,7 +210,7 @@ func (h *Handler) RevokeRolePermission(c *gin.Context) {
 	}
 
 	ctx := c.Request.Context()
-	result, err := h.service.RevokeRolePermission(ctx, roleName, req.Actions, req.Resource)
+	result, err := h.service.RevokeRolePermission(ctx, actorUserID, roleName, req.Actions, req.Resource)
 	if err != nil {
 		writeRoleError(c, err)
 		return
@@ -317,24 +325,34 @@ func writeRoleError(c *gin.Context, err error) {
 	common.ErrorWithCode(c, common.CodeServerError, err.Error())
 }
 
-func (h *Handler) ListModelProviders(c *gin.Context) {
-
-	keywords := ""
-	if queryKeywords := c.Query("available"); queryKeywords != "" {
-		keywords = queryKeywords
+func writeAdminModelError(c *gin.Context, err error) {
+	var coded *common.CodedError
+	if errors.As(err, &coded) {
+		common.ErrorWithCode(c, coded.Code, coded.Message)
+		return
 	}
+	common.ErrorWithCode(c, common.CodeServerError, err.Error())
+}
 
-	// convert keywords to small case
-	keywords = strings.ToLower(keywords)
-
+func (h *Handler) ListModelProviders(c *gin.Context) {
 	ctx := c.Request.Context()
-	result, err := h.service.ListModelProviders(ctx)
+	result, err := h.service.ListModelProviders(ctx, strings.EqualFold(strings.TrimSpace(c.Query("available")), "true"))
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		writeAdminModelError(c, err)
 		return
 	}
 
 	common.SuccessWithData(c, result, "List model providers successfully")
+}
+
+func (h *Handler) ListSystemAddedModels(c *gin.Context) {
+	result, err := h.service.ListSystemAddedModels(c.Request.Context(), c.Query("type"))
+	if err != nil {
+		writeAdminModelError(c, err)
+		return
+	}
+
+	common.SuccessWithData(c, result, "success")
 }
 
 type AddProviderRequest struct {
@@ -348,11 +366,10 @@ func (h *Handler) AddModelProvider(c *gin.Context) {
 		return
 	}
 
-	userID := c.GetString("user_id")
 	ctx := c.Request.Context()
-	result, err := h.service.AddModelProvider(ctx, req.ProviderName, userID)
+	result, err := h.service.AddModelProvider(ctx, req.ProviderName)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		writeAdminModelError(c, err)
 		return
 	}
 
@@ -374,22 +391,17 @@ func (h *Handler) ShowProvider(c *gin.Context) {
 	common.SuccessWithData(c, provider, "success")
 }
 
-type DeleteProviderRequest struct {
-	ProviderNames []string `json:"provider_names" binding:"required"`
-}
-
 func (h *Handler) DeleteModelProvider(c *gin.Context) {
-	var req DeleteProviderRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	providerName := strings.TrimSpace(c.Param("provider_name"))
+	if providerName == "" {
 		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, 400, nil, "Provider name is required")
 		return
 	}
 
-	userID := c.GetString("user_id")
 	ctx := c.Request.Context()
-	result, err := h.service.DeleteModelProviders(ctx, userID, req.ProviderNames)
+	result, err := h.service.DeleteModelProviders(ctx, []string{providerName})
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		writeAdminModelError(c, err)
 		return
 	}
 
@@ -437,11 +449,10 @@ func (h *Handler) ListModelInstances(c *gin.Context) {
 		return
 	}
 
-	userID := c.GetString("user_id")
 	ctx := c.Request.Context()
-	result, err := h.service.ListModelInstances(ctx, userID, providerName)
+	result, err := h.service.ListModelInstances(ctx, providerName)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		writeAdminModelError(c, err)
 		return
 	}
 
@@ -459,11 +470,10 @@ func (h *Handler) ShowProviderInstance(c *gin.Context) {
 		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, 400, nil, "Instance name is required")
 		return
 	}
-	userID := c.GetString("user_id")
 	ctx := c.Request.Context()
-	result, err := h.service.ShowProviderInstance(ctx, userID, providerName, instanceName)
+	result, err := h.service.ShowProviderInstance(ctx, providerName, instanceName)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		writeAdminModelError(c, err)
 		return
 	}
 
@@ -481,11 +491,10 @@ func (h *Handler) ShowProviderInstanceBalance(c *gin.Context) {
 		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, 400, nil, "Instance name is required")
 		return
 	}
-	userID := c.GetString("user_id")
 	ctx := c.Request.Context()
-	result, err := h.service.ShowProviderInstanceBalance(ctx, userID, providerName, instanceName)
+	result, err := h.service.ShowProviderInstanceBalance(ctx, providerName, instanceName)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		writeAdminModelError(c, err)
 		return
 	}
 
@@ -503,11 +512,10 @@ func (h *Handler) CheckInstanceConnection(c *gin.Context) {
 		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, 400, nil, "Instance name is required")
 		return
 	}
-	userID := c.GetString("user_id")
 	ctx := c.Request.Context()
-	result, err := h.service.CheckInstanceConnection(ctx, userID, providerName, instanceName)
+	result, err := h.service.CheckInstanceConnection(ctx, providerName, instanceName)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		writeAdminModelError(c, err)
 		return
 	}
 
@@ -533,20 +541,21 @@ func (h *Handler) CheckProviderConnection(c *gin.Context) {
 		return
 	}
 
-	userID := c.GetString("user_id")
 	ctx := c.Request.Context()
-	result, err := h.service.CheckProviderConnection(ctx, userID, providerName, req.Region, req.APIKey, req.BaseURL)
+	result, err := h.service.CheckProviderConnection(ctx, providerName, req.Region, req.APIKey, req.BaseURL)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		writeAdminModelError(c, err)
 		return
 	}
 
-	common.SuccessWithData(c, result, "Model instance connection checked successfully")
+	common.SuccessWithData(c, result, "Model provider connection checked successfully")
 }
 
 type AlterProviderInstanceRequest struct {
-	InstanceName string `json:"instance_name"`
-	APIKey       string `json:"api_key"`
+	InstanceName string  `json:"instance_name"`
+	APIKey       string  `json:"api_key"`
+	Region       *string `json:"region"`
+	BaseURL      *string `json:"base_url"`
 }
 
 func (h *Handler) AlterProviderInstance(c *gin.Context) {
@@ -568,15 +577,10 @@ func (h *Handler) AlterProviderInstance(c *gin.Context) {
 		return
 	}
 
-	userID := c.GetString("user_id")
-	if userID == "" {
-		common.ErrorWithCode(c, common.CodeUnauthorized, "Unauthorized")
-		return
-	}
 	ctx := c.Request.Context()
-	result, err := h.service.AlterProviderInstance(ctx, userID, providerName, instanceName, req.InstanceName, req.APIKey)
+	result, err := h.service.AlterProviderInstance(ctx, providerName, instanceName, req.InstanceName, req.APIKey, req.Region, req.BaseURL)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		writeAdminModelError(c, err)
 		return
 	}
 
@@ -600,11 +604,10 @@ func (h *Handler) AddModelInstance(c *gin.Context) {
 		return
 	}
 
-	userID := c.GetString("user_id")
 	ctx := c.Request.Context()
-	result, err := h.service.AddModelInstance(ctx, userID, providerName, req.InstanceName)
+	result, err := h.service.AddModelInstance(ctx, providerName, req.InstanceName)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		writeAdminModelError(c, err)
 		return
 	}
 
@@ -628,15 +631,14 @@ func (h *Handler) DeleteModelInstance(c *gin.Context) {
 		return
 	}
 
-	userID := c.GetString("user_id")
 	ctx := c.Request.Context()
-	result, err := h.service.DeleteModelInstances(ctx, userID, providerName, req.InstanceNames)
+	result, err := h.service.DeleteModelInstances(ctx, providerName, req.InstanceNames)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		writeAdminModelError(c, err)
 		return
 	}
 
-	common.SuccessWithData(c, result, "Model provider added successfully")
+	common.SuccessWithData(c, result, "Model instances deleted successfully")
 }
 
 func (h *Handler) ListInstanceModels(c *gin.Context) {
@@ -652,15 +654,14 @@ func (h *Handler) ListInstanceModels(c *gin.Context) {
 		return
 	}
 
-	userID := c.GetString("user_id")
 	ctx := c.Request.Context()
-	result, err := h.service.ListInstanceModels(ctx, userID, providerName, instanceName)
+	result, err := h.service.ListInstanceModels(ctx, providerName, instanceName, strings.EqualFold(strings.TrimSpace(c.Query("supported")), "true"))
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		writeAdminModelError(c, err)
 		return
 	}
 
-	common.SuccessWithData(c, result, "Models listed successfully")
+	common.SuccessWithData(c, result, "Model status updated successfully")
 }
 
 type EnableOrDisableModelRequest struct {
@@ -696,11 +697,10 @@ func (h *Handler) EnableOrDisableModel(c *gin.Context) {
 		return
 	}
 
-	userID := c.GetString("user_id")
 	ctx := c.Request.Context()
-	result, err := h.service.EnableOrDisableModel(ctx, userID, providerName, instanceName, modelName, modelID, req.Status)
+	result, err := h.service.EnableOrDisableModel(ctx, providerName, instanceName, modelName, modelID, req.Status)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		writeAdminModelError(c, err)
 		return
 	}
 
@@ -730,11 +730,10 @@ func (h *Handler) AddModels(c *gin.Context) {
 		return
 	}
 
-	userID := c.GetString("user_id")
 	ctx := c.Request.Context()
-	result, err := h.service.AddModels(ctx, userID, providerName, instanceName, req.ModelNames)
+	result, err := h.service.AddModels(ctx, providerName, instanceName, req.ModelNames)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		writeAdminModelError(c, err)
 		return
 	}
 
@@ -764,15 +763,14 @@ func (h *Handler) DeleteModels(c *gin.Context) {
 		return
 	}
 
-	userID := c.GetString("user_id")
 	ctx := c.Request.Context()
-	result, err := h.service.DeleteModels(ctx, userID, providerName, instanceName, req.ModelNames)
+	result, err := h.service.DeleteModels(ctx, providerName, instanceName, req.ModelNames)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		writeAdminModelError(c, err)
 		return
 	}
 
-	common.SuccessWithData(c, result, "Model deleted successfully")
+	common.SuccessWithData(c, result, "Models deleted successfully")
 }
 
 // GetSystemFingerprint handle get system fingerprint
@@ -1080,11 +1078,19 @@ func (h *Handler) UpdateUserRole(c *gin.Context) {
 		common.ErrorWithCode(c, common.CodeBadRequest, "Role name is required")
 		return
 	}
+	actorUserID, ok := requireAdminActorID(c)
+	if !ok {
+		return
+	}
 	ctx := c.Request.Context()
 
-	result, err := h.service.UpdateUserRole(ctx, username, req.RoleName)
+	result, err := h.service.UpdateUserRole(ctx, actorUserID, username, req.RoleName)
 	if err != nil {
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		if errors.Is(err, common.ErrUserNotFound) {
+			common.ErrorWithCode(c, common.CodeNotFound, "User not found")
+			return
+		}
+		writeRoleError(c, err)
 		return
 	}
 

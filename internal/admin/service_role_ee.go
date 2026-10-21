@@ -18,6 +18,7 @@ package admin
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -31,33 +32,26 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-const (
-	roleActionEnable int32 = 1 << iota
-	roleActionRead
-	roleActionWrite
-	roleActionShare
-)
-
 var roleResourceTypes = map[string]int64{
-	"dataset":        1,
-	"chat":           2,
-	"agent":          3,
-	"search":         4,
-	"file":           5,
-	"team":           6,
-	"memory":         7,
-	"model_provider": 8,
+	"dataset":        entity.RoleResourceTypeDataset,
+	"chat":           entity.RoleResourceTypeChat,
+	"agent":          entity.RoleResourceTypeAgent,
+	"search":         entity.RoleResourceTypeSearch,
+	"file":           entity.RoleResourceTypeFile,
+	"team":           entity.RoleResourceTypeTeam,
+	"memory":         entity.RoleResourceTypeMemory,
+	"model_provider": entity.RoleResourceTypeModelProvider,
 }
 
 var roleResourceNamesByType = map[int64]string{
-	1: "dataset",
-	2: "chat",
-	3: "agent",
-	4: "search",
-	5: "file",
-	6: "team",
-	7: "memory",
-	8: "model_provider",
+	entity.RoleResourceTypeDataset:       "dataset",
+	entity.RoleResourceTypeChat:          "chat",
+	entity.RoleResourceTypeAgent:         "agent",
+	entity.RoleResourceTypeSearch:        "search",
+	entity.RoleResourceTypeFile:          "file",
+	entity.RoleResourceTypeTeam:          "team",
+	entity.RoleResourceTypeMemory:        "memory",
+	entity.RoleResourceTypeModelProvider: "model_provider",
 }
 
 var roleResourceNames = []string{
@@ -72,10 +66,10 @@ var roleResourceNames = []string{
 }
 
 var roleActionMasks = map[string]int32{
-	"enable": roleActionEnable,
-	"read":   roleActionRead,
-	"write":  roleActionWrite,
-	"share":  roleActionShare,
+	"enable": entity.RoleActionEnable,
+	"read":   entity.RoleActionRead,
+	"write":  entity.RoleActionWrite,
+	"share":  entity.RoleActionShare,
 }
 
 var roleDefaultModelTypes = map[string]entity.ModelType{
@@ -171,7 +165,7 @@ func (s *Service) UpdateRole(ctx context.Context, roleName, description string) 
 	return roleResponse(role), nil
 }
 
-// DropRole removes a system role that is not assigned to any Tenant.
+// DropRole removes a system role that is not assigned to any user or Tenant default.
 func (s *Service) DropRole(ctx context.Context, roleName string) (map[string]interface{}, error) {
 	var deletedRole *entity.Role
 	err := dao.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -182,10 +176,17 @@ func (s *Service) DropRole(ctx context.Context, roleName string) (map[string]int
 
 		var tenantCount int64
 		if err := tx.Model(&entity.Tenant{}).Where("role_id = ?", role.ID).Count(&tenantCount).Error; err != nil {
-			return fmt.Errorf("failed to check system role assignments: %w", err)
+			return fmt.Errorf("failed to check tenant default role assignments: %w", err)
 		}
 		if tenantCount > 0 {
-			return common.NewCodedError(common.CodeConflict, "Role is assigned to a Tenant and cannot be deleted")
+			return common.NewCodedError(common.CodeConflict, "Role is assigned as a Tenant default and cannot be deleted")
+		}
+		var userCount int64
+		if err := tx.Model(&entity.User{}).Where("role_id = ?", role.ID).Count(&userCount).Error; err != nil {
+			return fmt.Errorf("failed to check user role assignments: %w", err)
+		}
+		if userCount > 0 {
+			return common.NewCodedError(common.CodeConflict, "Role is assigned to a user and cannot be deleted")
 		}
 
 		if err := tx.Where("role_id = ?", role.ID).Delete(&entity.RoleResource{}).Error; err != nil {
@@ -233,16 +234,20 @@ func (s *Service) ShowRolePermission(ctx context.Context, roleName string) (map[
 }
 
 // GrantRolePermission adds the requested permission bits for one resource.
-func (s *Service) GrantRolePermission(ctx context.Context, roleName string, actions []string, resource string) (map[string]interface{}, error) {
-	return s.changeRolePermission(ctx, roleName, actions, resource, true)
+func (s *Service) GrantRolePermission(ctx context.Context, actorUserID, roleName string, actions []string, resource string) (map[string]interface{}, error) {
+	return s.changeRolePermission(ctx, actorUserID, roleName, actions, resource, true)
 }
 
 // RevokeRolePermission removes the requested permission bits for one resource.
-func (s *Service) RevokeRolePermission(ctx context.Context, roleName string, actions []string, resource string) (map[string]interface{}, error) {
-	return s.changeRolePermission(ctx, roleName, actions, resource, false)
+func (s *Service) RevokeRolePermission(ctx context.Context, actorUserID, roleName string, actions []string, resource string) (map[string]interface{}, error) {
+	return s.changeRolePermission(ctx, actorUserID, roleName, actions, resource, false)
 }
 
-func (s *Service) changeRolePermission(ctx context.Context, roleName string, actions []string, resource string, grant bool) (map[string]interface{}, error) {
+func (s *Service) changeRolePermission(ctx context.Context, actorUserID, roleName string, actions []string, resource string, grant bool) (map[string]interface{}, error) {
+	actorUserID = strings.TrimSpace(actorUserID)
+	if actorUserID == "" {
+		return nil, common.NewCodedError(common.CodeUnauthorized, "Admin user is required")
+	}
 	resource = strings.ToLower(strings.TrimSpace(resource))
 	resourceType, ok := roleResourceTypes[resource]
 	if !ok {
@@ -281,29 +286,35 @@ func (s *Service) changeRolePermission(ctx context.Context, roleName string, act
 		}
 
 		if len(rows) == 0 {
-			if updatedMask == 0 {
-				return nil
+			if updatedMask != 0 {
+				if err := tx.Create(&entity.RoleResource{
+					RoleID:       role.ID,
+					ResourceType: resourceType,
+					Action:       updatedMask,
+				}).Error; err != nil {
+					return fmt.Errorf("failed to create system role permission: %w", err)
+				}
 			}
-			return tx.Create(&entity.RoleResource{
-				RoleID:       role.ID,
-				ResourceType: resourceType,
-				Action:       updatedMask,
-			}).Error
-		}
-
-		if updatedMask == 0 {
-			return tx.Where("role_id = ? AND resource_type = ?", role.ID, resourceType).
-				Delete(&entity.RoleResource{}).Error
-		}
-
-		primaryRow := rows[0]
-		if err := tx.Model(&entity.RoleResource{}).Where("id = ?", primaryRow.ID).Update("action", updatedMask).Error; err != nil {
-			return fmt.Errorf("failed to update system role permissions: %w", err)
-		}
-		if len(rows) > 1 {
-			if err := tx.Where("role_id = ? AND resource_type = ? AND id <> ?", role.ID, resourceType, primaryRow.ID).
+		} else if updatedMask == 0 {
+			if err := tx.Where("role_id = ? AND resource_type = ?", role.ID, resourceType).
 				Delete(&entity.RoleResource{}).Error; err != nil {
-				return fmt.Errorf("failed to consolidate duplicate system role permissions: %w", err)
+				return fmt.Errorf("failed to delete system role permissions: %w", err)
+			}
+		} else {
+			primaryRow := rows[0]
+			if err := tx.Model(&entity.RoleResource{}).Where("id = ?", primaryRow.ID).Update("action", updatedMask).Error; err != nil {
+				return fmt.Errorf("failed to update system role permissions: %w", err)
+			}
+			if len(rows) > 1 {
+				if err := tx.Where("role_id = ? AND resource_type = ? AND id <> ?", role.ID, resourceType, primaryRow.ID).
+					Delete(&entity.RoleResource{}).Error; err != nil {
+					return fmt.Errorf("failed to consolidate duplicate system role permissions: %w", err)
+				}
+			}
+		}
+		if updatedMask != current {
+			if err := recordRolePermissionChange(tx, actorUserID, role, resource, grant, current, updatedMask); err != nil {
+				return err
 			}
 		}
 		return nil
@@ -318,6 +329,102 @@ func (s *Service) changeRolePermission(ctx context.Context, roleName string, act
 		"resource":   resource,
 		"permission": updatedMask,
 	}, nil
+}
+
+func recordRolePermissionChange(tx *gorm.DB, actorUserID string, role *entity.Role, resource string, grant bool, before, after int32) error {
+	beforeData, err := json.Marshal(map[string]interface{}{
+		"role_id":    role.ID,
+		"role_name":  role.RoleName,
+		"resource":   resource,
+		"permission": before,
+	})
+	if err != nil {
+		return fmt.Errorf("encode previous role permission: %w", err)
+	}
+	afterData, err := json.Marshal(map[string]interface{}{
+		"role_id":    role.ID,
+		"role_name":  role.RoleName,
+		"resource":   resource,
+		"permission": after,
+	})
+	if err != nil {
+		return fmt.Errorf("encode updated role permission: %w", err)
+	}
+	actionType := "grant"
+	eventType := "role.permission.granted"
+	if !grant {
+		actionType = "revoke"
+		eventType = "role.permission.revoked"
+	}
+	actorID := actorUserID
+	status := string(entity.StatusValid)
+	roleID := fmt.Sprint(role.ID)
+	log := &entity.PermissionChangeLog{
+		ID:            common.GenerateUUID(),
+		TargetType:    "role",
+		TargetID:      roleID,
+		ResourceType:  "role_permission",
+		ResourceID:    roleID,
+		OldPermission: before,
+		NewPermission: after,
+		ActionType:    actionType,
+		EventType:     eventType,
+		ActorUserID:   &actorID,
+		ScopeType:     "system",
+		BeforeData:    stringPointer(string(beforeData)),
+		AfterData:     stringPointer(string(afterData)),
+		Status:        &status,
+	}
+	if err := tx.Create(log).Error; err != nil {
+		return fmt.Errorf("record system role permission change: %w", err)
+	}
+	return nil
+}
+
+func recordUserRoleChange(tx *gorm.DB, actorUserID string, user *entity.User, previousRole *entity.Role, role *entity.Role) error {
+	beforeData := map[string]interface{}{
+		"user_id": user.ID,
+		"email":   user.Email,
+		"role_id": user.RoleID,
+	}
+	if previousRole != nil {
+		beforeData["role_name"] = previousRole.RoleName
+	}
+	afterData := map[string]interface{}{
+		"user_id":   user.ID,
+		"email":     user.Email,
+		"role_id":   role.ID,
+		"role_name": role.RoleName,
+	}
+	encodedBefore, err := json.Marshal(beforeData)
+	if err != nil {
+		return fmt.Errorf("encode previous user role: %w", err)
+	}
+	encodedAfter, err := json.Marshal(afterData)
+	if err != nil {
+		return fmt.Errorf("encode updated user role: %w", err)
+	}
+	actorID := actorUserID
+	status := string(entity.StatusValid)
+	roleID := fmt.Sprint(role.ID)
+	log := &entity.PermissionChangeLog{
+		ID:           common.GenerateUUID(),
+		TargetType:   "user",
+		TargetID:     user.ID,
+		ResourceType: "role",
+		ResourceID:   roleID,
+		ActionType:   "update",
+		EventType:    "user.role.updated",
+		ActorUserID:  &actorID,
+		ScopeType:    "system",
+		BeforeData:   stringPointer(string(encodedBefore)),
+		AfterData:    stringPointer(string(encodedAfter)),
+		Status:       &status,
+	}
+	if err := tx.Create(log).Error; err != nil {
+		return fmt.Errorf("record system user role change: %w", err)
+	}
+	return nil
 }
 
 // ListResources lists feature resource types supported by role permissions.
@@ -397,10 +504,10 @@ func permissionMatrix(rows []entity.RoleResource) (map[string]map[string]bool, e
 			return nil, fmt.Errorf("unknown role resource type %d for role %d", row.ResourceType, row.RoleID)
 		}
 		actions := permissions[resource]
-		actions["enable"] = actions["enable"] || row.Action&roleActionEnable != 0
-		actions["read"] = actions["read"] || row.Action&roleActionRead != 0
-		actions["write"] = actions["write"] || row.Action&roleActionWrite != 0
-		actions["share"] = actions["share"] || row.Action&roleActionShare != 0
+		actions["enable"] = actions["enable"] || row.Action&entity.RoleActionEnable != 0
+		actions["read"] = actions["read"] || row.Action&entity.RoleActionRead != 0
+		actions["write"] = actions["write"] || row.Action&entity.RoleActionWrite != 0
+		actions["share"] = actions["share"] || row.Action&entity.RoleActionShare != 0
 	}
 	return permissions, nil
 }
@@ -534,8 +641,8 @@ func (s *Service) SetRoleDefaultModel(ctx context.Context, roleName, modelID, mo
 			}
 			return fmt.Errorf("failed to find model provider: %w", err)
 		}
-		if provider.UserID == "" {
-			return common.NewCodedError(common.CodeConflict, "Model provider has no owner")
+		if provider.UserID != "" || provider.TenantID != "" {
+			return common.NewCodedError(common.CodeConflict, "System role defaults require a system model provider")
 		}
 
 		var existing []entity.RoleDefaultModel
@@ -545,12 +652,12 @@ func (s *Service) SetRoleDefaultModel(ctx context.Context, roleName, modelID, mo
 		}
 		if len(existing) == 0 {
 			return tx.Create(&entity.RoleDefaultModel{
-				RoleID: role.ID, ModelType: modelType, ModelID: model.ID, TenantID: provider.UserID,
+				RoleID: role.ID, ModelType: modelType, ModelID: model.ID,
 			}).Error
 		}
 
 		if err := tx.Model(&entity.RoleDefaultModel{}).Where("id = ?", existing[0].ID).
-			Updates(map[string]interface{}{"model_id": model.ID, "tenant_id": provider.UserID}).Error; err != nil {
+			Updates(map[string]interface{}{"model_id": model.ID, "tenant_id": ""}).Error; err != nil {
 			return fmt.Errorf("failed to update role default model: %w", err)
 		}
 		if len(existing) > 1 {
@@ -595,8 +702,7 @@ func roleDefaultModelResponse(row *entity.RoleDefaultModel) map[string]interface
 		"role_id":    row.RoleID,
 		"model_type": row.ModelType,
 		"model_id":   row.ModelID,
-		// This column retains its historical name in the shared schema; it
-		// stores the user who owns the model provider in the Go model schema.
+		// This legacy column is empty for system-level model providers.
 		"tenant_id": row.TenantID,
 	}
 }

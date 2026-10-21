@@ -265,6 +265,9 @@ func (s *UserService) registerOAuthUser(ctx context.Context, channel string, inf
 		if err := s.userDAO.Create(ctx, tx, user); err != nil {
 			return fmt.Errorf("failed to register %s: %w", info.Email, err)
 		}
+		if err := dao.ApplyDefaultTenantInviteEnabled(ctx, tx, tenant); err != nil {
+			return fmt.Errorf("failed to initialize tenant invitation setting: %w", err)
+		}
 		if err := tenantDAO.Create(ctx, tx, tenant); err != nil {
 			return fmt.Errorf("failed to register %s: %w", info.Email, err)
 		}

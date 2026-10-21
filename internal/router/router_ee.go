@@ -46,4 +46,23 @@ func RegisterEENoAuthRouter(apiNoAuth *gin.RouterGroup, r *Router) {
 
 func RegisterEEProtectedRouter(authorized *gin.RouterGroup, r *Router) {
 	authorized.POST("/api/v1/tenants/:tenant_id/switch", r.tenantHandler.SwitchTenant)
+
+	// Tenant-scoped role configuration uses the Tenant carried by the current token.
+	tenant := authorized.Group("/api/v1/tenant")
+	tenant.GET("/roles", r.tenantHandler.ListTenantRoles)
+	tenant.POST("/roles", r.tenantHandler.CreateTenantRole)
+	tenant.GET("/roles/:role_id", r.tenantHandler.GetTenantRole)
+	tenant.PATCH("/roles/:role_id", r.tenantHandler.UpdateTenantRole)
+	tenant.DELETE("/roles/:role_id", r.tenantHandler.DeleteTenantRole)
+	tenant.GET("/roles/:role_id/permissions", r.tenantHandler.GetTenantRolePermissions)
+	tenant.PUT("/roles/:role_id/permissions", r.tenantHandler.SetTenantRolePermissions)
+	tenant.GET("/role-resources", r.tenantHandler.ListTenantRoleResources)
+	tenant.GET("/default-role", r.tenantHandler.GetTenantDefaultRole)
+	tenant.PUT("/default-role", r.tenantHandler.SetTenantDefaultRole)
+	tenant.GET("/management-permissions", r.tenantHandler.ListTenantManagementPermissions)
+	tenant.PUT("/management-permissions", r.tenantHandler.SetTenantManagementPermissions)
+	tenant.GET("/members/:user_id/role", r.tenantHandler.GetTenantMemberRole)
+	tenant.PUT("/members/:user_id/role", r.tenantHandler.SetTenantMemberRole)
+	tenant.GET("/me/permissions", r.tenantHandler.GetTenantMyPermissions)
+	tenant.GET("/permission-logs", r.tenantHandler.ListTenantPermissionLogs)
 }

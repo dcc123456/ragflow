@@ -33,6 +33,9 @@ import (
 	"ragflow/internal/utility"
 	"sync"
 	"time"
+
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // Global scheduled task for cleanup
@@ -89,186 +92,6 @@ func UpdateServer(serverName string, status *common.BaseMessage) (common.ErrorCo
 		return common.CodeLicenseValid, nil, ""
 	}
 	return licenseStatus.Code, nil, ""
-}
-
-// ListModelProviders list model providers
-func (s *Service) ListModelProviders(ctx context.Context) ([]map[string]interface{}, error) {
-	return []map[string]interface{}{
-		{
-			"command": "list_model_providers",
-			"error":   "'list model providers' is not supported",
-		},
-	}, nil
-}
-
-// AddModelProvider Add model provider
-func (s *Service) AddModelProvider(ctx context.Context, userID, providerName string) (map[string]interface{}, error) {
-
-	return map[string]interface{}{
-		"command":     "add_model_provider",
-		"user_id":     userID,
-		"provider_id": providerName,
-		"error":       "'add model provider' is not supported",
-	}, nil
-}
-
-// DeleteModelProviders delete model providers
-func (s *Service) DeleteModelProviders(ctx context.Context, userID string, providerNames []string) (map[string]interface{}, error) {
-	return map[string]interface{}{
-		"command":        "delete_model_providers",
-		"user_id":        userID,
-		"provider_names": providerNames,
-		"error":          "'delete model providers' is not supported",
-	}, nil
-}
-
-// ListModelInstances list model instances
-func (s *Service) ListModelInstances(ctx context.Context, userID, providerName string) ([]map[string]interface{}, error) {
-
-	return []map[string]interface{}{
-		{
-			"command":     "list_model_instances",
-			"user_id":     userID,
-			"provider_id": providerName,
-			"error":       "'list model instances' is not supported",
-		},
-	}, nil
-}
-
-// ShowProviderInstance show provider instance
-func (s *Service) ShowProviderInstance(ctx context.Context, userID, providerName, instanceName string) (map[string]interface{}, error) {
-
-	return map[string]interface{}{
-		"command":       "show_provider_instance",
-		"user_id":       userID,
-		"provider_id":   providerName,
-		"instance_name": instanceName,
-		"error":         "'show provider instance' is not supported",
-	}, nil
-}
-
-// ShowProviderInstanceBalance show provider instance balance
-func (s *Service) ShowProviderInstanceBalance(ctx context.Context, userID, providerName, instanceName string) (map[string]interface{}, error) {
-	return map[string]interface{}{
-		"command":       "show_provider_instance_balance",
-		"user_id":       userID,
-		"provider_id":   providerName,
-		"instance_name": instanceName,
-		"error":         "'show provider instance balance' is not supported",
-	}, nil
-}
-
-// CheckInstanceConnection check instance connection
-func (s *Service) CheckInstanceConnection(ctx context.Context, userID, providerName, instanceName string) (map[string]interface{}, error) {
-	return map[string]interface{}{
-		"command":       "check_instance_connection",
-		"user_id":       userID,
-		"provider_id":   providerName,
-		"instance_name": instanceName,
-		"error":         "'check instance connection' is not supported",
-	}, nil
-}
-
-// CheckProviderConnection check provider connection
-func (s *Service) CheckProviderConnection(ctx context.Context, userID, providerName, region, apiKey, baseURL string) (map[string]interface{}, error) {
-	return map[string]interface{}{
-		"command":     "check_provider_connection",
-		"user_id":     userID,
-		"provider_id": providerName,
-		"region":      region,
-		"api_key":     apiKey,
-		"base_url":    baseURL,
-	}, nil
-}
-
-// AlterProviderInstance alter provider instance
-func (s *Service) AlterProviderInstance(ctx context.Context, userID, providerName, instanceName, newInstanceName, newAPIKey string) (map[string]interface{}, error) {
-	return map[string]interface{}{
-		"command":           "alter_provider_instance",
-		"user_id":           userID,
-		"provider_id":       providerName,
-		"instance_name":     instanceName,
-		"new_instance_name": newInstanceName,
-		"new_api_key":       newAPIKey,
-		"error":             "'alter provider instance' is not supported",
-	}, nil
-}
-
-// AddModelInstance Add model instance
-func (s *Service) AddModelInstance(ctx context.Context, userID, providerName, instanceName string) (map[string]interface{}, error) {
-
-	return map[string]interface{}{
-		"command":       "add_model_instance",
-		"user_id":       userID,
-		"provider_id":   providerName,
-		"instance_name": instanceName,
-		"error":         "'add model instance' is not supported",
-	}, nil
-}
-
-// DeleteModelInstances delete model instances
-func (s *Service) DeleteModelInstances(ctx context.Context, userID, providerName string, instances []string) (map[string]interface{}, error) {
-	return map[string]interface{}{
-		"command":     "delete_model_instances",
-		"user_id":     userID,
-		"provider_id": providerName,
-		"instances":   instances,
-		"error":       "'delete model instances' is not supported",
-	}, nil
-}
-
-// ListInstanceModels list models for instance
-func (s *Service) ListInstanceModels(ctx context.Context, userID, providerName, instanceName string) ([]map[string]interface{}, error) {
-	return []map[string]interface{}{
-		{
-			"command":       "list_instance_models",
-			"user_id":       userID,
-			"provider_id":   providerName,
-			"instance_name": instanceName,
-			"error":         "'list instance models' is not supported",
-		},
-	}, nil
-}
-
-func (s *Service) EnableOrDisableModel(ctx context.Context, userID, providerName, instanceName, modelName, modelID, status string) (map[string]interface{}, error) {
-
-	return map[string]interface{}{
-		"command":       "enable_or_disable_model",
-		"user_id":       userID,
-		"provider_id":   providerName,
-		"instance_name": instanceName,
-		"model_name":    modelName,
-		"model_id":      modelID,
-		"status":        status,
-		"error":         "'enable or disable model' is not supported",
-	}, nil
-}
-
-// AddModel Add model
-
-// AddModels Add models
-func (s *Service) AddModels(ctx context.Context, userID, providerName, instanceName string, modelNames []string) (map[string]interface{}, error) {
-
-	return map[string]interface{}{
-		"command":       "add_model",
-		"user_id":       userID,
-		"provider_id":   providerName,
-		"instance_name": instanceName,
-		"model_names":   modelNames,
-		"error":         "'add model' is not supported",
-	}, nil
-}
-
-// DeleteModels delete models
-func (s *Service) DeleteModels(ctx context.Context, userID, providerName, instanceName string, models []string) (map[string]interface{}, error) {
-	return map[string]interface{}{
-		"command":       "delete_models",
-		"user_id":       userID,
-		"provider_id":   providerName,
-		"instance_name": instanceName,
-		"models":        models,
-		"error":         "'delete models' is not supported",
-	}, nil
 }
 
 func (s *Service) GetSystemFingerprint(ctx context.Context) (map[string]interface{}, error) {
@@ -755,23 +578,68 @@ func (s *Service) ShowUserIndex(ctx context.Context, email string) (map[string]i
 	return result, nil
 }
 
-// UpdateUserRole update user role
-func (s *Service) UpdateUserRole(ctx context.Context, email, roleName string) (map[string]interface{}, error) {
-	// Query user by email
-	var user entity.User
-	err := dao.DB.Where("email = ?", email).First(&user).Error
+// UpdateUserRole assigns a system role to a user and records the change.
+func (s *Service) UpdateUserRole(ctx context.Context, actorUserID, email, roleName string) (map[string]interface{}, error) {
+	actorUserID = strings.TrimSpace(actorUserID)
+	if actorUserID == "" {
+		return nil, common.NewCodedError(common.CodeUnauthorized, "Admin user is required")
+	}
+	email = strings.TrimSpace(email)
+	if email == "" {
+		return nil, common.NewCodedError(common.CodeBadRequest, "User email is required")
+	}
+	roleName = strings.TrimSpace(roleName)
+	if roleName == "" {
+		return nil, common.NewCodedError(common.CodeBadRequest, "Role name is required")
+	}
+
+	var result map[string]interface{}
+	err := dao.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var user entity.User
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("email = ?", email).Take(&user).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return common.ErrUserNotFound
+			}
+			return fmt.Errorf("failed to find user by email: %w", err)
+		}
+
+		role, err := findSystemRole(tx, roleName, true)
+		if err != nil {
+			return err
+		}
+		if user.RoleID == nil || *user.RoleID != role.ID {
+			var previousRole *entity.Role
+			if user.RoleID != nil {
+				var oldRole entity.Role
+				err := tx.Where("id = ?", *user.RoleID).Take(&oldRole).Error
+				if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+					return fmt.Errorf("failed to load previous user role: %w", err)
+				}
+				if err == nil {
+					previousRole = &oldRole
+				}
+			}
+
+			if err := tx.Model(&entity.User{}).Where("id = ?", user.ID).Update("role_id", role.ID).Error; err != nil {
+				return fmt.Errorf("failed to update user role: %w", err)
+			}
+			if err := recordUserRoleChange(tx, actorUserID, &user, previousRole, role); err != nil {
+				return err
+			}
+		}
+
+		result = map[string]interface{}{
+			"user_id":   user.ID,
+			"email":     user.Email,
+			"nickname":  user.Nickname,
+			"role_id":   role.ID,
+			"role_name": role.RoleName,
+		}
+		return nil
+	})
 	if err != nil {
-		return nil, common.ErrUserNotFound
+		return nil, err
 	}
-
-	result := map[string]interface{}{
-		"command":  "update_user_role",
-		"role":     roleName,
-		"email":    user.Email,
-		"nickname": user.Nickname,
-		"error":    "'update user role' is not supported",
-	}
-
 	return result, nil
 }
 

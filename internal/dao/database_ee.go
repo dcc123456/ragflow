@@ -34,9 +34,10 @@ func permissionDataModelsEE() []interface{} {
 		&entity.GroupInfo{},
 		&entity.GroupMember{},
 		&entity.Permission{},
+		&entity.PermissionChangeLog{},
 	}
 }
 
-func initializeSystemSettingsEE(context.Context, *gorm.DB) error {
-	return nil
+func initializeSystemSettingsEE(ctx context.Context, db *gorm.DB) error {
+	return ensureDefaultTenantInviteEnabled(ctx, db)
 }
