@@ -20,7 +20,7 @@ import { cn } from '@/lib/utils';
 import { Routes } from '@/routes';
 import { getSystemVersion, logout } from '@/services/admin-service';
 
-import authorizationUtil from '@/utils/authorization-util';
+import { adminStorage } from '@/utils/authorization-util';
 
 import ThemeSwitch from '../../../components/theme-switch';
 import { LucideCloudKey } from '../components/icons/LucideCloudKey';
@@ -110,7 +110,7 @@ const AdminNavigationLayout = () => {
     mutationKey: ['adminLogout'],
     mutationFn: async () => {
       await logout();
-      authorizationUtil.removeAll();
+      adminStorage.removeAll();
       navigate(Routes.Admin);
       setCurrentUserInfo({
         userInfo: null,

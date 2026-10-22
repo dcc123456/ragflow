@@ -153,6 +153,8 @@ export interface Message {
   chatBoxId?: string;
   attachment?: IAttachment;
   downloads?: IDocumentDownloadInfo[];
+  usage?: ITurnUsage;
+  elapsed_ms?: number;
 }
 
 export interface IReferenceChunk {
@@ -186,6 +188,13 @@ export interface IReferenceObject {
   doc_aggs: Record<string, Docagg>;
 }
 
+/** One turn's token cost, as reported by the final SSE chunk. */
+export interface ITurnUsage {
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+}
+
 export interface IAnswer {
   answer: string;
   attachment?: IAttachment;
@@ -197,6 +206,9 @@ export interface IAnswer {
   audio_binary?: string;
   data?: any;
   chatBoxId?: string;
+  /** Present on the final chunk only; absent for answers restored from history. */
+  usage?: ITurnUsage;
+  elapsed_ms?: number;
 }
 
 export interface Docagg {
