@@ -84,11 +84,20 @@ export const useFetchUserInfo = (): ResponseGetType<IUserInfo> => {
   return { data, loading };
 };
 
-export const useFetchTenantData = (): ResponseGetType<ITenantInfo> => {
+/**
+ * @param enabled Set to `false` where the tenant endpoint is not part of the
+ *   page's contract (e.g. the admin gateway, which serves every tenant and
+ *   has no `/users/me/models`). Defaults to `true`, so existing callers are
+ *   unchanged.
+ */
+export const useFetchTenantData = (
+  enabled: boolean = true,
+): ResponseGetType<ITenantInfo> => {
   const { data, isFetching: loading } = useQuery({
     queryKey: [UserSettingApiAction.TenantInfo],
     initialData: {},
     gcTime: 0,
+    enabled,
     queryFn: async () => {
       const { data: res } = await userService.getTenantInfo();
       if (res.code === 0) {

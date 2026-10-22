@@ -3,16 +3,22 @@ import { chain, isEmpty, isEqual, keyBy } from 'lodash';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
 
+import {
+  LlmItem,
+  LlmKeys,
+  useFetchAllAddedModels,
+} from '@/hooks/use-llm-request';
 import { IFactory } from '@/interfaces/database/llm';
+import { mapModelKey } from '@/pages/user-setting/setting-model/instance-card/available-models';
 import {
   addFactory,
   deleteFactory,
   getRoleDefaultModels,
   listAllFactoryLlms,
   listLlmFactories,
-  listMyLlm,
   setRoleDefaultModel,
 } from '@/services/admin-service';
+import '@/services/admin-llm-scope';
 
 import { LlmModelType } from '@/constants/knowledge';
 
@@ -155,27 +161,57 @@ export const useLlmFactoryList = () => {
   };
 };
 
+/**
+ * Configured (added) models, grouped per provider.
+ *
+ * Data source: `GET /api/v1/admin/models`. It is reached through the tenant
+ * hook `useFetchAllAddedModels` (`GET /api/v1/models`) combined with the
+ * route-scoped rewrite in `services/admin-llm-scope`: this page renders
+ * under `/admin/roles/...`, so the shared hook's URL is redirected to the
+ * admin gateway and no open-source hook or service file has to change.
+ *
+ * The previous implementation called `GET /admin/llm/my_llms`, which the
+ * admin gateway no longer serves (404).
+ */
 export const useMyLlmList = () => {
-  const { data: factoryList } = useLlmFactoryList();
+  const { data: addedModels, loading: isFetching } = useFetchAllAddedModels();
 
-  const { data, isFetching } = useQuery({
-    queryKey: ['admin/myLlmList'],
-    queryFn: async () => {
-      const { data } = await listMyLlm();
+  const data = useMemo<LlmItem[]>(
+    () =>
+      chain(addedModels)
+        .groupBy('provider_name')
+        .map((models, name) => {
+          // The card renders one row per `llm` entry keyed by model name, so
+          // collapse a model configured under several instances into a single
+          // row rather than emitting duplicate React keys.
+          const llm = chain(models)
+            .uniqBy('name')
+            .map((model) => ({
+              name: model.name,
+              type: model.model_type
+                .map((t) => mapModelKey[t as keyof typeof mapModelKey] ?? t)
+                .join(', '),
+              status: '1' as const,
+              used_token: 0,
+            }))
+            .value();
 
-      return chain(data?.data ?? {})
-        .entries()
-        .map(([name, factory]) => ({
-          name,
-          logo: factoryList.find((x) => x.name === name)?.logo ?? '',
-          ...factory,
-          llm: factory.llm?.map((x) => ({ ...x, name: x.name })),
-        }))
-        .value();
-    },
-    gcTime: 0,
-    initialData: [],
-  });
+          // Raw `model_type` keys, as `available-models.tsx` emits them: the
+          // card sorts via `sortModelTypes` and labels via `mapModelKey`.
+          const tags = [
+            ...new Set(models.flatMap((model) => model.model_type)),
+          ];
+
+          return {
+            name,
+            logo: '',
+            tags: tags.join(','),
+            llm,
+          };
+        })
+        .value(),
+    [addedModels],
+  );
 
   return {
     data,
@@ -214,7 +250,9 @@ export const useAddFactory = (factoryName: string) => {
       return data?.data ?? {};
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin/myLlmList'] });
+      // `useMyLlmList` is now backed by `LlmKeys.allModels()`, so that is the
+      // key that has to be invalidated for the list to refresh.
+      queryClient.invalidateQueries({ queryKey: LlmKeys.allModels() });
       queryClient.invalidateQueries({ queryKey: ['admin/allFactoryLlmList'] });
     },
   });
@@ -235,7 +273,7 @@ export const useDeleteMyFactory = (factoryName: string) => {
       return data?.data ?? {};
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin/myLlmList'] });
+      queryClient.invalidateQueries({ queryKey: LlmKeys.allModels() });
       queryClient.invalidateQueries({ queryKey: ['admin/allFactoryLlmList'] });
     },
   });

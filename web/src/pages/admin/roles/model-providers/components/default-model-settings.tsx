@@ -28,8 +28,6 @@ import message from '@/components/ui/message';
 import { useTranslate } from '@/hooks/common-hooks';
 
 import { useRoleDefaultModels } from '@/pages/admin/hooks/useLlm';
-import { getCachedLlmList } from '@/utils/llm-cache';
-import { getTenantModelId, parseModelValue } from '@/utils/llm-util';
 
 const schema = z.object({
   llm_id: z.string().nonempty(),
@@ -133,6 +131,7 @@ export default function DefaultModelsSettings() {
 
                 <FormControl>
                   <ModelTreeSelect
+                    skipTenantInfo
                     modelTypes={
                       ModelTypeMap[item.id as keyof typeof ModelTypeMap] ?? [
                         'chat',
@@ -141,17 +140,10 @@ export default function DefaultModelsSettings() {
                     value={field.value}
                     onChange={async (value) => {
                       if (value === field.value) return;
-                      const parsed = parseModelValue(value);
-                      const model_id = parsed
-                        ? getTenantModelId(
-                            getCachedLlmList() ?? {},
-                            parsed.model_name,
-                            parsed.model_provider,
-                          ) || value
-                        : '';
+
                       await setDefaultModel({
                         model_type: item.type,
-                        model_id,
+                        model_id: value ?? '',
                       });
                       field.onChange(value);
                       message.success(tMsg('modified'));
