@@ -25,9 +25,7 @@ import { Authorization } from '@/constants/authorization';
 import i18n from '@/locales/config';
 import { Routes } from '@/routes';
 import API from '@/utils/api';
-import authorizationUtil, {
-  getAuthorization,
-} from '@/utils/authorization-util';
+import { adminStorage } from '@/utils/authorization-util';
 import { convertTheKeysOfTheObjectToSnake } from '@/utils/common-util';
 import { ResultCode, RetcodeMessage } from '@/utils/request';
 import {
@@ -51,7 +49,7 @@ import api from '@/utils/api';
 import { keyBy } from 'lodash';
 
 function redirectToLogin() {
-  authorizationUtil.removeAll();
+  adminStorage.removeAll();
   history.push(Routes.Admin);
   window.location.reload();
 }
@@ -64,7 +62,7 @@ function injectAuthorizationToRequest(config: InternalAxiosRequestConfig) {
 
   // @ts-ignore
   if (!newConfig.skipToken) {
-    newConfig.headers.set(Authorization, getAuthorization());
+    newConfig.headers.set(Authorization, adminStorage.getAuthorization());
   }
 
   return newConfig;
@@ -221,15 +219,15 @@ export const deleteUser = (email: string) =>
   request.delete(API.adminDeleteUser(email));
 
 export const listServices = async () => {
-  const { data } = await request.get<
-    ResponseData<AdminService.ListServicesItem[] | GoServiceStatus[]>
-  >(API.adminListServices);
+  const { data } = await request.get<ResponseData<GoServiceStatus[]>>(
+    API.adminListServices,
+  );
   return data.code === 0 ? adaptServiceList(data.data) : [];
 };
 export const showServiceDetails = async (serviceId: number | string) => {
-  const { data } = await request.get<
-    ResponseData<AdminService.ServiceDetail | GoServiceStatus>
-  >(API.adminShowServiceDetails(encodeURIComponent(String(serviceId))));
+  const { data } = await request.get<ResponseData<GoServiceStatus>>(
+    API.adminShowServiceDetails(encodeURIComponent(String(serviceId))),
+  );
   return data.code === 0 ? adaptServiceDetail(data.data) : undefined;
 };
 

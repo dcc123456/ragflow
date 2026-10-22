@@ -15,7 +15,9 @@
  */
 
 import message from '@/components/ui/message';
-import authorizationUtil from '@/utils/authorization-util';
+import authorizationUtil, {
+  type CredentialStorage,
+} from '@/utils/authorization-util';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 
@@ -52,7 +54,9 @@ export const useLoginWithGithub = () => {
   return { auth, redirectUrl };
 };
 
-export const useAuth = () => {
+export const useAuth = (
+  credentialStorage: CredentialStorage = authorizationUtil,
+) => {
   const value = useLoginWithGithub();
 
   const auth = value?.auth;
@@ -61,8 +65,8 @@ export const useAuth = () => {
   const [isLogin, setIsLogin] = useState<Nullable<boolean>>(null);
 
   useEffect(() => {
-    setIsLogin(!!authorizationUtil.getAuthorization() || !!auth);
-  }, [auth]);
+    setIsLogin(!!credentialStorage.getAuthorization() || !!auth);
+  }, [auth, credentialStorage]);
 
   return { isLogin, redirectUrl };
 };
