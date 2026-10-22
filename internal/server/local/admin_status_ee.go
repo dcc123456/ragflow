@@ -17,5 +17,10 @@
 package local
 
 func IsAdminAvailable() bool {
-	return true
+	adminStatusMu.RLock()
+	defer adminStatusMu.RUnlock()
+	if adminStatus == nil {
+		return false
+	}
+	return adminStatus.Status == Available
 }
