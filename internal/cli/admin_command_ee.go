@@ -16,15 +16,77 @@
 
 package cli
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+	"net/url"
+	"strings"
+)
 
-// AdminListUserAgentsCommand is available only in the enterprise edition.
+// AdminListUserAgentsCommand lists agents or pipelines created by the target user.
 func (c *CLI) AdminListUserAgentsCommand(commandCount int, cmd *Command) (ResponseIf, error) {
-	return nil, errors.New("listing user agents is only available in the enterprise edition")
+	if c.Config.CLIMode != AdminMode || c.AdminServerClient.LoginToken == nil {
+		return nil, fmt.Errorf("this command is only allowed in ADMIN mode or already login")
+	}
+
+	userName, ok := cmd.Params["user_name"].(string)
+	if !ok {
+		return nil, fmt.Errorf("user_name not provided")
+	}
+
+	query := url.Values{}
+	for _, name := range []string{"canvas_category", "page", "page_size"} {
+		if value, ok := cmd.Params[name]; ok {
+			query.Set(name, fmt.Sprint(value))
+		}
+	}
+	apiURL := fmt.Sprintf("/admin/users/%s/agents", url.PathEscape(userName))
+	if len(query) > 0 {
+		apiURL += "?" + query.Encode()
+	}
+	resp, err := c.AdminServerClient.Request(commandCount, "GET", apiURL, "admin", nil, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list agents created by user %s: %w", userName, err)
+	}
+	return HandleCommonResponse(resp, fmt.Sprintf("list agents created by user %s", userName))
 }
 
+// LIST USER 'user@example.com' AGENTS WITH canvas_category 'agent_canvas' page 1 page_size 10.
 func (p *Parser) parseAdminListUserAgentsEE(userName string) (*Command, error) {
-	return nil, errors.New("listing user agents is only available in the enterprise edition")
+	p.nextToken()
+	cmd := NewCommand("admin_list_user_agents")
+	if p.curToken.Type == TokenWith {
+		p.nextToken()
+		if p.curToken.Type == TokenEOF || p.curToken.Type == TokenSemicolon {
+			return nil, fmt.Errorf("expected canvas_category, page or page_size after WITH")
+		}
+		for p.curToken.Type != TokenEOF && p.curToken.Type != TokenSemicolon {
+			name := strings.ToLower(p.curToken.Value)
+			switch name {
+			case "canvas_category", "page", "page_size":
+			default:
+				return nil, fmt.Errorf("unknown AGENTS parameter %q", name)
+			}
+			if _, exists := cmd.Params[name]; exists {
+				return nil, fmt.Errorf("duplicate AGENTS parameter %q", name)
+			}
+			p.nextToken()
+			value, err := p.parseVariableValue()
+			if err != nil {
+				return nil, fmt.Errorf("invalid value for %s: %w", name, err)
+			}
+			cmd.Params[name] = value
+			p.nextToken()
+		}
+	}
+	if p.curToken.Type == TokenSemicolon {
+		p.nextToken()
+	}
+	if p.curToken.Type != TokenEOF {
+		return nil, fmt.Errorf("expected WITH or end of AGENTS command, got %s", p.curToken.Value)
+	}
+	cmd.Params["user_name"] = userName
+	return cmd, nil
 }
 
 // AdminListUserDatasetsCommand is available only in the enterprise edition.

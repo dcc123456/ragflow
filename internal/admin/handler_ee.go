@@ -1121,9 +1121,46 @@ func (h *Handler) ListUserDatasets(c *gin.Context) {
 	common.ResponseWithHttpCodeData(c, http.StatusNotImplemented, common.CodeNotImplemented, nil, "listing user datasets is only available in the enterprise edition")
 }
 
-// ListUserAgents requires the enterprise edition.
+// ListUserAgents lists agents or pipelines created by the target user.
+// canvas_category selects the stored category. total counts matching canvases
+// created by this user before pagination.
 func (h *Handler) ListUserAgents(c *gin.Context) {
-	common.ResponseWithHttpCodeData(c, http.StatusNotImplemented, common.CodeNotImplemented, nil, "listing user agents is only available in the enterprise edition")
+	username, err := getUserName(c)
+	if err != nil {
+		return
+	}
+	canvasCategory := strings.TrimSpace(c.Query("canvas_category"))
+	if canvasCategory == "" {
+		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "canvas_category is required")
+		return
+	}
+	if canvasCategory != "agent_canvas" && canvasCategory != "dataflow_canvas" {
+		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "canvas_category must be agent_canvas or dataflow_canvas")
+		return
+	}
+	page, err := strconv.Atoi(c.DefaultQuery("page", "1"))
+	if err != nil || page < 1 || page > 1_000_000 {
+		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "page must be between 1 and 1000000")
+		return
+	}
+	pageSize, err := strconv.Atoi(c.DefaultQuery("page_size", "10"))
+	if err != nil || pageSize < 1 || pageSize > 100 {
+		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "page_size must be between 1 and 100")
+		return
+	}
+	ctx := c.Request.Context()
+
+	agents, total, err := h.service.ListUserAgents(ctx, username, canvasCategory, page, pageSize)
+	if err != nil {
+		if errors.Is(err, common.ErrUserNotFound) {
+			common.ErrorWithCode(c, common.CodeNotFound, "User not found")
+			return
+		}
+		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		return
+	}
+
+	common.SuccessWithDataAndTotal(c, agents, total, "success")
 }
 
 // ListUserChats handle show user chats

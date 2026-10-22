@@ -798,9 +798,44 @@ func (s *Service) ListUserDatasets(ctx context.Context, email string) ([]map[str
 	return nil, errors.New("listing user datasets is only available in the enterprise edition")
 }
 
-// ListUserAgents requires the enterprise edition.
+// ListUserAgents lists canvases created by the user identified by email,
+// filtered by the stored canvasCategory.
 func (s *Service) ListUserAgents(ctx context.Context, email, canvasCategory string, page, pageSize int) ([]map[string]interface{}, int64, error) {
-	return nil, 0, errors.New("listing user agents is only available in the enterprise edition")
+	user, err := s.userDAO.GetByEmail(ctx, dao.DB, email)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, 0, common.ErrUserNotFound
+		}
+		return nil, 0, fmt.Errorf("failed to get user: %w", err)
+	}
+
+	agents, total, err := s.canvasDAO.ListCreatedByUser(ctx, dao.DB, user.ID, canvasCategory, page, pageSize)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to get user agents: %w", err)
+	}
+
+	result := make([]map[string]interface{}, 0, len(agents))
+	for _, agent := range agents {
+		title := ""
+		if agent.Title != nil {
+			title = *agent.Title
+		}
+		tenantName := ""
+		if agent.TenantName != nil {
+			tenantName = *agent.TenantName
+		}
+		result = append(result, map[string]interface{}{
+			"id":              agent.ID,
+			"tenant_id":       agent.TenantID,
+			"tenant_name":     tenantName,
+			"title":           title,
+			"canvas_category": agent.CanvasCategory,
+			"avatar":          agent.Avatar,
+			"create_date":     agent.CreateDate,
+			"update_date":     agent.UpdateDate,
+		})
+	}
+	return result, total, nil
 }
 
 // ListUserChats show user chats for enterprise edition
