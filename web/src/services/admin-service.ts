@@ -219,12 +219,14 @@ export const deleteUser = (email: string) =>
   request.delete(API.adminDeleteUser(email));
 
 export const listServices = async () => {
-  const { data } = await request.get<ResponseData<GoServiceStatus[]>>(API.adminListServices);
+  const { data } = await request.get<ResponseData<GoServiceStatus[]>>(
+    API.adminListServices,
+  );
   return data.code === 0 ? adaptServiceList(data.data) : [];
 };
 export const showServiceDetails = async (serviceId: number | string) => {
   const { data } = await request.get<ResponseData<GoServiceStatus>>(
-      API.adminShowServiceDetails(encodeURIComponent(String(serviceId)))
+    API.adminShowServiceDetails(encodeURIComponent(String(serviceId))),
   );
   return data.code === 0 ? adaptServiceDetail(data.data) : undefined;
 };

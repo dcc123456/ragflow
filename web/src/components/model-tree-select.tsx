@@ -185,10 +185,6 @@ export const ModelTreeSelect = forwardRef<
     isFetched: modelsFetched,
     isError: modelsError,
   } = useFetchAllAddedModels(undefined, ownerTenantId);
-  const treeData = useMemo(() => {
-    const res = buildModelTree(allAddedModels, modelTypes, tenantId);
-    return res;
-  }, [allAddedModels, modelTypes, tenantId]);
 
   // An explicit prop wins; otherwise inherit the restriction declared for the
   // type, so the default-model page and the chat settings agree without each
@@ -204,7 +200,13 @@ export const ModelTreeSelect = forwardRef<
 
   const treeData = useMemo(
     () =>
-      buildModelTree(allAddedModels, modelTypes, undefined, allowedProviders),
+      buildModelTree(
+        allAddedModels,
+        modelTypes,
+        tenantId,
+        undefined,
+        allowedProviders,
+      ),
     [allAddedModels, modelTypes, allowedProviders],
   );
 

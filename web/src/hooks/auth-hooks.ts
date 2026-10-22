@@ -55,7 +55,7 @@ export const useLoginWithGithub = () => {
 };
 
 export const useAuth = (
-    credentialStorage: CredentialStorage = authorizationUtil,
+  credentialStorage: CredentialStorage = authorizationUtil,
 ) => {
   const value = useLoginWithGithub();
 
