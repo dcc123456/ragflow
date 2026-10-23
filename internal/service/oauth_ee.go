@@ -227,19 +227,20 @@ func (s *UserService) registerOAuthUser(ctx context.Context, channel string, inf
 
 	tenantName := nickname + "'s Kingdom"
 	tenant := &entity.Tenant{
-		ID:        userID,
-		Name:      &tenantName,
-		LLMID:     cfg.GetDefaultChatModel().Name,
-		EmbdID:    cfg.GetDefaultEmbeddingModel().Name,
-		ASRID:     cfg.GetDefaultASRModel().Name,
-		Img2TxtID: cfg.GetDefaultVisionModel().Name,
-		RerankID:  cfg.GetDefaultRerankModel().Name,
+		ID:   userID,
+		Name: &tenantName,
+
 		ParserIDs: "naive:General,qa:Q&A,resume:Resume,manual:Manual,table:Table,paper:Research Paper,book:Book,laws:Laws,presentation:Presentation,picture:Picture,one:One,audio:Audio,email:Email,tag:Tag",
 		Status:    &status,
 	}
 	userTenantID := common.GenerateToken()
 	userTenant := &entity.UserTenant{
 		ID:        userTenantID,
+		LLMID:     cfg.GetDefaultChatModel().Name,
+		EmbdID:    cfg.GetDefaultEmbeddingModel().Name,
+		ASRID:     cfg.GetDefaultASRModel().Name,
+		Img2TxtID: cfg.GetDefaultVisionModel().Name,
+		RerankID:  cfg.GetDefaultRerankModel().Name,
 		UserID:    userID,
 		TenantID:  userID,
 		Role:      "owner",

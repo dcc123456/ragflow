@@ -51,7 +51,7 @@ func seedTenantRoleTenant(t *testing.T, db *gorm.DB, tenantID string) {
 	t.Helper()
 	status := string(entity.StatusValid)
 	if err := db.Create(&entity.Tenant{
-		ID: tenantID, LLMID: "", EmbdID: "", ASRID: "", Img2TxtID: "", RerankID: "", ParserIDs: "", Status: &status,
+		ID: tenantID, ParserIDs: "", Status: &status,
 	}).Error; err != nil {
 		t.Fatalf("seed Tenant %q: %v", tenantID, err)
 	}

@@ -44,7 +44,7 @@ func TestMigratePermissionsRunsEnterpriseDataWhenSharedMarkerIsCurrent(t *testin
 	}
 
 	status := string(entity.StatusValid)
-	tenant := entity.Tenant{ID: "tenant-1", LLMID: "", EmbdID: "", ASRID: "", Img2TxtID: "", RerankID: "", ParserIDs: "", Status: &status}
+	tenant := entity.Tenant{ID: "tenant-1", ParserIDs: "", Status: &status}
 	if err := db.Create(&tenant).Error; err != nil {
 		t.Fatalf("create Tenant: %v", err)
 	}
@@ -164,12 +164,12 @@ func newTenantRoleMigrationDB(t *testing.T, userRoleID *int32) (*gorm.DB, int32)
 		t.Fatalf("create owner: %v", err)
 	}
 	if err := db.Create(&entity.Tenant{
-		ID: "tenant-1", LLMID: "", EmbdID: "", ASRID: "", Img2TxtID: "", RerankID: "", ParserIDs: "", Status: &status,
+		ID: "tenant-1", ParserIDs: "", Status: &status,
 	}).Error; err != nil {
 		t.Fatalf("create tenant: %v", err)
 	}
 	if err := db.Create(&entity.UserTenant{
-		ID: "membership-1", UserID: "owner-1", TenantID: "tenant-1", Role: "owner", Status: &status,
+		ID: "membership-1", LLMID: "", EmbdID: "", ASRID: "", Img2TxtID: "", RerankID: "", UserID: "owner-1", TenantID: "tenant-1", Role: "owner", Status: &status,
 	}).Error; err != nil {
 		t.Fatalf("create tenant owner membership: %v", err)
 	}

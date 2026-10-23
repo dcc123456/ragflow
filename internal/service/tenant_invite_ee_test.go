@@ -32,7 +32,7 @@ func TestAddMemberRejectsWhenTenantInvitesAreDisabled(t *testing.T) {
 	seedTenantMembership(t, db, "owner", "owner-user", "tenant-xyz", TenantRoleOwner)
 	status := "1"
 	if err := db.Create(&entity.Tenant{
-		ID: "tenant-xyz", LLMID: "", EmbdID: "", ASRID: "", Img2TxtID: "", RerankID: "", ParserIDs: "", InviteEnabled: false, Status: &status,
+		ID: "tenant-xyz", ParserIDs: "", InviteEnabled: false, Status: &status,
 	}).Error; err != nil {
 		t.Fatalf("seed tenant: %v", err)
 	}

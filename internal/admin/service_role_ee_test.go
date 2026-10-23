@@ -431,7 +431,7 @@ func TestDropSystemRoleChecksAssignments(t *testing.T) {
 
 	assignedRoleID := role.ID
 	if err := db.Create(&entity.Tenant{
-		ID: "tenant-1", LLMID: "builtin", EmbdID: "builtin", ASRID: "builtin", RerankID: "builtin",
+		ID:        "tenant-1",
 		ParserIDs: "{}", RoleID: &assignedRoleID,
 	}).Error; err != nil {
 		t.Fatalf("create tenant default role assignment: %v", err)
